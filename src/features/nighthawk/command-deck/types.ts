@@ -14,7 +14,7 @@ import type { WhyNow } from "@/lib/zerodte/why-now";
 export type DeckDirection = "LONG" | "SHORT";
 export type DeckStatus = "OPEN" | "HOLD" | "TRIM" | "CLOSED" | "WATCH" | "SKIP";
 export type ExitModel = "RATCHET" | "SCALE_OUT" | "PLAN";
-export type Recommendation = "HOLD" | "TRIM" | "SELL";
+export type Recommendation = "BUY" | "HOLD" | "TRIM" | "SELL";
 export type ThesisLevel = "intact" | "warn" | "break" | "unknown";
 
 /** A signed, point-weighted reason (from the real scoring components). */
@@ -149,6 +149,14 @@ export interface TerminalPlay {
   stopLevel?: string | null;
   thesis?: string | null;
   keySignal?: string | null;
+  optionsPlay?: string | null;
+  rrRatio?: number | null;
+  entryCostPerContract?: number | null;
+  premiumCapOk?: boolean | null;
+
+  // ── legacy stock-level overlay (populated by overlayLegacyQuotes, not the adapter) ──
+  stockPrice?: number | null;
+  stockChangePct?: number | null;
 
   // ── swing-only enrichment (all OPTIONAL, ADDITIVE — 0DTE/LEAPS/Legacy leave them undefined; PR-12
   //    populates them through the horizon adapter). The observable swing state the serving router keys on. ──

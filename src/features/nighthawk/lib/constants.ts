@@ -57,24 +57,25 @@ export const EDITION_SYNTHESIS_POOL = 18;
 export const EDITION_TARGET_PLAYS = 5;
 /** Minimum plays before ops pages on a thin edition — backfill from ranked pool when below. */
 export const EDITION_MIN_PUBLISH_PLAYS = 3;
-/** PR-N28: minimum composite score to publish a play. The measured overnight track record
- *  shows below-40 plays (C conviction) underperform — the prime band is 40-55. A floor of
- *  35 catches clearly weak candidates while keeping near-prime plays that add directional
- *  diversity. Better to publish 3 strong plays than 5 where half are garbage. */
-export const MIN_PUBLISH_SCORE = 35;
+/** PR-N28: minimum composite score to publish a play. Measured overnight track record:
+ *  below-40 plays (C conviction) underperform consistently. The prime band is 40-55.
+ *  Raised from 35→42 based on 0% WR on current-methodology cohort (0 wins, 2 losses,
+ *  10 opens out of 12 scoreable — the floor was admitting garbage). Better to publish
+ *  3 strong plays than 5 where half are noise. */
+export const MIN_PUBLISH_SCORE = 42;
 /** PR-N31: lower floor for the diversity/hedge slot. In a one-directional market the normal
  *  35 floor blocks every contrarian candidate, leaving a 5-play all-LONG (or all-SHORT) book
  *  with zero downside protection. The hedge slot uses this softer floor — still high enough to
  *  reject garbage, but low enough to let a legitimate contrarian play through when flow or
  *  technicals support a minority view. */
 export const DIVERSITY_HEDGE_FLOOR = 20;
-/** PR-N33: even softer floor for the FORCED contrarian path (Phase 2). When zero natural
+/** PR-N33: softer floor for the FORCED contrarian path (Phase 2). When zero natural
  *  opposite-direction candidates exist, forced re-scoring discounts flow 0.3× and honestly
  *  scores tech/positioning against the dominant trend — realistic raw totals land 5-18 in
- *  an extreme bull/bear. The play already carries a gate_warning marking it as a forced hedge,
- *  so the quality bar is intentionally lower. 8 rejects outright garbage (all zeros + rounding
- *  noise) while letting any candidate with real contrarian signal through. */
-export const FORCED_CONTRARIAN_FLOOR = 8;
+ *  an extreme bull/bear. Raised from 8→15: a score of 8 means essentially zero real signal
+ *  supports the trade — forced contrarian still needs SOME evidence, not just rounding noise.
+ *  The play carries a gate_warning marking it as a forced hedge. */
+export const FORCED_CONTRARIAN_FLOOR = 15;
 /** Overshoot sent through synthesis + critic — critic cuts weak plays with no backfill. */
 export const EDITION_SYNTHESIS_OVERSHOOT = 9;
 /** Stock tickers to prefetch option chains for (buffer above 5 final plays).
@@ -101,14 +102,3 @@ export const MAX_OPTION_COST_PER_CONTRACT = MAX_OPTION_PREMIUM_PER_SHARE * 100;
 
 export const PLAYBOOK_PREMIUM_CAP_LINE = `Entry option premium MUST be ≤ $${MAX_OPTION_PREMIUM_PER_SHARE}/share (≤ $${MAX_OPTION_COST_PER_CONTRACT.toLocaleString()} per 1-lot contract). If no suitable contract exists under this cap, skip the ticker and substitute the next-ranked candidate.`;
 
-/**
- * NUMERIC-GROUNDING enforcement (data-correctness audit P0). When ON (default), a play that fails a
- * HARD grounding check (off-chain/illiquid strike, null/way-off premium vs the confirmed chain ask)
- * is DROPPED from the edition; SOFT issues (flow/level/prose/PT divergence) keep the play but
- * strip/flag the number. The grounding CHECKS always run and always log a summary regardless of this
- * flag — the flag only controls whether HARD failures actually drop the play, so it can be turned OFF
- * (NIGHTHAWK_GROUNDING_ENFORCE=0) for one run to observe what WOULD be dropped without changing output.
- * Deploy-risk knob: this is what changes what publishes, so it is env-overridable for instant rollback.
- */
-export const GROUNDING_ENFORCE =
-  (process.env.NIGHTHAWK_GROUNDING_ENFORCE ?? "1").trim() !== "0";

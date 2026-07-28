@@ -42,6 +42,8 @@ export type ScoredCandidate = {
   wall_proximity_score?: number;
   /** VEX (vanna exposure) direction alignment. */
   vex_alignment_score?: number;
+  /** Risk-reversal skew confirmation/penalty (±3). Stored for traceability. */
+  skew_score?: number;
   /** Earnings proximity penalty applied to catalyst_score. Set when earnings are tomorrow with matching expiry. */
   earnings_risk?: boolean;
   /** Count of scoring dimensions with material positive contribution (≥ threshold). */
@@ -999,8 +1001,8 @@ export function scoreCandidate(
   const ivRank = dossierExtras.iv_rank;
   let ivPenalty = 0;
   if (ivRank != null && Number.isFinite(ivRank) && ivRank > 70) {
-    ivPenalty = -1;
-    catalyst.flags.push(`IV rank ${Math.round(ivRank)} — options expensive, tighter stops`);
+    ivPenalty = ivRank > 85 ? -6 : -3;
+    catalyst.flags.push(`IV rank ${Math.round(ivRank)} — options expensive, wider spreads, faster decay`);
   }
 
   // FDA calendar reinforcement: if UW FDA calendar has upcoming dates, strengthen the binary
@@ -1012,7 +1014,10 @@ export function scoreCandidate(
     catalyst.flags.push("FDA calendar event upcoming — binary risk");
   }
 
-  const totalCatalystScore = Math.max(-CATALYST_CAP, Math.min(CATALYST_CAP, catalyst.score + earningsPenalty + ptNudge + ivPenalty + fdaPenalty));
+  // IV penalty lives OUTSIDE the catalyst clamp — it's about options pricing, not catalyst awareness.
+  // Clamping FDA(-2) + earnings(-6) + IV(-6) together into [-5,+5] swallowed stacked risk signals.
+  const totalCatalystScore = Math.max(-CATALYST_CAP, Math.min(CATALYST_CAP, catalyst.score + earningsPenalty + ptNudge + fdaPenalty));
+  const ivAdjustment = ivPenalty;
 
   // Flow-anomaly penalty: names flagged critical in the last hour get demoted unless flow is exceptional.
   let anomalyPenalty = 0;
@@ -1049,6 +1054,7 @@ export function scoreCandidate(
           wallProxScore +
           vexScore +
           totalCatalystScore +
+          ivAdjustment +
           anomalyPenalty +
           flowConvictionBonus) *
           dampenedRegime
@@ -1092,6 +1098,7 @@ export function scoreCandidate(
     vex_alignment_score: vexScore,
     catalyst_score: totalCatalystScore,
     catalyst_flags: catalystFlags,
+    skew_score: skewAdj,
     earnings_risk: earningsRisk,
     confirming_signals: confirmingSignals,
     conviction: assignNighthawkTier({

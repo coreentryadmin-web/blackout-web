@@ -5,14 +5,29 @@
 // keep using literally the same parser.
 import type { PlaybookPlay } from "./types";
 
-/** Max stop distance from spot (fraction). Prevents dossier S/R from producing absurd
- *  risk plans (e.g., support at -18% for a LONG = unactionable stop). */
-const MAX_STOP_DISTANCE_PCT = 0.08;
-/** Max target distance from spot (fraction). Keeps targets achievable for overnight plays. */
-const MAX_TARGET_DISTANCE_PCT = 0.12;
+/** Default max stop distance from spot (fraction). Prevents dossier S/R from producing absurd
+ *  risk plans (e.g., support at -18% for a LONG = unactionable stop). Scaled up by ATR when available. */
+const DEFAULT_MAX_STOP_PCT = 0.08;
+/** Default max target distance from spot (fraction). Scaled up by ATR when available. */
+const DEFAULT_MAX_TARGET_PCT = 0.12;
+/** Absolute ceilings even for high-vol names. */
+const HARD_MAX_STOP_PCT = 0.15;
+const HARD_MAX_TARGET_PCT = 0.25;
 /** Minimum R:R ratio (target_dist / stop_dist). When the ratio falls below this, the stop
  *  is tightened to maintain at least this R:R. */
 const MIN_RR_RATIO = 0.75;
+
+function volatilityAdjustedCaps(spot: number, atr?: number | null): { maxStopPct: number; maxTargetPct: number } {
+  if (atr == null || !Number.isFinite(atr) || atr <= 0 || spot <= 0) {
+    return { maxStopPct: DEFAULT_MAX_STOP_PCT, maxTargetPct: DEFAULT_MAX_TARGET_PCT };
+  }
+  const atrPct = atr / spot;
+  // 1.5× ATR for stop, 2.5× ATR for target, but never below defaults or above hard ceilings
+  return {
+    maxStopPct: Math.min(HARD_MAX_STOP_PCT, Math.max(DEFAULT_MAX_STOP_PCT, atrPct * 1.5)),
+    maxTargetPct: Math.min(HARD_MAX_TARGET_PCT, Math.max(DEFAULT_MAX_TARGET_PCT, atrPct * 2.5)),
+  };
+}
 
 export type ParsedPlayLevels = {
   entry_range_low: number | null;
@@ -92,6 +107,8 @@ export function buildDirectionalStockLevels(params: {
   /** Current spot price. When provided, entries anchor near spot (overnight plays
    *  where members act at the next session's open, not at a pullback to support). */
   spot?: number | null;
+  /** ATR-14 for the name — scales stop/target caps to match the name's volatility. */
+  atr?: number | null;
 }): { entry_range: string; target: string; stop: string } {
   const support = params.support != null && Number.isFinite(params.support) ? params.support : null;
   const resistance =
@@ -102,8 +119,9 @@ export function buildDirectionalStockLevels(params: {
   // Entry bands near spot, stop/target at real S/R but clamped so neither is absurdly
   // far from entry (a dossier support at -18% produces unactionable risk/reward).
   if (spot != null && support != null && resistance != null && resistance > support) {
-    const maxStopDist = spot * MAX_STOP_DISTANCE_PCT;
-    const maxTargetDist = spot * MAX_TARGET_DISTANCE_PCT;
+    const { maxStopPct, maxTargetPct } = volatilityAdjustedCaps(spot, params.atr);
+    const maxStopDist = spot * maxStopPct;
+    const maxTargetDist = spot * maxTargetPct;
     if (params.direction === "long") {
       const rawStop = support;
       let stopDist = Math.min(spot - rawStop, maxStopDist);

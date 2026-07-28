@@ -11,7 +11,7 @@ import { factorsFromFlowQuality } from "@/lib/explain/trade-explanation";
 import type { SwingSetupState } from "@/lib/swing/taxonomy";
 import { executableFill, type TerminalExitLadder } from "@/lib/zerodte/terminal-ladder";
 import { condorGeometryFrom, type CondorGeometry } from "@/lib/zerodte/condor-render";
-import type { WhyNow } from "@/lib/zerodte/why-now";
+import type { WhyNow, WhyNowReason } from "@/lib/zerodte/why-now";
 import type {
   DeckCondor,
   DeckDirection,
@@ -156,6 +156,8 @@ export interface ZeroDteDeckSource {
 
 const FB_LABELS: Record<string, string> = {
   flow: "Flow", tech: "Technicals", positioning: "Positioning", news: "News", smart_money: "Smart Money",
+  fundamental: "Fundamental", catalyst: "Catalyst", short_interest: "Short Interest",
+  wall_proximity: "GEX Wall", vex: "VEX", skew: "Skew",
 };
 
 export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
@@ -396,6 +398,10 @@ export interface EditionDeckSource {
   gate_warnings?: string[] | null;
   pulled?: boolean | null;
   pulled_reason?: string | null;
+  confirming_signals?: number | null;
+  earnings_risk?: boolean | null;
+  entry_cost_per_contract?: number | null;
+  premium_cap_ok?: boolean | null;
   // Morning confirmation overlay (merged by the container).
   morning_status?: "CONFIRMED" | "DEGRADED" | "INVALIDATED" | "UNVERIFIED" | null;
   morning_reason?: string | null;
@@ -437,6 +443,9 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
   if (src.flow_streak_days != null && Number.isFinite(src.flow_streak_days) && src.flow_streak_days > 0) {
     factors.push({ label: "Flow Streak", points: src.flow_streak_days });
   }
+  if (src.confirming_signals != null && Number.isFinite(src.confirming_signals) && src.confirming_signals > 0) {
+    factors.push({ label: "Confirming", points: src.confirming_signals });
+  }
 
   const direction = asDir(src.direction);
   const entryMid = parseEntryMid(src.entry_range);
@@ -463,6 +472,12 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
     for (const w of src.gate_warnings) {
       gates.push({ label: w, ok: false });
     }
+  }
+  if (src.earnings_risk) {
+    gates.push({ label: "EARNINGS RISK", ok: false });
+  }
+  if (src.premium_cap_ok === false) {
+    gates.push({ label: "PREMIUM HIGH", ok: false });
   }
 
   // Thesis break from morning confirmation — risk_note enriches the warn/intact note.
@@ -493,6 +508,32 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
   // but an absent score is different from a real 0.
   const rawScore = fin(src.score);
 
+  // Confluence: the edition's confirming_signals count maps directly to the terminal's confluence
+  // badge — same semantic (independent confirmations backing the setup).
+  const confluence = src.confirming_signals != null && src.confirming_signals > 0
+    ? src.confirming_signals : null;
+
+  // Discovery origin: derive from flow_streak_days and key_signal to light up origin badges.
+  const discoveryOrigin: string[] = [];
+  if (src.flow_streak_days != null && src.flow_streak_days > 0) discoveryOrigin.push("FLOW");
+  if (src.key_signal) {
+    const ks = src.key_signal.toLowerCase();
+    if (/breakout|break\s*above|break\s*below|technical/i.test(ks)) discoveryOrigin.push("BREAKOUT");
+    if (/catalyst|earnings|fda|guidance/i.test(ks)) discoveryOrigin.push("CATALYST");
+    if (/sweep|dark\s*pool|block/i.test(ks)) discoveryOrigin.push("SWEEP");
+  }
+
+  // "Why now" trigger: map key_signal to the why-now ribbon with the best-match reason.
+  let whyNow: WhyNow | null = null;
+  if (src.key_signal) {
+    const ks = src.key_signal.toLowerCase();
+    const reason: WhyNowReason = /breakout|break\s*above|break\s*below/i.test(ks) ? "breakout"
+      : /sweep|dark\s*pool|block/i.test(ks) ? "sweep"
+      : /accumulation|streak/i.test(ks) ? "accumulation"
+      : "flow_spike";
+    whyNow = { reason, label: src.key_signal };
+  }
+
   return {
     id: `LEGACY:${src.ticker}`,
     ticker: src.ticker.toUpperCase(),
@@ -507,7 +548,7 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
     regime,
     thesisBreak,
     tierLabel: src.conviction || null,
-    recommendation: pulled || ms === "INVALIDATED" ? "SELL" : ms === "DEGRADED" ? "HOLD" : "HOLD",
+    recommendation: pulled || ms === "INVALIDATED" ? "SELL" : ms === "CONFIRMED" ? "BUY" : "HOLD",
     recNote,
     progress: null,
     entry: fin(src.entry_premium) ?? entryMid,
@@ -519,5 +560,12 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
     stopLevel: src.stop ?? null,
     thesis: src.thesis ?? null,
     keySignal: src.key_signal ?? null,
+    optionsPlay: src.options_play ?? null,
+    rrRatio: fin(src.rr_ratio),
+    entryCostPerContract: fin(src.entry_cost_per_contract),
+    premiumCapOk: src.premium_cap_ok ?? null,
+    confluence,
+    discoveryOrigin: discoveryOrigin.length > 0 ? discoveryOrigin : undefined,
+    whyNow: whyNow ?? undefined,
   };
 }

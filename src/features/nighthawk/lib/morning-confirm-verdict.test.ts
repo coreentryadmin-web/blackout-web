@@ -85,7 +85,8 @@ test("SPX gap against direction still INVALIDATES (existing behavior preserved)"
 });
 
 test("bullish regime with no other data still evaluates (not UNVERIFIED)", () => {
-  const v = computePlayVerdict(play(), { ...NO_CONTEXT, regime: "bullish trend" });
+  // Use an index ticker so the missing-stockPremarket degradation doesn't fire
+  const v = computePlayVerdict(play({ ticker: "SPY" }), { ...NO_CONTEXT, regime: "bullish trend" });
   assert.equal(v.status, "CONFIRMED");
 });
 
@@ -119,6 +120,31 @@ test("isMorningConfirmStale: exactly at the threshold is not yet stale (> not >=
 test("isMorningConfirmStale: missing/invalid timestamp never flags stale (older cached payloads)", () => {
   assert.equal(isMorningConfirmStale(undefined, Date.now()), false);
   assert.equal(isMorningConfirmStale("not-a-date", Date.now()), false);
+});
+
+test("single-name stock without premarket degrades to DEGRADED (SPX gap alone is weak proxy)", () => {
+  const v = computePlayVerdict(
+    play({ ticker: "NVDA" }),
+    { ...NO_CONTEXT, gapPts: 5 },
+  );
+  assert.equal(v.status, "DEGRADED");
+  assert.ok(v.reason.includes("pre-market price unavailable"));
+});
+
+test("index/ETF ticker without premarket does NOT degrade (SPX gap IS relevant)", () => {
+  const v = computePlayVerdict(
+    play({ ticker: "SPY" }),
+    { ...NO_CONTEXT, gapPts: 5 },
+  );
+  assert.equal(v.status, "CONFIRMED");
+});
+
+test("single-name stock WITH premarket does NOT get the weak-proxy degradation", () => {
+  const v = computePlayVerdict(
+    play({ ticker: "NVDA" }),
+    { ...NO_CONTEXT, gapPts: 5, stockPremarket: 102 },
+  );
+  assert.equal(v.status, "CONFIRMED");
 });
 
 test("formatCheckedAtEt: renders an Eastern clock time", () => {

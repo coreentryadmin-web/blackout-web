@@ -45,7 +45,7 @@ import { buildDirectionalStockLevels, computeRiskReward } from "./play-levels";
 import { applyPremiumCapToPlay, validatePlayGeometry, canonicalTicker } from "./play-constraints";
 import { groundPlays } from "./grounding";
 import { GROUNDING_MIN_OI, tieredMinOi } from "./grounding";
-import { MAX_OPTION_PREMIUM_PER_SHARE, MIN_PUBLISH_SCORE, DIVERSITY_HEDGE_FLOOR, FORCED_CONTRARIAN_FLOOR } from "./constants";
+import { MAX_OPTION_PREMIUM_PER_SHARE, MIN_PUBLISH_SCORE, DIVERSITY_HEDGE_FLOOR, FORCED_CONTRARIAN_FLOOR, INDEX_SET, INDEX_ETF_PLAYS } from "./constants";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import { bangerScaleOutNote } from "@/lib/zerodte/scale-out";
 
@@ -106,6 +106,7 @@ export function scoreContrarianHedge(
     vex_alignment_score: vexScore,
     catalyst_score: catalystResult.score,
     catalyst_flags: catalystResult.flags,
+    skew_score: skewScore,
     conviction: convictionFromScore(score),
   };
 }
@@ -166,6 +167,14 @@ function shortExpiry(iso: string): string {
   const day = parseInt(parts[2]!, 10);
   if (monthIdx < 0 || monthIdx > 11 || !Number.isFinite(day)) return iso;
   return `${MONTH_NAMES[monthIdx]} ${day}`;
+}
+
+const INDEX_ETF_SET = new Set<string>(INDEX_ETF_PLAYS);
+function classifyPlayType(ticker: string): "stock" | "index" | "etf" {
+  const t = ticker.toUpperCase();
+  if (INDEX_ETF_SET.has(t)) return "etf";
+  if (INDEX_SET.has(t)) return "index";
+  return "stock";
 }
 
 /** Build the member-facing options_play string.
@@ -327,7 +336,7 @@ function resolveLevels(
     }
   }
 
-  return buildDirectionalStockLevels({ direction, support, resistance, spot: px });
+  return buildDirectionalStockLevels({ direction, support, resistance, spot: px, atr: tech?.atr14 });
 }
 
 /**
@@ -411,6 +420,27 @@ export function buildDeterministicThesis(
     parts.push(`GEX wall alignment supports ${isLong ? "upside" : "downside"}.`);
   }
 
+  // --- Short interest (squeeze catalyst for longs) ---
+  if (isLong && scored.short_interest_score != null && scored.short_interest_score >= 3) {
+    const dtc = dossier?.short_days_to_cover;
+    if (dtc != null && Number.isFinite(dtc) && dtc >= 3) {
+      parts.push(`High short interest (${dtc.toFixed(1)} days to cover) — squeeze tailwind.`);
+    } else {
+      parts.push("Elevated short interest — squeeze potential.");
+    }
+  }
+
+  // --- Skew confirmation ---
+  const rrSkew = dossier?.risk_reversal_skew;
+  if (rrSkew != null && Number.isFinite(rrSkew) && rrSkew !== 0) {
+    const skewDir = rrSkew > 0 ? "short" : "long";
+    if (skewDir === scored.direction) {
+      parts.push(`Put/call skew confirms ${dirWord} bias (RR ${rrSkew > 0 ? "+" : ""}${rrSkew.toFixed(2)}).`);
+    } else if (Math.abs(rrSkew) >= 0.3) {
+      parts.push(`Skew leans against thesis.`);
+    }
+  }
+
   // --- Technicals one-liner from dossier (concise) ---
   if (tech?.rsi14 != null && Number.isFinite(tech.rsi14)) {
     if (tech.rsi14 < 30) parts.push("RSI oversold.");
@@ -475,7 +505,7 @@ function buildPlay(
     ticker: scored.ticker,
     direction: dir,
     conviction: assignNighthawkTier(nhTierInputFromScored(scored)).tier,
-    play_type: "stock",
+    play_type: classifyPlayType(scored.ticker),
     thesis,
     key_signal,
     entry_range: levels.entry_range,
@@ -486,6 +516,21 @@ function buildPlay(
     flow_streak_days: dossier?.flow_streak?.streak_days ?? undefined,
     iv_rank: dossier?.iv_rank ?? undefined,
     rr_ratio: rr ?? undefined,
+    factor_breakdown: {
+      flow: scored.flow_score,
+      tech: scored.tech_score,
+      positioning: scored.pos_score,
+      news: scored.news_score,
+      smart_money: scored.smart_money_score,
+      ...(scored.fundamental_score != null ? { fundamental: scored.fundamental_score } : {}),
+      ...(scored.catalyst_score != null ? { catalyst: scored.catalyst_score } : {}),
+      ...(scored.short_interest_score != null ? { short_interest: scored.short_interest_score } : {}),
+      ...(scored.wall_proximity_score != null ? { wall_proximity: scored.wall_proximity_score } : {}),
+      ...(scored.vex_alignment_score != null ? { vex: scored.vex_alignment_score } : {}),
+      ...(scored.skew_score != null ? { skew: scored.skew_score } : {}),
+    },
+    confirming_signals: scored.confirming_signals ?? undefined,
+    earnings_risk: scored.earnings_risk === true ? true : undefined,
   };
   // Breakout/banger-sourced plays get the scale-out exit guidance (the proven +EV lever): these cheap
   // OTM momentum plays spike then decay, so hold-to-target is the wrong exit. Advisory only (risk_note)
@@ -494,13 +539,8 @@ function buildPlay(
     base.risk_note = bangerScaleOutNote();
     base.exit_style = "scale_out"; // structured marker (not just prose) so the ledger can SELECT bangers
   }
-  if (contract && !contract.caveat) {
+  if (contract) {
     return applyPremiumCapToPlay(base, { entry_premium: contract.premium, options_play });
-  }
-  if (contract && contract.caveat) {
-    base.entry_premium = contract.premium;
-    base.entry_cost_per_contract = contract.premium * 100;
-    base.premium_cap_ok = !contract.caveat.includes("premium_high");
   }
   return base;
 }
@@ -611,7 +651,7 @@ export function buildDeterministicEditionPlays(params: {
   // contrarian thesis), but tech/positioning/news/smart-money are honestly re-scored. The best
   // forced contrarian above DIVERSITY_HEDGE_FLOOR gets the hedge slot.
   let finalPlays = merged.slice(0, target);
-  if (finalPlays.length >= 4) {
+  if (finalPlays.length >= 3) {
     const dirs = new Set(finalPlays.map((p) => p.direction));
     if (dirs.size === 1) {
       const dominant = finalPlays[0]!.direction;
@@ -665,7 +705,7 @@ export function buildDeterministicEditionPlays(params: {
 
           const contrarian = scoreContrarianHedge(original, dos, oppositeDir as "long" | "short");
           contrarianScores.push(
-            `${t}:${contrarian.score}(fl=${contrarian.flow_score},te=${contrarian.tech_score},po=${contrarian.pos_score},nw=${contrarian.news_score},sm=${contrarian.smart_money_score},fu=${contrarian.fundamental_score},si=${contrarian.short_interest_score},wl=${contrarian.wall_proximity_score},vx=${contrarian.vex_alignment_score},ca=${contrarian.catalyst_score})`
+            `${t}:${contrarian.score}(fl=${contrarian.flow_score},te=${contrarian.tech_score},po=${contrarian.pos_score},nw=${contrarian.news_score},sm=${contrarian.smart_money_score},fu=${contrarian.fundamental_score},si=${contrarian.short_interest_score},wl=${contrarian.wall_proximity_score},vx=${contrarian.vex_alignment_score},ca=${contrarian.catalyst_score},sk=${contrarian.skew_score})`
           );
           if (contrarian.score < FORCED_CONTRARIAN_FLOOR) continue;
 
@@ -758,18 +798,16 @@ export function buildRescuePlays(params: {
     const spot = chain?.spot ?? dossier?.tech?.price ?? null;
 
     const levels = resolveLevels(dossier, scored.direction, spot);
-    const { thesis, key_signal } = buildDeterministicThesis(scored, dossier);
+    const { thesis, key_signal } = buildDeterministicThesis(scored, dossier, levels);
 
     const warnings: string[] = [];
     const contract = chain ? pickChainContract(chain, scored.direction, params.maxDte) : null;
-    let options_play: string;
+    const options_play = formatOptionsPlay(ticker, contract);
     if (contract) {
-      options_play = `${ticker} ${contract.expiry} $${formatStrike(contract.strike)} ${contract.side.toUpperCase()} — entry prem ~$${contract.premium.toFixed(2)}`;
       if (!validatePlayGeometry({ ...levels, direction: scored.direction === "short" ? "SHORT" : "LONG" } as any).ok) {
         warnings.push("Entry/target geometry did not pass normal validation — verify levels before trading");
       }
     } else {
-      options_play = `${ticker} — check option chain for suitable contract`;
       warnings.push(`No affordable liquid option contract found under the $${MAX_OPTION_PREMIUM_PER_SHARE}/share cap — check the chain manually`);
     }
 
@@ -778,7 +816,7 @@ export function buildRescuePlays(params: {
       ticker,
       direction: scored.direction === "short" ? "SHORT" : "LONG",
       conviction: assignNighthawkTier(nhTierInputFromScored(scored)).tier,
-      play_type: "stock",
+      play_type: classifyPlayType(ticker),
       thesis,
       key_signal,
       entry_range: levels.entry_range,
@@ -788,6 +826,22 @@ export function buildRescuePlays(params: {
       score: scored.score,
       flow_streak_days: dossier?.flow_streak?.streak_days ?? undefined,
       iv_rank: dossier?.iv_rank ?? undefined,
+      rr_ratio: computeRiskReward({ direction: scored.direction === "short" ? "SHORT" : "LONG", ...levels }) ?? undefined,
+      factor_breakdown: {
+        flow: scored.flow_score,
+        tech: scored.tech_score,
+        positioning: scored.pos_score,
+        news: scored.news_score,
+        smart_money: scored.smart_money_score,
+        ...(scored.fundamental_score != null ? { fundamental: scored.fundamental_score } : {}),
+        ...(scored.catalyst_score != null ? { catalyst: scored.catalyst_score } : {}),
+        ...(scored.short_interest_score != null ? { short_interest: scored.short_interest_score } : {}),
+        ...(scored.wall_proximity_score != null ? { wall_proximity: scored.wall_proximity_score } : {}),
+        ...(scored.vex_alignment_score != null ? { vex: scored.vex_alignment_score } : {}),
+        ...(scored.skew_score != null ? { skew: scored.skew_score } : {}),
+      },
+      confirming_signals: scored.confirming_signals ?? undefined,
+      earnings_risk: scored.earnings_risk === true ? true : undefined,
       gate_promoted: true,
       gate_warnings: warnings.length ? warnings : ["Play surfaced via best-available rescue — normal synthesis constraints could not be met"],
     });

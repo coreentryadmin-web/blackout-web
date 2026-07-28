@@ -165,6 +165,7 @@ test("edition adapter: morning CONFIRMED → status OPEN, regime 'pre-market CON
   assert.equal(play.regime, "pre-market CONFIRMED");
   assert.equal(play.thesisBreak!.level, "intact");
   assert.match(play.recNote!, /confirmed/i);
+  assert.equal(play.recommendation, "BUY", "CONFIRMED morning status → BUY recommendation");
 });
 
 test("edition adapter: morning INVALIDATED → status SKIP, thesis break, recommendation SELL", () => {
@@ -934,4 +935,166 @@ test("Legacy adapter: missing geometry fields → null", () => {
   assert.equal(play.stopLevel, null);
   assert.equal(play.thesis, null);
   assert.equal(play.keySignal, null);
+});
+
+test("overlayLegacyQuotes: populates stockPrice and stockChangePct", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "NVDA", direction: "long", rank: 1, score: 85,
+    entry_range: "$180 – $185", target: "$200", stop: "$170",
+  });
+  const quotes = new Map([["NVDA", { price: 192.50, changePct: 2.3, asof: "2026-07-28T15:00:00Z" }]]);
+  const originals = [{ ticker: "NVDA", target: "$200", stop: "$170", entry_range: "$180 – $185" }];
+  const [result] = overlayLegacyQuotes([play], quotes, originals);
+  assert.equal(result.stockPrice, 192.50);
+  assert.equal(result.stockChangePct, 2.3);
+});
+
+test("overlayLegacyQuotes: computes stock-level pnlPct from entry (LONG)", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "NVDA", direction: "long", rank: 1, score: 85,
+    entry_range: "$180 – $185", target: "$200", stop: "$170",
+  });
+  const quotes = new Map([["NVDA", { price: 192.50, changePct: 2.3, asof: "2026-07-28T15:00:00Z" }]]);
+  const originals = [{ ticker: "NVDA", target: "$200", stop: "$170", entry_range: "$180 – $185" }];
+  const [result] = overlayLegacyQuotes([play], quotes, originals);
+  // parseLevelNum picks first number: 180, stock = 192.50, pnl = (192.50-180)/180 = +6.94%
+  assert.ok(result.pnlPct != null, "pnlPct should be computed");
+  assert.ok(result.pnlPct! > 6.5 && result.pnlPct! < 7.5, `expected ~6.94%, got ${result.pnlPct}`);
+});
+
+test("overlayLegacyQuotes: computes stock-level pnlPct from entry (SHORT)", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "TSLA", direction: "short", rank: 1, score: 80,
+    entry_range: "$250 – $255", target: "$230", stop: "$265",
+  });
+  const quotes = new Map([["TSLA", { price: 240, changePct: -3, asof: "2026-07-28T15:00:00Z" }]]);
+  const originals = [{ ticker: "TSLA", target: "$230", stop: "$265", entry_range: "$250 – $255" }];
+  const [result] = overlayLegacyQuotes([play], quotes, originals);
+  // parseLevelNum picks first number: 250, stock = 240, short pnl = (250-240)/250 = +4.00%
+  assert.ok(result.pnlPct != null, "pnlPct should be computed");
+  assert.ok(result.pnlPct! > 3.5 && result.pnlPct! < 4.5, `expected ~4.00%, got ${result.pnlPct}`);
+});
+
+test("Legacy adapter: confirming_signals → Confirming factor", () => {
+  const play = terminalPlayFromEdition({ ticker: "AAA", direction: "long", rank: 1, score: 68, confirming_signals: 5 });
+  const f = play.factors.find((f) => f.label === "Confirming");
+  assert.ok(f, "expected a Confirming factor");
+  assert.equal(f!.points, 5);
+});
+
+test("Legacy adapter: earnings_risk → EARNINGS RISK gate", () => {
+  const play = terminalPlayFromEdition({ ticker: "AAA", direction: "long", rank: 1, score: 68, earnings_risk: true });
+  const g = play.gates.find((g) => g.label === "EARNINGS RISK");
+  assert.ok(g, "expected an EARNINGS RISK gate");
+  assert.equal(g!.ok, false);
+});
+
+test("Legacy adapter: optionsPlay and rrRatio surface on TerminalPlay", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "MSFT", direction: "long", rank: 1, score: 72,
+    options_play: "Buy MSFT 450C 8/8 @ $6.20", rr_ratio: 2.4,
+  });
+  assert.equal(play.optionsPlay, "Buy MSFT 450C 8/8 @ $6.20");
+  assert.equal(play.rrRatio, 2.4);
+});
+
+test("Legacy adapter: premium_cap_ok false → PREMIUM HIGH gate", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "TSLA", direction: "long", rank: 1, score: 60,
+    premium_cap_ok: false, entry_premium: 22.50,
+  });
+  const g = play.gates.find((g) => g.label === "PREMIUM HIGH");
+  assert.ok(g, "expected a PREMIUM HIGH gate");
+  assert.equal(g!.ok, false);
+  assert.equal(play.premiumCapOk, false);
+});
+
+test("Legacy adapter: premium_cap_ok true → no PREMIUM HIGH gate", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "AAPL", direction: "long", rank: 1, score: 60,
+    premium_cap_ok: true, entry_premium: 4.50,
+  });
+  assert.ok(!play.gates.some((g) => g.label === "PREMIUM HIGH"));
+  assert.equal(play.premiumCapOk, true);
+});
+
+test("Legacy adapter: entry_cost_per_contract surfaces on TerminalPlay", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "NVDA", direction: "long", rank: 1, score: 80,
+    entry_cost_per_contract: 680,
+  });
+  assert.equal(play.entryCostPerContract, 680);
+});
+
+test("Legacy adapter: missing optionsPlay/rrRatio → null", () => {
+  const play = terminalPlayFromEdition({ ticker: "SPY", direction: "long", rank: 1, score: 50 });
+  assert.equal(play.optionsPlay, null);
+  assert.equal(play.rrRatio, null);
+});
+
+test("overlayLegacyQuotes: stockPrice stays undefined when no quote", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "AAPL", direction: "long", rank: 1, score: 75,
+    entry_range: "$190", target: "$210", stop: "$180",
+  });
+  const result = overlayLegacyQuotes([play], new Map(), [{ ticker: "AAPL", target: "$210", stop: "$180", entry_range: "$190" }]);
+  assert.equal(result[0].stockPrice, undefined);
+  assert.equal(result[0].stockChangePct, undefined);
+});
+
+test("overlayLegacyQuotes: LONG at stop → recommendation SELL", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "NVDA", direction: "long", rank: 1, score: 85,
+    entry_range: "$180", target: "$200", stop: "$170",
+  });
+  const quotes = new Map([["NVDA", { price: 169, changePct: -5, asof: "2026-07-28T14:00:00Z" }]]);
+  const originals = [{ ticker: "NVDA", target: "$200", stop: "$170", entry_range: "$180" }];
+  const [result] = overlayLegacyQuotes([play], quotes, originals);
+  assert.equal(result.recommendation, "SELL");
+  assert.ok(result.recNote!.includes("stop level"));
+});
+
+test("overlayLegacyQuotes: LONG at target → recommendation TRIM", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "NVDA", direction: "long", rank: 1, score: 85,
+    entry_range: "$180", target: "$200", stop: "$170",
+  });
+  const quotes = new Map([["NVDA", { price: 202, changePct: 3, asof: "2026-07-28T14:00:00Z" }]]);
+  const originals = [{ ticker: "NVDA", target: "$200", stop: "$170", entry_range: "$180" }];
+  const [result] = overlayLegacyQuotes([play], quotes, originals);
+  assert.equal(result.recommendation, "TRIM");
+  assert.ok(result.recNote!.includes("target"));
+});
+
+test("overlayLegacyQuotes: SHORT at stop → recommendation SELL", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "TSLA", direction: "short", rank: 1, score: 80,
+    entry_range: "$250", target: "$230", stop: "$265",
+  });
+  const quotes = new Map([["TSLA", { price: 266, changePct: 2, asof: "2026-07-28T14:00:00Z" }]]);
+  const originals = [{ ticker: "TSLA", target: "$230", stop: "$265", entry_range: "$250" }];
+  const [result] = overlayLegacyQuotes([play], quotes, originals);
+  assert.equal(result.recommendation, "SELL");
+});
+
+test("overlayLegacyQuotes: SHORT at target → recommendation TRIM", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "TSLA", direction: "short", rank: 1, score: 80,
+    entry_range: "$250", target: "$230", stop: "$265",
+  });
+  const quotes = new Map([["TSLA", { price: 228, changePct: -4, asof: "2026-07-28T14:00:00Z" }]]);
+  const originals = [{ ticker: "TSLA", target: "$230", stop: "$265", entry_range: "$250" }];
+  const [result] = overlayLegacyQuotes([play], quotes, originals);
+  assert.equal(result.recommendation, "TRIM");
+});
+
+test("overlayLegacyQuotes: between stop and target → keeps original recommendation", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "NVDA", direction: "long", rank: 1, score: 85,
+    entry_range: "$180", target: "$200", stop: "$170",
+  });
+  const quotes = new Map([["NVDA", { price: 185, changePct: 1, asof: "2026-07-28T14:00:00Z" }]]);
+  const originals = [{ ticker: "NVDA", target: "$200", stop: "$170", entry_range: "$180" }];
+  const [result] = overlayLegacyQuotes([play], quotes, originals);
+  assert.equal(result.recommendation, "HOLD");
 });

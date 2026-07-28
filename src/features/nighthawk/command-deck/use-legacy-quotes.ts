@@ -8,6 +8,8 @@ interface StockQuote {
   price: number;
   changePct: number;
   asof: string;
+  sessionHigh: number;
+  sessionLow: number;
 }
 
 const POLL_MS = 5_000;
@@ -44,13 +46,22 @@ export function useLegacyStockQuotes(tickers: string[], enabled = true): Map<str
 
       if (cancelled) return;
 
-      const next = new Map<string, StockQuote>();
-      for (const r of results) {
-        if (r.status === "fulfilled" && r.value) {
-          next.set(r.value.ticker, { price: r.value.price, changePct: r.value.changePct, asof: r.value.asof });
+      setQuotes((prev) => {
+        const next = new Map(prev);
+        for (const r of results) {
+          if (r.status === "fulfilled" && r.value) {
+            const old = prev.get(r.value.ticker);
+            next.set(r.value.ticker, {
+              price: r.value.price,
+              changePct: r.value.changePct,
+              asof: r.value.asof,
+              sessionHigh: Math.max(r.value.price, old?.sessionHigh ?? r.value.price),
+              sessionLow: Math.min(r.value.price, old?.sessionLow ?? r.value.price),
+            });
+          }
         }
-      }
-      if (next.size > 0) setQuotes(next);
+        return next;
+      });
     };
 
     void poll();
@@ -119,11 +130,53 @@ export function overlayLegacyQuotes(
       ? `${p.recNote} — ${stockNote}`
       : stockNote;
 
+    // Stock-level P&L: how far the stock moved from entry mid in the play's direction.
+    const stockPnlPct = entryMid > 0
+      ? isLong
+        ? ((q.price - entryMid) / entryMid) * 100
+        : ((entryMid - q.price) / entryMid) * 100
+      : null;
+
+    // Dynamic recommendation: when the stock breaches stop or target, override the static
+    // morning-confirmation recommendation so the manage tab gives real-time guidance.
+    let recommendation = p.recommendation;
+    let recNote = enrichedRecNote;
+    if (target != null && stop != null && p.status !== "CLOSED" && p.status !== "SKIP") {
+      const atStop = isLong ? q.price <= stop : q.price >= stop;
+      const atTarget = isLong ? q.price >= target : q.price <= target;
+      if (atStop) {
+        recommendation = "SELL";
+        recNote = `Stock at stop level ($${stop.toFixed(2)}) — cut the position to preserve capital.`;
+      } else if (atTarget) {
+        recommendation = "TRIM";
+        recNote = `Stock at target ($${target.toFixed(2)}) — take profit or trail the stop.`;
+      }
+    }
+
+    // Session excursion: convert session high/low to P&L% from entry for ExcursionViz.
+    let peak: number | null = null;
+    let trough: number | null = null;
+    if (entryMid > 0) {
+      if (isLong) {
+        peak = ((q.sessionHigh - entryMid) / entryMid) * 100;
+        trough = ((q.sessionLow - entryMid) / entryMid) * 100;
+      } else {
+        peak = ((entryMid - q.sessionLow) / entryMid) * 100;
+        trough = ((entryMid - q.sessionHigh) / entryMid) * 100;
+      }
+    }
+
     return {
       ...p,
       progress,
-      recNote: enrichedRecNote,
+      pnlPct: stockPnlPct != null && Number.isFinite(stockPnlPct) ? Number(stockPnlPct.toFixed(2)) : null,
+      peak: peak != null && Number.isFinite(peak) ? Number(peak.toFixed(2)) : null,
+      trough: trough != null && Number.isFinite(trough) ? Number(trough.toFixed(2)) : null,
+      recommendation,
+      recNote,
       markAsOf: q.asof,
+      stockPrice: q.price,
+      stockChangePct: q.changePct,
     };
   });
 }

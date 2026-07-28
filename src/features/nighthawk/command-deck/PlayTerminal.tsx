@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { clsx } from "clsx";
 import type { TerminalPlay } from "./types";
 import { timeStopClock } from "@/lib/zerodte/terminal-ladder";
-import { isZeroDteMarkStale, ZERODTE_MARK_STALE_MS } from "@/lib/zerodte/marks-math";
+import { isZeroDteMarkStale, ZERODTE_MARK_STALE_MS, LEGACY_QUOTE_STALE_MS } from "@/lib/zerodte/marks-math";
 import { condorTent, condorWinRateLine } from "@/lib/zerodte/condor-render";
 import { etNowParts } from "@/features/nighthawk/lib/session";
 import { showsRatchetTrack, showsTimeStopClock, showsTrimScaleLadder } from "./terminal-guards";
@@ -153,7 +153,9 @@ export function PlayTerminal({ play }: { play: TerminalPlay | null }) {
   const asOfMs = play.markAsOf ? Date.parse(play.markAsOf) : NaN;
   const hasAsOf = Number.isFinite(asOfMs);
   const ageMs = hasAsOf ? Math.max(0, nowMs - asOfMs) : null;
-  const stale = hasAsOf ? isZeroDteMarkStale(asOfMs, nowMs, ZERODTE_MARK_STALE_MS) : false;
+  const isLegacy = play.horizon === "LEGACY";
+  const staleThresholdMs = isLegacy ? LEGACY_QUOTE_STALE_MS : ZERODTE_MARK_STALE_MS;
+  const stale = hasAsOf ? isZeroDteMarkStale(asOfMs, nowMs, staleThresholdMs) : false;
   const sync = play.markIsSync === true || (!hasAsOf && play.mark != null);
   const live = play.mark != null && hasAsOf && !stale;
   const ageLabel =
@@ -170,30 +172,63 @@ export function PlayTerminal({ play }: { play: TerminalPlay | null }) {
 
       <HeaderBadges play={play} />
 
-      <div className="nh-deck-stream">
-        {live ? (
-          <><span className="nh-deck-dot" /><span className="lv">LIVE</span></>
-        ) : sync ? (
-          <><span className="nh-deck-dot sync" /><span className="sy">SYNC</span></>
-        ) : (
-          <><span className="nh-deck-dot off" /><span className="of">{stale ? "STALE" : "—"}</span></>
-        )}
-        {" · mark "}
-        <span className={clsx(markFlash && "neon", stale && "nh-deck-stale-mark")}>{usd(play.mark)}</span>
-        {/* Executable fill — a long exits into the BID. Mid alone flatters the exit; show both.
-            Suppressed for a condor (credit structure — the bid-fill framing is directional/inverted). */}
-        {!isCondor && play.execMark != null && <span className="nh-deck-fill"> · fill ≈{usd(play.execMark)}</span>}
-        {ageLabel && <span className="nh-deck-age"> · {sync ? "sync" : ageLabel}</span>}
-        {stale && <span className="nh-deck-stalebadge">stale &gt;{Math.round(ZERODTE_MARK_STALE_MS / 1000)}s</span>}
-      </div>
+      {play.horizon === "LEGACY" ? (
+        <div className="nh-deck-stream">
+          {play.stockPrice != null ? (
+            <>
+              {stale ? (
+                <><span className="nh-deck-dot off" /><span className="of">STALE</span></>
+              ) : (
+                <><span className="nh-deck-dot" /><span className="lv">LIVE</span></>
+              )}
+              {" · "}{play.ticker}{" "}
+              <span className={clsx(markFlash && "neon", stale && "nh-deck-stale-mark")}>${play.stockPrice.toFixed(2)}</span>
+              {play.pnlPct != null ? (
+                <span className={clsx(play.pnlPct > 0 ? "nh-deck-pos" : play.pnlPct < 0 ? "nh-deck-neg" : "")}>
+                  {" "}{play.pnlPct >= 0 ? "+" : ""}{play.pnlPct.toFixed(1)}% from entry
+                </span>
+              ) : play.stockChangePct != null ? (
+                <span className={clsx(play.stockChangePct > 0 ? "nh-deck-pos" : play.stockChangePct < 0 ? "nh-deck-neg" : "")}>
+                  {" "}{play.stockChangePct >= 0 ? "+" : ""}{play.stockChangePct.toFixed(1)}%
+                </span>
+              ) : null}
+              {ageLabel && <span className="nh-deck-age"> · {ageLabel}</span>}
+              {stale && <span className="nh-deck-stalebadge">stale &gt;{Math.round(LEGACY_QUOTE_STALE_MS / 1000)}s</span>}
+            </>
+          ) : (
+            <>
+              <span className="nh-deck-dot off" /><span className="of">PENDING</span>
+              {" · stock quote polling"}
+            </>
+          )}
+          {play.entry != null && <span className="nh-deck-fill"> · entry prem {usd(play.entry)}</span>}
+        </div>
+      ) : (
+        <div className="nh-deck-stream">
+          {live ? (
+            <><span className="nh-deck-dot" /><span className="lv">LIVE</span></>
+          ) : sync ? (
+            <><span className="nh-deck-dot sync" /><span className="sy">SYNC</span></>
+          ) : (
+            <><span className="nh-deck-dot off" /><span className="of">{stale ? "STALE" : "—"}</span></>
+          )}
+          {" · mark "}
+          <span className={clsx(markFlash && "neon", stale && "nh-deck-stale-mark")}>{usd(play.mark)}</span>
+          {!isCondor && play.execMark != null && <span className="nh-deck-fill"> · fill ≈{usd(play.execMark)}</span>}
+          {ageLabel && <span className="nh-deck-age"> · {sync ? "sync" : ageLabel}</span>}
+          {stale && <span className="nh-deck-stalebadge">stale &gt;{Math.round(ZERODTE_MARK_STALE_MS / 1000)}s</span>}
+        </div>
+      )}
 
-      <div className="nh-deck-greeks">
-        <GreekCell k="delta" v={g?.delta ?? null} />
-        <GreekCell k="gamma" v={g?.gamma ?? null} />
-        <GreekCell k="theta" v={g?.theta ?? null} />
-        <GreekCell k="vega" v={g?.vega ?? null} />
-        <GreekCell k="iv" v={g?.iv ?? null} />
-      </div>
+      {play.horizon !== "LEGACY" && (
+        <div className="nh-deck-greeks">
+          <GreekCell k="delta" v={g?.delta ?? null} />
+          <GreekCell k="gamma" v={g?.gamma ?? null} />
+          <GreekCell k="theta" v={g?.theta ?? null} />
+          <GreekCell k="vega" v={g?.vega ?? null} />
+          <GreekCell k="iv" v={g?.iv ?? null} />
+        </div>
+      )}
 
       <div className="nh-deck-tabs">
         <button className={clsx(tab === "thesis" && "on")} onClick={() => setTab("thesis")}><span className="n">[1]</span>Thesis</button>
@@ -208,7 +243,7 @@ export function PlayTerminal({ play }: { play: TerminalPlay | null }) {
       </div>
 
       <div className="nh-deck-foot">
-        <span>EXIT · {play.exitModel === "SCALE_OUT" ? "TRIM-SCALE" : play.exitModel}</span>
+        <span>EXIT · {play.exitModel === "SCALE_OUT" ? "TRIM-SCALE" : play.horizon === "LEGACY" ? "STOCK LEVELS" : play.exitModel}</span>
         <span>{play.tierLabel ? `TIER ${play.tierLabel}` : play.scorecard ? `WR ${Number.isFinite(play.scorecard.winRate) ? `${play.scorecard.winRate}%` : "—"}` : ""}</span>
         {play.allocation && <span style={{ marginLeft: "auto" }}>{play.allocation.role} · {play.allocation.sizing}</span>}
       </div>
@@ -303,7 +338,9 @@ function ThesisPanel({ play }: { play: TerminalPlay }) {
             // and NOT a false "degrading". Honest: we're not monitoring the thesis for this play right now.
             <div><span className="warn">• thesis not monitored</span> — {play.thesisBreak?.note ?? "live tape read unavailable for this play"}.</div>
           ) : (
-            <div><span className="ok">✓ thesis intact</span> — evidence holding; monitor updates on each marks push.</div>
+            <div><span className="ok">✓ thesis intact</span> — {play.horizon === "LEGACY"
+              ? play.regime?.includes("CONFIRMED") ? "pre-market confirmed — entry levels validated." : "evening thesis holds; morning confirmation updates before the open."
+              : "evidence holding; monitor updates on each marks push."}</div>
           )}
         </div>
       </div>
@@ -348,26 +385,12 @@ function ManagePanel({ play, nowMs }: { play: TerminalPlay; nowMs: number }) {
           the prod ratchet default) AND it is not a condor. */}
       {isTrimScale && <TrimScaleLadder play={play} />}
 
+      {/* Legacy entry plan — the recommended option contract + R:R ratio. */}
+      {play.horizon === "LEGACY" && <LegacyEntryPlan play={play} />}
+
       {/* Legacy entry geometry — structured levels + live stock-price progress track. */}
       {play.horizon === "LEGACY" && (play.entryRange || play.targetLevel || play.stopLevel || play.progress != null) && (
-        <>
-          {(play.entryRange || play.targetLevel || play.stopLevel) && (
-            <div className="nh-deck-grid" style={{ marginBottom: 8 }}>
-              {play.stopLevel && <div><span className="k">Stop</span><span className="v nh-deck-neg">{play.stopLevel}</span></div>}
-              {play.entryRange && <div><span className="k">Entry zone</span><span className="v">{play.entryRange}</span></div>}
-              {play.targetLevel && <div><span className="k">Target</span><span className="v nh-deck-pos">{play.targetLevel}</span></div>}
-            </div>
-          )}
-          {play.progress != null && (
-            <>
-              <div className="nh-deck-track">
-                <span className="lo">STOP</span><span className="hi">TARGET</span>
-                <span className="mk" style={{ left: `${Math.round(play.progress * 100)}%` }} />
-              </div>
-              <div className="nh-deck-recnote">Stock position: live underlying vs your stop and target levels.</div>
-            </>
-          )}
-        </>
+        <LegacyManageGeometry play={play} />
       )}
 
       {/* Legacy SCALE_OUT fallback (horizon lanes carry no resolved policy): the pre-Terminal-v2
@@ -554,6 +577,7 @@ function TimeStopClock({ nowMs }: { nowMs: number }) {
 }
 
 function PnlPanel({ play }: { play: TerminalPlay }) {
+  if (play.horizon === "LEGACY") return <LegacyPnlPanel play={play} />;
   const has = play.entry != null;
   const live = play.pnlPct;
   const exec = play.execPnlPct;
@@ -563,8 +587,6 @@ function PnlPanel({ play }: { play: TerminalPlay }) {
       <div className={clsx("nh-deck-pnlbig", (live ?? 0) > 0 && "nh-deck-pos", (live ?? 0) < 0 && "nh-deck-neg")}>
         {has && live != null ? `${live > 0 ? "+" : ""}${live}%` : "— not entered"}
       </div>
-      {/* Executable P&L — what a member could actually realize selling into the BID right now,
-          beside the mid. Only shown when a live two-sided book priced it (no fabricated fill). */}
       {exec != null && (
         <div className="nh-deck-execline">
           mid <b>{live != null ? `${live > 0 ? "+" : ""}${live}%` : "—"}</b>
@@ -580,6 +602,191 @@ function PnlPanel({ play }: { play: TerminalPlay }) {
         <div><span className="k">Trough</span><span className="v nh-deck-neg">{signPct(play.trough)}</span></div>
       </div>
       <div className="nh-deck-recnote" style={{ marginTop: 16 }}>Peak/trough = the full excursion since entry — how much heat you took and gave back.</div>
+    </>
+  );
+}
+
+function LegacyEntryPlan({ play }: { play: TerminalPlay }) {
+  const hasContract = !!play.optionsPlay;
+  const rr = play.rrRatio;
+  const cost = play.entryCostPerContract;
+  if (!hasContract && rr == null) return null;
+  return (
+    <>
+      <div className="nh-deck-lab" style={{ marginTop: 12 }}>Entry plan</div>
+      {hasContract && (
+        <div className="nh-deck-meta">
+          <div><span className="k">Contract</span><span className="v">{play.optionsPlay}</span></div>
+          {play.entry != null && <div><span className="k">Entry premium</span><span className="v">{usd(play.entry)}</span></div>}
+          {cost != null && <div><span className="k">Cost / contract</span><span className="v">${cost.toFixed(0)}</span></div>}
+          {play.premiumCapOk != null && (
+            <div>
+              <span className="k">Premium cap</span>
+              <span className={clsx("v", play.premiumCapOk ? "nh-deck-pos" : "nh-deck-neg")}>
+                {play.premiumCapOk ? "✓ within cap" : "✗ above cap"}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+      {rr != null && (
+        <div className="nh-deck-meta" style={hasContract ? { marginTop: 4 } : undefined}>
+          <div>
+            <span className="k">Risk : Reward</span>
+            <span className={clsx("v", rr >= 2 && "nh-deck-pos", rr < 1 && "nh-deck-neg")}>
+              {rr.toFixed(1)}:1{rr >= 2 ? " (strong)" : rr >= 1 ? " (favorable)" : rr >= 0.5 ? " (acceptable)" : " (tight)"}
+            </span>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function LegacyManageGeometry({ play }: { play: TerminalPlay }) {
+  const target = play.targetLevel ? parseFloat(play.targetLevel.replace(/[^0-9.]/g, "")) : null;
+  const stop = play.stopLevel ? parseFloat(play.stopLevel.replace(/[^0-9.]/g, "")) : null;
+  const spot = play.stockPrice;
+
+  const distTarget = spot != null && target != null && Number.isFinite(target) && spot > 0
+    ? { pct: ((target - spot) / spot * 100), dollars: target - spot } : null;
+  const distStop = spot != null && stop != null && Number.isFinite(stop) && spot > 0
+    ? { pct: ((stop - spot) / spot * 100), dollars: stop - spot } : null;
+
+  // Entry zone marker on the progress track (the zone between stop and target where
+  // entry is recommended). Requires knowing stop, target, and the entry range midpoint.
+  const entryNums = play.entryRange?.match(/[\d.]+/g)?.map(Number).filter(Number.isFinite) ?? [];
+  const entryMid = entryNums.length >= 2 ? (entryNums[0]! + entryNums[entryNums.length - 1]!) / 2
+    : entryNums.length === 1 ? entryNums[0]! : null;
+  const entryFrac = (stop != null && target != null && target !== stop && entryMid != null)
+    ? Math.max(0, Math.min(1, (entryMid - stop) / (target - stop)))
+    : null;
+
+  // Position zone label for the recNote
+  const zoneLabel = (play.progress != null && spot != null)
+    ? play.progress <= 0 ? "below stop — cut the position"
+    : play.progress >= 1 ? "at/above target — take profit"
+    : play.progress < 0.3 ? "near stop — elevated risk"
+    : play.progress > 0.7 ? "nearing target — watch for exit"
+    : "mid-range — hold per plan"
+    : null;
+
+  return (
+    <>
+      {(play.entryRange || play.targetLevel || play.stopLevel) && (
+        <div className="nh-deck-grid" style={{ marginBottom: 8 }}>
+          {play.stopLevel && (
+            <div>
+              <span className="k">Stop</span>
+              <span className="v nh-deck-neg">
+                {play.stopLevel}
+                {distStop && <span className="nh-deck-dist"> ({distStop.dollars >= 0 ? "+" : ""}{distStop.dollars.toFixed(2)} / {distStop.pct >= 0 ? "+" : ""}{distStop.pct.toFixed(1)}%)</span>}
+              </span>
+            </div>
+          )}
+          {play.entryRange && <div><span className="k">Entry zone</span><span className="v">{play.entryRange}</span></div>}
+          {play.targetLevel && (
+            <div>
+              <span className="k">Target</span>
+              <span className="v nh-deck-pos">
+                {play.targetLevel}
+                {distTarget && <span className="nh-deck-dist"> ({distTarget.dollars >= 0 ? "+" : ""}{distTarget.dollars.toFixed(2)} / {distTarget.pct >= 0 ? "+" : ""}{distTarget.pct.toFixed(1)}%)</span>}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+      {play.progress != null && (
+        <>
+          <div className="nh-deck-track">
+            <span className="lo">STOP</span><span className="hi">TARGET</span>
+            {entryFrac != null && (
+              <span className="nh-deck-entry-zone" style={{ left: `${Math.round(entryFrac * 100)}%` }} title="Entry zone midpoint" />
+            )}
+            <span className="mk" style={{ left: `${Math.round(play.progress * 100)}%` }} />
+          </div>
+          <div className="nh-deck-recnote">
+            {spot != null ? `${play.ticker} $${spot.toFixed(2)} — ` : ""}
+            {zoneLabel ?? "stock position vs your stop and target levels."}
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+function LegacyPnlPanel({ play }: { play: TerminalPlay }) {
+  const hasStock = play.stockPrice != null;
+  const chg = play.stockChangePct;
+  const pnl = play.pnlPct;
+  const spot = play.stockPrice;
+  const target = play.targetLevel ? parseFloat(play.targetLevel.replace(/[^0-9.]/g, "")) : null;
+  const stop = play.stopLevel ? parseFloat(play.stopLevel.replace(/[^0-9.]/g, "")) : null;
+  const distTarget = spot != null && target != null && Number.isFinite(target) && spot > 0
+    ? { dollars: target - spot, pct: ((target - spot) / spot * 100) } : null;
+  const distStop = spot != null && stop != null && Number.isFinite(stop) && spot > 0
+    ? { dollars: stop - spot, pct: ((stop - spot) / spot * 100) } : null;
+  return (
+    <>
+      <div className="nh-deck-lab">Stock position</div>
+      <div className={clsx("nh-deck-pnlbig", (pnl ?? chg ?? 0) > 0 && "nh-deck-pos", (pnl ?? chg ?? 0) < 0 && "nh-deck-neg")}>
+        {hasStock ? `$${spot!.toFixed(2)}` : "— awaiting quote"}
+      </div>
+      {pnl != null && (
+        <div className="nh-deck-execline">
+          stock P&amp;L from entry <b className={clsx(pnl < 0 && "nh-deck-neg", pnl > 0 && "nh-deck-pos")}>{pnl >= 0 ? "+" : ""}{pnl.toFixed(1)}%</b>
+        </div>
+      )}
+      {hasStock && chg != null && (
+        <div className="nh-deck-execline">
+          day change <b className={clsx(chg < 0 && "nh-deck-neg", chg > 0 && "nh-deck-pos")}>{chg >= 0 ? "+" : ""}{chg.toFixed(1)}%</b>
+        </div>
+      )}
+      <div className="nh-deck-grid" style={{ marginTop: 12 }}>
+        <div><span className="k">Stock</span><span className="v">{hasStock ? `$${spot!.toFixed(2)}` : "—"}</span></div>
+        <div><span className="k">Entry premium</span><span className="v">{play.entry != null ? usd(play.entry) : "—"}</span></div>
+        {play.targetLevel && (
+          <div>
+            <span className="k">Target</span>
+            <span className="v nh-deck-pos">
+              {play.targetLevel}
+              {distTarget && <span className="nh-deck-dist"> ({distTarget.dollars >= 0 ? "+" : ""}{distTarget.dollars.toFixed(2)} / {distTarget.pct >= 0 ? "+" : ""}{distTarget.pct.toFixed(1)}%)</span>}
+            </span>
+          </div>
+        )}
+        {play.stopLevel && (
+          <div>
+            <span className="k">Stop</span>
+            <span className="v nh-deck-neg">
+              {play.stopLevel}
+              {distStop && <span className="nh-deck-dist"> ({distStop.dollars >= 0 ? "+" : ""}{distStop.dollars.toFixed(2)} / {distStop.pct >= 0 ? "+" : ""}{distStop.pct.toFixed(1)}%)</span>}
+            </span>
+          </div>
+        )}
+        {play.rrRatio != null && (
+          <div>
+            <span className="k">R:R</span>
+            <span className={clsx("v", play.rrRatio >= 2 && "nh-deck-pos", play.rrRatio < 1 && "nh-deck-neg")}>
+              {play.rrRatio.toFixed(1)}:1
+            </span>
+          </div>
+        )}
+        {play.optionsPlay && <div><span className="k">Contract</span><span className="v">{play.optionsPlay}</span></div>}
+      </div>
+      {play.progress != null && (
+        <div style={{ marginTop: 12 }}>
+          <div className="nh-deck-track">
+            <span className="lo">STOP</span><span className="hi">TARGET</span>
+            <span className="mk" style={{ left: `${Math.round(play.progress * 100)}%` }} />
+          </div>
+        </div>
+      )}
+      <ExcursionViz play={play} />
+      <div className="nh-deck-recnote" style={{ marginTop: 16 }}>
+        {pnl != null
+          ? "Stock-level P&L from entry mid — tracks your thesis direction. Option premium P&L requires a live option quote subscription."
+          : "Awaiting live stock quote to compute P&L from entry."}
+      </div>
     </>
   );
 }

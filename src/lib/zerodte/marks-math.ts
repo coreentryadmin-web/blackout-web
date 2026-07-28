@@ -21,6 +21,9 @@ export const ZERODTE_LIVE_CONTRACT_CAP = 16;
 /** A mark older than this must be rendered as STALE by every consumer (ms). */
 export const ZERODTE_MARK_STALE_MS = 5_000;
 
+/** Legacy plays poll stock quotes via REST every 5s; 30s without an update = stale. */
+export const LEGACY_QUOTE_STALE_MS = 30_000;
+
 export type ZeroDteMarkSource = "mid" | "last" | "none";
 
 /** Mid of bid/ask — IDENTICAL guard to the chain/WS midOf (ask>0 = a real quote,
