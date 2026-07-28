@@ -79,6 +79,8 @@
 .btn-p::after{content:"";position:absolute;inset:0;background:linear-gradient(135deg,transparent 30%,rgba(255,255,255,.18) 50%,transparent 70%);transform:translateX(-120%);transition:transform .5s}
 .btn-p:hover::after{transform:translateX(120%)}
 .btn-p:hover{animation:none;box-shadow:0 0 50px rgba(163,230,53,.55),0 6px 32px rgba(163,230,53,.3),inset 0 1px 0 rgba(255,255,255,.12);transform:translateY(-2px)}
+.btn-p .cta-arrow,.btn-g .cta-arrow{display:inline-block;transition:transform 200ms ease-out}
+.btn-p:hover .cta-arrow,.btn-g:hover .cta-arrow{transform:translateX(4px)}
 .btn-g{
   display:inline-flex;align-items:center;gap:.4rem;
   padding:.85rem 2.2rem;

@@ -37,7 +37,7 @@ export function NavAuthLinks({ signedIn: initial }: { signedIn: boolean }) {
   if (signedIn) {
     return (
       <Link href="/dashboard" prefetch={false} className="nav-join">
-        Open desk →
+        Open desk <span className="cta-arrow">→</span>
       </Link>
     );
   }
@@ -47,7 +47,7 @@ export function NavAuthLinks({ signedIn: initial }: { signedIn: boolean }) {
         Sign in
       </Link>
       <Link href="/sign-up" prefetch={false} className="nav-join">
-        Get access →
+        Get access <span className="cta-arrow">→</span>
       </Link>
     </>
   );
