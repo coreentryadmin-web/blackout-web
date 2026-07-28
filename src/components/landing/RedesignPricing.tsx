@@ -34,7 +34,7 @@ export function RedesignPricing() {
             <span className="rl-kicker" style={{ justifyContent: "center" }}>
               <span className="dot" aria-hidden />Membership
             </span>
-            <h1>One desk. <span className="rl-gt">One price.</span></h1>
+            <h1>One desk. <span className="rl-gt">Your price.</span></h1>
             <p>Community on Discord, or the full desk — monthly or yearly. Priced for traders who already pay for edge. No broker lock-in, cancel anytime.</p>
           </div>
 

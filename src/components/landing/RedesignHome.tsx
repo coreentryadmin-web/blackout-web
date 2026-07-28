@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import { MARKETING_PRODUCTS } from "@/lib/marketing/products";
 import { IMAGES, MARKETING_MODULE_GALLERY } from "@/lib/images";
 import { MEMBERSHIP_PRICING, usd } from "@/lib/pricing";
+import { SITE } from "@/lib/site";
 import { WHOP_CHECKOUT } from "@/lib/whop-checkout";
 import { LandingRedesignFx } from "./LandingRedesignFx";
 
@@ -41,7 +42,7 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
         </div>
 
         <div className="hero-sub">
-          <p><b>Institutional-grade intelligence</b> — live dealer flow, real-time gamma exposure, and a verification engine that grades every setup before you risk a dollar.</p>
+          <p><b>See what the dealers see.</b> Trade before the crowd moves.</p>
           <div className="cta-row">
             <Link href={signedIn ? "/dashboard" : "/sign-up"} prefetch={false} className="btn-p">
               {signedIn ? "Open desk" : "Get access"}
@@ -49,9 +50,9 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
             <Link href="#modules" prefetch={false} className="btn-g">Explore the desk</Link>
           </div>
           <ul className="hero-creds">
-            <li>Live dealer flow</li>
-            <li>Real-time GEX</li>
-            <li>AI-graded setups</li>
+            <li>6 live engines</li>
+            <li>12,400+ contracts scanned daily</li>
+            <li>Every setup graded A–F</li>
           </ul>
         </div>
       </section>
@@ -222,66 +223,36 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
 
       <div className="node" aria-hidden="true" />
 
-      {/* ═══ §4 WHY BLACKOUT — EDITORIAL ═══ */}
+      {/* ═══ §4 WHY BLACKOUT — THEM VS US ═══ */}
       <section className="sec-edge" id="edge">
         <div className="w">
           <div className="edge-layout">
             <div className="edge-statement">
               <span className="kk"><span className="dot" />Why BlackOut</span>
               <h2>Built like a <span className="gt">trading desk.</span><br />Not a Discord server.</h2>
-              <p>Professional-grade intelligence, institutional data, and real-time execution — in a single interface anyone can use.</p>
             </div>
-            <div className="edge-facts">
-              {/* Card 1: Institutional Market Data */}
-              <div className="edge-fact" style={{ "--fc": "#a3e635" } as CSSProperties}>
-                <div className="ef-header"><div className="ef-icon">&#9673;</div><h3>Institutional Market Data</h3></div>
-                <p className="ef-body">The same institutional positioning, options flow, dealer exposure, and execution intelligence trusted by professional trading desks — streamed live, without delay.</p>
-                <div className="ef-visual"><canvas id="cv-feeds" width={600} height={240} /></div>
-                <div className="ef-metrics">
-                  <span className="ef-chip live">LIVE FEED</span>
-                  <span className="ef-chip">GEX/DEX</span>
-                  <span className="ef-chip">OPTIONS FLOW</span>
-                  <span className="ef-chip">DARK POOL</span>
-                </div>
+            <div className="vs-grid">
+              <div className="vs-col vs-them">
+                <div className="vs-label">Everywhere else</div>
+                <ul className="vs-list">
+                  <li>Delayed snapshots, manual refresh</li>
+                  <li>Cherry-picked alerts, no receipts</li>
+                  <li>Scattered across 5 tabs and 3 Discords</li>
+                  <li>Gut-feel callouts, no grading</li>
+                  <li>Stale data repackaged as &ldquo;signals&rdquo;</li>
+                  <li>Monthly PDF recaps</li>
+                </ul>
               </div>
-
-              {/* Card 2: Live Before the Crowd */}
-              <div className="edge-fact" style={{ "--fc": "#22d3ee" } as CSSProperties}>
-                <div className="ef-header"><div className="ef-icon">&#9889;</div><h3>Live Before the Crowd</h3></div>
-                <p className="ef-body">No refresh buttons. No stale snapshots. Every sweep, dealer shift, and flow event updates as it happens — tick by tick, in real time.</p>
-                <div className="ef-visual"><canvas id="cv-latency" width={600} height={240} /></div>
-                <div className="ef-metrics">
-                  <span className="ef-chip live">0ms DELAY</span>
-                  <span className="ef-chip">TICK-BY-TICK</span>
-                  <span className="ef-chip">SSE STREAMS</span>
-                  <span className="ef-chip">LIVE MARKS</span>
-                </div>
-              </div>
-
-              {/* Card 3: Signal Over Noise */}
-              <div className="edge-fact" style={{ "--fc": "#bf5fff" } as CSSProperties}>
-                <div className="ef-header"><div className="ef-icon">&#10024;</div><h3>Signal Over Noise</h3></div>
-                <p className="ef-body">Every opportunity is filtered through the BIE verification engine — turning millions of market events into only the trades that matter.</p>
-                <div className="ef-visual"><canvas id="cv-intel" width={600} height={240} /></div>
-                <div className="ef-metrics">
-                  <span className="ef-chip live">AI VERIFIED</span>
-                  <span className="ef-chip">CONFLUENCE</span>
-                  <span className="ef-chip">CORTEX GATE</span>
-                  <span className="ef-chip">GRADED A&ndash;F</span>
-                </div>
-              </div>
-
-              {/* Card 4: Everything. One Interface. */}
-              <div className="edge-fact" style={{ "--fc": "#ff6b2b" } as CSSProperties}>
-                <div className="ef-header"><div className="ef-icon">&#9638;</div><h3>Everything. One Interface.</h3></div>
-                <p className="ef-body">Dealer positioning, institutional flow, AI verification, thermal heatmaps, swing intelligence, and market-wide scanning — all connected inside a single workspace.</p>
-                <div className="ef-visual"><canvas id="cv-surface" width={600} height={240} /></div>
-                <div className="ef-metrics">
-                  <span className="ef-chip live">6 MODULES</span>
-                  <span className="ef-chip">UNIFIED</span>
-                  <span className="ef-chip">ONE SCREEN</span>
-                  <span className="ef-chip">ZERO NOISE</span>
-                </div>
+              <div className="vs-col vs-us">
+                <div className="vs-label">BlackOut</div>
+                <ul className="vs-list">
+                  <li>Live tick-by-tick — zero delay</li>
+                  <li>Every setup graded A–F with a logged track record</li>
+                  <li>6 engines, one screen, one membership</li>
+                  <li>AI verification engine gates every play</li>
+                  <li>Institutional flow, GEX, dark pool — streamed live</li>
+                  <li>Real-time P&amp;L marks, not end-of-day summaries</li>
+                </ul>
               </div>
             </div>
           </div>
@@ -333,8 +304,9 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
               <p className="trust">Cancel anytime &middot; No contracts</p>
             </div>
 
-            {/* Premium Yearly */}
-            <div className="pc">
+            {/* Premium Yearly — "smart choice" */}
+            <div className="pc yearly">
+              <span className="yearly-save">Save {usd(MEMBERSHIP_PRICING.yearlySavingsVsMonthly)}</span>
               <div className="plan">Premium &middot; Yearly</div>
               <div className="amt">{usd(MEMBERSHIP_PRICING.yearly)}<small> / yr</small></div>
               <div className="sub">{usd(MEMBERSHIP_PRICING.yearlyEffectiveMonthly)}/mo &middot; save {usd(MEMBERSHIP_PRICING.yearlySavingsVsMonthly)} vs monthly</div>
@@ -348,9 +320,41 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
                 <li>Strike-level heatmaps</li>
                 <li>Graded play log A-F</li>
               </ul>
-              <a href={WHOP_CHECKOUT.yearly || (signedIn ? "/upgrade" : "/sign-up?redirect_url=%2Fupgrade")} className="btn-g">Lock in yearly &rarr;</a>
+              <a href={WHOP_CHECKOUT.yearly || (signedIn ? "/upgrade" : "/sign-up?redirect_url=%2Fupgrade")} className="btn-p">Lock in yearly &rarr;</a>
               <p className="trust">Cancel anytime &middot; No contracts</p>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ═══ FAQ — INLINE ACCORDION ═══ */}
+      <section className="sec-faq" id="faq">
+        <div className="w">
+          <div className="faq-head">
+            <span className="kk"><span className="dot" />FAQ</span>
+            <h2>Questions?<br /><span className="gt">Answered.</span></h2>
+          </div>
+          <div className="faq-list">
+            <details className="faq-item">
+              <summary>Can I cancel anytime?</summary>
+              <p>Yes. Billing is handled through our secure checkout partner, and you can manage or cancel your membership anytime from your account.</p>
+            </details>
+            <details className="faq-item">
+              <summary>Do I need to connect a broker?</summary>
+              <p>No. BlackOut is a pure intelligence layer &mdash; you execute on your own broker. We surface the data, structure, and setups; you pull the trigger wherever you already trade.</p>
+            </details>
+            <details className="faq-item">
+              <summary>What&apos;s the difference between SPX Slayer and Premium?</summary>
+              <p>SPX Slayer ({usd(MEMBERSHIP_PRICING.community)}/mo) gives you the 0DTE desk &mdash; live SPX regime, GEX, and graded plays. Premium ({usd(MEMBERSHIP_PRICING.monthly)}/mo or {usd(MEMBERSHIP_PRICING.yearly)}/yr) unlocks all six modules: HELIX flow, Largo analyst, dark pool, Night Hawk, heatmaps, and the full graded play log.</p>
+            </details>
+            <details className="faq-item">
+              <summary>Is any of this financial advice?</summary>
+              <p>No. BlackOut provides market data, analytics, and pattern-recognition tools for educational and informational purposes only. Every trade is your own decision.</p>
+            </details>
+            <details className="faq-item">
+              <summary>How do I get started?</summary>
+              <p>Create your account, pick a plan, and the live desk is there immediately. Inside your first session you&apos;ll have the full read in front of you.</p>
+            </details>
           </div>
         </div>
       </section>
@@ -366,6 +370,15 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
             <Link href={signedIn ? "/upgrade" : "/sign-up?redirect_url=%2Fupgrade"} prefetch={false} className="btn-p">Stop trading blind</Link>
             <Link href="#modules" prefetch={false} className="btn-g">See the desk</Link>
           </div>
+          <nav className="footer-links">
+            <a href="#faq">FAQ</a>
+            <Link href="/terms" prefetch={false}>Terms</Link>
+            <Link href="/privacy" prefetch={false}>Privacy</Link>
+            <a href={SITE.social.discord.url} target="_blank" rel="noopener noreferrer">Discord</a>
+            <a href={SITE.social.x.url} target="_blank" rel="noopener noreferrer">X</a>
+            <a href={SITE.social.instagram.url} target="_blank" rel="noopener noreferrer">Instagram</a>
+          </nav>
+          <p className="footer-copy">&copy; 2026 {SITE.legalName}. All rights reserved.</p>
         </div>
       </section>
 
