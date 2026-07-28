@@ -209,7 +209,7 @@ export function PlayTerminal({ play }: { play: TerminalPlay | null }) {
 
       <div className="nh-deck-foot">
         <span>EXIT · {play.exitModel === "SCALE_OUT" ? "TRIM-SCALE" : play.exitModel}</span>
-        <span>CONF {play.confidence != null ? `${Math.round(play.confidence * 100)}%` : "—"}</span>
+        <span>{play.tierLabel ? `TIER ${play.tierLabel}` : play.scorecard ? `WR ${Number.isFinite(play.scorecard.winRate) ? `${play.scorecard.winRate}%` : "—"}` : ""}</span>
         {play.allocation && <span style={{ marginLeft: "auto" }}>{play.allocation.role} · {play.allocation.sizing}</span>}
       </div>
     </div>
@@ -277,7 +277,7 @@ function ThesisPanel({ play }: { play: TerminalPlay }) {
       )}
       <div className="nh-deck-meta">
         {play.regime && <div><span className="k">Regime</span><span className="v">{play.regime}</span></div>}
-        {play.confidence != null && <div><span className="k">Confidence</span><span className="v">{Math.round(play.confidence * 100)}%</span></div>}
+        {play.tierLabel && <div><span className="k">Conviction</span><span className="v">{play.tierLabel}</span></div>}
         {play.allocation && <div><span className="k">Allocation</span><span className="v">{play.allocation.role}</span></div>}
         <div><span className="k">Exit model</span><span className="v">{play.exitModel === "SCALE_OUT" ? "trim-scale" : play.exitModel.toLowerCase()}</span></div>
       </div>
@@ -338,6 +338,18 @@ function ManagePanel({ play, nowMs }: { play: TerminalPlay; nowMs: number }) {
           (banked) vs pending. Rendered only when the row's FROZEN policy is trim_scale (dormant under
           the prod ratchet default) AND it is not a condor. */}
       {isTrimScale && <TrimScaleLadder play={play} />}
+
+      {/* Legacy stock-price progress track — rendered when the stock quote overlay computes progress
+          from the edition's target/stop levels. Shows where the underlying sits between stop and target. */}
+      {play.horizon === "LEGACY" && play.progress != null && (
+        <>
+          <div className="nh-deck-track">
+            <span className="lo">STOP</span><span className="hi">TARGET</span>
+            <span className="mk" style={{ left: `${Math.round(play.progress * 100)}%` }} />
+          </div>
+          <div className="nh-deck-recnote">Stock position: live underlying vs your stop and target levels.</div>
+        </>
+      )}
 
       {/* Legacy SCALE_OUT fallback (horizon lanes carry no resolved policy): the pre-Terminal-v2
           derive-from-status tranche view, unchanged. */}

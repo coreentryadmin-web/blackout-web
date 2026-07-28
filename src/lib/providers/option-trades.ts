@@ -60,7 +60,7 @@ const STRIKE_BAND_PCT = envFloat("OPTION_TRADES_BAND_PCT", 0.04);
 /** Lookback window for the trades pull (minutes). */
 const DEFAULT_WINDOW_MIN = envInt("OPTION_TRADES_WINDOW_MIN", 60);
 /** Cache TTL for a full reconstruction. Short — flow moves fast. Reuses OPTIONS_CHAIN (30s). */
-const RECON_TTL_MS = envInt("OPTION_TRADES_TTL_MS", TTL.OPTIONS_CHAIN);
+const RECON_TTL_MS = envInt("OPTION_TRADES_TTL_MS", TTL?.OPTIONS_CHAIN ?? 30_000);
 
 // ── Trade-condition codes (probe-verified via /v3/reference/options/conditions) ─
 // Multi-leg / stock-options combos: the print premium is a packaged spread, NOT a clean

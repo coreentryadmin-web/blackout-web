@@ -48,48 +48,44 @@ export async function GET(req: NextRequest) {
   const locked = await requireToolApi("nighthawk");
   if (locked) return locked;
 
-  const windowDays = Math.min(90, Math.max(7, Number(req.nextUrl.searchParams.get("days") ?? "30") || 30));
-  const metrics = await getNighthawkMetrics(windowDays);
+  try {
+    const windowDays = Math.min(90, Math.max(7, Number(req.nextUrl.searchParams.get("days") ?? "30") || 30));
+    const metrics = await getNighthawkMetrics(windowDays);
 
-  return NextResponse.json(
-    {
-      window_days: metrics.window_days,
-      total_resolved: metrics.total_resolved,
-      pending_count: metrics.pending_count,
-      win_rate_pct: pct(metrics.win_rate),
-      profitable_rate_pct: pct(metrics.profitable_rate),
-      avg_return_pct: Math.round(metrics.avg_return_pct * 100) / 100,
-      // PR-N2: the honest split — headline methodology tag, the ratio-denominator
-      // exclusions as explicit counts, and both rule-set segments side by side.
-      methodology: metrics.methodology,
-      unfilled_count: metrics.unfilled_count,
-      pulled_count: metrics.pulled_count,
-      stop_data_unavailable_count: metrics.stop_data_unavailable_count,
-      segments: {
-        current: segmentWire(metrics.segments.current),
-        legacy: segmentWire(metrics.segments.legacy),
+    return NextResponse.json(
+      {
+        window_days: metrics.window_days,
+        total_resolved: metrics.total_resolved,
+        pending_count: metrics.pending_count,
+        win_rate_pct: pct(metrics.win_rate),
+        profitable_rate_pct: pct(metrics.profitable_rate),
+        avg_return_pct: Math.round(metrics.avg_return_pct * 100) / 100,
+        methodology: metrics.methodology,
+        unfilled_count: metrics.unfilled_count,
+        pulled_count: metrics.pulled_count,
+        stop_data_unavailable_count: metrics.stop_data_unavailable_count,
+        segments: {
+          current: segmentWire(metrics.segments.current),
+          legacy: segmentWire(metrics.segments.legacy),
+        },
+        debrief: metrics.debrief,
+        by_conviction: metrics.by_conviction
+          .filter((c) => c.n > 0)
+          .map((c) => ({
+            conviction: c.conviction,
+            n: c.n,
+            win_rate_pct: c.win_rate != null ? pct(c.win_rate) : null,
+            low_n: c.low_n,
+          })),
+        available: metrics.total_resolved > 0,
       },
-      // PR-N10 (additive): compact end-of-session debrief summary — failure-mode
-      // counts from the pinned per-play post-mortems. Segments-aware by construction:
-      // analytics.ts computes it over CURRENT-methodology rows only (the #333
-      // anti-blend rule, mirrored), with the legacy quarantine surfaced as a count and
-      // the shared low_n flag. The FULL debrief report (gate counterfactuals +
-      // improvement queue) is served admin-only on /api/admin/nighthawk/analytics —
-      // ops evidence about thresholds, not member record content.
-      debrief: metrics.debrief,
-      by_conviction: metrics.by_conviction
-        .filter((c) => c.n > 0)
-        .map((c) => ({
-          conviction: c.conviction,
-          n: c.n,
-          // null (never 0%) for an empty cut — same rule as the segment wire above. The
-          // n > 0 filter makes non-null the practical case; the guard keeps the type honest.
-          win_rate_pct: c.win_rate != null ? pct(c.win_rate) : null,
-          // Shared LOW-N discipline (zerodte/record.ts threshold) — consumers badge it.
-          low_n: c.low_n,
-        })),
-      available: metrics.total_resolved > 0,
-    },
-    { headers: NO_STORE_HEADERS }
-  );
+      { headers: NO_STORE_HEADERS }
+    );
+  } catch (err) {
+    console.error("[nighthawk/record] unhandled error:", err);
+    return NextResponse.json(
+      { available: false, error: "Record temporarily unavailable." },
+      { status: 502, headers: NO_STORE_HEADERS },
+    );
+  }
 }

@@ -36,7 +36,7 @@ export function NightHawkFeed() {
 
   const isLegacy = view === "LEGACY";
   // Legacy edition — fetched ONLY when the Legacy view is active (scope-to-selected rule).
-  const { data: edition } = useSWR(isLegacy ? "nighthawk-edition" : null, fetchNightHawkEdition, {
+  const { data: edition, error: editionError } = useSWR(isLegacy ? "nighthawk-edition" : null, fetchNightHawkEdition, {
     refreshInterval: 120_000,
   });
 
@@ -56,7 +56,7 @@ export function NightHawkFeed() {
         {view === "ZERO_DTE" && <ZeroDteDeck />}
         {view === "SWING" && <HorizonDeck horizon="SWING" />}
         {view === "LEAPS" && <HorizonDeck horizon="LEAPS" />}
-        {isLegacy && <LegacyDeck edition={edition} />}
+        {isLegacy && <LegacyDeck edition={edition} error={editionError} />}
       </div>
     </div>
   );

@@ -181,8 +181,9 @@ describe("nhConvictionRank", () => {
     assert.ok(nhConvictionRank("B") > nhConvictionRank("C"));
   });
 
-  test("unknown letters default to B rank", () => {
-    assert.equal(nhConvictionRank("weird"), nhConvictionRank("B"));
+  test("unknown letters sort to bottom (rank 0)", () => {
+    assert.equal(nhConvictionRank("weird"), 0);
+    assert.ok(nhConvictionRank("C") > nhConvictionRank("weird"));
   });
 
   test("case insensitive", () => {

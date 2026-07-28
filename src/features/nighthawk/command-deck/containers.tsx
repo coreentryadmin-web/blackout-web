@@ -13,6 +13,7 @@ import { fetchNightHawkHorizons } from "@/lib/api";
 import type { NightHawkEdition } from "@/features/nighthawk/lib/types";
 import type { TerminalPlay } from "./types";
 import { useZeroDteLiveMarks, overlayLiveMarks } from "./use-live-marks";
+import { useLegacyStockQuotes, overlayLegacyQuotes } from "./use-legacy-quotes";
 import { zeroDteSources, isBoardDegraded, type BoardResp } from "./zerodte-sources";
 
 const json = (u: string) => fetch(u, { cache: "no-store", credentials: "same-origin" }).then((r) => (r.ok ? r.json() : null));
@@ -98,21 +99,112 @@ export function HorizonDeck({ horizon }: { horizon: "SWING" | "LEAPS" }) {
 
 // ── Legacy: the evening edition ─────────────────────────────────────────────────────
 
-export function LegacyDeck({ edition }: { edition: NightHawkEdition | undefined }) {
-  const plays: TerminalPlay[] = (edition?.plays ?? []).slice(0, 5).map((p, i) =>
-    terminalPlayFromEdition({
-      ticker: p.ticker,
-      direction: (p as { direction?: string }).direction,
-      rank: (p as { rank?: number }).rank ?? i + 1,
-      score: (p as { score?: number }).score,
-      factor_breakdown: (p as { factor_breakdown?: Record<string, number> }).factor_breakdown ?? null,
-    }),
+export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | undefined; error?: unknown }) {
+  // Fetch morning confirmation verdicts when an edition is available.
+  const editionFor = edition?.edition_for ?? null;
+  const { data: confirmData } = useSWR(
+    editionFor ? ["legacy-confirm", editionFor] : null,
+    () => fetch(`/api/nighthawk/play-status?date=${editionFor}`, { cache: "no-store", credentials: "same-origin" }).then((r) => r.ok ? r.json() : null),
+    { refreshInterval: 300_000 },
   );
+  const confirmByTicker = new Map<string, { status: string; reason: string }>();
+  if (confirmData?.plays) {
+    for (const ps of confirmData.plays) {
+      confirmByTicker.set(ps.ticker?.toUpperCase(), { status: ps.status, reason: ps.reason });
+    }
+  }
+
+  const rawPlays = (edition?.plays ?? []).slice(0, 5);
+  const basePlays: TerminalPlay[] = rawPlays.map((p, i) => {
+    const tk = p.ticker?.toUpperCase();
+    const confirm = confirmByTicker.get(tk);
+    return terminalPlayFromEdition({
+      ticker: p.ticker,
+      direction: p.direction,
+      rank: p.rank ?? i + 1,
+      score: p.score,
+      factor_breakdown: null,
+      conviction: p.conviction ?? null,
+      thesis: p.thesis ?? null,
+      key_signal: p.key_signal ?? null,
+      entry_range: p.entry_range ?? null,
+      target: p.target ?? null,
+      stop: p.stop ?? null,
+      options_play: p.options_play ?? null,
+      entry_premium: p.entry_premium ?? null,
+      risk_note: p.risk_note ?? null,
+      exit_style: p.exit_style ?? null,
+      iv_rank: p.iv_rank ?? null,
+      rr_ratio: p.rr_ratio ?? null,
+      gate_promoted: p.gate_promoted ?? null,
+      gate_warnings: p.gate_warnings ?? null,
+      pulled: p.pulled ?? null,
+      pulled_reason: p.pulled_reason ?? null,
+      morning_status: confirm?.status as "CONFIRMED" | "DEGRADED" | "INVALIDATED" | "UNVERIFIED" | undefined ?? null,
+      morning_reason: confirm?.reason ?? null,
+    });
+  });
+
+  // Live stock quotes — polls /api/market/quote for each Legacy ticker so the deck shows
+  // real-time stock-level progress toward target/stop (the "dynamic trade management" overlay).
+  const tickers = rawPlays.map((p) => p.ticker?.toUpperCase()).filter(Boolean);
+  const stockQuotes = useLegacyStockQuotes(tickers);
+  const plays = overlayLegacyQuotes(basePlays, stockQuotes, rawPlays);
+
+  // Edition health banners — stale/degraded/carry/error states must be visible, never silently hidden.
+  const isStale = edition?.stale === true;
+  const isDegraded = edition?.degraded === true;
+  const isCarry = edition?.carry_until_close === true;
+  const isRecapOnly = edition?.recap_only === true;
+  const hasFetchError = !!error && !edition;
+
+  const bannerText = hasFetchError
+    ? "Edition data temporarily unavailable — retrying."
+    : isDegraded
+      ? "Served from a degraded source — plays may be incomplete."
+      : isStale
+        ? `Showing ${edition?.served_for ?? "prior"} edition — tonight's not published yet.`
+        : isCarry
+          ? `Carrying ${edition?.served_for ?? "prior"} plays until their session closes at 4 PM ET.`
+          : isRecapOnly
+            ? "Recap published — no plays cleared the funnel tonight."
+            : null;
+
   return (
-    <CommandDeck
-      plays={plays}
-      laneLabel="Legacy · Tonight's playbook"
-      emptyHint="Five ranked setups land here after the evening scan · ~5:30 PM ET."
-    />
+    <>
+      {bannerText && (
+        <div
+          role="status"
+          className={`mb-3 flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold uppercase tracking-wide ${
+            hasFetchError || isDegraded
+              ? "border-red-400/60 bg-red-500/15 text-red-200"
+              : isStale || isCarry
+                ? "border-amber-400/60 bg-amber-500/15 text-amber-200"
+                : "border-sky-400/30 bg-sky-500/10 text-sky-200"
+          }`}
+        >
+          <span aria-hidden>{hasFetchError || isDegraded ? "!" : isStale || isCarry ? "~" : "i"}</span>
+          <span>{bannerText}</span>
+        </div>
+      )}
+      {edition?.recap_headline && (
+        <div className="mb-3 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+          <div className="text-xs font-bold uppercase tracking-wide text-white/80">{edition.recap_headline}</div>
+          {edition.recap_summary && <div className="mt-1 text-xs leading-relaxed text-[#9fb4d4]/70">{edition.recap_summary}</div>}
+        </div>
+      )}
+      <CommandDeck
+        plays={plays}
+        laneLabel="Legacy · Tonight's playbook"
+        degraded={hasFetchError || isDegraded}
+        emptyHint={
+          hasFetchError
+            ? "Edition data unavailable right now — retrying. Check back shortly."
+            : isRecapOnly
+              ? "No plays cleared the scoring funnel tonight — market recap is above."
+              : "Five ranked setups land here after the evening scan · ~5:30 PM ET."
+        }
+      />
+    </>
   );
 }

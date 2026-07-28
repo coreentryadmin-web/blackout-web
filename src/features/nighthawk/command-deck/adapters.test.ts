@@ -5,7 +5,9 @@ import {
   terminalPlayFromHorizon,
   terminalPlayFromEdition,
   managementFor,
+  parseLevelNum,
 } from "./adapters.ts";
+import { overlayLegacyQuotes } from "./use-legacy-quotes.ts";
 
 test("managementFor: RATCHET progress maps -50→0, +100→1; recommendations by P&L", () => {
   assert.equal(managementFor("RATCHET", "OPEN", -50).progress, 0);
@@ -112,7 +114,7 @@ test("horizon adapter (PR-12): LEAPS / un-enriched caller is UNCHANGED — legac
   assert.equal(play.thesisBreak!.level, "intact");
 });
 
-test("edition adapter: dossier factors, PLAN model, WATCH status", () => {
+test("edition adapter: dossier factors, PLAN model, WATCH status (no morning confirm)", () => {
   const play = terminalPlayFromEdition({
     ticker: "AAPL", direction: "long", rank: 1, score: 82,
     factor_breakdown: { flow: 30, tech: 22, positioning: 16, smart_money: 10, news: 0 },
@@ -122,7 +124,121 @@ test("edition adapter: dossier factors, PLAN model, WATCH status", () => {
   assert.equal(play.status, "WATCH");
   assert.equal(play.factors[0]!.label, "Flow");
   assert.ok(!play.factors.some((f) => f.label === "News")); // 0 dropped
-  assert.equal(play.contract, "Rank 1 · next session");
+  assert.equal(play.contract, "Rank 1 · next session"); // no options_play → rank fallback
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// Enriched Legacy (edition) adapter — entry parsing, morning confirm, gates, pulled
+// ════════════════════════════════════════════════════════════════════════════════════
+
+test("edition adapter: parseEntryMid from entry_range (two-price range → midpoint)", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "NVDA", direction: "long", rank: 1, score: 75,
+    entry_range: "$192.50 – $195.00",
+  });
+  assert.equal(play.entry, 193.75);
+});
+
+test("edition adapter: entry_premium takes precedence over parsed entry_range", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "AAPL", direction: "long", rank: 2, score: 80,
+    entry_range: "$190.00 – $195.00",
+    entry_premium: 3.5,
+  });
+  assert.equal(play.entry, 3.5);
+});
+
+test("edition adapter: options_play replaces rank-based contract label", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "TSLA", direction: "long", rank: 3, score: 70,
+    options_play: "Aug 15 $260 Call",
+  });
+  assert.equal(play.contract, "Aug 15 $260 Call");
+});
+
+test("edition adapter: morning CONFIRMED → status OPEN, regime 'pre-market CONFIRMED', thesis intact", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "META", direction: "long", rank: 1, score: 85,
+    morning_status: "CONFIRMED",
+  });
+  assert.equal(play.status, "OPEN");
+  assert.equal(play.regime, "pre-market CONFIRMED");
+  assert.equal(play.thesisBreak!.level, "intact");
+  assert.match(play.recNote!, /confirmed/i);
+});
+
+test("edition adapter: morning INVALIDATED → status SKIP, thesis break, recommendation SELL", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "AMD", direction: "long", rank: 2, score: 60,
+    morning_status: "INVALIDATED",
+    morning_reason: "gap down through stop level",
+  });
+  assert.equal(play.status, "SKIP");
+  assert.equal(play.thesisBreak!.level, "break");
+  assert.match(play.thesisBreak!.note!, /gap down/);
+  assert.equal(play.recommendation, "SELL");
+  assert.equal(play.regime, "INVALIDATED — pulled");
+});
+
+test("edition adapter: morning DEGRADED → status WATCH, thesis warn", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "COIN", direction: "long", rank: 3, score: 55,
+    morning_status: "DEGRADED",
+    morning_reason: "crypto sentiment shifted overnight",
+  });
+  assert.equal(play.status, "WATCH");
+  assert.equal(play.thesisBreak!.level, "warn");
+  assert.match(play.recNote!, /DEGRADED/);
+});
+
+test("edition adapter: pulled play → status CLOSED, thesis break, recommendation SELL", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "BABA", direction: "long", rank: 4, score: 50,
+    pulled: true,
+    pulled_reason: "earnings pre-announcement risk",
+  });
+  assert.equal(play.status, "CLOSED");
+  assert.equal(play.thesisBreak!.level, "break");
+  assert.match(play.thesisBreak!.note!, /earnings/);
+  assert.equal(play.recommendation, "SELL");
+  assert.match(play.recNote!, /PULLED/);
+});
+
+test("edition adapter: gate_promoted with gate_warnings → gates array with ok:false entries", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "SHOP", direction: "long", rank: 1, score: 72,
+    gate_promoted: true,
+    gate_warnings: ["band_detached", "stale_quote_basis"],
+  });
+  assert.equal(play.gates.length, 2);
+  assert.equal(play.gates[0]!.label, "band_detached");
+  assert.equal(play.gates[0]!.ok, false);
+  assert.equal(play.gates[1]!.label, "stale_quote_basis");
+});
+
+test("edition adapter: gate_promoted false with warnings → no gates surfaced", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "PLTR", direction: "long", rank: 2, score: 65,
+    gate_promoted: false,
+    gate_warnings: ["band_detached"],
+  });
+  assert.equal(play.gates.length, 0);
+});
+
+test("edition adapter: exit_style 'scale_out' → exitModel SCALE_OUT", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "MSTR", direction: "long", rank: 1, score: 78,
+    exit_style: "scale_out",
+  });
+  assert.equal(play.exitModel, "SCALE_OUT");
+});
+
+test("edition adapter: thesis text used as recNote when no morning status", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "SOFI", direction: "long", rank: 1, score: 70,
+    thesis: "Fintech breakout on strong Q2 guidance above consensus",
+  });
+  assert.match(play.recNote!, /Fintech breakout/);
 });
 
 test("0DTE adapter: committed OPEN with aged-out gate context still passes the Hard gate (9-6b)", () => {
@@ -657,4 +773,124 @@ test("0DTE adapter (Wave 3): scorecard with Wilson CI passes through unchanged",
   assert.equal(p.scorecard?.ciLow, 55);
   assert.equal(p.scorecard?.ciHigh, 70);
   assert.equal(p.scorecard?.n, 214);
+});
+
+// ── parseLevelNum ──────────────────────────────────────────────────────────────
+
+test("parseLevelNum: parses dollar-level strings", () => {
+  assert.equal(parseLevelNum("$205"), 205);
+  assert.equal(parseLevelNum("$205.50"), 205.5);
+  assert.equal(parseLevelNum("205"), 205);
+  assert.equal(parseLevelNum(null), null);
+  assert.equal(parseLevelNum(undefined), null);
+  assert.equal(parseLevelNum(""), null);
+  assert.equal(parseLevelNum("no numbers"), null);
+  assert.equal(parseLevelNum("$0"), null);
+});
+
+// ── overlayLegacyQuotes ────────────────────────────────────────────────────────
+
+test("overlayLegacyQuotes: computes LONG progress toward target", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "NVDA", direction: "long", rank: 1, score: 85,
+    entry_range: "$180 – $185", target: "$200", stop: "$170",
+  });
+  const quotes = new Map([["NVDA", { price: 190, changePct: 1.2, asof: "2026-07-28T14:00:00Z" }]]);
+  const originals = [{ ticker: "NVDA", target: "$200", stop: "$170", entry_range: "$180 – $185" }];
+  const [result] = overlayLegacyQuotes([play], quotes, originals);
+  // progress = (190 - 170) / (200 - 170) = 20/30 ≈ 0.667
+  assert.ok(result.progress != null);
+  assert.ok(Math.abs(result.progress! - 0.667) < 0.01);
+  assert.ok(result.recNote?.includes("NVDA $190.00"));
+  assert.equal(result.markAsOf, "2026-07-28T14:00:00Z");
+});
+
+test("overlayLegacyQuotes: computes SHORT progress toward target", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "TSLA", direction: "short", rank: 1, score: 80,
+    entry_range: "$250 – $255", target: "$230", stop: "$265",
+  });
+  const quotes = new Map([["TSLA", { price: 245, changePct: -1.5, asof: "2026-07-28T14:00:00Z" }]]);
+  const originals = [{ ticker: "TSLA", target: "$230", stop: "$265", entry_range: "$250 – $255" }];
+  const [result] = overlayLegacyQuotes([play], quotes, originals);
+  // progress = (265 - 245) / (265 - 230) = 20/35 ≈ 0.571
+  assert.ok(result.progress != null);
+  assert.ok(Math.abs(result.progress! - 0.571) < 0.01);
+});
+
+test("overlayLegacyQuotes: no-op when quotes are empty", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "AAPL", direction: "long", rank: 1, score: 75,
+    entry_range: "$190", target: "$210", stop: "$180",
+  });
+  const result = overlayLegacyQuotes([play], new Map(), [{ ticker: "AAPL", target: "$210", stop: "$180", entry_range: "$190" }]);
+  assert.equal(result[0].progress, null);
+});
+
+test("overlayLegacyQuotes: clamps progress to [0, 1]", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "AMD", direction: "long", rank: 1, score: 90,
+    entry_range: "$150", target: "$170", stop: "$140",
+  });
+  // Price above target → progress clamped to 1
+  const quotes = new Map([["AMD", { price: 180, changePct: 5.0, asof: "2026-07-28T14:00:00Z" }]]);
+  const originals = [{ ticker: "AMD", target: "$170", stop: "$140", entry_range: "$150" }];
+  const [result] = overlayLegacyQuotes([play], quotes, originals);
+  assert.equal(result.progress, 1);
+});
+
+test("Legacy adapter: surfaces conviction as tierLabel", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "NVDA", direction: "long", rank: 1, score: 85,
+    conviction: "A+",
+  });
+  assert.equal(play.tierLabel, "A+");
+});
+
+test("Legacy adapter: surfaces iv_rank and rr_ratio as factors", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "TSLA", direction: "long", rank: 1, score: 75,
+    iv_rank: 72, rr_ratio: 3.2,
+  });
+  const ivFactor = play.factors.find((f) => f.label === "IV Rank");
+  const rrFactor = play.factors.find((f) => f.label === "R:R Ratio");
+  assert.ok(ivFactor, "iv_rank should appear as a factor");
+  assert.equal(ivFactor!.points, 72);
+  assert.ok(rrFactor, "rr_ratio should appear as a factor");
+  assert.equal(rrFactor!.points, 3.2);
+});
+
+test("Legacy adapter: key_signal enriches recNote", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "META", direction: "long", rank: 1, score: 80,
+    thesis: "Bullish breakout above resistance",
+    key_signal: "3-day flow accumulation",
+  });
+  assert.ok(play.recNote?.includes("Key signal: 3-day flow accumulation"));
+  assert.ok(play.recNote?.includes("Bullish breakout above resistance"));
+});
+
+test("Legacy adapter: risk_note surfaces as thesisBreak warn", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "AAPL", direction: "long", rank: 1, score: 70,
+    risk_note: "Earnings in 2 days — elevated IV",
+  });
+  assert.equal(play.thesisBreak?.level, "warn");
+  assert.equal(play.thesisBreak?.note, "Earnings in 2 days — elevated IV");
+});
+
+test("Legacy adapter: morning CONFIRMED overrides risk_note thesisBreak", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "AAPL", direction: "long", rank: 1, score: 70,
+    risk_note: "Earnings in 2 days",
+    morning_status: "CONFIRMED",
+  });
+  assert.equal(play.thesisBreak?.level, "intact");
+});
+
+test("Legacy adapter: missing conviction → tierLabel null", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "SPY", direction: "long", rank: 1, score: 60,
+  });
+  assert.equal(play.tierLabel, null);
 });

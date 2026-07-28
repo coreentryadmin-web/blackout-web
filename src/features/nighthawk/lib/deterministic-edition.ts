@@ -128,12 +128,18 @@ function firstFinite(nums: Array<number | null | undefined> | undefined): number
   return null;
 }
 
-/** Per-share premium for a chain row on the chosen side: mid when both sides quote, else the ask. */
+/** Per-share premium for a chain row on the chosen side: mid when both sides quote, else the ask.
+ *  Rejects quotes with a spread wider than 100% of the mid — the midpoint of a $0.01/$5.00 spread
+ *  is meaningless and would misrepresent the entry cost. */
 function contractPremium(row: ChainStrikeRow, side: "call" | "put"): number | null {
   const ask = side === "call" ? row.call_ask : row.put_ask;
   const bid = side === "call" ? row.call_bid : row.put_bid;
   if (ask != null && Number.isFinite(ask) && ask > 0) {
-    if (bid != null && Number.isFinite(bid) && bid > 0) return (ask + bid) / 2;
+    if (bid != null && Number.isFinite(bid) && bid > 0) {
+      const mid = (ask + bid) / 2;
+      if ((ask - bid) / mid > 1.0) return null;
+      return mid;
+    }
     return ask;
   }
   return null;
