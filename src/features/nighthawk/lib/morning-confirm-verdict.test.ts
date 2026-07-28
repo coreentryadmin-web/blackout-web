@@ -40,8 +40,14 @@ const NO_CONTEXT = {
   stockPremarket: null,
 };
 
-test("zero evaluable data returns UNVERIFIED, never a green CONFIRMED", () => {
+test("zero evaluable data for single-name returns DEGRADED (premarket unavailable)", () => {
   const v = computePlayVerdict(play(), NO_CONTEXT);
+  assert.equal(v.status, "DEGRADED");
+  assert.ok(v.reason.includes("pre-market price unavailable"));
+});
+
+test("zero evaluable data for index/ETF returns UNVERIFIED", () => {
+  const v = computePlayVerdict(play({ ticker: "SPY", play_type: "etf" }), NO_CONTEXT);
   assert.equal(v.status, "UNVERIFIED");
   assert.ok(v.reason.includes("withheld"));
 });
