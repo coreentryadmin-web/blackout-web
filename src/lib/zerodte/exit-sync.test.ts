@@ -228,7 +228,9 @@ test("ratchet floor breach via the sync mark: row CLOSES at the exit mark and en
   // Peaked +30% (5.2) earlier; the snapshot now shows 3.98 (−0.5%) — at/below the
   // breakeven floor the +25% peak armed. Pre-engine this row stayed live all the
   // way down to the −50% stop: the exact green-turned-red class.
-  state.ledgerRows = [baseRow({ peak_premium: 5.2 })];
+  // Freeze exit_policy_at_commit to "ratchet" so this test exercises the ratchet
+  // path explicitly (DEFAULT_EXIT_MODE is now trim_scale).
+  state.ledgerRows = [baseRow({ peak_premium: 5.2, entry_context: { exit_policy_at_commit: "ratchet" } })];
   state.snapMark = 3.98;
 
   const rows = await syncLedgerLiveState(state.ledgerRows as never);
@@ -249,7 +251,7 @@ test("freshest mark wins: a FRESH lane mark below the floor exits even when the 
   const { lane, syncLedgerLiveState } = await mods();
   resetState();
   lane._resetZeroDteLiveMarksForTest();
-  state.ledgerRows = [baseRow({ peak_premium: 5.2 })];
+  state.ledgerRows = [baseRow({ peak_premium: 5.2, entry_context: { exit_policy_at_commit: "ratchet" } })];
   state.snapMark = 4.5; // +12.5% — above the breakeven floor, sync alone would hold
   // Future-dated (+30s) so the real-clock freshness check can never flake (header).
   lane.putZeroDteLiveMark(laneMark(3.9, Date.now() + 30_000));
