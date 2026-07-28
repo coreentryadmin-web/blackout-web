@@ -160,11 +160,17 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
     () => json("/api/market/nighthawk/record"),
     { refreshInterval: 600_000 },
   );
-  const convictionScorecard = new Map<string, { winRate: number; avg: number; n: number }>();
+  const convictionScorecard = new Map<string, { winRate: number; avg: number; n: number; ciLow?: number | null; ciHigh?: number | null }>();
   if (recordData?.by_conviction) {
     for (const c of recordData.by_conviction) {
       if (c.conviction && c.n > 0 && c.win_rate_pct != null) {
-        convictionScorecard.set(c.conviction.toUpperCase(), { winRate: c.win_rate_pct, avg: recordData.avg_return_pct ?? 0, n: c.n });
+        convictionScorecard.set(c.conviction.toUpperCase(), {
+          winRate: c.win_rate_pct,
+          avg: recordData.avg_return_pct ?? 0,
+          n: c.n,
+          ciLow: c.win_rate_ci_low_pct ?? null,
+          ciHigh: c.win_rate_ci_high_pct ?? null,
+        });
       }
     }
   }
