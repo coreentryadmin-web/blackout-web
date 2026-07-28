@@ -445,15 +445,6 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
             <Link href={signedIn ? "/upgrade" : "/sign-up?redirect_url=%2Fupgrade"} prefetch={false} className="btn-p">Open the desk <span className="cta-arrow">&rarr;</span></Link>
             <Link href="#modules" prefetch={false} className="btn-g">See the desk</Link>
           </div>
-          <nav className="footer-links">
-            <a href="#faq">FAQ</a>
-            <Link href="/terms" prefetch={false}>Terms</Link>
-            <Link href="/privacy" prefetch={false}>Privacy</Link>
-            <a href={SITE.social.discord.url} target="_blank" rel="noopener noreferrer">Discord</a>
-            <a href={SITE.social.x.url} target="_blank" rel="noopener noreferrer">X</a>
-            <a href={SITE.social.instagram.url} target="_blank" rel="noopener noreferrer">Instagram</a>
-          </nav>
-          <p className="footer-copy">&copy; 2026 {SITE.legalName}. All rights reserved.</p>
         </div>
       </section>
 
