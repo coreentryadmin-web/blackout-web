@@ -106,6 +106,7 @@ export function scoreContrarianHedge(
     vex_alignment_score: vexScore,
     catalyst_score: catalystResult.score,
     catalyst_flags: catalystResult.flags,
+    skew_score: skewScore,
     conviction: convictionFromScore(score),
   };
 }
@@ -526,6 +527,7 @@ function buildPlay(
       ...(scored.short_interest_score != null ? { short_interest: scored.short_interest_score } : {}),
       ...(scored.wall_proximity_score != null ? { wall_proximity: scored.wall_proximity_score } : {}),
       ...(scored.vex_alignment_score != null ? { vex: scored.vex_alignment_score } : {}),
+      ...(scored.skew_score != null ? { skew: scored.skew_score } : {}),
     },
     confirming_signals: scored.confirming_signals ?? undefined,
     earnings_risk: scored.earnings_risk === true ? true : undefined,
@@ -703,7 +705,7 @@ export function buildDeterministicEditionPlays(params: {
 
           const contrarian = scoreContrarianHedge(original, dos, oppositeDir as "long" | "short");
           contrarianScores.push(
-            `${t}:${contrarian.score}(fl=${contrarian.flow_score},te=${contrarian.tech_score},po=${contrarian.pos_score},nw=${contrarian.news_score},sm=${contrarian.smart_money_score},fu=${contrarian.fundamental_score},si=${contrarian.short_interest_score},wl=${contrarian.wall_proximity_score},vx=${contrarian.vex_alignment_score},ca=${contrarian.catalyst_score})`
+            `${t}:${contrarian.score}(fl=${contrarian.flow_score},te=${contrarian.tech_score},po=${contrarian.pos_score},nw=${contrarian.news_score},sm=${contrarian.smart_money_score},fu=${contrarian.fundamental_score},si=${contrarian.short_interest_score},wl=${contrarian.wall_proximity_score},vx=${contrarian.vex_alignment_score},ca=${contrarian.catalyst_score},sk=${contrarian.skew_score})`
           );
           if (contrarian.score < FORCED_CONTRARIAN_FLOOR) continue;
 

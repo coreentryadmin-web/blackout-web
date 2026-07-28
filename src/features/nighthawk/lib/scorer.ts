@@ -42,6 +42,8 @@ export type ScoredCandidate = {
   wall_proximity_score?: number;
   /** VEX (vanna exposure) direction alignment. */
   vex_alignment_score?: number;
+  /** Risk-reversal skew confirmation/penalty (±3). Stored for traceability. */
+  skew_score?: number;
   /** Earnings proximity penalty applied to catalyst_score. Set when earnings are tomorrow with matching expiry. */
   earnings_risk?: boolean;
   /** Count of scoring dimensions with material positive contribution (≥ threshold). */
@@ -1096,6 +1098,7 @@ export function scoreCandidate(
     vex_alignment_score: vexScore,
     catalyst_score: totalCatalystScore,
     catalyst_flags: catalystFlags,
+    skew_score: skewAdj,
     earnings_risk: earningsRisk,
     confirming_signals: confirmingSignals,
     conviction: assignNighthawkTier({
