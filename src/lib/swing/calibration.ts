@@ -238,6 +238,17 @@ export function wilsonLowerBound(wins: number, n: number, z = 1.96): number {
   return lb < 0 ? 0 : lb > 1 ? 1 : lb;
 }
 
+export function wilsonUpperBound(wins: number, n: number, z = 1.96): number {
+  if (!Number.isFinite(n) || n <= 0) return 1;
+  const phat = wins / n;
+  const z2 = z * z;
+  const denom = 1 + z2 / n;
+  const centre = phat + z2 / (2 * n);
+  const margin = z * Math.sqrt((phat * (1 - phat) + z2 / (4 * n)) / n);
+  const ub = (centre + margin) / denom;
+  return ub < 0 ? 0 : ub > 1 ? 1 : ub;
+}
+
 /** Absolute Wilson-LB floor (as a %): the alternative graduation path when the off-signal baseline is
  *  thin/absent. A 95% lower bound this high is a strong edge on its own — well above the ~33% breakeven
  *  and above the coin-flip 50%. Kept as an OR with the Δ-vs-baseline path so a bucket with no usable

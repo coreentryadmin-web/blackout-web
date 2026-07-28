@@ -136,6 +136,10 @@ export type NightHawkRecordSegmentWire = {
   stop_data_unavailable: number;
   /** null when nothing is scoreable — never a fake 0%. */
   win_rate_pct: number | null;
+  /** Wilson 95% CI lower bound (percent units). null when nothing is scoreable. */
+  win_rate_ci_low_pct?: number | null;
+  /** Wilson 95% CI upper bound (percent units). null when nothing is scoreable. */
+  win_rate_ci_high_pct?: number | null;
   avg_return_pct: number | null;
   /** scoreable < LOW_N_THRESHOLD — the UI must badge this segment's ratios. */
   low_n: boolean;
@@ -148,6 +152,8 @@ export type NightHawkRecordResponse = {
   pending_count: number;
   /** PR-N2: headline ratios cover CURRENT-methodology scoreable rows only. */
   win_rate_pct: number;
+  win_rate_ci_low_pct?: number | null;
+  win_rate_ci_high_pct?: number | null;
   profitable_rate_pct: number;
   avg_return_pct: number;
   /** PR-N2 additive fields — optional so a stale SWR cache of the old payload still
@@ -157,7 +163,7 @@ export type NightHawkRecordResponse = {
   pulled_count?: number;
   stop_data_unavailable_count?: number;
   segments?: { current: NightHawkRecordSegmentWire; legacy: NightHawkRecordSegmentWire };
-  by_conviction: Array<{ conviction: string; n: number; win_rate_pct: number; low_n?: boolean }>;
+  by_conviction: Array<{ conviction: string; n: number; win_rate_pct: number; win_rate_ci_low_pct?: number | null; win_rate_ci_high_pct?: number | null; low_n?: boolean }>;
 };
 
 export type AgentFilterValues = Record<string, string | number | boolean>;

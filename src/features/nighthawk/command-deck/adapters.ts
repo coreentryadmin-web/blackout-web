@@ -12,6 +12,7 @@ import type { SwingSetupState } from "@/lib/swing/taxonomy";
 import { executableFill, type TerminalExitLadder } from "@/lib/zerodte/terminal-ladder";
 import { condorGeometryFrom, type CondorGeometry } from "@/lib/zerodte/condor-render";
 import type { WhyNow, WhyNowReason } from "@/lib/zerodte/why-now";
+import type { NighthawkTierFactor } from "@/features/nighthawk/lib/nighthawk-tiers";
 import type {
   DeckCondor,
   DeckDirection,
@@ -403,6 +404,9 @@ export interface EditionDeckSource {
   entry_cost_per_contract?: number | null;
   premium_cap_ok?: boolean | null;
   sector?: string | null;
+  /** Pinned tier assignment from publish-context (tier engine output). The `factors` array
+   *  explains WHY the tier was assigned — present on editions built after PR-N7. */
+  tier?: { tier: string; factors: NighthawkTierFactor[] } | null;
   // Morning confirmation overlay (merged by the container).
   morning_status?: "CONFIRMED" | "DEGRADED" | "INVALIDATED" | "UNVERIFIED" | null;
   morning_reason?: string | null;
@@ -540,7 +544,8 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
     gates,
     regime,
     thesisBreak,
-    tierLabel: src.conviction || null,
+    tierLabel: src.tier?.tier ?? src.conviction ?? null,
+    tierFactors: src.tier?.factors ?? null,
     recommendation: pulled || ms === "INVALIDATED" ? "SELL" : ms === "CONFIRMED" ? "BUY" : "HOLD",
     recNote,
     progress: null,

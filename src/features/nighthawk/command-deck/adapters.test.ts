@@ -242,6 +242,32 @@ test("edition adapter: thesis text used as recNote when no morning status", () =
   assert.match(play.recNote!, /Fintech breakout/);
 });
 
+test("edition adapter: tier factors threaded from publish-context tier blob", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "NVDA", direction: "long", rank: 1, score: 48, conviction: "A",
+    tier: {
+      tier: "A",
+      factors: [
+        { label: "Prime score band", direction: "up" as const, detail: "Score 48 sits in 40-54." },
+        { label: "Strong signal breadth", direction: "up" as const, detail: "4 of 9 dimensions confirming." },
+      ],
+    },
+  });
+  assert.equal(play.tierLabel, "A");
+  assert.equal(play.tierFactors?.length, 2);
+  assert.equal(play.tierFactors![0].label, "Prime score band");
+  assert.equal(play.tierFactors![0].direction, "up");
+  assert.equal(play.tierFactors![1].label, "Strong signal breadth");
+});
+
+test("edition adapter: tierLabel falls back to conviction when tier blob is absent", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "AMD", direction: "long", rank: 1, score: 50, conviction: "B",
+  });
+  assert.equal(play.tierLabel, "B");
+  assert.equal(play.tierFactors, null);
+});
+
 test("0DTE adapter: committed OPEN with aged-out gate context still passes the Hard gate (9-6b)", () => {
   // A refresh-lane committed play whose setup.gate aged to null must NOT render '✗ Hard gate'.
   const play = terminalPlayFromZeroDte({

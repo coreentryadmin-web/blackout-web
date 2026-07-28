@@ -4,6 +4,7 @@ import { authorizeCronOrTierApi } from "@/lib/market-api-auth";
 import { requireToolApi } from "@/lib/tool-access-server";
 import { getNighthawkMetrics, type NighthawkRecordSegment } from "@/features/nighthawk/lib/analytics";
 import type { NightHawkRecordSegmentWire } from "@/features/nighthawk/lib/types";
+import { wilsonLowerBound, wilsonUpperBound } from "@/lib/swing/calibration";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -29,6 +30,8 @@ function segmentWire(seg: NighthawkRecordSegment): NightHawkRecordSegmentWire {
     pulled: seg.pulled,
     stop_data_unavailable: seg.stop_data_unavailable,
     win_rate_pct: seg.win_rate != null ? pct(seg.win_rate) : null,
+    win_rate_ci_low_pct: seg.scoreable > 0 ? pct(wilsonLowerBound(seg.wins, seg.scoreable)) : null,
+    win_rate_ci_high_pct: seg.scoreable > 0 ? pct(wilsonUpperBound(seg.wins, seg.scoreable)) : null,
     avg_return_pct: seg.avg_return_pct != null ? Math.round(seg.avg_return_pct * 100) / 100 : null,
     low_n: seg.low_n,
   };
@@ -58,6 +61,12 @@ export async function GET(req: NextRequest) {
         total_resolved: metrics.total_resolved,
         pending_count: metrics.pending_count,
         win_rate_pct: pct(metrics.win_rate),
+        win_rate_ci_low_pct: metrics.segments.current.scoreable > 0
+          ? pct(wilsonLowerBound(metrics.segments.current.wins, metrics.segments.current.scoreable))
+          : null,
+        win_rate_ci_high_pct: metrics.segments.current.scoreable > 0
+          ? pct(wilsonUpperBound(metrics.segments.current.wins, metrics.segments.current.scoreable))
+          : null,
         profitable_rate_pct: pct(metrics.profitable_rate),
         avg_return_pct: Math.round(metrics.avg_return_pct * 100) / 100,
         methodology: metrics.methodology,
@@ -71,12 +80,17 @@ export async function GET(req: NextRequest) {
         debrief: metrics.debrief,
         by_conviction: metrics.by_conviction
           .filter((c) => c.n > 0)
-          .map((c) => ({
-            conviction: c.conviction,
-            n: c.n,
-            win_rate_pct: c.win_rate != null ? pct(c.win_rate) : null,
-            low_n: c.low_n,
-          })),
+          .map((c) => {
+            const wins = c.win_rate != null ? Math.round(c.win_rate * c.n) : 0;
+            return {
+              conviction: c.conviction,
+              n: c.n,
+              win_rate_pct: c.win_rate != null ? pct(c.win_rate) : null,
+              win_rate_ci_low_pct: c.n > 0 && c.win_rate != null ? pct(wilsonLowerBound(wins, c.n)) : null,
+              win_rate_ci_high_pct: c.n > 0 && c.win_rate != null ? pct(wilsonUpperBound(wins, c.n)) : null,
+              low_n: c.low_n,
+            };
+          }),
         available: metrics.total_resolved > 0,
       },
       { headers: NO_STORE_HEADERS }
