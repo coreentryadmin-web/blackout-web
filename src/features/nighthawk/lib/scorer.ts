@@ -54,6 +54,8 @@ export type ScoredCandidate = {
   fundamental_flags?: string[];
   trading_halt?: boolean;
   sector?: string;
+  /** Cross-edition governor penalty (points subtracted for repeat/loss-streak/sector-cap). */
+  govPenalty?: number;
 };
 
 export function regimeContextFromMarket(ctx: MarketWideContext): NightHawkRegimeContext {

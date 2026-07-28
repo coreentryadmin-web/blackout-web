@@ -294,4 +294,20 @@ describe("cross-edition-governor: second-wave boundaries", () => {
     );
     assert.equal(action.type, "pass", "AAPL has no history of its own");
   });
+
+  test("demoted candidates carry govPenalty on the ScoredCandidate for downstream sort", () => {
+    const ranked = [
+      fakeCandidate({ ticker: "AAPL", score: 60 }),
+      fakeCandidate({ ticker: "MSFT", score: 55, sector: "energy" }),
+    ];
+    const outcomes = [
+      fakeOutcome({ ticker: "AAPL", outcome: "target", edition_for: "2026-07-14" }),
+    ];
+    const result = applyCrossEditionGovernor(ranked, outcomes);
+    const aapl = result.ranked.find(c => c.ticker === "AAPL");
+    assert.ok(aapl, "AAPL should survive");
+    assert.equal(aapl!.govPenalty, GOV_REPEAT_PENALTY_PER_APPEARANCE);
+    const msft = result.ranked.find(c => c.ticker === "MSFT");
+    assert.equal(msft!.govPenalty, undefined, "unpenalized candidates have no govPenalty");
+  });
 });

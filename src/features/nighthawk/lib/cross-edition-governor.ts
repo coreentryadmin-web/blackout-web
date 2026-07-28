@@ -177,7 +177,8 @@ export function applyCrossEditionGovernor(
       case "demote": {
         demotedList.push({ ticker: candidate.ticker, penalty: action.penalty, reasons: action.reasons });
         notes.push(`GOV DEMOTE ${candidate.ticker} −${action.penalty}: ${action.reasons.join("; ")}`);
-        survivors.push({ scored: candidate, effectiveScore: candidate.score - action.penalty });
+        const demoted = { ...candidate, govPenalty: action.penalty };
+        survivors.push({ scored: demoted, effectiveScore: candidate.score - action.penalty });
         break;
       }
       case "pass":
