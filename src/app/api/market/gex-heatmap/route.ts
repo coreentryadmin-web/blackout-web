@@ -290,9 +290,18 @@ export async function GET(req: NextRequest) {
         }
       );
     }
+    // Near-term expiry scope — resolve ONCE for BOTH the WS wall override and the UW
+    // cross-validation oracle. heatmap.gex.call_wall/put_wall/flip are computed from Polygon's
+    // NEAR-TERM-ONLY expiries, so every ladder we overlay or compare MUST use that same set
+    // (FINDINGS 2026-07-24 fixed gex-positioning; THIS route's wall override was still unscoped
+    // — Thermal could paint far-OpEx walls next to a near-term flip during RTH).
+    const nearTermExpiries = resolveNearTermExpiriesForCrossValidation(heatmap);
+
     // Override heatmap wall labels with UW WS when live — same source Vector and Slayer use.
+    // SCOPED to near-term (mirrors getGexPositioning). Unscoped sum snaps walls to far monthly/
+    // quarterly OpEx strikes of larger magnitude (confirmed class of bug on positioning #223).
     if (heatmap.gex && hasLiveGexStrikeExpiry(ticker)) {
-      const wsLadder = getGexStrikeExpiryLadder(ticker);
+      const wsLadder = getGexStrikeExpiryLadder(ticker, nearTermExpiries);
       if (wsLadder) {
         const wsWalls = wallsFromStrikeTotals(strikeTotalsFromLadder(wsLadder.ladder));
         if (wsWalls.callWall != null) heatmap.gex.call_wall = wsWalls.callWall;
@@ -308,19 +317,10 @@ export async function GET(req: NextRequest) {
     const nighthawkContext = await getNightHawkContext(ticker);
 
     // UW cross-validation (WS-first, REST cached) — preset tickers only; never blocks response.
-    //
-    // heatmap.gex.call_wall/put_wall/flip are computed from Polygon's NEAR-TERM-ONLY expiries —
-    // scoping the UW oracle side to match is required. This is the SAME fix gex-positioning.ts
-    // got in PR #223 — this call site was missed, so the SPX matrix's "UW oracle diverges Npt"
-    // banner (fed by THIS endpoint's cross_validation, not gex-positioning's) kept showing
-    // scope-mismatch-inflated divergence (confirmed live 2026-07-01: 200-600pt here vs.
-    // single-digit-to-low-double-digit on the already-fixed gex-positioning path for the same
-    // moment — see docs/audit/FINDINGS.md). See resolveNearTermExpiriesForCrossValidation()'s
-    // doc comment for why this must read `heatmap.near_term_expiries`, not a bare
-    // `heatmap.expiries.slice(0, 8)`.
+    // Uses the SAME nearTermExpiries as the wall override above. Off-hours: WS idle + scoped
+    // REST fallback is intentionally skipped → cross_validation null (honest empty, not a bug).
     let cross_validation = null;
     if (isHeatmapPreset(ticker) && heatmap.gex) {
-      const nearTermExpiries = resolveNearTermExpiriesForCrossValidation(heatmap);
       cross_validation = await validateGexAgainstUW(
         ticker,
         {

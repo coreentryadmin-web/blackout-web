@@ -84,6 +84,25 @@ mock.module("../../../../features/vector/lib/vector-universe", {
     registerVectorUniverseView: () => {},
   },
 });
+
+/** Captures the expiry allow-list passed to getGexStrikeExpiryLadder (Thermal wall override). */
+let lastWsLadderAllowList: readonly string[] | undefined = undefined;
+let mockWsLive = false;
+let mockWsLadder: {
+  ladder: Map<number, number>;
+  updatedAt: number;
+} | null = null;
+
+mock.module("../../../../lib/ws/uw-socket", {
+  namedExports: {
+    joinGexStrikeExpiryTicker: () => {},
+    hasLiveGexStrikeExpiry: () => mockWsLive,
+    getGexStrikeExpiryLadder: (_ticker: string, allowedExpiries?: readonly string[]) => {
+      lastWsLadderAllowList = allowedExpiries;
+      return mockWsLadder;
+    },
+  },
+});
 // heatmap-allowlist is intentionally left real (its own header notes it's a pure data +
 // predicate module, safe outside a server bundle) — "ZZZZ" below is neither a preset nor an
 // overlay-allowlisted ticker, so cross_validation/overlays stay on their skip paths for free.
@@ -117,6 +136,7 @@ function liveHeatmap(overrides: Partial<GexHeatmap> = {}): GexHeatmap {
       regime: { posture: null, read: "No qualifying vanna data." },
     },
     shift: { available: false, status: "collecting" },
+    near_term_expiries: ["2026-07-10"],
     source: "polygon",
     data_delay: "15-min delayed",
     ...overrides,
@@ -306,5 +326,87 @@ describe("/api/market/gex-heatmap off-hours shift gate", () => {
     const body = await res.json();
     assert.equal(body.shift.available, false);
     assert.equal(body.shift.status, "collecting");
+  });
+});
+
+// Thermal WS wall override must pass near_term_expiries (same bug class as gex-positioning FINDINGS
+// 2026-07-24). Unscoped ladder → far-OpEx walls on the Thermal matrix during RTH.
+describe("/api/market/gex-heatmap WS wall override near-term scope", () => {
+  let GET: (req: NextRequest) => Promise<Response>;
+
+  before(async () => {
+    ({ GET } = await import("./route"));
+  });
+
+  test("live WS override passes near_term_expiries allow-list (not all-expiry)", async () => {
+    mockMarketOpen = true;
+    mockWsLive = true;
+    lastWsLadderAllowList = undefined;
+    const NEAR = "2026-07-10";
+    const FAR = "2026-09-19";
+    mockHeatmap = liveHeatmap({
+      underlying: "SPY",
+      expiries: [NEAR, FAR],
+      near_term_expiries: [NEAR],
+      gex: {
+        cells: { "100": { [NEAR]: 20 } },
+        strike_totals: { "100": 20, "95": -10 },
+        call_wall: 100,
+        put_wall: 95,
+        total: 10,
+        flip: 98,
+        regime: { flip: 98, posture: "long", read: "ok" },
+      },
+    });
+    // Ladder returns near-term walls; the assertion that matters is the allow-list arg.
+    mockWsLadder = {
+      ladder: new Map([
+        [100, 1_000_000],
+        [95, -1_000_000],
+      ]),
+      updatedAt: Date.now(),
+    };
+
+    const res = await GET(new NextRequest("http://localhost/api/market/gex-heatmap?ticker=SPY"));
+    assert.equal(res.status, 200);
+    assert.deepEqual(
+      lastWsLadderAllowList,
+      [NEAR],
+      "Thermal wall override must scope WS ladder to near_term_expiries"
+    );
+    const body = await res.json();
+    assert.equal(body.gex.call_wall, 100);
+    assert.equal(body.gex.put_wall, 95);
+
+    mockWsLive = false;
+    mockWsLadder = null;
+  });
+
+  test("when WS is not live, override is skipped and Polygon walls stand", async () => {
+    mockMarketOpen = true;
+    mockWsLive = false;
+    lastWsLadderAllowList = undefined;
+    mockWsLadder = {
+      ladder: new Map([[650, 99_000_000]]),
+      updatedAt: Date.now(),
+    };
+    mockHeatmap = liveHeatmap({
+      underlying: "SPY",
+      gex: {
+        cells: {},
+        strike_totals: { "100": 20, "95": -10 },
+        call_wall: 100,
+        put_wall: 95,
+        total: 10,
+        flip: 98,
+        regime: { flip: 98, posture: "long", read: "ok" },
+      },
+    });
+    const res = await GET(new NextRequest("http://localhost/api/market/gex-heatmap?ticker=SPY"));
+    const body = await res.json();
+    assert.equal(lastWsLadderAllowList, undefined, "ladder must not be consulted when WS idle");
+    assert.equal(body.gex.call_wall, 100);
+    assert.equal(body.gex.put_wall, 95);
+    mockWsLadder = null;
   });
 });
