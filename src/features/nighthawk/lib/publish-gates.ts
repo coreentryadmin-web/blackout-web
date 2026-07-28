@@ -74,7 +74,7 @@ export const GATE_TARGET_MAX_ATR_MULTIPLE = 3.5;
  *  promotable, recap-only published). A promoted target_unreachable play carries a
  *  gate_warning so the member sees the caveat; that is strictly better than an empty
  *  playbook. */
-export const NON_PROMOTABLE_GATE_CODES: ReadonlySet<NighthawkGateCode> = new Set([
+export const NON_PROMOTABLE_GATE_CODES: ReadonlySet<NighthawkGateCode> = new Set<NighthawkGateCode>([
   "band_detached",
   "geometry_unknown",
 ]);
