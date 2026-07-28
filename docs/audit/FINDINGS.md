@@ -5,6 +5,42 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-28 — [0DTE-funnel] CTO deep audit: why only 1 play today (prod still on old engine)
+
+**Severity.** P0 product — 2026-07-28 RTH produced **1 OPEN** (SPY FLOW @ 11:01 ET, +12% thesis_break).
+Post-close board: **8 setups, 100% FLOW**, 7× BLOCKED, record **35.6% WR / n=101**.
+
+**Live prod evidence (admin probe ~18:02 ET).**
+- Heat CLOSED; `upstream_ok=true`
+- Origin mix: `{ FLOW: 8 }` — 0 BREAKOUT / 0 PIN / 0 CONDOR
+- Gate mix: 7× BLOCKED (dominant codes: `late_afternoon` threshold **900=15:00**, `plan_quote_stale`,
+  `vix_elevated` VIX 19.05→score≥75, `score_floor` 65, `confluence_floor`)
+- Several "0DTE" cards are **1DTE** (MU/AMD/AAPL/NVDA/SMH)
+- PR #1199 **not deployed** — prod still `LATE_AFTERNOON=15:00`, `DISCOVERY/SCORER/GATE=v1`
+
+**Root causes — fixed on draft PR #1199 (not live yet).**
+| Cause | Fix on PR |
+|---|---|
+| FLOW-only merge v1 | MERGE v2 evidence-weighted |
+| BREAKOUT/PIN score floors too high | rescale + G-3 origin floors 58 |
+| NH edition tickers excluded | stop excluding |
+| Caps / chain timeout | widened |
+| G-14 at 15:00 (toxic 14–15:30) | → **14:00** |
+| Cutoff desync (audit find) | confluence + BREAKOUT/PIN RTH windows still 15:00 → aligned **14:00** |
+
+**NOT fixed by more commits (still open after merge).**
+1. **VIX≥17 elevated floor** (score 75 when not tape-aligned) — intentional, but starves elevated-VIX days
+2. **Edge / 35.6% WR** — funnel volume ≠ expectancy; needs RTH A/B after merge
+3. **1DTE pollution** on a 0DTE product surface
+4. **CONDOR path** still not producing visible seats
+5. **After-hours `plan_quote_stale`** — expected; not a RTH commit bug
+
+**Verdict.** We did **not** fix all root causes in production. The PR addresses the main starvation
+stack; merge + one RTH day is required to prove multi-rail commits. Cutoff desync closed in the
+same PR after this audit.
+
+**Status.** OPEN draft PR #1199.
+
 ## 2026-07-28 — [0DTE-UI] Command Deck UX honesty (session strip, hard gate, nav, defaults)
 
 **Severity.** P1 — live admin Chrome pass on prod `/nighthawk` (2026-07-28 ~17:50 ET) showed:

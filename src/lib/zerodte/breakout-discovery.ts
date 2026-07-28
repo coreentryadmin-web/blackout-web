@@ -30,11 +30,11 @@ import {
 } from "./breakout-source";
 import type { EnrichedZeroDteSetup } from "./board";
 
-/** RTH commit window in ET minutes-since-midnight: [9:30, 15:00). Outside it the board opens no
- *  fresh plays anyway (persistZeroDteScan cutoff), so the breakout source stays idle rather than
- *  risk reading a not-yet-live (pre-open) or completed (after-close) "today" grouped bar. */
+/** RTH commit window in ET minutes-since-midnight: [9:30, 14:00). Aligned with
+ *  NEW_PLAY_CUTOFF / G-14 (FINDINGS 2026-07-28) — discovering after the commit gate is closed
+ *  only wastes chain-fetch budget. Was left at 15:00 when the cutoff moved to 14:00. */
 const RTH_OPEN_ET_MINUTES = 9 * 60 + 30;
-const RTH_CUTOFF_ET_MINUTES = 15 * 60;
+const RTH_CUTOFF_ET_MINUTES = 14 * 60;
 
 /** Cap the per-ticker chain fetches per scan. The liquidity screen keeps a wider $-volume pool
  *  (`BREAKOUT_SCREEN_POOL`); this cap is applied AFTER re-ranking by momentum quality
@@ -81,8 +81,8 @@ export function rankMoversForChainFetch<T extends { gain: number; close_strength
  * PRIOR-DAY (carried-over / cached) snapshot served during RTH: its freshest bar is dated to an
  * earlier session, so `now − t` jumps past a full day.
  *
- * THRESHOLD RATIONALE: discoverBreakoutSetups only runs inside the RTH commit window [9:30, 15:00)
- * ET, so a genuine same-day live bar's `now − t` is at most ~15h (t ≈ midnight ET) — and up to ~20h
+ * THRESHOLD RATIONALE: discoverBreakoutSetups only runs inside the RTH commit window [9:30, 14:00)
+ * ET, so a genuine same-day live bar's `now − t` is at most ~14h (t ≈ midnight ET) — and up to ~20h
  * once the widest `t`-convention / DST skew is allowed for. A prior-day snapshot is ≥ ~33h old. 24h
  * sits cleanly between the two: strictly above any legitimate same-day age, strictly below any
  * prior-day bar. We fail CLOSED past it rather than fabricate confidence in an unverifiable bar.

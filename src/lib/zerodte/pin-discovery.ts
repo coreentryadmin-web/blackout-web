@@ -34,11 +34,11 @@ import {
 import { selectIronCondor } from "./iron-condor";
 import type { EnrichedZeroDteSetup } from "./board";
 
-/** RTH commit window in ET minutes-since-midnight: [9:30, 15:00) — same gate as the breakout source.
- *  Outside it the board opens no fresh plays anyway, and off-hours the GEX ladder / WS walls are
- *  idle, so the pin source stays idle rather than read a stale/cold dealer-positioning snapshot. */
+/** RTH commit window in ET minutes-since-midnight: [9:30, 14:00) — same gate as the breakout
+ *  source / NEW_PLAY_CUTOFF / G-14 (FINDINGS 2026-07-28). Outside it the board opens no fresh
+ *  plays, and off-hours the GEX ladder / WS walls are idle. */
 const RTH_OPEN_ET_MINUTES = 9 * 60 + 30;
-const RTH_CUTOFF_ET_MINUTES = 15 * 60;
+const RTH_CUTOFF_ET_MINUTES = 14 * 60;
 
 /** The curated LIQUID pin universe (see the file header). Index products first -- the deepest,
  *  most dealer-defended gamma and true daily 0DTE -- then mega-cap single names with high OI.
