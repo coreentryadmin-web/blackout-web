@@ -72,7 +72,7 @@ function swingLevels(bars: AggBar[], lookback = 30): { support: number[]; resist
   };
 }
 
-function classifySetup(params: {
+export function classifySetup(params: {
   price: number;
   ema20: number | null;
   ema50: number | null;
@@ -117,7 +117,13 @@ function classifySetup(params: {
   }
 
   if ((relVol ?? 0) >= 2) tags.push("volume expansion");
-  return tags.length ? tags : ["no dominant pattern"];
+  // No sentinel string here: an empty array is the correct "nothing notable" signal.
+  // The old `["no dominant pattern"]` fallback leaked verbatim into member-facing thesis
+  // text (e.g. "NVDA showing no dominant pattern in mixed trend") because
+  // buildDeterministicThesis() just joins setup_tags into prose — it never special-cased
+  // this diagnostic string. Callers already handle an empty array: they fall through to
+  // trend-only or generic-setup prose (deterministic-edition.ts buildDeterministicThesis).
+  return tags;
 }
 
 export async function buildTechnicalCard(ticker: string): Promise<TechnicalCard | null> {
