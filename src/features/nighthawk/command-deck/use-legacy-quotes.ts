@@ -119,9 +119,17 @@ export function overlayLegacyQuotes(
       ? `${p.recNote} — ${stockNote}`
       : stockNote;
 
+    // Stock-level P&L: how far the stock moved from entry mid in the play's direction.
+    const stockPnlPct = entryMid > 0
+      ? isLong
+        ? ((q.price - entryMid) / entryMid) * 100
+        : ((entryMid - q.price) / entryMid) * 100
+      : null;
+
     return {
       ...p,
       progress,
+      pnlPct: stockPnlPct != null && Number.isFinite(stockPnlPct) ? Number(stockPnlPct.toFixed(2)) : null,
       recNote: enrichedRecNote,
       markAsOf: q.asof,
       stockPrice: q.price,

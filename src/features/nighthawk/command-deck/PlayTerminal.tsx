@@ -644,12 +644,18 @@ function LegacyManageGeometry({ play }: { play: TerminalPlay }) {
 function LegacyPnlPanel({ play }: { play: TerminalPlay }) {
   const hasStock = play.stockPrice != null;
   const chg = play.stockChangePct;
+  const pnl = play.pnlPct;
   return (
     <>
       <div className="nh-deck-lab">Stock position</div>
-      <div className={clsx("nh-deck-pnlbig", (chg ?? 0) > 0 && "nh-deck-pos", (chg ?? 0) < 0 && "nh-deck-neg")}>
+      <div className={clsx("nh-deck-pnlbig", (pnl ?? chg ?? 0) > 0 && "nh-deck-pos", (pnl ?? chg ?? 0) < 0 && "nh-deck-neg")}>
         {hasStock ? `$${play.stockPrice!.toFixed(2)}` : "— awaiting quote"}
       </div>
+      {pnl != null && (
+        <div className="nh-deck-execline">
+          stock P&amp;L from entry <b className={clsx(pnl < 0 && "nh-deck-neg", pnl > 0 && "nh-deck-pos")}>{pnl >= 0 ? "+" : ""}{pnl.toFixed(1)}%</b>
+        </div>
+      )}
       {hasStock && chg != null && (
         <div className="nh-deck-execline">
           day change <b className={clsx(chg < 0 && "nh-deck-neg", chg > 0 && "nh-deck-pos")}>{chg >= 0 ? "+" : ""}{chg.toFixed(1)}%</b>
@@ -670,7 +676,7 @@ function LegacyPnlPanel({ play }: { play: TerminalPlay }) {
         </div>
       )}
       <div className="nh-deck-recnote" style={{ marginTop: 16 }}>
-        Legacy plays track the underlying stock — option P&amp;L requires a position ledger (not yet wired for Legacy). The entry premium is the suggested option price at publish time.
+        Stock-level P&amp;L from entry mid{pnl == null ? " — awaiting live quote" : ""}. Option P&amp;L requires a position ledger (not yet wired for Legacy).
       </div>
     </>
   );
