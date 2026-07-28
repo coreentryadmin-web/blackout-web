@@ -13,6 +13,7 @@ import { fetchNightHawkHorizons } from "@/lib/api";
 import type { NightHawkEdition } from "@/features/nighthawk/lib/types";
 import type { TerminalPlay } from "./types";
 import { useZeroDteLiveMarks, overlayLiveMarks } from "./use-live-marks";
+import { useLegacyStockQuotes, overlayLegacyQuotes } from "./use-legacy-quotes";
 import { zeroDteSources, isBoardDegraded, type BoardResp } from "./zerodte-sources";
 
 const json = (u: string) => fetch(u, { cache: "no-store", credentials: "same-origin" }).then((r) => (r.ok ? r.json() : null));
@@ -113,7 +114,8 @@ export function LegacyDeck({ edition }: { edition: NightHawkEdition | undefined 
     }
   }
 
-  const plays: TerminalPlay[] = (edition?.plays ?? []).slice(0, 5).map((p, i) => {
+  const rawPlays = (edition?.plays ?? []).slice(0, 5);
+  const basePlays: TerminalPlay[] = rawPlays.map((p, i) => {
     const tk = p.ticker?.toUpperCase();
     const confirm = confirmByTicker.get(tk);
     return terminalPlayFromEdition({
@@ -142,6 +144,13 @@ export function LegacyDeck({ edition }: { edition: NightHawkEdition | undefined 
       morning_reason: confirm?.reason ?? null,
     });
   });
+
+  // Live stock quotes — polls /api/market/quote for each Legacy ticker so the deck shows
+  // real-time stock-level progress toward target/stop (the "dynamic trade management" overlay).
+  const tickers = rawPlays.map((p) => p.ticker?.toUpperCase()).filter(Boolean);
+  const stockQuotes = useLegacyStockQuotes(tickers);
+  const plays = overlayLegacyQuotes(basePlays, stockQuotes, rawPlays);
+
   return (
     <CommandDeck
       plays={plays}

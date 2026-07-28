@@ -400,6 +400,16 @@ export interface EditionDeckSource {
   morning_reason?: string | null;
 }
 
+/** Parse a dollar-level string ("$205", "$205.50") to a numeric value. Used for target/stop
+ *  levels in Legacy plays so the terminal can show stock-price progress toward them. */
+export function parseLevelNum(s: string | null | undefined): number | null {
+  if (!s) return null;
+  const m = s.match(/[\d.]+/);
+  if (!m) return null;
+  const n = Number(m[0]);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 /** Parse the edition's "entry_range" string ("$192.50 – $195.00") into a representative
  *  midpoint entry price. Handles "$X", "$X – $Y", "$X-$Y" formats. */
 function parseEntryMid(range: string | null | undefined): number | null {

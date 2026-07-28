@@ -5,7 +5,9 @@ import {
   terminalPlayFromHorizon,
   terminalPlayFromEdition,
   managementFor,
+  parseLevelNum,
 } from "./adapters.ts";
+import { overlayLegacyQuotes } from "./use-legacy-quotes.ts";
 
 test("managementFor: RATCHET progress maps -50→0, +100→1; recommendations by P&L", () => {
   assert.equal(managementFor("RATCHET", "OPEN", -50).progress, 0);
@@ -771,4 +773,68 @@ test("0DTE adapter (Wave 3): scorecard with Wilson CI passes through unchanged",
   assert.equal(p.scorecard?.ciLow, 55);
   assert.equal(p.scorecard?.ciHigh, 70);
   assert.equal(p.scorecard?.n, 214);
+});
+
+// ── parseLevelNum ──────────────────────────────────────────────────────────────
+
+test("parseLevelNum: parses dollar-level strings", () => {
+  assert.equal(parseLevelNum("$205"), 205);
+  assert.equal(parseLevelNum("$205.50"), 205.5);
+  assert.equal(parseLevelNum("205"), 205);
+  assert.equal(parseLevelNum(null), null);
+  assert.equal(parseLevelNum(undefined), null);
+  assert.equal(parseLevelNum(""), null);
+  assert.equal(parseLevelNum("no numbers"), null);
+  assert.equal(parseLevelNum("$0"), null);
+});
+
+// ── overlayLegacyQuotes ────────────────────────────────────────────────────────
+
+test("overlayLegacyQuotes: computes LONG progress toward target", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "NVDA", direction: "long", rank: 1, score: 85,
+    entry_range: "$180 – $185", target: "$200", stop: "$170",
+  });
+  const quotes = new Map([["NVDA", { price: 190, changePct: 1.2, asof: "2026-07-28T14:00:00Z" }]]);
+  const originals = [{ ticker: "NVDA", target: "$200", stop: "$170", entry_range: "$180 – $185" }];
+  const [result] = overlayLegacyQuotes([play], quotes, originals);
+  // progress = (190 - 170) / (200 - 170) = 20/30 ≈ 0.667
+  assert.ok(result.progress != null);
+  assert.ok(Math.abs(result.progress! - 0.667) < 0.01);
+  assert.ok(result.recNote?.includes("NVDA $190.00"));
+  assert.equal(result.markAsOf, "2026-07-28T14:00:00Z");
+});
+
+test("overlayLegacyQuotes: computes SHORT progress toward target", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "TSLA", direction: "short", rank: 1, score: 80,
+    entry_range: "$250 – $255", target: "$230", stop: "$265",
+  });
+  const quotes = new Map([["TSLA", { price: 245, changePct: -1.5, asof: "2026-07-28T14:00:00Z" }]]);
+  const originals = [{ ticker: "TSLA", target: "$230", stop: "$265", entry_range: "$250 – $255" }];
+  const [result] = overlayLegacyQuotes([play], quotes, originals);
+  // progress = (265 - 245) / (265 - 230) = 20/35 ≈ 0.571
+  assert.ok(result.progress != null);
+  assert.ok(Math.abs(result.progress! - 0.571) < 0.01);
+});
+
+test("overlayLegacyQuotes: no-op when quotes are empty", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "AAPL", direction: "long", rank: 1, score: 75,
+    entry_range: "$190", target: "$210", stop: "$180",
+  });
+  const result = overlayLegacyQuotes([play], new Map(), [{ ticker: "AAPL", target: "$210", stop: "$180", entry_range: "$190" }]);
+  assert.equal(result[0].progress, null);
+});
+
+test("overlayLegacyQuotes: clamps progress to [0, 1]", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "AMD", direction: "long", rank: 1, score: 90,
+    entry_range: "$150", target: "$170", stop: "$140",
+  });
+  // Price above target → progress clamped to 1
+  const quotes = new Map([["AMD", { price: 180, changePct: 5.0, asof: "2026-07-28T14:00:00Z" }]]);
+  const originals = [{ ticker: "AMD", target: "$170", stop: "$140", entry_range: "$150" }];
+  const [result] = overlayLegacyQuotes([play], quotes, originals);
+  assert.equal(result.progress, 1);
 });

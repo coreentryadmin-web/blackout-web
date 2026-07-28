@@ -339,6 +339,18 @@ function ManagePanel({ play, nowMs }: { play: TerminalPlay; nowMs: number }) {
           the prod ratchet default) AND it is not a condor. */}
       {isTrimScale && <TrimScaleLadder play={play} />}
 
+      {/* Legacy stock-price progress track — rendered when the stock quote overlay computes progress
+          from the edition's target/stop levels. Shows where the underlying sits between stop and target. */}
+      {play.horizon === "LEGACY" && play.progress != null && (
+        <>
+          <div className="nh-deck-track">
+            <span className="lo">STOP</span><span className="hi">TARGET</span>
+            <span className="mk" style={{ left: `${Math.round(play.progress * 100)}%` }} />
+          </div>
+          <div className="nh-deck-recnote">Stock position: live underlying vs your stop and target levels.</div>
+        </>
+      )}
+
       {/* Legacy SCALE_OUT fallback (horizon lanes carry no resolved policy): the pre-Terminal-v2
           derive-from-status tranche view, unchanged. */}
       {!isCondor && play.exitModel === "SCALE_OUT" && !isTrimScale && (
