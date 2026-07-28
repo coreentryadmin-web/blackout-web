@@ -11,7 +11,7 @@ import { factorsFromFlowQuality } from "@/lib/explain/trade-explanation";
 import type { SwingSetupState } from "@/lib/swing/taxonomy";
 import { executableFill, type TerminalExitLadder } from "@/lib/zerodte/terminal-ladder";
 import { condorGeometryFrom, type CondorGeometry } from "@/lib/zerodte/condor-render";
-import type { WhyNow } from "@/lib/zerodte/why-now";
+import type { WhyNow, WhyNowReason } from "@/lib/zerodte/why-now";
 import type {
   DeckCondor,
   DeckDirection,
@@ -508,6 +508,32 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
   // but an absent score is different from a real 0.
   const rawScore = fin(src.score);
 
+  // Confluence: the edition's confirming_signals count maps directly to the terminal's confluence
+  // badge — same semantic (independent confirmations backing the setup).
+  const confluence = src.confirming_signals != null && src.confirming_signals > 0
+    ? src.confirming_signals : null;
+
+  // Discovery origin: derive from flow_streak_days and key_signal to light up origin badges.
+  const discoveryOrigin: string[] = [];
+  if (src.flow_streak_days != null && src.flow_streak_days > 0) discoveryOrigin.push("FLOW");
+  if (src.key_signal) {
+    const ks = src.key_signal.toLowerCase();
+    if (/breakout|break\s*above|break\s*below|technical/i.test(ks)) discoveryOrigin.push("BREAKOUT");
+    if (/catalyst|earnings|fda|guidance/i.test(ks)) discoveryOrigin.push("CATALYST");
+    if (/sweep|dark\s*pool|block/i.test(ks)) discoveryOrigin.push("SWEEP");
+  }
+
+  // "Why now" trigger: map key_signal to the why-now ribbon with the best-match reason.
+  let whyNow: WhyNow | null = null;
+  if (src.key_signal) {
+    const ks = src.key_signal.toLowerCase();
+    const reason: WhyNowReason = /breakout|break\s*above|break\s*below/i.test(ks) ? "breakout"
+      : /sweep|dark\s*pool|block/i.test(ks) ? "sweep"
+      : /accumulation|streak/i.test(ks) ? "accumulation"
+      : "flow_spike";
+    whyNow = { reason, label: src.key_signal };
+  }
+
   return {
     id: `LEGACY:${src.ticker}`,
     ticker: src.ticker.toUpperCase(),
@@ -538,5 +564,8 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
     rrRatio: fin(src.rr_ratio),
     entryCostPerContract: fin(src.entry_cost_per_contract),
     premiumCapOk: src.premium_cap_ok ?? null,
+    confluence,
+    discoveryOrigin: discoveryOrigin.length > 0 ? discoveryOrigin : undefined,
+    whyNow: whyNow ?? undefined,
   };
 }

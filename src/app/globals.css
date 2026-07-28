@@ -16104,6 +16104,8 @@ body::before {
 .nh-deck-cbadge.tier{color:var(--dk-green-hi);border-color:rgba(53,255,158,.4)}
 .nh-deck-cbadge.orig{color:var(--dk-green);border-color:rgba(53,255,158,.28)}
 .nh-deck-cbadge.stale{color:var(--dk-amber);border-color:rgba(255,184,77,.4)}
+.nh-deck-cbadge.conf{color:var(--dk-green-hi);border-color:rgba(53,255,158,.5);background:rgba(53,255,158,.08)}
+.nh-deck-cbadge.warn{color:var(--dk-amber);border-color:rgba(255,184,77,.5);background:rgba(255,184,77,.08)}
 .nh-deck-cchip{font-size:7.5px;font-weight:700;letter-spacing:.06em;padding:1px 4px;border-radius:2px;
   border:1px solid rgba(56,230,255,.3);color:var(--dk-cyan)}
 .nh-deck-cchip.ok{color:var(--dk-cyan);border-color:rgba(56,230,255,.3)}
