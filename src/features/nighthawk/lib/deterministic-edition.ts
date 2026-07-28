@@ -494,6 +494,19 @@ function buildPlay(
   // PR-N29: ensure the stock target makes the option profitable — a LONG target below
   // the call strike means the option expires worthless at "target", which is incoherent.
   // Push target to at least strike + 2×premium so the play shows real option P&L.
+  //
+  // PR-N29 fix (this change): this push was uncapped, and it compounds with the earlier
+  // S/R minimum-target-distance push in buildStockLevels() (1.5x ATR — see lines ~337-349
+  // above). Each push individually is reasonable, but stacked they can inflate the displayed
+  // R:R well past what the technical level or the option's actual strike/premium geometry
+  // supports — e.g. a target already pushed to 1.5x ATR could get pushed AGAIN to
+  // strike + 2*premium with no ceiling, sometimes doubling the effective reward distance.
+  // Fix: cap this option-coherence push at 25% beyond the *original* (pre-push) target
+  // distance from the entry-range midpoint. If strike+2*premium would require more than
+  // that, we keep the original target rather than let the option geometry hijack the R:R —
+  // the option coherence issue this push exists for is "target below strike" (economically
+  // broken), not "target isn't strike+2*premium exactly", so a bounded push still fixes the
+  // broken case without runaway inflation.
   if (contract) {
     const targetNum = Number(String(levels.target).replace(/[$,]/g, ""));
     if (Number.isFinite(targetNum)) {
@@ -501,10 +514,16 @@ function buildPlay(
       const minOptionTarget = isLong
         ? contract.strike + contract.premium * 2
         : contract.strike - contract.premium * 2;
+      const entryNums = String(levels.entry_range).match(/[\d.]+/g)?.map(Number).filter(Number.isFinite) ?? [];
+      const entryMid = entryNums.length >= 2 ? (entryNums[0] + entryNums[entryNums.length - 1]) / 2 : targetNum;
+      const origTargetDist = Math.abs(targetNum - entryMid);
+      const maxAllowedDist = origTargetDist * 1.25;
       if (isLong && targetNum < minOptionTarget) {
-        levels = { ...levels, target: minOptionTarget.toFixed(2) };
+        const pushed = Math.min(minOptionTarget, entryMid + maxAllowedDist);
+        if (pushed > targetNum) levels = { ...levels, target: pushed.toFixed(2) };
       } else if (!isLong && targetNum > minOptionTarget) {
-        levels = { ...levels, target: minOptionTarget.toFixed(2) };
+        const pushed = Math.max(minOptionTarget, entryMid - maxAllowedDist);
+        if (pushed < targetNum) levels = { ...levels, target: pushed.toFixed(2) };
       }
     }
   }
