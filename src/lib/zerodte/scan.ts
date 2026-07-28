@@ -8,10 +8,10 @@
 //
 // Mandate (product rule): this surface finds NEW plays. Index products (SPY/SPX/
 // NDX/QQQ…) ARE eligible — the dominance gate naturally admits them only when
-// their normally two-sided tape genuinely leans. Any ticker in the latest Night
-// Hawk edition is excluded — a name members already have is a repeat, not a find.
-// 0DTE discipline: no NEW plays after the 15:00 ET cutoff; everything is managed
-// to a close by 15:30 ET — nothing carries overnight.
+// their normally two-sided tape genuinely leans. Night Hawk edition tickers are
+// NOT excluded (2026-07-28 remodel — NH is next-day digest, not same-session).
+// 0DTE discipline: no NEW directional plays after the 14:00 ET cutoff; CONDOR may
+// still seat in the late window. Everything is managed to a close by 15:30 ET.
 
 import {
   dbConfigured,
@@ -63,6 +63,7 @@ import {
   polygonSpotTicker,
   buildOriginMaps,
   MERGE_POLICY_VERSION,
+  summarizeDiscoveryRailMix,
   type EarningsFlag,
   type EnrichedZeroDteSetup,
   type NewsHeat,
@@ -142,12 +143,12 @@ import {
 import { asManagedPnlPct, officialPlanPnlPct } from "./record";
 
 /** Leveraged/inverse wrappers and vol ETPs stay out (not directional single plays);
- *  index products (SPY/SPX/NDX/QQQ…) are eligible per product direction. Night
- *  Hawk's tickers are added per-scan. */
+ *  index products (SPY/SPX/NDX/QQQ…) are eligible per product direction. Night Hawk
+ *  edition tickers are listed as covered_elsewhere but remain eligible for 0DTE. */
 const STATIC_EXCLUDES = new Set<string>([...LEVERAGED_ETP_SET, "VIX", "UVXY"]);
 
 /** Top finds get the full Night Hawk dossier — capped to stay inside UW budgets. */
-const ENRICH_TOP_N = 5;
+const ENRICH_TOP_N = 12; // raised 5→12 so ranks 6–12 get dossier/Cortex inputs (was starving mid-board commits)
 const DOSSIER_CACHE_TTL_MS = 10 * 60 * 1000;
 /** How long a caller waits for a COLD dossier before serving the un-enriched setup.
  *  The cache loader keeps running after we stop waiting, so the next scan (~2 min)
@@ -224,7 +225,7 @@ export async function scanZeroDteBoard(flags?: {
     // max_dte: 1 is LOAD-BEARING — it scopes the premium ranking to 0-1DTE prints in
     // SQL. Without it the top-400 spans ALL expiries and heavy-day whale prints crowd
     // every 0DTE print out of the scan's input (live-reproduced: $3.1M AAPL stack → 0 setups).
-    fetchRecentFlows({ since_hours: 7, min_premium: 150_000, order: "premium", limit: 400, max_dte: 1 }).catch(
+    fetchRecentFlows({ since_hours: 7, min_premium: 100_000, order: "premium", limit: 500, max_dte: 1 }).catch(
       () => {
         upstreamOk = false;
         return [];
@@ -250,7 +251,9 @@ export async function scanZeroDteBoard(flags?: {
         .filter(Boolean)
     )
   );
-  const excludes = new Set<string>([...STATIC_EXCLUDES, ...nighthawkCovered]);
+  // NH edition tickers are surfaced as covered_elsewhere but NOT excluded from discovery
+  // (2026-07-28): excluding them removed the overnight playbook's best names from 0DTE.
+  const excludes = new Set<string>([...STATIC_EXCLUDES]);
 
   // Always collected (cheap — a handful of array pushes per candidate ticker);
   // whether it's ever WRITTEN anywhere is a separate decision made by the caller
@@ -271,7 +274,7 @@ export async function scanZeroDteBoard(flags?: {
       open_interest: f.open_interest,
       alerted_at: f.alerted_at,
     })),
-    { maxSetups: 10, excludeTickers: excludes, nowMs: Date.now(), todayYmd: today, rejections }
+    { maxSetups: 20, excludeTickers: excludes, nowMs: Date.now(), todayYmd: today, rejections }
   );
   const candidateDerivedAt = Date.now();
 
@@ -301,7 +304,8 @@ export async function scanZeroDteBoard(flags?: {
   // Flag-gated via ZERODTE_WHOLE_MARKET + ZERODTE_SRC_BREAKOUT (default ON; set to "0" to disable). When enabled, the
   // whole-market breakout screen emits its own candidates carrying discovery_origin ["BREAKOUT"];
   // they merge with the flow candidates BY TICKER preserving origin as a SET (a shared ticker →
-  // ["FLOW","BREAKOUT"]), never a collapsed pool, and no corroboration score boost (evidence-only).
+  // ["FLOW","BREAKOUT"]), never a collapsed pool. Merge policy v2: same-direction corroboration
+  // boosts score; opposing directions are evidence-weighted (higher score owns the slot).
   // Merged BEFORE the accumulation overlay + contract-attach + gate/Cortex stack so every breakout
   // candidate runs the SAME mandatory contract-attach + shared hard gates + Cortex as a flow one.
   // The IO orchestration is dynamic-imported so the flow-only board never loads the whole-market
@@ -325,10 +329,13 @@ export async function scanZeroDteBoard(flags?: {
       const breakoutSetups = breakoutOutcome.setups;
       if (breakoutSetups.length > 0) {
         mergeDiscoveryOrigins(setups, breakoutSetups);
-        // Keep the array score-ranked so the governor's concurrency budget still goes to the best
-        // finds (attachGateVerdicts commits best-first). Enrichment already happened per-setup, so
-        // re-ordering here is safe.
-        setups.sort((a, b) => b.score - a.score);
+        // Prefer true 0DTE over 1DTE, then score — concurrency budget goes to best same-day finds.
+        setups.sort((a, b) => {
+          const ha = a.contract_horizon === "ZERO_DTE" ? 1 : 0;
+          const hb = b.contract_horizon === "ZERO_DTE" ? 1 : 0;
+          if (ha !== hb) return hb - ha;
+          return b.score - a.score;
+        });
       }
     } catch (err) {
       console.warn("[zerodte-breakout] discovery failed — flow-only board this cycle:", err);
@@ -339,9 +346,9 @@ export async function scanZeroDteBoard(flags?: {
   // Flag-gated via ZERODTE_WHOLE_MARKET + ZERODTE_SRC_PIN (default ON; set to "0" to disable). When enabled, a liquid-universe
   // screen emits mean-reversion candidates — names pinned between dominant dealer GEX walls in a
   // long-gamma tape — as directional-FADE setups carrying discovery_origin ["PIN"]. They merge BY
-  // TICKER preserving origin as a SET (a shared ticker → e.g. ["FLOW","PIN"]), never a collapsed pool,
-  // and no corroboration score boost (evidence-only). Merged here, AFTER deriveZeroDteSetups, so the
-  // FLOW evidence gates structurally never see them; each pin candidate runs the SAME mandatory
+  // TICKER preserving origin as a SET (a shared ticker → e.g. ["FLOW","PIN"]), never a collapsed
+  // pool. Merge policy v2 (same as breakout). Merged here, AFTER deriveZeroDteSetups, so the FLOW
+  // evidence gates structurally never see them; each pin candidate runs the SAME mandatory
   // contract-attach + shared hard gates + Cortex as a flow one. The fade direction is only ever
   // emitted in a genuine long-gamma RANGE, so G-1 (tape-alignment) passes cleanly in the flat-tape
   // case and correctly culls a fade that fights a trending broad tape (see pin-source.ts's G-1 note).
@@ -358,11 +365,27 @@ export async function scanZeroDteBoard(flags?: {
       });
       if (pinSetups.length > 0) {
         mergePinOrigins(setups, pinSetups);
-        setups.sort((a, b) => b.score - a.score);
+        // Prefer true 0DTE over 1DTE when scores tie — the board is a 0DTE product.
+        setups.sort((a, b) => {
+          const ha = a.contract_horizon === "ZERO_DTE" ? 1 : 0;
+          const hb = b.contract_horizon === "ZERO_DTE" ? 1 : 0;
+          if (ha !== hb) return hb - ha;
+          return b.score - a.score;
+        });
       }
     } catch (err) {
       console.warn("[zerodte-pin] discovery failed — flow-only board this cycle:", err);
     }
+  }
+
+  // Observability: surface the post-merge rail mix every cycle so a FLOW-only board is diagnosable
+  // from logs (off-hours BREAKOUT/PIN skips vs. merge swallowing every non-flow name).
+  {
+    const mix = summarizeDiscoveryRailMix(setups);
+    console.info(
+      `[zerodte-scan] discovery rail mix total=${mix.total} FLOW=${mix.FLOW} BREAKOUT=${mix.BREAKOUT} ` +
+        `PIN=${mix.PIN} multi=${mix.multi} merge_policy=${MERGE_POLICY_VERSION}`
+    );
   }
 
   // Multi-day flow-accumulation memory: attach whether each setup's direction is confirmed by
@@ -669,6 +692,8 @@ async function attachGateVerdicts(
       play_type: s.play_type,
       condorPlan: s.condor_plan ?? null,
       score: s.score,
+      discovery_origin: s.discovery_origin,
+      contractHorizon: s.contract_horizon ?? null,
       nowEtMinutes,
       nowMs,
       bias,
@@ -781,7 +806,7 @@ async function attachContractPlans(setups: EnrichedZeroDteSetup[]): Promise<void
     fetchOptionsUnifiedSnapshot(Array.from(occOf.values())).catch(
       () => new Map<string, import("@/lib/providers/options-snapshot").OptionSnapshot>()
     ),
-    2_500
+    5_000 // raised 2.5s→5s — batch snapshot misses were dropping otherwise-committable plans
   );
   if (!snaps) return;
   // Single cycle clock for the whole plan-attach pass so every contract's quote age is measured
@@ -829,9 +854,10 @@ async function attachContractPlans(setups: EnrichedZeroDteSetup[]): Promise<void
  *    unreadable) fails closed, and an unreadable committed set fails the whole
  *    persist closed (can't tell fresh from committed → nothing new may print).
  *
- *  After the 15:00 ET cutoff only EXISTING plays are refreshed — a fresh flag in
- *  power hour never opens a new 0DTE play (this predates and stays alongside the
- *  gate stack's own opening-window rule). */
+ *  After the 14:00 ET directional cutoff only EXISTING directional plays are refreshed —
+ *  a fresh directional flag past NEW_PLAY_CUTOFF never opens. CONDOR is exempt (matches
+ *  G-14 + late-theta sell design): fresh index credit seats may still commit when PIN
+ *  discovery finds them in the post-cutoff window. */
 export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Promise<number> {
   if (!dbConfigured() || setupsIn.length === 0) return 0;
   // HORIZON INTEGRITY fail-closed guard (PR-1, design Q2). The BREAKOUT/PIN/condor pickers are
@@ -859,7 +885,13 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
   const existing = new Set(existingRows.map((r) => r.ticker.toUpperCase()));
 
   const refresh = setups.filter((s) => existing.has(s.ticker.toUpperCase()));
-  const freshCandidates = pastCutoff ? [] : setups.filter((s) => !existing.has(s.ticker.toUpperCase()));
+  // Past directional cutoff: only fresh CONDOR may open (G-14 exempts credit seats; discovery
+  // continues for condor-eligible roots only). Directional fresh → empty.
+  const freshCandidates = setups.filter((s) => {
+    if (existing.has(s.ticker.toUpperCase())) return false;
+    if (!pastCutoff) return true;
+    return s.play_type === "CONDOR";
+  });
 
   const committedFresh: EnrichedZeroDteSetup[] = [];
   const gateRejections: import("./board").ZeroDteGateRejection[] = [];

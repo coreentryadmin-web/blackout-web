@@ -636,10 +636,11 @@ export function reconstructTrimScaleExecutableFromBars(
 // the premium bounces). 0DTE discipline: no new plays after the entry cutoff,
 // everything closes by the time stop — nothing is ever carried overnight.
 
-/** No NEW plays after 15:00 ET; existing plays are managed to exit by the time stop.
+/** No NEW plays after 14:00 ET; existing plays are managed to exit by the time stop.
  *  Gate G-14 is the primary defense (directional only, condor-exempt); this persist-layer
- *  cutoff is the backstop. */
-export const NEW_PLAY_CUTOFF_ET_MINUTES = 15 * 60;
+ *  cutoff is the backstop. Aligned with LATE_AFTERNOON_BLOCK_ET_MINUTES (FINDINGS 2026-07-28:
+ *  late 14:00–15:30 bucket = 14.3% WR / −19% avg). */
+export const NEW_PLAY_CUTOFF_ET_MINUTES = 14 * 60;
 
 export type PlayStatus = "OPEN" | "HOLD" | "TRIM" | "CLOSED";
 

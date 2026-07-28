@@ -34,11 +34,13 @@ import {
 import { selectIronCondor } from "./iron-condor";
 import type { EnrichedZeroDteSetup } from "./board";
 
-/** RTH commit window in ET minutes-since-midnight: [9:30, 15:00) — same gate as the breakout source.
- *  Outside it the board opens no fresh plays anyway, and off-hours the GEX ladder / WS walls are
- *  idle, so the pin source stays idle rather than read a stale/cold dealer-positioning snapshot. */
+/** Directional PIN window in ET minutes-since-midnight: [9:30, 14:00) — same gate as BREAKOUT /
+ *  NEW_PLAY_CUTOFF / G-14. After 14:00, discovery continues ONLY for condor-eligible index roots
+ *  until CONDOR_LATE_CUTOFF (G-14 exempts credit seats; persist mirrors that — FINDINGS 2026-07-28). */
 const RTH_OPEN_ET_MINUTES = 9 * 60 + 30;
-const RTH_CUTOFF_ET_MINUTES = 15 * 60;
+const RTH_CUTOFF_ET_MINUTES = 14 * 60;
+/** Stop hunting new condors into the last half-hour — liquidity + settlement noise. */
+const CONDOR_LATE_CUTOFF_ET_MINUTES = 15 * 60 + 30;
 
 /** The curated LIQUID pin universe (see the file header). Index products first -- the deepest,
  *  most dealer-defended gamma and true daily 0DTE -- then mega-cap single names with high OI.
@@ -65,9 +67,12 @@ export function resolvePinUniverse(): string[] {
   return [...DEFAULT_PIN_UNIVERSE];
 }
 
-/** Cap the per-ticker chain fetches per scan — the universe is already small + curated; this bounds
- *  the work even if the universe is widened via the env override. */
+/** Cap how many PIN setups are RETURNED per scan (board surface + merge budget). */
 export const PIN_MAX_CANDIDATES = 8;
+/** Cap how many tickers we EVALUATE (GEX + chain) before ranking — larger than the return cap so
+ *  we pick the best regimes, not the first N list-order names (FINDINGS 2026-07-28). Condor-eligible
+ *  roots are always included in the eval window first. */
+export const PIN_EVAL_CAP = 20;
 
 /** Calendar days between two YYYY-MM-DD dates (UTC-noon anchored) — local copy so this module
  *  doesn't reach into pin-source's private helper. */
@@ -161,14 +166,34 @@ export async function discoverPinSetups(opts: {
   const { today, nowEtMinutes, excludeTickers } = opts;
   const maxCandidates = opts.maxCandidates ?? PIN_MAX_CANDIDATES;
 
-  if (nowEtMinutes < RTH_OPEN_ET_MINUTES || nowEtMinutes >= RTH_CUTOFF_ET_MINUTES) {
-    console.info("[zerodte-pin] outside the RTH commit window — SKIP (dealer-positioning read idle)");
+  if (nowEtMinutes < RTH_OPEN_ET_MINUTES) {
+    console.info("[zerodte-pin] before RTH open — SKIP (dealer-positioning read idle)");
+    return [];
+  }
+  const lateCondorOnly =
+    nowEtMinutes >= RTH_CUTOFF_ET_MINUTES && nowEtMinutes < CONDOR_LATE_CUTOFF_ET_MINUTES;
+  if (nowEtMinutes >= RTH_CUTOFF_ET_MINUTES && !lateCondorOnly) {
+    console.info("[zerodte-pin] past condor late window — SKIP (dealer-positioning read idle)");
+    return [];
+  }
+  if (lateCondorOnly && !condorFlagEnabled()) {
+    console.info("[zerodte-pin] past directional cutoff and CONDOR disabled — SKIP");
     return [];
   }
 
-  const universe = resolvePinUniverse()
-    .filter((t) => !excludeTickers.has(t.toUpperCase()))
-    .slice(0, maxCandidates);
+  let universe = resolvePinUniverse().filter((t) => !excludeTickers.has(t.toUpperCase()));
+  if (lateCondorOnly) {
+    // Post-14:00: only cash-settled index roots can still open (G-14 / persist CONDOR exemption).
+    universe = universe.filter((t) => condorEligibleTicker(t));
+  } else {
+    // Condor-eligible roots first so SPX/NDX never fall out of a truncated env override list,
+    // then evaluate up to PIN_EVAL_CAP and rank by score before returning top maxCandidates.
+    const roots = universe.filter((t) => condorEligibleTicker(t));
+    const others = universe.filter((t) => !condorEligibleTicker(t));
+    universe = [...roots, ...others];
+  }
+  const evalCap = Math.max(maxCandidates, PIN_EVAL_CAP);
+  universe = universe.slice(0, evalCap);
   if (universe.length === 0) {
     console.info("[zerodte-pin] pin universe empty after excludes — SKIP");
     return [];
@@ -235,6 +260,9 @@ export async function discoverPinSetups(opts: {
           if (condorSetup) return condorSetup;
         }
 
+        // Past directional cutoff: never open a directional PIN fade — late window is CONDOR-only.
+        if (lateCondorOnly) return null;
+
         // Pick the ATM fade contract off the live chain (call for a long/up fade, put for short/down).
         const side = regime.fadeDirection === "long" ? "call" : "put";
         const contract = pickAtmPinContract(rows, chain.spot, today, side);
@@ -247,11 +275,16 @@ export async function discoverPinSetups(opts: {
     })
   );
 
-  const setups = built.filter((s): s is EnrichedZeroDteSetup => s != null);
+  const setups = built
+    .filter((s): s is EnrichedZeroDteSetup => s != null)
+    .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+    .slice(0, maxCandidates);
   if (setups.length === 0) {
     console.info(`[zerodte-pin] scanned ${universe.length} liquid name(s), no clean pin regime — SKIP`);
     return [];
   }
-  console.info(`[zerodte-pin] built ${setups.length} pin setup(s) from ${universe.length} liquid name(s)`);
+  console.info(
+    `[zerodte-pin] built ${setups.length} pin setup(s) from ${universe.length} evaluated name(s) (ranked by score)`
+  );
   return setups;
 }

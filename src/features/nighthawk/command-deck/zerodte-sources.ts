@@ -17,6 +17,7 @@ export interface BoardResp {
   setups?: Array<Record<string, unknown>>;
   ledger?: Array<Record<string, unknown>>;
   allocation?: Array<{ ticker: string; role: string; sizing: string; reasons?: string[] }>;
+  session?: { heat?: { state?: string | null } | null; date?: string; trading_day?: boolean } | null;
 }
 
 /** Ledger statuses that represent a WORKING (member-held) position — always rendered (9-4). */
@@ -26,6 +27,12 @@ export const WORKING_STATUSES = new Set(["OPEN", "HOLD", "TRIM"]);
  *  `resp == null` is the first-load state (still fetching) — not degraded. */
 export function isBoardDegraded(resp: BoardResp | null | undefined): boolean {
   return resp != null && (resp.available === false || resp.degraded === true || resp.upstream_ok === false);
+}
+
+/** Pull a finite number from a nested plan blob (setup.plan / ledger.plan_json). */
+function planNum(plan: Record<string, unknown> | null | undefined, key: string): number | null {
+  const v = plan?.[key];
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
 
 /** Build one deck source from a setup (may be null for a ledger-only open position) + its ledger row. */
@@ -38,7 +45,34 @@ function sourceFrom(
   const gateVerdict = (s?.gate as { verdict?: string } | undefined)?.verdict;
   // A committed play's ledger status wins; else the fresh find's gate verdict decides (BLOCKED → SKIP).
   const status = (lg?.status as string) ?? (gateVerdict === "BLOCKED" ? "SKIP" : "WATCH");
+  // Plan quote (WATCH setups): the board carries plan.mark/bid/ask/occ on every enriched find.
+  // Without plumbing these, the right-rail mark/book stay "—" until a fresh SSE tick — and after
+  // hours the marks lane is intentionally stale/null, so the three panels looked completely static.
+  const setupPlan = (s?.plan as Record<string, unknown> | null | undefined) ?? null;
+  const ledgerPlan =
+    (lg?.plan_json as Record<string, unknown> | null | undefined) ??
+    (lg?.plan as Record<string, unknown> | null | undefined) ??
+    null;
+  const occ =
+    (typeof lg?.occ === "string" && lg.occ.length > 0 ? lg.occ : null) ??
+    (typeof setupPlan?.occ === "string" && setupPlan.occ.length > 0 ? (setupPlan.occ as string) : null) ??
+    (typeof ledgerPlan?.occ === "string" && ledgerPlan.occ.length > 0 ? (ledgerPlan.occ as string) : null);
+  const planMark = planNum(setupPlan, "mark") ?? planNum(ledgerPlan, "mark");
+  const planBid = planNum(setupPlan, "bid") ?? planNum(ledgerPlan, "bid");
+  const planAsk = planNum(setupPlan, "ask") ?? planNum(ledgerPlan, "ask");
+  const lastMark = (lg?.last_mark as number) ?? planMark;
+  const bid = (lg?.bid as number) ?? planBid;
+  const ask = (lg?.ask as number) ?? planAsk;
+  // SYNC badge: ledger already flags mark_is_sync when the live lane didn't serve a timestamp.
+  // A WATCH mark that came ONLY from setup.plan (no ledger last_mark / no mark_as_of) is also
+  // unknown-age sync — never paint it as a 1s-fresh LIVE pulse.
+  const markAsOf = (lg?.mark_as_of as string) ?? null;
+  const markIsSync =
+    (lg?.mark_is_sync as boolean) ??
+    (lastMark != null && markAsOf == null ? true : null);
+
   // A ledger-only open position (no fresh setup) still needs direction/strike so the card isn't blank.
+  // Carry OCC onto a synthesized plan so the adapter + SSE overlay can key the contract.
   const setup =
     (s as ZeroDteDeckSource["setup"]) ??
     (lg
@@ -46,6 +80,16 @@ function sourceFrom(
           direction: lg.direction as "long" | "short",
           top_strike: (lg.top_strike as number) ?? null,
           dte: null,
+          plan: occ
+            ? {
+                occ,
+                mark: planMark,
+                bid: planBid,
+                ask: planAsk,
+                stop_premium: planNum(ledgerPlan, "stop_premium"),
+                target_premium: planNum(ledgerPlan, "target_premium"),
+              }
+            : null,
         } as ZeroDteDeckSource["setup"])
       : null);
   // Terminal v2 additive block — read the real ladder + live greeks/book/executable + origin/tier
@@ -59,18 +103,19 @@ function sourceFrom(
     score: (s?.score as number) ?? null,
     live_pnl_pct: (lg?.live_pnl_pct as number) ?? null,
     entry_premium: (lg?.entry_premium as number) ?? null,
-    last_mark: (lg?.last_mark as number) ?? null,
+    last_mark: lastMark,
     peak_premium: (lg?.peak_premium as number) ?? null,
     trough_premium: (lg?.trough_premium as number) ?? null,
     setup,
     allocation,
     exit_policy: (lg?.exit_policy as ZeroDteDeckSource["exit_policy"]) ?? null,
-    bid: (lg?.bid as number) ?? null,
-    ask: (lg?.ask as number) ?? null,
+    bid,
+    ask,
     live_pnl_pct_exec: (lg?.live_pnl_pct_exec as number) ?? null,
     greeks: (lg?.greeks as ZeroDteDeckSource["greeks"]) ?? null,
-    mark_as_of: (lg?.mark_as_of as string) ?? null,
-    mark_is_sync: (lg?.mark_is_sync as boolean) ?? null,
+    mark_as_of: markAsOf,
+    mark_is_sync: markIsSync,
+    occ,
     discovery_origin: (lg?.discovery_origin as string[]) ?? (s?.discovery_origin as string[]) ?? null,
     tier: (lg?.tier as ZeroDteDeckSource["tier"]) ?? null,
     confluence: confl?.confirmations ?? null,

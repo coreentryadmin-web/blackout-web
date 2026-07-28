@@ -72,6 +72,12 @@ export type ZeroDteBoardLedgerRow = {
   flow_avg_fill: number | null;
   status: string | null;
   last_mark: number | null;
+  /** OCC symbol pinned on the row's plan (`plan_json.occ`) — the Command Deck keys the ~1s
+   *  live-marks SSE overlay by this. Null when the commit never froze a contract (legacy /
+   *  pre-plan rows). Additive: the terminal already falls back to `setup.plan.occ` for WATCH
+   *  finds; without this on a ledger-only working row the right-rail mark/P&L/greeks freeze
+   *  at the 5s board poll (or "—") because overlayLiveMarks can't match an OCC. */
+  occ: string | null;
   /** Latched premium extremes since entry — the PnL panel's peak/trough excursion (the server tracks
    *  these via advancePlayLatch; without them on the payload the terminal's Peak/Trough render "—"). */
   peak_premium: number | null;
@@ -359,6 +365,7 @@ function mapLedgerRow(
     flow_avg_fill: r.flow_avg_fill,
     status: r.status,
     last_mark: lastMark,
+    occ: typeof r.plan_json?.occ === "string" && r.plan_json.occ.length > 0 ? r.plan_json.occ : null,
     peak_premium: r.peak_premium,
     trough_premium: r.trough_premium,
     // Structure-aware: seller-framed for a credit condor, long-framed (with the stopped stop-pin)
@@ -763,7 +770,7 @@ export async function zeroDtePlaysForLargo(): Promise<Record<string, unknown>> {
   // yet-ledgered) finds — without it, a find surfacing during POWER_HOUR/LATE_SESSION
   // (or after CLOSED, before the ledger sync catches up) got told to Largo as an
   // actionable play even though the product rule (this function's own `rules` string
-  // below) is "no new plays after 15:00 ET" and the board itself would show it as
+  // below) is "no new directional plays after 14:00 ET" and the board itself would show it as
   // SKIP/watch-only. A COMMITTED ticker never re-enters this lane (one-way commit
   // door): the ledger row above is the only presentation of that ticker, and the
   // dedupe is case-insensitive so a casing drift can never double-present a play.
@@ -832,6 +839,6 @@ export async function zeroDtePlaysForLargo(): Promise<Record<string, unknown>> {
     plays,
     fresh_finds: fresh,
     excluded_covered_elsewhere: board.covered_elsewhere,
-    rules: "0DTE discipline: no new plays after 15:00 ET; stop -50%, trim +100%, hard exit 15:30 ET.",
+    rules: "0DTE discipline: no new directional plays after 14:00 ET; stop -50%, trim +100%, hard exit 15:30 ET.",
   };
 }

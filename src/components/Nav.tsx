@@ -13,6 +13,7 @@ import { useFocusTrap } from "@/components/ui";
 import { PushNotificationToggle } from "@/components/PushNotificationToggle";
 import { isIosAppShell } from "@/lib/ios-app-shell";
 import { getIosToolNavLabel } from "@/lib/ios-tool-routes";
+import { readClientSignedIn } from "@/components/landing/NavAuthLinks";
 
 type Accent = "green" | "purple" | "orange" | "blue" | "red" | "teal";
 type FeatureLink = { href: string; label: string; sub: string; accent: Accent };
@@ -95,11 +96,30 @@ function FeatureCards({
   );
 }
 
-export function Nav({ lockedTools = [] }: { lockedTools?: ToolKey[] }) {
+export function Nav({
+  lockedTools = [],
+  initialSignedIn = false,
+}: {
+  lockedTools?: ToolKey[];
+  /** Server auth() guess from (site)/layout — seeds chrome before Clerk JS hydrates so a
+   *  premium desk page never flashes "Sign In" while content is already gated. */
+  initialSignedIn?: boolean;
+}) {
   const path = usePathname();
   const isHome = path === "/";
-  const { isSignedIn, isLoaded, userId } = useAppAuth();
+  const { isSignedIn: clerkSignedIn, isLoaded, userId } = useAppAuth();
   const reduced = useReducedMotion();
+
+  // Cookie self-heal (same `__client_uat` path as marketing NavAuthLinks): desk content can be
+  // cookie-authed while Clerk client still reports signed-out → "Sign In" over a live /nighthawk.
+  const [cookieSignedIn, setCookieSignedIn] = useState<boolean | null>(null);
+  useEffect(() => {
+    setCookieSignedIn(readClientSignedIn());
+  }, []);
+  const isSignedIn =
+    Boolean(clerkSignedIn) ||
+    cookieSignedIn === true ||
+    (!isLoaded && initialSignedIn);
 
   const [isAdmin, setIsAdmin] = useState(false);
   const [scrolled, setScrolled] = useState(false);
@@ -344,7 +364,7 @@ export function Nav({ lockedTools = [] }: { lockedTools?: ToolKey[] }) {
             {mobileOpen ? "✕" : "☰"}
           </button>
 
-          {isLoaded && !isSignedIn && (
+          {!isSignedIn && isLoaded && (
             <>
               <Link href="/sign-in" className="nav-signin font-syne hidden sm:inline">
                 Sign In
@@ -354,13 +374,20 @@ export function Nav({ lockedTools = [] }: { lockedTools?: ToolKey[] }) {
               </Link>
             </>
           )}
-          {isLoaded && isSignedIn && (
+          {isSignedIn && isLoaded && clerkSignedIn && (
             <div className="flex items-center gap-2">
               <span className="nav-push-slot">
                 <PushNotificationToggle compact />
               </span>
               <AuthUserMenu />
             </div>
+          )}
+          {/* Cookie/server say signed-in but Clerk JS hasn't confirmed yet (or disagrees) —
+              never fall back to "Sign In"; offer the desk instead. */}
+          {isSignedIn && !(isLoaded && clerkSignedIn) && (
+            <Link href="/dashboard" className="nav-join font-syne" prefetch={false}>
+              Open desk →
+            </Link>
           )}
         </div>
       </div>
@@ -435,7 +462,7 @@ export function Nav({ lockedTools = [] }: { lockedTools?: ToolKey[] }) {
               )}
               <div className="nav-sheet-divider" />
               <div className="nav-sheet-auth">
-                {isLoaded && !isSignedIn && (
+                {!isSignedIn && isLoaded && (
                   <>
                     <Link href="/sign-in" className="nav-signin font-syne" onClick={() => setMobileOpen(false)}>
                       Sign In
@@ -445,11 +472,16 @@ export function Nav({ lockedTools = [] }: { lockedTools?: ToolKey[] }) {
                     </Link>
                   </>
                 )}
-                {isLoaded && isSignedIn && (
+                {isSignedIn && isLoaded && clerkSignedIn && (
                   <div className="flex items-center gap-2">
                     <PushNotificationToggle compact />
                     <AuthUserMenu />
                   </div>
+                )}
+                {isSignedIn && !(isLoaded && clerkSignedIn) && (
+                  <Link href="/dashboard" className="nav-join font-syne w-full justify-center" prefetch={false} onClick={() => setMobileOpen(false)}>
+                    Open desk →
+                  </Link>
                 )}
               </div>
             </motion.div>

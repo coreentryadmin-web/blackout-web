@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   assessGroupedBarFreshness,
   discoverBreakoutSetups,
+  rankMoversForChainFetch,
   BREAKOUT_MAX_BAR_AGE_MS,
   type BreakoutDiscoveryDeps,
 } from "./breakout-discovery";
@@ -20,7 +21,7 @@ import type { BreakoutMover } from "@/features/nighthawk/lib/candidates";
 //   (2) a FRESH but empty market            → normal empty (status "ok"), DISTINCT from stale.
 //   (3) FRESH data with movers              → normal candidates.
 
-const RTH_NOW_ET_MINUTES = 11 * 60; // 11:00 ET — inside the [9:30, 15:00) commit window.
+const RTH_NOW_ET_MINUTES = 11 * 60; // 11:00 ET — inside the [9:30, 14:00) commit window.
 
 /** A grouped-daily bar dated `t`, otherwise a plausible strong-close mover. */
 function bar(ticker: string, t: number, over: Partial<DailyMarketBar> = {}): DailyMarketBar {
@@ -158,4 +159,21 @@ test("discoverBreakoutSetups: fresh snapshot with movers → ok + built candidat
   assert.equal(out.setups.length, 2);
   assert.ok(calls.screen > 0, "fresh data must reach the screen");
   assert.ok(calls.resolveChain > 0, "fresh movers must reach the chain fetch");
+});
+
+test("rankMoversForChainFetch: momentum quality beats $-volume for the chain-fetch budget", () => {
+  const mega = { ticker: "MEGA", gain: 0.04, close_strength: 0.55, dollar: 5e9 };
+  const sharp = { ticker: "SHARP", gain: 0.18, close_strength: 0.95, dollar: 2e8 };
+  const mid = { ticker: "MID", gain: 0.1, close_strength: 0.8, dollar: 8e8 };
+  const ranked = rankMoversForChainFetch([mega, sharp, mid], 2, "long");
+  assert.deepEqual(
+    ranked.map((m) => m.ticker),
+    ["SHARP", "MID"],
+    "sharp mid-cap continuation outranks sluggish mega-cap $-volume"
+  );
+
+  const weakClose = { ticker: "DUMP", gain: 0.15, close_strength: 0.1, dollar: 3e8 };
+  const softDump = { ticker: "SOFT", gain: 0.12, close_strength: 0.4, dollar: 9e8 };
+  const shortRanked = rankMoversForChainFetch([softDump, weakClose], 1, "short");
+  assert.equal(shortRanked[0]!.ticker, "DUMP", "weak-close breakdown wins the short chain-fetch slot");
 });

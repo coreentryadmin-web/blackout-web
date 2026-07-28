@@ -13,9 +13,16 @@ import {
 import { condorTent } from "@/lib/zerodte/condor-render";
 import { isZeroDteMarkStale, ZERODTE_MARK_STALE_MS, LEGACY_QUOTE_STALE_MS } from "@/lib/zerodte/marks-math";
 import type { TerminalPlay } from "./types";
+import {
+  defaultZeroDteStatusFilter,
+  preferredPlayId,
+  type DeckSessionHeatState,
+  type DeckStatusFilter,
+} from "./deck-session-ui";
+import { etNowParts } from "@/features/nighthawk/lib/session";
 
 /** Status filter mode: which plays to show in the list. */
-type StatusFilter = "ALL" | "OPEN" | "WATCH" | "CLOSED";
+type StatusFilter = DeckStatusFilter;
 
 function filterByStatus(plays: TerminalPlay[], filter: StatusFilter): TerminalPlay[] {
   if (filter === "ALL") return plays;
@@ -38,6 +45,7 @@ export function CommandDeck({
   degraded = false,
   loading = false,
   allocation,
+  sessionHeat = null,
 }: {
   plays: TerminalPlay[];
   laneLabel: string;
@@ -51,12 +59,10 @@ export function CommandDeck({
   /** The payload's Portfolio Allocation Engine decisions — feeds the cockpit R-deployed strip. Absent
    *  for lanes that don't allocate (Swings/LEAPS/Legacy) → the strip degrades to "—". */
   allocation?: CockpitAllocation[] | null;
+  /** Board `session.heat.state` — drives default filter + right-rail LIVE/CLOSED honesty. */
+  sessionHeat?: DeckSessionHeatState;
 }) {
-  // Status filter: show ALL (default), only OPEN (working), WATCH (pre-entry), or CLOSED plays.
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
-  const filtered = useMemo(() => filterByStatus(plays, statusFilter), [plays, statusFilter]);
-
-  // Counts per status group for the filter badges.
+  // Counts per status group for the filter badges (and the session-aware default filter).
   const counts = useMemo(() => {
     let open = 0, watch = 0, closed = 0;
     for (const p of plays) {
@@ -66,6 +72,26 @@ export function CommandDeck({
     }
     return { open, watch, closed };
   }, [plays]);
+
+  // Status filter: RTH defaults to OPEN/WATCH (actionable); after close defaults to ALL.
+  // Seed once from the first non-empty board so a later heat flip doesn't yank the member's lens.
+  const { hour, minute } = etNowParts();
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
+  const [filterSeeded, setFilterSeeded] = useState(false);
+  useEffect(() => {
+    if (filterSeeded || plays.length === 0) return;
+    setStatusFilter(
+      defaultZeroDteStatusFilter({
+        heatState: sessionHeat,
+        open: counts.open,
+        watch: counts.watch,
+        etMinutes: hour * 60 + minute,
+      }),
+    );
+    setFilterSeeded(true);
+  }, [filterSeeded, plays.length, sessionHeat, counts.open, counts.watch, hour, minute]);
+
+  const filtered = useMemo(() => filterByStatus(plays, statusFilter), [plays, statusFilter]);
 
   // Sort lens: the status banding (default) or the Wave-2 conviction ranking. Additive — the status
   // sort is unchanged; conviction is a second view over the SAME list (deck-sort.ts).
@@ -80,19 +106,22 @@ export function CommandDeck({
   );
   const tape = useMemo(() => sessionTape(plays), [plays]);
 
-  const [selId, setSelId] = useState<string | null>(sorted[0]?.id ?? null);
+  const [selId, setSelId] = useState<string | null>(null);
 
-  // Keep a valid selection as the polled list changes: default to the top (sorted) play; drop a stale
-  // selection. Membership is checked against the same play objects, so ordering doesn't affect validity.
+  // Keep a valid selection as the polled list changes: prefer working → watch → closed on first
+  // pick so a CLOSED row doesn't monopolize the right rail when WATCH setups exist.
   useEffect(() => {
     if (sorted.length === 0) {
       if (selId !== null) setSelId(null);
     } else if (!sorted.some((p) => p.id === selId)) {
-      setSelId(sorted[0]!.id);
+      setSelId(preferredPlayId(sorted) ?? sorted[0]!.id);
+    } else if (selId === null) {
+      setSelId(preferredPlayId(sorted) ?? sorted[0]!.id);
     }
   }, [sorted, selId]);
 
   const selected = sorted.find((p) => p.id === selId) ?? null;
+  const sessionClosed = String(sessionHeat ?? "").toUpperCase() === "CLOSED";
 
   return (
     <div className="nh-deck">
@@ -135,7 +164,7 @@ export function CommandDeck({
           ))}
         </div>
       </div>
-      <PlayTerminal play={selected} />
+      <PlayTerminal play={selected} sessionClosed={sessionClosed} />
     </div>
   );
 }

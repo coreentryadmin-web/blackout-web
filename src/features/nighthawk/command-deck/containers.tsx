@@ -12,13 +12,34 @@ import {
 import { fetchNightHawkHorizons } from "@/lib/api";
 import type { NightHawkEdition, NightHawkRecordResponse } from "@/features/nighthawk/lib/types";
 import type { TerminalPlay } from "./types";
-import { useZeroDteLiveMarks, overlayLiveMarks } from "./use-live-marks";
+import { useZeroDteLiveMarks, overlayLiveMarks, overlayZeroDteStockQuotes } from "./use-live-marks";
 import { useLegacyStockQuotes, overlayLegacyQuotes } from "./use-legacy-quotes";
 import { zeroDteSources, isBoardDegraded, type BoardResp } from "./zerodte-sources";
 import { EDITION_TARGET_PLAYS } from "@/features/nighthawk/lib/constants";
 import { isMorningConfirmStale, formatCheckedAtEt } from "@/features/nighthawk/lib/morning-confirm-verdict";
+import { etNowParts } from "@/features/nighthawk/lib/session";
 
 const json = (u: string) => fetch(u, { cache: "no-store", credentials: "same-origin" }).then((r) => (r.ok ? r.json() : null));
+
+/** Board payload may carry session.heat — keep the type loose so a missing field never breaks the deck. */
+type BoardRespWithSession = BoardResp & {
+  session?: { heat?: { state?: string | null } | null } | null;
+};
+
+/** Board SWR cadence: faster during RTH so thesis/gates/underlying advance with the scan;
+ *  off-hours the shared snapshot is cache-stable so 5s is enough (marks SSE still drives the rail). */
+function zerodteBoardRefreshMs(): number {
+  try {
+    const { hour, minute, weekday } = etNowParts();
+    if (weekday === "Sat" || weekday === "Sun") return 5_000;
+    const mins = hour * 60 + minute;
+    // 09:25–16:05 ET — cover pre-open warm + post-close grace for the right-rail panels.
+    if (mins >= 9 * 60 + 25 && mins <= 16 * 60 + 5) return 2_500;
+  } catch {
+    /* fall through */
+  }
+  return 5_000;
+}
 
 // ── 0DTE: the live board (setups ⋈ ledger ⋈ allocation) ────────────────────────────
 // Source-derivation lives in the pure ./zerodte-sources module (unit-tested).
@@ -35,18 +56,33 @@ export function ZeroDteDeck() {
   }, []);
 
   const boardUrl = sim ? "/api/market/zerodte/board?sim=1" : "/api/market/zerodte/board";
-  const { data } = useSWR<BoardResp>(boardUrl, json, { refreshInterval: 5_000 });
+  const { data, isLoading } = useSWR<BoardRespWithSession>(boardUrl, json, {
+    refreshInterval: zerodteBoardRefreshMs(),
+    revalidateOnFocus: true,
+  });
   // In sim mode the sim payload's ledger carries its OWN simulated marks/PnL — do NOT
   // overlay the real member live-marks lane (that streams actual prod contracts and
   // would corrupt the simulated board). Disabling it also skips the pointless SSE.
   const liveMarks = useZeroDteLiveMarks(!sim);
-  const plays: TerminalPlay[] = overlayLiveMarks(
-    zeroDteSources(data ?? null).map(terminalPlayFromZeroDte),
-    sim ? new Map() : liveMarks,
+  const basePlays = useMemo(
+    () => zeroDteSources(data ?? null).map(terminalPlayFromZeroDte),
+    [data],
   );
+  const markedPlays = overlayLiveMarks(basePlays, sim ? new Map() : liveMarks);
+  // Live underlying for the header stock print + condor tent — same quote lane Legacy uses.
+  // Skipped in sim (sim frames carry their own underlying) and while there are no tickers.
+  // Derive tickers from board-adapted plays (stable across mark ticks) so the quote hook
+  // doesn't remount on every SSE frame.
+  const tickers = useMemo(
+    () => [...new Set(basePlays.map((p) => p.ticker).filter(Boolean))],
+    [basePlays],
+  );
+  const stockQuotes = useLegacyStockQuotes(tickers, !sim && tickers.length > 0);
+  const plays: TerminalPlay[] = overlayZeroDteStockQuotes(markedPlays, stockQuotes);
   // 9-3: a degraded/unavailable board must NOT be painted as a calm "no setup cleared the floor" flat tape
   // — that hides a real outage AND any open position. (isBoardDegraded treats first-load null as not-degraded.)
   const degraded = isBoardDegraded(data);
+  const sessionHeat = data?.session?.heat?.state ?? null;
   return (
     <>
       {sim && (
@@ -62,7 +98,9 @@ export function ZeroDteDeck() {
         plays={plays}
         laneLabel={sim ? "0DTE · SIMULATION" : "0DTE · same-day"}
         degraded={degraded}
+        loading={isLoading && !data}
         allocation={data?.allocation ?? null}
+        sessionHeat={sessionHeat}
         emptyHint={
           degraded
             ? "Board data unavailable right now — retrying. Any open position is still live; this is a data outage, not a flat tape."

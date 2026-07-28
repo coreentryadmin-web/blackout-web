@@ -428,4 +428,6 @@ test("mapLedgerRow emits the Terminal v2 additive fields (exit ladder, greeks, b
   assert.match(service, /live_pnl_pct_exec: executableFill/);
   // Discovery origin comes from the frozen origin maps.
   assert.match(service, /discovery_origin: readDiscoveryOrigins/);
+  // OCC on the ledger row so the Command Deck can key the ~1s marks overlay for ledger-only plays.
+  assert.match(service, /occ: typeof r\.plan_json\?\.occ === "string"/);
 });

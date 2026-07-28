@@ -5,6 +5,198 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-28 — [0DTE-funnel] CTO pass-3: still had bugs on the branch (1DTE commit + PIN rank)
+
+**Severity.** P0 honesty / P1 recall — user challenge: line was **not** clean after pass-2.
+
+**Bugs still on PR #1199 after pass-2 (fixed this pass).**
+1. **1DTE still committed** — prefer-ZERO_DTE was sort-only; MU/AMD/AAPL etc. opened as ONE_DTE
+   on a 0DTE product. Fix: **G-15 `not_zero_dte`** — fresh commit requires `contract_horizon=ZERO_DTE`
+   (1DTE stays WATCH). `GATE_VERSION` → **v4**.
+2. **PIN first-8 list-order** — evaluated `.slice(0,8)` before regime quality. Fix: evaluate up to
+   `PIN_EVAL_CAP=20`, condor roots first, return top `PIN_MAX_CANDIDATES` by score.
+3. **Stale ZeroDteBoard 15:00 copy/test** — updated to POST_COMMIT / 14:00.
+
+**Still open (not claiming clean).**
+- VIX elevated floor, edge/WR, CONDOR unproven live, prod undeployed.
+
+**Status.** Fixed on draft PR #1199.
+
+## 2026-07-28 — [0DTE-funnel] CTO audit pass-2: heat/CONDOR/ToD still broken after cutoff align
+
+**Severity.** P0 — second deep read after pass-1 cutoff align found **four more commit/path bugs**
+on the same branch that would have kept multi-rail / CONDOR starved even after deploy.
+
+**Root causes (code — fixed this pass).**
+1. **Heat/SKIP desync** — `sessionHeat` stayed `RTH` until 15:00 while G-14/persist die at 14:00 →
+   cards stayed WATCH in a closed commit window (`board.ts` `sessionHeat` / `resolveFreshFindStatus`).
+   Fix: `POST_COMMIT` heat 14:00–15:00; SKIP on that state.
+2. **CONDOR merge wipe** — `mergeSameTickerDiscovery` same-dir kept FLOW incumbent and dropped
+   `play_type`/`condor_plan` → SPX FLOW + SPX CONDOR never seated a condor. Fix: prefer CONDOR
+   structure when exactly one side is CONDOR; score-tie opposing also prefers CONDOR.
+3. **CONDOR late-theta dead** — G-14 exempted CONDOR but PIN discovery hard-stopped at 14:00 and
+   `persistZeroDteScan` zeroed **all** fresh after cutoff. Fix: PIN late window 14:00–15:30
+   condor-eligible roots only; persist allows fresh `play_type===CONDOR` past cutoff.
+4. **ToD score fought the calendar** — lunch −3 through 14:00 + dead +3 after 14:00. Fix: lunch
+   12:30–13:30; last commit hour neutral; post-14:00 zero.
+
+**Still NOT fixed (intentional / product / edge).**
+1. VIX≥17 elevated floor (starves weak FLOW on elevated days)
+2. Edge / ~35.6% WR (funnel ≠ expectancy)
+3. 1DTE still allowed on “0DTE” surface (`SETUP_MAX_DTE=1`)
+4. PIN `.slice(0,8)` before regime rank (recall risk for condor roots if universe reorder)
+5. Prod still on **main** — none of #1199 is live until merge+deploy
+
+**Live re-probe (~22:05 UTC / 18:05 ET).** Still 1 ledger CLOSED (SPY FLOW), 8 setups 100% FLOW,
+blocks: `late_afternoon@900`, `score_floor`, `vix_elevated`, `confluence_floor`, `plan_quote_stale`.
+`GATE_VERSION` bump → **v3**.
+
+**Status.** Fixed on draft PR #1199 (pass-2 commit); awaiting merge.
+
+## 2026-07-28 — [0DTE-funnel] CTO deep audit: why only 1 play today (prod still on old engine)
+
+**Severity.** P0 product — 2026-07-28 RTH produced **1 OPEN** (SPY FLOW @ 11:01 ET, +12% thesis_break).
+Post-close board: **8 setups, 100% FLOW**, 7× BLOCKED, record **35.6% WR / n=101**.
+
+**Live prod evidence (admin probe ~18:02 ET).**
+- Heat CLOSED; `upstream_ok=true`
+- Origin mix: `{ FLOW: 8 }` — 0 BREAKOUT / 0 PIN / 0 CONDOR
+- Gate mix: 7× BLOCKED (dominant codes: `late_afternoon` threshold **900=15:00**, `plan_quote_stale`,
+  `vix_elevated` VIX 19.05→score≥75, `score_floor` 65, `confluence_floor`)
+- Several "0DTE" cards are **1DTE** (MU/AMD/AAPL/NVDA/SMH)
+- PR #1199 **not deployed** — prod still `LATE_AFTERNOON=15:00`, `DISCOVERY/SCORER/GATE=v1`
+
+**Root causes — fixed on draft PR #1199 (not live yet).**
+| Cause | Fix on PR |
+|---|---|
+| FLOW-only merge v1 | MERGE v2 evidence-weighted |
+| BREAKOUT/PIN score floors too high | rescale + G-3 origin floors 58 |
+| NH edition tickers excluded | stop excluding |
+| Caps / chain timeout | widened |
+| G-14 at 15:00 (toxic 14–15:30) | → **14:00** |
+| Cutoff desync (audit find) | confluence + BREAKOUT/PIN RTH windows still 15:00 → aligned **14:00** |
+
+**NOT fixed by more commits (still open after merge).**
+1. **VIX≥17 elevated floor** (score 75 when not tape-aligned) — intentional, but starves elevated-VIX days
+2. **Edge / 35.6% WR** — funnel volume ≠ expectancy; needs RTH A/B after merge
+3. **1DTE pollution** on a 0DTE product surface
+4. **CONDOR path** still not producing visible seats
+5. **After-hours `plan_quote_stale`** — expected; not a RTH commit bug
+
+**Verdict.** We did **not** fix all root causes in production. The PR addresses the main starvation
+stack; merge + one RTH day is required to prove multi-rail commits. Cutoff desync closed in the
+same PR after this audit.
+
+**Status.** OPEN draft PR #1199.
+
+## 2026-07-28 — [0DTE-UI] Command Deck UX honesty (session strip, hard gate, nav, defaults)
+
+**Severity.** P1 — live admin Chrome pass on prod `/nighthawk` (2026-07-28 ~17:50 ET) showed:
+authed desk + **"Sign In"** nav; CLOSED SPY with **✗ Hard gate**; greeks `—` under SYNC with no
+session-closed label; left rail filtered to CLOSED (hiding 6 WATCH); "LIVE THESIS MONITOR" copy
+while nothing streamed.
+
+**Root cause.**
+1. Desk `Nav` trusted Clerk client `isSignedIn` only — no server `auth()` seed / `__client_uat` heal
+   (marketing already had this; desk did not).
+2. Hard gate treated CLOSED like WATCH — refresh-lane `BLOCKED` after close painted red on a play
+   that had already committed.
+3. Mark stream had no SESSION CLOSED state; greeks strip stayed visually "live-ready" with dashes.
+4. Status filter defaulted to ALL but selection preferred sort-top (often CLOSED); no RTH-aware default.
+
+**Fix (draft PR #1199).** Session-aware stream badge + dim greeks; CLOSED passes hard gate;
+`initialSignedIn` + `__client_uat` heal on desk Nav; default filter OPEN/WATCH in RTH else ALL;
+prefer working→watch selection; collapse thesis factors; Management rails distance lead; honest
+monitor copy.
+
+**Status.** OPEN on `cursor/zerodte-multi-rail-discovery-3d11` (draft PR #1199).
+
+## 2026-07-28 — [0DTE-UI] Right-rail Thesis/Management/PnL panels looked static
+
+**Severity.** P0 (member-facing) — the three Command Deck right-rail tabs on `/nighthawk` (0DTE)
+showed frozen "—" marks / non-updating peak-trough / non-advancing underlying after hours and for
+WATCH setups, even when the board payload carried live plan quotes.
+
+**Root cause.**
+1. `zerodte-sources.ts` `sourceFrom` set `last_mark` / `bid` / `ask` **only** from the ledger row.
+   WATCH finds have no ledger mark — only `setup.plan.{mark,bid,ask,occ}` — so the adapter painted
+   `mark: null` and the right rail stayed "—" until a fresh SSE tick.
+2. After hours the marks lane returns `stale:true, mark:null` for every WATCH OCC (prod probe
+   2026-07-28 ~17:40 ET: 7 marks, 0 with a mark). `overlayLiveMarks` correctly skips stale rows,
+   so with (1) the panels never recovered to the board's plan quote.
+3. Ledger payload omitted `occ` (`plan_json.occ` stayed server-side) → ledger-only working rows
+   could not key the SSE overlay (`overlayLiveMarks` is OCC-keyed).
+4. Peak/trough + trim FIRED only advanced on the server persist cycle; SSE `pnlPct` ticked ~1s
+   but the PnL Peak/Trough and Management trim chips stayed board-frozen.
+5. Underlying `stockPrice` only moved when the board snapshot rebuilt — no quote-poll overlay
+   (Legacy already had `useLegacyStockQuotes`).
+
+**Evidence.** Admin Clerk session against prod: MU WATCH `plan.mark=21.38` / `occ=O:MU…` on board;
+marks API same OCC `mark:null stale:true`; ledger SPY CLOSED had `last_mark` but `occ` absent from
+payload keys.
+
+**Fix (draft PR #1199).**
+- Plumb `plan.mark/bid/ask/occ` (+ ledger `occ`) in `zerodte-sources`; badge plan-only marks as SYNC.
+- Emit `occ` on `ZeroDteBoardLedgerRow` from `plan_json.occ`.
+- Client `latchLiveExcursion` in `overlayLiveMarks` for peak/trough + trim FIRED; stock-quote
+  overlay for underlying/condor spot; RTH board poll 2.5s + loading skeleton; honest thesis monitor.
+
+**Status.** OPEN on `cursor/zerodte-multi-rail-discovery-3d11` (draft PR #1199).
+
+## 2026-07-28 — [product] 0DTE engine starved to 1 OPEN/day (score map + caps + NH exclude)
+
+**Severity.** P0 — whole-market 0DTE product produced **1 committed play** on 2026-07-28
+(SPY FLOW long @ 11:01 ET, +12% thesis_break) despite scanning ~12k grouped-daily names. Board
+setups post-close were **8× FLOW-only**; BREAKOUT/PIN never committed. Record remains ~35.6% WR.
+
+**Root cause (stacked funnel, not one bug).**
+1. **BREAKOUT score map** required ~15%+ strong-close to clear G-3=65 → almost no whole-market
+   movers ever became commits (8–10% liquid continuations scored ~34–49).
+2. **PIN score map** similarly needed ~9%+ walls + 2% band — rare on live long-γ days.
+3. **NH edition tickers excluded** from 0DTE discovery (`nighthawkCovered` in `scan.ts`) — removed
+   the overnight playbook's best names from the live commit path.
+4. **FLOW floors / caps** (`SETUP_MIN_GROSS` $300k, fetch `$150k`, `maxSetups:10`, enrich top-5)
+   + **2.5s** chain snapshot timeout dropped otherwise-viable plans.
+5. **G-14 still at 15:00** while FINDINGS already measured the toxic 14:00–15:30 bucket (14.3% WR).
+
+**Evidence.** Prod board 2026-07-28: ledger_n=1 (SPY), setups 100% FLOW, health
+`candidates_scanned=1`/`committed_count=1`. Calibration score bands: `<55` = 20% WR / −23% avg;
+`55–64` ≈ flat. VIX day-open 19.05 (elevated).
+
+**Fix (engine remodel on `cursor/zerodte-multi-rail-discovery-3d11`).**
+- Rescale `breakoutScore` / `pinScore` so liquid 8–10% / mid-tier pins clear 65.
+- Origin-aware G-3 floors (FLOW 65 / BREAKOUT+PIN 58).
+- Stop excluding NH edition tickers; widen FLOW/BREAKOUT caps; enrich top-12; 5s snapshot.
+- Ship G-14 + `NEW_PLAY_CUTOFF` to **14:00 ET**; prefer ZERO_DTE in commit ranking.
+- Version bumps: `DISCOVERY_VERSION=v3`, `SCORER_VERSION=v2`, `GATE_VERSION=v2`.
+
+**Status.** OPEN draft PR #1199 for review (do not auto-merge).
+
+## 2026-07-28 — [product] 0DTE board was FLOW-only in practice (merge v1 + $-volume chain-fetch)
+
+**Severity.** P1 — Night Hawk / 0DTE Command supposed to mix FLOW + BREAKOUT + PIN (+ CONDOR), but
+live board ownership and outcomes behaved like a single-rail flow-momentum buyer.
+
+**Root cause.**
+1. `MERGE_POLICY_VERSION=v1` always kept the seating-order incumbent on direction conflict
+   (`mergeDiscoveryOrigins` / `mergePinOrigins`), so BREAKOUT/PIN could only ever *annotate* a FLOW
+   row — never own the ticket when they disagreed more strongly.
+2. Opposing co-discovery still received the `+8` corroboration boost (PIN fades almost always oppose
+   momentum), helping weak FLOW clears of G-3.
+3. BREAKOUT chain-fetch took the top-N by **$-volume** after `screenBreakoutMovers`, so sharper
+   mid-cap continuations lost the chain budget to mega-caps (discovery-recall-probe 2026-07-20…24).
+
+**Evidence.** Prod 2026-07-28 post-close board: 8 setups, 100% FLOW origin; 0 BREAKOUT / 0 PIN /
+0 CONDOR on the visible mix. 0DTE Command record ~35.6% WR / −2.87% avg (101 graded). (Post-close
+BREAKOUT also skips via RTH window — expected — but RTH ownership was still FLOW-dominated.)
+
+**Fix.** `MERGE_POLICY_VERSION=v2`: evidence-weighted conflict (higher score owns; seating-order
+ties); corroboration boost **only** on same-direction union. `rankMoversForChainFetch` orders the
+chain-fetch budget by momentum quality over a wider liquidity pool. Scan logs
+`[zerodte-scan] discovery rail mix …` each cycle. Docs: INTENTIONAL-DESIGN §1 + §4 updated.
+
+**Status.** OPEN PR for review (do not auto-merge) — branch `cursor/zerodte-multi-rail-discovery-3d11`.
+
 ## 2026-07-28 — [data-honesty] Vector max-pain `?horizon=` silently defaulted to ALL (7410 vs desk 7440)
 
 **Severity.** P2 — cross-tool mismatch risk on `/dashboard` confluence + audit/API consumers.
@@ -63,7 +255,9 @@ No hard gate existed between the 10:00 ET opening window unlock and the 15:00 ET
 **Evidence.** 90-day production record (101 graded plays): `late 14:00-15:30` bucket = 14.3% WR,
 −19.02% avg P&L. Compare to `prime 9:50-11:00` = 38.0% WR, +2.7% avg P&L.
 
-**Fix.** New hard gate G-14 (`late_afternoon`) blocks directional 0DTE commits at/after 14:00 ET.
+**Fix.** New hard gate G-14 (`late_afternoon`) + persist `NEW_PLAY_CUTOFF` block directional
+0DTE commits at/after **14:00 ET** (code was briefly still 15:00 — corrected in the 2026-07-28
+engine remodel PR). Condors remain exempt (want late theta).
 Condor-exempt: iron condors BENEFIT from late-session theta crush (credit seller). Persist-layer
 `NEW_PLAY_CUTOFF_ET_MINUTES` also moved from 15:00 → 14:00 as a backstop. Files:
 `gates.ts` (G-14 enforcement + constant), `board.ts` (failure type), `plan.ts` (cutoff constant).

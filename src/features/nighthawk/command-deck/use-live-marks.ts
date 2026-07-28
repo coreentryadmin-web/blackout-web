@@ -156,6 +156,38 @@ export function useZeroDteLiveMarks(enabled = true): Map<string, LiveMarkRow> {
   return marks;
 }
 
+/**
+ * Client-side peak/trough + trim FIRED latch from a live P&L %. Peak/trough on TerminalPlay are
+ * already display percentages (adapter-derived); the server latch only advances on the poller's
+ * persist cycle, so between board polls the PnL panel's Peak/Trough and the Management trim
+ * "FIRED" chips would otherwise sit frozen while the headline % ticks every ~1s.
+ *
+ * Pure + null-safe: never invents a peak/trough from thin air (needs a finite pnl), never clears
+ * a server-latched extreme, and only arms a trim as FIRED (never un-fires a server-banked tranche).
+ */
+export function latchLiveExcursion(
+  play: TerminalPlay,
+  livePnlPct: number | null | undefined,
+): Pick<TerminalPlay, "peak" | "trough" | "exitPolicy"> {
+  const pnl = typeof livePnlPct === "number" && Number.isFinite(livePnlPct) ? livePnlPct : null;
+  const peak =
+    pnl == null ? play.peak ?? null : play.peak == null ? pnl : Math.max(play.peak, pnl);
+  const trough =
+    pnl == null ? play.trough ?? null : play.trough == null ? pnl : Math.min(play.trough, pnl);
+  // Arm trim rungs from the best excursion (peak) — same semantics as the server's peak-armed latch.
+  const arm = peak ?? pnl;
+  let exitPolicy = play.exitPolicy ?? null;
+  if (exitPolicy?.policy === "trim_scale" && arm != null && Array.isArray(exitPolicy.trim_levels)) {
+    const levels = exitPolicy.trim_levels.map((t) =>
+      t.fired || arm >= t.trigger_pct ? { ...t, fired: true } : t,
+    );
+    if (levels.some((t, i) => t.fired !== exitPolicy!.trim_levels[i]!.fired)) {
+      exitPolicy = { ...exitPolicy, trim_levels: levels };
+    }
+  }
+  return { peak, trough, exitPolicy };
+}
+
 /** Overlay the freshest live-marks row onto each play by OCC: mark, P&L and greeks come from the ~1s SSE
  *  frame while everything else (thesis/gates/allocation) rides the slower board poll. A play with no live
  *  row keeps its board values, so this is a pure enhancement — never a regression when the lane is cold. */
@@ -167,13 +199,22 @@ export function overlayLiveMarks(plays: TerminalPlay[], marks: Map<string, LiveM
     // (>5s), yet still computes a live_pnl_pct off that old mark. Overlaying it would REPLACE the fresher
     // 5s board-poll mark/P&L with an older number under a "● LIVE" badge — the exact stale-shown-as-fresh
     // failure this lane exists to kill (and if the SSE lane dies mid-session its last frame would freeze
-    // on screen, masking the still-advancing board poll). When the live row is stale, keep board values.
-    if (!row || row.stale) return p;
+    // on screen, masking the still-advancing board poll). When the live row is stale, keep board values
+    // (including plan.mark plumbed by zerodte-sources) and still advance the client peak/trough latch
+    // from the board's current pnl so the PnL panel doesn't look frozen between polls.
+    if (!row || row.stale) {
+      const latch = latchLiveExcursion(p, p.pnlPct);
+      if (latch.peak === p.peak && latch.trough === p.trough && latch.exitPolicy === p.exitPolicy) return p;
+      return { ...p, ...latch };
+    }
+    const mark = row.mark ?? p.mark;
+    const pnlPct = row.live_pnl_pct ?? p.pnlPct;
+    const latch = latchLiveExcursion({ ...p, mark, pnlPct }, pnlPct);
     return {
       ...p,
-      mark: row.mark ?? p.mark,
+      mark,
       // Same percent scale as the board (both from pinnedLivePnlPct against the pinned entry premium).
-      pnlPct: row.live_pnl_pct ?? p.pnlPct,
+      pnlPct,
       greeks: row.greeks ?? p.greeks,
       // Terminal v2: the executable fill (bid) + its P&L, and the fresh per-quote timestamp so the
       // terminal shows a live (never "sync/unknown-age") mark age. Fall back to the board values
@@ -182,6 +223,27 @@ export function overlayLiveMarks(plays: TerminalPlay[], marks: Map<string, LiveM
       execPnlPct: row.live_pnl_pct_exec ?? p.execPnlPct,
       markAsOf: row.mark_as_of ?? p.markAsOf,
       markIsSync: false, // a fresh SSE frame is never a legacy sync mark
+      ...latch,
     };
+  });
+}
+
+/** Overlay live underlying quotes onto 0DTE plays so the header stock price + condor tent spot
+ *  advance on the quote poll (~5s), not only when the board snapshot rebuilds. Pure enhancement. */
+export function overlayZeroDteStockQuotes(
+  plays: TerminalPlay[],
+  quotes: Map<string, { price: number; asof?: string }>,
+): TerminalPlay[] {
+  if (quotes.size === 0) return plays;
+  return plays.map((p) => {
+    if (p.horizon !== "ZERO_DTE") return p;
+    const q = quotes.get(p.ticker);
+    if (!q || !(q.price > 0)) return p;
+    const next: TerminalPlay = { ...p, stockPrice: q.price };
+    // Condor tent: refresh the live spot marker when the geometry is present.
+    if (p.isCondor === true && p.condor) {
+      next.condor = { ...p.condor, spot: q.price, spotIsLive: true };
+    }
+    return next;
   });
 }

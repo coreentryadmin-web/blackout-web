@@ -13,17 +13,15 @@
 // chain) lives in breakout-discovery.ts, which is dynamic-imported only when the source is
 // flag-enabled — so the flow-only board never loads the whole-market provider graph.
 //
-// FLAG-GATED OFF by default (both flags must be "1"): ZERODTE_WHOLE_MARKET (master) AND
-// ZERODTE_SRC_BREAKOUT (per-source). When either is off, the board behaves EXACTLY as today.
+// FLAG-GATED ON by default (set either to "0" to disable): ZERODTE_WHOLE_MARKET (master) AND
+// ZERODTE_SRC_BREAKOUT (per-source). When either is off, the board is FLOW-only.
 
 import type { BreakoutMover } from "@/features/nighthawk/lib/candidates";
 import {
   deriveContractHorizon,
   enrichSetup,
   gradingPolicyForHorizon,
-  unionDiscoveryOrigins,
-  noteOriginDirectionConflict,
-  recordOriginContributionsOnMerge,
+  mergeSameTickerDiscovery,
   type EnrichedZeroDteSetup,
   type ZeroDteSetup,
 } from "./board";
@@ -45,26 +43,25 @@ export function breakoutSourceEnabled(): boolean {
 }
 
 // ── Score mapping (0–100, the SAME scale the flow score uses — G-3's 65 floor judges both) ──
-// Deliberately CONSERVATIVE: a breakout must be a big gain that CLOSES STRONG on real liquidity
-// to clear the 65 commit floor — a weak-closing 5% pop on thin volume scores in the teens.
+// Recalibrated 2026-07-28 (engine throughput): the prior map needed ~15%+ strong-close movers to
+// clear 65, so the whole-market BREAKOUT rail (~12k names → ≤15 chain-fetches) almost never
+// committed. Live 2026-07-28: 1 OPEN all day, 100% FLOW. A liquid 8–10% strong-close continuation
+// is a real 0DTE candidate and must be able to clear the shared floor.
 //
-//   core   = clamp(gain / GAIN_FULL, 0, 1) · clamp((close_strength − 0.5) / 0.5, 0, 1)   ∈ [0,1]
-//   score  = core · CORE_MAX  +  dollar_norm · DOLLAR_MAX
+//   score = BASE + core·CORE_MAX + dollar_norm·DOLLAR_MAX
+//   core  = clamp(gain / GAIN_FULL, 0, 1) · closeFactor ∈ [0,1]   (multiplicative — needs BOTH)
 //
-// The core is MULTIPLICATIVE on purpose (the design's "gain × close-strength"): a huge gain that
-// fades into the close (close_strength → 0.5) collapses the core to ~0, and a strong close on a
-// tiny gain likewise scores near-0 — it takes BOTH. The $-volume term is an ADDITIVE liquidity/
-// conviction bonus normalized against the current cohort's max (like candidates.ts's
-// normalizeToMax), capped at DOLLAR_MAX so liquidity ALONE can never lift a non-mover over the
-// floor. Worked examples (dollar_norm = 1, the most generous liquidity):
-//   5% gain, closed at 0.50 (screen floor)  → core 0     → score  20  (well below 65)
-//   10% gain, closed at 0.75                → core 0.25   → score  40  (still below 65)
-//   15% gain, closed at 0.90                → core 0.60   → score  68  (clears — genuinely strong)
-//   20%+ gain, closed on the high (1.0)     → core 1.00   → score 100
-// So a breakout does NOT auto-clear 65 without a real, strong-closing, liquid move.
-export const BREAKOUT_GAIN_FULL = 0.20; // gain that saturates the gain factor (20% intraday)
-export const BREAKOUT_CORE_MAX = 80; // max points from the multiplicative gain×close core
-export const BREAKOUT_DOLLAR_MAX = 20; // max additive points from normalized $-volume
+// BASE credits the liquidity/gain screen the mover already cleared (not a free pass — weak closes
+// still collapse the core). Worked examples (dollar_norm = 1):
+//   5% gain, closed at 0.50 (screen floor)  → core 0     → score  25  (well below 65)
+//   6% gain, closed at 0.80                → core 0.36   → score  ~57 (still below 65)
+//   8% gain, closed at 0.90                → core 0.64   → score  ~73 (clears — real continuation)
+//   10% gain, closed at 0.80               → core 0.60   → score  ~70 (clears)
+//   15%+ gain, closed on the high          → core →1     → score 100
+export const BREAKOUT_SCORE_BASE = 15; // points for clearing the liquidity/gain screen
+export const BREAKOUT_GAIN_FULL = 0.1; // gain that saturates the gain factor (10% intraday)
+export const BREAKOUT_CORE_MAX = 75; // max points from the multiplicative gain×close core
+export const BREAKOUT_DOLLAR_MAX = 10; // max additive points from normalized $-volume
 
 const clamp01 = (n: number): number => Math.max(0, Math.min(1, n));
 
@@ -95,7 +92,7 @@ export function breakoutScore(
       : clamp01((0.5 - mover.close_strength) / 0.5);
   const core = gainFactor * closeFactor; // multiplicative -- needs BOTH
   const dollar = clamp01(dollarNorm);
-  const raw = core * BREAKOUT_CORE_MAX + dollar * BREAKOUT_DOLLAR_MAX;
+  const raw = BREAKOUT_SCORE_BASE + core * BREAKOUT_CORE_MAX + dollar * BREAKOUT_DOLLAR_MAX;
   return Math.max(0, Math.min(100, Math.round(raw)));
 }
 
@@ -253,13 +250,11 @@ export function buildBreakoutSetup(input: {
 // ── Merge + dedup (union by ticker, preserve origin as a SET) ─────────────────────────
 
 /**
- * Merge breakout setups into the flow setups IN PLACE, unioning origins by ticker. A ticker
- * already present in `flowSetups` keeps its (evidence-bearing) flow setup and gains "BREAKOUT" in
- * its discovery_origin set (e.g. ["FLOW","BREAKOUT"]); the duplicate breakout setup is dropped. A
- * ticker unique to the breakout source is appended. When a ticker ends up with multiple discovery
- * origins (FLOW + BREAKOUT corroboration), it gets a +8 score boost (capped at 100) -- two
- * independent sources agreeing on a name is a genuine conviction signal. Mutates + returns
- * `flowSetups`.
+ * Merge breakout setups into the flow setups IN PLACE, unioning origins by ticker (v2 policy via
+ * {@link mergeSameTickerDiscovery}). Same-direction corroboration unions origins and applies the
+ * corroboration boost; opposing directions are evidence-weighted (higher score owns the slot;
+ * seating-order wins ties — FLOW seated first). A ticker unique to the breakout source is appended.
+ * Mutates + returns `flowSetups`.
  */
 export function mergeDiscoveryOrigins(
   flowSetups: EnrichedZeroDteSetup[],
@@ -271,21 +266,11 @@ export function mergeDiscoveryOrigins(
     const key = b.ticker.toUpperCase();
     const existing = byTicker.get(key);
     if (existing) {
-      // Same ticker from two sources: union the origins onto the flow setup, keep the flow
-      // evidence (real prints/aggression), drop the bare breakout duplicate.
-      // Q1: if breakout argued the OPPOSITE direction, stamp the masked read as evidence
-      // (never flip the kept direction) so the origin band can grade opposing co-discovery.
-      // WS-06: record BOTH rails' (direction, score) BEFORE the union rewrites discovery_origin,
-      // so the frozen origin maps capture every disagreement, not just the first conflict pair.
-      recordOriginContributionsOnMerge(existing, b);
-      noteOriginDirectionConflict(existing, b);
-      existing.discovery_origin = unionDiscoveryOrigins(existing.discovery_origin, b.discovery_origin);
-      // Multi-source corroboration boost: two independent discovery systems agreeing on the same
-      // ticker is a conviction signal worth a score bump. +8 is conservative enough that a weak
-      // setup (score ~55) still fails G-3's 65 floor, but a borderline-good one (score ~60) can
-      // clear it with corroboration.
-      if (existing.discovery_origin && existing.discovery_origin.length > 1) {
-        existing.score = Math.min(100, (existing.score ?? 0) + 8);
+      const winner = mergeSameTickerDiscovery(existing, b);
+      if (winner !== existing) {
+        const idx = flowSetups.indexOf(existing);
+        if (idx >= 0) flowSetups[idx] = winner;
+        byTicker.set(key, winner);
       }
     } else {
       byTicker.set(key, b);

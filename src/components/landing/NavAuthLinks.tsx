@@ -16,7 +16,9 @@ import { useEffect, useState } from "react";
 // If it disagrees with the server guess, we correct the nav on the client. This
 // is defense-in-depth alongside the Cloudflare cookie-bypass rule: even a
 // wrongly-cached anonymous shell self-heals to the right auth chrome.
-function readClientSignedIn(): boolean | null {
+/** Clerk `__client_uat` cookie — non-httpOnly session signal for CDN/SSR chrome healing.
+ *  Exported so the desk `<Nav />` can reuse the same self-heal (signed-in desk + "Sign In" bug). */
+export function readClientSignedIn(): boolean | null {
   if (typeof document === "undefined") return null;
   const m = document.cookie.match(/(?:^|;\s*)__client_uat=([^;]+)/);
   if (!m) return null;

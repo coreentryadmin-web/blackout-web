@@ -30,18 +30,45 @@ import {
 } from "./breakout-source";
 import type { EnrichedZeroDteSetup } from "./board";
 
-/** RTH commit window in ET minutes-since-midnight: [9:30, 15:00). Outside it the board opens no
- *  fresh plays anyway (persistZeroDteScan cutoff), so the breakout source stays idle rather than
- *  risk reading a not-yet-live (pre-open) or completed (after-close) "today" grouped bar. */
+/** RTH commit window in ET minutes-since-midnight: [9:30, 14:00). Aligned with
+ *  NEW_PLAY_CUTOFF / G-14 (FINDINGS 2026-07-28) — discovering after the commit gate is closed
+ *  only wastes chain-fetch budget. Was left at 15:00 when the cutoff moved to 14:00. */
 const RTH_OPEN_ET_MINUTES = 9 * 60 + 30;
-const RTH_CUTOFF_ET_MINUTES = 15 * 60;
+const RTH_CUTOFF_ET_MINUTES = 14 * 60;
 
-/** Cap the per-ticker chain fetches per scan — the screen returns the top-$-volume movers already,
- *  but the discovery-recall-probe (5-session run, 2026-07-20...24) proved that the old cap of 6
- *  silently dropped 10-17 qualifying winners per session. Raised to 15 so the downstream gate
- *  stack (G-3 score floor, Cortex, governor concurrency) does the quality filtering, not a blind
- *  $-volume cutoff. Chain-fetch cost is bounded by the per-scan cap. */
-export const BREAKOUT_MAX_CANDIDATES = 15;
+/** Cap the per-ticker chain fetches per scan. The liquidity screen keeps a wider $-volume pool
+ *  (`BREAKOUT_SCREEN_POOL`); this cap is applied AFTER re-ranking by momentum quality
+ *  (`rankMoversForChainFetch`) so the chain-fetch budget goes to the best movers, not just
+ *  mega-caps. Raised from 6→15 after the discovery-recall-probe (2026-07-20…24) showed the old
+ *  $-volume top-N silently dropped 10–17 qualifying winners per session. */
+export const BREAKOUT_MAX_CANDIDATES = 25; // raised 6→15→25 — recall probe showed top-N by $vol was leaky
+
+/** Wider $-volume pool fed into the momentum re-rank before the chain-fetch cap. Liquidity filter
+ *  stays in `screenBreakoutMovers` / `screenBreakdownMovers`; quality ranking is separate. */
+export const BREAKOUT_SCREEN_POOL = 100;
+
+/**
+ * Rank screened movers for the chain-fetch budget. Liquidity already gated the pool; this orders
+ * by momentum quality so a sharp mid-cap continuation outranks a sluggish mega-cap grind.
+ * - long / breakout: `gain × close_strength` (strong close = conviction)
+ * - short / breakdown: `gain × (1 − close_strength)` (weak close = conviction)
+ * Ties break by $-volume (still prefer tradeable names). Pure.
+ */
+export function rankMoversForChainFetch<T extends { gain: number; close_strength: number; dollar: number }>(
+  movers: readonly T[],
+  maxKeep: number,
+  side: "long" | "short"
+): T[] {
+  const quality = (m: T): number =>
+    side === "long" ? m.gain * m.close_strength : m.gain * (1 - m.close_strength);
+  return [...movers]
+    .sort((a, b) => {
+      const dq = quality(b) - quality(a);
+      if (dq !== 0) return dq;
+      return b.dollar - a.dollar;
+    })
+    .slice(0, maxKeep);
+}
 
 /**
  * WS-19 — fail-closed max age for the whole-market grouped-daily snapshot.
@@ -54,8 +81,8 @@ export const BREAKOUT_MAX_CANDIDATES = 15;
  * PRIOR-DAY (carried-over / cached) snapshot served during RTH: its freshest bar is dated to an
  * earlier session, so `now − t` jumps past a full day.
  *
- * THRESHOLD RATIONALE: discoverBreakoutSetups only runs inside the RTH commit window [9:30, 15:00)
- * ET, so a genuine same-day live bar's `now − t` is at most ~15h (t ≈ midnight ET) — and up to ~20h
+ * THRESHOLD RATIONALE: discoverBreakoutSetups only runs inside the RTH commit window [9:30, 14:00)
+ * ET, so a genuine same-day live bar's `now − t` is at most ~14h (t ≈ midnight ET) — and up to ~20h
  * once the widest `t`-convention / DST skew is allowed for. A prior-day snapshot is ≥ ~33h old. 24h
  * sits cleanly between the two: strictly above any legitimate same-day age, strictly below any
  * prior-day bar. We fail CLOSED past it rather than fabricate confidence in an unverifiable bar.
@@ -181,11 +208,14 @@ export async function discoverBreakoutSetups(opts: {
   }
 
   // Screen BOTH directions from the same grouped-daily snapshot: breakouts (LONG) and breakdowns
-  // (SHORT). Each side is capped independently at maxCandidates, then merged into one candidate
-  // list. A ticker that qualifies on BOTH sides (rare but possible with intraday reversal bars)
-  // keeps the breakout (long) -- the higher-conviction direction for a momentum board.
-  const longMovers = screen(results).filter((m) => !excludeTickers.has(m.ticker.toUpperCase()));
-  const shortMovers = screenBreakdowns(results).filter((m) => !excludeTickers.has(m.ticker.toUpperCase()));
+  // (SHORT). Pull a wider $-volume pool, then re-rank by momentum quality before the chain-fetch
+  // cap so mid-cap continuations are not starved by mega-cap $-volume. A ticker that qualifies on
+  // BOTH sides (rare) keeps the breakout (long) — the higher-conviction direction for a momentum board.
+  const screenPool = Math.max(maxCandidates * 4, BREAKOUT_SCREEN_POOL);
+  const longMovers = screen(results, screenPool).filter((m) => !excludeTickers.has(m.ticker.toUpperCase()));
+  const shortMovers = screenBreakdowns(results, screenPool).filter(
+    (m) => !excludeTickers.has(m.ticker.toUpperCase())
+  );
 
   if (longMovers.length === 0 && shortMovers.length === 0) {
     console.info("[zerodte-breakout] breadth snapshot present but zero qualifying breakouts/breakdowns -- SKIP");
@@ -222,11 +252,11 @@ export async function discoverBreakoutSetups(opts: {
     }
   };
 
-  // Normalize $-volume within each cohort independently, then cap each side.
+  // Normalize $-volume within each cohort independently, then momentum-rank + cap each side.
   const longMaxDollar = longMovers.reduce((m, x) => Math.max(m, x.dollar), 0);
   const shortMaxDollar = shortMovers.reduce((m, x) => Math.max(m, x.dollar), 0);
-  const topLong = longMovers.slice(0, maxCandidates);
-  const topShort = shortMovers.slice(0, maxCandidates);
+  const topLong = rankMoversForChainFetch(longMovers, maxCandidates, "long");
+  const topShort = rankMoversForChainFetch(shortMovers, maxCandidates, "short");
 
   // Dedup: if a ticker appears on BOTH sides, keep the long (breakout) only.
   const longTickers = new Set(topLong.map((m) => m.ticker.toUpperCase()));
@@ -239,8 +269,8 @@ export async function discoverBreakoutSetups(opts: {
 
   const setups = built.filter((s): s is EnrichedZeroDteSetup => s != null);
   console.info(
-    `[zerodte-breakout] ${longMovers.length} breakouts + ${shortMovers.length} breakdowns, ` +
-    `built ${setups.length} setup(s) from top ${topLong.length}L + ${dedupedShort.length}S`
+    `[zerodte-breakout] ${longMovers.length} breakouts + ${shortMovers.length} breakdowns (pool), ` +
+    `built ${setups.length} setup(s) from momentum-top ${topLong.length}L + ${dedupedShort.length}S`
   );
   return { status: "ok", setups };
 }

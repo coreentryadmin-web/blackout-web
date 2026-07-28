@@ -48,14 +48,17 @@ import { PLAN_RULES } from "./plan";
  *  constant below (a coarse catch-all so a broad rewrite still partitions). */
 export const ENGINE_VERSION = "v1";
 /** Discovery layer (which independent sources surface a candidate + their cuts). Bump
- *  when the discovery origins / top-N cuts / accumulation feed change materially. */
-export const DISCOVERY_VERSION = "v1";
+ *  when the discovery origins / top-N cuts / accumulation feed change materially.
+ *  v3 (2026-07-28): merge v2 + momentum rank + NH no-exclude + wider caps/FLOW floors. */
+export const DISCOVERY_VERSION = "v3";
 /** Score formula — the evidence score the gate stack judges. Bump on ANY change to the
- *  scoring math or its weights (the F-2 / F-5 forensic bands are read per this). */
-export const SCORER_VERSION = "v1";
+ *  scoring math or its weights (the F-2 / F-5 forensic bands are read per this).
+ *  v2 (2026-07-28): BREAKOUT/PIN rescaled so real movers clear G-3. */
+export const SCORER_VERSION = "v2";
 /** Gate stack (G-1…G-n thresholds + calibration/enforce modes). Bump when a gate's
- *  threshold moves or a gate flips calibration↔enforce (it changes what commits). */
-export const GATE_VERSION = "v1";
+ *  threshold moves or a gate flips calibration↔enforce (it changes what commits).
+ *  v4 (2026-07-28): G-15 not_zero_dte — fresh commits require ZERO_DTE contract horizon. */
+export const GATE_VERSION = "v4";
 /** Night Hawk Cortex evidence vector + weighting. Bump when the Cortex composition or
  *  its veto/abstain logic changes (it changes which plays survive to commit). */
 export const CORTEX_VERSION = "v1";

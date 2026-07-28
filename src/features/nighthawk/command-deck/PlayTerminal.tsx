@@ -11,6 +11,7 @@ import { showsTimeStopClock, showsTrimScaleLadder } from "./terminal-guards";
 import { managementFor } from "./adapters";
 import { excursionBar, formatWinRateCi, signColorClass } from "@/lib/zerodte/terminal-edge";
 import type { DeckCondor } from "./types";
+import { markStreamKind } from "./deck-session-ui";
 
 type Tab = "thesis" | "manage" | "pnl";
 
@@ -72,11 +73,18 @@ function OccCopy({ occ }: { occ: string | null | undefined }) {
   );
 }
 
-/** Flash a cell green/red when its value changes between renders (honest live-change feedback). */
+/** Flash a cell when its value changes between renders — skip the first paint so mount doesn't
+ *  neon-flash every static number (honest live-change feedback only). */
 function useFlash(value: unknown) {
-  const prev = useRef(value);
+  const prev = useRef<unknown>(undefined);
+  const primed = useRef(false);
   const [flash, setFlash] = useState(false);
   useEffect(() => {
+    if (!primed.current) {
+      primed.current = true;
+      prev.current = value;
+      return;
+    }
     if (prev.current !== value) {
       setFlash(true);
       const t = setTimeout(() => setFlash(false), 250);
@@ -124,16 +132,31 @@ function fractionGlyph(f: number): string {
   return map[f.toFixed(2)] ?? `${Math.round(f * 100)}%`;
 }
 
-export function PlayTerminal({ play }: { play: TerminalPlay | null }) {
+export function PlayTerminal({
+  play,
+  sessionClosed = false,
+}: {
+  play: TerminalPlay | null;
+  /** Board heat.state === CLOSED — right-rail must not claim LIVE/greeks after the session. */
+  sessionClosed?: boolean;
+}) {
+  // Default to Management for working 0DTE rows (action first); Thesis otherwise.
   const [tab, setTab] = useState<Tab>("thesis");
+  const [tabTouched, setTabTouched] = useState(false);
+  useEffect(() => {
+    if (tabTouched || !play) return;
+    if (play.horizon === "ZERO_DTE" && (play.status === "OPEN" || play.status === "HOLD" || play.status === "TRIM")) {
+      setTab("manage");
+    }
+  }, [play, tabTouched]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.key === "1") setTab("thesis");
-      else if (e.key === "2") setTab("manage");
-      else if (e.key === "3") setTab("pnl");
+      if (e.key === "1") { setTabTouched(true); setTab("thesis"); }
+      else if (e.key === "2") { setTabTouched(true); setTab("manage"); }
+      else if (e.key === "3") { setTabTouched(true); setTab("pnl"); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -163,11 +186,29 @@ export function PlayTerminal({ play }: { play: TerminalPlay | null }) {
   const stale = hasAsOf ? isZeroDteMarkStale(asOfMs, nowMs, staleThresholdMs) : false;
   const sync = play.markIsSync === true || (!hasAsOf && play.mark != null);
   const live = play.mark != null && hasAsOf && !stale;
+  const streamKind = markStreamKind({
+    live,
+    sync,
+    stale,
+    playClosed: play.status === "CLOSED",
+    sessionClosed: sessionClosed && play.horizon === "ZERO_DTE",
+    hasMark: play.mark != null,
+  });
   const ageLabel =
-    ageMs == null ? null : ageMs < 1000 ? "now" : ageMs < 60_000 ? `${Math.round(ageMs / 1000)}s ago` : `${Math.round(ageMs / 60_000)}m ago`;
+    ageMs == null
+      ? null
+      : ageMs < 1000
+        ? "now"
+        : ageMs < 60_000
+          ? `${Math.round(ageMs / 1000)}s ago`
+          : `${Math.round(ageMs / 60_000)}m ago`;
+  const greeksLive = Boolean(
+    g && (g.delta != null || g.gamma != null || g.theta != null || g.vega != null || g.iv != null),
+  );
+  const greeksOff = !live || !greeksLive || streamKind === "CLOSED";
 
   return (
-    <div className={clsx("nh-deck-right", stale && "nh-deck-dim")}>
+    <div className={clsx("nh-deck-right", (stale || streamKind === "CLOSED") && "nh-deck-dim")}>
       <div className="nh-deck-th">
         <span className="tk">{play.ticker} · {play.direction}</span>
         <span className="ct">{play.contract}<OccCopy occ={play.occ} /></span>
@@ -209,13 +250,17 @@ export function PlayTerminal({ play }: { play: TerminalPlay | null }) {
           {play.entry != null && <span className="nh-deck-fill"> · entry prem {usd(play.entry)}</span>}
         </div>
       ) : (
-        <div className="nh-deck-stream">
-          {live ? (
+        <div className="nh-deck-stream" title={streamKind === "CLOSED" ? "Session closed — showing last known marks" : undefined}>
+          {streamKind === "LIVE" ? (
             <><span className="nh-deck-dot" /><span className="lv">LIVE</span></>
-          ) : sync ? (
+          ) : streamKind === "CLOSED" ? (
+            <><span className="nh-deck-dot off" /><span className="cl">SESSION CLOSED</span></>
+          ) : streamKind === "SYNC" ? (
             <><span className="nh-deck-dot sync" /><span className="sy">SYNC</span></>
+          ) : streamKind === "STALE" ? (
+            <><span className="nh-deck-dot off" /><span className="of">STALE</span></>
           ) : (
-            <><span className="nh-deck-dot off" /><span className="of">{stale ? "STALE" : "—"}</span></>
+            <><span className="nh-deck-dot off" /><span className="of">—</span></>
           )}
           {!isCondor && play.stockPrice != null && (
             <>{" · "}{play.ticker}{" "}
@@ -223,31 +268,39 @@ export function PlayTerminal({ play }: { play: TerminalPlay | null }) {
             </>
           )}
           {" · mark "}
-          <span className={clsx(markFlash && "neon", stale && "nh-deck-stale-mark")}>{usd(play.mark)}</span>
-          {!isCondor && play.execMark != null && <span className="nh-deck-fill"> · fill ≈{usd(play.execMark)}</span>}
-          {ageLabel && <span className="nh-deck-age"> · {sync ? "sync" : ageLabel}</span>}
-          {stale && <span className="nh-deck-stalebadge">stale &gt;{Math.round(ZERODTE_MARK_STALE_MS / 1000)}s</span>}
+          <span className={clsx(markFlash && "neon", (stale || streamKind === "CLOSED") && "nh-deck-stale-mark")}>{usd(play.mark)}</span>
+          {!isCondor && play.execMark != null && streamKind === "LIVE" && (
+            <span className="nh-deck-fill"> · fill ≈{usd(play.execMark)}</span>
+          )}
+          {streamKind === "CLOSED" && (
+            <span className="nh-deck-age"> · last known{ageLabel ? ` · ${ageLabel}` : ""}</span>
+          )}
+          {streamKind === "SYNC" && <span className="nh-deck-age"> · last known</span>}
+          {streamKind === "LIVE" && ageLabel && <span className="nh-deck-age"> · {ageLabel}</span>}
+          {streamKind === "STALE" && (
+            <span className="nh-deck-stalebadge">stale &gt;{Math.round(ZERODTE_MARK_STALE_MS / 1000)}s</span>
+          )}
         </div>
       )}
 
       {!isLegacy && (
-        <div className="nh-deck-greeks">
-          <GreekCell k="delta" v={g?.delta ?? null} />
-          <GreekCell k="gamma" v={g?.gamma ?? null} />
-          <GreekCell k="theta" v={g?.theta ?? null} />
-          <GreekCell k="vega" v={g?.vega ?? null} />
-          <GreekCell k="iv" v={g?.iv ?? null} />
+        <div className={clsx("nh-deck-greeks", greeksOff && "off")} title={greeksOff ? "Greeks update with live marks — offline after the session" : undefined}>
+          <GreekCell k="delta" v={greeksOff ? null : (g?.delta ?? null)} />
+          <GreekCell k="gamma" v={greeksOff ? null : (g?.gamma ?? null)} />
+          <GreekCell k="theta" v={greeksOff ? null : (g?.theta ?? null)} />
+          <GreekCell k="vega" v={greeksOff ? null : (g?.vega ?? null)} />
+          <GreekCell k="iv" v={greeksOff ? null : (g?.iv ?? null)} />
         </div>
       )}
 
       <div className="nh-deck-tabs">
-        <button className={clsx(tab === "thesis" && "on")} onClick={() => setTab("thesis")}><span className="n">[1]</span>Thesis</button>
-        <button className={clsx(tab === "manage" && "on")} onClick={() => setTab("manage")}><span className="n">[2]</span>Management</button>
-        <button className={clsx(tab === "pnl" && "on")} onClick={() => setTab("pnl")}><span className="n">[3]</span>PnL</button>
+        <button className={clsx(tab === "thesis" && "on")} onClick={() => { setTabTouched(true); setTab("thesis"); }}><span className="n">[1]</span>Thesis</button>
+        <button className={clsx(tab === "manage" && "on")} onClick={() => { setTabTouched(true); setTab("manage"); }}><span className="n">[2]</span>Management</button>
+        <button className={clsx(tab === "pnl" && "on")} onClick={() => { setTabTouched(true); setTab("pnl"); }}><span className="n">[3]</span>PnL</button>
       </div>
 
       <div className="nh-deck-body">
-        {tab === "thesis" && <ThesisPanel play={play} />}
+        {tab === "thesis" && <ThesisPanel play={play} sessionClosed={sessionClosed} />}
         {tab === "manage" && <ManagePanel play={play} nowMs={nowMs} />}
         {tab === "pnl" && <PnlPanel play={play} />}
       </div>
@@ -302,13 +355,33 @@ function HeaderBadges({ play }: { play: TerminalPlay }) {
   );
 }
 
-function ThesisPanel({ play }: { play: TerminalPlay }) {
+function ThesisPanel({ play, sessionClosed = false }: { play: TerminalPlay; sessionClosed?: boolean }) {
   const level = play.thesisBreak?.level ?? "intact";
   const broke = level === "warn" || level === "break";
   const unknown = level === "unknown";
+  // Keep the advisory recommendation in sync with the live (SSE-overlaid) pnlPct — same
+  // recompute ManagePanel does — so "Recommend TRIM/SELL" never lags the Management badge.
+  const liveRec = managementFor(play.exitModel, play.status, play.pnlPct ?? null).recommendation;
   // "Why now" ribbon — the event-driven trigger that surfaced this play, with the ET flag time
   // when the row carries one. Omitted entirely when no reason was pinned (honest absence).
   const whyAt = etClock(play.firstFlaggedAt);
+  const topFactors = play.factors.slice(0, 2);
+  const moreFactors = play.factors.slice(2);
+  const monitorTitle =
+    play.status === "CLOSED" || sessionClosed
+      ? "◉ THESIS (SESSION CLOSED)"
+      : "◉ THESIS MONITOR";
+  const monitorNote = broke
+    ? null
+    : unknown
+      ? null
+      : play.horizon === "LEGACY"
+        ? play.regime?.includes("CONFIRMED")
+          ? "pre-market confirmed — entry levels validated."
+          : "evening thesis holds; morning confirmation updates before the open."
+        : sessionClosed || play.status === "CLOSED"
+          ? "frozen at close — gates/factors are the last board read, not a live stream."
+          : "tape alignment from the board poll; mark/P&L from the marks stream.";
   return (
     <>
       {play.whyNow && (
@@ -319,17 +392,9 @@ function ThesisPanel({ play }: { play: TerminalPlay }) {
           {whyAt && <span className="at"> · {whyAt} ET</span>}
         </div>
       )}
-      <div className="nh-deck-lab">Why this play was picked</div>
-      {play.factors.length === 0 && <div className="nh-deck-recnote">Component breakdown not served for this lane yet — score {play.score}. {play.recNote}</div>}
-      {play.factors.map((f) => (
-        <div key={f.label} className={clsx("nh-deck-fac", f.points < 0 && "neg")}>
-          <div>{f.label}{f.points > 0 && <Bar pts={f.points} />}</div>
-          <div className="pts">{f.points > 0 ? "+" : ""}{f.points}</div>
-        </div>
-      ))}
       {play.gates.length > 0 && (
         <>
-          <div className="nh-deck-lab" style={{ marginTop: 16 }}>Gates</div>
+          <div className="nh-deck-lab">Gates</div>
           <div className="nh-deck-gaterow">
             {play.gates.map((g) => (
               <span key={g.label} className={clsx("nh-deck-gate", g.ok ? "ok" : "no")}>{g.ok ? "✓" : "✗"} {g.label}</span>
@@ -337,6 +402,34 @@ function ThesisPanel({ play }: { play: TerminalPlay }) {
           </div>
         </>
       )}
+      <details className="nh-deck-why" open={play.factors.length <= 2}>
+        <summary className="nh-deck-lab nh-deck-why-sum">
+          Why this play was picked
+          {play.factors.length > 0 && (
+            <span className="nh-deck-why-n"> · {play.factors.length} factors</span>
+          )}
+        </summary>
+        {play.factors.length === 0 && (
+          <div className="nh-deck-recnote">Component breakdown not served for this lane yet — score {play.score}. {play.recNote}</div>
+        )}
+        {topFactors.map((f) => (
+          <div key={f.label} className={clsx("nh-deck-fac", f.points < 0 && "neg")}>
+            <div>{f.label}{f.points > 0 && <Bar pts={f.points} />}</div>
+            <div className="pts">{f.points > 0 ? "+" : ""}{f.points}</div>
+          </div>
+        ))}
+        {moreFactors.length > 0 && (
+          <details className="nh-deck-why-more">
+            <summary className="nh-deck-recnote">Show {moreFactors.length} more factors</summary>
+            {moreFactors.map((f) => (
+              <div key={f.label} className={clsx("nh-deck-fac", f.points < 0 && "neg")}>
+                <div>{f.label}{f.points > 0 && <Bar pts={f.points} />}</div>
+                <div className="pts">{f.points > 0 ? "+" : ""}{f.points}</div>
+              </div>
+            ))}
+          </details>
+        )}
+      </details>
       {play.tierFactors && play.tierFactors.length > 0 && (
         <>
           <div className="nh-deck-lab" style={{ marginTop: 16 }}>Conviction tier breakdown</div>
@@ -377,18 +470,16 @@ function ThesisPanel({ play }: { play: TerminalPlay }) {
         className="nh-deck-break"
         style={broke ? undefined : { borderColor: unknown ? "rgba(255,255,255,.14)" : "rgba(53,255,158,.2)" }}
       >
-        <div className="bh" style={broke ? undefined : { color: unknown ? "var(--dk-amber)" : "var(--dk-green)" }}>◉ LIVE THESIS MONITOR</div>
+        <div className="bh" style={broke ? undefined : { color: unknown ? "var(--dk-amber)" : "var(--dk-green)" }}>{monitorTitle}</div>
         <div className="nh-deck-feed">
           {broke ? (
-            <div><span className="brk">✗ THESIS DEGRADING</span> — {play.thesisBreak!.note}. Recommend {play.recommendation}.</div>
+            <div><span className="brk">✗ THESIS DEGRADING</span> — {play.thesisBreak!.note}. Recommend {liveRec}.</div>
           ) : unknown ? (
             // Data-absent (e.g. a working position with no fresh tape read) — neutral, NOT a false green
             // and NOT a false "degrading". Honest: we're not monitoring the thesis for this play right now.
             <div><span className="warn">• thesis not monitored</span> — {play.thesisBreak?.note ?? "live tape read unavailable for this play"}.</div>
           ) : (
-            <div><span className="ok">✓ thesis intact</span> — {play.horizon === "LEGACY"
-              ? play.regime?.includes("CONFIRMED") ? "pre-market confirmed — entry levels validated." : "evening thesis holds; morning confirmation updates before the open."
-              : "evidence holding; monitor updates on each marks push."}</div>
+            <div><span className="ok">✓ thesis intact</span> — {monitorNote}</div>
           )}
         </div>
       </div>
@@ -409,6 +500,23 @@ function ManagePanel({ play, nowMs }: { play: TerminalPlay; nowMs: number }) {
   // so it must never draw the directional trim ladder OR the −50/+100 ratchet track (both inverted).
   const isCondor = play.isCondor === true;
   const isTrimScale = showsTrimScaleLadder(play);
+  // Lead with distance to stop/target when the frozen ladder carries absolute premiums.
+  const mark = play.mark;
+  const stopP = play.exitPolicy?.stop_premium ?? null;
+  const tgtP = play.exitPolicy?.target_premium ?? null;
+  const distLine = (() => {
+    if (mark == null || (stopP == null && tgtP == null)) return null;
+    const parts: string[] = [];
+    if (stopP != null) {
+      const d = stopP - mark;
+      parts.push(`stop ${d >= 0 ? "+" : ""}${d.toFixed(2)} (${usd(stopP)})`);
+    }
+    if (tgtP != null) {
+      const d = tgtP - mark;
+      parts.push(`target ${d >= 0 ? "+" : ""}${d.toFixed(2)} (${usd(tgtP)})`);
+    }
+    return parts.join(" · ");
+  })();
   return (
     <>
       <div className="nh-deck-lab">Trade management — advisory (we recommend, you execute)</div>
@@ -417,6 +525,17 @@ function ManagePanel({ play, nowMs }: { play: TerminalPlay; nowMs: number }) {
         {/* Plain text only — never inject HTML (recNote is authored plain; React escapes it safely). */}
         <span className="nh-deck-recnote">{recNote}</span>
       </div>
+      {distLine && play.horizon === "ZERO_DTE" && !isCondor && (
+        <div className="nh-deck-dist" title="Distance from live mark to the plan rails">
+          <span className="k">Rails</span>
+          <span className="v">{distLine}</span>
+          {play.pnlPct != null && (
+            <span className={clsx("pnl", play.pnlPct > 0 && "nh-deck-pos", play.pnlPct < 0 && "nh-deck-neg")}>
+              {play.pnlPct >= 0 ? "+" : ""}{play.pnlPct.toFixed(1)}%
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Time-stop clock is a 0DTE-ONLY discipline (flat by 15:30 ET the SAME session). A Swing/
           LEAPS/Legacy position runs for days/weeks, so showing it a "flat by 15:30 today" countdown
