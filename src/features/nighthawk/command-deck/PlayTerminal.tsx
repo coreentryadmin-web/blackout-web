@@ -671,7 +671,7 @@ function LegacyManageGeometry({ play }: { play: TerminalPlay }) {
               <span className="k">Stop</span>
               <span className="v nh-deck-neg">
                 {play.stopLevel}
-                {distStop && <span style={{ opacity: 0.7 }}>{` (${distStop.dollars >= 0 ? "+" : ""}${distStop.dollars.toFixed(2)} · ${distStop.pct >= 0 ? "+" : ""}${distStop.pct.toFixed(1)}%)`}</span>}
+                {distStop && <span className="nh-deck-dist"> ({distStop.dollars >= 0 ? "+" : ""}{distStop.dollars.toFixed(2)} / {distStop.pct >= 0 ? "+" : ""}{distStop.pct.toFixed(1)}%)</span>}
               </span>
             </div>
           )}
@@ -681,7 +681,7 @@ function LegacyManageGeometry({ play }: { play: TerminalPlay }) {
               <span className="k">Target</span>
               <span className="v nh-deck-pos">
                 {play.targetLevel}
-                {distTarget && <span style={{ opacity: 0.7 }}>{` (${distTarget.dollars >= 0 ? "+" : ""}${distTarget.dollars.toFixed(2)} · ${distTarget.pct >= 0 ? "+" : ""}${distTarget.pct.toFixed(1)}%)`}</span>}
+                {distTarget && <span className="nh-deck-dist"> ({distTarget.dollars >= 0 ? "+" : ""}{distTarget.dollars.toFixed(2)} / {distTarget.pct >= 0 ? "+" : ""}{distTarget.pct.toFixed(1)}%)</span>}
               </span>
             </div>
           )}
@@ -710,11 +710,18 @@ function LegacyPnlPanel({ play }: { play: TerminalPlay }) {
   const hasStock = play.stockPrice != null;
   const chg = play.stockChangePct;
   const pnl = play.pnlPct;
+  const spot = play.stockPrice;
+  const target = play.targetLevel ? parseFloat(play.targetLevel.replace(/[^0-9.]/g, "")) : null;
+  const stop = play.stopLevel ? parseFloat(play.stopLevel.replace(/[^0-9.]/g, "")) : null;
+  const distTarget = spot != null && target != null && Number.isFinite(target) && spot > 0
+    ? { dollars: target - spot, pct: ((target - spot) / spot * 100) } : null;
+  const distStop = spot != null && stop != null && Number.isFinite(stop) && spot > 0
+    ? { dollars: stop - spot, pct: ((stop - spot) / spot * 100) } : null;
   return (
     <>
       <div className="nh-deck-lab">Stock position</div>
       <div className={clsx("nh-deck-pnlbig", (pnl ?? chg ?? 0) > 0 && "nh-deck-pos", (pnl ?? chg ?? 0) < 0 && "nh-deck-neg")}>
-        {hasStock ? `$${play.stockPrice!.toFixed(2)}` : "— awaiting quote"}
+        {hasStock ? `$${spot!.toFixed(2)}` : "— awaiting quote"}
       </div>
       {pnl != null && (
         <div className="nh-deck-execline">
@@ -727,10 +734,35 @@ function LegacyPnlPanel({ play }: { play: TerminalPlay }) {
         </div>
       )}
       <div className="nh-deck-grid" style={{ marginTop: 12 }}>
-        <div><span className="k">Stock</span><span className="v">{hasStock ? `$${play.stockPrice!.toFixed(2)}` : "—"}</span></div>
+        <div><span className="k">Stock</span><span className="v">{hasStock ? `$${spot!.toFixed(2)}` : "—"}</span></div>
         <div><span className="k">Entry premium</span><span className="v">{play.entry != null ? usd(play.entry) : "—"}</span></div>
-        {play.targetLevel && <div><span className="k">Target</span><span className="v nh-deck-pos">{play.targetLevel}</span></div>}
-        {play.stopLevel && <div><span className="k">Stop</span><span className="v nh-deck-neg">{play.stopLevel}</span></div>}
+        {play.targetLevel && (
+          <div>
+            <span className="k">Target</span>
+            <span className="v nh-deck-pos">
+              {play.targetLevel}
+              {distTarget && <span className="nh-deck-dist"> ({distTarget.dollars >= 0 ? "+" : ""}{distTarget.dollars.toFixed(2)} / {distTarget.pct >= 0 ? "+" : ""}{distTarget.pct.toFixed(1)}%)</span>}
+            </span>
+          </div>
+        )}
+        {play.stopLevel && (
+          <div>
+            <span className="k">Stop</span>
+            <span className="v nh-deck-neg">
+              {play.stopLevel}
+              {distStop && <span className="nh-deck-dist"> ({distStop.dollars >= 0 ? "+" : ""}{distStop.dollars.toFixed(2)} / {distStop.pct >= 0 ? "+" : ""}{distStop.pct.toFixed(1)}%)</span>}
+            </span>
+          </div>
+        )}
+        {play.rrRatio != null && (
+          <div>
+            <span className="k">R:R</span>
+            <span className={clsx("v", play.rrRatio >= 2 && "nh-deck-pos", play.rrRatio < 1 && "nh-deck-neg")}>
+              {play.rrRatio.toFixed(1)}:1
+            </span>
+          </div>
+        )}
+        {play.optionsPlay && <div><span className="k">Contract</span><span className="v">{play.optionsPlay}</span></div>}
       </div>
       {play.progress != null && (
         <div style={{ marginTop: 12 }}>
