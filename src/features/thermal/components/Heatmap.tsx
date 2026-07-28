@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import dynamic from "next/dynamic";
 import { clsx } from "clsx";
 
@@ -31,7 +32,14 @@ const GexHeatmap = dynamic(
 export function Heatmap({ nativeShell = false }: { nativeShell?: boolean }) {
   return (
     <div className={clsx("desk-layout gex-heatmap-desk space-y-2", nativeShell && "gex-heatmap-desk-native")}>
-      <GexHeatmap ticker="SPY" nativeShell={nativeShell} />
+      {/* Suspense: GexHeatmap reads useSearchParams for ?ticker=&lens=&compare= deep-links. */}
+      <Suspense
+        fallback={
+          <div className="h-[520px] rounded-2xl border border-white/10 bg-black/40 animate-pulse" />
+        }
+      >
+        <GexHeatmap ticker="SPY" nativeShell={nativeShell} />
+      </Suspense>
     </div>
   );
 }
