@@ -2,7 +2,10 @@
  * Cron: post a live Thermal triple-desk PNG (SPY | SPX | QQQ) to Discord.
  *
  * CACHE-READER: reads shared `fetchGexHeatmap` snapshots only — no per-request upstream.
- * INERT unless `DISCORD_THERMAL_WEBHOOK_URL` is set. RTH-gated (cash session) unless `?force=1`.
+ * INERT unless `DISCORD_THERMAL_WEBHOOK_URL` is set.
+ *
+ * Runs 24/7 by default (preview / off-hours snapshots still useful). Set
+ * `THERMAL_DISCORD_RTH_ONLY=1` to skip outside cash RTH (unless `?force=1`).
  *
  * Schedule catalog: `railway.thermal-discord.toml` → EventBridge must be synced to fire.
  */
@@ -28,6 +31,11 @@ function thermalWebhook(): string | null {
   return process.env.DISCORD_THERMAL_WEBHOOK_URL?.trim() || null;
 }
 
+function rthOnly(): boolean {
+  const v = process.env.THERMAL_DISCORD_RTH_ONLY?.trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes";
+}
+
 export async function GET(req: NextRequest) {
   const started = Date.now();
   if (!isCronAuthorized(req)) {
@@ -46,8 +54,8 @@ export async function GET(req: NextRequest) {
   }
 
   const force = req.nextUrl.searchParams.get("force") === "1";
-  if (!force && !isEtCashRth()) {
-    const payload = { ok: true, skipped: true, reason: "Outside cash RTH" };
+  if (!force && rthOnly() && !isEtCashRth()) {
+    const payload = { ok: true, skipped: true, reason: "Outside cash RTH (THERMAL_DISCORD_RTH_ONLY)" };
     await logCronRun("thermal-discord", started, payload);
     return NextResponse.json(payload);
   }

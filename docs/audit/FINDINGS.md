@@ -13,8 +13,8 @@ evidence / fix / status per the CLAUDE.md policy.)
 
 **Approach.** Server-rendered PNG from shared `fetchGexHeatmap` cache (sharp SVG→PNG) + Discord
 multipart webhook — no Chromium on ECS. Route `/api/cron/thermal-discord`, catalog
-`railway.thermal-discord.toml` (`*/15 11-21 * * 1-5`), inert without `DISCORD_THERMAL_WEBHOOK_URL`,
-skips outside cash RTH unless `?force=1`.
+`railway.thermal-discord.toml` (`*/15 * * * *` 24/7), inert without `DISCORD_THERMAL_WEBHOOK_URL`.
+Optional `THERMAL_DISCORD_RTH_ONLY=1` to skip outside cash RTH.
 
 **Status.** Draft PR `cursor/thermal-discord-desk-3d11`. Webhook stored in Secrets Manager only
 (never committed). EventBridge rule must exist after sync.
