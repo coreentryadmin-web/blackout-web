@@ -112,9 +112,7 @@ export function LandingRedesignFx() {
     let floatRaf = 0;
     let edgeEnergyRaf = 0;
     let reactorParallaxRaf = 0;
-    let identifyRaf = 0;
-    let validateRaf = 0;
-    let executeRaf = 0;
+    // (pipeline RAF handles are scoped inside each canvas block below)
     let feedsRaf = 0;
     let latencyRaf = 0;
     let intelRaf = 0;
@@ -857,338 +855,627 @@ export function LandingRedesignFx() {
       cleanups.push(() => clearTimeout(tid));
     }
 
-    // ── Protocol card canvases ──
+    // ── Intelligence Pipeline — scroll-triggered stage reveals + canvas animations ──
 
-    // IDENTIFY
-    const cvId = document.getElementById(
-      "cv-identify",
-    ) as HTMLCanvasElement | null;
-    if (cvId) {
-      const ctx = cvId.getContext("2d");
-      if (ctx) {
-        const W = 600,
-          H = 260;
-        const scanDots = Array.from({ length: 30 }, () => ({
-          x: Math.random() * W,
-          y: Math.random() * H,
-          size: 1 + Math.random() * 2,
-          vx: (Math.random() - 0.5) * 0.6,
-          vy: (Math.random() - 0.5) * 0.4,
-          bright: Math.random(),
-        }));
-        const walls = [
-          { x: 150, label: "5580" },
-          { x: 300, label: "5620" },
-          { x: 450, label: "5660" },
-        ];
-        function drawIdentify(t: number) {
-          if (destroyed) return;
-          const s = t * 0.001;
-          ctx!.clearRect(0, 0, W, H);
-          const angle = (s * 0.8) % (Math.PI * 2);
-          const cxI = W / 2,
-            cyI = H / 2;
-          ctx!.save();
-          ctx!.globalAlpha = 0.15;
-          ctx!.beginPath();
-          ctx!.moveTo(cxI, cyI);
-          ctx!.arc(cxI, cyI, 120, angle - 0.4, angle, false);
-          ctx!.closePath();
-          const sweep = ctx!.createRadialGradient(cxI, cyI, 0, cxI, cyI, 120);
-          sweep.addColorStop(0, "rgba(163,230,53,.4)");
-          sweep.addColorStop(1, "transparent");
-          ctx!.fillStyle = sweep;
-          ctx!.fill();
-          ctx!.restore();
-          for (let r = 40; r <= 120; r += 40) {
-            ctx!.strokeStyle = "rgba(163,230,53,.06)";
-            ctx!.lineWidth = 0.5;
-            ctx!.beginPath();
-            ctx!.arc(cxI, cyI, r, 0, Math.PI * 2);
-            ctx!.stroke();
-          }
-          for (const w of walls) {
-            const pulse = 0.1 + Math.sin(s * 2 + w.x * 0.01) * 0.06;
-            ctx!.strokeStyle = "rgba(163,230,53," + pulse + ")";
-            ctx!.lineWidth = 1;
-            ctx!.setLineDash([4, 4]);
-            ctx!.beginPath();
-            ctx!.moveTo(w.x, 0);
-            ctx!.lineTo(w.x, H);
-            ctx!.stroke();
-            ctx!.setLineDash([]);
-            ctx!.font = "8px monospace";
-            ctx!.fillStyle = "rgba(163,230,53,.3)";
-            ctx!.fillText(w.label, w.x + 4, 14);
-          }
-          ctx!.globalCompositeOperation = "lighter";
-          for (const d of scanDots) {
-            d.x += d.vx;
-            d.y += d.vy;
-            if (d.x < 0 || d.x > W) d.vx *= -1;
-            if (d.y < 0 || d.y > H) d.vy *= -1;
-            const dist = Math.sqrt((d.x - cxI) ** 2 + (d.y - cyI) ** 2);
-            const inSweep =
-              Math.abs(Math.atan2(d.y - cyI, d.x - cxI) - angle) < 0.5 &&
-              dist < 120;
-            const alpha = inSweep ? 0.8 : 0.15 * d.bright;
-            ctx!.globalAlpha = alpha;
-            ctx!.fillStyle = "#a3e635";
-            ctx!.beginPath();
-            ctx!.arc(
-              d.x,
-              d.y,
-              d.size * (inSweep ? 2 : 1),
-              0,
-              Math.PI * 2,
-            );
-            ctx!.fill();
-            if (inSweep) {
-              ctx!.globalAlpha = 0.15;
-              ctx!.beginPath();
-              ctx!.arc(d.x, d.y, d.size * 6, 0, Math.PI * 2);
-              ctx!.fill();
+    const pipeStages = document.querySelectorAll("[data-pipe-stage]");
+    const pipeConduits = document.querySelectorAll("[data-pipe-conduit]");
+    if (pipeStages.length) {
+      const stageOrder = ["ingress", "identify", "validate", "execute", "results", "summary"];
+      const litStages = new Set<string>();
+
+      const pipeObs = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            const el = entry.target as HTMLElement;
+            const stage = el.dataset.pipeStage;
+            if (!stage) continue;
+            if (entry.isIntersecting && !litStages.has(stage)) {
+              litStages.add(stage);
+              el.classList.add("pipe-lit");
+              const idx = stageOrder.indexOf(stage);
+              if (idx > 0) {
+                const conduit = document.querySelector(`[data-pipe-conduit="${idx - 1}"]`);
+                if (conduit) conduit.classList.add("pipe-lit");
+              }
+              // Update status text
+              const statusEl = el.querySelector(".pipe-status");
+              if (statusEl) statusEl.innerHTML = '<span class="status-dot"></span>ONLINE';
             }
           }
-          ctx!.globalCompositeOperation = "source-over";
-          ctx!.globalAlpha = 1;
-          ctx!.font = "bold 10px monospace";
-          ctx!.fillStyle = "rgba(163,230,53,.5)";
-          const tickers = ["SPX", "SPY", "QQQ", "NVDA"];
-          const active = tickers[Math.floor(s * 0.5) % tickers.length];
-          ctx!.fillText("SCANNING: " + active, 12, H - 12);
-          identifyRaf = requestAnimationFrame(drawIdentify);
+        },
+        { threshold: 0.2, rootMargin: "0px 0px -60px 0px" },
+      );
+      pipeStages.forEach((el) => pipeObs.observe(el));
+      pipeConduits.forEach((el) => pipeObs.observe(el));
+      cleanups.push(() => pipeObs.disconnect());
+    }
+
+    // ── INGEST ticker bar canvas ──
+    const cvIngest = document.getElementById("cv-ingest") as HTMLCanvasElement | null;
+    if (cvIngest) {
+      const ictx = cvIngest.getContext("2d");
+      if (ictx) {
+        const IW = 400, IH = 60;
+        const dots = Array.from({ length: 20 }, (_, i) => ({
+          x: (i / 20) * IW, speed: 1 + i * 0.15, size: 1 + (i % 3) * 0.5,
+        }));
+        let ingestRaf = 0;
+        function drawIngest(t: number) {
+          if (destroyed) return;
+          const s = t * 0.001;
+          ictx!.clearRect(0, 0, IW, IH);
+          ictx!.globalCompositeOperation = "lighter";
+          for (const d of dots) {
+            d.x = (d.x + d.speed) % IW;
+            const alpha = 0.15 + Math.sin(s * 2 + d.x * 0.02) * 0.1;
+            ictx!.fillStyle = "rgba(163,230,53," + alpha + ")";
+            ictx!.beginPath();
+            ictx!.arc(d.x, IH / 2, d.size, 0, Math.PI * 2);
+            ictx!.fill();
+            const glow = ictx!.createRadialGradient(d.x, IH / 2, 0, d.x, IH / 2, d.size * 4);
+            glow.addColorStop(0, "rgba(163,230,53," + alpha * 0.3 + ")");
+            glow.addColorStop(1, "transparent");
+            ictx!.fillStyle = glow;
+            ictx!.fillRect(d.x - d.size * 4, IH / 2 - d.size * 4, d.size * 8, d.size * 8);
+          }
+          ictx!.globalCompositeOperation = "source-over";
+          ingestRaf = requestAnimationFrame(drawIngest);
         }
-        identifyRaf = requestAnimationFrame(drawIdentify);
-        cleanups.push(() => cancelAnimationFrame(identifyRaf));
+        ingestRaf = requestAnimationFrame(drawIngest);
+        cleanups.push(() => cancelAnimationFrame(ingestRaf));
       }
     }
 
-    // VALIDATE
-    const cvVal = document.getElementById(
-      "cv-validate",
-    ) as HTMLCanvasElement | null;
-    if (cvVal) {
-      const ctx = cvVal.getContext("2d");
+    // ── IDENTIFY canvas — radar sweep + GEX heatmap + flowing particles ──
+    const cvPipeId = document.getElementById("cv-pipe-identify") as HTMLCanvasElement | null;
+    if (cvPipeId) {
+      const ctx = cvPipeId.getContext("2d");
       if (ctx) {
-        const W = 600,
-          H = 260;
-        const stages = ["FLOW", "GAMMA", "CORTEX", "CONFLUENCE", "GRADE"];
-        const stageX = stages.map(
-          (_, i) => 60 + (i * (W - 120)) / (stages.length - 1),
-        );
-        function drawValidate(t: number) {
+        const W = 560, H = 320;
+        const particles = Array.from({ length: 50 }, () => ({
+          x: Math.random() * W, y: Math.random() * H,
+          size: 0.8 + Math.random() * 2, vx: (Math.random() - 0.5) * 0.8,
+          vy: (Math.random() - 0.5) * 0.5, bright: Math.random(),
+        }));
+        const walls = [
+          { x: 0.22, h: 0.7, label: "5580" }, { x: 0.40, h: 0.9, label: "5620" },
+          { x: 0.58, h: 0.5, label: "5650" }, { x: 0.76, h: 0.8, label: "5680" },
+        ];
+        let idRaf = 0;
+        function drawPipeIdentify(t: number) {
           if (destroyed) return;
           const s = t * 0.001;
           ctx!.clearRect(0, 0, W, H);
-          const cy = H / 2;
-          ctx!.strokeStyle = "rgba(34,211,238,.08)";
-          ctx!.lineWidth = 2;
-          ctx!.beginPath();
-          ctx!.moveTo(stageX[0], cy);
-          ctx!.lineTo(stageX[stageX.length - 1], cy);
-          ctx!.stroke();
-          for (let i = 0; i < stages.length; i++) {
-            const x = stageX[i];
-            const pulse = 0.4 + Math.sin(s * 2 + i * 1.2) * 0.3;
+
+          // Subtle grid
+          ctx!.strokeStyle = "rgba(163,230,53,.03)";
+          ctx!.lineWidth = 0.5;
+          for (let x = 0; x < W; x += 40) { ctx!.beginPath(); ctx!.moveTo(x, 0); ctx!.lineTo(x, H); ctx!.stroke(); }
+          for (let y = 0; y < H; y += 40) { ctx!.beginPath(); ctx!.moveTo(0, y); ctx!.lineTo(W, y); ctx!.stroke(); }
+
+          // Radar sweep
+          const cx = W * 0.18, cy = H * 0.45, R = 90;
+          const angle = (s * 0.7) % (Math.PI * 2);
+          ctx!.save();
+          ctx!.globalAlpha = 0.2;
+          ctx!.beginPath(); ctx!.moveTo(cx, cy);
+          ctx!.arc(cx, cy, R, angle - 0.5, angle, false);
+          ctx!.closePath();
+          const sweep = ctx!.createRadialGradient(cx, cy, 0, cx, cy, R);
+          sweep.addColorStop(0, "rgba(163,230,53,.5)");
+          sweep.addColorStop(1, "transparent");
+          ctx!.fillStyle = sweep; ctx!.fill();
+          ctx!.restore();
+          for (let r = 30; r <= R; r += 30) {
+            ctx!.strokeStyle = "rgba(163,230,53,.06)"; ctx!.lineWidth = 0.5;
+            ctx!.beginPath(); ctx!.arc(cx, cy, r, 0, Math.PI * 2); ctx!.stroke();
+          }
+          // Crosshairs
+          ctx!.strokeStyle = "rgba(163,230,53,.05)"; ctx!.lineWidth = 0.5;
+          ctx!.beginPath(); ctx!.moveTo(cx - R, cy); ctx!.lineTo(cx + R, cy); ctx!.stroke();
+          ctx!.beginPath(); ctx!.moveTo(cx, cy - R); ctx!.lineTo(cx, cy + R); ctx!.stroke();
+
+          // GEX heatmap bars
+          const barArea = { x: W * 0.38, w: W * 0.58, y: 30, h: H - 60 };
+          for (const w of walls) {
+            const bx = barArea.x + w.x * barArea.w;
+            const pulse = 0.6 + Math.sin(s * 1.5 + w.x * 10) * 0.3;
+            const bh = barArea.h * w.h * pulse;
+            const grad = ctx!.createLinearGradient(bx, barArea.y + barArea.h, bx, barArea.y + barArea.h - bh);
+            grad.addColorStop(0, "rgba(163,230,53,.02)");
+            grad.addColorStop(0.5, "rgba(163,230,53," + (0.08 * pulse) + ")");
+            grad.addColorStop(1, "rgba(163,230,53," + (0.2 * pulse) + ")");
+            ctx!.fillStyle = grad;
+            ctx!.fillRect(bx - 12, barArea.y + barArea.h - bh, 24, bh);
+            // Bar top glow
+            ctx!.fillStyle = "rgba(163,230,53," + (0.4 * pulse) + ")";
+            ctx!.fillRect(bx - 12, barArea.y + barArea.h - bh, 24, 2);
+            // Label
+            ctx!.font = "7px monospace";
+            ctx!.fillStyle = "rgba(163,230,53,.3)";
+            ctx!.fillText(w.label, bx - 10, barArea.y + barArea.h + 14);
+          }
+
+          // Flowing particles
+          ctx!.globalCompositeOperation = "lighter";
+          for (const p of particles) {
+            p.x += p.vx; p.y += p.vy;
+            if (p.x < 0 || p.x > W) p.vx *= -1;
+            if (p.y < 0 || p.y > H) p.vy *= -1;
+            const dist = Math.sqrt((p.x - cx) ** 2 + (p.y - cy) ** 2);
+            const inSweep = Math.abs(Math.atan2(p.y - cy, p.x - cx) - angle) < 0.5 && dist < R;
+            const alpha = inSweep ? 0.7 : 0.1 * p.bright;
+            ctx!.globalAlpha = alpha;
+            ctx!.fillStyle = "#a3e635";
+            ctx!.beginPath(); ctx!.arc(p.x, p.y, p.size * (inSweep ? 2.5 : 1), 0, Math.PI * 2); ctx!.fill();
+            if (inSweep) {
+              ctx!.globalAlpha = 0.1;
+              ctx!.beginPath(); ctx!.arc(p.x, p.y, p.size * 8, 0, Math.PI * 2); ctx!.fill();
+            }
+          }
+          ctx!.globalCompositeOperation = "source-over"; ctx!.globalAlpha = 1;
+
+          // Status readout
+          const tickers = ["SPX", "SPY", "QQQ", "NVDA", "TSLA", "META"];
+          const active = tickers[Math.floor(s * 0.5) % tickers.length];
+          ctx!.font = "bold 9px monospace";
+          ctx!.fillStyle = "rgba(163,230,53,.5)";
+          ctx!.fillText("SCANNING: " + active, 12, H - 10);
+          ctx!.fillStyle = "rgba(163,230,53,.25)";
+          ctx!.fillText("GEX WALL EXPOSURE", barArea.x, 20);
+
+          idRaf = requestAnimationFrame(drawPipeIdentify);
+        }
+        idRaf = requestAnimationFrame(drawPipeIdentify);
+        cleanups.push(() => cancelAnimationFrame(idRaf));
+      }
+    }
+
+    // ── VALIDATE canvas — verification pipeline + scoring meter + grade ──
+    const cvPipeVal = document.getElementById("cv-pipe-validate") as HTMLCanvasElement | null;
+    if (cvPipeVal) {
+      const ctx = cvPipeVal.getContext("2d");
+      if (ctx) {
+        const W = 560, H = 320;
+        const gates = ["FLOW", "GAMMA", "CORTEX", "CONFLUENCE", "BIE"];
+        const gateX = gates.map((_, i) => 50 + (i * (W - 100)) / (gates.length - 1));
+        let valRaf = 0;
+        function drawPipeValidate(t: number) {
+          if (destroyed) return;
+          const s = t * 0.001;
+          ctx!.clearRect(0, 0, W, H);
+
+          // Background grid
+          ctx!.strokeStyle = "rgba(34,211,238,.025)";
+          ctx!.lineWidth = 0.5;
+          for (let x = 0; x < W; x += 40) { ctx!.beginPath(); ctx!.moveTo(x, 0); ctx!.lineTo(x, H); ctx!.stroke(); }
+          for (let y = 0; y < H; y += 40) { ctx!.beginPath(); ctx!.moveTo(0, y); ctx!.lineTo(W, y); ctx!.stroke(); }
+
+          // Main pipeline track
+          const trackY = 100;
+          ctx!.strokeStyle = "rgba(34,211,238,.06)"; ctx!.lineWidth = 2;
+          ctx!.beginPath(); ctx!.moveTo(gateX[0], trackY); ctx!.lineTo(gateX[gateX.length - 1], trackY); ctx!.stroke();
+
+          // Gate nodes
+          const passProgress = (s * 0.25) % (gates.length + 1);
+          for (let i = 0; i < gates.length; i++) {
+            const x = gateX[i];
+            const passed = i < Math.floor(passProgress);
+            const active = Math.abs(passProgress - i) < 0.5;
+            const pulse = active ? 0.8 : (passed ? 0.5 : 0.15);
+
+            // Gate glow
             ctx!.globalCompositeOperation = "lighter";
-            const glow = ctx!.createRadialGradient(x, cy, 0, x, cy, 24);
-            glow.addColorStop(0, "rgba(34,211,238," + pulse * 0.5 + ")");
-            glow.addColorStop(
-              0.5,
-              "rgba(34,211,238," + pulse * 0.15 + ")",
-            );
+            const glow = ctx!.createRadialGradient(x, trackY, 0, x, trackY, 30);
+            glow.addColorStop(0, "rgba(34,211,238," + pulse * 0.4 + ")");
             glow.addColorStop(1, "transparent");
             ctx!.fillStyle = glow;
-            ctx!.fillRect(x - 24, cy - 24, 48, 48);
+            ctx!.fillRect(x - 30, trackY - 30, 60, 60);
             ctx!.globalCompositeOperation = "source-over";
-            ctx!.fillStyle = "rgba(34,211,238," + pulse * 0.8 + ")";
-            ctx!.beginPath();
-            ctx!.arc(x, cy, 6, 0, Math.PI * 2);
-            ctx!.fill();
-            ctx!.strokeStyle = "rgba(34,211,238," + pulse * 0.4 + ")";
-            ctx!.lineWidth = 1;
-            ctx!.beginPath();
-            ctx!.arc(x, cy, 12, 0, Math.PI * 2);
-            ctx!.stroke();
-            const passProgress = (s * 0.3) % 6;
-            if (i < Math.floor(passProgress)) {
-              ctx!.fillStyle = "rgba(34,211,238,.7)";
-              ctx!.font = "bold 10px sans-serif";
-              ctx!.fillText("✓", x - 4, cy + 3);
+
+            // Gate ring
+            ctx!.strokeStyle = "rgba(34,211,238," + pulse * 0.6 + ")";
+            ctx!.lineWidth = active ? 2 : 1;
+            ctx!.beginPath(); ctx!.arc(x, trackY, active ? 14 : 10, 0, Math.PI * 2); ctx!.stroke();
+
+            // Inner dot
+            ctx!.fillStyle = "rgba(34,211,238," + pulse + ")";
+            ctx!.beginPath(); ctx!.arc(x, trackY, active ? 5 : 3, 0, Math.PI * 2); ctx!.fill();
+
+            // Check mark when passed
+            if (passed) {
+              ctx!.font = "bold 12px sans-serif";
+              ctx!.fillStyle = "rgba(34,211,238,.8)";
+              ctx!.fillText("✓", x - 4, trackY + 4);
             }
-            ctx!.font = "7px monospace";
-            ctx!.fillStyle = "rgba(34,211,238,.4)";
-            ctx!.fillText(stages[i], x - 14, cy + 30);
-            if (i < stages.length - 1) {
-              const nx = stageX[i + 1];
-              const progress = Math.max(0, Math.min(1, passProgress - i));
-              if (progress > 0) {
-                ctx!.strokeStyle =
-                  "rgba(34,211,238," + progress * 0.3 + ")";
+
+            // Gate label
+            ctx!.font = "bold 8px monospace";
+            ctx!.fillStyle = "rgba(34,211,238," + (passed ? 0.6 : 0.25) + ")";
+            ctx!.textAlign = "center";
+            ctx!.fillText(gates[i], x, trackY + 28);
+            ctx!.textAlign = "left";
+
+            // Connection line progress
+            if (i < gates.length - 1) {
+              const nx = gateX[i + 1];
+              const p = Math.max(0, Math.min(1, passProgress - i));
+              if (p > 0) {
+                ctx!.strokeStyle = "rgba(34,211,238," + p * 0.4 + ")";
                 ctx!.lineWidth = 2;
-                ctx!.beginPath();
-                ctx!.moveTo(x + 14, cy);
-                ctx!.lineTo(x + 14 + (nx - x - 28) * progress, cy);
+                ctx!.beginPath(); ctx!.moveTo(x + 16, trackY);
+                ctx!.lineTo(x + 16 + (nx - x - 32) * p, trackY);
                 ctx!.stroke();
               }
             }
           }
-          const packetPos = ((s * 80) % (W - 60)) + 30;
+
+          // Data packet
+          const packetX = gateX[0] + (passProgress / gates.length) * (gateX[gateX.length - 1] - gateX[0]);
           ctx!.globalCompositeOperation = "lighter";
-          const pg = ctx!.createRadialGradient(
-            packetPos,
-            cy,
-            0,
-            packetPos,
-            cy,
-            10,
-          );
-          pg.addColorStop(0, "rgba(34,211,238,.6)");
+          const pg = ctx!.createRadialGradient(packetX, trackY, 0, packetX, trackY, 12);
+          pg.addColorStop(0, "rgba(34,211,238,.7)");
           pg.addColorStop(1, "transparent");
           ctx!.fillStyle = pg;
-          ctx!.fillRect(packetPos - 10, cy - 10, 20, 20);
+          ctx!.fillRect(packetX - 12, trackY - 12, 24, 24);
           ctx!.globalCompositeOperation = "source-over";
-          const grades = ["A+", "A", "A-", "B+", "B", "A"];
-          const grade = grades[Math.floor(s * 0.4) % grades.length];
-          ctx!.font = "bold 28px monospace";
+
+          // Scoring meter (bottom left)
+          const conf = 2.5 + Math.sin(s * 0.4) * 2;
+          const meterX = 30, meterY = 180, meterW = 180, meterH = 10;
+          ctx!.fillStyle = "rgba(34,211,238,.06)";
+          ctx!.beginPath(); ctx!.roundRect(meterX, meterY, meterW, meterH, 5); ctx!.fill();
+          const fillW = meterW * (conf / 5);
+          const meterGrad = ctx!.createLinearGradient(meterX, 0, meterX + fillW, 0);
+          meterGrad.addColorStop(0, "rgba(34,211,238,.2)");
+          meterGrad.addColorStop(1, "rgba(34,211,238,.5)");
+          ctx!.fillStyle = meterGrad;
+          ctx!.beginPath(); ctx!.roundRect(meterX, meterY, fillW, meterH, 5); ctx!.fill();
+          // Meter glow tip
+          ctx!.globalCompositeOperation = "lighter";
+          const tipGlow = ctx!.createRadialGradient(meterX + fillW, meterY + meterH / 2, 0, meterX + fillW, meterY + meterH / 2, 15);
+          tipGlow.addColorStop(0, "rgba(34,211,238,.3)");
+          tipGlow.addColorStop(1, "transparent");
+          ctx!.fillStyle = tipGlow;
+          ctx!.fillRect(meterX + fillW - 15, meterY - 10, 30, 30);
+          ctx!.globalCompositeOperation = "source-over";
+          ctx!.font = "bold 8px monospace";
           ctx!.fillStyle = "rgba(34,211,238,.5)";
-          ctx!.fillText(grade, W - 60, 36);
+          ctx!.fillText("CONFLUENCE " + conf.toFixed(1) + "/5", meterX, meterY - 6);
+
+          // Grade display (bottom right)
+          const grades = ["A+", "A", "A-", "B+", "B", "A"];
+          const grade = grades[Math.floor(s * 0.35) % grades.length];
+          // Grade card
+          ctx!.fillStyle = "rgba(0,0,0,.3)";
+          ctx!.beginPath(); ctx!.roundRect(W - 130, 160, 110, 90, 10); ctx!.fill();
+          ctx!.strokeStyle = "rgba(34,211,238,.1)";
+          ctx!.lineWidth = 1;
+          ctx!.beginPath(); ctx!.roundRect(W - 130, 160, 110, 90, 10); ctx!.stroke();
+          ctx!.font = "bold 40px monospace";
+          ctx!.fillStyle = "rgba(34,211,238,.6)";
+          ctx!.textAlign = "center";
+          ctx!.fillText(grade, W - 75, 215);
           ctx!.font = "8px monospace";
-          ctx!.fillStyle = "rgba(34,211,238,.3)";
-          ctx!.fillText("GRADE", W - 60, 50);
-          const conf = 2.5 + Math.sin(s * 0.5) * 2;
-          ctx!.fillStyle = "rgba(34,211,238,.1)";
-          ctx!.fillRect(20, H - 30, 150, 8);
-          ctx!.fillStyle = "rgba(34,211,238,.4)";
-          ctx!.fillRect(20, H - 30, 150 * (conf / 5), 8);
-          ctx!.font = "8px monospace";
-          ctx!.fillStyle = "rgba(34,211,238,.4)";
-          ctx!.fillText(
-            "CONFLUENCE " + conf.toFixed(1) + "/5",
-            20,
-            H - 36,
-          );
-          validateRaf = requestAnimationFrame(drawValidate);
+          ctx!.fillStyle = "rgba(34,211,238,.35)";
+          ctx!.fillText("SETUP GRADE", W - 75, 240);
+          ctx!.textAlign = "left";
+
+          // Confidence lights
+          const lightY = H - 30;
+          const lights = 5;
+          const lightOn = Math.ceil(conf);
+          for (let i = 0; i < lights; i++) {
+            const lx = 30 + i * 22;
+            ctx!.fillStyle = i < lightOn ? "rgba(34,211,238," + (0.3 + (i / lights) * 0.4) + ")" : "rgba(34,211,238,.06)";
+            ctx!.beginPath(); ctx!.roundRect(lx, lightY, 16, 6, 3); ctx!.fill();
+            if (i < lightOn) {
+              ctx!.globalCompositeOperation = "lighter";
+              const lg = ctx!.createRadialGradient(lx + 8, lightY + 3, 0, lx + 8, lightY + 3, 12);
+              lg.addColorStop(0, "rgba(34,211,238,.15)");
+              lg.addColorStop(1, "transparent");
+              ctx!.fillStyle = lg;
+              ctx!.fillRect(lx - 4, lightY - 9, 24, 24);
+              ctx!.globalCompositeOperation = "source-over";
+            }
+          }
+
+          valRaf = requestAnimationFrame(drawPipeValidate);
         }
-        validateRaf = requestAnimationFrame(drawValidate);
-        cleanups.push(() => cancelAnimationFrame(validateRaf));
+        valRaf = requestAnimationFrame(drawPipeValidate);
+        cleanups.push(() => cancelAnimationFrame(valRaf));
       }
     }
 
-    // EXECUTE
-    const cvEx = document.getElementById(
-      "cv-execute",
-    ) as HTMLCanvasElement | null;
-    if (cvEx) {
-      const ctx = cvEx.getContext("2d");
+    // ── EXECUTE canvas — candlestick chart + trade card + entry/stop/target ──
+    const cvPipeEx = document.getElementById("cv-pipe-execute") as HTMLCanvasElement | null;
+    if (cvPipeEx) {
+      const ctx = cvPipeEx.getContext("2d");
       if (ctx) {
-        const W = 600,
-          H = 260;
-        function drawExecute(t: number) {
+        const W = 560, H = 360;
+        let exRaf = 0;
+        function drawPipeExecute(t: number) {
           if (destroyed) return;
           const s = t * 0.001;
           ctx!.clearRect(0, 0, W, H);
-          ctx!.strokeStyle = "rgba(191,95,255,.06)";
+
+          // Grid
+          ctx!.strokeStyle = "rgba(191,95,255,.03)";
           ctx!.lineWidth = 0.5;
-          for (let y = 40; y < H; y += 30) {
-            ctx!.beginPath();
-            ctx!.moveTo(0, y);
-            ctx!.lineTo(W, y);
-            ctx!.stroke();
-          }
-          ctx!.lineWidth = 1;
-          for (let i = 0; i < 30; i++) {
-            const bx = 15 + i * 19;
-            const base =
-              130 + Math.sin(i * 0.3 + 1) * 30 + Math.sin(i * 0.15) * 20;
-            const open = base - 5 + Math.sin(s * 0.5 + i) * 3;
-            const close = base + 5 + Math.sin(s * 0.7 + i * 1.3) * 8;
-            const high = Math.min(open, close) - 4 - Math.random() * 8;
-            const low = Math.max(open, close) + 4 + Math.random() * 6;
+          for (let y = 30; y < H; y += 30) { ctx!.beginPath(); ctx!.moveTo(0, y); ctx!.lineTo(W, y); ctx!.stroke(); }
+          for (let x = 0; x < W; x += 40) { ctx!.beginPath(); ctx!.moveTo(x, 0); ctx!.lineTo(x, H); ctx!.stroke(); }
+
+          // Candlestick chart
+          const chartX = 170, chartW = W - 190;
+          const numCandles = 35;
+          for (let i = 0; i < numCandles; i++) {
+            const bx = chartX + (i / numCandles) * chartW;
+            const cw = (chartW / numCandles) * 0.6;
+            const base = 180 + Math.sin(i * 0.25 + 1) * 40 + Math.sin(i * 0.12) * 25;
+            const open = base - 4 + Math.sin(s * 0.5 + i) * 3;
+            const close = base + 4 + Math.sin(s * 0.7 + i * 1.3) * 7;
+            const high = Math.min(open, close) - 3 - (i % 5) * 2;
+            const low = Math.max(open, close) + 3 + (i % 4) * 1.5;
             const bull = close < open;
-            ctx!.strokeStyle = bull
-              ? "rgba(163,230,53,.3)"
-              : "rgba(239,68,68,.25)";
-            ctx!.fillStyle = bull
-              ? "rgba(163,230,53,.2)"
-              : "rgba(239,68,68,.15)";
-            ctx!.beginPath();
-            ctx!.moveTo(bx + 5, high);
-            ctx!.lineTo(bx + 5, low);
-            ctx!.stroke();
-            ctx!.fillRect(
-              bx,
-              Math.min(open, close),
-              10,
-              Math.abs(close - open) + 1,
-            );
+
+            ctx!.strokeStyle = bull ? "rgba(163,230,53,.35)" : "rgba(239,68,68,.3)";
+            ctx!.fillStyle = bull ? "rgba(163,230,53,.2)" : "rgba(239,68,68,.15)";
+            ctx!.lineWidth = 1;
+            ctx!.beginPath(); ctx!.moveTo(bx + cw / 2, high); ctx!.lineTo(bx + cw / 2, low); ctx!.stroke();
+            ctx!.fillRect(bx, Math.min(open, close), cw, Math.abs(close - open) + 1);
           }
-          const entryY = 110 + Math.sin(s * 0.2) * 5;
-          ctx!.strokeStyle = "rgba(191,95,255,.5)";
-          ctx!.lineWidth = 1.5;
-          ctx!.setLineDash([6, 4]);
-          ctx!.beginPath();
-          ctx!.moveTo(0, entryY);
-          ctx!.lineTo(W, entryY);
-          ctx!.stroke();
+
+          // Entry/Stop/Target lines
+          const entryY = 160 + Math.sin(s * 0.15) * 4;
+          const stopY = entryY + 55;
+          const targetY = entryY - 50;
+
+          // Target
+          ctx!.strokeStyle = "rgba(163,230,53,.35)"; ctx!.lineWidth = 1; ctx!.setLineDash([6, 4]);
+          ctx!.beginPath(); ctx!.moveTo(chartX, targetY); ctx!.lineTo(W - 10, targetY); ctx!.stroke();
           ctx!.setLineDash([]);
-          ctx!.font = "bold 9px monospace";
+          ctx!.font = "bold 8px monospace"; ctx!.fillStyle = "rgba(163,230,53,.6)";
+          ctx!.fillText("TARGET +100%", W - 95, targetY - 5);
+
+          // Entry
+          ctx!.strokeStyle = "rgba(191,95,255,.5)"; ctx!.lineWidth = 1.5; ctx!.setLineDash([6, 4]);
+          ctx!.beginPath(); ctx!.moveTo(chartX, entryY); ctx!.lineTo(W - 10, entryY); ctx!.stroke();
+          ctx!.setLineDash([]);
           ctx!.fillStyle = "rgba(191,95,255,.7)";
-          ctx!.fillText("ENTRY $4.20", W - 90, entryY - 6);
-          const stopY = entryY + 50;
-          ctx!.strokeStyle = "rgba(239,68,68,.4)";
-          ctx!.lineWidth = 1;
-          ctx!.setLineDash([4, 4]);
-          ctx!.beginPath();
-          ctx!.moveTo(0, stopY);
-          ctx!.lineTo(W, stopY);
-          ctx!.stroke();
+          ctx!.fillText("ENTRY $4.20", W - 85, entryY - 5);
+
+          // Stop
+          ctx!.strokeStyle = "rgba(239,68,68,.35)"; ctx!.lineWidth = 1; ctx!.setLineDash([4, 4]);
+          ctx!.beginPath(); ctx!.moveTo(chartX, stopY); ctx!.lineTo(W - 10, stopY); ctx!.stroke();
           ctx!.setLineDash([]);
-          ctx!.fillStyle = "rgba(239,68,68,.6)";
-          ctx!.fillText("STOP -50%", W - 80, stopY - 6);
-          const targetY = entryY - 40;
-          ctx!.strokeStyle = "rgba(163,230,53,.4)";
-          ctx!.lineWidth = 1;
-          ctx!.setLineDash([4, 4]);
-          ctx!.beginPath();
-          ctx!.moveTo(0, targetY);
-          ctx!.lineTo(W, targetY);
-          ctx!.stroke();
-          ctx!.setLineDash([]);
-          ctx!.fillStyle = "rgba(163,230,53,.6)";
-          ctx!.fillText("TARGET +100%", W - 100, targetY - 6);
-          const arrowPulse = 0.4 + Math.sin(s * 3) * 0.3;
+          ctx!.fillStyle = "rgba(239,68,68,.5)";
+          ctx!.fillText("STOP -50%", W - 80, stopY - 5);
+
+          // Entry arrow
+          const arrowPulse = 0.5 + Math.sin(s * 3) * 0.3;
           ctx!.fillStyle = "rgba(191,95,255," + arrowPulse + ")";
-          ctx!.beginPath();
-          const ax = 300 + Math.sin(s) * 5;
-          ctx!.moveTo(ax, entryY - 12);
-          ctx!.lineTo(ax + 8, entryY);
-          ctx!.lineTo(ax, entryY + 12);
-          ctx!.closePath();
-          ctx!.fill();
-          ctx!.fillStyle = "rgba(0,0,0,.4)";
-          ctx!.beginPath();
-          ctx!.roundRect(12, 10, 140, 60, 8);
-          ctx!.fill();
-          ctx!.strokeStyle = "rgba(191,95,255,.15)";
-          ctx!.lineWidth = 1;
-          ctx!.beginPath();
-          ctx!.roundRect(12, 10, 140, 60, 8);
-          ctx!.stroke();
-          ctx!.font = "bold 11px monospace";
-          ctx!.fillStyle = "rgba(191,95,255,.8)";
-          ctx!.fillText("SPX 0DTE CALL", 22, 30);
-          ctx!.font = "9px monospace";
-          ctx!.fillStyle = "rgba(255,255,255,.4)";
-          ctx!.fillText("5640C  |  Tier: A", 22, 46);
-          const rr = (2 + Math.sin(s * 0.3) * 0.5).toFixed(1);
-          ctx!.fillStyle = "rgba(163,230,53,.5)";
-          ctx!.fillText("R:R  " + rr + ":1", 22, 60);
-          executeRaf = requestAnimationFrame(drawExecute);
+          const ax = chartX + chartW * 0.65 + Math.sin(s) * 4;
+          ctx!.beginPath(); ctx!.moveTo(ax, entryY - 14); ctx!.lineTo(ax + 10, entryY); ctx!.lineTo(ax, entryY + 14); ctx!.closePath(); ctx!.fill();
+
+          // Trade card (left panel)
+          ctx!.fillStyle = "rgba(0,0,0,.45)";
+          ctx!.beginPath(); ctx!.roundRect(12, 14, 145, 120, 10); ctx!.fill();
+          ctx!.strokeStyle = "rgba(191,95,255,.12)"; ctx!.lineWidth = 1;
+          ctx!.beginPath(); ctx!.roundRect(12, 14, 145, 120, 10); ctx!.stroke();
+          // Animated border glow
+          ctx!.globalCompositeOperation = "lighter";
+          const cardGlow = ctx!.createLinearGradient(12, 14, 157, 134);
+          const glowPhase = (s * 0.5) % 1;
+          cardGlow.addColorStop(Math.max(0, glowPhase - 0.2), "transparent");
+          cardGlow.addColorStop(glowPhase, "rgba(191,95,255,.2)");
+          cardGlow.addColorStop(Math.min(1, glowPhase + 0.2), "transparent");
+          ctx!.strokeStyle = cardGlow; ctx!.lineWidth = 1.5;
+          ctx!.beginPath(); ctx!.roundRect(12, 14, 145, 120, 10); ctx!.stroke();
+          ctx!.globalCompositeOperation = "source-over";
+
+          // Card content
+          ctx!.font = "bold 11px monospace"; ctx!.fillStyle = "rgba(191,95,255,.85)";
+          ctx!.fillText("SPX 0DTE CALL", 22, 36);
+          ctx!.font = "9px monospace"; ctx!.fillStyle = "rgba(255,255,255,.45)";
+          ctx!.fillText("5640C  |  Tier: A", 22, 52);
+          const rr = (2.1 + Math.sin(s * 0.3) * 0.4).toFixed(1);
+          ctx!.fillStyle = "rgba(163,230,53,.55)";
+          ctx!.fillText("R:R  " + rr + ":1", 22, 68);
+          ctx!.font = "8px monospace"; ctx!.fillStyle = "rgba(191,95,255,.4)";
+          ctx!.fillText("NIGHT HAWK", 22, 86);
+          ctx!.fillStyle = "rgba(255,255,255,.25)";
+          ctx!.fillText("ENTRY  $4.20", 22, 102);
+          ctx!.fillText("STOP   $2.10", 22, 116);
+          ctx!.fillStyle = "rgba(163,230,53,.4)";
+          ctx!.fillText("TARGET $8.40", 22, 130);
+
+          // Bottom status bar
+          ctx!.fillStyle = "rgba(0,0,0,.3)";
+          ctx!.fillRect(0, H - 28, W, 28);
+          ctx!.font = "bold 8px monospace";
+          const statuses = ["READY", "LIVE", "ARMED"];
+          const st = statuses[Math.floor(s * 0.3) % statuses.length];
+          ctx!.fillStyle = "rgba(191,95,255,.5)";
+          ctx!.fillText("STATUS: " + st, 16, H - 10);
+          ctx!.fillStyle = "rgba(255,255,255,.2)";
+          ctx!.fillText("SPX SLAYER  |  0DTE DESK", W - 190, H - 10);
+
+          exRaf = requestAnimationFrame(drawPipeExecute);
         }
-        executeRaf = requestAnimationFrame(drawExecute);
-        cleanups.push(() => cancelAnimationFrame(executeRaf));
+        exRaf = requestAnimationFrame(drawPipeExecute);
+        cleanups.push(() => cancelAnimationFrame(exRaf));
+      }
+    }
+
+    // ── RESULTS canvas — profit cards + grade badges + win history ──
+    const cvPipeRes = document.getElementById("cv-pipe-results") as HTMLCanvasElement | null;
+    if (cvPipeRes) {
+      const ctx = cvPipeRes.getContext("2d");
+      if (ctx) {
+        const W = 560, H = 280;
+        const plays = [
+          { ticker: "SPX 5640C", grade: "A", pnl: "+82%", win: true },
+          { ticker: "NVDA 140C", grade: "A-", pnl: "+45%", win: true },
+          { ticker: "TSLA 270P", grade: "B+", pnl: "-50%", win: false },
+          { ticker: "META 620C", grade: "A+", pnl: "+120%", win: true },
+          { ticker: "SPX 5660C", grade: "B", pnl: "+30%", win: true },
+        ];
+        let resRaf = 0;
+        function drawPipeResults(t: number) {
+          if (destroyed) return;
+          const s = t * 0.001;
+          ctx!.clearRect(0, 0, W, H);
+
+          // Subtle grid
+          ctx!.strokeStyle = "rgba(163,230,53,.02)";
+          ctx!.lineWidth = 0.5;
+          for (let x = 0; x < W; x += 40) { ctx!.beginPath(); ctx!.moveTo(x, 0); ctx!.lineTo(x, H); ctx!.stroke(); }
+
+          // Play result cards
+          const cardW = 95, cardH = 55, gap = 12;
+          const startX = 20;
+          for (let i = 0; i < plays.length; i++) {
+            const p = plays[i];
+            const row = Math.floor(i / 3);
+            const col = i % 3;
+            const cx = startX + col * (cardW + gap);
+            const cy = 20 + row * (cardH + gap + 20);
+            const reveal = Math.max(0, Math.min(1, (s * 0.3) % 4 - i * 0.5));
+
+            if (reveal <= 0) continue;
+
+            ctx!.globalAlpha = reveal;
+            // Card bg
+            ctx!.fillStyle = "rgba(0,0,0,.35)";
+            ctx!.beginPath(); ctx!.roundRect(cx, cy, cardW, cardH, 6); ctx!.fill();
+            ctx!.strokeStyle = p.win ? "rgba(163,230,53,.12)" : "rgba(239,68,68,.1)";
+            ctx!.lineWidth = 1;
+            ctx!.beginPath(); ctx!.roundRect(cx, cy, cardW, cardH, 6); ctx!.stroke();
+            // Ticker
+            ctx!.font = "bold 8px monospace";
+            ctx!.fillStyle = "rgba(255,255,255,.6)";
+            ctx!.fillText(p.ticker, cx + 6, cy + 14);
+            // PnL
+            ctx!.font = "bold 14px monospace";
+            ctx!.fillStyle = p.win ? "rgba(163,230,53,.7)" : "rgba(239,68,68,.6)";
+            ctx!.fillText(p.pnl, cx + 6, cy + 34);
+            // Grade badge
+            ctx!.fillStyle = "rgba(34,211,238,.15)";
+            ctx!.beginPath(); ctx!.roundRect(cx + cardW - 28, cy + 4, 22, 16, 3); ctx!.fill();
+            ctx!.font = "bold 9px monospace";
+            ctx!.fillStyle = "rgba(34,211,238,.7)";
+            ctx!.fillText(p.grade, cx + cardW - 24, cy + 16);
+            // Timestamp
+            ctx!.font = "6px monospace";
+            ctx!.fillStyle = "rgba(255,255,255,.2)";
+            ctx!.fillText("10:" + String(30 + i * 7).padStart(2, "0") + " ET", cx + 6, cy + 48);
+
+            ctx!.globalAlpha = 1;
+          }
+
+          // Win rate meter (right side)
+          const mX = W - 190, mY = 30;
+          ctx!.fillStyle = "rgba(0,0,0,.3)";
+          ctx!.beginPath(); ctx!.roundRect(mX, mY, 170, 100, 10); ctx!.fill();
+          ctx!.strokeStyle = "rgba(163,230,53,.08)"; ctx!.lineWidth = 1;
+          ctx!.beginPath(); ctx!.roundRect(mX, mY, 170, 100, 10); ctx!.stroke();
+
+          // Win rate arc
+          const arcCx = mX + 55, arcCy = mY + 55, arcR = 32;
+          const winRate = 0.72 + Math.sin(s * 0.2) * 0.05;
+          ctx!.strokeStyle = "rgba(255,255,255,.04)"; ctx!.lineWidth = 6;
+          ctx!.beginPath(); ctx!.arc(arcCx, arcCy, arcR, -Math.PI * 0.75, Math.PI * 0.75); ctx!.stroke();
+          ctx!.strokeStyle = "rgba(163,230,53,.45)"; ctx!.lineWidth = 6;
+          const arcAngle = -Math.PI * 0.75 + (Math.PI * 1.5) * winRate;
+          ctx!.beginPath(); ctx!.arc(arcCx, arcCy, arcR, -Math.PI * 0.75, arcAngle); ctx!.stroke();
+          // Glow at tip
+          ctx!.globalCompositeOperation = "lighter";
+          const tipX = arcCx + Math.cos(arcAngle) * arcR;
+          const tipY = arcCy + Math.sin(arcAngle) * arcR;
+          const tipG = ctx!.createRadialGradient(tipX, tipY, 0, tipX, tipY, 10);
+          tipG.addColorStop(0, "rgba(163,230,53,.4)"); tipG.addColorStop(1, "transparent");
+          ctx!.fillStyle = tipG; ctx!.fillRect(tipX - 10, tipY - 10, 20, 20);
+          ctx!.globalCompositeOperation = "source-over";
+          // Percentage
+          ctx!.font = "bold 18px monospace";
+          ctx!.fillStyle = "rgba(163,230,53,.7)";
+          ctx!.textAlign = "center";
+          ctx!.fillText(Math.round(winRate * 100) + "%", arcCx, arcCy + 6);
+          ctx!.font = "6px monospace"; ctx!.fillStyle = "rgba(163,230,53,.35)";
+          ctx!.fillText("WIN RATE", arcCx, arcCy + 18);
+          ctx!.textAlign = "left";
+
+          // Stats
+          ctx!.font = "bold 9px monospace"; ctx!.fillStyle = "rgba(255,255,255,.5)";
+          ctx!.fillText("142", mX + 120, mY + 40);
+          ctx!.font = "6px monospace"; ctx!.fillStyle = "rgba(255,255,255,.25)";
+          ctx!.fillText("PLAYS", mX + 120, mY + 50);
+          ctx!.font = "bold 9px monospace"; ctx!.fillStyle = "rgba(163,230,53,.6)";
+          ctx!.fillText("102", mX + 120, mY + 70);
+          ctx!.font = "6px monospace"; ctx!.fillStyle = "rgba(163,230,53,.3)";
+          ctx!.fillText("WINS", mX + 120, mY + 80);
+
+          // Bottom: "PUBLIC LEDGER" label
+          ctx!.fillStyle = "rgba(0,0,0,.25)";
+          ctx!.fillRect(0, H - 28, W, 28);
+          ctx!.font = "bold 8px monospace"; ctx!.fillStyle = "rgba(163,230,53,.35)";
+          ctx!.fillText("PUBLIC LEDGER  |  ALL PLAYS TIMESTAMPED  |  NO DELETIONS", 16, H - 10);
+
+          // History dots (bottom right)
+          const dotY = H - 55;
+          for (let i = 0; i < 20; i++) {
+            const dx = W - 185 + i * 9;
+            const isWin = i !== 4 && i !== 9 && i !== 15;
+            ctx!.fillStyle = isWin ? "rgba(163,230,53,.3)" : "rgba(239,68,68,.3)";
+            ctx!.beginPath(); ctx!.arc(dx, dotY, 2.5, 0, Math.PI * 2); ctx!.fill();
+          }
+          ctx!.font = "6px monospace"; ctx!.fillStyle = "rgba(255,255,255,.2)";
+          ctx!.fillText("LAST 20 PLAYS", W - 185, dotY - 8);
+
+          resRaf = requestAnimationFrame(drawPipeResults);
+        }
+        resRaf = requestAnimationFrame(drawPipeResults);
+        cleanups.push(() => cancelAnimationFrame(resRaf));
+      }
+    }
+
+    // ── SUMMARY funnel canvas ──
+    const cvPipeSum = document.getElementById("cv-pipe-summary") as HTMLCanvasElement | null;
+    if (cvPipeSum) {
+      const ctx = cvPipeSum.getContext("2d");
+      if (ctx) {
+        const S = 200;
+        let sumRaf = 0;
+        function drawPipeSummary(t: number) {
+          if (destroyed) return;
+          const s = t * 0.001;
+          ctx!.clearRect(0, 0, S, S);
+          // Funnel shape
+          const cx = S / 2, cy = S / 2;
+          ctx!.globalCompositeOperation = "lighter";
+          // Outer ring — all data
+          ctx!.strokeStyle = "rgba(163,230,53,.08)"; ctx!.lineWidth = 8;
+          ctx!.beginPath(); ctx!.arc(cx, cy, 80, 0, Math.PI * 2); ctx!.stroke();
+          // Surviving arc
+          const surviveAngle = Math.PI * 2 * 0.03;
+          const rotation = s * 0.3;
+          ctx!.strokeStyle = "rgba(163,230,53,.4)"; ctx!.lineWidth = 8;
+          ctx!.beginPath(); ctx!.arc(cx, cy, 80, rotation, rotation + surviveAngle); ctx!.stroke();
+          // Glow at arc tip
+          const tipSx = cx + Math.cos(rotation + surviveAngle) * 80;
+          const tipSy = cy + Math.sin(rotation + surviveAngle) * 80;
+          const tg = ctx!.createRadialGradient(tipSx, tipSy, 0, tipSx, tipSy, 14);
+          tg.addColorStop(0, "rgba(163,230,53,.3)"); tg.addColorStop(1, "transparent");
+          ctx!.fillStyle = tg; ctx!.fillRect(tipSx - 14, tipSy - 14, 28, 28);
+          // Inner rings
+          ctx!.strokeStyle = "rgba(163,230,53,.04)"; ctx!.lineWidth = 1;
+          ctx!.beginPath(); ctx!.arc(cx, cy, 60, 0, Math.PI * 2); ctx!.stroke();
+          ctx!.beginPath(); ctx!.arc(cx, cy, 40, 0, Math.PI * 2); ctx!.stroke();
+          ctx!.globalCompositeOperation = "source-over";
+          sumRaf = requestAnimationFrame(drawPipeSummary);
+        }
+        sumRaf = requestAnimationFrame(drawPipeSummary);
+        cleanups.push(() => cancelAnimationFrame(sumRaf));
       }
     }
 
