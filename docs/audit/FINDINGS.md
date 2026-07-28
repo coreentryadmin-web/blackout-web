@@ -120,6 +120,34 @@ pos, news, smart, fundamental, shortInterest, wall, vex).
 
 **Status.** FIXED — PR #1176.
 
+## 2026-07-28 — [correctness] Soft wall drift not direction-gated + cross-edition sector cap doesn't count tonight (PR #1176, batch 4)
+
+**Severity.** P3.
+
+**Finding 1: Soft GEX-wall-drift check not direction-gated.**
+`morning-confirm-verdict.ts:198-211` applied both call-wall and put-wall soft drift to all plays
+regardless of direction. The hard-shift check (lines 153-168) correctly gated: call wall → SHORT
+only, put wall → LONG only. Impact: LONG plays spuriously DEGRADED on call-wall noise (irrelevant
+to longs), and vice versa.
+
+**Fix.** Added `&& !isLong` guard on call-wall soft check and `&& isLong` on put-wall soft check,
+mirroring the hard-shift gates.
+
+**Finding 2: Cross-edition sector cap doesn't count tonight's candidates.**
+`cross-edition-governor.ts:161` built `sectorCounts` once from `recentOutcomes` (past editions) and
+never incremented as tonight's candidates passed through the loop. The docstring at line 46-48
+explicitly promised "lookback PLUS tonight's edition" but tonight's accepted candidates didn't
+count against each other — so 4+ candidates from the same under-represented sector could all
+pass through unpenalized.
+
+**Fix.** Increment `sectorCounts` as each candidate survives (pass or demote, not cut) so later
+candidates see the running total including tonight's accepted ones.
+
+**Evidence.** 3 new tests in `morning-confirm-verdict.test.ts` (21/21 pass). All nighthawk tests
+pass (97+21=118 total). tsc clean.
+
+**Status.** FIXED — PR #1176.
+
 ## 2026-07-28 — [correctness] Governor demotion undone by builder merge-sort + no R:R minimum gate (branch `fix/governor-sort-override`)
 
 **Severity.** Medium (edition quality — governor-demoted plays could re-promote to the top 5; plays with terrible R:R could publish).
