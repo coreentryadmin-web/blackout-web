@@ -3517,3 +3517,35 @@ assignments (edition build, forced contrarian, display). No other constant refer
 is unchanged.
 
 **Status:** PR #1184 open (branch `fix/nighthawk-tier-and-contrarian`).
+
+## 2026-07-28 — [0DTE-UI] CLOSED plays vanishing from Command Deck (PR #1188)
+
+**Severity.** P1 — closed plays silently vanished from the only surface that manages them.
+
+**Root cause.** `zerodte-sources.ts:116` — the ledger union loop that surfaces positions the scanner
+didn't return only passed through `WORKING_STATUSES` (OPEN/HOLD/TRIM). When the scanner dropped a
+ticker, its CLOSED ledger row was filtered out. An open play that got closed would vanish instead of
+appearing under a "Closed" view. The `WORKING_STATUSES` set was designed for rule 9-4 (working
+positions always render) but didn't account for the need to show CLOSED plays in the Command Deck.
+
+**Evidence.** `zerodte-sources.test.ts` test #5: before fix, a TSLA CLOSED ledger row was absent from
+the output; after fix, it appears correctly. All 8 tests pass. `tsc --noEmit` clean. 103/103 adapter
+tests pass.
+
+**Fix.** Changed the union loop condition from `if (!WORKING_STATUSES.has(st)) continue;` to
+`if (!WORKING_STATUSES.has(st) && st !== "CLOSED") continue;`. The `WORKING_STATUSES` set itself is
+NOT modified (still OPEN/HOLD/TRIM) because other consumers may depend on its exact membership.
+
+Added: ALL/OPEN/WATCH/CLOSED filter toggle bar in CommandDeck with live counts per status group. This
+was the missing UX — there was no way to filter plays by status, so closed plays (even when present)
+were mixed into the list with no way to find them.
+
+Also enriched the 0DTE panel to match Legacy richness: `stockPrice`, `optionsPlay`, `rrRatio` mapped
+in the adapter + pre-entry context and entry plan components in PlayTerminal.
+
+**Blast radius.** `zerodte-sources.ts` (1 condition), `CommandDeck.tsx` (filter state + UI),
+`globals.css` (8 lines filter bar CSS), `adapters.ts` (3 new fields), `PlayTerminal.tsx` (2 new
+components). No existing fields or rendering changed. `deck-sort.ts` already buckets CLOSED into
+band 2 (sorted last).
+
+**Status:** PR #1188 merged (squash, `ff17eefd`).

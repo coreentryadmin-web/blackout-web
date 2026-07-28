@@ -7,7 +7,8 @@ import { timeStopClock } from "@/lib/zerodte/terminal-ladder";
 import { isZeroDteMarkStale, ZERODTE_MARK_STALE_MS, LEGACY_QUOTE_STALE_MS } from "@/lib/zerodte/marks-math";
 import { condorTent, condorWinRateLine } from "@/lib/zerodte/condor-render";
 import { etNowParts } from "@/features/nighthawk/lib/session";
-import { showsRatchetTrack, showsTimeStopClock, showsTrimScaleLadder } from "./terminal-guards";
+import { showsTimeStopClock, showsTrimScaleLadder } from "./terminal-guards";
+import { managementFor } from "./adapters";
 import { excursionBar, formatWinRateCi, signColorClass } from "@/lib/zerodte/terminal-edge";
 import type { DeckCondor } from "./types";
 
@@ -396,7 +397,10 @@ function ThesisPanel({ play }: { play: TerminalPlay }) {
 }
 
 function ManagePanel({ play, nowMs }: { play: TerminalPlay; nowMs: number }) {
-  const badge = play.recommendation;
+  // Recompute management from the LIVE pnlPct (SSE-overlaid) so the badge/note/track update at ~1s,
+  // not frozen at the 5s board-poll value the adapter originally computed.
+  const mgmt = managementFor(play.exitModel, play.status, play.pnlPct ?? null);
+  const badge = mgmt.recommendation;
   // A CONDOR is a credit structure — its profit comes from decay/pin, NOT a rising long premium,
   // so it must never draw the directional trim ladder OR the −50/+100 ratchet track (both inverted).
   const isCondor = play.isCondor === true;
@@ -407,7 +411,7 @@ function ManagePanel({ play, nowMs }: { play: TerminalPlay; nowMs: number }) {
       <div className="nh-deck-rec">
         <span className={clsx("nh-deck-recb", badge)}>{badge}</span>
         {/* Plain text only — never inject HTML (recNote is authored plain; React escapes it safely). */}
-        <span className="nh-deck-recnote">{play.recNote}</span>
+        <span className="nh-deck-recnote">{mgmt.recNote}</span>
       </div>
 
       {/* Time-stop clock is a 0DTE-ONLY discipline (flat by 15:30 ET the SAME session). A Swing/
@@ -419,11 +423,11 @@ function ManagePanel({ play, nowMs }: { play: TerminalPlay; nowMs: number }) {
 
       {play.horizon === "ZERO_DTE" && !isCondor && <ZeroDteEntryPlan play={play} />}
 
-      {showsRatchetTrack(play) && (
+      {!isCondor && play.exitModel === "RATCHET" && mgmt.progress != null && (
         <>
           <div className="nh-deck-track">
             <span className="lo">STOP −50%</span><span className="hi">TARGET +100%</span>
-            <span className="mk" style={{ left: `${Math.round((play.progress ?? 0) * 100)}%` }} />
+            <span className="mk" style={{ left: `${Math.round((mgmt.progress ?? 0) * 100)}%` }} />
           </div>
           <div className="nh-deck-recnote">Ratchet: fast 0DTE exit — stop trails up as it runs. Marker = distance stop→target.</div>
         </>
