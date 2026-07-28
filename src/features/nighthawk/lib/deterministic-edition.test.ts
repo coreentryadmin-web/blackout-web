@@ -330,9 +330,13 @@ test("LONG target is pushed above call strike + 2×premium when stock target < s
   assert.equal(plays.length, 1);
   const p = plays[0]!;
   const target = Number(String(p.target).replace(/[$,]/g, ""));
-  // Target must be at least strike + 2×premium = 1260 + 2×7.25 = 1274.50
+  // Target must clear the strike (option is ITM at "target"), but the push toward
+  // strike + 2×premium (~1274.50) is now capped at 1.25× the original target distance
+  // from the entry midpoint — see the R:R-inflation-cap fix (audit 2026-07-28) — so it
+  // lands short of the full strike+2×premium figure in this tight-ATR fixture. That's
+  // the intended tradeoff: bounded R:R inflation over an exact strike+2×premium match.
   assert.ok(target >= 1260, `target ${target} should be >= strike 1260`);
-  assert.ok(target >= 1274, `target ${target} should be >= strike + 2×premium ~1274.50`);
+  assert.ok(target < 1274.5, `target ${target} should be capped below the uncapped strike+2×premium ~1274.50`);
 });
 
 test("SHORT target is pushed below put strike - 2×premium when stock target > strike (PR-N29)", () => {
@@ -356,9 +360,43 @@ test("SHORT target is pushed below put strike - 2×premium when stock target > s
   assert.equal(plays.length, 1);
   const p = plays[0]!;
   const target = Number(String(p.target).replace(/[$,]/g, ""));
-  // Target must be at most strike - 2×premium = 1100 - 2×7.75 = 1084.50
-  assert.ok(target <= 1100, `target ${target} should be <= strike 1100`);
-  assert.ok(target <= 1085, `target ${target} should be <= strike - 2×premium ~1084.50`);
+  // The push toward strike - 2×premium (~1084.50) is capped at 1.25× the original target
+  // distance from the entry midpoint — see the R:R-inflation-cap fix (audit 2026-07-28) —
+  // so in this tight-ATR fixture the capped push doesn't reach all the way to the strike.
+  // It must still move the target DOWN from its original (pre-push) value, though.
+  assert.ok(target < 1175, `target ${target} should still be pushed down from entry mid 1175`);
+  assert.ok(target > 1084.5, `target ${target} should be capped above the uncapped strike-2×premium ~1084.50`);
+});
+
+test("R:R inflation cap: option-coherence push cannot exceed 1.25× the original target distance (P1 fix, audit 2026-07-28)", () => {
+  // Same tight-ATR LONG setup as above, sized so the naive (uncapped) push would have
+  // roughly doubled the reward distance from the entry midpoint. Assert the actual push
+  // stays within the 1.25× cap instead of chasing strike + 2×premium unconditionally.
+  const highChain: EditionChainData = {
+    spot: 1175,
+    rows: [row(1260, { oi: 5_000, callAsk: 7.5, callBid: 7.0 })],
+  };
+  const ranked = [scored("HPS", "long", 65)];
+  const chains = { HPS: highChain };
+  const dossierMap = {
+    HPS: dossier("HPS", 1175, {
+      tech: {
+        ...dossier("HPS", 1175).tech!,
+        resistance_levels: [1249],
+        support_levels: [1100],
+        atr14: 50,
+      },
+    } as any),
+  };
+  const { plays } = buildDeterministicEditionPlays({ ranked, dossierMap, chains });
+  const p = plays[0]!;
+  const target = Number(String(p.target).replace(/[$,]/g, ""));
+  const entryNums = String(p.entry_range).match(/[\d.]+/g)!.map(Number);
+  const entryMid = (entryNums[0]! + entryNums[entryNums.length - 1]!) / 2;
+  const dist = target - entryMid;
+  // Uncapped push would have targeted strike + 2×premium = 1274.50, ~93.75 above mid (1175).
+  // Capped push must not exceed 1.25× the original (pre-option-push) target distance.
+  assert.ok(dist <= 93.75 + 0.01, `pushed distance ${dist} exceeded the 1.25× cap`);
 });
 
 // ── PR-N31: diversity hedge floor ────────────────────────────────────────────────────

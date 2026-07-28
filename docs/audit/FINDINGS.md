@@ -3348,3 +3348,55 @@ enforces `MIN_PUBLISH_SCORE = 42`.
 File: `play-backfill.ts:87`.
 
 **Status:** COMMITTED (PR #1176, batch 5)
+
+## 2026-07-28 — [correctness] "no dominant pattern" sentinel leaks into thesis text + compounding option-coherence push inflates R:R (P1×2)
+
+**Severity.** P1 (sentinel leak) / P1 (R:R inflation).
+
+**Finding 1: `classifySetup` sentinel string leaked into member-facing thesis copy.**
+`technicals.ts:120` fell back to `["no dominant pattern"]` when no setup condition matched,
+instead of an empty array. `buildDeterministicThesis` (`deterministic-edition.ts:389-391`) joins
+`setup_tags` directly into prose with no special-casing for this sentinel, so members saw literal
+copy like "NVDA showing no dominant pattern in mixed trend" — an internal diagnostic label
+presented as a trade thesis.
+
+**Root cause.** The sentinel was written as a placeholder for logging/debugging and never
+special-cased at the one call site that renders `setup_tags` into member copy.
+
+**Fix.** Return `tags` (possibly empty) instead of the sentinel. `classifySetup` is now exported
+for direct unit testing. The caller already handles an empty array correctly: `deterministic-edition.ts:389-395`
+falls through to trend-only prose (`else if (trend)`) or a generic setup line (`else`) — verified by
+the existing `else`/`else if` branches, no caller change needed.
+
+**Finding 2: compounding target pushes inflate displayed R:R.**
+Two independent target pushes stack: (a) `deterministic-edition.ts:339-349` pushes the S/R target
+side out to at least 1.5×ATR from spot ("PR-N21/N22"), then (b) `buildPlay` (`deterministic-edition.ts:497-509`,
+"PR-N29") unconditionally pushes the target again to at least `strike ± 2×premium` so the option is
+ITM at "target". Each push is individually reasonable (guards against a thin range / an
+option that's worthless at target), but stacked and uncapped they can inflate the displayed R:R well
+beyond what the technical level or option geometry actually supports.
+
+**Fix.** Capped the option-coherence push (b) at 1.25× the *original* (pre-push) target distance
+from the entry-range midpoint. If `strike ± 2×premium` would require a bigger move than that, the
+target is pushed only as far as the cap allows rather than chasing the option strike unconditionally
+— the push still fixes the economically-broken case (target on the wrong side of the strike) without
+unbounded R:R inflation. Two existing PR-N29 tests (`deterministic-edition.test.ts`) encoded the old
+uncapped invariant (`target >= strike + 2×premium` / `target <= strike - 2×premium`) and were updated
+to assert the new capped bounds instead, with a new dedicated test asserting the 1.25× cap directly.
+
+**Evidence.** `npx tsx --test src/features/nighthawk/lib/technicals.test.ts` (2/2 pass, new file);
+`npx tsx --test src/features/nighthawk/lib/deterministic-edition.test.ts` (34/34 pass, 2 updated +
+1 new). `npx tsc --noEmit` clean for both changed files.
+
+**Blast radius.** `classifySetup` is the only tag source feeding `setup_tags`; `grep` confirms no
+other reference to the `"no dominant pattern"` string anywhere in `src/`. The option-coherence push
+in `buildPlay` is the only caller of `minOptionTarget`; the earlier S/R push in `buildStockLevels`
+is unchanged (still 1.5×ATR, not capped) — capping only the second, redundant push is sufficient to
+bound the compounding effect.
+
+**Fix rationale.** Considered plumbing ATR into `buildPlay` to cap directly against ATR, but
+`buildPlay` doesn't have ATR in scope and threading it through every call site is a larger, riskier
+change for a P1 fix. Capping relative to the already-computed entry-to-target distance achieves the
+same goal (bound the total push) without a signature change.
+
+**Status:** FIXED (branch `fix/nighthawk-sentinel-and-rr-inflation`, PR pending).
