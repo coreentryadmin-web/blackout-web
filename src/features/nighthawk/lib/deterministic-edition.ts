@@ -838,6 +838,7 @@ export function buildRescuePlays(params: {
         ...(scored.short_interest_score != null ? { short_interest: scored.short_interest_score } : {}),
         ...(scored.wall_proximity_score != null ? { wall_proximity: scored.wall_proximity_score } : {}),
         ...(scored.vex_alignment_score != null ? { vex: scored.vex_alignment_score } : {}),
+        ...(scored.skew_score != null ? { skew: scored.skew_score } : {}),
       },
       confirming_signals: scored.confirming_signals ?? undefined,
       earnings_risk: scored.earnings_risk === true ? true : undefined,
