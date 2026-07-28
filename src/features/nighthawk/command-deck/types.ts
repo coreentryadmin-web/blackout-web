@@ -145,6 +145,8 @@ export interface TerminalPlay {
 
   /** Sector classification (lower-cased), when known. */
   sector?: string | null;
+  /** Morning confirmation status for Legacy plays (CONFIRMED/DEGRADED/INVALIDATED/UNVERIFIED). */
+  morningStatus?: "CONFIRMED" | "DEGRADED" | "INVALIDATED" | "UNVERIFIED" | null;
 
   // ── legacy edition geometry (entry/target/stop as raw strings for the thesis panel) ──
   entryRange?: string | null;

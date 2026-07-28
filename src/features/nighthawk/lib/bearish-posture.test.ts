@@ -111,16 +111,16 @@ describe("applyBearishPosture", () => {
     assert.equal(result.ranked[1].score, 39); // 45 - 6 penalty
   });
 
-  test("thin-flow long candidates get flipped to short", () => {
+  test("thin-flow long candidates are penalized, not flipped (sub-scores are direction-specific)", () => {
     const candidates = [
       scored({ ticker: "AMD", score: 45, direction: "long", flow_score: 8 }),
     ];
     const bearish = regime({ tide_bias: "BEARISH", advance_pct: 25 });
     const result = applyBearishPosture(candidates, bearish);
 
-    assert.equal(result.flipped, 1);
-    assert.equal(result.ranked[0].direction, "short");
-    assert.equal(result.ranked[0].score, 47); // 45 + 8 - 6
+    assert.equal(result.flipped, 0);
+    assert.equal(result.ranked[0].direction, "long");
+    assert.equal(result.ranked[0].score, 39); // 45 - 6 penalty
   });
 
   test("strong-flow long candidates are penalized but not flipped", () => {
@@ -135,25 +135,25 @@ describe("applyBearishPosture", () => {
     assert.equal(result.ranked[0].score, 44); // 50 - 6
   });
 
-  test("mixed batch: shorts surface, thin-flow longs flip, strong longs demote", () => {
+  test("mixed batch: shorts surface above penalized longs", () => {
     const candidates = [
       scored({ ticker: "AMD", score: 55, direction: "long", flow_score: 25 }), // strong long
       scored({ ticker: "TSLA", score: 42, direction: "short" }),                // existing short
-      scored({ ticker: "WFC", score: 40, direction: "long", flow_score: 5 }),   // thin long → flip
+      scored({ ticker: "WFC", score: 40, direction: "long", flow_score: 5 }),   // thin long — penalized, not flipped
     ];
     const bearish = regime({ tide_bias: "BEARISH", advance_pct: 30, composite_regime: "BEARISH" });
     const result = applyBearishPosture(candidates, bearish);
 
     assert.equal(result.posture, "SHORT");
-    assert.equal(result.flipped, 1);
-    // TSLA 42+8=50, AMD 55-6=49, WFC 40+8-6=42
+    assert.equal(result.flipped, 0);
+    // TSLA 42+8=50, AMD 55-6=49, WFC 40-6=34
     assert.equal(result.ranked[0].ticker, "TSLA");
     assert.equal(result.ranked[0].score, 50);
     assert.equal(result.ranked[1].ticker, "AMD");
     assert.equal(result.ranked[1].score, 49);
     assert.equal(result.ranked[2].ticker, "WFC");
-    assert.equal(result.ranked[2].direction, "short");
-    assert.equal(result.ranked[2].score, 42);
+    assert.equal(result.ranked[2].direction, "long");
+    assert.equal(result.ranked[2].score, 34);
   });
 
   test("does not mutate input array", () => {

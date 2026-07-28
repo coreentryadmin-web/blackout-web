@@ -220,15 +220,13 @@ export function PlayTerminal({ play }: { play: TerminalPlay | null }) {
         </div>
       )}
 
-      {play.horizon !== "LEGACY" && (
-        <div className="nh-deck-greeks">
-          <GreekCell k="delta" v={g?.delta ?? null} />
-          <GreekCell k="gamma" v={g?.gamma ?? null} />
-          <GreekCell k="theta" v={g?.theta ?? null} />
-          <GreekCell k="vega" v={g?.vega ?? null} />
-          <GreekCell k="iv" v={g?.iv ?? null} />
-        </div>
-      )}
+      <div className="nh-deck-greeks">
+        <GreekCell k="delta" v={g?.delta ?? null} />
+        <GreekCell k="gamma" v={g?.gamma ?? null} />
+        <GreekCell k="theta" v={g?.theta ?? null} />
+        <GreekCell k="vega" v={g?.vega ?? null} />
+        <GreekCell k="iv" v={g?.iv ?? null} />
+      </div>
 
       <div className="nh-deck-tabs">
         <button className={clsx(tab === "thesis" && "on")} onClick={() => setTab("thesis")}><span className="n">[1]</span>Thesis</button>
@@ -255,10 +253,15 @@ export function PlayTerminal({ play }: { play: TerminalPlay | null }) {
  *  when the payload carries a real figure — never fabricated). Renders nothing when a play carries
  *  none of them (a legacy row), so the header stays clean. */
 function HeaderBadges({ play }: { play: TerminalPlay }) {
-  const hasBadges = play.tierLabel || play.confluence != null || (play.discoveryOrigin?.length ?? 0) > 0 || play.sector;
+  const hasBadges = play.tierLabel || play.confluence != null || (play.discoveryOrigin?.length ?? 0) > 0 || play.sector || play.morningStatus;
   if (!hasBadges && !play.scorecard) return null;
   return (
     <div className="nh-deck-badges">
+      {play.morningStatus && play.morningStatus !== "UNVERIFIED" && (
+        <span className={clsx("nh-deck-badge", play.morningStatus === "CONFIRMED" ? "morn-ok" : play.morningStatus === "DEGRADED" ? "morn-warn" : "morn-brk")}>
+          {play.morningStatus === "CONFIRMED" ? "✓ CONFIRMED" : play.morningStatus === "DEGRADED" ? "⚠ DEGRADED" : "✗ INVALIDATED"}
+        </span>
+      )}
       {play.sector && <span className="nh-deck-badge sector">{play.sector.toUpperCase()}</span>}
       {play.tierLabel && <span className="nh-deck-badge tier">TIER {play.tierLabel}</span>}
       {play.confluence != null && <span className="nh-deck-badge conf">CONFLUENCE {play.confluence}/2</span>}
@@ -303,7 +306,7 @@ function ThesisPanel({ play }: { play: TerminalPlay }) {
       ))}
       {play.gates.length > 0 && (
         <>
-          <div className="nh-deck-lab" style={{ marginTop: 16 }}>Hard gates</div>
+          <div className="nh-deck-lab" style={{ marginTop: 16 }}>Gates</div>
           <div className="nh-deck-gaterow">
             {play.gates.map((g) => (
               <span key={g.label} className={clsx("nh-deck-gate", g.ok ? "ok" : "no")}>{g.ok ? "✓" : "✗"} {g.label}</span>

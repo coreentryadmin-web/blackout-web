@@ -78,14 +78,12 @@ export function applyBearishPosture(
     if (c.direction === "short") {
       return { ...c, score: c.score + SHORT_POSTURE_BONUS };
     }
-    // Long candidate on a bearish tape: check if the flow was close enough
-    // to flip. If the flow was marginally long (flow_score contribution was
-    // thin), flip direction to short and boost. Otherwise penalize but keep
-    // the candidate — the downstream gates decide if it survives.
-    if (c.flow_score <= 10) {
-      flipped += 1;
-      return { ...c, direction: "short" as const, score: c.score + SHORT_POSTURE_BONUS - LONG_POSTURE_PENALTY };
-    }
+    // Long candidate on a bearish tape: penalize but keep — the downstream
+    // gates decide if it survives. We deliberately do NOT flip a long to
+    // short here: the sub-scores (flow, tech, positioning, short-interest,
+    // wall-proximity) were all computed for the LONG direction and would be
+    // wrong on a flipped short, producing a candidate with contradictory
+    // internals. A genuine short needs to be scored as short from the start.
     return { ...c, score: Math.max(0, c.score - LONG_POSTURE_PENALTY) };
   });
 
