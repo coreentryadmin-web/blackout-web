@@ -10,7 +10,7 @@ import {
   type ZeroDteDeckSource,
 } from "./adapters";
 import { fetchNightHawkHorizons } from "@/lib/api";
-import type { NightHawkEdition } from "@/features/nighthawk/lib/types";
+import type { NightHawkEdition, NightHawkRecordResponse } from "@/features/nighthawk/lib/types";
 import type { TerminalPlay } from "./types";
 import { useZeroDteLiveMarks, overlayLiveMarks } from "./use-live-marks";
 import { useLegacyStockQuotes, overlayLegacyQuotes } from "./use-legacy-quotes";
@@ -152,11 +152,33 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
     });
   });
 
+  // Per-conviction scorecard: fetch the track record once (long refresh) and overlay
+  // the conviction-level win rate onto each play so the scorecard badge lights up.
+  const { data: recordData } = useSWR<NightHawkRecordResponse>(
+    "legacy-record",
+    () => json("/api/market/nighthawk/record"),
+    { refreshInterval: 600_000 },
+  );
+  const convictionScorecard = new Map<string, { winRate: number; avg: number; n: number }>();
+  if (recordData?.by_conviction) {
+    for (const c of recordData.by_conviction) {
+      if (c.conviction && c.n > 0 && c.win_rate_pct != null) {
+        convictionScorecard.set(c.conviction.toUpperCase(), { winRate: c.win_rate_pct, avg: recordData.avg_return_pct ?? 0, n: c.n });
+      }
+    }
+  }
+  const playsWithScorecard: TerminalPlay[] = basePlays.map((p) => {
+    if (p.scorecard) return p;
+    const conv = p.tierLabel?.toUpperCase();
+    const sc = conv ? convictionScorecard.get(conv) : null;
+    return sc ? { ...p, scorecard: sc } : p;
+  });
+
   // Live stock quotes — polls /api/market/quote for each Legacy ticker so the deck shows
   // real-time stock-level progress toward target/stop (the "dynamic trade management" overlay).
   const tickers = rawPlays.map((p) => p.ticker?.toUpperCase()).filter(Boolean);
   const stockQuotes = useLegacyStockQuotes(tickers);
-  const plays = overlayLegacyQuotes(basePlays, stockQuotes, rawPlays);
+  const plays = overlayLegacyQuotes(playsWithScorecard, stockQuotes, rawPlays);
 
   // Morning-confirm staleness: the verdict is a one-time 9am snapshot that never updates.
   // After 4h it misleads if shown without qualification.

@@ -243,7 +243,7 @@ export function PlayTerminal({ play }: { play: TerminalPlay | null }) {
       </div>
 
       <div className="nh-deck-foot">
-        <span>EXIT · {play.exitModel === "SCALE_OUT" ? "TRIM-SCALE" : play.exitModel}</span>
+        <span>EXIT · {play.exitModel === "SCALE_OUT" ? "TRIM-SCALE" : play.horizon === "LEGACY" ? "STOCK LEVELS" : play.exitModel}</span>
         <span>{play.tierLabel ? `TIER ${play.tierLabel}` : play.scorecard ? `WR ${Number.isFinite(play.scorecard.winRate) ? `${play.scorecard.winRate}%` : "—"}` : ""}</span>
         {play.allocation && <span style={{ marginLeft: "auto" }}>{play.allocation.role} · {play.allocation.sizing}</span>}
       </div>
@@ -338,7 +338,9 @@ function ThesisPanel({ play }: { play: TerminalPlay }) {
             // and NOT a false "degrading". Honest: we're not monitoring the thesis for this play right now.
             <div><span className="warn">• thesis not monitored</span> — {play.thesisBreak?.note ?? "live tape read unavailable for this play"}.</div>
           ) : (
-            <div><span className="ok">✓ thesis intact</span> — evidence holding; monitor updates on each marks push.</div>
+            <div><span className="ok">✓ thesis intact</span> — {play.horizon === "LEGACY"
+              ? play.regime?.includes("CONFIRMED") ? "pre-market confirmed — entry levels validated." : "evening thesis holds; morning confirmation updates before the open."
+              : "evidence holding; monitor updates on each marks push."}</div>
           )}
         </div>
       </div>
