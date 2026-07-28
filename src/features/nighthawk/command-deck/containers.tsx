@@ -187,6 +187,12 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
           <span>{bannerText}</span>
         </div>
       )}
+      {edition?.recap_headline && (
+        <div className="mb-3 rounded-lg border border-zinc-700/50 bg-zinc-800/40 px-3 py-2">
+          <div className="text-xs font-bold uppercase tracking-wide text-zinc-300">{edition.recap_headline}</div>
+          {edition.recap_summary && <div className="mt-1 text-xs leading-relaxed text-zinc-400">{edition.recap_summary}</div>}
+        </div>
+      )}
       <CommandDeck
         plays={plays}
         laneLabel="Legacy · Tonight's playbook"
