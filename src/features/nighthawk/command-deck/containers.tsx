@@ -15,7 +15,7 @@ import type { TerminalPlay } from "./types";
 import { useZeroDteLiveMarks, overlayLiveMarks } from "./use-live-marks";
 import { useLegacyStockQuotes, overlayLegacyQuotes } from "./use-legacy-quotes";
 import { zeroDteSources, isBoardDegraded, type BoardResp } from "./zerodte-sources";
-import { DETERMINISTIC_EDITION_TARGET } from "@/features/nighthawk/lib/deterministic-edition";
+import { EDITION_TARGET_PLAYS } from "@/features/nighthawk/lib/constants";
 import { isMorningConfirmStale, formatCheckedAtEt } from "@/features/nighthawk/lib/morning-confirm-verdict";
 
 const json = (u: string) => fetch(u, { cache: "no-store", credentials: "same-origin" }).then((r) => (r.ok ? r.json() : null));
@@ -116,7 +116,7 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
     }
   }
 
-  const rawPlays = (edition?.plays ?? []).slice(0, DETERMINISTIC_EDITION_TARGET);
+  const rawPlays = (edition?.plays ?? []).slice(0, EDITION_TARGET_PLAYS);
   const basePlays: TerminalPlay[] = rawPlays.map((p, i) => {
     const tk = p.ticker?.toUpperCase();
     const confirm = confirmByTicker.get(tk);
