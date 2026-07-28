@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 import useSWR from "swr";
 import { FreshnessChip } from "@/components/ui";
 import { usePollIntervalMs } from "@/hooks/use-et-market-open";
@@ -9,7 +16,9 @@ import {
   THERMAL_COMPARE_TICKERS,
   thermalLayerFreshness,
 } from "@/features/thermal/lib/thermal-desk-state";
-import ThermalCompactMatrix from "@/features/thermal/components/ThermalCompactMatrix";
+import ThermalCompactMatrix, {
+  type ThermalCompareMode,
+} from "@/features/thermal/components/ThermalCompactMatrix";
 
 const PIN_STORAGE_KEY = "thermal:pinned-strikes:v1";
 
@@ -121,21 +130,31 @@ function exportCsv(
 type ColumnProps = {
   ticker: string;
   lens: GexHeatmapLens;
+  mode: ThermalCompareMode;
   active: boolean;
   pinnedStrikes: number[];
   onFocus: () => void;
   onTogglePin: (strike: number) => void;
   shortcut: string;
+  crosshairIndex: number | null;
+  onCrosshairIndex: (index: number | null) => void;
+  scrollRef: RefObject<HTMLDivElement>;
+  onScrollSync: (scrollTop: number, scrollLeft: number) => void;
 };
 
 function TripleColumn({
   ticker,
   lens,
+  mode,
   active,
   pinnedStrikes,
   onFocus,
   onTogglePin,
   shortcut,
+  crosshairIndex,
+  onCrosshairIndex,
+  scrollRef,
+  onScrollSync,
 }: ColumnProps) {
   const pollMs = usePollIntervalMs(5_000, 5_000);
   const { data, error, isLoading } = useSWR<HeatmapPayload>(
@@ -238,8 +257,13 @@ function TripleColumn({
             cells: block.cells,
           }}
           lens={lens}
+          mode={mode}
           pinnedStrikes={pinnedStrikes}
           onTogglePin={onTogglePin}
+          crosshairIndex={crosshairIndex}
+          onCrosshairIndex={onCrosshairIndex}
+          scrollRef={scrollRef}
+          onScrollSync={onScrollSync}
         />
       ) : (
         <div className="thermal-compact-empty" role="status">
@@ -264,6 +288,16 @@ export default function ThermalTripleDesk({
   onLensChange,
 }: Props) {
   const [pins, setPins] = useState<Record<string, number[]>>({});
+  const [mode, setMode] = useState<ThermalCompareMode>("0dte");
+  const [crosshairIndex, setCrosshairIndex] = useState<number | null>(null);
+  const col0Scroll = useRef<HTMLDivElement | null>(null);
+  const col1Scroll = useRef<HTMLDivElement | null>(null);
+  const col2Scroll = useRef<HTMLDivElement | null>(null);
+  const scrollRefList = useMemo(
+    () => [col0Scroll, col1Scroll, col2Scroll],
+    [],
+  );
+  const syncingScroll = useRef(false);
 
   useEffect(() => {
     setPins(readPins());
@@ -281,6 +315,23 @@ export default function ThermalTripleDesk({
     });
   }, []);
 
+  const onScrollSync = useCallback(
+    (scrollTop: number, scrollLeft: number) => {
+      if (syncingScroll.current) return;
+      syncingScroll.current = true;
+      for (const ref of scrollRefList) {
+        const el = ref.current;
+        if (!el) continue;
+        if (el.scrollTop !== scrollTop) el.scrollTop = scrollTop;
+        if (el.scrollLeft !== scrollLeft) el.scrollLeft = scrollLeft;
+      }
+      requestAnimationFrame(() => {
+        syncingScroll.current = false;
+      });
+    },
+    [scrollRefList],
+  );
+
   const tickers = useMemo(() => [...THERMAL_COMPARE_TICKERS], []);
 
   useEffect(() => {
@@ -291,6 +342,8 @@ export default function ThermalTripleDesk({
       if (e.key === "1") onFocusTicker(tickers[0]!);
       else if (e.key === "2") onFocusTicker(tickers[1]!);
       else if (e.key === "3") onFocusTicker(tickers[2]!);
+      else if (e.key === "0") setMode("0dte");
+      else if (e.key === "n" || e.key === "N") setMode("near");
       else if (onLensChange) {
         if (e.key === "g" || e.key === "G") onLensChange("gex");
         else if (e.key === "v" || e.key === "V") onLensChange("vex");
@@ -303,10 +356,30 @@ export default function ThermalTripleDesk({
   }, [onFocusTicker, onLensChange, tickers]);
 
   return (
-    <div className="thermal-triple-desk" data-lens={lens}>
+    <div className="thermal-triple-desk" data-lens={lens} data-mode={mode}>
       <div className="thermal-triple-atmosphere" aria-hidden />
       <div className="thermal-triple-rail">
-        <div className="thermal-triple-rail-label">TRIPLE DESK</div>
+        <div className="thermal-triple-rail-label">
+          {mode === "0dte" ? "0DTE TRIPLE DESK" : "NEAR-TERM TRIPLE DESK"}
+        </div>
+        <div className="thermal-triple-mode" role="group" aria-label="Compare expiry mode">
+          <button
+            type="button"
+            className={`thermal-triple-mode-btn${mode === "0dte" ? " is-on" : ""}`}
+            onClick={() => setMode("0dte")}
+            aria-pressed={mode === "0dte"}
+          >
+            0DTE
+          </button>
+          <button
+            type="button"
+            className={`thermal-triple-mode-btn${mode === "near" ? " is-on" : ""}`}
+            onClick={() => setMode("near")}
+            aria-pressed={mode === "near"}
+          >
+            Near
+          </button>
+        </div>
         <div className="thermal-triple-rail-hint">
           <kbd>1</kbd>
           <kbd>2</kbd>
@@ -315,11 +388,18 @@ export default function ThermalTripleDesk({
           <span className="thermal-triple-rail-sep" aria-hidden>
             ·
           </span>
+          <kbd>0</kbd>
+          <span>0DTE</span>
+          <kbd>N</kbd>
+          <span>near</span>
+          <span className="thermal-triple-rail-sep" aria-hidden>
+            ·
+          </span>
           <kbd>G</kbd>
           <kbd>V</kbd>
           <kbd>D</kbd>
           <kbd>C</kbd>
-          <span>lens · pin strikes · CSV</span>
+          <span>lens · synced cursor</span>
         </div>
       </div>
       <div className="thermal-triple-grid">
@@ -328,11 +408,16 @@ export default function ThermalTripleDesk({
             key={ticker}
             ticker={ticker}
             lens={lens}
+            mode={mode}
             active={activeTicker.toUpperCase() === ticker}
             pinnedStrikes={pins[ticker] ?? []}
             onFocus={() => onFocusTicker(ticker)}
             onTogglePin={(strike) => togglePin(ticker, strike)}
             shortcut={String(i + 1)}
+            crosshairIndex={crosshairIndex}
+            onCrosshairIndex={setCrosshairIndex}
+            scrollRef={scrollRefList[i]!}
+            onScrollSync={onScrollSync}
           />
         ))}
       </div>

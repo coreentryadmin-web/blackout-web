@@ -1,6 +1,7 @@
 /**
- * Compact thermal matrix helpers — near-term expiries + strike band
- * so SPY | SPX | QQQ can sit side-by-side without horizontal sprawl.
+ * Compare-desk matrix helpers — near-term expiries + strike band around spot
+ * so SPY | SPX | QQQ share one surface. Cell chrome/fonts live in globals.css
+ * and match the major Thermal matrix (not the Discord card’s denser raster).
  */
 
 /** Compact expiry label: YYYY-MM-DD → M/D */
@@ -26,6 +27,25 @@ export function resolveCompactExpiries(
         ? all
         : [];
   return src.slice(0, Math.max(1, max));
+}
+
+/**
+ * Single 0DTE expiry for the compare heat-strip: today's date if present on the
+ * axis, else the earliest near-term / axis expiry (same rule as Thermal 0DTE chip).
+ */
+export function resolveZeroDteExpiry(
+  nearTerm: string[] | undefined | null,
+  all: string[] | undefined | null,
+  todayYmd?: string | null,
+): string | null {
+  const axis = resolveCompactExpiries(nearTerm, all, 64);
+  if (axis.length === 0) return null;
+  const today =
+    typeof todayYmd === "string" && /^\d{4}-\d{2}-\d{2}$/.test(todayYmd)
+      ? todayYmd
+      : null;
+  if (today && axis.includes(today)) return today;
+  return axis[0] ?? null;
 }
 
 /**
@@ -100,4 +120,56 @@ export function compactMatrixPeak(
     }
   }
   return peak;
+}
+
+export type CompactDayExtremes = {
+  /** Highest + cell in the expiry column → yellow call / + node. */
+  callWall: number | null;
+  /** Lowest − cell in the expiry column → purple put / − node. */
+  putWall: number | null;
+  /** argmax |cell| in the expiry column → king node. */
+  king: number | null;
+};
+
+/**
+ * Per-expiry walls + king — same ascending-strike / strict tie-break as the
+ * major Thermal matrix (lowest strike wins). Pure; safe for render.
+ */
+export function compactPerExpiryExtremes(
+  cells: Record<string, Record<string, number>> | undefined,
+  strikes: number[],
+  expiries: string[],
+): Record<string, CompactDayExtremes> {
+  const out: Record<string, CompactDayExtremes> = {};
+  if (!cells) {
+    for (const e of expiries) out[e] = { callWall: null, putWall: null, king: null };
+    return out;
+  }
+  const strikesAsc = [...strikes].sort((a, b) => a - b);
+  for (const e of expiries) {
+    let callWall: number | null = null;
+    let putWall: number | null = null;
+    let king: number | null = null;
+    let posMax = 0;
+    let negMin = 0;
+    let bestMag = 0;
+    for (const sNum of strikesAsc) {
+      const v = cells[String(sNum)]?.[e];
+      if (typeof v !== "number" || !Number.isFinite(v) || v === 0) continue;
+      if (v > posMax) {
+        posMax = v;
+        callWall = sNum;
+      } else if (v < negMin) {
+        negMin = v;
+        putWall = sNum;
+      }
+      const mag = Math.abs(v);
+      if (mag > bestMag) {
+        bestMag = mag;
+        king = sNum;
+      }
+    }
+    out[e] = { callWall, putWall, king };
+  }
+  return out;
 }
