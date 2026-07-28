@@ -11,9 +11,9 @@ evidence / fix / status per the CLAUDE.md policy.)
 
 **Ask.** Posts were hard to read in Discord — bump to 4K and label UI elements clearly.
 
-**Fix.** `thermal-discord-card.ts` renders **5120×2880** with larger cell type (tighter ±8 strike /
-6-expiry window so numbers stay readable in Discord’s preview); CALL/PUT/FLIP chips; ticker badge;
-spot + change%; desk expiry labels; legend footer.
+**Fix.** `thermal-discord-card.ts` renders **3840×2160** (4K); column chips for CALL WALL / PUT WALL / FLIP;
+ticker badge, spot + change%, desk-style expiry labels (`Jul 28`), legend footer, LIVE SNAPSHOT chip.
+Caption uses Call wall / Put wall / Flip wording. (5120 ultra pass reverted — 4K preferred.)
 
 **Status.** PR `cursor/thermal-discord-4k-card-3d11`.
 

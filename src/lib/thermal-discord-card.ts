@@ -3,8 +3,7 @@
  * Cache-reader inputs only — never fabricates cells. Uses sharp(SVG→PNG)
  * (same pattern as x-desk-card) so ECS needs no browser.
  *
- * Target canvas: 5120×2880 (5K) with a tighter strike/expiry window so cell
- * numbers stay large enough to read in Discord’s in-chat preview.
+ * Target canvas: 3840×2160 (4K UHD) so Discord attachments stay sharp when expanded.
  */
 import sharp from "sharp";
 import type { GexHeatmap } from "@/lib/providers/polygon-options-gex";
@@ -12,13 +11,9 @@ import type { GexHeatmap } from "@/lib/providers/polygon-options-gex";
 export const THERMAL_DISCORD_TICKERS = ["SPY", "SPX", "QQQ"] as const;
 export type ThermalDiscordTicker = (typeof THERMAL_DISCORD_TICKERS)[number];
 
-/** 5K canvas — bigger attachment + room for large cell type. */
-export const THERMAL_DISCORD_CARD_W = 5120;
-export const THERMAL_DISCORD_CARD_H = 2880;
-
-/** Fewer rows/cols → larger cells (readability > showing the whole ladder). */
-export const THERMAL_DISCORD_EXPIRY_MAX = 6;
-export const THERMAL_DISCORD_STRIKE_HALF = 8;
+/** 4K UHD canvas — Discord keeps attachment sharpness when opened full-size. */
+export const THERMAL_DISCORD_CARD_W = 3840;
+export const THERMAL_DISCORD_CARD_H = 2160;
 
 const POS_RGB = "0,230,118";
 const NEG_RGB = "255,45,85";
@@ -189,9 +184,9 @@ function chip(
   const labelColor =
     tone === "call" ? "#ffd60a" : tone === "put" ? "#e9d5ff" : tone === "flip" ? "#22d3ee" : "#7dd3fc";
   return (
-    `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${h / 2}" fill="${fill}" stroke="${stroke}" stroke-width="2"/>` +
-    `<text x="${x + 22}" y="${y + h * 0.64}" fill="${labelColor}" font-family="${FONT}" font-size="22" font-weight="700" letter-spacing="1">${esc(label)}</text>` +
-    `<text x="${x + w - 22}" y="${y + h * 0.66}" text-anchor="end" fill="#f8fafc" font-family="${FONT}" font-size="28" font-weight="800">${esc(value)}</text>`
+    `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${h / 2}" fill="${fill}" stroke="${stroke}" stroke-width="1.5"/>` +
+    `<text x="${x + 18}" y="${y + h * 0.62}" fill="${labelColor}" font-family="${FONT}" font-size="18" font-weight="700" letter-spacing="1">${esc(label)}</text>` +
+    `<text x="${x + w - 18}" y="${y + h * 0.64}" text-anchor="end" fill="#f8fafc" font-family="${FONT}" font-size="22" font-weight="800">${esc(value)}</text>`
   );
 }
 
@@ -207,10 +202,10 @@ export function buildThermalDiscordCardSvg(
 ): string {
   const W = THERMAL_DISCORD_CARD_W;
   const H = THERMAL_DISCORD_CARD_H;
-  const pad = 56;
-  const headerH = 168;
-  const footerH = 96;
-  const colGap = 36;
+  const pad = 48;
+  const headerH = 140;
+  const footerH = 72;
+  const colGap = 28;
   const usable = W - pad * 2 - colGap * (columns.length - 1);
   const colW = usable / Math.max(1, columns.length);
   const colTop = pad + headerH;
@@ -231,60 +226,55 @@ export function buildThermalDiscordCardSvg(
     const call = hm?.gex?.call_wall;
     const put = hm?.gex?.put_wall;
     const flip = hm?.gex?.flip;
-    const expiries = resolveCompactExpiries(
-      hm?.near_term_expiries,
-      hm?.expiries,
-      THERMAL_DISCORD_EXPIRY_MAX
-    );
-    const strikes = bandStrikesAroundSpot(hm?.strikes, spot, THERMAL_DISCORD_STRIKE_HALF);
+    const expiries = resolveCompactExpiries(hm?.near_term_expiries, hm?.expiries, 8);
+    const strikes = bandStrikesAroundSpot(hm?.strikes, spot, 12);
     const cells = hm?.gex?.cells ?? {};
     const peak = peakInWindow(cells, strikes, expiries);
 
     // Column shell
-    colsSvg += `<rect x="${x0}" y="${colTop}" width="${colW}" height="${colH}" rx="24" fill="#08090e" stroke="rgba(34,211,238,0.32)" stroke-width="3"/>`;
-    colsSvg += `<rect x="${x0}" y="${colTop}" width="${colW}" height="148" rx="24" fill="rgba(34,211,238,0.06)"/>`;
-    colsSvg += `<rect x="${x0}" y="${colTop + 124}" width="${colW}" height="24" fill="#08090e"/>`;
+    colsSvg += `<rect x="${x0}" y="${colTop}" width="${colW}" height="${colH}" rx="20" fill="#08090e" stroke="rgba(34,211,238,0.32)" stroke-width="2"/>`;
+    colsSvg += `<rect x="${x0}" y="${colTop}" width="${colW}" height="118" rx="20" fill="rgba(34,211,238,0.06)"/>`;
+    colsSvg += `<rect x="${x0}" y="${colTop + 98}" width="${colW}" height="20" fill="#08090e"/>`;
 
     // Ticker badge
-    const badgeW = 140;
-    colsSvg += `<rect x="${x0 + 28}" y="${colTop + 26}" width="${badgeW}" height="48" rx="12" fill="rgba(34,211,238,0.16)" stroke="rgba(34,211,238,0.5)" stroke-width="2"/>`;
-    colsSvg += `<text x="${x0 + 28 + badgeW / 2}" y="${colTop + 60}" text-anchor="middle" fill="#22d3ee" font-family="${FONT}" font-size="32" font-weight="800" letter-spacing="4">${esc(col.ticker)}</text>`;
+    const badgeW = 110;
+    colsSvg += `<rect x="${x0 + 24}" y="${colTop + 22}" width="${badgeW}" height="40" rx="10" fill="rgba(34,211,238,0.16)" stroke="rgba(34,211,238,0.5)" stroke-width="1.5"/>`;
+    colsSvg += `<text x="${x0 + 24 + badgeW / 2}" y="${colTop + 50}" text-anchor="middle" fill="#22d3ee" font-family="${FONT}" font-size="26" font-weight="800" letter-spacing="3">${esc(col.ticker)}</text>`;
 
     // Spot + change
-    colsSvg += `<text x="${x0 + 28 + badgeW + 24}" y="${colTop + 62}" fill="#f8fafc" font-family="${FONT}" font-size="48" font-weight="800">${esc(fmtSpot(spot))}</text>`;
-    colsSvg += `<text x="${x0 + colW - 32}" y="${colTop + 60}" text-anchor="end" fill="${chg.color}" font-family="${FONT}" font-size="32" font-weight="800">${esc(chg.text)}</text>`;
+    colsSvg += `<text x="${x0 + 24 + badgeW + 20}" y="${colTop + 52}" fill="#f8fafc" font-family="${FONT}" font-size="36" font-weight="800">${esc(fmtSpot(spot))}</text>`;
+    colsSvg += `<text x="${x0 + colW - 28}" y="${colTop + 50}" text-anchor="end" fill="${chg.color}" font-family="${FONT}" font-size="24" font-weight="800">${esc(chg.text)}</text>`;
 
     // Level chips
-    const chipY = colTop + 88;
-    const chipH = 44;
-    const chipGap = 12;
-    const chipW = (colW - 56 - chipGap * 2) / 3;
-    colsSvg += chip(x0 + 28, chipY, chipW, chipH, "CALL WALL", fmtLevel(call), "call");
-    colsSvg += chip(x0 + 28 + chipW + chipGap, chipY, chipW, chipH, "PUT WALL", fmtLevel(put), "put");
-    colsSvg += chip(x0 + 28 + (chipW + chipGap) * 2, chipY, chipW, chipH, "FLIP", fmtLevel(flip), "flip");
+    const chipY = colTop + 74;
+    const chipH = 36;
+    const chipGap = 10;
+    const chipW = (colW - 48 - chipGap * 2) / 3;
+    colsSvg += chip(x0 + 24, chipY, chipW, chipH, "CALL WALL", fmtLevel(call), "call");
+    colsSvg += chip(x0 + 24 + chipW + chipGap, chipY, chipW, chipH, "PUT WALL", fmtLevel(put), "put");
+    colsSvg += chip(x0 + 24 + (chipW + chipGap) * 2, chipY, chipW, chipH, "FLIP", fmtLevel(flip), "flip");
 
-    const gridTop = colTop + 158;
-    const strikeColW = 130;
-    const gridLeft = x0 + 20;
-    const gridRight = x0 + colW - 20;
+    const gridTop = colTop + 128;
+    const strikeColW = 88;
+    const gridLeft = x0 + 16;
+    const gridRight = x0 + colW - 16;
     const gridW = gridRight - gridLeft - strikeColW;
     const expN = Math.max(1, expiries.length);
     const cellW = gridW / expN;
     const rowN = Math.max(1, strikes.length);
-    // Prefer tall cells so money labels stay readable in Discord's downscaled preview.
-    const cellH = Math.min(96, Math.max(56, (colH - 190) / rowN));
-    const labelSize = Math.max(24, Math.min(36, cellH * 0.42));
-    const strikeSize = Math.max(26, Math.min(34, cellH * 0.48));
-    const expSize = 22;
+    const cellH = Math.min(52, (colH - 150) / rowN);
+    const labelSize = Math.max(14, Math.min(20, cellH * 0.42));
+    const strikeSize = Math.max(16, Math.min(22, cellH * 0.48));
+    const expSize = 16;
 
     if (!hm || expiries.length === 0 || strikes.length === 0) {
-      colsSvg += `<text x="${x0 + colW / 2}" y="${colTop + colH / 2}" text-anchor="middle" fill="#7dd3fc" font-family="${FONT}" font-size="36" font-weight="700">Matrix unavailable</text>`;
-      colsSvg += `<text x="${x0 + colW / 2}" y="${colTop + colH / 2 + 44}" text-anchor="middle" fill="#7dd3fc" font-family="${FONT}" font-size="24">Waiting for live chain snapshot</text>`;
+      colsSvg += `<text x="${x0 + colW / 2}" y="${colTop + colH / 2}" text-anchor="middle" fill="#7dd3fc" font-family="${FONT}" font-size="28" font-weight="700">Matrix unavailable</text>`;
+      colsSvg += `<text x="${x0 + colW / 2}" y="${colTop + colH / 2 + 36}" text-anchor="middle" fill="#7dd3fc" font-family="${FONT}" font-size="18">Waiting for live chain snapshot</text>`;
       return;
     }
 
     // Corner label
-    colsSvg += `<text x="${gridLeft + strikeColW - 10}" y="${gridTop}" text-anchor="end" fill="#7dd3fc" font-family="${FONT}" font-size="18" font-weight="700" letter-spacing="2">STRIKE</text>`;
+    colsSvg += `<text x="${gridLeft + strikeColW - 8}" y="${gridTop}" text-anchor="end" fill="#7dd3fc" font-family="${FONT}" font-size="14" font-weight="700" letter-spacing="1">STRIKE</text>`;
 
     expiries.forEach((exp, ei) => {
       const cx = gridLeft + strikeColW + ei * cellW + cellW / 2;
@@ -306,12 +296,12 @@ export function buildThermalDiscordCardSvg(
     }
 
     strikes.forEach((strike, si) => {
-      const y = gridTop + 16 + si * cellH;
+      const y = gridTop + 12 + si * cellH;
       const isSpot = si === spotIdx;
       if (isSpot) {
-        colsSvg += `<rect x="${gridLeft}" y="${y}" width="${gridRight - gridLeft}" height="${cellH}" fill="rgba(34,211,238,0.08)"/>`;
+        colsSvg += `<rect x="${gridLeft}" y="${y}" width="${gridRight - gridLeft}" height="${cellH}" fill="rgba(34,211,238,0.07)"/>`;
       }
-      colsSvg += `<text x="${gridLeft + strikeColW - 12}" y="${y + cellH * 0.68}" text-anchor="end" fill="${
+      colsSvg += `<text x="${gridLeft + strikeColW - 10}" y="${y + cellH * 0.68}" text-anchor="end" fill="${
         isSpot ? "#22d3ee" : "#f8fafc"
       }" font-family="${FONT}" font-size="${strikeSize}" font-weight="800">${
         Number.isFinite(strike)
@@ -326,14 +316,15 @@ export function buildThermalDiscordCardSvg(
         const n = typeof v === "number" && Number.isFinite(v) ? v : 0;
         const cx = gridLeft + strikeColW + ei * cellW;
         const fill = cellFill(n, peak);
-        colsSvg += `<rect x="${cx + 2}" y="${y + 2}" width="${Math.max(1, cellW - 4)}" height="${Math.max(
+        colsSvg += `<rect x="${cx + 1}" y="${y + 1}" width="${Math.max(1, cellW - 2)}" height="${Math.max(
           1,
-          cellH - 4
-        )}" rx="6" fill="${fill}"${isSpot ? ` stroke="rgba(34,211,238,0.7)" stroke-width="2"` : ""}/>`;
-        // Always paint money labels at this density — cells are sized for Discord preview.
-        colsSvg += `<text x="${cx + cellW / 2}" y="${y + cellH * 0.68}" text-anchor="middle" fill="#ffffff" font-family="${FONT}" font-size="${labelSize}" font-weight="800">${esc(
-          fmtCompactHeatMoney(n)
-        )}</text>`;
+          cellH - 2
+        )}" rx="3" fill="${fill}"${isSpot ? ` stroke="rgba(34,211,238,0.65)" stroke-width="1.5"` : ""}/>`;
+        if (cellH >= 28 && cellW >= 48) {
+          colsSvg += `<text x="${cx + cellW / 2}" y="${y + cellH * 0.68}" text-anchor="middle" fill="#f8fafc" font-family="${FONT}" font-size="${labelSize}" font-weight="800">${esc(
+            fmtCompactHeatMoney(n)
+          )}</text>`;
+        }
       });
     });
   });
@@ -356,26 +347,26 @@ export function buildThermalDiscordCardSvg(
   <rect width="${W}" height="${H}" fill="url(#bg)"/>
   <rect x="0" y="0" width="${W}" height="${headerH + pad}" fill="url(#scan)"/>
 
-  <text x="${pad}" y="${pad + 52}" fill="#22d3ee" font-family="${FONT}" font-size="52" font-weight="800" letter-spacing="8">BLACKOUT THERMAL</text>
-  <text x="${pad}" y="${pad + 108}" fill="#7dd3fc" font-family="${FONT}" font-size="30" font-weight="600">SPY  ·  SPX  ·  QQQ   ·   Net dealer gamma (GEX)</text>
+  <text x="${pad}" y="${pad + 42}" fill="#22d3ee" font-family="${FONT}" font-size="42" font-weight="800" letter-spacing="6">BLACKOUT THERMAL</text>
+  <text x="${pad}" y="${pad + 88}" fill="#7dd3fc" font-family="${FONT}" font-size="24" font-weight="600">SPY  ·  SPX  ·  QQQ   ·   Net dealer gamma (GEX)</text>
 
-  <rect x="${W - pad - 620}" y="${pad + 24}" width="280" height="52" rx="26" fill="rgba(34,211,238,0.12)" stroke="rgba(34,211,238,0.45)" stroke-width="2"/>
-  <text x="${W - pad - 480}" y="${pad + 58}" text-anchor="middle" fill="#22d3ee" font-family="${FONT}" font-size="24" font-weight="800" letter-spacing="2">LENS  GEX</text>
+  <rect x="${W - pad - 520}" y="${pad + 18}" width="240" height="44" rx="22" fill="rgba(34,211,238,0.12)" stroke="rgba(34,211,238,0.45)" stroke-width="1.5"/>
+  <text x="${W - pad - 400}" y="${pad + 48}" text-anchor="middle" fill="#22d3ee" font-family="${FONT}" font-size="20" font-weight="800" letter-spacing="2">LENS  GEX</text>
 
-  <rect x="${W - pad - 320}" y="${pad + 24}" width="320" height="52" rx="26" fill="rgba(0,230,118,0.1)" stroke="rgba(0,230,118,0.4)" stroke-width="2"/>
-  <circle cx="${W - pad - 286}" cy="${pad + 50}" r="8" fill="#00e676"/>
-  <text x="${W - pad - 148}" y="${pad + 58}" text-anchor="middle" fill="#00e676" font-family="${FONT}" font-size="22" font-weight="800" letter-spacing="1">LIVE SNAPSHOT</text>
+  <rect x="${W - pad - 260}" y="${pad + 18}" width="260" height="44" rx="22" fill="rgba(0,230,118,0.1)" stroke="rgba(0,230,118,0.4)" stroke-width="1.5"/>
+  <circle cx="${W - pad - 230}" cy="${pad + 40}" r="6" fill="#00e676"/>
+  <text x="${W - pad - 120}" y="${pad + 48}" text-anchor="middle" fill="#00e676" font-family="${FONT}" font-size="18" font-weight="800" letter-spacing="1">LIVE SNAPSHOT</text>
 
-  <text x="${W - pad}" y="${pad + 120}" text-anchor="end" fill="#7dd3fc" font-family="${FONT}" font-size="28" font-weight="700">as of ${esc(asOfText)} ET</text>
+  <text x="${W - pad}" y="${pad + 100}" text-anchor="end" fill="#7dd3fc" font-family="${FONT}" font-size="22" font-weight="700">as of ${esc(asOfText)} ET</text>
 
   ${colsSvg}
 
-  <rect x="${pad}" y="${H - pad - footerH + 8}" width="${W - pad * 2}" height="${footerH - 8}" rx="16" fill="rgba(8,9,14,0.9)" stroke="rgba(125,211,252,0.2)" stroke-width="1.5"/>
-  <rect x="${pad + 32}" y="${H - pad - footerH + 34}" width="22" height="22" rx="4" fill="rgba(0,230,118,0.8)"/>
-  <text x="${pad + 68}" y="${H - pad - footerH + 52}" fill="#f8fafc" font-family="${FONT}" font-size="26" font-weight="700">+GEX  dealers long gamma</text>
-  <rect x="${pad + 460}" y="${H - pad - footerH + 34}" width="22" height="22" rx="4" fill="rgba(255,45,85,0.8)"/>
-  <text x="${pad + 496}" y="${H - pad - footerH + 52}" fill="#f8fafc" font-family="${FONT}" font-size="26" font-weight="700">−GEX  dealers short gamma</text>
-  <text x="${W - pad - 32}" y="${H - pad - footerH + 52}" text-anchor="end" fill="#7dd3fc" font-family="${FONT}" font-size="24" font-weight="600">Cyan row = spot  ·  Near-term only  ·  5120×2880 ultra card</text>
+  <rect x="${pad}" y="${H - pad - footerH + 8}" width="${W - pad * 2}" height="${footerH - 8}" rx="14" fill="rgba(8,9,14,0.85)" stroke="rgba(125,211,252,0.18)" stroke-width="1"/>
+  <rect x="${pad + 28}" y="${H - pad - footerH + 28}" width="18" height="18" rx="3" fill="rgba(0,230,118,0.75)"/>
+  <text x="${pad + 56}" y="${H - pad - footerH + 44}" fill="#f8fafc" font-family="${FONT}" font-size="20" font-weight="700">+GEX  dealers long gamma</text>
+  <rect x="${pad + 360}" y="${H - pad - footerH + 28}" width="18" height="18" rx="3" fill="rgba(255,45,85,0.75)"/>
+  <text x="${pad + 388}" y="${H - pad - footerH + 44}" fill="#f8fafc" font-family="${FONT}" font-size="20" font-weight="700">−GEX  dealers short gamma</text>
+  <text x="${W - pad - 28}" y="${H - pad - footerH + 44}" text-anchor="end" fill="#7dd3fc" font-family="${FONT}" font-size="18" font-weight="600">Cyan row = spot  ·  Near-term expiries only  ·  4K desk card</text>
 </svg>`;
 }
 
@@ -384,8 +375,8 @@ export async function renderThermalDiscordCardPng(
 ): Promise<Buffer> {
   const svg = buildThermalDiscordCardSvg(columns);
   // PNG at native 4K; slight compression keeps Discord uploads under typical limits.
-  return sharp(Buffer.from(svg), { density: 192 })
-    .png({ compressionLevel: 6, adaptiveFiltering: true })
+  return sharp(Buffer.from(svg), { density: 144 })
+    .png({ compressionLevel: 7, adaptiveFiltering: true })
     .toBuffer();
 }
 
@@ -408,5 +399,5 @@ export function thermalDiscordCaption(columns: ThermalCardColumn[]): string {
     );
   });
   const asOf = columns.map((c) => c.heatmap?.asof).find(Boolean);
-  return `**Thermal desk · GEX** · Ultra\n${parts.join("\n")}\nas of ${fmtAsOfEt(asOf)} ET`;
+  return `**Thermal desk · GEX** · 4K\n${parts.join("\n")}\nas of ${fmtAsOfEt(asOf)} ET`;
 }
