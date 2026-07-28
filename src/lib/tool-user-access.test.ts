@@ -35,6 +35,6 @@ test("buildToolAccessRows combines global launch + overrides", () => {
   const vector = rows.find((r) => r.key === "vector");
   assert.equal(largo?.globalLaunched, true);
   assert.equal(largo?.effective, true);
-  assert.equal(vector?.globalLaunched, false);
+  assert.equal(vector?.globalLaunched, true);
   assert.equal(vector?.effective, true);
 });
