@@ -410,13 +410,6 @@ function parseEntryMid(range: string | null | undefined): number | null {
   return (nums[0] + nums[nums.length - 1]) / 2;
 }
 
-/** Parse a target/stop string ("$205.00") into a number. */
-function parseLevelNum(s: string | null | undefined): number | null {
-  if (!s) return null;
-  const m = s.match(/([\d.]+)/);
-  return m ? Number(m[1]) || null : null;
-}
-
 export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
   const factors: DeckFactor[] = Object.entries(src.factor_breakdown ?? {})
     .filter(([, v]) => typeof v === "number" && v !== 0)
@@ -424,8 +417,6 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
 
   const direction = asDir(src.direction);
   const entryMid = parseEntryMid(src.entry_range);
-  const targetNum = parseLevelNum(src.target);
-  const stopNum = parseLevelNum(src.stop);
   const pulled = src.pulled === true;
 
   // Morning confirmation drives the status + regime display.
