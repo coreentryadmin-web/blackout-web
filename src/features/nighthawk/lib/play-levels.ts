@@ -125,6 +125,16 @@ export function buildDirectionalStockLevels(params: {
     const { maxStopPct, maxTargetPct } = volatilityAdjustedCaps(spot, params.atr);
     const maxStopDist = spot * maxStopPct;
     const maxTargetDist = spot * maxTargetPct;
+    // Entry band scales to ATR instead of a fixed +-0.5%: overnight plays regularly gap
+    // 2-5% at the open, and a fixed 1%-wide band is almost always unfillable by the open
+    // print, directly causing band_detached/unfilled grading outcomes. Half-ATR (capped at
+    // 2%) keeps the band proportional to the name's actual daily range while still bounding
+    // it so a high-ATR name doesn't get an absurdly wide "entry".
+    const atr = params.atr;
+    const atrPct = atr != null && atr > 0 && spot > 0 ? atr / spot : 0.005;
+    const halfBand = Math.min(atrPct * 0.5, 0.02);
+    const bandLo = spot * (1 - halfBand);
+    const bandHi = spot * (1 + halfBand);
     if (params.direction === "long") {
       const rawStop = support;
       let stopDist = Math.min(spot - rawStop, maxStopDist);
@@ -135,7 +145,7 @@ export function buildDirectionalStockLevels(params: {
         stopDist = finalTargetDist / MIN_RR_RATIO;
       }
       return {
-        entry_range: `$${formatStockLevel(spot * 0.995)}-$${formatStockLevel(spot * 1.005)}`,
+        entry_range: `$${formatStockLevel(bandLo)}-$${formatStockLevel(bandHi)}`,
         target: formatStockLevel(spot + finalTargetDist),
         stop: formatStockLevel(Math.min(spot - stopDist, spot * 0.99)),
       };
@@ -150,7 +160,7 @@ export function buildDirectionalStockLevels(params: {
         stopDist = finalTargetDist / MIN_RR_RATIO;
       }
       return {
-        entry_range: `$${formatStockLevel(spot * 0.995)}-$${formatStockLevel(spot * 1.005)}`,
+        entry_range: `$${formatStockLevel(bandLo)}-$${formatStockLevel(bandHi)}`,
         target: formatStockLevel(spot - finalTargetDist),
         stop: formatStockLevel(Math.max(spot + stopDist, spot * 1.01)),
       };

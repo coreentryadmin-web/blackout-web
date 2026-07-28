@@ -26,6 +26,7 @@ export function CommandDeck({
   laneLabel,
   emptyHint,
   degraded = false,
+  loading = false,
   allocation,
 }: {
   plays: TerminalPlay[];
@@ -35,6 +36,8 @@ export function CommandDeck({
   /** True when the board data is unavailable/degraded — renders a distinct warning so an outage is never
    *  painted as a calm flat tape (9-3). */
   degraded?: boolean;
+  /** True while the first fetch is in progress — shows skeleton rows instead of the empty hint. */
+  loading?: boolean;
   /** The payload's Portfolio Allocation Engine decisions — feeds the cockpit R-deployed strip. Absent
    *  for lanes that don't allocate (Swings/LEAPS/Legacy) → the strip degrades to "—". */
   allocation?: CockpitAllocation[] | null;
@@ -79,7 +82,18 @@ export function CommandDeck({
           {degraded && (
             <div className="nh-deck-degraded" role="alert">⚠ Board data unavailable — retrying</div>
           )}
-          {plays.length === 0 && (
+          {loading && plays.length === 0 && (
+            <div className="nh-deck-loading">
+              {[1, 2, 3, 4, 5].map((n) => (
+                <div key={n} className="nh-deck-skel" aria-hidden>
+                  <div className="nh-skel-bar" style={{ width: "40%" }} />
+                  <div className="nh-skel-bar" style={{ width: "70%" }} />
+                  <div className="nh-skel-bar" style={{ width: "55%" }} />
+                </div>
+              ))}
+            </div>
+          )}
+          {!loading && plays.length === 0 && (
             <div className="nh-deck-empty">{emptyHint ?? "No plays right now."}</div>
           )}
           {sorted.map((p, i) => (
