@@ -5,6 +5,23 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-28 — [data-honesty] Vector max-pain `?horizon=` silently defaulted to ALL (7410 vs desk 7440)
+
+**Severity.** P2 — cross-tool mismatch risk on `/dashboard` confluence + audit/API consumers.
+
+**Root cause.** All Vector DTE routes only read `?dte=`. `normalizeDteHorizon(null)` → `"all"`. Passing
+`?horizon=0dte` (natural alias) was ignored, so max-pain returned the all-expiry pin (**7410**) while
+the SPX desk/heatmap front-expiry max pain stayed **7440**. The live chart client already sends
+`dte=` correctly; the footgun hits audits, BIE/tooling, and any caller using `horizon`.
+
+**Evidence.** Prod 2026-07-28: `dte=0dte` → 7440 (= desk/heatmap); `horizon=0dte` → horizon:"all", 7410.
+
+**Fix.** `resolveDteHorizonParam` accepts `dte` or `horizon` (`dte` wins). Wired through all Vector
+DTE routes. 0DTE max-pain prefers `getGexPositioning().max_pain` (same front-expiry source as the
+desk/matrix) so Vector confluence cannot diverge from the header when positioning is warm.
+
+**Status.** Same draft PR `cursor/spx-desk-truth-fixes-3d11` (#1197).
+
 ## 2026-07-28 — [data-honesty] SPX desk sticky gamma flip + pin spot=0 after hours
 
 **Severity.** P1 — member-facing false levels / dishonest empty states on the SPX Slayer desk.

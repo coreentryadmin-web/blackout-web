@@ -3,7 +3,7 @@ import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
 import { requireToolApi } from "@/lib/tool-access-server";
 import { normalizeVectorTicker, isVectorTickerAllowed } from "@/features/vector/lib/vector-ticker";
 import { loadSessionWallHistory } from "@/features/vector/lib/vector-wall-persist";
-import { normalizeDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
+import { resolveDteHorizonParam } from "@/features/vector/lib/vector-dte-horizon";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const runtime = "nodejs";
@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: `Invalid ticker` }, { status: 400, headers: NO_STORE_HEADERS });
   }
   const ticker = normalizeVectorTicker(rawTicker);
-  const horizon = normalizeDteHorizon(req.nextUrl.searchParams.get("dte"));
+  const horizon = resolveDteHorizonParam(req.nextUrl.searchParams);
   const session = req.nextUrl.searchParams.get("session") ?? "";
 
   // "all" is already SSR-seeded from the bare-ticker rail; only narrowed horizons need this read.

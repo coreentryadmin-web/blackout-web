@@ -3,7 +3,7 @@ import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
 import { requireToolApi } from "@/lib/tool-access-server";
 import { normalizeVectorTicker, isVectorTickerAllowed } from "@/features/vector/lib/vector-ticker";
 import { getVectorGexHeatmap, normalizeHeatmapBucketSec } from "@/features/vector/lib/vector-gex-heatmap-server";
-import { normalizeDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
+import { resolveDteHorizonParam } from "@/features/vector/lib/vector-dte-horizon";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import { roundFloats } from "@/lib/round-floats";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
@@ -18,7 +18,7 @@ export const dynamic = "force-dynamic";
  * fetches this once per ticker/DTE toggle and hands the grid to the chart's background primitive.
  *
  * Same gate as the sibling Vector reads (authorizeMarketDeskApi + requireToolApi("vector") + ticker
- * allowlist + normalizeDteHorizon). `session` is the ET session date the chart is displaying (its
+ * allowlist + resolveDteHorizonParam). `session` is the ET session date the chart is displaying (its
  * bars provide the x/time axis); absent/invalid falls back to today so a live "all" view still draws.
  *
  * `grid` is `roundFloats`-shaped at the data layer (the cells are dollar-gamma sums with IEEE float
@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: `Invalid ticker` }, { status: 400, headers: NO_STORE_HEADERS });
   }
   const ticker = normalizeVectorTicker(rawTicker);
-  const horizon = normalizeDteHorizon(req.nextUrl.searchParams.get("dte"));
+  const horizon = resolveDteHorizonParam(req.nextUrl.searchParams);
   const rawSession = req.nextUrl.searchParams.get("session") ?? "";
   const session = /^\d{4}-\d{2}-\d{2}$/.test(rawSession) ? rawSession : todayEtYmd();
   const bucketSec = normalizeHeatmapBucketSec(req.nextUrl.searchParams.get("bucketSec"));

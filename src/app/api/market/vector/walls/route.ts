@@ -6,7 +6,7 @@ import {
   getVectorGexWallsForHorizon,
   getVectorGammaFlipForHorizon,
 } from "@/features/vector/lib/vector-snapshot";
-import { normalizeDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
+import { resolveDteHorizonParam } from "@/features/vector/lib/vector-dte-horizon";
 import { roundFloats } from "@/lib/round-floats";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
   }
   const ticker = normalizeVectorTicker(rawTicker);
 
-  const horizon = normalizeDteHorizon(req.nextUrl.searchParams.get("dte"));
+  const horizon = resolveDteHorizonParam(req.nextUrl.searchParams);
   const [walls, flip] = await Promise.all([
     getVectorGexWallsForHorizon(ticker, horizon),
     getVectorGammaFlipForHorizon(ticker, horizon),
