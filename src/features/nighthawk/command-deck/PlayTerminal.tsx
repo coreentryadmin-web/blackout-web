@@ -275,11 +275,20 @@ function ThesisPanel({ play }: { play: TerminalPlay }) {
           </div>
         </>
       )}
+      {play.thesis && (
+        <div className="nh-deck-recnote" style={{ marginTop: 8, fontStyle: "italic" }}>{play.thesis}</div>
+      )}
+      {play.keySignal && (
+        <div className="nh-deck-recnote" style={{ marginTop: 4 }}>Key signal: {play.keySignal}</div>
+      )}
       <div className="nh-deck-meta">
         {play.regime && <div><span className="k">Regime</span><span className="v">{play.regime}</span></div>}
         {play.tierLabel && <div><span className="k">Conviction</span><span className="v">{play.tierLabel}</span></div>}
         {play.allocation && <div><span className="k">Allocation</span><span className="v">{play.allocation.role}</span></div>}
         <div><span className="k">Exit model</span><span className="v">{play.exitModel === "SCALE_OUT" ? "trim-scale" : play.exitModel.toLowerCase()}</span></div>
+        {play.entryRange && <div><span className="k">Entry range</span><span className="v">{play.entryRange}</span></div>}
+        {play.targetLevel && <div><span className="k">Target</span><span className="v">{play.targetLevel}</span></div>}
+        {play.stopLevel && <div><span className="k">Stop</span><span className="v">{play.stopLevel}</span></div>}
       </div>
       <div
         className="nh-deck-break"

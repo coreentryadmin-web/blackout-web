@@ -138,6 +138,7 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
       exit_style: p.exit_style ?? null,
       iv_rank: p.iv_rank ?? null,
       rr_ratio: p.rr_ratio ?? null,
+      flow_streak_days: p.flow_streak_days ?? null,
       gate_promoted: p.gate_promoted ?? null,
       gate_warnings: p.gate_warnings ?? null,
       pulled: p.pulled ?? null,

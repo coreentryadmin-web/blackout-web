@@ -143,6 +143,13 @@ export interface TerminalPlay {
   // ── greeks (live) ──
   greeks?: DeckGreeks | null;
 
+  // ── legacy edition geometry (entry/target/stop as raw strings for the thesis panel) ──
+  entryRange?: string | null;
+  targetLevel?: string | null;
+  stopLevel?: string | null;
+  thesis?: string | null;
+  keySignal?: string | null;
+
   // ── swing-only enrichment (all OPTIONAL, ADDITIVE — 0DTE/LEAPS/Legacy leave them undefined; PR-12
   //    populates them through the horizon adapter). The observable swing state the serving router keys on. ──
   /** The classified swing archetype label (taxonomy.ts), when this is a SWING play. */
