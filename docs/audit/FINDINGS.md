@@ -5,6 +5,27 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-28 — [Thermal] Discord #admin-talk spam (no post dedupe)
+
+**Severity.** P1 ops / UX (channel flood).
+
+**Symptom.** `#admin-talk` filled with identical Thermal desk posts (old C/P caption + 4K Call/Put
+wall caption mixed) within minutes.
+
+**Root cause.**
+1. `/api/cron/thermal-discord` had **no cross-replica idempotency** — every authorized hit posted.
+2. Deploy debugging force-hit `?force=1` many times against ECS/ALB while rolling task defs.
+3. EventBridge `*/15` plus overlapping retries could double-post under multi-web-task races.
+
+**Evidence.** Mobile Discord screenshots: repeated “Thermal desk - GEX” / SPY~741 / SPX~7428 blocks;
+EventBridge rule paused (`DISABLED`) to stop the firehose.
+
+**Fix.** Redis NX claim `thermal-discord:posted` (TTL 14m) before render; bare `force=1` still
+dedupes; only `force=1&allow_dup=1` bypasses. Release claim on render/empty/502 so retries work.
+EventBridge stays DISABLED until this ships, then re-enable.
+
+**Status.** PR `cursor/thermal-discord-dedupe-3d11`.
+
 ## 2026-07-28 — [Thermal] Discord desk card → 4K + clearer UI chrome
 
 **Severity.** P2 UX.

@@ -4,8 +4,12 @@
  * CACHE-READER: reads shared `fetchGexHeatmap` snapshots only — no per-request upstream.
  * INERT unless `DISCORD_THERMAL_WEBHOOK_URL` is set.
  *
- * Runs 24/7 by default (preview / off-hours snapshots still useful). Set
- * `THERMAL_DISCORD_RTH_ONLY=1` to skip outside cash RTH (unless `?force=1`).
+ * Runs 24/7 by default. Set `THERMAL_DISCORD_RTH_ONLY=1` to skip outside cash RTH
+ * (unless `?force=1`).
+ *
+ * DEDUP: Redis NX claim `thermal-discord:posted` (~14 min) so overlapping EventBridge
+ * ticks / multi-task races / accidental force-hits cannot flood the channel. Bypass with
+ * `?force=1&allow_dup=1` only.
  *
  * Schedule catalog: `railway.thermal-discord.toml` → EventBridge must be synced to fire.
  */
@@ -16,6 +20,7 @@ import { logCronRun } from "@/lib/cron-run";
 import { isEtCashRth } from "@/lib/et-market-hours";
 import { postDiscordWebhookWithFiles, redactWebhook } from "@/lib/discord-post";
 import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
+import { sharedCacheDel, sharedCacheSetNx } from "@/lib/shared-cache";
 import {
   THERMAL_DISCORD_TICKERS,
   renderThermalDiscordCardPng,
@@ -26,6 +31,15 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
+
+/** Just under the 15-minute schedule so the next tick can claim cleanly. */
+export const THERMAL_DISCORD_DEDUP_TTL_SEC = 14 * 60;
+export const THERMAL_DISCORD_DEDUP_KEY = "thermal-discord:posted";
+
+/** `force=1` alone still dedupes; only `force=1&allow_dup=1` bypasses the claim. */
+export function thermalDiscordBypassesDedup(force: boolean, allowDup: boolean): boolean {
+  return force && allowDup;
+}
 
 function thermalWebhook(): string | null {
   return process.env.DISCORD_THERMAL_WEBHOOK_URL?.trim() || null;
@@ -54,10 +68,32 @@ export async function GET(req: NextRequest) {
   }
 
   const force = req.nextUrl.searchParams.get("force") === "1";
+  const allowDup = req.nextUrl.searchParams.get("allow_dup") === "1";
   if (!force && rthOnly() && !isEtCashRth()) {
     const payload = { ok: true, skipped: true, reason: "Outside cash RTH (THERMAL_DISCORD_RTH_ONLY)" };
     await logCronRun("thermal-discord", started, payload);
     return NextResponse.json(payload);
+  }
+
+  // Claim the posting slot BEFORE rendering — cheap fail-closed against spam.
+  let heldClaim = false;
+  if (!thermalDiscordBypassesDedup(force, allowDup)) {
+    const claimed = await sharedCacheSetNx(
+      THERMAL_DISCORD_DEDUP_KEY,
+      { at: new Date().toISOString() },
+      THERMAL_DISCORD_DEDUP_TTL_SEC
+    );
+    if (!claimed) {
+      const payload = {
+        ok: true,
+        skipped: true,
+        reason: "deduped — already posted within ~15m",
+        host: redactWebhook(webhook),
+      };
+      await logCronRun("thermal-discord", started, payload);
+      return NextResponse.json(payload);
+    }
+    heldClaim = true;
   }
 
   try {
@@ -69,6 +105,7 @@ export async function GET(req: NextRequest) {
 
     const available = columns.filter((c) => c.heatmap != null).length;
     if (available === 0) {
+      if (heldClaim) await sharedCacheDel(THERMAL_DISCORD_DEDUP_KEY);
       const payload = {
         ok: true,
         skipped: true,
@@ -88,6 +125,11 @@ export async function GET(req: NextRequest) {
       "thermal-desk"
     );
 
+    if (!delivered && heldClaim) {
+      // Release so the next EventBridge tick can retry — do not burn the 14m window on a 502.
+      await sharedCacheDel(THERMAL_DISCORD_DEDUP_KEY);
+    }
+
     const payload = {
       ok: delivered,
       delivered,
@@ -99,6 +141,7 @@ export async function GET(req: NextRequest) {
     await logCronRun("thermal-discord", started, payload);
     return NextResponse.json(payload, { status: delivered ? 200 : 502 });
   } catch (error) {
+    if (heldClaim) await sharedCacheDel(THERMAL_DISCORD_DEDUP_KEY);
     const detail = error instanceof Error ? error.message : String(error);
     await logCronRun("thermal-discord", started, { ok: false, error: detail });
     return NextResponse.json({ ok: false, error: "thermal-discord failed" }, { status: 500 });
