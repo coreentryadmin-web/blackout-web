@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   expiriesForHorizon,
   normalizeDteHorizon,
+  resolveDteHorizonParam,
   isVectorDteHorizon,
   dteHorizonLabel,
   pickHorizonScopedValue,
@@ -66,6 +67,18 @@ test("normalizeDteHorizon / isVectorDteHorizon: junk falls back to 'all'", () =>
   assert.equal(normalizeDteHorizon(undefined), "all");
   assert.equal(isVectorDteHorizon("monthly"), true);
   assert.equal(isVectorDteHorizon("yearly"), false);
+});
+
+test("resolveDteHorizonParam: accepts dte and horizon alias; dte wins when both set", () => {
+  const params = (map: Record<string, string | null>) => ({
+    get: (name: string) => (name in map ? map[name]! : null),
+  });
+  assert.equal(resolveDteHorizonParam(params({ dte: "0dte" })), "0dte");
+  // Live audit footgun 2026-07-28: ?horizon=0dte was ignored → silent default "all"
+  assert.equal(resolveDteHorizonParam(params({ horizon: "0dte" })), "0dte");
+  assert.equal(resolveDteHorizonParam(params({ horizon: "0DTE" })), "0dte");
+  assert.equal(resolveDteHorizonParam(params({ dte: "weekly", horizon: "0dte" })), "weekly");
+  assert.equal(resolveDteHorizonParam(params({})), "all");
 });
 
 test("every horizon has a label", () => {

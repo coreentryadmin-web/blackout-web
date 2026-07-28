@@ -5,15 +5,16 @@ decides to fire, hold, or veto a play — the data it reads, the three-stage dec
 (confluence scoring → sequential gates → AI arbiter), the numeric-grounding guard on the AI
 step, and where its live state lives in Postgres. It is written for BIE's retrieval layer, so
 Largo can answer "how does the play engine decide" or "why does SPX Slayer have a separate AI
-verdict step" from real mechanics instead of inference. Source of truth: `src/lib/spx-signals.ts`
-(scoring), `src/lib/spx-play-gates.ts` (gates), `src/lib/spx-play-claude.ts` (AI arbiter),
-`src/lib/spx-play-payload.ts` and `src/lib/spx-play-engine.ts` (orchestration/payload). If code
-and this doc ever disagree, the code wins — flag the drift.
+verdict step" from real mechanics instead of inference. Source of truth:
+`src/features/spx/lib/spx-signals.ts` (scoring), `src/features/spx/lib/spx-play-gates.ts` (gates),
+`src/features/spx/lib/spx-play-claude.ts` (AI arbiter), `src/features/spx/lib/spx-play-payload.ts`
+and `src/features/spx/lib/spx-play-engine.ts` (orchestration/payload). If code and this doc ever
+disagree, the code wins — flag the drift.
 
 ## Data pipeline — `buildSpxDesk()`
 
 Everything downstream reads one snapshot object, `SpxDeskPayload`, built by `buildSpxDesk()`
-(`src/lib/providers/spx-desk.ts`). It pulls, in parallel: Polygon index snapshots for SPX/VIX/
+(`src/features/spx/lib/spx-desk.ts`). It pulls, in parallel: Polygon index snapshots for SPX/VIX/
 VIX9D/VIX3M/TICK/TRIN/ADD, SPX 1-minute bars for session VWAP/HOD/LOD, daily bars for the prior
 session's OHLC, EMA/SMA series, a breadth-universe snapshot, Benzinga market news, and (when
 enabled) an internal engine-intel overlay. Polygon is the sole GEX source (dealer gamma walls,
@@ -51,7 +52,7 @@ The raw sum is clamped to [-100, 100]. From the clamped score: `action` is `BUY_
 at |score| ≥ 22, `HOLD` at |score| ≥ 10, else `WAIT`. `direction` (`long`/`short`/null) mirrors the bias. `grade` is computed by
 `scoreToGrade(absScore, conflicts)` — A+ needs abs score ≥72 and ≤1 conflicting factor, A needs
 ≥58 and ≤2, B needs ≥45 and ≤3, C needs ≥30, otherwise D. `conflicts`/`weighted_conflicts` come
-from `computeWeightedConflicts()` (`src/lib/spx-play-conflicts.ts`): the raw count of factors
+from `computeWeightedConflicts()` (`src/features/spx/lib/spx-play-conflicts.ts`): the raw count of factors
 opposing the score's direction, plus a desk-aware weighted variant that double-counts "hard"
 opposing signals (market tide, dark pool, IV rank, gamma regime, GEX walls) and adds weight for
 opposing news sentiment, tide, GEX, or an extreme VIX reading even when those didn't fire as a
@@ -61,7 +62,7 @@ itself. `confidence` is a simple function of |score| and factor count, clamped t
 Entry/stop/target/invalidation levels are built from the nearest GEX wall (with a 3-point buffer,
 since price commonly wicks through a wall before reversing) and a VIX-indexed target distance —
 wider targets on higher-VIX days, not a fixed point count. Separately, a same-day Night Hawk
-prior (`src/lib/spx-play-engine.ts`) can add ±3 to the score as one more factor when a fresh
+prior (`src/features/spx/lib/spx-play-engine.ts`) can add ±3 to the score as one more factor when a fresh
 (<20h old) Night Hawk edition shows a clear 3+ A-grade directional cluster — a soft morning bias,
 never large enough to flip a setup on its own.
 
@@ -100,7 +101,7 @@ can be disabled entirely via config to require full A/A+ setups only. Any single
 keeps the desk in `SCANNING` (or `WATCHING` when a setup is close but not there) — `SCANNING` is
 the default, honest state, not an error.
 
-Alongside the entry gates, `evaluatePlayConfirmations()` (`src/lib/spx-play-confirmations.ts`)
+Alongside the entry gates, `evaluatePlayConfirmations()` (`src/features/spx/lib/spx-play-confirmations.ts`)
 runs an independent 10-item checklist: four **required** checks (3-minute multi-timeframe close
 confirmation, 5-minute trend/RSI confirmation, support/resistance structure alignment, and a
 breakout-or-level-hold check) plus six optional checks (0DTE flow alignment, dark pool bias,

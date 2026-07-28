@@ -291,7 +291,10 @@ export function mergeFlowIntoDesk(base: SpxDeskPayload, flow: SpxDeskFlow): SpxD
     gex_walls: recalcGexWallDistances(walls, price),
     gex_net: flow.gex_net ?? base.gex_net,
     gex_king: flow.gex_king ?? base.gex_king,
-    gamma_flip: flow.gamma_flip ?? base.gamma_flip,
+    // Flow lane is available here (mergeDeskLayers gates on flow.available). Trust an explicit
+    // null flip from the live matrix — `??` would otherwise resurrect a sticky desk flip and
+    // disagree with /api/market/gex-heatmap (flip=null) on the same page.
+    gamma_flip: flow.gamma_flip,
     above_gamma_flip: flow.above_gamma_flip,
     gamma_regime: flow.gamma_regime ?? base.gamma_regime,
     flow_0dte_call_premium: flow.flow_0dte_call_premium ?? base.flow_0dte_call_premium,
@@ -322,7 +325,7 @@ export function mergeFlowIntoDesk(base: SpxDeskPayload, flow: SpxDeskFlow): SpxD
       sma200: base.sma200,
       gex_king: flow.gex_king ?? base.gex_king,
       max_pain: base.max_pain,
-      gamma_flip: flow.gamma_flip ?? base.gamma_flip,
+      gamma_flip: flow.gamma_flip,
     }),
   };
 }

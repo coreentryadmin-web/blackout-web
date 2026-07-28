@@ -369,7 +369,11 @@ async function resolveCanonicalDeskGex(spot: number): Promise<CanonicalDeskGexSn
     lastGoodGexComputedAt = Number.isFinite(asofMs) ? asofMs : Date.now();
   }
   if (walls.length) lastGoodGexWalls = walls;
-  if (flip != null) lastGoodGammaFlip = flip;
+  // Live matrix flip is authoritative — including honest null (no short→long cumulative
+  // crossing). Never keep a prior sticky flip around a successful null; that resurfaced a
+  // far/stale level (~160pts off spot) on the desk while the heatmap correctly reported
+  // undetermined (live 2026-07-28: matrix flip=null, desk gamma_flip≈7596).
+  lastGoodGammaFlip = flip;
   if (regime !== "unknown") lastGoodGammaRegime = regime;
 
   const asofMs = Date.parse(pos.asof);
@@ -1346,15 +1350,17 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
   const lod = session.lod ?? intel?.lod ?? null;
   const hod = session.hod ?? intel?.hod ?? null;
 
-  const gammaFlip =
-    intel?.gamma_flip ?? canonicalGex.gamma_flip ?? lastGoodGammaFlip ?? null;
+  // Sticky lastGood is already applied inside resolveCanonicalDeskGex → stickyDeskGexFallback
+  // when the heatmap fetch fails. Do NOT re-apply lastGoodGammaFlip here — that resurrected a
+  // stale flip after a successful live null (truth mandate: undetermined → show nothing).
+  const gammaFlip = intel?.gamma_flip ?? canonicalGex.gamma_flip ?? null;
   const aboveFlip = gammaFlip != null ? price > gammaFlip : false;
   // SINGLE-SNAPSHOT coherence: above_gamma_flip and gamma_regime are derived from the SAME
   // (price, gammaFlip) pair, so the two desk surfaces can never disagree for the same flip. The bug
   // (independent of F1's horizon mismatch that #294 fixes): aboveFlip read the live `price` while the
   // regime — in the non-intel-overlay branch — inherited canonicalGex.gamma_regime, computed against a
   // canonical-spot snapshot AND possibly a different flip, so the label could point opposite to
-  // aboveFlip. gammaFlip already merges intel/canonical/lastGood, so both now read the identical flip.
+  // aboveFlip. gammaFlip merges intel overlay + canonical (sticky only on fetch failure).
   //
   // The regime stays the INTENDED local spot-vs-flip model (gammaRegimeWithHysteresis) — it does NOT
   // consult the aggregate net-GEX sign. An adversarial review correctly refuted an earlier attempt to

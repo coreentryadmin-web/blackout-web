@@ -5,7 +5,7 @@ import { normalizeVectorTicker, isVectorTickerAllowed } from "@/features/vector/
 import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
 import { buildGexLadder } from "@/features/vector/lib/vector-gex-ladder";
 import { getHorizonStrikeTotals } from "@/features/vector/lib/vector-dte-walls-server";
-import { normalizeDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
+import { resolveDteHorizonParam } from "@/features/vector/lib/vector-dte-horizon";
 import { roundFloats } from "@/lib/round-floats";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: `Invalid ticker` }, { status: 400, headers: NO_STORE_HEADERS });
   }
   const ticker = normalizeVectorTicker(rawTicker);
-  const horizon = normalizeDteHorizon(req.nextUrl.searchParams.get("dte"));
+  const horizon = resolveDteHorizonParam(req.nextUrl.searchParams);
 
   // Narrowed DTE (0DTE / weekly / monthly): scope the ladder to that horizon's expiries via the
   // same reconstruction ladder the DTE walls use, so the panel matches the chart's DTE toggle. On

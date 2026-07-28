@@ -55,6 +55,19 @@ export function normalizeDteHorizon(v: unknown): VectorDteHorizon {
 }
 
 /**
+ * Resolve the DTE horizon from a request's query string.
+ * Canonical param is `dte` (what VectorChart sends). Also accepts `horizon` as an alias —
+ * callers/audits that pass `?horizon=0dte` used to silently fall through to DEFAULT ("all"),
+ * so SPX max-pain read 7410 (all-expiry) next to the desk/heatmap 7440 (front/0DTE). Prefer
+ * `dte` when both are present.
+ */
+export function resolveDteHorizonParam(params: {
+  get(name: string): string | null;
+}): VectorDteHorizon {
+  return normalizeDteHorizon(params.get("dte") ?? params.get("horizon"));
+}
+
+/**
  * Choose the value to SHOW for a given horizon: the horizon-scoped value when the
  * member has narrowed the DTE (not "all") AND a scoped value exists, else the live
  * near-term stream value. This is the single rule behind coherence between the walls

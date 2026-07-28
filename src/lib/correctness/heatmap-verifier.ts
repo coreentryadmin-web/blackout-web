@@ -116,14 +116,9 @@ function sumTotals(strikeTotals: Record<string, number>): number {
 }
 
 /**
- * Independent zero-flip detection: the per-strike net total sign-change (either direction)
- * nearest spot, interpolated to 0. Written from scratch (does NOT import computeZeroGammaFlip) so a
- * bug there is detectable. Returns null when there is no clean crossing.
- *
- * Checks BOTH neg→pos and pos→neg transitions — restricting to one direction would make this
- * oracle share the exact same blind spot as a buggy computeZeroGammaFlip (real per-strike
- * profiles are lumpy; a pos→neg crossing can legitimately be the one nearest spot), which would
- * make a real discrepancy invisible to this cross-check by construction.
+ * Independent PER-STRIKE zero-level detection (either direction) nearest spot.
+ * Used for VEX/DEX/CHARM `zero_level` checks — those Greeks keep the per-strike definition.
+ * Written from scratch (does NOT import zeroGammaFlip) so a bug there is detectable.
  */
 function deriveFlip(strikeTotals: Record<string, number>, spot: number): number | null {
   const rows = Object.entries(strikeTotals)
@@ -144,6 +139,46 @@ function deriveFlip(strikeTotals: Record<string, number>, spot: number): number 
   return spot > 0
     ? crossings.reduce((best, c) => (Math.abs(c - spot) < Math.abs(best - spot) ? c : best))
     : crossings[crossings.length - 1];
+}
+
+/**
+ * Independent GAMMA-flip oracle matching the production SpotGamma definition
+ * (`cumulativeGammaFlip`): cumulative dealer gamma low→high, short→long crossings only,
+ * nearest spot within ±12%. Written from scratch (does NOT import the production helper) so a
+ * real cumulative-detector bug is still FLAG-able — but we no longer false-flag when the matrix
+ * correctly reports null while a per-strike crossing exists near spot (live 2026-07-28 SPX:
+ * per-strike ~7426.83 vs cumulative undetermined on a net-short-everywhere book).
+ */
+function deriveCumulativeGammaFlip(
+  strikeTotals: Record<string, number>,
+  spot: number
+): number | null {
+  const rows = Object.entries(strikeTotals)
+    .map(([s, g]) => ({ strike: Number(s), gamma: Number(g) }))
+    .filter((r) => Number.isFinite(r.strike) && Number.isFinite(r.gamma))
+    .sort((a, b) => a.strike - b.strike);
+  if (rows.length < 2) return null;
+
+  const crossings: number[] = [];
+  let cum = 0;
+  let prevStrike = rows[0]!.strike;
+  let prevCum = 0;
+  for (const r of rows) {
+    cum += r.gamma;
+    if (prevCum <= 0 && cum > 0) {
+      const frac = -prevCum / (cum - prevCum);
+      crossings.push(Number((prevStrike + frac * (r.strike - prevStrike)).toFixed(2)));
+    }
+    prevStrike = r.strike;
+    prevCum = cum;
+  }
+  if (crossings.length === 0) return null;
+  if (!(spot > 0)) return crossings[crossings.length - 1]!;
+
+  const FLIP_MAX_DIST_PCT = 0.12;
+  const plausible = crossings.filter((c) => Math.abs(c - spot) <= spot * FLIP_MAX_DIST_PCT);
+  if (plausible.length === 0) return null;
+  return plausible.reduce((best, c) => (Math.abs(c - spot) < Math.abs(best - spot) ? c : best));
 }
 
 /**
@@ -387,13 +422,13 @@ function invariantChecks(ctx: Ctx, hm: GexHeatmap): CheckResult[] {
     void derivedKing;
   }
 
-  // INV-4: gamma flip is a REAL sign change of per-strike net gamma.
+  // INV-4: gamma flip matches the production CUMULATIVE short→long definition (not per-strike).
   {
-    const derivedFlip = deriveFlip(hm.gex.strike_totals, spot);
+    const derivedFlip = deriveCumulativeGammaFlip(hm.gex.strike_totals, spot);
     const reported = hm.gex.flip;
     if (reported == null && derivedFlip == null) {
       out.push(
-        mk(ctx, "invariant", "gamma_flip", "consistency-only", "No clean sign-change gamma crossing and none reported — consistent.", {
+        mk(ctx, "invariant", "gamma_flip", "consistency-only", "No cumulative short→long gamma crossing and none reported — consistent.", {
           id: "flip-real-crossing",
         })
       );
@@ -406,15 +441,12 @@ function invariantChecks(ctx: Ctx, hm: GexHeatmap): CheckResult[] {
           "gamma_flip",
           close ? "consistency-only" : "flag",
           close
-            ? `Reported flip ${fmt(reported)} matches an independent sign-change crossing ${fmt(derivedFlip)}.`
-            : `Reported flip ${fmt(reported)} is NOT at an independent sign-change crossing (nearest ${fmt(derivedFlip)}) — flip is not a real sign change.`,
+            ? `Reported flip ${fmt(reported)} matches an independent cumulative short→long crossing ${fmt(derivedFlip)}.`
+            : `Reported flip ${fmt(reported)} is NOT at an independent cumulative short→long crossing (nearest ${fmt(derivedFlip)}) — flip is not a real zero-gamma boundary.`,
           { id: "flip-real-crossing", expected: derivedFlip, actual: reported, tolerance: Math.max(spot * 0.01, 1) }
         )
       );
     } else {
-      // One side null, the other not — the legacy cumulative-crossing fallback can legitimately find
-      // a flip our per-strike derivation doesn't, so flag only when WE find one and the engine reports
-      // none AND it sits near spot (a flip that should have surfaced).
       const flagWorthy =
         reported == null && derivedFlip != null && spot > 0 && Math.abs(derivedFlip - spot) < spot * 0.05;
       out.push(
@@ -424,8 +456,8 @@ function invariantChecks(ctx: Ctx, hm: GexHeatmap): CheckResult[] {
           "gamma_flip",
           flagWorthy ? "flag" : "consistency-only",
           flagWorthy
-            ? `A clean sign-change crossing exists near spot at ${fmt(derivedFlip)} but the matrix reports NO flip — flip detection may be dropping a real crossing.`
-            : `Flip detection differs from the per-strike derivation (reported ${fmt(reported)}, derived ${fmt(derivedFlip)}) — within the documented fallback behavior; not flagged.`,
+            ? `A cumulative short→long crossing exists near spot at ${fmt(derivedFlip)} but the matrix reports NO flip — flip detection may be dropping a real boundary.`
+            : `Cumulative flip detection differs (reported ${fmt(reported)}, derived ${fmt(derivedFlip)}) — within documented band/plausibility filters; not flagged.`,
           { id: "flip-real-crossing", expected: derivedFlip, actual: reported }
         )
       );
