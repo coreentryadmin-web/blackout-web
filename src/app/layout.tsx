@@ -52,7 +52,7 @@ export const metadata: Metadata = {
     description: SITE.tagline,
     siteName: SITE.name,
     url: SITE.url,
-    images: [{ url: IMAGES.ogImage, width: 1200, height: 630, alt: `${SITE.legalName} Community` }],
+    images: [{ url: IMAGES.ogImage, width: 1577, height: 997, alt: "BlackOut — 6 live engines, institutional-grade trading desk" }],
   },
   twitter: {
     card: "summary_large_image",
