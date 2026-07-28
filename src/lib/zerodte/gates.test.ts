@@ -14,8 +14,11 @@ import {
   MARKET_BIAS_MAX_AGE_MS,
   planQualityGateBlocks,
   confluenceFloorAt,
+  scoreFloorForOrigins,
   ZERODTE_CONFLUENCE_MIN,
   ZERODTE_CONFLUENCE_MIN_EARLY,
+  ZERODTE_SCORE_FLOOR,
+  ZERODTE_SCORE_FLOOR_BREAKOUT,
   getNullConfluencePassCount,
   LATE_AFTERNOON_BLOCK_ET_MINUTES,
   type ZeroDteGateInput,
@@ -188,16 +191,77 @@ test("G-1 + G-2: a counter-tape long at 09:40 collects BOTH blocks (all reasons 
 
 // ── G-14 · late-afternoon block (last 30 min before hard exit) ────────────────────
 
-test("G-14: directional setup at 15:00 ET is BLOCKED", () => {
-  const v = evaluateZeroDteGates(input({ nowEtMinutes: 15 * 60 }));
+test("G-14: directional setup at 14:00 ET is BLOCKED", () => {
+  const v = evaluateZeroDteGates(input({ nowEtMinutes: 14 * 60 }));
   assert.equal(v.verdict, "BLOCKED");
-  assert.equal(v.blocks.length, 1);
-  assert.equal(v.blocks[0]!.code, "late_afternoon");
-  assert.equal(v.blocks[0]!.threshold, 15 * 60);
+  assert.ok(v.blocks.some((b) => b.code === "late_afternoon"));
+  assert.equal(LATE_AFTERNOON_BLOCK_ET_MINUTES, 14 * 60);
 });
 
-test("G-14: 14:59 commits — boundary is exclusive (last minute before the block)", () => {
-  assert.equal(evaluateZeroDteGates(input({ nowEtMinutes: 14 * 60 + 59 })).verdict, "COMMIT");
+test("G-14: 13:59 commits — boundary is exclusive (last minute before the block)", () => {
+  assert.equal(evaluateZeroDteGates(input({ nowEtMinutes: 13 * 60 + 59 })).verdict, "COMMIT");
+});
+
+test("G-14: 14:59 is still BLOCKED (toxic late bucket fully closed)", () => {
+  const v = evaluateZeroDteGates(input({ nowEtMinutes: 14 * 60 + 59 }));
+  assert.equal(v.verdict, "BLOCKED");
+  assert.ok(v.blocks.some((b) => b.code === "late_afternoon"));
+});
+
+
+test("scoreFloorForOrigins: FLOW strict; BREAKOUT/PIN looser", () => {
+  assert.equal(scoreFloorForOrigins(["FLOW"]), ZERODTE_SCORE_FLOOR);
+  assert.equal(scoreFloorForOrigins(["FLOW", "BREAKOUT"]), ZERODTE_SCORE_FLOOR);
+  assert.equal(scoreFloorForOrigins(["BREAKOUT"]), ZERODTE_SCORE_FLOOR_BREAKOUT);
+  assert.equal(scoreFloorForOrigins(["PIN"]), ZERODTE_SCORE_FLOOR_BREAKOUT); // PIN floor == BREAKOUT floor
+  assert.equal(scoreFloorForOrigins([]), ZERODTE_SCORE_FLOOR);
+});
+
+test("G-3: BREAKOUT origin at score 60 clears origin-aware floor (58) but FLOW at 60 does not", () => {
+  assert.equal(evaluateZeroDteGates(input({ score: 60, discovery_origin: ["BREAKOUT"] })).verdict, "COMMIT");
+  const flow = evaluateZeroDteGates(input({ score: 60, discovery_origin: ["FLOW"] }));
+  assert.equal(flow.verdict, "BLOCKED");
+  assert.ok(flow.blocks.some((b) => b.code === "score_floor"));
+});
+
+
+test("G-15: ONE_DTE contract horizon blocks fresh commit; ZERO_DTE and absent do not", () => {
+  const one = evaluateZeroDteGates(input({ contractHorizon: "ONE_DTE" }));
+  assert.equal(one.verdict, "BLOCKED");
+  assert.ok(one.blocks.some((b) => b.code === "not_zero_dte"));
+  assert.equal(evaluateZeroDteGates(input({ contractHorizon: "ZERO_DTE" })).verdict, "COMMIT");
+  assert.equal(evaluateZeroDteGates(input({})).verdict, "COMMIT", "absent horizon = no-op (legacy)");
+});
+
+test("G-15: CONDOR on ONE_DTE is also blocked (same-day credit only)", () => {
+  const v = evaluateZeroDteGates(
+    input({
+      play_type: "CONDOR",
+      contractHorizon: "ONE_DTE",
+      nowEtMinutes: 14 * 60 + 30, // past G-14; condor exempt from late_afternoon
+      condorPlan: {
+        ticker: "SPX",
+        expiry: "2026-07-14",
+        short_call: 550,
+        long_call: 555,
+        short_put: 490,
+        long_put: 485,
+        net_credit: 1.2,
+        max_loss: 3.8,
+        wing_width: 5,
+        credit_pct: 24,
+        short_call_bid: 0.7,
+        short_put_bid: 0.5,
+        long_call_ask: 0.2,
+        long_put_ask: 0.1,
+        per_leg_spread_tax_pct: 8,
+        underlying_price: 520,
+        short_call_delta: -0.15,
+        short_put_delta: 0.15,
+      },
+    })
+  );
+  assert.ok(v.blocks.some((b) => b.code === "not_zero_dte"));
 });
 
 test("G-14: condor at 15:15 is NOT blocked (condors benefit from late-session theta)", () => {
@@ -223,12 +287,12 @@ test("G-14: condor at 15:15 is NOT blocked (condors benefit from late-session th
 
 // ── G-3 · score floor ──────────────────────────────────────────────────────────────
 
-test("G-3: score 64 blocks, 65 commits (the 55-64 band is below breakeven)", () => {
+test("G-3: score 64 blocks, 65 commits (FLOW default floor)", () => {
   const blocked = evaluateZeroDteGates(input({ score: 64 }));
   assert.equal(blocked.verdict, "BLOCKED");
   assert.equal(blocked.blocks[0]!.code, "score_floor");
   assert.equal(blocked.blocks[0]!.threshold, 65);
-  assert.match(blocked.blocks[0]!.reason, /18\.8% WR/);
+  assert.match(blocked.blocks[0]!.reason, /65 commit floor/);
 
   assert.equal(evaluateZeroDteGates(input({ score: 65 })).verdict, "COMMIT");
 });

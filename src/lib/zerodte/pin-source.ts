@@ -19,7 +19,7 @@
 // pin-discovery.ts, dynamic-imported only when the source is flag-enabled — so the flow-only
 // board never loads the whole-universe GEX/provider graph.
 //
-// FLAG-GATED OFF by default (both flags must be "1"): ZERODTE_WHOLE_MARKET (master, shared with
+// FLAG-GATED ON by default (set either to "0" to disable): ZERODTE_WHOLE_MARKET (master, shared with
 // the breakout source) AND ZERODTE_SRC_PIN (per-source). When either is off, the board behaves
 // EXACTLY as today.
 
@@ -27,9 +27,7 @@ import {
   deriveContractHorizon,
   enrichSetup,
   gradingPolicyForHorizon,
-  unionDiscoveryOrigins,
-  noteOriginDirectionConflict,
-  recordOriginContributionsOnMerge,
+  mergeSameTickerDiscovery,
   type DiscoveryOrigin,
   type EnrichedZeroDteSetup,
   type ZeroDteSetup,
@@ -165,16 +163,19 @@ export function evaluatePinRegime(input: PinRegimeInput): PinRegime | null {
 // so edge ALONE can never lift a weak/ill-defined bracket over the floor:
 //   fadeEdgeFactor   = clamp01(offset / EDGE_FULL)
 // Worked examples (offset = 0.6, near the middle of the allowed fade band):
-//   both walls 4% (bracket floor), band 6% (containment floor)  → core 0     → score  ~9  (rejected anyway)
-//   both walls 6%, band 4%                                       → core ~0.20 → score  ~28 (below 65)
-//   both walls 9%, band 2%                                       → core ~0.68 → score  ~66 (clears — a real pin)
-//   both walls 10%+, band ≤1.5% (tight, dominant)               → core 1.00  → score ~92 (textbook pin)
-// So a PIN candidate does NOT auto-clear 65 without genuinely dominant walls AND a contained band.
-export const PIN_DOM_FULL_PCT = 10; // both-wall dominance (%) that saturates the dominance factor
+// Recalibrated 2026-07-28 alongside BREAKOUT: prior map needed ~9%+ walls + 2% band to clear 65,
+// so PIN almost never committed on a live long-gamma day. A genuine regime-qualified pin (already
+// past evaluatePinRegime) with solid walls must be able to clear the shared floor.
+//   both walls 4% (bracket floor), band 6% (containment floor)  → core 0     → score  ~15 (below 65)
+//   both walls 6%, band 4%                                       → core ~0.33 → score  ~45 (below 65)
+//   both walls 7.5%, band 2.5%                                   → core ~0.67 → score  ~70 (clears)
+//   both walls 10%+, band ≤1.5% (tight, dominant)               → core 1.00  → score ~95 (textbook)
+export const PIN_SCORE_BASE = 15; // points for clearing the structural pin regime filter
+export const PIN_DOM_FULL_PCT = 9; // both-wall dominance (%) that saturates the dominance factor
 export const PIN_BAND_TIGHT_PCT = 1.5; // band at/below this (%) = full containment
 export const PIN_BAND_LOOSE_PCT = 6; // band at/above this (%) = zero containment (matches BAND_MAX)
-export const PIN_CORE_MAX = 80; // max points from the multiplicative dominance×containment core
-export const PIN_EDGE_MAX = 20; // max additive points from fade-room (off-center offset)
+export const PIN_CORE_MAX = 70; // max points from the multiplicative dominance×containment core
+export const PIN_EDGE_MAX = 15; // max additive points from fade-room (off-center offset)
 export const PIN_EDGE_FULL = 0.6; // offset (fraction of half-width) that saturates the fade-edge term
 
 /**
@@ -188,7 +189,7 @@ export function pinScore(regime: Pick<PinRegime, "bracketDomPct" | "bandWidthPct
   );
   const core = dominanceFactor * containmentFactor; // multiplicative — needs BOTH
   const fadeEdgeFactor = clamp01(regime.offset / PIN_EDGE_FULL);
-  const raw = core * PIN_CORE_MAX + fadeEdgeFactor * PIN_EDGE_MAX;
+  const raw = PIN_SCORE_BASE + core * PIN_CORE_MAX + fadeEdgeFactor * PIN_EDGE_MAX;
   return Math.max(0, Math.min(100, Math.round(raw)));
 }
 
@@ -336,16 +337,10 @@ export function buildPinSetup(input: {
 // ── Merge (union by ticker, preserve origin as a SET) ─────────────────────────────────────────
 
 /**
- * Merge pin setups into the existing setups IN PLACE, unioning origins by ticker. A ticker already
- * present keeps its (evidence-bearing) existing setup and gains "PIN" in its discovery_origin set
- * (e.g. ["FLOW"] -> ["FLOW","PIN"]); the duplicate pin setup is dropped. A ticker unique to the pin
- * source is appended. When a ticker ends up with multiple discovery origins (corroboration), it gets
- * a +8 score boost (capped at 100). Mutates + returns `existing`.
- *
- * Note: a shared ticker keeps the EXISTING setup's DIRECTION (flow/breakout momentum), not the pin
- * fade -- corroboration by two sources on opposite directions is a real signal-quality question the
- * graded origin band will answer; collapsing it here would fabricate agreement. The pin's provenance
- * is still recorded via the unioned origin so the calibration slice sees it.
+ * Merge pin setups into the existing setups IN PLACE, unioning origins by ticker (v2 policy via
+ * {@link mergeSameTickerDiscovery}). Same-direction corroboration unions + boosts; opposing
+ * directions are evidence-weighted (higher score owns the slot; seating-order wins ties — FLOW /
+ * BREAKOUT seated before PIN). A pin-only ticker is appended. Mutates + returns `existing`.
  */
 export function mergePinOrigins(
   existing: EnrichedZeroDteSetup[],
@@ -357,20 +352,11 @@ export function mergePinOrigins(
     const key = p.ticker.toUpperCase();
     const found = byTicker.get(key);
     if (found) {
-      // Q1: a pin FADE that opposes the kept (flow/breakout momentum) direction is stamped
-      // as evidence -- the kept direction is never flipped (that would fabricate agreement),
-      // but the opposing read survives to the graded origin band instead of vanishing.
-      // WS-06: record BOTH rails' (direction, score) BEFORE the union rewrites discovery_origin,
-      // so the frozen origin maps capture every disagreement, not just the first conflict pair.
-      recordOriginContributionsOnMerge(found, p);
-      noteOriginDirectionConflict(found, p);
-      found.discovery_origin = unionDiscoveryOrigins(found.discovery_origin, p.discovery_origin);
-      // Multi-source corroboration boost: two or more independent discovery systems agreeing on
-      // the same ticker is a conviction signal worth a score bump. +8 is conservative enough
-      // that a weak setup still fails G-3's 65 floor, but a borderline-good one can clear it
-      // with corroboration.
-      if (found.discovery_origin && found.discovery_origin.length > 1) {
-        found.score = Math.min(100, (found.score ?? 0) + 8);
+      const winner = mergeSameTickerDiscovery(found, p);
+      if (winner !== found) {
+        const idx = existing.indexOf(found);
+        if (idx >= 0) existing[idx] = winner;
+        byTicker.set(key, winner);
       }
     } else {
       byTicker.set(key, p);

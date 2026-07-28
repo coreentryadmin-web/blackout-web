@@ -100,18 +100,19 @@ test("evaluatePinRegime emits ONLY in a genuine long-gamma dealer-defended range
   assert.equal(evaluatePinRegime({ ...pinNearPutWall(), spot: 609.9 }), null, "at the call wall → breakout risk");
 });
 
-// ── Score mapping: in-range + conservative (no trivial 65 clear) ────────────────────
-test("pinScore stays in [0,100] and does NOT trivially clear the 65 commit floor", () => {
-  // Bracket-floor walls (4%) + band at the loose edge (6%) → containment 0 → core 0 → well below 65.
+// ── Score mapping: solid pins clear 65; bracket-floor pins do not ────────────────────
+test("pinScore: solid regime-qualified pins clear 65; bracket-floor pins do not", () => {
+  // Bracket-floor walls (4%) + band at the loose edge (6%) → containment 0 → well below 65.
   assert.ok(pinScore({ bracketDomPct: 4, bandWidthPct: 6, offset: 0.6 }) < 65);
-  // Moderate walls (6%) + a 4% band → still below 65 (needs stronger, tighter dealer defense).
+  // Moderate walls (6%) + a 4% band → still below 65.
   assert.ok(pinScore({ bracketDomPct: 6, bandWidthPct: 4, offset: 0.6 }) < 65);
-  // A genuinely dominant, tightly-contained pin → clears 65.
+  // Recalibrated 2026-07-28: a genuine mid-tier pin clears the shared floor.
+  assert.ok(pinScore({ bracketDomPct: 7.5, bandWidthPct: 2.5, offset: 0.6 }) >= 65);
   assert.ok(pinScore({ bracketDomPct: 9, bandWidthPct: 2, offset: 0.6 }) >= 65);
   // Textbook (dominant + tight + good fade room) saturates near the top.
   assert.ok(pinScore({ bracketDomPct: 12, bandWidthPct: 1.5, offset: 0.6 }) >= 90);
-  // Fade room ALONE (weak, wide bracket) can never lift a non-pin over the floor (edge term capped at 20).
-  assert.ok(pinScore({ bracketDomPct: 4, bandWidthPct: 6, offset: 1 }) <= 20);
+  // Fade room ALONE (weak, wide bracket) can never lift a non-pin over the floor.
+  assert.ok(pinScore({ bracketDomPct: 4, bandWidthPct: 6, offset: 1 }) < 40);
   // Bounds hold.
   const s = pinScore({ bracketDomPct: 100, bandWidthPct: 0, offset: 10 });
   assert.ok(s >= 0 && s <= 100);
@@ -243,6 +244,33 @@ test("mergePinOrigins unions a shared ticker to ['FLOW','PIN'] and appends uniqu
   assert.equal(nvda.gross_premium > 0, true, "the flow evidence is kept on the shared ticker (not the bare pin)");
   assert.deepEqual(spy.discovery_origin, ["PIN"], "a pin-only ticker is appended with its origin");
   assert.equal(merged.length, 2, "no duplicate row for the shared ticker");
+});
+
+test("mergePinOrigins: opposing PIN does not get corroboration boost (v2)", () => {
+  const flow: EnrichedZeroDteSetup[] = deriveZeroDteSetups(
+    [cleanFlowRow("NVDA")],
+    { todayYmd: TODAY, nowMs: Date.parse(`${TODAY}T14:05:00Z`) }
+  ).map((s) => enrichSetup(s, null));
+  assert.equal(flow.length, 1);
+  const before = flow[0]!.score;
+  // Pin near put wall → long fade. Flow from cleanFlowRow is a call (long). If same direction,
+  // we'd get a boost — force opposing by flipping the pin direction after build.
+  const regime = evaluatePinRegime(pinNearPutWall())!;
+  const pin = buildPinSetup({
+    ticker: "NVDA",
+    spot: 596,
+    regime,
+    contract: { strike: 597, expiry: TODAY, dte: 0, side: "call" },
+  });
+  // Ensure opposing: if pin happened to agree with flow, flip pin to short for this unit test.
+  if (pin.direction === flow[0]!.direction) {
+    pin.direction = flow[0]!.direction === "long" ? "short" : "long";
+  }
+  // Keep pin score ≤ flow so seating/score keeps FLOW (we are testing the no-boost path, not ownership).
+  pin.score = Math.min(pin.score, before);
+  mergePinOrigins(flow, [pin]);
+  assert.equal(flow[0]!.score, before, "opposing co-discovery must not receive +8");
+  assert.ok(flow[0]!.origin_direction_conflict, "opposing pin must stamp a conflict");
 });
 
 // ── Gate boundary + G-1: a pin fade passes the SHARED hard gates in a flat tape; G-1 culls it

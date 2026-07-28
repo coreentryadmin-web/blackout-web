@@ -165,16 +165,17 @@ export type TimeOfDayFactor = {
  *  The prior boundaries were inverted vs the data: they REWARDED the 9:50–11:00 window
  *  (whose early half is negative) and PENALIZED 11:00 (the best cell) as "lunch chop." Now:
  *  opening chop runs to 10:00 (matches the G-2 unlock), the reward sits on the 10:30–12:30
- *  continuation window where the edge actually shows, real lunch chop is 12:30–14:00, and
- *  the afternoon-trend window stays. This is a SCORE NUDGE (±5 on 0–100), not a gate — it
- *  softly deprioritizes weak-timing setups; the hard block is G-2. Fresh entries after
- *  15:00 are already blocked upstream. */
+ *  continuation window where the edge actually shows, lunch chop is 12:30–13:30, and the
+ *  last directional commit hour (13:30–14:00) is neutral — G-14 / NEW_PLAY_CUTOFF closes
+ *  directional commits at 14:00, so a post-14:00 "+3 afternoon trend" boost was dead weight
+ *  that never reached a commit (FINDINGS 2026-07-28). This is a SCORE NUDGE (±5 on 0–100),
+ *  not a gate — it softly deprioritizes weak-timing setups; the hard block is G-2 / G-14. */
 export function timeOfDayFactor(etMinutes: number): TimeOfDayFactor {
   if (etMinutes < RTH_OPEN) return { delta: 0, label: null };
   if (etMinutes < 10 * 60) return { delta: -5, label: "opening chop — ranges still forming" };
   if (etMinutes < 10 * 60 + 30) return { delta: 0, label: null }; // 10:00–10:30 transition, still soft
   if (etMinutes < 12 * 60 + 30) return { delta: 5, label: "prime continuation window" };
-  if (etMinutes < 14 * 60) return { delta: -3, label: "lunch chop — fade-prone, size down" };
-  if (etMinutes < 15 * 60) return { delta: 3, label: "afternoon trend window" };
+  if (etMinutes < 13 * 60 + 30) return { delta: -3, label: "lunch chop — fade-prone, size down" };
+  if (etMinutes < 14 * 60) return { delta: 0, label: "last directional commit window" };
   return { delta: 0, label: null };
 }

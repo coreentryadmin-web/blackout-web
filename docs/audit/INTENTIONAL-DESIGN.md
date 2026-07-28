@@ -13,39 +13,32 @@ Companion tools (see CLAUDE.md "Audit toolkit"): `scripts/audit/merge-precedence
 
 ---
 
-## 1. FLOW-first merge precedence (incumbent-wins-by-seating-order)
+## 1. Merge precedence — REVISITED 2026-07-28 → `MERGE_POLICY_VERSION = "v2"` (evidence-weighted)
 
-**The choice.** The three whole-market discovery rails merge **by ticker**, and when two rails
-surface the same ticker in **opposite directions** the merge keeps the **highest-precedence rail's**
-direction by a fixed seating order — **FLOW > BREAKOUT > PIN** — with **no evidence weighting**. The
-opposing read is *stamped as evidence* but is never allowed to win.
+**Prior choice (v1).** Rails merged by ticker; on **opposite directions** the **seating-order**
+incumbent always won — **FLOW > BREAKOUT > PIN** — with no score comparison. Opposing reads were
+stamped as evidence but never allowed to own the slot. Same-direction merges incorrectly applied a
+`+8` corroboration boost even when a later rail was only present via a *prior* union that included
+fights (PIN fades almost always oppose momentum).
 
-- `src/lib/zerodte/breakout-source.ts` `mergeDiscoveryOrigins` (~L224): a ticker already present in
-  the flow setups "keeps its (evidence-bearing) flow setup" and merely gains `"BREAKOUT"` in its
-  origin set; the breakout duplicate is dropped. "**NO corroboration score boost (evidence-only …)**".
-- `src/lib/zerodte/pin-source.ts` `mergePinOrigins` (~L348): identical rule — a shared ticker "keeps
-  the EXISTING setup's DIRECTION (flow/breakout momentum), not the pin fade … collapsing it here
-  would fabricate agreement."
-- The kept direction's owner and every rail's `(direction, score)` are now **frozen** on the
-  committed row (`board.ts` `buildOriginMaps` → `entry_context.origin_maps`, WS-06), and the policy is
-  **versioned**: `MERGE_POLICY_VERSION = "v1"` (`board.ts` L303) = "FLOW > BREAKOUT > PIN precedence,
-  union-by-ticker keeping the highest-precedence rail's read."
+**Shipped choice (v2).** `mergeSameTickerDiscovery` in `board.ts`:
 
-**Why it's deliberate.** FLOW carries the strongest *direct* evidence (real option prints,
-aggression, side dominance); BREAKOUT and PIN are bare price/positioning seeds with honest-null flow
-fields. Letting a bare seed's *self-assigned* score flip a flow-evidenced direction would let the
-weakest-evidence rail override the strongest. The design's stance is **evidence-only**: record the
-disagreement, don't fabricate agreement, and let the **graded origin band** (calibration) decide
-whether opposing co-discovery actually underperforms — *before* any precedence or no-trade rule.
+- **Same direction** → union origins + `CORROBORATION_SCORE_BOOST` (+8, capped at 100).
+- **Opposite directions** → **higher rail score owns the slot** (strict `>`); seating-order wins
+  **ties** (FLOW seated first, then BREAKOUT, then PIN). **No** corroboration boost on a fight.
+- Frozen maps (`buildOriginMaps`) set `direction_owner` to the **highest-score agreeing rail**
+  (ties → FLOW > BREAKOUT > PIN). `merge_policy_version: "v2"` on every new commit.
 
-**What would justify revisiting it → `merge-precedence-ab.mjs`.** Re-grade the committed
-**disagreement rows** (where the rails argued opposite directions) under **FLOW-first (shipped)** vs
-an **evidence-weighted** precedence (keep the highest-`origin_score_map` rail's direction), grading
-**both** candidate directions identically on real Polygon minute bars. If evidence-weighting's chosen
-direction grades **materially better** across a meaningful sample of disagreement rows, that is the
-evidence to bump `MERGE_POLICY_VERSION` and change the rule. Runs off the frozen
-`entry_context.origin_maps`, so it measures exactly what shipped. (Reports INSUFFICIENT DATA rather
-than fabricate when no committed-row export is reachable — raw Postgres is blocked from the sandbox.)
+**Why revisit now.** Live 0DTE Command (2026-07-28) was effectively a **flow-momentum buyer**:
+board setups showed 100% FLOW origin ownership even when BREAKOUT/PIN rails were enabled, and the
+record ran ~35% WR. Two mechanical bugs in v1 made multi-rail invisible/harmful: (1) FLOW always
+kept direction so strong BREAKOUT/PIN fades could never surface; (2) opposing PIN still granted +8,
+helping weak FLOW clears of G-3. Evidence-weighting keeps FLOW's typical score advantage on ties
+while letting a clearly stronger non-flow rail own the ticket.
+
+**Measurement still useful → `merge-precedence-ab.mjs`.** Re-grade disagreement rows under v1 vs v2
+on real minute bars as the origin band fills with `merge_policy_version: "v2"` commits. If v2's
+chosen direction underperforms v1 on a meaningful sample, that is evidence to revisit again.
 
 ---
 
@@ -100,32 +93,20 @@ gather one going forward.)
 
 ---
 
-## 4. Dynamic discovery caps — `BREAKOUT_MAX_CANDIDATES` is static (follow-up, already measured)
+## 4. Discovery caps — static N kept; ranking REVISITED 2026-07-28 (momentum before chain-fetch)
 
-**The choice.** The BREAKOUT rail screens the whole market (~12k grouped-daily names) but keeps only
-the top **`BREAKOUT_MAX_CANDIDATES` (=6)** by $-volume (`src/lib/zerodte/breakout-discovery.ts`); the
-cap is a **static constant**, not a function of the day's breadth/dispersion.
+**The choice (still).** The BREAKOUT rail screens the whole market but chain-fetches only
+**`BREAKOUT_MAX_CANDIDATES` (=15)** names per side. The cap remains a **static constant**.
 
-**Why it's deliberate.** A fixed small cap bounds per-session compute (each kept name pulls a live
-chain + full gate/Cortex stack) and keeps the board's blast radius predictable. The design's "no
-silent caps" principle (Q10) is satisfied by **measuring** the recall cost rather than guessing at a
-dynamic rule.
+**What changed (2026-07-28).** Liquidity screening still uses $-volume
+(`screenBreakoutMovers` / `screenBreakdownMovers`, pool `BREAKOUT_SCREEN_POOL`=60), but the
+chain-fetch budget is now ordered by **`rankMoversForChainFetch`**: long = `gain × close_strength`,
+short = `gain × (1 − close_strength)`, $-volume breaks ties. This is the recall-probe follow-up
+(FINDINGS 2026-07-25): mega-cap $-volume was starving sharper mid-cap continuations.
 
-**Measurement — already exists: `scripts/audit/discovery-recall-probe.mjs`.** This is the standing
-measurement for the cap; do **not** duplicate it. It screens a session with the production
-`screenBreakoutMovers` ranking, splits movers at the cap into KEPT (top-6) vs DROPPED (rank 7…N), and
-grades each name's intraday continuation on real minute bars → per-cohort win-rate + the specific
-dropped winners. First 5-session run (2026-07-20…24) found the dropped tail won ≥ the kept top-6 on
-3/5 days (FINDINGS 2026-07-25) — evidence the $-volume cap is leaky.
-
-**Parked follow-up (dynamic-N).** The recall probe measures a **static** cap. The open question is
-whether a **dynamic** N — sized to the day's breadth (e.g. count of movers clearing the screen) or a
-$-volume/gain-dispersion knee — recovers the dropped winners without ballooning compute on quiet
-days. When taken up, **extend `discovery-recall-probe.mjs`** with a candidate dynamic-N rule and grade
-KEPT-under-dynamic-N vs KEPT-under-static-6 vs the DROPPED tail across many sessions; graduate any
-change on the origin band. Ranking the lane by `gain × close-strength` instead of $-volume (FINDINGS
-2026-07-25 follow-up) is the sibling question to fold into the same extension. This item is **parked
-as documented**, not built, to avoid duplicating the existing probe.
+**Parked follow-up (dynamic-N).** Whether N itself should flex with breadth is still open — extend
+`discovery-recall-probe.mjs` with a candidate dynamic-N rule and grade across many sessions before
+changing the constant again.
 
 ---
 

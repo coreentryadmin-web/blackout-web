@@ -16077,10 +16077,24 @@ body::before {
 .nh-deck-dot.sync{background:var(--dk-amber);box-shadow:0 0 6px rgba(255,184,77,.6);animation:none}
 .nh-deck-dot.off{background:var(--dk-ink-dim);box-shadow:none;animation:none}
 .nh-deck-stream .sy{color:var(--dk-amber);letter-spacing:.14em}
+.nh-deck-stream .cl{color:var(--dk-cyan);letter-spacing:.14em}
 .nh-deck-stream .of{color:var(--dk-ink-dim);letter-spacing:.14em}
 .nh-deck-stream .nh-deck-fill{color:var(--dk-cyan)}
 .nh-deck-stream .nh-deck-age{color:var(--dk-ink-dim)}
 .nh-deck-stream .nh-deck-stale-mark{color:var(--dk-amber)}
+.nh-deck-greeks.off{opacity:.4}
+.nh-deck-greeks.off .gv{text-shadow:none;color:var(--dk-green-dim)}
+.nh-deck-why{margin:0 0 8px}
+.nh-deck-why-sum{cursor:pointer;list-style:none;display:flex;align-items:baseline;gap:6px}
+.nh-deck-why-sum::-webkit-details-marker{display:none}
+.nh-deck-why-n{color:var(--dk-cyan);font-size:9px;letter-spacing:.12em;text-transform:none}
+.nh-deck-why-more{margin-top:6px}
+.nh-deck-why-more > summary{cursor:pointer;color:var(--dk-cyan)}
+.nh-deck-dist{display:flex;align-items:baseline;gap:10px;margin:0 0 12px;padding:8px 10px;
+  border:1px solid rgba(53,255,158,.18);border-radius:4px;background:rgba(53,255,158,.04)}
+.nh-deck-dist .k{font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--dk-cyan)}
+.nh-deck-dist .v{font-size:11px;color:var(--dk-green-hi);font-variant-numeric:tabular-nums}
+.nh-deck-dist .pnl{margin-left:auto;font-weight:700;font-size:12px}
 .nh-deck-stream .nh-deck-stalebadge{margin-left:6px;padding:1px 5px;border-radius:2px;font-size:8px;
   color:var(--dk-amber);border:1px solid rgba(255,184,77,.4);background:rgba(255,184,77,.08)}
 /* Morning verdict banner — prominent, dedicated row above all other badges. */

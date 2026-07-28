@@ -147,9 +147,21 @@ test("WS-06 buildOriginMaps: captures every rail's direction+score, owner FLOW, 
   const maps = buildOriginMaps(kept);
   assert.deepEqual(maps.origin_direction_map, { FLOW: "long", BREAKOUT: "long", PIN: "short" });
   assert.deepEqual(maps.origin_score_map, { FLOW: 80, BREAKOUT: 60, PIN: 40 });
-  assert.equal(maps.direction_owner, "FLOW"); // FLOW owns the kept direction under v1 precedence
+  assert.equal(maps.direction_owner, "FLOW"); // FLOW score 80 > BREAKOUT 60 among agreeing longs
   assert.deepEqual(maps.disagreeing_origins, ["PIN"]); // ALL disagreements, not just the first pair
   assert.equal(maps.merge_policy_version, MERGE_POLICY_VERSION);
+  assert.equal(MERGE_POLICY_VERSION, "v2");
+});
+
+test("WS-06 buildOriginMaps: v2 owner is highest-score agreeing rail (BREAKOUT can own)", () => {
+  const kept = { direction: "long", score: 90, discovery_origin: ["FLOW", "BREAKOUT"] } as unknown as EnrichedZeroDteSetup;
+  kept.origin_contributions = {
+    FLOW: { direction: "long", score: 70 },
+    BREAKOUT: { direction: "long", score: 90 },
+  };
+  const maps = buildOriginMaps(kept);
+  assert.equal(maps.direction_owner, "BREAKOUT");
+  assert.deepEqual(maps.disagreeing_origins, []);
 });
 
 test("WS-06 buildOriginMaps: a single-origin setup seeds its own rail (no merge needed)", () => {

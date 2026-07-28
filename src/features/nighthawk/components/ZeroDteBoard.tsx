@@ -283,7 +283,7 @@ export function mergePlays(
   ledger: LedgerRow[],
   heatState: SessionHeat["state"] | undefined
 ): PlayRow[] {
-  // Past the 15:00 ET cutoff no NEW play can open; after the close nothing is live.
+  // Past POST_COMMIT / 14:00 ET cutoff no NEW directional play can open; after close nothing is live.
   const sessionClosed = heatState === "CLOSED" || heatState === undefined;
   const byTicker = new Map(setups.map((s) => [s.ticker, s]));
   const rows: PlayRow[] = ledger.map((r) => ({

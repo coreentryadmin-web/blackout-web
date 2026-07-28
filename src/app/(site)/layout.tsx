@@ -41,8 +41,10 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
   // renders once per app-shell entry (preserved across soft-navs), not per page. The page + API
   // gates are the real access boundary — this is cosmetic, so it fails open.
   let lockedTools: ToolKey[] = [];
+  let initialSignedIn = false;
   try {
     const { userId, sessionClaims } = await auth();
+    initialSignedIn = Boolean(userId);
     if (userId && !(await isAdminUser(userId, sessionClaims))) lockedTools = lockedToolKeys();
   } catch {
     lockedTools = [];
@@ -60,7 +62,7 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
           render behind the fixed nav banner and all page chrome. */}
       <MarketSessionProvider />
       <MarketPulseLayer />
-      <Nav lockedTools={lockedTools} />
+      <Nav lockedTools={lockedTools} initialSignedIn={initialSignedIn} />
       <IosAppChrome lockedTools={lockedTools} />
       <IosAppTabBar lockedTools={lockedTools} />
       <IosNativePageTransition>{children}</IosNativePageTransition>
