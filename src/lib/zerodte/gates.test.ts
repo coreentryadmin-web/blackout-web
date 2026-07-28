@@ -131,6 +131,27 @@ test("G-1 fail-closed: bias present but its freshness unknown (no bar timestamp)
   assert.equal(v.blocks[0]!.code, "no_market_bias");
 });
 
+// ── G-1 bypass · single-name stocks skip tape alignment entirely ──────────────
+
+test("G-1 bypass: single-name counter-tape long commits (tape alignment is index-ETF only)", () => {
+  const v = evaluateZeroDteGates(input({ ticker: "NVDA", direction: "long" }));
+  assert.equal(v.verdict, "COMMIT", "single-name stock should bypass tape alignment");
+  assert.deepEqual(v.blocks.filter(b => b.code === "tape_alignment" || b.code === "no_market_bias"), []);
+});
+
+test("G-1 bypass: single-name with missing bias commits (no fail-closed for non-index)", () => {
+  const v = evaluateZeroDteGates(input({ ticker: "AAPL", direction: "long", bias: null }));
+  assert.equal(v.verdict, "COMMIT");
+  assert.deepEqual(v.blocks.filter(b => b.code === "no_market_bias"), []);
+});
+
+test("G-1 bypass: single-name with stale bias commits (staleness irrelevant for non-index)", () => {
+  const staleMs = NOW_MS - MARKET_BIAS_MAX_AGE_MS - 1;
+  const v = evaluateZeroDteGates(input({ ticker: "TSLA", direction: "short", biasAsOfMs: staleMs }));
+  assert.equal(v.verdict, "COMMIT");
+  assert.deepEqual(v.blocks.filter(b => b.code === "no_market_bias"), []);
+});
+
 // ── G-2 · opening window (worst first 30 min, unlock 10:00 — user-authorized 2026-07-23) ──
 
 test("G-2: an aligned setup before 10:00 ET is BLOCKED, with the unlock time on the card", () => {
@@ -238,19 +259,32 @@ test("G-5: three stopped plays halt every further commit for the session", () =>
 });
 
 test("G-5: committedThisCycle counts toward the concurrency cap within one scan pass", () => {
-  const governor = { open_plans: [{ ticker: "TSLA", direction: "short" as const }], stops: [] };
+  const governor = {
+    open_plans: [
+      { ticker: "TSLA", direction: "short" as const },
+      { ticker: "META", direction: "long" as const },
+      { ticker: "MSFT", direction: "short" as const },
+    ],
+    stops: [],
+  };
+  // 3 open + 2 committed = 5, under cap of 6 → COMMIT
   assert.equal(
     evaluateZeroDteGates(
-      input({ governor, committedThisCycle: [{ ticker: "AMZN", direction: "short" }] })
+      input({ governor, committedThisCycle: [
+        { ticker: "AMZN", direction: "short" },
+        { ticker: "NVDA", direction: "long" },
+      ] })
     ).verdict,
     "COMMIT"
   );
+  // 3 open + 3 committed = 6, AT cap → BLOCKED
   const v = evaluateZeroDteGates(
     input({
       governor,
       committedThisCycle: [
         { ticker: "AMZN", direction: "short" },
         { ticker: "GOOGL", direction: "short" },
+        { ticker: "NVDA", direction: "long" },
       ],
     })
   );
@@ -388,12 +422,12 @@ test("G-7 fail-closed: 'fetched, zero events' (empty array, macroUnavailable NOT
 
 // ── G-6 · cross-system conflict (HARD GATE — promoted from calibration 2026-07-16) ──
 
-test("G-6: opposing Night Hawk's take with score < 80 BLOCKS (was calibration-only)", () => {
+test("G-6: opposing Night Hawk's take with score < 65 BLOCKS (was calibration-only)", () => {
   const v = evaluateZeroDteGates(
     input({
       ticker: "META",
       direction: "short",
-      score: 67,
+      score: 60,
       nighthawkTake: { direction: "long", edition_for: "2026-07-10" },
     })
   );
@@ -408,9 +442,9 @@ test("G-6: opposing Night Hawk's take with score < 80 BLOCKS (was calibration-on
   assert.equal(v.calibration.g6_conflict.would_block, true);
 });
 
-test("G-6: opposing the live Slayer play on an SPX-correlated ticker BLOCKS at score < 80", () => {
+test("G-6: opposing the live Slayer play on an SPX-correlated ticker BLOCKS at score < 65", () => {
   const slayerLive = { direction: "long" as const };
-  const spy = evaluateZeroDteGates(input({ ticker: "SPY", direction: "short", slayerLive }));
+  const spy = evaluateZeroDteGates(input({ ticker: "SPY", direction: "short", score: 60, slayerLive }));
   assert.equal(spy.verdict, "BLOCKED");
   assert.equal(spy.blocks.some((b) => b.code === "cross_system_conflict"), true);
   assert.equal(spy.calibration.g6_conflict.conflict, true);
@@ -431,7 +465,7 @@ test("G-6: same direction as Slayer — no conflict, commits freely", () => {
   assert.equal(qqqLong.verdict, "COMMIT");
 });
 
-test("G-6: score >= 80 overrides the conflict — CONFLICT still flagged but commits", () => {
+test("G-6: score >= 65 overrides the conflict — CONFLICT still flagged but commits", () => {
   const v = evaluateZeroDteGates(
     input({
       ticker: "META",
@@ -1055,15 +1089,15 @@ test("stacked firewalls: vix + macro + earnings + halt-feed unavailable all bloc
 });
 
 // ── G-6 correlated-ticker set + conflict-score EXACT boundary ─────────────────────────
-test("G-6: an SPX-correlated short (QQQ/NDX) opposing a live Slayer long conflicts; score 79 blocks, 80 clears", () => {
+test("G-6: an SPX-correlated short (QQQ/NDX) opposing a live Slayer long conflicts; score 64 blocks, 65 clears", () => {
   const slayerLive = { direction: "long" as const };
   for (const ticker of ["QQQ", "NDX"]) {
-    const conflict = evaluateZeroDteGates(input({ ticker, direction: "short", score: 79, slayerLive }));
-    assert.equal(conflict.verdict, "BLOCKED", `${ticker} at 79 should block`);
+    const conflict = evaluateZeroDteGates(input({ ticker, direction: "short", score: 64, slayerLive }));
+    assert.equal(conflict.verdict, "BLOCKED", `${ticker} at 64 should block`);
     assert.ok(conflict.blocks.some((b) => b.code === "cross_system_conflict"));
-    // Exactly 80 overrides the conflict (CONFLICT_SCORE_FLOOR is 80, comparison is `< 80`).
-    const cleared = evaluateZeroDteGates(input({ ticker, direction: "short", score: 80, slayerLive }));
-    assert.equal(cleared.verdict, "COMMIT", `${ticker} at 80 should override the conflict`);
+    // Exactly 65 overrides the conflict (CONFLICT_SCORE_FLOOR is 65, comparison is `< 65`).
+    const cleared = evaluateZeroDteGates(input({ ticker, direction: "short", score: 65, slayerLive }));
+    assert.equal(cleared.verdict, "COMMIT", `${ticker} at 65 should override the conflict`);
     assert.equal(cleared.calibration.g6_conflict.conflict, true, "still FLAGGED as a conflict in calibration");
   }
 });

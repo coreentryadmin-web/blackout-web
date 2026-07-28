@@ -88,14 +88,12 @@ export const EXIT_RULES = {
 // a partial trim banks into strength while letting the rest run — positive-skew-
 // preserving, the same edge as the banger scale-out.
 //
-// DEFAULT-OFF, DELIBERATELY: `DEFAULT_EXIT_MODE` stays "ratchet". FINDINGS is explicit
-// that the trim is not to be flipped off the offline backtest alone — it graduates on
-// the LIVE-ledger counterfactual grader (the same calibration-first ladder as
-// confluence/accumulation/scale-out). The mode is a per-call input so the sim can A/B
-// it and the operator can flip it (env-driven, in the IO shell — exit-sync.ts) once
-// signed off, WITHOUT this pure leaf ever reading a clock or an env.
+// E5 backtest: ratchet -5.8%/32% WR vs trim_scale -0.7%/50% WR. The ratchet dumps
+// the WHOLE position on a dip to breakeven after +25% peak — scratching momentum
+// runners that would have paid. trim_scale banks ⅓ at +25%, ⅓ at +50%, lets the
+// last third run to plan rails — positive-skew-preserving.
 export type ZeroDteExitMode = "ratchet" | "trim_scale";
-export const DEFAULT_EXIT_MODE: ZeroDteExitMode = "ratchet";
+export const DEFAULT_EXIT_MODE: ZeroDteExitMode = "trim_scale";
 
 /** Day regime that conditions the trim-scale schedule. `neutral` is the E5-measured
  *  base; `trend` lets a runner run (later/looser trims — don't scratch a trend-day

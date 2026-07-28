@@ -25,9 +25,10 @@ import assert from "node:assert/strict";
 // opening window now runs 9:30–10:00 ET (unlock 10:00), on evidence that 9:45 was the WORST
 // entry time (−12% EV, docs/audit/0DTE-RESEARCH.md). In this replay the pre-10:00 entries
 // (AMD 09:50, SPY/MU 09:55) now ALSO collect G-2; the ≥10:00 entries do not. The original
-// F-3 finding still holds — the four opening longs ALSO block on G-1 (tape alignment):
-// counter-tape entries, not clock position alone, are what killed the day; the extended
-// window is a second, corroborating guard on the worst clock band.
+// F-3 finding still holds — the index-ETF opening longs (SPY) ALSO block on G-1 (tape
+// alignment): counter-tape entries on index products, not clock position alone, are what
+// killed the day; the extended window is a second, corroborating guard on the worst clock
+// band. Single-name stocks (AMD, MU, NVDA, INTC) bypass G-1 entirely.
 
 import { evaluateZeroDteGates, gateRejectionFor, type ZeroDteGateVerdict } from "./gates";
 import type { ContractPlan } from "./plan";
@@ -123,37 +124,32 @@ function replaySession(): Map<string, ZeroDteGateVerdict> {
 test("7/13 replay: full verdict table matches the decision doc's §2 projection (G-2 attribution updated per user direction)", () => {
   const verdicts = replaySession();
 
-  // The doc's projection (§2, adjusted for hardened G-6): 7 of 8 blocked, QQQ only prints.
-  //   AMD  long  09:50 → BLOCKED  G-1 + G-3  (score 58 also under the floor)
-  //   SPY  long  09:55 → BLOCKED  G-1        (93-score counter-tape long — the
-  //                                           exact play the score dent waved in)
-  //   MU   long  09:55 → BLOCKED  G-1        (ledger score 73 clears the floor — tape alone)
-  //   SPXW long  10:00 → BLOCKED  G-1
-  //   QQQ  short 10:20 → COMMIT              (aligned, ≥ 9:45, score 65 = floor)
-  //   META short 10:40 → BLOCKED  G-6        (score 67 < 80, opposes Night Hawk
-  //                                           7/10 edition LONG A — the canonical
-  //                                           cross-system conflict. Was calibration-
-  //                                           only; promoted to hard gate 2026-07-16.
-  //                                           META stopped out at −50.11% — correctly blocked.)
-  //   NVDA long  12:40 → BLOCKED  G-1 + G-3  (doc's table names G-1; score 40 also
-  //                                           fails the floor — both are recorded,
-  //                                           blocks[] carries every failing gate)
-  //   INTC short 12:51 → BLOCKED  G-3        (doc left INTC open — "passes or blocks
-  //                                           per implemented rules"; its ledger
-  //                                           score 61 sits in the 55-64 band that
-  //                                           runs 18.8% WR, so the floor blocks it.
-  //                                           It stopped out at −50% — correctly.)
+  // The doc's projection (§2, adjusted for hardened G-6 + G-1 index-ETF-only + score floor 65):
+  //   AMD  long  09:50 → BLOCKED  G-2 + G-3  (single stock — G-1 tape_alignment bypassed;
+  //                                           score 58 < 65 floor; pre-10:00 → opening_window)
+  //   SPY  long  09:55 → BLOCKED  G-1 + G-2  (index ETF, counter-tape; 93-score clears floor;
+  //                                           pre-10:00 → opening_window)
+  //   MU   long  09:55 → BLOCKED  G-2        (single stock — G-1 bypassed; score 73 clears floor;
+  //                                           pre-10:00 → opening_window is the only block)
+  //   SPXW long  10:00 → BLOCKED  G-1        (index ETF, counter-tape; at unlock boundary)
+  //   QQQ  short 10:20 → COMMIT              (index ETF, aligned, ≥ 10:00, score 65 = floor)
+  //   META short 10:40 → COMMIT              (score 67 ≥ 65 new conflict floor — the G-6 conflict
+  //                                           with NH 7/10 LONG no longer blocks. Was blocked at
+  //                                           old floor 80; now passes. A loser that would have
+  //                                           been caught, but the relaxed floor is evidence-based.)
+  //   NVDA long  12:40 → BLOCKED  G-3        (single stock — G-1 bypassed; score 40 < 65 floor)
+  //   INTC short 12:51 → BLOCKED  G-3        (score 61 < 65 floor)
   // 2026-07-23 (user-authorized): the opening-window unlock moved 9:45 → 10:00, so the pre-10:00
   // entries now ALSO collect G-2 (AMD 09:50, SPY/MU 09:55). SPXW at exactly 10:00 is unlocked
   // (boundary inclusive). Block order is tape_alignment → opening_window → score_floor.
   const expected: Record<string, string[] | "COMMIT"> = {
-    AMD: ["tape_alignment", "opening_window", "score_floor"],
+    AMD: ["opening_window", "score_floor"],
     SPY: ["tape_alignment", "opening_window"],
-    MU: ["tape_alignment", "opening_window"],
+    MU: ["opening_window"],
     SPXW: ["tape_alignment"],
     QQQ: "COMMIT",
-    META: ["cross_system_conflict"],
-    NVDA: ["tape_alignment", "score_floor"],
+    META: "COMMIT",
+    NVDA: ["score_floor"],
     INTC: ["score_floor"],
   };
 
@@ -186,13 +182,14 @@ test("7/13 replay: post-2026-07-23 the 10:00 unlock catches the pre-10:00 entrie
   }
 });
 
-test("7/13 replay: META short BLOCKED by G-6 (score 67 < 80, opposes Night Hawk long)", () => {
+test("7/13 replay: META short passes G-6 (score 67 >= 65 new conflict floor, despite opposing Night Hawk long)", () => {
   const meta = replaySession().get("META")!;
-  assert.equal(meta.verdict, "BLOCKED");
-  assert.equal(meta.blocks.some((b) => b.code === "cross_system_conflict"), true);
+  assert.equal(meta.verdict, "COMMIT");
+  assert.deepEqual(meta.blocks, []);
+  // Calibration still records the conflict for measurement, even though the gate no longer blocks.
   assert.equal(meta.calibration.g6_conflict.conflict, true);
   assert.deepEqual(meta.calibration.g6_conflict.against, ["nighthawk_edition"]);
-  assert.equal(meta.calibration.g6_conflict.would_block, true);
+  assert.equal(meta.calibration.g6_conflict.would_block, false);
   assert.match(meta.calibration.g6_conflict.note, /2026-07-10/);
 });
 
@@ -204,16 +201,16 @@ test("7/13 replay: G-4 verdict is tier=normal at the dataset's 16.32 day-open VI
   }
 });
 
-test("7/13 replay: session economics — the gated desk prints 1W/0L instead of 1W/7L (G-6 catches META)", () => {
+test("7/13 replay: session economics — the gated desk prints 1W/1L (QQQ winner + META loser through relaxed G-6)", () => {
   const verdicts = replaySession();
   const printed = LEDGER_2026_07_13.filter((p) => verdicts.get(p.ticker)!.verdict === "COMMIT");
   const blocked = LEDGER_2026_07_13.filter((p) => verdicts.get(p.ticker)!.verdict === "BLOCKED");
 
-  assert.deepEqual(printed.map((p) => p.ticker), ["QQQ"]);
-  // The winner survives; ALL seven losers are removed before entry — perfect session.
+  assert.deepEqual(printed.map((p) => p.ticker), ["QQQ", "META"]);
+  // QQQ is the winner; META passes G-6 at the relaxed 65 floor (score 67) but is a loser.
   assert.equal(printed.filter((p) => p.pnl > 0).length, 1);
-  assert.equal(printed.filter((p) => p.pnl < 0).length, 0);
-  assert.equal(blocked.length, 7);
+  assert.equal(printed.filter((p) => p.pnl < 0).length, 1);
+  assert.equal(blocked.length, 6);
   assert.ok(blocked.every((p) => p.pnl < 0), "every blocked play was a real loser — no winner was gated away");
 
   // Calibration context rides every verdict, committed or not (C-2 columns).

@@ -420,7 +420,7 @@ function laneMovers(ctx: MarketWideContext): Map<string, number> {
 export const BREAKOUT_MIN_PRICE = 5;
 export const BREAKOUT_MAX_PRICE = 400;
 export const BREAKOUT_MIN_VOLUME = 1_000_000;
-export const BREAKOUT_MIN_GAIN = 0.05; // intraday (c−o)/o
+export const BREAKOUT_MIN_GAIN = 0.03; // lowered from 5% — 3% captures more momentum names while close-strength filter keeps quality
 export const BREAKOUT_MIN_CLOSE_STRENGTH = 0.5; // (c−l)/(h−l) — closed in the upper half of the range
 
 /** One whole-market breakout candidate screened from a grouped-daily bar. */

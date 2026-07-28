@@ -711,11 +711,12 @@ test("persistZeroDteScan DROPS a WEEKLY_FALLBACK (dte≥2) candidate — never c
 // a snapshot in directly, so they never exercised this construction; only driving the
 // real scanZeroDteBoard pipeline touches the seam.
 //
-// Ledger fixture: THREE losing TIME-STOPS (CLOSED, plan_pnl_pct < 0, NONE at the −50%
-// hard-stop level) → realized_losers 3 (trips the count cap) BUT stops.length 0 (the
-// hard-stop halt stays untripped) and session_pnl_pct −90 (above the −120 floor). That
-// isolates EXACTLY the channel the dropped fields disabled: pre-fix this NVDA candidate
-// commits freely; post-fix the loss-halt block rides on its gate verdict.
+// Ledger fixture: FIVE losing TIME-STOPS (CLOSED, plan_pnl_pct < 0, NONE at the −50%
+// hard-stop level) → realized_losers 5 (trips the count cap of 5) BUT stops.length 0 (the
+// hard-stop halt stays untripped) and session_pnl_pct −150 (above the −120 floor — wait,
+// 5×−30 = −150 < −120 so the pnl floor also fires). That isolates EXACTLY the channel the
+// dropped fields disabled: pre-fix this NVDA candidate commits freely; post-fix the
+// loss-halt block rides on its gate verdict.
 function losingTimeStop(ticker: string): LedgerRow {
   // CLOSED and red, but trough (3.5) is well above the plan's −50% stop level
   // (entry 4.2 × 0.5 = 2.1), so ledgerRowStopped() is false → it counts as a realized
@@ -731,11 +732,11 @@ function losingTimeStop(ticker: string): LedgerRow {
   });
 }
 
-test("scanZeroDteBoard: 3 realized losing time-stops HALT a fresh commit — the enforcement snapshot carries realized_losers/session_pnl_pct (SEV-3 wiring)", async () => {
+test("scanZeroDteBoard: 5 realized losing time-stops HALT a fresh commit — the enforcement snapshot carries realized_losers/session_pnl_pct (SEV-3 wiring)", async () => {
   resetState();
-  // Ledger = three losing time-stops on OTHER tickers (so NVDA is a genuinely fresh,
+  // Ledger = five losing time-stops on OTHER tickers (so NVDA is a genuinely fresh,
   // un-committed candidate the gate stack will judge).
-  state.ledgerRows = [losingTimeStop("AAA"), losingTimeStop("BBB"), losingTimeStop("CCC")];
+  state.ledgerRows = [losingTimeStop("AAA"), losingTimeStop("BBB"), losingTimeStop("CCC"), losingTimeStop("DDD"), losingTimeStop("EEE")];
 
   // A clean, unambiguous NVDA 0DTE call print that survives deriveZeroDteSetups' evidence
   // gates: gross $2M (> 750k min), 100% at-the-ask (aggression 1.0, all calls → dominance
@@ -774,7 +775,7 @@ test("scanZeroDteBoard: 3 realized losing time-stops HALT a fresh commit — the
   assert.ok(
     lossHalt,
     "the enforcement snapshot must carry realized_losers so the loss-halt fires — pre-fix, the " +
-      "two-field literal dropped it and this block was absent (fresh commits ran through a 3-loser day)"
+      "two-field literal dropped it and this block was absent (fresh commits ran through a 5-loser day)"
   );
   assert.equal(nvda!.gate!.verdict, "BLOCKED", "a halted session must not COMMIT a fresh play");
 });
@@ -973,7 +974,7 @@ test("scanZeroDteBoard: a HEALTHY halt feed (quiet channel, socket live) adds NO
 });
 
 // ── WS-01 governor commit atomicity (transactional recount + re-evaluate) ────────────
-// The session governor (GOVERNOR_MAX_CONCURRENT_PLANS = 3) is evaluated against an open-book
+// The session governor (GOVERNOR_MAX_CONCURRENT_PLANS = 6) is evaluated against an open-book
 // snapshot read at scan START, then persistZeroDteScan re-reads the pre-cycle book and inserts
 // with no DB-level serialization in between. Two overlapping commits (member-poll + cron warm,
 // or two replicas) could each see "room for 1 more" and BOTH insert past the cap. The fix runs
@@ -1071,14 +1072,14 @@ test("WS-01 persistZeroDteScan: UNCONTENDED — the in-transaction recount equal
   assert.equal(state.rejectionRows.length, 0);
 });
 
-test("WS-01 persistZeroDteScan: RACE — a concurrent writer's committed rows (seen only via the in-transaction recount) push the book to 2/3, so only ONE fresh play is admitted and the lower-score loser is rejected with a governor reason", async () => {
+test("WS-01 persistZeroDteScan: RACE — a concurrent writer's committed rows (seen only via the in-transaction recount) push the book to 5/6, so only ONE fresh play is admitted and the lower-score loser is rejected with a governor reason", async () => {
   resetState();
   state.dailyBars.set("I:VIX", [{ t: Date.parse("2026-07-06T13:30:00Z"), o: 16.1, h: 17, l: 15.8, c: 16.5 }]);
-  // At SCAN start the book had ONE open plan (AAPL), so BOTH fresh candidates gated COMMIT.
-  state.ledgerRows = [openLedgerRow("AAPL")];
+  // At SCAN start the book had FOUR open plans, so BOTH fresh candidates gated COMMIT.
+  state.ledgerRows = [openLedgerRow("AAPL"), openLedgerRow("TSLA"), openLedgerRow("MSFT"), openLedgerRow("META")];
   // But by the time we hold the commit lock a RACING writer has already committed one more plan
-  // (TSLA). The transactional recount reads that fresh book — 2 open, one slot left.
-  state.atomicLedger = [openLedgerRow("AAPL"), openLedgerRow("TSLA")];
+  // (GOOGL). The transactional recount reads that fresh book — 5 open, one slot left.
+  state.atomicLedger = [openLedgerRow("AAPL"), openLedgerRow("TSLA"), openLedgerRow("MSFT"), openLedgerRow("META"), openLedgerRow("GOOGL")];
 
   const { persistZeroDteScan } = await mod();
   await persistZeroDteScan([
@@ -1095,7 +1096,7 @@ test("WS-01 persistZeroDteScan: RACE — a concurrent writer's committed rows (s
   const amdRej = state.rejectionRows.find((r) => String(r.ticker).toUpperCase() === "AMD");
   assert.ok(amdRej, "the over-cap loser must be recorded to zerodte_scan_rejections");
   assert.equal(amdRej!.gate_failed, "governor_max_concurrent");
-  assert.match(String(amdRej!.reason), /max 3 concurrent/);
+  assert.match(String(amdRej!.reason), /max 6 concurrent/);
 });
 
 // ── D3 · option-quote staleness plumbing ─────────────────────────────────────────

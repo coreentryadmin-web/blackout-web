@@ -61,16 +61,16 @@ function losingTimeStop(ticker: string, pnlPct = -30): GovernorLedgerRow {
 // The 2026-07-13 forensics showed a seven-stop day; these caps are the ledger's proven brake. A silent
 // loosening (max concurrent up, session-stop halt up, re-entry lock down) reintroduces the runaway-loss
 // day the record already paid for — so the values are pinned, not just their behavior.
-test("FIREWALL: governor caps are pinned (max 3 concurrent, halt after 3 stops, 20-min re-entry lock)", () => {
-  assert.equal(GOVERNOR_MAX_CONCURRENT_PLANS, 3);
+test("FIREWALL: governor caps are pinned (max 6 concurrent, halt after 3 stops, 20-min re-entry lock)", () => {
+  assert.equal(GOVERNOR_MAX_CONCURRENT_PLANS, 6);
   assert.equal(GOVERNOR_MAX_SESSION_STOPS, 3);
   assert.equal(GOVERNOR_REENTRY_LOCK_MS, 20 * 60 * 1000);
 });
 
 // AUDIT SEV-3 — the realized-loss halt only ever ADDS conservatism; a silent LOOSENING
 // (count up, floor down toward 0) would re-open the chop-and-bleed channel it closes.
-test("FIREWALL: realized-loss halt thresholds are pinned (3 losers, −120% session floor)", () => {
-  assert.equal(GOVERNOR_LOSS_HALT_COUNT, 3);
+test("FIREWALL: realized-loss halt thresholds are pinned (5 losers, −120% session floor)", () => {
+  assert.equal(GOVERNOR_LOSS_HALT_COUNT, 5);
   assert.equal(GOVERNOR_SESSION_LOSS_FLOOR_PCT, -120);
 });
 
@@ -129,15 +129,18 @@ test("governor: 3 stops halt the session — single dominating block", () => {
   assert.equal(blocks[0]!.threshold, GOVERNOR_MAX_SESSION_STOPS);
 });
 
-test("governor: concurrency cap at 3 open plans (2 passes, 3 blocks)", () => {
-  const two = [
+test("governor: concurrency cap at 6 open plans (5 pass, 6 blocks)", () => {
+  const five = [
     { ticker: "TSLA", direction: "long" as const },
     { ticker: "AMZN", direction: "long" as const },
+    { ticker: "GOOGL", direction: "long" as const },
+    { ticker: "META", direction: "long" as const },
+    { ticker: "MSFT", direction: "long" as const },
   ];
-  const ok = evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, { open_plans: two, stops: [] }, NOW);
+  const ok = evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, { open_plans: five, stops: [] }, NOW);
   assert.deepEqual(ok, []);
-  const three = [...two, { ticker: "GOOGL", direction: "long" as const }];
-  const blocked = evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, { open_plans: three, stops: [] }, NOW);
+  const six = [...five, { ticker: "AAPL", direction: "long" as const }];
+  const blocked = evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, { open_plans: six, stops: [] }, NOW);
   assert.deepEqual(blocked.map((b) => b.code), ["governor_max_concurrent"]);
   assert.equal(blocked[0]!.threshold, GOVERNOR_MAX_CONCURRENT_PLANS);
 });
@@ -210,7 +213,7 @@ test("SEV-3 REGRESSION CLOSED: a session of 5 losing time-stops (no hard stop) n
 });
 
 test("SEV-3: the cumulative session-P&L floor halts even below the loser COUNT", () => {
-  // Two big losers (−70% each = −140%) sink past the −120% floor before hitting 3 losers.
+  // Two big losers (−70% each = −140%) sink past the −120% floor before hitting 5 losers.
   const rows = [
     losingTimeStop("A", -70),
     losingTimeStop("B", -70),
@@ -448,21 +451,35 @@ test("summarizeGovernorForBoard: no correlated cluster → concentration measure
 // ════════════════════════════════════════════════════════════════════════════════════
 
 // ── concurrency cap: EXACT boundary via mixed open + committedThisCycle ───────────────
-test("governor: cap boundary — 2 live + 1 committed-this-cycle = 3 blocks; 1+1 = 2 commits", () => {
-  const gov = { open_plans: [{ ticker: "TSLA", direction: "short" as const }], stops: [] };
-  // 1 open + 1 committed = 2 (< cap) → no block
+test("governor: cap boundary — 3 live + 3 committed-this-cycle = 6 blocks; 3+2 = 5 commits", () => {
+  const gov = {
+    open_plans: [
+      { ticker: "TSLA", direction: "short" as const },
+      { ticker: "META", direction: "short" as const },
+      { ticker: "MSFT", direction: "short" as const },
+    ],
+    stops: [],
+  };
+  // 3 open + 2 committed = 5 (< cap of 6) → no block
   assert.deepEqual(
-    evaluateZeroDteGovernor({ ticker: "AMD", direction: "short" }, gov, NOW, [{ ticker: "AMZN", direction: "short" }]),
+    evaluateZeroDteGovernor({ ticker: "AMD", direction: "short" }, gov, NOW, [
+      { ticker: "AMZN", direction: "short" },
+      { ticker: "NVDA", direction: "short" },
+    ]),
     []
   );
-  // 1 open + 2 committed = 3 (== cap) → block
-  const at3 = evaluateZeroDteGovernor(
+  // 3 open + 3 committed = 6 (== cap) → block
+  const at6 = evaluateZeroDteGovernor(
     { ticker: "AMD", direction: "short" },
     gov,
     NOW,
-    [{ ticker: "AMZN", direction: "short" }, { ticker: "GOOGL", direction: "short" }]
+    [
+      { ticker: "AMZN", direction: "short" },
+      { ticker: "GOOGL", direction: "short" },
+      { ticker: "NVDA", direction: "short" },
+    ]
   );
-  assert.deepEqual(at3.map((b) => b.code), ["governor_max_concurrent"]);
+  assert.deepEqual(at6.map((b) => b.code), ["governor_max_concurrent"]);
 });
 
 // ── re-entry lock: EXACT boundary (< lock window, not <=) ────────────────────────────
@@ -480,17 +497,17 @@ test("governor: re-entry lock boundary — exactly 20 min ago is UNLOCKED; one m
   );
 });
 
-// ── loss-halt COUNT boundary: 2 losers pass, exactly 3 halt ──────────────────────────
-test("SEV-3: loss-halt count boundary — 2 realized losers pass, exactly 3 halt", () => {
-  const two = deriveGovernorFromLedger([losingTimeStop("A", -30), losingTimeStop("B", -30)]);
-  assert.equal(two.realized_losers, 2);
-  assert.ok(two.session_pnl_pct! > GOVERNOR_SESSION_LOSS_FLOOR_PCT, "−60% is above the −120 floor, so only the count matters here");
-  assert.equal(governorLossHaltReason(two), null);
-  assert.deepEqual(evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, two, NOW), []);
+// ── loss-halt COUNT boundary: 4 losers pass, exactly 5 halt ──────────────────────────
+test("SEV-3: loss-halt count boundary — 4 realized losers pass, exactly 5 halt", () => {
+  const four = deriveGovernorFromLedger([losingTimeStop("A", -20), losingTimeStop("B", -20), losingTimeStop("C", -20), losingTimeStop("D", -20)]);
+  assert.equal(four.realized_losers, 4);
+  assert.ok(four.session_pnl_pct! > GOVERNOR_SESSION_LOSS_FLOOR_PCT, "−80% is above the −120 floor, so only the count matters here");
+  assert.equal(governorLossHaltReason(four), null);
+  assert.deepEqual(evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, four, NOW), []);
 
-  const three = deriveGovernorFromLedger([losingTimeStop("A", -30), losingTimeStop("B", -30), losingTimeStop("C", -30)]);
-  assert.equal(three.realized_losers, GOVERNOR_LOSS_HALT_COUNT);
-  const halt = evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, three, NOW);
+  const five = deriveGovernorFromLedger([losingTimeStop("A", -20), losingTimeStop("B", -20), losingTimeStop("C", -20), losingTimeStop("D", -20), losingTimeStop("E", -20)]);
+  assert.equal(five.realized_losers, GOVERNOR_LOSS_HALT_COUNT);
+  const halt = evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, five, NOW);
   assert.deepEqual(halt.map((b) => b.code), ["governor_session_loss_halt"]);
   assert.match(halt[0]!.reason, /realized losers/);
 });
@@ -512,8 +529,8 @@ test("SEV-3: session-P&L floor boundary — exactly −120% halts, −119% does 
 });
 
 test("SEV-3: when BOTH the count and the floor trip, the COUNT reason wins (it is checked first)", () => {
-  // 3 big losers → losers>=3 AND pnl past the floor; the reason must be the count wording.
-  const snap = deriveGovernorFromLedger([losingTimeStop("A", -70), losingTimeStop("B", -70), losingTimeStop("C", -70)]);
+  // 5 losers at −25% each → losers>=5 AND pnl at −125% past the −120% floor; the reason must be the count wording.
+  const snap = deriveGovernorFromLedger([losingTimeStop("A", -25), losingTimeStop("B", -25), losingTimeStop("C", -25), losingTimeStop("D", -25), losingTimeStop("E", -25)]);
   const reason = governorLossHaltReason(snap);
   assert.match(reason ?? "", /realized losers/);
   assert.doesNotMatch(reason ?? "", /at\/below the .*floor/);

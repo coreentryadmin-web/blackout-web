@@ -228,7 +228,9 @@ test("ratchet floor breach via the sync mark: row CLOSES at the exit mark and en
   // Peaked +30% (5.2) earlier; the snapshot now shows 3.98 (−0.5%) — at/below the
   // breakeven floor the +25% peak armed. Pre-engine this row stayed live all the
   // way down to the −50% stop: the exact green-turned-red class.
-  state.ledgerRows = [baseRow({ peak_premium: 5.2 })];
+  // Freeze exit_policy_at_commit to "ratchet" so this test exercises the ratchet
+  // path explicitly (DEFAULT_EXIT_MODE is now trim_scale).
+  state.ledgerRows = [baseRow({ peak_premium: 5.2, entry_context: { exit_policy_at_commit: "ratchet" } })];
   state.snapMark = 3.98;
 
   const rows = await syncLedgerLiveState(state.ledgerRows as never);
@@ -249,7 +251,7 @@ test("freshest mark wins: a FRESH lane mark below the floor exits even when the 
   const { lane, syncLedgerLiveState } = await mods();
   resetState();
   lane._resetZeroDteLiveMarksForTest();
-  state.ledgerRows = [baseRow({ peak_premium: 5.2 })];
+  state.ledgerRows = [baseRow({ peak_premium: 5.2, entry_context: { exit_policy_at_commit: "ratchet" } })];
   state.snapMark = 4.5; // +12.5% — above the breakeven floor, sync alone would hold
   // Future-dated (+30s) so the real-clock freshness check can never flake (header).
   lane.putZeroDteLiveMark(laneMark(3.9, Date.now() + 30_000));
@@ -367,16 +369,16 @@ test("readFrozenExitMode: reads a valid pinned mode; null for missing/invalid (l
 // ── resolveExitMode: the operator's env switch (DEFAULT-OFF) — SECOND-WAVE coverage ──
 // resolveExitMode reads ZERODTE_EXIT_MODE and is the fallback evaluateLedgerRowExit uses
 // for legacy/unpinned rows. Env is passed in (injectable), so no process.env mutation.
-test("resolveExitMode: only the exact string 'trim_scale' opts in; everything else stays the shipped ratchet", async () => {
+test("resolveExitMode: trim_scale is the default; only exact 'trim_scale' env opts in explicitly", async () => {
   const { resolveExitMode } = await import("./exit-sync");
   const { DEFAULT_EXIT_MODE } = await import("./exit-engine");
-  assert.equal(DEFAULT_EXIT_MODE, "ratchet", "the default is the shipped ratchet");
-  // The one opt-in value.
+  assert.equal(DEFAULT_EXIT_MODE, "trim_scale", "the default is trim_scale");
+  // Explicit trim_scale env.
   assert.equal(resolveExitMode({ ZERODTE_EXIT_MODE: "trim_scale" } as NodeJS.ProcessEnv), "trim_scale");
-  // Unset / empty / explicit ratchet / any other token / near-miss casing → ratchet.
-  assert.equal(resolveExitMode({} as NodeJS.ProcessEnv), "ratchet");
-  assert.equal(resolveExitMode({ ZERODTE_EXIT_MODE: "" } as NodeJS.ProcessEnv), "ratchet");
-  assert.equal(resolveExitMode({ ZERODTE_EXIT_MODE: "ratchet" } as NodeJS.ProcessEnv), "ratchet");
-  assert.equal(resolveExitMode({ ZERODTE_EXIT_MODE: "TRIM_SCALE" } as NodeJS.ProcessEnv), "ratchet", "exact match only — no casing tolerance");
-  assert.equal(resolveExitMode({ ZERODTE_EXIT_MODE: "trim" } as NodeJS.ProcessEnv), "ratchet");
+  // Unset / empty / explicit ratchet / any other token → DEFAULT (trim_scale).
+  assert.equal(resolveExitMode({} as NodeJS.ProcessEnv), "trim_scale");
+  assert.equal(resolveExitMode({ ZERODTE_EXIT_MODE: "" } as NodeJS.ProcessEnv), "trim_scale");
+  assert.equal(resolveExitMode({ ZERODTE_EXIT_MODE: "ratchet" } as NodeJS.ProcessEnv), "trim_scale");
+  assert.equal(resolveExitMode({ ZERODTE_EXIT_MODE: "TRIM_SCALE" } as NodeJS.ProcessEnv), "trim_scale", "exact match only — no casing tolerance");
+  assert.equal(resolveExitMode({ ZERODTE_EXIT_MODE: "trim" } as NodeJS.ProcessEnv), "trim_scale");
 });

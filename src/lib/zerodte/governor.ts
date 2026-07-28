@@ -40,10 +40,10 @@ import { PLAN_RULES } from "./plan";
 import type { ZeroDteSetupLogRow } from "@/lib/db";
 import type { ZeroDteGateBlock } from "./gates";
 
-/** Max simultaneously-open plans. Slayer allows 5 entries/session on ONE instrument
- *  with an exit engine; this breadth surface manages every play to a fixed plan, so
- *  the concurrent-exposure cap is tighter. */
-export const GOVERNOR_MAX_CONCURRENT_PLANS = 3;
+/** Max simultaneously-open plans. Scanning 12,000+ stocks should produce 5-10 good
+ *  plays — 3 was too tight for a whole-market board. 6 allows meaningful diversification
+ *  while the per-play stop (-50%) and session loss floor (-120%) still cap total risk. */
+export const GOVERNOR_MAX_CONCURRENT_PLANS = 6;
 /** Stops in a session before the desk stands down for the day (Slayer's own
  *  loss-halt number). 7/13 took 7 stops — this caps that class of day at 3. */
 export const GOVERNOR_MAX_SESSION_STOPS = 3;
@@ -56,9 +56,11 @@ export const GOVERNOR_REENTRY_LOCK_MS = 20 * 60 * 1000;
 // floor is a cushion above three −50% hard stops (−150%) so a bleed of smaller losing
 // time-stops (each ~−25%…−45%) trips it before it reaches the same total drawdown as
 // the 7/13 day. Either condition halts new commits.
-/** Realized LOSERS in a session — regardless of exit reason (hard stop OR losing
- *  time-stop) — before the desk stands down. Mirrors the 3-stop hard-halt shape. */
-export const GOVERNOR_LOSS_HALT_COUNT = 3;
+/** Realized LOSERS in a session before the desk stands down. Raised from 3 to 5:
+ *  old count treated a -2% time-stop the same as a -50% hard stop, halting on 3
+ *  mild losers that barely dented capital. The SESSION_LOSS_FLOOR_PCT (-120%) still
+ *  catches rapid capital drain regardless of count. */
+export const GOVERNOR_LOSS_HALT_COUNT = 5;
 /** Cumulative session realized P&L % floor. At/below this, new commits halt even if
  *  the loser COUNT hasn't hit the cap (a few large losers drain capital just as fast
  *  as many small ones). −120% ≈ 2.4 hard stops' worth of realized drawdown. */

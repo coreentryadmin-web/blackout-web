@@ -260,7 +260,7 @@ test("setups: sudden flow spike flagged when ≥half the tape lands in the last 
 test("setups: prints for contracts that expired a prior session are dropped", () => {
   const rows = [
     row({ premium: 2_000_000, expiry: "2026-07-02", dte: 0 }), // expired yesterday
-    row({ premium: 500_000, expiry: "2026-07-06", dte: 0 }), // today — below gross floor alone
+    row({ premium: 200_000, expiry: "2026-07-06", dte: 0 }), // today — below gross floor alone
   ];
   assert.equal(deriveZeroDteSetups(rows, { todayYmd: "2026-07-06" }).length, 0);
   // Without the session guard the expired tape would have qualified.
@@ -991,10 +991,10 @@ test("rejections: aggression-share gate failure — gross known, aggression know
 test("rejections: dominance gate failure — direction/side_dominance now known, otm still null", () => {
   const rejections: ZeroDteGateRejection[] = [];
   // Both sides bought aggressively (ask_pct 70 -> full aggression weight) but close
-  // to even — dominance ~0.56, under SETUP_MIN_DOMINANCE (0.65).
+  // to even — dominance ~0.51, under SETUP_MIN_DOMINANCE (0.55).
   const rows = [
-    row({ premium: 500_000, option_type: "call", strike: 190, ask_pct: 70 }),
-    row({ premium: 400_000, option_type: "put", strike: 185, ask_pct: 70 }),
+    row({ premium: 510_000, option_type: "call", strike: 190, ask_pct: 70 }),
+    row({ premium: 490_000, option_type: "put", strike: 185, ask_pct: 70 }),
   ];
   const out = deriveZeroDteSetups(rows, { rejections });
 
@@ -1003,9 +1003,9 @@ test("rejections: dominance gate failure — direction/side_dominance now known,
   const r = rejections[0]!;
   assert.equal(r.gate_failed, "min_dominance");
   assert.equal(r.threshold, SETUP_MIN_DOMINANCE);
-  assert.equal(r.gross_premium, 900_000);
+  assert.equal(r.gross_premium, 1_000_000);
   assert.equal(r.aggression, 1);
-  assert.equal(r.direction, "long"); // calls narrowly lead (500k vs 400k)
+  assert.equal(r.direction, "long"); // calls narrowly lead (510k vs 490k)
   assert.ok(r.side_dominance! > 0.5 && r.side_dominance! < SETUP_MIN_DOMINANCE);
   assert.equal(r.otm_pct, null, "the scan never reaches the moneyness gate for a dominance rejection");
 });

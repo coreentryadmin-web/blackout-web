@@ -108,10 +108,10 @@ test("buildStrategyManifest: exitPolicy override sets exit_policy and repartitio
   // ...and a different ACTIVE exit family produces a different cohort hash, so ratchet
   // and trim_scale plays never blend in one calibration band.
   assert.notEqual(strategyConfigHash(ratchet), strategyConfigHash(trim));
-  // Omitting the override falls back to the shipped default (EXIT_POLICY = "ratchet"),
-  // so the default call and an explicit "ratchet" are identical — behavior-neutral.
+  // Omitting the override falls back to the shipped default (EXIT_POLICY = "trim_scale"),
+  // so the default call and an explicit "trim_scale" are identical — behavior-neutral.
   assert.equal(dflt.exit_policy, EXIT_POLICY);
-  assert.equal(strategyConfigHash(dflt), strategyConfigHash(ratchet));
+  assert.equal(strategyConfigHash(dflt), strategyConfigHash(trim));
 });
 
 // ── Feature-vector threading ────────────────────────────────────────────────────────
