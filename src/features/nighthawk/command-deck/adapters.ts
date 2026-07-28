@@ -566,6 +566,7 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
     entryCostPerContract: fin(src.entry_cost_per_contract),
     premiumCapOk: src.premium_cap_ok ?? null,
     sector: src.sector?.toLowerCase() ?? null,
+    morningStatus: ms ?? null,
     confluence,
     discoveryOrigin: discoveryOrigin.length > 0 ? discoveryOrigin : undefined,
     whyNow: whyNow ?? undefined,
