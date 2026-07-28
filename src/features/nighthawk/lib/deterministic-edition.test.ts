@@ -606,6 +606,28 @@ test("PR-N33: forced contrarian fires with candidate above FORCED_CONTRARIAN_FLO
   assert.ok(hedgeScore >= 15, `hedge score ${hedgeScore} should be >= FORCED_CONTRARIAN_FLOOR (15)`);
 });
 
+// ── Diversity hedge fires at 3 plays (not just >= 4) ──────────────────────────
+test("diversity hedge fires for a 3-play all-LONG edition (threshold lowered to >= 3)", () => {
+  const ranked = [
+    scored("AA", "long", 70),
+    scored("BB", "long", 65),
+    scored("CC", "long", 60),
+    scored("FF", "short", 25),
+  ];
+  const chains: Record<string, any> = {};
+  const dossierMap: Record<string, any> = {};
+  for (const r of ranked) {
+    const spot = 100;
+    chains[r.ticker] = chainAround(spot);
+    dossierMap[r.ticker] = dossier(r.ticker, spot);
+  }
+  const { plays } = buildDeterministicEditionPlays({ ranked, dossierMap, chains, target: 3 });
+  assert.equal(plays.length, 3);
+  const shorts = plays.filter((p) => p.direction === "SHORT");
+  assert.ok(shorts.length >= 1, `3-play edition: expected at least 1 SHORT hedge, got ${shorts.length}`);
+  assert.equal(shorts[0]!.ticker, "FF", "should swap last slot for the natural short candidate");
+});
+
 // ── pickChainContract maxDte window (intraday 0DTE vs overnight swing) ──────────────────────────
 // Regression: the day-trade agent asks for a 0–1 DTE contract but the picker was hardcoded to the
 // overnight-swing window (skip same-day expiry, require ≥5 calendar DTE), so a "0DTE day trade"

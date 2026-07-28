@@ -654,7 +654,7 @@ export function buildDeterministicEditionPlays(params: {
   // contrarian thesis), but tech/positioning/news/smart-money are honestly re-scored. The best
   // forced contrarian above DIVERSITY_HEDGE_FLOOR gets the hedge slot.
   let finalPlays = merged.slice(0, target);
-  if (finalPlays.length >= 4) {
+  if (finalPlays.length >= 3) {
     const dirs = new Set(finalPlays.map((p) => p.direction));
     if (dirs.size === 1) {
       const dominant = finalPlays[0]!.direction;

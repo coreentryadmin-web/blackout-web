@@ -177,6 +177,21 @@ export async function GET(req: NextRequest) {
     const latest = await fetchLatestNighthawkEdition();
     if (latest) {
       const edition = rowToNightHawkEdition(latest);
+
+      // Hard age cutoff: never serve an edition older than 4 calendar days — its levels,
+      // targets, and stops are dangerously stale (covers Fri→Mon weekend gap; a Thu edition
+      // serving on Mon = 4 days, still ok; anything older = empty).
+      const MAX_EDITION_AGE_DAYS = 4;
+      if (edition.edition_for) {
+        const edAge = Math.floor(
+          (new Date(editionFor + "T00:00:00").getTime() - new Date(edition.edition_for + "T00:00:00").getTime())
+          / (86_400_000),
+        );
+        if (edAge > MAX_EDITION_AGE_DAYS) {
+          return NextResponse.json(emptyEdition(editionFor), { headers: NO_STORE_HEADERS });
+        }
+      }
+
       // Serving a prior session's plays when tonight's edition_for is not published yet must
       // always read as stale — the recency window alone let Jul 21's five names masquerade as
       // Jul 22's live board.
