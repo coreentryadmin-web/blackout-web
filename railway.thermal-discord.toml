@@ -1,0 +1,18 @@
+# Railway/EventBridge catalog: Thermal Discord desk card (SPY|SPX|QQQ PNG).
+# Live fire requires EventBridge rule sync (TOML alone is not enough).
+[build]
+builder = "nixpacks"
+buildCommand = "echo 'cron trigger service: no app build needed'"
+watchPatterns = [
+  "scripts/hit-cron.mjs",
+  "railway.thermal-discord.toml",
+  "nixpacks.toml",
+]
+
+[deploy]
+startCommand = "CRON_HTTP_TIMEOUT_MS=180000 node scripts/hit-cron.mjs /api/cron/thermal-discord"
+# Every 15 minutes, 24/7 — route posts off-hours snapshots too (set THERMAL_DISCORD_RTH_ONLY=1 to gate).
+# Inert without DISCORD_THERMAL_WEBHOOK_URL.
+cronSchedule = "*/15 * * * *"
+restartPolicyType = "never"
+numReplicas = 1
