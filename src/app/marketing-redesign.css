@@ -763,6 +763,7 @@
 .feat .perks li{color:var(--ink)}
 .feat .perks li::before{opacity:1;text-shadow:0 0 6px var(--g)}
 .pc .btn-p,.pc .btn-g{width:100%;justify-content:center;font-size:.85rem;padding:16px 24px;border-radius:10px;margin-top:.5rem}
+.pc .trust{text-align:center;margin-top:.75rem;font-size:.75rem;color:var(--faint);letter-spacing:.02em}
 
 /* ═══════ §6 FOOTER ═══════ */
 .footer{position:relative;padding:8rem 1.5rem 3rem;text-align:center;overflow:hidden;border-top:1px solid rgba(163,230,53,.04)}
