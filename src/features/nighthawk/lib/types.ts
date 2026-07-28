@@ -32,6 +32,10 @@ export type PlaybookPlay = {
   /** Per-component scoring breakdown persisted at publish time so the terminal can show
    *  real factor bars (flow, tech, positioning, etc.) instead of only iv_rank/rr_ratio. */
   factor_breakdown?: Record<string, number>;
+  /** Count of scoring dimensions with material positive contribution (flow≥8, tech≥6, etc.). */
+  confirming_signals?: number;
+  /** True when the name reports earnings within the play's hold window. */
+  earnings_risk?: boolean;
   /** PR-N4: true when the morning confirmation INVALIDATED this play and the one-way pull
    *  latch engaged (nighthawk_play_outcomes.pulled, merged at read time by
    *  pull-overlay.ts). A pulled play stays visible at its published rank but must be

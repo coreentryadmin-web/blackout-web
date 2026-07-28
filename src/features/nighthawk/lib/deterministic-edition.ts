@@ -519,6 +519,8 @@ function buildPlay(
       ...(scored.wall_proximity_score != null ? { wall_proximity: scored.wall_proximity_score } : {}),
       ...(scored.vex_alignment_score != null ? { vex: scored.vex_alignment_score } : {}),
     },
+    confirming_signals: scored.confirming_signals ?? undefined,
+    earnings_risk: scored.earnings_risk === true ? true : undefined,
   };
   // Breakout/banger-sourced plays get the scale-out exit guidance (the proven +EV lever): these cheap
   // OTM momentum plays spike then decay, so hold-to-target is the wrong exit. Advisory only (risk_note)

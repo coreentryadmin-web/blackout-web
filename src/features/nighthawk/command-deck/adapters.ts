@@ -398,6 +398,8 @@ export interface EditionDeckSource {
   gate_warnings?: string[] | null;
   pulled?: boolean | null;
   pulled_reason?: string | null;
+  confirming_signals?: number | null;
+  earnings_risk?: boolean | null;
   // Morning confirmation overlay (merged by the container).
   morning_status?: "CONFIRMED" | "DEGRADED" | "INVALIDATED" | "UNVERIFIED" | null;
   morning_reason?: string | null;
@@ -439,6 +441,9 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
   if (src.flow_streak_days != null && Number.isFinite(src.flow_streak_days) && src.flow_streak_days > 0) {
     factors.push({ label: "Flow Streak", points: src.flow_streak_days });
   }
+  if (src.confirming_signals != null && Number.isFinite(src.confirming_signals) && src.confirming_signals > 0) {
+    factors.push({ label: "Confirming", points: src.confirming_signals });
+  }
 
   const direction = asDir(src.direction);
   const entryMid = parseEntryMid(src.entry_range);
@@ -465,6 +470,9 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
     for (const w of src.gate_warnings) {
       gates.push({ label: w, ok: false });
     }
+  }
+  if (src.earnings_risk) {
+    gates.push({ label: "EARNINGS RISK", ok: false });
   }
 
   // Thesis break from morning confirmation — risk_note enriches the warn/intact note.

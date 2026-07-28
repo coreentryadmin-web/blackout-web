@@ -949,6 +949,20 @@ test("overlayLegacyQuotes: populates stockPrice and stockChangePct", () => {
   assert.equal(result.stockChangePct, 2.3);
 });
 
+test("Legacy adapter: confirming_signals → Confirming factor", () => {
+  const play = terminalPlayFromEdition({ ticker: "AAA", direction: "long", rank: 1, score: 68, confirming_signals: 5 });
+  const f = play.factors.find((f) => f.label === "Confirming");
+  assert.ok(f, "expected a Confirming factor");
+  assert.equal(f!.points, 5);
+});
+
+test("Legacy adapter: earnings_risk → EARNINGS RISK gate", () => {
+  const play = terminalPlayFromEdition({ ticker: "AAA", direction: "long", rank: 1, score: 68, earnings_risk: true });
+  const g = play.gates.find((g) => g.label === "EARNINGS RISK");
+  assert.ok(g, "expected an EARNINGS RISK gate");
+  assert.equal(g!.ok, false);
+});
+
 test("overlayLegacyQuotes: stockPrice stays undefined when no quote", () => {
   const play = terminalPlayFromEdition({
     ticker: "AAPL", direction: "long", rank: 1, score: 75,
