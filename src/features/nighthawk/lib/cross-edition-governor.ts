@@ -179,11 +179,16 @@ export function applyCrossEditionGovernor(
         notes.push(`GOV DEMOTE ${candidate.ticker} −${action.penalty}: ${action.reasons.join("; ")}`);
         const demoted = { ...candidate, govPenalty: action.penalty };
         survivors.push({ scored: demoted, effectiveScore: candidate.score - action.penalty });
+        const dSector = candidate.sector?.toLowerCase();
+        if (dSector) sectorCounts.set(dSector, (sectorCounts.get(dSector) ?? 0) + 1);
         break;
       }
-      case "pass":
+      case "pass": {
         survivors.push({ scored: candidate, effectiveScore: candidate.score });
+        const pSector = candidate.sector?.toLowerCase();
+        if (pSector) sectorCounts.set(pSector, (sectorCounts.get(pSector) ?? 0) + 1);
         break;
+      }
     }
   }
 

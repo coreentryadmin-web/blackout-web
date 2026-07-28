@@ -155,3 +155,49 @@ test("formatCheckedAtEt: renders an Eastern clock time", () => {
 test("formatCheckedAtEt: invalid input degrades honestly instead of throwing/NaN", () => {
   assert.equal(formatCheckedAtEt("garbage"), "unknown time");
 });
+
+// ── Soft GEX wall drift direction gating ───────────────────────────────────────
+// Regression: soft wall-drift check was not direction-gated, causing LONG plays
+// to spuriously degrade on call-wall noise and SHORT plays on put-wall noise.
+
+test("soft call-wall drift does NOT degrade a LONG play (call wall is SHORT's concern)", () => {
+  const v = computePlayVerdict(play(), {
+    ...NO_CONTEXT,
+    stockPremarket: 102,
+    callWall: 5615,
+    editionCallWall: 5600,
+    putWall: 5400,
+    editionPutWall: 5400,
+  });
+  assert.equal(v.status, "CONFIRMED", "LONG should not degrade on call-wall soft drift");
+});
+
+test("soft call-wall drift DOES degrade a SHORT play", () => {
+  const v = computePlayVerdict(
+    play({ direction: "SHORT", entry_range: "$200-$204", target: "$188", stop: "$212" }),
+    {
+      ...NO_CONTEXT,
+      stockPremarket: 202,
+      callWall: 5615,
+      editionCallWall: 5600,
+      putWall: 5400,
+      editionPutWall: 5400,
+    },
+  );
+  assert.equal(v.status, "DEGRADED", "SHORT should degrade on call-wall soft drift");
+});
+
+test("soft put-wall drift does NOT degrade a SHORT play (put wall is LONG's concern)", () => {
+  const v = computePlayVerdict(
+    play({ direction: "SHORT", entry_range: "$200-$204", target: "$188", stop: "$212" }),
+    {
+      ...NO_CONTEXT,
+      stockPremarket: 202,
+      callWall: 5600,
+      editionCallWall: 5600,
+      putWall: 5415,
+      editionPutWall: 5400,
+    },
+  );
+  assert.equal(v.status, "CONFIRMED", "SHORT should not degrade on put-wall soft drift");
+});

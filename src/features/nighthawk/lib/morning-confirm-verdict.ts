@@ -195,14 +195,15 @@ export function computePlayVerdict(
     }
 
     // 6. Soft GEX wall drift (WALL_SHIFT_SOFT_PTS < shift ≤ WALL_SHIFT_HARD_PTS)
-    if (editionCallWall !== null && callWall !== null) {
+    // Direction-gated to match the hard-shift check: call wall affects SHORT, put wall affects LONG.
+    if (editionCallWall !== null && callWall !== null && !isLong) {
       const callShift = Math.abs(callWall - editionCallWall);
       if (callShift > WALL_SHIFT_SOFT_PTS && callShift <= WALL_SHIFT_HARD_PTS) {
         if (status === "CONFIRMED") status = "DEGRADED";
         reasons.push(`Call wall drifted ${callShift.toFixed(0)} pts (${editionCallWall} → ${callWall}) — tighten target`);
       }
     }
-    if (editionPutWall !== null && putWall !== null) {
+    if (editionPutWall !== null && putWall !== null && isLong) {
       const putShift = Math.abs(putWall - editionPutWall);
       if (putShift > WALL_SHIFT_SOFT_PTS && putShift <= WALL_SHIFT_HARD_PTS) {
         if (status === "CONFIRMED") status = "DEGRADED";
