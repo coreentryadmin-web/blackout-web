@@ -15997,6 +15997,7 @@ body::before {
 .nh-deck-track .lo,.nh-deck-track .hi{position:absolute;top:-15px;font-size:9px;letter-spacing:.08em}
 .nh-deck-track .lo{left:0;color:var(--dk-red)}.nh-deck-track .hi{right:0;color:var(--dk-green)}
 .nh-deck-track .mk{position:absolute;top:-4px;width:2px;height:32px;background:var(--dk-green-hi);box-shadow:var(--dk-glow)}
+.nh-deck-entry-zone{position:absolute;top:50%;width:8px;height:8px;transform:translate(-50%,-50%) rotate(45deg);background:var(--dk-amber);opacity:.55;border:1px solid rgba(255,184,77,.4);pointer-events:none}
 .nh-deck-tranches{display:flex;gap:6px;margin:16px 0}
 .nh-deck-tr{flex:1;text-align:center;padding:8px 4px;border:1px solid var(--dk-line);border-radius:4px;font-size:11px;color:var(--dk-ink-dim)}
 .nh-deck-tr.done{color:var(--dk-green);border-color:rgba(53,255,158,.4);background:rgba(53,255,158,.06)}

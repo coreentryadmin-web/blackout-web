@@ -644,6 +644,24 @@ function LegacyManageGeometry({ play }: { play: TerminalPlay }) {
   const distStop = spot != null && stop != null && Number.isFinite(stop) && spot > 0
     ? { pct: ((stop - spot) / spot * 100), dollars: stop - spot } : null;
 
+  // Entry zone marker on the progress track (the zone between stop and target where
+  // entry is recommended). Requires knowing stop, target, and the entry range midpoint.
+  const entryNums = play.entryRange?.match(/[\d.]+/g)?.map(Number).filter(Number.isFinite) ?? [];
+  const entryMid = entryNums.length >= 2 ? (entryNums[0]! + entryNums[entryNums.length - 1]!) / 2
+    : entryNums.length === 1 ? entryNums[0]! : null;
+  const entryFrac = (stop != null && target != null && target !== stop && entryMid != null)
+    ? Math.max(0, Math.min(1, (entryMid - stop) / (target - stop)))
+    : null;
+
+  // Position zone label for the recNote
+  const zoneLabel = (play.progress != null && spot != null)
+    ? play.progress <= 0 ? "below stop — cut the position"
+    : play.progress >= 1 ? "at/above target — take profit"
+    : play.progress < 0.3 ? "near stop — elevated risk"
+    : play.progress > 0.7 ? "nearing target — watch for exit"
+    : "mid-range — hold per plan"
+    : null;
+
   return (
     <>
       {(play.entryRange || play.targetLevel || play.stopLevel) && (
@@ -673,11 +691,14 @@ function LegacyManageGeometry({ play }: { play: TerminalPlay }) {
         <>
           <div className="nh-deck-track">
             <span className="lo">STOP</span><span className="hi">TARGET</span>
+            {entryFrac != null && (
+              <span className="nh-deck-entry-zone" style={{ left: `${Math.round(entryFrac * 100)}%` }} title="Entry zone midpoint" />
+            )}
             <span className="mk" style={{ left: `${Math.round(play.progress * 100)}%` }} />
           </div>
           <div className="nh-deck-recnote">
             {spot != null ? `${play.ticker} $${spot.toFixed(2)} — ` : ""}
-            stock position vs your stop and target levels.
+            {zoneLabel ?? "stock position vs your stop and target levels."}
           </div>
         </>
       )}
