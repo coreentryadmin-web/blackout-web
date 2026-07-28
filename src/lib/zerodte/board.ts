@@ -298,9 +298,15 @@ export function noteOriginDirectionConflict(
 // setup's direction/score are exactly what they were.
 
 /** The merge/precedence version these maps were frozen under. Bump BY HAND if the origin
- *  precedence (which rail owns the kept direction) or the merge/union rule changes. v1 = FLOW >
- *  BREAKOUT > PIN precedence, union-by-ticker keeping the highest-precedence rail's read. */
-export const MERGE_POLICY_VERSION = "v1";
+ *  precedence (which rail owns the kept direction) or the merge/union rule changes.
+ *  v1 = FLOW > BREAKOUT > PIN seating-order precedence (incumbent always wins on conflict).
+ *  v2 = evidence-weighted on conflict (higher rail score owns direction; seating-order wins ties);
+ *  same-direction corroboration still gets +CORROBORATION_SCORE_BOOST; opposing co-discovery does not. */
+export const MERGE_POLICY_VERSION = "v2";
+
+/** Score bump when ≥2 rails agree on the SAME direction for a ticker. Not applied on opposing
+ *  co-discovery — fighting rails are not conviction. */
+export const CORROBORATION_SCORE_BOOST = 8;
 
 /** Per-origin (direction, score) contribution recorded at merge time. Score is the rail's raw
  *  evidence score at merge (rounded). First-write-wins per origin. */
@@ -313,8 +319,8 @@ export type OriginMaps = {
   origin_direction_map: Partial<Record<DiscoveryOrigin, "long" | "short">>;
   /** Each rail's raw evidence score at merge. */
   origin_score_map: Partial<Record<DiscoveryOrigin, number>>;
-  /** Which origin's direction was KEPT under the merge precedence (FLOW under v1 precedence when
-   *  present; else the highest-precedence rail on the row). */
+  /** Which origin's direction was KEPT under the merge precedence (v2: highest score among rails
+   *  that agree with the kept direction; seating-order FLOW > BREAKOUT > PIN breaks ties). */
   direction_owner: DiscoveryOrigin;
   /** Origins whose argued direction DISAGREES with the kept direction — ALL of them, not just the
    *  first (the gap noteOriginDirectionConflict left). Empty on full agreement / single origin. */
@@ -349,13 +355,95 @@ export function recordOriginContributionsOnMerge(
   seedOriginContributions(kept, incoming.discovery_origin, incoming.direction, incoming.score);
 }
 
+/**
+ * Pick which rail owns the kept direction under v2 evidence-weighting: among rails that argued
+ * `keptDirection`, highest score wins; seating-order (FLOW > BREAKOUT > PIN) breaks ties.
+ * Pure. Falls back to the first origin on the row when none agree (defensive — should not happen
+ * after a correctly applied merge).
+ */
+export function resolveDirectionOwner(
+  origins: readonly DiscoveryOrigin[],
+  dirMap: Partial<Record<DiscoveryOrigin, "long" | "short">>,
+  scoreMap: Partial<Record<DiscoveryOrigin, number>>,
+  keptDirection: "long" | "short"
+): DiscoveryOrigin {
+  const agreeing = DISCOVERY_ORIGIN_ORDER.filter(
+    (o) => origins.includes(o) && dirMap[o] === keptDirection
+  );
+  if (agreeing.length === 0) return origins[0] ?? "FLOW";
+  let best = agreeing[0]!;
+  let bestScore = scoreMap[best] ?? 0;
+  for (const o of agreeing.slice(1)) {
+    const s = scoreMap[o] ?? 0;
+    if (s > bestScore) {
+      best = o;
+      bestScore = s;
+    }
+  }
+  return best;
+}
+
+/**
+ * Merge one incoming discovery setup onto a same-ticker kept setup (MERGE_POLICY_VERSION v2).
+ * Returns the setup that should occupy the ticker slot after the merge (may be `kept` or a
+ * replaced `incoming`). Same-direction → union origins + corroboration boost. Opposing
+ * directions → higher score owns the slot (strict `>`); seating order wins ties (kept was seated
+ * first, so equal scores keep FLOW/BREAKOUT over a later PIN). No boost on opposing co-discovery.
+ */
+export function mergeSameTickerDiscovery(
+  kept: EnrichedZeroDteSetup,
+  incoming: EnrichedZeroDteSetup
+): EnrichedZeroDteSetup {
+  recordOriginContributionsOnMerge(kept, incoming);
+  if (kept.direction === incoming.direction) {
+    kept.discovery_origin = unionDiscoveryOrigins(kept.discovery_origin, incoming.discovery_origin);
+    if (kept.discovery_origin.length > 1) {
+      kept.score = Math.min(100, (kept.score ?? 0) + CORROBORATION_SCORE_BOOST);
+    }
+    return kept;
+  }
+  const keptScore = Number.isFinite(kept.score) ? kept.score : 0;
+  const incomingScore = Number.isFinite(incoming.score) ? incoming.score : 0;
+  if (incomingScore > keptScore) {
+    // Incoming owns the direction — take its setup, preserve contribution maps, stamp the masked read.
+    incoming.origin_contributions = kept.origin_contributions;
+    incoming.discovery_origin = unionDiscoveryOrigins(kept.discovery_origin, incoming.discovery_origin);
+    if (!incoming.origin_direction_conflict) {
+      incoming.origin_direction_conflict = {
+        kept_direction: incoming.direction,
+        masked_direction: kept.direction,
+        masked_origin: [...kept.discovery_origin],
+      };
+    }
+    return incoming;
+  }
+  // Kept wins (higher or equal score). Stamp conflict; no corroboration boost on a fight.
+  noteOriginDirectionConflict(kept, incoming);
+  kept.discovery_origin = unionDiscoveryOrigins(kept.discovery_origin, incoming.discovery_origin);
+  return kept;
+}
+
+/** Count how many board setups carry each discovery rail (and how many are multi-rail). Pure. */
+export function summarizeDiscoveryRailMix(
+  setups: ReadonlyArray<Pick<EnrichedZeroDteSetup, "discovery_origin">>
+): { FLOW: number; BREAKOUT: number; PIN: number; multi: number; total: number } {
+  const out = { FLOW: 0, BREAKOUT: 0, PIN: 0, multi: 0, total: setups.length };
+  for (const s of setups) {
+    const origins = Array.isArray(s.discovery_origin) ? s.discovery_origin : [];
+    for (const o of origins) {
+      if (o === "FLOW" || o === "BREAKOUT" || o === "PIN") out[o] += 1;
+    }
+    if (origins.length > 1) out.multi += 1;
+  }
+  return out;
+}
+
 /** Build the frozen origin maps for a committing setup. Reads the contributions recorded at merge
  *  time; for any origin on the setup with no recorded contribution (the common single-rail case, or
  *  a rail that never went through a conflicting merge) it seeds from the setup's own kept
  *  direction/score — so the maps are ALWAYS complete for the row's discovery_origin set. Pure.
- *  direction_owner = the highest-precedence rail present (discovery_origin is canonically ordered
- *  FLOW < BREAKOUT < PIN, and the merge always keeps the highest-precedence rail's setup, so its
- *  first element owns the kept direction). */
+ *  direction_owner (v2) = highest-score rail among those that agree with the kept setup direction;
+ *  seating-order breaks ties. */
 export function buildOriginMaps(setup: EnrichedZeroDteSetup): OriginMaps {
   const contributions = setup.origin_contributions ?? {};
   const dirMap: Partial<Record<DiscoveryOrigin, "long" | "short">> = {};
@@ -368,8 +456,8 @@ export function buildOriginMaps(setup: EnrichedZeroDteSetup): OriginMaps {
     dirMap[o] = c ? c.direction : setup.direction;
     scoreMap[o] = c ? c.score : (Number.isFinite(setup.score) ? Math.round(setup.score) : 0);
   }
-  const owner: DiscoveryOrigin = origins[0] ?? "FLOW";
-  const keptDirection = dirMap[owner] ?? setup.direction;
+  const keptDirection = setup.direction;
+  const owner = resolveDirectionOwner(origins, dirMap, scoreMap, keptDirection);
   const disagreeing = origins.filter((o) => dirMap[o] !== keptDirection);
   return {
     origin_direction_map: dirMap,

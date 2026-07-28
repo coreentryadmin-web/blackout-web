@@ -245,6 +245,33 @@ test("mergePinOrigins unions a shared ticker to ['FLOW','PIN'] and appends uniqu
   assert.equal(merged.length, 2, "no duplicate row for the shared ticker");
 });
 
+test("mergePinOrigins: opposing PIN does not get corroboration boost (v2)", () => {
+  const flow: EnrichedZeroDteSetup[] = deriveZeroDteSetups(
+    [cleanFlowRow("NVDA")],
+    { todayYmd: TODAY, nowMs: Date.parse(`${TODAY}T14:05:00Z`) }
+  ).map((s) => enrichSetup(s, null));
+  assert.equal(flow.length, 1);
+  const before = flow[0]!.score;
+  // Pin near put wall → long fade. Flow from cleanFlowRow is a call (long). If same direction,
+  // we'd get a boost — force opposing by flipping the pin direction after build.
+  const regime = evaluatePinRegime(pinNearPutWall())!;
+  const pin = buildPinSetup({
+    ticker: "NVDA",
+    spot: 596,
+    regime,
+    contract: { strike: 597, expiry: TODAY, dte: 0, side: "call" },
+  });
+  // Ensure opposing: if pin happened to agree with flow, flip pin to short for this unit test.
+  if (pin.direction === flow[0]!.direction) {
+    pin.direction = flow[0]!.direction === "long" ? "short" : "long";
+  }
+  // Keep pin score ≤ flow so seating/score keeps FLOW (we are testing the no-boost path, not ownership).
+  pin.score = Math.min(pin.score, before);
+  mergePinOrigins(flow, [pin]);
+  assert.equal(flow[0]!.score, before, "opposing co-discovery must not receive +8");
+  assert.ok(flow[0]!.origin_direction_conflict, "opposing pin must stamp a conflict");
+});
+
 // ── Gate boundary + G-1: a pin fade passes the SHARED hard gates in a flat tape; G-1 culls it
 //    when the fade fights a trending broad tape ─────────────────────────────────────────────
 test("a pin fade bypasses the FLOW evidence gates, clears the shared stack in a flat tape, and G-1 blocks the counter-tape case", () => {

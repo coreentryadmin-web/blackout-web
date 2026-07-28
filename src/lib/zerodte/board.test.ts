@@ -9,6 +9,7 @@ import {
   rankEngineCards,
   enrichSetup,
   noteOriginDirectionConflict,
+  summarizeDiscoveryRailMix,
   type EnrichedZeroDteSetup,
   matchEarnings,
   matchHotNews,
@@ -1339,5 +1340,15 @@ test("noteOriginDirectionConflict: first conflict wins (a later opposing origin 
   noteOriginDirectionConflict(kept, { direction: "short", discovery_origin: ["PIN"] } as EnrichedZeroDteSetup);
   noteOriginDirectionConflict(kept, { direction: "short", discovery_origin: ["BREAKOUT"] } as EnrichedZeroDteSetup);
   assert.deepEqual(kept.origin_direction_conflict!.masked_origin, ["PIN"], "the first recorded conflict is preserved");
+});
+
+test("summarizeDiscoveryRailMix counts per-rail presence and multi-rail rows", () => {
+  const mix = summarizeDiscoveryRailMix([
+    { discovery_origin: ["FLOW"] },
+    { discovery_origin: ["FLOW", "BREAKOUT"] },
+    { discovery_origin: ["PIN"] },
+    { discovery_origin: ["BREAKOUT"] },
+  ] as EnrichedZeroDteSetup[]);
+  assert.deepEqual(mix, { FLOW: 2, BREAKOUT: 2, PIN: 1, multi: 1, total: 4 });
 });
 

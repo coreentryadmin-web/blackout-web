@@ -5,6 +5,31 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-28 — [product] 0DTE board was FLOW-only in practice (merge v1 + $-volume chain-fetch)
+
+**Severity.** P1 — Night Hawk / 0DTE Command supposed to mix FLOW + BREAKOUT + PIN (+ CONDOR), but
+live board ownership and outcomes behaved like a single-rail flow-momentum buyer.
+
+**Root cause.**
+1. `MERGE_POLICY_VERSION=v1` always kept the seating-order incumbent on direction conflict
+   (`mergeDiscoveryOrigins` / `mergePinOrigins`), so BREAKOUT/PIN could only ever *annotate* a FLOW
+   row — never own the ticket when they disagreed more strongly.
+2. Opposing co-discovery still received the `+8` corroboration boost (PIN fades almost always oppose
+   momentum), helping weak FLOW clears of G-3.
+3. BREAKOUT chain-fetch took the top-N by **$-volume** after `screenBreakoutMovers`, so sharper
+   mid-cap continuations lost the chain budget to mega-caps (discovery-recall-probe 2026-07-20…24).
+
+**Evidence.** Prod 2026-07-28 post-close board: 8 setups, 100% FLOW origin; 0 BREAKOUT / 0 PIN /
+0 CONDOR on the visible mix. 0DTE Command record ~35.6% WR / −2.87% avg (101 graded). (Post-close
+BREAKOUT also skips via RTH window — expected — but RTH ownership was still FLOW-dominated.)
+
+**Fix.** `MERGE_POLICY_VERSION=v2`: evidence-weighted conflict (higher score owns; seating-order
+ties); corroboration boost **only** on same-direction union. `rankMoversForChainFetch` orders the
+chain-fetch budget by momentum quality over a wider liquidity pool. Scan logs
+`[zerodte-scan] discovery rail mix …` each cycle. Docs: INTENTIONAL-DESIGN §1 + §4 updated.
+
+**Status.** OPEN PR for review (do not auto-merge) — branch `cursor/zerodte-multi-rail-discovery-3d11`.
+
 ## 2026-07-28 — [data-honesty] Vector max-pain `?horizon=` silently defaulted to ALL (7410 vs desk 7440)
 
 **Severity.** P2 — cross-tool mismatch risk on `/dashboard` confluence + audit/API consumers.

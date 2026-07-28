@@ -192,32 +192,58 @@ test("mergeDiscoveryOrigins unions a shared ticker to [\"FLOW\",\"BREAKOUT\"] an
   assert.equal(merged.length, 2, "no duplicate row for the shared ticker");
 });
 
-test("mergeDiscoveryOrigins stamps an opposing-direction co-discovery (Q1) without flipping the kept direction", () => {
-  // Kept setup is SHORT (e.g. a flow put-buyer); breakout argues LONG on the same ticker.
+test("mergeDiscoveryOrigins stamps an opposing-direction co-discovery (Q1) without flipping when scores tie", () => {
+  // Kept setup is SHORT (e.g. a flow put-buyer); breakout argues LONG on the same ticker at equal score.
+  // v2: seating-order wins ties → kept (FLOW) direction preserved.
   const kept = buildBreakoutSetup({ mover: { ticker: "NVDA", gain: 0.16, close_strength: 0.95, volume: 1e7, dollar: 1e9 }, spot: 140, contract: { strike: 145, expiry: TODAY, dte: 0 }, dollarNorm: 1 });
   kept.direction = "short";
   kept.discovery_origin = ["FLOW"];
   const breakoutLong = buildBreakoutSetup({ mover: { ticker: "NVDA", gain: 0.16, close_strength: 0.95, volume: 1e7, dollar: 1e9 }, spot: 140, contract: { strike: 145, expiry: TODAY, dte: 0 }, dollarNorm: 1 });
   // buildBreakoutSetup is momentum → long.
   assert.equal(breakoutLong.direction, "long");
+  assert.equal(kept.score, breakoutLong.score, "fixture scores must tie so seating-order decides");
 
   const merged = mergeDiscoveryOrigins([kept], [breakoutLong]);
   const nvda = merged.find((s) => s.ticker === "NVDA")!;
-  assert.equal(nvda.direction, "short", "kept direction is preserved (never fabricates agreement)");
+  assert.equal(nvda.direction, "short", "tie keeps seated (FLOW) direction — never fabricates agreement");
   assert.deepEqual(nvda.discovery_origin, ["FLOW", "BREAKOUT"], "origins still union");
   assert.deepEqual(nvda.origin_direction_conflict, {
     kept_direction: "short",
     masked_direction: "long",
     masked_origin: ["BREAKOUT"],
   });
+  // Opposing co-discovery must NOT get the corroboration boost.
+  assert.equal(nvda.score, kept.score, "no +8 boost when rails fight");
 });
 
-test("mergeDiscoveryOrigins: same-direction co-discovery records NO conflict", () => {
+test("mergeDiscoveryOrigins: higher-score opposing breakout wins the slot (v2 evidence-weighted)", () => {
+  const kept = buildBreakoutSetup({ mover: { ticker: "NVDA", gain: 0.05, close_strength: 0.55, volume: 1e7, dollar: 1e8 }, spot: 140, contract: { strike: 145, expiry: TODAY, dte: 0 }, dollarNorm: 0.1 });
+  kept.direction = "short";
+  kept.discovery_origin = ["FLOW"];
+  const weakFlowScore = kept.score;
+  const breakoutLong = buildBreakoutSetup({ mover: { ticker: "NVDA", gain: 0.22, close_strength: 0.98, volume: 2e7, dollar: 1e9 }, spot: 140, contract: { strike: 145, expiry: TODAY, dte: 0 }, dollarNorm: 1 });
+  assert.equal(breakoutLong.direction, "long");
+  assert.ok(breakoutLong.score > weakFlowScore, `breakout (${breakoutLong.score}) must beat flow (${weakFlowScore})`);
+
+  const merged = mergeDiscoveryOrigins([kept], [breakoutLong]);
+  const nvda = merged.find((s) => s.ticker === "NVDA")!;
+  assert.equal(nvda.direction, "long", "stronger breakout owns the direction under v2");
+  assert.deepEqual(nvda.discovery_origin, ["FLOW", "BREAKOUT"]);
+  assert.deepEqual(nvda.origin_direction_conflict, {
+    kept_direction: "long",
+    masked_direction: "short",
+    masked_origin: ["FLOW"],
+  });
+});
+
+test("mergeDiscoveryOrigins: same-direction co-discovery records NO conflict and boosts score", () => {
   const kept = buildBreakoutSetup({ mover: { ticker: "NVDA", gain: 0.16, close_strength: 0.95, volume: 1e7, dollar: 1e9 }, spot: 140, contract: { strike: 145, expiry: TODAY, dte: 0 }, dollarNorm: 1 });
   kept.discovery_origin = ["FLOW"]; // both long (momentum)
+  const before = kept.score;
   const breakoutLong = buildBreakoutSetup({ mover: { ticker: "NVDA", gain: 0.16, close_strength: 0.95, volume: 1e7, dollar: 1e9 }, spot: 140, contract: { strike: 145, expiry: TODAY, dte: 0 }, dollarNorm: 1 });
   const merged = mergeDiscoveryOrigins([kept], [breakoutLong]);
   assert.equal(merged[0]!.origin_direction_conflict, undefined);
+  assert.equal(merged[0]!.score, Math.min(100, before + 8), "same-direction corroboration gets +8");
 });
 
 // ── ATM 0DTE picker: 0DTE preferred, 1DTE allowed, weekly (dte≥2) EXCLUDED ───────────

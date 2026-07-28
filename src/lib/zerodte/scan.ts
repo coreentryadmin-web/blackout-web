@@ -63,6 +63,7 @@ import {
   polygonSpotTicker,
   buildOriginMaps,
   MERGE_POLICY_VERSION,
+  summarizeDiscoveryRailMix,
   type EarningsFlag,
   type EnrichedZeroDteSetup,
   type NewsHeat,
@@ -301,7 +302,8 @@ export async function scanZeroDteBoard(flags?: {
   // Flag-gated via ZERODTE_WHOLE_MARKET + ZERODTE_SRC_BREAKOUT (default ON; set to "0" to disable). When enabled, the
   // whole-market breakout screen emits its own candidates carrying discovery_origin ["BREAKOUT"];
   // they merge with the flow candidates BY TICKER preserving origin as a SET (a shared ticker →
-  // ["FLOW","BREAKOUT"]), never a collapsed pool, and no corroboration score boost (evidence-only).
+  // ["FLOW","BREAKOUT"]), never a collapsed pool. Merge policy v2: same-direction corroboration
+  // boosts score; opposing directions are evidence-weighted (higher score owns the slot).
   // Merged BEFORE the accumulation overlay + contract-attach + gate/Cortex stack so every breakout
   // candidate runs the SAME mandatory contract-attach + shared hard gates + Cortex as a flow one.
   // The IO orchestration is dynamic-imported so the flow-only board never loads the whole-market
@@ -339,9 +341,9 @@ export async function scanZeroDteBoard(flags?: {
   // Flag-gated via ZERODTE_WHOLE_MARKET + ZERODTE_SRC_PIN (default ON; set to "0" to disable). When enabled, a liquid-universe
   // screen emits mean-reversion candidates — names pinned between dominant dealer GEX walls in a
   // long-gamma tape — as directional-FADE setups carrying discovery_origin ["PIN"]. They merge BY
-  // TICKER preserving origin as a SET (a shared ticker → e.g. ["FLOW","PIN"]), never a collapsed pool,
-  // and no corroboration score boost (evidence-only). Merged here, AFTER deriveZeroDteSetups, so the
-  // FLOW evidence gates structurally never see them; each pin candidate runs the SAME mandatory
+  // TICKER preserving origin as a SET (a shared ticker → e.g. ["FLOW","PIN"]), never a collapsed
+  // pool. Merge policy v2 (same as breakout). Merged here, AFTER deriveZeroDteSetups, so the FLOW
+  // evidence gates structurally never see them; each pin candidate runs the SAME mandatory
   // contract-attach + shared hard gates + Cortex as a flow one. The fade direction is only ever
   // emitted in a genuine long-gamma RANGE, so G-1 (tape-alignment) passes cleanly in the flat-tape
   // case and correctly culls a fade that fights a trending broad tape (see pin-source.ts's G-1 note).
@@ -363,6 +365,16 @@ export async function scanZeroDteBoard(flags?: {
     } catch (err) {
       console.warn("[zerodte-pin] discovery failed — flow-only board this cycle:", err);
     }
+  }
+
+  // Observability: surface the post-merge rail mix every cycle so a FLOW-only board is diagnosable
+  // from logs (off-hours BREAKOUT/PIN skips vs. merge swallowing every non-flow name).
+  {
+    const mix = summarizeDiscoveryRailMix(setups);
+    console.info(
+      `[zerodte-scan] discovery rail mix total=${mix.total} FLOW=${mix.FLOW} BREAKOUT=${mix.BREAKOUT} ` +
+        `PIN=${mix.PIN} multi=${mix.multi} merge_policy=${MERGE_POLICY_VERSION}`
+    );
   }
 
   // Multi-day flow-accumulation memory: attach whether each setup's direction is confirmed by

@@ -21,9 +21,7 @@ import {
   deriveContractHorizon,
   enrichSetup,
   gradingPolicyForHorizon,
-  unionDiscoveryOrigins,
-  noteOriginDirectionConflict,
-  recordOriginContributionsOnMerge,
+  mergeSameTickerDiscovery,
   type EnrichedZeroDteSetup,
   type ZeroDteSetup,
 } from "./board";
@@ -253,13 +251,11 @@ export function buildBreakoutSetup(input: {
 // ── Merge + dedup (union by ticker, preserve origin as a SET) ─────────────────────────
 
 /**
- * Merge breakout setups into the flow setups IN PLACE, unioning origins by ticker. A ticker
- * already present in `flowSetups` keeps its (evidence-bearing) flow setup and gains "BREAKOUT" in
- * its discovery_origin set (e.g. ["FLOW","BREAKOUT"]); the duplicate breakout setup is dropped. A
- * ticker unique to the breakout source is appended. When a ticker ends up with multiple discovery
- * origins (FLOW + BREAKOUT corroboration), it gets a +8 score boost (capped at 100) -- two
- * independent sources agreeing on a name is a genuine conviction signal. Mutates + returns
- * `flowSetups`.
+ * Merge breakout setups into the flow setups IN PLACE, unioning origins by ticker (v2 policy via
+ * {@link mergeSameTickerDiscovery}). Same-direction corroboration unions origins and applies the
+ * corroboration boost; opposing directions are evidence-weighted (higher score owns the slot;
+ * seating-order wins ties — FLOW seated first). A ticker unique to the breakout source is appended.
+ * Mutates + returns `flowSetups`.
  */
 export function mergeDiscoveryOrigins(
   flowSetups: EnrichedZeroDteSetup[],
@@ -271,21 +267,11 @@ export function mergeDiscoveryOrigins(
     const key = b.ticker.toUpperCase();
     const existing = byTicker.get(key);
     if (existing) {
-      // Same ticker from two sources: union the origins onto the flow setup, keep the flow
-      // evidence (real prints/aggression), drop the bare breakout duplicate.
-      // Q1: if breakout argued the OPPOSITE direction, stamp the masked read as evidence
-      // (never flip the kept direction) so the origin band can grade opposing co-discovery.
-      // WS-06: record BOTH rails' (direction, score) BEFORE the union rewrites discovery_origin,
-      // so the frozen origin maps capture every disagreement, not just the first conflict pair.
-      recordOriginContributionsOnMerge(existing, b);
-      noteOriginDirectionConflict(existing, b);
-      existing.discovery_origin = unionDiscoveryOrigins(existing.discovery_origin, b.discovery_origin);
-      // Multi-source corroboration boost: two independent discovery systems agreeing on the same
-      // ticker is a conviction signal worth a score bump. +8 is conservative enough that a weak
-      // setup (score ~55) still fails G-3's 65 floor, but a borderline-good one (score ~60) can
-      // clear it with corroboration.
-      if (existing.discovery_origin && existing.discovery_origin.length > 1) {
-        existing.score = Math.min(100, (existing.score ?? 0) + 8);
+      const winner = mergeSameTickerDiscovery(existing, b);
+      if (winner !== existing) {
+        const idx = flowSetups.indexOf(existing);
+        if (idx >= 0) flowSetups[idx] = winner;
+        byTicker.set(key, winner);
       }
     } else {
       byTicker.set(key, b);

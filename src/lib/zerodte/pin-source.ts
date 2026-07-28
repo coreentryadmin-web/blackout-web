@@ -27,9 +27,7 @@ import {
   deriveContractHorizon,
   enrichSetup,
   gradingPolicyForHorizon,
-  unionDiscoveryOrigins,
-  noteOriginDirectionConflict,
-  recordOriginContributionsOnMerge,
+  mergeSameTickerDiscovery,
   type DiscoveryOrigin,
   type EnrichedZeroDteSetup,
   type ZeroDteSetup,
@@ -336,16 +334,10 @@ export function buildPinSetup(input: {
 // ── Merge (union by ticker, preserve origin as a SET) ─────────────────────────────────────────
 
 /**
- * Merge pin setups into the existing setups IN PLACE, unioning origins by ticker. A ticker already
- * present keeps its (evidence-bearing) existing setup and gains "PIN" in its discovery_origin set
- * (e.g. ["FLOW"] -> ["FLOW","PIN"]); the duplicate pin setup is dropped. A ticker unique to the pin
- * source is appended. When a ticker ends up with multiple discovery origins (corroboration), it gets
- * a +8 score boost (capped at 100). Mutates + returns `existing`.
- *
- * Note: a shared ticker keeps the EXISTING setup's DIRECTION (flow/breakout momentum), not the pin
- * fade -- corroboration by two sources on opposite directions is a real signal-quality question the
- * graded origin band will answer; collapsing it here would fabricate agreement. The pin's provenance
- * is still recorded via the unioned origin so the calibration slice sees it.
+ * Merge pin setups into the existing setups IN PLACE, unioning origins by ticker (v2 policy via
+ * {@link mergeSameTickerDiscovery}). Same-direction corroboration unions + boosts; opposing
+ * directions are evidence-weighted (higher score owns the slot; seating-order wins ties — FLOW /
+ * BREAKOUT seated before PIN). A pin-only ticker is appended. Mutates + returns `existing`.
  */
 export function mergePinOrigins(
   existing: EnrichedZeroDteSetup[],
@@ -357,20 +349,11 @@ export function mergePinOrigins(
     const key = p.ticker.toUpperCase();
     const found = byTicker.get(key);
     if (found) {
-      // Q1: a pin FADE that opposes the kept (flow/breakout momentum) direction is stamped
-      // as evidence -- the kept direction is never flipped (that would fabricate agreement),
-      // but the opposing read survives to the graded origin band instead of vanishing.
-      // WS-06: record BOTH rails' (direction, score) BEFORE the union rewrites discovery_origin,
-      // so the frozen origin maps capture every disagreement, not just the first conflict pair.
-      recordOriginContributionsOnMerge(found, p);
-      noteOriginDirectionConflict(found, p);
-      found.discovery_origin = unionDiscoveryOrigins(found.discovery_origin, p.discovery_origin);
-      // Multi-source corroboration boost: two or more independent discovery systems agreeing on
-      // the same ticker is a conviction signal worth a score bump. +8 is conservative enough
-      // that a weak setup still fails G-3's 65 floor, but a borderline-good one can clear it
-      // with corroboration.
-      if (found.discovery_origin && found.discovery_origin.length > 1) {
-        found.score = Math.min(100, (found.score ?? 0) + 8);
+      const winner = mergeSameTickerDiscovery(found, p);
+      if (winner !== found) {
+        const idx = existing.indexOf(found);
+        if (idx >= 0) existing[idx] = winner;
+        byTicker.set(key, winner);
       }
     } else {
       byTicker.set(key, p);

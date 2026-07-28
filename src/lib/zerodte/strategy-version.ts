@@ -48,8 +48,9 @@ import { PLAN_RULES } from "./plan";
  *  constant below (a coarse catch-all so a broad rewrite still partitions). */
 export const ENGINE_VERSION = "v1";
 /** Discovery layer (which independent sources surface a candidate + their cuts). Bump
- *  when the discovery origins / top-N cuts / accumulation feed change materially. */
-export const DISCOVERY_VERSION = "v1";
+ *  when the discovery origins / top-N cuts / accumulation feed change materially.
+ *  v2 (2026-07-28): merge policy evidence-weighted + BREAKOUT momentum chain-fetch rank. */
+export const DISCOVERY_VERSION = "v2";
 /** Score formula — the evidence score the gate stack judges. Bump on ANY change to the
  *  scoring math or its weights (the F-2 / F-5 forensic bands are read per this). */
 export const SCORER_VERSION = "v1";
