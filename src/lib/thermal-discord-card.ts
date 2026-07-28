@@ -374,8 +374,9 @@ export async function renderThermalDiscordCardPng(
   columns: ThermalCardColumn[]
 ): Promise<Buffer> {
   const svg = buildThermalDiscordCardSvg(columns);
-  // PNG at native 4K; slight compression keeps Discord uploads under typical limits.
-  return sharp(Buffer.from(svg), { density: 144 })
+  // Native 3840×2160 — do NOT raise `density` (default 72). density:144 doubles
+  // pixels to 7680×4320 and Discord stops inline-previewing (>~4096px → file download).
+  return sharp(Buffer.from(svg))
     .png({ compressionLevel: 7, adaptiveFiltering: true })
     .toBuffer();
 }
