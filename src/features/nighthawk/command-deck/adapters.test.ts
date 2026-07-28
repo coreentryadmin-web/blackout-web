@@ -989,6 +989,21 @@ test("Legacy adapter: earnings_risk → EARNINGS RISK gate", () => {
   assert.equal(g!.ok, false);
 });
 
+test("Legacy adapter: optionsPlay and rrRatio surface on TerminalPlay", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "MSFT", direction: "long", rank: 1, score: 72,
+    options_play: "Buy MSFT 450C 8/8 @ $6.20", rr_ratio: 2.4,
+  });
+  assert.equal(play.optionsPlay, "Buy MSFT 450C 8/8 @ $6.20");
+  assert.equal(play.rrRatio, 2.4);
+});
+
+test("Legacy adapter: missing optionsPlay/rrRatio → null", () => {
+  const play = terminalPlayFromEdition({ ticker: "SPY", direction: "long", rank: 1, score: 50 });
+  assert.equal(play.optionsPlay, null);
+  assert.equal(play.rrRatio, null);
+});
+
 test("overlayLegacyQuotes: stockPrice stays undefined when no quote", () => {
   const play = terminalPlayFromEdition({
     ticker: "AAPL", direction: "long", rank: 1, score: 75,

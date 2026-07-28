@@ -222,9 +222,11 @@ function PlayCard({
             <span className="nh-deck-prem" style={{ display: "block" }}>
               ${p.stockPrice.toFixed(2)}
             </span>
-            <span className="nh-deck-premlab">STOCK</span>
-            <span className={clsx("nh-deck-pnl", (p.stockChangePct ?? 0) > 0 && "nh-deck-pos", (p.stockChangePct ?? 0) < 0 && "nh-deck-neg")} style={{ display: "block" }}>
-              {p.stockChangePct != null ? `${p.stockChangePct >= 0 ? "+" : ""}${p.stockChangePct.toFixed(1)}%` : "—"}
+            <span className="nh-deck-premlab">{p.pnlPct != null ? "P&L" : "STOCK"}</span>
+            <span className={clsx("nh-deck-pnl", (p.pnlPct ?? p.stockChangePct ?? 0) > 0 && "nh-deck-pos", (p.pnlPct ?? p.stockChangePct ?? 0) < 0 && "nh-deck-neg")} style={{ display: "block" }}>
+              {p.pnlPct != null
+                ? `${p.pnlPct >= 0 ? "+" : ""}${p.pnlPct.toFixed(1)}%`
+                : p.stockChangePct != null ? `${p.stockChangePct >= 0 ? "+" : ""}${p.stockChangePct.toFixed(1)}%` : "—"}
             </span>
           </>
         ) : (

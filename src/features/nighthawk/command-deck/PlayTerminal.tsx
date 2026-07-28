@@ -372,6 +372,9 @@ function ManagePanel({ play, nowMs }: { play: TerminalPlay; nowMs: number }) {
           the prod ratchet default) AND it is not a condor. */}
       {isTrimScale && <TrimScaleLadder play={play} />}
 
+      {/* Legacy entry plan — the recommended option contract + R:R ratio. */}
+      {play.horizon === "LEGACY" && <LegacyEntryPlan play={play} />}
+
       {/* Legacy entry geometry — structured levels + live stock-price progress track. */}
       {play.horizon === "LEGACY" && (play.entryRange || play.targetLevel || play.stopLevel || play.progress != null) && (
         <LegacyManageGeometry play={play} />
@@ -586,6 +589,33 @@ function PnlPanel({ play }: { play: TerminalPlay }) {
         <div><span className="k">Trough</span><span className="v nh-deck-neg">{signPct(play.trough)}</span></div>
       </div>
       <div className="nh-deck-recnote" style={{ marginTop: 16 }}>Peak/trough = the full excursion since entry — how much heat you took and gave back.</div>
+    </>
+  );
+}
+
+function LegacyEntryPlan({ play }: { play: TerminalPlay }) {
+  const hasContract = !!play.optionsPlay;
+  const rr = play.rrRatio;
+  if (!hasContract && rr == null) return null;
+  return (
+    <>
+      <div className="nh-deck-lab" style={{ marginTop: 12 }}>Entry plan</div>
+      {hasContract && (
+        <div className="nh-deck-meta">
+          <div><span className="k">Contract</span><span className="v">{play.optionsPlay}</span></div>
+          {play.entry != null && <div><span className="k">Entry premium</span><span className="v">{usd(play.entry)}</span></div>}
+        </div>
+      )}
+      {rr != null && (
+        <div className="nh-deck-meta" style={hasContract ? { marginTop: 4 } : undefined}>
+          <div>
+            <span className="k">Risk : Reward</span>
+            <span className={clsx("v", rr >= 2 && "nh-deck-pos", rr < 1 && "nh-deck-neg")}>
+              {rr.toFixed(1)}:1{rr >= 2 ? " (strong)" : rr >= 1 ? " (favorable)" : rr >= 0.5 ? " (acceptable)" : " (tight)"}
+            </span>
+          </div>
+        </div>
+      )}
     </>
   );
 }

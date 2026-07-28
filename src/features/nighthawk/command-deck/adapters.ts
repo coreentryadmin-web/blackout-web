@@ -529,5 +529,7 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
     stopLevel: src.stop ?? null,
     thesis: src.thesis ?? null,
     keySignal: src.key_signal ?? null,
+    optionsPlay: src.options_play ?? null,
+    rrRatio: fin(src.rr_ratio),
   };
 }
