@@ -24,31 +24,31 @@ describe("assignNighthawkTier", () => {
     assert.ok(result.factors.some((f) => f.label === "Strong signal breadth"));
   });
 
-  test("prime-band score + adequate signals → A", () => {
+  test("prime-band score + adequate signals → B (needs strong signals for A)", () => {
     const result = assignNighthawkTier({
       score: 45,
       confirmingSignals: 2,
       earningsRisk: false,
     });
-    assert.equal(result.tier, "A");
+    assert.equal(result.tier, "B");
   });
 
-  test("mid-band score + strong signals → A", () => {
+  test("mid-band score + strong signals → B (mid-band weight + strong = 3, below A threshold)", () => {
     const result = assignNighthawkTier({
       score: 60,
       confirmingSignals: 3,
       earningsRisk: false,
     });
-    assert.equal(result.tier, "A");
+    assert.equal(result.tier, "B");
   });
 
-  test("top-band score (≥70) with strong signals → A (PR-N15: cap removed)", () => {
+  test("top-band score (≥70) with strong signals → B (top-band weight + strong = 3, below A threshold)", () => {
     const result = assignNighthawkTier({
       score: 80,
       confirmingSignals: 5,
       earningsRisk: false,
     });
-    assert.equal(result.tier, "A");
+    assert.equal(result.tier, "B");
     assert.ok(result.factors.some((f) => f.label === "High score band"));
   });
 
@@ -121,23 +121,23 @@ describe("assignNighthawkTier", () => {
     assert.ok(result.factors.some((f) => f.label === "Prime score band"));
   });
 
-  test("boundary: score exactly at prime max (55) → mid band", () => {
+  test("boundary: score exactly at prime max (55) → mid band → B with strong signals", () => {
     const result = assignNighthawkTier({
       score: NH_SCORE_PRIME_MAX,
       confirmingSignals: 3,
       earningsRisk: false,
     });
-    assert.equal(result.tier, "A");
+    assert.equal(result.tier, "B");
     assert.ok(result.factors.some((f) => f.label === "Mid score band"));
   });
 
-  test("boundary: score exactly at top min (70) → top band, A with strong signals (PR-N15)", () => {
+  test("boundary: score exactly at top min (70) → top band, B with strong signals (top weight 1 + strong 2 = 3)", () => {
     const result = assignNighthawkTier({
       score: NH_SCORE_TOP_MIN,
       confirmingSignals: 5,
       earningsRisk: false,
     });
-    assert.equal(result.tier, "A");
+    assert.equal(result.tier, "B");
   });
 
   test("factors are populated for every input", () => {
@@ -215,14 +215,14 @@ describe("nhDisplayTierFor", () => {
 // ── measured inversion guard (the WHY of this engine) ───────────────────────────
 
 describe("overnight inversion guard", () => {
-  test("PR-N15: top-band (70+) with strong signals CAN earn A — cap removed", () => {
+  test("PR-N15: top-band (70+) with strong signals earns B — no hard ceiling, but points (1+2=3) below A threshold (4)", () => {
     for (const score of [70, 75, 80, 85, 90, 95, 100]) {
       const result = assignNighthawkTier({
         score,
         confirmingSignals: 5,
         earningsRisk: false,
       });
-      assert.equal(result.tier, "A", `score ${score} should earn A with 5 confirming signals`);
+      assert.equal(result.tier, "B", `score ${score} with strong signals → B (top weight 1 + strong 2 = 3 < 4)`);
     }
   });
 
