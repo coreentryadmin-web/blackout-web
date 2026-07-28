@@ -431,7 +431,7 @@ test("PR-N31: diversity swap fires for contrarian candidate above DIVERSITY_HEDG
 test("PR-N31+N33: Phase 1 rejects natural short below DIVERSITY_HEDGE_FLOOR; Phase 2 forced contrarian may still fire", () => {
   // FF is a natural short with score 15 — below DIVERSITY_HEDGE_FLOOR (20), so Phase 1 skips it.
   // Phase 2 then tries forced contrarian re-scoring on the all-LONG pool. With default dossier
-  // data and boosted tech scores, forced contrarian scores should land >= FORCED_CONTRARIAN_FLOOR (15).
+  // data and boosted tech scores, forced contrarian scores should land >= FORCED_CONTRARIAN_FLOOR (25).
   // The key assertion: the short that appears is a FORCED contrarian (Phase 2), not the natural FF.
   const ranked = [
     scored("AA", "long", 70),
@@ -449,7 +449,7 @@ test("PR-N31+N33: Phase 1 rejects natural short below DIVERSITY_HEDGE_FLOOR; Pha
     dossierMap[r.ticker] = dossier(r.ticker, spot);
   }
   // FF is the only candidate left after AA-EE fill the 5 slots. It needs bearish tech
-  // so forced-short re-score clears FORCED_CONTRARIAN_FLOOR (15).
+  // so forced-short re-score clears FORCED_CONTRARIAN_FLOOR (25).
   // scoreContrarianHedge re-scores from the DOSSIER, not the candidate's tech_score field.
   dossierMap["FF"] = dossier("FF", 100, {
     tech: {
@@ -598,8 +598,8 @@ test("PR-N32: forced contrarian does NOT fire when natural opposite-direction ca
   );
 });
 
-test("PR-N33: forced contrarian fires with candidate above FORCED_CONTRARIAN_FLOOR (15)", () => {
-  // All LONG, moderate tech/positioning to produce a forced contrarian score above the 15 floor.
+test("PR-N33: forced contrarian fires with candidate above FORCED_CONTRARIAN_FLOOR (25)", () => {
+  // All LONG, moderate tech/positioning to produce a forced contrarian score above the 25 floor.
   // Before N33 any signal-free candidate was admitted; now it needs real contrarian evidence.
   const ranked = [
     scored("AA", "long", 72),
@@ -618,19 +618,29 @@ test("PR-N33: forced contrarian fires with candidate above FORCED_CONTRARIAN_FLO
     chains[r.ticker] = chainAround(spot);
     dossierMap[r.ticker] = dossier(r.ticker, spot);
   }
-  // GG needs bearish tech so forced-short re-score clears FORCED_CONTRARIAN_FLOOR (15).
+  // GG needs bearish tech + positioning so forced-short re-score clears FORCED_CONTRARIAN_FLOOR (25).
   // scoreContrarianHedge re-scores from the DOSSIER, not the candidate's tech_score/pos_score.
   dossierMap["GG"] = dossier("GG", 100, {
     tech: {
       ticker: "GG", price: 100, trend: "bearish" as const,
-      setup_tags: ["gap down"], support_levels: [95], resistance_levels: [105],
+      setup_tags: ["gap down", "breakdown"], support_levels: [90], resistance_levels: [105],
       gap_zones: [], breakout_zones: [],
-      prior_day: { high: 105, low: 95, close: 100 },
+      prior_day: { high: 108, low: 98, close: 100 },
       weekly: { high: null, low: null },
-      rsi14: 72, rel_volume: 2.0, atr14: 3,
-      vwap: 101, ema20: 101, ema50: 101, ema200: 101,
-      summary: "GG bearish reversal",
+      rsi14: 75, rel_volume: 2.5, atr14: 4,
+      vwap: 102, ema20: 103, ema50: 104, ema200: 106,
+      summary: "GG bearish reversal — price below all EMAs, overbought RSI",
     },
+    positioning: {
+      net_gex: -500000,
+      gex_king_strike: 95,
+      gamma_flip: 98,
+      gamma_regime: "negative",
+      net_vex: -200000,
+      max_pain: 95,
+      negative_gamma: true,
+      wall_summary: "Put wall at 95 — bearish positioning supports short thesis",
+    } as TickerDossier["positioning"],
   });
 
   const { plays } = buildDeterministicEditionPlays({ ranked, dossierMap, chains, target: 5 });
@@ -642,7 +652,7 @@ test("PR-N33: forced contrarian fires with candidate above FORCED_CONTRARIAN_FLO
     "should carry forced contrarian gate_warning"
   );
   const hedgeScore = shorts[0]!.score ?? 0;
-  assert.ok(hedgeScore >= 15, `hedge score ${hedgeScore} should be >= FORCED_CONTRARIAN_FLOOR (15)`);
+  assert.ok(hedgeScore >= 25, `hedge score ${hedgeScore} should be >= FORCED_CONTRARIAN_FLOOR (25)`);
 });
 
 // ── Diversity hedge fires at 3 plays (not just >= 4) ──────────────────────────
