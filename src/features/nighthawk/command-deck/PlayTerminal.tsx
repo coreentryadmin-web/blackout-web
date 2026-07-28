@@ -262,12 +262,22 @@ function HeaderBadges({ play }: { play: TerminalPlay }) {
   const hasBadges = play.tierLabel || play.confluence != null || (play.discoveryOrigin?.length ?? 0) > 0 || play.sector || play.morningStatus;
   if (!hasBadges && !play.scorecard) return null;
   return (
-    <div className="nh-deck-badges">
-      {play.morningStatus && play.morningStatus !== "UNVERIFIED" && (
-        <span className={clsx("nh-deck-badge", play.morningStatus === "CONFIRMED" ? "morn-ok" : play.morningStatus === "DEGRADED" ? "morn-warn" : "morn-brk")}>
-          {play.morningStatus === "CONFIRMED" ? "✓ CONFIRMED" : play.morningStatus === "DEGRADED" ? "⚠ DEGRADED" : "✗ INVALIDATED"}
-        </span>
+    <>
+      {play.morningStatus && (
+        <div className={clsx(
+          "nh-deck-verdict",
+          play.morningStatus === "CONFIRMED" ? "verdict-ok"
+          : play.morningStatus === "DEGRADED" ? "verdict-warn"
+          : play.morningStatus === "INVALIDATED" ? "verdict-brk"
+          : "verdict-pending",
+        )}>
+          {play.morningStatus === "CONFIRMED" ? "PRE-MARKET CONFIRMED"
+          : play.morningStatus === "DEGRADED" ? "PRE-MARKET DEGRADED"
+          : play.morningStatus === "INVALIDATED" ? "INVALIDATED"
+          : "MORNING CONFIRM PENDING"}
+        </div>
       )}
+      <div className="nh-deck-badges">
       {play.sector && <span className="nh-deck-badge sector">{play.sector.toUpperCase()}</span>}
       {play.tierLabel && <span className="nh-deck-badge tier">TIER {play.tierLabel}</span>}
       {play.confluence != null && <span className="nh-deck-badge conf">CONFLUENCE {play.confluence}{play.horizon === "LEGACY" ? "" : "/2"}</span>}
@@ -282,6 +292,7 @@ function HeaderBadges({ play }: { play: TerminalPlay }) {
         </span>
       )}
     </div>
+    </>
   );
 }
 

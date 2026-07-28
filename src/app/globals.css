@@ -16075,6 +16075,13 @@ body::before {
 .nh-deck-stream .nh-deck-stale-mark{color:var(--dk-amber)}
 .nh-deck-stream .nh-deck-stalebadge{margin-left:6px;padding:1px 5px;border-radius:2px;font-size:8px;
   color:var(--dk-amber);border:1px solid rgba(255,184,77,.4);background:rgba(255,184,77,.08)}
+/* Morning verdict banner — prominent, dedicated row above all other badges. */
+.nh-deck-verdict{padding:6px 16px;font-size:11px;font-weight:800;letter-spacing:.15em;text-align:center;
+  border-bottom:1px solid var(--dk-line)}
+.nh-deck-verdict.verdict-ok{background:rgba(53,255,158,.08);color:var(--dk-green-hi);text-shadow:var(--dk-glow)}
+.nh-deck-verdict.verdict-warn{background:rgba(255,184,77,.08);color:var(--dk-amber)}
+.nh-deck-verdict.verdict-brk{background:rgba(255,77,77,.1);color:var(--dk-red,#ff4d4d)}
+.nh-deck-verdict.verdict-pending{background:rgba(120,140,130,.06);color:var(--dk-ink-dim);font-weight:600}
 /* Header badges — tier / confluence / discovery origin / calibration scorecard. */
 .nh-deck-badges{display:flex;flex-wrap:wrap;gap:6px;padding:6px 16px;border-bottom:1px solid var(--dk-line);background:#050c08}
 .nh-deck-badge{font-size:9px;font-weight:700;letter-spacing:.1em;padding:2px 7px;border-radius:2px;
@@ -16155,6 +16162,8 @@ body::before {
 .nh-deck-cbadge.stale{color:var(--dk-amber);border-color:rgba(255,184,77,.4)}
 .nh-deck-cbadge.conf{color:var(--dk-green-hi);border-color:rgba(53,255,158,.5);background:rgba(53,255,158,.08)}
 .nh-deck-cbadge.warn{color:var(--dk-amber);border-color:rgba(255,184,77,.5);background:rgba(255,184,77,.08)}
+.nh-deck-cbadge.brk{color:var(--dk-red,#ff4d4d);border-color:rgba(255,77,77,.5);background:rgba(255,77,77,.08)}
+.nh-deck-cbadge.pending{color:var(--dk-ink-dim);border-color:rgba(120,140,130,.4)}
 .nh-deck-cchip{font-size:7.5px;font-weight:700;letter-spacing:.06em;padding:1px 4px;border-radius:2px;
   border:1px solid rgba(56,230,255,.3);color:var(--dk-cyan)}
 .nh-deck-cchip.ok{color:var(--dk-cyan);border-color:rgba(56,230,255,.3)}

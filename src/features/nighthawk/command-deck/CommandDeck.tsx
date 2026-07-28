@@ -227,8 +227,10 @@ function PlayCard({
           <span className={clsx("nh-deck-st", p.status)}>{p.status}</span>
           {p.tierLabel && <span className="nh-deck-cbadge tier">{p.tierLabel}</span>}
           {p.discoveryOrigin?.[0] && <span className="nh-deck-cbadge orig">{p.discoveryOrigin[0]}</span>}
-          {p.horizon === "LEGACY" && p.regime?.includes("CONFIRMED") && <span className="nh-deck-cbadge conf">CONFIRMED</span>}
-          {p.horizon === "LEGACY" && p.regime?.includes("DEGRADED") && <span className="nh-deck-cbadge warn">DEGRADED</span>}
+          {p.horizon === "LEGACY" && p.morningStatus === "CONFIRMED" && <span className="nh-deck-cbadge conf">CONFIRMED</span>}
+          {p.horizon === "LEGACY" && p.morningStatus === "DEGRADED" && <span className="nh-deck-cbadge warn">DEGRADED</span>}
+          {p.horizon === "LEGACY" && p.morningStatus === "INVALIDATED" && <span className="nh-deck-cbadge brk">INVALIDATED</span>}
+          {p.horizon === "LEGACY" && p.morningStatus === "UNVERIFIED" && <span className="nh-deck-cbadge pending">PENDING</span>}
           {isCondor && <CondorCardChip play={p} />}
           {stale && <span className="nh-deck-cbadge stale" title="Mark is stale — frozen">◷ {ageLabel}</span>}
         </span>
