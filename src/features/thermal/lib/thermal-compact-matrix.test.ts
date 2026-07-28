@@ -6,6 +6,7 @@ import {
   fmtCompactExpiry,
   fmtCompactHeatMoney,
   resolveCompactExpiries,
+  resolveZeroDteExpiry,
 } from "./thermal-compact-matrix.ts";
 
 test("fmtCompactExpiry → M/D", () => {
@@ -26,13 +27,20 @@ test("bandStrikesAroundSpot centers on nearest strike", () => {
   assert.deepEqual(bandStrikesAroundSpot([], 100, 2), []);
 });
 
-test("compare desk strike band (~28 half-width) is long enough to read like major matrix", () => {
-  const strikes = Array.from({ length: 80 }, (_, i) => 100 + i);
-  const band = bandStrikesAroundSpot(strikes, 140, 28);
-  assert.equal(band.length, 57); // 28 below + spot + 28 above
-  assert.ok(band.includes(140));
-  assert.equal(band[0], 112);
-  assert.equal(band[band.length - 1], 168);
+test("compare desk strike band (~40 half-width) is a tall 0DTE ladder", () => {
+  const strikes = Array.from({ length: 100 }, (_, i) => 100 + i);
+  const band = bandStrikesAroundSpot(strikes, 150, 40);
+  assert.equal(band.length, 81); // 40 below + spot + 40 above
+  assert.ok(band.includes(150));
+  assert.equal(band[0], 110);
+  assert.equal(band[band.length - 1], 190);
+});
+
+test("resolveZeroDteExpiry prefers today when on axis, else earliest", () => {
+  const near = ["2026-07-28", "2026-07-29", "2026-07-30"];
+  assert.equal(resolveZeroDteExpiry(near, near, "2026-07-28"), "2026-07-28");
+  assert.equal(resolveZeroDteExpiry(near, near, "2026-07-31"), "2026-07-28");
+  assert.equal(resolveZeroDteExpiry([], [], "2026-07-28"), null);
 });
 
 test("fmtCompactHeatMoney dense labels", () => {

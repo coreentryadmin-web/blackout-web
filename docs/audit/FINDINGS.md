@@ -11,13 +11,14 @@ evidence / fix / status per the CLAUDE.md policy.)
 
 **Symptom.** Compare ON matrices (SPY|SPX|QQQ) were too small to read — ultra-dense
 `thermal-compact-*` CSS (7.5px cell text, 1.85rem expiry cols, 62vh/520px scroll).
+Operator reference: tall 0DTE heat strips with a synced horizontal cursor.
 
 **Root cause.** Triple desk shipped with “fit three desks in one viewport” density that
-crushed fonts/columns far below the major Thermal matrix (`text-[12px]`, tall scroll clamp).
+crushed fonts/columns far below the major Thermal matrix / 0DTE strip aesthetic.
 
-**Fix.** Match major matrix sizing: 12px cell/strike text, `Jul 28` expiry headers,
-`fmtHeatmapMoneySigned` labels, min cell width ~4.5rem, scroll `clamp(480px,74vh,880px)`,
-strike half-band 28 (~57 rows), up to 12 near-term expiries, grid `minmax(22rem,1fr)`.
+**Fix.** Default compare mode = **0DTE** single-expiry heat strip (Near toggle for multi);
+12px labels; boosted strip intensity; ~81-strike ladder (half=40); tall scroll
+`clamp(620px,82vh,1080px)`; synced crosshair + scroll across SPY|SPX|QQQ.
 
 **Status.** PR `cursor/thermal-compare-matrix-size-3d11`.
 

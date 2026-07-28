@@ -30,6 +30,25 @@ export function resolveCompactExpiries(
 }
 
 /**
+ * Single 0DTE expiry for the compare heat-strip: today's date if present on the
+ * axis, else the earliest near-term / axis expiry (same rule as Thermal 0DTE chip).
+ */
+export function resolveZeroDteExpiry(
+  nearTerm: string[] | undefined | null,
+  all: string[] | undefined | null,
+  todayYmd?: string | null,
+): string | null {
+  const axis = resolveCompactExpiries(nearTerm, all, 64);
+  if (axis.length === 0) return null;
+  const today =
+    typeof todayYmd === "string" && /^\d{4}-\d{2}-\d{2}$/.test(todayYmd)
+      ? todayYmd
+      : null;
+  if (today && axis.includes(today)) return today;
+  return axis[0] ?? null;
+}
+
+/**
  * Band strikes around spot. Prefer equal rows above/below when possible.
  * Falls back to full list when spot is missing.
  */

@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties } from "react";
+import type { CSSProperties, RefObject } from "react";
 import type { GexHeatmapLens } from "@/lib/gex-heatmap-display";
 import {
   fmtHeatmapExpiry,
@@ -14,11 +14,15 @@ import {
   compactMatrixPeak,
   nearestStrikeIndex,
   resolveCompactExpiries,
+  resolveZeroDteExpiry,
 } from "@/features/thermal/lib/thermal-compact-matrix";
 
-/** Match major Thermal matrix readability while keeping three desks side-by-side. */
-export const THERMAL_COMPARE_MAX_EXPIRIES = 12;
-export const THERMAL_COMPARE_STRIKE_HALF = 28;
+/** Tall 0DTE heat strips (Bobby-style vertical ladders). */
+export const THERMAL_COMPARE_STRIKE_HALF = 40;
+/** Fallback when near-term multi-expiry mode is selected. */
+export const THERMAL_COMPARE_MAX_EXPIRIES = 8;
+
+export type ThermalCompareMode = "0dte" | "near";
 
 export type ThermalCompactPayload = {
   ticker: string;
@@ -32,21 +36,79 @@ export type ThermalCompactPayload = {
 type Props = {
   data: ThermalCompactPayload;
   lens: GexHeatmapLens;
+  mode?: ThermalCompareMode;
   pinnedStrikes: number[];
   onTogglePin: (strike: number) => void;
+  /** Spot-relative row index shared across SPY|SPX|QQQ for the synced cursor. */
+  crosshairIndex?: number | null;
+  onCrosshairIndex?: (index: number | null) => void;
+  scrollRef?: RefObject<HTMLDivElement>;
+  onScrollSync?: (scrollTop: number, scrollLeft: number) => void;
 };
+
+function todayEtYmd(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+/** Boost mid-band intensity so the strip reads as a heat ladder, not pale cells. */
+function stripCellStyle(
+  value: number,
+  peak: number,
+  lens: GexHeatmapLens,
+): CSSProperties {
+  const base = heatmapCellStyle(value, peak, lens);
+  if (!value || peak <= 0) {
+    return { backgroundColor: "rgba(15, 23, 42, 0.85)" };
+  }
+  const mag = Math.min(1, Math.abs(value) / peak);
+  const alpha = 0.22 + Math.pow(mag, 1.1) * 0.78;
+  const bg = String(base.backgroundColor ?? "");
+  const boosted = bg.replace(
+    /rgba\(([^,]+),([^,]+),([^,]+),([^)]+)\)/,
+    (_, r, g, b) => `rgba(${r},${g},${b},${alpha.toFixed(3)})`,
+  );
+  return {
+    ...base,
+    backgroundColor: boosted || base.backgroundColor,
+    boxShadow:
+      mag > 0.35
+        ? `inset 0 0 22px ${boosted.replace(/[\d.]+\)$/, `${(mag * 0.45).toFixed(2)})`)}`
+        : base.boxShadow,
+  };
+}
 
 export default function ThermalCompactMatrix({
   data,
   lens,
+  mode = "0dte",
   pinnedStrikes,
   onTogglePin,
+  crosshairIndex = null,
+  onCrosshairIndex,
+  scrollRef,
+  onScrollSync,
 }: Props) {
-  const expiries = resolveCompactExpiries(
-    data.nearTermExpiries,
-    data.expiries,
-    THERMAL_COMPARE_MAX_EXPIRIES,
-  );
+  const expiries =
+    mode === "0dte"
+      ? (() => {
+          const zero = resolveZeroDteExpiry(
+            data.nearTermExpiries,
+            data.expiries,
+            todayEtYmd(),
+          );
+          return zero ? [zero] : [];
+        })()
+      : resolveCompactExpiries(
+          data.nearTermExpiries,
+          data.expiries,
+          THERMAL_COMPARE_MAX_EXPIRIES,
+        );
+
   const strikes = bandStrikesAroundSpot(
     data.strikes,
     data.spot,
@@ -55,6 +117,7 @@ export default function ThermalCompactMatrix({
   const spotIdx = nearestStrikeIndex(strikes, data.spot ?? null);
   const pinSet = new Set(pinnedStrikes);
   const peak = compactMatrixPeak(data.cells, strikes, expiries);
+  const is0dte = mode === "0dte";
 
   if (expiries.length === 0 || strikes.length === 0) {
     return (
@@ -65,10 +128,19 @@ export default function ThermalCompactMatrix({
   }
 
   return (
-    <div className="thermal-compact-scroll">
+    <div
+      ref={scrollRef}
+      className={`thermal-compact-scroll${is0dte ? " is-0dte" : ""}`}
+      onScroll={(e) => {
+        if (!onScrollSync) return;
+        const el = e.currentTarget;
+        onScrollSync(el.scrollTop, el.scrollLeft);
+      }}
+      onMouseLeave={() => onCrosshairIndex?.(null)}
+    >
       <table
-        className="thermal-compact-table"
-        aria-label={`${data.ticker} ${lens.toUpperCase()} matrix`}
+        className={`thermal-compact-table${is0dte ? " is-0dte" : ""}`}
+        aria-label={`${data.ticker} ${lens.toUpperCase()} ${is0dte ? "0DTE" : "near-term"} matrix`}
       >
         <thead>
           <tr>
@@ -77,7 +149,14 @@ export default function ThermalCompactMatrix({
             </th>
             {expiries.map((exp) => (
               <th key={exp} className="thermal-compact-exp" scope="col" title={exp}>
-                {fmtHeatmapExpiry(exp)}
+                {is0dte ? (
+                  <>
+                    <span className="thermal-compact-exp-chip">0DTE</span>
+                    <span className="thermal-compact-exp-date">{fmtHeatmapExpiry(exp)}</span>
+                  </>
+                ) : (
+                  fmtHeatmapExpiry(exp)
+                )}
               </th>
             ))}
           </tr>
@@ -86,6 +165,7 @@ export default function ThermalCompactMatrix({
           {strikes.map((strike, si) => {
             const isSpot = si === spotIdx;
             const pinned = pinSet.has(strike);
+            const isCross = crosshairIndex === si;
             const row = data.cells[String(strike)] ?? {};
             return (
               <tr
@@ -94,9 +174,11 @@ export default function ThermalCompactMatrix({
                   "thermal-compact-row",
                   isSpot ? "is-spot" : "",
                   pinned ? "is-pinned" : "",
+                  isCross ? "is-crosshair" : "",
                 ]
                   .filter(Boolean)
                   .join(" ")}
+                onMouseEnter={() => onCrosshairIndex?.(si)}
               >
                 <th scope="row" className="thermal-compact-strike">
                   <button
@@ -116,7 +198,9 @@ export default function ThermalCompactMatrix({
                   const val = row[exp];
                   const n = typeof val === "number" && Number.isFinite(val) ? val : 0;
                   const style: CSSProperties = {
-                    ...heatmapCellStyle(n, peak, lens),
+                    ...(is0dte
+                      ? stripCellStyle(n, peak, lens)
+                      : heatmapCellStyle(n, peak, lens)),
                     ...heatmapCellTextStyle(n, peak),
                   };
                   return (
