@@ -209,7 +209,7 @@ export function PlayTerminal({ play }: { play: TerminalPlay | null }) {
 
       <div className="nh-deck-foot">
         <span>EXIT · {play.exitModel === "SCALE_OUT" ? "TRIM-SCALE" : play.exitModel}</span>
-        <span>{play.tierLabel ? `TIER ${play.tierLabel}` : play.scorecard ? `WR ${play.scorecard.winRate}%` : ""}</span>
+        <span>{play.tierLabel ? `TIER ${play.tierLabel}` : play.scorecard ? `WR ${Number.isFinite(play.scorecard.winRate) ? `${play.scorecard.winRate}%` : "—"}` : ""}</span>
         {play.allocation && <span style={{ marginLeft: "auto" }}>{play.allocation.role} · {play.allocation.sizing}</span>}
       </div>
     </div>
