@@ -57,8 +57,8 @@ export const DISCOVERY_VERSION = "v3";
 export const SCORER_VERSION = "v2";
 /** Gate stack (G-1…G-n thresholds + calibration/enforce modes). Bump when a gate's
  *  threshold moves or a gate flips calibration↔enforce (it changes what commits).
- *  v3 (2026-07-28): heat/SKIP POST_COMMIT@14:00, CONDOR merge preserve + late persist/discovery. */
-export const GATE_VERSION = "v3";
+ *  v4 (2026-07-28): G-15 not_zero_dte — fresh commits require ZERO_DTE contract horizon. */
+export const GATE_VERSION = "v4";
 /** Night Hawk Cortex evidence vector + weighting. Bump when the Cortex composition or
  *  its veto/abstain logic changes (it changes which plays survive to commit). */
 export const CORTEX_VERSION = "v1";

@@ -635,6 +635,7 @@ export type ZeroDteGateFailure =
   | "no_market_bias" // G-1 fail-closed: bias read missing or stale
   | "opening_window" // G-2: no new commits before 10:00 ET
   | "late_afternoon" // G-14: no new directional commits after 14:00 ET
+  | "not_zero_dte" // G-15: selected contract is 1DTE/weekly — 0DTE board only commits true same-day expiry
   | "score_floor" // G-3: post-edge-layer score below 65
   | "confluence_floor" // G-12: too few VWAP-side/market-aligned confirmations (0-conf −12.5% EV; higher floor 10:00–10:45)
   | "governor_max_concurrent" // G-5: 3 plans already open

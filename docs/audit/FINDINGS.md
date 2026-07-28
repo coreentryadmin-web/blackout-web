@@ -5,6 +5,23 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-28 — [0DTE-funnel] CTO pass-3: still had bugs on the branch (1DTE commit + PIN rank)
+
+**Severity.** P0 honesty / P1 recall — user challenge: line was **not** clean after pass-2.
+
+**Bugs still on PR #1199 after pass-2 (fixed this pass).**
+1. **1DTE still committed** — prefer-ZERO_DTE was sort-only; MU/AMD/AAPL etc. opened as ONE_DTE
+   on a 0DTE product. Fix: **G-15 `not_zero_dte`** — fresh commit requires `contract_horizon=ZERO_DTE`
+   (1DTE stays WATCH). `GATE_VERSION` → **v4**.
+2. **PIN first-8 list-order** — evaluated `.slice(0,8)` before regime quality. Fix: evaluate up to
+   `PIN_EVAL_CAP=20`, condor roots first, return top `PIN_MAX_CANDIDATES` by score.
+3. **Stale ZeroDteBoard 15:00 copy/test** — updated to POST_COMMIT / 14:00.
+
+**Still open (not claiming clean).**
+- VIX elevated floor, edge/WR, CONDOR unproven live, prod undeployed.
+
+**Status.** Fixed on draft PR #1199.
+
 ## 2026-07-28 — [0DTE-funnel] CTO audit pass-2: heat/CONDOR/ToD still broken after cutoff align
 
 **Severity.** P0 — second deep read after pass-1 cutoff align found **four more commit/path bugs**

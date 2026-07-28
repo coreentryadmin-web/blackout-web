@@ -322,6 +322,10 @@ export type ZeroDteGateInput = {
   macroUnavailable?: boolean;
   /** G-8/G-9: contract plan from attachContractPlans (null = no quote + no fill). */
   plan?: ContractPlan | null;
+  /** G-15: selected contract horizon (`ZERO_DTE` | `ONE_DTE` | `WEEKLY_FALLBACK`). Absent →
+   *  gate no-op (legacy callers/tests). When present and not `ZERO_DTE`, fresh commits are blocked
+   *  so the 0DTE board never grades a tomorrow-expiry as a same-session scalp. */
+  contractHorizon?: "ZERO_DTE" | "ONE_DTE" | "WEEKLY_FALLBACK" | null;
   /** G-10: name's own VWAP/5m trend opposes the play (intraday.ts). */
   intradayConflict?: boolean;
   /** G-11: UW trading halt on the underlying. */
@@ -428,6 +432,20 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
         "With <1.5 hours of theta left, long-premium entries face accelerating decay " +
         "and almost never reach target.",
       threshold: LATE_AFTERNOON_BLOCK_ET_MINUTES,
+      unlock_et: null,
+    });
+  }
+
+  // G-15 — true 0DTE only. Prefer-ZERO_DTE sort was cosmetic: MU/AMD/AAPL etc. still committed
+  // as ONE_DTE on a product labeled 0DTE (prod 2026-07-28). Keep 1DTE visible as WATCH; never
+  // open a fresh ledger row that the same-day 15:30 grader will mis-score as 0DTE.
+  if (input.contractHorizon != null && input.contractHorizon !== "ZERO_DTE") {
+    blocks.push({
+      code: "not_zero_dte",
+      reason:
+        `Selected contract is ${input.contractHorizon === "ONE_DTE" ? "1DTE (tomorrow expiry)" : "not same-day"} — ` +
+        "the 0DTE board only commits true same-session expiries. Watching until a 0DTE contract is available.",
+      threshold: 0,
       unlock_et: null,
     });
   }

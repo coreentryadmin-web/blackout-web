@@ -693,6 +693,7 @@ async function attachGateVerdicts(
       condorPlan: s.condor_plan ?? null,
       score: s.score,
       discovery_origin: s.discovery_origin,
+      contractHorizon: s.contract_horizon ?? null,
       nowEtMinutes,
       nowMs,
       bias,

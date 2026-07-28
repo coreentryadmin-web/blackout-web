@@ -67,9 +67,12 @@ export function resolvePinUniverse(): string[] {
   return [...DEFAULT_PIN_UNIVERSE];
 }
 
-/** Cap the per-ticker chain fetches per scan — the universe is already small + curated; this bounds
- *  the work even if the universe is widened via the env override. */
+/** Cap how many PIN setups are RETURNED per scan (board surface + merge budget). */
 export const PIN_MAX_CANDIDATES = 8;
+/** Cap how many tickers we EVALUATE (GEX + chain) before ranking — larger than the return cap so
+ *  we pick the best regimes, not the first N list-order names (FINDINGS 2026-07-28). Condor-eligible
+ *  roots are always included in the eval window first. */
+export const PIN_EVAL_CAP = 20;
 
 /** Calendar days between two YYYY-MM-DD dates (UTC-noon anchored) — local copy so this module
  *  doesn't reach into pin-source's private helper. */
@@ -182,8 +185,15 @@ export async function discoverPinSetups(opts: {
   if (lateCondorOnly) {
     // Post-14:00: only cash-settled index roots can still open (G-14 / persist CONDOR exemption).
     universe = universe.filter((t) => condorEligibleTicker(t));
+  } else {
+    // Condor-eligible roots first so SPX/NDX never fall out of a truncated env override list,
+    // then evaluate up to PIN_EVAL_CAP and rank by score before returning top maxCandidates.
+    const roots = universe.filter((t) => condorEligibleTicker(t));
+    const others = universe.filter((t) => !condorEligibleTicker(t));
+    universe = [...roots, ...others];
   }
-  universe = universe.slice(0, maxCandidates);
+  const evalCap = Math.max(maxCandidates, PIN_EVAL_CAP);
+  universe = universe.slice(0, evalCap);
   if (universe.length === 0) {
     console.info("[zerodte-pin] pin universe empty after excludes — SKIP");
     return [];
@@ -265,11 +275,16 @@ export async function discoverPinSetups(opts: {
     })
   );
 
-  const setups = built.filter((s): s is EnrichedZeroDteSetup => s != null);
+  const setups = built
+    .filter((s): s is EnrichedZeroDteSetup => s != null)
+    .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+    .slice(0, maxCandidates);
   if (setups.length === 0) {
     console.info(`[zerodte-pin] scanned ${universe.length} liquid name(s), no clean pin regime — SKIP`);
     return [];
   }
-  console.info(`[zerodte-pin] built ${setups.length} pin setup(s) from ${universe.length} liquid name(s)`);
+  console.info(
+    `[zerodte-pin] built ${setups.length} pin setup(s) from ${universe.length} evaluated name(s) (ranked by score)`
+  );
   return setups;
 }
