@@ -33,24 +33,26 @@ test("zeroDteSources: a committed ledger status wins over the gate verdict", () 
   assert.equal(s!.live_pnl_pct, 25);
 });
 
-test("zeroDteSources: an OPEN ledger position the scan didn't surface is UNIONED in, never dropped (9-4)", () => {
+test("zeroDteSources: WORKING + CLOSED ledger positions the scan didn't surface are UNIONED in (9-4)", () => {
   const resp: BoardResp = {
     setups: [{ ticker: "spy", score: 70 }], // scan surfaces SPY only
     ledger: [
       { ticker: "SPY", status: "WATCH" },
       { ticker: "NVDA", status: "HOLD", direction: "long", top_strike: 180, entry_premium: 4, last_mark: 6, live_pnl_pct: 50, peak_premium: 7, trough_premium: 3.5 },
-      { ticker: "TSLA", status: "CLOSED" }, // closed → NOT unioned
+      { ticker: "TSLA", status: "CLOSED" }, // closed → UNIONED so it appears under "Closed" filter
     ],
   };
   const out = zeroDteSources(resp);
   const tks = out.map((s) => s.ticker).sort();
-  assert.deepEqual(tks, ["NVDA", "SPY"]); // NVDA present (open), TSLA absent (closed)
+  assert.deepEqual(tks, ["NVDA", "SPY", "TSLA"]); // NVDA (open) + TSLA (closed) both unioned
   const nvda = out.find((s) => s.ticker === "NVDA")!;
   assert.equal(nvda.status, "HOLD");
   assert.equal(nvda.live_pnl_pct, 50);
   assert.equal(nvda.peak_premium, 7); // peak/trough carried so the PnL panel excursion renders (9-7)
   assert.equal(nvda.trough_premium, 3.5);
   assert.equal(nvda.setup?.direction, "long"); // synthesized so the card isn't blank
+  const tsla = out.find((s) => s.ticker === "TSLA")!;
+  assert.equal(tsla.status, "CLOSED");
 });
 
 test("zeroDteSources: a working position already in the setups list is not duplicated", () => {

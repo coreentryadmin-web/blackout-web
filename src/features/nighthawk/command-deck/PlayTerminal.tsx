@@ -216,6 +216,11 @@ export function PlayTerminal({ play }: { play: TerminalPlay | null }) {
           ) : (
             <><span className="nh-deck-dot off" /><span className="of">{stale ? "STALE" : "—"}</span></>
           )}
+          {!isCondor && play.stockPrice != null && (
+            <>{" · "}{play.ticker}{" "}
+              <span className={clsx(stockFlash && "neon")}>${play.stockPrice.toFixed(2)}</span>
+            </>
+          )}
           {" · mark "}
           <span className={clsx(markFlash && "neon", stale && "nh-deck-stale-mark")}>{usd(play.mark)}</span>
           {!isCondor && play.execMark != null && <span className="nh-deck-fill"> · fill ≈{usd(play.execMark)}</span>}
@@ -411,6 +416,8 @@ function ManagePanel({ play, nowMs }: { play: TerminalPlay; nowMs: number }) {
       {showsTimeStopClock(play) && <TimeStopClock nowMs={nowMs} />}
 
       {isCondor && <CondorPanel play={play} />}
+
+      {play.horizon === "ZERO_DTE" && !isCondor && <ZeroDteEntryPlan play={play} />}
 
       {showsRatchetTrack(play) && (
         <>
@@ -636,15 +643,41 @@ function PnlPanel({ play }: { play: TerminalPlay }) {
           {play.execMark != null && <span className="nh-deck-recnote"> (sell into {usd(play.execMark)} bid)</span>}
         </div>
       )}
-      <ExcursionViz play={play} />
+      {!has && play.mark != null && (
+        <ZeroDtePreEntryContext play={play} />
+      )}
+      {has && <ExcursionViz play={play} />}
       <div className="nh-deck-grid">
         <div><span className="k">Entry</span><span className="v">{has ? usd(play.entry) : "—"}</span></div>
         <div><span className="k">Live mark</span><span className="v">{usd(play.mark)}</span></div>
-        <div><span className="k">Peak</span><span className="v nh-deck-pos">{signPct(play.peak)}</span></div>
-        <div><span className="k">Trough</span><span className="v nh-deck-neg">{signPct(play.trough)}</span></div>
+        {has && <div><span className="k">Peak</span><span className="v nh-deck-pos">{signPct(play.peak)}</span></div>}
+        {has && <div><span className="k">Trough</span><span className="v nh-deck-neg">{signPct(play.trough)}</span></div>}
       </div>
-      <div className="nh-deck-recnote" style={{ marginTop: 16 }}>Peak/trough = the full excursion since entry — how much heat you took and gave back.</div>
+      {has && <div className="nh-deck-recnote" style={{ marginTop: 16 }}>Peak/trough = the full excursion since entry — how much heat you took and gave back.</div>}
     </>
+  );
+}
+
+/** Pre-entry context for 0DTE plays: shows live mark relative to the plan's stop/target levels. */
+function ZeroDtePreEntryContext({ play }: { play: TerminalPlay }) {
+  const rr = play.rrRatio;
+  return (
+    <div className="nh-deck-meta" style={{ marginTop: 8 }}>
+      <div className="nh-deck-recnote" style={{ marginBottom: 8, opacity: 0.7 }}>
+        Not yet committed — mark vs plan levels:
+      </div>
+      {play.optionsPlay && (
+        <div><span className="k">Contract</span><span className="v" style={{ fontSize: "0.85em" }}>{play.optionsPlay}</span></div>
+      )}
+      {rr != null && (
+        <div>
+          <span className="k">Risk : Reward</span>
+          <span className={clsx("v", rr >= 2 && "nh-deck-pos", rr < 1 && "nh-deck-neg")}>
+            {rr.toFixed(1)}:1{rr >= 2 ? " (strong)" : rr >= 1 ? " (favorable)" : rr >= 0.5 ? " (acceptable)" : " (tight)"}
+          </span>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -681,6 +714,32 @@ function LegacyEntryPlan({ play }: { play: TerminalPlay }) {
           </div>
         </div>
       )}
+    </>
+  );
+}
+
+function ZeroDteEntryPlan({ play }: { play: TerminalPlay }) {
+  const hasContract = !!play.optionsPlay;
+  const rr = play.rrRatio;
+  if (!hasContract && rr == null) return null;
+  return (
+    <>
+      <div className="nh-deck-lab" style={{ marginTop: 12 }}>Entry plan</div>
+      <div className="nh-deck-meta">
+        {hasContract && (
+          <div><span className="k">Contract</span><span className="v" style={{ fontSize: "0.85em" }}>{play.optionsPlay}</span></div>
+        )}
+        {play.mark != null && <div><span className="k">Current mark</span><span className="v">{usd(play.mark)}</span></div>}
+        {play.stockPrice != null && <div><span className="k">Underlying</span><span className="v">${play.stockPrice.toFixed(2)}</span></div>}
+        {rr != null && (
+          <div>
+            <span className="k">Risk : Reward</span>
+            <span className={clsx("v", rr >= 2 && "nh-deck-pos", rr < 1 && "nh-deck-neg")}>
+              {rr.toFixed(1)}:1{rr >= 2 ? " (strong)" : rr >= 1 ? " (favorable)" : rr >= 0.5 ? " (acceptable)" : " (tight)"}
+            </span>
+          </div>
+        )}
+      </div>
     </>
   );
 }

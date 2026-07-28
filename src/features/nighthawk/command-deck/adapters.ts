@@ -33,6 +33,15 @@ const asStatus = (s: unknown): DeckStatus => {
 };
 const fin = (n: unknown): number | null => (typeof n === "number" && Number.isFinite(n) ? n : null);
 
+/** R:R from the plan's target/stop premiums (reward ÷ risk, relative to a hypothetical entry at the mid). */
+function rrFromPlan(plan: { stop_premium?: number | null; target_premium?: number | null } | null | undefined): number | null {
+  const stop = fin(plan?.stop_premium);
+  const target = fin(plan?.target_premium);
+  if (stop == null || target == null || stop <= 0 || target <= stop) return null;
+  // R:R = (target − stop) / stop, approximating entry ≈ stop (risk = entry − 0 for a long)
+  return Math.round(((target - stop) / stop) * 10) / 10;
+}
+
 /** Map a parsed condor geometry (snake, from the payload) + a live underlying into the terminal's
  *  camelCase DeckCondor. `spot` prefers the LIVE underlying and flags it (spotIsLive); a null geometry
  *  (a condor with no pinned plan) yields null so the render degrades to "geometry unavailable". */
@@ -278,6 +287,10 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
     gates,
     regime: setup?.gamma_regime ? `gamma ${setup.gamma_regime}` : null,
     allocation: alloc,
+    // Directional plays surface the underlying stock price; condors use the tent's spot instead.
+    stockPrice: isCondor !== true ? fin(src.underlying_price) : null,
+    optionsPlay: setup?.plan?.occ ?? null,
+    rrRatio: rrFromPlan(setup?.plan),
     thesisBreak:
       setup?.market_aligned === false
         ? { level: "warn", note: "tape alignment lost" }
