@@ -291,11 +291,11 @@ function PlayCard({
             </span>
             <span className="nh-deck-premlab">{isCondor ? "MARK" : "MID"}</span>
             <span className={clsx("nh-deck-pnl", (p.pnlPct ?? 0) > 0 && "nh-deck-pos", (p.pnlPct ?? 0) < 0 && "nh-deck-neg")} style={{ display: "block" }}>
-              {p.pnlPct != null && p.pnlPct !== 0 ? `${p.pnlPct > 0 ? "+" : ""}${p.pnlPct}%` : "—"}
+              {p.pnlPct != null && p.pnlPct !== 0 ? `${p.pnlPct > 0 ? "+" : ""}${p.pnlPct.toFixed(1)}%` : "—"}
             </span>
             {showExec && (
               <span className={clsx("nh-deck-cardexec", p.execPnlPct! < 0 && "nh-deck-neg")}>
-                fill {p.execPnlPct! > 0 ? "+" : ""}{p.execPnlPct}%
+                fill {p.execPnlPct! > 0 ? "+" : ""}{p.execPnlPct!.toFixed(1)}%
               </span>
             )}
           </>

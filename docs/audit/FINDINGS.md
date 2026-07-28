@@ -3549,3 +3549,37 @@ components). No existing fields or rendering changed. `deck-sort.ts` already buc
 band 2 (sorted last).
 
 **Status:** PR #1188 merged (squash, `ff17eefd`).
+
+## 2026-07-28 — [correctness] ManagePanel frozen at 5s board poll cadence (PR #1189)
+
+**Severity.** P1 — the Management tab (the "action" panel users watch most) only updated every 5s
+while the P&L tab updated every 1s from SSE marks, making it look "static".
+
+**Root cause.** `PlayTerminal.tsx:ManagePanel` read `play.recommendation`, `play.recNote`, and
+`play.progress` — values computed once in the adapter (`managementFor()`) from the board-poll
+`live_pnl_pct`. The SSE live-marks overlay pushed fresh `pnlPct` at ~1s, but ManagePanel's
+recommendation badge, advisory text, and ratchet progress bar stayed frozen at the 5s value.
+
+**Fix.** ManagePanel now calls `managementFor(play.exitModel, play.status, play.pnlPct)` at render
+time, recomputing from the SSE-overlaid pnlPct on every render.
+
+**Status:** PR #1189 merged (squash, `b4a46eb4`).
+
+## 2026-07-28 — [regression] Legacy ManagePanel shows generic "HOLD" after PR #1189 (PR #1190)
+
+**Severity.** P1 — Legacy plays always showed "HOLD" with generic text even when the stock hit
+stop/target levels, because `managementFor("PLAN", ...)` doesn't know about stop/target geometry.
+
+**Root cause.** PR #1189's `managementFor()` recompute was correct for 0DTE (RATCHET/SCALE_OUT) but
+regressed Legacy (exitModel `"PLAN"`). The function's P&L thresholds (-45% sell, +90% trim) are
+designed for option-premium P&L, not stock-level moves (typically single-digit %). Meanwhile,
+`overlayLegacyQuotes` (use-legacy-quotes.ts:141-153) had already computed the correct dynamic
+recommendation from live stock price vs stop/target — PR #1189 discarded these values.
+
+**Fix.** ManagePanel now prefers `play.recommendation`/`play.recNote` when `exitModel === "PLAN"` and
+the overlay has set them. 0DTE RATCHET/SCALE_OUT still recompute from live pnlPct as intended.
+
+Also fixed P&L display precision: 0DTE card/PnlPanel rendered raw `pnlPct` without `.toFixed()`,
+showing values like `+64.29%` vs Legacy's clean `+64.3%`. Now consistently `.toFixed(1)` everywhere.
+
+**Status:** PR #1190 — CI running.
