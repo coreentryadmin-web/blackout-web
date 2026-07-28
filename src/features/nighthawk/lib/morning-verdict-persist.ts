@@ -34,8 +34,10 @@ export const MORNING_VERDICT_VERSION = 2;
 // NVDA/BE/NBIS signature). A lone "reduce size" advisory stays label-only.
 export const DEGRADED_SEVERE_REASON_COUNT = 2;
 
-/** True when a DEGRADED verdict reflects a gap-away from the published entry band —
- *  the member should not chase, so the play is pulled pre-open. */
+/** True when a DEGRADED verdict reflects a gap-away from the published entry band.
+ *  With entry re-anchoring (Phase 3.75), gap-through-entry in the THESIS direction
+ *  no longer degrades — the band is updated on the outcomes row. This now only
+ *  triggers on the legacy reason text (pre-reanchor) or a genuine contra-direction gap. */
 export function isDegradedGapAway(status: PlayStatus): boolean {
   if (status.status !== "DEGRADED") return false;
   const reason = status.reason.toLowerCase();

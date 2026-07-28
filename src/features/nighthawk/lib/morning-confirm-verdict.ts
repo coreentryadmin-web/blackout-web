@@ -98,9 +98,11 @@ export function computePlayVerdict(
         ? entryHi != null && stockPx > entryHi * 1.005
         : entryLo != null && stockPx < entryLo * 0.995
     ) {
-      if (status === "CONFIRMED") status = "DEGRADED";
+      // Gap through entry in the thesis direction — the morning confirm will
+      // re-anchor the grading band to the pre-market price so the play is
+      // still fillable. Advisory only; no longer a pull trigger.
       reasons.push(
-        `${play.ticker} pre-market ${stockPx.toFixed(2)} gapped ${isLong ? "above" : "below"} the entry range — do not chase the published entry`
+        `${play.ticker} pre-market ${stockPx.toFixed(2)} gapped ${isLong ? "above" : "below"} the entry range — entry re-anchored to pre-market`
       );
     }
   }
