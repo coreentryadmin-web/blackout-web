@@ -596,9 +596,15 @@ export function buildDeterministicEditionPlays(params: {
   const skipGrounding = built.filter((p) => p.entry_premium == null || !strictContractTickers.has(p.ticker.toUpperCase()));
   const { plays: grounded, summary } = groundPlays(withContract, params.chains, params.dossierMap);
 
-  // Merge grounded option plays + caveated/stock-only plays, sorted by score descending
+  // Merge grounded option plays + caveated/stock-only plays, sorted by effective score
+  // (governor-penalized) so cross-edition demotions survive the grounding merge.
+  const scoreMap = new Map<string, number>();
+  for (const s of params.ranked) {
+    const eff = s.score - (s.govPenalty ?? 0);
+    scoreMap.set(s.ticker.toUpperCase(), eff);
+  }
   const merged = [...grounded, ...skipGrounding].sort(
-    (a, b) => (b.score ?? 0) - (a.score ?? 0)
+    (a, b) => (scoreMap.get(b.ticker.toUpperCase()) ?? b.score ?? 0) - (scoreMap.get(a.ticker.toUpperCase()) ?? a.score ?? 0)
   );
 
   // PR-N15 + PR-N31 + PR-N32: directional diversity — if all plays are the same direction and

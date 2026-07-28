@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { canonicalTicker, deduplicateTickerFamilies } from "./play-constraints";
+import { canonicalTicker, deduplicateTickerFamilies, validatePlayGeometry, MIN_RR_RATIO } from "./play-constraints";
 
 // ── canonicalTicker ─────────────────────────────────────────────────────────
 
@@ -71,4 +71,48 @@ test("deduplicateTickerFamilies: order matters — higher-ranked (first) member 
   assert.equal(kept.length, 1);
   assert.equal(kept[0]!.ticker, "GOOG");
   assert.equal(dropped[0]!.item.ticker, "GOOGL");
+});
+
+// ── validatePlayGeometry: R:R minimum ──────────────────────────────────────
+
+test("validatePlayGeometry: rejects a LONG play with R:R below minimum", () => {
+  const play = {
+    ticker: "AAPL",
+    direction: "LONG",
+    entry_range: "$150.00–$152.00",
+    target: "$152.50",
+    stop: "$145.00",
+  };
+  const v = validatePlayGeometry(play as any);
+  assert.equal(v.ok, false);
+  assert.ok(v.drops.some(d => d.includes("R:R")));
+});
+
+test("validatePlayGeometry: accepts a LONG play with R:R above minimum", () => {
+  const play = {
+    ticker: "AAPL",
+    direction: "LONG",
+    entry_range: "$150.00–$152.00",
+    target: "$160.00",
+    stop: "$148.00",
+  };
+  const v = validatePlayGeometry(play as any);
+  assert.equal(v.ok, true);
+});
+
+test("validatePlayGeometry: rejects a SHORT play with terrible R:R", () => {
+  const play = {
+    ticker: "TSLA",
+    direction: "SHORT",
+    entry_range: "$250.00–$252.00",
+    target: "$250.50",
+    stop: "$260.00",
+  };
+  const v = validatePlayGeometry(play as any);
+  assert.equal(v.ok, false);
+  assert.ok(v.drops.some(d => d.includes("R:R")));
+});
+
+test("MIN_RR_RATIO is 0.5", () => {
+  assert.equal(MIN_RR_RATIO, 0.5);
 });

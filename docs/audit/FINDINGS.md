@@ -5,6 +5,26 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-28 — [correctness] Governor demotion undone by builder merge-sort + no R:R minimum gate (branch `fix/governor-sort-override`)
+
+**Severity.** Medium (edition quality — governor-demoted plays could re-promote to the top 5; plays with terrible R:R could publish).
+
+**Finding 1: Governor sort override.**
+The cross-edition governor (`cross-edition-governor.ts`) re-sorts candidates by `effectiveScore` (original − penalty) but only returns the original `ScoredCandidate` objects. The edition builder (`deterministic-edition.ts:640`) then re-sorts grounded plays by `score` (the original, un-penalized field), undoing the governor's demotion. A candidate the governor pushed from rank 3 to rank 8 would get rebuilt (within the buffer of 25) and then re-promoted to rank 3 by the merge sort, potentially appearing in the final top-5 edition over a non-demoted candidate.
+
+**Root cause.** `applyCrossEditionGovernor` returns `survivors.map(s => s.scored)` — the original scored objects without any trace of the penalty. The builder's merge sort at line 640 has no access to the penalty.
+
+**Fix.** Added `govPenalty?: number` to `ScoredCandidate` (scorer.ts:55). The governor now stamps it on demoted candidates. The builder's merge sort uses `score − govPenalty` so the governor ordering survives grounding.
+
+**Finding 2: No minimum R:R enforcement.**
+`validatePlayGeometry()` in `play-constraints.ts` checked directional consistency (target on the right side of entry, stop on the right side) but never enforced a minimum reward-to-risk ratio. A play with 0.2:1 R:R would pass geometry and publish.
+
+**Fix.** Added `MIN_RR_RATIO = 0.5` and a geometry drop when `reward/risk < 0.5`. This means a play's potential reward must be at least half its risk — an extremely lenient floor that only catches truly untradeable geometry.
+
+**Evidence.** All 65 tests pass (governor 25, constraints 12, deterministic-edition 28). New tests cover both fixes. `npx tsc --noEmit` clean.
+
+**Status.** FIXED — PR pending.
+
 ## 2026-07-26 — [correctness] Iron-condor `live_pnl_pct` inverted AT THE SERVER SOURCE — fixed at source + removed the redundant Wave-2 render flip (branch `fix/condor-graded-pnl-sign`)
 
 **Severity.** Medium (member-facing data correctness; condor rows only — active when `ZERODTE_CONDOR=1`).
