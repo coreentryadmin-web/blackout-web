@@ -594,7 +594,6 @@ function LegacyManageGeometry({ play }: { play: TerminalPlay }) {
   const target = play.targetLevel ? parseFloat(play.targetLevel.replace(/[^0-9.]/g, "")) : null;
   const stop = play.stopLevel ? parseFloat(play.stopLevel.replace(/[^0-9.]/g, "")) : null;
   const spot = play.stockPrice;
-  const isLong = play.direction === "LONG";
 
   const distTarget = spot != null && target != null && Number.isFinite(target) && spot > 0
     ? { pct: ((target - spot) / spot * 100), dollars: target - spot } : null;
