@@ -425,6 +425,15 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
     .filter(([, v]) => typeof v === "number" && v !== 0)
     .map(([k, v]) => ({ label: FB_LABELS[k] ?? k, points: v as number }));
 
+  // Surface IV rank and R:R ratio as factors when the pipeline computed them — these are real
+  // scoring components the edition carries but were previously discarded by the adapter.
+  if (src.iv_rank != null && Number.isFinite(src.iv_rank)) {
+    factors.push({ label: "IV Rank", points: src.iv_rank });
+  }
+  if (src.rr_ratio != null && Number.isFinite(src.rr_ratio)) {
+    factors.push({ label: "R:R Ratio", points: src.rr_ratio });
+  }
+
   const direction = asDir(src.direction);
   const entryMid = parseEntryMid(src.entry_range);
   const pulled = src.pulled === true;
@@ -452,13 +461,18 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
     }
   }
 
-  // Thesis break from morning confirmation.
+  // Thesis break from morning confirmation — risk_note enriches the warn/intact note.
+  // CONFIRMED overrides risk_note — a morning confirmation means the thesis held.
   const thesisBreak: { level: ThesisLevel; note?: string } =
     pulled ? { level: "break", note: src.pulled_reason ?? "play invalidated and pulled" }
     : ms === "INVALIDATED" ? { level: "break", note: src.morning_reason ?? "morning confirm invalidated thesis" }
-    : ms === "DEGRADED" ? { level: "warn", note: src.morning_reason ?? "pre-market conditions degraded" }
+    : ms === "DEGRADED" ? { level: "warn", note: src.morning_reason ?? (src.risk_note ?? "pre-market conditions degraded") }
+    : ms === "CONFIRMED" ? { level: "intact" }
+    : src.risk_note ? { level: "warn", note: src.risk_note }
     : { level: "intact" };
 
+  // Build the recNote — key_signal enriches the thesis narrative.
+  const keySignalLine = src.key_signal ? ` Key signal: ${src.key_signal}` : "";
   const recNote = pulled
     ? `PULLED — ${src.pulled_reason ?? "thesis invalidated pre-market"}`
     : ms === "INVALIDATED"
@@ -466,17 +480,21 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
       : ms === "DEGRADED"
         ? `DEGRADED — ${src.morning_reason ?? "conditions shifted; validate before entry"}`
         : ms === "CONFIRMED"
-          ? "Pre-market confirmed — thesis intact, entry levels hold."
+          ? `Pre-market confirmed — thesis intact, entry levels hold.${keySignalLine}`
           : src.thesis
-            ? src.thesis
-            : "Evening edition — pre-market confirm posts before the open; hold while the thesis stands.";
+            ? `${src.thesis}${keySignalLine}`
+            : `Evening edition — pre-market confirm posts before the open.${keySignalLine}`;
+
+  // Score: a missing score renders as 0 in the terminal (the score display always shows a number),
+  // but an absent score is different from a real 0.
+  const rawScore = fin(src.score);
 
   return {
     id: `LEGACY:${src.ticker}`,
     ticker: src.ticker.toUpperCase(),
     direction,
     contract: contractLabel,
-    score: Math.round(fin(src.score) ?? 0),
+    score: rawScore != null ? Math.round(rawScore) : 0,
     status,
     horizon: "LEGACY",
     exitModel: src.exit_style === "scale_out" ? "SCALE_OUT" : "PLAN",
@@ -484,6 +502,7 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
     gates,
     regime,
     thesisBreak,
+    tierLabel: src.conviction || null,
     recommendation: pulled || ms === "INVALIDATED" ? "SELL" : ms === "DEGRADED" ? "HOLD" : "HOLD",
     recNote,
     progress: null,

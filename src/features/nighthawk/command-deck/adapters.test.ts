@@ -838,3 +838,59 @@ test("overlayLegacyQuotes: clamps progress to [0, 1]", () => {
   const [result] = overlayLegacyQuotes([play], quotes, originals);
   assert.equal(result.progress, 1);
 });
+
+test("Legacy adapter: surfaces conviction as tierLabel", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "NVDA", direction: "long", rank: 1, score: 85,
+    conviction: "A+",
+  });
+  assert.equal(play.tierLabel, "A+");
+});
+
+test("Legacy adapter: surfaces iv_rank and rr_ratio as factors", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "TSLA", direction: "long", rank: 1, score: 75,
+    iv_rank: 72, rr_ratio: 3.2,
+  });
+  const ivFactor = play.factors.find((f) => f.label === "IV Rank");
+  const rrFactor = play.factors.find((f) => f.label === "R:R Ratio");
+  assert.ok(ivFactor, "iv_rank should appear as a factor");
+  assert.equal(ivFactor!.points, 72);
+  assert.ok(rrFactor, "rr_ratio should appear as a factor");
+  assert.equal(rrFactor!.points, 3.2);
+});
+
+test("Legacy adapter: key_signal enriches recNote", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "META", direction: "long", rank: 1, score: 80,
+    thesis: "Bullish breakout above resistance",
+    key_signal: "3-day flow accumulation",
+  });
+  assert.ok(play.recNote?.includes("Key signal: 3-day flow accumulation"));
+  assert.ok(play.recNote?.includes("Bullish breakout above resistance"));
+});
+
+test("Legacy adapter: risk_note surfaces as thesisBreak warn", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "AAPL", direction: "long", rank: 1, score: 70,
+    risk_note: "Earnings in 2 days — elevated IV",
+  });
+  assert.equal(play.thesisBreak?.level, "warn");
+  assert.equal(play.thesisBreak?.note, "Earnings in 2 days — elevated IV");
+});
+
+test("Legacy adapter: morning CONFIRMED overrides risk_note thesisBreak", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "AAPL", direction: "long", rank: 1, score: 70,
+    risk_note: "Earnings in 2 days",
+    morning_status: "CONFIRMED",
+  });
+  assert.equal(play.thesisBreak?.level, "intact");
+});
+
+test("Legacy adapter: missing conviction → tierLabel null", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "SPY", direction: "long", rank: 1, score: 60,
+  });
+  assert.equal(play.tierLabel, null);
+});

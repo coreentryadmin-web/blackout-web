@@ -99,7 +99,7 @@ export function HorizonDeck({ horizon }: { horizon: "SWING" | "LEAPS" }) {
 
 // ── Legacy: the evening edition ─────────────────────────────────────────────────────
 
-export function LegacyDeck({ edition }: { edition: NightHawkEdition | undefined }) {
+export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | undefined; error?: unknown }) {
   // Fetch morning confirmation verdicts when an edition is available.
   const editionFor = edition?.edition_for ?? null;
   const { data: confirmData } = useSWR(
@@ -151,11 +151,54 @@ export function LegacyDeck({ edition }: { edition: NightHawkEdition | undefined 
   const stockQuotes = useLegacyStockQuotes(tickers);
   const plays = overlayLegacyQuotes(basePlays, stockQuotes, rawPlays);
 
+  // Edition health banners — stale/degraded/carry/error states must be visible, never silently hidden.
+  const isStale = edition?.stale === true;
+  const isDegraded = edition?.degraded === true;
+  const isCarry = edition?.carry_until_close === true;
+  const isRecapOnly = edition?.recap_only === true;
+  const hasFetchError = !!error && !edition;
+
+  const bannerText = hasFetchError
+    ? "Edition data temporarily unavailable — retrying."
+    : isDegraded
+      ? "Served from a degraded source — plays may be incomplete."
+      : isStale
+        ? `Showing ${edition?.served_for ?? "prior"} edition — tonight's not published yet.`
+        : isCarry
+          ? `Carrying ${edition?.served_for ?? "prior"} plays until their session closes at 4 PM ET.`
+          : isRecapOnly
+            ? "Recap published — no plays cleared the funnel tonight."
+            : null;
+
   return (
-    <CommandDeck
-      plays={plays}
-      laneLabel="Legacy · Tonight's playbook"
-      emptyHint="Five ranked setups land here after the evening scan · ~5:30 PM ET."
-    />
+    <>
+      {bannerText && (
+        <div
+          role="status"
+          className={`mb-3 flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold uppercase tracking-wide ${
+            hasFetchError || isDegraded
+              ? "border-red-400/60 bg-red-500/15 text-red-200"
+              : isStale || isCarry
+                ? "border-amber-400/60 bg-amber-500/15 text-amber-200"
+                : "border-zinc-400/40 bg-zinc-500/10 text-zinc-300"
+          }`}
+        >
+          <span aria-hidden>{hasFetchError || isDegraded ? "!" : isStale || isCarry ? "~" : "i"}</span>
+          <span>{bannerText}</span>
+        </div>
+      )}
+      <CommandDeck
+        plays={plays}
+        laneLabel="Legacy · Tonight's playbook"
+        degraded={hasFetchError || isDegraded}
+        emptyHint={
+          hasFetchError
+            ? "Edition data unavailable right now — retrying. Check back shortly."
+            : isRecapOnly
+              ? "No plays cleared the scoring funnel tonight — market recap is above."
+              : "Five ranked setups land here after the evening scan · ~5:30 PM ET."
+        }
+      />
+    </>
   );
 }
