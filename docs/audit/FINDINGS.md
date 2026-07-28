@@ -5,6 +5,42 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-28 — [data-honesty] Legacy 0% WR caused by unfillable entry bands (PR #1186)
+
+**Severity.** P0 — the single biggest quality gap in the Legacy engine. 15 of 31 resolved plays
+graded "unfilled" because the published entry band never overlapped the next session's trading range.
+Top failure modes: `band_detached`(7), `unfilled_never_traded_back`(7), `wrong_direction`(7).
+
+**Root cause.** Entry bands were built at edition time (~5:30 PM ET) as a fixed ±0.5% band around the
+closing price (`spot * 0.995` to `spot * 1.005` in `buildDirectionalStockLevels`, play-levels.ts:138).
+Night Hawk specifically selects momentum/catalyst names with strong directional flow — exactly the
+stocks that gap 2-5%+ overnight. The next session's open prints well outside the band, so
+`resolveOutcome` (play-outcomes.ts:591) correctly grades the play as "unfilled" and excludes it from
+win/loss tallies.
+
+**Fix (two-pronged).**
+1. **ATR-scaled entry band at build time** (play-levels.ts): replaced the fixed ±0.5% halfwidth with
+   `entryHalfWidth(spot, atr)` — scales to 40% of ATR (floor 0.5%, cap 2.5%). A 4% ATR name now gets
+   a ±1.6% band instead of ±0.5%, covering normal overnight gaps.
+2. **Morning confirm re-anchors entry band** (nighthawk-morning-confirm route.ts, Phase 3.75): when
+   pre-market price confirms the thesis direction but the stock has gapped THROUGH the published entry
+   band, the grading-side entry band (`nighthawk_play_outcomes.entry_range_low/high`) is updated to
+   center on the pre-market price. The published edition is never mutated. INVALIDATED plays (stop
+   breached, regime flip) are NOT re-anchored. New DB function `reanchorNighthawkEntryBand` (db.ts).
+3. **Verdict engine updated** (morning-confirm-verdict.ts): gap-through-entry in thesis direction no
+   longer degrades to "do not chase" — the re-anchor makes the entry fillable, so the play stays
+   CONFIRMED with an advisory "entry re-anchored to pre-market" note.
+
+**Blast radius.** Only affects Legacy overnight plays. 0DTE entries are intraday (no overnight gap).
+The fillability grading logic (play-outcomes.ts) is unchanged — it still checks range overlap, but now
+the range reflects where the stock actually traded, not the stale prior close.
+
+**Evidence.** 8 play-levels tests (ATR scaling), 22 morning-confirm-verdict tests (including updated
+gap-above test), 30 play-outcomes tests, 15 morning-verdict-persist tests — all green. TypeScript
+compiles clean.
+
+**Status.** PR #1186 — merging.
+
 ## 2026-07-28 — [correctness] fundamental_signals omitted from rescoreDossier + rescue play sector missing (PR #1176)
 
 **Severity.** P1 (fundamental_signals) / P3 (rescue sector).

@@ -16,6 +16,23 @@ const HARD_MAX_TARGET_PCT = 0.25;
 /** Minimum R:R ratio (target_dist / stop_dist). When the ratio falls below this, the stop
  *  is tightened to maintain at least this R:R. */
 const MIN_RR_RATIO = 0.75;
+/** Minimum entry band half-width as a fraction of spot. */
+const MIN_ENTRY_HALF_PCT = 0.005;
+/** ATR multiplier for entry band half-width. Overnight gaps scale with volatility —
+ *  a fixed ±0.5% band on a 4% ATR name is unfillable after any normal gap. */
+const ENTRY_ATR_MULT = 0.4;
+/** Hard ceiling on entry band half-width (fraction of spot). */
+const MAX_ENTRY_HALF_PCT = 0.025;
+
+/** ATR-scaled entry band half-width: wider bands for volatile names so overnight
+ *  gaps don't push the entire next session outside the published entry. */
+export function entryHalfWidth(spot: number, atr?: number | null): number {
+  if (atr != null && Number.isFinite(atr) && atr > 0 && spot > 0) {
+    const atrHalf = (atr / spot) * ENTRY_ATR_MULT;
+    return Math.min(MAX_ENTRY_HALF_PCT, Math.max(MIN_ENTRY_HALF_PCT, atrHalf));
+  }
+  return MIN_ENTRY_HALF_PCT;
+}
 
 function volatilityAdjustedCaps(spot: number, atr?: number | null): { maxStopPct: number; maxTargetPct: number } {
   if (atr == null || !Number.isFinite(atr) || atr <= 0 || spot <= 0) {
@@ -125,16 +142,9 @@ export function buildDirectionalStockLevels(params: {
     const { maxStopPct, maxTargetPct } = volatilityAdjustedCaps(spot, params.atr);
     const maxStopDist = spot * maxStopPct;
     const maxTargetDist = spot * maxTargetPct;
-    // Entry band scales to ATR instead of a fixed +-0.5%: overnight plays regularly gap
-    // 2-5% at the open, and a fixed 1%-wide band is almost always unfillable by the open
-    // print, directly causing band_detached/unfilled grading outcomes. Half-ATR (capped at
-    // 2%) keeps the band proportional to the name's actual daily range while still bounding
-    // it so a high-ATR name doesn't get an absurdly wide "entry".
-    const atr = params.atr;
-    const atrPct = atr != null && atr > 0 && spot > 0 ? atr / spot : 0.005;
-    const halfBand = Math.min(atrPct * 0.5, 0.02);
-    const bandLo = spot * (1 - halfBand);
-    const bandHi = spot * (1 + halfBand);
+    const halfPct = entryHalfWidth(spot, params.atr);
+    const bandLo = spot * (1 - halfPct);
+    const bandHi = spot * (1 + halfPct);
     if (params.direction === "long") {
       const rawStop = support;
       let stopDist = Math.min(spot - rawStop, maxStopDist);

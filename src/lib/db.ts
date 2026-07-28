@@ -7601,6 +7601,31 @@ export async function recordNighthawkMorningVerdict(row: {
   return { matched: true, verdict_written: Boolean(r.wrote_verdict), pulled: Boolean(r.pulled) };
 }
 
+/** Re-anchor a play's entry band on the outcomes row at morning-confirm time.
+ *  Called when pre-market price confirms the thesis direction but the prior-close
+ *  band is unfillable. The grading engine reads entry_range from this row, so
+ *  the re-anchored band replaces the stale one for outcome resolution. */
+export async function reanchorNighthawkEntryBand(row: {
+  edition_for: string;
+  ticker: string;
+  entry_range_low: number;
+  entry_range_high: number;
+}): Promise<boolean> {
+  await ensureSchema();
+  const res = await (await getPool()).query(
+    `
+    UPDATE nighthawk_play_outcomes
+    SET entry_range_low = $3,
+        entry_range_high = $4,
+        updated_at = NOW()
+    WHERE edition_for = $1::date AND ticker = $2
+      AND outcome = 'pending'
+    `,
+    [row.edition_for, row.ticker.toUpperCase(), row.entry_range_low, row.entry_range_high]
+  );
+  return (res.rowCount ?? 0) > 0;
+}
+
 export type NighthawkPulledPlay = {
   ticker: string;
   pulled_reason: string | null;
