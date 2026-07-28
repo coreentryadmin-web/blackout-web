@@ -5,6 +5,20 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-28 — [Thermal] SPY/SPX/QQQ compare + per-layer freshness + deep-links
+
+**Severity.** P1 product enhancement (honesty + desk speed).
+
+**Shipped on `cursor/thermal-deep-audit-3d11`.**
+1. **Compare strip** — live SPY / SPX / QQQ cards (spot, call/put wall, flip) on the shared
+   5s heatmap cache-reader; click selects ticker. Toggle via control-row **Compare** (`?compare=0` off).
+2. **Per-layer FreshnessChip bar** — Matrix / Overlays / UW check ages + near-term wall-scope chip
+   (never one fake LIVE for 5s + 30s + 60s layers).
+3. **Deep-links** — `?ticker=SPX&lens=vex&compare=1` syncs URL ↔ desk.
+4. **Honest flip empty** — undetermined flip help via `honestLevelEmpty("flip")`.
+
+**Status.** Draft PR #1200.
+
 ## 2026-07-28 — [Thermal] Deep audit: WS wall override still unscoped + stale 20s freshness copy
 
 **Severity.** P1 correctness (RTH) + P2 UX honesty.
