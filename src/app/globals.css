@@ -16037,6 +16037,7 @@ body::before {
 .nh-deck-badge.tier{color:var(--dk-green-hi);border-color:rgba(53,255,158,.4);text-shadow:var(--dk-glow)}
 .nh-deck-badge.conf{color:var(--dk-cyan);border-color:rgba(56,230,255,.35)}
 .nh-deck-badge.orig{color:var(--dk-green);border-color:rgba(53,255,158,.3)}
+.nh-deck-badge.sector{color:var(--dk-ink-dim);border-color:rgba(120,140,130,.35);font-weight:600}
 .nh-deck-badge.sc{color:var(--dk-amber);border-color:rgba(255,184,77,.35)}
 /* Theta / time-stop clock + session-decay bar. */
 .nh-deck-clock{margin:4px 0 14px;padding:8px 10px;border:1px solid rgba(255,184,77,.22);border-radius:4px;background:rgba(255,184,77,.03)}

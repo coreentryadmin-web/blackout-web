@@ -143,6 +143,9 @@ export interface TerminalPlay {
   // ── greeks (live) ──
   greeks?: DeckGreeks | null;
 
+  /** Sector classification (lower-cased), when known. */
+  sector?: string | null;
+
   // ── legacy edition geometry (entry/target/stop as raw strings for the thesis panel) ──
   entryRange?: string | null;
   targetLevel?: string | null;

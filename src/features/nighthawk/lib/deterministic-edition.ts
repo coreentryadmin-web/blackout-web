@@ -513,6 +513,7 @@ function buildPlay(
     stop: levels.stop,
     options_play,
     score: scored.score,
+    sector: scored.sector?.toLowerCase() || undefined,
     flow_streak_days: dossier?.flow_streak?.streak_days ?? undefined,
     iv_rank: dossier?.iv_rank ?? undefined,
     rr_ratio: rr ?? undefined,

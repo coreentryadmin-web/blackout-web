@@ -24,6 +24,8 @@ export type PlaybookPlay = {
    *  marker (the risk_note is only prose) that lets the ledger SELECT bangers to grade them on the
    *  option scale-out path and graduate the exit on evidence. */
   exit_style?: "scale_out";
+  /** Sector classification from Polygon profile (lower-cased). Absent when unknown. */
+  sector?: string;
   /** Optional so a degraded/legacy source with no real score renders "—", never a fabricated 0. */
   score?: number;
   flow_streak_days?: number;

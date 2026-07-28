@@ -476,7 +476,11 @@ export function scoreTechnicalSetup(tech: TechnicalCard | null, direction: "long
     if (tags.includes("bullish ma") || tags.includes("oversold")) score -= 6;
   }
 
-  if ((tech.rel_volume ?? 0) >= 1.5) score += 4;
+  const rv = tech.rel_volume ?? 0;
+  if (rv >= 5) score += 8;
+  else if (rv >= 3) score += 6;
+  else if (rv >= 1.5) score += 4;
+  else if (rv >= 1.2) score += 2;
 
   // PR-N30: structural price alignment (independent of setup_tags strings).
   // Price above both VWAP and EMA20 for longs (below for shorts) is a clear
@@ -706,7 +710,7 @@ function congressSideWeight(row: Record<string, unknown>, direction: "long" | "s
  * Recency decay for congressional trades — more recent disclosures carry more signal.
  * 0-7 days: 1.0x, 8-14 days: 0.7x, 15-30 days: 0.4x.
  */
-function congressTradeDecayMultiplier(row: Record<string, unknown>): number {
+function congressTradeDecayMultiplier(row: Record<string, unknown>, nowMs: number): number {
   const raw =
     row.filed_at ??
     row.filed_date ??
@@ -718,7 +722,7 @@ function congressTradeDecayMultiplier(row: Record<string, unknown>): number {
   if (raw == null || raw === "") return 0.4;
   const d = new Date(String(raw));
   if (Number.isNaN(d.getTime())) return 0.4;
-  const ageDays = (Date.now() - d.getTime()) / 86_400_000;
+  const ageDays = (nowMs - d.getTime()) / 86_400_000;
   if (ageDays <= 7) return 1.0;
   if (ageDays <= 14) return 0.7;
   return 0.4;
@@ -731,15 +735,17 @@ export function scoreSmartMoney(
     congress_trades?: Record<string, unknown>[];
     institutional_activity?: Record<string, unknown>[];
   },
-  direction: "long" | "short"
+  direction: "long" | "short",
+  nowMs?: number
 ): number {
+  const now = nowMs ?? Date.now();
   let score = 0;
   if (predictionAlignsWithDirection(dossier.predictions_signal, direction)) score += 4;
   // congress_unusual: recency-weighted AND side-aligned (max 3 pts). A disclosed sale
   // no longer scores a long.
   if ((dossier.congress_unusual?.length ?? 0) > 0) {
     const unusualScore = (dossier.congress_unusual ?? []).reduce(
-      (sum, row) => sum + congressTradeDecayMultiplier(row) * congressSideWeight(row, direction),
+      (sum, row) => sum + congressTradeDecayMultiplier(row, now) * congressSideWeight(row, direction),
       0
     );
     score += Math.min(3, unusualScore);
@@ -747,7 +753,7 @@ export function scoreSmartMoney(
   // congress_trades: same recency × side weighting (max 2 pts).
   if ((dossier.congress_trades?.length ?? 0) > 0) {
     const tradeScore = (dossier.congress_trades ?? []).reduce(
-      (sum, row) => sum + congressTradeDecayMultiplier(row) * congressSideWeight(row, direction),
+      (sum, row) => sum + congressTradeDecayMultiplier(row, now) * congressSideWeight(row, direction),
       0
     );
     score += Math.min(2, tradeScore);
@@ -773,10 +779,15 @@ export function scoreShortInterest(
   short_days_to_cover: number | null | undefined,
   direction: "long" | "short"
 ): number {
-  if (direction !== "long") return 0;
   if (short_days_to_cover == null || !Number.isFinite(short_days_to_cover) || short_days_to_cover <= 0) return 0;
-  if (short_days_to_cover > 10) return 5;
-  if (short_days_to_cover > 5) return 3;
+  if (direction === "long") {
+    if (short_days_to_cover > 10) return 5;
+    if (short_days_to_cover > 5) return 3;
+    return 0;
+  }
+  // Heavy short interest is a headwind for a short thesis — crowded trade, squeeze risk.
+  if (short_days_to_cover > 10) return -3;
+  if (short_days_to_cover > 5) return -1;
   return 0;
 }
 
@@ -904,7 +915,7 @@ export function scoreCandidate(
   },
   flowStreak?: FlowStreak,
   regime?: NightHawkRegimeContext | null,
-  scoring?: { streakWeight?: number }
+  scoring?: { streakWeight?: number; nowMs?: number }
 ): ScoredCandidate {
   if (dossierExtras.trading_halt) {
     return {
@@ -923,6 +934,7 @@ export function scoreCandidate(
     };
   }
 
+  const nowMs = scoring?.nowMs ?? Date.now();
   const flow = scoreFlowQuality(flows, flowStreak, {
     streakWeight: scoring?.streakWeight,
     riskReversalSkew: dossierExtras.risk_reversal_skew,
@@ -942,7 +954,7 @@ export function scoreCandidate(
   const techScore = scoreTechnicalSetup(tech, direction);
   const posScore = scoreOptionsPositioning(dossierExtras, direction);
   const newsScore = scoreNewsCatalyst(dossierExtras, direction);
-  const smartMoneyScore = scoreSmartMoney(dossierExtras, direction);
+  const smartMoneyScore = scoreSmartMoney(dossierExtras, direction, nowMs);
   const skewAdj = flow.directionFlippedBySkew
     ? 0
     : scoreSkewConfirmation(dossierExtras.risk_reversal_skew, direction);
@@ -986,7 +998,7 @@ export function scoreCandidate(
   let ptNudge = 0;
   const ptData = dossierExtras.benzinga_price_target;
   if (ptData?.published && ptData.action) {
-    const ptAgeMs = Date.now() - new Date(ptData.published).getTime();
+    const ptAgeMs = nowMs - new Date(ptData.published).getTime();
     const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
     if (ptAgeMs >= 0 && ptAgeMs <= sevenDaysMs) {
       if (ptData.action === "raised" && direction === "long") {

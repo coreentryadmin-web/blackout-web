@@ -255,10 +255,11 @@ export function PlayTerminal({ play }: { play: TerminalPlay | null }) {
  *  when the payload carries a real figure — never fabricated). Renders nothing when a play carries
  *  none of them (a legacy row), so the header stays clean. */
 function HeaderBadges({ play }: { play: TerminalPlay }) {
-  const hasBadges = play.tierLabel || play.confluence != null || (play.discoveryOrigin?.length ?? 0) > 0;
+  const hasBadges = play.tierLabel || play.confluence != null || (play.discoveryOrigin?.length ?? 0) > 0 || play.sector;
   if (!hasBadges && !play.scorecard) return null;
   return (
     <div className="nh-deck-badges">
+      {play.sector && <span className="nh-deck-badge sector">{play.sector.toUpperCase()}</span>}
       {play.tierLabel && <span className="nh-deck-badge tier">TIER {play.tierLabel}</span>}
       {play.confluence != null && <span className="nh-deck-badge conf">CONFLUENCE {play.confluence}/2</span>}
       {play.discoveryOrigin?.map((o) => (
