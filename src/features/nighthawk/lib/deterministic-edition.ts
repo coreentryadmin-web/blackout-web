@@ -537,13 +537,8 @@ function buildPlay(
     base.risk_note = bangerScaleOutNote();
     base.exit_style = "scale_out"; // structured marker (not just prose) so the ledger can SELECT bangers
   }
-  if (contract && !contract.caveat) {
+  if (contract) {
     return applyPremiumCapToPlay(base, { entry_premium: contract.premium, options_play });
-  }
-  if (contract && contract.caveat) {
-    base.entry_premium = contract.premium;
-    base.entry_cost_per_contract = contract.premium * 100;
-    base.premium_cap_ok = !contract.caveat.includes("premium_high");
   }
   return base;
 }
