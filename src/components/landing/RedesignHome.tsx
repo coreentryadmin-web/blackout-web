@@ -157,68 +157,143 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
 
       <div className="node" aria-hidden="true" />
 
-      {/* ═══ §3 PROTOCOL — STAGGERED, OVERSIZED NUMBERS ═══ */}
-      <section className="sec-proto" id="protocol">
+      {/* ═══ §3 INTELLIGENCE PIPELINE ═══ */}
+      <section className="sec-pipeline" id="protocol">
         <div className="w">
-          <div className="proto-head">
-            <span className="kk"><span className="dot" />The protocol</span>
-            <h2>Identify. Validate.<br /><span className="gt">Execute.</span></h2>
-            <p>Three stages. Every trade passes through all of them — or it doesn&apos;t reach your screen.</p>
+          <div className="pipe-head">
+            <span className="kk"><span className="dot" />The intelligence engine</span>
+            <h2>How BlackOut<br /><span className="gt">thinks.</span></h2>
+            <p>Every opportunity passes through four stages. What survives is what reaches your screen.</p>
           </div>
-          <div className="proto-row">
-            {/* Card 1: IDENTIFY */}
-            <div className="proto-card" style={{ "--sc": "#a3e635" } as CSSProperties}>
-              <span className="num">01</span>
-              <div className="pf-header">
-                <div className="pf-icon">&#9678;</div>
-                <div><span className="tag">IDENTIFY</span><h3>Read the Floor</h3></div>
-              </div>
-              <p className="pf-body">Live dealer gamma, dark-pool prints, institutional sweeps — every signal that moves SPX, surfaced before the tape catches up.</p>
-              <div className="pf-visual"><canvas id="cv-identify" width={600} height={260} /></div>
-              <div className="pf-metrics">
-                <span className="pf-chip live">SCANNING</span>
-                <span className="pf-chip">GEX WALLS</span>
-                <span className="pf-chip">DARK POOL</span>
-                <span className="pf-chip">SWEEPS</span>
+
+          <div className="pipe-track">
+            {/* Ingress — RAW DATA */}
+            <div className="pipe-ingress" data-pipe-stage="ingress">
+              <div className="pipe-ingress-inner">
+                <canvas id="cv-ingest" width={400} height={60} />
+                <span className="pipe-ingress-label">12,400+ contracts ingested per session</span>
               </div>
             </div>
 
-            {/* Card 2: VALIDATE */}
-            <div className="proto-card" style={{ "--sc": "#22d3ee" } as CSSProperties}>
-              <span className="num">02</span>
-              <div className="pf-header">
-                <div className="pf-icon">&#10003;</div>
-                <div><span className="tag">VALIDATE</span><h3>Every Setup Graded</h3></div>
+            <div className="pipe-conduit" data-pipe-conduit="0" aria-hidden="true"><div className="conduit-fill" /></div>
+
+            {/* Stage 1 — IDENTIFY */}
+            <div className="pipe-stage pipe-s1" data-pipe-stage="identify">
+              <div className="pipe-stage-chrome">
+                <div className="pipe-num">01</div>
+                <div className="pipe-status" data-status-id="identify"><span className="status-dot" />OFFLINE</div>
               </div>
-              <p className="pf-body">Gated by the BIE verification stack — confluence scoring, cortex analysis, invalidation triggers, and a graded A&ndash;F log with receipts.</p>
-              <div className="pf-visual"><canvas id="cv-validate" width={600} height={260} /></div>
-              <div className="pf-metrics">
-                <span className="pf-chip live">VERIFIED</span>
-                <span className="pf-chip">A&ndash;F GRADE</span>
-                <span className="pf-chip">CONFLUENCE</span>
-                <span className="pf-chip">CORTEX</span>
+              <div className="pipe-stage-body">
+                <div className="pipe-stage-text">
+                  <h3>Identify</h3>
+                  <p className="pipe-hl">Read the floor before anyone else.</p>
+                  <p className="pipe-desc">Dealer gamma, dark-pool blocks, institutional sweeps, and GEX walls — every signal that moves SPX, surfaced before the tape catches up.</p>
+                  <div className="pipe-chips">
+                    <span className="pipe-chip live">SCANNING</span>
+                    <span className="pipe-chip">GEX WALLS</span>
+                    <span className="pipe-chip">DARK POOL</span>
+                    <span className="pipe-chip">SWEEPS</span>
+                    <span className="pipe-chip">DEALER FLOW</span>
+                  </div>
+                </div>
+                <div className="pipe-stage-visual">
+                  <canvas id="cv-pipe-identify" width={560} height={320} />
+                </div>
               </div>
             </div>
 
-            {/* Card 3: EXECUTE */}
-            <div className="proto-card" style={{ "--sc": "#bf5fff" } as CSSProperties}>
-              <span className="num">03</span>
-              <div className="pf-header">
-                <div className="pf-icon">&#9654;</div>
-                <div><span className="tag">EXECUTE</span><h3>Your Trigger</h3></div>
+            <div className="pipe-conduit" data-pipe-conduit="1" aria-hidden="true"><div className="conduit-fill" /></div>
+
+            {/* Stage 2 — VALIDATE */}
+            <div className="pipe-stage pipe-s2" data-pipe-stage="validate">
+              <div className="pipe-stage-chrome">
+                <div className="pipe-num">02</div>
+                <div className="pipe-status" data-status-id="validate"><span className="status-dot" />OFFLINE</div>
               </div>
-              <p className="pf-body">Pure intelligence — no order routing, no broker lock-in. We surface the structure, the strike, and the timing. You pull the trigger.</p>
-              <div className="pf-visual"><canvas id="cv-execute" width={600} height={260} /></div>
-              <div className="pf-metrics">
-                <span className="pf-chip live">READY</span>
-                <span className="pf-chip">ENTRY</span>
-                <span className="pf-chip">STOP</span>
-                <span className="pf-chip">TARGET</span>
+              <div className="pipe-stage-body">
+                <div className="pipe-stage-visual">
+                  <canvas id="cv-pipe-validate" width={560} height={320} />
+                </div>
+                <div className="pipe-stage-text">
+                  <h3>Validate</h3>
+                  <p className="pipe-hl">Every setup gated. Every grade earned.</p>
+                  <p className="pipe-desc">The BIE verification stack scores confluence, runs Cortex analysis, checks invalidation triggers, and assigns an A&ndash;F grade. No grade, no play.</p>
+                  <div className="pipe-chips">
+                    <span className="pipe-chip live">BIE ENGINE</span>
+                    <span className="pipe-chip">A&ndash;F GRADE</span>
+                    <span className="pipe-chip">CONFLUENCE</span>
+                    <span className="pipe-chip">CORTEX</span>
+                    <span className="pipe-chip">INVALIDATION</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="pipe-conduit" data-pipe-conduit="2" aria-hidden="true"><div className="conduit-fill" /></div>
+
+            {/* Stage 3 — EXECUTE */}
+            <div className="pipe-stage pipe-s3" data-pipe-stage="execute">
+              <div className="pipe-stage-chrome">
+                <div className="pipe-num">03</div>
+                <div className="pipe-status" data-status-id="execute"><span className="status-dot" />OFFLINE</div>
+              </div>
+              <div className="pipe-stage-body">
+                <div className="pipe-stage-text">
+                  <h3>Execute</h3>
+                  <p className="pipe-hl">Structure, strike, timing. You pull the trigger.</p>
+                  <p className="pipe-desc">Night Hawk and SPX Slayer surface the play with entry, stop, and target. No order routing, no broker lock-in — pure intelligence delivered to your screen.</p>
+                  <div className="pipe-chips">
+                    <span className="pipe-chip live">READY</span>
+                    <span className="pipe-chip">ENTRY</span>
+                    <span className="pipe-chip">STOP</span>
+                    <span className="pipe-chip">TARGET</span>
+                    <span className="pipe-chip">R:R</span>
+                  </div>
+                </div>
+                <div className="pipe-stage-visual">
+                  <canvas id="cv-pipe-execute" width={560} height={360} />
+                </div>
+              </div>
+            </div>
+
+            <div className="pipe-conduit" data-pipe-conduit="3" aria-hidden="true"><div className="conduit-fill" /></div>
+
+            {/* Stage 4 — RESULTS */}
+            <div className="pipe-stage pipe-s4" data-pipe-stage="results">
+              <div className="pipe-stage-chrome">
+                <div className="pipe-num">04</div>
+                <div className="pipe-status" data-status-id="results"><span className="status-dot" />OFFLINE</div>
+              </div>
+              <div className="pipe-stage-body">
+                <div className="pipe-stage-visual pipe-results-visual">
+                  <canvas id="cv-pipe-results" width={560} height={280} />
+                </div>
+                <div className="pipe-stage-text">
+                  <h3>Results</h3>
+                  <p className="pipe-hl">Receipts. Not promises.</p>
+                  <p className="pipe-desc">Every play logged, graded, and timestamped. Win or lose, the record is public. No cherry-picking, no deleted calls — the full ledger, always.</p>
+                  <div className="pipe-chips">
+                    <span className="pipe-chip live">LOGGED</span>
+                    <span className="pipe-chip">GRADED A&ndash;F</span>
+                    <span className="pipe-chip">TIMESTAMPED</span>
+                    <span className="pipe-chip">PUBLIC RECORD</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Pipeline summary — the thesis */}
+            <div className="pipe-summary" data-pipe-stage="summary">
+              <div className="pipe-summary-inner">
+                <canvas id="cv-pipe-summary" width={200} height={200} />
+                <div className="pipe-summary-text">
+                  <span className="pipe-summary-stat">~3%</span>
+                  <span className="pipe-summary-label">of scanned setups survive to your screen</span>
+                </div>
               </div>
             </div>
           </div>
         </div>
-        <div className="diag-cut" aria-hidden="true" />
       </section>
 
       <div className="node" aria-hidden="true" />
