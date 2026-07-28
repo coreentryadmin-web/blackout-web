@@ -671,6 +671,20 @@ test("bangerTickers get the scale-out exit risk_note; non-banger plays do not", 
   assert.equal(bbb?.exit_style, undefined, "non-banger play has no exit_style marker (default grinder exit)");
 });
 
+test("factor_breakdown persists per-component scores from ScoredCandidate", () => {
+  const ranked = [scored("AAA", "long", 68)];
+  const chains = { AAA: chainAround(120) };
+  const dossierMap = { AAA: dossier("AAA", 120) };
+  const { plays } = buildDeterministicEditionPlays({ ranked, dossierMap, chains, target: 5 });
+  const fb = plays[0]!.factor_breakdown;
+  assert.ok(fb, "factor_breakdown must be present");
+  assert.equal(fb.flow, 18, "flow_score persisted");
+  assert.equal(fb.tech, 12, "tech_score persisted");
+  assert.equal(fb.positioning, 6, "pos_score persisted");
+  assert.equal(fb.news, 2, "news_score persisted");
+  assert.equal(fb.smart_money, 3, "smart_money_score persisted");
+});
+
 test("no bangerTickers passed → no play gets a scale-out note (backwards compatible)", () => {
   const ranked = [scored("AAA", "long", 68)];
   const chains = { AAA: chainAround(120) };

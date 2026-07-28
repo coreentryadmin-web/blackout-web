@@ -125,7 +125,7 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
       direction: p.direction,
       rank: p.rank ?? i + 1,
       score: p.score,
-      factor_breakdown: null,
+      factor_breakdown: p.factor_breakdown ?? null,
       conviction: p.conviction ?? null,
       thesis: p.thesis ?? null,
       key_signal: p.key_signal ?? null,

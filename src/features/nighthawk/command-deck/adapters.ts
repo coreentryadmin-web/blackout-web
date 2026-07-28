@@ -156,6 +156,8 @@ export interface ZeroDteDeckSource {
 
 const FB_LABELS: Record<string, string> = {
   flow: "Flow", tech: "Technicals", positioning: "Positioning", news: "News", smart_money: "Smart Money",
+  fundamental: "Fundamental", catalyst: "Catalyst", short_interest: "Short Interest",
+  wall_proximity: "GEX Wall", vex: "VEX",
 };
 
 export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {

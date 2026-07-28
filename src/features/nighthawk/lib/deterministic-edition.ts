@@ -507,6 +507,18 @@ function buildPlay(
     flow_streak_days: dossier?.flow_streak?.streak_days ?? undefined,
     iv_rank: dossier?.iv_rank ?? undefined,
     rr_ratio: rr ?? undefined,
+    factor_breakdown: {
+      flow: scored.flow_score,
+      tech: scored.tech_score,
+      positioning: scored.pos_score,
+      news: scored.news_score,
+      smart_money: scored.smart_money_score,
+      ...(scored.fundamental_score != null ? { fundamental: scored.fundamental_score } : {}),
+      ...(scored.catalyst_score != null ? { catalyst: scored.catalyst_score } : {}),
+      ...(scored.short_interest_score != null ? { short_interest: scored.short_interest_score } : {}),
+      ...(scored.wall_proximity_score != null ? { wall_proximity: scored.wall_proximity_score } : {}),
+      ...(scored.vex_alignment_score != null ? { vex: scored.vex_alignment_score } : {}),
+    },
   };
   // Breakout/banger-sourced plays get the scale-out exit guidance (the proven +EV lever): these cheap
   // OTM momentum plays spike then decay, so hold-to-target is the wrong exit. Advisory only (risk_note)
