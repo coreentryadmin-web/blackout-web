@@ -147,6 +147,8 @@ mock.module("../ws/options-socket", {
 mock.module("../server-cache", {
   namedExports: {
     withServerCache: async (_k: string, _ttl: number, fn: () => Promise<unknown>) => fn(),
+    serverCache: async (_k: string, _ttl: number, fn: () => Promise<unknown>) => fn(),
+    TTL: { OPTIONS_CHAIN: 30_000, NEWS: 60_000, MARKET_SNAPSHOT: 5_000 },
   },
 });
 mock.module("../providers/spx-session", {
