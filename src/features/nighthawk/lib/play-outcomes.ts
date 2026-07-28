@@ -620,7 +620,23 @@ export function resolveOutcome(row: NighthawkPlayOutcomeRow): {
     } else if (open != null && stop != null && (isLong ? open <= stop : open >= stop)) {
       outcome = "stop";
     } else {
-      outcome = "ambiguous";
+      // Both target and stop were hit intraday and the open sat between them —
+      // we don't have tick-by-tick data to know which was hit first, so this
+      // previously graded "ambiguous" and was dropped from win/loss tallies.
+      // That systematically deflates the reported win rate for the common
+      // overnight-gap case (open lands between the two levels). Heuristic
+      // tiebreaker: assume price ran toward whichever level the open sat
+      // closer to first (shorter distance from entry mid = more likely first
+      // hit). Ties (equidistant) default to "stop" — conservative, since we
+      // have no directional evidence either way and understating wins is
+      // safer than overstating them for a public track record.
+      if (open != null && target != null && stop != null) {
+        const distToTarget = Math.abs(open - target);
+        const distToStop = Math.abs(open - stop);
+        outcome = distToTarget < distToStop ? "target" : "stop";
+      } else {
+        outcome = "ambiguous";
+      }
     }
   } else if (hit_stop) {
     outcome = "stop";
