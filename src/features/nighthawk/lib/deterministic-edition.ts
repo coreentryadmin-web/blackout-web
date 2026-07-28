@@ -537,6 +537,7 @@ export function buildDeterministicEditionPlays(params: {
   let geometryFailCount = 0;
   const built: PlaybookPlay[] = [];
   const selectedFamilies = new Set<string>();
+  const strictContractTickers = new Set<string>();
 
   let scoreBelowFloorCount = 0;
   for (const scored of params.ranked) {
@@ -582,6 +583,7 @@ export function buildDeterministicEditionPlays(params: {
     geometryOk += 1;
     built.push(play);
     selectedFamilies.add(canon);
+    if (contract && !contract.caveat) strictContractTickers.add(ticker);
   }
 
   console.info(`[nighthawk/det-edition] funnel: ${params.ranked.length} candidates → ${scoreBelowFloorCount} below score floor (${MIN_PUBLISH_SCORE}) → chains for ${Object.keys(params.chains).length} tickers → ${contractOk} with contract, ${stockOnly} stock-only, ${noChainCount} no chain, ${noSpotCount} no spot, ${premiumCapCount} premium-capped, ${geometryFailCount} geometry-fail → ${built.length} built`);
@@ -589,13 +591,7 @@ export function buildDeterministicEditionPlays(params: {
   // Ground survivors that HAVE strict (non-caveated) chain contracts. Caveated-contract and
   // stock-only plays skip grounding — their levels come from real S/R data and the contract
   // is a best-effort suggestion, not the basis for the play.
-  const strictContractTickers = new Set<string>();
-  for (const scored of params.ranked) {
-    const chain = params.chains[scored.ticker.toUpperCase()];
-    if (!chain) continue;
-    const c = pickChainContract(chain, scored.direction, params.maxDte);
-    if (c && !c.caveat) strictContractTickers.add(scored.ticker.toUpperCase());
-  }
+  // (strictContractTickers tracked during the build loop above — no redundant pickChainContract re-call.)
   const withContract = built.filter((p) => p.entry_premium != null && strictContractTickers.has(p.ticker.toUpperCase()));
   const skipGrounding = built.filter((p) => p.entry_premium == null || !strictContractTickers.has(p.ticker.toUpperCase()));
   const { plays: grounded, summary } = groundPlays(withContract, params.chains, params.dossierMap);

@@ -894,3 +894,44 @@ test("Legacy adapter: missing conviction → tierLabel null", () => {
   });
   assert.equal(play.tierLabel, null);
 });
+
+test("Legacy adapter: flow_streak_days surfaces as a factor", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "NVDA", direction: "long", rank: 1, score: 55,
+    flow_streak_days: 4,
+  });
+  const streak = play.factors.find((f) => f.label === "Flow Streak");
+  assert.ok(streak, "expected a Flow Streak factor");
+  assert.equal(streak!.points, 4);
+});
+
+test("Legacy adapter: flow_streak_days zero or null → no factor", () => {
+  const p1 = terminalPlayFromEdition({ ticker: "A", direction: "long", rank: 1, score: 50, flow_streak_days: 0 });
+  assert.ok(!p1.factors.some((f) => f.label === "Flow Streak"));
+  const p2 = terminalPlayFromEdition({ ticker: "A", direction: "long", rank: 1, score: 50, flow_streak_days: null });
+  assert.ok(!p2.factors.some((f) => f.label === "Flow Streak"));
+});
+
+test("Legacy adapter: entry geometry fields surface on TerminalPlay", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "AAPL", direction: "long", rank: 1, score: 48,
+    entry_range: "$192.50 – $195.00", target: "$210", stop: "$185",
+    thesis: "Earnings breakout thesis", key_signal: "Call sweep at $195 strike",
+  });
+  assert.equal(play.entryRange, "$192.50 – $195.00");
+  assert.equal(play.targetLevel, "$210");
+  assert.equal(play.stopLevel, "$185");
+  assert.equal(play.thesis, "Earnings breakout thesis");
+  assert.equal(play.keySignal, "Call sweep at $195 strike");
+});
+
+test("Legacy adapter: missing geometry fields → null", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "SPY", direction: "long", rank: 1, score: 50,
+  });
+  assert.equal(play.entryRange, null);
+  assert.equal(play.targetLevel, null);
+  assert.equal(play.stopLevel, null);
+  assert.equal(play.thesis, null);
+  assert.equal(play.keySignal, null);
+});

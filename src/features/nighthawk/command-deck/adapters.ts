@@ -391,6 +391,7 @@ export interface EditionDeckSource {
   exit_style?: string | null;
   iv_rank?: number | null;
   rr_ratio?: number | null;
+  flow_streak_days?: number | null;
   gate_promoted?: boolean | null;
   gate_warnings?: string[] | null;
   pulled?: boolean | null;
@@ -432,6 +433,9 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
   }
   if (src.rr_ratio != null && Number.isFinite(src.rr_ratio)) {
     factors.push({ label: "R:R Ratio", points: src.rr_ratio });
+  }
+  if (src.flow_streak_days != null && Number.isFinite(src.flow_streak_days) && src.flow_streak_days > 0) {
+    factors.push({ label: "Flow Streak", points: src.flow_streak_days });
   }
 
   const direction = asDir(src.direction);
@@ -510,5 +514,10 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
     mark: null,
     pnlPct: null,
     greeks: null,
+    entryRange: src.entry_range ?? null,
+    targetLevel: src.target ?? null,
+    stopLevel: src.stop ?? null,
+    thesis: src.thesis ?? null,
+    keySignal: src.key_signal ?? null,
   };
 }
