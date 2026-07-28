@@ -14,6 +14,16 @@ import { condorTent } from "@/lib/zerodte/condor-render";
 import { isZeroDteMarkStale, ZERODTE_MARK_STALE_MS, LEGACY_QUOTE_STALE_MS } from "@/lib/zerodte/marks-math";
 import type { TerminalPlay } from "./types";
 
+/** Status filter mode: which plays to show in the list. */
+type StatusFilter = "ALL" | "OPEN" | "WATCH" | "CLOSED";
+
+function filterByStatus(plays: TerminalPlay[], filter: StatusFilter): TerminalPlay[] {
+  if (filter === "ALL") return plays;
+  if (filter === "OPEN") return plays.filter((p) => p.status === "OPEN" || p.status === "HOLD" || p.status === "TRIM");
+  if (filter === "WATCH") return plays.filter((p) => p.status === "WATCH" || p.status === "SKIP");
+  return plays.filter((p) => p.status === "CLOSED");
+}
+
 /**
  * COMMAND DECK — the two-panel matrix experience for every board (0DTE / Swings / LEAPS / Legacy).
  * Left: the ranked plays list + the Wave-2 cockpit (live portfolio-risk strip + session P&L tape).
@@ -42,10 +52,25 @@ export function CommandDeck({
    *  for lanes that don't allocate (Swings/LEAPS/Legacy) → the strip degrades to "—". */
   allocation?: CockpitAllocation[] | null;
 }) {
+  // Status filter: show ALL (default), only OPEN (working), WATCH (pre-entry), or CLOSED plays.
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
+  const filtered = useMemo(() => filterByStatus(plays, statusFilter), [plays, statusFilter]);
+
+  // Counts per status group for the filter badges.
+  const counts = useMemo(() => {
+    let open = 0, watch = 0, closed = 0;
+    for (const p of plays) {
+      if (p.status === "OPEN" || p.status === "HOLD" || p.status === "TRIM") open++;
+      else if (p.status === "CLOSED") closed++;
+      else watch++;
+    }
+    return { open, watch, closed };
+  }, [plays]);
+
   // Sort lens: the status banding (default) or the Wave-2 conviction ranking. Additive — the status
   // sort is unchanged; conviction is a second view over the SAME list (deck-sort.ts).
   const [sortMode, setSortMode] = useState<DeckSortMode>("status");
-  const sorted = useMemo(() => sortPlaysForDeckBy(plays, sortMode), [plays, sortMode]);
+  const sorted = useMemo(() => sortPlaysForDeckBy(filtered, sortMode), [filtered, sortMode]);
 
   // Cockpit figures — computed off the FULL board (not the display order), so they're identical under
   // either sort. Both auto-update on the SWR board refresh that replaces `plays`.
@@ -72,8 +97,14 @@ export function CommandDeck({
   return (
     <div className="nh-deck">
       <div className="nh-deck-left">
-        <div className="nh-deck-lh"><span>{laneLabel}</span><span>{degraded ? "data down" : `${plays.length} plays`}</span></div>
+        <div className="nh-deck-lh"><span>{laneLabel}</span><span>{degraded ? "data down" : statusFilter === "ALL" ? `${plays.length} plays` : `${filtered.length} of ${plays.length}`}</span></div>
         <CockpitStrip risk={risk} tape={tape} />
+        <div className="nh-deck-filterbar" role="group" aria-label="Filter plays by status">
+          <button type="button" className={clsx("nh-deck-filtbtn", statusFilter === "ALL" && "on")} onClick={() => setStatusFilter("ALL")}>ALL <span className="cnt">{plays.length}</span></button>
+          <button type="button" className={clsx("nh-deck-filtbtn", statusFilter === "OPEN" && "on")} onClick={() => setStatusFilter("OPEN")}>OPEN <span className="cnt">{counts.open}</span></button>
+          <button type="button" className={clsx("nh-deck-filtbtn", statusFilter === "WATCH" && "on")} onClick={() => setStatusFilter("WATCH")}>WATCH <span className="cnt">{counts.watch}</span></button>
+          <button type="button" className={clsx("nh-deck-filtbtn", statusFilter === "CLOSED" && "on")} onClick={() => setStatusFilter("CLOSED")}>CLOSED <span className="cnt">{counts.closed}</span></button>
+        </div>
         <div className="nh-deck-sortbar" role="group" aria-label="Sort plays">
           <button type="button" className={clsx("nh-deck-sortbtn", sortMode === "status" && "on")} onClick={() => setSortMode("status")}>STATUS</button>
           <button type="button" className={clsx("nh-deck-sortbtn", sortMode === "conviction" && "on")} onClick={() => setSortMode("conviction")}>CONVICTION</button>
@@ -95,6 +126,9 @@ export function CommandDeck({
           )}
           {!loading && plays.length === 0 && (
             <div className="nh-deck-empty">{emptyHint ?? "No plays right now."}</div>
+          )}
+          {!loading && plays.length > 0 && filtered.length === 0 && (
+            <div className="nh-deck-empty">No {statusFilter.toLowerCase()} plays right now.</div>
           )}
           {sorted.map((p, i) => (
             <PlayCard key={p.id} play={p} rank={i + 1} selected={p.id === selId} onSelect={() => setSelId(p.id)} />

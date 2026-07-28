@@ -16146,6 +16146,14 @@ body::before {
 .nh-deck-ck .ckbar{height:4px;border-radius:2px;background:rgba(53,255,158,.1);overflow:hidden;margin-top:5px}
 .nh-deck-ck .ckbar i{display:block;height:100%;background:linear-gradient(90deg,var(--dk-green-dim),var(--dk-green));box-shadow:var(--dk-glow);transition:width .4s ease}
 .nh-deck-ck .cksub{font-size:9px;color:var(--dk-ink-dim);letter-spacing:.04em;margin-top:3px;font-variant-numeric:tabular-nums}
+/* Status filter bar — ALL / OPEN / WATCH / CLOSED with live counts. */
+.nh-deck-filterbar{display:flex;gap:4px;padding:6px 10px;border-bottom:1px solid var(--dk-line);background:#050c08}
+.nh-deck-filtbtn{flex:1;background:rgba(53,255,158,.03);border:1px solid transparent;border-radius:3px;
+  color:var(--dk-ink-dim);font-family:inherit;font-size:9px;font-weight:700;letter-spacing:.12em;padding:5px 4px;cursor:pointer}
+.nh-deck-filtbtn:hover{color:var(--dk-ink);background:rgba(53,255,158,.06)}
+.nh-deck-filtbtn.on{color:var(--dk-green-hi);border-color:var(--dk-line);background:rgba(53,255,158,.12);text-shadow:var(--dk-glow)}
+.nh-deck-filtbtn:focus-visible{outline:none;border-color:var(--dk-green);box-shadow:0 0 0 1px var(--dk-green)}
+.nh-deck-filtbtn .cnt{opacity:.5;font-weight:400;margin-left:2px}
 /* Sort toggle — STATUS / CONVICTION lenses. */
 .nh-deck-sortbar{display:flex;gap:4px;padding:6px 10px;border-bottom:1px solid var(--dk-line);background:#050c08}
 .nh-deck-sortbtn{flex:1;background:rgba(53,255,158,.03);border:1px solid transparent;border-radius:3px;

@@ -111,9 +111,12 @@ export function zeroDteSources(resp: BoardResp | null): ZeroDteDeckSource[] {
     seen.add(tk);
     out.push(sourceFrom(tk, s, ledgerByTk.get(tk) ?? null, allocByTk.get(tk) ?? null));
   }
+  // Union ALL ledger rows the scan didn't surface: WORKING positions (9-4) AND CLOSED plays so
+  // they remain visible in the "Closed" filter instead of vanishing when the scanner drops them.
   for (const [tk, lg] of ledgerByTk) {
     if (seen.has(tk)) continue;
-    if (!WORKING_STATUSES.has(String(lg.status ?? "").toUpperCase())) continue;
+    const st = String(lg.status ?? "").toUpperCase();
+    if (!WORKING_STATUSES.has(st) && st !== "CLOSED") continue;
     out.push(sourceFrom(tk, null, lg, allocByTk.get(tk) ?? null));
   }
   return out;
