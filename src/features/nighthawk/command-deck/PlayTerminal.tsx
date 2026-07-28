@@ -400,7 +400,11 @@ function ManagePanel({ play, nowMs }: { play: TerminalPlay; nowMs: number }) {
   // Recompute management from the LIVE pnlPct (SSE-overlaid) so the badge/note/track update at ~1s,
   // not frozen at the 5s board-poll value the adapter originally computed.
   const mgmt = managementFor(play.exitModel, play.status, play.pnlPct ?? null);
-  const badge = mgmt.recommendation;
+  // Legacy/Swing plays (exitModel "PLAN") compute their recommendation dynamically from the stock's
+  // stop/target levels in overlayLegacyQuotes — managementFor("PLAN") can't do that (it doesn't know
+  // the geometry), so prefer the overlay's dynamic values when present.
+  const badge = play.exitModel === "PLAN" && play.recommendation ? play.recommendation : mgmt.recommendation;
+  const recNote = play.exitModel === "PLAN" && play.recNote ? play.recNote : mgmt.recNote;
   // A CONDOR is a credit structure — its profit comes from decay/pin, NOT a rising long premium,
   // so it must never draw the directional trim ladder OR the −50/+100 ratchet track (both inverted).
   const isCondor = play.isCondor === true;
@@ -411,7 +415,7 @@ function ManagePanel({ play, nowMs }: { play: TerminalPlay; nowMs: number }) {
       <div className="nh-deck-rec">
         <span className={clsx("nh-deck-recb", badge)}>{badge}</span>
         {/* Plain text only — never inject HTML (recNote is authored plain; React escapes it safely). */}
-        <span className="nh-deck-recnote">{mgmt.recNote}</span>
+        <span className="nh-deck-recnote">{recNote}</span>
       </div>
 
       {/* Time-stop clock is a 0DTE-ONLY discipline (flat by 15:30 ET the SAME session). A Swing/
@@ -638,12 +642,12 @@ function PnlPanel({ play }: { play: TerminalPlay }) {
     <>
       <div className="nh-deck-lab">Live P&amp;L</div>
       <div className={clsx("nh-deck-pnlbig", (live ?? 0) > 0 && "nh-deck-pos", (live ?? 0) < 0 && "nh-deck-neg")}>
-        {has && live != null ? `${live > 0 ? "+" : ""}${live}%` : "— not entered"}
+        {has && live != null ? `${live > 0 ? "+" : ""}${live.toFixed(1)}%` : "— not entered"}
       </div>
       {exec != null && (
         <div className="nh-deck-execline">
-          mid <b>{live != null ? `${live > 0 ? "+" : ""}${live}%` : "—"}</b>
-          {" · "}fill ≈<b className={clsx(exec < 0 && "nh-deck-neg")}>{`${exec > 0 ? "+" : ""}${exec}%`}</b>
+          mid <b>{live != null ? `${live > 0 ? "+" : ""}${live.toFixed(1)}%` : "—"}</b>
+          {" · "}fill ≈<b className={clsx(exec < 0 && "nh-deck-neg")}>{`${exec > 0 ? "+" : ""}${exec.toFixed(1)}%`}</b>
           {play.execMark != null && <span className="nh-deck-recnote"> (sell into {usd(play.execMark)} bid)</span>}
         </div>
       )}
