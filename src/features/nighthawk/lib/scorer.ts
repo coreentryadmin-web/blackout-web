@@ -999,8 +999,8 @@ export function scoreCandidate(
   const ivRank = dossierExtras.iv_rank;
   let ivPenalty = 0;
   if (ivRank != null && Number.isFinite(ivRank) && ivRank > 70) {
-    ivPenalty = -1;
-    catalyst.flags.push(`IV rank ${Math.round(ivRank)} — options expensive, tighter stops`);
+    ivPenalty = ivRank > 85 ? -6 : -3;
+    catalyst.flags.push(`IV rank ${Math.round(ivRank)} — options expensive, wider spreads, faster decay`);
   }
 
   // FDA calendar reinforcement: if UW FDA calendar has upcoming dates, strengthen the binary

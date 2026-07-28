@@ -278,11 +278,11 @@ test("thesis is grounded in the score breakdown and cites the leading driver", (
   assert.match(key_signal, /flow/);
 });
 
-test("score floor: candidates below MIN_PUBLISH_SCORE are excluded (PR-N28)", () => {
+test("score floor: candidates below MIN_PUBLISH_SCORE (42) are excluded (PR-N28)", () => {
   const ranked = [
     scored("STRONG", "long", 60),
-    scored("OKAY", "short", 42),
-    scored("WEAK", "long", 25),
+    scored("OKAY", "short", 45),
+    scored("WEAK", "long", 38),
     scored("GARBAGE", "short", 10),
   ];
   const chains = {
@@ -294,7 +294,7 @@ test("score floor: candidates below MIN_PUBLISH_SCORE are excluded (PR-N28)", ()
     WEAK: dossier("WEAK", 120), GARBAGE: dossier("GARBAGE", 90),
   };
   const { plays, funnel } = buildDeterministicEditionPlays({ ranked, dossierMap, chains });
-  assert.equal(plays.length, 2, "only STRONG and OKAY clear the floor");
+  assert.equal(plays.length, 2, "only STRONG and OKAY clear the 42 floor");
   assert.deepEqual(plays.map(p => p.ticker), ["STRONG", "OKAY"]);
   assert.equal(funnel.score_below_floor, 2, "WEAK + GARBAGE counted");
 });
@@ -392,7 +392,7 @@ test("PR-N31: diversity swap fires for contrarian candidate above DIVERSITY_HEDG
 test("PR-N31+N33: Phase 1 rejects natural short below DIVERSITY_HEDGE_FLOOR; Phase 2 forced contrarian may still fire", () => {
   // FF is a natural short with score 15 — below DIVERSITY_HEDGE_FLOOR (20), so Phase 1 skips it.
   // Phase 2 then tries forced contrarian re-scoring on the all-LONG pool. With default dossier
-  // data those forced scores land ~12 (above FORCED_CONTRARIAN_FLOOR=8), so a short appears.
+  // data and boosted tech scores, forced contrarian scores should land >= FORCED_CONTRARIAN_FLOOR (15).
   // The key assertion: the short that appears is a FORCED contrarian (Phase 2), not the natural FF.
   const ranked = [
     scored("AA", "long", 70),
@@ -409,6 +409,21 @@ test("PR-N31+N33: Phase 1 rejects natural short below DIVERSITY_HEDGE_FLOOR; Pha
     chains[r.ticker] = chainAround(spot);
     dossierMap[r.ticker] = dossier(r.ticker, spot);
   }
+  // FF is the only candidate left after AA-EE fill the 5 slots. It needs bearish tech
+  // so forced-short re-score clears FORCED_CONTRARIAN_FLOOR (15).
+  // scoreContrarianHedge re-scores from the DOSSIER, not the candidate's tech_score field.
+  dossierMap["FF"] = dossier("FF", 100, {
+    tech: {
+      ticker: "FF", price: 100, trend: "bearish" as const,
+      setup_tags: ["gap down"], support_levels: [95], resistance_levels: [105],
+      gap_zones: [], breakout_zones: [],
+      prior_day: { high: 105, low: 95, close: 100 },
+      weekly: { high: null, low: null },
+      rsi14: 72, rel_volume: 2.0, atr14: 3,
+      vwap: 101, ema20: 101, ema50: 101, ema200: 101,
+      summary: "FF bearish reversal",
+    },
+  });
   const { plays } = buildDeterministicEditionPlays({ ranked, dossierMap, chains, target: 5 });
   assert.equal(plays.length, 5);
   const shorts = plays.filter((p) => p.direction === "SHORT");
@@ -544,19 +559,18 @@ test("PR-N32: forced contrarian does NOT fire when natural opposite-direction ca
   );
 });
 
-test("PR-N33: forced contrarian fires with low-score candidate (between FORCED_CONTRARIAN_FLOOR=8 and old floor=20)", () => {
-  // All LONG, minimal flow to make contrarian score very low (flow_score=5 → discounted=2).
-  // With neutral dossier, forced contrarian should score ~8-15 — above the new floor of 8
-  // but below the old floor of 20. Before N33 this would produce all-LONG; now it should swap.
+test("PR-N33: forced contrarian fires with candidate above FORCED_CONTRARIAN_FLOOR (15)", () => {
+  // All LONG, moderate tech/positioning to produce a forced contrarian score above the 15 floor.
+  // Before N33 any signal-free candidate was admitted; now it needs real contrarian evidence.
   const ranked = [
     scored("AA", "long", 72),
     scored("BB", "long", 68),
     scored("CC", "long", 63),
     scored("DD", "long", 58),
     scored("EE", "long", 52),
-    scored("GG", "long", 42),
+    scored("GG", "long", 45),
   ];
-  for (const r of ranked) r.flow_score = 5;
+  for (const r of ranked) { r.flow_score = 8; }
 
   const chains: Record<string, any> = {};
   const dossierMap: Record<string, any> = {};
@@ -565,17 +579,31 @@ test("PR-N33: forced contrarian fires with low-score candidate (between FORCED_C
     chains[r.ticker] = chainAround(spot);
     dossierMap[r.ticker] = dossier(r.ticker, spot);
   }
+  // GG needs bearish tech so forced-short re-score clears FORCED_CONTRARIAN_FLOOR (15).
+  // scoreContrarianHedge re-scores from the DOSSIER, not the candidate's tech_score/pos_score.
+  dossierMap["GG"] = dossier("GG", 100, {
+    tech: {
+      ticker: "GG", price: 100, trend: "bearish" as const,
+      setup_tags: ["gap down"], support_levels: [95], resistance_levels: [105],
+      gap_zones: [], breakout_zones: [],
+      prior_day: { high: 105, low: 95, close: 100 },
+      weekly: { high: null, low: null },
+      rsi14: 72, rel_volume: 2.0, atr14: 3,
+      vwap: 101, ema20: 101, ema50: 101, ema200: 101,
+      summary: "GG bearish reversal",
+    },
+  });
 
   const { plays } = buildDeterministicEditionPlays({ ranked, dossierMap, chains, target: 5 });
   assert.equal(plays.length, 5);
   const shorts = plays.filter((p) => p.direction === "SHORT");
-  assert.ok(shorts.length >= 1, `N33: expected forced contrarian SHORT even with low flow, got ${shorts.length}`);
+  assert.ok(shorts.length >= 1, `N33: expected forced contrarian SHORT, got ${shorts.length}`);
   assert.ok(
     shorts[0]!.gate_warnings?.some((w) => w.includes("Forced contrarian")),
     "should carry forced contrarian gate_warning"
   );
   const hedgeScore = shorts[0]!.score ?? 0;
-  assert.ok(hedgeScore >= 8, `hedge score ${hedgeScore} should be >= FORCED_CONTRARIAN_FLOOR (8)`);
+  assert.ok(hedgeScore >= 15, `hedge score ${hedgeScore} should be >= FORCED_CONTRARIAN_FLOOR (15)`);
 });
 
 // ── pickChainContract maxDte window (intraday 0DTE vs overnight swing) ──────────────────────────

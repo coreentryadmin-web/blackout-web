@@ -578,6 +578,7 @@ function TimeStopClock({ nowMs }: { nowMs: number }) {
 }
 
 function PnlPanel({ play }: { play: TerminalPlay }) {
+  if (play.horizon === "LEGACY") return <LegacyPnlPanel play={play} />;
   const has = play.entry != null;
   const live = play.pnlPct;
   const exec = play.execPnlPct;
@@ -587,8 +588,6 @@ function PnlPanel({ play }: { play: TerminalPlay }) {
       <div className={clsx("nh-deck-pnlbig", (live ?? 0) > 0 && "nh-deck-pos", (live ?? 0) < 0 && "nh-deck-neg")}>
         {has && live != null ? `${live > 0 ? "+" : ""}${live}%` : "— not entered"}
       </div>
-      {/* Executable P&L — what a member could actually realize selling into the BID right now,
-          beside the mid. Only shown when a live two-sided book priced it (no fabricated fill). */}
       {exec != null && (
         <div className="nh-deck-execline">
           mid <b>{live != null ? `${live > 0 ? "+" : ""}${live}%` : "—"}</b>
@@ -604,6 +603,41 @@ function PnlPanel({ play }: { play: TerminalPlay }) {
         <div><span className="k">Trough</span><span className="v nh-deck-neg">{signPct(play.trough)}</span></div>
       </div>
       <div className="nh-deck-recnote" style={{ marginTop: 16 }}>Peak/trough = the full excursion since entry — how much heat you took and gave back.</div>
+    </>
+  );
+}
+
+function LegacyPnlPanel({ play }: { play: TerminalPlay }) {
+  const hasStock = play.stockPrice != null;
+  const chg = play.stockChangePct;
+  return (
+    <>
+      <div className="nh-deck-lab">Stock position</div>
+      <div className={clsx("nh-deck-pnlbig", (chg ?? 0) > 0 && "nh-deck-pos", (chg ?? 0) < 0 && "nh-deck-neg")}>
+        {hasStock ? `$${play.stockPrice!.toFixed(2)}` : "— awaiting quote"}
+      </div>
+      {hasStock && chg != null && (
+        <div className="nh-deck-execline">
+          day change <b className={clsx(chg < 0 && "nh-deck-neg", chg > 0 && "nh-deck-pos")}>{chg >= 0 ? "+" : ""}{chg.toFixed(1)}%</b>
+        </div>
+      )}
+      <div className="nh-deck-grid" style={{ marginTop: 12 }}>
+        <div><span className="k">Stock</span><span className="v">{hasStock ? `$${play.stockPrice!.toFixed(2)}` : "—"}</span></div>
+        <div><span className="k">Entry premium</span><span className="v">{play.entry != null ? usd(play.entry) : "—"}</span></div>
+        {play.targetLevel && <div><span className="k">Target</span><span className="v nh-deck-pos">{play.targetLevel}</span></div>}
+        {play.stopLevel && <div><span className="k">Stop</span><span className="v nh-deck-neg">{play.stopLevel}</span></div>}
+      </div>
+      {play.progress != null && (
+        <div style={{ marginTop: 12 }}>
+          <div className="nh-deck-track">
+            <span className="lo">STOP</span><span className="hi">TARGET</span>
+            <span className="mk" style={{ left: `${Math.round(play.progress * 100)}%` }} />
+          </div>
+        </div>
+      )}
+      <div className="nh-deck-recnote" style={{ marginTop: 16 }}>
+        Legacy plays track the underlying stock — option P&amp;L requires a position ledger (not yet wired for Legacy). The entry premium is the suggested option price at publish time.
+      </div>
     </>
   );
 }
