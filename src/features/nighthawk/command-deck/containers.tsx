@@ -15,6 +15,8 @@ import type { TerminalPlay } from "./types";
 import { useZeroDteLiveMarks, overlayLiveMarks } from "./use-live-marks";
 import { useLegacyStockQuotes, overlayLegacyQuotes } from "./use-legacy-quotes";
 import { zeroDteSources, isBoardDegraded, type BoardResp } from "./zerodte-sources";
+import { EDITION_TARGET_PLAYS } from "@/features/nighthawk/lib/constants";
+import { isMorningConfirmStale, formatCheckedAtEt } from "@/features/nighthawk/lib/morning-confirm-verdict";
 
 const json = (u: string) => fetch(u, { cache: "no-store", credentials: "same-origin" }).then((r) => (r.ok ? r.json() : null));
 
@@ -114,7 +116,7 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
     }
   }
 
-  const rawPlays = (edition?.plays ?? []).slice(0, 5);
+  const rawPlays = (edition?.plays ?? []).slice(0, EDITION_TARGET_PLAYS);
   const basePlays: TerminalPlay[] = rawPlays.map((p, i) => {
     const tk = p.ticker?.toUpperCase();
     const confirm = confirmByTicker.get(tk);
@@ -136,6 +138,7 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
       exit_style: p.exit_style ?? null,
       iv_rank: p.iv_rank ?? null,
       rr_ratio: p.rr_ratio ?? null,
+      flow_streak_days: p.flow_streak_days ?? null,
       gate_promoted: p.gate_promoted ?? null,
       gate_warnings: p.gate_warnings ?? null,
       pulled: p.pulled ?? null,
@@ -150,6 +153,12 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
   const tickers = rawPlays.map((p) => p.ticker?.toUpperCase()).filter(Boolean);
   const stockQuotes = useLegacyStockQuotes(tickers);
   const plays = overlayLegacyQuotes(basePlays, stockQuotes, rawPlays);
+
+  // Morning-confirm staleness: the verdict is a one-time 9am snapshot that never updates.
+  // After 4h it misleads if shown without qualification.
+  const checkedAt: string | null = confirmData?.checked_at ?? null;
+  const confirmStale = isMorningConfirmStale(checkedAt, Date.now());
+  const checkedAtLabel = checkedAt ? formatCheckedAtEt(checkedAt) : null;
 
   // Edition health banners — stale/degraded/carry/error states must be visible, never silently hidden.
   const isStale = edition?.stale === true;
@@ -185,6 +194,15 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
         >
           <span aria-hidden>{hasFetchError || isDegraded ? "!" : isStale || isCarry ? "~" : "i"}</span>
           <span>{bannerText}</span>
+        </div>
+      )}
+      {confirmStale && checkedAtLabel && (
+        <div
+          role="status"
+          className="mb-3 flex items-center gap-2 rounded-lg border border-amber-400/60 bg-amber-500/15 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-amber-200"
+        >
+          <span aria-hidden>~</span>
+          <span>Morning verdict from {checkedAtLabel} — may no longer reflect current conditions.</span>
         </div>
       )}
       {edition?.recap_headline && (
