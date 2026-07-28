@@ -162,27 +162,25 @@ export function SpxDashboard({ vectorSeed }: SpxDashboardProps) {
   }, [compactPanels, applyFocus]);
   const focusActive = focusMode && !compactPanels;
 
-  if (isLoaded && tier && tier !== "premium" && tier !== "admin") {
+  if (isLoaded && tier && tier !== "premium" && tier !== "community" && tier !== "admin") {
     return (
       <div className="flex min-h-[60vh] items-center justify-center px-4">
         <EmptyState
-          title="Premium membership required"
+          title="Membership required"
           description={
             <>
               <span className="hide-in-ios-app">
-                This account does not have an active Premium membership. Upgrade to access the
-                live desk.
+                This account does not have an active membership. Upgrade to access the live desk.
               </span>
               <span className="show-in-ios-app">
-                This account does not have an active Premium membership. Membership is managed
-                on the web.
+                This account does not have an active membership. Membership is managed on the web.
               </span>
             </>
           }
           action={
             <>
               <Button href="/upgrade" variant="primary" size="sm" className="hide-in-ios-app">
-                Unlock Premium
+                Unlock Access
               </Button>
               <Button href="/upgrade" variant="primary" size="sm" className="show-in-ios-app">
                 Check membership
