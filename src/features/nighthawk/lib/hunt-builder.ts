@@ -169,6 +169,7 @@ export function rescoreDossier(
       congress_trades: dossier.congress_trades,
       institutional_activity: dossier.institutional_activity,
       fundamental_ratios: dossier.fundamental_ratios,
+      fundamental_signals: dossier.fundamental_signals,
       trading_halt: dossier.trading_halt,
       risk_reversal_skew: dossier.risk_reversal_skew,
       short_days_to_cover: dossier.short_days_to_cover,

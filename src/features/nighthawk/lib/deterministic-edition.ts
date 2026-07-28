@@ -847,6 +847,7 @@ export function buildRescuePlays(params: {
         ...(scored.vex_alignment_score != null ? { vex: scored.vex_alignment_score } : {}),
         ...(scored.skew_score != null ? { skew: scored.skew_score } : {}),
       },
+      sector: scored.sector?.toLowerCase() || undefined,
       confirming_signals: scored.confirming_signals ?? undefined,
       earnings_risk: scored.earnings_risk === true ? true : undefined,
       gate_promoted: true,

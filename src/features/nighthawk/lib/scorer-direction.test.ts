@@ -13,6 +13,8 @@ import {
   computeRegimeMultiplier,
   rankingScore,
   rankCandidates,
+  scoreFundamentalTailwind,
+  FUNDAMENTAL_CAP,
 } from "./scorer";
 import type { ScoredCandidate } from "./scorer";
 import type { PositioningSummary } from "./positioning";
@@ -577,5 +579,93 @@ test("rankCandidates: close scores favor clean over flagged", () => {
   const clean = makeCandidate({ ticker: "CLEAN", score: 50, fundamental_block: false, confirming_signals: 2 });
   const { ranked } = rankCandidates([flagged, clean], 5);
   assert.equal(ranked[0]!.ticker, "CLEAN", "clean should outrank when scores are close (penalty -10)");
+});
+
+// ── scoreFundamentalTailwind ────────────────────────────────────────────────────
+// Regression: rescoreDossier omitted fundamental_signals, zeroing 6/8 possible points.
+
+test("scoreFundamentalTailwind: signals-only path scores positive for strong fundamentals (LONG)", () => {
+  const signals = {
+    revenue_yoy_pct: 30,        // +3
+    operating_margin_pct: 25,   // +1
+    margin_trend: "expanding" as const,  // +2
+    fcf_positive: true,         // +2
+    fcf_trend: "rising" as const,        // +1
+    net_cash_positive: true,    // +2
+    share_count_trend: "buyback" as const, // +2
+    eps_trajectory: "rising" as const,     // +1
+  };
+  const score = scoreFundamentalTailwind(null, signals, "long");
+  assert.ok(score > 0, `strong fundamentals should score positive for LONG, got ${score}`);
+  assert.equal(score, FUNDAMENTAL_CAP, `max signals should hit the cap (${FUNDAMENTAL_CAP})`);
+});
+
+test("scoreFundamentalTailwind: signals-only path scores positive for weak fundamentals (SHORT)", () => {
+  const signals = {
+    revenue_yoy_pct: -5,          // -2
+    margin_trend: "contracting" as const,  // -2
+    fcf_positive: false,           // -2
+    eps_trajectory: "falling" as const,    // -1
+  };
+  const score = scoreFundamentalTailwind(null, signals, "short");
+  assert.ok(score > 0, `weak fundamentals should score positive for SHORT (sign flip), got ${score}`);
+});
+
+test("scoreFundamentalTailwind: null signals returns 0 (the pre-fix behavior)", () => {
+  const score = scoreFundamentalTailwind(null, null, "long");
+  assert.equal(score, 0, "null signals + null ratios = 0");
+});
+
+test("scoreFundamentalTailwind: ratios-only caps at 2 (pre-fix max)", () => {
+  const ratios = { roe: 0.25, debt_to_equity: 0.3 };
+  const score = scoreFundamentalTailwind(ratios, null, "long");
+  assert.equal(score, 2, "ratios-only path maxes at +2 (roe bonus + low leverage)");
+});
+
+test("scoreCandidate: fundamental_signals flow through to final score", () => {
+  const baseExtras = {
+    dark_pool: null,
+    oi_change: [],
+    positioning: null,
+    strike_stacks: [],
+    news_headlines: [],
+    insider_buys: 0,
+    predictions_signal: null,
+    congress_unusual: [],
+    congress_trades: [],
+    institutional_activity: [],
+    fundamental_ratios: null,
+    fundamental_signals: null as any,
+    catalysts: [],
+    trading_halt: false,
+    risk_reversal_skew: null,
+    short_days_to_cover: null,
+    earnings_date: null,
+    today_ymd: "2026-07-28",
+    tomorrow_ymd: "2026-07-29",
+    benzinga_price_target: null,
+    greek_flow: null,
+    iv_rank: null,
+    fda_events: [],
+  };
+
+  const withoutSignals = scoreCandidate("TEST", [], null, { ...baseExtras, fundamental_signals: null });
+  const withSignals = scoreCandidate("TEST", [], null, {
+    ...baseExtras,
+    fundamental_signals: {
+      revenue_yoy_pct: 30,
+      operating_margin_pct: 25,
+      margin_trend: "expanding",
+      fcf_positive: true,
+      net_cash_positive: true,
+      share_count_trend: "buyback",
+      eps_trajectory: "rising",
+    },
+  });
+
+  assert.ok(
+    withSignals.score > withoutSignals.score,
+    `fundamental_signals should increase score: ${withSignals.score} vs ${withoutSignals.score}`
+  );
 });
 

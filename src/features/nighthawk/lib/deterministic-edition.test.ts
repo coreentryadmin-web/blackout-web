@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildDeterministicEditionPlays,
+  buildRescuePlays,
   pickChainContract,
   buildDeterministicThesis,
   scoreContrarianHedge,
@@ -713,4 +714,31 @@ test("no bangerTickers passed → no play gets a scale-out note (backwards compa
   const dossierMap = { AAA: dossier("AAA", 120) };
   const { plays } = buildDeterministicEditionPlays({ ranked, dossierMap, chains });
   assert.equal(plays[0]?.risk_note, undefined);
+});
+
+// ── buildRescuePlays sector propagation ─────────────────────────────────────────
+// Regression: buildRescuePlays omitted `sector` from the play object, breaking
+// the cross-edition governor's per-sector cap.
+
+test("buildRescuePlays propagates sector from ScoredCandidate", () => {
+  const s = { ...scored("NVDA", "long", 68), sector: "Technology" } as ScoredCandidate;
+  const plays = buildRescuePlays({
+    ranked: [s],
+    dossierMap: { NVDA: dossier("NVDA", 120) },
+    chains: {},
+  });
+  assert.equal(plays.length, 1);
+  assert.equal(plays[0]!.sector, "technology", "sector should be lowercased from ScoredCandidate");
+  assert.equal(plays[0]!.gate_promoted, true, "rescue plays are always gate_promoted");
+});
+
+test("buildRescuePlays: missing sector on ScoredCandidate → sector undefined", () => {
+  const s = scored("AAPL", "long", 60);
+  const plays = buildRescuePlays({
+    ranked: [s],
+    dossierMap: { AAPL: dossier("AAPL", 150) },
+    chains: {},
+  });
+  assert.equal(plays.length, 1);
+  assert.equal(plays[0]!.sector, undefined, "no sector on scored → play.sector should be undefined");
 });
