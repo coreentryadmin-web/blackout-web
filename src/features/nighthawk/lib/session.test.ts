@@ -70,6 +70,19 @@ test("isBeforeOrAtMarketCloseEt keeps an edition active through its session clos
   );
 });
 
+test("2028 holidays: MLK, Good Friday, Juneteenth all non-trading", () => {
+  assert.equal(isTradingDayEt("2028-01-17"), false);
+  assert.equal(isTradingDayEt("2028-04-14"), false);
+  assert.equal(isTradingDayEt("2028-06-19"), false);
+  assert.equal(isTradingDayEt("2028-07-04"), false);
+  assert.equal(isTradingDayEt("2028-12-25"), false);
+});
+
+test("2029 holidays: New Year, Good Friday", () => {
+  assert.equal(isTradingDayEt("2029-01-01"), false);
+  assert.equal(isTradingDayEt("2029-03-30"), false);
+});
+
 test("isBeforeOrAtMarketCloseEt does not carry a different session", () => {
   assert.equal(
     isBeforeOrAtMarketCloseEt("2026-07-01", new Date("2026-06-30T19:00:00Z")),

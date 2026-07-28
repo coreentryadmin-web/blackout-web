@@ -45,7 +45,10 @@ function parseDecimal(text: unknown): number | null {
 }
 
 export function parsePlayLevels(play: PlaybookPlay): ParsedPlayLevels {
-  const entryText = String(play.entry_range ?? "");
+  const raw = String(play.entry_range ?? "");
+  // mapClaudePlayToEdition joins "condition | $range" — strip the prose prefix so
+  // numbers from the condition (e.g. "Break above 99") don't contaminate the band.
+  const entryText = raw.includes("|") ? raw.slice(raw.lastIndexOf("|") + 1) : raw;
   const normalized = entryText.replace(/[–—]/g, "-");
   const entryParts = normalized
     .split("-")

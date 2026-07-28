@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse, after } from "next/server";
 import { requireDatabaseInProduction, fetchNighthawkJob, failStaleNighthawkJobs } from "@/lib/db";
 import { buildEveningEdition, serializeBuildError } from "@/features/nighthawk/lib/edition-builder";
-import { isWeekdayEt, etNowParts, nextTradingDayEt, todayEt } from "@/features/nighthawk/lib/session";
+import { isTradingDayEt, etNowParts, nextTradingDayEt, todayEt } from "@/features/nighthawk/lib/session";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { notifyOpsDiscord } from "@/features/spx/lib/spx-play-notify";
@@ -26,7 +26,7 @@ function editionEnabled(): boolean {
 
 function inEditionWindow(force: boolean): boolean {
   if (force) return true;
-  if (!isWeekdayEt()) return false;
+  if (!isTradingDayEt(todayEt())) return false;
   const hour = Number(process.env.NIGHTHAWK_EDITION_HOUR_ET ?? "17");
   const minute = Number(process.env.NIGHTHAWK_EDITION_MINUTE_ET ?? "30");
   const { hour: nowH, minute: nowM } = etNowParts();
