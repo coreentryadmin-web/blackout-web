@@ -21,6 +21,11 @@ import { etNowParts } from "@/features/nighthawk/lib/session";
 
 const json = (u: string) => fetch(u, { cache: "no-store", credentials: "same-origin" }).then((r) => (r.ok ? r.json() : null));
 
+/** Board payload may carry session.heat — keep the type loose so a missing field never breaks the deck. */
+type BoardRespWithSession = BoardResp & {
+  session?: { heat?: { state?: string | null } | null } | null;
+};
+
 /** Board SWR cadence: faster during RTH so thesis/gates/underlying advance with the scan;
  *  off-hours the shared snapshot is cache-stable so 5s is enough (marks SSE still drives the rail). */
 function zerodteBoardRefreshMs(): number {
@@ -51,7 +56,7 @@ export function ZeroDteDeck() {
   }, []);
 
   const boardUrl = sim ? "/api/market/zerodte/board?sim=1" : "/api/market/zerodte/board";
-  const { data, isLoading } = useSWR<BoardResp>(boardUrl, json, {
+  const { data, isLoading } = useSWR<BoardRespWithSession>(boardUrl, json, {
     refreshInterval: zerodteBoardRefreshMs(),
     revalidateOnFocus: true,
   });
@@ -77,6 +82,7 @@ export function ZeroDteDeck() {
   // 9-3: a degraded/unavailable board must NOT be painted as a calm "no setup cleared the floor" flat tape
   // — that hides a real outage AND any open position. (isBoardDegraded treats first-load null as not-degraded.)
   const degraded = isBoardDegraded(data);
+  const sessionHeat = data?.session?.heat?.state ?? null;
   return (
     <>
       {sim && (
@@ -94,6 +100,7 @@ export function ZeroDteDeck() {
         degraded={degraded}
         loading={isLoading && !data}
         allocation={data?.allocation ?? null}
+        sessionHeat={sessionHeat}
         emptyHint={
           degraded
             ? "Board data unavailable right now — retrying. Any open position is still live; this is a data outage, not a flat tape."

@@ -305,8 +305,8 @@ const hardGate = (p: ReturnType<typeof terminalPlayFromZeroDte>) => p.gates.find
 const tapeGate = (p: ReturnType<typeof terminalPlayFromZeroDte>) => p.gates.find((g) => g.label === "Tape align")!;
 
 // ── Hard gate across EVERY status × gate-verdict combination (9-6b) ────────────────────
-// isWorking = OPEN|HOLD|TRIM. Hard gate ok = (verdict==="COMMIT") OR isWorking. So a
-// non-working row (CLOSED/WATCH/SKIP) passes the Hard gate ONLY on an explicit COMMIT.
+// isCommitted = OPEN|HOLD|TRIM|CLOSED. Hard gate ok = (verdict==="COMMIT") OR isCommitted.
+// CLOSED must never re-litigate today's refresh-lane BLOCKED gate (prod SPY 2026-07-28).
 test("0DTE adapter: Hard gate ok for EVERY working status even with a null gate (refresh-lane)", () => {
   for (const status of ["OPEN", "HOLD", "TRIM"] as const) {
     const p = terminalPlayFromZeroDte({ ticker: "nvda", status, setup: { direction: "long", gate: null } });
@@ -315,8 +315,8 @@ test("0DTE adapter: Hard gate ok for EVERY working status even with a null gate 
   }
 });
 
-test("0DTE adapter: non-working status (CLOSED/WATCH/SKIP) fails the Hard gate unless gate verdict is COMMIT", () => {
-  for (const status of ["CLOSED", "WATCH", "SKIP"] as const) {
+test("0DTE adapter: WATCH/SKIP fails the Hard gate unless gate verdict is COMMIT", () => {
+  for (const status of ["WATCH", "SKIP"] as const) {
     const blocked = terminalPlayFromZeroDte({ ticker: "amd", status, setup: { direction: "long", gate: { verdict: "WATCH" } } });
     assert.equal(hardGate(blocked).ok, false, `${status} + non-COMMIT gate must fail the Hard gate`);
     const committed = terminalPlayFromZeroDte({ ticker: "amd", status, setup: { direction: "long", gate: { verdict: "COMMIT" } } });
@@ -324,9 +324,14 @@ test("0DTE adapter: non-working status (CLOSED/WATCH/SKIP) fails the Hard gate u
   }
 });
 
-test("0DTE adapter: CLOSED with a null gate does NOT render a green Hard gate (data-absent ≠ pass)", () => {
-  const p = terminalPlayFromZeroDte({ ticker: "meta", status: "CLOSED", setup: { direction: "long", gate: null } });
-  assert.equal(hardGate(p).ok, false); // not working, no COMMIT → not a fabricated pass
+test("0DTE adapter: CLOSED always passes Hard gate (committed — never re-litigate refresh BLOCKED)", () => {
+  const blocked = terminalPlayFromZeroDte({
+    ticker: "spy", status: "CLOSED",
+    setup: { direction: "long", gate: { verdict: "BLOCKED" } },
+  });
+  assert.equal(hardGate(blocked).ok, true);
+  const nullGate = terminalPlayFromZeroDte({ ticker: "meta", status: "CLOSED", setup: { direction: "long", gate: null } });
+  assert.equal(hardGate(nullGate).ok, true);
 });
 
 // ── direction / contract label (long=C, short=P) + strike & dte fallbacks ──────────────

@@ -5,6 +5,28 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-28 — [0DTE-UI] Command Deck UX honesty (session strip, hard gate, nav, defaults)
+
+**Severity.** P1 — live admin Chrome pass on prod `/nighthawk` (2026-07-28 ~17:50 ET) showed:
+authed desk + **"Sign In"** nav; CLOSED SPY with **✗ Hard gate**; greeks `—` under SYNC with no
+session-closed label; left rail filtered to CLOSED (hiding 6 WATCH); "LIVE THESIS MONITOR" copy
+while nothing streamed.
+
+**Root cause.**
+1. Desk `Nav` trusted Clerk client `isSignedIn` only — no server `auth()` seed / `__client_uat` heal
+   (marketing already had this; desk did not).
+2. Hard gate treated CLOSED like WATCH — refresh-lane `BLOCKED` after close painted red on a play
+   that had already committed.
+3. Mark stream had no SESSION CLOSED state; greeks strip stayed visually "live-ready" with dashes.
+4. Status filter defaulted to ALL but selection preferred sort-top (often CLOSED); no RTH-aware default.
+
+**Fix (draft PR #1199).** Session-aware stream badge + dim greeks; CLOSED passes hard gate;
+`initialSignedIn` + `__client_uat` heal on desk Nav; default filter OPEN/WATCH in RTH else ALL;
+prefer working→watch selection; collapse thesis factors; Management rails distance lead; honest
+monitor copy.
+
+**Status.** OPEN on `cursor/zerodte-multi-rail-discovery-3d11` (draft PR #1199).
+
 ## 2026-07-28 — [0DTE-UI] Right-rail Thesis/Management/PnL panels looked static
 
 **Severity.** P0 (member-facing) — the three Command Deck right-rail tabs on `/nighthawk` (0DTE)

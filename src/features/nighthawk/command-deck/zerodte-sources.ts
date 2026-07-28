@@ -17,6 +17,7 @@ export interface BoardResp {
   setups?: Array<Record<string, unknown>>;
   ledger?: Array<Record<string, unknown>>;
   allocation?: Array<{ ticker: string; role: string; sizing: string; reasons?: string[] }>;
+  session?: { heat?: { state?: string | null } | null; date?: string; trading_day?: boolean } | null;
 }
 
 /** Ledger statuses that represent a WORKING (member-held) position — always rendered (9-4). */
