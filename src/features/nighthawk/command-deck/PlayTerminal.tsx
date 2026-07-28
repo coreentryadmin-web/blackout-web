@@ -320,6 +320,27 @@ function ThesisPanel({ play }: { play: TerminalPlay }) {
           </div>
         </>
       )}
+      {play.tierFactors && play.tierFactors.length > 0 && (
+        <>
+          <div className="nh-deck-lab" style={{ marginTop: 16 }}>Conviction tier breakdown</div>
+          <div className="nh-deck-tierfactors">
+            <div className="nh-deck-tierfactors-hd">
+              <span className="nh-deck-tierfactors-lb">Merit tier · graded at publish</span>
+              <span className="nh-deck-tierfactors-val">tier {play.tierLabel ?? "?"}</span>
+            </div>
+            <ul className="nh-deck-tierfactors-list">
+              {play.tierFactors.map((f, i) => (
+                <li key={`${f.label}-${i}`} className="nh-deck-tierfactor">
+                  <span className={`nh-deck-tierfactor-dir ${f.direction}`}>
+                    {f.direction === "up" ? "▲" : "▼"} {f.label}
+                  </span>
+                  <span className="nh-deck-tierfactor-detail">{f.detail}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </>
+      )}
       {play.thesis && (
         <div className="nh-deck-recnote" style={{ marginTop: 8, fontStyle: "italic" }}>{play.thesis}</div>
       )}
