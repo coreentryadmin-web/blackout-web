@@ -103,3 +103,47 @@ test("zeroDteSources: a legacy ledger row without Terminal v2 fields yields null
   assert.equal(s!.tier, null);
   assert.equal(s!.confluence, null);
 });
+
+test("zeroDteSources: WATCH setup plan.mark/bid/ask/occ plumb when ledger has no mark (right-rail not static)", () => {
+  // Prod 2026-07-28 after-hours: marks SSE returns stale nulls, but board setups carry plan.mark.
+  // Without this plumbing the Thesis/Management/PnL panels show "—" forever off the live lane.
+  const resp: BoardResp = {
+    setups: [{
+      ticker: "MU",
+      score: 83,
+      underlying_price: 819.94,
+      market_aligned: true,
+      gate: { verdict: "WATCH" },
+      plan: { occ: "O:MU260729C00825000", mark: 21.38, bid: 21.1, ask: 21.65, stop_premium: 10.69, target_premium: 42.76 },
+    }],
+    ledger: [],
+  };
+  const [s] = zeroDteSources(resp);
+  assert.equal(s!.status, "WATCH");
+  assert.equal(s!.last_mark, 21.38);
+  assert.equal(s!.bid, 21.1);
+  assert.equal(s!.ask, 21.65);
+  assert.equal(s!.occ, "O:MU260729C00825000");
+  assert.equal(s!.mark_is_sync, true); // plan quote, no per-tick mark_as_of
+  assert.equal(s!.underlying_price, 819.94);
+});
+
+test("zeroDteSources: ledger occ wins + synthesizes plan on ledger-only working rows", () => {
+  const resp: BoardResp = {
+    setups: [],
+    ledger: [{
+      ticker: "NVDA",
+      status: "OPEN",
+      direction: "long",
+      top_strike: 190,
+      entry_premium: 2.0,
+      last_mark: 2.4,
+      occ: "O:NVDA260729C00190000",
+      live_pnl_pct: 20,
+    }],
+  };
+  const [s] = zeroDteSources(resp);
+  assert.equal(s!.occ, "O:NVDA260729C00190000");
+  assert.equal(s!.setup?.plan?.occ, "O:NVDA260729C00190000");
+  assert.equal(s!.last_mark, 2.4);
+});

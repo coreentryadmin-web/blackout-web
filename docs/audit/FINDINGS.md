@@ -5,6 +5,38 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-28 — [0DTE-UI] Right-rail Thesis/Management/PnL panels looked static
+
+**Severity.** P0 (member-facing) — the three Command Deck right-rail tabs on `/nighthawk` (0DTE)
+showed frozen "—" marks / non-updating peak-trough / non-advancing underlying after hours and for
+WATCH setups, even when the board payload carried live plan quotes.
+
+**Root cause.**
+1. `zerodte-sources.ts` `sourceFrom` set `last_mark` / `bid` / `ask` **only** from the ledger row.
+   WATCH finds have no ledger mark — only `setup.plan.{mark,bid,ask,occ}` — so the adapter painted
+   `mark: null` and the right rail stayed "—" until a fresh SSE tick.
+2. After hours the marks lane returns `stale:true, mark:null` for every WATCH OCC (prod probe
+   2026-07-28 ~17:40 ET: 7 marks, 0 with a mark). `overlayLiveMarks` correctly skips stale rows,
+   so with (1) the panels never recovered to the board's plan quote.
+3. Ledger payload omitted `occ` (`plan_json.occ` stayed server-side) → ledger-only working rows
+   could not key the SSE overlay (`overlayLiveMarks` is OCC-keyed).
+4. Peak/trough + trim FIRED only advanced on the server persist cycle; SSE `pnlPct` ticked ~1s
+   but the PnL Peak/Trough and Management trim chips stayed board-frozen.
+5. Underlying `stockPrice` only moved when the board snapshot rebuilt — no quote-poll overlay
+   (Legacy already had `useLegacyStockQuotes`).
+
+**Evidence.** Admin Clerk session against prod: MU WATCH `plan.mark=21.38` / `occ=O:MU…` on board;
+marks API same OCC `mark:null stale:true`; ledger SPY CLOSED had `last_mark` but `occ` absent from
+payload keys.
+
+**Fix (draft PR #1199).**
+- Plumb `plan.mark/bid/ask/occ` (+ ledger `occ`) in `zerodte-sources`; badge plan-only marks as SYNC.
+- Emit `occ` on `ZeroDteBoardLedgerRow` from `plan_json.occ`.
+- Client `latchLiveExcursion` in `overlayLiveMarks` for peak/trough + trim FIRED; stock-quote
+  overlay for underlying/condor spot; RTH board poll 2.5s + loading skeleton; honest thesis monitor.
+
+**Status.** OPEN on `cursor/zerodte-multi-rail-discovery-3d11` (draft PR #1199).
+
 ## 2026-07-28 — [product] 0DTE engine starved to 1 OPEN/day (score map + caps + NH exclude)
 
 **Severity.** P0 — whole-market 0DTE product produced **1 committed play** on 2026-07-28

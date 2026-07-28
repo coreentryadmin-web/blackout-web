@@ -306,6 +306,9 @@ function ThesisPanel({ play }: { play: TerminalPlay }) {
   const level = play.thesisBreak?.level ?? "intact";
   const broke = level === "warn" || level === "break";
   const unknown = level === "unknown";
+  // Keep the advisory recommendation in sync with the live (SSE-overlaid) pnlPct — same
+  // recompute ManagePanel does — so "Recommend TRIM/SELL" never lags the Management badge.
+  const liveRec = managementFor(play.exitModel, play.status, play.pnlPct ?? null).recommendation;
   // "Why now" ribbon — the event-driven trigger that surfaced this play, with the ET flag time
   // when the row carries one. Omitted entirely when no reason was pinned (honest absence).
   const whyAt = etClock(play.firstFlaggedAt);
@@ -377,10 +380,10 @@ function ThesisPanel({ play }: { play: TerminalPlay }) {
         className="nh-deck-break"
         style={broke ? undefined : { borderColor: unknown ? "rgba(255,255,255,.14)" : "rgba(53,255,158,.2)" }}
       >
-        <div className="bh" style={broke ? undefined : { color: unknown ? "var(--dk-amber)" : "var(--dk-green)" }}>◉ LIVE THESIS MONITOR</div>
+        <div className="bh" style={broke ? undefined : { color: unknown ? "var(--dk-amber)" : "var(--dk-green)" }}>◉ THESIS MONITOR</div>
         <div className="nh-deck-feed">
           {broke ? (
-            <div><span className="brk">✗ THESIS DEGRADING</span> — {play.thesisBreak!.note}. Recommend {play.recommendation}.</div>
+            <div><span className="brk">✗ THESIS DEGRADING</span> — {play.thesisBreak!.note}. Recommend {liveRec}.</div>
           ) : unknown ? (
             // Data-absent (e.g. a working position with no fresh tape read) — neutral, NOT a false green
             // and NOT a false "degrading". Honest: we're not monitoring the thesis for this play right now.
@@ -388,7 +391,16 @@ function ThesisPanel({ play }: { play: TerminalPlay }) {
           ) : (
             <div><span className="ok">✓ thesis intact</span> — {play.horizon === "LEGACY"
               ? play.regime?.includes("CONFIRMED") ? "pre-market confirmed — entry levels validated." : "evening thesis holds; morning confirmation updates before the open."
-              : "evidence holding; monitor updates on each marks push."}</div>
+              : "tape alignment holding; gates + factors refresh with the board, mark/P&L with each marks push."}</div>
+          )}
+          {play.horizon === "ZERO_DTE" && play.gates.length > 0 && (
+            <div style={{ marginTop: 6 }}>
+              {play.gates.map((g) => (
+                <span key={`mon-${g.label}`} className={clsx("nh-deck-gate", g.ok ? "ok" : "no")} style={{ marginRight: 6 }}>
+                  {g.ok ? "✓" : "✗"} {g.label}
+                </span>
+              ))}
+            </div>
           )}
         </div>
       </div>

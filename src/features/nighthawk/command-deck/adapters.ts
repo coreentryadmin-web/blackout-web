@@ -109,6 +109,8 @@ export interface ZeroDteDeckSource {
   last_mark?: number | null;
   peak_premium?: number | null;
   trough_premium?: number | null;
+  /** OCC for the live-marks overlay — ledger `occ` / setup.plan.occ / plan_json.occ. */
+  occ?: string | null;
   setup?: {
     direction?: "long" | "short";
     dte?: number | null;
@@ -117,7 +119,14 @@ export interface ZeroDteDeckSource {
     flow_quality?: { components?: Record<string, number> } | null;
     factor_breakdown?: Record<string, number> | null;
     gate?: { verdict?: string; blocks?: unknown[] } | null;
-    plan?: { occ?: string | null; stop_premium?: number | null; target_premium?: number | null } | null;
+    plan?: {
+      occ?: string | null;
+      mark?: number | null;
+      bid?: number | null;
+      ask?: number | null;
+      stop_premium?: number | null;
+      target_premium?: number | null;
+    } | null;
     market_aligned?: boolean | null;
     /** Play STRUCTURE (Phase 4): "CONDOR" for a delta-neutral credit iron condor, else DIRECTIONAL. */
     play_type?: string | null;
@@ -270,12 +279,16 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
   const condor: DeckCondor | null =
     isCondor === true ? deckCondorFrom(condorGeometryFrom(src.condor), fin(src.underlying_price)) : null;
 
+  // OCC: prefer the explicit source field (ledger payload) so a ledger-only working row still
+  // keys the ~1s marks overlay even when setup.plan was never attached.
+  const occ = (typeof src.occ === "string" && src.occ.length > 0 ? src.occ : null) ?? setup?.plan?.occ ?? null;
+
   return {
     id: `0DTE:${src.ticker}`,
     ticker: src.ticker.toUpperCase(),
     direction,
     contract: `${strike ?? "?"}${right} · ${dte === 0 ? "0DTE" : `${dte ?? "?"}DTE`}`,
-    occ: setup?.plan?.occ ?? null,
+    occ,
     score: Math.round(fin(src.score) ?? 0),
     status,
     horizon: "ZERO_DTE",
@@ -289,7 +302,7 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
     allocation: alloc,
     // Directional plays surface the underlying stock price; condors use the tent's spot instead.
     stockPrice: isCondor !== true ? fin(src.underlying_price) : null,
-    optionsPlay: setup?.plan?.occ ?? null,
+    optionsPlay: occ,
     rrRatio: rrFromPlan(setup?.plan),
     thesisBreak:
       setup?.market_aligned === false

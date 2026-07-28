@@ -505,6 +505,17 @@ test("0DTE adapter: optionsPlay from plan OCC", () => {
   assert.equal(p.optionsPlay, "O:NVDA260728C00130000");
 });
 
+test("0DTE adapter: src.occ keys the marks overlay when setup.plan is absent (ledger-only)", () => {
+  const p = terminalPlayFromZeroDte({
+    ticker: "SPY", status: "OPEN", score: 74, last_mark: 2.26, entry_premium: 2.12,
+    occ: "O:SPY260729C00742000",
+    setup: { direction: "long", dte: 0, top_strike: 742 },
+  });
+  assert.equal(p.occ, "O:SPY260729C00742000");
+  assert.equal(p.optionsPlay, "O:SPY260729C00742000");
+  assert.equal(p.mark, 2.26);
+});
+
 // ── allocation mapping (first reason only) + absence ───────────────────────────────────
 test("0DTE adapter: allocation maps role/sizing + the FIRST reason; absent allocation → null", () => {
   const withAlloc = terminalPlayFromZeroDte({

@@ -2,11 +2,14 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   overlayLiveMarks,
+  overlayZeroDteStockQuotes,
+  latchLiveExcursion,
   marksMapFromPayload,
   restFallbackShouldPoll,
   type LiveMarkRow,
 } from "./use-live-marks.ts";
 import type { TerminalPlay } from "./types.ts";
+import type { TerminalExitLadder } from "@/lib/zerodte/terminal-ladder.ts";
 
 function play(over: Partial<TerminalPlay> = {}): TerminalPlay {
   return {
@@ -153,4 +156,58 @@ test("overlayLiveMarks: a stale live row keeps board values (never overlays exec
   assert.equal(out!.execMark, 1.11); // unchanged — stale row skipped
   assert.equal(out!.markAsOf, "board-ts");
   assert.equal(out!.markIsSync, true);
+});
+
+test("latchLiveExcursion: advances peak/trough from live pnl and arms trim FIRED (never un-fires)", () => {
+  const ladder: TerminalExitLadder = {
+    policy: "trim_scale",
+    hard_stop_pct: -50,
+    target_pct: 100,
+    trim_levels: [
+      { trigger_pct: 25, fraction: 0.333, premium: 5.25, fired: true }, // already banked
+      { trigger_pct: 50, fraction: 0.333, premium: 6.3, fired: false },
+    ],
+    runner_fraction: 0.334,
+    stop_premium: 2.1,
+    target_premium: 8.4,
+    time_stop_et: "15:30",
+  };
+  const out = latchLiveExcursion(play({ peak: 30, trough: -5, exitPolicy: ladder }), 55);
+  assert.equal(out.peak, 55);
+  assert.equal(out.trough, -5); // trough never rises
+  assert.equal(out.exitPolicy!.trim_levels[0]!.fired, true); // stayed fired
+  assert.equal(out.exitPolicy!.trim_levels[1]!.fired, true); // newly armed at +55 ≥ 50
+});
+
+test("overlayLiveMarks: fresh frame latches peak + arms trim from live pnl", () => {
+  const ladder: TerminalExitLadder = {
+    policy: "trim_scale",
+    hard_stop_pct: -50,
+    target_pct: 100,
+    trim_levels: [{ trigger_pct: 25, fraction: 0.333, premium: 5.25, fired: false }],
+    runner_fraction: 0.667,
+    stop_premium: 2.1,
+    target_premium: 8.4,
+    time_stop_et: "15:30",
+  };
+  const [out] = overlayLiveMarks(
+    [play({ peak: 10, trough: 0, exitPolicy: ladder, pnlPct: 10 })],
+    new Map([[row().occ, row({ live_pnl_pct: 40 })]]),
+  );
+  assert.equal(out!.pnlPct, 40);
+  assert.equal(out!.peak, 40);
+  assert.equal(out!.exitPolicy!.trim_levels[0]!.fired, true);
+});
+
+test("overlayZeroDteStockQuotes: refreshes stockPrice (+ condor spot) from the quote poll", () => {
+  const [out] = overlayZeroDteStockQuotes(
+    [play({ stockPrice: 100, isCondor: true, condor: {
+      spot: 100, spotIsLive: false, shortPut: 95, longPut: 90, shortCall: 105, longCall: 110,
+      wingPts: 5, netCredit: 1.2, maxLoss: 3.8, breachLower: 95, breachUpper: 105, winRate: 80, breachRatePct: 20,
+    } })],
+    new Map([["NVDA", { price: 101.5, asof: "2026-07-28T15:00:00.000Z" }]]),
+  );
+  assert.equal(out!.stockPrice, 101.5);
+  assert.equal(out!.condor!.spot, 101.5);
+  assert.equal(out!.condor!.spotIsLive, true);
 });
