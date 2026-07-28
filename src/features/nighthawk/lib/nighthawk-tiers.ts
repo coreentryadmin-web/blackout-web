@@ -87,8 +87,8 @@ export const W_NH_SIGNALS_OK = 1;
 export const W_NH_EARNINGS_RISK = -1;
 
 // ── Tier bands over summed points ───────────────────────────────────────────────
-/** "A" needs two independent strong positives with nothing dragging. */
-export const NH_TIER_A_MIN_POINTS = 3;
+/** "A" needs prime-band score AND strong signal breadth — not just one strong axis. */
+export const NH_TIER_A_MIN_POINTS = 4;
 /** "B" needs the evidence to net positive at all. */
 export const NH_TIER_B_MIN_POINTS = 1;
 

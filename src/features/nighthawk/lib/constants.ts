@@ -71,11 +71,12 @@ export const MIN_PUBLISH_SCORE = 42;
 export const DIVERSITY_HEDGE_FLOOR = 20;
 /** PR-N33: softer floor for the FORCED contrarian path (Phase 2). When zero natural
  *  opposite-direction candidates exist, forced re-scoring discounts flow 0.3× and honestly
- *  scores tech/positioning against the dominant trend — realistic raw totals land 5-18 in
- *  an extreme bull/bear. Raised from 8→15: a score of 8 means essentially zero real signal
- *  supports the trade — forced contrarian still needs SOME evidence, not just rounding noise.
+ *  scores tech/positioning against the dominant trend. Raised 8→15→25: at 15 the floor
+ *  admitted plays with essentially no real signal, just rounding noise from re-scoring
+ *  against trend. At 25 the contrarian still needs genuine technical or positioning support
+ *  to publish (still well below the normal 42 floor, but no longer noise-level).
  *  The play carries a gate_warning marking it as a forced hedge. */
-export const FORCED_CONTRARIAN_FLOOR = 15;
+export const FORCED_CONTRARIAN_FLOOR = 25;
 /** Overshoot sent through synthesis + critic — critic cuts weak plays with no backfill. */
 export const EDITION_SYNTHESIS_OVERSHOOT = 9;
 /** Stock tickers to prefetch option chains for (buffer above 5 final plays).

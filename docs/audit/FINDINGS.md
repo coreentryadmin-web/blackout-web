@@ -3435,4 +3435,49 @@ open-closer-to-stop → `"stop"`, exact-tie → `"stop"`, open missing → still
 the `PlayHistoryTable` / `spx-signals-shadow-precedents` type unions) only reads `row.outcome` — no
 changes needed since `"ambiguous"` stays a valid (just less frequent) union member.
 
-**Status:** PR #1181 open, targeting auto-merge once CI is green.
+**Status:** MERGED (PR #1181).
+
+## 2026-07-28 — [quality] Tier A threshold too lenient + forced contrarian floor too soft (P2×2)
+
+**Severity.** P2 (tier inflation) / P2 (low-confluence contrarian).
+
+**Finding 1: `NH_TIER_A_MIN_POINTS = 3` meant virtually every published play earned tier A.**
+`nighthawk-tiers.ts:91` set the A threshold at 3 points. Since the publish floor (`MIN_PUBLISH_SCORE
+= 42`) lands squarely in the prime score band (40-54, weight +2), any published play with 3+
+confirming signals (weight +2) automatically scored 4 points → tier A. With adequate signals (2,
+weight +1), the total was still 3 → tier A. The only published plays that got B were those with
+earnings risk (hard-capped) or thin signals (<2, hard-capped). Real-world result: ~90% of edition
+plays were tier A, providing zero differentiation to members.
+
+**Root cause.** The prime-band weight (+2) was set for overnight plays where the 40-54 score band is
+genuinely the sweet spot (high scores can be momentum-inflated), but the A threshold was set at 3
+when it should have required both strong axes: prime band AND broad signals.
+
+**Fix.** Raised `NH_TIER_A_MIN_POINTS` from 3 → 4. Now tier A requires prime-band score (40-54, +2)
+AND strong signal breadth (3+ dimensions, +2) = 4 points. Mid/top-band plays with strong signals
+score 3 points → tier B (still solid, just not the top tier). This creates meaningful 3-tier
+differentiation: A (~30-40% of plays), B (~40-50%), C (~10-20%).
+
+**Finding 2: `FORCED_CONTRARIAN_FLOOR = 15` admitted plays with essentially zero real signal.**
+`constants.ts:78` let forced contrarian plays publish with a score of 15 — far below the normal
+42 publish floor. The forced contrarian path discounts flow to 0.3× and re-scores tech/positioning
+against the dominant trend, yielding raw totals of 5-18 in extreme markets. At a floor of 15, a
+play could clear with just rounding noise from re-scoring rather than genuine technical or
+positioning support for the contrarian thesis.
+
+**Fix.** Raised `FORCED_CONTRARIAN_FLOOR` from 15 → 25. The contrarian still needs to clear a softer
+bar than normal plays (25 vs 42) since flow is gutted at 0.3×, but at 25 it requires genuine bearish
+tech or negative-gamma positioning — not just noise. When no candidate clears 25, the edition accepts
+the all-directional book honestly rather than publishing a noise hedge.
+
+**Evidence.** `npx tsx --test nighthawk-tiers.test.ts`: 26/26 pass (6 updated expectations).
+`npx tsx --test deterministic-edition.test.ts`: 34/34 pass (1 dossier enriched, 3 assertions
+updated). `tsc --noEmit` clean.
+
+**Blast radius.** `NH_TIER_A_MIN_POINTS` is read only in `assignNighthawkTier` — affects all tier
+assignments (edition build, forced contrarian, display). No other constant references it.
+`FORCED_CONTRARIAN_FLOOR` is read only in the Phase 2 forced-contrarian path of
+`buildDeterministicEditionPlays` — Phase 1 (natural diversity swap using `DIVERSITY_HEDGE_FLOOR = 20`)
+is unchanged.
+
+**Status:** PR #1184 open (branch `fix/nighthawk-tier-and-contrarian`).
