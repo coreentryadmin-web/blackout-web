@@ -10,6 +10,7 @@ import type { SwingSetupState, SwingEntryState } from "@/lib/swing/taxonomy";
 import type { SwingServingSection } from "@/lib/swing/serving";
 import type { TerminalExitLadder } from "@/lib/zerodte/terminal-ladder";
 import type { WhyNow } from "@/lib/zerodte/why-now";
+import type { NighthawkTierFactor } from "@/features/nighthawk/lib/nighthawk-tiers";
 
 export type DeckDirection = "LONG" | "SHORT";
 export type DeckStatus = "OPEN" | "HOLD" | "TRIM" | "CLOSED" | "WATCH" | "SKIP";
@@ -123,6 +124,10 @@ export interface TerminalPlay {
   discoveryOrigin?: string[] | null;
   /** Merit tier letter at commit (A+/A/…/F), read from the pinned tier blob. */
   tierLabel?: string | null;
+  /** The tier engine's factor breakdown — each factor's label, direction (up/down), and detail
+   *  string explaining WHY the tier was assigned. Present on Legacy plays from the edition's
+   *  publish-context `tier.factors`; absent on older/degraded editions. */
+  tierFactors?: NighthawkTierFactor[] | null;
   /** VWAP-side + market-aligned confirmation count (0–2) — the confluence badge. */
   confluence?: number | null;
   /** Per-strategy calibration scorecard — rendered ONLY when the payload carries it (never

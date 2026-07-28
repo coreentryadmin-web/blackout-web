@@ -40,8 +40,14 @@ const NO_CONTEXT = {
   stockPremarket: null,
 };
 
-test("zero evaluable data returns UNVERIFIED, never a green CONFIRMED", () => {
+test("zero evaluable data for single-name returns DEGRADED (premarket unavailable)", () => {
   const v = computePlayVerdict(play(), NO_CONTEXT);
+  assert.equal(v.status, "DEGRADED");
+  assert.ok(v.reason.includes("pre-market price unavailable"));
+});
+
+test("zero evaluable data for index/ETF returns UNVERIFIED", () => {
+  const v = computePlayVerdict(play({ ticker: "SPY", play_type: "etf" }), NO_CONTEXT);
   assert.equal(v.status, "UNVERIFIED");
   assert.ok(v.reason.includes("withheld"));
 });
@@ -66,10 +72,12 @@ test("stock already at/through TARGET pre-open → DEGRADED (reward consumed)", 
   assert.ok(v.reason.includes("target"));
 });
 
-test("stock gapped above the entry range → DEGRADED, do-not-chase", () => {
+test("stock gapped above the entry range → CONFIRMED (re-anchored), not DEGRADED", () => {
   const v = computePlayVerdict(play(), { ...NO_CONTEXT, stockPremarket: 106 });
-  assert.equal(v.status, "DEGRADED");
-  assert.ok(v.reason.includes("entry range"));
+  // With entry re-anchoring (Phase 3.75), gap-through in thesis direction
+  // no longer degrades — the morning confirm updates the grading band.
+  assert.equal(v.status, "CONFIRMED");
+  assert.ok(v.reason.includes("re-anchored"), `expected re-anchor note, got: ${v.reason}`);
 });
 
 test("stock inside its entry range with no other signals → CONFIRMED", () => {

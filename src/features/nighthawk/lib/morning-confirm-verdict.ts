@@ -98,9 +98,11 @@ export function computePlayVerdict(
         ? entryHi != null && stockPx > entryHi * 1.005
         : entryLo != null && stockPx < entryLo * 0.995
     ) {
-      if (status === "CONFIRMED") status = "DEGRADED";
+      // Gap through entry in the thesis direction — the morning confirm will
+      // re-anchor the grading band to the pre-market price so the play is
+      // still fillable. Advisory only; no longer a pull trigger.
       reasons.push(
-        `${play.ticker} pre-market ${stockPx.toFixed(2)} gapped ${isLong ? "above" : "below"} the entry range — do not chase the published entry`
+        `${play.ticker} pre-market ${stockPx.toFixed(2)} gapped ${isLong ? "above" : "below"} the entry range — entry re-anchored to pre-market`
       );
     }
   }
@@ -110,6 +112,7 @@ export function computePlayVerdict(
   // is unavailable, degrade rather than letting SPX-only data produce a green badge.
   const isSingleName = !SPX_RELEVANT_TICKERS.has(play.ticker.toUpperCase());
   if (isSingleName && stockPx == null) {
+    checksEvaluated++;
     if (status === "CONFIRMED") status = "DEGRADED";
     reasons.push(`${play.ticker} pre-market price unavailable — SPX gap alone cannot confirm a single-name play`);
   }
@@ -147,7 +150,9 @@ export function computePlayVerdict(
   }
 
   // 3. GEX wall shifted hard (> WALL_SHIFT_HARD_PTS) vs edition levels
-  if ((editionCallWall !== null && callWall !== null) || (editionPutWall !== null && putWall !== null)) {
+  // Only count as evaluated if the direction-relevant wall data is present:
+  // call wall matters for SHORT (resistance), put wall matters for LONG (support).
+  if (isLong ? (editionPutWall !== null && putWall !== null) : (editionCallWall !== null && callWall !== null)) {
     checksEvaluated++;
   }
   if (editionCallWall !== null && callWall !== null) {

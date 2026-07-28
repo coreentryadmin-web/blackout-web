@@ -330,9 +330,13 @@ test("LONG target is pushed above call strike + 2×premium when stock target < s
   assert.equal(plays.length, 1);
   const p = plays[0]!;
   const target = Number(String(p.target).replace(/[$,]/g, ""));
-  // Target must be at least strike + 2×premium = 1260 + 2×7.25 = 1274.50
+  // Target must clear the strike (option is ITM at "target"), but the push toward
+  // strike + 2×premium (~1274.50) is now capped at 1.25× the original target distance
+  // from the entry midpoint — see the R:R-inflation-cap fix (audit 2026-07-28) — so it
+  // lands short of the full strike+2×premium figure in this tight-ATR fixture. That's
+  // the intended tradeoff: bounded R:R inflation over an exact strike+2×premium match.
   assert.ok(target >= 1260, `target ${target} should be >= strike 1260`);
-  assert.ok(target >= 1274, `target ${target} should be >= strike + 2×premium ~1274.50`);
+  assert.ok(target < 1274.5, `target ${target} should be capped below the uncapped strike+2×premium ~1274.50`);
 });
 
 test("SHORT target is pushed below put strike - 2×premium when stock target > strike (PR-N29)", () => {
@@ -356,9 +360,43 @@ test("SHORT target is pushed below put strike - 2×premium when stock target > s
   assert.equal(plays.length, 1);
   const p = plays[0]!;
   const target = Number(String(p.target).replace(/[$,]/g, ""));
-  // Target must be at most strike - 2×premium = 1100 - 2×7.75 = 1084.50
-  assert.ok(target <= 1100, `target ${target} should be <= strike 1100`);
-  assert.ok(target <= 1085, `target ${target} should be <= strike - 2×premium ~1084.50`);
+  // The push toward strike - 2×premium (~1084.50) is capped at 1.25× the original target
+  // distance from the entry midpoint — see the R:R-inflation-cap fix (audit 2026-07-28) —
+  // so in this tight-ATR fixture the capped push doesn't reach all the way to the strike.
+  // It must still move the target DOWN from its original (pre-push) value, though.
+  assert.ok(target < 1175, `target ${target} should still be pushed down from entry mid 1175`);
+  assert.ok(target > 1084.5, `target ${target} should be capped above the uncapped strike-2×premium ~1084.50`);
+});
+
+test("R:R inflation cap: option-coherence push cannot exceed 1.25× the original target distance (P1 fix, audit 2026-07-28)", () => {
+  // Same tight-ATR LONG setup as above, sized so the naive (uncapped) push would have
+  // roughly doubled the reward distance from the entry midpoint. Assert the actual push
+  // stays within the 1.25× cap instead of chasing strike + 2×premium unconditionally.
+  const highChain: EditionChainData = {
+    spot: 1175,
+    rows: [row(1260, { oi: 5_000, callAsk: 7.5, callBid: 7.0 })],
+  };
+  const ranked = [scored("HPS", "long", 65)];
+  const chains = { HPS: highChain };
+  const dossierMap = {
+    HPS: dossier("HPS", 1175, {
+      tech: {
+        ...dossier("HPS", 1175).tech!,
+        resistance_levels: [1249],
+        support_levels: [1100],
+        atr14: 50,
+      },
+    } as any),
+  };
+  const { plays } = buildDeterministicEditionPlays({ ranked, dossierMap, chains });
+  const p = plays[0]!;
+  const target = Number(String(p.target).replace(/[$,]/g, ""));
+  const entryNums = String(p.entry_range).match(/[\d.]+/g)!.map(Number);
+  const entryMid = (entryNums[0]! + entryNums[entryNums.length - 1]!) / 2;
+  const dist = target - entryMid;
+  // Uncapped push would have targeted strike + 2×premium = 1274.50, ~93.75 above mid (1175).
+  // Capped push must not exceed 1.25× the original (pre-option-push) target distance.
+  assert.ok(dist <= 93.75 + 0.01, `pushed distance ${dist} exceeded the 1.25× cap`);
 });
 
 // ── PR-N31: diversity hedge floor ────────────────────────────────────────────────────
@@ -393,7 +431,7 @@ test("PR-N31: diversity swap fires for contrarian candidate above DIVERSITY_HEDG
 test("PR-N31+N33: Phase 1 rejects natural short below DIVERSITY_HEDGE_FLOOR; Phase 2 forced contrarian may still fire", () => {
   // FF is a natural short with score 15 — below DIVERSITY_HEDGE_FLOOR (20), so Phase 1 skips it.
   // Phase 2 then tries forced contrarian re-scoring on the all-LONG pool. With default dossier
-  // data and boosted tech scores, forced contrarian scores should land >= FORCED_CONTRARIAN_FLOOR (15).
+  // data and boosted tech scores, forced contrarian scores should land >= FORCED_CONTRARIAN_FLOOR (25).
   // The key assertion: the short that appears is a FORCED contrarian (Phase 2), not the natural FF.
   const ranked = [
     scored("AA", "long", 70),
@@ -411,7 +449,7 @@ test("PR-N31+N33: Phase 1 rejects natural short below DIVERSITY_HEDGE_FLOOR; Pha
     dossierMap[r.ticker] = dossier(r.ticker, spot);
   }
   // FF is the only candidate left after AA-EE fill the 5 slots. It needs bearish tech
-  // so forced-short re-score clears FORCED_CONTRARIAN_FLOOR (15).
+  // so forced-short re-score clears FORCED_CONTRARIAN_FLOOR (25).
   // scoreContrarianHedge re-scores from the DOSSIER, not the candidate's tech_score field.
   dossierMap["FF"] = dossier("FF", 100, {
     tech: {
@@ -560,8 +598,8 @@ test("PR-N32: forced contrarian does NOT fire when natural opposite-direction ca
   );
 });
 
-test("PR-N33: forced contrarian fires with candidate above FORCED_CONTRARIAN_FLOOR (15)", () => {
-  // All LONG, moderate tech/positioning to produce a forced contrarian score above the 15 floor.
+test("PR-N33: forced contrarian fires with candidate above FORCED_CONTRARIAN_FLOOR (25)", () => {
+  // All LONG, moderate tech/positioning to produce a forced contrarian score above the 25 floor.
   // Before N33 any signal-free candidate was admitted; now it needs real contrarian evidence.
   const ranked = [
     scored("AA", "long", 72),
@@ -580,19 +618,29 @@ test("PR-N33: forced contrarian fires with candidate above FORCED_CONTRARIAN_FLO
     chains[r.ticker] = chainAround(spot);
     dossierMap[r.ticker] = dossier(r.ticker, spot);
   }
-  // GG needs bearish tech so forced-short re-score clears FORCED_CONTRARIAN_FLOOR (15).
+  // GG needs bearish tech + positioning so forced-short re-score clears FORCED_CONTRARIAN_FLOOR (25).
   // scoreContrarianHedge re-scores from the DOSSIER, not the candidate's tech_score/pos_score.
   dossierMap["GG"] = dossier("GG", 100, {
     tech: {
       ticker: "GG", price: 100, trend: "bearish" as const,
-      setup_tags: ["gap down"], support_levels: [95], resistance_levels: [105],
+      setup_tags: ["gap down", "breakdown"], support_levels: [90], resistance_levels: [105],
       gap_zones: [], breakout_zones: [],
-      prior_day: { high: 105, low: 95, close: 100 },
+      prior_day: { high: 108, low: 98, close: 100 },
       weekly: { high: null, low: null },
-      rsi14: 72, rel_volume: 2.0, atr14: 3,
-      vwap: 101, ema20: 101, ema50: 101, ema200: 101,
-      summary: "GG bearish reversal",
+      rsi14: 75, rel_volume: 2.5, atr14: 4,
+      vwap: 102, ema20: 103, ema50: 104, ema200: 106,
+      summary: "GG bearish reversal — price below all EMAs, overbought RSI",
     },
+    positioning: {
+      net_gex: -500000,
+      gex_king_strike: 95,
+      gamma_flip: 98,
+      gamma_regime: "negative",
+      net_vex: -200000,
+      max_pain: 95,
+      negative_gamma: true,
+      wall_summary: "Put wall at 95 — bearish positioning supports short thesis",
+    } as TickerDossier["positioning"],
   });
 
   const { plays } = buildDeterministicEditionPlays({ ranked, dossierMap, chains, target: 5 });
@@ -604,7 +652,7 @@ test("PR-N33: forced contrarian fires with candidate above FORCED_CONTRARIAN_FLO
     "should carry forced contrarian gate_warning"
   );
   const hedgeScore = shorts[0]!.score ?? 0;
-  assert.ok(hedgeScore >= 15, `hedge score ${hedgeScore} should be >= FORCED_CONTRARIAN_FLOOR (15)`);
+  assert.ok(hedgeScore >= 25, `hedge score ${hedgeScore} should be >= FORCED_CONTRARIAN_FLOOR (25)`);
 });
 
 // ── Diversity hedge fires at 3 plays (not just >= 4) ──────────────────────────

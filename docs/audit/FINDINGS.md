@@ -5,6 +5,62 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-28 — [gate-calibration] Late-afternoon 0DTE entries (14:00-15:30) run 14.3% WR / −19% avg
+
+**Severity.** P1 — the late-afternoon window is the second-worst time bucket in the 90-day record
+(after the opening drive, already blocked by G-2). Responsible for ~7 losing plays that should
+never have committed.
+
+**Root cause.** The `NEW_PLAY_CUTOFF_ET_MINUTES` was set to 15:00 ET, allowing new directional
+entries between 14:00-15:00 ET. With <1.5 hours of 0DTE theta remaining, long-premium entries face
+accelerating decay and almost never reach the +100% target. 85.7% of late entries hit the -50% stop.
+No hard gate existed between the 10:00 ET opening window unlock and the 15:00 ET persist cutoff.
+
+**Evidence.** 90-day production record (101 graded plays): `late 14:00-15:30` bucket = 14.3% WR,
+−19.02% avg P&L. Compare to `prime 9:50-11:00` = 38.0% WR, +2.7% avg P&L.
+
+**Fix.** New hard gate G-14 (`late_afternoon`) blocks directional 0DTE commits at/after 14:00 ET.
+Condor-exempt: iron condors BENEFIT from late-session theta crush (credit seller). Persist-layer
+`NEW_PLAY_CUTOFF_ET_MINUTES` also moved from 15:00 → 14:00 as a backstop. Files:
+`gates.ts` (G-14 enforcement + constant), `board.ts` (failure type), `plan.ts` (cutoff constant).
+Tests: 3 new tests in `gates.test.ts` (boundary, condor exemption). **Status: MERGED.**
+
+## 2026-07-28 — [data-honesty] Legacy 0% WR caused by unfillable entry bands (PR #1186)
+
+**Severity.** P0 — the single biggest quality gap in the Legacy engine. 15 of 31 resolved plays
+graded "unfilled" because the published entry band never overlapped the next session's trading range.
+Top failure modes: `band_detached`(7), `unfilled_never_traded_back`(7), `wrong_direction`(7).
+
+**Root cause.** Entry bands were built at edition time (~5:30 PM ET) as a fixed ±0.5% band around the
+closing price (`spot * 0.995` to `spot * 1.005` in `buildDirectionalStockLevels`, play-levels.ts:138).
+Night Hawk specifically selects momentum/catalyst names with strong directional flow — exactly the
+stocks that gap 2-5%+ overnight. The next session's open prints well outside the band, so
+`resolveOutcome` (play-outcomes.ts:591) correctly grades the play as "unfilled" and excludes it from
+win/loss tallies.
+
+**Fix (two-pronged).**
+1. **ATR-scaled entry band at build time** (play-levels.ts): replaced the fixed ±0.5% halfwidth with
+   `entryHalfWidth(spot, atr)` — scales to 40% of ATR (floor 0.5%, cap 2.5%). A 4% ATR name now gets
+   a ±1.6% band instead of ±0.5%, covering normal overnight gaps.
+2. **Morning confirm re-anchors entry band** (nighthawk-morning-confirm route.ts, Phase 3.75): when
+   pre-market price confirms the thesis direction but the stock has gapped THROUGH the published entry
+   band, the grading-side entry band (`nighthawk_play_outcomes.entry_range_low/high`) is updated to
+   center on the pre-market price. The published edition is never mutated. INVALIDATED plays (stop
+   breached, regime flip) are NOT re-anchored. New DB function `reanchorNighthawkEntryBand` (db.ts).
+3. **Verdict engine updated** (morning-confirm-verdict.ts): gap-through-entry in thesis direction no
+   longer degrades to "do not chase" — the re-anchor makes the entry fillable, so the play stays
+   CONFIRMED with an advisory "entry re-anchored to pre-market" note.
+
+**Blast radius.** Only affects Legacy overnight plays. 0DTE entries are intraday (no overnight gap).
+The fillability grading logic (play-outcomes.ts) is unchanged — it still checks range overlap, but now
+the range reflects where the stock actually traded, not the stale prior close.
+
+**Evidence.** 8 play-levels tests (ATR scaling), 22 morning-confirm-verdict tests (including updated
+gap-above test), 30 play-outcomes tests, 15 morning-verdict-persist tests — all green. TypeScript
+compiles clean.
+
+**Status.** PR #1186 — merging.
+
 ## 2026-07-28 — [correctness] fundamental_signals omitted from rescoreDossier + rescue play sector missing (PR #1176)
 
 **Severity.** P1 (fundamental_signals) / P3 (rescue sector).
@@ -3348,3 +3404,202 @@ enforces `MIN_PUBLISH_SCORE = 42`.
 File: `play-backfill.ts:87`.
 
 **Status:** COMMITTED (PR #1176, batch 5)
+
+## 2026-07-28 — [correctness] "no dominant pattern" sentinel leaks into thesis text + compounding option-coherence push inflates R:R (P1×2)
+
+**Severity.** P1 (sentinel leak) / P1 (R:R inflation).
+
+**Finding 1: `classifySetup` sentinel string leaked into member-facing thesis copy.**
+`technicals.ts:120` fell back to `["no dominant pattern"]` when no setup condition matched,
+instead of an empty array. `buildDeterministicThesis` (`deterministic-edition.ts:389-391`) joins
+`setup_tags` directly into prose with no special-casing for this sentinel, so members saw literal
+copy like "NVDA showing no dominant pattern in mixed trend" — an internal diagnostic label
+presented as a trade thesis.
+
+**Root cause.** The sentinel was written as a placeholder for logging/debugging and never
+special-cased at the one call site that renders `setup_tags` into member copy.
+
+**Fix.** Return `tags` (possibly empty) instead of the sentinel. `classifySetup` is now exported
+for direct unit testing. The caller already handles an empty array correctly: `deterministic-edition.ts:389-395`
+falls through to trend-only prose (`else if (trend)`) or a generic setup line (`else`) — verified by
+the existing `else`/`else if` branches, no caller change needed.
+
+**Finding 2: compounding target pushes inflate displayed R:R.**
+Two independent target pushes stack: (a) `deterministic-edition.ts:339-349` pushes the S/R target
+side out to at least 1.5×ATR from spot ("PR-N21/N22"), then (b) `buildPlay` (`deterministic-edition.ts:497-509`,
+"PR-N29") unconditionally pushes the target again to at least `strike ± 2×premium` so the option is
+ITM at "target". Each push is individually reasonable (guards against a thin range / an
+option that's worthless at target), but stacked and uncapped they can inflate the displayed R:R well
+beyond what the technical level or option geometry actually supports.
+
+**Fix.** Capped the option-coherence push (b) at 1.25× the *original* (pre-push) target distance
+from the entry-range midpoint. If `strike ± 2×premium` would require a bigger move than that, the
+target is pushed only as far as the cap allows rather than chasing the option strike unconditionally
+— the push still fixes the economically-broken case (target on the wrong side of the strike) without
+unbounded R:R inflation. Two existing PR-N29 tests (`deterministic-edition.test.ts`) encoded the old
+uncapped invariant (`target >= strike + 2×premium` / `target <= strike - 2×premium`) and were updated
+to assert the new capped bounds instead, with a new dedicated test asserting the 1.25× cap directly.
+
+**Evidence.** `npx tsx --test src/features/nighthawk/lib/technicals.test.ts` (2/2 pass, new file);
+`npx tsx --test src/features/nighthawk/lib/deterministic-edition.test.ts` (34/34 pass, 2 updated +
+1 new). `npx tsc --noEmit` clean for both changed files.
+
+**Blast radius.** `classifySetup` is the only tag source feeding `setup_tags`; `grep` confirms no
+other reference to the `"no dominant pattern"` string anywhere in `src/`. The option-coherence push
+in `buildPlay` is the only caller of `minOptionTarget`; the earlier S/R push in `buildStockLevels`
+is unchanged (still 1.5×ATR, not capped) — capping only the second, redundant push is sufficient to
+bound the compounding effect.
+
+**Fix rationale.** Considered plumbing ATR into `buildPlay` to cap directly against ATR, but
+`buildPlay` doesn't have ATR in scope and threading it through every call site is a larger, riskier
+change for a P1 fix. Capping relative to the already-computed entry-to-target distance achieves the
+same goal (bound the total push) without a signature change.
+
+**Status:** FIXED (branch `fix/nighthawk-sentinel-and-rr-inflation`, PR pending).
+
+## 2026-07-28 — [correctness] "ambiguous" both-hit outcome deflates Night Hawk win rate (PR #1181)
+
+**Severity.** P2 — systemic understatement of the public win rate, not a wrong-direction grade.
+
+**Finding.** `resolveOutcome()` in `src/features/nighthawk/lib/play-outcomes.ts:616-624` graded a
+play `"ambiguous"` whenever BOTH `target` AND `stop` were hit intraday and the next-day open sat
+strictly between them (neither `open >= target` nor `open <= stop`, LONG case; mirrored for SHORT).
+This is the common shape for overnight/gap plays: the open lands between the two published levels,
+then the session later trades through both. `src/features/nighthawk/lib/analytics.ts` counts
+`"ambiguous"` rows in the `scoreable` denominator but never in the `wins` numerator
+(`win_rate = wins / scoreable`), so every ambiguous grade silently deflated the reported win rate.
+
+**Root cause.** The branch had no tiebreaker for the both-hit / open-between case — it fell straight
+to `"ambiguous"` rather than making any attempt to infer which level was likely hit first. Not caught
+earlier because the exclusion looks identical in shape to the legitimate `unfilled`/
+`stop_data_unavailable` exclusions already in the same function, so it read as intentional
+data-honesty rather than a gap.
+
+**Fix.** When both are hit and the open is between them, use distance from the open to each level as
+a heuristic tiebreaker: closer to target → likely ran to target first (`"target"`); closer to stop →
+likely hit stop first (`"stop"`). Exact ties default to `"stop"` (conservative — can't be used to
+inflate the win rate on ambiguous evidence). `"ambiguous"` remains in the return-type union and now
+fires only when `open`/`target`/`stop` are null (rare).
+
+**Evidence.** 5 new tests in `play-outcomes.test.ts`: open-closer-to-target → `"target"`,
+open-closer-to-stop → `"stop"`, exact-tie → `"stop"`, open missing → still `"ambiguous"`, SHORT-mirror
+→ `"target"`. `npx tsx --test src/features/nighthawk/lib/play-outcomes.test.ts`: 30/30 pass.
+`tsc --noEmit` clean.
+
+**Blast radius.** Every other reader of `"ambiguous"` (`analytics.ts`, `debrief.ts`,
+`debrief-persist.ts`, `regrade-legacy.ts`, `alert-outcome-sync.ts`, `nighthawk-edition-read.ts`, plus
+the `PlayHistoryTable` / `spx-signals-shadow-precedents` type unions) only reads `row.outcome` — no
+changes needed since `"ambiguous"` stays a valid (just less frequent) union member.
+
+**Status:** MERGED (PR #1181).
+
+## 2026-07-28 — [quality] Tier A threshold too lenient + forced contrarian floor too soft (P2×2)
+
+**Severity.** P2 (tier inflation) / P2 (low-confluence contrarian).
+
+**Finding 1: `NH_TIER_A_MIN_POINTS = 3` meant virtually every published play earned tier A.**
+`nighthawk-tiers.ts:91` set the A threshold at 3 points. Since the publish floor (`MIN_PUBLISH_SCORE
+= 42`) lands squarely in the prime score band (40-54, weight +2), any published play with 3+
+confirming signals (weight +2) automatically scored 4 points → tier A. With adequate signals (2,
+weight +1), the total was still 3 → tier A. The only published plays that got B were those with
+earnings risk (hard-capped) or thin signals (<2, hard-capped). Real-world result: ~90% of edition
+plays were tier A, providing zero differentiation to members.
+
+**Root cause.** The prime-band weight (+2) was set for overnight plays where the 40-54 score band is
+genuinely the sweet spot (high scores can be momentum-inflated), but the A threshold was set at 3
+when it should have required both strong axes: prime band AND broad signals.
+
+**Fix.** Raised `NH_TIER_A_MIN_POINTS` from 3 → 4. Now tier A requires prime-band score (40-54, +2)
+AND strong signal breadth (3+ dimensions, +2) = 4 points. Mid/top-band plays with strong signals
+score 3 points → tier B (still solid, just not the top tier). This creates meaningful 3-tier
+differentiation: A (~30-40% of plays), B (~40-50%), C (~10-20%).
+
+**Finding 2: `FORCED_CONTRARIAN_FLOOR = 15` admitted plays with essentially zero real signal.**
+`constants.ts:78` let forced contrarian plays publish with a score of 15 — far below the normal
+42 publish floor. The forced contrarian path discounts flow to 0.3× and re-scores tech/positioning
+against the dominant trend, yielding raw totals of 5-18 in extreme markets. At a floor of 15, a
+play could clear with just rounding noise from re-scoring rather than genuine technical or
+positioning support for the contrarian thesis.
+
+**Fix.** Raised `FORCED_CONTRARIAN_FLOOR` from 15 → 25. The contrarian still needs to clear a softer
+bar than normal plays (25 vs 42) since flow is gutted at 0.3×, but at 25 it requires genuine bearish
+tech or negative-gamma positioning — not just noise. When no candidate clears 25, the edition accepts
+the all-directional book honestly rather than publishing a noise hedge.
+
+**Evidence.** `npx tsx --test nighthawk-tiers.test.ts`: 26/26 pass (6 updated expectations).
+`npx tsx --test deterministic-edition.test.ts`: 34/34 pass (1 dossier enriched, 3 assertions
+updated). `tsc --noEmit` clean.
+
+**Blast radius.** `NH_TIER_A_MIN_POINTS` is read only in `assignNighthawkTier` — affects all tier
+assignments (edition build, forced contrarian, display). No other constant references it.
+`FORCED_CONTRARIAN_FLOOR` is read only in the Phase 2 forced-contrarian path of
+`buildDeterministicEditionPlays` — Phase 1 (natural diversity swap using `DIVERSITY_HEDGE_FLOOR = 20`)
+is unchanged.
+
+**Status:** PR #1184 open (branch `fix/nighthawk-tier-and-contrarian`).
+
+## 2026-07-28 — [0DTE-UI] CLOSED plays vanishing from Command Deck (PR #1188)
+
+**Severity.** P1 — closed plays silently vanished from the only surface that manages them.
+
+**Root cause.** `zerodte-sources.ts:116` — the ledger union loop that surfaces positions the scanner
+didn't return only passed through `WORKING_STATUSES` (OPEN/HOLD/TRIM). When the scanner dropped a
+ticker, its CLOSED ledger row was filtered out. An open play that got closed would vanish instead of
+appearing under a "Closed" view. The `WORKING_STATUSES` set was designed for rule 9-4 (working
+positions always render) but didn't account for the need to show CLOSED plays in the Command Deck.
+
+**Evidence.** `zerodte-sources.test.ts` test #5: before fix, a TSLA CLOSED ledger row was absent from
+the output; after fix, it appears correctly. All 8 tests pass. `tsc --noEmit` clean. 103/103 adapter
+tests pass.
+
+**Fix.** Changed the union loop condition from `if (!WORKING_STATUSES.has(st)) continue;` to
+`if (!WORKING_STATUSES.has(st) && st !== "CLOSED") continue;`. The `WORKING_STATUSES` set itself is
+NOT modified (still OPEN/HOLD/TRIM) because other consumers may depend on its exact membership.
+
+Added: ALL/OPEN/WATCH/CLOSED filter toggle bar in CommandDeck with live counts per status group. This
+was the missing UX — there was no way to filter plays by status, so closed plays (even when present)
+were mixed into the list with no way to find them.
+
+Also enriched the 0DTE panel to match Legacy richness: `stockPrice`, `optionsPlay`, `rrRatio` mapped
+in the adapter + pre-entry context and entry plan components in PlayTerminal.
+
+**Blast radius.** `zerodte-sources.ts` (1 condition), `CommandDeck.tsx` (filter state + UI),
+`globals.css` (8 lines filter bar CSS), `adapters.ts` (3 new fields), `PlayTerminal.tsx` (2 new
+components). No existing fields or rendering changed. `deck-sort.ts` already buckets CLOSED into
+band 2 (sorted last).
+
+**Status:** PR #1188 merged (squash, `ff17eefd`).
+
+## 2026-07-28 — [correctness] ManagePanel frozen at 5s board poll cadence (PR #1189)
+
+**Severity.** P1 — the Management tab (the "action" panel users watch most) only updated every 5s
+while the P&L tab updated every 1s from SSE marks, making it look "static".
+
+**Root cause.** `PlayTerminal.tsx:ManagePanel` read `play.recommendation`, `play.recNote`, and
+`play.progress` — values computed once in the adapter (`managementFor()`) from the board-poll
+`live_pnl_pct`. The SSE live-marks overlay pushed fresh `pnlPct` at ~1s, but ManagePanel's
+recommendation badge, advisory text, and ratchet progress bar stayed frozen at the 5s value.
+
+**Fix.** ManagePanel now calls `managementFor(play.exitModel, play.status, play.pnlPct)` at render
+time, recomputing from the SSE-overlaid pnlPct on every render.
+
+**Status:** PR #1189 merged (squash, `b4a46eb4`).
+
+## 2026-07-28 — [regression] Legacy ManagePanel shows generic "HOLD" after PR #1189 (PR #1190)
+
+**Severity.** P1 — Legacy plays always showed "HOLD" with generic text even when the stock hit
+stop/target levels, because `managementFor("PLAN", ...)` doesn't know about stop/target geometry.
+
+**Root cause.** PR #1189's `managementFor()` recompute was correct for 0DTE (RATCHET/SCALE_OUT) but
+regressed Legacy (exitModel `"PLAN"`). The function's P&L thresholds (-45% sell, +90% trim) are
+designed for option-premium P&L, not stock-level moves (typically single-digit %). Meanwhile,
+`overlayLegacyQuotes` (use-legacy-quotes.ts:141-153) had already computed the correct dynamic
+recommendation from live stock price vs stop/target — PR #1189 discarded these values.
+
+**Fix.** ManagePanel now prefers `play.recommendation`/`play.recNote` when `exitModel === "PLAN"` and
+the overlay has set them. 0DTE RATCHET/SCALE_OUT still recompute from live pnlPct as intended.
+
+Also fixed P&L display precision: 0DTE card/PnlPanel rendered raw `pnlPct` without `.toFixed()`,
+showing values like `+64.29%` vs Legacy's clean `+64.3%`. Now consistently `.toFixed(1)` everywhere.
+
+**Status:** PR #1190 — CI running.

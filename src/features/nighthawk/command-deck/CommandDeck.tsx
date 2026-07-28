@@ -14,6 +14,16 @@ import { condorTent } from "@/lib/zerodte/condor-render";
 import { isZeroDteMarkStale, ZERODTE_MARK_STALE_MS, LEGACY_QUOTE_STALE_MS } from "@/lib/zerodte/marks-math";
 import type { TerminalPlay } from "./types";
 
+/** Status filter mode: which plays to show in the list. */
+type StatusFilter = "ALL" | "OPEN" | "WATCH" | "CLOSED";
+
+function filterByStatus(plays: TerminalPlay[], filter: StatusFilter): TerminalPlay[] {
+  if (filter === "ALL") return plays;
+  if (filter === "OPEN") return plays.filter((p) => p.status === "OPEN" || p.status === "HOLD" || p.status === "TRIM");
+  if (filter === "WATCH") return plays.filter((p) => p.status === "WATCH" || p.status === "SKIP");
+  return plays.filter((p) => p.status === "CLOSED");
+}
+
 /**
  * COMMAND DECK — the two-panel matrix experience for every board (0DTE / Swings / LEAPS / Legacy).
  * Left: the ranked plays list + the Wave-2 cockpit (live portfolio-risk strip + session P&L tape).
@@ -26,6 +36,7 @@ export function CommandDeck({
   laneLabel,
   emptyHint,
   degraded = false,
+  loading = false,
   allocation,
 }: {
   plays: TerminalPlay[];
@@ -35,14 +46,31 @@ export function CommandDeck({
   /** True when the board data is unavailable/degraded — renders a distinct warning so an outage is never
    *  painted as a calm flat tape (9-3). */
   degraded?: boolean;
+  /** True while the first fetch is in progress — shows skeleton rows instead of the empty hint. */
+  loading?: boolean;
   /** The payload's Portfolio Allocation Engine decisions — feeds the cockpit R-deployed strip. Absent
    *  for lanes that don't allocate (Swings/LEAPS/Legacy) → the strip degrades to "—". */
   allocation?: CockpitAllocation[] | null;
 }) {
+  // Status filter: show ALL (default), only OPEN (working), WATCH (pre-entry), or CLOSED plays.
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
+  const filtered = useMemo(() => filterByStatus(plays, statusFilter), [plays, statusFilter]);
+
+  // Counts per status group for the filter badges.
+  const counts = useMemo(() => {
+    let open = 0, watch = 0, closed = 0;
+    for (const p of plays) {
+      if (p.status === "OPEN" || p.status === "HOLD" || p.status === "TRIM") open++;
+      else if (p.status === "CLOSED") closed++;
+      else watch++;
+    }
+    return { open, watch, closed };
+  }, [plays]);
+
   // Sort lens: the status banding (default) or the Wave-2 conviction ranking. Additive — the status
   // sort is unchanged; conviction is a second view over the SAME list (deck-sort.ts).
   const [sortMode, setSortMode] = useState<DeckSortMode>("status");
-  const sorted = useMemo(() => sortPlaysForDeckBy(plays, sortMode), [plays, sortMode]);
+  const sorted = useMemo(() => sortPlaysForDeckBy(filtered, sortMode), [filtered, sortMode]);
 
   // Cockpit figures — computed off the FULL board (not the display order), so they're identical under
   // either sort. Both auto-update on the SWR board refresh that replaces `plays`.
@@ -69,8 +97,14 @@ export function CommandDeck({
   return (
     <div className="nh-deck">
       <div className="nh-deck-left">
-        <div className="nh-deck-lh"><span>{laneLabel}</span><span>{degraded ? "data down" : `${plays.length} plays`}</span></div>
+        <div className="nh-deck-lh"><span>{laneLabel}</span><span>{degraded ? "data down" : statusFilter === "ALL" ? `${plays.length} plays` : `${filtered.length} of ${plays.length}`}</span></div>
         <CockpitStrip risk={risk} tape={tape} />
+        <div className="nh-deck-filterbar" role="group" aria-label="Filter plays by status">
+          <button type="button" className={clsx("nh-deck-filtbtn", statusFilter === "ALL" && "on")} onClick={() => setStatusFilter("ALL")}>ALL <span className="cnt">{plays.length}</span></button>
+          <button type="button" className={clsx("nh-deck-filtbtn", statusFilter === "OPEN" && "on")} onClick={() => setStatusFilter("OPEN")}>OPEN <span className="cnt">{counts.open}</span></button>
+          <button type="button" className={clsx("nh-deck-filtbtn", statusFilter === "WATCH" && "on")} onClick={() => setStatusFilter("WATCH")}>WATCH <span className="cnt">{counts.watch}</span></button>
+          <button type="button" className={clsx("nh-deck-filtbtn", statusFilter === "CLOSED" && "on")} onClick={() => setStatusFilter("CLOSED")}>CLOSED <span className="cnt">{counts.closed}</span></button>
+        </div>
         <div className="nh-deck-sortbar" role="group" aria-label="Sort plays">
           <button type="button" className={clsx("nh-deck-sortbtn", sortMode === "status" && "on")} onClick={() => setSortMode("status")}>STATUS</button>
           <button type="button" className={clsx("nh-deck-sortbtn", sortMode === "conviction" && "on")} onClick={() => setSortMode("conviction")}>CONVICTION</button>
@@ -79,8 +113,22 @@ export function CommandDeck({
           {degraded && (
             <div className="nh-deck-degraded" role="alert">⚠ Board data unavailable — retrying</div>
           )}
-          {plays.length === 0 && (
+          {loading && plays.length === 0 && (
+            <div className="nh-deck-loading">
+              {[1, 2, 3, 4, 5].map((n) => (
+                <div key={n} className="nh-deck-skel" aria-hidden>
+                  <div className="nh-skel-bar" style={{ width: "40%" }} />
+                  <div className="nh-skel-bar" style={{ width: "70%" }} />
+                  <div className="nh-skel-bar" style={{ width: "55%" }} />
+                </div>
+              ))}
+            </div>
+          )}
+          {!loading && plays.length === 0 && (
             <div className="nh-deck-empty">{emptyHint ?? "No plays right now."}</div>
+          )}
+          {!loading && plays.length > 0 && filtered.length === 0 && (
+            <div className="nh-deck-empty">No {statusFilter.toLowerCase()} plays right now.</div>
           )}
           {sorted.map((p, i) => (
             <PlayCard key={p.id} play={p} rank={i + 1} selected={p.id === selId} onSelect={() => setSelId(p.id)} />
@@ -213,8 +261,10 @@ function PlayCard({
           <span className={clsx("nh-deck-st", p.status)}>{p.status}</span>
           {p.tierLabel && <span className="nh-deck-cbadge tier">{p.tierLabel}</span>}
           {p.discoveryOrigin?.[0] && <span className="nh-deck-cbadge orig">{p.discoveryOrigin[0]}</span>}
-          {p.horizon === "LEGACY" && p.regime?.includes("CONFIRMED") && <span className="nh-deck-cbadge conf">CONFIRMED</span>}
-          {p.horizon === "LEGACY" && p.regime?.includes("DEGRADED") && <span className="nh-deck-cbadge warn">DEGRADED</span>}
+          {p.horizon === "LEGACY" && p.morningStatus === "CONFIRMED" && <span className="nh-deck-cbadge conf">CONFIRMED</span>}
+          {p.horizon === "LEGACY" && p.morningStatus === "DEGRADED" && <span className="nh-deck-cbadge warn">DEGRADED</span>}
+          {p.horizon === "LEGACY" && p.morningStatus === "INVALIDATED" && <span className="nh-deck-cbadge brk">INVALIDATED</span>}
+          {p.horizon === "LEGACY" && p.morningStatus === "UNVERIFIED" && <span className="nh-deck-cbadge pending">PENDING</span>}
           {isCondor && <CondorCardChip play={p} />}
           {stale && <span className="nh-deck-cbadge stale" title="Mark is stale — frozen">◷ {ageLabel}</span>}
         </span>
@@ -241,11 +291,11 @@ function PlayCard({
             </span>
             <span className="nh-deck-premlab">{isCondor ? "MARK" : "MID"}</span>
             <span className={clsx("nh-deck-pnl", (p.pnlPct ?? 0) > 0 && "nh-deck-pos", (p.pnlPct ?? 0) < 0 && "nh-deck-neg")} style={{ display: "block" }}>
-              {p.pnlPct != null && p.pnlPct !== 0 ? `${p.pnlPct > 0 ? "+" : ""}${p.pnlPct}%` : "—"}
+              {p.pnlPct != null && p.pnlPct !== 0 ? `${p.pnlPct > 0 ? "+" : ""}${p.pnlPct.toFixed(1)}%` : "—"}
             </span>
             {showExec && (
               <span className={clsx("nh-deck-cardexec", p.execPnlPct! < 0 && "nh-deck-neg")}>
-                fill {p.execPnlPct! > 0 ? "+" : ""}{p.execPnlPct}%
+                fill {p.execPnlPct! > 0 ? "+" : ""}{p.execPnlPct!.toFixed(1)}%
               </span>
             )}
           </>

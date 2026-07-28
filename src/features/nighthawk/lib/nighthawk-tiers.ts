@@ -59,7 +59,7 @@ export function nhDisplayTierFor(tier: NighthawkTier, aplusUnlocked: boolean): N
 
 // ── Score bands (overnight-specific, from measured track record) ─────────────────
 // The old B band (40-54) ran +2.99% avg — the best. The old A band (55-69) ran
-// −0.55%. The old A+ band (70+) went 0/1. So the overnight prime band is 40-55,
+// −0.55%. The old A+ band (70+) went 0/1. So the overnight prime band is 40-54,
 // and the top band (70+) is discounted and capped, mirroring the 0DTE approach.
 
 /** Prime band floor — the measured overnight sweet spot starts here. */
@@ -87,8 +87,8 @@ export const W_NH_SIGNALS_OK = 1;
 export const W_NH_EARNINGS_RISK = -1;
 
 // ── Tier bands over summed points ───────────────────────────────────────────────
-/** "A" needs two independent strong positives with nothing dragging. */
-export const NH_TIER_A_MIN_POINTS = 3;
+/** "A" needs prime-band score AND strong signal breadth — not just one strong axis. */
+export const NH_TIER_A_MIN_POINTS = 4;
 /** "B" needs the evidence to net positive at all. */
 export const NH_TIER_B_MIN_POINTS = 1;
 

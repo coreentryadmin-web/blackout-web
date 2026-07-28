@@ -99,8 +99,7 @@ export function overlayLegacyQuotes(
 
     const target = parseLevelNum(orig.target);
     const stop = parseLevelNum(orig.stop);
-    const entryMid = parseLevelNum(orig.entry_range?.match(/[\d.]+/)?.[0] ? orig.entry_range : null)
-      ?? parseEntryRangeMid(orig.entry_range);
+    const entryMid = parseEntryRangeMid(orig.entry_range);
 
     if (!entryMid) return { ...p, markAsOf: q.asof };
 
@@ -183,7 +182,9 @@ export function overlayLegacyQuotes(
 
 function parseEntryRangeMid(range: string | null | undefined): number | null {
   if (!range) return null;
-  const nums = (range.match(/[\d.]+/g) ?? []).map(Number).filter(Number.isFinite);
+  // Strip "condition | $range" prefix — only parse the numeric band after the last `|`.
+  const text = range.includes("|") ? range.slice(range.lastIndexOf("|") + 1) : range;
+  const nums = (text.match(/[\d.]+/g) ?? []).map(Number).filter(Number.isFinite);
   if (nums.length === 0) return null;
   if (nums.length === 1) return nums[0];
   return (nums[0] + nums[nums.length - 1]) / 2;

@@ -242,6 +242,32 @@ test("edition adapter: thesis text used as recNote when no morning status", () =
   assert.match(play.recNote!, /Fintech breakout/);
 });
 
+test("edition adapter: tier factors threaded from publish-context tier blob", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "NVDA", direction: "long", rank: 1, score: 48, conviction: "A",
+    tier: {
+      tier: "A",
+      factors: [
+        { label: "Prime score band", direction: "up" as const, detail: "Score 48 sits in 40-54." },
+        { label: "Strong signal breadth", direction: "up" as const, detail: "4 of 9 dimensions confirming." },
+      ],
+    },
+  });
+  assert.equal(play.tierLabel, "A");
+  assert.equal(play.tierFactors?.length, 2);
+  assert.equal(play.tierFactors![0].label, "Prime score band");
+  assert.equal(play.tierFactors![0].direction, "up");
+  assert.equal(play.tierFactors![1].label, "Strong signal breadth");
+});
+
+test("edition adapter: tierLabel falls back to conviction when tier blob is absent", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "AMD", direction: "long", rank: 1, score: 50, conviction: "B",
+  });
+  assert.equal(play.tierLabel, "B");
+  assert.equal(play.tierFactors, null);
+});
+
 test("0DTE adapter: committed OPEN with aged-out gate context still passes the Hard gate (9-6b)", () => {
   // A refresh-lane committed play whose setup.gate aged to null must NOT render '✗ Hard gate'.
   const play = terminalPlayFromZeroDte({
@@ -435,6 +461,48 @@ test("0DTE adapter: gamma_regime → 'gamma <x>' label; occ from plan; id and ti
   assert.equal(p.id, "0DTE:nvda"); // id keeps the raw ticker
   assert.equal(p.ticker, "NVDA"); // display upcased
   assert.equal(p.score, 88); // rounded
+});
+
+// ── stockPrice / rrRatio / optionsPlay enrichment ────────────────────────────────────
+test("0DTE adapter: directional play surfaces stockPrice from underlying_price", () => {
+  const p = terminalPlayFromZeroDte({
+    ticker: "AAPL", status: "WATCH", score: 70,
+    setup: { direction: "long" },
+    underlying_price: 215.50,
+  });
+  assert.equal(p.stockPrice, 215.50);
+});
+
+test("0DTE adapter: condor play does NOT surface stockPrice (uses tent spot)", () => {
+  const p = terminalPlayFromZeroDte({
+    ticker: "SPX", status: "OPEN", score: 80,
+    setup: { direction: "short", play_type: "CONDOR" },
+    underlying_price: 5500,
+  });
+  assert.equal(p.stockPrice, null);
+});
+
+test("0DTE adapter: R:R computed from plan stop/target premiums", () => {
+  const p = terminalPlayFromZeroDte({
+    ticker: "TSLA", status: "WATCH", score: 65,
+    setup: { direction: "long", plan: { stop_premium: 2.0, target_premium: 6.0 } },
+  });
+  assert.equal(p.rrRatio, 2.0); // (6−2)/2 = 2.0
+});
+
+test("0DTE adapter: R:R null when plan missing or stop/target absent", () => {
+  const noplan = terminalPlayFromZeroDte({ ticker: "X", status: "WATCH", setup: { direction: "long" } });
+  assert.equal(noplan.rrRatio, null);
+  const partial = terminalPlayFromZeroDte({ ticker: "X", status: "WATCH", setup: { direction: "long", plan: { stop_premium: 2.0 } } });
+  assert.equal(partial.rrRatio, null);
+});
+
+test("0DTE adapter: optionsPlay from plan OCC", () => {
+  const p = terminalPlayFromZeroDte({
+    ticker: "NVDA", status: "WATCH", score: 75,
+    setup: { direction: "long", plan: { occ: "O:NVDA260728C00130000" } },
+  });
+  assert.equal(p.optionsPlay, "O:NVDA260728C00130000");
 });
 
 // ── allocation mapping (first reason only) + absence ───────────────────────────────────
@@ -957,9 +1025,9 @@ test("overlayLegacyQuotes: computes stock-level pnlPct from entry (LONG)", () =>
   const quotes = new Map([["NVDA", { price: 192.50, changePct: 2.3, asof: "2026-07-28T15:00:00Z" }]]);
   const originals = [{ ticker: "NVDA", target: "$200", stop: "$170", entry_range: "$180 – $185" }];
   const [result] = overlayLegacyQuotes([play], quotes, originals);
-  // parseLevelNum picks first number: 180, stock = 192.50, pnl = (192.50-180)/180 = +6.94%
+  // entry mid = (180+185)/2 = 182.5, stock = 192.50, pnl = (192.50-182.5)/182.5 = +5.48%
   assert.ok(result.pnlPct != null, "pnlPct should be computed");
-  assert.ok(result.pnlPct! > 6.5 && result.pnlPct! < 7.5, `expected ~6.94%, got ${result.pnlPct}`);
+  assert.ok(result.pnlPct! > 5.0 && result.pnlPct! < 6.0, `expected ~5.48%, got ${result.pnlPct}`);
 });
 
 test("overlayLegacyQuotes: computes stock-level pnlPct from entry (SHORT)", () => {
@@ -970,9 +1038,9 @@ test("overlayLegacyQuotes: computes stock-level pnlPct from entry (SHORT)", () =
   const quotes = new Map([["TSLA", { price: 240, changePct: -3, asof: "2026-07-28T15:00:00Z" }]]);
   const originals = [{ ticker: "TSLA", target: "$230", stop: "$265", entry_range: "$250 – $255" }];
   const [result] = overlayLegacyQuotes([play], quotes, originals);
-  // parseLevelNum picks first number: 250, stock = 240, short pnl = (250-240)/250 = +4.00%
+  // entry mid = (250+255)/2 = 252.5, stock = 240, short pnl = (252.5-240)/252.5 = +4.95%
   assert.ok(result.pnlPct != null, "pnlPct should be computed");
-  assert.ok(result.pnlPct! > 3.5 && result.pnlPct! < 4.5, `expected ~4.00%, got ${result.pnlPct}`);
+  assert.ok(result.pnlPct! > 4.5 && result.pnlPct! < 5.5, `expected ~4.95%, got ${result.pnlPct}`);
 });
 
 test("Legacy adapter: confirming_signals → Confirming factor", () => {

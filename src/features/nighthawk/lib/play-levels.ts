@@ -16,6 +16,23 @@ const HARD_MAX_TARGET_PCT = 0.25;
 /** Minimum R:R ratio (target_dist / stop_dist). When the ratio falls below this, the stop
  *  is tightened to maintain at least this R:R. */
 const MIN_RR_RATIO = 0.75;
+/** Minimum entry band half-width as a fraction of spot. */
+const MIN_ENTRY_HALF_PCT = 0.005;
+/** ATR multiplier for entry band half-width. Overnight gaps scale with volatility —
+ *  a fixed ±0.5% band on a 4% ATR name is unfillable after any normal gap. */
+const ENTRY_ATR_MULT = 0.4;
+/** Hard ceiling on entry band half-width (fraction of spot). */
+const MAX_ENTRY_HALF_PCT = 0.025;
+
+/** ATR-scaled entry band half-width: wider bands for volatile names so overnight
+ *  gaps don't push the entire next session outside the published entry. */
+export function entryHalfWidth(spot: number, atr?: number | null): number {
+  if (atr != null && Number.isFinite(atr) && atr > 0 && spot > 0) {
+    const atrHalf = (atr / spot) * ENTRY_ATR_MULT;
+    return Math.min(MAX_ENTRY_HALF_PCT, Math.max(MIN_ENTRY_HALF_PCT, atrHalf));
+  }
+  return MIN_ENTRY_HALF_PCT;
+}
 
 function volatilityAdjustedCaps(spot: number, atr?: number | null): { maxStopPct: number; maxTargetPct: number } {
   if (atr == null || !Number.isFinite(atr) || atr <= 0 || spot <= 0) {
@@ -45,7 +62,10 @@ function parseDecimal(text: unknown): number | null {
 }
 
 export function parsePlayLevels(play: PlaybookPlay): ParsedPlayLevels {
-  const entryText = String(play.entry_range ?? "");
+  const raw = String(play.entry_range ?? "");
+  // mapClaudePlayToEdition joins "condition | $range" — strip the prose prefix so
+  // numbers from the condition (e.g. "Break above 99") don't contaminate the band.
+  const entryText = raw.includes("|") ? raw.slice(raw.lastIndexOf("|") + 1) : raw;
   const normalized = entryText.replace(/[–—]/g, "-");
   const entryParts = normalized
     .split("-")
@@ -122,6 +142,9 @@ export function buildDirectionalStockLevels(params: {
     const { maxStopPct, maxTargetPct } = volatilityAdjustedCaps(spot, params.atr);
     const maxStopDist = spot * maxStopPct;
     const maxTargetDist = spot * maxTargetPct;
+    const halfPct = entryHalfWidth(spot, params.atr);
+    const bandLo = spot * (1 - halfPct);
+    const bandHi = spot * (1 + halfPct);
     if (params.direction === "long") {
       const rawStop = support;
       let stopDist = Math.min(spot - rawStop, maxStopDist);
@@ -132,7 +155,7 @@ export function buildDirectionalStockLevels(params: {
         stopDist = finalTargetDist / MIN_RR_RATIO;
       }
       return {
-        entry_range: `$${formatStockLevel(spot * 0.995)}-$${formatStockLevel(spot * 1.005)}`,
+        entry_range: `$${formatStockLevel(bandLo)}-$${formatStockLevel(bandHi)}`,
         target: formatStockLevel(spot + finalTargetDist),
         stop: formatStockLevel(Math.min(spot - stopDist, spot * 0.99)),
       };
@@ -147,7 +170,7 @@ export function buildDirectionalStockLevels(params: {
         stopDist = finalTargetDist / MIN_RR_RATIO;
       }
       return {
-        entry_range: `$${formatStockLevel(spot * 0.995)}-$${formatStockLevel(spot * 1.005)}`,
+        entry_range: `$${formatStockLevel(bandLo)}-$${formatStockLevel(bandHi)}`,
         target: formatStockLevel(spot - finalTargetDist),
         stop: formatStockLevel(Math.max(spot + stopDist, spot * 1.01)),
       };

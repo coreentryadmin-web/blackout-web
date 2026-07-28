@@ -7,7 +7,8 @@ import { timeStopClock } from "@/lib/zerodte/terminal-ladder";
 import { isZeroDteMarkStale, ZERODTE_MARK_STALE_MS, LEGACY_QUOTE_STALE_MS } from "@/lib/zerodte/marks-math";
 import { condorTent, condorWinRateLine } from "@/lib/zerodte/condor-render";
 import { etNowParts } from "@/features/nighthawk/lib/session";
-import { showsRatchetTrack, showsTimeStopClock, showsTrimScaleLadder } from "./terminal-guards";
+import { showsTimeStopClock, showsTrimScaleLadder } from "./terminal-guards";
+import { managementFor } from "./adapters";
 import { excursionBar, formatWinRateCi, signColorClass } from "@/lib/zerodte/terminal-edge";
 import type { DeckCondor } from "./types";
 
@@ -216,6 +217,11 @@ export function PlayTerminal({ play }: { play: TerminalPlay | null }) {
           ) : (
             <><span className="nh-deck-dot off" /><span className="of">{stale ? "STALE" : "—"}</span></>
           )}
+          {!isCondor && play.stockPrice != null && (
+            <>{" · "}{play.ticker}{" "}
+              <span className={clsx(stockFlash && "neon")}>${play.stockPrice.toFixed(2)}</span>
+            </>
+          )}
           {" · mark "}
           <span className={clsx(markFlash && "neon", stale && "nh-deck-stale-mark")}>{usd(play.mark)}</span>
           {!isCondor && play.execMark != null && <span className="nh-deck-fill"> · fill ≈{usd(play.execMark)}</span>}
@@ -224,13 +230,15 @@ export function PlayTerminal({ play }: { play: TerminalPlay | null }) {
         </div>
       )}
 
-      <div className="nh-deck-greeks">
-        <GreekCell k="delta" v={g?.delta ?? null} />
-        <GreekCell k="gamma" v={g?.gamma ?? null} />
-        <GreekCell k="theta" v={g?.theta ?? null} />
-        <GreekCell k="vega" v={g?.vega ?? null} />
-        <GreekCell k="iv" v={g?.iv ?? null} />
-      </div>
+      {!isLegacy && (
+        <div className="nh-deck-greeks">
+          <GreekCell k="delta" v={g?.delta ?? null} />
+          <GreekCell k="gamma" v={g?.gamma ?? null} />
+          <GreekCell k="theta" v={g?.theta ?? null} />
+          <GreekCell k="vega" v={g?.vega ?? null} />
+          <GreekCell k="iv" v={g?.iv ?? null} />
+        </div>
+      )}
 
       <div className="nh-deck-tabs">
         <button className={clsx(tab === "thesis" && "on")} onClick={() => setTab("thesis")}><span className="n">[1]</span>Thesis</button>
@@ -260,12 +268,22 @@ function HeaderBadges({ play }: { play: TerminalPlay }) {
   const hasBadges = play.tierLabel || play.confluence != null || (play.discoveryOrigin?.length ?? 0) > 0 || play.sector || play.morningStatus;
   if (!hasBadges && !play.scorecard) return null;
   return (
-    <div className="nh-deck-badges">
-      {play.morningStatus && play.morningStatus !== "UNVERIFIED" && (
-        <span className={clsx("nh-deck-badge", play.morningStatus === "CONFIRMED" ? "morn-ok" : play.morningStatus === "DEGRADED" ? "morn-warn" : "morn-brk")}>
-          {play.morningStatus === "CONFIRMED" ? "✓ CONFIRMED" : play.morningStatus === "DEGRADED" ? "⚠ DEGRADED" : "✗ INVALIDATED"}
-        </span>
+    <>
+      {play.morningStatus && (
+        <div className={clsx(
+          "nh-deck-verdict",
+          play.morningStatus === "CONFIRMED" ? "verdict-ok"
+          : play.morningStatus === "DEGRADED" ? "verdict-warn"
+          : play.morningStatus === "INVALIDATED" ? "verdict-brk"
+          : "verdict-pending",
+        )}>
+          {play.morningStatus === "CONFIRMED" ? "PRE-MARKET CONFIRMED"
+          : play.morningStatus === "DEGRADED" ? "PRE-MARKET DEGRADED"
+          : play.morningStatus === "INVALIDATED" ? "INVALIDATED"
+          : "MORNING CONFIRM PENDING"}
+        </div>
       )}
+      <div className="nh-deck-badges">
       {play.sector && <span className="nh-deck-badge sector">{play.sector.toUpperCase()}</span>}
       {play.tierLabel && <span className="nh-deck-badge tier">TIER {play.tierLabel}</span>}
       {play.confluence != null && <span className="nh-deck-badge conf">CONFLUENCE {play.confluence}{play.horizon === "LEGACY" ? "" : "/2"}</span>}
@@ -280,6 +298,7 @@ function HeaderBadges({ play }: { play: TerminalPlay }) {
         </span>
       )}
     </div>
+    </>
   );
 }
 
@@ -315,6 +334,27 @@ function ThesisPanel({ play }: { play: TerminalPlay }) {
             {play.gates.map((g) => (
               <span key={g.label} className={clsx("nh-deck-gate", g.ok ? "ok" : "no")}>{g.ok ? "✓" : "✗"} {g.label}</span>
             ))}
+          </div>
+        </>
+      )}
+      {play.tierFactors && play.tierFactors.length > 0 && (
+        <>
+          <div className="nh-deck-lab" style={{ marginTop: 16 }}>Conviction tier breakdown</div>
+          <div className="nh-deck-tierfactors">
+            <div className="nh-deck-tierfactors-hd">
+              <span className="nh-deck-tierfactors-lb">Merit tier · graded at publish</span>
+              <span className="nh-deck-tierfactors-val">tier {play.tierLabel ?? "?"}</span>
+            </div>
+            <ul className="nh-deck-tierfactors-list">
+              {play.tierFactors.map((f, i) => (
+                <li key={`${f.label}-${i}`} className="nh-deck-tierfactor">
+                  <span className={`nh-deck-tierfactor-dir ${f.direction}`}>
+                    {f.direction === "up" ? "▲" : "▼"} {f.label}
+                  </span>
+                  <span className="nh-deck-tierfactor-detail">{f.detail}</span>
+                </li>
+              ))}
+            </ul>
           </div>
         </>
       )}
@@ -357,7 +397,14 @@ function ThesisPanel({ play }: { play: TerminalPlay }) {
 }
 
 function ManagePanel({ play, nowMs }: { play: TerminalPlay; nowMs: number }) {
-  const badge = play.recommendation;
+  // Recompute management from the LIVE pnlPct (SSE-overlaid) so the badge/note/track update at ~1s,
+  // not frozen at the 5s board-poll value the adapter originally computed.
+  const mgmt = managementFor(play.exitModel, play.status, play.pnlPct ?? null);
+  // Legacy/Swing plays (exitModel "PLAN") compute their recommendation dynamically from the stock's
+  // stop/target levels in overlayLegacyQuotes — managementFor("PLAN") can't do that (it doesn't know
+  // the geometry), so prefer the overlay's dynamic values when present.
+  const badge = play.exitModel === "PLAN" && play.recommendation ? play.recommendation : mgmt.recommendation;
+  const recNote = play.exitModel === "PLAN" && play.recNote ? play.recNote : mgmt.recNote;
   // A CONDOR is a credit structure — its profit comes from decay/pin, NOT a rising long premium,
   // so it must never draw the directional trim ladder OR the −50/+100 ratchet track (both inverted).
   const isCondor = play.isCondor === true;
@@ -368,7 +415,7 @@ function ManagePanel({ play, nowMs }: { play: TerminalPlay; nowMs: number }) {
       <div className="nh-deck-rec">
         <span className={clsx("nh-deck-recb", badge)}>{badge}</span>
         {/* Plain text only — never inject HTML (recNote is authored plain; React escapes it safely). */}
-        <span className="nh-deck-recnote">{play.recNote}</span>
+        <span className="nh-deck-recnote">{recNote}</span>
       </div>
 
       {/* Time-stop clock is a 0DTE-ONLY discipline (flat by 15:30 ET the SAME session). A Swing/
@@ -378,11 +425,13 @@ function ManagePanel({ play, nowMs }: { play: TerminalPlay; nowMs: number }) {
 
       {isCondor && <CondorPanel play={play} />}
 
-      {showsRatchetTrack(play) && (
+      {play.horizon === "ZERO_DTE" && !isCondor && <ZeroDteEntryPlan play={play} />}
+
+      {!isCondor && play.exitModel === "RATCHET" && mgmt.progress != null && (
         <>
           <div className="nh-deck-track">
             <span className="lo">STOP −50%</span><span className="hi">TARGET +100%</span>
-            <span className="mk" style={{ left: `${Math.round((play.progress ?? 0) * 100)}%` }} />
+            <span className="mk" style={{ left: `${Math.round((mgmt.progress ?? 0) * 100)}%` }} />
           </div>
           <div className="nh-deck-recnote">Ratchet: fast 0DTE exit — stop trails up as it runs. Marker = distance stop→target.</div>
         </>
@@ -593,24 +642,50 @@ function PnlPanel({ play }: { play: TerminalPlay }) {
     <>
       <div className="nh-deck-lab">Live P&amp;L</div>
       <div className={clsx("nh-deck-pnlbig", (live ?? 0) > 0 && "nh-deck-pos", (live ?? 0) < 0 && "nh-deck-neg")}>
-        {has && live != null ? `${live > 0 ? "+" : ""}${live}%` : "— not entered"}
+        {has && live != null ? `${live > 0 ? "+" : ""}${live.toFixed(1)}%` : "— not entered"}
       </div>
       {exec != null && (
         <div className="nh-deck-execline">
-          mid <b>{live != null ? `${live > 0 ? "+" : ""}${live}%` : "—"}</b>
-          {" · "}fill ≈<b className={clsx(exec < 0 && "nh-deck-neg")}>{`${exec > 0 ? "+" : ""}${exec}%`}</b>
+          mid <b>{live != null ? `${live > 0 ? "+" : ""}${live.toFixed(1)}%` : "—"}</b>
+          {" · "}fill ≈<b className={clsx(exec < 0 && "nh-deck-neg")}>{`${exec > 0 ? "+" : ""}${exec.toFixed(1)}%`}</b>
           {play.execMark != null && <span className="nh-deck-recnote"> (sell into {usd(play.execMark)} bid)</span>}
         </div>
       )}
-      <ExcursionViz play={play} />
+      {!has && play.mark != null && (
+        <ZeroDtePreEntryContext play={play} />
+      )}
+      {has && <ExcursionViz play={play} />}
       <div className="nh-deck-grid">
         <div><span className="k">Entry</span><span className="v">{has ? usd(play.entry) : "—"}</span></div>
         <div><span className="k">Live mark</span><span className="v">{usd(play.mark)}</span></div>
-        <div><span className="k">Peak</span><span className="v nh-deck-pos">{signPct(play.peak)}</span></div>
-        <div><span className="k">Trough</span><span className="v nh-deck-neg">{signPct(play.trough)}</span></div>
+        {has && <div><span className="k">Peak</span><span className="v nh-deck-pos">{signPct(play.peak)}</span></div>}
+        {has && <div><span className="k">Trough</span><span className="v nh-deck-neg">{signPct(play.trough)}</span></div>}
       </div>
-      <div className="nh-deck-recnote" style={{ marginTop: 16 }}>Peak/trough = the full excursion since entry — how much heat you took and gave back.</div>
+      {has && <div className="nh-deck-recnote" style={{ marginTop: 16 }}>Peak/trough = the full excursion since entry — how much heat you took and gave back.</div>}
     </>
+  );
+}
+
+/** Pre-entry context for 0DTE plays: shows live mark relative to the plan's stop/target levels. */
+function ZeroDtePreEntryContext({ play }: { play: TerminalPlay }) {
+  const rr = play.rrRatio;
+  return (
+    <div className="nh-deck-meta" style={{ marginTop: 8 }}>
+      <div className="nh-deck-recnote" style={{ marginBottom: 8, opacity: 0.7 }}>
+        Not yet committed — mark vs plan levels:
+      </div>
+      {play.optionsPlay && (
+        <div><span className="k">Contract</span><span className="v" style={{ fontSize: "0.85em" }}>{play.optionsPlay}</span></div>
+      )}
+      {rr != null && (
+        <div>
+          <span className="k">Risk : Reward</span>
+          <span className={clsx("v", rr >= 2 && "nh-deck-pos", rr < 1 && "nh-deck-neg")}>
+            {rr.toFixed(1)}:1{rr >= 2 ? " (strong)" : rr >= 1 ? " (favorable)" : rr >= 0.5 ? " (acceptable)" : " (tight)"}
+          </span>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -647,6 +722,32 @@ function LegacyEntryPlan({ play }: { play: TerminalPlay }) {
           </div>
         </div>
       )}
+    </>
+  );
+}
+
+function ZeroDteEntryPlan({ play }: { play: TerminalPlay }) {
+  const hasContract = !!play.optionsPlay;
+  const rr = play.rrRatio;
+  if (!hasContract && rr == null) return null;
+  return (
+    <>
+      <div className="nh-deck-lab" style={{ marginTop: 12 }}>Entry plan</div>
+      <div className="nh-deck-meta">
+        {hasContract && (
+          <div><span className="k">Contract</span><span className="v" style={{ fontSize: "0.85em" }}>{play.optionsPlay}</span></div>
+        )}
+        {play.mark != null && <div><span className="k">Current mark</span><span className="v">{usd(play.mark)}</span></div>}
+        {play.stockPrice != null && <div><span className="k">Underlying</span><span className="v">${play.stockPrice.toFixed(2)}</span></div>}
+        {rr != null && (
+          <div>
+            <span className="k">Risk : Reward</span>
+            <span className={clsx("v", rr >= 2 && "nh-deck-pos", rr < 1 && "nh-deck-neg")}>
+              {rr.toFixed(1)}:1{rr >= 2 ? " (strong)" : rr >= 1 ? " (favorable)" : rr >= 0.5 ? " (acceptable)" : " (tight)"}
+            </span>
+          </div>
+        )}
+      </div>
     </>
   );
 }

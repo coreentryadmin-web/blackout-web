@@ -17,6 +17,7 @@ import {
   ZERODTE_CONFLUENCE_MIN,
   ZERODTE_CONFLUENCE_MIN_EARLY,
   getNullConfluencePassCount,
+  LATE_AFTERNOON_BLOCK_ET_MINUTES,
   type ZeroDteGateInput,
 } from "./gates";
 import type { ContractPlan } from "./plan";
@@ -162,6 +163,41 @@ test("G-1 + G-2: a counter-tape long at 09:40 collects BOTH blocks (all reasons 
     v.blocks.map((b) => b.code),
     ["tape_alignment", "opening_window"]
   );
+});
+
+// ── G-14 · late-afternoon block (14:00-15:30 = 14.3% WR / −19% avg premium) ───────
+
+test("G-14: directional setup at 14:00 ET is BLOCKED", () => {
+  const v = evaluateZeroDteGates(input({ nowEtMinutes: 14 * 60 }));
+  assert.equal(v.verdict, "BLOCKED");
+  assert.equal(v.blocks.length, 1);
+  assert.equal(v.blocks[0]!.code, "late_afternoon");
+  assert.equal(v.blocks[0]!.threshold, 14 * 60);
+});
+
+test("G-14: 13:59 commits — boundary is exclusive (last minute before the block)", () => {
+  assert.equal(evaluateZeroDteGates(input({ nowEtMinutes: 13 * 60 + 59 })).verdict, "COMMIT");
+});
+
+test("G-14: condor at 14:30 is NOT blocked (condors benefit from late-session theta)", () => {
+  const v = evaluateZeroDteGates(input({
+    nowEtMinutes: 14 * 60 + 30,
+    play_type: "CONDOR",
+    direction: "short",
+    condorPlan: {
+      ticker: "SPY",
+      expiry: "2026-07-13",
+      short_call: 550, long_call: 555, short_put: 490, long_put: 485,
+      net_credit: 1.2, max_loss: 3.8, wing_width: 5,
+      credit_pct: 24, short_call_bid: 0.7, short_put_bid: 0.5,
+      long_call_ask: 0.2, long_put_ask: 0.1,
+      per_leg_spread_tax_pct: 8,
+      underlying_price: 520,
+      short_call_delta: -0.15, short_put_delta: 0.15,
+    },
+  }));
+  const codes = v.blocks.map(b => b.code);
+  assert.ok(!codes.includes("late_afternoon"), "condor must be exempt from late-afternoon gate");
 });
 
 // ── G-3 · score floor ──────────────────────────────────────────────────────────────

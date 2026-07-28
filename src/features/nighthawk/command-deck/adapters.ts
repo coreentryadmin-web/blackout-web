@@ -12,6 +12,7 @@ import type { SwingSetupState } from "@/lib/swing/taxonomy";
 import { executableFill, type TerminalExitLadder } from "@/lib/zerodte/terminal-ladder";
 import { condorGeometryFrom, type CondorGeometry } from "@/lib/zerodte/condor-render";
 import type { WhyNow, WhyNowReason } from "@/lib/zerodte/why-now";
+import type { NighthawkTierFactor } from "@/features/nighthawk/lib/nighthawk-tiers";
 import type {
   DeckCondor,
   DeckDirection,
@@ -31,6 +32,15 @@ const asStatus = (s: unknown): DeckStatus => {
   return (["OPEN", "HOLD", "TRIM", "CLOSED", "WATCH", "SKIP"].includes(u) ? u : "WATCH") as DeckStatus;
 };
 const fin = (n: unknown): number | null => (typeof n === "number" && Number.isFinite(n) ? n : null);
+
+/** R:R from the plan's target/stop premiums (reward ÷ risk, relative to a hypothetical entry at the mid). */
+function rrFromPlan(plan: { stop_premium?: number | null; target_premium?: number | null } | null | undefined): number | null {
+  const stop = fin(plan?.stop_premium);
+  const target = fin(plan?.target_premium);
+  if (stop == null || target == null || stop <= 0 || target <= stop) return null;
+  // R:R = (target − stop) / stop, approximating entry ≈ stop (risk = entry − 0 for a long)
+  return Math.round(((target - stop) / stop) * 10) / 10;
+}
 
 /** Map a parsed condor geometry (snake, from the payload) + a live underlying into the terminal's
  *  camelCase DeckCondor. `spot` prefers the LIVE underlying and flags it (spotIsLive); a null geometry
@@ -277,6 +287,10 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
     gates,
     regime: setup?.gamma_regime ? `gamma ${setup.gamma_regime}` : null,
     allocation: alloc,
+    // Directional plays surface the underlying stock price; condors use the tent's spot instead.
+    stockPrice: isCondor !== true ? fin(src.underlying_price) : null,
+    optionsPlay: setup?.plan?.occ ?? null,
+    rrRatio: rrFromPlan(setup?.plan),
     thesisBreak:
       setup?.market_aligned === false
         ? { level: "warn", note: "tape alignment lost" }
@@ -403,6 +417,9 @@ export interface EditionDeckSource {
   entry_cost_per_contract?: number | null;
   premium_cap_ok?: boolean | null;
   sector?: string | null;
+  /** Pinned tier assignment from publish-context (tier engine output). The `factors` array
+   *  explains WHY the tier was assigned — present on editions built after PR-N7. */
+  tier?: { tier: string; factors: NighthawkTierFactor[] } | null;
   // Morning confirmation overlay (merged by the container).
   morning_status?: "CONFIRMED" | "DEGRADED" | "INVALIDATED" | "UNVERIFIED" | null;
   morning_reason?: string | null;
@@ -540,7 +557,8 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
     gates,
     regime,
     thesisBreak,
-    tierLabel: src.conviction || null,
+    tierLabel: src.tier?.tier ?? src.conviction ?? null,
+    tierFactors: src.tier?.factors ?? null,
     recommendation: pulled || ms === "INVALIDATED" ? "SELL" : ms === "CONFIRMED" ? "BUY" : "HOLD",
     recNote,
     progress: null,
