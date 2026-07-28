@@ -76,6 +76,17 @@ export const MARKET_BIAS_MAX_AGE_MS = 15 * 60 * 1000;
 export const OPENING_WINDOW_UNLOCK_ET_MINUTES = 10 * 60;
 export const OPENING_WINDOW_UNLOCK_LABEL = "10:00 ET";
 
+// ── G-14 · Late-afternoon block ──────────────────────────────────────────────────
+// Evidence (90-day prod record, 101 graded plays): the "late 14:00-15:30" bucket ran
+// 14.3% WR / −19.02% avg P&L — the second-worst time window after the opening drive.
+// With only ~1.5 hours of 0DTE theta left, premium-buying entries face accelerating
+// decay and almost never reach the +100% target; 85.7% stopped out. The existing
+// 15:00 cutoff only blocked the last hour; pulling it to 14:00 ET removes the entire
+// losing-by-evidence bucket. CONDOR-EXEMPT: an iron condor WANTS late-session theta
+// crush (credit seller); the late window is only destructive for long-premium entries.
+export const LATE_AFTERNOON_BLOCK_ET_MINUTES = 14 * 60;
+export const LATE_AFTERNOON_BLOCK_LABEL = "14:00 ET";
+
 // ── G-12 · Confluence floor — HARD GATE (Phase 1, 2026-07-24) ─────────────────────
 // Evidence (E3, 25 sessions, docs/audit/0DTE-RESEARCH.md): expectancy ladders with the number of
 // INDEPENDENT confirmations that agree with the setup's direction (VWAP-side + market-aligned):
@@ -381,6 +392,22 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
         `Watching; commits unlock at ${OPENING_WINDOW_UNLOCK_LABEL} if the setup is still live.`,
       threshold: OPENING_WINDOW_UNLOCK_ET_MINUTES,
       unlock_et: OPENING_WINDOW_UNLOCK_LABEL,
+    });
+  }
+
+  // G-14 — late-afternoon block. DIRECTIONAL ONLY: a condor is a credit seller that
+  // BENEFITS from late-session theta crush; the late window is only destructive for
+  // long-premium entries. Evidence: 14:00-15:30 = 14.3% WR / −19.02% avg P&L (90d prod).
+  if (!isCondor && input.nowEtMinutes >= LATE_AFTERNOON_BLOCK_ET_MINUTES) {
+    blocks.push({
+      code: "late_afternoon",
+      reason:
+        `No new directional 0DTE commits after ${LATE_AFTERNOON_BLOCK_LABEL} — the ` +
+        "late-afternoon bucket ran 14.3% WR / −19% avg premium (90-day prod record). " +
+        "With <1.5 hours of theta left, long-premium entries face accelerating decay " +
+        "and almost never reach target.",
+      threshold: LATE_AFTERNOON_BLOCK_ET_MINUTES,
+      unlock_et: null,
     });
   }
 
