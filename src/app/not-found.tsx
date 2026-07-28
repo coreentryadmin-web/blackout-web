@@ -23,16 +23,21 @@ export default function NotFound() {
 
         <div className="mt-2 flex flex-wrap items-center justify-center gap-4">
           <Link
-            href="/"
-            className="rounded-full bg-bull px-6 py-2.5 font-mono text-xs font-medium uppercase tracking-[0.2em] text-[#021c14] shadow-glow-green transition hover:brightness-110"
-          >
-            Go home
-          </Link>
-          <Link
             href="/dashboard"
-            className="rounded-full border border-white/15 px-6 py-2.5 font-mono text-xs uppercase tracking-[0.2em] text-secondary transition hover:border-white/25 hover:text-white"
+            className="rounded-full px-8 py-3 font-mono text-xs font-bold uppercase tracking-[0.2em] text-[#010204] transition hover:brightness-110"
+            style={{
+              background: "linear-gradient(135deg, #a3e635, #00c060)",
+              boxShadow:
+                "0 0 30px rgba(163,230,53,0.35), 0 4px 24px rgba(163,230,53,0.2)",
+            }}
           >
             Open desk
+          </Link>
+          <Link
+            href="/"
+            className="rounded-full border border-white/15 px-8 py-3 font-mono text-xs uppercase tracking-[0.2em] text-secondary transition hover:border-white/25 hover:text-white"
+          >
+            Go home
           </Link>
         </div>
       </div>
