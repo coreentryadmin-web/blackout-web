@@ -17,8 +17,8 @@ import {
   TabPanel,
 } from "@/components/ui";
 import { AnchorGlyph, PanelLabel } from "@/features/thermal/lib/gex-heatmap/primitives";
-import { ThermalCompareStrip } from "@/features/thermal/components/ThermalCompareStrip";
 import { ThermalFreshnessBar } from "@/features/thermal/components/ThermalFreshnessBar";
+import ThermalTripleDesk from "@/features/thermal/components/ThermalTripleDesk";
 import {
   buildThermalUrlSearch,
   honestLevelEmpty,
@@ -3799,15 +3799,6 @@ export function GexHeatmap({
 
   return (
     <Panel accent={panelAccent} className={clsx("overflow-visible gex-heatmap-panel", nativeShell && "gex-heatmap-panel-native")}>
-      {/* SPY / SPX / QQQ compare — three live matrix cards; click selects the desk ticker. */}
-      {compare && !nativeShell && (
-        <ThermalCompareStrip
-          activeTicker={ticker}
-          onPick={setTicker}
-          className="mb-3"
-        />
-      )}
-
       {/* ── ONE compact control row (UI refactor) ──────────────────────────────
           [🔍 ticker + spot]  [ Profile+Matrix | Curve+Shift ]  …spacer…  [compare · GEX VEX DEX CHARM]
           Wraps gracefully on narrow widths (flex-wrap). */}
@@ -3853,14 +3844,20 @@ export function GexHeatmap({
             <button
               type="button"
               aria-pressed={compare}
-              onClick={() => setCompare((v) => !v)}
+              onClick={() => {
+                setCompare((v) => {
+                  const next = !v;
+                  if (next) setPairView("pair-a");
+                  return next;
+                });
+              }}
               className={clsx(
                 "rounded-full border px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] transition-colors",
                 compare
                   ? "border-cyan-400/40 bg-cyan-400/10 text-cyan-400"
                   : "border-white/15 text-sky-300/80 hover:text-white"
               )}
-              title="Toggle SPY / SPX / QQQ compare strip"
+              title="Toggle SPY | SPX | QQQ triple desk"
             >
               Compare
             </button>
@@ -3986,10 +3983,28 @@ export function GexHeatmap({
         </div>
       )}
 
-      {/* Skeleton on first load AND while stale — during a ticker switch the previous
-          ticker's payload is still in hand (keepPreviousData); showing the skeleton
-          stops the old matrix rendering under the new title. (Rank 10) */}
-      {(isLoading && !data) || stale ? (
+      {/* Compare ON + Matrix tab → SPY | SPX | QQQ triple desk (each column self-fetches).
+          Bypasses the focused-ticker skeleton/empty gate so one quiet name never blanks the desk. */}
+      {compare && !nativeShell && pairView === "pair-a" ? (
+        <div className="mt-1">
+          {data && !stale && !empty ? <AlertsStrip events={events} /> : null}
+          <ThermalTripleDesk
+            lens={lens}
+            activeTicker={ticker}
+            onFocusTicker={setTicker}
+            onLensChange={(l) => setLens(l as Lens)}
+          />
+          <p className="mt-4 border-t border-white/8 pt-3 text-[10px] leading-snug text-sky-300/75 gex-heatmap-methodology">
+            <span aria-hidden className="mr-1 text-sky-300/70">ⓘ</span>
+            Triple desk shows near-term expiries + a tight strike band around each spot so
+            SPY, SPX, and QQQ fit side-by-side. Keys 1/2/3 focus a column; G/V/D/C switch lens.
+            Pin strikes to watch; CSV exports the full chain for that name.
+          </p>
+        </div>
+      ) : (isLoading && !data) || stale ? (
+        /* Skeleton on first load AND while stale — during a ticker switch the previous
+           ticker's payload is still in hand (keepPreviousData); showing the skeleton
+           stops the old matrix rendering under the new title. (Rank 10) */
         <div className="space-y-5" aria-hidden>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
             {Array.from({ length: 5 }).map((_, i) => (
@@ -4032,7 +4047,7 @@ export function GexHeatmap({
       ) : (
         <>
           {/* ── Positioning alerts (Rank 4c) — server-computed events riding on the polled
-              20s matrix payload (ZERO extra fetch). Dismissible, reduced-motion safe;
+              matrix payload (ZERO extra fetch). Dismissible, reduced-motion safe;
               renders nothing when empty/absent. Sits above the regime header. ── */}
           <AlertsStrip events={events} />
 

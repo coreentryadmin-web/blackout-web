@@ -5,6 +5,23 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-28 — [Thermal] Triple desk SPY|SPX|QQQ (dense matrices)
+
+**Severity.** P1 product enhancement (desk density + compare UX).
+
+**Ask.** Tighten expiry spacing so three live matrices (SPY / SPX / QQQ) sit side-by-side.
+
+**Shipped on `cursor/thermal-deep-audit-3d11`.**
+1. **`ThermalTripleDesk`** — three cache-reader columns (`/api/market/gex-heatmap`), 5s poll,
+   per-column FreshnessChip + walls + active glow. Keys `1/2/3` focus; `G/V/D/C` switch lens.
+2. **`ThermalCompactMatrix`** — near-term expiry cap (8) + ±14 strike band around spot;
+   ultra-narrow expiry cols (~1.85rem) + dense money labels (`fmtCompactHeatMoney`).
+3. **Pins + CSV** — strike pins in `localStorage`; per-column CSV export of the full chain.
+4. **Compare toggle** now mounts the triple desk on the Matrix tab (default ON; `?compare=0` off).
+   Single-ticker full matrix remains when Compare is off / Profile tab.
+
+**Status.** Draft PR #1200.
+
 ## 2026-07-28 — [Thermal] SPY/SPX/QQQ compare + per-layer freshness + deep-links
 
 **Severity.** P1 product enhancement (honesty + desk speed).
@@ -12,6 +29,7 @@ evidence / fix / status per the CLAUDE.md policy.)
 **Shipped on `cursor/thermal-deep-audit-3d11`.**
 1. **Compare strip** — live SPY / SPX / QQQ cards (spot, call/put wall, flip) on the shared
    5s heatmap cache-reader; click selects ticker. Toggle via control-row **Compare** (`?compare=0` off).
+   Superseded as the Matrix hero by the triple desk (strip component retained).
 2. **Per-layer FreshnessChip bar** — Matrix / Overlays / UW check ages + near-term wall-scope chip
    (never one fake LIVE for 5s + 30s + 60s layers).
 3. **Deep-links** — `?ticker=SPX&lens=vex&compare=1` syncs URL ↔ desk.
