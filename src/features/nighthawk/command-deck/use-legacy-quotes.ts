@@ -126,11 +126,28 @@ export function overlayLegacyQuotes(
         : ((entryMid - q.price) / entryMid) * 100
       : null;
 
+    // Dynamic recommendation: when the stock breaches stop or target, override the static
+    // morning-confirmation recommendation so the manage tab gives real-time guidance.
+    let recommendation = p.recommendation;
+    let recNote = enrichedRecNote;
+    if (target != null && stop != null && p.status !== "CLOSED" && p.status !== "SKIP") {
+      const atStop = isLong ? q.price <= stop : q.price >= stop;
+      const atTarget = isLong ? q.price >= target : q.price <= target;
+      if (atStop) {
+        recommendation = "SELL";
+        recNote = `Stock at stop level ($${stop.toFixed(2)}) — cut the position to preserve capital.`;
+      } else if (atTarget) {
+        recommendation = "TRIM";
+        recNote = `Stock at target ($${target.toFixed(2)}) — take profit or trail the stop.`;
+      }
+    }
+
     return {
       ...p,
       progress,
       pnlPct: stockPnlPct != null && Number.isFinite(stockPnlPct) ? Number(stockPnlPct.toFixed(2)) : null,
-      recNote: enrichedRecNote,
+      recommendation,
+      recNote,
       markAsOf: q.asof,
       stockPrice: q.price,
       stockChangePct: q.changePct,

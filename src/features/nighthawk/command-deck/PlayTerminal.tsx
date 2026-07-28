@@ -177,11 +177,15 @@ export function PlayTerminal({ play }: { play: TerminalPlay | null }) {
               <span className="nh-deck-dot" /><span className="lv">LIVE</span>
               {" · "}{play.ticker}{" "}
               <span className={clsx(markFlash && "neon")}>${play.stockPrice.toFixed(2)}</span>
-              {play.stockChangePct != null && (
+              {play.pnlPct != null ? (
+                <span className={clsx(play.pnlPct > 0 ? "nh-deck-pos" : play.pnlPct < 0 ? "nh-deck-neg" : "")}>
+                  {" "}{play.pnlPct >= 0 ? "+" : ""}{play.pnlPct.toFixed(1)}% from entry
+                </span>
+              ) : play.stockChangePct != null ? (
                 <span className={clsx(play.stockChangePct > 0 ? "nh-deck-pos" : play.stockChangePct < 0 ? "nh-deck-neg" : "")}>
                   {" "}{play.stockChangePct >= 0 ? "+" : ""}{play.stockChangePct.toFixed(1)}%
                 </span>
-              )}
+              ) : null}
               {ageLabel && <span className="nh-deck-age"> · {ageLabel}</span>}
             </>
           ) : (

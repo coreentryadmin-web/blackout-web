@@ -793,18 +793,16 @@ export function buildRescuePlays(params: {
     const spot = chain?.spot ?? dossier?.tech?.price ?? null;
 
     const levels = resolveLevels(dossier, scored.direction, spot);
-    const { thesis, key_signal } = buildDeterministicThesis(scored, dossier);
+    const { thesis, key_signal } = buildDeterministicThesis(scored, dossier, levels);
 
     const warnings: string[] = [];
     const contract = chain ? pickChainContract(chain, scored.direction, params.maxDte) : null;
-    let options_play: string;
+    const options_play = formatOptionsPlay(ticker, contract);
     if (contract) {
-      options_play = `${ticker} ${contract.expiry} $${formatStrike(contract.strike)} ${contract.side.toUpperCase()} — entry prem ~$${contract.premium.toFixed(2)}`;
       if (!validatePlayGeometry({ ...levels, direction: scored.direction === "short" ? "SHORT" : "LONG" } as any).ok) {
         warnings.push("Entry/target geometry did not pass normal validation — verify levels before trading");
       }
     } else {
-      options_play = `${ticker} — check option chain for suitable contract`;
       warnings.push(`No affordable liquid option contract found under the $${MAX_OPTION_PREMIUM_PER_SHARE}/share cap — check the chain manually`);
     }
 

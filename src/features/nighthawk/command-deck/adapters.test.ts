@@ -1041,3 +1041,60 @@ test("overlayLegacyQuotes: stockPrice stays undefined when no quote", () => {
   assert.equal(result[0].stockPrice, undefined);
   assert.equal(result[0].stockChangePct, undefined);
 });
+
+test("overlayLegacyQuotes: LONG at stop → recommendation SELL", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "NVDA", direction: "long", rank: 1, score: 85,
+    entry_range: "$180", target: "$200", stop: "$170",
+  });
+  const quotes = new Map([["NVDA", { price: 169, changePct: -5, asof: "2026-07-28T14:00:00Z" }]]);
+  const originals = [{ ticker: "NVDA", target: "$200", stop: "$170", entry_range: "$180" }];
+  const [result] = overlayLegacyQuotes([play], quotes, originals);
+  assert.equal(result.recommendation, "SELL");
+  assert.ok(result.recNote!.includes("stop level"));
+});
+
+test("overlayLegacyQuotes: LONG at target → recommendation TRIM", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "NVDA", direction: "long", rank: 1, score: 85,
+    entry_range: "$180", target: "$200", stop: "$170",
+  });
+  const quotes = new Map([["NVDA", { price: 202, changePct: 3, asof: "2026-07-28T14:00:00Z" }]]);
+  const originals = [{ ticker: "NVDA", target: "$200", stop: "$170", entry_range: "$180" }];
+  const [result] = overlayLegacyQuotes([play], quotes, originals);
+  assert.equal(result.recommendation, "TRIM");
+  assert.ok(result.recNote!.includes("target"));
+});
+
+test("overlayLegacyQuotes: SHORT at stop → recommendation SELL", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "TSLA", direction: "short", rank: 1, score: 80,
+    entry_range: "$250", target: "$230", stop: "$265",
+  });
+  const quotes = new Map([["TSLA", { price: 266, changePct: 2, asof: "2026-07-28T14:00:00Z" }]]);
+  const originals = [{ ticker: "TSLA", target: "$230", stop: "$265", entry_range: "$250" }];
+  const [result] = overlayLegacyQuotes([play], quotes, originals);
+  assert.equal(result.recommendation, "SELL");
+});
+
+test("overlayLegacyQuotes: SHORT at target → recommendation TRIM", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "TSLA", direction: "short", rank: 1, score: 80,
+    entry_range: "$250", target: "$230", stop: "$265",
+  });
+  const quotes = new Map([["TSLA", { price: 228, changePct: -4, asof: "2026-07-28T14:00:00Z" }]]);
+  const originals = [{ ticker: "TSLA", target: "$230", stop: "$265", entry_range: "$250" }];
+  const [result] = overlayLegacyQuotes([play], quotes, originals);
+  assert.equal(result.recommendation, "TRIM");
+});
+
+test("overlayLegacyQuotes: between stop and target → keeps original recommendation", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "NVDA", direction: "long", rank: 1, score: 85,
+    entry_range: "$180", target: "$200", stop: "$170",
+  });
+  const quotes = new Map([["NVDA", { price: 185, changePct: 1, asof: "2026-07-28T14:00:00Z" }]]);
+  const originals = [{ ticker: "NVDA", target: "$200", stop: "$170", entry_range: "$180" }];
+  const [result] = overlayLegacyQuotes([play], quotes, originals);
+  assert.equal(result.recommendation, "HOLD");
+});
