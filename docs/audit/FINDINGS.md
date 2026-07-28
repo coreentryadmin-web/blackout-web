@@ -40,6 +40,56 @@ already sets `sector`.
 
 **Status.** FIXED — PR #1176.
 
+## 2026-07-28 — [correctness] Four additional Legacy scorer/UI bugs (PR #1176, batch 2)
+
+**Severity.** P2 (contrarian hedge stale signals + deprecated conviction) / P3 (ask-side double-count, positioning floor, confluence denominator).
+
+**Finding 1: Contrarian hedge inherits stale `confirming_signals` + uses deprecated conviction.**
+`scoreContrarianHedge` in `deterministic-edition.ts:66` re-scores a candidate in the opposite
+direction for the diversity hedge slot, but spread `...original` which carried the ORIGINAL
+candidate's `confirming_signals` count — not the count computed from the new (forced-direction)
+sub-scores. It also called the deprecated `convictionFromScore(score)` (score-only, no
+confirming_signals or earningsRisk) instead of the modern `assignNighthawkTier`.
+
+**Root cause.** `confirming_signals` was computed in `scoreCandidate` but `scoreContrarianHedge`
+was written before that field existed and never updated. The `...original` spread silently carried
+the original's count forward.
+
+**Fix.** Recalculated `confirming_signals` from the 9 new sub-scores using the same thresholds as
+`scoreCandidate`. Replaced `convictionFromScore(score)` with `assignNighthawkTier({ score,
+confirmingSignals, earningsRisk })`. Removed the now-unused `convictionFromScore` import.
+
+**Finding 2: Ask-side premium double-count in `scoreFlowQuality`.**
+`scorer.ts:370` used `safeFloat(r.ask_side_pct ?? r.total_ask_side_prem)` — when `ask_side_pct`
+was absent, a large dollar amount (e.g. $2M) was used as a percentage, always exceeding the 60%
+threshold and falsely crediting ask-side dominance on every flow record.
+
+**Fix.** Only test `ask_side_pct` for the percentage threshold; fall through to the ratio check
+when `ask_side_pct` is absent.
+
+**Finding 3: Positioning floor asymmetry.**
+`scorer.ts:659` clamped the positioning score at `Math.max(0, score)`, preventing mild negatives
+(e.g. -2 for contradicting greek flow). Other sub-scorers allow negatives down to -3, making
+positioning an outlier that couldn't express bearish signal.
+
+**Fix.** Changed floor from `Math.max(0, score)` to `Math.max(-3, score)`.
+
+**Finding 4: Confluence badge denominator wrong for Legacy.**
+`PlayTerminal.tsx:267` always showed `CONFLUENCE {n}/2`, which is the 0DTE scale. Legacy uses a
+9-dimension scale (0–9 confirming signals).
+
+**Fix.** Omit the denominator for Legacy plays: `CONFLUENCE {n}` vs `CONFLUENCE {n}/2` for 0DTE.
+
+**Evidence.** All tests pass — scorer-direction: 64/64, deterministic-edition: 33/33. New test
+`scoreContrarianHedge recalculates confirming_signals from new sub-scores` verifies the
+contrarian's signals differ from the original's.
+
+**Blast radius.** `scoreContrarianHedge` is the only contrarian call site — the main
+`scoreCandidate` was already correct. Ask-side and positioning fixes affect all candidates scored
+through the Legacy pipeline. The confluence badge fix only affects the UI display.
+
+**Status.** FIXED — PR #1176.
+
 ## 2026-07-28 — [correctness] Governor demotion undone by builder merge-sort + no R:R minimum gate (branch `fix/governor-sort-override`)
 
 **Severity.** Medium (edition quality — governor-demoted plays could re-promote to the top 5; plays with terrible R:R could publish).
