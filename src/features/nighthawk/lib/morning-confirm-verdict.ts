@@ -3,6 +3,9 @@
 // has one home. Pure function: all market/stock context is injected.
 import type { PlaybookPlay } from "./types";
 import { parsePlayLevels } from "./play-levels";
+import { INDEX_SET, INDEX_ETF_PLAYS } from "./constants";
+
+const SPX_RELEVANT_TICKERS = new Set<string>([...INDEX_SET, ...INDEX_ETF_PLAYS]);
 
 export type PlayConfirmStatus = "CONFIRMED" | "DEGRADED" | "INVALIDATED" | "UNVERIFIED";
 
@@ -100,6 +103,15 @@ export function computePlayVerdict(
         `${play.ticker} pre-market ${stockPx.toFixed(2)} gapped ${isLong ? "above" : "below"} the entry range — do not chase the published entry`
       );
     }
+  }
+
+  // For single-name stocks (not index/ETF), the SPX gap check is a weak proxy —
+  // NVDA can gap 10% on earnings while SPX moves 0.2%. If the stock's own premarket
+  // is unavailable, degrade rather than letting SPX-only data produce a green badge.
+  const isSingleName = !SPX_RELEVANT_TICKERS.has(play.ticker.toUpperCase());
+  if (isSingleName && stockPx == null) {
+    if (status === "CONFIRMED") status = "DEGRADED";
+    reasons.push(`${play.ticker} pre-market price unavailable — SPX gap alone cannot confirm a single-name play`);
   }
 
   // ── Hard invalidation checks ──────────────────────────────────────────────
