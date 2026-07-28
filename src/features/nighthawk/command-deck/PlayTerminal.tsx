@@ -170,30 +170,54 @@ export function PlayTerminal({ play }: { play: TerminalPlay | null }) {
 
       <HeaderBadges play={play} />
 
-      <div className="nh-deck-stream">
-        {live ? (
-          <><span className="nh-deck-dot" /><span className="lv">LIVE</span></>
-        ) : sync ? (
-          <><span className="nh-deck-dot sync" /><span className="sy">SYNC</span></>
-        ) : (
-          <><span className="nh-deck-dot off" /><span className="of">{stale ? "STALE" : "—"}</span></>
-        )}
-        {" · mark "}
-        <span className={clsx(markFlash && "neon", stale && "nh-deck-stale-mark")}>{usd(play.mark)}</span>
-        {/* Executable fill — a long exits into the BID. Mid alone flatters the exit; show both.
-            Suppressed for a condor (credit structure — the bid-fill framing is directional/inverted). */}
-        {!isCondor && play.execMark != null && <span className="nh-deck-fill"> · fill ≈{usd(play.execMark)}</span>}
-        {ageLabel && <span className="nh-deck-age"> · {sync ? "sync" : ageLabel}</span>}
-        {stale && <span className="nh-deck-stalebadge">stale &gt;{Math.round(ZERODTE_MARK_STALE_MS / 1000)}s</span>}
-      </div>
+      {play.horizon === "LEGACY" ? (
+        <div className="nh-deck-stream">
+          {play.stockPrice != null ? (
+            <>
+              <span className="nh-deck-dot" /><span className="lv">LIVE</span>
+              {" · "}{play.ticker}{" "}
+              <span className={clsx(markFlash && "neon")}>${play.stockPrice.toFixed(2)}</span>
+              {play.stockChangePct != null && (
+                <span className={clsx(play.stockChangePct > 0 ? "nh-deck-pos" : play.stockChangePct < 0 ? "nh-deck-neg" : "")}>
+                  {" "}{play.stockChangePct >= 0 ? "+" : ""}{play.stockChangePct.toFixed(1)}%
+                </span>
+              )}
+              {ageLabel && <span className="nh-deck-age"> · {ageLabel}</span>}
+            </>
+          ) : (
+            <>
+              <span className="nh-deck-dot off" /><span className="of">PENDING</span>
+              {" · stock quote polling"}
+            </>
+          )}
+          {play.entry != null && <span className="nh-deck-fill"> · entry prem {usd(play.entry)}</span>}
+        </div>
+      ) : (
+        <div className="nh-deck-stream">
+          {live ? (
+            <><span className="nh-deck-dot" /><span className="lv">LIVE</span></>
+          ) : sync ? (
+            <><span className="nh-deck-dot sync" /><span className="sy">SYNC</span></>
+          ) : (
+            <><span className="nh-deck-dot off" /><span className="of">{stale ? "STALE" : "—"}</span></>
+          )}
+          {" · mark "}
+          <span className={clsx(markFlash && "neon", stale && "nh-deck-stale-mark")}>{usd(play.mark)}</span>
+          {!isCondor && play.execMark != null && <span className="nh-deck-fill"> · fill ≈{usd(play.execMark)}</span>}
+          {ageLabel && <span className="nh-deck-age"> · {sync ? "sync" : ageLabel}</span>}
+          {stale && <span className="nh-deck-stalebadge">stale &gt;{Math.round(ZERODTE_MARK_STALE_MS / 1000)}s</span>}
+        </div>
+      )}
 
-      <div className="nh-deck-greeks">
-        <GreekCell k="delta" v={g?.delta ?? null} />
-        <GreekCell k="gamma" v={g?.gamma ?? null} />
-        <GreekCell k="theta" v={g?.theta ?? null} />
-        <GreekCell k="vega" v={g?.vega ?? null} />
-        <GreekCell k="iv" v={g?.iv ?? null} />
-      </div>
+      {play.horizon !== "LEGACY" && (
+        <div className="nh-deck-greeks">
+          <GreekCell k="delta" v={g?.delta ?? null} />
+          <GreekCell k="gamma" v={g?.gamma ?? null} />
+          <GreekCell k="theta" v={g?.theta ?? null} />
+          <GreekCell k="vega" v={g?.vega ?? null} />
+          <GreekCell k="iv" v={g?.iv ?? null} />
+        </div>
+      )}
 
       <div className="nh-deck-tabs">
         <button className={clsx(tab === "thesis" && "on")} onClick={() => setTab("thesis")}><span className="n">[1]</span>Thesis</button>

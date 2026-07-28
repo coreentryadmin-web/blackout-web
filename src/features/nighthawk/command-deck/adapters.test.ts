@@ -935,3 +935,25 @@ test("Legacy adapter: missing geometry fields → null", () => {
   assert.equal(play.thesis, null);
   assert.equal(play.keySignal, null);
 });
+
+test("overlayLegacyQuotes: populates stockPrice and stockChangePct", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "NVDA", direction: "long", rank: 1, score: 85,
+    entry_range: "$180 – $185", target: "$200", stop: "$170",
+  });
+  const quotes = new Map([["NVDA", { price: 192.50, changePct: 2.3, asof: "2026-07-28T15:00:00Z" }]]);
+  const originals = [{ ticker: "NVDA", target: "$200", stop: "$170", entry_range: "$180 – $185" }];
+  const [result] = overlayLegacyQuotes([play], quotes, originals);
+  assert.equal(result.stockPrice, 192.50);
+  assert.equal(result.stockChangePct, 2.3);
+});
+
+test("overlayLegacyQuotes: stockPrice stays undefined when no quote", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "AAPL", direction: "long", rank: 1, score: 75,
+    entry_range: "$190", target: "$210", stop: "$180",
+  });
+  const result = overlayLegacyQuotes([play], new Map(), [{ ticker: "AAPL", target: "$210", stop: "$180", entry_range: "$190" }]);
+  assert.equal(result[0].stockPrice, undefined);
+  assert.equal(result[0].stockChangePct, undefined);
+});

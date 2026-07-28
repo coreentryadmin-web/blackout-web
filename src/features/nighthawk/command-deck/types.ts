@@ -150,6 +150,10 @@ export interface TerminalPlay {
   thesis?: string | null;
   keySignal?: string | null;
 
+  // ── legacy stock-level overlay (populated by overlayLegacyQuotes, not the adapter) ──
+  stockPrice?: number | null;
+  stockChangePct?: number | null;
+
   // ── swing-only enrichment (all OPTIONAL, ADDITIVE — 0DTE/LEAPS/Legacy leave them undefined; PR-12
   //    populates them through the horizon adapter). The observable swing state the serving router keys on. ──
   /** The classified swing archetype label (taxonomy.ts), when this is a SWING play. */

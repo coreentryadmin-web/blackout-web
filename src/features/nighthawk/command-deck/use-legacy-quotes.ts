@@ -124,6 +124,8 @@ export function overlayLegacyQuotes(
       progress,
       recNote: enrichedRecNote,
       markAsOf: q.asof,
+      stockPrice: q.price,
+      stockChangePct: q.changePct,
     };
   });
 }

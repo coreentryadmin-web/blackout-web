@@ -217,23 +217,33 @@ function PlayCard({
         </span>
       </span>
       <span className="nh-deck-rr">
-        {/* The live mid mark (or entry as a fallback for a not-yet-marked WATCH row). Members trade
-            the premium, not an internal score. */}
-        <span className="nh-deck-prem" style={{ display: "block" }}>
-          {p.mark != null || p.entry != null
-            ? `$${(p.mark != null ? p.mark : p.entry!).toFixed(2)}`
-            : "—"}
-        </span>
-        <span className="nh-deck-premlab">{isCondor ? "MARK" : "MID"}</span>
-        <span className={clsx("nh-deck-pnl", (p.pnlPct ?? 0) > 0 && "nh-deck-pos", (p.pnlPct ?? 0) < 0 && "nh-deck-neg")} style={{ display: "block" }}>
-          {p.pnlPct != null && p.pnlPct !== 0 ? `${p.pnlPct > 0 ? "+" : ""}${p.pnlPct}%` : "—"}
-        </span>
-        {/* Executable-fill P&L (a long sells into the BID) beside the mid — the honest realizable
-            number. Suppressed for a condor (directional framing) and when no live book priced it. */}
-        {showExec && (
-          <span className={clsx("nh-deck-cardexec", p.execPnlPct! < 0 && "nh-deck-neg")}>
-            fill {p.execPnlPct! > 0 ? "+" : ""}{p.execPnlPct}%
-          </span>
+        {p.horizon === "LEGACY" && p.stockPrice != null ? (
+          <>
+            <span className="nh-deck-prem" style={{ display: "block" }}>
+              ${p.stockPrice.toFixed(2)}
+            </span>
+            <span className="nh-deck-premlab">STOCK</span>
+            <span className={clsx("nh-deck-pnl", (p.stockChangePct ?? 0) > 0 && "nh-deck-pos", (p.stockChangePct ?? 0) < 0 && "nh-deck-neg")} style={{ display: "block" }}>
+              {p.stockChangePct != null ? `${p.stockChangePct >= 0 ? "+" : ""}${p.stockChangePct.toFixed(1)}%` : "—"}
+            </span>
+          </>
+        ) : (
+          <>
+            <span className="nh-deck-prem" style={{ display: "block" }}>
+              {p.mark != null || p.entry != null
+                ? `$${(p.mark != null ? p.mark : p.entry!).toFixed(2)}`
+                : "—"}
+            </span>
+            <span className="nh-deck-premlab">{isCondor ? "MARK" : "MID"}</span>
+            <span className={clsx("nh-deck-pnl", (p.pnlPct ?? 0) > 0 && "nh-deck-pos", (p.pnlPct ?? 0) < 0 && "nh-deck-neg")} style={{ display: "block" }}>
+              {p.pnlPct != null && p.pnlPct !== 0 ? `${p.pnlPct > 0 ? "+" : ""}${p.pnlPct}%` : "—"}
+            </span>
+            {showExec && (
+              <span className={clsx("nh-deck-cardexec", p.execPnlPct! < 0 && "nh-deck-neg")}>
+                fill {p.execPnlPct! > 0 ? "+" : ""}{p.execPnlPct}%
+              </span>
+            )}
+          </>
         )}
       </span>
     </button>
