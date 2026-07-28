@@ -463,6 +463,48 @@ test("0DTE adapter: gamma_regime → 'gamma <x>' label; occ from plan; id and ti
   assert.equal(p.score, 88); // rounded
 });
 
+// ── stockPrice / rrRatio / optionsPlay enrichment ────────────────────────────────────
+test("0DTE adapter: directional play surfaces stockPrice from underlying_price", () => {
+  const p = terminalPlayFromZeroDte({
+    ticker: "AAPL", status: "WATCH", score: 70,
+    setup: { direction: "long" },
+    underlying_price: 215.50,
+  });
+  assert.equal(p.stockPrice, 215.50);
+});
+
+test("0DTE adapter: condor play does NOT surface stockPrice (uses tent spot)", () => {
+  const p = terminalPlayFromZeroDte({
+    ticker: "SPX", status: "OPEN", score: 80,
+    setup: { direction: "short", play_type: "CONDOR" },
+    underlying_price: 5500,
+  });
+  assert.equal(p.stockPrice, null);
+});
+
+test("0DTE adapter: R:R computed from plan stop/target premiums", () => {
+  const p = terminalPlayFromZeroDte({
+    ticker: "TSLA", status: "WATCH", score: 65,
+    setup: { direction: "long", plan: { stop_premium: 2.0, target_premium: 6.0 } },
+  });
+  assert.equal(p.rrRatio, 2.0); // (6−2)/2 = 2.0
+});
+
+test("0DTE adapter: R:R null when plan missing or stop/target absent", () => {
+  const noplan = terminalPlayFromZeroDte({ ticker: "X", status: "WATCH", setup: { direction: "long" } });
+  assert.equal(noplan.rrRatio, null);
+  const partial = terminalPlayFromZeroDte({ ticker: "X", status: "WATCH", setup: { direction: "long", plan: { stop_premium: 2.0 } } });
+  assert.equal(partial.rrRatio, null);
+});
+
+test("0DTE adapter: optionsPlay from plan OCC", () => {
+  const p = terminalPlayFromZeroDte({
+    ticker: "NVDA", status: "WATCH", score: 75,
+    setup: { direction: "long", plan: { occ: "O:NVDA260728C00130000" } },
+  });
+  assert.equal(p.optionsPlay, "O:NVDA260728C00130000");
+});
+
 // ── allocation mapping (first reason only) + absence ───────────────────────────────────
 test("0DTE adapter: allocation maps role/sizing + the FIRST reason; absent allocation → null", () => {
   const withAlloc = terminalPlayFromZeroDte({
