@@ -1,7 +1,7 @@
 import "server-only";
 
 import { loadCurrentChainContracts } from "@/features/vector/lib/vector-gex-reconstruct-server";
-import { loadSpxDeskPulse } from "@/features/spx/lib/spx-desk-loader";
+import { loadSpxDesk, loadSpxDeskPulse } from "@/features/spx/lib/spx-desk-loader";
 import { etMinutes } from "@/features/spx/lib/spx-play-session-time";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import {
@@ -11,6 +11,7 @@ import {
   type PinConeStep,
   type PinScenario,
 } from "@/features/spx/lib/spx-pin-forecast-core";
+import { resolvePinSpotInputs } from "@/features/spx/lib/spx-pin-spot";
 
 /** Monte-Carlo overlay summary — the truer (multi-humped) distribution beside the analytic base. */
 export type PinMonteCarlo = {
@@ -40,8 +41,14 @@ const MC_PATHS = 400;
  */
 export async function buildSpxPinForecast(): Promise<SpxPinForecast> {
   const pulse = await loadSpxDeskPulse().catch(() => null);
-  const spot = pulse?.price ?? 0;
-  const priorClose = pulse?.prior_close ?? null;
+  // Pulse returns price:0 outside RTH/premarket (by design — fast lane is session-scoped).
+  // Fall back to the full desk snapshot so post-close pin can honestly report "Market closed"
+  // with the real last print, instead of spot=0 + "Collecting" (live 2026-07-28 regression).
+  let deskFallback: { price: number; prior_close: number | null } | null = null;
+  if (!(pulse?.price && pulse.price > 0)) {
+    deskFallback = await loadSpxDesk().catch(() => null);
+  }
+  const { spot, priorClose } = resolvePinSpotInputs(pulse, deskFallback);
 
   const nowMs = Date.now();
   const etMin = etMinutes(new Date());

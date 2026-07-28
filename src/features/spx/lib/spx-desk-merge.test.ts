@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it, beforeEach } from "node:test";
-import { mergePulseIntoDesk, resetSpxDeskMergeCache } from "./spx-desk-merge";
-import type { SpxDeskPayload, SpxDeskPulse } from "@/features/spx/lib/spx-desk";
+import { mergeFlowIntoDesk, mergePulseIntoDesk, resetSpxDeskMergeCache } from "./spx-desk-merge";
+import type { SpxDeskFlow, SpxDeskPayload, SpxDeskPulse } from "@/features/spx/lib/spx-desk";
 
 function deskStub(overrides: Partial<SpxDeskPayload> = {}): SpxDeskPayload {
   return {
@@ -109,6 +109,32 @@ function pulseStub(overrides: Partial<SpxDeskPulse> = {}): SpxDeskPulse {
   };
 }
 
+function flowStub(overrides: Partial<SpxDeskFlow> = {}): SpxDeskFlow {
+  return {
+    available: true,
+    polled_at: "2026-07-28T20:40:00.000Z",
+    price: 7428.78,
+    dark_pool: null,
+    spx_flows: [],
+    unified_tape: [],
+    gex_walls: [{ strike: 7430, net_gex: 1e9, kind: "resistance", distance_pts: 1.22 }],
+    gex_net: -1e9,
+    gex_king: 7430,
+    gamma_flip: null,
+    above_gamma_flip: false,
+    gamma_regime: "unknown",
+    flow_0dte_call_premium: null,
+    flow_0dte_put_premium: null,
+    flow_0dte_net: null,
+    strike_stacks: [],
+    net_prem_ticks: [],
+    flow_by_expiry: [],
+    net_flow_by_expiry: [],
+    greek_exposure: null,
+    ...overrides,
+  };
+}
+
 describe("mergePulseIntoDesk session extremes", () => {
   beforeEach(() => {
     resetSpxDeskMergeCache();
@@ -121,5 +147,27 @@ describe("mergePulseIntoDesk session extremes", () => {
     assert.equal(merged.lod, 7294.18);
     assert.ok(merged.price <= (merged.hod ?? 0));
     assert.ok(merged.price >= (merged.lod ?? 0));
+  });
+});
+
+describe("mergeFlowIntoDesk gamma flip truth", () => {
+  it("keeps an explicit null live flip — does not resurrect sticky desk flip", () => {
+    const base = deskStub({ gamma_flip: 7596.4, above_gamma_flip: false, price: 7428.78 });
+    const merged = mergeFlowIntoDesk(base, flowStub({ gamma_flip: null }));
+    assert.equal(merged.gamma_flip, null);
+    assert.equal(merged.above_gamma_flip, false);
+    assert.equal(
+      merged.levels.find((l) => l.label.toLowerCase().includes("flip"))?.value ?? null,
+      null
+    );
+  });
+
+  it("still overlays a live non-null flip from the flow lane", () => {
+    const base = deskStub({ gamma_flip: 7596.4, price: 7428.78 });
+    const merged = mergeFlowIntoDesk(
+      base,
+      flowStub({ gamma_flip: 7430, above_gamma_flip: false, gamma_regime: "short" })
+    );
+    assert.equal(merged.gamma_flip, 7430);
   });
 });

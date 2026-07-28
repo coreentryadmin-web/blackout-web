@@ -5,6 +5,33 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-28 — [data-honesty] SPX desk sticky gamma flip + pin spot=0 after hours
+
+**Severity.** P1 — member-facing false levels / dishonest empty states on the SPX Slayer desk.
+
+**Root cause.**
+1. `buildSpxDesk` published `gamma_flip` as `intel ?? canonical ?? lastGoodGammaFlip`. After a
+   successful live heatmap with `flip: null` (honest undetermined), the desk still resurfaced a
+   sticky Redis/in-process flip (~7596 while spot was ~7429). `mergeFlowIntoDesk` compounded this
+   via `flow.gamma_flip ?? base.gamma_flip` (`??` treats live null as missing).
+2. `buildSpxPinForecast` read only the pulse lane. Pulse returns `price: 0` outside RTH/premarket,
+   so the pin panel showed `spot: 0` + "Collecting" after the close even though the full desk still
+   held the real last print.
+3. `data-correctness` INV-4 used a per-strike flip oracle while production uses cumulative
+   short→long (`cumulativeGammaFlip`) — false FLAGs when a per-strike crossing exists near spot
+   but the cumulative book has no long-gamma boundary.
+
+**Evidence (prod 2026-07-28 ~16:40 ET).** Heatmap `gex.flip=null`, walls 7430/7425, spot 7428.78;
+desk `gamma_flip≈7596` with `gex_stale:false`. Pin payload `spot:0`, driver "Collecting".
+`data-correctness` flagged "clean sign-change crossing near spot at 7,426.83 but matrix reports NO flip".
+
+**Fix.** Clear sticky flip on successful live null; stop re-applying `lastGoodGammaFlip` on the
+desk payload; trust flow-lane null flip in merge; pin falls back to `loadSpxDesk()` spot; INV-4
+oracle aligned to cumulative definition (still independently re-derived). Docs paths in
+`docs/bie/spx-slayer-mechanics.md` corrected to `src/features/spx/lib/`.
+
+**Status.** OPEN PR for review (do not auto-merge) — branch `cursor/spx-desk-truth-fixes-3d11`.
+
 ## 2026-07-28 — [gate-calibration] Late-afternoon 0DTE entries (14:00-15:30) run 14.3% WR / −19% avg
 
 **Severity.** P1 — the late-afternoon window is the second-worst time bucket in the 90-day record
