@@ -127,6 +127,9 @@ export function PlayTerminal({ play }: { play: TerminalPlay | null }) {
   const [tab, setTab] = useState<Tab>("thesis");
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === "1") setTab("thesis");
       else if (e.key === "2") setTab("manage");
       else if (e.key === "3") setTab("pnl");
@@ -136,6 +139,7 @@ export function PlayTerminal({ play }: { play: TerminalPlay | null }) {
   }, []);
   // Hooks must run unconditionally (before any early return).
   const markFlash = useFlash(play?.mark ?? null);
+  const stockFlash = useFlash(play?.stockPrice ?? null);
   const nowMs = useSecondTick();
 
   if (!play) {
@@ -182,7 +186,7 @@ export function PlayTerminal({ play }: { play: TerminalPlay | null }) {
                 <><span className="nh-deck-dot" /><span className="lv">LIVE</span></>
               )}
               {" · "}{play.ticker}{" "}
-              <span className={clsx(markFlash && "neon", stale && "nh-deck-stale-mark")}>${play.stockPrice.toFixed(2)}</span>
+              <span className={clsx((markFlash || stockFlash) && "neon", stale && "nh-deck-stale-mark")}>${play.stockPrice.toFixed(2)}</span>
               {play.pnlPct != null ? (
                 <span className={clsx(play.pnlPct > 0 ? "nh-deck-pos" : play.pnlPct < 0 ? "nh-deck-neg" : "")}>
                   {" "}{play.pnlPct >= 0 ? "+" : ""}{play.pnlPct.toFixed(1)}% from entry
@@ -264,7 +268,7 @@ function HeaderBadges({ play }: { play: TerminalPlay }) {
       )}
       {play.sector && <span className="nh-deck-badge sector">{play.sector.toUpperCase()}</span>}
       {play.tierLabel && <span className="nh-deck-badge tier">TIER {play.tierLabel}</span>}
-      {play.confluence != null && <span className="nh-deck-badge conf">CONFLUENCE {play.confluence}/2</span>}
+      {play.confluence != null && <span className="nh-deck-badge conf">CONFLUENCE {play.confluence}{play.horizon === "LEGACY" ? "" : "/2"}</span>}
       {play.discoveryOrigin?.map((o) => (
         <span key={o} className="nh-deck-badge orig">{o}</span>
       ))}

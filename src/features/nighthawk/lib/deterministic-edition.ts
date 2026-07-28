@@ -37,7 +37,6 @@ import {
   scoreVexAlignment,
   scoreCatalystAwareness,
   scoreSkewConfirmation,
-  convictionFromScore,
 } from "./scorer";
 import { assignNighthawkTier, nhTierInputFromScored } from "./nighthawk-tiers";
 import type { PlaybookPlay } from "./types";
@@ -91,6 +90,18 @@ export function scoreContrarianHedge(
   const dampened = 1 + (rm - 1) * 0.5;
   const score = Math.max(0, Math.min(100, Math.round(rawTotal * dampened)));
 
+  const confirming_signals = [
+    discountedFlow >= 8,
+    techScore >= 6,
+    posScore >= 4,
+    newsScore >= 2,
+    smartScore >= 2,
+    fundScore >= 2,
+    siScore >= 2,
+    wallScore >= 3,
+    vexScore >= 2,
+  ].filter(Boolean).length;
+
   return {
     ...original,
     direction: forcedDirection,
@@ -107,7 +118,8 @@ export function scoreContrarianHedge(
     catalyst_score: catalystResult.score,
     catalyst_flags: catalystResult.flags,
     skew_score: skewScore,
-    conviction: convictionFromScore(score),
+    confirming_signals,
+    conviction: assignNighthawkTier({ score, confirmingSignals: confirming_signals, earningsRisk: original.earnings_risk ?? false }).tier,
   };
 }
 
@@ -847,6 +859,7 @@ export function buildRescuePlays(params: {
         ...(scored.vex_alignment_score != null ? { vex: scored.vex_alignment_score } : {}),
         ...(scored.skew_score != null ? { skew: scored.skew_score } : {}),
       },
+      sector: scored.sector?.toLowerCase() || undefined,
       confirming_signals: scored.confirming_signals ?? undefined,
       earnings_risk: scored.earnings_risk === true ? true : undefined,
       gate_promoted: true,

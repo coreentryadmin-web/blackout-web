@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildDeterministicEditionPlays,
+  buildRescuePlays,
   pickChainContract,
   buildDeterministicThesis,
   scoreContrarianHedge,
@@ -713,4 +714,56 @@ test("no bangerTickers passed → no play gets a scale-out note (backwards compa
   const dossierMap = { AAA: dossier("AAA", 120) };
   const { plays } = buildDeterministicEditionPlays({ ranked, dossierMap, chains });
   assert.equal(plays[0]?.risk_note, undefined);
+});
+
+// ── buildRescuePlays sector propagation ─────────────────────────────────────────
+// Regression: buildRescuePlays omitted `sector` from the play object, breaking
+// the cross-edition governor's per-sector cap.
+
+test("buildRescuePlays propagates sector from ScoredCandidate", () => {
+  const s = { ...scored("NVDA", "long", 68), sector: "Technology" } as ScoredCandidate;
+  const plays = buildRescuePlays({
+    ranked: [s],
+    dossierMap: { NVDA: dossier("NVDA", 120) },
+    chains: {},
+  });
+  assert.equal(plays.length, 1);
+  assert.equal(plays[0]!.sector, "technology", "sector should be lowercased from ScoredCandidate");
+  assert.equal(plays[0]!.gate_promoted, true, "rescue plays are always gate_promoted");
+});
+
+// ── scoreContrarianHedge confirming_signals recalculation ──────────────────────
+// Regression: scoreContrarianHedge spread ...original which carried stale
+// confirming_signals from the ORIGINAL direction. The fix recalculates from the
+// new sub-scores and uses assignNighthawkTier instead of the deprecated
+// convictionFromScore.
+
+test("scoreContrarianHedge recalculates confirming_signals from new sub-scores", () => {
+  const orig = {
+    ...scored("NVDA", "long", 72),
+    confirming_signals: 7,
+    earnings_risk: false,
+  } as ScoredCandidate;
+  const d = dossier("NVDA", 120);
+  const hedge = scoreContrarianHedge(orig, d, "short");
+  assert.equal(hedge.direction, "short", "direction should be forced to short");
+  assert.notEqual(hedge.score, orig.score, "score should differ from original");
+  assert.equal(typeof hedge.confirming_signals, "number");
+  // The contrarian direction should NOT inherit the original's confirming_signals=7.
+  // With the test dossier's minimal data, most sub-scores will be low/zero in the
+  // forced direction, so confirming_signals should be less than the original.
+  assert.notEqual(hedge.confirming_signals, orig.confirming_signals,
+    "confirming_signals must be recomputed, not inherited from original");
+  assert.ok(hedge.conviction, "conviction should be set via assignNighthawkTier");
+});
+
+test("buildRescuePlays: missing sector on ScoredCandidate → sector undefined", () => {
+  const s = scored("AAPL", "long", 60);
+  const plays = buildRescuePlays({
+    ranked: [s],
+    dossierMap: { AAPL: dossier("AAPL", 150) },
+    chains: {},
+  });
+  assert.equal(plays.length, 1);
+  assert.equal(plays[0]!.sector, undefined, "no sector on scored → play.sector should be undefined");
 });

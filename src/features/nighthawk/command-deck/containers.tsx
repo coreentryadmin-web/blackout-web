@@ -107,7 +107,7 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
   const { data: confirmData } = useSWR(
     editionFor ? ["legacy-confirm", editionFor] : null,
     () => fetch(`/api/nighthawk/play-status?date=${editionFor}`, { cache: "no-store", credentials: "same-origin" }).then((r) => r.ok ? r.json() : null),
-    { refreshInterval: 300_000 },
+    { refreshInterval: 60_000 },
   );
   const confirmByTicker = new Map<string, { status: string; reason: string }>();
   if (confirmData?.plays) {
@@ -143,6 +143,7 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
       earnings_risk: p.earnings_risk ?? null,
       entry_cost_per_contract: p.entry_cost_per_contract ?? null,
       premium_cap_ok: p.premium_cap_ok ?? null,
+      sector: p.sector ?? null,
       gate_promoted: p.gate_promoted ?? null,
       gate_warnings: p.gate_warnings ?? null,
       pulled: p.pulled ?? null,

@@ -164,7 +164,7 @@ describe("applyCrossEditionGovernor", () => {
   test("re-sorts by effective score after demotions", () => {
     const ranked = [
       fakeCandidate({ ticker: "AAPL", score: 60 }),
-      fakeCandidate({ ticker: "MSFT", score: 55 }),
+      fakeCandidate({ ticker: "MSFT", score: 55, sector: "healthcare" }),
     ];
     const outcomes = [
       fakeOutcome({ ticker: "AAPL", outcome: "target", edition_for: "2026-07-14" }),
@@ -174,6 +174,7 @@ describe("applyCrossEditionGovernor", () => {
     const result = applyCrossEditionGovernor(ranked, outcomes);
     assert.equal(result.ranked.length, 2);
     // AAPL: 60 - (5*3) = 45, MSFT: 55 - 0 = 55 → MSFT first
+    // (MSFT in different sector so tonight's running sector count doesn't penalize it)
     assert.equal(result.ranked[0].ticker, "MSFT");
     assert.equal(result.ranked[1].ticker, "AAPL");
     assert.equal(result.demoted.length, 1);

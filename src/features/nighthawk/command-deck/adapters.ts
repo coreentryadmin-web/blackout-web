@@ -514,25 +514,17 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
   const confluence = src.confirming_signals != null && src.confirming_signals > 0
     ? src.confirming_signals : null;
 
-  // Discovery origin: derive from flow_streak_days and key_signal to light up origin badges.
+  // Discovery origin: only data-grounded badges — flow_streak_days is real pipeline
+  // data. Regex-inferred BREAKOUT/CATALYST/SWEEP from free-text key_signal was removed
+  // because it fabricated provenance from prose never designed to encode taxonomy.
   const discoveryOrigin: string[] = [];
   if (src.flow_streak_days != null && src.flow_streak_days > 0) discoveryOrigin.push("FLOW");
-  if (src.key_signal) {
-    const ks = src.key_signal.toLowerCase();
-    if (/breakout|break\s*above|break\s*below|technical/i.test(ks)) discoveryOrigin.push("BREAKOUT");
-    if (/catalyst|earnings|fda|guidance/i.test(ks)) discoveryOrigin.push("CATALYST");
-    if (/sweep|dark\s*pool|block/i.test(ks)) discoveryOrigin.push("SWEEP");
-  }
 
-  // "Why now" trigger: map key_signal to the why-now ribbon with the best-match reason.
+  // "Why now" trigger: grounded in flow data only. The key_signal text is shown as-is
+  // in the thesis panel — no need to re-derive taxonomy from it.
   let whyNow: WhyNow | null = null;
-  if (src.key_signal) {
-    const ks = src.key_signal.toLowerCase();
-    const reason: WhyNowReason = /breakout|break\s*above|break\s*below/i.test(ks) ? "breakout"
-      : /sweep|dark\s*pool|block/i.test(ks) ? "sweep"
-      : /accumulation|streak/i.test(ks) ? "accumulation"
-      : "flow_spike";
-    whyNow = { reason, label: src.key_signal };
+  if (src.flow_streak_days != null && src.flow_streak_days > 0 && src.key_signal) {
+    whyNow = { reason: "accumulation" as WhyNowReason, label: src.key_signal };
   }
 
   return {

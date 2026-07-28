@@ -5,6 +5,149 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-28 — [correctness] fundamental_signals omitted from rescoreDossier + rescue play sector missing (PR #1176)
+
+**Severity.** P1 (fundamental_signals) / P3 (rescue sector).
+
+**Finding 1: `fundamental_signals` omitted from `rescoreDossier`.**
+`rescoreDossier` in `hunt-builder.ts:172` built the `dossierExtras` object for `scoreCandidate` but
+omitted `fundamental_signals`. The scorer's `scoreFundamentalTailwind` (scorer.ts:165) has two branches:
+a **signals** path (max ±8 points across revenue_yoy_pct, operating_margin_pct, margin_trend,
+fcf_positive, fcf_trend, net_cash_positive, share_count_trend, eps_trajectory) and a **ratios** path
+(max ±2 from ROE + debt-to-equity). Without signals, every Legacy hunt candidate only ever hit the
+ratios path — zeroing 6 of 8 possible fundamental score points.
+
+**Root cause.** The extras object in `rescoreDossier` listed `fundamental_ratios` but simply forgot
+`fundamental_signals`. The field exists on `TickerDossier` and is populated by `fetchAllDossiers`, so
+the data was available — just not passed through.
+
+**Fix.** Added `fundamental_signals: dossier.fundamental_signals` to the extras object.
+
+**Finding 2: `sector` omitted from `buildRescuePlays`.**
+`buildRescuePlays` in `deterministic-edition.ts:850` built rescue play objects without `sector`. The
+cross-edition governor's per-sector cap couldn't count rescue plays, allowing sector concentration in
+rescue-heavy editions.
+
+**Fix.** Added `sector: scored.sector?.toLowerCase() || undefined`.
+
+**Evidence.** 5 new tests (scorer-direction: 61/61 pass; deterministic-edition: 32/32 pass).
+`scoreCandidate` with `fundamental_signals` scores higher than without. `buildRescuePlays` with
+`sector` on `ScoredCandidate` produces a lowercased `sector` on the play.
+
+**Blast radius.** Only these two call sites affected — the 0DTE pipeline's `scoreCandidate` in
+`dossier.ts` already passes `fundamental_signals`, and the main `buildDeterministicEditionPlays`
+already sets `sector`.
+
+**Status.** FIXED — PR #1176.
+
+## 2026-07-28 — [correctness] Four additional Legacy scorer/UI bugs (PR #1176, batch 2)
+
+**Severity.** P2 (contrarian hedge stale signals + deprecated conviction) / P3 (ask-side double-count, positioning floor, confluence denominator).
+
+**Finding 1: Contrarian hedge inherits stale `confirming_signals` + uses deprecated conviction.**
+`scoreContrarianHedge` in `deterministic-edition.ts:66` re-scores a candidate in the opposite
+direction for the diversity hedge slot, but spread `...original` which carried the ORIGINAL
+candidate's `confirming_signals` count — not the count computed from the new (forced-direction)
+sub-scores. It also called the deprecated `convictionFromScore(score)` (score-only, no
+confirming_signals or earningsRisk) instead of the modern `assignNighthawkTier`.
+
+**Root cause.** `confirming_signals` was computed in `scoreCandidate` but `scoreContrarianHedge`
+was written before that field existed and never updated. The `...original` spread silently carried
+the original's count forward.
+
+**Fix.** Recalculated `confirming_signals` from the 9 new sub-scores using the same thresholds as
+`scoreCandidate`. Replaced `convictionFromScore(score)` with `assignNighthawkTier({ score,
+confirmingSignals, earningsRisk })`. Removed the now-unused `convictionFromScore` import.
+
+**Finding 2: Ask-side premium double-count in `scoreFlowQuality`.**
+`scorer.ts:370` used `safeFloat(r.ask_side_pct ?? r.total_ask_side_prem)` — when `ask_side_pct`
+was absent, a large dollar amount (e.g. $2M) was used as a percentage, always exceeding the 60%
+threshold and falsely crediting ask-side dominance on every flow record.
+
+**Fix.** Only test `ask_side_pct` for the percentage threshold; fall through to the ratio check
+when `ask_side_pct` is absent.
+
+**Finding 3: Positioning floor asymmetry.**
+`scorer.ts:659` clamped the positioning score at `Math.max(0, score)`, preventing mild negatives
+(e.g. -2 for contradicting greek flow). Other sub-scorers allow negatives down to -3, making
+positioning an outlier that couldn't express bearish signal.
+
+**Fix.** Changed floor from `Math.max(0, score)` to `Math.max(-3, score)`.
+
+**Finding 4: Confluence badge denominator wrong for Legacy.**
+`PlayTerminal.tsx:267` always showed `CONFLUENCE {n}/2`, which is the 0DTE scale. Legacy uses a
+9-dimension scale (0–9 confirming signals).
+
+**Fix.** Omit the denominator for Legacy plays: `CONFLUENCE {n}` vs `CONFLUENCE {n}/2` for 0DTE.
+
+**Evidence.** All tests pass — scorer-direction: 64/64, deterministic-edition: 33/33. New test
+`scoreContrarianHedge recalculates confirming_signals from new sub-scores` verifies the
+contrarian's signals differ from the original's.
+
+**Blast radius.** `scoreContrarianHedge` is the only contrarian call site — the main
+`scoreCandidate` was already correct. Ask-side and positioning fixes affect all candidates scored
+through the Legacy pipeline. The confluence badge fix only affects the UI display.
+
+**Status.** FIXED — PR #1176.
+
+## 2026-07-28 — [data-loss + honesty] Sector dropped in LegacyDeck + fabricated discovery badges (PR #1176, batch 3)
+
+**Severity.** P3.
+
+**Finding 1: Sector field dropped in `LegacyDeck` container.**
+`containers.tsx:120` built the object passed to `terminalPlayFromEdition` but never included
+`sector: p.sector ?? null`. The edition builder populates `sector`, `EditionDeckSource` declares it,
+and the adapter + terminal both handle it — but the container that bridges them silently dropped it.
+Members never saw sector badges on Legacy plays, and `hasBadges` layout gating was partly broken.
+
+**Fix.** Added `sector: p.sector ?? null` to the container's map.
+
+**Finding 2: Fabricated discovery-origin badges from free-text regex.**
+`adapters.ts:518-536` inferred BREAKOUT/CATALYST/SWEEP origin badges and `whyNow` trigger reasons
+by running loose regexes against `key_signal`, a free-form thesis string never designed to encode
+taxonomy. A thesis like "avoiding a dark-pool overhang before earnings" would tag the play SWEEP +
+CATALYST even though neither discovery rail fired. This violates the codebase's "never fabricate"
+convention.
+
+**Fix.** Removed all regex-inferred badges. Only the data-grounded FLOW badge (from real
+`flow_streak_days`) remains. `whyNow` is now only set when `flow_streak_days > 0`.
+
+**Finding 3: Tier dimension count text wrong.**
+`nighthawk-tiers.ts:79,180` said "7 dimensions" but `confirming_signals` counts 9 (flow, tech,
+pos, news, smart, fundamental, shortInterest, wall, vex).
+
+**Fix.** Changed comment and detail text to "9 dimensions".
+
+**Status.** FIXED — PR #1176.
+
+## 2026-07-28 — [correctness] Soft wall drift not direction-gated + cross-edition sector cap doesn't count tonight (PR #1176, batch 4)
+
+**Severity.** P3.
+
+**Finding 1: Soft GEX-wall-drift check not direction-gated.**
+`morning-confirm-verdict.ts:198-211` applied both call-wall and put-wall soft drift to all plays
+regardless of direction. The hard-shift check (lines 153-168) correctly gated: call wall → SHORT
+only, put wall → LONG only. Impact: LONG plays spuriously DEGRADED on call-wall noise (irrelevant
+to longs), and vice versa.
+
+**Fix.** Added `&& !isLong` guard on call-wall soft check and `&& isLong` on put-wall soft check,
+mirroring the hard-shift gates.
+
+**Finding 2: Cross-edition sector cap doesn't count tonight's candidates.**
+`cross-edition-governor.ts:161` built `sectorCounts` once from `recentOutcomes` (past editions) and
+never incremented as tonight's candidates passed through the loop. The docstring at line 46-48
+explicitly promised "lookback PLUS tonight's edition" but tonight's accepted candidates didn't
+count against each other — so 4+ candidates from the same under-represented sector could all
+pass through unpenalized.
+
+**Fix.** Increment `sectorCounts` as each candidate survives (pass or demote, not cut) so later
+candidates see the running total including tonight's accepted ones.
+
+**Evidence.** 3 new tests in `morning-confirm-verdict.test.ts` (21/21 pass). All nighthawk tests
+pass (97+21=118 total). tsc clean.
+
+**Status.** FIXED — PR #1176.
+
 ## 2026-07-28 — [correctness] Governor demotion undone by builder merge-sort + no R:R minimum gate (branch `fix/governor-sort-override`)
 
 **Severity.** Medium (edition quality — governor-demoted plays could re-promote to the top 5; plays with terrible R:R could publish).
@@ -3172,3 +3315,36 @@ mode change is the highest-risk item — mitigated by operator kill-switch (`ZER
 and per-play frozen exit policy (existing plays unaffected).
 
 **Status:** PR (pending)
+
+## 2026-07-28 — [UI/UX] Batch 5: keyboard shortcut conflict + stock-price flash + confirm polling + backfill score floor (PR #1176)
+
+**Severity.** P3 (keyboard) / P3 (flash) / P2 (confirm polling) / P2 (backfill floor).
+
+**Root cause — keyboard shortcut conflict (P3).** `PlayTerminal.tsx` registered `1`/`2`/`3`
+key listeners on `window` with no input-guard. Typing a number in any `<input>` or `<textarea>`
+on the page would switch the terminal tab instead of entering the character.
+
+**Fix:** Guard the keydown handler: skip when `e.target` is an INPUT/TEXTAREA/SELECT, or when
+a modifier key (meta/ctrl/alt) is held. File: `PlayTerminal.tsx:129-136`.
+
+**Root cause — stock-price flash missing for Legacy (P3).** `useFlash(play?.mark)` fires a
+green/red neon flash on price changes, but Legacy plays have `mark: null`. The stock price
+updates every 5s via polling but no flash hook tracked it — the Legacy stream bar never flashed.
+
+**Fix:** Added `useFlash(play?.stockPrice)` and wired `stockFlash` into the stream bar's class.
+File: `PlayTerminal.tsx:142,189`.
+
+**Root cause — morning confirm polling too slow (P2).** SWR `refreshInterval` for
+`/api/nighthawk/play-status` was 300_000ms (5 min). During the pre-market confirm window
+(9:10-9:45 ET), members could see stale badges for up to 5 minutes after invalidation.
+
+**Fix:** Reduced to 60_000ms (1 min). File: `containers.tsx:110`.
+
+**Root cause — backfill has no score floor (P2).** `backfillThinEditionPlays` applies no score
+floor. A candidate with score 5 could backfill into the edition. The main synthesis path
+enforces `MIN_PUBLISH_SCORE = 42`.
+
+**Fix:** Added `DIVERSITY_HEDGE_FLOOR = 20` as the minimum score for backfill candidates.
+File: `play-backfill.ts:87`.
+
+**Status:** COMMITTED (PR #1176, batch 5)

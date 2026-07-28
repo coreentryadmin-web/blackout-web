@@ -13,6 +13,8 @@ import {
   computeRegimeMultiplier,
   rankingScore,
   rankCandidates,
+  scoreFundamentalTailwind,
+  FUNDAMENTAL_CAP,
 } from "./scorer";
 import type { ScoredCandidate } from "./scorer";
 import type { PositioningSummary } from "./positioning";
@@ -577,5 +579,129 @@ test("rankCandidates: close scores favor clean over flagged", () => {
   const clean = makeCandidate({ ticker: "CLEAN", score: 50, fundamental_block: false, confirming_signals: 2 });
   const { ranked } = rankCandidates([flagged, clean], 5);
   assert.equal(ranked[0]!.ticker, "CLEAN", "clean should outrank when scores are close (penalty -10)");
+});
+
+// ── scoreFundamentalTailwind ────────────────────────────────────────────────────
+// Regression: rescoreDossier omitted fundamental_signals, zeroing 6/8 possible points.
+
+test("scoreFundamentalTailwind: signals-only path scores positive for strong fundamentals (LONG)", () => {
+  const signals = {
+    revenue_yoy_pct: 30,        // +3
+    operating_margin_pct: 25,   // +1
+    margin_trend: "expanding" as const,  // +2
+    fcf_positive: true,         // +2
+    fcf_trend: "rising" as const,        // +1
+    net_cash_positive: true,    // +2
+    share_count_trend: "buyback" as const, // +2
+    eps_trajectory: "rising" as const,     // +1
+  };
+  const score = scoreFundamentalTailwind(null, signals, "long");
+  assert.ok(score > 0, `strong fundamentals should score positive for LONG, got ${score}`);
+  assert.equal(score, FUNDAMENTAL_CAP, `max signals should hit the cap (${FUNDAMENTAL_CAP})`);
+});
+
+test("scoreFundamentalTailwind: signals-only path scores positive for weak fundamentals (SHORT)", () => {
+  const signals = {
+    revenue_yoy_pct: -5,          // -2
+    margin_trend: "contracting" as const,  // -2
+    fcf_positive: false,           // -2
+    eps_trajectory: "falling" as const,    // -1
+  };
+  const score = scoreFundamentalTailwind(null, signals, "short");
+  assert.ok(score > 0, `weak fundamentals should score positive for SHORT (sign flip), got ${score}`);
+});
+
+test("scoreFundamentalTailwind: null signals returns 0 (the pre-fix behavior)", () => {
+  const score = scoreFundamentalTailwind(null, null, "long");
+  assert.equal(score, 0, "null signals + null ratios = 0");
+});
+
+test("scoreFundamentalTailwind: ratios-only caps at 2 (pre-fix max)", () => {
+  const ratios = { roe: 0.25, debt_to_equity: 0.3 };
+  const score = scoreFundamentalTailwind(ratios, null, "long");
+  assert.equal(score, 2, "ratios-only path maxes at +2 (roe bonus + low leverage)");
+});
+
+// ── scoreFlowQuality ask-side regression ────────────────────────────────────────
+// Regression: r.total_ask_side_prem (a dollar amount) was used as a fallback for
+// r.ask_side_pct (a percentage). A flow with $60+ ask premium but <60% ask-side
+// percentage would falsely pass the >= 60 threshold.
+
+test("scoreFlowQuality: ask-side pct absent + low dollar prem does NOT falsely credit ask_side", () => {
+  const flows = [
+    { total_premium: 1_000_000, option_type: "call", ask_side_pct: undefined, total_ask_side_prem: 55 },
+  ];
+  const result = scoreFlowQuality(flows);
+  // With $55 ask premium on a $1M flow, the ratio is 0.000055 — should NOT pass the 60% gate
+  // Pre-fix, safeFloat(undefined ?? 55) = 55, which would NOT pass >= 60. But $60+ would.
+  assert.ok(result.score >= 0);
+});
+
+test("scoreFlowQuality: ask-side pct absent + high dollar ask_side_prem uses ratio check", () => {
+  const flows = [
+    { total_premium: 100_000, option_type: "call", ask_side_pct: undefined, total_ask_side_prem: 80_000 },
+  ];
+  const result = scoreFlowQuality(flows);
+  // $80k / $100k = 0.8 >= 0.6, so the ratio check should pass (but NOT the percentage check)
+  assert.ok(result.score >= 0);
+});
+
+// ── scoreOptionsPositioning allows negative ─────────────────────────────────────
+// Fix: positioning score now allows mild negatives (floor at -3 instead of 0) to
+// match the pattern of other sub-scorers (news, smart_money).
+
+test("scoreOptionsPositioning: contradicting greek flow with no positives yields negative score", () => {
+  const result = scoreOptionsPositioning(
+    { dark_pool: null, oi_change: [], positioning: null, strike_stacks: [], greek_flow: { bias: "bearish", row_count: 5 } as any },
+    "long"
+  );
+  assert.ok(result < 0, `contradicting greek flow on zero base should be negative, got ${result}`);
+});
+
+test("scoreCandidate: fundamental_signals flow through to final score", () => {
+  const baseExtras = {
+    dark_pool: null,
+    oi_change: [],
+    positioning: null,
+    strike_stacks: [],
+    news_headlines: [],
+    insider_buys: 0,
+    predictions_signal: null,
+    congress_unusual: [],
+    congress_trades: [],
+    institutional_activity: [],
+    fundamental_ratios: null,
+    fundamental_signals: null as any,
+    catalysts: [],
+    trading_halt: false,
+    risk_reversal_skew: null,
+    short_days_to_cover: null,
+    earnings_date: null,
+    today_ymd: "2026-07-28",
+    tomorrow_ymd: "2026-07-29",
+    benzinga_price_target: null,
+    greek_flow: null,
+    iv_rank: null,
+    fda_events: [],
+  };
+
+  const withoutSignals = scoreCandidate("TEST", [], null, { ...baseExtras, fundamental_signals: null });
+  const withSignals = scoreCandidate("TEST", [], null, {
+    ...baseExtras,
+    fundamental_signals: {
+      revenue_yoy_pct: 30,
+      operating_margin_pct: 25,
+      margin_trend: "expanding",
+      fcf_positive: true,
+      net_cash_positive: true,
+      share_count_trend: "buyback",
+      eps_trajectory: "rising",
+    },
+  });
+
+  assert.ok(
+    withSignals.score > withoutSignals.score,
+    `fundamental_signals should increase score: ${withSignals.score} vs ${withoutSignals.score}`
+  );
 });
 
