@@ -5,6 +5,18 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-28 — [Thermal] Discord desk card → 4K + clearer UI chrome
+
+**Severity.** P2 UX.
+
+**Ask.** Posts were hard to read in Discord — bump to 4K and label UI elements clearly.
+
+**Fix.** `thermal-discord-card.ts` renders **3840×2160** (4K); column chips for CALL WALL / PUT WALL / FLIP;
+ticker badge, spot + change%, desk-style expiry labels (`Jul 28`), legend footer, LIVE SNAPSHOT chip.
+Caption uses Call wall / Put wall / Flip wording. (5120 ultra pass reverted — 4K preferred.)
+
+**Status.** PR `cursor/thermal-discord-4k-card-3d11`.
+
 ## 2026-07-28 — [Thermal] Triple desk SPY|SPX|QQQ (dense matrices)
 
 **Severity.** P1 product enhancement (desk density + compare UX).
