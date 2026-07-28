@@ -5,6 +5,22 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-28 — [Thermal] Discord card missing yellow/purple nodes + % drift
+
+**Severity.** P1 UX (desk card readability / parity with major matrix).
+
+**Symptom.** Live Discord Thermal PNG showed only green/red cells — no yellow + node /
+purple − node highlights, and no per-strike DRIFT % (build/melt) column.
+
+**Root cause.** `thermal-discord-card.ts` painted every cell with signed green/red fills
+only; never computed per-expiry extremes or read `heatmap.shift.delta_by_strike`.
+
+**Fix.** Per-expiry +node/#ffd60a and −node/#d97bff (same beads as major matrix), ★ king
+label, DRIFT % column from live shift (honest `·` while collecting), caption wall-drift +
+legend line.
+
+**Status.** PR `cursor/thermal-discord-nodes-drift-3d11`.
+
 ## 2026-07-28 — [Thermal] Discord desk card → 4K + clearer UI chrome
 
 **Severity.** P2 UX.
