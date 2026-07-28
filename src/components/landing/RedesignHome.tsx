@@ -266,7 +266,7 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
         <div className="w">
           <div className="price-head">
             <span className="kk"><span className="dot" />Access</span>
-            <h2>One desk.<br /><span className="gt">One price.</span></h2>
+            <h2>One desk.<br /><span className="gt">Your price.</span></h2>
           </div>
           <div className="price-grid">
             {/* SPX Slayer */}
@@ -281,6 +281,7 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
                 <li>Strike-level heatmaps</li>
               </ul>
               <a href={WHOP_CHECKOUT.community || (signedIn ? "/upgrade" : "/sign-up?redirect_url=%2Fupgrade")} className="btn-g">Get SPX access</a>
+              <p className="trust">Cancel anytime &middot; No contracts</p>
             </div>
 
             {/* Premium (featured) */}
@@ -300,6 +301,7 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
                 <li>Graded play log A-F</li>
               </ul>
               <a href={WHOP_CHECKOUT.monthly || (signedIn ? "/upgrade" : "/sign-up?redirect_url=%2Fupgrade")} className="btn-p">Get full access &rarr;</a>
+              <p className="trust">Cancel anytime &middot; No contracts</p>
             </div>
 
             {/* Premium Yearly — "smart choice" */}

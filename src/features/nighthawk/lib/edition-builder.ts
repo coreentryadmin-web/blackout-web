@@ -937,7 +937,7 @@ export async function buildEveningEdition(opts?: {
     // PR-N26: re-rank by score descending so the highest-conviction play is always #1,
     // regardless of whether it passed gates organically or was promoted.
     if (finalPlays.length > 1) {
-      finalPlays.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+      finalPlays.sort((a, b) => (b.score ?? -Infinity) - (a.score ?? -Infinity));
       finalPlays.forEach((p, i) => { p.rank = i + 1; });
     }
 

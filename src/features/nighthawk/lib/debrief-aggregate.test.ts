@@ -168,11 +168,11 @@ test("gateBlockedValue: per-gate n / graded / would-have-won rate; unfilled coun
 
 test("retroWouldBlock: uses the LIVE thresholds against the PINNED geometry; no pin → null", () => {
   const detached = row({ publish_context: { context_version: 2, band_distance_pct: -45.5 } });
-  const healthy = row({ publish_context: { context_version: 2, band_distance_pct: -1.2, atr14: 3 } });
+  const healthy = row({ publish_context: { context_version: 2, band_distance_pct: -1.2, atr14: 2 } });
   assert.equal(retroWouldBlock(detached, "band_detached"), true);
   assert.equal(retroWouldBlock(healthy, "band_detached"), false);
   assert.equal(retroWouldBlock(row({ publish_context: null }), "band_detached"), null);
-  // Target gate: |110-102|/3 = 2.67× > 2.5× → block; |110-102|/8 = 1× → pass.
+  // Target gate: |110-102|/2 = 4× > 3.5× → block; |110-102|/8 = 1× → pass.
   assert.equal(retroWouldBlock(healthy, "target_unreachable"), true);
   assert.equal(
     retroWouldBlock(row({ publish_context: { context_version: 2, atr14: 8 } }), "target_unreachable"),

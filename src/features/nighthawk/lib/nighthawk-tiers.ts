@@ -98,14 +98,15 @@ function nhCapTier(tier: NighthawkTier, cap: NighthawkTier): NighthawkTier {
   return NH_TIER_RANK[cap] < NH_TIER_RANK[tier] ? cap : tier;
 }
 
-/** Ordinal rank for overnight conviction letters (higher = stronger). */
+/** Ordinal rank for overnight conviction letters (higher = stronger).
+ *  Unrecognized strings rank 0 (lowest) so they sort to the bottom. */
 export function nhConvictionRank(conviction: string): number {
   const c = conviction.trim().toUpperCase();
   if (c === "A+") return 4;
   if (c === "A") return 3;
   if (c === "B") return 2;
   if (c === "C") return 1;
-  return 2;
+  return 0;
 }
 
 /**

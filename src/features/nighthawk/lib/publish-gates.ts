@@ -53,21 +53,29 @@ export const GATE_BAND_MAX_DISTANCE_PCT = 3.5;
  * K × ATR14. Measured from the FILL EDGE, not spot, because that is the entry the play
  * grades from (and G-N1 already pins the edge near spot for anything that publishes).
  *
- * WHY 2.5 (Phase 4 / PR-N21): overnight plays target next-session action where a
- * catalyst or momentum name can move 2–2.5× ATR in a single session. K=2.0 was blocking
- * legitimate targets built from real S/R levels — especially when ATR14 is estimated from
- * prior-day range (which can be narrower than the true 14-day average on a low-vol day).
- * K=2.5 allows strong-expansion targets while still catching the catastrophic class
- * (+8.6%..+106.6% targets ≈ 3×–20×+ ATR). The failing class remains blocked by 5×+.
+ * WHY 3.5 (Phase 5 / Jul-27 zero-play fix): 2.5× was blocking ALL plays on the Jul 27
+ * edition — catalyst/momentum names routinely move 3–4× ATR in a single session,
+ * especially post-earnings or on a gap open. ATR14 is also estimated from prior-day
+ * range which can be narrower than the true 14-day average on a compressed-vol day,
+ * making the effective gate even tighter. 3.5× allows strong-expansion targets built
+ * from real S/R levels while still catching the catastrophic class (+8.6%..+106.6%
+ * targets ≈ 5×–20×+ ATR). The gate is now also PROMOTABLE (removed from
+ * NON_PROMOTABLE_GATE_CODES) so even a 4× target publishes with a warning rather than
+ * killing the entire edition.
  */
-export const GATE_TARGET_MAX_ATR_MULTIPLE = 2.5;
+export const GATE_TARGET_MAX_ATR_MULTIPLE = 3.5;
 
-/** Gate failures that must NEVER be rescued via gate_promoted — the geometry is wrong,
- *  not merely stale-quote or a soft miss. Promoting these is how Jul 21 NVDA/BE/NBIS
- *  shipped conviction A with target_unreachable warnings. */
-export const NON_PROMOTABLE_GATE_CODES: ReadonlySet<NighthawkGateCode> = new Set([
+/** Gate failures that must NEVER be rescued via gate_promoted — the geometry is
+ *  structurally wrong, not merely ambitious. `band_detached` = entry literally
+ *  unfillable; `geometry_unknown` = can't even compute the sanity check.
+ *  `target_unreachable` is deliberately EXCLUDED: overnight plays target next-session
+ *  momentum where a gap + catalyst routinely covers >2.5× ATR14 — blocking rescue on
+ *  this gate is what caused the Jul 27 zero-play edition (all 5 plays blocked, zero
+ *  promotable, recap-only published). A promoted target_unreachable play carries a
+ *  gate_warning so the member sees the caveat; that is strictly better than an empty
+ *  playbook. */
+export const NON_PROMOTABLE_GATE_CODES: ReadonlySet<NighthawkGateCode> = new Set<NighthawkGateCode>([
   "band_detached",
-  "target_unreachable",
   "geometry_unknown",
 ]);
 
