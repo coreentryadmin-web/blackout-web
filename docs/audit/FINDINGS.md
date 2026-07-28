@@ -5,6 +5,35 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-28 — [product] 0DTE engine starved to 1 OPEN/day (score map + caps + NH exclude)
+
+**Severity.** P0 — whole-market 0DTE product produced **1 committed play** on 2026-07-28
+(SPY FLOW long @ 11:01 ET, +12% thesis_break) despite scanning ~12k grouped-daily names. Board
+setups post-close were **8× FLOW-only**; BREAKOUT/PIN never committed. Record remains ~35.6% WR.
+
+**Root cause (stacked funnel, not one bug).**
+1. **BREAKOUT score map** required ~15%+ strong-close to clear G-3=65 → almost no whole-market
+   movers ever became commits (8–10% liquid continuations scored ~34–49).
+2. **PIN score map** similarly needed ~9%+ walls + 2% band — rare on live long-γ days.
+3. **NH edition tickers excluded** from 0DTE discovery (`nighthawkCovered` in `scan.ts`) — removed
+   the overnight playbook's best names from the live commit path.
+4. **FLOW floors / caps** (`SETUP_MIN_GROSS` $300k, fetch `$150k`, `maxSetups:10`, enrich top-5)
+   + **2.5s** chain snapshot timeout dropped otherwise-viable plans.
+5. **G-14 still at 15:00** while FINDINGS already measured the toxic 14:00–15:30 bucket (14.3% WR).
+
+**Evidence.** Prod board 2026-07-28: ledger_n=1 (SPY), setups 100% FLOW, health
+`candidates_scanned=1`/`committed_count=1`. Calibration score bands: `<55` = 20% WR / −23% avg;
+`55–64` ≈ flat. VIX day-open 19.05 (elevated).
+
+**Fix (engine remodel on `cursor/zerodte-multi-rail-discovery-3d11`).**
+- Rescale `breakoutScore` / `pinScore` so liquid 8–10% / mid-tier pins clear 65.
+- Origin-aware G-3 floors (FLOW 65 / BREAKOUT+PIN 58).
+- Stop excluding NH edition tickers; widen FLOW/BREAKOUT caps; enrich top-12; 5s snapshot.
+- Ship G-14 + `NEW_PLAY_CUTOFF` to **14:00 ET**; prefer ZERO_DTE in commit ranking.
+- Version bumps: `DISCOVERY_VERSION=v3`, `SCORER_VERSION=v2`, `GATE_VERSION=v2`.
+
+**Status.** OPEN draft PR #1199 for review (do not auto-merge).
+
 ## 2026-07-28 — [product] 0DTE board was FLOW-only in practice (merge v1 + $-volume chain-fetch)
 
 **Severity.** P1 — Night Hawk / 0DTE Command supposed to mix FLOW + BREAKOUT + PIN (+ CONDOR), but
@@ -88,7 +117,9 @@ No hard gate existed between the 10:00 ET opening window unlock and the 15:00 ET
 **Evidence.** 90-day production record (101 graded plays): `late 14:00-15:30` bucket = 14.3% WR,
 −19.02% avg P&L. Compare to `prime 9:50-11:00` = 38.0% WR, +2.7% avg P&L.
 
-**Fix.** New hard gate G-14 (`late_afternoon`) blocks directional 0DTE commits at/after 14:00 ET.
+**Fix.** New hard gate G-14 (`late_afternoon`) + persist `NEW_PLAY_CUTOFF` block directional
+0DTE commits at/after **14:00 ET** (code was briefly still 15:00 — corrected in the 2026-07-28
+engine remodel PR). Condors remain exempt (want late theta).
 Condor-exempt: iron condors BENEFIT from late-session theta crush (credit seller). Persist-layer
 `NEW_PLAY_CUTOFF_ET_MINUTES` also moved from 15:00 → 14:00 as a backstop. Files:
 `gates.ts` (G-14 enforcement + constant), `board.ts` (failure type), `plan.ts` (cutoff constant).

@@ -846,7 +846,13 @@ test("scanZeroDteBoard: an earnings-today name at RANK 7 is blocked by G-11 (bat
     cleanFlow("DDD", 2_700_000),
     cleanFlow("EEE", 2_600_000),
     cleanFlow("FFF", 2_500_000),
-    // Lowest premium (lower score tier) → sorts to rank 7, past ENRICH_TOP_N (5).
+    cleanFlow("GGG", 2_400_000),
+    cleanFlow("HHH", 2_300_000),
+    cleanFlow("III", 2_200_000),
+    cleanFlow("JJJ", 2_100_000),
+    cleanFlow("KKK", 2_000_000),
+    cleanFlow("LLL", 1_900_000),
+    // Lowest premium → sorts past ENRICH_TOP_N (12) so it has no dossier enrichment.
     cleanFlow("ERNZ", 1_000_000),
   ];
   // ERNZ reports TODAY — the batch earnings snapshot flags it even though it gets no dossier.
@@ -861,7 +867,7 @@ test("scanZeroDteBoard: an earnings-today name at RANK 7 is blocked by G-11 (bat
 
   const ernzIdx = result.setups.findIndex((s) => s.ticker.toUpperCase() === "ERNZ");
   assert.ok(ernzIdx >= 0, "ERNZ must survive discovery into a gated setup");
-  assert.ok(ernzIdx >= 5, `ERNZ must rank outside the top-5 (dossier-less) — got index ${ernzIdx}`);
+  assert.ok(ernzIdx >= 12, `ERNZ must rank outside the top-12 (dossier-less) — got index ${ernzIdx}`);
   const ernz = result.setups[ernzIdx]!;
   assert.ok(ernz.gate, "a fresh (un-committed) candidate must get a gate verdict");
   assert.equal(

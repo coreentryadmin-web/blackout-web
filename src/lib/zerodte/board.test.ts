@@ -231,7 +231,7 @@ test("setups: put-dominant tape produces a short setup", () => {
 test("setups: far-dated and thin tickers are excluded", () => {
   const rows = [
     row({ dte: 14 }), // not 0-1 DTE
-    row({ ticker: "TINY", premium: 200_000 }), // below gross floor
+    row({ ticker: "TINY", premium: 150_000 }), // below gross floor
   ];
   assert.equal(deriveZeroDteSetups(rows).length, 0);
 });
@@ -261,7 +261,7 @@ test("setups: sudden flow spike flagged when ≥half the tape lands in the last 
 test("setups: prints for contracts that expired a prior session are dropped", () => {
   const rows = [
     row({ premium: 2_000_000, expiry: "2026-07-02", dte: 0 }), // expired yesterday
-    row({ premium: 200_000, expiry: "2026-07-06", dte: 0 }), // today — below gross floor alone
+    row({ premium: 150_000, expiry: "2026-07-06", dte: 0 }), // today — below gross floor alone
   ];
   assert.equal(deriveZeroDteSetups(rows, { todayYmd: "2026-07-06" }).length, 0);
   // Without the session guard the expired tape would have qualified.
@@ -942,13 +942,13 @@ test("rejections: omitted opts.rejections — deriveZeroDteSetups behaves identi
   // Every OTHER test in this file calls deriveZeroDteSetups without opts.rejections
   // at all and already proves the return value is unaffected; this test just makes
   // the "no rejections array supplied" no-op explicit for a rejecting candidate.
-  const rows = [row({ ticker: "TINY", premium: 200_000 })];
+  const rows = [row({ ticker: "TINY", premium: 150_000 })];
   assert.equal(deriveZeroDteSetups(rows).length, 0);
 });
 
 test("rejections: gross-premium gate failure — only gross_premium/prints known, everything gate-B-onward is null", () => {
   const rejections: ZeroDteGateRejection[] = [];
-  const rows = [row({ ticker: "TINY", premium: 200_000, alerted_at: "2026-07-06T14:00:00Z" })];
+  const rows = [row({ ticker: "TINY", premium: 150_000, alerted_at: "2026-07-06T14:00:00Z" })];
   const out = deriveZeroDteSetups(rows, { rejections });
 
   assert.equal(out.length, 0, "TINY must not appear in setups");
@@ -957,7 +957,7 @@ test("rejections: gross-premium gate failure — only gross_premium/prints known
   assert.equal(r.ticker, "TINY");
   assert.equal(r.gate_failed, "min_gross");
   assert.equal(r.threshold, SETUP_MIN_GROSS);
-  assert.equal(r.gross_premium, 200_000);
+  assert.equal(r.gross_premium, 150_000);
   assert.equal(r.prints, 1);
   // The scan never reaches the aggression/dominance/otm gates for this candidate —
   // the real code never computes these values either, so they must be null, not 0
@@ -1050,7 +1050,7 @@ test("rejections: a mixed batch only logs the ticker that actually failed a gate
     row({ ticker: "NVDA", premium: 900_000, strike: 190 }),
     row({ ticker: "NVDA", premium: 700_000, strike: 190, alert_rule: "SweepsFollowedByFloor" }),
     // TINY fails the gross-premium floor.
-    row({ ticker: "TINY", premium: 200_000 }),
+    row({ ticker: "TINY", premium: 150_000 }),
   ];
   const out = deriveZeroDteSetups(rows, { rejections });
 

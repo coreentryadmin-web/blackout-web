@@ -143,12 +143,12 @@ import {
 import { asManagedPnlPct, officialPlanPnlPct } from "./record";
 
 /** Leveraged/inverse wrappers and vol ETPs stay out (not directional single plays);
- *  index products (SPY/SPX/NDX/QQQ…) are eligible per product direction. Night
- *  Hawk's tickers are added per-scan. */
+ *  index products (SPY/SPX/NDX/QQQ…) are eligible per product direction. Night Hawk
+ *  edition tickers are listed as covered_elsewhere but remain eligible for 0DTE. */
 const STATIC_EXCLUDES = new Set<string>([...LEVERAGED_ETP_SET, "VIX", "UVXY"]);
 
 /** Top finds get the full Night Hawk dossier — capped to stay inside UW budgets. */
-const ENRICH_TOP_N = 5;
+const ENRICH_TOP_N = 12; // raised 5→12 so ranks 6–12 get dossier/Cortex inputs (was starving mid-board commits)
 const DOSSIER_CACHE_TTL_MS = 10 * 60 * 1000;
 /** How long a caller waits for a COLD dossier before serving the un-enriched setup.
  *  The cache loader keeps running after we stop waiting, so the next scan (~2 min)
@@ -225,7 +225,7 @@ export async function scanZeroDteBoard(flags?: {
     // max_dte: 1 is LOAD-BEARING — it scopes the premium ranking to 0-1DTE prints in
     // SQL. Without it the top-400 spans ALL expiries and heavy-day whale prints crowd
     // every 0DTE print out of the scan's input (live-reproduced: $3.1M AAPL stack → 0 setups).
-    fetchRecentFlows({ since_hours: 7, min_premium: 150_000, order: "premium", limit: 400, max_dte: 1 }).catch(
+    fetchRecentFlows({ since_hours: 7, min_premium: 100_000, order: "premium", limit: 500, max_dte: 1 }).catch(
       () => {
         upstreamOk = false;
         return [];
@@ -251,7 +251,9 @@ export async function scanZeroDteBoard(flags?: {
         .filter(Boolean)
     )
   );
-  const excludes = new Set<string>([...STATIC_EXCLUDES, ...nighthawkCovered]);
+  // NH edition tickers are surfaced as covered_elsewhere but NOT excluded from discovery
+  // (2026-07-28): excluding them removed the overnight playbook's best names from 0DTE.
+  const excludes = new Set<string>([...STATIC_EXCLUDES]);
 
   // Always collected (cheap — a handful of array pushes per candidate ticker);
   // whether it's ever WRITTEN anywhere is a separate decision made by the caller
@@ -272,7 +274,7 @@ export async function scanZeroDteBoard(flags?: {
       open_interest: f.open_interest,
       alerted_at: f.alerted_at,
     })),
-    { maxSetups: 10, excludeTickers: excludes, nowMs: Date.now(), todayYmd: today, rejections }
+    { maxSetups: 20, excludeTickers: excludes, nowMs: Date.now(), todayYmd: today, rejections }
   );
   const candidateDerivedAt = Date.now();
 
@@ -327,10 +329,13 @@ export async function scanZeroDteBoard(flags?: {
       const breakoutSetups = breakoutOutcome.setups;
       if (breakoutSetups.length > 0) {
         mergeDiscoveryOrigins(setups, breakoutSetups);
-        // Keep the array score-ranked so the governor's concurrency budget still goes to the best
-        // finds (attachGateVerdicts commits best-first). Enrichment already happened per-setup, so
-        // re-ordering here is safe.
-        setups.sort((a, b) => b.score - a.score);
+        // Prefer true 0DTE over 1DTE, then score — concurrency budget goes to best same-day finds.
+        setups.sort((a, b) => {
+          const ha = a.contract_horizon === "ZERO_DTE" ? 1 : 0;
+          const hb = b.contract_horizon === "ZERO_DTE" ? 1 : 0;
+          if (ha !== hb) return hb - ha;
+          return b.score - a.score;
+        });
       }
     } catch (err) {
       console.warn("[zerodte-breakout] discovery failed — flow-only board this cycle:", err);
@@ -360,7 +365,13 @@ export async function scanZeroDteBoard(flags?: {
       });
       if (pinSetups.length > 0) {
         mergePinOrigins(setups, pinSetups);
-        setups.sort((a, b) => b.score - a.score);
+        // Prefer true 0DTE over 1DTE when scores tie — the board is a 0DTE product.
+        setups.sort((a, b) => {
+          const ha = a.contract_horizon === "ZERO_DTE" ? 1 : 0;
+          const hb = b.contract_horizon === "ZERO_DTE" ? 1 : 0;
+          if (ha !== hb) return hb - ha;
+          return b.score - a.score;
+        });
       }
     } catch (err) {
       console.warn("[zerodte-pin] discovery failed — flow-only board this cycle:", err);
@@ -681,6 +692,7 @@ async function attachGateVerdicts(
       play_type: s.play_type,
       condorPlan: s.condor_plan ?? null,
       score: s.score,
+      discovery_origin: s.discovery_origin,
       nowEtMinutes,
       nowMs,
       bias,
@@ -793,7 +805,7 @@ async function attachContractPlans(setups: EnrichedZeroDteSetup[]): Promise<void
     fetchOptionsUnifiedSnapshot(Array.from(occOf.values())).catch(
       () => new Map<string, import("@/lib/providers/options-snapshot").OptionSnapshot>()
     ),
-    2_500
+    5_000 // raised 2.5s→5s — batch snapshot misses were dropping otherwise-committable plans
   );
   if (!snaps) return;
   // Single cycle clock for the whole plan-attach pass so every contract's quote age is measured

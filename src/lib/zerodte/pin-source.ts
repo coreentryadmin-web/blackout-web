@@ -163,16 +163,19 @@ export function evaluatePinRegime(input: PinRegimeInput): PinRegime | null {
 // so edge ALONE can never lift a weak/ill-defined bracket over the floor:
 //   fadeEdgeFactor   = clamp01(offset / EDGE_FULL)
 // Worked examples (offset = 0.6, near the middle of the allowed fade band):
-//   both walls 4% (bracket floor), band 6% (containment floor)  → core 0     → score  ~9  (rejected anyway)
-//   both walls 6%, band 4%                                       → core ~0.20 → score  ~28 (below 65)
-//   both walls 9%, band 2%                                       → core ~0.68 → score  ~66 (clears — a real pin)
-//   both walls 10%+, band ≤1.5% (tight, dominant)               → core 1.00  → score ~92 (textbook pin)
-// So a PIN candidate does NOT auto-clear 65 without genuinely dominant walls AND a contained band.
-export const PIN_DOM_FULL_PCT = 10; // both-wall dominance (%) that saturates the dominance factor
+// Recalibrated 2026-07-28 alongside BREAKOUT: prior map needed ~9%+ walls + 2% band to clear 65,
+// so PIN almost never committed on a live long-gamma day. A genuine regime-qualified pin (already
+// past evaluatePinRegime) with solid walls must be able to clear the shared floor.
+//   both walls 4% (bracket floor), band 6% (containment floor)  → core 0     → score  ~15 (below 65)
+//   both walls 6%, band 4%                                       → core ~0.33 → score  ~45 (below 65)
+//   both walls 7.5%, band 2.5%                                   → core ~0.67 → score  ~70 (clears)
+//   both walls 10%+, band ≤1.5% (tight, dominant)               → core 1.00  → score ~95 (textbook)
+export const PIN_SCORE_BASE = 15; // points for clearing the structural pin regime filter
+export const PIN_DOM_FULL_PCT = 9; // both-wall dominance (%) that saturates the dominance factor
 export const PIN_BAND_TIGHT_PCT = 1.5; // band at/below this (%) = full containment
 export const PIN_BAND_LOOSE_PCT = 6; // band at/above this (%) = zero containment (matches BAND_MAX)
-export const PIN_CORE_MAX = 80; // max points from the multiplicative dominance×containment core
-export const PIN_EDGE_MAX = 20; // max additive points from fade-room (off-center offset)
+export const PIN_CORE_MAX = 70; // max points from the multiplicative dominance×containment core
+export const PIN_EDGE_MAX = 15; // max additive points from fade-room (off-center offset)
 export const PIN_EDGE_FULL = 0.6; // offset (fraction of half-width) that saturates the fade-edge term
 
 /**
@@ -186,7 +189,7 @@ export function pinScore(regime: Pick<PinRegime, "bracketDomPct" | "bandWidthPct
   );
   const core = dominanceFactor * containmentFactor; // multiplicative — needs BOTH
   const fadeEdgeFactor = clamp01(regime.offset / PIN_EDGE_FULL);
-  const raw = core * PIN_CORE_MAX + fadeEdgeFactor * PIN_EDGE_MAX;
+  const raw = PIN_SCORE_BASE + core * PIN_CORE_MAX + fadeEdgeFactor * PIN_EDGE_MAX;
   return Math.max(0, Math.min(100, Math.round(raw)));
 }
 

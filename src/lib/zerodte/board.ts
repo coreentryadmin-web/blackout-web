@@ -541,7 +541,7 @@ export type ZeroDteSetup = {
 
 // Exported so the audit trail (buildZeroDteAuditRow below) can cite the actual
 // live gate thresholds instead of a second, driftable copy of these numbers.
-export const SETUP_MIN_GROSS = 300_000; // lowered from 750K — $300K still filters noise but catches mid-cap movers with real institutional flow
+export const SETUP_MIN_GROSS = 200_000; // lowered 750K→300K→200K — quiet tapes were starving FLOW; $200K still filters noise while catching mid-cap institutional prints
 export const SETUP_MIN_DOMINANCE = 0.55; // lowered from 0.65 — still requires directional lean but lets mixed-tape movers through
 const SETUP_MAX_DTE = 1; // 0DTE board: today + tomorrow expiries only
 /** Aggressive (at-the-ask) share of the tape must be meaningful — a tape of SOLD

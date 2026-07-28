@@ -41,11 +41,11 @@ const RTH_CUTOFF_ET_MINUTES = 15 * 60;
  *  (`rankMoversForChainFetch`) so the chain-fetch budget goes to the best movers, not just
  *  mega-caps. Raised from 6→15 after the discovery-recall-probe (2026-07-20…24) showed the old
  *  $-volume top-N silently dropped 10–17 qualifying winners per session. */
-export const BREAKOUT_MAX_CANDIDATES = 15;
+export const BREAKOUT_MAX_CANDIDATES = 25; // raised 6→15→25 — recall probe showed top-N by $vol was leaky
 
 /** Wider $-volume pool fed into the momentum re-rank before the chain-fetch cap. Liquidity filter
  *  stays in `screenBreakoutMovers` / `screenBreakdownMovers`; quality ranking is separate. */
-export const BREAKOUT_SCREEN_POOL = 60;
+export const BREAKOUT_SCREEN_POOL = 100;
 
 /**
  * Rank screened movers for the chain-fetch budget. Liquidity already gated the pool; this orders

@@ -80,12 +80,12 @@ export const OPENING_WINDOW_UNLOCK_LABEL = "10:00 ET";
 // Evidence (90-day prod record, 101 graded plays): the "late 14:00-15:30" bucket ran
 // 14.3% WR / −19.02% avg P&L — the second-worst time window after the opening drive.
 // With only ~1.5 hours of 0DTE theta left, premium-buying entries face accelerating
-// decay and almost never reach the +100% target; 85.7% stopped out. The existing
-// 15:00 cutoff only blocked the last hour; pulling it to 14:00 ET removes the entire
-// losing-by-evidence bucket. CONDOR-EXEMPT: an iron condor WANTS late-session theta
-// crush (credit seller); the late window is only destructive for long-premium entries.
-export const LATE_AFTERNOON_BLOCK_ET_MINUTES = 15 * 60;
-export const LATE_AFTERNOON_BLOCK_LABEL = "15:00 ET";
+// decay and almost never reach the +100% target; 85.7% stopped out. Shipped at 14:00 ET
+// (FINDINGS 2026-07-28) — the prior 15:00 cutoff left the entire toxic bucket open.
+// CONDOR-EXEMPT: an iron condor WANTS late-session theta crush (credit seller); the late
+// window is only destructive for long-premium entries.
+export const LATE_AFTERNOON_BLOCK_ET_MINUTES = 14 * 60;
+export const LATE_AFTERNOON_BLOCK_LABEL = "14:00 ET";
 
 // ── G-12 · Confluence floor — HARD GATE (Phase 1, 2026-07-24) ─────────────────────
 // Evidence (E3, 25 sessions, docs/audit/0DTE-RESEARCH.md): expectancy ladders with the number of
@@ -228,6 +228,24 @@ export type ZeroDteGateCalibration = {
 // raise the floor above the 55-64 band. Judged AFTER the intraday edge layer, so a
 // raw-evidence 70 that the tape/time-of-day layer marked down to 62 does NOT clear.
 export const ZERODTE_SCORE_FLOOR = 65;
+/** Origin-aware G-3 floors. FLOW keeps the strict 65 floor (direct print evidence). BREAKOUT/PIN
+ *  use 58 — calibration's 55-64 band is near flat (−3.6% avg, 36.8% WR) while <55 is toxic
+ *  (20% WR / −23% avg); the rescaled breakout/pin scores put real movers at 65+, and 58 is the
+ *  safety net so a slightly-under-65 multi-rail name is not discarded solely for lacking prints. */
+export const ZERODTE_SCORE_FLOOR_BREAKOUT = 58;
+export const ZERODTE_SCORE_FLOOR_PIN = 58;
+
+/** Resolve the G-3 score floor for a setup's discovery origin set. Pure. */
+export function scoreFloorForOrigins(origins: readonly string[] | null | undefined): number {
+  const set = Array.isArray(origins) ? origins : [];
+  // FLOW present → strict floor (print evidence must clear the historical commit bar).
+  if (set.includes("FLOW")) return ZERODTE_SCORE_FLOOR;
+  if (set.includes("BREAKOUT") && !set.includes("PIN")) return ZERODTE_SCORE_FLOOR_BREAKOUT;
+  if (set.includes("PIN") && !set.includes("BREAKOUT")) return ZERODTE_SCORE_FLOOR_PIN;
+  // BREAKOUT+PIN corroboration (no FLOW) — use the looser floor; multi-rail already boosted score.
+  if (set.includes("BREAKOUT") || set.includes("PIN")) return ZERODTE_SCORE_FLOOR_BREAKOUT;
+  return ZERODTE_SCORE_FLOOR;
+}
 
 export type ZeroDteGateBlock = {
   /** Machine-readable code — same namespace as the evidence gates' gate_failed. */
@@ -264,6 +282,9 @@ export type ZeroDteGateInput = {
   condorPlan?: CondorPlan | null;
   /** Post-edge-layer score (after intraday/market/time-of-day adjusts). */
   score: number;
+  /** Discovery origin set — G-3 uses {@link scoreFloorForOrigins} so BREAKOUT/PIN are not
+   *  judged by the FLOW print-evidence floor. Absent → strict ZERODTE_SCORE_FLOOR. */
+  discovery_origin?: readonly string[] | null;
   /** ET minutes since midnight at evaluation time. */
   nowEtMinutes: number;
   /** Wall clock at evaluation time (staleness math). */
@@ -411,15 +432,20 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
     });
   }
 
-  // G-3 — score floor, judged on the FINAL post-edge-layer score.
-  if (input.score < ZERODTE_SCORE_FLOOR) {
+  // G-3 — score floor, judged on the FINAL post-edge-layer score. Origin-aware: FLOW keeps 65;
+  // BREAKOUT/PIN use the looser rail floors (see scoreFloorForOrigins).
+  const scoreFloor = scoreFloorForOrigins(input.discovery_origin);
+  if (input.score < scoreFloor) {
     blocks.push({
       code: "score_floor",
       reason:
-        `Score ${Math.round(input.score)} is below the ${ZERODTE_SCORE_FLOOR} commit floor — ` +
-        "the 55-64 band ran 18.8% WR / −24.5% avg premium (n=16) on this engine's own calibration, " +
-        "under the 33% breakeven of the −50/+100 payoff.",
-      threshold: ZERODTE_SCORE_FLOOR,
+        `Score ${Math.round(input.score)} is below the ${scoreFloor} commit floor` +
+        (scoreFloor === ZERODTE_SCORE_FLOOR
+          ? " — the <55 band ran 20% WR / −23% avg premium on this engine's own calibration, " +
+            "under the 33% breakeven of the −50/+100 payoff."
+          : ` for ${(input.discovery_origin ?? []).join("+") || "non-FLOW"} origin ` +
+            `(FLOW floor stays ${ZERODTE_SCORE_FLOOR}; multi-rail floors are calibrated to the near-flat 55-64 band).`),
+      threshold: scoreFloor,
       unlock_et: null,
     });
   }
