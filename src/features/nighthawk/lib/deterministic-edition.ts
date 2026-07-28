@@ -327,7 +327,7 @@ function resolveLevels(
     }
   }
 
-  return buildDirectionalStockLevels({ direction, support, resistance, spot: px });
+  return buildDirectionalStockLevels({ direction, support, resistance, spot: px, atr: tech?.atr14 });
 }
 
 /**

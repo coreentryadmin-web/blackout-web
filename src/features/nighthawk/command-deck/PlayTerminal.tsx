@@ -374,24 +374,7 @@ function ManagePanel({ play, nowMs }: { play: TerminalPlay; nowMs: number }) {
 
       {/* Legacy entry geometry — structured levels + live stock-price progress track. */}
       {play.horizon === "LEGACY" && (play.entryRange || play.targetLevel || play.stopLevel || play.progress != null) && (
-        <>
-          {(play.entryRange || play.targetLevel || play.stopLevel) && (
-            <div className="nh-deck-grid" style={{ marginBottom: 8 }}>
-              {play.stopLevel && <div><span className="k">Stop</span><span className="v nh-deck-neg">{play.stopLevel}</span></div>}
-              {play.entryRange && <div><span className="k">Entry zone</span><span className="v">{play.entryRange}</span></div>}
-              {play.targetLevel && <div><span className="k">Target</span><span className="v nh-deck-pos">{play.targetLevel}</span></div>}
-            </div>
-          )}
-          {play.progress != null && (
-            <>
-              <div className="nh-deck-track">
-                <span className="lo">STOP</span><span className="hi">TARGET</span>
-                <span className="mk" style={{ left: `${Math.round(play.progress * 100)}%` }} />
-              </div>
-              <div className="nh-deck-recnote">Stock position: live underlying vs your stop and target levels.</div>
-            </>
-          )}
-        </>
+        <LegacyManageGeometry play={play} />
       )}
 
       {/* Legacy SCALE_OUT fallback (horizon lanes carry no resolved policy): the pre-Terminal-v2
@@ -603,6 +586,58 @@ function PnlPanel({ play }: { play: TerminalPlay }) {
         <div><span className="k">Trough</span><span className="v nh-deck-neg">{signPct(play.trough)}</span></div>
       </div>
       <div className="nh-deck-recnote" style={{ marginTop: 16 }}>Peak/trough = the full excursion since entry — how much heat you took and gave back.</div>
+    </>
+  );
+}
+
+function LegacyManageGeometry({ play }: { play: TerminalPlay }) {
+  const target = play.targetLevel ? parseFloat(play.targetLevel.replace(/[^0-9.]/g, "")) : null;
+  const stop = play.stopLevel ? parseFloat(play.stopLevel.replace(/[^0-9.]/g, "")) : null;
+  const spot = play.stockPrice;
+  const isLong = play.direction === "LONG";
+
+  const distTarget = spot != null && target != null && Number.isFinite(target) && spot > 0
+    ? { pct: ((target - spot) / spot * 100), dollars: target - spot } : null;
+  const distStop = spot != null && stop != null && Number.isFinite(stop) && spot > 0
+    ? { pct: ((stop - spot) / spot * 100), dollars: stop - spot } : null;
+
+  return (
+    <>
+      {(play.entryRange || play.targetLevel || play.stopLevel) && (
+        <div className="nh-deck-grid" style={{ marginBottom: 8 }}>
+          {play.stopLevel && (
+            <div>
+              <span className="k">Stop</span>
+              <span className="v nh-deck-neg">
+                {play.stopLevel}
+                {distStop && <span style={{ opacity: 0.7 }}>{` (${distStop.dollars >= 0 ? "+" : ""}${distStop.dollars.toFixed(2)} · ${distStop.pct >= 0 ? "+" : ""}${distStop.pct.toFixed(1)}%)`}</span>}
+              </span>
+            </div>
+          )}
+          {play.entryRange && <div><span className="k">Entry zone</span><span className="v">{play.entryRange}</span></div>}
+          {play.targetLevel && (
+            <div>
+              <span className="k">Target</span>
+              <span className="v nh-deck-pos">
+                {play.targetLevel}
+                {distTarget && <span style={{ opacity: 0.7 }}>{` (${distTarget.dollars >= 0 ? "+" : ""}${distTarget.dollars.toFixed(2)} · ${distTarget.pct >= 0 ? "+" : ""}${distTarget.pct.toFixed(1)}%)`}</span>}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+      {play.progress != null && (
+        <>
+          <div className="nh-deck-track">
+            <span className="lo">STOP</span><span className="hi">TARGET</span>
+            <span className="mk" style={{ left: `${Math.round(play.progress * 100)}%` }} />
+          </div>
+          <div className="nh-deck-recnote">
+            {spot != null ? `${play.ticker} $${spot.toFixed(2)} — ` : ""}
+            stock position vs your stop and target levels.
+          </div>
+        </>
+      )}
     </>
   );
 }

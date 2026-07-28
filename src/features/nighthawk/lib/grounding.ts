@@ -50,11 +50,6 @@ export function tieredMinOi(spot: number): number {
   return 100;
 }
 
-/** Entry premium must land within ±40% of the chain ask (or mid) for the matched contract.
- *  Wide enough to absorb intraday→overnight quote drift and bid/ask vs mid choices, tight enough
- *  that a fabricated premium (2×+ off) is caught. */
-export const PREMIUM_TOLERANCE_PCT = 0.4;
-
 /** Stated total flow $ must reconcile to the dossier flow figure within ±35%. The dossier figure is
  *  the sum of alert premiums (format.ts:327); a stated number more than a third off is fabricated. */
 export const FLOW_TOLERANCE_PCT = 0.35;
