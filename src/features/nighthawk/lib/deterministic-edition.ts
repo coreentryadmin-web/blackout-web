@@ -45,7 +45,7 @@ import { buildDirectionalStockLevels, computeRiskReward } from "./play-levels";
 import { applyPremiumCapToPlay, validatePlayGeometry, canonicalTicker } from "./play-constraints";
 import { groundPlays } from "./grounding";
 import { GROUNDING_MIN_OI, tieredMinOi } from "./grounding";
-import { MAX_OPTION_PREMIUM_PER_SHARE, MIN_PUBLISH_SCORE, DIVERSITY_HEDGE_FLOOR, FORCED_CONTRARIAN_FLOOR } from "./constants";
+import { MAX_OPTION_PREMIUM_PER_SHARE, MIN_PUBLISH_SCORE, DIVERSITY_HEDGE_FLOOR, FORCED_CONTRARIAN_FLOOR, INDEX_SET, INDEX_ETF_PLAYS } from "./constants";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import { bangerScaleOutNote } from "@/lib/zerodte/scale-out";
 
@@ -166,6 +166,14 @@ function shortExpiry(iso: string): string {
   const day = parseInt(parts[2]!, 10);
   if (monthIdx < 0 || monthIdx > 11 || !Number.isFinite(day)) return iso;
   return `${MONTH_NAMES[monthIdx]} ${day}`;
+}
+
+const INDEX_ETF_SET = new Set<string>(INDEX_ETF_PLAYS);
+function classifyPlayType(ticker: string): "stock" | "index" | "etf" {
+  const t = ticker.toUpperCase();
+  if (INDEX_ETF_SET.has(t)) return "etf";
+  if (INDEX_SET.has(t)) return "index";
+  return "stock";
 }
 
 /** Build the member-facing options_play string.
@@ -496,7 +504,7 @@ function buildPlay(
     ticker: scored.ticker,
     direction: dir,
     conviction: assignNighthawkTier(nhTierInputFromScored(scored)).tier,
-    play_type: "stock",
+    play_type: classifyPlayType(scored.ticker),
     thesis,
     key_signal,
     entry_range: levels.entry_range,
@@ -811,7 +819,7 @@ export function buildRescuePlays(params: {
       ticker,
       direction: scored.direction === "short" ? "SHORT" : "LONG",
       conviction: assignNighthawkTier(nhTierInputFromScored(scored)).tier,
-      play_type: "stock",
+      play_type: classifyPlayType(ticker),
       thesis,
       key_signal,
       entry_range: levels.entry_range,
