@@ -188,35 +188,35 @@ test("G-N1 SHORT mirror: fill edge is the band LOW; 3.5% above spot passes, 3.6%
 // ── G-N2 achievable target boundary, both directions ───────────────────────────────────
 
 test("G-N2 boundary: target exactly K×ATR14 from the fill edge passes; beyond blocks", () => {
-  // fill edge 100, ATR14 4 → allowance 2.5 × 4 = 10.00. Target 110.00 → exactly 2.5×.
+  // fill edge 100, ATR14 4 → allowance 3.5 × 4 = 14.00. Target 114.00 → exactly 3.5×.
   const at = evaluate(
-    play({ entry_range: "$99.50-$100.00", target: "$110.00", stop: "$97.00" }),
+    play({ entry_range: "$99.50-$100.00", target: "$114.00", stop: "$97.00" }),
     dossier({ price: 100, atr14: 4 })
   );
   assert.equal(at.verdict, "PUBLISH");
 
-  // Target 110.10 → 2.525× → target_unreachable.
+  // Target 114.10 → 3.525× → target_unreachable.
   const beyond = evaluate(
-    play({ entry_range: "$99.50-$100.00", target: "$110.10", stop: "$97.00" }),
+    play({ entry_range: "$99.50-$100.00", target: "$114.10", stop: "$97.00" }),
     dossier({ price: 100, atr14: 4 })
   );
   assert.equal(beyond.verdict, "BLOCK");
   assert.deepEqual(beyond.blocks.map((b) => b.code), ["target_unreachable"]);
-  assert.equal(beyond.blocks[0]!.value, 2.525);
+  assert.equal(beyond.blocks[0]!.value, 3.525);
   assert.equal(beyond.blocks[0]!.threshold, GATE_TARGET_MAX_ATR_MULTIPLE);
 });
 
 test("G-N2 SHORT mirror: distance is absolute, so a downside target measures the same", () => {
-  // fill edge 100.00, ATR14 4 → allowance 2.5 × 4 = 10.00. Target 90.00 → exactly 2.5×.
+  // fill edge 100.00, ATR14 4 → allowance 3.5 × 4 = 14.00. Target 86.00 → exactly 3.5×.
   const at = evaluate(
-    play({ direction: "SHORT", entry_range: "$100.00-$100.50", target: "$90.00", stop: "$103.00" }),
+    play({ direction: "SHORT", entry_range: "$100.00-$100.50", target: "$86.00", stop: "$103.00" }),
     dossier({ price: 100, atr14: 4 })
   );
   assert.equal(at.verdict, "PUBLISH");
 
-  // Target 89.90 → 2.525× → target_unreachable.
+  // Target 85.90 → 3.525× → target_unreachable.
   const beyond = evaluate(
-    play({ direction: "SHORT", entry_range: "$100.00-$100.50", target: "$89.90", stop: "$103.00" }),
+    play({ direction: "SHORT", entry_range: "$100.00-$100.50", target: "$85.90", stop: "$103.00" }),
     dossier({ price: 100, atr14: 4 })
   );
   assert.equal(beyond.verdict, "BLOCK");
@@ -294,7 +294,7 @@ test("DELL 2026-07-08 fixture (band $226.82–227.27, stock $417, target $469.47
   assert.deepEqual(res.blocks.map((b) => b.code), ["band_detached", "target_unreachable"]);
   // (227.27 − 417) / 417 = −45.4988% — the doc's −45.5% worst case, reproduced exactly.
   assert.equal(res.blocks[0]!.value, -45.4988);
-  // (469.47 − 227.27) / 12.5 = 19.376× ATR14 — an order of magnitude past K=2.5.
+  // (469.47 − 227.27) / 12.5 = 19.376× ATR14 — an order of magnitude past K=3.5.
   assert.equal(res.blocks[1]!.value, 19.376);
 });
 
@@ -503,13 +503,31 @@ test("promoteTopBlocked ranks promotable plays by fewer gate failures first, the
   assert.equal(promoted[1].conviction, "B");
 });
 
-test("promoteTopBlocked returns empty when every block fails geometry gates", () => {
+test("promoteTopBlocked promotes target_unreachable (soft gate, not geometry-fatal)", () => {
   const blocked = [{
     ticker: "NVDA",
     play: play({ ticker: "NVDA" }),
     result: {
       verdict: "BLOCK" as const,
-      blocks: [{ code: "target_unreachable" as const, reason: "too far", threshold: 2.5, value: 4.0 }],
+      blocks: [{ code: "target_unreachable" as const, reason: "too far", threshold: 3.5, value: 4.0 }],
+      checks: [],
+    },
+    scored: null,
+  }];
+  const promoted = promoteTopBlocked(blocked, 5);
+  assert.equal(promoted.length, 1);
+  assert.equal(promoted[0].ticker, "NVDA");
+  assert.equal(promoted[0].gate_promoted, true);
+  assert.equal(isPromotableBlockedPlay(blocked[0]), true);
+});
+
+test("promoteTopBlocked returns empty when every block fails hard geometry gates", () => {
+  const blocked = [{
+    ticker: "NVDA",
+    play: play({ ticker: "NVDA" }),
+    result: {
+      verdict: "BLOCK" as const,
+      blocks: [{ code: "band_detached" as const, reason: "unfillable", threshold: 3.5, value: 8.0 }],
       checks: [],
     },
     scored: null,
