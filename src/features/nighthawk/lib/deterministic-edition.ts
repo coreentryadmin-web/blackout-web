@@ -411,6 +411,27 @@ export function buildDeterministicThesis(
     parts.push(`GEX wall alignment supports ${isLong ? "upside" : "downside"}.`);
   }
 
+  // --- Short interest (squeeze catalyst for longs) ---
+  if (isLong && scored.short_interest_score != null && scored.short_interest_score >= 3) {
+    const dtc = dossier?.short_days_to_cover;
+    if (dtc != null && Number.isFinite(dtc) && dtc >= 3) {
+      parts.push(`High short interest (${dtc.toFixed(1)} days to cover) — squeeze tailwind.`);
+    } else {
+      parts.push("Elevated short interest — squeeze potential.");
+    }
+  }
+
+  // --- Skew confirmation ---
+  const rrSkew = dossier?.risk_reversal_skew;
+  if (rrSkew != null && Number.isFinite(rrSkew) && rrSkew !== 0) {
+    const skewDir = rrSkew > 0 ? "short" : "long";
+    if (skewDir === scored.direction) {
+      parts.push(`Put/call skew confirms ${dirWord} bias (RR ${rrSkew > 0 ? "+" : ""}${rrSkew.toFixed(2)}).`);
+    } else if (Math.abs(rrSkew) >= 0.3) {
+      parts.push(`Skew leans against thesis.`);
+    }
+  }
+
   // --- Technicals one-liner from dossier (concise) ---
   if (tech?.rsi14 != null && Number.isFinite(tech.rsi14)) {
     if (tech.rsi14 < 30) parts.push("RSI oversold.");

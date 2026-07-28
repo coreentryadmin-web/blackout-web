@@ -15987,6 +15987,7 @@ body::before {
 .nh-deck-feed .brk{color:var(--dk-red);font-weight:700}.nh-deck-feed .ok{color:var(--dk-green)}
 .nh-deck-rec{display:flex;align-items:center;gap:14px;padding:14px;border:1px solid var(--dk-line);border-radius:5px;margin-bottom:16px}
 .nh-deck-recb{font-size:20px;font-weight:800;letter-spacing:.08em;padding:8px 16px;border-radius:4px}
+.nh-deck-recb.BUY{color:var(--dk-green);border:1px solid var(--dk-green)}
 .nh-deck-recb.HOLD{color:var(--dk-cyan);border:1px solid var(--dk-cyan)}
 .nh-deck-recb.TRIM{color:var(--dk-amber);border:1px solid var(--dk-amber)}
 .nh-deck-recb.SELL{color:var(--dk-red);border:1px solid var(--dk-red)}

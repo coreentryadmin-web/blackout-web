@@ -1012,7 +1012,10 @@ export function scoreCandidate(
     catalyst.flags.push("FDA calendar event upcoming — binary risk");
   }
 
-  const totalCatalystScore = Math.max(-CATALYST_CAP, Math.min(CATALYST_CAP, catalyst.score + earningsPenalty + ptNudge + ivPenalty + fdaPenalty));
+  // IV penalty lives OUTSIDE the catalyst clamp — it's about options pricing, not catalyst awareness.
+  // Clamping FDA(-2) + earnings(-6) + IV(-6) together into [-5,+5] swallowed stacked risk signals.
+  const totalCatalystScore = Math.max(-CATALYST_CAP, Math.min(CATALYST_CAP, catalyst.score + earningsPenalty + ptNudge + fdaPenalty));
+  const ivAdjustment = ivPenalty;
 
   // Flow-anomaly penalty: names flagged critical in the last hour get demoted unless flow is exceptional.
   let anomalyPenalty = 0;
@@ -1049,6 +1052,7 @@ export function scoreCandidate(
           wallProxScore +
           vexScore +
           totalCatalystScore +
+          ivAdjustment +
           anomalyPenalty +
           flowConvictionBonus) *
           dampenedRegime

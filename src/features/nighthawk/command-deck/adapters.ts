@@ -507,7 +507,7 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
     regime,
     thesisBreak,
     tierLabel: src.conviction || null,
-    recommendation: pulled || ms === "INVALIDATED" ? "SELL" : ms === "DEGRADED" ? "HOLD" : "HOLD",
+    recommendation: pulled || ms === "INVALIDATED" ? "SELL" : ms === "CONFIRMED" ? "BUY" : "HOLD",
     recNote,
     progress: null,
     entry: fin(src.entry_premium) ?? entryMid,

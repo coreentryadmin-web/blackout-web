@@ -165,6 +165,7 @@ test("edition adapter: morning CONFIRMED → status OPEN, regime 'pre-market CON
   assert.equal(play.regime, "pre-market CONFIRMED");
   assert.equal(play.thesisBreak!.level, "intact");
   assert.match(play.recNote!, /confirmed/i);
+  assert.equal(play.recommendation, "BUY", "CONFIRMED morning status → BUY recommendation");
 });
 
 test("edition adapter: morning INVALIDATED → status SKIP, thesis break, recommendation SELL", () => {

@@ -14,7 +14,7 @@ import type { WhyNow } from "@/lib/zerodte/why-now";
 export type DeckDirection = "LONG" | "SHORT";
 export type DeckStatus = "OPEN" | "HOLD" | "TRIM" | "CLOSED" | "WATCH" | "SKIP";
 export type ExitModel = "RATCHET" | "SCALE_OUT" | "PLAN";
-export type Recommendation = "HOLD" | "TRIM" | "SELL";
+export type Recommendation = "BUY" | "HOLD" | "TRIM" | "SELL";
 export type ThesisLevel = "intact" | "warn" | "break" | "unknown";
 
 /** A signed, point-weighted reason (from the real scoring components). */
