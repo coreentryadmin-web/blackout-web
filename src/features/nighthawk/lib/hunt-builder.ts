@@ -182,7 +182,7 @@ export function rescoreDossier(
     },
     dossier.flow_streak,
     regime,
-    { streakWeight }
+    { streakWeight, nowMs: Date.now() }
   );
 }
 

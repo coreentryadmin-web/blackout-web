@@ -402,6 +402,7 @@ export interface EditionDeckSource {
   earnings_risk?: boolean | null;
   entry_cost_per_contract?: number | null;
   premium_cap_ok?: boolean | null;
+  sector?: string | null;
   // Morning confirmation overlay (merged by the container).
   morning_status?: "CONFIRMED" | "DEGRADED" | "INVALIDATED" | "UNVERIFIED" | null;
   morning_reason?: string | null;
@@ -564,6 +565,7 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
     rrRatio: fin(src.rr_ratio),
     entryCostPerContract: fin(src.entry_cost_per_contract),
     premiumCapOk: src.premium_cap_ok ?? null,
+    sector: src.sector?.toLowerCase() ?? null,
     confluence,
     discoveryOrigin: discoveryOrigin.length > 0 ? discoveryOrigin : undefined,
     whyNow: whyNow ?? undefined,
