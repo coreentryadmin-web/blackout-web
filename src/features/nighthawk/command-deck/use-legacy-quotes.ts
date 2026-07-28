@@ -94,9 +94,6 @@ export function overlayLegacyQuotes(
     if (!entryMid) return { ...p, markAsOf: q.asof };
 
     const isLong = p.direction === "LONG";
-    const stockPnlPct = isLong
-      ? ((q.price - entryMid) / entryMid) * 100
-      : ((entryMid - q.price) / entryMid) * 100;
 
     let progress: number | null = null;
     if (target != null && stop != null && target !== stop) {
