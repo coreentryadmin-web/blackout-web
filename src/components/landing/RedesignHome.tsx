@@ -442,7 +442,7 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
           <div className="footer-brand">BLACKOUT</div>
           <div className="footer-tagline">The intelligence layer behind modern trading.</div>
           <div className="footer-cta cta-row">
-            <Link href={signedIn ? "/upgrade" : "/sign-up?redirect_url=%2Fupgrade"} prefetch={false} className="btn-p">Stop trading blind</Link>
+            <Link href={signedIn ? "/upgrade" : "/sign-up?redirect_url=%2Fupgrade"} prefetch={false} className="btn-p">Open the desk <span className="cta-arrow">&rarr;</span></Link>
             <Link href="#modules" prefetch={false} className="btn-g">See the desk</Link>
           </div>
           <nav className="footer-links">
