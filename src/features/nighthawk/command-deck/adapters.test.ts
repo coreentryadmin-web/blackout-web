@@ -112,7 +112,7 @@ test("horizon adapter (PR-12): LEAPS / un-enriched caller is UNCHANGED — legac
   assert.equal(play.thesisBreak!.level, "intact");
 });
 
-test("edition adapter: dossier factors, PLAN model, WATCH status", () => {
+test("edition adapter: dossier factors, PLAN model, WATCH status (no morning confirm)", () => {
   const play = terminalPlayFromEdition({
     ticker: "AAPL", direction: "long", rank: 1, score: 82,
     factor_breakdown: { flow: 30, tech: 22, positioning: 16, smart_money: 10, news: 0 },
@@ -122,7 +122,121 @@ test("edition adapter: dossier factors, PLAN model, WATCH status", () => {
   assert.equal(play.status, "WATCH");
   assert.equal(play.factors[0]!.label, "Flow");
   assert.ok(!play.factors.some((f) => f.label === "News")); // 0 dropped
-  assert.equal(play.contract, "Rank 1 · next session");
+  assert.equal(play.contract, "Rank 1 · next session"); // no options_play → rank fallback
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// Enriched Legacy (edition) adapter — entry parsing, morning confirm, gates, pulled
+// ════════════════════════════════════════════════════════════════════════════════════
+
+test("edition adapter: parseEntryMid from entry_range (two-price range → midpoint)", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "NVDA", direction: "long", rank: 1, score: 75,
+    entry_range: "$192.50 – $195.00",
+  });
+  assert.equal(play.entry, 193.75);
+});
+
+test("edition adapter: entry_premium takes precedence over parsed entry_range", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "AAPL", direction: "long", rank: 2, score: 80,
+    entry_range: "$190.00 – $195.00",
+    entry_premium: 3.5,
+  });
+  assert.equal(play.entry, 3.5);
+});
+
+test("edition adapter: options_play replaces rank-based contract label", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "TSLA", direction: "long", rank: 3, score: 70,
+    options_play: "Aug 15 $260 Call",
+  });
+  assert.equal(play.contract, "Aug 15 $260 Call");
+});
+
+test("edition adapter: morning CONFIRMED → status OPEN, regime 'pre-market CONFIRMED', thesis intact", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "META", direction: "long", rank: 1, score: 85,
+    morning_status: "CONFIRMED",
+  });
+  assert.equal(play.status, "OPEN");
+  assert.equal(play.regime, "pre-market CONFIRMED");
+  assert.equal(play.thesisBreak!.level, "intact");
+  assert.match(play.recNote!, /confirmed/i);
+});
+
+test("edition adapter: morning INVALIDATED → status SKIP, thesis break, recommendation SELL", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "AMD", direction: "long", rank: 2, score: 60,
+    morning_status: "INVALIDATED",
+    morning_reason: "gap down through stop level",
+  });
+  assert.equal(play.status, "SKIP");
+  assert.equal(play.thesisBreak!.level, "break");
+  assert.match(play.thesisBreak!.note!, /gap down/);
+  assert.equal(play.recommendation, "SELL");
+  assert.equal(play.regime, "INVALIDATED — pulled");
+});
+
+test("edition adapter: morning DEGRADED → status WATCH, thesis warn", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "COIN", direction: "long", rank: 3, score: 55,
+    morning_status: "DEGRADED",
+    morning_reason: "crypto sentiment shifted overnight",
+  });
+  assert.equal(play.status, "WATCH");
+  assert.equal(play.thesisBreak!.level, "warn");
+  assert.match(play.recNote!, /DEGRADED/);
+});
+
+test("edition adapter: pulled play → status CLOSED, thesis break, recommendation SELL", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "BABA", direction: "long", rank: 4, score: 50,
+    pulled: true,
+    pulled_reason: "earnings pre-announcement risk",
+  });
+  assert.equal(play.status, "CLOSED");
+  assert.equal(play.thesisBreak!.level, "break");
+  assert.match(play.thesisBreak!.note!, /earnings/);
+  assert.equal(play.recommendation, "SELL");
+  assert.match(play.recNote!, /PULLED/);
+});
+
+test("edition adapter: gate_promoted with gate_warnings → gates array with ok:false entries", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "SHOP", direction: "long", rank: 1, score: 72,
+    gate_promoted: true,
+    gate_warnings: ["band_detached", "stale_quote_basis"],
+  });
+  assert.equal(play.gates.length, 2);
+  assert.equal(play.gates[0]!.label, "band_detached");
+  assert.equal(play.gates[0]!.ok, false);
+  assert.equal(play.gates[1]!.label, "stale_quote_basis");
+});
+
+test("edition adapter: gate_promoted false with warnings → no gates surfaced", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "PLTR", direction: "long", rank: 2, score: 65,
+    gate_promoted: false,
+    gate_warnings: ["band_detached"],
+  });
+  assert.equal(play.gates.length, 0);
+});
+
+test("edition adapter: exit_style 'scale_out' → exitModel SCALE_OUT", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "MSTR", direction: "long", rank: 1, score: 78,
+    exit_style: "scale_out",
+  });
+  assert.equal(play.exitModel, "SCALE_OUT");
+});
+
+test("edition adapter: thesis text used as recNote when no morning status", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "SOFI", direction: "long", rank: 1, score: 70,
+    thesis: "Fintech breakout on strong Q2 guidance above consensus",
+  });
+  assert.match(play.recNote!, /Fintech breakout/);
 });
 
 test("0DTE adapter: committed OPEN with aged-out gate context still passes the Hard gate (9-6b)", () => {

@@ -378,29 +378,115 @@ export interface EditionDeckSource {
   rank?: number;
   score?: number;
   factor_breakdown?: Record<string, number> | null;
+  // Enriched fields — the edition carries all of these; previously discarded.
+  conviction?: string | null;
+  thesis?: string | null;
+  key_signal?: string | null;
+  entry_range?: string | null;
+  target?: string | null;
+  stop?: string | null;
+  options_play?: string | null;
+  entry_premium?: number | null;
+  risk_note?: string | null;
+  exit_style?: string | null;
+  iv_rank?: number | null;
+  rr_ratio?: number | null;
+  gate_promoted?: boolean | null;
+  gate_warnings?: string[] | null;
+  pulled?: boolean | null;
+  pulled_reason?: string | null;
+  // Morning confirmation overlay (merged by the container).
+  morning_status?: "CONFIRMED" | "DEGRADED" | "INVALIDATED" | "UNVERIFIED" | null;
+  morning_reason?: string | null;
+}
+
+/** Parse the edition's "entry_range" string ("$192.50 – $195.00") into a representative
+ *  midpoint entry price. Handles "$X", "$X – $Y", "$X-$Y" formats. */
+function parseEntryMid(range: string | null | undefined): number | null {
+  if (!range) return null;
+  const nums = (range.match(/[\d.]+/g) ?? []).map(Number).filter(Number.isFinite);
+  if (nums.length === 0) return null;
+  if (nums.length === 1) return nums[0];
+  return (nums[0] + nums[nums.length - 1]) / 2;
+}
+
+/** Parse a target/stop string ("$205.00") into a number. */
+function parseLevelNum(s: string | null | undefined): number | null {
+  if (!s) return null;
+  const m = s.match(/([\d.]+)/);
+  return m ? Number(m[1]) || null : null;
 }
 
 export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
   const factors: DeckFactor[] = Object.entries(src.factor_breakdown ?? {})
     .filter(([, v]) => typeof v === "number" && v !== 0)
     .map(([k, v]) => ({ label: FB_LABELS[k] ?? k, points: v as number }));
+
+  const direction = asDir(src.direction);
+  const entryMid = parseEntryMid(src.entry_range);
+  const targetNum = parseLevelNum(src.target);
+  const stopNum = parseLevelNum(src.stop);
+  const pulled = src.pulled === true;
+
+  // Morning confirmation drives the status + regime display.
+  const ms = src.morning_status;
+  const status: DeckStatus = pulled ? "CLOSED" : ms === "INVALIDATED" ? "SKIP" : ms === "CONFIRMED" ? "OPEN" : "WATCH";
+  const regime = ms
+    ? ms === "CONFIRMED" ? "pre-market CONFIRMED"
+    : ms === "DEGRADED" ? "pre-market DEGRADED"
+    : ms === "INVALIDATED" ? "INVALIDATED — pulled"
+    : "pre-market pending"
+    : "morning confirm pending";
+
+  // Build contract label from real options_play data when available.
+  const contractLabel = src.options_play
+    ? `${src.options_play}`.replace(/\s+/g, " ").trim()
+    : `Rank ${src.rank ?? "?"} · next session`;
+
+  // Gate warnings surface as gates (red/amber chips) in the terminal.
+  const gates: Array<{ label: string; ok: boolean }> = [];
+  if (src.gate_promoted && src.gate_warnings?.length) {
+    for (const w of src.gate_warnings) {
+      gates.push({ label: w, ok: false });
+    }
+  }
+
+  // Thesis break from morning confirmation.
+  const thesisBreak: { level: ThesisLevel; note?: string } =
+    pulled ? { level: "break", note: src.pulled_reason ?? "play invalidated and pulled" }
+    : ms === "INVALIDATED" ? { level: "break", note: src.morning_reason ?? "morning confirm invalidated thesis" }
+    : ms === "DEGRADED" ? { level: "warn", note: src.morning_reason ?? "pre-market conditions degraded" }
+    : { level: "intact" };
+
+  const recNote = pulled
+    ? `PULLED — ${src.pulled_reason ?? "thesis invalidated pre-market"}`
+    : ms === "INVALIDATED"
+      ? `INVALIDATED — ${src.morning_reason ?? "pre-market thesis broke"}`
+      : ms === "DEGRADED"
+        ? `DEGRADED — ${src.morning_reason ?? "conditions shifted; validate before entry"}`
+        : ms === "CONFIRMED"
+          ? "Pre-market confirmed — thesis intact, entry levels hold."
+          : src.thesis
+            ? src.thesis
+            : "Evening edition — pre-market confirm posts before the open; hold while the thesis stands.";
+
   return {
     id: `LEGACY:${src.ticker}`,
     ticker: src.ticker.toUpperCase(),
-    direction: asDir(src.direction),
-    contract: `Rank ${src.rank ?? "?"} · next session`,
+    direction,
+    contract: contractLabel,
     score: Math.round(fin(src.score) ?? 0),
-    status: "WATCH",
+    status,
     horizon: "LEGACY",
-    exitModel: "PLAN",
+    exitModel: src.exit_style === "scale_out" ? "SCALE_OUT" : "PLAN",
     factors,
-    gates: [],
-    regime: "morning confirm pending",
-    thesisBreak: { level: "intact" },
-    recommendation: "HOLD",
-    recNote: "Evening edition — pre-market confirm posts before the open; hold while the thesis stands.",
+    gates,
+    regime,
+    thesisBreak,
+    recommendation: pulled || ms === "INVALIDATED" ? "SELL" : ms === "DEGRADED" ? "HOLD" : "HOLD",
+    recNote,
     progress: null,
-    entry: null,
+    entry: fin(src.entry_premium) ?? entryMid,
     mark: null,
     pnlPct: null,
     greeks: null,
