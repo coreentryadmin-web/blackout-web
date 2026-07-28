@@ -76,7 +76,7 @@ export const W_NH_SCORE_TOP = 1;
 export const W_NH_SCORE_BELOW_FLOOR = -2;
 
 // ── Confirming signals (signal breadth) ─────────────────────────────────────────
-/** Strong multi-dimensional support: ≥3 of 7 dimensions positive. */
+/** Strong multi-dimensional support: ≥3 of 9 dimensions positive. */
 export const NH_STRONG_SIGNALS_MIN = 3;
 export const W_NH_SIGNALS_STRONG = 2;
 /** Adequate support: exactly 2 dimensions. */
@@ -177,7 +177,7 @@ export function assignNighthawkTier(input: NighthawkTierInput): NighthawkTierAss
     factors.push({
       label: "Strong signal breadth",
       direction: "up",
-      detail: `${input.confirmingSignals} of 7 dimensions confirming — broad multi-factor support.`,
+      detail: `${input.confirmingSignals} of 9 dimensions confirming — broad multi-factor support.`,
     });
   } else if (input.confirmingSignals >= NH_OK_SIGNALS_MIN) {
     points += W_NH_SIGNALS_OK;

@@ -143,6 +143,7 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
       earnings_risk: p.earnings_risk ?? null,
       entry_cost_per_contract: p.entry_cost_per_contract ?? null,
       premium_cap_ok: p.premium_cap_ok ?? null,
+      sector: p.sector ?? null,
       gate_promoted: p.gate_promoted ?? null,
       gate_warnings: p.gate_warnings ?? null,
       pulled: p.pulled ?? null,
