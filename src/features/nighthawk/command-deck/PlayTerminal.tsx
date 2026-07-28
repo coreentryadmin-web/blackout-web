@@ -779,8 +779,11 @@ function LegacyPnlPanel({ play }: { play: TerminalPlay }) {
           </div>
         </div>
       )}
+      <ExcursionViz play={play} />
       <div className="nh-deck-recnote" style={{ marginTop: 16 }}>
-        Stock-level P&amp;L from entry mid{pnl == null ? " — awaiting live quote" : ""}. Option P&amp;L requires a position ledger (not yet wired for Legacy).
+        {pnl != null
+          ? "Stock-level P&L from entry mid — tracks your thesis direction. Option premium P&L requires a live option quote subscription."
+          : "Awaiting live stock quote to compute P&L from entry."}
       </div>
     </>
   );
