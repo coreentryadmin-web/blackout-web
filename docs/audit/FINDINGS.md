@@ -3400,3 +3400,39 @@ change for a P1 fix. Capping relative to the already-computed entry-to-target di
 same goal (bound the total push) without a signature change.
 
 **Status:** FIXED (branch `fix/nighthawk-sentinel-and-rr-inflation`, PR pending).
+
+## 2026-07-28 — [correctness] "ambiguous" both-hit outcome deflates Night Hawk win rate (PR #1181)
+
+**Severity.** P2 — systemic understatement of the public win rate, not a wrong-direction grade.
+
+**Finding.** `resolveOutcome()` in `src/features/nighthawk/lib/play-outcomes.ts:616-624` graded a
+play `"ambiguous"` whenever BOTH `target` AND `stop` were hit intraday and the next-day open sat
+strictly between them (neither `open >= target` nor `open <= stop`, LONG case; mirrored for SHORT).
+This is the common shape for overnight/gap plays: the open lands between the two published levels,
+then the session later trades through both. `src/features/nighthawk/lib/analytics.ts` counts
+`"ambiguous"` rows in the `scoreable` denominator but never in the `wins` numerator
+(`win_rate = wins / scoreable`), so every ambiguous grade silently deflated the reported win rate.
+
+**Root cause.** The branch had no tiebreaker for the both-hit / open-between case — it fell straight
+to `"ambiguous"` rather than making any attempt to infer which level was likely hit first. Not caught
+earlier because the exclusion looks identical in shape to the legitimate `unfilled`/
+`stop_data_unavailable` exclusions already in the same function, so it read as intentional
+data-honesty rather than a gap.
+
+**Fix.** When both are hit and the open is between them, use distance from the open to each level as
+a heuristic tiebreaker: closer to target → likely ran to target first (`"target"`); closer to stop →
+likely hit stop first (`"stop"`). Exact ties default to `"stop"` (conservative — can't be used to
+inflate the win rate on ambiguous evidence). `"ambiguous"` remains in the return-type union and now
+fires only when `open`/`target`/`stop` are null (rare).
+
+**Evidence.** 5 new tests in `play-outcomes.test.ts`: open-closer-to-target → `"target"`,
+open-closer-to-stop → `"stop"`, exact-tie → `"stop"`, open missing → still `"ambiguous"`, SHORT-mirror
+→ `"target"`. `npx tsx --test src/features/nighthawk/lib/play-outcomes.test.ts`: 30/30 pass.
+`tsc --noEmit` clean.
+
+**Blast radius.** Every other reader of `"ambiguous"` (`analytics.ts`, `debrief.ts`,
+`debrief-persist.ts`, `regrade-legacy.ts`, `alert-outcome-sync.ts`, `nighthawk-edition-read.ts`, plus
+the `PlayHistoryTable` / `spx-signals-shadow-precedents` type unions) only reads `row.outcome` — no
+changes needed since `"ambiguous"` stays a valid (just less frequent) union member.
+
+**Status:** PR #1181 open, targeting auto-merge once CI is green.
