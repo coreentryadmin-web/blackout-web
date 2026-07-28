@@ -197,7 +197,7 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
                   </div>
                 </div>
                 <div className="pipe-stage-visual">
-                  <canvas id="cv-pipe-identify" width={560} height={320} />
+                  <canvas id="cv-pipe-identify" width={480} height={220} />
                 </div>
               </div>
             </div>
@@ -212,7 +212,7 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
               </div>
               <div className="pipe-stage-body">
                 <div className="pipe-stage-visual">
-                  <canvas id="cv-pipe-validate" width={560} height={320} />
+                  <canvas id="cv-pipe-validate" width={480} height={220} />
                 </div>
                 <div className="pipe-stage-text">
                   <h3>Validate</h3>
@@ -251,7 +251,7 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
                   </div>
                 </div>
                 <div className="pipe-stage-visual">
-                  <canvas id="cv-pipe-execute" width={560} height={360} />
+                  <canvas id="cv-pipe-execute" width={480} height={220} />
                 </div>
               </div>
             </div>
@@ -266,7 +266,7 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
               </div>
               <div className="pipe-stage-body">
                 <div className="pipe-stage-visual pipe-results-visual">
-                  <canvas id="cv-pipe-results" width={560} height={280} />
+                  <canvas id="cv-pipe-results" width={480} height={200} />
                 </div>
                 <div className="pipe-stage-text">
                   <h3>Results</h3>
@@ -285,7 +285,7 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
             {/* Pipeline summary — the thesis */}
             <div className="pipe-summary" data-pipe-stage="summary">
               <div className="pipe-summary-inner">
-                <canvas id="cv-pipe-summary" width={200} height={200} />
+                <canvas id="cv-pipe-summary" width={120} height={120} />
                 <div className="pipe-summary-text">
                   <span className="pipe-summary-stat">~3%</span>
                   <span className="pipe-summary-label">of scanned setups survive to your screen</span>
