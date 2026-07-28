@@ -260,7 +260,7 @@ test("setups: sudden flow spike flagged when ≥half the tape lands in the last 
 test("setups: prints for contracts that expired a prior session are dropped", () => {
   const rows = [
     row({ premium: 2_000_000, expiry: "2026-07-02", dte: 0 }), // expired yesterday
-    row({ premium: 500_000, expiry: "2026-07-06", dte: 0 }), // today — below gross floor alone
+    row({ premium: 200_000, expiry: "2026-07-06", dte: 0 }), // today — below gross floor alone
   ];
   assert.equal(deriveZeroDteSetups(rows, { todayYmd: "2026-07-06" }).length, 0);
   // Without the session guard the expired tape would have qualified.

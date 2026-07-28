@@ -453,7 +453,7 @@ export type ZeroDteSetup = {
 
 // Exported so the audit trail (buildZeroDteAuditRow below) can cite the actual
 // live gate thresholds instead of a second, driftable copy of these numbers.
-export const SETUP_MIN_GROSS = 750_000; // ignore thin names — this is a "best of the tape" board
+export const SETUP_MIN_GROSS = 300_000; // lowered from 750K — $300K still filters noise but catches mid-cap movers with real institutional flow
 export const SETUP_MIN_DOMINANCE = 0.65; // two-sided tape is a fade signal, not a setup
 const SETUP_MAX_DTE = 1; // 0DTE board: today + tomorrow expiries only
 /** Aggressive (at-the-ask) share of the tape must be meaningful — a tape of SOLD

@@ -350,21 +350,21 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
   // `isCondor` block after the shared gates. Unknown/absent play_type is DIRECTIONAL (unchanged).
   const isCondor = input.play_type === "CONDOR";
 
-  // G-1 — tape alignment. DIRECTIONAL ONLY: a condor has no direction to fight the tape, so G-1
-  // (and its fail-closed no_market_bias companion) does NOT apply — selling a defended range is not
-  // a bet on tape direction. (A trending tape IS a condor risk, but that is handled by the range-
-  // intact check + the strict sell-regime router, not by a directional tape-alignment block.)
-  if (!isCondor) {
-    // Order matters within the gate: an unreadable bias is its own (fail-closed) block, distinct
-    // from a readable-but-opposed tape, so the rejection log can tell "we couldn't see the tape"
-    // from "the tape said no".
+  // G-1 — tape alignment. DIRECTIONAL ONLY, INDEX ETFs ONLY: a condor has no direction to fight
+  // the tape, and single-name stocks move on their own catalysts (earnings, news, sector rotation)
+  // independently of SPY direction — forcing tape alignment on them kills real opportunities.
+  // Index ETFs (SPY/QQQ/IWM/DIA/SPX etc.) are highly correlated with the SPY tape, so
+  // counter-tape entries on those are genuinely dangerous (7/13 evidence: counter-tape longs
+  // went 0/5 at the stop). Single names bypass G-1 entirely.
+  const isIndexEtfG1 = INDEX_ETF_TICKERS.has(input.ticker.toUpperCase());
+  if (!isCondor && isIndexEtfG1) {
     const biasStale =
       input.biasAsOfMs == null || input.nowMs - input.biasAsOfMs > MARKET_BIAS_MAX_AGE_MS;
     if (input.bias == null || biasStale) {
       blocks.push({
         code: "no_market_bias",
         reason:
-          "Market tape read unavailable or stale — new commits fail closed until the SPY bias is readable again.",
+          "Market tape read unavailable or stale — index ETF commits fail closed until the SPY bias is readable again.",
         threshold: null,
         unlock_et: null,
       });
@@ -372,8 +372,8 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
       blocks.push({
         code: "tape_alignment",
         reason:
-          `${input.direction === "long" ? "Long" : "Short"} setup fights the ${input.bias.toUpperCase()} market tape — ` +
-          "counter-tape 0DTE entries are blocked (7/13 evidence: counter-tape longs went 0/5 at the stop).",
+          `${input.direction === "long" ? "Long" : "Short"} index setup fights the ${input.bias.toUpperCase()} market tape — ` +
+          "counter-tape 0DTE entries on index ETFs are blocked (7/13 evidence: counter-tape longs went 0/5 at the stop).",
         threshold: null,
         unlock_et: null,
       });

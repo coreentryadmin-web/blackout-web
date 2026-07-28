@@ -61,8 +61,8 @@ function losingTimeStop(ticker: string, pnlPct = -30): GovernorLedgerRow {
 // The 2026-07-13 forensics showed a seven-stop day; these caps are the ledger's proven brake. A silent
 // loosening (max concurrent up, session-stop halt up, re-entry lock down) reintroduces the runaway-loss
 // day the record already paid for — so the values are pinned, not just their behavior.
-test("FIREWALL: governor caps are pinned (max 3 concurrent, halt after 3 stops, 20-min re-entry lock)", () => {
-  assert.equal(GOVERNOR_MAX_CONCURRENT_PLANS, 3);
+test("FIREWALL: governor caps are pinned (max 6 concurrent, halt after 3 stops, 20-min re-entry lock)", () => {
+  assert.equal(GOVERNOR_MAX_CONCURRENT_PLANS, 6);
   assert.equal(GOVERNOR_MAX_SESSION_STOPS, 3);
   assert.equal(GOVERNOR_REENTRY_LOCK_MS, 20 * 60 * 1000);
 });
@@ -129,15 +129,18 @@ test("governor: 3 stops halt the session — single dominating block", () => {
   assert.equal(blocks[0]!.threshold, GOVERNOR_MAX_SESSION_STOPS);
 });
 
-test("governor: concurrency cap at 3 open plans (2 passes, 3 blocks)", () => {
-  const two = [
+test("governor: concurrency cap at 6 open plans (5 pass, 6 blocks)", () => {
+  const five = [
     { ticker: "TSLA", direction: "long" as const },
     { ticker: "AMZN", direction: "long" as const },
+    { ticker: "GOOGL", direction: "long" as const },
+    { ticker: "META", direction: "long" as const },
+    { ticker: "MSFT", direction: "long" as const },
   ];
-  const ok = evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, { open_plans: two, stops: [] }, NOW);
+  const ok = evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, { open_plans: five, stops: [] }, NOW);
   assert.deepEqual(ok, []);
-  const three = [...two, { ticker: "GOOGL", direction: "long" as const }];
-  const blocked = evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, { open_plans: three, stops: [] }, NOW);
+  const six = [...five, { ticker: "AAPL", direction: "long" as const }];
+  const blocked = evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, { open_plans: six, stops: [] }, NOW);
   assert.deepEqual(blocked.map((b) => b.code), ["governor_max_concurrent"]);
   assert.equal(blocked[0]!.threshold, GOVERNOR_MAX_CONCURRENT_PLANS);
 });
@@ -448,21 +451,35 @@ test("summarizeGovernorForBoard: no correlated cluster → concentration measure
 // ════════════════════════════════════════════════════════════════════════════════════
 
 // ── concurrency cap: EXACT boundary via mixed open + committedThisCycle ───────────────
-test("governor: cap boundary — 2 live + 1 committed-this-cycle = 3 blocks; 1+1 = 2 commits", () => {
-  const gov = { open_plans: [{ ticker: "TSLA", direction: "short" as const }], stops: [] };
-  // 1 open + 1 committed = 2 (< cap) → no block
+test("governor: cap boundary — 3 live + 3 committed-this-cycle = 6 blocks; 3+2 = 5 commits", () => {
+  const gov = {
+    open_plans: [
+      { ticker: "TSLA", direction: "short" as const },
+      { ticker: "META", direction: "short" as const },
+      { ticker: "MSFT", direction: "short" as const },
+    ],
+    stops: [],
+  };
+  // 3 open + 2 committed = 5 (< cap of 6) → no block
   assert.deepEqual(
-    evaluateZeroDteGovernor({ ticker: "AMD", direction: "short" }, gov, NOW, [{ ticker: "AMZN", direction: "short" }]),
+    evaluateZeroDteGovernor({ ticker: "AMD", direction: "short" }, gov, NOW, [
+      { ticker: "AMZN", direction: "short" },
+      { ticker: "NVDA", direction: "short" },
+    ]),
     []
   );
-  // 1 open + 2 committed = 3 (== cap) → block
-  const at3 = evaluateZeroDteGovernor(
+  // 3 open + 3 committed = 6 (== cap) → block
+  const at6 = evaluateZeroDteGovernor(
     { ticker: "AMD", direction: "short" },
     gov,
     NOW,
-    [{ ticker: "AMZN", direction: "short" }, { ticker: "GOOGL", direction: "short" }]
+    [
+      { ticker: "AMZN", direction: "short" },
+      { ticker: "GOOGL", direction: "short" },
+      { ticker: "NVDA", direction: "short" },
+    ]
   );
-  assert.deepEqual(at3.map((b) => b.code), ["governor_max_concurrent"]);
+  assert.deepEqual(at6.map((b) => b.code), ["governor_max_concurrent"]);
 });
 
 // ── re-entry lock: EXACT boundary (< lock window, not <=) ────────────────────────────

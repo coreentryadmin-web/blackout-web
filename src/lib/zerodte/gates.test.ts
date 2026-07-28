@@ -131,6 +131,27 @@ test("G-1 fail-closed: bias present but its freshness unknown (no bar timestamp)
   assert.equal(v.blocks[0]!.code, "no_market_bias");
 });
 
+// ── G-1 bypass · single-name stocks skip tape alignment entirely ──────────────
+
+test("G-1 bypass: single-name counter-tape long commits (tape alignment is index-ETF only)", () => {
+  const v = evaluateZeroDteGates(input({ ticker: "NVDA", direction: "long" }));
+  assert.equal(v.verdict, "COMMIT", "single-name stock should bypass tape alignment");
+  assert.deepEqual(v.blocks.filter(b => b.code === "tape_alignment" || b.code === "no_market_bias"), []);
+});
+
+test("G-1 bypass: single-name with missing bias commits (no fail-closed for non-index)", () => {
+  const v = evaluateZeroDteGates(input({ ticker: "AAPL", direction: "long", bias: null }));
+  assert.equal(v.verdict, "COMMIT");
+  assert.deepEqual(v.blocks.filter(b => b.code === "no_market_bias"), []);
+});
+
+test("G-1 bypass: single-name with stale bias commits (staleness irrelevant for non-index)", () => {
+  const staleMs = NOW_MS - MARKET_BIAS_MAX_AGE_MS - 1;
+  const v = evaluateZeroDteGates(input({ ticker: "TSLA", direction: "short", biasAsOfMs: staleMs }));
+  assert.equal(v.verdict, "COMMIT");
+  assert.deepEqual(v.blocks.filter(b => b.code === "no_market_bias"), []);
+});
+
 // ── G-2 · opening window (worst first 30 min, unlock 10:00 — user-authorized 2026-07-23) ──
 
 test("G-2: an aligned setup before 10:00 ET is BLOCKED, with the unlock time on the card", () => {
@@ -238,19 +259,32 @@ test("G-5: three stopped plays halt every further commit for the session", () =>
 });
 
 test("G-5: committedThisCycle counts toward the concurrency cap within one scan pass", () => {
-  const governor = { open_plans: [{ ticker: "TSLA", direction: "short" as const }], stops: [] };
+  const governor = {
+    open_plans: [
+      { ticker: "TSLA", direction: "short" as const },
+      { ticker: "META", direction: "long" as const },
+      { ticker: "MSFT", direction: "short" as const },
+    ],
+    stops: [],
+  };
+  // 3 open + 2 committed = 5, under cap of 6 → COMMIT
   assert.equal(
     evaluateZeroDteGates(
-      input({ governor, committedThisCycle: [{ ticker: "AMZN", direction: "short" }] })
+      input({ governor, committedThisCycle: [
+        { ticker: "AMZN", direction: "short" },
+        { ticker: "NVDA", direction: "long" },
+      ] })
     ).verdict,
     "COMMIT"
   );
+  // 3 open + 3 committed = 6, AT cap → BLOCKED
   const v = evaluateZeroDteGates(
     input({
       governor,
       committedThisCycle: [
         { ticker: "AMZN", direction: "short" },
         { ticker: "GOOGL", direction: "short" },
+        { ticker: "NVDA", direction: "long" },
       ],
     })
   );

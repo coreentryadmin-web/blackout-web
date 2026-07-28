@@ -40,10 +40,10 @@ import { PLAN_RULES } from "./plan";
 import type { ZeroDteSetupLogRow } from "@/lib/db";
 import type { ZeroDteGateBlock } from "./gates";
 
-/** Max simultaneously-open plans. Slayer allows 5 entries/session on ONE instrument
- *  with an exit engine; this breadth surface manages every play to a fixed plan, so
- *  the concurrent-exposure cap is tighter. */
-export const GOVERNOR_MAX_CONCURRENT_PLANS = 3;
+/** Max simultaneously-open plans. Scanning 12,000+ stocks should produce 5-10 good
+ *  plays — 3 was too tight for a whole-market board. 6 allows meaningful diversification
+ *  while the per-play stop (-50%) and session loss floor (-120%) still cap total risk. */
+export const GOVERNOR_MAX_CONCURRENT_PLANS = 6;
 /** Stops in a session before the desk stands down for the day (Slayer's own
  *  loss-halt number). 7/13 took 7 stops — this caps that class of day at 3. */
 export const GOVERNOR_MAX_SESSION_STOPS = 3;
