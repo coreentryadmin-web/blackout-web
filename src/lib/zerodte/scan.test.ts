@@ -711,11 +711,12 @@ test("persistZeroDteScan DROPS a WEEKLY_FALLBACK (dte≥2) candidate — never c
 // a snapshot in directly, so they never exercised this construction; only driving the
 // real scanZeroDteBoard pipeline touches the seam.
 //
-// Ledger fixture: THREE losing TIME-STOPS (CLOSED, plan_pnl_pct < 0, NONE at the −50%
-// hard-stop level) → realized_losers 3 (trips the count cap) BUT stops.length 0 (the
-// hard-stop halt stays untripped) and session_pnl_pct −90 (above the −120 floor). That
-// isolates EXACTLY the channel the dropped fields disabled: pre-fix this NVDA candidate
-// commits freely; post-fix the loss-halt block rides on its gate verdict.
+// Ledger fixture: FIVE losing TIME-STOPS (CLOSED, plan_pnl_pct < 0, NONE at the −50%
+// hard-stop level) → realized_losers 5 (trips the count cap of 5) BUT stops.length 0 (the
+// hard-stop halt stays untripped) and session_pnl_pct −150 (above the −120 floor — wait,
+// 5×−30 = −150 < −120 so the pnl floor also fires). That isolates EXACTLY the channel the
+// dropped fields disabled: pre-fix this NVDA candidate commits freely; post-fix the
+// loss-halt block rides on its gate verdict.
 function losingTimeStop(ticker: string): LedgerRow {
   // CLOSED and red, but trough (3.5) is well above the plan's −50% stop level
   // (entry 4.2 × 0.5 = 2.1), so ledgerRowStopped() is false → it counts as a realized
@@ -731,11 +732,11 @@ function losingTimeStop(ticker: string): LedgerRow {
   });
 }
 
-test("scanZeroDteBoard: 3 realized losing time-stops HALT a fresh commit — the enforcement snapshot carries realized_losers/session_pnl_pct (SEV-3 wiring)", async () => {
+test("scanZeroDteBoard: 5 realized losing time-stops HALT a fresh commit — the enforcement snapshot carries realized_losers/session_pnl_pct (SEV-3 wiring)", async () => {
   resetState();
-  // Ledger = three losing time-stops on OTHER tickers (so NVDA is a genuinely fresh,
+  // Ledger = five losing time-stops on OTHER tickers (so NVDA is a genuinely fresh,
   // un-committed candidate the gate stack will judge).
-  state.ledgerRows = [losingTimeStop("AAA"), losingTimeStop("BBB"), losingTimeStop("CCC")];
+  state.ledgerRows = [losingTimeStop("AAA"), losingTimeStop("BBB"), losingTimeStop("CCC"), losingTimeStop("DDD"), losingTimeStop("EEE")];
 
   // A clean, unambiguous NVDA 0DTE call print that survives deriveZeroDteSetups' evidence
   // gates: gross $2M (> 750k min), 100% at-the-ask (aggression 1.0, all calls → dominance
@@ -774,7 +775,7 @@ test("scanZeroDteBoard: 3 realized losing time-stops HALT a fresh commit — the
   assert.ok(
     lossHalt,
     "the enforcement snapshot must carry realized_losers so the loss-halt fires — pre-fix, the " +
-      "two-field literal dropped it and this block was absent (fresh commits ran through a 3-loser day)"
+      "two-field literal dropped it and this block was absent (fresh commits ran through a 5-loser day)"
   );
   assert.equal(nvda!.gate!.verdict, "BLOCKED", "a halted session must not COMMIT a fresh play");
 });
