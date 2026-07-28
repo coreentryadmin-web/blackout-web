@@ -5,6 +5,41 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-28 — [correctness] fundamental_signals omitted from rescoreDossier + rescue play sector missing (PR #1176)
+
+**Severity.** P1 (fundamental_signals) / P3 (rescue sector).
+
+**Finding 1: `fundamental_signals` omitted from `rescoreDossier`.**
+`rescoreDossier` in `hunt-builder.ts:172` built the `dossierExtras` object for `scoreCandidate` but
+omitted `fundamental_signals`. The scorer's `scoreFundamentalTailwind` (scorer.ts:165) has two branches:
+a **signals** path (max ±8 points across revenue_yoy_pct, operating_margin_pct, margin_trend,
+fcf_positive, fcf_trend, net_cash_positive, share_count_trend, eps_trajectory) and a **ratios** path
+(max ±2 from ROE + debt-to-equity). Without signals, every Legacy hunt candidate only ever hit the
+ratios path — zeroing 6 of 8 possible fundamental score points.
+
+**Root cause.** The extras object in `rescoreDossier` listed `fundamental_ratios` but simply forgot
+`fundamental_signals`. The field exists on `TickerDossier` and is populated by `fetchAllDossiers`, so
+the data was available — just not passed through.
+
+**Fix.** Added `fundamental_signals: dossier.fundamental_signals` to the extras object.
+
+**Finding 2: `sector` omitted from `buildRescuePlays`.**
+`buildRescuePlays` in `deterministic-edition.ts:850` built rescue play objects without `sector`. The
+cross-edition governor's per-sector cap couldn't count rescue plays, allowing sector concentration in
+rescue-heavy editions.
+
+**Fix.** Added `sector: scored.sector?.toLowerCase() || undefined`.
+
+**Evidence.** 5 new tests (scorer-direction: 61/61 pass; deterministic-edition: 32/32 pass).
+`scoreCandidate` with `fundamental_signals` scores higher than without. `buildRescuePlays` with
+`sector` on `ScoredCandidate` produces a lowercased `sector` on the play.
+
+**Blast radius.** Only these two call sites affected — the 0DTE pipeline's `scoreCandidate` in
+`dossier.ts` already passes `fundamental_signals`, and the main `buildDeterministicEditionPlays`
+already sets `sector`.
+
+**Status.** FIXED — PR #1176.
+
 ## 2026-07-28 — [correctness] Governor demotion undone by builder merge-sort + no R:R minimum gate (branch `fix/governor-sort-override`)
 
 **Severity.** Medium (edition quality — governor-demoted plays could re-promote to the top 5; plays with terrible R:R could publish).
