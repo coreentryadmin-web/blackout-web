@@ -5,6 +5,20 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-28 — [Thermal] Discord triple-desk PNG cron (15m RTH)
+
+**Severity.** P2 product enhancement.
+
+**Ask.** Auto-post SPY|SPX|QQQ Thermal layout to a designated Discord channel every 15 minutes.
+
+**Approach.** Server-rendered PNG from shared `fetchGexHeatmap` cache (sharp SVG→PNG) + Discord
+multipart webhook — no Chromium on ECS. Route `/api/cron/thermal-discord`, catalog
+`railway.thermal-discord.toml` (`*/15 11-21 * * 1-5`), inert without `DISCORD_THERMAL_WEBHOOK_URL`,
+skips outside cash RTH unless `?force=1`.
+
+**Status.** Draft PR `cursor/thermal-discord-desk-3d11`. Webhook stored in Secrets Manager only
+(never committed). EventBridge rule must exist after sync.
+
 ## 2026-07-28 — [0DTE-funnel] CTO pass-3: still had bugs on the branch (1DTE commit + PIN rank)
 
 **Severity.** P0 honesty / P1 recall — user challenge: line was **not** clean after pass-2.

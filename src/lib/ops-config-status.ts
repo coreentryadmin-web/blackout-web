@@ -6,6 +6,8 @@ export type OpsConfigStatus = {
   ai_spend_alert_usd: number;
   discord_ops_webhook: boolean;
   discord_play_webhook: boolean;
+  /** Thermal triple-desk PNG cron (`DISCORD_THERMAL_WEBHOOK_URL`). */
+  discord_thermal_webhook: boolean;
   pg_pool_max: number;
   database_via_pooler: boolean;
   pg_pooler_hint: string;
@@ -49,6 +51,7 @@ export function buildOpsConfigStatus(): OpsConfigStatus {
     ai_spend_alert_usd: aiSpendAlertThresholdUsd(),
     discord_ops_webhook: Boolean(process.env.DISCORD_OPS_WEBHOOK_URL?.trim()),
     discord_play_webhook: Boolean(process.env.DISCORD_PLAY_WEBHOOK_URL?.trim()),
+    discord_thermal_webhook: Boolean(process.env.DISCORD_THERMAL_WEBHOOK_URL?.trim()),
     pg_pool_max: Number.isFinite(pgMax) && pgMax > 0 ? pgMax : 5,
     database_via_pooler: pool.viaPooler,
     pg_pooler_hint: pool.hint,
