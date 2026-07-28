@@ -220,15 +220,13 @@ export function PlayTerminal({ play }: { play: TerminalPlay | null }) {
         </div>
       )}
 
-      {play.horizon !== "LEGACY" && (
-        <div className="nh-deck-greeks">
-          <GreekCell k="delta" v={g?.delta ?? null} />
-          <GreekCell k="gamma" v={g?.gamma ?? null} />
-          <GreekCell k="theta" v={g?.theta ?? null} />
-          <GreekCell k="vega" v={g?.vega ?? null} />
-          <GreekCell k="iv" v={g?.iv ?? null} />
-        </div>
-      )}
+      <div className="nh-deck-greeks">
+        <GreekCell k="delta" v={g?.delta ?? null} />
+        <GreekCell k="gamma" v={g?.gamma ?? null} />
+        <GreekCell k="theta" v={g?.theta ?? null} />
+        <GreekCell k="vega" v={g?.vega ?? null} />
+        <GreekCell k="iv" v={g?.iv ?? null} />
+      </div>
 
       <div className="nh-deck-tabs">
         <button className={clsx(tab === "thesis" && "on")} onClick={() => setTab("thesis")}><span className="n">[1]</span>Thesis</button>
