@@ -1721,6 +1721,10 @@ body::before {
   .nav-auth { @apply flex items-center gap-3 justify-self-end min-w-0; }
   .nav-signin { font-weight: 500; font-size: 14px; color: rgba(255, 255, 255, 0.8); @apply no-underline; transition: color 0.15s ease; }
   .nav-signin:hover { color: #fff; }
+  @keyframes nav-breathe {
+    0%, 100% { box-shadow: 0 0 24px -6px rgba(0, 230, 118, 0.5); }
+    50% { box-shadow: 0 0 30px -4px rgba(0, 230, 118, 0.62); }
+  }
   .nav-join {
     @apply relative inline-flex items-center gap-1 rounded-full px-5 py-2 overflow-hidden no-underline;
     font-weight: 700;
@@ -1728,9 +1732,11 @@ body::before {
     background: #00e676;
     color: #040407;
     box-shadow: 0 0 24px -6px rgba(0, 230, 118, 0.5);
-    transition: filter 0.2s ease, box-shadow 0.2s ease, transform 0.1s ease;
+    animation: nav-breathe 3.8s ease-in-out infinite;
+    animation-delay: -1.8s;
+    transition: filter 200ms ease-out, box-shadow 200ms ease-out, transform 200ms ease-out;
   }
-  .nav-join:hover { filter: brightness(1.06); box-shadow: 0 0 28px -4px rgba(0, 230, 118, 0.7); }
+  .nav-join:hover { animation: none; filter: brightness(1.06); box-shadow: 0 0 32px -2px rgba(0, 230, 118, 0.72); transform: translateY(-2px); }
   .nav-join:active { transform: scale(0.95); }
 
   /* MOBILE — drawer */
