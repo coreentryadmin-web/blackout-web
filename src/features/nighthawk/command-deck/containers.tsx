@@ -180,7 +180,7 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
               ? "border-red-400/60 bg-red-500/15 text-red-200"
               : isStale || isCarry
                 ? "border-amber-400/60 bg-amber-500/15 text-amber-200"
-                : "border-zinc-400/40 bg-zinc-500/10 text-zinc-300"
+                : "border-sky-400/30 bg-sky-500/10 text-sky-200"
           }`}
         >
           <span aria-hidden>{hasFetchError || isDegraded ? "!" : isStale || isCarry ? "~" : "i"}</span>
@@ -188,9 +188,9 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
         </div>
       )}
       {edition?.recap_headline && (
-        <div className="mb-3 rounded-lg border border-zinc-700/50 bg-zinc-800/40 px-3 py-2">
-          <div className="text-xs font-bold uppercase tracking-wide text-zinc-300">{edition.recap_headline}</div>
-          {edition.recap_summary && <div className="mt-1 text-xs leading-relaxed text-zinc-400">{edition.recap_summary}</div>}
+        <div className="mb-3 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+          <div className="text-xs font-bold uppercase tracking-wide text-white/80">{edition.recap_headline}</div>
+          {edition.recap_summary && <div className="mt-1 text-xs leading-relaxed text-[#9fb4d4]/70">{edition.recap_summary}</div>}
         </div>
       )}
       <CommandDeck
