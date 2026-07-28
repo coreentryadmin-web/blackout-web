@@ -741,7 +741,7 @@ test("lifecycle: OPEN while enterable, HOLD past cutoff or above the band", () =
   const base = { entryPremium: 4.2, peak: 4.2, trough: 4.2 };
   const open = derivePlayStatus({ ...base, mark: 4.1, nowEtMinutes: 11 * 60 });
   assert.equal(open.status, "OPEN");
-  // Same mark after the 14:00 ET cutoff → no longer enterable.
+  // Same mark after the 15:00 ET cutoff → no longer enterable.
   const held = derivePlayStatus({ ...base, mark: 4.1, nowEtMinutes: NEW_PLAY_CUTOFF_ET_MINUTES + 5 });
   assert.equal(held.status, "HOLD");
   // Mark well above the entry band intraday → HOLD (manage, don't add).

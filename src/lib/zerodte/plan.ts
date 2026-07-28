@@ -636,12 +636,10 @@ export function reconstructTrimScaleExecutableFromBars(
 // the premium bounces). 0DTE discipline: no new plays after the entry cutoff,
 // everything closes by the time stop — nothing is ever carried overnight.
 
-/** No NEW plays after 14:00 ET; existing plays are managed to exit by the time stop.
- *  Evidence (90-day prod record): 14:00-15:30 ran 14.3% WR / −19% avg premium — with
- *  <1.5 hours of theta left, long-premium entries face accelerating decay. Gate G-14
- *  is the primary defense (directional only, condor-exempt); this persist-layer cutoff
- *  is the backstop. Moved from 15:00 → 14:00 ET on 2026-07-28. */
-export const NEW_PLAY_CUTOFF_ET_MINUTES = 14 * 60;
+/** No NEW plays after 15:00 ET; existing plays are managed to exit by the time stop.
+ *  Gate G-14 is the primary defense (directional only, condor-exempt); this persist-layer
+ *  cutoff is the backstop. */
+export const NEW_PLAY_CUTOFF_ET_MINUTES = 15 * 60;
 
 export type PlayStatus = "OPEN" | "HOLD" | "TRIM" | "CLOSED";
 

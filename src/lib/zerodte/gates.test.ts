@@ -165,23 +165,23 @@ test("G-1 + G-2: a counter-tape long at 09:40 collects BOTH blocks (all reasons 
   );
 });
 
-// ── G-14 · late-afternoon block (14:00-15:30 = 14.3% WR / −19% avg premium) ───────
+// ── G-14 · late-afternoon block (last 30 min before hard exit) ────────────────────
 
-test("G-14: directional setup at 14:00 ET is BLOCKED", () => {
-  const v = evaluateZeroDteGates(input({ nowEtMinutes: 14 * 60 }));
+test("G-14: directional setup at 15:00 ET is BLOCKED", () => {
+  const v = evaluateZeroDteGates(input({ nowEtMinutes: 15 * 60 }));
   assert.equal(v.verdict, "BLOCKED");
   assert.equal(v.blocks.length, 1);
   assert.equal(v.blocks[0]!.code, "late_afternoon");
-  assert.equal(v.blocks[0]!.threshold, 14 * 60);
+  assert.equal(v.blocks[0]!.threshold, 15 * 60);
 });
 
-test("G-14: 13:59 commits — boundary is exclusive (last minute before the block)", () => {
-  assert.equal(evaluateZeroDteGates(input({ nowEtMinutes: 13 * 60 + 59 })).verdict, "COMMIT");
+test("G-14: 14:59 commits — boundary is exclusive (last minute before the block)", () => {
+  assert.equal(evaluateZeroDteGates(input({ nowEtMinutes: 14 * 60 + 59 })).verdict, "COMMIT");
 });
 
-test("G-14: condor at 14:30 is NOT blocked (condors benefit from late-session theta)", () => {
+test("G-14: condor at 15:15 is NOT blocked (condors benefit from late-session theta)", () => {
   const v = evaluateZeroDteGates(input({
-    nowEtMinutes: 14 * 60 + 30,
+    nowEtMinutes: 15 * 60 + 15,
     play_type: "CONDOR",
     direction: "short",
     condorPlan: {

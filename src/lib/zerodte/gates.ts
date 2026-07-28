@@ -84,8 +84,8 @@ export const OPENING_WINDOW_UNLOCK_LABEL = "10:00 ET";
 // 15:00 cutoff only blocked the last hour; pulling it to 14:00 ET removes the entire
 // losing-by-evidence bucket. CONDOR-EXEMPT: an iron condor WANTS late-session theta
 // crush (credit seller); the late window is only destructive for long-premium entries.
-export const LATE_AFTERNOON_BLOCK_ET_MINUTES = 14 * 60;
-export const LATE_AFTERNOON_BLOCK_LABEL = "14:00 ET";
+export const LATE_AFTERNOON_BLOCK_ET_MINUTES = 15 * 60;
+export const LATE_AFTERNOON_BLOCK_LABEL = "15:00 ET";
 
 // ── G-12 · Confluence floor — HARD GATE (Phase 1, 2026-07-24) ─────────────────────
 // Evidence (E3, 25 sessions, docs/audit/0DTE-RESEARCH.md): expectancy ladders with the number of
