@@ -5,6 +5,62 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-28 — [Thermal] Triple desk SPY|SPX|QQQ (dense matrices)
+
+**Severity.** P1 product enhancement (desk density + compare UX).
+
+**Ask.** Tighten expiry spacing so three live matrices (SPY / SPX / QQQ) sit side-by-side.
+
+**Shipped on `cursor/thermal-deep-audit-3d11`.**
+1. **`ThermalTripleDesk`** — three cache-reader columns (`/api/market/gex-heatmap`), 5s poll,
+   per-column FreshnessChip + walls + active glow. Keys `1/2/3` focus; `G/V/D/C` switch lens.
+2. **`ThermalCompactMatrix`** — near-term expiry cap (8) + ±14 strike band around spot;
+   ultra-narrow expiry cols (~1.85rem) + dense money labels (`fmtCompactHeatMoney`).
+3. **Pins + CSV** — strike pins in `localStorage`; per-column CSV export of the full chain.
+4. **Compare toggle** now mounts the triple desk on the Matrix tab (default ON; `?compare=0` off).
+   Single-ticker full matrix remains when Compare is off / Profile tab.
+
+**Status.** PR #1200 (merging).
+
+## 2026-07-28 — [Thermal] SPY/SPX/QQQ compare + per-layer freshness + deep-links
+
+**Severity.** P1 product enhancement (honesty + desk speed).
+
+**Shipped on `cursor/thermal-deep-audit-3d11`.**
+1. **Compare strip** — live SPY / SPX / QQQ cards (spot, call/put wall, flip) on the shared
+   5s heatmap cache-reader; click selects ticker. Toggle via control-row **Compare** (`?compare=0` off).
+   Superseded as the Matrix hero by the triple desk (strip component retained).
+2. **Per-layer FreshnessChip bar** — Matrix / Overlays / UW check ages + near-term wall-scope chip
+   (never one fake LIVE for 5s + 30s + 60s layers).
+3. **Deep-links** — `?ticker=SPX&lens=vex&compare=1` syncs URL ↔ desk.
+4. **Honest flip empty** — undetermined flip help via `honestLevelEmpty("flip")`.
+
+**Status.** PR #1200 (merging).
+
+## 2026-07-28 — [Thermal] Deep audit: WS wall override still unscoped + stale 20s freshness copy
+
+**Severity.** P1 correctness (RTH) + P2 UX honesty.
+
+**Live probe (~22:19 UTC / 18:19 ET, admin).** SPY/SPX/QQQ/NVDA/IWM matrices `available:true`,
+2835+ nonzero GEX cells on SPX, walls match positioning (WS idle after hours so unscoped bug
+latent). SPX/SPY/QQQ `gex.flip=null` with honest “undetermined” regime read. `cross_validation=null`
+(expected off-hours: scoped REST fallback skipped). Shift `available:false`/`collecting` (off-RTH
+gate working). Page `/heatmap` 200, no Sign-In chrome for authed admin.
+
+**Root causes fixed.**
+1. **`/api/market/gex-heatmap` WS wall override unscoped** — `getGexStrikeExpiryLadder(ticker)` with
+   no `nearTermExpiries` while `cross_validation` + `getGexPositioning` were already scoped
+   (FINDINGS 2026-07-24). Thermal could paint far-OpEx walls next to near-term flip in RTH.
+   Fix: resolve near-term once; pass to wall override + oracle.
+2. **Stale “20s” freshness UX** — poll/TTL are 5s; `MATRIX_STALE_MS` was 40s with “20s window”
+   copy. Fix: 15s amber threshold + 5s copy.
+
+**Still open (adjacent, not this PR).**
+- `spx-desk.ts` still has unscoped `getGexStrikeExpiryLadder("SPX")` on sticky fallback paths
+- FreshnessChip institutional pattern unused (custom MatrixFreshness OK)
+- Cold-cache latency under burst (WATCH)
+
+**Status.** Fixed on `cursor/thermal-deep-audit-3d11`.
 ## 2026-07-28 — [Thermal] Discord triple-desk PNG cron (15m RTH)
 
 **Severity.** P2 product enhancement.

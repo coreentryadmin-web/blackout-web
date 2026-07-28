@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import { clsx } from "clsx";
 import {
@@ -16,6 +17,14 @@ import {
   TabPanel,
 } from "@/components/ui";
 import { AnchorGlyph, PanelLabel } from "@/features/thermal/lib/gex-heatmap/primitives";
+import { ThermalFreshnessBar } from "@/features/thermal/components/ThermalFreshnessBar";
+import ThermalTripleDesk from "@/features/thermal/components/ThermalTripleDesk";
+import {
+  buildThermalUrlSearch,
+  honestLevelEmpty,
+  parseThermalUrlState,
+  type ThermalLens,
+} from "@/features/thermal/lib/thermal-desk-state";
 import { GEX_KING_COMPACT_LABEL, GEX_KING_DUAL_LABEL, GEX_KING_NODE_HELP, gexKingDualLabel } from "@/lib/gex-king-node-labels";
 import { shiftPercentForStrike } from "@/features/thermal/lib/gex-heatmap/shift-math";
 import { createPulseEventSource, type PulseStreamSnapshot } from "@/lib/api";
@@ -224,6 +233,8 @@ type GexHeatmapResponse = {
     sessions: number;
   };
   overlays?: Overlays;
+  /** Near-term expiry set that feeds walls/flip — authoritative for wall-scope chip. */
+  near_term_expiries?: string[];
   /** Overlay sample time (#9) — the dark-pool / flow-by-strike overlays ride a separate ~30s
    *  cache (dark-pool source under it up to ~2min), so they can be staler than the matrix.
    *  Surfaced so the overlay legend can show its own "as of …" instead of implying matrix
@@ -1058,7 +1069,7 @@ function ExposureProfile({
         </span>
         <span
           className="text-sky-300"
-          title={spot > 0 ? "Profile reflects the 20s snapshot; the header price updates live." : undefined}
+          title={spot > 0 ? "Profile reflects the 5s matrix snapshot; the header price updates live." : undefined}
         >
           {spot > 0 ? `spot ${fmtStrike(spot)}` : `net dealer ${v.noun.toLowerCase()}`}
         </span>
@@ -1890,9 +1901,10 @@ function fmtAsofSeconds(iso: string | undefined): string | null {
   });
 }
 
-/** The matrix is on a 20s cache; tint the freshness chip amber once the sample is older than
- *  ~2× that window so a sitting-stale grid (e.g. an off-warm-preset ticker) is visibly flagged. */
-const MATRIX_STALE_MS = 40_000;
+/** Matrix poll + server TTL are 5s; tint amber once the sample is older than ~3× that window
+ *  so a sitting-stale grid (e.g. an off-warm-preset ticker) is visibly flagged. Was 40s/“20s”
+ *  copy after the TTL dropped to 5s (FINDINGS 2026-07-28 Thermal audit). */
+const MATRIX_STALE_MS = 15_000;
 
 /** Always-visible "as of HH:MM:SS ET" freshness anchor for the matrix header. Renders null when
  *  there is no usable timestamp so it never fabricates freshness. */
@@ -1907,7 +1919,7 @@ function MatrixFreshness({ asof }: { asof: string | undefined }) {
         "flex items-center gap-1.5 tabular-nums normal-case",
         stale ? "text-gold/90" : "text-sky-300/75"
       )}
-      title={stale ? "Matrix sample is older than its 20s refresh window" : "Matrix sample time"}
+      title={stale ? "Matrix sample is older than its 5s refresh window" : "Matrix sample time"}
     >
       <span aria-hidden>{stale ? "◷" : "●"}</span>
       <span>as of {label} ET</span>
@@ -2524,8 +2536,19 @@ export function GexHeatmap({
   ticker?: string;
   nativeShell?: boolean;
 }) {
-  const [ticker, setTicker] = useState(initialTicker.toUpperCase());
-  const [lens, setLens] = useState<Lens>("gex");
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const urlBoot = useMemo(() => parseThermalUrlState(new URLSearchParams(searchParams.toString())), []);
+  const [ticker, setTicker] = useState(
+    () => urlBoot.ticker ?? initialTicker.toUpperCase()
+  );
+  const [lens, setLens] = useState<Lens>(() => (urlBoot.lens as Lens) ?? "gex");
+  // SPY/SPX/QQQ compare strip — default ON (product ask). URL `compare=0` turns it off.
+  const [compare, setCompare] = useState(
+    () => (searchParams.get("compare") === "0" ? false : true)
+  );
+  const urlSyncedRef = useRef(false);
   // View selection ("pair-a" = Matrix (full width); "pair-b" = Profile + Curve + Shift).
   // Lifted to a controlled state (UI refactor) so the view TabList can live on the
   // top control row while its TabPanels render in the body — both share this value.
@@ -2543,6 +2566,22 @@ export function GexHeatmap({
   const [expiryScope, setExpiryScope] = useState<string>("all");
   const matrixPollMs = usePollIntervalMs(5_000, 5_000);
   const quotePollMs = usePollIntervalMs(5_000, 5_000);
+
+  // Deep-link: keep ?ticker=&lens=&compare= in sync so desks can share the exact view.
+  useEffect(() => {
+    if (!urlSyncedRef.current) {
+      urlSyncedRef.current = true;
+      // First paint may already match URL from boot state — still write once for normalize.
+    }
+    const qs = buildThermalUrlSearch(new URLSearchParams(searchParams.toString()), {
+      ticker,
+      lens: lens as ThermalLens,
+      compare,
+    });
+    const next = qs ? `${pathname}?${qs}` : pathname;
+    const cur = searchParams.toString() ? `${pathname}?${searchParams.toString()}` : pathname;
+    if (next !== cur) router.replace(next, { scroll: false });
+  }, [ticker, lens, compare, pathname, router, searchParams]);
 
   // Fast-move bypass: when the live quote diverges from the cached matrix snapshot spot
   // by >0.5%, we append `&force=1` to the matrix key for ONE refetch (then clear it) so
@@ -3216,10 +3255,10 @@ export function GexHeatmap({
         {
           key: "flip",
           label: "Gamma Flip",
-          value: flip != null ? fmtStrike(flip) : "—",
+          value: flip != null ? fmtStrike(flip) : honestLevelEmpty("flip").value,
           tone: "flip",
           active: flip != null,
-          help: METRIC_HELP.gammaFlip,
+          help: flip != null ? METRIC_HELP.gammaFlip : honestLevelEmpty("flip").help,
           delta: gexTileDeltas?.flip ?? null,
         },
         {
@@ -3754,18 +3793,14 @@ export function GexHeatmap({
     </div>
   );
 
+  const hasOverlaysPainted =
+    (hasFlowOverlay && showFlow) || (hasDarkPoolOverlay && showDarkPool);
+  const crossValPresent = data?.cross_validation != null && !stale;
+
   return (
     <Panel accent={panelAccent} className={clsx("overflow-visible gex-heatmap-panel", nativeShell && "gex-heatmap-panel-native")}>
       {/* ── ONE compact control row (UI refactor) ──────────────────────────────
-          [🔍 ticker + spot]  [ Profile+Matrix | Curve+Shift ]  …spacer…  [live · GEX VEX DEX CHARM]
-          The old full-width ticker-chip row, the big central spot readout, and the
-          separate lens box are gone — collapsed into this single row. The view tabs
-          (Profile+Matrix | Curve+Shift) ride here too via a controlled mirror of the
-          body's TabPanels (`pairView`); they only show once a real block is in hand.
-          The redundant secondary header band (eyebrow + "<TICKER> GEX Positioning"
-          title) was removed — the HEATMAPS hero + ticker selector already name the
-          page. The freshness indicator that lived on that header's actions slot is
-          preserved as the minimal Live/Quote-only dot at the far right of this row.
+          [🔍 ticker + spot]  [ Profile+Matrix | Curve+Shift ]  …spacer…  [compare · GEX VEX DEX CHARM]
           Wraps gracefully on narrow widths (flex-wrap). */}
       <div className="relative z-[40] mb-3 flex flex-wrap items-center gap-x-4 gap-y-3 overflow-visible rounded-xl border border-white/10 bg-[rgba(8,9,14,0.45)] px-3 py-2.5 backdrop-blur gex-heatmap-control-row">
         {/* Compact searchable ticker + the ONE kept clean spot reference. */}
@@ -3795,11 +3830,6 @@ export function GexHeatmap({
         {/* Spacer pushes the freshness dot + lens toggles to the far right of the row. */}
         <span className="ml-auto" aria-hidden />
 
-        {/* Freshness indicator — the single minimal data-freshness signal kept after the
-            redundant secondary header (which carried the old Live/Quote-only badge) was
-            removed. A pulsing green dot = a fresh current-ticker chain; sky = spot-only
-            (chain empty); bear = offline. The fast-move flash rides here too — it fires
-            when a >0.5% spot divergence forces an immediate matrix recompute. */}
         <span className="flex items-center gap-2">
           {fastFlash && (
             <span
@@ -3810,14 +3840,36 @@ export function GexHeatmap({
               <span aria-hidden>⚡</span> fast-move refresh
             </span>
           )}
+          {!nativeShell && (
+            <button
+              type="button"
+              aria-pressed={compare}
+              onClick={() => {
+                setCompare((v) => {
+                  const next = !v;
+                  if (next) setPairView("pair-a");
+                  return next;
+                });
+              }}
+              className={clsx(
+                "rounded-full border px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] transition-colors",
+                compare
+                  ? "border-cyan-400/40 bg-cyan-400/10 text-cyan-400"
+                  : "border-white/15 text-sky-300/80 hover:text-white"
+              )}
+              title="Toggle SPY | SPX | QQQ triple desk"
+            >
+              Compare
+            </button>
+          )}
           {live ? (
             <Badge tone="bull" dot>
-              Live
+              Quote live
             </Badge>
           ) : quoteOnly ? (
             <Badge tone="sky">Quote only</Badge>
           ) : (
-            <Badge tone="neutral">Offline</Badge>
+            <Badge tone="sky">Offline</Badge>
           )}
         </span>
 
@@ -3862,6 +3914,20 @@ export function GexHeatmap({
           </TabList>
         </Tabs>
       </div>
+
+      {/* Per-layer freshness (matrix 5s / overlays ~30s / UW check) + near-term wall scope. */}
+      {!empty && (
+        <ThermalFreshnessBar
+          className="mb-3"
+          matrixAsof={stale ? null : data?.asof}
+          overlaysAt={stale ? null : data?.overlays_at}
+          hasOverlays={hasOverlaysPainted}
+          crossValUwAsof={stale ? null : data?.cross_validation?.uw_asof}
+          crossValPresent={crossValPresent}
+          nearTermExpiries={stale ? null : data?.near_term_expiries}
+          matrixLoading={isLoading && !data}
+        />
+      )}
 
       {/* Key levels sit tight under the control row — matrix is the hero below. */}
       {showViewTabs && (
@@ -3917,10 +3983,28 @@ export function GexHeatmap({
         </div>
       )}
 
-      {/* Skeleton on first load AND while stale — during a ticker switch the previous
-          ticker's payload is still in hand (keepPreviousData); showing the skeleton
-          stops the old matrix rendering under the new title. (Rank 10) */}
-      {(isLoading && !data) || stale ? (
+      {/* Compare ON + Matrix tab → SPY | SPX | QQQ triple desk (each column self-fetches).
+          Bypasses the focused-ticker skeleton/empty gate so one quiet name never blanks the desk. */}
+      {compare && !nativeShell && pairView === "pair-a" ? (
+        <div className="mt-1">
+          {data && !stale && !empty ? <AlertsStrip events={events} /> : null}
+          <ThermalTripleDesk
+            lens={lens}
+            activeTicker={ticker}
+            onFocusTicker={setTicker}
+            onLensChange={(l) => setLens(l as Lens)}
+          />
+          <p className="mt-4 border-t border-white/8 pt-3 text-[10px] leading-snug text-sky-300/75 gex-heatmap-methodology">
+            <span aria-hidden className="mr-1 text-sky-300/70">ⓘ</span>
+            Triple desk shows near-term expiries + a tight strike band around each spot so
+            SPY, SPX, and QQQ fit side-by-side. Keys 1/2/3 focus a column; G/V/D/C switch lens.
+            Pin strikes to watch; CSV exports the full chain for that name.
+          </p>
+        </div>
+      ) : (isLoading && !data) || stale ? (
+        /* Skeleton on first load AND while stale — during a ticker switch the previous
+           ticker's payload is still in hand (keepPreviousData); showing the skeleton
+           stops the old matrix rendering under the new title. (Rank 10) */
         <div className="space-y-5" aria-hidden>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
             {Array.from({ length: 5 }).map((_, i) => (
@@ -3963,7 +4047,7 @@ export function GexHeatmap({
       ) : (
         <>
           {/* ── Positioning alerts (Rank 4c) — server-computed events riding on the polled
-              20s matrix payload (ZERO extra fetch). Dismissible, reduced-motion safe;
+              matrix payload (ZERO extra fetch). Dismissible, reduced-motion safe;
               renders nothing when empty/absent. Sits above the regime header. ── */}
           <AlertsStrip events={events} />
 
