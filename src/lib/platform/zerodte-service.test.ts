@@ -199,7 +199,7 @@ test("livePnlPct: board ledger and Largo plays use identical rounding", async ()
   assert.ok(board.governor, "payload carries the governor summary");
   assert.deepEqual(board.governor!.open_plans, [{ ticker: "NVDA", direction: "long" }]);
   assert.equal(board.governor!.halted, false);
-  assert.equal(board.governor!.max_concurrent, 3);
+  assert.equal(board.governor!.max_concurrent, 6);
   assert.equal(board.governor!.max_session_stops, 3);
 });
 

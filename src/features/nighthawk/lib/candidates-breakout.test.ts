@@ -24,7 +24,7 @@ test("keeps a clean breakout: +10% gain, closed strong, 5M vol", () => {
 test("rejects thin volume, weak gain, weak close, and out-of-band price", () => {
   const rows = [
     bar("THIN", { v: BREAKOUT_MIN_VOLUME - 1 }), // volume too low
-    bar("FLAT", { o: 100, c: 101 }), // gain 1% < 5%
+    bar("FLAT", { o: 100, c: 101 }), // gain 1% < 3%
     bar("FADE", { o: 100, c: 110, h: 130, l: 98 }), // closed weak: (110-98)/(130-98)=0.375 < 0.5
     bar("CHEAP", { o: 3, c: 3.3, h: 3.4, l: 2.9 }), // price < $5
     bar("PRICEY", { o: 500, c: 560, h: 565, l: 495 }), // price > $400
@@ -50,7 +50,8 @@ test("ranks by $-volume and caps at maxKeep", () => {
 });
 
 test("exactly-at-threshold gain passes (>= boundary)", () => {
-  const [m] = screenBreakoutMovers([bar("EDGE", { o: 100, c: 100 * (1 + BREAKOUT_MIN_GAIN), h: 110, l: 99 })]);
+  const atGain = 100 * (1 + BREAKOUT_MIN_GAIN); // close at exactly the min-gain threshold
+  const [m] = screenBreakoutMovers([bar("EDGE", { o: 100, c: atGain, h: atGain + 1, l: 99 })]);
   assert.ok(m, "a gain exactly at the floor is kept");
 });
 
