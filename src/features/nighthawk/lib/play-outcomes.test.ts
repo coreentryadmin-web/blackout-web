@@ -138,6 +138,102 @@ test("SHORT that gapped ABOVE its entry band and never returned grades 'unfilled
   assert.equal(resolveOutcome(row).outcome, "unfilled");
 });
 
+// ── both-hit tiebreaker (audit 2026-07-28: "ambiguous" was systematically
+// deflating the win rate for the common overnight-gap case where the open sits
+// between target and stop but the session later touches both) ──────────────
+
+test("both target and stop hit, open closer to TARGET: grades 'target' instead of 'ambiguous'", () => {
+  const row = {
+    direction: "LONG",
+    entry_range_low: 198,
+    entry_range_high: 202,
+    target: 215,
+    stop: 190,
+    next_day_open: 205, // |205-215|=10 vs |205-190|=15 → closer to target
+    next_day_close: 212,
+    session_high: 220, // hits target
+    session_low: 185, // also hits stop
+  } as NighthawkPlayOutcomeRow;
+
+  const outcome = resolveOutcome(row);
+  assert.equal(outcome.hit_target, true);
+  assert.equal(outcome.hit_stop, true);
+  assert.equal(outcome.outcome, "target");
+});
+
+test("both target and stop hit, open closer to STOP: grades 'stop' instead of 'ambiguous'", () => {
+  const row = {
+    direction: "LONG",
+    entry_range_low: 198,
+    entry_range_high: 202,
+    target: 215,
+    stop: 190,
+    next_day_open: 195, // |195-215|=20 vs |195-190|=5 → closer to stop
+    next_day_close: 192,
+    session_high: 220,
+    session_low: 185,
+  } as NighthawkPlayOutcomeRow;
+
+  const outcome = resolveOutcome(row);
+  assert.equal(outcome.hit_target, true);
+  assert.equal(outcome.hit_stop, true);
+  assert.equal(outcome.outcome, "stop");
+});
+
+test("both target and stop hit, open EQUIDISTANT: defaults to 'stop' (conservative tie-break)", () => {
+  const row = {
+    direction: "LONG",
+    entry_range_low: 198,
+    entry_range_high: 202,
+    target: 215,
+    stop: 190,
+    next_day_open: 202.5, // |202.5-215|=12.5 == |202.5-190|=12.5 → tie
+    next_day_close: 200,
+    session_high: 220,
+    session_low: 185,
+  } as NighthawkPlayOutcomeRow;
+
+  assert.equal(resolveOutcome(row).outcome, "stop");
+});
+
+test("both target and stop hit but open is missing: still grades 'ambiguous' (no distance to compute)", () => {
+  const row = {
+    direction: "LONG",
+    entry_range_low: 198,
+    entry_range_high: 202,
+    target: 215,
+    stop: 190,
+    next_day_open: null,
+    next_day_close: 200,
+    session_high: 220,
+    session_low: 185,
+  } as NighthawkPlayOutcomeRow;
+
+  const outcome = resolveOutcome(row);
+  assert.equal(outcome.hit_target, true);
+  assert.equal(outcome.hit_stop, true);
+  assert.equal(outcome.outcome, "ambiguous");
+});
+
+test("both hit (mirror, SHORT), open closer to TARGET: grades 'target'", () => {
+  const row = {
+    direction: "SHORT",
+    entry_range_low: 198,
+    entry_range_high: 202,
+    target: 185,
+    stop: 210,
+    next_day_open: 190, // |190-185|=5 vs |190-210|=20 → closer to target
+    next_day_close: 187,
+    session_high: 212, // hits stop
+    session_low: 180, // hits target
+  } as NighthawkPlayOutcomeRow;
+
+  const outcome = resolveOutcome(row);
+  assert.equal(outcome.hit_target, true);
+  assert.equal(outcome.hit_stop, true);
+  assert.equal(outcome.outcome, "target");
+});
+
 test("rows without an entry band skip the fillability gate", () => {
   const row = {
     direction: "LONG",
