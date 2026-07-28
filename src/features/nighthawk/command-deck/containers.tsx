@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import { CommandDeck } from "./CommandDeck";
 import {
@@ -117,7 +117,7 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
   }
 
   const rawPlays = (edition?.plays ?? []).slice(0, EDITION_TARGET_PLAYS);
-  const basePlays: TerminalPlay[] = rawPlays.map((p, i) => {
+  const basePlays = useMemo<TerminalPlay[]>(() => rawPlays.map((p, i) => {
     const tk = p.ticker?.toUpperCase();
     const confirm = confirmByTicker.get(tk);
     return terminalPlayFromEdition({
@@ -151,7 +151,7 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
       morning_status: confirm?.status as "CONFIRMED" | "DEGRADED" | "INVALIDATED" | "UNVERIFIED" | undefined ?? null,
       morning_reason: confirm?.reason ?? null,
     });
-  });
+  }), [rawPlays, confirmByTicker]);
 
   // Per-conviction scorecard: fetch the track record once (long refresh) and overlay
   // the conviction-level win rate onto each play so the scorecard badge lights up.
@@ -168,16 +168,16 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
       }
     }
   }
-  const playsWithScorecard: TerminalPlay[] = basePlays.map((p) => {
+  const playsWithScorecard = useMemo<TerminalPlay[]>(() => basePlays.map((p) => {
     if (p.scorecard) return p;
     const conv = p.tierLabel?.toUpperCase();
     const sc = conv ? convictionScorecard.get(conv) : null;
     return sc ? { ...p, scorecard: sc } : p;
-  });
+  }), [basePlays, convictionScorecard]);
 
   // Live stock quotes — polls /api/market/quote for each Legacy ticker so the deck shows
   // real-time stock-level progress toward target/stop (the "dynamic trade management" overlay).
-  const tickers = rawPlays.map((p) => p.ticker?.toUpperCase()).filter(Boolean);
+  const tickers = useMemo(() => rawPlays.map((p) => p.ticker?.toUpperCase()).filter(Boolean), [rawPlays]);
   const stockQuotes = useLegacyStockQuotes(tickers);
   const plays = overlayLegacyQuotes(playsWithScorecard, stockQuotes, rawPlays);
 
@@ -242,6 +242,7 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
         plays={plays}
         laneLabel="Legacy · Tonight's playbook"
         degraded={hasFetchError || isDegraded}
+        loading={!edition && !error}
         emptyHint={
           hasFetchError
             ? "Edition data unavailable right now — retrying. Check back shortly."

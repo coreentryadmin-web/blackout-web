@@ -174,3 +174,76 @@ test("buildDirectionalStockLevels: legacy path still works without spot (backfil
   // Regression: stop not equal to support
   assert.notEqual(levels.stop, "60.72");
 });
+
+// ── ATR-scaled entry band (overnight gap fix) ───────────────────────────────
+// A fixed +-0.5% entry band is almost always unfillable for overnight plays where
+// the stock gaps 2-5% at the open, directly causing band_detached/unfilled grading
+// outcomes. The band should scale with ATR (half-ATR, capped at 2%) instead.
+
+test("buildDirectionalStockLevels: LONG high-ATR name gets a wider entry band than the old fixed 0.5%", () => {
+  const spot = 212;
+  const atr = 12.72; // ~6% of spot -> atrPct*0.5 = 3%, capped at 2%
+  const levels = buildDirectionalStockLevels({
+    direction: "long",
+    support: 174,
+    resistance: 230,
+    spot,
+    atr,
+  });
+  const nums = levels.entry_range.match(/[\d.]+/g)!.map(Number);
+  const lo = Math.min(...nums);
+  const hi = Math.max(...nums);
+  // Capped at 2% half-band, not the old fixed 0.5%
+  assert.ok(Math.abs(spot - lo) / spot > 0.015, `lo ${lo} band too narrow for high-ATR name`);
+  assert.ok(Math.abs(hi - spot) / spot > 0.015, `hi ${hi} band too narrow for high-ATR name`);
+  assert.ok(Math.abs(spot - lo) / spot <= 0.021, `lo ${lo} exceeded the 2% cap`);
+  assert.ok(Math.abs(hi - spot) / spot <= 0.021, `hi ${hi} exceeded the 2% cap`);
+});
+
+test("buildDirectionalStockLevels: SHORT low-ATR name gets a tighter entry band, proportional to ATR", () => {
+  const spot = 354;
+  const atr = 1.77; // 0.5% of spot -> atrPct*0.5 = 0.25% half-band
+  const levels = buildDirectionalStockLevels({
+    direction: "short",
+    support: 280,
+    resistance: 360,
+    spot,
+    atr,
+  });
+  const nums = levels.entry_range.match(/[\d.]+/g)!.map(Number);
+  const lo = Math.min(...nums);
+  const hi = Math.max(...nums);
+  const expectedHalfBand = 0.0025; // atrPct(0.005) * 0.5
+  assert.ok(
+    Math.abs(Math.abs(spot - lo) / spot - expectedHalfBand) < 0.0005,
+    `lo ${lo} does not match expected ATR-scaled half-band`,
+  );
+  assert.ok(
+    Math.abs(Math.abs(hi - spot) / spot - expectedHalfBand) < 0.0005,
+    `hi ${hi} does not match expected ATR-scaled half-band`,
+  );
+});
+
+test("buildDirectionalStockLevels: missing/zero ATR falls back to the 0.5% default band", () => {
+  const spot = 100;
+  const withoutAtr = buildDirectionalStockLevels({
+    direction: "long",
+    support: 80,
+    resistance: 120,
+    spot,
+  });
+  const withZeroAtr = buildDirectionalStockLevels({
+    direction: "long",
+    support: 80,
+    resistance: 120,
+    spot,
+    atr: 0,
+  });
+  assert.equal(withoutAtr.entry_range, withZeroAtr.entry_range);
+  const nums = withoutAtr.entry_range.match(/[\d.]+/g)!.map(Number);
+  const lo = Math.min(...nums);
+  const hi = Math.max(...nums);
+  // Default atrPct fallback of 0.5% -> half-band 0.25%
+  assert.equal(lo, 100 * (1 - 0.0025));
+  assert.equal(hi, 100 * (1 + 0.0025));
+});
