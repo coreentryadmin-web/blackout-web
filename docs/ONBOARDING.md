@@ -199,11 +199,12 @@ scripts use stale paths; trust the directory tree.
 - Reader: `api/market/gex-positioning`, `api/market/gex-heatmap`. Contract: [HEATMAP_DATA_CONTRACT.md](HEATMAP_DATA_CONTRACT.md).
 - UI: `src/features/thermal/` (`/heatmap`).
 
-### Night Hawk (+ 0DTE Command)
+### Night Hawk (+ 0DTE Command + Swing)
 - Logic: `src/features/nighthawk/lib/` (scanner, scorer, positioning, grounding). Edition generation runs via `api/cron/nighthawk-edition`.
-- Crons: `nighthawk-edition`, `nighthawk-morning-confirm`, `nighthawk-outcomes`, `zerodte-warm`.
-- Reader: `api/market/nighthawk/edition`, `api/market/zerodte/board`. Grounding: [NIGHTHAWK_GROUNDING.md](NIGHTHAWK_GROUNDING.md).
-- UI: `src/features/nighthawk/components/` (`/nighthawk` — Playbook + 0DTE Command tabs).
+- **Swing (2–30 DTE):** full guide [`audit/SWING-SYSTEM.md`](audit/SWING-SYSTEM.md); engine `src/lib/swing/*`; crons `swing-discovery`, `swing-active-refresh`; reader `api/market/nighthawk/horizons?view=swings`.
+- Crons: `nighthawk-edition`, `nighthawk-morning-confirm`, `nighthawk-outcomes`, `zerodte-warm`, `swing-discovery`, `swing-active-refresh`.
+- Reader: `api/market/nighthawk/edition`, `api/market/zerodte/board`, `api/market/nighthawk/horizons`. Grounding: [NIGHTHAWK_GROUNDING.md](NIGHTHAWK_GROUNDING.md).
+- UI: `src/features/nighthawk/` (`/nighthawk` — 0DTE / Swings / LEAPS / Legacy tabs).
 
 ### Largo (AI analyst)
 - Agent + tools: `src/lib/largo/`. Provider: `providers/polygon-largo.ts`, `anthropic.ts`.
