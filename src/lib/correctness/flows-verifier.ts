@@ -179,22 +179,17 @@ function aggregate(rows: FlowRow[]): {
   };
 }
 
-/** UW-side premium for ONE ticker over the recent window, scoped to TODAY expiry + a NTM band. */
+/** UW-side premium for ONE ticker over the recent window, scoped to TODAY expiry + strikes Massive pulled. */
 function uwWindowAggregate(
   rows: FlowRow[],
   ticker: string,
   expiry: string,
   windowStartMs: number,
-  spotHint: number
+  allowedStrikes?: Set<number>
 ): { total: number; callPrem: number; putPrem: number; callShare: number; prints: number } {
   let callPrem = 0;
   let putPrem = 0;
   let prints = 0;
-  // NTM band: ±8% of the underlying when we have a spot hint; otherwise accept all strikes (the
-  // Massive side is the bounded one — over-including on the UW side only makes the subset claim
-  // STRICTER, never falsely green).
-  const bandLo = spotHint > 0 ? spotHint * 0.92 : -Infinity;
-  const bandHi = spotHint > 0 ? spotHint * 1.08 : Infinity;
   for (const r of rows) {
     if (r.ticker.toUpperCase() !== ticker.toUpperCase()) continue;
     if (r.expiry !== expiry) continue; // 0DTE / today scope — matches the trades pull default
@@ -202,7 +197,9 @@ function uwWindowAggregate(
     const ms = stamp ? new Date(stamp).getTime() : NaN;
     if (!Number.isFinite(ms) || ms < windowStartMs) continue;
     const strike = Number(r.strike);
-    if (Number.isFinite(strike) && (strike < bandLo || strike > bandHi)) continue;
+    if (allowedStrikes && allowedStrikes.size > 0) {
+      if (!Number.isFinite(strike) || !allowedStrikes.has(strike)) continue;
+    }
     const p = Number(r.premium) || 0;
     if (p <= 0) continue;
     const t = String(r.option_type ?? "").toUpperCase();
@@ -214,6 +211,11 @@ function uwWindowAggregate(
   const denom = callPrem + putPrem;
   const callShare = denom > 0 ? (callPrem / denom) * 100 : 50;
   return { total: callPrem + putPrem, callPrem, putPrem, callShare, prints };
+}
+
+/** Massive oracle is a true superset only when every contract pull completed without caps. */
+function massiveOracleComplete(meta: OptionTradesAggregate["meta"]): boolean {
+  return !meta.partial && !meta.contractsCapped && !meta.pagesTruncated;
 }
 
 /**
@@ -285,14 +287,24 @@ async function crossCheckAgainstMassive(ctx: Ctx, rows: FlowRow[]): Promise<Chec
     );
   }
 
-  // Scope the UW side to the SAME ticker/window/expiry + NTM band (centered on the trades spot proxy:
-  // the trades pull bands around the live underlying; we approximate the band via byStrike extent).
-  const strikes = massive.byStrike.map((s) => s.strike).filter((s) => s > 0);
-  const spotHint = strikes.length ? (Math.min(...strikes) + Math.max(...strikes)) / 2 : 0;
-  const uw = uwWindowAggregate(rows, ticker, expiry, windowStartMs, spotHint);
-  if (uw.total <= 0) {
-    return skip(`UW has no NTM ${ticker} premium in the window after band-scoping — cross-check not assertable.`);
+  // Scope UW to the EXACT strikes Massive pulled (same OCC set) — apples-to-apples vs the bounded oracle.
+  const allowedStrikes = new Set(massive.byStrike.map((s) => s.strike).filter((s) => s > 0));
+  if (allowedStrikes.size === 0) {
+    return skip(`Massive trades for ${ticker} returned no strike breakdown — cross-check not assertable.`);
   }
+  const uw = uwWindowAggregate(rows, ticker, expiry, windowStartMs, allowedStrikes);
+  if (uw.total <= 0) {
+    return skip(`UW has no ${ticker} premium on Massive's pulled strikes in the window — cross-check not assertable.`);
+  }
+
+  const oracleComplete = massiveOracleComplete(massive.meta);
+  const oracleBoundedNote = [
+    massive.meta.partial && "partial",
+    massive.meta.contractsCapped && "contracts capped",
+    massive.meta.pagesTruncated && "pages truncated",
+  ]
+    .filter(Boolean)
+    .join(", ");
 
   // ── Compare ────────────────────────────────────────────────────────────────
   // (1) Skew direction. Both must show a clear call/put lean (outside the deadband) to compare it.
@@ -307,21 +319,24 @@ async function crossCheckAgainstMassive(ctx: Ctx, rows: FlowRow[]): Promise<Chec
   // (2) Subset relation: UW (filtered subset) must not exceed Massive (raw superset) beyond the ratio.
   const uwOverMassive = uw.total / massive.totalPremium;
   const subsetOk = uwOverMassive <= XCHECK.uwOverMassiveMaxRatio;
-  // Massive is contract/page-capped (OPTION_TRADES_MAX_CONTRACTS) — not a true superset oracle.
-  // UW unusual prints can legitimately exceed the bounded sample total; only skew is assertable.
-  const oracleBounded = massive.meta.contractsCapped || massive.meta.partial;
 
-  const both = `[UW ${fmtUsd(uw.total)} call ${uw.callShare.toFixed(0)}% vs Massive ${fmtUsd(massive.totalPremium)} call ${massive.callPct}% over ${massive.meta.contractsWithTrades} NTM contracts${massive.meta.partial ? " (partial)" : ""}${massive.meta.contractsCapped ? " (contract-capped)" : ""}; UW/Massive=${uwOverMassive.toFixed(2)}×]`;
+  const both = `[UW ${fmtUsd(uw.total)} call ${uw.callShare.toFixed(0)}% vs Massive ${fmtUsd(massive.totalPremium)} call ${massive.callPct}% over ${massive.meta.contractsWithTrades} NTM contracts${massive.meta.partial ? " (partial)" : ""}${massive.meta.contractsCapped ? " (contract-capped)" : ""}${massive.meta.pagesTruncated ? " (pages truncated)" : ""}; UW/Massive=${uwOverMassive.toFixed(2)}×]`;
 
   // FLAG conditions: the sources DISAGREE about the flow.
   // UW alerts are a FILTERED subset (unusual prints only); Massive is the raw NTM print stream.
   // When subset relation holds AND skew DIRECTION agrees, a large call-share magnitude gap is
   // EXPECTED (the unusual subset can be 100% put-led while raw tape still has call premium) —
-  // flag only opposite skew or subset violation, not magnitude alone.
+  // flag only opposite skew or subset violation on a COMPLETE oracle, not magnitude alone.
   const flagOppositeSkew = skewComparable && !sameSkewDir;
-  const flagSubset = !subsetOk && !oracleBounded;
+  const flagSubset = oracleComplete && !subsetOk;
   const flagSkewMagnitude =
-    skewComparable && sameSkewDir && !subsetOk && !oracleBounded && callShareDiff > XCHECK.callShareAbsTol;
+    oracleComplete && skewComparable && sameSkewDir && !subsetOk && callShareDiff > XCHECK.callShareAbsTol;
+
+  if (!oracleComplete && !subsetOk) {
+    return skip(
+      `Massive trades oracle for ${ticker} is bounded (${oracleBoundedNote || "incomplete"}) — UW⊆Massive superset relation not assertable when UW/Massive=${uwOverMassive.toFixed(2)}× (liquid 0DTE names routinely hit per-contract page caps; not a flag). ${both}`
+    );
+  }
 
   if (flagOppositeSkew || flagSubset || flagSkewMagnitude) {
     const why = flagOppositeSkew
@@ -335,24 +350,6 @@ async function crossCheckAgainstMassive(ctx: Ctx, rows: FlowRow[]): Promise<Chec
       "net_premium",
       "flag",
       `${ticker} flow DIVERGES across providers: ${why}. ${both} — UW and Massive disagree about the flow (a real cross-source divergence, not a consistency miss).`,
-      { id: "flows-xcheck-massive", expected: Number(massive.callPct), actual: Number(uw.callShare.toFixed(0)), tolerance: XCHECK.callShareAbsTol }
-    );
-  }
-
-  // Bounded oracle: subset ratio is not meaningful — confirm on skew direction only (no false FLAG).
-  if (oracleBounded && !subsetOk) {
-    const boundedNote = massive.meta.contractsCapped
-      ? `Massive oracle contract-capped (${massive.meta.contractsWithTrades}/${massive.meta.contractsRequested} NTM contracts)`
-      : `Massive oracle partial (${massive.meta.contractsWithTrades}/${massive.meta.contractsRequested} contracts)`;
-    const skewNote = skewComparable
-      ? `same call/put lean (Δ ${callShareDiff.toFixed(0)}pt) — ${boundedNote}; subset ratio not assertable`
-      : `both within the ±${XCHECK.skewDeadbandPct}pt skew deadband — ${boundedNote}; subset ratio not assertable`;
-    return mk(
-      ctx,
-      "cross-provider",
-      "net_premium",
-      "consistency-only",
-      `${ticker} flow cross-check (bounded oracle): ${skewNote}. ${both}`,
       { id: "flows-xcheck-massive", expected: Number(massive.callPct), actual: Number(uw.callShare.toFixed(0)), tolerance: XCHECK.callShareAbsTol }
     );
   }

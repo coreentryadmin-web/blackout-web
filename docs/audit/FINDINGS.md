@@ -5,6 +5,27 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-29 — [ops] SPY flow cross-check false FLAG — bounded Massive oracle (#1299)
+
+**Severity.** P0 data-correctness (ops-auto-fix #1299, fingerprint `ee994b4b2bf8`).
+
+**Symptoms.** `data-correctness` FLAG: SPY `net_premium` — UW $1.62M (0% call) vs Massive
+$0.53–0.65M (30% call) over 33–34 NTM contracts; UW/Massive=2.47–3.05× (> 1.25× allowance).
+
+**Root cause.** Massive `/v3/trades` reconstruction is **bounded** (40 contracts, 2 pages/
+contract, ±4% band). Liquid SPY 0DTE routinely hits per-contract **page** caps even when
+`contractsCapped` is false — the oracle is NOT a complete superset. Prior fix (#1287 grid
+post-close) only skipped subset FLAG on `contractsCapped`/`partial`, not page truncation.
+
+**Evidence.** `ops-collect` fingerprint `ee994b4b2bf8`; live ratio 3.05× with 33/40 contracts,
+no `(partial)` or `(contract-capped)` tags.
+
+**Fix.** `option-trades.ts`: track `meta.pagesTruncated`. `flows-verifier.ts`: scope UW to
+Massive's exact strike set; skip (not flag) subset violation when oracle is partial/capped/
+pages-truncated; flag subset only on complete oracle.
+
+**Status.** `fix/ops-1299-flow-xcheck-bounded-oracle` → PR #1301.
+
 ## 2026-07-29 — [Grid/0DTE] Post-close agent: contract-capped Massive oracle false FLAG + ops:collect stderr mask
 
 **Severity.** P1 — blocked `validate:grid-rth --phase=post-close` (13/13 → 13/14 FAIL on `ops:collect`).
