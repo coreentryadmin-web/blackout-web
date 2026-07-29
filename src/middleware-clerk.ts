@@ -51,7 +51,9 @@ export default clerkMiddleware(
       // Clerk v7.5.x auth()/auth.protect() do not reliably return userId on sign-in
       // pages with the same cookies that work on /dashboard. Decode __session after
       // Clerk's authenticateRequest has already verified the request (PR #790).
-      const dest = req.nextUrl.searchParams.get("redirect_url") || CLERK_DEFAULT_POST_AUTH_PATH;
+      const rawDest = req.nextUrl.searchParams.get("redirect_url") || CLERK_DEFAULT_POST_AUTH_PATH;
+      // Only allow relative paths — absolute URLs and protocol-relative URLs enable open redirect.
+      const dest = rawDest.startsWith("/") && !rawDest.startsWith("//") ? rawDest : CLERK_DEFAULT_POST_AUTH_PATH;
       return withStagingNoEdgeCache(
         NextResponse.redirect(new URL(dest, req.url), 307)
       );

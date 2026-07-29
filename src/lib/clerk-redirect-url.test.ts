@@ -44,6 +44,14 @@ test("clerkPostAuthReturnPath: honors explicit path", () => {
   assert.equal(clerkPostAuthReturnPath("/flows"), "/flows");
 });
 
+test("clerkPostAuthReturnPath: rejects absolute URL (open redirect)", () => {
+  assert.equal(clerkPostAuthReturnPath("https://evil.com/phish"), CLERK_DEFAULT_POST_AUTH_PATH);
+});
+
+test("clerkPostAuthReturnPath: rejects protocol-relative URL", () => {
+  assert.equal(clerkPostAuthReturnPath("//evil.com"), CLERK_DEFAULT_POST_AUTH_PATH);
+});
+
 test("clerkIsClerkSyncFailed", () => {
   assert.equal(
     clerkIsClerkSyncFailed(new URL("https://staging.blackouttrades.com/dashboard?__clerk_synced=false")),
