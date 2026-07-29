@@ -5,6 +5,7 @@
  */
 import { mintClerkPremiumSession } from "./prod-clerk-session.mjs";
 import { auditSecret } from "./prod-secrets.mjs";
+import { isTransientOriginError } from "./auth-status.mjs";
 
 /** @type {{ cookieHeader: string, cleanup?: () => Promise<void> } | null} */
 let clerkSessionCache = null;
@@ -38,10 +39,6 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function isRetryableAuditStatus(status) {
-  return status === 502 || status === 504 || status === 524;
-}
-
 /**
  * @param {string} base - e.g. https://blackouttrades.com
  * @param {string} path - e.g. /api/market/zerodte/board
@@ -61,7 +58,7 @@ async function fetchAuditJsonOnce(base, path) {
     const fallThrough =
       r.status === 401 ||
       r.status === 403 ||
-      isRetryableAuditStatus(r.status);
+      isTransientOriginError(r.status);
     if (!fallThrough) {
       const json = await r.json().catch(() => ({}));
       return { ok: false, status: r.status, json, via: "cron" };
@@ -91,7 +88,7 @@ export async function fetchAuditJson(base, path) {
   let last;
   for (let attempt = 0; attempt <= retries; attempt++) {
     last = await fetchAuditJsonOnce(base, path);
-    if (last.ok || !isRetryableAuditStatus(last.status) || attempt === retries) return last;
+    if (last.ok || !isTransientOriginError(last.status) || attempt === retries) return last;
     await sleep(2000 * (attempt + 1));
   }
   return last ?? { ok: false, status: 0, json: null, via: null };

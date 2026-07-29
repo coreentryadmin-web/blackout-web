@@ -5,6 +5,19 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-29 — [Grid/0DTE] grid-e2e board HTTP 504 under orchestrator burst
+
+**Severity.** P1 — flaky `validate:grid-rth --phase=post-close` on `grid:dashboard-e2e` when nested
+`validate:grid-e2e` hits HTTP **504** on `/api/market/zerodte/board` after long orchestrator run.
+
+**Root cause.** `grid-zerodte-e2e-audit.mjs` `app()` curl had no retry on transient 502/504/524 (unlike
+`fetchAuditJson` used by logic/integration audits).
+
+**Fix.** `auditGridApis`: 4× retry with backoff on transient board status. Shared `isTransientOriginError`
+in `auth-status.mjs` (also dedupes `audit-auth-fetch.mjs`).
+
+**Status.** `fix/grid-e2e-board-retry` → PR.
+
 ## 2026-07-29 — [Grid/0DTE] grid-rth orchestrator syntax error (broken merge #1305)
 
 **Severity.** P0 — `validate:grid-rth` could not run at all (`SyntaxError: Illegal return statement`).
@@ -15,7 +28,7 @@ evidence / fix / status per the CLAUDE.md policy.)
 
 **Fix.** Restore `function auditOpsCollect()` wrapper; move `ops-collect-scope` import to top.
 
-**Status.** `fix/grid-rth-ops-collect-syntax` → PR.
+**Status.** Merged PR #1307.
 
 ## 2026-07-29 — [SPX] Post-close audit flake: ops:collect stderr mask + transient 502 on desk lanes
 

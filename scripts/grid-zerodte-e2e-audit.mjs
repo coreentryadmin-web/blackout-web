@@ -18,7 +18,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium } from "playwright";
-import { isAuthFailureStatus } from "./audit/lib/auth-status.mjs";
+import { isAuthFailureStatus, isTransientOriginError } from "./audit/lib/auth-status.mjs";
 import {
   mintIosPlaywrightSession,
   onboardingInitScript,
@@ -179,8 +179,17 @@ async function authSession() {
   };
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function auditGridApis(app) {
-  const zb = app("/api/market/zerodte/board");
+  let zb;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    zb = app("/api/market/zerodte/board");
+    if (zb.status === 200 || zb.status === 403 || !isTransientOriginError(zb.status)) break;
+    if (attempt < 3) await sleep(2000 * (attempt + 1));
+  }
   if (zb.status === 200 && zb.json?.available) {
     rec("e2e:zerodte-board-api", "PASS", `${zb.json.setups?.length ?? 0} setups · ledger ${zb.json.ledger?.length ?? 0}`);
   } else if (zb.status === 403) {
