@@ -175,7 +175,7 @@ test("resolveDiscordDeskExpiry skips empty settled 0DTE for next live expiry", (
   );
 });
 
-test("resolveDiscordNearExpiries skips empty today and caps at 6", () => {
+test("resolveDiscordNearExpiries skips empty today and caps at 5", () => {
   const near = [
     "2026-07-28",
     "2026-07-29",
@@ -191,19 +191,22 @@ test("resolveDiscordNearExpiries skips empty today and caps at 6", () => {
     "100": Object.fromEntries(near.map((e) => [e, e === "2026-07-28" ? 0 : 1_000])),
     "101": Object.fromEntries(near.map((e) => [e, e === "2026-07-28" ? 0 : -500])),
   };
-  assert.deepEqual(resolveDiscordNearExpiries(cells, strikes, near, near, "2026-07-28", 6), [
+  assert.deepEqual(resolveDiscordNearExpiries(cells, strikes, near, near, "2026-07-28", 5), [
     "2026-07-29",
     "2026-07-30",
     "2026-07-31",
     "2026-08-03",
     "2026-08-04",
-    "2026-08-05",
   ]);
   // Live today stays first.
   cells["100"]!["2026-07-28"] = 10;
   assert.equal(
-    resolveDiscordNearExpiries(cells, strikes, near, near, "2026-07-28", 6)[0],
+    resolveDiscordNearExpiries(cells, strikes, near, near, "2026-07-28", 5)[0],
     "2026-07-28"
+  );
+  assert.equal(
+    resolveDiscordNearExpiries(cells, strikes, near, near, "2026-07-28", 5).length,
+    5
   );
 });
 

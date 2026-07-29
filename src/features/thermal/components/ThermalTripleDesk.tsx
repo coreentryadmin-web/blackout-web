@@ -288,7 +288,8 @@ export default function ThermalTripleDesk({
   onLensChange,
 }: Props) {
   const [pins, setPins] = useState<Record<string, number[]>>({});
-  const [mode, setMode] = useState<ThermalCompareMode>("0dte");
+  // Default Near = five expiry days × SPY|SPX|QQQ (0DTE toggle still available).
+  const [mode, setMode] = useState<ThermalCompareMode>("near");
   const [crosshairIndex, setCrosshairIndex] = useState<number | null>(null);
   const col0Scroll = useRef<HTMLDivElement | null>(null);
   const col1Scroll = useRef<HTMLDivElement | null>(null);

@@ -28,13 +28,13 @@ test("bandStrikesAroundSpot centers on nearest strike", () => {
   assert.deepEqual(bandStrikesAroundSpot([], 100, 2), []);
 });
 
-test("compare desk strike band (~40 half-width) is a tall 0DTE ladder", () => {
+test("compare desk strike band (~36 half-width) is a tall near-term ladder", () => {
   const strikes = Array.from({ length: 100 }, (_, i) => 100 + i);
-  const band = bandStrikesAroundSpot(strikes, 150, 40);
-  assert.equal(band.length, 81); // 40 below + spot + 40 above
+  const band = bandStrikesAroundSpot(strikes, 150, 36);
+  assert.equal(band.length, 73); // 36 below + spot + 36 above
   assert.ok(band.includes(150));
-  assert.equal(band[0], 110);
-  assert.equal(band[band.length - 1], 190);
+  assert.equal(band[0], 114);
+  assert.equal(band[band.length - 1], 186);
 });
 
 test("resolveZeroDteExpiry prefers today when on axis, else earliest", () => {

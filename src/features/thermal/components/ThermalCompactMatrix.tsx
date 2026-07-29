@@ -19,10 +19,10 @@ import {
   resolveZeroDteExpiry,
 } from "@/features/thermal/lib/thermal-compact-matrix";
 
-/** Tall 0DTE heat strips — readable like the major matrix. */
-export const THERMAL_COMPARE_STRIKE_HALF = 40;
-/** Fallback when near-term multi-expiry mode is selected. */
-export const THERMAL_COMPARE_MAX_EXPIRIES = 8;
+/** Tall heat strips — readable like the major matrix. */
+export const THERMAL_COMPARE_STRIKE_HALF = 36;
+/** Near-term mode: five session days per ticker (SPY|SPX|QQQ), close cells. */
+export const THERMAL_COMPARE_MAX_EXPIRIES = 5;
 
 export type ThermalCompareMode = "0dte" | "near";
 
