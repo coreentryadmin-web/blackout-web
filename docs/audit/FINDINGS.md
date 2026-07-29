@@ -5,6 +5,118 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-29 — [Thermal] Triple desk SPY/QQQ not refreshing every 5–10s
+
+**Severity.** P1 UX — compare desk felt stuck; SPX stayed ~5s while SPY/QQQ asof climbed
+15–25s (live poll 2026-07-29 ~15:58 ET). Browser showed force requests stuck on
+`force=1&n=1` (same SWR key every cycle).
+
+**Root cause.**
+1. Client cleared `forceNonce` → 0 on success, then bumped to 1 again → identical SWR key.
+2. Force age/throttle were 8s while UI goal is Slayer-like 5–10s; server throttle matched 8s.
+
+**Fix.** Monotonic force nonce + `forceActive` flag (unique SWR keys); force age/throttle
+5s client+server. Triple desk ticks every 1s and waits for in-flight force to settle.
+
+**Status.** `cursor/thermal-matrix-cadence-3d11` → PR.
+
+## 2026-07-29 — [Thermal] Triple desk opens scrolled to top of strike band (not spot)
+
+**Severity.** P2 — on `/heatmap` compare desk, SPY|SPX|QQQ ladders painted with spot
+highlighted (`is-spot`) but `scrollTop` stayed at 0, so traders had to manually scroll
+each column to find price. SPX Slayer already auto-centers + has a ↻ refresh.
+
+**Root cause.** `ThermalCompactMatrix` rendered the spot row but never called
+`scrollRowIntoViewCenter`. No rail control revalidated/recentered all three panels.
+
+**Fix.** Auto-center each panel on visit / spot-strike change (Slayer pin semantics);
+rail ↻ (+ `R`) revalidates all three SWR keys and bumps a recenter epoch; programmatic
+centers suppress cross-panel scroll-sync so each ladder maps to its own spot.
+
+**Status.** `cursor/thermal-spot-recenter-3d11` → PR.
+
+## 2026-07-29 — [ops] x-replies cron STALE (EventBridge DISABLED)
+
+**Severity.** P1 ops (ops-auto-fix #1277).
+
+**Symptom.** `cron-staleness-watchdog` flagged `x-replies` stale — no `cron_job_runs` row in 90m
+during RTH weekdays.
+
+**Root cause.**
+1. EventBridge rule `blackout-production-x-replies` was **DISABLED** (along with other X marketing
+   rules) — scheduled fires never hit `/api/cron/x-replies`.
+2. `railway.x-replies.toml` catalog had a stale 3×/day schedule (`0 13,17,22`) vs the live EventBridge
+   expression `cron(20 13-22 ? * MON-FRI *)` (hourly :20).
+
+**Evidence.** AWS `DescribeRule`: State=DISABLED, Schedule=`cron(20 13-22 ? * MON-FRI *)`.
+Manual `GET /api/cron/x-replies` returned 200 with replies; watchdog `problem_keys` cleared after
+one run. `ops-collect` fingerprint `b60c447e4c03`.
+
+**Fix.** Re-enabled EventBridge rule; aligned `railway.x-replies.toml` to `20 13-22 * * 1-5`;
+`xMarketingCronPaused()` + admin cron-health override so intentionally paused X marketing does not
+page STALE; added X crons to `railway-cron-services.mjs` ops registry.
+
+**Status.** `fix/x-replies-cron-stale` → PR.
+
+## 2026-07-29 — [SPX] EOD Pin Forecaster glued ~120pts below spot (weak far wall)
+
+**Severity.** P1 — SPX Slayer EOD Pin panel + Vector "Pin" axis tag looked frozen all afternoon;
+traders saw projected close ~7313 while spot ~7420–7430 (−110 to −120pts) with only 15% confidence.
+
+**Evidence (live 2026-07-29 ~14:41–14:46 ET).**
+- `GET /api/market/spx/pin`: spot 7422.87 → projectedClose **7312.29**, magnet put_wall **7300 @ 3% OI**,
+  pinPct 0.15; 12s later spot −2.6pts but proj moved only −0.26 (visually static at 1dp).
+- UI screenshots: Projected close 7,313.4 → 7,313.3 over 32s; "pins to 7,313 put wall" (mislabeled).
+
+**Root cause.**
+1. `oiWalls` picked walls by **raw max OI** on each side of spot — a thin far put at 7300 won a
+   fragmented book.
+2. `pullFraction` ignored `magnetStrengthPct` — short-γ base 0.9 × accelerating charm ≈ **90% pull**
+   to that 3% wall → projected close glued near the magnet, so spot ticks barely moved the headline.
+3. MC seed `floor(nowMs/60_000)` only changed once/minute → MC overlay looked frozen across polls.
+4. UI "pins to {pinPx}" showed the unsnapped close, not the magnet strike.
+
+**Fix.** Distance-weighted wall score `oi/(1+|K−S|/spacing)`; strength-scaled pull via
+`magnetPullScale`; weak-wall (&lt;5% OI) prefers nearer max pain; MC seed every 5s; UI labels magnet
+strike. Tests cover the live regression.
+
+**Status.** MERGED via `cursor/spx-pin-weak-magnet-3d11`.
+
+## 2026-07-29 — [Thermal] Matrix asof 25–60s while SPX Slayer stays ~5s; SPY blanks
+
+**Severity.** P1 — Thermal compare desk (`/heatmap?compare=1`) showed `MATRIX · 25s` /
+`45s` on SPY/QQQ while SPX column + Slayer rail stayed ~4–5s; SPY sometimes flashed
+"No matrix yet" / empty strip (spot **0.00**).
+
+**Evidence.** Live UI screenshot 2026-07-29 ~14:50 ET: SPY 25s, SPX 4s, QQQ ~45s.
+Later screenshot: SPY column **No matrix yet** + spot **0.00** while SPX/QQQ painted.
+EventBridge `heatmap-warm` = 1/min floor. Client polled 5s but served SWR without age-based
+`?force=1`. Transient `available:false` / `spot:0` emptyHeatmap replaced a good matrix.
+`Number.isFinite(0)` showed **0.00** instead of —.
+
+**Fix.** Age-based force (>8s); last-good + session cache; heatmap-warm forces SPY/SPX/QQQ
+first; rth-warm-leader ~20s; refuse to display spot≤0; reject WS/REST spot≤0 before caching empty.
+
+**Status.** `cursor/thermal-matrix-fresh-3d11` → PR.
+
+## 2026-07-29 — [ops] ops-auto-fix #1247 — stale GitHub secrets + false cron failures
+
+**Severity.** P1 — `ops-collect` reported `postgres:query-failed` (user `postgres`) and
+`watchdog:http` 401; blocked autonomous ops loop.
+
+**Root cause.** (1) `resolveAuditDbUrl()` preferred stale `DATABASE_PUBLIC_URL` GitHub
+secret over AWS Secrets Manager; (2) Cloud Agent pods lacked `aws` CLI so `auditSecret()`
+fell back to stale env `CRON_SECRET`; (3) `data-correctness` logged `ok:false` when
+FLAGS were found (cron ran fine); (4) `socket-health` on web tier failed options cluster
+read when Redis SCAN unavailable.
+
+**Fix.** `auditSecret()` for DB URL; `@aws-sdk/client-secrets-manager` SDK fallback in
+`prod-secrets.mjs`; `ops-auto-fix.yml` uses AWS creds (not legacy GitHub DB/CRON secrets);
+skip postgres audit on unreachable/stale-auth hosts; data-correctness `logCronRun({ok:true})`
+on successful sweep; options cluster health treats ingest leader lock as live.
+
+**Status.** PR `fix/ops-auto-fix-secrets-1247` → `main`.
+
 ## 2026-07-29 — [Swing] Discovery cron 100% FailedInvocations — board permanently empty
 
 **Severity.** P0 — Night Hawk Swing lane showed 0 watch / 0 commits all session. EventBridge
@@ -39,6 +151,54 @@ Swing commits remain graduation-gated (cold book → `commitEligibleCount=0` unt
 fix only restores the WATCH/serving write path.
 
 **Status.** This PR + live Lambda/ALB patch.
+
+## 2026-07-29 — [ops] ops-auto-fix #1270 — data-integrity SQL merge conflict → error spike
+
+**Severity.** P0 — `watchdog:error-spike` (109 errors / 15m).
+
+**Root cause.** Accidental `<<<<<<< HEAD` merge conflict markers left in
+`data-integrity-verifier.ts` nighthawk_play_outcomes SQL probe. Every
+`data-correctness` cron run threw `syntax error at or near "("` → `request_error`
+rows flooded `error_events`.
+
+**Fix.** Remove conflict markers; keep dynamic `NH_OUTCOME_VOCAB` `${vocabSql}` list.
+
+**Status.** PR `fix/ops-auto-fix-1270` → `main`.
+
+## 2026-07-29 — [ops] ops-auto-fix #1261 — SWR background refresh + private RDS false P1
+
+**Severity.** P1 — `ops-collect` reported `postgres:query-failed` (empty detail) and
+`watchdog:error-spike` (38–54 `unhandled_rejection` TimeoutErrors / 15m).
+
+**Root cause.** (1) `ops-collect` attempted Postgres via private RDS proxy URL when
+`DATABASE_PUBLIC_URL` is unset (GHA/cloud agents cannot reach VPC); (2) `withServerCache`
+stale-while-revalidate fired `void refreshCache()` on expiry — `refreshCache` re-threw after
+logging, so Polygon `trackedFetch` timeouts became `unhandledRejection` → `error_events` spike.
+
+**Fix.** Skip Postgres audit when only private VPC URL is configured; `refreshCacheInBackground`
+swallows errors on fire-and-forget SWR refreshes.
+
+**Status.** PR `fix/ops-auto-fix-1261` → `main`.
+
+## 2026-07-29 — [Ops] Cloud-agent audit CRON_SECRET stale + NH `unfilled` verifier gap
+
+**Severity.** P1 — RTH crons (`data-correctness`, `socket-health`, `zerodte-warm`) returned
+401/503 in cloud-agent sweeps; `data-correctness` flagged 15 bogus `pg_nh_outcomes` rows.
+
+**Root cause.** (1) `loadProdSecretsFromAws()` called `aws` on PATH — cloud images install
+the CLI to `/home/ubuntu/.local/bin/aws`, so SM fetch failed silently and `auditSecret`
+fell back to a stale 44-char env `CRON_SECRET` vs prod 48-char. (2) `audit-auth-fetch`
+did not fall through to Clerk on cron 401. (3) `data-integrity-verifier` outcome vocabulary
+omitted `unfilled` (added to DB CHECK in `db.ts` PR-N1) → false P1 on honest grades.
+
+**Fix.** `prod-secrets.mjs` resolves AWS CLI from common paths; `audit-auth-fetch.mjs`
+uses `auditSecret` + Clerk on 401/403; verifier includes `unfilled`; grid-rth nested
+`validate:rth-open` timeout 300s + 10MB buffer.
+
+**Evidence.** Pre-fix: `curl data-correctness` → 401; post-fix SM load 81 keys, CRON 48
+chars, `validate:rth-open` GREEN, options-socket authenticated.
+
+**Status.** PR #1250.
 
 ## 2026-07-29 — [0DTE] G-9 `plan_quote_stale` false-positive on live REST books
 

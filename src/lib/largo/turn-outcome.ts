@@ -51,10 +51,19 @@ export async function finalizeBieRoutedTurn(params: {
   startedAt: number;
 }): Promise<BieTurnResult> {
   const sid = params.sessionId.trim() || `web-${params.userId}-${Date.now()}`;
-  const verification = verifyClaims(params.routed.answer, collectContextNumbers(params.routed.context));
+  const verification = verifyClaims(
+    params.routed.answer,
+    collectContextNumbers([
+      params.routed.context,
+      params.routed.envelope ?? null,
+    ])
+  );
+  // Same Layer-4 caveat the Claude path applies — router turns were persisting raw answers
+  // without it, so low-coverage BIE-composed replies (e.g. #1284) failed the nightly audit.
+  const answer = applyVerificationCaveat(params.routed.answer, verification);
 
   await appendLargoMessage(sid, params.userId, "user", params.question);
-  await appendLargoMessage(sid, params.userId, "assistant", params.routed.answer, [BIE_TOOL], [
+  await appendLargoMessage(sid, params.userId, "assistant", answer, [BIE_TOOL], [
     params.routed.context,
   ]);
 
@@ -72,7 +81,7 @@ export async function finalizeBieRoutedTurn(params: {
 
   return {
     session_id: sid,
-    answer: params.routed.answer,
+    answer,
     source: "blackout-intelligence",
     tools_used: [BIE_TOOL],
     followups: bieFollowups(params.routed.route.intent),

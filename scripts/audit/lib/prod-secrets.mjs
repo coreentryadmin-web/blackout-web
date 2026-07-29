@@ -2,41 +2,103 @@
  * Load production app secrets from AWS Secrets Manager (ECS deploy era).
  * Falls back silently when AWS CLI/creds are unavailable (local dev, CI without AWS).
  */
-import { execFileSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
+import { existsSync } from "node:fs";
 
 const PROD_SECRET = "blackout-production/app/env";
 
 let cached = null;
+let awsBin = null;
+
+function resolveAwsCli() {
+  if (awsBin) return awsBin;
+  const candidates = [
+    process.env.AWS_CLI_PATH,
+    "aws",
+    "/home/ubuntu/.local/bin/aws",
+    "/usr/local/bin/aws",
+    "/usr/bin/aws",
+  ].filter(Boolean);
+  for (const bin of candidates) {
+    if (bin === "aws") {
+      try {
+        execSync("aws --version", { stdio: "ignore" });
+        awsBin = "aws";
+        return awsBin;
+      } catch {
+        continue;
+      }
+    }
+    if (existsSync(bin)) {
+      awsBin = bin;
+      return awsBin;
+    }
+  }
+  return null;
+}
+
+function awsRegion() {
+  // pragma: allowlist secret
+  return process.env.AWS_DEFAULT_REGION?.trim() || process.env["AWS_REGION"]?.trim() || "";
+}
 
 function awsRegionArgs() {
-  const region = process.env.AWS_DEFAULT_REGION?.trim();
+  const region = awsRegion();
   return region ? ["--region", region] : [];
+}
+
+function loadProdSecretsFromAwsCli() {
+  const aws = resolveAwsCli();
+  if (!aws) throw new Error("aws cli not found");
+  const raw = execFileSync(
+    aws,
+    [
+      "secretsmanager",
+      "get-secret-value",
+      "--secret-id",
+      PROD_SECRET,
+      ...awsRegionArgs(),
+      "--query",
+      "SecretString",
+      "--output",
+      "text",
+    ],
+    { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }
+  );
+  return JSON.parse(raw);
+}
+
+/** SDK fallback when aws CLI is missing (common on Cloud Agent pods). */
+function loadProdSecretsFromAwsSdk() {
+  const region = awsRegion();
+  const regionArg = region ? `new SecretsManagerClient({ region: ${JSON.stringify(region)} })` : "new SecretsManagerClient({})";
+  const raw = execFileSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "-e",
+      `import { SecretsManagerClient, GetSecretValueCommand } from "@aws-sdk/client-secrets-manager";
+const client = ${regionArg};
+const out = await client.send(new GetSecretValueCommand({ SecretId: ${JSON.stringify(PROD_SECRET)} }));
+process.stdout.write(out.SecretString ?? "{}");`,
+    ],
+    { encoding: "utf8", env: process.env, stdio: ["pipe", "pipe", "pipe"] }
+  );
+  return JSON.parse(raw);
 }
 
 export function loadProdSecretsFromAws() {
   if (cached) return cached;
-  try {
-    const raw = execFileSync(
-      "aws",
-      [
-        "secretsmanager",
-        "get-secret-value",
-        "--secret-id",
-        PROD_SECRET,
-        ...awsRegionArgs(),
-        "--query",
-        "SecretString",
-        "--output",
-        "text",
-      ],
-      { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }
-    );
-    cached = JSON.parse(raw);
-    return cached;
-  } catch {
-    cached = {};
-    return cached;
+  for (const loader of [loadProdSecretsFromAwsCli, loadProdSecretsFromAwsSdk]) {
+    try {
+      cached = loader();
+      return cached;
+    } catch {
+      /* try next loader */
+    }
   }
+  cached = {};
+  return cached;
 }
 
 export function prodSecret(key) {
@@ -46,7 +108,7 @@ export function prodSecret(key) {
   return secrets[key]?.trim() ?? "";
 }
 
-/** Prefer AWS Secrets Manager — cloud-agent env CRON_SECRET is often stale vs prod ECS. */
+/** Prefer AWS Secrets Manager — cloud-agent/GitHub env secrets are often stale vs prod ECS. */
 export function auditSecret(key) {
   const fromAws = loadProdSecretsFromAws()[key]?.trim();
   if (fromAws) return fromAws;

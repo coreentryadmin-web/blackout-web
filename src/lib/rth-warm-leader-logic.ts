@@ -2,7 +2,9 @@ import { isFlowIngestAlternateWriterSkip } from "@/lib/cron-writer-target-fresh"
 
 /** Expected max gap (minutes) before we proactively re-warm during RTH. */
 export const RTH_WRITER_HEAL_AFTER_MIN: Record<string, number> = {
-  "heatmap-warm": 2,
+  /** 20s — EventBridge heatmap-warm floors at 1/min; in-app leader fills the gap so Thermal
+   *  SPY/QQQ don't sit on minute-old asof while SPX Slayer force-refreshes organically. */
+  "heatmap-warm": 20 / 60,
   /** 1.5 = 90s — tighter than other warmers; desk cold-build blocks are the top UX pain point. */
   "desk-warm": 1.5,
   "uw-cache-refresh": 4,

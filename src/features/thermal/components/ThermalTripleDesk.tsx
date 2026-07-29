@@ -6,8 +6,10 @@ import {
   useMemo,
   useRef,
   useState,
+  type MutableRefObject,
   type RefObject,
 } from "react";
+import { clsx } from "clsx";
 import useSWR from "swr";
 import { FreshnessChip } from "@/components/ui";
 import { usePollIntervalMs } from "@/hooks/use-et-market-open";
@@ -15,7 +17,14 @@ import type { GexHeatmapLens } from "@/lib/gex-heatmap-display";
 import {
   THERMAL_COMPARE_TICKERS,
   thermalLayerFreshness,
+  isUsableGexHeatmapPayload,
+  shouldForceMatrixRefresh,
+  MATRIX_FORCE_THROTTLE_MS,
 } from "@/features/thermal/lib/thermal-desk-state";
+import {
+  readGexHeatmapSessionCache,
+  writeGexHeatmapSessionCache,
+} from "@/lib/gex-heatmap-session-cache";
 import ThermalCompactMatrix, {
   type ThermalCompareMode,
 } from "@/features/thermal/components/ThermalCompactMatrix";
@@ -138,8 +147,16 @@ type ColumnProps = {
   shortcut: string;
   crosshairIndex: number | null;
   onCrosshairIndex: (index: number | null) => void;
-  scrollRef: RefObject<HTMLDivElement>;
+  scrollRef: RefObject<HTMLDivElement | null>;
   onScrollSync: (scrollTop: number, scrollLeft: number) => void;
+  suppressScrollSyncRef: MutableRefObject<boolean>;
+  userPinnedScrollRef: MutableRefObject<boolean>;
+  recenterEpoch: number;
+  onRegisterMutate: (
+    ticker: string,
+    mutate: () => Promise<unknown>,
+    isValidating: boolean,
+  ) => void;
 };
 
 function ThermalMatrixFreshnessChip({
@@ -188,19 +205,109 @@ function TripleColumn({
   onCrosshairIndex,
   scrollRef,
   onScrollSync,
+  suppressScrollSyncRef,
+  userPinnedScrollRef,
+  recenterEpoch,
+  onRegisterMutate,
 }: ColumnProps) {
   const pollMs = usePollIntervalMs(5_000, 5_000);
-  const { data, error, isLoading } = useSWR<HeatmapPayload>(
-    `/api/market/gex-heatmap?ticker=${encodeURIComponent(ticker)}`,
+  // Age-based force (SPX Slayer parity): EventBridge heatmap-warm floors at 1m, so without
+  // ?force=1 SPY/QQQ asof ages well past the 5s poll. Force when asof is >5s old (server
+  // throttles ≤1/5s; single-flight coalesces concurrent viewers).
+  //
+  // forceNonce is monotonic and NEVER reused: clearing it back to 0 then bumping to 1 again
+  // made every force hit the same SWR key (`…&force=1&n=1`), so later forces could paint a
+  // stale cached payload while a slow revalidate ran (live 2026-07-29: SPY/QQQ felt stuck
+  // at 15–25s). forceActive flips the key on/off; nonce only increases.
+  const [forceNonce, setForceNonce] = useState(0);
+  const [forceActive, setForceActive] = useState(false);
+  const lastForceAtRef = useRef(0);
+  const [lastGood, setLastGood] = useState<HeatmapPayload | null>(null);
+
+  const matrixKey =
+    forceActive && forceNonce > 0
+      ? `/api/market/gex-heatmap?ticker=${encodeURIComponent(ticker)}&force=1&n=${forceNonce}`
+      : `/api/market/gex-heatmap?ticker=${encodeURIComponent(ticker)}`;
+
+  const clearForce = () => setForceActive(false);
+
+  const triggerForce = useCallback(() => {
+    lastForceAtRef.current = Date.now();
+    setForceNonce((n) => n + 1);
+    setForceActive(true);
+  }, []);
+
+  const { data, error, isLoading, isValidating, mutate } = useSWR<HeatmapPayload>(
+    matrixKey,
     fetchHeatmap,
     {
       refreshInterval: pollMs,
       revalidateOnFocus: true,
       keepPreviousData: true,
+      fallbackData: readGexHeatmapSessionCache<HeatmapPayload>(ticker),
+      onSuccess: (payload) => {
+        if (isUsableGexHeatmapPayload(payload)) {
+          setLastGood(payload);
+          writeGexHeatmapSessionCache(ticker, payload);
+        }
+        clearForce();
+      },
+      onError: clearForce,
     },
   );
 
-  const block = data ? pickBlock(data, lens) : undefined;
+  // Prefer a usable payload; never blank the column on a transient available:false.
+  const view =
+    isUsableGexHeatmapPayload(data) ? data
+    : isUsableGexHeatmapPayload(lastGood) ? lastGood
+    : data;
+
+  useEffect(() => {
+    const tick = () => {
+      const nowMs = Date.now();
+      if (forceActive) return; // wait for in-flight force to settle before arming another
+      if (nowMs - lastForceAtRef.current < MATRIX_FORCE_THROTTLE_MS) return;
+      // Blank / unusable column: force immediately (throttled) so SPY doesn't sit on
+      // "No matrix yet" waiting for the 1-min warm cron while SPX/QQQ already painted.
+      const blank = !isUsableGexHeatmapPayload(view);
+      const asofRaw = view?.asof;
+      const asofMs = asofRaw ? new Date(asofRaw).getTime() : NaN;
+      const stale =
+        !blank &&
+        shouldForceMatrixRefresh({
+          asofMs: Number.isFinite(asofMs) ? asofMs : null,
+          nowMs,
+          lastForceAtMs: lastForceAtRef.current,
+        });
+      if (!blank && !stale) return;
+      triggerForce();
+    };
+    tick();
+    const id = setInterval(tick, 1_000);
+    return () => clearInterval(id);
+  }, [view, ticker, forceActive, triggerForce]);
+
+  // Reset last-good when the column ticker changes so we never paint SPX cells under a SPY header.
+  useEffect(() => {
+    setLastGood(null);
+  }, [ticker]);
+
+  // Rail ↻: force a fresh matrix compute (same path as age-based force) then let the
+  // desk bump recenterEpoch so each ladder maps onto live spot.
+  useEffect(() => {
+    onRegisterMutate(
+      ticker,
+      async () => {
+        triggerForce();
+        // Key change drives the fetch; mutate() on the prior key is a no-op for force.
+        await new Promise((r) => setTimeout(r, 50));
+        await mutate();
+      },
+      isValidating || forceActive,
+    );
+  }, [ticker, mutate, isValidating, forceActive, onRegisterMutate, triggerForce]);
+
+  const block = view ? pickBlock(view, lens) : undefined;
   const walls = wallPair(block, lens);
 
   return (
@@ -215,24 +322,24 @@ function TripleColumn({
             {shortcut}
           </span>
           <span className="thermal-triple-ticker">{ticker}</span>
-          {Number.isFinite(data?.spot) ? (
-            <span className="thermal-triple-spot">{Number(data!.spot).toFixed(2)}</span>
+          {view?.spot != null && view.spot > 0 ? (
+            <span className="thermal-triple-spot">{Number(view.spot).toFixed(2)}</span>
           ) : (
             <span className="thermal-triple-spot is-empty">—</span>
           )}
         </button>
         <div className="thermal-triple-col-meta">
           <ThermalMatrixFreshnessChip
-            asof={data?.asof}
-            matrixLoading={isLoading && !data}
+            asof={view?.asof}
+            matrixLoading={isLoading && !view}
           />
           <button
             type="button"
             className="thermal-triple-export"
-            disabled={!block?.cells || !data?.strikes?.length || !data?.expiries?.length}
+            disabled={!block?.cells || !view?.strikes?.length || !view?.expiries?.length}
             onClick={() => {
-              if (!data?.strikes || !data?.expiries || !block?.cells) return;
-              exportCsv(ticker, lens, data.strikes, data.expiries, block.cells);
+              if (!view?.strikes || !view?.expiries || !block?.cells) return;
+              exportCsv(ticker, lens, view.strikes, view.expiries, block.cells);
             }}
             title="Export CSV"
           >
@@ -252,22 +359,22 @@ function TripleColumn({
         )}
       </div>
 
-      {error ? (
+      {error && !isUsableGexHeatmapPayload(view) ? (
         <div className="thermal-compact-empty" role="alert">
           Feed error — retrying…
         </div>
-      ) : isLoading && !data ? (
+      ) : isLoading && !isUsableGexHeatmapPayload(view) ? (
         <div className="thermal-compact-empty" role="status">
           Loading {ticker}…
         </div>
-      ) : data?.available && block?.cells && data.strikes && data.expiries ? (
+      ) : isUsableGexHeatmapPayload(view) && block?.cells ? (
         <ThermalCompactMatrix
           data={{
             ticker,
-            spot: data.spot,
-            strikes: data.strikes,
-            expiries: data.expiries,
-            nearTermExpiries: data.near_term_expiries,
+            spot: view!.spot,
+            strikes: view!.strikes!,
+            expiries: view!.expiries!,
+            nearTermExpiries: view!.near_term_expiries,
             cells: block.cells,
           }}
           lens={lens}
@@ -278,6 +385,9 @@ function TripleColumn({
           onCrosshairIndex={onCrosshairIndex}
           scrollRef={scrollRef}
           onScrollSync={onScrollSync}
+          suppressScrollSyncRef={suppressScrollSyncRef}
+          userPinnedScrollRef={userPinnedScrollRef}
+          recenterEpoch={recenterEpoch}
         />
       ) : (
         <div className="thermal-compact-empty" role="status">
@@ -305,6 +415,9 @@ export default function ThermalTripleDesk({
   // Default Near = five expiry days × SPY|SPX|QQQ (0DTE toggle still available).
   const [mode, setMode] = useState<ThermalCompareMode>("near");
   const [crosshairIndex, setCrosshairIndex] = useState<number | null>(null);
+  const [recenterEpoch, setRecenterEpoch] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const [columnValidating, setColumnValidating] = useState<Record<string, boolean>>({});
   const col0Scroll = useRef<HTMLDivElement | null>(null);
   const col1Scroll = useRef<HTMLDivElement | null>(null);
   const col2Scroll = useRef<HTMLDivElement | null>(null);
@@ -313,9 +426,36 @@ export default function ThermalTripleDesk({
     [],
   );
   const syncingScroll = useRef(false);
+  const suppressScrollSyncRef = useRef(false);
+  const userPinnedScrollRef = useRef(false);
+  const mutateByTickerRef = useRef<Record<string, () => Promise<unknown>>>({});
 
   useEffect(() => {
     setPins(readPins());
+  }, []);
+
+  const onRegisterMutate = useCallback(
+    (ticker: string, mutate: () => Promise<unknown>, isValidating: boolean) => {
+      mutateByTickerRef.current[ticker] = mutate;
+      setColumnValidating((prev) =>
+        prev[ticker] === isValidating ? prev : { ...prev, [ticker]: isValidating },
+      );
+    },
+    [],
+  );
+
+  const refreshAndRecenter = useCallback(async () => {
+    userPinnedScrollRef.current = false;
+    setRefreshing(true);
+    try {
+      const mutates = Object.values(mutateByTickerRef.current);
+      await Promise.all(mutates.map((m) => m()));
+    } finally {
+      setRefreshing(false);
+      // Force each compact matrix to re-map its ladder onto live spot
+      // (independent scrollTops — sync suppressed inside centerSpotInBox).
+      setRecenterEpoch((n) => n + 1);
+    }
   }, []);
 
   const togglePin = useCallback((ticker: string, strike: number) => {
@@ -332,7 +472,7 @@ export default function ThermalTripleDesk({
 
   const onScrollSync = useCallback(
     (scrollTop: number, scrollLeft: number) => {
-      if (syncingScroll.current) return;
+      if (syncingScroll.current || suppressScrollSyncRef.current) return;
       syncingScroll.current = true;
       for (const ref of scrollRefList) {
         const el = ref.current;
@@ -348,6 +488,8 @@ export default function ThermalTripleDesk({
   );
 
   const tickers = useMemo(() => [...THERMAL_COMPARE_TICKERS], []);
+  const anyValidating =
+    refreshing || tickers.some((t) => columnValidating[t]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -359,7 +501,10 @@ export default function ThermalTripleDesk({
       else if (e.key === "3") onFocusTicker(tickers[2]!);
       else if (e.key === "0") setMode("0dte");
       else if (e.key === "n" || e.key === "N") setMode("near");
-      else if (onLensChange) {
+      else if (e.key === "r" || e.key === "R") {
+        e.preventDefault();
+        void refreshAndRecenter();
+      } else if (onLensChange) {
         if (e.key === "g" || e.key === "G") onLensChange("gex");
         else if (e.key === "v" || e.key === "V") onLensChange("vex");
         else if (e.key === "d" || e.key === "D") onLensChange("dex");
@@ -368,7 +513,7 @@ export default function ThermalTripleDesk({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onFocusTicker, onLensChange, tickers]);
+  }, [onFocusTicker, onLensChange, tickers, refreshAndRecenter]);
 
   return (
     <div className="thermal-triple-desk" data-lens={lens} data-mode={mode}>
@@ -377,22 +522,38 @@ export default function ThermalTripleDesk({
         <div className="thermal-triple-rail-label">
           {mode === "0dte" ? "0DTE TRIPLE DESK" : "NEAR-TERM TRIPLE DESK"}
         </div>
-        <div className="thermal-triple-mode" role="group" aria-label="Compare expiry mode">
+        <div className="thermal-triple-rail-actions">
+          <div className="thermal-triple-mode" role="group" aria-label="Compare expiry mode">
+            <button
+              type="button"
+              className={`thermal-triple-mode-btn${mode === "0dte" ? " is-on" : ""}`}
+              onClick={() => setMode("0dte")}
+              aria-pressed={mode === "0dte"}
+            >
+              0DTE
+            </button>
+            <button
+              type="button"
+              className={`thermal-triple-mode-btn${mode === "near" ? " is-on" : ""}`}
+              onClick={() => setMode("near")}
+              aria-pressed={mode === "near"}
+            >
+              Near
+            </button>
+          </div>
+          {/* Slayer-parity: revalidate SPY|SPX|QQQ matrices and map each ladder to live spot. */}
           <button
             type="button"
-            className={`thermal-triple-mode-btn${mode === "0dte" ? " is-on" : ""}`}
-            onClick={() => setMode("0dte")}
-            aria-pressed={mode === "0dte"}
+            className={clsx(
+              "spx-matrix-refresh-btn",
+              "thermal-triple-refresh-btn",
+              anyValidating && "spx-matrix-refresh-btn--spinning",
+            )}
+            onClick={() => void refreshAndRecenter()}
+            title="Refresh all three matrices and recenter each on spot"
+            aria-label="Refresh thermal matrices and recenter on spot"
           >
-            0DTE
-          </button>
-          <button
-            type="button"
-            className={`thermal-triple-mode-btn${mode === "near" ? " is-on" : ""}`}
-            onClick={() => setMode("near")}
-            aria-pressed={mode === "near"}
-          >
-            Near
+            ↻
           </button>
         </div>
         <div className="thermal-triple-rail-hint">
@@ -407,6 +568,11 @@ export default function ThermalTripleDesk({
           <span>0DTE</span>
           <kbd>N</kbd>
           <span>near</span>
+          <span className="thermal-triple-rail-sep" aria-hidden>
+            ·
+          </span>
+          <kbd>R</kbd>
+          <span>recenter</span>
           <span className="thermal-triple-rail-sep" aria-hidden>
             ·
           </span>
@@ -433,6 +599,10 @@ export default function ThermalTripleDesk({
             onCrosshairIndex={setCrosshairIndex}
             scrollRef={scrollRefList[i]!}
             onScrollSync={onScrollSync}
+            suppressScrollSyncRef={suppressScrollSyncRef}
+            userPinnedScrollRef={userPinnedScrollRef}
+            recenterEpoch={recenterEpoch}
+            onRegisterMutate={onRegisterMutate}
           />
         ))}
       </div>

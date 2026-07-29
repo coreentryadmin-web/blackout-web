@@ -49,6 +49,16 @@ export async function GET(req: NextRequest) {
     const authFailedShards = options.shards.filter((s) => s.auth_failed).length;
     const rth = inOptionsMarketHours();
 
+    const polygonLocal = getIndexStoreStatus();
+    const uwLocal = getUwSocketHealth();
+    const uwCluster = buildUwClusterHealth({
+      is_leader: uwLocal.is_leader,
+      cluster_last_message_at: uwLocal.cluster_last_message_at,
+    });
+    const polygonCluster = await readPolygonClusterHealth(polygonLocal.is_leader);
+    const uwEval = evaluateUwClusterOk(uwCluster, rth);
+    const polygonEval = evaluatePolygonClusterOk(polygonCluster, rth);
+
     let options_ok = true;
     let options_detail = "disabled — REST snapshot fallback";
 
@@ -67,6 +77,12 @@ export async function GET(req: NextRequest) {
         const optionsEval = evaluateOptionsClusterOk(optionsCluster, rth, false);
         options_ok = optionsEval.ok;
         options_detail = `web tier — ${optionsEval.detail}`;
+        // Ingest worker owns the live options WS — if UW/Polygon cluster heartbeats are
+        // fresh, a failed Redis mark scan on a web replica is not a live-data outage.
+        if (!options_ok && uwEval.ok && polygonEval.ok) {
+          options_ok = true;
+          options_detail = `web tier — ingest-owned WS (UW/Polygon cluster live)`;
+        }
       } else {
         options_ok = false;
         options_detail = "enabled with held contracts but no authenticated shard yet";
@@ -87,16 +103,6 @@ export async function GET(req: NextRequest) {
         luld_detail = `leader but not authenticated (${luld.ws_state})`;
       }
     }
-
-    const polygonLocal = getIndexStoreStatus();
-    const uwLocal = getUwSocketHealth();
-    const uwCluster = buildUwClusterHealth({
-      is_leader: uwLocal.is_leader,
-      cluster_last_message_at: uwLocal.cluster_last_message_at,
-    });
-    const polygonCluster = await readPolygonClusterHealth(polygonLocal.is_leader);
-    const uwEval = evaluateUwClusterOk(uwCluster, rth);
-    const polygonEval = evaluatePolygonClusterOk(polygonCluster, rth);
 
     payload = {
       ok: options_ok && luld_ok && uwEval.ok && polygonEval.ok,

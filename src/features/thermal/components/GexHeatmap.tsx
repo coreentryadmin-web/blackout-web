@@ -23,6 +23,7 @@ import {
   buildThermalUrlSearch,
   honestLevelEmpty,
   parseThermalUrlState,
+  shouldForceMatrixRefresh,
   type ThermalLens,
 } from "@/features/thermal/lib/thermal-desk-state";
 import { GEX_KING_COMPACT_LABEL, GEX_KING_DUAL_LABEL, GEX_KING_NODE_HELP, gexKingDualLabel } from "@/lib/gex-king-node-labels";
@@ -2586,29 +2587,36 @@ export function GexHeatmap({
   // Fast-move bypass: when the live quote diverges from the cached matrix snapshot spot
   // by >0.5%, we append `&force=1` to the matrix key for ONE refetch (then clear it) so
   // the gamma/vanna profile recomputes immediately instead of waiting out the 5s cache.
-  // `forceNonce` busts SWR's key on each forced refresh; `fastFlash` drives a header pulse.
+  // `forceNonce` is monotonic (never reused) + `forceActive` flips force on/off — clearing
+  // nonce back to 0 then bumping to 1 reused the same SWR key and could paint a stale force
+  // payload. `fastFlash` drives a header pulse.
   const [forceNonce, setForceNonce] = useState(0);
+  const [forceActive, setForceActive] = useState(false);
   const [fastFlash, setFastFlash] = useState(false);
-  // Last time a force was actually fired — throttles to ≤1 per 8s so a fast move can't
+  // Last time a force was actually fired — throttles to ≤1 per 5s so a fast move can't
   // spam force-recomputes / blow the shared chain budget. Ref so it never re-renders.
   const lastForceAtRef = useRef(0);
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Fallback timer that guarantees forceNonce returns to 0 even if SWR resolves the
+  // Fallback timer that guarantees forceActive returns to false even if SWR resolves the
   // forced revalidation instantly (cache/dedupe/batch) and the settle effect is missed.
   const forceResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const matrixKey =
-    forceNonce > 0
+    forceActive && forceNonce > 0
       ? `/api/market/gex-heatmap?ticker=${encodeURIComponent(ticker)}&force=1&n=${forceNonce}`
       : `/api/market/gex-heatmap?ticker=${encodeURIComponent(ticker)}`;
 
-  // When the force key resolves (success OR error), clear the nonce so the next
+  // When the force key resolves (success OR error), clear forceActive so the next
   // refresh reads cache again — force must NEVER become the steady state (Rank 19).
   // These callbacks fire EXACTLY when the forced request settles (never prematurely,
   // always eventually), so they're the primary, race-free reset path. The armed
   // fallback timeout in the fast-move effect is the backstop for any missed callback.
   const clearForceNonce = () => {
-    setForceNonce((n) => (n > 0 ? 0 : n));
+    setForceActive(false);
+  };
+  const armForce = () => {
+    setForceNonce((n) => n + 1);
+    setForceActive(true);
   };
   const { data, isLoading, error } = useSWR<GexHeatmapResponse>(
     matrixKey,
@@ -2696,20 +2704,51 @@ export function GexHeatmap({
     const divergence = Math.abs(quotePrice - spot) / spot;
     if (divergence <= 0.005) return;
     const nowMs = Date.now();
-    if (nowMs - lastForceAtRef.current < 8_000) return; // throttle: ≤1 force / 8s
+    if (nowMs - lastForceAtRef.current < 5_000) return; // throttle: ≤1 force / 5s
     lastForceAtRef.current = nowMs;
-    setForceNonce((n) => n + 1); // appends &force=1 to the matrix key for one refetch
+    armForce(); // appends &force=1 to the matrix key for one refetch
     // Subtle, reduced-motion-safe header flash so the forced refresh is visible.
     setFastFlash(true);
     if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
     flashTimerRef.current = setTimeout(() => setFastFlash(false), 2_000);
-    // Arm a fallback that ZEROES the nonce a few seconds out, no matter what SWR
+    // Arm a fallback that CLEARS forceActive a few seconds out, no matter what SWR
     // does — guarantees force can never become steady state even if the SWR
     // onSuccess/onError reset is somehow missed. The forced request still fires
     // first (4s ≫ a round-trip), so the bypass is never short-circuited. (Rank 19)
     if (forceResetTimerRef.current) clearTimeout(forceResetTimerRef.current);
-    forceResetTimerRef.current = setTimeout(() => setForceNonce(0), 4_000);
+    forceResetTimerRef.current = setTimeout(() => setForceActive(false), 4_000);
   }, [quotePrice, spot, stale, quoteMatches]);
+
+  // Age-based force (SPX Slayer parity): EventBridge heatmap-warm is 1/min. Without this,
+  // Thermal asof ages past the 5s poll. Force when asof >5s (MATRIX_FORCE_REFRESH_AGE_MS).
+  useEffect(() => {
+    if (stale) return;
+    const tick = () => {
+      if (forceActive) return;
+      const asofRaw = data?.asof;
+      const asofMs = asofRaw ? new Date(asofRaw).getTime() : NaN;
+      const nowMs = Date.now();
+      if (
+        !shouldForceMatrixRefresh({
+          asofMs: Number.isFinite(asofMs) ? asofMs : null,
+          nowMs,
+          lastForceAtMs: lastForceAtRef.current,
+        })
+      ) {
+        return;
+      }
+      lastForceAtRef.current = nowMs;
+      armForce();
+      setFastFlash(true);
+      if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+      flashTimerRef.current = setTimeout(() => setFastFlash(false), 2_000);
+      if (forceResetTimerRef.current) clearTimeout(forceResetTimerRef.current);
+      forceResetTimerRef.current = setTimeout(() => setForceActive(false), 4_000);
+    };
+    tick();
+    const id = setInterval(tick, 1_000);
+    return () => clearInterval(id);
+  }, [data?.asof, stale, ticker, forceActive]);
 
   // Reset throttle + force state when the ticker changes so a switch starts clean.
   // Also reset the expiry scope back to "All" — the expiry axis differs per chain, so a

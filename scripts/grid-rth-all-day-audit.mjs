@@ -15,6 +15,8 @@ import { inRthOpenWindow, isTradingDayEt, todayEtYmd, etParts } from "./gha-et-w
 import { spotsAgree } from "./audit/lib/cross-tool-tolerance.mjs";
 import { probeDataCorrectness } from "./audit/lib/data-correctness-probe.mjs";
 import { fetchAuditJson, releaseAuditClerkSession } from "./audit/lib/audit-auth-fetch.mjs";
+import { auditSecret } from "./audit/lib/prod-secrets.mjs";
+import { ledgerPnlMatches } from "./audit/lib/ledger-pnl-expect.mjs";
 
 const force = process.argv.includes("--force");
 const phaseArg = process.argv.find((a) => a.startsWith("--phase="));
@@ -24,7 +26,7 @@ const BASE = (
   process.env.AUDIT_APP_URL ??
   "https://blackouttrades.com"
 ).replace(/\/$/, "");
-const CRON = process.env.CRON_SECRET || "";
+const CRON = auditSecret("CRON_SECRET");
 const OUT = join(process.cwd(), "audit-output");
 mkdirSync(OUT, { recursive: true });
 
@@ -35,7 +37,13 @@ const rec = (name, status, detail) => {
 };
 
 function run(cmd, label, opts = {}) {
-  const r = spawnSync(cmd, { shell: true, encoding: "utf8", env: opts.env ?? process.env });
+  const r = spawnSync(cmd, {
+    shell: true,
+    encoding: "utf8",
+    env: opts.env ?? process.env,
+    maxBuffer: 10 * 1024 * 1024,
+    timeout: opts.timeoutMs ?? undefined,
+  });
   if (r.status !== 0) {
     rec(label, "FAIL", (r.stderr || r.stdout || "").trim().slice(0, 400));
     return false;
@@ -88,13 +96,13 @@ async function auditZeroDteBoard() {
     rec("zerodte:session", "PASS", `heat=${heat} setups=${zb.setups?.length ?? 0} ledger=${zb.ledger?.length ?? 0}`);
 
     for (const row of zb.ledger ?? []) {
-      if (row.entry_premium != null && row.last_mark != null && row.live_pnl_pct != null) {
-        const expected =
-          Math.round(((row.last_mark - row.entry_premium) / row.entry_premium) * 10000) / 100;
-        if (Math.abs(expected - row.live_pnl_pct) > 0.05) {
-          rec("zerodte:ledger-pnl", "FAIL", `${row.ticker} expected ${expected}% got ${row.live_pnl_pct}%`);
-          return;
-        }
+      if (!ledgerPnlMatches(row)) {
+        rec(
+          "zerodte:ledger-pnl",
+          "FAIL",
+          `${row.ticker} live_pnl_pct ${row.live_pnl_pct}% disagrees with reconcileLedgerLivePnlPct rules`
+        );
+        return;
       }
     }
     rec("zerodte:ledger-pnl", "PASS", `${zb.ledger?.length ?? 0} rows checked`);
@@ -164,7 +172,9 @@ async function main() {
   if (!CRON) rec("env:CRON_SECRET", "FAIL", "required");
   else rec("env:CRON_SECRET", "PASS");
 
-  if (force || inRthOpenWindow(now)) run("npm run validate:rth-open", "infra:validate:rth-open");
+  if (force || inRthOpenWindow(now)) {
+    run("npm run validate:rth-open", "infra:validate:rth-open", { timeoutMs: 300_000 });
+  }
 
   await auditZeroDteBoard();
   await auditCrossTool();

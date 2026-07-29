@@ -213,3 +213,11 @@ test("geometry: a prose-only entry with a sane numeric target/stop is NOT flagge
   assert.equal(geometry!.status, "consistency-only");
   assert.equal(geometry!.checks[0]!.actual, 0);
 });
+
+test("isPremiumChainScaleMismatch: intraday theta decay above ask×1.5 is NOT a scale slip", async () => {
+  const { isPremiumChainScaleMismatch } = await mod();
+  // NVDA-class afternoon re-check: entry $3.42 vs chain 1.78/1.80 — decay, not 10× scale.
+  assert.equal(isPremiumChainScaleMismatch(3.42, 1.78, 1.8), false);
+  assert.equal(isPremiumChainScaleMismatch(34.2, 1.78, 1.8), true);
+  assert.equal(isPremiumChainScaleMismatch(0.3, 1.78, 1.8), true);
+});

@@ -190,8 +190,13 @@ export function pinMaxPain(contracts: readonly PinContract[]): number | null {
  * approaches — exactly what max-pain captures. So: call wall = heaviest call OI at/above spot, put
  * wall = heaviest put OI at/below spot, king = heaviest total-OI strike. Positioning = OI + today's
  * volume (intraday build). Returns fractions of total OI so callers can weight magnet strength.
+ *
+ * Wall pick is DISTANCE-WEIGHTED (`oi / (1 + |K−S|/spacing)`), not raw max OI. Live 2026-07-29: a
+ * fragmented 0DTE book made a thin put wall at 7300 (~3% of OI, −120pts) beat nearer strikes on raw
+ * OI alone → the forecaster yanked projected close ∼110pts and sat frozen all afternoon. Nearer denser
+ * walls must win; far thin walls become soft secondary magnets via magnetPullScale.
  */
-export function oiWalls(contracts: readonly PinContract[], spot: number) {
+export function oiWalls(contracts: readonly PinContract[], spot: number, spacing = 5) {
   const byStrike = new Map<number, { call: number; put: number }>();
   let totalOi = 0;
   for (const c of contracts) {
@@ -202,12 +207,21 @@ export function oiWalls(contracts: readonly PinContract[], spot: number) {
     e[c.type] += oi;
     byStrike.set(c.strike, e);
   }
+  const sp = Math.max(spacing, 1);
+  const score = (oi: number, strike: number) => oi / (1 + Math.abs(strike - spot) / sp);
   let callWall: { strike: number; oi: number } | null = null;
   let putWall: { strike: number; oi: number } | null = null;
   let king: { strike: number; oi: number } | null = null;
+  let callScore = -1, putScore = -1;
   for (const [strike, e] of byStrike) {
-    if (strike >= spot && e.call > 0 && (!callWall || e.call > callWall.oi)) callWall = { strike, oi: e.call };
-    if (strike <= spot && e.put > 0 && (!putWall || e.put > putWall.oi)) putWall = { strike, oi: e.put };
+    if (strike >= spot && e.call > 0) {
+      const sc = score(e.call, strike);
+      if (sc > callScore) { callScore = sc; callWall = { strike, oi: e.call }; }
+    }
+    if (strike <= spot && e.put > 0) {
+      const sc = score(e.put, strike);
+      if (sc > putScore) { putScore = sc; putWall = { strike, oi: e.put }; }
+    }
     const tot = e.call + e.put;
     if (!king || tot > king.oi) king = { strike, oi: tot };
   }
@@ -275,18 +289,36 @@ function prepare(input: PinForecastInput): Prep {
   const regime: PinForecast["regime"] =
     flip != null ? (input.spot >= flip ? "long_gamma" : "short_gamma") : netGamma > 0 ? "long_gamma" : netGamma < 0 ? "short_gamma" : "unknown";
 
+  const strikeSpacing = inferSpacing(input.contracts);
   const maxPain = pinMaxPain(input.contracts);
-  const { callWall, putWall, king, totalOi } = oiWalls(input.contracts, input.spot);
+  const { callWall, putWall, king, totalOi } = oiWalls(input.contracts, input.spot, strikeSpacing);
   const frac = (n: number | undefined) => (totalOi > 0 && n ? n / totalOi : 0);
 
   // Dominant magnet:
   //   • long γ  → dealers dampen → price PINS to max pain.
   //   • short γ → dealers amplify → price DRIFTS to the heavier OI wall (the dominant magnet).
+  // Walls are already distance-weighted (oiWalls). Still: a fragmented book can leave the "winner"
+  // with <<5% of total OI — in that case prefer max pain (a structural close magnet) over yanking
+  // the projection toward a thin far wall (live 2026-07-29: 3% put wall @ 7300 vs spot ~7420).
+  const WEAK_WALL_PCT = 0.05;
   let magnetStrike: number | null = null, magnetKind: PinMagnetKind = "max_pain", magnetStrengthPct = 0;
   if (regime === "short_gamma") {
-    const cwOi = callWall?.oi ?? 0, pwOi = putWall?.oi ?? 0;
-    if (cwOi >= pwOi && callWall) { magnetStrike = callWall.strike; magnetKind = "call_wall"; magnetStrengthPct = frac(cwOi); }
-    else if (putWall) { magnetStrike = putWall.strike; magnetKind = "put_wall"; magnetStrengthPct = frac(pwOi); }
+    // Compare walls on the SAME distance-weighted score the picker used, not raw OI — otherwise a
+    // far heavy wall still beats a nearer denser one at the magnet-choice step.
+    const cwScore = callWall ? callWall.oi / (1 + Math.abs(callWall.strike - input.spot) / Math.max(strikeSpacing, 1)) : 0;
+    const pwScore = putWall ? putWall.oi / (1 + Math.abs(putWall.strike - input.spot) / Math.max(strikeSpacing, 1)) : 0;
+    if (cwScore >= pwScore && callWall) { magnetStrike = callWall.strike; magnetKind = "call_wall"; magnetStrengthPct = frac(callWall.oi); }
+    else if (putWall) { magnetStrike = putWall.strike; magnetKind = "put_wall"; magnetStrengthPct = frac(putWall.oi); }
+    if (
+      magnetStrike != null &&
+      magnetStrengthPct < WEAK_WALL_PCT &&
+      maxPain != null &&
+      Math.abs(maxPain - input.spot) <= Math.abs(magnetStrike - input.spot)
+    ) {
+      magnetStrike = maxPain;
+      magnetKind = "max_pain";
+      magnetStrengthPct = frac(king?.oi);
+    }
   } else if (regime === "long_gamma" && maxPain != null) {
     magnetStrike = maxPain; magnetKind = "max_pain"; magnetStrengthPct = frac(king?.oi);
   }
@@ -306,7 +338,6 @@ function prepare(input: PinForecastInput): Prep {
       ivFallback = true;
     }
   }
-  const strikeSpacing = inferSpacing(input.contracts);
   const charmState: PinForecast["charmState"] = tFrac > 0.55 ? "early" : tFrac > 0.25 ? "moderate" : "accelerating";
 
   // Degrade: realized ≫ implied, or a flagged macro event → the pin model is unreliable.
@@ -332,11 +363,25 @@ function realizedVolAnnualized(returns: number[]): number {
   return Math.sqrt(varr) * Math.sqrt(YEAR_MIN); // per-minute → annualized
 }
 
+/**
+ * Scale dealer pull by magnet mass. A 3% OI wall must not drag like a 20% wall — that was the
+ * "projected close frozen 120pts below spot" live bug (2026-07-29). ≥∼15% OI → full pull; thin
+ * walls keep a soft residual drift so the cone still breathes with spot.
+ */
+export function magnetPullScale(strengthPct: number): number {
+  return clamp(0.12 + Math.max(0, strengthPct) * 5.5, 0.12, 1);
+}
+
 /** Charm-weighted pull fraction: how much of the spot→magnet gap closes by the bell. Grows into close. */
-function pullFraction(tFrac: number, regime: PinForecast["regime"], degraded: boolean): number {
+function pullFraction(
+  tFrac: number,
+  regime: PinForecast["regime"],
+  degraded: boolean,
+  strengthPct = 1
+): number {
   const charm = 0.25 + 0.75 * (1 - tFrac); // 0.25 at open → 1.0 at close
   const base = regime === "short_gamma" ? 0.9 : regime === "long_gamma" ? 0.55 : 0.4;
-  const pf = base * charm * (degraded ? 0.5 : 1);
+  const pf = base * charm * magnetPullScale(strengthPct) * (degraded ? 0.5 : 1);
   return clamp(pf, 0, 0.98);
 }
 
@@ -383,7 +428,8 @@ function medianPath(input: PinForecastInput, p: Prep, steps: number): { times: n
     const frac = i / steps; // 0 now → 1 close
     const tMinAt = p.tMin * (1 - frac);
     const tFracAt = clamp(tMinAt / RTH_MIN, 0, 1);
-    const pf = pullFraction(tFracAt, p.regime, p.degraded) * frac; // cumulative pull grows to the bell
+    // Strength-scaled: thin magnets leave most of the path with spot so the projection MOVES live.
+    const pf = pullFraction(tFracAt, p.regime, p.degraded, p.magnetStrengthPct) * frac;
     const med = input.spot + (target - input.spot) * pf;
     const tYearsRemain = Math.max(tMinAt / YEAR_MIN, 0);
     const sig = Math.max(input.spot * p.atmIv * Math.sqrt(tYearsRemain), sigFloor);
@@ -446,15 +492,23 @@ function montecarlo(input: PinForecastInput, p: Prep): PinForecast {
       const ladder = pinLadderAtSpot(input.contracts, price, p.structYears);
       const fl = pinFlip(ladder, price);
       const reg: PinForecast["regime"] = fl == null ? p.regime : price >= fl ? "long_gamma" : "short_gamma";
-      const w = oiWalls(input.contracts, price); // OI walls relative to THIS price (path-dependent)
-      const target = reg === "short_gamma"
-        ? ((w.callWall?.oi ?? 0) >= (w.putWall?.oi ?? 0) && w.callWall ? w.callWall.strike : w.putWall?.strike ?? p.maxPain ?? price)
-        : (p.maxPain ?? price);
+      const w = oiWalls(input.contracts, price, p.strikeSpacing); // OI walls relative to THIS price (path-dependent)
+      const sp = Math.max(p.strikeSpacing, 1);
+      const cwScore = w.callWall ? w.callWall.oi / (1 + Math.abs(w.callWall.strike - price) / sp) : 0;
+      const pwScore = w.putWall ? w.putWall.oi / (1 + Math.abs(w.putWall.strike - price) / sp) : 0;
+      let target = p.maxPain ?? price;
+      let wallOi = 0;
+      if (reg === "short_gamma") {
+        if (cwScore >= pwScore && w.callWall) { target = w.callWall.strike; wallOi = w.callWall.oi; }
+        else if (w.putWall) { target = w.putWall.strike; wallOi = w.putWall.oi; }
+      }
+      const strengthPct = w.totalOi > 0 ? wallOi / w.totalOi : p.magnetStrengthPct;
       // Mean-reversion toward the magnet whose strength RAMPS UP into the close (kappa → ~0.6 near
       // expiry) — the pin gets stickier as gamma concentrates. Paired with diffusion that shrinks with
       // remaining time, this is a Brownian-bridge-style pin: paths bulge mid-session, then the
       // strengthening pull + collapsing noise re-converge them onto the pin → the cone pinches.
-      const kappa = clamp(pullFraction(tFracAt, reg, p.degraded) * (0.12 + 0.88 * (1 - tFracAt)), 0, 0.6);
+      // Strength-scaled so thin far walls don't glue every path 100pts away from spot.
+      const kappa = clamp(pullFraction(tFracAt, reg, p.degraded, strengthPct) * (0.12 + 0.88 * (1 - tFracAt)), 0, 0.6);
       const drift = (target - price) * kappa;
       // Diffusion shrink into the close: `× (BRIDGE_NOISE_FLOOR + (1-floor)·tFracAt)` rather than the
       // raw `× tFracAt`, which drove step variance to ~0 at the bell (on TOP of the √dt term) and

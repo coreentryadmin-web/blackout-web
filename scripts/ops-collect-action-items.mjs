@@ -14,7 +14,13 @@
  */
 import { createHash } from "node:crypto";
 import { ALL_CRON_KEYS } from "./railway-cron-services.mjs";
-import { createAuditClient, resolveAuditDbUrl, isPrivateDbUnreachableError } from "./pg-audit.mjs";
+import {
+  createAuditClient,
+  resolveAuditDbUrl,
+  isPrivateDbUnreachableError,
+  isStaleAuditDbAuthError,
+  isPrivateVpcDbUrl,
+} from "./pg-audit.mjs";
 import { auditSecret } from "./audit/lib/prod-secrets.mjs";
 
 const pretty = process.argv.includes("--pretty");
@@ -33,6 +39,14 @@ function add(priority, source, id, title, detail) {
 
 async function postgresItems() {
   if (!dbUrl) return;
+  // External audit hosts (GHA, cloud agents) cannot reach the private RDS proxy — only
+  // DATABASE_PUBLIC_URL (when configured) is a valid off-VPC audit target. Cron health is
+  // covered by the HTTP watchdog when CRON_SECRET resolves from Secrets Manager.
+  const publicUrl = auditSecret("DATABASE_PUBLIC_URL");
+  if (!publicUrl && isPrivateVpcDbUrl(dbUrl)) {
+    console.error("[ops-collect] Postgres audit skipped (private VPC URL — no DATABASE_PUBLIC_URL)");
+    return;
+  }
   try {
     const c = createAuditClient(dbUrl);
     await c.connect();
@@ -144,10 +158,14 @@ async function postgresItems() {
 
   await c.end();
   } catch (e) {
-    if (isPrivateDbUnreachableError(e.message)) {
-      add("P2", "infra", "postgres:unreachable", "Postgres unreachable from this host", e.message);
+    const msg = e instanceof Error ? e.message : String(e);
+    if (isPrivateDbUnreachableError(msg) || isStaleAuditDbAuthError(msg)) {
+      // Private RDS proxy is not reachable from Cloud Agent sandboxes; stale GitHub
+      // DATABASE_PUBLIC_URL (user postgres) is an audit-env gap — cron health is covered
+      // by the HTTP watchdog when CRON_SECRET resolves from Secrets Manager.
+      console.error(`[ops-collect] Postgres audit skipped (${isStaleAuditDbAuthError(msg) ? "stale URL" : "unreachable"}): ${msg}`);
     } else {
-      add("P1", "infra", "postgres:query-failed", "Postgres ops collect failed", e.message);
+      add("P1", "infra", "postgres:query-failed", "Postgres ops collect failed", msg);
     }
   }
 }

@@ -162,7 +162,7 @@ export async function withServerCache<T>(
       // Return the stale entry and kick off a non-blocking refresh attempt instead.
       if (degradedKeys.has(key) && hit) {
         console.warn(`[server-cache] ${key}: degraded upstream, serving stale (age ${Math.round(staleAge / 1000)}s) instead of blocking refresh`);
-        void refreshCache(key, ttlMs, loader, localOnly);
+        refreshCacheInBackground(key, ttlMs, loader, localOnly);
         return hit.value;
       }
       return refreshCache(key, ttlMs, loader, localOnly);
@@ -172,11 +172,11 @@ export async function withServerCache<T>(
       if (redisHit != null) {
         const remainingMs = redisHit.remainingTtlSec * 1000;
         setStoreEntry(key, { value: redisHit.value, expiresAt: now + remainingMs, refreshedAt: now });
-        void refreshCache(key, ttlMs, loader, localOnly);
+        refreshCacheInBackground(key, ttlMs, loader, localOnly);
         return redisHit.value;
       }
     }
-    void refreshCache(key, ttlMs, loader, localOnly);
+    refreshCacheInBackground(key, ttlMs, loader, localOnly);
     return hit.value;
   }
 
@@ -215,6 +215,16 @@ export async function serverCache<T>(
   fn: () => Promise<T>
 ): Promise<T> {
   return withServerCache(key, ttlMs, fn);
+}
+
+/** Fire-and-forget SWR refresh — must never surface as an unhandledRejection (prod #1261). */
+function refreshCacheInBackground<T>(
+  key: string,
+  ttlMs: number,
+  loader: () => Promise<T>,
+  localOnly = false
+): void {
+  void refreshCache(key, ttlMs, loader, localOnly).catch(() => undefined);
 }
 
 async function refreshCache<T>(

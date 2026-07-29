@@ -1,6 +1,13 @@
 "use client";
 
-import type { CSSProperties, RefObject } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  type CSSProperties,
+  type MutableRefObject,
+  type RefObject,
+} from "react";
 import type { GexHeatmapLens } from "@/lib/gex-heatmap-display";
 import {
   fmtHeatmapExpiry,
@@ -10,6 +17,7 @@ import {
   heatmapCellTextStyle,
   heatmapMatrixExtremeCellStyle,
 } from "@/lib/gex-heatmap-display";
+import { scrollRowIntoViewCenter } from "@/features/spx/lib/spx-matrix-scroll";
 import {
   bandStrikesAroundSpot,
   compactMatrixPeak,
@@ -44,8 +52,17 @@ type Props = {
   /** Spot-relative row index shared across SPY|SPX|QQQ for the synced cursor. */
   crosshairIndex?: number | null;
   onCrosshairIndex?: (index: number | null) => void;
-  scrollRef?: RefObject<HTMLDivElement>;
+  scrollRef?: RefObject<HTMLDivElement | null>;
   onScrollSync?: (scrollTop: number, scrollLeft: number) => void;
+  /**
+   * Desk-level flag: while true, skip scroll-sync so each panel can center on its
+   * own spot without yanking the other two to the wrong scrollTop.
+   */
+  suppressScrollSyncRef?: MutableRefObject<boolean>;
+  /** Desk-level: user scrolled any panel — don't auto-yank until spot strike moves or refresh. */
+  userPinnedScrollRef?: MutableRefObject<boolean>;
+  /** Bumped by the rail Refresh control to force recenter after revalidate. */
+  recenterEpoch?: number;
 };
 
 function todayEtYmd(): string {
@@ -89,6 +106,33 @@ function signedHeatStyle(
   };
 }
 
+function centerSpotInBox(
+  box: HTMLElement,
+  row: HTMLElement,
+  behavior: ScrollBehavior,
+  suppressRef?: MutableRefObject<boolean>,
+) {
+  if (suppressRef) suppressRef.current = true;
+  if (behavior === "smooth") {
+    const scrollRect = box.getBoundingClientRect();
+    const rowRect = row.getBoundingClientRect();
+    const target =
+      box.scrollTop +
+      (rowRect.top - scrollRect.top - (scrollRect.height - rowRect.height) / 2);
+    const max = Math.max(0, box.scrollHeight - box.clientHeight);
+    box.scrollTo({ top: Math.max(0, Math.min(target, max)), behavior: "smooth" });
+  } else {
+    scrollRowIntoViewCenter(box, row);
+  }
+  // Keep sync suppressed through the scroll event + a layout frame so the
+  // other panels keep their own spot-centered scrollTop.
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      if (suppressRef) suppressRef.current = false;
+    });
+  });
+}
+
 export default function ThermalCompactMatrix({
   data,
   lens,
@@ -99,7 +143,22 @@ export default function ThermalCompactMatrix({
   onCrosshairIndex,
   scrollRef,
   onScrollSync,
+  suppressScrollSyncRef,
+  userPinnedScrollRef,
+  recenterEpoch = 0,
 }: Props) {
+  const localScrollRef = useRef<HTMLDivElement | null>(null);
+  const spotRowRef = useRef<HTMLTableRowElement | null>(null);
+  const lastCenteredStrikeRef = useRef<number | null>(null);
+  const lastRecenterEpochRef = useRef(recenterEpoch);
+
+  const setScrollEl = (el: HTMLDivElement | null) => {
+    localScrollRef.current = el;
+    if (scrollRef) {
+      (scrollRef as MutableRefObject<HTMLDivElement | null>).current = el;
+    }
+  };
+
   const expiries =
     mode === "0dte"
       ? (() => {
@@ -122,12 +181,81 @@ export default function ThermalCompactMatrix({
     THERMAL_COMPARE_STRIKE_HALF,
   );
   const spotIdx = nearestStrikeIndex(strikes, data.spot ?? null);
+  const spotStrike = spotIdx >= 0 ? strikes[spotIdx]! : null;
   const pinSet = new Set(pinnedStrikes);
   const peak = compactMatrixPeak(data.cells, strikes, expiries);
   const extremes = compactPerExpiryExtremes(data.cells, strikes, expiries);
   const is0dte = mode === "0dte";
+  const hasData = expiries.length > 0 && strikes.length > 0;
 
-  if (expiries.length === 0 || strikes.length === 0) {
+  const centerSpotRow = (behavior: ScrollBehavior = "auto") => {
+    const box = localScrollRef.current;
+    const row = spotRowRef.current;
+    if (box == null || row == null) return;
+    centerSpotInBox(box, row, behavior, suppressScrollSyncRef);
+  };
+
+  // Mark desk scroll as user-pinned so quiet matrix refreshes don't yank the ladder.
+  useEffect(() => {
+    const box = localScrollRef.current;
+    if (!box || !userPinnedScrollRef) return;
+    const markPinned = () => {
+      userPinnedScrollRef.current = true;
+    };
+    box.addEventListener("wheel", markPinned, { passive: true });
+    box.addEventListener("touchmove", markPinned, { passive: true });
+    box.addEventListener("pointerdown", markPinned, { passive: true });
+    return () => {
+      box.removeEventListener("wheel", markPinned);
+      box.removeEventListener("touchmove", markPinned);
+      box.removeEventListener("pointerdown", markPinned);
+    };
+  }, [hasData, userPinnedScrollRef]);
+
+  // Auto-link to spot on visit / when the spot strike moves (Slayer parity).
+  useLayoutEffect(() => {
+    if (spotStrike == null || !hasData) return;
+
+    const forced = lastRecenterEpochRef.current !== recenterEpoch;
+    if (forced) lastRecenterEpochRef.current = recenterEpoch;
+
+    const strikeMoved = lastCenteredStrikeRef.current !== spotStrike;
+    if (strikeMoved) {
+      if (userPinnedScrollRef) userPinnedScrollRef.current = false;
+      lastCenteredStrikeRef.current = spotStrike;
+    }
+
+    if (!forced && userPinnedScrollRef?.current && !strikeMoved) return;
+
+    const behavior: ScrollBehavior = forced || strikeMoved ? "smooth" : "auto";
+    const run = () => centerSpotRow(behavior);
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(run);
+    });
+    const t = window.setTimeout(run, 120);
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+      window.clearTimeout(t);
+    };
+    // centerSpotRow closes over current refs; deps are the data that change centering.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: spot/mode/lens/epoch
+  }, [spotStrike, hasData, lens, mode, strikes.length, recenterEpoch]);
+
+  useEffect(() => {
+    const box = localScrollRef.current;
+    if (!box || spotStrike == null) return;
+    const ro = new ResizeObserver(() => {
+      if (userPinnedScrollRef?.current) return;
+      centerSpotRow("auto");
+    });
+    ro.observe(box);
+    return () => ro.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spotStrike, hasData]);
+
+  if (!hasData) {
     return (
       <div className="thermal-compact-empty" role="status">
         Matrix empty — waiting for live cells.
@@ -137,9 +265,10 @@ export default function ThermalCompactMatrix({
 
   return (
     <div
-      ref={scrollRef}
+      ref={setScrollEl}
       className={`thermal-compact-scroll${is0dte ? " is-0dte" : ""}`}
       onScroll={(e) => {
+        if (suppressScrollSyncRef?.current) return;
         if (!onScrollSync) return;
         const el = e.currentTarget;
         onScrollSync(el.scrollTop, el.scrollLeft);
@@ -183,6 +312,7 @@ export default function ThermalCompactMatrix({
             return (
               <tr
                 key={strike}
+                ref={isSpot ? spotRowRef : undefined}
                 className={[
                   "thermal-compact-row",
                   isSpot ? "is-spot" : "",

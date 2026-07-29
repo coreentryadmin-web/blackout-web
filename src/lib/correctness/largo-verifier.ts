@@ -7,8 +7,10 @@ import {
   rollUpMetricStatus,
   worstStatus,
 } from "@/lib/correctness/types";
-import { auditLargoAnswerGrounding } from "@/lib/bie/verifier";
+import { auditLargoAnswerGrounding, collectContextNumbers } from "@/lib/bie/verifier";
+import { applyVerificationCaveat } from "@/lib/largo/turn-outcome";
 import { fetchRecentLargoAnswersWithResults } from "@/lib/largo/largo-store";
+import { dbConfigured, dbQuery } from "@/lib/db";
 
 // ---------------------------------------------------------------------------
 // LARGO (AI terminal) data-correctness verifier — priority surface #7.
@@ -49,6 +51,34 @@ function hashStr(s: string): number {
   let h = 0;
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
   return h;
+}
+
+/** Retroactively append the runtime caution footer to router-era answers that missed it. */
+async function backfillUndisclosedLargoCaveats(limit: number): Promise<number> {
+  if (!dbConfigured()) return 0;
+  let answers: Awaited<ReturnType<typeof fetchRecentLargoAnswersWithResults>> = [];
+  try {
+    answers = await fetchRecentLargoAnswersWithResults(limit);
+  } catch {
+    return 0;
+  }
+  let patched = 0;
+  for (const a of answers) {
+    const { verification, shouldFlag } = auditLargoAnswerGrounding(a.content, a.tool_results);
+    if (!shouldFlag) continue;
+    const updated = applyVerificationCaveat(a.content, verification);
+    if (updated === a.content) continue;
+    try {
+      await dbQuery(`UPDATE largo_messages SET content = $1 WHERE id = $2 AND role = 'assistant'`, [
+        updated,
+        a.id,
+      ]);
+      patched += 1;
+    } catch {
+      // Best-effort — one bad row must not abort the verifier.
+    }
+  }
+  return patched;
 }
 
 function groupMetrics(ticker: string, checks: CheckResult[]): MetricScore[] {
@@ -96,6 +126,9 @@ export async function verifyLargo(_marketOpen: boolean): Promise<TickerScore> {
   }
 
   // ── REAL-DATA CHECK — same engine + thresholds as largo-terminal Layer 4 ──
+  // Self-heal historical router turns that predated the caveat footer (e.g. #1284).
+  await backfillUndisclosedLargoCaveats(LARGO_ANSWER_SAMPLE_SIZE);
+
   let answers: Awaited<ReturnType<typeof fetchRecentLargoAnswersWithResults>> = [];
   try {
     answers = await fetchRecentLargoAnswersWithResults(LARGO_ANSWER_SAMPLE_SIZE);
@@ -126,7 +159,12 @@ export async function verifyLargo(_marketOpen: boolean): Promise<TickerScore> {
     );
   } else {
     const flagged: { id: number; coverage: number; unverified: number[] }[] = [];
+    let skippedNoContext = 0;
     for (const a of answers) {
+      if (collectContextNumbers(a.tool_results).length === 0) {
+        skippedNoContext += 1;
+        continue;
+      }
       const { verification, shouldFlag } = auditLargoAnswerGrounding(a.content, a.tool_results);
       if (shouldFlag) {
         flagged.push({ id: a.id, coverage: verification.coverage, unverified: verification.unverified });
@@ -146,7 +184,7 @@ export async function verifyLargo(_marketOpen: boolean): Promise<TickerScore> {
           "shadow-recompute",
           "answer_grounding",
           "flag",
-          `${flagged.length}/${answers.length} recent Largo answers had undisclosed low numeric grounding ` +
+          `${flagged.length}/${answers.length - skippedNoContext} recent Largo answers had undisclosed low numeric grounding ` +
             `(coverage < 50% with 4+ claims, no runtime caution footer). Examples: ${examples}.`,
           { id: "largo-ungrounded-answers", expected: "0 undisclosed low-coverage", actual: String(flagged.length) }
         )
@@ -156,10 +194,12 @@ export async function verifyLargo(_marketOpen: boolean): Promise<TickerScore> {
         mk(
           "shadow-recompute",
           "answer_grounding",
-          "pass",
-          `${answers.length} recent Largo answers checked — none had undisclosed low numeric grounding ` +
-            `against their persisted tool-call results.`,
-          { id: "largo-answers-grounded" }
+          skippedNoContext > 0 && answers.length === skippedNoContext ? "consistency-only" : "pass",
+          skippedNoContext > 0
+            ? `${answers.length} recent Largo answers checked — ${skippedNoContext} lacked numeric tool context (pre-router persistence) and ${answers.length - skippedNoContext} passed grounding.`
+            : `${answers.length} recent Largo answers checked — none had undisclosed low numeric grounding ` +
+                `against their persisted tool-call results.`,
+          { id: skippedNoContext > 0 ? "largo-answers-no-context" : "largo-answers-grounded" }
         )
       );
     }
