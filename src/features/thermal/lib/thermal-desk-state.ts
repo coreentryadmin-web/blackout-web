@@ -15,12 +15,12 @@ export const MATRIX_LIVE_MS = 12_000;
 export const MATRIX_STALE_MS = 15_000;
 /**
  * When matrix `asof` is older than this during a live Thermal view, request `?force=1`
- * (server-throttled ≤1/8s) — same escape hatch SPX Slayer uses so SPY/QQQ don't sit on
+ * (server-throttled ≤1/5s) — same escape hatch SPX Slayer uses so SPY/QQQ don't sit on
  * the 1-minute heatmap-warm EventBridge floor while the client polls every 5s.
  */
-export const MATRIX_FORCE_REFRESH_AGE_MS = 8_000;
+export const MATRIX_FORCE_REFRESH_AGE_MS = 5_000;
 /** Client-side spacing between force attempts (matches server FORCE_THROTTLE_MS). */
-export const MATRIX_FORCE_THROTTLE_MS = 8_000;
+export const MATRIX_FORCE_THROTTLE_MS = 5_000;
 /** Overlay cache is ~30s — treat as live under 45s. */
 export const OVERLAY_LIVE_MS = 45_000;
 export const OVERLAY_STALE_MS = 90_000;
