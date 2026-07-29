@@ -24,12 +24,25 @@ struct BlackOutApp: App {
     // Signals; deep links jump to Watchlist. Owned here so its lifetime is
     // the whole app and every tab sees the same instance via environment.
     @StateObject private var tabRouter = TabRouter()
+    // Sign-in state. Hydrates from Keychain on init so a signed-in user
+    // never sees the sign-in screen flash on cold launch.
+    @StateObject private var session = SessionStore()
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
             ZStack {
-                RootView()
+                // Root gate: SignInView when there's no session, tabbed
+                // shell otherwise. Gating here (not per-tab) means we never
+                // render the tab bar around a broken empty state saying
+                // "you need to sign in" — the whole app is either signed
+                // in or on the sign-in screen. Simpler mental model + the
+                // right UX.
+                if session.isSignedIn {
+                    RootView()
+                } else {
+                    SignInView()
+                }
                 // The lock overlay ALWAYS mounts on top when the coordinator
                 // is in a locked/prompting state. Using an overlay (not a
                 // sheet or a router branch) keeps the underlying view
@@ -40,9 +53,23 @@ struct BlackOutApp: App {
                 }
             }
             .animation(BOMotion.contextSwitch, value: appLock.state)
+            .animation(BOMotion.contextSwitch, value: session.isSignedIn)
             .environmentObject(appLock)
             .environmentObject(watchlist)
             .environmentObject(tabRouter)
+            .environmentObject(session)
+            // Handle the callback URL from `blackouttrades.com/native-signin`.
+            // ASWebAuthenticationSession's completion handler catches these
+            // in SignInView, but we also register here as a defence — some
+            // launch flows (Universal Links promotion later, external tap
+            // on a share sheet URL) will surface via `.onOpenURL` instead.
+            .onOpenURL { url in
+                guard url.scheme == "blackout-trades", url.host == "auth" else { return }
+                if let token = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                    .queryItems?.first(where: { $0.name == "token" })?.value, !token.isEmpty {
+                    session.signIn(token: token)
+                }
+            }
             // Push-tap deep-linking. AppDelegate parses the tap into a
             // PushDestination on its @Published `pending`; we observe here
             // (App scope, not per-view) and hand off to TabRouter. Consume
