@@ -7,17 +7,12 @@ import {
   rollUpMetricStatus,
   worstStatus,
 } from "@/lib/correctness/types";
-<<<<<<< HEAD
 import { auditLargoAnswerGrounding, collectContextNumbers } from "@/lib/bie/verifier";
-import { fetchRecentLargoAnswersWithResults } from "@/lib/largo/largo-store";
-=======
-import { auditLargoAnswerGrounding } from "@/lib/bie/verifier";
 import { applyVerificationCaveat } from "@/lib/largo/turn-outcome";
 import {
   backfillLargoMessageContent,
   fetchRecentLargoAnswersWithResults,
 } from "@/lib/largo/largo-store";
->>>>>>> f974bf1d (fix(ops): Largo BIE caveat + NVDA premium false-flag + ops-collect pg)
 
 // ---------------------------------------------------------------------------
 // LARGO (AI terminal) data-correctness verifier — priority surface #7.
