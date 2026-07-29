@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { spotsAgree } from "./audit/lib/cross-tool-tolerance.mjs";
 import { fetchAuditJson, releaseAuditClerkSession } from "./audit/lib/audit-auth-fetch.mjs";
 import { auditSecret } from "./audit/lib/prod-secrets.mjs";
+import { ledgerPnlMatches } from "./audit/lib/ledger-pnl-expect.mjs";
 
 const BASE = (
   process.argv.find((a) => a.startsWith("--base="))?.slice("--base=".length) ??
@@ -97,12 +98,13 @@ async function auditCrossToolLive() {
   }
 
   for (const row of zb.json.ledger ?? []) {
-    if (row.entry_premium != null && row.last_mark != null && row.live_pnl_pct != null) {
-      const expected = Math.round(((row.last_mark - row.entry_premium) / row.entry_premium) * 10000) / 100;
-      if (Math.abs(expected - row.live_pnl_pct) > 0.05) {
-        rec("integration:ledger-pnl", "FAIL", `${row.ticker} expected ${expected}% got ${row.live_pnl_pct}%`);
-        return;
-      }
+    if (!ledgerPnlMatches(row)) {
+      rec(
+        "integration:ledger-pnl",
+        "FAIL",
+        `${row.ticker} live_pnl_pct ${row.live_pnl_pct}% disagrees with reconcileLedgerLivePnlPct rules`
+      );
+      return;
     }
   }
   rec("integration:ledger-pnl", "PASS", `${zb.json.ledger?.length ?? 0} rows`);

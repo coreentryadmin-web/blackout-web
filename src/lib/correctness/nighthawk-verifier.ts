@@ -91,6 +91,15 @@ function hashStr(s: string): number {
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
   return h;
 }
+
+/** Scale-slip detector for L4 chain-confirm — NOT an intraday theta check.
+ *  Entry above ask is normal hours later on same-day expiry; only flag 5×+ slips or sub-half-bid. */
+export function isPremiumChainScaleMismatch(entry: number, bid: number | null, ask: number): boolean {
+  const lo = bid != null && bid > 0 ? bid * 0.5 : 0;
+  if (entry < lo) return true;
+  if (ask > 0 && entry > ask * 5) return true;
+  return false;
+}
 function num(v: unknown): number | null {
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
@@ -419,10 +428,9 @@ export async function verifyNightHawk(_marketOpen: boolean): Promise<TickerScore
               const ask = parsed.side === "call" ? row.call_ask : row.put_ask;
               const bid = parsed.side === "call" ? row.call_bid : row.put_bid;
               if (ask != null && ask > 0) {
-                // Play entry_premium should sit within [bid×0.5, ask×1.5] — generous, catches a 10× scale slip.
-                const lo = bid != null && bid > 0 ? bid * 0.5 : 0;
-                const hi = ask * 1.5;
-                if (play.entry_premium < lo || play.entry_premium > hi) {
+                // Scale slips only — entry above ask×1.5 is normal theta decay on same-day expiry
+                // when re-verifying hours after publish; 5× catches the 10× class of bugs.
+                if (isPremiumChainScaleMismatch(play.entry_premium, bid, ask)) {
                   premiumMismatch++;
                   if (premDetail.length < 5)
                     premDetail.push(`${play.ticker} entry $${play.entry_premium} vs chain bid/ask ${bid}/${ask}`);

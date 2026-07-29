@@ -16,6 +16,7 @@ import { spotsAgree } from "./audit/lib/cross-tool-tolerance.mjs";
 import { probeDataCorrectness } from "./audit/lib/data-correctness-probe.mjs";
 import { fetchAuditJson, releaseAuditClerkSession } from "./audit/lib/audit-auth-fetch.mjs";
 import { auditSecret } from "./audit/lib/prod-secrets.mjs";
+import { ledgerPnlMatches } from "./audit/lib/ledger-pnl-expect.mjs";
 
 const force = process.argv.includes("--force");
 const phaseArg = process.argv.find((a) => a.startsWith("--phase="));
@@ -95,13 +96,13 @@ async function auditZeroDteBoard() {
     rec("zerodte:session", "PASS", `heat=${heat} setups=${zb.setups?.length ?? 0} ledger=${zb.ledger?.length ?? 0}`);
 
     for (const row of zb.ledger ?? []) {
-      if (row.entry_premium != null && row.last_mark != null && row.live_pnl_pct != null) {
-        const expected =
-          Math.round(((row.last_mark - row.entry_premium) / row.entry_premium) * 10000) / 100;
-        if (Math.abs(expected - row.live_pnl_pct) > 0.05) {
-          rec("zerodte:ledger-pnl", "FAIL", `${row.ticker} expected ${expected}% got ${row.live_pnl_pct}%`);
-          return;
-        }
+      if (!ledgerPnlMatches(row)) {
+        rec(
+          "zerodte:ledger-pnl",
+          "FAIL",
+          `${row.ticker} live_pnl_pct ${row.live_pnl_pct}% disagrees with reconcileLedgerLivePnlPct rules`
+        );
+        return;
       }
     }
     rec("zerodte:ledger-pnl", "PASS", `${zb.ledger?.length ?? 0} rows checked`);

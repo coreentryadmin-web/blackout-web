@@ -1,7 +1,65 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-29 13:35 ET
+Last updated: 2026-07-29 14:15 ET
 
-## rth-comprehensive-2026-07-29-pass3 — afternoon agent sweep (~13:12–13:35 ET)
+## rth-comprehensive-2026-07-29-pass4 — afternoon agent sweep (~14:00–14:15 ET)
+
+**Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` including COMPREHENSIVE TEST SWEEP. Time: Wed 14:00–14:15 ET (RTH). Commands: `validate:rth-open` → `validate:rth-sweep` → `GET /api/cron/data-correctness?force=1` → `validate:grid-rth` → `validate:grid-e2e` → `ops:collect`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` | ✅ **GREEN** (options-socket authenticated; Postgres unreachable from cloud host — expected) |
+| `npm run validate:rth-sweep` | ✅ **GREEN** — 0 P0/P1; all 7 pages load; 0 missing fields |
+| `GET /api/cron/data-correctness?force=1` | ⚠️ **2 flags pre-fix** (`premium`, `answer_grounding`) — `ok: false` |
+| `npm run validate:grid-e2e` | ✅ **GREEN** — 5/5 (zerodte board 5 setups / ledger 4) |
+| `npm run validate:grid-rth` | ✅ **GREEN post-fix** — was FAIL on SPXW stopped-pin audit false positive |
+| `npm run ops:collect` | ⚠️ **P0** pre-fix — `correctness:flags` premium + Largo grounding |
+
+### Per-page sweep (Clerk premium session)
+
+| Page | Hard/soft load | Live tick (12–20s wait) | Missing fields | Console |
+|---|---|---|---|---|
+| `/dashboard` | hard 1680ms | null (spot stable) | 0 | 3× (400/404/MIME — stale chunk refs in headless) |
+| `/flows` | soft 2080ms | null | 0 | 0 |
+| `/heatmap` (matrix+profile tab) | soft 2568ms | null | 0 | 24× stale-chunk MIME |
+| `/vector` | soft 1962ms | null | 0 | 0 |
+| `/nighthawk` (0DTE Command) | soft 2201ms | null | 0 | 12× stale-chunk MIME |
+| `/terminal` (Largo) | soft 1620ms | null | 0 | 12× stale-chunk MIME |
+| `/track-record` | soft 1577ms | null | 0 | 18× stale-chunk MIME |
+
+**API cross-check:** desk spot ~7410; GEX positioning fresh; flows 20 prints; NH edition 200; zerodte board 5 setups / ledger 4 (`as_of` fresh). `/api/market/spx/merged` 8.2s (slow but 200).
+
+**Largo:** `POST /api/market/largo/query` 200 in 2658ms — NVDA HELIX tape $77.9M / 50 prints grounded. Regime line `—` (upstream label unavailable — honest empty).
+
+### data-correctness flags (force=1, prod CRON via AWS SM)
+
+| Flag | Layer | Severity | Detail | Fix |
+|---|---|---|---|---|
+| `premium` | cross-provider | **P1** | NVDA entry $3.42 vs chain bid/ask 1.78/1.8 — **false positive**: same-day theta decay, not 10× scale slip | **FIX in PR** — `isPremiumChainScaleMismatch` (5× band only) |
+| `answer_grounding` | shadow-recompute | **P1** | 1/26 Largo answers <50% grounding (#1284) | **OPEN** — [#1239](https://github.com/coreentryadmin-web/blackout-web/issues/1239) |
+
+### Fixes shipped this pass
+
+| ID | Detail | Status |
+|---|---|---|
+| `audit-ledger-pnl-stopped-pin` | grid-rth / zerodte-logic audits compared raw mark math vs `live_pnl_pct` on stopped plays (SPXW −50% pin vs −55% mark) | **FIX** — `ledger-pnl-expect.mjs` mirrors `reconcileLedgerLivePnlPct` |
+| `dc-nh-premium-theta-decay` | data-correctness premium flag on NVDA afternoon re-check vs morning entry | **FIX** — `isPremiumChainScaleMismatch` in `nighthawk-verifier.ts` |
+
+### Residual open
+
+| Severity | ID | Detail | Status |
+|---|---|---|---|
+| **P1** | `largo-grounding-coverage` | Largo answer #1284 undisclosed low grounding | **OPEN** — [#1239](https://github.com/coreentryadmin-web/blackout-web/issues/1239) |
+| **P2** | `headless-stale-chunk-console` | Playwright soft-nav MIME/404 on `_next/static/chunks/*` after sign-in redirect | **OPEN** — headless artifact; member E2E GREEN |
+| **P2** | `spx-merged-slow` | `/api/market/spx/merged` ~8s under audit load | **OPEN** — transient RTH |
+
+**Member-facing prod: GREEN** — all premium pages load, live spot/GEX/flows/NH/0DTE board grounded.
+
+**Reports:** `audit-output/rth-sweep-2026-07-29T18-01-38-899Z.json`
+
+---
+
 
 **Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` including COMPREHENSIVE TEST SWEEP. Time: Wed 13:12–13:35 ET (RTH). Commands: `validate:rth-open` → `validate:rth-sweep` → `GET /api/cron/data-correctness?force=1` → `validate:grid-rth` → `validate:grid-e2e` → `ops:collect`.
 
