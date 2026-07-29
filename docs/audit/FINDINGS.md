@@ -35,8 +35,9 @@ still looked full because other expiries retained exposure.
 **Evidence.** Live cache for `2026-07-28` 0DTE band: `0/57` nonzero GEX cells; next near-term
 expiry still populated.
 
-**Fix.** `resolveDiscordDeskExpiry` skips empty today-0DTE → first near-term with nonzero GEX;
-`fmtCompactHeatMoney(0)` prints `$0.0K`; header chip / caption mode `0DTE` vs `NEAR`.
+**Fix.** Discord card restored to **SPX Slayer–style tight near-term matrix** (≤6 expiry
+cols, strike half=14); `resolveDiscordNearExpiries` skips empty settled today-0DTE;
+`fmtCompactHeatMoney` always prints `$` amounts; yellow/purple nodes + ★ king per column.
 
 **Status.** PR `cursor/thermal-discord-card-fix-3d11`.
 
