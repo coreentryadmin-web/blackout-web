@@ -5,28 +5,6 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
-<<<<<<< HEAD
-## 2026-07-29 — [Thermal] Near-Term Triple Desk extreme cells look “broken”
-
-**Severity.** P1 UX — yellow/purple call/put-wall cells misalign, overflow neighbors, and
-pulse out of the grid on the SPY|SPX|QQQ compare desk.
-
-**Symptom.** On Near-Term Triple Desk, extreme nodes (yellow PLUS / purple MINUS) appear
-offset, clipped, or larger than surrounding cells; ★ king marks widen values and fight the
-5-column layout. Operator screenshot marked those cells as visually broken.
-
-**Root cause.** `ThermalCompactMatrix` applied the shared class `gex-heatmap-extreme-pop`
-(globals.css) to `<td>` cells. That class sets `display: inline-block` and animates
-`transform: scale(1.16)` — fine for SPX Slayer inline spans, catastrophic for table cells in
-a tight 5-expiry grid (`min-width: 3.4rem` columns). Inline ★ after the money label also
-inflated cell width.
-
-**Fix.** Compact desk uses `thermal-compact-cell--extreme` (brightness-only pulse, stays
-`table-cell`, `overflow: hidden`). King ★ moves to a corner badge. Near-term column/cell
-min-width raised to ~4.85rem so `+$261.0M`-class labels fit.
-
-**Status.** Branch `cursor/thermal-triple-desk-ui-3d11`.
-=======
 ## 2026-07-29 — [0DTE] Precision harden — stop opening measured-losing commits
 
 **Severity.** P0 product — graded book **35.6% WR (36W/65L, n=101)** sits on the −50/+100
@@ -53,7 +31,27 @@ reopened measured-losing buckets:
 under provider stress — do not leave it there.
 
 **Status.** Branch `cursor/zerodte-commit-harden-3d11`.
->>>>>>> edf7403f (docs(audit): log 0DTE precision harden (confluence≥2, veto-blind, score 65))
+
+## 2026-07-29 — [Thermal] Near-Term Triple Desk extreme cells look “broken”
+
+**Severity.** P1 UX — yellow/purple call/put-wall cells misalign, overflow neighbors, and
+pulse out of the grid on the SPY|SPX|QQQ compare desk.
+
+**Symptom.** On Near-Term Triple Desk, extreme nodes (yellow PLUS / purple MINUS) appear
+offset, clipped, or larger than surrounding cells; ★ king marks widen values and fight the
+5-column layout. Operator screenshot marked those cells as visually broken.
+
+**Root cause.** `ThermalCompactMatrix` applied the shared class `gex-heatmap-extreme-pop`
+(globals.css) to `<td>` cells. That class sets `display: inline-block` and animates
+`transform: scale(1.16)` — fine for SPX Slayer inline spans, catastrophic for table cells in
+a tight 5-expiry grid (`min-width: 3.4rem` columns). Inline ★ after the money label also
+inflated cell width.
+
+**Fix.** Compact desk uses `thermal-compact-cell--extreme` (brightness-only pulse, stays
+`table-cell`, `overflow: hidden`). King ★ moves to a corner badge. Near-term column/cell
+min-width raised to ~4.85rem so `+$261.0M`-class labels fit.
+
+**Status.** Merged #1216.
 
 ## 2026-07-29 — [Night Hawk Legacy] Stale edition: cron never rebuilds after market close
 
