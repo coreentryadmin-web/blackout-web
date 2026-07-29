@@ -5,6 +5,32 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-29 — [Grid/0DTE] Post-close agent: contract-capped Massive oracle false FLAG + ops:collect stderr mask
+
+**Severity.** P1 — blocked `validate:grid-rth --phase=post-close` (13/13 → 13/14 FAIL on `ops:collect`).
+
+**Symptoms.**
+1. `ops:collect` P0 `correctness:flags`: SPY `net_premium` — UW $8.6M (0% call) vs Massive $1.9M
+   (42% call), UW/Massive=4.52× on 38 NTM contracts.
+2. `grid-rth` reported `ops:collect` FAIL with only stderr `Postgres audit skipped` — could not
+   parse stdout JSON to distinguish grid vs non-grid action items.
+
+**Root cause.**
+1. `flows-verifier.ts` treated Massive's `OPTION_TRADES_MAX_CONTRACTS` (40) bounded sample as a true
+   superset oracle — UW unusual prints legitimately exceed the capped sample total post-close.
+2. `grid-rth-all-day-audit.mjs` `run()` preferred stderr over stdout on non-zero exit; postgres VPC
+   skip masked the real ops payload.
+
+**Evidence.** Post-close 2026-07-29 ~17:02 ET: `validate:zerodte-logic` 17/17 GREEN,
+`validate:grid-e2e` 4/4 GREEN; `validate:grid-rth` FAIL 1/13 on ops:collect only. All 0DTE board
+probes (gates, ledger PnL, mergePlays, session heat) GREEN.
+
+**Fix.** `crossCheckAgainstMassive`: when `contractsCapped` or `partial`, skip subset-ratio FLAG
+(skew-only consistency-only). `grid-rth-all-day-audit.mjs`: dedicated `auditOpsCollect()` parses
+stdout JSON, scopes FAIL to grid/zerodte P0/P1 only.
+
+**Status.** PR `fix/grid-post-close-ops-collect-20260729` → `main`.
+
 ## 2026-07-29 — [ops] x-autopost cron STALE + SPY flow cross-check false FLAG (#1287)
 
 **Severity.** P1 ops + P0 data-correctness (ops-auto-fix #1287, fingerprint `5ed63c855361`).
