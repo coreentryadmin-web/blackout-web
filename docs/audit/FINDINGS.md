@@ -5,6 +5,26 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-29 — [SPX] Post-close audit flake: ops:collect stderr mask + transient 502 on desk lanes
+
+**Severity.** P1 — blocked `validate:spx-rth --phase=post-close` despite member SPX surfaces GREEN.
+
+**Symptoms.**
+1. `ops:collect` FAIL with only stderr `Postgres audit skipped` — stdout JSON not parsed (same class as grid #1298).
+2. `spx:desk-lanes` FAIL on HTTP 502 `/api/market/spx/flow` during parallel audit burst; matrix/play GREEN on retry.
+3. `validate:spx-e2e` matrix fetch HTTP 502 + Playwright timeout cascade when heatmap cold.
+
+**Root cause.**
+1. `spx-rth-all-day-audit.mjs` used naive `run()` for ops:collect — non-zero exit from unrelated P0/P1 or stderr-only postgres skip masked zero-item payload.
+2. Desk lane check treated transient 5xx on pulse/flow as hard FAIL instead of unavailable (post-close flow lane returns `available:false` when not RTH).
+3. `fetchAuditJson` / E2E `app()` had no retry on edge 502/504/524 during parallel probe bursts.
+
+**Evidence.** Post-close 2026-07-29 ~18:03–18:13 ET: matrix + cross-endpoint + BIE GREEN; desk-lanes/e2e FAIL on 502; standalone `ops:collect` exit 0 with postgres skip.
+
+**Fix.** Shared `ops-collect-scope.mjs` + `auditOpsCollect()` in SPX runbook; `softFetchJson` for pulse/flow lanes; `fetchAuditJson` 3× retry on 502/504/524; E2E matrix `app()` 5xx retry.
+
+**Status.** `cursor/spx-post-close-findings-2224` → PR.
+
 ## 2026-07-29 — [Grid/0DTE] zerodte board HTTP 504 on aged snapshot cold-build
 
 **Severity.** P0 member path (Night Hawk `/api/market/zerodte/board`).

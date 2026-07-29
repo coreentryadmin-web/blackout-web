@@ -34,12 +34,20 @@ export async function releaseAuditClerkSession() {
   clerkSessionCache = null;
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableAuditStatus(status) {
+  return status === 502 || status === 504 || status === 524;
+}
+
 /**
  * @param {string} base - e.g. https://blackouttrades.com
  * @param {string} path - e.g. /api/market/zerodte/board
  * @returns {Promise<{ ok: boolean, status: number, json: unknown, via: 'cron'|'clerk'|null }>}
  */
-export async function fetchAuditJson(base, path) {
+async function fetchAuditJsonOnce(base, path) {
   const url = `${base.replace(/\/$/, "")}${path}`;
   const cron = auditSecret("CRON_SECRET");
   if (cron) {
@@ -53,9 +61,7 @@ export async function fetchAuditJson(base, path) {
     const fallThrough =
       r.status === 401 ||
       r.status === 403 ||
-      r.status === 502 ||
-      r.status === 504 ||
-      r.status === 524;
+      isRetryableAuditStatus(r.status);
     if (!fallThrough) {
       const json = await r.json().catch(() => ({}));
       return { ok: false, status: r.status, json, via: "cron" };
@@ -78,4 +84,15 @@ export async function fetchAuditJson(base, path) {
     }
   }
   return { ok: false, status: cron ? 401 : 0, json: null, via: null };
+}
+
+export async function fetchAuditJson(base, path) {
+  const retries = 3;
+  let last;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    last = await fetchAuditJsonOnce(base, path);
+    if (last.ok || !isRetryableAuditStatus(last.status) || attempt === retries) return last;
+    await sleep(2000 * (attempt + 1));
+  }
+  return last ?? { ok: false, status: 0, json: null, via: null };
 }
