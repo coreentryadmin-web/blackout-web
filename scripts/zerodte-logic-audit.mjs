@@ -14,7 +14,7 @@
 import { spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { auditSecret } from "./audit/lib/prod-secrets.mjs";
+import { fetchAuditJson, releaseAuditClerkSession } from "./audit/lib/audit-auth-fetch.mjs";
 import { ledgerPnlMatches } from "./audit/lib/ledger-pnl-expect.mjs";
 
 const BASE = (
@@ -22,7 +22,6 @@ const BASE = (
   process.env.AUDIT_APP_URL ??
   "https://blackouttrades.com"
 ).replace(/\/$/, "");
-const CRON = auditSecret("CRON_SECRET");
 const OUT = join(process.cwd(), "audit-output");
 mkdirSync(OUT, { recursive: true });
 
@@ -85,33 +84,19 @@ function scanFinite(obj, path = "", out = []) {
 }
 
 async function fetchLiveBoard() {
-  if (CRON) {
-    const r = await fetch(`${BASE}/api/market/zerodte/board`, {
-      headers: { Authorization: `Bearer ${CRON}`, Accept: "application/json" },
-    });
-    if (r.ok) return { zb: await r.json(), via: "cron" };
-  }
-  if (process.env.CLERK_SECRET_KEY && process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) {
-    const { mintClerkPremiumSession } = await import("./audit/lib/prod-clerk-session.mjs");
-    const session = await mintClerkPremiumSession({ appUrl: BASE });
-    if (!session.skip) {
-      try {
-        const r = await fetch(`${BASE}/api/market/zerodte/board`, {
-          headers: { Cookie: session.cookieHeader, Accept: "application/json" },
-        });
-        if (r.ok) return { zb: await r.json(), via: "clerk", cleanup: session.cleanup };
-      } finally {
-        await session.cleanup?.();
-      }
-    }
-  }
+  const res = await fetchAuditJson(BASE, "/api/market/zerodte/board");
+  if (res.ok) return { zb: res.json, via: res.via };
   return null;
 }
 
 async function liveBoardAudit() {
   const fetched = await fetchLiveBoard();
   if (!fetched) {
-    rec("live:board", CRON ? "FAIL" : "SKIP", CRON ? "HTTP 401 (CRON + Clerk fallback)" : "CRON_SECRET not set");
+    rec(
+      "live:board",
+      "FAIL",
+      process.env.CLERK_SECRET_KEY ? "board fetch failed (cron + clerk)" : "CRON_SECRET / Clerk keys not set"
+    );
     return;
   }
   const { zb, via } = fetched;
@@ -199,12 +184,15 @@ async function main() {
 
   if (fails.length) {
     fails.forEach((f) => console.log(`  · ${f.name}: ${f.detail ?? ""}`));
+    await releaseAuditClerkSession();
     process.exit(1);
   }
+  await releaseAuditClerkSession();
   console.log("GREEN — 0DTE logic audit passed.\n");
 }
 
-main().catch((e) => {
+main().catch(async (e) => {
+  await releaseAuditClerkSession();
   console.error(e);
   process.exit(1);
 });

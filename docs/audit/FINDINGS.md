@@ -5,6 +5,28 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-29 — [Grid/0DTE] zerodte board HTTP 504 on aged snapshot cold-build
+
+**Severity.** P0 member path (Night Hawk `/api/market/zerodte/board`).
+
+**Symptoms.** Parallel grid-rth audit burst: `integration:zerodte-board` HTTP **504**;
+`zerodte-bie-consistency` `live:board-fetch` HTTP **504**; `validate:zerodte-logic`
+`live:board` HTTP 401 when CRON bearer timed out without Clerk fallback.
+
+**Root cause.** `getZeroDteBoardPayload()` (`zerodte-service.ts`) treated snapshots with
+`as_of` age >30s as unservable and **blocked** on `buildAndPublishBoard()`. Under audit
+parallelism or a slow scan, cold builds exceeded Cloudflare origin timeout (~100s) while
+the Redis snapshot key (`zerodte:board:snapshot:v1`, TTL 60s) was still present.
+
+**Evidence.** `grid-rth-2026-07-29` verify pass: curl board 504 via cron; sequential Clerk
+probe succeeded; `audit-output/grid-rth-*-verify-*.json`.
+
+**Fix.** Serve shared snapshot SWR up to `BOARD_SNAPSHOT_TTL_SEC` (60s); only true cold miss
+blocks. `audit-auth-fetch.mjs`: fall through to Clerk on 502/504/524. `zerodte-logic-audit.mjs`:
+use `fetchAuditJson`. Test: `zerodte-board-convergence.test.ts` 35s-aged snapshot case.
+
+**Status.** `fix/zerodte-board-swr-504` → PR.
+
 ## 2026-07-29 — [ops] SPY flow cross-check false FLAG — bounded Massive oracle (#1299)
 
 **Severity.** P0 data-correctness (ops-auto-fix #1299, fingerprint `ee994b4b2bf8`).

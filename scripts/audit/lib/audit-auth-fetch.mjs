@@ -48,7 +48,15 @@ export async function fetchAuditJson(base, path) {
     });
     if (r.ok) return { ok: true, status: r.status, json: await r.json(), via: "cron" };
     // Stale cloud-agent CRON_SECRET is common — fall through to Clerk on auth failure.
-    if (r.status !== 401 && r.status !== 403) {
+    // Also fall through on edge/origin 502/504/524 — cron bearer may be wrong OR the route
+    // timed out on a blocking cold build; Clerk member-path is the authoritative probe.
+    const fallThrough =
+      r.status === 401 ||
+      r.status === 403 ||
+      r.status === 502 ||
+      r.status === 504 ||
+      r.status === 524;
+    if (!fallThrough) {
       const json = await r.json().catch(() => ({}));
       return { ok: false, status: r.status, json, via: "cron" };
     }
