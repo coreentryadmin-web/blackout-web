@@ -95,7 +95,11 @@ export function vectorUniverseTickers(): string[] {
   return [...ALLOWLIST];
 }
 
-/** Tickers warmed by heatmap-warm + vector-universe snapshot (presets + extra liquid). */
+/**
+ * Static warm/allowlist subset only. Live `heatmap-warm` + Vector recorder use
+ * `listSharedUniverseTickers()` (static ∪ dynamic ≤100 / 14d) — do not reintroduce this
+ * as the warm batch or Thermal and Vector drift apart again.
+ */
 export function vectorWarmTickers(): string[] {
   return vectorUniverseTickers();
 }

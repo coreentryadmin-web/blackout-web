@@ -4,8 +4,7 @@ import {
   computeGexWalls,
   mapFromStrikeTotalsRecord,
 } from "@/lib/providers/gex-wall-levels";
-import { vectorUniverseTickers } from "@/lib/heatmap-allowlist";
-import { listDynamicUniverseTickers, touchDynamicUniverse } from "./vector-dynamic-universe";
+import { listSharedUniverseTickers, touchDynamicUniverse } from "./vector-dynamic-universe";
 import { isVectorTickerAllowed, normalizeVectorTicker } from "./vector-ticker";
 import { roundFloats } from "@/lib/round-floats";
 import { bucketWallSampleTime, buildWallHistorySample, wallTrailSampleSecForTicker } from "./vector-wall-sample";
@@ -135,11 +134,11 @@ export async function buildVectorUniverseSnapshot(
   opts: VectorUniverseBuildOpts = {}
 ): Promise<VectorUniverseSnapshot> {
   const { recordWallHistory = false, sessionYmd } = opts;
-  // Union static + dynamic on EVERY build (scanner polls and cron). Dynamic names are Polygon-cache-
-  // first once warm; `registerVectorUniverseView` also appends a single row immediately after a
-  // Thermal/Helix/Vector view so the scanner does not wait for the next full rebuild.
-  const dynamic = await listDynamicUniverseTickers().catch(() => []);
-  const tickers = [...new Set([...vectorUniverseTickers(), ...dynamic])];
+  // Shared sticky universe with Thermal heatmap-warm: static allowlist ∪ dynamic (≤100 / 14d).
+  // Dynamic names are Polygon-cache-first once warm; `registerVectorUniverseView` also appends a
+  // single row immediately after a Thermal/Helix/Vector view so the scanner does not wait for the
+  // next full rebuild.
+  const tickers = await listSharedUniverseTickers();
   const rows: VectorUniverseRow[] = [];
   const nowSec = Math.floor(Date.now() / 1000);
 

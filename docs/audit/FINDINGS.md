@@ -246,8 +246,27 @@ watchdog; `data-correctness?force=1` reproduced FLAG pre-fix.
 violation only (same direction + valid subset → independently confirmed).
 
 **Status.** `fix/ops-1287-autopost-flow-xcheck` → PR.
+=======
+## 2026-07-29 — [Thermal+Vector] Shared sticky universe (≤100 / 14d)
+
+**Severity.** P2 product gap — Vector already sticky-recorded member-viewed names (cap 100,
+14d) while Thermal `heatmap-warm` only warmed the static ~21 allowlist. Opening NVDA on
+Thermal registered it for Vector beads but did not keep the Thermal matrix cache-hot in
+background; the desks drifted to two different “universes.”
+
+**Root cause.** Warm cron used `vectorWarmTickers()` (static only). Dynamic list lived in
+`vector-dynamic-universe.ts` and was only unioned into Vector recorder / walls paths that
+already called `listDynamicUniverseTickers` — not Thermal matrix warm.
+
+**Fix.** `mergeSharedUniverseTickers` / `listSharedUniverseTickers` — one static∪dynamic set.
+`heatmap-warm`, `vector-walls-warm`, and `buildVectorUniverseSnapshot` all consume it. UW
+overlays stay on the static allowlist (2 RPS). CORE SPY/SPX/QQQ still force-refresh first.
+
+**Status.** `cursor/thermal-share-dynamic-universe-3d11` → PR.
+>>>>>>> 1d12b294 (feat(thermal): share Vector sticky universe (≤100/14d) for matrix warm)
 
 ## 2026-07-29 — [Thermal] Triple desk SPY/QQQ not refreshing every 5–10s
+
 
 **Severity.** P1 UX — compare desk felt stuck; SPX stayed ~5s while SPY/QQQ asof climbed
 15–25s (live poll 2026-07-29 ~15:58 ET). Browser showed force requests stuck on

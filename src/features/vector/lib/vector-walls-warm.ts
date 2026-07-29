@@ -6,6 +6,7 @@
 
 import { getVectorGexWalls, getVectorVexWalls } from "./vector-snapshot";
 import { getActiveVectorTickers } from "./vector-stream-hub";
+import { listDynamicUniverseTickers, mergeSharedUniverseTickers } from "./vector-dynamic-universe";
 
 export async function warmVectorWalls(ticker: string): Promise<void> {
   // Force walls computation by calling the read functions.
@@ -17,12 +18,20 @@ export async function warmVectorWalls(ticker: string): Promise<void> {
   ]);
 }
 
-/** Get list of all tickers to warm: static allowlist + currently active dynamic tickers. */
-export function getTickersToWarm(allowlist: string[]): string[] {
-  const activeSet = new Set(getActiveVectorTickers());
-  const allowlistSet = new Set(allowlist);
-  // Combine: all allowlist tickers + any active dynamic tickers not already on allowlist
-  return Array.from(
-    new Set([...allowlistSet, ...activeSet])
-  );
+/**
+ * Tickers to warm: static allowlist ∪ dynamic sticky universe ∪ live SSE viewers.
+ * Sync helper kept for tests that pass an explicit dynamic list.
+ */
+export function getTickersToWarm(
+  allowlist: string[],
+  dynamic: string[] = [],
+  active: string[] = getActiveVectorTickers()
+): string[] {
+  return mergeSharedUniverseTickers(allowlist, [...dynamic, ...active]);
+}
+
+/** Async warm set — same shared universe Thermal heatmap-warm uses, plus live viewers. */
+export async function getTickersToWarmAsync(allowlist: string[]): Promise<string[]> {
+  const dynamic = await listDynamicUniverseTickers().catch(() => [] as string[]);
+  return getTickersToWarm(allowlist, dynamic, getActiveVectorTickers());
 }
