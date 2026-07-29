@@ -21,6 +21,24 @@ badges on wall rows; Discord-safe legend in a code span; taller strike band (hal
 
 **Status.** PR `cursor/thermal-discord-card-fix-3d11`.
 
+## 2026-07-29 — [Thermal] Discord cron “boxes” — ECS has no fonts for Sharp SVG text
+
+**Severity.** P0 UX (cron PNG unreadable; manual local posts looked fine).
+
+**Symptom.** EventBridge `/api/cron/thermal-discord` posts showed solid yellow /
+purple / green / orange rectangles (“boxes”) instead of strike + GEX $ labels.
+Same renderer looked correct when posted from a Cloud Agent / laptop.
+
+**Root cause.** `deploy/Dockerfile` runner is `node:20-bookworm-slim` with **zero
+fonts**. Sharp→librsvg/pango cannot paint SVG `<text>` for
+`ui-monospace/Menlo/Consolas` — only the colored `<rect>` cell fills remain.
+Local machines have those fonts, so manual posts worked.
+
+**Fix.** Install `fonts-dejavu-core` + `fontconfig` in the runner image; point the
+card at `DejaVu Sans Mono`; lower PLUS/MINUS fill alpha so labels stay on top.
+
+**Status.** PR `cursor/thermal-discord-ecs-fonts-3d11`.
+
 ## 2026-07-29 — [Thermal] Discord “No numbers” — settled empty 0DTE after close
 
 **Severity.** P1 UX (blank Discord grids).

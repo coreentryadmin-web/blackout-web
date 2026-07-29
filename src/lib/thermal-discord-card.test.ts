@@ -115,6 +115,9 @@ test("buildThermalDiscordCardSvg includes tickers and never invents spot", () =>
   assert.match(svg, /PLUS node \(yellow\)/);
   assert.match(svg, /MINUS node \(purple\)/);
   assert.match(svg, new RegExp(`${THERMAL_DISCORD_MAX_EXPIRIES} near expiries`));
+  // ECS-safe face (bookworm-slim has DejaVu after Dockerfile fonts install).
+  assert.match(svg, /DejaVu Sans Mono/);
+  assert.doesNotMatch(svg, /ui-monospace|Menlo|Consolas/);
   // Yellow +node / purple −node bead fills
   assert.match(svg, /rgba\(255,214,10/);
   assert.match(svg, /rgba\(217,123,255/);
