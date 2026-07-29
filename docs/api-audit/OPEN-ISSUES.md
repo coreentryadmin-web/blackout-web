@@ -1,5 +1,70 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-29 16:51 ET
+Last updated: 2026-07-29 17:46 ET
+
+## spx-rth-2026-07-29 — SPX Slayer all-day verify pass (~17:26–17:46 ET, post-close)
+
+**Session:** SPX Slayer all-day agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` **verify** mode (scheduled market-open pass; executed post-close with `--force`). Commands: `npm run validate:spx-rth -- --force` → `npm run validate:spx-e2e` → 60s live poll (4×20s) → cross-tool API probes.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth --force` | ⚠️ **6 PASS / 1 WARN / 1 FAIL** — matrix + cross-endpoint + BIE GREEN; dashboard-e2e sub-run failed on flaky Playwright |
+| `npm run validate:spx-e2e` (best full UI pass) | ✅ **15 PASS / 2 WARN / 0 FAIL** — matrix every-cell, GEX/VEX tabs, 176 rows, no NaN, no stale SCANNING ✓ |
+| `npm run validate:spx-e2e` (retries) | ⚠️ API checks GREEN; Playwright `page.goto` / `waitForFunction` timeouts (cloud egress flake) |
+| Matrix deep audit | ✅ **176 strikes** — GEX+VEX+DEX+CHARM every cell finite; Σ strike_totals == headline total |
+| `validate:spx-bie` | ✅ member `/spx/play` == `getSpxPlayState()` |
+| 60s live auto-update poll | ✅ heatmap spot lane ticked; desk/play static post-close (expected at 7316.15 / SCANNING) |
+
+### UI E2E (Playwright — successful pass)
+
+| # | Action | Result |
+|---|---|---|
+| Sign-in `/dashboard` | ✅ premium admin session |
+| Click **GEX** tab | ✅ `#spx-matrix-tab-gex` |
+| Click **VEX** tab | ✅ `#spx-matrix-tab-vex` |
+| Matrix rows | ✅ **176** strike rows (≥80 bar) |
+| Matrix text sanity | ✅ no NaN / undefined / `$—` |
+| Trade alert hero | ✅ SCANNING — **no stale ✓ confirmations** |
+| Lotto dock | ✅ visible |
+| Commentary expand | ⏭️ SKIP — no expand control post-close |
+| Console errors | ✅ zero |
+
+### Cross-tool integration (Step 3)
+
+| Tool | Endpoint | Result |
+|---|---|---|
+| **Thermal** | `GET /api/market/gex-heatmap?ticker=SPX` | ✅ every cell validated; cross_validation PASS |
+| **GEX positioning** | `GET /api/market/gex-positioning?ticker=SPX` | ✅ spot/flip agree with matrix header |
+| **HELIX** | `GET /api/market/flows?limit=30` | ✅ 30 prints |
+| **Largo** | `POST /api/market/largo/query` | ⚠️ **1/3 runs timed out at 90s**; 2/3 PASS (`blackout_intelligence` tool) |
+| **BIE** | `validate:spx-bie` | ✅ `spx_full_state` == member play |
+| **Grid** | `GET /api/grid/bootstrap` | ⏭️ **404** — classic Grid deleted 2026-07-07; runbook reference stale |
+| **0DTE Command** | `GET /api/market/zerodte/board` | ✅ 7 setups (post-close) |
+| **Night Hawk** | `GET /api/market/nighthawk/edition` | ✅ loads |
+| **SPX bootstrap** | `GET /api/market/spx/bootstrap` | ✅ loaded |
+| **Desk / play** | desk + play cross-tool | ✅ desk=7316.15 play=SCANNING |
+
+### P0 found this pass
+
+**None.** Matrix cells 100% match API; trade alerts grounded; no stale SCANNING confirmations when UI rendered.
+
+### Findings logged
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| **P1** | `gex-heatmap-intermittent-504` | First audit probe hit HTTP 502/504 on `gex-heatmap` and `spx/merged`; subsequent probes 200 | `/api/market/gex-heatmap?ticker=SPX` | post-close — monitor RTH |
+| **P1** | `largo-query-timeout` | `POST /api/market/largo/query` exceeded 90s curl max once; passed on retry (~3 min later) | `/api/market/largo/query` | post-close — consider retry/backoff in e2e |
+| **P2** | `spx-e2e-playwright-flake` | Cloud-agent Playwright `page.goto` timeout on 2/4 e2e retries after API phase GREEN | N/A (agent infra) | post-close |
+| **P2** | `spx-runbook-grid-stale` | `SPX-RTH-ALL-DAY-AGENT.md` Step 3 still lists deleted `GET /api/grid/bootstrap` | 404 | post-close — update runbook |
+| **P2** | `cloud-cron-secret-mismatch` | Cloud-agent `CRON_SECRET` ≠ prod Secrets Manager; Clerk fallback used | audit env | **Expected** — not prod |
+| **P2** | `commentary-expand-post-close` | No commentary expand control visible post-close | UI | **Expected** off-hours |
+
+**Member-facing SPX surfaces: GREEN** — matrix oracle clean, play SCANNING post-close, cross-tool spot agrees at 7316.15.
+
+**Reports:** `audit-output/spx-rth-2026-07-29-verify-1785360889180.json`, `audit-output/spx-dashboard-e2e-1785361215227.json`, `audit-output/spx-dashboard-e2e-1785361214520.png`
+
+---
 
 ## rth-open-2026-07-29-evening — Comprehensive RTH sweep (~16:41–16:51 ET, post-close)
 
