@@ -1,5 +1,82 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-29 14:15 ET
+Last updated: 2026-07-29 14:45 ET
+
+## grid-rth-2026-07-29 — 0DTE Command + Market Grid verify pass (~14:32–14:45 ET)
+
+**Session:** Autonomous Grid RTH agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` (verify mode). Time: Wed 14:32–14:45 ET (RTH, POST_COMMIT heat). Commands: `validate:grid-rth` → `validate:zerodte-logic` → `validate:grid-e2e` → `validate:zerodte-integration` → `data-validator.mjs` → `ops:collect`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:grid-rth` | ⚠️ **13/14** — all prod probes GREEN; `ops:collect` FAIL (env: no `DATABASE_PUBLIC_URL`) |
+| `npm run validate:zerodte-logic` | ✅ **GREEN** — 17/17 (gates, plan exits, lifecycle, mergePlays, session heat, ledger PnL) |
+| `npm run validate:grid-e2e` | ✅ **GREEN** — 4/4 API probes; Playwright browser unavailable (WARN only) |
+| `npm run validate:zerodte-integration` | ✅ **GREEN** — 9/9 cross-tool (SPX bootstrap/GEX, HELIX flows, NH dedupe, ledger PnL) |
+| `node scripts/audit/data-validator.mjs` | ⚠️ **30 PASS / 1 FAIL** — QQQ underlying 0.371% vs Polygon (tol 0.3% index) |
+| `npm run ops:collect` | ❌ **P0** — `watchdog:error-spike` 106 errors/15m |
+
+### 0DTE board (live, POST_COMMIT)
+
+| Field | Value |
+|---|---|
+| Session heat | `POST_COMMIT` (70%) — past 14:00 ET cutoff ✓ |
+| Setups | 5 (2 eligible / 0 gate violations) |
+| Ledger | 4 rows — PnL math matches `reconcileLedgerLivePnlPct` ✓ |
+| `zerodte-warm` cron | GREEN |
+| `data-correctness` | 0 flags (force=1) |
+| Night Hawk dedupe | 5 tickers covered elsewhere |
+| HELIX flows | 20–30 prints |
+| SPX spot (bootstrap vs GEX) | ~7393 (agree) |
+
+### 0DTE logic probes (all GREEN)
+
+| Probe | Result |
+|---|---|
+| Gate funnel (SETUP_MIN_GROSS, aggression, dominance, ITM) | PASS |
+| Plan exits (stop −50%, target +100%, time stop 15:30 ET) | PASS |
+| Trade lifecycle (OPEN → TRIM → CLOSED, sticky trough stop) | PASS |
+| Plan grading (stop wins when both touch same bar) | PASS |
+| Session heat (RTH → POST_COMMIT → POWER_HOUR at 15:00 ET) | PASS |
+| `mergePlays` past cutoff / MOVED → SKIP not OPEN | PASS |
+| Ledger PnL consistency (4 live rows) | PASS |
+
+### Cross-tool integration
+
+| Check | Result |
+|---|---|
+| Grid bootstrap spot vs GEX | PASS (~7393) |
+| HELIX flows feed scanner | PASS (20–30 prints) |
+| Night Hawk dedupe (`covered_elsewhere`) | PASS (5 tickers) |
+| BIE consistency | PASS |
+
+### UI / routing note
+
+Classic `/grid` page + 9 `/api/grid/*` panels **deleted 2026-07-07** — 0DTE Command lives on `/nighthawk`. E2E audits `/nighthawk` (not `/grid` tabs). `/grid` → 404 (expected).
+
+### P0 found + fixed this pass
+
+| ID | Severity | Detail | Status |
+|---|---|---|---|
+| `merge-conflict-sql-nh-outcomes` | **P0** | Git conflict markers (`<<<<<<< HEAD`) committed in `data-integrity-verifier.ts` nh_outcomes SQL → `syntax error at or near "("` on every data-integrity run → 100+ `error_events`/15m → `watchdog:error-spike` | **FIX PR #1272** — auto-merge pending CI |
+| `cron-audit-merge-conflict` | **P1** | Same conflict in `scripts/cron-audit-query.mjs` → SyntaxError on import | **FIX PR #1272** |
+
+**Evidence:** `GET /api/admin/errors` — 14× `db_query` scope containing `<<<<<<< HEAD`; watchdog `error_count: 103`.
+
+### Residual open (non-P0)
+
+| Severity | ID | Detail | Status |
+|---|---|---|---|
+| **P2** | `qqq-underlying-staleness` | data-validator: QQQ setup underlying 671.72 vs Polygon 674.22 (0.371% > 0.3% index tol) | **OPEN** — tape lag, not scale slip |
+| **P2** | `ops-collect-vpc-skip` | Cloud agent cannot reach Postgres (`DATABASE_PUBLIC_URL` unset) — ops:collect exits 1 on env gap | **KNOWN** — watchdog HTTP probe still runs |
+| **P2** | `playwright-browser-missing` | grid-e2e WARN: Chromium not installed in cloud VM — API probes authoritative | **KNOWN** |
+| **P1** | `largo-grounding-coverage` | Largo answer #1284 low grounding (from prior pass) | **OPEN** — [#1239](https://github.com/coreentryadmin-web/blackout-web/issues/1239) |
+
+**Member-facing 0DTE: GREEN** — board live, gates honest, ledger PnL correct, session heat POST_COMMIT, crons warm.
+
+**Reports:** `audit-output/grid-rth-2026-07-29-verify-1785350178842.json`, `audit-output/zerodte-logic-1785350185639.json`, `audit-output/grid-e2e-1785350186775.json`, `audit-output/zerodte-integration-1785350226164.json`
+
+---
 
 ## rth-comprehensive-2026-07-29-pass4 — afternoon agent sweep (~14:00–14:15 ET)
 
