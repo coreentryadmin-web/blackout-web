@@ -10,6 +10,7 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { spotsAgree, flipsAgree } from "./audit/lib/cross-tool-tolerance.mjs";
+import { auditFetchJson, releaseAuditFetchSession } from "./audit/lib/audit-fetch.mjs";
 
 const BASE = (
   process.argv.find((a) => a.startsWith("--base="))?.slice("--base=".length) ??
@@ -27,11 +28,8 @@ const rec = (name, status, detail) => {
 };
 
 async function fetchJson(path) {
-  const r = await fetch(`${BASE}${path}`, {
-    headers: { Authorization: `Bearer ${CRON}`, Accept: "application/json" },
-  });
-  const json = await r.json().catch(() => ({}));
-  return { status: r.status, json };
+  const { status, json } = await auditFetchJson(BASE, path, { cronSecret: CRON });
+  return { status, json };
 }
 
 function spotDelta(a, b) {
@@ -40,11 +38,6 @@ function spotDelta(a, b) {
 }
 
 async function auditCrossToolLive() {
-  if (!CRON) {
-    rec("integration:live", "SKIP", "CRON_SECRET not set");
-    return;
-  }
-
   const [zb, spxBoot, gex, flows, nh, mergedWrap] = await Promise.all([
     fetchJson("/api/market/zerodte/board"),
     fetchJson("/api/market/spx/bootstrap"),
@@ -110,36 +103,40 @@ async function auditCrossToolLive() {
 }
 
 async function main() {
-  console.log("\n=== 0DTE cross-tool integration audit ===\n");
+  try {
+    console.log("\n=== 0DTE cross-tool integration audit ===\n");
 
-  const staticOk = spawnSync("node scripts/audit/zerodte-bie-consistency-validator.mjs", {
-    shell: true,
-    encoding: "utf8",
-    env: process.env,
-  });
-  if (staticOk.status !== 0) {
-    rec("integration:bie-consistency", "FAIL", (staticOk.stderr || staticOk.stdout || "").trim().slice(0, 300));
-  } else {
-    rec("integration:bie-consistency", "PASS");
+    const staticOk = spawnSync("node scripts/audit/zerodte-bie-consistency-validator.mjs", {
+      shell: true,
+      encoding: "utf8",
+      env: process.env,
+    });
+    if (staticOk.status !== 0) {
+      rec("integration:bie-consistency", "FAIL", (staticOk.stderr || staticOk.stdout || "").trim().slice(0, 300));
+    } else {
+      rec("integration:bie-consistency", "PASS");
+    }
+
+    run("npm run validate:zerodte-logic", "integration:zerodte-logic");
+
+    await auditCrossToolLive();
+
+    const fails = checks.filter((c) => c.status === "FAIL");
+    const reportPath = join(OUT, `zerodte-integration-${Date.now()}.json`);
+    writeFileSync(reportPath, JSON.stringify({ ts: new Date().toISOString(), checks }, null, 2));
+
+    console.log(`\n=== Summary ===`);
+    console.log(`  FAIL: ${fails.length} / ${checks.length}`);
+    console.log(`  Report: ${reportPath}\n`);
+
+    if (fails.length) {
+      fails.forEach((f) => console.log(`  · ${f.name}: ${f.detail ?? ""}`));
+      process.exit(1);
+    }
+    console.log("GREEN — 0DTE integration audit passed.\n");
+  } finally {
+    await releaseAuditFetchSession();
   }
-
-  run("npm run validate:zerodte-logic", "integration:zerodte-logic");
-
-  await auditCrossToolLive();
-
-  const fails = checks.filter((c) => c.status === "FAIL");
-  const reportPath = join(OUT, `zerodte-integration-${Date.now()}.json`);
-  writeFileSync(reportPath, JSON.stringify({ ts: new Date().toISOString(), checks }, null, 2));
-
-  console.log(`\n=== Summary ===`);
-  console.log(`  FAIL: ${fails.length} / ${checks.length}`);
-  console.log(`  Report: ${reportPath}\n`);
-
-  if (fails.length) {
-    fails.forEach((f) => console.log(`  · ${f.name}: ${f.detail ?? ""}`));
-    process.exit(1);
-  }
-  console.log("GREEN — 0DTE integration audit passed.\n");
 }
 
 function run(cmd, label) {

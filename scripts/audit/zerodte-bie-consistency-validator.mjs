@@ -29,7 +29,7 @@ rec(
 
 rec(
   "static:zerodte-service->shared-cache-key",
-  /zerodte:board:v1/.test(read("src/lib/platform/zerodte-service.ts"))
+  /zerodte:board:snapshot:v1/.test(read("src/lib/platform/zerodte-service.ts"))
 );
 
 rec(
@@ -87,22 +87,17 @@ rec(
   /zeroDtePlaysFeed/.test(read("src/lib/largo/largo-live-feed.ts"))
 );
 
-// Layer B — live consistency when CRON + tsx available
+// Layer B — live consistency when auth available
 const CRON = process.env.CRON_SECRET;
 const BASE = (process.env.AUDIT_APP_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
 
 async function layerB() {
-  if (!CRON) {
-    rec("live:board-vs-largo", true, "SKIP — CRON_SECRET not set");
-    return;
-  }
   try {
-    const http = await fetch(`${BASE}/api/market/zerodte/board`, {
-      headers: { Authorization: `Bearer ${CRON}`, Accept: "application/json" },
-    });
-    const board = await http.json();
-    if (!http.ok || !board.available) {
-      rec("live:board-fetch", false, `HTTP ${http.status}`);
+    const { auditFetchJson, releaseAuditFetchSession } = await import("./lib/audit-fetch.mjs");
+    const { status, json: board } = await auditFetchJson(BASE, "/api/market/zerodte/board", { cronSecret: CRON });
+    if (status !== 200 || !board?.available) {
+      rec("live:board-fetch", false, `HTTP ${status}`);
+      await releaseAuditFetchSession();
       return;
     }
     rec("live:board-fetch", true);
@@ -139,6 +134,7 @@ async function layerB() {
       `${board.covered_elsewhere?.length ?? 0} covered_elsewhere`
     );
     void covered;
+    await releaseAuditFetchSession();
   } catch (e) {
     rec("live:board-vs-largo", false, e.message);
   }

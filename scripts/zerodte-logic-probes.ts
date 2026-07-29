@@ -105,8 +105,9 @@ const bar = (tOff: number, h: number, l: number, c: number) => ({ t: T0 + tOff *
 const both = gradePlanFromBars([bar(0, 9.0, 2.0, 5.0)], 4.2, T0 - MIN);
 rec("logic:plan-grade-stop-first", both.outcome === "stopped" ? "PASS" : "FAIL", both.outcome);
 
-const rth = sessionHeat(14 * 60 + 30, true);
-const ph = sessionHeat(NEW_PLAY_CUTOFF_ET_MINUTES, true);
+// 12:00 ET = RTH; 15:10 ET = POWER_HOUR (14:00–15:00 is POST_COMMIT per G-14).
+const rth = sessionHeat(12 * 60, true);
+const ph = sessionHeat(15 * 60 + 10, true);
 rec("logic:session-heat", rth.state === "RTH" && ph.state === "POWER_HOUR" ? "PASS" : "FAIL", `${rth.state}→${ph.state}`);
 
 const grade = computeLedgerGrade("long", 100, 105);

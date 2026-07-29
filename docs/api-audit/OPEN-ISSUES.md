@@ -1,5 +1,59 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-06 22:35 ET
+Last updated: 2026-07-29 11:45 ET
+
+## grid-rth-2026-07-29 — 0DTE Command + Market Grid RTH verify (market open)
+
+**Session:** Autonomous Grid RTH agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` verify mode. Time: Wed 11:30–11:45 ET (RTH). Commands: `validate:grid-rth` → `validate:zerodte-logic` → `validate:zerodte-integration` → `validate:grid-e2e`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:zerodte-logic` | ✅ **GREEN** — 17/17 (gates, plans, lifecycle, session heat, mergePlays, live board) |
+| `npm run validate:zerodte-integration` | ✅ **GREEN** — 9/9 (BIE static, HELIX flows, NH dedupe, SPX spot vs GEX) |
+| `npm run validate:grid-e2e` | ⚠️ **4/5** — board API transient 504 on cold build; UI console clean on retry |
+| `npm run validate:grid-rth` | ⚠️ **10/14** — core 0DTE paths GREEN; cron/correctness probes blocked by stale cloud CRON_SECRET |
+
+### Live 0DTE board (11:38 ET, Clerk auth)
+
+| Probe | Result |
+|---|---|
+| Session heat | ✅ `RTH` heat=100% |
+| Setups | ✅ 8 finds (FLOW + BREAKOUT co-discovery; blocked rows show `gate.verdict=BLOCKED`) |
+| Ledger | ✅ 1 row; PnL math within 0.05% |
+| Upstream | ✅ `upstream_ok=true` |
+| Cross-tool SPX spot | ✅ bootstrap/GEX/desk agree ~7369–7370 |
+| HELIX flows | ✅ 20–30 prints |
+| Night Hawk dedupe | ✅ 5 tickers in `covered_elsewhere` |
+
+### 0DTE logic verified
+
+| Layer | Status |
+|---|---|
+| Gate funnel (SETUP_MIN_GROSS/DOMINANCE/AGGR/ITM) | ✅ unit + live FLOW setups |
+| Plan exits (-50% / +100% / 15:30 ET) | ✅ |
+| Trade lifecycle OPEN→TRIM→CLOSED | ✅ |
+| Session heat RTH vs POWER_HOUR | ✅ 10:00–14:00 RTH; 15:00+ POWER_HOUR |
+| mergePlays past cutoff / MOVED → SKIP | ✅ |
+| Ledger grade math | ✅ |
+
+### Findings
+
+| Severity | ID | Detail | Backing | Fix |
+|---|---|---|---|---|
+| **P1** | `cloud-agent-cron-secret-stale` | Cloud Agent `CRON_SECRET` returns HTTP 401 on prod cron routes (`zerodte-warm`, `data-correctness`, `cron-staleness-watchdog`) — **not a prod outage**; member APIs work via Clerk | curl + ops:collect | Rotate/sync Secrets Manager `CRON_SECRET` in Cursor Cloud env |
+| **P2** | `zerodte-board-cold-504` | `/api/market/zerodte/board` HTTP 504 on first cold build (~60s); warm retry 200 in <3s | grid-e2e + manual probe | Audit retry added; board SWR normally warm via `zerodte-warm` cron |
+| **P2** | `grid-e2e-react-418-nighthawk` | React #418 hydration on `/nighthawk` (known OPS-13 class) | grid-e2e intermittent | Existing regression tests; non-blocking |
+| **FIXED** | `grid-rth-audit-session-heat-probe` | Probe used 14:30→POST_COMMIT not RTH | zerodte-logic-probes.ts | **FIXED** this session |
+| **FIXED** | `grid-rth-audit-cutoff-constant` | Audit hardcoded 15:00 cutoff vs prod 14:00 G-14 | zerodte-logic-audit.mjs | **FIXED** this session |
+| **FIXED** | `grid-rth-audit-gate-thresholds` | Audit used stale 750K/0.65 vs board.ts 200K/0.55 | zerodte-logic-audit.mjs | **FIXED** this session |
+| **FIXED** | `grid-rth-audit-clerk-fallback` | Live probes failed when cloud CRON_SECRET stale | audit-fetch.mjs | **FIXED** this session |
+
+**No prod P0 logic defects — audit harness fixes merged via PR.**
+
+**Reports:** `audit-output/grid-rth-2026-07-29-verify-*.json`, `audit-output/zerodte-logic-*.json`, `audit-output/zerodte-integration-*.json`, `audit-output/grid-e2e-*.json`
+
+---
 
 ## Largo mobile stream fix — 2026-07-06 (user-reported "Connection interrupted")
 

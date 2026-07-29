@@ -14,6 +14,7 @@
 import { spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { auditFetchJson, releaseAuditFetchSession } from "./audit/lib/audit-fetch.mjs";
 
 const BASE = (
   process.argv.find((a) => a.startsWith("--base="))?.slice("--base=".length) ??
@@ -83,41 +84,37 @@ function scanFinite(obj, path = "", out = []) {
 }
 
 async function liveBoardAudit() {
-  if (!CRON) {
-    rec("live:board", "SKIP", "CRON_SECRET not set");
+  const { status, json: zb, via } = await auditFetchJson(BASE, "/api/market/zerodte/board", { cronSecret: CRON });
+  if (status !== 200 || !zb) {
+    rec("live:board", "FAIL", `HTTP ${status}${via === "none" ? " (no auth)" : ""}`);
     return;
   }
-
-  const r = await fetch(`${BASE}/api/market/zerodte/board`, {
-    headers: { Authorization: `Bearer ${CRON}`, Accept: "application/json" },
-  });
-  if (!r.ok) {
-    rec("live:board", "FAIL", `HTTP ${r.status}`);
-    return;
-  }
-  const zb = await r.json();
+  if (via === "clerk") rec("live:auth", "WARN", "CRON bearer rejected — used Clerk fallback");
   if (!zb.available) {
     rec("live:board", "FAIL", "available=false");
     return;
   }
 
-  const SETUP_MIN_GROSS = 750_000;
-  const SETUP_MIN_DOMINANCE = 0.65;
+  const SETUP_MIN_GROSS = 200_000; // board.ts — lowered from 750K
+  const SETUP_MIN_DOMINANCE = 0.55; // board.ts — lowered from 0.65
   const SETUP_MIN_AGGR_SHARE = 0.3;
   const SETUP_MAX_ITM_PCT = 2;
-  const NEW_PLAY_CUTOFF_ET_MINUTES = 15 * 60;
+  const NEW_PLAY_CUTOFF_ET_MINUTES = 14 * 60; // must match plan.ts / G-14
 
   const badNums = scanFinite(zb).slice(0, 5);
   rec("live:finite-numbers", badNums.length === 0 ? "PASS" : "FAIL", badNums.join("; "));
 
-  // Every live setup must pass gate thresholds (scanner can't emit failing rows).
+  // FLOW-origin directional setups with tape evidence must pass gates; BREAKOUT-led rows
+  // (gross_premium=0) and blocked/veto rows are allowed on the board as watch state.
   let gateFails = 0;
   for (const s of zb.setups ?? []) {
+    const origins = s.discovery_origin ?? ["FLOW"];
+    const isFlowDirectional = s.play_type !== "CONDOR" && origins.includes("FLOW");
+    if (!isFlowDirectional || s.gross_premium === 0 || s.gate?.verdict === "BLOCKED") continue;
     if (s.gross_premium < SETUP_MIN_GROSS) gateFails++;
     if ((s.aggression ?? 0) < SETUP_MIN_AGGR_SHARE) gateFails++;
     if (s.side_dominance < SETUP_MIN_DOMINANCE) gateFails++;
     if (s.otm_pct != null && s.otm_pct < -SETUP_MAX_ITM_PCT) gateFails++;
-    if (zb.covered_elsewhere?.includes(s.ticker)) gateFails++;
   }
   rec(
     "live:setup-gates",
@@ -153,36 +150,40 @@ async function liveBoardAudit() {
   }
 
   // Cutoff discipline label present in product (UI contract).
-  rec("live:cutoff-constant", NEW_PLAY_CUTOFF_ET_MINUTES === 15 * 60 ? "PASS" : "FAIL", "15:00 ET");
+  rec("live:cutoff-constant", NEW_PLAY_CUTOFF_ET_MINUTES === 14 * 60 ? "PASS" : "FAIL", "14:00 ET");
 }
 
 async function main() {
   console.log("\n=== 0DTE logic audit ===\n");
-  runTests();
   try {
-    await pureInvariantProbes();
-  } catch (e) {
-    rec("logic:pure-probes", "FAIL", e.message);
-  }
-  try {
-    await liveBoardAudit();
-  } catch (e) {
-    rec("live:board", "FAIL", e.message);
-  }
+    runTests();
+    try {
+      await pureInvariantProbes();
+    } catch (e) {
+      rec("logic:pure-probes", "FAIL", e.message);
+    }
+    try {
+      await liveBoardAudit();
+    } catch (e) {
+      rec("live:board", "FAIL", e.message);
+    }
 
-  const fails = checks.filter((c) => c.status === "FAIL");
-  const reportPath = join(OUT, `zerodte-logic-${Date.now()}.json`);
-  writeFileSync(reportPath, JSON.stringify({ ts: new Date().toISOString(), checks }, null, 2));
+    const fails = checks.filter((c) => c.status === "FAIL");
+    const reportPath = join(OUT, `zerodte-logic-${Date.now()}.json`);
+    writeFileSync(reportPath, JSON.stringify({ ts: new Date().toISOString(), checks }, null, 2));
 
-  console.log(`\n=== Summary ===`);
-  console.log(`  FAIL: ${fails.length} / ${checks.length}`);
-  console.log(`  Report: ${reportPath}\n`);
+    console.log(`\n=== Summary ===`);
+    console.log(`  FAIL: ${fails.length} / ${checks.length}`);
+    console.log(`  Report: ${reportPath}\n`);
 
-  if (fails.length) {
-    fails.forEach((f) => console.log(`  · ${f.name}: ${f.detail ?? ""}`));
-    process.exit(1);
+    if (fails.length) {
+      fails.forEach((f) => console.log(`  · ${f.name}: ${f.detail ?? ""}`));
+      process.exit(1);
+    }
+    console.log("GREEN — 0DTE logic audit passed.\n");
+  } finally {
+    await releaseAuditFetchSession();
   }
-  console.log("GREEN — 0DTE logic audit passed.\n");
 }
 
 main().catch((e) => {

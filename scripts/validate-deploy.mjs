@@ -163,13 +163,24 @@ console.log(`Time:   ${new Date().toISOString()}\n`);
 
 // ── 1. Production deploy ────────────────────────────────────────────────────
 console.log("1. Production (blackout-web)");
+const railwayCliAvailable = spawnSync("which", ["railway"], { encoding: "utf8" }).status === 0;
+const railwayUsable =
+  railwayCliAvailable &&
+  spawnSync("railway", ["whoami"], { encoding: "utf8", stdio: "pipe" }).status === 0;
 const skipCli =
   process.env.SKIP_RAILWAY === "1" ||
   IS_STAGING ||
+  !railwayUsable ||
   (process.env.GITHUB_ACTIONS === "true" && !process.env.RAILWAY_TOKEN?.trim());
 
 if (skipCli) {
-  warn("Production CLI checks skipped (GITHUB_ACTIONS or SKIP_RAILWAY=1)");
+  warn(
+    railwayUsable
+      ? "Production CLI checks skipped (GITHUB_ACTIONS or SKIP_RAILWAY=1)"
+      : railwayCliAvailable
+        ? "Production CLI checks skipped (railway CLI present but not authenticated — ECS deploy validated via HTTP smoke)"
+        : "Production CLI checks skipped (railway CLI not installed — ECS deploy validated via HTTP smoke)"
+  );
 } else {
 try {
   const deployments = sh("railway deployment list --service blackout-web 2>/dev/null");

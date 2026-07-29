@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { inRthOpenWindow, isTradingDayEt, todayEtYmd, etParts } from "./gha-et-window.mjs";
 import { spotsAgree } from "./audit/lib/cross-tool-tolerance.mjs";
 import { probeDataCorrectness } from "./audit/lib/data-correctness-probe.mjs";
+import { auditFetchJson, releaseAuditFetchSession } from "./audit/lib/audit-fetch.mjs";
 
 const force = process.argv.includes("--force");
 const phaseArg = process.argv.find((a) => a.startsWith("--phase="));
@@ -43,17 +44,10 @@ function run(cmd, label) {
   return true;
 }
 
-async function fetchJson(path, opts = {}) {
-  const r = await fetch(`${BASE}${path}`, {
-    ...opts,
-    headers: {
-      Authorization: `Bearer ${CRON}`,
-      Accept: "application/json",
-      ...(opts.headers || {}),
-    },
-  });
-  if (!r.ok) throw new Error(`HTTP ${r.status} ${path}`);
-  return r.json();
+async function fetchJson(path) {
+  const { status, json } = await auditFetchJson(BASE, path, { cronSecret: CRON });
+  if (status !== 200 || json == null) throw new Error(`HTTP ${status} ${path}`);
+  return json;
 }
 
 function scanFinite(obj, path = "", out = []) {
@@ -78,7 +72,6 @@ function ageSec(asOf) {
 }
 
 async function auditZeroDteBoard() {
-  if (!CRON) return;
   try {
     const zb = await fetchJson("/api/market/zerodte/board");
     if (!zb.available) {
@@ -110,7 +103,6 @@ async function auditZeroDteBoard() {
 }
 
 async function auditCrossTool() {
-  if (!CRON) return;
   try {
     const [spxBoot, gex, zb] = await Promise.all([
       fetchJson("/api/market/spx/bootstrap"),
@@ -227,7 +219,15 @@ async function main() {
   console.log("GREEN — 0DTE Command audit passed.\n");
 }
 
-main().catch((e) => {
+async function mainWrapped() {
+  try {
+    await main();
+  } finally {
+    await releaseAuditFetchSession();
+  }
+}
+
+mainWrapped().catch((e) => {
   console.error(e);
   process.exit(1);
 });
