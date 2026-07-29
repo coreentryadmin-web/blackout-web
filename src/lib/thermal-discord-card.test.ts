@@ -44,7 +44,7 @@ test("bandStrikesAroundSpot centers on nearest strike", () => {
 test("fmtCompactHeatMoney always shows a number (never a blank dot)", () => {
   assert.equal(fmtCompactHeatMoney(0), "$0.0K");
   assert.equal(fmtCompactHeatMoney(2_500_000), "+$2.5M");
-  assert.equal(fmtCompactHeatMoney(-150_000), "−$150K");
+  assert.equal(fmtCompactHeatMoney(-150_000), "-$150K");
 });
 
 test("buildThermalDiscordCardSvg includes tickers and never invents spot", () => {
@@ -115,8 +115,10 @@ test("buildThermalDiscordCardSvg includes tickers and never invents spot", () =>
   assert.match(svg, /PLUS node \(yellow\)/);
   assert.match(svg, /MINUS node \(purple\)/);
   assert.match(svg, new RegExp(`${THERMAL_DISCORD_MAX_EXPIRIES} near expiries`));
-  // ECS-safe face (bookworm-slim has DejaVu after Dockerfile fonts install).
-  assert.match(svg, /DejaVu Sans Mono/);
+  // Embedded desk mono (base64 @font-face) — cron must not depend on system fonts.
+  assert.match(svg, /BlackOutDeskMono/);
+  assert.match(svg, /@font-face/);
+  assert.match(svg, /data:font\/ttf;base64,/);
   assert.doesNotMatch(svg, /ui-monospace|Menlo|Consolas/);
   // Yellow +node / purple −node bead fills
   assert.match(svg, /rgba\(255,214,10/);
@@ -173,7 +175,7 @@ test("resolveDiscordDeskExpiry skips empty settled 0DTE for next live expiry", (
   );
 });
 
-test("resolveDiscordNearExpiries skips empty today and caps at 6", () => {
+test("resolveDiscordNearExpiries skips empty today and caps at 5", () => {
   const near = [
     "2026-07-28",
     "2026-07-29",
@@ -189,19 +191,22 @@ test("resolveDiscordNearExpiries skips empty today and caps at 6", () => {
     "100": Object.fromEntries(near.map((e) => [e, e === "2026-07-28" ? 0 : 1_000])),
     "101": Object.fromEntries(near.map((e) => [e, e === "2026-07-28" ? 0 : -500])),
   };
-  assert.deepEqual(resolveDiscordNearExpiries(cells, strikes, near, near, "2026-07-28", 6), [
+  assert.deepEqual(resolveDiscordNearExpiries(cells, strikes, near, near, "2026-07-28", 5), [
     "2026-07-29",
     "2026-07-30",
     "2026-07-31",
     "2026-08-03",
     "2026-08-04",
-    "2026-08-05",
   ]);
   // Live today stays first.
   cells["100"]!["2026-07-28"] = 10;
   assert.equal(
-    resolveDiscordNearExpiries(cells, strikes, near, near, "2026-07-28", 6)[0],
+    resolveDiscordNearExpiries(cells, strikes, near, near, "2026-07-28", 5)[0],
     "2026-07-28"
+  );
+  assert.equal(
+    resolveDiscordNearExpiries(cells, strikes, near, near, "2026-07-28", 5).length,
+    5
   );
 });
 
@@ -259,7 +264,7 @@ test("settled empty 0DTE multi-expiry SVG paints next days with money labels", (
   assert.match(svg, new RegExp(fmtCompactExpiry(nextYmd).replace("/", "\\/")));
   assert.match(svg, new RegExp(fmtCompactExpiry(next2Ymd).replace("/", "\\/")));
   assert.match(svg, /\+\$2\.5M/);
-  assert.match(svg, /−\$1\.2M/);
+  assert.match(svg, /-\$1\.2M/);
   assert.match(svg, /rgba\(255,214,10/);
   assert.match(svg, /rgba\(217,123,255/);
   const caption = thermalDiscordCaption(columns);

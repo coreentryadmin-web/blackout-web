@@ -23,6 +23,7 @@ import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
 import { sharedCacheDel, sharedCacheSetNx } from "@/lib/shared-cache";
 import {
   THERMAL_DISCORD_TICKERS,
+  deskMonoFontFaceCss,
   renderThermalDiscordCardPng,
   thermalDiscordCaption,
   type ThermalCardColumn,
@@ -132,6 +133,7 @@ export async function GET(req: NextRequest) {
       available,
       tickers: THERMAL_DISCORD_TICKERS,
       bytes: png.byteLength,
+      font_embedded: deskMonoFontFaceCss().includes("base64"),
       host: redactWebhook(webhook),
     };
     await logCronRun("thermal-discord", started, payload);

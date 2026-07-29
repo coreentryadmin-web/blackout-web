@@ -26,18 +26,20 @@ badges on wall rows; Discord-safe legend in a code span; taller strike band (hal
 **Severity.** P0 UX (cron PNG unreadable; manual local posts looked fine).
 
 **Symptom.** EventBridge `/api/cron/thermal-discord` posts showed solid yellow /
-purple / green / orange rectangles (“boxes”) instead of strike + GEX $ labels.
-Same renderer looked correct when posted from a Cloud Agent / laptop.
+purple / green / orange rectangles / hollow tofu □□□ (“boxes”) instead of strike
++ GEX $ labels. Same renderer looked correct when posted from a Cloud Agent /
+laptop.
 
-**Root cause.** `deploy/Dockerfile` runner is `node:20-bookworm-slim` with **zero
-fonts**. Sharp→librsvg/pango cannot paint SVG `<text>` for
-`ui-monospace/Menlo/Consolas` — only the colored `<rect>` cell fills remain.
-Local machines have those fonts, so manual posts worked.
+**Root cause.** Manual post = laptop/agent **has fonts**. Cron = ECS
+`node:20-bookworm-slim` had **zero fonts**. Sharp→librsvg/pango skips `<text>`
+→ only colored `<rect>` fills remain (or missing-glyph tofu boxes).
 
-**Fix.** Install `fonts-dejavu-core` + `fontconfig` in the runner image; point the
-card at `DejaVu Sans Mono`; lower PLUS/MINUS fill alpha so labels stay on top.
+**Fix.**
+1. Install `fonts-dejavu-core` in the runner image (#1213).
+2. **Embed** DejaVu Sans Mono as base64 `@font-face` in the SVG + ship TTFs under
+   `deploy/fonts/` copied into the image — cron no longer depends on fontconfig.
 
-**Status.** PR `cursor/thermal-discord-ecs-fonts-3d11`.
+**Status.** PR `cursor/thermal-discord-embed-font-3d11`.
 
 ## 2026-07-29 — [Thermal] Discord “No numbers” — settled empty 0DTE after close
 

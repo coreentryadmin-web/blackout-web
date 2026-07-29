@@ -83,6 +83,9 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/src/lib/migrations ./src/lib/migrations
 COPY --from=builder --chown=nextjs:nodejs /app/deploy/market-worker.mjs ./deploy/market-worker.mjs
+# Self-contained desk fonts — embedded into Thermal Discord SVG at render time
+# so Sharp never depends on fontconfig finding a system face.
+COPY --from=builder --chown=nextjs:nodejs /app/deploy/fonts ./deploy/fonts
 
 USER nextjs
 EXPOSE 3000

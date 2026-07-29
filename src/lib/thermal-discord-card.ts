@@ -5,6 +5,8 @@
  *
  * Target canvas: 3840×2160 (4K UHD) so Discord attachments stay sharp when expanded.
  */
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
 import sharp from "sharp";
 import type { GexHeatmap } from "@/lib/providers/polygon-options-gex";
 
@@ -15,10 +17,10 @@ export type ThermalDiscordTicker = (typeof THERMAL_DISCORD_TICKERS)[number];
 export const THERMAL_DISCORD_CARD_W = 3840;
 export const THERMAL_DISCORD_CARD_H = 2160;
 
-/** Match SPX Slayer near-term rail (`MAX_EXPIRY_COLS = 6`) — tight, close expiries. */
-export const THERMAL_DISCORD_MAX_EXPIRIES = 6;
-/** Spot-centered strike band — short enough that multi-expiry cells stay readable. */
-export const THERMAL_DISCORD_STRIKE_HALF = 14;
+/** Five near-term session days per ticker (SPY|SPX|QQQ) — tight, close cells. */
+export const THERMAL_DISCORD_MAX_EXPIRIES = 5;
+/** Spot-centered strike band — dense ladder, cells stay readable at 4K. */
+export const THERMAL_DISCORD_STRIKE_HALF = 16;
 
 const POS_RGB = "0,230,118";
 const NEG_RGB = "255,45,85";
@@ -27,11 +29,45 @@ const PLUS_NODE_RGB = "255,214,10";
 /** Put / − node bead — same purple as major Thermal matrix. */
 const MINUS_NODE_RGB = "217,123,255";
 /**
- * Must resolve on ECS. Docker runner installs `fonts-dejavu-core` — Menlo /
- * ui-monospace / Consolas are NOT present in bookworm-slim, so Sharp painted
- * only the colored cell rects (yellow/purple/green "boxes") with no labels.
+ * Embedded face name (see `deskMonoFontFaceCss`). System DejaVu is fallback only —
+ * cron on ECS used to paint tofu boxes when fontconfig had nothing to resolve.
  */
-const FONT = "DejaVu Sans Mono, Liberation Mono, monospace";
+const FONT = "BlackOutDeskMono, DejaVu Sans Mono, monospace";
+
+let cachedFontFaceCss: string | null = null;
+
+/** Paths for bundled TTFs (repo + Docker `/app/deploy/fonts` + system). */
+export function deskMonoFontCandidates(): string[] {
+  const cwd = process.cwd();
+  return [
+    path.join(cwd, "deploy/fonts/DejaVuSansMono-Bold.ttf"),
+    path.join(cwd, "deploy/fonts/DejaVuSansMono.ttf"),
+    "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+  ];
+}
+
+/**
+ * `@font-face` block with base64 TTF — Sharp/librsvg paints text without relying
+ * on the container's fontconfig catalog (the root cause of cron "boxes").
+ */
+export function deskMonoFontFaceCss(): string {
+  if (cachedFontFaceCss != null) return cachedFontFaceCss;
+  for (const file of deskMonoFontCandidates()) {
+    if (!existsSync(file)) continue;
+    try {
+      const b64 = readFileSync(file).toString("base64");
+      cachedFontFaceCss =
+        `@font-face{font-family:'BlackOutDeskMono';src:url('data:font/ttf;base64,${b64}') format('truetype');` +
+        `font-weight:100 900;font-style:normal}`;
+      return cachedFontFaceCss;
+    } catch {
+      // try next candidate
+    }
+  }
+  cachedFontFaceCss = "";
+  return cachedFontFaceCss;
+}
 
 function esc(s: string): string {
   return s
@@ -185,7 +221,8 @@ export function bandStrikesAroundSpot(
 
 export function fmtCompactHeatMoney(n: number): string {
   if (!Number.isFinite(n) || n === 0) return "$0.0K";
-  const sign = n > 0 ? "+" : "−";
+  // ASCII hyphen-minus — avoids missing-glyph tofu if a face lacks U+2212.
+  const sign = n > 0 ? "+" : "-";
   const abs = Math.abs(n);
   if (abs >= 1_000_000_000) return `${sign}$${(abs / 1_000_000_000).toFixed(1)}B`;
   if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(1)}M`;
@@ -379,10 +416,11 @@ export function buildThermalDiscordCardSvg(
 ): string {
   const W = THERMAL_DISCORD_CARD_W;
   const H = THERMAL_DISCORD_CARD_H;
-  const pad = 48;
+  const pad = 36;
   const headerH = 140;
   const footerH = 72;
-  const colGap = 28;
+  // Tight gaps so SPY|SPX|QQQ sit close with room for 5 expiry cells each.
+  const colGap = 16;
   const usable = W - pad * 2 - colGap * (columns.length - 1);
   const colW = usable / Math.max(1, columns.length);
   const colTop = pad + headerH;
@@ -442,21 +480,21 @@ export function buildThermalDiscordCardSvg(
     colsSvg += chip(x0 + 24 + (chipW + chipGap) * 2, chipY, chipW, chipH, "FLIP", fmtLevel(flip), "flip");
 
     const gridTop = colTop + 128;
-    // Thin strike + DRIFT rail — leave width for 6 tight expiry columns (Slayer-like).
-    const strikeColW = 92;
-    const driftColW = 56;
-    const gridLeft = x0 + 14;
-    const gridRight = x0 + colW - 14;
+    // Thin strike + DR% — maximize width for 5 close expiry cells.
+    const strikeColW = 82;
+    const driftColW = 48;
+    const gridLeft = x0 + 10;
+    const gridRight = x0 + colW - 10;
     const gridW = Math.max(120, gridRight - gridLeft - strikeColW - driftColW);
     const expN = Math.max(1, expiries.length);
     const cellW = gridW / expN;
     const rowN = Math.max(1, strikes.length);
-    const cellH = Math.min(54, (colH - 150) / rowN);
-    const labelSize = Math.max(12, Math.min(18, Math.min(cellH * 0.4, cellW * 0.16)));
-    const strikeSize = Math.max(14, Math.min(20, cellH * 0.46));
-    const driftSize = Math.max(11, Math.min(15, cellH * 0.38));
-    const expSize = Math.max(12, Math.min(16, cellW * 0.14));
-    const showCellText = cellH >= 26 && cellW >= 52;
+    const cellH = Math.min(48, (colH - 150) / rowN);
+    const labelSize = Math.max(11, Math.min(17, Math.min(cellH * 0.42, cellW * 0.18)));
+    const strikeSize = Math.max(13, Math.min(19, cellH * 0.48));
+    const driftSize = Math.max(10, Math.min(14, cellH * 0.4));
+    const expSize = Math.max(11, Math.min(15, cellW * 0.15));
+    const showCellText = cellH >= 22 && cellW >= 44;
 
     if (!hm || expiries.length === 0 || strikes.length === 0) {
       colsSvg += `<text x="${x0 + colW / 2}" y="${colTop + colH / 2}" text-anchor="middle" fill="#7dd3fc" font-family="${FONT}" font-size="28" font-weight="700">Matrix unavailable</text>`;
@@ -554,10 +592,11 @@ export function buildThermalDiscordCardSvg(
             : isSpot
               ? ` stroke="rgba(34,211,238,0.65)" stroke-width="1.5"`
               : "";
-        colsSvg += `<rect x="${cx + 1}" y="${y + 1}" width="${Math.max(1, cellW - 2)}" height="${Math.max(
+        // Flush cells (0.5px gap) — "close cells" dense desk look.
+        colsSvg += `<rect x="${cx + 0.5}" y="${y + 0.5}" width="${Math.max(1, cellW - 1)}" height="${Math.max(
           1,
-          cellH - 2
-        )}" rx="3" fill="${fill}"${stroke}/>`;
+          cellH - 1
+        )}" rx="2" fill="${fill}"${stroke}/>`;
         if (showCellText) {
           // Signed green/red money — same read as the dense desk screenshot.
           const textFill = isPlusNode
@@ -569,7 +608,7 @@ export function buildThermalDiscordCardSvg(
                 : n < 0
                   ? "#ff2d55"
                   : "#7dd3fc";
-          const label = isKing ? `${fmtCompactHeatMoney(n)}★` : fmtCompactHeatMoney(n);
+          const label = isKing ? `${fmtCompactHeatMoney(n)}*` : fmtCompactHeatMoney(n);
           colsSvg += `<text x="${cx + cellW / 2}" y="${y + cellH * 0.68}" text-anchor="middle" fill="${textFill}" font-family="${FONT}" font-size="${labelSize}" font-weight="800">${esc(
             label
           )}</text>`;
@@ -580,9 +619,11 @@ export function buildThermalDiscordCardSvg(
 
   const asOfText = fmtAsOfEt(asOf);
 
+  const fontFace = deskMonoFontFaceCss();
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
   <defs>
+    ${fontFace ? `<style type="text/css"><![CDATA[${fontFace}]]></style>` : ""}
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0%" stop-color="#0a121c"/>
       <stop offset="55%" stop-color="#040407"/>
@@ -614,12 +655,12 @@ export function buildThermalDiscordCardSvg(
   <rect x="${pad + 28}" y="${H - pad - footerH + 28}" width="18" height="18" rx="3" fill="rgba(0,230,118,0.75)"/>
   <text x="${pad + 56}" y="${H - pad - footerH + 44}" fill="#f8fafc" font-family="${FONT}" font-size="18" font-weight="700">+GEX</text>
   <rect x="${pad + 130}" y="${H - pad - footerH + 28}" width="18" height="18" rx="3" fill="rgba(255,45,85,0.75)"/>
-  <text x="${pad + 158}" y="${H - pad - footerH + 44}" fill="#f8fafc" font-family="${FONT}" font-size="18" font-weight="700">−GEX</text>
+  <text x="${pad + 158}" y="${H - pad - footerH + 44}" fill="#f8fafc" font-family="${FONT}" font-size="18" font-weight="700">-GEX</text>
   <rect x="${pad + 240}" y="${H - pad - footerH + 28}" width="18" height="18" rx="3" fill="rgba(${PLUS_NODE_RGB},0.85)"/>
   <text x="${pad + 268}" y="${H - pad - footerH + 44}" fill="#ffd60a" font-family="${FONT}" font-size="18" font-weight="700">PLUS node (yellow)</text>
   <rect x="${pad + 500}" y="${H - pad - footerH + 28}" width="18" height="18" rx="3" fill="rgba(${MINUS_NODE_RGB},0.85)"/>
   <text x="${pad + 528}" y="${H - pad - footerH + 44}" fill="#e9d5ff" font-family="${FONT}" font-size="18" font-weight="700">MINUS node (purple)</text>
-  <text x="${pad + 780}" y="${H - pad - footerH + 44}" fill="#fbbf24" font-family="${FONT}" font-size="18" font-weight="700">★ = king |GEX|</text>
+  <text x="${pad + 780}" y="${H - pad - footerH + 44}" fill="#fbbf24" font-family="${FONT}" font-size="18" font-weight="700">* = king |GEX|</text>
   <text x="${W - pad - 28}" y="${H - pad - footerH + 44}" text-anchor="end" fill="#7dd3fc" font-family="${FONT}" font-size="17" font-weight="600">Cyan row = spot  ·  ${THERMAL_DISCORD_MAX_EXPIRIES} near expiries  ·  4K</text>
 </svg>`;
 }
@@ -701,7 +742,7 @@ export function thermalDiscordCaption(columns: ThermalCardColumn[]): string {
   return (
     `**Thermal desk · GEX · NEAR** · 4K\n` +
     `${parts.join("\n")}\n` +
-    "`Yellow=PLUS node · Purple=MINUS node · ★=KING · DR%=build/melt`\n" +
+    "`Yellow=PLUS node · Purple=MINUS node · *=KING · DR%=build/melt`\n" +
     expiryLine
   );
 }
