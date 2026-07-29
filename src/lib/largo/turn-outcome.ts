@@ -51,7 +51,13 @@ export async function finalizeBieRoutedTurn(params: {
   startedAt: number;
 }): Promise<BieTurnResult> {
   const sid = params.sessionId.trim() || `web-${params.userId}-${Date.now()}`;
-  const verification = verifyClaims(params.routed.answer, collectContextNumbers(params.routed.context));
+  const verification = verifyClaims(
+    params.routed.answer,
+    collectContextNumbers([
+      params.routed.context,
+      params.routed.envelope ?? null,
+    ])
+  );
   // Same Layer-4 caveat the Claude path applies — router turns were persisting raw answers
   // without it, so low-coverage BIE-composed replies (e.g. #1284) failed the nightly audit.
   const answer = applyVerificationCaveat(params.routed.answer, verification);
