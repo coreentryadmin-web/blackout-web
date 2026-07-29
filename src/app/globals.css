@@ -16618,9 +16618,9 @@ body::before {
 .thermal-compact-exp {
   top: 0;
   z-index: 3;
-  /* Near mode (default): five close expiry columns — keep cells tight. */
-  padding: 0.3rem 0.2rem;
-  min-width: 3.4rem;
+  /* Near mode: five expiry cols — wide enough for ±$xxx.xM without clipping. */
+  padding: 0.3rem 0.28rem;
+  min-width: 4.85rem;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.02em;
@@ -16751,14 +16751,18 @@ body::before {
 }
 
 .thermal-compact-cell {
-  padding: 0.32rem 0.45rem;
-  min-width: 5rem;
+  position: relative;
+  padding: 0.28rem 0.35rem;
+  min-width: 4.85rem;
   height: 2rem;
   text-align: center;
   vertical-align: middle;
   border-right: 1px solid rgba(255, 255, 255, 0.03);
   border-bottom: 1px solid rgba(255, 255, 255, 0.03);
   white-space: nowrap;
+  overflow: hidden;
+  /* Stay a real table-cell — never inline-block (breaks column alignment). */
+  display: table-cell;
 }
 
 .thermal-compact-table.is-0dte .thermal-compact-cell {
@@ -16774,7 +16778,9 @@ body::before {
 
 .thermal-compact-cell-val {
   display: block;
-  font-size: 13px;
+  position: relative;
+  z-index: 1;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0;
   font-variant-numeric: tabular-nums;
@@ -16783,10 +16789,53 @@ body::before {
   white-space: nowrap;
 }
 
+.thermal-compact-cell.is-pos .thermal-compact-cell-val {
+  color: #6ee7b7;
+}
+
+.thermal-compact-cell.is-neg .thermal-compact-cell-val {
+  color: #fda4af;
+}
+
+.thermal-compact-cell.is-zero .thermal-compact-cell-val {
+  color: rgba(125, 211, 252, 0.4);
+}
+
 .thermal-compact-table.is-0dte .thermal-compact-cell-val {
   font-size: 13px;
-  position: relative;
+}
+
+/* Corner king mark — does not inflate cell width like an inline ★. */
+.thermal-compact-king {
+  position: absolute;
+  top: 1px;
+  right: 2px;
   z-index: 2;
+  font-size: 9px;
+  line-height: 1;
+  color: #fbbf24;
+  text-shadow: 0 0 5px rgba(251, 191, 36, 0.85);
+  pointer-events: none;
+}
+
+/*
+ * Compact-desk extreme nodes: brightness pulse ONLY.
+ * The shared .gex-heatmap-extreme-pop uses scale(1.16)+inline-block and
+ * overflows/misaligns the tight SPY|SPX|QQQ near-term grid.
+ */
+@keyframes thermal-compact-extreme-glow {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.28); }
+}
+
+.thermal-compact-cell--extreme {
+  z-index: 1;
+  animation: thermal-compact-extreme-glow 1.8s ease-in-out infinite;
+}
+
+.thermal-compact-cell--extreme.is-pos-node .thermal-compact-cell-val,
+.thermal-compact-cell--extreme.is-neg-node .thermal-compact-cell-val {
+  color: inherit;
 }
 
 .thermal-compact-empty {
@@ -16804,5 +16853,9 @@ body::before {
 @media (prefers-reduced-motion: reduce) {
   .thermal-triple-col {
     transition: none;
+  }
+
+  .thermal-compact-cell--extreme {
+    animation: none;
   }
 }

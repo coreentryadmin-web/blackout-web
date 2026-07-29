@@ -231,11 +231,17 @@ export default function ThermalCompactMatrix({
                     <td
                       key={`${strike}-${exp}`}
                       className={[
-                        "thermal-compact-cell whitespace-nowrap px-1 py-1 text-center font-bold",
-                        isPosNode || isNegNode ? "gex-heatmap-extreme-pop" : "",
-                        !isPosNode && !isNegNode && n > 0 ? "text-emerald-300" : "",
-                        !isPosNode && !isNegNode && n < 0 ? "text-rose-300" : "",
-                        !has || n === 0 ? "text-sky-300/40" : "",
+                        "thermal-compact-cell",
+                        // Never reuse the major-matrix extreme pop class here —
+                        // it is display:inline-block + scale(1.16), which tears
+                        // table cells apart in the 5-column near-term desk.
+                        isPosNode || isNegNode ? "thermal-compact-cell--extreme" : "",
+                        isPosNode ? "is-pos-node" : "",
+                        isNegNode ? "is-neg-node" : "",
+                        isKing ? "is-king" : "",
+                        !isPosNode && !isNegNode && n > 0 ? "is-pos" : "",
+                        !isPosNode && !isNegNode && n < 0 ? "is-neg" : "",
+                        !has || n === 0 ? "is-zero" : "",
                       ]
                         .filter(Boolean)
                         .join(" ")}
@@ -250,17 +256,18 @@ export default function ThermalCompactMatrix({
                               : `${data.ticker} ${strike} ${exp} · ${lens.toUpperCase()} ${fmtHeatmapMoneySigned(n, { showZero: true })}`
                       }
                     >
-                      <span className="thermal-compact-cell-val text-[13px] font-bold">
+                      <span className="thermal-compact-cell-val">
                         {fmtHeatmapMoneySigned(n, { showZero: true })}
-                        {isKing ? (
-                          <span
-                            aria-hidden
-                            className="ml-0.5 inline-block text-[13px] leading-none text-amber-400 [text-shadow:0_0_6px_rgba(251,191,36,0.9)]"
-                          >
-                            ★
-                          </span>
-                        ) : null}
                       </span>
+                      {isKing ? (
+                        <span
+                          aria-hidden
+                          className="thermal-compact-king"
+                          title="King node"
+                        >
+                          ★
+                        </span>
+                      ) : null}
                     </td>
                   );
                 })}
