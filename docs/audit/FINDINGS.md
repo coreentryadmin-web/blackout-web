@@ -30,7 +30,7 @@ reopened measured-losing buckets:
 (G-12/G-1 skipped for condors). Ops can dial `ZERODTE_CONFLUENCE_MIN=1` if the board empties
 under provider stress — do not leave it there.
 
-**Status.** Branch `cursor/zerodte-commit-harden-3d11`.
+**Status.** Merged #1217.
 
 ## 2026-07-29 — [Thermal] Near-Term Triple Desk extreme cells look “broken”
 
