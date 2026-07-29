@@ -1,5 +1,64 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-29 11:40 ET
+Last updated: 2026-07-29 12:17 ET
+
+## spx-rth-2026-07-29 — SPX Slayer market-open verify pass (6:30 AM PT / 9:30 AM ET)
+
+**Session:** Autonomous SPX Slayer all-day agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` verify mode. Time: Wed 12:10–12:17 ET (RTH). Commands: `validate:spx-rth` → `validate:spx-e2e` + Clerk live probes + 60s auto-update sit.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-e2e` | ✅ **GREEN** — 16/17 PASS, 1 SKIP (commentary expand control absent), 0 FAIL |
+| Matrix every-cell (GEX/VEX/DEX/CHARM) | ✅ **GREEN** — 177 strikes, spot ~7349; all cells reconcile via `near_term_expiries` (15 expiries) |
+| 60s live auto-update | ✅ desk price, heatmap spot/asof, play state all ticked |
+| Trade alerts vs `/api/market/spx/play` | ✅ WATCHING→SCANNING during sit; **confirmations=null during SCANNING** (no stale ✓ panel) |
+| Cross-tool integration | ✅ Thermal, HELIX (30 prints), Grid bootstrap, 0DTE board (8 setups), Night Hawk edition, Largo `get_spx_play`, desk/play cross-tool |
+| `npm run validate:spx-bie` | ✅ **GREEN** static (6 PASS, 1 WARN roundFloats asymmetry); live layer SKIP (no prod DB in sandbox) |
+| `npm run validate:spx-rth` (orchestrator) | ⚠️ **PARTIAL** — CRON_SECRET in cloud agent env returns HTTP 401 on bearer paths; Clerk E2E probes GREEN |
+
+### UI E2E (Playwright `/dashboard`)
+
+| # | Action | Pass |
+|---|---|---|
+| Sign-in + shell | ✅ Premium admin session, no upgrade wall |
+| GEX tab click | ✅ `#spx-matrix-tab-gex` |
+| VEX tab click | ✅ `#spx-matrix-tab-vex` |
+| Matrix rows | ✅ 176–177 strike rows |
+| Cell text sanity | ✅ No NaN/undefined/$— |
+| LIVE badge | ✅ Not stale during RTH |
+| Console errors | ✅ Zero |
+| Commentary expand | ⏭ SKIP — no expand control in current rail |
+
+### Cross-tool (Step 3)
+
+| Tool | Endpoint | Result |
+|---|---|---|
+| BlackOut Thermal | `GET /api/market/gex-heatmap?ticker=SPX` | ✅ Same payload as dashboard matrix |
+| GEX positioning | `GET /api/market/gex-positioning?ticker=SPX` | ✅ Spot/flip agree with matrix |
+| HELIX | `GET /api/market/flows?limit=30` | ✅ 30 prints |
+| Largo | `POST /api/market/largo/query` | ✅ `tools=blackout_intelligence` |
+| BIE | `getSpxPlayState()` static invariants | ✅ Single derivation |
+| Grid | `GET /api/market/spx/bootstrap` | ✅ Loaded |
+| 0DTE Command | `GET /api/market/zerodte/board` | ✅ 8 setups |
+| Night Hawk | `GET /api/market/nighthawk/edition` | ✅ Edition loads |
+
+### Findings
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| **P1** | `spx-rth-audit-slice8-false-positive` | `heatmap-matrix-audit.mjs` + `spx-dashboard-e2e-audit.mjs` re-summed cells with `expiries.slice(0,8)` instead of authoritative `near_term_expiries` (15 expiries for SPX) → false FAIL at strike 6910 on all lenses | `GET /api/market/gex-heatmap?ticker=SPX` `near_term_expiries` | **FIXED** (PR) |
+| **P1** | `spx-rth-bie-validator-regex-stale` | `spx-bie-consistency-validator.mjs` required exact `{ mutate: false }` literal; `readSpxPlaySnapshot` now passes optional `or_break_memory`/`playbook_resolved` alongside `mutate:false` | `src/features/spx/lib/spx-evaluator.ts:88-92` | **FIXED** (PR) |
+| **P2** | `spx-rth-cloud-cron-secret-mismatch` | Cloud agent `CRON_SECRET` returns HTTP 401 on `/api/cron/*`, bearer gex-heatmap, data-correctness, ops watchdog — prod crons unaffected (ECS has correct secret) | `ops:collect` watchdog HTTP 401 | **OPEN** — rotate cloud agent secret |
+| **P2** | `validate-deploy-railway-cli` | `validate:deploy` / `validate:rth-open` fail on missing Railway CLI; HTTP smoke GREEN | N/A | **KNOWN** |
+| **P2** | `spx-rth-commentary-expand-absent` | Commentary rail has no expand/collapse control — E2E SKIP | `/dashboard` UI | **OPEN** — UX follow-up |
+| **P2** | `spx-rth-bie-roundfloats-asymmetry` | Member route applies `roundFloats`; `getSpxPlayState()` does not — ≤0.005 drift tolerated | `/api/market/spx/play` vs BIE | **KNOWN** (documented) |
+
+**No prod P0 defects — matrix cells, trade alerts, SCANNING confirmations, and cross-tool integration all GREEN via Clerk auth.**
+
+**Reports:** `audit-output/spx-dashboard-e2e-1785341681800.json`, `audit-output/spx-bie-consistency-2026-07-29T16-16-32-574Z.md`
+
+---
 
 ## grid-rth-2026-07-29 — 0DTE Command market-open verify pass (6:30 AM PT / 9:30 AM ET)
 

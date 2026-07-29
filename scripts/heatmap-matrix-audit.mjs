@@ -6,6 +6,7 @@
  * Usage: node scripts/heatmap-matrix-audit.mjs [--tickers=SPY,SPX,NVDA,...]
  */
 import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
+import { resolveNearTermExpiries } from "./audit/lib/near-term-expiries.mjs";
 
 const CRON = process.env.CRON_SECRET;
 const baseArg = process.argv.find((a) => a.startsWith("--base="));
@@ -232,7 +233,7 @@ async function auditTicker(ticker) {
   }
 
   const spot = Number(hm.spot);
-  const nearExpiries = new Set([...(hm.expiries ?? [])].sort().slice(0, 8));
+  const nearExpiries = resolveNearTermExpiries(hm);
   let totalFlags = 0;
   let totalChecks = 0;
 

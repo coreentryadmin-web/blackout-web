@@ -19,6 +19,7 @@ import { inRthOpenWindow } from "./gha-et-window.mjs";
 import { isAuthFailureStatus } from "./audit/lib/auth-status.mjs";
 import { spotsAgree, flipsAgree } from "./audit/lib/cross-tool-tolerance.mjs";
 import { mintIosPlaywrightSession, onboardingInitScript } from "./audit/lib/ios-playwright-auth.mjs";
+import { resolveNearTermExpiries } from "./audit/lib/near-term-expiries.mjs";
 
 const baseArg = process.argv.find((a) => a.startsWith("--base="));
 const BASE = (baseArg ? baseArg.slice("--base=".length) : "https://blackouttrades.com").replace(
@@ -235,7 +236,7 @@ async function validateMatrixApi(app) {
     rec("matrix:api-fetch", "FAIL", "heatmap unavailable");
     return null;
   }
-  const nearExpiries = new Set([...(hm.expiries ?? [])].sort().slice(0, 8));
+  const nearExpiries = resolveNearTermExpiries(hm);
   const allIssues = [];
   for (const [name, block] of [
     ["gex", hm.gex],
