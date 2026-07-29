@@ -37,7 +37,11 @@ function fail(msg) {
 }
 
 function sh(cmd) {
-  return execSync(cmd, { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }).trim();
+  const env = {
+    ...process.env,
+    PATH: `${process.env.HOME || ""}/.local/bin:${process.env.PATH || ""}`,
+  };
+  return execSync(cmd, { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"], env }).trim();
 }
 
 function actionableDeployment(output) {
