@@ -44,7 +44,7 @@ test("bandStrikesAroundSpot centers on nearest strike", () => {
 test("fmtCompactHeatMoney always shows a number (never a blank dot)", () => {
   assert.equal(fmtCompactHeatMoney(0), "$0.0K");
   assert.equal(fmtCompactHeatMoney(2_500_000), "+$2.5M");
-  assert.equal(fmtCompactHeatMoney(-150_000), "−$150K");
+  assert.equal(fmtCompactHeatMoney(-150_000), "-$150K");
 });
 
 test("buildThermalDiscordCardSvg includes tickers and never invents spot", () => {
@@ -115,8 +115,10 @@ test("buildThermalDiscordCardSvg includes tickers and never invents spot", () =>
   assert.match(svg, /PLUS node \(yellow\)/);
   assert.match(svg, /MINUS node \(purple\)/);
   assert.match(svg, new RegExp(`${THERMAL_DISCORD_MAX_EXPIRIES} near expiries`));
-  // ECS-safe face (bookworm-slim has DejaVu after Dockerfile fonts install).
-  assert.match(svg, /DejaVu Sans Mono/);
+  // Embedded desk mono (base64 @font-face) — cron must not depend on system fonts.
+  assert.match(svg, /BlackOutDeskMono/);
+  assert.match(svg, /@font-face/);
+  assert.match(svg, /data:font\/ttf;base64,/);
   assert.doesNotMatch(svg, /ui-monospace|Menlo|Consolas/);
   // Yellow +node / purple −node bead fills
   assert.match(svg, /rgba\(255,214,10/);
@@ -259,7 +261,7 @@ test("settled empty 0DTE multi-expiry SVG paints next days with money labels", (
   assert.match(svg, new RegExp(fmtCompactExpiry(nextYmd).replace("/", "\\/")));
   assert.match(svg, new RegExp(fmtCompactExpiry(next2Ymd).replace("/", "\\/")));
   assert.match(svg, /\+\$2\.5M/);
-  assert.match(svg, /−\$1\.2M/);
+  assert.match(svg, /-\$1\.2M/);
   assert.match(svg, /rgba\(255,214,10/);
   assert.match(svg, /rgba\(217,123,255/);
   const caption = thermalDiscordCaption(columns);
