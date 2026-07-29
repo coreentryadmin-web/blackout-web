@@ -19,6 +19,7 @@ import {
   ZERODTE_CONFLUENCE_MIN_EARLY,
   ZERODTE_SCORE_FLOOR,
   ZERODTE_SCORE_FLOOR_BREAKOUT,
+  ZERODTE_SCORE_FLOOR_PIN,
   getNullConfluencePassCount,
   LATE_AFTERNOON_BLOCK_ET_MINUTES,
   type ZeroDteGateInput,
@@ -63,7 +64,8 @@ const CLEAN_PLAN: ContractPlan = {
 };
 
 /** A mid-session, fully-aligned, fresh-bias input that clears every gate — each
- *  test flips exactly the dimension it exercises. */
+ *  test flips exactly the dimension it exercises. Default confluence=2 matches the
+ *  precision G-12 floor (2026-07-29); override with null / confluence(n) per case. */
 function input(overrides: Partial<ZeroDteGateInput> = {}): ZeroDteGateInput {
   return {
     ticker: "QQQ",
@@ -80,6 +82,7 @@ function input(overrides: Partial<ZeroDteGateInput> = {}): ZeroDteGateInput {
     earnings: null,
     todayYmd: "2026-07-13",
     macroEvents: [],
+    confluence: confluence(2),
     ...overrides,
   };
 }
@@ -209,19 +212,27 @@ test("G-14: 14:59 is still BLOCKED (toxic late bucket fully closed)", () => {
 });
 
 
-test("scoreFloorForOrigins: FLOW strict; BREAKOUT/PIN looser", () => {
+test("scoreFloorForOrigins: FLOW/BREAKOUT/PIN share the precision 65 floor", () => {
   assert.equal(scoreFloorForOrigins(["FLOW"]), ZERODTE_SCORE_FLOOR);
   assert.equal(scoreFloorForOrigins(["FLOW", "BREAKOUT"]), ZERODTE_SCORE_FLOOR);
   assert.equal(scoreFloorForOrigins(["BREAKOUT"]), ZERODTE_SCORE_FLOOR_BREAKOUT);
-  assert.equal(scoreFloorForOrigins(["PIN"]), ZERODTE_SCORE_FLOOR_BREAKOUT); // PIN floor == BREAKOUT floor
+  assert.equal(scoreFloorForOrigins(["PIN"]), ZERODTE_SCORE_FLOOR_PIN);
+  assert.equal(ZERODTE_SCORE_FLOOR_BREAKOUT, ZERODTE_SCORE_FLOOR);
+  assert.equal(ZERODTE_SCORE_FLOOR_PIN, ZERODTE_SCORE_FLOOR);
   assert.equal(scoreFloorForOrigins([]), ZERODTE_SCORE_FLOOR);
 });
 
-test("G-3: BREAKOUT origin at score 60 clears origin-aware floor (58) but FLOW at 60 does not", () => {
-  assert.equal(evaluateZeroDteGates(input({ score: 60, discovery_origin: ["BREAKOUT"] })).verdict, "COMMIT");
+test("G-3: BREAKOUT at score 60 is BLOCKED at the unified 65 floor (same as FLOW)", () => {
+  const brk = evaluateZeroDteGates(input({ score: 60, discovery_origin: ["BREAKOUT"] }));
+  assert.equal(brk.verdict, "BLOCKED");
+  assert.ok(brk.blocks.some((b) => b.code === "score_floor"));
   const flow = evaluateZeroDteGates(input({ score: 60, discovery_origin: ["FLOW"] }));
   assert.equal(flow.verdict, "BLOCKED");
   assert.ok(flow.blocks.some((b) => b.code === "score_floor"));
+  assert.equal(
+    evaluateZeroDteGates(input({ score: 65, discovery_origin: ["BREAKOUT"] })).verdict,
+    "COMMIT",
+  );
 });
 
 
@@ -865,35 +876,32 @@ test("G-12: no confluence read attached → fails OPEN (commits, never manufactu
   assert.ok(!v.blocks.some((b) => b.code === "confluence_floor"));
 });
 
-test("G-12: 0-confluence (the −12.5% EV bucket) is BLOCKED at the default floor of 1", () => {
-  assert.equal(ZERODTE_CONFLUENCE_MIN, 1, "test assumes the conservative default floor");
+test("G-12: 0-confluence (the −12.5% EV bucket) is BLOCKED at the precision floor of 2", () => {
+  assert.equal(ZERODTE_CONFLUENCE_MIN, 2, "test assumes the precision default floor");
   const v = evaluateZeroDteGates(input({ confluence: confluence(0) }));
   assert.equal(v.verdict, "BLOCKED");
   const b = v.blocks.find((x) => x.code === "confluence_floor");
   assert.ok(b, "expected a confluence_floor block");
-  assert.equal(b!.threshold, 1);
-  assert.match(b!.reason, /0 of the needed 1 confluence/);
+  assert.equal(b!.threshold, 2);
+  assert.match(b!.reason, /0 of the needed 2 confluence/);
 });
 
-test("G-12: 1-conf and 2-conf commit at mid-session (11:00, floor 1)", () => {
-  assert.equal(evaluateZeroDteGates(input({ confluence: confluence(1) })).verdict, "COMMIT");
+test("G-12: 1-conf BLOCKED / 2-conf commits at mid-session (11:00, floor 2)", () => {
+  assert.equal(evaluateZeroDteGates(input({ confluence: confluence(1) })).verdict, "BLOCKED");
   assert.equal(evaluateZeroDteGates(input({ confluence: confluence(2) })).verdict, "COMMIT");
 });
 
-test("G-12: early window [10:00,10:45) — 1-conf commits (floor lowered to 1), 0-conf blocked", () => {
-  assert.equal(ZERODTE_CONFLUENCE_MIN_EARLY, 1, "test assumes the lowered early floor");
-  // 1-conf commits in the early window (floor is now 1, same as standard)
+test("G-12: early window [10:00,10:45) — precision floor 2; 1-conf blocked, 2-conf commits", () => {
+  assert.equal(ZERODTE_CONFLUENCE_MIN_EARLY, 2, "test assumes the precision early floor");
   assert.equal(
     evaluateZeroDteGates(input({ confluence: confluence(1), nowEtMinutes: EARLY_ET })).verdict,
-    "COMMIT"
+    "BLOCKED"
   );
-  // 0-conf is still blocked in the early window
   const zeroEarly = evaluateZeroDteGates(input({ confluence: confluence(0), nowEtMinutes: EARLY_ET }));
   assert.equal(zeroEarly.verdict, "BLOCKED");
   const b = zeroEarly.blocks.find((x) => x.code === "confluence_floor");
   assert.ok(b);
-  assert.equal(b!.threshold, 1);
-  // 2-conf still commits
+  assert.equal(b!.threshold, 2);
   assert.equal(
     evaluateZeroDteGates(input({ confluence: confluence(2), nowEtMinutes: EARLY_ET })).verdict,
     "COMMIT"

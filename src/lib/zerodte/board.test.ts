@@ -1422,3 +1422,24 @@ test("mergeSameTickerDiscovery: opposing-dir score tie prefers CONDOR structure"
   assert.ok(winner.origin_direction_conflict);
 });
 
+
+test("setups (9-1): a tape with NO aggressor metadata (all ask_pct missing) is rejected, not committed on the 0.5 default", () => {
+  // Every print lacks ask_pct → each gets the neutral 0.5 weight → aggression share ≈ 0.5 clears the
+  // 0.3 min, but there's ZERO real aggressor evidence. The known-aggressor floor must fail it closed.
+  const rows = [
+    row({ premium: 900_000, strike: 190, ask_pct: undefined }),
+    row({ premium: 800_000, strike: 190, ask_pct: undefined }),
+  ];
+  const rejections: Array<{ gate_failed?: string }> = [];
+  const out = deriveZeroDteSetups(rows, { rejections: rejections as never });
+  assert.equal(out.length, 0);
+  assert.ok(rejections.some((r) => r.gate_failed === "min_aggr_share"));
+});
+
+test("setups (9-1): a tape with known aggressor metadata still clears when share is strong", () => {
+  const out = deriveZeroDteSetups([
+    row({ premium: 900_000, strike: 190, ask_pct: 80 }),
+    row({ premium: 700_000, strike: 190, ask_pct: 75, alert_rule: "SweepsFollowedByFloor" }),
+  ]);
+  assert.equal(out.length, 1);
+});

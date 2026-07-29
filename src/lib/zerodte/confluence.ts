@@ -17,8 +17,8 @@
  * GATING (2026-07-24, Phase 1): the `confirmations` count (VWAP-side + market-aligned, the exact E3
  * axis) is now a real commit input via G-12 (gates.ts) — the additive score let a single loud premium
  * tier (+40) clear the 65 floor with ZERO confirmations, and the 0-confirmation bucket is the −12.5% EV
- * loser. G-12 requires ≥ ZERODTE_CONFLUENCE_MIN confirmations (default 1: block only the measured-losing
- * 0-conf) and a higher floor inside the early window. The `score`/`tier` remain calibration-first display
+ * loser. G-12 requires ≥ ZERODTE_CONFLUENCE_MIN confirmations (default 2: the measured +EV bucket)
+ * and the same floor inside the early window. The `score`/`tier` remain calibration-first display
  * (the triple-tier's extra edge over double is still for the graded ledger to confirm before IT gates).
  *
  * PURE: reads already-attached setup fields (intraday VWAP read, market_aligned) + the current ET
