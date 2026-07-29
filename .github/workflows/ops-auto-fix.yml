@@ -60,6 +60,9 @@ jobs:
       - name: Collect action items (prod)
         id: collect
         env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
           DATABASE_PUBLIC_URL: ${{ secrets.DATABASE_PUBLIC_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           CRON_TARGET_BASE_URL: https://blackouttrades.com

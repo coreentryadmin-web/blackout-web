@@ -296,7 +296,7 @@ async function checkPostgres(ctx: Ctx): Promise<CheckResult[]> {
   {
     const row = await dbProbe<{ total: string; bad_outcome: string }>(
       `SELECT COUNT(*)::int AS total,
-              COUNT(*) FILTER (WHERE outcome NOT IN ('target','stop','open','ambiguous','pending'))::int AS bad_outcome
+              COUNT(*) FILTER (WHERE outcome NOT IN ('target','stop','open','ambiguous','pending','unfilled'))::int AS bad_outcome
        FROM nighthawk_play_outcomes`
     );
     if (row && Number(row.total) > 0) {

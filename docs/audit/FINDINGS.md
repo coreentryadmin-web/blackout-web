@@ -5,6 +5,28 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-29 — [ops-auto] Postgres auth + cron watchdog 401 (issue #1247)
+
+**Severity.** P1 — `ops-collect-action-items.mjs` exited 1 every 20 min; ops-auto-fix dispatched
+agents on stale GitHub/env secrets instead of prod ECS values.
+
+**Evidence (issue #1247, fp:b9a55e8397bd).**
+- `Postgres ops collect failed: password authentication failed for user "postgres"` — GitHub
+  `DATABASE_PUBLIC_URL` still pointed at legacy Railway (`postgres` user).
+- `Cron watchdog HTTP error: HTTP 401` — cloud-agent `CRON_SECRET` (44 chars) ≠ Secrets Manager
+  (48 chars); `loadProdSecretsFromAws()` used `aws` CLI which is absent in cloud agents.
+
+**Root cause.**
+1. `prod-secrets.mjs` only loaded AWS via CLI → silent `{}` fallback → stale env wins.
+2. `resolveAuditDbUrl()` preferred env over AWS (inverse of `auditSecret`).
+3. Data-correctness false flags: `unfilled` omitted from outcome vocab check; overnight premium
+   vs live chain; Largo answers with empty numeric tool context.
+
+**Fix.** PR — AWS SDK sync loader + `auditDbUrl()` + stale Railway guard; ops-auto-fix.yml AWS
+creds; cron-audit HTTP watchdog fallback; correctness verifier fixes; GitHub `CRON_SECRET` synced.
+
+**Status.** Fixed (pending deploy verify).
+
 ## 2026-07-29 — [Swing] Discovery cron 100% FailedInvocations — board permanently empty
 
 **Severity.** P0 — Night Hawk Swing lane showed 0 watch / 0 commits all session. EventBridge

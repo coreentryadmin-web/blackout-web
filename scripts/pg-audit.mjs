@@ -3,7 +3,7 @@
  */
 import { execSync } from "node:child_process";
 import { createRequire } from "node:module";
-import { prodSecret } from "./audit/lib/prod-secrets.mjs";
+import { loadProdSecretsFromAws } from "./audit/lib/prod-secrets.mjs";
 
 const require = createRequire(import.meta.url);
 const { Client } = require("pg");
@@ -19,13 +19,44 @@ export function auditPgSsl(connectionString) {
   return { rejectUnauthorized: strict };
 }
 
-/** Resolve DATABASE_PUBLIC_URL from env, AWS Secrets Manager, or legacy Railway variables. */
+/** Legacy Railway / pre-AWS-migration URLs still linger in GitHub secrets — ignore them. */
+export function isStaleRailwayDbUrl(connectionString) {
+  try {
+    const u = new URL(connectionString);
+    const host = u.hostname.toLowerCase();
+    const user = decodeURIComponent(u.username).toLowerCase();
+    return (
+      user === "postgres" &&
+      (host.includes("railway") || host.includes("proxy.rlwy") || host.includes("rlwy.net"))
+    );
+  } catch {
+    return false;
+  }
+}
+
+function envAuditDbUrl() {
+  for (const key of ["DATABASE_PUBLIC_URL", "DATABASE_URL"]) {
+    const url = process.env[key]?.trim();
+    if (url && !isStaleRailwayDbUrl(url)) return url;
+  }
+  return null;
+}
+
+/** Prefer AWS Secrets Manager over env — stale GitHub DATABASE_PUBLIC_URL caused P1 auth noise. */
+export function auditDbUrl() {
+  const secrets = loadProdSecretsFromAws();
+  const fromAws =
+    secrets.DATABASE_PUBLIC_URL?.trim() || secrets.DATABASE_URL?.trim() || "";
+  if (fromAws) return fromAws;
+  return envAuditDbUrl();
+}
+
+/** Resolve DATABASE_PUBLIC_URL from AWS, env, or legacy Railway variables. */
 export function resolveAuditDbUrl() {
-  let dbUrl =
-    process.env.DATABASE_PUBLIC_URL ||
-    process.env.DATABASE_URL ||
-    prodSecret("DATABASE_PUBLIC_URL") ||
-    prodSecret("DATABASE_URL");
+  const fromAudit = auditDbUrl();
+  if (fromAudit) return fromAudit;
+
+  let dbUrl = process.env.DATABASE_PUBLIC_URL || process.env.DATABASE_URL;
   if (!dbUrl) {
     try {
       const raw = execSync("railway variables --service blackout-web --json 2>/dev/null", {
@@ -37,7 +68,9 @@ export function resolveAuditDbUrl() {
       /* optional */
     }
   }
-  return dbUrl?.trim() || null;
+  const trimmed = dbUrl?.trim() || null;
+  if (trimmed && isStaleRailwayDbUrl(trimmed)) return null;
+  return trimmed;
 }
 
 /** True when Postgres is unreachable from this host (private RDS / cloud agent sandbox). */
@@ -45,9 +78,15 @@ export function isPrivateDbUnreachableError(message) {
   return /ECONNRESET|ETIMEDOUT|ENOTFOUND|timeout|ECONNREFUSED/i.test(String(message ?? ""));
 }
 
+/** True when env still points at a dead Railway URL (auth fails before TCP reset). */
+export function isStaleEnvDbAuthError(message) {
+  return /password authentication failed for user "postgres"/i.test(String(message ?? ""));
+}
+
 export function createAuditClient(connectionString) {
   return new Client({
     connectionString,
     ssl: auditPgSsl(connectionString),
+    connectionTimeoutMillis: 10_000,
   });
 }
