@@ -52,28 +52,7 @@ function run(cmd, label, opts = {}) {
   return { ok: true, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
 }
 
-/** Parse ops:collect JSON from stdout (stderr may carry postgres-skip info). */
-function parseOpsCollectPayload(stdout, stderr) {
-  const blob = `${stdout}\n${stderr}`;
-  const jsonLine = blob.split("\n").find((l) => l.trim().startsWith("{"));
-  if (!jsonLine) return null;
-  try {
-    return JSON.parse(jsonLine);
-  } catch {
-    return null;
-  }
-}
-
-/** Grid/0DTE post-close: only grid|zerodte|nighthawk|correctness:flags with grid layer items count as FAIL. */
-function gridOpsItems(items) {
-  return (items ?? []).filter((i) => {
-    if (i.priority !== "P0" && i.priority !== "P1") return false;
-    const hay = `${i.id} ${i.title} ${i.detail}`.toLowerCase();
-    return /zerodte|0dte|grid|nighthawk/.test(hay) || (i.id === "correctness:flags" && /zerodte|grid/.test(hay));
-  });
-}
-
-function auditOpsCollect() {
+import { parseOpsCollectPayload, gridOpsItems } from "./audit/lib/ops-collect-scope.mjs";
   const r = spawnSync("npm run ops:collect", {
     shell: true,
     encoding: "utf8",

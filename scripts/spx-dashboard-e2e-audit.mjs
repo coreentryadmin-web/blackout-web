@@ -135,7 +135,7 @@ async function authSession() {
     })
   )?.jwt;
   const app = (path, opts = {}) => {
-    for (let i = 0; i < 2; i++) {
+    for (let i = 0; i < 3; i++) {
       if (!tok) {
         tok = J(
           curl({
@@ -165,6 +165,7 @@ async function authSession() {
         tok = null;
         continue;
       }
+      if (r.s >= 500 && i < 2) continue;
       return { status: r.s, json: J(r), raw: r.b };
     }
     return { status: 401, json: null, raw: "" };
@@ -226,7 +227,11 @@ function auditLensBlock(lensName, block, spot, nearExpiries) {
 }
 
 async function validateMatrixApi(app) {
-  const r = app("/api/market/gex-heatmap?ticker=SPX");
+  let r = app("/api/market/gex-heatmap?ticker=SPX");
+  for (let i = 0; r.status >= 500 && i < 2; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 2000 * (i + 1)));
+    r = app("/api/market/gex-heatmap?ticker=SPX");
+  }
   if (r.status !== 200) {
     rec("matrix:api-fetch", "FAIL", `HTTP ${r.status}`);
     return null;

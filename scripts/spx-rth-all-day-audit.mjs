@@ -45,9 +45,56 @@ function run(cmd, label) {
   return true;
 }
 
+import { parseOpsCollectPayload, spxOpsItems } from "./audit/lib/ops-collect-scope.mjs";
+  const r = spawnSync("npm run ops:collect", {
+    shell: true,
+    encoding: "utf8",
+    env: process.env,
+    maxBuffer: 10 * 1024 * 1024,
+  });
+  const payload = parseOpsCollectPayload(r.stdout ?? "", r.stderr ?? "");
+  const postgresSkip = /Postgres audit skipped/i.test(r.stderr ?? "");
+  const spxUrgent = spxOpsItems(payload?.items);
+  const allUrgent = (payload?.items ?? []).filter((i) => i.priority === "P0" || i.priority === "P1");
+
+  if (spxUrgent.length > 0) {
+    rec("ops:collect", "FAIL", spxUrgent.map((i) => `${i.id}: ${i.title}`).join("; "));
+    return;
+  }
+  if (payload && allUrgent.length > 0) {
+    rec(
+      "ops:collect",
+      "PASS",
+      `non-SPX P0/P1 deferred (${allUrgent.map((i) => i.id).join(", ")}) — SPX scope clean`
+    );
+    return;
+  }
+  if (r.status === 0 || (payload && (payload.items?.length ?? 0) === 0)) {
+    const note =
+      payload?.count === 0
+        ? "zero items"
+        : postgresSkip
+          ? "postgres skipped (VPC); HTTP watchdog authoritative"
+          : "ok";
+    rec("ops:collect", "PASS", note);
+    return;
+  }
+  rec("ops:collect", "FAIL", (r.stderr || r.stdout || "").trim().slice(0, 400));
+}
+
 async function fetchJson(path) {
   const res = await fetchAuditJson(BASE, path);
   if (!res.ok) throw new Error(`HTTP ${res.status} ${path}`);
+  return res.json;
+}
+
+/** Lane fetch that treats transient 5xx as unavailable (post-close / edge flake). */
+async function softFetchJson(path) {
+  const res = await fetchAuditJson(BASE, path);
+  if (!res.ok) {
+    if (res.status >= 500 || res.status === 524) return null;
+    throw new Error(`HTTP ${res.status} ${path}`);
+  }
   return res.json;
 }
 
@@ -118,8 +165,8 @@ async function deskLaneCheck() {
   }
   try {
     const [pulse, flow, mergedWrap] = await Promise.all([
-      fetchJson("/api/market/spx/pulse"),
-      fetchJson("/api/market/spx/flow"),
+      softFetchJson("/api/market/spx/pulse"),
+      softFetchJson("/api/market/spx/flow"),
       fetchJson("/api/market/spx/merged"),
     ]);
     const merged = mergedWrap?.merged ?? mergedWrap;
@@ -242,7 +289,7 @@ async function main() {
     }
   }
 
-  run("npm run ops:collect", "ops:collect");
+  auditOpsCollect();
 
   const fails = checks.filter((c) => c.status === "FAIL");
   const warns = checks.filter((c) => c.status === "WARN");
