@@ -1,5 +1,5 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-29 16:16 ET
+Last updated: 2026-07-29 16:25 ET
 
 ## spx-rth-2026-07-29 — SPX Slayer all-day verify pass (~16:09–16:16 ET)
 
@@ -85,6 +85,67 @@ Post-close: SPX index tick static at 7316.15 for 90s — **expected** (cash sess
 | **P2** | `runbook-grid-bootstrap-stale` | Runbook Step 3 cites `/api/grid/bootstrap` (404); use `/api/market/spx/bootstrap` | **OPEN** — docs drift |
 
 **Reports:** `audit-output/spx-rth-2026-07-29-verify-1785355898731.json`, `audit-output/spx-dashboard-e2e-1785355920515.json`
+
+---
+
+## grid-rth-2026-07-29 — 0DTE Command + Market Grid verify pass (~16:10–16:14 ET, post-close)
+
+**Session:** Autonomous Grid RTH agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` (verify mode). Time: Wed 16:10–16:14 ET (post-close, session heat `CLOSED`). Commands: `validate:grid-rth` → `validate:zerodte-logic` → `validate:grid-e2e` → `validate:zerodte-integration` → `data-validator.mjs` → `ops:collect`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:grid-rth` | ⚠️ **13/14** — all prod probes GREEN; `ops:collect` FAIL (sandbox: no `DATABASE_PUBLIC_URL`) |
+| `npm run validate:zerodte-logic` | ✅ **GREEN** — 17/17 (gates, plan exits, lifecycle, mergePlays, session heat, ledger PnL) |
+| `npm run validate:grid-e2e` | ✅ **GREEN** — 4/4 API probes; Playwright browser unavailable (WARN only) |
+| `npm run validate:zerodte-integration` | ✅ **GREEN** — 9/9 cross-tool (SPX bootstrap/GEX, HELIX flows, NH dedupe, ledger PnL) |
+| `node scripts/audit/data-validator.mjs` | ⚠️ **29 PASS / 5 FAIL / 1 WARN** — post-close vs prev-close (SPY/SPX/QQQ/MU underlying); extended-hours ground truth |
+| `npm run ops:collect` | ❌ **P0 at probe time** — `correctness:flags` SPY UW-vs-Massive call-share 29pt divergence + P1 `x-autopost` stale |
+
+### 0DTE board (live, CLOSED)
+
+| Field | Value |
+|---|---|
+| Session heat | `CLOSED` (0%) — after 16:00 ET ✓ |
+| Setups | 7 (2 eligible / 0 gate violations) |
+| Ledger | 4 rows — PnL math matches `reconcileLedgerLivePnlPct` ✓ |
+| `zerodte-warm` cron | GREEN |
+| Night Hawk dedupe | 5 tickers covered elsewhere |
+| HELIX flows | 20 prints |
+| SPX spot (bootstrap vs GEX) | 7316.15 (agree) |
+
+### 0DTE logic probes (all GREEN)
+
+Gate funnel, plan exits (−50%/+100%/15:30 ET), trade lifecycle (OPEN→TRIM→CLOSED), plan grading (stop-first), session heat (RTH→POST_COMMIT→POWER_HOUR→CLOSED), `mergePlays` past cutoff/MOVED→SKIP, ledger PnL consistency — **17/17 PASS**.
+
+### Cross-tool integration
+
+Grid bootstrap spot vs GEX ✓ · HELIX flows feed scanner ✓ · Night Hawk dedupe (5 tickers) ✓ · BIE consistency ✓
+
+### UI / routing note
+
+Classic `/grid` + 9 `/api/grid/*` panels **deleted 2026-07-07** — 0DTE Command lives on `/nighthawk`. E2E audits `/nighthawk` (not `/grid` tabs). `/grid` → 404 (expected).
+
+### P0 found this pass
+
+| ID | Detail | Fix |
+|---|---|---|
+| `correctness:spy-flow-xcheck` | SPY UW-vs-Massive call-share 29pt divergence (UW 0% call, Massive 29%, subset 0.71×) | **FIXED** — [#1288](https://github.com/coreentryadmin-web/blackout-web/pull/1288): subset-aware flag logic + x-autopost cron re-enabled |
+| `x-autopost-cron-stale` | EventBridge rule DISABLED | **FIXED** — [#1288](https://github.com/coreentryadmin-web/blackout-web/pull/1288) |
+
+Member-facing 0DTE Command: **GREEN** (no gate violations, ledger PnL grounded).
+
+### Residual open (non-P0)
+
+| Severity | ID | Detail | Status |
+|---|---|---|---|
+| **P2** | `qqq-underlying-staleness` | data-validator: QQQ setup underlying 2.01% vs Polygon prev-close | **OPEN** |
+| **P2** | `mu-underlying-staleness` | MU setup underlying 9.7% vs Polygon — ledger entry grounded ✓ | **OPEN** |
+| **P2** | `playwright-browser-missing` | grid-e2e WARN: Chromium not in cloud VM | **KNOWN** |
+| **P1** | `largo-grounding-coverage` | Largo answer #1284 low grounding | **OPEN** — [#1239](https://github.com/coreentryadmin-web/blackout-web/issues/1239) |
+
+**Reports:** `audit-output/grid-rth-2026-07-29-verify-1785355991897.json`, `audit-output/zerodte-logic-1785355995887.json`, `audit-output/grid-e2e-1785356002023.json`, `audit-output/zerodte-integration-1785356035133.json`, `audit-output/validation-2026-07-29T20-14-01-763Z.md`
 
 ---
 
