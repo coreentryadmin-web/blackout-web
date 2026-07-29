@@ -21,6 +21,26 @@ badges on wall rows; Discord-safe legend in a code span; taller strike band (hal
 
 **Status.** PR `cursor/thermal-discord-card-fix-3d11`.
 
+## 2026-07-29 — [Thermal] Discord “No numbers” — settled empty 0DTE after close
+
+**Severity.** P1 UX (blank Discord grids).
+
+**Symptom.** Post-RTH Discord Thermal PNG showed empty dark grids — no yellow/purple nodes,
+no GEX $ labels (“No numbers”), while caption still said 0DTE and Drift: collecting.
+
+**Root cause.** Desk forced today’s calendar expiry. After 0DTE settlement every cell in-band
+was `$0` → heat fill empty + labels were `·` (zero suppressed). Multi-expiry older cards
+still looked full because other expiries retained exposure.
+
+**Evidence.** Live cache for `2026-07-28` 0DTE band: `0/57` nonzero GEX cells; next near-term
+expiry still populated.
+
+**Fix.** Discord card restored to **SPX Slayer–style tight near-term matrix** (≤6 expiry
+cols, strike half=14); `resolveDiscordNearExpiries` skips empty settled today-0DTE;
+`fmtCompactHeatMoney` always prints `$` amounts; yellow/purple nodes + ★ king per column.
+
+**Status.** PR `cursor/thermal-discord-card-fix-3d11`.
+
 ## 2026-07-28 — [Thermal] Discord card missing yellow/purple nodes + % drift
 
 **Severity.** P1 UX (desk card readability / parity with major matrix).
