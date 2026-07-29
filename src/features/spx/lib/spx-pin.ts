@@ -72,7 +72,7 @@ export async function buildSpxPinForecast(): Promise<SpxPinForecast> {
   const base = forecastPin({ ...common, method: "analytic" });
   if (!base.available) return { ...base, montecarlo: null };
 
-  const mc = forecastPin({ ...common, method: "montecarlo", mcPaths: MC_PATHS, seed: Math.floor(nowMs / 60_000) });
+  const mc = forecastPin({ ...common, method: "montecarlo", mcPaths: MC_PATHS, seed: Math.floor(nowMs / 5_000) });
   const montecarlo: PinMonteCarlo | null = mc.available
     ? { pin: mc.pin, projectedClose: mc.projectedClose, pinPct: mc.pinPct, pinBand: mc.pinBand, cone: mc.cone, scenarios: mc.scenarios, paths: MC_PATHS }
     : null;

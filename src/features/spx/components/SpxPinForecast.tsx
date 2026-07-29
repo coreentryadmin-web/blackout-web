@@ -114,7 +114,11 @@ export function SpxPinForecast({ sessionActive = true }: { sessionActive?: boole
                 {/* The strike it pins to — the discrete target the live projection rounds onto. */}
                 {view.pinPx != null && (
                   <div style={{ fontFamily: C.mono, fontSize: 11.5, color: C.faint, marginTop: 7 }}>
-                    pins to <span style={{ color: C.ink }}>{fmt(view.pinPx)}</span>{magnet ? ` ${KIND_LABEL[magnet.kind] ?? ""}` : ""}
+                    pins to{" "}
+                    <span style={{ color: C.ink }}>
+                      {fmt(magnet?.strike ?? view.pinPx)}
+                    </span>
+                    {magnet ? ` ${KIND_LABEL[magnet.kind] ?? ""}` : ""}
                   </div>
                 )}
               </Card>

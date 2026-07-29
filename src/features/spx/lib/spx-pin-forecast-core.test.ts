@@ -168,3 +168,60 @@ test("empty / closed guards never throw and report honestly", () => {
   assert.equal(closed.available, false);
   assert.match(closed.drivers[0]!.label, /closed/i);
 });
+
+test("weak far wall must NOT yank projected close 100pts (live 2026-07-29 regression)", () => {
+  // Fragmented book: one thin put strike 120pts below spot carries the most put OI on that side,
+  // but only a few % of total OI — the live bug glued projectedClose ~110pts below spot all afternoon.
+  const contracts: PinContract[] = [];
+  for (let k = 7200; k <= 7600; k += 5) {
+    const near = Math.abs(k - 7420) <= 40;
+    contracts.push({
+      strike: k, expiry: SESSION, type: "call", iv: 0.12,
+      openInterest: near ? 800 : 200,
+    });
+    contracts.push({
+      strike: k, expiry: SESSION, type: "put", iv: 0.12,
+      // Far thin "winner" on raw max-OI ≤ spot, plus a denser nearer put cluster.
+      openInterest: k === 7300 ? 2_200 : near && k <= 7420 ? 1_400 : 180,
+    });
+  }
+  const spot = 7422;
+  const f = forecastPin({
+    spot, priorClose: 7395, contracts, sessionYmd: SESSION,
+    nowMs: Date.parse("2026-07-21T18:45:00Z"), // ~14:45 ET → charm accelerating
+    closeMs: CLOSE, atmIv: 0.12, seed: 7,
+  });
+  assert.equal(f.available, true);
+  // Must stay within a tradeable band of spot — not locked onto a −120pt thin wall.
+  assert.ok(
+    Math.abs((f.projectedClose ?? spot) - spot) < 55,
+    `projectedClose ${f.projectedClose} yanked too far from spot ${spot} (magnet ${JSON.stringify(f.magnet)})`
+  );
+  // Spot tick must move the live projection (was frozen when already glued to the far wall).
+  const f2 = forecastPin({
+    spot: spot + 8, priorClose: 7395, contracts, sessionYmd: SESSION,
+    nowMs: Date.parse("2026-07-21T18:45:00Z"), closeMs: CLOSE, atmIv: 0.12, seed: 7,
+  });
+  assert.ok(
+    Math.abs((f2.projectedClose ?? 0) - (f.projectedClose ?? 0)) >= 1.5,
+    `projectedClose must track spot: ${f.projectedClose} → ${f2.projectedClose} on +8pt spot`
+  );
+});
+
+test("magnetPullScale: thin walls soft-pull; heavy walls full-pull", async () => {
+  const { magnetPullScale } = await import("./spx-pin-forecast-core");
+  assert.ok(magnetPullScale(0.03) < 0.4, "3% OI wall stays soft");
+  assert.ok(magnetPullScale(0.2) >= 0.99, "20% OI wall gets full pull");
+});
+
+test("oiWalls prefers nearer denser put over far raw-max OI", async () => {
+  const { oiWalls } = await import("./spx-pin-forecast-core");
+  const contracts: PinContract[] = [
+    { strike: 7300, expiry: SESSION, type: "put", iv: 0.12, openInterest: 3000 }, // far, raw max
+    { strike: 7400, expiry: SESSION, type: "put", iv: 0.12, openInterest: 2200 }, // nearer, denser score
+    { strike: 7450, expiry: SESSION, type: "call", iv: 0.12, openInterest: 2000 },
+    { strike: 7500, expiry: SESSION, type: "call", iv: 0.12, openInterest: 1800 },
+  ];
+  const w = oiWalls(contracts, 7420, 5);
+  assert.equal(w.putWall?.strike, 7400, `put wall should be nearer 7400, got ${w.putWall?.strike}`);
+});
