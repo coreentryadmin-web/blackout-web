@@ -722,9 +722,9 @@ export function buildDeterministicEditionPlays(params: {
       }
 
       // Phase 2 (PR-N32 + N33): forced contrarian re-score — no natural opposites found.
-      // Uses FORCED_CONTRARIAN_FLOOR (softer than DIVERSITY_HEDGE_FLOOR) because forced
-      // contrarian scores are inherently lower: flow is discounted 0.3x and tech/positioning
-      // score against the dominant trend. The play carries a gate_warning so members know.
+      // Floor matches DIVERSITY_HEDGE_FLOOR (35): forced scores are inherently lower (flow
+      // discounted 0.3x) so only dossiers with real tech/positioning support clear it.
+      // The play carries a gate_warning so members know.
       if (!diversitySwapped) {
         console.info(`[nighthawk/edition] no natural ${oppositeDir} candidates — trying forced contrarian re-score (floor=${FORCED_CONTRARIAN_FLOOR})`);
         let bestContrarian: { scored: ScoredCandidate; play: PlaybookPlay } | null = null;

@@ -21,6 +21,7 @@
 //    plays too (PASS with margins), so counterfactual grading can judge the gates later —
 //    same skip-grading philosophy as the 0DTE rejection funnel.
 
+import { MIN_PUBLISH_SCORE } from "./constants";
 import type { PlaybookPlay } from "./types";
 import type { TickerDossier } from "./dossier";
 import type { ScoredCandidate } from "./scorer";
@@ -336,13 +337,18 @@ function promotionBadness(b: NighthawkGateBlockedPlay): number {
 }
 
 /**
+ * Minimum score for a gate_promoted rescue. Soft geometry failures may promote, but a
+ * low-score play is not "best available" — it's filler. Locked to MIN_PUBLISH_SCORE so
+ * rescue cannot re-admit the diversity-hedge noise class (live AI@26 / SNDQ@20).
+ */
+export const GATE_PROMOTE_MIN_SCORE = MIN_PUBLISH_SCORE;
+
+/**
  * Promote the top-scoring blocked plays into publishable plays with gate_promoted
- * and gate_warnings flags. Called when all plays failed the publish gates and the
- * edition would otherwise be zero-play.
+ * and gate_warnings flags. Called when organic count is below the ops minimum.
  *
  * Returns up to `count` plays ranked 1..N, each carrying gate_promoted:true and
- * gate_warnings with the human-readable failure reasons. The plays are valid
- * PlaybookPlay objects ready for upsert — the caller just publishes them.
+ * gate_warnings with the human-readable failure reasons. Score floor applies.
  */
 export function promoteTopBlocked(
   blocked: NighthawkGateBlockedPlay[],
@@ -350,7 +356,9 @@ export function promoteTopBlocked(
 ): PlaybookPlay[] {
   if (!blocked.length || count <= 0) return [];
 
-  const promotable = blocked.filter(isPromotableBlockedPlay);
+  const promotable = blocked.filter(
+    (b) => isPromotableBlockedPlay(b) && (b.play.score ?? 0) >= GATE_PROMOTE_MIN_SCORE,
+  );
   if (!promotable.length) return [];
 
   const sorted = [...promotable].sort((a, b) => promotionBadness(a) - promotionBadness(b));

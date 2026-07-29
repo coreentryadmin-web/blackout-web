@@ -558,3 +558,29 @@ test("promoteTopBlocked caps at count", () => {
   const promoted = promoteTopBlocked(blocked, 3);
   assert.equal(promoted.length, 3);
 });
+
+test("promoteTopBlocked rejects score-below-floor filler (AI@26 / SNDQ@20 class)", () => {
+  const blocked = [
+    {
+      ticker: "AI",
+      play: play({ ticker: "AI", score: 26, conviction: "C" }),
+      result: {
+        verdict: "BLOCK" as const,
+        blocks: [{ code: "stale_quote_basis" as const, reason: "soft", threshold: "x", value: "y" }],
+        checks: [],
+      },
+      scored: null,
+    },
+    {
+      ticker: "SNDQ",
+      play: play({ ticker: "SNDQ", score: 20, conviction: "C" }),
+      result: {
+        verdict: "BLOCK" as const,
+        blocks: [{ code: "target_unreachable" as const, reason: "soft", threshold: 3.5, value: 4 }],
+        checks: [],
+      },
+      scored: null,
+    },
+  ];
+  assert.deepEqual(promoteTopBlocked(blocked, 5), []);
+});

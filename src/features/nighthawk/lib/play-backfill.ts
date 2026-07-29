@@ -1,5 +1,5 @@
 import { mapClaudePlayToEdition } from "./claude-edition";
-import { DIVERSITY_HEDGE_FLOOR, EDITION_MIN_PUBLISH_PLAYS, MAX_OPTION_PREMIUM_PER_SHARE } from "./constants";
+import { EDITION_MIN_PUBLISH_PLAYS, MAX_OPTION_PREMIUM_PER_SHARE, MIN_PUBLISH_SCORE } from "./constants";
 import type { TickerDossier } from "./dossier";
 import { tieredMinOi } from "./grounding";
 import { validatePlayGeometry } from "./play-constraints";
@@ -83,8 +83,9 @@ export async function backfillThinEditionPlays(params: {
 
   for (const scored of pool) {
     if (backfilled.length >= minPlays) break;
-    // Score floor: don't backfill garbage-scored candidates into the edition.
-    if (scored.score < DIVERSITY_HEDGE_FLOOR) continue;
+    // Score floor: backfill must clear the organic publish bar — do NOT reuse the
+    // softer hedge floor (that admitted score-20 filler into live editions).
+    if (scored.score < MIN_PUBLISH_SCORE) continue;
     const ticker = scored.ticker.toUpperCase();
     const dossier = params.dossiers[ticker];
     if (!dossier) continue;
