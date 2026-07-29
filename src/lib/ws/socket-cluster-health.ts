@@ -1,8 +1,12 @@
 import { getUwCacheRedis } from "@/lib/providers/uw-shared-cache";
 import { INDEX_FEED_STALL_MS } from "@/lib/ws/polygon-socket";
 import { UW_SOCKET_STALL_MS } from "@/lib/ws/uw-socket-stall";
+import { OPTION_MARK_FRESH_MS } from "@/lib/ws/options-socket";
+import type { OptionMark } from "@/lib/ws/options-socket";
 
 const POLYGON_SNAPSHOT_KEY = "spx:pulse:snapshot";
+const OPTIONS_LEADER_KEY = "options:ws:leader";
+const OPTIONS_MARK_PREFIX = "nw:optmark:";
 /** RTH liveness window for cluster heartbeats (matches admin UW channel silence threshold). */
 const UW_CLUSTER_LIVE_MS = 120_000;
 const POLYGON_CLUSTER_LIVE_MS = 30_000;
@@ -105,6 +109,82 @@ export function evaluatePolygonClusterOk(
     return { ok: true, detail: `follower — ${polygon.detail}` };
   }
   return { ok: false, detail: "follower — cluster I:SPX snapshot stale or missing" };
+}
+
+export type OptionsClusterHealth = {
+  leader_present: boolean;
+  newest_mark_age_ms: number | null;
+  cluster_live: boolean;
+  detail: string;
+};
+
+/** Web-tier probe: ingest worker owns the options WS; followers check Redis marks / leader lock. */
+export async function readOptionsClusterHealth(now = Date.now()): Promise<OptionsClusterHealth> {
+  let leader_present = false;
+  let newest_mark_age_ms: number | null = null;
+  let detail = "no cluster marks";
+
+  try {
+    const redis = await getUwCacheRedis();
+    if (!redis) {
+      return { leader_present: false, newest_mark_age_ms: null, cluster_live: false, detail: "redis unavailable" };
+    }
+
+    const leader = await redis.get(OPTIONS_LEADER_KEY);
+    leader_present = Boolean(leader);
+
+    // Sample a few held marks — ingest writes nw:optmark:* on every quote.
+    const scan = (redis as { scan?: (cursor: string, ...args: string[]) => Promise<[string, string[]]> }).scan;
+    if (typeof scan === "function") {
+      const [, keys] = await scan("0", "MATCH", `${OPTIONS_MARK_PREFIX}*`, "COUNT", "20");
+      for (const key of keys ?? []) {
+        const raw = await redis.get(key);
+        if (!raw) continue;
+        try {
+          const mark = JSON.parse(raw) as OptionMark;
+          if (typeof mark.ts === "number" && mark.ts > 0) {
+            const age = Math.max(0, now - mark.ts);
+            if (newest_mark_age_ms == null || age < newest_mark_age_ms) {
+              newest_mark_age_ms = age;
+            }
+          }
+        } catch {
+          /* skip malformed */
+        }
+      }
+    }
+
+    const marks_fresh = newest_mark_age_ms != null && newest_mark_age_ms <= OPTION_MARK_FRESH_MS;
+    if (marks_fresh) {
+      detail = `cluster marks fresh (age ${newest_mark_age_ms}ms)`;
+    } else if (leader_present) {
+      detail = "ingest leader lock held — marks warming";
+    } else {
+      detail = "no fresh cluster option marks and no ingest leader";
+    }
+
+    const cluster_live = marks_fresh || (leader_present && newest_mark_age_ms != null);
+    return { leader_present, newest_mark_age_ms, cluster_live, detail };
+  } catch {
+    return { leader_present, newest_mark_age_ms, cluster_live: false, detail: "cluster read failed" };
+  }
+}
+
+export function evaluateOptionsClusterOk(
+  cluster: OptionsClusterHealth,
+  market_hours: boolean,
+  local_authenticated: boolean
+): { ok: boolean; detail: string } {
+  if (!market_hours) {
+    return { ok: true, detail: "off-hours — options auth not required" };
+  }
+  if (local_authenticated) {
+    return { ok: true, detail: "local options shard authenticated" };
+  }
+  if (cluster.cluster_live) {
+    return { ok: true, detail: cluster.detail };
+  }
+  return { ok: false, detail: cluster.detail };
 }
 
 export { UW_CLUSTER_LIVE_MS, POLYGON_CLUSTER_LIVE_MS, INDEX_FEED_STALL_MS, UW_SOCKET_STALL_MS };

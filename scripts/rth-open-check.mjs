@@ -11,8 +11,9 @@
  */
 
 import { execSync, spawnSync } from "node:child_process";
-import { createAuditClient, resolveAuditDbUrl } from "./pg-audit.mjs";
+import { createAuditClient, resolveAuditDbUrl, isPrivateDbUnreachableError } from "./pg-audit.mjs";
 import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
+import { prodSecret, auditSecret } from "./audit/lib/prod-secrets.mjs";
 
 const ET = "America/New_York";
 const force = process.argv.includes("--force");
@@ -147,14 +148,18 @@ async function main() {
 
         await c.end();
       } catch (e) {
-        fail(`Postgres RTH checks: ${e.message}`);
+        if (isPrivateDbUnreachableError(e.message)) {
+          console.log(`  ⚠ Postgres unreachable from this host — skipping RTH writer checks: ${e.message}`);
+        } else {
+          fail(`Postgres RTH checks: ${e.message}`);
+        }
       }
     } else {
       console.log("  ⚠ DATABASE_URL not set — skipping Postgres RTH checks");
     }
 
     // Options socket — HTTP probe (reliable across multi-replica clusters; log grep misses the leader).
-    const cron = process.env.CRON_SECRET?.trim() ?? "";
+    const cron = auditSecret("CRON_SECRET");
     if (cron) {
       try {
         const base = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");

@@ -14,11 +14,12 @@
  */
 import { createHash } from "node:crypto";
 import { ALL_CRON_KEYS } from "./railway-cron-services.mjs";
-import { createAuditClient, resolveAuditDbUrl } from "./pg-audit.mjs";
+import { createAuditClient, resolveAuditDbUrl, isPrivateDbUnreachableError } from "./pg-audit.mjs";
+import { auditSecret } from "./audit/lib/prod-secrets.mjs";
 
 const pretty = process.argv.includes("--pretty");
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
-const CRON = process.env.CRON_SECRET?.trim() ?? "";
+const CRON = auditSecret("CRON_SECRET");
 const dbUrl = resolveAuditDbUrl();
 
 /** @typedef {{ id: string, priority: 'P0'|'P1'|'P2', source: string, title: string, detail: string }} ActionItem */
@@ -32,9 +33,10 @@ function add(priority, source, id, title, detail) {
 
 async function postgresItems() {
   if (!dbUrl) return;
-  const c = createAuditClient(dbUrl);
-  await c.connect();
-  const q = async (sql, params) => (await c.query(sql, params)).rows;
+  try {
+    const c = createAuditClient(dbUrl);
+    await c.connect();
+    const q = async (sql, params) => (await c.query(sql, params)).rows;
 
   const JOB_KEYS = [...ALL_CRON_KEYS];
 
@@ -141,6 +143,13 @@ async function postgresItems() {
   }
 
   await c.end();
+  } catch (e) {
+    if (isPrivateDbUnreachableError(e.message)) {
+      add("P2", "infra", "postgres:unreachable", "Postgres unreachable from this host", e.message);
+    } else {
+      add("P1", "infra", "postgres:query-failed", "Postgres ops collect failed", e.message);
+    }
+  }
 }
 
 async function fetchWithTimeout(url, headers, timeoutMs) {
