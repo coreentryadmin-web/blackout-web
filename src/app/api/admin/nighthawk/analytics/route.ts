@@ -4,6 +4,7 @@ import { recordAdminRouteError } from "@/lib/admin-route-errors";
 import { getNighthawkMetrics } from "@/features/nighthawk/lib/analytics";
 import { buildNighthawkDebriefReport } from "@/features/nighthawk/lib/debrief-aggregate";
 import { getBangerScaleOutTrackRecord } from "@/features/nighthawk/lib/banger-track-record";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
 

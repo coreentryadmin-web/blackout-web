@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { dbQuery } from "@/lib/db";
 import { isCronAuthorized } from "@/lib/market-api-auth";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 // ORPHANED (2026-07-04, docs/audit/FINDINGS.md): this is the only INSERT path into
 // signal_events, and nothing in the codebase calls it — grepping the entire src/ tree turns
@@ -16,7 +17,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   if (!isCronAuthorized(req)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers: NO_STORE_HEADERS });
   }
 
   try {
@@ -40,7 +41,7 @@ export async function POST(req: NextRequest) {
     if (!signal_source || !signal_type) {
       return NextResponse.json(
         { ok: false, error: "signal_source and signal_type are required" },
-        { status: 400 }
+        { status: 400, headers: NO_STORE_HEADERS }
       );
     }
 
@@ -68,9 +69,9 @@ export async function POST(req: NextRequest) {
     );
 
     const row = result.rows[0];
-    return NextResponse.json({ ok: true, id: row.id, fired_at: row.fired_at });
+    return NextResponse.json({ ok: true, id: row.id, fired_at: row.fired_at }, { headers: NO_STORE_HEADERS });
   } catch (error) {
     console.error("[api/signals/record]", error);
-    return NextResponse.json({ ok: false, error: "Failed to record signal" });
+    return NextResponse.json({ ok: false, error: "Failed to record signal" }, { headers: NO_STORE_HEADERS });
   }
 }

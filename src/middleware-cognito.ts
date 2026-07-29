@@ -44,6 +44,10 @@ export default async function middleware(req: NextRequest) {
     return cognitoLoginRedirect(req, returnPath, true);
   }
 
+  if (path === "/upgrade" || path.startsWith("/upgrade/")) {
+    return withNoEdgeCache(NextResponse.next());
+  }
+
   if (isProtectedPath(path) && !isAuthExemptPath(path)) {
     const session = await getCognitoSessionFromRequest(req);
     if (!session) {

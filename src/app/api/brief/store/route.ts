@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { dbQuery } from "@/lib/db";
 import { isCronAuthorized } from "@/lib/market-api-auth";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -8,7 +9,7 @@ export const dynamic = "force-dynamic";
 export async function POST(req: NextRequest) {
   // Constant-time CRON_SECRET check; fail-closed when the secret is unset.
   if (!isCronAuthorized(req)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "unauthorized" }, { status: 401, headers: NO_STORE_HEADERS });
   }
   try {
     const b = await req.json();
@@ -27,12 +28,12 @@ export async function POST(req: NextRequest) {
          published_at = NOW()`,
       [b.date, b.type, b.content, b.spxPrice, b.callWall, b.putWall, b.kingStrike, b.netGex, b.gexBias, JSON.stringify(b)]
     );
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true }, { headers: NO_STORE_HEADERS });
   } catch (err) {
     // Cron-only write path, but still don't forward raw exception text (Postgres driver/
     // constraint errors can embed internal detail) -- log server-side, return a fixed string.
     // Same pattern established in /api/ready (task #66).
     console.error("[brief/store] POST failed:", err);
-    return NextResponse.json({ error: "Failed to store brief" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to store brief" }, { status: 500, headers: NO_STORE_HEADERS });
   }
 }

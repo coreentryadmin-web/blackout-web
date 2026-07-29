@@ -15,6 +15,7 @@ import { isBeforeOrAtMarketCloseEt, nextTradingDayEt, todayEt } from "@/features
 import { requireToolApi } from "@/lib/tool-access-server";
 import type { NightHawkEdition } from "@/features/nighthawk/lib/types";
 import { roundFloats } from "@/lib/round-floats";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -25,11 +26,6 @@ export const maxDuration = 60;
 // covers browsers + most CDNs; `CDN-Cache-Control` is honored specifically by Cloudflare/Fastly even
 // if they were configured to ignore the standard header. A direct no-store fetch already shows the
 // fresh value — these headers stop any intermediary from caching the response.
-const NO_STORE_HEADERS = {
-  "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-  "CDN-Cache-Control": "no-store",
-  "Cloudflare-CDN-Cache-Control": "no-store",
-} as const;
 
 const ENGINE_BASE = process.env.BLACKOUT_INTEL_URL?.replace(/\/$/, "") ?? "";
 

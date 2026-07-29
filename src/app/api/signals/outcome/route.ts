@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { dbQuery } from "@/lib/db";
 import { isCronAuthorized } from "@/lib/market-api-auth";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 // ORPHANED (2026-07-04, docs/audit/FINDINGS.md): the only INSERT path into signal_outcomes,
 // and — like sibling route /api/signals/record — has zero callers anywhere in the codebase.
@@ -12,7 +13,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   if (!isCronAuthorized(req)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers: NO_STORE_HEADERS });
   }
 
   try {
@@ -32,7 +33,7 @@ export async function POST(req: NextRequest) {
     if (!signal_event_id || !checkpoint) {
       return NextResponse.json(
         { ok: false, error: "signal_event_id and checkpoint are required" },
-        { status: 400 }
+        { status: 400, headers: NO_STORE_HEADERS }
       );
     }
 
@@ -70,9 +71,9 @@ export async function POST(req: NextRequest) {
       id: row?.id ?? null,
       recorded_at: row?.recorded_at ?? null,
       closed: checkpoint === "EOD",
-    });
+    }, { headers: NO_STORE_HEADERS });
   } catch (error) {
     console.error("[api/signals/outcome]", error);
-    return NextResponse.json({ ok: false, error: "Failed to record outcome" });
+    return NextResponse.json({ ok: false, error: "Failed to record outcome" }, { headers: NO_STORE_HEADERS });
   }
 }

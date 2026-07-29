@@ -5,6 +5,7 @@ import { enrichFlowWithGex, getGexLevelsForTicker } from "@/lib/flow-gex-enrichm
 import { sseBackpressureExceeded } from "@/lib/sse-backpressure";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
 import { registerVectorUniverseView } from "@/features/vector/lib/vector-universe";
+import { NO_STORE_HEADERS, NO_STORE_STREAM_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -96,8 +97,9 @@ export async function GET(req: NextRequest) {
 
   return new Response(stream, {
     headers: {
+        ...NO_STORE_STREAM_HEADERS,
       "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache, no-transform",
+      
       Connection: "keep-alive",
     },
   });

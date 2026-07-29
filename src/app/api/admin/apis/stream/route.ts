@@ -6,6 +6,7 @@ import {
 } from "@/lib/api-telemetry";
 import { requireAdminApi } from "@/lib/admin-access";
 import { sseBackpressureExceeded } from "@/lib/sse-backpressure";
+import { NO_STORE_HEADERS, NO_STORE_STREAM_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -109,8 +110,9 @@ export async function GET(req: NextRequest) {
 
   return new Response(stream, {
     headers: {
+        ...NO_STORE_STREAM_HEADERS,
       "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache, no-transform",
+      
       Connection: "keep-alive",
     },
   });

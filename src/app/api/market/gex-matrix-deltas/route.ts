@@ -4,6 +4,7 @@ import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
 import { requireAnyToolApi } from "@/lib/tool-access-server";
 import { subscribeMatrixDeltas } from "@/lib/gex-matrix-broadcast";
 import type { GexMatrix } from "@/lib/gex-matrix-delta";
+import { NO_STORE_HEADERS, NO_STORE_STREAM_HEADERS } from "@/lib/no-store-headers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,7 +38,7 @@ export async function GET(req: NextRequest) {
 
   // Validate ticker
   if (!/^[A-Z0-9.\-]{1,8}$/.test(ticker)) {
-    return NextResponse.json({ error: "Invalid ticker" }, { status: 400 });
+    return NextResponse.json({ error: "Invalid ticker" }, { status: 400, headers: NO_STORE_HEADERS });
   }
 
   try {
@@ -46,7 +47,7 @@ export async function GET(req: NextRequest) {
     if (!snapshot) {
       return NextResponse.json(
         { error: "Matrix not available for ticker", underlying: ticker },
-        { status: 400 }
+        { status: 400, headers: NO_STORE_HEADERS }
       );
     }
 
@@ -95,7 +96,7 @@ export async function GET(req: NextRequest) {
     return new NextResponse(stream, {
       headers: {
         "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache, no-transform",
+        ...NO_STORE_STREAM_HEADERS,
         Connection: "keep-alive",
         "X-Accel-Buffering": "no",
       },
@@ -104,7 +105,7 @@ export async function GET(req: NextRequest) {
     console.error("[market/gex-matrix-deltas] Error:", err);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 }
+      { status: 500, headers: NO_STORE_HEADERS }
     );
   }
 }

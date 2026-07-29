@@ -13,6 +13,7 @@ import { requireAdminApi } from "@/lib/admin-access";
 import { fetchHelixHealthSnapshot } from "@/lib/admin-helix-health";
 import { roundFloats } from "@/lib/round-floats";
 import { recordAdminRouteError } from "@/lib/admin-route-errors";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";

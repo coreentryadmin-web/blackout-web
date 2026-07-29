@@ -1,17 +1,27 @@
-// Canonical no-store header set for live market-data JSON reads.
+// Canonical no-store header set for live / auth-gated JSON reads.
 //
-// `CDN-Cache-Control: no-store` is the load-bearing header here: a Cloudflare
-// `/api/market/*` cache rule can `override_origin` and edge-cache a 200 that sets
-// only `Cache-Control` (this is exactly the auth-dependent-HTML edge-cache class
-// documented in CLAUDE.md). Without a CDN-scoped no-store, one member's live
-// GEX / walls / spot / max-pain snapshot could be cached at the edge and served
-// STALE to every other member until the edge TTL expires. Every live market read
-// must ship this so no per-request data response is ever edge-cacheable.
+// `CDN-Cache-Control: no-store` is the load-bearing header: a Cloudflare
+// cache rule can `override_origin` and edge-cache a 200 that sets only
+// `Cache-Control`. Without a CDN-scoped no-store, one member's live
+// GEX / walls / spot snapshot (or auth/me payload) could be cached at the
+// edge and served STALE — or to another member — until the edge TTL expires.
 //
-// This mirrors the exact set the zerodte board/record/calibration routes already
-// ship; centralized here so the Vector market reads (and any future market route)
-// import one canonical definition instead of copy-pasting the block.
+// `Cloudflare-CDN-Cache-Control` mirrors the middleware `withNoEdgeCache`
+// set so both Origin Rules and Cache Rules that key on either header name
+// honor the bypass.
+//
+// Import this constant — do not copy-paste inline Cache-Control blocks on
+// new auth-gated or live market routes.
 export const NO_STORE_HEADERS = {
   "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
   "CDN-Cache-Control": "no-store",
+  "Cloudflare-CDN-Cache-Control": "no-store",
+} as const;
+
+/** SSE / streaming responses: allow intermediaries to see the stream as no-cache,
+ *  but never edge-store a completed body. */
+export const NO_STORE_STREAM_HEADERS = {
+  "Cache-Control": "no-cache, no-transform",
+  "CDN-Cache-Control": "no-store",
+  "Cloudflare-CDN-Cache-Control": "no-store",
 } as const;

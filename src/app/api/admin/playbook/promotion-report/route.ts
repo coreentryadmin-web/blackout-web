@@ -3,6 +3,7 @@ import { requireAdminApi } from "@/lib/admin-access";
 import { fetchPlaybookPromotionReport } from "@/lib/admin-playbook-promotion";
 import { parseAdminSinceDate } from "@/lib/admin-playbook-query";
 import { recordAdminRouteError } from "@/lib/admin-route-errors";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";

@@ -6,11 +6,12 @@ import { syncWhopMembershipForEmail } from "@/lib/membership";
 import { acquireMembershipSyncSlot } from "@/lib/membership-sync-limit";
 import { publishTierChanged } from "@/lib/tier-cache";
 import { notifyOpsDiscord } from "@/features/spx/lib/spx-play-notify";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export async function POST() {
   const { userId } = await auth();
   if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers: NO_STORE_HEADERS });
   }
 
   // Per-user server-side cooldown. Fails open if Redis is unavailable.
@@ -18,7 +19,7 @@ export async function POST() {
   if (!slot.ok) {
     return NextResponse.json(
       { error: "Sync already in progress — try again shortly" },
-      { status: 429, headers: { "Retry-After": String(slot.retryAfterSec) } }
+      { status: 429, headers: { ...NO_STORE_HEADERS, "Retry-After": String(slot.retryAfterSec) } }
     );
   }
 
@@ -27,7 +28,7 @@ export async function POST() {
     ?.emailAddress;
 
   if (!email) {
-    return NextResponse.json({ error: "No email on account" }, { status: 400 });
+    return NextResponse.json({ error: "No email on account" }, { status: 400, headers: NO_STORE_HEADERS });
   }
 
   try {
@@ -37,7 +38,7 @@ export async function POST() {
       ok: true,
       tier: result.tier,
       updated: result.updatedUserIds.length,
-    });
+    }, { headers: NO_STORE_HEADERS });
   } catch (error) {
     console.error("[membership sync]", error);
     // Surface manual membership-sync failures in ops (warning: user-triggered, single
@@ -50,6 +51,6 @@ export async function POST() {
         (error instanceof Error ? error.message : String(error)),
       severity: "warning",
     }).catch(() => undefined);
-    return NextResponse.json({ error: "Failed to sync Whop membership" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to sync Whop membership" }, { status: 500, headers: NO_STORE_HEADERS });
   }
 }

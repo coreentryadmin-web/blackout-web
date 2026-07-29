@@ -5,6 +5,33 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-29 — [Cache] Members hit stale desk / wrong auth chrome — CF + origin gaps
+
+**Severity.** P0 UX / Truth — members reported massively stale pages; `/sign-up` error class
+overlaps ChunkLoadError (#1220); live probe showed `/upgrade` CF HIT without CDN no-store and
+an auth-gated API force-cached at the edge.
+
+**Evidence (live 2026-07-29).**
+- `/upgrade` → `cf-cache-status: HIT`, **no** `CDN-Cache-Control` (auth-dependent chrome).
+- `/` → `cdn-cache-control: no-store` yet `cf-cache-status: HIT` (`age: 2300`) — HTML Cache
+  Rule #6 `override_origin` 2h for anon (expected for speed; signed-in bypasses via `__session`).
+- CF Cache Rule cached **`/api/market/gex-positioning` 60s override_origin** while the route is
+  **auth-gated** — cross-user / stale GEX risk.
+- PR #1221 closed 50+ origin routes missing `CDN-Cache-Control` but left track-record / signals /
+  largo / streams / membership/sync incomplete; `NO_STORE_HEADERS` lacked Cloudflare-CDN twin.
+
+**Fix.**
+1. Merged #1221 (origin CDN headers + marketing force-static cleanup + purge list).
+2. **Disabled** CF gex-positioning cache rule; purged entire zone.
+3. Follow-up: strengthen `NO_STORE_HEADERS` (+ Cloudflare-CDN), `/upgrade` next.config +
+   middleware no-edge-cache, remaining member/admin routes + stream headers, guard test,
+   `CLOUDFLARE_CONFIG.md` corrected.
+
+**Speed posture.** Keep caching `/_next/static`, images, anon marketing HTML. Never cache
+auth-gated JSON. Signed-in HTML bypasses via `__session`.
+
+**Status.** Open — this PR (after #1221).
+
 ## 2026-07-29 — [Night Hawk Legacy] Replay harness + polarity measure + recap reason
 
 **Severity.** P1 tooling / honesty — could not counterfactual score floors or quantify

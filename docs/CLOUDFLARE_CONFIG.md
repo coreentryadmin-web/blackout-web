@@ -87,13 +87,19 @@
 | Priority | Match | Action | Edge TTL |
 |---|---|---|---|
 | 1 | `/_next/static/*` | Cache | 1 year (31536000s) |
-| 2 | `/api/market/gex-positioning` | Cache | 60s |
-| 3 | `/api/market/news` | Cache | 120s |
-| 4 | `/api/market/regime` | Cache | 30s |
+| 2 | `/api/market/gex-positioning` | **DISABLED** | was 60s — route is **auth-gated**; do not re-enable |
+| 3 | `/api/market/news` | Cache | 120s (public market-wide) |
+| 4 | `/api/market/regime` | Cache | 30s (public market-wide) |
 | 5 | `/api/*` (everything else) | Bypass | — |
+| 6 | `/`, `/upgrade`, `/learn*` (anon only) | Cache | 2h — **bypasses** when Cookie contains `__session` or UA contains `BlackOutiOSApp` |
+| 7 | `/_next/image` | Cache | 1 day |
+| 8 | favicon/icons/fonts/manifest/robots | Cache | 1 day |
 
-**Why these routes:** GEX, news, regime are public market data — identical for all users.
-All auth-gated or user-specific routes bypass cache entirely.
+**Auth-gated / live desk JSON** must set `CDN-Cache-Control: no-store` (+ `Cloudflare-CDN-Cache-Control: no-store`) via `NO_STORE_HEADERS` from `src/lib/no-store-headers.ts`. Never edge-cache member-specific responses.
+
+**HTML rule (#6):** force-caches anon marketing for speed (`override_origin`). Signed-in members with `__session` always hit origin. Origin also sends no-store on `/`, `/upgrade`, `/sign-in`, `/sign-up` via `next.config.mjs` + middleware.
+
+**Why news/regime only:** identical for all users. GEX positioning is **not** public — caching it was a cross-user leak risk (disabled 2026-07-29).
 
 ---
 
@@ -157,6 +163,7 @@ After DNSSEC finishes propagating (~24h), go to:
 ## Maintenance Notes
 
 - **On every ECS deploy:** purge via CF API in `ecr-push-production.yml` (and in-app `cf-purge-on-deploy.ts` when `CF_PURGE_DEPLOY_ID` is set)
-- **If you change an API route from public → auth-gated:** Add it to the cache bypass rule immediately
+- **If you change an API route from public → auth-gated:** set `NO_STORE_HEADERS` and confirm no CF Cache Rule force-caches that path
+- **Never re-enable the gex-positioning edge-cache rule** without an auth-keyed cache key (we do not have one)
 - **Never proxy Clerk DNS records** — breaks sign-in
 - **Never enable a second CDN** at the origin while Cloudflare proxy is active
