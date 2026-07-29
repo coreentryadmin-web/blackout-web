@@ -1,5 +1,5 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-29 17:46 ET
+Last updated: 2026-07-29 17:55 ET
 
 ## spx-rth-2026-07-29 — SPX Slayer all-day verify pass (~17:26–17:46 ET, post-close)
 
@@ -63,6 +63,73 @@ Last updated: 2026-07-29 17:46 ET
 **Member-facing SPX surfaces: GREEN** — matrix oracle clean, play SCANNING post-close, cross-tool spot agrees at 7316.15.
 
 **Reports:** `audit-output/spx-rth-2026-07-29-verify-1785360889180.json`, `audit-output/spx-dashboard-e2e-1785361215227.json`, `audit-output/spx-dashboard-e2e-1785361214520.png`
+
+---
+
+## grid-rth-2026-07-29 — 0DTE Command verify pass (post-close ~17:26–17:55 ET)
+
+**Session:** Autonomous Grid RTH agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` (verify mode). Market closed 16:00 ET; ran with `--force`. Commands: `validate:grid-rth --force` → `validate:zerodte-logic` → `validate:grid-e2e` → `validate:zerodte-integration`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `validate:zerodte-logic` | ✅ **GREEN** (17 checks) — gates, plan exits, lifecycle, mergePlays SKIP rules, ledger PnL, session heat CLOSED |
+| `validate:grid-e2e` | ✅ **GREEN** — board API 6–7 setups / 4 ledger; `/nighthawk` loads, zero console errors |
+| `validate:zerodte-integration` | ✅ **GREEN** (retry) — SPX spot 7316.15 bootstrap/GEX agree; HELIX 30 prints; Night Hawk dedupe 5 tickers |
+| `validate:grid-rth --force` | ⚠️ **PARTIAL** — transient 504 on parallel burst (`zerodte-board`, `bie-consistency`); sequential re-run GREEN |
+| `grid-warm` cron | ✅ **PASS** when CRON valid |
+| `ops:collect` | ✅ zero grid/0DTE P0/P1 |
+
+### 0DTE logic (unit + live)
+
+| Layer | Result |
+|---|---|
+| Gate funnel | ✅ SETUP_MIN_GROSS, aggression, dominance, ITM guard |
+| Plan exits | ✅ stop −50%, target +100%, time stop 15:30 ET |
+| Trade lifecycle | ✅ OPEN → TRIM → CLOSED, sticky trough stop |
+| Session heat | ✅ RTH → POST_COMMIT → POWER_HOUR; post-close **CLOSED** |
+| mergePlays UI | ✅ past cutoff / MOVED → SKIP not OPEN |
+| Ledger PnL | ✅ 4 rows reconcile |
+
+### Cross-tool
+
+| Check | Result |
+|---|---|
+| Grid bootstrap spot vs GEX | ✅ SPX 7316.15 |
+| HELIX flows scanner | ✅ 20–30 prints |
+| Night Hawk dedupe | ✅ 5 tickers in `covered_elsewhere` |
+| BIE static wiring | ✅ board route → `getZeroDteBoardPayload` |
+
+### UI (`/grid` runbook vs prod)
+
+Classic **Market Grid** (`/grid`, 9 `/api/grid/*` panels) was **deleted 2026-07-07**. 0DTE Command lives on **`/nighthawk`** — E2E opens `/nighthawk`, not `/grid` tabs. Runbook `GRID-RTH-ALL-DAY-AGENT.md` Step 2 still references deleted UI (**P2 doc drift**).
+
+### data-correctness flags (non-grid)
+
+| Flag | Detail | Severity |
+|---|---|---|
+| `invariant/grounding` | 4 published plays missing dossier snapshot (AAPL, GOOG, COST, EWZ) | **P1** — Night Hawk edition path |
+| `shadow-recompute/play_vs_dossier` | NVDA flow_streak + iv_rank disagree with dossier | **P2** |
+
+Not counted as grid/0DTE FAIL in orchestrator (layer names lack `zerodte|grid`).
+
+### P0 found + fixed this pass
+
+| ID | Root cause | Fix |
+|---|---|---|
+| `zerodte-board-504-cold-build` | `getZeroDteBoardPayload()` blocked member polls when snapshot `as_of` age >30s but Redis key still live → slow `buildAndPublishBoard()` exceeded CF origin timeout → **HTTP 504** under audit burst | **FIX** PR #1303 — serve snapshot SWR up to Redis TTL (60s); audit `fetchAuditJson` falls through to Clerk on 502/504 |
+
+### Residual open (non-P0)
+
+| Severity | ID | Detail | Status |
+|---|---|---|---|
+| **P2** | `grid-runbook-stale-ui` | Runbook references deleted `/grid` tabs | **OPEN** |
+| **P2** | `zerodte-warm-504` | Cron probe 504 under parallel audit load only | **OPEN** — mitigated by SWR fix |
+| **P1** | `nighthawk-dossier-grounding` | 4 plays without dossier snapshot | **OPEN** |
+| **P2** | `nvda-dossier-shadow-drift` | NVDA flow_streak/iv_rank shadow recompute | **OPEN** |
+
+**Member-facing 0DTE Command: GREEN** post-fix — board API, ledger math, cross-tool spot, HELIX feed, dedupe, logic invariants all pass sequentially.
 
 ---
 

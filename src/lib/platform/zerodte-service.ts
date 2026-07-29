@@ -223,10 +223,12 @@ const BOARD_SNAPSHOT_TTL_SEC = 60;
 // background rebuild (non-blocking SWR) so the cycle advances. Matches the ~5s member
 // poll cadence — most polls land inside a fresh snapshot and never trigger a rebuild.
 const BOARD_SNAPSHOT_REFRESH_MS = 5_000;
-// Hard age: a snapshot older than this is NOT served — the reader blocks on a fresh
-// build instead, so a stalled writer can never freeze the board on stale cross-replica
-// data (fail-safe upper bound; the SWR refresh normally keeps age well under this).
-const BOARD_SNAPSHOT_MAX_AGE_MS = 30_000;
+// Past BOARD_SNAPSHOT_REFRESH_MS the reader kicks a background rebuild (non-blocking SWR).
+// Serve ceiling aligned with Redis TTL — a key still present is always served SWR-style
+// so a stalled writer never 504s the route; only a true cold miss blocks on build.
+// Proven 2026-07-29: blocking cold builds under parallel audit load exceeded CF origin
+// timeout → HTTP 504 on /api/market/zerodte/board while the snapshot was still in Redis.
+const BOARD_SNAPSHOT_SERVE_MAX_AGE_MS = BOARD_SNAPSHOT_TTL_SEC * 1000;
 // Cross-replica rebuild lock: elects ONE replica to rebuild+publish per cycle so N
 // replicas don't each re-derive the same snapshot. Auto-expires (writer crash safety);
 // the winner also deletes it right after publishing so the next cycle can advance.
@@ -685,20 +687,20 @@ function refreshSharedBoardInBackground(): void {
  */
 export async function getZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
   const shared = await readSharedBoardSnapshot();
-  if (shared && shared.ageMs <= BOARD_SNAPSHOT_MAX_AGE_MS) {
+  if (shared && shared.ageMs <= BOARD_SNAPSHOT_SERVE_MAX_AGE_MS) {
     // Serve the shared, converged snapshot NOW. Past the soft window, kick a
     // single-writer background rebuild so the next cycle advances — never block on it.
     if (shared.ageMs > BOARD_SNAPSHOT_REFRESH_MS) refreshSharedBoardInBackground();
     return shared.value;
   }
 
-  // Cold miss / too stale to serve → blocking build+publish (single-flight per replica).
+  // Cold miss / Redis TTL expired → blocking build+publish (single-flight per replica).
   if (coldBuildInflight) return coldBuildInflight;
   coldBuildInflight = (async () => {
     // A peer may have published while we queued behind the single-flight — prefer it
     // for convergence over spending another build.
     const raced = await readSharedBoardSnapshot();
-    if (raced && raced.ageMs <= BOARD_SNAPSHOT_MAX_AGE_MS) return raced.value;
+    if (raced && raced.ageMs <= BOARD_SNAPSHOT_SERVE_MAX_AGE_MS) return raced.value;
     return buildAndPublishBoard();
   })().finally(() => {
     coldBuildInflight = null;

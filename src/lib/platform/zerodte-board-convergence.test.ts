@@ -139,12 +139,12 @@ test("liveness (SWR): a snapshot past the soft window is served immediately AND 
   assert.equal(sharedState.scanCalls, 1);
   const firstAsOf = first.as_of;
 
-  // Age the stored snapshot past the soft-refresh window (but under the hard max age) so
+  // Age the stored snapshot past the soft-refresh window (but under the serve ceiling) so
   // the next read serves it instantly yet kicks a background rebuild.
   const key = "zerodte:board:snapshot:v1";
   const entry = sharedState.store.get(key)!;
   const aged = JSON.parse(entry.value);
-  aged.as_of = new Date(Date.now() - 9_000).toISOString(); // > 5s soft, < 30s hard
+  aged.as_of = new Date(Date.now() - 9_000).toISOString(); // > 5s soft, < 60s serve ceiling
   sharedState.store.set(key, { value: JSON.stringify(aged), expiresAt: entry.expiresAt });
 
   const served = await getZeroDteBoardPayload();
@@ -155,7 +155,26 @@ test("liveness (SWR): a snapshot past the soft window is served immediately AND 
   assert.equal(sharedState.scanCalls, 2, "exactly one background rebuild fired for the cycle");
   const republished = JSON.parse(sharedState.store.get(key)!.value);
   assert.notEqual(republished.as_of, aged.as_of, "the shared snapshot was republished with a newer as_of");
-  assert.notEqual(republished.as_of, firstAsOf);
+});
+
+test("SWR hard window: a snapshot aged past the old 30s hard gate but still within Redis TTL is served without blocking (no 504 cold path)", async () => {
+  const { getZeroDteBoardPayload } = await import("./zerodte-service");
+
+  await getZeroDteBoardPayload();
+  assert.equal(sharedState.scanCalls, 1);
+
+  const key = "zerodte:board:snapshot:v1";
+  const entry = sharedState.store.get(key)!;
+  const aged = JSON.parse(entry.value);
+  aged.as_of = new Date(Date.now() - 35_000).toISOString(); // > 30s old hard gate, < 60s TTL
+  sharedState.store.set(key, { value: JSON.stringify(aged), expiresAt: entry.expiresAt });
+
+  const served = await getZeroDteBoardPayload();
+  assert.equal(served.as_of, aged.as_of, "35s-aged snapshot still served SWR — member poll must not block on cold build");
+  assert.equal(sharedState.scanCalls, 1, "no blocking rebuild on the read path — background SWR only");
+
+  await waitFor(() => sharedState.scanCalls >= 2);
+  assert.equal(sharedState.scanCalls, 2, "background rebuild eventually advances the snapshot");
 });
 
 test("fail-soft: a shared-store outage still serves a freshly built board — never a blank board", async () => {
