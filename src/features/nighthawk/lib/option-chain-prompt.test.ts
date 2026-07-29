@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { evaluatePlayAgainstChain, STRIKE_MIN_OI, type ChainStrikeRow } from "./option-chain-prompt";
+import {
+  chainQuoteForParsedPlay,
+  evaluatePlayAgainstChain,
+  playPremiumWithinChainBand,
+  STRIKE_MIN_OI,
+  type ChainStrikeRow,
+} from "./option-chain-prompt";
 
 // task #141: evaluatePlayAgainstChain's `ok`/`verified`/`contradicted` fields already gated
 // claude-edition.ts's illiquid-strike rejection loop; `matchedOi` is a NEW, purely additive
@@ -71,4 +77,21 @@ test("STRIKE_MIN_OI is the default floor evaluatePlayAgainstChain applies (500)"
   assert.equal(justBelow.contradicted, true);
   const justAtFloor = evaluatePlayAgainstChain("SNDK 190C 2026-08-21", [row({ call_oi: STRIKE_MIN_OI })]);
   assert.equal(justAtFloor.contradicted, false);
+});
+
+test("chainQuoteForParsedPlay: picks the matched expiry, not the first same-strike row", () => {
+  const parsed = { strike: 180, side: "call" as const, expiryYmd: "2026-08-01" };
+  const quote = chainQuoteForParsedPlay(parsed, [
+    row({ expiry: "2026-07-25", strike: 180, call_bid: 0.9, call_ask: 1.0 }),
+    row({ expiry: "2026-08-01", strike: 180, call_bid: 3.2, call_ask: 3.42 }),
+  ]);
+  assert.ok(quote);
+  assert.ok(Math.abs(quote!.ref - 3.31) < 0.05);
+  assert.equal(playPremiumWithinChainBand(3.42, quote!), true);
+  assert.equal(playPremiumWithinChainBand(1.0, quote!), false);
+});
+
+test("chainQuoteForParsedPlay: returns null without expiry or side", () => {
+  assert.equal(chainQuoteForParsedPlay({ strike: 180, side: null, expiryYmd: "2026-08-01" }, [row({})]), null);
+  assert.equal(chainQuoteForParsedPlay({ strike: 180, side: "call", expiryYmd: null }, [row({})]), null);
 });

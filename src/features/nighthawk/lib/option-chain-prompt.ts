@@ -503,6 +503,76 @@ export async function fetchEditionChainRows(params: {
 
 export type EditionChainData = { spot: number; rows: ChainStrikeRow[] };
 
+/** Same ±40% band documented in docs/NIGHTHAWK_GROUNDING.md for publish-time premium grounding. */
+export const NH_PREMIUM_TOLERANCE_PCT = 0.4;
+
+/** Match chain rows for a parsed contract — shared by grounding.ts and the data-correctness verifier. */
+export function matchChainRowsForContract(
+  strike: number,
+  expiryYmd: string | null,
+  rows: ChainStrikeRow[]
+): ChainStrikeRow[] {
+  return rows.filter((row) => {
+    if (Math.abs(row.strike - strike) > 0.05) return false;
+    if (expiryYmd && row.expiry !== expiryYmd) return false;
+    return true;
+  });
+}
+
+function sideQuoteMid(row: ChainStrikeRow, side: "call" | "put"): number | null {
+  const ask = side === "put" ? row.put_ask : row.call_ask;
+  const bid = side === "put" ? row.put_bid : row.call_bid;
+  if (ask != null && Number.isFinite(ask) && ask > 0) {
+    if (bid != null && Number.isFinite(bid) && bid > 0) return (ask + bid) / 2;
+    return ask;
+  }
+  return null;
+}
+
+export type PlayChainQuote = {
+  /** Reference premium (cheapest mid/ask across matched rows — mirrors grounding.ts). */
+  ref: number;
+  bid: number | null;
+  ask: number | null;
+};
+
+/**
+ * Resolve the live chain quote for a fully-parseable play contract (strike + side + expiry).
+ * Returns null when expiry or side is missing — premium cross-check is not meaningful then.
+ */
+export function chainQuoteForParsedPlay(
+  parsed: ParsedOptionsContract,
+  rows: ChainStrikeRow[]
+): PlayChainQuote | null {
+  if (!parsed.side || !parsed.expiryYmd) return null;
+  const side = parsed.side;
+  const matched = matchChainRowsForContract(parsed.strike, parsed.expiryYmd, rows);
+  if (!matched.length) return null;
+
+  const quotes = matched
+    .map((row) => {
+      const ask = side === "put" ? row.put_ask : row.call_ask;
+      const bid = side === "put" ? row.put_bid : row.call_bid;
+      const ref = sideQuoteMid(row, side);
+      return ref != null && ref > 0 ? { ref, bid, ask } : null;
+    })
+    .filter((q): q is PlayChainQuote => q != null);
+  if (!quotes.length) return null;
+
+  return quotes.reduce((best, q) => (q.ref < best.ref ? q : best));
+}
+
+export function playPremiumWithinChainBand(
+  entryPremium: number,
+  quote: PlayChainQuote,
+  tolerancePct = NH_PREMIUM_TOLERANCE_PCT
+): boolean {
+  if (!Number.isFinite(entryPremium) || entryPremium <= 0) return false;
+  const lo = quote.ref * (1 - tolerancePct);
+  const hi = quote.ref * (1 + tolerancePct);
+  return entryPremium >= lo && entryPremium <= hi;
+}
+
 function hasMatchingRow(rows: ChainStrikeRow[], parsed: ParsedOptionsContract): boolean {
   return rows.some((row) => {
     if (Math.abs(row.strike - parsed.strike) > 0.05) return false;
