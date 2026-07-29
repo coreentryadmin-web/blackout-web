@@ -5,6 +5,7 @@ import {
   largoDailyQueryBudget,
   secondsUntilEtMidnight,
   isOverLargoBudget,
+  shouldRefundLargoReserve,
   DEFAULT_LARGO_DAILY_QUERY_BUDGET,
 } from "./largo-budget";
 import { etDayKey } from "./ai-spend";
@@ -49,6 +50,12 @@ test("over-cap predicate: at/over cap is true, below is false", () => {
   assert.equal(isOverLargoBudget(99, 100), false);
   assert.equal(isOverLargoBudget(100, 100), true);
   assert.equal(isOverLargoBudget(101, 100), true);
+});
+
+test("shouldRefundLargoReserve: refund only when INCR pushed past the cap", () => {
+  assert.equal(shouldRefundLargoReserve(100, 100), false); // exactly at cap = allowed
+  assert.equal(shouldRefundLargoReserve(101, 100), true); // over = refund
+  assert.equal(shouldRefundLargoReserve(1, 100), false);
 });
 
 test("secondsUntilEtMidnight ≈ 86400 - elapsed ET seconds at a known wall-clock", () => {

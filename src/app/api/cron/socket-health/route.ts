@@ -128,7 +128,7 @@ export async function GET(req: NextRequest) {
       as_of: new Date().toISOString(),
       market_hours: false,
       websockets: {},
-      error: err instanceof Error ? err.message : "socket-health probe failed",
+      error: "socket-health probe failed",
     };
   } finally {
     await logCronRun("socket-health", started, {

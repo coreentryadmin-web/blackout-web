@@ -6,6 +6,7 @@ import { sseBackpressureExceeded } from "@/lib/sse-backpressure";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
 import { registerVectorUniverseView } from "@/features/vector/lib/vector-universe";
 import { NO_STORE_HEADERS, NO_STORE_STREAM_HEADERS } from "@/lib/no-store-headers";
+import { enforceFlowsSseRateLimit } from "@/lib/market-user-rate-limit";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -19,6 +20,9 @@ const MAX_STREAMS = Number(process.env.SSE_MAX_STREAMS ?? 500);
 export async function GET(req: NextRequest) {
   const auth = await authorizeMarketDeskApi(req);
   if (auth instanceof Response) return auth;
+
+  const limited = await enforceFlowsSseRateLimit(auth.userId);
+  if (limited) return limited;
 
   const tickerFilter = req.nextUrl.searchParams.get("ticker")?.toUpperCase().trim() || undefined;
   if (tickerFilter) registerVectorUniverseView(tickerFilter);

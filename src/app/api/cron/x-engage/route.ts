@@ -46,6 +46,6 @@ export async function GET(req: NextRequest) {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     await logCronRun("x-engage", started, { ok: false, error: message });
-    return NextResponse.json({ ok: false, error: message }, { status: 200 });
+    return NextResponse.json({ ok: false, error: "X engage failed" }, { status: 200 });
   }
 }

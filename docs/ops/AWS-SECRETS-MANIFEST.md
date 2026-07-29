@@ -18,6 +18,7 @@ Secrets Manager. **Never commit real values.**
 | Key | Source |
 |-----|--------|
 | `DATABASE_URL` | RDS Proxy endpoint |
+| `DATABASE_SSL_STRICT` | **Set `1` in production** — enables `rejectUnauthorized` on the Postgres TLS client (`src/lib/db.ts`). Accepts `1`/`true`/`yes`. Default/unset = verify off (legacy). Required now that traffic is VPC → RDS Proxy with AWS CA. Pair with `DATABASE_SSL` unset (SSL on) — never set `DATABASE_SSL=0` in prod. |
 | `REDIS_URL` | ElastiCache endpoint |
 | `PORT` | `3000` |
 | `HOSTNAME` | `0.0.0.0` |

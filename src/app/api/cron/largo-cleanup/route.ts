@@ -30,6 +30,6 @@ export async function GET(req: NextRequest) {
     const detail = error instanceof Error ? error.message : String(error);
     console.error("[cron/largo-cleanup]", error);
     await logCronRun("largo-cleanup", started, { ok: false, error: detail });
-    return NextResponse.json({ ok: false, error: "Largo cleanup failed", detail }, { status: 500 });
+    return NextResponse.json({ ok: false, error: "Largo cleanup failed" }, { status: 500 });
   }
 }

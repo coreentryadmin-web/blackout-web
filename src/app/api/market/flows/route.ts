@@ -17,6 +17,7 @@ import {
 import { flowPageCursor } from "@/features/helix/lib/helix-flow-tape-merge";
 import { registerVectorUniverseView } from "@/features/vector/lib/vector-universe";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
+import { enforceFlowsRestRateLimit } from "@/lib/market-user-rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +38,9 @@ function paginateRows<T extends { alerted_at: string; event_at?: string | null }
 export async function GET(req: NextRequest) {
   const auth = await authorizeMarketDeskApi(req);
   if (auth instanceof Response) return auth;
+
+  const limited = await enforceFlowsRestRateLimit(auth.userId);
+  if (limited) return limited;
 
   ensureDataSockets();
 

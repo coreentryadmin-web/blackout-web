@@ -64,7 +64,7 @@ export async function GET(req: NextRequest) {
     const detail = error instanceof Error ? error.message : String(error);
     console.error("[cron/db-cleanup]", error);
     await logCronRun("db-cleanup", started, { ok: false, error: detail });
-    return NextResponse.json({ ok: false, error: "DB cleanup failed", detail }, { status: 500 });
+    return NextResponse.json({ ok: false, error: "DB cleanup failed" }, { status: 500 });
   }
 }
 
