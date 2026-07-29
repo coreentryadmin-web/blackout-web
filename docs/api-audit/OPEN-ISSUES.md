@@ -1,5 +1,63 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-06 22:35 ET
+Last updated: 2026-07-29 11:40 ET
+
+## grid-rth-2026-07-29 — 0DTE Command market-open verify pass (6:30 AM PT / 9:30 AM ET)
+
+**Session:** Autonomous Grid RTH agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` verify mode. Time: Wed 11:34–11:40 ET (RTH). Commands: `validate:grid-rth` → `validate:zerodte-logic` → `validate:grid-e2e` + Clerk live board deep probe.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:zerodte-logic` | ✅ **GREEN** — 17/17 (after audit probe fixes) |
+| `npm run validate:grid-e2e` | ✅ **GREEN** — 5/5 (Playwright `/nighthawk` + API) |
+| `npm run validate:grid-rth` | ⚠️ **PARTIAL** — CRON_SECRET in cloud agent env returns HTTP 401 on cron/board bearer paths; Clerk-authenticated probes GREEN |
+| Live board (Clerk admin) | ✅ **GREEN** — heat=RTH 100%, 8 setups (1 gate-eligible), ledger 1, 5 `covered_elsewhere` |
+| HELIX flows | ✅ 20 prints |
+| Night Hawk edition | ✅ 5 plays (NVDA, AAPL, GOOG, COST, EWZ) |
+| GEX spot | ✅ 7369.63 |
+| Ledger PnL math | ✅ 1 row, 0 issues |
+| Session heat cutoff | ✅ RTH at 11:40 ET (14:00 POST_COMMIT / 15:00 POWER_HOUR per G-14) |
+
+### 0DTE logic layers verified
+
+| Layer | Result |
+|---|---|
+| Unit tests (`board`, `rejections`, `ZeroDteBoard`) | ✅ PASS |
+| Gate funnel (SETUP_MIN_GROSS 200K, dominance 0.55) | ✅ PASS |
+| Plan exits (−50% stop, +100% target, 15:30 time stop) | ✅ PASS |
+| Trade lifecycle OPEN→TRIM→CLOSED + sticky trough | ✅ PASS |
+| Plan grading (stop wins same-bar) | ✅ PASS |
+| Session heat RTH→POST_COMMIT→POWER_HOUR | ✅ PASS |
+| mergePlays past-cutoff / MOVED → SKIP | ✅ PASS |
+| Live setup gates (eligible only, not BLOCKED watch cards) | ✅ PASS |
+
+### Cross-tool
+
+| Probe | Result |
+|---|---|
+| HELIX flows feed scanner | ✅ 20 prints |
+| Night Hawk dedupe field | ✅ 5 NH tickers listed in `covered_elsewhere` (informational — NH tickers remain eligible per `scan.ts`) |
+| Bootstrap vs GEX spot | ✅ GEX 7369.63 live |
+| `/nighthawk` UI | ✅ loads, zero console errors |
+
+### Findings
+
+| Severity | ID | Detail | Status |
+|---|---|---|---|
+| **P1** | `grid-rth-session-heat-probe-stale` | `zerodte-logic-probes.ts` still expected RTH@14:30 + POWER_HOUR@14:00 after G-14 moved commit cutoff to 14:00 ET | **FIXED** (PR) |
+| **P1** | `grid-rth-bie-cache-key-stale` | `zerodte-bie-consistency-validator.mjs` expected `zerodte:board:v1`; prod uses `zerodte:board:snapshot:v1` | **FIXED** (PR) |
+| **P1** | `grid-rth-live-gate-thresholds-stale` | Live board audit used 750K/0.65 thresholds + penalized BLOCKED watch cards and `covered_elsewhere` | **FIXED** (PR) |
+| **P1** | `grid-rth-live-board-cron-fallback` | Cloud agent `CRON_SECRET` ≠ prod → bearer 401; added Clerk fallback in `zerodte-logic-audit.mjs` | **FIXED** (PR) |
+| **P2** | `grid-rth-cloud-cron-secret-mismatch` | Cloud agent env `CRON_SECRET` returns 401 on all `/api/cron/*` + bearer board paths; prod crons unaffected (ECS has correct secret) | **OPEN** — rotate cloud agent secret to match Secrets Manager |
+| **P2** | `grid-rth-runbook-stale-grid-panels` | `GRID-RTH-ALL-DAY-AGENT.md` still references classic `/grid` + 9 `/api/grid/*` panels (deleted 2026-07-07); 0DTE lives on `/nighthawk` | **OPEN** — doc update post-close |
+| **P2** | `validate-deploy-railway-cli` | `validate:deploy` fails on missing Railway CLI (legacy); HTTP smoke GREEN | **KNOWN** |
+
+**No prod P0 defects — board logic, gates, ledger PnL, and UI all GREEN via Clerk auth.**
+
+**Reports:** `audit-output/zerodte-logic-1785339637136.json`, `audit-output/grid-e2e-1785339644845.json`, `audit-output/grid-rth-2026-07-29-verify-1785339288171.json`
+
+---
 
 ## Largo mobile stream fix — 2026-07-06 (user-reported "Connection interrupted")
 

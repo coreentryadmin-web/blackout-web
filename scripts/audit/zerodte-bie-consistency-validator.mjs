@@ -29,7 +29,7 @@ rec(
 
 rec(
   "static:zerodte-service->shared-cache-key",
-  /zerodte:board:v1/.test(read("src/lib/platform/zerodte-service.ts"))
+  /zerodte:board:snapshot:v1/.test(read("src/lib/platform/zerodte-service.ts"))
 );
 
 rec(
