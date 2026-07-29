@@ -1,5 +1,74 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-29 14:45 ET
+Last updated: 2026-07-29 15:24 ET
+
+## grid-rth-2026-07-29 — 0DTE Command + Market Grid verify pass (~15:21–15:24 ET)
+
+**Session:** Autonomous Grid RTH agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` (verify mode). Time: Wed 15:21–15:24 ET (RTH, POWER_HOUR). Commands: `validate:grid-rth` → `validate:zerodte-logic` → `validate:grid-e2e` → `validate:zerodte-integration` → `data-validator.mjs` → `ops:collect`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:grid-rth` | ✅ **GREEN** — 14/14 (infra, zerodte board, crons, cross-tool, logic, E2E, ops) |
+| `npm run validate:zerodte-logic` | ✅ **GREEN** — 17/17 (gates, plan exits, lifecycle, mergePlays, session heat, ledger PnL) |
+| `npm run validate:grid-e2e` | ✅ **GREEN** — 4/4 API probes; Playwright browser unavailable (WARN only) |
+| `npm run validate:zerodte-integration` | ✅ **GREEN** — 9/9 cross-tool (SPX bootstrap/GEX, HELIX flows, NH dedupe, ledger PnL) |
+| `node scripts/audit/data-validator.mjs` | ⚠️ **36 PASS / 1 FAIL** — QQQ underlying 1.222% vs Polygon (tol 0.3% index) |
+| `npm run ops:collect` | ✅ **GREEN** — 0 action items (watchdog error-spike cleared post PR #1272) |
+
+### 0DTE board (live, POWER_HOUR)
+
+| Field | Value |
+|---|---|
+| Session heat | `POWER_HOUR` (100%) — past 15:00 ET cutoff ✓ |
+| Setups | 6 (2 eligible / 0 gate violations) — QQQ, SPXW, MU, GOOGL, AAPL, SMH |
+| Ledger | 4 rows — PnL math matches `reconcileLedgerLivePnlPct` ✓ (MU −50%, SPXW −50%, AMD +23%, INTC +25%) |
+| `zerodte-warm` cron | GREEN |
+| `data-correctness` | 0 flags (force=1) |
+| Night Hawk dedupe | 5 tickers covered elsewhere |
+| HELIX flows | 20–30 prints |
+| SPX spot (bootstrap vs GEX) | ~7381 (agree) |
+
+### 0DTE logic probes (all GREEN)
+
+| Probe | Result |
+|---|---|
+| Gate funnel (SETUP_MIN_GROSS, aggression, dominance, ITM) | PASS |
+| Plan exits (stop −50%, target +100%, time stop 15:30 ET) | PASS |
+| Trade lifecycle (OPEN → TRIM → CLOSED, sticky trough stop) | PASS |
+| Plan grading (stop wins when both touch same bar) | PASS |
+| Session heat (RTH → POST_COMMIT → POWER_HOUR at 15:00 ET) | PASS |
+| `mergePlays` past cutoff / MOVED → SKIP not OPEN | PASS |
+| Ledger PnL consistency (4 live rows) | PASS |
+
+### Cross-tool integration
+
+| Check | Result |
+|---|---|
+| Grid bootstrap spot vs GEX | PASS (~7381) |
+| HELIX flows feed scanner | PASS (20–30 prints) |
+| Night Hawk dedupe (`covered_elsewhere`) | PASS (5 tickers) |
+| BIE consistency | PASS |
+
+### UI / routing note
+
+Classic `/grid` page + 9 `/api/grid/*` panels **deleted 2026-07-07** — 0DTE Command lives on `/nighthawk`. E2E audits `/nighthawk` (not `/grid` tabs). `/grid` → 404 (expected).
+
+### P0 found this pass
+
+**None.** Member-facing 0DTE is GREEN.
+
+### Residual open (non-P0)
+
+| Severity | ID | Detail | Status |
+|---|---|---|---|
+| **P2** | `qqq-underlying-staleness` | data-validator: QQQ setup `underlying_price` 679.23 vs Polygon ~671 (1.222% > 0.3% index tol) — flow-derived UW price stale on setup card; gates/ledger unaffected | **OPEN** — worsened from 0.371% earlier pass |
+| **P2** | `playwright-browser-missing` | grid-e2e WARN: Chromium not installed in cloud VM — API probes authoritative | **KNOWN** |
+| **P1** | `largo-grounding-coverage` | Largo answer #1284 low grounding (from prior pass) | **OPEN** — [#1239](https://github.com/coreentryadmin-web/blackout-web/issues/1239) |
+
+**Reports:** `audit-output/grid-rth-2026-07-29-verify-1785352984872.json`, `audit-output/zerodte-logic-1785352988573.json`, `audit-output/grid-e2e-1785352990553.json`, `audit-output/zerodte-integration-1785353021939.json`
+
+---
 
 ## grid-rth-2026-07-29 — 0DTE Command + Market Grid verify pass (~14:32–14:45 ET)
 
