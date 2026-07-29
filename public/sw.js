@@ -77,7 +77,12 @@ self.addEventListener("push", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const target = (event.notification.data && event.notification.data.url) || "/dashboard";
+  var raw = (event.notification.data && event.notification.data.url) || "/dashboard";
+  // Only open same-origin paths — reject absolute/protocol-relative URLs from push payloads.
+  var target =
+    typeof raw === "string" && raw.startsWith("/") && !raw.startsWith("//")
+      ? raw
+      : "/dashboard";
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
       for (const client of clients) {
