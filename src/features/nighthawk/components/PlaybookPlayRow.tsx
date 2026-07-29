@@ -29,7 +29,7 @@ const MORNING_CHIP_TONE: Record<PlayMorningStatus["status"], string> = {
   CONFIRMED: "border-bull/35 bg-bull/10 text-bull",
   DEGRADED: "border-gold/35 bg-gold/10 text-gold",
   INVALIDATED: "border-bear/40 bg-bear/10 text-bear",
-  UNVERIFIED: "border-sky-300/25 bg-sky-300/[0.05] text-sky-300/80",
+  UNVERIFIED: "border-sky-300/25 bg-sky-300/[0.05] text-sky-100",
 };
 
 export function fmtScore(raw: number | null | undefined): string {
@@ -96,7 +96,7 @@ export function PlaybookPlayRow({
         isBull && "border-l-2 border-l-bull/60",
         isBear && "border-l-2 border-l-bear/60",
         !isBull && !isBear && "border-l-2 border-l-sky-400/40",
-        isPulled && "opacity-60",
+        isPulled && "opacity-80",
         morningConfirm?.status === "CONFIRMED" && !isPulled && "nh-v2-play-card--confirmed",
         morningConfirm?.status === "DEGRADED" && "nh-v2-play-card--degraded",
         morningConfirm?.status === "INVALIDATED" && "nh-v2-play-card--invalidated",
@@ -138,7 +138,7 @@ export function PlaybookPlayRow({
               className={clsx(
                 "rounded-md border px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-[0.12em]",
                 MORNING_CHIP_TONE[morningConfirm.status],
-                morningConfirmStale && "border-dashed opacity-55"
+                morningConfirmStale && "border-dashed opacity-80"
               )}
               title={morningConfirmTitle}
             >
@@ -146,8 +146,8 @@ export function PlaybookPlayRow({
             </span>
           )}
           <span className="ml-auto flex items-center gap-2">
-            <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-sky-300/40">score</span>
-            <span className="t-num text-[12px] font-bold text-sky-200/85">{fmtScore(play.score)}</span>
+            <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-sky-200">score</span>
+            <span className="t-num text-[12px] font-bold text-sky-100">{fmtScore(play.score)}</span>
             {onSelect && <span className="nh-v2-open-briefing" aria-hidden>↗</span>}
           </span>
         </div>
@@ -161,7 +161,7 @@ export function PlaybookPlayRow({
         <div
           className={clsx(
             "nh-v2-levels-row mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3",
-            isPulled && "line-through opacity-70"
+            isPulled && "line-through opacity-85"
           )}
         >
           <div className="nh-v2-level-cell">
@@ -179,12 +179,12 @@ export function PlaybookPlayRow({
         </div>
 
         <div className="mt-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-          <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-sky-300/50">Contract</span>
-          <span className={clsx("t-num min-w-0 text-[11px] leading-snug text-cyan-300/90", isPulled && "line-through")}>
+          <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-sky-200">Contract</span>
+          <span className={clsx("t-num min-w-0 text-[11px] leading-snug text-cyan-200", isPulled && "line-through")}>
             {play.options_play}
           </span>
           <span
-            className="rounded-md border border-gold/25 bg-gold/[0.06] px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.06em] text-gold/95"
+            className="rounded-md border border-gold/25 bg-gold/[0.06] px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.06em] text-gold"
             title={`Desk cap: max $${MAX_OPTION_PREMIUM_PER_SHARE}/share entry premium`}
           >
             {formatPremiumCapLabel(play.entry_premium ?? null) ?? `≤$${MAX_OPTION_PREMIUM_PER_SHARE}`}
@@ -193,7 +193,7 @@ export function PlaybookPlayRow({
 
         {play.conviction && (
           <div className="nh-v2-conviction-meter">
-            <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-gold/80">
+            <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-gold">
               {play.conviction}
             </span>
             <div className="nh-v2-conviction-meter-track" aria-hidden>
@@ -208,7 +208,7 @@ export function PlaybookPlayRow({
         <p className="nh-v2-play-thesis">{play.thesis || play.key_signal}</p>
 
         {onSelect && (
-          <p className="nh-v2-card-cta mt-1 font-mono text-[9px] uppercase tracking-[0.18em] text-gold/70">
+          <p className="nh-v2-card-cta mt-1 font-mono text-[9px] uppercase tracking-[0.18em] text-gold">
             Open briefing · overview · scoring · intel
           </p>
         )}

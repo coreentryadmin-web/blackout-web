@@ -13,6 +13,106 @@
   z-index: 2;
 }
 
+/* ── Trading contrast floor (2026-07-29) ─────────────────────────────────────────
+   Live desk audit: labels/tabs/secondary copy were too thin against #040407 + radar HUD.
+   Scope ONLY under .nh-v2-page — raise weight + luminance so a trader can scan under pressure.
+   No grey text; stay on white / cyan / sky (architecture hard rule). */
+.nh-v2-page {
+  --nh-label: #7dd3fc; /* sky-300 */
+  --nh-label-strong: #e0f2fe; /* sky-100 */
+  --nh-body: #f0f9ff; /* sky-50 */
+}
+
+.nh-v2-page .nighthawk-content-canvas,
+.nh-v2-page .nighthawk-single-view {
+  font-weight: 500;
+}
+
+/* Page kicker + subtitle under "Night Hawk" */
+.nh-v2-page .nh-v2-page-header .t-kicker,
+.nh-v2-page .nh-v2-page-header [class*="tracking"] {
+  color: var(--nh-label) !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.18em;
+}
+
+.nh-v2-page .nh-v2-page-header p,
+.nh-v2-page .nighthawk-content-canvas > p {
+  color: var(--nh-label-strong) !important;
+  font-weight: 600 !important;
+  opacity: 1 !important;
+}
+
+/* View tabs (0DTE / Swings / LEAPS / Legacy) — inactive was ghosted */
+.nh-v2-page .ios-native-segment {
+  border-color: rgba(125, 211, 252, 0.28);
+  background: rgba(8, 20, 32, 0.72);
+}
+
+.nh-v2-page .ios-native-segment-btn {
+  color: #bae6fd !important; /* sky-200 */
+  font-weight: 800 !important;
+  font-size: 14px !important;
+  letter-spacing: 0.04em;
+}
+
+.nh-v2-page .ios-native-segment-btn-active {
+  color: #fff !important;
+  font-weight: 800 !important;
+}
+
+/* Kill muted utility classes inside the desk (keep intentional stale/pulled opacity) */
+.nh-v2-page .text-mute,
+.nh-v2-page .text-mute\/60,
+.nh-v2-page .text-mute\/80,
+.nh-v2-page .text-secondary {
+  color: var(--nh-label) !important;
+  font-weight: 600 !important;
+}
+
+.nh-v2-page .text-sky-300\/40,
+.nh-v2-page .text-sky-300\/50,
+.nh-v2-page .text-sky-300\/60,
+.nh-v2-page .text-sky-300\/70,
+.nh-v2-page .text-sky-300\/80,
+.nh-v2-page .text-sky-200\/75,
+.nh-v2-page .text-sky-200\/80,
+.nh-v2-page .text-sky-200\/85,
+.nh-v2-page .text-sky-200\/90,
+.nh-v2-page .text-cyan-300\/70,
+.nh-v2-page .text-cyan-300\/80,
+.nh-v2-page .text-cyan-300\/90,
+.nh-v2-page .text-sky-100\/90 {
+  color: var(--nh-label-strong) !important;
+  font-weight: 600 !important;
+}
+
+/* Radar HUD was washing labels — keep atmosphere, raise content above it */
+.nh-v2-page .nighthawk-radar-hud {
+  opacity: 0.18;
+}
+
+.nh-v2-page .horizon-lane-board {
+  border-color: rgba(125, 211, 252, 0.28);
+  background: rgba(8, 16, 28, 0.92);
+}
+
+.nh-v2-page .horizon-lane-board h2 {
+  font-weight: 800;
+}
+
+.nh-v2-page .horizon-lane-board .text-xs,
+.nh-v2-page .horizon-lane-board .text-\[0\.7rem\] {
+  color: var(--nh-label) !important;
+  font-weight: 700 !important;
+}
+
+/* Sticky view rail — denser institutional weight */
+.nh-v2-page .ios-native-desk-segment {
+  border-color: rgba(125, 211, 252, 0.32);
+  background: rgba(6, 18, 30, 0.88);
+}
+
 /* ── Column identity ── */
 .nh-v2-col-playbook {
   min-height: 0;
@@ -96,10 +196,10 @@
 .nh-v2-playbook-recap {
   margin-top: 0.5rem;
   font-family: var(--font-syne), system-ui, sans-serif;
-  font-size: 0.82rem;
-  font-weight: 600;
-  line-height: 1.35;
-  color: rgba(255, 210, 63, 0.78);
+  font-size: 0.88rem;
+  font-weight: 700;
+  line-height: 1.4;
+  color: #ffe566;
 }
 
 /* ── Play cards ── */
@@ -435,15 +535,15 @@
 .nh-v2-briefing-tab {
   flex: 1;
   border-radius: 0.55rem;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(125, 211, 252, 0.22);
+  background: rgba(255, 255, 255, 0.04);
   padding: 0.45rem 0.65rem;
   font-family: var(--font-syne), system-ui, sans-serif;
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.14em;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.55);
+  color: #bae6fd; /* sky-200 — inactive must stay scannable */
   transition:
     border-color 0.15s ease,
     background 0.15s ease,
@@ -451,10 +551,10 @@
 }
 
 .nh-v2-briefing-tab--active {
-  border-color: rgba(255, 210, 63, 0.45);
-  background: rgba(255, 210, 63, 0.08);
-  color: #ffd23f;
-  box-shadow: 0 0 20px rgba(255, 210, 63, 0.12);
+  border-color: rgba(255, 210, 63, 0.55);
+  background: rgba(255, 210, 63, 0.12);
+  color: #ffe566;
+  box-shadow: 0 0 20px rgba(255, 210, 63, 0.14);
 }
 
 .nh-v2-briefing-tab-dot {
@@ -511,37 +611,39 @@
 .nh-v2-briefing-section-title {
   margin: 0 0 0.45rem;
   font-family: var(--font-syne), system-ui, sans-serif;
-  font-size: 0.62rem;
-  font-weight: 700;
-  letter-spacing: 0.2em;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: rgba(255, 210, 63, 0.85);
+  color: #ffd23f;
 }
 
 .nh-v2-briefing-section--green .nh-v2-briefing-section-title {
-  color: rgba(0, 230, 118, 0.85);
+  color: #5dff9a;
 }
 
 .nh-v2-briefing-section--sky .nh-v2-briefing-section-title {
-  color: rgba(125, 211, 252, 0.9);
+  color: #7dd3fc;
 }
 
 .nh-v2-briefing-section--bear .nh-v2-briefing-section-title {
-  color: rgba(255, 45, 85, 0.9);
+  color: #ff5a78;
 }
 
 .nh-v2-briefing-prose {
   margin: 0;
-  font-size: 0.82rem;
+  font-size: 0.88rem;
   line-height: 1.5;
-  color: rgba(186, 230, 253, 0.92);
+  font-weight: 500;
+  color: #e0f2fe; /* sky-100 */
 }
 
 .nh-v2-briefing-muted {
   margin: 0;
-  font-size: 0.75rem;
+  font-size: 0.8rem;
   line-height: 1.45;
-  color: rgba(125, 211, 252, 0.65);
+  font-weight: 600;
+  color: #7dd3fc; /* sky-300 — never ghost */
 }
 
 .nh-v2-briefing-verdict {
@@ -571,10 +673,11 @@
   display: block;
   font-style: normal;
   font-family: var(--font-mono), monospace;
-  font-size: 0.55rem;
-  letter-spacing: 0.16em;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: rgba(255, 210, 63, 0.7);
+  color: #ffd23f;
 }
 
 .nh-v2-briefing-level-tile strong {
