@@ -1,5 +1,13 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-29 12:25 ET
+Last updated: 2026-07-29 12:50 ET
+
+## rth-comprehensive-2026-07-29-pass2 — midday agent sweep (~12:40 ET)
+
+**Follow-up pass** after #1235/#1238 merged. Commands re-run: `validate:rth-sweep` ✅ GREEN (0 P0/P1, `/vector` added), `validate:grid-rth` ✅ GREEN, `validate:spx-e2e` ✅ GREEN, `ops:collect` ✅ exit 0 (P2-only). Residual PR: spx-rth Clerk fallback + heatmap-matrix audit-auth + spx-bie mutate regex + ops exit-0.
+
+**Transient:** `spx-rth` matrix/merged HTTP 504 under parallel audit load — CF origin timeout; member E2E GREEN same session.
+
+---
 
 ## RTH comprehensive sweep — 2026-07-29 ~12:04–12:18 ET (midday pass #1)
 

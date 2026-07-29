@@ -278,9 +278,10 @@ function staticInvariantChecks() {
   //    literal, AND the function's own signature takes no options a caller
   //    could use to override it.
   const snapshotParams = evaluatorSrc.match(/export async function readSpxPlaySnapshot\(([^)]*)\)/);
-  const hasNoMutateParam = !!snapshotParams && !/mutate/.test(snapshotParams[1]);
+  const hasNoMutateParam = !!snapshotParams && !/\bmutate\b/.test(snapshotParams[1]);
   const snapshotBlock = findBalancedBlock(evaluatorSrc, /export async function readSpxPlaySnapshot\([^)]*\)[^{]*\{/);
-  const hardcodesMutateFalse = !!snapshotBlock && /evaluateSpxPlay\(\s*desk\s*,\s*technicals\s*,\s*\{\s*mutate:\s*false\s*\}\s*\)/.test(snapshotBlock);
+  const hardcodesMutateFalse =
+    !!snapshotBlock && /evaluateSpxPlay\(\s*desk\s*,\s*technicals\s*,\s*\{[\s\S]*?mutate:\s*false/.test(snapshotBlock);
   rec(
     "static: readSpxPlaySnapshot() hardcodes {mutate:false} with no caller-overridable option",
     hasNoMutateParam && hardcodesMutateFalse ? "PASS" : "FAIL",
