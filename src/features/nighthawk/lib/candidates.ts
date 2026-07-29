@@ -418,7 +418,19 @@ function laneMovers(ctx: MarketWideContext): Map<string, number> {
 // handles overlap with the flow/movers lanes, and the existing gates/scorer still decide what
 // actually publishes — this only widens the top of the funnel toward tradeable bangers.
 export const BREAKOUT_MIN_PRICE = 5;
-export const BREAKOUT_MAX_PRICE = 400;
+/**
+ * Upper price bound for the whole-market BREAKOUT/BREAKDOWN screen.
+ *
+ * Was $400 — that silently DROPPED the most liquid 0DTE underlyings once they
+ * printed above it (live 2026-07-29: MU ≈ $783, AMD ≈ $432, META ≈ $589 all
+ * failed the screen while the momentum-top chain budget was spent on sub-$100
+ * names whose nearest listed expiry was a weekly → pickAtmZeroDteContract
+ * returned null → `built 0 setup(s)` every scan → board looked FLOW-only even
+ * with MERGE v2 + ZERODTE_SRC_BREAKOUT=1 live). Raise to $2,500 so high-priced
+ * single-names with real same-day options stay eligible; penny/illiquid noise
+ * is still gated by MIN_PRICE + MIN_VOLUME.
+ */
+export const BREAKOUT_MAX_PRICE = 2_500;
 export const BREAKOUT_MIN_VOLUME = 1_000_000;
 export const BREAKOUT_MIN_GAIN = 0.03; // lowered from 5% — 3% captures more momentum names while close-strength filter keeps quality
 export const BREAKOUT_MIN_CLOSE_STRENGTH = 0.5; // (c−l)/(h−l) — closed in the upper half of the range

@@ -5,6 +5,29 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-29 — [0DTE] BREAKOUT live but built 0 — board looked FLOW-only after multi-rail merge
+
+**Severity.** P0 — multi-rail (#1199 MERGE v2 + flags ON) was deployed, yet every RTH scan
+logged `BREAKOUT=0 PIN=0` and the desk showed only FLOW WATCH cards (0 OPEN).
+
+**Root cause (not a flag/merge regression).**
+1. **`BREAKOUT_MAX_PRICE = 400`** in `candidates.ts` screened OUT the liquid 0DTE names that
+   were actually moving (live 10:40 ET: MU ≈ $783, AMD ≈ $432, META ≈ $589).
+2. Momentum-top chain budget then spent on sub-$100 % movers whose nearest listed expiry was
+   a **weekly** (Aug 21 / Jul 31 = dte≥2). Horizon integrity correctly returns null from
+   `pickAtmZeroDteContract` → `built 0 setup(s) from momentum-top 24L + 25S` every cycle.
+3. PIN separately SKIP'd (`no clean pin regime`) — CONDOR therefore had no seat. FLOW-only
+   mix was a **funnel artifact**, not MERGE v1 coming back.
+
+**Evidence.** Market-worker logs: `merge_policy=v2`, `ZERODTE_SRC_BREAKOUT=1`, breakout
+pool non-empty, built 0. Polygon: top-80 momentum longs had **0** with `expiration_date=today`;
+MU/AMD failed the $400 screen despite −6%/−4.6% with weak closes.
+
+**Fix.** `BREAKOUT_MAX_PRICE` → **$2,500**; BREAKOUT discovery **walks** a wider momentum
+rank until same-day setups fill (log `no_chain` / `no_same_day`); `DISCOVERY_VERSION=v4`.
+
+**Status.** PR `cursor/zerodte-breakout-price-cap-3d11`.
+
 ## 2026-07-29 — [Security] Medium hygiene: cron redact + Largo budget + flows rate limit
 
 **Severity.** MEDIUM (cron info leak / budget race / desk abuse) + infra notes.

@@ -49,8 +49,10 @@ import { PLAN_RULES } from "./plan";
 export const ENGINE_VERSION = "v1";
 /** Discovery layer (which independent sources surface a candidate + their cuts). Bump
  *  when the discovery origins / top-N cuts / accumulation feed change materially.
- *  v3 (2026-07-28): merge v2 + momentum rank + NH no-exclude + wider caps/FLOW floors. */
-export const DISCOVERY_VERSION = "v3";
+ *  v3 (2026-07-28): merge v2 + momentum rank + NH no-exclude + wider caps/FLOW floors.
+ *  v4 (2026-07-29): BREAKOUT price cap $400→$2500 + walk-until-built (stop FLOW-only
+ *  starvation when momentum-top names lack same-day options). */
+export const DISCOVERY_VERSION = "v4";
 /** Score formula — the evidence score the gate stack judges. Bump on ANY change to the
  *  scoring math or its weights (the F-2 / F-5 forensic bands are read per this).
  *  v2 (2026-07-28): BREAKOUT/PIN rescaled so real movers clear G-3. */

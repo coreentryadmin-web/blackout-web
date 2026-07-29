@@ -223,14 +223,21 @@ export async function discoverBreakoutSetups(opts: {
   }
 
   // Build a helper to resolve one mover into a setup, parameterized by direction.
+  // Returns a tagged miss so the walk-until-built loop can log WHY the chain budget
+  // produced zero setups (the 2026-07-29 FLOW-only regression: every momentum-top
+  // name had only weeklies → no_same_day_contract, and the $400 price cap had already
+  // dropped MU/AMD/META — the names that DO list 0DTE).
+  type BuildMiss = "no_chain" | "no_same_day_contract" | "error";
   const buildOne = async (
     mover: (typeof longMovers)[number],
     direction: "long" | "short",
     maxDollar: number
-  ): Promise<EnrichedZeroDteSetup | null> => {
+  ): Promise<{ setup: EnrichedZeroDteSetup | null; miss: BuildMiss | null }> => {
     try {
       const chain = await resolveChain(mover.ticker).catch(() => null);
-      if (!chain || !(chain.spot > 0) || chain.rows.length === 0) return null;
+      if (!chain || !(chain.spot > 0) || chain.rows.length === 0) {
+        return { setup: null, miss: "no_chain" };
+      }
       const rows: BreakoutChainRow[] = chain.rows.map((r) => ({
         expiry: r.expiry,
         strike: r.strike,
@@ -242,35 +249,76 @@ export async function discoverBreakoutSetups(opts: {
         put_oi: r.put_oi,
       }));
       // Breakouts pick a CALL; breakdowns pick a PUT.
-      const side = direction === "long" ? "call" as const : "put" as const;
+      const side = direction === "long" ? ("call" as const) : ("put" as const);
       const contract = pickContract(rows, chain.spot, today, 1, side);
-      if (!contract) return null;
+      if (!contract) return { setup: null, miss: "no_same_day_contract" };
       const dollarNorm = maxDollar > 0 ? mover.dollar / maxDollar : 0;
-      return buildSetup({ mover, spot: chain.spot, contract, dollarNorm, direction });
+      return {
+        setup: buildSetup({ mover, spot: chain.spot, contract, dollarNorm, direction }),
+        miss: null,
+      };
     } catch {
-      return null; // best-effort per ticker -- one bad chain never sinks the batch
+      return { setup: null, miss: "error" }; // best-effort per ticker — one bad chain never sinks the batch
     }
   };
 
-  // Normalize $-volume within each cohort independently, then momentum-rank + cap each side.
+  // Normalize $-volume within each cohort independently.
   const longMaxDollar = longMovers.reduce((m, x) => Math.max(m, x.dollar), 0);
   const shortMaxDollar = shortMovers.reduce((m, x) => Math.max(m, x.dollar), 0);
-  const topLong = rankMoversForChainFetch(longMovers, maxCandidates, "long");
-  const topShort = rankMoversForChainFetch(shortMovers, maxCandidates, "short");
 
+  // Walk a WIDER momentum-ranked pool until we FILL `maxCandidates` setups (or exhaust
+  // the fetch budget). Taking a hard top-N then Promise.all-ing used to spend the entire
+  // budget on non-optionable names and return `built 0` even when later-ranked movers
+  // (MU/AMD-class after the price-cap fix) would have picked a same-day contract.
+  // Try up to 4× the seat budget (capped by the screen pool) so a streak of
+  // weekly-only names at the top of the momentum rank cannot zero the rail.
+  const fetchBudget = Math.min(Math.max(maxCandidates * 4, 60), BREAKOUT_SCREEN_POOL);
+  const rankedLong = rankMoversForChainFetch(longMovers, fetchBudget, "long");
+  const rankedShort = rankMoversForChainFetch(shortMovers, fetchBudget, "short");
   // Dedup: if a ticker appears on BOTH sides, keep the long (breakout) only.
-  const longTickers = new Set(topLong.map((m) => m.ticker.toUpperCase()));
-  const dedupedShort = topShort.filter((m) => !longTickers.has(m.ticker.toUpperCase()));
+  const longTickers = new Set(rankedLong.map((m) => m.ticker.toUpperCase()));
+  const dedupedShort = rankedShort.filter((m) => !longTickers.has(m.ticker.toUpperCase()));
 
-  const built = await Promise.all([
-    ...topLong.map((m) => buildOne(m, "long", longMaxDollar)),
-    ...dedupedShort.map((m) => buildOne(m, "short", shortMaxDollar)),
+  const BATCH = 8;
+  const stats = { attempted: 0, no_chain: 0, no_same_day_contract: 0, error: 0 };
+
+  async function fillSide(
+    ranked: typeof rankedLong,
+    direction: "long" | "short",
+    maxDollar: number,
+    limit: number
+  ): Promise<EnrichedZeroDteSetup[]> {
+    const out: EnrichedZeroDteSetup[] = [];
+    for (let i = 0; i < ranked.length && out.length < limit; i += BATCH) {
+      const batch = ranked.slice(i, i + BATCH);
+      const results = await Promise.all(batch.map((m) => buildOne(m, direction, maxDollar)));
+      for (const r of results) {
+        stats.attempted += 1;
+        if (r.setup) {
+          out.push(r.setup);
+          if (out.length >= limit) break;
+        } else if (r.miss) {
+          stats[r.miss] += 1;
+        }
+      }
+    }
+    return out;
+  }
+
+  // Each side may fill up to maxCandidates (same capacity as the pre-walk top-N
+  // Promise.all). The walk only changes WHICH names get a chain fetch — it still
+  // stops a side once that side has enough same-day setups.
+  const [longSetups, shortSetups] = await Promise.all([
+    fillSide(rankedLong, "long", longMaxDollar, maxCandidates),
+    fillSide(dedupedShort, "short", shortMaxDollar, maxCandidates),
   ]);
-
-  const setups = built.filter((s): s is EnrichedZeroDteSetup => s != null);
+  const setups = [...longSetups, ...shortSetups];
   console.info(
     `[zerodte-breakout] ${longMovers.length} breakouts + ${shortMovers.length} breakdowns (pool), ` +
-    `built ${setups.length} setup(s) from momentum-top ${topLong.length}L + ${dedupedShort.length}S`
+      `built ${setups.length} setup(s) (${longSetups.length}L/${shortSetups.length}S) ` +
+      `from walk ${rankedLong.length}L+${dedupedShort.length}S ` +
+      `attempted=${stats.attempted} no_chain=${stats.no_chain} ` +
+      `no_same_day=${stats.no_same_day_contract} err=${stats.error}`
   );
   return { status: "ok", setups };
 }

@@ -177,3 +177,92 @@ test("rankMoversForChainFetch: momentum quality beats $-volume for the chain-fet
   const shortRanked = rankMoversForChainFetch([softDump, weakClose], 1, "short");
   assert.equal(shortRanked[0]!.ticker, "DUMP", "weak-close breakdown wins the short chain-fetch slot");
 });
+
+test("discoverBreakoutSetups: walks past weekly-only misses to fill same-day setups", async () => {
+  // Repro 2026-07-29: momentum-top names only listed Aug weeklies → old hard top-N
+  // Promise.all returned built=0 even when a later-ranked name (MU-class) had 0DTE.
+  const now = Date.parse("2026-07-29T15:00:00Z");
+  const freshT = now - 19 * 3_600_000;
+  const weeklyOnly = new Set(["JUNK1", "JUNK2", "JUNK3", "JUNK4"]);
+  const { deps, calls } = makeDeps({
+    screen: ((results) =>
+      (results as DailyMarketBar[]).map(
+        (r, i): BreakoutMover => ({
+          ticker: r.T,
+          // Descending momentum so JUNK* rank above MU.
+          gain: 0.3 - i * 0.02,
+          volume: r.v,
+          close_strength: 0.95,
+          dollar: r.c * r.v,
+        })
+      )) as BreakoutDiscoveryDeps["screen"],
+    screenBreakdowns: (() => [] as BreakoutMover[]) as BreakoutDiscoveryDeps["screenBreakdowns"],
+    resolveChain: (async (ticker: string) => {
+      calls.resolveChain++;
+      if (weeklyOnly.has(ticker.toUpperCase())) {
+        // Chain exists but only a weekly (≥2 DTE) — pickAtmZeroDteContract returns null.
+        return {
+          spot: 50,
+          rows: [
+            {
+              expiry: "2026-08-21",
+              strike: 50,
+              call_bid: 1,
+              call_ask: 1.1,
+              call_oi: 100,
+              put_bid: 1,
+              put_ask: 1.1,
+              put_oi: 100,
+            },
+          ],
+        };
+      }
+      // MU: same-day contract available.
+      return {
+        spot: 780,
+        rows: [
+          {
+            expiry: "2026-07-29",
+            strike: 780,
+            call_bid: 8,
+            call_ask: 8.5,
+            call_oi: 500,
+            put_bid: 8,
+            put_ask: 8.5,
+            put_oi: 500,
+          },
+        ],
+      };
+    }) as unknown as BreakoutDiscoveryDeps["resolveChain"],
+    // Use the REAL picker so weekly rows are rejected and the 0DTE row is kept.
+    pickContract: undefined,
+  });
+  // Re-bind pickContract to the real one from breakout-source (makeDeps default stubs a hit).
+  const { pickAtmZeroDteContract } = await import("./breakout-source");
+  const out = await discoverBreakoutSetups({
+    today: "2026-07-29",
+    nowEtMinutes: RTH_NOW_ET_MINUTES,
+    excludeTickers: new Set(),
+    nowMs: now,
+    maxCandidates: 2,
+    deps: {
+      ...deps,
+      pickContract: pickAtmZeroDteContract,
+      fetchSummary: (async () => ({
+        results: [
+          bar("JUNK1", freshT, { c: 40, o: 30, v: 2_000_000 }),
+          bar("JUNK2", freshT, { c: 40, o: 30, v: 2_000_000 }),
+          bar("JUNK3", freshT, { c: 40, o: 30, v: 2_000_000 }),
+          bar("JUNK4", freshT, { c: 40, o: 30, v: 2_000_000 }),
+          bar("MU", freshT, { c: 780, o: 700, v: 18_000_000 }),
+        ],
+      })) as never,
+    },
+  });
+  assert.equal(out.status, "ok");
+  assert.ok(
+    out.setups.some((s) => String(s.ticker).toUpperCase() === "MU"),
+    `expected MU to be walked-to after weekly-only misses; got ${out.setups.map((s) => s.ticker).join(",")}`
+  );
+  assert.ok(calls.resolveChain > 1, "must attempt more than the first weekly-only name");
+});
