@@ -50,5 +50,6 @@ export function createAuditClient(connectionString) {
   return new Client({
     connectionString,
     ssl: auditPgSsl(connectionString),
+    connectionTimeoutMillis: 10_000,
   });
 }
