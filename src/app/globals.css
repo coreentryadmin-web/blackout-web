@@ -16313,6 +16313,16 @@ body::before {
   padding: 0 0.15rem;
 }
 
+.thermal-triple-rail-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.thermal-triple-refresh-btn {
+  flex-shrink: 0;
+}
+
 .thermal-triple-mode {
   display: inline-flex;
   align-items: center;

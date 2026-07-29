@@ -6,8 +6,10 @@ import {
   useMemo,
   useRef,
   useState,
+  type MutableRefObject,
   type RefObject,
 } from "react";
+import { clsx } from "clsx";
 import useSWR from "swr";
 import { FreshnessChip } from "@/components/ui";
 import { usePollIntervalMs } from "@/hooks/use-et-market-open";
@@ -145,8 +147,16 @@ type ColumnProps = {
   shortcut: string;
   crosshairIndex: number | null;
   onCrosshairIndex: (index: number | null) => void;
-  scrollRef: RefObject<HTMLDivElement>;
+  scrollRef: RefObject<HTMLDivElement | null>;
   onScrollSync: (scrollTop: number, scrollLeft: number) => void;
+  suppressScrollSyncRef: MutableRefObject<boolean>;
+  userPinnedScrollRef: MutableRefObject<boolean>;
+  recenterEpoch: number;
+  onRegisterMutate: (
+    ticker: string,
+    mutate: () => Promise<unknown>,
+    isValidating: boolean,
+  ) => void;
 };
 
 function ThermalMatrixFreshnessChip({
@@ -195,6 +205,10 @@ function TripleColumn({
   onCrosshairIndex,
   scrollRef,
   onScrollSync,
+  suppressScrollSyncRef,
+  userPinnedScrollRef,
+  recenterEpoch,
+  onRegisterMutate,
 }: ColumnProps) {
   const pollMs = usePollIntervalMs(5_000, 5_000);
   // Age-based force (SPX Slayer parity): EventBridge heatmap-warm floors at 1m, so without
@@ -211,7 +225,7 @@ function TripleColumn({
 
   const clearForce = () => setForceNonce((n) => (n > 0 ? 0 : n));
 
-  const { data, error, isLoading } = useSWR<HeatmapPayload>(
+  const { data, error, isLoading, isValidating, mutate } = useSWR<HeatmapPayload>(
     matrixKey,
     fetchHeatmap,
     {
@@ -265,6 +279,20 @@ function TripleColumn({
   useEffect(() => {
     setLastGood(null);
   }, [ticker]);
+
+  // Rail ↻: force a fresh matrix compute (same path as age-based force) then let the
+  // desk bump recenterEpoch so each ladder maps onto live spot.
+  useEffect(() => {
+    onRegisterMutate(
+      ticker,
+      async () => {
+        lastForceAtRef.current = Date.now();
+        setForceNonce((n) => n + 1);
+        await mutate();
+      },
+      isValidating || forceNonce > 0,
+    );
+  }, [ticker, mutate, isValidating, forceNonce, onRegisterMutate]);
 
   const block = view ? pickBlock(view, lens) : undefined;
   const walls = wallPair(block, lens);
@@ -344,6 +372,9 @@ function TripleColumn({
           onCrosshairIndex={onCrosshairIndex}
           scrollRef={scrollRef}
           onScrollSync={onScrollSync}
+          suppressScrollSyncRef={suppressScrollSyncRef}
+          userPinnedScrollRef={userPinnedScrollRef}
+          recenterEpoch={recenterEpoch}
         />
       ) : (
         <div className="thermal-compact-empty" role="status">
@@ -371,6 +402,9 @@ export default function ThermalTripleDesk({
   // Default Near = five expiry days × SPY|SPX|QQQ (0DTE toggle still available).
   const [mode, setMode] = useState<ThermalCompareMode>("near");
   const [crosshairIndex, setCrosshairIndex] = useState<number | null>(null);
+  const [recenterEpoch, setRecenterEpoch] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const [columnValidating, setColumnValidating] = useState<Record<string, boolean>>({});
   const col0Scroll = useRef<HTMLDivElement | null>(null);
   const col1Scroll = useRef<HTMLDivElement | null>(null);
   const col2Scroll = useRef<HTMLDivElement | null>(null);
@@ -379,9 +413,36 @@ export default function ThermalTripleDesk({
     [],
   );
   const syncingScroll = useRef(false);
+  const suppressScrollSyncRef = useRef(false);
+  const userPinnedScrollRef = useRef(false);
+  const mutateByTickerRef = useRef<Record<string, () => Promise<unknown>>>({});
 
   useEffect(() => {
     setPins(readPins());
+  }, []);
+
+  const onRegisterMutate = useCallback(
+    (ticker: string, mutate: () => Promise<unknown>, isValidating: boolean) => {
+      mutateByTickerRef.current[ticker] = mutate;
+      setColumnValidating((prev) =>
+        prev[ticker] === isValidating ? prev : { ...prev, [ticker]: isValidating },
+      );
+    },
+    [],
+  );
+
+  const refreshAndRecenter = useCallback(async () => {
+    userPinnedScrollRef.current = false;
+    setRefreshing(true);
+    try {
+      const mutates = Object.values(mutateByTickerRef.current);
+      await Promise.all(mutates.map((m) => m()));
+    } finally {
+      setRefreshing(false);
+      // Force each compact matrix to re-map its ladder onto live spot
+      // (independent scrollTops — sync suppressed inside centerSpotInBox).
+      setRecenterEpoch((n) => n + 1);
+    }
   }, []);
 
   const togglePin = useCallback((ticker: string, strike: number) => {
@@ -398,7 +459,7 @@ export default function ThermalTripleDesk({
 
   const onScrollSync = useCallback(
     (scrollTop: number, scrollLeft: number) => {
-      if (syncingScroll.current) return;
+      if (syncingScroll.current || suppressScrollSyncRef.current) return;
       syncingScroll.current = true;
       for (const ref of scrollRefList) {
         const el = ref.current;
@@ -414,6 +475,8 @@ export default function ThermalTripleDesk({
   );
 
   const tickers = useMemo(() => [...THERMAL_COMPARE_TICKERS], []);
+  const anyValidating =
+    refreshing || tickers.some((t) => columnValidating[t]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -425,7 +488,10 @@ export default function ThermalTripleDesk({
       else if (e.key === "3") onFocusTicker(tickers[2]!);
       else if (e.key === "0") setMode("0dte");
       else if (e.key === "n" || e.key === "N") setMode("near");
-      else if (onLensChange) {
+      else if (e.key === "r" || e.key === "R") {
+        e.preventDefault();
+        void refreshAndRecenter();
+      } else if (onLensChange) {
         if (e.key === "g" || e.key === "G") onLensChange("gex");
         else if (e.key === "v" || e.key === "V") onLensChange("vex");
         else if (e.key === "d" || e.key === "D") onLensChange("dex");
@@ -434,7 +500,7 @@ export default function ThermalTripleDesk({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onFocusTicker, onLensChange, tickers]);
+  }, [onFocusTicker, onLensChange, tickers, refreshAndRecenter]);
 
   return (
     <div className="thermal-triple-desk" data-lens={lens} data-mode={mode}>
@@ -443,22 +509,38 @@ export default function ThermalTripleDesk({
         <div className="thermal-triple-rail-label">
           {mode === "0dte" ? "0DTE TRIPLE DESK" : "NEAR-TERM TRIPLE DESK"}
         </div>
-        <div className="thermal-triple-mode" role="group" aria-label="Compare expiry mode">
+        <div className="thermal-triple-rail-actions">
+          <div className="thermal-triple-mode" role="group" aria-label="Compare expiry mode">
+            <button
+              type="button"
+              className={`thermal-triple-mode-btn${mode === "0dte" ? " is-on" : ""}`}
+              onClick={() => setMode("0dte")}
+              aria-pressed={mode === "0dte"}
+            >
+              0DTE
+            </button>
+            <button
+              type="button"
+              className={`thermal-triple-mode-btn${mode === "near" ? " is-on" : ""}`}
+              onClick={() => setMode("near")}
+              aria-pressed={mode === "near"}
+            >
+              Near
+            </button>
+          </div>
+          {/* Slayer-parity: revalidate SPY|SPX|QQQ matrices and map each ladder to live spot. */}
           <button
             type="button"
-            className={`thermal-triple-mode-btn${mode === "0dte" ? " is-on" : ""}`}
-            onClick={() => setMode("0dte")}
-            aria-pressed={mode === "0dte"}
+            className={clsx(
+              "spx-matrix-refresh-btn",
+              "thermal-triple-refresh-btn",
+              anyValidating && "spx-matrix-refresh-btn--spinning",
+            )}
+            onClick={() => void refreshAndRecenter()}
+            title="Refresh all three matrices and recenter each on spot"
+            aria-label="Refresh thermal matrices and recenter on spot"
           >
-            0DTE
-          </button>
-          <button
-            type="button"
-            className={`thermal-triple-mode-btn${mode === "near" ? " is-on" : ""}`}
-            onClick={() => setMode("near")}
-            aria-pressed={mode === "near"}
-          >
-            Near
+            ↻
           </button>
         </div>
         <div className="thermal-triple-rail-hint">
@@ -473,6 +555,11 @@ export default function ThermalTripleDesk({
           <span>0DTE</span>
           <kbd>N</kbd>
           <span>near</span>
+          <span className="thermal-triple-rail-sep" aria-hidden>
+            ·
+          </span>
+          <kbd>R</kbd>
+          <span>recenter</span>
           <span className="thermal-triple-rail-sep" aria-hidden>
             ·
           </span>
@@ -499,6 +586,10 @@ export default function ThermalTripleDesk({
             onCrosshairIndex={setCrosshairIndex}
             scrollRef={scrollRefList[i]!}
             onScrollSync={onScrollSync}
+            suppressScrollSyncRef={suppressScrollSyncRef}
+            userPinnedScrollRef={userPinnedScrollRef}
+            recenterEpoch={recenterEpoch}
+            onRegisterMutate={onRegisterMutate}
           />
         ))}
       </div>
