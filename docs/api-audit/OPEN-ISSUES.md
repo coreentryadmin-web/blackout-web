@@ -1,5 +1,22 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-29 12:10 ET
+Last updated: 2026-07-29 12:24 ET
+
+## grid-rth-2026-07-29 — verify pass #3 (12:24 ET, post-#1235)
+
+**Session:** Grid RTH agent re-run after `main` absorbed PR #1235 (`audit-auth-fetch.mjs` Clerk fallback). Commands: full suite GREEN.
+
+| Check | Result |
+|---|---|
+| `validate:grid-rth` | ✅ **GREEN** — 14/14 (WARN: `zerodte-warm` cron 401, data-correctness cron auth — cloud env only) |
+| `validate:zerodte-logic` | ✅ **GREEN** — 17/17 |
+| `validate:grid-e2e` | ✅ **GREEN** — 4/4 |
+| Live board | ✅ heat=RTH, 8 setups (1 eligible), ledger 4, GEX 7357.23, HELIX 20 prints, NH dedupe 5 |
+
+**No prod P0.** Remaining P2: cloud `CRON_SECRET` mismatch (cron plane unprobeable from agent VM); stale runbook `/grid` references.
+
+**Reports:** `audit-output/grid-rth-2026-07-29-verify-1785342245020.json`, `audit-output/zerodte-logic-1785342253259.json`, `audit-output/grid-e2e-1785342256855.json`
+
+---
 
 ## grid-rth-2026-07-29 — 0DTE Command midday verify pass (12:09 ET)
 
