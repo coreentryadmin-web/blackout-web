@@ -1,5 +1,87 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-29 16:41 ET
+Last updated: 2026-07-29 16:51 ET
+
+## rth-open-2026-07-29-evening — Comprehensive RTH sweep (~16:41–16:51 ET, post-close)
+
+**Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` including full COMPREHENSIVE TEST SWEEP. Time: Wed 16:41–16:51 ET (post-close; cash equities closed 16:00 ET). Commands: `validate:rth-open` → `validate:rth-sweep` → `data-correctness?force=1` → `validate:comprehensive-endpoints` → `validate:grid-rth --force` → `rth-browser-test.mjs` → `data-validator.mjs`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` | ✅ **GREEN** — deploy smoke + socket-health; Postgres VPC skip |
+| `npm run validate:rth-sweep` | ✅ **GREEN** — 0 P0/P1; 7 pages ~1.6–1.9s load; Largo grounded (329ms) |
+| `GET /api/cron/data-correctness?force=1` | ✅ **GREEN** — `ok:true`, `flags:[]` (SPY cross-provider flag cleared) |
+| `validate:comprehensive-endpoints` | ✅ **62 PASS / 9 WARN** — 165 route smoke ok, 22 UW + 5 Polygon upstream |
+| `validate:grid-rth --force` | ✅ **14/14 GREEN** — zerodte board 7 setups, 4 ledger; ops:collect zero items |
+| `rth-browser-test.mjs` | ✅ **25 PASS / 10 WARN / 0 FAIL** |
+| `data-validator.mjs` | ⚠️ **29 PASS / 5 FAIL** — off-hours prev-close vs frozen scan-time setup prices |
+
+### Speed (premium session, post-close)
+
+| Page | Hard/soft load | API TTFB (representative) |
+|---|---|---|
+| `/dashboard` | hard 1689ms | desk 78ms, merged 57–15864ms (cold first hit) |
+| `/flows` | soft 1869ms | flows 57ms |
+| `/heatmap` | soft 1656ms | gex-heatmap SPX 111ms |
+| `/vector` | soft 1656ms | — |
+| `/nighthawk` | soft 1616ms | edition 230ms, zerodte board 938–17110ms |
+| `/terminal` | soft 1634ms | largo query 329ms |
+| `/track-record` | soft 1591ms | public track-record 168ms |
+
+### Live auto-update (15s poll, post-close)
+
+| Surface | Result |
+|---|---|
+| SPX Slayer gex-heatmap | ✅ data changed in 15s |
+| HELIX flows tape | ⚠️ no change in 15s — post-close, no new prints (expected) |
+| Browser liveTick (spot) | null — market closed, expected |
+
+### Cross-tool correctness
+
+| Check | Result |
+|---|---|
+| SPX spot desk vs GEX heatmap | ✅ 7316.15 agree |
+| zerodte board `as_of` | ✅ fresh (0s) |
+| platform snapshot `as_of` | ✅ fresh (0s) |
+| data-correctness flags | ✅ 0 (SPY cross-provider cleared vs 16:25 pass) |
+
+### Missing-field audit (classified)
+
+| Field | Page | Cause | Action |
+|---|---|---|---|
+| `gex.flip`, `merged.gamma_flip` | dashboard, heatmap | Post-close — no gamma crossing | **Expected** |
+| `flows[].event_at` | HELIX | API uses `alerted_at` when UW omits event time | **Expected** |
+| `brief` | flows | AI brief not generated post-close | **Expected** |
+| `market_recap.spx_desk.hod/lod/vwap` | nighthawk | Intraday stats absent after close | **Expected** |
+| `marks[].bid/ask` | zerodte marks | No live quotes post-close | **Expected** |
+| `setups[].dossier_score/conviction` | zerodte board | Post-commit scan fields not populated for all origins | **Expected** |
+| Largo `Regime: —` | terminal | Post-close regime unavailable | **Expected** — [#1239](https://github.com/coreentryadmin-web/blackout-web/issues/1239) |
+
+### Console / render health
+
+| Page | Issue | Root cause | Action |
+|---|---|---|---|
+| `/dashboard` | 1 console error: HTTP 400 | `GET /api/market/largo/session` without `session_id` (route requires param) | **Expected** — not a render bug |
+
+### P0 found this pass
+
+**None.** Member-facing surfaces GREEN.
+
+### Residual open (non-P0)
+
+| Severity | ID | Detail | Status |
+|---|---|---|---|
+| **P2** | `qqq-underlying-staleness` | data-validator: QQQ setup underlying vs Polygon prev-close 2.175% (frozen scan-time price) | **OPEN** |
+| **P2** | `mu-underlying-staleness` | data-validator: MU setup underlying vs Polygon prev-close 9.7% (frozen scan-time price) | **OPEN** |
+| **P1** | `largo-grounding-coverage` | Largo answer low grounding on regime field (`—` post-close) | **OPEN** — [#1239](https://github.com/coreentryadmin-web/blackout-web/issues/1239) |
+| **P2** | `grid-runbook-stale-ui` | `GRID-RTH-ALL-DAY-AGENT.md` still references deleted `/grid` tabs | **OPEN** |
+
+**Member-facing surfaces: GREEN** — all pages load, APIs 200 + fresh, live caches tick where expected post-close, no fabricated numbers.
+
+**Reports:** `audit-output/rth-sweep-2026-07-29T20-44-44-239Z.json`, `audit-output/rth-browser-test-2026-07-29T20-48-44-518Z.md`, `audit-output/comprehensive-endpoint-audit-2026-07-29T20-44-41-137Z.md`, `audit-output/grid-rth-2026-07-29-verify-1785358181889.json`, `audit-output/validation-2026-07-29T20-50-05-655Z.md`
+
+---
 
 ## grid-rth-2026-07-29 — 0DTE Command + Grid verify pass (~16:40 ET, post-close)
 
