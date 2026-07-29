@@ -5,6 +5,18 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-29 — [Grid/0DTE] grid-rth orchestrator syntax error (broken merge #1305)
+
+**Severity.** P0 — `validate:grid-rth` could not run at all (`SyntaxError: Illegal return statement`).
+
+**Root cause.** PR #1305 refactored `auditOpsCollect()` to shared `ops-collect-scope.mjs` in SPX runbook but left
+`grid-rth-all-day-audit.mjs` with the function body orphaned at module top level (import mid-file, no
+`function auditOpsCollect()` wrapper).
+
+**Fix.** Restore `function auditOpsCollect()` wrapper; move `ops-collect-scope` import to top.
+
+**Status.** `fix/grid-rth-ops-collect-syntax` → PR.
+
 ## 2026-07-29 — [SPX] Post-close audit flake: ops:collect stderr mask + transient 502 on desk lanes
 
 **Severity.** P1 — blocked `validate:spx-rth --phase=post-close` despite member SPX surfaces GREEN.
