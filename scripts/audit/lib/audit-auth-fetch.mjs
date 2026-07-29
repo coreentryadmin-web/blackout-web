@@ -5,6 +5,14 @@
  */
 import { mintClerkPremiumSession } from "./prod-clerk-session.mjs";
 import { auditSecret } from "./prod-secrets.mjs";
+import { isTransientOriginError } from "./auth-status.mjs";
+
+const TRANSIENT_RETRY_MS = 2_000;
+const TRANSIENT_MAX_ATTEMPTS = 2;
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 /** @type {{ cookieHeader: string, cleanup?: () => Promise<void> } | null} */
 let clerkSessionCache = null;
@@ -39,7 +47,7 @@ export async function releaseAuditClerkSession() {
  * @param {string} path - e.g. /api/market/zerodte/board
  * @returns {Promise<{ ok: boolean, status: number, json: unknown, via: 'cron'|'clerk'|null }>}
  */
-export async function fetchAuditJson(base, path) {
+async function fetchAuditJsonOnce(base, path) {
   const url = `${base.replace(/\/$/, "")}${path}`;
   const cron = auditSecret("CRON_SECRET");
   if (cron) {
@@ -53,9 +61,7 @@ export async function fetchAuditJson(base, path) {
     const fallThrough =
       r.status === 401 ||
       r.status === 403 ||
-      r.status === 502 ||
-      r.status === 504 ||
-      r.status === 524;
+      isTransientOriginError(r.status);
     if (!fallThrough) {
       const json = await r.json().catch(() => ({}));
       return { ok: false, status: r.status, json, via: "cron" };
@@ -78,4 +84,13 @@ export async function fetchAuditJson(base, path) {
     }
   }
   return { ok: false, status: cron ? 401 : 0, json: null, via: null };
+}
+
+export async function fetchAuditJson(base, path) {
+  let last = await fetchAuditJsonOnce(base, path);
+  for (let attempt = 1; attempt < TRANSIENT_MAX_ATTEMPTS && !last.ok && isTransientOriginError(last.status); attempt++) {
+    await sleep(TRANSIENT_RETRY_MS);
+    last = await fetchAuditJsonOnce(base, path);
+  }
+  return last;
 }

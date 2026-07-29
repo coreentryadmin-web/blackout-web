@@ -7,3 +7,8 @@
 export function isAuthFailureStatus(status) {
   return status === 401 || status === 403;
 }
+
+/** Edge/origin overload or cold-build timeout — safe to retry once after backoff. */
+export function isTransientOriginError(status) {
+  return status === 502 || status === 504 || status === 524;
+}

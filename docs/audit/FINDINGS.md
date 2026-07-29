@@ -5,6 +5,28 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-29 — [Grid/0DTE] Post-close agent: transient 502 on parallel integration burst
+
+**Severity.** P1 — flaky `validate:grid-rth --phase=post-close` (12/13 PASS, 1 FAIL on
+`zerodte:cross-tool-integration` → `integration:zerodte-board` HTTP **502**).
+
+**Symptoms.** First post-close pass (~22:08 UTC): all board probes GREEN sequentially, then
+nested `validate:zerodte-integration` `Promise.all` burst returned HTTP 502 on board while
+cron+Clerk both exhausted. Immediate rerun (~22:21 UTC): **13/13 GREEN** with no code change.
+
+**Root cause.** Transient edge/origin overload under long orchestrator runs (board hit 4× before
+integration audit's 6-way parallel burst). `fetchAuditJson` fell through cron→Clerk on 502 but
+did not retry when both paths returned a transient code.
+
+**Evidence.** `audit-output/grid-rth-2026-07-29-post-close-1785363536901.json` FAIL 1/13;
+rerun `…1785363816997.json` GREEN 13/13. `validate:zerodte-logic` 17/17 and
+`validate:grid-e2e` 4/4 GREEN throughout.
+
+**Fix.** `auth-status.mjs`: `isTransientOriginError(502|504|524)`. `audit-auth-fetch.mjs`:
+one 2s backoff retry on transient final status. Test: `auth-status.test.mjs`.
+
+**Status.** `fix/grid-post-close-transient-retry` → PR.
+
 ## 2026-07-29 — [Grid/0DTE] zerodte board HTTP 504 on aged snapshot cold-build
 
 **Severity.** P0 member path (Night Hawk `/api/market/zerodte/board`).
@@ -25,7 +47,7 @@ probe succeeded; `audit-output/grid-rth-*-verify-*.json`.
 blocks. `audit-auth-fetch.mjs`: fall through to Clerk on 502/504/524. `zerodte-logic-audit.mjs`:
 use `fetchAuditJson`. Test: `zerodte-board-convergence.test.ts` 35s-aged snapshot case.
 
-**Status.** `fix/zerodte-board-swr-504` → PR.
+**Status.** Merged PR #1303 (`fix/zerodte-board-swr-504`).
 
 ## 2026-07-29 — [ops] SPY flow cross-check false FLAG — bounded Massive oracle (#1299)
 
