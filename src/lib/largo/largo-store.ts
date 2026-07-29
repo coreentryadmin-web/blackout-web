@@ -178,6 +178,17 @@ export async function fetchRecentLargoAnswersWithResults(limit = 50): Promise<Re
   }));
 }
 
+/** Append the runtime BIE caution footer when a historical row predates the router caveat fix. */
+export async function backfillLargoMessageContent(messageId: number, content: string): Promise<void> {
+  if (!dbConfigured()) return;
+  const trimmed = content.trim();
+  if (!trimmed) return;
+  await dbQuery(
+    `UPDATE largo_messages SET content = $2 WHERE id = $1 AND role = 'assistant'`,
+    [messageId, trimmed]
+  );
+}
+
 export async function appendLargoMessage(
   sessionId: string,
   userId: string,

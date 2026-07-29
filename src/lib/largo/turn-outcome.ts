@@ -52,9 +52,10 @@ export async function finalizeBieRoutedTurn(params: {
 }): Promise<BieTurnResult> {
   const sid = params.sessionId.trim() || `web-${params.userId}-${Date.now()}`;
   const verification = verifyClaims(params.routed.answer, collectContextNumbers(params.routed.context));
+  const answer = applyVerificationCaveat(params.routed.answer, verification);
 
   await appendLargoMessage(sid, params.userId, "user", params.question);
-  await appendLargoMessage(sid, params.userId, "assistant", params.routed.answer, [BIE_TOOL], [
+  await appendLargoMessage(sid, params.userId, "assistant", answer, [BIE_TOOL], [
     params.routed.context,
   ]);
 
@@ -72,7 +73,7 @@ export async function finalizeBieRoutedTurn(params: {
 
   return {
     session_id: sid,
-    answer: params.routed.answer,
+    answer,
     source: "blackout-intelligence",
     tools_used: [BIE_TOOL],
     followups: bieFollowups(params.routed.route.intent),

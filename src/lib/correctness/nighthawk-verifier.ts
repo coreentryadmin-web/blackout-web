@@ -474,7 +474,7 @@ export async function verifyNightHawk(_marketOpen: boolean): Promise<TickerScore
             premiumMismatch === 0 ? "pass" : "flag",
             premiumMismatch === 0
               ? `Sampled play entry premiums sit within the live chain bid/ask band (confirmed against ${confirmed} matched strike(s)).`
-              : `${premiumMismatch} play premium(s) are OUTSIDE the chain bid/ask band: ${premDetail.join("; ")} — entry premium doesn't match the live market (scale/quote error).`,
+              : `${premiumMismatch} play premium(s) look like a scale/quote slip vs the live chain: ${premDetail.join("; ")} — entry premium is far outside [bid×0.1, ask×10] (catches per-contract / 10× typos, not normal option decay).`,
             { id: "premium-vs-chain-ask", expected: 0, actual: premiumMismatch, independentlyConfirmed: premiumMismatch === 0 }
           )
         );

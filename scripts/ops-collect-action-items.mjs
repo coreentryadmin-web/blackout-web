@@ -158,12 +158,21 @@ async function postgresItems() {
 
   await c.end();
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    if (isPrivateDbUnreachableError(msg) || isStaleAuditDbAuthError(msg)) {
+    const msg =
+      e instanceof Error
+        ? e.message || e.name || "unknown Postgres error"
+        : String(e ?? "unknown Postgres error");
+    if (
+      isPrivateDbUnreachableError(msg) ||
+      isStaleAuditDbAuthError(msg) ||
+      /Cannot find module 'pg'/i.test(msg)
+    ) {
       // Private RDS proxy is not reachable from Cloud Agent sandboxes; stale GitHub
       // DATABASE_PUBLIC_URL (user postgres) is an audit-env gap — cron health is covered
       // by the HTTP watchdog when CRON_SECRET resolves from Secrets Manager.
-      console.error(`[ops-collect] Postgres audit skipped (${isStaleAuditDbAuthError(msg) ? "stale URL" : "unreachable"}): ${msg}`);
+      console.error(
+        `[ops-collect] Postgres audit skipped (${isStaleAuditDbAuthError(msg) ? "stale URL" : /Cannot find module 'pg'/i.test(msg) ? "missing pg module" : "unreachable"}): ${msg}`
+      );
     } else {
       add("P1", "infra", "postgres:query-failed", "Postgres ops collect failed", msg);
     }
