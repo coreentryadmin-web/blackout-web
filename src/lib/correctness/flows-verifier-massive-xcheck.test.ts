@@ -111,6 +111,43 @@ test("crossCheckAgainstMassive: same skew direction + valid subset does not flag
   assert.match(xcheck!.detail, /INDEPENDENTLY CONFIRMED/);
 });
 
+test("crossCheckAgainstMassive: contract-capped oracle does not false-flag subset ratio", async () => {
+  const { verifyFlows } = await mod();
+  reset();
+  state.tapeRows = cleanTapeRows();
+  state.anomalyRows = [];
+  state.massive = {
+    ticker: "SPY",
+    optionsRoot: "SPY",
+    expiry: "2026-07-29",
+    windowStartMs: Date.now() - 60 * 60_000,
+    windowEndMs: Date.now(),
+    totalPremium: 1_900_000,
+    callPremium: 798_000,
+    putPremium: 1_102_000,
+    totalPrints: 120,
+    callPrints: 50,
+    putPrints: 70,
+    callPct: 42,
+    byStrike: [{ strike: 630, callPremium: 0, putPremium: 1e6, totalPremium: 1e6, prints: 10 }],
+    meta: {
+      contractsRequested: 40,
+      contractsWithTrades: 38,
+      contractsCapped: true,
+      filteredPrints: 0,
+      partial: false,
+      sideClassifiedPrints: 80,
+    },
+  };
+
+  const score = await verifyFlows(true);
+  const net = findNetPremium(score);
+  const xcheck = net!.checks.find((c) => c.id === "flows-xcheck-massive");
+  assert.ok(xcheck, "cross-provider check present");
+  assert.notEqual(xcheck!.outcome, "flag", xcheck!.detail);
+  assert.match(xcheck!.detail, /bounded oracle|contract-capped|subset ratio not assertable/i);
+});
+
 test("crossCheckAgainstMassive: opposite skew still flags", async () => {
   const { verifyFlows } = await mod();
   reset();

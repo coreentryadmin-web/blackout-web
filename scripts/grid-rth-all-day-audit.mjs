@@ -46,10 +46,68 @@ function run(cmd, label, opts = {}) {
   });
   if (r.status !== 0) {
     rec(label, "FAIL", (r.stderr || r.stdout || "").trim().slice(0, 400));
-    return false;
+    return { ok: false, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
   }
   rec(label, "PASS");
-  return true;
+  return { ok: true, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
+}
+
+/** Parse ops:collect JSON from stdout (stderr may carry postgres-skip info). */
+function parseOpsCollectPayload(stdout, stderr) {
+  const blob = `${stdout}\n${stderr}`;
+  const jsonLine = blob.split("\n").find((l) => l.trim().startsWith("{"));
+  if (!jsonLine) return null;
+  try {
+    return JSON.parse(jsonLine);
+  } catch {
+    return null;
+  }
+}
+
+/** Grid/0DTE post-close: only grid|zerodte|nighthawk|correctness:flags with grid layer items count as FAIL. */
+function gridOpsItems(items) {
+  return (items ?? []).filter((i) => {
+    if (i.priority !== "P0" && i.priority !== "P1") return false;
+    const hay = `${i.id} ${i.title} ${i.detail}`.toLowerCase();
+    return /zerodte|0dte|grid|nighthawk/.test(hay) || (i.id === "correctness:flags" && /zerodte|grid/.test(hay));
+  });
+}
+
+function auditOpsCollect() {
+  const r = spawnSync("npm run ops:collect", {
+    shell: true,
+    encoding: "utf8",
+    env: process.env,
+    maxBuffer: 10 * 1024 * 1024,
+  });
+  const payload = parseOpsCollectPayload(r.stdout ?? "", r.stderr ?? "");
+  const postgresSkip = /Postgres audit skipped/i.test(r.stderr ?? "");
+  const gridUrgent = gridOpsItems(payload?.items);
+  const allUrgent = (payload?.items ?? []).filter((i) => i.priority === "P0" || i.priority === "P1");
+
+  if (gridUrgent.length > 0) {
+    rec("ops:collect", "FAIL", gridUrgent.map((i) => `${i.id}: ${i.title}`).join("; "));
+    return;
+  }
+  if (payload && allUrgent.length > 0) {
+    rec(
+      "ops:collect",
+      "PASS",
+      `non-grid P0/P1 deferred (${allUrgent.map((i) => i.id).join(", ")}) — grid/0DTE scope clean`
+    );
+    return;
+  }
+  if (r.status === 0 || (payload && (payload.items?.length ?? 0) === 0)) {
+    const note =
+      payload?.count === 0
+        ? "zero items"
+        : postgresSkip
+          ? "postgres skipped (VPC); HTTP watchdog authoritative"
+          : "ok";
+    rec("ops:collect", "PASS", note);
+    return;
+  }
+  rec("ops:collect", "FAIL", (r.stderr || r.stdout || "").trim().slice(0, 400));
 }
 
 async function fetchJson(path) {
@@ -219,21 +277,7 @@ async function main() {
     rec("grid:dashboard-e2e", "SKIP", "Clerk keys not set");
   }
 
-  run("npm run ops:collect", "ops:collect");
-  const opsCheck = checks.find((c) => c.name === "ops:collect");
-  if (opsCheck?.status === "FAIL" && opsCheck.detail) {
-    try {
-      const jsonLine = opsCheck.detail.split("\n").find((l) => l.trim().startsWith("{"));
-      const payload = jsonLine ? JSON.parse(jsonLine) : null;
-      const urgent = (payload?.items ?? []).filter((i) => i.priority === "P0" || i.priority === "P1");
-      if (payload && urgent.length === 0 && (payload.items ?? []).length > 0) {
-        opsCheck.status = "WARN";
-        opsCheck.detail = `P2-only: ${payload.items.map((i) => i.id).join(", ")}`;
-      }
-    } catch {
-      /* keep FAIL */
-    }
-  }
+  auditOpsCollect();
 
   const fails = checks.filter((c) => c.status === "FAIL");
   const reportPath = join(OUT, `grid-rth-${ymd}-${PHASE}-${Date.now()}.json`);

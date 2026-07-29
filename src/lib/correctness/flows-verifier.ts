@@ -307,8 +307,11 @@ async function crossCheckAgainstMassive(ctx: Ctx, rows: FlowRow[]): Promise<Chec
   // (2) Subset relation: UW (filtered subset) must not exceed Massive (raw superset) beyond the ratio.
   const uwOverMassive = uw.total / massive.totalPremium;
   const subsetOk = uwOverMassive <= XCHECK.uwOverMassiveMaxRatio;
+  // Massive is contract/page-capped (OPTION_TRADES_MAX_CONTRACTS) — not a true superset oracle.
+  // UW unusual prints can legitimately exceed the bounded sample total; only skew is assertable.
+  const oracleBounded = massive.meta.contractsCapped || massive.meta.partial;
 
-  const both = `[UW ${fmtUsd(uw.total)} call ${uw.callShare.toFixed(0)}% vs Massive ${fmtUsd(massive.totalPremium)} call ${massive.callPct}% over ${massive.meta.contractsWithTrades} NTM contracts${massive.meta.partial ? " (partial)" : ""}; UW/Massive=${uwOverMassive.toFixed(2)}×]`;
+  const both = `[UW ${fmtUsd(uw.total)} call ${uw.callShare.toFixed(0)}% vs Massive ${fmtUsd(massive.totalPremium)} call ${massive.callPct}% over ${massive.meta.contractsWithTrades} NTM contracts${massive.meta.partial ? " (partial)" : ""}${massive.meta.contractsCapped ? " (contract-capped)" : ""}; UW/Massive=${uwOverMassive.toFixed(2)}×]`;
 
   // FLAG conditions: the sources DISAGREE about the flow.
   // UW alerts are a FILTERED subset (unusual prints only); Massive is the raw NTM print stream.
@@ -316,9 +319,9 @@ async function crossCheckAgainstMassive(ctx: Ctx, rows: FlowRow[]): Promise<Chec
   // EXPECTED (the unusual subset can be 100% put-led while raw tape still has call premium) —
   // flag only opposite skew or subset violation, not magnitude alone.
   const flagOppositeSkew = skewComparable && !sameSkewDir;
-  const flagSubset = !subsetOk;
+  const flagSubset = !subsetOk && !oracleBounded;
   const flagSkewMagnitude =
-    skewComparable && sameSkewDir && !subsetOk && callShareDiff > XCHECK.callShareAbsTol;
+    skewComparable && sameSkewDir && !subsetOk && !oracleBounded && callShareDiff > XCHECK.callShareAbsTol;
 
   if (flagOppositeSkew || flagSubset || flagSkewMagnitude) {
     const why = flagOppositeSkew
@@ -332,6 +335,24 @@ async function crossCheckAgainstMassive(ctx: Ctx, rows: FlowRow[]): Promise<Chec
       "net_premium",
       "flag",
       `${ticker} flow DIVERGES across providers: ${why}. ${both} — UW and Massive disagree about the flow (a real cross-source divergence, not a consistency miss).`,
+      { id: "flows-xcheck-massive", expected: Number(massive.callPct), actual: Number(uw.callShare.toFixed(0)), tolerance: XCHECK.callShareAbsTol }
+    );
+  }
+
+  // Bounded oracle: subset ratio is not meaningful — confirm on skew direction only (no false FLAG).
+  if (oracleBounded && !subsetOk) {
+    const boundedNote = massive.meta.contractsCapped
+      ? `Massive oracle contract-capped (${massive.meta.contractsWithTrades}/${massive.meta.contractsRequested} NTM contracts)`
+      : `Massive oracle partial (${massive.meta.contractsWithTrades}/${massive.meta.contractsRequested} contracts)`;
+    const skewNote = skewComparable
+      ? `same call/put lean (Δ ${callShareDiff.toFixed(0)}pt) — ${boundedNote}; subset ratio not assertable`
+      : `both within the ±${XCHECK.skewDeadbandPct}pt skew deadband — ${boundedNote}; subset ratio not assertable`;
+    return mk(
+      ctx,
+      "cross-provider",
+      "net_premium",
+      "consistency-only",
+      `${ticker} flow cross-check (bounded oracle): ${skewNote}. ${both}`,
       { id: "flows-xcheck-massive", expected: Number(massive.callPct), actual: Number(uw.callShare.toFixed(0)), tolerance: XCHECK.callShareAbsTol }
     );
   }
