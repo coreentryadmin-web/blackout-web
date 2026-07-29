@@ -16618,8 +16618,9 @@ body::before {
 .thermal-compact-exp {
   top: 0;
   z-index: 3;
-  padding: 0.4rem 0.35rem;
-  min-width: 4.5rem;
+  /* Near mode (default): five close expiry columns — keep cells tight. */
+  padding: 0.3rem 0.2rem;
+  min-width: 3.4rem;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.02em;
