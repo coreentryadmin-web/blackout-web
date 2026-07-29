@@ -6,4 +6,5 @@ export { FlowBrief } from "./components/FlowBrief";
 export { FlowAlertStream } from "./components/FlowAlertStream";
 export { HelixFlowTable } from "./components/HelixFlowTable";
 export { HelixCommandBar } from "./components/HelixCommandBar";
-export { ContractDrilldownDrawer } from "./components/ContractDrilldownDrawer";
+// Intentionally NOT re-exporting ContractDrilldownDrawer — it pulls recharts (~5MB).
+// Import from the component path (or via FlowFeed's dynamic) when needed.

@@ -44,7 +44,12 @@ function zerodteBoardRefreshMs(): number {
 // ── 0DTE: the live board (setups ⋈ ledger ⋈ allocation) ────────────────────────────
 // Source-derivation lives in the pure ./zerodte-sources module (unit-tested).
 
-export function ZeroDteDeck() {
+export function ZeroDteDeck({
+  initialBoard = null,
+}: {
+  /** SSR seed from loadNightHawkSeedProps — SWR fallbackData for first paint. */
+  initialBoard?: BoardResp | null;
+} = {}) {
   // ADMIN-ONLY sim view (feat/zerodte-admin-sim-view): when the page URL carries
   // `?sim=1`, fetch the ISOLATED admin sim board instead of the member board and paint
   // an unmistakable banner. Read client-side (window.location) so SSR output stays
@@ -56,7 +61,9 @@ export function ZeroDteDeck() {
   }, []);
 
   const boardUrl = sim ? "/api/market/zerodte/board?sim=1" : "/api/market/zerodte/board";
+  // Never seed sim mode with the live member board (isolation).
   const { data, isLoading } = useSWR<BoardRespWithSession>(boardUrl, json, {
+    fallbackData: !sim && initialBoard ? (initialBoard as BoardRespWithSession) : undefined,
     refreshInterval: zerodteBoardRefreshMs(),
     revalidateOnFocus: true,
   });

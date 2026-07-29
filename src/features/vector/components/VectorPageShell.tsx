@@ -144,7 +144,6 @@ export function VectorPageShell({
   // defaulted to weekly, the ladder's first paint showed the near-term aggregate against a
   // weekly-scoped chart until hydration converged them.
   const [dteHorizon, setDteHorizon] = useState<VectorDteHorizon>(defaultDteHorizon ?? "weekly");
-  const [now, setNow] = useState<number | null>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
   const activeTicker = ticker || VECTOR_DEFAULT_TICKER;
 
@@ -204,13 +203,6 @@ export function VectorPageShell({
   const [liveSpot, setLiveSpot] = useState<number | null>(
     initialBars.length ? initialBars[initialBars.length - 1]!.close : null
   );
-
-  useEffect(() => {
-    if (!liveSession) return;
-    setNow(Date.now());
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, [liveSession]);
 
   // Load the member's saved alert rules whenever the ticker changes (and clear the recent history so
   // one ticker's fires don't bleed into another). Persisted per ticker in localStorage.
@@ -302,17 +294,13 @@ export function VectorPageShell({
     }
   };
 
-  const candleAgeSec =
-    liveSession && streamUpdatedAt != null && now != null
-      ? Math.max(0, Math.floor((now - streamUpdatedAt) / 1000))
-      : null;
+  // Freshness live→stale flips inside FreshnessChip (staleAfterMs) so this shell
+  // is NOT re-rendered every second — was a full-tree storm during RTH.
   const freshnessStatus = !liveSession
     ? "cached"
     : streamUpdatedAt == null
       ? "syncing"
-      : candleAgeSec != null && candleAgeSec > CANDLE_STALE_MS / 1000
-        ? "stale"
-        : "live";
+      : "live";
 
   const kicker =
     activeTicker === "SPX" ? "Live SPX chart" : `Live ${activeTicker} chart`;
@@ -342,6 +330,7 @@ export function VectorPageShell({
     <FreshnessChip
       status={freshnessStatus}
       asOf={liveSession && streamUpdatedAt ? new Date(streamUpdatedAt) : null}
+      staleAfterMs={liveSession ? CANDLE_STALE_MS : undefined}
       label={liveSession ? "Live session" : `${sessionLabel} close`}
     />
   );

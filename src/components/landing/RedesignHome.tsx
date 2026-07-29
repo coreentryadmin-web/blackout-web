@@ -1,11 +1,12 @@
 import Link from "next/link";
+import Image from "next/image";
 import type { CSSProperties } from "react";
 import { MARKETING_PRODUCTS } from "@/lib/marketing/products";
 import { IMAGES, MARKETING_MODULE_GALLERY } from "@/lib/images";
 import { MEMBERSHIP_PRICING, usd } from "@/lib/pricing";
 import { SITE } from "@/lib/site";
 import { WHOP_CHECKOUT } from "@/lib/whop-checkout";
-import { LandingRedesignFx } from "./LandingRedesignFx";
+import { LandingRedesignFxLazy } from "./LandingRedesignFxLazy";
 
 /** Redesigned homepage body — server-rendered content + one client FX layer (canvas, reveal, ticker). */
 export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
@@ -26,10 +27,23 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
         <div id="hero-reactor" className="hero-reactor">
           <div className="logo-atmos" id="logo-atmos" />
           <div className="r-core">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img className="logo-energy" src={IMAGES.brandEmblem} alt="BlackOut" />
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img className="logo-b" id="logo-img" src={IMAGES.brandEmblem} alt="BlackOut" />
+            <Image
+              className="logo-energy"
+              src={IMAGES.brandEmblem}
+              alt=""
+              fill
+              sizes="(max-width: 768px) 250px, 420px"
+              aria-hidden
+            />
+            <Image
+              className="logo-b"
+              id="logo-img"
+              src={IMAGES.brandEmblem}
+              alt="BlackOut"
+              fill
+              sizes="(max-width: 768px) 250px, 420px"
+              priority
+            />
             <div className="logo-halo" />
             <canvas id="logo-breath" className="logo-breath" width={500} height={500} />
           </div>
@@ -460,7 +474,7 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
         </Link>
       </div>
 
-      <LandingRedesignFx />
+      <LandingRedesignFxLazy />
     </div>
   );
 }

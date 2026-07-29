@@ -142,6 +142,39 @@ type ColumnProps = {
   onScrollSync: (scrollTop: number, scrollLeft: number) => void;
 };
 
+function ThermalMatrixFreshnessChip({
+  asof,
+  matrixLoading,
+}: {
+  asof?: string | null;
+  matrixLoading: boolean;
+}) {
+  // Own the 1Hz clock here so TripleColumn (matrix + spot header) does not re-render every second.
+  const [nowMs, setNowMs] = useState<number | null>(null);
+  useEffect(() => {
+    setNowMs(Date.now());
+    const id = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const layers =
+    nowMs == null
+      ? null
+      : thermalLayerFreshness({
+          nowMs,
+          matrixAsof: asof,
+          overlaysAt: null,
+          hasOverlays: false,
+          crossValUwAsof: null,
+          crossValPresent: false,
+          matrixLoading,
+        });
+
+  const matrixStatus = layers?.matrix.status ?? (matrixLoading ? "syncing" : "offline");
+  const matrixAsOf = layers?.matrix.asOf ?? null;
+  return <FreshnessChip status={matrixStatus} asOf={matrixAsOf} label="Matrix" />;
+}
+
 function TripleColumn({
   ticker,
   lens,
@@ -167,30 +200,8 @@ function TripleColumn({
     },
   );
 
-  const [nowMs, setNowMs] = useState<number | null>(null);
-  useEffect(() => {
-    setNowMs(Date.now());
-    const id = setInterval(() => setNowMs(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, []);
-
   const block = data ? pickBlock(data, lens) : undefined;
   const walls = wallPair(block, lens);
-  const layers =
-    nowMs == null
-      ? null
-      : thermalLayerFreshness({
-          nowMs,
-          matrixAsof: data?.asof,
-          overlaysAt: null,
-          hasOverlays: false,
-          crossValUwAsof: null,
-          crossValPresent: false,
-          matrixLoading: isLoading && !data,
-        });
-
-  const matrixStatus = layers?.matrix.status ?? (isLoading ? "syncing" : "offline");
-  const matrixAsOf = layers?.matrix.asOf ?? null;
 
   return (
     <section
@@ -211,7 +222,10 @@ function TripleColumn({
           )}
         </button>
         <div className="thermal-triple-col-meta">
-          <FreshnessChip status={matrixStatus} asOf={matrixAsOf} label="Matrix" />
+          <ThermalMatrixFreshnessChip
+            asof={data?.asof}
+            matrixLoading={isLoading && !data}
+          />
           <button
             type="button"
             className="thermal-triple-export"

@@ -4,21 +4,39 @@ import { isAdminEmail } from "@/lib/admin-emails";
 import { auth, getSession } from "@/lib/auth-server";
 import { isCognitoAuth } from "@/lib/auth-provider";
 import { roleFromSessionClaims } from "@/lib/clerk-session-claims";
+import { adminFromJwtRole } from "@/lib/admin-from-jwt";
+import { getClerkUserCached } from "@/lib/clerk-user-cache";
 import { getUserProfile, isUserAdmin } from "@/lib/user-directory";
 
 export { isAdminEmail } from "@/lib/admin-emails";
 
+/**
+ * Resolve whether `userId` is an admin.
+ *
+ * Fast path: when session JWT carries `role`, trust it (admin OR member) — never hit
+ * Clerk Backend for the common member case. Slow path: role claim absent → one
+ * request-memoized getUser (see clerk-user-cache.ts).
+ *
+ * Pass `sessionClaims` when the caller already has them (layout / requireTier /
+ * market-api-auth). When omitted, we resolve claims via auth() once (also cheap /
+ * request-stable) so call sites like userCanAccessTool still get the JWT short-circuit.
+ */
 export async function isAdminUser(
   userId: string,
   sessionClaims?: Record<string, unknown> | null
 ): Promise<boolean> {
   if (isCognitoAuth()) return isUserAdmin(userId);
 
-  const roleFromJwt = roleFromSessionClaims(sessionClaims);
-  if (roleFromJwt === "admin") return true;
+  let claims = sessionClaims;
+  if (claims === undefined) {
+    const session = await auth();
+    claims = session.sessionClaims as Record<string, unknown> | null | undefined;
+  }
 
-  const { clerkClient } = await import("@clerk/nextjs/server");
-  const user = await (await clerkClient()).users.getUser(userId);
+  const fromJwt = adminFromJwtRole(roleFromSessionClaims(claims));
+  if (fromJwt !== null) return fromJwt;
+
+  const user = await getClerkUserCached(userId);
   const role = String(user.publicMetadata?.role ?? "").toLowerCase();
   if (role === "admin") return true;
 

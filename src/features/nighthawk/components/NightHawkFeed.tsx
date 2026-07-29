@@ -12,16 +12,18 @@ import {
   parseNightHawkView,
   type NightHawkView,
 } from "@/features/nighthawk/lib/nighthawk-view";
+import type { NightHawkSeedProps } from "@/features/nighthawk/lib/nighthawk-seed-props";
+import type { BoardResp } from "@/features/nighthawk/command-deck/zerodte-sources";
 
 /**
  * Night Hawk — one surface, four views (0DTE / Swings / LEAPS / Legacy), single-select. Each view renders the
  * COMMAND DECK: a two-panel matrix terminal (plays left, live breakdown right). Selecting a view scopes the
  * ENTIRE desk to it and only that view's data is fetched. The choice persists in the URL (?view=).
  */
-export function NightHawkFeed() {
-  const [view, setView] = useState<NightHawkView>(DEFAULT_NIGHTHAWK_VIEW);
+export function NightHawkFeed({ seed }: { seed?: NightHawkSeedProps | null }) {
+  // SSR may pass view from ?view=; client still re-reads URL on mount for soft-nav edge cases.
+  const [view, setView] = useState<NightHawkView>(seed?.view ?? DEFAULT_NIGHTHAWK_VIEW);
 
-  // Hydrate the selected view from the URL on mount (client-only — keeps SSR output stable).
   useEffect(() => {
     const raw = new URLSearchParams(window.location.search).get("view");
     if (raw) setView(parseNightHawkView(raw));
@@ -53,7 +55,9 @@ export function NightHawkFeed() {
       <p className="mb-3 text-xs text-mute">{NIGHTHAWK_VIEW_META[view].blurb}</p>
 
       <div className="nighthawk-single-view flex min-h-[560px] w-full max-w-none flex-1 flex-col">
-        {view === "ZERO_DTE" && <ZeroDteDeck />}
+        {view === "ZERO_DTE" && (
+          <ZeroDteDeck initialBoard={(seed?.board as BoardResp | null | undefined) ?? null} />
+        )}
         {view === "SWING" && <HorizonDeck horizon="SWING" />}
         {view === "LEAPS" && <HorizonDeck horizon="LEAPS" />}
         {isLegacy && <LegacyDeck edition={edition} error={editionError} />}
