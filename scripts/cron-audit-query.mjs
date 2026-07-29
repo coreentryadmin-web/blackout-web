@@ -6,9 +6,6 @@
  * Usage: npm run validate:cron
  */
 import { ALL_CRON_KEYS } from "./railway-cron-services.mjs";
-<<<<<<< HEAD
-import { createAuditClient, resolveAuditDbUrl, isPrivateDbUnreachableError } from "./pg-audit.mjs";
-=======
 import {
   createAuditClient,
   resolveAuditDbUrl,
@@ -16,7 +13,6 @@ import {
   isStaleAuditDbAuthError,
 } from "./pg-audit.mjs";
 import { auditSecret } from "./audit/lib/prod-secrets.mjs";
->>>>>>> origin/main
 
 const JOB_KEYS = [...ALL_CRON_KEYS];
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
@@ -53,13 +49,8 @@ async function auditViaWatchdog() {
 
 const dbUrl = resolveAuditDbUrl();
 if (!dbUrl) {
-<<<<<<< HEAD
-  console.warn("[cron-audit] DATABASE_PUBLIC_URL not set — skipping (HTTP watchdog covers cron health)");
-  process.exit(0);
-=======
   console.warn("[cron-audit] No Postgres URL — using HTTP watchdog fallback");
   await auditViaWatchdog();
->>>>>>> origin/main
 }
 
 const client = createAuditClient(dbUrl);
@@ -67,20 +58,12 @@ try {
   await client.connect();
 } catch (e) {
   const msg = e instanceof Error ? e.message : String(e);
-<<<<<<< HEAD
-  if (isPrivateDbUnreachableError(msg)) {
-    console.warn(`[cron-audit] Postgres unreachable from this host — skipping: ${msg}`);
-    process.exit(0);
-  }
-  throw e;
-=======
   if (isPrivateDbUnreachableError(msg) || isStaleAuditDbAuthError(msg)) {
     console.warn(`[cron-audit] Postgres unavailable (${msg}) — using HTTP watchdog fallback`);
     await auditViaWatchdog();
   }
   console.error(`[cron-audit] Postgres connect failed: ${msg}`);
   process.exit(1);
->>>>>>> origin/main
 }
 
 const q = async (sql, params) => (await client.query(sql, params)).rows;
