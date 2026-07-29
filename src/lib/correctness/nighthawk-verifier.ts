@@ -14,8 +14,11 @@ import {
   parseOptionsContract,
   evaluatePlayAgainstChain,
   fetchEditionChains,
+  chainQuoteForParsedPlay,
+  playPremiumWithinChainBand,
   type EditionChainData,
 } from "@/features/nighthawk/lib/option-chain-prompt";
+import { todayEt } from "@/lib/et-date";
 import { validatePlayGeometry } from "@/features/nighthawk/lib/play-constraints";
 
 // ---------------------------------------------------------------------------
@@ -68,6 +71,19 @@ function chainConfirmEnabled(): boolean {
 function chainSample(): number {
   const raw = Number(process.env.CORRECTNESS_NIGHTHAWK_SAMPLE);
   return Number.isFinite(raw) && raw >= 0 ? Math.min(Math.floor(raw), 8) : 3;
+}
+
+/** Premium vs live chain is only meaningful for the active session edition (today / next). */
+function editionPremiumCheckApplicable(editionFor: string): boolean {
+  if (!editionFor) return false;
+  const today = todayEt();
+  if (editionFor >= today) {
+    const aheadMs =
+      new Date(`${editionFor}T00:00:00`).getTime() - new Date(`${today}T00:00:00`).getTime();
+    return aheadMs <= 2 * 86_400_000;
+  }
+  const ageMs = new Date(`${today}T00:00:00`).getTime() - new Date(`${editionFor}T00:00:00`).getTime();
+  return ageMs / 86_400_000 <= 1;
 }
 
 function mk(
@@ -422,23 +438,24 @@ export async function verifyNightHawk(_marketOpen: boolean): Promise<TickerScore
         }
         if (verdict.verified) {
           confirmed++;
-          // Premium vs chain ask — only for freshly published editions; overnight gaps
-          // move option premiums far beyond any reasonable band (false flags).
-          if (premiumFresh && play.entry_premium != null && parsed) {
-            const row = chain.rows.find(
-              (r) => Math.abs(r.strike - parsed.strike) < 1e-6 && (!parsed.expiryYmd || r.expiry === parsed.expiryYmd)
-            );
-            if (row) {
-              const ask = parsed.side === "call" ? row.call_ask : row.put_ask;
-              const bid = parsed.side === "call" ? row.call_bid : row.put_bid;
-              if (ask != null && ask > 0) {
-                // Scale slips only — entry above ask×1.5 is normal theta decay on same-day expiry
-                // when re-verifying hours after publish; 5× catches the 10× class of bugs.
-                if (isPremiumChainScaleMismatch(play.entry_premium, bid, ask)) {
-                  premiumMismatch++;
-                  if (premDetail.length < 5)
-                    premDetail.push(`${play.ticker} entry $${play.entry_premium} vs chain bid/ask ${bid}/${ask}`);
-                }
+          // Premium vs chain — only for freshly published editions with a fully parseable
+          // contract (strike+side+expiry). Uses the SAME quote resolver as publish grounding;
+          // the old first-row matcher false-flagged when multiple expiries share a strike
+          // (NVDA $3.42 vs $1.86 on the wrong expiry). Overnight gaps still move premiums, so
+          // also gate on published_at freshness (4h).
+          if (
+            premiumFresh &&
+            play.entry_premium != null &&
+            parsed &&
+            editionPremiumCheckApplicable(editionFor)
+          ) {
+            const quote = chainQuoteForParsedPlay(parsed, chain.rows);
+            if (quote && !playPremiumWithinChainBand(play.entry_premium, quote)) {
+              premiumMismatch++;
+              if (premDetail.length < 5) {
+                premDetail.push(
+                  `${play.ticker} entry $${play.entry_premium} vs chain ref $${quote.ref.toFixed(2)} (bid/ask ${quote.bid}/${quote.ask})`
+                );
               }
             }
           }

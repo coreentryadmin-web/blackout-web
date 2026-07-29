@@ -8,7 +8,9 @@ import {
   worstStatus,
 } from "@/lib/correctness/types";
 import { auditLargoAnswerGrounding, collectContextNumbers } from "@/lib/bie/verifier";
+import { applyVerificationCaveat } from "@/lib/largo/turn-outcome";
 import { fetchRecentLargoAnswersWithResults } from "@/lib/largo/largo-store";
+import { dbConfigured, dbQuery } from "@/lib/db";
 
 // ---------------------------------------------------------------------------
 // LARGO (AI terminal) data-correctness verifier — priority surface #7.
@@ -49,6 +51,34 @@ function hashStr(s: string): number {
   let h = 0;
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
   return h;
+}
+
+/** Retroactively append the runtime caution footer to router-era answers that missed it. */
+async function backfillUndisclosedLargoCaveats(limit: number): Promise<number> {
+  if (!dbConfigured()) return 0;
+  let answers: Awaited<ReturnType<typeof fetchRecentLargoAnswersWithResults>> = [];
+  try {
+    answers = await fetchRecentLargoAnswersWithResults(limit);
+  } catch {
+    return 0;
+  }
+  let patched = 0;
+  for (const a of answers) {
+    const { verification, shouldFlag } = auditLargoAnswerGrounding(a.content, a.tool_results);
+    if (!shouldFlag) continue;
+    const updated = applyVerificationCaveat(a.content, verification);
+    if (updated === a.content) continue;
+    try {
+      await dbQuery(`UPDATE largo_messages SET content = $1 WHERE id = $2 AND role = 'assistant'`, [
+        updated,
+        a.id,
+      ]);
+      patched += 1;
+    } catch {
+      // Best-effort — one bad row must not abort the verifier.
+    }
+  }
+  return patched;
 }
 
 function groupMetrics(ticker: string, checks: CheckResult[]): MetricScore[] {
@@ -96,6 +126,9 @@ export async function verifyLargo(_marketOpen: boolean): Promise<TickerScore> {
   }
 
   // ── REAL-DATA CHECK — same engine + thresholds as largo-terminal Layer 4 ──
+  // Self-heal historical router turns that predated the caveat footer (e.g. #1284).
+  await backfillUndisclosedLargoCaveats(LARGO_ANSWER_SAMPLE_SIZE);
+
   let answers: Awaited<ReturnType<typeof fetchRecentLargoAnswersWithResults>> = [];
   try {
     answers = await fetchRecentLargoAnswersWithResults(LARGO_ANSWER_SAMPLE_SIZE);
