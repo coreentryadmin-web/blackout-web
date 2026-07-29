@@ -4,6 +4,8 @@ import {
   THERMAL_DISCORD_CARD_W,
   bandStrikesAroundSpot,
   buildThermalDiscordCardSvg,
+  discordDriftPct,
+  discordPerExpiryExtremes,
   fmtCompactExpiry,
   fmtCompactHeatMoney,
   fmtDeskExpiry,
@@ -55,11 +57,11 @@ test("buildThermalDiscordCardSvg includes tickers and never invents spot", () =>
       cells: {
         "635": { "2026-07-28": 1_000_000, "2026-07-29": -500_000 },
         "630": { "2026-07-28": 100_000 },
-        "640": { "2026-07-28": -200_000 },
+        "640": { "2026-07-28": -2_000_000 },
       },
-      strike_totals: {},
-      call_wall: 640,
-      put_wall: 630,
+      strike_totals: { "630": 100_000, "635": 500_000, "640": -2_000_000 },
+      call_wall: 635,
+      put_wall: 640,
       total: 0,
       flip: null,
       regime: { flip: null, posture: null, read: "undetermined" },
@@ -73,7 +75,14 @@ test("buildThermalDiscordCardSvg includes tickers and never invents spot", () =>
       flip: null,
       regime: { posture: null, read: "" },
     },
-    shift: { available: false, status: "collecting" },
+    shift: {
+      available: true,
+      delta_by_strike: { "635": 250_000, "640": -400_000 },
+      wall_changes: {
+        call_wall: { from: 630, to: 635, moved_pts: 5, grew_pct: 12.5 },
+        put_wall: { from: 645, to: 640, moved_pts: -5, grew_pct: -8 },
+      },
+    },
     source: "polygon",
     data_delay: "realtime",
   } as unknown as GexHeatmap;
@@ -94,11 +103,33 @@ test("buildThermalDiscordCardSvg includes tickers and never invents spot", () =>
   assert.match(svg, /FLIP/);
   assert.match(svg, /LIVE SNAPSHOT/);
   assert.match(svg, /Matrix unavailable/);
+  assert.match(svg, /DRIFT/);
+  assert.match(svg, /\+ node/);
+  assert.match(svg, /− node/);
+  // Yellow +node / purple −node bead fills
+  assert.match(svg, /rgba\(255,214,10/);
+  assert.match(svg, /rgba\(217,123,255/);
   assert.doesNotMatch(svg, /Unusual Whales|Polygon|Railway/i);
 
   const caption = thermalDiscordCaption(columns);
   assert.match(caption, /SPY/);
   assert.match(caption, /Call wall/);
   assert.match(caption, /640/);
+  assert.match(caption, /Wall drift/);
+  assert.match(caption, /Yellow = \+ node/);
   assert.doesNotMatch(caption, /Polygon|Unusual/i);
+});
+
+test("discordPerExpiryExtremes + discordDriftPct", () => {
+  const cells = {
+    "100": { "2026-07-28": 10 },
+    "101": { "2026-07-28": 50 },
+    "102": { "2026-07-28": -80 },
+  };
+  const ex = discordPerExpiryExtremes(cells, [100, 101, 102], ["2026-07-28"]);
+  assert.equal(ex["2026-07-28"]?.callWall, 101);
+  assert.equal(ex["2026-07-28"]?.putWall, 102);
+  assert.equal(ex["2026-07-28"]?.king, 102);
+  assert.equal(discordDriftPct(150, 50), 50);
+  assert.equal(discordDriftPct(100, null), null);
 });
