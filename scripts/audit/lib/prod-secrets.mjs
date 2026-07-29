@@ -9,6 +9,7 @@ const PROD_SECRET = "blackout-production/app/env";
 let cached = null;
 
 function awsRegion() {
+  // pragma: allowlist secret
   return process.env.AWS_DEFAULT_REGION?.trim() || process.env["AWS_REGION"]?.trim() || "";
 }
 

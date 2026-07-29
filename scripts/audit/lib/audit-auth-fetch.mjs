@@ -7,17 +7,27 @@ import { mintClerkPremiumSession } from "./prod-clerk-session.mjs";
 
 /** @type {{ cookieHeader: string, cleanup?: () => Promise<void> } | null} */
 let clerkSessionCache = null;
+/** Serialize concurrent mints — Promise.all cross-endpoint probes must not race. */
+let clerkMintPromise = null;
 
 async function clerkHeaders(base) {
   if (clerkSessionCache) return clerkSessionCache;
-  const session = await mintClerkPremiumSession({ appUrl: base });
-  if (session.skip) return null;
-  clerkSessionCache = { cookieHeader: session.cookieHeader, cleanup: session.cleanup };
-  return clerkSessionCache;
+  if (!clerkMintPromise) {
+    clerkMintPromise = (async () => {
+      const session = await mintClerkPremiumSession({ appUrl: base });
+      if (session.skip) return null;
+      clerkSessionCache = { cookieHeader: session.cookieHeader, cleanup: session.cleanup };
+      return clerkSessionCache;
+    })().finally(() => {
+      clerkMintPromise = null;
+    });
+  }
+  return clerkMintPromise;
 }
 
 /** Release the cached Clerk temp user (call at end of long audit scripts). */
 export async function releaseAuditClerkSession() {
+  if (clerkMintPromise) await clerkMintPromise.catch(() => {});
   if (!clerkSessionCache) return;
   await clerkSessionCache.cleanup?.();
   clerkSessionCache = null;

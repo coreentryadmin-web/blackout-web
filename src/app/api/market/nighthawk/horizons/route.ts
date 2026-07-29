@@ -41,17 +41,12 @@ export async function GET(req: NextRequest) {
     const payload = await getZeroDteBoardPayload();
     let board = horizonBoardFromZeroDtePayload(payload, payload.as_of);
 
-    // SWING branch (PR-12): the 0DTE payload only carries the 0DTE lane — its SWING lane is an empty
-    // placeholder. When the desk toggles to Swings, splice in the REAL sectioned serving lane (four pre-entry
-    // sections live; three live-position sections empty until PR-13) BEFORE scoping, so `scopeBoardToHorizon`
-    // recomputes the totals against it. The `discover` source is the persisted whole-market scan
-    // (discoverSwingFromPersisted — a pure shared-cache read the swing-discovery cron writes), gated to
-    // persistence-cleared names. `getSwingServingLane` degrades to an empty structured lane on any discovery
-    // hiccup, so this stays member-safe. Other views (0DTE/LEAPS/Legacy) are untouched.
-    if (horizon === "SWING") {
-      const swingLane = await getSwingServingLane({ discover: discoverSwingFromPersisted });
-      board = { ...board, lanes: { ...board.lanes, SWING: swingLane } };
-    }
+    // SWING branch (PR-12 + 2026-07-29 fix): ALWAYS splice the persisted serving lane into the board —
+    // not only when `?view=swings`. The 0DTE payload's SWING lane is an empty placeholder; members on the
+    // default (all-lanes) desk were seeing a permanently empty Swing rail even when discovery had written
+    // a snapshot. `getSwingServingLane` degrades to an empty structured lane on any discovery hiccup.
+    const swingLane = await getSwingServingLane({ discover: discoverSwingFromPersisted });
+    board = { ...board, lanes: { ...board.lanes, SWING: swingLane } };
     board = scopeBoardToHorizon(board, horizon);
     // roundFloats at the boundary: the 0DTE lane is already rounded inside zerodte-service,
     // but the SWING lane is spliced in raw from getSwingServingLane() and the board totals are

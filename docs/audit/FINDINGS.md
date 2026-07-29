@@ -5,6 +5,7 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+<<<<<<< HEAD
 ## 2026-07-29 — [ops] ops-auto-fix #1247 — stale GitHub secrets + false cron failures
 
 **Severity.** P1 — `ops-collect` reported `postgres:query-failed` (user `postgres`) and
@@ -22,6 +23,42 @@ skip postgres audit on unreachable/stale-auth hosts; data-correctness `logCronRu
 on successful sweep; options cluster health treats ingest leader lock as live.
 
 **Status.** PR `fix/ops-auto-fix-secrets-1247` → `main`.
+=======
+## 2026-07-29 — [Swing] Discovery cron 100% FailedInvocations — board permanently empty
+
+**Severity.** P0 — Night Hawk Swing lane showed 0 watch / 0 commits all session. EventBridge
+fired the rule; nothing ever landed a serving snapshot with plays.
+
+**Evidence (prod 2026-07-29).**
+- EventBridge `blackout-production-swing-discovery`: **38 Invocations / 38 FailedInvocations** (24h).
+- `swing-active-refresh`: **8 / 8 Failed**.
+- Lambda hit-cron path stats: **0** successful `/api/cron/swing-discovery` completions in 7 days.
+- Manual `GET ?force=1` → ALB **504**; subsequent fire → `phase MIDDAY already claimed` (idempotent skip).
+- `?view=swings` → structured empty lane; `scoreFloorGraduated=false`.
+
+**Root cause (three stacked failures).**
+1. **60s abort chain:** Lambda hit-cron hardcoded `timeoutMs = 60_000`; ALB `idle_timeout = 60`;
+   whole-market Tier-1 enrich (40 names × news/earnings/IV/chain, sequential) routinely exceeds 60s
+   → AbortError / 504 → EventBridge FailedInvocations.
+2. **Claim-before-success burns the phase:** `sharedCacheSetNx(..., 22h)` ran *before* the scan.
+   A timed-out attempt left the NX key stuck → every re-fire skipped for the rest of the day.
+3. **Horizons only spliced Swing on `?view=swings`:** default all-lanes board kept the empty 0DTE
+   placeholder even when a snapshot existed.
+
+**Fix.**
+- Two-stage claim: short **running** TTL (3m) → upgrade to **done** (22h) only after persist;
+  release on throw; `?force=1` clears claim.
+- Parallel Tier-1 enrich (`enrichConcurrency: 8`).
+- Always splice persisted Swing lane into horizons (all views).
+- `scripts/hit-cron.mjs` default timeout **120s**; Lambda code + `CRON_HTTP_TIMEOUT_MS=120000`;
+  ALB idle_timeout **120s** (surgical AWS).
+
+**Blast radius.** Heavy crons (bie-full-state, zerodte-warm) also benefit from 120s budget.
+Swing commits remain graduation-gated (cold book → `commitEligibleCount=0` until n≥10) — this
+fix only restores the WATCH/serving write path.
+
+**Status.** This PR + live Lambda/ALB patch.
+>>>>>>> origin/main
 
 ## 2026-07-29 — [0DTE] G-9 `plan_quote_stale` false-positive on live REST books
 
