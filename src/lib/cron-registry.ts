@@ -91,11 +91,11 @@ export const CRON_JOBS: CronJobDefinition[] = [
     name: "Thermal Warm",
     kind: "http",
     path: "/api/cron/heatmap-warm",
-    schedule_label: "~Every 30-45s (market hours) + delta SSE broadcast",
+    schedule_label: "Every 1 min EventBridge + in-app leader ~20s (market hours) + delta SSE",
     stale_after_min: 2,
     weekdays_only: true,
     market_hours_only: true,
-    description: "Pre-warm the shared GEX heatmap matrix cache every 30-45s + broadcast strike-level deltas via SSE for real-time matrix updates (was 5min cron, now hybrid cron+delta for ~10-15s perceived latency)",
+    description: "Pre-warm GEX heatmap matrix (SPY/SPX/QQQ forced first). EventBridge 1/min floor; rth-warm-leader backs up at ~20s; Thermal clients force-refresh when asof >8s",
   },
   {
     key: "platform-warm",

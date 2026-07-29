@@ -5,9 +5,11 @@ import {
   buildThermalUrlSearch,
   honestLevelEmpty,
   isThermalCompareTicker,
+  isUsableGexHeatmapPayload,
   parseThermalLens,
   parseThermalTicker,
   parseThermalUrlState,
+  shouldForceMatrixRefresh,
   thermalLayerFreshness,
   wallScopeLabel,
 } from "./thermal-desk-state.ts";
@@ -35,9 +37,36 @@ test("buildThermalUrlSearch writes ticker/lens/compare and drops compare when of
   assert.equal(new URLSearchParams(off).has("compare"), false);
 });
 
-test("isThermalCompareTicker", () => {
+test("isUsableGexHeatmapPayload / shouldForceMatrixRefresh", () => {
   assert.equal(isThermalCompareTicker("SPY"), true);
   assert.equal(isThermalCompareTicker("NVDA"), false);
+  assert.equal(isUsableGexHeatmapPayload(null), false);
+  assert.equal(isUsableGexHeatmapPayload({ available: true, strikes: [], expiries: ["2026-07-29"] }), false);
+  assert.equal(
+    isUsableGexHeatmapPayload({ available: true, spot: 0, strikes: [100], expiries: ["2026-07-29"] }),
+    false,
+    "spot 0 must not count as usable"
+  );
+  assert.equal(
+    isUsableGexHeatmapPayload({ available: true, spot: 741.5, strikes: [100], expiries: ["2026-07-29"] }),
+    true
+  );
+  const now = Date.parse("2026-07-29T18:00:00Z");
+  assert.equal(
+    shouldForceMatrixRefresh({ asofMs: now - 3_000, nowMs: now, lastForceAtMs: 0 }),
+    false,
+    "fresh asof must not force"
+  );
+  assert.equal(
+    shouldForceMatrixRefresh({ asofMs: now - 10_000, nowMs: now, lastForceAtMs: 0 }),
+    true,
+    "asof >8s forces"
+  );
+  assert.equal(
+    shouldForceMatrixRefresh({ asofMs: now - 10_000, nowMs: now, lastForceAtMs: now - 2_000 }),
+    false,
+    "throttle blocks force"
+  );
 });
 
 test("thermalLayerFreshness: matrix live / stale / overlays off / UW off", () => {

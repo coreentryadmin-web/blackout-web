@@ -22,6 +22,16 @@ test("rthWriterOverdue: flow-ingest skipped for alternate writer is not overdue"
   );
 });
 
+test("rthWriterOverdue: heatmap-warm overdue after 25s (20s heal threshold)", () => {
+  const last = new Date(now - 25_000).toISOString();
+  assert.equal(rthWriterOverdue("heatmap-warm", last, "ok", null, now), true);
+});
+
+test("rthWriterOverdue: heatmap-warm fresh at 10s", () => {
+  const last = new Date(now - 10_000).toISOString();
+  assert.equal(rthWriterOverdue("heatmap-warm", last, "ok", null, now), false);
+});
+
 test("rthWriterOverdue: unknown key never overdue", () => {
   assert.equal(rthWriterOverdue("db-cleanup", null, null, null, now), false);
 });

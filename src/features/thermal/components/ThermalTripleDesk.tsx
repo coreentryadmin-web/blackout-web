@@ -15,7 +15,14 @@ import type { GexHeatmapLens } from "@/lib/gex-heatmap-display";
 import {
   THERMAL_COMPARE_TICKERS,
   thermalLayerFreshness,
+  isUsableGexHeatmapPayload,
+  shouldForceMatrixRefresh,
+  MATRIX_FORCE_THROTTLE_MS,
 } from "@/features/thermal/lib/thermal-desk-state";
+import {
+  readGexHeatmapSessionCache,
+  writeGexHeatmapSessionCache,
+} from "@/lib/gex-heatmap-session-cache";
 import ThermalCompactMatrix, {
   type ThermalCompareMode,
 } from "@/features/thermal/components/ThermalCompactMatrix";
@@ -190,17 +197,76 @@ function TripleColumn({
   onScrollSync,
 }: ColumnProps) {
   const pollMs = usePollIntervalMs(5_000, 5_000);
+  // Age-based force (SPX Slayer parity): EventBridge heatmap-warm floors at 1m, so without
+  // ?force=1 SPY/QQQ asof ages to 25–60s while the client polls every 5s. Force when asof
+  // is >8s old (server throttles ≤1/8s; single-flight coalesces concurrent viewers).
+  const [forceNonce, setForceNonce] = useState(0);
+  const lastForceAtRef = useRef(0);
+  const [lastGood, setLastGood] = useState<HeatmapPayload | null>(null);
+
+  const matrixKey =
+    forceNonce > 0
+      ? `/api/market/gex-heatmap?ticker=${encodeURIComponent(ticker)}&force=1&n=${forceNonce}`
+      : `/api/market/gex-heatmap?ticker=${encodeURIComponent(ticker)}`;
+
+  const clearForce = () => setForceNonce((n) => (n > 0 ? 0 : n));
+
   const { data, error, isLoading } = useSWR<HeatmapPayload>(
-    `/api/market/gex-heatmap?ticker=${encodeURIComponent(ticker)}`,
+    matrixKey,
     fetchHeatmap,
     {
       refreshInterval: pollMs,
       revalidateOnFocus: true,
       keepPreviousData: true,
+      fallbackData: readGexHeatmapSessionCache<HeatmapPayload>(ticker),
+      onSuccess: (payload) => {
+        if (isUsableGexHeatmapPayload(payload)) {
+          setLastGood(payload);
+          writeGexHeatmapSessionCache(ticker, payload);
+        }
+        clearForce();
+      },
+      onError: clearForce,
     },
   );
 
-  const block = data ? pickBlock(data, lens) : undefined;
+  // Prefer a usable payload; never blank the column on a transient available:false.
+  const view =
+    isUsableGexHeatmapPayload(data) ? data
+    : isUsableGexHeatmapPayload(lastGood) ? lastGood
+    : data;
+
+  useEffect(() => {
+    const tick = () => {
+      const nowMs = Date.now();
+      if (nowMs - lastForceAtRef.current < MATRIX_FORCE_THROTTLE_MS) return;
+      // Blank / unusable column: force immediately (throttled) so SPY doesn't sit on
+      // "No matrix yet" waiting for the 1-min warm cron while SPX/QQQ already painted.
+      const blank = !isUsableGexHeatmapPayload(view);
+      const asofRaw = view?.asof;
+      const asofMs = asofRaw ? new Date(asofRaw).getTime() : NaN;
+      const stale =
+        !blank &&
+        shouldForceMatrixRefresh({
+          asofMs: Number.isFinite(asofMs) ? asofMs : null,
+          nowMs,
+          lastForceAtMs: lastForceAtRef.current,
+        });
+      if (!blank && !stale) return;
+      lastForceAtRef.current = nowMs;
+      setForceNonce((n) => n + 1);
+    };
+    tick();
+    const id = setInterval(tick, 2_000);
+    return () => clearInterval(id);
+  }, [view, ticker]);
+
+  // Reset last-good when the column ticker changes so we never paint SPX cells under a SPY header.
+  useEffect(() => {
+    setLastGood(null);
+  }, [ticker]);
+
+  const block = view ? pickBlock(view, lens) : undefined;
   const walls = wallPair(block, lens);
 
   return (
@@ -215,24 +281,24 @@ function TripleColumn({
             {shortcut}
           </span>
           <span className="thermal-triple-ticker">{ticker}</span>
-          {Number.isFinite(data?.spot) ? (
-            <span className="thermal-triple-spot">{Number(data!.spot).toFixed(2)}</span>
+          {view?.spot != null && view.spot > 0 ? (
+            <span className="thermal-triple-spot">{Number(view.spot).toFixed(2)}</span>
           ) : (
             <span className="thermal-triple-spot is-empty">—</span>
           )}
         </button>
         <div className="thermal-triple-col-meta">
           <ThermalMatrixFreshnessChip
-            asof={data?.asof}
-            matrixLoading={isLoading && !data}
+            asof={view?.asof}
+            matrixLoading={isLoading && !view}
           />
           <button
             type="button"
             className="thermal-triple-export"
-            disabled={!block?.cells || !data?.strikes?.length || !data?.expiries?.length}
+            disabled={!block?.cells || !view?.strikes?.length || !view?.expiries?.length}
             onClick={() => {
-              if (!data?.strikes || !data?.expiries || !block?.cells) return;
-              exportCsv(ticker, lens, data.strikes, data.expiries, block.cells);
+              if (!view?.strikes || !view?.expiries || !block?.cells) return;
+              exportCsv(ticker, lens, view.strikes, view.expiries, block.cells);
             }}
             title="Export CSV"
           >
@@ -252,22 +318,22 @@ function TripleColumn({
         )}
       </div>
 
-      {error ? (
+      {error && !isUsableGexHeatmapPayload(view) ? (
         <div className="thermal-compact-empty" role="alert">
           Feed error — retrying…
         </div>
-      ) : isLoading && !data ? (
+      ) : isLoading && !isUsableGexHeatmapPayload(view) ? (
         <div className="thermal-compact-empty" role="status">
           Loading {ticker}…
         </div>
-      ) : data?.available && block?.cells && data.strikes && data.expiries ? (
+      ) : isUsableGexHeatmapPayload(view) && block?.cells ? (
         <ThermalCompactMatrix
           data={{
             ticker,
-            spot: data.spot,
-            strikes: data.strikes,
-            expiries: data.expiries,
-            nearTermExpiries: data.near_term_expiries,
+            spot: view!.spot,
+            strikes: view!.strikes!,
+            expiries: view!.expiries!,
+            nearTermExpiries: view!.near_term_expiries,
             cells: block.cells,
           }}
           lens={lens}

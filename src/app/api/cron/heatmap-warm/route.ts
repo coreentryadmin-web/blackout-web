@@ -48,12 +48,21 @@ export async function GET(req: NextRequest) {
   }
 
   const tickers = vectorWarmTickers();
+  // Core Thermal compare desk (SPY|SPX|QQQ) first + forceRefresh so asof advances every warm
+  // tick even when the 5s TTL hasn't expired — EventBridge floors at 1/min; without force the
+  // cache can serve a 5–90s-stale matrix while members watch "MATRIX · 45s". Rest of the
+  // preset list warms after so Polygon RPS prioritizes the live desk.
+  const CORE = ["SPY", "SPX", "QQQ"] as const;
+  const coreSet = new Set<string>(CORE);
+  const core = CORE.filter((t) => tickers.includes(t));
+  const rest = tickers.filter((t) => !coreSet.has(t));
 
-  // fetchGexHeatmap dedups per ticker via the matrix cache + single-flight guard, so warming each
-  // once is enough. Settle-all so one failing underlying can't abort the rest. A null result
-  // (unconfigured / no spot) is still a successful warm — the empty/negative result is cached and
-  // shields that ticker from per-user re-hammering for the TTL window.
-  const results = await Promise.allSettled(tickers.map((t) => fetchGexHeatmap(t)));
+  const coreResults = await Promise.allSettled(
+    core.map((t) => fetchGexHeatmap(t, { forceRefresh: true }))
+  );
+  const restResults = await Promise.allSettled(rest.map((t) => fetchGexHeatmap(t)));
+  const orderedTickers = [...core, ...rest];
+  const results = [...coreResults, ...restResults];
 
   let warmed = 0;
   let deltasBroadcast = 0;
@@ -65,7 +74,7 @@ export async function GET(req: NextRequest) {
 
     warmed += 1;
 
-    const ticker = tickers[i];
+    const ticker = orderedTickers[i];
     const gexHeatmap = r.value;
 
     // Skip delta calculation if current snapshot is unavailable
@@ -139,6 +148,7 @@ export async function GET(req: NextRequest) {
     ok: true,
     warmed,
     total: tickers.length,
+    core: core.length,
     deltasBroadcast,
   });
 }

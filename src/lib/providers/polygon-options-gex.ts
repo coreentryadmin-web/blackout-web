@@ -1128,7 +1128,9 @@ async function resolveSpotSnapshot(
     }
   } else {
     const ws = await liveWsStockSpot(root);
-    if (ws) {
+    // Guard: never accept a non-positive WS print as "resolved" — that used to short-circuit
+    // REST and feed emptyHeatmap(spot:0) → Thermal SPY column "0.00 / No matrix yet".
+    if (ws && ws.price > 0) {
       const restSnap = await fetchStockSnapshot(root).catch(() => null);
       return { price: ws.price, change_pct: restSnap?.change_pct ?? 0 };
     }
