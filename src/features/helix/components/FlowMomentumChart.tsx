@@ -47,7 +47,7 @@ export function FlowMomentumChart({ alerts }: { alerts: FlowAlert[] }) {
   const prevNet   = points[points.length - 2]?.net ?? 0;
   const delta     = latestNet - prevNet;
   const isBull    = latestNet >= 0;
-  const color     = isBull ? "#00e676" : "#ff2d55";
+  const color     = isBull ? "#a3e635" : "#ff2d55";
 
   return (
     <Panel

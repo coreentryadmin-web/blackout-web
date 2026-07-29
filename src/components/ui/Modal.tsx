@@ -133,7 +133,7 @@ export function Modal({
             {/* accent top strip */}
             <span
               aria-hidden
-              className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-bull to-transparent shadow-[0_0_18px_#00e676]"
+              className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-bull to-transparent shadow-[0_0_18px_#a3e635]"
             />
             {(title != null || showClose) && (
               <div className="flex items-start justify-between gap-4 border-b border-white/10 px-5 py-4 md:px-6">

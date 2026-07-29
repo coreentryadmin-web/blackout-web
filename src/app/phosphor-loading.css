@@ -87,7 +87,7 @@
 }
 
 /* Magnitude tint per rung — call-side bull, put-side bear, one gold KING. */
-.pboot-rung[data-k="bull"] { background: var(--sig-bull, #00e676); box-shadow: 0 0 10px rgba(0, 230, 118, 0.5); }
+.pboot-rung[data-k="bull"] { background: var(--sig-bull, #a3e635); box-shadow: 0 0 10px rgba(0, 230, 118, 0.5); }
 .pboot-rung[data-k="bear"] { background: var(--sig-bear, #ff2d55); box-shadow: 0 0 10px rgba(255, 45, 85, 0.45); }
 .pboot-rung[data-k="king"] { background: var(--sig-king, #ffd23f); box-shadow: 0 0 16px rgba(255, 210, 63, 0.7); height: 4px; }
 .pboot-rung[data-k="ref"]  { background: var(--sig-ref, #7dd3fc); opacity: 0.55; }
@@ -117,7 +117,7 @@
 .pboot-caret {
   width: 7px;
   height: 13px;
-  background: var(--sig-bull, #00e676);
+  background: var(--sig-bull, #a3e635);
   box-shadow: 0 0 8px rgba(0, 230, 118, 0.7);
   animation: pboot-blink 1.05s steps(1) infinite;
 }

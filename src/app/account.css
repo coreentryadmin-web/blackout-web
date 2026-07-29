@@ -19,7 +19,7 @@
   -webkit-text-fill-color: #f4f6fb !important;
   background-color: rgba(255, 255, 255, 0.06) !important;
   border: 1px solid rgba(255, 255, 255, 0.16) !important;
-  caret-color: #00e676;
+  caret-color: #a3e635;
 }
 .ios-account-page :is(.cl-formFieldInput, .cl-card input, .cl-card textarea)::placeholder {
   color: rgba(159, 180, 212, 0.55) !important;

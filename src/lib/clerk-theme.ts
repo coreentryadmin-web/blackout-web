@@ -6,14 +6,14 @@ import type { Appearance } from "@clerk/types";
 // All class strings are STATIC LITERALS so Tailwind JIT emits them. No grey, no purple.
 export const clerkAppearance: Appearance = {
   variables: {
-    colorPrimary: "#00e676",
+    colorPrimary: "#a3e635",
     colorBackground: "#080a10",
     colorText: "#f4f6fb",
     colorTextSecondary: "#9fb4d4",
     colorInputBackground: "rgba(4,4,7,0.7)",
     colorInputText: "#f4f6fb",
     colorDanger: "#ff2d55",
-    colorSuccess: "#00e676",
+    colorSuccess: "#a3e635",
     colorNeutral: "rgba(255,255,255,0.16)",
     borderRadius: "14px",
     fontFamily: "var(--font-inter), system-ui, sans-serif",

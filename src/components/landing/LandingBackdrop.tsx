@@ -25,7 +25,7 @@ export function LandingBackdrop({ showChart = true }: { showChart?: boolean }) {
           paint them once for a big GPU saving on the landing). */}
       <div
         className="absolute rounded-full"
-        style={{ top: "-16%", right: "-8%", height: 640, width: 640, filter: "blur(150px)", background: "radial-gradient(closest-side, #00e676, transparent)", opacity: 0.15 }}
+        style={{ top: "-16%", right: "-8%", height: 640, width: 640, filter: "blur(150px)", background: "radial-gradient(closest-side, #a3e635, transparent)", opacity: 0.15 }}
       />
       <div
         className="absolute rounded-full"
@@ -51,8 +51,8 @@ export function LandingBackdrop({ showChart = true }: { showChart?: boolean }) {
         <svg className="absolute bottom-0 left-0 w-full h-[42%]" viewBox="0 0 1440 240" preserveAspectRatio="none" fill="none">
           <defs>
             <linearGradient id="lbArea" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#00e676" stopOpacity="0.1" />
-              <stop offset="100%" stopColor="#00e676" stopOpacity="0" />
+              <stop offset="0%" stopColor="#a3e635" stopOpacity="0.1" />
+              <stop offset="100%" stopColor="#a3e635" stopOpacity="0" />
             </linearGradient>
           </defs>
           <path
@@ -67,7 +67,7 @@ export function LandingBackdrop({ showChart = true }: { showChart?: boolean }) {
           />
           <path
             d="M0,180 L80,160 L160,172 L240,128 L320,150 L400,104 L480,126 L560,88 L640,110 L720,70 L800,98 L880,58 L960,84 L1040,46 L1120,72 L1200,36 L1280,60 L1360,28 L1440,50"
-            stroke="#00e676"
+            stroke="#a3e635"
             strokeOpacity="0.28"
             strokeWidth="1.75"
           />

@@ -205,7 +205,7 @@ html.ios-app.ios-native-shell .ios-app-tab-code {
 }
 
 html.ios-app.ios-native-shell .ios-app-tab-icon {
-  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--tab-accent, #00e676) 25%, transparent));
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--tab-accent, #a3e635) 25%, transparent));
 }
 
 html.ios-app.ios-native-shell.ios-tab-bar {

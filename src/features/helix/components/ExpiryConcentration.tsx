@@ -74,7 +74,7 @@ export function ExpiryConcentration({ alerts, loading }: { alerts: FlowAlert[]; 
                   <span className="font-mono text-[10px] font-semibold tabular-nums text-purple-300/80">{pct}%</span>
                   <span
                     className="font-mono text-[12px] font-bold tabular-nums"
-                    style={{ color: isBull ? "#00e676" : isBear ? "#ff2d55" : "#c4b5fd" }}
+                    style={{ color: isBull ? "#a3e635" : isBear ? "#ff2d55" : "#c4b5fd" }}
                   >
                     {fmtPremium(b.total)}
                   </span>
@@ -85,7 +85,7 @@ export function ExpiryConcentration({ alerts, loading }: { alerts: FlowAlert[]; 
                   className="absolute inset-y-0 left-0 rounded-full"
                   style={{
                     background: isBull
-                      ? "linear-gradient(90deg, #00b35a, #00e676)"
+                      ? "linear-gradient(90deg, #00b35a, #a3e635)"
                       : isBear
                         ? "linear-gradient(90deg, #b3203c, #ff2d55)"
                         : "linear-gradient(90deg, #7c3aed, #a78bfa)",

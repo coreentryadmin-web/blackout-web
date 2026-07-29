@@ -55,7 +55,7 @@ function pctCut(rate: number | null): string {
 
 function winRateStyle(rate: number | null): CSSProperties {
   // Value-driven heat ramp interpolating between brand bear (#ff2d55) at the
-  // low end and brand bull (#00e676) at the high end. A null cut (no rate) is neutral.
+  // low end and brand bull (#a3e635) at the high end. A null cut (no rate) is neutral.
   const clamped = Math.max(0, Math.min(1, rate ?? 0));
   const red = Math.round(255 * (1 - clamped) + 0 * clamped);
   const green = Math.round(45 * (1 - clamped) + 230 * clamped);
@@ -90,8 +90,8 @@ function EditionWinRateTrend({ editions }: { editions: NighthawkMetrics["by_edit
       <svg viewBox={`0 0 ${width} ${height}`} className="admin-nh-trend" role="img" aria-label="Target-hit rate by edition">
         <defs>
           <linearGradient id="nh-area-grad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#00e676" stopOpacity="0.25" />
-            <stop offset="100%" stopColor="#00e676" stopOpacity="0.02" />
+            <stop offset="0%" stopColor="#a3e635" stopOpacity="0.25" />
+            <stop offset="100%" stopColor="#a3e635" stopOpacity="0.02" />
           </linearGradient>
         </defs>
 

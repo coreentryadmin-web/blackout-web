@@ -969,7 +969,7 @@ export function FlowFeed() {
               placeholder="Ticker"
               aria-label="Search ticker"
               maxLength={6}
-              className="font-mono font-bold rounded-lg border bg-[rgba(8,9,14,0.85)] outline-none tracking-widest uppercase border-[rgba(0,230,118,0.35)] text-[#00e676] placeholder:text-[rgba(0,230,118,0.35)]"
+              className="font-mono font-bold rounded-lg border bg-[rgba(8,9,14,0.85)] outline-none tracking-widest uppercase border-[rgba(0,230,118,0.35)] text-[#a3e635] placeholder:text-[rgba(0,230,118,0.35)]"
             />
           </div>
           <div className="helix-native-toolbar-row">
@@ -996,7 +996,7 @@ export function FlowFeed() {
                   "font-mono text-[10px] font-semibold px-3 py-[5px] rounded-lg border transition-all",
                   replayMode
                     ? "border-gold/70 text-gold bg-gold/15"
-                    : "border-[rgba(0,230,118,0.3)] text-[#00e676]"
+                    : "border-[rgba(0,230,118,0.3)] text-[#a3e635]"
                 )}
               >
                 {replayMode ? "■ Stop" : "▶ Replay"}

@@ -27,7 +27,7 @@
 
   /* ── BRAND / SIGNAL ROLES (color only as data) ──────────────────────────── */
   --brand: #bf5fff;          /* violet: chrome, focus, kickers, wordmark, render bloom */
-  --sig-bull: #00e676;       /* upside / call-wall / confirm / in-tolerance */
+  --sig-bull: #a3e635;       /* upside / call-wall / confirm / in-tolerance */
   --sig-bear: #ff2d55;       /* canonical downside / put-wall */
   --sig-bear-text: #ff5c78;  /* AA tint, ONLY <13px inline bearish numerals */
   --sig-flow: #22d3ee;       /* cyan: sweeps, blocks, dark-pool prints, flow */

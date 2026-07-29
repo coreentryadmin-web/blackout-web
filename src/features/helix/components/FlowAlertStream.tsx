@@ -366,7 +366,7 @@ export function FlowAlertStream({
                           )}
                           {flow.gex_proximity === "at_call_wall" && (
                             <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded border"
-                              style={{ color: "#00e676", borderColor: "rgba(0,230,118,0.45)", background: "rgba(0,230,118,0.08)", letterSpacing: "0.06em" }}>
+                              style={{ color: "#a3e635", borderColor: "rgba(0,230,118,0.45)", background: "rgba(0,230,118,0.08)", letterSpacing: "0.06em" }}>
                               ▲ CALL WALL
                             </span>
                           )}

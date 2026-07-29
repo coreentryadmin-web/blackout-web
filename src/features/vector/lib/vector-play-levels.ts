@@ -42,7 +42,7 @@ export type PlayLevelsInput = {
 // and to stay distinct from the wall beads, gamma-flip cyan, and pin gold.
 const ENTRY_COLOR = "#e7eef6"; // near-white: the anchor the P&L is measured from — neutral, not a bull/bear call
 const STOP_COLOR = "#ff2d55"; // red: risk / where the thesis is wrong
-const TARGET_COLOR = "#00e676"; // green: the objective
+const TARGET_COLOR = "#a3e635"; // green: the objective
 const INVALIDATION_COLOR = "#ff8a3d"; // amber: structural invalidation (distinct from the hard stop)
 
 const fmt = (n: number): string => Math.round(n).toLocaleString("en-US");

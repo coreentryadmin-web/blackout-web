@@ -93,7 +93,7 @@ export function PricingBackdrop() {
         style={{
           bottom: "58%",
           height: 2,
-          background: "linear-gradient(90deg, transparent, #00e676, transparent)",
+          background: "linear-gradient(90deg, transparent, #a3e635, transparent)",
           opacity: 0.55,
           boxShadow: "0 0 40px 8px rgba(0,230,118,0.45)",
         }}
@@ -107,7 +107,7 @@ export function PricingBackdrop() {
           marginLeft: "-35%",
           filter: "blur(70px)",
           opacity: 0.2,
-          background: "radial-gradient(closest-side, #00e676, transparent)",
+          background: "radial-gradient(closest-side, #a3e635, transparent)",
         }}
       />
 
@@ -122,7 +122,7 @@ export function PricingBackdrop() {
             width: e.s,
             height: e.s,
             background: "#34d399",
-            boxShadow: "0 0 8px #00e676",
+            boxShadow: "0 0 8px #a3e635",
             opacity: 0.55,
           }}
         />

@@ -43,7 +43,7 @@ export const IOS_TOOLS: IosToolMeta[] = [
     label: "SPX Slayer",
     short: "SPX",
     mark: "spx",
-    accent: "#00e676",
+    accent: "#a3e635",
     tagline: "0DTE structure desk",
     code: "SPX",
   },
@@ -98,7 +98,7 @@ const IOS_UTILITY_META: Record<
   // utility-header branch so it still gets a proper title/accent without joining the
   // fixed 6-tool tab bar registry that iOS Phase 0d is consolidating.
   vector: { title: "Vector", accent: "#2dd4bf" },
-  other: { title: "BlackOut", accent: "#00e676" },
+  other: { title: "BlackOut", accent: "#a3e635" },
 };
 
 /** Maps URL path → `data-ios-route` key (used by chrome + CSS). */

@@ -59,7 +59,7 @@ export function HelixTideBar({ className }: { className?: string }) {
         <div className="flex h-1.5 overflow-hidden rounded-full bg-[rgba(8,9,14,0.8)]">
           <span
             className="h-full transition-[width] duration-500"
-            style={{ width: `${callPct.toFixed(1)}%`, backgroundColor: "#00e676", boxShadow: "0 0 6px #00e67666" }}
+            style={{ width: `${callPct.toFixed(1)}%`, backgroundColor: "#a3e635", boxShadow: "0 0 6px #a3e63566" }}
           />
           <span
             className="h-full flex-1"

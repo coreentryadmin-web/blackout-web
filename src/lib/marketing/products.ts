@@ -27,7 +27,7 @@ export const MARKETING_PRODUCTS: readonly MarketingProduct[] = [
     label: "SPX Slayer",
     tag: "0DTE command desk",
     audience: "0DTE traders",
-    accent: "#00e676",
+    accent: "#a3e635",
     headline: "Read SPX structure before the tape moves.",
     lede: "Live 0DTE gamma matrix, dealer walls, and graded play alerts — the anchor of the BlackOut desk.",
     heroBlurb: "0DTE gamma matrix, spot ladder, and graded play alerts — refreshed every RTH cycle.",

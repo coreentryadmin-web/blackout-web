@@ -253,7 +253,7 @@ export function SpxDashboard({ vectorSeed }: SpxDashboardProps) {
         <IosNativeSegment
           value={iosPanel}
           onChange={setIosPanel}
-          accent="#00e676"
+          accent="#a3e635"
           aria-label="SPX desk view"
           className="ios-native-desk-segment"
           segments={[

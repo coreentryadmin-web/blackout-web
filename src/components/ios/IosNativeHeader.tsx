@@ -11,7 +11,7 @@ const CLERK_APPEARANCE = {
     colorBackground: "#040407",
     colorText: "#f4f6fb",
     colorTextSecondary: "#9fb4d4",
-    colorPrimary: "#00e676",
+    colorPrimary: "#a3e635",
     colorNeutral: "rgba(255,255,255,0.16)",
     borderRadius: "4px",
   },

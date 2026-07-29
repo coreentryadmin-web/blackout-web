@@ -64,7 +64,7 @@ function biasFromSide(prints: DarkPoolRow[]) {
     return { label: "MIXED", color: "#7dd3fc", glow: "rgba(125,211,252,0.3)" };
   }
   const r = buy / total;
-  if (r >= 0.65) return { label: "BULLISH",  color: "#00e676", glow: "rgba(0,230,118,0.35)" };
+  if (r >= 0.65) return { label: "BULLISH",  color: "#a3e635", glow: "rgba(0,230,118,0.35)" };
   if (r <= 0.35) return { label: "BEARISH",  color: "#ff2d55", glow: "rgba(255,45,85,0.35)" };
   return         { label: "MIXED",   color: "#7dd3fc", glow: "rgba(125,211,252,0.3)" };
 }
@@ -192,7 +192,7 @@ export function DarkPoolPanel({ tapeTicker = "" }: { tapeTicker?: string }) {
   const bias       = biasFromSide(visible);
   const latestNet  = history[history.length - 1]?.net ?? 0;
   const isBull     = latestNet >= 0;
-  const sparkColor = isBull ? "#00e676" : "#ff2d55";
+  const sparkColor = isBull ? "#a3e635" : "#ff2d55";
 
   // Ticker summary stats
   const tickerTotal = visible.reduce((s, p) => s + p.premium, 0);

@@ -1486,7 +1486,7 @@ export function VectorChart({
     }
     const color =
       focusLevel.tone === "bull"
-        ? "#00e676"
+        ? "#a3e635"
         : focusLevel.tone === "bear"
           ? "#ff2d55"
           : focusLevel.tone === "warn"
@@ -2912,10 +2912,10 @@ export function VectorChart({
     });
 
     const series = chart.addSeries(CandlestickSeries, {
-      upColor: "#00e676",
+      upColor: "#a3e635",
       downColor: "#ff2d55",
       borderVisible: false,
-      wickUpColor: "#00e676",
+      wickUpColor: "#a3e635",
       wickDownColor: "#ff2d55",
       priceLineVisible: false,
       lastValueVisible: true,

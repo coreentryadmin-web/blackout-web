@@ -183,9 +183,9 @@ html.ios-app.ios-native-shell .ios-native-menu-tool {
 }
 
 .ios-native-menu-tool-active {
-  border-color: color-mix(in srgb, var(--tool-accent, #00e676) 55%, transparent);
-  background: color-mix(in srgb, var(--tool-accent, #00e676) 10%, transparent);
-  box-shadow: 0 0 24px color-mix(in srgb, var(--tool-accent, #00e676) 18%, transparent);
+  border-color: color-mix(in srgb, var(--tool-accent, #a3e635) 55%, transparent);
+  background: color-mix(in srgb, var(--tool-accent, #a3e635) 10%, transparent);
+  box-shadow: 0 0 24px color-mix(in srgb, var(--tool-accent, #a3e635) 18%, transparent);
 }
 
 .ios-native-menu-tool-locked {
