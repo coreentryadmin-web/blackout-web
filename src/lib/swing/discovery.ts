@@ -109,6 +109,9 @@ export interface SwingDiscoveryConfig {
   minPersistenceSessions: number;
   /** The DTE the thesis intends to trade (resolves the sub-lane); STANDARD (14d) is the neutral default. */
   intendedDte: number;
+  /** Parallel Tier-1 enrich workers. Sequential 40-name enrich blew past the 60s ALB/Lambda budget (prod
+   *  2026-07-29: 100% FailedInvocations). 8 keeps UW/Polygon polite while finishing under ~120s. */
+  enrichConcurrency: number;
 }
 
 export const DEFAULT_SWING_DISCOVERY_CONFIG: SwingDiscoveryConfig = {
@@ -117,7 +120,26 @@ export const DEFAULT_SWING_DISCOVERY_CONFIG: SwingDiscoveryConfig = {
   tier1Cap: 40,
   minPersistenceSessions: MIN_PERSISTENCE_SESSIONS,
   intendedDte: 14,
+  enrichConcurrency: 8,
 };
+
+/** Bounded-concurrency map — preserve input order in the output array. */
+async function mapPool<T, R>(items: readonly T[], concurrency: number, fn: (item: T, idx: number) => Promise<R>): Promise<R[]> {
+  if (items.length === 0) return [];
+  const out = new Array<R>(items.length);
+  let next = 0;
+  const workers = Math.max(1, Math.min(concurrency, items.length));
+  await Promise.all(
+    Array.from({ length: workers }, async () => {
+      for (;;) {
+        const idx = next++;
+        if (idx >= items.length) return;
+        out[idx] = await fn(items[idx]!, idx);
+      }
+    }),
+  );
+  return out;
+}
 
 /** How many accumulating rows to pull when reading the WATCH-eligible rail. Matches the accumulation-store
  *  accessor default; ample for a whole-market rail where only persisted names surface. */
@@ -476,10 +498,9 @@ export async function runSwingDiscoveryScan(
   const rankedFull = rankTierZeroSeeds(merged, accSignals, moverByTicker);
   const ranked = rankedFull.slice(0, cfg.tier1Cap);
 
-  // ── TIER-1 enrich (one SPY fetch shared across every name). ──
+  // ── TIER-1 enrich (one SPY fetch shared across every name; parallel workers under the cron budget). ──
   const spyCloses = await deps.fetchSpyCloses();
-  const candidateSeeds: SwingCandidateSeed[] = [];
-  for (const seed of ranked) {
+  const enrichedOrNull = await mapPool(ranked, cfg.enrichConcurrency, async (seed) => {
     const input = await deps.enrichCandidate(seed, {
       accumulation: accSignals.get(seed.ticker) ?? null,
       mover: moverByTicker.get(seed.ticker) ?? null,
@@ -488,8 +509,9 @@ export async function runSwingDiscoveryScan(
       sessionDay: deps.sessionDay,
       intendedDte: cfg.intendedDte,
     });
-    if (input) candidateSeeds.push({ ticker: seed.ticker, paths: seed.paths, input });
-  }
+    return input ? ({ ticker: seed.ticker, paths: seed.paths, input } satisfies SwingCandidateSeed) : null;
+  });
+  const candidateSeeds: SwingCandidateSeed[] = enrichedOrNull.filter((s): s is SwingCandidateSeed => s != null);
 
   // ── SCORE (pure). ──
   const dossiers = deriveSwingCandidates(candidateSeeds);
