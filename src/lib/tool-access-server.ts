@@ -126,6 +126,9 @@ export async function setToolAccessForUserId(
     meta.tool_access = compact;
   }
   await client.users.updateUserMetadata(userId, { publicMetadata: meta });
+  // Drop the short-TTL getUser cache so the next gate sees the new tool_access map.
+  const { invalidateClerkUserCache } = await import("@/lib/clerk-user-cache");
+  invalidateClerkUserCache(userId);
 }
 
 /** resolveAdminApi remains for admin-only routes; export for tests that mock admin. */
