@@ -311,16 +311,21 @@ async function crossCheckAgainstMassive(ctx: Ctx, rows: FlowRow[]): Promise<Chec
   const both = `[UW ${fmtUsd(uw.total)} call ${uw.callShare.toFixed(0)}% vs Massive ${fmtUsd(massive.totalPremium)} call ${massive.callPct}% over ${massive.meta.contractsWithTrades} NTM contracts${massive.meta.partial ? " (partial)" : ""}; UW/Massive=${uwOverMassive.toFixed(2)}×]`;
 
   // FLAG conditions: the sources DISAGREE about the flow.
+  // UW alerts are a FILTERED subset (unusual prints only); Massive is the raw NTM print stream.
+  // When subset relation holds AND skew DIRECTION agrees, a large call-share magnitude gap is
+  // EXPECTED (the unusual subset can be 100% put-led while raw tape still has call premium) —
+  // flag only opposite skew or subset violation, not magnitude alone.
   const flagOppositeSkew = skewComparable && !sameSkewDir;
   const flagSubset = !subsetOk;
-  const flagSkewMagnitude = skewComparable && sameSkewDir && callShareDiff > XCHECK.callShareAbsTol;
+  const flagSkewMagnitude =
+    skewComparable && sameSkewDir && !subsetOk && callShareDiff > XCHECK.callShareAbsTol;
 
   if (flagOppositeSkew || flagSubset || flagSkewMagnitude) {
     const why = flagOppositeSkew
       ? `OPPOSITE call/put skew (UW ${uwSkewUp > 0 ? "call" : "put"}-led, Massive ${mvSkewUp > 0 ? "call" : "put"}-led)`
       : flagSubset
         ? `UW premium EXCEEDS the raw Massive superset by ${uwOverMassive.toFixed(2)}× (> ${XCHECK.uwOverMassiveMaxRatio}× allowance) — impossible if Massive captures every NTM print`
-        : `same-direction skew but call-share differs ${callShareDiff.toFixed(0)}pts (> ${XCHECK.callShareAbsTol}pt tol)`;
+        : `same-direction skew but call-share differs ${callShareDiff.toFixed(0)}pts (> ${XCHECK.callShareAbsTol}pt tol) while UW also exceeds the Massive superset allowance`;
     return mk(
       ctx,
       "cross-provider",

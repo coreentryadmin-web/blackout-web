@@ -5,6 +5,28 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-29 — [ops] x-autopost cron STALE + SPY flow cross-check false FLAG (#1287)
+
+**Severity.** P1 ops + P0 data-correctness (ops-auto-fix #1287, fingerprint `5ed63c855361`).
+
+**Symptoms.**
+1. `cron-staleness-watchdog` flagged `x-autopost` stale — no `cron_job_runs` in 150m.
+2. `data-correctness` FLAG: SPY `net_premium` — UW 0% call vs Massive 32% call (32pt gap) while
+   UW/Massive=0.78× (valid subset).
+
+**Root cause.**
+1. EventBridge `blackout-production-x-autopost` **DISABLED** (same X-marketing batch as #1277).
+2. `flows-verifier.ts` flagged same-direction skew **magnitude** when UW unusual subset was still
+   below Massive raw superset — expected subset vs superset, not a member-facing bug.
+
+**Evidence.** AWS rule DISABLED, schedule `cron(0 12,14,16,18,20,22,0 ? * * *)`. Dry-run cleared
+watchdog; `data-correctness?force=1` reproduced FLAG pre-fix.
+
+**Fix.** Re-enabled EventBridge; `railway.x-autopost.toml`; cross-check flags opposite skew or subset
+violation only (same direction + valid subset → independently confirmed).
+
+**Status.** `fix/ops-1287-autopost-flow-xcheck` → PR.
+
 ## 2026-07-29 — [Thermal] Triple desk SPY/QQQ not refreshing every 5–10s
 
 **Severity.** P1 UX — compare desk felt stuck; SPX stayed ~5s while SPY/QQQ asof climbed
