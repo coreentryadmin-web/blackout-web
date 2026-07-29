@@ -5,7 +5,6 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
-<<<<<<< HEAD
 ## 2026-07-29 — [ops] ops-auto-fix #1247 — stale GitHub secrets + false cron failures
 
 **Severity.** P1 — `ops-collect` reported `postgres:query-failed` (user `postgres`) and
@@ -23,7 +22,7 @@ skip postgres audit on unreachable/stale-auth hosts; data-correctness `logCronRu
 on successful sweep; options cluster health treats ingest leader lock as live.
 
 **Status.** PR `fix/ops-auto-fix-secrets-1247` → `main`.
-=======
+
 ## 2026-07-29 — [Swing] Discovery cron 100% FailedInvocations — board permanently empty
 
 **Severity.** P0 — Night Hawk Swing lane showed 0 watch / 0 commits all session. EventBridge
@@ -58,7 +57,21 @@ Swing commits remain graduation-gated (cold book → `commitEligibleCount=0` unt
 fix only restores the WATCH/serving write path.
 
 **Status.** This PR + live Lambda/ALB patch.
->>>>>>> origin/main
+
+## 2026-07-29 — [ops] ops-auto-fix #1261 — SWR background refresh + private RDS false P1
+
+**Severity.** P1 — `ops-collect` reported `postgres:query-failed` (empty detail) and
+`watchdog:error-spike` (38–54 `unhandled_rejection` TimeoutErrors / 15m).
+
+**Root cause.** (1) `ops-collect` attempted Postgres via private RDS proxy URL when
+`DATABASE_PUBLIC_URL` is unset (GHA/cloud agents cannot reach VPC); (2) `withServerCache`
+stale-while-revalidate fired `void refreshCache()` on expiry — `refreshCache` re-threw after
+logging, so Polygon `trackedFetch` timeouts became `unhandledRejection` → `error_events` spike.
+
+**Fix.** Skip Postgres audit when only private VPC URL is configured; `refreshCacheInBackground`
+swallows errors on fire-and-forget SWR refreshes.
+
+**Status.** PR `fix/ops-auto-fix-1261` → `main`.
 
 ## 2026-07-29 — [Ops] Cloud-agent audit CRON_SECRET stale + NH `unfilled` verifier gap
 

@@ -46,6 +46,15 @@ export function isStaleAuditDbAuthError(message) {
   return /password authentication failed/i.test(String(message ?? ""));
 }
 
+/** True when the URL targets the private ECS/RDS proxy (not reachable from GHA / cloud agents). */
+export function isPrivateVpcDbUrl(connectionString) {
+  const s = String(connectionString ?? "");
+  if (!s) return false;
+  if (s.includes("proxy.rlwy")) return false; // legacy Railway public TCP proxy
+  if (s.includes("localhost") || s.includes("127.0.0.1")) return false;
+  return /\.proxy[.-]/.test(s) || /\.rds\.amazonaws\.com/.test(s);
+}
+
 export function createAuditClient(connectionString) {
   return new Client({
     connectionString,

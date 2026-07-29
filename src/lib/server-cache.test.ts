@@ -92,3 +92,29 @@ test("no route passes a raw sub-second TTL literal to serverCache", async () => 
   }
   assert.deepEqual(offenders, [], `raw sub-second serverCache TTLs found:\n${offenders.join("\n")}`);
 });
+
+test("stale-while-revalidate background refresh swallows loader errors (no unhandledRejection)", async () => {
+  const { withServerCache } = await import("./server-cache");
+  const key = `test:swr-bg-swallow:${Math.random()}`;
+  const ttl = 5;
+  let rejections = 0;
+  const onRejection = () => {
+    rejections += 1;
+  };
+  process.on("unhandledRejection", onRejection);
+
+  const first = await withServerCache(key, ttl, async () => ({ ok: true }));
+  assert.deepEqual(first, { ok: true });
+
+  // Force expiry so the next call returns stale and kicks off a background refresh.
+  await new Promise((r) => setTimeout(r, ttl + 5));
+
+  const second = await withServerCache(key, ttl, async () => {
+    throw new Error("upstream timeout");
+  });
+  assert.deepEqual(second, { ok: true });
+
+  await new Promise((r) => setTimeout(r, 25));
+  process.off("unhandledRejection", onRejection);
+  assert.equal(rejections, 0, "background SWR refresh must not emit unhandledRejection");
+});
