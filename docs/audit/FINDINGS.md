@@ -27,7 +27,24 @@ traders saw projected close ~7313 while spot ~7420–7430 (−110 to −120pts) 
 `magnetPullScale`; weak-wall (&lt;5% OI) prefers nearer max pain; MC seed every 5s; UI labels magnet
 strike. Tests cover the live regression.
 
-**Status.** `cursor/spx-pin-weak-magnet-3d11` → PR.
+**Status.** MERGED via `cursor/spx-pin-weak-magnet-3d11`.
+
+## 2026-07-29 — [Thermal] Matrix asof 25–60s while SPX Slayer stays ~5s; SPY blanks
+
+**Severity.** P1 — Thermal compare desk (`/heatmap?compare=1`) showed `MATRIX · 25s` /
+`45s` on SPY/QQQ while SPX column + Slayer rail stayed ~4–5s; SPY sometimes flashed
+"No matrix yet" / empty strip (spot **0.00**).
+
+**Evidence.** Live UI screenshot 2026-07-29 ~14:50 ET: SPY 25s, SPX 4s, QQQ ~45s.
+Later screenshot: SPY column **No matrix yet** + spot **0.00** while SPX/QQQ painted.
+EventBridge `heatmap-warm` = 1/min floor. Client polled 5s but served SWR without age-based
+`?force=1`. Transient `available:false` / `spot:0` emptyHeatmap replaced a good matrix.
+`Number.isFinite(0)` showed **0.00** instead of —.
+
+**Fix.** Age-based force (>8s); last-good + session cache; heatmap-warm forces SPY/SPX/QQQ
+first; rth-warm-leader ~20s; refuse to display spot≤0; reject WS/REST spot≤0 before caching empty.
+
+**Status.** `cursor/thermal-matrix-fresh-3d11` → PR.
 
 ## 2026-07-29 — [ops] ops-auto-fix #1247 — stale GitHub secrets + false cron failures
 

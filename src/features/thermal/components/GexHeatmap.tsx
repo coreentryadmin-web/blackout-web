@@ -23,6 +23,7 @@ import {
   buildThermalUrlSearch,
   honestLevelEmpty,
   parseThermalUrlState,
+  shouldForceMatrixRefresh,
   type ThermalLens,
 } from "@/features/thermal/lib/thermal-desk-state";
 import { GEX_KING_COMPACT_LABEL, GEX_KING_DUAL_LABEL, GEX_KING_NODE_HELP, gexKingDualLabel } from "@/lib/gex-king-node-labels";
@@ -2710,6 +2711,36 @@ export function GexHeatmap({
     if (forceResetTimerRef.current) clearTimeout(forceResetTimerRef.current);
     forceResetTimerRef.current = setTimeout(() => setForceNonce(0), 4_000);
   }, [quotePrice, spot, stale, quoteMatches]);
+
+  // Age-based force (SPX Slayer parity): EventBridge heatmap-warm is 1/min. Without this,
+  // Thermal asof ages to 25–60s even though the client polls every 5s. Force when asof >8s.
+  useEffect(() => {
+    if (stale) return;
+    const tick = () => {
+      const asofRaw = data?.asof;
+      const asofMs = asofRaw ? new Date(asofRaw).getTime() : NaN;
+      const nowMs = Date.now();
+      if (
+        !shouldForceMatrixRefresh({
+          asofMs: Number.isFinite(asofMs) ? asofMs : null,
+          nowMs,
+          lastForceAtMs: lastForceAtRef.current,
+        })
+      ) {
+        return;
+      }
+      lastForceAtRef.current = nowMs;
+      setForceNonce((n) => n + 1);
+      setFastFlash(true);
+      if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+      flashTimerRef.current = setTimeout(() => setFastFlash(false), 2_000);
+      if (forceResetTimerRef.current) clearTimeout(forceResetTimerRef.current);
+      forceResetTimerRef.current = setTimeout(() => setForceNonce(0), 4_000);
+    };
+    tick();
+    const id = setInterval(tick, 2_000);
+    return () => clearInterval(id);
+  }, [data?.asof, stale, ticker]);
 
   // Reset throttle + force state when the ticker changes so a switch starts clean.
   // Also reset the expiry scope back to "All" — the expiry axis differs per chain, so a

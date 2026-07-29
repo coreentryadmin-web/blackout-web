@@ -13,6 +13,14 @@ const LENSES: readonly ThermalLens[] = ["gex", "vex", "dex", "charm"];
 /** Matrix is live under ~2.5× the 5s poll; amber after that. */
 export const MATRIX_LIVE_MS = 12_000;
 export const MATRIX_STALE_MS = 15_000;
+/**
+ * When matrix `asof` is older than this during a live Thermal view, request `?force=1`
+ * (server-throttled ≤1/8s) — same escape hatch SPX Slayer uses so SPY/QQQ don't sit on
+ * the 1-minute heatmap-warm EventBridge floor while the client polls every 5s.
+ */
+export const MATRIX_FORCE_REFRESH_AGE_MS = 8_000;
+/** Client-side spacing between force attempts (matches server FORCE_THROTTLE_MS). */
+export const MATRIX_FORCE_THROTTLE_MS = 8_000;
 /** Overlay cache is ~30s — treat as live under 45s. */
 export const OVERLAY_LIVE_MS = 45_000;
 export const OVERLAY_STALE_MS = 90_000;
@@ -177,4 +185,40 @@ export function honestLevelEmpty(
     value: "—",
     help: "Intraday shift collecting — needs ≥2 matrix snapshots in session. Blank outside RTH by design.",
   };
+}
+
+/** True when a heatmap payload can paint a matrix (never treat empty as "good"). */
+export function isUsableGexHeatmapPayload(data: {
+  available?: boolean;
+  spot?: unknown;
+  strikes?: unknown;
+  expiries?: unknown;
+} | null | undefined): boolean {
+  if (!data || data.available !== true) return false;
+  // spot:0 emptyHeatmap is available:false at the route, but defend here too — a stale
+  // client/session cache with spot 0 must never paint as a live matrix (live: SPY 0.00 blank).
+  if (!(typeof data.spot === "number" && data.spot > 0)) return false;
+  return Array.isArray(data.strikes) && data.strikes.length > 0
+    && Array.isArray(data.expiries) && data.expiries.length > 0;
+}
+
+/**
+ * Should the Thermal client request `?force=1` to refresh a stale matrix?
+ * Pure — age vs force threshold, plus client throttle since last force.
+ */
+export function shouldForceMatrixRefresh(input: {
+  asofMs: number | null;
+  nowMs: number;
+  lastForceAtMs: number;
+  forceAgeMs?: number;
+  forceThrottleMs?: number;
+}): boolean {
+  const { asofMs, nowMs, lastForceAtMs } = input;
+  const forceAgeMs = input.forceAgeMs ?? MATRIX_FORCE_REFRESH_AGE_MS;
+  const forceThrottleMs = input.forceThrottleMs ?? MATRIX_FORCE_THROTTLE_MS;
+  if (asofMs == null || !Number.isFinite(asofMs)) return false;
+  const age = nowMs - asofMs;
+  if (!(age >= forceAgeMs)) return false;
+  if (nowMs - lastForceAtMs < forceThrottleMs) return false;
+  return true;
 }

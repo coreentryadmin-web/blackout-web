@@ -26,7 +26,8 @@ import { newLockToken, releaseFencedLock, renewFencedLock, type FencedRedis } fr
 
 const LEADER_KEY = "rth:warm:leader";
 const LEADER_TTL_SEC = 45;
-const TICK_MS = 60_000;
+/** 15s ticks — EventBridge cron floor is 1m; sub-minute heal for heatmap-warm needs a faster loop. */
+const TICK_MS = 15_000;
 
 const WATCH_KEYS = Object.keys(RTH_WRITER_HEAL_AFTER_MIN).filter(isDispatchableCron);
 
