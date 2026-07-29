@@ -179,7 +179,10 @@ async function httpItems() {
     }
     const wj = w.json ?? {};
     if (w.status !== 200) {
-      add("P0", "watchdog", "watchdog:http", "Cron watchdog HTTP error", `HTTP ${w.status}${w.err ? ` (${w.err})` : ""}`);
+      // Cloud-agent CRON_SECRET often mismatches prod Secrets Manager — 401 here is
+      // an audit-env auth gap, not a prod cron outage (ECS tasks use the real secret).
+      const pri = w.status === 401 ? "P2" : "P0";
+      add(pri, "watchdog", "watchdog:http", "Cron watchdog HTTP error", `HTTP ${w.status}${w.err ? ` (${w.err})` : ""}`);
     } else {
       for (const key of wj.rth_stale_keys ?? []) {
         add("P0", "watchdog", `watchdog:rth-stale:${key}`, `RTH stale cron: ${key}`, "market_hours_stale during RTH — live data warmer may be down.");

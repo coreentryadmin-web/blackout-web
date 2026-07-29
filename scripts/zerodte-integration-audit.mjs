@@ -9,7 +9,8 @@
 import { spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { spotsAgree, flipsAgree } from "./audit/lib/cross-tool-tolerance.mjs";
+import { spotsAgree } from "./audit/lib/cross-tool-tolerance.mjs";
+import { fetchAuditJson, releaseAuditClerkSession } from "./audit/lib/audit-auth-fetch.mjs";
 
 const BASE = (
   process.argv.find((a) => a.startsWith("--base="))?.slice("--base=".length) ??
@@ -27,11 +28,8 @@ const rec = (name, status, detail) => {
 };
 
 async function fetchJson(path) {
-  const r = await fetch(`${BASE}${path}`, {
-    headers: { Authorization: `Bearer ${CRON}`, Accept: "application/json" },
-  });
-  const json = await r.json().catch(() => ({}));
-  return { status: r.status, json };
+  const res = await fetchAuditJson(BASE, path);
+  return { status: res.ok ? res.status : res.status || 401, json: res.json ?? {} };
 }
 
 function spotDelta(a, b) {
@@ -40,8 +38,8 @@ function spotDelta(a, b) {
 }
 
 async function auditCrossToolLive() {
-  if (!CRON) {
-    rec("integration:live", "SKIP", "CRON_SECRET not set");
+  if (!CRON && !(process.env.CLERK_SECRET_KEY && process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)) {
+    rec("integration:live", "SKIP", "CRON_SECRET and Clerk keys not set");
     return;
   }
 
@@ -123,7 +121,11 @@ async function main() {
     rec("integration:bie-consistency", "PASS");
   }
 
-  run("npm run validate:zerodte-logic", "integration:zerodte-logic");
+  if (!process.env.GRID_RTH_ORCHESTRATOR) {
+    run("npm run validate:zerodte-logic", "integration:zerodte-logic");
+  } else {
+    rec("integration:zerodte-logic", "SKIP", "covered by grid-rth orchestrator");
+  }
 
   await auditCrossToolLive();
 
@@ -137,13 +139,15 @@ async function main() {
 
   if (fails.length) {
     fails.forEach((f) => console.log(`  · ${f.name}: ${f.detail ?? ""}`));
+    await releaseAuditClerkSession();
     process.exit(1);
   }
+  await releaseAuditClerkSession();
   console.log("GREEN — 0DTE integration audit passed.\n");
 }
 
 function run(cmd, label) {
-  const r = spawnSync(cmd, { shell: true, encoding: "utf8", env: process.env });
+  const r = spawnSync(cmd, { shell: true, encoding: "utf8", env: process.env, timeout: 120_000 });
   if (r.status !== 0) {
     rec(label, "FAIL", (r.stderr || r.stdout || "").trim().slice(0, 300));
     return false;
@@ -152,7 +156,8 @@ function run(cmd, label) {
   return true;
 }
 
-main().catch((e) => {
+main().catch(async (e) => {
+  await releaseAuditClerkSession();
   console.error(e);
   process.exit(1);
 });

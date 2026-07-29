@@ -8,6 +8,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { fetchAuditJson } from "./lib/audit-auth-fetch.mjs";
 
 const ROOT = process.cwd();
 const checks = [];
@@ -92,20 +93,18 @@ const CRON = process.env.CRON_SECRET;
 const BASE = (process.env.AUDIT_APP_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
 
 async function layerB() {
-  if (!CRON) {
-    rec("live:board-vs-largo", true, "SKIP — CRON_SECRET not set");
+  if (!CRON && !(process.env.CLERK_SECRET_KEY && process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)) {
+    rec("live:board-vs-largo", true, "SKIP — CRON_SECRET and Clerk keys not set");
     return;
   }
   try {
-    const http = await fetch(`${BASE}/api/market/zerodte/board`, {
-      headers: { Authorization: `Bearer ${CRON}`, Accept: "application/json" },
-    });
-    const board = await http.json();
-    if (!http.ok || !board.available) {
-      rec("live:board-fetch", false, `HTTP ${http.status}`);
+    const fetched = await fetchAuditJson(BASE, "/api/market/zerodte/board");
+    const board = fetched.json;
+    if (!fetched.ok || !board?.available) {
+      rec("live:board-fetch", false, `HTTP ${fetched.status || 401}`);
       return;
     }
-    rec("live:board-fetch", true);
+    rec("live:board-fetch", true, fetched.via ? `via=${fetched.via}` : undefined);
 
     const probe = spawnSync(
       `npx tsx -e "

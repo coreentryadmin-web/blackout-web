@@ -166,10 +166,18 @@ console.log("1. Production (blackout-web)");
 const skipCli =
   process.env.SKIP_RAILWAY === "1" ||
   IS_STAGING ||
-  (process.env.GITHUB_ACTIONS === "true" && !process.env.RAILWAY_TOKEN?.trim());
+  (process.env.GITHUB_ACTIONS === "true" && !process.env.RAILWAY_TOKEN?.trim()) ||
+  !(() => {
+    try {
+      execSync("command -v railway", { stdio: "ignore" });
+      return true;
+    } catch {
+      return false;
+    }
+  })();
 
 if (skipCli) {
-  warn("Production CLI checks skipped (GITHUB_ACTIONS or SKIP_RAILWAY=1)");
+  warn("Production CLI checks skipped (Railway deprecated / CLI unavailable / SKIP_RAILWAY=1)");
 } else {
 try {
   const deployments = sh("railway deployment list --service blackout-web 2>/dev/null");
@@ -186,7 +194,9 @@ try {
   else if (/Building|Queued/i.test(status)) warn(`Service still rolling: ${status.trim()}`);
   else warn(status.trim() || "Could not read service status");
 } catch (e) {
-  fail(`Deploy CLI: ${e.message}`);
+  // Railway is legacy — prod deploys via ECS (ecr-push-production.yml). A missing
+  // or logged-out CLI must not block HTTP smoke / RTH-open when ECS is healthy.
+  warn(`Deploy CLI: ${e.message} (Railway deprecated — rely on ECS deploy smoke)`);
 }
 }
 
