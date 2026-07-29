@@ -5,6 +5,29 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-29 — [ops] x-replies cron STALE (EventBridge DISABLED)
+
+**Severity.** P1 ops (ops-auto-fix #1277).
+
+**Symptom.** `cron-staleness-watchdog` flagged `x-replies` stale — no `cron_job_runs` row in 90m
+during RTH weekdays.
+
+**Root cause.**
+1. EventBridge rule `blackout-production-x-replies` was **DISABLED** (along with other X marketing
+   rules) — scheduled fires never hit `/api/cron/x-replies`.
+2. `railway.x-replies.toml` catalog had a stale 3×/day schedule (`0 13,17,22`) vs the live EventBridge
+   expression `cron(20 13-22 ? * MON-FRI *)` (hourly :20).
+
+**Evidence.** AWS `DescribeRule`: State=DISABLED, Schedule=`cron(20 13-22 ? * MON-FRI *)`.
+Manual `GET /api/cron/x-replies` returned 200 with replies; watchdog `problem_keys` cleared after
+one run. `ops-collect` fingerprint `b60c447e4c03`.
+
+**Fix.** Re-enabled EventBridge rule; aligned `railway.x-replies.toml` to `20 13-22 * * 1-5`;
+`xMarketingCronPaused()` + admin cron-health override so intentionally paused X marketing does not
+page STALE; added X crons to `railway-cron-services.mjs` ops registry.
+
+**Status.** `fix/x-replies-cron-stale` → PR.
+
 ## 2026-07-29 — [SPX] EOD Pin Forecaster glued ~120pts below spot (weak far wall)
 
 **Severity.** P1 — SPX Slayer EOD Pin panel + Vector "Pin" axis tag looked frozen all afternoon;

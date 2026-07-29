@@ -6,6 +6,6 @@ watchPatterns = ["scripts/hit-cron.mjs", "railway.x-replies.toml", "nixpacks.tom
 
 [deploy]
 startCommand = "node scripts/hit-cron.mjs /api/cron/x-replies"
-cronSchedule = "0 13,17,22 * * 1-5"
+cronSchedule = "20 13-22 * * 1-5"
 restartPolicyType = "ON_FAILURE"
 numReplicas = 1

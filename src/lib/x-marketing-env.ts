@@ -25,6 +25,25 @@ export function xMentionRepliesPaused(): boolean {
   return v === "1" || v === "true" || v === "yes";
 }
 
+const X_MARKETING_CRON_KEYS = new Set([
+  "x-autopost",
+  "x-growth",
+  "x-replies",
+  "x-analytics",
+]);
+
+/**
+ * True when an X marketing cron is intentionally idle via ECS env (pause flags).
+ * Used by cron-health so a disabled EventBridge + paused stack does not page as STALE.
+ */
+export function xMarketingCronPaused(jobKey: string): boolean {
+  if (!X_MARKETING_CRON_KEYS.has(jobKey)) return false;
+  if (jobKey === "x-replies") return xMentionRepliesPaused();
+  if (jobKey === "x-autopost") return xMarketingPostsPaused();
+  // x-growth / x-analytics: no separate pause — full marketing pause gates them.
+  return xMarketingPostsPaused();
+}
+
 /** Likes + follows only — no quote/reply on our profile (RT still OK). */
 export function xMarketingSilentOnly(): boolean {
   const v = process.env.X_GROWTH_SILENT_ONLY?.trim().toLowerCase();

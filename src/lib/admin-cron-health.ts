@@ -18,6 +18,7 @@ import { isEtCashRth } from "@/lib/et-market-hours";
 import {
   isFlowIngestAlternateWriterSkip,
 } from "@/lib/cron-writer-target-fresh";
+import { xMarketingCronPaused } from "@/lib/x-marketing-env";
 
 /** RTH gate for market_hours_only cron health — canonical ET helper (early-close aware). */
 function inMarketHoursEt(now = new Date()): boolean {
@@ -372,6 +373,22 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
 
     return health;
   });
+
+  // X marketing crons may have EventBridge disabled while pause env flags are set — don't page
+  // STALE for an intentionally idle stack (ops still sees "Paused" in admin cron health).
+  for (let i = 0; i < jobs.length; i++) {
+    const health = jobs[i];
+    if (!xMarketingCronPaused(health.key)) continue;
+    if (health.status !== "stale" && health.status !== "failed" && health.status !== "unknown") {
+      continue;
+    }
+    jobs[i] = {
+      ...health,
+      status: "healthy",
+      status_label: "Paused (X marketing env)",
+      market_hours_stale: false,
+    };
+  }
 
   // Handshake lag during ECS redeploy gaps can mark warmers/flow-ingest stale even when
   // their PG/Redis targets are still fresh (organic traffic + TTL + WS paths keep data live).
