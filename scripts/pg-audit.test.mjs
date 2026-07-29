@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   isPrivateDbUnreachableError,
   isStaleAuditDbAuthError,
+  isPrivateVpcDbUrl,
 } from "./pg-audit.mjs";
 
 describe("pg-audit helpers", () => {
@@ -18,5 +19,14 @@ describe("pg-audit helpers", () => {
       true
     );
     assert.equal(isStaleAuditDbAuthError("read ECONNRESET"), false);
+  });
+
+  it("detects private VPC RDS proxy URLs", () => {
+    assert.equal(
+      isPrivateVpcDbUrl("postgres://u:p@blackout-production-proxy.proxy-abc.example.rds.amazonaws.com:5432/db"),
+      true
+    );
+    assert.equal(isPrivateVpcDbUrl("postgres://u:p@proxy.rlwy.net:12345/db"), false);
+    assert.equal(isPrivateVpcDbUrl("postgres://postgres:postgres@localhost:5432/blackout"), false);
   });
 });
