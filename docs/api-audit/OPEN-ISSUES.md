@@ -1,5 +1,85 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-29 16:16 ET
+Last updated: 2026-07-29 16:33 ET
+
+## grid-rth-2026-07-29 — 0DTE Command post-close verify pass (~16:28–16:33 ET)
+
+**Session:** 0DTE Command + Market Grid all-day RTH verification agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` **verify** mode. Time: Wed 16:28–16:33 ET (post-close; cash session closed 16:00 ET). Commands: `validate:grid-rth --force` → `validate:zerodte-logic` → `validate:grid-e2e` → `validate:zerodte-integration`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:grid-rth` | ⚠️ **13/14** — all prod probes GREEN; `ops:collect` FAIL (`DATABASE_PUBLIC_URL` absent — cloud sandbox VPC) |
+| `npm run validate:zerodte-logic` | ✅ **GREEN** — 17/17 (gates, plan exits, lifecycle, mergePlays, session heat, ledger PnL) |
+| `npm run validate:grid-e2e` | ✅ **GREEN** — 5/5 (API + Playwright `/nighthawk` page-load, zero console errors) |
+| `npm run validate:zerodte-integration` | ✅ **GREEN** — 9/9 cross-tool (SPX bootstrap/GEX, HELIX flows, NH dedupe, ledger PnL) |
+| `infra:validate:rth-open` | ✅ **GREEN** |
+| `cron:zerodte-warm` | ✅ **GREEN** (first pass transient HTTP 502; re-probe 200 `warmed:3/3`) |
+| `grid:data-correctness` | ✅ **PASS** — 0 grid/zerodte flags (1 cross-provider SPY `net_premium` divergence — HELIX layer, not 0DTE) |
+
+### 0DTE board (live, CLOSED)
+
+| Field | Value |
+|---|---|
+| Session heat | `CLOSED` (0%) — post 16:00 ET ✓ |
+| Setups | 7 (2 eligible / 0 gate violations) — QQQ, SPXW, MU, GOOGL, AAPL, SMH, +1 |
+| Ledger | 4 rows — PnL math matches `reconcileLedgerLivePnlPct` ✓ (MU −50%, SPXW −50%, AMD +23.01%, INTC +24.66%) |
+| `upstream_ok` | `true` |
+| Night Hawk dedupe | 5 tickers `covered_elsewhere` |
+| HELIX flows | 20 prints |
+| SPX spot (bootstrap vs GEX) | 7316.15 (agree) |
+
+### 0DTE logic probes (all GREEN)
+
+| Probe | Result |
+|---|---|
+| Gate funnel (SETUP_MIN_GROSS, aggression, dominance, ITM) | PASS |
+| Plan exits (stop −50%, target +100%, time stop 15:30 ET) | PASS |
+| Trade lifecycle (OPEN → TRIM → CLOSED, sticky trough stop) | PASS |
+| Plan grading (stop wins when both touch same bar) | PASS |
+| Session heat (RTH → POST_COMMIT → POWER_HOUR → CLOSED) | PASS |
+| `mergePlays` past cutoff / MOVED → SKIP not OPEN | PASS |
+| Ledger PnL consistency (4 live rows) | PASS |
+| Live cutoff constant | 14:00 ET commit cutoff ✓ |
+
+### Cross-tool integration
+
+| Check | Result |
+|---|---|
+| SPX bootstrap spot vs GEX | PASS (7316.15) |
+| SPX desk merged vs GEX | PASS (7316.15) |
+| HELIX flows feed scanner | PASS (20–30 prints) |
+| Night Hawk dedupe (`covered_elsewhere`) | PASS (5 tickers) |
+| BIE consistency | PASS |
+| Ledger PnL (4 rows) | PASS |
+
+### UI E2E (`/nighthawk` — classic `/grid` decommissioned 2026-07-07)
+
+| # | Control / surface | Result |
+|---|---|---|
+| Sign-in + shell | ✅ Premium admin session |
+| `/nighthawk` page load | ✅ Title: "Night Hawk · BlackOut" |
+| 0DTE board API | ✅ 7 setups · ledger 4 |
+| HELIX flows API | ✅ 20 prints |
+| Console errors | ✅ Zero |
+| `/grid` route | ⏭️ **404** (expected — classic Grid deleted; 0DTE Command on `/nighthawk`) |
+
+### P0 found this pass
+
+**None.** Member-facing 0DTE Command is GREEN post-close.
+
+### Residual open (non-P0)
+
+| Severity | ID | Detail | Status |
+|---|---|---|---|
+| **P2** | `ops-collect-vpc-skip` | Cloud agent cannot reach Postgres (`DATABASE_PUBLIC_URL` unset) | **KNOWN** |
+| **P2** | `qqq-underlying-staleness` | data-validator: QQQ setup `underlying_price` vs Polygon (from 15:21 ET pass) | **OPEN** |
+| **P2** | `runbook-grid-stale` | `GRID-RTH-ALL-DAY-AGENT.md` Step 2 still cites `/grid` tabs + 9 `/api/grid/*` panels (deleted 2026-07-07) | **OPEN** — docs drift |
+| **P2** | `cross-provider-spy-flow` | data-correctness: SPY `net_premium` UW vs Massive call-share differs 31pts | **OPEN** — cross-source divergence, not 0DTE |
+
+**Reports:** `audit-output/grid-rth-2026-07-29-verify-1785357255994.json`, `audit-output/zerodte-logic-1785357107679.json`, `audit-output/grid-e2e-1785357184206.json`, `audit-output/zerodte-integration-1785357128884.json`
+
+---
 
 ## spx-rth-2026-07-29 — SPX Slayer all-day verify pass (~16:09–16:16 ET)
 
