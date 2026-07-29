@@ -7,8 +7,21 @@
 // SECURITY: webhook URLs embed a secret token. We NEVER log the URL or token value;
 // we log only a non-reversible label + host so operators can tell which channel failed.
 
+export interface DiscordEmbedPayload {
+  title?: string;
+  description?: string;
+  color?: number;
+  url?: string;
+  timestamp?: string;
+  footer?: { text: string; icon_url?: string };
+  fields?: Array<{ name: string; value: string; inline?: boolean }>;
+  author?: { name: string; url?: string; icon_url?: string };
+}
+
+/** Text and/or embeds — Discord accepts either (or both). */
 export interface DiscordPayload {
-  content: string;
+  content?: string;
+  embeds?: DiscordEmbedPayload[];
 }
 
 export interface DiscordFileAttachment {

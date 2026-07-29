@@ -6,6 +6,7 @@ import { shouldFanOut } from "@/lib/flow-fanout";
 import { flowFallbackAlertId } from "@/lib/flow-alert-id";
 import { markFlowFrameDelivered } from "@/lib/flow-liveness";
 import { extractChainFieldsFromRaw } from "@/lib/flow-raw-fields";
+import { notifyHelixDiscordFlow } from "@/lib/helix-discord-notify";
 
 /**
  * SSE row shape published to the live tape. Extends FlowRow with the canonical
@@ -88,22 +89,34 @@ export function buildHelixAuditRow(alertIdValue: string, flow: MarketFlowAlert) 
   };
 }
 
+/**
+ * Community HELIX Discord (Thermal channel). Opt-in via HELIX_DISCORD_ALERTS=1;
+ * filters ≥$500K · fill <$10 · ≤30 DTE inside notifyHelixDiscordFlow. Fail-soft.
+ */
 async function notifyDiscord(flow: FlowRow): Promise<void> {
-  const url = process.env.DISCORD_FLOW_WEBHOOK_URL?.trim();
-  if (!url) return;
-
-  const emoji = flow.route === "whale" ? "🐋" : flow.route === "0dte" ? "⚡" : "📈";
-  const content = [
-    `${emoji} **${flow.ticker}** ${flow.option_type} $${flow.strike} · ${flow.expiry}`,
-    `Premium **$${flow.premium.toLocaleString()}** · ${flow.direction} · ${flow.route.toUpperCase()}`,
-    `[View on Blackout](https://blackouttrades.com/flows)`,
-  ].join("\n");
-
-  await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content: content.slice(0, 1900) }),
-  }).catch((err) => console.warn("[flow-persist] discord webhook:", err));
+  try {
+    await notifyHelixDiscordFlow({
+      ticker: flow.ticker,
+      premium: flow.premium,
+      option_type: flow.option_type,
+      expiry: flow.expiry,
+      strike: flow.strike,
+      direction: flow.direction,
+      score: flow.score,
+      route: flow.route,
+      alerted_at: flow.alerted_at || null,
+      event_at: flow.event_at ?? null,
+      dte: flow.dte ?? null,
+      fill_price: flow.fill_price ?? null,
+      ask_pct: flow.ask_pct ?? null,
+      open_interest: flow.open_interest ?? null,
+      otm_pct: flow.otm_pct ?? null,
+      implied_volatility: flow.implied_volatility ?? null,
+      alert_rule: flow.alert_rule ?? null,
+    });
+  } catch (err) {
+    console.warn("[flow-persist] helix discord notify:", err);
+  }
 }
 
 /**
