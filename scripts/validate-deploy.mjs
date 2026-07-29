@@ -71,7 +71,8 @@ function loadProdSecrets() {
 
 function railwayCliOk() {
   try {
-    const out = sh("railway deployment list --service blackout-web 2>/dev/null | head -1");
+    const out = sh("railway deployment list --service blackout-web 2>&1 | head -1");
+    if (!out) return false;
     return !/Invalid RAILWAY_TOKEN|not logged in|Unauthorized/i.test(out);
   } catch {
     return false;
