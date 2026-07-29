@@ -12,6 +12,7 @@ import { gexContextBlock, gexContextLine } from "@/lib/providers/gex-positioning
 import { requireAnyToolApi } from "@/lib/tool-access-server";
 import { checkNumbersGrounded } from "@/lib/grounding-guard";
 import { fmtPremium } from "@/lib/fmt-money";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -188,13 +189,8 @@ export async function GET(req: NextRequest) {
 
   const ticker = (req.nextUrl.searchParams.get("ticker") || "SPY").toUpperCase();
 
-  const noStore = {
-    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-    Pragma: "no-cache",
-  };
-
   if (!/^[A-Z0-9.\-]{1,8}$/.test(ticker)) {
-    return NextResponse.json({ error: "Invalid ticker" }, { status: 400, headers: noStore });
+    return NextResponse.json({ error: "Invalid ticker" }, { status: 400, headers: NO_STORE_HEADERS });
   }
 
   // 1. BIE path when Claude is disabled (staging); prod still uses Claude when configured.
@@ -208,7 +204,7 @@ export async function GET(req: NextRequest) {
   if (mem && now - mem.at < EXPLAIN_TTL_MS) {
     return NextResponse.json(
       { available: true, narrative: mem.narrative, asof: mem.asof, ticker },
-      { status: 200, headers: noStore }
+      { status: 200, headers: NO_STORE_HEADERS }
     );
   }
 
@@ -219,7 +215,7 @@ export async function GET(req: NextRequest) {
       explainMem.set(ticker, hit);
       return NextResponse.json(
         { available: true, narrative: hit.narrative, asof: hit.asof, ticker },
-        { status: 200, headers: noStore }
+        { status: 200, headers: NO_STORE_HEADERS }
       );
     }
   } catch {
@@ -233,7 +229,7 @@ export async function GET(req: NextRequest) {
       // No positioning to read — never fabricate a narrative.
       return NextResponse.json(
         { available: false, reason: "no-data", ticker },
-        { status: 200, headers: noStore }
+        { status: 200, headers: NO_STORE_HEADERS }
       );
     }
 
@@ -262,7 +258,7 @@ export async function GET(req: NextRequest) {
       if (!narrative || !narrative.trim()) {
         return NextResponse.json(
           { available: false, reason: "failed", ticker },
-          { status: 200, headers: noStore }
+          { status: 200, headers: NO_STORE_HEADERS }
         );
       }
 
@@ -274,7 +270,7 @@ export async function GET(req: NextRequest) {
         } else {
           return NextResponse.json(
             { available: false, reason: "ungrounded", ticker },
-            { status: 200, headers: noStore }
+            { status: 200, headers: NO_STORE_HEADERS }
           );
         }
       }
@@ -283,7 +279,7 @@ export async function GET(req: NextRequest) {
     if (!finalNarrative) {
       return NextResponse.json(
         { available: false, reason: "failed", ticker },
-        { status: 200, headers: noStore }
+        { status: 200, headers: NO_STORE_HEADERS }
       );
     }
 
@@ -297,14 +293,14 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(
       { available: true, narrative: entry.narrative, asof, ticker },
-      { status: 200, headers: noStore }
+      { status: 200, headers: NO_STORE_HEADERS }
     );
   } catch (error) {
     console.error("[market/gex-heatmap/explain]", error);
     // Never throw to the client.
     return NextResponse.json(
       { available: false, reason: "failed", ticker },
-      { status: 200, headers: noStore }
+      { status: 200, headers: NO_STORE_HEADERS }
     );
   }
 }

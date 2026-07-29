@@ -16,6 +16,7 @@ import {
 } from "@/features/helix/lib/helix-flow-limits";
 import { flowPageCursor } from "@/features/helix/lib/helix-flow-tape-merge";
 import { registerVectorUniverseView } from "@/features/vector/lib/vector-universe";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
 
@@ -108,7 +109,7 @@ export async function GET(req: NextRequest) {
             TTL.DARK_POOL,
             runQuery
           );
-      return NextResponse.json(roundFloats(payload));
+      return NextResponse.json(roundFloats(payload), { headers: NO_STORE_HEADERS });
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       console.error("[market/flows] postgres ERROR:", detail);
@@ -139,7 +140,8 @@ export async function GET(req: NextRequest) {
         count: page.length,
         has_more: hasMore,
         next_before: nextBefore,
-      })
+      }),
+      { headers: NO_STORE_HEADERS }
     );
   } catch (error) {
     console.error("[market/flows]", error);

@@ -18,6 +18,7 @@ import { getToolAccessForUserId } from "@/lib/tool-access-server";
 import { isAdminEmail } from "@/lib/admin-emails";
 import { classifyAdminUserAccess } from "@/lib/admin-user-access";
 import type { BillingKind } from "@/lib/whop";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
 
@@ -80,7 +81,7 @@ export async function GET(
       accessLabel: access.accessLabel,
       deskAccess: access.deskAccess,
       accessSummary: access.accessSummary,
-    });
+    }, { headers: NO_STORE_HEADERS });
   } catch (err) {
     const status = (err as { status?: number })?.status;
     if (status === 404) {
@@ -224,7 +225,7 @@ export async function PATCH(
     tier: String(meta.tier ?? "free"),
     role: String(meta.role ?? ""),
     banned: updated.banned,
-  });
+  }, { headers: NO_STORE_HEADERS });
 }
 
 export async function DELETE(
@@ -275,5 +276,5 @@ export async function DELETE(
     id.replace(/[\r\n]/g, "")
   );
 
-  return NextResponse.json({ ok: true, deleted });
+  return NextResponse.json({ ok: true, deleted }, { headers: NO_STORE_HEADERS });
 }

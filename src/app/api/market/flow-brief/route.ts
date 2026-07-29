@@ -11,6 +11,7 @@ import { composeFlowBrief } from "@/lib/bie/flow-brief";
 import { composeQuietFlowBrief } from "@/lib/bie/flow-tape-brief";
 import { getCachedBiePlatformContext } from "@/lib/bie/platform-cache";
 import { checkNumbersGrounded, extractNumbersFromText } from "@/lib/grounding-guard";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
 
@@ -214,7 +215,7 @@ export async function GET(req: NextRequest) {
       window_slot: windowSlot,
       next_refresh_ms: BRIEF_TTL_MS - (Date.now() % BRIEF_TTL_MS),
       generated_at: result?.generated_at ?? null,
-    });
+    }, { headers: NO_STORE_HEADERS });
   } catch (err) {
     console.error("[flow-brief]", err);
     return NextResponse.json({ brief: null, error: "api_error" }, { status: 503 });

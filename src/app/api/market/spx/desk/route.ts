@@ -3,6 +3,7 @@ import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
 import { loadSpxDesk } from "@/features/spx/lib/spx-desk-loader";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
 import { roundFloats } from "@/lib/round-floats";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
 
@@ -22,10 +23,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(
       roundFloats({ ...desk, polled_at: desk.polled_at ?? desk.as_of }),
       {
-        headers: {
-          "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-          Pragma: "no-cache",
-        },
+        headers: NO_STORE_HEADERS,
       }
     );
   } catch (error) {

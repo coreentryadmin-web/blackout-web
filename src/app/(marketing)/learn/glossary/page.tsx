@@ -1,6 +1,4 @@
-﻿export const dynamic = "force-static";
-
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 import { LearnGlossaryPage } from "@/components/learn/LearnGlossaryPage";
 import { glossaryGuide } from "@/lib/learn/guides";
 

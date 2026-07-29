@@ -1,6 +1,4 @@
-﻿export const dynamic = "force-static";
-
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 import { LearnHub } from "@/components/learn/LearnHub";
 
 export const metadata: Metadata = {

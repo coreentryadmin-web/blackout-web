@@ -6,6 +6,7 @@ import { getStockLiveCandle } from "@/lib/ws/stock-candle-store";
 import { resolveOptionsRoot } from "@/lib/providers/polygon-options-gex";
 import { fetchStockSnapshot, fetchIndexSnapshot } from "@/lib/providers/polygon";
 import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -181,11 +182,6 @@ export async function GET(req: NextRequest) {
   const { optionsRoot } = resolveOptionsRoot(ticker);
   const isIndex = isIndexRoot(optionsRoot);
 
-  const noStore = {
-    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-    Pragma: "no-cache",
-  } as const;
-
   try {
     // ── WS path: true real-time index price straight from the live indexStore. ──
     if (isIndex && WS_INDEX_KEYS.has(optionsRoot)) {
@@ -200,7 +196,7 @@ export async function GET(req: NextRequest) {
           source: "ws",
           asof: new Date(entry.updatedAt).toISOString(),
         };
-        return NextResponse.json(payload, { headers: noStore });
+        return NextResponse.json(payload, { headers: NO_STORE_HEADERS });
       }
       // else: store cold/stale → fall through to the shared-cached index REST snapshot.
     }
@@ -220,19 +216,19 @@ export async function GET(req: NextRequest) {
           source: "ws",
           asof: new Date(candle.updatedAt).toISOString(),
         };
-        return NextResponse.json(payload, { headers: noStore });
+        return NextResponse.json(payload, { headers: NO_STORE_HEADERS });
       }
     }
 
     // ── REST path: stocks/ETFs without a live WS tick, plus index roots without
     //    a live WS feed (NDX/RUT) or a cold index store. ──
     const payload = await getRestQuote(ticker, optionsRoot, isIndex);
-    if (payload) return NextResponse.json(payload, { headers: noStore });
+    if (payload) return NextResponse.json(payload, { headers: NO_STORE_HEADERS });
 
-    return NextResponse.json({ available: false, ticker }, { status: 200, headers: noStore });
+    return NextResponse.json({ available: false, ticker }, { status: 200, headers: NO_STORE_HEADERS });
   } catch (error) {
     // Defensive — getRestQuote already swallows; never throw, never fabricate.
     console.error("[market/quote]", error);
-    return NextResponse.json({ available: false, ticker }, { status: 200, headers: noStore });
+    return NextResponse.json({ available: false, ticker }, { status: 200, headers: NO_STORE_HEADERS });
   }
 }

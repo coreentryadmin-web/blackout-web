@@ -40,6 +40,12 @@ const MARKETING_PATHS = [
   "/learn/heat-maps",
   "/learn/glossary",
   "/learn/getting-started",
+  "/privacy",
+  "/disclaimer",
+  "/terms",
+  "/contact",
+  "/cookie-policy",
+  "/refund-policy",
 ] as const;
 
 function deployId(): string | null {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
 import { serverCache, TTL } from "@/lib/server-cache";
 import { isHeatmapOverlayAllowed } from "@/lib/heatmap-allowlist";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +32,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ snapshot: null, symbol }, { status: 200 });
     }
 
-    return NextResponse.json({ snapshot, symbol });
+    return NextResponse.json({ snapshot, symbol }, { headers: NO_STORE_HEADERS });
   } catch (err) {
     console.error("[dark-pool/ticker]", err);
     return NextResponse.json({ snapshot: null, symbol }, { status: 200 });

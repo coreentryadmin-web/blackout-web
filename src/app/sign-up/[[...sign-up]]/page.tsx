@@ -10,6 +10,8 @@ import { clerkPostAuthReturnPath } from "@/lib/clerk-redirect-url";
 import { activeClerkUserIdFromRequestCookies } from "@/lib/clerk-session-cookies";
 import { isCognitoAuth } from "@/lib/auth-provider";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Create account · BlackOut",
   description: "Create your BlackOut account to unlock the live trading desk.",

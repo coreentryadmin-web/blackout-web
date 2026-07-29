@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
 import { requireDatabaseInProduction } from "@/lib/db";
 import { fetchUserJournal, saveUserJournalEntry } from "@/lib/journal/journal-store";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -16,7 +17,7 @@ export async function GET(req: NextRequest) {
   }
   try {
     const entries = await fetchUserJournal(auth.userId);
-    return NextResponse.json({ entries });
+    return NextResponse.json({ entries }, { headers: NO_STORE_HEADERS });
   } catch (error) {
     console.error("[market/spx/journal GET]", error);
     return NextResponse.json({ entries: {}, error: "Failed to load journal" }, { status: 502 });

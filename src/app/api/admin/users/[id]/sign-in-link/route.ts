@@ -3,6 +3,7 @@ import { clerkClient } from "@clerk/nextjs/server";
 import { resolveAdminApi } from "@/lib/admin-access";
 import { logAdminAction } from "@/lib/admin-audit";
 import { isCognitoAuth } from "@/lib/auth-provider";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
 
@@ -55,5 +56,5 @@ export async function POST(
     expiresInSeconds: DEFAULT_TTL_SEC,
     userId: id,
     email,
-  });
+  }, { headers: NO_STORE_HEADERS });
 }

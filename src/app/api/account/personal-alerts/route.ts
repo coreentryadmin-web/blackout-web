@@ -11,6 +11,7 @@ import { NextResponse } from "next/server";
 import { redactWebhook } from "@/lib/discord-post";
 import { getPersonalWebhook, setPersonalWebhook } from "@/lib/personal-alert-store";
 import { requireTierApi } from "@/lib/market-api-auth";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,7 +33,7 @@ export async function GET() {
   return NextResponse.json({
     configured: Boolean(url),
     host: url ? redactWebhook(url) : null,
-  });
+  }, { headers: NO_STORE_HEADERS });
 }
 
 export async function PUT(req: Request) {

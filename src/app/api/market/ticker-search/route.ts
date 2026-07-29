@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { fetchPolygonTickerSearch } from "@/lib/providers/polygon-largo";
 import { serverCache, TTL } from "@/lib/server-cache";
 import { requireTierApi } from "@/lib/market-api-auth";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
+
+export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   // Require a signed-in user — the cache key is user-controlled (`search:${q}`), so the
@@ -22,5 +25,5 @@ export async function GET(req: NextRequest) {
     TTL.TICKER_SEARCH,
     () => fetchPolygonTickerSearch(q, limit)
   );
-  return NextResponse.json({ results });
+  return NextResponse.json({ results }, { headers: NO_STORE_HEADERS });
 }

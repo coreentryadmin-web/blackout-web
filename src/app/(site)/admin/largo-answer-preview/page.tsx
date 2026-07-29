@@ -8,6 +8,7 @@ export const metadata: Metadata = {
   description: "Admin render harness for the BieAnswerEnvelope UI components.",
 };
 
+export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 // Admin-only visual harness for the PR 2 answer components. Not a member surface —

@@ -3,6 +3,7 @@ import { resolveAdminApi } from "@/lib/admin-access";
 import { dbConfigured, dbQuery } from "@/lib/db";
 import { logAdminAction } from "@/lib/admin-audit";
 import { recordAdminRouteError } from "@/lib/admin-route-errors";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
 
@@ -43,7 +44,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         total: 0,
         db: false,
         generated_at: new Date().toISOString(),
-      });
+      }, { headers: NO_STORE_HEADERS });
     }
 
     const url = new URL(req.url);
@@ -96,7 +97,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       total: parseInt(countRow.rows[0]?.count ?? "0", 10),
       db: true,
       generated_at: new Date().toISOString(),
-    });
+    }, { headers: NO_STORE_HEADERS });
   } catch (error) {
     recordAdminRouteError("admin/audit-log", error);
     return NextResponse.json({ error: "Failed to load audit log" }, { status: 502 });

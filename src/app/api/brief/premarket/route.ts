@@ -2,11 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { dbQuery } from "@/lib/db";
 import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
 import { isPremarketBriefFresh, todayEtYmd } from "@/lib/providers/spx-session";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const NO_STORE = { "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0" };
 
 export async function GET(req: NextRequest) {
   // Premium premarket brief (SPX levels, kingStrike, netGex, gexBias) — premium session or cron only.
@@ -17,7 +16,7 @@ export async function GET(req: NextRequest) {
       "SELECT * FROM platform_briefs WHERE brief_type = 'premarket' ORDER BY brief_date DESC LIMIT 1",
       []
     );
-    if (result.rows.length === 0) return NextResponse.json({ available: false }, { headers: NO_STORE });
+    if (result.rows.length === 0) return NextResponse.json({ available: false }, { headers: NO_STORE_HEADERS });
     const b = result.rows[0];
     // pg returns DATE columns as a Date object (midnight UTC) or, depending on driver config,
     // an already-ISO string — normalize both to a plain YYYY-MM-DD before comparing.
@@ -28,7 +27,7 @@ export async function GET(req: NextRequest) {
     if (!isPremarketBriefFresh(briefDateYmd, todayEtYmd())) {
       return NextResponse.json(
         { available: false, stale: true, staleDate: briefDateYmd },
-        { headers: NO_STORE }
+        { headers: NO_STORE_HEADERS }
       );
     }
     return NextResponse.json({
@@ -42,8 +41,8 @@ export async function GET(req: NextRequest) {
       netGex: b.net_gex,
       gexBias: b.gex_bias,
       publishedAt: b.published_at,
-    }, { headers: NO_STORE });
+    }, { headers: NO_STORE_HEADERS });
   } catch {
-    return NextResponse.json({ available: false }, { headers: NO_STORE });
+    return NextResponse.json({ available: false }, { headers: NO_STORE_HEADERS });
   }
 }

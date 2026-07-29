@@ -4,6 +4,7 @@ import { fetchMarketMovers, fetchSectorPerformance } from "@/lib/providers/polyg
 import { polygonConfigured } from "@/lib/providers/config";
 import { serverCache, TTL } from "@/lib/server-cache";
 import { requireToolApi } from "@/lib/tool-access-server";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -33,7 +34,7 @@ export async function GET(req: NextRequest) {
       sectors,
       movers,
       as_of: new Date().toISOString(),
-    });
+    }, { headers: NO_STORE_HEADERS });
   } catch (error) {
     console.error("[market/heatmap]", error);
     return NextResponse.json({ error: "Heatmap fetch failed" }, { status: 502 });

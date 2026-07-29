@@ -11,6 +11,7 @@ import { isAdminEmail } from "@/lib/admin-emails";
 import { classifyAdminUserAccess } from "@/lib/admin-user-access";
 import { isCognitoAuth } from "@/lib/auth-provider";
 import type { BillingKind } from "@/lib/whop";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
 
@@ -101,7 +102,7 @@ export async function GET(req: NextRequest) {
         pages: 0,
         stats,
         filterNote: null,
-      });
+      }, { headers: NO_STORE_HEADERS });
     }
 
     const { data } = await client.users.getUserList({ userId: ids, limit: ids.length });
@@ -119,7 +120,7 @@ export async function GET(req: NextRequest) {
       pages: Math.ceil(total / limit),
       stats,
       filterNote: null,
-    });
+    }, { headers: NO_STORE_HEADERS });
   }
 
   const params: Parameters<typeof client.users.getUserList>[0] = {
@@ -147,5 +148,5 @@ export async function GET(req: NextRequest) {
     pages: Math.ceil(totalCount / limit),
     stats,
     filterNote: null,
-  });
+  }, { headers: NO_STORE_HEADERS });
 }

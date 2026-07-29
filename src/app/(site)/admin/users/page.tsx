@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireAdmin } from "@/lib/admin-access";
 import { UserManagement } from "@/components/admin/UserManagement";
 
+export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function AdminUsersPage() {

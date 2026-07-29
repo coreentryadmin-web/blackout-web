@@ -3,6 +3,7 @@ import { resolveAdminApi } from "@/lib/admin-access";
 import { fetchSpxAdminDashboard } from "@/lib/admin-spx-dashboard";
 import { logAdminAction } from "@/lib/admin-audit";
 import { recordAdminRouteError } from "@/lib/admin-route-errors";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
 
@@ -42,7 +43,7 @@ export async function GET(req: NextRequest) {
         console.error('[admin-spx] audit log failed:', e);
       }
     }
-    return NextResponse.json(dashboard);
+    return NextResponse.json(dashboard, { headers: NO_STORE_HEADERS });
   } catch (error) {
     recordAdminRouteError("admin/spx/dashboard", error);
     return NextResponse.json({ error: "Failed to load SPX dashboard" }, { status: 502 });

@@ -18,6 +18,7 @@ import {
   spxToSignal,
   type Signal,
 } from "@/lib/mobile/signals-projection";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -140,8 +141,6 @@ export async function GET(req: NextRequest) {
   };
 
   return NextResponse.json(roundFloats(payload), {
-    headers: {
-      "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-    },
+    headers: NO_STORE_HEADERS,
   });
 }
