@@ -25,7 +25,7 @@ const config: Config = {
           glow: "rgba(191,95,255,0.35)",
         },
         // Canonical semantic tokens.
-        bull: "#00e676",
+        bull: "#a3e635",
         bear: "#ff2d55",
         // AA-safe bear for SMALL/inline bearish numbers (#ff2d55 is ~4.0:1 on
         // the void bg — sub-AA). Use text-bear-text for header % change,
