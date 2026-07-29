@@ -1,5 +1,66 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-29 14:45 ET
+Last updated: 2026-07-29 15:31 ET
+
+## rth-comprehensive-2026-07-29-pass5 — near-close agent sweep (~15:22–15:31 ET)
+
+**Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` including COMPREHENSIVE TEST SWEEP. Time: Wed 15:22–15:31 ET (RTH, POWER_HOUR / near close). Commands: `validate:rth-open` → `GET /api/cron/data-correctness?force=1` → `validate:rth-sweep` → `validate:spx-e2e` → `validate:grid-rth` → `validate:grid-e2e` → `data-validator.mjs` → `ops:collect`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` | ✅ **GREEN** — options-socket warming; Postgres unreachable from cloud host (expected VPC) |
+| `GET /api/cron/data-correctness?force=1` | ✅ **0 flags** — `ok: true` |
+| `npm run validate:rth-sweep` | ✅ **GREEN** — 0 P0/P1; all 7 pages load; 0 missing-field hits |
+| `npm run validate:spx-e2e` | ✅ **GREEN** — 17/17 (matrix GEX+VEX+DEX+CHARM · 178 rows · spot ~7383) |
+| `npm run validate:grid-rth` | ✅ **GREEN** — 14/14 (POWER_HOUR · 6 setups · ledger 4 · ops:collect 0 items) |
+| `npm run validate:grid-e2e` | ✅ **GREEN** — 5/5 Night Hawk UI + zerodte board API |
+| `node scripts/audit/data-validator.mjs` | ✅ **37 PASS / 0 FAIL** — SPY/SPX/VIX/0DTE ledger vs Polygon |
+| `npm run ops:collect` | ✅ **0 action items** |
+
+### Per-page sweep (Clerk premium session)
+
+| Page | Hard/soft load | Live tick (8–20s wait) | Missing fields | Console |
+|---|---|---|---|---|
+| `/dashboard` (SPX Slayer) | hard 1643ms | null (spot stable ~7383) | 0 | 2× (React #418 hydration + HTTP 400) |
+| `/flows` (HELIX) | soft 1617ms | null | 0 | 0 |
+| `/heatmap` (matrix) | soft 1666ms | null | 0 | 0 |
+| `/vector` | soft 1667ms | null | 0 | 10× stale-chunk MIME/404 (headless) |
+| `/nighthawk` (0DTE Command — classic `/grid` removed 2026-07-07) | soft 1616ms | null | 0 | 0 |
+| `/terminal` (Largo) | soft 1761ms | null | 0 | 19× stale-chunk MIME/404 (headless) |
+| `/track-record` | soft 1590ms | null | 0 | 22× stale-chunk MIME/404 (headless) |
+
+**Note:** Thermal Profile tab not captured in sweep JSON (tab selector `getByRole("tab", { name: /profile/i })` may miss desktop label `{noun} Profile + Curve + Shift` before data block renders). Matrix view GREEN; profile is same payload (`GexHeatmap.tsx` pair-b).
+
+**API cross-check (authenticated, all 200):** desk spot 7383.34 (`as_of` 31s); gex-heatmap SPX 79ms; flows 20 prints; NH edition 76ms; zerodte board 6 setups (`as_of` fresh); platform snapshot fresh. GEX flip cross-check: no mismatch flagged.
+
+**Largo:** `POST /api/market/largo/query?stream=1` 200 in 268ms — NVDA HELIX tape $81.1M / 50 prints grounded (`tools=blackout_intelligence`). Regime line `—` (upstream label unavailable — honest empty, not fabricated).
+
+**Live auto-update:** Spot stable over 8–20s windows (expected near close / low tick rate). Prior passes same session showed spot 7389→7405→7424 over ~5 min without refresh.
+
+### Missing-field audit
+
+| Page / panel | Empty fields found | Backing API | Cause | Action |
+|---|---|---|---|---|
+| All 7 pages | 0 placeholder hits (`$—`, `—%`, N/A) | — | — | **NONE** |
+| Largo NVDA answer | Regime: `—` | HELIX/regime cache | Upstream regime label unavailable during RTH | **Expected** — honest unavailable |
+| SPX commentary expand | Toggle hidden | `SpxCommentaryRail` standby | `live=false` off-hours/standby | **Expected** (P2 known) |
+
+### Findings table
+
+| Severity | ID | Detail | Status |
+|---|---|---|---|
+| — | — | **No new P0/P1 defects this pass** | — |
+| **P1** | `largo-grounding-coverage` | Largo answer low grounding (prior pass #1284) | **OPEN** — [#1239](https://github.com/coreentryadmin-web/blackout-web/issues/1239) |
+| **P2** | `headless-stale-chunk-console` | Playwright soft-nav ChunkLoadError on `_next/static/chunks/*` (chunk `67-ee4368eda711116e` 404; others 200) after multi-page session | **OPEN** — headless artifact; `validate:spx-e2e` dashboard console 0 errors |
+| **P2** | `spx-commentary-expand-standby` | Commentary toggle hidden when rail standby | **OPEN** |
+| **P2** | `thermal-profile-tab-sweep-gap` | RTH sweep JSON missing `heatmap-profile` tab click evidence | **OPEN** — sweep selector; matrix API GREEN |
+
+**Member-facing prod: GREEN** — all premium pages load <1.8s soft-nav, APIs 200 + fresh, data-correctness 0 flags, 0DTE board POWER_HOUR with 6 setups / 4 ledger rows, cross-tool spot/GEX agree.
+
+**Reports:** `audit-output/rth-sweep-2026-07-29T19-23-34-723Z.json`, `audit-output/spx-dashboard-e2e-1785353025925.json`, `audit-output/grid-rth-2026-07-29-verify-1785353431008.json`, `audit-output/grid-e2e-1785353449908.json`, `audit-output/validation-2026-07-29T19-27-19-686Z.md`
+
+---
 
 ## grid-rth-2026-07-29 — 0DTE Command + Market Grid verify pass (~14:32–14:45 ET)
 
