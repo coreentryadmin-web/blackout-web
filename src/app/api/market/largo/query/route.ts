@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { requireTierApi } from "@/lib/market-api-auth";
 import { largoConfigured, runLargoQuery, runLargoQueryStream, isSseClientDisconnect, SseClientDisconnected } from "@/lib/largo-terminal";
 import { getUwCacheRedis } from "@/lib/providers/uw-shared-cache";
-import { largoBudgetKey, secondsUntilEtMidnight, largoDailyQueryBudget, isOverLargoBudget } from "@/lib/largo-budget";
+import { largoBudgetKey, secondsUntilEtMidnight, largoDailyQueryBudget } from "@/lib/largo-budget";
 import {
   aiSpendKey,
   aiSpendKillSwitchUsd,
@@ -153,30 +153,36 @@ async function releaseLargoGlobalSlot(slot: GlobalSlot): Promise<void> {
 // cost-capped by anthropicToolLoop's maxRounds*maxTokens.
 // ---------------------------------------------------------------------------
 
-const BUDGET_INCR_LUA =
-  "local c = redis.call('INCR', KEYS[1]); redis.call('EXPIRE', KEYS[1], ARGV[1]); return c";
+const BUDGET_RESERVE_LUA = `
+local c = redis.call('INCR', KEYS[1])
+if c == 1 then
+  redis.call('EXPIRE', KEYS[1], tonumber(ARGV[1]))
+end
+if c > tonumber(ARGV[2]) then
+  redis.call('DECR', KEYS[1])
+  return 0
+end
+return c
+`;
 
-/** True when the user is OVER their daily cap and must be rejected. Fails OPEN
- * (false) when Redis is null or errors — identical semantics to acquireLargoSlot. */
-async function isLargoBudgetExceeded(userId: string, redis: GateRedis): Promise<boolean> {
-  if (!redis) return false; // fail-open: no Redis → no budget gate
+/**
+ * Atomically reserve one daily budget slot (INCR, refund if over cap).
+ * Closes the check-then-act race where concurrent requests all saw count < cap
+ * and all ran. Fails OPEN (allow) when Redis is null/errors — same as before.
+ */
+async function reserveLargoBudget(userId: string, redis: GateRedis): Promise<boolean> {
+  if (!redis) return true; // fail-open: no Redis → no budget gate
   try {
-    const raw = await redis.get(largoBudgetKey(userId));
-    const count = Number(raw ?? 0);
-    return isOverLargoBudget(count, largoDailyQueryBudget());
+    const reserved = await redis.eval(
+      BUDGET_RESERVE_LUA,
+      1,
+      largoBudgetKey(userId),
+      secondsUntilEtMidnight(),
+      largoDailyQueryBudget()
+    );
+    return Number(reserved) !== 0;
   } catch {
-    return false; // Redis error → fail-open, never block on infra issues
-  }
-}
-
-/** Records one consumed query against the user's daily budget. Best-effort: any
- * Redis null/error is swallowed (fail-open, never blocks the response). */
-async function recordLargoBudgetUsage(userId: string, redis: GateRedis): Promise<void> {
-  if (!redis) return;
-  try {
-    await redis.eval(BUDGET_INCR_LUA, 1, largoBudgetKey(userId), secondsUntilEtMidnight());
-  } catch {
-    /* non-fatal — under-counting one query is acceptable; never fail the request */
+    return true; // Redis error → fail-open
   }
 }
 
@@ -300,9 +306,11 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Daily budget gate — reject (and RELEASE both slots we just took) if the user has already
-  // consumed their per-day query allowance. Fail-open inside. One check before BOTH branches.
-  if (await isLargoBudgetExceeded(userId, slot.redis)) {
+  // Daily budget — atomic reserve (INCR + refund if over cap) closes the concurrent
+  // check-then-act race. Fail-open inside. One reserve before BOTH branches; slot
+  // is consumed even if the query later errors (token cost already incurred once work starts —
+  // we reserve before work, so a mid-flight hangup still counts).
+  if (!(await reserveLargoBudget(userId, slot.redis))) {
     await releaseLargoGlobalSlot(globalSlot);
     await releaseLargoSlot(userId, slot.redis, slot.localSlot);
     return NextResponse.json(
@@ -357,11 +365,7 @@ export async function POST(req: NextRequest) {
         } finally {
           clearInterval(heartbeatTimer);
           closed = true;
-          // Record one consumed query against the daily budget (best-effort, fail-open)
-          // BEFORE releasing the concurrency slot. Recorded unconditionally: a started
-          // query already incurred token cost, and this finally also runs on the
-          // isSseClientDisconnect early return (a mid-stream hangup still ran the loop).
-          await recordLargoBudgetUsage(userId, slot.redis);
+          // Budget was reserved atomically before the stream started — do not INCR again.
           // Release both concurrency slots (global then per-user) before closing the controller.
           await releaseLargoGlobalSlot(globalSlot);
           await releaseLargoSlot(userId, slot.redis, slot.localSlot);
@@ -396,10 +400,8 @@ export async function POST(req: NextRequest) {
     console.error("[market/largo/query]", error);
     return NextResponse.json({ error: "Largo query failed" }, { status: 502, headers: NO_STORE_HEADERS });
   } finally {
-    // Record one consumed query against the daily budget (best-effort, fail-open), then release
-    // both concurrency slots (global then per-user) whether the non-streaming query succeeded or
-    // failed. Billing on success and failure alike is the conservative cost-control choice.
-    await recordLargoBudgetUsage(userId, slot.redis);
+    // Budget was reserved atomically before the query — do not INCR again.
+    // Release both concurrency slots (global then per-user) whether success or failure.
     await releaseLargoGlobalSlot(globalSlot);
     await releaseLargoSlot(userId, slot.redis, slot.localSlot);
   }

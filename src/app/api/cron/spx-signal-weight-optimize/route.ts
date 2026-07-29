@@ -165,6 +165,6 @@ export async function GET(req: NextRequest) {
     const detail = err instanceof Error ? err.message : String(err);
     console.error("[spx-signal-weight-optimize]", detail);
     await logCronRun("spx-signal-weight-optimize", started, { ok: false, error: detail });
-    return NextResponse.json({ ok: false, error: detail }, { status: 500 });
+    return NextResponse.json({ ok: false, error: "SPX signal weight optimize failed" }, { status: 500 });
   }
 }

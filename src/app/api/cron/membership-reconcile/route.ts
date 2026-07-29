@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
     const detail = error instanceof Error ? error.message : String(error);
     console.error("[cron/membership-reconcile]", error);
     await logCronRun("membership-reconcile", started, { ok: false, error: detail });
-    return NextResponse.json({ ok: false, error: detail }, { status: 500 });
+    return NextResponse.json({ ok: false, error: "Membership reconcile failed" }, { status: 500 });
   } finally {
     await releaseAdvisoryLock(MEMBERSHIP_RECONCILE_LOCK);
   }

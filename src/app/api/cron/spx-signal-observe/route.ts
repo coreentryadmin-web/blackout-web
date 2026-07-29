@@ -160,7 +160,7 @@ export async function GET(req: NextRequest) {
     const detail = err instanceof Error ? err.message : String(err);
     console.error("[spx-signal-observe]", detail);
     await logCronRun("spx-signal-observe", started, { ok: false, error: detail });
-    return NextResponse.json({ ok: false, error: detail }, { status: 500 });
+    return NextResponse.json({ ok: false, error: "SPX signal observe failed" }, { status: 500 });
   }
 
   const payload = { ok: true, observed, outcomes_updated: outcomesUpdated, score, grade, action };

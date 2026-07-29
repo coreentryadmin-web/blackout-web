@@ -5,6 +5,28 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-29 — [Security] Medium hygiene: cron redact + Largo budget + flows rate limit
+
+**Severity.** MEDIUM (cron info leak / budget race / desk abuse) + infra notes.
+
+**Verified.**
+1. **CSP nonce** — REAL but HARD. `next.config.mjs` still has `'unsafe-inline'/'unsafe-eval'`;
+   TradingView hosts are **legacy** (desk uses `lightweight-charts`). Full nonce needs
+   Next+Clerk+CF Transform Rule sync + live QA. **Deferred** (not this PR).
+2. **Per-user flow/SSE limits** — PARTIAL → fixed for `/api/market/flows` + `flows/stream`
+   (120/min REST, 30/min SSE connect attempts; env-overridable). Other SSE routes still
+   instance-capped only.
+3. **DATABASE_SSL_STRICT=1** — REAL and **worse than assumed**: Secrets Manager had
+   `DATABASE_SSL_STRICT=true`, but `db.ts` only treated `=== "1"` as strict — so verify
+   stayed **off** in prod despite the key existing. Fixed parser (`1|true|yes`) + normalized
+   secret to `"1"`. Takes effect on next ECS task launch (this PR's deploy).
+4. **Cron error redaction** — REAL, undercounted (~14 not 8). HTTP bodies no longer echo
+   `err.message` / `detail`; `logCronRun` still keeps detail. Guard test added.
+5. **Largo budget optimistic INCR** — REAL. Replaced check-then-act with atomic
+   reserve Lua (INCR + DECR if over cap) before work.
+
+**Status.** Code fixes on `cursor/security-medium-hygiene-3d11`. CSP deferred; SSL env ops.
+
 ## 2026-07-29 — [Security] Open redirect in Clerk middleware + SW push URL
 
 **Severity.** HIGH (open redirect) / MEDIUM (push notification phishing).

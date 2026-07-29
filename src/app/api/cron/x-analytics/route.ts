@@ -35,6 +35,6 @@ export async function GET(req: NextRequest) {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown";
     await logCronRun("x-analytics", started, { ok: false, error: message });
-    return NextResponse.json({ ok: false, error: message });
+    return NextResponse.json({ ok: false, error: "X analytics failed" });
   }
 }

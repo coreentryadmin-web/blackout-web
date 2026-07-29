@@ -38,7 +38,15 @@ export function secondsUntilEtMidnight(now: Date = new Date()): number {
   return Math.min(Math.max(remaining, 60), 26 * 3600);
 }
 
-/** True when the user is AT/over the cap and a new query must be rejected. */
+/** True when an atomic reserve would reject (count already at/over cap). */
 export function isOverLargoBudget(currentCount: number, cap: number): boolean {
   return currentCount >= cap;
+}
+
+/**
+ * Pure decision after an atomic INCR: if the new count exceeds the cap, the
+ * caller must DECR (refund) and reject. Allows count == cap (Nth query of the day).
+ */
+export function shouldRefundLargoReserve(countAfterIncr: number, cap: number): boolean {
+  return countAfterIncr > cap;
 }

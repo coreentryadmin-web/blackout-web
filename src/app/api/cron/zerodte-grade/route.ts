@@ -35,8 +35,7 @@ export async function GET(req: NextRequest) {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("[cron/zerodte-grade] grading failed:", message);
-    const payload = { ok: false, error: message };
-    await logCronRun("zerodte-grade", started, payload);
-    return NextResponse.json(payload, { status: 500 });
+    await logCronRun("zerodte-grade", started, { ok: false, error: message });
+    return NextResponse.json({ ok: false, error: "0DTE grading failed" }, { status: 500 });
   }
 }

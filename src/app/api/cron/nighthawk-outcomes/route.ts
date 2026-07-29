@@ -138,6 +138,6 @@ export async function GET(req: NextRequest) {
     const detail = error instanceof Error ? error.message : String(error);
     console.error("[cron/nighthawk-outcomes]", error);
     await logCronRun("nighthawk-outcomes", started, { ok: false, error: detail });
-    return NextResponse.json({ ok: false, error: "Outcome resolution failed", detail }, { status: 500 });
+    return NextResponse.json({ ok: false, error: "Outcome resolution failed" }, { status: 500 });
   }
 }

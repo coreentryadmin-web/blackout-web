@@ -70,8 +70,11 @@ export function databaseConnectionMode(): "private" | "public" | "unknown" {
 function poolSsl(connectionString: string): false | { rejectUnauthorized: boolean } {
   if (process.env.DATABASE_SSL === "0") return false;
   if (connectionString.includes("localhost") || connectionString.includes("127.0.0.1")) return false;
-  // Set DATABASE_SSL_STRICT=1 when using a managed Postgres with a properly-signed CA cert.
-  const strict = process.env.DATABASE_SSL_STRICT === "1";
+  // Production (RDS Proxy): set DATABASE_SSL_STRICT=1 (or true) in Secrets Manager so the AWS CA
+  // is verified. Unset/0 keeps rejectUnauthorized:false (legacy) — MITM risk if the path is
+  // compromised. See docs/ops/AWS-SECRETS-MANIFEST.md.
+  // Accept 1/true/yes — prod previously had STRICT=true which the ==="1" check silently ignored.
+  const strict = /^(1|true|yes)$/i.test(process.env.DATABASE_SSL_STRICT?.trim() ?? "");
   return { rejectUnauthorized: strict };
 }
 

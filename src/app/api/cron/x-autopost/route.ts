@@ -256,7 +256,7 @@ export async function GET(req: NextRequest) {
       postType,
     });
     return NextResponse.json(
-      { ok: false, error: message, postType },
+      { ok: false, error: "X autopost failed", postType },
       { status: 200 },
     );
   }

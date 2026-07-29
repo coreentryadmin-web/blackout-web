@@ -49,7 +49,7 @@ export async function GET(req: NextRequest) {
     const detail = error instanceof Error ? error.message : String(error);
     console.error("[cron/alert-outcome-sync]", error);
     await logCronRun("alert-outcome-sync", started, { ok: false, error: detail });
-    return NextResponse.json({ ok: false, error: "Alert outcome sync failed", detail }, { status: 500 });
+    return NextResponse.json({ ok: false, error: "Alert outcome sync failed" }, { status: 500 });
   } finally {
     await releaseAdvisoryLock(ALERT_OUTCOME_SYNC_LOCK);
   }
