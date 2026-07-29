@@ -5,6 +5,37 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-29 — [Night Hawk Legacy] Soft hedge/rescue floors shipped score-20 filler
+
+**Severity.** P0 product — Legacy overnight digest published noise next to one real name.
+
+**Evidence (live `GET /api/market/nighthawk/edition`, ~2026-07-29).**
+- `edition_for: 2026-07-30`, `published_at: 2026-07-29T04:06:41Z`
+- Plays: **AMZN LONG @ 49**, **AI LONG @ 26**, **SNDQ LONG @ 20**
+- AI/SNDQ theses empty (`"mixed ·"`) — classic diversity/hedge/backfill filler under the old
+  soft floors (`DIVERSITY_HEDGE_FLOOR=20`, `FORCED_CONTRARIAN_FLOOR=25`) plus promote-to-5
+  rescue that padded the book after publish gates.
+
+**Root cause.** Volume-first loosenings in the Legacy pipeline:
+1. Diversity/forced-contrarian floors at 20/25 admitted rounding-noise scores into hedge slots.
+2. Thin-edition backfill reused the hedge floor instead of `MIN_PUBLISH_SCORE` (42).
+3. Critic-zero rescue + `promoteTopBlocked` padded toward `EDITION_TARGET_PLAYS` (5) with
+   gate-failed / low-score plays rather than stopping at the ops minimum (3).
+4. Geometry `MIN_RR_RATIO` was 0.5 while `play-levels` already enforced 0.75 — asymmetric.
+
+**Fix (precision restore).**
+- `DIVERSITY_HEDGE_FLOOR` / `FORCED_CONTRARIAN_FLOOR` → **35** (still below organic 42).
+- Backfill + `GATE_PROMOTE_MIN_SCORE` → **`MIN_PUBLISH_SCORE` (42)**.
+- Critic rescue / promote-blocked only fill to **`EDITION_MIN_PUBLISH_PLAYS` (3)** — prefer a
+  clean 3-play book over 5 with garbage hedges.
+- `play-constraints` `MIN_RR_RATIO` → **0.75** (aligned with levels builder).
+
+**Blast radius.** Fewer Legacy plays on thin nights; more recap-only / 3-play books. Morning
+confirm + outcomes unchanged. Force-rebuild the live edition after deploy so members do not
+keep AI@26/SNDQ@20 until the next evening cron.
+
+**Status.** Open — this PR.
+
 ## 2026-07-29 — [0DTE] Precision harden — stop opening measured-losing commits
 
 **Severity.** P0 product — graded book **35.6% WR (36W/65L, n=101)** sits on the −50/+100

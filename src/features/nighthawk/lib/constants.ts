@@ -63,20 +63,17 @@ export const EDITION_MIN_PUBLISH_PLAYS = 3;
  *  10 opens out of 12 scoreable — the floor was admitting garbage). Better to publish
  *  3 strong plays than 5 where half are noise. */
 export const MIN_PUBLISH_SCORE = 42;
-/** PR-N31: lower floor for the diversity/hedge slot. In a one-directional market the normal
- *  35 floor blocks every contrarian candidate, leaving a 5-play all-LONG (or all-SHORT) book
- *  with zero downside protection. The hedge slot uses this softer floor — still high enough to
- *  reject garbage, but low enough to let a legitimate contrarian play through when flow or
- *  technicals support a minority view. */
-export const DIVERSITY_HEDGE_FLOOR = 20;
-/** PR-N33: softer floor for the FORCED contrarian path (Phase 2). When zero natural
- *  opposite-direction candidates exist, forced re-scoring discounts flow 0.3× and honestly
- *  scores tech/positioning against the dominant trend. Raised 8→15→25: at 15 the floor
- *  admitted plays with essentially no real signal, just rounding noise from re-scoring
- *  against trend. At 25 the contrarian still needs genuine technical or positioning support
- *  to publish (still well below the normal 42 floor, but no longer noise-level).
- *  The play carries a gate_warning marking it as a forced hedge. */
-export const FORCED_CONTRARIAN_FLOOR = 25;
+/** PR-N31 / 2026-07-29 precision: lower floor for the diversity/hedge slot.
+ *  Was 20 — live 2026-07-30 edition shipped AI@26 + SNDQ@20 with empty "mixed ·"
+ *  theses as hedge filler. Raised 20→35: still below the organic 42 floor so a real
+ *  minority-view hedge can clear, but noise-level scores no longer occupy a slot.
+ *  Prefer a clean 3-play all-LONG/SHORT book over a 5-play book with garbage hedges. */
+export const DIVERSITY_HEDGE_FLOOR = 35;
+/** PR-N33 / 2026-07-29 precision: forced contrarian path floor. Raised 25→35 to match
+ *  the diversity hedge floor — forced re-scores with discounted flow must still show
+ *  genuine tech/positioning support. Below 35 the play is rounding noise, not a hedge.
+ *  Carries a gate_warning when published. */
+export const FORCED_CONTRARIAN_FLOOR = 35;
 /** Overshoot sent through synthesis + critic — critic cuts weak plays with no backfill. */
 export const EDITION_SYNTHESIS_OVERSHOOT = 9;
 /** Stock tickers to prefetch option chains for (buffer above 5 final plays).

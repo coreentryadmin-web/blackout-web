@@ -4,8 +4,10 @@ import {
 } from "./constants";
 
 /** Minimum reward-to-risk ratio for a publishable play. Below this, the geometry is
- *  untradeable — the stop is too wide or the target too tight to justify the entry. */
-export const MIN_RR_RATIO = 0.5;
+ *  untradeable — the stop is too wide or the target too tight to justify the entry.
+ *  Aligned with play-levels.ts ENTRY_RR target (0.75) — was 0.5, which let publish admit
+ *  worse books than level construction aims for (2026-07-29 Legacy precision). */
+export const MIN_RR_RATIO = 0.75;
 import { entryRangeMid } from "./entry-range";
 import { parsePlayLevels } from "./play-levels";
 import type { PlaybookPlay } from "./types";
@@ -161,7 +163,7 @@ export function validatePlayGeometry(play: PlaybookPlay): PlayGeometryVerdict {
       if (target <= mid) drops.push(`LONG target ${target} is not above entry mid ${mid.toFixed(2)}`);
       if (stop >= mid) drops.push(`LONG stop ${stop} is not below entry mid ${mid.toFixed(2)}`);
     }
-    // R:R minimum: reward must be at least 0.5× the risk. A play with worse R:R is
+    // R:R minimum: reward must be at least MIN_RR_RATIO × the risk. A play with worse R:R is
     // untradeable — the stop is too wide or the target too tight to justify the entry.
     const reward = Math.abs(target - mid);
     const risk = Math.abs(stop - mid);

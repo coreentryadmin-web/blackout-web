@@ -31,7 +31,7 @@ import { fetchMarketWideContext, type MarketWideContext } from "./market-wide";
 import { critiquePlays } from "./play-critic";
 import { rankCandidates, regimeContextFromMarket, type ScoredCandidate } from "./scorer";
 import { rescoreDossier } from "./hunt-builder";
-import { DOSSIER_BATCH_SIZE, EDITION_MIN_PUBLISH_PLAYS, EDITION_SYNTHESIS_POOL, EDITION_TARGET_PLAYS, MAX_CANDIDATES, MAX_DOSSIER_STOCKS } from "./constants";
+import { DOSSIER_BATCH_SIZE, EDITION_MIN_PUBLISH_PLAYS, EDITION_SYNTHESIS_POOL, EDITION_TARGET_PLAYS, MAX_CANDIDATES, MAX_DOSSIER_STOCKS, MIN_PUBLISH_SCORE } from "./constants";
 import { backfillThinEditionPlays } from "./play-backfill";
 import { buildNighthawkPublishContexts } from "./publish-context";
 import {
@@ -827,11 +827,11 @@ export async function buildEveningEdition(opts?: {
       finalCriticNotes = criticNotes;
       funnel.critic_passed = finalPlays.length;
       if (!finalPlays.length) {
-        // PR-N13: critic zeroed all plays, but the pipeline MUST always surface picks.
-        // Promote the raw pre-critic plays with gate_promoted warnings — they passed
-        // synthesis constraints, just not the critic's quality bar.
-        if (rawPlays.length) {
-          finalPlays = rawPlays.slice(0, EDITION_TARGET_PLAYS).map((p, i) =>
+        // Critic zeroed — promote only raw plays that clear the organic score floor.
+        // Was: promote anything to avoid empty books → shipped score-20 filler.
+        const rescue = rawPlays.filter((p) => (p.score ?? 0) >= MIN_PUBLISH_SCORE);
+        if (rescue.length) {
+          finalPlays = rescue.slice(0, EDITION_MIN_PUBLISH_PLAYS).map((p, i) =>
             capGatePromotedConviction({
               ...p,
               rank: i + 1,
@@ -841,11 +841,10 @@ export async function buildEveningEdition(opts?: {
           );
           funnel.critic_passed = finalPlays.length;
           console.info(
-            `[nighthawk/edition] critic zeroed — promoted ${finalPlays.length} raw plays with gate warnings`
+            `[nighthawk/edition] critic zeroed — promoted ${finalPlays.length} score≥${MIN_PUBLISH_SCORE} raw plays with gate warnings`
           );
         }
-        // If rawPlays was also empty (synthesis AND critic both zeroed), fall through —
-        // the publish-gate handler below will catch the empty array and promote from blocked.
+        // If nothing clears the floor, fall through — publish gates / recap-only handle empty.
       }
 
       // Checkpoint the vetted Claude output so a resume skips synthesis + critic.
@@ -929,11 +928,11 @@ export async function buildEveningEdition(opts?: {
         finalPlays = passing;
         funnel.critic_passed = finalPlays.length;
       }
-      if (finalPlays.length < EDITION_TARGET_PLAYS && blocked.length) {
-        // PR-N25: promote top-scoring blocked plays to reach the TARGET play count (5),
-        // not just the minimum (3). Previously 3 passing + 2 blocked = 3 published;
-        // now promotes the 2 best-available blocked plays to fill to 5.
-        const need = EDITION_TARGET_PLAYS - finalPlays.length;
+      // Precision (2026-07-29): only promote when BELOW the ops minimum (3), never to
+      // pad out to 5. Filling 3→5 with gate_promoted plays was how weak hedges/filler
+      // reached members next to one real name (live AMZN@49 + AI@26 + SNDQ@20).
+      if (finalPlays.length < EDITION_MIN_PUBLISH_PLAYS && blocked.length) {
+        const need = EDITION_MIN_PUBLISH_PLAYS - finalPlays.length;
         const promoted = promoteTopBlocked(blocked, need);
         if (promoted.length) {
           const startRank = finalPlays.length + 1;
@@ -943,16 +942,14 @@ export async function buildEveningEdition(opts?: {
           ];
           funnel.critic_passed = finalPlays.length;
           console.info(
-            `[nighthawk/edition] publish gates left ${finalPlays.length - promoted.length} play(s) — promoted ${promoted.length} best-available to reach target ${EDITION_TARGET_PLAYS} ` +
+            `[nighthawk/edition] publish gates left ${finalPlays.length - promoted.length} play(s) — promoted ${promoted.length} score-qualified best-available to reach min ${EDITION_MIN_PUBLISH_PLAYS} ` +
             `(${blocked.length} total blocked: ${blocked.map((b) => `${b.ticker}:${b.result.blocks.map((x) => x.code).join(",")}`).join("; ")})`
           );
         }
       }
       if (!finalPlays.length) {
-        // PR-N13: the gates zeroed all plays, but the pipeline MUST always surface picks.
-        // Promote the top-scoring blocked plays with warnings instead of publishing zero.
-        // Promote the top-scoring blocked plays with warnings instead of publishing zero.
-        const promoted = promoteTopBlocked(blocked, EDITION_TARGET_PLAYS);
+        // Gates zeroed everything — promote up to the ops minimum with score floor, else recap.
+        const promoted = promoteTopBlocked(blocked, EDITION_MIN_PUBLISH_PLAYS);
         if (promoted.length) {
           finalPlays = promoted;
           funnel.critic_passed = finalPlays.length;

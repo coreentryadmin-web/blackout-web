@@ -407,15 +407,15 @@ test("R:R inflation cap: option-coherence push cannot exceed 1.25× the original
 });
 
 // ── PR-N31: diversity hedge floor ────────────────────────────────────────────────────
-test("PR-N31: diversity swap fires for contrarian candidate above DIVERSITY_HEDGE_FLOOR (20) but below MIN_PUBLISH_SCORE (35)", () => {
-  // 5 long candidates scoring above 35, plus one short scoring 25 (above 20, below 35)
+test("PR-N31: diversity swap fires for contrarian above DIVERSITY_HEDGE_FLOOR (35) but below MIN_PUBLISH_SCORE (42)", () => {
+  // 5 long candidates scoring above 42, plus one short scoring 38 (above 35, below 42)
   const ranked = [
     scored("AA", "long", 70),
     scored("BB", "long", 65),
     scored("CC", "long", 60),
     scored("DD", "long", 55),
     scored("EE", "long", 50),
-    scored("FF", "short", 25),
+    scored("FF", "short", 38),
   ];
   const chains: Record<string, any> = {};
   const dossierMap: Record<string, any> = {};
@@ -436,9 +436,9 @@ test("PR-N31: diversity swap fires for contrarian candidate above DIVERSITY_HEDG
 });
 
 test("PR-N31+N33: Phase 1 rejects natural short below DIVERSITY_HEDGE_FLOOR; Phase 2 forced contrarian may still fire", () => {
-  // FF is a natural short with score 15 — below DIVERSITY_HEDGE_FLOOR (20), so Phase 1 skips it.
+  // FF is a natural short with score 15 — below DIVERSITY_HEDGE_FLOOR (35), so Phase 1 skips it.
   // Phase 2 then tries forced contrarian re-scoring on the all-LONG pool. With default dossier
-  // data and boosted tech scores, forced contrarian scores should land >= FORCED_CONTRARIAN_FLOOR (25).
+  // data and boosted tech scores, forced contrarian scores should land >= FORCED_CONTRARIAN_FLOOR (35).
   // The key assertion: the short that appears is a FORCED contrarian (Phase 2), not the natural FF.
   const ranked = [
     scored("AA", "long", 70),
@@ -455,20 +455,32 @@ test("PR-N31+N33: Phase 1 rejects natural short below DIVERSITY_HEDGE_FLOOR; Pha
     chains[r.ticker] = chainAround(spot);
     dossierMap[r.ticker] = dossier(r.ticker, spot);
   }
-  // FF is the only candidate left after AA-EE fill the 5 slots. It needs bearish tech
-  // so forced-short re-score clears FORCED_CONTRARIAN_FLOOR (25).
+  // FF is the only candidate left after AA-EE fill the 5 slots. It needs strong bearish
+  // tech + positioning so forced-short re-score clears FORCED_CONTRARIAN_FLOOR (35).
   // scoreContrarianHedge re-scores from the DOSSIER, not the candidate's tech_score field.
+  // Prior fixture scored 34 (te=24,po=2,vx=3,fl=5) — add bearish-ma + call-wall proximity.
   dossierMap["FF"] = dossier("FF", 100, {
     tech: {
       ticker: "FF", price: 100, trend: "bearish" as const,
-      setup_tags: ["gap down"], support_levels: [95], resistance_levels: [105],
+      setup_tags: ["gap down", "breakdown", "bearish ma"], support_levels: [90], resistance_levels: [105],
       gap_zones: [], breakout_zones: [],
-      prior_day: { high: 105, low: 95, close: 100 },
+      prior_day: { high: 108, low: 95, close: 100 },
       weekly: { high: null, low: null },
-      rsi14: 72, rel_volume: 2.0, atr14: 3,
-      vwap: 101, ema20: 101, ema50: 101, ema200: 101,
+      rsi14: 78, rel_volume: 3.0, atr14: 4,
+      vwap: 103, ema20: 104, ema50: 105, ema200: 108,
       summary: "FF bearish reversal",
     },
+    dark_pool: { total_premium: 6_000_000, bias: "bearish" },
+    positioning: {
+      net_gex: -800000,
+      gex_king_strike: 95,
+      gamma_flip: 98,
+      gamma_regime: "negative",
+      net_vex: -300000,
+      max_pain: 95,
+      negative_gamma: true,
+      wall_summary: "call wall $105 (+5pts) · put wall $90 (-10pts)",
+    } as any,
   });
   const { plays } = buildDeterministicEditionPlays({ ranked, dossierMap, chains, target: 5 });
   assert.equal(plays.length, 5);
@@ -478,6 +490,7 @@ test("PR-N31+N33: Phase 1 rejects natural short below DIVERSITY_HEDGE_FLOOR; Pha
     shorts[0]!.gate_warnings?.some((w) => w.includes("Forced contrarian")),
     "should be a Phase 2 forced contrarian, not a Phase 1 natural swap (FF was below DIVERSITY_HEDGE_FLOOR)"
   );
+  assert.ok((shorts[0]!.score ?? 0) >= 35, "forced hedge must clear the raised 35 floor");
 });
 
 // ── PR-N32: Forced contrarian re-score ──────────────────────────────────────────────────────────
@@ -537,12 +550,13 @@ test("PR-N32: forced contrarian swap fires when ALL candidates are LONG and doss
     dossierMap[r.ticker] = dossier(r.ticker, spot);
   }
   // Make FF have bearish technicals + overbought RSI for a plausible short re-score
+  // Must clear FORCED_CONTRARIAN_FLOOR (35) after flow discount (flow_score 20 → 6).
   dossierMap["FF"] = dossier("FF", 100, {
     tech: {
       ticker: "FF",
       price: 100,
       trend: "bearish",
-      setup_tags: ["gap down"],
+      setup_tags: ["gap down", "bearish ma", "breakdown"],
       support_levels: [95],
       resistance_levels: [105],
       gap_zones: [],
@@ -550,14 +564,25 @@ test("PR-N32: forced contrarian swap fires when ALL candidates are LONG and doss
       prior_day: { high: 105, low: 95, close: 100 },
       weekly: { high: null, low: null },
       rsi14: 72,
-      rel_volume: 2.0,
+      rel_volume: 3.0,
       atr14: 3,
-      vwap: 101,
-      ema20: 101,
-      ema50: 101,
-      ema200: 101,
+      vwap: 103,
+      ema20: 104,
+      ema50: 105,
+      ema200: 108,
       summary: "test",
     },
+    dark_pool: { total_premium: 6_000_000, bias: "bearish" },
+    positioning: {
+      net_gex: -800000,
+      gex_king_strike: 95,
+      gamma_flip: 98,
+      gamma_regime: "negative",
+      net_vex: -300000,
+      max_pain: 95,
+      negative_gamma: true,
+      wall_summary: "call wall $105 (+5pts) · put wall $90 (-10pts)",
+    } as any,
   });
 
   const { plays } = buildDeterministicEditionPlays({ ranked, dossierMap, chains, target: 5 });
@@ -573,14 +598,14 @@ test("PR-N32: forced contrarian swap fires when ALL candidates are LONG and doss
 });
 
 test("PR-N32: forced contrarian does NOT fire when natural opposite-direction candidate exists", () => {
-  // FF is a natural short — Phase 1 should handle it, Phase 2 should never run
+  // FF is a natural short above DIVERSITY_HEDGE_FLOOR (35) — Phase 1 handles it, Phase 2 never runs.
   const ranked = [
     scored("AA", "long", 72),
     scored("BB", "long", 68),
     scored("CC", "long", 63),
     scored("DD", "long", 58),
     scored("EE", "long", 52),
-    scored("FF", "short", 25),
+    scored("FF", "short", 38),
   ];
   const chains: Record<string, any> = {};
   const dossierMap: Record<string, any> = {};
@@ -605,8 +630,8 @@ test("PR-N32: forced contrarian does NOT fire when natural opposite-direction ca
   );
 });
 
-test("PR-N33: forced contrarian fires with candidate above FORCED_CONTRARIAN_FLOOR (25)", () => {
-  // All LONG, moderate tech/positioning to produce a forced contrarian score above the 25 floor.
+test("PR-N33: forced contrarian fires with candidate above FORCED_CONTRARIAN_FLOOR (35)", () => {
+  // All LONG, strong tech/positioning to produce a forced contrarian score above the 35 floor.
   // Before N33 any signal-free candidate was admitted; now it needs real contrarian evidence.
   const ranked = [
     scored("AA", "long", 72),
@@ -625,28 +650,29 @@ test("PR-N33: forced contrarian fires with candidate above FORCED_CONTRARIAN_FLO
     chains[r.ticker] = chainAround(spot);
     dossierMap[r.ticker] = dossier(r.ticker, spot);
   }
-  // GG needs bearish tech + positioning so forced-short re-score clears FORCED_CONTRARIAN_FLOOR (25).
+  // GG needs bearish tech + positioning so forced-short re-score clears FORCED_CONTRARIAN_FLOOR (35).
   // scoreContrarianHedge re-scores from the DOSSIER, not the candidate's tech_score/pos_score.
   dossierMap["GG"] = dossier("GG", 100, {
     tech: {
       ticker: "GG", price: 100, trend: "bearish" as const,
-      setup_tags: ["gap down", "breakdown"], support_levels: [90], resistance_levels: [105],
+      setup_tags: ["gap down", "breakdown", "death cross", "bearish ma"], support_levels: [88], resistance_levels: [105],
       gap_zones: [], breakout_zones: [],
-      prior_day: { high: 108, low: 98, close: 100 },
+      prior_day: { high: 110, low: 98, close: 100 },
       weekly: { high: null, low: null },
-      rsi14: 75, rel_volume: 2.5, atr14: 4,
-      vwap: 102, ema20: 103, ema50: 104, ema200: 106,
+      rsi14: 78, rel_volume: 3.5, atr14: 5,
+      vwap: 104, ema20: 105, ema50: 106, ema200: 110,
       summary: "GG bearish reversal — price below all EMAs, overbought RSI",
     },
+    dark_pool: { total_premium: 8_000_000, bias: "bearish" },
     positioning: {
-      net_gex: -500000,
+      net_gex: -900000,
       gex_king_strike: 95,
       gamma_flip: 98,
       gamma_regime: "negative",
-      net_vex: -200000,
+      net_vex: -400000,
       max_pain: 95,
       negative_gamma: true,
-      wall_summary: "Put wall at 95 — bearish positioning supports short thesis",
+      wall_summary: "call wall $105 (+5pts) · put wall $88 (-12pts)",
     } as TickerDossier["positioning"],
   });
 
@@ -659,7 +685,7 @@ test("PR-N33: forced contrarian fires with candidate above FORCED_CONTRARIAN_FLO
     "should carry forced contrarian gate_warning"
   );
   const hedgeScore = shorts[0]!.score ?? 0;
-  assert.ok(hedgeScore >= 25, `hedge score ${hedgeScore} should be >= FORCED_CONTRARIAN_FLOOR (25)`);
+  assert.ok(hedgeScore >= 35, `hedge score ${hedgeScore} should be >= FORCED_CONTRARIAN_FLOOR (35)`);
 });
 
 // ── Diversity hedge fires at 3 plays (not just >= 4) ──────────────────────────
@@ -668,7 +694,7 @@ test("diversity hedge fires for a 3-play all-LONG edition (threshold lowered to 
     scored("AA", "long", 70),
     scored("BB", "long", 65),
     scored("CC", "long", 60),
-    scored("FF", "short", 25),
+    scored("FF", "short", 38),
   ];
   const chains: Record<string, any> = {};
   const dossierMap: Record<string, any> = {};

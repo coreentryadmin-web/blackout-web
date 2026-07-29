@@ -113,6 +113,6 @@ test("validatePlayGeometry: rejects a SHORT play with terrible R:R", () => {
   assert.ok(v.drops.some(d => d.includes("R:R")));
 });
 
-test("MIN_RR_RATIO is 0.5", () => {
-  assert.equal(MIN_RR_RATIO, 0.5);
+test("MIN_RR_RATIO is 0.75 (aligned with play-levels builder)", () => {
+  assert.equal(MIN_RR_RATIO, 0.75);
 });
