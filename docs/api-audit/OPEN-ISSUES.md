@@ -1,5 +1,48 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-29 16:51 ET
+Last updated: 2026-07-29 18:43 ET
+
+## spx-rth-2026-07-29 — SPX Slayer post-close fix agent (~1:05 PM PT / 4:05 PM ET)
+
+**Session:** SPX Slayer post-close fix agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` § Step 6. Commands: `validate:spx-rth -- --phase=post-close` → `validate:spx-e2e` → `validate:deploy`.
+
+### Validation summary — **GREEN**
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth -- --phase=post-close` | ✅ **GREEN** — 6 PASS, 1 WARN, **0 FAIL** |
+| `npm run validate:spx-e2e` | ✅ **GREEN** — **0 FAIL / 17** |
+| `npm run validate:deploy` | ✅ **GREEN** |
+
+### Fixes merged / shipped
+
+| PR | Fix |
+|---|---|
+| **#1300** | Skip UW-vs-Massive flow cross-check when `!marketOpen` or `partial` (false P0 `ops:collect` blocker) |
+| **#1300** | SPX runbook Grid probe → `/api/market/spx/bootstrap` |
+| `fix/spx-e2e-ops-collect-scope` (pushed, PR pending rate limit) | `auditOpsCollect()` SPX-scoped; E2E phone retry + transient HTTP retry |
+
+### Matrix / desk / play (post-close)
+
+| Surface | Result |
+|---|---|
+| GEX/VEX/DEX/CHARM matrix | ✅ 176 strikes · spot **7316.15** · INV-2 re-sum OK |
+| Cross-endpoint | ✅ merged=hm=play spot; SCANNING, no stale confirmations |
+| Thermal / HELIX / Largo / 0DTE / NH | ✅ all integration probes PASS |
+| Desk lanes | ⏭️ SKIP — pulse/flow `available:false` post 16:00 ET (expected) |
+
+### Residual (non-SPX, deferred)
+
+| ID | Detail |
+|---|---|
+| `bie-cron-401-sandbox` | Sandbox `CRON_SECRET` ≠ prod — WARN only |
+| `nighthawk-dossier-grounding` | NH edition 2026-07-30: 4 plays missing dossier snapshots — scoped out of SPX `ops:collect` |
+| `spx-commentary-standby` | Commentary expand hidden in standby — P2, not a defect |
+
+**Member-facing SPX Slayer: GREEN** — post-close summary ends **GREEN**.
+
+**Reports:** `audit-output/spx-rth-2026-07-29-post-close-1785364978022.json`, `audit-output/spx-dashboard-e2e-1785364541853.json`
+
+---
 
 ## rth-open-2026-07-29-evening — Comprehensive RTH sweep (~16:41–16:51 ET, post-close)
 
