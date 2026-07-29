@@ -1,5 +1,68 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-29 16:25 ET
+Last updated: 2026-07-29 16:41 ET
+
+## grid-rth-2026-07-29 — 0DTE Command + Grid verify pass (~16:40 ET, post-close)
+
+**Session:** Grid RTH all-day agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` **verify** mode. Time: Wed 16:40 ET (post-close; cash equities closed 16:00 ET; audit forced with `--force`). Commands: `validate:grid-rth --force` → `validate:zerodte-logic` → `validate:grid-e2e`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:grid-rth --force` | ✅ **14/14 GREEN** |
+| `npm run validate:zerodte-logic` | ✅ **17/17 GREEN** |
+| `npm run validate:grid-e2e` | ✅ **4/4 GREEN** (0 FAIL; Playwright browser binary absent → WARN) |
+| `infra:validate:rth-open` | ✅ deploy smoke + socket-health |
+| `cron:zerodte-warm` | ✅ ok |
+| `grid:data-correctness` | ✅ flags=0 mode=full |
+| `ops:collect` | ✅ zero action items |
+
+### 0DTE logic (gates, plans, lifecycle, mergePlays)
+
+| Layer | Result |
+|---|---|
+| Gate funnel (SETUP_MIN_GROSS, aggression, dominance, ITM) | ✅ 2 eligible / 8 setups, 0 violations |
+| Plan exits (stop −50%, target +100%, time stop 15:30 ET) | ✅ pure probes pass |
+| Trade lifecycle OPEN → TRIM → CLOSED | ✅ sticky trough stop |
+| Plan grading (stop wins when both touch same bar) | ✅ stopped |
+| Session heat (RTH → POST_COMMIT → POWER_HOUR → CLOSED) | ✅ live heat=CLOSED 0% |
+| mergePlays past cutoff / MOVED → SKIP | ✅ SKIP not OPEN |
+| Ledger PnL math | ✅ 4 rows reconcile |
+| POST_COMMIT cutoff constant | ✅ 14:00 ET |
+
+### Cross-tool integration
+
+| Check | Result |
+|---|---|
+| SPX bootstrap spot vs GEX positioning | ✅ 7316.15 agree |
+| HELIX flows feed (scanner input) | ✅ 20 prints |
+| Night Hawk dedupe (`covered_elsewhere`) | ✅ 5 tickers |
+| zerodte board upstream | ✅ upstream_ok |
+| Live board | ✅ 8 setups · 4 ledger · finite numbers |
+
+### UI E2E note
+
+| Item | Result |
+|---|---|
+| `/grid` route | **404** — classic Grid deleted 2026-07-07; 0DTE Command lives on `/nighthawk` |
+| Playwright tab clicks (0DTE Command / Market Grid) | ⏭️ **SKIP** — Chromium binary not installed in cloud sandbox; API E2E authoritative |
+| `/nighthawk` API path | ✅ zerodte board 8 setups · ledger 4 |
+
+### P0 found this pass
+
+**None.** Member-facing 0DTE Command surfaces GREEN.
+
+### Residual open (non-P0)
+
+| Severity | ID | Detail | Status |
+|---|---|---|---|
+| **P2** | `grid-runbook-stale-ui` | `GRID-RTH-ALL-DAY-AGENT.md` Step 2 still references `/grid` tabs + 9 `/api/grid/*` panels (deleted 2026-07-07) | **OPEN** — doc drift |
+| **P2** | `grid-e2e-playwright-binary` | Cloud agent lacks `npx playwright install` — UI tab click-through skipped | **KNOWN** |
+| **P2** | `spy-flow-cross-provider` | data-correctness SPY call-share UW vs Massive 28pt divergence (prior session) | **OPEN** |
+
+**Reports:** `audit-output/grid-rth-2026-07-29-verify-1785357678199.json`, `audit-output/zerodte-logic-1785357684533.json`, `audit-output/grid-e2e-1785357686818.json`
+
+---
 
 ## rth-open-2026-07-29 — Comprehensive RTH sweep (~16:16–16:25 ET, post-close grace)
 
