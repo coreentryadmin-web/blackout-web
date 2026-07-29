@@ -232,7 +232,9 @@ async function auditTicker(ticker) {
   }
 
   const spot = Number(hm.spot);
-  const nearExpiries = new Set([...(hm.expiries ?? [])].sort().slice(0, 8));
+  const nearExpiries = hm.near_term_expiries?.length
+    ? new Set(hm.near_term_expiries)
+    : new Set([...(hm.expiries ?? [])].sort().slice(0, 8));
   let totalFlags = 0;
   let totalChecks = 0;
 

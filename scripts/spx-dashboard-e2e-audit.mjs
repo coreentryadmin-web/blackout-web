@@ -235,7 +235,9 @@ async function validateMatrixApi(app) {
     rec("matrix:api-fetch", "FAIL", "heatmap unavailable");
     return null;
   }
-  const nearExpiries = new Set([...(hm.expiries ?? [])].sort().slice(0, 8));
+  const nearExpiries = hm.near_term_expiries?.length
+    ? new Set(hm.near_term_expiries)
+    : new Set([...(hm.expiries ?? [])].sort().slice(0, 8));
   const allIssues = [];
   for (const [name, block] of [
     ["gex", hm.gex],

@@ -2772,7 +2772,35 @@ NVDA query ~40s — working status: TAPE • WEEK • FLOW • ENGINE. Answer gr
 | **OPS-4** | **`signal_outcomes` table** | Dead path after #47; optional schema cleanup |
 | **OPS-5** | **External Cursor Cloud audit configs** | Copy from `.cursor/skills/platform-audit/SKILL.md` if tasks live outside this repo |
 
-## Verified GREEN (2026-06-29 23:00 ET)
+---
+
+## SPX Slayer RTH verify — `spx-rth-2026-07-29` (Wed 11:35 ET, market-open pass)
+
+**Session:** SPX all-day agent verify mode per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md`. Commands: `validate:spx-rth` → `validate:spx-e2e` → 60s live auto-update probe → cross-tool integration.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-e2e` (after fix) | ✅ **GREEN** — 15 PASS / 0 FAIL / 1 WARN / 1 SKIP |
+| `npm run validate:spx-rth` (orchestrator) | ⚠️ **8 FAIL** — sandbox `CRON_SECRET` returns HTTP 401 on prod cron/member routes; `validate:deploy` fails on deprecated Railway CLI (prod is ECS) |
+| 60s live auto-update | ✅ **PASS** — desk spot 7366.75→7363.34, heatmap spot+asof ticked, play WATCHING→SCANNING |
+| Matrix GEX+VEX (177 strikes) | ✅ All cells finite; INV-2 reconciles with authoritative `near_term_expiries` (15 expiries for SPX) |
+| Cross-tool integration | ✅ Thermal, HELIX (30 prints), Grid bootstrap, 0DTE board (8 setups), Night Hawk edition, Largo `get_spx_play`, desk/play cross-tool |
+| UI click-through | ✅ GEX/VEX tabs, 177 matrix rows, no NaN/undefined, zero console errors |
+| Trade alerts | ✅ SCANNING — no stale ✓ confirmations visible |
+
+### Findings (`spx-rth-2026-07-29`)
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| **P0** | `spx-e2e-near-term-slice-false-positive` | `spx-dashboard-e2e-audit.mjs` + `heatmap-matrix-audit.mjs` used `expiries.slice(0,8)` for INV-2 cell re-sum; SPX `near_term_expiries` has **15** dates → 149 false strikes (e.g. 6925/6950). Production matrix + `heatmap-verifier.ts` already use `near_term_expiries`. | Live probe: `near_term` 0 issues vs `slice8` 149 issues @ spot ~7370 | **FIXED** — PR `fix/spx-e2e-near-term-expiries` |
+| **P2** | `cloud-agent-cron-secret-401` | Cloud Agent env `CRON_SECRET` does not authenticate prod `/api/cron/*` or Bearer-gated market routes → `validate:spx-rth` matrix/cross-endpoint/data-correctness/ops:collect false FAIL. Clerk-session E2E probes succeed. | `curl -H "Authorization: Bearer $CRON_SECRET" …/gex-heatmap` → 401 | Ops — rotate/sync sandbox secret |
+| **P2** | `validate-deploy-railway-cli` | `validate:deploy` hard-fails when `railway` CLI absent; prod deploys via ECS/ECR since 2026-07-25. Blocks `validate:rth-open` gate in orchestrator. | `validate:deploy` exit 1 | Post-close — remove Railway check |
+| **P2** | `spx-commentary-toggle-e2e-skip` | E2E skips `#spx-commentary-rail-toggle` click — Pulse rail is default; toggle may be off-screen in Playwright viewport. Not a prod bug. | `validate:spx-e2e` SKIP | Post-close — scroll intel rail into view |
+| **WARN** | `bie-cron-play-401` | `integration:bie-play-route` WARN — cron Bearer 401 (same sandbox secret issue). Layer A static BIE invariants pass; live cross-check SKIPs. | `validate:spx-bie` | Ops secret sync |
+
+## Scheduled automations (weekdays ET)
 
 | Check | Result |
 |---|---|
