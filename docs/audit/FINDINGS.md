@@ -5,6 +5,40 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-29 — [Night Hawk Legacy] Stale edition: cron never rebuilds after market close
+
+**Severity.** P0 — Legacy tab shows pre-market plays night after night; the whole purpose of
+Night Hawk Legacy is fresh post-close plays for members.
+
+**Symptom.** Legacy tab shows the same 5 plays (IREN/ISRG/SNDK/ORCL/XYZ) indefinitely. The
+edition for 2026-07-29 was `published_at: 2026-07-28T10:49:14Z` (6:49 AM ET) — built with
+pre-market data, before the market even opened. Evening cron fires at 5:30 PM ET but never
+overwrites it.
+
+**Root cause.** `buildEveningEdition` (edition-builder.ts:376): when `job.status === "published"`
+and `opts.force` is false, the function returned immediately with `resumed: true` — no rebuild.
+There was no check for WHEN the edition was published. A premature build (from a checkpoint
+resume, a mis-timed trigger, or a Friday→Monday carry) locked the edition forever until
+someone called `?force=1`.
+
+**Evidence.** Production probe: authenticated temp user → `GET /api/market/nighthawk/edition`
+→ `edition_for: 2026-07-29`, `published_at: 2026-07-28T10:49:14.000Z`, `stale: false`. The
+plays had real contracts (IREN $36.5 PUT @ $3.65, etc.) but built from stale pre-market flow
+data — wrong plays for tonight.
+
+**Fix.** When `buildEveningEdition` is called inside the edition window (5:30-7:30 PM ET on
+a trading day) and the existing edition was published before today's window start (ET
+timestamp comparison), auto-rebuild: archive+clear staging, reset job to "running", run full
+pipeline with fresh post-close data. Editions published within the current window are already
+fresh and skip as before.
+
+**Second fix.** `MIN_DTE_CALENDAR_DAYS` lowered from 5 to 2 — the old 5-day floor starved
+TACTICAL sub-lane (2-7 DTE) contracts from the Legacy edition. A 3-DTE contract that passes
+every gate was demoted to a last-resort pool.
+
+**Status.** PR #1211 — pushed, CI green on first commit, awaiting rate-limit reset to undraft
+and merge. Both fixes on `claude/wall-beads-data-validation-4re5wo`.
+
 ## 2026-07-29 — [Thermal] Discord card still unreadable on mobile (nodes/drift)
 
 **Severity.** P1 UX.

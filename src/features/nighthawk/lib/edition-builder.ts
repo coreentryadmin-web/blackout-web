@@ -46,7 +46,7 @@ import { partitionPlaysByGeometry } from "./play-constraints";
 import { applyCrossEditionGovernor, GOV_LOOKBACK_EDITIONS } from "./cross-edition-governor";
 import type { RecentOutcomeRow } from "./cross-edition-governor";
 import { applyBearishPosture, BEARISH_RECAP_REASON } from "./bearish-posture";
-import { nextTradingDayEt, todayEt } from "./session";
+import { etNowParts, isTradingDayEt, nextTradingDayEt, todayEt } from "./session";
 import { notifyOpsDiscord } from "@/features/spx/lib/spx-play-notify";
 import type { NightHawkEdition, PlaybookPlay } from "./types";
 
@@ -374,17 +374,65 @@ export async function buildEveningEdition(opts?: {
     job = await fetchNighthawkJob(editionFor);
     logNighthawkJob(editionFor, "info", null, "Force rebuild — job reset");
   } else if (job?.status === "published" && !opts?.force) {
-    const existing = await fetchNighthawkEditionByDate(editionFor);
-    return {
-      ok: true,
-      edition_for: editionFor,
-      plays_count: existing?.plays?.length ?? 0,
-      candidates: job.candidates_json?.length ?? 0,
-      duration_ms: Date.now() - started,
-      job_status: job.status,
-      current_stage: job.current_stage,
-      resumed: true,
-    };
+    // An edition published BEFORE today's edition window is stale — it was built with pre-close
+    // data (e.g. a resume that completed at 6 AM from a Friday checkpoint, or a mistimed trigger).
+    // When the proper evening cron fires inside the window, auto-rebuild with fresh post-close data
+    // so members always see tonight's tape, not yesterday's leftovers.
+    const windowHour = Number(process.env.NIGHTHAWK_EDITION_HOUR_ET ?? "17");
+    const windowMin = Number(process.env.NIGHTHAWK_EDITION_MINUTE_ET ?? "30");
+    const { hour: nowH, minute: nowM } = etNowParts();
+    const nowMinutes = nowH * 60 + nowM;
+    const windowStart = windowHour * 60 + windowMin;
+    const windowEnd = windowStart + Number(process.env.NIGHTHAWK_EDITION_CATCHUP_MIN ?? "120");
+    const inWindow = isTradingDayEt(todayEt()) && nowMinutes >= windowStart && nowMinutes <= windowEnd;
+
+    if (inWindow && job.published_at) {
+      const pubDate = new Date(job.published_at);
+      const todayStr = todayEt();
+      const pubEtParts = new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/New_York",
+        year: "numeric", month: "2-digit", day: "2-digit",
+        hour: "numeric", minute: "numeric", hour12: false,
+      }).formatToParts(pubDate);
+      const pubGet = (t: string) => pubEtParts.find((p) => p.type === t)?.value ?? "";
+      const pubEtDate = `${pubGet("year")}-${pubGet("month")}-${pubGet("day")}`;
+      const pubEtMinutes = Number(pubGet("hour")) * 60 + Number(pubGet("minute"));
+
+      const publishedBeforeWindow = pubEtDate < todayStr || (pubEtDate === todayStr && pubEtMinutes < windowStart);
+      if (publishedBeforeWindow) {
+        console.info(
+          `[nighthawk/edition] stale edition detected — published ${job.published_at} (ET: ${pubEtDate} ${pubGet("hour")}:${pubGet("minute")}) ` +
+          `before today's window (${todayStr} ${windowHour}:${String(windowMin).padStart(2, "0")}). Rebuilding with fresh post-close data.`
+        );
+        await archiveAndClearNighthawkStaging(editionFor);
+        await upsertNighthawkJob(editionFor, {
+          status: "running",
+          current_stage: "stage_context",
+          context_json: null,
+          candidates_json: null,
+          scored_json: null,
+          synthesis_json: null,
+          error: null,
+          published_at: null,
+        });
+        job = await fetchNighthawkJob(editionFor);
+        logNighthawkJob(editionFor, "info", null, `Stale-edition rebuild — prior published ${job?.published_at ?? "?"} before window`);
+      }
+    }
+
+    if (job?.status === "published") {
+      const existing = await fetchNighthawkEditionByDate(editionFor);
+      return {
+        ok: true,
+        edition_for: editionFor,
+        plays_count: existing?.plays?.length ?? 0,
+        candidates: job.candidates_json?.length ?? 0,
+        duration_ms: Date.now() - started,
+        job_status: job.status,
+        current_stage: job.current_stage,
+        resumed: true,
+      };
+    }
   }
 
   // Running funnel accumulator (#77 deliverable (a)) — each stage fills in its count and every

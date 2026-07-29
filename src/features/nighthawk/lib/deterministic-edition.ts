@@ -213,8 +213,10 @@ function formatOptionsPlay(ticker: string, contract: PickedContract | null): str
  *
  * Deterministic tie-break: closest strike to spot, then nearest expiry, then lower strike.
  */
-/** Overnight swing plays need time value — prefer contracts with at least this many calendar days. */
-const MIN_DTE_CALENDAR_DAYS = 5;
+// 2 DTE floor: the user wants "next day plays with 2-10 DTE" (not 5+). A 2-day floor still gives
+// adequate time value for swing entries while unlocking the TACTICAL sub-lane contracts (2-7 DTE)
+// that the old 5-day floor rejected — starving the edition on short weeks / near-expiry chains.
+const MIN_DTE_CALENDAR_DAYS = 2;
 
 function minExpiryDate(today: string): string {
   const d = new Date(today + "T12:00:00Z");
