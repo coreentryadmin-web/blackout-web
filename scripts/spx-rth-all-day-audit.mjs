@@ -46,6 +46,26 @@ function run(cmd, label) {
   return true;
 }
 
+function runE2eAudit() {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const r = spawnSync("npm run validate:spx-e2e", {
+      shell: true,
+      encoding: "utf8",
+      env: process.env,
+      maxBuffer: 10 * 1024 * 1024,
+    });
+    if (r.status === 0) {
+      rec("spx:dashboard-e2e", "PASS", attempt > 0 ? "passed on retry" : undefined);
+      return;
+    }
+    if (attempt === 0) {
+      console.log("  [retry] spx:dashboard-e2e first pass failed — retrying once…");
+    } else {
+      rec("spx:dashboard-e2e", "FAIL", (r.stderr || r.stdout || "").trim().slice(0, 400));
+    }
+  }
+}
+
 function auditOpsCollect() {
   const r = spawnSync("npm run ops:collect", {
     shell: true,
@@ -247,7 +267,7 @@ async function main() {
 
   // 5. Dashboard E2E (clicks + cross-tool) when Clerk keys present
   if (process.env.CLERK_SECRET_KEY && process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) {
-    run("npm run validate:spx-e2e", "spx:dashboard-e2e");
+    runE2eAudit();
   } else {
     rec("spx:dashboard-e2e", "SKIP", "CLERK keys not set — API-only pass");
   }

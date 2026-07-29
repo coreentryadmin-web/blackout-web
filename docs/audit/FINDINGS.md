@@ -35,7 +35,7 @@ evidence / fix / status per the CLAUDE.md policy.)
 
 **Fix.** Shared `ops-collect-scope.mjs` + `auditOpsCollect()` in SPX runbook; `softFetchJson` for pulse/flow lanes; `fetchAuditJson` 3× retry on 502/504/524; E2E matrix `app()` 5xx retry.
 
-**Status.** `cursor/spx-post-close-findings-2224` → PR.
+**Status.** MERGED via PR #1305.
 
 ## 2026-07-29 — [Grid/0DTE] zerodte board HTTP 504 on aged snapshot cold-build
 
