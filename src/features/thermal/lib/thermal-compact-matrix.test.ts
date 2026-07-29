@@ -6,6 +6,7 @@ import {
   compactPerExpiryExtremes,
   fmtCompactExpiry,
   fmtCompactHeatMoney,
+  nearestStrikeIndex,
   resolveCompactExpiries,
   resolveZeroDteExpiry,
 } from "./thermal-compact-matrix.ts";
@@ -35,6 +36,8 @@ test("compare desk strike band (~36 half-width) is a tall near-term ladder", () 
   assert.ok(band.includes(150));
   assert.equal(band[0], 114);
   assert.equal(band[band.length - 1], 186);
+  // Spot is mid-band — without auto-center, scrollTop=0 leaves price off-screen.
+  assert.equal(nearestStrikeIndex(band, 150), 36);
 });
 
 test("resolveZeroDteExpiry prefers today when on axis, else earliest", () => {

@@ -5,6 +5,21 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-29 — [Thermal] Triple desk opens scrolled to top of strike band (not spot)
+
+**Severity.** P2 — on `/heatmap` compare desk, SPY|SPX|QQQ ladders painted with spot
+highlighted (`is-spot`) but `scrollTop` stayed at 0, so traders had to manually scroll
+each column to find price. SPX Slayer already auto-centers + has a ↻ refresh.
+
+**Root cause.** `ThermalCompactMatrix` rendered the spot row but never called
+`scrollRowIntoViewCenter`. No rail control revalidated/recentered all three panels.
+
+**Fix.** Auto-center each panel on visit / spot-strike change (Slayer pin semantics);
+rail ↻ (+ `R`) revalidates all three SWR keys and bumps a recenter epoch; programmatic
+centers suppress cross-panel scroll-sync so each ladder maps to its own spot.
+
+**Status.** `cursor/thermal-spot-recenter-3d11` → PR.
+
 ## 2026-07-29 — [ops] x-replies cron STALE (EventBridge DISABLED)
 
 **Severity.** P1 ops (ops-auto-fix #1277).
