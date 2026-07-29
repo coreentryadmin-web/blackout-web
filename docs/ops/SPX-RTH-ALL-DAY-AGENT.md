@@ -142,7 +142,7 @@ Validate SPX numbers **agree across the ecosystem**. Use authenticated API calls
 | **HELIX** | `GET /api/market/flows?limit=30` | SPX/SPXW prints during active tape; desk tide direction consistent |
 | **Largo** | `POST /api/market/largo/query` — *"Current SPX play state?"* | Uses `get_spx_play` or `get_ecosystem_context`; answer grounded |
 | **BIE** | `validate:spx-bie` | `spx_full_state` == member `/spx/play` (same `getSpxPlayState()`) |
-| **Grid** | `GET /api/grid/bootstrap` | Loads; SPX spot in macro context not stale vs desk |
+| **Grid** | `GET /api/market/spx/bootstrap` | Loads; SPX spot in macro context not stale vs desk |
 | **0DTE Command** | `GET /api/market/zerodte/board` | SPX setups reference live spot; no fabricated premiums |
 | **Night Hawk** | `GET /api/market/nighthawk/edition` | Edition loads; SPX positioning echo consistent with gex-positioning |
 | **Track record** | `GET /api/public/track-record` | SPX play stats arithmetically correct |

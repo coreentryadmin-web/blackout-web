@@ -25,11 +25,12 @@ evidence / fix / status per the CLAUDE.md policy.)
 `validate:grid-e2e` 4/4 GREEN; `validate:grid-rth` FAIL 1/13 on ops:collect only. All 0DTE board
 probes (gates, ledger PnL, mergePlays, session heat) GREEN.
 
-**Fix.** `crossCheckAgainstMassive`: when `contractsCapped` or `partial`, skip subset-ratio FLAG
-(skew-only consistency-only). `grid-rth-all-day-audit.mjs`: dedicated `auditOpsCollect()` parses
-stdout JSON, scopes FAIL to grid/zerodte P0/P1 only.
+**Fix.** `crossCheckAgainstMassive`: skip when `!marketOpen`, `contractsCapped`, or `partial`
+(subset-ratio not assertable on bounded oracle). `grid-rth-all-day-audit.mjs`: dedicated
+`auditOpsCollect()` parses stdout JSON. SPX runbook Grid probe → `/api/market/spx/bootstrap`.
 
-**Status.** PR `fix/grid-post-close-ops-collect-20260729` → `main`.
+**Status.** PRs `fix/grid-post-close-ops-collect-20260729` + `fix/spx-post-close-flow-xcheck` → `main`.
+Also unblocks `validate:spx-rth --phase=post-close` (matrix/desk/play/E2E were already GREEN).
 
 ## 2026-07-29 — [ops] x-autopost cron STALE + SPY flow cross-check false FLAG (#1287)
 

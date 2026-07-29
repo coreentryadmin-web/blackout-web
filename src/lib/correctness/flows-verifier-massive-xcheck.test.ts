@@ -148,6 +148,43 @@ test("crossCheckAgainstMassive: contract-capped oracle does not false-flag subse
   assert.match(xcheck!.detail, /bounded oracle|contract-capped|subset ratio not assertable/i);
 });
 
+test("crossCheckAgainstMassive: post-close skips cross-check (no false FLAG)", async () => {
+  const { verifyFlows } = await mod();
+  reset();
+  state.tapeRows = cleanTapeRows();
+  state.anomalyRows = [];
+  state.massive = {
+    ticker: "SPY",
+    optionsRoot: "SPY",
+    expiry: "2026-07-29",
+    windowStartMs: Date.now() - 60 * 60_000,
+    windowEndMs: Date.now(),
+    totalPremium: 650_000,
+    callPremium: 200_000,
+    putPremium: 450_000,
+    totalPrints: 40,
+    callPrints: 12,
+    putPrints: 28,
+    callPct: 31,
+    byStrike: [{ strike: 630, callPremium: 0, putPremium: 1e5, totalPremium: 1e5, prints: 5 }],
+    meta: {
+      contractsRequested: 34,
+      contractsWithTrades: 34,
+      contractsCapped: false,
+      filteredPrints: 0,
+      partial: false,
+      sideClassifiedPrints: 40,
+    },
+  };
+
+  const score = await verifyFlows(false);
+  const net = findNetPremium(score);
+  const xcheck = net!.checks.find((c) => c.id === "flows-xcheck-massive");
+  assert.ok(xcheck, "cross-provider check present");
+  assert.equal(xcheck!.outcome, "skipped");
+  assert.match(xcheck!.detail, /Market closed/);
+});
+
 test("crossCheckAgainstMassive: opposite skew still flags", async () => {
   const { verifyFlows } = await mod();
   reset();
