@@ -1,17 +1,29 @@
 /**
  * Post-auth return URLs for primary → staging satellite handoff.
+ *
+ * Open-redirect rule: only same-app relative paths (leading `/`, not `//`) or
+ * absolute URLs whose origin is the staging satellite. Absolute attacker URLs
+ * and protocol-relative URLs (`//evil.com`) must never leave BlackOut.
  */
 
 const STAGING_ORIGIN = "https://staging.blackouttrades.com";
+
+/** True for `/dashboard`, `/flows?x=1`; false for `https://…`, `//evil.com`, bare paths. */
+export function isSafeAppRelativePath(raw: string): boolean {
+  return raw.startsWith("/") && !raw.startsWith("//");
+}
 
 /** Strip failed-sync noise; only allow returns to staging. */
 export function clerkSanitizeStagingReturnUrl(raw: string | undefined | null): string | null {
   const trimmed = raw?.trim();
   if (!trimmed) return null;
 
-  if (trimmed.startsWith("/")) {
+  if (isSafeAppRelativePath(trimmed)) {
     return `${STAGING_ORIGIN}${trimmed}`;
   }
+
+  // Protocol-relative (`//evil.com`) and other non-absolute junk — reject.
+  if (trimmed.startsWith("/") || trimmed.startsWith("\\")) return null;
 
   try {
     const url = new URL(trimmed);
@@ -31,7 +43,7 @@ export const CLERK_DEFAULT_POST_AUTH_PATH = "/";
 export function clerkStagingReturnPath(raw: string | undefined | null): string {
   const trimmed = raw?.trim();
   if (!trimmed) return "/";
-  if (trimmed.startsWith("/")) {
+  if (isSafeAppRelativePath(trimmed)) {
     try {
       const u = new URL(trimmed, STAGING_ORIGIN);
       u.searchParams.delete("__clerk_synced");

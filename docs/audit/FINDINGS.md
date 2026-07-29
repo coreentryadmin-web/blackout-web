@@ -5,6 +5,27 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-29 — [Security] Open redirect in Clerk middleware + SW push URL
+
+**Severity.** HIGH (open redirect) / MEDIUM (push notification phishing).
+
+**Root cause.** `middleware-clerk.ts` passed raw `redirect_url` into
+`new URL(dest, req.url)` — absolute URLs override the base
+(`new URL("https://evil.com", base)` → attacker). `clerkPostAuthReturnPath` was
+imported but unused on that path. `public/sw.js` `notificationclick` opened
+push-payload URLs without same-origin checks.
+
+**Evidence.** Live on `main` at review of PR #1226; #1226's security commit is
+correct but the PR also re-ships already-merged #1221/#1224 cache work (merge
+conflicts / draft). Helper previously turned `//evil.com/phish` → `/phish`
+(pathname coincidence) — hardened.
+
+**Fix.** `isSafeAppRelativePath` + `clerkPostAuthReturnPath` on all middleware
+redirect_url sites (incl. staging satellite); SW relative-path gate; tests.
+
+**Status.** Fixed on `cursor/open-redirect-sw-3d11` (supersedes #1226 security
+slice; close #1226 after merge).
+
 ## 2026-07-29 — [Cache] Members hit stale desk / wrong auth chrome — CF + origin gaps
 
 **Severity.** P0 UX / Truth — members reported massively stale pages; `/sign-up` error class

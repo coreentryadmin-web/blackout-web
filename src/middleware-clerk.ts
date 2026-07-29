@@ -1,7 +1,7 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { clerkMiddlewareAuthOptions, clerkSatelliteAuthRedirect } from "@/lib/clerk-env";
-import { clerkIsClerkSyncFailed, clerkPostAuthReturnPath, CLERK_DEFAULT_POST_AUTH_PATH } from "@/lib/clerk-redirect-url";
+import { clerkIsClerkSyncFailed, clerkPostAuthReturnPath } from "@/lib/clerk-redirect-url";
 import {
   clerkStaleCookieRecoveryResponse,
   requestHasClerkSessionCookie,
@@ -55,7 +55,9 @@ export default clerkMiddleware(
       // Clerk v7.5.x auth()/auth.protect() do not reliably return userId on sign-in
       // pages with the same cookies that work on /dashboard. Decode __session after
       // Clerk's authenticateRequest has already verified the request (PR #790).
-      const dest = req.nextUrl.searchParams.get("redirect_url") || CLERK_DEFAULT_POST_AUTH_PATH;
+      // Sanitize redirect_url — raw absolute/protocol-relative values enable open redirect
+      // via `new URL(dest, req.url)` (absolute overrides base).
+      const dest = clerkPostAuthReturnPath(req.nextUrl.searchParams.get("redirect_url"));
       return withStagingNoEdgeCache(
         NextResponse.redirect(new URL(dest, req.url), 307)
       );
@@ -63,14 +65,14 @@ export default clerkMiddleware(
 
     if (IS_STAGING && process.env.AUTH_PROVIDER !== "cognito") {
       if (path === "/sign-in" || path.startsWith("/sign-in/")) {
-        const returnPath = req.nextUrl.searchParams.get("redirect_url") ?? CLERK_DEFAULT_POST_AUTH_PATH;
+        const returnPath = clerkPostAuthReturnPath(req.nextUrl.searchParams.get("redirect_url"));
         const primary = clerkSatelliteAuthRedirect("sign-in", returnPath);
         if (primary) {
           return withStagingNoEdgeCache(NextResponse.redirect(primary, 307));
         }
       }
       if (path === "/sign-up" || path.startsWith("/sign-up/")) {
-        const returnPath = req.nextUrl.searchParams.get("redirect_url") ?? CLERK_DEFAULT_POST_AUTH_PATH;
+        const returnPath = clerkPostAuthReturnPath(req.nextUrl.searchParams.get("redirect_url"));
         const primary = clerkSatelliteAuthRedirect("sign-up", returnPath);
         if (primary) {
           return withStagingNoEdgeCache(NextResponse.redirect(primary, 307));
