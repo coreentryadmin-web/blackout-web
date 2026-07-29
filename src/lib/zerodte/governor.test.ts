@@ -57,12 +57,12 @@ function losingTimeStop(ticker: string, pnlPct = -30): GovernorLedgerRow {
   });
 }
 
-// ── anti-overfit FIREWALL: value-pin the governor caps (Step 5) ───────────────────────
-// The 2026-07-13 forensics showed a seven-stop day; these caps are the ledger's proven brake. A silent
-// loosening (max concurrent up, session-stop halt up, re-entry lock down) reintroduces the runaway-loss
-// day the record already paid for — so the values are pinned, not just their behavior.
-test("FIREWALL: governor caps are pinned (max 6 concurrent, halt after 3 stops, 20-min re-entry lock)", () => {
-  assert.equal(GOVERNOR_MAX_CONCURRENT_PLANS, 6);
+// ── anti-overfit FIREWALL: value-pin the governor risk brakes (Step 5) ────────────────
+// Session-stop halt + re-entry lock stay pinned — those are the 7/13 runaway-loss brakes.
+// Concurrent open-play ceiling is a PRODUCT dial (default 100 / env ZERODTE_MAX_CONCURRENT),
+// NOT a scarcity throttle: quality gates + stop/loss floors decide how many plans are live.
+test("FIREWALL: governor risk brakes are pinned (halt after 3 stops, 20-min re-entry lock; concurrent default 100)", () => {
+  assert.equal(GOVERNOR_MAX_CONCURRENT_PLANS, 100);
   assert.equal(GOVERNOR_MAX_SESSION_STOPS, 3);
   assert.equal(GOVERNOR_REENTRY_LOCK_MS, 20 * 60 * 1000);
 });
@@ -129,18 +129,18 @@ test("governor: 3 stops halt the session — single dominating block", () => {
   assert.equal(blocks[0]!.threshold, GOVERNOR_MAX_SESSION_STOPS);
 });
 
-test("governor: concurrency cap at 6 open plans (5 pass, 6 blocks)", () => {
-  const five = [
-    { ticker: "TSLA", direction: "long" as const },
-    { ticker: "AMZN", direction: "long" as const },
-    { ticker: "GOOGL", direction: "long" as const },
-    { ticker: "META", direction: "long" as const },
-    { ticker: "MSFT", direction: "long" as const },
-  ];
-  const ok = evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, { open_plans: five, stops: [] }, NOW);
+test("governor: concurrency ceiling blocks only at the configured max (default 100)", () => {
+  const under = Array.from({ length: GOVERNOR_MAX_CONCURRENT_PLANS - 1 }, (_, i) => ({
+    ticker: `T${i}`,
+    direction: "long" as const,
+  }));
+  const ok = evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, { open_plans: under, stops: [] }, NOW);
   assert.deepEqual(ok, []);
-  const six = [...five, { ticker: "AAPL", direction: "long" as const }];
-  const blocked = evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, { open_plans: six, stops: [] }, NOW);
+  const atCap = [
+    ...under,
+    { ticker: `T${GOVERNOR_MAX_CONCURRENT_PLANS - 1}`, direction: "long" as const },
+  ];
+  const blocked = evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, { open_plans: atCap, stops: [] }, NOW);
   assert.deepEqual(blocked.map((b) => b.code), ["governor_max_concurrent"]);
   assert.equal(blocked[0]!.threshold, GOVERNOR_MAX_CONCURRENT_PLANS);
 });
@@ -451,7 +451,7 @@ test("summarizeGovernorForBoard: no correlated cluster → concentration measure
 // ════════════════════════════════════════════════════════════════════════════════════
 
 // ── concurrency cap: EXACT boundary via mixed open + committedThisCycle ───────────────
-test("governor: cap boundary — 3 live + 3 committed-this-cycle = 6 blocks; 3+2 = 5 commits", () => {
+test("governor: cap boundary — open + committedThisCycle fill the configured ceiling", () => {
   const gov = {
     open_plans: [
       { ticker: "TSLA", direction: "short" as const },
@@ -460,7 +460,7 @@ test("governor: cap boundary — 3 live + 3 committed-this-cycle = 6 blocks; 3+2
     ],
     stops: [],
   };
-  // 3 open + 2 committed = 5 (< cap of 6) → no block
+  // Open + cycle under the ceiling → no block (ceiling is product dial, default 100).
   assert.deepEqual(
     evaluateZeroDteGovernor({ ticker: "AMD", direction: "short" }, gov, NOW, [
       { ticker: "AMZN", direction: "short" },
@@ -468,18 +468,18 @@ test("governor: cap boundary — 3 live + 3 committed-this-cycle = 6 blocks; 3+2
     ]),
     []
   );
-  // 3 open + 3 committed = 6 (== cap) → block
-  const at6 = evaluateZeroDteGovernor(
+  // Fill the book to exactly the ceiling via committed-this-cycle → block.
+  const fillToCap = Array.from(
+    { length: GOVERNOR_MAX_CONCURRENT_PLANS - gov.open_plans.length },
+    (_, i) => ({ ticker: `C${i}`, direction: "short" as const })
+  );
+  const atCap = evaluateZeroDteGovernor(
     { ticker: "AMD", direction: "short" },
     gov,
     NOW,
-    [
-      { ticker: "AMZN", direction: "short" },
-      { ticker: "GOOGL", direction: "short" },
-      { ticker: "NVDA", direction: "short" },
-    ]
+    fillToCap
   );
-  assert.deepEqual(at6.map((b) => b.code), ["governor_max_concurrent"]);
+  assert.deepEqual(atCap.map((b) => b.code), ["governor_max_concurrent"]);
 });
 
 // ── re-entry lock: EXACT boundary (< lock window, not <=) ────────────────────────────

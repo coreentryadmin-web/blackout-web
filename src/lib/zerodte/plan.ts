@@ -69,11 +69,10 @@ export const QUOTE_VALIDITY = {
    *  the % test) is still an untradeable exit tax on a 0DTE scalp. */
   max_spread_dollars: 5.0,
   /** Max quote age (ms) before a book is stale. ONLY enforced when a real quote
-   *  timestamp is available on the plan input. As of D3 the 0DTE scan DOES plumb an
-   *  age (OptionSnapshot.quoteUpdatedMs = last_quote.last_updated ns→ms; scan.ts
-   *  computeQuoteAgeMs), so this bound is now LIVE in production for contracts that
-   *  carry a quote timestamp; a contract without one leaves quoteAgeMs unset and the
-   *  bound stays dormant for it (absence is not staleness). */
+   *  age is supplied on the plan input. The 0DTE scan plumbs observation age
+   *  (OptionSnapshot.observedAtMs from the live fetch / cache write — preferred over
+   *  last_quote.last_updated, which often stamps prior close on an otherwise live NBBO).
+   *  Absence of age leaves the bound dormant (absence is not staleness). */
   max_quote_age_ms: 60_000,
   /** Minimum resting quote size (contracts) on BOTH sides. ONLY enforced when the
    *  provider actually reports size (bidSize/askSize non-null) — absent size is not

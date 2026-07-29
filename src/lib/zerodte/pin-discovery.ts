@@ -68,7 +68,7 @@ export function resolvePinUniverse(): string[] {
 }
 
 /** Cap how many PIN setups are RETURNED per scan (board surface + merge budget). */
-export const PIN_MAX_CANDIDATES = 8;
+export const PIN_MAX_CANDIDATES = 16; // raised 8→16 with uncapped open-play desk (2026-07-29)
 /** Cap how many tickers we EVALUATE (GEX + chain) before ranking — larger than the return cap so
  *  we pick the best regimes, not the first N list-order names (FINDINGS 2026-07-28). Condor-eligible
  *  roots are always included in the eval window first. */

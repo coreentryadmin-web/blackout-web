@@ -27,6 +27,7 @@ import {
 import type { ContractPlan } from "./plan";
 import { buildContractPlan, evaluateQuoteValidity, QUOTE_VALIDITY } from "./plan";
 import type { ZeroDteConfluence } from "./confluence";
+import { GOVERNOR_MAX_CONCURRENT_PLANS } from "./governor";
 
 /** Minimal confluence read carrying `confirmations` (the only field G-12 reads). */
 function confluence(confirmations: number): ZeroDteConfluence {
@@ -311,27 +312,21 @@ test("G-5: committedThisCycle counts toward the concurrency cap within one scan 
     ],
     stops: [],
   };
-  // 3 open + 2 committed = 5, under cap of 6 → COMMIT
+  // Under the configured ceiling → COMMIT
+  const under = Array.from({ length: GOVERNOR_MAX_CONCURRENT_PLANS - governor.open_plans.length - 1 }, (_, i) => ({
+    ticker: `C${i}`,
+    direction: "long" as const,
+  }));
   assert.equal(
-    evaluateZeroDteGates(
-      input({ governor, committedThisCycle: [
-        { ticker: "AMZN", direction: "short" },
-        { ticker: "NVDA", direction: "long" },
-      ] })
-    ).verdict,
+    evaluateZeroDteGates(input({ governor, committedThisCycle: under })).verdict,
     "COMMIT"
   );
-  // 3 open + 3 committed = 6, AT cap → BLOCKED
-  const v = evaluateZeroDteGates(
-    input({
-      governor,
-      committedThisCycle: [
-        { ticker: "AMZN", direction: "short" },
-        { ticker: "GOOGL", direction: "short" },
-        { ticker: "NVDA", direction: "long" },
-      ],
-    })
-  );
+  // Fill exactly to the ceiling via committedThisCycle → BLOCKED
+  const atCap = Array.from({ length: GOVERNOR_MAX_CONCURRENT_PLANS - governor.open_plans.length }, (_, i) => ({
+    ticker: `C${i}`,
+    direction: "long" as const,
+  }));
+  const v = evaluateZeroDteGates(input({ governor, committedThisCycle: atCap }));
   assert.equal(v.verdict, "BLOCKED");
   assert.deepEqual(v.blocks.map((b) => b.code), ["governor_max_concurrent"]);
 });

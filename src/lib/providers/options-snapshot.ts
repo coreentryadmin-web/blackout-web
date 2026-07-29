@@ -121,14 +121,19 @@ export type OptionSnapshot = {
   sharesPerContract: number | null;
   /**
    * D3: the top-of-book quote timestamp from last_quote.last_updated, normalized to EPOCH
-   * MILLISECONDS (the provider carries it in NANOSECONDS — see nsToEpochMs). This is what
-   * activates the WS-04 `stale` predicate (plan.ts QUOTE_VALIDITY.max_quote_age_ms): the
-   * 0DTE scan derives quoteAgeMs = now − quoteUpdatedMs and passes it into buildContractPlan.
-   * null when the provider omits/zeroes it — a MISSING timestamp is NOT proof of staleness,
-   * so the age predicate stays dormant for that contract (never fail-closed on absence;
-   * back-compat for non-0DTE readers that ignore this field). NEVER fabricated.
+   * MILLISECONDS (the provider carries it in NANOSECONDS — see nsToEpochMs). Diagnostic /
+   * exchange clock only — do NOT use alone for commit-time G-9 freshness: live REST payloads
+   * often carry a prior-session last_updated while still returning a tradeable NBBO (see
+   * observedAtMs). null when the provider omits/zeroes it. NEVER fabricated.
    */
   quoteUpdatedMs: number | null;
+  /**
+   * Wall-clock ms when THIS process observed the snapshot (set on live fetch / cache read).
+   * Commit-time quote age prefers this over quoteUpdatedMs so a just-fetched live book is
+   * never rejected as `plan_quote_stale` because the exchange stamped prior close.
+   * Optional — absent on pure mapper output; fetch/cache paths attach it.
+   */
+  observedAtMs?: number | null;
 };
 
 // ---------------------------------------------------------------------------
@@ -372,7 +377,9 @@ export async function fetchOptionsUnifiedSnapshot(
           }
           const snap = mapUnifiedSnapshotResult(r);
           if (snap) {
-            out.set(snap.ticker, snap);
+            // Observation clock = this fetch. Commit G-9 uses observedAtMs so a live NBBO
+            // just returned here is never blocked by a stale last_quote.last_updated.
+            out.set(snap.ticker, { ...snap, observedAtMs: Date.now() });
             // A row that mapped but has no usable price is a real-but-quote-less contract.
             if (diag && snap.mark == null) noQuote.push(snap.ticker);
           }
@@ -454,7 +461,8 @@ export async function getOptionSnapshot(occ: string): Promise<OptionSnapshot | n
 
   const local = snapshotMem.get(occ);
   if (local && now - local.ts <= SNAP_FRESH_MS) {
-    return local.snap;
+    // Re-attach observation clock from cache write time for G-9 age.
+    return { ...local.snap, observedAtMs: local.snap.observedAtMs ?? local.ts };
   }
 
   try {
@@ -463,7 +471,7 @@ export async function getOptionSnapshot(occ: string): Promise<OptionSnapshot | n
     if (hit && hit.snap && typeof hit.ts === "number" && now - hit.ts <= SNAP_FRESH_MS) {
       // Re-seed the in-mem layer so subsequent reads skip Redis.
       if (!local || hit.ts > local.ts) snapshotMem.set(occ, hit);
-      return hit.snap;
+      return { ...hit.snap, observedAtMs: hit.snap.observedAtMs ?? hit.ts };
     }
   } catch {
     // Redis optional — fall through to null (chain fallback covers it).

@@ -61,15 +61,17 @@ export const SCORER_VERSION = "v2";
  *  threshold moves or a gate flips calibration↔enforce (it changes what commits).
  *  v4 (2026-07-28): G-15 not_zero_dte — fresh commits require ZERO_DTE contract horizon.
  *  v5 (2026-07-29): G-15 removed — ONE_DTE commits allowed (Monday equity starvation fix).
- *  v6 (2026-07-29): precision harden — confluence floor 2, BREAKOUT/PIN score floor 65. */
-export const GATE_VERSION = "v6";
+ *  v6 (2026-07-29): precision harden — confluence floor 2, BREAKOUT/PIN score floor 65.
+ *  v7 (2026-07-29): G-9 quote age uses observation clock (not stale exchange last_updated). */
+export const GATE_VERSION = "v7";
 /** Night Hawk Cortex evidence vector + weighting. Bump when the Cortex composition or
  *  its veto/abstain logic changes (it changes which plays survive to commit).
  *  v2 (2026-07-29): veto-blind fail-closed restored for fresh commits. */
 export const CORTEX_VERSION = "v2";
 /** Portfolio governor (concentration / contradiction / same-direction caps). Bump when
- *  a governor rule changes which of a day's candidates actually commit. */
-export const GOVERNOR_VERSION = "v1";
+ *  a governor rule changes which of a day's candidates actually commit.
+ *  v2 (2026-07-29): concurrent open-play ceiling 6→100 (env ZERODTE_MAX_CONCURRENT). */
+export const GOVERNOR_VERSION = "v2";
 /** Contract selector (strike/expiry pick — pickChainContract & horizon clamp). Bump
  *  when the selected contract for the same signal would change (a different graded basis). */
 export const CONTRACT_SELECTOR_VERSION = "v1";

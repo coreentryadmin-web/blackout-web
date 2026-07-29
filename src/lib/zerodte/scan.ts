@@ -274,7 +274,9 @@ export async function scanZeroDteBoard(flags?: {
       open_interest: f.open_interest,
       alerted_at: f.alerted_at,
     })),
-    { maxSetups: 20, excludeTickers: excludes, nowMs: Date.now(), todayYmd: today, rejections }
+    // FLOW seat budget — raised 20→48 so the multi-rail merge isn't starved of
+    // FLOW candidates while BREAKOUT/PIN fill their own seats (see GOVERNOR uncapped).
+    { maxSetups: 48, excludeTickers: excludes, nowMs: Date.now(), todayYmd: today, rejections }
   );
   const candidateDerivedAt = Date.now();
 
@@ -830,11 +832,11 @@ async function attachContractPlans(setups: EnrichedZeroDteSetup[]): Promise<void
       // min-size predicate (conditional-on-availability) can enforce.
       bidSize: snap?.bidSize ?? null,
       askSize: snap?.askSize ?? null,
-      // D3: plumb the quote-freshness age so the WS-04 `stale` predicate ACTIVATES. OptionSnapshot
-      // now carries quoteUpdatedMs (last_quote.last_updated, ns→ms); computeQuoteAgeMs returns
-      // undefined when it's absent (predicate stays dormant for that contract) and floors clock
-      // skew to 0 (fresh). Previously no age was passed, so the stale branch was dead in prod.
-      quoteAgeMs: computeQuoteAgeMs(snap?.quoteUpdatedMs, nowMs),
+      // G-9 freshness = observation clock first (when WE received this book), not the exchange
+      // last_quote.last_updated. Live REST often stamps prior close on last_updated while still
+      // returning a tradeable NBBO — using that alone produced false plan_quote_stale blocks
+      // (FINDINGS 2026-07-29). Fall back to quoteUpdatedMs only when observedAtMs is absent.
+      quoteAgeMs: computeQuoteAgeMs(snap?.observedAtMs ?? snap?.quoteUpdatedMs, nowMs),
       keySupports: s.key_supports,
       keyResistances: s.key_resistances,
       vwap: s.vwap,

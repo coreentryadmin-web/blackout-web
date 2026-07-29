@@ -40,10 +40,20 @@ import { PLAN_RULES } from "./plan";
 import type { ZeroDteSetupLogRow } from "@/lib/db";
 import type { ZeroDteGateBlock } from "./gates";
 
-/** Max simultaneously-open plans. Scanning 12,000+ stocks should produce 5-10 good
- *  plays — 3 was too tight for a whole-market board. 6 allows meaningful diversification
- *  while the per-play stop (-50%) and session loss floor (-120%) still cap total risk. */
-export const GOVERNOR_MAX_CONCURRENT_PLANS = 6;
+/** Concurrent open-plan ceiling — env `ZERODTE_MAX_CONCURRENT` (default 100).
+ *  Product intent (2026-07-29): do NOT starve the desk with an artificial scarcity
+ *  cap of 3/6. Quality gates + session stop/loss floors are the real risk brake;
+ *  every setup that clears them should be free to commit. Default 100 is effectively
+ *  "no desk scarcity" for a whole-market board while still bounding runaway commits
+ *  if something else fails open. Set `ZERODTE_MAX_CONCURRENT=0` for unlimited. */
+function envConcurrentCap(name: string, def: number): number {
+  const raw = process.env[name]?.trim();
+  if (!raw) return def;
+  if (raw === "0" || raw.toLowerCase() === "unlimited") return Number.MAX_SAFE_INTEGER;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : def;
+}
+export const GOVERNOR_MAX_CONCURRENT_PLANS = envConcurrentCap("ZERODTE_MAX_CONCURRENT", 100);
 /** Stops in a session before the desk stands down for the day (Slayer's own
  *  loss-halt number). 7/13 took 7 stops — this caps that class of day at 3. */
 export const GOVERNOR_MAX_SESSION_STOPS = 3;

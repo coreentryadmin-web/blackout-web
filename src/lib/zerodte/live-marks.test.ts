@@ -205,17 +205,17 @@ function ledgerRow(over: Partial<ZeroDteSetupLogRow>): ZeroDteSetupLogRow {
   };
 }
 
-test("boundActivePlays: caps at 16, skips CLOSED rows and rows with no plan OCC", async () => {
+test("boundActivePlays: caps at ZERODTE_LIVE_CONTRACT_CAP, skips CLOSED rows and rows with no plan OCC", async () => {
   const lm = await loadLane();
   const rows: ZeroDteSetupLogRow[] = [];
-  for (let i = 0; i < 20; i++) {
+  for (let i = 0; i < ZERODTE_LIVE_CONTRACT_CAP + 4; i++) {
     rows.push(ledgerRow({ ticker: `T${i}`, plan_json: { occ: `O:T${i}260714C00100000` } }));
   }
   rows.push(ledgerRow({ ticker: "CLOSEDX", status: "CLOSED" }));
   rows.push(ledgerRow({ ticker: "NOPLAN", plan_json: null }));
   const active = lm.boundActivePlays(rows);
   assert.equal(active.length, ZERODTE_LIVE_CONTRACT_CAP);
-  assert.equal(active.length, 16);
+  assert.equal(active.length, 100);
   assert.ok(!active.some((p) => p.ticker === "CLOSEDX" || p.ticker === "NOPLAN"));
   // Pinned entry rides along — the ONLY entry reference the lane may push.
   assert.equal(active[0]!.entry_premium, 4.0);
@@ -301,7 +301,7 @@ test("SSE payload shape: pinned-entry P&L, per-quote asOf, stale flag, idle mark
   const plays = lm.boundActivePlays([ledgerRow({})]);
   const payload = lm.buildZeroDteLiveMarksPayloadFrom(plays, now, "2026-07-14");
   assert.equal(payload.idle, false);
-  assert.equal(payload.cap, 16);
+  assert.equal(payload.cap, ZERODTE_LIVE_CONTRACT_CAP);
   const row = payload.marks[0]!;
   assert.equal(row.ticker, "NVDA");
   assert.equal(row.occ, occ);
@@ -604,20 +604,22 @@ test("mergeTrackedContracts: entered plays take the cap first; setups fill the r
 test("mergeTrackedContracts: the cap is entered-first — a full book leaves no room, and an entered play is never evicted", async () => {
   const lm = await loadLane();
   const rows = [];
-  for (let i = 0; i < 16; i++) rows.push(ledgerRow({ ticker: `E${i}`, plan_json: { occ: `O:E${i}260714C00100000` } }));
-  const full = lm.boundActivePlays(rows); // 16 entered = the whole cap
+  for (let i = 0; i < ZERODTE_LIVE_CONTRACT_CAP; i++) {
+    rows.push(ledgerRow({ ticker: `E${i}`, plan_json: { occ: `O:E${i}260714C00100000` } }));
+  }
+  const full = lm.boundActivePlays(rows); // entered fills the whole cap
   const merged = lm.mergeTrackedContracts(full, [setupQuote("O:TSLA260714C00250000")], "2026-07-14");
-  assert.equal(merged.enteredPlays.length, 16);
+  assert.equal(merged.enteredPlays.length, ZERODTE_LIVE_CONTRACT_CAP);
   assert.equal(merged.setupPlays.length, 0, "a full book of entered plays leaves zero room for setups");
 
-  // 15 entered → exactly ONE setup slot opens; the second setup is truncated, no entered play lost.
-  const fifteen = lm.boundActivePlays(rows.slice(0, 15));
+  // Cap-1 entered → exactly ONE setup slot opens; the second setup is truncated, no entered play lost.
+  const almostFull = lm.boundActivePlays(rows.slice(0, ZERODTE_LIVE_CONTRACT_CAP - 1));
   const m2 = lm.mergeTrackedContracts(
-    fifteen,
+    almostFull,
     [setupQuote("O:TSLA260714C00250000", "TSLA"), setupQuote("O:AMD260714C00150000", "AMD", "long", 150)],
     "2026-07-14"
   );
-  assert.equal(m2.enteredPlays.length, 15);
+  assert.equal(m2.enteredPlays.length, ZERODTE_LIVE_CONTRACT_CAP - 1);
   assert.equal(m2.setupPlays.length, 1);
   assert.equal(m2.setupPlays[0]!.occ, "O:TSLA260714C00250000");
 });

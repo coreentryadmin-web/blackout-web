@@ -980,7 +980,7 @@ test("scanZeroDteBoard: a HEALTHY halt feed (quiet channel, socket live) adds NO
 });
 
 // ── WS-01 governor commit atomicity (transactional recount + re-evaluate) ────────────
-// The session governor (GOVERNOR_MAX_CONCURRENT_PLANS = 6) is evaluated against an open-book
+// The session governor (GOVERNOR_MAX_CONCURRENT_PLANS, default 100) is evaluated against an open-book
 // snapshot read at scan START, then persistZeroDteScan re-reads the pre-cycle book and inserts
 // with no DB-level serialization in between. Two overlapping commits (member-poll + cron warm,
 // or two replicas) could each see "room for 1 more" and BOTH insert past the cap. The fix runs
@@ -1078,14 +1078,16 @@ test("WS-01 persistZeroDteScan: UNCONTENDED — the in-transaction recount equal
   assert.equal(state.rejectionRows.length, 0);
 });
 
-test("WS-01 persistZeroDteScan: RACE — a concurrent writer's committed rows (seen only via the in-transaction recount) push the book to 5/6, so only ONE fresh play is admitted and the lower-score loser is rejected with a governor reason", async () => {
+test("WS-01 persistZeroDteScan: RACE — a concurrent writer's committed rows (seen only via the in-transaction recount) leave ONE slot, so only ONE fresh play is admitted and the lower-score loser is rejected with a governor reason", async () => {
   resetState();
+  const { GOVERNOR_MAX_CONCURRENT_PLANS } = await import("./governor");
   state.dailyBars.set("I:VIX", [{ t: Date.parse("2026-07-06T13:30:00Z"), o: 16.1, h: 17, l: 15.8, c: 16.5 }]);
-  // At SCAN start the book had FOUR open plans, so BOTH fresh candidates gated COMMIT.
-  state.ledgerRows = [openLedgerRow("AAPL"), openLedgerRow("TSLA"), openLedgerRow("MSFT"), openLedgerRow("META")];
-  // But by the time we hold the commit lock a RACING writer has already committed one more plan
-  // (GOOGL). The transactional recount reads that fresh book — 5 open, one slot left.
-  state.atomicLedger = [openLedgerRow("AAPL"), openLedgerRow("TSLA"), openLedgerRow("MSFT"), openLedgerRow("META"), openLedgerRow("GOOGL")];
+  // At SCAN start: ceiling-2 open → BOTH fresh candidates still clear the pre-persist gate.
+  const atScan = Array.from({ length: GOVERNOR_MAX_CONCURRENT_PLANS - 2 }, (_, i) => openLedgerRow(`T${i}`));
+  state.ledgerRows = atScan;
+  // By the time we hold the commit lock a RACING writer has already filled one more seat.
+  // Transactional recount → ceiling-1 open, one slot left.
+  state.atomicLedger = [...atScan, openLedgerRow("GOOGL")];
 
   const { persistZeroDteScan } = await mod();
   await persistZeroDteScan([
@@ -1094,7 +1096,7 @@ test("WS-01 persistZeroDteScan: RACE — a concurrent writer's committed rows (s
   ]);
   await new Promise((r) => setTimeout(r, 0)); // flush the best-effort rejection write
 
-  // Exactly ONE fresh play admitted — the higher-score NVDA — and NOT four concurrently-open.
+  // Exactly ONE fresh play admitted — the higher-score NVDA.
   const committed = state.atomicSelectedRows.map((r) => String(r.ticker).toUpperCase());
   assert.deepEqual(committed, ["NVDA"]);
   // The loser is DROPPED (never inserted) and durably recorded as a governor block — fail-VISIBLE.
@@ -1102,7 +1104,7 @@ test("WS-01 persistZeroDteScan: RACE — a concurrent writer's committed rows (s
   const amdRej = state.rejectionRows.find((r) => String(r.ticker).toUpperCase() === "AMD");
   assert.ok(amdRej, "the over-cap loser must be recorded to zerodte_scan_rejections");
   assert.equal(amdRej!.gate_failed, "governor_max_concurrent");
-  assert.match(String(amdRej!.reason), /max 6 concurrent/);
+  assert.match(String(amdRej!.reason), new RegExp(`max ${GOVERNOR_MAX_CONCURRENT_PLANS} concurrent`));
 });
 
 // ── D3 · option-quote staleness plumbing ─────────────────────────────────────────
@@ -1125,6 +1127,17 @@ test("D3 computeQuoteAgeMs: missing → undefined, fresh/stale reported, negativ
   assert.equal(computeQuoteAgeMs(now - 90_000, now), 90_000);
   // Negative (quote clock ahead of ours) → floored to 0, NOT a negative/huge age.
   assert.equal(computeQuoteAgeMs(now + 10_000, now), 0);
+});
+
+test("G-9 observation clock: just-fetched book stays fresh even when exchange last_updated is hours old", async () => {
+  const { computeQuoteAgeMs } = await mod();
+  const { QUOTE_VALIDITY } = await import("./plan");
+  const now = 1_784_923_200_000;
+  const exchangeUpdatedMs = now - 4 * 60 * 60 * 1000; // prior session stamp
+  const observedAtMs = now - 500; // REST observation this cycle
+  assert.ok((computeQuoteAgeMs(exchangeUpdatedMs, now) ?? 0) > QUOTE_VALIDITY.max_quote_age_ms);
+  // Commit path: observedAtMs ?? quoteUpdatedMs → fresh (the live attach wiring).
+  assert.equal(computeQuoteAgeMs(observedAtMs ?? exchangeUpdatedMs, now), 500);
 });
 
 test("D3 integration: computeQuoteAgeMs(quoteUpdatedMs) drives buildContractPlan's stale verdict", async () => {
