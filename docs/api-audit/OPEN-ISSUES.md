@@ -1,5 +1,45 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-29 12:50 ET
+Last updated: 2026-07-29 13:18 ET
+
+## spx-rth-2026-07-29 — SPX Slayer afternoon verify pass (~13:07–13:18 ET)
+
+**Session:** Autonomous SPX Slayer all-day agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` verify mode. Time: Wed 13:07–13:18 ET (RTH). Commands: `validate:spx-rth` → `validate:spx-e2e` + 60s live auto-update probe.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth` | ✅ **GREEN** (post-fix) — 8 PASS / 1 WARN / 0 FAIL |
+| `npm run validate:spx-e2e` | ✅ **GREEN** — 15 PASS / 0 FAIL / 1 SKIP / 1 WARN |
+| Matrix INV-2 (GEX/VEX/DEX/CHARM) | ✅ **GREEN** — 176–178 strikes · spot ~7388 · zero NaN/stale/wrong |
+| 60s live auto-update | ✅ desk spot ticked 7386.92→7388.9; matrix loaded (~29k chars); hero stable SCANNING (expected) |
+| Trade alerts | ✅ `SCANNING` — no stale ✓ confirmations |
+| Cross-tool (Step 3) | ✅ Thermal · HELIX 30 prints · Grid bootstrap · 0DTE 6 setups · Night Hawk · Largo · BIE |
+
+### UI E2E (Playwright `/dashboard`)
+
+| # | Action | Result |
+|---|---|---|
+| GEX tab | ✅ activates |
+| VEX tab | ✅ activates |
+| Matrix rows | ✅ 178 strike rows |
+| Matrix text sanity | ✅ no NaN/undefined/`$—` |
+| Commentary expand | ⚠️ SKIP — toggle only when commentary `live` |
+| Console errors | ✅ zero |
+
+### Findings
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| **P1** | `audit-auth-fetch-parallel-race` | `fetchAuditJson` parallel `Promise.all` in `spxCrossEndpointCheck` raced concurrent Clerk mints → flaky HTTP 401 on gex-heatmap/gex-positioning | `spx:cross-endpoint` | **FIXED** (PR) — serialize clerk mint |
+| **P2** | `spx-rth-cloud-cron-secret-mismatch` | Cloud agent `CRON_SECRET` ≠ prod SM → WARN on data-correctness + BIE cron play route | `spx:data-correctness` | known — prod cron authoritative |
+| **P2** | `spx-commentary-expand-standby` | Commentary expand hidden when rail standby | `#spx-commentary-rail-toggle` | expected |
+
+**No prod P0 defects — member-facing SPX Slayer GREEN.**
+
+**Reports:** `audit-output/spx-rth-2026-07-29-verify-1785345547839.json`, `audit-output/spx-dashboard-e2e-1785345068568.json`
+
+---
 
 ## rth-comprehensive-2026-07-29-pass2 — midday agent sweep (~12:40 ET)
 
