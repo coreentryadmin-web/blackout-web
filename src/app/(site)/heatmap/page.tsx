@@ -4,6 +4,8 @@ import { canAccessTool } from "@/lib/tool-access-server";
 import { ComingSoon } from "@/components/ComingSoon";
 import { ThermalPageShell } from "@/features/thermal/components/ThermalPageShell";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "BlackOut Thermal · BlackOut",
   description: "Dealer gamma & vanna exposure mapped across the full options chain.",

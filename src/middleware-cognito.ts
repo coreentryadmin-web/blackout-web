@@ -13,6 +13,7 @@ import {
   MUTATION_METHODS,
   PUBLIC_TELEMETRY_PATHS,
   withStagingNoEdgeCache,
+  withNoEdgeCache,
 } from "@/middleware-shared";
 
 function encodeOAuthState(returnPath: string): string {
@@ -48,8 +49,9 @@ export default async function middleware(req: NextRequest) {
     if (!session) {
       const signIn = publicSiteUrl("/sign-in");
       signIn.searchParams.set("redirect_url", `${path}${req.nextUrl.search}`);
-      return withStagingNoEdgeCache(NextResponse.redirect(signIn));
+      return withNoEdgeCache(NextResponse.redirect(signIn));
     }
+    return withNoEdgeCache(NextResponse.next());
   }
 
   if (

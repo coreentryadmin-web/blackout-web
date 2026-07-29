@@ -4,6 +4,8 @@ import { canAccessTool } from "@/lib/tool-access-server";
 import { ComingSoon } from "@/components/ComingSoon";
 import { LargoPageShell } from "@/features/largo/components/LargoPageShell";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Largo · BlackOut",
   description: "Your AI desk officer — live desk intel grounded in BlackOut's tools.",
