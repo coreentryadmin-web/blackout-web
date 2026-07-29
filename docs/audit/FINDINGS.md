@@ -5,6 +5,21 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-29 — [Thermal] Triple desk SPY/QQQ not refreshing every 5–10s
+
+**Severity.** P1 UX — compare desk felt stuck; SPX stayed ~5s while SPY/QQQ asof climbed
+15–25s (live poll 2026-07-29 ~15:58 ET). Browser showed force requests stuck on
+`force=1&n=1` (same SWR key every cycle).
+
+**Root cause.**
+1. Client cleared `forceNonce` → 0 on success, then bumped to 1 again → identical SWR key.
+2. Force age/throttle were 8s while UI goal is Slayer-like 5–10s; server throttle matched 8s.
+
+**Fix.** Monotonic force nonce + `forceActive` flag (unique SWR keys); force age/throttle
+5s client+server. Triple desk ticks every 1s and waits for in-flight force to settle.
+
+**Status.** `cursor/thermal-matrix-cadence-3d11` → PR.
+
 ## 2026-07-29 — [Thermal] Triple desk opens scrolled to top of strike band (not spot)
 
 **Severity.** P2 — on `/heatmap` compare desk, SPY|SPX|QQQ ladders painted with spot

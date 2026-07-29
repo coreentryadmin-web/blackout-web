@@ -212,18 +212,30 @@ function TripleColumn({
 }: ColumnProps) {
   const pollMs = usePollIntervalMs(5_000, 5_000);
   // Age-based force (SPX Slayer parity): EventBridge heatmap-warm floors at 1m, so without
-  // ?force=1 SPY/QQQ asof ages to 25–60s while the client polls every 5s. Force when asof
-  // is >8s old (server throttles ≤1/8s; single-flight coalesces concurrent viewers).
+  // ?force=1 SPY/QQQ asof ages well past the 5s poll. Force when asof is >5s old (server
+  // throttles ≤1/5s; single-flight coalesces concurrent viewers).
+  //
+  // forceNonce is monotonic and NEVER reused: clearing it back to 0 then bumping to 1 again
+  // made every force hit the same SWR key (`…&force=1&n=1`), so later forces could paint a
+  // stale cached payload while a slow revalidate ran (live 2026-07-29: SPY/QQQ felt stuck
+  // at 15–25s). forceActive flips the key on/off; nonce only increases.
   const [forceNonce, setForceNonce] = useState(0);
+  const [forceActive, setForceActive] = useState(false);
   const lastForceAtRef = useRef(0);
   const [lastGood, setLastGood] = useState<HeatmapPayload | null>(null);
 
   const matrixKey =
-    forceNonce > 0
+    forceActive && forceNonce > 0
       ? `/api/market/gex-heatmap?ticker=${encodeURIComponent(ticker)}&force=1&n=${forceNonce}`
       : `/api/market/gex-heatmap?ticker=${encodeURIComponent(ticker)}`;
 
-  const clearForce = () => setForceNonce((n) => (n > 0 ? 0 : n));
+  const clearForce = () => setForceActive(false);
+
+  const triggerForce = useCallback(() => {
+    lastForceAtRef.current = Date.now();
+    setForceNonce((n) => n + 1);
+    setForceActive(true);
+  }, []);
 
   const { data, error, isLoading, isValidating, mutate } = useSWR<HeatmapPayload>(
     matrixKey,
@@ -253,6 +265,7 @@ function TripleColumn({
   useEffect(() => {
     const tick = () => {
       const nowMs = Date.now();
+      if (forceActive) return; // wait for in-flight force to settle before arming another
       if (nowMs - lastForceAtRef.current < MATRIX_FORCE_THROTTLE_MS) return;
       // Blank / unusable column: force immediately (throttled) so SPY doesn't sit on
       // "No matrix yet" waiting for the 1-min warm cron while SPX/QQQ already painted.
@@ -267,13 +280,12 @@ function TripleColumn({
           lastForceAtMs: lastForceAtRef.current,
         });
       if (!blank && !stale) return;
-      lastForceAtRef.current = nowMs;
-      setForceNonce((n) => n + 1);
+      triggerForce();
     };
     tick();
-    const id = setInterval(tick, 2_000);
+    const id = setInterval(tick, 1_000);
     return () => clearInterval(id);
-  }, [view, ticker]);
+  }, [view, ticker, forceActive, triggerForce]);
 
   // Reset last-good when the column ticker changes so we never paint SPX cells under a SPY header.
   useEffect(() => {
@@ -286,13 +298,14 @@ function TripleColumn({
     onRegisterMutate(
       ticker,
       async () => {
-        lastForceAtRef.current = Date.now();
-        setForceNonce((n) => n + 1);
+        triggerForce();
+        // Key change drives the fetch; mutate() on the prior key is a no-op for force.
+        await new Promise((r) => setTimeout(r, 50));
         await mutate();
       },
-      isValidating || forceNonce > 0,
+      isValidating || forceActive,
     );
-  }, [ticker, mutate, isValidating, forceNonce, onRegisterMutate]);
+  }, [ticker, mutate, isValidating, forceActive, onRegisterMutate, triggerForce]);
 
   const block = view ? pickBlock(view, lens) : undefined;
   const walls = wallPair(block, lens);

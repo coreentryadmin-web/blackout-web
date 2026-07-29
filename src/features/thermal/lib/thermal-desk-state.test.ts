@@ -58,12 +58,12 @@ test("isUsableGexHeatmapPayload / shouldForceMatrixRefresh", () => {
     "fresh asof must not force"
   );
   assert.equal(
-    shouldForceMatrixRefresh({ asofMs: now - 10_000, nowMs: now, lastForceAtMs: 0 }),
+    shouldForceMatrixRefresh({ asofMs: now - 6_000, nowMs: now, lastForceAtMs: 0 }),
     true,
-    "asof >8s forces"
+    "asof >5s forces"
   );
   assert.equal(
-    shouldForceMatrixRefresh({ asofMs: now - 10_000, nowMs: now, lastForceAtMs: now - 2_000 }),
+    shouldForceMatrixRefresh({ asofMs: now - 6_000, nowMs: now, lastForceAtMs: now - 2_000 }),
     false,
     "throttle blocks force"
   );

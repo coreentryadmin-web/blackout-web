@@ -38,11 +38,12 @@ const overlayMem = new Map<string, { at: number; overlays: GexHeatmapOverlays }>
 /**
  * Server-side force-refresh gate. `?force=1` bypasses BOTH the in-memory and Redis matrix cache,
  * so a crafted/buggy client (or many users force-ing different tickers) could hammer the Polygon
- * chain — shared at 40 RPS with the desk / Night Hawk / Largo. We mirror the client's 8s throttle
- * server-side, PER TICKER: a force is honored only when ≥8s have elapsed since the last honored
+ * chain — shared at 40 RPS with the desk / Night Hawk / Largo. We mirror the client's 5s throttle
+ * server-side, PER TICKER: a force is honored only when ≥5s have elapsed since the last honored
  * force for that ticker; otherwise it's dropped and the request serves the normal cached read.
  */
-const FORCE_THROTTLE_MS = 8_000;
+/** Align with Thermal triple-desk / Slayer force cadence (~5s matrix feel). */
+const FORCE_THROTTLE_MS = 5_000;
 const lastForceAt = new Map<string, number>();
 
 /**
