@@ -2,11 +2,40 @@
  * Load production app secrets from AWS Secrets Manager (ECS deploy era).
  * Falls back silently when AWS CLI/creds are unavailable (local dev, CI without AWS).
  */
-import { execFileSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
+import { existsSync } from "node:fs";
 
 const PROD_SECRET = "blackout-production/app/env";
 
 let cached = null;
+let awsBin = null;
+
+function resolveAwsCli() {
+  if (awsBin) return awsBin;
+  const candidates = [
+    process.env.AWS_CLI_PATH,
+    "aws",
+    "/home/ubuntu/.local/bin/aws",
+    "/usr/local/bin/aws",
+    "/usr/bin/aws",
+  ].filter(Boolean);
+  for (const bin of candidates) {
+    if (bin === "aws") {
+      try {
+        execSync("aws --version", { stdio: "ignore" });
+        awsBin = "aws";
+        return awsBin;
+      } catch {
+        continue;
+      }
+    }
+    if (existsSync(bin)) {
+      awsBin = bin;
+      return awsBin;
+    }
+  }
+  return null;
+}
 
 function awsRegion() {
   // pragma: allowlist secret
@@ -19,8 +48,10 @@ function awsRegionArgs() {
 }
 
 function loadProdSecretsFromAwsCli() {
+  const aws = resolveAwsCli();
+  if (!aws) throw new Error("aws cli not found");
   const raw = execFileSync(
-    "aws",
+    aws,
     [
       "secretsmanager",
       "get-secret-value",

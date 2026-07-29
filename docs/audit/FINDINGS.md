@@ -60,6 +60,26 @@ fix only restores the WATCH/serving write path.
 **Status.** This PR + live Lambda/ALB patch.
 >>>>>>> origin/main
 
+## 2026-07-29 — [Ops] Cloud-agent audit CRON_SECRET stale + NH `unfilled` verifier gap
+
+**Severity.** P1 — RTH crons (`data-correctness`, `socket-health`, `zerodte-warm`) returned
+401/503 in cloud-agent sweeps; `data-correctness` flagged 15 bogus `pg_nh_outcomes` rows.
+
+**Root cause.** (1) `loadProdSecretsFromAws()` called `aws` on PATH — cloud images install
+the CLI to `/home/ubuntu/.local/bin/aws`, so SM fetch failed silently and `auditSecret`
+fell back to a stale 44-char env `CRON_SECRET` vs prod 48-char. (2) `audit-auth-fetch`
+did not fall through to Clerk on cron 401. (3) `data-integrity-verifier` outcome vocabulary
+omitted `unfilled` (added to DB CHECK in `db.ts` PR-N1) → false P1 on honest grades.
+
+**Fix.** `prod-secrets.mjs` resolves AWS CLI from common paths; `audit-auth-fetch.mjs`
+uses `auditSecret` + Clerk on 401/403; verifier includes `unfilled`; grid-rth nested
+`validate:rth-open` timeout 300s + 10MB buffer.
+
+**Evidence.** Pre-fix: `curl data-correctness` → 401; post-fix SM load 81 keys, CRON 48
+chars, `validate:rth-open` GREEN, options-socket authenticated.
+
+**Status.** PR #1250.
+
 ## 2026-07-29 — [0DTE] G-9 `plan_quote_stale` false-positive on live REST books
 
 **Severity.** P0 — AAPL/MU/GOOGL cleared score/confluence but stayed BLOCKED on

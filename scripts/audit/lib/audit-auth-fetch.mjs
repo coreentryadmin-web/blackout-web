@@ -4,6 +4,7 @@
  * auth is the authoritative member-path fallback (same as zerodte-logic-audit).
  */
 import { mintClerkPremiumSession } from "./prod-clerk-session.mjs";
+import { auditSecret } from "./prod-secrets.mjs";
 
 /** @type {{ cookieHeader: string, cleanup?: () => Promise<void> } | null} */
 let clerkSessionCache = null;
@@ -40,12 +41,17 @@ export async function releaseAuditClerkSession() {
  */
 export async function fetchAuditJson(base, path) {
   const url = `${base.replace(/\/$/, "")}${path}`;
-  const cron = process.env.CRON_SECRET?.trim();
+  const cron = auditSecret("CRON_SECRET");
   if (cron) {
     const r = await fetch(url, {
       headers: { Authorization: `Bearer ${cron}`, Accept: "application/json" },
     });
     if (r.ok) return { ok: true, status: r.status, json: await r.json(), via: "cron" };
+    // Stale cloud-agent CRON_SECRET is common — fall through to Clerk on auth failure.
+    if (r.status !== 401 && r.status !== 403) {
+      const json = await r.json().catch(() => ({}));
+      return { ok: false, status: r.status, json, via: "cron" };
+    }
   }
   if (process.env.CLERK_SECRET_KEY && process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) {
     for (let attempt = 0; attempt < 2; attempt++) {
