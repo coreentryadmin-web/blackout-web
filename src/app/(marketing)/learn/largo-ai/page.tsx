@@ -1,6 +1,4 @@
-﻿export const dynamic = "force-static";
-
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 import { LearnGuideView } from "@/components/learn/LearnGuideView";
 import { largoAiGuide } from "@/lib/learn/guides";
 

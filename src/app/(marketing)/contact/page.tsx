@@ -1,5 +1,3 @@
-export const dynamic = "force-static";
-
 import type { Metadata } from "next";
 import Link from "next/link";
 import { MarketingPageShell } from "@/components/landing/MarketingPageShell";

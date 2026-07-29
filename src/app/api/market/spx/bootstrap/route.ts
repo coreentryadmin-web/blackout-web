@@ -2,13 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
 import { loadBootstrapBundle, type MergedSpxDeskBundle } from "@/features/spx/lib/spx-desk-loader";
 import { roundFloats } from "@/lib/round-floats";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
-
-const NO_STORE = {
-  "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-  Pragma: "no-cache",
-} as const;
 
 export type SpxBootstrapPayload = {
   desk: MergedSpxDeskBundle["desk"];
@@ -40,9 +36,9 @@ export async function GET(req: NextRequest) {
       gexHeatmap: null,
     };
 
-    return NextResponse.json(roundFloats(payload), { headers: NO_STORE });
+    return NextResponse.json(roundFloats(payload), { headers: NO_STORE_HEADERS });
   } catch (error) {
     console.error("[market/spx/bootstrap]", error);
-    return NextResponse.json({ error: "Bootstrap failed" }, { status: 502, headers: NO_STORE });
+    return NextResponse.json({ error: "Bootstrap failed" }, { status: 502, headers: NO_STORE_HEADERS });
   }
 }

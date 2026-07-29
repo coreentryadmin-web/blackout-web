@@ -15,6 +15,7 @@ import {
 } from "@/lib/platform/zerodte-sim-board";
 import { requireToolApi } from "@/lib/tool-access-server";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
 
@@ -44,8 +45,7 @@ export async function GET(req: NextRequest) {
       const simPayload = await getSimBoardPayload();
       return NextResponse.json(simPayload, {
         headers: {
-          "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-          Pragma: "no-cache",
+          ...NO_STORE_HEADERS,
           "X-Zerodte-Sim": "1",
         },
       });
@@ -60,16 +60,13 @@ export async function GET(req: NextRequest) {
   try {
     const payload = await getZeroDteBoardPayload();
     return NextResponse.json(payload, {
-      headers: {
-        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-        Pragma: "no-cache",
-      },
+      headers: NO_STORE_HEADERS,
     });
   } catch (error) {
     console.error("[market/zerodte/board]", error);
     return NextResponse.json(
       { available: false, degraded: true },
-      { headers: { "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0" } }
+      { headers: NO_STORE_HEADERS }
     );
   }
 }

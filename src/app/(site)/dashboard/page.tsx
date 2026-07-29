@@ -5,6 +5,7 @@ import { SpxDashboard } from "@/features/spx";
 import { DeskShell } from "@/components/layout/DeskShell";
 import { loadVectorSeedProps, type VectorSeedProps } from "@/features/vector";
 
+export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export const metadata: Metadata = {

@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
 import { getGexPositioning } from "@/lib/providers/gex-positioning";
 import { roundFloats } from "@/lib/round-floats";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -79,10 +80,7 @@ export async function GET(
 
   const raw = (await params).ticker ?? "";
   const ticker = raw.toUpperCase();
-  const noStore = {
-    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-    Pragma: "no-cache",
-  };
+  const noStore = NO_STORE_HEADERS;
 
   if (!TICKER_RE.test(ticker)) {
     return NextResponse.json(

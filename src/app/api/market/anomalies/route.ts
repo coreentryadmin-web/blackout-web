@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { dbQuery } from "@/lib/db";
 import { isCronAuthorized, requireTierApi } from "@/lib/market-api-auth";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const NO_STORE = { "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0" };
 
 export async function GET() {
   const authResult = await requireTierApi("premium");
@@ -26,9 +25,9 @@ export async function GET() {
         direction: r.direction,
         severity: r.severity,
       }))
-    }, { status: 200, headers: NO_STORE });
+    }, { status: 200, headers: NO_STORE_HEADERS });
   } catch {
-    return NextResponse.json({ anomalies: [] }, { status: 200, headers: NO_STORE });
+    return NextResponse.json({ anomalies: [] }, { status: 200, headers: NO_STORE_HEADERS });
   }
 }
 

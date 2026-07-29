@@ -4,6 +4,7 @@ import { requireDatabaseInProduction } from "@/lib/db";
 import { authorizeCronOrTierApi } from "@/lib/market-api-auth";
 import { getSpxPlayState } from "@/features/spx/lib/spx-service";
 import { roundFloats } from "@/lib/round-floats";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
 
@@ -18,10 +19,7 @@ export async function GET(req: NextRequest) {
     const play = await getSpxPlayState();
 
     return NextResponse.json(roundFloats(play), {
-      headers: {
-        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-        Pragma: "no-cache",
-      },
+      headers: NO_STORE_HEADERS,
     });
   } catch (error) {
     console.error("[market/spx/play]", error);
@@ -30,7 +28,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(
       { available: false, action: "SCANNING", degraded: true },
       {
-        headers: { "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0" },
+        headers: NO_STORE_HEADERS,
       }
     );
   }

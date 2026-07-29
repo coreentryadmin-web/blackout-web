@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { requireTierApi } from "@/lib/market-api-auth";
 import { getLargoSessionMessages, largoConfigured } from "@/lib/largo-terminal";
 import { requireToolApi } from "@/lib/tool-access-server";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +28,7 @@ export async function GET(req: NextRequest) {
   try {
     const payload = await getLargoSessionMessages(sessionId, authResult.userId);
     return NextResponse.json(payload, {
-      headers: { "Cache-Control": "no-store" },
+      headers: NO_STORE_HEADERS,
     });
   } catch (error) {
     console.error("[market/largo/session]", error);

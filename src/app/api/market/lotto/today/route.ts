@@ -7,6 +7,7 @@ import { loadMergedSpxDesk } from "@/features/spx/lib/spx-desk-loader";
 import { readSpxLottoSnapshot } from "@/features/spx/lib/spx-lotto-engine";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import { roundFloats } from "@/lib/round-floats";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
 
@@ -35,10 +36,7 @@ export async function GET(req: NextRequest) {
         history,
       }),
       {
-        headers: {
-          "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-          Pragma: "no-cache",
-        },
+        headers: NO_STORE_HEADERS,
       }
     );
   } catch (error) {

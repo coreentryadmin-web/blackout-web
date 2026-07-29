@@ -6,6 +6,7 @@ import { fetchPolygonPositioningBundle } from "@/lib/providers/polygon-options-g
 import { analyzeStrikeGexRows, computeGammaFlip, gammaRegime, topGexWalls } from "@/lib/providers/gamma-desk";
 import { roundFloats } from "@/lib/round-floats";
 import { joinGexStrikeExpiryTicker } from "@/lib/ws/uw-socket";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,16 +35,11 @@ export async function GET(req: NextRequest) {
 
   const ticker = (req.nextUrl.searchParams.get("ticker") || "SPY").toUpperCase();
 
-  const noStore = {
-    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-    Pragma: "no-cache",
-  };
-
   // Validate BEFORE getGexPositioning — on a cache miss it triggers a paid spot/chain
   // fetch and mints a per-ticker cache key, so arbitrary input must be rejected up front
   // (mirrors the quote route guard).
   if (!/^[A-Z0-9.\-]{1,8}$/.test(ticker)) {
-    return NextResponse.json({ error: "Invalid ticker" }, { status: 400, headers: noStore });
+    return NextResponse.json({ error: "Invalid ticker" }, { status: 400, headers: NO_STORE_HEADERS });
   }
 
   // OPT-IN: the 0DTE intraday-adjusted lens (OI + volume model). Default OFF keeps this route the
@@ -133,7 +129,7 @@ export async function GET(req: NextRequest) {
               source: "polygon-fallback" as const,
               _fallback: true,
             }),
-            { status: 200, headers: noStore }
+            { status: 200, headers: NO_STORE_HEADERS }
           );
         }
       } catch (fbErr) {
@@ -141,19 +137,19 @@ export async function GET(req: NextRequest) {
       }
       return NextResponse.json(
         { available: false, ticker },
-        { status: 200, headers: noStore }
+        { status: 200, headers: NO_STORE_HEADERS }
       );
     }
     return NextResponse.json(
       roundFloats({ available: true, ...positioning }),
-      { status: 200, headers: noStore }
+      { status: 200, headers: NO_STORE_HEADERS }
     );
   } catch (error) {
     console.error("[market/gex-positioning]", error);
     // Never throw to the client — degrade to the empty contract.
     return NextResponse.json(
       { available: false, ticker },
-      { status: 200, headers: noStore }
+      { status: 200, headers: NO_STORE_HEADERS }
     );
   }
 }

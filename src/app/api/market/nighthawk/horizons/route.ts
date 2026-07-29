@@ -14,6 +14,7 @@ import { getSwingServingLane, discoverSwingFromPersisted } from "@/lib/swing/ser
 import { requireToolApi } from "@/lib/tool-access-server";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
 import { roundFloats } from "@/lib/round-floats";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
 
@@ -61,17 +62,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(
       roundFloats({ board, upstream_ok: payload.upstream_ok, session: payload.session }),
       {
-        headers: {
-          "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-          Pragma: "no-cache",
-        },
+        headers: NO_STORE_HEADERS,
       }
     );
   } catch (error) {
     console.error("[market/nighthawk/horizons]", error);
     return NextResponse.json(
       { available: false, degraded: true },
-      { headers: { "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0" } }
+      { headers: NO_STORE_HEADERS }
     );
   }
 }

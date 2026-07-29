@@ -1,5 +1,7 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
+
+export const dynamic = "force-dynamic";
 import { syncWhopMembershipForEmail } from "@/lib/membership";
 import { acquireMembershipSyncSlot } from "@/lib/membership-sync-limit";
 import { publishTierChanged } from "@/lib/tier-cache";

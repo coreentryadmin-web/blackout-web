@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAdminApi } from "@/lib/admin-access";
 import { buildMarketHealthSnapshot } from "@/lib/market-health";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -12,7 +13,7 @@ export async function GET() {
   if (denied) {
     return NextResponse.json(
       { ok: true, as_of: new Date().toISOString() },
-      { status: 200, headers: { "Cache-Control": "no-store" } }
+      { status: 200, headers: NO_STORE_HEADERS }
     );
   }
 

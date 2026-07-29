@@ -25,6 +25,7 @@ export async function GET() {
           "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "Content-Disposition": 'attachment; filename="SPX-Sniper-Playbook.docx"',
         "Cache-Control": "private, no-store",
+        "CDN-Cache-Control": "no-store",
       },
     });
   } catch {

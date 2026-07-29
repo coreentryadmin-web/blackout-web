@@ -7,6 +7,7 @@ import { authorizeCronOrTierApi } from "@/lib/market-api-auth";
 import { requireToolApi } from "@/lib/tool-access-server";
 import { ensureZeroDteMarkPoller, getZeroDteLiveMarksJson } from "@/lib/zerodte/live-marks";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,15 +28,14 @@ export async function GET(req: NextRequest) {
     return new NextResponse(json, {
       headers: {
         "Content-Type": "application/json",
-        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-        Pragma: "no-cache",
+        ...NO_STORE_HEADERS,
       },
     });
   } catch (error) {
     console.error("[market/zerodte/marks]", error);
     return NextResponse.json(
       { available: false },
-      { headers: { "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0" } }
+      { headers: NO_STORE_HEADERS }
     );
   }
 }

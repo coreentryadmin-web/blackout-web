@@ -23,6 +23,7 @@ import {
 import { randomUUID } from "node:crypto";
 import { requireToolApi } from "@/lib/tool-access-server";
 import { runWithUwHuntBudget } from "@/lib/providers/uw-hunt-budget";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 // ---------------------------------------------------------------------------
 // Per-user hunt concurrency gate — Redis-backed, mirrors market/largo/query's
@@ -145,7 +146,7 @@ export async function POST(req: NextRequest) {
   if (!slot.acquired) {
     return NextResponse.json(
       { error: "Too many active hunts. Please wait for a previous hunt to complete." },
-      { status: 429, headers: { "Cache-Control": "no-store" } }
+      { status: 429, headers: NO_STORE_HEADERS }
     );
   }
 
@@ -154,7 +155,7 @@ export async function POST(req: NextRequest) {
     if (userId) await releaseHuntSlot(userId, slot.redis);
     return NextResponse.json(
       { error: "Hunt capacity is full cluster-wide. Please try again shortly." },
-      { status: 429, headers: { "Cache-Control": "no-store" } }
+      { status: 429, headers: NO_STORE_HEADERS }
     );
   }
 
@@ -198,7 +199,7 @@ export async function POST(req: NextRequest) {
     console.error("[nighthawk/hunt] error", { mode: body.mode, userId, error });
     return NextResponse.json(
       { error: "Hunt scan failed" },
-      { status: 502, headers: { "Cache-Control": "no-store" } }
+      { status: 502, headers: NO_STORE_HEADERS }
     );
   } finally {
     if (userId) {
@@ -237,6 +238,6 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json(response, {
     status: scanResult.ok ? 200 : 422,
-    headers: { "Cache-Control": "no-store" },
+    headers: NO_STORE_HEADERS,
   });
 }

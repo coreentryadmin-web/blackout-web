@@ -12,7 +12,7 @@ export async function GET() {
   if (isCognitoAuth()) {
     const session = await getCognitoSession();
     if (!session) {
-      return NextResponse.json({ signedIn: false, userId: null, email: null });
+      return NextResponse.json({ signedIn: false, userId: null, email: null }, { headers: NO_STORE_HEADERS });
     }
     const profile = await getUserProfile(session.userId);
     return NextResponse.json({
@@ -28,7 +28,7 @@ export async function GET() {
 
   const { userId } = await auth();
   if (!userId) {
-    return NextResponse.json({ signedIn: false, userId: null, email: null });
+    return NextResponse.json({ signedIn: false, userId: null, email: null }, { headers: NO_STORE_HEADERS });
   }
   const profile = await getUserProfile(userId);
   return NextResponse.json({

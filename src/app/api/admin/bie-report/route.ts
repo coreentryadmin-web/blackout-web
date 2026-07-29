@@ -7,6 +7,7 @@
 // now?" is one authenticated request, not a wait for the daily cron.
 import { NextResponse } from "next/server";
 import { requireAdminApi } from "@/lib/admin-access";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 import {
   dbConfigured,
   fetchAlertAuditTrail,
@@ -203,6 +204,6 @@ export async function GET() {
       // Every previously persisted report — the improvement trail, newest first.
       report_trail: trail.map((r) => ({ source: r.source, at: r.created_at, preview: r.chunk.slice(0, 200) })),
     },
-    { headers: { "Cache-Control": "no-store" } }
+    { headers: NO_STORE_HEADERS }
   );
 }

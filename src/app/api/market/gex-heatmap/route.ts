@@ -19,6 +19,7 @@ import { roundFloats, reconcileStrikeTotal } from "@/lib/round-floats";
 import { isEtCashRth } from "@/lib/et-market-hours";
 import { joinGexStrikeExpiryTicker, hasLiveGexStrikeExpiry, getGexStrikeExpiryLadder } from "@/lib/ws/uw-socket";
 import { registerVectorUniverseView } from "@/features/vector/lib/vector-universe";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -286,7 +287,7 @@ export async function GET(req: NextRequest) {
         { available: false, underlying: ticker },
         {
           status: 200,
-          headers: { "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0" },
+          headers: NO_STORE_HEADERS,
         }
       );
     }
@@ -413,10 +414,7 @@ export async function GET(req: NextRequest) {
     rounded.charm = reconcileStrikeTotal(rounded.charm);
 
     return NextResponse.json(rounded, {
-      headers: {
-        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-        Pragma: "no-cache",
-      },
+      headers: NO_STORE_HEADERS,
     });
   } catch (error) {
     console.error("[market/gex-heatmap]", error);
@@ -427,7 +425,7 @@ export async function GET(req: NextRequest) {
       { available: false, underlying: ticker, error: "GEX heatmap build failed" },
       {
         status: 200,
-        headers: { "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0" },
+        headers: NO_STORE_HEADERS,
       }
     );
   }

@@ -9,11 +9,10 @@ import {
   MIN_SAMPLE_FOR_RECOMMENDATION,
   type SignalAccuracyBySource,
 } from "@/lib/signal-accuracy";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const NO_STORE = { "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0" };
 
 type FlowAnomalyRow = {
   anomaly_type: string;
@@ -219,7 +218,7 @@ export async function GET(req: NextRequest) {
       },
 
       timestamp: new Date().toISOString(),
-    }, { status: 200, headers: NO_STORE });
+    }, { status: 200, headers: NO_STORE_HEADERS });
 
   } catch (err) {
     // Graceful degradation — return empty state rather than error
@@ -238,6 +237,6 @@ export async function GET(req: NextRequest) {
         signalRecommendation: "Platform intel unavailable — proceed with standard sizing.",
       },
       timestamp: new Date().toISOString(),
-    }, { status: 200, headers: NO_STORE });
+    }, { status: 200, headers: NO_STORE_HEADERS });
   }
 }

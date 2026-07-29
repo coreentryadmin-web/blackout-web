@@ -14,6 +14,7 @@ import {
 import type { PlaybookPlay, PlayExplainRequest, PlayExplainResponse } from "@/features/nighthawk/lib/types";
 import { withServerCache } from "@/lib/server-cache";
 import { requireToolApi } from "@/lib/tool-access-server";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -81,7 +82,7 @@ export async function POST(req: NextRequest) {
         explanation: cachedExplanation,
         cached: true,
       };
-      return NextResponse.json(response, { headers: { "Cache-Control": "no-store" } });
+      return NextResponse.json(response, { headers: NO_STORE_HEADERS });
     }
 
     // CACHE-READER / single-flight: on a COLD edition, N concurrent users would each fire their
@@ -134,7 +135,7 @@ export async function POST(req: NextRequest) {
       cached: false,
     };
 
-    return NextResponse.json(response, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json(response, { headers: NO_STORE_HEADERS });
   } catch (error) {
     console.error("[nighthawk/play-explain]", error);
     return NextResponse.json({ error: "Play explanation failed" }, { status: 502 });

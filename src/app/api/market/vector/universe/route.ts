@@ -2,11 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { authorizeMarketDeskApi, isCronAuthorized } from "@/lib/market-api-auth";
 import { requireToolApi } from "@/lib/tool-access-server";
 import { loadVectorUniverseSnapshot, refreshVectorUniverseSnapshot } from "@/features/vector";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const NO_STORE = { "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0" };
 
 /** Compact GEX wall summary for warmed universe tickers — pure cache-reader for Vector scanner. */
 export async function GET(req: NextRequest) {
@@ -25,5 +24,5 @@ export async function GET(req: NextRequest) {
     snap = await refreshVectorUniverseSnapshot();
   }
 
-  return NextResponse.json(snap, { headers: NO_STORE });
+  return NextResponse.json(snap, { headers: NO_STORE_HEADERS });
 }
