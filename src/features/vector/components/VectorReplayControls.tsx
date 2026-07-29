@@ -61,7 +61,7 @@ export function VectorReplayControls({
             "font-mono text-[10px] font-semibold rounded-lg border px-2.5 py-1.5 transition-all",
             replayMode
               ? "border-gold/70 text-gold bg-gold/15"
-              : "border-[rgba(0,230,118,0.3)] text-[#00e676] disabled:cursor-not-allowed disabled:opacity-30"
+              : "border-[rgba(0,230,118,0.3)] text-[#a3e635] disabled:cursor-not-allowed disabled:opacity-30"
           )}
         >
           {replayMode ? "■ Live" : "▶ Replay"}

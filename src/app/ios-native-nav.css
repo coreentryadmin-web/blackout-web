@@ -25,9 +25,9 @@ html.ios-app.ios-native-shell .ios-app-tab-indicator {
   position: absolute;
   inset: 4px 2px;
   border-radius: 14px;
-  background: color-mix(in srgb, var(--tab-accent, #00e676) 14%, transparent);
+  background: color-mix(in srgb, var(--tab-accent, #a3e635) 14%, transparent);
   box-shadow:
-    0 0 24px color-mix(in srgb, var(--tab-accent, #00e676) 28%, transparent),
+    0 0 24px color-mix(in srgb, var(--tab-accent, #a3e635) 28%, transparent),
     inset 0 1px 0 rgba(255, 255, 255, 0.06);
   pointer-events: none;
   z-index: 0;
@@ -78,9 +78,9 @@ html.ios-app.ios-native-shell .ios-native-segment-indicator {
   position: absolute;
   inset: 0;
   border-radius: 10px;
-  background: color-mix(in srgb, var(--segment-accent, #00e676) 18%, transparent);
+  background: color-mix(in srgb, var(--segment-accent, #a3e635) 18%, transparent);
   box-shadow:
-    0 0 20px color-mix(in srgb, var(--segment-accent, #00e676) 22%, transparent),
+    0 0 20px color-mix(in srgb, var(--segment-accent, #a3e635) 22%, transparent),
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
   pointer-events: none;
   z-index: 0;

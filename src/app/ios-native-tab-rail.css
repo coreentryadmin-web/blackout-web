@@ -60,8 +60,8 @@ html.ios-app.ios-native-shell .ios-app-tab-link-active .ios-app-tab-icon-wrap {
 
 html.ios-app.ios-native-shell .ios-app-tab-link-active .ios-app-tab-icon {
   opacity: 1;
-  filter: drop-shadow(0 0 10px color-mix(in srgb, var(--tab-accent, #00e676) 65%, transparent))
-    drop-shadow(0 2px 8px color-mix(in srgb, var(--tab-accent, #00e676) 35%, transparent));
+  filter: drop-shadow(0 0 10px color-mix(in srgb, var(--tab-accent, #a3e635) 65%, transparent))
+    drop-shadow(0 2px 8px color-mix(in srgb, var(--tab-accent, #a3e635) 35%, transparent));
 }
 
 html.ios-app.ios-native-shell .ios-app-tab-link-active .ios-app-tab-label {
@@ -77,9 +77,9 @@ html.ios-app.ios-native-shell .ios-app-tab-indicator {
   position: absolute;
   inset: 3px 2px 4px;
   border-radius: 10px;
-  background: color-mix(in srgb, var(--tab-accent, #00e676) 12%, transparent);
+  background: color-mix(in srgb, var(--tab-accent, #a3e635) 12%, transparent);
   box-shadow:
-    0 0 28px color-mix(in srgb, var(--tab-accent, #00e676) 32%, transparent),
+    0 0 28px color-mix(in srgb, var(--tab-accent, #a3e635) 32%, transparent),
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
   pointer-events: none;
   z-index: 0;
@@ -121,12 +121,12 @@ html.ios-app.ios-native-shell .ios-app-tab-link-locked {
   0%,
   100% {
     box-shadow:
-      0 0 28px color-mix(in srgb, var(--tab-accent, #00e676) 28%, transparent),
+      0 0 28px color-mix(in srgb, var(--tab-accent, #a3e635) 28%, transparent),
       inset 0 1px 0 rgba(255, 255, 255, 0.08);
   }
   50% {
     box-shadow:
-      0 0 36px color-mix(in srgb, var(--tab-accent, #00e676) 42%, transparent),
+      0 0 36px color-mix(in srgb, var(--tab-accent, #a3e635) 42%, transparent),
       inset 0 1px 0 rgba(255, 255, 255, 0.1);
   }
 }

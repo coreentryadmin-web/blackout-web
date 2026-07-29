@@ -14,8 +14,8 @@ export function StaticLandingBackdrop({ showChart = true }: { showChart?: boolea
         <svg className="mkt-chart-silhouette absolute bottom-0 left-0 h-[42%] w-full" viewBox="0 0 1440 240" preserveAspectRatio="none" fill="none">
           <defs>
             <linearGradient id="mktLbArea" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#00e676" stopOpacity="0.12" />
-              <stop offset="100%" stopColor="#00e676" stopOpacity="0" />
+              <stop offset="0%" stopColor="#a3e635" stopOpacity="0.12" />
+              <stop offset="100%" stopColor="#a3e635" stopOpacity="0" />
             </linearGradient>
           </defs>
           <path

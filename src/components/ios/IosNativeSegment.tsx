@@ -24,7 +24,7 @@ export function IosNativeSegment<T extends string>({
   value,
   onChange,
   segments,
-  accent = "#00e676",
+  accent = "#a3e635",
   className,
   "aria-label": ariaLabel = "View lens",
 }: Props<T>) {

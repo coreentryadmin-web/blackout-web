@@ -118,7 +118,7 @@ uniform float u_flipY;                // violet dashed flip rule
 // ── design tokens (color only ever enters as signal) ──────────────────────
 const vec3 GROUND = vec3(0.0157, 0.0157, 0.0275); // #040407
 const vec3 BRAND  = vec3(0.749, 0.373, 1.0);      // #bf5fff violet chrome / flip
-const vec3 BULL   = vec3(0.0,   0.902, 0.463);    // #00e676 call wall
+const vec3 BULL   = vec3(0.0,   0.902, 0.463);    // #a3e635 call wall
 const vec3 BEAR   = vec3(1.0,   0.176, 0.333);    // #ff2d55 put wall
 const vec3 FLOW   = vec3(0.133, 0.827, 0.933);    // #22d3ee dark-pool / flow
 const vec3 KING   = vec3(1.0,   0.824, 0.247);    // #ffd23f king / max-pain

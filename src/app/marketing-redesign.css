@@ -8,7 +8,7 @@
   --rl-bg:#05070A; --rl-bg2:#080B11; --rl-panel:#0B1017; --rl-panel2:#0E141D;
   --rl-line:rgba(255,255,255,.07); --rl-line2:rgba(255,255,255,.13);
   --rl-ink:#EDF2F8; --rl-dim:#9AA7B6; --rl-faint:#5E6B7A;
-  --rl-bull:#00e676; --rl-cyan:#22d3ee; --rl-gold:#ffd23f; --rl-violet:#bf5fff; --rl-ember:#ff6b2b; --rl-indigo:#7c5cff; --rl-bear:#ff4d57;
+  --rl-bull:#a3e635; --rl-cyan:#22d3ee; --rl-gold:#ffd23f; --rl-violet:#bf5fff; --rl-ember:#ff6b2b; --rl-indigo:#7c5cff; --rl-bear:#ff4d57;
   --rl-mono:ui-monospace,"SF Mono","JetBrains Mono","Roboto Mono",monospace;
   --rl-sans:var(--font-syne),system-ui,-apple-system,"Segoe UI",sans-serif;
   --rl-disp:var(--font-anton),var(--font-syne),sans-serif;
@@ -1003,7 +1003,7 @@
 .rl-faq-item summary .ic{margin-left:auto;color:var(--rl-dim);transition:transform .25s cubic-bezier(.34,1.56,.64,1);flex-shrink:0}
 .rl-faq-item[open] summary .ic{transform:rotate(45deg);color:var(--rl-bull)}
 .rl-faq-item .ans{padding:0 20px 20px;color:#b9c7d6;font-size:15px;line-height:1.75}
-.rl-faq-item .ans a{color:#00e676;font-weight:600;text-decoration:none;transition:color .15s}
+.rl-faq-item .ans a{color:#a3e635;font-weight:600;text-decoration:none;transition:color .15s}
 .rl-faq-item .ans a:hover{color:#69f0ae}
 .rl-faq-item .ans strong,.rl-faq-item .ans b{color:#fff;font-weight:700}
 

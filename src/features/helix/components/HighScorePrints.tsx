@@ -17,7 +17,7 @@ import { aggressorRead } from "@/features/helix/lib/helix-print-detail";
 
 function scoreTone(score: number): { bg: string; border: string; text: string } {
   if (score >= 9) return { bg: "rgba(250,204,21,0.08)", border: "rgba(250,204,21,0.3)", text: "#facc15" };
-  if (score >= 7) return { bg: "rgba(0,230,118,0.06)", border: "rgba(0,230,118,0.25)", text: "#00e676" };
+  if (score >= 7) return { bg: "rgba(0,230,118,0.06)", border: "rgba(0,230,118,0.25)", text: "#a3e635" };
   return { bg: "rgba(125,211,252,0.06)", border: "rgba(125,211,252,0.2)", text: "#7dd3fc" };
 }
 

@@ -23,7 +23,7 @@ html.ios-app .cl-dividerRow {
 :root {
   /* Fonts are provided by next/font (see layout.tsx) as
      --font-anton / --font-syne / --font-jetbrains / --font-inter. */
-  --color-green: #00e676;
+  --color-green: #a3e635;
   --color-red: #ff2d55;
   --color-purple: #bf5fff;
   --color-cyan: #22d3ee;
@@ -31,7 +31,7 @@ html.ios-app .cl-dividerRow {
   --color-ember: #ff6b2b;
   --color-void: #040407;
   /* Signature brand gradient (emerald → mint → sky) used across the marketing surface. */
-  --grad-brand: linear-gradient(90deg, #00e676, #34d399 55%, #7dd3fc);
+  --grad-brand: linear-gradient(90deg, #a3e635, #34d399 55%, #7dd3fc);
 
   /* ── Layout tokens ──────────────────────────────────────────────────────
      Canonical spacing/width ramp for the centered content rail. Authors must
@@ -74,19 +74,19 @@ html.ios-app .cl-dividerRow {
      Display bear #ff2d55 measures ~4.0:1 on the void bg — below the 4.5:1 AA
      floor for normal text. Most bearish numbers (header % change, structure
      values, GEX dist/net, level distances, P&L) are SMALL text, so the
-     downside half of the desk was sub-AA while bull green (#00e676, ~11:1)
+     downside half of the desk was sub-AA while bull green (#a3e635, ~11:1)
      was fine. --bear-text lifts the small-number red to ~5.0:1; --bull-text
      mirrors it (green already clears AA). Keep #ff2d55 / --bear ONLY for
      large display text (score/headline, which clears the 3:1 large bar) and
      glows/borders. */
   --bear-text: #ff5c78;
-  --bull-text: #00e676;
+  --bull-text: #a3e635;
   /* Canonical directional display tokens — large/headline text + glows/borders
      (the AA-safe small-number variants are --bull-text / --bear-text above).
      Defines the previously-undefined var(--bull) referenced by
      .largo-spx-live-label, which was silently inheriting instead of rendering
      emerald. */
-  --bull: #00e676;
+  --bull: #a3e635;
   --bear: #ff2d55;
 
   /* ── Readable secondary text ────────────────────────────────────────────
@@ -171,7 +171,7 @@ body {
 
 ::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-track { background: #08080e; }
-::-webkit-scrollbar-thumb { background: linear-gradient(#00e676, #bf5fff, #22d3ee); border-radius: 3px; }
+::-webkit-scrollbar-thumb { background: linear-gradient(#a3e635, #bf5fff, #22d3ee); border-radius: 3px; }
 
 ::selection { background: rgba(0, 230, 118, 0.35); color: #fff; }
 

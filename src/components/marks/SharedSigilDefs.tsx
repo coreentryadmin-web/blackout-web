@@ -8,7 +8,7 @@
  *
  * Gradients tint by accent via `currentColor`; each sigil root sets
  * `color: var(--accent)` so the gradients/filters inherit. The emerald thread is
- * locked to #00e676 (the literal shared cross-desk hairline).
+ * locked to #a3e635 (the literal shared cross-desk hairline).
  */
 export function SharedSigilDefs() {
   return (
@@ -48,11 +48,11 @@ export function SharedSigilDefs() {
           <stop offset="100%" stopColor="#040407" />
         </radialGradient>
 
-        {/* the one-desk emerald thread — locked to #00e676, NOT currentColor */}
+        {/* the one-desk emerald thread — locked to #a3e635, NOT currentColor */}
         <linearGradient id="bo-emerald-thread" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0%" stopColor="#00e676" stopOpacity="0" />
-          <stop offset="50%" stopColor="#00e676" stopOpacity="0.4" />
-          <stop offset="100%" stopColor="#00e676" stopOpacity="0" />
+          <stop offset="0%" stopColor="#a3e635" stopOpacity="0" />
+          <stop offset="50%" stopColor="#a3e635" stopOpacity="0.4" />
+          <stop offset="100%" stopColor="#a3e635" stopOpacity="0" />
         </linearGradient>
 
         {/* the single capped bloom (small). Only its group opacity ever animates. */}

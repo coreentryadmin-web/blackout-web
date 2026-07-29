@@ -33,7 +33,7 @@
   right: -8%;
   width: 640px;
   height: 640px;
-  background: radial-gradient(closest-side, #00e676, transparent);
+  background: radial-gradient(closest-side, #a3e635, transparent);
 }
 .mkt-orb-cyan {
   bottom: -20%;
@@ -122,7 +122,7 @@
   text-decoration: none;
   transition: color 0.2s ease;
 }
-.mkt-nav-links a:hover { color: #00e676; }
+.mkt-nav-links a:hover { color: #a3e635; }
 .mkt-nav-auth {
   display: flex;
   align-items: center;
@@ -188,7 +188,7 @@
   text-align: center;
   letter-spacing: 0.08em;
   opacity: 0.04;
-  background: linear-gradient(90deg, #00e676, #22d3ee, #bf5fff);
+  background: linear-gradient(90deg, #a3e635, #22d3ee, #bf5fff);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -381,11 +381,11 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #00e676;
+  background: #a3e635;
   box-shadow: 0 0 6px rgba(0, 230, 118, 0.4);
 }
 .legal-body a {
-  color: #00e676;
+  color: #a3e635;
   text-decoration: none;
   font-weight: 600;
   transition: color 0.15s;
@@ -410,7 +410,7 @@
 .legal-highlight p { color: rgba(255, 255, 255, 0.88); }
 .legal-highlight a { font-weight: 700; }
 .legal-contact-cta{text-align:center;padding:2.5rem 0 2.5rem;border-top:1px solid rgba(255,255,255,.08);border-bottom:1px solid rgba(255,255,255,.08);margin:2.5rem 0 2rem}
-.legal-contact-btn{display:inline-block;padding:.85rem 2.5rem;background:#00e676;color:#000;font-weight:700;border-radius:8px;font-size:.95rem;text-decoration:none;transition:all .2s;box-shadow:0 0 20px rgba(0,230,118,.15)}
+.legal-contact-btn{display:inline-block;padding:.85rem 2.5rem;background:#a3e635;color:#000;font-weight:700;border-radius:8px;font-size:.95rem;text-decoration:none;transition:all .2s;box-shadow:0 0 20px rgba(0,230,118,.15)}
 .legal-contact-btn:hover{opacity:.9;box-shadow:0 0 30px rgba(0,230,118,.25);transform:translateY(-1px)}
 .legal-contact-alt{margin-top:.75rem;font-size:.85rem;color:rgba(255,255,255,.55)}
 

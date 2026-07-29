@@ -59,7 +59,7 @@ html.ios-app.ios-native-shell .spx-alert-buy-call.spx-trade-alert-hero,
 html.ios-app.ios-native-shell .spx-alert-buy-put.spx-trade-alert-hero,
 html.ios-app.ios-native-shell .flow-seg-btn-active-call,
 html.ios-app.ios-native-shell .spx-hero-metric-block.is-bull {
-  border-left: 2px solid #00e676 !important;
+  border-left: 2px solid #a3e635 !important;
   box-shadow:
     inset 0 0 0 1px rgba(0, 230, 118, 0.2),
     0 0 16px rgba(0, 230, 118, 0.08) !important;

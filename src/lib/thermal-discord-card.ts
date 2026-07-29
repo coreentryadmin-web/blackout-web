@@ -112,7 +112,7 @@ function fmtChangePct(n: number | null | undefined): { text: string; color: stri
   const sign = v > 0 ? "+" : "";
   return {
     text: `${sign}${v.toFixed(2)}%`,
-    color: v >= 0 ? "#00e676" : "#ff2d55",
+    color: v >= 0 ? "#a3e635" : "#ff2d55",
   };
 }
 
@@ -402,7 +402,7 @@ export function buildThermalDiscordCardSvg(
       if (driftPct == null) {
         colsSvg += `<text x="${driftX}" y="${y + cellH * 0.68}" text-anchor="middle" fill="#7dd3fc" font-family="${FONT}" font-size="${driftSize}" font-weight="700">·</text>`;
       } else {
-        const driftColor = driftPct >= 0 ? "#00e676" : "#ff2d55";
+        const driftColor = driftPct >= 0 ? "#a3e635" : "#ff2d55";
         const driftText = `${driftPct >= 0 ? "+" : ""}${Math.round(driftPct)}%`;
         colsSvg += `<text x="${driftX}" y="${y + cellH * 0.68}" text-anchor="middle" fill="${driftColor}" font-family="${FONT}" font-size="${driftSize}" font-weight="800">${esc(driftText)}</text>`;
       }
@@ -470,8 +470,8 @@ export function buildThermalDiscordCardSvg(
   <text x="${W - pad - 400}" y="${pad + 48}" text-anchor="middle" fill="#22d3ee" font-family="${FONT}" font-size="20" font-weight="800" letter-spacing="2">LENS  GEX</text>
 
   <rect x="${W - pad - 260}" y="${pad + 18}" width="260" height="44" rx="22" fill="rgba(0,230,118,0.1)" stroke="rgba(0,230,118,0.4)" stroke-width="1.5"/>
-  <circle cx="${W - pad - 230}" cy="${pad + 40}" r="6" fill="#00e676"/>
-  <text x="${W - pad - 120}" y="${pad + 48}" text-anchor="middle" fill="#00e676" font-family="${FONT}" font-size="18" font-weight="800" letter-spacing="1">LIVE SNAPSHOT</text>
+  <circle cx="${W - pad - 230}" cy="${pad + 40}" r="6" fill="#a3e635"/>
+  <text x="${W - pad - 120}" y="${pad + 48}" text-anchor="middle" fill="#a3e635" font-family="${FONT}" font-size="18" font-weight="800" letter-spacing="1">LIVE SNAPSHOT</text>
 
   <text x="${W - pad}" y="${pad + 100}" text-anchor="end" fill="#7dd3fc" font-family="${FONT}" font-size="22" font-weight="700">as of ${esc(asOfText)} ET</text>
 

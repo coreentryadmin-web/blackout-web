@@ -151,7 +151,7 @@ export function NightHawkFlowPanel({
                     <div className="relative h-1.5 rounded-full overflow-hidden bg-[#0b0e16] mb-1.5">
                       <motion.div
                         className="h-full rounded-l-full"
-                        style={{ background: "linear-gradient(90deg, #0f9d58, #00e676)", width: `${callPct}%` }}
+                        style={{ background: "linear-gradient(90deg, #0f9d58, #a3e635)", width: `${callPct}%` }}
                         initial={{ width: 0 }}
                         animate={{ width: `${callPct}%` }}
                         transition={{ duration: 0.8, ease: [0.34, 1.56, 0.64, 1] }}

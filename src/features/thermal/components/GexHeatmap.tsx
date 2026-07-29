@@ -388,13 +388,13 @@ type Lens = "gex" | "vex" | "dex" | "charm";
  * POSITIVE identity, while the NEGATIVE side is the shared bear-red #ff2d55 across all
  * four lenses (negative exposure is the bearish / short side — semantically red, never
  * the off-brand violet, which is HELIX's identity not Heatmaps'):
- *  - GEX:   positive = bull green #00e676, negative = bear red #ff2d55
+ *  - GEX:   positive = bull green #a3e635, negative = bear red #ff2d55
  *  - VEX:   positive = sky    #7dd3fc,     negative = bear red #ff2d55
  *  - DEX:   positive = cyan   #22d3ee,     negative = bear red #ff2d55 (net dealer delta)
  *  - CHARM: positive = gold   #ffd23f,     negative = bear red #ff2d55 (delta-decay / pinning)
  */
 const LENS_COLORS: Record<Lens, { posRgb: string; negRgb: string; posHex: string; negHex: string }> = {
-  gex: { posRgb: "0,230,118", negRgb: "255,45,85", posHex: "#00e676", negHex: "#ff2d55" },
+  gex: { posRgb: "0,230,118", negRgb: "255,45,85", posHex: "#a3e635", negHex: "#ff2d55" },
   vex: { posRgb: "125,211,252", negRgb: "255,45,85", posHex: "#7dd3fc", negHex: "#ff2d55" },
   dex: { posRgb: "34,211,238", negRgb: "255,45,85", posHex: "#22d3ee", negHex: "#ff2d55" },
   charm: { posRgb: "255,210,63", negRgb: "255,45,85", posHex: "#ffd23f", negHex: "#ff2d55" },
@@ -848,7 +848,7 @@ function ExposureProfile({
         const netFlow = flow?.net_prem ?? 0;
         const flowMag = flow && flowPeak > 0 ? Math.min(1, Math.abs(netFlow) / flowPeak) : 0;
         const flowBull = netFlow >= 0;
-        const flowHex = flowBull ? "#00e676" : "#ff2d55";
+        const flowHex = flowBull ? "#a3e635" : "#ff2d55";
         const flowTitle =
           flow != null
             ? `Flow @ ${fmtStrike(r.strike)} · ${flowBull ? "bullish" : "bearish"} net ${fmtMoney(netFlow)} (calls ${fmtMoney(flow.call_prem)} / puts ${fmtMoney(flow.put_prem)})`
@@ -1092,8 +1092,8 @@ function ExposureProfile({
         <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[9px] uppercase tracking-[0.18em] text-sky-300/70">
           {showFlow && flowPeak > 0 && (
             <>
-              <span className="flex items-center gap-1.5" style={{ color: "#00e676" }}>
-                <span aria-hidden className="inline-block h-1 w-3 rounded-full" style={{ backgroundColor: "#00e676" }} />
+              <span className="flex items-center gap-1.5" style={{ color: "#a3e635" }}>
+                <span aria-hidden className="inline-block h-1 w-3 rounded-full" style={{ backgroundColor: "#a3e635" }} />
                 bullish flow
               </span>
               <span className="flex items-center gap-1.5" style={{ color: "#ff2d55" }}>
@@ -1330,7 +1330,7 @@ function fmtElapsed(ms: number): string {
 }
 
 // Build (more positive gamma) = bull green to the RIGHT; melt (more negative) = bear red to the LEFT.
-const SHIFT_BUILD_HEX = "#00e676";
+const SHIFT_BUILD_HEX = "#a3e635";
 const SHIFT_MELT_HEX = "#ff2d55";
 
 type ShiftRow = { strike: number; delta: number; isSpot: boolean };
@@ -2037,7 +2037,7 @@ const TILE_TONE: Record<
   wall: { value: "text-gold", border: "border-gold/35", glow: "#ffd23f", rgb: "255,210,63" },
   support: { value: "text-bear", border: "border-bear/30", glow: "#ff2d55", rgb: "255,45,85" },
   sky: { value: "text-sky-300", border: "border-sky-400/30", glow: "#7dd3fc", rgb: "125,211,252" },
-  bull: { value: "text-bull", border: "border-bull/30", glow: "#00e676", rgb: "0,230,118" },
+  bull: { value: "text-bull", border: "border-bull/30", glow: "#a3e635", rgb: "0,230,118" },
   bear: { value: "text-bear", border: "border-bear/30", glow: "#ff2d55", rgb: "255,45,85" },
 };
 
@@ -2050,7 +2050,7 @@ const TILE_TONE: Record<
 type TileDelta = { text: string; tone: "bull" | "bear" | "neutral"; note?: string };
 
 const TILE_DELTA_HEX: Record<TileDelta["tone"], string> = {
-  bull: "#00e676",
+  bull: "#a3e635",
   bear: "#ff2d55",
   neutral: "#7dd3fc",
 };
@@ -2175,7 +2175,7 @@ function FlowSummary({
       <div className="mb-2 flex h-2 overflow-hidden rounded-full bg-[rgba(8,9,14,0.8)]">
         <span
           className="h-full"
-          style={{ width: `${callPct.toFixed(1)}%`, backgroundColor: "#00e676", boxShadow: "0 0 8px #00e67688" }}
+          style={{ width: `${callPct.toFixed(1)}%`, backgroundColor: "#a3e635", boxShadow: "0 0 8px #a3e63588" }}
         />
         <span
           className="h-full flex-1"

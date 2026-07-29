@@ -5,7 +5,7 @@
 
 /* ═══ Design tokens ═══ */
 html.ios-app.ios-native-shell {
-  --ios-accent: #00e676;
+  --ios-accent: #a3e635;
   --ios-accent-rgb: 0, 230, 118;
   --ios-accent-glow: color-mix(in srgb, var(--ios-accent) 35%, transparent);
   --ios-accent-soft: color-mix(in srgb, var(--ios-accent) 12%, transparent);
@@ -47,7 +47,7 @@ html.ios-app.ios-native-shell {
 
 /* Per-route accent identity */
 html.ios-app.ios-native-shell[data-ios-route="dashboard"] {
-  --ios-accent: #00e676;
+  --ios-accent: #a3e635;
   --ios-accent-rgb: 0, 230, 118;
 }
 html.ios-app.ios-native-shell[data-ios-route="flows"] {

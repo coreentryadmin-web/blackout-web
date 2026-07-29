@@ -158,7 +158,7 @@ export function FlowBrief() {
         {/* Top gradient line — only during RTH */}
         {!showAfterHours && (
           <div className="absolute inset-x-0 top-0 h-[2px]" style={{
-            background: "linear-gradient(90deg, transparent, #bf5fff, #00e676, transparent)",
+            background: "linear-gradient(90deg, transparent, #bf5fff, #a3e635, transparent)",
             animation: "brief-scan 3s ease-in-out infinite",
           }} />
         )}
@@ -222,7 +222,7 @@ export function FlowBrief() {
           </AnimatePresence>
 
           {loading && brief && (
-            <span className="flex-shrink-0 font-mono text-[10px] animate-pulse pt-0.5" style={{ color: "#00e676" }}>
+            <span className="flex-shrink-0 font-mono text-[10px] animate-pulse pt-0.5" style={{ color: "#a3e635" }}>
               UPDATING
             </span>
           )}

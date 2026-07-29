@@ -85,7 +85,7 @@ export default function GlobalError({
               letterSpacing: "0.2em",
               textTransform: "uppercase",
               color: "#000000",
-              backgroundColor: "#00e676",
+              backgroundColor: "#a3e635",
             }}
           >
             Try again

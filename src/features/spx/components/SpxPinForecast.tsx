@@ -7,7 +7,7 @@ import type { PinConeStep, PinScenario } from "@/features/spx/lib/spx-pin-foreca
 
 const C = {
   bg: "#0f151f", panel: "#131b28", line: "#1e2836", ink: "#e7eef6", muted: "#8595ab", faint: "#556074",
-  pin: "#ffd23f", call: "#00e676", put: "#bf5fff", flip: "#38bdf8", warn: "#ff8a3d",
+  pin: "#ffd23f", call: "#a3e635", put: "#bf5fff", flip: "#38bdf8", warn: "#ff8a3d",
   mono: 'ui-monospace,"SF Mono",Menlo,Consolas,monospace',
 };
 const fmt = (n: number | null | undefined, d = 0) =>

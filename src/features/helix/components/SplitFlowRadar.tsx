@@ -121,7 +121,7 @@ export function SplitFlowRadar({
                   <motion.div
                     className="h-full rounded-l-full"
                     style={{
-                      background: "linear-gradient(90deg, #0f9d58, #00e676)",
+                      background: "linear-gradient(90deg, #0f9d58, #a3e635)",
                       width: `${e.callPct}%`,
                     }}
                     initial={{ width: 0 }}

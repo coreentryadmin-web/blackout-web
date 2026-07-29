@@ -16,7 +16,7 @@ const ACCENT_BORDER: Record<PanelAccent, string> = {
 
 // Top hairline strip that signals the panel's accent.
 const ACCENT_STRIP: Record<PanelAccent, string> = {
-  bull: "from-transparent via-bull to-transparent shadow-[0_0_18px_#00e676]",
+  bull: "from-transparent via-bull to-transparent shadow-[0_0_18px_#a3e635]",
   bear: "from-transparent via-bear to-transparent shadow-[0_0_18px_#ff2d55]",
   sky: "from-transparent via-sky-400 to-transparent shadow-[0_0_18px_#38bdf8]",
   accent: "from-transparent via-cyan-400 to-transparent shadow-[0_0_18px_#22d3ee]",

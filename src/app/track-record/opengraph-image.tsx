@@ -34,10 +34,10 @@ export default async function OgImage() {
           fontFamily: "sans-serif",
         }}
       >
-        <div style={{ fontSize: 28, letterSpacing: 8, color: "#00e676", textTransform: "uppercase" }}>
+        <div style={{ fontSize: 28, letterSpacing: 8, color: "#a3e635", textTransform: "uppercase" }}>
           {SITE.name} · SPX Slayer
         </div>
-        <div style={{ fontSize: 220, fontWeight: 800, color: "#00e676", lineHeight: 1 }}>
+        <div style={{ fontSize: 220, fontWeight: 800, color: "#a3e635", lineHeight: 1 }}>
           {winRate}
         </div>
         <div style={{ fontSize: 36, color: "#7dd3fc" }}>{sub}</div>
