@@ -119,7 +119,7 @@ function MarketContextGrid({ recap }: { recap: Record<string, unknown> }) {
       role="region"
       aria-label="Market context"
     >
-      <p className="font-mono text-[10px] uppercase tracking-widest text-sky-300/50">
+      <p className="font-mono text-[10px] uppercase tracking-widest text-sky-200">
         Market context
       </p>
       <div className="mt-1.5 grid grid-cols-1 gap-x-5 gap-y-1 sm:grid-cols-2">
@@ -128,10 +128,10 @@ function MarketContextGrid({ recap }: { recap: Record<string, unknown> }) {
             key={item.label}
             className={clsx("flex min-w-0 items-baseline gap-2", item.wide && "sm:col-span-2")}
           >
-            <span className="w-16 shrink-0 font-mono text-[9px] uppercase tracking-[0.18em] text-cyan-300/70">
+            <span className="w-16 shrink-0 font-mono text-[9px] uppercase tracking-[0.18em] text-cyan-200">
               {item.label}
             </span>
-            <span className="t-num min-w-0 flex-1 text-[11px] leading-snug text-sky-200/85">
+            <span className="t-num min-w-0 flex-1 text-[11px] leading-snug text-sky-100">
               {item.value}
             </span>
           </div>
@@ -365,7 +365,7 @@ export function PlaybookBoard({
       {/* ── pre-market verdict summary (real morning-confirm counts) ── */}
       {morningSummary && hasPlays && (
         <div
-          className="flex shrink-0 flex-wrap items-baseline gap-x-2 border-b border-white/[0.06] px-4 py-1.5 font-mono text-[10px] uppercase tracking-wide text-sky-300/80"
+          className="flex shrink-0 flex-wrap items-baseline gap-x-2 border-b border-white/[0.06] px-4 py-1.5 font-mono text-[10px] uppercase tracking-wide text-sky-100"
           role="status"
         >
           <span className="tracking-[0.16em] text-bull/90">Pre-market</span>
@@ -390,7 +390,7 @@ export function PlaybookBoard({
       )}
       {carryUntilClose && (
         <p
-          className="shrink-0 border-b border-white/[0.06] px-4 py-2 font-mono text-[11px] leading-relaxed text-sky-300/80"
+          className="shrink-0 border-b border-white/[0.06] px-4 py-2 font-mono text-[11px] leading-relaxed text-sky-100"
           role="status"
         >
           Today&apos;s generated plays stay live until the session close. Tomorrow&apos;s board takes over after
@@ -411,20 +411,20 @@ export function PlaybookBoard({
         <div className="shrink-0 border-b border-white/[0.06]">
           <button
             type="button"
-            className="flex w-full items-center justify-between px-4 py-2 text-left font-mono text-[10px] uppercase tracking-[0.18em] text-cyan-300/80 transition-colors hover:text-cyan-200"
+            className="flex w-full items-center justify-between px-4 py-2 text-left font-mono text-[10px] uppercase tracking-[0.18em] text-cyan-100 transition-colors hover:text-cyan-200"
             onClick={() => setRecapOpen((o) => !o)}
             aria-expanded={recapOpen}
           >
             Market recap
             <span
-              className={clsx("inline-block text-sky-300/40 transition-transform", recapOpen && "rotate-90")}
+              className={clsx("inline-block text-sky-200 transition-transform", recapOpen && "rotate-90")}
               aria-hidden="true"
             >
               ›
             </span>
           </button>
           {recapOpen && (
-            <p className="px-4 pb-3 text-[12px] leading-relaxed text-sky-200/85">
+            <p className="px-4 pb-3 text-[12px] leading-relaxed text-sky-100">
               {edition.recap_summary}
             </p>
           )}

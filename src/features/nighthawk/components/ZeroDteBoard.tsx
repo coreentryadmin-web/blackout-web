@@ -437,7 +437,7 @@ function GovPill({
   title?: string;
 }) {
   const toneCls: Record<string, string> = {
-    sky: "border-sky-400/20 text-sky-200/90",
+    sky: "border-sky-400/20 text-sky-100",
     bull: "border-bull/30 text-bull",
     bear: "border-bear/40 text-bear",
     gold: "border-gold/35 text-gold",
@@ -450,7 +450,7 @@ function GovPill({
         toneCls[tone]
       )}
     >
-      <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-sky-300/50">{label}</span>
+      <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-sky-200">{label}</span>
       <span className="t-num text-[12px] font-bold">{value}</span>
     </span>
   );
@@ -471,7 +471,7 @@ function GovernorStrip({
 }) {
   if (!gov) {
     return (
-      <p className="mt-3 font-mono text-[10px] uppercase tracking-widest text-sky-300/40">
+      <p className="mt-3 font-mono text-[10px] uppercase tracking-widest text-sky-200">
         Session governor · state unavailable this cycle — new commits fail closed server-side
       </p>
     );
@@ -559,7 +559,7 @@ function PaneHeader({
           <Badge tone={hot ? "bull" : heat.heat_pct > 0 ? "sky" : "neutral"} size="md" dot={hot}>
             {heat.label}
           </Badge>
-          <span className="truncate text-sm text-sky-200/80">{heat.note}</span>
+          <span className="truncate text-sm text-sky-100">{heat.note}</span>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <ReadinessChip data={data} transport={transport} hasLivePlays={hasLivePlays} nowMs={nowMs} />
@@ -578,7 +578,7 @@ function PaneHeader({
         />
       </div>
       <GovernorStrip gov={data.governor} conflicts={conflicts} nowMs={nowMs} />
-      <p className="mt-2 font-mono text-[10px] uppercase tracking-widest text-sky-300/50">
+      <p className="mt-2 font-mono text-[10px] uppercase tracking-widest text-sky-200">
         0DTE discipline: no new plays after 3:00 ET · everything closes by 3:30 ET · nothing held overnight
       </p>
     </Panel>
@@ -648,7 +648,7 @@ function StatsCell({ row }: { row: PlayRow }) {
           up ? "nh-v2-pnl-up text-bull" : "nh-v2-pnl-down text-bear",
           // Stale-honesty (B-9): money numbers older than the freshness bar dim
           // instead of impersonating a live quote.
-          row.mark_stale && "opacity-40"
+          row.mark_stale && "opacity-70"
         )}
         title={row.mark_stale ? "Quote is stale — waiting for a live tick" : undefined}
       >
@@ -658,7 +658,7 @@ function StatsCell({ row }: { row: PlayRow }) {
     );
   }
   return (
-    <span className="t-num text-[12px] text-sky-300/50" title="No live quote for this contract yet">
+    <span className="t-num text-[12px] text-sky-200" title="No live quote for this contract yet">
       —
     </span>
   );
@@ -822,10 +822,10 @@ function TierFactorsBlock({ tier }: { tier: NonNullable<PlayRow["tier"]> }) {
   return (
     <div>
       <div className="flex items-center justify-between gap-2">
-        <p className="font-mono text-[10px] uppercase tracking-widest text-sky-300/50">
+        <p className="font-mono text-[10px] uppercase tracking-widest text-sky-200">
           Merit tier · graded at commit
         </p>
-        <span className="t-num text-[11px] font-bold text-sky-200/85">
+        <span className="t-num text-[11px] font-bold text-sky-100">
           tier {tier.tier === "F" ? "F" : displayTierFor(tier.tier, APLUS_UNLOCKED)}
         </span>
       </div>
@@ -840,7 +840,7 @@ function TierFactorsBlock({ tier }: { tier: NonNullable<PlayRow["tier"]> }) {
             >
               {f.direction === "up" ? "▲" : "▼"} {f.label}
             </span>
-            <span className="min-w-0 flex-1 text-[11px] leading-snug text-sky-200/85">{f.detail}</span>
+            <span className="min-w-0 flex-1 text-[11px] leading-snug text-sky-100">{f.detail}</span>
           </li>
         ))}
       </ul>
@@ -859,7 +859,7 @@ function SizeChip({ view }: { view: PaneCortexView | null }) {
         chip.size === "1×" ? "border-bull/30 bg-bull/[0.08] text-bull" : "border-sky-300/25 bg-sky-300/[0.05] text-sky-300"
       )}
     >
-      <span className="text-[8px] font-semibold text-sky-300/50">size</span>
+      <span className="text-[8px] font-semibold text-sky-200">size</span>
       {chip.size}
     </span>
   );
@@ -871,16 +871,16 @@ function CortexEvidenceBlock({ view }: { view: PaneCortexView | null }) {
   if (view == null || view.abstained) {
     return (
       <div>
-        <p className="font-mono text-[10px] uppercase tracking-widest text-sky-300/50">
+        <p className="font-mono text-[10px] uppercase tracking-widest text-sky-200">
           Evidence · Night Hawk Cortex
         </p>
-        <p className="mt-1 text-[11px] text-sky-300/70">
+        <p className="mt-1 text-[11px] text-sky-100">
           {view?.abstained
             ? "Evidence engine abstained — gates-only commit. No source could argue for or against this play at commit time; the hard gate stack alone cleared it."
             : "No Cortex verdict on record for this commit — the evidence layer didn't run for it (gates-only)."}
         </p>
         {view?.abstained && view.reason && (
-          <p className="mt-1 font-mono text-[10px] leading-snug text-sky-300/40">◦ {view.reason}</p>
+          <p className="mt-1 font-mono text-[10px] leading-snug text-sky-200">◦ {view.reason}</p>
         )}
       </div>
     );
@@ -890,10 +890,10 @@ function CortexEvidenceBlock({ view }: { view: PaneCortexView | null }) {
   return (
     <div>
       <div className="flex items-center justify-between gap-2">
-        <p className="font-mono text-[10px] uppercase tracking-widest text-sky-300/50">
+        <p className="font-mono text-[10px] uppercase tracking-widest text-sky-200">
           Evidence · Night Hawk Cortex
         </p>
-        <span className="t-num text-[11px] font-bold text-sky-200/85">
+        <span className="t-num text-[11px] font-bold text-sky-100">
           score {v.score >= 0 ? "+" : ""}
           {v.score.toFixed(2)} · {capConvictionDisplay(v.conviction)}
         </span>
@@ -915,7 +915,7 @@ function CortexEvidenceBlock({ view }: { view: PaneCortexView | null }) {
             >
               {r.tag}
             </span>
-            <span className="min-w-0 flex-1 text-[11px] leading-snug text-sky-200/85">{r.detail}</span>
+            <span className="min-w-0 flex-1 text-[11px] leading-snug text-sky-100">{r.detail}</span>
             <span
               className={clsx(
                 "t-num shrink-0 text-[11px] font-bold",
@@ -930,7 +930,7 @@ function CortexEvidenceBlock({ view }: { view: PaneCortexView | null }) {
       {v.absent.length > 0 && (
         <ul className="mt-1.5 space-y-0.5">
           {v.absent.map((line) => (
-            <li key={line} className="font-mono text-[10px] leading-snug text-sky-300/40">
+            <li key={line} className="font-mono text-[10px] leading-snug text-sky-200">
               ◦ {line}
             </li>
           ))}
@@ -961,7 +961,7 @@ function FactorChips({ f }: { f: NonNullable<EnrichedZeroDteSetup["factor_breakd
               ? "border-bull/25 bg-bull/[0.07] text-bull"
               : v < 0
                 ? "border-bear/25 bg-bear/[0.07] text-bear"
-                : "border-white/10 text-sky-300/60"
+                : "border-white/10 text-sky-200"
           )}
         >
           {label} {v > 0 ? `+${v}` : v}
@@ -1016,7 +1016,7 @@ function PlayDetail({ row, nowMs }: { row: PlayRow; nowMs: number }) {
             {s?.analyst_note && <p>◆ {s.analyst_note}</p>}
             {s?.news_hot && (
               <p>
-                ◆ {s.news_hot.title} <span className="text-sky-300/60">({s.news_hot.minutes_ago}m ago)</span>
+                ◆ {s.news_hot.title} <span className="text-sky-200">({s.news_hot.minutes_ago}m ago)</span>
               </p>
             )}
           </div>
@@ -1031,14 +1031,14 @@ function PlayDetail({ row, nowMs }: { row: PlayRow; nowMs: number }) {
       </BriefingSection>
 
       <BriefingSection title="What to watch" accent="sky">
-        <p className="mt-1 t-num text-[11px] text-sky-200/85">
+        <p className="mt-1 t-num text-[11px] text-sky-100">
           Entry {entryStr}
           {p?.flow_avg_fill != null ? ` (flow paid ~$${p.flow_avg_fill.toFixed(2)})` : ""} · stop −50%
           {stop != null ? ` ($${stop.toFixed(2)})` : ""} · trim/target +100%
           {target != null ? ` ($${target.toFixed(2)})` : ""} · hard exit 3:30 ET
         </p>
         {(p?.underlying_target != null || p?.underlying_invalid != null || s?.key_supports.length || s?.key_resistances.length) && (
-          <p className="mt-1 t-num text-[11px] text-sky-300/75">
+          <p className="mt-1 t-num text-[11px] text-sky-100">
             {p?.underlying_target != null ? `Stock target ${fmtNum(p.underlying_target)}` : ""}
             {p?.underlying_invalid != null
               ? ` · idea wrong ${row.direction === "long" ? "below" : "above"} ${fmtNum(p.underlying_invalid)}`
@@ -1056,7 +1056,7 @@ function PlayDetail({ row, nowMs }: { row: PlayRow; nowMs: number }) {
       </BriefingSection>
 
       <div className="flex items-center justify-between border-t border-white/[0.06] pt-2">
-        <span className="font-mono text-[10px] uppercase tracking-widest text-sky-300/50">
+        <span className="font-mono text-[10px] uppercase tracking-widest text-sky-200">
           Flagged {fmtTime(row.first_flagged_at)} ET
           {row.setup?.last_seen ? ` · last print ${fmtTime(row.setup.last_seen)} ET` : ""}
         </span>
@@ -1102,7 +1102,7 @@ function PlayCard({ row, nowMs }: { row: PlayRow; nowMs: number }) {
           <Badge tone={row.direction === "long" ? "bull" : "bear"} size="sm">
             {row.direction}
           </Badge>
-          <span className="font-mono text-[10px] uppercase tracking-widest text-sky-300/50">
+          <span className="font-mono text-[10px] uppercase tracking-widest text-sky-200">
             exp {row.expiry ? shortMonthDay(row.expiry) : "—"}
           </span>
           {row.tier && <TierChip tier={row.tier} />}
@@ -1142,9 +1142,9 @@ function PlayCard({ row, nowMs }: { row: PlayRow; nowMs: number }) {
             </span>
           )}
           <span className="ml-auto flex items-center gap-2">
-            <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-sky-300/40">score</span>
-            <span className="t-num text-[12px] font-bold text-sky-200/85">{Math.round(row.score)}</span>
-            <span className={clsx("inline-block text-sky-300/40 transition-transform", open && "rotate-90")}>›</span>
+            <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-sky-200">score</span>
+            <span className="t-num text-[12px] font-bold text-sky-100">{Math.round(row.score)}</span>
+            <span className={clsx("inline-block text-sky-200 transition-transform", open && "rotate-90")}>›</span>
           </span>
         </div>
 
@@ -1152,18 +1152,18 @@ function PlayCard({ row, nowMs }: { row: PlayRow; nowMs: number }) {
         <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1">
           <span className="inline-flex items-baseline gap-1.5">
             <span
-              className="font-mono text-[9px] uppercase tracking-[0.18em] text-sky-300/50"
+              className="font-mono text-[9px] uppercase tracking-[0.18em] text-sky-200"
               title="Premium-weighted average the FLOW actually paid on the top strike — the plan's entry reference. Not a fill of ours."
             >
               {row.flow_avg_fill != null ? "flow fill" : "entry ref"}
             </span>
-            <span className="t-num text-[13px] font-bold text-sky-200/90">
+            <span className="t-num text-[13px] font-bold text-sky-100">
               {row.entry_premium != null ? `$${row.entry_premium.toFixed(2)}` : "—"}
             </span>
           </span>
           {live && (
-            <span className={clsx("inline-flex items-baseline gap-1.5", row.mark_stale && "opacity-40")}>
-              <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-sky-300/50">
+            <span className={clsx("inline-flex items-baseline gap-1.5", row.mark_stale && "opacity-70")}>
+              <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-sky-200">
                 mark{row.mark_source === "last" ? " · last-trade" : row.mark_source === "mid" ? " · mid" : ""}
               </span>
               <span
@@ -1173,7 +1173,7 @@ function PlayCard({ row, nowMs }: { row: PlayRow; nowMs: number }) {
                 {row.last_mark != null ? `$${row.last_mark.toFixed(2)}` : "—"}
               </span>
               {row.mark_bid != null && row.mark_ask != null && (
-                <span className="t-num text-[10px] text-sky-300/60">
+                <span className="t-num text-[10px] text-sky-200">
                   {row.mark_bid.toFixed(2)}×{row.mark_ask.toFixed(2)}
                 </span>
               )}
@@ -1181,7 +1181,7 @@ function PlayCard({ row, nowMs }: { row: PlayRow; nowMs: number }) {
                 <span
                   className={clsx(
                     "font-mono text-[9px] uppercase tracking-widest",
-                    row.mark_stale ? "text-gold" : "text-sky-300/40"
+                    row.mark_stale ? "text-gold" : "text-sky-200"
                   )}
                   title={`Quote as of ${fmtTime(row.mark_as_of)} ET`}
                 >
@@ -1202,11 +1202,11 @@ function PlayCard({ row, nowMs }: { row: PlayRow; nowMs: number }) {
             <Badge tone={ACTION_TONE[note.action]} size="sm" className="mt-0.5 shrink-0">
               {note.action}
             </Badge>
-            <span className="text-[12px] leading-snug text-sky-200/85">{note.reason}</span>
+            <span className="text-[12px] leading-snug text-sky-100">{note.reason}</span>
           </div>
           {row.nighthawkEcho && <NighthawkEchoNote echo={row.nighthawkEcho} />}
           {!open && (
-            <p className="nh-v2-card-cta mt-1 font-mono text-[9px] uppercase tracking-[0.18em] text-bull/70">
+            <p className="nh-v2-card-cta mt-1 font-mono text-[9px] uppercase tracking-[0.18em] text-bull">
               Expand for factors · cortex · plan
             </p>
           )}
@@ -1230,7 +1230,7 @@ function SkipCard({ row, nowMs }: { row: PlayRow; nowMs: number }) {
     <div className="rounded-xl border border-white/[0.06] bg-white/[0.015] px-4 py-3">
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
         <StatusBadge row={row} />
-        <span className="t-num text-[13px] font-bold text-sky-100/90">{contract}</span>
+        <span className="t-num text-[13px] font-bold text-sky-50">{contract}</span>
         <Badge tone={row.direction === "long" ? "bull" : "bear"} size="sm">
           {row.direction}
         </Badge>
@@ -1239,8 +1239,8 @@ function SkipCard({ row, nowMs }: { row: PlayRow; nowMs: number }) {
             The factor detail is the block list below — never duplicated here. */}
         {row.tier && <TierChip tier={row.tier} />}
         <span className="ml-auto flex items-baseline gap-1.5">
-          <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-sky-300/40">score</span>
-          <span className="t-num text-[12px] font-bold text-sky-200/80">{Math.round(row.score)}</span>
+          <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-sky-200">score</span>
+          <span className="t-num text-[12px] font-bold text-sky-100">{Math.round(row.score)}</span>
         </span>
       </div>
       <ul className="mt-2 space-y-1.5">
@@ -1268,14 +1268,14 @@ function SkipCard({ row, nowMs }: { row: PlayRow; nowMs: number }) {
                   unlocks {b.unlock_et} · {minsLeft}m
                 </span>
               )}
-              <span className="min-w-0 flex-1 basis-full text-[11px] leading-snug text-sky-200/75 sm:basis-auto">
+              <span className="min-w-0 flex-1 basis-full text-[11px] leading-snug text-sky-100 sm:basis-auto">
                 {b.reason}
               </span>
             </li>
           );
         })}
         {blocks.length === 0 && moved && (
-          <li className="text-[11px] leading-snug text-sky-200/75">
+          <li className="text-[11px] leading-snug text-sky-100">
             <span className="mr-2 rounded-md border border-sky-300/25 bg-sky-300/[0.05] px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-sky-300">
               chase guard
             </span>
@@ -1284,7 +1284,7 @@ function SkipCard({ row, nowMs }: { row: PlayRow; nowMs: number }) {
           </li>
         )}
         {blocks.length === 0 && !moved && illiquid && (
-          <li className="text-[11px] leading-snug text-sky-200/75">
+          <li className="text-[11px] leading-snug text-sky-100">
             <span className="mr-2 rounded-md border border-sky-300/25 bg-sky-300/[0.05] px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-sky-300">
               liquidity
             </span>
@@ -1298,7 +1298,7 @@ function SkipCard({ row, nowMs }: { row: PlayRow; nowMs: number }) {
             the one-way commit door means it only becomes an OPEN position if the
             desk commits it to the ledger, and that presentation can't flap back. */}
         {row.status === "WATCH" && blocks.length === 0 && !moved && !illiquid && (
-          <li className="text-[11px] leading-snug text-sky-200/75">
+          <li className="text-[11px] leading-snug text-sky-100">
             <span className="mr-2 rounded-md border border-sky-300/25 bg-sky-300/[0.05] px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-sky-300">
               candidate
             </span>
@@ -1307,7 +1307,7 @@ function SkipCard({ row, nowMs }: { row: PlayRow; nowMs: number }) {
           </li>
         )}
         {row.status !== "WATCH" && blocks.length === 0 && !moved && !illiquid && (
-          <li className="text-[11px] leading-snug text-sky-200/75">
+          <li className="text-[11px] leading-snug text-sky-100">
             <span className="mr-2 rounded-md border border-sky-300/25 bg-sky-300/[0.05] px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-sky-300">
               late window
             </span>
@@ -1347,7 +1347,7 @@ function SkipsSection({ rows, nowMs }: { rows: PlayRow[]; nowMs: number }) {
       {open ? (
         rows.map((row) => <SkipCard key={row.ticker} row={row} nowMs={nowMs} />)
       ) : (
-        <p className="text-[11px] leading-relaxed text-sky-300/60">
+        <p className="text-[11px] leading-relaxed text-sky-200">
           {rows.length} setup{rows.length === 1 ? "" : "s"} the scanner saw but did not commit —
           refused by a hard gate (tape alignment, opening window, score floor, session governor,
           evidence veto), the chase/liquidity/late rules, or still a watch-only candidate awaiting
@@ -1458,7 +1458,7 @@ export function ZeroDteBoard() {
         bodyClassName="px-4 py-4"
       >
         {plays.length === 0 ? (
-          <p className="px-1 py-2 text-sm text-sky-300/70">
+          <p className="px-1 py-2 text-sm text-sky-100">
             No committed play right now — and that&apos;s the discipline: the scanner hunts every 2
             minutes, and a plan prints only when the evidence AND every hard gate agree. What it
             refused (and why) is below.
@@ -1470,7 +1470,7 @@ export function ZeroDteBoard() {
             ))}
           </div>
         )}
-        <p className="mt-3 border-t border-white/[0.06] px-1 pt-3 text-[10px] leading-relaxed text-sky-300/50">
+        <p className="mt-3 border-t border-white/[0.06] px-1 pt-3 text-[10px] leading-relaxed text-sky-200">
           Click a play for its evidence and plan. Statuses update automatically: OPEN (in the entry
           range) → HOLD → TRIM (premium doubled — take some off) → CLOSED (stop, target discipline,
           or the 3:30 ET hard exit). Plays already published elsewhere on the desk are excluded

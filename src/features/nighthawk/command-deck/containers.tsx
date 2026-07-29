@@ -285,8 +285,8 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
       )}
       {edition?.recap_headline && (
         <div className="mb-3 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-          <div className="text-xs font-bold uppercase tracking-wide text-white/80">{edition.recap_headline}</div>
-          {edition.recap_summary && <div className="mt-1 text-xs leading-relaxed text-[#9fb4d4]/70">{edition.recap_summary}</div>}
+          <div className="text-xs font-bold uppercase tracking-wide text-white">{edition.recap_headline}</div>
+          {edition.recap_summary && <div className="mt-1 text-xs leading-relaxed text-sky-200">{edition.recap_summary}</div>}
         </div>
       )}
       <CommandDeck

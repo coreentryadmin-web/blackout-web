@@ -186,7 +186,7 @@ test("pulled play keeps #331 semantics: badge, reason line, struck levels, dimme
   assert.match(html, />Pulled</);
   assert.match(html, /SPX gapped through the entry band pre-open/);
   assert.match(html, /line-through/);
-  assert.match(html, /opacity-60/);
+  assert.match(html, /opacity-80/);
 });
 
 test("morning verdict chip + pre-market summary render from the play-status payload", async () => {
