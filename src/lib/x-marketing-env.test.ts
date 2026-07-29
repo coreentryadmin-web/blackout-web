@@ -4,6 +4,7 @@ import {
   xMarketingPostsPaused,
   xMentionRepliesPaused,
   xMarketingSilentOnly,
+  xMarketingCronPaused,
   xApiAccessTier,
   xApiEnterpriseAccess,
   xDeskPostIncludeUrl,
@@ -61,6 +62,17 @@ describe("x-marketing-env", () => {
     process.env.X_MENTION_REPLIES_PAUSED = "1";
     assert.equal(xMentionRepliesPaused(), true);
     assert.equal(xMarketingPostsPaused(), false);
+    assert.equal(xMarketingCronPaused("x-replies"), true);
+    assert.equal(xMarketingCronPaused("x-autopost"), false);
+  });
+
+  it("xMarketingCronPaused gates all X marketing cron keys on full pause", () => {
+    process.env.X_MARKETING_POSTS_PAUSED = "1";
+    assert.equal(xMarketingCronPaused("x-autopost"), true);
+    assert.equal(xMarketingCronPaused("x-growth"), true);
+    assert.equal(xMarketingCronPaused("x-replies"), true);
+    assert.equal(xMarketingCronPaused("x-analytics"), true);
+    assert.equal(xMarketingCronPaused("flow-ingest"), false);
   });
 
   it("intensive growth defaults off unless X_GROWTH_INTENSIVE=1", () => {
