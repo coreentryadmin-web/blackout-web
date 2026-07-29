@@ -43,7 +43,12 @@ test("isUsableGexHeatmapPayload / shouldForceMatrixRefresh", () => {
   assert.equal(isUsableGexHeatmapPayload(null), false);
   assert.equal(isUsableGexHeatmapPayload({ available: true, strikes: [], expiries: ["2026-07-29"] }), false);
   assert.equal(
-    isUsableGexHeatmapPayload({ available: true, strikes: [100], expiries: ["2026-07-29"] }),
+    isUsableGexHeatmapPayload({ available: true, spot: 0, strikes: [100], expiries: ["2026-07-29"] }),
+    false,
+    "spot 0 must not count as usable"
+  );
+  assert.equal(
+    isUsableGexHeatmapPayload({ available: true, spot: 741.5, strikes: [100], expiries: ["2026-07-29"] }),
     true
   );
   const now = Date.parse("2026-07-29T18:00:00Z");

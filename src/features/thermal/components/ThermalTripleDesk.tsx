@@ -17,6 +17,7 @@ import {
   thermalLayerFreshness,
   isUsableGexHeatmapPayload,
   shouldForceMatrixRefresh,
+  MATRIX_FORCE_THROTTLE_MS,
 } from "@/features/thermal/lib/thermal-desk-state";
 import {
   readGexHeatmapSessionCache,
@@ -237,25 +238,28 @@ function TripleColumn({
 
   useEffect(() => {
     const tick = () => {
+      const nowMs = Date.now();
+      if (nowMs - lastForceAtRef.current < MATRIX_FORCE_THROTTLE_MS) return;
+      // Blank / unusable column: force immediately (throttled) so SPY doesn't sit on
+      // "No matrix yet" waiting for the 1-min warm cron while SPX/QQQ already painted.
+      const blank = !isUsableGexHeatmapPayload(view);
       const asofRaw = view?.asof;
       const asofMs = asofRaw ? new Date(asofRaw).getTime() : NaN;
-      const nowMs = Date.now();
-      if (
-        !shouldForceMatrixRefresh({
+      const stale =
+        !blank &&
+        shouldForceMatrixRefresh({
           asofMs: Number.isFinite(asofMs) ? asofMs : null,
           nowMs,
           lastForceAtMs: lastForceAtRef.current,
-        })
-      ) {
-        return;
-      }
+        });
+      if (!blank && !stale) return;
       lastForceAtRef.current = nowMs;
       setForceNonce((n) => n + 1);
     };
     tick();
     const id = setInterval(tick, 2_000);
     return () => clearInterval(id);
-  }, [view?.asof, ticker]);
+  }, [view, ticker]);
 
   // Reset last-good when the column ticker changes so we never paint SPX cells under a SPY header.
   useEffect(() => {
