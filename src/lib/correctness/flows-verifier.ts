@@ -232,9 +232,22 @@ function massiveOracleComplete(meta: OptionTradesAggregate["meta"]): boolean {
  * Best-effort + bounded: ONE fetchOptionTrades call (itself contract/page-capped, rate-limited,
  * cached). Never throws.
  */
-async function crossCheckAgainstMassive(ctx: Ctx, rows: FlowRow[]): Promise<CheckResult> {
+async function crossCheckAgainstMassive(
+  ctx: Ctx,
+  rows: FlowRow[],
+  marketOpen: boolean
+): Promise<CheckResult> {
   const skip = (detail: string): CheckResult =>
     mk(ctx, "cross-provider", "net_premium", "skipped", detail, { id: "flows-xcheck-massive" });
+
+  // Post-close the Massive /v3/trades reconstruction is often thin or partial while UW flow
+  // alerts keep ingesting extended-hours prints — UW can legitimately exceed the raw Massive
+  // superset when the oracle under-counts. Skip (consistency-only), never FLAG off-hours.
+  if (!marketOpen) {
+    return skip(
+      "Market closed — UW-vs-Massive flow cross-check not asserted post-close (Massive NTM trades oracle is often incomplete after cash RTH; not a flag)."
+    );
+  }
 
   if (!polygonConfigured()) {
     return skip("Massive (POLYGON_API_KEY) not configured — UW-vs-Massive flow cross-check unavailable this run.");
@@ -284,6 +297,11 @@ async function crossCheckAgainstMassive(ctx: Ctx, rows: FlowRow[]): Promise<Chec
   if (massive.totalPremium < XCHECK.minMassivePremiumUsd) {
     return skip(
       `Massive trades premium for ${ticker} (${fmtUsd(massive.totalPremium)} over ${massive.meta.contractsWithTrades}/${massive.meta.contractsRequested} NTM contracts${massive.meta.partial ? ", partial pull" : ""}) is below the ${fmtUsd(XCHECK.minMassivePremiumUsd)} usable-oracle floor — too thin to confirm (not a flag).`
+    );
+  }
+  if (massive.meta.partial) {
+    return skip(
+      `Massive trades reconstruction for ${ticker} is partial (${massive.meta.contractsWithTrades}/${massive.meta.contractsRequested} NTM contracts) — subset/superset premium relation is not assertable against an incomplete oracle (not a flag).`
     );
   }
 
@@ -680,7 +698,7 @@ export async function verifyFlows(marketOpen: boolean): Promise<TickerScore> {
   // (promoted from consistency-only); material divergence → FLAG. This closes the single-source
   // coverage gap that previously made flows consistency-only by construction. Best-effort: a
   // skipped cross-check (Massive down / thin tape) degrades to consistency-only, never a false green.
-  checks.push(await crossCheckAgainstMassive(ctx, rows));
+  checks.push(await crossCheckAgainstMassive(ctx, rows, marketOpen));
 
   // ── FLOW-ANOMALY DETECTOR shadow-recompute (task #132) ────────────────────
   // See module doc above: validates detectFlowAnomalies' threshold math/skew-ratio/near-miss-band
