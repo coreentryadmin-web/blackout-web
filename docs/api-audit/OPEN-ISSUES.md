@@ -1,7 +1,84 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-29 16:16 ET
+Last updated: 2026-07-29 16:25 ET
 
-## spx-rth-2026-07-29 — SPX Slayer all-day verify pass (~16:09–16:16 ET)
+## rth-open-2026-07-29 — Comprehensive RTH sweep (~16:16–16:25 ET, post-close grace)
+
+**Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` including full COMPREHENSIVE TEST SWEEP. Time: Wed 16:16–16:25 ET (post-close grace, market closed 16:00 ET). Commands: `validate:rth-open` → `validate:rth-sweep` → `data-correctness?force=1` → `validate:grid-rth --force` → `validate:comprehensive-endpoints` → `rth-browser-test.mjs` → `data-validator.mjs`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` | ✅ **GREEN** — deploy smoke + socket-health; Postgres skipped (VPC) |
+| `npm run validate:rth-sweep` | ✅ **GREEN** — 0 P0/P1; all 7 pages ~1.6s load; Largo grounded (2.7s) |
+| `GET /api/cron/data-correctness?force=1` | ⚠️ **1 flag** — SPY net_premium cross-provider divergence (UW vs Massive call-share 28pts) |
+| `validate:grid-rth --force` | ✅ **13/14** — zerodte board live (7 setups, 4 ledger); ops:collect VPC skip |
+| `validate:comprehensive-endpoints` | ✅ **62 PASS** — 165 route smoke ok, 22 UW + 5 Polygon upstream |
+| `rth-browser-test.mjs` (pre-fix) | ❌ **18 FAIL** — stale `/api/grid/*` probes (deleted 2026-07-07) |
+| `rth-browser-test.mjs` (post-fix) | ✅ **26 PASS / 9 WARN / 0 FAIL** |
+| `data-validator.mjs` | ⚠️ **29 PASS / 5 FAIL** — off-hours prev-close comparisons on frozen setup prices |
+
+### Speed (premium session, post-close)
+
+| Page | Hard/soft load | API TTFB (representative) |
+|---|---|---|
+| `/dashboard` | hard 1.66s | desk 59ms, merged 546ms |
+| `/flows` | soft 1.63s | flows 60ms |
+| `/heatmap` | soft 1.62s | gex-heatmap SPX 105ms |
+| `/vector` | soft 1.62s | — |
+| `/nighthawk` | soft 1.62s | edition 112ms, zerodte board 245ms |
+| `/terminal` | soft 1.63s | largo SSE 2.7s |
+| `/track-record` | soft 1.63s | public track-record 151ms |
+
+### Live auto-update (15s poll, post-close cache still ticking)
+
+| Surface | Result |
+|---|---|
+| SPX Slayer gex-heatmap | ✅ data changed in 15s |
+| HELIX flows tape | ✅ data changed in 15s |
+| Browser liveTick (spot) | null — market closed, expected |
+
+### Cross-tool correctness
+
+| Check | Result |
+|---|---|
+| SPX spot desk vs GEX heatmap | ✅ 7316.15 agree |
+| zerodte board `as_of` | ✅ fresh (1s) |
+| platform snapshot `as_of` | ✅ fresh (0s) |
+| GEX flip cross-tool | null post-close — no active crossing, expected |
+
+### Missing-field audit (classified)
+
+| Field | Page | Cause | Action |
+|---|---|---|---|
+| `gex.flip`, `merged.gamma_flip` | dashboard, heatmap | Post-close — no gamma crossing | **Expected** |
+| `flows[].event_at` | HELIX | API uses `alerted_at` when UW omits event time | **Expected** (fallback path) |
+| `brief` | flows | AI brief not generated post-close | **Expected** |
+| `market_recap.spx_desk.hod/lod/vwap` | nighthawk | Intraday stats absent after close | **Expected** |
+| `marks[].bid/ask` | zerodte marks | No live quotes post-close | **Expected** |
+| `setups[].breakout_zones[empty]` | zerodte board | PIN/breakout evidence not present for all tickers | **Expected** |
+
+### P0 found + fixed this pass
+
+| ID | Severity | Detail | Status |
+|---|---|---|---|
+| `rth-browser-test-stale-grid-probes` | **P1** | `scripts/audit/rth-browser-test.mjs` still probed 9 deleted `/api/grid/*` routes → 18 false FAILs every sweep | **FIX** — PR probes `/api/market/zerodte/board` + platform snapshot + marks |
+
+### Residual open (non-P0)
+
+| Severity | ID | Detail | Status |
+|---|---|---|---|
+| **P2** | `spy-flow-cross-provider` | data-correctness: UW vs Massive SPY call-share differs 28pts — real cross-source divergence, not consistency miss | **OPEN** — informational |
+| **P2** | `qqq-underlying-staleness` | data-validator: QQQ setup underlying vs Polygon prev-close 2.175% (frozen scan-time price) | **OPEN** |
+| **P2** | `ops-collect-vpc-skip` | Cloud agent lacks `DATABASE_PUBLIC_URL` — ops:collect exits 1 | **KNOWN** |
+| **P1** | `largo-grounding-coverage` | Largo answer low grounding on regime field (`—` post-close) | **OPEN** — [#1239](https://github.com/coreentryadmin-web/blackout-web/issues/1239) |
+
+**Member-facing surfaces: GREEN** — all pages load, APIs 200 + fresh, live caches tick, no fabricated numbers.
+
+**Reports:** `audit-output/rth-sweep-2026-07-29T20-16-59-466Z.json`, `audit-output/rth-browser-test-2026-07-29T20-25-36-240Z.md`, `audit-output/grid-rth-2026-07-29-verify-1785356558283.json`, `audit-output/comprehensive-endpoint-audit-2026-07-29T20-23-20-818Z.md`
+
+---
+
 
 **Session:** SPX Slayer all-day RTH verification agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` **verify** mode. Time: Wed 16:09–16:16 ET (post-close grace window; cash equities closed 16:00 ET, audit window ≤16:15 ET). Commands: `validate:spx-rth` → `validate:spx-e2e` → 60s live auto-update probe → cross-tool API probes.
 
