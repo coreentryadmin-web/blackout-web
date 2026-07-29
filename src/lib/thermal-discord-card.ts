@@ -26,7 +26,12 @@ const NEG_RGB = "255,45,85";
 const PLUS_NODE_RGB = "255,214,10";
 /** Put / − node bead — same purple as major Thermal matrix. */
 const MINUS_NODE_RGB = "217,123,255";
-const FONT = "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
+/**
+ * Must resolve on ECS. Docker runner installs `fonts-dejavu-core` — Menlo /
+ * ui-monospace / Consolas are NOT present in bookworm-slim, so Sharp painted
+ * only the colored cell rects (yellow/purple/green "boxes") with no labels.
+ */
+const FONT = "DejaVu Sans Mono, Liberation Mono, monospace";
 
 function esc(s: string): string {
   return s
@@ -223,11 +228,12 @@ function cellFill(value: number, peak: number): string {
 }
 
 function plusNodeFill(): string {
-  return `rgba(${PLUS_NODE_RGB},0.62)`;
+  // Keep translucent so $ labels stay readable on top (never opaque "boxes").
+  return `rgba(${PLUS_NODE_RGB},0.42)`;
 }
 
 function minusNodeFill(): string {
-  return `rgba(${MINUS_NODE_RGB},0.58)`;
+  return `rgba(${MINUS_NODE_RGB},0.40)`;
 }
 
 function peakInWindow(

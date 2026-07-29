@@ -67,6 +67,14 @@ ENV CF_PURGE_DEPLOY_ID=$GITHUB_SHA
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 
+# Sharp (librsvg/pango) needs real TTF files to paint SVG <text>. bookworm-slim
+# ships with zero fonts — Discord Thermal cards rendered as solid yellow/purple
+# "boxes" with no strike/GEX labels. DejaVu Sans Mono matches the desk card.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends fonts-dejavu-core fontconfig \
+  && fc-cache -f \
+  && rm -rf /var/lib/apt/lists/*
+
 RUN groupadd --system --gid 1001 nodejs \
   && useradd --system --uid 1001 --gid nodejs nextjs
 
