@@ -68,8 +68,9 @@ export const GATE_VERSION = "v6";
  *  v2 (2026-07-29): veto-blind fail-closed restored for fresh commits. */
 export const CORTEX_VERSION = "v2";
 /** Portfolio governor (concentration / contradiction / same-direction caps). Bump when
- *  a governor rule changes which of a day's candidates actually commit. */
-export const GOVERNOR_VERSION = "v1";
+ *  a governor rule changes which of a day's candidates actually commit.
+ *  v2 (2026-07-29): concurrent open-play ceiling 6→100 (env ZERODTE_MAX_CONCURRENT). */
+export const GOVERNOR_VERSION = "v2";
 /** Contract selector (strike/expiry pick — pickChainContract & horizon clamp). Bump
  *  when the selected contract for the same signal would change (a different graded basis). */
 export const CONTRACT_SELECTOR_VERSION = "v1";

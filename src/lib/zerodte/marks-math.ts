@@ -15,8 +15,10 @@
 
 import { derivePlayStatus, PLAN_RULES, type PlayStatus } from "./plan";
 
-/** Hard cap on contracts in the live lane — open ledger plays only, never a chain. */
-export const ZERODTE_LIVE_CONTRACT_CAP = 16;
+/** Hard cap on contracts in the live lane — open ledger plays only, never a chain.
+ *  Raised 16→100 (2026-07-29) to match the uncapped open-play desk: marks must track
+ *  every committed OCC, not silently drop plays past the old 16-slot lane. */
+export const ZERODTE_LIVE_CONTRACT_CAP = 100;
 
 /** A mark older than this must be rendered as STALE by every consumer (ms). */
 export const ZERODTE_MARK_STALE_MS = 5_000;

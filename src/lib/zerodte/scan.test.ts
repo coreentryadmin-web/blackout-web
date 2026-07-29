@@ -980,7 +980,7 @@ test("scanZeroDteBoard: a HEALTHY halt feed (quiet channel, socket live) adds NO
 });
 
 // ── WS-01 governor commit atomicity (transactional recount + re-evaluate) ────────────
-// The session governor (GOVERNOR_MAX_CONCURRENT_PLANS = 6) is evaluated against an open-book
+// The session governor (GOVERNOR_MAX_CONCURRENT_PLANS, default 100) is evaluated against an open-book
 // snapshot read at scan START, then persistZeroDteScan re-reads the pre-cycle book and inserts
 // with no DB-level serialization in between. Two overlapping commits (member-poll + cron warm,
 // or two replicas) could each see "room for 1 more" and BOTH insert past the cap. The fix runs

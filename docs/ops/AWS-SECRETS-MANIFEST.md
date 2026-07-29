@@ -75,6 +75,7 @@ Secrets Manager. **Never commit real values.**
 | `PERPLEXITY_API_KEY` | BIE deep research |
 | `INTEL_URL` | External intel feed |
 | `SENTRY_DSN` | Error tracking |
+| `ZERODTE_MAX_CONCURRENT` | Max simultaneously OPEN 0DTE plans (code default **100**; `0` = unlimited). Quality gates + session stop/loss floors remain the risk brake — do not lower this to invent desk scarcity. |
 
 ## Docker build-arg overrides (production vs staging defaults)
 

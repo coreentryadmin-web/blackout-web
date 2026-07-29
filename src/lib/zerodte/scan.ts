@@ -274,7 +274,9 @@ export async function scanZeroDteBoard(flags?: {
       open_interest: f.open_interest,
       alerted_at: f.alerted_at,
     })),
-    { maxSetups: 20, excludeTickers: excludes, nowMs: Date.now(), todayYmd: today, rejections }
+    // FLOW seat budget — raised 20→48 so the multi-rail merge isn't starved of
+    // FLOW candidates while BREAKOUT/PIN fill their own seats (see GOVERNOR uncapped).
+    { maxSetups: 48, excludeTickers: excludes, nowMs: Date.now(), todayYmd: today, rejections }
   );
   const candidateDerivedAt = Date.now();
 

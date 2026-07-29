@@ -5,6 +5,29 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-29 — [0DTE] Open-play concurrent cap was starving the desk (6 → 100)
+
+**Severity.** P0 product — operator never wanted an artificial limit on OPEN 0DTE plays;
+the desk should commit every setup that clears quality + risk gates.
+
+**Root cause.** `GOVERNOR_MAX_CONCURRENT_PLANS = 6` hard-blocked new commits with
+`governor_max_concurrent` once six plans were live. That was framed as risk control, but
+the real capital brakes are already the per-play −50% stop, 3-stop session halt, 5-loser /
+−120% session-loss floor, and opposing correlated conflict. The concurrent cap was a
+**scarcity throttle** that discarded better late-morning setups after early fills.
+
+**Upstream seat budgets also starved the merge:** FLOW `maxSetups: 20`,
+`BREAKOUT_MAX_CANDIDATES=25`, `PIN_MAX_CANDIDATES=8`, and `ZERODTE_LIVE_CONTRACT_CAP=16`
+(marks lane would silently drop OCCs past 16 even if more committed).
+
+**Fix.**
+- Concurrent default **100**, env `ZERODTE_MAX_CONCURRENT` (`0` = unlimited).
+- FLOW `maxSetups` **48**; BREAKOUT seats **40**/side; PIN seats **16**.
+- Live marks cap **100** (tracks the open book).
+- `GOVERNOR_VERSION=v2`. Session stop/loss + correlated-oppose unchanged.
+
+**Status.** PR `cursor/zerodte-uncap-open-plays-3d11`.
+
 ## 2026-07-29 — [0DTE] BREAKOUT live but built 0 — board looked FLOW-only after multi-rail merge
 
 **Severity.** P0 — multi-rail (#1199 MERGE v2 + flags ON) was deployed, yet every RTH scan

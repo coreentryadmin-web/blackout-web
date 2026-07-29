@@ -205,17 +205,17 @@ function ledgerRow(over: Partial<ZeroDteSetupLogRow>): ZeroDteSetupLogRow {
   };
 }
 
-test("boundActivePlays: caps at 16, skips CLOSED rows and rows with no plan OCC", async () => {
+test("boundActivePlays: caps at ZERODTE_LIVE_CONTRACT_CAP, skips CLOSED rows and rows with no plan OCC", async () => {
   const lm = await loadLane();
   const rows: ZeroDteSetupLogRow[] = [];
-  for (let i = 0; i < 20; i++) {
+  for (let i = 0; i < ZERODTE_LIVE_CONTRACT_CAP + 4; i++) {
     rows.push(ledgerRow({ ticker: `T${i}`, plan_json: { occ: `O:T${i}260714C00100000` } }));
   }
   rows.push(ledgerRow({ ticker: "CLOSEDX", status: "CLOSED" }));
   rows.push(ledgerRow({ ticker: "NOPLAN", plan_json: null }));
   const active = lm.boundActivePlays(rows);
   assert.equal(active.length, ZERODTE_LIVE_CONTRACT_CAP);
-  assert.equal(active.length, 16);
+  assert.equal(active.length, 100);
   assert.ok(!active.some((p) => p.ticker === "CLOSEDX" || p.ticker === "NOPLAN"));
   // Pinned entry rides along — the ONLY entry reference the lane may push.
   assert.equal(active[0]!.entry_premium, 4.0);
