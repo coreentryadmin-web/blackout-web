@@ -63,6 +63,16 @@ targets:
         UIStatusBarStyle: UIStatusBarStyleLightContent
         UIViewControllerBasedStatusBarAppearance: false
         UIBackgroundModes: [remote-notification]
+        # Custom URL scheme used to receive the Clerk `__session` token back
+        # from `blackouttrades.com/native-signin`. See `SignInView.swift` for
+        # the ASWebAuthenticationSession launch + the `.onOpenURL` handler in
+        # `BlackOutApp.swift` for the callback. Scheme string MUST match the
+        # `NATIVE_URL_SCHEME` constant in `src/app/native-signin/route.ts`.
+        # Follow-up: promote to Universal Links (AASA on blackouttrades.com)
+        # so only our verified bundle can be the callback target.
+        CFBundleURLTypes:
+          - CFBundleURLName: com.blackout-trades.app.auth
+            CFBundleURLSchemes: [blackout-trades]
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: false
           NSExceptionDomains:

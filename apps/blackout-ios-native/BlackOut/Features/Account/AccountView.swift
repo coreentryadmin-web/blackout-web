@@ -10,8 +10,10 @@ import SwiftUI
 /// like a finished settings screen from day one.
 struct AccountView: View {
     @EnvironmentObject var appLock: AppLockCoordinator
+    @EnvironmentObject var session: SessionStore
     @State private var pushRequestPending = false
     @State private var pushStatus: PushAuthorizationStatus = .notDetermined
+    @State private var showSignOutConfirm = false
 
     var body: some View {
         List {
@@ -85,6 +87,21 @@ struct AccountView: View {
                     .listRowBackground(BOColor.backgroundCard)
                 }
             }
+
+            Section(header: sectionHeader("Session")) {
+                Button(role: .destructive) {
+                    showSignOutConfirm = true
+                } label: {
+                    HStack(spacing: BOSpacing.snug) {
+                        Image(systemName: "rectangle.portrait.and.arrow.right")
+                            .foregroundStyle(BOColor.statusNegative)
+                        Text("Sign out")
+                            .font(BOFont.body)
+                            .foregroundStyle(BOColor.statusNegative)
+                    }
+                }
+                .listRowBackground(BOColor.backgroundCard)
+            }
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
@@ -93,6 +110,16 @@ struct AccountView: View {
         .navigationBarTitleDisplayMode(.large)
         .task {
             pushStatus = await PushRegistrationService.live().status()
+        }
+        .confirmationDialog(
+            "Sign out of BlackOut?",
+            isPresented: $showSignOutConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Sign out", role: .destructive) { session.signOut() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("You'll need to sign in again to see live signals, watchlist, and the graded plays.")
         }
     }
 
@@ -166,6 +193,7 @@ struct AccountView: View {
     NavigationStack {
         AccountView()
             .environmentObject(AppLockCoordinator())
+            .environmentObject(SessionStore())
     }
     .preferredColorScheme(.dark)
     .tint(BOColor.textAccent)
