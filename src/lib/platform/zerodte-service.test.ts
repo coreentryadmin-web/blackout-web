@@ -199,7 +199,7 @@ test("livePnlPct: board ledger and Largo plays use identical rounding", async ()
   assert.ok(board.governor, "payload carries the governor summary");
   assert.deepEqual(board.governor!.open_plans, [{ ticker: "NVDA", direction: "long" }]);
   assert.equal(board.governor!.halted, false);
-  const { GOVERNOR_MAX_CONCURRENT_PLANS } = await import("@/lib/zerodte/governor");
+  const { GOVERNOR_MAX_CONCURRENT_PLANS } = await import("../zerodte/governor");
   assert.equal(board.governor!.max_concurrent, GOVERNOR_MAX_CONCURRENT_PLANS);
   assert.equal(board.governor!.max_session_stops, 3);
 });
