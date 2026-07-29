@@ -5,6 +5,20 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-29 — [0DTE] G-9 `plan_quote_stale` false-positive on live REST books
+
+**Severity.** P0 — AAPL/MU/GOOGL cleared score/confluence but stayed BLOCKED on
+`plan_quote_stale` while marks SSE showed fresh mids (1–3s). Starved OPEN commits.
+
+**Root cause.** Plan attach measured quote age from `last_quote.last_updated` (ns→ms).
+That exchange clock often stamps **prior session close** even when the unified-snapshot
+REST response just returned a live two-sided NBBO — so age ≫ 60s and G-9 fired.
+
+**Fix.** Attach `observedAtMs` on live fetch / cache read; `attachContractPlans` uses
+`observedAtMs ?? quoteUpdatedMs` for G-9. `GATE_VERSION=v7`.
+
+**Status.** Same PR as open-play uncap (`cursor/zerodte-uncap-open-plays-3d11`).
+
 ## 2026-07-29 — [0DTE] Open-play concurrent cap was starving the desk (6 → 100)
 
 **Severity.** P0 product — operator never wanted an artificial limit on OPEN 0DTE plays;
