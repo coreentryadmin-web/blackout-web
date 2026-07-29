@@ -7,8 +7,10 @@
  */
 import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
 import { resolveNearTermExpiriesForAudit } from "./audit/lib/near-term-expiries.mjs";
+import { fetchAuditJson, releaseAuditClerkSession } from "./audit/lib/audit-auth-fetch.mjs";
+import { auditSecret } from "./audit/lib/prod-secrets.mjs";
 
-const CRON = process.env.CRON_SECRET;
+const CRON = auditSecret("CRON_SECRET");
 const baseArg = process.argv.find((a) => a.startsWith("--base="));
 const tickersArg = process.argv.find((a) => a.startsWith("--tickers="));
 const BASE = (baseArg ? baseArg.slice("--base=".length) : "https://blackouttrades.com").replace(/\/$/, "");
@@ -16,12 +18,6 @@ const TICKERS = tickersArg
   ? tickersArg.slice("--tickers=".length).split(",").map((t) => t.trim().toUpperCase())
   : ["SPX", "SPY", "QQQ", "IWM", "NVDA", "AAPL", "TSLA", "AMD", "MSFT", "META", "AMZN", "MU", "SMH", "GLD", "AVGO"];
 
-if (!CRON) {
-  console.error("CRON_SECRET required");
-  process.exit(1);
-}
-
-const H = { Authorization: `Bearer ${CRON}` };
 const issues = [];
 
 function fail(ticker, metric, detail) {
@@ -96,17 +92,12 @@ function sameStrike(a, b) {
 }
 
 async function fetchHeatmap(ticker) {
-  const url = `${BASE}/api/market/gex-heatmap?ticker=${encodeURIComponent(ticker)}`;
-  const opts = { headers: H, signal: AbortSignal.timeout(180_000) };
-  // Warm-first: a cold SPX matrix build can exceed CF's origin timeout under parallel
-  // audit load; priming populates the cache so the audited fetch hits warm SWR.
-  try {
-    await fetch(url, opts);
-  } catch {
-    /* priming miss is ok — audited fetch below still tries */
-  }
-  const r = await fetch(url, opts);
-  return r.json();
+  const path = `/api/market/gex-heatmap?ticker=${encodeURIComponent(ticker)}`;
+  // Warm-first: cold SPX matrix can exceed CF origin timeout under parallel audit load.
+  await fetchAuditJson(BASE, path).catch(() => null);
+  const probe = await fetchAuditJson(BASE, path);
+  if (!probe.ok) throw new Error(`HTTP ${probe.status} ${path} (via ${probe.via ?? "none"})`);
+  return probe.json;
 }
 
 /** Mirror gexPositioningFromHeatmap — net_gex/flip/walls come straight from the gex block. */
@@ -312,6 +303,14 @@ async function auditTicker(ticker) {
 console.log(`\n=== Heat Maps MATRIX Deep Audit ===`);
 console.log(`Target: ${BASE}`);
 console.log(`Tickers: ${TICKERS.length}`);
+
+const authProbe = await fetchAuditJson(BASE, "/api/market/spx/desk");
+if (!authProbe.ok) {
+  console.error(`Auth failed: HTTP ${authProbe.status}`);
+  process.exit(1);
+}
+console.log(`Auth: ${authProbe.via}\n`);
+
 if (!isTradingDayEt(todayEtYmd())) {
   console.log(`Session: ${todayEtYmd()} is a market holiday — non-SPX empty matrices are expected\n`);
 } else {
@@ -350,11 +349,13 @@ else for (const i of issues) console.log(`  [${i.ticker}] ${i.metric}: ${i.detai
 
 // Run production data-correctness cron summary
 try {
-  const dc = await fetch(`${BASE}/api/cron/data-correctness?force=1`, { headers: H }).then((r) => r.json());
+  const dc = await fetchAuditJson(BASE, "/api/cron/data-correctness?force=1");
+  const dcJson = dc.json ?? {};
   console.log(`\n=== Production data-correctness cron ===`);
-  console.log(`  flags: ${dc.totals?.flags ?? "?"}, confirmed: ${dc.totals?.independentlyConfirmed ?? "?"}, consistency-only: ${dc.totals?.consistencyOnly ?? "?"}`);
-  if (dc.flags?.length) for (const f of dc.flags) console.log(`  FLAG [${f.layer}/${f.metric}] ${f.detail}`);
+  console.log(`  flags: ${dcJson.totals?.flags ?? "?"}, confirmed: ${dcJson.totals?.independentlyConfirmed ?? "?"}, consistency-only: ${dcJson.totals?.consistencyOnly ?? "?"}`);
+  if (dcJson.flags?.length) for (const f of dcJson.flags) console.log(`  FLAG [${f.layer}/${f.metric}] ${f.detail}`);
 } catch {}
 
 console.log("");
+await releaseAuditClerkSession();
 process.exit(issues.length ? 1 : 0);

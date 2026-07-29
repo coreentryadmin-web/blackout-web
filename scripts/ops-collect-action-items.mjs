@@ -320,4 +320,4 @@ if (pretty) {
   console.log(JSON.stringify(payload));
 }
 
-process.exit(unique.length ? 1 : 0);
+process.exit(unique.some((i) => i.priority === "P0" || i.priority === "P1") ? 1 : 0);

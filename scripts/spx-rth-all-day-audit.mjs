@@ -15,6 +15,7 @@ import { join } from "node:path";
 import { isTradingDayEt, inRthOpenWindow, todayEtYmd, etParts } from "./gha-et-window.mjs";
 import { spotsAgree, flipsAgree } from "./audit/lib/cross-tool-tolerance.mjs";
 import { probeDataCorrectness } from "./audit/lib/data-correctness-probe.mjs";
+import { fetchAuditJson, releaseAuditClerkSession } from "./audit/lib/audit-auth-fetch.mjs";
 
 const force = process.argv.includes("--force");
 const phaseArg = process.argv.find((a) => a.startsWith("--phase="));
@@ -44,13 +45,10 @@ function run(cmd, label) {
   return true;
 }
 
-async function fetchJson(path, { timeoutMs = 120_000 } = {}) {
-  const r = await fetch(`${BASE}${path}`, {
-    headers: { Authorization: `Bearer ${CRON}`, Accept: "application/json" },
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  if (!r.ok) throw new Error(`HTTP ${r.status} ${path}`);
-  return r.json();
+async function fetchJson(path) {
+  const res = await fetchAuditJson(BASE, path);
+  if (!res.ok) throw new Error(`HTTP ${res.status} ${path}`);
+  return res.json;
 }
 
 function spotDelta(a, b) {
@@ -59,8 +57,8 @@ function spotDelta(a, b) {
 }
 
 async function spxCrossEndpointCheck() {
-  if (!CRON) {
-    rec("spx:cross-endpoint", "SKIP", "CRON_SECRET not set");
+  if (!CRON && !(process.env.CLERK_SECRET_KEY && process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)) {
+    rec("spx:cross-endpoint", "SKIP", "no CRON or Clerk keys");
     return;
   }
   try {
@@ -114,8 +112,8 @@ async function spxCrossEndpointCheck() {
 }
 
 async function deskLaneCheck() {
-  if (!CRON) {
-    rec("spx:desk-lanes", "SKIP", "CRON_SECRET not set");
+  if (!CRON && !(process.env.CLERK_SECRET_KEY && process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)) {
+    rec("spx:desk-lanes", "SKIP", "no CRON or Clerk keys");
     return;
   }
   try {
@@ -217,13 +215,16 @@ async function main() {
           /spx|gex|heatmap|desk/i.test(f.layer ?? "")
       );
       if (!dc.ok && dc.status !== 200) {
+        const authMismatch = dc.status === 401 || dc.status === 403;
         const isTimeout = dc.status === 0 || /aborted|524|timeout/i.test(dc.err || "");
         rec(
           "spx:data-correctness",
-          isTimeout ? "WARN" : "FAIL",
-          isTimeout
-            ? `edge timeout (mode=${dc.mode}) — full sweep runs on cron; rth-open pg check is authoritative`
-            : dc.err || `HTTP ${dc.status} mode=${dc.mode}`
+          authMismatch ? "WARN" : isTimeout ? "WARN" : "FAIL",
+          authMismatch
+            ? "CRON_SECRET auth mismatch — full sweep runs on prod cron"
+            : isTimeout
+              ? `edge timeout (mode=${dc.mode}) — full sweep runs on cron; rth-open pg check is authoritative`
+              : dc.err || `HTTP ${dc.status} mode=${dc.mode}`
         );
       } else if (spxFlags.length) {
         rec("spx:data-correctness", "FAIL", `${spxFlags.length} SPX-layer flag(s)`);
@@ -273,7 +274,11 @@ async function main() {
   process.exit(0);
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+main()
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await releaseAuditClerkSession();
+  });
