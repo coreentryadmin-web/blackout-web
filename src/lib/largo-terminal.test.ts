@@ -221,7 +221,7 @@ before(async () => {
           // The rich synthesis path — its populated envelope MUST reach the response.
           return {
             answer: RICH_ENVELOPE.markdown,
-            context: { verdict: true },
+            context: { verdict: true, spot: 7500, gamma_flip: 7480, prints: 120 },
             envelope: RICH_ENVELOPE,
           };
         }
