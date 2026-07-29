@@ -11,13 +11,14 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { spotsAgree } from "./audit/lib/cross-tool-tolerance.mjs";
 import { fetchAuditJson, releaseAuditClerkSession } from "./audit/lib/audit-auth-fetch.mjs";
+import { auditSecret } from "./audit/lib/prod-secrets.mjs";
 
 const BASE = (
   process.argv.find((a) => a.startsWith("--base="))?.slice("--base=".length) ??
   process.env.AUDIT_APP_URL ??
   "https://blackouttrades.com"
 ).replace(/\/$/, "");
-const CRON = process.env.CRON_SECRET || "";
+const CRON = auditSecret("CRON_SECRET");
 const OUT = join(process.cwd(), "audit-output");
 mkdirSync(OUT, { recursive: true });
 

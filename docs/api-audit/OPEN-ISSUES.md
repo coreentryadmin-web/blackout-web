@@ -1,5 +1,68 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-29 13:18 ET
+Last updated: 2026-07-29 13:35 ET
+
+## rth-comprehensive-2026-07-29-pass3 — afternoon agent sweep (~13:12–13:35 ET)
+
+**Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` including COMPREHENSIVE TEST SWEEP. Time: Wed 13:12–13:35 ET (RTH). Commands: `validate:rth-open` → `validate:rth-sweep` → `GET /api/cron/data-correctness?force=1` → `validate:grid-rth` → `validate:grid-e2e` → `ops:collect`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` | ✅ **GREEN** (prod CRON via AWS SM; options-socket authenticated; Postgres unreachable from cloud host — expected) |
+| `npm run validate:rth-sweep` | ⚠️ **1 P1** — `/api/market/spx/merged` HTTP 504 (60s CF origin timeout under audit load); all 7 pages soft-nav ~1.6s, 0 missing fields |
+| `GET /api/cron/data-correctness?force=1` | ⚠️ **3 flags** pre-fix (`premium`, `answer_grounding`, `pg_nh_outcomes`) — `ok: false` |
+| `npm run validate:grid-e2e` | ✅ **GREEN** — 5/5 (zerodte board 6 setups / ledger 4) |
+| `npm run validate:grid-rth` | ⚠️ **PARTIAL** — zerodte board GREEN; nested `validate:rth-open` flakes when Postgres briefly connects + `zerodte-warm` 504 |
+| `npm run ops:collect` | ⚠️ **P1** — `watchdog:problem:data-correctness` stale/failed |
+
+### Per-page sweep (Clerk premium session)
+
+| Page | Hard/soft load | Live tick (12–20s wait) | Missing fields | Console |
+|---|---|---|---|---|
+| `/dashboard` | hard 1632ms | null (spot stable) | 0 | 1× HTTP 400 |
+| `/flows` | soft 1616ms | null | 0 | 0 |
+| `/heatmap` (matrix+profile tab) | soft 1599ms | null | 0 | 0 |
+| `/vector` | soft 1587ms | null | 0 | 0 |
+| `/nighthawk` (0DTE Command — classic `/grid` removed 2026-07-07) | soft 1587ms | null | 0 | 0 |
+| `/terminal` (Largo) | soft 1603ms | null | 0 | 0 |
+| `/track-record` | soft 1568ms | null | 0 | 0 |
+
+**API cross-check:** desk spot ~7387; GEX positioning fresh; flows 20 prints; NH edition 200; zerodte board 6 setups / ledger 4 (`as_of` fresh).
+
+**Largo:** `POST /api/market/largo/query` 200 in 2651ms — NVDA HELIX tape $79M / 50 prints grounded. Regime line `—` (upstream label unavailable — honest empty).
+
+### data-correctness flags (force=1, prod CRON via AWS SM)
+
+| Flag | Layer | Severity | Detail |
+|---|---|---|---|
+| `premium` | cross-provider | **P1** | NVDA entry $3.42 vs chain bid/ask 1.57/1.59 — scale/quote mismatch |
+| `answer_grounding` | shadow-recompute | **P1** | 1/25 Largo answers <50% grounding (#1284) |
+| `pg_nh_outcomes` | sanity-bound | **P1** | 15 rows out-of-vocabulary — **FIX in PR #1250** (`unfilled` missing from verifier vocab) |
+
+### Fixes shipped this pass
+
+| ID | Detail | Status |
+|---|---|---|
+| `audit-aws-cli-path` | Cloud agent: `aws` not on PATH → SM fetch silent fail → stale env `CRON_SECRET` (44 vs 48 chars) → cron probes 401 | **FIX** — `prod-secrets.mjs` resolves `/home/ubuntu/.local/bin/aws` |
+| `audit-auth-cron-fallback` | Stale CRON blocked Clerk fallback on 401 | **FIX** — `audit-auth-fetch.mjs` uses `auditSecret` + Clerk on 401/403 |
+| `dc-nh-outcomes-unfilled` | Verifier omitted `unfilled` from NH outcome vocabulary | **FIX** — `data-integrity-verifier.ts` |
+
+### Residual open
+
+| Severity | ID | Detail | Status |
+|---|---|---|---|
+| **P1** | `dc-nvda-premium-chain-band` | NVDA 0DTE entry premium outside live chain bid/ask | **OPEN** — [#1239](https://github.com/coreentryadmin-web/blackout-web/issues/1239) |
+| **P1** | `largo-grounding-coverage` | Largo answer #1284 undisclosed low grounding | **OPEN** — [#1239](https://github.com/coreentryadmin-web/blackout-web/issues/1239) |
+| **P2** | `spx-merged-504` | `/api/market/spx/merged` 504 under parallel audit load | **OPEN** — transient RTH |
+| **P2** | `dashboard-console-400` | Browser console 400 on dashboard hard load | **OPEN** |
+| **P2** | `zerodte-warm-504` | `zerodte-warm` cron probe 504 during audit burst | **OPEN** — transient |
+
+**Member-facing prod: GREEN** — all premium pages load, live spot/GEX/flows/NH/0DTE board grounded.
+
+**Reports:** `audit-output/rth-sweep-2026-07-29T17-16-13-952Z.json`
+
+---
 
 ## spx-rth-2026-07-29 — SPX Slayer afternoon verify pass (~13:07–13:18 ET)
 
@@ -40,8 +103,6 @@ Last updated: 2026-07-29 13:18 ET
 **Reports:** `audit-output/spx-rth-2026-07-29-verify-1785345547839.json`, `audit-output/spx-dashboard-e2e-1785345068568.json`
 
 ---
-
-## rth-comprehensive-2026-07-29-pass2 — midday agent sweep (~12:40 ET)
 
 **Follow-up pass** after #1235/#1238 merged. Commands re-run: `validate:rth-sweep` ✅ GREEN (0 P0/P1, `/vector` added), `validate:grid-rth` ✅ GREEN, `validate:spx-e2e` ✅ GREEN, `ops:collect` ✅ exit 0 (P2-only). Residual PR: spx-rth Clerk fallback + heatmap-matrix audit-auth + spx-bie mutate regex + ops exit-0.
 

@@ -293,10 +293,13 @@ async function checkPostgres(ctx: Ctx): Promise<CheckResult[]> {
   }
 
   // ── nighthawk_play_outcomes — the outcomes ledger that backs the track record numbers. ──
+  // Vocabulary must match nighthawk_play_outcomes_outcome_check in db.ts (includes 'unfilled').
+  const NH_OUTCOME_VOCAB = ["target", "stop", "open", "ambiguous", "pending", "unfilled"] as const;
   {
+    const vocabSql = NH_OUTCOME_VOCAB.map((v) => `'${v}'`).join(",");
     const row = await dbProbe<{ total: string; bad_outcome: string }>(
       `SELECT COUNT(*)::int AS total,
-              COUNT(*) FILTER (WHERE outcome NOT IN ('target','stop','open','ambiguous','pending'))::int AS bad_outcome
+              COUNT(*) FILTER (WHERE outcome NOT IN (${vocabSql}))::int AS bad_outcome
        FROM nighthawk_play_outcomes`
     );
     if (row && Number(row.total) > 0) {
