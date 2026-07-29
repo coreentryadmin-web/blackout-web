@@ -5,7 +5,8 @@
 // Usage:  node scripts/hit-cron.mjs /api/cron/db-cleanup
 // Env:    CRON_SECRET            (required) — same value as on blackout-web
 //         CRON_TARGET_BASE_URL   (optional) — defaults to https://blackouttrades.com
-//         CRON_HTTP_TIMEOUT_MS   (optional) — request timeout, defaults to 60000 (60s)
+//         CRON_HTTP_TIMEOUT_MS   (optional) — request timeout, defaults to 120000 (120s; was 60s —
+//                                             swing-discovery / bie-full-state / zerodte-warm need the headroom)
 //         CRON_HIT_RETRIES       (optional) — retry count on transient failure, default 4
 //         CRON_HIT_RETRY_DELAY_MS (optional) — base backoff ms between retries, default 3000
 //
@@ -26,7 +27,7 @@ if (!secret) {
 }
 
 const url = `${base}${path}`;
-const timeoutMs = Number(process.env.CRON_HTTP_TIMEOUT_MS ?? 60_000) || 60_000;
+const timeoutMs = Number(process.env.CRON_HTTP_TIMEOUT_MS ?? 120_000) || 120_000;
 const maxRetries = Math.max(0, Number(process.env.CRON_HIT_RETRIES ?? 4) || 4);
 const baseDelayMs = Math.max(500, Number(process.env.CRON_HIT_RETRY_DELAY_MS ?? 3000) || 3000);
 

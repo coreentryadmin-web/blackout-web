@@ -6,8 +6,11 @@
 // cross-session accumulation memory (WATCH-only) — it COMMITS NOTHING (`commitEligibleCount` is a literal 0).
 //
 // IDEMPOTENT PER (date, phase): a redis marker is CLAIMED before scanning, so a re-fire inside the same phase
-// window on the same day is a no-op — it must not re-increment the accumulation memory. FAIL-SOFT throughout:
-// any provider/DB error is caught, logged via logCronRun, and returned — it never throws out of the cron.
+// window on the same day is a no-op — it must not re-increment the accumulation memory. CRITICAL: on scan
+// FAILURE the claim is RELEASED — otherwise an ALB/Lambda 60s abort burns the phase for 22h and Swing stays
+// dark (prod 2026-07-29: 38/38 EventBridge FailedInvocations, zero successful swing-discovery hits).
+// `?force=1` clears any prior claim and re-runs. FAIL-SOFT throughout: provider/DB errors are caught,
+// logged via logCronRun, and returned — never thrown out of the cron.
 //
 // THIN HANDLER: the phase decision (scan-cadence) and the scan core (discovery.ts) are pure/injected and unit-
 // tested; this handler only does auth, the idempotency claim, provider wiring, and the run/log.
@@ -15,9 +18,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
-import { sharedCacheSetNx } from "@/lib/shared-cache";
+import { sharedCacheDel, sharedCacheSet, sharedCacheSetNx } from "@/lib/shared-cache";
 import { todayEt } from "@/lib/et-date";
-import { decideSwingScan } from "@/lib/swing/scan-cadence";
+import { decideSwingScan, phaseRunKey } from "@/lib/swing/scan-cadence";
 import {
   runSwingDiscoveryScan,
   DEFAULT_SWING_DISCOVERY_CONFIG,
@@ -56,8 +59,11 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
-/** How long a (date, phase) claim lives — 22h covers the whole session day so a same-day re-fire is suppressed. */
-const PHASE_CLAIM_TTL_SEC = 22 * 60 * 60;
+/** In-progress claim — short TTL so an ALB/Lambda abort that never reaches `catch` still expires and the
+ *  next EventBridge fire (every 30m) can retry. Success upgrades to PHASE_DONE_TTL_SEC via sharedCacheSet. */
+const PHASE_RUNNING_TTL_SEC = 3 * 60;
+/** How long a successful (date, phase) claim lives — covers the rest of the session day. */
+const PHASE_DONE_TTL_SEC = 22 * 60 * 60;
 /** Enough calendar days back to yield the ~90 daily sessions swing-ingest wants for the EMA/return reads. */
 const DAILY_BAR_LOOKBACK_DAYS = 200;
 
@@ -189,10 +195,25 @@ export async function GET(req: NextRequest) {
 
   const nowMs = started;
   const sessionDay = todayEt(new Date(nowMs));
+  // Ops recovery: force=1 clears a burned phase claim (timeout/abort after NX) and re-runs.
+  // Outside a phase window, force still runs as POST_CLOSE so we can revive the serving snapshot
+  // without waiting for the next EventBridge window.
+  const force = req.nextUrl.searchParams.get("force") === "1";
 
   // Resolve the active phase (pure). The idempotency dedup is now the ATOMIC claim below, so the
   // decision runs with an empty ranKeys — it only tells us whether the ET clock is inside a phase window.
-  const decision = decideSwingScan({ nowMs, sessionDay, ranKeys: new Set() });
+  let decision = decideSwingScan({ nowMs, sessionDay, ranKeys: new Set() });
+  if (!decision.run && force) {
+    const forcePhase = decision.phase ?? "POST_CLOSE";
+    const key = `swing:discovery:${sessionDay}:${forcePhase}`;
+    decision = {
+      run: true,
+      phase: forcePhase,
+      window: decision.window,
+      key,
+      reason: `force=1 — run as ${forcePhase} outside/inside window`,
+    };
+  }
   if (!decision.run) {
     const payload = { ok: true, skipped: true, phase: decision.phase, reason: decision.reason };
     await logCronRun("swing-discovery", started, payload);
@@ -207,8 +228,21 @@ export async function GET(req: NextRequest) {
   // concurrent firing gets acquired=false and skips here. On a Redis miss/outage we DEFAULT TO RUN
   // (acquired=true): losing dedup is better than silently skipping the whole phase — a lone double-run only
   // over-accretes one observation, harmless to the ≥2-distinct-session persistence gate.
+  //
+  // TWO-STAGE TTL (prod 2026-07-29): claim first with a SHORT "running" TTL. On success, upgrade to a
+  // full-day "done" TTL. On throw, delete. If the HTTP client aborts (ALB 60s / Lambda AbortError) and
+  // the handler never reaches catch, the running key still expires in ~3m so the next :00/:30 fire retries
+  // instead of burning the phase for 22h.
+  // force=1: delete any prior claim first so a timed-out prior attempt cannot block recovery.
+  if (force && decision.key) {
+    await sharedCacheDel(decision.key).catch(() => undefined);
+  }
   const acquired = decision.key
-    ? await sharedCacheSetNx(decision.key, nowMs, PHASE_CLAIM_TTL_SEC).catch(() => true)
+    ? await sharedCacheSetNx(
+        decision.key,
+        { status: "running", at: nowMs },
+        PHASE_RUNNING_TTL_SEC,
+      ).catch(() => true)
     : true;
   if (!acquired) {
     const payload = {
@@ -240,10 +274,20 @@ export async function GET(req: NextRequest) {
       watch: result.watchCandidates,
     });
 
+    // Upgrade running → done (full-day lock). Only after persist so a crash mid-scan does not lock the day.
+    if (decision.key) {
+      await sharedCacheSet(
+        decision.key,
+        { status: "done", at: Date.now() },
+        PHASE_DONE_TTL_SEC,
+      ).catch(() => undefined);
+    }
+
     const payload = {
       ok: true,
       phase: decision.phase,
       sessionDay,
+      forced: force || undefined,
       tier0Flow: result.tier0FlowCount,
       tier0Structure: result.tier0StructureCount,
       merged: result.mergedCount,
@@ -256,13 +300,25 @@ export async function GET(req: NextRequest) {
       committed: result.commit?.committed.filter((c) => c.positionId != null).length ?? 0,
       commitErrors: result.commit?.errors ?? 0,
       commitSkipped: result.commit?.skipped.length ?? 0,
+      duration_ms: Date.now() - started,
     };
     await logCronRun("swing-discovery", started, payload);
     return NextResponse.json(payload);
   } catch (error) {
+    // RELEASE the phase claim so the next EventBridge fire (or ?force=1) can retry. Leaving the NX key
+    // after a timeout/throw is what kept Swing dark all day: claim stuck, every re-fire skipped.
+    if (decision.key) {
+      await sharedCacheDel(decision.key).catch(() => undefined);
+    }
     const detail = error instanceof Error ? error.message : String(error);
     console.error("[cron/swing-discovery]", error);
-    await logCronRun("swing-discovery", started, { ok: false, phase: decision.phase, error: detail });
-    return NextResponse.json({ ok: false, error: "Swing discovery failed" }, { status: 500 });
+    await logCronRun("swing-discovery", started, {
+      ok: false,
+      phase: decision.phase,
+      error: detail,
+      claim_released: true,
+      duration_ms: Date.now() - started,
+    });
+    return NextResponse.json({ ok: false, error: "Swing discovery failed", claim_released: true }, { status: 500 });
   }
 }
