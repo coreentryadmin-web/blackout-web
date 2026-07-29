@@ -158,15 +158,20 @@ export type DiscordDayExtremes = {
   king: number | null;
 };
 
+const EXPIRY_YMD = /^\d{4}-\d{2}-\d{2}$/;
+
 /** Per-expiry +node / −node / king — ascending-strike strict tie-break (lowest wins). */
 export function discordPerExpiryExtremes(
   cells: Record<string, Record<string, number>>,
   strikes: number[],
   expiries: string[]
 ): Record<string, DiscordDayExtremes> {
-  const out: Record<string, DiscordDayExtremes> = {};
+  const out: Record<string, DiscordDayExtremes> = Object.create(null);
   const strikesAsc = [...strikes].sort((a, b) => a - b);
-  for (const e of expiries) {
+  for (const raw of expiries) {
+    // Fail-closed key gate — only YYYY-MM-DD expiry axes become object keys (CodeQL).
+    const e = typeof raw === "string" && EXPIRY_YMD.test(raw) ? raw : null;
+    if (!e) continue;
     let callWall: number | null = null;
     let putWall: number | null = null;
     let king: number | null = null;
