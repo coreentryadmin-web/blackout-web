@@ -27,7 +27,7 @@ function MetricPill({ label, value }: { label: string; value: string }) {
 function LowNChip() {
   return (
     <span
-      className="rounded-md border border-gold/35 bg-gold/[0.08] px-1 py-px font-mono text-[8px] font-bold uppercase tracking-[0.1em] text-gold"
+      className="rounded-md border border-gold/35 bg-gold/[0.08] px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-gold"
       title={`Fewer than ${LOW_N_THRESHOLD} scoreable plays under current grading rules — not enough samples to read as a track record`}
     >
       n&lt;{LOW_N_THRESHOLD}
@@ -40,7 +40,7 @@ function MethodologyTag({ methodology }: { methodology: string }) {
   const short = methodology === GRADE_METHODOLOGY_CURRENT ? "v2 · fill-required" : methodology;
   return (
     <span
-      className="rounded-md border border-sky-400/25 bg-sky-400/[0.06] px-1 py-px font-mono text-[8px] uppercase tracking-[0.1em] text-sky-300/80"
+      className="rounded-md border border-sky-400/30 bg-sky-400/[0.1] px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-sky-100"
       title="Grading methodology of the headline record. Plays graded under superseded rules are reported separately and never blended in."
     >
       {short}

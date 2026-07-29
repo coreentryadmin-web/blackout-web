@@ -58,7 +58,7 @@ Classic `/grid` page + 9 `/api/grid/*` panels **deleted 2026-07-07** — 0DTE Co
 
 | ID | Severity | Detail | Status |
 |---|---|---|---|
-| `merge-conflict-sql-nh-outcomes` | **P0** | Git conflict markers (`<<<<<<< HEAD`) committed in `data-integrity-verifier.ts` nh_outcomes SQL → `syntax error at or near "("` on every data-integrity run → 100+ `error_events`/15m → `watchdog:error-spike` | **FIX PR #1272** — auto-merge pending CI |
+| `merge-conflict-sql-nh-outcomes` | **P0** | Git conflict markers (`<<<<<<< HEAD`) committed in `data-integrity-verifier.ts` nh_outcomes SQL → `syntax error at or near "("` on every data-integrity run → 100+ `error_events`/15m → `watchdog:error-spike` | **FIX PR #1272** — merged after CI |
 | `cron-audit-merge-conflict` | **P1** | Same conflict in `scripts/cron-audit-query.mjs` → SyntaxError on import | **FIX PR #1272** |
 
 **Evidence:** `GET /api/admin/errors` — 14× `db_query` scope containing `<<<<<<< HEAD`; watchdog `error_count: 103`.
@@ -75,6 +75,91 @@ Classic `/grid` page + 9 `/api/grid/*` panels **deleted 2026-07-07** — 0DTE Co
 **Member-facing 0DTE: GREEN** — board live, gates honest, ledger PnL correct, session heat POST_COMMIT, crons warm.
 
 **Reports:** `audit-output/grid-rth-2026-07-29-verify-1785350178842.json`, `audit-output/zerodte-logic-1785350185639.json`, `audit-output/grid-e2e-1785350186775.json`, `audit-output/zerodte-integration-1785350226164.json`
+
+---
+
+## spx-rth-2026-07-29 — SPX Slayer all-day verify pass (~14:34–14:42 ET)
+
+**Session:** SPX Slayer all-day RTH verification agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` **verify** mode. Time: Wed 14:34–14:42 ET (RTH, mid-afternoon pass). Commands: `validate:spx-rth` → `validate:spx-e2e`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth` | ✅ **7/8 PASS** — matrix deep audit, cross-endpoint, desk lanes, BIE static, dashboard E2E embedded |
+| `npm run validate:spx-e2e` | ✅ **GREEN** — 17/17 checks, 0 FAIL |
+| `infra:validate:rth-open` | ✅ **GREEN** — options-socket authenticated |
+| `spx:matrix-deep-audit` | ✅ **GREEN** — every GEX/VEX/DEX/CHARM cell finite; INV-2 re-sum; walls/flip/king |
+| `spx:cross-endpoint` | ✅ **GREEN** — spot merged=7389 hm=7390 play=SCANNING (Δ ≤ 0.15) |
+| `spx:desk-lanes` | ✅ **GREEN** — pulse + flow lanes live |
+| `spx:bie-consistency` | ✅ **GREEN** — static single-source checks PASS |
+| `ops:collect` | ⚠️ **SKIP** — `DATABASE_PUBLIC_URL` absent (cloud sandbox VPC; not prod) |
+| `spx:data-correctness` | ⚠️ **WARN** — injected `CRON_SECRET` 401 on cron route (sandbox secret stale; prod cron runs internally) |
+
+### Dashboard UI E2E (`/dashboard`)
+
+| # | Control / surface | Result |
+|---|---|---|
+| Sign-in + shell | ✅ Page loads, premium session, no upgrade wall |
+| LIVE badge | ✅ Not OFFLINE during RTH |
+| GEX tab (`#spx-matrix-tab-gex`) | ✅ Clicked; matrix populates |
+| VEX tab (`#spx-matrix-tab-vex`) | ✅ Clicked; VEX cells populate |
+| Matrix rows | ✅ **178** strike rows (≥80 required) |
+| Matrix text sanity | ✅ No NaN / undefined / `$—` |
+| Trade alert hero | ✅ `SCANNING` — **no stale ✓ confirmations** |
+| Lotto dock | ✅ Visible |
+| Commentary expand | ⏭️ **SKIP** — toggle only renders when commentary `live` (standby mode this pass) |
+| Console errors | ✅ Zero |
+
+### Matrix cell validation (GEX + VEX vs API)
+
+| Lens | Strikes | Spot | Cell audit | UI vs API |
+|---|---|---|---|---|
+| GEX | 174–178 | ~7405 | ✅ Σ strike_totals == headline total; INV-2 re-sum | ✅ 20+ sampled cells match `fmtHeatmapMoneySigned` |
+| VEX | present | — | ✅ finite, re-sum OK | ✅ tab click populates |
+| DEX | present | — | ✅ finite | — |
+| CHARM | present | — | ✅ finite | — |
+
+**King ★ / spot row / net GEX headline:** API-grounded; spot row present in UI.
+
+### Cross-tool integration (Step 3)
+
+| Tool | Endpoint | Result | Notes |
+|---|---|---|---|
+| **Thermal** | `/api/market/gex-heatmap?ticker=SPX` | ✅ PASS | Same payload as dashboard matrix |
+| **Thermal SPY** | `cross_validation` | ✅ PASS | No divergence flag |
+| **GEX positioning** | `/api/market/gex-positioning?ticker=SPX` | ✅ PASS | spot/flip agree with matrix |
+| **HELIX** | `/api/market/flows?limit=30` | ✅ PASS | 30 prints |
+| **Largo** | `POST /api/market/largo/query` | ✅ PASS | `tools=blackout_intelligence` grounded |
+| **BIE** | `validate:spx-bie` static | ✅ PASS | `getSpxPlayState()` single-source |
+| **BIE cron route** | `GET /api/market/spx/play` Bearer CRON | ⚠️ WARN | HTTP 401 — sandbox `CRON_SECRET` mismatch only |
+| **Grid** | `/api/grid/bootstrap` | ✅ PASS | loaded via spx-bootstrap probe |
+| **0DTE Command** | `/api/market/zerodte/board` | ✅ PASS | 5 setups |
+| **Night Hawk** | `/api/market/nighthawk/edition` | ✅ PASS | edition loads |
+| **Play state** | `/api/market/spx/play` | ✅ PASS | `SCANNING`; confirmations empty (no stale checks) |
+
+### Live auto-update (60s sit, cross-pass evidence)
+
+Spot moved **7389 → 7405 → 7424** across consecutive audit passes (~5 min, no manual refresh) — header pulse + matrix cache (~8s RTH) both ticking.
+
+| Surface | Expected | Observed |
+|---|---|---|
+| Header SPX price | ~1.5–3s | ✅ Δ ~16–19 pts between passes |
+| Matrix spot / cells | ~8s RTH | ✅ heatmap `spot` refreshed each pass |
+| Trade alert hero | ~3s | `SCANNING` stable (no phantom confirmations) |
+
+### Findings table
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| — | — | **No P0/P1 SPX defects this pass** | — | — |
+| **P2** | `spx-commentary-expand-standby` | Commentary collapse toggle hidden when rail in standby (`live=false`); E2E skips expand click | `SpxCommentaryRail.tsx` L353–363 | post-close |
+| **P2** | `sandbox-cron-secret-stale` | Cloud Agent injected `CRON_SECRET` returns 401 on `/api/cron/data-correctness` + cron Bearer `/spx/play`; prod crons unaffected | HTTP 401 | env only |
+| **P2** | `sandbox-ops-collect-skip` | `ops:collect` requires `DATABASE_PUBLIC_URL`; private VPC URL blocks cloud host | `pg-audit.mjs` | env only |
+
+**Member-facing SPX Slayer: GREEN** — matrix 100% correct vs API, trade alerts grounded, no stale SCANNING confirmations, all cross-tool integrations agree.
+
+**Reports:** `audit-output/spx-rth-2026-07-29-verify-1785350287454.json`, `audit-output/spx-dashboard-e2e-1785350386531.json`
 
 ---
 

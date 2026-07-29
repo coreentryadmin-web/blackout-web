@@ -52,7 +52,7 @@ export function NightHawkFeed({ seed }: { seed?: NightHawkSeedProps | null }) {
         className="ios-native-desk-segment mb-3"
         segments={NIGHTHAWK_VIEWS.map((v) => ({ id: v, label: NIGHTHAWK_VIEW_META[v].label }))}
       />
-      <p className="mb-3 text-xs text-mute">{NIGHTHAWK_VIEW_META[view].blurb}</p>
+      <p className="mb-3 text-sm font-bold leading-snug text-sky-100">{NIGHTHAWK_VIEW_META[view].blurb}</p>
 
       <div className="nighthawk-single-view flex min-h-[560px] w-full max-w-none flex-1 flex-col">
         {view === "ZERO_DTE" && (

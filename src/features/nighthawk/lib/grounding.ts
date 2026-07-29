@@ -30,7 +30,7 @@
  */
 
 import type { ChainStrikeRow, EditionChainData } from "./option-chain-prompt";
-import { parseOptionsContract } from "./option-chain-prompt";
+import { matchChainRowsForContract, parseOptionsContract } from "./option-chain-prompt";
 import { parseEntryPremiumPerShare } from "./play-constraints";
 import type { TickerDossier } from "./dossier";
 import type { PlaybookPlay } from "./types";
@@ -113,11 +113,7 @@ function matchChainRows(
   expiryYmd: string | null,
   rows: ChainStrikeRow[]
 ): ChainStrikeRow[] {
-  return rows.filter((row) => {
-    if (Math.abs(row.strike - strike) > 0.05) return false;
-    if (expiryYmd && row.expiry !== expiryYmd) return false;
-    return true;
-  });
+  return matchChainRowsForContract(strike, expiryYmd, rows);
 }
 
 function sideAsk(row: ChainStrikeRow, side: "call" | "put" | null): number | null {
