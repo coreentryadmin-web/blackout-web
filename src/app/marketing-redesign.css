@@ -24,7 +24,7 @@
 .rl-kicker{display:inline-flex;align-items:center;gap:9px;font-family:var(--rl-sans);font-weight:700;font-size:11px;letter-spacing:.32em;text-transform:uppercase;color:var(--rl-dim)}
 .rl-kicker .dot{width:7px;height:7px;border-radius:50%;background:var(--rl-bull);box-shadow:0 0 12px var(--rl-bull);animation:rl-pulse 2.4s ease-in-out infinite}
 @keyframes rl-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.45;transform:scale(.7)}}
-.rl-gt{background:linear-gradient(96deg,var(--rl-bull),var(--rl-cyan) 60%,var(--rl-gold));-webkit-background-clip:text;background-clip:text;color:transparent}
+.rl-gt{color:var(--rl-bull)}
 .rl-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-family:var(--rl-sans);font-weight:800;font-size:12.5px;letter-spacing:.18em;text-transform:uppercase;padding:14px 26px;border-radius:2px;transition:.22s cubic-bezier(.2,.7,.3,1);cursor:pointer;border:1px solid transparent;white-space:nowrap}
 .rl-btn-primary{background:var(--rl-bull);color:#012}
 .rl-btn-primary:hover{transform:translateY(-2px);box-shadow:0 14px 40px -8px rgba(163,230,53,.55)}
