@@ -27,9 +27,19 @@ test("rejects thin volume, weak gain, weak close, and out-of-band price", () => 
     bar("FLAT", { o: 100, c: 101 }), // gain 1% < 3%
     bar("FADE", { o: 100, c: 110, h: 130, l: 98 }), // closed weak: (110-98)/(130-98)=0.375 < 0.5
     bar("CHEAP", { o: 3, c: 3.3, h: 3.4, l: 2.9 }), // price < $5
-    bar("PRICEY", { o: 500, c: 560, h: 565, l: 495 }), // price > $400
+    bar("PRICEY", { o: 3_000, c: 3_400, h: 3_450, l: 2_950 }), // price > $2,500
   ];
   assert.equal(screenBreakoutMovers(rows).length, 0);
+});
+
+test("keeps high-priced liquid 0DTE underlyings (MU/AMD/META class — was capped at $400)", () => {
+  // Live 2026-07-29: MU ~$783 / AMD ~$432 were screened OUT by the old $400 cap, so the
+  // BREAKOUT rail could never seat the names that actually list same-day options.
+  const [mu] = screenBreakoutMovers([
+    bar("MU", { o: 800, c: 880, h: 890, l: 790, v: 18_000_000 }), // +10%, strong close, ~$15B
+  ]);
+  assert.ok(mu, "MU-class price must clear the screen");
+  assert.equal(mu.ticker, "MU");
 });
 
 test("excludes index/leveraged instruments and dotted symbols", () => {
