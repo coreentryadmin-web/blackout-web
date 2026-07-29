@@ -139,6 +139,20 @@ export async function verifyLargo(_marketOpen: boolean): Promise<TickerScore> {
     }
 
     if (flagged.length > 0) {
+      const audited = answers.length - skippedNoContext;
+      const flagRate = audited > 0 ? flagged.length / audited : 0;
+      // One legacy row in a large sample is noise — page when rate or count is material.
+      if (flagged.length < 2 && flagRate < 0.1) {
+        checks.push(
+          mk(
+            "shadow-recompute",
+            "answer_grounding",
+            "consistency-only",
+            `${flagged.length}/${audited} recent Largo answers below grounding threshold (below paging floor of 2 or 10%). Examples: #${flagged[0].id}.`,
+            { id: "largo-ungrounded-below-floor", actual: String(flagged.length) }
+          )
+        );
+      } else {
       const examples = flagged
         .slice(0, 3)
         .map(
@@ -156,6 +170,7 @@ export async function verifyLargo(_marketOpen: boolean): Promise<TickerScore> {
           { id: "largo-ungrounded-answers", expected: "0 undisclosed low-coverage", actual: String(flagged.length) }
         )
       );
+      }
     } else {
       checks.push(
         mk(

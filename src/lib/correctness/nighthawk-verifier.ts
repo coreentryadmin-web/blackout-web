@@ -91,6 +91,10 @@ function hashStr(s: string): number {
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
   return h;
 }
+
+function todayEtYmd(now = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(now);
+}
 function num(v: unknown): number | null {
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
@@ -398,7 +402,9 @@ export async function verifyNightHawk(_marketOpen: boolean): Promise<TickerScore
       const premDetail: string[] = [];
       const publishedAtMs = Date.parse(edition.published_at ?? "");
       const premiumFresh =
-        Number.isFinite(publishedAtMs) && Date.now() - publishedAtMs <= 4 * 60 * 60 * 1000;
+        editionFor === todayEtYmd() &&
+        Number.isFinite(publishedAtMs) &&
+        Date.now() - publishedAtMs <= 4 * 60 * 60 * 1000;
       for (const { play, parsed } of parseable) {
         const chain = chains[play.ticker.toUpperCase()];
         if (!chain || !chain.rows.length) {

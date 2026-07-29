@@ -35,4 +35,13 @@ jobs:
           aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Query prod cron_job_runs
+<<<<<<< HEAD
+=======
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          DATABASE_PUBLIC_URL: ${{ secrets.DATABASE_PUBLIC_URL }}
+          CRON_TARGET_BASE_URL: https://blackouttrades.com
+>>>>>>> 6dc1fd01 (fix(ops): tighten correctness flags blocking ops-collect (#1247))
         run: node scripts/cron-audit-query.mjs
