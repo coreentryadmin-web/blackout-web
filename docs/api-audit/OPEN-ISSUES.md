@@ -1,5 +1,88 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-29 16:25 ET
+Last updated: 2026-07-29 16:42 ET
+
+## spx-rth-2026-07-29 — SPX Slayer all-day verify pass (~16:39–16:42 ET, post-close)
+
+**Session:** SPX Slayer all-day RTH verification agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` **verify** mode. Time: Wed 16:39–16:42 ET (post-close; cash session closed 16:00 ET / 13:00 PT). Commands: `validate:spx-rth --force` → `validate:spx-e2e` → 60s live auto-update probe → cross-tool API probes.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth --force` | ✅ **GREEN** — 7 PASS / 1 WARN / 0 FAIL |
+| `npm run validate:spx-e2e` | ✅ **GREEN** — 15 PASS / 2 SKIP / 1 WARN / 0 FAIL |
+| `infra:validate:rth-open` | ✅ **GREEN** |
+| `spx:matrix-deep-audit` | ✅ **GREEN** — every GEX/VEX/DEX/CHARM cell finite; INV-2 re-sum; walls/flip/king |
+| `spx:cross-endpoint` | ✅ **GREEN** — spot merged=7316.15 hm=7316.15 play=SCANNING/SCANNING |
+| `spx:desk-lanes` | ⏭️ **SKIP** — pulse/flow unavailable (extended-hours post-close) |
+| `spx:bie-consistency` | ✅ **GREEN** |
+| `ops:collect` | ✅ **GREEN** |
+| `spx:data-correctness` | ⚠️ **WARN** — sandbox `CRON_SECRET` 401 on cron route (prod cron unaffected) |
+
+### Dashboard UI E2E (`/dashboard`)
+
+| # | Control / surface | Result |
+|---|---|---|
+| Sign-in + shell | ✅ Page loads, premium session |
+| LIVE badge | ⏭️ **SKIP** — outside RTH; OFFLINE/EXTENDED expected post-close |
+| GEX tab (`#spx-matrix-tab-gex`) | ✅ Clicked; matrix populates |
+| VEX tab (`#spx-matrix-tab-vex`) | ✅ Clicked; VEX cells populate |
+| Matrix rows | ✅ **176** strike rows (≥80 required) |
+| Matrix text sanity | ✅ No NaN / undefined / `$—` |
+| Trade alert hero | ✅ `SCANNING` — **no stale ✓ confirmations** |
+| Commentary expand | ⏭️ **SKIP** — toggle only renders when commentary `live` (standby mode) |
+| Console errors | ✅ Zero |
+
+### Matrix cell validation (GEX + VEX vs API)
+
+| Lens | Strikes | Spot | Cell audit | UI vs API |
+|---|---|---|---|---|
+| GEX | 176 | 7316.15 | ✅ Σ strike_totals == headline total; INV-2 re-sum | ✅ every-cell-api PASS |
+| VEX | present | — | ✅ finite, re-sum OK | ✅ tab click populates |
+| DEX | present | — | ✅ finite | — |
+| CHARM | present | — | ✅ finite | — |
+
+### Cross-tool integration (Step 3)
+
+| Tool | Endpoint | Result | Notes |
+|---|---|---|---|
+| **Thermal** | `/api/market/gex-heatmap?ticker=SPX` | ✅ PASS | Same payload as dashboard matrix |
+| **Thermal SPY** | `cross_validation` | ✅ PASS | No divergence flag |
+| **GEX positioning** | `/api/market/gex-positioning?ticker=SPX` | ✅ PASS | spot agrees with matrix |
+| **HELIX** | `/api/market/flows?limit=30` | ✅ PASS | 30 prints |
+| **Largo** | `POST /api/market/largo/query` | ✅ PASS | `tools=blackout_intelligence` grounded |
+| **BIE** | `validate:spx-bie` | ✅ PASS | `getSpxPlayState()` single-source |
+| **BIE cron route** | `GET /api/market/spx/play` Bearer CRON | ⚠️ WARN | HTTP 401 — sandbox secret mismatch only |
+| **SPX bootstrap** | `/api/market/spx/bootstrap` | ✅ PASS | loaded (`/api/grid/bootstrap` decommissioned 2026-07-07) |
+| **0DTE Command** | `/api/market/zerodte/board` | ✅ PASS | 8 setups |
+| **Night Hawk** | `/api/market/nighthawk/edition` | ✅ PASS | edition loads |
+| **Play state** | `/api/market/spx/play` | ✅ PASS | `SCANNING`; confirmations empty |
+
+### Live auto-update (60s sit, post-close)
+
+| Surface | Expected (post-close) | Observed |
+|---|---|---|
+| Header SPX price | Static after close | ✅ 7316.15 unchanged (correct last print) |
+| Matrix GEX total | Cache may refresh off-hours | ✅ changed −64154407820 → −64400585663 (hm cache ticking) |
+| Desk `as_of` | Cache refresh | ✅ advanced 20:40:44 → 20:42:09 UTC |
+| Trade alert hero | Stable SCANNING | ✅ No phantom confirmations |
+
+### P0 found this pass
+
+**None.** Member-facing SPX Slayer is GREEN.
+
+### Residual open (non-P0)
+
+| Severity | ID | Detail | Fix defer? |
+|---|---|---|---|
+| **P2** | `bie-cron-401-sandbox` | Sandbox `CRON_SECRET` ≠ prod Secrets Manager | Yes — env only |
+| **P2** | `spx-commentary-standby` | Commentary expand hidden when Largo rail in standby | Yes — not a defect |
+| **P2** | `runbook-grid-bootstrap-stale` | Runbook Step 3 cites `/api/grid/bootstrap` (404); use `/api/market/spx/bootstrap` | Yes — docs drift |
+| **P2** | `spx-data-correctness-sandbox` | data-correctness cron 401 from cloud agent secret | Yes — prod cron unaffected |
+
+**Reports:** `audit-output/spx-rth-2026-07-29-verify-1785357640231.json`, `audit-output/spx-dashboard-e2e-1785357655435.json`
+
+---
 
 ## rth-open-2026-07-29 — Comprehensive RTH sweep (~16:16–16:25 ET, post-close grace)
 
