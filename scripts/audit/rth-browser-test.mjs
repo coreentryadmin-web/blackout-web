@@ -11,7 +11,7 @@
  *   /dashboard (SPX Slayer) → /api/market/gex-heatmap?ticker=SPX + /api/market/spx/merged
  *   /flows (HELIX) → /api/market/flows + /api/market/flow-brief
  *   /heatmap (Matrix + Profile) → /api/market/gex-heatmap + cross_validation
- *   /grid (12 panels) → /api/market/platform/snapshot
+ *   /grid (0DTE Command — was classic Grid, deleted 2026-07-07) → /api/market/zerodte/board + platform snapshot
  *   /nighthawk → /api/market/nighthawk/edition
  *   /terminal (Largo) → /api/terminal/query (AI chat)
  *   /track-record → /api/public/track-record
@@ -380,26 +380,26 @@ async function main() {
       rec(`${n}: cross_validation`, 'INFO', JSON.stringify(j.cross_validation).slice(0, 100));
   });
 
-  // /grid → 12 panels (bootstrap bundles Redis panel snapshots + Pulse/GEX market seeds)
-  testPage('/grid (bootstrap)', '/api/grid/bootstrap', (j, n) => {
-    const panelKeys = Object.keys(j?.panels ?? j ?? {});
-    const marketKeys = j?.market ? Object.keys(j.market) : [];
-    rec(`${n}: panel snapshots`, panelKeys.length >= 8 ? 'PASS' : 'WARN', `${panelKeys.length} panel keys`);
-    rec(`${n}: market seeds`, marketKeys.length >= 1 ? 'PASS' : 'WARN', `${marketKeys.length} market keys`);
+  // /nighthawk (0DTE Command) — classic /api/grid/* deleted 2026-07-07; board API is canonical
+  testPage('/nighthawk (zerodte board)', '/api/market/zerodte/board', (j, n) => {
+    if (j.available) {
+      rec(
+        `${n}: board loaded`,
+        'PASS',
+        `${j.setups?.length ?? 0} setups · ledger ${j.ledger?.length ?? 0} · heat=${j.session_heat ?? '—'}`
+      );
+    } else {
+      rec(`${n}: board`, 'WARN', 'available=false (off-hours or warming)');
+    }
   });
-  const gridPanels = [
-    '/api/grid/analysts',
-    '/api/grid/dark-pool',
-    '/api/grid/earnings',
-    '/api/grid/congress',
-    '/api/grid/economy',
-    '/api/grid/sectors',
-    '/api/grid/movers',
-    '/api/grid/catalysts',
-  ];
-  for (const ep of gridPanels) {
-    testPage(`/grid ${ep.split('/').pop()}`, ep);
-  }
+  testPage('/nighthawk (platform snapshot)', '/api/market/platform/snapshot', (j, n) => {
+    const keys = Object.keys(j ?? {});
+    rec(`${n}: snapshot keys`, keys.length >= 1 ? 'PASS' : 'WARN', `${keys.length} top-level keys`);
+  });
+  testPage('/nighthawk (zerodte marks)', '/api/market/zerodte/marks', (j, n) => {
+    const rows = Array.isArray(j?.marks) ? j.marks.length : Array.isArray(j) ? j.length : 0;
+    rec(`${n}: live marks`, rows > 0 ? 'PASS' : 'WARN', `${rows} mark row(s)`);
+  });
 
   // /nighthawk → latest edition (NightHawkEdition: plays + recap, not a `content` blob)
   testPage('/nighthawk', '/api/market/nighthawk/edition', (j, n) => {

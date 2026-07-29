@@ -1,5 +1,169 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-29 15:24 ET
+Last updated: 2026-07-29 16:25 ET
+
+## rth-open-2026-07-29 — Comprehensive RTH sweep (~16:16–16:25 ET, post-close grace)
+
+**Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` including full COMPREHENSIVE TEST SWEEP. Time: Wed 16:16–16:25 ET (post-close grace, market closed 16:00 ET). Commands: `validate:rth-open` → `validate:rth-sweep` → `data-correctness?force=1` → `validate:grid-rth --force` → `validate:comprehensive-endpoints` → `rth-browser-test.mjs` → `data-validator.mjs`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` | ✅ **GREEN** — deploy smoke + socket-health; Postgres skipped (VPC) |
+| `npm run validate:rth-sweep` | ✅ **GREEN** — 0 P0/P1; all 7 pages ~1.6s load; Largo grounded (2.7s) |
+| `GET /api/cron/data-correctness?force=1` | ⚠️ **1 flag** — SPY net_premium cross-provider divergence (UW vs Massive call-share 28pts) |
+| `validate:grid-rth --force` | ✅ **13/14** — zerodte board live (7 setups, 4 ledger); ops:collect VPC skip |
+| `validate:comprehensive-endpoints` | ✅ **62 PASS** — 165 route smoke ok, 22 UW + 5 Polygon upstream |
+| `rth-browser-test.mjs` (pre-fix) | ❌ **18 FAIL** — stale `/api/grid/*` probes (deleted 2026-07-07) |
+| `rth-browser-test.mjs` (post-fix) | ✅ **26 PASS / 9 WARN / 0 FAIL** |
+| `data-validator.mjs` | ⚠️ **29 PASS / 5 FAIL** — off-hours prev-close comparisons on frozen setup prices |
+
+### Speed (premium session, post-close)
+
+| Page | Hard/soft load | API TTFB (representative) |
+|---|---|---|
+| `/dashboard` | hard 1.66s | desk 59ms, merged 546ms |
+| `/flows` | soft 1.63s | flows 60ms |
+| `/heatmap` | soft 1.62s | gex-heatmap SPX 105ms |
+| `/vector` | soft 1.62s | — |
+| `/nighthawk` | soft 1.62s | edition 112ms, zerodte board 245ms |
+| `/terminal` | soft 1.63s | largo SSE 2.7s |
+| `/track-record` | soft 1.63s | public track-record 151ms |
+
+### Live auto-update (15s poll, post-close cache still ticking)
+
+| Surface | Result |
+|---|---|
+| SPX Slayer gex-heatmap | ✅ data changed in 15s |
+| HELIX flows tape | ✅ data changed in 15s |
+| Browser liveTick (spot) | null — market closed, expected |
+
+### Cross-tool correctness
+
+| Check | Result |
+|---|---|
+| SPX spot desk vs GEX heatmap | ✅ 7316.15 agree |
+| zerodte board `as_of` | ✅ fresh (1s) |
+| platform snapshot `as_of` | ✅ fresh (0s) |
+| GEX flip cross-tool | null post-close — no active crossing, expected |
+
+### Missing-field audit (classified)
+
+| Field | Page | Cause | Action |
+|---|---|---|---|
+| `gex.flip`, `merged.gamma_flip` | dashboard, heatmap | Post-close — no gamma crossing | **Expected** |
+| `flows[].event_at` | HELIX | API uses `alerted_at` when UW omits event time | **Expected** (fallback path) |
+| `brief` | flows | AI brief not generated post-close | **Expected** |
+| `market_recap.spx_desk.hod/lod/vwap` | nighthawk | Intraday stats absent after close | **Expected** |
+| `marks[].bid/ask` | zerodte marks | No live quotes post-close | **Expected** |
+| `setups[].breakout_zones[empty]` | zerodte board | PIN/breakout evidence not present for all tickers | **Expected** |
+
+### P0 found + fixed this pass
+
+| ID | Severity | Detail | Status |
+|---|---|---|---|
+| `rth-browser-test-stale-grid-probes` | **P1** | `scripts/audit/rth-browser-test.mjs` still probed 9 deleted `/api/grid/*` routes → 18 false FAILs every sweep | **FIX** — PR probes `/api/market/zerodte/board` + platform snapshot + marks |
+
+### Residual open (non-P0)
+
+| Severity | ID | Detail | Status |
+|---|---|---|---|
+| **P2** | `spy-flow-cross-provider` | data-correctness: UW vs Massive SPY call-share differs 28pts — real cross-source divergence, not consistency miss | **OPEN** — informational |
+| **P2** | `qqq-underlying-staleness` | data-validator: QQQ setup underlying vs Polygon prev-close 2.175% (frozen scan-time price) | **OPEN** |
+| **P2** | `ops-collect-vpc-skip` | Cloud agent lacks `DATABASE_PUBLIC_URL` — ops:collect exits 1 | **KNOWN** |
+| **P1** | `largo-grounding-coverage` | Largo answer low grounding on regime field (`—` post-close) | **OPEN** — [#1239](https://github.com/coreentryadmin-web/blackout-web/issues/1239) |
+
+**Member-facing surfaces: GREEN** — all pages load, APIs 200 + fresh, live caches tick, no fabricated numbers.
+
+**Reports:** `audit-output/rth-sweep-2026-07-29T20-16-59-466Z.json`, `audit-output/rth-browser-test-2026-07-29T20-25-36-240Z.md`, `audit-output/grid-rth-2026-07-29-verify-1785356558283.json`, `audit-output/comprehensive-endpoint-audit-2026-07-29T20-23-20-818Z.md`
+
+---
+
+
+**Session:** SPX Slayer all-day RTH verification agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` **verify** mode. Time: Wed 16:09–16:16 ET (post-close grace window; cash equities closed 16:00 ET, audit window ≤16:15 ET). Commands: `validate:spx-rth` → `validate:spx-e2e` → 60s live auto-update probe → cross-tool API probes.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth` | ✅ **6/7 PASS** — matrix, cross-endpoint, BIE, dashboard E2E embedded |
+| `npm run validate:spx-e2e` | ✅ **GREEN** — 17/17 checks, **0 FAIL** |
+| `infra:validate:rth-open` | ✅ **GREEN** |
+| `spx:matrix-deep-audit` | ✅ **GREEN** — every GEX/VEX/DEX/CHARM cell finite; INV-2 re-sum; walls/flip/king |
+| `spx:cross-endpoint` | ✅ **GREEN** — spot merged=7316.15 hm=7316.15 play=SCANNING/SCANNING |
+| `spx:desk-lanes` | ⏭️ **SKIP** — pulse/flow `available:false` (market `extended-hours` post 16:00 ET; expected) |
+| `spx:bie-consistency` | ✅ **GREEN** |
+| `ops:collect` | ⚠️ **FAIL** — `DATABASE_PUBLIC_URL` absent (cloud sandbox VPC; not prod) |
+| `spx:data-correctness` | ⚠️ **WARN** — injected `CRON_SECRET` 401 on cron route (sandbox secret stale) |
+
+### Dashboard UI E2E (`/dashboard`)
+
+| # | Control / surface | Result |
+|---|---|---|
+| Sign-in + shell | ✅ Page loads, premium session |
+| LIVE badge | ✅ Not OFFLINE (post-close EXTENDED label on pulse lane only) |
+| GEX tab (`#spx-matrix-tab-gex`) | ✅ Clicked; matrix populates |
+| VEX tab (`#spx-matrix-tab-vex`) | ✅ Clicked; VEX cells populate |
+| Matrix rows | ✅ **176** strike rows (≥80 required) |
+| Matrix text sanity | ✅ No NaN / undefined / `$—` |
+| Trade alert hero | ✅ `SCANNING` — **no stale ✓ confirmations** (0 confirmation checks in API) |
+| Lotto dock | ✅ Visible |
+| Commentary expand | ⏭️ **SKIP** — toggle only renders when commentary `live` (standby mode) |
+| Console errors | ✅ Zero |
+
+### Matrix cell validation (GEX + VEX vs API)
+
+| Lens | Strikes | Spot | Cell audit | UI vs API |
+|---|---|---|---|---|
+| GEX | 176 | 7316.15 | ✅ Σ strike_totals == headline total; INV-2 re-sum | ✅ every-cell-api PASS |
+| VEX | present | — | ✅ finite, re-sum OK | ✅ tab click populates |
+| DEX | present | — | ✅ finite | — |
+| CHARM | present | — | ✅ finite | — |
+
+**Spot oracle:** Polygon `I:SPX` snapshot = 7316.15; UW stock-state close = 7316.15 — platform spot grounded ✓
+
+### Cross-tool integration (Step 3)
+
+| Tool | Endpoint | Result | Notes |
+|---|---|---|---|
+| **Thermal** | `/api/market/gex-heatmap?ticker=SPX` | ✅ PASS | Same payload as dashboard matrix |
+| **Thermal SPY** | `cross_validation` | ✅ PASS | No divergence flag |
+| **GEX positioning** | `/api/market/gex-positioning?ticker=SPX` | ✅ PASS | spot 7316.15 agrees with matrix |
+| **HELIX** | `/api/market/flows?limit=30` | ✅ PASS | 30 prints |
+| **Largo** | `POST /api/market/largo/query` | ✅ PASS | `tools=blackout_intelligence` grounded |
+| **BIE** | `validate:spx-bie` static | ✅ PASS | `getSpxPlayState()` single-source |
+| **BIE cron route** | `GET /api/market/spx/play` Bearer CRON | ⚠️ WARN | HTTP 401 — sandbox `CRON_SECRET` mismatch only |
+| **SPX bootstrap** | `/api/market/spx/bootstrap` | ✅ PASS | loaded (Grid route decommissioned 2026-07-07) |
+| **0DTE Command** | `/api/market/zerodte/board` | ✅ PASS | 7 setups |
+| **Night Hawk** | `/api/market/nighthawk/edition` | ✅ PASS | edition loads |
+| **Play state** | `/api/market/spx/play` | ✅ PASS | `SCANNING`; confirmations empty |
+
+### Live auto-update (60s sit + 3×30s spot samples)
+
+Post-close: SPX index tick static at 7316.15 for 90s — **expected** (cash session closed 16:00 ET; pulse lane reports `market_label: EXTENDED`). Desk/heatmap cache serves last RTH snapshot honestly.
+
+| Surface | Expected (post-close) | Observed |
+|---|---|---|
+| Header SPX price | Static after close | ✅ 7316.15 unchanged (correct last print) |
+| Matrix spot / cells | Static post-close | ✅ hm spot 7316.15 |
+| Trade alert hero | Stable SCANNING | ✅ No phantom confirmations |
+
+### P0 found this pass
+
+**None.** Member-facing SPX Slayer is GREEN.
+
+### Residual open (non-P0)
+
+| Severity | ID | Detail | Status |
+|---|---|---|---|
+| **P2** | `ops-collect-vpc-skip` | Cloud agent cannot reach Postgres (`DATABASE_PUBLIC_URL` unset) | **KNOWN** |
+| **P2** | `spx-commentary-standby` | Commentary expand toggle hidden when Largo rail in standby (not `live`) | **KNOWN** — not a defect |
+| **P2** | `bie-cron-401-sandbox` | Sandbox `CRON_SECRET` ≠ prod Secrets Manager | **KNOWN** |
+| **P2** | `runbook-grid-bootstrap-stale` | Runbook Step 3 cites `/api/grid/bootstrap` (404); use `/api/market/spx/bootstrap` | **OPEN** — docs drift |
+
+**Reports:** `audit-output/spx-rth-2026-07-29-verify-1785355898731.json`, `audit-output/spx-dashboard-e2e-1785355920515.json`
+
+---
 
 ## grid-rth-2026-07-29 — 0DTE Command + Market Grid verify pass (~15:21–15:24 ET)
 
