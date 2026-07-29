@@ -16,6 +16,7 @@ import { isTradingDayEt, inRthOpenWindow, todayEtYmd, etParts } from "./gha-et-w
 import { spotsAgree, flipsAgree } from "./audit/lib/cross-tool-tolerance.mjs";
 import { probeDataCorrectness } from "./audit/lib/data-correctness-probe.mjs";
 import { fetchAuditJson, releaseAuditClerkSession } from "./audit/lib/audit-auth-fetch.mjs";
+import { parseOpsCollectPayload, spxOpsItems } from "./audit/lib/ops-collect-scope.mjs";
 
 const force = process.argv.includes("--force");
 const phaseArg = process.argv.find((a) => a.startsWith("--phase="));
@@ -45,7 +46,7 @@ function run(cmd, label) {
   return true;
 }
 
-import { parseOpsCollectPayload, spxOpsItems } from "./audit/lib/ops-collect-scope.mjs";
+function auditOpsCollect() {
   const r = spawnSync("npm run ops:collect", {
     shell: true,
     encoding: "utf8",
