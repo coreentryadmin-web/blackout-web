@@ -5,6 +5,25 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-29 — [Night Hawk Legacy] Replay harness + polarity measure + recap reason
+
+**Severity.** P1 tooling / honesty — could not counterfactual score floors or quantify
+flow-polarity misreads; members saw recap-only with no funnel reason.
+
+**What shipped (measure first; scorer unchanged).**
+1. `buildEveningEdition({ asOfEt, dryRun, persist })` + `fetchMarketWideContext({ asOfEt })` —
+   historical asOfEt defaults to dry-run (no DB write). Live publish path skips upsert when
+   `checkpointing` is false.
+2. `npm run sim:nighthawk-evening` — `--mode=floor` offline counterfactual; `--mode=live --as-of=`
+   dry-run full builder with score-floor table on returned plays.
+3. `npm run probe:nighthawk-flow-polarity` — Legacy call/put vs signed-aggression disagreement
+   rate (`flow-polarity.ts`). **No scorer change** until measured rate justifies it.
+4. `recap_only_reason` mapped from `meta` → `NightHawkEdition` → PlaybookBoard empty-state copy.
+
+**Deliberately not shipped.** Position sizing. Scorer polarity flip (await polarity probe evidence).
+
+**Status.** Open — this PR.
+
 ## 2026-07-29 — [Night Hawk Legacy] Soft hedge/rescue floors shipped score-20 filler
 
 **Severity.** P0 product — Legacy overnight digest published noise next to one real name.

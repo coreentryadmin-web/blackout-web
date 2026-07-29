@@ -49,6 +49,7 @@ import { applyBearishPosture, BEARISH_RECAP_REASON } from "./bearish-posture";
 import { etNowParts, isTradingDayEt, nextTradingDayEt, todayEt } from "./session";
 import { notifyOpsDiscord } from "@/features/spx/lib/spx-play-notify";
 import type { NightHawkEdition, PlaybookPlay } from "./types";
+import { recapOnlyReasonFromMeta } from "./edition-meta";
 
 /**
  * Consolidated funnel counts for ONE edition build (#77 deliverable (a)). Every stage of the
@@ -136,6 +137,11 @@ export type EditionBuildResult = {
   resumed?: boolean;
   /** True when a real edition row was published with a recap but plays:[] (no plays survived the funnel). */
   recap_only?: boolean;
+  /** Populated on dry-run builds so the evening-replay harness can score-floor counterfactual without DB. */
+  plays?: PlaybookPlay[];
+  /** Session date (ET) the build used — equals asOfEt or todayEt(). */
+  session_et?: string;
+  dry_run?: boolean;
 };
 
 function stagedToDossierMap(
@@ -330,10 +336,30 @@ async function publishRecapOnlyEdition(params: {
 
 export async function buildEveningEdition(opts?: {
   force?: boolean;
+  /**
+   * Session date in America/New_York (YYYY-MM-DD). Defaults to todayEt().
+   * edition_for = nextTradingDayEt(asOfEt). Used by the evening-replay harness.
+   */
+  asOfEt?: string;
+  /**
+   * Skip all DB writes (jobs / editions / staging). Historical asOfEt defaults to dry-run
+   * unless persist=true — never silently overwrite a past published edition from a probe.
+   */
+  dryRun?: boolean;
+  /** Allow DB writes when asOfEt is set (admin recovery only). Ignored when dryRun=true. */
+  persist?: boolean;
 }): Promise<EditionBuildResult> {
   const started = Date.now();
-  const editionFor = nextTradingDayEt(todayEt());
-  const checkpointing = dbConfigured();
+  const sessionEt = opts?.asOfEt ?? todayEt();
+  const editionFor = nextTradingDayEt(sessionEt);
+  const historical = Boolean(opts?.asOfEt && opts.asOfEt !== todayEt());
+  const dryRun = opts?.dryRun === true || (historical && opts?.persist !== true);
+  const checkpointing = dbConfigured() && !dryRun;
+  if (dryRun) {
+    console.info(
+      `[nighthawk/edition] dry-run — session=${sessionEt} edition_for=${editionFor} (no DB writes)`
+    );
+  }
 
   if (checkpointing) {
     await failStaleNighthawkJobs().catch((err) =>
@@ -461,7 +487,7 @@ export async function buildEveningEdition(opts?: {
     if (!ctx) {
       if (checkpointing) await upsertNighthawkJob(editionFor, { status: "running", current_stage: "stage_context" });
       console.info("[nighthawk/edition] stage_context: market-wide context");
-      ctx = await fetchMarketWideContext();
+      ctx = await fetchMarketWideContext({ asOfEt: sessionEt });
       if (checkpointing) {
         await upsertNighthawkJob(editionFor, {
           context_json: ctx as unknown as Record<string, unknown>,
@@ -1013,6 +1039,7 @@ export async function buildEveningEdition(opts?: {
     funnel.published = finalPlays.length;
     logFunnel(editionFor, funnel);
     console.info("[nighthawk/edition] publish edition");
+    if (checkpointing) {
     await upsertNighthawkEdition({
       edition_for: editionFor,
       session_date: ctx.today,
@@ -1106,16 +1133,14 @@ export async function buildEveningEdition(opts?: {
       });
       await syncNighthawkPlayOutcomes(editionFor, finalPlays, sectorByTicker, publishContexts);
 
-      if (checkpointing) {
-        await upsertNighthawkJob(editionFor, {
-          status: "published",
-          current_stage: "published",
-          published_at: new Date().toISOString(),
-          error: null,
-        });
-        await archiveAndClearNighthawkStaging(editionFor);
-        logNighthawkJob(editionFor, "info", "published", `Edition published with ${finalPlays.length} plays`);
-      }
+      await upsertNighthawkJob(editionFor, {
+        status: "published",
+        current_stage: "published",
+        published_at: new Date().toISOString(),
+        error: null,
+      });
+      await archiveAndClearNighthawkStaging(editionFor);
+      logNighthawkJob(editionFor, "info", "published", `Edition published with ${finalPlays.length} plays`);
     } catch (postPublishError) {
       const msg = serializeBuildError(postPublishError);
       console.error(`[nighthawk/edition] post-publish step failed (edition IS live): ${msg}`);
@@ -1125,16 +1150,24 @@ export async function buildEveningEdition(opts?: {
         body: `Edition with ${finalPlays.length} plays IS published; outcome-sync/job-flip failed and will retry on the next cron fire.\nerror: ${msg}`,
       }).catch(() => undefined);
     }
+    } else {
+      console.info(
+        `[nighthawk/edition] dry-run — skipping upsert/outcome-sync for ${finalPlays.length} play(s)`
+      );
+    }
 
     const finalJob = checkpointing ? await fetchNighthawkJob(editionFor) : null;
 
     return {
       ok: true,
       edition_for: editionFor,
+      session_et: sessionEt,
+      dry_run: dryRun,
       plays_count: finalPlays.length,
       candidates: candidates.length,
+      plays: dryRun ? finalPlays : undefined,
       duration_ms: Date.now() - started,
-      job_status: finalJob?.status ?? "published",
+      job_status: finalJob?.status ?? (dryRun ? "dry_run" : "published"),
       current_stage: finalJob?.current_stage ?? "published",
       resumed: alreadyDone.length > 0,
     };
@@ -1264,5 +1297,6 @@ export function rowToNightHawkEdition(row: {
     market_recap: row.market_recap,
     plays: plays.map((p, i) => ({ ...p, rank: p.rank ?? i + 1 })),
     recap_only: recapOnly,
+    recap_only_reason: recapOnly ? recapOnlyReasonFromMeta(row.meta, plays.length) : null,
   };
 }

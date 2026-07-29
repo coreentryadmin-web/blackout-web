@@ -99,6 +99,15 @@ test("recap-only edition renders the honest gate message once, with the edition 
   assert.match(html, /Recap only</);
 });
 
+test("recap-only edition surfaces funnel reason when provided", async () => {
+  const html = await render({
+    edition: edition({
+      recap_only_reason: "No candidates from any source (flows 0, OI 0, unusual 0, movers 0).",
+    }),
+  });
+  assert.match(html, /No candidates from any source/);
+});
+
 // ── market context: data grid from real payload strings, prose collapsed ──────────
 
 test("market context renders as a label:value grid bound to market_recap fields", async () => {
