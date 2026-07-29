@@ -27,7 +27,7 @@
 .rl-gt{background:linear-gradient(96deg,var(--rl-bull),var(--rl-cyan) 60%,var(--rl-gold));-webkit-background-clip:text;background-clip:text;color:transparent}
 .rl-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-family:var(--rl-sans);font-weight:800;font-size:12.5px;letter-spacing:.18em;text-transform:uppercase;padding:14px 26px;border-radius:2px;transition:.22s cubic-bezier(.2,.7,.3,1);cursor:pointer;border:1px solid transparent;white-space:nowrap}
 .rl-btn-primary{background:var(--rl-bull);color:#012}
-.rl-btn-primary:hover{transform:translateY(-2px);box-shadow:0 14px 40px -8px rgba(0,230,118,.55)}
+.rl-btn-primary:hover{transform:translateY(-2px);box-shadow:0 14px 40px -8px rgba(163,230,53,.55)}
 .rl-btn-ghost{border-color:var(--rl-line2);color:var(--rl-ink);background:rgba(255,255,255,.02)}
 .rl-btn-ghost:hover{border-color:var(--rl-ink);background:rgba(255,255,255,.06)}
 .rl-reveal{opacity:0;transform:translateY(26px);transition:opacity .8s cubic-bezier(.2,.7,.3,1),transform .8s cubic-bezier(.2,.7,.3,1)}
@@ -976,7 +976,7 @@
 .rl-tier-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:56px;align-items:start}
 .rl-plan{position:relative;border:1px solid var(--rl-line);border-radius:var(--rl-r-lg,16px);background:linear-gradient(180deg,var(--rl-panel),var(--rl-bg2));padding:28px;transition:.28s cubic-bezier(.22,1,.36,1)}
 .rl-plan:hover{transform:translateY(-4px);border-color:var(--rl-line2)}
-.rl-plan.feat{border-color:rgba(0,230,118,.4);background:linear-gradient(180deg,rgba(0,230,118,.08),var(--rl-panel));box-shadow:0 30px 80px -30px rgba(0,230,118,.4)}
+.rl-plan.feat{border-color:rgba(163,230,53,.4);background:linear-gradient(180deg,rgba(163,230,53,.08),var(--rl-panel));box-shadow:0 30px 80px -30px rgba(163,230,53,.4)}
 .rl-plan .badge{position:absolute;top:-12px;left:50%;transform:translateX(-50%);font-family:var(--rl-mono);font-size:9px;letter-spacing:.2em;text-transform:uppercase;background:var(--rl-bull);color:#012;padding:5px 14px;border-radius:20px;font-weight:700}
 .rl-plan .pl{font-family:var(--rl-mono);font-size:10px;letter-spacing:.3em;text-transform:uppercase;color:var(--rl-dim)}
 .rl-plan.feat .pl{color:var(--rl-bull)}
@@ -1054,8 +1054,8 @@
    so the frame hugs the emblem; the beam ring inherits its 26px radius. */
 .rl-hero-emblem-frame{position:relative;margin:0 auto;width:-moz-fit-content;width:fit-content;max-width:100%;border-radius:26px;padding:22px;border:1px solid var(--rl-line);background:radial-gradient(120% 120% at 50% 40%,color-mix(in srgb,var(--rl-violet) 8%,transparent),transparent 70%);box-shadow:0 0 60px rgba(191,95,255,.10) inset}
 .rl-hero-emblem-frame .rl-hero-logo{margin:0;max-width:min(400px,68vw)}
-.rl-hero-logo{display:block;width:100%;max-width:min(480px,86%);height:auto;margin:0 auto;filter:drop-shadow(0 0 60px rgba(0,230,118,.34));animation:rl-logo-breathe 6.5s var(--rl-ease-breath,cubic-bezier(.4,0,.6,1)) infinite}
-@keyframes rl-logo-breathe{0%,100%{filter:drop-shadow(0 0 46px rgba(0,230,118,.26))}50%{filter:drop-shadow(0 0 74px rgba(0,230,118,.5))}}
+.rl-hero-logo{display:block;width:100%;max-width:min(480px,86%);height:auto;margin:0 auto;filter:drop-shadow(0 0 60px rgba(163,230,53,.34));animation:rl-logo-breathe 6.5s var(--rl-ease-breath,cubic-bezier(.4,0,.6,1)) infinite}
+@keyframes rl-logo-breathe{0%,100%{filter:drop-shadow(0 0 46px rgba(163,230,53,.26))}50%{filter:drop-shadow(0 0 74px rgba(163,230,53,.5))}}
 @media(max-width:900px){.rl-hero-logo{max-width:300px}}
 @media(prefers-reduced-motion:reduce){.rl-hero-logo{animation:none}}
 /* Real product screenshot fills the framed visual (top-anchored so the desk header reads). */
