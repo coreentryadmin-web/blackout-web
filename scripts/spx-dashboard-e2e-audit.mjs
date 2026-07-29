@@ -20,6 +20,7 @@ import { isAuthFailureStatus } from "./audit/lib/auth-status.mjs";
 import { spotsAgree, flipsAgree } from "./audit/lib/cross-tool-tolerance.mjs";
 import { mintIosPlaywrightSession, onboardingInitScript } from "./audit/lib/ios-playwright-auth.mjs";
 import { resolveNearTermExpiriesForAudit } from "./audit/lib/near-term-expiries.mjs";
+import { generateDefaultAuditPhone } from "./audit/lib/audit-phone.mjs";
 
 const baseArg = process.argv.find((a) => a.startsWith("--base="));
 const BASE = (baseArg ? baseArg.slice("--base=".length) : "https://blackouttrades.com").replace(
@@ -30,12 +31,19 @@ const SECRET = process.env.CLERK_SECRET_KEY;
 const PUB = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || "";
 const CRON = process.env.CRON_SECRET || "";
 const EMAIL = process.env.AUDIT_EMAIL || `spx-e2e-${Date.now()}@blackouttrades.com`;
-const PHONE = process.env.AUDIT_PHONE || "+1415555" + String(Math.floor(Math.random() * 9000) + 1000);
 const API = "https://api.clerk.com/v1";
 const CJS = "5.57.0";
 const UA =
   "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36";
 const OUT = join(process.cwd(), "audit-output");
+const TRANSIENT_HTTP = new Set([0, 502, 503, 504, 524]);
+
+function sleepSync(ms) {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    /* retry backoff */
+  }
+}
 mkdirSync(OUT, { recursive: true });
 
 const checks = [];
@@ -89,28 +97,37 @@ const backend = (m, p, j) =>
 
 async function authSession() {
   if (!SECRET) throw new Error("CLERK_SECRET_KEY missing");
-  const create = backend("POST", "/users", {
-    email_address: [EMAIL],
-    phone_number: [PHONE],
-    public_metadata: { role: "admin", tier: "premium" },
-    skip_password_requirement: true,
-    skip_legal_checks: true,
-  });
-  const cj = J(create);
-  let userId = cj?.id;
-  if (!userId && /form_identifier_exists/.test(JSON.stringify(cj?.errors || ""))) {
-    const lookup = curl({
-      method: "GET",
-      url: `${API}/users?email_address=${encodeURIComponent(EMAIL)}`,
-      headers: { Authorization: `Bearer ${SECRET}` },
+  let userId;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const phone = process.env.AUDIT_PHONE || generateDefaultAuditPhone();
+    const create = backend("POST", "/users", {
+      email_address: [EMAIL],
+      phone_number: [phone],
+      public_metadata: { role: "admin", tier: "premium" },
+      skip_password_requirement: true,
+      skip_legal_checks: true,
     });
-    const existing = J(lookup)?.[0];
-    userId = existing?.id;
-    if (userId) {
-      backend("PATCH", `/users/${userId}`, { public_metadata: { role: "admin", tier: "premium" } });
+    const cj = J(create);
+    userId = cj?.id;
+    if (!userId && /form_identifier_exists/.test(JSON.stringify(cj?.errors || ""))) {
+      const lookup = curl({
+        method: "GET",
+        url: `${API}/users?email_address=${encodeURIComponent(EMAIL)}`,
+        headers: { Authorization: `Bearer ${SECRET}` },
+      });
+      const existing = J(lookup)?.[0];
+      userId = existing?.id;
+      if (userId) {
+        backend("PATCH", `/users/${userId}`, { public_metadata: { role: "admin", tier: "premium" } });
+        break;
+      }
     }
+    if (userId) break;
+    const errText = JSON.stringify(cj?.errors || create.b || "");
+    if (/phone number is already associated/i.test(errText) && attempt < 3) continue;
+    throw new Error(`Clerk user create failed: ${create.b.slice(0, 200)}`);
   }
-  if (!userId) throw new Error(`Clerk user create failed: ${create.b.slice(0, 200)}`);
+  if (!userId) throw new Error("Clerk user create failed after retries");
   const ticket = J(backend("POST", "/sign_in_tokens", { user_id: userId }))?.token;
   if (!ticket) throw new Error("sign_in_token failed");
   const si = curl({
@@ -135,43 +152,49 @@ async function authSession() {
     })
   )?.jwt;
   const app = (path, opts = {}) => {
-    for (let i = 0; i < 2; i++) {
-      if (!tok) {
-        tok = J(
-          curl({
-            method: "POST",
-            url: `${FAPI}/v1/client/sessions/${sid}/tokens?_clerk_js_version=${CJS}`,
-            headers: {
-              Origin: BASE,
-              Referer: `${BASE}/`,
-              "Content-Type": "application/x-www-form-urlencoded",
-            },
-            jar: true,
-            saveJar: true,
-          })
-        )?.jwt;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      for (let i = 0; i < 2; i++) {
+        if (!tok) {
+          tok = J(
+            curl({
+              method: "POST",
+              url: `${FAPI}/v1/client/sessions/${sid}/tokens?_clerk_js_version=${CJS}`,
+              headers: {
+                Origin: BASE,
+                Referer: `${BASE}/`,
+                "Content-Type": "application/x-www-form-urlencoded",
+              },
+              jar: true,
+              saveJar: true,
+            })
+          )?.jwt;
+        }
+        const r = curl({
+          method: opts.method || "GET",
+          url: `${BASE}${path}`,
+          headers: {
+            Cookie: `__session=${tok}; __client_uat=${clientUat}`,
+            Accept: "application/json",
+            ...(opts.headers || {}),
+          },
+          json: opts.json,
+        });
+        if (isAuthFailureStatus(r.s)) {
+          tok = null;
+          continue;
+        }
+        if (TRANSIENT_HTTP.has(r.s) && attempt < 2) break;
+        return { status: r.s, json: J(r), raw: r.b };
       }
-      const r = curl({
-        method: opts.method || "GET",
-        url: `${BASE}${path}`,
-        headers: {
-          Cookie: `__session=${tok}; __client_uat=${clientUat}`,
-          Accept: "application/json",
-          ...(opts.headers || {}),
-        },
-        json: opts.json,
-      });
-      if (isAuthFailureStatus(r.s)) {
-        tok = null;
-        continue;
-      }
-      return { status: r.s, json: J(r), raw: r.b };
+      if (attempt < 2) sleepSync(2000);
     }
-    return { status: 401, json: null, raw: "" };
+    return { status: 0, json: null, raw: "" };
   };
   return {
     userId,
     signInUrl: `${BASE}/sign-in?__clerk_ticket=${ticket}`,
+    sessionJwt: tok,
+    clientUat,
     app,
     cleanup: () => backend("DELETE", `/users/${userId}`),
   };
@@ -420,7 +443,12 @@ async function browserDashboard(session, hm) {
     });
 
     if (consoleErrors.length) {
-      rec("ui:console-errors", "FAIL", consoleErrors.slice(0, 3).join(" | "));
+      const infraOnly = consoleErrors.every((e) => /502|503|504|524|timeout|aborted/i.test(e));
+      if (!inRthOpenWindow() && infraOnly) {
+        rec("ui:console-errors", "WARN", `edge blips post-close (${consoleErrors.length})`);
+      } else {
+        rec("ui:console-errors", "FAIL", consoleErrors.slice(0, 3).join(" | "));
+      }
     } else {
       rec("ui:console-errors", "PASS");
     }

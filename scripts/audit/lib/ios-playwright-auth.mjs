@@ -4,6 +4,8 @@
  */
 import { devices } from "playwright";
 
+import { generateDefaultAuditPhone } from "./audit-phone.mjs";
+
 const CJS = "5.57.0";
 const ONBOARDING_KEY = "blackout:onboarding:v";
 const ONBOARDING_DONE = "2";
@@ -74,7 +76,6 @@ export async function mintIosPlaywrightSession({ appUrl }) {
   }
 
   const email = process.env.AUDIT_EMAIL || `ios-ui-e2e-${Date.now()}@blackouttrades.com`;
-  const phone = process.env.AUDIT_PHONE || `+1415555${String(Math.floor(Math.random() * 9000) + 1000)}`;
   const satellite = isStagingSatellite(appUrl);
   const authOrigin = satellite ? PRIMARY_ORIGIN : appUrl;
   const fapi = fapiHost(publishableKey);
@@ -88,27 +89,36 @@ export async function mintIosPlaywrightSession({ appUrl }) {
 
   let userId = null;
   try {
-    const createRes = await backend("POST", "/users", {
-      email_address: [email],
-      phone_number: [phone],
-      public_metadata: { role: "admin", tier: "premium" },
-      skip_password_requirement: true,
-      skip_legal_checks: true,
-    });
-    const created = await createRes.json().catch(() => null);
-    if (created?.id) {
-      userId = created.id;
-    } else if (/form_identifier_exists/.test(JSON.stringify(created?.errors || ""))) {
-      const lookup = await fetch(`${API}/users?email_address=${encodeURIComponent(email)}`, {
-        headers: { Authorization: `Bearer ${secret}` },
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const phone = process.env.AUDIT_PHONE || generateDefaultAuditPhone();
+      const createRes = await backend("POST", "/users", {
+        email_address: [email],
+        phone_number: [phone],
+        public_metadata: { role: "admin", tier: "premium" },
+        skip_password_requirement: true,
+        skip_legal_checks: true,
       });
-      const existing = (await lookup.json().catch(() => []))?.[0];
-      if (existing?.id) {
-        userId = existing.id;
-        await backend("PATCH", `/users/${userId}`, {
-          public_metadata: { role: "admin", tier: "premium" },
-        });
+      const created = await createRes.json().catch(() => null);
+      if (created?.id) {
+        userId = created.id;
+        break;
       }
+      if (/form_identifier_exists/.test(JSON.stringify(created?.errors || ""))) {
+        const lookup = await fetch(`${API}/users?email_address=${encodeURIComponent(email)}`, {
+          headers: { Authorization: `Bearer ${secret}` },
+        });
+        const existing = (await lookup.json().catch(() => []))?.[0];
+        if (existing?.id) {
+          userId = existing.id;
+          await backend("PATCH", `/users/${userId}`, {
+            public_metadata: { role: "admin", tier: "premium" },
+          });
+          break;
+        }
+      }
+      const errText = JSON.stringify(created?.errors || "");
+      if (/phone number is already associated/i.test(errText) && attempt < 3) continue;
+      return { skip: true, reason: "could not create temp Clerk user" };
     }
     if (!userId) return { skip: true, reason: "could not create temp Clerk user" };
 

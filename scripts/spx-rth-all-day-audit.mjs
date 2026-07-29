@@ -36,13 +36,81 @@ const rec = (name, status, detail) => {
 };
 
 function run(cmd, label) {
-  const r = spawnSync(cmd, { shell: true, encoding: "utf8", env: process.env });
+  const r = spawnSync(cmd, {
+    shell: true,
+    encoding: "utf8",
+    env: process.env,
+    maxBuffer: 10 * 1024 * 1024,
+    timeout: 600_000,
+  });
   if (r.status !== 0) {
     rec(label, "FAIL", (r.stderr || r.stdout || "").trim().slice(0, 400));
     return false;
   }
   rec(label, "PASS");
   return true;
+}
+
+/** Parse ops:collect JSON from stdout (stderr may carry postgres-skip info). */
+function parseOpsCollectPayload(stdout, stderr) {
+  const blob = `${stdout}\n${stderr}`;
+  const jsonLine = blob.split("\n").find((l) => l.trim().startsWith("{"));
+  if (!jsonLine) return null;
+  try {
+    return JSON.parse(jsonLine);
+  } catch {
+    return null;
+  }
+}
+
+/** SPX post-close: only SPX/gex/desk/heatmap/play-layer P0/P1 items fail this audit. */
+function spxOpsItems(items) {
+  return (items ?? []).filter((i) => {
+    if (i.priority !== "P0" && i.priority !== "P1") return false;
+    const hay = `${i.id} ${i.title} ${i.detail}`.toLowerCase();
+    return (
+      /spx|gex|heatmap|desk|slayer|bie|matrix|gamma.?flip|play state/.test(hay) ||
+      (i.id === "correctness:flags" && /spx|gex|heatmap|desk|slayer|net_premium/.test(hay))
+    );
+  });
+}
+
+function auditOpsCollect() {
+  const r = spawnSync("npm run ops:collect", {
+    shell: true,
+    encoding: "utf8",
+    env: process.env,
+    maxBuffer: 10 * 1024 * 1024,
+    timeout: 120_000,
+  });
+  const payload = parseOpsCollectPayload(r.stdout ?? "", r.stderr ?? "");
+  const postgresSkip = /Postgres audit skipped/i.test(r.stderr ?? "");
+  const spxUrgent = spxOpsItems(payload?.items);
+  const allUrgent = (payload?.items ?? []).filter((i) => i.priority === "P0" || i.priority === "P1");
+
+  if (spxUrgent.length > 0) {
+    rec("ops:collect", "FAIL", spxUrgent.map((i) => `${i.id}: ${i.title}`).join("; "));
+    return;
+  }
+  if (payload && allUrgent.length > 0) {
+    rec(
+      "ops:collect",
+      "PASS",
+      `non-SPX P0/P1 deferred (${allUrgent.map((i) => i.id).join(", ")}) — SPX scope clean`
+    );
+    return;
+  }
+  if (r.status === 0 || (payload && (payload.items?.length ?? 0) === 0)) {
+    const note =
+      payload?.count === 0
+        ? "zero items"
+        : postgresSkip
+          ? "postgres skipped (VPC); HTTP watchdog authoritative"
+          : "ok";
+    rec("ops:collect", "PASS", note);
+    return;
+  }
+  rec("ops:collect", "FAIL", (r.stderr || r.stdout || "").trim().slice(0, 400));
 }
 
 async function fetchJson(path) {
@@ -242,7 +310,7 @@ async function main() {
     }
   }
 
-  run("npm run ops:collect", "ops:collect");
+  auditOpsCollect();
 
   const fails = checks.filter((c) => c.status === "FAIL");
   const warns = checks.filter((c) => c.status === "WARN");

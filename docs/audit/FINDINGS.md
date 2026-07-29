@@ -50,7 +50,7 @@ probes (gates, ledger PnL, mergePlays, session heat) GREEN.
 (subset-ratio not assertable on bounded oracle). `grid-rth-all-day-audit.mjs`: dedicated
 `auditOpsCollect()` parses stdout JSON. SPX runbook Grid probe → `/api/market/spx/bootstrap`.
 
-**Status.** PRs `fix/grid-post-close-ops-collect-20260729` + `fix/spx-post-close-flow-xcheck` → `main`.
+**Status.** PRs `fix/grid-post-close-ops-collect-20260729` + `fix/spx-post-close-flow-xcheck` + `fix/spx-e2e-ops-collect-scope` → `main`.
 Also unblocks `validate:spx-rth --phase=post-close` (matrix/desk/play/E2E were already GREEN).
 
 ## 2026-07-29 — [ops] x-autopost cron STALE + SPY flow cross-check false FLAG (#1287)
