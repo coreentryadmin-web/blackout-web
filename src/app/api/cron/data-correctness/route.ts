@@ -121,7 +121,8 @@ export async function GET(req: NextRequest) {
       ...(mdPath ? { report: path.relative(process.cwd(), mdPath) } : {}),
       ...(card.flags.length > 0 ? { error: `${card.flags.length} correctness flag(s)` } : {}),
     };
-    await logCronRun("data-correctness", started, payload);
+    // Cron health tracks execution success — data FLAGS are the audit product, not a failed run.
+    await logCronRun("data-correctness", started, { ...payload, ok: true });
     return NextResponse.json(payload);
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);

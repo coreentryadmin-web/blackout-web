@@ -54,7 +54,21 @@ test("evaluateOptionsClusterOk: web follower healthy when cluster marks are fres
   assert.equal(result.ok, true);
 });
 
-test("evaluateOptionsClusterOk: ingest leader requires local auth when marks missing", () => {
+test("evaluateOptionsClusterOk: ingest leader lock is healthy on web tier without local marks", () => {
+  const result = evaluateOptionsClusterOk(
+    {
+      leader_present: true,
+      newest_mark_age_ms: null,
+      cluster_live: true,
+      detail: "ingest leader lock held — marks warming",
+    },
+    true,
+    false
+  );
+  assert.equal(result.ok, true);
+});
+
+test("evaluateOptionsClusterOk: no leader and no marks fails during RTH", () => {
   const result = evaluateOptionsClusterOk(
     {
       leader_present: false,

@@ -130,28 +130,37 @@ export async function readOptionsClusterHealth(now = Date.now()): Promise<Option
       return { leader_present: false, newest_mark_age_ms: null, cluster_live: false, detail: "redis unavailable" };
     }
 
-    const leader = await redis.get(OPTIONS_LEADER_KEY);
-    leader_present = Boolean(leader);
+    try {
+      const leader = await redis.get(OPTIONS_LEADER_KEY);
+      leader_present = Boolean(leader);
+    } catch {
+      return { leader_present: false, newest_mark_age_ms: null, cluster_live: false, detail: "leader lock read failed" };
+    }
 
-    // Sample a few held marks — ingest writes nw:optmark:* on every quote.
-    const scan = (redis as { scan?: (cursor: string, ...args: string[]) => Promise<[string, string[]]> }).scan;
-    if (typeof scan === "function") {
-      const [, keys] = await scan("0", "MATCH", `${OPTIONS_MARK_PREFIX}*`, "COUNT", "20");
-      for (const key of keys ?? []) {
-        const raw = await redis.get(key);
-        if (!raw) continue;
-        try {
-          const mark = JSON.parse(raw) as OptionMark;
-          if (typeof mark.ts === "number" && mark.ts > 0) {
-            const age = Math.max(0, now - mark.ts);
-            if (newest_mark_age_ms == null || age < newest_mark_age_ms) {
-              newest_mark_age_ms = age;
+    // SCAN is best-effort — some Redis client wrappers only expose get/setex.
+    try {
+      const scan = (redis as { scan?: (cursor: number, ...args: string[]) => Promise<[string, string[]]> })
+        .scan;
+      if (typeof scan === "function") {
+        const [, keys] = await scan(0, "MATCH", `${OPTIONS_MARK_PREFIX}*`, "COUNT", "20");
+        for (const key of keys ?? []) {
+          const raw = await redis.get(key);
+          if (!raw) continue;
+          try {
+            const mark = JSON.parse(raw) as OptionMark;
+            if (typeof mark.ts === "number" && mark.ts > 0) {
+              const age = Math.max(0, now - mark.ts);
+              if (newest_mark_age_ms == null || age < newest_mark_age_ms) {
+                newest_mark_age_ms = age;
+              }
             }
+          } catch {
+            /* skip malformed */
           }
-        } catch {
-          /* skip malformed */
         }
       }
+    } catch {
+      /* mark scan optional — leader lock is the primary web-tier signal */
     }
 
     const marks_fresh = newest_mark_age_ms != null && newest_mark_age_ms <= OPTION_MARK_FRESH_MS;
@@ -163,7 +172,8 @@ export async function readOptionsClusterHealth(now = Date.now()): Promise<Option
       detail = "no fresh cluster option marks and no ingest leader";
     }
 
-    const cluster_live = marks_fresh || (leader_present && newest_mark_age_ms != null);
+    // Web tier: a held ingest leader means the market-worker owns the live options WS.
+    const cluster_live = marks_fresh || leader_present;
     return { leader_present, newest_mark_age_ms, cluster_live, detail };
   } catch {
     return { leader_present, newest_mark_age_ms, cluster_live: false, detail: "cluster read failed" };

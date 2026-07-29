@@ -47,6 +47,13 @@ jobs:
 
       - run: npm ci
 
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
       - name: Ensure ops-auto-fix label exists
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -60,8 +67,7 @@ jobs:
       - name: Collect action items (prod)
         id: collect
         env:
-          DATABASE_PUBLIC_URL: ${{ secrets.DATABASE_PUBLIC_URL }}
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          # Prefer AWS Secrets Manager (auditSecret) — GitHub secrets are legacy fallbacks.
           CRON_TARGET_BASE_URL: https://blackouttrades.com
         run: |
           set +e
