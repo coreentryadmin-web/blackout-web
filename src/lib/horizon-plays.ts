@@ -94,6 +94,13 @@ export interface HorizonPlay {
   parentPlayId?: string;
   /** The serving section this play resolved to (serving.ts) — stamped once the section router runs. */
   serving?: SwingServingSection;
+  /** Pillar contributions for the desk (label + points) — optional SWING enrichment. */
+  factors?: Array<{ label: string; points: number }>;
+  /** Regime / archetype label blend for the desk, or null when absent. */
+  regime?: string | null;
+  /** Thesis-health level for the desk — "unknown" when no setup read (never a fabricated intact). */
+  thesisLevel?: "intact" | "warn" | "break" | "unknown";
+  thesisNote?: string | null;
 }
 
 /** The three lanes a candidate pool fans out into. */

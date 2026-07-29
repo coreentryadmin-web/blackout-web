@@ -91,7 +91,7 @@ test("meetsPersistence: cross-session archetypes still require 2 distinct sessio
 });
 
 test("meetsPersistence: event archetypes clear on 1 session + corroboration, NOT on a lone print (anti-lone-print)", () => {
-  for (const a of ["EVENT_DRIVEN", "POST_EARNINGS_DRIFT", "FAILED_BREAKDOWN"] as const) {
+  for (const a of ["EVENT_DRIVEN", "POST_EARNINGS_DRIFT"] as const) {
     // 1 session + 2 distinct signal kinds (a flow print AND a structure/catalyst signal) → corroborated → promoted.
     assert.equal(
       meetsPersistence({ distinct_session_days: 1, observation_count: 2, signal_kinds: ["FLOW", "CATALYST"] }, a),
@@ -117,6 +117,12 @@ test("meetsPersistence: event archetypes clear on 1 session + corroboration, NOT
       `${a}: repeated same-kind prints are not corroboration`,
     );
   }
+  // FAILED_BREAKDOWN: structure reclaim alone promotes on the session it fires (Tier-0 already volume-filters).
+  assert.equal(
+    meetsPersistence({ distinct_session_days: 1, observation_count: 1, signal_kinds: ["STRUCTURE"] }, "FAILED_BREAKDOWN"),
+    true,
+    "FAILED_BREAKDOWN: 1 session STRUCTURE reclaim promotes",
+  );
 });
 
 test("meetsPersistence: corroboration counts distinct signal KINDS, not cadence PHASES (fix 2026-07-24)", () => {
@@ -124,7 +130,7 @@ test("meetsPersistence: corroboration counts distinct signal KINDS, not cadence 
   // repeated across two CADENCE phases (POST_CLOSE then MIDDAY) is ONE independent signal — a lone print
   // spread across the day — and must NOT corroborate. `phases_seen` carries the cadence phases; corroboration
   // now reads `signal_kinds` (screen provenance), so those two FLOW sightings stay uncorroborated.
-  for (const a of ["EVENT_DRIVEN", "POST_EARNINGS_DRIFT", "FAILED_BREAKDOWN"] as const) {
+  for (const a of ["EVENT_DRIVEN", "POST_EARNINGS_DRIFT"] as const) {
     assert.equal(
       // Two cadence windows, ONE signal kind → not corroborated (this used to FALSELY pass when we counted phases).
       meetsPersistence({ distinct_session_days: 1, observation_count: 2, signal_kinds: ["FLOW"] }, a),

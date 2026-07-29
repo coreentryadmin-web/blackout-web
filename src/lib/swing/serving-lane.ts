@@ -63,6 +63,10 @@ function enrichPlay(play: HorizonPlay, dossier: SwingDossier | undefined, reads?
     entryStatus: meta.entryStatus ?? play.entryStatus,
     archetype: meta.archetype ?? play.archetype,
     subLane: meta.subLane ?? play.subLane,
+    factors: meta.factors,
+    regime: meta.regime,
+    thesisLevel: meta.thesisLevel,
+    thesisNote: meta.thesisNote,
   };
 }
 
@@ -122,13 +126,15 @@ export interface SwingServingSnapshot {
 export const SWING_SERVING_CACHE_KEY = "swing:serving:latest:v1";
 export const SWING_SERVING_TTL_SEC = 26 * 60 * 60;
 
-/** Persist one scan's scored output for the member route to read. Best-effort: a cache write miss just
- *  leaves the serving lane on its member-safe empty fallback — it NEVER fails the discovery cron. */
-export async function persistSwingServingSnapshot(snapshot: SwingServingSnapshot): Promise<void> {
+/** Persist one scan's scored output for the member route to read. Returns true on success so the cron can
+ *  refuse to upgrade the phase claim to DONE when the member-facing snapshot never landed. */
+export async function persistSwingServingSnapshot(snapshot: SwingServingSnapshot): Promise<boolean> {
   try {
     await sharedCacheSet(SWING_SERVING_CACHE_KEY, snapshot, SWING_SERVING_TTL_SEC);
+    return true;
   } catch {
-    // non-fatal — the read side degrades to an empty lane when there's nothing (or nothing fresh) to read.
+    // non-fatal for the scan itself — the read side degrades to an empty lane — but the cron MUST know.
+    return false;
   }
 }
 

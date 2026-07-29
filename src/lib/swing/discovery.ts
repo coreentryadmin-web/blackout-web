@@ -32,6 +32,7 @@ import { buildSwingDossier, type SwingDossier, type SwingDossierInput } from "./
 import {
   observeSwingCandidate,
   fetchWatchEligible,
+  fadeStaleSwingCandidates,
   MIN_PERSISTENCE_SESSIONS,
   type SwingAccumAccessors,
   type SwingWatchCandidate,
@@ -51,6 +52,7 @@ import {
 } from "../horizon-plays";
 import type { PlayDirection, ChainContract } from "../horizon-fanout";
 import type { SwingArchetype } from "./taxonomy";
+import { subLaneForDte } from "./taxonomy";
 import { analyzeSwingCalibration, type SwingCalibrationRow, type SwingCalibrationReport } from "./calibration";
 import {
   computeSwingCommitPlan,
@@ -122,6 +124,22 @@ export const DEFAULT_SWING_DISCOVERY_CONFIG: SwingDiscoveryConfig = {
   intendedDte: 14,
   enrichConcurrency: 8,
 };
+
+/** Per-archetype intended DTE overrides — event/immediate theses are short-horizon; STANDARD 14d is the default. */
+export const ARCHETYPE_INTENDED_DTE: Partial<Record<SwingArchetype, number>> = {
+  EVENT_DRIVEN: 5,
+  POST_EARNINGS_DRIFT: 5,
+  FAILED_BREAKDOWN: 7,
+};
+
+/** Resolve the intended DTE for a classified archetype (falls back to the scan default). */
+export function intendedDteForArchetype(
+  archetype: SwingArchetype | null | undefined,
+  fallback = DEFAULT_SWING_DISCOVERY_CONFIG.intendedDte,
+): number {
+  if (archetype && ARCHETYPE_INTENDED_DTE[archetype] != null) return ARCHETYPE_INTENDED_DTE[archetype]!;
+  return fallback;
+}
 
 /** Bounded-concurrency map — preserve input order in the output array. */
 async function mapPool<T, R>(items: readonly T[], concurrency: number, fn: (item: T, idx: number) => Promise<R>): Promise<R[]> {
@@ -463,6 +481,8 @@ export interface SwingDiscoveryResult {
   commit?: SwingCommitResult;
   /** Discovery-recall instrumentation (evidence-only; does NOT change what surfaces). See WHY-RECALL header. */
   recall: SwingDiscoveryRecall;
+  /** Rows retired by fadeStaleAccum this scan (0 when none / fade skipped). */
+  fadedStale?: number;
 }
 
 /**
@@ -514,7 +534,13 @@ export async function runSwingDiscoveryScan(
   const candidateSeeds: SwingCandidateSeed[] = enrichedOrNull.filter((s): s is SwingCandidateSeed => s != null);
 
   // ── SCORE (pure). ──
-  const dossiers = deriveSwingCandidates(candidateSeeds);
+  // After classify, realign sub-lane to the archetype's natural horizon (event theses → TACTICAL) so the
+  // contract ranker + graduation bucket match the thesis duration — not a flat 14d STANDARD for every name.
+  const dossiers = deriveSwingCandidates(candidateSeeds).map((d) => {
+    const want = intendedDteForArchetype(d.archetype.archetype, cfg.intendedDte);
+    const lane = subLaneForDte(want);
+    return lane != null && lane !== d.subLane ? { ...d, subLane: lane } : d;
+  });
 
   // ── RECALL (pure, evidence-only): measure the funnel so a dropped-strong-candidate is VISIBLE. ──
   const recall = computeSwingDiscoveryRecall({
@@ -558,10 +584,19 @@ export async function runSwingDiscoveryScan(
     });
   }
   // The WATCH rail = persistence-cleared candidates that ALSO appear in this scan (a stale memory row for a
-  // name that didn't show up today is not surfaced here — fadeStaleAccum retires those on the cron path).
+  // name that didn't show up today is not surfaced here — fadeStaleAccum retires those below).
   const seenThisScan = new Set(
     dossiers.filter((d) => d.direction).map((d) => `${d.ticker}|${d.direction}`),
   );
+  // Retire accumulation rows not touched in 14 days so zombie candidates can't re-surface with stale
+  // distinct_session_days. Best-effort — a fade failure must never abort the scan.
+  let fadedStale = 0;
+  try {
+    const cutoffIso = new Date(deps.nowMs - 14 * 86_400_000).toISOString();
+    fadedStale = await fadeStaleSwingCandidates(deps.accum, cutoffIso);
+  } catch (err) {
+    console.error("[swing-discovery] fadeStaleSwingCandidates failed — continuing", err);
+  }
   const eligible = await fetchWatchEligible(
     deps.accum,
     cfg.minPersistenceSessions,
@@ -647,10 +682,12 @@ export async function runSwingDiscoveryScan(
         score: d?.score.score ?? 0,
         contract: contractByKey.get(key) ?? null,
         sessionDate: deps.sessionDay,
-        // Underlying-terms levels + top-flow strike are not carried on the scored dossier; the ledger columns
-        // are nullable and the manager/grader never require them, so they stay null-honest at commit time. A
-        // future PR can thread real structure levels through without touching the commit gate.
-        topFlowStrike: null,
+        // Underlying-terms levels from the dossier (structure-levels via ingest) — pin onto the ledger so
+        // structural_stop can fire. Null when the dossier had no grounded price/ATR (honest absence).
+        entryUnderlyingPx: d?.plan?.entryUnderlyingPx ?? null,
+        thesisInvalidationPx: d?.plan?.thesisInvalidationPx ?? null,
+        targetUnderlyingPx: d?.plan?.targetUnderlyingPx ?? null,
+        topFlowStrike: d?.topFlowStrike ?? null,
       };
     });
 
@@ -693,5 +730,6 @@ export async function runSwingDiscoveryScan(
     commitEligibleCount,
     commit,
     recall,
+    fadedStale,
   };
 }

@@ -5,7 +5,30 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-29 — [Swing] CTO audit — management gates null-wired + desk ignored sections
+
+**Severity.** P0 capital-path / P1 member UX — Swing engine looked “built” but premium_stop,
+structural_stop, time_stop, and mark-frozen rolls could never fire; desk flattened the 7-section triage.
+
+**Root cause.**
+1. `commit.ts` wrote `contract_occ: null`; active-refresh `loadOptionMark` gated on OCC → mark always null.
+2. Commit candidates never received `thesisInvalidationPx` / entry / target from dossier.
+3. `fadeStaleSwingCandidates` never called from discovery.
+4. `sessionsHeld` omitted from active-refresh reads.
+5. `HorizonDeck` used flat committed/watch and dropped serving meta (factors/setup/thesis).
+6. Persist failure still upgraded phase NX claim to DONE (22h stale board).
+
+**Evidence.** Code audit 2026-07-29; `npm run healthcheck:swing` AMBER (empty book, serving GREEN).
+Full matrix: `docs/audit/SWING-CTO-AUDIT-2026-07-29.md`.
+
+**Fix.** OCC reconstruct + plan levels at ingest/commit; fade stale; sessionsHeld; section-aware
+HorizonDeck; persist boolean + claim release; FAILED_BREAKDOWN 1-session structure promote;
+archetype intended-DTE realign. Branch `cursor/swing-cto-audit-3d11`.
+
+**Status.** PR in flight.
+
 ## 2026-07-29 — [Grid/0DTE] zerodte board HTTP 504 on aged snapshot cold-build
+
 
 **Severity.** P0 member path (Night Hawk `/api/market/zerodte/board`).
 

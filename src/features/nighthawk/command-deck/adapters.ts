@@ -8,7 +8,8 @@
  */
 
 import { factorsFromFlowQuality } from "@/lib/explain/trade-explanation";
-import type { SwingSetupState } from "@/lib/swing/taxonomy";
+import type { SwingSetupState, SwingEntryState } from "@/lib/swing/taxonomy";
+import type { SwingServingSection } from "@/lib/swing/serving";
 import { executableFill, type TerminalExitLadder } from "@/lib/zerodte/terminal-ladder";
 import { condorGeometryFrom, type CondorGeometry } from "@/lib/zerodte/condor-render";
 import type { WhyNow, WhyNowReason } from "@/lib/zerodte/why-now";
@@ -361,16 +362,28 @@ export interface HorizonDeckSource {
   thesisBreak?: { level: ThesisLevel; note?: string } | null;
   /** Pre-entry setup maturity — used to DERIVE `thesisBreak` when one isn't explicitly supplied. */
   setupState?: SwingSetupState | null;
+  entryStatus?: SwingEntryState | null;
+  archetype?: string | null;
+  subLane?: string | null;
+  servingSection?: SwingServingSection | null;
 }
 
 /**
  * Derive the deck's thesis-break from pre-entry setup maturity. INVALIDATED = the structure broke → "break".
- * A live-but-forming/triggered/extended thesis is "intact". A DATA-ABSENT read (no setupState) is "unknown",
- * NEVER a fabricated "intact" — the same 9-6c honesty the 0DTE adapter applies to a null tape read. Returning
- * "intact" here only when a live maturity read exists is what keeps a member from reading absence as a green.
+ * A live-but-forming/triggered/extended thesis is "intact". A DATA-ABSENT read (no setupState) on SWING is
+ * "unknown", NEVER a fabricated "intact" — the same 9-6c honesty the 0DTE adapter applies to a null tape
+ * read. LEAPS (and callers with no swing maturity) keep the legacy "intact" default when setupState is
+ * omitted entirely AND horizon isn't SWING.
  */
-function thesisBreakFromSetupState(setupState: SwingSetupState | null | undefined): { level: ThesisLevel; note?: string } {
-  if (setupState == null) return { level: "intact" }; // NO swing read at all (e.g. LEAPS) → unchanged legacy default
+function thesisBreakFromSetupState(
+  setupState: SwingSetupState | null | undefined,
+  horizon?: "SWING" | "LEAPS",
+): { level: ThesisLevel; note?: string } {
+  if (setupState == null) {
+    return horizon === "SWING"
+      ? { level: "unknown", note: "no setup read attached to this name yet" }
+      : { level: "intact" };
+  }
   if (setupState === "INVALIDATED") return { level: "break", note: "structure invalidated — thesis broke" };
   return { level: "intact" }; // FORMING / TRIGGERED / EXTENDED — a live, un-broken thesis
 }
@@ -393,13 +406,18 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     factors: src.factors ?? [],
     gates: [],
     regime: src.regime ?? null,
-    thesisBreak: src.thesisBreak ?? thesisBreakFromSetupState(src.setupState),
+    thesisBreak: src.thesisBreak ?? thesisBreakFromSetupState(src.setupState, src.horizon),
     ...mgmt,
     recNote: src.reason || mgmt.recNote,
     entry: null,
     mark: fin(src.contract.mid),
     pnlPct: null,
     greeks: null,
+    archetype: src.archetype ?? null,
+    subLane: src.subLane ?? null,
+    setupState: src.setupState ?? null,
+    entryStatus: src.entryStatus ?? null,
+    servingSection: src.servingSection ?? null,
   };
 }
 
