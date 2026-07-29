@@ -1729,7 +1729,7 @@ body::before {
     @apply relative inline-flex items-center gap-1 rounded-full px-5 py-2 overflow-hidden no-underline;
     font-weight: 700;
     font-size: 13px;
-    background: linear-gradient(135deg, #a3e635, #00c060);
+    background: #a3e635;
     color: #010204;
     box-shadow: 0 0 24px -6px rgba(163, 230, 53, 0.5);
     animation: nav-breathe 3.8s ease-in-out infinite;

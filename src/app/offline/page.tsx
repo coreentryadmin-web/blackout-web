@@ -27,7 +27,7 @@ export default function OfflinePage() {
             href="/dashboard"
             className="rounded-full px-8 py-3 font-mono text-xs font-bold uppercase tracking-[0.2em] text-[#010204] transition hover:brightness-110"
             style={{
-              background: "linear-gradient(135deg, #a3e635, #00c060)",
+              background: "#a3e635",
               boxShadow:
                 "0 0 30px rgba(163,230,53,0.35), 0 4px 24px rgba(163,230,53,0.2)",
             }}

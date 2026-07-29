@@ -154,7 +154,7 @@
   font-family: var(--font-syne), system-ui, sans-serif;
   font-weight: 700;
   font-size: 13px;
-  background: linear-gradient(135deg, #a3e635, #00c060);
+  background: #a3e635;
   color: #010204;
   text-decoration: none;
   box-shadow: 0 0 24px -6px rgba(163, 230, 53, 0.5);
