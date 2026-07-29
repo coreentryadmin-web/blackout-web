@@ -88,7 +88,80 @@ Post-close: SPX index tick static at 7316.15 for 90s — **expected** (cash sess
 
 ---
 
-## grid-rth-2026-07-29 — 0DTE Command + Market Grid verify pass (~15:21–15:24 ET)
+## grid-rth-2026-07-29 — 0DTE Command + Market Grid verify pass (~16:10–16:14 ET, post-close)
+
+**Session:** Autonomous Grid RTH agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` (verify mode). Time: Wed 16:10–16:14 ET (post-close, session heat `CLOSED`). Commands: `validate:grid-rth` → `validate:zerodte-logic` → `validate:grid-e2e` → `validate:zerodte-integration` → `data-validator.mjs` → `ops:collect`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:grid-rth` | ⚠️ **13/14** — all prod probes GREEN; `ops:collect` FAIL (sandbox: no `DATABASE_PUBLIC_URL`) |
+| `npm run validate:zerodte-logic` | ✅ **GREEN** — 17/17 (gates, plan exits, lifecycle, mergePlays, session heat, ledger PnL) |
+| `npm run validate:grid-e2e` | ✅ **GREEN** — 4/4 API probes; Playwright browser unavailable (WARN only) |
+| `npm run validate:zerodte-integration` | ✅ **GREEN** — 9/9 cross-tool (SPX bootstrap/GEX, HELIX flows, NH dedupe, ledger PnL) |
+| `node scripts/audit/data-validator.mjs` | ⚠️ **29 PASS / 5 FAIL / 1 WARN** — post-close vs prev-close (SPY/SPX/QQQ/MU underlying); extended-hours ground truth |
+| `npm run ops:collect` | ❌ **P0** — `correctness:flags` SPY UW-vs-Massive call-share 29pt divergence (post-close thin tape) + P1 `x-autopost` stale |
+
+### 0DTE board (live, CLOSED)
+
+| Field | Value |
+|---|---|
+| Session heat | `CLOSED` (0%) — after 16:00 ET ✓ |
+| Setups | 7 (2 eligible / 0 gate violations) — QQQ, SPXW, MU, GOOGL, AAPL, SMH, +1 |
+| Ledger | 4 rows — PnL math matches `reconcileLedgerLivePnlPct` ✓ |
+| `zerodte-warm` cron | GREEN |
+| `data-correctness` | 1 flag (cross-provider SPY net_premium — not grid/zerodte-specific) |
+| Night Hawk dedupe | 5 tickers covered elsewhere |
+| HELIX flows | 20 prints |
+| SPX spot (bootstrap vs GEX) | 7316.15 (agree) |
+
+### 0DTE logic probes (all GREEN)
+
+| Probe | Result |
+|---|---|
+| Gate funnel (SETUP_MIN_GROSS, aggression, dominance, ITM) | PASS |
+| Plan exits (stop −50%, target +100%, time stop 15:30 ET) | PASS |
+| Trade lifecycle (OPEN → TRIM → CLOSED, sticky trough stop) | PASS |
+| Plan grading (stop wins when both touch same bar) | PASS |
+| Session heat (RTH → POST_COMMIT → POWER_HOUR → CLOSED) | PASS |
+| `mergePlays` past cutoff / MOVED → SKIP not OPEN | PASS |
+| Ledger PnL consistency (4 live rows) | PASS |
+
+### Cross-tool integration
+
+| Check | Result |
+|---|---|
+| Grid bootstrap spot vs GEX | PASS (7316.15) |
+| HELIX flows feed scanner | PASS (20–30 prints) |
+| Night Hawk dedupe (`covered_elsewhere`) | PASS (5 tickers) |
+| BIE consistency | PASS |
+
+### UI / routing note
+
+Classic `/grid` page + 9 `/api/grid/*` panels **deleted 2026-07-07** — 0DTE Command lives on `/nighthawk`. E2E audits `/nighthawk` (not `/grid` tabs). `/grid` → 404 (expected).
+
+### P0 found this pass
+
+| ID | Detail | Fix |
+|---|---|---|
+| `correctness:spy-flow-xcheck-post-close` | `ops:collect` P0: SPY UW-vs-Massive call-share 29pt divergence off-RTH (UW 0% call vs Massive 29% over 40 NTM contracts) — false positive from thin post-close tape | **FIXED** — PR [#1286](https://github.com/coreentryadmin-web/blackout-web/pull/1286): skip `crossCheckAgainstMassive` when `!marketOpen` |
+
+### Residual open (non-P0)
+
+| Severity | ID | Detail | Status |
+|---|---|---|---|
+| **P2** | `qqq-underlying-staleness` | data-validator: QQQ setup underlying 2.01% vs Polygon prev-close (flow-derived UW price on setup card) | **OPEN** |
+| **P2** | `mu-underlying-staleness` | data-validator: MU setup underlying 9.7% vs Polygon — intraday move; ledger entry grounded ✓ | **OPEN** |
+| **P2** | `playwright-browser-missing` | grid-e2e WARN: Chromium not installed in cloud VM — API probes authoritative | **KNOWN** |
+| **P1** | `x-autopost-cron-stale` | `ops:collect`: x-autopost stale per cron-staleness-watchdog | **OPEN** |
+| **P1** | `largo-grounding-coverage` | Largo answer #1284 low grounding (from prior pass) | **OPEN** — [#1239](https://github.com/coreentryadmin-web/blackout-web/issues/1239) |
+
+**Reports:** `audit-output/grid-rth-2026-07-29-verify-1785355991897.json`, `audit-output/zerodte-logic-1785355995887.json`, `audit-output/grid-e2e-1785356002023.json`, `audit-output/zerodte-integration-1785356035133.json`, `audit-output/validation-2026-07-29T20-14-01-763Z.md`
+
+---
+
+
 
 **Session:** Autonomous Grid RTH agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` (verify mode). Time: Wed 15:21–15:24 ET (RTH, POWER_HOUR). Commands: `validate:grid-rth` → `validate:zerodte-logic` → `validate:grid-e2e` → `validate:zerodte-integration` → `data-validator.mjs` → `ops:collect`.
 

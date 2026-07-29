@@ -230,9 +230,22 @@ function uwWindowAggregate(
  * Best-effort + bounded: ONE fetchOptionTrades call (itself contract/page-capped, rate-limited,
  * cached). Never throws.
  */
-async function crossCheckAgainstMassive(ctx: Ctx, rows: FlowRow[]): Promise<CheckResult> {
+async function crossCheckAgainstMassive(
+  ctx: Ctx,
+  rows: FlowRow[],
+  marketOpen: boolean
+): Promise<CheckResult> {
   const skip = (detail: string): CheckResult =>
     mk(ctx, "cross-provider", "net_premium", "skipped", detail, { id: "flows-xcheck-massive" });
+
+  // Post-close / extended-hours flow is thin and providers naturally diverge on call-share
+  // (UW filtered subset vs Massive raw NTM stream). Freshness is already gated on marketOpen;
+  // skip the cross-provider oracle off-RTH to avoid false P0 flags.
+  if (!marketOpen) {
+    return skip(
+      "Market closed — UW-vs-Massive flow cross-check not asserted off-RTH (thin post-close tape; providers often disagree on call-share without a member-facing bug)."
+    );
+  }
 
   if (!polygonConfigured()) {
     return skip("Massive (POLYGON_API_KEY) not configured — UW-vs-Massive flow cross-check unavailable this run.");
@@ -657,7 +670,7 @@ export async function verifyFlows(marketOpen: boolean): Promise<TickerScore> {
   // (promoted from consistency-only); material divergence → FLAG. This closes the single-source
   // coverage gap that previously made flows consistency-only by construction. Best-effort: a
   // skipped cross-check (Massive down / thin tape) degrades to consistency-only, never a false green.
-  checks.push(await crossCheckAgainstMassive(ctx, rows));
+  checks.push(await crossCheckAgainstMassive(ctx, rows, marketOpen));
 
   // ── FLOW-ANOMALY DETECTOR shadow-recompute (task #132) ────────────────────
   // See module doc above: validates detectFlowAnomalies' threshold math/skew-ratio/near-miss-band

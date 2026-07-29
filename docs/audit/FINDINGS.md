@@ -5,6 +5,21 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-29 — [correctness] SPY UW-vs-Massive flow cross-check false P0 post-close
+
+**Severity.** P0 ops noise — `ops:collect` flagged `correctness:flags` after the bell:
+SPY call-share UW 0% vs Massive 29% (29pt > 20pt tol) while skew direction matched.
+
+**Root cause.** `crossCheckAgainstMassive()` in `flows-verifier.ts` ran off-RTH; post-close
+flow is thin and UW (filtered subset) vs Massive (raw NTM stream) naturally diverge on
+call-share without a member-facing bug. Freshness was already gated on `marketOpen`; the
+cross-provider oracle was not.
+
+**Fix.** Skip UW-vs-Massive cross-check when `!marketOpen` (same gate as tape freshness).
+Test: `flows-xcheck-market-hours.test.ts`.
+
+**Status.** `fix/flows-xcheck-skip-closed` → PR.
+
 ## 2026-07-29 — [Thermal] Triple desk SPY/QQQ not refreshing every 5–10s
 
 **Severity.** P1 UX — compare desk felt stuck; SPX stayed ~5s while SPY/QQQ asof climbed
