@@ -1,5 +1,26 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-29 17:55 ET
+Last updated: 2026-07-29 18:45 ET
+
+## spx-rth-2026-07-29 — SPX Slayer post-close fix (~18:17–18:45 ET) — GREEN
+
+**Session:** SPX Slayer post-close fix agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` § Step 6. Commands: `validate:spx-rth --phase=post-close` → `validate:spx-e2e` → `validate:deploy`.
+
+### Post-close summary — GREEN
+
+| Check | Result |
+|---|---|
+| `validate:spx-rth --phase=post-close` | ✅ **6 PASS / 1 WARN / 0 FAIL** |
+| `validate:spx-e2e` | ✅ **0 FAIL / 17 checks** — matrix 176 strikes GEX/VEX/DEX/CHARM, no stale SCANNING ✓ |
+| `validate:deploy` | ✅ GREEN |
+| Matrix deep audit | ✅ every cell finite; Σ strike_totals == headline |
+| Cross-tool | ✅ desk=7316.15 play=SCANNING; Thermal/HELIX/Largo/BIE/0DTE/Night Hawk |
+| Fixes merged | PR #1305 (ops:collect scope + 502 retry), PR #1308 (E2E console flake + sub-run retry) |
+
+**Member-facing SPX surfaces: GREEN** — no P0/P1 defects; post-close SCANNING expected.
+
+**Reports:** `audit-output/spx-rth-2026-07-29-post-close-1785365236634.json`, `audit-output/spx-dashboard-e2e-1785365093722.json`
+
+---
 
 ## spx-rth-2026-07-29 — SPX Slayer all-day verify pass (~17:26–17:46 ET, post-close)
 

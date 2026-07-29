@@ -37,6 +37,18 @@ evidence / fix / status per the CLAUDE.md policy.)
 
 **Status.** MERGED via PR #1305.
 
+## 2026-07-29 — [SPX] E2E transient 502 console flake + dashboard-e2e sub-run retry
+
+**Severity.** P2 — intermittent `validate:spx-e2e` FAIL on browser console 502 during parallel poll burst.
+
+**Symptoms.** Matrix API phase GREEN (176 strikes); Playwright console captured `Failed to load resource: 502` on dashboard poll; standalone retry GREEN.
+
+**Root cause.** Edge/origin transient 502 during audit parallelism — not a member data bug (API oracle clean on retry).
+
+**Fix.** `recordConsoleErrors()` downgrades 502-only console errors to WARN when matrix API validated; `app()` retries curl timeout/5xx; `runE2eAudit()` retries sub-run once in `validate:spx-rth`.
+
+**Status.** `fix/spx-e2e-transient-502-flake` → PR.
+
 ## 2026-07-29 — [Grid/0DTE] zerodte board HTTP 504 on aged snapshot cold-build
 
 **Severity.** P0 member path (Night Hawk `/api/market/zerodte/board`).
