@@ -3,6 +3,7 @@ import { buildPublicTrackRecord } from "@/lib/track-record-public";
 import { requireAdminApi } from "@/lib/admin-access";
 import { getClientIp, checkIpRateLimit, rateLimitHeaders } from "@/lib/ip-rate-limit";
 import { roundFloats } from "@/lib/round-floats";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 // Admin-only aggregate ledger (formerly public embed API).
 export const runtime = "nodejs";
@@ -10,7 +11,6 @@ export const runtime = "nodejs";
 // caused split-brain when a play closed mid-RTH (public=7 vs outcomes=8).
 export const dynamic = "force-dynamic";
 
-const NO_STORE = { "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0" };
 
 // 30 requests per 60s per IP: generous for an embed widget (polls every 60-120s),
 // but blocks automated scraping that would hammer this unauthenticated endpoint.
@@ -28,10 +28,10 @@ export async function GET(req: NextRequest) {
   if (!rl.ok) {
     return NextResponse.json(
       { error: "Too many requests", retryAfter: Math.ceil((rl.resetAt - Date.now()) / 1000) },
-      { status: 429, headers: { ...NO_STORE, ...rlHeaders } }
+      { status: 429, headers: { ...NO_STORE_HEADERS, ...rlHeaders } }
     );
   }
 
   const record = await buildPublicTrackRecord();
-  return NextResponse.json(roundFloats(record), { headers: { ...NO_STORE, ...rlHeaders } });
+  return NextResponse.json(roundFloats(record), { headers: { ...NO_STORE_HEADERS, ...rlHeaders } });
 }

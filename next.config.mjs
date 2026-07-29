@@ -132,6 +132,14 @@ const nextConfig = {
         headers: [...securityHeaders, ...authDocumentEdgeBypass],
       },
       {
+        source: "/upgrade",
+        headers: [...securityHeaders, ...authDocumentEdgeBypass],
+      },
+      {
+        source: "/upgrade/:path*",
+        headers: [...securityHeaders, ...authDocumentEdgeBypass],
+      },
+      {
         source: "/sign-in/:path*",
         headers: [...securityHeaders, ...authDocumentEdgeBypass],
       },

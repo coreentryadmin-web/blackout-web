@@ -9,12 +9,12 @@ import { isNighthawkOutcomeScoreable } from "@/lib/track-record-page";
 import { requireAdminApi } from "@/lib/admin-access";
 import { getClientIp, checkIpRateLimit, rateLimitHeaders } from "@/lib/ip-rate-limit";
 import { roundFloats } from "@/lib/round-floats";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // Admin-only per-play audit trail for /admin/track-record.
-const NO_STORE = { "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0" };
 const SPX_LIMIT = 200;
 const NH_WINDOW_DAYS = 90;
 // 10 req/min: loaded once on expand (lazy), not polled — generous enough for re-opens.
@@ -30,11 +30,11 @@ export async function GET(req: NextRequest) {
   const rlHeaders = rateLimitHeaders(rl);
 
   if (!rl.ok) {
-    return NextResponse.json({ available: false }, { status: 429, headers: { ...NO_STORE, ...rlHeaders } });
+    return NextResponse.json({ available: false }, { status: 429, headers: { ...NO_STORE_HEADERS, ...rlHeaders } });
   }
 
   if (!dbConfigured()) {
-    return NextResponse.json({ available: false }, { headers: { ...NO_STORE, ...rlHeaders } });
+    return NextResponse.json({ available: false }, { headers: { ...NO_STORE_HEADERS, ...rlHeaders } });
   }
   try {
     const payload = await serverCache("track-record:plays", TTL.REFERENCE, async () => {
@@ -71,8 +71,8 @@ export async function GET(req: NextRequest) {
         })),
       };
     });
-    return NextResponse.json(roundFloats(payload), { headers: { ...NO_STORE, ...rlHeaders } });
+    return NextResponse.json(roundFloats(payload), { headers: { ...NO_STORE_HEADERS, ...rlHeaders } });
   } catch {
-    return NextResponse.json({ available: false }, { status: 503, headers: { ...NO_STORE, ...rlHeaders } });
+    return NextResponse.json({ available: false }, { status: 503, headers: { ...NO_STORE_HEADERS, ...rlHeaders } });
   }
 }

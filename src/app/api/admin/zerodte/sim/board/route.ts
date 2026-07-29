@@ -13,10 +13,11 @@ import {
   isZeroDteBoardPayload,
   writeSimBoardSnapshot,
 } from "@/lib/platform/zerodte-sim-board";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
 
-const noStore = { "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0" };
+const noStore = NO_STORE_HEADERS;
 
 /** POST a single ZeroDteBoardPayload frame → written verbatim to the sim key (short TTL).
  *  Rejects malformed frames (400) so a bad body can never be rendered. `?reset=1` (or an

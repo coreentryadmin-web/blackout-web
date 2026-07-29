@@ -28,6 +28,7 @@ import {
   DEFAULT_SEARCH_WINDOW_DAYS,
 } from "@/features/nighthawk/lib/regrade-stuck";
 import { regradeLegacyNighthawkOutcomes } from "@/features/nighthawk/lib/regrade-legacy";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

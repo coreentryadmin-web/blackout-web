@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { buildTrackRecordPagePayload } from "@/lib/track-record-page";
 import { requireAdminApi } from "@/lib/admin-access";
 import { getClientIp, checkIpRateLimit, rateLimitHeaders } from "@/lib/ip-rate-limit";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const NO_STORE = { "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0" };
 
 // Admin-only: full track-record page payload for /admin/track-record.
 const RATE_LIMIT = 60;
@@ -23,13 +23,13 @@ export async function GET(req: NextRequest) {
   if (!rl.ok) {
     return NextResponse.json(
       { available: false },
-      { status: 429, headers: { ...NO_STORE, ...rlHeaders } }
+      { status: 429, headers: { ...NO_STORE_HEADERS, ...rlHeaders } }
     );
   }
 
   const payload = await buildTrackRecordPagePayload();
   if (payload.available === false) {
-    return NextResponse.json({ available: false }, { headers: { ...NO_STORE, ...rlHeaders } });
+    return NextResponse.json({ available: false }, { headers: { ...NO_STORE_HEADERS, ...rlHeaders } });
   }
-  return NextResponse.json(payload, { headers: { ...NO_STORE, ...rlHeaders } });
+  return NextResponse.json(payload, { headers: { ...NO_STORE_HEADERS, ...rlHeaders } });
 }

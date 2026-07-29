@@ -45,6 +45,10 @@ export default clerkMiddleware(
     const path = req.nextUrl.pathname;
     const isAuthPage = path === "/sign-in" || path.startsWith("/sign-in/") ||
                        path === "/sign-up" || path.startsWith("/sign-up/");
+    // /upgrade renders auth-dependent chrome (Sign in vs Open desk). Always bypass
+    // edge cache at the middleware layer — CF HTML rule still may force-cache anon,
+    // but signed-in requests and origin headers stay aligned with /sign-in|/sign-up.
+    const isAuthChromePage = isAuthPage || path === "/upgrade" || path.startsWith("/upgrade/");
     const signedInUserId = activeClerkUserIdFromRequest(req);
 
     if (isAuthPage && signedInUserId) {
@@ -115,7 +119,7 @@ export default clerkMiddleware(
       }
     }
 
-    if (isAuthPage || isProtectedRoute(req)) {
+    if (isAuthChromePage || isProtectedRoute(req)) {
       return withNoEdgeCache(NextResponse.next());
     }
 

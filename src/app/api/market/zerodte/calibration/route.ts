@@ -21,6 +21,7 @@ import { logAdminAction } from "@/lib/admin-audit";
 import { buildZeroDteCalibrationReport } from "@/lib/zerodte/calibration";
 import { runSkipGrading, MAX_SKIP_GRADE_DAYS } from "@/lib/zerodte/skip-grading";
 import { roundFloats } from "@/lib/round-floats";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,10 +30,6 @@ export const dynamic = "force-dynamic";
 // regrade backfill route gets.
 export const maxDuration = 120;
 
-const NO_STORE_HEADERS = {
-  "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-  "CDN-Cache-Control": "no-store",
-} as const;
 
 export async function GET(req: NextRequest) {
   const denied = await requireAdminApi();

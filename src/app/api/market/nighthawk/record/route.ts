@@ -5,14 +5,11 @@ import { requireToolApi } from "@/lib/tool-access-server";
 import { getNighthawkMetrics, type NighthawkRecordSegment } from "@/features/nighthawk/lib/analytics";
 import type { NightHawkRecordSegmentWire } from "@/features/nighthawk/lib/types";
 import { wilsonLowerBound, wilsonUpperBound } from "@/lib/swing/calibration";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
-const NO_STORE_HEADERS = {
-  "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-  "CDN-Cache-Control": "no-store",
-} as const;
 
 const pct = (v: number) => Math.round(v * 1000) / 10;
 

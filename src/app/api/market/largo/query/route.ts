@@ -24,6 +24,7 @@ import {
 } from "@/lib/largo-global-gate";
 import { randomUUID } from "node:crypto";
 import { shouldRejectLargoWithoutRedis } from "@/lib/largo-redis-policy";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 // ---------------------------------------------------------------------------
 // Largo concurrency gate — max 2 simultaneous queries per user, Redis-backed.
@@ -376,7 +377,7 @@ export async function POST(req: NextRequest) {
     return new Response(stream, {
       headers: {
         "Content-Type": "text/event-stream; charset=utf-8",
-        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+        ...NO_STORE_HEADERS,
         Connection: "keep-alive",
         Pragma: "no-cache",
       },
@@ -387,13 +388,13 @@ export async function POST(req: NextRequest) {
     const result = await runLargoQuery(question, resolvedSessionId, userId);
     return NextResponse.json(result, {
       headers: {
-        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+        ...NO_STORE_HEADERS,
         Pragma: "no-cache",
       },
     });
   } catch (error) {
     console.error("[market/largo/query]", error);
-    return NextResponse.json({ error: "Largo query failed" }, { status: 502 });
+    return NextResponse.json({ error: "Largo query failed" }, { status: 502, headers: NO_STORE_HEADERS });
   } finally {
     // Record one consumed query against the daily budget (best-effort, fail-open), then release
     // both concurrency slots (global then per-user) whether the non-streaming query succeeded or

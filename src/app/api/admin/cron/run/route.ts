@@ -8,6 +8,7 @@ import {
   DISPATCHABLE_CRONS,
   isDispatchableCron,
 } from "@/lib/cron-dispatch";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -76,7 +77,7 @@ export async function POST(req: NextRequest) {
         ...(dispatch.error ? { error: dispatch.error } : {}),
         ...(dispatch.detail ? { detail: dispatch.detail } : {}),
       },
-      { status: dispatch.ok ? 200 : 502, headers: { "Cache-Control": "no-store" } }
+      { status: dispatch.ok ? 200 : 502, headers: NO_STORE_HEADERS }
     );
   } catch (error) {
     // dispatchCronWarm never throws, but keep the route's defensive 500 contract intact.

@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { dbQuery } from "@/lib/db";
 import { isCronAuthorized } from "@/lib/market-api-auth";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 // ORPHANED (2026-07-04, docs/audit/FINDINGS.md): signal_events has never received a write in
 // production (see src/app/api/signals/record/route.ts) — the query below always returns an
@@ -19,7 +20,7 @@ export async function GET(req: NextRequest) {
   // shared CRON_SECRET. Without this gate it served 200 to any anonymous caller and leaked live
   // paid signals during RTH (deep-audit P1-B). Mirrors the sibling signal write routes.
   if (!isCronAuthorized(req)) {
-    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401, headers: NO_STORE_HEADERS });
   }
   try {
     // Return all signal_events that have no EOD outcome checkpoint yet.
@@ -68,9 +69,9 @@ export async function GET(req: NextRequest) {
       []
     );
 
-    return NextResponse.json({ ok: true, signals: result.rows });
+    return NextResponse.json({ ok: true, signals: result.rows }, { headers: NO_STORE_HEADERS });
   } catch (error) {
     console.error("[api/signals/open]", error);
-    return NextResponse.json({ ok: false, error: "Failed to fetch open signals", signals: [] });
+    return NextResponse.json({ ok: false, error: "Failed to fetch open signals", signals: [] }, { headers: NO_STORE_HEADERS });
   }
 }

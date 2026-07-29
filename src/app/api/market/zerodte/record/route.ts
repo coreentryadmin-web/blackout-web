@@ -11,14 +11,11 @@ import { requireToolApi } from "@/lib/tool-access-server";
 import { buildZeroDteRecord } from "@/lib/zerodte/record";
 import { formatEtDate, todayEt } from "@/features/nighthawk/lib/session";
 import { roundFloats } from "@/lib/round-floats";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
-const NO_STORE_HEADERS = {
-  "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-  "CDN-Cache-Control": "no-store",
-} as const;
 
 const DEFAULT_DAYS = 30;
 const MAX_DAYS = 90;

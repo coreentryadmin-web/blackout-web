@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAdminApi } from "@/lib/admin-access";
 import { recordAdminRouteError } from "@/lib/admin-route-errors";
 import { buildEveningEdition, serializeBuildError } from "@/features/nighthawk/lib/edition-builder";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 800;

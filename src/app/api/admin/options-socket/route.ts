@@ -6,6 +6,7 @@ import { NextResponse } from "next/server";
 import { requireAdminApi } from "@/lib/admin-access";
 import { getOptionsSocketStatus } from "@/lib/ws/options-socket";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
