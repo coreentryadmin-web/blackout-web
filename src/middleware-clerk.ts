@@ -12,6 +12,7 @@ import {
   MUTATION_METHODS,
   PUBLIC_TELEMETRY_PATHS,
   withStagingNoEdgeCache,
+  withNoEdgeCache,
 } from "@/middleware-shared";
 
 const isProtectedRoute = createRouteMatcher([
@@ -112,6 +113,10 @@ export default clerkMiddleware(
           NextResponse.json({ error: "Unauthorized" }, { status: 401 })
         );
       }
+    }
+
+    if (isAuthPage || isProtectedRoute(req)) {
+      return withNoEdgeCache(NextResponse.next());
     }
 
     return withStagingNoEdgeCache(NextResponse.next());

@@ -4,6 +4,8 @@ import { AccountProfilePanel } from "@/components/account/AccountProfilePanel";
 // Contrast hardening for the Clerk <UserProfile> widget (fields were dark-on-dark).
 import "../../account.css";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Account · BlackOut",
   description: "Manage your BlackOut Trades account settings, security, and connected devices.",

@@ -8,6 +8,8 @@ import {
   normalizeVectorTicker,
 } from "@/features/vector";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Vector · BlackOut",
   description: "Live price action with GEX/VEX wall beads, flip levels, and dark-pool overlays.",

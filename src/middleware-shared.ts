@@ -33,6 +33,13 @@ export function withStagingNoEdgeCache(res: NextResponse): NextResponse {
   return res;
 }
 
+export function withNoEdgeCache(res: NextResponse): NextResponse {
+  res.headers.set("CDN-Cache-Control", "no-store");
+  res.headers.set("Cloudflare-CDN-Cache-Control", "no-store");
+  res.headers.set("Cache-Control", "private, no-cache, no-store, must-revalidate, max-age=0");
+  return res;
+}
+
 export function isProtectedPath(pathname: string): boolean {
   return PROTECTED_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }

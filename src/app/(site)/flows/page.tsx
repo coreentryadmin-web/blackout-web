@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { requireTier } from "@/lib/auth-access";
 import { HelixPageShell } from "@/features/helix/components/HelixPageShell";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "HELIX · BlackOut",
   description: "Whale & dark-pool options flow — real-time institutional tape.",
