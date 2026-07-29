@@ -1,5 +1,59 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-29 11:40 ET
+Last updated: 2026-07-29 12:05 ET
+
+## spx-rth-2026-07-29 — SPX Slayer market-open verify pass (6:30 AM PT / 9:30 AM ET)
+
+**Session:** Autonomous SPX Slayer all-day agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` verify mode. Time: Wed 11:59–12:05 ET (RTH). Commands: `validate:spx-rth` → `validate:spx-e2e` + 60s live auto-update probe + Clerk matrix deep probe.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-e2e` | ✅ **GREEN** — 16 PASS / 0 FAIL / 1 SKIP (commentary expand only when `live`) |
+| `npm run validate:spx-rth` | ⚠️ **PARTIAL** — CRON_SECRET in cloud agent env returns HTTP 401 on bearer/cron paths; Clerk-authenticated E2E + matrix probes **GREEN** |
+| Matrix INV-2 (GEX/VEX/DEX/CHARM) | ✅ **GREEN** — 177 strikes · spot ~7354 · zero NaN/stale/wrong vs API when scoped to `near_term_expiries` |
+| 60s live auto-update | ✅ desk price ticked (7354.75→7351.7); matrix spot+asof ticked (~8s cache); play stable WATCHING |
+| Trade alerts | ✅ `WATCHING` — matches play API; no stale confirmations (not SCANNING) |
+| Cross-tool (Step 3) | ✅ Thermal same heatmap · HELIX 30 prints · Grid bootstrap · 0DTE 7 setups · Night Hawk edition · Largo `get_spx_play` · desk/play cross-tool |
+
+### UI E2E (Playwright `/dashboard`)
+
+| # | Action | Result |
+|---|---|---|
+| GEX tab | ✅ `#spx-matrix-tab-gex` activates |
+| VEX tab | ✅ `#spx-matrix-tab-vex` activates |
+| Matrix rows | ✅ 177 strike rows |
+| Matrix text sanity | ✅ no NaN/undefined/`$—` |
+| Commentary expand | ⚠️ SKIP — toggle only renders when commentary `live` (standby during pass) |
+| Console errors | ✅ zero |
+
+### Cross-tool integration
+
+| Tool | Endpoint | Result |
+|---|---|---|
+| Thermal | `GET /api/market/gex-heatmap?ticker=SPX` | ✅ same payload as dashboard matrix |
+| HELIX | `GET /api/market/flows?limit=30` | ✅ 30 prints |
+| GEX positioning | desk vs heatmap spot | ✅ Δ ≤ 0.15 pts |
+| Largo | `POST /api/market/largo/query` | ✅ `tools=blackout_intelligence` |
+| Grid | `GET /api/grid/bootstrap` | ✅ loaded |
+| 0DTE | `GET /api/market/zerodte/board` | ✅ 7 setups |
+| Night Hawk | `GET /api/market/nighthawk/edition` | ✅ loads |
+| BIE | `validate:spx-bie` Layer C | ⚠️ cron bearer 401 in cloud agent env; static invariants PASS |
+
+### Findings
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| **P1** | `spx-rth-audit-near-term-slice-false-flag` | `spx-dashboard-e2e-audit.mjs` + `heatmap-matrix-audit.mjs` used `expiries.slice(0,8)` for INV-2 cell re-sum; SPX emits 15 `near_term_expiries` → false FAIL at strike ~6920 (200% Δ) | `GET /api/market/gex-heatmap?ticker=SPX` | **FIXED** (PR) — use `near_term_expiries` |
+| **P2** | `spx-rth-cloud-cron-secret-mismatch` | Cloud agent `CRON_SECRET` ≠ prod Secrets Manager → HTTP 401 on `/api/cron/*`, bearer SPX routes, `ops:collect` watchdog | `ops:collect` `watchdog:http` | OPEN — rotate cloud agent secret |
+| **P2** | `spx-rth-validate-deploy-railway` | `validate:rth-open` fails on missing Railway CLI in cloud VM; HTTP smoke GREEN | `validate:deploy` | KNOWN |
+| **P2** | `spx-commentary-expand-standby` | Commentary expand button hidden when rail in standby (not `live`) — E2E SKIP is expected, not a regression | UI `#spx-commentary-rail-toggle` | post-close UX doc |
+
+**No prod P0 defects — matrix cells, trade alerts, and cross-tool integration all GREEN via Clerk auth.**
+
+**Reports:** `audit-output/spx-dashboard-e2e-1785340975422.json`, `audit-output/spx-rth-2026-07-29-verify-1785341039089.json`
+
+---
 
 ## grid-rth-2026-07-29 — 0DTE Command market-open verify pass (6:30 AM PT / 9:30 AM ET)
 
