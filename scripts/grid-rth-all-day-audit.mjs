@@ -18,6 +18,8 @@ import { fetchAuditJson, releaseAuditClerkSession } from "./audit/lib/audit-auth
 import { auditSecret } from "./audit/lib/prod-secrets.mjs";
 import { ledgerPnlMatches } from "./audit/lib/ledger-pnl-expect.mjs";
 
+import { parseOpsCollectPayload, gridOpsItems } from "./audit/lib/ops-collect-scope.mjs";
+
 const force = process.argv.includes("--force");
 const phaseArg = process.argv.find((a) => a.startsWith("--phase="));
 const PHASE = phaseArg ? phaseArg.slice("--phase=".length) : "verify";
@@ -52,7 +54,7 @@ function run(cmd, label, opts = {}) {
   return { ok: true, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
 }
 
-import { parseOpsCollectPayload, gridOpsItems } from "./audit/lib/ops-collect-scope.mjs";
+function auditOpsCollect() {
   const r = spawnSync("npm run ops:collect", {
     shell: true,
     encoding: "utf8",
