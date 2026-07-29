@@ -1,5 +1,5 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-29 12:05 ET
+Last updated: 2026-07-29 12:20 ET
 
 ## spx-rth-2026-07-29 — SPX Slayer market-open verify pass (6:30 AM PT / 9:30 AM ET)
 
@@ -51,7 +51,9 @@ Last updated: 2026-07-29 12:05 ET
 
 **No prod P0 defects — matrix cells, trade alerts, and cross-tool integration all GREEN via Clerk auth.**
 
-**Reports:** `audit-output/spx-dashboard-e2e-1785340975422.json`, `audit-output/spx-rth-2026-07-29-verify-1785341039089.json`
+**12:17 ET confirm pass (second agent):** `validate:spx-e2e` GREEN after `near_term_expiries` fix; 60s sit saw play WATCHING→SCANNING with **`confirmations: null`** (no stale ✓ panel); desk + heatmap + play all ticked; 8 zerodte setups.
+
+**Reports:** `audit-output/spx-dashboard-e2e-1785340975422.json`, `audit-output/spx-rth-2026-07-29-verify-1785341039089.json`, `audit-output/spx-dashboard-e2e-1785341681800.json`
 
 ---
 
