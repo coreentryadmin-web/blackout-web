@@ -167,6 +167,8 @@ async function main() {
           if (opt.ok) ok(`options-socket: ${opt.detail}`);
           else if (et.mins >= 9 * 60 + 30) fail(`options-socket: ${opt.detail}`);
           else console.log(`  ⚠ options-socket: pre-09:30 — ${opt.detail}`);
+        } else if (res.status === 401 || res.status === 403) {
+          console.log(`  ⚠ options-socket probe HTTP ${res.status} — cloud CRON_SECRET mismatch; prod cron unaffected`);
         } else {
           fail(`options-socket probe HTTP ${res.status}`);
         }

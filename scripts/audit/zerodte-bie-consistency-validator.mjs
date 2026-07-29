@@ -92,20 +92,23 @@ const CRON = process.env.CRON_SECRET;
 const BASE = (process.env.AUDIT_APP_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
 
 async function layerB() {
-  if (!CRON) {
-    rec("live:board-vs-largo", true, "SKIP — CRON_SECRET not set");
+  if (!CRON && !process.env.CLERK_SECRET_KEY) {
+    rec("live:board-vs-largo", true, "SKIP — CRON_SECRET or Clerk keys not set");
     return;
   }
   try {
-    const http = await fetch(`${BASE}/api/market/zerodte/board`, {
-      headers: { Authorization: `Bearer ${CRON}`, Accept: "application/json" },
+    const { fetchAppJsonWithAuditAuth } = await import("./lib/prod-clerk-session.mjs");
+    const http = await fetchAppJsonWithAuditAuth({
+      appUrl: BASE,
+      path: "/api/market/zerodte/board",
+      cronSecret: CRON,
     });
-    const board = await http.json();
-    if (!http.ok || !board.available) {
-      rec("live:board-fetch", false, `HTTP ${http.status}`);
+    const board = http.json;
+    if (http.status !== 200 || !board?.available) {
+      rec("live:board-fetch", false, `HTTP ${http.status} via=${http.via}`);
       return;
     }
-    rec("live:board-fetch", true);
+    rec("live:board-fetch", true, `via=${http.via}`);
 
     const probe = spawnSync(
       `npx tsx -e "

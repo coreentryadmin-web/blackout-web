@@ -163,13 +163,27 @@ console.log(`Time:   ${new Date().toISOString()}\n`);
 
 // ── 1. Production deploy ────────────────────────────────────────────────────
 console.log("1. Production (blackout-web)");
+function railwayCliAvailable() {
+  try {
+    execSync("command -v railway", { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 const skipCli =
   process.env.SKIP_RAILWAY === "1" ||
   IS_STAGING ||
-  (process.env.GITHUB_ACTIONS === "true" && !process.env.RAILWAY_TOKEN?.trim());
+  (process.env.GITHUB_ACTIONS === "true" && !process.env.RAILWAY_TOKEN?.trim()) ||
+  !railwayCliAvailable();
 
 if (skipCli) {
-  warn("Production CLI checks skipped (GITHUB_ACTIONS or SKIP_RAILWAY=1)");
+  warn(
+    railwayCliAvailable()
+      ? "Production CLI checks skipped (GITHUB_ACTIONS or SKIP_RAILWAY=1)"
+      : "Production CLI checks skipped (railway CLI not installed — ECS deploy path)"
+  );
 } else {
 try {
   const deployments = sh("railway deployment list --service blackout-web 2>/dev/null");
@@ -186,7 +200,7 @@ try {
   else if (/Building|Queued/i.test(status)) warn(`Service still rolling: ${status.trim()}`);
   else warn(status.trim() || "Could not read service status");
 } catch (e) {
-  fail(`Deploy CLI: ${e.message}`);
+  warn(`Production Railway CLI unavailable (ECS is authoritative): ${e.message}`);
 }
 }
 

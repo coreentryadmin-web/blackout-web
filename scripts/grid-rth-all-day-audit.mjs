@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { inRthOpenWindow, isTradingDayEt, todayEtYmd, etParts } from "./gha-et-window.mjs";
 import { spotsAgree } from "./audit/lib/cross-tool-tolerance.mjs";
 import { probeDataCorrectness } from "./audit/lib/data-correctness-probe.mjs";
+import { fetchAppJsonWithAuditAuth, createAuditAppClient } from "./audit/lib/prod-clerk-session.mjs";
 
 const force = process.argv.includes("--force");
 const phaseArg = process.argv.find((a) => a.startsWith("--phase="));
@@ -43,17 +44,10 @@ function run(cmd, label) {
   return true;
 }
 
-async function fetchJson(path, opts = {}) {
-  const r = await fetch(`${BASE}${path}`, {
-    ...opts,
-    headers: {
-      Authorization: `Bearer ${CRON}`,
-      Accept: "application/json",
-      ...(opts.headers || {}),
-    },
-  });
-  if (!r.ok) throw new Error(`HTTP ${r.status} ${path}`);
-  return r.json();
+async function fetchJson(path) {
+  const r = await fetchAppJsonWithAuditAuth({ appUrl: BASE, path, cronSecret: CRON });
+  if (r.status !== 200) throw new Error(`HTTP ${r.status} ${path} (via ${r.via})`);
+  return r.json;
 }
 
 function scanFinite(obj, path = "", out = []) {
@@ -78,20 +72,29 @@ function ageSec(asOf) {
 }
 
 async function auditZeroDteBoard() {
-  if (!CRON) return;
+  if (!CRON && !process.env.CLERK_SECRET_KEY) return;
   try {
-    const zb = await fetchJson("/api/market/zerodte/board");
-    if (!zb.available) {
-      rec("zerodte:board", "FAIL", "available=false");
+    const r = await fetchAppJsonWithAuditAuth({
+      appUrl: BASE,
+      path: "/api/market/zerodte/board",
+      cronSecret: CRON,
+    });
+    if (r.status !== 200 || !r.json?.available) {
+      rec("zerodte:board", "FAIL", `HTTP ${r.status} via=${r.via}`);
       return;
     }
+    const zb = r.json;
     if (zb.upstream_ok === false) {
       rec("zerodte:upstream", "WARN", "tape fetch degraded this cycle");
     } else {
       rec("zerodte:upstream", "PASS");
     }
     const heat = zb.session?.heat?.state ?? "?";
-    rec("zerodte:session", "PASS", `heat=${heat} setups=${zb.setups?.length ?? 0} ledger=${zb.ledger?.length ?? 0}`);
+    rec(
+      "zerodte:session",
+      "PASS",
+      `heat=${heat} setups=${zb.setups?.length ?? 0} ledger=${zb.ledger?.length ?? 0} via=${r.via}`
+    );
 
     for (const row of zb.ledger ?? []) {
       if (row.entry_premium != null && row.last_mark != null && row.live_pnl_pct != null) {
@@ -103,20 +106,28 @@ async function auditZeroDteBoard() {
         }
       }
     }
-    rec("zerodte:ledger-pnl", "PASS", `${zb.ledger?.length ?? 0} rows checked`);
+    rec("zerodte:ledger-pnl", "PASS", `${zb.ledger?.length ?? 0} rows checked (via ${r.via})`);
   } catch (e) {
     rec("zerodte:board", "FAIL", e.message);
   }
 }
 
 async function auditCrossTool() {
-  if (!CRON) return;
+  if (!CRON && !process.env.CLERK_SECRET_KEY) return;
+  const client = await createAuditAppClient({ appUrl: BASE, cronSecret: CRON });
   try {
-    const [spxBoot, gex, zb] = await Promise.all([
-      fetchJson("/api/market/spx/bootstrap"),
-      fetchJson("/api/market/gex-positioning?ticker=SPX"),
-      fetchJson("/api/market/zerodte/board"),
+    const [spxBootR, gexR, zbR] = await Promise.all([
+      client.fetchJson("/api/market/spx/bootstrap"),
+      client.fetchJson("/api/market/gex-positioning?ticker=SPX"),
+      client.fetchJson("/api/market/zerodte/board"),
     ]);
+    const spxBoot = spxBootR.json;
+    const gex = gexR.json;
+    const zb = zbR.json;
+    if (zbR.status !== 200) {
+      rec("integration:cross-tool", "FAIL", `board HTTP ${zbR.status}`);
+      return;
+    }
     const bootSpot = spxBoot?.market?.pulse?.spx?.price ?? spxBoot?.market?.gexSpx?.spot;
     const gexSpot = gex?.spot;
     if (Number.isFinite(bootSpot) && Number.isFinite(gexSpot) && !spotsAgree(bootSpot, gexSpot, gexSpot)) {
@@ -124,7 +135,8 @@ async function auditCrossTool() {
     } else if (Number.isFinite(gexSpot)) {
       rec("integration:spx-gex-spot", "PASS", `spot ${gexSpot}`);
     }
-    const flows = await fetchJson("/api/market/flows?limit=20");
+    const flowsR = await client.fetchJson("/api/market/flows?limit=20");
+    const flows = flowsR.json;
     const count = flows?.flows?.length ?? flows?.alerts?.length ?? 0;
     rec("integration:helix-flows", count > 0 ? "PASS" : "WARN", `${count} prints`);
     if (zb.covered_elsewhere?.length) {
@@ -132,6 +144,8 @@ async function auditCrossTool() {
     }
   } catch (e) {
     rec("integration:cross-tool", "FAIL", e.message);
+  } finally {
+    await client.cleanup();
   }
 }
 
@@ -167,7 +181,8 @@ async function main() {
     process.exit(0);
   }
 
-  if (!CRON) rec("env:CRON_SECRET", "FAIL", "required");
+  if (!CRON && !process.env.CLERK_SECRET_KEY) rec("env:auth", "FAIL", "CRON_SECRET or Clerk keys required");
+  else if (!CRON) rec("env:CRON_SECRET", "WARN", "missing — using Clerk fallback");
   else rec("env:CRON_SECRET", "PASS");
 
   if (force || inRthOpenWindow(now)) run("npm run validate:rth-open", "infra:validate:rth-open");
@@ -185,12 +200,15 @@ async function main() {
       const zFlags = (dc.json?.flags ?? []).filter((f) => /zerodte|grid/i.test(`${f.layer}/${f.metric}`));
       if (!dc.ok && dc.status !== 200) {
         const isTimeout = dc.status === 0 || /aborted|524|timeout/i.test(dc.err || "");
+        const isCronAuth = dc.status === 401 || dc.status === 403;
         rec(
           "grid:data-correctness",
-          isTimeout ? "WARN" : "FAIL",
+          isTimeout || isCronAuth ? "WARN" : "FAIL",
           isTimeout
             ? `edge timeout (mode=${dc.mode}) — cron authoritative`
-            : dc.err || `HTTP ${dc.status} mode=${dc.mode}`
+            : isCronAuth
+              ? `HTTP ${dc.status} — cloud CRON_SECRET mismatch; prod cron unaffected`
+              : dc.err || `HTTP ${dc.status} mode=${dc.mode}`
         );
       } else if (zFlags.length) {
         rec("grid:data-correctness", "FAIL", `${zFlags.length} grid/zerodte flag(s)`);

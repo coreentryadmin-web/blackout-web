@@ -5,6 +5,23 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-29 — [Ops] Grid RTH audit false FAIL on cloud CRON_SECRET mismatch
+
+**Severity.** P1 — cloud agent `validate:grid-rth` reported FAIL while prod 0DTE board was healthy.
+
+**Root cause.** Grid/integration/BIE audit scripts used bearer `CRON_SECRET` only; cloud agent
+injected secret ≠ prod Secrets Manager → HTTP 401 on member APIs + cron watchdog. Parallel
+Clerk minting without session lock caused intermittent 401/504 on cross-tool probes.
+
+**Evidence.** Wed 12:08 ET: `validate:zerodte-logic` GREEN via Clerk (8 setups, ledger 4);
+`validate:grid-rth` FAIL on bearer paths. After fix: full suite GREEN 12:14 ET.
+
+**Fix.** `createAuditAppClient()` shared Clerk fallback + race-safe session; `ops:collect`
+skips watchdog when auth rejected; `validate-deploy` warns on broken Railway CLI instead of FAIL;
+`rth-open-check` warns on cron 401 for socket-health.
+
+**Status.** PR #1236.
+
 ## 2026-07-29 — [0DTE] G-9 `plan_quote_stale` false-positive on live REST books
 
 **Severity.** P0 — AAPL/MU/GOOGL cleared score/confluence but stayed BLOCKED on
@@ -41,6 +58,24 @@ the real capital brakes are already the per-play −50% stop, 3-stop session hal
 - `GOVERNOR_VERSION=v2`. Session stop/loss + correlated-oppose unchanged.
 
 **Status.** PR `cursor/zerodte-uncap-open-plays-3d11`.
+=======
+## 2026-07-29 — [Ops] Grid RTH audit false FAIL on cloud CRON_SECRET mismatch
+
+**Severity.** P1 — cloud agent `validate:grid-rth` reported FAIL while prod 0DTE board was healthy.
+
+**Root cause.** Grid/integration/BIE audit scripts used bearer `CRON_SECRET` only; cloud agent
+injected secret ≠ prod Secrets Manager → HTTP 401 on member APIs + cron watchdog. Parallel
+Clerk minting without session lock caused intermittent 401/504 on cross-tool probes.
+
+**Evidence.** Wed 12:08 ET: `validate:zerodte-logic` GREEN via Clerk (8 setups, ledger 4);
+`validate:grid-rth` FAIL on bearer paths. After fix: full suite GREEN 12:14 ET.
+
+**Fix.** `createAuditAppClient()` shared Clerk fallback + race-safe session; `ops:collect`
+skips watchdog when auth rejected; `validate-deploy` warns on broken Railway CLI instead of FAIL;
+`rth-open-check` warns on cron 401 for socket-health.
+
+**Status.** PR `fix/grid-rth-clerk-fallback-20260729`.
+>>>>>>> c1fec440 (fix(ops): Grid RTH audit Clerk fallback + stop false cron 401 FAILs)
 
 ## 2026-07-29 — [0DTE] BREAKOUT live but built 0 — board looked FLOW-only after multi-rail merge
 

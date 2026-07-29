@@ -10,6 +10,7 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { spotsAgree, flipsAgree } from "./audit/lib/cross-tool-tolerance.mjs";
+import { fetchAppJsonWithAuditAuth, createAuditAppClient } from "./audit/lib/prod-clerk-session.mjs";
 
 const BASE = (
   process.argv.find((a) => a.startsWith("--base="))?.slice("--base=".length) ??
@@ -27,11 +28,8 @@ const rec = (name, status, detail) => {
 };
 
 async function fetchJson(path) {
-  const r = await fetch(`${BASE}${path}`, {
-    headers: { Authorization: `Bearer ${CRON}`, Accept: "application/json" },
-  });
-  const json = await r.json().catch(() => ({}));
-  return { status: r.status, json };
+  const r = await fetchAppJsonWithAuditAuth({ appUrl: BASE, path, cronSecret: CRON });
+  return { status: r.status, json: r.json ?? {} };
 }
 
 function spotDelta(a, b) {
@@ -40,73 +38,78 @@ function spotDelta(a, b) {
 }
 
 async function auditCrossToolLive() {
-  if (!CRON) {
-    rec("integration:live", "SKIP", "CRON_SECRET not set");
+  if (!CRON && !process.env.CLERK_SECRET_KEY) {
+    rec("integration:live", "SKIP", "CRON_SECRET or Clerk keys not set");
     return;
   }
 
-  const [zb, spxBoot, gex, flows, nh, mergedWrap] = await Promise.all([
-    fetchJson("/api/market/zerodte/board"),
-    fetchJson("/api/market/spx/bootstrap"),
-    fetchJson("/api/market/gex-positioning?ticker=SPX"),
-    fetchJson("/api/market/flows?limit=30"),
-    fetchJson("/api/market/nighthawk/edition"),
-    fetchJson("/api/market/spx/merged"),
-  ]);
-  const mergedDesk = mergedWrap.json?.merged ?? mergedWrap.json;
+  const client = await createAuditAppClient({ appUrl: BASE, cronSecret: CRON });
+  try {
+    const [zb, spxBoot, gex, flows, nh, mergedWrap] = await Promise.all([
+      client.fetchJson("/api/market/zerodte/board"),
+      client.fetchJson("/api/market/spx/bootstrap"),
+      client.fetchJson("/api/market/gex-positioning?ticker=SPX"),
+      client.fetchJson("/api/market/flows?limit=30"),
+      client.fetchJson("/api/market/nighthawk/edition"),
+      client.fetchJson("/api/market/spx/merged"),
+    ]);
+    const mergedDesk = mergedWrap.json?.merged ?? mergedWrap.json;
 
-  if (zb.status !== 200 || !zb.json.available) {
-    rec("integration:zerodte-board", "FAIL", `HTTP ${zb.status}`);
-    return;
-  }
-  rec("integration:zerodte-board", "PASS", `setups=${zb.json.setups?.length ?? 0} ledger=${zb.json.ledger?.length ?? 0}`);
-
-  if (spxBoot.status === 200) {
-    rec("integration:spx-bootstrap", "PASS");
-    const bootSpot = spxBoot.json.market?.pulse?.spx?.price ?? spxBoot.json.market?.gexSpx?.spot;
-    const gexSpot = gex.json?.spot;
-    if (Number.isFinite(bootSpot) && Number.isFinite(gexSpot) && !spotsAgree(bootSpot, gexSpot, gexSpot)) {
-      rec("integration:spx-gex-spot", "FAIL", `bootstrap ${bootSpot} vs gex ${gexSpot}`);
-    } else if (Number.isFinite(gexSpot)) {
-      rec("integration:spx-gex-spot", "PASS", `spot ${gexSpot}`);
+    if (zb.status !== 200 || !zb.json?.available) {
+      rec("integration:zerodte-board", "FAIL", `HTTP ${zb.status}`);
+      return;
     }
-  } else {
-    rec("integration:spx-bootstrap", "WARN", `HTTP ${spxBoot.status}`);
-  }
+    rec("integration:zerodte-board", "PASS", `setups=${zb.json.setups?.length ?? 0} ledger=${zb.json.ledger?.length ?? 0}`);
 
-  const liveSpot = Number(mergedDesk?.price ?? mergedDesk?.spot);
-  const gexSpot = Number(gex.json?.spot);
-  if (Number.isFinite(liveSpot) && Number.isFinite(gexSpot) && !spotsAgree(liveSpot, gexSpot, gexSpot)) {
-    rec("integration:spx-desk-gex", "FAIL", `merged ${liveSpot} vs gex ${gexSpot}`);
-  } else if (Number.isFinite(gexSpot)) {
-    rec("integration:spx-desk-gex", "PASS", `spot ${gexSpot}`);
-  }
+    if (spxBoot.status === 200) {
+      rec("integration:spx-bootstrap", "PASS");
+      const bootSpot = spxBoot.json.market?.pulse?.spx?.price ?? spxBoot.json.market?.gexSpx?.spot;
+      const gexSpot = gex.json?.spot;
+      if (Number.isFinite(bootSpot) && Number.isFinite(gexSpot) && !spotsAgree(bootSpot, gexSpot, gexSpot)) {
+        rec("integration:spx-gex-spot", "FAIL", `bootstrap ${bootSpot} vs gex ${gexSpot}`);
+      } else if (Number.isFinite(gexSpot)) {
+        rec("integration:spx-gex-spot", "PASS", `spot ${gexSpot}`);
+      }
+    } else {
+      rec("integration:spx-bootstrap", "WARN", `HTTP ${spxBoot.status}`);
+    }
 
-  const flowCount = flows.json?.flows?.length ?? flows.json?.alerts?.length ?? 0;
-  rec("integration:helix-flows", flowCount > 0 ? "PASS" : "WARN", `${flowCount} prints`);
+    const liveSpot = Number(mergedDesk?.price ?? mergedDesk?.spot);
+    const gexSpotMerged = Number(gex.json?.spot);
+    if (Number.isFinite(liveSpot) && Number.isFinite(gexSpotMerged) && !spotsAgree(liveSpot, gexSpotMerged, gexSpotMerged)) {
+      rec("integration:spx-desk-gex", "FAIL", `merged ${liveSpot} vs gex ${gexSpotMerged}`);
+    } else if (Number.isFinite(gexSpotMerged)) {
+      rec("integration:spx-desk-gex", "PASS", `spot ${gexSpotMerged}`);
+    }
 
-  const nhPlays = nh.json?.plays ?? nh.json?.edition?.plays ?? [];
-  const covered = new Set((zb.json.covered_elsewhere ?? []).map((t) => String(t).toUpperCase()));
-  const nhTickers = nhPlays.map((p) => String(p.ticker ?? "").toUpperCase()).filter(Boolean);
-  const missing = nhTickers.filter((t) => !covered.has(t));
-  if (nhTickers.length && missing.length) {
-    rec("integration:nighthawk-dedupe", "FAIL", `${missing.length} NH tickers not in covered_elsewhere: ${missing.slice(0, 3).join(", ")}`);
-  } else if (nhTickers.length) {
-    rec("integration:nighthawk-dedupe", "PASS", `${nhTickers.length} tickers withheld from scanner`);
-  } else {
-    rec("integration:nighthawk-dedupe", "PASS", "no edition plays");
-  }
+    const flowCount = flows.json?.flows?.length ?? flows.json?.alerts?.length ?? 0;
+    rec("integration:helix-flows", flowCount > 0 ? "PASS" : "WARN", `${flowCount} prints`);
 
-  for (const row of zb.json.ledger ?? []) {
-    if (row.entry_premium != null && row.last_mark != null && row.live_pnl_pct != null) {
-      const expected = Math.round(((row.last_mark - row.entry_premium) / row.entry_premium) * 10000) / 100;
-      if (Math.abs(expected - row.live_pnl_pct) > 0.05) {
-        rec("integration:ledger-pnl", "FAIL", `${row.ticker} expected ${expected}% got ${row.live_pnl_pct}%`);
-        return;
+    const nhPlays = nh.json?.plays ?? nh.json?.edition?.plays ?? [];
+    const covered = new Set((zb.json.covered_elsewhere ?? []).map((t) => String(t).toUpperCase()));
+    const nhTickers = nhPlays.map((p) => String(p.ticker ?? "").toUpperCase()).filter(Boolean);
+    const missing = nhTickers.filter((t) => !covered.has(t));
+    if (nhTickers.length && missing.length) {
+      rec("integration:nighthawk-dedupe", "FAIL", `${missing.length} NH tickers not in covered_elsewhere: ${missing.slice(0, 3).join(", ")}`);
+    } else if (nhTickers.length) {
+      rec("integration:nighthawk-dedupe", "PASS", `${nhTickers.length} tickers withheld from scanner`);
+    } else {
+      rec("integration:nighthawk-dedupe", "PASS", "no edition plays");
+    }
+
+    for (const row of zb.json.ledger ?? []) {
+      if (row.entry_premium != null && row.last_mark != null && row.live_pnl_pct != null) {
+        const expected = Math.round(((row.last_mark - row.entry_premium) / row.entry_premium) * 10000) / 100;
+        if (Math.abs(expected - row.live_pnl_pct) > 0.05) {
+          rec("integration:ledger-pnl", "FAIL", `${row.ticker} expected ${expected}% got ${row.live_pnl_pct}%`);
+          return;
+        }
       }
     }
+    rec("integration:ledger-pnl", "PASS", `${zb.json.ledger?.length ?? 0} rows`);
+  } finally {
+    await client.cleanup();
   }
-  rec("integration:ledger-pnl", "PASS", `${zb.json.ledger?.length ?? 0} rows`);
 }
 
 async function main() {

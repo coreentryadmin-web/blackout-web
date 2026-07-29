@@ -128,3 +128,63 @@ export async function mintClerkPremiumSession({ appUrl }) {
     return { skip: true, reason: `Clerk auth flow failed: ${e.message}` };
   }
 }
+
+/** Shared audit client — one Clerk session for many member API probes (avoids FAPI rate limits). */
+export async function createAuditAppClient({ appUrl, cronSecret }) {
+  const base = appUrl.replace(/\/$/, "");
+  const cron = cronSecret?.trim() ?? "";
+  let clerkSession = null;
+  let clerkPromise = null;
+
+  async function ensureClerk() {
+    if (clerkSession) return clerkSession;
+    if (!clerkPromise) {
+      clerkPromise = mintClerkPremiumSession({ appUrl: base }).then((s) => {
+        clerkSession = s;
+        return s;
+      });
+    }
+    return clerkPromise;
+  }
+
+  return {
+    async fetchJson(path, method = "GET") {
+      const url = `${base}${path.startsWith("/") ? path : `/${path}`}`;
+      if (cron) {
+        const r = await fetch(url, {
+          method,
+          headers: { Authorization: `Bearer ${cron}`, Accept: "application/json" },
+        });
+        if (r.ok) return { status: r.status, json: await r.json(), via: "cron" };
+        if (r.status !== 401 && r.status !== 403) {
+          return { status: r.status, json: await r.json().catch(() => null), via: "cron" };
+        }
+      }
+      const session = await ensureClerk();
+      if (session.skip) {
+        return { status: cron ? 401 : 0, json: null, via: "none", reason: session.reason };
+      }
+      const r = await fetch(url, {
+        method,
+        headers: { Cookie: session.cookieHeader, Accept: "application/json" },
+      });
+      const json = await r.json().catch(() => null);
+      return { status: r.status, json, via: "clerk" };
+    },
+    async cleanup() {
+      await clerkSession?.cleanup?.();
+      clerkSession = null;
+    },
+  };
+}
+
+/** Fetch a member API path — CRON bearer first, Clerk cookie fallback for cloud agents
+ *  whose injected CRON_SECRET does not match prod Secrets Manager. */
+export async function fetchAppJsonWithAuditAuth({ appUrl, path, cronSecret, method = "GET" }) {
+  const client = await createAuditAppClient({ appUrl, cronSecret });
+  try {
+    return await client.fetchJson(path, method);
+  } finally {
+    await client.cleanup();
+  }
+}

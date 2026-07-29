@@ -1,5 +1,5 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-29 12:05 ET
+Last updated: 2026-07-29 12:15 ET
 
 ## spx-rth-2026-07-29 — SPX Slayer market-open verify pass (6:30 AM PT / 9:30 AM ET)
 
@@ -46,12 +46,62 @@ Last updated: 2026-07-29 12:05 ET
 |---|---|---|---|---|
 | **P1** | `spx-rth-audit-near-term-slice-false-flag` | `spx-dashboard-e2e-audit.mjs` + `heatmap-matrix-audit.mjs` used `expiries.slice(0,8)` for INV-2 cell re-sum; SPX emits 15 `near_term_expiries` → false FAIL at strike ~6920 (200% Δ) | `GET /api/market/gex-heatmap?ticker=SPX` | **FIXED** (PR) — use `near_term_expiries` |
 | **P2** | `spx-rth-cloud-cron-secret-mismatch` | Cloud agent `CRON_SECRET` ≠ prod Secrets Manager → HTTP 401 on `/api/cron/*`, bearer SPX routes, `ops:collect` watchdog | `ops:collect` `watchdog:http` | OPEN — rotate cloud agent secret |
-| **P2** | `spx-rth-validate-deploy-railway` | `validate:rth-open` fails on missing Railway CLI in cloud VM; HTTP smoke GREEN | `validate:deploy` | KNOWN |
+| **P2** | `spx-rth-validate-deploy-railway` | `validate:rth-open` fails on missing Railway CLI in cloud VM; HTTP smoke GREEN | `validate:deploy` | **FIXED** (PR #1236) |
 | **P2** | `spx-commentary-expand-standby` | Commentary expand button hidden when rail in standby (not `live`) — E2E SKIP is expected, not a regression | UI `#spx-commentary-rail-toggle` | post-close UX doc |
 
 **No prod P0 defects — matrix cells, trade alerts, and cross-tool integration all GREEN via Clerk auth.**
 
 **Reports:** `audit-output/spx-dashboard-e2e-1785340975422.json`, `audit-output/spx-rth-2026-07-29-verify-1785341039089.json`
+
+---
+
+## grid-rth-2026-07-29 — mid-RTH verify pass #2 (~12:14 ET)
+
+**Session:** Autonomous Grid RTH agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` verify mode. Time: Wed 12:14 ET (RTH). Commands: `validate:grid-rth` → `validate:zerodte-logic` → `validate:grid-e2e` → `validate:zerodte-integration`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:grid-rth` | ✅ **GREEN** — 14/14 (0 FAIL; cron paths WARN on cloud CRON mismatch) |
+| `npm run validate:zerodte-logic` | ✅ **GREEN** — 17/17 |
+| `npm run validate:grid-e2e` | ✅ **GREEN** — 4/4 (API + `/nighthawk`; Playwright browser absent → WARN) |
+| `npm run validate:zerodte-integration` | ✅ **GREEN** — 9/9 |
+| Live board (Clerk) | ✅ heat=RTH, 8 setups (1 gate-eligible), ledger **4**, upstream OK |
+| HELIX flows | ✅ 20 prints |
+| Night Hawk dedupe | ✅ 5 tickers in `covered_elsewhere` |
+| GEX spot | ✅ 7347.64 (bootstrap agrees) |
+| Ledger PnL math | ✅ 4 rows, 0 issues |
+| Session heat | ✅ RTH at 12:14 ET (14:00 POST_COMMIT / 15:00 POWER_HOUR) |
+| `zerodte-warm` cron | ⚠️ HTTP 401 via cloud CRON (prod ECS cron unaffected) |
+
+### 0DTE logic layers verified
+
+All gate funnel, plan exits (−50%/+100%/15:30), lifecycle OPEN→TRIM→CLOSED, session heat cutoffs, mergePlays SKIP rules — **GREEN** (unit + pure probes + live board).
+
+### Cross-tool
+
+| Probe | Result |
+|---|---|
+| HELIX → scanner feed | ✅ 20 prints |
+| Night Hawk dedupe | ✅ 5 NH tickers in `covered_elsewhere` |
+| SPX bootstrap vs GEX spot | ✅ 7347.64 |
+| SPX merged desk vs GEX | ✅ PASS |
+| BIE/Largo static wiring | ✅ 12/12 static checks |
+
+### Findings
+
+| Severity | ID | Detail | Status |
+|---|---|---|---|
+| **P1** | `grid-rth-audit-clerk-fallback-incomplete` | `grid-rth-all-day-audit.mjs`, `zerodte-integration-audit.mjs`, BIE validator still bearer-only → false FAIL when cloud `CRON_SECRET` ≠ prod | **FIXED** (PR #1236 — shared `createAuditAppClient`) |
+| **P1** | `grid-rth-ops-collect-false-p0` | `ops:collect` emitted P0 on watchdog HTTP 401 from stale cloud CRON | **FIXED** (PR #1236) |
+| **P1** | `validate-deploy-railway-hard-fail` | Broken Railway CLI caused `validate:rth-open` FAIL even when HTTP smoke GREEN | **FIXED** (PR #1236) |
+| **P2** | `grid-rth-cloud-cron-secret-mismatch` | Cloud agent `CRON_SECRET` still 401 on `/api/cron/*`; member APIs validated via Clerk | **OPEN** — rotate cloud agent secret to match Secrets Manager |
+| **P2** | `grid-rth-runbook-stale-grid-panels` | Runbook references deleted `/grid` + 9 `/api/grid/*` panels; 0DTE lives on `/nighthawk` | **OPEN** — doc update post-close |
+
+**No prod P0 defects — 0DTE board, gates, ledger PnL, and cross-tool integration all GREEN.**
+
+**Reports:** `audit-output/grid-rth-2026-07-29-verify-1785341694570.json`, `audit-output/zerodte-logic-1785341732455.json`, `audit-output/grid-e2e-1785341735914.json`, `audit-output/zerodte-integration-1785341742259.json`
 
 ---
 

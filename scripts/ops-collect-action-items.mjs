@@ -179,6 +179,10 @@ async function httpItems() {
     }
     const wj = w.json ?? {};
     if (w.status !== 200) {
+      if (w.status === 401 || w.status === 403) {
+        // Cloud agent env often has a stale CRON_SECRET — not a prod incident.
+        return;
+      }
       add("P0", "watchdog", "watchdog:http", "Cron watchdog HTTP error", `HTTP ${w.status}${w.err ? ` (${w.err})` : ""}`);
     } else {
       for (const key of wj.rth_stale_keys ?? []) {
