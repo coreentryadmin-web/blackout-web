@@ -34,7 +34,11 @@ evidence / fix / status per the CLAUDE.md policy.)
 confirm + outcomes unchanged. Force-rebuild the live edition after deploy so members do not
 keep AI@26/SNDQ@20 until the next evening cron.
 
-**Status.** Open — this PR.
+**Post-deploy verify.** Force `nighthawk-edition?force=1` after #1219 deploy → new edition
+`published_at: 2026-07-29T06:13:41Z` — NVDA@71 / AAPL@67 / GOOG@60 / COST@59 / EWZ@55 (all B,
+no gate_promoted, no sub-35 filler). Evening window will rebuild again on post-close data.
+
+**Status.** Merged #1219.
 
 ## 2026-07-29 — [0DTE] Precision harden — stop opening measured-losing commits
 
