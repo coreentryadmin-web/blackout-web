@@ -1,5 +1,70 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-29 16:51 ET
+Last updated: 2026-07-29 17:58 ET
+
+## grid-rth-2026-07-29 — 0DTE Command verify pass (~17:42–17:58 ET, post-close)
+
+**Session:** Grid RTH all-day agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` **verify** mode. Time: Wed 17:42–17:58 ET (post-close; cash equities closed 16:00 ET; audit forced with `--force`). Commands: `validate:grid-rth --force` → `validate:zerodte-logic` → `validate:grid-e2e` → `data-validator.mjs`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:grid-rth --force` | ✅ **14/14 GREEN** |
+| `npm run validate:zerodte-logic` | ✅ **17/17 GREEN** |
+| `npm run validate:grid-e2e` | ✅ **4/4 GREEN** (Playwright `/nighthawk` nav timeout → WARN) |
+| `data-validator.mjs` | ⚠️ **30 PASS / 4 FAIL / 1 WARN** — off-hours prev-close vs frozen scan-time prices |
+
+### 0DTE logic (exhaustive)
+
+| Layer | Result |
+|---|---|
+| Gate funnel (SETUP_MIN_GROSS, aggression, dominance, ITM) | ✅ 1 eligible / 7 total, 0 violations |
+| Plan exits (stop −50%, target +100%, time stop 15:30 ET) | ✅ pure probes pass |
+| Trade lifecycle (OPEN → TRIM → CLOSED, sticky trough stop) | ✅ OPEN/TRIM/CLOSED/CLOSED |
+| Plan grading (stop wins when both touch same bar) | ✅ stopped |
+| Session heat (RTH → POST_COMMIT → POWER_HOUR; 14:00 ET cutoff) | ✅ CLOSED heat=0% |
+| mergePlays UI (past cutoff / MOVED → SKIP not OPEN) | ✅ SKIP |
+| Ledger PnL math (`reconcileLedgerLivePnlPct`) | ✅ 4 rows, 0 issues |
+| Unit tests (`board.test.ts`, `rejections.test.ts`, `ZeroDteBoard.test.ts`) | ✅ 3 files |
+
+### Cross-tool integration
+
+| Check | Result |
+|---|---|
+| SPX bootstrap spot vs GEX positioning | ✅ 7316.15 |
+| HELIX flows feed scanner | ✅ 20 prints |
+| Night Hawk dedupe (`covered_elsewhere`) | ✅ 5 tickers |
+| zerodte board upstream | ✅ ok |
+| ops:collect | ✅ zero items |
+
+### Cron / data-correctness
+
+| Check | Result |
+|---|---|
+| `zerodte-warm` cron | ⚠️ HTTP 504 / 120s timeout — post-close burst; board still fresh via Clerk path |
+| `data-correctness` full sweep | ⚠️ 2 flags (not grid/zerodte-scoped → audit PASS): (1) `invariant/grounding` — 4 published plays missing dossier snapshot (AAPL, GOOG, COST, EWZ); (2) `shadow-recompute/play_vs_dossier` — NVDA flow_streak + iv_rank disagree with dossier |
+
+### UI E2E note
+
+Classic `/grid` page + 9 `/api/grid/*` panels were **deleted 2026-07-07**; 0DTE Command lives on `/nighthawk`. Runbook Step 2 still references deleted tabs — see `grid-runbook-stale-ui`. Playwright installed; `/nighthawk` page.goto timed out at 90s (headless egress) — API probes authoritative.
+
+### P0 found this pass
+
+**None.** Member-facing 0DTE Command surfaces GREEN.
+
+### Residual open (non-P0)
+
+| Severity | ID | Detail | Status |
+|---|---|---|---|
+| **P2** | `zerodte-warm-504` | `zerodte-warm` cron probe 504/timeout during post-close audit burst | **OPEN** — transient |
+| **P2** | `dossier-grounding-gap` | 4 published plays (AAPL, GOOG, COST, EWZ) lack dossier snapshot per data-correctness | **OPEN** |
+| **P2** | `nvda-play-dossier-drift` | NVDA flow_streak + iv_rank disagree play vs dossier snapshot | **OPEN** |
+| **P2** | `qqq-underlying-staleness` | data-validator: QQQ setup underlying vs Polygon prev-close 2.175% | **OPEN** |
+| **P2** | `grid-runbook-stale-ui` | `GRID-RTH-ALL-DAY-AGENT.md` still references deleted `/grid` tabs + 9 panels | **OPEN** |
+
+**Reports:** `audit-output/grid-rth-2026-07-29-verify-1785361662472.json`, `audit-output/zerodte-logic-1785361754782.json`, `audit-output/grid-e2e-1785362329032.json`, `audit-output/validation-2026-07-29T21-53-20-903Z.md`
+
+---
 
 ## rth-open-2026-07-29-evening — Comprehensive RTH sweep (~16:41–16:51 ET, post-close)
 
