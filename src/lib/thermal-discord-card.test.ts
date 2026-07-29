@@ -10,6 +10,7 @@ import {
   fmtCompactHeatMoney,
   fmtDeskExpiry,
   resolveCompactExpiries,
+  resolveDiscordDeskExpiry,
   resolveDiscordZeroDteExpiry,
   thermalDiscordCaption,
   type ThermalCardColumn,
@@ -38,10 +39,10 @@ test("bandStrikesAroundSpot centers on nearest strike", () => {
   assert.deepEqual(bandStrikesAroundSpot(strikes, 103.4, 1), [102, 103, 104]);
 });
 
-test("fmtCompactHeatMoney dense labels", () => {
-  assert.equal(fmtCompactHeatMoney(0), "·");
-  assert.equal(fmtCompactHeatMoney(2_500_000), "+2.5M");
-  assert.equal(fmtCompactHeatMoney(-150_000), "−150K");
+test("fmtCompactHeatMoney always shows a number (never a blank dot)", () => {
+  assert.equal(fmtCompactHeatMoney(0), "$0.0K");
+  assert.equal(fmtCompactHeatMoney(2_500_000), "+$2.5M");
+  assert.equal(fmtCompactHeatMoney(-150_000), "−$150K");
 });
 
 test("buildThermalDiscordCardSvg includes tickers and never invents spot", () => {
@@ -141,4 +142,84 @@ test("resolveDiscordZeroDteExpiry prefers today when listed", () => {
   const near = ["2026-07-28", "2026-07-29", "2026-07-30"];
   assert.equal(resolveDiscordZeroDteExpiry(near, near, "2026-07-29"), "2026-07-29");
   assert.equal(resolveDiscordZeroDteExpiry(near, near, "2026-08-01"), "2026-07-28");
+});
+
+test("resolveDiscordDeskExpiry skips empty settled 0DTE for next live expiry", () => {
+  const near = ["2026-07-28", "2026-07-29", "2026-07-30"];
+  const strikes = [100, 101, 102];
+  const cells = {
+    "100": { "2026-07-28": 0, "2026-07-29": 1_000_000 },
+    "101": { "2026-07-28": 0, "2026-07-29": -500_000 },
+    "102": { "2026-07-28": 0, "2026-07-29": 250_000 },
+  };
+  assert.equal(
+    resolveDiscordDeskExpiry(cells, strikes, near, near, "2026-07-28"),
+    "2026-07-29"
+  );
+  // Today still wins when it has live cells.
+  cells["100"]!["2026-07-28"] = 50_000;
+  assert.equal(
+    resolveDiscordDeskExpiry(cells, strikes, near, near, "2026-07-28"),
+    "2026-07-28"
+  );
+});
+
+test("settled empty 0DTE SVG paints NEAR expiry with money labels (not blank dots)", () => {
+  // Freeze “today” by stubbing expiries where today-axis is all zeros.
+  const today = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  // Pick a next calendar day string for the live column (not necessarily real session).
+  const [y, m, d] = today.split("-").map(Number);
+  const next = new Date(Date.UTC(y!, m! - 1, d! + 1));
+  const nextYmd = next.toISOString().slice(0, 10);
+  const stub = {
+    underlying: "SPY",
+    spot: 740,
+    change_pct: 0.2,
+    asof: "2026-07-29T02:00:00.000Z",
+    expiries: [today, nextYmd],
+    near_term_expiries: [today, nextYmd],
+    strikes: [738, 740, 742],
+    max_pain: null,
+    gex: {
+      cells: {
+        "738": { [today]: 0, [nextYmd]: 2_500_000 },
+        "740": { [today]: 0, [nextYmd]: -1_200_000 },
+        "742": { [today]: 0, [nextYmd]: 800_000 },
+      },
+      strike_totals: { "738": 2_500_000, "740": -1_200_000, "742": 800_000 },
+      call_wall: 738,
+      put_wall: 740,
+      total: 0,
+      flip: null,
+      regime: { flip: null, posture: null, read: "undetermined" },
+    },
+    vex: {
+      cells: {},
+      strike_totals: {},
+      pos_wall: null,
+      neg_wall: null,
+      total: 0,
+      flip: null,
+      regime: { posture: null, read: "" },
+    },
+    shift: { available: false },
+    source: "polygon",
+    data_delay: "realtime",
+  } as unknown as GexHeatmap;
+
+  const columns: ThermalCardColumn[] = [{ ticker: "SPY", heatmap: stub }];
+  const svg = buildThermalDiscordCardSvg(columns);
+  assert.match(svg, /NEAR/);
+  assert.match(svg, /\+\$2\.5M/);
+  assert.match(svg, /−\$1\.2M/);
+  assert.match(svg, /PLUS/);
+  assert.match(svg, /MINUS/);
+  const caption = thermalDiscordCaption(columns);
+  assert.match(caption, /GEX · NEAR/);
+  assert.match(caption, new RegExp(`Expiry \\\`${nextYmd}`));
 });
