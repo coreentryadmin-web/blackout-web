@@ -3,6 +3,7 @@ import { getCognitoSession } from "@/lib/cognito-session";
 import { getUserProfile } from "@/lib/user-directory";
 import { isCognitoAuth } from "@/lib/auth-provider";
 import { auth } from "@/lib/auth-server";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,7 +23,7 @@ export async function GET() {
       lastName: profile?.lastName ?? null,
       tier: profile?.tier ?? "free",
       role: profile?.role ?? null,
-    });
+    }, { headers: NO_STORE_HEADERS });
   }
 
   const { userId } = await auth();
@@ -38,5 +39,5 @@ export async function GET() {
     lastName: profile?.lastName ?? null,
     tier: profile?.tier ?? "free",
     role: profile?.role ?? null,
-  });
+  }, { headers: NO_STORE_HEADERS });
 }

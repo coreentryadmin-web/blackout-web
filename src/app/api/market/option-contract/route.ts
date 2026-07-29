@@ -15,6 +15,7 @@ import {
   volumeProfileBidAskPct,
 } from "@/lib/helix/contract-drilldown-parse";
 import { roundFloats } from "@/lib/round-floats";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -73,7 +74,7 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    return NextResponse.json(roundFloats(payload));
+    return NextResponse.json(roundFloats(payload), { headers: NO_STORE_HEADERS });
   } catch (err) {
     console.error("[market/option-contract]", contractId, err);
     return NextResponse.json({ error: "Contract drilldown unavailable" }, { status: 502 });

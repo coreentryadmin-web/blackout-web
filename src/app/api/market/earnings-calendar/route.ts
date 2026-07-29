@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
 import { serverCache } from "@/lib/server-cache";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
 
@@ -53,7 +54,7 @@ export async function GET(req: NextRequest) {
     const earnings = await serverCache("earnings-calendar:av:3m", TTL_12H, () =>
       loadEarningsCalendar(apiKey)
     );
-    return NextResponse.json({ earnings, configured: earningsKeyConfigured() });
+    return NextResponse.json({ earnings, configured: earningsKeyConfigured() }, { headers: NO_STORE_HEADERS });
   } catch (err) {
     console.error("[earnings-calendar]", err);
     return NextResponse.json({ earnings: {}, configured: earningsKeyConfigured() });

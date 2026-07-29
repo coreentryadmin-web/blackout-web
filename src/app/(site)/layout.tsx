@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { auth } from "@/lib/auth-server";
 import { Nav } from "@/components/Nav";
 import { IosAppChrome } from "@/components/ios/IosAppChrome";
