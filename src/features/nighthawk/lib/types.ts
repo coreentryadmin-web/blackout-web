@@ -81,6 +81,9 @@ export type NightHawkEdition = {
   /** True when this edition published a market recap but no ranked plays survived the funnel.
    *  Lets the UI show a recap-only state distinct from both "5 plays" and "awaiting close". */
   recap_only?: boolean;
+  /** Funnel-stage reason when recap_only (e.g. "No candidates…", publish-gate zero). Ops already
+   *  stores this in meta.recap_only_reason — members see a one-line explanation when present. */
+  recap_only_reason?: string | null;
   /** True when this edition came from a degraded/legacy source (e.g. the BlackOut intel engine
    *  fallback) rather than the first-class published pipeline. The UI must NOT present a degraded
    *  edition as a fresh "Edition live" recap — show a legacy/degraded notice instead. */

@@ -188,11 +188,14 @@ function PlaybookEmptyState({
   recapState,
   editionLabel,
   headline,
+  reason,
 }: {
   /** True when a real edition published with zero plays (recap-only night). */
   recapState: boolean;
   editionLabel: string | null;
   headline: string | null;
+  /** Funnel-stage reason from meta.recap_only_reason when available. */
+  reason?: string | null;
 }) {
   return (
     <div className="flex flex-1 items-center justify-center p-4" role="status">
@@ -203,7 +206,7 @@ function PlaybookEmptyState({
         description={
           recapState
             ? `Recap only${editionLabel ? ` for ${editionLabel}` : ""} — zero ranked setups survived the funnel.${
-                headline ? ` ${headline}.` : ""
+                reason ? ` ${reason}` : headline ? ` ${headline}.` : ""
               } Ranked plays return when a setup clears the gates.`
             : "Five ranked setups land here automatically after the evening scan · ~5:30 PM ET."
         }
@@ -455,6 +458,7 @@ export function PlaybookBoard({
           recapState={showRecapState}
           editionLabel={editionLabel}
           headline={edition?.recap_headline ?? null}
+          reason={edition?.recap_only_reason ?? null}
         />
       )}
     </section>

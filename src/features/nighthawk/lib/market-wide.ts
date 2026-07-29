@@ -38,6 +38,14 @@ import { priorEtYmd } from "@/lib/providers/spx-session";
 import { runUwPool, runUwSequential } from "@/lib/providers/uw-rate-limiter";
 import { fetchPlatformIntelSnapshot, type PlatformIntelSnapshot } from "./platform-intel-snapshot";
 
+/** Walk calendar days back from an ET YYYY-MM-DD (for historical bar windows). */
+function priorFromEt(asOfEt: string, daysBack: number): string {
+  const d = new Date(`${asOfEt}T16:00:00.000Z`);
+  if (!Number.isFinite(d.getTime())) return priorEtYmd(daysBack);
+  d.setUTCDate(d.getUTCDate() - daysBack);
+  return d.toISOString().slice(0, 10);
+}
+
 export type MarketWideContext = {
   today: string;
   tomorrow: string;
@@ -219,15 +227,26 @@ async function fetchIndexFlowsPooled(): Promise<Record<string, unknown>> {
   return indexFlows;
 }
 
-export async function fetchMarketWideContext(): Promise<MarketWideContext> {
+export async function fetchMarketWideContext(opts?: {
+  /** Session date in America/New_York (YYYY-MM-DD). Defaults to todayEt(). */
+  asOfEt?: string;
+}): Promise<MarketWideContext> {
   // Set when the flow-alerts pull (the SOLE candidate source) actually errored —
   // lets the edition builder distinguish "quiet tape, zero candidates" (benign)
   // from "UW outage, zero candidates" (anomalous, must alert). Audit finding:
   // the two were indistinguishable and neither alerted.
   let flowFetchFailed = false;
-  const today = todayEt();
+  const today = opts?.asOfEt ?? todayEt();
   const tomorrow = nextTradingDayEt(today);
-  const from = priorEtYmd(45);
+  const from = priorFromEt(today, 45);
+  const historical = Boolean(opts?.asOfEt && opts.asOfEt !== todayEt());
+  // Historical replay: pin flow to the session day so we don't silently reuse today's Redis cache.
+  const flowWindow = historical
+    ? {
+        newer_than: `${today}T13:00:00.000Z`,
+        older_than: `${today}T22:30:00.000Z`,
+      }
+    : {};
 
   const [
     tide,
@@ -255,7 +274,11 @@ export async function fetchMarketWideContext(): Promise<MarketWideContext> {
   ] = await Promise.all([
     uwConfigured() ? fetchUwMarketTide().catch(() => null) : Promise.resolve(null),
     uwConfigured()
-      ? fetchMarketFlowAlertRows({ limit: MARKET_FLOW_ALERT_LIMIT, min_premium: MIN_STOCK_FLOW_PREMIUM }).catch(() => {
+      ? fetchMarketFlowAlertRows({
+          limit: MARKET_FLOW_ALERT_LIMIT,
+          min_premium: MIN_STOCK_FLOW_PREMIUM,
+          ...flowWindow,
+        }).catch(() => {
           flowFetchFailed = true;
           return [] as Awaited<ReturnType<typeof fetchMarketFlowAlertRows>>;
         })
