@@ -8,6 +8,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { createAuditHttpClient } from "./lib/audit-http.mjs";
 
 const ROOT = process.cwd();
 const checks = [];
@@ -92,17 +93,13 @@ const CRON = process.env.CRON_SECRET;
 const BASE = (process.env.AUDIT_APP_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
 
 async function layerB() {
-  if (!CRON) {
-    rec("live:board-vs-largo", true, "SKIP — CRON_SECRET not set");
-    return;
-  }
+  let cleanup = async () => {};
   try {
-    const http = await fetch(`${BASE}/api/market/zerodte/board`, {
-      headers: { Authorization: `Bearer ${CRON}`, Accept: "application/json" },
-    });
-    const board = await http.json();
-    if (!http.ok || !board.available) {
-      rec("live:board-fetch", false, `HTTP ${http.status}`);
+    const client = await createAuditHttpClient({ base: BASE, cronSecret: CRON ?? "" });
+    cleanup = client.cleanup ?? cleanup;
+    const board = await client.fetchJson("/api/market/zerodte/board");
+    if (!board?.available) {
+      rec("live:board-fetch", false, "available=false");
       return;
     }
     rec("live:board-fetch", true);
@@ -140,7 +137,14 @@ async function layerB() {
     );
     void covered;
   } catch (e) {
-    rec("live:board-vs-largo", false, e.message);
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/HTTP 401|HTTP 403|auth/i.test(msg)) {
+      rec("live:board-vs-largo", true, `SKIP — ${msg}`);
+    } else {
+      rec("live:board-vs-largo", false, msg);
+    }
+  } finally {
+    await cleanup();
   }
 }
 

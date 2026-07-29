@@ -1,5 +1,65 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-29 12:05 ET
+Last updated: 2026-07-29 12:26 ET
+
+## rth-comprehensive-2026-07-29 — Full RTH agent sweep (~12:15–12:26 ET)
+
+**Session:** Autonomous RTH per `docs/ops/RTH-OPEN-RUNBOOK.md` comprehensive sweep. Time: Wed 12:15–12:26 ET (RTH). Commands: `validate:rth-open` → `validate:rth-sweep` → `validate:spx-rth` → `validate:grid-rth` → `validate:spx-e2e`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` | ✅ **GREEN** (CRON socket probe WARN — stale cloud-agent `CRON_SECRET`; HTTP smoke GREEN) |
+| `npm run validate:rth-sweep` | ✅ **GREEN** — 0 P0/P1; all pages load ~1.6s soft-nav; zerodte/board 200 after warm retry |
+| `npm run validate:spx-rth` | ✅ **GREEN** — matrix INV-2, cross-endpoint, desk lanes, BIE static, E2E |
+| `npm run validate:grid-rth` | ✅ **GREEN** — zerodte board 7 setups / ledger 4, cross-tool, logic |
+| `npm run validate:spx-e2e` | ✅ **GREEN** — 16 PASS / 0 FAIL / 1 SKIP |
+| `GET /api/cron/data-correctness?force=1` | ⚠️ **SKIP** — cloud-agent `CRON_SECRET` HTTP 401 (prod cron authoritative via GHA) |
+
+### Comprehensive sweep — per-page (Playwright + Clerk premium)
+
+| Page | Hard/soft load | Live tick | Missing fields | Console |
+|---|---|---|---|---|
+| `/dashboard` | hard 1651ms | null (spot stable 12s) | 0 | 1× HTTP 400 (non-blocking) |
+| `/flows` | soft 1668ms | null | 0 | 0 |
+| `/heatmap` (matrix) | soft 1632ms | null | 0 | 0 |
+| `/vector` | soft 1657ms | null | 0 | 0 |
+| `/nighthawk` | soft 1642ms | null | 0 | 0 |
+| `/terminal` (Largo) | soft 1645ms | null | 0 | 0 |
+| `/track-record` | soft 1607ms | null | 0 | 0 |
+
+**Speed:** All soft-nav loads ~1.6s to DOM — within institutional bar; sign-in ticket ~60s first hard load (Clerk FAPI).
+
+**Live auto-update:** Spot regex did not detect tick in 8–20s windows (tape moved <0.25 pt); desk API `as_of` fresh 33s; matrix cache ~8s per prior SPX pass.
+
+**Largo:** ✅ SSE `POST /api/market/largo/query?stream=1` 200 in 2.6s; grounded NVDA HELIX answer ($77.5M premium, 50 prints); `tools=blackout_intelligence`.
+
+**Cross-tool GEX:** desk spot ~7355; all market APIs 200; zerodte/board cold 504 → warm retry 200 (transient CF origin timeout).
+
+### Missing-field audit
+
+| Surface | Finding | Backing API | Cause | Action |
+|---|---|---|---|---|
+| Largo NVDA regime | `Regime: —` in answer | HELIX flow payload | Per-ticker regime not computed for single-name query | **Expected** — not a desk-wide regime field |
+| All pages | 0 `$—` / `N/A` / `No data` hits | — | — | **GREEN** |
+| Commentary expand | Hidden on dashboard | play not `live` | Standby gate | **Expected** (E2E SKIP) |
+
+### Findings
+
+| Severity | ID | Detail | Fix |
+|---|---|---|---|
+| **P2** | `cloud-agent-cron-secret-stale` | Cloud agent `CRON_SECRET` ≠ prod → 401 on `/api/cron/*`, watchdog, data-correctness external probe | **OPEN** — rotate Cursor cloud env secret; audits now Clerk-fallback + WARN |
+| **P2** | `rth-sweep-zerodte-cold-504` | First `/api/market/zerodte/board` hit 504 @60s during parallel sweep; warm retry 200 | **FIXED** — sweep retry + 180s timeout (PR) |
+| **P2** | `nighthawk-react-418-hydration` | Playwright grid-e2e intermittent React #418 on `/nighthawk` | **OPEN** — hydration text mismatch; monitor |
+| **P2** | `dashboard-console-400` | Browser console 400 on dashboard hard load | **OPEN** — trace request URL in follow-up |
+
+**No prod P0/P1 data defects.** Member-facing surfaces GREEN via Clerk auth.
+
+**Reports:** `audit-output/rth-sweep-2026-07-29T16-24-48-952Z.json`, `audit-output/spx-rth-2026-07-29-verify-1785342304642.json`
+
+**Code fixes (PR):** shared `audit-http.mjs` Clerk fallback for RTH scripts; `rth-open-check` Railway/CRON WARN; `ops:collect` P2-only exit 0; spx-bie `readSpxPlaySnapshot` opts regex; sweep `/vector` + zerodte retry.
+
+---
 
 ## spx-rth-2026-07-29 — SPX Slayer market-open verify pass (6:30 AM PT / 9:30 AM ET)
 

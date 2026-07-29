@@ -10,6 +10,7 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { spotsAgree, flipsAgree } from "./audit/lib/cross-tool-tolerance.mjs";
+import { createAuditHttpClient } from "./audit/lib/audit-http.mjs";
 
 const BASE = (
   process.argv.find((a) => a.startsWith("--base="))?.slice("--base=".length) ??
@@ -26,12 +27,13 @@ const rec = (name, status, detail) => {
   console.log(`  [${status}] ${name}${detail ? " — " + detail : ""}`);
 };
 
+let auditClient = null;
+let auditCleanup = async () => {};
+
 async function fetchJson(path) {
-  const r = await fetch(`${BASE}${path}`, {
-    headers: { Authorization: `Bearer ${CRON}`, Accept: "application/json" },
-  });
-  const json = await r.json().catch(() => ({}));
-  return { status: r.status, json };
+  if (!auditClient) throw new Error("audit client not initialized");
+  const json = await auditClient.fetchJson(path);
+  return { status: 200, json };
 }
 
 function spotDelta(a, b) {
@@ -40,8 +42,11 @@ function spotDelta(a, b) {
 }
 
 async function auditCrossToolLive() {
-  if (!CRON) {
-    rec("integration:live", "SKIP", "CRON_SECRET not set");
+  try {
+    auditClient = await createAuditHttpClient({ base: BASE, cronSecret: CRON });
+    auditCleanup = auditClient.cleanup ?? auditCleanup;
+  } catch (e) {
+    rec("integration:live", "SKIP", e.message);
     return;
   }
 
@@ -152,7 +157,11 @@ function run(cmd, label) {
   return true;
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+main()
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await auditCleanup();
+  });

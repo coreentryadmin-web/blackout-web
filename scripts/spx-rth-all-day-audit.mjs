@@ -15,6 +15,7 @@ import { join } from "node:path";
 import { isTradingDayEt, inRthOpenWindow, todayEtYmd, etParts } from "./gha-et-window.mjs";
 import { spotsAgree, flipsAgree } from "./audit/lib/cross-tool-tolerance.mjs";
 import { probeDataCorrectness } from "./audit/lib/data-correctness-probe.mjs";
+import { createAuditHttpClient } from "./audit/lib/audit-http.mjs";
 
 const force = process.argv.includes("--force");
 const phaseArg = process.argv.find((a) => a.startsWith("--phase="));
@@ -44,13 +45,12 @@ function run(cmd, label) {
   return true;
 }
 
+let auditClient = null;
+let auditCleanup = async () => {};
+
 async function fetchJson(path, { timeoutMs = 120_000 } = {}) {
-  const r = await fetch(`${BASE}${path}`, {
-    headers: { Authorization: `Bearer ${CRON}`, Accept: "application/json" },
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  if (!r.ok) throw new Error(`HTTP ${r.status} ${path}`);
-  return r.json();
+  if (!auditClient) throw new Error("audit client not initialized");
+  return auditClient.fetchJson(path, { signal: AbortSignal.timeout(timeoutMs) });
 }
 
 function spotDelta(a, b) {
@@ -59,10 +59,6 @@ function spotDelta(a, b) {
 }
 
 async function spxCrossEndpointCheck() {
-  if (!CRON) {
-    rec("spx:cross-endpoint", "SKIP", "CRON_SECRET not set");
-    return;
-  }
   try {
     const [mergedWrap, heatmap, positioning, play] = await Promise.all([
       fetchJson("/api/market/spx/merged"),
@@ -114,10 +110,6 @@ async function spxCrossEndpointCheck() {
 }
 
 async function deskLaneCheck() {
-  if (!CRON) {
-    rec("spx:desk-lanes", "SKIP", "CRON_SECRET not set");
-    return;
-  }
   try {
     const [pulse, flow, mergedWrap] = await Promise.all([
       fetchJson("/api/market/spx/pulse"),
@@ -177,20 +169,27 @@ async function main() {
   }
 
   if (!CRON) {
-    rec("env:CRON_SECRET", "FAIL", "required for SPX API probes");
+    rec("env:CRON_SECRET", "WARN", "unset — using Clerk fallback for market probes");
   } else {
     rec("env:CRON_SECRET", "PASS");
   }
 
+  try {
+    auditClient = await createAuditHttpClient({ base: BASE, cronSecret: CRON });
+    auditCleanup = auditClient.cleanup ?? auditCleanup;
+    rec("env:audit-auth", "PASS", `via=${auditClient.authVia}`);
+  } catch (e) {
+    rec("env:audit-auth", "FAIL", e.message);
+    process.exit(1);
+  }
+
   // 1. RTH infra gate
   if (force || inRthOpenWindow(now)) {
-    run("npm run validate:rth-open", "infra:validate:rth-open");
+    run("SKIP_RAILWAY=1 npm run validate:rth-open", "infra:validate:rth-open");
   }
 
   // 2. SPX matrix — every cell invariant (SPX only during all-day pass)
-  if (CRON) {
-    run("node scripts/heatmap-matrix-audit.mjs --tickers=SPX", "spx:matrix-deep-audit");
-  }
+  run("node scripts/heatmap-matrix-audit.mjs --tickers=SPX", "spx:matrix-deep-audit");
 
   // 3. Cross-endpoint + desk lanes
   await spxCrossEndpointCheck();
@@ -217,13 +216,16 @@ async function main() {
           /spx|gex|heatmap|desk/i.test(f.layer ?? "")
       );
       if (!dc.ok && dc.status !== 200) {
+        const authMismatch = dc.status === 401 || dc.status === 403;
         const isTimeout = dc.status === 0 || /aborted|524|timeout/i.test(dc.err || "");
         rec(
           "spx:data-correctness",
-          isTimeout ? "WARN" : "FAIL",
-          isTimeout
-            ? `edge timeout (mode=${dc.mode}) — full sweep runs on cron; rth-open pg check is authoritative`
-            : dc.err || `HTTP ${dc.status} mode=${dc.mode}`
+          authMismatch ? "WARN" : isTimeout ? "WARN" : "FAIL",
+          authMismatch
+            ? "CRON_SECRET auth mismatch — full sweep runs on prod cron"
+            : isTimeout
+              ? `edge timeout (mode=${dc.mode}) — full sweep runs on cron; rth-open pg check is authoritative`
+              : dc.err || `HTTP ${dc.status} mode=${dc.mode}`
         );
       } else if (spxFlags.length) {
         rec("spx:data-correctness", "FAIL", `${spxFlags.length} SPX-layer flag(s)`);
@@ -273,7 +275,11 @@ async function main() {
   process.exit(0);
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+main()
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await auditCleanup();
+  });

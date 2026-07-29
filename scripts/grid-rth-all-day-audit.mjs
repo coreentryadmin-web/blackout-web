@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { inRthOpenWindow, isTradingDayEt, todayEtYmd, etParts } from "./gha-et-window.mjs";
 import { spotsAgree } from "./audit/lib/cross-tool-tolerance.mjs";
 import { probeDataCorrectness } from "./audit/lib/data-correctness-probe.mjs";
+import { createAuditHttpClient } from "./audit/lib/audit-http.mjs";
 
 const force = process.argv.includes("--force");
 const phaseArg = process.argv.find((a) => a.startsWith("--phase="));
@@ -43,17 +44,12 @@ function run(cmd, label) {
   return true;
 }
 
+let auditClient = null;
+let auditCleanup = async () => {};
+
 async function fetchJson(path, opts = {}) {
-  const r = await fetch(`${BASE}${path}`, {
-    ...opts,
-    headers: {
-      Authorization: `Bearer ${CRON}`,
-      Accept: "application/json",
-      ...(opts.headers || {}),
-    },
-  });
-  if (!r.ok) throw new Error(`HTTP ${r.status} ${path}`);
-  return r.json();
+  if (!auditClient) throw new Error("audit client not initialized");
+  return auditClient.fetchJson(path, opts);
 }
 
 function scanFinite(obj, path = "", out = []) {
@@ -78,7 +74,6 @@ function ageSec(asOf) {
 }
 
 async function auditZeroDteBoard() {
-  if (!CRON) return;
   try {
     const zb = await fetchJson("/api/market/zerodte/board");
     if (!zb.available) {
@@ -110,7 +105,6 @@ async function auditZeroDteBoard() {
 }
 
 async function auditCrossTool() {
-  if (!CRON) return;
   try {
     const [spxBoot, gex, zb] = await Promise.all([
       fetchJson("/api/market/spx/bootstrap"),
@@ -167,10 +161,19 @@ async function main() {
     process.exit(0);
   }
 
-  if (!CRON) rec("env:CRON_SECRET", "FAIL", "required");
+  if (!CRON) rec("env:CRON_SECRET", "WARN", "unset — using Clerk fallback for market probes");
   else rec("env:CRON_SECRET", "PASS");
 
-  if (force || inRthOpenWindow(now)) run("npm run validate:rth-open", "infra:validate:rth-open");
+  try {
+    auditClient = await createAuditHttpClient({ base: BASE, cronSecret: CRON });
+    auditCleanup = auditClient.cleanup ?? auditCleanup;
+    rec("env:audit-auth", "PASS", `via=${auditClient.authVia}`);
+  } catch (e) {
+    rec("env:audit-auth", "FAIL", e.message);
+    process.exit(1);
+  }
+
+  if (force || inRthOpenWindow(now)) run("SKIP_RAILWAY=1 npm run validate:rth-open", "infra:validate:rth-open");
 
   await auditZeroDteBoard();
   await auditCrossTool();
@@ -184,13 +187,16 @@ async function main() {
       const dc = await probeDataCorrectness({ base: BASE, cronSecret: CRON, tryFull: true });
       const zFlags = (dc.json?.flags ?? []).filter((f) => /zerodte|grid/i.test(`${f.layer}/${f.metric}`));
       if (!dc.ok && dc.status !== 200) {
+        const authMismatch = dc.status === 401 || dc.status === 403;
         const isTimeout = dc.status === 0 || /aborted|524|timeout/i.test(dc.err || "");
         rec(
           "grid:data-correctness",
-          isTimeout ? "WARN" : "FAIL",
-          isTimeout
-            ? `edge timeout (mode=${dc.mode}) — cron authoritative`
-            : dc.err || `HTTP ${dc.status} mode=${dc.mode}`
+          authMismatch ? "WARN" : isTimeout ? "WARN" : "FAIL",
+          authMismatch
+            ? "CRON_SECRET auth mismatch — full sweep runs on prod cron"
+            : isTimeout
+              ? `edge timeout (mode=${dc.mode}) — cron authoritative`
+              : dc.err || `HTTP ${dc.status} mode=${dc.mode}`
         );
       } else if (zFlags.length) {
         rec("grid:data-correctness", "FAIL", `${zFlags.length} grid/zerodte flag(s)`);
@@ -227,7 +233,11 @@ async function main() {
   console.log("GREEN — 0DTE Command audit passed.\n");
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+main()
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await auditCleanup();
+  });

@@ -66,9 +66,18 @@ async function main() {
   }
 
   console.log("1. Post-deploy validation");
+  const deployEnv = { ...process.env };
+  // Cloud agents and GHA lack Railway CLI — prod deploy is ECS/ECR, not Railway.
+  if (!deployEnv.SKIP_RAILWAY?.trim()) {
+    try {
+      execSync("command -v railway >/dev/null 2>&1", { stdio: "ignore" });
+    } catch {
+      deployEnv.SKIP_RAILWAY = "1";
+    }
+  }
   const deploy = spawnSync("node", ["scripts/validate-deploy.mjs"], {
     stdio: "inherit",
-    env: process.env,
+    env: deployEnv,
   });
   if (deploy.status !== 0) {
     console.error("\nRTH-open FAILED — validate:deploy did not pass.\n");
@@ -167,6 +176,10 @@ async function main() {
           if (opt.ok) ok(`options-socket: ${opt.detail}`);
           else if (et.mins >= 9 * 60 + 30) fail(`options-socket: ${opt.detail}`);
           else console.log(`  ⚠ options-socket: pre-09:30 — ${opt.detail}`);
+        } else if (res.status === 401 || res.status === 403) {
+          console.log(
+            `  ⚠ options-socket probe HTTP ${res.status} — CRON_SECRET mismatch in this environment (use GHA secret or Clerk probes)`
+          );
         } else {
           fail(`options-socket probe HTTP ${res.status}`);
         }

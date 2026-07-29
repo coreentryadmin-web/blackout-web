@@ -7,6 +7,7 @@
  */
 import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
 import { resolveNearTermExpiriesForAudit } from "./audit/lib/near-term-expiries.mjs";
+import { createAuditHttpClient } from "./audit/lib/audit-http.mjs";
 
 const CRON = process.env.CRON_SECRET;
 const baseArg = process.argv.find((a) => a.startsWith("--base="));
@@ -16,12 +17,8 @@ const TICKERS = tickersArg
   ? tickersArg.slice("--tickers=".length).split(",").map((t) => t.trim().toUpperCase())
   : ["SPX", "SPY", "QQQ", "IWM", "NVDA", "AAPL", "TSLA", "AMD", "MSFT", "META", "AMZN", "MU", "SMH", "GLD", "AVGO"];
 
-if (!CRON) {
-  console.error("CRON_SECRET required");
-  process.exit(1);
-}
-
-const H = { Authorization: `Bearer ${CRON}` };
+let auditHeaders = { Accept: "application/json" };
+let auditCleanup = async () => {};
 const issues = [];
 
 function fail(ticker, metric, detail) {
@@ -97,7 +94,7 @@ function sameStrike(a, b) {
 
 async function fetchHeatmap(ticker) {
   const url = `${BASE}/api/market/gex-heatmap?ticker=${encodeURIComponent(ticker)}`;
-  const opts = { headers: H, signal: AbortSignal.timeout(180_000) };
+  const opts = { headers: auditHeaders, signal: AbortSignal.timeout(180_000) };
   // Warm-first: a cold SPX matrix build can exceed CF's origin timeout under parallel
   // audit load; priming populates the cache so the audited fetch hits warm SWR.
   try {
@@ -312,6 +309,17 @@ async function auditTicker(ticker) {
 console.log(`\n=== Heat Maps MATRIX Deep Audit ===`);
 console.log(`Target: ${BASE}`);
 console.log(`Tickers: ${TICKERS.length}`);
+
+try {
+  const client = await createAuditHttpClient({ base: BASE, cronSecret: CRON ?? "" });
+  auditCleanup = client.cleanup ?? auditCleanup;
+  auditHeaders = client.authHeaders();
+  console.log(`Auth: ${client.authVia}\n`);
+} catch (e) {
+  console.error(`Auth failed: ${e.message}`);
+  process.exit(1);
+}
+
 if (!isTradingDayEt(todayEtYmd())) {
   console.log(`Session: ${todayEtYmd()} is a market holiday — non-SPX empty matrices are expected\n`);
 } else {
@@ -350,11 +358,12 @@ else for (const i of issues) console.log(`  [${i.ticker}] ${i.metric}: ${i.detai
 
 // Run production data-correctness cron summary
 try {
-  const dc = await fetch(`${BASE}/api/cron/data-correctness?force=1`, { headers: H }).then((r) => r.json());
+  const dc = await fetch(`${BASE}/api/cron/data-correctness?force=1`, { headers: auditHeaders }).then((r) => r.json());
   console.log(`\n=== Production data-correctness cron ===`);
   console.log(`  flags: ${dc.totals?.flags ?? "?"}, confirmed: ${dc.totals?.independentlyConfirmed ?? "?"}, consistency-only: ${dc.totals?.consistencyOnly ?? "?"}`);
   if (dc.flags?.length) for (const f of dc.flags) console.log(`  FLAG [${f.layer}/${f.metric}] ${f.detail}`);
 } catch {}
 
 console.log("");
+await auditCleanup();
 process.exit(issues.length ? 1 : 0);

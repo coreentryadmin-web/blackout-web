@@ -28,6 +28,7 @@ const PAGES = [
   { path: "/dashboard", label: "dashboard", liveWaitMs: 12000 },
   { path: "/flows", label: "flows", liveWaitMs: 8000 },
   { path: "/heatmap", label: "heatmap-matrix", liveWaitMs: 20000 },
+  { path: "/vector", label: "vector", liveWaitMs: 15000 },
   { path: "/nighthawk", label: "nighthawk", liveWaitMs: 15000 },
   { path: "/terminal", label: "terminal", liveWaitMs: 5000 },
   { path: "/track-record", label: "track-record", liveWaitMs: 10000 },
@@ -75,7 +76,8 @@ function curlTimeoutSec(url) {
     url.includes("/api/cron/data-correctness") ||
     url.includes("gex-heatmap") ||
     url.includes("gex-positioning") ||
-    url.includes("/largo/query")
+    url.includes("/largo/query") ||
+    url.includes("/zerodte/board")
   ) {
     return "180";
   }
@@ -189,8 +191,8 @@ function freshAsOf(json, maxSec = 300) {
 async function auditApis(app) {
   for (const path of [...MARKET_APIS, ...ZERODTE_APIS]) {
     let r = app(path);
-    // Cold SPX matrix builds can exceed Cloudflare's ~100s origin timeout; one warm retry.
-    if ((r.status === 0 || r.status === 524) && path.includes("gex-heatmap?ticker=SPX")) {
+    // Cold SPX matrix / 0DTE board builds can exceed Cloudflare's ~100s origin timeout; warm retry.
+    if ((r.status === 0 || r.status === 504 || r.status === 524) && (path.includes("gex-heatmap?ticker=SPX") || path.includes("zerodte/board"))) {
       await new Promise((res) => setTimeout(res, 3000));
       r = app(path);
     }

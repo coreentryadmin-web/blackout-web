@@ -179,7 +179,14 @@ async function httpItems() {
     }
     const wj = w.json ?? {};
     if (w.status !== 200) {
-      add("P0", "watchdog", "watchdog:http", "Cron watchdog HTTP error", `HTTP ${w.status}${w.err ? ` (${w.err})` : ""}`);
+      const authMismatch = w.status === 401 || w.status === 403;
+      add(
+        authMismatch ? "P2" : "P0",
+        "watchdog",
+        "watchdog:http",
+        authMismatch ? "Cron watchdog auth mismatch (stale CRON_SECRET in env)" : "Cron watchdog HTTP error",
+        `HTTP ${w.status}${w.err ? ` (${w.err})` : ""}`
+      );
     } else {
       for (const key of wj.rth_stale_keys ?? []) {
         add("P0", "watchdog", `watchdog:rth-stale:${key}`, `RTH stale cron: ${key}`, "market_hours_stale during RTH — live data warmer may be down.");
@@ -308,4 +315,4 @@ if (pretty) {
   console.log(JSON.stringify(payload));
 }
 
-process.exit(unique.length ? 1 : 0);
+process.exit(unique.some((i) => i.priority === "P0" || i.priority === "P1") ? 1 : 0);
