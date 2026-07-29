@@ -5,6 +5,30 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-29 — [SPX] EOD Pin Forecaster glued ~120pts below spot (weak far wall)
+
+**Severity.** P1 — SPX Slayer EOD Pin panel + Vector "Pin" axis tag looked frozen all afternoon;
+traders saw projected close ~7313 while spot ~7420–7430 (−110 to −120pts) with only 15% confidence.
+
+**Evidence (live 2026-07-29 ~14:41–14:46 ET).**
+- `GET /api/market/spx/pin`: spot 7422.87 → projectedClose **7312.29**, magnet put_wall **7300 @ 3% OI**,
+  pinPct 0.15; 12s later spot −2.6pts but proj moved only −0.26 (visually static at 1dp).
+- UI screenshots: Projected close 7,313.4 → 7,313.3 over 32s; "pins to 7,313 put wall" (mislabeled).
+
+**Root cause.**
+1. `oiWalls` picked walls by **raw max OI** on each side of spot — a thin far put at 7300 won a
+   fragmented book.
+2. `pullFraction` ignored `magnetStrengthPct` — short-γ base 0.9 × accelerating charm ≈ **90% pull**
+   to that 3% wall → projected close glued near the magnet, so spot ticks barely moved the headline.
+3. MC seed `floor(nowMs/60_000)` only changed once/minute → MC overlay looked frozen across polls.
+4. UI "pins to {pinPx}" showed the unsnapped close, not the magnet strike.
+
+**Fix.** Distance-weighted wall score `oi/(1+|K−S|/spacing)`; strength-scaled pull via
+`magnetPullScale`; weak-wall (&lt;5% OI) prefers nearer max pain; MC seed every 5s; UI labels magnet
+strike. Tests cover the live regression.
+
+**Status.** `cursor/spx-pin-weak-magnet-3d11` → PR.
+
 ## 2026-07-29 — [ops] ops-auto-fix #1247 — stale GitHub secrets + false cron failures
 
 **Severity.** P1 — `ops-collect` reported `postgres:query-failed` (user `postgres`) and
