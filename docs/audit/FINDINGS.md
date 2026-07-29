@@ -5,6 +5,7 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+<<<<<<< HEAD
 ## 2026-07-29 — [Thermal] Near-Term Triple Desk extreme cells look “broken”
 
 **Severity.** P1 UX — yellow/purple call/put-wall cells misalign, overflow neighbors, and
@@ -25,6 +26,34 @@ inflated cell width.
 min-width raised to ~4.85rem so `+$261.0M`-class labels fit.
 
 **Status.** Branch `cursor/thermal-triple-desk-ui-3d11`.
+=======
+## 2026-07-29 — [0DTE] Precision harden — stop opening measured-losing commits
+
+**Severity.** P0 product — graded book **35.6% WR (36W/65L, n=101)** sits on the −50/+100
+breakeven line (~33%). Funnel remodel (#1199) shipped multi-rail discovery; edge did not.
+
+**Root cause (architecture diagnosis).** The *spine* (discovery → gates → Cortex → governor →
+ledger → exits → grade) is sound. What weakened the book were **volume-first loosenings** that
+reopened measured-losing buckets:
+1. G-12 confluence default **1** (1-conf = 0% EV; only 2-conf = +15.9% EV).
+2. BREAKOUT/PIN G-3 floor **58** (inside the flat/toxic 55–64 band).
+3. Cortex veto-blind **ABSTAIN** (2026-07-27) — fresh commits opened without gex-walls +
+   flow-quality veto protection (Phase-0 firewall leak #1).
+4. Aggression share cleared on the **0.5 neutral default** when `ask_pct` was missing (#1028 held).
+
+**Fix (precision restore, env-overridable).**
+- `ZERODTE_CONFLUENCE_MIN` / `_EARLY` default **2**.
+- BREAKOUT/PIN score floors → **65** (same as FLOW).
+- `failClosedOnVetoBlind:true` → **VETO_BLIND HOLD** again (`cortex_veto_blind`).
+- `SETUP_MIN_KNOWN_AGGR_FRAC = 0.5` — no aggressor metadata ⇒ reject.
+- `GATE_VERSION=v6`, `CORTEX_VERSION=v2` (calibration partitions the new cohort).
+
+**Blast radius.** Fewer directional commits; WATCH/SKIP cards rise. Condor path unchanged
+(G-12/G-1 skipped for condors). Ops can dial `ZERODTE_CONFLUENCE_MIN=1` if the board empties
+under provider stress — do not leave it there.
+
+**Status.** Branch `cursor/zerodte-commit-harden-3d11`.
+>>>>>>> edf7403f (docs(audit): log 0DTE precision harden (confluence≥2, veto-blind, score 65))
 
 ## 2026-07-29 — [Night Hawk Legacy] Stale edition: cron never rebuilds after market close
 

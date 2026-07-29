@@ -58,11 +58,13 @@ export const SCORER_VERSION = "v2";
 /** Gate stack (G-1…G-n thresholds + calibration/enforce modes). Bump when a gate's
  *  threshold moves or a gate flips calibration↔enforce (it changes what commits).
  *  v4 (2026-07-28): G-15 not_zero_dte — fresh commits require ZERO_DTE contract horizon.
- *  v5 (2026-07-29): G-15 removed — ONE_DTE commits allowed (Monday equity starvation fix). */
-export const GATE_VERSION = "v5";
+ *  v5 (2026-07-29): G-15 removed — ONE_DTE commits allowed (Monday equity starvation fix).
+ *  v6 (2026-07-29): precision harden — confluence floor 2, BREAKOUT/PIN score floor 65. */
+export const GATE_VERSION = "v6";
 /** Night Hawk Cortex evidence vector + weighting. Bump when the Cortex composition or
- *  its veto/abstain logic changes (it changes which plays survive to commit). */
-export const CORTEX_VERSION = "v1";
+ *  its veto/abstain logic changes (it changes which plays survive to commit).
+ *  v2 (2026-07-29): veto-blind fail-closed restored for fresh commits. */
+export const CORTEX_VERSION = "v2";
 /** Portfolio governor (concentration / contradiction / same-direction caps). Bump when
  *  a governor rule changes which of a day's candidates actually commit. */
 export const GOVERNOR_VERSION = "v1";

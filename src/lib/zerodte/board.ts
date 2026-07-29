@@ -579,6 +579,13 @@ const SETUP_MAX_DTE = 1; // 0DTE board: today + tomorrow expiries only
 /** Aggressive (at-the-ask) share of the tape must be meaningful — a tape of SOLD
  *  premium (bid-side prints) is income harvesting, not directional conviction. */
 export const SETUP_MIN_AGGR_SHARE = 0.3;
+/** At least this fraction of the gross premium must come from prints that actually CARRY
+ *  aggressor metadata (a finite ask_pct). Prints with no ask_pct get a neutral 0.5 aggression
+ *  weight so thin metadata doesn't zero the board — but if (almost) EVERY print lacks it, the
+ *  aggression share collapses to ~0.5 and clears SETUP_MIN_AGGR_SHARE with ZERO real aggressor
+ *  evidence, and direction reverts to a raw call-vs-put premium split. This floor fails that
+ *  case closed: no aggressor data ⇒ can't assert conviction (9-1 / PR #1028). */
+export const SETUP_MIN_KNOWN_AGGR_FRAC = 0.5;
 /** Top strike more than this % IN the money = stock replacement, not a directional
  *  0DTE bet — the SNDK 1880p-at-1723 class of fake-out. */
 export const SETUP_MAX_ITM_PCT = 2;
@@ -745,6 +752,8 @@ export function deriveZeroDteSetups(
     callAggr: number;
     putAggr: number;
     aggrWeighted: number;
+    /** Gross premium from prints that carry aggressor metadata (finite ask_pct). */
+    knownAskPrem: number;
     sweep: number;
     gross: number;
     prints: number;
@@ -782,6 +791,7 @@ export function deriveZeroDteSetups(
         callAggr: 0,
         putAggr: 0,
         aggrWeighted: 0,
+        knownAskPrem: 0,
         sweep: 0,
         gross: 0,
         prints: 0,
@@ -805,6 +815,7 @@ export function deriveZeroDteSetups(
       agg.putAggr += prem * w;
     }
     agg.aggrWeighted += prem * w;
+    if (r.ask_pct != null && Number.isFinite(r.ask_pct)) agg.knownAskPrem += prem;
     agg.gross += prem;
     agg.prints += 1;
     const isSweep = (r.alert_rule ?? "").toLowerCase().includes("sweep");
@@ -888,9 +899,17 @@ export function deriveZeroDteSetups(
     }
     // Aggressor filter: direction is read from AT-THE-ASK premium only. A tape of
     // sold premium (low aggressive share) is harvesting, not conviction — skip it.
+    // 9-1: the aggression share is only trustworthy if real aggressor metadata backs it.
+    // When (almost) every print lacks ask_pct, `aggression` is the ~0.5 neutral default
+    // and would clear the share gate with no evidence — fail that closed.
     const aggrTotal = agg.callAggr + agg.putAggr;
     const aggression = agg.gross > 0 ? agg.aggrWeighted / agg.gross : 0;
-    if (aggrTotal <= 0 || aggression < SETUP_MIN_AGGR_SHARE) {
+    const knownAggrFrac = agg.gross > 0 ? agg.knownAskPrem / agg.gross : 0;
+    if (
+      aggrTotal <= 0 ||
+      aggression < SETUP_MIN_AGGR_SHARE ||
+      knownAggrFrac < SETUP_MIN_KNOWN_AGGR_FRAC
+    ) {
       opts?.rejections?.push({
         ticker,
         gate_failed: "min_aggr_share",

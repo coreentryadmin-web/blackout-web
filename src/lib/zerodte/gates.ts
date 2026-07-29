@@ -96,28 +96,23 @@ export const LATE_AFTERNOON_BLOCK_LABEL = "14:00 ET";
 // exactly the −12.5% bucket. Live calibration (n=98 graded) confirmed the hole: the confluence read
 // was null ("no_read") on 96/98 committed plays, so the board was committing blind to confirmation.
 // G-12 makes confluence a real commit input: a fresh commit needs at least ZERODTE_CONFLUENCE_MIN
-// confirmations. Default 1 is the CONSERVATIVE floor — it blocks only the measured-losing 0-conf
-// setups (a loud print with neither VWAP nor tape behind it) and leaves every 1-/2-conf setup
-// untouched, so the board is not starved (G-1 already blocks counter-tape, so a survivor is either
-// market-aligned = 1 conf, or flat-tape needing its own VWAP side = 1 conf).
+// confirmations. Default 2 (restored 2026-07-29) is the measured +EV bucket (+15.9% EV, n=22);
+// 0-conf (−12.5%) and 1-conf (0% EV) are the precision filter — fewer prints, stronger book.
+// Lower via ZERODTE_CONFLUENCE_MIN=1 if the desk must unstarve under provider stress.
 //
-// Early window: inside [10:00, 10:45) ET the floor rises to ZERODTE_CONFLUENCE_MIN_EARLY.
-// CHANGED 2026-07-27: default lowered from 2 → 1 (same as the standard floor). The 2-conf
-// early requirement was starving the morning board — most plays in the first 45 minutes only
-// carry 1 confirmation (market-aligned OR VWAP-confirmed, rarely both that early) and the
-// double requirement blocked nearly everything, contributing to zero-play sessions. The
-// operator can still raise it via env if calibration evidence supports it. Both floors are
-// config-gated so the ledger can tune them without a deploy.
+// Early window: inside [10:00, 10:45) ET the floor is ZERODTE_CONFLUENCE_MIN_EARLY (default 2 —
+// the measured-negative early window is where a single-confirmation loud print hurts most).
+// Both floors are config-gated so the ledger can tune them without a deploy.
 //
 // FAIL-OPEN on a missing read: unlike the market-state preconditions (bias/governor, which fail
 // CLOSED), G-12 only fires when a confluence read is actually PRESENT and shows too few
 // confirmations. A null read (not the live path — scan.ts always attaches one before this gate —
 // but true in fixture replays) is not itself a block; we never manufacture a block from an
 // unmeasured factor.
-export const ZERODTE_CONFLUENCE_MIN = envInt("ZERODTE_CONFLUENCE_MIN", 1);
+export const ZERODTE_CONFLUENCE_MIN = envInt("ZERODTE_CONFLUENCE_MIN", 2);
 export const ZERODTE_CONFLUENCE_MIN_EARLY = Math.max(
   ZERODTE_CONFLUENCE_MIN,
-  envInt("ZERODTE_CONFLUENCE_MIN_EARLY", 1)
+  envInt("ZERODTE_CONFLUENCE_MIN_EARLY", 2)
 );
 
 /** Telemetry: how many times G-12 encountered a null confluence read and failed OPEN
@@ -228,12 +223,12 @@ export type ZeroDteGateCalibration = {
 // raise the floor above the 55-64 band. Judged AFTER the intraday edge layer, so a
 // raw-evidence 70 that the tape/time-of-day layer marked down to 62 does NOT clear.
 export const ZERODTE_SCORE_FLOOR = 65;
-/** Origin-aware G-3 floors. FLOW keeps the strict 65 floor (direct print evidence). BREAKOUT/PIN
- *  use 58 — calibration's 55-64 band is near flat (−3.6% avg, 36.8% WR) while <55 is toxic
- *  (20% WR / −23% avg); the rescaled breakout/pin scores put real movers at 65+, and 58 is the
- *  safety net so a slightly-under-65 multi-rail name is not discarded solely for lacking prints. */
-export const ZERODTE_SCORE_FLOOR_BREAKOUT = 58;
-export const ZERODTE_SCORE_FLOOR_PIN = 58;
+/** Origin-aware G-3 floors. 2026-07-29 precision restore: BREAKOUT/PIN share the same 65
+ *  commit bar as FLOW. The 58 "unstarve" floor sat inside the measured near-flat 55–64 band
+ *  (−3.6% avg / 36.8% WR) and admitted weak single-rail movers. Multi-rail +8 corroboration
+ *  still helps real confluence clear 65; env overrides remain available. */
+export const ZERODTE_SCORE_FLOOR_BREAKOUT = envInt("ZERODTE_SCORE_FLOOR_BREAKOUT", 65);
+export const ZERODTE_SCORE_FLOOR_PIN = envInt("ZERODTE_SCORE_FLOOR_PIN", 65);
 
 /** Resolve the G-3 score floor for a setup's discovery origin set. Pure. */
 export function scoreFloorForOrigins(origins: readonly string[] | null | undefined): number {
@@ -242,7 +237,7 @@ export function scoreFloorForOrigins(origins: readonly string[] | null | undefin
   if (set.includes("FLOW")) return ZERODTE_SCORE_FLOOR;
   if (set.includes("BREAKOUT") && !set.includes("PIN")) return ZERODTE_SCORE_FLOOR_BREAKOUT;
   if (set.includes("PIN") && !set.includes("BREAKOUT")) return ZERODTE_SCORE_FLOOR_PIN;
-  // BREAKOUT+PIN corroboration (no FLOW) — use the looser floor; multi-rail already boosted score.
+  // BREAKOUT+PIN corroboration (no FLOW) — still the origin floor (now = 65 by default).
   if (set.includes("BREAKOUT") || set.includes("PIN")) return ZERODTE_SCORE_FLOOR_BREAKOUT;
   return ZERODTE_SCORE_FLOOR;
 }
