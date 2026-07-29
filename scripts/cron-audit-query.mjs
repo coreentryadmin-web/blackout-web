@@ -6,7 +6,7 @@
  * Usage: npm run validate:cron
  */
 import { ALL_CRON_KEYS } from "./railway-cron-services.mjs";
-import { createAuditClient, resolveAuditDbUrl } from "./pg-audit.mjs";
+import { createAuditClient, resolveAuditDbUrl, isPrivateDbUnreachableError } from "./pg-audit.mjs";
 
 const JOB_KEYS = [...ALL_CRON_KEYS];
 
@@ -15,12 +15,21 @@ const PROVISION_PENDING = new Set([]);
 
 const dbUrl = resolveAuditDbUrl();
 if (!dbUrl) {
-  console.error("[cron-audit] DATABASE_PUBLIC_URL not set");
-  process.exit(1);
+  console.warn("[cron-audit] DATABASE_PUBLIC_URL not set — skipping (HTTP watchdog covers cron health)");
+  process.exit(0);
 }
 
 const client = createAuditClient(dbUrl);
-await client.connect();
+try {
+  await client.connect();
+} catch (e) {
+  const msg = e instanceof Error ? e.message : String(e);
+  if (isPrivateDbUnreachableError(msg)) {
+    console.warn(`[cron-audit] Postgres unreachable from this host — skipping: ${msg}`);
+    process.exit(0);
+  }
+  throw e;
+}
 
 const q = async (sql, params) => (await client.query(sql, params)).rows;
 
