@@ -3,7 +3,7 @@
  */
 import { execSync } from "node:child_process";
 import { createRequire } from "node:module";
-import { prodSecret } from "./audit/lib/prod-secrets.mjs";
+import { auditSecret } from "./audit/lib/prod-secrets.mjs";
 
 const require = createRequire(import.meta.url);
 const { Client } = require("pg");
@@ -19,13 +19,9 @@ export function auditPgSsl(connectionString) {
   return { rejectUnauthorized: strict };
 }
 
-/** Resolve DATABASE_PUBLIC_URL from env, AWS Secrets Manager, or legacy Railway variables. */
+/** Resolve DATABASE_PUBLIC_URL from AWS Secrets Manager, env, or legacy Railway variables. */
 export function resolveAuditDbUrl() {
-  let dbUrl =
-    process.env.DATABASE_PUBLIC_URL ||
-    process.env.DATABASE_URL ||
-    prodSecret("DATABASE_PUBLIC_URL") ||
-    prodSecret("DATABASE_URL");
+  let dbUrl = auditSecret("DATABASE_PUBLIC_URL") || auditSecret("DATABASE_URL");
   if (!dbUrl) {
     try {
       const raw = execSync("railway variables --service blackout-web --json 2>/dev/null", {
@@ -43,6 +39,11 @@ export function resolveAuditDbUrl() {
 /** True when Postgres is unreachable from this host (private RDS / cloud agent sandbox). */
 export function isPrivateDbUnreachableError(message) {
   return /ECONNRESET|ETIMEDOUT|ENOTFOUND|timeout|ECONNREFUSED/i.test(String(message ?? ""));
+}
+
+/** Stale GitHub/env DATABASE_PUBLIC_URL (wrong user/password) — not a prod outage. */
+export function isStaleAuditDbAuthError(message) {
+  return /password authentication failed/i.test(String(message ?? ""));
 }
 
 export function createAuditClient(connectionString) {

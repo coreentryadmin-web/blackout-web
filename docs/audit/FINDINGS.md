@@ -5,6 +5,24 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-29 — [ops] ops-auto-fix #1247 — stale GitHub secrets + false cron failures
+
+**Severity.** P1 — `ops-collect` reported `postgres:query-failed` (user `postgres`) and
+`watchdog:http` 401; blocked autonomous ops loop.
+
+**Root cause.** (1) `resolveAuditDbUrl()` preferred stale `DATABASE_PUBLIC_URL` GitHub
+secret over AWS Secrets Manager; (2) Cloud Agent pods lacked `aws` CLI so `auditSecret()`
+fell back to stale env `CRON_SECRET`; (3) `data-correctness` logged `ok:false` when
+FLAGS were found (cron ran fine); (4) `socket-health` on web tier failed options cluster
+read when Redis SCAN unavailable.
+
+**Fix.** `auditSecret()` for DB URL; `@aws-sdk/client-secrets-manager` SDK fallback in
+`prod-secrets.mjs`; `ops-auto-fix.yml` uses AWS creds (not legacy GitHub DB/CRON secrets);
+skip postgres audit on unreachable/stale-auth hosts; data-correctness `logCronRun({ok:true})`
+on successful sweep; options cluster health treats ingest leader lock as live.
+
+**Status.** PR `fix/ops-auto-fix-secrets-1247` → `main`.
+
 ## 2026-07-29 — [0DTE] G-9 `plan_quote_stale` false-positive on live REST books
 
 **Severity.** P0 — AAPL/MU/GOOGL cleared score/confluence but stayed BLOCKED on
