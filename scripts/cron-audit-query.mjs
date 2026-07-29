@@ -1,22 +1,65 @@
 #!/usr/bin/env node
 /**
  * Prod audit: latest cron_job_runs per registered job + zero-run detection.
- * Env: DATABASE_PUBLIC_URL or DATABASE_URL (required)
+ * Env: DATABASE_PUBLIC_URL or DATABASE_URL (optional when AWS creds + CRON_SECRET available)
  *
  * Usage: npm run validate:cron
  */
 import { ALL_CRON_KEYS } from "./railway-cron-services.mjs";
+<<<<<<< HEAD
 import { createAuditClient, resolveAuditDbUrl, isPrivateDbUnreachableError } from "./pg-audit.mjs";
+=======
+import {
+  createAuditClient,
+  resolveAuditDbUrl,
+  isPrivateDbUnreachableError,
+  isStaleAuditDbAuthError,
+} from "./pg-audit.mjs";
+import { auditSecret } from "./audit/lib/prod-secrets.mjs";
+>>>>>>> origin/main
 
 const JOB_KEYS = [...ALL_CRON_KEYS];
+const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
 
 /** Registered in code + TOML but cron trigger service not yet provisioned — warn, don't fail CI. */
 const PROVISION_PENDING = new Set([]);
 
+async function auditViaWatchdog() {
+  const cron = auditSecret("CRON_SECRET");
+  if (!cron) {
+    console.error("[cron-audit] CRON_SECRET not set — cannot run HTTP watchdog fallback");
+    process.exit(1);
+  }
+  const res = await fetch(`${BASE}/api/cron/cron-staleness-watchdog`, {
+    headers: { Authorization: `Bearer ${cron}` },
+    signal: AbortSignal.timeout(90_000),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (res.status !== 200) {
+    console.error(`[cron-audit] watchdog HTTP ${res.status}`);
+    process.exit(1);
+  }
+  const problems = [...(body.problem_keys ?? []), ...(body.rth_stale_keys ?? [])];
+  console.log("\n=== CRON AUDIT (HTTP watchdog fallback) ===\n");
+  console.log(`checked: ${body.checked ?? "?"}`);
+  console.log(`problems: ${problems.length ? problems.join(", ") : "(none)"}`);
+  console.log(`error_spike: ${body.error_spike ?? "none"} (${body.error_count ?? 0} in ${body.error_window_min ?? "?"}m)`);
+  if (body.error_spike === "critical" || problems.length > 0) {
+    process.exit(1);
+  }
+  console.log("\nGREEN — cron watchdog reports healthy.\n");
+  process.exit(0);
+}
+
 const dbUrl = resolveAuditDbUrl();
 if (!dbUrl) {
+<<<<<<< HEAD
   console.warn("[cron-audit] DATABASE_PUBLIC_URL not set — skipping (HTTP watchdog covers cron health)");
   process.exit(0);
+=======
+  console.warn("[cron-audit] No Postgres URL — using HTTP watchdog fallback");
+  await auditViaWatchdog();
+>>>>>>> origin/main
 }
 
 const client = createAuditClient(dbUrl);
@@ -24,11 +67,20 @@ try {
   await client.connect();
 } catch (e) {
   const msg = e instanceof Error ? e.message : String(e);
+<<<<<<< HEAD
   if (isPrivateDbUnreachableError(msg)) {
     console.warn(`[cron-audit] Postgres unreachable from this host — skipping: ${msg}`);
     process.exit(0);
   }
   throw e;
+=======
+  if (isPrivateDbUnreachableError(msg) || isStaleAuditDbAuthError(msg)) {
+    console.warn(`[cron-audit] Postgres unavailable (${msg}) — using HTTP watchdog fallback`);
+    await auditViaWatchdog();
+  }
+  console.error(`[cron-audit] Postgres connect failed: ${msg}`);
+  process.exit(1);
+>>>>>>> origin/main
 }
 
 const q = async (sql, params) => (await client.query(sql, params)).rows;

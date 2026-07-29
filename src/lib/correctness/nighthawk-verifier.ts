@@ -396,6 +396,9 @@ export async function verifyNightHawk(_marketOpen: boolean): Promise<TickerScore
       let unmatched = 0;
       const contraDetail: string[] = [];
       const premDetail: string[] = [];
+      const publishedAtMs = Date.parse(edition.published_at ?? "");
+      const premiumFresh =
+        Number.isFinite(publishedAtMs) && Date.now() - publishedAtMs <= 4 * 60 * 60 * 1000;
       for (const { play, parsed } of parseable) {
         const chain = chains[play.ticker.toUpperCase()];
         if (!chain || !chain.rows.length) {
@@ -410,8 +413,9 @@ export async function verifyNightHawk(_marketOpen: boolean): Promise<TickerScore
         }
         if (verdict.verified) {
           confirmed++;
-          // Premium vs chain ask (only when we matched the exact strike+expiry row).
-          if (play.entry_premium != null && parsed) {
+          // Premium vs chain ask — only for freshly published editions; overnight gaps
+          // move option premiums far beyond any reasonable band (false flags).
+          if (premiumFresh && play.entry_premium != null && parsed) {
             const row = chain.rows.find(
               (r) => Math.abs(r.strike - parsed.strike) < 1e-6 && (!parsed.expiryYmd || r.expiry === parsed.expiryYmd)
             );
