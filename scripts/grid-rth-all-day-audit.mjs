@@ -15,6 +15,7 @@ import { inRthOpenWindow, isTradingDayEt, todayEtYmd, etParts } from "./gha-et-w
 import { spotsAgree } from "./audit/lib/cross-tool-tolerance.mjs";
 import { probeDataCorrectness } from "./audit/lib/data-correctness-probe.mjs";
 import { fetchAuditJson, releaseAuditClerkSession } from "./audit/lib/audit-auth-fetch.mjs";
+import { auditSecret } from "./audit/lib/prod-secrets.mjs";
 
 const force = process.argv.includes("--force");
 const phaseArg = process.argv.find((a) => a.startsWith("--phase="));
@@ -24,7 +25,7 @@ const BASE = (
   process.env.AUDIT_APP_URL ??
   "https://blackouttrades.com"
 ).replace(/\/$/, "");
-const CRON = process.env.CRON_SECRET || "";
+const CRON = auditSecret("CRON_SECRET");
 const OUT = join(process.cwd(), "audit-output");
 mkdirSync(OUT, { recursive: true });
 

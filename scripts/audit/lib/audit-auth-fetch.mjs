@@ -4,6 +4,7 @@
  * auth is the authoritative member-path fallback (same as zerodte-logic-audit).
  */
 import { mintClerkPremiumSession } from "./prod-clerk-session.mjs";
+import { auditSecret } from "./prod-secrets.mjs";
 
 /** @type {{ cookieHeader: string, cleanup?: () => Promise<void> } | null} */
 let clerkSessionCache = null;
@@ -30,7 +31,7 @@ export async function releaseAuditClerkSession() {
  */
 export async function fetchAuditJson(base, path) {
   const url = `${base.replace(/\/$/, "")}${path}`;
-  const cron = process.env.CRON_SECRET?.trim();
+  const cron = auditSecret("CRON_SECRET");
   if (cron) {
     const r = await fetch(url, {
       headers: { Authorization: `Bearer ${cron}`, Accept: "application/json" },

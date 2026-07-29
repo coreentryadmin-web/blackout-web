@@ -13,12 +13,10 @@
  *
  * Requires: CLERK_SECRET_KEY, NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
  */
-import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { chromium } from "playwright";
-import { isAuthFailureStatus } from "./audit/lib/auth-status.mjs";
+import { fetchAuditJson, releaseAuditClerkSession } from "./audit/lib/audit-auth-fetch.mjs";
 import {
   mintIosPlaywrightSession,
   onboardingInitScript,
@@ -31,10 +29,6 @@ const BASE = (baseArg ? baseArg.slice("--base=".length) : "https://blackouttrade
 );
 const SECRET = process.env.CLERK_SECRET_KEY;
 const PUB = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || "";
-const EMAIL = process.env.AUDIT_EMAIL || `zerodte-e2e-${Date.now()}@blackouttrades.com`;
-const PHONE = process.env.AUDIT_PHONE || "+1415555" + String(Math.floor(Math.random() * 9000) + 1000);
-const API = "https://api.clerk.com/v1";
-const CJS = "5.57.0";
 const UA =
   "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36";
 const OUT = join(process.cwd(), "audit-output");
@@ -46,143 +40,14 @@ const rec = (name, status, detail) => {
   console.log(`  [${status}] ${name}${detail ? " — " + detail : ""}`);
 };
 
-function fapiHost() {
-  try {
-    const d = Buffer.from(PUB.replace(/^pk_(live|test)_/, ""), "base64")
-      .toString("utf8")
-      .replace(/\$$/, "");
-    if (d.includes(".")) return `https://${d}`;
-  } catch {}
-  return "https://clerk.blackouttrades.com";
-}
-const FAPI = fapiHost();
-const TMP = join(tmpdir(), `grid-e2e-${process.pid}`);
-mkdirSync(TMP, { recursive: true });
-const JAR = join(TMP, "cookies.txt");
-let seq = 0;
-
-function curl({ method = "GET", url, headers = {}, form, urlencodeForm, json, jar = false, saveJar = false }) {
-  const bf = join(TMP, `b${++seq}`);
-  const args = ["-sS", "--max-time", "90", "-o", bf, "-w", "%{http_code}", "-A", UA];
-  if (method !== "GET") args.push("-X", method);
-  for (const [k, v] of Object.entries(headers)) args.push("-H", `${k}: ${v}`);
-  if (json) args.push("-H", "Content-Type: application/json", "--data", JSON.stringify(json));
-  if (form) for (const [k, v] of Object.entries(form)) args.push("--data", `${k}=${v}`);
-  if (urlencodeForm) for (const [k, v] of Object.entries(urlencodeForm)) args.push("--data-urlencode", `${k}=${v}`);
-  if (jar) args.push("-b", JAR);
-  if (saveJar) args.push("-c", JAR);
-  args.push(url);
-  try {
-    const s = Number(execFileSync("curl", args, { encoding: "utf8", maxBuffer: 80 * 1024 * 1024 }).trim());
-    return { s, b: existsSync(bf) ? readFileSync(bf, "utf8") : "" };
-  } catch (e) {
-    return { s: 0, b: "", err: String(e.message || e).split("\n")[0] };
-  }
-}
-const J = (r) => {
-  try {
-    return JSON.parse(r.b);
-  } catch {
-    return null;
-  }
-};
-const backend = (m, p, j) =>
-  curl({ method: m, url: `${API}${p}`, headers: { Authorization: `Bearer ${SECRET}` }, json: j });
-
-async function authSession() {
-  if (!SECRET) throw new Error("CLERK_SECRET_KEY missing");
-  const create = backend("POST", "/users", {
-    email_address: [EMAIL],
-    phone_number: [PHONE],
-    public_metadata: { role: "admin", tier: "premium" },
-    skip_password_requirement: true,
-    skip_legal_checks: true,
-  });
-  const cj = J(create);
-  let userId = cj?.id;
-  if (!userId && /form_identifier_exists/.test(JSON.stringify(cj?.errors || ""))) {
-    const lookup = curl({
-      method: "GET",
-      url: `${API}/users?email_address=${encodeURIComponent(EMAIL)}`,
-      headers: { Authorization: `Bearer ${SECRET}` },
-    });
-    const existing = J(lookup)?.[0];
-    userId = existing?.id;
-    if (userId) {
-      backend("PATCH", `/users/${userId}`, { public_metadata: { role: "admin", tier: "premium" } });
-    }
-  }
-  if (!userId) throw new Error(`Clerk user create failed: ${create.b.slice(0, 200)}`);
-  const ticket = J(backend("POST", "/sign_in_tokens", { user_id: userId }))?.token;
-  if (!ticket) throw new Error("sign_in_token failed");
-  const si = curl({
-    method: "POST",
-    url: `${FAPI}/v1/client/sign_ins?_clerk_js_version=${CJS}`,
-    headers: { Origin: BASE, Referer: `${BASE}/`, "Content-Type": "application/x-www-form-urlencoded" },
-    form: { strategy: "ticket" },
-    urlencodeForm: { ticket },
-    saveJar: true,
-    jar: true,
-  });
-  const sid = J(si)?.response?.created_session_id;
-  if (!sid) throw new Error(`FAPI ticket exchange failed: ${si.b.slice(0, 200)}`);
-  const clientUat = Math.floor(Date.now() / 1000);
-  let tok = J(
-    curl({
-      method: "POST",
-      url: `${FAPI}/v1/client/sessions/${sid}/tokens?_clerk_js_version=${CJS}`,
-      headers: { Origin: BASE, Referer: `${BASE}/`, "Content-Type": "application/x-www-form-urlencoded" },
-      jar: true,
-      saveJar: true,
-    })
-  )?.jwt;
-  const app = (path, opts = {}) => {
-    for (let i = 0; i < 2; i++) {
-      if (!tok) {
-        tok = J(
-          curl({
-            method: "POST",
-            url: `${FAPI}/v1/client/sessions/${sid}/tokens?_clerk_js_version=${CJS}`,
-            headers: {
-              Origin: BASE,
-              Referer: `${BASE}/`,
-              "Content-Type": "application/x-www-form-urlencoded",
-            },
-            jar: true,
-            saveJar: true,
-          })
-        )?.jwt;
-      }
-      const r = curl({
-        method: opts.method || "GET",
-        url: `${BASE}${path}`,
-        headers: {
-          Cookie: `__session=${tok}; __client_uat=${clientUat}`,
-          Accept: "application/json",
-          ...(opts.headers || {}),
-        },
-        json: opts.json,
-      });
-      if (isAuthFailureStatus(r.s)) {
-        tok = null;
-        continue;
-      }
-      return { status: r.s, json: J(r), raw: r.b };
-    }
-    return { status: 401, json: null, raw: "" };
-  };
-  return {
-    userId,
-    signInUrl: `${BASE}/sign-in?__clerk_ticket=${ticket}`,
-    app,
-    cleanup: () => backend("DELETE", `/users/${userId}`),
-  };
-}
-
-async function auditGridApis(app) {
-  const zb = app("/api/market/zerodte/board");
-  if (zb.status === 200 && zb.json?.available) {
-    rec("e2e:zerodte-board-api", "PASS", `${zb.json.setups?.length ?? 0} setups · ledger ${zb.json.ledger?.length ?? 0}`);
+async function auditGridApis() {
+  const zb = await fetchAuditJson(BASE, "/api/market/zerodte/board");
+  if (zb.ok && zb.json?.available) {
+    rec(
+      "e2e:zerodte-board-api",
+      "PASS",
+      `${zb.json.setups?.length ?? 0} setups · ledger ${zb.json.ledger?.length ?? 0} (via ${zb.via})`
+    );
   } else if (zb.status === 403) {
     rec("e2e:zerodte-board-api", "WARN", "403 — follows Night Hawk's launch gate (requireToolApi('nighthawk'))");
   } else {
@@ -193,7 +58,7 @@ async function auditGridApis(app) {
   // 2026-07-07 — see docs/audit/FINDINGS.md. 0DTE Command now lives standalone on /nighthawk;
   // its only API route (/api/market/zerodte/board, checked above) is unchanged.
 
-  const flows = app("/api/market/flows?limit=20");
+  const flows = await fetchAuditJson(BASE, "/api/market/flows?limit=20");
   const count = flows.json?.flows?.length ?? flows.json?.alerts?.length ?? 0;
   rec("e2e:helix-flows", count > 0 ? "PASS" : "WARN", `${count} prints`);
 }
@@ -246,15 +111,13 @@ async function main() {
   }
   rec("env:clerk", "PASS");
 
-  let session;
   try {
-    session = await authSession();
-    await auditGridApis(session.app);
+    await auditGridApis();
     await auditGridUi();
   } catch (e) {
     rec("e2e:auth", "FAIL", e.message);
   } finally {
-    if (session?.cleanup) session.cleanup();
+    await releaseAuditClerkSession();
   }
 
   const fails = checks.filter((c) => c.status === "FAIL");
@@ -272,7 +135,8 @@ async function main() {
   console.log("GREEN — Grid/0DTE E2E passed.\n");
 }
 
-main().catch((e) => {
+main().catch(async (e) => {
+  await releaseAuditClerkSession();
   console.error(e);
   process.exit(1);
 });
