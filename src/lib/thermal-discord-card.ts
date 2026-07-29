@@ -492,12 +492,20 @@ export function buildThermalDiscordCardSvg(
     strikes.forEach((strike, si) => {
       const y = gridTop + 12 + si * cellH;
       const isSpot = si === spotIdx;
-      if (isSpot) {
-        colsSvg += `<rect x="${gridLeft}" y="${y}" width="${gridRight - gridLeft}" height="${cellH}" fill="rgba(34,211,238,0.08)"/>`;
+      const callWallN = Number.isFinite(call as number) ? Number(call) : null;
+      const putWallN = Number.isFinite(put as number) ? Number(put) : null;
+      const isCallRow = callWallN != null && strike === callWallN;
+      const isPutRow = putWallN != null && strike === putWallN;
+      // Full-row wall / spot washes — matches the dense triple-desk look you liked.
+      if (isCallRow) {
+        colsSvg += `<rect x="${gridLeft}" y="${y}" width="${gridRight - gridLeft}" height="${cellH}" fill="rgba(${PLUS_NODE_RGB},0.16)"/>`;
+      } else if (isPutRow) {
+        colsSvg += `<rect x="${gridLeft}" y="${y}" width="${gridRight - gridLeft}" height="${cellH}" fill="rgba(${MINUS_NODE_RGB},0.16)"/>`;
+      } else if (isSpot) {
+        colsSvg += `<rect x="${gridLeft}" y="${y}" width="${gridRight - gridLeft}" height="${cellH}" fill="rgba(34,211,238,0.09)"/>`;
       }
-      colsSvg += `<text x="${gridLeft + strikeColW - 8}" y="${y + cellH * 0.68}" text-anchor="end" fill="${
-        isSpot ? "#22d3ee" : "#f8fafc"
-      }" font-family="${FONT}" font-size="${strikeSize}" font-weight="800">${
+      const strikeFill = isCallRow ? "#ffd60a" : isPutRow ? "#e9d5ff" : isSpot ? "#22d3ee" : "#f8fafc";
+      colsSvg += `<text x="${gridLeft + strikeColW - 8}" y="${y + cellH * 0.68}" text-anchor="end" fill="${strikeFill}" font-family="${FONT}" font-size="${strikeSize}" font-weight="800">${
         Number.isFinite(strike)
           ? strike.toLocaleString("en-US", {
               maximumFractionDigits: strike % 1 === 0 ? 0 : 1,
@@ -545,7 +553,16 @@ export function buildThermalDiscordCardSvg(
           cellH - 2
         )}" rx="3" fill="${fill}"${stroke}/>`;
         if (showCellText) {
-          const textFill = isPlusNode ? "#fffbeb" : isMinusNode ? "#faf5ff" : "#f8fafc";
+          // Signed green/red money — same read as the dense desk screenshot.
+          const textFill = isPlusNode
+            ? "#fffbeb"
+            : isMinusNode
+              ? "#faf5ff"
+              : n > 0
+                ? "#00e676"
+                : n < 0
+                  ? "#ff2d55"
+                  : "#7dd3fc";
           const label = isKing ? `${fmtCompactHeatMoney(n)}★` : fmtCompactHeatMoney(n);
           colsSvg += `<text x="${cx + cellW / 2}" y="${y + cellH * 0.68}" text-anchor="middle" fill="${textFill}" font-family="${FONT}" font-size="${labelSize}" font-weight="800">${esc(
             label
