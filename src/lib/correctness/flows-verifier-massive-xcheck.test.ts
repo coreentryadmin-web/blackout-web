@@ -98,6 +98,7 @@ test("crossCheckAgainstMassive: same skew direction + valid subset does not flag
       contractsCapped: false,
       filteredPrints: 0,
       partial: false,
+      pagesTruncated: false,
       sideClassifiedPrints: 200,
     },
   };
@@ -111,7 +112,7 @@ test("crossCheckAgainstMassive: same skew direction + valid subset does not flag
   assert.match(xcheck!.detail, /INDEPENDENTLY CONFIRMED/);
 });
 
-test("crossCheckAgainstMassive: contract-capped oracle does not false-flag subset ratio", async () => {
+test("crossCheckAgainstMassive: contract-capped oracle skips subset violation — not a flag", async () => {
   const { verifyFlows } = await mod();
   reset();
   state.tapeRows = cleanTapeRows();
@@ -136,6 +137,7 @@ test("crossCheckAgainstMassive: contract-capped oracle does not false-flag subse
       contractsCapped: true,
       filteredPrints: 0,
       partial: false,
+      pagesTruncated: false,
       sideClassifiedPrints: 80,
     },
   };
@@ -144,8 +146,83 @@ test("crossCheckAgainstMassive: contract-capped oracle does not false-flag subse
   const net = findNetPremium(score);
   const xcheck = net!.checks.find((c) => c.id === "flows-xcheck-massive");
   assert.ok(xcheck, "cross-provider check present");
-  assert.notEqual(xcheck!.outcome, "flag", xcheck!.detail);
-  assert.match(xcheck!.detail, /bounded oracle|contract-capped|subset ratio not assertable/i);
+  assert.equal(xcheck!.outcome, "skipped");
+  assert.match(xcheck!.detail, /bounded|not assertable|not a flag/i);
+});
+
+test("crossCheckAgainstMassive: pages-truncated oracle skips subset violation — not a flag", async () => {
+  const { verifyFlows } = await mod();
+  reset();
+  state.tapeRows = cleanTapeRows();
+  state.anomalyRows = [];
+  state.massive = {
+    ticker: "SPY",
+    optionsRoot: "SPY",
+    expiry: "2026-07-29",
+    windowStartMs: Date.now() - 60 * 60_000,
+    windowEndMs: Date.now(),
+    totalPremium: 530_000,
+    callPremium: 159_000,
+    putPremium: 371_000,
+    totalPrints: 200,
+    callPrints: 60,
+    putPrints: 140,
+    callPct: 30,
+    byStrike: [{ strike: 630, callPremium: 0, putPremium: 500_000, totalPremium: 500_000, prints: 10 }],
+    meta: {
+      contractsRequested: 40,
+      contractsWithTrades: 33,
+      contractsCapped: false,
+      filteredPrints: 0,
+      partial: false,
+      pagesTruncated: true,
+      sideClassifiedPrints: 100,
+    },
+  };
+
+  const score = await verifyFlows(true);
+  const net = findNetPremium(score);
+  const xcheck = net!.checks.find((c) => c.id === "flows-xcheck-massive");
+  assert.equal(xcheck!.outcome, "skipped");
+  assert.match(xcheck!.detail, /bounded|not assertable|not a flag/i);
+});
+
+test("crossCheckAgainstMassive: complete oracle + UW exceeds Massive still flags", async () => {
+  const { verifyFlows } = await mod();
+  reset();
+  // UW puts on strike 630 exceed Massive total on same strike — complete oracle.
+  state.tapeRows = cleanTapeRows();
+  state.anomalyRows = [];
+  state.massive = {
+    ticker: "SPY",
+    optionsRoot: "SPY",
+    expiry: "2026-07-29",
+    windowStartMs: Date.now() - 60 * 60_000,
+    windowEndMs: Date.now(),
+    totalPremium: 500_000,
+    callPremium: 150_000,
+    putPremium: 350_000,
+    totalPrints: 100,
+    callPrints: 30,
+    putPrints: 70,
+    callPct: 30,
+    byStrike: [{ strike: 630, callPremium: 150_000, putPremium: 350_000, totalPremium: 500_000, prints: 10 }],
+    meta: {
+      contractsRequested: 40,
+      contractsWithTrades: 33,
+      contractsCapped: false,
+      filteredPrints: 0,
+      partial: false,
+      pagesTruncated: false,
+      sideClassifiedPrints: 50,
+    },
+  };
+
+  const score = await verifyFlows(true);
+  const net = findNetPremium(score);
+  const xcheck = net!.checks.find((c) => c.id === "flows-xcheck-massive");
+  assert.equal(xcheck!.outcome, "flag");
+  assert.match(xcheck!.detail, /EXCEEDS the raw Massive superset/);
 });
 
 test("crossCheckAgainstMassive: opposite skew still flags", async () => {
@@ -177,6 +254,7 @@ test("crossCheckAgainstMassive: opposite skew still flags", async () => {
       contractsCapped: false,
       filteredPrints: 0,
       partial: false,
+      pagesTruncated: false,
       sideClassifiedPrints: 200,
     },
   };
