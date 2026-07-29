@@ -12,17 +12,17 @@ export const metadata: Metadata = {
   description: "Tomorrow's playbook — evening setups ranked and scored for the next session.",
 };
 
-export default async function NightHawkPage({
-  searchParams,
-}: {
-  searchParams?: Promise<{ view?: string }> | { view?: string };
-}) {
+type PageProps = {
+  searchParams: Promise<{ view?: string }>;
+};
+
+export default async function NightHawkPage({ searchParams }: PageProps) {
   await requireTier("premium");
   if (!(await canAccessTool("nighthawk"))) return <ComingSoon toolKey="nighthawk" />;
 
-  const sp = searchParams instanceof Promise ? await searchParams : searchParams;
+  const { view } = await searchParams;
   // Soft-fail: desk still renders; client SWR fetches if seed.board is null.
-  const seed = await loadNightHawkSeedProps({ view: sp?.view }).catch(() => ({
+  const seed = await loadNightHawkSeedProps({ view }).catch(() => ({
     view: "ZERO_DTE" as const,
     board: null,
   }));
