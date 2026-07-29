@@ -51,7 +51,7 @@ export function PlanLadder() {
     <div className="mx-auto max-w-5xl">
       {/* Yearly hero card — full width, dominant */}
       {yearlyOption && (
-        <div className="plan-card-yearly relative overflow-hidden rounded-2xl border-2 border-bull/50 bg-gradient-to-br from-[#071a0e] via-[#080a10] to-[#0a1a12] p-8 text-left md:p-10">
+        <div className="plan-card-yearly relative overflow-hidden rounded-2xl border-2 border-bull/50 bg-gradient-to-br from-[#111a07] via-[#080a10] to-[#121a0a] p-8 text-left md:p-10">
           <BorderBeam color="var(--sig-bull)" duration="6s" width="2px" />
           <div className="absolute inset-0 bg-gradient-to-r from-bull/[0.06] via-transparent to-bull/[0.03] pointer-events-none" />
 
@@ -97,7 +97,7 @@ export function PlanLadder() {
                   target="_blank"
                   rel="noopener noreferrer"
                   aria-label="Unlock Premium Yearly"
-                  className="inline-flex items-center justify-center rounded-xl bg-bull px-8 py-4 font-syne text-sm font-extrabold uppercase tracking-[0.12em] text-[#021108] transition-all duration-200 hover:scale-105 hover:shadow-[0_0_30px_rgba(0,255,100,0.3)]"
+                  className="inline-flex items-center justify-center rounded-xl bg-bull px-8 py-4 font-syne text-sm font-extrabold uppercase tracking-[0.12em] text-[#0a1102] transition-all duration-200 hover:scale-105 hover:shadow-[0_0_30px_rgba(163,230,53,0.3)]"
                 >
                   Unlock Premium →
                 </a>
