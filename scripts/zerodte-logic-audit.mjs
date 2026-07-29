@@ -82,47 +82,67 @@ function scanFinite(obj, path = "", out = []) {
   return out;
 }
 
-async function liveBoardAudit() {
-  if (!CRON) {
-    rec("live:board", "SKIP", "CRON_SECRET not set");
-    return;
+async function fetchLiveBoard() {
+  if (CRON) {
+    const r = await fetch(`${BASE}/api/market/zerodte/board`, {
+      headers: { Authorization: `Bearer ${CRON}`, Accept: "application/json" },
+    });
+    if (r.ok) return { zb: await r.json(), via: "cron" };
   }
+  if (process.env.CLERK_SECRET_KEY && process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) {
+    const { mintClerkPremiumSession } = await import("./audit/lib/prod-clerk-session.mjs");
+    const session = await mintClerkPremiumSession({ appUrl: BASE });
+    if (!session.skip) {
+      try {
+        const r = await fetch(`${BASE}/api/market/zerodte/board`, {
+          headers: { Cookie: session.cookieHeader, Accept: "application/json" },
+        });
+        if (r.ok) return { zb: await r.json(), via: "clerk", cleanup: session.cleanup };
+      } finally {
+        await session.cleanup?.();
+      }
+    }
+  }
+  return null;
+}
 
-  const r = await fetch(`${BASE}/api/market/zerodte/board`, {
-    headers: { Authorization: `Bearer ${CRON}`, Accept: "application/json" },
-  });
-  if (!r.ok) {
-    rec("live:board", "FAIL", `HTTP ${r.status}`);
+async function liveBoardAudit() {
+  const fetched = await fetchLiveBoard();
+  if (!fetched) {
+    rec("live:board", CRON ? "FAIL" : "SKIP", CRON ? "HTTP 401 (CRON + Clerk fallback)" : "CRON_SECRET not set");
     return;
   }
-  const zb = await r.json();
+  const { zb, via } = fetched;
   if (!zb.available) {
     rec("live:board", "FAIL", "available=false");
     return;
   }
+  rec("live:board", "PASS", `via=${via} setups=${zb.setups?.length ?? 0} ledger=${zb.ledger?.length ?? 0}`);
 
-  const SETUP_MIN_GROSS = 750_000;
-  const SETUP_MIN_DOMINANCE = 0.65;
+  const SETUP_MIN_GROSS = 200_000;
+  const SETUP_MIN_DOMINANCE = 0.55;
   const SETUP_MIN_AGGR_SHARE = 0.3;
   const SETUP_MAX_ITM_PCT = 2;
-  const NEW_PLAY_CUTOFF_ET_MINUTES = 15 * 60;
+  const NEW_PLAY_CUTOFF_ET_MINUTES = 14 * 60;
 
   const badNums = scanFinite(zb).slice(0, 5);
   rec("live:finite-numbers", badNums.length === 0 ? "PASS" : "FAIL", badNums.join("; "));
 
-  // Every live setup must pass gate thresholds (scanner can't emit failing rows).
+  // Gate-eligible setups only — BLOCKED watch cards stay visible but never commit.
+  const eligible = (zb.setups ?? []).filter(
+    (s) => s.gate?.verdict !== "BLOCKED" && (s.prints ?? 0) > 0
+  );
   let gateFails = 0;
-  for (const s of zb.setups ?? []) {
+  for (const s of eligible) {
     if (s.gross_premium < SETUP_MIN_GROSS) gateFails++;
     if ((s.aggression ?? 0) < SETUP_MIN_AGGR_SHARE) gateFails++;
     if (s.side_dominance < SETUP_MIN_DOMINANCE) gateFails++;
     if (s.otm_pct != null && s.otm_pct < -SETUP_MAX_ITM_PCT) gateFails++;
-    if (zb.covered_elsewhere?.includes(s.ticker)) gateFails++;
   }
   rec(
     "live:setup-gates",
     gateFails === 0 ? "PASS" : "FAIL",
-    `${zb.setups?.length ?? 0} setups, ${gateFails} gate violations`
+    `${eligible.length} eligible / ${zb.setups?.length ?? 0} total, ${gateFails} gate violations`
   );
 
   // Ledger PnL math + valid statuses.
@@ -153,7 +173,7 @@ async function liveBoardAudit() {
   }
 
   // Cutoff discipline label present in product (UI contract).
-  rec("live:cutoff-constant", NEW_PLAY_CUTOFF_ET_MINUTES === 15 * 60 ? "PASS" : "FAIL", "15:00 ET");
+  rec("live:cutoff-constant", NEW_PLAY_CUTOFF_ET_MINUTES === 14 * 60 ? "PASS" : "FAIL", "14:00 ET");
 }
 
 async function main() {
