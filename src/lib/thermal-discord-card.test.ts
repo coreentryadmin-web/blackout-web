@@ -10,6 +10,7 @@ import {
   fmtCompactHeatMoney,
   fmtDeskExpiry,
   resolveCompactExpiries,
+  resolveDiscordZeroDteExpiry,
   thermalDiscordCaption,
   type ThermalCardColumn,
 } from "./thermal-discord-card.ts";
@@ -103,9 +104,10 @@ test("buildThermalDiscordCardSvg includes tickers and never invents spot", () =>
   assert.match(svg, /FLIP/);
   assert.match(svg, /LIVE SNAPSHOT/);
   assert.match(svg, /Matrix unavailable/);
-  assert.match(svg, /DRIFT/);
-  assert.match(svg, /\+ node/);
-  assert.match(svg, /− node/);
+  assert.match(svg, /DRIFT%/);
+  assert.match(svg, /0DTE/);
+  assert.match(svg, /PLUS node \(yellow\)/);
+  assert.match(svg, /MINUS node \(purple\)/);
   // Yellow +node / purple −node bead fills
   assert.match(svg, /rgba\(255,214,10/);
   assert.match(svg, /rgba\(217,123,255/);
@@ -116,7 +118,8 @@ test("buildThermalDiscordCardSvg includes tickers and never invents spot", () =>
   assert.match(caption, /Call wall/);
   assert.match(caption, /640/);
   assert.match(caption, /Wall drift/);
-  assert.match(caption, /Yellow = \+ node/);
+  assert.match(caption, /Yellow=PLUS node/);
+  assert.match(caption, /0DTE/);
   assert.doesNotMatch(caption, /Polygon|Unusual/i);
 });
 
@@ -132,4 +135,10 @@ test("discordPerExpiryExtremes + discordDriftPct", () => {
   assert.equal(ex["2026-07-28"]?.king, 102);
   assert.equal(discordDriftPct(150, 50), 50);
   assert.equal(discordDriftPct(100, null), null);
+});
+
+test("resolveDiscordZeroDteExpiry prefers today when listed", () => {
+  const near = ["2026-07-28", "2026-07-29", "2026-07-30"];
+  assert.equal(resolveDiscordZeroDteExpiry(near, near, "2026-07-29"), "2026-07-29");
+  assert.equal(resolveDiscordZeroDteExpiry(near, near, "2026-08-01"), "2026-07-28");
 });

@@ -5,6 +5,22 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-29 — [Thermal] Discord card still unreadable on mobile (nodes/drift)
+
+**Severity.** P1 UX.
+
+**Symptom.** After #1206 deploy, Discord mobile still looked “broken”: multi-expiry tiny
+cells hid yellow/purple nodes; caption legend mangled (`Yellow !! = node`) from markdown;
+DRIFT column too narrow to survive Discord downscale.
+
+**Root cause.** 8-expiry dense grid at 4K becomes ~unreadable when Discord compresses for
+phone; free-text `+`/`−`/`★`/`=` in the caption is unsafe under Discord markdown.
+
+**Fix.** Discord card = **0DTE-only** fat strip (STRIKE | DRIFT% pill | GEX); PLUS/MINUS/KING
+badges on wall rows; Discord-safe legend in a code span; taller strike band (half=28).
+
+**Status.** PR `cursor/thermal-discord-card-fix-3d11`.
+
 ## 2026-07-28 — [Thermal] Discord card missing yellow/purple nodes + % drift
 
 **Severity.** P1 UX (desk card readability / parity with major matrix).

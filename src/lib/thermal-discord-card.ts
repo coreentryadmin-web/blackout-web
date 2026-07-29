@@ -61,6 +61,29 @@ export function resolveCompactExpiries(
   return src.slice(0, Math.max(1, max));
 }
 
+/** Single 0DTE expiry for Discord heat strips — today ET if on axis, else earliest. */
+export function resolveDiscordZeroDteExpiry(
+  nearTerm: string[] | undefined | null,
+  all: string[] | undefined | null,
+  todayYmd?: string | null
+): string | null {
+  const axis = resolveCompactExpiries(nearTerm, all, 64);
+  if (axis.length === 0) return null;
+  const today =
+    typeof todayYmd === "string" && /^\d{4}-\d{2}-\d{2}$/.test(todayYmd) ? todayYmd : null;
+  if (today && axis.includes(today)) return today;
+  return axis[0] ?? null;
+}
+
+function todayEtYmd(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
 export function bandStrikesAroundSpot(
   strikes: number[] | undefined | null,
   spot: number | null | undefined,
@@ -299,8 +322,10 @@ export function buildThermalDiscordCardSvg(
     const call = hm?.gex?.call_wall;
     const put = hm?.gex?.put_wall;
     const flip = hm?.gex?.flip;
-    const expiries = resolveCompactExpiries(hm?.near_term_expiries, hm?.expiries, 8);
-    const strikes = bandStrikesAroundSpot(hm?.strikes, spot, 12);
+    // 0DTE-only fat strip — multi-expiry grids are unreadable in Discord mobile previews.
+    const zero = resolveDiscordZeroDteExpiry(hm?.near_term_expiries, hm?.expiries, todayEtYmd());
+    const expiries = zero ? [zero] : [];
+    const strikes = bandStrikesAroundSpot(hm?.strikes, spot, 28);
     const cells = hm?.gex?.cells ?? {};
     const peak = peakInWindow(cells, strikes, expiries);
 
@@ -316,7 +341,7 @@ export function buildThermalDiscordCardSvg(
 
     // Spot + change
     colsSvg += `<text x="${x0 + 24 + badgeW + 20}" y="${colTop + 52}" fill="#f8fafc" font-family="${FONT}" font-size="36" font-weight="800">${esc(fmtSpot(spot))}</text>`;
-    colsSvg += `<text x="${x0 + colW - 28}" y="${colTop + 50}" text-anchor="end" fill="${chg.color}" font-family="${FONT}" font-size="24" font-weight="800">${esc(chg.text)}</text>`;
+    colsSvg += `<text x="${x0 + colW - 28}" y="${colTop + 50}" text-anchor="end" fill="${chg.color}" font-family="${FONT}" font-size="26" font-weight="800">${esc(chg.text)}</text>`;
 
     // Level chips
     const chipY = colTop + 74;
@@ -328,19 +353,17 @@ export function buildThermalDiscordCardSvg(
     colsSvg += chip(x0 + 24 + (chipW + chipGap) * 2, chipY, chipW, chipH, "FLIP", fmtLevel(flip), "flip");
 
     const gridTop = colTop + 128;
-    const strikeColW = 96;
-    const driftColW = 72;
+    const strikeColW = 120;
+    const driftColW = 140;
     const gridLeft = x0 + 16;
     const gridRight = x0 + colW - 16;
-    const gridW = gridRight - gridLeft - strikeColW - driftColW;
-    const expN = Math.max(1, expiries.length);
-    const cellW = gridW / expN;
+    const gexColW = Math.max(120, gridRight - gridLeft - strikeColW - driftColW);
     const rowN = Math.max(1, strikes.length);
-    const cellH = Math.min(52, (colH - 150) / rowN);
-    const labelSize = Math.max(14, Math.min(20, cellH * 0.42));
-    const strikeSize = Math.max(16, Math.min(22, cellH * 0.48));
-    const driftSize = Math.max(13, Math.min(18, cellH * 0.4));
-    const expSize = 16;
+    const cellH = Math.min(44, (colH - 160) / rowN);
+    const labelSize = Math.max(16, Math.min(22, cellH * 0.48));
+    const strikeSize = Math.max(18, Math.min(24, cellH * 0.52));
+    const driftSize = Math.max(16, Math.min(22, cellH * 0.48));
+    const badgeSize = Math.max(12, Math.min(16, cellH * 0.36));
 
     if (!hm || expiries.length === 0 || strikes.length === 0) {
       colsSvg += `<text x="${x0 + colW / 2}" y="${colTop + colH / 2}" text-anchor="middle" fill="#7dd3fc" font-family="${FONT}" font-size="28" font-weight="700">Matrix unavailable</text>`;
@@ -348,21 +371,19 @@ export function buildThermalDiscordCardSvg(
       return;
     }
 
+    const exp = expiries[0]!;
     const extremes = discordPerExpiryExtremes(cells, strikes, expiries);
+    const day = extremes[exp];
     const shift = hm.shift;
     const strikeTotals = hm.gex?.strike_totals ?? {};
     const driftAvailable = Boolean(shift?.available && shift.delta_by_strike);
+    const callWallN = Number.isFinite(call as number) ? Number(call) : null;
+    const putWallN = Number.isFinite(put as number) ? Number(put) : null;
 
     // Corner labels
-    colsSvg += `<text x="${gridLeft + strikeColW - 8}" y="${gridTop}" text-anchor="end" fill="#7dd3fc" font-family="${FONT}" font-size="14" font-weight="700" letter-spacing="1">STRIKE</text>`;
-    colsSvg += `<text x="${gridLeft + strikeColW + driftColW / 2}" y="${gridTop}" text-anchor="middle" fill="#7dd3fc" font-family="${FONT}" font-size="13" font-weight="700" letter-spacing="1">DRIFT</text>`;
-
-    expiries.forEach((exp, ei) => {
-      const cx = gridLeft + strikeColW + driftColW + ei * cellW + cellW / 2;
-      colsSvg += `<text x="${cx}" y="${gridTop}" text-anchor="middle" fill="#22d3ee" font-family="${FONT}" font-size="${expSize}" font-weight="800">${esc(
-        fmtDeskExpiry(exp)
-      )}</text>`;
-    });
+    colsSvg += `<text x="${gridLeft + strikeColW - 8}" y="${gridTop}" text-anchor="end" fill="#7dd3fc" font-family="${FONT}" font-size="15" font-weight="800" letter-spacing="1">STRIKE</text>`;
+    colsSvg += `<text x="${gridLeft + strikeColW + driftColW / 2}" y="${gridTop}" text-anchor="middle" fill="#7dd3fc" font-family="${FONT}" font-size="15" font-weight="800" letter-spacing="1">DRIFT%</text>`;
+    colsSvg += `<text x="${gridLeft + strikeColW + driftColW + gexColW / 2}" y="${gridTop}" text-anchor="middle" fill="#22d3ee" font-family="${FONT}" font-size="16" font-weight="800">0DTE ${esc(fmtDeskExpiry(exp))}</text>`;
 
     let spotIdx = -1;
     if (Number.isFinite(spot as number)) {
@@ -377,14 +398,21 @@ export function buildThermalDiscordCardSvg(
     }
 
     strikes.forEach((strike, si) => {
-      const y = gridTop + 12 + si * cellH;
+      const y = gridTop + 14 + si * cellH;
       const isSpot = si === spotIdx;
+      const isCallRow = callWallN != null && strike === callWallN;
+      const isPutRow = putWallN != null && strike === putWallN;
       if (isSpot) {
-        colsSvg += `<rect x="${gridLeft}" y="${y}" width="${gridRight - gridLeft}" height="${cellH}" fill="rgba(34,211,238,0.07)"/>`;
+        colsSvg += `<rect x="${gridLeft}" y="${y}" width="${gridRight - gridLeft}" height="${cellH}" fill="rgba(34,211,238,0.08)"/>`;
       }
-      colsSvg += `<text x="${gridLeft + strikeColW - 10}" y="${y + cellH * 0.68}" text-anchor="end" fill="${
-        isSpot ? "#22d3ee" : "#f8fafc"
-      }" font-family="${FONT}" font-size="${strikeSize}" font-weight="800">${
+      if (isCallRow) {
+        colsSvg += `<rect x="${gridLeft}" y="${y}" width="${strikeColW}" height="${cellH}" fill="rgba(${PLUS_NODE_RGB},0.18)"/>`;
+      }
+      if (isPutRow) {
+        colsSvg += `<rect x="${gridLeft}" y="${y}" width="${strikeColW}" height="${cellH}" fill="rgba(${MINUS_NODE_RGB},0.18)"/>`;
+      }
+      const strikeFill = isCallRow ? "#ffd60a" : isPutRow ? "#e9d5ff" : isSpot ? "#22d3ee" : "#f8fafc";
+      colsSvg += `<text x="${gridLeft + strikeColW - 10}" y="${y + cellH * 0.68}" text-anchor="end" fill="${strikeFill}" font-family="${FONT}" font-size="${strikeSize}" font-weight="800">${
         Number.isFinite(strike)
           ? strike.toLocaleString("en-US", {
               maximumFractionDigits: strike % 1 === 0 ? 0 : 1,
@@ -392,56 +420,59 @@ export function buildThermalDiscordCardSvg(
           : "—"
       }</text>`;
 
-      // Intraday % drift (build/melt) vs positioning history — honest empty when collecting.
+      // Intraday % drift pill — large enough to survive Discord mobile downscale.
       const totalNow = strikeTotals[String(strike)];
       const currentTotal =
         typeof totalNow === "number" && Number.isFinite(totalNow) ? totalNow : 0;
       const delta = driftAvailable ? shift!.delta_by_strike?.[String(strike)] : null;
       const driftPct = discordDriftPct(currentTotal, delta);
-      const driftX = gridLeft + strikeColW + driftColW / 2;
+      const driftX = gridLeft + strikeColW + 8;
+      const driftW = driftColW - 16;
       if (driftPct == null) {
-        colsSvg += `<text x="${driftX}" y="${y + cellH * 0.68}" text-anchor="middle" fill="#7dd3fc" font-family="${FONT}" font-size="${driftSize}" font-weight="700">·</text>`;
+        colsSvg += `<text x="${driftX + driftW / 2}" y="${y + cellH * 0.68}" text-anchor="middle" fill="#7dd3fc" font-family="${FONT}" font-size="${driftSize}" font-weight="700">·</text>`;
       } else {
         const driftColor = driftPct >= 0 ? "#00e676" : "#ff2d55";
+        const driftBg = driftPct >= 0 ? "rgba(0,230,118,0.16)" : "rgba(255,45,85,0.16)";
         const driftText = `${driftPct >= 0 ? "+" : ""}${Math.round(driftPct)}%`;
-        colsSvg += `<text x="${driftX}" y="${y + cellH * 0.68}" text-anchor="middle" fill="${driftColor}" font-family="${FONT}" font-size="${driftSize}" font-weight="800">${esc(driftText)}</text>`;
+        colsSvg += `<rect x="${driftX}" y="${y + 4}" width="${driftW}" height="${Math.max(18, cellH - 8)}" rx="6" fill="${driftBg}"/>`;
+        colsSvg += `<text x="${driftX + driftW / 2}" y="${y + cellH * 0.68}" text-anchor="middle" fill="${driftColor}" font-family="${FONT}" font-size="${driftSize}" font-weight="800">${esc(driftText)}</text>`;
       }
 
       const row = cells[String(strike)] ?? {};
-      expiries.forEach((exp, ei) => {
-        const v = row[exp];
-        const n = typeof v === "number" && Number.isFinite(v) ? v : 0;
-        const cx = gridLeft + strikeColW + driftColW + ei * cellW;
-        const day = extremes[exp];
-        const isPlusNode = day?.callWall === strike && n > 0;
-        const isMinusNode = day?.putWall === strike && n < 0;
-        const isKing = day?.king === strike && n !== 0;
-        const fill = isPlusNode
-          ? plusNodeFill()
-          : isMinusNode
-            ? minusNodeFill()
-            : cellFill(n, peak);
-        const stroke = isPlusNode
-          ? ` stroke="rgba(${PLUS_NODE_RGB},0.95)" stroke-width="2"`
-          : isMinusNode
-            ? ` stroke="rgba(${MINUS_NODE_RGB},0.95)" stroke-width="2"`
-            : isSpot
-              ? ` stroke="rgba(34,211,238,0.65)" stroke-width="1.5"`
-              : "";
-        colsSvg += `<rect x="${cx + 1}" y="${y + 1}" width="${Math.max(1, cellW - 2)}" height="${Math.max(
-          1,
-          cellH - 2
-        )}" rx="3" fill="${fill}"${stroke}/>`;
-        if (cellH >= 28 && cellW >= 48) {
-          const textFill = isPlusNode ? "#fffbeb" : isMinusNode ? "#faf5ff" : "#f8fafc";
-          const label = isKing
-            ? `${fmtCompactHeatMoney(n)}★`
-            : fmtCompactHeatMoney(n);
-          colsSvg += `<text x="${cx + cellW / 2}" y="${y + cellH * 0.68}" text-anchor="middle" fill="${textFill}" font-family="${FONT}" font-size="${labelSize}" font-weight="800">${esc(
-            label
-          )}</text>`;
-        }
-      });
+      const v = row[exp];
+      const n = typeof v === "number" && Number.isFinite(v) ? v : 0;
+      const cx = gridLeft + strikeColW + driftColW;
+      // Prefer desk wall strikes when they land in-band; else per-expiry extremes.
+      const isPlusNode =
+        (isCallRow && n > 0) || (day?.callWall === strike && n > 0);
+      const isMinusNode =
+        (isPutRow && n < 0) || (day?.putWall === strike && n < 0 && !isPlusNode);
+      const isKing = day?.king === strike && n !== 0;
+      const fill = isPlusNode
+        ? plusNodeFill()
+        : isMinusNode
+          ? minusNodeFill()
+          : cellFill(n, peak);
+      const stroke = isPlusNode
+        ? ` stroke="rgba(${PLUS_NODE_RGB},1)" stroke-width="3"`
+        : isMinusNode
+          ? ` stroke="rgba(${MINUS_NODE_RGB},1)" stroke-width="3"`
+          : isSpot
+            ? ` stroke="rgba(34,211,238,0.75)" stroke-width="2"`
+            : "";
+      colsSvg += `<rect x="${cx + 2}" y="${y + 2}" width="${Math.max(1, gexColW - 4)}" height="${Math.max(
+        1,
+        cellH - 4
+      )}" rx="4" fill="${fill}"${stroke}/>`;
+      const textFill = isPlusNode ? "#fffbeb" : isMinusNode ? "#faf5ff" : "#f8fafc";
+      colsSvg += `<text x="${cx + gexColW / 2}" y="${y + cellH * 0.62}" text-anchor="middle" fill="${textFill}" font-family="${FONT}" font-size="${labelSize}" font-weight="800">${esc(
+        fmtCompactHeatMoney(n)
+      )}</text>`;
+      if (isPlusNode || isMinusNode || isKing) {
+        const tag = isPlusNode ? "PLUS" : isMinusNode ? "MINUS" : "KING";
+        const tagColor = isPlusNode ? "#ffd60a" : isMinusNode ? "#e9d5ff" : "#fbbf24";
+        colsSvg += `<text x="${cx + 12}" y="${y + cellH * 0.42}" fill="${tagColor}" font-family="${FONT}" font-size="${badgeSize}" font-weight="800" letter-spacing="1">${tag}</text>`;
+      }
     });
   });
 
@@ -464,7 +495,7 @@ export function buildThermalDiscordCardSvg(
   <rect x="0" y="0" width="${W}" height="${headerH + pad}" fill="url(#scan)"/>
 
   <text x="${pad}" y="${pad + 42}" fill="#22d3ee" font-family="${FONT}" font-size="42" font-weight="800" letter-spacing="6">BLACKOUT THERMAL</text>
-  <text x="${pad}" y="${pad + 88}" fill="#7dd3fc" font-family="${FONT}" font-size="24" font-weight="600">SPY  ·  SPX  ·  QQQ   ·   Net dealer gamma (GEX)</text>
+  <text x="${pad}" y="${pad + 88}" fill="#7dd3fc" font-family="${FONT}" font-size="24" font-weight="600">SPY  ·  SPX  ·  QQQ   ·   0DTE GEX strips   ·   DRIFT% = build/melt</text>
 
   <rect x="${W - pad - 520}" y="${pad + 18}" width="240" height="44" rx="22" fill="rgba(34,211,238,0.12)" stroke="rgba(34,211,238,0.45)" stroke-width="1.5"/>
   <text x="${W - pad - 400}" y="${pad + 48}" text-anchor="middle" fill="#22d3ee" font-family="${FONT}" font-size="20" font-weight="800" letter-spacing="2">LENS  GEX</text>
@@ -483,12 +514,11 @@ export function buildThermalDiscordCardSvg(
   <rect x="${pad + 130}" y="${H - pad - footerH + 28}" width="18" height="18" rx="3" fill="rgba(255,45,85,0.75)"/>
   <text x="${pad + 158}" y="${H - pad - footerH + 44}" fill="#f8fafc" font-family="${FONT}" font-size="18" font-weight="700">−GEX</text>
   <rect x="${pad + 240}" y="${H - pad - footerH + 28}" width="18" height="18" rx="3" fill="rgba(${PLUS_NODE_RGB},0.85)"/>
-  <text x="${pad + 268}" y="${H - pad - footerH + 44}" fill="#ffd60a" font-family="${FONT}" font-size="18" font-weight="700">+ node</text>
-  <rect x="${pad + 370}" y="${H - pad - footerH + 28}" width="18" height="18" rx="3" fill="rgba(${MINUS_NODE_RGB},0.85)"/>
-  <text x="${pad + 398}" y="${H - pad - footerH + 44}" fill="#e9d5ff" font-family="${FONT}" font-size="18" font-weight="700">− node</text>
-  <text x="${pad + 520}" y="${H - pad - footerH + 44}" fill="#f8fafc" font-family="${FONT}" font-size="18" font-weight="700">★ king</text>
-  <text x="${pad + 620}" y="${H - pad - footerH + 44}" fill="#7dd3fc" font-family="${FONT}" font-size="18" font-weight="700">DRIFT % = build/melt</text>
-  <text x="${W - pad - 28}" y="${H - pad - footerH + 44}" text-anchor="end" fill="#7dd3fc" font-family="${FONT}" font-size="17" font-weight="600">Cyan row = spot  ·  Near-term expiries  ·  4K</text>
+  <text x="${pad + 268}" y="${H - pad - footerH + 44}" fill="#ffd60a" font-family="${FONT}" font-size="18" font-weight="700">PLUS node (yellow)</text>
+  <rect x="${pad + 500}" y="${H - pad - footerH + 28}" width="18" height="18" rx="3" fill="rgba(${MINUS_NODE_RGB},0.85)"/>
+  <text x="${pad + 528}" y="${H - pad - footerH + 44}" fill="#e9d5ff" font-family="${FONT}" font-size="18" font-weight="700">MINUS node (purple)</text>
+  <text x="${pad + 780}" y="${H - pad - footerH + 44}" fill="#fbbf24" font-family="${FONT}" font-size="18" font-weight="700">KING = max |GEX|</text>
+  <text x="${W - pad - 28}" y="${H - pad - footerH + 44}" text-anchor="end" fill="#7dd3fc" font-family="${FONT}" font-size="17" font-weight="600">Cyan row = spot  ·  0DTE only  ·  4K</text>
 </svg>`;
 }
 
@@ -503,7 +533,7 @@ export async function renderThermalDiscordCardPng(
     .toBuffer();
 }
 
-/** Discord message body — no provider/stack names. */
+/** Discord message body — no provider/stack names. Avoid markdown-sensitive glyphs. */
 export function thermalDiscordCaption(columns: ThermalCardColumn[]): string {
   const parts = columns.map((c) => {
     const spot = c.heatmap?.spot;
@@ -520,28 +550,27 @@ export function thermalDiscordCaption(columns: ThermalCardColumn[]): string {
     const wallGrew = shift?.available ? shift.wall_changes : null;
     const callDrift =
       wallGrew?.call_wall?.grew_pct != null
-        ? ` ${wallGrew.call_wall.grew_pct >= 0 ? "+" : ""}${wallGrew.call_wall.grew_pct}%`
-        : "";
+        ? `${wallGrew.call_wall.grew_pct >= 0 ? "+" : ""}${wallGrew.call_wall.grew_pct}%`
+        : "n/a";
     const putDrift =
       wallGrew?.put_wall?.grew_pct != null
-        ? ` ${wallGrew.put_wall.grew_pct >= 0 ? "+" : ""}${wallGrew.put_wall.grew_pct}%`
-        : "";
+        ? `${wallGrew.put_wall.grew_pct >= 0 ? "+" : ""}${wallGrew.put_wall.grew_pct}%`
+        : "n/a";
     const driftNote =
       shift?.available === false
         ? " · Drift collecting"
-        : callDrift || putDrift
-          ? ` · Wall drift C${callDrift || " —"} / P${putDrift || " —"}`
-          : "";
+        : ` · Wall drift C \`${callDrift}\` / P \`${putDrift}\``;
     return (
       `**${c.ticker}**  \`${spotS}\`${chgS}\n` +
       `Call wall \`${fmtLevel(call)}\` · Put wall \`${fmtLevel(put)}\` · Flip \`${fmtLevel(flip)}\`${driftNote}`
     );
   });
   const asOf = columns.map((c) => c.heatmap?.asof).find(Boolean);
+  // Keep legend in a code span so Discord markdown cannot eat PLUS/MINUS markers.
   return (
-    `**Thermal desk · GEX** · 4K\n` +
+    `**Thermal desk · GEX · 0DTE** · 4K\n` +
     `${parts.join("\n")}\n` +
-    `Yellow = + node · Purple = − node · ★ king · DRIFT % = build/melt\n` +
+    "`Yellow=PLUS node · Purple=MINUS node · KING · DRIFT%=build/melt`\n" +
     `as of ${fmtAsOfEt(asOf)} ET`
   );
 }
