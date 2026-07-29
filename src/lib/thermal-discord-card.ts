@@ -653,7 +653,7 @@ export function buildThermalDiscordCardSvg(
   <rect x="${pad + 28}" y="${H - pad - footerH + 28}" width="18" height="18" rx="3" fill="rgba(0,230,118,0.75)"/>
   <text x="${pad + 56}" y="${H - pad - footerH + 44}" fill="#f8fafc" font-family="${FONT}" font-size="18" font-weight="700">+GEX</text>
   <rect x="${pad + 130}" y="${H - pad - footerH + 28}" width="18" height="18" rx="3" fill="rgba(255,45,85,0.75)"/>
-  <text x="${pad + 158}" y="${H - pad - footerH + 44}" fill="#f8fafc" font-family="${FONT}" font-size="18" font-weight="700">−GEX</text>
+  <text x="${pad + 158}" y="${H - pad - footerH + 44}" fill="#f8fafc" font-family="${FONT}" font-size="18" font-weight="700">-GEX</text>
   <rect x="${pad + 240}" y="${H - pad - footerH + 28}" width="18" height="18" rx="3" fill="rgba(${PLUS_NODE_RGB},0.85)"/>
   <text x="${pad + 268}" y="${H - pad - footerH + 44}" fill="#ffd60a" font-family="${FONT}" font-size="18" font-weight="700">PLUS node (yellow)</text>
   <rect x="${pad + 500}" y="${H - pad - footerH + 28}" width="18" height="18" rx="3" fill="rgba(${MINUS_NODE_RGB},0.85)"/>
