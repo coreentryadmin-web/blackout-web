@@ -242,8 +242,9 @@ test("pickChainContract returns null only when no rows have any quotes", () => {
   assert.equal(pickChainContract(chain, "long"), null);
 });
 
-test("pickChainContract prefers 5+ DTE over near-term contracts (PR-N26)", () => {
-  // Short-dated (3 days out) vs long-dated (30 days out) — should pick the 30-day
+test("pickChainContract accepts 2+ DTE contracts (MIN_DTE lowered from 5 to 2)", () => {
+  // Both 3-day and 30-day clear the 2-day floor. Deterministic tie-break: closest strike to
+  // spot then nearest expiry — so the 3-day contract wins (same strike, nearer expiry).
   const today = new Date();
   const shortExpiry = new Date(today.getTime() + 3 * 86400_000).toISOString().slice(0, 10);
   const longExpiry = new Date(today.getTime() + 30 * 86400_000).toISOString().slice(0, 10);
@@ -256,19 +257,25 @@ test("pickChainContract prefers 5+ DTE over near-term contracts (PR-N26)", () =>
   };
   const c = pickChainContract(chain, "long");
   assert.ok(c != null);
-  assert.equal(c!.expiry, longExpiry, "should prefer the longer-dated contract");
+  assert.equal(c!.expiry, shortExpiry, "3-day contract clears 2-day floor and wins tie-break");
 });
 
-test("pickChainContract falls back to short-dated when no 5+ DTE exists (PR-N26)", () => {
+test("pickChainContract rejects same-day expiry but accepts 3-day", () => {
   const today = new Date();
-  const shortExpiry = new Date(today.getTime() + 2 * 86400_000).toISOString().slice(0, 10);
+  // Same-day (0 DTE, rejected by "swing never trades same-day expiry")
+  const sameDayExpiry = today.toISOString().slice(0, 10);
+  // 3 days out clears the 2-day floor in any timezone
+  const threeDayExpiry = new Date(today.getTime() + 3 * 86400_000).toISOString().slice(0, 10);
   const chain: EditionChainData = {
     spot: 100,
-    rows: [row(100, { oi: 5_000, callAsk: 4, callBid: 3.6, expiry: shortExpiry })],
+    rows: [
+      row(100, { oi: 5_000, callAsk: 4, callBid: 3.6, expiry: sameDayExpiry }),
+      row(100, { oi: 5_000, callAsk: 5, callBid: 4.6, expiry: threeDayExpiry }),
+    ],
   };
   const c = pickChainContract(chain, "long");
-  assert.ok(c != null, "should fall back to short-dated rather than null");
-  assert.equal(c!.expiry, shortExpiry);
+  assert.ok(c != null);
+  assert.equal(c!.expiry, threeDayExpiry, "3-day contract accepted; same-day rejected");
 });
 
 test("thesis is grounded in the score breakdown and cites the leading driver", () => {
