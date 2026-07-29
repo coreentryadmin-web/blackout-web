@@ -58,6 +58,19 @@ fix only restores the WATCH/serving write path.
 
 **Status.** This PR + live Lambda/ALB patch.
 
+## 2026-07-29 — [ops] ops-auto-fix #1270 — data-integrity SQL merge conflict → error spike
+
+**Severity.** P0 — `watchdog:error-spike` (109 errors / 15m).
+
+**Root cause.** Accidental `<<<<<<< HEAD` merge conflict markers left in
+`data-integrity-verifier.ts` nighthawk_play_outcomes SQL probe. Every
+`data-correctness` cron run threw `syntax error at or near "("` → `request_error`
+rows flooded `error_events`.
+
+**Fix.** Remove conflict markers; keep dynamic `NH_OUTCOME_VOCAB` `${vocabSql}` list.
+
+**Status.** PR `fix/ops-auto-fix-1270` → `main`.
+
 ## 2026-07-29 — [ops] ops-auto-fix #1261 — SWR background refresh + private RDS false P1
 
 **Severity.** P1 — `ops-collect` reported `postgres:query-failed` (empty detail) and
