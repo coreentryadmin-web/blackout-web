@@ -28,6 +28,7 @@ const PAGES = [
   { path: "/dashboard", label: "dashboard", liveWaitMs: 12000 },
   { path: "/flows", label: "flows", liveWaitMs: 8000 },
   { path: "/heatmap", label: "heatmap-matrix", liveWaitMs: 20000 },
+  { path: "/grid", label: "grid", liveWaitMs: 15000 },
   { path: "/nighthawk", label: "nighthawk", liveWaitMs: 15000 },
   { path: "/terminal", label: "terminal", liveWaitMs: 5000 },
   { path: "/track-record", label: "track-record", liveWaitMs: 10000 },

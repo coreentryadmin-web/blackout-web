@@ -18,9 +18,21 @@ export function auditPgSsl(connectionString) {
   return { rejectUnauthorized: strict };
 }
 
-/** Resolve DATABASE_PUBLIC_URL from env or production blackout-web variables. */
+/** Resolve DATABASE_PUBLIC_URL from env, AWS Secrets Manager, or Railway variables. */
 export function resolveAuditDbUrl() {
   let dbUrl = process.env.DATABASE_PUBLIC_URL || process.env.DATABASE_URL;
+  if (!dbUrl) {
+    try {
+      const raw = execSync(
+        'aws secretsmanager get-secret-value --secret-id blackout-production/app/env --query SecretString --output text 2>/dev/null',
+        { encoding: "utf8" }
+      );
+      const secrets = JSON.parse(raw);
+      dbUrl = secrets.DATABASE_PUBLIC_URL || secrets.DATABASE_URL;
+    } catch {
+      /* optional */
+    }
+  }
   if (!dbUrl) {
     try {
       const raw = execSync("railway variables --service blackout-web --json 2>/dev/null", {

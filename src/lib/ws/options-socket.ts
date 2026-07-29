@@ -814,6 +814,7 @@ class OptionsSocketPool {
   status() {
     return {
       enabled: optionsWsEnabled(),
+      is_leader: optionsIsLeader,
       url: OPTIONS_WS_URL,
       total_contracts: this.owner.size,
       capacity: this.capacity(),
@@ -834,11 +835,15 @@ const pool = new OptionsSocketPool();
 /** Subscribe the WS pool to a set of OCC symbols (idempotent, capacity-capped). */
 export function subscribeContracts(occs: string[]): void {
   if (!optionsWsEnabled()) return;
+  // Only the cluster leader opens WS shards; followers read marks via Redis write-through.
+  if (!optionsIsLeader) return;
   pool.subscribe(occs.filter(Boolean));
 }
 
 /** Unsubscribe the WS pool from a set of OCC symbols (idempotent). */
 export function unsubscribeContracts(occs: string[]): void {
+  if (!optionsWsEnabled()) return;
+  if (!optionsIsLeader) return;
   pool.unsubscribe(occs.filter(Boolean));
 }
 

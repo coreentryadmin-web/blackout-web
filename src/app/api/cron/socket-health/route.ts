@@ -8,8 +8,10 @@ import { getOptionsSocketStatus, inOptionsMarketHours } from "@/lib/ws/options-s
 import { getStocksSocketStatus } from "@/lib/ws/stocks-socket";
 import {
   buildUwClusterHealth,
+  evaluateOptionsClusterOk,
   evaluatePolygonClusterOk,
   evaluateUwClusterOk,
+  readOptionsClusterHealth,
   readPolygonClusterHealth,
 } from "@/lib/ws/socket-cluster-health";
 
@@ -45,25 +47,18 @@ export async function GET(req: NextRequest) {
     const authenticatedShards = options.shards.filter((s) => s.authenticated).length;
     const authFailedShards = options.shards.filter((s) => s.auth_failed).length;
     const rth = inOptionsMarketHours();
-
-    let options_ok = true;
-    let options_detail = "disabled — REST snapshot fallback";
-
-    if (options.enabled) {
-      if (!rth) {
-        options_detail = "enabled, off-hours — auth not required";
-      } else if (options.total_contracts === 0) {
-        options_detail = "enabled, no held contracts — auth not required";
-      } else if (authenticatedShards > 0) {
-        options_detail = `authenticated (${authenticatedShards} shard(s), ${options.total_contracts} contracts)`;
-      } else if (authFailedShards > 0) {
-        options_ok = false;
-        options_detail = `auth failed on ${authFailedShards} shard(s) — check POLYGON_API_KEY / options WS entitlement`;
-      } else {
-        options_ok = false;
-        options_detail = "enabled with held contracts but no authenticated shard yet";
-      }
-    }
+    const optionsCluster = await readOptionsClusterHealth();
+    const optionsEval = evaluateOptionsClusterOk(
+      {
+        enabled: options.enabled,
+        is_leader: options.is_leader ?? false,
+        total_contracts: options.total_contracts,
+        authenticated_shards: authenticatedShards,
+        auth_failed_shards: authFailedShards,
+      },
+      optionsCluster,
+      rth
+    );
 
     let luld_ok = true;
     let luld_detail = "disabled — UW trading_halts only";
@@ -91,7 +86,7 @@ export async function GET(req: NextRequest) {
     const polygonEval = evaluatePolygonClusterOk(polygonCluster, rth);
 
     payload = {
-      ok: options_ok && luld_ok && uwEval.ok && polygonEval.ok,
+      ok: optionsEval.ok && luld_ok && uwEval.ok && polygonEval.ok,
       as_of: new Date().toISOString(),
       market_hours: rth,
       websockets: {
@@ -109,10 +104,11 @@ export async function GET(req: NextRequest) {
         },
         options: {
           ...options,
+          cluster: optionsCluster,
           authenticated_shards: authenticatedShards,
           auth_failed_shards: authFailedShards,
-          ok: options_ok,
-          detail: options_detail,
+          ok: optionsEval.ok,
+          detail: optionsEval.detail,
         },
         stocks_luld: {
           ...luld,

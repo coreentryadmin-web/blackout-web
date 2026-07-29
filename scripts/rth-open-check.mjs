@@ -147,7 +147,13 @@ async function main() {
 
         await c.end();
       } catch (e) {
-        fail(`Postgres RTH checks: ${e.message}`);
+        if (/ECONNRESET|ETIMEDOUT|ENOTFOUND|timeout|ECONNREFUSED/i.test(e.message)) {
+          console.log(
+            `  ⚠ Postgres unreachable from this host (RDS proxy is VPC-private) — skipping writer/cron DB checks: ${e.message}`
+          );
+        } else {
+          fail(`Postgres RTH checks: ${e.message}`);
+        }
       }
     } else {
       console.log("  ⚠ DATABASE_URL not set — skipping Postgres RTH checks");

@@ -3,6 +3,7 @@ import { initUwSocket, shutdownUwSocket } from "@/lib/ws/uw-socket";
 import { initOptionsSocket, shutdownOptionsSocket } from "@/lib/ws/options-socket";
 import { initStocksSocket, shutdownStocksSocket } from "@/lib/ws/stocks-socket";
 import { initFlowEventBridge } from "@/lib/flow-events";
+import { shouldBootDataSockets } from "@/lib/process-role";
 
 let initialized = false;
 let closed = false;
@@ -54,8 +55,10 @@ export function ensureDataSockets() {
     console.warn("[init-data-sockets] failed to install shutdown handlers (non-fatal):", err);
   }
   void initFlowEventBridge();
-  initUwSocket();
-  initPolygonSocket();
+  if (shouldBootDataSockets()) {
+    initUwSocket();
+    initPolygonSocket();
+  }
   // Once-per-deploy Cloudflare edge purge for the static marketing pages. Fired from
   // HERE (a nodejs-only path that is never edge-traced) rather than instrumentation.ts,
   // because cf-purge-on-deploy pulls in ioredis. No-op unless CF_API_TOKEN + CF_ZONE_ID
@@ -66,18 +69,18 @@ export function ensureDataSockets() {
   void import("@/lib/staging-boot-warm")
     .then(({ ensureStagingBootWarm }) => ensureStagingBootWarm())
     .catch((err) => console.warn("[init-data-sockets] staging-boot-warm skipped (non-fatal):", err));
-  // Night's Watch live option marks — env-gated + isolated. A strict no-op unless
-  // OPTIONS_WS_ENABLED is set, so it can never destabilize the uw/polygon sockets
-  // or the REST snapshot fallback. Wrapped so an init throw can't break the others.
-  try {
-    initOptionsSocket();
-  } catch (err) {
-    console.warn("[init-data-sockets] options socket init failed (non-fatal):", err);
-  }
-  try {
-    initStocksSocket();
-  } catch (err) {
-    console.warn("[init-data-sockets] stocks/LULD socket init failed (non-fatal):", err);
+  // Night's Watch live option marks — ingest tier only; web reads Redis write-through.
+  if (shouldBootDataSockets()) {
+    try {
+      initOptionsSocket();
+    } catch (err) {
+      console.warn("[init-data-sockets] options socket init failed (non-fatal):", err);
+    }
+    try {
+      initStocksSocket();
+    } catch (err) {
+      console.warn("[init-data-sockets] stocks/LULD socket init failed (non-fatal):", err);
+    }
   }
   // Backup RTH warmers when ECS cron triggers stall (#90 silent-death). Leader-elected;
   // dispatches idempotent cache warmers from in-process when cron_job_runs age exceeds cadence.

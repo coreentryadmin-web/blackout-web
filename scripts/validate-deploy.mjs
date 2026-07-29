@@ -58,6 +58,26 @@ function loadProdVars() {
   }
 }
 
+function loadProdSecrets() {
+  try {
+    const raw = sh(
+      'aws secretsmanager get-secret-value --secret-id blackout-production/app/env --query SecretString --output text 2>/dev/null'
+    );
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
+}
+
+function railwayCliOk() {
+  try {
+    const out = sh("railway deployment list --service blackout-web 2>/dev/null | head -1");
+    return !/Invalid RAILWAY_TOKEN|not logged in|Unauthorized/i.test(out);
+  } catch {
+    return false;
+  }
+}
+
 function resolveCronSecret() {
   const fromEnv = process.env.CRON_SECRET?.trim();
   if (fromEnv) return fromEnv;
@@ -72,6 +92,8 @@ function resolveCronSecret() {
       return "";
     }
   }
+  const secrets = loadProdSecrets();
+  if (secrets.CRON_SECRET?.trim()) return secrets.CRON_SECRET.trim();
   const vars = loadProdVars();
   return vars.CRON_SECRET?.trim() ?? "";
 }
@@ -166,10 +188,22 @@ console.log("1. Production (blackout-web)");
 const skipCli =
   process.env.SKIP_RAILWAY === "1" ||
   IS_STAGING ||
-  (process.env.GITHUB_ACTIONS === "true" && !process.env.RAILWAY_TOKEN?.trim());
+  (process.env.GITHUB_ACTIONS === "true" && !process.env.RAILWAY_TOKEN?.trim()) ||
+  !railwayCliOk();
 
 if (skipCli) {
-  warn("Production CLI checks skipped (GITHUB_ACTIONS or SKIP_RAILWAY=1)");
+  warn("Production CLI checks skipped (GITHUB_ACTIONS, SKIP_RAILWAY, or Railway CLI unavailable)");
+  try {
+    const out = sh(
+      'aws ecs describe-services --cluster blackout-production-cluster --services blackout-production-web --query "services[0].deployments[?status==`PRIMARY`].rolloutState" --output text 2>/dev/null'
+    );
+    const rollout = out.trim();
+    if (rollout === "COMPLETED") ok(`ECS blackout-production-web rollout ${rollout}`);
+    else if (rollout) warn(`ECS rollout state: ${rollout}`);
+    else warn("ECS deploy status unavailable");
+  } catch {
+    warn("ECS deploy status unavailable (aws CLI missing or creds absent)");
+  }
 } else {
 try {
   const deployments = sh("railway deployment list --service blackout-web 2>/dev/null");
@@ -313,6 +347,11 @@ if (IS_STAGING && dbUrl) {
   } catch (e) {
     if (IS_STAGING && /ECONNRESET|ETIMEDOUT|ENOTFOUND|timeout|ECONNREFUSED/i.test(e.message)) {
       warn(`Postgres unreachable from this host (private RDS) — skipping DB checks: ${e.message}`);
+    } else if (
+      !IS_STAGING &&
+      /ECONNRESET|ETIMEDOUT|ENOTFOUND|timeout|ECONNREFUSED/i.test(e.message)
+    ) {
+      warn(`Postgres unreachable from this host (RDS proxy is VPC-private) — skipping DB checks: ${e.message}`);
     } else {
       fail(`Postgres query failed: ${e.message}`);
     }
@@ -400,6 +439,16 @@ if (!skipCli) {
   } catch {
     /* optional */
   }
+} else {
+  try {
+    const out = sh(
+      'aws ecs describe-services --cluster blackout-production-cluster --services blackout-production-web --query "services[0].runningCount" --output text 2>/dev/null'
+    );
+    const n = Number(out);
+    if (Number.isFinite(n)) runningReplicas = n;
+  } catch {
+    /* optional */
+  }
 }
 if (replicaCount >= 1 && runningReplicas != null && replicaCount === runningReplicas) {
   ok(`REPLICA_COUNT=${replicaCount} matches ${runningReplicas} running replicas`);
@@ -413,48 +462,32 @@ if (replicaCount >= 1 && runningReplicas != null && replicaCount === runningRepl
 
 // ── 5. Options / UW socket churn (socket-health primary; logs secondary) ─────
 console.log("\n5. Socket churn (socket-health + production logs)");
-if (skipCli) {
-  if (IS_STAGING && cronSecret) {
-    try {
-      const { status, body } = await fetchJson("/api/cron/socket-health", {
-        headers: { Authorization: `Bearer ${cronSecret}` },
-      });
-      const opt = body?.websockets?.options;
-      if (status === 200 && opt?.ok) ok(`options-socket (socket-health): ${opt.detail ?? "ok"}`);
-      else if (status === 200 && opt) warn(`options-socket (socket-health): ${opt.detail ?? "not ok"}`);
-      else warn(`socket-health probe HTTP ${status}`);
-    } catch (e) {
-      warn(`socket-health probe failed: ${e.message}`);
+const cronSecretForSockets = resolveCronSecret();
+let socketHealthOk = false;
+
+if (cronSecretForSockets) {
+  try {
+    const { status, body } = await fetchJson("/api/cron/socket-health", {
+      headers: { Authorization: `Bearer ${cronSecretForSockets}` },
+    });
+    const opt = body?.websockets?.options;
+    if (status === 200 && opt?.ok) {
+      socketHealthOk = true;
+      ok(`options-socket (socket-health): ${opt.detail ?? "ok"}`);
+    } else if (status === 200 && opt) {
+      if (skipCli) warn(`options-socket (socket-health): ${opt.detail ?? "not ok"}`);
+      else fail(`options-socket (socket-health): ${opt.detail ?? "not ok"}`);
+    } else {
+      warn(`socket-health probe HTTP ${status}`);
     }
-  } else {
-    warn("Production log checks skipped (SKIP_RAILWAY / staging without CRON_SECRET)");
+  } catch (e) {
+    warn(`socket-health probe failed: ${e.message}`);
   }
 } else {
-  // Live probe beats log tail: multi-replica clusters + off-hours standdown leave stale
-  // 1006 lines in the last 30 log rows even when options.ok is true.
-  let socketHealthOk = false;
-  const cron = resolveCronSecret();
-  if (cron) {
-    try {
-      const { status, body } = await fetchJson("/api/cron/socket-health", {
-        headers: { Authorization: `Bearer ${cron}` },
-      });
-      const opt = body?.websockets?.options;
-      if (status === 200 && opt?.ok) {
-        socketHealthOk = true;
-        ok(`options-socket (socket-health): ${opt.detail ?? "ok"}`);
-      } else if (status === 200 && opt) {
-        fail(`options-socket (socket-health): ${opt.detail ?? "not ok"}`);
-      } else {
-        warn(`socket-health probe HTTP ${status}`);
-      }
-    } catch (e) {
-      warn(`socket-health probe failed: ${e.message}`);
-    }
-  } else {
-    warn("CRON_SECRET unset — socket-health probe skipped (log grep only)");
-  }
+  warn("CRON_SECRET unset — socket-health probe skipped");
+}
 
+if (!skipCli) {
   try {
     const logs = sh("railway logs --service blackout-web 2>/dev/null | rg 'options-socket|uw-socket' | tail -30");
     const opt1006 = logs.match(/options-socket.*1006.*failures=(\d+)/g) || [];
@@ -484,6 +517,8 @@ if (skipCli) {
   } catch {
     warn("Could not read production logs");
   }
+} else if (!cronSecretForSockets) {
+  warn("Production log checks skipped (Railway CLI unavailable and CRON_SECRET unset)");
 }
 
 // ── Summary ─────────────────────────────────────────────────────────────────

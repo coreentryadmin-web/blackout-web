@@ -2,9 +2,51 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   buildUwClusterHealth,
+  evaluateOptionsClusterOk,
   evaluatePolygonClusterOk,
   evaluateUwClusterOk,
 } from "./socket-cluster-health";
+
+test("evaluateOptionsClusterOk: follower passes when cluster Redis marks are fresh", () => {
+  const result = evaluateOptionsClusterOk(
+    {
+      enabled: true,
+      is_leader: false,
+      total_contracts: 0,
+      authenticated_shards: 0,
+      auth_failed_shards: 0,
+    },
+    {
+      fresh_mark_count: 3,
+      freshest_mark_age_ms: 1200,
+      cluster_live: true,
+      detail: "3 fresh mark(s)",
+    },
+    true
+  );
+  assert.equal(result.ok, true);
+  assert.match(result.detail, /cluster marks fresh/);
+});
+
+test("evaluateOptionsClusterOk: no contracts off-hours is ok", () => {
+  const result = evaluateOptionsClusterOk(
+    {
+      enabled: true,
+      is_leader: false,
+      total_contracts: 0,
+      authenticated_shards: 0,
+      auth_failed_shards: 0,
+    },
+    {
+      fresh_mark_count: 0,
+      freshest_mark_age_ms: null,
+      cluster_live: false,
+      detail: "no marks",
+    },
+    false
+  );
+  assert.equal(result.ok, true);
+});
 
 test("evaluateUwClusterOk: follower is healthy when cluster heartbeat is fresh", () => {
   const uw = buildUwClusterHealth({
