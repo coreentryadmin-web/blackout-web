@@ -15,6 +15,7 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { auditSecret } from "./audit/lib/prod-secrets.mjs";
+import { ledgerPnlMatches } from "./audit/lib/ledger-pnl-expect.mjs";
 
 const BASE = (
   process.argv.find((a) => a.startsWith("--base="))?.slice("--base=".length) ??
@@ -151,10 +152,7 @@ async function liveBoardAudit() {
   const validStatus = new Set(["OPEN", "HOLD", "TRIM", "CLOSED", null]);
   for (const row of zb.ledger ?? []) {
     if (row.status != null && !validStatus.has(row.status)) pnlFails++;
-    if (row.entry_premium != null && row.last_mark != null && row.live_pnl_pct != null) {
-      const expected = Math.round(((row.last_mark - row.entry_premium) / row.entry_premium) * 10000) / 100;
-      if (Math.abs(expected - row.live_pnl_pct) > 0.05) pnlFails++;
-    }
+    if (!ledgerPnlMatches(row)) pnlFails++;
   }
   rec(
     "live:ledger-consistency",
