@@ -1,5 +1,77 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-06 22:35 ET
+Last updated: 2026-07-29 11:45 ET
+
+## RTH comprehensive sweep — 2026-07-29 ~11:29–11:37 ET (Wed RTH pass #1)
+
+**Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` including full COMPREHENSIVE TEST SWEEP. Time: Wed 11:29–11:37 ET (RTH). Commands: `validate:rth-open` (pre-fix RED) → `validate:rth-sweep` → `GET /api/cron/data-correctness?force=1` → `validate:member-dashboard` → `validate:grid-rth` → `validate:grid-e2e` → fix branch `fix/rth-socket-health-ecs-validate`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` | ⚠️ **RED pre-fix** — Railway CLI invalid + RDS ECONNRESET from cloud agent; socket-health HTTP 503 (options false-negative on web tier) |
+| `GET /api/cron/data-correctness?force=1` | ⚠️ **flags=5** — call_wall invariant (2), NVDA premium band, Largo grounding, nh_outcomes vocabulary |
+| `npm run validate:rth-sweep` | ✅ **GREEN** — 0 P0/P1; 8 pages incl. `/grid`; missing-field 0 |
+| `npm run validate:member-dashboard` | ✅ **GREEN** — 13/13; spot 7,363.90; matrix 177 rows |
+| `npm run validate:grid-rth` | ✅ **GREEN** (exit 0; zerodte-integration static checks PASS) |
+| `npm run validate:grid-e2e` | ⚠️ **4/5** — React hydration #418 on Night Hawk page load |
+
+### Speed (soft-nav, premium session)
+
+| Page | Load | Notes |
+|---|---|---|
+| `/dashboard` | hard 1,639ms | Under 2s |
+| `/flows` | soft 1,622ms | Under 2s |
+| `/heatmap` (matrix + profile tab) | soft 1,619ms | Under 2s |
+| `/grid` | soft 1,550ms | Under 2s |
+| `/nighthawk` | soft 1,603ms | Under 2s |
+| `/terminal` | soft 1,603ms | Under 2s |
+| `/track-record` | soft 1,602ms | Under 2s |
+
+### Live auto-update (RTH)
+
+Sweep `liveTick=null` on all pages — spot regex did not change in 8–20s windows (SPX ~7367 stable intraday). Member-dashboard shows LIVE label + fresh spot. `/api/market/spx/pulse` and desk APIs fresh (53–79ms).
+
+### Data correctness + cross-tool
+
+| Probe | Result |
+|---|---|
+| SPX spot API | desk ~7367; gex-heatmap SPX spot 7365.12; member UI 7,363.90 (within poll cadence) |
+| GEX APIs | `/api/market/gex-positioning` + heatmap SPX/SPY HTTP 200 |
+| Largo NVDA query | ✅ 200 in 182ms; grounded HELIX tape ($91.8M premium) |
+| `data-correctness` cron | ⚠️ flags=5 (see findings) |
+
+### Missing-field audit
+
+**0 missing-field signals** across dashboard, flows, heatmap (matrix + profile), grid, nighthawk, terminal, track-record.
+
+### Console / render health
+
+| Page | Console |
+|---|---|
+| `/dashboard` | ⚠️ 1× HTTP 400 (ticker-search without `q`) |
+| `/grid` | ⚠️ 1× HTTP 404 (static asset — investigate) |
+| Night Hawk (grid-e2e) | ⚠️ React hydration #418 text mismatch |
+| Others | ✅ zero errors |
+
+### Findings
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| **P1** | `socket-health-options-web-false-negative` | Cron `socket-health` HTTP 503 on web replicas: held contracts + NOT_CREATED shard | `GET /api/cron/socket-health` @ 11:29 ET | **FIXED** in PR — cluster Redis marks + leader-gated subscribe |
+| **P1** | `validate-deploy-railway-cli` | `validate:rth-open` failed on invalid Railway token (prod is ECS) | `validate-deploy.mjs` | **FIXED** in PR — ECS fallback + PG warn |
+| **P2** | `dc-call-wall-argmax-invariant` | call_wall 7500 vs argmax 7550 (SPX) + 748 vs 760 (SPY) | data-correctness force=1 | UW wall vs matrix argmax — verifier tension |
+| **P2** | `dc-nvda-premium-band` | NVDA entry $3.42 vs chain bid/ask 1.4/1.42 | data-correctness | ledger vs live chain — investigate entry timing |
+| **P2** | `dc-largo-grounding-coverage` | 1/18 Largo answers coverage 0% (#1284) | data-correctness shadow-recompute | footer/coverage disclosure |
+| **P2** | `dc-nh-outcomes-vocabulary` | 15 nighthawk_play_outcomes OOV rows | data-correctness sanity-bound | ledger cleanup |
+| **P2** | `nighthawk-hydration-418` | React #418 text hydration on Night Hawk load | grid-e2e console | SSR/client text drift |
+| **P2** | `platform-snapshot-slow` | `/api/market/platform/snapshot` 13.5s cold | rth-sweep API probe | transient cold build |
+
+**GitHub issue:** ops-auto-fix for P1 socket-health + validate-deploy (fixed in PR).
+
+**Reports:** `audit-output/rth-sweep-2026-07-29T15-34-28-142Z.json`, `audit-output/member-dashboard-live-1785339600683.png`, `audit-output/grid-e2e-1785339596287.json`
+
+---
 
 ## Largo mobile stream fix — 2026-07-06 (user-reported "Connection interrupted")
 
