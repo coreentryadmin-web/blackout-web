@@ -299,11 +299,7 @@ async function checkPostgres(ctx: Ctx): Promise<CheckResult[]> {
     const vocabSql = NH_OUTCOME_VOCAB.map((v) => `'${v}'`).join(",");
     const row = await dbProbe<{ total: string; bad_outcome: string }>(
       `SELECT COUNT(*)::int AS total,
-<<<<<<< HEAD
               COUNT(*) FILTER (WHERE outcome NOT IN (${vocabSql}))::int AS bad_outcome
-=======
-              COUNT(*) FILTER (WHERE outcome NOT IN ('target','stop','open','ambiguous','pending','unfilled'))::int AS bad_outcome
->>>>>>> acd852c9 (fix(ops): clear data-correctness false flags for ops-collect GREEN (#1247))
        FROM nighthawk_play_outcomes`
     );
     if (row && Number(row.total) > 0) {
