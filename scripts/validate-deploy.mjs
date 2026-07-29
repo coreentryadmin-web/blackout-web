@@ -178,20 +178,6 @@ console.log("1. Production (blackout-web)");
 const skipCli =
   process.env.SKIP_RAILWAY === "1" ||
   IS_STAGING ||
-<<<<<<< HEAD
-  (process.env.GITHUB_ACTIONS === "true" && !process.env.RAILWAY_TOKEN?.trim()) ||
-  !(() => {
-    try {
-      execSync("command -v railway", { stdio: "ignore" });
-      return true;
-    } catch {
-      return false;
-    }
-  })();
-
-if (skipCli) {
-  warn("Production CLI checks skipped (Railway deprecated / CLI unavailable / SKIP_RAILWAY=1)");
-=======
   !hasRailwayCli() ||
   (process.env.GITHUB_ACTIONS === "true" && !process.env.RAILWAY_TOKEN?.trim());
 
@@ -218,7 +204,6 @@ if (skipCli) {
       warn("ECS deploy status unavailable — HTTP smoke only");
     }
   }
->>>>>>> 4b4488ee (fix(ops): cloud-agent RTH audits — AWS secrets, web-tier socket-health)
 } else {
 try {
   const deployments = sh("railway deployment list --service blackout-web 2>/dev/null");

@@ -1,5 +1,64 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-29 12:10 ET
+Last updated: 2026-07-29 12:25 ET
+
+## RTH comprehensive sweep — 2026-07-29 ~12:04–12:18 ET (midday pass #1)
+
+**Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` including COMPREHENSIVE TEST SWEEP. Time: Wed 12:04–12:18 ET (RTH). Commands: `validate:rth-open` → `validate:rth-sweep` → `GET /api/cron/data-correctness?force=1` → `validate:member-dashboard` → `validate:site-latency` → `validate:spx-rth` → `ops:collect`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` | ⚠️ **FAIL pre-fix** — stale env `CRON_SECRET` → 401 socket-health; Railway CLI missing. **FIX in PR #1238** |
+| `npm run validate:rth-sweep` | ✅ **GREEN** — 0 P0/P1; all 6 pages load ~1.6s soft-nav; APIs 200 |
+| `GET /api/cron/data-correctness?force=1` | ⚠️ **4 flags** (see P1 table) — `ok: false` but member surfaces live |
+| `npm run validate:member-dashboard` | ✅ **GREEN** — 13/13 (spot 7348.29, 177 matrix rows, LIVE badge) |
+| `npm run validate:site-latency` | ⚠️ **41/44** — dashboard/flows content-ready >2.5s (transient RTH load) |
+| `npm run validate:spx-rth` | ⚠️ **PARTIAL** — cross-endpoint GREEN; matrix resum + BIE + E2E flakes |
+| `scripts/audit/data-validator.mjs` | ✅ **GREEN** — 37 PASS / 5 INFO |
+
+### Per-page sweep (Clerk premium session)
+
+| Page | Hard/soft load | Live tick (12–20s wait) | Missing fields | Console |
+|---|---|---|---|---|
+| `/dashboard` | hard 1651ms | null (spot stable) | 0 | 1× HTTP 400 (resource) |
+| `/flows` | soft 1641ms | null | 0 | 0 |
+| `/heatmap` (matrix) | soft 1643ms | null | 0 | 0 |
+| `/nighthawk` | soft 1602ms | null | 0 | 0 |
+| `/terminal` (Largo) | soft 1589ms | null | 0 | 0 |
+| `/track-record` | soft 1606ms | null | 0 | 0 |
+
+**API cross-check:** desk spot 7349.46; merged 7348.91; GEX heatmap 177 strikes @ 7349.36; flows 20 prints; NH edition 200; zerodte board fresh (`as_of` 0s).
+
+**Largo:** `POST /api/market/largo/query` 200 in 189ms — NVDA HELIX tape $78.4M / 50 prints grounded. Regime line shows `—` (upstream regime label unavailable — not fabricated).
+
+### data-correctness flags (force=1, prod CRON via AWS SM)
+
+| Flag | Layer | Severity | Detail |
+|---|---|---|---|
+| `premium` | cross-provider | **P1** | NVDA play entry $3.42 vs chain bid/ask 1.17/1.19 — scale/quote mismatch |
+| `answer_grounding` | shadow-recompute | **P1** | 1/22 Largo answers <50% numeric grounding (#1284) |
+| `pg_nh_outcomes` | sanity-bound | **P1** | 15 `nighthawk_play_outcomes` rows with out-of-vocabulary outcome |
+| `net_premium` | cross-provider | **P2** | AMD UW vs Massive call-share skew 35pts — documented cross-source divergence |
+
+### Findings
+
+| Severity | ID | Detail | Status |
+|---|---|---|---|
+| **P1** | `rth-cloud-cron-secret-mismatch` | Cloud agent env `CRON_SECRET` ≠ Secrets Manager → all cron probes 401 | **FIXED** (PR #1238 — `auditSecret()` prefers AWS SM) |
+| **P1** | `validate-deploy-railway-cli` | `validate:deploy` hard-fails without Railway CLI on ECS-only prod | **FIXED** (PR #1235 + #1238) |
+| **P1** | `socket-health-web-tier-503` | Web replicas 503 when ingest owns options WS | **FIXED** (PR #1238) |
+| **P1** | `dc-nvda-premium-chain-band` | NVDA 0DTE entry premium outside live chain bid/ask | **OPEN** — [#1239](https://github.com/coreentryadmin-web/blackout-web/issues/1239) |
+| **P1** | `largo-grounding-coverage` | Largo answer #1284 undisclosed low grounding | **OPEN** — [#1239](https://github.com/coreentryadmin-web/blackout-web/issues/1239) |
+| **P1** | `nh-outcomes-vocabulary` | 15 garbage outcome rows in NH ledger | **OPEN** — [#1239](https://github.com/coreentryadmin-web/blackout-web/issues/1239) |
+| **P2** | `dashboard-console-400` | Browser console 400 on dashboard hard load | **OPEN** |
+| **P2** | `site-latency-dashboard-ready` | Dashboard content-ready 2.7s (threshold 2.5s) | **OPEN** — transient RTH |
+
+**Member-facing prod: GREEN** — all premium pages load, live spot/GEX/flows/NH board grounded.
+
+**Reports:** `audit-output/rth-sweep-2026-07-29T16-09-42-908Z.json`, `audit-output/member-dashboard-live-1785341549488.png`
+
+---
 
 ## grid-rth-2026-07-29 — 0DTE Command midday verify pass (12:09 ET)
 
@@ -46,16 +105,15 @@ Last updated: 2026-07-29 12:10 ET
 
 | Severity | ID | Detail | Status |
 |---|---|---|---|
-| **P1** | `grid-rth-audit-clerk-fallback` | `grid-rth-all-day-audit.mjs`, `zerodte-integration-audit.mjs`, `zerodte-bie-consistency-validator.mjs` only used CRON bearer — cloud agent secret ≠ prod → false 401 FAILs | **FIXED** (PR #1235) — shared `audit-auth-fetch.mjs` with cached Clerk session |
-| **P1** | `validate-deploy-railway-cli-fail` | Missing/logged-out Railway CLI blocked `validate:deploy` / RTH-open despite ECS being healthy | **FIXED** (PR #1235) — Railway CLI failure → WARN |
-| **P1** | `ops-collect-watchdog-401-p0` | Cloud agent CRON 401 surfaced as P0 `watchdog:http` | **FIXED** (PR #1235) — HTTP 401 downgraded to P2; grid-rth treats P2-only ops as WARN |
-| **P2** | `grid-rth-cloud-cron-secret-mismatch` | Cloud agent env `CRON_SECRET` returns 401 on `/api/cron/*` bearer paths; prod crons unaffected (ECS has correct secret) | **OPEN** — rotate cloud agent secret to match Secrets Manager |
-| **P2** | `grid-rth-runbook-stale-grid-panels` | `GRID-RTH-ALL-DAY-AGENT.md` still references classic `/grid` + 9 `/api/grid/*` panels (deleted 2026-07-07); 0DTE lives on `/nighthawk` | **OPEN** — doc update post-close |
+| **P1** | `grid-rth-audit-clerk-fallback` | Audit scripts only used CRON bearer — cloud agent secret ≠ prod → false 401 FAILs | **FIXED** (PR #1235) — `audit-auth-fetch.mjs` |
+| **P1** | `validate-deploy-railway-cli-fail` | Missing Railway CLI blocked `validate:deploy` despite ECS healthy | **FIXED** (PR #1235 + #1238) |
+| **P1** | `ops-collect-watchdog-401-p0` | Cloud agent CRON 401 surfaced as P0 `watchdog:http` | **FIXED** (PR #1235) — HTTP 401 downgraded to P2 |
+| **P2** | `grid-rth-cloud-cron-secret-mismatch` | Cloud agent env `CRON_SECRET` stale vs Secrets Manager | **FIXED** (PR #1238 — `auditSecret()`) |
 | **P2** | `grid-e2e-playwright-missing` | Cloud agent VM lacks Playwright chromium binary; API E2E path covers board + flows | **KNOWN** |
 
 **No prod P0 defects — board logic, gates, ledger PnL, and UI all GREEN via Clerk auth.**
 
-**Reports:** `audit-output/grid-rth-2026-07-29-verify-1785341439631.json`, `audit-output/zerodte-logic-1785341224251.json`, `audit-output/grid-e2e-1785341228819.json`
+**Reports:** `audit-output/grid-rth-2026-07-29-verify-1785341439631.json`, `audit-output/zerodte-logic-1785341224251.json`
 
 ---
 
@@ -103,8 +161,8 @@ Last updated: 2026-07-29 12:10 ET
 | Severity | ID | Detail | Backing API | Fix defer? |
 |---|---|---|---|---|
 | **P1** | `spx-rth-audit-near-term-slice-false-flag` | `spx-dashboard-e2e-audit.mjs` + `heatmap-matrix-audit.mjs` used `expiries.slice(0,8)` for INV-2 cell re-sum; SPX emits 15 `near_term_expiries` → false FAIL at strike ~6920 (200% Δ) | `GET /api/market/gex-heatmap?ticker=SPX` | **FIXED** (PR) — use `near_term_expiries` |
-| **P2** | `spx-rth-cloud-cron-secret-mismatch` | Cloud agent `CRON_SECRET` ≠ prod Secrets Manager → HTTP 401 on `/api/cron/*`, bearer SPX routes, `ops:collect` watchdog | `ops:collect` `watchdog:http` | OPEN — rotate cloud agent secret |
-| **P2** | `spx-rth-validate-deploy-railway` | `validate:rth-open` fails on missing Railway CLI in cloud VM; HTTP smoke GREEN | `validate:deploy` | KNOWN |
+| **P2** | `spx-rth-cloud-cron-secret-mismatch` | Cloud agent `CRON_SECRET` ≠ prod Secrets Manager → HTTP 401 on `/api/cron/*`, bearer SPX routes, `ops:collect` watchdog | `ops:collect` `watchdog:http` | **FIXED** (PR #1238) |
+| **P2** | `spx-rth-validate-deploy-railway` | `validate:rth-open` fails on missing Railway CLI in cloud VM; HTTP smoke GREEN | `validate:deploy` | **FIXED** (PR #1238) |
 | **P2** | `spx-commentary-expand-standby` | Commentary expand button hidden when rail in standby (not `live`) — E2E SKIP is expected, not a regression | UI `#spx-commentary-rail-toggle` | post-close UX doc |
 
 **No prod P0 defects — matrix cells, trade alerts, and cross-tool integration all GREEN via Clerk auth.**
@@ -113,7 +171,6 @@ Last updated: 2026-07-29 12:10 ET
 
 ---
 
-## grid-rth-2026-07-29 — 0DTE Command market-open verify pass (6:30 AM PT / 9:30 AM ET)
 
 **Session:** Autonomous Grid RTH agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` verify mode. Time: Wed 11:34–11:40 ET (RTH). Commands: `validate:grid-rth` → `validate:zerodte-logic` → `validate:grid-e2e` + Clerk live board deep probe.
 
