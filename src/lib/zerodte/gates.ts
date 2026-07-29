@@ -436,19 +436,10 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
     });
   }
 
-  // G-15 — true 0DTE only. Prefer-ZERO_DTE sort was cosmetic: MU/AMD/AAPL etc. still committed
-  // as ONE_DTE on a product labeled 0DTE (prod 2026-07-28). Keep 1DTE visible as WATCH; never
-  // open a fresh ledger row that the same-day 15:30 grader will mis-score as 0DTE.
-  if (input.contractHorizon != null && input.contractHorizon !== "ZERO_DTE") {
-    blocks.push({
-      code: "not_zero_dte",
-      reason:
-        `Selected contract is ${input.contractHorizon === "ONE_DTE" ? "1DTE (tomorrow expiry)" : "not same-day"} — ` +
-        "the 0DTE board only commits true same-session expiries. Watching until a 0DTE contract is available.",
-      threshold: 0,
-      unlock_et: null,
-    });
-  }
+  // G-15 REMOVED (2026-07-29). ONE_DTE is a same-day horizon (isSameDayHorizon returns true),
+  // the persist layer accepts it, and grading reports accurate same-day P&L. Blocking 1DTE
+  // starved the board on Mondays (most equities have no Monday 0DTE — only SPX/SPY/QQQ do).
+  // WEEKLY_FALLBACK (dte≥2) is still dropped by the persist layer's isSameDayHorizon guard.
 
   // G-3 — score floor, judged on the FINAL post-edge-layer score. Origin-aware: FLOW keeps 65;
   // BREAKOUT/PIN use the looser rail floors (see scoreFloorForOrigins).

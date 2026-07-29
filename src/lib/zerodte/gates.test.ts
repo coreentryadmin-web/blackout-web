@@ -225,43 +225,12 @@ test("G-3: BREAKOUT origin at score 60 clears origin-aware floor (58) but FLOW a
 });
 
 
-test("G-15: ONE_DTE contract horizon blocks fresh commit; ZERO_DTE and absent do not", () => {
+test("G-15 removed: ONE_DTE commits (Monday equity starvation fix)", () => {
   const one = evaluateZeroDteGates(input({ contractHorizon: "ONE_DTE" }));
-  assert.equal(one.verdict, "BLOCKED");
-  assert.ok(one.blocks.some((b) => b.code === "not_zero_dte"));
+  assert.equal(one.verdict, "COMMIT", "ONE_DTE is a same-day horizon and must commit");
+  assert.ok(!one.blocks.some((b) => b.code === "not_zero_dte"));
   assert.equal(evaluateZeroDteGates(input({ contractHorizon: "ZERO_DTE" })).verdict, "COMMIT");
   assert.equal(evaluateZeroDteGates(input({})).verdict, "COMMIT", "absent horizon = no-op (legacy)");
-});
-
-test("G-15: CONDOR on ONE_DTE is also blocked (same-day credit only)", () => {
-  const v = evaluateZeroDteGates(
-    input({
-      play_type: "CONDOR",
-      contractHorizon: "ONE_DTE",
-      nowEtMinutes: 14 * 60 + 30, // past G-14; condor exempt from late_afternoon
-      condorPlan: {
-        ticker: "SPX",
-        expiry: "2026-07-14",
-        short_call: 550,
-        long_call: 555,
-        short_put: 490,
-        long_put: 485,
-        net_credit: 1.2,
-        max_loss: 3.8,
-        wing_width: 5,
-        credit_pct: 24,
-        short_call_bid: 0.7,
-        short_put_bid: 0.5,
-        long_call_ask: 0.2,
-        long_put_ask: 0.1,
-        per_leg_spread_tax_pct: 8,
-        underlying_price: 520,
-        short_call_delta: -0.15,
-        short_put_delta: 0.15,
-      },
-    })
-  );
-  assert.ok(v.blocks.some((b) => b.code === "not_zero_dte"));
 });
 
 test("G-14: condor at 15:15 is NOT blocked (condors benefit from late-session theta)", () => {
