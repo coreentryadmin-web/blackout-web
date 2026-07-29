@@ -10,12 +10,13 @@ import { join } from "node:path";
 import { chromium } from "playwright";
 import { isAuthFailureStatus } from "./audit/lib/auth-status.mjs";
 import { generateDefaultAuditPhone } from "./audit/lib/audit-phone.mjs";
+import { auditSecret } from "./audit/lib/prod-secrets.mjs";
 
 const baseArg = process.argv.find((a) => a.startsWith("--base="));
 const BASE = (baseArg ? baseArg.slice("--base=".length) : "https://blackouttrades.com").replace(/\/$/, "");
 const SECRET = process.env.CLERK_SECRET_KEY;
 const PUB = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || "";
-const CRON = process.env.CRON_SECRET || "";
+const CRON = auditSecret("CRON_SECRET");
 const EMAIL = process.env.AUDIT_EMAIL || `rth-sweep-${Date.now()}@blackouttrades.com`;
 const PHONE = process.env.AUDIT_PHONE || generateDefaultAuditPhone();
 const API = "https://api.clerk.com/v1";

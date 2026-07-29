@@ -16,8 +16,9 @@
 import { execSync } from "node:child_process";
 import { spawnSync } from "node:child_process";
 import { ALL_CRON_KEYS } from "./railway-cron-services.mjs";
-import { createAuditClient, resolveAuditDbUrl } from "./pg-audit.mjs";
+import { createAuditClient, resolveAuditDbUrl, isPrivateDbUnreachableError } from "./pg-audit.mjs";
 import { fetchRetry } from "./audit/lib/fetch-retry.mjs";
+import { prodSecret, auditSecret } from "./audit/lib/prod-secrets.mjs";
 
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
 const IS_STAGING = BASE.includes("staging.");
@@ -58,8 +59,17 @@ function loadProdVars() {
   }
 }
 
+function hasRailwayCli() {
+  try {
+    sh("command -v railway >/dev/null 2>&1 && railway --version 2>/dev/null | head -1");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function resolveCronSecret() {
-  const fromEnv = process.env.CRON_SECRET?.trim();
+  const fromEnv = auditSecret("CRON_SECRET");
   if (fromEnv) return fromEnv;
   if (IS_STAGING) {
     try {
@@ -72,6 +82,8 @@ function resolveCronSecret() {
       return "";
     }
   }
+  const fromAws = prodSecret("CRON_SECRET");
+  if (fromAws) return fromAws;
   const vars = loadProdVars();
   return vars.CRON_SECRET?.trim() ?? "";
 }
@@ -166,18 +178,32 @@ console.log("1. Production (blackout-web)");
 const skipCli =
   process.env.SKIP_RAILWAY === "1" ||
   IS_STAGING ||
-  (process.env.GITHUB_ACTIONS === "true" && !process.env.RAILWAY_TOKEN?.trim()) ||
-  !(() => {
-    try {
-      execSync("command -v railway", { stdio: "ignore" });
-      return true;
-    } catch {
-      return false;
-    }
-  })();
+  !hasRailwayCli() ||
+  (process.env.GITHUB_ACTIONS === "true" && !process.env.RAILWAY_TOKEN?.trim());
 
 if (skipCli) {
-  warn("Production CLI checks skipped (Railway deprecated / CLI unavailable / SKIP_RAILWAY=1)");
+  warn(
+    hasRailwayCli()
+      ? "Production CLI checks skipped (GITHUB_ACTIONS or SKIP_RAILWAY=1)"
+      : "Production CLI checks skipped (Railway CLI not installed — using HTTP/ECS probes)"
+  );
+  if (!IS_STAGING) {
+    try {
+      const out = sh(
+        'aws ecs describe-services --cluster blackout-production-cluster --services blackout-production-web --query "services[0].{status:status,running:runningCount,desired:desiredCount,deployments:deployments[0].rolloutState}" --output json 2>/dev/null'
+      );
+      const svc = JSON.parse(out);
+      if (svc?.status === "ACTIVE" && svc.running === svc.desired && svc.deployments === "COMPLETED") {
+        ok(`ECS blackout-production-web ${svc.running}/${svc.desired} ACTIVE rollout=${svc.deployments}`);
+      } else if (svc?.status === "ACTIVE") {
+        warn(`ECS blackout-production-web ${svc.running}/${svc.desired} rollout=${svc.deployments ?? "?"}`);
+      } else {
+        warn(`ECS describe-services: ${out.slice(0, 120)}`);
+      }
+    } catch {
+      warn("ECS deploy status unavailable — HTTP smoke only");
+    }
+  }
 } else {
 try {
   const deployments = sh("railway deployment list --service blackout-web 2>/dev/null");
@@ -321,7 +347,7 @@ if (IS_STAGING && dbUrl) {
 
     await client.end();
   } catch (e) {
-    if (IS_STAGING && /ECONNRESET|ETIMEDOUT|ENOTFOUND|timeout|ECONNREFUSED/i.test(e.message)) {
+    if (isPrivateDbUnreachableError(e.message)) {
       warn(`Postgres unreachable from this host (private RDS) — skipping DB checks: ${e.message}`);
     } else {
       fail(`Postgres query failed: ${e.message}`);
@@ -389,6 +415,7 @@ const replicaCount = Math.max(
     Number(
       (IS_STAGING ? process.env.REPLICA_COUNT : null) ??
         rwVars.REPLICA_COUNT ??
+        prodSecret("REPLICA_COUNT") ??
         process.env.REPLICA_COUNT ??
         0
     )
@@ -410,6 +437,16 @@ if (!skipCli) {
   } catch {
     /* optional */
   }
+} else {
+  try {
+    const out = sh(
+      'aws ecs describe-services --cluster blackout-production-cluster --services blackout-production-web --query "services[0].runningCount" --output text 2>/dev/null'
+    );
+    const n = Number(out);
+    if (Number.isFinite(n)) runningReplicas = n;
+  } catch {
+    /* optional */
+  }
 }
 if (replicaCount >= 1 && runningReplicas != null && replicaCount === runningReplicas) {
   ok(`REPLICA_COUNT=${replicaCount} matches ${runningReplicas} running replicas`);
@@ -424,7 +461,7 @@ if (replicaCount >= 1 && runningReplicas != null && replicaCount === runningRepl
 // ── 5. Options / UW socket churn (socket-health primary; logs secondary) ─────
 console.log("\n5. Socket churn (socket-health + production logs)");
 if (skipCli) {
-  if (IS_STAGING && cronSecret) {
+  if (cronSecret) {
     try {
       const { status, body } = await fetchJson("/api/cron/socket-health", {
         headers: { Authorization: `Bearer ${cronSecret}` },
@@ -437,7 +474,7 @@ if (skipCli) {
       warn(`socket-health probe failed: ${e.message}`);
     }
   } else {
-    warn("Production log checks skipped (SKIP_RAILWAY / staging without CRON_SECRET)");
+    warn("Production log checks skipped (no CRON_SECRET)");
   }
 } else {
   // Live probe beats log tail: multi-replica clusters + off-hours standdown leave stale

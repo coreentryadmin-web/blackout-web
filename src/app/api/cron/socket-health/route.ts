@@ -10,8 +10,11 @@ import {
   buildUwClusterHealth,
   evaluatePolygonClusterOk,
   evaluateUwClusterOk,
+  evaluateOptionsClusterOk,
+  readOptionsClusterHealth,
   readPolygonClusterHealth,
 } from "@/lib/ws/socket-cluster-health";
+import { shouldBootDataSockets } from "@/lib/process-role";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -59,6 +62,11 @@ export async function GET(req: NextRequest) {
       } else if (authFailedShards > 0) {
         options_ok = false;
         options_detail = `auth failed on ${authFailedShards} shard(s) — check POLYGON_API_KEY / options WS entitlement`;
+      } else if (!shouldBootDataSockets()) {
+        const optionsCluster = await readOptionsClusterHealth();
+        const optionsEval = evaluateOptionsClusterOk(optionsCluster, rth, false);
+        options_ok = optionsEval.ok;
+        options_detail = `web tier — ${optionsEval.detail}`;
       } else {
         options_ok = false;
         options_detail = "enabled with held contracts but no authenticated shard yet";
