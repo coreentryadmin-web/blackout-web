@@ -3,7 +3,6 @@ import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
 import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
 import { requireAnyToolApi } from "@/lib/tool-access-server";
 import { subscribeMatrixDeltas } from "@/lib/gex-matrix-broadcast";
-import type { GexMatrix } from "@/lib/gex-matrix-delta";
 import { NO_STORE_HEADERS, NO_STORE_STREAM_HEADERS } from "@/lib/no-store-headers";
 
 export const runtime = "nodejs";
@@ -25,6 +24,7 @@ export const maxDuration = 60;
  * - Subscribers auto-remove after 30 min TTL (SUBSCRIBER_TTL_MS in broadcast module)
  * - Dead connections (write errors) are automatically removed from subscribers
  * - Server maintains up to MAX_SUBSCRIBERS (10000) to prevent memory leak
+ * - SSE comment heartbeat every 15s (keeps ALB / proxies from idle-closing)
  */
 export async function GET(req: NextRequest) {
   const auth = await authorizeMarketDeskApi(req);
@@ -54,6 +54,19 @@ export async function GET(req: NextRequest) {
     // Create an SSE response stream
     const encoder = new TextEncoder();
     let isClosed = false;
+    let unsubscribe: (() => void) | null = null;
+    let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+
+    const cleanup = () => {
+      if (isClosed) return;
+      isClosed = true;
+      if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+        heartbeatInterval = null;
+      }
+      unsubscribe?.();
+      unsubscribe = null;
+    };
 
     const stream = new ReadableStream({
       start(controller) {
@@ -65,31 +78,41 @@ export async function GET(req: NextRequest) {
         })}\n\n`;
         controller.enqueue(encoder.encode(snapshotEvent));
 
-        // Subscribe to delta broadcasts
-        // The unsubscribe function is returned and called on stream close
-        const unsubscribe = subscribeMatrixDeltas({
+        unsubscribe = subscribeMatrixDeltas({
           write: async (payload: string) => {
             if (isClosed) throw new Error("Stream closed");
             try {
               controller.enqueue(encoder.encode(payload));
             } catch (err) {
-              isClosed = true;
-              controller.close();
+              cleanup();
+              try {
+                controller.close();
+              } catch {
+                /* already closed */
+              }
               throw err;
             }
           },
         });
 
-        // Track when stream closes so we can unsubscribe
+        // Periodic SSE comment heartbeat — same pattern as spx/pulse/stream + vector/stream.
+        heartbeatInterval = setInterval(() => {
+          if (isClosed) return;
+          try {
+            controller.enqueue(encoder.encode(": heartbeat\n\n"));
+          } catch {
+            cleanup();
+          }
+        }, 15_000);
+
         const originalClose = controller.close.bind(controller);
         controller.close = () => {
-          isClosed = true;
-          unsubscribe();
+          cleanup();
           return originalClose();
         };
       },
       cancel() {
-        isClosed = true;
+        cleanup();
       },
     });
 

@@ -6,9 +6,10 @@ import { ProductMark } from "@/components/marks/ProductMark";
 import { NightHawkFeed } from "@/features/nighthawk/components/NightHawkFeed";
 import { NighthawkRadarBackdrop } from "@/features/nighthawk/components/NighthawkRadarBackdrop";
 import { useIosNativeShell } from "@/hooks/useIosNativeShell";
+import type { NightHawkSeedProps } from "@/features/nighthawk/lib/nighthawk-seed-props";
 
 /** /nighthawk page frame — radar ambient + v2 column polish. */
-export function NighthawkPageShell() {
+export function NighthawkPageShell({ seed }: { seed?: NightHawkSeedProps | null }) {
   const nativeShell = useIosNativeShell();
 
   return (
@@ -38,7 +39,7 @@ export function NighthawkPageShell() {
             className="nh-v2-page-header mb-3 shrink-0 [&_p]:text-sky-300"
           />
         )}
-        <NightHawkFeed />
+        <NightHawkFeed seed={seed ?? null} />
       </div>
     </PageShell>
   );

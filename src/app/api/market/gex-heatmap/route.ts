@@ -310,28 +310,28 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Cross-tool overlays (HELIX flow-per-strike + dark-pool), cached per ticker (~30s) so the
-    // route never pressures UW's 2-RPS cluster-wide budget regardless of user count.
-    const { overlays, at: overlaysAt } = await getOverlays(ticker, heatmap.strikes);
+    // Cross-tool overlays, Night Hawk context, and UW cross-validation are independent —
+    // fan out in parallel (was sequential: overlays → nighthawk → validate).
+    const overlaysPromise = getOverlays(ticker, heatmap.strikes);
+    const nighthawkPromise = getNightHawkContext(ticker);
+    const crossValPromise =
+      isHeatmapPreset(ticker) && heatmap.gex
+        ? validateGexAgainstUW(
+            ticker,
+            {
+              callWall: heatmap.gex.call_wall,
+              putWall: heatmap.gex.put_wall,
+              gammaFlip: heatmap.gex.flip,
+            },
+            { spot: heatmap.spot, nearTermExpiries }
+          ).catch(() => null)
+        : Promise.resolve(null);
 
-    // Night Hawk active-play context — best-effort Postgres read, never throws.
-    const nighthawkContext = await getNightHawkContext(ticker);
-
-    // UW cross-validation (WS-first, REST cached) — preset tickers only; never blocks response.
-    // Uses the SAME nearTermExpiries as the wall override above. Off-hours: WS idle + scoped
-    // REST fallback is intentionally skipped → cross_validation null (honest empty, not a bug).
-    let cross_validation = null;
-    if (isHeatmapPreset(ticker) && heatmap.gex) {
-      cross_validation = await validateGexAgainstUW(
-        ticker,
-        {
-          callWall: heatmap.gex.call_wall,
-          putWall: heatmap.gex.put_wall,
-          gammaFlip: heatmap.gex.flip,
-        },
-        { spot: heatmap.spot, nearTermExpiries }
-      ).catch(() => null);
-    }
+    const [{ overlays, at: overlaysAt }, nighthawkContext, cross_validation] = await Promise.all([
+      overlaysPromise,
+      nighthawkPromise,
+      crossValPromise,
+    ]);
 
     // A non-null heatmap can still be UNUSABLE: fetchGexHeatmap's emptyHeatmap() fallback
     // (polygon-options-gex.ts ~2422) returns a real GexHeatmap object — never null — whenever

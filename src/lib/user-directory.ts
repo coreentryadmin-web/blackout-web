@@ -1,9 +1,9 @@
-import { clerkClient } from "@clerk/nextjs/server";
 import { dbQuery } from "@/lib/db";
 import { isCognitoAuth } from "@/lib/auth-provider";
 import { getCognitoSession } from "@/lib/cognito-session";
 import { parseTier, type Tier } from "@/lib/tiers";
 import { isAdminEmail } from "@/lib/admin-emails";
+import { getClerkUserCached } from "@/lib/clerk-user-cache";
 
 export type UserProfile = {
   userId: string;
@@ -97,7 +97,7 @@ export async function getUserProfile(userId: string): Promise<UserProfile | null
     };
   }
 
-  const user = await (await clerkClient()).users.getUser(userId);
+  const user = await getClerkUserCached(userId);
   const email =
     user.emailAddresses.find((e) => e.id === user.primaryEmailAddressId)?.emailAddress ?? null;
   return {

@@ -51,7 +51,15 @@ const FlowMomentumChart = dynamic(
 );
 import { DarkPoolPanel } from "@/features/helix/components/DarkPoolPanel";
 import { TickerDrawer } from "@/features/helix/components/TickerDrawer";
-import { ContractDrilldownDrawer } from "@/features/helix/components/ContractDrilldownDrawer";
+// Same recharts trap as FlowMomentumChart — drawer also imports recharts; keep it
+// out of the initial /flows chunk until a member opens a contract.
+const ContractDrilldownDrawer = dynamic(
+  () =>
+    import("@/features/helix/components/ContractDrilldownDrawer").then(
+      (m) => m.ContractDrilldownDrawer
+    ),
+  { ssr: false }
+);
 import { SplitFlowRadar, type SplitFlowEntry } from "@/features/helix/components/SplitFlowRadar";
 import { VelocityRadar, type VelocityEntry } from "@/features/helix/components/VelocityRadar";
 import { SectorFlowPanel, type SectorFlowEntry } from "@/features/helix/components/SectorFlowPanel";

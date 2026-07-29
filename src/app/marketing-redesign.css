@@ -180,6 +180,13 @@
   position:relative;z-index:3;
   width:78%;aspect-ratio:1;
 }
+/* next/image fill wrappers — keep absolute fill for CSS blend/mask layers */
+.r-core > span {
+  position:absolute !important;
+  inset:0 !important;
+  width:100% !important;
+  height:100% !important;
+}
 .logo-energy{
   position:absolute;inset:0;
   width:100%;height:100%;object-fit:contain;

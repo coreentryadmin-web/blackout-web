@@ -8,3 +8,7 @@ export { PlayDetailModal } from "./components/PlayDetailModal";
 export type { NightHawkEdition, PlaybookPlay, HuntPlay } from "./lib/types";
 export { buildEveningEdition } from "./lib/edition-builder";
 export { runHuntScan } from "./lib/hunt-builder";
+export {
+  loadNightHawkSeedProps,
+  type NightHawkSeedProps,
+} from "./lib/nighthawk-seed-props";

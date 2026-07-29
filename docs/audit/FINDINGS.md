@@ -23,8 +23,35 @@ conflicts / draft). Helper previously turned `//evil.com/phish` → `/phish`
 **Fix.** `isSafeAppRelativePath` + `clerkPostAuthReturnPath` on all middleware
 redirect_url sites (incl. staging satellite); SW relative-path gate; tests.
 
-**Status.** Fixed on `cursor/open-redirect-sw-3d11` (supersedes #1226 security
-slice; close #1226 after merge).
+**Status.** Merged #1227 (supersedes #1226 security slice).
+
+## 2026-07-29 — [Latency] Auth-gate Clerk storm + desk/marketing TTFB/LCP wins
+
+**Severity.** P0 TTFB (auth) + P1 first-paint / LCP — verified real against `main`.
+
+**Root cause (P0).** `isAdminUser` only short-circuited JWT `role === "admin"`; JWT
+`"member"` still hit Clerk Backend HTTPS (~100–300ms). `userCanAccessTool` called
+`isAdminUser(userId)` **without** sessionClaims, so the JWT path never fired there.
+`canAccessTool` also detoured through `getAdminStatus` → `getUserProfile` (another
+getUser). Same page render: layout + `requireTier` + `canAccessTool` → 3–5 Clerk
+calls. Class already fixed once in `tier-cache.ts` (502 rate-limit comment) but never
+applied to the tool-access gate.
+
+**Also verified REAL.** No `next/image` (homepage emblem raw `<img>`); Night Hawk no
+SSR seed (client SWR waterfall); VectorPageShell 1Hz `setNow` full-tree re-render;
+gex-heatmap sequential overlays/nighthawk/cross-val; ContractDrilldownDrawer static
+recharts; gex-matrix-deltas SSE no heartbeat + cancel unsubscribe leak; LandingRedesignFx
+eager on homepage; ~9MB orphan `public/images/*` assets.
+
+**Fix.**
+- `adminFromJwtRole` + JWT member short-circuit; `getClerkUserCached` (5s coalesce);
+  pass sessionClaims through tool-access; drop getAdminStatus from page gate.
+- Night Hawk `loadNightHawkSeedProps` → SWR `fallbackData` on ZeroDteDeck.
+- Homepage `next/image` + priority; dynamic LandingRedesignFx; delete dead assets.
+- FreshnessChip `staleAfterMs` (kill Vector 1Hz parent timer); Thermal matrix chip leaf.
+- gex-heatmap `Promise.all`; SSE heartbeat + cancel cleanup; Helix drawer dynamic.
+
+**Status.** PR #1225 (branch `cursor/latency-audit-perf-3d11`).
 
 ## 2026-07-29 — [Cache] Members hit stale desk / wrong auth chrome — CF + origin gaps
 
