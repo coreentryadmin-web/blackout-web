@@ -25,7 +25,16 @@ Last updated: 2026-07-30 12:35 ET
 
 Note: `bie-full-state-snapshot`, `coaching-alerts`, `vector-dark-pool-warm` already fixed in #1343 — afternoon failures were pre-deploy.
 
-**GitHub issue:** [#1347](https://github.com/coreentryadmin-web/blackout-web/issues/1347) (ops-auto-fix)
+### Post-deploy re-verify (PR #1352 merged ~12:46 ET)
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` | ✅ **GREEN** — desk-warm 16s (was 244s); options-socket ok |
+| `data-correctness?surface=heatmap` | ✅ **200** — 0 flags |
+| `npm run ops:collect` | ✅ **exit 0** — 0 action items (was 4) |
+| `npm run validate:rth-sweep` | ⚠️ browser **GREEN** (7 pages <2.2s, 0 missing fields); parallel API burst timeouts on merged/zerodte/largo (transient P2) |
+
+**GitHub issue:** [#1347](https://github.com/coreentryadmin-web/blackout-web/issues/1347) closed — fix via [#1352](https://github.com/coreentryadmin-web/blackout-web/pull/1352)
 
 ---
 
