@@ -22,6 +22,7 @@ import {
   isPrivateVpcDbUrl,
 } from "./pg-audit.mjs";
 import { auditSecret } from "./audit/lib/prod-secrets.mjs";
+import { isXMarketingCronSuppressed } from "./audit/lib/x-marketing-paused.mjs";
 
 const pretty = process.argv.includes("--pretty");
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
@@ -216,6 +217,8 @@ async function httpItems() {
       }
       for (const key of wj.problem_keys ?? []) {
         if ((wj.rth_stale_keys ?? []).includes(key)) continue;
+        // Operator standing order: X marketing OFF — do not page stale when paused in Secrets Manager.
+        if (isXMarketingCronSuppressed(key)) continue;
         add("P1", "watchdog", `watchdog:problem:${key}`, `Cron health problem: ${key}`, "stale or failed per cron-staleness-watchdog.");
       }
       if (wj.error_spike === "critical") {

@@ -1,4 +1,5 @@
 # X mention replies — drive Replies metric + profile visits.
+# STANDING: EventBridge DISABLED + X_MARKETING_POSTS_PAUSED=1 (operator OFF — do not re-enable).
 [build]
 builder = "nixpacks"
 buildCommand = "echo 'cron trigger service: no app build needed'"
