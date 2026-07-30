@@ -135,16 +135,14 @@
 /* ═══════ §1 HERO — ENERGY REACTOR ═══════ */
 .hero{position:relative;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:5rem 1.5rem 2rem;overflow:hidden}
 
-/* CSS-only instant glow — visible before canvas loads */
+/* CSS-only subtle ambient — no spotlight, just faint warmth before canvas loads */
 .hero::before{
   content:"";position:absolute;top:50%;left:50%;
-  width:500px;height:500px;
+  width:300px;height:300px;
   transform:translate(-50%,-50%);
-  background:radial-gradient(ellipse at center,rgba(163,230,53,.12) 0%,rgba(163,230,53,.04) 30%,transparent 70%);
+  background:radial-gradient(ellipse at center,rgba(163,230,53,.04) 0%,transparent 60%);
   z-index:1;pointer-events:none;
-  animation:hero-pulse-css 3s ease-in-out infinite alternate;
 }
-@keyframes hero-pulse-css{0%{opacity:.7;transform:translate(-50%,-50%) scale(1)}100%{opacity:1;transform:translate(-50%,-50%) scale(1.1)}}
 
 /* Energy reactor — canvas particle system */
 .energy-canvas{
@@ -164,16 +162,16 @@
   transform:translateY(60px);
 }
 
-/* ── LAYER 1: Far atmosphere — big blurred halo ── */
+/* ── LAYER 1: Tight edge atmosphere — hugs the B, no distant halo ── */
 .logo-atmos{
-  position:absolute;inset:-30%;
+  position:absolute;inset:-8%;
   z-index:1;
   background-size:contain;background-position:center;background-repeat:no-repeat;
-  filter:blur(40px) brightness(1.6) saturate(1.4);
-  opacity:.3;
+  filter:blur(18px) brightness(1.4) saturate(1.2);
+  opacity:.18;
   mix-blend-mode:screen;
-  mask-image:radial-gradient(ellipse 55% 55% at center,white 0%,rgba(255,255,255,.4) 40%,transparent 70%);
-  -webkit-mask-image:radial-gradient(ellipse 55% 55% at center,white 0%,rgba(255,255,255,.4) 40%,transparent 70%);
+  mask-image:radial-gradient(ellipse 50% 50% at center,white 0%,rgba(255,255,255,.3) 50%,transparent 75%);
+  -webkit-mask-image:radial-gradient(ellipse 50% 50% at center,white 0%,rgba(255,255,255,.3) 50%,transparent 75%);
 }
 
 /* ── LAYER 2: Background energy (lightning, smoke, cracks, debris) ── */
@@ -203,17 +201,17 @@
   position:absolute;inset:0;
   width:100%;height:100%;object-fit:contain;
   mix-blend-mode:screen;
-  filter:contrast(1.45) brightness(1.6) saturate(1.7) drop-shadow(0 0 30px rgba(163,230,53,.6));
+  filter:contrast(1.45) brightness(1.6) saturate(1.7) drop-shadow(0 0 12px rgba(163,230,53,.45));
   mask-image:radial-gradient(ellipse 50% 50% at center,white 60%,rgba(255,255,255,.95) 75%,rgba(255,255,255,.25) 90%,transparent 100%);
   -webkit-mask-image:radial-gradient(ellipse 50% 50% at center,white 60%,rgba(255,255,255,.95) 75%,rgba(255,255,255,.25) 90%,transparent 100%);
   z-index:2;
 }
 
-/* ── LAYER 4: Soft radial halo behind B only ── */
+/* ── LAYER 4: Tight edge glow — hugs the B silhouette, no spread ── */
 .logo-halo{
-  position:absolute;inset:-20%;z-index:0;
+  position:absolute;inset:5%;z-index:0;
   border-radius:50%;
-  background:radial-gradient(ellipse 100% 120% at 50% 55%,rgba(163,230,53,.35) 0%,rgba(163,230,53,.18) 25%,rgba(163,230,53,.08) 45%,rgba(90,138,18,.03) 65%,transparent 85%);
+  background:radial-gradient(ellipse 80% 80% at 50% 50%,rgba(163,230,53,.08) 0%,rgba(163,230,53,.03) 40%,transparent 65%);
   pointer-events:none;
 }
 
@@ -237,13 +235,20 @@
 }
 
 /* Hero text */
-.hero-h{position:relative;z-index:8;text-align:center;margin-top:-20px}
+.hero-h{position:relative;z-index:8;text-align:center;margin-top:-20px;max-width:clamp(320px,75vw,820px);margin-inline:auto}
 .hero-h h1{
   font-family:var(--d);
-  font-size:clamp(5rem,13vw,10rem);
-  line-height:.78;
-  letter-spacing:-.01em;
+  font-size:clamp(4.2rem,11vw,8.5rem);
+  line-height:1;
+  letter-spacing:-.03em;
   text-transform:uppercase;
+  font-weight:800;
+}
+.hero-h h1 .l1{
+  display:block;font-size:.82em;letter-spacing:-.02em;margin-bottom:14px;
+}
+.hero-h h1 .l2{
+  display:block;font-size:.88em;letter-spacing:-.02em;margin-bottom:18px;
 }
 .hero-h h1 .on{
   display:block;font-size:1.2em;color:var(--g);
