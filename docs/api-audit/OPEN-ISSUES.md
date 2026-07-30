@@ -1,5 +1,40 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-30 16:57 ET
+Last updated: 2026-07-30 17:18 ET
+
+## grid-rth-2026-07-30 — 0DTE Command post-close **fix** pass (~17:16 ET)
+
+**Session:** Grid RTH all-day agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` **fix** mode (scheduled ~1:05 PM PT; executed ~2:16 PM PT / 5:16 PM ET post-close). Commands: `npm run validate:grid-rth -- --phase=post-close` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e` → `npm run validate:deploy`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:grid-rth -- --phase=post-close` | ✅ **13 PASS / 0 FAIL** — full orchestrator GREEN |
+| `npm run validate:zerodte-logic` | ✅ **17 PASS / 0 FAIL** — gates, plans, lifecycle, mergePlays, live board |
+| `npm run validate:grid-e2e` | ✅ **4 PASS / 0 FAIL** — board API + HELIX flows (Playwright WARN: chromium not installed) |
+| `npm run validate:deploy` | ✅ **GREEN** — health/ready/regime smoke |
+| `ops:collect` (via grid-rth) | ✅ **exit 0** — zero action items |
+
+**No new P0/P1 product defects.** All gate logic, play picking, trade management (OPEN/HOLD/TRIM/CLOSED), mergePlays UI, zerodte-warm cron, and ledger PnL probes GREEN. Only fix: P2 runbook staleness (`/grid` → `/nighthawk`).
+
+### Live board snapshot (CLOSED ~17:17 ET)
+
+| Field | Value |
+|---|---|
+| Session heat | `CLOSED` |
+| Setups | 13 |
+| Ledger | 15 committed rows |
+| Upstream | ✅ `upstream_ok` |
+| SPX GEX spot | 7437.63 |
+| Ledger PnL | ✅ 15 rows `reconcileLedgerLivePnlPct` coherent |
+
+### Reports
+
+- `audit-output/grid-rth-2026-07-30-post-close-1785446262878.json`
+- `audit-output/zerodte-logic-1785446223903.json`
+- `audit-output/grid-e2e-1785446232568.json`
+
+---
 
 ## rth-comprehensive-2026-07-30-16h57 — RTH agent pass (~16:52–16:57 ET, post-close)
 
