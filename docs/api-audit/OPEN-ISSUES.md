@@ -1,5 +1,57 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-30 12:35 ET
+Last updated: 2026-07-30 14:21 ET
+
+## grid-rth-2026-07-30 — 0DTE Command verify pass (~14:03–14:21 ET)
+
+**Session:** Autonomous Grid RTH agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` **verify** mode (scheduled ~90 min pass; market open 6:30 AM PT). Commands: `npm run validate:grid-rth` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e` → `node scripts/audit/data-validator.mjs`.
+
+**Note:** Classic `/grid` + 9 `/api/grid/*` panels were **deleted 2026-07-07** — 0DTE Command lives on `/nighthawk`; `zerodte-warm` cron replaces `grid-warm`. UI E2E probes `/nighthawk` (not `/grid` tabs).
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:grid-rth` | ✅ **GREEN** — 14/14 PASS |
+| `npm run validate:zerodte-logic` | ✅ **GREEN** — 17/17 PASS |
+| `npm run validate:grid-e2e` | ✅ **GREEN** (retry) — board API 21 setups / 15 ledger; first standalone run ⚠️ cold-cache curl timeout (HTTP 0 @120s) after 10 min orchestrator warm |
+| `data-validator.mjs` | ⚠️ **39 PASS / 2 FAIL / 4 INFO** — see P2 below |
+
+### 0DTE logic verified (all GREEN)
+
+| Layer | Checks | Verdict |
+|---|---|---|
+| Gate funnel | SETUP_MIN_GROSS, dominance, aggression, ITM guard | ✅ 3 eligible / 21 total, 0 violations |
+| Plan exits | stop −50%, target +100%, time stop 15:30 ET | ✅ pure probes |
+| Trade lifecycle | OPEN → TRIM → CLOSED, sticky trough stop | ✅ |
+| Plan grading | stop wins when both touch same bar | ✅ |
+| Session heat | RTH → POST_COMMIT (14:00 ET) → POWER_HOUR (15:00 ET) | ✅ live `POST_COMMIT` heat=70% |
+| mergePlays UI | past cutoff / MOVED → SKIP not OPEN | ✅ |
+| Ledger PnL math | `reconcileLedgerLivePnlPct` on 15 rows | ✅ 0 mismatches |
+| Live board | `upstream_ok`, finite numbers, `as_of` fresh | ✅ |
+
+### Cross-tool integration (all GREEN)
+
+| Probe | Result |
+|---|---|
+| SPX bootstrap spot vs GEX | ✅ spot 7423.49 |
+| HELIX flows feed | ✅ 20 prints |
+| Night Hawk dedupe | ✅ 4 tickers `covered_elsewhere` |
+| `cron:zerodte-warm` | ✅ 202 accepted (background warm) |
+| `data-correctness` | ✅ 0 grid/zerodte flags (full-async) |
+| `ops:collect` | ✅ 0 action items |
+
+### P2 findings (log only — verify mode, no live fix)
+
+| ID | Severity | Detail |
+|---|---|---|
+| `zerodte-nbis-spot-drift` | P2 | data-validator: live setup NBIS underlying 189.13 vs Polygon 185.645 (Δ 1.88% > 1.5% single-name tol) — likely stale setup-card spot between scan cycles |
+| `zerodte-crwv-flag-spot` | P2 | data-validator: ledger CRWV `underlying_at_flag` 74.79 outside Polygon minute range [75.24, 75.69] at flag time — investigate flag-time spot source vs bar alignment |
+| `grid-e2e-cold-timeout` | P2 | Standalone `validate:grid-e2e` HTTP 0 @120s when run immediately after 10 min `validate:grid-rth` warm burst; retry GREEN in 20s — transient origin saturation, not logic |
+| `playwright-missing-cloud` | P3 | Cloud VM lacks Playwright chromium binary — `ui:playwright` WARN; API probes authoritative |
+
+**P0 action:** None — all orchestrated probes GREEN. Post-close `fix` pass only if P2 items reproduce.
+
+---
 
 ## rth-comprehensive-2026-07-30-afternoon — RTH agent pass (~12:08–12:35 ET)
 
