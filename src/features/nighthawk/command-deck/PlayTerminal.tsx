@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { clsx } from "clsx";
 import type { TerminalPlay } from "./types";
 import { timeStopClock } from "@/lib/zerodte/terminal-ladder";
@@ -13,6 +13,7 @@ import { excursionBar, formatWinRateCi, signColorClass } from "@/lib/zerodte/ter
 import type { DeckCondor } from "./types";
 import { markStreamKind } from "./deck-session-ui";
 import { ThesisHealthPanel } from "./ThesisHealthPanel";
+import { useSecondTick, useFlash } from "./use-deck-live";
 
 type Tab = "thesis" | "manage" | "pnl";
 
@@ -76,38 +77,6 @@ function OccCopy({ occ }: { occ: string | null | undefined }) {
 
 /** Flash a cell when its value changes between renders — skip the first paint so mount doesn't
  *  neon-flash every static number (honest live-change feedback only). */
-function useFlash(value: unknown) {
-  const prev = useRef<unknown>(undefined);
-  const primed = useRef(false);
-  const [flash, setFlash] = useState(false);
-  useEffect(() => {
-    if (!primed.current) {
-      primed.current = true;
-      prev.current = value;
-      return;
-    }
-    if (prev.current !== value) {
-      setFlash(true);
-      const t = setTimeout(() => setFlash(false), 250);
-      prev.current = value;
-      return () => clearTimeout(t);
-    }
-  }, [value]);
-  return flash;
-}
-
-/** A 1s local clock so the time-stop countdown, session-decay bar, and mark-age readout advance
- *  every second even between the board poll (5s) and the SSE mark push (1s) — the "always live"
- *  requirement. Cheap: one interval for the whole terminal, cleared on unmount. */
-function useSecondTick(): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, []);
-  return now;
-}
-
 function GreekCell({ k, v }: { k: string; v: number | null }) {
   const flash = useFlash(v);
   // THETA is the 0DTE enemy — always highlight it (amber) so the decay cost reads at a glance;
@@ -514,14 +483,20 @@ function ThesisPanel({ play, sessionClosed = false }: { play: TerminalPlay; sess
 }
 
 function ManagePanel({ play, nowMs }: { play: TerminalPlay; nowMs: number }) {
-  // Recompute management from the LIVE pnlPct (SSE-overlaid) so the badge/note/track update at ~1s,
-  // not frozen at the 5s board-poll value the adapter originally computed.
+  // ZERO_DTE: recommendation/recNote already carry thesis overlay from the ~1s live deck pipeline.
   const mgmt = managementFor(play.exitModel, play.status, play.pnlPct ?? null);
-  // Legacy/Swing plays (exitModel "PLAN") compute their recommendation dynamically from the stock's
-  // stop/target levels in overlayLegacyQuotes — managementFor("PLAN") can't do that (it doesn't know
-  // the geometry), so prefer the overlay's dynamic values when present.
-  const badge = play.exitModel === "PLAN" && play.recommendation ? play.recommendation : mgmt.recommendation;
-  const recNote = play.exitModel === "PLAN" && play.recNote ? play.recNote : mgmt.recNote;
+  const badge =
+    play.horizon === "ZERO_DTE" && play.recommendation
+      ? play.recommendation
+      : play.exitModel === "PLAN" && play.recommendation
+        ? play.recommendation
+        : mgmt.recommendation;
+  const recNote =
+    play.horizon === "ZERO_DTE" && play.recNote
+      ? play.recNote
+      : play.exitModel === "PLAN" && play.recNote
+        ? play.recNote
+        : mgmt.recNote;
   // A CONDOR is a credit structure — its profit comes from decay/pin, NOT a rising long premium,
   // so it must never draw the directional trim ladder OR the −50/+100 ratchet track (both inverted).
   const isCondor = play.isCondor === true;

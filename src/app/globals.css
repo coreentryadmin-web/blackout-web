@@ -16295,6 +16295,25 @@ body::before {
 .nh-deck-th-advisory .lb{display:block;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--dk-green-dim);margin-bottom:4px}
 .nh-deck-th-advisory .tx{display:block;color:var(--dk-ink);line-height:1.45;margin-bottom:4px}
 .nh-deck-th-advisory .mgmt{display:block;color:var(--dk-cyan);font-weight:700}
+.nh-deck-th-cortex{margin-top:10px;font-size:10px}
+.nh-deck-th-cortex ul{margin:4px 0 0;padding:0;list-style:none}
+.nh-deck-th-cortex .nh-deck-cortex-line{display:flex;gap:8px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04);line-height:1.4}
+.nh-deck-th-cortex .src{flex:0 0 auto;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--dk-cyan)}
+.nh-deck-th-cortex .det{flex:1;color:var(--dk-ink)}
+.nh-deck-th-cortex .support .src{color:var(--dk-green)}
+.nh-deck-th-cortex .oppose .src,.nh-deck-th-cortex .veto .src{color:var(--dk-red)}
+.nh-deck-th-cortex .absent .src{color:var(--dk-amber)}
+.nh-deck-rk-wrap{position:relative;display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;flex-shrink:0}
+.nh-deck-health-ring{position:absolute;inset:0;width:36px;height:36px;transform:rotate(-90deg)}
+.nh-deck-health-ring .track{fill:none;stroke:rgba(255,255,255,.08);stroke-width:2.5}
+.nh-deck-health-ring .arc{fill:none;stroke-width:2.5;stroke-linecap:round;transition:stroke-dasharray .35s ease}
+.nh-deck-health-ring.ok .arc{stroke:var(--dk-green);filter:drop-shadow(0 0 4px rgba(53,255,158,.45))}
+.nh-deck-health-ring.warn .arc{stroke:var(--dk-amber);filter:drop-shadow(0 0 4px rgba(255,184,77,.4))}
+.nh-deck-health-ring.brk .arc{stroke:var(--dk-red);filter:drop-shadow(0 0 4px rgba(255,77,109,.4))}
+.nh-deck-rk-wrap .nh-deck-rk{position:relative;z-index:1;font-size:11px}
+.nh-deck-row-flash{animation:nh-deck-pulse .28s ease}
+.nh-deck-th-chip.neon{animation:nh-deck-pulse .28s ease}
+@keyframes nh-deck-pulse{0%,100%{box-shadow:none}50%{box-shadow:0 0 12px rgba(56,230,255,.25)}}
 .nh-deck-commit-snap{margin-top:12px}
 .nh-deck-commit-snap>summary{cursor:pointer;margin-bottom:8px}
 /* Excursion (MAE/MFE) range bar. red floor → amber → green cap; marker = current mark. */

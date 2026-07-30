@@ -20,7 +20,7 @@ const POLL_MS = 5_000;
  * available). Deduplicates tickers so 5 plays = at most 5 concurrent fetches (shared-cached
  * server-side at 1.5s, so the real upstream pressure is minimal).
  */
-export function useLegacyStockQuotes(tickers: string[], enabled = true): Map<string, StockQuote> {
+export function useLegacyStockQuotes(tickers: string[], enabled = true, pollMs = POLL_MS): Map<string, StockQuote> {
   const [quotes, setQuotes] = useState<Map<string, StockQuote>>(() => new Map());
   const key = tickers.join(",");
 
@@ -65,12 +65,12 @@ export function useLegacyStockQuotes(tickers: string[], enabled = true): Map<str
     };
 
     void poll();
-    const id = setInterval(poll, POLL_MS);
+    const id = setInterval(poll, pollMs);
     return () => {
       cancelled = true;
       clearInterval(id);
     };
-  }, [key, enabled]);
+  }, [key, enabled, pollMs]);
 
   return quotes;
 }

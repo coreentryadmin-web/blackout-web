@@ -12,8 +12,8 @@ import {
 import { fetchNightHawkHorizons } from "@/lib/api";
 import type { NightHawkEdition, NightHawkRecordResponse } from "@/features/nighthawk/lib/types";
 import type { TerminalPlay } from "./types";
-import { useZeroDteLiveMarks, overlayLiveMarks, overlayZeroDteStockQuotes } from "./use-live-marks";
-import { useLegacyStockQuotes, overlayLegacyQuotes } from "./use-legacy-quotes";
+import { overlayLegacyQuotes, useLegacyStockQuotes } from "./use-legacy-quotes";
+import { useZeroDteLiveDeck } from "./use-zero-dte-live-deck";
 import { zeroDteSources, isBoardDegraded, type BoardResp } from "./zerodte-sources";
 import { EDITION_TARGET_PLAYS } from "@/features/nighthawk/lib/constants";
 import { isMorningConfirmStale, formatCheckedAtEt } from "@/features/nighthawk/lib/morning-confirm-verdict";
@@ -65,25 +65,12 @@ export function ZeroDteDeck({
     refreshInterval: zerodteBoardRefreshMs(),
     revalidateOnFocus: true,
   });
-  // In sim mode the sim payload's ledger carries its OWN simulated marks/PnL — do NOT
-  // overlay the real member live-marks lane (that streams actual prod contracts and
-  // would corrupt the simulated board). Disabling it also skips the pointless SSE.
-  const liveMarks = useZeroDteLiveMarks(!sim);
   const basePlays = useMemo(
     () => zeroDteSources(data ?? null).map(terminalPlayFromZeroDte),
     [data],
   );
-  const markedPlays = overlayLiveMarks(basePlays, sim ? new Map() : liveMarks);
-  // Live underlying for the header stock print + condor tent — same quote lane Legacy uses.
-  // Skipped in sim (sim frames carry their own underlying) and while there are no tickers.
-  // Derive tickers from board-adapted plays (stable across mark ticks) so the quote hook
-  // doesn't remount on every SSE frame.
-  const tickers = useMemo(
-    () => [...new Set(basePlays.map((p) => p.ticker).filter(Boolean))],
-    [basePlays],
-  );
-  const stockQuotes = useLegacyStockQuotes(tickers, !sim && tickers.length > 0);
-  const plays: TerminalPlay[] = overlayZeroDteStockQuotes(markedPlays, stockQuotes);
+  // Unified ~1s overlay: marks SSE + stock quotes + management/thesis advisory refresh.
+  const plays = useZeroDteLiveDeck(basePlays, sim);
   // 9-3: a degraded/unavailable board must NOT be painted as a calm "no setup cleared the floor" flat tape
   // — that hides a real outage AND any open position. (isBoardDegraded treats first-load null as not-degraded.)
   const degraded = isBoardDegraded(data);

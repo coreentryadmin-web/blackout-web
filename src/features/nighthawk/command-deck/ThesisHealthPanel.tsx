@@ -112,6 +112,20 @@ export function ThesisHealthPanel({
         </div>
       ))}
 
+      {health.cortexSources && health.cortexSources.length > 0 && (
+        <div className="nh-deck-th-cortex">
+          <div className="nh-deck-lab">Cortex evidence (pinned at commit)</div>
+          <ul>
+            {health.cortexSources.map((c, i) => (
+              <li key={`${c.source}-${i}`} className={clsx("nh-deck-cortex-line", c.kind)}>
+                <span className="src">{c.source}</span>
+                <span className="det">{c.detail || c.kind}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <div className="nh-deck-th-moves">
         <div className="nh-deck-lab">Why health moved</div>
         <ul>
