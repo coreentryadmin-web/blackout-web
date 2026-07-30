@@ -166,6 +166,8 @@ export type ExitEngineInput = {
    *  the two-stage scale-out needs, same pattern as `trimmed` for the ratchet runner.
    *  trim_scale only; omitted → 0. Ignored in ratchet mode. */
   trimsTaken?: number;
+  /** When GEX is on UW fallback (not Polygon chain), skip gex-walls thesis-break exits. */
+  gexQualityDegraded?: boolean;
 };
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -224,12 +226,17 @@ export type ThesisBreak = {
  */
 export function detectThesisBreak(
   evidence: EvidenceItem[] | null,
-  entryCortexScore: number | null | undefined
+  entryCortexScore: number | null | undefined,
+  opts?: { skipGexWallsVeto?: boolean }
 ): ThesisBreak | null {
   if (evidence == null) return null; // Cortex can't see → thesis check skipped, never an exit
   const veto = evidence.find((e) => e.stance === "veto");
   if (veto) {
-    return { source: veto.source, kind: "veto", detail: `[${veto.source}] ${veto.detail}` };
+    if (opts?.skipGexWallsVeto && veto.source === "gex-walls") {
+      // Degraded GEX — do not exit on wall veto alone (2026-07-30 session forensics).
+    } else {
+      return { source: veto.source, kind: "veto", detail: `[${veto.source}] ${veto.detail}` };
+    }
   }
   const opposes = evidence.filter((e) => e.stance === "opposes" && e.weight > 0);
   if (opposes.length < EXIT_RULES.thesis_min_opposes) return null;
@@ -287,7 +294,9 @@ function decideTrimScale(
 
   // 2. Thesis break: the play is WRONG → dump the WHOLE remaining position at any P&L
   //    (outranks banking another third — same veto asymmetry as the ratchet path).
-  const broken = detectThesisBreak(input.cortexEvidence, input.entryCortexScore);
+  const broken = detectThesisBreak(input.cortexEvidence, input.entryCortexScore, {
+    skipGexWallsVeto: input.gexQualityDegraded === true,
+  });
   if (broken) {
     return {
       action: "EXIT",
@@ -443,7 +452,9 @@ export function evaluateExitState(input: ExitEngineInput): ExitDecision {
   }
 
   // ── 2. Thesis break: unconditional, fires at ANY P&L (including a loss). ───────
-  const broken = detectThesisBreak(input.cortexEvidence, input.entryCortexScore);
+  const broken = detectThesisBreak(input.cortexEvidence, input.entryCortexScore, {
+    skipGexWallsVeto: input.gexQualityDegraded === true,
+  });
   if (broken) {
     return {
       action: "EXIT",

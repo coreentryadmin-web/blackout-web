@@ -18,7 +18,7 @@
 import type { SwingDossier } from "./dossier";
 import type { HorizonPlay } from "../horizon-plays";
 import type { SwingWatchCandidate } from "./accumulation-store";
-import { swingThesisKey } from "./accumulation-store";
+import { swingThesisKey, persistenceGapReason } from "./accumulation-store";
 import { sharedCacheGet, sharedCacheSet } from "../shared-cache";
 import {
   assembleSwingServingLane,
@@ -166,6 +166,8 @@ export interface SwingServingSnapshot {
   plays: HorizonPlay[];
   /** The persistence-cleared WATCH candidates — the gate for which plays may surface to members. */
   watch: SwingWatchCandidate[];
+  /** Accumulating theses seen this scan but below the persistence bar — RESEARCH rail. */
+  observed?: SwingWatchCandidate[];
   /**
    * Grounded underlying spots (uppercased ticker → price) at scan time — last trade when available,
    * else the dossier plan's entry price (last close). Member route builds setup/entry reads from these
@@ -220,6 +222,9 @@ export async function discoverSwingFromPersisted(): Promise<SwingDiscoveryLike |
   const cleared = new Set(
     (snap.watch ?? []).map((c) => swingThesisKey(c.ticker, c.direction, c.archetype)),
   );
+  const observedByKey = new Map(
+    (snap.observed ?? []).map((c) => [swingThesisKey(c.ticker, c.direction, c.archetype), c]),
+  );
   const playThesisKey = (p: HorizonPlay): string => {
     const arch =
       p.archetype ??
@@ -227,7 +232,24 @@ export async function discoverSwingFromPersisted(): Promise<SwingDiscoveryLike |
       null;
     return swingThesisKey(p.ticker, p.direction, arch);
   };
-  const plays = (snap.plays ?? []).filter((p) => cleared.has(playThesisKey(p)));
+  const clearedPlays = (snap.plays ?? []).filter((p) => cleared.has(playThesisKey(p)));
+  const observedPlays = (snap.plays ?? [])
+    .filter((p) => {
+      const key = playThesisKey(p);
+      return observedByKey.has(key) && !cleared.has(key);
+    })
+    .map((p) => {
+      const key = playThesisKey(p);
+      const obs = observedByKey.get(key);
+      const gap = obs ? persistenceGapReason(obs) : null;
+      return {
+        ...p,
+        persistenceObserved: true as const,
+        persistenceGapReason: gap ?? "Building cross-session persistence.",
+        reason: gap ? `${p.reason} · ${gap}` : p.reason,
+      };
+    });
+  const plays = [...clearedPlays, ...observedPlays];
   // Contracts from plays (best first) so entry-state can stamp when a WATCH contract is attached.
   const contractsByTicker = new Map<string, ChainContract>();
   for (const p of plays) {

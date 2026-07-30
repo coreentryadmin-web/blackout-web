@@ -102,6 +102,7 @@ import {
   planQualityGateBlocks,
   recentNighthawkTake,
 } from "./gates";
+import { buildRegimePlaneSnapshot, inferRegimeGexQuality } from "./regime-plane";
 import {
   deriveGovernorFromLedger,
   evaluateZeroDteGovernor,
@@ -666,6 +667,15 @@ async function attachGateVerdicts(
   const freshHaltActive = freshHalts.active;
   const freshHaltFeedStale = freshHalts.feedStale;
 
+  // Regime Plane — one commit-time snapshot for fail-closed fresh opens + exit GEX quality.
+  const regimePlane = buildRegimePlaneSnapshot({
+    vixDayOpen: effectiveVix,
+    vixUnavailable,
+    macroUnavailable,
+    haltFeedStale: freshHaltFeedStale,
+    gexQuality: inferRegimeGexQuality(),
+  });
+
   // Pre-warm the vector-full-state cache for fresh (non-committed) tickers so the
   // sequential Cortex evaluation below hits warm reads (~200ms) instead of cold
   // computes (4-6s). Without this, fetchVectorFullState inside fetchCortexInputs
@@ -736,7 +746,11 @@ async function attachGateVerdicts(
       // commit is withheld until the live UW WS source has reconnected + reconciled its gap + warmed.
       requireHealthySource: requireHealthySourceEnabled(),
       sourceHealth: getFlowSourceHealthState(),
+      flowAccumulationAligned: s.flow_accumulation?.aligned ?? null,
+      regimeBlockFreshCommits: regimePlane.blockFreshCommits,
+      regimeBlockReason: regimePlane.humanReason,
     });
+    s.regime_plane = regimePlane;
     if (s.gate.verdict !== "COMMIT") continue;
 
     // ── Night Hawk Cortex layer (NIGHTHAWK-CORTEX-DESIGN.md §2, wired by PR-B) ──
@@ -749,9 +763,8 @@ async function attachGateVerdicts(
     // Latency is bounded: fetchCortexInputs is per-read time-budgeted (2.5s, cache-
     // first readers) and survivors per cycle are few (the governor caps open risk).
     // evaluateCortexForCommit never throws. failClosedOnVetoBlind:true detects when BOTH
-    // veto-capable sources (gex-walls + flow-quality) failed to read and records it, but
-    // degrades to ABSTAIN (commit proceeds on hard gates, tier capped at B for thin
-    // evidence) instead of hard-blocking — see cortex-gate.ts for the WHY.
+    // veto-capable sources (gex-walls + flow-quality) failed to read → VETO_BLIND hard HOLD
+    // (fresh commit blocked with cortex_veto_blind) — see cortex-gate.ts for the WHY.
     s.cortex = await evaluateCortexForCommit(s.ticker, s.direction, new Date(nowMs), {}, {
       failClosedOnVetoBlind: true,
     });
@@ -1021,6 +1034,7 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
       // itself still does NOT gate the board. Omitted when absent so the blob stays honest.
       ...(s.flow_accumulation ? { flow_accumulation: s.flow_accumulation } : {}),
       ...(s.confluence ? { confluence: s.confluence } : {}),
+      ...(s.regime_plane ? { regime_plane: s.regime_plane } : {}),
       // Dossier factor weights at commit — drives thesis-health evidence profile (weighted pillars).
       ...(s.factor_breakdown ? { factor_breakdown: { ...s.factor_breakdown } } : {}),
       // Discovery provenance SET (Phase 3a) pinned at first flag — the whole point of the origin

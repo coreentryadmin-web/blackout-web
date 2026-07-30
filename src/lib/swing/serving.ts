@@ -90,6 +90,8 @@ export interface SwingServingObservables {
    * honesty). Budget/caps are NOT required here — those are reference-book controls, not member gates.
    */
   bucketGraduated?: boolean | null;
+  /** When true, the play is visible in RESEARCH — seen but below the persistence bar. */
+  persistenceObserved?: boolean | null;
 }
 
 /**
@@ -127,6 +129,9 @@ export function sectionForSwingPlay(o: SwingServingObservables): SwingServingSec
   }
 
   // ── PRE-ENTRY → the four pre-entry sections, keyed on setup maturity + entry stance ──────────────
+  // Persistence-observed (below cross-session bar) → RESEARCH with an honest gap reason.
+  if (o.persistenceObserved === true) return "RESEARCH";
+
   const setup = o.setupState ?? null;
 
   // Unclassified (no maturity read at all) or a broken thesis → RESEARCH (needs work before serving).
@@ -167,6 +172,7 @@ export function observablesFromHorizonPlay(play: HorizonPlay): SwingServingObser
     aboveFloor: play.status === "COMMIT",
     // Absent/false → COMMIT_NOW never fires (cold-book default). Discovery stamps true when graduated.
     bucketGraduated: play.bucketGraduated === true,
+    persistenceObserved: play.persistenceObserved === true,
     // Live-position observables — stamped by live-plays.ts from the open ledger.
     liveStatus: play.liveStatus ?? null,
     manageAction: play.manageAction ?? null,

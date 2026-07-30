@@ -5,6 +5,7 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+<<<<<<< HEAD
 ## 2026-07-30 — [Grid/0DTE] Post-close fix agent — all validators GREEN
 
 **Severity.** P2 doc only — no product defects.
@@ -22,6 +23,21 @@ First orchestrator attempt failed on missing `node_modules` (tsx/playwright/pg/r
 **Fix.** Runbook `GRID-RTH-ALL-DAY-AGENT.md` updated: classic `/grid` deleted 2026-07-07; Step 2 now `/nighthawk`; coverage list matches `grid-rth-all-day-audit.mjs` (zerodte-warm, not grid-warm).
 
 **Status.** FIXED on `fix/grid-runbook-nighthawk-20260730`.
+=======
+## 2026-07-30 — [0dte,swing] Wave A/B strongest-engines hardening (regime plane, exits, RESEARCH rail)
+
+**Severity.** P0/P1 session forensics — 14/15 0DTE losers (BREAKOUT cluster + exit engine dumping winners on degraded GEX); swing desk looked dead (0 WATCH) while discovery enriched 24 names but persistence gate blocked all commits.
+
+**Root cause (0DTE).** (1) No unified Regime Plane — blind VIX/macro/halt did not fail-closed fresh commits in one place. (2) Exit engine `gex-walls` thesis veto fired on UW-fallback GEX (MU +132% MFE → −21% close). (3) BREAKOUT score floor still 65 — 13/15 losers were BREAKOUT origin. (4) Governor concentration was measure-only (Q9). (5) G-13 flow-accumulation misalign not wired on scan path.
+
+**Root cause (Swing).** Persistence gate (`MIN_PERSISTENCE_SESSIONS=2`) correctly blocked WATCH/OPEN, but observed theses were invisible — member board showed empty lane despite live enrichment.
+
+**Fix.** `regime-plane.ts` + scan wiring (G-regime blind, G-13, pinned `entry_context.regime_plane`); `exit-sync.ts` skips gex-walls veto when `gexQuality !== polygon_chain`; BREAKOUT floor 70; `GOVERNOR_ENFORCE_CONCENTRATION` default true; swing `fetchObservedCandidates` + RESEARCH routing + cron snapshot `observed[]`; honest HorizonDeck empty hints.
+
+**Evidence.** Session ledger 2026-07-30 (14L/1W); CloudWatch swing-discovery `tier0 24 enriched / commit 0`; unit tests `regime-plane.test.ts`, gates G-13/regime, exit skipGexWallsVeto, accumulation observed.
+
+**Status.** FIXED on `cursor/engines-strongest-wave-ab-3d11` (PR pending).
+>>>>>>> fa62c192 (fix(engines): Wave A/B strongest 0DTE + Swing hardening)
 
 ## 2026-07-30 — [spx] Cross-replica play-state divergence on parallel `/api/market/spx/play`
 

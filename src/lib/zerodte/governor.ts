@@ -166,6 +166,16 @@ export function correlationGroupOf(ticker: string): ReadonlySet<string> | null {
  *  flagging at 2 means "one more correlated same-direction add would be over-concentration". */
 export const GOVERNOR_MAX_CORRELATED_SAME_DIR = 2;
 
+function envFlag(name: string, defaultOn: boolean): boolean {
+  const raw = process.env[name]?.trim().toLowerCase();
+  if (raw === "0" || raw === "false" || raw === "off") return false;
+  if (raw === "1" || raw === "true" || raw === "on") return true;
+  return defaultOn;
+}
+
+/** Q9 same-direction concentration — enforced by default (2026-07-30 crypto cluster session). */
+export const GOVERNOR_ENFORCE_CONCENTRATION = envFlag("GOVERNOR_ENFORCE_CONCENTRATION", true);
+
 /** The largest same-direction cluster of open plans within a single correlation group, or
  *  null if no two open plans share a group+direction. Pure. Used both by the board measure
  *  and by the per-candidate evaluator, so the "what counts as concentration" logic lives
@@ -489,6 +499,21 @@ export function evaluateZeroDteGovernor(
   }
 
   const ticker = candidate.ticker.toUpperCase();
+  if (GOVERNOR_ENFORCE_CONCENTRATION) {
+    const conc = concentrationReasonForCandidate(candidate, liveExposure);
+    if (conc) {
+      blocks.push({
+        code: "governor_concentration",
+        reason: conc.replace(" (MEASURE)", "").replace(
+          "Surfaced as calibration evidence, not enforced (Q9).",
+          "Blocked — max correlated same-direction exposure for this session.",
+        ),
+        threshold: GOVERNOR_MAX_CORRELATED_SAME_DIR,
+        unlock_et: null,
+      });
+    }
+  }
+
   for (const s of snap.stops) {
     if (
       s.ticker === ticker &&

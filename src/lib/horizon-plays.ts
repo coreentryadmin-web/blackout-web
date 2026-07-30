@@ -112,6 +112,10 @@ export interface HorizonPlay {
   liveStatus?: "OPEN" | "HOLD" | "TRIM";
   /** Management action for a live position (manage.ts) — drives MANAGING/SCALING_OUT/EXITING. */
   manageAction?: SwingManageAction;
+  /** True when the thesis was observed this scan but has NOT cleared cross-session persistence. */
+  persistenceObserved?: boolean;
+  /** Honest reason the persistence gate has not promoted this name to WATCH yet. */
+  persistenceGapReason?: string | null;
 }
 
 /** The three lanes a candidate pool fans out into. */

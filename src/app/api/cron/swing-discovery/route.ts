@@ -302,6 +302,7 @@ export async function GET(req: NextRequest) {
       dossiers: result.dossiers,
       plays: result.playSet.SWING,
       watch: result.watchCandidates,
+      observed: result.observedCandidates,
       spotsByTicker,
     });
     if (!persisted) {
@@ -340,6 +341,7 @@ export async function GET(req: NextRequest) {
       enriched: result.enrichedCount,
       dossiers: result.dossiers.length,
       watch: result.watchCount,
+      observed: result.observedCount,
       // LIVE (go-live 2026-07-24): the REAL count of WATCH candidates whose archetype×sub-lane bucket GRADUATED,
       // and how many actually opened after the armed budget + book-percent caps + idempotency gates.
       commitEligible: result.commitEligibleCount,

@@ -32,6 +32,7 @@ import { buildSwingDossier, type SwingDossier, type SwingDossierInput } from "./
 import {
   observeSwingCandidate,
   fetchWatchEligible,
+  fetchObservedCandidates,
   fadeStaleSwingCandidates,
   swingThesisKey,
   MIN_PERSISTENCE_SESSIONS,
@@ -479,6 +480,9 @@ export interface SwingDiscoveryResult {
   /** Candidates that have cleared the cross-session persistence bar AND appear in this scan → the WATCH rail. */
   watchCandidates: SwingWatchCandidate[];
   watchCount: number;
+  /** Seen this scan but BELOW the persistence bar → RESEARCH rail (honest pre-WATCH visibility). */
+  observedCandidates: SwingWatchCandidate[];
+  observedCount: number;
   /** Concrete WATCH plays with a liquid contract (empty unless `fetchChainRows` is provided). */
   playSet: HorizonPlaySet;
   /** WATCH candidates whose archetype×sub-lane bucket GRADUATED through the staged Wilson-LB ladder — the REAL
@@ -612,6 +616,12 @@ export async function runSwingDiscoveryScan(
   );
   const watchCandidates = eligible.filter((c) =>
     seenThisScan.has(swingThesisKey(c.ticker, c.direction, c.archetype)),
+  );
+  const watchKeys = new Set(
+    watchCandidates.map((c) => swingThesisKey(c.ticker, c.direction, c.archetype)),
+  );
+  const observedCandidates = (await fetchObservedCandidates(deps.accum, seenThisScan)).filter(
+    (c) => !watchKeys.has(swingThesisKey(c.ticker, c.direction, c.archetype)),
   );
 
   // ── OPTIONAL play production: attach a concrete WATCH contract when chains are available. ──
@@ -767,6 +777,8 @@ export async function runSwingDiscoveryScan(
     dossiers,
     watchCandidates,
     watchCount: watchCandidates.length,
+    observedCandidates,
+    observedCount: observedCandidates.length,
     playSet,
     // DERIVED (not a literal): the count of WATCH candidates whose archetype×sub-lane bucket graduated. 0 when
     // the commit seam is unwired OR nothing has graduated yet (the cold-book hard rail).

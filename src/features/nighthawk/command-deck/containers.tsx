@@ -123,6 +123,14 @@ export function HorizonDeck({ horizon }: { horizon: "SWING" | "LEAPS" }) {
         ]
       : null;
   const rows = sectionRows ?? [...(lane?.committed ?? []), ...(lane?.watch ?? [])];
+  const researchCount = horizon === "SWING" ? (lane?.sections?.RESEARCH?.length ?? 0) : 0;
+  const watchCount = horizon === "SWING" ? (lane?.sections?.WATCH?.length ?? 0) : 0;
+  const emptyHint =
+    horizon === "SWING" && rows.length === 0
+      ? researchCount > 0 || watchCount > 0
+        ? "Swing scan active — names building persistence appear in Research once enriched."
+        : "Whole-market swing discovery runs on a phase cadence — first sightings need ≥2 sessions (or corroboration for event setups) before WATCH."
+      : `Scanning the whole market for ${horizon === "SWING" ? "Swing" : "LEAPS"} setups — this lane is coming online.`;
   const plays: TerminalPlay[] = rows.map((p) =>
     terminalPlayFromHorizon({
       ticker: p.ticker,
@@ -149,7 +157,7 @@ export function HorizonDeck({ horizon }: { horizon: "SWING" | "LEAPS" }) {
     <CommandDeck
       plays={plays}
       laneLabel={horizon === "SWING" ? "Swings · 2–30 DTE" : "LEAPS · ≤90 DTE"}
-      emptyHint={`Scanning the whole market for ${horizon === "SWING" ? "Swing" : "LEAPS"} setups — this lane is coming online.`}
+      emptyHint={emptyHint}
     />
   );
 }

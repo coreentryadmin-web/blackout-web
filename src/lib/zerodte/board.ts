@@ -691,7 +691,10 @@ export type ZeroDteGateFailure =
   | "condor_liquidity" // all 4 legs must be quotable, credit ≥ floor, per-leg spread tax bounded
   | "condor_vix_regime" // condor WANTS low VIX — elevated/extreme vol raises the bar / blocks the sale
   | "condor_macro_block" // block a condor HARDER in a macro window (a CPI/FOMC breakout is its worst case)
-  | "condor_range_break"; // spot has approached/breached a short strike — the defended range is failing
+  | "condor_range_break" // spot has approached/breached a short strike — the defended range is failing
+  | "flow_accumulation_conflict" // G-13: multi-day flow direction opposes the setup (aligned === false)
+  | "regime_blind" // Regime Plane: VIX/macro/halt/GEX blind — no fresh commits
+  | "governor_concentration"; // Q9 enforced: too many correlated same-direction opens
 
 export type ZeroDteGateRejection = {
   ticker: string;
@@ -1326,6 +1329,8 @@ export type EnrichedZeroDteSetup = ZeroDteSetup & {
    *  multi-source ticker; absent for a single-origin setup (buildOriginMaps seeds those from the
    *  setup itself). Evidence only — never read by any gate/grader. */
   origin_contributions?: Partial<Record<DiscoveryOrigin, OriginContribution>>;
+  /** Regime Plane snapshot at gate time (Wave A) — pinned onto committed rows via entry_context. */
+  regime_plane?: import("./regime-plane").RegimePlaneSnapshot | null;
 };
 
 // ── Stage 4 audit trail (alert_audit_log) ─────────────────────────────────────────

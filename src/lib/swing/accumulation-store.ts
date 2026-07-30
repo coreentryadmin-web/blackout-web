@@ -328,3 +328,60 @@ export async function fadeStaleSwingCandidates(
 ): Promise<number> {
   return accessors.fadeStaleAccum(beforeIso);
 }
+
+/**
+ * Human-readable reason a candidate has NOT cleared persistence yet — for the RESEARCH rail.
+ * Returns null when the candidate already meets the bar (should not surface as observed).
+ */
+export function persistenceGapReason(
+  candidate: Pick<
+    SwingWatchCandidate,
+    "distinctSessionDays" | "sessionSignalKinds" | "observationCount" | "archetype"
+  >,
+): string | null {
+  const arch = classifiedArchetypeOf(candidate.archetype);
+  const row: PersistenceRowFields = {
+    distinct_session_days: candidate.distinctSessionDays,
+    observation_count: candidate.observationCount,
+    last_session_signal_kinds: candidate.sessionSignalKinds,
+  };
+  if (meetsPersistence(row, arch)) return null;
+
+  const rule = persistenceRuleFor(arch);
+  if (!rule.requiresCorroboration) {
+    const need = Math.max(0, rule.minDistinctSessions - candidate.distinctSessionDays);
+    if (need > 0) {
+      return `Cross-session build — ${candidate.distinctSessionDays}/${rule.minDistinctSessions} distinct session days (needs ${need} more).`;
+    }
+  }
+
+  const kinds = candidate.sessionSignalKinds ?? [];
+  const distinctKinds = new Set(kinds).size;
+  if (candidate.distinctSessionDays < rule.minDistinctSessions) {
+    return `Event/catalyst setup — ${candidate.distinctSessionDays}/${rule.minDistinctSessions} session(s); needs corroboration (${distinctKinds} independent signal kind${distinctKinds === 1 ? "" : "s"} today).`;
+  }
+  if (distinctKinds < 2) {
+    return `Needs a 2nd independent signal (FLOW + STRUCTURE or CATALYST) — only ${kinds.join("+") || "one kind"} today.`;
+  }
+  return "Persistence bar not met yet.";
+}
+
+/**
+ * Accumulating candidates seen THIS scan that have NOT cleared persistence — the RESEARCH rail.
+ * Unlike fetchWatchEligible, this returns names BELOW the bar so the desk stays honest (not empty).
+ */
+export async function fetchObservedCandidates(
+  accessors: SwingAccumAccessors,
+  seenThisScan: Set<string>,
+  limit = 500,
+): Promise<SwingWatchCandidate[]> {
+  const rows = await accessors.fetchAccumulating(MIN_EVENT_PERSISTENCE_SESSIONS, limit);
+  return rows
+    .filter((r) => {
+      const key = swingThesisKey(r.ticker, fromStoreDir(r.direction), r.archetype);
+      if (!seenThisScan.has(key)) return false;
+      const arch = classifiedArchetypeOf(r.archetype);
+      return !meetsPersistence(r, arch);
+    })
+    .map(mapWatchRow);
+}

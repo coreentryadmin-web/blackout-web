@@ -74,6 +74,19 @@ test("INVALIDATED or unclassified → RESEARCH", () => {
   assert.equal(sectionForSwingPlay({}), "RESEARCH"); // no setup read at all
 });
 
+test("persistenceObserved → RESEARCH even when triggered (below cross-session bar)", () => {
+  assert.equal(
+    sectionForSwingPlay({
+      setupState: "TRIGGERED",
+      entryStatus: "AT_TRIGGER",
+      aboveFloor: true,
+      bucketGraduated: true,
+      persistenceObserved: true,
+    }),
+    "RESEARCH",
+  );
+});
+
 // ── router: live-position management sections, by management action / thesis level ────────────────
 
 test("live OPEN + thesis intact → MANAGING", () => {
