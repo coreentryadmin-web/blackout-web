@@ -5,6 +5,18 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-30 — [spx] Cross-replica play-state divergence on parallel `/api/market/spx/play`
+
+**Severity.** P1 — members on different ECS replicas could see different grade/score/direction in the same second.
+
+**Symptom.** `validate:spx-bie` prod double-fetch: parallel fetches returned `direction=long` vs `null`, `score=25` vs `1`, flow-skew calls vs puts, levels populated vs null. Sequential fetches on one connection were consistent.
+
+**Root cause.** `getSpxPlayState()` called `withServerCache` without `staleWhileRevalidate: false` (comment said no SWR; default was on). Parallel cache misses across replicas each ran independent `evaluateSpxPlayState()` with no distributed single-flight.
+
+**Fix.** `src/features/spx/lib/spx-service.ts`: `staleWhileRevalidate: false` + Redis NX lock (`evaluateSpxPlayStateCrossReplica`) so one replica evaluates per window and peers poll the shared `server:spx-play-read:*` snapshot.
+
+**Status.** FIXED on `fix/spx-play-cross-replica-cache`.
+
 ## 2026-07-30 — [spx] REST pulse cold path blocked 12s+ (single-flight + prior-day fetch)
 
 **Severity.** P0 — SPX spot felt frozen when SSE dropped; REST fallback timed out at 12–60s.
