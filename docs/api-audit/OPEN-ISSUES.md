@@ -1,5 +1,71 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-30 15:55 ET
+Last updated: 2026-07-30 16:30 ET
+
+## rth-comprehensive-2026-07-30-16h30 — RTH agent pass (~16:20–16:30 ET, post-close)
+
+**Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` including **RTH COMPREHENSIVE TEST SWEEP**. Commands: `npm run validate:rth-open` → `GET /api/cron/data-correctness?force=1` → `npm run validate:rth-sweep` → `npm run validate:grid-rth --force` → `npm run validate:spx-rth --force` → `npm run ops:collect`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` | ✅ **GREEN** — deploy smoke (post-close window; full RTH writer checks skipped after 16:15 ET) |
+| `GET /api/cron/data-correctness?force=1` | ✅ **202 async** dispatched; poll outside RTH window skipped sync read; grid/spx orchestrators report `flags=0` |
+| `npm run validate:rth-sweep` | ✅ **GREEN** — 7 pages <1.9s, 0 missing fields, 0 P0/P1; Largo grounded NVDA $76.3M in 2.9s |
+| `npm run validate:grid-rth --force` | ⚠️ **13 PASS / 1 FAIL** transient — `nighthawk-dedupe` failed when board cold (`setups=0`); re-run GREEN with 15 setups + 4 `covered_elsewhere` |
+| `npm run validate:spx-rth --force` | ⚠️ **7 PASS / 1 FAIL** — `spx:bie-consistency` parallel double-fetch: 12 field divergences (long vs SCANNING, flow skew flip) |
+| `npm run ops:collect` | ✅ **exit 0** — zero action items |
+
+**P1 fix shipped:** cross-replica SPX play cache — `staleWhileRevalidate: false` + Redis NX single-flight on `getSpxPlayState()` (`fix/spx-play-cross-replica-cache`). Evidence: `validate:spx-bie` parallel prod double-fetch.
+
+### Speed (comprehensive sweep — Playwright premium session)
+
+| Page | Nav | Load | Console |
+|---|---|---|---|
+| `/dashboard` (SPX Slayer) | hard | 1661ms | 1× HTTP 400 (non-blocking) |
+| `/flows` (HELIX) | soft | 1677ms | 0 |
+| `/heatmap` (Thermal matrix) | soft | 1767ms | 0 |
+| `/vector` | soft | 1891ms | 0 |
+| `/nighthawk` | soft | 1632ms | 0 |
+| `/terminal` (Largo) | soft | 1610ms | 0 |
+| `/track-record` | soft | 1615ms | 0 |
+
+All soft-nav <1.9s. Sign-in ~60s (Clerk FAPI).
+
+### Live auto-update
+
+| Surface | Observed | Notes |
+|---|---|---|
+| Dashboard pulse | `liveTick=null` | SPX stable ±0.5pt during 12s window (late session / post-close) |
+| HELIX flows | API 20 prints fresh | SSE path live during RTH |
+| Thermal matrix | 20s poll cadence | gex-heatmap SPX 349ms warm |
+| 0DTE board | `as_of` fresh | 15 setups / 15 ledger at re-verify |
+
+### Data correctness (API cross-check)
+
+| Field | Sources | Result |
+|---|---|---|
+| SPX spot | desk 7437.63 / merged / hm | ✅ aligned |
+| GEX walls | call 7550 / put 7400 | ✅ cross-tool |
+| NH dedupe | 4 tickers ASML,SKHY,INTC,INTU | ✅ in `covered_elsewhere` when board warm |
+| Largo NVDA | HELIX $76,307,554 premium | ✅ grounded |
+
+### Missing-field audit
+
+**0 flagged patterns** across all 7 pages. Largo `Regime: **—**` on single-ticker HELIX query — upstream regime label absent (expected).
+
+### API verification
+
+All probed `/api/market/*` → **200**. Platform snapshot `as_of` age 0s.
+
+### Reports
+
+- `audit-output/rth-sweep-2026-07-30T20-22-16-535Z.json`
+- `audit-output/grid-rth-2026-07-30-verify-1785443188599.json`
+- `audit-output/spx-rth-2026-07-30-verify-1785443222558.json`
+- `audit-output/spx-bie-consistency-2026-07-30T20-28-11-647Z.md`
+
+---
 
 ## rth-comprehensive-2026-07-30-16h — RTH agent pass (~15:38–15:55 ET)
 

@@ -11,12 +11,13 @@ test("member /api/market/spx/play delegates to getSpxPlayState (single derivatio
   assert.match(route, /getSpxPlayState/);
   assert.doesNotMatch(route, /readSpxPlaySnapshot/);
   assert.doesNotMatch(route, /buildPlayTechnicals/);
-  assert.doesNotMatch(route, /staleWhileRevalidate/);
 });
 
 test("getSpxPlayState owns the shared play-read cache (member + BIE + Largo)", () => {
   const service = readFileSync(join(ROOT, "src/features/spx/lib/spx-service.ts"), "utf8");
   assert.match(service, /withServerCache\(`spx-play-read:\$\{date\}`/);
   assert.match(service, /playMemberReadCacheSec/);
-  assert.doesNotMatch(service, /staleWhileRevalidate/);
+  assert.match(service, /staleWhileRevalidate:\s*false/);
+  assert.match(service, /evaluateSpxPlayStateCrossReplica/);
+  assert.match(service, /sharedCacheSetNx/);
 });

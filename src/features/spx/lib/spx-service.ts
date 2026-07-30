@@ -16,6 +16,7 @@ import { refreshOrBreakMemory } from "@/features/spx/lib/playbook-break-memory-s
 import { maybeLogPlaybookShadowMatch } from "@/features/spx/lib/playbook-shadow-log";
 import { playMemberReadCacheSec } from "@/features/spx/lib/spx-play-config";
 import { todayEtYmd } from "@/lib/providers/spx-session";
+import { sharedCacheDel, sharedCacheGetWithTtl, sharedCacheSetNx } from "@/lib/shared-cache";
 import { withServerCache } from "@/lib/server-cache";
 import { loadPowerHourRecord } from "@/features/spx/lib/spx-power-hour-store";
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
@@ -136,6 +137,50 @@ async function evaluateSpxPlayState() {
   };
 }
 
+const SPX_PLAY_EVAL_LOCK_PREFIX = "spx-play-eval-lock";
+/** Bounds the NX claim — must outlive a slow cold eval but self-heal if a replica dies mid-build. */
+const SPX_PLAY_EVAL_LOCK_TTL_SEC = 45;
+
+function spxPlayServerCacheKey(date: string): string {
+  return `server:spx-play-read:${date}`;
+}
+
+/** When another replica holds the eval lock, poll Redis for its published snapshot. */
+async function waitForPeerSpxPlaySnapshot(
+  date: string,
+  maxMs = 25_000
+): Promise<Awaited<ReturnType<typeof evaluateSpxPlayState>> | null> {
+  const deadline = Date.now() + maxMs;
+  while (Date.now() < deadline) {
+    const hit = await sharedCacheGetWithTtl<Awaited<ReturnType<typeof evaluateSpxPlayState>>>(
+      spxPlayServerCacheKey(date)
+    );
+    if (hit?.value) return hit.value;
+    await new Promise((resolve) => setTimeout(resolve, 400));
+  }
+  return null;
+}
+
+/**
+ * Cross-replica single-flight around the expensive eval. Without this, parallel
+ * cache misses on different ECS replicas can return divergent grade/score/direction
+ * (spx-bie-consistency prod double-fetch caught flow-skew long vs SCANNING).
+ */
+async function evaluateSpxPlayStateCrossReplica(): Promise<Awaited<ReturnType<typeof evaluateSpxPlayState>>> {
+  const date = todayEtYmd();
+  const lockKey = `${SPX_PLAY_EVAL_LOCK_PREFIX}:${date}`;
+  const won = await sharedCacheSetNx(lockKey, Date.now(), SPX_PLAY_EVAL_LOCK_TTL_SEC);
+  if (!won) {
+    const peer = await waitForPeerSpxPlaySnapshot(date);
+    if (peer) return peer;
+  }
+  try {
+    return await evaluateSpxPlayState();
+  } finally {
+    await sharedCacheDel(lockKey).catch(() => undefined);
+  }
+}
+
 /**
  * Single derivation for member `/api/market/spx/play`, BIE `spx_full_state`, and Largo
  * `get_spx_play`. Collapses member polls into one eval per cache window — no
@@ -144,7 +189,9 @@ async function evaluateSpxPlayState() {
 export async function getSpxPlayState() {
   const date = todayEtYmd();
   const ttlMs = playMemberReadCacheSec() * 1000;
-  return withServerCache(`spx-play-read:${date}`, ttlMs, evaluateSpxPlayState);
+  return withServerCache(`spx-play-read:${date}`, ttlMs, evaluateSpxPlayStateCrossReplica, {
+    staleWhileRevalidate: false,
+  });
 }
 
 export async function getSpxOpenPlay() {
