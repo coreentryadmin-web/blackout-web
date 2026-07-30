@@ -1,5 +1,87 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-30 16:22 ET
+Last updated: 2026-07-30 16:43 ET
+
+## grid-rth-2026-07-30 — 0DTE Command post-close verify pass #2 (~16:41–16:43 ET)
+
+**Session:** Grid RTH all-day agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` **verify** mode (scheduled 6:30 AM PT open; executed ~1:41 PM PT / 4:41 PM ET **post-close**). Commands: `npm run validate:grid-rth -- --force` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e` → `node scripts/audit/data-validator.mjs`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:grid-rth` | ✅ **14 PASS / 0 FAIL** — full orchestrator GREEN (`--force` post-close) |
+| `npm run validate:zerodte-logic` | ✅ **17 PASS / 0 FAIL** — gates, plans, lifecycle, mergePlays, live board |
+| `npm run validate:grid-e2e` | ✅ **5 PASS / 0 FAIL** — board API + `/nighthawk` Playwright (0 console errors) |
+| `data-validator.mjs` | ⚠️ **31 PASS / 7 FAIL / 1 WARN** — oracle compares live extended-hours vs prev-close (expected post-close; not product defects) |
+| `ops:collect` (via grid-rth) | ✅ **exit 0** — zero action items |
+
+**No new P0/P1 product defects.** No fix branch required.
+
+### 0DTE logic probes (validate:zerodte-logic)
+
+| Layer | Result |
+|---|---|
+| Unit tests | ✅ `board.test.ts`, `rejections.test.ts`, `ZeroDteBoard.test.ts` |
+| Gate funnel | ✅ NVDA score=65; audit trace all gates pass |
+| Plan exits | ✅ stop −50% (2.1), target +100% (8.4), time stop 15:30 ET |
+| Trade lifecycle | ✅ OPEN → TRIM → CLOSED; sticky trough stop |
+| Plan grading | ✅ stop wins when both touch same bar |
+| Session heat | ✅ RTH → POST_COMMIT → POWER_HOUR (cutoff constant 14:00 ET) |
+| mergePlays UI | ✅ past cutoff → SKIP; MOVED → SKIP (not OPEN) |
+| Live board | ✅ cron path 14 setups / 15 ledger at steady state |
+| Ledger PnL | ✅ 15 rows `reconcileLedgerLivePnlPct` coherent |
+| Finite numbers | ✅ all board numerics finite |
+| Setup gates | ✅ 2 eligible / 14 total, 0 gate violations |
+
+### Live board snapshot (CLOSED ~16:41 ET)
+
+| Field | Value |
+|---|---|
+| Session heat | `CLOSED` |
+| Setups | 14 |
+| Ledger | 15 committed rows |
+| Upstream | ✅ `upstream_ok` |
+| SPX GEX spot | 7437.63 (bootstrap vs gex agree) |
+
+### Cross-tool integration
+
+| Check | Result |
+|---|---|
+| Grid bootstrap spot vs GEX | ✅ spot 7437.63 |
+| HELIX flows feed | ✅ 20 prints (`/api/market/flows`) |
+| Night Hawk dedupe | ✅ 4 tickers `covered_elsewhere` |
+| `zerodte-warm` cron | ✅ 202 accepted (background warm) |
+| `data-correctness` | ✅ flags=0 mode=full-async |
+| `validate:rth-open` (infra) | ✅ deploy + writers GREEN |
+
+### UI E2E (Playwright — `/nighthawk`)
+
+| # | Action | Result |
+|---|---|---|
+| 1 | Admin session opens `/nighthawk` | ✅ title "Night Hawk · BlackOut" |
+| 2 | Default view | ✅ 0DTE lane loads |
+| 3 | Console | ✅ zero page errors |
+| 4 | Board API | ✅ 14 setups · ledger 15 |
+| 5 | HELIX flows API | ✅ 20 prints |
+
+**Note:** Classic `/grid` + 9 `/api/grid/*` panels deleted 2026-07-07; 0DTE Command lives on `/nighthawk`. E2E script updated accordingly; runbook Step 2 still references `/grid` tabs (P2 doc staleness).
+
+### data-validator oracle (informational — post-close)
+
+Extended-hours run uses Polygon **prev-close** as ground truth while app serves **live** prices. FAILs on SPY (+1.8%), SPX (+1.7%), QQQ (+3.6%), MSFT/MU/NBIS (earnings/momentum movers) are expected intraday drift, not stale data. All ledger entry premiums and `underlying_at_flag` values PASS against Polygon minute bars.
+
+### Transient infra notes (not product defects)
+
+1. **Cold sandbox** — first orchestrator attempt failed on missing `pg`/`react`/`playwright` before `npm install`; cleared on retry; prod ECS unaffected.
+
+### Reports
+
+- `audit-output/grid-rth-2026-07-30-verify-1785444147266.json`
+- `audit-output/zerodte-logic-1785444151736.json`
+- `audit-output/grid-e2e-1785444162315.json`
+- `audit-output/validation-2026-07-30T20-43-05-058Z.md`
+
+---
 
 ## grid-rth-2026-07-30 — 0DTE Command post-close verify pass (~16:12–16:22 ET)
 
