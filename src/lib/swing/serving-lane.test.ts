@@ -248,15 +248,17 @@ function watchCand(over: Partial<SwingWatchCandidate>): SwingWatchCandidate {
 }
 
 test("persist → discoverSwingFromPersisted round-trips and GATES to persistence-cleared names", async () => {
+  const d = buildSwingDossier(dossier("NVDA"));
+  const arch = d.archetype.archetype; // thesis key must match watch + play (+ dossier fallback)
   await persistSwingServingSnapshot({
     asOf: "2026-07-24T20:00:00.000Z",
     sessionDay: "2026-07-24",
-    dossiers: [buildSwingDossier(dossier("NVDA"))],
+    dossiers: [d],
     plays: [
-      play({ ticker: "NVDA", direction: "LONG", status: "WATCH" }), // cleared persistence → surfaces
-      play({ ticker: "FRSH", direction: "LONG", status: "WATCH" }), // single sighting (not in watch) → filtered
+      play({ ticker: "NVDA", direction: "LONG", status: "WATCH", archetype: arch }),
+      play({ ticker: "FRSH", direction: "LONG", status: "WATCH", archetype: "BREAKOUT" }),
     ],
-    watch: [watchCand({ ticker: "NVDA", direction: "LONG" })],
+    watch: [watchCand({ ticker: "NVDA", direction: "LONG", archetype: arch })],
   });
 
   const result = await discoverSwingFromPersisted();
