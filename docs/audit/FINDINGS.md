@@ -22,6 +22,21 @@ SSE `/pulse/stream` GREEN @ 250ms. Bootstrap ~6.5s.
 
 **Status.** FIXED on `cursor/pulse-never-block-3d11`.
 
+## 2026-07-30 — [0dte,gex] Board + heatmap still blocked past 3s cap under cold/inflight load
+
+**Severity.** P1 — 0DTE board 20–43s; SPX `/gex-heatmap` up to 57s; matrix UI empty/loading 45s+.
+
+**Root cause.** (1) `getZeroDteBoardPayload()` timeout handler still `await build` when no Redis
+snapshot — defeated `zerodteBoardMaxBlockMs()`. (2) `fetchGexHeatmap()` returned the raw
+`heatmapInflight` promise with no cap — concurrent callers piled onto one 20–57s chain rebuild.
+(3) Matrix SWR fetch had no client timeout; hung requests blocked the loading gate even with session cache.
+
+**Fix.** 0DTE: on cap fire `buildMinimalBoardFallback()` immediately (cold build continues in bg).
+GEX: `gexHeatmapMaxBlockMs()` + `awaitHeatmapBuildWithBlockCap()` serves stale mem/Redis on timeout.
+UI: `AbortSignal.timeout(10s)` + show cached matrix while `isLoading && !hasData`.
+
+**Status.** FIXED on `cursor/gex-zerodte-never-block-3d11`.
+
 ## 2026-07-30 — [ops] swing-active-refresh RTH-stale edge timeout (#1364)
 
 **Severity.** P0 — Swing mark-and-review loop silent during RTH; `vector-universe-snapshot` also

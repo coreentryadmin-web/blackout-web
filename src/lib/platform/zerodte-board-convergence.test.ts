@@ -22,6 +22,7 @@ import assert from "node:assert/strict";
 const sharedState = {
   scanCalls: 0,
   throwMode: false,
+  slowScanMs: 0,
   store: new Map<string, { value: string; expiresAt: number }>(),
 };
 
@@ -36,6 +37,9 @@ mock.module("../zerodte/scan", {
     syncLedgerLiveState: async (rows: unknown[]) => rows,
     scanZeroDteBoard: async () => {
       sharedState.scanCalls += 1;
+      if (sharedState.slowScanMs > 0) {
+        await new Promise((r) => setTimeout(r, sharedState.slowScanMs));
+      }
       return { setups: [], nighthawk_covered: [], upstream_ok: true, rejections: [] };
     },
     gradeZeroDteLedger: async () => 0,
@@ -100,6 +104,7 @@ beforeEach(async () => {
   await _resetZeroDteBoardSnapshotForTest();
   sharedState.scanCalls = 0;
   sharedState.throwMode = false;
+  sharedState.slowScanMs = 0;
   sharedState.store.clear();
 });
 
@@ -175,6 +180,28 @@ test("SWR hard window: a snapshot aged past the old 30s hard gate but still with
 
   await waitFor(() => sharedState.scanCalls >= 2);
   assert.equal(sharedState.scanCalls, 2, "background rebuild eventually advances the snapshot");
+});
+
+test("never-block: cold miss past maxBlockMs returns minimal fallback immediately — does not await the slow build", async () => {
+  const prev = process.env.ZERODTE_BOARD_MAX_BLOCK_MS;
+  process.env.ZERODTE_BOARD_MAX_BLOCK_MS = "500";
+  sharedState.slowScanMs = 1_200;
+
+  try {
+    const { getZeroDteBoardPayload } = await import("./zerodte-service");
+    const t0 = Date.now();
+    const board = await getZeroDteBoardPayload();
+    const elapsed = Date.now() - t0;
+
+    assert.ok(elapsed < 800, `expected fast handoff, got ${elapsed}ms`);
+    assert.equal(board.available, true);
+    assert.equal(board.upstream_ok, false, "minimal fallback while cold build still running");
+    assert.deepEqual(board.setups, []);
+  } finally {
+    sharedState.slowScanMs = 0;
+    if (prev === undefined) delete process.env.ZERODTE_BOARD_MAX_BLOCK_MS;
+    else process.env.ZERODTE_BOARD_MAX_BLOCK_MS = prev;
+  }
 });
 
 test("fail-soft: a shared-store outage still serves a freshly built board — never a blank board", async () => {

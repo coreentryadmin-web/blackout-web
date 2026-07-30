@@ -751,11 +751,10 @@ export async function getZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
             resolve(snap.value);
             return;
           }
-          try {
-            resolve(await build);
-          } catch {
-            resolve(buildMinimalBoardFallback());
-          }
+          // Never await the cold build here — that defeats maxBlockMs under load (live: 20–43s
+          // member polls). Return a structurally valid empty board immediately; coldBuildInflight
+          // keeps running and publishes to Redis for the next poll.
+          resolve(buildMinimalBoardFallback());
         })();
       }, blockMs);
     }),

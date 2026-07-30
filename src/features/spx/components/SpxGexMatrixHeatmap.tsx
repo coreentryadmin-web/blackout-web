@@ -92,11 +92,14 @@ type GexHeatmapResponse = {
   } | null;
 };
 
+const MATRIX_FETCH_TIMEOUT_MS = 10_000;
+
 async function fetchGexHeatmap(url: string): Promise<GexHeatmapResponse> {
   const res = await fetch(url, {
     cache: "no-store",
     credentials: "same-origin",
     headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
+    signal: AbortSignal.timeout(MATRIX_FETCH_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`GEX heatmap → ${res.status}`);
   return res.json();
@@ -641,7 +644,7 @@ export function SpxGexMatrixHeatmap({
         />
       </div>
 
-      {isLoading && !data ? (
+      {isLoading && !hasData ? (
         <p className="font-mono text-[11px] text-sky-300 py-4 px-2">Loading gamma matrix…</p>
       ) : error && !hasData ? (
         <p className="font-mono text-[11px] text-sky-300 py-4 px-2">Matrix unavailable — retrying…</p>

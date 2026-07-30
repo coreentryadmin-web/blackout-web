@@ -71,6 +71,14 @@ export function zerodteBoardMaxBlockMs(): number {
   return Math.round(ms);
 }
 
+/** Max ms GEX heatmap may block on inflight/cold chain build before serving stale matrix. Default 3s. */
+export function gexHeatmapMaxBlockMs(): number {
+  const raw = process.env.GEX_HEATMAP_MAX_BLOCK_MS?.trim();
+  const ms = raw ? Number(raw) : 3_000;
+  if (!Number.isFinite(ms) || ms < 500) return 3_000;
+  return Math.round(ms);
+}
+
 /** Slower pulse structure refresh (EMAs, minute bars, mega-caps). Default 5s with live Polygon. */
 export function deskPulseStructureCacheTtlMs(): number {
   const raw = process.env.SPX_PULSE_STRUCTURE_SEC?.trim();

@@ -1,4 +1,4 @@
-import { polygonConfigured } from "./config";
+import { polygonConfigured, gexHeatmapMaxBlockMs } from "./config";
 import { fetchStockSnapshot, fetchIndexSnapshot } from "./polygon";
 import { todayEtYmd } from "./spx-session";
 import { polygonTrackedFetch } from "./polygon-rate-limiter";
@@ -1298,6 +1298,41 @@ function tryStaleWhileRevalidateHeatmap(
   return best.data;
 }
 
+/** Best cached matrix for never-block handoff — prefers entries within maxStaleMs, else any cached copy. */
+function pickStaleHeatmapForHandoff(
+  mem: { at: number; data: GexHeatmap } | undefined,
+  redisHit: { at: number; data: GexHeatmap } | null,
+  now: number
+): GexHeatmap | null {
+  const maxStaleMs = gexHeatmapMaxStaleMs();
+  let withinStale: { at: number; data: GexHeatmap } | null = null;
+  let any: { at: number; data: GexHeatmap } | null = null;
+  for (const entry of [mem, redisHit]) {
+    if (!entry) continue;
+    const age = now - entry.at;
+    if (age < maxStaleMs && (!withinStale || entry.at > withinStale.at)) withinStale = entry;
+    if (!any || entry.at > any.at) any = entry;
+  }
+  return (withinStale ?? any)?.data ?? null;
+}
+
+/** Cap how long callers await an inflight/cold matrix build — serve stale instead of 20–57s hangs. */
+async function awaitHeatmapBuildWithBlockCap(
+  build: Promise<GexHeatmap | null>,
+  mem: { at: number; data: GexHeatmap } | undefined,
+  redisHit: { at: number; data: GexHeatmap } | null,
+  now: number
+): Promise<GexHeatmap | null> {
+  const blockMs = gexHeatmapMaxBlockMs();
+  const staleHandoff = pickStaleHeatmapForHandoff(mem, redisHit, now);
+  return Promise.race([
+    build,
+    new Promise<GexHeatmap | null>((resolve) => {
+      setTimeout(() => resolve(staleHandoff), blockMs);
+    }),
+  ]);
+}
+
 /**
  * Negative-cache window for a NO-SPOT result (dead/unknown/transiently-quoteless ticker). Short
  * by design: long enough to absorb a client's poll storm (so we don't re-fetch the spot snapshot
@@ -2118,8 +2153,21 @@ export async function fetchGexHeatmap(
   // N concurrent chain fetches for the SAME ticker. Share ONE in-flight build. forceRefresh shares
   // with other forceRefresh callers but not with normal builds (it intentionally bypasses cache).
   const inflightKey = forceRefresh ? `${cacheKey}:force` : cacheKey;
+  const memAtMiss = cachedHeatmaps.get(cacheKey);
+  let redisAtMiss: { at: number; data: GexHeatmap } | null = null;
+  if (!memAtMiss) {
+    try {
+      const { sharedCacheGet } = await import("../shared-cache");
+      redisAtMiss = await sharedCacheGet<{ at: number; data: GexHeatmap }>(cacheKey);
+    } catch {
+      /* redis optional */
+    }
+  }
+
   const existing = heatmapInflight.get(inflightKey);
-  if (existing) return existing;
+  if (existing) {
+    return awaitHeatmapBuildWithBlockCap(existing, memAtMiss, redisAtMiss, now);
+  }
 
   const build = buildGexHeatmapUncached(root, optionsRoot, cacheKey, now, baseTtlMs).finally(
     () => {
@@ -2127,7 +2175,7 @@ export async function fetchGexHeatmap(
     }
   );
   heatmapInflight.set(inflightKey, build);
-  return build;
+  return awaitHeatmapBuildWithBlockCap(build, memAtMiss, redisAtMiss, now);
 }
 
 /**
