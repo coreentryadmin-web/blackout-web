@@ -20,6 +20,7 @@ import { isAuthFailureStatus } from "./audit/lib/auth-status.mjs";
 import { spotsAgree, flipsAgree } from "./audit/lib/cross-tool-tolerance.mjs";
 import { mintIosPlaywrightSession, onboardingInitScript } from "./audit/lib/ios-playwright-auth.mjs";
 import { resolveNearTermExpiriesForAudit } from "./audit/lib/near-term-expiries.mjs";
+import { generateDefaultAuditPhone } from "./audit/lib/audit-phone.mjs";
 
 const baseArg = process.argv.find((a) => a.startsWith("--base="));
 const BASE = (baseArg ? baseArg.slice("--base=".length) : "https://blackouttrades.com").replace(
@@ -30,7 +31,6 @@ const SECRET = process.env.CLERK_SECRET_KEY;
 const PUB = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || "";
 const CRON = process.env.CRON_SECRET || "";
 const EMAIL = process.env.AUDIT_EMAIL || `spx-e2e-${Date.now()}@blackouttrades.com`;
-const PHONE = process.env.AUDIT_PHONE || "+1415555" + String(Math.floor(Math.random() * 9000) + 1000);
 const API = "https://api.clerk.com/v1";
 const CJS = "5.57.0";
 const UA =
@@ -95,14 +95,26 @@ const backend = (m, p, j) =>
 
 async function authSession() {
   if (!SECRET) throw new Error("CLERK_SECRET_KEY missing");
-  const create = backend("POST", "/users", {
+  let phone = process.env.AUDIT_PHONE || generateDefaultAuditPhone();
+  let create = backend("POST", "/users", {
     email_address: [EMAIL],
-    phone_number: [PHONE],
+    phone_number: [phone],
     public_metadata: { role: "admin", tier: "premium" },
     skip_password_requirement: true,
     skip_legal_checks: true,
   });
-  const cj = J(create);
+  let cj = J(create);
+  if (!cj?.id && /phone number is already associated/i.test(JSON.stringify(cj?.errors || ""))) {
+    phone = generateDefaultAuditPhone();
+    create = backend("POST", "/users", {
+      email_address: [EMAIL],
+      phone_number: [phone],
+      public_metadata: { role: "admin", tier: "premium" },
+      skip_password_requirement: true,
+      skip_legal_checks: true,
+    });
+    cj = J(create);
+  }
   let userId = cj?.id;
   if (!userId && /form_identifier_exists/.test(JSON.stringify(cj?.errors || ""))) {
     const lookup = curl({

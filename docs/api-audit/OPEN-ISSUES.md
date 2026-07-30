@@ -1,7 +1,75 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-30 15:55 ET
+Last updated: 2026-07-30 16:22 ET
 
-## rth-comprehensive-2026-07-30-16h — RTH agent pass (~15:38–15:55 ET)
+## spx-rth-2026-07-30 — SPX Slayer all-day verify pass (last-tick ~16:12–16:22 ET)
+
+**Session:** SPX Slayer all-day RTH agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` **verify** mode (scheduled last-tick 12:55 PM PT / 3:55 PM ET; executed ~1:12 PM PT / 4:12–4:22 PM ET post-close). Commands: `npm run validate:spx-rth` → `npm run validate:spx-e2e` → 60s live spot poll → cross-tool Step 3.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth` (first pass, RTH) | ⚠️ **2 FAIL** — transient `merged spot 0` vs heatmap 7437.63; E2E Clerk phone collision |
+| `npm run validate:spx-rth -- --force` (final) | ✅ **7 PASS / 1 WARN / 0 FAIL** — GREEN |
+| `npm run validate:spx-e2e` (final) | ✅ **17 PASS / 0 FAIL** (2 SKIP post-close) |
+| `ops:collect` | ✅ exit 0 — zero action items |
+| Matrix deep audit | ✅ GEX+VEX+DEX+CHARM finite; INV-2 strike resum; walls/flip/king |
+| Cross-tool integration | ✅ Thermal SPX, gex-positioning, HELIX (30 prints), Largo, bootstrap, 0DTE (15 setups), Night Hawk |
+
+**No P0 defects.** Play `SCANNING` with **no stale confirmations**. Dashboard matrix 177 rows; GEX/VEX tabs clicked; zero NaN/`$—` in cells. API matrix 172 strikes @ spot 7437.63 matches UI formatting.
+
+### Findings (tagged spx-rth-2026-07-30)
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| P1 | SPX-MERGED-SWR-0 | Post-close SWR fallback intermittently serves `price: 0` on `/api/market/spx/desk` and `/api/market/spx/merged` for ~15–25s when pulse lane unavailable; bootstrap + heatmap stay correct at 7437.63 | 60s poll: 1/7 samples desk=0 merged=0; recovered by T+26s | post-close fix |
+| P2 | SPX-E2E-PHONE | `spx-dashboard-e2e-audit.mjs` random `+1415555xxxx` phone collided with existing Clerk user → user create failed | Clerk `form_identifier_exists` on phone | **fixed** — `generateDefaultAuditPhone()` + retry |
+| WARN | SPX-PULSE-OFF | Pulse/flow lanes `available: false` post-close — desk-lanes check SKIP (expected) | `/api/market/spx/pulse` price=0 | no |
+| WARN | SPX-CRON-MISMATCH | Cloud-agent `CRON_SECRET` auth mismatch on sync `data-correctness` poll; prod EventBridge cron authoritative | `spx:data-correctness` WARN | no |
+| WARN | SPX-COMMENTARY-UI | Commentary expand control not rendered post-close (E2E SKIP) | `#spx-commentary-expand` absent | post-close UX check |
+
+### UI E2E (Playwright premium session)
+
+| Control | Result |
+|---|---|
+| GEX tab (`#spx-matrix-tab-gex`) | ✅ PASS |
+| VEX tab (`#spx-matrix-tab-vex`) | ✅ PASS |
+| Matrix rows | ✅ 177 strike rows |
+| Matrix text sanity | ✅ no NaN/undefined/`$—` |
+| Trade alert SCANNING | ✅ no stale ✓ confirmations |
+| Console errors | ✅ zero |
+
+### Live auto-update (60s poll, post-close)
+
+| Surface | Observed | Notes |
+|---|---|---|
+| Desk SPX price | 1/7 samples `0` then stable 7437.63 | SWR pulse-minimal fallback flake (P1) |
+| Merged price | same pattern | aligns with desk after recovery |
+| Heatmap spot | stable 7437.63 | 8s cache lane unaffected |
+| Play action | stable SCANNING | no tick expected post-close |
+
+### Cross-tool (Step 3)
+
+| Tool | Endpoint | Result |
+|---|---|---|
+| Thermal SPX | `gex-heatmap?ticker=SPX` | ✅ same payload as matrix; 172 strikes |
+| Thermal SPY | `gex-heatmap?ticker=SPY` | ✅ cross_validation PASS |
+| GEX positioning | `gex-positioning?ticker=SPX` | ✅ spot/flip agree with matrix |
+| HELIX | `flows?limit=30` | ✅ 30 prints |
+| Largo | `largo/query` SPX play | ✅ `blackout_intelligence` grounded |
+| BIE | `validate:spx-bie` | ✅ member play == `getSpxPlayState()` |
+| Grid | `spx/bootstrap` | ✅ loaded; merged spot 7437.63 |
+| 0DTE | `zerodte/board` | ✅ 15 setups |
+| Night Hawk | `nighthawk/edition` | ✅ edition loads |
+
+### Reports
+
+- `audit-output/spx-rth-2026-07-30-verify-1785442573090.json` (first pass — cross-endpoint FAIL)
+- `audit-output/spx-rth-2026-07-30-verify-1785443109528.json` (final — GREEN)
+- `audit-output/spx-dashboard-e2e-1785442947486.json` (final E2E — GREEN)
+
+---
+
 
 **Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` including **RTH COMPREHENSIVE TEST SWEEP**. Commands: `npm run validate:rth-open` → `GET /api/cron/data-correctness?force=1` → `npm run validate:rth-sweep` → `npm run validate:spx-rth` → `npm run validate:grid-rth` → `npm run ops:collect`.
 
