@@ -5,6 +5,30 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-30 — [ops] RTH cron edge timeouts → silent staleness (#1343)
+
+**Severity.** P0 `coaching-alerts` + `uw-cache-refresh` RTH-stale; P1 `socket-health` failed/stale.
+
+**Symptom.** ops-auto-fix #1343: `coaching-alerts` and `uw-cache-refresh` `market_hours_stale`
+during RTH; `socket-health` flagged stale/failed. Live probe: `GET /api/cron/coaching-alerts?force=1`
+HTTP **504** at ~120s (Cloudflare origin timeout); `uw-cache-refresh` aborted at 60s; `socket-health`
+HTTP 503 when `spx:pulse:snapshot` cold on web tier.
+
+**Root cause.** Same class as `zerodte-warm` (#OPS zerodte-warm CF 504): several RTH crons awaited
+heavy cache rebuilds inline (`buildCoachingAlerts`, UW REST fan-out, `buildBieFullState`,
+`warmVectorDarkPool` ×N tickers) — combined wall-clock exceeded Cloudflare ~100s before
+`logCronRun` fired → watchdog saw stale handshakes with no fresh row. `socket-health` logged
+`ok:false` when the probe honestly reported unhealthy sockets (cron "failed" vs probe ran), and
+web-tier probes false-negative'd when pulse snapshot wasn't seeded before cluster eval.
+
+**Fix.** (1) `after()` fire-and-forget handshake (202) on `coaching-alerts`, `vector-dark-pool-warm`,
+`bie-full-state-snapshot`, `platform-warm`, `uw-cache-refresh` (pulse seed sync, REST in background).
+(2) `socket-health`: `seedPulseSnapshotFromUwPrices()` before cluster eval; log cron `ok` on probe
+completion, `sockets_healthy` in meta. (3) `coaching-alerts` + `bie-full-state-snapshot` added to
+`CRON_DISPATCH` for watchdog self-heal.
+
+**Status.** FIXED on `fix/ops-1343-cron-edge-timeout`.
+
 ## 2026-07-30 — [ops] zerodte-warm CF 504 on blocking board rebuild
 
 **Severity.** P1 — cron handshake 504 every RTH probe; watchdog may mis-report failure.
