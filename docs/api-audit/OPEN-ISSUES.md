@@ -1,5 +1,86 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-30 17:45 ET
+Last updated: 2026-07-30 17:55 ET
+
+## grid-rth-2026-07-30 — 0DTE Command all-day verify pass (~2:53 PM PT / 5:53 PM ET, post-close)
+
+**Session:** Grid RTH all-day agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` **verify** mode (scheduled 6:30 AM PT open; executed ~2:53 PM PT / 5:53 PM ET **post-close**). Commands: `npm run validate:grid-rth -- --force` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e` → `npm run validate:zerodte-integration` → `data-validator.mjs` → Playwright `/nighthawk` tab probe.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:grid-rth -- --force` | ✅ **13 PASS / 0 FAIL** — full orchestrator GREEN |
+| `npm run validate:zerodte-logic` | ✅ **17 PASS / 0 FAIL** — gates, plans, lifecycle, mergePlays, live board |
+| `npm run validate:grid-e2e` | ✅ **5 PASS / 0 FAIL** — board API + `/nighthawk` Playwright (0 console errors) |
+| `npm run validate:zerodte-integration` | ✅ **9 PASS / 0 FAIL** — SPX bootstrap/GEX, HELIX, NH dedupe, ledger PnL |
+| `ops:collect` (via grid-rth) | ✅ **exit 0** — zero action items |
+| Playwright `/nighthawk` UI | ✅ **0 FAIL / 7 checks** — Command Deck visible; `/grid` 404 (expected) |
+
+**Verify status: GREEN** — zero P0/P1 product defects. No fix branch required.
+
+### 0DTE logic probes (validate:zerodte-logic)
+
+| Layer | Result |
+|---|---|
+| Unit tests | ✅ `board.test.ts`, `rejections.test.ts`, `ZeroDteBoard.test.ts` |
+| Gate funnel | ✅ NVDA score=65; audit trace all gates pass; 2 eligible / 9 total, 0 violations |
+| Plan exits | ✅ stop −50% (2.1), target +100% (8.4), time stop 15:30 ET |
+| Trade lifecycle | ✅ OPEN → TRIM → CLOSED; sticky trough stop |
+| Plan grading | ✅ stop wins when both touch same bar |
+| Session heat | ✅ RTH → POST_COMMIT → POWER_HOUR; live `CLOSED` heat=0%; cutoff 14:00 ET |
+| mergePlays UI | ✅ past cutoff → SKIP; MOVED → SKIP (not OPEN) |
+| Ledger PnL | ✅ 15 rows `reconcileLedgerLivePnlPct` coherent |
+
+### Live board snapshot (CLOSED ~17:54 ET)
+
+| Field | Value |
+|---|---|
+| Session heat | `CLOSED` |
+| Setups | 9 |
+| Ledger | 15 committed rows |
+| Upstream | ✅ `upstream_ok` |
+| SPX GEX spot | 7437.63 (bootstrap vs gex agree) |
+
+### Cross-tool integration
+
+| Check | Result |
+|---|---|
+| Grid bootstrap spot vs GEX | ✅ spot 7437.63 |
+| HELIX flows feed | ✅ 20–30 prints (`/api/market/flows`) |
+| Night Hawk dedupe | ✅ no edition plays overlap |
+| `zerodte-warm` cron | ✅ 202 accepted (background warm) |
+| `data-correctness` | ✅ flags=0 mode=full-async |
+| `validate:rth-open` (infra) | ✅ deploy + writers GREEN |
+
+### UI E2E (Playwright — `/nighthawk`)
+
+| # | Action | Result |
+|---|---|---|
+| 1 | `/grid` route | ✅ HTTP 404 — classic Grid deleted 2026-07-07 |
+| 2 | Admin session opens `/nighthawk` | ✅ title "Night Hawk · BlackOut" |
+| 3 | 0DTE segment | ✅ clickable; Command Deck chrome present |
+| 4 | 0DTE Command / Market Grid tabs | ⏭ SKIP — tabs belonged to deleted `/grid` UI |
+| 5 | Console | ✅ zero page errors |
+| 6 | Board API | ✅ 9 setups · ledger 15 |
+| 7 | HELIX flows API | ✅ 20 prints |
+
+### Findings table (`grid-rth-2026-07-30`)
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| P2 | GRID-RTH-DV-01 | `data-validator` compares live underlying to Polygon **prev-close** — MU/META/AMD/QQQ/SPX Δ>tol during/after RTH | Polygon grouped-daily | Yes — intraday oracle mismatch, not board bug |
+| P2 | GRID-RTH-DOC-01 | Runbook Step 2 + user prompt still reference `/grid` tabs; product is `/nighthawk` only since 2026-07-07 | — | Yes — doc staleness |
+| — | — | No P0/P1 product defects this pass | — | — |
+
+### Reports
+
+- `audit-output/grid-rth-2026-07-30-verify-1785448474764.json`
+- `audit-output/zerodte-logic-1785448479004.json`
+- `audit-output/grid-e2e-1785448485180.json`
+- `audit-output/zerodte-integration-1785448499108.json`
+- `audit-output/validation-2026-07-30T21-55-07-469Z.md`
+
+---
 
 ## spx-rth-2026-07-30 — SPX Slayer all-day verify pass (~2:42 PM PT / 5:42 PM ET, post-close)
 
