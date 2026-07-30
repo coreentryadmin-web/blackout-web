@@ -5,6 +5,24 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-30 — [ops] vector-universe-snapshot RTH-stale self-heal gap (#1333)
+
+**Severity.** P0 ops — Vector scanner rail stops updating when the recorder cron goes stale during RTH.
+
+**Symptom.** ops-auto-fix #1333 flagged `vector-universe-snapshot` `market_hours_stale` during RTH.
+
+**Root cause.** Same class as grid-warm (#OPS-6): `CRON_WATCHDOG_SELF_HEAL=1` re-warms only crons in
+`CRON_DISPATCH`. Vector live-data warmers (`vector-universe-snapshot`, `vector-full-state-snapshot`,
+`vector-walls-warm`, `vector-dark-pool-warm`) were missing — watchdog alerted but could not auto-heal.
+
+**Evidence.** Manual `GET /api/cron/vector-universe-snapshot?force=1` returned 200 with `rows=25` and
+cleared the P0; ops-collect went 0 items without a code deploy.
+
+**Fix.** Added all four Vector warmers to `src/lib/cron-dispatch.ts` + regression test
+`src/lib/cron-dispatch.test.ts`.
+
+**Status.** FIXED on `fix/vector-universe-snapshot-self-heal`.
+
 ## 2026-07-30 — [Engine] zerodte-grade + swing-active-refresh schedule catalog gaps
 
 **Severity.** P1 — post-close 0DTE grading piggybacked on warm's 10-minute throttle; swing TACTICAL

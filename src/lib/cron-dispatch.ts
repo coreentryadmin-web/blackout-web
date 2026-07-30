@@ -14,6 +14,10 @@ import { GET as zerodteWarmGet } from "@/app/api/cron/zerodte-warm/route";
 import { GET as spxEvaluateGet } from "@/app/api/cron/spx-evaluate/route";
 import { GET as marketRegimeGet } from "@/app/api/cron/market-regime-detector/route";
 import { GET as spxSignalGet } from "@/app/api/cron/spx-signal-observe/route";
+import { GET as vectorUniverseSnapshotGet } from "@/app/api/cron/vector-universe-snapshot/route";
+import { GET as vectorFullStateSnapshotGet } from "@/app/api/cron/vector-full-state-snapshot/route";
+import { GET as vectorWallsWarmGet } from "@/app/api/cron/vector-walls-warm/route";
+import { GET as vectorDarkPoolWarmGet } from "@/app/api/cron/vector-dark-pool-warm/route";
 
 export type CronHandler = (req: NextRequest) => Promise<Response>;
 
@@ -38,6 +42,12 @@ export const CRON_DISPATCH: Record<string, { handler: CronHandler; force: boolea
   "spx-evaluate": { handler: spxEvaluateGet, force: false },
   "market-regime-detector": { handler: marketRegimeGet, force: false },
   "spx-signal-observe": { handler: spxSignalGet, force: false },
+  // Vector live-data warmers — idempotent Redis snapshot/cache writers; self-heal must cover
+  // these or RTH staleness on vector-universe-snapshot breaks the Vector scanner rail (#1333).
+  "vector-universe-snapshot": { handler: vectorUniverseSnapshotGet, force: false },
+  "vector-full-state-snapshot": { handler: vectorFullStateSnapshotGet, force: false },
+  "vector-walls-warm": { handler: vectorWallsWarmGet, force: false },
+  "vector-dark-pool-warm": { handler: vectorDarkPoolWarmGet, force: false },
 };
 
 export const DISPATCHABLE_CRONS = Object.keys(CRON_DISPATCH);
