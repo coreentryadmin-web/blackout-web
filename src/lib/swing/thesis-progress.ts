@@ -53,3 +53,21 @@ export function volCollapsedFromIvRanks(
   const live100 = rank01(liveIvRank) * 100;
   return live100 <= entry100 - dropPts;
 }
+
+/**
+ * Advisory "add" eligibility: thesis is progressing (≥50% to target) AND option mark is at/above entry
+ * (not underwater). Null when progress or marks are unknown — never fabricates an add signal.
+ */
+export function addEligibleFromProgress(args: {
+  thesisProgress01: number | null | undefined;
+  entryPremium: number | null | undefined;
+  mark: number | null | undefined;
+  minProgress?: number;
+}): boolean | null {
+  const progress = args.thesisProgress01;
+  const entry = args.entryPremium;
+  const mark = args.mark;
+  const min = args.minProgress ?? 0.5;
+  if (!isFin(progress) || !isFin(entry) || !isFin(mark) || entry <= 0) return null;
+  return progress >= min && mark >= entry;
+}

@@ -45,7 +45,7 @@ import type { ParentGradeFreeze } from "@/lib/swing/roll";
 import type { SwingArchetype } from "@/lib/swing/taxonomy";
 import { resolveTickerChainRows } from "@/features/nighthawk/lib/option-chain-prompt";
 import { occSymbolFromSwingRow } from "@/lib/swing/occ-from-row";
-import { thesisProgress01, volCollapsedFromIvRanks } from "@/lib/swing/thesis-progress";
+import { thesisProgress01, volCollapsedFromIvRanks, addEligibleFromProgress } from "@/lib/swing/thesis-progress";
 import {
   createDailyClosesBetaSource,
   fetchNameBeta,
@@ -167,6 +167,12 @@ export async function GET(req: NextRequest) {
             ? (row.feature_vector.iv_rank as number)
             : null;
         const liveIv = ivRank != null && Number.isFinite(ivRank) ? ivRank : null;
+        const progress = thesisProgress01({
+          direction: row.direction === "short" ? "short" : "long",
+          entryPx: row.entry_underlying_px,
+          targetPx: row.target_underlying_px,
+          spot,
+        });
         return {
           underlyingPrice: spot,
           // Live contract mark → drives the premium ratchet (peak/trough) + the profit-ladder / −60% backstop
@@ -183,16 +189,17 @@ export async function GET(req: NextRequest) {
           // Sessions held → time_stop advisory rung (STANDARD 8 / EXTENDED 14) — only with thesisProgress01.
           sessionsHeld: sessionsHeldFromRow(row, nowMs),
           // Progress toward pinned target — without this, time_stop is permanently inert.
-          thesisProgress01: thesisProgress01({
-            direction: row.direction === "short" ? "short" : "long",
-            entryPx: row.entry_underlying_px,
-            targetPx: row.target_underlying_px,
-            spot,
-          }),
+          thesisProgress01: progress,
           // Fresh IV rank → feature-vector iv_rank (wins over commit-pinned value when present).
           ivRank: liveIv,
           // IV crush vs commit-pinned rank → vol_collapse advisory (null when either side absent).
           volCollapsed: volCollapsedFromIvRanks(pinnedIv, liveIv),
+          // Advisory add when thesis is halfway+ to target and mark is not underwater.
+          addEligible: addEligibleFromProgress({
+            thesisProgress01: progress,
+            entryPremium: row.entry_premium,
+            mark,
+          }),
           // Ladder-graduated edge rungs → manage.ts flips advisory→enforced for those rungs only.
           graduatedRungs,
         };

@@ -306,6 +306,8 @@ Member path (`discoverSwingFromPersisted`):
 3. Enrich with serving meta (factors, regime, setup/entry when reads exist)  
 4. `assembleSwingServingLane` → seven sections  
 5. Splice into `HorizonBoard.lanes.SWING` (always, not only `?view=swings`)  
+6. Merge OPEN ledger rows into MANAGING / SCALING_OUT / EXITING (live sections)  
+7. Setup maturity from cron-warmed `spotsByTicker` + dossier plan levels (cache-reader) 
 
 Horizons route auth: premium + nighthawk tool; `Cache-Control: no-store`.
 
