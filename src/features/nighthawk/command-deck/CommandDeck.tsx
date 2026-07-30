@@ -20,6 +20,7 @@ import {
   type DeckStatusFilter,
 } from "./deck-session-ui";
 import { etNowParts } from "@/features/nighthawk/lib/session";
+import { useSecondTick, useFlash } from "./use-deck-live";
 
 /** Status filter mode: which plays to show in the list. */
 type StatusFilter = DeckStatusFilter;
@@ -122,6 +123,7 @@ export function CommandDeck({
 
   const selected = sorted.find((p) => p.id === selId) ?? null;
   const sessionClosed = String(sessionHeat ?? "").toUpperCase() === "CLOSED";
+  const nowMs = useSecondTick();
 
   return (
     <div className="nh-deck">
@@ -160,7 +162,7 @@ export function CommandDeck({
             <div className="nh-deck-empty">No {statusFilter.toLowerCase()} plays right now.</div>
           )}
           {sorted.map((p, i) => (
-            <PlayCard key={p.id} play={p} rank={i + 1} selected={p.id === selId} onSelect={() => setSelId(p.id)} />
+            <PlayCard key={p.id} play={p} rank={i + 1} selected={p.id === selId} onSelect={() => setSelId(p.id)} nowMs={nowMs} />
           ))}
         </div>
       </div>
@@ -237,6 +239,22 @@ function CondorCardChip({ play }: { play: TerminalPlay }) {
   );
 }
 
+/** Radial thesis-health ring around the rank — 0–100 arc, color by rung. */
+function HealthRing({ health, rung }: { health: number; rung: string }) {
+  const pct = Math.max(0, Math.min(100, health));
+  const r = 14;
+  const c = 2 * Math.PI * r;
+  const dash = (pct / 100) * c;
+  const cls = health >= 75 ? "ok" : health >= 45 ? "warn" : "brk";
+  return (
+    <svg className={clsx("nh-deck-health-ring", cls)} viewBox="0 0 36 36" aria-hidden>
+      <circle className="track" cx="18" cy="18" r={r} />
+      <circle className="arc" cx="18" cy="18" r={r} strokeDasharray={`${dash} ${c}`} />
+      <title>{`Thesis health ${health}% · ${rung}`}</title>
+    </svg>
+  );
+}
+
 /** One left-pane play card. Wave 2 surfaces the tier + discovery-origin badges, the mid mark + its
  *  executable-fill P&L, and honest staleness (dim + age) — all reading the Wave-1 payload fields. */
 function PlayCard({
@@ -244,25 +262,22 @@ function PlayCard({
   rank,
   selected,
   onSelect,
+  nowMs,
 }: {
   play: TerminalPlay;
   rank: number;
   selected: boolean;
   onSelect: () => void;
+  nowMs: number;
 }) {
-  // A 1s local clock so a stale card's age readout advances even between the 5s board poll. One
-  // interval per card is fine (≤16 rows); it only re-renders this small button.
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, []);
+  const markFlash = useFlash(p.mark ?? p.pnlPct ?? null);
+  const thFlash = useFlash(p.thesisHealth?.health ?? null);
 
   const asOfMs = p.markAsOf ? Date.parse(p.markAsOf) : NaN;
   const hasAsOf = Number.isFinite(asOfMs);
   const staleThresholdMs = p.horizon === "LEGACY" ? LEGACY_QUOTE_STALE_MS : ZERODTE_MARK_STALE_MS;
-  const stale = hasAsOf ? isZeroDteMarkStale(asOfMs, now, staleThresholdMs) : false;
-  const ageMs = hasAsOf ? Math.max(0, now - asOfMs) : null;
+  const stale = hasAsOf ? isZeroDteMarkStale(asOfMs, nowMs, staleThresholdMs) : false;
+  const ageMs = hasAsOf ? Math.max(0, nowMs - asOfMs) : null;
   const ageLabel =
     ageMs == null ? null : ageMs < 60_000 ? `${Math.round(ageMs / 1000)}s` : `${Math.round(ageMs / 60_000)}m`;
 
@@ -272,14 +287,22 @@ function PlayCard({
   // decay P&L (pnlPct) only, never a directional exec line.
   const showExec = !isCondor && p.execPnlPct != null;
 
+  const showThRing =
+    p.thesisHealth != null && (p.status === "OPEN" || p.status === "HOLD" || p.status === "TRIM");
+
   return (
     <button
       type="button"
-      className={clsx("nh-deck-row", selected && "sel", stale && "nh-deck-card-stale")}
+      className={clsx("nh-deck-row", selected && "sel", stale && "nh-deck-card-stale", markFlash && "nh-deck-row-flash")}
       onClick={onSelect}
       aria-current={selected}
     >
-      <span className="nh-deck-rk">{rank}</span>
+      <span className="nh-deck-rk-wrap">
+        {showThRing && (
+          <HealthRing health={p.thesisHealth!.health} rung={p.thesisHealth!.rungLabel} />
+        )}
+        <span className="nh-deck-rk">{rank}</span>
+      </span>
       <span>
         <span>
           <span className="nh-deck-tk">{p.ticker}</span>{" "}
@@ -297,7 +320,8 @@ function PlayCard({
           {p.thesisHealth && (p.status === "OPEN" || p.status === "HOLD" || p.status === "TRIM") && (
             <span
               className={clsx(
-                "nh-deck-cbadge",
+                "nh-deck-cbadge nh-deck-th-chip",
+                thFlash && "neon",
                 p.thesisHealth.health >= 75 ? "conf" : p.thesisHealth.health >= 45 ? "warn" : "brk",
               )}
               title={p.thesisHealth.rungLabel}
@@ -329,7 +353,7 @@ function PlayCard({
                 : "—"}
             </span>
             <span className="nh-deck-premlab">{isCondor ? "MARK" : "MID"}</span>
-            <span className={clsx("nh-deck-pnl", (p.pnlPct ?? 0) > 0 && "nh-deck-pos", (p.pnlPct ?? 0) < 0 && "nh-deck-neg")} style={{ display: "block" }}>
+            <span className={clsx("nh-deck-pnl", (p.pnlPct ?? 0) > 0 && "nh-deck-pos", (p.pnlPct ?? 0) < 0 && "nh-deck-neg", markFlash && "neon")} style={{ display: "block" }}>
               {p.pnlPct != null && p.pnlPct !== 0 ? `${p.pnlPct > 0 ? "+" : ""}${p.pnlPct.toFixed(1)}%` : "—"}
             </span>
             {showExec && (

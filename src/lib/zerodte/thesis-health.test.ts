@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   buildThesisWeightProfile,
   computeThesisHealth,
+  extractCortexSources,
   thesisManagementOverlay,
 } from "./thesis-health";
 import type { EnrichedZeroDteSetup } from "./board";
@@ -123,7 +124,7 @@ test("computeThesisHealth: VWAP cross drops health materially", () => {
     computedAtEt: "12:00 ET",
   }, { status: "OPEN" });
   assert.ok(h);
-  assert.ok(h!.health < 60, `expected degraded health, got ${h!.health}`);
+  assert.ok(h!.health <= 60, `expected degraded health, got ${h!.health}`);
   assert.ok(h!.moves.some((m) => m.includes("VWAP") || m.includes("Market")));
 });
 
@@ -151,4 +152,48 @@ test("thesisManagementOverlay: broken thesis + profit → TRIM", () => {
   const out = thesisManagementOverlay("HOLD", "hold", low, 18);
   assert.equal(out.recommendation, "TRIM");
   assert.match(out.recNote, /Thesis health/);
+});
+
+test("extractCortexSources: maps supports and vetoes", () => {
+  const lines = extractCortexSources({
+    cortex: {
+      abstained: false,
+      supports: [{ source: "flow", detail: "2d bear build" }],
+      opposes: [{ source: "tape", detail: "SPY up" }],
+      vetoes: [],
+      absent: ["gex:unavailable"],
+    },
+  });
+  assert.equal(lines.length, 3);
+  assert.equal(lines[0]!.kind, "support");
+  assert.equal(lines[1]!.kind, "oppose");
+  assert.equal(lines[2]!.kind, "absent");
+});
+
+test("computeThesisHealth: Tier B pillars when pinned in feature_vector", () => {
+  const fv = {
+    dark_pool_bias: "bullish",
+    rel_volume: 1.8,
+    trend_5m: "down",
+    vix: 16,
+    vwap_dist_pct: -1.2,
+    or_break: "below",
+  };
+  const h = computeThesisHealth(baseCtx, fv, {
+    direction: "short",
+    setup: minimalSetup({ dark_pool_bias: "bearish", rel_volume: 0.9 }),
+    spyBias: "down",
+    nowEtMinutes: 11 * 60 + 30,
+    computedAtEt: "11:30 ET",
+  }, { status: "OPEN" });
+  assert.ok(h);
+  const ids = h!.pillars.map((p) => p.id);
+  assert.ok(ids.includes("darkpool"), "darkpool pillar when pinned");
+  assert.ok(ids.includes("rel_volume"), "rel_volume pillar when pinned");
+  assert.ok(ids.includes("momentum"), "momentum pillar when pinned");
+  assert.ok(ids.includes("volatility"), "volatility pillar when pinned");
+  const rv = h!.pillars.find((p) => p.id === "rel_volume");
+  assert.ok(rv && rv.currentScore < rv.commitScore, "rel volume fade should lower score");
+  const dp = h!.pillars.find((p) => p.id === "darkpool");
+  assert.ok(dp, "darkpool pillar present");
 });

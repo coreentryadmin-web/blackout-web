@@ -23,7 +23,11 @@ export type ThesisPillarId =
   | "confluence"
   | "cortex"
   | "dealer"
-  | "structure";
+  | "structure"
+  | "darkpool"
+  | "rel_volume"
+  | "momentum"
+  | "volatility";
 
 export type ThesisHealthRung =
   | "INTACT"
@@ -63,6 +67,8 @@ export interface ThesisHealthPayload {
   rung: ThesisHealthRung;
   rungLabel: string;
   pillars: ThesisPillarState[];
+  /** Cortex evidence lines pinned at commit (honest static until live cortex ships). */
+  cortexSources?: CortexSourceLine[];
   /** Human-readable lines explaining what moved. */
   moves: string[];
   committedAtEt: string | null;
@@ -86,6 +92,12 @@ export interface ThesisLiveInputs {
 type CommitBlob = Record<string, unknown> | null | undefined;
 type FeatureVector = Record<string, unknown> | null | undefined;
 
+export interface CortexSourceLine {
+  source: string;
+  kind: "support" | "oppose" | "veto" | "absent";
+  detail: string;
+}
+
 const PILLAR_LABELS: Record<ThesisPillarId, string> = {
   flow: "Flow build",
   tape: "Tape bias",
@@ -95,18 +107,26 @@ const PILLAR_LABELS: Record<ThesisPillarId, string> = {
   cortex: "Cortex",
   dealer: "Dealer regime",
   structure: "Intraday structure",
+  darkpool: "Dark pool",
+  rel_volume: "Rel volume",
+  momentum: "Momentum",
+  volatility: "Volatility",
 };
 
 /** Default pillar weights before evidence-profile adjustment. */
 const DEFAULT_WEIGHTS: Record<ThesisPillarId, number> = {
-  flow: 0.32,
-  tape: 0.1,
-  vwap: 0.14,
-  market: 0.14,
-  confluence: 0.14,
-  cortex: 0.11,
+  flow: 0.28,
+  tape: 0.09,
+  vwap: 0.12,
+  market: 0.12,
+  confluence: 0.12,
+  cortex: 0.1,
   dealer: 0.05,
-  structure: 0.0,
+  structure: 0.04,
+  darkpool: 0.03,
+  rel_volume: 0.02,
+  momentum: 0.02,
+  volatility: 0.01,
 };
 
 function clamp01(n: number): number {
@@ -206,6 +226,103 @@ function structureScore(
     score += orWith ? 0.1 : -0.15;
   }
   return { score: clamp01(score), label: `${withPlay ? "VWAP ok" : "VWAP wrong"} · ${trend} trend` };
+}
+
+function structureFromFeatureVector(
+  direction: "long" | "short",
+  fv: FeatureVector,
+): { score: number; label: string } | null {
+  if (!fv) return null;
+  const orBreak = fv.or_break as string | null | undefined;
+  const trend = fv.trend_5m as string | null | undefined;
+  const vwapDist = fin(fv.vwap_dist_pct);
+  if (orBreak == null && trend == null && vwapDist == null) return null;
+  let score = 0.55;
+  if (vwapDist != null) {
+    const withPlay = direction === "long" ? vwapDist > 0 : vwapDist < 0;
+    score += withPlay ? 0.2 : -0.25;
+  }
+  if (trend === "up" || trend === "down") {
+    const withTrend = (trend === "up") === (direction === "long");
+    score += withTrend ? 0.12 : -0.18;
+  }
+  if (orBreak && orBreak !== "inside") {
+    const orWith = (orBreak === "above") === (direction === "long");
+    score += orWith ? 0.1 : -0.12;
+  }
+  const parts = [
+    vwapDist != null ? `VWAP ${vwapDist > 0 ? "+" : ""}${vwapDist}%` : null,
+    orBreak ? `OR ${orBreak}` : null,
+    trend ? `${trend} trend` : null,
+  ].filter(Boolean);
+  return { score: clamp01(score), label: parts.join(" · ") || "structure" };
+}
+
+function darkPoolScore(
+  direction: "long" | "short",
+  bias: string | null | undefined,
+): { score: number; label: string } | null {
+  if (!bias) return null;
+  const b = bias.toLowerCase();
+  if (b === "mixed") return { score: 0.5, label: "mixed" };
+  const bull = b.includes("bull");
+  const bear = b.includes("bear");
+  if (!bull && !bear) return { score: 0.5, label: bias };
+  const ok = direction === "long" ? bull : bear;
+  return { score: ok ? 0.85 : 0.15, label: bias };
+}
+
+function relVolumeScore(rv: number | null | undefined): { score: number; label: string } | null {
+  if (rv == null || !Number.isFinite(rv)) return null;
+  const score = rv >= 1.5 ? 0.9 : rv >= 1.0 ? 0.7 : rv >= 0.7 ? 0.45 : 0.25;
+  return { score, label: `${Math.round(rv * 100) / 100}×` };
+}
+
+function momentumScore(
+  direction: "long" | "short",
+  trend: string | null | undefined,
+): { score: number; label: string } | null {
+  if (!trend) return null;
+  if (trend === "flat") return { score: 0.55, label: "flat" };
+  const withPlay = (trend === "up") === (direction === "long");
+  return { score: withPlay ? 0.85 : 0.2, label: `${trend} trend` };
+}
+
+function volatilityScore(vix: number | null | undefined): { score: number; label: string } | null {
+  if (vix == null || !Number.isFinite(vix)) return null;
+  // F-1 measured band: calm 15-17 best; elevated 17-20 worse — evidence-only scoring.
+  const score = vix < 17 ? 0.85 : vix < 20 ? 0.45 : 0.25;
+  return { score, label: `VIX ${vix}` };
+}
+
+export function extractCortexSources(entryContext: CommitBlob): CortexSourceLine[] {
+  const cortex = entryContext?.cortex as Record<string, unknown> | undefined;
+  if (!cortex || cortex.abstained === true) {
+    return cortex?.reason
+      ? [{ source: "cortex", kind: "absent", detail: String(cortex.reason) }]
+      : [];
+  }
+  const out: CortexSourceLine[] = [];
+  const supports = Array.isArray(cortex.supports) ? cortex.supports : [];
+  const opposes = Array.isArray(cortex.opposes) ? cortex.opposes : [];
+  const vetoes = Array.isArray(cortex.vetoes) ? cortex.vetoes : [];
+  const absent = Array.isArray(cortex.absent) ? cortex.absent : [];
+  for (const s of supports.slice(0, 4)) {
+    const item = s as { source?: string; detail?: string };
+    out.push({ source: String(item.source ?? "support"), kind: "support", detail: String(item.detail ?? "") });
+  }
+  for (const o of opposes.slice(0, 2)) {
+    const item = o as { source?: string; detail?: string };
+    out.push({ source: String(item.source ?? "oppose"), kind: "oppose", detail: String(item.detail ?? "") });
+  }
+  for (const v of vetoes.slice(0, 2)) {
+    const item = v as { source?: string; detail?: string };
+    out.push({ source: String(item.source ?? "veto"), kind: "veto", detail: String(item.detail ?? "") });
+  }
+  for (const a of absent.slice(0, 3)) {
+    out.push({ source: String(a).split(":")[0] ?? "absent", kind: "absent", detail: String(a) });
+  }
+  return out;
 }
 
 /** Evidence-aware weight profile from pinned commit blobs. */
@@ -434,13 +551,56 @@ export function computeThesisHealth(
     current: dealerScore(setup?.gamma_regime ?? commitGamma),
   });
 
-  // Structure (OR/trend) — only when intraday was present at commit via feature vector
+  // Structure (OR/trend) — commit from pinned feature_vector; live from setup intraday
   const fv = featureVector ?? {};
-  if (fv.or_break != null || fv.trend_5m != null || setup?.intraday) {
+  const commitStruct = structureFromFeatureVector(direction, fv);
+  const liveStruct = structureScore(direction, setup?.intraday ?? null);
+  if (commitStruct || liveStruct) {
     pillarDefs.push({
       id: "structure",
-      commit: structureScore(direction, setup?.intraday ?? null),
-      current: structureScore(direction, setup?.intraday ?? null),
+      commit: commitStruct,
+      current: liveStruct ?? commitStruct,
+    });
+  }
+
+  // Tier B — only when pinned at commit (feature_vector) or live on setup
+  const commitDp = (fv.dark_pool_bias as string | null) ?? null;
+  const liveDp = setup?.dark_pool_bias ?? commitDp;
+  if (commitDp) {
+    pillarDefs.push({
+      id: "darkpool",
+      commit: darkPoolScore(direction, commitDp),
+      current: darkPoolScore(direction, liveDp),
+    });
+  }
+
+  const commitRv = fin(fv.rel_volume);
+  const liveRv = fin(setup?.rel_volume) ?? commitRv;
+  if (commitRv != null) {
+    pillarDefs.push({
+      id: "rel_volume",
+      commit: relVolumeScore(commitRv),
+      current: relVolumeScore(liveRv),
+    });
+  }
+
+  const commitTrend = (fv.trend_5m as string | null) ?? null;
+  const liveTrend = setup?.intraday?.trend_5m ?? commitTrend;
+  if (commitTrend) {
+    pillarDefs.push({
+      id: "momentum",
+      commit: momentumScore(direction, commitTrend),
+      current: momentumScore(direction, liveTrend ?? undefined),
+    });
+  }
+
+  const commitVix = fin(fv.vix) ?? fin(entryContext.vix_open as number);
+  const liveVix = commitVix;
+  if (commitVix != null) {
+    pillarDefs.push({
+      id: "volatility",
+      commit: volatilityScore(commitVix),
+      current: volatilityScore(liveVix),
     });
   }
 
@@ -529,6 +689,7 @@ export function computeThesisHealth(
     rung,
     rungLabel,
     pillars,
+    cortexSources: extractCortexSources(entryContext),
     moves: moves.length > 0 ? moves : ["All scored pillars unchanged since commit."],
     committedAtEt: typeof entryContext.committed_at_et === "string" ? entryContext.committed_at_et : null,
     computedAtEt: live.computedAtEt,
