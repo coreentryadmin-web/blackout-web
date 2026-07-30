@@ -534,6 +534,84 @@ function mergeWsIndexSnapshots(
   return out;
 }
 
+type IndexSnapMap = Awaited<ReturnType<typeof fetchIndexSnapshots>>;
+
+/** Web-tier pulse lane: Redis cluster snapshot → local WS → REST (2s cap). Never block 60s. */
+async function fetchPulseLaneSnapshots(): Promise<IndexSnapMap> {
+  const symbols = [SPX, VIX, VIX9D, VIX3M, TICK, TRIN, ADD] as const;
+  const base: IndexSnapMap = Object.fromEntries(symbols.map((s) => [s, null])) as IndexSnapMap;
+  const now = Date.now();
+
+  try {
+    const { getUwCacheRedis } = await import("@/lib/providers/uw-shared-cache");
+    const redis = await getUwCacheRedis();
+    const raw = redis ? await redis.get("spx:pulse:snapshot") : null;
+    if (raw) {
+      const snap = JSON.parse(raw) as Record<
+        string,
+        { price?: number; change_pct?: number; updatedAt?: number }
+      >;
+      for (const sym of symbols) {
+        const e = snap[sym];
+        const breadthIndex = sym === TICK || sym === ADD;
+        if (
+          e?.updatedAt &&
+          now - e.updatedAt < INDEX_STORE_STALE_MS &&
+          (breadthIndex || (e.price ?? 0) > 0)
+        ) {
+          base[sym] = {
+            symbol: sym,
+            price: e.price!,
+            change_pct: Number.isFinite(e.change_pct) ? Number(e.change_pct) : 0,
+          };
+        }
+      }
+    }
+  } catch {
+    /* Redis optional — fall through */
+  }
+
+  let merged = mergeWsIndexSnapshots(base);
+  if ((merged[SPX]?.price ?? 0) > 0) return merged;
+
+  const raceMs = deskPulseStructureRaceMs();
+  const rest = await Promise.race([
+    fetchIndexSnapshots([...symbols]).catch(() => base),
+    new Promise<IndexSnapMap>((resolve) => setTimeout(() => resolve(base), raceMs)),
+  ]);
+  merged = mergeWsIndexSnapshots(rest);
+  if ((merged[SPX]?.price ?? 0) > 0) return merged;
+
+  if (lastPulseForSignals?.price) {
+    merged = {
+      ...merged,
+      [SPX]: {
+        symbol: SPX,
+        price: lastPulseForSignals.price,
+        change_pct: lastPulseForSignals.spx_change_pct ?? 0,
+      },
+    };
+  }
+  return merged;
+}
+
+/** Prior-day OHLC for pulse — serve stale immediately; refresh in background. */
+async function priorDayForPulseLane(): Promise<{
+  pdh: number | null;
+  pdl: number | null;
+  pdc: number | null;
+}> {
+  const now = Date.now();
+  if (cachedPriorDay.fetchedAt > 0) {
+    if (now - cachedPriorDay.fetchedAt < 60_000) {
+      return { pdh: cachedPriorDay.pdh, pdl: cachedPriorDay.pdl, pdc: cachedPriorDay.pdc };
+    }
+    void fetchPriorDayCached().catch(() => {});
+    return { pdh: cachedPriorDay.pdh, pdl: cachedPriorDay.pdl, pdc: cachedPriorDay.pdc };
+  }
+  return fetchPriorDayCached();
+}
+
 async function syncDeskStickyFromRedis(): Promise<void> {
   if (!process.env.REDIS_URL?.trim()) return;
   try {
@@ -1682,7 +1760,9 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
 
   if (!polygonConfigured()) return empty;
 
-  const marketNow = await fetchMarketStatusNow();
+  const marketNow = await serverCache("market-status-now", 30_000, () =>
+    fetchMarketStatusNow()
+  ).catch(() => null);
   const now = new Date();
   const premarketPlan = isPremarketPlanningWindow(now);
   const rthOpen = isSpxRthActive(now, marketNow);
@@ -1703,11 +1783,11 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
   // Structure (EMAs/VWAP/HOD) refreshes on a 5s cadence — NEVER block the fast price lane on it.
   kickPulseStructureRefresh(today);
   const [snapsRaw, prior] = await Promise.all([
-    fetchIndexSnapshots([SPX, VIX, VIX9D, VIX3M, TICK, TRIN, ADD]).catch(() => ({})),
-    fetchPriorDayCached(),
+    fetchPulseLaneSnapshots(),
+    priorDayForPulseLane(),
   ]);
   const structure = cachedPulseStructure;
-  const snaps = mergeWsIndexSnapshots(snapsRaw);
+  const snaps = snapsRaw;
 
   const spxSnap = snaps[SPX];
   const vixSnap = snaps[VIX];
