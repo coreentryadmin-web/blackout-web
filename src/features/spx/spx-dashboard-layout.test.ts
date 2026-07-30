@@ -70,12 +70,13 @@ test("SpxDashboard mounts triple desk: intel rail (Pulse default + Largo toggle)
   // Focus toggle lives in the Vector toolbar, left of Replay, via the replay lead slot.
   assert.match(src, /toolbarReplayLeadSlot/);
   assert.match(src, /spx-desk-focus-btn/);
-  // Embedded Vector chart column — same shell as /vector, chart-only, pinned defaults 0DTE + 3min.
-  assert.match(src, /VectorPageShell/);
+  // Embedded Vector chart column — client-hydrated via SpxVectorEmbed (no SSR seed blocking).
+  assert.match(src, /SpxVectorEmbed/);
   assert.match(src, /spx-sniper-vector-col/);
-  assert.match(src, /embed="chart-only"/);
-  assert.match(src, /defaultDteHorizon="0dte"/);
-  assert.match(src, /defaultChartViewport="session"/);
-  assert.match(src, /defaultTimeframe=\{3\}/);
+  const embed = readFileSync(join(process.cwd(), "src/features/spx/components/SpxVectorEmbed.tsx"), "utf8");
+  assert.match(embed, /embed="chart-only"/);
+  assert.match(embed, /defaultDteHorizon="0dte"/);
+  assert.match(embed, /defaultChartViewport="session"/);
+  assert.match(embed, /defaultTimeframe=\{3\}/);
   assert.match(src, /spx-sniper-triple--desk-v3/);
 });

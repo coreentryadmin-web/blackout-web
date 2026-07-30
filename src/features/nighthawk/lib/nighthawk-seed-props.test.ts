@@ -9,9 +9,10 @@ const shell = join(process.cwd(), "src/features/nighthawk/components/NighthawkPa
 const feed = join(process.cwd(), "src/features/nighthawk/components/NightHawkFeed.tsx");
 const containers = join(process.cwd(), "src/features/nighthawk/command-deck/containers.tsx");
 
-test("Night Hawk page SSR-seeds via loadNightHawkSeedProps (Vector-style)", () => {
+test("Night Hawk page skips SSR board seed — client SWR loads board (perf)", () => {
   const src = readFileSync(page, "utf8");
-  assert.match(src, /loadNightHawkSeedProps/);
+  assert.doesNotMatch(src, /await loadNightHawkSeedProps/);
+  assert.match(src, /board: null/);
   assert.match(src, /NighthawkPageShell/);
 });
 
