@@ -3,6 +3,7 @@ import {
   engineIntelOverlayEnabled,
   uwConfigured,
   deskPulseStructureCacheTtlMs,
+  deskPulseStructureRaceMs,
   deskFlowRaceMs,
 } from "@/lib/providers/config";
 import { serverCache } from "@/lib/server-cache";
@@ -1545,33 +1546,53 @@ async function refreshPulseStructureIfNeeded(today: string): Promise<PulseStruct
     return cachedPulseStructure;
   }
 
-  const [minuteBars, ema20, ema50, ema200, sma50, sma200, breadthAll] =
-    await Promise.all([
-      fetchIndexMinuteBars(SPX, today, today).catch(() => []),
-      fetchIndexEma(SPX, 20, "day"),
-      fetchIndexEma(SPX, 50, "day"),
-      fetchIndexEma(SPX, 200, "day"),
-      fetchIndexSma(SPX, 50, "day"),
-      fetchIndexSma(SPX, 200, "day"),
-      serverCache("breadth-universe", 60_000, () => fetchBreadthUniverseSnapshots()).catch(() => []),
-    ]);
+  const raceMs = deskPulseStructureRaceMs();
+  const refresh = (async (): Promise<PulseStructureCache> => {
+    const [minuteBars, ema20, ema50, ema200, sma50, sma200, breadthAll] =
+      await Promise.all([
+        fetchIndexMinuteBars(SPX, today, today).catch(() => []),
+        fetchIndexEma(SPX, 20, "day"),
+        fetchIndexEma(SPX, 50, "day"),
+        fetchIndexEma(SPX, 200, "day"),
+        fetchIndexSma(SPX, 50, "day"),
+        fetchIndexSma(SPX, 200, "day"),
+        serverCache("breadth-universe", 60_000, () => fetchBreadthUniverseSnapshots()).catch(() => []),
+      ]);
 
-  const session = await sessionStatsWithProxyVwap(minuteBars, today);
-  const leaderStocks = leaderStocksFromBreadth(breadthAll ?? []);
-  cachedPulseStructure = {
-    fetchedAt: now,
-    lod: session.lod,
-    hod: session.hod,
-    open: session.open,
-    vwap: session.vwap ?? null,
-    ema20,
-    ema50,
-    ema200,
-    sma50,
-    sma200,
-    leader_stocks: leaderStocks,
-    breadth_samples: breadthAll ?? [],
-  };
+    const session = await sessionStatsWithProxyVwap(minuteBars, today);
+    const leaderStocks = leaderStocksFromBreadth(breadthAll ?? []);
+    cachedPulseStructure = {
+      fetchedAt: now,
+      lod: session.lod,
+      hod: session.hod,
+      open: session.open,
+      vwap: session.vwap ?? null,
+      ema20,
+      ema50,
+      ema200,
+      sma50,
+      sma200,
+      leader_stocks: leaderStocks,
+      breadth_samples: breadthAll ?? [],
+    };
+    return cachedPulseStructure;
+  })();
+
+  const raced = await Promise.race([
+    refresh,
+    new Promise<PulseStructureCache | "timeout">((resolve) =>
+      setTimeout(() => resolve("timeout"), raceMs)
+    ),
+  ]);
+
+  if (raced !== "timeout") return raced;
+
+  // Polygon slow — serve last good structure so the 1s pulse lane never blocks 30s+.
+  if (cachedPulseStructure.fetchedAt > 0) return cachedPulseStructure;
+
+  void refresh.catch(() => {
+    /* background refresh may still land for the next pulse tick */
+  });
   return cachedPulseStructure;
 }
 

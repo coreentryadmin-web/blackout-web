@@ -39,6 +39,14 @@ export function deskPulseCacheTtlMs(): number {
   return Math.round(sec * 1000);
 }
 
+/** Hard cap on pulse structure refresh (EMAs, minute bars). Default 3s — stale structure OK on fast lane. */
+export function deskPulseStructureRaceMs(): number {
+  const raw = process.env.SPX_PULSE_STRUCTURE_RACE_MS?.trim();
+  const ms = raw ? Number(raw) : 3_000;
+  if (!Number.isFinite(ms) || ms < 500) return 3_000;
+  return Math.round(ms);
+}
+
 /** Slower pulse structure refresh (EMAs, minute bars, mega-caps). Default 5s with live Polygon. */
 export function deskPulseStructureCacheTtlMs(): number {
   const raw = process.env.SPX_PULSE_STRUCTURE_SEC?.trim();

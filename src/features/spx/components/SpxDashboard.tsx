@@ -17,10 +17,9 @@ import {
   focusHotkeyAction,
   nextFocusState,
 } from "@/features/spx/lib/spx-desk-focus";
-// Type-only: VectorSeedProps comes from a server-only module; the type import is erased at build.
-import type { VectorSeedProps } from "@/features/vector";
 // Type-only: the shared-price-axis map the embedded chart emits (see vector-price-scale-map.ts).
 import type { VectorPriceScaleMap } from "@/features/vector/lib/vector-price-scale-map";
+import { SpxVectorEmbed } from "./SpxVectorEmbed";
 
 const SpxSniperHeader = dynamic(
   () => import("./SpxSniperHeader").then((m) => ({ default: m.SpxSniperHeader })),
@@ -43,17 +42,6 @@ const SpxPinForecast = dynamic(
 // flagship desk, one source of truth, and explicitly NO terminal panels on SPX Slayer. The
 // components stay in the repo untouched (see ./SpxTradeAlerts.tsx) so restoring them is one
 // render away if the member reverses the call.
-const VectorPageShell = dynamic(
-  () =>
-    import("@/features/vector/components/VectorPageShell").then((m) => ({
-      default: m.VectorPageShell,
-    })),
-  { loading: () => null }
-);
-
-// SPX left-column intel rail (2026-07-26): defaults to the ⚡ Pulse event feed, with a
-// one-click toggle back to the original Largo commentary rail (nothing removed). The Largo
-// engine/backend is untouched — SpxIntelRail just swaps which presentation is the default.
 const SpxIntelRail = dynamic(
   () => import("./SpxIntelRail").then((m) => ({ default: m.SpxIntelRail })),
   { loading: () => null }
@@ -79,16 +67,11 @@ class SpxPanelErrorBoundary extends React.Component<
 }
 
 type SpxDashboardProps = {
-  /**
-   * SSR seed for the embedded SPX Vector chart (loaded by the /dashboard server page via the
-   * SAME loadVectorSeedProps helper the /vector page uses — one code path, zero drift). Null when
-   * the vector tool is not accessible to this user (launch-gated) — the desk then shows a
-   * launching-soon note in that column instead of a broken chart hitting 403 APIs.
-   */
-  vectorSeed: VectorSeedProps | null;
+  /** Launch-gated Vector chart column — client-hydrated via SpxVectorEmbed (no SSR seed). */
+  vectorEnabled: boolean;
 };
 
-export function SpxDashboard({ vectorSeed }: SpxDashboardProps) {
+export function SpxDashboard({ vectorEnabled }: SpxDashboardProps) {
   const { isLoaded, tier } = useAppAuth();
   const { desk, live, deskLoading, deskLaneFailed, sessionActive } = useMergedDesk();
   const nativeShell = useIosNativeShell();
@@ -357,16 +340,8 @@ export function SpxDashboard({ vectorSeed }: SpxDashboardProps) {
             )}
             aria-label="SPX Vector chart"
           >
-            {vectorSeed ? (
-              // The FULL Vector chart surface (toolbar, DTE toggle, indicators, regime banner,
-              // alert toasts) pinned to SPX — same component + same server seed path as /vector.
-              // Desk defaults per member direction: 0DTE horizon, 3-minute candles.
-              <VectorPageShell
-                {...vectorSeed}
-                embed="chart-only"
-                defaultDteHorizon="0dte"
-                defaultChartViewport="session"
-                defaultTimeframe={3}
+            {vectorEnabled ? (
+              <SpxVectorEmbed
                 onPriceScaleRender={setPriceScaleMap}
                 focusLevel={chartFocus}
                 playLevels={playLevels}
