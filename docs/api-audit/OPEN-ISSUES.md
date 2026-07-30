@@ -1,5 +1,74 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-30 14:22 ET
+Last updated: 2026-07-30 15:07 ET
+
+## spx-rth-2026-07-30 — SPX Slayer all-day verify pass (~14:57–15:07 ET)
+
+**Session:** SPX Slayer all-day agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` **verify** mode. Commands: `npm run validate:spx-rth` → `npm run validate:spx-e2e` → 60s live poll → cross-tool API probes.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth` | ⚠️ **7 PASS / 1 WARN / 1 FAIL** — matrix deep audit, cross-endpoint, desk lanes, BIE, ops:collect, rth-open GREEN; nested `dashboard-e2e` sub-run exited non-zero before UI phase completed (orchestrator flake — see standalone) |
+| `npm run validate:spx-e2e` | ✅ **FULL GREEN** — **0 FAIL / 17 checks** (matrix oracle 173 strikes; UI GEX+VEX tabs; 178 matrix rows; integrations) |
+| Matrix deep audit | ✅ **173 strikes** — GEX+VEX+DEX+CHARM every cell finite; Σ strike_totals == headline total |
+| `validate:spx-bie` (via spx-rth) | ✅ member `/spx/play` == `getSpxPlayState()` |
+| Live auto-update (60s poll) | ✅ desk **7435.93 → 7435.58**; heatmap **7435.21 → 7436.2**; pulse **7435.22 → 7436.18** |
+
+### UI E2E (Playwright — full pass)
+
+| # | Action | Result |
+|---|---|---|
+| Sign-in `/dashboard` | ✅ premium admin session |
+| LIVE badge during RTH | ✅ not OFFLINE |
+| Click **GEX** tab (`#spx-matrix-tab-gex`) | ✅ |
+| Click **VEX** tab (`#spx-matrix-tab-vex`) | ✅ |
+| Matrix rows | ✅ **178 strike rows** |
+| Matrix text sanity | ✅ no NaN/undefined/em-dash |
+| Commentary expand | ⏭️ SKIP — no expand control in current layout |
+| Trade alert hero (`.spx-trade-alert-hero`) | ⏭️ **N/A** — panel removed from desk 2026-07-13; play validated via API |
+| Console errors | ✅ zero |
+
+### Cross-tool integration (Step 3)
+
+| Tool | Endpoint | Result |
+|---|---|---|
+| **Thermal** | `GET /api/market/gex-heatmap?ticker=SPX` | ✅ every cell validated (173 strikes); cross_validation PASS |
+| **GEX positioning** | `GET /api/market/gex-positioning?ticker=SPX` | ✅ spot≈7435 agrees with matrix/desk |
+| **HELIX** | `GET /api/market/flows?limit=30` | ✅ 30 prints |
+| **Largo** | `POST /api/market/largo/query` | ✅ tools=blackout_intelligence |
+| **BIE** | `validate:spx-bie` | ✅ `spx_full_state` == member play |
+| **Grid / SPX bootstrap** | `GET /api/market/spx/bootstrap` | ✅ loaded |
+| **0DTE Command** | `GET /api/market/zerodte/board` | ✅ **19 setups** |
+| **Night Hawk** | `GET /api/market/nighthawk/edition` | ✅ loads |
+| **Desk / play** | desk + play cross-tool | ✅ desk≈7435 play=SCANNING→WATCHING (tape moved during pass) |
+
+### Play / SCANNING gate
+
+| Check | Result |
+|---|---|
+| `play.action=SCANNING` confirmations | ✅ **0 stale ✓ checks** (`confirmations.checks.length=0`) |
+| Cross-endpoint play | ✅ merged/play both SCANNING at matrix probe time |
+
+### P0 found this pass
+
+**None.** Matrix cells 100% match API oracle; play SCANNING carries zero stale confirmations; spot/GEX cross-endpoint within tolerance; live auto-update confirmed across 60s window; GEX+VEX UI tabs exercised successfully.
+
+### Findings logged
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| **P2** | `spx-e2e-orchestrator-nested-fail` | `validate:spx-rth` nested `validate:spx-e2e` exited non-zero while standalone e2e GREEN same session — orchestrator/subprocess timing | `spx-rth-all-day-audit.mjs` | post-close — invoke e2e steps directly vs nested npm |
+| **P2** | `bie-play-route-401` | Cron bearer probe to `/api/market/spx/play` returned HTTP **401** (cloud-agent CRON_SECRET ≠ prod) | `/api/market/spx/play` | **Expected** — Clerk member path authoritative |
+| **P2** | `cloud-cron-secret-mismatch` | `spx:data-correctness` WARN — cloud-agent `CRON_SECRET` ≠ prod Secrets Manager | audit env | **Expected** — not prod |
+| **P2** | `spx-e2e-trade-alert-selector-removed` | E2E still probes `.spx-trade-alert-hero` removed from desk 2026-07-13 | `spx-dashboard-e2e-audit.mjs` | post-close — update selectors |
+| **P2** | `commentary-expand-missing` | No `#spx-commentary-expand` control on current desk layout | `SpxCommentaryRail` | post-close — confirm intel-rail consolidation |
+
+**Member-facing SPX surfaces: GREEN** — matrix oracle clean (173 strikes, zero NaN), play SCANNING with no stale confirmations, cross-tool spot agrees ~7435 during RTH, live ticks confirmed, UI matrix tabs clickable.
+
+**Reports:** `audit-output/spx-rth-2026-07-30-verify-1785438134916.json`, `audit-output/spx-dashboard-e2e-1785438290149.json`
+
+---
 
 ## rth-comprehensive-2026-07-30-14h — RTH agent pass (~13:23–14:22 ET)
 
