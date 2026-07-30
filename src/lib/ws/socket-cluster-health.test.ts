@@ -41,6 +41,21 @@ test("evaluatePolygonClusterOk: off-hours always ok", () => {
   assert.equal(result.ok, true);
 });
 
+test("evaluatePolygonClusterOk: follower healthy when UW fallback marks cluster live", () => {
+  const result = evaluatePolygonClusterOk(
+    {
+      is_leader: false,
+      cluster_spx_updated_at: Date.now() - 2_000,
+      cluster_spx_age_ms: 2_000,
+      cluster_live: true,
+      detail: "I:SPX price=7384 (UW stock-state fallback)",
+    },
+    true
+  );
+  assert.equal(result.ok, true);
+  assert.match(result.detail, /follower/);
+});
+
 test("evaluateOptionsClusterOk: web follower healthy when cluster marks are fresh", () => {
   const result = evaluateOptionsClusterOk(
     {

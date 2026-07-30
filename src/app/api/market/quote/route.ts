@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
+import { shouldBootDataSockets } from "@/lib/process-role";
 import { indexStore } from "@/lib/ws/polygon-socket";
 import { getStockLiveCandle } from "@/lib/ws/stock-candle-store";
 import { resolveOptionsRoot } from "@/lib/providers/polygon-options-gex";
 import { fetchStockSnapshot, fetchIndexSnapshot } from "@/lib/providers/polygon";
 import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
+import { resolveSpotFromUwStockState } from "@/lib/providers/spot-fallback";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const runtime = "nodejs";
@@ -168,9 +170,10 @@ export async function GET(req: NextRequest) {
   const authResult = await authorizeMarketDeskApi(req);
   if (authResult instanceof Response) return authResult;
 
-  // Boot the index WS lazily (same lazy init the other market routes use) so the
-  // indexStore is live for the WS path. Idempotent and never throws.
-  ensureDataSockets();
+  // Boot the index WS lazily on ingest only — web tier reads cluster/UW fallbacks.
+  if (shouldBootDataSockets()) {
+    ensureDataSockets();
+  }
 
   const ticker = (req.nextUrl.searchParams.get("ticker") || "SPY").toUpperCase();
   // §3.4: validate BEFORE any paid upstream call / cache key / telemetry key. An arbitrary-length
@@ -224,6 +227,19 @@ export async function GET(req: NextRequest) {
     //    a live WS feed (NDX/RUT) or a cold index store. ──
     const payload = await getRestQuote(ticker, optionsRoot, isIndex);
     if (payload) return NextResponse.json(payload, { headers: NO_STORE_HEADERS });
+
+    const uw = await resolveSpotFromUwStockState(optionsRoot);
+    if (uw && uw.price > 0) {
+      const uwPayload: QuotePayload = {
+        available: true,
+        ticker,
+        price: uw.price,
+        change_pct: uw.change_pct,
+        source: "rest",
+        asof: new Date().toISOString(),
+      };
+      return NextResponse.json(uwPayload, { headers: NO_STORE_HEADERS });
+    }
 
     return NextResponse.json({ available: false, ticker }, { status: 200, headers: NO_STORE_HEADERS });
   } catch (error) {

@@ -22,6 +22,7 @@ import {
 } from "@/lib/providers/unusual-whales";
 import { fetchMarketMovers } from "@/lib/providers/polygon";
 import { seedUwCacheFromWsStores, shouldSkipUwCacheRefreshTask } from "@/lib/uw-ws-cache-bridge";
+import { seedPulseSnapshotFromUwPrices } from "@/lib/ws/socket-cluster-health";
 
 const INDEX_TICKERS = ["SPX", "SPY", "QQQ", "IWM"] as const;
 const FLOW_STRIKE_TICKERS = ["SPX", "SPY"] as const;
@@ -116,6 +117,8 @@ export async function GET(req: NextRequest) {
     if (r.status === "fulfilled") refreshed += 1;
   }
 
+  const pulse_seeded = await seedPulseSnapshotFromUwPrices();
+
   const failed = results.filter((r) => r.status === "rejected").length;
   if (failed > 0) {
     console.warn(`[cron/uw-cache-refresh] ${failed} task(s) failed`);
@@ -129,8 +132,9 @@ export async function GET(req: NextRequest) {
     total: tasks.length,
     ws_seeded,
     ws_skipped,
+    pulse_seeded,
     ...(failed > 0 ? { error: `${failed}/${tasks.length} refresh task(s) failed` } : {}),
   });
 
-  return NextResponse.json({ ok: true, refreshed, total: tasks.length, ws_seeded, ws_skipped });
+  return NextResponse.json({ ok: true, refreshed, total: tasks.length, ws_seeded, ws_skipped, pulse_seeded });
 }
