@@ -159,7 +159,16 @@
   display:flex;align-items:center;justify-content:center;
   width:clamp(360px,55vw,620px);aspect-ratio:1;
   margin:0 auto;
-  transform:translateY(10px);
+  transform:translateY(50px);
+}
+/* Contact-point bloom — concentrated at the base where the B spike meets the energy */
+.hero-reactor::after{
+  content:"";position:absolute;bottom:8%;left:50%;
+  width:35%;height:18%;
+  transform:translateX(-50%);
+  background:radial-gradient(ellipse at 50% 30%,rgba(163,230,53,.22) 0%,rgba(163,230,53,.08) 45%,transparent 75%);
+  z-index:3;pointer-events:none;
+  filter:blur(10px);
 }
 
 /* ── LAYER 1: Tight edge atmosphere — hugs the B, no distant halo ── */
@@ -211,7 +220,7 @@
 .logo-halo{
   position:absolute;inset:5%;z-index:0;
   border-radius:50%;
-  background:radial-gradient(ellipse 80% 80% at 50% 50%,rgba(163,230,53,.08) 0%,rgba(163,230,53,.03) 40%,transparent 65%);
+  background:radial-gradient(ellipse 70% 50% at 50% 80%,rgba(163,230,53,.15) 0%,rgba(163,230,53,.05) 40%,transparent 65%);
   pointer-events:none;
 }
 
@@ -235,7 +244,7 @@
 }
 
 /* Hero text */
-.hero-h{position:relative;z-index:8;text-align:center;margin-top:clamp(50px,7vh,70px);max-width:clamp(320px,75vw,820px);margin-inline:auto}
+.hero-h{position:relative;z-index:8;text-align:center;margin-top:clamp(90px,12vh,110px);max-width:clamp(320px,75vw,820px);margin-inline:auto}
 .hero-h h1{
   font-family:var(--d);
   font-size:clamp(4.2rem,11vw,8.5rem);
