@@ -38,6 +38,7 @@ import type { PlayDirection, ChainContract } from "../horizon-fanout";
 import type { SwingArchetype, SwingSubLane } from "./taxonomy";
 import { subLaneForDte } from "./taxonomy";
 import { occFromChainContract } from "./occ-from-row";
+import { swingThesisKey } from "./accumulation-store";
 import type { SwingCalibrationReport } from "./calibration";
 import type { SwingPillarSignals } from "./swing-pillars";
 import { buildSwingFeatureVector } from "./feature-vector";
@@ -140,6 +141,8 @@ export interface SwingCommitCandidate {
 export interface CommitBookPosition {
   ticker: string;
   direction: PlayDirection;
+  /** Thesis archetype on the open leg — idempotency is one open root per (name, side, archetype). */
+  archetype?: string | null;
   commitKey: string;
   /** Its max-loss debit for the budget aggregate (null ⇒ contributes 0 — never a fabricated risk). */
   riskUsd?: number | null;
@@ -223,14 +226,14 @@ export function computeSwingCommitPlan(args: {
   // Best-first so scarce budget/cap room goes to the strongest evidence; ticker tie-break = deterministic.
   const ordered = [...args.candidates].sort((a, b) => b.score - a.score || a.ticker.localeCompare(b.ticker));
 
-  // Running book (existing + everything approved so far). Idempotency keys on (ticker, direction), NOT the exact
-  // commit_key: the commit_key is session-scoped, so a name that stays graduated+WATCH across sessions would
-  // otherwise open a NEW position every session (a different key each day). One open swing thesis per
-  // (name, side) is the conservative real-money rail — it also subsumes the same-session exact-key case, and a
-  // roll child (same name/side, opened via roll-plan.ts) is correctly seen as "already open" here so discovery
-  // never stacks a duplicate on top of a live roll chain.
+  // Running book (existing + everything approved so far). Idempotency keys on thesis identity
+  // (ticker, direction, archetype) — not the session-scoped commit_key and not name+side alone (a
+  // different archetype on the same name+side is a different thesis). A roll child on the same thesis
+  // is correctly seen as "already open" so discovery never stacks a duplicate on a live roll chain.
   const runningBook: CommitBookPosition[] = [...args.book];
-  const openThesis = new Set(args.book.map((p) => `${p.ticker.trim().toUpperCase()}|${p.direction}`));
+  const openThesis = new Set(
+    args.book.map((p) => swingThesisKey(p.ticker, p.direction, p.archetype ?? null)),
+  );
 
   const decisions: SwingCommitDecision[] = [];
   let commitEligibleCount = 0;
@@ -268,8 +271,8 @@ export function computeSwingCommitPlan(args: {
     else if (!isFin(riskUsd)) blockedBy.push("unknown_premium");
     if (subLane == null) blockedBy.push("no_sub_lane");
 
-    // Gate 4 — IDEMPOTENCY: never double-open a name+side that already has a live swing thesis on the book.
-    const thesisKey = `${ticker}|${cand.direction}`;
+    // Gate 4 — IDEMPOTENCY: never double-open a thesis that already has a live root on the book.
+    const thesisKey = swingThesisKey(ticker, cand.direction as PlayDirection, cand.archetype);
     if (dirLc && openThesis.has(thesisKey)) blockedBy.push("already_open");
 
     // Gate 2 — ARMED BUDGET (only meaningful once we have a risk number).
@@ -308,9 +311,9 @@ export function computeSwingCommitPlan(args: {
     if (committable && cand.contract && dirLc && subLane) {
       insert = buildCommitInsert(cand, subLane, dirLc, commitKey, riskUsd as number, grad, budget, budgetVerdict);
       committableCount += 1;
-      openThesis.add(`${ticker}|${cand.direction}`);
+      openThesis.add(thesisKey);
       runningBook.push({
-        ticker, direction: cand.direction as PlayDirection, commitKey, riskUsd,
+        ticker, direction: cand.direction as PlayDirection, archetype: cand.archetype, commitKey, riskUsd,
         isEvent: isEventArchetype(cand.archetype), isOvernight: true, expiry: cand.contract.expiry,
       });
     }

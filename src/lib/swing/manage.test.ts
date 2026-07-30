@@ -136,7 +136,20 @@ test("premium_stop: the −60% capital backstop fires (pre-scale) at 0.4× entry
   assert.equal(v.enforced, true);
 });
 
-test("precedence: expiry_risk (GATE) outranks a green profit ladder", () => {
+test("precedence: structural_stop outranks expiry_risk — broken thesis never rolls at the cliff", () => {
+  const v = evaluateSwingManagement({
+    dossier: dossier("bull", 5),
+    dte: 1,
+    entryPremium: 2,
+    lastMark: 1.4,
+    underlyingPrice: 94,
+    structuralStopLevel: 95,
+  });
+  assert.equal(v.rung, "structural_stop");
+  assert.equal(v.rollIntent.roll, false);
+});
+
+test("precedence: expiry_risk (GATE) outranks a green profit ladder when thesis intact", () => {
   const v = evaluateSwingManagement({
     dossier: dossier("bull", 5), // TACTICAL
     dte: 1, // ≤ TACTICAL.expiryRiskDte (1) → theta cliff

@@ -75,6 +75,16 @@ test("livePlayFromSwingPosition: structural break stamps EXIT + thesis break", (
   assert.equal(play.thesisLevel, "break");
 });
 
+test("livePlayFromSwingPosition: latest manage snapshot overrides spot-only intact read", () => {
+  const play = livePlayFromSwingPosition(
+    row(),
+    178,
+    { action: "EXIT", rung: "expiry_risk", thesis_state: "EXPIRY_RISK" },
+  )!;
+  assert.equal(play.manageAction, "EXIT");
+  assert.equal(play.thesisLevel, "intact");
+});
+
 test("livePlaysFromOpenPositions skips CLOSED and contract-less rows", () => {
   const plays = livePlaysFromOpenPositions(
     [

@@ -75,7 +75,7 @@ async function loadUnderlyingSpot(ticker: string): Promise<number | null> {
 /**
  * Best-effort live OPTION mark for a held position's contract (reuses the 0DTE unified-snapshot marks path).
  * Reconstructs OCC from strike/expiry/type when `contract_occ` was null at commit (pre-fix rows). Returns
- * null (contract unknown / no quote / fetch error) → the manager's premium rungs skip via null-honesty
+ * null when OCC is absent — fail-closed; premium rungs skip honestly (FINDINGS 2026-07-30 P0 #10).
  * rather than acting on a fabricated mark. `.mark` is the doc-priority mark (mid → last → day close).
  */
 async function loadOptionMark(row: SwingPositionRow): Promise<number | null> {
@@ -117,6 +117,7 @@ export async function GET(req: NextRequest) {
       return {
         ticker: r.ticker,
         direction: r.direction === "short" ? "SHORT" : "LONG",
+        archetype: r.archetype,
         commitKey: r.commit_key,
         riskUsd,
         isEvent: isEventArchetype(r.archetype as SwingArchetype | null),

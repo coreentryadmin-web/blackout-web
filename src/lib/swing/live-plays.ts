@@ -12,7 +12,7 @@ import type { ChainContract, PlayDirection } from "../horizon-fanout";
 import type { SwingPositionRow } from "../db";
 import type { SwingArchetype, SwingSubLane } from "./taxonomy";
 import type { SwingLiveStatus, SwingThesisLevel } from "./serving";
-import type { SwingManageAction } from "./manage";
+import type { SwingManageAction, SwingManageRung } from "./manage";
 import { HORIZONS } from "../horizons";
 
 const LIVE: ReadonlySet<string> = new Set(["OPEN", "HOLD", "TRIM"]);
@@ -60,12 +60,51 @@ export function structuralBreakFromSpot(
 }
 
 /**
- * Map one open ledger row (+ optional spot) to a HorizonPlay for the live sections. Returns null when the
+ * Overlay authoritative manage observables from the latest append-only snapshot event_json
+ * (written by manage-sync on each active-refresh tick). Spot-based structural break remains
+ * the fallback when no snapshot exists yet.
+ */
+export function manageObservablesFromEvent(
+  manageEvent: Record<string, unknown> | null | undefined,
+  spotFallback: { manageAction?: SwingManageAction; thesisLevel?: SwingThesisLevel },
+): { manageAction?: SwingManageAction; thesisLevel?: SwingThesisLevel } {
+  if (!manageEvent || typeof manageEvent !== "object") return spotFallback;
+
+  let manageAction = spotFallback.manageAction;
+  let thesisLevel = spotFallback.thesisLevel ?? "intact";
+
+  const action = manageEvent.action;
+  if (action === "EXIT" || action === "STOP_OUT" || action === "TAKE_PARTIAL" || action === "EXIT_RUNNER") {
+    manageAction = action;
+  }
+
+  const rung = manageEvent.rung as SwingManageRung | undefined;
+  const thesisState = typeof manageEvent.thesis_state === "string" ? manageEvent.thesis_state : null;
+
+  if (
+    thesisState === "BROKEN" ||
+    rung === "structural_stop" ||
+    rung === "thesis_stop"
+  ) {
+    manageAction = manageAction === "STOP_OUT" ? "STOP_OUT" : "EXIT";
+    thesisLevel = "break";
+  } else if (thesisState === "STOPPED" || rung === "premium_stop") {
+    manageAction = "STOP_OUT";
+  } else if (thesisState === "EXPIRY_RISK" || rung === "expiry_risk") {
+    manageAction = manageAction ?? "EXIT";
+  }
+
+  return { manageAction, thesisLevel };
+}
+
+/**
+ * Map one open ledger row (+ optional spot + latest manage snapshot) to a HorizonPlay for the live sections. Returns null when the
  * row is not a live status or lacks a reconstructible contract.
  */
 export function livePlayFromSwingPosition(
   row: SwingPositionRow,
   spot?: number | null,
+  manageEvent?: Record<string, unknown> | null,
 ): HorizonPlay | null {
   if (!LIVE.has(row.status)) return null;
   const contract = contractFromRow(row);
@@ -75,14 +114,11 @@ export function livePlayFromSwingPosition(
   const dirLc = row.direction === "short" ? "short" : "long";
   const broken = structuralBreakFromSpot(dirLc, spot, row.thesis_invalidation_px);
 
-  let manageAction: SwingManageAction | undefined;
-  let thesisLevel: SwingThesisLevel = "intact";
-  if (broken) {
-    manageAction = "EXIT";
-    thesisLevel = "break";
-  } else if (liveStatus === "TRIM") {
-    manageAction = "TAKE_PARTIAL";
-  }
+  const spotObs = manageObservablesFromEvent(null, {
+    manageAction: broken ? "EXIT" : liveStatus === "TRIM" ? "TAKE_PARTIAL" : undefined,
+    thesisLevel: broken ? "break" : "intact",
+  });
+  const { manageAction, thesisLevel } = manageObservablesFromEvent(manageEvent, spotObs);
 
   const score =
     row.feature_vector && typeof row.feature_vector.evidence_score === "number"
@@ -106,10 +142,11 @@ export function livePlayFromSwingPosition(
   };
 }
 
-/** Map a book of open rows → live HorizonPlays. Spots keyed uppercased. */
+/** Map a book of open rows → live HorizonPlays. Spots keyed uppercased; manage events keyed by position id. */
 export function livePlaysFromOpenPositions(
   rows: readonly SwingPositionRow[],
   spotsByTicker?: Record<string, number> | Map<string, number>,
+  manageEventsByPositionId?: Map<number, Record<string, unknown>>,
 ): HorizonPlay[] {
   const spotOf = (ticker: string): number | null => {
     const key = ticker.toUpperCase();
@@ -123,7 +160,11 @@ export function livePlaysFromOpenPositions(
   };
   const out: HorizonPlay[] = [];
   for (const row of rows) {
-    const play = livePlayFromSwingPosition(row, spotOf(row.ticker));
+    const play = livePlayFromSwingPosition(
+      row,
+      spotOf(row.ticker),
+      manageEventsByPositionId?.get(row.id) ?? null,
+    );
     if (play) out.push(play);
   }
   return out;

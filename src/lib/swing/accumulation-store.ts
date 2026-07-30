@@ -144,8 +144,10 @@ export interface SwingWatchCandidate {
   observationCount: number;
   distinctSessionDays: number;
   phasesSeen: string[];
-  /** The distinct screen provenances (FLOW / STRUCTURE / CATALYST) the name accreted — its corroboration set. */
+  /** The distinct screen provenances (FLOW / STRUCTURE / CATALYST) the name accreted — lifetime provenance. */
   signalKinds: string[];
+  /** Signal kinds on the latest session day — the corroboration set for event archetypes. */
+  sessionSignalKinds: string[];
   lastSessionDay: string | null;
   firstSeenAt: string;
   lastSeenAt: string;
@@ -159,29 +161,30 @@ export const fromStoreDir = (d: "long" | "short"): PlayDirection => (d === "long
  *  `observation_count`/`signal_kinds` are optional so a bare `{ distinct_session_days }` (the
  *  cross-session path never needs corroboration signals) still typechecks at call sites/tests. */
 type PersistenceRowFields = Pick<SwingAccumRow, "distinct_session_days"> &
-  Partial<Pick<SwingAccumRow, "observation_count" | "signal_kinds">>;
+  Partial<Pick<SwingAccumRow, "observation_count" | "signal_kinds" | "last_session_signal_kinds">>;
 
 /**
  * Corroboration = "proved twice, independently" — the substitute for a 2nd session that event/immediate
  * archetypes rely on. It is TRUE when the candidate carries ≥2 INDEPENDENT signals:
  *   - it has been seen across ≥2 distinct sessions (each session is an independent observation), OR
- *   - it showed up under ≥2 distinct signal KINDS — `signal_kinds`, the deduped set of SCREEN provenances
- *     the name surfaced under (FLOW / STRUCTURE / CATALYST): a flow print AND a structure breakout (or a
- *     grounded catalyst) land as two distinct entries. One kind = one signal = NOT corroborated.
+ *   - on the LATEST session day it showed up under ≥2 distinct signal KINDS — `last_session_signal_kinds`,
+ *     the deduped set of SCREEN provenances seen that session only (FLOW / STRUCTURE / CATALYST). Lifetime
+ *     `signal_kinds` is provenance only; counting kinds accrued across prior days falsely corroborated a
+ *     lone print re-seen on a new session (FINDINGS 2026-07-30 P0 #2).
  *
- * COUNTS signal_kinds, NOT phases_seen (fix 2026-07-24): `phases_seen` is the cadence phase/channel the
- * writers stamp (POST_CLOSE / MIDDAY / LIVE_FLOW), so counting IT let one KIND of evidence re-seen across
- * cadence windows read as two independent signals — a false corroboration that weakened the anti-lone-print
- * invariant. The screen provenance in `signal_kinds` is the honest independence axis.
+ * COUNTS last_session_signal_kinds, NOT phases_seen (fix 2026-07-24) nor lifetime signal_kinds.
  *
  * DELIBERATELY does NOT count raw `observation_count`: two prints of the SAME signal kind are still one
  * kind of evidence repeated, not two independent signals — that's exactly the lone-print class this gate
  * exists to reject. Distinct KINDS (or a 2nd session) is the bar.
  */
 function hasCorroboration(row: PersistenceRowFields): boolean {
-  const distinctSignalKinds = new Set(row.signal_kinds ?? []).size;
-  return (Number.isFinite(row.distinct_session_days) && row.distinct_session_days >= 2) ||
-    distinctSignalKinds >= 2;
+  if (Number.isFinite(row.distinct_session_days) && row.distinct_session_days >= 2) {
+    return true;
+  }
+  const sessionKinds = row.last_session_signal_kinds ?? [];
+  const distinctSignalKinds = new Set(sessionKinds).size;
+  return distinctSignalKinds >= 2;
 }
 
 /**
@@ -250,6 +253,7 @@ const mapWatchRow = (r: SwingAccumRow): SwingWatchCandidate => ({
   distinctSessionDays: r.distinct_session_days,
   phasesSeen: r.phases_seen ?? [],
   signalKinds: r.signal_kinds ?? [],
+  sessionSignalKinds: r.last_session_signal_kinds ?? [],
   lastSessionDay: r.last_session_day,
   firstSeenAt: r.first_seen_at,
   lastSeenAt: r.last_seen_at,

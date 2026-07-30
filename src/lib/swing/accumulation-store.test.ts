@@ -37,13 +37,24 @@ function makeFakeAccessors() {
           last_session_day: a.session_day,
           phases_seen: [a.phase],
           signal_kinds: [...new Set(a.signal_kinds ?? [])],
+          last_session_signal_kinds: [...new Set(a.signal_kinds ?? [])],
           promoted_position_id: null,
           first_seen_at: now(),
           last_seen_at: now(),
         });
       } else {
         cur.observation_count += 1;
-        if (cur.last_session_day !== a.session_day) cur.distinct_session_days += 1;
+        const isNewSession = cur.last_session_day !== a.session_day;
+        if (isNewSession) cur.distinct_session_days += 1;
+        if (isNewSession) {
+          cur.last_session_signal_kinds = [...new Set(a.signal_kinds ?? [])];
+        } else {
+          for (const k of a.signal_kinds ?? []) {
+            if (!(cur.last_session_signal_kinds ?? []).includes(k)) {
+              cur.last_session_signal_kinds = [...(cur.last_session_signal_kinds ?? []), k];
+            }
+          }
+        }
         cur.last_session_day = a.session_day;
         if (!(cur.phases_seen ?? []).includes(a.phase)) cur.phases_seen = [...(cur.phases_seen ?? []), a.phase];
         for (const k of a.signal_kinds ?? []) {
@@ -97,50 +108,61 @@ test("meetsPersistence: cross-session archetypes still require 2 distinct sessio
 test("meetsPersistence: event archetypes clear on 1 session + corroboration, NOT on a lone print (anti-lone-print)", () => {
   for (const a of ["EVENT_DRIVEN", "POST_EARNINGS_DRIFT"] as const) {
     assert.equal(
-      meetsPersistence({ distinct_session_days: 1, observation_count: 2, signal_kinds: ["FLOW", "CATALYST"] }, a),
+      meetsPersistence({ distinct_session_days: 1, observation_count: 2, last_session_signal_kinds: ["FLOW", "CATALYST"] }, a),
       true,
       `${a}: 1 session + 2 distinct signal kinds promotes`,
     );
     assert.equal(
-      meetsPersistence({ distinct_session_days: 1, observation_count: 1, signal_kinds: ["FLOW"] }, a),
+      meetsPersistence({ distinct_session_days: 1, observation_count: 1, last_session_signal_kinds: ["FLOW"] }, a),
       false,
       `${a}: a lone print never promotes (anti-lone-print invariant holds)`,
     );
     assert.equal(
-      meetsPersistence({ distinct_session_days: 2, observation_count: 2, signal_kinds: ["FLOW"] }, a),
+      meetsPersistence({ distinct_session_days: 2, observation_count: 2, last_session_signal_kinds: ["FLOW"] }, a),
       true,
       `${a}: a 2nd session corroborates on its own`,
     );
     assert.equal(
-      meetsPersistence({ distinct_session_days: 1, observation_count: 5, signal_kinds: ["FLOW"] }, a),
+      meetsPersistence({ distinct_session_days: 1, observation_count: 5, last_session_signal_kinds: ["FLOW"] }, a),
       false,
       `${a}: repeated same-kind prints are not corroboration`,
     );
+    // Lifetime kinds from prior sessions must NOT corroborate today's lone print.
+    assert.equal(
+      meetsPersistence({
+        distinct_session_days: 1,
+        observation_count: 2,
+        signal_kinds: ["FLOW", "STRUCTURE"],
+        last_session_signal_kinds: ["FLOW"],
+      }, a),
+      false,
+      `${a}: lifetime signal_kinds do not substitute for session-scoped corroboration`,
+    );
   }
   assert.equal(
-    meetsPersistence({ distinct_session_days: 1, observation_count: 1, signal_kinds: ["STRUCTURE"] }, "FAILED_BREAKDOWN"),
+    meetsPersistence({ distinct_session_days: 1, observation_count: 1, last_session_signal_kinds: ["STRUCTURE"] }, "FAILED_BREAKDOWN"),
     true,
     "FAILED_BREAKDOWN: 1 session STRUCTURE reclaim promotes",
   );
 });
 
-test("meetsPersistence: corroboration counts distinct signal KINDS, not cadence PHASES (fix 2026-07-24)", () => {
+test("meetsPersistence: corroboration counts distinct signal KINDS on the latest session, not cadence PHASES", () => {
   for (const a of ["EVENT_DRIVEN", "POST_EARNINGS_DRIFT"] as const) {
     assert.equal(
-      meetsPersistence({ distinct_session_days: 1, observation_count: 2, signal_kinds: ["FLOW"] }, a),
+      meetsPersistence({ distinct_session_days: 1, observation_count: 2, last_session_signal_kinds: ["FLOW"] }, a),
       false,
       `${a}: one kind re-seen across cadence windows is NOT corroboration`,
     );
     assert.equal(
-      meetsPersistence({ distinct_session_days: 1, observation_count: 2, signal_kinds: ["FLOW", "CATALYST"] }, a),
+      meetsPersistence({ distinct_session_days: 1, observation_count: 2, last_session_signal_kinds: ["FLOW", "CATALYST"] }, a),
       true,
       `${a}: a second independent signal KIND corroborates`,
     );
   }
   assert.equal(
-    meetsPersistence({ distinct_session_days: 1, observation_count: 4, signal_kinds: [] }, "EVENT_DRIVEN"),
+    meetsPersistence({ distinct_session_days: 1, observation_count: 4, last_session_signal_kinds: [] }, "EVENT_DRIVEN"),
     false,
-    "empty signal_kinds (legacy cadence-only row) is never self-corroborating",
+    "empty last_session_signal_kinds is never self-corroborating",
   );
 });
 

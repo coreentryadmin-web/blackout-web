@@ -55,6 +55,8 @@ export interface SwingServingLaneDeps {
   fetchOpenPositions?: () => Promise<SwingPositionRow[]>;
   /** Optional spots for structural-break detection on live plays (uppercased). Prefer serving-snapshot spots. */
   spotsByTicker?: Record<string, number>;
+  /** Latest manage snapshot event_json per position id — authoritative EXITING/MANAGING state (#38). */
+  fetchLatestManageEvents?: (positionIds: number[]) => Promise<Map<number, Record<string, unknown>>>;
 }
 
 /** Index the scored dossiers by ticker (uppercased) so each play can find the thesis it was produced from. */
@@ -113,7 +115,10 @@ export async function getSwingServingLane(deps: SwingServingLaneDeps = {}): Prom
       for (const [ticker, r] of reads ?? []) {
         if (spots[ticker] == null && r.setup?.price != null) spots[ticker] = r.setup.price;
       }
-      livePlays = livePlaysFromOpenPositions(openRows, spots);
+      const manageEvents = deps.fetchLatestManageEvents
+        ? await deps.fetchLatestManageEvents(openRows.map((r) => r.id)).catch(() => new Map())
+        : new Map<number, Record<string, unknown>>();
+      livePlays = livePlaysFromOpenPositions(openRows, spots, manageEvents);
       // Live capital wins the section — drop the pre-entry twin for the same thesis (name+side+archetype).
       const liveKeys = new Set(
         livePlays.map((p) => swingThesisKey(p.ticker, p.direction, p.archetype ?? null)),

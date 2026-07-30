@@ -1,12 +1,13 @@
 /**
- * Reconstruct an OCC option symbol for a held Swing ledger row.
+ * OCC symbol for a held Swing ledger row — MANAGEMENT path (active-refresh, roll marks).
  *
- * WHY: commit historically wrote `contract_occ: null` (ChainContract had no OCC field). Without an OCC,
- * active-refresh cannot load a live option mark → premium_stop (−60%), profit ladder, and mark-frozen
- * rolls never fire. Reconstructing from the pinned strike/expiry/type columns restores those gates for
- * every already-open row AND for new commits once `contract_occ` is populated at insert time.
+ * WHY: commit writes `contract_occ` at insert via `occFromChainContract`. For management, a missing OCC is a
+ * data incident — reconstructing from strike/expiry/type can silently mark the wrong contract and fire
+ * premium_stop / rolls on bad marks (FINDINGS 2026-07-30 P0 #10). Fail-closed: return null unless the
+ * ledger carries an explicit OCC. New commits must populate `contract_occ`; legacy rows without one skip
+ * premium rungs honestly (underlying structural stop still works).
  *
- * Returns a Massive/Polygon-style `O:` prefixed symbol, or null when the row lacks enough identity.
+ * Returns a Massive/Polygon-style `O:` prefixed symbol, or null when absent.
  */
 
 import { buildOcc } from "@/lib/ws/options-socket";
@@ -19,20 +20,11 @@ export type SwingOccRowParts = {
   contract_strike?: number | null;
 };
 
-/** Prefer the stored OCC; otherwise rebuild from strike/expiry/type. Always returns `O:`-prefixed or null. */
+/** Management/read path: stored OCC only — never reconstruct from strike columns. */
 export function occSymbolFromSwingRow(row: SwingOccRowParts): string | null {
   const raw = row.contract_occ?.trim();
-  if (raw) return raw.startsWith("O:") ? raw : `O:${raw}`;
-
-  const ticker = String(row.ticker ?? "").trim().toUpperCase();
-  const expiry = String(row.contract_expiry ?? "").trim().slice(0, 10);
-  const strike = row.contract_strike;
-  const typeRaw = String(row.contract_type ?? "").trim().toLowerCase();
-  const optionType = typeRaw.startsWith("p") ? "put" : typeRaw.startsWith("c") ? "call" : null;
-  if (!ticker || !expiry || optionType == null || strike == null || !Number.isFinite(strike) || strike <= 0) {
-    return null;
-  }
-  return buildOcc(ticker, expiry, optionType, strike);
+  if (!raw) return null;
+  return raw.startsWith("O:") ? raw : `O:${raw}`;
 }
 
 /** OCC for a freshly-picked ChainContract at commit time (bare or O:-prefixed both fine for ledger). */

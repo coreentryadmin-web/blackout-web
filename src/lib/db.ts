@@ -1797,6 +1797,13 @@ async function runMigrations(): Promise<void> {
     ALTER TABLE swing_candidate_accumulation
     ADD COLUMN IF NOT EXISTS signal_kinds JSONB NOT NULL DEFAULT '[]'::jsonb;
   `);
+  // last_session_signal_kinds: corroboration counts kinds seen on the LATEST session_day only — lifetime
+  // signal_kinds stays provenance; counting the union across days let Mon FLOW + Tue STRUCTURE falsely
+  // corroborate within one session (FINDINGS 2026-07-30 P0 #2).
+  await p.query(`
+    ALTER TABLE swing_candidate_accumulation
+    ADD COLUMN IF NOT EXISTS last_session_signal_kinds JSONB NOT NULL DEFAULT '[]'::jsonb;
+  `);
   // Migrate legacy PK (ticker, direction) → (ticker, direction, archetype). Existing rows land in
   // UNCLASSIFIED (honest: their archetype was never stored). Classified discovery observations start
   // fresh under their real archetype and cannot inherit that shared history.
@@ -5861,8 +5868,10 @@ export type SwingAccumRow = {
   last_session_day: string | null;
   /** Cadence phase/channel the name was seen in (POST_CLOSE / LIVE_FLOW …) — provenance, NOT corroboration. */
   phases_seen: string[] | null;
-  /** Screen provenance (FLOW / STRUCTURE / CATALYST) — the independent signal-KIND set corroboration counts. */
+  /** Screen provenance (FLOW / STRUCTURE / CATALYST) — lifetime union for provenance. */
   signal_kinds: string[] | null;
+  /** Signal kinds seen on `last_session_day` only — the corroboration axis for event archetypes. */
+  last_session_signal_kinds: string[] | null;
   promoted_position_id: number | null;
   first_seen_at: string;
   last_seen_at: string;
@@ -5880,6 +5889,7 @@ export function mapSwingAccumRow(r: QueryResultRow): SwingAccumRow {
     last_session_day: r.last_session_day != null ? isoDateString(r.last_session_day) : null,
     phases_seen: jsonbColumnToStringArray(r.phases_seen),
     signal_kinds: jsonbColumnToStringArray(r.signal_kinds),
+    last_session_signal_kinds: jsonbColumnToStringArray(r.last_session_signal_kinds),
     promoted_position_id: r.promoted_position_id != null ? Number(r.promoted_position_id) : null,
     first_seen_at: new Date(String(r.first_seen_at)).toISOString(),
     last_seen_at: new Date(String(r.last_seen_at)).toISOString(),
@@ -6179,6 +6189,29 @@ export async function pinSwingScaleOutGrade(id: number, scaleOutGrade: Record<st
   );
 }
 
+/** Latest management event_json per open position — authoritative manage action for serving (#38). */
+export async function fetchLatestSwingSnapshotEvents(
+  positionIds: readonly number[],
+): Promise<Map<number, Record<string, unknown>>> {
+  await ensureSchema();
+  if (positionIds.length === 0) return new Map();
+  const res = await (await getPool()).query<QueryResultRow>(
+    `SELECT DISTINCT ON (position_id) position_id, event_json, thesis_state
+       FROM swing_position_snapshots
+      WHERE position_id = ANY($1::bigint[])
+      ORDER BY position_id, created_at DESC`,
+    [positionIds],
+  );
+  const out = new Map<number, Record<string, unknown>>();
+  for (const r of res.rows) {
+    const id = Number(r.position_id);
+    const event: Record<string, unknown> = { ...(jsonbColumnToObject(r.event_json) ?? {}) };
+    if (r.thesis_state != null) event.thesis_state = String(r.thesis_state);
+    out.set(id, event);
+  }
+  return out;
+}
+
 /** Every live position (the manager/refresh loop's working set). */
 export async function fetchOpenSwingPositions(): Promise<SwingPositionRow[]> {
   await ensureSchema();
@@ -6359,8 +6392,8 @@ export async function upsertSwingAccum(a: {
   await (await getPool()).query(
     `INSERT INTO swing_candidate_accumulation (
        ticker, direction, archetype, observation_count, distinct_session_days, last_session_day,
-       phases_seen, signal_kinds, first_seen_at, last_seen_at
-     ) VALUES ($1,$2,$3,1,1,$4::date,$5::jsonb,$6::jsonb,NOW(),NOW())
+       phases_seen, signal_kinds, last_session_signal_kinds, first_seen_at, last_seen_at
+     ) VALUES ($1,$2,$3,1,1,$4::date,$5::jsonb,$6::jsonb,$6::jsonb,NOW(),NOW())
      ON CONFLICT (ticker, direction, archetype) DO UPDATE SET
        observation_count = swing_candidate_accumulation.observation_count + 1,
        -- FINDINGS 2026-07-24 (SEV-3, distinct_session_days miscount): the prior guard used IS DISTINCT
@@ -6381,11 +6414,26 @@ export async function upsertSwingAccum(a: {
          SELECT COALESCE(jsonb_agg(DISTINCT e), '[]'::jsonb)
          FROM jsonb_array_elements(swing_candidate_accumulation.phases_seen || EXCLUDED.phases_seen) AS e
        ),
-       -- Deduped union of signal KINDS (screen provenance) — the corroboration set.
+       -- Deduped union of signal KINDS (screen provenance) — lifetime provenance set.
        signal_kinds = (
          SELECT COALESCE(jsonb_agg(DISTINCT e), '[]'::jsonb)
          FROM jsonb_array_elements(swing_candidate_accumulation.signal_kinds || EXCLUDED.signal_kinds) AS e
        ),
+       -- Session-scoped corroboration: reset on a strictly-newer session day; union within the same day;
+       -- leave unchanged on an out-of-order older day (same monotonic rule as distinct_session_days).
+       last_session_signal_kinds = CASE
+         WHEN swing_candidate_accumulation.last_session_day IS NULL
+           OR EXCLUDED.last_session_day > swing_candidate_accumulation.last_session_day
+         THEN EXCLUDED.signal_kinds
+         WHEN EXCLUDED.last_session_day = swing_candidate_accumulation.last_session_day
+         THEN (
+           SELECT COALESCE(jsonb_agg(DISTINCT e), '[]'::jsonb)
+           FROM jsonb_array_elements(
+             swing_candidate_accumulation.last_session_signal_kinds || EXCLUDED.signal_kinds
+           ) AS e
+         )
+         ELSE swing_candidate_accumulation.last_session_signal_kinds
+       END,
        last_seen_at = NOW()`,
     [a.ticker.toUpperCase(), a.direction, archetype, normalized, JSON.stringify([a.phase]), JSON.stringify(signalKinds)]
   );
