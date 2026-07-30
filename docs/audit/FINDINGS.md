@@ -37,6 +37,22 @@ UI: `AbortSignal.timeout(10s)` + show cached matrix while `isLoading && !hasData
 
 **Status.** FIXED on `cursor/gex-zerodte-never-block-3d11`.
 
+## 2026-07-30 — [vector,ops] Stream 400 without ticker + cold-deploy empty handoff
+
+**Severity.** P2 — Vector SSE probe 400; GEX lens E2E flake; first post-deploy polls empty ≤3s.
+
+**Root cause.** (1) `/api/market/vector/stream` rejected missing `?ticker=` with 400 while client
+defaults to SPX. (2) E2E audit hit stream without ticker; lens click used nested role selectors
+before dynamic VectorChart toolbar mounted. (3) `/api/ready` returned before `ensureWebBootWarm`
+finished — ALB admitted cold replicas. (4) Never-block timeout served empty board/matrix when
+Redis had no snapshot and replica had no local last-good copy.
+
+**Fix.** Stream route: default missing ticker via `normalizeVectorTicker`. Boot: `awaitWebBootWarm`
+(2.5s cap) on ready + `warmVectorStreamHub(SPX)`. 0DTE/GEX: per-replica last-good handoff on cap;
+GEX re-reads mem/Redis at timeout. Audits: `?ticker=SPX` + `data-testid=vector-lens-gex`.
+
+**Status.** FIXED on `cursor/vector-cold-start-fixes-3d11`.
+
 ## 2026-07-30 — [ops] swing-active-refresh RTH-stale edge timeout (#1364)
 
 **Severity.** P0 — Swing mark-and-review loop silent during RTH; `vector-universe-snapshot` also

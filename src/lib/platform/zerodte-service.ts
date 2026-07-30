@@ -647,6 +647,9 @@ export async function buildZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
 /** A shared snapshot read + its age (ms since the payload's own `as_of`). */
 type SharedBoardRead = { value: ZeroDteBoardPayload; ageMs: number };
 
+/** Per-replica last good board — served on never-block timeout when Redis is cold. */
+let lastGoodBoardLocal: ZeroDteBoardPayload | null = null;
+
 /** Read the shared board snapshot from Redis (in-memory fallback when Redis is
  *  unavailable), returning it with its age. Fail-soft: any store error → null, so the
  *  caller falls through to a local build (never a blank board). */
@@ -656,10 +659,19 @@ async function readSharedBoardSnapshot(): Promise<SharedBoardRead | null> {
     if (!snap || snap.available !== true || typeof snap.as_of !== "string") return null;
     const asOfMs = Date.parse(snap.as_of);
     if (!Number.isFinite(asOfMs)) return null;
-    return { value: snap, ageMs: Math.max(0, Date.now() - asOfMs) };
+    const read = { value: snap, ageMs: Math.max(0, Date.now() - asOfMs) };
+    lastGoodBoardLocal = snap;
+    return read;
   } catch {
     return null;
   }
+}
+
+function rememberGoodBoard(board: ZeroDteBoardPayload): ZeroDteBoardPayload {
+  if (board.available && board.upstream_ok !== false) {
+    lastGoodBoardLocal = board;
+  }
+  return board;
 }
 
 // Intra-replica single-flight for the COLD/blocking rebuild path — collapses this
@@ -724,13 +736,13 @@ export async function getZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
     // Serve the shared, converged snapshot NOW. Past the soft window, kick a
     // single-writer background rebuild so the next cycle advances — never block on it.
     if (shared.ageMs > BOARD_SNAPSHOT_REFRESH_MS) refreshSharedBoardInBackground();
-    return shared.value;
+    return rememberGoodBoard(shared.value);
   }
 
   // Soft-stale snapshot still in Redis — serve immediately, rebuild in background.
   if (shared && shared.ageMs <= BOARD_STALE_SERVE_MAX_AGE_MS) {
     kickColdBoardBuild();
-    return shared.value;
+    return rememberGoodBoard(shared.value);
   }
 
   if (!coldBuildInflight) {
@@ -742,13 +754,17 @@ export async function getZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
   const build = coldBuildInflight;
   const blockMs = zerodteBoardMaxBlockMs();
   return Promise.race([
-    build,
+    build.then(rememberGoodBoard),
     new Promise<ZeroDteBoardPayload>((resolve) => {
       setTimeout(() => {
         void (async () => {
           const snap = await readSharedBoardSnapshot();
           if (snap) {
-            resolve(snap.value);
+            resolve(rememberGoodBoard(snap.value));
+            return;
+          }
+          if (lastGoodBoardLocal) {
+            resolve(lastGoodBoardLocal);
             return;
           }
           // Never await the cold build here — that defeats maxBlockMs under load (live: 20–43s
@@ -804,6 +820,7 @@ export async function refreshZeroDteBoardSnapshot(): Promise<ZeroDteBoardPayload
 export async function _resetZeroDteBoardSnapshotForTest(): Promise<void> {
   coldBuildInflight = null;
   backgroundRefreshInflight = false;
+  lastGoodBoardLocal = null;
   await sharedCacheDel(BOARD_SNAPSHOT_KEY).catch(() => {});
   await sharedCacheDel(BOARD_BUILD_LOCK_KEY).catch(() => {});
 }

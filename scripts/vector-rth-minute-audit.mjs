@@ -112,7 +112,7 @@ async function probeStream(session, holdMs = 8000) {
     const timer = setTimeout(() => ac.abort(), hardCapMs);
     const snaps = [];
     try {
-      const res = await fetch(`${BASE}/api/market/vector/stream`, {
+      const res = await fetch(`${BASE}/api/market/vector/stream?ticker=SPX`, {
         headers: {
           Cookie: `__session=${token}; __client_uat=${session.clientUat}`,
           Accept: "text/event-stream",
