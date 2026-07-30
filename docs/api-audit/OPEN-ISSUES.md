@@ -1,5 +1,72 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-30 16:22 ET
+Last updated: 2026-07-30 16:47 ET
+
+## spx-rth-2026-07-30 — SPX Slayer all-day verify pass (post-close ~16:39–16:47 ET)
+
+**Session:** SPX Slayer all-day agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` **verify** mode (scheduled 6:30 AM PT market-open; executed ~1:39 PM PT / **4:39 PM ET post-close**). Commands: `npm run validate:spx-rth -- --force` → `npm run validate:spx-e2e` (×2; first flaky) → 60s authenticated live poll → cross-tool Step 3 probes.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth` | ✅ **7 PASS / 1 WARN / 0 FAIL** — GREEN (`--force` post-close) |
+| `npm run validate:spx-e2e` (retry) | ✅ **17 PASS / 0 FAIL** — GEX/VEX tabs, 177 matrix rows, zero console errors |
+| `npm run validate:spx-e2e` (1st run) | ⚠️ **9 PASS / 1 WARN / 1 FAIL** — `ui:browser-dashboard` 30s timeout on `#spx-matrix-tab-gex` (cleared on immediate retry) |
+| Matrix deep audit | ✅ **172 strikes** — GEX+VEX+DEX+CHARM every cell finite; Σ strike_totals == headline total; walls/flip derivations |
+| `validate:spx-bie` (via spx-rth) | ✅ static + member-path consistency GREEN |
+| `ops:collect` | ✅ zero action items |
+| Live auto-update (60s poll) | ✅ desk `updated_at` **20:45:53 → 20:46:54Z** (~61s); spot stable **7437.63** post-close |
+
+**No P0 product defects.** No fix branch required.
+
+### UI E2E (Playwright — `/dashboard`)
+
+| # | Action | Result |
+|---|---|---|
+| 1 | Premium admin session opens `/dashboard` | ✅ |
+| 2 | LIVE badge | ⏭️ SKIP — post-close OFFLINE/EXTENDED expected |
+| 3 | Click **GEX** tab (`#spx-matrix-tab-gex`) | ✅ |
+| 4 | Click **VEX** tab (`#spx-matrix-tab-vex`) | ✅ |
+| 5 | Matrix rows | ✅ **177 strike rows** — no NaN/undefined/`$—` |
+| 6 | Commentary expand | ⏭️ SKIP — Pulse rail is default; `#spx-commentary-rail-toggle` only visible after Largo tab click (`SpxIntelRail`) |
+| 7 | Console errors | ✅ zero |
+| 8 | Matrix API oracle | ✅ **172 strikes** — every GEX/VEX/DEX/CHARM cell vs `/api/market/gex-heatmap?ticker=SPX` |
+
+### Cross-tool integration (Step 3)
+
+| Tool | Endpoint | Result |
+|---|---|---|
+| **Thermal** | `GET /api/market/gex-heatmap?ticker=SPX` | ✅ same payload as dashboard matrix; cross_validation PASS |
+| **GEX positioning** | via spx-rth cross-endpoint | ✅ spot **7437.63** desk == hm == play SCANNING |
+| **HELIX** | `GET /api/market/flows?limit=30` | ✅ 30 prints |
+| **Largo** | `POST /api/market/largo/query` | ✅ `tools=blackout_intelligence` |
+| **BIE** | `validate:spx-bie` | ✅ `getSpxPlayState()` single derivation |
+| **Grid bootstrap** | `GET /api/market/spx/bootstrap` | ✅ loaded |
+| **0DTE Command** | `GET /api/market/zerodte/board` | ✅ 14 setups (post-close) |
+| **Night Hawk** | `GET /api/market/nighthawk/edition` | ✅ loads |
+| **Play state** | `/api/market/spx/play` | ✅ **SCANNING** — no stale confirmations |
+
+### Findings logged
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| **P2** | `spx-e2e-ui-flake-post-close` | First `validate:spx-e2e` run: `#spx-matrix-tab-gex` waitFor 30s timeout; retry GREEN in 73s | `spx-dashboard-e2e-audit.mjs` | post-close — bump tab wait to 60s or wait for `.spx-sniper-desk` hydrate |
+| **P2** | `spx-e2e-commentary-selector` | E2E skips commentary expand — desk now defaults to ⚡ Pulse; must click Largo tab before `#spx-commentary-rail-toggle` | `SpxIntelRail.tsx` | post-close — update E2E to toggle intel rail |
+| **P2** | `cloud-cron-secret-mismatch` | `spx:data-correctness` WARN + `integration:bie-play-route` HTTP 401 on cron bearer | audit env | **Expected** — prod cron authoritative |
+| **P2** | `desk-lanes-off-hours` | pulse/flow lanes SKIP post-close | `/api/market/spx/pulse` | **Expected** off-hours |
+
+### Transient infra notes (not product defects)
+
+1. **Cold sandbox** — first `validate:spx-rth` failed on missing `pg`/`tsx`/`playwright` before `npm install`; prod ECS unaffected.
+
+### Reports
+
+- `audit-output/spx-rth-2026-07-30-verify-1785444054569.json`
+- `audit-output/spx-dashboard-e2e-1785444255016.json` (GREEN retry)
+- `audit-output/spx-dashboard-e2e-1785444166400.json` (flaky first run)
+- `audit-output/spx-bie-consistency-2026-07-30T20-40-31-413Z.json`
+
+---
 
 ## grid-rth-2026-07-30 — 0DTE Command post-close verify pass (~16:12–16:22 ET)
 
