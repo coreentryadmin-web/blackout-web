@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { isEtCashRth } from "@/lib/et-market-hours";
@@ -28,19 +28,7 @@ const TIME_BUDGET_MS = 50_000;
 /** Tickers processed concurrently — bounded so we never fan a burst of provider calls at once. */
 const TICKER_CONCURRENCY = 3;
 
-export async function GET(req: NextRequest) {
-  const started = Date.now();
-  if (!isCronAuthorized(req)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const force = req.nextUrl.searchParams.get("force") === "1";
-  if (!force && !isEtCashRth()) {
-    const payload = { ok: true, skipped: true, reason: "Outside cash RTH" };
-    await logCronRun("vector-full-state-snapshot", started, payload);
-    return NextResponse.json(payload);
-  }
-
+async function runVectorFullStateSnapshot(started: number): Promise<void> {
   const tickers = vectorUniverseTickers();
   let written = 0;
   let skippedNoSpot = 0;
@@ -75,16 +63,54 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const payload = {
+  console.info(
+    `[cron/vector-full-state-snapshot] background done — tickers=${tickers.length} horizons=${VECTOR_DTE_HORIZONS.length} written=${written} skippedNoSpot=${skippedNoSpot} failed=${failed} budgetHit=${budgetHit} elapsed=${Date.now() - started}ms`
+  );
+}
+
+export async function GET(req: NextRequest) {
+  const started = Date.now();
+  if (!isCronAuthorized(req)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const force = req.nextUrl.searchParams.get("force") === "1";
+  if (!force && !isEtCashRth()) {
+    const payload = { ok: true, skipped: true, reason: "Outside cash RTH" };
+    await logCronRun("vector-full-state-snapshot", started, payload);
+    return NextResponse.json(payload);
+  }
+
+  // computeVectorFullState × universe × horizons can exceed Cloudflare's ~100s origin timeout
+  // when caches are cold (ops #1355: market_hours_stale with no fresh cron_job_runs row). Mirror
+  // bie-full-state-snapshot / vector-dark-pool-warm: handshake in seconds, sweep in after().
+  const dispatchSnapshot = () => {
+    void runVectorFullStateSnapshot(started).catch((error) => {
+      const detail = error instanceof Error ? error.message : String(error);
+      console.error(`[cron/vector-full-state-snapshot] background snapshot REJECTED: ${detail}`);
+    });
+  };
+
+  try {
+    after(dispatchSnapshot);
+  } catch {
+    dispatchSnapshot();
+  }
+
+  const tickers = vectorUniverseTickers();
+  const accepted = {
     ok: true,
+    status: "accepted",
+    reason: "Vector full-state snapshot dispatched in background (fire-and-forget)",
     tickers: tickers.length,
     horizons: VECTOR_DTE_HORIZONS.length,
-    written,
-    skippedNoSpot,
-    failed,
-    budgetHit,
-    elapsedMs: Date.now() - started,
   };
-  await logCronRun("vector-full-state-snapshot", started, payload);
-  return NextResponse.json(payload);
+  await logCronRun("vector-full-state-snapshot", started, accepted);
+  return NextResponse.json(
+    {
+      ...accepted,
+      note: "Per-ticker×horizon full-state cache writes run in background — handshake stays under edge timeout.",
+    },
+    { status: 202 }
+  );
 }
