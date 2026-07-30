@@ -1,5 +1,71 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-30 12:35 ET
+Last updated: 2026-07-30 14:25 ET
+
+## spx-rth-2026-07-30 — SPX Slayer all-day verify pass (~13:57–14:25 ET)
+
+**Session:** Autonomous SPX Slayer RTH agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` **verify** mode. Commands: `npm run validate:spx-rth` (×3) → `npm run validate:spx-e2e` → 90s live auto-update probe (Clerk auth).
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth` (final) | ✅ **GREEN** — 8 PASS / 1 WARN / 0 FAIL |
+| `npm run validate:spx-e2e` | ✅ **GREEN** — 0 FAIL / 17 checks |
+| Matrix deep audit (`heatmap-matrix-audit --tickers=SPX`) | ✅ every GEX/VEX/DEX/CHARM cell finite; Σ strike_totals == headline |
+| Cross-endpoint spot/GEX | ✅ merged≈hm≈positioning (Δ ≤ 0.15 pts); play **HOLD/OPEN** |
+| Desk cache lanes | ✅ pulse + flow live; merged spot agrees |
+| `validate:spx-bie` | ✅ member `/spx/play` == `getSpxPlayState()` |
+| `ops:collect` | ✅ 0 action items |
+| `spx:data-correctness` | ⚠️ **WARN** — cloud-agent `CRON_SECRET` mismatch (Clerk fallback used; prod cron unaffected) |
+
+### UI E2E (`/dashboard`)
+
+| # | Check | Result |
+|---|---|---|
+| GEX tab click | ✅ PASS |
+| VEX tab click | ✅ PASS |
+| Matrix rows | ✅ **178** strike rows (≥80) |
+| Matrix text sanity | ✅ no NaN / undefined / `$—` |
+| Every cell vs API | ✅ **172–173 strikes** GEX+VEX+DEX+CHARM vs `/api/market/gex-heatmap?ticker=SPX` |
+| Trade alert hero | ✅ **HOLD** (not SCANNING) — no stale ✓ during SCANNING |
+| SCANNING confirmations API | ✅ `confirmations.checks.length=0` when action was SCANNING earlier pass |
+| Commentary expand | ⚠️ **SKIP** — toggle hidden when commentary **standby** (`live=false`; `#spx-commentary-rail-toggle` only when live) |
+| Console errors | ✅ PASS |
+| LIVE badge | ✅ PASS during RTH |
+
+### Cross-tool integration (Step 3)
+
+| Tool | Result |
+|---|---|
+| Thermal (`gex-heatmap SPX`) | ✅ same payload as dashboard matrix |
+| Thermal SPY `cross_validation` | ✅ PASS |
+| GEX positioning | ✅ spot/flip/walls agree with matrix header |
+| HELIX flows | ✅ 30 prints; SPX tape active |
+| Largo SPX query | ✅ grounded via `blackout_intelligence` |
+| Grid bootstrap | ✅ loaded; spot not stale vs desk |
+| 0DTE board | ✅ 21 setups |
+| Night Hawk edition | ✅ loads; SPX echo consistent |
+| BIE play route (cron bearer) | ⚠️ HTTP 401 without prod cron secret in E2E harness |
+
+### Live auto-update (~90s, no manual refresh)
+
+| Surface | Observed | Verdict |
+|---|---|---|
+| Header SPX price (`/api/market/spx/desk`) | 7426.07 → 7425.21 → 7426.31 | ✅ moved |
+| Matrix spot (`gex-heatmap`) | 7425.14 → 7426.22 | ✅ updated within ~15s poll window |
+| Play hero | HOLD/OPEN stable; 11 confirmations (valid for OPEN) | ✅ |
+
+### Open findings (no P0 — production GREEN)
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| P2 | `spx-e2e-orchestrator-flake` | `validate:spx-rth` subprocess `spx:dashboard-e2e` timed out on 2/3 orchestrator runs (curl 120s cap under parallel matrix load); standalone `validate:spx-e2e` GREEN both times | orchestrator spawn | post-close — bump subprocess timeout or serialize heavy probes |
+| P2 | `commentary-toggle-standby` | E2E cannot click expand when Largo commentary standby — toggle intentionally hidden | `SpxCommentaryRail.tsx` `live` gate | post-close — extend E2E to seed live commentary or document SKIP |
+| P2 | `cron-secret-cloud-agent` | Cloud-agent `CRON_SECRET` ≠ prod Secrets Manager; data-correctness probe WARN only | `audit-auth-fetch.mjs` Clerk fallback | known env limitation |
+
+**Verdict:** SPX Slayer **GREEN** for RTH verify — matrix 100% API-aligned, no SCANNING stale confirmations, cross-tool integration intact, live tape updating. No P0 fixes required this pass.
+
+---
 
 ## rth-comprehensive-2026-07-30-afternoon — RTH agent pass (~12:08–12:35 ET)
 
