@@ -19,6 +19,19 @@ export function activeClerkUserIdFromCookieStore(
   return null;
 }
 
+/** True when request carries an active Clerk session or __client_uat session signal. */
+export function signedInFromCookieStore(jar: Awaited<ReturnType<typeof cookies>>): boolean {
+  if (activeClerkUserIdFromCookieStore(jar)) return true;
+  const uat = jar.get("__client_uat")?.value;
+  if (!uat) return false;
+  const v = parseInt(uat, 10);
+  return Number.isFinite(v) && v > 0;
+}
+
+export async function signedInFromRequestCookies(): Promise<boolean> {
+  return signedInFromCookieStore(await cookies());
+}
+
 /** Server Components / route handlers — read active Clerk user from __session cookie. */
 export async function activeClerkUserIdFromRequestCookies(): Promise<string | null> {
   return activeClerkUserIdFromCookieStore(await cookies());

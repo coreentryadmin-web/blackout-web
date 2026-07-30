@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { auth } from "@/lib/auth-server";
+import { signedInFromRequestCookies } from "@/lib/clerk-session-cookies";
 import { Nav } from "@/components/Nav";
 import { IosAppChrome } from "@/components/ios/IosAppChrome";
 import { IosNativePageTransition } from "@/components/ios/IosNativePageTransition";
@@ -50,6 +51,13 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
     if (userId && !(await isAdminUser(userId, sessionClaims))) lockedTools = lockedToolKeys();
   } catch {
     lockedTools = [];
+  }
+  if (!initialSignedIn) {
+    try {
+      initialSignedIn = await signedInFromRequestCookies();
+    } catch {
+      /* cookie read unavailable — keep auth() guess */
+    }
   }
 
   return (
