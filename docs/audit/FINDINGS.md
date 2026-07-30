@@ -49,7 +49,7 @@ true` on a web replica with `cluster_spx_updated_at: null`.
 `socket-cluster-health.ts`; `resolveSpotSnapshot` falls back to Redis cluster index snapshot.
 (3) `socket-health` cron evaluates cluster heartbeats on web tier without booting local sockets.
 
-**Status.** FIXED on `fix/ops-1335-socket-gex-cluster`.
+**Status.** FIXED on `fix/ops-1335-socket-gex-cluster` + follow-up `fix/ops-1335-spot-prev-fallback` (#1338 prev-bar fallback when Polygon snapshots 403). Validated GREEN 2026-07-30 ~11:31 ET.
 
 ## 2026-07-30 — [ops] vector-universe-snapshot RTH-stale self-heal gap (#1333)
 
