@@ -89,12 +89,139 @@ test("assembles a real sectioned lane: WATCH + RESEARCH populate; setupState sta
   assert.equal(lane.sections.COMMIT_NOW.map((p) => p.ticker).join(","), "NVDA");
   assert.deepEqual(lane.sections.WATCH.map((p) => p.ticker), ["WAT"]);
   assert.deepEqual(lane.sections.RESEARCH.map((p) => p.ticker), ["RES"]);
-  // Live-position sections stay empty (PR-13).
+  // Live-position sections empty without fetchOpenPositions.
   assert.equal(lane.sections.MANAGING.length + lane.sections.SCALING_OUT.length + lane.sections.EXITING.length, 0);
   // The stamped observable rode onto the play so the section router could place it.
   assert.equal(lane.sections.COMMIT_NOW[0]!.setupState, "TRIGGERED");
   assert.equal(lane.sections.COMMIT_NOW[0]!.entryStatus, "AT_TRIGGER");
   assert.equal(lane.sections.COMMIT_NOW[0]!.serving, "COMMIT_NOW"); // stamped by the section router
+});
+
+test("fetchOpenPositions populates MANAGING / SCALING_OUT / EXITING live sections", async () => {
+  const openRows = [
+    {
+      id: 1,
+      commit_key: "k1",
+      root_position_id: null,
+      parent_position_id: null,
+      roll_seq: 0,
+      session_date: "2026-07-24",
+      ticker: "LIVE",
+      direction: "long" as const,
+      sub_lane: "STANDARD",
+      archetype: "BREAKOUT",
+      top_flow_strike: null,
+      contract_strike: 100,
+      contract_expiry: "2026-08-14",
+      contract_type: "call",
+      contract_occ: null,
+      contract_delta: 0.6,
+      entry_underlying_px: 100,
+      thesis_invalidation_px: 90,
+      target_underlying_px: 120,
+      entry_premium: 5,
+      last_mark: 5.5,
+      peak_premium: 5.5,
+      trough_premium: 5,
+      underlying_mfe: 105,
+      underlying_mae: 100,
+      realized_pnl_pct: null,
+      entry_context: {},
+      gate_calibration_json: {},
+      feature_vector: { evidence_score: 80 },
+      plan_json: null,
+      scale_out_grade: null,
+      grade_json: null,
+      grade_methodology: null,
+      legacy_grade: null,
+      status: "OPEN",
+      first_seen_at: "2026-07-24T14:00:00.000Z",
+      committed_at: "2026-07-24T14:00:00.000Z",
+      closed_at: null,
+      graded_at: null,
+      updated_at: "2026-07-24T14:00:00.000Z",
+    },
+    {
+      id: 2,
+      commit_key: "k2",
+      root_position_id: null,
+      parent_position_id: null,
+      roll_seq: 0,
+      session_date: "2026-07-24",
+      ticker: "TRIM",
+      direction: "long" as const,
+      sub_lane: "STANDARD",
+      archetype: "BREAKOUT",
+      top_flow_strike: null,
+      contract_strike: 100,
+      contract_expiry: "2026-08-14",
+      contract_type: "call",
+      contract_occ: null,
+      contract_delta: 0.6,
+      entry_underlying_px: 100,
+      thesis_invalidation_px: 90,
+      target_underlying_px: 120,
+      entry_premium: 5,
+      last_mark: 10,
+      peak_premium: 10,
+      trough_premium: 5,
+      underlying_mfe: 110,
+      underlying_mae: 100,
+      realized_pnl_pct: null,
+      entry_context: {},
+      gate_calibration_json: {},
+      feature_vector: { evidence_score: 80 },
+      plan_json: null,
+      scale_out_grade: null,
+      grade_json: null,
+      grade_methodology: null,
+      legacy_grade: null,
+      status: "TRIM",
+      first_seen_at: "2026-07-24T14:00:00.000Z",
+      committed_at: "2026-07-24T14:00:00.000Z",
+      closed_at: null,
+      graded_at: null,
+      updated_at: "2026-07-24T14:00:00.000Z",
+    },
+  ];
+  const lane = await getSwingServingLane({
+    discover: async () => ({ dossiers: [], plays: [] }),
+    fetchOpenPositions: async () => openRows,
+    spotsByTicker: { LIVE: 105, TRIM: 110 },
+  });
+  assert.deepEqual(lane.sections.MANAGING.map((p) => p.ticker), ["LIVE"]);
+  assert.deepEqual(lane.sections.SCALING_OUT.map((p) => p.ticker), ["TRIM"]);
+  assert.equal(lane.sections.EXITING.length, 0);
+});
+
+test("planLevels + spots drive setup maturity beyond RESEARCH on the serve path", async () => {
+  const d = buildSwingDossier({
+    ...dossier("NVDA"),
+    planLevels: {
+      entryUnderlyingPx: 100,
+      thesisInvalidationPx: 90,
+      targetUnderlyingPx: 110,
+      atr: 3,
+    },
+  });
+  const lane = await getSwingServingLane({
+    discover: async () => ({
+      dossiers: [d],
+      plays: [play({ ticker: "NVDA", status: "COMMIT" })],
+      readsByTicker: new Map([
+        [
+          "NVDA",
+          {
+            setup: { price: 100.5, triggerPx: 100, invalidationPx: 90, atr: 3 },
+            entry: { price: 100.5, triggerPx: 100, atr: 3 },
+            contract,
+          },
+        ],
+      ]),
+    }),
+  });
+  assert.equal(lane.sections.COMMIT_NOW[0]?.setupState, "TRIGGERED");
+  assert.equal(lane.sections.RESEARCH.length, 0);
 });
 
 // ── FIX 1: the cron→route persistence seam (persist scored output; member route reads it, gated) ──────────

@@ -30,11 +30,21 @@ What kept it from being a **best-in-class live swing system** was not missing id
 
 ## Still open (next PRs)
 
-1. Wire `feature-vector` into snapshot persist (trajectory studies dormant).
-2. Pass `graduatedRungs` from calibration into active-refresh (edge rungs stay advisory forever).
-3. Grounded price-vs-level `readsByTicker` on the horizons serve path (setup maturity beyond RESEARCH).
-4. Beta provider + IV percentile series (documented SWING-ENGINE §6 gaps).
-5. `railway.swing-*.toml` catalog entries so EventBridge sync cannot orphan swing crons.
+Shipped on `cursor/swing-followups-3d11` (original five + P0 management/serve follow-ons):
+
+| # | Follow-up | Status |
+|---|---|---|
+| 1 | Feature-vector pin at commit | DONE |
+| 2 | `graduatedRungs` → active-refresh | DONE |
+| 3 | `readsByTicker` / spots on horizons serve | DONE |
+| 4 | Beta provider + IV series fallback | DONE |
+| 5 | `railway.swing-*.toml` catalog | DONE |
+| 6 | `thesisProgress01` + `volCollapsed` (time_stop / vol_collapse live) | DONE |
+| 7 | TRIM latch + scaledAlready from status (EXIT_RUNNER reachable) | DONE |
+| 8 | Open-book live sections (MANAGING/SCALING_OUT/EXITING) | DONE |
+| 9 | Active-refresh refreshes serving spots mid-session | DONE |
+
+**Still deferred (not blocking live rail):** catalyst/regime/flow/RS edge booleans (need cross-session deltas); calibratedProbability desk surface; EventBridge infra sync for new TOMLs.
 
 ## Live health (2026-07-29 ~18:00 ET)
 

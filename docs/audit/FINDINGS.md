@@ -5,6 +5,28 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-30 — [Swing] CTO follow-ups — feature vector, graduated rungs, serve reads, beta/IV, cron catalog
+
+**Severity.** P1 — management/serve/calibration seams left dormant after the 2026-07-29 CTO audit.
+
+**Root cause / gaps.**
+1. `buildCommitInsert` pinned `feature_vector`, but discovery never threaded pillars / classification meta / ivRank onto commit candidates → every commit vector was hollow.
+2. `manage.ts` honored `graduatedRungs`, but active-refresh never loaded the calibration ladder → edge rungs stayed advisory forever.
+3. Horizons called `getSwingServingLane` without `readsByTicker` → setup maturity stuck at RESEARCH/`thesis unknown`.
+4. `fetchNameBeta` was a permanent stub; IV series fetcher existed but ingest only used the point rank.
+5. Swing crons had no `railway.swing-*.toml` catalog → EventBridge sync could not manage them.
+6. `time_stop` required `thesisProgress01` which was never supplied; TRIM never latched → `EXIT_RUNNER` unreachable.
+7. Live sections (MANAGING/SCALING_OUT/EXITING) never received open ledger rows.
+
+**Fix.**
+1. Discovery maps dossier pillars + `classificationMetaFromVerdict` + `ivRank` onto commit candidates; dossier.plan carries `atr`.
+2. Active-refresh loads graduated rungs once/tick; refreshes IV + `thesisProgress01` + `volCollapsed`; latches TRIM; warms beta cache; refreshes serving spots.
+3. Discovery persists `spotsByTicker`; serve path builds reads + merges `fetchOpenSwingPositions` into live sections.
+4. `fetchNameBeta` + `createDailyClosesBetaSource`; ingest IV series fallback via `latestIvRankFromSeries`.
+5. Added `railway.swing-discovery.toml` + `railway.swing-active-refresh.toml`.
+
+**Status.** FIXED on `cursor/swing-followups-3d11`. Infra sync still required for EventBridge rule create/update.
+
 ## 2026-07-29 — [Grid/0DTE] grid-e2e board HTTP 504 under orchestrator burst
 
 **Severity.** P1 — flaky `validate:grid-rth --phase=post-close` on `grid:dashboard-e2e` when nested

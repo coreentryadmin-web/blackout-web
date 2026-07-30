@@ -23,7 +23,7 @@ Most market-hours crons use:
 (`inMarketHours` / `inOptionsMarketHours`) so fires before 9:30 or after 4:00
 are cheap no-ops — the wide UTC band avoids maintaining separate EDT/EST cron lines.
 
-## All 21 cron trigger services
+## All cron trigger services (catalog)
 
 | Job key | Railway service | Cron (UTC) | Purpose / notes |
 |---------|-----------------|------------|-----------------|
@@ -32,6 +32,8 @@ are cheap no-ops — the wide UTC band avoids maintaining separate EDT/EST cron 
 | uw-cache-refresh | UW-Cache-Refresh-New | `*/2 11-21 * * 1-5` | UW REST cache warm |
 | heatmap-warm | heatmap-warm | `* 11-21 * * 1-5` | Thermal matrix warm |
 | zerodte-warm | ZeroDTE-Warm-Cron | `*/2 11-21 * * 1-5` | 0DTE Command earnings cache + scanner tick (renamed from grid-warm 2026-07-07 when classic Grid was deleted) |
+| swing-discovery | Swing-Discovery | `*/30 * * * 1-5` | Phase-anchored whole-market swing scan (`railway.swing-discovery.toml`; route self-skips off-phase) |
+| swing-active-refresh | Swing-Active-Refresh | `0 11-21 * * 1-5` | Hourly open-book manage + snapshot + spot refresh (`railway.swing-active-refresh.toml`) |
 | gex-alerts | GEX-Alerts | `*/5 11-21 * * 1-5` | GEX push alerts |
 | data-integrity | Data-Integrity-Cron | `*/5 11-21 * * 1-5` | Data integrity verifier |
 | data-correctness | Data-Correctness-Cron | `0,30 11-21 * * 1-5` | :00/:30 each hour in band |

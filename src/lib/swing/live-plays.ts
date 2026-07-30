@@ -1,0 +1,130 @@
+// src/lib/swing/live-plays.ts — map OPEN swing ledger rows onto HorizonPlay carriers for the live sections.
+//
+// WHY: the seven-section desk needs MANAGING / SCALING_OUT / EXITING populated from real positions, not
+// only pre-entry discovery plays. This pure mapper stamps liveStatus / manageAction / thesisLevel from
+// the ledger row (+ optional live spot for structural-break detection) so `sectionForSwingPlay` can route.
+//
+// CACHE-READER SAFE: callers supply rows + spots already loaded (cron-warmed Redis / DB). No provider IO.
+// NULL-HONEST: missing contract fields → skipped (never a fabricated play).
+
+import type { HorizonPlay } from "../horizon-plays";
+import type { ChainContract, PlayDirection } from "../horizon-fanout";
+import type { SwingPositionRow } from "../db";
+import type { SwingArchetype, SwingSubLane } from "./taxonomy";
+import type { SwingLiveStatus, SwingThesisLevel } from "./serving";
+import type { SwingManageAction } from "./manage";
+import { HORIZONS } from "../horizons";
+
+const LIVE: ReadonlySet<string> = new Set(["OPEN", "HOLD", "TRIM"]);
+
+function liveStatusOf(status: string): SwingLiveStatus | null {
+  if (status === "TRIM") return "TRIM";
+  if (status === "HOLD") return "HOLD";
+  if (status === "OPEN") return "OPEN";
+  return null;
+}
+
+function contractFromRow(row: SwingPositionRow): ChainContract | null {
+  const expiry = row.contract_expiry;
+  const strike = row.contract_strike;
+  if (!expiry || strike == null || !Number.isFinite(strike)) return null;
+  const right = row.contract_type === "put" ? "P" : "C";
+  // DTE left unknown here — serve path doesn't need it for section routing; stamp 0 honestly absent of clock.
+  return {
+    ticker: row.ticker.toUpperCase(),
+    right,
+    expiry,
+    dte: 0,
+    strike,
+    delta: row.contract_delta,
+    openInterest: 0,
+    bid: null,
+    ask: null,
+    mid: row.last_mark ?? row.entry_premium,
+  };
+}
+
+/**
+ * Detect a structural thesis break from live spot vs pinned invalidation. Pure — used to stamp EXITING
+ * without re-running the full manager on the member request path.
+ */
+export function structuralBreakFromSpot(
+  direction: "long" | "short",
+  spot: number | null | undefined,
+  invalidationPx: number | null | undefined,
+): boolean {
+  if (spot == null || !Number.isFinite(spot) || invalidationPx == null || !Number.isFinite(invalidationPx)) {
+    return false;
+  }
+  return direction === "long" ? spot <= invalidationPx : spot >= invalidationPx;
+}
+
+/**
+ * Map one open ledger row (+ optional spot) to a HorizonPlay for the live sections. Returns null when the
+ * row is not a live status or lacks a reconstructible contract.
+ */
+export function livePlayFromSwingPosition(
+  row: SwingPositionRow,
+  spot?: number | null,
+): HorizonPlay | null {
+  if (!LIVE.has(row.status)) return null;
+  const contract = contractFromRow(row);
+  if (!contract) return null;
+  const direction: PlayDirection = row.direction === "short" ? "SHORT" : "LONG";
+  const liveStatus = liveStatusOf(row.status)!;
+  const dirLc = row.direction === "short" ? "short" : "long";
+  const broken = structuralBreakFromSpot(dirLc, spot, row.thesis_invalidation_px);
+
+  let manageAction: SwingManageAction | undefined;
+  let thesisLevel: SwingThesisLevel = "intact";
+  if (broken) {
+    manageAction = "EXIT";
+    thesisLevel = "break";
+  } else if (liveStatus === "TRIM") {
+    manageAction = "TAKE_PARTIAL";
+  }
+
+  const score =
+    row.feature_vector && typeof row.feature_vector.evidence_score === "number"
+      ? (row.feature_vector.evidence_score as number)
+      : 0;
+
+  return {
+    ticker: row.ticker.toUpperCase(),
+    direction,
+    horizon: "SWING",
+    score,
+    status: "COMMIT", // live capital is committed — back-compat committed[] view
+    contract,
+    scoreFloor: HORIZONS.SWING.scoreFloor,
+    reason: `live ${row.status.toLowerCase()} — ${row.archetype ?? "swing"} thesis`,
+    archetype: (row.archetype as SwingArchetype | null) ?? undefined,
+    subLane: (row.sub_lane as SwingSubLane | null) ?? undefined,
+    liveStatus,
+    manageAction,
+    thesisLevel,
+  };
+}
+
+/** Map a book of open rows → live HorizonPlays. Spots keyed uppercased. */
+export function livePlaysFromOpenPositions(
+  rows: readonly SwingPositionRow[],
+  spotsByTicker?: Record<string, number> | Map<string, number>,
+): HorizonPlay[] {
+  const spotOf = (ticker: string): number | null => {
+    const key = ticker.toUpperCase();
+    if (!spotsByTicker) return null;
+    if (spotsByTicker instanceof Map) {
+      const v = spotsByTicker.get(key);
+      return v != null && Number.isFinite(v) ? v : null;
+    }
+    const v = spotsByTicker[key];
+    return v != null && Number.isFinite(v) ? v : null;
+  };
+  const out: HorizonPlay[] = [];
+  for (const row of rows) {
+    const play = livePlayFromSwingPosition(row, spotOf(row.ticker));
+    if (play) out.push(play);
+  }
+  return out;
+}

@@ -25,18 +25,38 @@ import {
   insertSwingPosition,
   gradeSwingPosition,
   withSwingRollTx,
+  fetchGradedSwingFeatureRows,
   type SwingPositionRow,
 } from "@/lib/db";
 import { fetchStockLastTrade } from "@/lib/providers/polygon-largo";
 import { fetchOptionsUnifiedSnapshot } from "@/lib/providers/options-snapshot";
+import { fetchUwIvRank } from "@/lib/providers/unusual-whales";
 import { todayEt } from "@/lib/et-date";
 import { buildSwingRollPlan } from "@/lib/swing/roll-plan";
 import { modelRiskUsd, isEventArchetype, type CommitBookPosition } from "@/lib/swing/commit";
 import { resolveProductionPortfolioBudget } from "@/lib/swing/swing-portfolio-budget";
+import {
+  analyzeSwingCalibration,
+  graduatedEdgeRungsFromReport,
+  swingCalibrationRowFromLedger,
+} from "@/lib/swing/calibration";
+import type { SwingManageRung } from "@/lib/swing/manage";
 import type { ParentGradeFreeze } from "@/lib/swing/roll";
 import type { SwingArchetype } from "@/lib/swing/taxonomy";
 import { resolveTickerChainRows } from "@/features/nighthawk/lib/option-chain-prompt";
 import { occSymbolFromSwingRow } from "@/lib/swing/occ-from-row";
+import { thesisProgress01, volCollapsedFromIvRanks } from "@/lib/swing/thesis-progress";
+import {
+  createDailyClosesBetaSource,
+  fetchNameBeta,
+  type CloseBar,
+} from "@/lib/swing/beta";
+import { fetchStockDailyBars } from "@/lib/providers/polygon";
+import {
+  readSwingServingSnapshot,
+  persistSwingServingSnapshot,
+} from "@/lib/swing/serving-lane";
+import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -113,6 +133,18 @@ export async function GET(req: NextRequest) {
       }
     };
 
+    // Graduated edge rungs — once per tick from the graded ledger. Fail-soft → [] (all edge rungs stay
+    // advisory). Cold book ⇒ nothing graduates ⇒ nothing enforces — the intentional hard rail.
+    let graduatedRungs: readonly SwingManageRung[] = [];
+    try {
+      const graded = await fetchGradedSwingFeatureRows(5000);
+      const report = analyzeSwingCalibration(graded.map(swingCalibrationRowFromLedger));
+      graduatedRungs = graduatedEdgeRungsFromReport(report);
+    } catch (err) {
+      console.error("[cron/swing-active-refresh] graduated-rungs load FAILED — edge rungs stay advisory", err);
+      graduatedRungs = [];
+    }
+
     const result = await runSwingActiveRefresh({
       // Reuse the once-fetched open book as the working set (also the roll gate's book snapshot above).
       fetchOpen: async () => openRows,
@@ -122,9 +154,19 @@ export async function GET(req: NextRequest) {
       // via null-honesty, but the underlying path + snapshot still record). The live mark ALSO lets the roll
       // executor freeze the parent grade at roll time (roll-plan.ts gradeParentFromMark).
       loadReads: async (row): Promise<ManageSyncReads | null> => {
-        const [spot, mark] = await Promise.all([loadUnderlyingSpot(row.ticker), loadOptionMark(row)]);
+        const [spot, mark, ivRank] = await Promise.all([
+          loadUnderlyingSpot(row.ticker),
+          loadOptionMark(row),
+          // EOD-cadence, Redis-cached — never a per-tick UW blast. Honest null on miss.
+          fetchUwIvRank(row.ticker).catch(() => null),
+        ]);
         if (spot == null) return null; // no usable underlying read → skip (fail-soft, no snapshot)
         const dte = row.contract_expiry ? dteOf(row.contract_expiry, nowMs) : null;
+        const pinnedIv =
+          row.feature_vector && typeof row.feature_vector.iv_rank === "number"
+            ? (row.feature_vector.iv_rank as number)
+            : null;
+        const liveIv = ivRank != null && Number.isFinite(ivRank) ? ivRank : null;
         return {
           underlyingPrice: spot,
           // Live contract mark → drives the premium ratchet (peak/trough) + the profit-ladder / −60% backstop
@@ -138,8 +180,21 @@ export async function GET(req: NextRequest) {
           underlyingMae: spot,
           // Structural stop = pinned thesis invalidation (underlying terms) — without this, gate 2 never fires.
           structuralStopLevel: row.thesis_invalidation_px,
-          // Sessions held → time_stop advisory rung (STANDARD 8 / EXTENDED 14).
+          // Sessions held → time_stop advisory rung (STANDARD 8 / EXTENDED 14) — only with thesisProgress01.
           sessionsHeld: sessionsHeldFromRow(row, nowMs),
+          // Progress toward pinned target — without this, time_stop is permanently inert.
+          thesisProgress01: thesisProgress01({
+            direction: row.direction === "short" ? "short" : "long",
+            entryPx: row.entry_underlying_px,
+            targetPx: row.target_underlying_px,
+            spot,
+          }),
+          // Fresh IV rank → feature-vector iv_rank (wins over commit-pinned value when present).
+          ivRank: liveIv,
+          // IV crush vs commit-pinned rank → vol_collapse advisory (null when either side absent).
+          volCollapsed: volCollapsedFromIvRanks(pinnedIv, liveIv),
+          // Ladder-graduated edge rungs → manage.ts flips advisory→enforced for those rungs only.
+          graduatedRungs,
         };
       },
       insertSnapshot: insertSwingSnapshot,
@@ -161,6 +216,79 @@ export async function GET(req: NextRequest) {
 
     // Tally the LIVE roll outcomes for observability (a roll writes a terminal parent status + opens a child).
     const rolls = result.outcomes.filter((o) => o.roll);
+
+    // Refresh serving-snapshot spots for open tickers so pre-entry setup maturity stays live between
+    // discovery phases (cache-writer on the cron; member path stays cache-reader).
+    let spotsRefreshed = 0;
+    try {
+      const snap = await readSwingServingSnapshot();
+      if (snap) {
+        const spots = { ...(snap.spotsByTicker ?? {}) };
+        for (const row of openRows) {
+          const spot = await loadUnderlyingSpot(row.ticker).catch(() => null);
+          if (spot != null) {
+            spots[row.ticker.toUpperCase()] = spot;
+            spotsRefreshed += 1;
+          }
+        }
+        // Also refresh WATCH names already in the snapshot (bounded) so FORMING/TRIGGERED stays current.
+        const watchTickers = [...new Set((snap.watch ?? []).map((w) => w.ticker.toUpperCase()))]
+          .filter((t) => spots[t] == null || openRows.every((r) => r.ticker.toUpperCase() !== t))
+          .slice(0, 30);
+        await Promise.all(
+          watchTickers.map(async (ticker) => {
+            const spot = await loadUnderlyingSpot(ticker).catch(() => null);
+            if (spot != null) {
+              spots[ticker] = spot;
+              spotsRefreshed += 1;
+            }
+          }),
+        );
+        await persistSwingServingSnapshot({ ...snap, spotsByTicker: spots });
+      }
+    } catch (err) {
+      console.error("[cron/swing-active-refresh] serving-spot refresh failed (non-fatal)", err);
+    }
+
+    // Beta (OLS vs SPY) — Redis-cached per name so hourly refresh never blasts daily-bar upstream.
+    // Stamped into cron payload for observability; risk math consumes via fetchNameBeta when sizing.
+    const BETA_CACHE_TTL_SEC = 6 * 60 * 60;
+    let betasResolved = 0;
+    try {
+      const from = new Date(nowMs - 200 * 86_400_000).toISOString().slice(0, 10);
+      const to = sessionDay;
+      const closesCache = new Map<string, Promise<CloseBar[]>>();
+      const closesFor = (ticker: string): Promise<CloseBar[]> => {
+        const key = ticker.toUpperCase();
+        let cached = closesCache.get(key);
+        if (!cached) {
+          cached = fetchStockDailyBars(key, from, to).then((bars) =>
+            bars
+              .map((b) => ({ t: typeof b.t === "number" ? b.t : undefined, c: Number(b.c) }))
+              .filter((b) => Number.isFinite(b.c)),
+          );
+          closesCache.set(key, cached);
+        }
+        return cached;
+      };
+      const source = createDailyClosesBetaSource({ fetchCloses: closesFor });
+      for (const row of openRows.slice(0, 25)) {
+        const cacheKey = `swing:beta:${row.ticker.toUpperCase()}:v1`;
+        const hit = await sharedCacheGet<{ beta: number | null; n: number }>(cacheKey).catch(() => null);
+        if (hit) {
+          betasResolved += 1;
+          continue;
+        }
+        const res = await fetchNameBeta(row.ticker, source);
+        await sharedCacheSet(cacheKey, { beta: res.beta, n: res.n, missing: res.betaMissing }, BETA_CACHE_TTL_SEC).catch(
+          () => undefined,
+        );
+        if (!res.betaMissing) betasResolved += 1;
+      }
+    } catch (err) {
+      console.error("[cron/swing-active-refresh] beta warm failed (non-fatal)", err);
+    }
+
     const payload = {
       ok: true,
       positions: result.positions,
@@ -171,6 +299,9 @@ export async function GET(req: NextRequest) {
       rolled: rolls.filter((o) => o.roll?.action === "ROLL" && o.roll?.childId != null).length,
       closed: rolls.filter((o) => o.roll?.action === "CLOSE" && o.roll?.parentGraded).length,
       rollErrors: rolls.filter((o) => o.roll?.error).length,
+      graduatedRungs: [...graduatedRungs],
+      spotsRefreshed,
+      betasResolved,
     };
     await logCronRun("swing-active-refresh", started, payload);
     return NextResponse.json(payload);

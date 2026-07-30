@@ -54,6 +54,7 @@ import type { PlayDirection, ChainContract } from "../horizon-fanout";
 import type { SwingArchetype } from "./taxonomy";
 import { subLaneForDte } from "./taxonomy";
 import { analyzeSwingCalibration, type SwingCalibrationRow, type SwingCalibrationReport } from "./calibration";
+import { classificationMetaFromVerdict } from "./archetype";
 import {
   computeSwingCommitPlan,
   executeSwingCommits,
@@ -674,6 +675,8 @@ export async function runSwingDiscoveryScan(
     const commitCandidates: SwingCommitCandidate[] = watchCandidates.map((w) => {
       const key = `${w.ticker.toUpperCase()}|${w.direction}`;
       const d = dossierByKey.get(key);
+      // Full classification metadata for the feature-vector pin (primary is already on archetype).
+      const classMeta = d ? classificationMetaFromVerdict(d.archetype) : null;
       return {
         ticker: w.ticker,
         direction: w.direction,
@@ -688,6 +691,14 @@ export async function runSwingDiscoveryScan(
         thesisInvalidationPx: d?.plan?.thesisInvalidationPx ?? null,
         targetUnderlyingPx: d?.plan?.targetUnderlyingPx ?? null,
         topFlowStrike: d?.topFlowStrike ?? null,
+        // Static thesis feature-vector fields — pinned at commit so every later snapshot can echo them.
+        pillars: d?.pillarSignals ?? null,
+        presentPillars: d?.dataQuality.presentPillars ?? null,
+        dataQualityDegraded: d?.dataQuality.degraded ?? null,
+        archetypeSecondary: classMeta?.secondary ?? null,
+        archetypeScores: classMeta?.scores ?? null,
+        classificationMargin: classMeta?.margin ?? null,
+        ivRank: d?.ivRank ?? null,
       };
     });
 

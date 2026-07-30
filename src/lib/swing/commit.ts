@@ -39,6 +39,8 @@ import type { SwingArchetype, SwingSubLane } from "./taxonomy";
 import { subLaneForDte } from "./taxonomy";
 import { occFromChainContract } from "./occ-from-row";
 import type { SwingCalibrationReport } from "./calibration";
+import type { SwingPillarSignals } from "./swing-pillars";
+import { buildSwingFeatureVector } from "./feature-vector";
 import {
   evaluateSwingCommitBudget,
   DEFAULT_PORTFOLIO_BUDGET,
@@ -123,6 +125,15 @@ export interface SwingCommitCandidate {
   thesisInvalidationPx?: number | null;
   targetUnderlyingPx?: number | null;
   topFlowStrike?: number | null;
+  // ── Feature-vector static thesis part (pinned at commit; echoed on every snapshot) ──
+  pillars?: SwingPillarSignals | null;
+  presentPillars?: number | null;
+  dataQualityDegraded?: boolean | null;
+  archetypeSecondary?: SwingArchetype[] | null;
+  archetypeScores?: Record<string, number> | null;
+  classificationMargin?: number | null;
+  /** UW IV rank (0–100) when known at commit — honest null otherwise; first refresh tick can fill it. */
+  ivRank?: number | null;
 }
 
 /** A live-book position the commit gate reads for budget + caps + idempotency. */
@@ -381,6 +392,25 @@ function buildCommitInsert(
       graduated: true,
       reason: grad.reason,
     },
+    // Pin the static thesis feature vector at commit so trajectory studies can echo pillars/score on
+    // every later snapshot (manage-sync reads this via staticSwingFeatureInputsFromPinned).
+    feature_vector: buildSwingFeatureVector({
+      ticker: cand.ticker,
+      direction: dirLc,
+      archetype: cand.archetype,
+      subLane,
+      evidenceScore: cand.score,
+      presentPillars: cand.presentPillars ?? null,
+      dataQualityDegraded: cand.dataQualityDegraded ?? null,
+      pillars: cand.pillars ?? null,
+      archetypeSecondary: cand.archetypeSecondary ?? null,
+      archetypeScores: cand.archetypeScores ?? null,
+      classificationMargin: cand.classificationMargin ?? null,
+      ivRank: cand.ivRank ?? null,
+      snapshotKind: "commit",
+      snapshotSeq: 0,
+      sessionsElapsed: 0,
+    }) as unknown as Record<string, unknown>,
     status: "OPEN",
   };
 }

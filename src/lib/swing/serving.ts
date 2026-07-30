@@ -151,6 +151,10 @@ export function observablesFromHorizonPlay(play: HorizonPlay): SwingServingObser
     setupState: play.setupState ?? null,
     entryStatus: play.entryStatus ?? null,
     aboveFloor: play.status === "COMMIT",
+    // Live-position observables — stamped by live-plays.ts from the open ledger.
+    liveStatus: play.liveStatus ?? null,
+    manageAction: play.manageAction ?? null,
+    thesisLevel: play.thesisLevel ?? null,
   };
 }
 

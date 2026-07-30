@@ -1,0 +1,89 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { livePlayFromSwingPosition, livePlaysFromOpenPositions, structuralBreakFromSpot } from "./live-plays.ts";
+import type { SwingPositionRow } from "../db.ts";
+
+function row(over: Partial<SwingPositionRow> = {}): SwingPositionRow {
+  return {
+    id: 1,
+    commit_key: "2026-07-24:NVDA:STANDARD:long",
+    root_position_id: null,
+    parent_position_id: null,
+    roll_seq: 0,
+    session_date: "2026-07-24",
+    ticker: "NVDA",
+    direction: "long",
+    sub_lane: "STANDARD",
+    archetype: "BREAKOUT",
+    top_flow_strike: null,
+    contract_strike: 180,
+    contract_expiry: "2026-08-14",
+    contract_type: "call",
+    contract_occ: null,
+    contract_delta: 0.6,
+    entry_underlying_px: 175,
+    thesis_invalidation_px: 165,
+    target_underlying_px: 190,
+    entry_premium: 5.1,
+    last_mark: 5.5,
+    peak_premium: 5.5,
+    trough_premium: 5.0,
+    underlying_mfe: 178,
+    underlying_mae: 174,
+    realized_pnl_pct: null,
+    entry_context: {},
+    gate_calibration_json: {},
+    feature_vector: { evidence_score: 82 },
+    plan_json: null,
+    scale_out_grade: null,
+    grade_json: null,
+    grade_methodology: null,
+    legacy_grade: null,
+    status: "OPEN",
+    first_seen_at: "2026-07-24T14:00:00.000Z",
+    committed_at: "2026-07-24T14:00:00.000Z",
+    closed_at: null,
+    graded_at: null,
+    updated_at: "2026-07-24T14:00:00.000Z",
+    ...over,
+  };
+}
+
+test("structuralBreakFromSpot: LONG breaks at/below invalidation; SHORT above", () => {
+  assert.equal(structuralBreakFromSpot("long", 165, 165), true);
+  assert.equal(structuralBreakFromSpot("long", 166, 165), false);
+  assert.equal(structuralBreakFromSpot("short", 110, 110), true);
+  assert.equal(structuralBreakFromSpot("short", 109, 110), false);
+  assert.equal(structuralBreakFromSpot("long", null, 165), false);
+});
+
+test("livePlayFromSwingPosition: OPEN → MANAGING observables; TRIM → TAKE_PARTIAL", () => {
+  const open = livePlayFromSwingPosition(row(), 178)!;
+  assert.equal(open.liveStatus, "OPEN");
+  assert.equal(open.manageAction, undefined);
+  assert.equal(open.thesisLevel, "intact");
+  assert.equal(open.score, 82);
+
+  const trim = livePlayFromSwingPosition(row({ status: "TRIM" }), 178)!;
+  assert.equal(trim.liveStatus, "TRIM");
+  assert.equal(trim.manageAction, "TAKE_PARTIAL");
+});
+
+test("livePlayFromSwingPosition: structural break stamps EXIT + thesis break", () => {
+  const play = livePlayFromSwingPosition(row(), 160)!; // below 165 invalidation
+  assert.equal(play.manageAction, "EXIT");
+  assert.equal(play.thesisLevel, "break");
+});
+
+test("livePlaysFromOpenPositions skips CLOSED and contract-less rows", () => {
+  const plays = livePlaysFromOpenPositions(
+    [
+      row({ id: 1, status: "OPEN" }),
+      row({ id: 2, status: "CLOSED", ticker: "AMD" }),
+      row({ id: 3, status: "OPEN", ticker: "MSFT", contract_expiry: null }),
+    ],
+    { NVDA: 178 },
+  );
+  assert.equal(plays.length, 1);
+  assert.equal(plays[0]!.ticker, "NVDA");
+});

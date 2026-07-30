@@ -75,15 +75,18 @@ export interface SwingDossier {
   subLane: SwingSubLane | null;
   dataQuality: SwingDataQuality;
   /**
-   * Underlying-terms plan levels (entry / structural invalidation / target) when grounded from daily
+   * Underlying-terms plan levels (entry / structural invalidation / target / ATR) when grounded from daily
    * closes. Pinned onto the ledger at commit so structural_stop can fire — null when price/ATR absent.
+   * ATR rides the plan so the serve path can derive setup maturity without re-fetching bars.
    */
   plan?: Pick<
     SwingPlanLevels,
-    "entryUnderlyingPx" | "thesisInvalidationPx" | "targetUnderlyingPx"
+    "entryUnderlyingPx" | "thesisInvalidationPx" | "targetUnderlyingPx" | "atr"
   > | null;
   /** Top flow magnet strike (from multi-day accumulation), when present — provenance for the contract pick. */
   topFlowStrike?: number | null;
+  /** UW EOD IV rank (0–100) when resolved at ingest — honest null otherwise; pinned onto the feature vector. */
+  ivRank?: number | null;
 }
 
 /** Grounded pillar-helper inputs. Each cluster is optional; an absent cluster → that pillar is null (absent),
@@ -112,6 +115,8 @@ export interface SwingDossierInput {
   planLevels?: SwingPlanLevels | null;
   /** Flow magnet strike when the accumulation read carries one. */
   topFlowStrike?: number | null;
+  /** UW EOD IV rank (0–100 or 0–1) when resolved at ingest — optional, pinned onto the dossier. */
+  ivRank?: number | null;
 }
 
 function toIso(asOf: SwingDossierInput["asOf"]): string {
@@ -154,10 +159,12 @@ export function buildSwingDossier(input: SwingDossierInput): SwingDossier {
         entryUnderlyingPx: input.planLevels.entryUnderlyingPx,
         thesisInvalidationPx: input.planLevels.thesisInvalidationPx,
         targetUnderlyingPx: input.planLevels.targetUnderlyingPx,
+        atr: input.planLevels.atr,
       }
     : null;
   const topFlowStrike =
     input.topFlowStrike != null && Number.isFinite(input.topFlowStrike) ? input.topFlowStrike : null;
+  const ivRank = numOrNull(input.ivRank);
 
   return {
     v: SWING_DOSSIER_VERSION,
@@ -171,5 +178,6 @@ export function buildSwingDossier(input: SwingDossierInput): SwingDossier {
     dataQuality: { degraded, presentPillars, missing },
     plan,
     topFlowStrike,
+    ivRank,
   };
 }

@@ -24,13 +24,23 @@ import {
   emptySwingServingLane,
   type SwingServingLane,
 } from "./serving-board";
-import { swingServingMetaFromDossier, type SwingServingReads } from "./serving-ingest";
+import {
+  buildSwingReadsByTicker,
+  swingServingMetaFromDossier,
+  type SwingServingReads,
+} from "./serving-ingest";
+import type { ChainContract } from "../horizon-fanout";
+import { livePlaysFromOpenPositions } from "./live-plays";
+import type { SwingPositionRow } from "../db";
 
 /** What an injected discovery run must hand back: the scored dossiers + the SWING plays produced from them.
- *  (Matches the relevant slice of PR-11's `SwingDiscoveryResult` — `dossiers` + `playSet.SWING`.) */
+ *  (Matches the relevant slice of PR-11's `SwingDiscoveryResult` — `dossiers` + `playSet.SWING`.)
+ *  Optional `readsByTicker` lets the persisted discover source ground setup maturity without a second
+ *  provider fan-out on the member request path. */
 export interface SwingDiscoveryLike {
   dossiers: SwingDossier[];
   plays: HorizonPlay[];
+  readsByTicker?: Map<string, SwingServingReads>;
 }
 
 export interface SwingServingLaneDeps {
@@ -39,6 +49,11 @@ export interface SwingServingLaneDeps {
   /** Optional grounded price-vs-level reads per ticker (uppercased) — ground the setup/entry observables so
    *  a name can route beyond RESEARCH. Absent for a name ⇒ it degrades honestly (no fabricated maturity). */
   readsByTicker?: Map<string, SwingServingReads>;
+  /** Injected open-book loader for live sections (MANAGING/SCALING_OUT/EXITING). Absent ⇒ live sections stay
+   *  empty (pre-entry only). Cache-reader: the route should pass a DB/Redis reader, never a provider fan-out. */
+  fetchOpenPositions?: () => Promise<SwingPositionRow[]>;
+  /** Optional spots for structural-break detection on live plays (uppercased). Prefer serving-snapshot spots. */
+  spotsByTicker?: Record<string, number>;
 }
 
 /** Index the scored dossiers by ticker (uppercased) so each play can find the thesis it was produced from. */
@@ -76,17 +91,40 @@ function enrichPlay(play: HorizonPlay, dossier: SwingDossier | undefined, reads?
  * failure (no discover, null result, thrown error) degrades to an empty structured lane — never a throw.
  */
 export async function getSwingServingLane(deps: SwingServingLaneDeps = {}): Promise<SwingServingLane> {
-  if (!deps.discover) return emptySwingServingLane();
+  if (!deps.discover && !deps.fetchOpenPositions) return emptySwingServingLane();
   try {
-    const result = await deps.discover();
-    if (!result || !Array.isArray(result.plays) || result.plays.length === 0) {
-      return emptySwingServingLane();
-    }
-    const idx = dossiersByTicker(result.dossiers ?? []);
-    const enriched = result.plays.map((p) =>
-      enrichPlay(p, idx.get(p.ticker.toUpperCase()), deps.readsByTicker?.get(p.ticker.toUpperCase())),
+    const result = deps.discover ? await deps.discover() : null;
+    const discoveryPlays = result && Array.isArray(result.plays) ? result.plays : [];
+    const dossiers = result?.dossiers ?? [];
+    const idx = dossiersByTicker(dossiers);
+    // Prefer an explicit inject; else use reads the discover source already built (persisted spots).
+    const reads = deps.readsByTicker ?? result?.readsByTicker;
+    const enrichedDiscovery = discoveryPlays.map((p) =>
+      enrichPlay(p, idx.get(p.ticker.toUpperCase()), reads?.get(p.ticker.toUpperCase())),
     );
-    return assembleSwingServingLane(enriched);
+
+    // Live sections: merge OPEN ledger rows (injected) so MANAGING/SCALING_OUT/EXITING populate.
+    let livePlays: HorizonPlay[] = [];
+    if (deps.fetchOpenPositions) {
+      const openRows = await deps.fetchOpenPositions().catch(() => []);
+      const spots: Record<string, number> = { ...(deps.spotsByTicker ?? {}) };
+      // Prefer discover reads' setup prices as spot fallback for structural-break detection.
+      for (const [ticker, r] of reads ?? []) {
+        if (spots[ticker] == null && r.setup?.price != null) spots[ticker] = r.setup.price;
+      }
+      livePlays = livePlaysFromOpenPositions(openRows, spots);
+      // Live capital wins the section — drop the pre-entry twin for the same name+side.
+      const liveKeys = new Set(livePlays.map((p) => `${p.ticker.toUpperCase()}|${p.direction}`));
+      const preEntryOnly = enrichedDiscovery.filter(
+        (p) => !liveKeys.has(`${p.ticker.toUpperCase()}|${p.direction}`),
+      );
+      const merged = [...livePlays, ...preEntryOnly];
+      if (merged.length === 0) return emptySwingServingLane();
+      return assembleSwingServingLane(merged);
+    }
+
+    if (enrichedDiscovery.length === 0) return emptySwingServingLane();
+    return assembleSwingServingLane(enrichedDiscovery);
   } catch {
     // MEMBER-SAFE: a discovery/DB hiccup must not throw the route or fabricate plays — serve an empty lane.
     return emptySwingServingLane();
@@ -119,6 +157,12 @@ export interface SwingServingSnapshot {
   plays: HorizonPlay[];
   /** The persistence-cleared WATCH candidates — the gate for which plays may surface to members. */
   watch: SwingWatchCandidate[];
+  /**
+   * Grounded underlying spots (uppercased ticker → price) at scan time — last trade when available,
+   * else the dossier plan's entry price (last close). Member route builds setup/entry reads from these
+   * WITHOUT a per-request provider fan-out (cache-reader rule).
+   */
+  spotsByTicker?: Record<string, number>;
 }
 
 /** Shared-cache key + TTL. TTL outlives a full session day so the latest scan serves until the next scan
@@ -157,5 +201,25 @@ export async function discoverSwingFromPersisted(): Promise<SwingDiscoveryLike |
   if (!snap) return null;
   const cleared = new Set((snap.watch ?? []).map((c) => `${c.ticker.toUpperCase()}|${c.direction}`));
   const plays = (snap.plays ?? []).filter((p) => cleared.has(`${p.ticker.toUpperCase()}|${p.direction}`));
-  return { dossiers: snap.dossiers ?? [], plays };
+  const dossiers = snap.dossiers ?? [];
+  // Contracts from plays (best first) so entry-state can stamp when a WATCH contract is attached.
+  const contractsByTicker = new Map<string, ChainContract>();
+  for (const p of plays) {
+    const key = p.ticker.toUpperCase();
+    if (!contractsByTicker.has(key) && p.contract) contractsByTicker.set(key, p.contract);
+  }
+  // Prefer cron-warmed live spots; fall back to each dossier's plan entry (last close at scan) so a
+  // legacy snapshot without spotsByTicker still grounds setup maturity when plan levels exist.
+  const spots: Record<string, number> = { ...(snap.spotsByTicker ?? {}) };
+  for (const d of dossiers) {
+    const key = d.ticker.toUpperCase();
+    if (spots[key] != null) continue;
+    const px = d.plan?.entryUnderlyingPx;
+    if (px != null && Number.isFinite(px) && px > 0) spots[key] = px;
+  }
+  const readsByTicker = buildSwingReadsByTicker(dossiers, spots, {
+    contractsByTicker,
+    asOf: snap.asOf,
+  });
+  return { dossiers, plays, readsByTicker };
 }

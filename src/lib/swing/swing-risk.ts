@@ -12,7 +12,7 @@
 // betaMissing (or absent spot/premium) ⇒ partial. Only the sub-fields we could actually ground carry a number;
 // the rest stay null.
 //
-// PURE & deterministic — no IO. The beta comes from beta.ts (OLS today; `fetchNameBeta` deferred).
+// PURE & deterministic — no IO. The beta comes from beta.ts (`computeBeta` / `fetchNameBeta` + IndexBetaSource).
 
 import type { PlayDirection } from "../horizon-fanout";
 

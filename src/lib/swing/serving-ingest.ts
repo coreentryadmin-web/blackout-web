@@ -97,6 +97,73 @@ export function thesisBreakFromMeta(meta: SwingServingMeta): { level: SwingThesi
 }
 
 /**
+ * Build grounded setup/entry reads from a dossier's pinned plan levels + a live (or last-known) spot.
+ * Pure — no IO. Returns null when spot or plan levels are absent (honest degrade to RESEARCH/WATCH).
+ * ATR prefers the plan's pinned value; falls back to |entry − invalidation| / 1.5 (the structure-levels
+ * stop distance) so setup EXTENDED math still works on legacy snapshots that omitted atr.
+ */
+export function swingServingReadsFromPlan(
+  dossier: SwingDossier,
+  spot: number | null | undefined,
+  opts?: { contract?: ChainContract | null; asOf?: string },
+): SwingServingReads | null {
+  const plan = dossier.plan;
+  if (!plan || spot == null || !Number.isFinite(spot) || spot <= 0) return null;
+  const entry = plan.entryUnderlyingPx;
+  const inv = plan.thesisInvalidationPx;
+  if (!Number.isFinite(entry) || !Number.isFinite(inv)) return null;
+  const atrFromPlan = plan.atr != null && Number.isFinite(plan.atr) && plan.atr > 0 ? plan.atr : null;
+  const atrFromStop = Math.abs(entry - inv) / 1.5;
+  const atr = atrFromPlan ?? (atrFromStop > 0 ? atrFromStop : null);
+  const reads: SwingServingReads = {
+    setup: {
+      price: spot,
+      triggerPx: entry,
+      invalidationPx: inv,
+      atr,
+    },
+    entry: {
+      price: spot,
+      triggerPx: entry,
+      atr,
+    },
+    asOf: opts?.asOf,
+  };
+  if (opts?.contract) reads.contract = opts.contract;
+  return reads;
+}
+
+/**
+ * Index dossiers × spots (and optional play contracts) into the reads map `getSwingServingLane` consumes.
+ * Tickers without a grounded spot/plan are omitted — those rows stay RESEARCH honestly.
+ */
+export function buildSwingReadsByTicker(
+  dossiers: readonly SwingDossier[],
+  spotsByTicker: Record<string, number> | Map<string, number>,
+  opts?: { contractsByTicker?: Map<string, ChainContract>; asOf?: string },
+): Map<string, SwingServingReads> {
+  const spotOf = (ticker: string): number | null => {
+    const key = ticker.toUpperCase();
+    if (spotsByTicker instanceof Map) {
+      const v = spotsByTicker.get(key);
+      return v != null && Number.isFinite(v) ? v : null;
+    }
+    const v = spotsByTicker[key];
+    return v != null && Number.isFinite(v) ? v : null;
+  };
+  const out = new Map<string, SwingServingReads>();
+  for (const d of dossiers) {
+    const key = d.ticker.toUpperCase();
+    const reads = swingServingReadsFromPlan(d, spotOf(key), {
+      contract: opts?.contractsByTicker?.get(key) ?? null,
+      asOf: opts?.asOf,
+    });
+    if (reads) out.set(key, reads);
+  }
+  return out;
+}
+
+/**
  * Distill one dossier (± grounded reads) into the per-ticker serving meta. Factors come straight from the
  * dossier's scored pillar contributions; the regime blends the archetype label with the regime pillar; the
  * thesis level is derived from setup maturity + data-quality with the data-absent → "unknown" honesty rule.

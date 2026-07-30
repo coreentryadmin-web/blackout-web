@@ -9,6 +9,7 @@ import {
   analyzeContractRankCalibration,
   analyzeAllocationRecord,
   analyzeSwingCalibration,
+  graduatedEdgeRungsFromReport,
   isGradedSwingRow,
   swingCalibrationRowFromLedger,
   swingGraduationTier,
@@ -400,4 +401,19 @@ test("analyzeSwingCalibration — a fully-cleared bucket (n>=30 + Wilson-LB) fli
   assert.equal(rep.sub_lane_floors.filter((r) => r.floorGraduated).length, 0);
   assert.equal(rep.edge_gates.filter((r) => r.enforced).length, 0);
   assert.equal(rep.exit_rungs.filter((r) => r.rungGraduated).length, 0);
+});
+
+test("graduatedEdgeRungsFromReport: empty/null → []; only rungGraduated:true rungs surface", () => {
+  assert.deepEqual(graduatedEdgeRungsFromReport(null), []);
+  assert.deepEqual(graduatedEdgeRungsFromReport(analyzeSwingCalibration([])), []);
+  // Synthesize a report where exactly one exit rung graduated (shape-minimal — helper only reads the flag).
+  const rep = analyzeSwingCalibration([]);
+  const synthetic = {
+    ...rep,
+    exit_rungs: SWING_EDGE_RUNGS.map((rung) => ({
+      ...rep.exit_rungs.find((r) => r.rung === rung)!,
+      rungGraduated: rung === "catalyst_shift",
+    })),
+  };
+  assert.deepEqual(graduatedEdgeRungsFromReport(synthetic), ["catalyst_shift"]);
 });

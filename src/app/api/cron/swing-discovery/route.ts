@@ -47,7 +47,12 @@ import { resolveTickerChainRows } from "@/features/nighthawk/lib/option-chain-pr
 import { fetchDailyMarketSummary, fetchStockDailyBars } from "@/lib/providers/polygon";
 import { fetchPolygonTickerDetails } from "@/lib/providers/polygon-largo";
 import { fetchTickerNews, DEFAULT_CATALYST_CHANNELS } from "@/lib/providers/polygon-news";
-import { fetchUwTickerEarningsHistory, fetchUwIvRank } from "@/lib/providers/unusual-whales";
+import {
+  fetchUwTickerEarningsHistory,
+  fetchUwIvRank,
+  fetchUwIvRankSeries,
+} from "@/lib/providers/unusual-whales";
+import { fetchStockLastTrade } from "@/lib/providers/polygon-largo";
 import {
   MULTI_DAY_FLOW_HOURS,
   MULTI_DAY_MIN_PREMIUM,
@@ -114,6 +119,12 @@ function buildDiscoveryDeps(nowMs: number, sessionDay: string, phase: SwingDisco
           fetchEarningsRows: (ticker) =>
             fetchUwTickerEarningsHistory(ticker, 8) as Promise<Array<Record<string, unknown>>>,
           fetchIvRank: (ticker) => fetchUwIvRank(ticker),
+          // Historical IV-rank series — fills the VOLATILITY pillar / feature-vector iv_rank when the
+          // point stats endpoint is thin (SWING-ENGINE §6 gap #2). Long-TTL cached; fail-soft → null.
+          fetchIvRankSeries: async (ticker) => {
+            const rows = await fetchUwIvRankSeries(ticker, 30);
+            return Array.isArray(rows) ? (rows as Array<Record<string, unknown>>) : null;
+          },
           // SECTOR_ROTATION benchmark classifier: Polygon reference data (sic_code/sic_description/type) —
           // rate-limit-free and already fail-open (→ null). Resolves the name's industry-group / sector ETF so
           // the archetype classifies on real industry-group RS instead of the coarse name-vs-SPY RS. A hiccup
@@ -262,12 +273,34 @@ export async function GET(req: NextRequest) {
     // Persist the scored output so the member horizons route can serve it. If the write fails, RELEASE the
     // phase claim so the next EventBridge fire can retry — upgrading to DONE without a snapshot locks the
     // member board on a stale/empty state for 22h.
+    // Ground setup-maturity spots for the member serve path (cache-reader): start from each dossier's
+    // plan entry (last close at ingest), then refresh live last-trade for persistence-cleared WATCH
+    // names so FORMING/TRIGGERED/EXTENDED can diverge from the pinned trigger during RTH.
+    const spotsByTicker: Record<string, number> = {};
+    for (const d of result.dossiers) {
+      const px = d.plan?.entryUnderlyingPx;
+      if (px != null && Number.isFinite(px) && px > 0) spotsByTicker[d.ticker.toUpperCase()] = px;
+    }
+    const watchTickers = [...new Set(result.watchCandidates.map((w) => w.ticker.toUpperCase()))].slice(0, 40);
+    await Promise.all(
+      watchTickers.map(async (ticker) => {
+        try {
+          const trade = await fetchStockLastTrade(ticker);
+          const p = trade && typeof trade === "object" ? Number((trade as Record<string, unknown>).p) : NaN;
+          if (Number.isFinite(p) && p > 0) spotsByTicker[ticker] = p;
+        } catch {
+          // fail-soft: keep the plan-entry fallback
+        }
+      }),
+    );
+
     const persisted = await persistSwingServingSnapshot({
       asOf: result.asOf,
       sessionDay,
       dossiers: result.dossiers,
       plays: result.playSet.SWING,
       watch: result.watchCandidates,
+      spotsByTicker,
     });
     if (!persisted) {
       if (decision.key) {

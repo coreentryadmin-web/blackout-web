@@ -3,7 +3,12 @@ import assert from "node:assert/strict";
 import { buildSwingDossier, type SwingDossierInput } from "./dossier.ts";
 import type { SwingReads } from "../swing-signals.ts";
 import type { ZeroDteFlowAccumulation } from "../zerodte/flow-accumulation-context.ts";
-import { swingServingMetaFromDossier, thesisBreakFromMeta } from "./serving-ingest.ts";
+import {
+  swingServingMetaFromDossier,
+  thesisBreakFromMeta,
+  swingServingReadsFromPlan,
+  buildSwingReadsByTicker,
+} from "./serving-ingest.ts";
 
 function accum(direction: "bull" | "bear", days: number): ZeroDteFlowAccumulation {
   return {
@@ -114,4 +119,42 @@ test("entryStatus derives when grounded entry reads + a contract are supplied", 
     },
   });
   assert.equal(meta.entryStatus, "AT_TRIGGER");
+});
+
+test("swingServingReadsFromPlan: grounded spot + plan → setup/entry reads; absent → null", () => {
+  const d = buildSwingDossier({
+    ...fullInput,
+    planLevels: {
+      entryUnderlyingPx: 100,
+      thesisInvalidationPx: 94,
+      targetUnderlyingPx: 110.8,
+      atr: 4,
+    },
+  });
+  assert.equal(swingServingReadsFromPlan(d, null), null);
+  const reads = swingServingReadsFromPlan(d, 101);
+  assert.ok(reads?.setup);
+  assert.equal(reads!.setup!.price, 101);
+  assert.equal(reads!.setup!.triggerPx, 100);
+  assert.equal(reads!.setup!.invalidationPx, 94);
+  assert.equal(reads!.setup!.atr, 4);
+  assert.equal(reads!.entry!.price, 101);
+});
+
+test("buildSwingReadsByTicker indexes only names with a grounded spot+plan", () => {
+  const withPlan = buildSwingDossier({
+    ...fullInput,
+    ticker: "NVDA",
+    planLevels: {
+      entryUnderlyingPx: 100,
+      thesisInvalidationPx: 94,
+      targetUnderlyingPx: 110.8,
+      atr: 4,
+    },
+  });
+  const bare = buildSwingDossier({ ...fullInput, ticker: "BARE" });
+  const map = buildSwingReadsByTicker([withPlan, bare], { NVDA: 102 });
+  assert.equal(map.has("NVDA"), true);
+  assert.equal(map.has("BARE"), false);
+  assert.equal(map.get("NVDA")!.setup!.price, 102);
 });

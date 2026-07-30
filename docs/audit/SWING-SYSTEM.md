@@ -466,7 +466,9 @@ node --import tsx --experimental-test-module-mocks --test src/lib/swing/**/*.tes
 ```
 
 Cron health: registry keys `swing-discovery`, `swing-active-refresh` in `src/lib/cron-registry.ts`.  
-Note: these crons are **EventBridge-only** today (no `railway.swing-*.toml` catalog entries) — do not assume `sync-cron-schedules.mjs` manages them.
+Schedule catalog: `railway.swing-discovery.toml` (`*/30 * * * 1-5`) + `railway.swing-active-refresh.toml`
+(`0 11-21 * * 1-5`). EventBridge rules are synced from these via
+`blackout-infra/scripts/sync-cron-schedules.mjs` — a TOML add alone does not create the rule until sync runs.
 
 ---
 

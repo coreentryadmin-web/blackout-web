@@ -29,6 +29,7 @@ import {
 // as a type). These enrich a play with the OBSERVABLE swing state the serving router keys on.
 import type { SwingArchetype, SwingSubLane, SwingSetupState, SwingEntryState } from "./swing/taxonomy";
 import type { SwingServingSection } from "./swing/serving";
+import type { SwingManageAction } from "./swing/manage";
 
 /**
  * A whole-market candidate from discovery, with its full option chain attached.
@@ -101,6 +102,10 @@ export interface HorizonPlay {
   /** Thesis-health level for the desk — "unknown" when no setup read (never a fabricated intact). */
   thesisLevel?: "intact" | "warn" | "break" | "unknown";
   thesisNote?: string | null;
+  /** Live-position status when this play is an OPEN swing (OPEN/HOLD/TRIM) — drives live sections. */
+  liveStatus?: "OPEN" | "HOLD" | "TRIM";
+  /** Management action for a live position (manage.ts) — drives MANAGING/SCALING_OUT/EXITING. */
+  manageAction?: SwingManageAction;
 }
 
 /** The three lanes a candidate pool fans out into. */
