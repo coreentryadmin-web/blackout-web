@@ -142,6 +142,17 @@ export const CRON_JOBS: CronJobDefinition[] = [
     description: "Warms 0DTE Command's earnings-match cache (readGridEarnings, relocated from the deleted classic-Grid tool) and runs its always-on scanner tick (warmZeroDteBoard) so zerodte_setup_log stays current",
   },
   {
+    key: "zerodte-grade",
+    name: "0DTE Ledger Grade",
+    kind: "http",
+    path: "/api/cron/zerodte-grade",
+    schedule_label: "Every 15 min post-close (16:00–18:00 ET band)",
+    stale_after_min: 6 * 60,
+    weekdays_only: true,
+    description:
+      "Standalone zerodte_setup_log grading (gradeZeroDteLedger force=true) — decoupled from zerodte-warm so post-close rows grade promptly without the warm cron's 10-minute throttle",
+  },
+  {
     key: "swing-discovery",
     name: "Night Hawk Swing Discovery",
     kind: "http",
@@ -160,8 +171,8 @@ export const CRON_JOBS: CronJobDefinition[] = [
     name: "Night Hawk Swing Refresh",
     kind: "http",
     path: "/api/cron/swing-active-refresh",
-    schedule_label: "Hourly (market hours)",
-    stale_after_min: 3 * 60,
+    schedule_label: "Every 15 min (market hours)",
+    stale_after_min: 25,
     weekdays_only: true,
     market_hours_only: true,
     description:

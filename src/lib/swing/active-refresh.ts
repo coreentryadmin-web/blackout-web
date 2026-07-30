@@ -1,7 +1,7 @@
 // src/lib/swing/active-refresh.ts — the held-position refresh loop for the swing-active-refresh cron (PR-13).
 //
 // WHY (docs/audit/SWING-ENGINE.md §4 PR-13): once positions persist, the desk needs their live path recorded
-// on a heartbeat — hourly, this loop reads every OPEN swing position, gathers fresh marks, APPENDS a snapshot
+// on a heartbeat — every 15 minutes during RTH, this loop reads every OPEN swing position, gathers fresh marks, APPENDS a snapshot
 // to its longitudinal series, and runs the PR-7 manager (via manage-sync) to latch live state. That snapshot
 // series is what the multi-truth grader (PR-8) and the trajectory studies (PR-14) later consume.
 //
@@ -24,7 +24,7 @@ import {
   type ManageSyncReads,
 } from "./manage-sync";
 
-/** The default snapshot kind the hourly refresh appends. The end-of-day settle uses the same `eod` kind — the
+/** The default snapshot kind the refresh appends. The end-of-day settle uses the same `eod` kind — the
  *  snapshot's timestamp distinguishes them; the grader keys off the ordered series, not per-tick labels. */
 export const DEFAULT_ACTIVE_REFRESH_SNAPSHOT_KIND = "eod";
 
@@ -53,7 +53,7 @@ export interface ActiveRefreshResult {
 }
 
 /**
- * Run one hourly active-refresh pass. Fetches the open positions, then for each one loads fresh reads and
+ * Run one active-refresh pass (15-minute RTH cadence). Fetches the open positions, then for each one loads fresh reads and
  * (append snapshot → latch live state) through manage-sync. Every position is isolated in its own try/catch so
  * one failure can't sink the batch; the whole thing is fail-soft and NEVER opens or closes a position.
  */

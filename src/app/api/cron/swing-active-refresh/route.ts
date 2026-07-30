@@ -1,12 +1,12 @@
-// Cron: hourly MARK-AND-REVIEW of held SWING positions (not responsive intrabar live management).
+// Cron: 15-minute MARK-AND-REVIEW of held SWING positions during RTH.
 //
-// WHY: once positions persist, the desk needs each one's live path recorded on a heartbeat. Hourly, this route
-// reads every OPEN swing position, gathers fresh underlying/mark reads, APPENDS a snapshot to the position's
-// longitudinal series, and runs the manager (via manage-sync) to latch live state on THAT SAMPLE. Stops,
-// premium backstops, and scale cues are evaluated at sample time — intrahour touch-and-recover can be missed.
-// Tactical (2–7 DTE) needs a faster cadence before we can claim responsive live management; until then this
-// is an hourly mark-and-review model. Snapshot series still feeds the offline multi-family grader (when bars
-// are supplied) and trajectory studies.
+// WHY: once positions persist, the desk needs each one's live path recorded on a heartbeat. Every
+// 15 minutes during market hours, this route reads every OPEN swing position, gathers fresh
+// underlying/mark reads, APPENDS a snapshot to the position's longitudinal series, and runs the
+// manager (via manage-sync) to latch live state on THAT SAMPLE. Stops, premium backstops, and
+// scale cues are evaluated at sample time — intrahour touch-and-recover can still be missed between
+// samples, but TACTICAL (2–7 DTE) positions now get four samples per hour instead of one.
+// Snapshot series still feeds the offline multi-family grader (when bars are supplied) and trajectory studies.
 //
 // INVARIANTS: NEVER opens a position (no insertSwingPosition path). Snapshots are APPEND-ONLY. FAIL-SOFT: a
 // bad read or DB error on one position is isolated and tallied; it never aborts the loop or throws out of
