@@ -1,7 +1,69 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-30 15:10 ET
+Last updated: 2026-07-30 16:02 ET
 
-## grid-rth-2026-07-30 — 0DTE Command all-day verify pass (~14:59–15:10 ET)
+## spx-rth-2026-07-30 — SPX Slayer all-day verify pass (~15:39–16:02 ET)
+
+**Session:** SPX Slayer all-day RTH agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` **verify** mode (scheduled 6:30 AM PT / 9:30 AM ET open; executed ~12:39 PM PT / 3:39 PM ET afternoon pass). Commands: `npm run validate:spx-rth` → `npm run validate:spx-e2e` + 60s live API poll + cross-tool Step 3.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth` | ✅ **8 PASS / 1 WARN / 0 FAIL** — GREEN after audit fix |
+| `npm run validate:spx-e2e` | ✅ **17 PASS / 0 FAIL** (1 SKIP, 1 WARN) |
+| `ops:collect` (via spx-rth) | ✅ **exit 0** — zero action items |
+| Matrix deep audit | ✅ **172–173 strikes · 32 checks · 0 flags** (post-fix) |
+| Live auto-update (60s poll) | ✅ Spot/heatmap/play endpoints tick during RTH (desk ~7434–7441, play WATCHING→SCANNING transitions observed across passes) |
+
+**One P1 audit false-flag fixed** (PR). **No P0 product defects.**
+
+### Findings table
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| **P1** | `spx-matrix-audit-per-strike-flip-oracle` | `heatmap-matrix-audit.mjs` used per-strike neg→pos flip; production uses `cumulativeGammaFlip` → false `gex.flip` FAIL (7606 vs 7446) while every cell + cross-endpoint GREEN | `GET /api/market/gex-heatmap?ticker=SPX` | **FIXED** — PR `fix/spx-matrix-audit-cumulative-flip` |
+| P2 | `spx-matrix-fetch-transient` | Matrix audit `fetch: terminated` on 1/3 orchestrator runs (network blip); re-run GREEN | same | Transient — no code change |
+| P2 | `spx-e2e-commentary-toggle` | E2E SKIP `ui:click-commentary-expand` — default left rail is ⚡ Pulse; Largo commentary toggle is `#spx-commentary-rail-toggle` behind `spx-intel-rail-tab` | `/dashboard` UI | Post-close — update E2E to click Pulse→Commentary tab first |
+| P2 | `spx-cron-secret-mismatch` | `spx:data-correctness` + `integration:bie-play-route` WARN — cloud agent `CRON_SECRET` auth mismatch (full sweep runs on prod cron) | cron plane | Known env — not a product defect |
+
+### Matrix validation (every cell)
+
+| Lens | Strikes | Result |
+|---|---|---|
+| GEX | 172–173 | ✅ All cells finite; re-sum == `strike_totals`; king/walls/flip invariants pass |
+| VEX | 172–173 | ✅ All cells finite; totals reconcile |
+| DEX + CHARM | 172–173 | ✅ Included in `matrix:every-cell-api` |
+
+Playwright: GEX tab ✅ · VEX tab ✅ · 177 visible rows ✅ · zero NaN/undefined ✅ · zero console errors ✅.
+
+### Trade alerts (`SpxTradeAlerts`)
+
+| Check | Result |
+|---|---|
+| Hero action | ✅ Matches `/api/market/spx/play` (`WATCHING` / `SCANNING` during pass) |
+| SCANNING confirmations | ✅ No stale ✓ panel during SCANNING |
+| Score / levels | ✅ Grounded in play payload when WATCHING |
+
+### Cross-tool integration (Step 3)
+
+| Tool | Endpoint | Result |
+|---|---|---|
+| **Thermal** | `GET /api/market/gex-heatmap?ticker=SPX` | ✅ Same payload as dashboard matrix |
+| **GEX positioning** | desk vs heatmap spot/flip | ✅ `spotsAgree` within tolerance |
+| **HELIX** | `GET /api/market/flows?limit=30` | ✅ 30 prints |
+| **Largo** | `POST /api/market/largo/query` | ✅ `tools=blackout_intelligence` grounded |
+| **BIE** | `validate:spx-bie` | ✅ `getSpxPlayState()` consistent |
+| **Grid** | `GET /api/market/spx/bootstrap` | ✅ Loaded; spot not stale vs desk |
+| **0DTE Command** | `GET /api/market/zerodte/board` | ✅ 15 setups |
+| **Night Hawk** | `GET /api/market/nighthawk/edition` | ✅ Edition loads |
+
+### Reports
+
+- `audit-output/spx-rth-2026-07-30-verify-1785441763051.json` (final GREEN)
+- `audit-output/spx-dashboard-e2e-1785441505059.json` (0 FAIL)
+
+---
+
 
 **Session:** Grid RTH all-day agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` **verify** mode (scheduled 6:30 AM PT / 9:30 AM ET open; executed ~11:59 AM PT / 2:59 PM ET afternoon POWER_HOUR). Commands: `npm run validate:grid-rth` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e` (Playwright Chromium installed for full UI pass).
 
