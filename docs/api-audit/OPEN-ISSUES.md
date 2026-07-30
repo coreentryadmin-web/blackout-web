@@ -1,5 +1,33 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-30 12:05 ET
+Last updated: 2026-07-30 12:35 ET
+
+## rth-comprehensive-2026-07-30-afternoon — RTH agent pass (~12:08–12:35 ET)
+
+**Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` including **RTH COMPREHENSIVE TEST SWEEP**. Commands: `npm run validate:rth-open` → `GET /api/cron/data-correctness?force=1` → `npm run validate:rth-sweep` → `npm run ops:collect`.
+
+### Validation summary (pre-fix deploy)
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` | ❌ **FAIL** — socket-health HTTP 503 (UW cluster heartbeat stale; options shard ok) |
+| `GET /api/cron/data-correctness?force=1` | ❌ **HTTP 504** — CF ~100s origin timeout on full 7-surface sweep |
+| `npm run ops:collect` | ❌ **4 items** — P0 stale: `bie-full-state-snapshot`, `coaching-alerts`, `vector-dark-pool-warm`; P1: `socket-health` |
+| `desk-warm` (validate:deploy) | ⚠️ HTTP **504** (244s) — exceeds CF origin cap |
+
+### Root causes + fixes (PR #1348 / delta on #1343)
+
+| ID | Severity | Root cause | Fix |
+|---|---|---|---|
+| `uw-heartbeat-stale` | P1 | `uw:ws:last_msg_at` not refreshed when ingest WS reconnects | `seedUwClusterHeartbeat()` from `uw-cache-refresh` + `socket-health` probe |
+| `desk-warm-cf-504` | P0 | `desk-warm` awaited synchronously (244s) | `after()` dispatch + 202 |
+| `data-correctness-cf-504` | P1 | Full sweep exceeds CF ~100s | `?force=1` async via `after()`; `?surface=heatmap` sync |
+| `rth-open-503-blind` | P2 | Failed on HTTP 503 without parsing body | Parse socket-health JSON on any status |
+
+Note: `bie-full-state-snapshot`, `coaching-alerts`, `vector-dark-pool-warm` already fixed in #1343 — afternoon failures were pre-deploy.
+
+**GitHub issue:** [#1347](https://github.com/coreentryadmin-web/blackout-web/issues/1347) (ops-auto-fix)
+
+---
 
 ## rth-comprehensive-2026-07-30 — RTH-open runbook + full sweep (~11:30–12:05 ET)
 

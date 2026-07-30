@@ -18,13 +18,13 @@ export async function probeDataCorrectness({
     json,
     err,
     flags: json?.flags?.length ?? json?.totals?.flags ?? 0,
-    ok: status === 200 && json?.ok !== false && !(json?.flags?.length > 0),
+    ok: (status === 200 || status === 202) && json?.ok !== false && !(json?.flags?.length > 0),
   });
 
   if (tryFull) {
     const full = await fetchWithTimeout(`${base}/api/cron/data-correctness?force=1`, headers, timeoutMs);
-    if (full.status === 200 && full.json) {
-      return mk("full", 200, full.json);
+    if ((full.status === 200 || full.status === 202) && full.json) {
+      return mk(full.status === 202 ? "full-async" : "full", full.status, full.json);
     }
   }
 

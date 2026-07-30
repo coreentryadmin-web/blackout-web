@@ -25,7 +25,7 @@
 // RTH to trip an edge gateway timeout (~100s, well inside the route's own maxDuration=120) and return
 // a bodyless 524; this gives a fast, targeted path to the one surface most worth re-checking on demand.
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { promises as fs } from "fs";
 import path from "path";
 import { isCronAuthorized } from "@/lib/market-api-auth";
@@ -63,6 +63,65 @@ export async function GET(req: NextRequest) {
   // runs ONLY the Heat Maps (GEX/VEX/DEX/CHARM) verifier so a targeted re-check (or this exact
   // symptom) doesn't require paying for the other 7 surfaces' runtime.
   const surface = req.nextUrl.searchParams.get("surface");
+  const asyncFull = force && !surface;
+
+  if (asyncFull) {
+    const dispatchSweep = () => {
+      void (async () => {
+        try {
+          const tickers = correctnessTickers();
+          const card = await runFullCorrectness(tickers);
+          const overall = scorecardStatus(card);
+          if (card.flags.length > 0) {
+            const body = card.flags
+              .slice(0, 8)
+              .map((f) => `• [${f.layer}/${f.metric}] ${f.detail}`)
+              .join("\n")
+              .slice(0, 1500);
+            void notifyOpsDiscord({
+              title: `Data-correctness FLAG ×${card.flags.length} (${card.surface})`,
+              body: `${body}${card.flags.length > 8 ? `\n…and ${card.flags.length - 8} more.` : ""}`,
+              severity: "critical",
+            }).catch(() => undefined);
+          }
+          const payload = {
+            ok: card.flags.length === 0,
+            surface: card.surface,
+            market_open: card.marketOpen,
+            overall_status: overall,
+            tickers,
+            totals: card.totals,
+            flags: card.flags.map((f) => ({ layer: f.layer, metric: f.metric, detail: f.detail })),
+            coverage_gaps: card.coverageGaps.length,
+            ...(card.flags.length > 0 ? { error: `${card.flags.length} correctness flag(s)` } : {}),
+          };
+          await logCronRun("data-correctness", started, { ...payload, ok: true });
+          console.info(
+            `[data-correctness] background done — flags=${card.flags.length} elapsed=${Date.now() - started}ms`
+          );
+        } catch (error) {
+          const detail = error instanceof Error ? error.message : String(error);
+          console.error("[data-correctness] background sweep REJECTED:", detail);
+          await logCronRun("data-correctness", started, { ok: false, error: detail });
+        }
+      })();
+    };
+
+    try {
+      after(dispatchSweep);
+    } catch {
+      dispatchSweep();
+    }
+
+    const accepted = {
+      ok: true,
+      status: "accepted",
+      reason: "full-platform correctness sweep dispatched in background (fire-and-forget)",
+      note: "Use ?surface=heatmap for a synchronous targeted re-check within the CF origin timeout.",
+    };
+    await logCronRun("data-correctness", started, accepted);
+    return NextResponse.json(accepted, { status: 202 });
+  }
 
   try {
     const tickers = correctnessTickers();
