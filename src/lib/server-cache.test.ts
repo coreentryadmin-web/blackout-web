@@ -118,3 +118,62 @@ test("stale-while-revalidate background refresh swallows loader errors (no unhan
   process.off("unhandledRejection", onRejection);
   assert.equal(rejections, 0, "background SWR refresh must not emit unhandledRejection");
 });
+
+test("staleOnInflight returns stale instead of awaiting a slow pending refresh", async () => {
+  const { withServerCache } = await import("./server-cache");
+  const key = `test:stale-on-inflight:${Math.random()}`;
+  const ttl = 5;
+
+  await withServerCache(key, ttl, async () => ({ n: 1 }), { staleWhileRevalidate: false });
+  await new Promise((r) => setTimeout(r, ttl + 5));
+
+  let releaseSlow!: () => void;
+  const slowGate = new Promise<void>((resolve) => {
+    releaseSlow = resolve;
+  });
+
+  const slowRefresh = withServerCache(
+    key,
+    ttl,
+    async () => {
+      await slowGate;
+      return { n: 2 };
+    },
+    { staleWhileRevalidate: false }
+  );
+
+  const concurrent = withServerCache(
+    key,
+    ttl,
+    async () => ({ n: 3 }),
+    { staleOnInflight: true, staleWhileRevalidate: false }
+  );
+
+  const value = await Promise.race([
+    concurrent,
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 50)),
+  ]);
+
+  assert.deepEqual(value, { n: 1 });
+  releaseSlow();
+  await slowRefresh;
+});
+
+test("maxBlockMs serves fallback instead of blocking on a slow cold loader", async () => {
+  const { withServerCache } = await import("./server-cache");
+  const key = `test:max-block:${Math.random()}`;
+  const ttl = 60_000;
+
+  const value = await withServerCache(
+    key,
+    ttl,
+    () => new Promise<{ ok: boolean }>((resolve) => setTimeout(() => resolve({ ok: true }), 500)),
+    {
+      maxBlockMs: 30,
+      fallback: async () => ({ ok: false }),
+      staleWhileRevalidate: false,
+    }
+  );
+
+  assert.deepEqual(value, { ok: false });
+});

@@ -83,6 +83,16 @@ type CacheOpts = {
    * (Redis-backed) so every existing caller is unchanged.
    */
   localOnly?: boolean;
+  /**
+   * When a refresh is already in-flight, return stale / Redis / fallback instead of awaiting
+   * the pending build. Prevents concurrent pulse polls from piling up behind one slow cold
+   * replica (audit 2026-07-30: 4/5 pulse XHRs timed out at 12s waiting on single-flight).
+   */
+  staleOnInflight?: boolean;
+  /** Hard cap (ms) on how long a cold miss may block before serving fallback. */
+  maxBlockMs?: number;
+  /** Served when maxBlockMs fires or staleOnInflight finds no stale/Redis copy. */
+  fallback?: () => Promise<unknown>;
 };
 
 /**
@@ -146,7 +156,10 @@ export async function withServerCache<T>(
 
   // Fast lanes: always await a fresh build once TTL expires (no stale handoff).
   if (hit && hit.expiresAt <= now && !swr) {
-    if (inflight.has(key)) return inflight.get(key) as Promise<T>;
+    if (inflight.has(key)) {
+      if (opts.staleOnInflight) return hit.value;
+      return inflight.get(key) as Promise<T>;
+    }
     return refreshCache(key, ttlMs, loader, localOnly);
   }
 
@@ -181,7 +194,38 @@ export async function withServerCache<T>(
   }
 
   const pending = inflight.get(key) as Promise<T> | undefined;
-  if (pending) return pending;
+  if (pending) {
+    if (opts.staleOnInflight) {
+      if (hit) return hit.value;
+      if (!localOnly) {
+        const redisHit = await readRedisCache<T>(key);
+        if (redisHit != null) {
+          const remainingMs = redisHit.remainingTtlSec * 1000;
+          setStoreEntry(key, {
+            value: redisHit.value,
+            expiresAt: now + remainingMs,
+            refreshedAt: now,
+          });
+          return redisHit.value;
+        }
+      }
+      if (opts.fallback) return opts.fallback() as Promise<T>;
+    }
+    return pending;
+  }
+
+  const maxBlock = opts.maxBlockMs;
+  if (maxBlock != null && Number.isFinite(maxBlock) && maxBlock > 0) {
+    const refresh = refreshCache(key, ttlMs, loader, localOnly);
+    const raced = await Promise.race([
+      refresh,
+      new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), maxBlock)),
+    ]);
+    if (raced !== "timeout") return raced;
+    if (opts.fallback) return opts.fallback() as Promise<T>;
+    if (hit) return hit.value;
+    return refresh;
+  }
 
   return refreshCache(key, ttlMs, loader, localOnly);
 }

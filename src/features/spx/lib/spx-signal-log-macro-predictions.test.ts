@@ -86,6 +86,12 @@ mock.module("../../../lib/providers/spx-session", {
 mock.module("../../../lib/providers/config", {
   namedExports: {
     uwConfigured: () => state.uwConfigured,
+    // spx-desk-loader evaluates maxBlockMs at module load — partial config mocks must stub these.
+    deskPulseMaxBlockMs: () => 500,
+    deskBootstrapMaxBlockMs: () => 3_000,
+    deskCacheTtlMs: () => 20_000,
+    deskPulseCacheTtlMs: () => 1_000,
+    deskFlowCacheTtlMs: () => 2_000,
   },
 });
 mock.module("../../../lib/providers/unusual-whales", {

@@ -5,6 +5,23 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-30 — [spx] REST pulse cold path blocked 12s+ (single-flight + prior-day fetch)
+
+**Severity.** P0 — SPX spot felt frozen when SSE dropped; REST fallback timed out at 12–60s.
+
+**Symptom.** Prod probes: 4/5 `/api/market/spx/pulse` XHRs timed out at 12s; 1 warm hit at 30ms.
+SSE `/pulse/stream` GREEN @ 250ms. Bootstrap ~6.5s.
+
+**Root cause.** (1) `withServerCache` single-flight: concurrent pulse polls awaited one slow cold
+`buildSpxDeskPulse()` on the same replica. (2) `priorDayForPulseLane()` blocked on
+`fetchIndexDailyBars()` on first call per replica. (3) Bootstrap awaited full desk rebuild.
+
+**Fix.** `server-cache`: `staleOnInflight` + `maxBlockMs` + `fallback`. Pulse loader: 500ms cap +
+`buildSpxDeskPulseMinimal()` (Redis snapshot only). Bootstrap: 3s cap + pulse-first fast lane.
+`priorDayForPulseLane()` never blocks cold.
+
+**Status.** FIXED on `cursor/pulse-never-block-3d11`.
+
 ## 2026-07-30 — [ops] swing-active-refresh RTH-stale edge timeout (#1364)
 
 **Severity.** P0 — Swing mark-and-review loop silent during RTH; `vector-universe-snapshot` also
@@ -480,7 +497,7 @@ watchdog; `data-correctness?force=1` reproduced FLAG pre-fix.
 violation only (same direction + valid subset → independently confirmed).
 
 **Status.** `fix/ops-1287-autopost-flow-xcheck` → PR.
-=======
+
 ## 2026-07-29 — [Thermal+Vector] Shared sticky universe (≤100 / 14d)
 
 **Severity.** P2 product gap — Vector already sticky-recorded member-viewed names (cap 100,
@@ -497,7 +514,6 @@ already called `listDynamicUniverseTickers` — not Thermal matrix warm.
 overlays stay on the static allowlist (2 RPS). CORE SPY/SPX/QQQ still force-refresh first.
 
 **Status.** `cursor/thermal-share-dynamic-universe-3d11` → PR.
->>>>>>> 1d12b294 (feat(thermal): share Vector sticky universe (≤100/14d) for matrix warm)
 
 ## 2026-07-29 — [Thermal] Triple desk SPY/QQQ not refreshing every 5–10s
 

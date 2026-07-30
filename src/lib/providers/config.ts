@@ -47,6 +47,30 @@ export function deskPulseStructureRaceMs(): number {
   return Math.round(ms);
 }
 
+/** Max ms REST pulse may block on a cold miss before serving Redis/last-good fallback. Default 500ms. */
+export function deskPulseMaxBlockMs(): number {
+  const raw = process.env.SPX_PULSE_MAX_BLOCK_MS?.trim();
+  const ms = raw ? Number(raw) : 500;
+  if (!Number.isFinite(ms) || ms < 100) return 500;
+  return Math.round(ms);
+}
+
+/** Max ms bootstrap bundle may block before serving pulse-first partial bundle. Default 3s. */
+export function deskBootstrapMaxBlockMs(): number {
+  const raw = process.env.SPX_BOOTSTRAP_MAX_BLOCK_MS?.trim();
+  const ms = raw ? Number(raw) : 3_000;
+  if (!Number.isFinite(ms) || ms < 500) return 3_000;
+  return Math.round(ms);
+}
+
+/** Max ms 0DTE board cold build may block before serving stale Redis snapshot. Default 3s. */
+export function zerodteBoardMaxBlockMs(): number {
+  const raw = process.env.ZERODTE_BOARD_MAX_BLOCK_MS?.trim();
+  const ms = raw ? Number(raw) : 3_000;
+  if (!Number.isFinite(ms) || ms < 500) return 3_000;
+  return Math.round(ms);
+}
+
 /** Slower pulse structure refresh (EMAs, minute bars, mega-caps). Default 5s with live Polygon. */
 export function deskPulseStructureCacheTtlMs(): number {
   const raw = process.env.SPX_PULSE_STRUCTURE_SEC?.trim();
