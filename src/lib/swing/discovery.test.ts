@@ -127,10 +127,20 @@ function makeFakeAccum() {
       const archetype = (a.archetype && String(a.archetype).length > 0 ? String(a.archetype).toUpperCase() : "UNCLASSIFIED");
       const key = `${a.ticker.toUpperCase()}|${a.direction}|${archetype}`;
       const cur = rows.get(key);
-      if (!cur) rows.set(key, { ticker: a.ticker.toUpperCase(), direction: a.direction, archetype, observation_count: 1, distinct_session_days: 1, last_session_day: a.session_day, phases_seen: [a.phase], signal_kinds: [...new Set(a.signal_kinds ?? [])], promoted_position_id: null, first_seen_at: now(), last_seen_at: now() });
+      if (!cur) rows.set(key, { ticker: a.ticker.toUpperCase(), direction: a.direction, archetype, observation_count: 1, distinct_session_days: 1, last_session_day: a.session_day, phases_seen: [a.phase], signal_kinds: [...new Set(a.signal_kinds ?? [])], last_session_signal_kinds: [...new Set(a.signal_kinds ?? [])], promoted_position_id: null, first_seen_at: now(), last_seen_at: now() });
       else {
         cur.observation_count += 1;
-        if (cur.last_session_day !== a.session_day) cur.distinct_session_days += 1;
+        const isNewSession = cur.last_session_day !== a.session_day;
+        if (isNewSession) cur.distinct_session_days += 1;
+        if (isNewSession) {
+          cur.last_session_signal_kinds = [...new Set(a.signal_kinds ?? [])];
+        } else {
+          for (const k of a.signal_kinds ?? []) {
+            if (!(cur.last_session_signal_kinds ?? []).includes(k)) {
+              cur.last_session_signal_kinds = [...(cur.last_session_signal_kinds ?? []), k];
+            }
+          }
+        }
         cur.last_session_day = a.session_day;
         if (!(cur.phases_seen ?? []).includes(a.phase)) cur.phases_seen = [...(cur.phases_seen ?? []), a.phase];
         for (const k of a.signal_kinds ?? []) if (!(cur.signal_kinds ?? []).includes(k)) cur.signal_kinds = [...(cur.signal_kinds ?? []), k];
@@ -297,7 +307,14 @@ test("runSwingDiscoveryScan: idempotency — a name already OPEN on the book is 
     fetchGradedHistory: async () => gradedRows(nvda.archetype.archetype!, nvda.subLane!),
     // NVDA already open under its session-3 commit_key → the commit must not double-open.
     fetchOpenBook: async () => [
-      { ticker: "NVDA", direction: "LONG" as const, commitKey: "2026-07-25:NVDA:STANDARD:long", riskUsd: 510, isOvernight: true },
+      {
+        ticker: "NVDA",
+        direction: "LONG" as const,
+        archetype: nvda.archetype.archetype,
+        commitKey: "2026-07-25:NVDA:STANDARD:long",
+        riskUsd: 510,
+        isOvernight: true,
+      },
     ],
     insertPosition: async (pos) => { opened.push(pos); return opened.length; },
     budget: PRODUCTION_PORTFOLIO_BUDGET,
@@ -377,7 +394,7 @@ test("runSwingDiscoveryScan: an EVENT_DRIVEN name gets the 1-session fast-track 
   // conservative 2-session default would keep watchCount at 0 here.
   assert.deepEqual(res.watchCandidates.map((c) => c.ticker), ["NVDA"], "event archetype fast-tracks on 1 corroborated session");
   assert.equal(res.watchCandidates[0].distinctSessionDays, 1, "cleared on a SINGLE session (not the 2-session default)");
-  assert.deepEqual([...res.watchCandidates[0].signalKinds].sort(), ["CATALYST", "FLOW"], "corroboration = FLOW screen + grounded catalyst");
+  assert.deepEqual([...res.watchCandidates[0].sessionSignalKinds].sort(), ["CATALYST", "FLOW"], "corroboration = FLOW screen + grounded catalyst");
 });
 
 test("runSwingDiscoveryScan: WITHOUT a dominant catalyst, a cross-session name still needs 2 sessions (no false fast-track)", async () => {
