@@ -159,8 +159,9 @@
 .hero-reactor{
   position:relative;z-index:4;
   display:flex;align-items:center;justify-content:center;
-  width:clamp(320px,48vw,540px);aspect-ratio:1;
-  margin:.5rem auto;
+  width:clamp(360px,55vw,620px);aspect-ratio:1;
+  margin:.5rem auto -100px;
+  transform:translateY(60px);
 }
 
 /* ── LAYER 1: Far atmosphere — big blurred halo ── */
@@ -210,9 +211,9 @@
 
 /* ── LAYER 4: Soft radial halo behind B only ── */
 .logo-halo{
-  position:absolute;inset:-15%;z-index:0;
+  position:absolute;inset:-20%;z-index:0;
   border-radius:50%;
-  background:radial-gradient(ellipse at center,rgba(163,230,53,.25) 0%,rgba(163,230,53,.12) 30%,rgba(90,138,18,.05) 55%,transparent 75%);
+  background:radial-gradient(ellipse 100% 120% at 50% 55%,rgba(163,230,53,.35) 0%,rgba(163,230,53,.18) 25%,rgba(163,230,53,.08) 45%,rgba(90,138,18,.03) 65%,transparent 85%);
   pointer-events:none;
 }
 
@@ -236,7 +237,7 @@
 }
 
 /* Hero text */
-.hero-h{position:relative;z-index:8;text-align:center}
+.hero-h{position:relative;z-index:8;text-align:center;margin-top:-20px}
 .hero-h h1{
   font-family:var(--d);
   font-size:clamp(5rem,13vw,10rem);
