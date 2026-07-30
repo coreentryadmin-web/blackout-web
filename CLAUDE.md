@@ -92,10 +92,13 @@ Both harnesses and their `npm run validate:vector-*` scripts were removed with i
    `scripts/audit/lib/audit-phone.mjs` `generateDefaultAuditPhone()` (E.164 `+1415555xxxx`). So
    **"log in and check every page" IS possible headlessly** — validates served HTML / DOM / component
    presence for the whole authenticated desk/app. Always DELETE the temp user after (cleanup).
-2. **Headless BROWSER is blocked** — Chromium egress resets on every host (proven incl. example.com,
-   proxy on/off). So NO screenshots, NO rendered pixels, NO client-side click flows, NO visual QA from
-   here. Pixel/visual QA needs a browser-capable env (CI runner / device). Say "read served HTML"
-   (works), never claim "can't validate the live UI" (I can — just not pixels).
+2. **Live UI / pixel validation — Playwright + Clerk admin (WORKS in Cloud Agent).** Mint temp
+   admin+premium via Backend API (`mintIosPlaywrightSession` / `mintClerkPremiumSession`), launch
+   Playwright Chromium (`headless: true`, `--no-sandbox`), sign in, click tabs/segments like a member,
+   screenshot to `/opt/cursor/artifacts/`. Harnesses: `npm run test:ios-ui-e2e`, `spx-dashboard-e2e-audit`,
+   `validate-prod-ui-full`, `validate:prod-admin-ui`. Playwright MCP for ad-hoc flows. **Never** tell
+   the operator UI/pixel validation is impossible — run Playwright first. Standing rule:
+   `.cursor/rules/live-ui-validation.mdc`.
 3. **AWS — the operator supplies valid creds; the sandbox defaults are INVALID.** Default
    `AWS_ACCESS_KEY_ID/SECRET` env vars are placeholders (`InvalidClientTokenId`). When the operator
    pastes valid creds (in-session env vars), the `aws` CLI works through the proxy — pass `--region
