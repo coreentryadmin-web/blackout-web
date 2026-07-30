@@ -455,3 +455,26 @@
   from { transform: translateX(0); }
   to { transform: translateX(-50%); }
 }
+
+/* GPU compositing relief — mobile Safari texture-memory budget.
+   Nav backdrop-filter, orb blur(150px)×3, grid mask-image, and noise
+   mix-blend-overlay each claim a GPU compositing layer; together they
+   exceed the budget and collapse the page to blank. */
+@media (max-width: 768px) {
+  .mkt-nav {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: rgba(4, 4, 7, 0.92);
+  }
+  .mkt-orb {
+    filter: blur(80px);
+  }
+  .mkt-grid {
+    -webkit-mask-image: none;
+    mask-image: none;
+    opacity: 0.025;
+  }
+  .mkt-backdrop .mix-blend-overlay {
+    mix-blend-mode: normal !important;
+  }
+}
