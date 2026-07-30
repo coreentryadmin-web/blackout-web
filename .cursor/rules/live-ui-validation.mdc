@@ -1,0 +1,51 @@
+---
+description: Live production UI validation — ALWAYS use Playwright + Clerk admin auth. Never claim pixel/UI validation is impossible.
+alwaysApply: true
+---
+
+# Live UI validation (standing — do NOT ask the operator)
+
+**You CAN and MUST validate the live production UI** like a real user: mint temp Clerk
+admin+premium credentials, sign in with Playwright Chromium, click tabs/segments/controls,
+take screenshots, and assert DOM/state — same as `npm run test:ios-ui-e2e`.
+
+The old note "headless browser is blocked in cloud sandbox" is **STALE**. Playwright works here.
+
+## Default workflow (every UI change or "validate live" request)
+
+1. **Auth:** reuse `scripts/audit/lib/ios-playwright-auth.mjs` → `mintIosPlaywrightSession()`
+   or `scripts/audit/lib/prod-clerk-session.mjs` → `mintClerkPremiumSession()` with
+   `public_metadata: { role: "admin", tier: "premium" }`. Always **delete the temp user** in `finally`.
+2. **Browser:** `playwright` `chromium.launch({ headless: true, args: ["--no-sandbox"] })`.
+3. **Navigate + click:** real routes on `https://blackouttrades.com` (or `VALIDATE_BASE`).
+4. **Artifacts:** screenshots → `/opt/cursor/artifacts/<suite>/`; report JSON alongside.
+5. **Never** tell the user you "can't validate the live UI" or "can't do pixel QA" — run Playwright.
+
+## Committed harnesses (run before saying "validated on UI")
+
+| Command | What it clicks |
+|---------|----------------|
+| `npm run test:ios-ui-e2e` | All bottom tabs, SPX matrix GEX/VEX, HELIX segments, Thermal lenses |
+| `node scripts/spx-dashboard-e2e-audit.mjs` | SPX desk matrix + play rail |
+| `node scripts/vector-e2e-audit.mjs` | Vector stream + GEX lens |
+| `node scripts/validate-prod-ui-full.mjs` | Marketing + core routes + Night Hawk markers |
+| `npm run validate:prod-admin-ui` | `/admin` console + user management |
+| `node scripts/grid-zerodte-e2e-audit.mjs` | Grid + 0DTE board UI |
+
+Requires `CLERK_SECRET_KEY` + `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` (injected in Cloud Agent env).
+
+## MCP Playwright (interactive)
+
+When debugging a specific click flow, use the **Playwright MCP** tools (`browser_navigate`,
+`browser_click`, `browser_snapshot`, `browser_take_screenshot`) after minting cookies via the
+auth helpers above — or run the committed scripts first.
+
+## What HTTP-only audit still covers
+
+`fetchAuditJson` + served HTML probes remain valid for **API/data** audits. UI validation is
+**additive**, not either/or — run both when validating a desk change.
+
+## On failure
+
+If Playwright fails, diagnose (chunk load, auth cookie, deploy mid-rollout) and retry — do not
+fall back to claiming UI validation is unavailable.
