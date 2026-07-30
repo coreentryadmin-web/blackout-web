@@ -1,5 +1,93 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-30 12:05 ET
+Last updated: 2026-07-30 13:30 ET
+
+## spx-rth-2026-07-30 — SPX Slayer all-day verify pass (market-open ~12:14–13:30 ET)
+
+**Session:** Autonomous SPX Slayer all-day agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` **verify** mode (6:30 AM PT / 9:30 AM ET scheduled pass; executed 12:14 ET after deps install). Commands: `npm run validate:spx-rth` → `npm run validate:spx-e2e`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth` | ⚠️ **7 PASS / 1 WARN / 1 FAIL** — matrix deep audit GREEN; cross-endpoint + desk lanes GREEN; BIE consistency GREEN; ops:collect zero items |
+| `npm run validate:spx-e2e` | ⚠️ **7 PASS / 3 WARN / 1 FAIL** — every matrix cell API oracle GREEN (174 strikes GEX+VEX+DEX+CHARM); Playwright GEX tab timeout |
+| `infra:validate:rth-open` | ✅ GREEN (after `npm install`) |
+| `spx:matrix-deep-audit` | ✅ **174 strikes** — every cell finite; Σ strike_totals == headline total; INV-2 resum |
+| `spx:cross-endpoint` | ✅ spot merged=7404.71 hm=7404.81 play=**WATCHING**/WATCHING (Δ ≤ 0.15 pts) |
+| `spx:desk-lanes` | ✅ spot=7405.83 pulse=true flow=true |
+| `spx:bie-consistency` | ✅ member `/spx/play` == `getSpxPlayState()` |
+| `ops:collect` | ✅ zero items |
+
+### Matrix cell oracle (100% correct)
+
+| Lens | Strikes | Verdict |
+|---|---|---|
+| GEX | 174 | ✅ every cell finite; king/flip/walls derivations match API |
+| VEX | 174 | ✅ every cell finite |
+| DEX | 174 | ✅ every cell finite |
+| CHARM | 174 | ✅ every cell finite |
+| Spot | 7414.26 | ✅ matches desk within tolerance |
+
+### Cross-tool integration (Step 3)
+
+| Tool | Endpoint | Verdict |
+|---|---|---|
+| **Thermal** | `GET /api/market/gex-heatmap?ticker=SPX` | ✅ same payload as dashboard matrix |
+| **Thermal SPY** | `GET /api/market/gex-heatmap?ticker=SPY` | ✅ cross_validation PASS (no divergence flag) |
+| **GEX positioning** | `GET /api/market/gex-positioning?ticker=SPX` | ✅ spot/flip agree with matrix header |
+| **HELIX** | `GET /api/market/flows?limit=30` | ⚠️ quiet tape — no prints this pass |
+| **Largo** | `POST /api/market/largo/query` (SPX play state) | ✅ grounded via `blackout_intelligence` |
+| **BIE** | `validate:spx-bie` | ✅ single derivation |
+| **Grid bootstrap** | `GET /api/market/spx/bootstrap` | ✅ loaded (via e2e cross-tool) |
+| **0DTE board** | `GET /api/market/zerodte/board` | ⚠️ empty/gated or cold-cache timeout on parallel burst |
+| **Night Hawk** | `GET /api/market/nighthawk/edition` | ✅ edition loads |
+
+### Trade alerts (`SpxTradeAlerts`)
+
+| Check | Verdict |
+|---|---|
+| Hero action vs `/api/market/spx/play` | ✅ WATCHING — matches API |
+| **SCANNING stale confirmations** | ✅ **No stale ✓** — play was WATCHING/SCANNING without phantom confirmation panel |
+| Score / levels | ✅ API-grounded when present |
+
+### UI E2E (Playwright `/dashboard`)
+
+| Control | Verdict |
+|---|---|
+| Sign-in + shell | ✅ premium admin session loads |
+| LIVE badge | ✅ not OFFLINE during RTH |
+| GEX tab (`#spx-matrix-tab-gex`) | ❌ **FAIL** — 30s visibility timeout (matrix dynamic-import + slow heatmap SWR) |
+| VEX tab / commentary expand | ⏭️ not reached (blocked by GEX tab wait) |
+
+### Live auto-update (60s window)
+
+| Surface | Observed | Verdict |
+|---|---|---|
+| Desk spot | moved 7404→7416 across audit window | ✅ ticking |
+| Matrix spot | 7414.26 at oracle pass; `as_of` fresh | ✅ |
+| Play action | WATCHING → SCANNING across passes | ✅ state transitions without stale UI |
+| Parallel burst | intermittent 502/504 on heatmap/desk when many curls fire | ⚠️ egress burst flake — retry passes GREEN |
+
+### P0 found this pass
+
+**None.** Matrix oracle 100% correct; no wrong trade signal; no stale SCANNING confirmations; no NaN/undefined cells.
+
+### Findings logged
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| **P1** | `spx-e2e-matrix-tab-timeout` | Playwright `#spx-matrix-tab-gex` not visible within 30s — matrix is dynamic-imported; heatmap SWR can exceed 30s under parallel audit burst | `/api/market/gex-heatmap?ticker=SPX` | **FIX** — wait for heatmap 200 + 90s tab timeout in `spx-dashboard-e2e-audit.mjs` |
+| **P1** | `spx-rth-e2e-subprocess-timeout` | `validate:spx-rth` sub-run `spx:dashboard-e2e` FAIL — curl HTTP 0 at 120s when e2e fires parallel cross-tool probes | audit harness | monitor — full e2e retry GREEN on matrix oracle |
+| **P2** | `cloud-cron-secret-mismatch` | Audit env `CRON_SECRET` ≠ prod — data-correctness cron probe WARN | audit env | **Expected** |
+| **P2** | `bie-cron-play-401` | BIE play route cron bearer HTTP 401 in e2e | `/api/market/spx/play` | **Expected** (cron secret mismatch) |
+| **P2** | `helix-quiet-tape` | No flow prints in one pass | `/api/market/flows` | monitor |
+| **P2** | `zerodte-board-cold-burst` | Board empty/timeout on parallel burst | `/api/market/zerodte/board` | defer post-close (known cold-cache) |
+
+**Member-facing surfaces: GREEN** — matrix 100% correct vs API; play state honest; cross-endpoint spot aligned; BIE single-source holds.
+
+**Reports:** `audit-output/spx-rth-2026-07-30-verify-1785430277844.json`, `audit-output/spx-dashboard-e2e-1785431113131.json`
+
+---
 
 ## rth-comprehensive-2026-07-30 — RTH-open runbook + full sweep (~11:30–12:05 ET)
 

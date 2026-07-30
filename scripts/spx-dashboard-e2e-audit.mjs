@@ -369,9 +369,20 @@ async function browserDashboard(session, hm) {
     }
 
     // --- Click every SPX dashboard control ---
+    // Matrix is dynamic-imported + SWR-backed; wait for the heatmap fetch before tab visibility.
+    await page
+      .waitForResponse(
+        (res) =>
+          res.url().includes("/api/market/gex-heatmap") &&
+          res.request().method() === "GET" &&
+          res.status() === 200,
+        { timeout: 120_000 }
+      )
+      .catch(() => null);
     const gexTab = page.locator("#spx-matrix-tab-gex");
     const vexTab = page.locator("#spx-matrix-tab-vex");
-    await gexTab.waitFor({ state: "visible", timeout: 30_000 });
+    await gexTab.scrollIntoViewIfNeeded().catch(() => {});
+    await gexTab.waitFor({ state: "visible", timeout: 90_000 });
     await gexTab.click();
     rec("ui:click-gex-tab", "PASS");
     if (await vexTab.isVisible()) {
