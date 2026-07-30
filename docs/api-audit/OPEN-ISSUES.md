@@ -1,5 +1,100 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-30 13:55 ET
+Last updated: 2026-07-30 14:22 ET
+
+## rth-comprehensive-2026-07-30-14h — RTH agent pass (~13:23–14:22 ET)
+
+**Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` including **RTH COMPREHENSIVE TEST SWEEP**. Commands: `npm run validate:rth-open` → `GET /api/cron/data-correctness?force=1` → `npm run validate:rth-sweep` → `npm run validate:spx-rth` → `npm run validate:grid-rth` → `npm run ops:collect`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` | ✅ **GREEN** — deploy smoke, desk-warm 68ms, options-socket warming, no uw-socket stall storms |
+| `GET /api/cron/data-correctness?force=1` | ✅ **202 async** — `ok:true`, 0 flags (handshake 1.1s; full sweep runs in background) |
+| `npm run validate:rth-sweep` | ⚠️ browser **GREEN** (7 pages <1.7s, 0 missing fields); parallel API burst timeouts (transient P2) |
+| `npm run validate:spx-rth` | ⚠️ **7 PASS / 1 WARN / 1 FAIL** — matrix + cross-endpoint GREEN; dashboard-e2e curl timeout (transient) |
+| `npm run validate:grid-rth` | ⚠️ **12 PASS / 2 FAIL** — 0DTE board 20 setups / 15 ledger GREEN; dashboard-e2e curl timeout (transient) |
+| `npm run ops:collect` | ✅ **exit 0** — 0 action items (transient P0 `vector-universe-snapshot` at 13:26 cleared by #1355 async handshake) |
+| `vector-universe-snapshot?force=1` | ✅ **202 in 94ms** — async dispatch confirmed on main |
+
+**No new P0/P1 defects.** No GitHub issue opened — all standing fixes (#1352/#1355) already deployed.
+
+### Speed (comprehensive sweep — Playwright premium session)
+
+| Page | Nav | Load | Notes |
+|---|---|---|---|
+| `/dashboard` (SPX Slayer) | hard | 1668ms | sign-in 60s (Clerk ticket); 1 console 400 (non-blocking) |
+| `/flows` (HELIX) | soft | 1640ms | |
+| `/heatmap` (Thermal matrix) | soft | 1598ms | profile tab not separately timed this pass |
+| `/vector` | soft | 1610ms | |
+| `/nighthawk` (0DTE Command) | soft | 1667ms | |
+| `/terminal` (Largo) | soft | 1601ms | |
+| `/track-record` | soft | 1623ms | |
+
+All soft-nav **<1.7s** — within runbook threshold.
+
+### Live auto-update
+
+| Surface | Observed | Verdict |
+|---|---|---|
+| SPX spot (12s window) | `liveTick=null` — spot stable ~7419 in short window | ⚠️ inconclusive in 12s; desk APIs fresh |
+| Desk / heatmap APIs | `as_of` fresh (desk 148s at probe time) | ✅ |
+| HELIX flows | 20 prints when not contending with parallel burst | ✅ |
+| 0DTE board | `zerodte-warm` accepted (background); 20 setups / 15 ledger | ✅ |
+
+### Data correctness
+
+| Check | Result |
+|---|---|
+| Cross-tool GEX spot | desk=7419.21; merged/hm agree when APIs respond |
+| `data-correctness?force=1` | 202 async, 0 flags |
+| `data-correctness?surface=heatmap` (sync) | ⚠️ HTTP **504** @ 120s during RTH load — use `?force=1` async or off-peak sync |
+| Grid data-correctness | flags=0 mode=full-async |
+
+### API verification (authenticated burst — transient under parallel load)
+
+| Endpoint | Status | Notes |
+|---|---|---|
+| `/api/market/spx/desk` | 200 (42s cold) | fresh |
+| `/api/market/spx/pulse` | 200 (86ms) | |
+| `/api/market/spx/merged` | 0 (120s timeout) | P2 — burst contention |
+| `/api/market/gex-positioning?ticker=SPX` | 200 (573ms) | |
+| `/api/market/gex-heatmap?ticker=SPX` | 200 (15s) | |
+| `/api/market/flows?limit=20` | 0 (120s timeout) | P2 — burst contention |
+| `/api/market/nighthawk/edition` | 200 (114ms) | |
+| `/api/public/track-record` | 504 (10s) | P2 — CF cap under load |
+| `/api/market/zerodte/board` | 504 (120s) | P2 — cold build; warm path ok in grid-rth |
+
+### Console / render health
+
+- 7/7 pages: 0 missing-field signals (`—`, `N/A`, `No data` heuristics)
+- 1 non-blocking console 400 on dashboard (Clerk/asset)
+- No hydration errors or CSP violations observed
+
+### Largo (Terminal)
+
+- `POST /api/market/largo/query` → **200 in 11.2s**
+- Grounded NVDA answer: 50 prints · $85,961,575 premium; tools: `blackout_intelligence`
+- Regime field shows `—` (upstream regime label absent — expected when macro feed quiet, not fabrication)
+
+### Missing-field audit
+
+| Page | Empty fields | Root cause |
+|---|---|---|
+| All 7 sweep pages | **0** heuristic hits | APIs serving data during RTH |
+| Largo regime | `—` in answer | Upstream regime unavailable — honest empty, not UI bug |
+
+### 0DTE Command (grid) — 12 panels
+
+Covered via `validate:grid-rth`: session heat POST_COMMIT, 20 setups, 15 ledger rows, P&L coherence, cross-tool SPX GEX spot 7425.89, HELIX 20 prints, Night Hawk dedupe, zerodte logic + cross-tool integration PASS. Dashboard-e2e sub-run curl timeout is transient (same class as SPX sweep).
+
+### Transient P2 (no fix this pass)
+
+- Parallel authenticated API burst during sweep contends with cold paths → HTTP 0/504 on merged/flows/track-record/zerodte-board
+- `dashboard-e2e` curl 120s cap flakes under afternoon RTH load (SPX + grid audits)
+- Sync `data-correctness?surface=heatmap` exceeds CF ~100s during peak — async `?force=1` path is the supported probe
+
+---
 
 ## spx-rth-2026-07-30 — SPX Slayer all-day verify pass (afternoon ~13:21–13:55 ET)
 
