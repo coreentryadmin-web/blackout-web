@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse, type NextRequest } from "next/server";
 import { activeClerkUserIdFromRequestCookies } from "@/lib/clerk-session-cookies";
+import { publicSiteUrl } from "@/lib/cognito-config";
 
 /**
  * Native iOS sign-in bridge.
@@ -87,12 +88,14 @@ function renderRedirectHtml(callback: string): string {
 }
 
 export async function GET(_req: NextRequest) {
+  // Never build redirect URLs from `_req.url` — on ECS the Host is often the
+  // container bind address (0.0.0.0), which ASWebAuthenticationSession / Safari
+  // refuse ("restricted network port"). Same rule as cognito OAuth redirects.
+  const signInBridge = publicSiteUrl("/sign-in?redirect_url=/native-signin");
+
   const userId = await activeClerkUserIdFromRequestCookies();
   if (!userId) {
-    return NextResponse.redirect(
-      new URL("/sign-in?redirect_url=/native-signin", _req.url),
-      { status: 302 },
-    );
+    return NextResponse.redirect(signInBridge, { status: 302 });
   }
 
   const jar = await cookies();
@@ -100,10 +103,7 @@ export async function GET(_req: NextRequest) {
   if (!token) {
     // "Signed in" per Clerk but no __session cookie in this request — race
     // or misconfiguration. Send them through sign-in again; fails safe.
-    return NextResponse.redirect(
-      new URL("/sign-in?redirect_url=/native-signin", _req.url),
-      { status: 302 },
-    );
+    return NextResponse.redirect(signInBridge, { status: 302 });
   }
 
   const callback = `${NATIVE_URL_SCHEME}://auth?token=${encodeURIComponent(token)}`;
