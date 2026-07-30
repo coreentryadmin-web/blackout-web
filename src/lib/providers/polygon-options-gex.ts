@@ -1110,6 +1110,39 @@ async function liveWsStockSpot(
  * (it provides the authoritative day change% and is the fallback when the WS tick is stale/absent);
  * we only overlay the fresher WS PRICE on top of it.
  */
+async function fetchSpotFromPrevBar(
+  symbol: string
+): Promise<{ price: number; change_pct: number } | null> {
+  try {
+    const { fetchPreviousDayBar } = await import("./polygon-largo");
+    const bar = await fetchPreviousDayBar(symbol);
+    if (!bar || !(bar.c > 0)) return null;
+    return { price: bar.c, change_pct: 0 };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Last-resort spot when live WS + snapshot endpoints are unavailable (plan-gated 403 on
+ * snapshot routes while aggs prev-bar remains on-plan). A prior-session close enables the
+ * GEX matrix to build instead of emptyHeatmap(spot:0).
+ */
+async function resolveSpotSnapshotLastResort(
+  optionsRoot: string,
+  isIndex: boolean
+): Promise<{ price: number; change_pct: number } | null> {
+  if (isIndex) {
+    // I:SPX prev is often plan-gated; SPY prev × 10 tracks within ~0.4% (data-integrity C4).
+    if (optionsRoot === "I:SPX") {
+      const spy = await fetchSpotFromPrevBar("SPY");
+      if (spy) return { price: spy.price * 10, change_pct: spy.change_pct };
+    }
+    return fetchSpotFromPrevBar(optionsRoot);
+  }
+  return fetchSpotFromPrevBar(optionsRoot);
+}
+
 async function resolveSpotSnapshot(
   optionsRoot: string
 ): Promise<{ price: number; change_pct: number } | null> {
@@ -1152,6 +1185,8 @@ async function resolveSpotSnapshot(
   if (restPrice > 0) {
     return { price: restPrice, change_pct: snap?.change_pct ?? 0 };
   }
+  const prevBar = await resolveSpotSnapshotLastResort(root, isIndex);
+  if (prevBar && prevBar.price > 0) return prevBar;
 
   // Last resort: UW stock-state (Polygon 403 / circuit-open must not blank the GEX matrix).
   const { resolveSpotFromUwStockState } = await import("./spot-fallback");

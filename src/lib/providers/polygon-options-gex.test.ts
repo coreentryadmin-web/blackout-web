@@ -59,6 +59,17 @@ test("resolveChainBandPageGuard: default 40, honors override, floors at the old 
   assert.equal(resolveChainBandPageGuard("0"), 40); // falsy → treated as unset
 });
 
+test("resolveSpotSnapshot falls back to prev-bar + SPY×10 proxy when snapshots fail", () => {
+  const src = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "polygon-options-gex.ts"),
+    "utf8"
+  );
+  assert.match(src, /resolveSpotSnapshotLastResort/);
+  assert.match(src, /fetchSpotFromPrevBar\("SPY"\)/);
+  assert.match(src, /const prevBar = await resolveSpotSnapshotLastResort\(root, isIndex\)/);
+  assert.match(src, /resolveSpotFromUwStockState/);
+});
+
 test("fetchGexHeatmap keeps stale-while-revalidate during preset fast-move (no blocking guard)", () => {
   const src = readFileSync(
     join(dirname(fileURLToPath(import.meta.url)), "polygon-options-gex.ts"),
