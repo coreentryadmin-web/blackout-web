@@ -29,13 +29,10 @@ export async function GET(req: NextRequest) {
   if (locked) return locked;
 
   const rawTicker = req.nextUrl.searchParams.get("ticker");
-  // Any optionable symbol is allowed on demand (Vector is a search-any-stock
-  // desk, not a fixed universe) — but only WELL-FORMED symbols: a junk/oversized
-  // string is refused before it can spin a poller. The two amplification vectors
-  // the old universe gate guarded are now bounded directly: concurrent pollers by
-  // tryAcquireVectorStreamConnection's cap, and per-ticker server state by the
-  // LRU eviction in vector-snapshot's state() map.
-  if (!isVectorTickerAllowed(rawTicker)) {
+  // Missing ticker → SPX default (matches createVectorEventSource + normalizeVectorTicker).
+  // Only reject syntactically invalid symbols — not empty/missing (audit probes and cron
+  // health checks hit this route without ?ticker= and were getting 400).
+  if (rawTicker != null && rawTicker.trim() !== "" && !isVectorTickerAllowed(rawTicker)) {
     return NextResponse.json({ error: `Invalid ticker` }, { status: 400 });
   }
   const ticker = normalizeVectorTicker(rawTicker);

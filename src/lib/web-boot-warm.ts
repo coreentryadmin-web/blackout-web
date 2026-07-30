@@ -6,8 +6,16 @@ import {
   loadBootstrapBundle,
   loadMergedSpxDesk,
 } from "@/features/spx/lib/spx-desk-loader";
+import { warmVectorStreamHub } from "@/features/vector/lib/vector-stream-hub";
+import { VECTOR_DEFAULT_TICKER } from "@/features/vector/lib/vector-ticker";
 
 const BOOT_FLAG = "__blackoutWebBootWarmStarted" as const;
+
+let bootWarmInflight: Promise<void> | null = null;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 /**
  * Fire-and-forget cache priming on web-tier cold starts. Populates in-memory
@@ -30,15 +38,29 @@ export function ensureWebBootWarm(): void {
       .catch((err) => console.warn("[web-boot-warm] RTH warm leader init failed (non-fatal):", err));
   }
 
-  void (async () => {
-    const presets = heatmapPresetTickers();
-    await Promise.allSettled([
-      loadBootstrapBundle(),
-      loadMergedSpxDesk(),
-      ...presets.map((t) => fetchGexHeatmap(t)),
-      getZeroDteBoardPayload(),
-    ]);
-  })().catch((err) => {
-    console.warn("[web-boot-warm] non-fatal:", err instanceof Error ? err.message : err);
-  });
+  if (!bootWarmInflight) {
+    bootWarmInflight = (async () => {
+      const presets = heatmapPresetTickers();
+      await Promise.allSettled([
+        loadBootstrapBundle(),
+        loadMergedSpxDesk(),
+        ...presets.map((t) => fetchGexHeatmap(t)),
+        getZeroDteBoardPayload(),
+        warmVectorStreamHub(VECTOR_DEFAULT_TICKER),
+      ]);
+    })().catch((err) => {
+      console.warn("[web-boot-warm] non-fatal:", err instanceof Error ? err.message : err);
+    });
+  }
+}
+
+/**
+ * ECS /api/ready gate — give boot warm a short head start so the first member poll
+ * after a deploy hits primed in-memory mirrors instead of a cold chain fetch.
+ * Capped so deploy readiness never blocks more than a few seconds.
+ */
+export async function awaitWebBootWarm(maxMs = 2_500): Promise<void> {
+  ensureWebBootWarm();
+  if (!bootWarmInflight) return;
+  await Promise.race([bootWarmInflight, sleep(maxMs)]);
 }
