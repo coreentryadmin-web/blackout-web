@@ -5,6 +5,70 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-30 — [0DTE,Swing] Session forensics — 14/15 losers + empty swing board (NOT Polygon mark fabrication)
+
+**Severity.** P1 audit — real session losses amplified by origin mix + exit policy; swing empty by
+persistence design, not cron outage.
+
+**0DTE session (2026-07-30) — what happened.**
+
+| Ticker | Origin | Score | Live P/L | Exit | MFE (bars) | Notes |
+|--------|--------|-------|----------|------|------------|-------|
+| KORU | BREAKOUT | 100 | **+4.6%** | thesis | +34% | only winner |
+| SNDK | BREAKOUT | 100 | -1.2% | ratchet | +66% | +26% peak, ratchet still closed red |
+| NBIS | BREAKOUT | 100 | -4.7% | thesis | +39% | trim +25% fired; gex-walls thesis veto |
+| WULF | BREAKOUT | 100 | -4.7% | flat | +3% | |
+| CRWV | BREAKOUT | 100 | -31.9% | thesis | +7% | afternoon commit |
+| SNXX | BREAKOUT | 99 | -10.5% | thesis | +58% | gex-walls thesis veto |
+| RIOT | BREAKOUT | 99 | **-50%** | stop | +6% | hard stop |
+| APLD | BREAKOUT | 98 | **-50%** | stop | +11% | hard stop |
+| CIFR | BREAKOUT | 98 | -9.5% | flat | +15% | |
+| MARA | BREAKOUT | 97 | -36.1% | thesis | +14% | crypto cluster |
+| MU | FLOW+BREAKOUT | 95 | -20.5% | thesis | +132% | trim +25% fired; gex-walls killed runner |
+| OKLO | BREAKOUT | 71 | -11.2% | ratchet | +26% | |
+| DELL | BREAKOUT | 68 | -6.5% | time_stop | +30% | |
+| SPXW | FLOW | 68 | -9.9% | flat | +48% | |
+| NVTS | BREAKOUT | 66 | -24.0% | thesis | +14% | |
+
+**Evidence.** Prod ledger via `GET /api/market/zerodte/board` (15 CLOSED rows, all marks grounded).
+Polygon minute-bar cross-check on each committed OCC (`2026-07-30`): hold-to-close would have been
+**7W / 8L** vs live **1W / 14L** — exit engine (thesis/gex-walls, ratchet, flat) turned many
+green-tape plays into realized losses. Governor: `session_pnl_pct=-100`, `realized_losers=2`,
+`loss_halt_count=5`. Origins: **13 BREAKOUT**, 1 FLOW+BREAKOUT, 1 FLOW — not a FLOW-quality day.
+10/15 committed before 11:00 ET (F-4 early-window band). 9/15 carry tier factor **VIX unknown**
+(morning Polygon REST 403 — FINDINGS #1337 — day-open VIX not pinned at commit).
+
+**Polygon crash link.** YES for **regime inputs** (VIX unknown, degraded GEX → Cortex absent
+wall-trend/sector-heat, catalyst-news timeout on NBIS). NO for **mark fabrication** — committed
+rows have frozen entry snapshots (healthcheck stage C GREEN), live marks tracked real option
+prices through close. Losses are real market outcomes on a correlated crypto/miner BREAKOUT basket
+in elevated/unknown VIX, not hallucinated P/L.
+
+**Architecture read.** Discovery did its job (BREAKOUT rail filled); tier system correctly capped
+85+ scores at B/C and flagged early-window + VIX headwinds — but commits still opened per user
+direction. Load-bearing gap: **thesis/gex-walls exit** fired on degraded-UW-fallback GEX and
+closed runners that minute bars show were deeply green (MU +132% MFE, SNXX +58%, SNDK +66%).
+Post-close `plan_outcome` grading pending (`zerodte-grade` window 20–22 UTC).
+
+**Swing session — why 0 WATCH / 0 OPEN.**
+
+**Evidence.** `npm run healthcheck:swing` → OVERALL AMBER (not RED). EventBridge rules
+`blackout-production-swing-discovery` + `swing-active-refresh` **ENABLED**. CloudWatch:
+`[swing-discovery] recall: tier0 24 (flow 30/struct 0) → enriched 24; capped-out 0` and
+`commit gate: 0 graduated-eligible / 0 opened`. Horizons SWING lane: all seven sections empty;
+`scoreFloorGraduated=false` (COMMIT_NOW requires calibration graduation — PR-16).
+
+**Root cause.** NOT broken cron (P0 EventBridge gap fixed earlier today — FINDINGS swing-cron-registry).
+The swing engine is **persistence-gated**: WATCH requires ≥2 distinct session days OR event-archetype
+corroboration (`MIN_PERSISTENCE_SESSIONS=2`). Today's scan observed 24 Tier-0 names into accumulation
+but **none had crossed the persistence bar yet** — legitimate empty board on a building memory, not
+a provider crash. Structure screen also returned 0 movers (`struct 0`) — flow-only seeds.
+
+**Status.** AUDIT COMPLETE — no code fix in this entry. Follow-ups to measure: (1) gex-walls thesis
+exit counterfactual on UW-fallback GEX days; (2) swing RESEARCH section surfacing pre-persistence
+observations so the board doesn't look "dead"; (3) fail-closed commit when VIX unknown + polygon
+degraded (policy question).
+
 ## 2026-07-30 — [spx] Cross-replica play-state divergence on parallel `/api/market/spx/play`
 
 **Severity.** P1 — members on different ECS replicas could see different grade/score/direction in the same second.
