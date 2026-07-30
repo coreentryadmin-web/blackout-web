@@ -1,0 +1,21 @@
+# Railway config for the ZeroDTE-Grade cron service.
+# Wire it up: service Settings -> Config-as-code -> set path to "railway.zerodte-grade.toml"
+# Requires CRON_SECRET on this service (same value as blackout-web).
+[build]
+builder = "nixpacks"
+buildCommand = "echo 'cron trigger service: no app build needed'"
+watchPatterns = [
+  "scripts/hit-cron.mjs",
+  "railway.zerodte-grade.toml",
+  "nixpacks.toml",
+]
+
+[deploy]
+startCommand = "CRON_HTTP_TIMEOUT_MS=180000 node scripts/hit-cron.mjs /api/cron/zerodte-grade"
+# Every 15 min during the UTC band that covers the post-close grading window in BOTH EDT and EST:
+# 20-22 UTC ≈ 16:00–18:00 ET (EDT) / 15:00–17:00 ET (EST). The route calls gradeZeroDteLedger(force=true)
+# so each fire grades finished-session rows without waiting on zerodte-warm's 10-minute throttle.
+# Off-band fires are cheap no-ops when there is nothing to grade.
+cronSchedule = "*/15 20-22 * * 1-5"
+restartPolicyType = "ON_FAILURE"
+numReplicas = 1

@@ -44,7 +44,7 @@ Shipped on `cursor/swing-followups-3d11` (original five + P0 management/serve fo
 | 8 | Open-book live sections (MANAGING/SCALING_OUT/EXITING) | DONE |
 | 9 | Active-refresh refreshes serving spots mid-session | DONE |
 
-**Still deferred (not blocking live rail):** catalyst/regime/flow/RS edge booleans (need cross-session deltas); calibratedProbability desk surface; EventBridge infra sync for new TOMLs.
+**Still deferred (not blocking live rail):** catalyst/regime/flow/RS edge booleans (need cross-session deltas); calibratedProbability desk surface; EventBridge infra sync for new TOMLs. **Tactical 15-min cadence:** FIXED 2026-07-30 (`*/15` swing-active-refresh schedule).
 
 ## Live health (2026-07-29 ~18:00 ET)
 

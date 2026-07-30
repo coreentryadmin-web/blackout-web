@@ -5,6 +5,40 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-30 — [Engine] zerodte-grade + swing-active-refresh schedule catalog gaps
+
+**Severity.** P1 — post-close 0DTE grading piggybacked on warm's 10-minute throttle; swing TACTICAL
+positions sampled hourly (premium_stop / structural_stop could miss intrahour moves).
+
+**Root cause.**
+1. `src/app/api/cron/zerodte-grade/route.ts` existed but had no `railway.zerodte-grade.toml` or
+   `CRON_SERVICE_NAMES` entry — EventBridge never fired standalone grading.
+2. `swing-active-refresh` was hourly (`0 11-21`) while TACTICAL sub-lane grader pins minute bars —
+   management loop sampled once per hour.
+
+**Fix.**
+1. Added `railway.zerodte-grade.toml` (`*/15 20-22 UTC` weekdays) + cron-registry + service map.
+2. Raised swing-active-refresh to `*/15 11-21 UTC`; stale ceiling 25 min; docs/comments aligned.
+3. `scripts/engine-cron-catalog.test.mjs` regression guard (zerodte-grade + both swing crons).
+
+**Status.** FIXED on `cursor/engine-zero-gaps-3d11`. Infra must sync EventBridge + Lambda invoke
+permissions for `zerodte-grade` and update `swing-active-refresh` schedule (same pattern as 2026-07-30
+swing cron repair).
+
+## 2026-07-30 — [0DTE] Draft PR #1199 items — superseded on main
+
+**Severity.** P0/P1 stack from `cursor/zerodte-multi-rail-discovery-3d11` (draft #1199).
+
+**Root cause.** FINDINGS still marked OPEN while fixes landed via subsequent PRs (#1217 precision
+harden, GATE_VERSION=v7, merge v2, G-14@14:00, NH non-exclusion, zerodte-sources plan marks,
+latchLiveExcursion, BREAKOUT_MAX=40, etc.).
+
+**Evidence.** Main @ `2fa4390f`: `MERGE_POLICY_VERSION=v2`, `GATE_VERSION=v7`, `NEW_PLAY_CUTOFF=14:00`,
+`nighthawk_covered` informational only (scan.ts:254-256), `zerodte-sources` WATCH plan marks tested,
+`validate:zerodte-logic` 17/17 GREEN off-hours 2026-07-30.
+
+**Status.** FIXED on main — draft #1199 closed/superseded; no merge needed.
+
 ## 2026-07-30 — [Swing] P0 remediation batch — corroboration, thesis open-root, roll/OCC/serving
 
 **Severity.** P0 — false WATCH eligibility, duplicate thesis opens, broken-thesis rolls, bad option marks,
@@ -1100,7 +1134,7 @@ Post-close board: **8 setups, 100% FLOW**, 7× BLOCKED, record **35.6% WR / n=10
 stack; merge + one RTH day is required to prove multi-rail commits. Cutoff desync closed in the
 same PR after this audit.
 
-**Status.** OPEN draft PR #1199.
+**Status.** OPEN draft PR #1199. **Superseded 2026-07-30** — fixes on main; see FINDINGS entry above.
 
 ## 2026-07-28 — [0DTE-UI] Command Deck UX honesty (session strip, hard gate, nav, defaults)
 
@@ -1122,7 +1156,7 @@ while nothing streamed.
 prefer working→watch selection; collapse thesis factors; Management rails distance lead; honest
 monitor copy.
 
-**Status.** OPEN on `cursor/zerodte-multi-rail-discovery-3d11` (draft PR #1199).
+**Status.** FIXED on main (superseded draft #1199, 2026-07-30).
 
 ## 2026-07-28 — [0DTE-UI] Right-rail Thesis/Management/PnL panels looked static
 
@@ -1154,7 +1188,7 @@ payload keys.
 - Client `latchLiveExcursion` in `overlayLiveMarks` for peak/trough + trim FIRED; stock-quote
   overlay for underlying/condor spot; RTH board poll 2.5s + loading skeleton; honest thesis monitor.
 
-**Status.** OPEN on `cursor/zerodte-multi-rail-discovery-3d11` (draft PR #1199).
+**Status.** FIXED on main (superseded draft #1199, 2026-07-30).
 
 ## 2026-07-28 — [product] 0DTE engine starved to 1 OPEN/day (score map + caps + NH exclude)
 
@@ -1183,7 +1217,7 @@ setups post-close were **8× FLOW-only**; BREAKOUT/PIN never committed. Record r
 - Ship G-14 + `NEW_PLAY_CUTOFF` to **14:00 ET**; prefer ZERO_DTE in commit ranking.
 - Version bumps: `DISCOVERY_VERSION=v3`, `SCORER_VERSION=v2`, `GATE_VERSION=v2`.
 
-**Status.** OPEN draft PR #1199 for review (do not auto-merge).
+**Status.** FIXED on main (superseded draft #1199, 2026-07-30).
 
 ## 2026-07-28 — [product] 0DTE board was FLOW-only in practice (merge v1 + $-volume chain-fetch)
 
