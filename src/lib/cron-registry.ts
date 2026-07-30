@@ -147,6 +147,8 @@ export const CRON_JOBS: CronJobDefinition[] = [
     kind: "http",
     path: "/api/cron/zerodte-grade",
     schedule_label: "Every 15 min post-close (16:00–18:00 ET band)",
+    // Mirrors railway.zerodte-grade.toml — off-window stale suppression (ops #1331).
+    schedule_cron_utc: "*/15 20-22 * * 1-5",
     stale_after_min: 6 * 60,
     weekdays_only: true,
     description:

@@ -37,6 +37,12 @@ function parseIntList(field: string, min: number, max: number): number[] {
       for (let v = start; v <= end; v++) out.add(v);
       continue;
     }
+    const starStep = part.match(/^\*\/(\d+)$/);
+    if (starStep) {
+      const step = Number(starStep[1]);
+      for (let v = min; v <= max; v += step) out.add(v);
+      continue;
+    }
     const stepOnly = part.match(/^(\d+)\/(\d+)$/);
     if (stepOnly) {
       const step = Number(stepOnly[2]);
