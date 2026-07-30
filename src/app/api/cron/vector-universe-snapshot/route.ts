@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { refreshVectorUniverseSnapshot, loadSessionWallHistory } from "@/features/vector";
@@ -9,19 +9,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 180;
 
-export async function GET(req: NextRequest) {
-  const started = Date.now();
-  if (!isCronAuthorized(req)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const force = req.nextUrl.searchParams.get("force") === "1";
-  if (!force && !isEtCashRth()) {
-    const payload = { ok: true, skipped: true, reason: "Outside cash RTH" };
-    await logCronRun("vector-universe-snapshot", started, payload);
-    return NextResponse.json(payload);
-  }
-
+async function runVectorUniverseSnapshot(started: number): Promise<void> {
   try {
     // Record wall-history samples for the whole universe on every RTH run — the
     // server-side source for the chart's bead rails, so they persist after-hours
@@ -42,30 +30,61 @@ export async function GET(req: NextRequest) {
     const spxRailLen = await loadSessionWallHistory(sessionYmd, "SPX")
       .then((h) => h.length)
       .catch(() => -1);
-    // Per-horizon read-back: the "all" spxRailLen said nothing about the NARROWED rails, which is
-    // exactly where the frozen-0DTE gap hid (the per-expiry SPXW reconstruction empties out on most
-    // ticks). Surfacing spx0dteRailLen / spxWeeklyRailLen / spxMonthlyRailLen makes a chronic
-    // narrowed-rail gap an observable number in the cron log instead of an invisible silent skip.
     const [spx0dteRailLen, spxWeeklyRailLen, spxMonthlyRailLen] = await Promise.all([
       loadSessionWallHistory(sessionYmd, "SPX", "0dte").then((h) => h.length).catch(() => -1),
       loadSessionWallHistory(sessionYmd, "SPX", "weekly").then((h) => h.length).catch(() => -1),
       loadSessionWallHistory(sessionYmd, "SPX", "monthly").then((h) => h.length).catch(() => -1),
     ]);
-    const payload = {
-      ok: true,
-      rows: snap.rows.length,
-      spxRailLen,
-      spx0dteRailLen,
-      spxWeeklyRailLen,
-      spxMonthlyRailLen,
-      sessionYmd,
-      updatedAt: snap.updatedAt,
-    };
-    await logCronRun("vector-universe-snapshot", started, payload);
-    return NextResponse.json(payload);
+    console.info(
+      `[cron/vector-universe-snapshot] background done — rows=${snap.rows.length} spxRailLen=${spxRailLen} spx0dteRailLen=${spx0dteRailLen} spxWeeklyRailLen=${spxWeeklyRailLen} spxMonthlyRailLen=${spxMonthlyRailLen} sessionYmd=${sessionYmd} elapsed=${Date.now() - started}ms`
+    );
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    await logCronRun("vector-universe-snapshot", started, { ok: false, error: detail });
-    return NextResponse.json({ ok: false, error: "vector-universe-snapshot failed" }, { status: 500 });
+    console.error(`[cron/vector-universe-snapshot] background REJECTED: ${detail}`);
   }
+}
+
+export async function GET(req: NextRequest) {
+  const started = Date.now();
+  if (!isCronAuthorized(req)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const force = req.nextUrl.searchParams.get("force") === "1";
+  if (!force && !isEtCashRth()) {
+    const payload = { ok: true, skipped: true, reason: "Outside cash RTH" };
+    await logCronRun("vector-universe-snapshot", started, payload);
+    return NextResponse.json(payload);
+  }
+
+  // refreshVectorUniverseSnapshot + wall-history read-backs can exceed Cloudflare's ~100s
+  // origin timeout when caches are cold (live probe: HTTP 504 @ 120s during #1355 cleanup).
+  // Mirror vector-full-state-snapshot: handshake in seconds, recorder in after().
+  const dispatchSnapshot = () => {
+    void runVectorUniverseSnapshot(started).catch((error) => {
+      const detail = error instanceof Error ? error.message : String(error);
+      console.error(`[cron/vector-universe-snapshot] background snapshot REJECTED: ${detail}`);
+    });
+  };
+
+  try {
+    after(dispatchSnapshot);
+  } catch {
+    dispatchSnapshot();
+  }
+
+  const accepted = {
+    ok: true,
+    status: "accepted",
+    reason: "Vector universe snapshot dispatched in background (fire-and-forget)",
+    sessionYmd: todayEt(),
+  };
+  await logCronRun("vector-universe-snapshot", started, accepted);
+  return NextResponse.json(
+    {
+      ...accepted,
+      note: "Universe wall-summary + wall-history recorder runs in background — handshake stays under edge timeout.",
+    },
+    { status: 202 }
+  );
 }
