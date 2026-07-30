@@ -35,6 +35,18 @@ First orchestrator attempt failed on missing `node_modules` (tsx/playwright/pg/r
 
 **Status.** FIXED on `fix/spx-play-cross-replica-cache`.
 
+## 2026-07-30 — [spx] E2E harness flakes on matrix tab hydration + Largo 504 + orchestrator timeout
+
+**Severity.** P1 — false FAILs in `validate:spx-e2e` / `validate:spx-rth` afternoon passes; member surfaces were GREEN (matrix oracle 172 strikes, play SCANNING).
+
+**Symptom.** (1) Playwright `#spx-matrix-tab-gex` not visible within 30s after long orchestrator burst. (2) `POST /api/market/largo/query` HTTP 504 once (CF ~100s origin cap; passed on retry). (3) `validate:spx-rth` sub-run of `validate:spx-e2e` hit curl 120s timeout during parallel burst.
+
+**Root cause.** Harness timeouts too tight for cloud-agent cold hydration; no Largo retry on transient 504; `spawnSync` sub-runs had no explicit ceiling.
+
+**Fix.** `scripts/spx-dashboard-e2e-audit.mjs`: matrix tab + row wait 60s; Largo probe retries once on 504/524. `scripts/spx-rth-all-day-audit.mjs`: `spawnSync` timeout 300s with ETIMEDOUT handling.
+
+**Status.** FIXED on `fix/spx-e2e-harness-hardening`.
+
 ## 2026-07-30 — [spx] REST pulse cold path blocked 12s+ (single-flight + prior-day fetch)
 
 **Severity.** P0 — SPX spot felt frozen when SSE dropped; REST fallback timed out at 12–60s.

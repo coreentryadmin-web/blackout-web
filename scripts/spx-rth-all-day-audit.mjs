@@ -36,8 +36,12 @@ const rec = (name, status, detail) => {
   console.log(`  [${status}] ${name}${detail ? " — " + detail : ""}`);
 };
 
-function run(cmd, label) {
-  const r = spawnSync(cmd, { shell: true, encoding: "utf8", env: process.env });
+function run(cmd, label, timeoutMs = 300_000) {
+  const r = spawnSync(cmd, { shell: true, encoding: "utf8", env: process.env, timeout: timeoutMs });
+  if (r.error?.code === "ETIMEDOUT") {
+    rec(label, "FAIL", `sub-run timed out after ${timeoutMs / 1000}s`);
+    return false;
+  }
   if (r.status !== 0) {
     rec(label, "FAIL", (r.stderr || r.stdout || "").trim().slice(0, 400));
     return false;
