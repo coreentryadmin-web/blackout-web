@@ -5,6 +5,7 @@ import {
   evaluateOptionsClusterOk,
   evaluatePolygonClusterOk,
   evaluateUwClusterOk,
+  readUwClusterHealth,
 } from "./socket-cluster-health";
 
 test("evaluateUwClusterOk: follower is healthy when cluster heartbeat is fresh", () => {
@@ -80,4 +81,13 @@ test("evaluateOptionsClusterOk: no leader and no marks fails during RTH", () => 
     false
   );
   assert.equal(result.ok, false);
+});
+
+test("readUwClusterHealth: web follower healthy when Redis heartbeat is fresh", async () => {
+  const orig = process.env.REDIS_URL;
+  process.env.REDIS_URL = "";
+  const uw = await readUwClusterHealth(false);
+  process.env.REDIS_URL = orig;
+  assert.equal(uw.is_leader, false);
+  assert.equal(uw.cluster_live, false);
 });

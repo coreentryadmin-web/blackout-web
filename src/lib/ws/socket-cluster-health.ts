@@ -5,13 +5,19 @@ import { OPTION_MARK_FRESH_MS } from "@/lib/ws/options-socket";
 import type { OptionMark } from "@/lib/ws/options-socket";
 
 const POLYGON_SNAPSHOT_KEY = "spx:pulse:snapshot";
+const UW_CLUSTER_LAST_MSG_KEY = "uw:ws:last_msg_at";
 const OPTIONS_LEADER_KEY = "options:ws:leader";
 const OPTIONS_MARK_PREFIX = "nw:optmark:";
 /** RTH liveness window for cluster heartbeats (matches admin UW channel silence threshold). */
 const UW_CLUSTER_LIVE_MS = 120_000;
 const POLYGON_CLUSTER_LIVE_MS = 30_000;
 
-type IndexSnapshot = Record<string, { price?: number; updatedAt?: number }>;
+type IndexSnapshot = Record<
+  string,
+  { price?: number; change_pct?: number; updatedAt?: number; open_source?: string }
+>;
+
+export type ClusterIndexSpot = { price: number; change_pct: number };
 
 export type UwClusterHealth = {
   is_leader: boolean;
@@ -42,6 +48,50 @@ export function buildUwClusterHealth(input: {
     cluster_last_message_age_ms: age,
     cluster_live: age != null && age <= UW_CLUSTER_LIVE_MS,
   };
+}
+
+/** Cross-replica index spot from the ingest leader's Redis snapshot (spx:pulse:snapshot). */
+export async function readClusterIndexSpot(
+  root: string,
+  maxAgeMs: number,
+  now = Date.now()
+): Promise<ClusterIndexSpot | null> {
+  const sym = root.toUpperCase();
+  try {
+    const redis = await getUwCacheRedis();
+    const raw = redis ? await redis.get(POLYGON_SNAPSHOT_KEY) : null;
+    if (!raw) return null;
+    const snap = JSON.parse(raw) as IndexSnapshot;
+    const entry = snap[sym];
+    const price = entry?.price;
+    if (!entry || price == null || !(price > 0) || !entry.updatedAt) return null;
+    if (now - entry.updatedAt >= maxAgeMs) return null;
+    return {
+      price,
+      change_pct: Number.isFinite(entry.change_pct) ? Number(entry.change_pct) : 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Redis-backed UW cluster heartbeat — web tier reads this without booting local sockets. */
+export async function readUwClusterHealth(
+  is_leader: boolean,
+  now = Date.now()
+): Promise<UwClusterHealth> {
+  let clusterAt: number | null = null;
+  try {
+    const redis = await getUwCacheRedis();
+    const val = redis ? await redis.get(UW_CLUSTER_LAST_MSG_KEY) : null;
+    if (val) {
+      const at = Number(val);
+      if (Number.isFinite(at) && at > 0) clusterAt = at;
+    }
+  } catch {
+    /* redis optional */
+  }
+  return buildUwClusterHealth({ is_leader, cluster_last_message_at: clusterAt, now });
 }
 
 export async function readPolygonClusterHealth(
