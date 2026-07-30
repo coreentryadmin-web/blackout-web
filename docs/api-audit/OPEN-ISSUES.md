@@ -1,5 +1,45 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-30 12:05 ET
+Last updated: 2026-07-30 12:25 ET
+
+## rth-comprehensive-2026-07-30-afternoon — RTH agent pass (~12:08–12:25 ET)
+
+**Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` including **RTH COMPREHENSIVE TEST SWEEP**. Commands: `npm run validate:rth-open` → `GET /api/cron/data-correctness?force=1` → `npm run validate:rth-sweep` (in progress) → `npm run ops:collect`.
+
+### Validation summary (pre-fix deploy)
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` | ❌ **FAIL** — `options-socket probe HTTP 503` (UW cluster heartbeat stale; options shard ok on web tier) |
+| `GET /api/cron/data-correctness?force=1` | ❌ **HTTP 504** — CF ~100s origin timeout on full 7-surface sweep |
+| `npm run ops:collect` | ❌ **4 items** — P0 stale: `bie-full-state-snapshot`, `coaching-alerts`, `vector-dark-pool-warm`; P1: `socket-health` |
+| `desk-warm` (validate:deploy) | ⚠️ HTTP **504** (244s) — exceeds CF origin cap |
+| `bie-full-state-snapshot` probe | ⚠️ **60s timeout** — buildBieFullState too heavy for synchronous HTTP |
+
+### Root causes identified
+
+| ID | Severity | Root cause | Fix (PR) |
+|---|---|---|---|
+| `uw-heartbeat-stale` | P1 | `uw:ws:last_msg_at` not refreshed when ingest WS reconnects; web-tier socket-health reads stale Redis key | **FIX** — `seedUwClusterHeartbeat()` from `uw-cache-refresh` on successful REST warm |
+| `cron-cf-504-wave` | P0 | `bie-full-state-snapshot`, `vector-dark-pool-warm`, `coaching-alerts`, `desk-warm`, `data-correctness?force=1` all exceed Cloudflare ~100s origin timeout when awaited synchronously | **FIX** — dispatch heavy work in `after()`, return 202 (mirror `zerodte-warm` #1342) |
+| `rth-open-503-blind` | P2 | `rth-open-check` failed on HTTP 503 without parsing body — options was `ok: true` | **FIX** — parse socket-health body on any status; warn on UW stale separately |
+
+### Fixes shipped (branch `cursor/rth-comprehensive-test-sweep-ca48`)
+
+- `seedUwClusterHeartbeat()` in `socket-cluster-health.ts` + call from `uw-cache-refresh`
+- `after()` dispatch + 202 for: `bie-full-state-snapshot`, `vector-dark-pool-warm`, `coaching-alerts`, `desk-warm`, `data-correctness?force=1` (full async; `?surface=heatmap` stays sync)
+- `rth-open-check` parses socket-health JSON even on 503
+- `ops-collect` uses `probeDataCorrectness` (heatmap surface under CF cap)
+
+### Post-deploy re-verify (pending merge)
+
+- [ ] `npm run validate:rth-open` GREEN
+- [ ] `GET /api/cron/data-correctness?force=1&surface=heatmap` 200, 0 flags
+- [ ] `npm run ops:collect` exit 0
+- [ ] `npm run validate:rth-sweep` GREEN (full browser + API sweep)
+
+**GitHub issue:** ops-auto-fix opened for P0 cron CF-504 wave.
+
+---
 
 ## rth-comprehensive-2026-07-30 — RTH-open runbook + full sweep (~11:30–12:05 ET)
 
