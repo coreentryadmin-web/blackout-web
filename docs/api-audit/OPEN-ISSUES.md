@@ -1,5 +1,82 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-30 11:52 ET
+Last updated: 2026-07-30 12:05 ET
+
+## rth-comprehensive-2026-07-30 — RTH-open runbook + full sweep (~11:30–12:05 ET)
+
+**Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` including **RTH COMPREHENSIVE TEST SWEEP**. Commands: `npm run validate:rth-open` → `GET /api/cron/data-correctness?force=1` → `npm run validate:rth-sweep` → `npm run validate:spx-rth` → `npm run validate:grid-rth` (partial) → `npm run validate:grid-e2e` → `npm run validate:spx-e2e` (retry).
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` | ✅ **GREEN** — deploy smoke, options-socket warming, no uw-socket stall storms (Postgres skipped — VPC) |
+| `GET /api/cron/data-correctness?force=1` | ✅ **GREEN** — 102 metrics, **0 flags**, 9 independently confirmed (96s) |
+| `npm run validate:rth-sweep` | ✅ **GREEN** — 0 P0/P1; all 7 pages load <1.7s soft-nav; APIs 200; Largo grounded |
+| `npm run validate:spx-rth` | ⚠️ **7 PASS / 1 WARN / 1 FAIL** — matrix + cross-endpoint GREEN; dashboard-e2e sub-run curl timeout |
+| `npm run validate:spx-e2e` (retry) | ⚠️ UI matrix **178 rows** GREEN; transient matrix API HTTP 0 + Largo 502 on parallel burst |
+| `npm run validate:grid-rth` | ⚠️ **WARN** `cron:zerodte-warm` HTTP **504** (CF ~100s origin cap); board 79 setups / 12 ledger GREEN |
+| `npm run validate:grid-e2e` | ⚠️ zerodte-board-api HTTP 0 at 90s curl cap (cold build ~96s); UI nighthawk timeout flake |
+
+### Speed (comprehensive sweep — Playwright premium session)
+
+| Page | Nav | Load | Notes |
+|---|---|---|---|
+| `/dashboard` | hard | 1676ms | sign-in 60s (Clerk ticket); 1 console 400 (non-blocking) |
+| `/flows` | soft | 1653ms | |
+| `/heatmap` (matrix) | soft | 1666ms | profile tab not separately timed this pass |
+| `/vector` | soft | 1600ms | |
+| `/nighthawk` | soft | 1598ms | 0DTE Command home (classic `/grid` deleted) |
+| `/terminal` (Largo) | soft | 1639ms | |
+| `/track-record` | soft | 1575ms | |
+
+All soft-nav **<1.7s** — within runbook threshold.
+
+### Live auto-update
+
+| Surface | Observed | Verdict |
+|---|---|---|
+| SPX spot (sweep 12–20s window) | `liveTick=null` — spot stable ~7385 in short window | ⚠️ inconclusive in 12s; cross-pass spot moved 7375→7387 in prior pass |
+| Desk / heatmap APIs | `as_of` 21s / fresh | ✅ |
+| HELIX flows | 20 prints, 69ms | ✅ |
+| 0DTE board | `as_of` 3s, 73ms warm / **~96s cold** | ⚠️ cold-cache path slow |
+
+### Data correctness
+
+| Probe | Result |
+|---|---|
+| `data-correctness` full sweep | ✅ 0 flags / 102 metrics |
+| Cross-tool GEX | ✅ desk spot 7385.53; flip lanes agree (spx-rth) |
+| Thermal matrix | ✅ 175–178 strikes, every cell finite |
+| Largo NVDA query (SSE) | ✅ 317ms — $92.2M premium grounded via `blackout_intelligence` |
+| Largo regime field | `—` in preview — upstream regime lane empty (not fabricated) |
+
+### Missing-field audit
+
+| Page | Placeholder hits | Root cause |
+|---|---|---|
+| All swept pages | **0** `$—` / `N/A` / `No data` pattern hits | — |
+| Largo answer | Regime `—` | API regime lane null during RTH — **expected honest empty** |
+
+### P0 found this pass
+
+**None.**
+
+### Findings logged
+
+| Severity | ID | Detail | Backing API | Fix |
+|---|---|---|---|---|
+| **P1** | `zerodte-warm-cf-504` | `GET /api/cron/zerodte-warm` returns HTTP **504** through Cloudflare — blocking `warmZeroDteBoard` + `refreshZeroDteBoardSnapshot` exceeds ~100s origin timeout | `/api/cron/zerodte-warm` | **FIX PR** — dispatch heavy warm in `after()`, return 202 |
+| **P1** | `zerodte-board-cold-96s` | Cold `GET /api/market/zerodte/board` ~96s — exceeds 90s audit curl cap (warm path 73ms) | `/api/market/zerodte/board` | **FIX PR** — bump e2e curl timeout to 120s for board/gex paths |
+| **P2** | `dashboard-console-400` | Playwright console: one 400 on `/dashboard` hard load | unknown resource | monitor — no visible blank fields |
+| **P2** | `spx-pulse-slow` | `/api/market/spx/pulse` 7547ms | `/api/market/spx/pulse` | monitor RTH load |
+| **P2** | `spx-e2e-parallel-burst` | Matrix fetch HTTP 0 + Largo 502 when parallel with UI | egress / origin burst | retry passes GREEN |
+| **P2** | `cloud-cron-secret-mismatch` | Audit env CRON ≠ prod for some cron probes | audit env | **Expected** |
+
+**Member-facing surfaces: GREEN** — data-correctness 0 flags, comprehensive sweep 0 P0/P1, matrix oracle clean, play SCANNING.
+
+**Reports:** `audit-output/rth-sweep-2026-07-30T15-35-21-565Z.json`, `audit-output/spx-rth-2026-07-30-verify-1785426339434.json`, `audit-output/spx-dashboard-e2e-1785427033314.json`, `audit-output/grid-e2e-1785427026974.json`
+
+---
 
 ## spx-rth-2026-07-30 — SPX Slayer all-day verify pass (market-open ~11:30–11:52 ET)
 

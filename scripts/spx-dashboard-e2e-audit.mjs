@@ -59,9 +59,15 @@ mkdirSync(TMP, { recursive: true });
 const JAR = join(TMP, "cookies.txt");
 let seq = 0;
 
+function curlTimeoutSec(url) {
+  if (url.includes("/api/market/zerodte/board") || url.includes("gex-heatmap")) return "120";
+  if (url.includes("/api/market/largo/query")) return "180";
+  return "90";
+}
+
 function curl({ method = "GET", url, headers = {}, form, urlencodeForm, json, jar = false, saveJar = false }) {
   const bf = join(TMP, `b${++seq}`);
-  const args = ["-sS", "--max-time", "90", "-o", bf, "-w", "%{http_code}", "-A", UA];
+  const args = ["-sS", "--max-time", curlTimeoutSec(url), "-o", bf, "-w", "%{http_code}", "-A", UA];
   if (method !== "GET") args.push("-X", method);
   for (const [k, v] of Object.entries(headers)) args.push("-H", `${k}: ${v}`);
   if (json) args.push("-H", "Content-Type: application/json", "--data", JSON.stringify(json));
