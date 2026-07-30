@@ -13,7 +13,7 @@ import { useFocusTrap } from "@/components/ui";
 import { PushNotificationToggle } from "@/components/PushNotificationToggle";
 import { isIosAppShell } from "@/lib/ios-app-shell";
 import { getIosToolNavLabel } from "@/lib/ios-tool-routes";
-import { readClientSignedIn } from "@/components/landing/NavAuthLinks";
+import { readClientSignedIn } from "@/lib/client-signed-in";
 
 type Accent = "green" | "purple" | "orange" | "blue" | "red" | "teal";
 type FeatureLink = { href: string; label: string; sub: string; accent: Accent };
@@ -112,10 +112,7 @@ export function Nav({
 
   // Cookie self-heal (same `__client_uat` path as marketing NavAuthLinks): desk content can be
   // cookie-authed while Clerk client still reports signed-out → "Sign In" over a live /nighthawk.
-  const [cookieSignedIn, setCookieSignedIn] = useState<boolean | null>(null);
-  useEffect(() => {
-    setCookieSignedIn(readClientSignedIn());
-  }, []);
+  const [cookieSignedIn, setCookieSignedIn] = useState<boolean | null>(() => readClientSignedIn());
   const isSignedIn =
     Boolean(clerkSignedIn) ||
     cookieSignedIn === true ||
@@ -364,7 +361,7 @@ export function Nav({
             {mobileOpen ? "✕" : "☰"}
           </button>
 
-          {!isSignedIn && isLoaded && (
+          {!isSignedIn && (
             <>
               <Link href="/sign-in" className="nav-signin font-syne hidden sm:inline">
                 Sign In
@@ -462,7 +459,7 @@ export function Nav({
               )}
               <div className="nav-sheet-divider" />
               <div className="nav-sheet-auth">
-                {!isSignedIn && isLoaded && (
+                {!isSignedIn && (
                   <>
                     <Link href="/sign-in" className="nav-signin font-syne" onClick={() => setMobileOpen(false)}>
                       Sign In
