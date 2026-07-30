@@ -1,5 +1,75 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-30 16:30 ET
+Last updated: 2026-07-30 16:52 ET
+
+## spx-rth-2026-07-30 — SPX Slayer all-day verify pass (~16:50 ET, post-close)
+
+**Session:** SPX Slayer all-day agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` **verify** mode (scheduled 6:30 AM PT open; executed ~1:50 PM PT / 4:50 PM ET **post-close**). Commands: `npm run validate:spx-rth --force` → `npm run validate:spx-e2e` → 60s live-update probe.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth --force` | ✅ **7 PASS / 1 WARN / 0 FAIL** — GREEN |
+| `npm run validate:spx-e2e` | ✅ **0 FAIL / 17 checks** — GREEN |
+| Matrix deep audit (SPX) | ✅ Every GEX/VEX/DEX/CHARM cell finite; Σ strike_totals == headline; INV-2 per strike |
+| Cross-endpoint spot/GEX | ✅ desk=7437.63 / heatmap=7437.63 / play=SCANNING |
+| BIE consistency (`validate:spx-bie`) | ✅ Static single-source chain PASS (6/6); live diff SKIPs (no local REDIS/DB) |
+| `ops:collect` | ✅ exit 0 — zero action items |
+
+**No P0/P1 product defects.** No fix branch required.
+
+### UI E2E (`/dashboard` — Playwright premium admin session)
+
+| # | Action | Result |
+|---|---|---|
+| Sign-in + shell | ✅ Page loads, no upgrade wall |
+| GEX tab (`#spx-matrix-tab-gex`) | ✅ Click activates matrix |
+| VEX tab (`#spx-matrix-tab-vex`) | ✅ Click populates VEX cells |
+| Matrix rows | ✅ **177** strike rows (≥80 threshold) |
+| Matrix text sanity | ✅ Zero NaN / undefined / `$—` |
+| Every cell vs API | ✅ **172 strikes** GEX+VEX+DEX+CHARM vs `/api/market/gex-heatmap?ticker=SPX` |
+| Trade alert hero | ✅ SCANNING — no stale ✓ confirmations |
+| Commentary expand | ⏭️ SKIP — toggle hidden post-close (`live=false` → standby mode; expected) |
+| Console errors | ✅ Zero |
+| LIVE badge | ⏭️ SKIP — post-close OFFLINE/EXTENDED expected |
+
+### Cross-tool integration (Step 3)
+
+| Tool | Probe | Result |
+|---|---|---|
+| **Thermal** | `GET /api/market/gex-heatmap?ticker=SPX` | ✅ Same payload as dashboard matrix; SPY cross_validation clean |
+| **GEX positioning** | Cross-tool spot/walls | ✅ desk=7437.63 aligned |
+| **HELIX** | `GET /api/market/flows?limit=30` | ✅ 30 prints |
+| **Largo** | `POST /api/market/largo/query` SPX play state | ✅ `tools=blackout_intelligence` |
+| **BIE** | `validate:spx-bie` static chain | ✅ `getSpxPlayState()` single derivation |
+| **Grid** | `GET /api/market/spx/bootstrap` | ✅ Loaded |
+| **0DTE Command** | `GET /api/market/zerodte/board` | ✅ 13 setups |
+| **Night Hawk** | `GET /api/market/nighthawk/edition` | ✅ Edition loads |
+
+### Live auto-update (60s probe, post-close)
+
+| Surface | Observed | Notes |
+|---|---|---|
+| Desk price | Static 7437.63 | Market closed — no tick expected |
+| Heatmap spot | Static 7437.63 | Post-close cache lane |
+| Pulse/flow lanes | SKIP | Off-hours unavailable (expected) |
+
+### Findings table (`spx-rth-2026-07-30`)
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| P2 | SPX-RTH-DC-01 | `CRON_SECRET` auth mismatch on `data-correctness` cron probe from cloud sandbox | `GET /api/cron/data-correctness?force=1` → 401 | Yes — prod cron runs on schedule; not a product defect |
+| P2 | SPX-RTH-BIE-01 | Cron bearer on `/api/market/spx/play` returns 401 (member route requires Clerk session) | E2E `integration:bie-play-route` | Yes — probe uses wrong auth mode; `validate:spx-bie` static chain PASS |
+| P2 | SPX-RTH-ROUND-01 | `roundFloats` asymmetry member route vs `getSpxPlayState()` (≤0.005 drift) | `validate:spx-bie` static WARN | Yes — documented in FINDINGS.md |
+
+### Reports
+
+- `audit-output/spx-rth-2026-07-30-verify-1785444679850.json`
+- `audit-output/spx-dashboard-e2e-1785444696266.json`
+- `audit-output/spx-bie-consistency-2026-07-30T20-50-45-256Z.json`
+- `audit-output/spx-dashboard-e2e-1785444695603.png`
+
+---
 
 ## rth-comprehensive-2026-07-30-16h30 — RTH agent pass (~16:20–16:30 ET, post-close)
 
