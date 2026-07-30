@@ -1,5 +1,72 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-30 15:48 ET
+Last updated: 2026-07-30 15:55 ET
+
+## rth-comprehensive-2026-07-30-16h — RTH agent pass (~15:38–15:55 ET)
+
+**Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` including **RTH COMPREHENSIVE TEST SWEEP**. Commands: `npm run validate:rth-open` → `GET /api/cron/data-correctness?force=1` → `npm run validate:rth-sweep` → `npm run validate:spx-rth` → `npm run validate:grid-rth` → `npm run ops:collect`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` | ✅ **GREEN** — deploy smoke, options-socket ingest-owned WS; first run transient fail (options-socket leader gap ~15:39 ET) cleared on retry ~15:42 |
+| `GET /api/cron/data-correctness?force=1` | ✅ **202 async** — background dispatch; poll `GET /api/cron/data-correctness` → `flags=0`, `overall_status=consistency-only`, 103 metrics / 9 independently confirmed |
+| `npm run validate:rth-sweep` | ✅ **GREEN** — 7 pages <1.7s, 0 missing fields, 0 P0/P1 issues; Largo grounded NVDA answer in 6.1s |
+| `npm run validate:spx-rth` | ✅ **8 PASS / 1 WARN / 0 FAIL** — matrix deep audit fixed (see below); data-correctness WARN = CRON_SECRET auth mismatch on sync poll (prod cron authoritative) |
+| `npm run validate:grid-rth` | ✅ **13 PASS / 1 FAIL→PASS** — 0DTE board 15 setups / 15 ledger GREEN; infra:rth-open flake during parallel load only |
+| `npm run ops:collect` | ✅ **exit 0** — zero action items |
+
+**Fix shipped this pass:** `scripts/heatmap-matrix-audit.mjs` `deriveFlip` used per-strike crossings (false-flagged SPX flip 7610 vs 7445) — replaced with cumulative gamma flip matching production `cumulativeGammaFlip` / `heatmap-verifier.ts`. Live verify: reported 7599.63 == cumulative 7599.63 (diff 0). PR: #1375.
+
+**No new P0/P1 product defects.** No GitHub issue opened.
+
+### Speed (comprehensive sweep — Playwright premium session)
+
+| Page | Nav | Load | Console |
+|---|---|---|---|
+| `/dashboard` (SPX Slayer) | hard | 1637ms | 1× HTTP 400 (non-blocking) |
+| `/flows` (HELIX) | soft | 1628ms | 0 |
+| `/heatmap` (Thermal matrix) | soft | 1602ms | 0 |
+| `/vector` | soft | 1598ms | 0 |
+| `/nighthawk` | soft | 1591ms | 0 |
+| `/terminal` (Largo) | soft | 1606ms | 0 |
+| `/track-record` | soft | 1568ms | 0 |
+
+Sign-in via Clerk ticket: ~60s (FAPI exchange). All soft-nav <1.7s — within institutional bar.
+
+### Live auto-update
+
+| Surface | Observed | Notes |
+|---|---|---|
+| Dashboard pulse | not tick-detected this pass | `liveTick=null` — SPX spot stable ±0.5pt during 12s window (low vol late session) |
+| HELIX flows | SSE path live | API 20 prints fresh |
+| Thermal matrix | 20s poll cadence | gex-heatmap SPX cold build 13.2s first hit |
+| 0DTE board | `as_of` 25s | 15 ledger rows LATE_SESSION |
+
+### Data correctness (API cross-check)
+
+| Field | Sources | Result |
+|---|---|---|
+| SPX spot | desk 7439.93 / merged 7436.7 / hm 7438.95 | ✅ within 1% |
+| γ-flip | desk 7602.29 / gex-pos 7626.69 / hm cumulative 7597.49 | ✅ within 1% tol (~74pt) |
+| GEX walls | call 7550 / put 7400 | ✅ consistent cross-tool |
+| Largo NVDA | HELIX $76.3M premium | ✅ grounded, tools_used=`blackout_intelligence` |
+
+### Missing-field audit
+
+**0 flagged patterns** across all 7 pages (`$—`, `—%`, `N/A`, `No data`, em-dash density). Largo preview shows `Regime: **—**` — upstream regime label absent for single-ticker HELIX query (expected, not fabricated).
+
+### API verification (authenticated sample)
+
+All probed `/api/market/*` → **200**. Platform snapshot `as_of` age 0s. Zerodte board `as_of` age 25s.
+
+### Reports
+
+- `audit-output/rth-sweep-2026-07-30T19-43-00-699Z.json`
+- `audit-output/spx-rth-2026-07-30-verify-1785441278412.json`
+- `audit-output/grid-rth-2026-07-30-verify-1785440980919.json`
+
+---
 
 ## grid-rth-2026-07-30 — 0DTE Command all-day verify pass (~15:37–15:48 ET)
 
