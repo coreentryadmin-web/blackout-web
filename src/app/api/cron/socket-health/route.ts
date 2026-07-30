@@ -14,6 +14,7 @@ import {
   readOptionsClusterHealth,
   readPolygonClusterHealth,
   readUwClusterHealth,
+  seedPulseSnapshotFromUwPrices,
 } from "@/lib/ws/socket-cluster-health";
 import { shouldBootDataSockets } from "@/lib/process-role";
 
@@ -52,6 +53,13 @@ export async function GET(req: NextRequest) {
     const authenticatedShards = options.shards.filter((s) => s.authenticated).length;
     const authFailedShards = options.shards.filter((s) => s.auth_failed).length;
     const rth = inOptionsMarketHours();
+
+    // Web-tier probes run without local polygon WS — seed the shared pulse snapshot from UW
+    // stock-state BEFORE evaluating cluster health so socket-health doesn't false-negative
+    // when ingest polygon WS is down but UW tape is live (#1337 / ops #1343).
+    if (rth) {
+      await seedPulseSnapshotFromUwPrices();
+    }
 
     const polygonLocal = getIndexStoreStatus();
     const uwLocal = getUwSocketHealth();
@@ -110,8 +118,10 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    const sockets_healthy = options_ok && luld_ok && uwEval.ok && polygonEval.ok;
+
     payload = {
-      ok: options_ok && luld_ok && uwEval.ok && polygonEval.ok,
+      ok: sockets_healthy,
       as_of: new Date().toISOString(),
       market_hours: rth,
       websockets: {
@@ -151,8 +161,12 @@ export async function GET(req: NextRequest) {
       error: "socket-health probe failed",
     };
   } finally {
+    // Cron health tracks whether the PROBE RAN, not whether sockets were healthy — a 503 here
+    // made socket-health look "failed" in cron_job_runs even when the route executed correctly
+    // and reported an honest unhealthy cluster (ops #1343 P1 false positive).
     await logCronRun("socket-health", started, {
-      ok: payload?.ok ?? false,
+      ok: payload != null && !("error" in payload && payload.error),
+      sockets_healthy: payload?.ok ?? false,
       market_hours: payload?.market_hours ?? false,
       error: payload && "error" in payload ? payload.error : undefined,
     }).catch((err) => {

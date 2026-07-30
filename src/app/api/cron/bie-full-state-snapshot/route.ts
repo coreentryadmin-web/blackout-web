@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { isEtCashRth } from "@/lib/et-market-hours";
@@ -17,6 +17,20 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
+async function runBieFullStateSnapshot(started: number): Promise<void> {
+  try {
+    const state = await buildBieFullState();
+    console.info(
+      `[cron/bie-full-state-snapshot] background done — wrote=${["platform", "intel", "vectorUniverse", "darkPool", "hotTickers"].filter(
+        (k) => (state as unknown as Record<string, unknown>)[k] != null
+      ).join(",")} loaderErrors=${Object.keys(state.errors).length} elapsed=${Date.now() - started}ms`
+    );
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    console.error(`[cron/bie-full-state-snapshot] background REJECTED: ${detail}`);
+  }
+}
+
 export async function GET(req: NextRequest) {
   const started = Date.now();
   if (!isCronAuthorized(req)) {
@@ -30,22 +44,32 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(payload);
   }
 
+  // buildBieFullState() fans out across desk/GEX/Vector loaders and can exceed Cloudflare's
+  // ~100s origin timeout when caches are cold — mirror zerodte-warm's fire-and-forget handshake.
+  const dispatchSnapshot = () => {
+    void runBieFullStateSnapshot(started).catch((error) => {
+      const detail = error instanceof Error ? error.message : String(error);
+      console.error(`[cron/bie-full-state-snapshot] background snapshot REJECTED: ${detail}`);
+    });
+  };
+
   try {
-    const state = await buildBieFullState();
-    const payload = {
-      ok: true,
-      asOf: state.asOf,
-      wrote: ["platform", "intel", "vectorUniverse", "darkPool", "hotTickers"].filter(
-        (k) => (state as unknown as Record<string, unknown>)[k] != null
-      ),
-      loaderErrors: Object.keys(state.errors),
-      elapsedMs: Date.now() - started,
-    };
-    await logCronRun("bie-full-state-snapshot", started, payload);
-    return NextResponse.json(payload);
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    await logCronRun("bie-full-state-snapshot", started, { ok: false, error: detail });
-    return NextResponse.json({ ok: false, error: "bie-full-state-snapshot failed" }, { status: 500 });
+    after(dispatchSnapshot);
+  } catch {
+    dispatchSnapshot();
   }
+
+  const accepted = {
+    ok: true,
+    status: "accepted",
+    reason: "BIE full-state snapshot dispatched in background (fire-and-forget)",
+  };
+  await logCronRun("bie-full-state-snapshot", started, accepted);
+  return NextResponse.json(
+    {
+      ...accepted,
+      note: "Cross-product snapshot build runs in background — cron handshake stays under edge timeout.",
+    },
+    { status: 202 }
+  );
 }

@@ -3,7 +3,7 @@
 // When UW WS channels are fresh, seeds Redis from in-process stores first and skips
 // the matching REST warm tasks (see uw-ws-cache-bridge.ts).
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { getUwCacheRedis, uwCacheSet, UW_KEYS, UW_CACHE_TTL } from "@/lib/providers/uw-shared-cache";
@@ -34,21 +34,10 @@ const SECTORS = [
   "consumer cyclical",
 ] as const;
 
-export async function GET(req: NextRequest) {
-  const started = Date.now();
-  if (!isCronAuthorized(req)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const redis = await getUwCacheRedis();
-  let refreshed = 0;
-  let ws_seeded = 0;
-  let ws_skipped: string[] = [];
-
-  const seed = await seedUwCacheFromWsStores(redis);
-  ws_seeded = seed.seeded;
-  ws_skipped = seed.skipped_ws;
-
+async function runUwCacheRefreshTasks(
+  started: number,
+  redis: Awaited<ReturnType<typeof getUwCacheRedis>>
+): Promise<void> {
   const tasks: Array<() => Promise<void>> = [
     async () => {
       if (shouldSkipUwCacheRefreshTask("market_tide")) return;
@@ -112,29 +101,60 @@ export async function GET(req: NextRequest) {
   ];
 
   const results = await Promise.allSettled(tasks.map((fn) => fn()));
-
-  for (const r of results) {
-    if (r.status === "fulfilled") refreshed += 1;
-  }
-
-  const pulse_seeded = await seedPulseSnapshotFromUwPrices();
-
   const failed = results.filter((r) => r.status === "rejected").length;
   if (failed > 0) {
-    console.warn(`[cron/uw-cache-refresh] ${failed} task(s) failed`);
+    console.warn(`[cron/uw-cache-refresh] background: ${failed}/${tasks.length} task(s) failed`);
+  }
+  console.info(
+    `[cron/uw-cache-refresh] background done — refreshed=${results.filter((r) => r.status === "fulfilled").length} failed=${failed} elapsed=${Date.now() - started}ms`
+  );
+}
+
+export async function GET(req: NextRequest) {
+  const started = Date.now();
+  if (!isCronAuthorized(req)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const allFailed = tasks.length > 0 && failed === tasks.length;
-  await logCronRun("uw-cache-refresh", started, {
-    ok: !allFailed,
-    refreshed,
-    failed,
-    total: tasks.length,
+  const redis = await getUwCacheRedis();
+  let ws_seeded = 0;
+  let ws_skipped: string[] = [];
+
+  const seed = await seedUwCacheFromWsStores(redis);
+  ws_seeded = seed.seeded;
+  ws_skipped = seed.skipped_ws;
+
+  // Seed pulse snapshot FIRST — socket-health + GEX spot readers depend on this during RTH when
+  // polygon indices WS is ingest-owned. Must complete before the heavy REST fan-out (#1343).
+  const pulse_seeded = await seedPulseSnapshotFromUwPrices();
+
+  const dispatchRefresh = () => {
+    void runUwCacheRefreshTasks(started, redis).catch((error) => {
+      const detail = error instanceof Error ? error.message : String(error);
+      console.error(`[cron/uw-cache-refresh] background refresh REJECTED: ${detail}`);
+    });
+  };
+
+  try {
+    after(dispatchRefresh);
+  } catch {
+    dispatchRefresh();
+  }
+
+  const accepted = {
+    ok: true,
+    status: "accepted",
+    reason: "UW REST cache refresh dispatched in background (fire-and-forget)",
     ws_seeded,
     ws_skipped,
     pulse_seeded,
-    ...(failed > 0 ? { error: `${failed}/${tasks.length} refresh task(s) failed` } : {}),
-  });
-
-  return NextResponse.json({ ok: true, refreshed, total: tasks.length, ws_seeded, ws_skipped, pulse_seeded });
+  };
+  await logCronRun("uw-cache-refresh", started, accepted);
+  return NextResponse.json(
+    {
+      ...accepted,
+      note: "Per-ticker UW REST warm runs in background — pulse snapshot seeded synchronously.",
+    },
+    { status: 202 }
+  );
 }
