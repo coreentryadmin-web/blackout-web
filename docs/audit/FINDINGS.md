@@ -3,6 +3,19 @@
 (Rebuilt 2026-07-13: the prior log was clobbered to an empty file by a squash-merge
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
+
+## 2026-07-30 — [spx] Post-close fix agent — all validators GREEN (~3:09 PM PT)
+
+**Severity:** — (no product defect)
+
+**Session:** SPX Slayer post-close fix agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` Step 6.
+
+**Evidence.** `npm run validate:spx-rth -- --phase=post-close` → 6 PASS / 1 WARN / 0 FAIL; `npm run validate:spx-e2e` → 0 FAIL / 17 checks; `npm run validate:deploy` → GREEN. Matrix oracle: 172 strikes GEX+VEX+DEX+CHARM finite; cross-endpoint spot merged=7437.63 hm=7437.63; play SCANNING with no stale confirmations; BIE `getSpxPlayState()` consistent; cross-tool integration (Thermal, HELIX, Largo, Grid, 0DTE, Night Hawk) all PASS.
+
+**Root cause.** No new product defects. Initial cloud-agent run failed on missing `node_modules` (tsx/playwright/pg) and Playwright browser binary — environment setup, not member-facing. Transient `merged spot 0` on first probe resolved on retry (cold merged cache edge).
+
+**Status.** GREEN — no fix branch required. Prior fixes already on main: cross-replica play cache (#1382), E2E harness hardening (#1383).
+
 evidence / fix / status per the CLAUDE.md policy.)
 
 ## 2026-07-30 — [Grid/0DTE] Post-close fix agent — all validators GREEN
