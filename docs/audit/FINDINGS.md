@@ -5,6 +5,23 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-30 — [ops] zerodte-warm CF 504 on blocking board rebuild
+
+**Severity.** P1 — cron handshake 504 every RTH probe; watchdog may mis-report failure.
+
+**Symptom.** `npm run validate:grid-rth` WARN `cron:zerodte-warm — HTTP 504` at 11:38 ET;
+cold `GET /api/market/zerodte/board` ~96s (warm path 73ms).
+
+**Root cause.** `src/app/api/cron/zerodte-warm/route.ts` awaited
+`warmZeroDteBoard()` + `refreshZeroDteBoardSnapshot()` inline — combined wall-clock
+exceeds Cloudflare ~100s origin timeout while `maxDuration=120`.
+
+**Fix.** Dispatch scanner + snapshot rebuild via `next/server after()`; return HTTP 202
+after fast `warmGridEarnings()` handshake (mirrors `nighthawk-edition`). Audit e2e curl
+timeouts bumped to 120s for zerodte/board + gex-heatmap cold paths.
+
+**Status.** FIXED on `fix/zerodte-warm-edge-timeout`.
+
 ## 2026-07-30 — [ops] Polygon REST 403 → UW spot/GEX fallback (#1337)
 
 **Severity.** P0 `redis_gex` cold SPX + P1 `socket-health` failed during RTH after #1336 deploy.
