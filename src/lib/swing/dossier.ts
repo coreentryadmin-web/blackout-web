@@ -36,6 +36,7 @@ import {
   type ArchetypeVerdict,
   type ArchetypeReadExtras,
 } from "./archetype";
+import type { SwingPlanLevels } from "./structure-levels";
 
 /** Bump when the carrier's shape changes so old graded/persisted dossiers stay interpretable. */
 export const SWING_DOSSIER_VERSION = 1;
@@ -73,6 +74,16 @@ export interface SwingDossier {
   /** The contract sub-lane owning the intended DTE, or null when no DTE / outside [2,30]. */
   subLane: SwingSubLane | null;
   dataQuality: SwingDataQuality;
+  /**
+   * Underlying-terms plan levels (entry / structural invalidation / target) when grounded from daily
+   * closes. Pinned onto the ledger at commit so structural_stop can fire — null when price/ATR absent.
+   */
+  plan?: Pick<
+    SwingPlanLevels,
+    "entryUnderlyingPx" | "thesisInvalidationPx" | "targetUnderlyingPx"
+  > | null;
+  /** Top flow magnet strike (from multi-day accumulation), when present — provenance for the contract pick. */
+  topFlowStrike?: number | null;
 }
 
 /** Grounded pillar-helper inputs. Each cluster is optional; an absent cluster → that pillar is null (absent),
@@ -97,6 +108,10 @@ export interface SwingDossierInput {
   regime01?: number | null;
   /** Pre-normalized data-quality/agreement read (0–1), or null when absent. */
   dataQuality01?: number | null;
+  /** Underlying plan levels (from structure-levels.ts) — optional, pinned through to the dossier. */
+  planLevels?: SwingPlanLevels | null;
+  /** Flow magnet strike when the accumulation read carries one. */
+  topFlowStrike?: number | null;
 }
 
 function toIso(asOf: SwingDossierInput["asOf"]): string {
@@ -134,6 +149,16 @@ export function buildSwingDossier(input: SwingDossierInput): SwingDossier {
   const presentPillars = SWING_PILLARS.length - missing.length;
   const degraded = presentPillars < MIN_PRESENT_PILLARS || missing.includes(CRITICAL_PILLAR);
 
+  const plan = input.planLevels
+    ? {
+        entryUnderlyingPx: input.planLevels.entryUnderlyingPx,
+        thesisInvalidationPx: input.planLevels.thesisInvalidationPx,
+        targetUnderlyingPx: input.planLevels.targetUnderlyingPx,
+      }
+    : null;
+  const topFlowStrike =
+    input.topFlowStrike != null && Number.isFinite(input.topFlowStrike) ? input.topFlowStrike : null;
+
   return {
     v: SWING_DOSSIER_VERSION,
     ticker: input.ticker,
@@ -144,5 +169,7 @@ export function buildSwingDossier(input: SwingDossierInput): SwingDossier {
     score,
     subLane,
     dataQuality: { degraded, presentPillars, missing },
+    plan,
+    topFlowStrike,
   };
 }

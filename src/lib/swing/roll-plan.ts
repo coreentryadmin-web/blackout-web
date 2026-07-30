@@ -48,6 +48,7 @@ import {
   type BudgetPosition,
 } from "./swing-portfolio-budget";
 import { allocateSwingBook, DEFAULT_SWING_CAPS, type SwingCaps, type ExistingSwingPosition } from "./swing-allocation";
+import { occFromChainContract } from "./occ-from-row";
 
 const isFin = (x: number | null | undefined): x is number => x != null && Number.isFinite(x);
 
@@ -223,7 +224,12 @@ async function buildRollChild(
     contract_strike: isFin(pick.strike) ? pick.strike : null,
     contract_expiry: pick.expiry,
     contract_type: pick.right === "C" ? "call" : "put",
-    contract_occ: null,
+    contract_occ: occFromChainContract({
+      ticker: row.ticker,
+      expiry: pick.expiry,
+      right: pick.right,
+      strike: pick.strike,
+    }),
     contract_delta: isFin(pick.delta) ? pick.delta : null,
     entry_underlying_px: underlyingPx,
     thesis_invalidation_px: row.thesis_invalidation_px,

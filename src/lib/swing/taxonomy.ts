@@ -177,9 +177,13 @@ export const ARCHETYPE_PERSISTENCE: Record<SwingArchetype, ArchetypePersistenceR
   SECTOR_ROTATION: { minDistinctSessions: 2, requiresCorroboration: false },
   // Event / immediate archetypes — actionable the session they fire. 1 session BUT corroboration
   // required (a 2nd independent signal, never a lone print).
+  // Event / immediate archetypes: a single session is enough IF the sighting is corroborated by ≥2
+  // independent signal KINDS (FLOW + STRUCTURE, or FLOW + CATALYST, …) — OR a 2nd session. FAILED_BREAKDOWN
+  // is the exception: a volume-confirmed structure reclaim IS itself the thesis (Tier-0 already filters
+  // close-strength), so corroboration of a second KIND is not required — minDistinctSessions:1 alone.
   EVENT_DRIVEN: { minDistinctSessions: 1, requiresCorroboration: true },
   POST_EARNINGS_DRIFT: { minDistinctSessions: 1, requiresCorroboration: true },
-  FAILED_BREAKDOWN: { minDistinctSessions: 1, requiresCorroboration: true },
+  FAILED_BREAKDOWN: { minDistinctSessions: 1, requiresCorroboration: false },
 };
 
 /** The persistence rule for an archetype, or the conservative default when the name is unclassified. */

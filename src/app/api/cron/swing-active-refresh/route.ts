@@ -36,6 +36,7 @@ import { resolveProductionPortfolioBudget } from "@/lib/swing/swing-portfolio-bu
 import type { ParentGradeFreeze } from "@/lib/swing/roll";
 import type { SwingArchetype } from "@/lib/swing/taxonomy";
 import { resolveTickerChainRows } from "@/features/nighthawk/lib/option-chain-prompt";
+import { occSymbolFromSwingRow } from "@/lib/swing/occ-from-row";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -50,14 +51,13 @@ async function loadUnderlyingSpot(ticker: string): Promise<number | null> {
 
 /**
  * Best-effort live OPTION mark for a held position's contract (reuses the 0DTE unified-snapshot marks path).
- * The ledger stores the OCC without the `O:` prefix the snapshot endpoint expects, so normalize it first.
- * Returns null (contract unknown / no quote / fetch error) → the manager's premium rungs skip via null-honesty
+ * Reconstructs OCC from strike/expiry/type when `contract_occ` was null at commit (pre-fix rows). Returns
+ * null (contract unknown / no quote / fetch error) → the manager's premium rungs skip via null-honesty
  * rather than acting on a fabricated mark. `.mark` is the doc-priority mark (mid → last → day close).
  */
 async function loadOptionMark(row: SwingPositionRow): Promise<number | null> {
-  const raw = row.contract_occ?.trim();
-  if (!raw) return null;
-  const occ = raw.startsWith("O:") ? raw : `O:${raw}`;
+  const occ = occSymbolFromSwingRow(row);
+  if (!occ) return null;
   try {
     const snaps = await fetchOptionsUnifiedSnapshot([occ]);
     const mark = snaps.get(occ)?.mark;
@@ -65,6 +65,15 @@ async function loadOptionMark(row: SwingPositionRow): Promise<number | null> {
   } catch {
     return null; // best-effort: a marks miss must never sink the refresh (underlying path still records)
   }
+}
+
+/** Calendar sessions held ≈ days since commit (ET-agnostic day count is fine for time_stop). */
+function sessionsHeldFromRow(row: SwingPositionRow, nowMs: number): number | null {
+  const raw = row.committed_at;
+  if (!raw) return null;
+  const t = new Date(raw).getTime();
+  if (!Number.isFinite(t) || t <= 0) return null;
+  return Math.max(0, Math.round((nowMs - t) / 86_400_000));
 }
 
 export async function GET(req: NextRequest) {
@@ -127,6 +136,10 @@ export async function GET(req: NextRequest) {
           // planManageSync derives from these ratcheted extremes + entry — NOT this raw spot.
           underlyingMfe: spot,
           underlyingMae: spot,
+          // Structural stop = pinned thesis invalidation (underlying terms) — without this, gate 2 never fires.
+          structuralStopLevel: row.thesis_invalidation_px,
+          // Sessions held → time_stop advisory rung (STANDARD 8 / EXTENDED 14).
+          sessionsHeld: sessionsHeldFromRow(row, nowMs),
         };
       },
       insertSnapshot: insertSwingSnapshot,

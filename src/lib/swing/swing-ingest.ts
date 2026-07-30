@@ -45,6 +45,7 @@ import {
   type GroupBenchmark,
 } from "./industry-group-rs";
 import { getSector } from "../sector-map";
+import { atrProxyFromCloses, deriveSwingPlanLevels } from "./structure-levels";
 
 const clamp01 = (n: number): number => Math.max(0, Math.min(1, n));
 const isNum = (v: number | null | undefined): v is number => v != null && Number.isFinite(v);
@@ -221,6 +222,16 @@ export function assembleSwingDossierInput(args: SwingReadsAssemblyArgs): SwingDo
     earnings: args.catalyst?.earnings ?? { nextEarnings: null, lastEarnings: null },
   });
 
+  // Event/catalyst theses have a short natural horizon — shorten intended DTE so earnings-in-window and
+  // sub-lane resolution don't treat a 3-day drift as a 14-day STANDARD hold (which over-vetoes via
+  // event_in_window and picks the wrong delta band).
+  const catalystShortHorizon =
+    (isNum(catReads.earningsGapRecent01) && catReads.earningsGapRecent01 >= 0.5) ||
+    (isNum(catReads.catalystInWindow01) && catReads.catalystInWindow01 >= 0.5);
+  const effectiveIntendedDte = catalystShortHorizon
+    ? Math.min(args.intendedDte ?? 14, 5)
+    : (args.intendedDte ?? null);
+
   // ── VOLATILITY (from IV rank) + REGIME (from the SPY trend, direction-aligned). ──
   const contractQuality01 = contractQualityFromIvRank(args.ivRank);
   const regime01 = regimeFromSpyTrend(args.spyCloses, signed.direction);
@@ -237,11 +248,25 @@ export function assembleSwingDossierInput(args: SwingReadsAssemblyArgs): SwingDo
     lookback: SWING_RETURN_LOOKBACK_SESSIONS,
   });
 
+  // ── Plan levels (entry / structural invalidation / target) — grounded from last close + ATR proxy so the
+  // commit ledger can pin thesis_invalidation_px and the manager's structural_stop gate can fire. ──
+  const lastClose = args.nameCloses.length > 0 ? args.nameCloses[args.nameCloses.length - 1]! : null;
+  const planLevels =
+    signed.direction != null && isNum(lastClose)
+      ? deriveSwingPlanLevels(signed.direction, lastClose, atrProxyFromCloses(args.nameCloses))
+      : null;
+  const topFlowStrike = (() => {
+    const m = args.accumulation?.magnet?.strike;
+    return isNum(m) && m > 0 ? m : null;
+  })();
+
   return {
     ticker: args.ticker.toUpperCase(),
     asOf: args.asOf,
-    intendedDte: args.intendedDte ?? null,
+    intendedDte: effectiveIntendedDte,
     reads,
+    planLevels,
+    topFlowStrike,
     // Breakout-screen extras + the grounded event-archetype extras (catalyst / earnings-drift). A null extra
     // simply drops from its archetype's fit — POST_EARNINGS_DRIFT / EVENT_DRIVEN classify only when grounded.
     archetypeExtras: {

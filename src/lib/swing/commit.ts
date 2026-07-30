@@ -37,6 +37,7 @@
 import type { PlayDirection, ChainContract } from "../horizon-fanout";
 import type { SwingArchetype, SwingSubLane } from "./taxonomy";
 import { subLaneForDte } from "./taxonomy";
+import { occFromChainContract } from "./occ-from-row";
 import type { SwingCalibrationReport } from "./calibration";
 import {
   evaluateSwingCommitBudget,
@@ -341,7 +342,13 @@ function buildCommitInsert(
     contract_strike: isFin(c.strike) ? c.strike : null,
     contract_expiry: c.expiry ?? null,
     contract_type: c.right === "C" ? "call" : "put",
-    contract_occ: null, // ChainContract carries no OCC; the ledger allows null
+    // Reconstruct OCC at commit so active-refresh can load live marks (premium_stop / rolls / ladder).
+    contract_occ: occFromChainContract({
+      ticker: cand.ticker,
+      expiry: c.expiry,
+      right: c.right,
+      strike: c.strike,
+    }),
     contract_delta: isFin(c.delta) ? c.delta : null,
     entry_underlying_px: cand.entryUnderlyingPx ?? null,
     thesis_invalidation_px: cand.thesisInvalidationPx ?? null,

@@ -39,6 +39,7 @@ import { SWING_DOSSIER_VERSION } from "./dossier";
 import type { ArchetypeVerdict } from "./archetype";
 import { buildSwingFeatureVector, type SwingFeatureInputs } from "./feature-vector";
 import type { SwingPillarSignals } from "./swing-pillars";
+import { SWING_PILLARS } from "./swing-archetype";
 import {
   evaluateSwingManagement,
   GATING_RUNGS,
@@ -140,7 +141,7 @@ function syntheticDossierFromPosition(row: SwingPositionRow): SwingDossier {
     pillarSignals: {},
     score: { score: 0, archetype: archetype.archetype, subLane: coerceSubLane(row.sub_lane), contributions: [], presentCount: 0, reason: "synthetic" },
     subLane: coerceSubLane(row.sub_lane),
-    dataQuality: { degraded: true, presentPillars: 0, missing: [] },
+    dataQuality: { degraded: true, presentPillars: 0, missing: [...SWING_PILLARS] },
   };
 }
 

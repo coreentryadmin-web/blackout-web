@@ -259,20 +259,31 @@ export async function GET(req: NextRequest) {
     const deps = buildDiscoveryDeps(nowMs, sessionDay, decision.phase!);
     const result = await runSwingDiscoveryScan(deps);
 
-    // Persist the scored output so the member horizons route can serve it (getSwingServingLane's `discover`
-    // reads this blob). Before this, the scan advanced only the accumulation memory — the dossiers/plays/watch
-    // it produced were dropped, so the SWING board had nothing to read and rendered permanently empty.
-    // Best-effort (persist swallows its own errors) — a cache miss must never fail the discovery cron.
-    // `playSet.SWING` is only non-empty once discovery attaches concrete WATCH contracts (the OPTIONAL
-    // fetchChainRows dep — the evidence-only "WATCH by persistence, not by contract" posture); until then the
-    // member board is honestly empty, but the dossiers + watch list are persisted and the read path is live.
-    await persistSwingServingSnapshot({
+    // Persist the scored output so the member horizons route can serve it. If the write fails, RELEASE the
+    // phase claim so the next EventBridge fire can retry — upgrading to DONE without a snapshot locks the
+    // member board on a stale/empty state for 22h.
+    const persisted = await persistSwingServingSnapshot({
       asOf: result.asOf,
       sessionDay,
       dossiers: result.dossiers,
       plays: result.playSet.SWING,
       watch: result.watchCandidates,
     });
+    if (!persisted) {
+      if (decision.key) {
+        await sharedCacheDel(decision.key).catch(() => undefined);
+      }
+      const payload = {
+        ok: false,
+        phase: decision.phase,
+        sessionDay,
+        error: "serving snapshot persist failed — phase claim released for retry",
+        claim_released: true,
+        fadedStale: result.fadedStale ?? 0,
+      };
+      await logCronRun("swing-discovery", started, payload);
+      return NextResponse.json(payload, { status: 500 });
+    }
 
     // Upgrade running → done (full-day lock). Only after persist so a crash mid-scan does not lock the day.
     if (decision.key) {
@@ -300,6 +311,7 @@ export async function GET(req: NextRequest) {
       committed: result.commit?.committed.filter((c) => c.positionId != null).length ?? 0,
       commitErrors: result.commit?.errors ?? 0,
       commitSkipped: result.commit?.skipped.length ?? 0,
+      fadedStale: result.fadedStale ?? 0,
       duration_ms: Date.now() - started,
     };
     await logCronRun("swing-discovery", started, payload);
