@@ -18,6 +18,7 @@ import { isEtCashRth } from "@/lib/et-market-hours";
 import {
   isFlowIngestAlternateWriterSkip,
 } from "@/lib/cron-writer-target-fresh";
+import { isInOffScheduleIdleGap } from "@/lib/cron-schedule-window";
 import { xMarketingCronPaused } from "@/lib/x-marketing-env";
 
 /** RTH gate for market_hours_only cron health — canonical ET helper (early-close aware). */
@@ -198,6 +199,10 @@ function evaluateJob(
   const offWindow = Boolean(job.market_hours_only) && !inMarketHoursEt();
   const suppressStaleOffWindow =
     offWindow && (last.status === "skipped" || last.status === "ok");
+  const offScheduleGap = Boolean(job.schedule_cron_utc) &&
+    isInOffScheduleIdleGap(job.schedule_cron_utc!, new Date());
+  const suppressStaleOffSchedule =
+    offScheduleGap && (last.status === "skipped" || last.status === "ok");
 
   let status: CronJobHealthStatus = "healthy";
   let statusLabel = "OK";
@@ -208,6 +213,9 @@ function evaluateJob(
   } else if (suppressStaleOffWindow) {
     status = "healthy";
     statusLabel = last.status === "skipped" ? "Idle (market closed)" : "OK (market closed)";
+  } else if (suppressStaleOffSchedule) {
+    status = "healthy";
+    statusLabel = "Idle (outside cron schedule window)";
   } else if (
     job.key === "flow-ingest" &&
     last.status === "skipped" &&

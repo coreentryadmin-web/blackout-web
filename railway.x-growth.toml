@@ -1,0 +1,12 @@
+# X growth (silent likes/follows/RT) — every 30m UTC 13:00–23:30.
+# Schedule mirrors EventBridge: cron(0/30 13-23 ? * * *)
+[build]
+builder = "nixpacks"
+buildCommand = "echo 'cron trigger service: no app build needed'"
+watchPatterns = ["scripts/hit-cron.mjs", "railway.x-growth.toml", "nixpacks.toml"]
+
+[deploy]
+startCommand = "node scripts/hit-cron.mjs /api/cron/x-growth"
+cronSchedule = "0/30 13-23 * * *"
+restartPolicyType = "ON_FAILURE"
+numReplicas = 1

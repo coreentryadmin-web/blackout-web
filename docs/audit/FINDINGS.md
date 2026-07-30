@@ -195,6 +195,29 @@ page STALE; added X crons to `railway-cron-services.mjs` ops registry.
 
 **Status.** `fix/x-replies-cron-stale` → PR.
 
+## 2026-07-30 — [ops] x-replies/x-growth cron STALE off-schedule (false positive)
+
+**Severity.** P1 ops (ops-auto-fix #1312, fingerprint `b60c447e4c03`).
+
+**Symptom.** `cron-staleness-watchdog` flagged `x-replies` (and later `x-growth`) stale after the
+daily UTC fire window closed — e.g. 00:14 UTC with no `cron_job_runs` in 90m.
+
+**Root cause.** EventBridge rules are **ENABLED** (`x-replies` `cron(20 13-22 ? * MON-FRI *)`,
+`x-growth` `cron(0/30 13-23 ? * * *)`), but `admin-cron-health` treated `stale_after_min` as 24/7.
+After the last tick (22:20 / 23:30 UTC) age inevitably exceeds the threshold until the next
+morning band — recurring nightly false positive. `xMarketingCronPaused()` did not help because ECS
+tasks had not picked up `X_MARKETING_POSTS_PAUSED=1` from Secrets Manager (manual run did not skip).
+
+**Evidence.** AWS `DescribeRule` State=ENABLED for both rules. Watchdog `problem_keys: ["x-replies"]`
+at 00:14 UTC; manual `GET /api/cron/x-replies?manual=1` cleared it; `x-growth` borderline stale at
+45m threshold. Same fingerprint as #1277 but different root cause (schedule-window, not disabled EB).
+
+**Fix.** `schedule_cron_utc` on X marketing registry entries + `cron-schedule-window.ts`
+`isInOffScheduleIdleGap()` suppresses stale when outside long inter-fire gaps; added
+`railway.x-growth.toml` catalog aligned to EventBridge.
+
+**Status.** `fix/x-replies-off-schedule-stale` → PR.
+
 ## 2026-07-29 — [SPX] EOD Pin Forecaster glued ~120pts below spot (weak far wall)
 
 **Severity.** P1 — SPX Slayer EOD Pin panel + Vector "Pin" axis tag looked frozen all afternoon;

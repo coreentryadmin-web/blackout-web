@@ -8,6 +8,8 @@ export type CronJobDefinition = {
   schedule_label: string;
   /** Minutes without a successful run before marked stale. */
   stale_after_min: number;
+  /** Railway/EventBridge UTC cron — enables off-window stale suppression. */
+  schedule_cron_utc?: string;
   weekdays_only?: boolean;
   market_hours_only?: boolean;
   description: string;
@@ -395,6 +397,7 @@ export const CRON_JOBS: CronJobDefinition[] = [
     kind: "http",
     path: "/api/cron/x-autopost",
     schedule_label: "Every 2h ET (8am–8pm)",
+    schedule_cron_utc: "0 12,14,16,18,20,22,0 * * *",
     stale_after_min: 150,
     description:
       "@BlackOutTrade scheduled desk posts — live SPX data, human voice, Whop footer",
@@ -405,6 +408,7 @@ export const CRON_JOBS: CronJobDefinition[] = [
     kind: "http",
     path: "/api/cron/x-growth",
     schedule_label: "Every 30m ET (9am–7pm, budgeted likes/follows/RT)",
+    schedule_cron_utc: "0/30 13-23 * * *",
     stale_after_min: 45,
     weekdays_only: true,
     description:
@@ -416,6 +420,7 @@ export const CRON_JOBS: CronJobDefinition[] = [
     kind: "http",
     path: "/api/cron/x-replies",
     schedule_label: "Hourly :20 weekdays",
+    schedule_cron_utc: "20 13-22 * * 1-5",
     stale_after_min: 90,
     weekdays_only: true,
     description: "Reply to @BlackOutTrade mentions — human AI + dedup",
