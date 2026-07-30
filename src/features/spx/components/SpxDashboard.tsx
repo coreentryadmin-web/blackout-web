@@ -36,6 +36,11 @@ const SpxPinForecast = dynamic(
   { loading: () => null }
 );
 
+const SpxPlayVerdictBar = dynamic(
+  () => import("./SpxPlayVerdictBar").then((m) => ({ default: m.SpxPlayVerdictBar })),
+  { loading: () => null }
+);
+
 // DESK CONSOLIDATION (2026-07-13, member-directed): the Trade Alerts panel (plays kanban +
 // engine cards) and the Slayer desk terminal (mounted inside that same component) are
 // REMOVED from the flagship desk in favour of the embedded SPX Vector chart below — one
@@ -101,7 +106,7 @@ export function SpxDashboard({ vectorEnabled }: SpxDashboardProps) {
   // real desk snapshot) so the play SWR only polls when the desk is actually live. The mapped input
   // is memoized on the play's identity so an unchanged play doesn't churn the chart's reconcile.
   const playSessionActive = Boolean(live && desk?.available);
-  const { play } = useSpxPlay(playSessionActive);
+  const { play, playLoading } = useSpxPlay(playSessionActive);
   const playLevels = useMemo(() => playPayloadToLevelsInput(play), [play]);
 
   // FOCUS MODE (2026-07-13): `F` toggles / `Esc` exits (ignored while typing), persisted
@@ -327,7 +332,15 @@ export function SpxDashboard({ vectorEnabled }: SpxDashboardProps) {
               compactPanels && iosPanel === "matrix" && "ios-native-panel-visible"
             )}
           >
-            <SpxPinForecast sessionActive={sessionActive} />
+            <div className="spx-left-pin-stack">
+              <SpxPinForecast sessionActive={sessionActive} />
+              <SpxPlayVerdictBar
+                play={play}
+                playLoading={playLoading}
+                sessionActive={playSessionActive}
+                compactDefaultCollapsed={compactPanels}
+              />
+            </div>
           </aside>
         </SpxPanelErrorBoundary>
 

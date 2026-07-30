@@ -55,6 +55,9 @@ test("SpxDashboard mounts triple desk: intel rail (Pulse default + Largo toggle)
   assert.match(src, /spx-left-commentary/);
   assert.match(src, /SpxGexMatrixHeatmap/);
   assert.match(src, /spx-left-matrix/);
+  assert.match(src, /SpxPlayVerdictBar/);
+  assert.match(src, /spx-left-pin-stack/);
+  assert.match(src, /spx-left-pin/);
 
   // Nothing is lost: SpxIntelRail renders the ⚡ Pulse rail by DEFAULT and keeps the original
   // Largo commentary rail one toggle away (default state = "pulse").
