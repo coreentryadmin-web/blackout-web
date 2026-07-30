@@ -18,7 +18,7 @@
 // the in-process ET gate (so the cron can fire on a wide UTC band and the route decides) and logs
 // every run via logCronRun, so the cron-staleness-watchdog catches a silent never-fired warmer.
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { warmGridEarnings } from "@/lib/zerodte/earnings";
@@ -48,36 +48,54 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(payload);
   }
 
-  // Settle-all so one failing warm can't abort the other.
-  const results = await Promise.allSettled([
-    warmGridEarnings(),
-    warmZeroDteBoard(),
-    // Proactively rebuild + PUBLISH the shared board snapshot every tick so every web
-    // replica reads one converged board (fix/zerodte-board-convergence). Blocking
-    // publish (awaited) — unlike getZeroDteBoardPayload's SWR read, this guarantees the
-    // shared snapshot advances even with zero member traffic.
-    refreshZeroDteBoardSnapshot(),
-  ]);
+  // Earnings cache is fast — keep it in the handshake so the cron log proves the tick fired.
+  const earningsResult = await Promise.allSettled([warmGridEarnings()]);
+  const earningsWarmed =
+    earningsResult[0]?.status === "fulfilled" && earningsResult[0].value != null ? 1 : 0;
 
-  let warmed = 0;
-  for (const r of results) {
-    // A fulfilled non-null snapshot is a real warm; a fulfilled null is an empty upstream (counted
-    // as a soft miss, not a hard failure — the cache-reader will serve the prior good snapshot).
-    if (r.status === "fulfilled" && r.value != null) warmed += 1;
+  // Scanner tick + board snapshot rebuild routinely exceed Cloudflare's ~100s origin timeout when
+  // awaited (RTH finding 2026-07-30: HTTP 504 on every probe). Mirror nighthawk-edition: dispatch
+  // the heavy work in after() and return 202 in seconds. The ECS worker is long-lived — the build
+  // still completes and publishes the shared snapshot; only the HTTP handshake must be short.
+  const dispatchWarm = () => {
+    void Promise.allSettled([warmZeroDteBoard(), refreshZeroDteBoardSnapshot()])
+      .then((results) => {
+        let warmed = earningsWarmed;
+        for (const r of results) {
+          if (r.status === "fulfilled" && r.value != null) warmed += 1;
+        }
+        const failed = results.filter((r) => r.status === "rejected").length;
+        if (failed > 0) {
+          console.warn(`[cron/zerodte-warm] background: ${failed}/${results.length} warm(s) failed`);
+        }
+        console.info(
+          `[cron/zerodte-warm] background done — warmed=${warmed} failed=${failed} elapsed=${Date.now() - started}ms`
+        );
+      })
+      .catch((err) => {
+        console.error("[cron/zerodte-warm] background warm REJECTED:", err);
+      });
+  };
+
+  try {
+    after(dispatchWarm);
+  } catch {
+    dispatchWarm();
   }
-  const failed = results.filter((r) => r.status === "rejected").length;
-  if (failed > 0) {
-    console.warn(`[cron/zerodte-warm] ${failed} snapshot warm(s) failed`);
-  }
 
-  const allFailed = results.length > 0 && failed === results.length;
-  await logCronRun("zerodte-warm", started, {
-    ok: !allFailed,
-    warmed,
-    failed,
-    total: results.length,
-    ...(failed > 0 ? { error: `${failed}/${results.length} zerodte-warm snapshot warm(s) failed` } : {}),
-  });
-
-  return NextResponse.json({ ok: true, warmed, total: results.length });
+  const accepted = {
+    ok: true,
+    status: "accepted",
+    reason: "scanner + board snapshot dispatched in background (fire-and-forget)",
+    warmed: earningsWarmed,
+    total: 3,
+  };
+  await logCronRun("zerodte-warm", started, accepted);
+  return NextResponse.json(
+    {
+      ...accepted,
+      note: "Heavy warm runs in background — board snapshot still advances on the ECS worker.",
+    },
+    { status: 202 }
+  );
 }

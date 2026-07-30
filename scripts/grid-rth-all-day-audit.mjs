@@ -183,8 +183,13 @@ async function auditZerodteWarmCron() {
       headers: { Authorization: `Bearer ${CRON}` },
     });
     const json = await r.json().catch(() => ({}));
-    if (r.ok || json.skipped) rec("cron:zerodte-warm", "PASS", json.skipped ? "skipped off-hours" : "ok");
-    else rec("cron:zerodte-warm", "WARN", `HTTP ${r.status}`);
+    if (r.ok || json.skipped || r.status === 202) {
+      rec(
+        "cron:zerodte-warm",
+        "PASS",
+        json.skipped ? "skipped off-hours" : r.status === 202 ? "accepted (background warm)" : "ok"
+      );
+    } else rec("cron:zerodte-warm", "WARN", `HTTP ${r.status}`);
   } catch (e) {
     rec("cron:zerodte-warm", "FAIL", e.message);
   }
