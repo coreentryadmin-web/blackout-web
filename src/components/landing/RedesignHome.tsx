@@ -7,6 +7,7 @@ import { MEMBERSHIP_PRICING, usd } from "@/lib/pricing";
 import { SITE } from "@/lib/site";
 import { WHOP_CHECKOUT } from "@/lib/whop-checkout";
 import { LandingRedesignFxLazy } from "./LandingRedesignFxLazy";
+import { MarketingAuthAnchor, MarketingAuthCta, MarketingAuthLabel } from "./MarketingAuthCta";
 
 /** Redesigned homepage body — server-rendered content + one client FX layer (canvas, reveal, ticker). */
 export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
@@ -58,9 +59,14 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
         <div className="hero-sub">
           <p><b>See what the dealers see.</b> Trade before the crowd moves.</p>
           <div className="cta-row">
-            <Link href={signedIn ? "/dashboard" : "/sign-up"} prefetch={false} className="btn-p">
-              {signedIn ? "Open desk" : "Get access"}
-            </Link>
+            <MarketingAuthCta
+              serverSignedIn={signedIn}
+              hrefSignedIn="/dashboard"
+              hrefSignedOut="/sign-up"
+              labelSignedIn="Open desk"
+              labelSignedOut="Get access"
+              className="btn-p"
+            />
             <Link href="#modules" prefetch={false} className="btn-g">Explore the desk</Link>
           </div>
           <ul className="hero-creds">
@@ -369,7 +375,18 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
                 <li>Dealer gamma positioning</li>
                 <li>Strike-level heatmaps</li>
               </ul>
-              <a href={WHOP_CHECKOUT.community || (signedIn ? "/upgrade" : "/sign-up?redirect_url=%2Fupgrade")} className="btn-g">Get SPX access</a>
+              {WHOP_CHECKOUT.community ? (
+                <a href={WHOP_CHECKOUT.community} className="btn-g">Get SPX access</a>
+              ) : (
+                <MarketingAuthAnchor
+                  serverSignedIn={signedIn}
+                  hrefSignedIn="/upgrade"
+                  hrefSignedOut="/sign-up?redirect_url=%2Fupgrade"
+                  className="btn-g"
+                >
+                  Get SPX access
+                </MarketingAuthAnchor>
+              )}
               <p className="trust">Cancel anytime &middot; No contracts</p>
             </div>
 
@@ -389,7 +406,18 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
                 <li>Strike-level heatmaps</li>
                 <li>Graded play log A-F</li>
               </ul>
-              <a href={WHOP_CHECKOUT.monthly || (signedIn ? "/upgrade" : "/sign-up?redirect_url=%2Fupgrade")} className="btn-p">Get full access <span className="cta-arrow">&rarr;</span></a>
+              {WHOP_CHECKOUT.monthly ? (
+                <a href={WHOP_CHECKOUT.monthly} className="btn-p">Get full access <span className="cta-arrow">&rarr;</span></a>
+              ) : (
+                <MarketingAuthAnchor
+                  serverSignedIn={signedIn}
+                  hrefSignedIn="/upgrade"
+                  hrefSignedOut="/sign-up?redirect_url=%2Fupgrade"
+                  className="btn-p"
+                >
+                  Get full access <span className="cta-arrow">&rarr;</span>
+                </MarketingAuthAnchor>
+              )}
               <p className="trust">Cancel anytime &middot; No contracts</p>
             </div>
 
@@ -409,7 +437,18 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
                 <li>Strike-level heatmaps</li>
                 <li>Graded play log A-F</li>
               </ul>
-              <a href={WHOP_CHECKOUT.yearly || (signedIn ? "/upgrade" : "/sign-up?redirect_url=%2Fupgrade")} className="btn-p">Lock in yearly <span className="cta-arrow">&rarr;</span></a>
+              {WHOP_CHECKOUT.yearly ? (
+                <a href={WHOP_CHECKOUT.yearly} className="btn-p">Lock in yearly <span className="cta-arrow">&rarr;</span></a>
+              ) : (
+                <MarketingAuthAnchor
+                  serverSignedIn={signedIn}
+                  hrefSignedIn="/upgrade"
+                  hrefSignedOut="/sign-up?redirect_url=%2Fupgrade"
+                  className="btn-p"
+                >
+                  Lock in yearly <span className="cta-arrow">&rarr;</span>
+                </MarketingAuthAnchor>
+              )}
               <p className="trust">Cancel anytime &middot; No contracts</p>
             </div>
           </div>
@@ -456,7 +495,16 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
           <div className="footer-brand">BLACKOUT</div>
           <div className="footer-tagline">The intelligence layer behind modern trading.</div>
           <div className="footer-cta cta-row">
-            <Link href={signedIn ? "/upgrade" : "/sign-up?redirect_url=%2Fupgrade"} prefetch={false} className="btn-p">Open the desk <span className="cta-arrow">&rarr;</span></Link>
+            <MarketingAuthCta
+              serverSignedIn={signedIn}
+              hrefSignedIn="/upgrade"
+              hrefSignedOut="/sign-up?redirect_url=%2Fupgrade"
+              labelSignedIn="Open the desk"
+              labelSignedOut="Open the desk"
+              className="btn-p"
+            >
+              Open the desk <span className="cta-arrow">&rarr;</span>
+            </MarketingAuthCta>
             <Link href="#modules" prefetch={false} className="btn-g">See the desk</Link>
           </div>
         </div>
@@ -466,12 +514,19 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
       {/* ═══ MOBILE STICKY CTA ═══ */}
       <div className="mobile-sticky-cta" id="mobile-sticky-cta">
         <div className="sticky-text">
-          <strong>{signedIn ? "Open desk" : "Get access"}</strong>
+          <strong>
+            <MarketingAuthLabel serverSignedIn={signedIn} signedInLabel="Open desk" signedOutLabel="Get access" />
+          </strong>
           From {usd(MEMBERSHIP_PRICING.monthly)}/mo
         </div>
-        <Link href={signedIn ? "/upgrade" : "/sign-up?redirect_url=%2Fupgrade"} prefetch={false} className="sticky-btn">
-          Start now &rarr;
-        </Link>
+        <MarketingAuthCta
+          serverSignedIn={signedIn}
+          hrefSignedIn="/upgrade"
+          hrefSignedOut="/sign-up?redirect_url=%2Fupgrade"
+          labelSignedIn="Start now →"
+          labelSignedOut="Start now →"
+          className="sticky-btn"
+        />
       </div>
 
       <LandingRedesignFxLazy />
