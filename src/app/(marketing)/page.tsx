@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { MarketingPageShell } from "@/components/landing/MarketingPageShell";
 import { RedesignHome } from "@/components/landing/RedesignHome";
-import { activeClerkUserIdFromRequestCookies } from "@/lib/clerk-session-cookies";
+import { signedInFromRequestCookies } from "@/lib/clerk-session-cookies";
 
 const LANDING_REDIRECT_SCRIPT =
   "try{var h=location.hash.slice(1);if(h==='faq')location.replace('/faq');else if(h==='pricing')location.replace('/pricing')}catch(e){}";
@@ -15,7 +15,7 @@ const LANDING_REDIRECT_SCRIPT =
  * the shell's ambient chart backdrop is off (showChart=false) since the hero has its own canvas.
  */
 export default async function LandingPage() {
-  const signedIn = Boolean(await activeClerkUserIdFromRequestCookies());
+  const signedIn = await signedInFromRequestCookies();
 
   return (
     <MarketingPageShell showChart={false}>
