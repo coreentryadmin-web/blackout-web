@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { TerminalPlay } from "./types";
+import { refreshZeroDteManagement } from "./adapters";
 
 /**
  * The "no lag" path for the 0DTE Command Deck.
@@ -204,13 +205,13 @@ export function overlayLiveMarks(plays: TerminalPlay[], marks: Map<string, LiveM
     // from the board's current pnl so the PnL panel doesn't look frozen between polls.
     if (!row || row.stale) {
       const latch = latchLiveExcursion(p, p.pnlPct);
-      if (latch.peak === p.peak && latch.trough === p.trough && latch.exitPolicy === p.exitPolicy) return p;
-      return { ...p, ...latch };
+      const merged = latch.peak === p.peak && latch.trough === p.trough && latch.exitPolicy === p.exitPolicy ? p : { ...p, ...latch };
+      return refreshZeroDteManagement(merged);
     }
     const mark = row.mark ?? p.mark;
     const pnlPct = row.live_pnl_pct ?? p.pnlPct;
     const latch = latchLiveExcursion({ ...p, mark, pnlPct }, pnlPct);
-    return {
+    return refreshZeroDteManagement({
       ...p,
       mark,
       // Same percent scale as the board (both from pinnedLivePnlPct against the pinned entry premium).
@@ -224,7 +225,7 @@ export function overlayLiveMarks(plays: TerminalPlay[], marks: Map<string, LiveM
       markAsOf: row.mark_as_of ?? p.markAsOf,
       markIsSync: false, // a fresh SSE frame is never a legacy sync mark
       ...latch,
-    };
+    });
   });
 }
 

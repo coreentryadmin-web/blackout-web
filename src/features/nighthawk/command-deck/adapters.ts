@@ -12,6 +12,7 @@ import type { SwingSetupState, SwingEntryState } from "@/lib/swing/taxonomy";
 import type { SwingServingSection } from "@/lib/swing/serving";
 import { executableFill, type TerminalExitLadder } from "@/lib/zerodte/terminal-ladder";
 import { condorGeometryFrom, type CondorGeometry } from "@/lib/zerodte/condor-render";
+import { thesisManagementOverlay } from "@/lib/zerodte/thesis-health";
 import type { WhyNow, WhyNowReason } from "@/lib/zerodte/why-now";
 import type { NighthawkTierFactor } from "@/features/nighthawk/lib/nighthawk-tiers";
 import type {
@@ -97,6 +98,22 @@ export function managementFor(
   return { recommendation, recNote, progress };
 }
 
+/** Recompute management advisory from live P&L + thesis health (called every ~1s on SSE mark tick). */
+export function refreshZeroDteManagement(play: TerminalPlay): TerminalPlay {
+  if (play.horizon !== "ZERO_DTE") return play;
+  const mgmtBase = managementFor(play.exitModel, play.status, play.pnlPct ?? null);
+  const mgmt =
+    play.thesisHealth != null
+      ? thesisManagementOverlay(mgmtBase.recommendation, mgmtBase.recNote, play.thesisHealth, play.pnlPct ?? null)
+      : mgmtBase;
+  return {
+    ...play,
+    recommendation: mgmt.recommendation,
+    recNote: mgmt.recNote,
+    progress: mgmtBase.progress,
+  };
+}
+
 // ── 0DTE (richest) ──────────────────────────────────────────────────────────────────
 
 export interface ZeroDteDeckSource {
@@ -172,6 +189,8 @@ export interface ZeroDteDeckSource {
   /** Wave 2 — the LIVE underlying (the setup's underlying_price), for the condor tent marker. When
    *  absent the tent falls back to the geometry's commit-time spot. */
   underlying_price?: number | null;
+  /** Thesis Health payload from the board ledger row (server-computed each board build). */
+  thesis_health?: import("@/lib/zerodte/thesis-health").ThesisHealthPayload | null;
 }
 
 const FB_LABELS: Record<string, string> = {
@@ -255,7 +274,19 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
         ? Math.round((src.trough_premium! / entry - 1) * 100)
         : null;
 
-  const mgmt = managementFor(exitModel, status, pnlDisplay);
+  const mgmtBase = managementFor(exitModel, status, pnlDisplay);
+  const thesisHealth = src.thesis_health ?? null;
+  const mgmt =
+    thesisHealth != null
+      ? thesisManagementOverlay(mgmtBase.recommendation, mgmtBase.recNote, thesisHealth, pnlDisplay)
+      : mgmtBase;
+  const thesisBreak = thesisHealth
+    ? { level: thesisHealth.thesisBreakLevel as ThesisLevel, note: thesisHealth.thesisBreakNote }
+    : setup?.market_aligned === false
+      ? { level: "warn" as ThesisLevel, note: "tape alignment lost" }
+      : setup?.market_aligned == null
+        ? { level: "unknown" as ThesisLevel, note: "tape read not attached to this play" }
+        : { level: "intact" as ThesisLevel };
   const alloc = src.allocation
     ? { role: src.allocation.role, sizing: src.allocation.sizing, reason: src.allocation.reasons?.[0] }
     : null;
@@ -309,13 +340,10 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
     stockPrice: isCondor !== true ? fin(src.underlying_price) : null,
     optionsPlay: occ,
     rrRatio: rrFromPlan(setup?.plan),
-    thesisBreak:
-      setup?.market_aligned === false
-        ? { level: "warn", note: "tape alignment lost" }
-        : setup?.market_aligned == null
-          ? { level: "unknown", note: "tape read not attached to this play" } // data-absent ≠ confirmed-intact (9-6c)
-          : { level: "intact" },
+    thesisBreak,
+    thesisHealth,
     ...mgmt,
+    progress: mgmtBase.progress,
     entry,
     mark: markNum,
     pnlPct: pnlDisplay,

@@ -26,15 +26,13 @@ type BoardRespWithSession = BoardResp & {
   session?: { heat?: { state?: string | null } | null } | null;
 };
 
-/** Board SWR cadence: faster during RTH so thesis/gates/underlying advance with the scan;
- *  off-hours the shared snapshot is cache-stable so 5s is enough (marks SSE still drives the rail). */
+/** Board SWR cadence: 1s RTH when open plays need live thesis/gates; marks SSE drives marks/PnL at 1s. */
 function zerodteBoardRefreshMs(): number {
   try {
     const { hour, minute, weekday } = etNowParts();
     if (weekday === "Sat" || weekday === "Sun") return 5_000;
     const mins = hour * 60 + minute;
-    // 09:25–16:05 ET — cover pre-open warm + post-close grace for the right-rail panels.
-    if (mins >= 9 * 60 + 25 && mins <= 16 * 60 + 5) return 2_500;
+    if (mins >= 9 * 60 + 25 && mins <= 16 * 60 + 5) return 1_000;
   } catch {
     /* fall through */
   }

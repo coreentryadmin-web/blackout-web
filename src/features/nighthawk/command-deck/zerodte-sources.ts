@@ -9,6 +9,7 @@
  *    not a still-in-consideration WATCH.
  */
 import type { ZeroDteDeckSource } from "./adapters";
+import type { ThesisHealthPayload } from "@/lib/zerodte/thesis-health";
 
 export interface BoardResp {
   available?: boolean;
@@ -136,6 +137,7 @@ function sourceFrom(
     // first-flag instant for the ribbon's ET clock time. Both OPTIONAL/null-safe.
     why_now: (lg?.why_now as ZeroDteDeckSource["why_now"]) ?? null,
     first_flagged_at: (lg?.first_flagged_at as string) ?? null,
+    thesis_health: (lg?.thesis_health as ThesisHealthPayload | null) ?? null,
   };
 }
 

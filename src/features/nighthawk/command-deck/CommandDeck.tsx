@@ -294,7 +294,17 @@ function PlayCard({
           {p.horizon === "LEGACY" && p.morningStatus === "DEGRADED" && <span className="nh-deck-cbadge warn">DEGRADED</span>}
           {p.horizon === "LEGACY" && p.morningStatus === "INVALIDATED" && <span className="nh-deck-cbadge brk">INVALIDATED</span>}
           {p.horizon === "LEGACY" && p.morningStatus === "UNVERIFIED" && <span className="nh-deck-cbadge pending">PENDING</span>}
-          {isCondor && <CondorCardChip play={p} />}
+          {p.thesisHealth && (p.status === "OPEN" || p.status === "HOLD" || p.status === "TRIM") && (
+            <span
+              className={clsx(
+                "nh-deck-cbadge",
+                p.thesisHealth.health >= 75 ? "conf" : p.thesisHealth.health >= 45 ? "warn" : "brk",
+              )}
+              title={p.thesisHealth.rungLabel}
+            >
+              TH {p.thesisHealth.health}
+            </span>
+          )}
           {stale && <span className="nh-deck-cbadge stale" title="Mark is stale — frozen">◷ {ageLabel}</span>}
         </span>
       </span>

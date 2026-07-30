@@ -41,6 +41,12 @@ import { readFrozenExitMode, readFrozenExitPolicy } from "@/lib/zerodte/exit-syn
 import { buildResolvedExitPolicy } from "@/lib/zerodte/strategy-version";
 import type { ZeroDteGreeks } from "@/lib/zerodte/live-marks";
 import {
+  computeThesisHealth,
+  formatComputedEt,
+  type ThesisHealthPayload,
+} from "@/lib/zerodte/thesis-health";
+import { fetchZeroDteSessionContext } from "@/lib/zerodte/entry-context";
+import {
   categorizeExitReason,
   ratchetFloorPct,
   type ZeroDteExitReasonCategory,
@@ -175,6 +181,9 @@ export type ZeroDteBoardLedgerRow = {
    *  "⚡ triggered by …" ribbon. Null on a legacy row committed before the pin, or one whose
    *  signals supported no reason — the ribbon is then omitted (never a fabricated trigger). O(1). */
   why_now: WhyNow | null;
+  /** Thesis Health — Entry Truth vs Current Truth for working ledger rows (thesis-health.ts).
+   *  Null on WATCH/SKIP, CLOSED, or rows without entry_context. Recomputed each board build. */
+  thesis_health: ThesisHealthPayload | null;
 };
 
 export type ZeroDteBoardPayload = {
@@ -424,6 +433,7 @@ function mapLedgerRow(
     // Wave 3 — the "why now" trigger reason pinned at commit (entry_context.why_now). Structural
     // reader, fail-soft → null on a legacy/absent pin (the terminal omits the ribbon). O(1).
     why_now: readPinnedWhyNow(r.entry_context),
+    thesis_health: null,
   };
 }
 
@@ -518,10 +528,11 @@ export async function buildZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
   const { hour, minute } = etNowParts();
   const heat = sessionHeat(hour * 60 + minute, tradingDay);
 
-  const [news, earningsSnap, ledgerRead] = await Promise.all([
+  const [news, earningsSnap, ledgerRead, sessionCtx] = await Promise.all([
     serverCache("news:benzinga:15", TTL.NEWS, () => fetchBenzingaNews(15)).catch(() => []),
     readGridEarnings().catch(() => null),
     readZeroDteLedgerChecked(),
+    fetchZeroDteSessionContext().catch(() => null),
   ]);
   const rawLedger = ledgerRead.rows;
 
@@ -577,13 +588,32 @@ export async function buildZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
     console.warn("[zerodte-service] allocation failed (advisory, empty):", err);
   }
 
+  const nowEtMinutes = hour * 60 + minute;
+  const setupByTicker = new Map(displaySetups.map((s) => [s.ticker.toUpperCase(), s]));
+
   const payload = roundFloats({
     available: true,
     as_of: new Date().toISOString(),
     upstream_ok: upstream_ok && committedKnown,
     session: { date: today, trading_day: tradingDay, heat },
     setups: displaySetups,
-    ledger: ledgerRows.map((r) => mapLedgerRow(r, nighthawkEcho, liveMarks.get(r.ticker.toUpperCase()) ?? null)),
+    ledger: ledgerRows.map((r) => {
+      const row = mapLedgerRow(r, nighthawkEcho, liveMarks.get(r.ticker.toUpperCase()) ?? null);
+      const setup = setupByTicker.get(r.ticker.toUpperCase()) ?? null;
+      const thesis_health = computeThesisHealth(
+        r.entry_context,
+        r.feature_vector,
+        {
+          direction: r.direction,
+          setup,
+          spyBias: sessionCtx?.spy_bias ?? null,
+          nowEtMinutes,
+          computedAtEt: formatComputedEt(Date.now()),
+        },
+        { status: r.status },
+      );
+      return { ...row, thesis_health };
+    }),
     covered_elsewhere: nighthawk_covered,
     governor,
     allocation,

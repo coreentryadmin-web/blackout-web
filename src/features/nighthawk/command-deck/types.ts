@@ -10,6 +10,7 @@ import type { SwingSetupState, SwingEntryState } from "@/lib/swing/taxonomy";
 import type { SwingServingSection } from "@/lib/swing/serving";
 import type { TerminalExitLadder } from "@/lib/zerodte/terminal-ladder";
 import type { WhyNow } from "@/lib/zerodte/why-now";
+import type { ThesisHealthPayload } from "@/lib/zerodte/thesis-health";
 import type { NighthawkTierFactor } from "@/features/nighthawk/lib/nighthawk-tiers";
 
 export type DeckDirection = "LONG" | "SHORT";
@@ -81,6 +82,8 @@ export interface TerminalPlay {
   confidence?: number | null; // 0–1
   allocation?: { role: string; sizing: string; reason?: string } | null;
   thesisBreak?: { level: ThesisLevel; note?: string } | null;
+  /** Thesis Health — weighted Entry Truth vs Current Truth (OPEN/HOLD/TRIM only). */
+  thesisHealth?: ThesisHealthPayload | null;
 
   // ── management ──
   recommendation: Recommendation;
