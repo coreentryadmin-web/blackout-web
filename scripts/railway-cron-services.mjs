@@ -34,10 +34,6 @@ export const CRON_SERVICE_NAMES = {
   "bie-full-state-snapshot": "BIE-Full-State-Snapshot",
   "coaching-alerts": "Coaching-Alerts",
   "platform-warm": "Platform-Warm",
-  "x-autopost": "X-Autopost",
-  "x-growth": "X-Growth",
-  "x-replies": "X-Replies",
-  "x-analytics": "X-Analytics",
 };
 
 /** All cron job keys that have a cron config railway.<key>.toml in the repo. */
