@@ -202,11 +202,17 @@ async function testToolPage(page, tab) {
       ok("hawk:segment-swings");
       await page.waitForTimeout(800);
       await shot(page, "hawk-swings");
-      const swingHint = page.locator("text=/Research|persistence|Whole-market swing/i").first();
+      const laneLabel = page.locator("text=/Swings · 2–30 DTE/i").first();
+      if (await laneLabel.isVisible().catch(() => false)) {
+        ok("hawk:swing-lane-label");
+      } else {
+        warn("hawk:swing-lane-label", "lane header not visible");
+      }
+      const swingHint = page.locator(".nh-deck-empty, text=/Research|persistence|Whole-market swing/i").first();
       if (await swingHint.isVisible().catch(() => false)) {
         ok("hawk:swing-lane-hint");
       } else {
-        warn("hawk:swing-lane-hint", "empty-state hint not visible");
+        warn("hawk:swing-lane-hint", "empty-state hint not visible (lane may have rows)");
       }
     }
     if (await clickSegment(page, "0DTE")) {
