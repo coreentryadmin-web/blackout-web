@@ -5,6 +5,7 @@
  */
 import { mintClerkPremiumSession } from "./prod-clerk-session.mjs";
 import { auditSecret } from "./prod-secrets.mjs";
+import { isTransientOriginError } from "./auth-status.mjs";
 
 /** @type {{ cookieHeader: string, cleanup?: () => Promise<void> } | null} */
 let clerkSessionCache = null;
@@ -34,12 +35,16 @@ export async function releaseAuditClerkSession() {
   clerkSessionCache = null;
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /**
  * @param {string} base - e.g. https://blackouttrades.com
  * @param {string} path - e.g. /api/market/zerodte/board
  * @returns {Promise<{ ok: boolean, status: number, json: unknown, via: 'cron'|'clerk'|null }>}
  */
-export async function fetchAuditJson(base, path) {
+async function fetchAuditJsonOnce(base, path) {
   const url = `${base.replace(/\/$/, "")}${path}`;
   const cron = auditSecret("CRON_SECRET");
   if (cron) {
@@ -48,7 +53,13 @@ export async function fetchAuditJson(base, path) {
     });
     if (r.ok) return { ok: true, status: r.status, json: await r.json(), via: "cron" };
     // Stale cloud-agent CRON_SECRET is common — fall through to Clerk on auth failure.
-    if (r.status !== 401 && r.status !== 403) {
+    // Also fall through on edge/origin 502/504/524 — cron bearer may be wrong OR the route
+    // timed out on a blocking cold build; Clerk member-path is the authoritative probe.
+    const fallThrough =
+      r.status === 401 ||
+      r.status === 403 ||
+      isTransientOriginError(r.status);
+    if (!fallThrough) {
       const json = await r.json().catch(() => ({}));
       return { ok: false, status: r.status, json, via: "cron" };
     }
@@ -70,4 +81,15 @@ export async function fetchAuditJson(base, path) {
     }
   }
   return { ok: false, status: cron ? 401 : 0, json: null, via: null };
+}
+
+export async function fetchAuditJson(base, path) {
+  const retries = 3;
+  let last;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    last = await fetchAuditJsonOnce(base, path);
+    if (last.ok || !isTransientOriginError(last.status) || attempt === retries) return last;
+    await sleep(2000 * (attempt + 1));
+  }
+  return last ?? { ok: false, status: 0, json: null, via: null };
 }

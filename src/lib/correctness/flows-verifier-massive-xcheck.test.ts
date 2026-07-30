@@ -98,6 +98,7 @@ test("crossCheckAgainstMassive: same skew direction + valid subset does not flag
       contractsCapped: false,
       filteredPrints: 0,
       partial: false,
+      pagesTruncated: false,
       sideClassifiedPrints: 200,
     },
   };
@@ -109,6 +110,156 @@ test("crossCheckAgainstMassive: same skew direction + valid subset does not flag
   assert.ok(xcheck, "cross-provider check present");
   assert.notEqual(xcheck!.outcome, "flag", xcheck!.detail);
   assert.match(xcheck!.detail, /INDEPENDENTLY CONFIRMED/);
+});
+
+test("crossCheckAgainstMassive: contract-capped oracle skips subset violation — not a flag", async () => {
+  const { verifyFlows } = await mod();
+  reset();
+  state.tapeRows = cleanTapeRows();
+  state.anomalyRows = [];
+  state.massive = {
+    ticker: "SPY",
+    optionsRoot: "SPY",
+    expiry: "2026-07-29",
+    windowStartMs: Date.now() - 60 * 60_000,
+    windowEndMs: Date.now(),
+    totalPremium: 1_900_000,
+    callPremium: 798_000,
+    putPremium: 1_102_000,
+    totalPrints: 120,
+    callPrints: 50,
+    putPrints: 70,
+    callPct: 42,
+    byStrike: [{ strike: 630, callPremium: 0, putPremium: 1e6, totalPremium: 1e6, prints: 10 }],
+    meta: {
+      contractsRequested: 40,
+      contractsWithTrades: 38,
+      contractsCapped: true,
+      filteredPrints: 0,
+      partial: false,
+      pagesTruncated: false,
+      sideClassifiedPrints: 80,
+    },
+  };
+
+  const score = await verifyFlows(true);
+  const net = findNetPremium(score);
+  const xcheck = net!.checks.find((c) => c.id === "flows-xcheck-massive");
+  assert.ok(xcheck, "cross-provider check present");
+  assert.equal(xcheck!.outcome, "skipped");
+  assert.match(xcheck!.detail, /bounded|not assertable|not a flag/i);
+});
+
+test("crossCheckAgainstMassive: pages-truncated oracle skips subset violation — not a flag", async () => {
+  const { verifyFlows } = await mod();
+  reset();
+  state.tapeRows = cleanTapeRows();
+  state.anomalyRows = [];
+  state.massive = {
+    ticker: "SPY",
+    optionsRoot: "SPY",
+    expiry: "2026-07-29",
+    windowStartMs: Date.now() - 60 * 60_000,
+    windowEndMs: Date.now(),
+    totalPremium: 530_000,
+    callPremium: 159_000,
+    putPremium: 371_000,
+    totalPrints: 200,
+    callPrints: 60,
+    putPrints: 140,
+    callPct: 30,
+    byStrike: [{ strike: 630, callPremium: 0, putPremium: 500_000, totalPremium: 500_000, prints: 10 }],
+    meta: {
+      contractsRequested: 40,
+      contractsWithTrades: 33,
+      contractsCapped: false,
+      filteredPrints: 0,
+      partial: false,
+      pagesTruncated: true,
+      sideClassifiedPrints: 100,
+    },
+  };
+
+  const score = await verifyFlows(true);
+  const net = findNetPremium(score);
+  const xcheck = net!.checks.find((c) => c.id === "flows-xcheck-massive");
+  assert.equal(xcheck!.outcome, "skipped");
+  assert.match(xcheck!.detail, /bounded|not assertable|not a flag/i);
+});
+
+test("crossCheckAgainstMassive: complete oracle + UW exceeds Massive still flags", async () => {
+  const { verifyFlows } = await mod();
+  reset();
+  // UW puts on strike 630 exceed Massive total on same strike — complete oracle.
+  state.tapeRows = cleanTapeRows();
+  state.anomalyRows = [];
+  state.massive = {
+    ticker: "SPY",
+    optionsRoot: "SPY",
+    expiry: "2026-07-29",
+    windowStartMs: Date.now() - 60 * 60_000,
+    windowEndMs: Date.now(),
+    totalPremium: 500_000,
+    callPremium: 150_000,
+    putPremium: 350_000,
+    totalPrints: 100,
+    callPrints: 30,
+    putPrints: 70,
+    callPct: 30,
+    byStrike: [{ strike: 630, callPremium: 150_000, putPremium: 350_000, totalPremium: 500_000, prints: 10 }],
+    meta: {
+      contractsRequested: 40,
+      contractsWithTrades: 33,
+      contractsCapped: false,
+      filteredPrints: 0,
+      partial: false,
+      pagesTruncated: false,
+      sideClassifiedPrints: 50,
+    },
+  };
+
+  const score = await verifyFlows(true);
+  const net = findNetPremium(score);
+  const xcheck = net!.checks.find((c) => c.id === "flows-xcheck-massive");
+  assert.equal(xcheck!.outcome, "flag");
+  assert.match(xcheck!.detail, /EXCEEDS the raw Massive superset/);
+});
+
+test("crossCheckAgainstMassive: post-close skips cross-check (no false FLAG)", async () => {
+  const { verifyFlows } = await mod();
+  reset();
+  state.tapeRows = cleanTapeRows();
+  state.anomalyRows = [];
+  state.massive = {
+    ticker: "SPY",
+    optionsRoot: "SPY",
+    expiry: "2026-07-29",
+    windowStartMs: Date.now() - 60 * 60_000,
+    windowEndMs: Date.now(),
+    totalPremium: 650_000,
+    callPremium: 200_000,
+    putPremium: 450_000,
+    totalPrints: 40,
+    callPrints: 12,
+    putPrints: 28,
+    callPct: 31,
+    byStrike: [{ strike: 630, callPremium: 0, putPremium: 1e5, totalPremium: 1e5, prints: 5 }],
+    meta: {
+      contractsRequested: 34,
+      contractsWithTrades: 34,
+      contractsCapped: false,
+      filteredPrints: 0,
+      partial: false,
+      sideClassifiedPrints: 40,
+    },
+  };
+
+  const score = await verifyFlows(false);
+  const net = findNetPremium(score);
+  const xcheck = net!.checks.find((c) => c.id === "flows-xcheck-massive");
+  assert.ok(xcheck, "cross-provider check present");
+  assert.equal(xcheck!.outcome, "skipped");
+  assert.match(xcheck!.detail, /Market closed/);
 });
 
 test("crossCheckAgainstMassive: opposite skew still flags", async () => {
@@ -140,6 +291,7 @@ test("crossCheckAgainstMassive: opposite skew still flags", async () => {
       contractsCapped: false,
       filteredPrints: 0,
       partial: false,
+      pagesTruncated: false,
       sideClassifiedPrints: 200,
     },
   };

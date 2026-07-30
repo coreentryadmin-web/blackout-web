@@ -143,6 +143,11 @@ export type OptionTradesAggregate = {
     /** true when at least one upstream contract pull failed (partial result). */
     partial: boolean;
     /**
+     * true when at least one contract hit MAX_PAGES_PER_CONTRACT but upstream still had
+     * next_url — the per-contract trades pull is truncated (common on liquid 0DTE names).
+     */
+    pagesTruncated: boolean;
+    /**
      * SIDE-CLASSIFICATION coverage: how many counted prints carried a usable NBBO (from the SAME
      * banded discovery snapshot — NO extra fan-out) so the quote rule could sign them, and the
      * total counted. coverage = sideClassifiedPrints / totalPrints. Low coverage ⇒ the signed
@@ -264,7 +269,7 @@ async function discoverNearTheMoneyContracts(
 async function fetchTradesForContract(
   occ: string,
   windowStartNs: number
-): Promise<{ trades: RawTrade[]; ok: boolean }> {
+): Promise<{ trades: RawTrade[]; ok: boolean; truncated: boolean }> {
   const params = new URLSearchParams({
     "timestamp.gte": String(windowStartNs),
     order: "desc",
@@ -275,15 +280,17 @@ async function fetchTradesForContract(
   const out: RawTrade[] = [];
   let pages = 0;
   let sawResponse = false;
+  let truncated = false;
   while (path && pages < MAX_PAGES_PER_CONTRACT) {
     const page: TradesResponse | null = await polygonRawJson<TradesResponse>(path, "option-trades/trades");
     if (!page) break; // upstream failure for this contract — partial, not fatal
     sawResponse = true;
     out.push(...(page.results ?? []));
-    path = page.next_url ?? null;
     pages += 1;
+    if (page.next_url && pages >= MAX_PAGES_PER_CONTRACT) truncated = true;
+    path = page.next_url ? page.next_url : null;
   }
-  return { trades: out, ok: sawResponse };
+  return { trades: out, ok: sawResponse, truncated };
 }
 
 function tradeMs(t: RawTrade): number {
@@ -338,16 +345,18 @@ export async function fetchOptionTrades(
     let filteredPrints = 0;
     let contractsWithTrades = 0;
     let partial = false;
+    let pagesTruncated = false;
     let sideClassifiedPrints = 0;
 
     // SEQUENTIAL fan-out: each call already awaits a funnel slot (token bucket + concurrency cap),
     // so iterating is naturally paced and bounded by MAX_CONTRACTS — no unbounded Promise.all burst.
     for (const c of contracts) {
-      const { trades, ok } = await fetchTradesForContract(c.occ, windowStartNs);
+      const { trades, ok, truncated } = await fetchTradesForContract(c.occ, windowStartNs);
       if (!ok) {
         partial = true;
         continue;
       }
+      if (truncated) pagesTruncated = true;
       let counted = 0;
       for (const t of trades) {
         const ms = tradeMs(t);
@@ -430,6 +439,7 @@ export async function fetchOptionTrades(
         contractsCapped: capped,
         filteredPrints,
         partial,
+        pagesTruncated,
         sideClassifiedPrints,
       },
     } satisfies OptionTradesAggregate;
@@ -631,6 +641,7 @@ function emptyAggregate(
       contractsCapped: false,
       filteredPrints: 0,
       partial: false,
+      pagesTruncated: false,
       sideClassifiedPrints: 0,
       ...metaOverride,
     },

@@ -179,22 +179,17 @@ function aggregate(rows: FlowRow[]): {
   };
 }
 
-/** UW-side premium for ONE ticker over the recent window, scoped to TODAY expiry + a NTM band. */
+/** UW-side premium for ONE ticker over the recent window, scoped to TODAY expiry + strikes Massive pulled. */
 function uwWindowAggregate(
   rows: FlowRow[],
   ticker: string,
   expiry: string,
   windowStartMs: number,
-  spotHint: number
+  allowedStrikes?: Set<number>
 ): { total: number; callPrem: number; putPrem: number; callShare: number; prints: number } {
   let callPrem = 0;
   let putPrem = 0;
   let prints = 0;
-  // NTM band: ±8% of the underlying when we have a spot hint; otherwise accept all strikes (the
-  // Massive side is the bounded one — over-including on the UW side only makes the subset claim
-  // STRICTER, never falsely green).
-  const bandLo = spotHint > 0 ? spotHint * 0.92 : -Infinity;
-  const bandHi = spotHint > 0 ? spotHint * 1.08 : Infinity;
   for (const r of rows) {
     if (r.ticker.toUpperCase() !== ticker.toUpperCase()) continue;
     if (r.expiry !== expiry) continue; // 0DTE / today scope — matches the trades pull default
@@ -202,7 +197,9 @@ function uwWindowAggregate(
     const ms = stamp ? new Date(stamp).getTime() : NaN;
     if (!Number.isFinite(ms) || ms < windowStartMs) continue;
     const strike = Number(r.strike);
-    if (Number.isFinite(strike) && (strike < bandLo || strike > bandHi)) continue;
+    if (allowedStrikes && allowedStrikes.size > 0) {
+      if (!Number.isFinite(strike) || !allowedStrikes.has(strike)) continue;
+    }
     const p = Number(r.premium) || 0;
     if (p <= 0) continue;
     const t = String(r.option_type ?? "").toUpperCase();
@@ -214,6 +211,11 @@ function uwWindowAggregate(
   const denom = callPrem + putPrem;
   const callShare = denom > 0 ? (callPrem / denom) * 100 : 50;
   return { total: callPrem + putPrem, callPrem, putPrem, callShare, prints };
+}
+
+/** Massive oracle is a true superset only when every contract pull completed without caps. */
+function massiveOracleComplete(meta: OptionTradesAggregate["meta"]): boolean {
+  return !meta.partial && !meta.contractsCapped && !meta.pagesTruncated;
 }
 
 /**
@@ -230,9 +232,22 @@ function uwWindowAggregate(
  * Best-effort + bounded: ONE fetchOptionTrades call (itself contract/page-capped, rate-limited,
  * cached). Never throws.
  */
-async function crossCheckAgainstMassive(ctx: Ctx, rows: FlowRow[]): Promise<CheckResult> {
+async function crossCheckAgainstMassive(
+  ctx: Ctx,
+  rows: FlowRow[],
+  marketOpen: boolean
+): Promise<CheckResult> {
   const skip = (detail: string): CheckResult =>
     mk(ctx, "cross-provider", "net_premium", "skipped", detail, { id: "flows-xcheck-massive" });
+
+  // Post-close the Massive /v3/trades reconstruction is often thin or partial while UW flow
+  // alerts keep ingesting extended-hours prints — UW can legitimately exceed the raw Massive
+  // superset when the oracle under-counts. Skip (consistency-only), never FLAG off-hours.
+  if (!marketOpen) {
+    return skip(
+      "Market closed — UW-vs-Massive flow cross-check not asserted post-close (Massive NTM trades oracle is often incomplete after cash RTH; not a flag)."
+    );
+  }
 
   if (!polygonConfigured()) {
     return skip("Massive (POLYGON_API_KEY) not configured — UW-vs-Massive flow cross-check unavailable this run.");
@@ -284,15 +299,30 @@ async function crossCheckAgainstMassive(ctx: Ctx, rows: FlowRow[]): Promise<Chec
       `Massive trades premium for ${ticker} (${fmtUsd(massive.totalPremium)} over ${massive.meta.contractsWithTrades}/${massive.meta.contractsRequested} NTM contracts${massive.meta.partial ? ", partial pull" : ""}) is below the ${fmtUsd(XCHECK.minMassivePremiumUsd)} usable-oracle floor — too thin to confirm (not a flag).`
     );
   }
-
-  // Scope the UW side to the SAME ticker/window/expiry + NTM band (centered on the trades spot proxy:
-  // the trades pull bands around the live underlying; we approximate the band via byStrike extent).
-  const strikes = massive.byStrike.map((s) => s.strike).filter((s) => s > 0);
-  const spotHint = strikes.length ? (Math.min(...strikes) + Math.max(...strikes)) / 2 : 0;
-  const uw = uwWindowAggregate(rows, ticker, expiry, windowStartMs, spotHint);
-  if (uw.total <= 0) {
-    return skip(`UW has no NTM ${ticker} premium in the window after band-scoping — cross-check not assertable.`);
+  if (massive.meta.partial) {
+    return skip(
+      `Massive trades reconstruction for ${ticker} is partial (${massive.meta.contractsWithTrades}/${massive.meta.contractsRequested} NTM contracts) — subset/superset premium relation is not assertable against an incomplete oracle (not a flag).`
+    );
   }
+
+  // Scope UW to the EXACT strikes Massive pulled (same OCC set) — apples-to-apples vs the bounded oracle.
+  const allowedStrikes = new Set(massive.byStrike.map((s) => s.strike).filter((s) => s > 0));
+  if (allowedStrikes.size === 0) {
+    return skip(`Massive trades for ${ticker} returned no strike breakdown — cross-check not assertable.`);
+  }
+  const uw = uwWindowAggregate(rows, ticker, expiry, windowStartMs, allowedStrikes);
+  if (uw.total <= 0) {
+    return skip(`UW has no ${ticker} premium on Massive's pulled strikes in the window — cross-check not assertable.`);
+  }
+
+  const oracleComplete = massiveOracleComplete(massive.meta);
+  const oracleBoundedNote = [
+    massive.meta.partial && "partial",
+    massive.meta.contractsCapped && "contracts capped",
+    massive.meta.pagesTruncated && "pages truncated",
+  ]
+    .filter(Boolean)
+    .join(", ");
 
   // ── Compare ────────────────────────────────────────────────────────────────
   // (1) Skew direction. Both must show a clear call/put lean (outside the deadband) to compare it.
@@ -308,17 +338,23 @@ async function crossCheckAgainstMassive(ctx: Ctx, rows: FlowRow[]): Promise<Chec
   const uwOverMassive = uw.total / massive.totalPremium;
   const subsetOk = uwOverMassive <= XCHECK.uwOverMassiveMaxRatio;
 
-  const both = `[UW ${fmtUsd(uw.total)} call ${uw.callShare.toFixed(0)}% vs Massive ${fmtUsd(massive.totalPremium)} call ${massive.callPct}% over ${massive.meta.contractsWithTrades} NTM contracts${massive.meta.partial ? " (partial)" : ""}; UW/Massive=${uwOverMassive.toFixed(2)}×]`;
+  const both = `[UW ${fmtUsd(uw.total)} call ${uw.callShare.toFixed(0)}% vs Massive ${fmtUsd(massive.totalPremium)} call ${massive.callPct}% over ${massive.meta.contractsWithTrades} NTM contracts${massive.meta.partial ? " (partial)" : ""}${massive.meta.contractsCapped ? " (contract-capped)" : ""}${massive.meta.pagesTruncated ? " (pages truncated)" : ""}; UW/Massive=${uwOverMassive.toFixed(2)}×]`;
 
   // FLAG conditions: the sources DISAGREE about the flow.
   // UW alerts are a FILTERED subset (unusual prints only); Massive is the raw NTM print stream.
   // When subset relation holds AND skew DIRECTION agrees, a large call-share magnitude gap is
   // EXPECTED (the unusual subset can be 100% put-led while raw tape still has call premium) —
-  // flag only opposite skew or subset violation, not magnitude alone.
+  // flag only opposite skew or subset violation on a COMPLETE oracle, not magnitude alone.
   const flagOppositeSkew = skewComparable && !sameSkewDir;
-  const flagSubset = !subsetOk;
+  const flagSubset = oracleComplete && !subsetOk;
   const flagSkewMagnitude =
-    skewComparable && sameSkewDir && !subsetOk && callShareDiff > XCHECK.callShareAbsTol;
+    oracleComplete && skewComparable && sameSkewDir && !subsetOk && callShareDiff > XCHECK.callShareAbsTol;
+
+  if (!oracleComplete && !subsetOk) {
+    return skip(
+      `Massive trades oracle for ${ticker} is bounded (${oracleBoundedNote || "incomplete"}) — UW⊆Massive superset relation not assertable when UW/Massive=${uwOverMassive.toFixed(2)}× (liquid 0DTE names routinely hit per-contract page caps; not a flag). ${both}`
+    );
+  }
 
   if (flagOppositeSkew || flagSubset || flagSkewMagnitude) {
     const why = flagOppositeSkew
@@ -662,7 +698,7 @@ export async function verifyFlows(marketOpen: boolean): Promise<TickerScore> {
   // (promoted from consistency-only); material divergence → FLAG. This closes the single-source
   // coverage gap that previously made flows consistency-only by construction. Best-effort: a
   // skipped cross-check (Massive down / thin tape) degrades to consistency-only, never a false green.
-  checks.push(await crossCheckAgainstMassive(ctx, rows));
+  checks.push(await crossCheckAgainstMassive(ctx, rows, marketOpen));
 
   // ── FLOW-ANOMALY DETECTOR shadow-recompute (task #132) ────────────────────
   // See module doc above: validates detectFlowAnomalies' threshold math/skew-ratio/near-miss-band

@@ -5,6 +5,121 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-29 — [Grid/0DTE] grid-e2e board HTTP 504 under orchestrator burst
+
+**Severity.** P1 — flaky `validate:grid-rth --phase=post-close` on `grid:dashboard-e2e` when nested
+`validate:grid-e2e` hits HTTP **504** on `/api/market/zerodte/board` after long orchestrator run.
+
+**Root cause.** `grid-zerodte-e2e-audit.mjs` `app()` curl had no retry on transient 502/504/524 (unlike
+`fetchAuditJson` used by logic/integration audits).
+
+**Fix.** `auditGridApis`: 4× retry with backoff on transient board status. Shared `isTransientOriginError`
+in `auth-status.mjs` (also dedupes `audit-auth-fetch.mjs`).
+
+**Status.** `fix/grid-e2e-board-retry` → PR.
+
+## 2026-07-29 — [Grid/0DTE] grid-rth orchestrator syntax error (broken merge #1305)
+
+**Severity.** P0 — `validate:grid-rth` could not run at all (`SyntaxError: Illegal return statement`).
+
+**Root cause.** PR #1305 refactored `auditOpsCollect()` to shared `ops-collect-scope.mjs` in SPX runbook but left
+`grid-rth-all-day-audit.mjs` with the function body orphaned at module top level (import mid-file, no
+`function auditOpsCollect()` wrapper).
+
+**Fix.** Restore `function auditOpsCollect()` wrapper; move `ops-collect-scope` import to top.
+
+**Status.** Merged PR #1307.
+
+## 2026-07-29 — [SPX] Post-close audit flake: ops:collect stderr mask + transient 502 on desk lanes
+
+**Severity.** P1 — blocked `validate:spx-rth --phase=post-close` despite member SPX surfaces GREEN.
+
+**Symptoms.**
+1. `ops:collect` FAIL with only stderr `Postgres audit skipped` — stdout JSON not parsed (same class as grid #1298).
+2. `spx:desk-lanes` FAIL on HTTP 502 `/api/market/spx/flow` during parallel audit burst; matrix/play GREEN on retry.
+3. `validate:spx-e2e` matrix fetch HTTP 502 + Playwright timeout cascade when heatmap cold.
+
+**Root cause.**
+1. `spx-rth-all-day-audit.mjs` used naive `run()` for ops:collect — non-zero exit from unrelated P0/P1 or stderr-only postgres skip masked zero-item payload.
+2. Desk lane check treated transient 5xx on pulse/flow as hard FAIL instead of unavailable (post-close flow lane returns `available:false` when not RTH).
+3. `fetchAuditJson` / E2E `app()` had no retry on edge 502/504/524 during parallel probe bursts.
+
+**Evidence.** Post-close 2026-07-29 ~18:03–18:13 ET: matrix + cross-endpoint + BIE GREEN; desk-lanes/e2e FAIL on 502; standalone `ops:collect` exit 0 with postgres skip.
+
+**Fix.** Shared `ops-collect-scope.mjs` + `auditOpsCollect()` in SPX runbook; `softFetchJson` for pulse/flow lanes; `fetchAuditJson` 3× retry on 502/504/524; E2E matrix `app()` 5xx retry.
+
+**Status.** `cursor/spx-post-close-findings-2224` → PR.
+
+## 2026-07-29 — [Grid/0DTE] zerodte board HTTP 504 on aged snapshot cold-build
+
+**Severity.** P0 member path (Night Hawk `/api/market/zerodte/board`).
+
+**Symptoms.** Parallel grid-rth audit burst: `integration:zerodte-board` HTTP **504**;
+`zerodte-bie-consistency` `live:board-fetch` HTTP **504**; `validate:zerodte-logic`
+`live:board` HTTP 401 when CRON bearer timed out without Clerk fallback.
+
+**Root cause.** `getZeroDteBoardPayload()` (`zerodte-service.ts`) treated snapshots with
+`as_of` age >30s as unservable and **blocked** on `buildAndPublishBoard()`. Under audit
+parallelism or a slow scan, cold builds exceeded Cloudflare origin timeout (~100s) while
+the Redis snapshot key (`zerodte:board:snapshot:v1`, TTL 60s) was still present.
+
+**Evidence.** `grid-rth-2026-07-29` verify pass: curl board 504 via cron; sequential Clerk
+probe succeeded; `audit-output/grid-rth-*-verify-*.json`.
+
+**Fix.** Serve shared snapshot SWR up to `BOARD_SNAPSHOT_TTL_SEC` (60s); only true cold miss
+blocks. `audit-auth-fetch.mjs`: fall through to Clerk on 502/504/524. `zerodte-logic-audit.mjs`:
+use `fetchAuditJson`. Test: `zerodte-board-convergence.test.ts` 35s-aged snapshot case.
+
+**Status.** `fix/zerodte-board-swr-504` → PR.
+
+## 2026-07-29 — [ops] SPY flow cross-check false FLAG — bounded Massive oracle (#1299)
+
+**Severity.** P0 data-correctness (ops-auto-fix #1299, fingerprint `ee994b4b2bf8`).
+
+**Symptoms.** `data-correctness` FLAG: SPY `net_premium` — UW $1.62M (0% call) vs Massive
+$0.53–0.65M (30% call) over 33–34 NTM contracts; UW/Massive=2.47–3.05× (> 1.25× allowance).
+
+**Root cause.** Massive `/v3/trades` reconstruction is **bounded** (40 contracts, 2 pages/
+contract, ±4% band). Liquid SPY 0DTE routinely hits per-contract **page** caps even when
+`contractsCapped` is false — the oracle is NOT a complete superset. Prior fix (#1287 grid
+post-close) only skipped subset FLAG on `contractsCapped`/`partial`, not page truncation.
+
+**Evidence.** `ops-collect` fingerprint `ee994b4b2bf8`; live ratio 3.05× with 33/40 contracts,
+no `(partial)` or `(contract-capped)` tags.
+
+**Fix.** `option-trades.ts`: track `meta.pagesTruncated`. `flows-verifier.ts`: scope UW to
+Massive's exact strike set; skip (not flag) subset violation when oracle is partial/capped/
+pages-truncated; flag subset only on complete oracle.
+
+**Status.** `fix/ops-1299-flow-xcheck-bounded-oracle` → PR #1301.
+
+## 2026-07-29 — [Grid/0DTE] Post-close agent: contract-capped Massive oracle false FLAG + ops:collect stderr mask
+
+**Severity.** P1 — blocked `validate:grid-rth --phase=post-close` (13/13 → 13/14 FAIL on `ops:collect`).
+
+**Symptoms.**
+1. `ops:collect` P0 `correctness:flags`: SPY `net_premium` — UW $8.6M (0% call) vs Massive $1.9M
+   (42% call), UW/Massive=4.52× on 38 NTM contracts.
+2. `grid-rth` reported `ops:collect` FAIL with only stderr `Postgres audit skipped` — could not
+   parse stdout JSON to distinguish grid vs non-grid action items.
+
+**Root cause.**
+1. `flows-verifier.ts` treated Massive's `OPTION_TRADES_MAX_CONTRACTS` (40) bounded sample as a true
+   superset oracle — UW unusual prints legitimately exceed the capped sample total post-close.
+2. `grid-rth-all-day-audit.mjs` `run()` preferred stderr over stdout on non-zero exit; postgres VPC
+   skip masked the real ops payload.
+
+**Evidence.** Post-close 2026-07-29 ~17:02 ET: `validate:zerodte-logic` 17/17 GREEN,
+`validate:grid-e2e` 4/4 GREEN; `validate:grid-rth` FAIL 1/13 on ops:collect only. All 0DTE board
+probes (gates, ledger PnL, mergePlays, session heat) GREEN.
+
+**Fix.** `crossCheckAgainstMassive`: skip when `!marketOpen`, `contractsCapped`, or `partial`
+(subset-ratio not assertable on bounded oracle). `grid-rth-all-day-audit.mjs`: dedicated
+`auditOpsCollect()` parses stdout JSON. SPX runbook Grid probe → `/api/market/spx/bootstrap`.
+
+**Status.** PRs `fix/grid-post-close-ops-collect-20260729` + `fix/spx-post-close-flow-xcheck` → `main`.
+Also unblocks `validate:spx-rth --phase=post-close` (matrix/desk/play/E2E were already GREEN).
+
 ## 2026-07-29 — [ops] x-autopost cron STALE + SPY flow cross-check false FLAG (#1287)
 
 **Severity.** P1 ops + P0 data-correctness (ops-auto-fix #1287, fingerprint `5ed63c855361`).
@@ -79,6 +194,45 @@ one run. `ops-collect` fingerprint `b60c447e4c03`.
 page STALE; added X crons to `railway-cron-services.mjs` ops registry.
 
 **Status.** `fix/x-replies-cron-stale` → PR.
+
+## 2026-07-30 — [ops] x-replies/x-growth cron STALE off-schedule (false positive)
+
+**Severity.** P1 ops (ops-auto-fix #1312, fingerprint `b60c447e4c03`).
+
+**Symptom.** `cron-staleness-watchdog` flagged `x-replies` (and later `x-growth`) stale after the
+daily UTC fire window closed — e.g. 00:14 UTC with no `cron_job_runs` in 90m.
+
+**Root cause.** EventBridge rules are **ENABLED** (`x-replies` `cron(20 13-22 ? * MON-FRI *)`,
+`x-growth` `cron(0/30 13-23 ? * * *)`), but `admin-cron-health` treated `stale_after_min` as 24/7.
+After the last tick (22:20 / 23:30 UTC) age inevitably exceeds the threshold until the next
+morning band — recurring nightly false positive. `xMarketingCronPaused()` did not help because ECS
+tasks had not picked up `X_MARKETING_POSTS_PAUSED=1` from Secrets Manager (manual run did not skip).
+
+**Evidence.** AWS `DescribeRule` State=ENABLED for both rules. Watchdog `problem_keys: ["x-replies"]`
+at 00:14 UTC; manual `GET /api/cron/x-replies?manual=1` cleared it; `x-growth` borderline stale at
+45m threshold. Same fingerprint as #1277 but different root cause (schedule-window, not disabled EB).
+
+**Fix.** `schedule_cron_utc` on X marketing registry entries + `cron-schedule-window.ts`
+`isInOffScheduleIdleGap()` suppresses stale when outside long inter-fire gaps; added
+`railway.x-growth.toml` catalog aligned to EventBridge.
+
+**Status.** `fix/x-replies-off-schedule-stale` → PR (schedule-window helper; superseded by operator OFF policy below).
+
+## 2026-07-30 — [ops] X marketing OFF — operator standing order (#1312)
+
+**Severity.** P1 ops false positive — **not** a prod outage.
+
+**Symptom.** ops-auto-fix #1312 flagged `x-replies` stale; agent began tuning cron schedule windows.
+
+**Root cause.** Operator previously requested **all X bot/marketing automation stopped**. Secrets
+already had `X_MARKETING_POSTS_PAUSED=1` + `X_MENTION_REPLIES_PAUSED=1`, but EventBridge rules had
+been re-enabled by prior ops fixes (#1277, #1287). Stale watchdog noise is expected when X is off.
+
+**Fix (this session).** Disabled EventBridge `blackout-production-x-{autopost,growth,replies,analytics}`;
+forced ECS redeploy for pause env; documented standing OFF policy in `docs/ops/X-MARKETING.md` +
+`OPS-AUTO-FIX.md`; `ops-collect` skips X cron watchdog items when pause flags set in Secrets Manager.
+
+**Status.** CLOSED — do not re-enable without explicit operator request.
 
 ## 2026-07-29 — [SPX] EOD Pin Forecaster glued ~120pts below spot (weak far wall)
 

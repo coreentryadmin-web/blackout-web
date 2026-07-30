@@ -1,6 +1,17 @@
 # X Marketing (@BlackOutTrade)
 
-Autonomous growth stack — prod only (`blackout-web` `main`).
+> **STANDING OPERATOR POLICY (2026-07-30): X marketing is OFF.**
+> Do **not** re-enable EventBridge rules, do **not** clear pause flags, and do **not** open
+> ops-auto-fix issues for stale `x-*` crons unless the operator explicitly asks to turn X back on.
+>
+> Prod state:
+> - Secrets Manager: `X_MARKETING_POSTS_PAUSED=1`, `X_MENTION_REPLIES_PAUSED=1`
+> - EventBridge: `blackout-production-x-{autopost,growth,replies,analytics}` → **DISABLED**
+> - **No `railway.x-*.toml` catalog files** — removed so infra sync / ops agents cannot re-schedule
+>
+> To resume (human-only): set pause flags to `0`, enable EventBridge rules in AWS, ECS redeploy.
+
+Autonomous growth stack — prod only (`blackout-web` `main`). **Currently paused.**
 
 ## Crons (EventBridge → Lambda → `/api/cron/*`)
 
@@ -32,7 +43,8 @@ npm run validate:x-marketing
 
 ## Infra
 
-X crons live in `blackout-infra` `cron-jobs.json`. **Requires production Terraform apply** to create EventBridge rules.
+X crons are **not** in the `railway.*.toml` schedule catalog (removed 2026-07-30). EventBridge
+rules remain in AWS but are **DISABLED** — do not re-enable without operator approval.
 
 ## Cleanup legacy @tag spam
 

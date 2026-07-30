@@ -8,6 +8,8 @@ export type CronJobDefinition = {
   schedule_label: string;
   /** Minutes without a successful run before marked stale. */
   stale_after_min: number;
+  /** Railway/EventBridge UTC cron — enables off-window stale suppression. */
+  schedule_cron_utc?: string;
   weekdays_only?: boolean;
   market_hours_only?: boolean;
   description: string;
@@ -388,46 +390,6 @@ export const CRON_JOBS: CronJobDefinition[] = [
     description:
       "Write SPX coaching alerts (VWAP / gamma walls / posture) to coaching_alerts — replaces the never-shipped position-coaching-monitor cron",
     produces_member_alert: true,
-  },
-  {
-    key: "x-autopost",
-    name: "X Desk Autopost",
-    kind: "http",
-    path: "/api/cron/x-autopost",
-    schedule_label: "Every 2h ET (8am–8pm)",
-    stale_after_min: 150,
-    description:
-      "@BlackOutTrade scheduled desk posts — live SPX data, human voice, Whop footer",
-  },
-  {
-    key: "x-growth",
-    name: "X Growth (silent)",
-    kind: "http",
-    path: "/api/cron/x-growth",
-    schedule_label: "Every 30m ET (9am–7pm, budgeted likes/follows/RT)",
-    stale_after_min: 45,
-    weekdays_only: true,
-    description:
-      "X engagement — pay-per-use: likes/follows/RT; Enterprise adds FinTwit quote/reply",
-  },
-  {
-    key: "x-replies",
-    name: "X Mention Replies",
-    kind: "http",
-    path: "/api/cron/x-replies",
-    schedule_label: "Hourly :20 weekdays",
-    stale_after_min: 90,
-    weekdays_only: true,
-    description: "Reply to @BlackOutTrade mentions — human AI + dedup",
-  },
-  {
-    key: "x-analytics",
-    name: "X Analytics",
-    kind: "http",
-    path: "/api/cron/x-analytics",
-    schedule_label: "Daily ~7:30pm ET",
-    stale_after_min: 1800,
-    description: "Snapshot follower count + tweet performance for content tuning",
   },
 ];
 
