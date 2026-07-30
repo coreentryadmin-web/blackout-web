@@ -1,17 +1,18 @@
-// Cron: pre-warm the shared GEX heatmap matrix cache for the ~11 Heat Maps presets.
+// Cron: pre-warm the shared GEX heatmap matrix cache for the shared sticky universe
+// (static allowlist ∪ dynamic ≤100 / 14d — same set Vector records beads for).
 // Schedule: ~every 30-45s during market hours (registered in cron-registry.ts as
 // "heatmap-warm"; EventBridge wires the actual fire).
 //
 // THE POINT: the Heat Maps UI / Largo explain / gex-positioning all read fetchGexHeatmap(ticker),
 // which dedups per ticker through the in-memory + Redis matrix cache (and a single-flight guard).
-// Today the presets are warmed only by ORGANIC traffic, so a TTL expiry under burst causes a
-// cold-build spike (N users racing N chain fetches before the cache fills). This cron warms each
-// preset ONCE per tick so user-facing reads stay pure cache hits and the cold-build burst never
-// happens. All upstream calls flow through the permissive Polygon rate-limiter, so a warm burst
-// can't trip the 429 breaker on the live desk / GEX path. Overlays (UW) are NOT warmed here — the
-// matrix is the only thing that goes cold; overlays are gated separately by the allowlist.
+// Without this cron, TTL expiry under burst causes a cold-build spike (N users racing N chain
+// fetches before the cache fills). Warming the SHARED universe (static + member-viewed dynamic)
+// keeps Thermal matrices cache-hot for the same names Vector already records. All upstream calls
+// flow through the permissive Polygon rate-limiter; warm names are Redis-cache-first (near-free).
+// Overlays (UW) are NOT warmed here — the matrix is the only thing that goes cold; overlays stay
+// gated by the static allowlist (2 RPS UW budget).
 //
-// DELTA BROADCAST: after warming each preset, calculate the delta vs. the previous snapshot
+// DELTA BROADCAST: after warming each ticker, calculate the delta vs. the previous snapshot
 // and broadcast to all active SSE subscribers (/api/market/gex-matrix-deltas). This gives
 // real-time perception (10-15s) while keeping the full rebuild to 30-45s cadence.
 
@@ -19,7 +20,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
-import { vectorWarmTickers } from "@/lib/heatmap-allowlist";
+import { listSharedUniverseTickers } from "@/features/vector/lib/vector-dynamic-universe";
 import { shouldRunCacheWarmer } from "@/lib/cache-warmer-gate";
 import { calculateMatrixDelta, type GexMatrix } from "@/lib/gex-matrix-delta";
 import { broadcastMatrixDelta } from "@/lib/gex-matrix-broadcast";
@@ -47,11 +48,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(payload);
   }
 
-  const tickers = vectorWarmTickers();
+  // Shared with Vector bead recording: static allowlist ∪ dynamic (≤100, 14d retention).
+  const tickers = await listSharedUniverseTickers();
   // Core Thermal compare desk (SPY|SPX|QQQ) first + forceRefresh so asof advances every warm
   // tick even when the 5s TTL hasn't expired — EventBridge floors at 1/min; without force the
   // cache can serve a 5–90s-stale matrix while members watch "MATRIX · 45s". Rest of the
-  // preset list warms after so Polygon RPS prioritizes the live desk.
+  // shared universe warms after (cache-first; dynamic names already viewed are near-free).
   const CORE = ["SPY", "SPX", "QQQ"] as const;
   const coreSet = new Set<string>(CORE);
   const core = CORE.filter((t) => tickers.includes(t));
@@ -128,7 +130,7 @@ export async function GET(req: NextRequest) {
 
   const failed = results.length - warmed;
   if (failed > 0) {
-    console.warn(`[cron/heatmap-warm] ${failed} preset warm(s) failed`);
+    console.warn(`[cron/heatmap-warm] ${failed} universe warm(s) failed`);
   }
 
   // ok:false (=> failed status + critical alert) only when the WHOLE batch fails; a partial
@@ -140,7 +142,9 @@ export async function GET(req: NextRequest) {
     failed,
     deltasBroadcast,
     total: tickers.length,
-    ...(failed > 0 ? { error: `${failed}/${tickers.length} preset warm(s) failed` } : {}),
+    core: core.length,
+    rest: rest.length,
+    ...(failed > 0 ? { error: `${failed}/${tickers.length} universe warm(s) failed` } : {}),
     ...(broadcastErrors.length > 0 ? { broadcastErrors } : {}),
   });
 
@@ -149,6 +153,7 @@ export async function GET(req: NextRequest) {
     warmed,
     total: tickers.length,
     core: core.length,
+    rest: rest.length,
     deltasBroadcast,
   });
 }

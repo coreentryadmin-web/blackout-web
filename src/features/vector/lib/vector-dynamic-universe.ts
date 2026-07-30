@@ -14,6 +14,8 @@ import { normalizeVectorTicker, isVectorTickerAllowed } from "./vector-ticker";
  *    (gex-heatmap), or Helix (flows filter/stream) — debounced per process, fire-and-forget.
  *  - The recorder cron unions `listDynamicUniverseTickers()` into its ticker set, so a name viewed
  *    today is recorded from TOMORROW'S OPENING BELL onward, viewer or not.
+ *  - Thermal `heatmap-warm` uses the SAME union (`listSharedUniverseTickers`) so a viewed name's
+ *    GEX matrix stays cache-hot for both desks — one shared sticky universe, not two lists.
  *  - Retention: names not viewed for RETENTION_DAYS drop out (a one-time curiosity must not tax
  *    the cron forever — reopening re-adds instantly). Capacity: newest CAP names by last-view
  *    (recording is Polygon-cache work per ticker per 5 min; the cap bounds cron runtime).
@@ -86,4 +88,32 @@ export async function listDynamicUniverseTickers(): Promise<string[]> {
   } catch {
     return [];
   }
+}
+
+/**
+ * Shared Thermal + Vector warm/record universe: static allowlist ∪ dynamic (≤100, 14d).
+ * Pure merge helper also exported for tests — never invents tickers beyond the two inputs.
+ */
+export function mergeSharedUniverseTickers(
+  staticTickers: readonly string[],
+  dynamicTickers: readonly string[]
+): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of [...staticTickers, ...dynamicTickers]) {
+    const t = String(raw ?? "").trim().toUpperCase();
+    if (!t || seen.has(t)) continue;
+    seen.add(t);
+    out.push(t);
+  }
+  return out;
+}
+
+/**
+ * One shared sticky universe for Thermal matrix warm + Vector bead recording.
+ * Static allowlist always included; dynamic names are member-viewed (cap 100 / 14d).
+ */
+export async function listSharedUniverseTickers(): Promise<string[]> {
+  const dynamic = await listDynamicUniverseTickers();
+  return mergeSharedUniverseTickers(vectorUniverseTickers(), dynamic);
 }

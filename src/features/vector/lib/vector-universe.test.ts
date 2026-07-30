@@ -19,6 +19,12 @@ mock.module("../../../lib/heatmap-allowlist", {
 mock.module("./vector-dynamic-universe", {
   namedExports: {
     listDynamicUniverseTickers: async () => dynamicTickers,
+    listSharedUniverseTickers: async () => [
+      ...new Set([...staticTickers, ...dynamicTickers].map((t) => t.toUpperCase())),
+    ],
+    mergeSharedUniverseTickers: (staticList: string[], dynamicList: string[]) => [
+      ...new Set([...staticList, ...dynamicList].map((t) => String(t).trim().toUpperCase()).filter(Boolean)),
+    ],
     touchDynamicUniverse: async (raw: string) => {
       const t = String(raw).toUpperCase();
       if (!dynamicTickers.includes(t)) dynamicTickers.push(t);

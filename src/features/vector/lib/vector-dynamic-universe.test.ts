@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   pruneDynamicUniverse,
+  mergeSharedUniverseTickers,
   DYNAMIC_UNIVERSE_CAP,
 } from "./vector-dynamic-universe";
 
@@ -28,4 +29,13 @@ test("pruneDynamicUniverse: garbage timestamps dropped, empty map stays empty", 
   const now = 1_000 * DAY;
   assert.deepEqual(pruneDynamicUniverse({ BAD: NaN as unknown as number }, now), {});
   assert.deepEqual(pruneDynamicUniverse({}, now), {});
+});
+
+test("mergeSharedUniverseTickers: static ∪ dynamic, deduped, uppercased, empty skipped", () => {
+  assert.deepEqual(
+    mergeSharedUniverseTickers(["SPY", "spy", "QQQ"], ["NVDA", " SPY ", "", "AAPL"]),
+    ["SPY", "QQQ", "NVDA", "AAPL"]
+  );
+  assert.deepEqual(mergeSharedUniverseTickers([], ["hood", "HOOD"]), ["HOOD"]);
+  assert.deepEqual(mergeSharedUniverseTickers(["SPX"], []), ["SPX"]);
 });

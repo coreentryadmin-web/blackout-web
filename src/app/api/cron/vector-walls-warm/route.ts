@@ -1,4 +1,4 @@
-// Cron: pre-warm Vector GEX/VEX walls cache for the universe.
+// Cron: pre-warm Vector GEX/VEX walls cache for the shared sticky universe.
 // Schedule: ~every 15-30s during market hours (registered in cron-registry.ts as
 // "vector-walls-warm"; EventBridge wires the actual fire).
 //
@@ -6,14 +6,14 @@
 // buildVectorStreamPayload which re-computes walls from scratch if the cache (WALLS_CACHE_MS=900ms)
 // expires. With 5-10 minute cron warming, the cache is cold >99% of the time, forcing expensive
 // wall computations on every single tick. This cron keeps walls pre-computed so SSE sees cache
-// hits and streams fast, giving users real-time wall updates without the "static all day"
-// perception. With a 15-30s warm cycle + 8-900ms cache, walls stay warm for all concurrent viewers.
+// hits and streams fast. Warm set = static allowlist ∪ dynamic ≤100/14d ∪ live SSE viewers —
+// same shared universe Thermal heatmap-warm uses.
 
 import { NextRequest, NextResponse } from "next/server";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { vectorUniverseTickers } from "@/lib/heatmap-allowlist";
-import { warmVectorWalls, getTickersToWarm } from "@/features/vector/lib/vector-walls-warm";
+import { warmVectorWalls, getTickersToWarmAsync } from "@/features/vector/lib/vector-walls-warm";
 import { isEtCashRth } from "@/lib/et-market-hours";
 
 export const runtime = "nodejs";
@@ -34,7 +34,8 @@ export async function GET(req: NextRequest) {
   }
 
   const allowlist = vectorUniverseTickers();
-  const tickers = getTickersToWarm(allowlist);
+  // Shared sticky universe (static ∪ dynamic ≤100/14d) + currently connected SSE viewers.
+  const tickers = await getTickersToWarmAsync(allowlist);
 
   // Warm all walls in parallel; settle all so one failing underlying can't abort the rest.
   const results = await Promise.allSettled(
@@ -54,7 +55,7 @@ export async function GET(req: NextRequest) {
     warmed,
     failed,
     allowlistCount: allowlist.length,
-    dynamicCount: tickers.length - allowlist.length,
+    dynamicCount: Math.max(0, tickers.length - allowlist.length),
     total: tickers.length,
   });
 
@@ -62,7 +63,7 @@ export async function GET(req: NextRequest) {
     ok: true,
     warmed,
     allowlistCount: allowlist.length,
-    dynamicCount: tickers.length - allowlist.length,
+    dynamicCount: Math.max(0, tickers.length - allowlist.length),
     total: tickers.length,
   });
 }

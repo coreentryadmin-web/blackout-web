@@ -97,7 +97,7 @@ export const CRON_JOBS: CronJobDefinition[] = [
     stale_after_min: 2,
     weekdays_only: true,
     market_hours_only: true,
-    description: "Pre-warm GEX heatmap matrix (SPY/SPX/QQQ forced first). EventBridge 1/min floor; rth-warm-leader backs up at ~20s; Thermal clients force-refresh when asof >8s",
+    description: "Pre-warm GEX heatmap matrix for shared sticky universe (static ∪ dynamic ≤100/14d; SPY/SPX/QQQ forced first). EventBridge 1/min floor; rth-warm-leader backs up at ~20s; Thermal clients force-refresh when asof is stale",
   },
   {
     key: "platform-warm",
