@@ -45,6 +45,16 @@ import { resolveProductionPortfolioBudget } from "@/lib/swing/swing-portfolio-bu
 import type { SwingArchetype } from "@/lib/swing/taxonomy";
 import { resolveTickerChainRows } from "@/features/nighthawk/lib/option-chain-prompt";
 import { fetchDailyMarketSummary, fetchStockDailyBars } from "@/lib/providers/polygon";
+import { screenBreakoutMovers } from "@/features/nighthawk/lib/candidates";
+import {
+  buildSessionBarFromMinuteBars,
+  mergeMinuteRefreshedBars,
+} from "@/lib/zerodte/breakout-intraday-breadth";
+import {
+  BREAKOUT_INTRADAY_REFRESH,
+  BREAKOUT_INTRADAY_REFRESH_LIMIT,
+} from "@/lib/zerodte/breakout-discovery";
+import { fetchStockMinuteBars } from "@/lib/providers/polygon";
 import { fetchPolygonTickerDetails } from "@/lib/providers/polygon-largo";
 import { fetchTickerNews, DEFAULT_CATALYST_CHANNELS } from "@/lib/providers/polygon-news";
 import {
@@ -103,6 +113,37 @@ function buildDiscoveryDeps(nowMs: number, sessionDay: string, phase: SwingDisco
       const summary = await fetchDailyMarketSummary(to);
       return summary.results ?? [];
     },
+    ...(BREAKOUT_INTRADAY_REFRESH
+      ? {
+          fetchIntradayStructureBars: async () => {
+            const summary = await fetchDailyMarketSummary(to);
+            const results = summary.results ?? [];
+            const pre = screenBreakoutMovers(results, 40);
+            const tickers = pre.map((m) => m.ticker).slice(0, BREAKOUT_INTRADAY_REFRESH_LIMIT);
+            const refreshed = new Map<string, import("@/lib/providers/polygon").DailyMarketBar>();
+            await Promise.all(
+              tickers.map(async (t) => {
+                const bars = await fetchStockMinuteBars(t, to, to).catch(() => []);
+                const minuteBars: import("@/lib/zerodte/breakout-intraday-breadth").MinuteBarLike[] = [];
+                for (const b of bars) {
+                  if (typeof b.t !== "number" || !Number.isFinite(b.t) || !Number.isFinite(b.o) || !Number.isFinite(b.c)) continue;
+                  minuteBars.push({
+                    t: b.t,
+                    o: b.o,
+                    h: b.h ?? b.o,
+                    l: b.l ?? b.o,
+                    c: b.c,
+                    v: b.v ?? 0,
+                  });
+                }
+                const bar = buildSessionBarFromMinuteBars(t, minuteBars);
+                if (bar) refreshed.set(t.toUpperCase(), bar);
+              })
+            );
+            return mergeMinuteRefreshedBars(results, refreshed);
+          },
+        }
+      : {}),
     fetchSpyCloses: async () => closesFor("SPY"),
     enrichCandidate: (seed, ctx) =>
       ingestSwingReads(
@@ -302,6 +343,7 @@ export async function GET(req: NextRequest) {
       dossiers: result.dossiers,
       plays: result.playSet.SWING,
       watch: result.watchCandidates,
+      observed: result.observedCandidates,
       spotsByTicker,
     });
     if (!persisted) {
@@ -340,6 +382,7 @@ export async function GET(req: NextRequest) {
       enriched: result.enrichedCount,
       dossiers: result.dossiers.length,
       watch: result.watchCount,
+      observed: result.observedCount,
       // LIVE (go-live 2026-07-24): the REAL count of WATCH candidates whose archetype×sub-lane bucket GRADUATED,
       // and how many actually opened after the armed budget + book-percent caps + idempotency gates.
       commitEligible: result.commitEligibleCount,

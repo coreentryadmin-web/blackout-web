@@ -4,6 +4,8 @@ import {
   meetsPersistence,
   observeSwingCandidate,
   fetchWatchEligible,
+  fetchObservedCandidates,
+  persistenceGapReason,
   promoteSwingCandidate,
   fromStoreDir,
   swingThesisKey,
@@ -311,4 +313,27 @@ test("promoted candidates drop off the WATCH-eligible rail (thesis-scoped)", asy
   const left = await fetchWatchEligible(accessors);
   assert.equal(left.length, 1, "only the promoted thesis is retired");
   assert.equal(left[0].archetype, "MEAN_REVERSION");
+});
+
+test("persistenceGapReason — cross-session thesis needs more days", () => {
+  const gap = persistenceGapReason({
+    archetype: "BREAKOUT",
+    distinctSessionDays: 1,
+    sessionSignalKinds: ["FLOW"],
+    observationCount: 1,
+  });
+  assert.ok(gap?.includes("1/2"));
+});
+
+test("fetchObservedCandidates — seen but below bar, not in watch eligible", async () => {
+  const { accessors } = makeFakeAccessors();
+  await observeSwingCandidate(accessors, {
+    ticker: "NVDA", direction: "LONG", archetype: "BREAKOUT",
+    sessionDay: "2026-07-30", phase: "MIDDAY", signalKinds: ["FLOW"],
+  });
+  const seen = new Set(["NVDA|LONG|BREAKOUT"]);
+  const observed = await fetchObservedCandidates(accessors, seen);
+  assert.equal(observed.length, 1);
+  assert.equal(observed[0].ticker, "NVDA");
+  assert.equal((await fetchWatchEligible(accessors)).length, 0);
 });

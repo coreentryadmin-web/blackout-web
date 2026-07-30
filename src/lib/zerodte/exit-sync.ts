@@ -40,6 +40,7 @@ import { getZeroDteLiveMark, type ZeroDteLiveMark } from "./live-marks";
 import { isZeroDteMarkStale, pinnedLivePnlPct } from "./marks-math";
 import { PLAN_RULES } from "./plan";
 import type { ResolvedExitPolicy } from "./strategy-version";
+import { gexQualityDegradedForExit, type RegimeGexQuality } from "./regime-plane";
 
 /** Evidence cache TTL — one Cortex fan-out per (ticker, direction) per ~30s across
  *  every sync caller, not per row per tick. */
@@ -274,6 +275,11 @@ export async function evaluateLedgerRowExit(
     const trimsTaken =
       exitMode === "trim_scale" ? trimTranchesArmed(pinnedLivePnlPct(entry, peak), regime ?? "neutral") : 0;
 
+    const regimePlane = (row.entry_context as Record<string, unknown> | null)?.regime_plane as
+      | { gexQuality?: RegimeGexQuality }
+      | undefined;
+    const gexQualityDegraded = gexQualityDegradedForExit(regimePlane?.gexQuality);
+
     const decision = evaluateExitState({
       entryPremium: entry,
       currentMark: mark,
@@ -289,6 +295,7 @@ export async function evaluateLedgerRowExit(
       exitMode,
       regime,
       trimsTaken,
+      gexQualityDegraded,
     });
     if (decision.action !== "EXIT") return null;
 

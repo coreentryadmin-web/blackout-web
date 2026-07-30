@@ -29,6 +29,23 @@ import {
   type BreakoutChainRow,
 } from "./breakout-source";
 import type { EnrichedZeroDteSetup } from "./board";
+import { resolveBreakoutCandidateCap } from "./breakout-cap";
+import {
+  buildSessionBarFromMinuteBars,
+  mergeMinuteRefreshedBars,
+  type MinuteBarLike,
+} from "./breakout-intraday-breadth";
+import { fetchStockMinuteBars } from "@/lib/providers/polygon";
+
+function envFlag(name: string): boolean {
+  const raw = process.env[name]?.trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "on";
+}
+
+/** Wave C1 — refresh top pool movers from minute aggs (hybrid over grouped-daily). DEFAULT-OFF. */
+export const BREAKOUT_INTRADAY_REFRESH = envFlag("BREAKOUT_INTRADAY_REFRESH");
+/** Max tickers to minute-refresh per scan (Polygon budget guard). */
+export const BREAKOUT_INTRADAY_REFRESH_LIMIT = 40;
 
 /** RTH commit window in ET minutes-since-midnight: [9:30, 14:00). Aligned with
  *  NEW_PLAY_CUTOFF / G-14 (FINDINGS 2026-07-28) — discovering after the commit gate is closed
@@ -143,6 +160,8 @@ export type BreakoutDiscoveryDeps = {
   resolveChain: typeof resolveTickerChainRows;
   buildSetup: typeof buildBreakoutSetup;
   pickContract: typeof pickAtmZeroDteContract;
+  /** Wave C1 — optional minute bar fetch for intraday breadth refresh (tests inject fakes). */
+  fetchMinuteBars?: (ticker: string, from: string, to: string) => Promise<MinuteBarLike[]>;
 };
 
 const DEFAULT_DEPS: BreakoutDiscoveryDeps = {
@@ -174,9 +193,9 @@ export async function discoverBreakoutSetups(opts: {
   deps?: Partial<BreakoutDiscoveryDeps>;
 }): Promise<BreakoutDiscoveryOutcome> {
   const { today, nowEtMinutes, excludeTickers } = opts;
-  const maxCandidates = opts.maxCandidates ?? BREAKOUT_MAX_CANDIDATES;
+  let maxCandidates = opts.maxCandidates ?? BREAKOUT_MAX_CANDIDATES;
   const nowMs = opts.nowMs ?? Date.now();
-  const { fetchSummary, screen, screenBreakdowns, resolveChain, buildSetup, pickContract } = {
+  const { fetchSummary, screen, screenBreakdowns, resolveChain, buildSetup, pickContract, fetchMinuteBars } = {
     ...DEFAULT_DEPS,
     ...opts.deps,
   };
@@ -207,15 +226,57 @@ export async function discoverBreakoutSetups(opts: {
     return { status: "data_unavailable", setups: [], reason: freshness.reason };
   }
 
-  // Screen BOTH directions from the same grouped-daily snapshot: breakouts (LONG) and breakdowns
+  // Wave C1 — hybrid intraday refresh: re-build session bars for the top momentum pool from
+  // minute aggs so mid-RTH discovery isn't stuck on grouped-daily midnight `t` granularity.
+  let breadthResults = results;
+  const minuteFetch = fetchMinuteBars ?? fetchStockMinuteBars;
+  if (BREAKOUT_INTRADAY_REFRESH) {
+    const prePool = Math.max(maxCandidates * 4, BREAKOUT_SCREEN_POOL);
+    const preLong = screen(results, prePool);
+    const preShort = screenBreakdowns(results, prePool);
+    const tickers = [
+      ...new Set([...preLong, ...preShort].map((m) => m.ticker.toUpperCase())),
+    ].slice(0, BREAKOUT_INTRADAY_REFRESH_LIMIT);
+    const refreshed = new Map<string, DailyMarketBar>();
+    await Promise.all(
+      tickers.map(async (t) => {
+        const bars = await minuteFetch(t, today, today).catch(() => []);
+        const minuteBars: MinuteBarLike[] = [];
+        for (const b of bars) {
+          if (typeof b.t !== "number" || !Number.isFinite(b.t) || !Number.isFinite(b.o) || !Number.isFinite(b.c)) continue;
+          minuteBars.push({
+            t: b.t,
+            o: b.o,
+            h: b.h ?? b.o,
+            l: b.l ?? b.o,
+            c: b.c,
+            v: b.v ?? 0,
+          });
+        }
+        const bar = buildSessionBarFromMinuteBars(t, minuteBars);
+        if (bar) refreshed.set(t, bar);
+      })
+    );
+    if (refreshed.size > 0) {
+      breadthResults = mergeMinuteRefreshedBars(results, refreshed);
+      console.info(`[zerodte-breakout] intraday minute refresh: ${refreshed.size}/${tickers.length} tickers`);
+    }
+  }
+
+  // Screen BOTH directions from the breadth snapshot: breakouts (LONG) and breakdowns
   // (SHORT). Pull a wider $-volume pool, then re-rank by momentum quality before the chain-fetch
   // cap so mid-cap continuations are not starved by mega-cap $-volume. A ticker that qualifies on
   // BOTH sides (rare) keeps the breakout (long) — the higher-conviction direction for a momentum board.
   const screenPool = Math.max(maxCandidates * 4, BREAKOUT_SCREEN_POOL);
-  const longMovers = screen(results, screenPool).filter((m) => !excludeTickers.has(m.ticker.toUpperCase()));
-  const shortMovers = screenBreakdowns(results, screenPool).filter(
+  const longMovers = screen(breadthResults, screenPool).filter((m) => !excludeTickers.has(m.ticker.toUpperCase()));
+  const shortMovers = screenBreakdowns(breadthResults, screenPool).filter(
     (m) => !excludeTickers.has(m.ticker.toUpperCase())
   );
+
+  maxCandidates = resolveBreakoutCandidateCap({
+    qualifyingMovers: longMovers.length + shortMovers.length,
+    ceiling: maxCandidates,
+  });
 
   if (longMovers.length === 0 && shortMovers.length === 0) {
     console.info("[zerodte-breakout] breadth snapshot present but zero qualifying breakouts/breakdowns -- SKIP");

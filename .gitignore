@@ -39,3 +39,9 @@ apps/blackout-ios/ios/
 scripts/bie-eval/last-scorecard.json
 bie-eval-out/
 artifacts/
+
+# Playwright MCP / ad-hoc UI capture (never commit)
+.playwright-mcp/
+auth-landing.png
+nighthawk-live.png
+spx-dashboard-pin.png

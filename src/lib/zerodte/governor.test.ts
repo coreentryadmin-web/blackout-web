@@ -411,17 +411,17 @@ test("concentrationReasonForCandidate: fires when the candidate would exceed the
   assert.equal(concentrationReasonForCandidate({ ticker: "NVDA", direction: "long" }, twoLongs), null);
 });
 
-test("Q9 measure does NOT enforce: evaluateZeroDteGovernor still commits a 3rd correlated same-direction play", () => {
+test("Q9 enforced (Wave A/B default): evaluateZeroDteGovernor blocks a 3rd correlated same-direction play", () => {
   // Two correlated longs already open; a 3rd correlated long is over the concentration
-  // cap (2) but UNDER the concurrency cap (3). The measure must not block it — Q9 ships
-  // as evidence, not gating. (The only block here would be governor_max_concurrent, and
-  // 2 open < 3, so there is none.)
+  // cap (2) but UNDER the concurrency cap (3). GOVERNOR_ENFORCE_CONCENTRATION defaults
+  // true (2026-07-30 session — crypto/miner cluster ran to −100% session PnL).
   const snap = deriveGovernorFromLedger([
     row({ ticker: "SPY", direction: "long", status: "OPEN" }),
     row({ ticker: "QQQ", direction: "long", status: "OPEN" }),
   ]);
   const blocks = evaluateZeroDteGovernor({ ticker: "IWM", direction: "long" }, snap, NOW);
-  assert.deepEqual(blocks, []); // no concentration block, no other block
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0]!.code, "governor_concentration");
 });
 
 test("summarizeGovernorForBoard: surfaces the concentration measure without ever setting halted", () => {

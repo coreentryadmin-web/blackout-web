@@ -115,6 +115,16 @@ export const ZERODTE_CONFLUENCE_MIN_EARLY = Math.max(
   envInt("ZERODTE_CONFLUENCE_MIN_EARLY", 2)
 );
 
+/** G-13 — multi-day flow accumulation must agree with setup direction (2026-07-30 session:
+ *  MU long while accumulation bearish → −20% after +132% MFE). Default ON. */
+function envFlag(name: string, defaultOn: boolean): boolean {
+  const raw = process.env[name]?.trim().toLowerCase();
+  if (raw === "0" || raw === "false" || raw === "off") return false;
+  if (raw === "1" || raw === "true" || raw === "on") return true;
+  return defaultOn;
+}
+export const ZERODTE_BLOCK_ACCUM_MISALIGN = envFlag("ZERODTE_BLOCK_ACCUM_MISALIGN", true);
+
 /** Telemetry: how many times G-12 encountered a null confluence read and failed OPEN
  *  (the setup was not blocked on confluence). Gives observability into how often the
  *  fail-open path fires in practice — a rising count signals scan.ts is not attaching
@@ -227,7 +237,7 @@ export const ZERODTE_SCORE_FLOOR = 65;
  *  commit bar as FLOW. The 58 "unstarve" floor sat inside the measured near-flat 55–64 band
  *  (−3.6% avg / 36.8% WR) and admitted weak single-rail movers. Multi-rail +8 corroboration
  *  still helps real confluence clear 65; env overrides remain available. */
-export const ZERODTE_SCORE_FLOOR_BREAKOUT = envInt("ZERODTE_SCORE_FLOOR_BREAKOUT", 65);
+export const ZERODTE_SCORE_FLOOR_BREAKOUT = envInt("ZERODTE_SCORE_FLOOR_BREAKOUT", 70);
 export const ZERODTE_SCORE_FLOOR_PIN = envInt("ZERODTE_SCORE_FLOOR_PIN", 65);
 
 /** Resolve the G-3 score floor for a setup's discovery origin set. Pure. */
@@ -355,6 +365,11 @@ export type ZeroDteGateInput = {
   /** WS-21: the live WS source health state (ws/source-health.ts). Only consulted when
    *  `requireHealthySource` is true; null/undefined → the gate never fires. */
   sourceHealth?: SourceHealthState | null;
+  /** G-13: multi-day flow accumulation alignment. `false` = opposing stacked positioning. */
+  flowAccumulationAligned?: boolean | null;
+  /** Regime Plane: block fresh commits when regime inputs are blind. */
+  regimeBlockFreshCommits?: boolean;
+  regimeBlockReason?: string | null;
 };
 
 /**
@@ -369,6 +384,18 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
   // condor-specific gates (liquidity / VIX-harder / macro-harder / range-intact) are added in the
   // `isCondor` block after the shared gates. Unknown/absent play_type is DIRECTIONAL (unchanged).
   const isCondor = input.play_type === "CONDOR";
+
+  // Regime Plane — fail-closed when commit confidence is blind (VIX/macro/halt/GEX).
+  if (input.regimeBlockFreshCommits) {
+    blocks.push({
+      code: "regime_blind",
+      reason:
+        input.regimeBlockReason ??
+        "Regime inputs unreadable — fresh commits fail closed until VIX, macro, halt feed, and GEX recover.",
+      threshold: null,
+      unlock_et: null,
+    });
+  }
 
   // G-1 — tape alignment. DIRECTIONAL ONLY, INDEX ETFs ONLY: a condor has no direction to fight
   // the tape, and single-name stocks move on their own catalysts (earnings, news, sector rotation)
@@ -479,6 +506,22 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
     // G-12 fail-open: no confluence read attached — not a block (see module doc), but
     // track how often this happens so a rising count signals scan.ts stopped attaching reads.
     _nullConfluencePassCount++;
+  }
+
+  // G-13 — multi-day flow accumulation direction conflict (aligned === false).
+  if (
+    !isCondor &&
+    ZERODTE_BLOCK_ACCUM_MISALIGN &&
+    input.flowAccumulationAligned === false
+  ) {
+    blocks.push({
+      code: "flow_accumulation_conflict",
+      reason:
+        "Multi-day options flow accumulation opposes this setup's direction — " +
+        "the stacked positioning read disagrees with the commit (MU-long/bearish-acc class).",
+      threshold: null,
+      unlock_et: null,
+    });
   }
 
   // G-4 — VIX regime hard gate (promoted from calibration 2026-07-16).

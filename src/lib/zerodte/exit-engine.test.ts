@@ -578,6 +578,15 @@ test("detectThesisBreak: zero-weight opposes don't count toward the 2-cluster (w
   assert.equal(b, null);
 });
 
+test("detectThesisBreak: skipGexWallsVeto ignores gex-walls veto when GEX quality degraded", () => {
+  const b = detectThesisBreak(
+    evidence([{ stance: "veto", source: "gex-walls", weight: 0.9, detail: "wall broke" }]),
+    1,
+    { skipGexWallsVeto: true },
+  );
+  assert.equal(b, null);
+});
+
 // ── trim_scale trimsTaken latch clamping ─────────────────────────────────────────────
 test("trim_scale: trimsTaken is clamped/floored to 0..2 — an over-count runs the runner, a negative starts fresh", () => {
   // trimsTaken 5 (> 2) → clamped to 2 → the last third RUNS (not another trim).
