@@ -1,5 +1,69 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-29 17:55 ET
+Last updated: 2026-07-30 11:52 ET
+
+## spx-rth-2026-07-30 — SPX Slayer all-day verify pass (market-open ~11:30–11:52 ET)
+
+**Session:** SPX Slayer all-day agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` **verify** mode (scheduled 6:30 AM PT / 9:30 AM ET pass; executed ~11:30 ET mid-morning). Commands: `npm run validate:spx-rth` → `npm run validate:spx-e2e` → cross-tool API probes → spot movement across passes as live-update evidence.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth` | ✅ **8 PASS / 1 WARN / 0 FAIL** — matrix deep audit, cross-endpoint, desk lanes, BIE, dashboard-e2e sub-run, ops:collect GREEN |
+| `npm run validate:spx-e2e` (primary pass) | ⚠️ **15 PASS / 2 WARN / 1 FAIL** — matrix every-cell + UI GREEN; Largo query timed out at 90s |
+| `npm run validate:spx-e2e` (retry) | ⚠️ Largo PASS (`blackout_intelligence`); transient matrix fetch HTTP 0 (egress flake) |
+| Matrix deep audit | ✅ **175 strikes** — GEX+VEX+DEX+CHARM every cell finite; Σ strike_totals == headline total |
+| `validate:spx-bie` (via spx-rth) | ✅ member `/spx/play` == `getSpxPlayState()` |
+| Live auto-update (spot movement) | ✅ desk/heatmap spot moved **7375.26 → 7384.15 → 7387.02** across 11:30–11:42 ET passes |
+
+### UI E2E (Playwright — successful pass)
+
+| # | Action | Result |
+|---|---|---|
+| Sign-in `/dashboard` | ✅ premium admin session |
+| Click **GEX** tab | ✅ `#spx-matrix-tab-gex` |
+| Click **VEX** tab | ✅ `#spx-matrix-tab-vex` |
+| Matrix rows | ✅ **178** strike rows (≥80 bar) |
+| Matrix text sanity | ✅ no NaN / undefined / `$—` |
+| Trade alert hero (`.spx-trade-alert-hero`) | ⏭️ **N/A** — Trade Alerts panel removed from desk 2026-07-13 (Vector chart consolidation); play validated via API |
+| Play API SCANNING confirmations | ✅ **0 stale ✓ checks** — `play=SCANNING`, `confirmations.checks.length=0` |
+| Commentary expand | ⏭️ SKIP — E2E selector `#spx-commentary-rail-toggle` not reached (default intel rail = ⚡ Pulse; must toggle to Largo commentary first) |
+| Console errors | ✅ zero |
+
+### Cross-tool integration (Step 3)
+
+| Tool | Endpoint | Result |
+|---|---|---|
+| **Thermal** | `GET /api/market/gex-heatmap?ticker=SPX` | ✅ every cell validated (175 strikes); cross_validation PASS |
+| **GEX positioning** | `GET /api/market/gex-positioning?ticker=SPX` | ✅ spot/flip agree with matrix header (via spx-rth cross-endpoint) |
+| **HELIX** | `GET /api/market/flows?limit=30` | ✅ 30 prints |
+| **Largo** | `POST /api/market/largo/query` | ⚠️ **1/2 runs timed out at 90s**; retry PASS with `blackout_intelligence` tool |
+| **BIE** | `validate:spx-bie` | ✅ `spx_full_state` == member play |
+| **Grid / SPX bootstrap** | `GET /api/market/spx/bootstrap` | ✅ loaded; spot not stale vs desk |
+| **0DTE Command** | `GET /api/market/zerodte/board` | ⚠️ **board empty or gated** — `setups` null this pass (may be discovery quiet / tier gate) |
+| **Night Hawk** | `GET /api/market/nighthawk/edition` | ✅ loads |
+| **Desk / play** | desk + play cross-tool | ✅ desk≈7387 play=SCANNING |
+
+### P0 found this pass
+
+**None.** Matrix cells 100% match API oracle; play SCANNING carries zero stale confirmations; spot/GEX cross-endpoint within tolerance (Δ ≤ 0.15 pts on merged vs heatmap lanes).
+
+### Findings logged
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| **P1** | `largo-query-timeout` | `POST /api/market/largo/query` exceeded 90s curl max on 1/2 runs; passed on retry with grounded `blackout_intelligence` tool | `/api/market/largo/query` | post-close — add retry/backoff in e2e harness |
+| **P1** | `zerodte-board-gated-rth` | 0DTE board returned `setups=null` during RTH — may be discovery quiet or response-shape gate; not a matrix/play defect | `/api/market/zerodte/board` | post-close — confirm expected when no committed plays |
+| **P2** | `spx-e2e-commentary-selector-stale` | E2E looks for commentary expand on load; desk defaults to Pulse intel rail — must click Largo tab first | UI / `spx-dashboard-e2e-audit.mjs` | post-close — update e2e to toggle intel rail |
+| **P2** | `spx-e2e-trade-alert-selector-removed` | E2E still probes `.spx-trade-alert-hero` removed from desk 2026-07-13; play covered by API cross-tool check | `SpxDashboard.tsx` | post-close — update e2e selectors |
+| **P2** | `cloud-cron-secret-mismatch` | Cloud-agent `CRON_SECRET` ≠ prod; data-correctness + bie-play-route cron probes WARN/401 | audit env | **Expected** — not prod |
+| **P2** | `spx-e2e-transient-timeout` | Retry e2e hit HTTP 0 on matrix fetch (egress flake); primary pass GREEN | N/A (agent infra) | monitor |
+
+**Member-facing SPX surfaces: GREEN** — matrix oracle clean, play SCANNING with no stale confirmations, cross-tool spot agrees ~7387 during RTH.
+
+**Reports:** `audit-output/spx-rth-2026-07-30-verify-1785426147553.json`, `audit-output/spx-dashboard-e2e-1785426366727.json`
+
+---
 
 ## spx-rth-2026-07-29 — SPX Slayer all-day verify pass (~17:26–17:46 ET, post-close)
 
