@@ -83,6 +83,21 @@ test("fetchGexHeatmap keeps stale-while-revalidate during preset fast-move (no b
   assert.match(src, /const stale = tryStaleWhileRevalidateHeatmap\(/);
 });
 
+test("fetchGexHeatmap caps inflight/cold builds with gexHeatmapMaxBlockMs (never-block)", () => {
+  const src = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "polygon-options-gex.ts"),
+    "utf8"
+  );
+  assert.match(src, /gexHeatmapMaxBlockMs/);
+  assert.match(src, /awaitHeatmapBuildWithBlockCap/);
+  assert.match(src, /pickStaleHeatmapForHandoff/);
+  assert.doesNotMatch(
+    src,
+    /if\s*\(\s*existing\s*\)\s*return\s+existing\s*;/,
+    "inflight coalesce must not return the raw promise — callers would block 20–57s"
+  );
+});
+
 // ── task #136: computeGexEvents — the pure diff durable persistence (gex-regime-
 // events.ts) and /api/cron/gex-alerts both consume without re-deriving. ──
 
