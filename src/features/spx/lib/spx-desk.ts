@@ -3,6 +3,7 @@ import {
   engineIntelOverlayEnabled,
   uwConfigured,
   deskPulseStructureCacheTtlMs,
+  deskPulseStructureRaceMs,
   deskFlowRaceMs,
 } from "@/lib/providers/config";
 import { serverCache } from "@/lib/server-cache";
@@ -1538,13 +1539,10 @@ async function fetchPriorDayCached(): Promise<{
 }
 
 /** EMAs / VWAP / HOD/LOD — refreshed on a slower cadence so 1s pulse stays light. */
-async function refreshPulseStructureIfNeeded(today: string): Promise<PulseStructureCache> {
-  const now = Date.now();
-  const ttl = deskPulseStructureCacheTtlMs();
-  if (cachedPulseStructure.fetchedAt > 0 && now - cachedPulseStructure.fetchedAt < ttl) {
-    return cachedPulseStructure;
-  }
+let pulseStructureInflight: Promise<PulseStructureCache> | null = null;
 
+async function refreshPulseStructureCore(today: string): Promise<PulseStructureCache> {
+  const now = Date.now();
   const [minuteBars, ema20, ema50, ema200, sma50, sma200, breadthAll] =
     await Promise.all([
       fetchIndexMinuteBars(SPX, today, today).catch(() => []),
@@ -1572,6 +1570,53 @@ async function refreshPulseStructureIfNeeded(today: string): Promise<PulseStruct
     leader_stocks: leaderStocks,
     breadth_samples: breadthAll ?? [],
   };
+  return cachedPulseStructure;
+}
+
+/** Kick a background structure refresh when stale — never blocks the 1s pulse lane. */
+function kickPulseStructureRefresh(today: string): void {
+  const now = Date.now();
+  const ttl = deskPulseStructureCacheTtlMs();
+  if (cachedPulseStructure.fetchedAt > 0 && now - cachedPulseStructure.fetchedAt < ttl) return;
+  if (pulseStructureInflight) return;
+  pulseStructureInflight = refreshPulseStructureCore(today)
+    .catch(() => cachedPulseStructure)
+    .finally(() => {
+      pulseStructureInflight = null;
+    });
+  void pulseStructureInflight;
+}
+
+async function refreshPulseStructureIfNeeded(today: string): Promise<PulseStructureCache> {
+  const now = Date.now();
+  const ttl = deskPulseStructureCacheTtlMs();
+  if (cachedPulseStructure.fetchedAt > 0 && now - cachedPulseStructure.fetchedAt < ttl) {
+    return cachedPulseStructure;
+  }
+
+  if (pulseStructureInflight) return pulseStructureInflight;
+
+  const raceMs = deskPulseStructureRaceMs();
+  const refresh = refreshPulseStructureCore(today);
+  pulseStructureInflight = refresh.finally(() => {
+    pulseStructureInflight = null;
+  });
+
+  const raced = await Promise.race([
+    refresh,
+    new Promise<PulseStructureCache | "timeout">((resolve) =>
+      setTimeout(() => resolve("timeout"), raceMs)
+    ),
+  ]);
+
+  if (raced !== "timeout") return raced;
+
+  // Polygon slow — serve last good structure so callers never block 10s+.
+  if (cachedPulseStructure.fetchedAt > 0) return cachedPulseStructure;
+
+  void refresh.catch(() => {
+    /* background refresh may still land for the next tick */
+  });
   return cachedPulseStructure;
 }
 
@@ -1655,11 +1700,13 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
   }
 
   const today = todayEtYmd();
-  const [snapsRaw, prior, structure] = await Promise.all([
+  // Structure (EMAs/VWAP/HOD) refreshes on a 5s cadence — NEVER block the fast price lane on it.
+  kickPulseStructureRefresh(today);
+  const [snapsRaw, prior] = await Promise.all([
     fetchIndexSnapshots([SPX, VIX, VIX9D, VIX3M, TICK, TRIN, ADD]).catch(() => ({})),
     fetchPriorDayCached(),
-    refreshPulseStructureIfNeeded(today),
   ]);
+  const structure = cachedPulseStructure;
   const snaps = mergeWsIndexSnapshots(snapsRaw);
 
   const spxSnap = snaps[SPX];

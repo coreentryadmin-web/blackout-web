@@ -3,7 +3,6 @@ import { requireTier } from "@/lib/auth-access";
 import { canAccessTool } from "@/lib/tool-access-server";
 import { SpxDashboard } from "@/features/spx";
 import { DeskShell } from "@/components/layout/DeskShell";
-import { loadVectorSeedProps, type VectorSeedProps } from "@/features/vector";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -16,21 +15,13 @@ export const metadata: Metadata = {
 export default async function DashboardPage() {
   await requireTier("community");
 
-  // DESK CONSOLIDATION (2026-07-13, member-directed): the flagship desk embeds the SPX Vector
-  // chart (chart-only — no terminal) where the Trade Alerts + Slayer terminal panels used to be.
-  // The seed comes from the SAME loadVectorSeedProps helper the /vector page uses, so the two
-  // surfaces can never drift. Vector is still launch-gated (tool-access): if this account can't
-  // see the /vector tool yet, we pass null and the desk shows a launching-soon note instead of a
-  // chart whose API calls would 403. Seed failures degrade the same way rather than 500ing the
-  // whole flagship desk.
-  let vectorSeed: VectorSeedProps | null = null;
-  if (await canAccessTool("vector")) {
-    vectorSeed = await loadVectorSeedProps("SPX", { seedDteHorizon: "0dte" }).catch(() => null);
-  }
+  // Vector chart is client-hydrated (SpxVectorEmbed) — no SSR vector seed on this route.
+  // Cold Polygon reconstruct can block HTML for 30–90s; /vector keeps full SSR seed.
+  const vectorEnabled = await canAccessTool("vector");
 
   return (
     <DeskShell fullBleed className="ios-native-page ios-native-page-spx">
-      <SpxDashboard vectorSeed={vectorSeed} />
+      <SpxDashboard vectorEnabled={vectorEnabled} />
     </DeskShell>
   );
 }

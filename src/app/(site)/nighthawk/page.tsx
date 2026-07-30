@@ -3,7 +3,7 @@ import { requireTier } from "@/lib/auth-access";
 import { canAccessTool } from "@/lib/tool-access-server";
 import { ComingSoon } from "@/components/ComingSoon";
 import { NighthawkPageShell } from "@/features/nighthawk/components/NighthawkPageShell";
-import { loadNightHawkSeedProps } from "@/features/nighthawk/lib/nighthawk-seed-props";
+import { parseNightHawkView } from "@/features/nighthawk/lib/nighthawk-view";
 
 export const dynamic = "force-dynamic";
 
@@ -21,11 +21,9 @@ export default async function NightHawkPage({ searchParams }: PageProps) {
   if (!(await canAccessTool("nighthawk"))) return <ComingSoon toolKey="nighthawk" />;
 
   const { view } = await searchParams;
-  // Soft-fail: desk still renders; client SWR fetches if seed.board is null.
-  const seed = await loadNightHawkSeedProps({ view }).catch(() => ({
-    view: "ZERO_DTE" as const,
-    board: null,
-  }));
+  // Client SWR loads /api/market/zerodte/board — skip SSR getZeroDteBoardPayload() so HTML
+  // is not blocked on a cold board rebuild (same class of ~30–60s TTFB as dashboard Vector SSR).
+  const seed = { view: parseNightHawkView(view ?? null), board: null };
 
   return <NighthawkPageShell seed={seed} />;
 }

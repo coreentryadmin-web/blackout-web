@@ -6,10 +6,8 @@ import { join } from "node:path";
 const read = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
 
 test("SPX embed seeds 0DTE horizon history and opens on session viewport", () => {
-  assert.match(
-    read("src/app/(site)/dashboard/page.tsx"),
-    /loadVectorSeedProps\("SPX", \{ seedDteHorizon: "0dte" \}\)/
-  );
+  assert.match(read("src/features/spx/components/SpxVectorEmbed.tsx"), /defaultDteHorizon="0dte"/);
+  assert.match(read("src/features/spx/components/SpxVectorEmbed.tsx"), /defaultChartViewport="session"/);
   const shell = read("src/features/vector/components/VectorPageShell.tsx");
   assert.match(shell, /defaultChartViewport = "session"/);
   assert.match(shell, /defaultChartViewport=\{defaultChartViewport\}/);
