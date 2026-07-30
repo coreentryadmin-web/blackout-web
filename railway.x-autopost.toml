@@ -1,4 +1,5 @@
 # X desk autopost — even ET hours 8–20 (live SPX desk card + Whop footer).
+# STANDING: EventBridge DISABLED + X_MARKETING_POSTS_PAUSED=1 (operator OFF — do not re-enable).
 # Schedule mirrors EventBridge: cron(0 12,14,16,18,20,22,0 ? * * *)
 [build]
 builder = "nixpacks"

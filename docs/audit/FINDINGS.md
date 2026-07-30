@@ -216,7 +216,23 @@ at 00:14 UTC; manual `GET /api/cron/x-replies?manual=1` cleared it; `x-growth` b
 `isInOffScheduleIdleGap()` suppresses stale when outside long inter-fire gaps; added
 `railway.x-growth.toml` catalog aligned to EventBridge.
 
-**Status.** `fix/x-replies-off-schedule-stale` → PR.
+**Status.** `fix/x-replies-off-schedule-stale` → PR (schedule-window helper; superseded by operator OFF policy below).
+
+## 2026-07-30 — [ops] X marketing OFF — operator standing order (#1312)
+
+**Severity.** P1 ops false positive — **not** a prod outage.
+
+**Symptom.** ops-auto-fix #1312 flagged `x-replies` stale; agent began tuning cron schedule windows.
+
+**Root cause.** Operator previously requested **all X bot/marketing automation stopped**. Secrets
+already had `X_MARKETING_POSTS_PAUSED=1` + `X_MENTION_REPLIES_PAUSED=1`, but EventBridge rules had
+been re-enabled by prior ops fixes (#1277, #1287). Stale watchdog noise is expected when X is off.
+
+**Fix (this session).** Disabled EventBridge `blackout-production-x-{autopost,growth,replies,analytics}`;
+forced ECS redeploy for pause env; documented standing OFF policy in `docs/ops/X-MARKETING.md` +
+`OPS-AUTO-FIX.md`; `ops-collect` skips X cron watchdog items when pause flags set in Secrets Manager.
+
+**Status.** CLOSED — do not re-enable without explicit operator request.
 
 ## 2026-07-29 — [SPX] EOD Pin Forecaster glued ~120pts below spot (weak far wall)
 
