@@ -47,7 +47,7 @@ function candidate(over: Partial<SwingCommitCandidate> = {}): SwingCommitCandida
   };
 }
 const book = (over: Partial<CommitBookPosition> & { ticker: string }): CommitBookPosition => ({
-  direction: "LONG", commitKey: `2026-07-24:${over.ticker.toUpperCase()}:STANDARD:long`, isOvernight: true, ...over,
+  direction: "LONG", archetype: "BREAKOUT", commitKey: `2026-07-24:${over.ticker.toUpperCase()}:STANDARD:long`, isOvernight: true, ...over,
 });
 
 // ─── the REAL graduation integration (wire, don't weaken) ──────────────────────
@@ -212,14 +212,23 @@ test("idempotency: a name already OPEN under its commit_key is never re-opened",
   assert.ok(d.blockedBy.includes("already_open"));
 });
 
-test("idempotency: a name open from a PRIOR session (different commit_key) is still blocked — one thesis per name+side", () => {
-  // The open position carries LAST week's commit_key; today's candidate would mint a NEW key. Keying idempotency
-  // on (ticker, direction) — not the session-scoped key — prevents a graduated name that STAYS on WATCH from
-  // opening a fresh position every single session.
-  const existing = [book({ ticker: "NVDA", riskUsd: 510, commitKey: swingCommitKey("2026-07-17", "NVDA", "STANDARD", "long") })];
+test("idempotency: a name open from a PRIOR session (different commit_key) is still blocked — one thesis root per name+side+archetype", () => {
+  const existing = [book({ ticker: "NVDA", riskUsd: 510, commitKey: swingCommitKey("2026-07-17", "NVDA", "STANDARD", "long"), archetype: "BREAKOUT" })];
   const plan = computeSwingCommitPlan({ candidates: [candidate({ sessionDate: "2026-07-24" })], report: graduatedReport(), book: existing, budget: PRODUCTION_PORTFOLIO_BUDGET });
   assert.equal(plan.decisions[0].committable, false);
-  assert.ok(plan.decisions[0].blockedBy.includes("already_open"), "prior-session open blocks a same-name re-commit");
+  assert.ok(plan.decisions[0].blockedBy.includes("already_open"), "prior-session open blocks a same-thesis re-commit");
+});
+
+test("idempotency: a different archetype on the same name+side may commit while another thesis is open", () => {
+  const existing = [book({ ticker: "NVDA", riskUsd: 510, archetype: "BREAKOUT" })];
+  const plan = computeSwingCommitPlan({
+    candidates: [candidate({ archetype: "MEAN_REVERSION", score: 70 })],
+    report: graduatedReport("MEAN_REVERSION", "STANDARD"),
+    book: existing,
+    budget: PRODUCTION_PORTFOLIO_BUDGET,
+  });
+  const d = plan.decisions[0];
+  assert.ok(!d.blockedBy.includes("already_open"), "sibling archetype is not blocked by a different open thesis");
 });
 
 // ─── edge cases (missing contract / unknown premium / no direction) — all SAFE ──

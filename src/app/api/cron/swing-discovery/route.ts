@@ -180,6 +180,7 @@ function buildDiscoveryDeps(nowMs: number, sessionDay: string, phase: SwingDisco
         return {
           ticker: r.ticker,
           direction: r.direction === "short" ? "SHORT" : "LONG",
+          archetype: r.archetype,
           commitKey: r.commit_key,
           riskUsd,
           isEvent: isEventArchetype(r.archetype as SwingArchetype | null),

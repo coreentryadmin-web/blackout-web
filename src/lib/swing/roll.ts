@@ -128,10 +128,21 @@ export function decideRollAction(verdict: SwingManageVerdict): { action: RollAct
   if (!GATING_RUNGS.has(verdict.rung)) {
     return { action: "SKIP", reason: `edge/hold rung '${verdict.rung}' — evidence-only, no terminal write (gating-only)` };
   }
-  if (verdict.rollIntent.roll) {
-    return { action: "ROLL", reason: `gating rung '${verdict.rung}' with a still-valid-thesis roll — ${verdict.rollIntent.reason}` };
+  // Thesis break always closes — never roll — even when expiry_risk owns the primary rung but rollIntent
+  // was computed before structural inputs landed (FINDINGS 2026-07-30 P0 #9).
+  if (verdict.rung === "structural_stop" || verdict.rung === "thesis_stop") {
+    return {
+      action: "CLOSE",
+      reason: `gating rung '${verdict.rung}' — thesis broken, close not roll (${verdict.reason})`,
+    };
   }
-  return { action: "CLOSE", reason: `gating rung '${verdict.rung}' with no valid-thesis roll — close, not roll (${verdict.reason})` };
+  if (!verdict.rollIntent.roll) {
+    return {
+      action: "CLOSE",
+      reason: `gating rung '${verdict.rung}' with no valid-thesis roll — close, not roll (${verdict.reason})`,
+    };
+  }
+  return { action: "ROLL", reason: `gating rung '${verdict.rung}' with a still-valid-thesis roll — ${verdict.rollIntent.reason}` };
 }
 
 /**

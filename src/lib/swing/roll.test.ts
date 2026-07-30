@@ -100,6 +100,14 @@ test("decideRollAction: gating rung + vetoed roll (broken thesis) → CLOSE, not
   assert.equal(d.action, "CLOSE");
 });
 
+test("decideRollAction: expiry_risk + structural_stop rung always CLOSE even if rollIntent were true", () => {
+  const d = decideRollAction(verdict({
+    rung: "structural_stop",
+    rollIntent: { roll: true, reason: "stale intent" },
+  }));
+  assert.equal(d.action, "CLOSE");
+});
+
 test("decideRollAction: edge rung → SKIP (gating-only; evidence-only rungs never write terminal)", () => {
   for (const rung of ["flow_decay", "profit_ladder", "hold", "insufficient_data"] as const) {
     const d = decideRollAction(verdict({ rung, rollIntent: { roll: false, reason: "n/a" } }));

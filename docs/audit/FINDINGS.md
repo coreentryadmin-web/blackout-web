@@ -5,6 +5,25 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-30 — [Swing] P0 remediation batch — corroboration, thesis open-root, roll/OCC/serving
+
+**Severity.** P0 — false WATCH eligibility, duplicate thesis opens, broken-thesis rolls, bad option marks,
+stale live sections.
+
+**Fixes (single PR `cursor/swing-p0-remediation-3d11`).**
+1. **Session-scoped corroboration (#2):** `last_session_signal_kinds` column; event archetypes count kinds
+   on the latest session day only — lifetime `signal_kinds` stays provenance.
+2. **One open root per thesis (#6):** commit idempotency keyed on `(ticker, direction, archetype)` via
+   `swingThesisKey`; sibling archetypes on the same name+side may coexist.
+3. **Roll vs broken thesis (#9):** manage precedence structural/thesis before expiry_risk;
+   `decideRollAction` forces CLOSE on structural/thesis_stop rungs.
+4. **OCC fail-closed (#10):** `occSymbolFromSwingRow` returns null without stored OCC — no strike
+   reconstruction on the management path; commit still writes OCC via `occFromChainContract`.
+5. **Serving authoritative open state (#38):** horizons route loads latest snapshot `event_json` per open
+   position; live plays stamp EXITING/MANAGING from manage-sync without waiting for discovery.
+
+**Status.** FIXED on `cursor/swing-p0-remediation-3d11`.
+
 ## 2026-07-30 — [Swing] Hourly manage is mark-and-review (not tactical live mgmt) + grader honesty labels
 
 **Severity.** P1 documentation / product-claim — overstated management precision + grader "truth".

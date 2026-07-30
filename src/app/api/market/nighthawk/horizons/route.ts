@@ -4,7 +4,7 @@
 // whole-market discovery lanes ship (they render as empty lanes until then, never omitted).
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { requireDatabaseInProduction, fetchOpenSwingPositions } from "@/lib/db";
+import { requireDatabaseInProduction, fetchOpenSwingPositions, fetchLatestSwingSnapshotEvents } from "@/lib/db";
 import { authorizeCronOrTierApi } from "@/lib/market-api-auth";
 import { getZeroDteBoardPayload } from "@/lib/platform/zerodte-service";
 import { scopeBoardToHorizon } from "@/lib/horizon-board";
@@ -47,6 +47,7 @@ export async function GET(req: NextRequest) {
     const swingLane = await getSwingServingLane({
       discover: discoverSwingFromPersisted,
       fetchOpenPositions: () => fetchOpenSwingPositions().catch(() => []),
+      fetchLatestManageEvents: (ids) => fetchLatestSwingSnapshotEvents(ids).catch(() => new Map()),
       spotsByTicker: snap?.spotsByTicker,
     });
     board = { ...board, lanes: { ...board.lanes, SWING: swingLane } };

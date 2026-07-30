@@ -10,12 +10,13 @@
 // by option chop, or held a broken thesis because the option happened to be up).
 //
 // PRECEDENCE (highest wins) — the load-bearing ordering:
-//   1. expiry_risk     (GATE) — too little time / theta cliff for the lane → force manage.
-//   2. structural_stop (GATE) — the UNDERLYING broke its structural stop (thesis invalidation in
+//   1. structural_stop (GATE) — the UNDERLYING broke its structural stop (thesis invalidation in
 //                               underlying terms). Fires at ANY premium P&L, even +30% — the thesis
-//                               is what broke, not the option.
-//   3. thesis_stop     (GATE) — an archetype-specific invalidation signal (reclaim failed, flow
+//                               is what broke, not the option. Beats expiry_risk so a broken thesis
+//                               never rolls (FINDINGS 2026-07-30 P0 #9).
+//   2. thesis_stop     (GATE) — an archetype-specific invalidation signal (reclaim failed, flow
 //                               reversed, …) computed upstream.
+//   3. expiry_risk     (GATE) — too little time / theta cliff for the lane → force manage (intact thesis).
 //   4. premium_stop    (GATE) — the −60% capital backstop, via deriveScaleOutAction STOP_OUT
 //                               (SCALE_OUT_RULES.hard_stop_mult 0.4). Last line, not the first.
 //   5+. [advisory / evidence-only] catalyst/regime shift → profit-ladder (TAKE_PARTIAL@2× /
@@ -270,19 +271,19 @@ export function evaluateSwingManagement(input: SwingManageInput): SwingManageVer
 
   const structural = structuralStopBroken(input);
 
-  // ── 1. expiry_risk (GATE) — the lane's theta cliff ──
-  if (spec && dte != null && dte <= spec.expiryRiskDte) {
-    return mk("EXIT", "expiry_risk", `DTE ${dte} ≤ ${spec.expiryRiskDte} (${spec.id} theta cliff) — force manage`);
-  }
-
-  // ── 2. structural_stop (GATE) — the UNDERLYING broke, at ANY premium P&L ──
+  // ── 1. structural_stop (GATE) — the UNDERLYING broke, at ANY premium P&L (thesis-primary) ──
   if (structural.broken) {
     return mk("EXIT", "structural_stop", structural.reason);
   }
 
-  // ── 3. thesis_stop (GATE) — archetype-specific invalidation ──
+  // ── 2. thesis_stop (GATE) — archetype-specific invalidation ──
   if (input.thesisBroken === true) {
     return mk("EXIT", "thesis_stop", input.thesisBreakReason ?? "archetype thesis-invalidation signal fired");
+  }
+
+  // ── 3. expiry_risk (GATE) — the lane's theta cliff (only when thesis still intact) ──
+  if (spec && dte != null && dte <= spec.expiryRiskDte) {
+    return mk("EXIT", "expiry_risk", `DTE ${dte} ≤ ${spec.expiryRiskDte} (${spec.id} theta cliff) — force manage`);
   }
 
   // ── 4. premium_stop (GATE) — the −60% capital backstop (only fires pre-scale, by design) ──
