@@ -238,6 +238,8 @@ const BOARD_SNAPSHOT_REFRESH_MS = 5_000;
 // Proven 2026-07-29: blocking cold builds under parallel audit load exceeded CF origin
 // timeout → HTTP 504 on /api/market/zerodte/board while the snapshot was still in Redis.
 const BOARD_SNAPSHOT_SERVE_MAX_AGE_MS = BOARD_SNAPSHOT_TTL_SEC * 1000;
+/** Serve stale shared snapshot up to 10m while rebuild runs — never 504 the route. */
+const BOARD_STALE_SERVE_MAX_AGE_MS = 10 * 60_000;
 // Cross-replica rebuild lock: elects ONE replica to rebuild+publish per cycle so N
 // replicas don't each re-derive the same snapshot. Auto-expires (writer crash safety);
 // the winner also deletes it right after publishing so the next cycle can advance.
@@ -724,18 +726,71 @@ export async function getZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
     return shared.value;
   }
 
-  // Cold miss / Redis TTL expired → blocking build+publish (single-flight per replica).
-  if (coldBuildInflight) return coldBuildInflight;
-  coldBuildInflight = (async () => {
-    // A peer may have published while we queued behind the single-flight — prefer it
-    // for convergence over spending another build.
-    const raced = await readSharedBoardSnapshot();
-    if (raced && raced.ageMs <= BOARD_SNAPSHOT_SERVE_MAX_AGE_MS) return raced.value;
-    return buildAndPublishBoard();
-  })().finally(() => {
+  // Soft-stale snapshot still in Redis — serve immediately, rebuild in background.
+  if (shared && shared.ageMs <= BOARD_STALE_SERVE_MAX_AGE_MS) {
+    kickColdBoardBuild();
+    return shared.value;
+  }
+
+  if (!coldBuildInflight) {
+    coldBuildInflight = runColdBoardBuild().finally(() => {
+      coldBuildInflight = null;
+    });
+  }
+
+  const build = coldBuildInflight;
+  const { zerodteBoardMaxBlockMs } = await import("@/lib/providers/config");
+  const blockMs = zerodteBoardMaxBlockMs();
+  return Promise.race([
+    build,
+    new Promise<ZeroDteBoardPayload>((resolve) => {
+      setTimeout(() => {
+        void (async () => {
+          const snap = await readSharedBoardSnapshot();
+          if (snap) {
+            resolve(snap.value);
+            return;
+          }
+          try {
+            resolve(await build);
+          } catch {
+            resolve(buildMinimalBoardFallback());
+          }
+        })();
+      }, blockMs);
+    }),
+  ]);
+}
+
+function kickColdBoardBuild(): void {
+  if (coldBuildInflight) return;
+  coldBuildInflight = runColdBoardBuild().finally(() => {
     coldBuildInflight = null;
   });
-  return coldBuildInflight;
+  void coldBuildInflight;
+}
+
+async function runColdBoardBuild(): Promise<ZeroDteBoardPayload> {
+  const raced = await readSharedBoardSnapshot();
+  if (raced && raced.ageMs <= BOARD_SNAPSHOT_SERVE_MAX_AGE_MS) return raced.value;
+  return buildAndPublishBoard();
+}
+
+/** Last-resort empty board when Redis and build both unavailable (route still 200). */
+function buildMinimalBoardFallback(): ZeroDteBoardPayload {
+  const now = new Date().toISOString();
+  const heat = sessionHeat(12 * 60, true);
+  return {
+    available: true,
+    as_of: now,
+    upstream_ok: false,
+    session: { date: now.slice(0, 10), trading_day: true, heat },
+    setups: [],
+    ledger: [],
+    covered_elsewhere: [],
+    governor: null,
+    allocation: [],
+  };
 }
 
 /** Proactively rebuild + publish the shared board snapshot. Called by the ~1-5 min

@@ -39,11 +39,39 @@ const pulseCacheOpts = {
 const deskCacheOpts = {
   staleWhileRevalidate: true as const,
   staleOnInflight: true,
+  maxBlockMs: deskBootstrapMaxBlockMs(),
+  fallback: async () => deskShellFromPulse(await loadSpxDeskPulse()),
 };
 
 const flowCacheOpts = {
   staleWhileRevalidate: true as const,
   staleOnInflight: true,
+  maxBlockMs: deskBootstrapMaxBlockMs(),
+  fallback: async (): Promise<SpxDeskFlow> => {
+    const pulse = await loadSpxDeskPulse();
+    return {
+      available: false,
+      polled_at: pulse.polled_at,
+      price: pulse.price,
+      dark_pool: null,
+      spx_flows: [],
+      unified_tape: [],
+      gex_walls: [],
+      gex_net: null,
+      gex_king: null,
+      gamma_flip: null,
+      above_gamma_flip: false,
+      gamma_regime: "unknown",
+      flow_0dte_call_premium: null,
+      flow_0dte_put_premium: null,
+      flow_0dte_net: null,
+      strike_stacks: [],
+      net_prem_ticks: [],
+      flow_by_expiry: [],
+      net_flow_by_expiry: [],
+      greek_exposure: null,
+    };
+  },
 };
 
 /**
@@ -107,7 +135,7 @@ export async function loadSpxPinForecast(): Promise<SpxPinForecast> {
 }
 
 /** Single server path: cache lanes → merge pulse + flow into desk. */
-export async function loadMergedSpxDesk(): Promise<MergedSpxDeskBundle> {
+async function loadMergedSpxDeskCore(): Promise<MergedSpxDeskBundle> {
   const [desk, flow, pulse] = await Promise.all([
     loadSpxDesk(),
     loadSpxDeskFlow(),
@@ -116,6 +144,17 @@ export async function loadMergedSpxDesk(): Promise<MergedSpxDeskBundle> {
 
   const merged = mergeDeskLayers(desk, flow, pulse);
   return { desk, flow, pulse, merged };
+}
+
+/** Cached merged desk — same fast-lane contract as bootstrap (never block 15s+ on cold desk). */
+export async function loadMergedSpxDesk(): Promise<MergedSpxDeskBundle> {
+  const date = todayEtYmd();
+  return withServerCache(`spx-merged:${date}`, deskCacheTtlMs(), loadMergedSpxDeskCore, {
+    staleWhileRevalidate: true,
+    staleOnInflight: true,
+    maxBlockMs: deskBootstrapMaxBlockMs(),
+    fallback: buildBootstrapFastLane,
+  });
 }
 
 async function buildMergedBundle(): Promise<MergedSpxDeskBundle> {

@@ -10,6 +10,8 @@ test("loadSpxDesk, loadSpxDeskPulse, and loadSpxDeskFlow share one cache lane ea
       buildSpxDesk: async () => ({ marker: ++deskCount }),
       buildSpxDeskFlow: async () => ({ marker: ++flowCount }),
       buildSpxDeskPulse: async () => ({ marker: ++pulseCount }),
+      buildSpxDeskPulseMinimal: async () => ({ marker: ++pulseCount }),
+      deskShellFromPulse: (pulse: { marker?: number }) => ({ marker: ++deskCount, pulse }),
     },
   });
   // A fixed, test-only session date so this test's cache entries can never collide with a
