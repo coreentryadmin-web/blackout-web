@@ -224,20 +224,17 @@ export type ZeroDteBoardPayload = {
 // on a stale-while-revalidate cadence (single writer per cycle) so `as_of`/scores/marks
 // advance every cycle instead of freezing.
 const BOARD_SNAPSHOT_KEY = "zerodte:board:snapshot:v1";
-// How long the published snapshot lives in Redis. Comfortably longer than the serve/
-// refresh windows below so freshness is governed by the snapshot's own `as_of` age
-// (BOARD_SNAPSHOT_*_MS), never by the Redis key silently expiring under us.
-const BOARD_SNAPSHOT_TTL_SEC = 60;
+// Long-lived fallback for true cold misses (deploy / Redis flush / hot-key expiry).
+// Written on every successful publish so member polls never block >100s on a rebuild.
+const BOARD_SNAPSHOT_BACKUP_KEY = "zerodte:board:snapshot:backup:v1";
+const BOARD_SNAPSHOT_BACKUP_TTL_SEC = 86_400;
+// How long the hot snapshot lives in Redis. Comfortably longer than the cron cadence
+// (~1–5 min) so freshness is governed by `as_of` + SWR, not key expiry mid-build.
+const BOARD_SNAPSHOT_TTL_SEC = 300;
 // Soft age: once the shared snapshot is older than this, the NEXT reader kicks a
 // background rebuild (non-blocking SWR) so the cycle advances. Matches the ~5s member
 // poll cadence — most polls land inside a fresh snapshot and never trigger a rebuild.
 const BOARD_SNAPSHOT_REFRESH_MS = 5_000;
-// Past BOARD_SNAPSHOT_REFRESH_MS the reader kicks a background rebuild (non-blocking SWR).
-// Serve ceiling aligned with Redis TTL — a key still present is always served SWR-style
-// so a stalled writer never 504s the route; only a true cold miss blocks on build.
-// Proven 2026-07-29: blocking cold builds under parallel audit load exceeded CF origin
-// timeout → HTTP 504 on /api/market/zerodte/board while the snapshot was still in Redis.
-const BOARD_SNAPSHOT_SERVE_MAX_AGE_MS = BOARD_SNAPSHOT_TTL_SEC * 1000;
 // Cross-replica rebuild lock: elects ONE replica to rebuild+publish per cycle so N
 // replicas don't each re-derive the same snapshot. Auto-expires (writer crash safety);
 // the winner also deletes it right after publishing so the next cycle can advance.
@@ -671,8 +668,22 @@ let backgroundRefreshInflight = false;
  *  degrades to the pre-fix per-replica behaviour, never to a blank board. */
 async function buildAndPublishBoard(): Promise<ZeroDteBoardPayload> {
   const built = await buildZeroDteBoardPayload();
-  await sharedCacheSet(BOARD_SNAPSHOT_KEY, built, BOARD_SNAPSHOT_TTL_SEC).catch(() => {});
+  await Promise.allSettled([
+    sharedCacheSet(BOARD_SNAPSHOT_KEY, built, BOARD_SNAPSHOT_TTL_SEC),
+    sharedCacheSet(BOARD_SNAPSHOT_BACKUP_KEY, built, BOARD_SNAPSHOT_BACKUP_TTL_SEC),
+  ]);
   return built;
+}
+
+/** Read the long-lived backup snapshot (cold-miss fast path). */
+async function readBackupBoardSnapshot(): Promise<ZeroDteBoardPayload | null> {
+  try {
+    const snap = await sharedCacheGet<ZeroDteBoardPayload>(BOARD_SNAPSHOT_BACKUP_KEY);
+    if (!snap || snap.available !== true || typeof snap.as_of !== "string") return null;
+    return snap;
+  } catch {
+    return null;
+  }
 }
 
 /** Single-writer background refresh: only the NX-lock winner rebuilds+publishes this
@@ -717,20 +728,30 @@ function refreshSharedBoardInBackground(): void {
  */
 export async function getZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
   const shared = await readSharedBoardSnapshot();
-  if (shared && shared.ageMs <= BOARD_SNAPSHOT_SERVE_MAX_AGE_MS) {
-    // Serve the shared, converged snapshot NOW. Past the soft window, kick a
-    // single-writer background rebuild so the next cycle advances — never block on it.
+  if (shared) {
+    // Any hot snapshot in Redis is served immediately — never block member polls on a
+    // rebuild when a converged board exists (RTH 2026-07-30: >100s cold builds → 504).
     if (shared.ageMs > BOARD_SNAPSHOT_REFRESH_MS) refreshSharedBoardInBackground();
     return shared.value;
   }
 
-  // Cold miss / Redis TTL expired → blocking build+publish (single-flight per replica).
+  // Hot key missing — serve the long-lived backup instantly and advance in background.
+  const backup = await readBackupBoardSnapshot();
+  if (backup) {
+    refreshSharedBoardInBackground();
+    return backup;
+  }
+
+  // True cold miss (first deploy / both keys absent) → blocking build+publish (single-flight).
   if (coldBuildInflight) return coldBuildInflight;
   coldBuildInflight = (async () => {
-    // A peer may have published while we queued behind the single-flight — prefer it
-    // for convergence over spending another build.
     const raced = await readSharedBoardSnapshot();
-    if (raced && raced.ageMs <= BOARD_SNAPSHOT_SERVE_MAX_AGE_MS) return raced.value;
+    if (raced) return raced.value;
+    const racedBackup = await readBackupBoardSnapshot();
+    if (racedBackup) {
+      refreshSharedBoardInBackground();
+      return racedBackup;
+    }
     return buildAndPublishBoard();
   })().finally(() => {
     coldBuildInflight = null;
@@ -750,8 +771,11 @@ export async function refreshZeroDteBoardSnapshot(): Promise<ZeroDteBoardPayload
 export async function _resetZeroDteBoardSnapshotForTest(): Promise<void> {
   coldBuildInflight = null;
   backgroundRefreshInflight = false;
-  await sharedCacheDel(BOARD_SNAPSHOT_KEY).catch(() => {});
-  await sharedCacheDel(BOARD_BUILD_LOCK_KEY).catch(() => {});
+  await Promise.allSettled([
+    sharedCacheDel(BOARD_SNAPSHOT_KEY),
+    sharedCacheDel(BOARD_SNAPSHOT_BACKUP_KEY),
+    sharedCacheDel(BOARD_BUILD_LOCK_KEY),
+  ]);
 }
 
 /** Largo / BIE tool shape — derived from the same board payload the UI polls. */

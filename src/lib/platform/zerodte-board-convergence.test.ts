@@ -177,6 +177,38 @@ test("SWR hard window: a snapshot aged past the old 30s hard gate but still with
   assert.equal(sharedState.scanCalls, 2, "background rebuild eventually advances the snapshot");
 });
 
+test("SWR beyond hot TTL: a 90s-aged snapshot still in Redis is served without blocking (no 504)", async () => {
+  const { getZeroDteBoardPayload } = await import("./zerodte-service");
+
+  await getZeroDteBoardPayload();
+  assert.equal(sharedState.scanCalls, 1);
+
+  const key = "zerodte:board:snapshot:v1";
+  const entry = sharedState.store.get(key)!;
+  const aged = JSON.parse(entry.value);
+  aged.as_of = new Date(Date.now() - 90_000).toISOString();
+  sharedState.store.set(key, { value: JSON.stringify(aged), expiresAt: entry.expiresAt });
+
+  const served = await getZeroDteBoardPayload();
+  assert.equal(served.as_of, aged.as_of, "90s-aged hot snapshot served SWR — read path must not block");
+  assert.equal(sharedState.scanCalls, 1, "no blocking rebuild on the read path");
+});
+
+test("cold miss: hot key absent but backup present is served instantly (no blocking build)", async () => {
+  const { getZeroDteBoardPayload } = await import("./zerodte-service");
+
+  const scansBefore = sharedState.scanCalls;
+  const first = await getZeroDteBoardPayload();
+  assert.ok(sharedState.scanCalls >= scansBefore + 1, "initial build ran");
+
+  sharedState.store.delete("zerodte:board:snapshot:v1");
+  const scansBeforeBackup = sharedState.scanCalls;
+  const t0 = Date.now();
+  const served = await getZeroDteBoardPayload();
+  assert.ok(Date.now() - t0 < 500, "backup path returns in <500ms — not a blocking cold build");
+  assert.equal(served.as_of, first.as_of, "backup snapshot served on hot-key miss");
+});
+
 test("fail-soft: a shared-store outage still serves a freshly built board — never a blank board", async () => {
   const { getZeroDteBoardPayload } = await import("./zerodte-service");
   sharedState.throwMode = true;

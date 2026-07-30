@@ -5,6 +5,24 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-30 — [Grid/0DTE] zerodte board cold-path HTTP 504 / 120s timeout (member Night Hawk)
+
+**Severity.** P0 member path (`GET /api/market/zerodte/board`).
+
+**Symptom.** Grid RTH verify ~12:44 ET: `zerodte:board` HTTP **504**; `validate:grid-e2e`
+`e2e:zerodte-board-api` HTTP **0** @120s; `validate:zerodte-logic` `live:board` hung on
+Clerk fallback. Pure logic probes (gates, exits, lifecycle, mergePlays) all GREEN.
+
+**Root cause.** `getZeroDteBoardPayload()` (`zerodte-service.ts`) rejected snapshots with
+`as_of` age >60s and blocked on `buildAndPublishBoard()` (~96–120s+). Hot Redis TTL (60s)
+expired during slow rebuilds → true cold miss under parallel load → Cloudflare origin timeout.
+
+**Fix.** Serve ANY hot snapshot SWR (no age ceiling); extend hot TTL to 300s; publish a
+24h backup key (`zerodte:board:snapshot:backup:v1`) on every build — hot miss serves backup
+instantly + background rebuild. Tests: `zerodte-board-convergence.test.ts` (90s-aged + backup).
+
+**Status.** FIXED on `fix/zerodte-board-cold-504` → PR.
+
 ## 2026-07-30 — [ops] zerodte-warm CF 504 on blocking board rebuild
 
 **Severity.** P1 — cron handshake 504 every RTH probe; watchdog may mis-report failure.
