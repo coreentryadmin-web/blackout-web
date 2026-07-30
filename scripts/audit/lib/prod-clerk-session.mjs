@@ -33,7 +33,7 @@ function collectSetCookies(res) {
   return raw.map((c) => c.split(";")[0]).filter(Boolean);
 }
 
-import { generateDefaultAuditPhone } from "./audit-phone.mjs";
+import { createAuditClerkUser, deleteAuditClerkUser } from "./clerk-audit-user.mjs";
 
 /** Mints one temp admin/premium Clerk session against a live deployment.
  *  Returns `{ skip: true, reason }` if secrets aren't configured or any step
@@ -48,7 +48,6 @@ export async function mintClerkPremiumSession({ appUrl }) {
     return { skip: true, reason: "CLERK_SECRET_KEY / NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY not set" };
   }
   const email = process.env.AUDIT_EMAIL || "claude-audit-temp@blackouttrades.com";
-  const phone = process.env.AUDIT_PHONE || generateDefaultAuditPhone();
   const fapi = fapiHost(publishableKey);
   const backend = (method, path, body) =>
     fetch(`${API}${path}`, {
@@ -59,27 +58,13 @@ export async function mintClerkPremiumSession({ appUrl }) {
 
   let userId = null;
   try {
-    const createRes = await backend("POST", "/users", {
-      email_address: [email],
-      phone_number: [phone],
-      public_metadata: { role: "admin", tier: "premium" },
-      skip_password_requirement: true,
-      skip_legal_checks: true,
+    const created = await createAuditClerkUser({
+      secret,
+      email,
+      publicMetadata: { role: "admin", tier: "premium" },
     });
-    const created = await createRes.json().catch(() => null);
-    if (created?.id) {
-      userId = created.id;
-    } else if (/form_identifier_exists/.test(JSON.stringify(created?.errors || ""))) {
-      const lookup = await fetch(`${API}/users?email_address=${encodeURIComponent(email)}`, {
-        headers: { Authorization: `Bearer ${secret}` },
-      });
-      const existing = (await lookup.json().catch(() => []))?.[0];
-      if (existing?.id) {
-        userId = existing.id;
-        await backend("PATCH", `/users/${userId}`, { public_metadata: { role: "admin", tier: "premium" } });
-      }
-    }
-    if (!userId) return { skip: true, reason: "could not create or adopt a temp Clerk user" };
+    userId = created.userId;
+    if (!userId) return { skip: true, reason: created.error ?? "could not create or adopt a temp Clerk user" };
 
     const tokenRes = await backend("POST", "/sign_in_tokens", { user_id: userId });
     const ticket = (await tokenRes.json().catch(() => null))?.token;
@@ -117,11 +102,7 @@ export async function mintClerkPremiumSession({ appUrl }) {
       cookieHeader: `__session=${jwt}; __client_uat=${clientUat}`,
       signInUrl: `${appUrl}/sign-in?__clerk_ticket=${ticket}`,
       cleanup: async () => {
-        try {
-          await backend("DELETE", `/users/${userId}`);
-        } catch {
-          /* best-effort cleanup — a stray temp user is a known, low-severity leftover, never worth crashing the caller over */
-        }
+        await deleteAuditClerkUser(secret, userId);
       },
     };
   } catch (e) {

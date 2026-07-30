@@ -18,6 +18,20 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-30 — [Grid/0DTE] grid-e2e Clerk phone collision on stale audit users
+
+**Severity.** P1 — `validate:grid-e2e` FAIL `e2e:auth` blocked post-close orchestrator when nested in `validate:grid-rth`.
+
+**Symptom.** `Clerk user create failed: This phone number is already associated with an existing account` — email was unique (`zerodte-e2e-${Date.now()}`) but phone drew from a narrow `Math.random()*9000+1000` range; 133 stale `ios-ui-e2e-*` / audit temp users had accumulated from failed cleanups and saturated the pool.
+
+**Root cause.** `grid-zerodte-e2e-audit.mjs` and `ios-playwright-auth.mjs` did not use `generateDefaultAuditPhone()` (10k suffix space) and had no phone-collision retry — only email `form_identifier_exists` adoption.
+
+**Fix.** Shared `scripts/audit/lib/clerk-audit-user.mjs` (`createAuditClerkUser` with phone retry + `deleteAuditClerkUser`); wired into `grid-zerodte-e2e-audit.mjs`, `ios-playwright-auth.mjs`, `prod-clerk-session.mjs`. Unit tests in `clerk-audit-user.test.mjs`.
+
+**Evidence.** Post-fix: `validate:grid-e2e` 4/4 PASS, `validate:zerodte-logic` 17/17, `validate:grid-rth --phase=post-close` 12/12.
+
+**Status.** FIXED on `fix/grid-e2e-clerk-phone-retry`.
+
 ## 2026-07-30 — [Grid/0DTE] Post-close fix agent — all validators GREEN
 
 **Severity.** P2 doc only — no product defects.
