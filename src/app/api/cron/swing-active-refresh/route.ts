@@ -15,7 +15,7 @@
 // THIN HANDLER: the refresh loop (active-refresh.ts) and the management mapping (manage-sync.ts) are pure/
 // injected and unit-tested; this handler only does auth, the live provider wiring, and the run/log.
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { runSwingActiveRefresh } from "@/lib/swing/active-refresh";
@@ -63,7 +63,7 @@ import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 120;
+export const maxDuration = 180;
 
 /** Best-effort live underlying price from Polygon's last-trade (results.p). null when unavailable. */
 async function loadUnderlyingSpot(ticker: string): Promise<number | null> {
@@ -99,12 +99,7 @@ function sessionsHeldFromRow(row: SwingPositionRow, nowMs: number): number | nul
   return Math.max(0, Math.round((nowMs - t) / 86_400_000));
 }
 
-export async function GET(req: NextRequest) {
-  const started = Date.now();
-  if (!isCronAuthorized(req)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
+async function runSwingActiveRefreshCron(started: number): Promise<void> {
   const nowMs = started;
   try {
     // Fetch the open book ONCE — reused as the refresh working set AND as the roll gate's book snapshot (budget
@@ -300,26 +295,48 @@ export async function GET(req: NextRequest) {
       console.error("[cron/swing-active-refresh] beta warm failed (non-fatal)", err);
     }
 
-    const payload = {
-      ok: true,
-      positions: result.positions,
-      refreshed: result.refreshed,
-      snapshotsAppended: result.snapshotsAppended,
-      skippedCount: result.skipped,
-      errored: result.errored,
-      rolled: rolls.filter((o) => o.roll?.action === "ROLL" && o.roll?.childId != null).length,
-      closed: rolls.filter((o) => o.roll?.action === "CLOSE" && o.roll?.parentGraded).length,
-      rollErrors: rolls.filter((o) => o.roll?.error).length,
-      graduatedRungs: [...graduatedRungs],
-      spotsRefreshed,
-      betasResolved,
-    };
-    await logCronRun("swing-active-refresh", started, payload);
-    return NextResponse.json(payload);
+    console.info(
+      `[cron/swing-active-refresh] background done — positions=${result.positions} refreshed=${result.refreshed} snapshots=${result.snapshotsAppended} skipped=${result.skipped} errored=${result.errored} rolled=${rolls.filter((o) => o.roll?.action === "ROLL" && o.roll?.childId != null).length} closed=${rolls.filter((o) => o.roll?.action === "CLOSE" && o.roll?.parentGraded).length} spotsRefreshed=${spotsRefreshed} betasResolved=${betasResolved} elapsed=${Date.now() - started}ms`
+    );
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    console.error("[cron/swing-active-refresh]", error);
-    await logCronRun("swing-active-refresh", started, { ok: false, error: detail });
-    return NextResponse.json({ ok: false, error: "Swing active-refresh failed" }, { status: 500 });
+    console.error(`[cron/swing-active-refresh] background REJECTED: ${detail}`);
   }
+}
+
+export async function GET(req: NextRequest) {
+  const started = Date.now();
+  if (!isCronAuthorized(req)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Per-position Polygon/UW reads + serving-spot refresh + beta warm can exceed Cloudflare's ~100s
+  // origin timeout when the open book is non-empty (ops #1364: market_hours_stale with no fresh row).
+  // Mirror coaching-alerts / vector-universe-snapshot: handshake in seconds, refresh in after().
+  const dispatchRefresh = () => {
+    void runSwingActiveRefreshCron(started).catch((error) => {
+      const detail = error instanceof Error ? error.message : String(error);
+      console.error(`[cron/swing-active-refresh] background refresh REJECTED: ${detail}`);
+    });
+  };
+
+  try {
+    after(dispatchRefresh);
+  } catch {
+    dispatchRefresh();
+  }
+
+  const accepted = {
+    ok: true,
+    status: "accepted",
+    reason: "Swing active-refresh dispatched in background (fire-and-forget)",
+  };
+  await logCronRun("swing-active-refresh", started, accepted);
+  return NextResponse.json(
+    {
+      ...accepted,
+      note: "Position mark-and-review + serving-spot refresh run in background — handshake stays under edge timeout.",
+    },
+    { status: 202 }
+  );
 }

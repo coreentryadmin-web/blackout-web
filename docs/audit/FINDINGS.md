@@ -5,6 +5,31 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-30 — [ops] swing-active-refresh RTH-stale edge timeout (#1364)
+
+**Severity.** P0 — Swing mark-and-review loop silent during RTH; `vector-universe-snapshot` also
+flagged in the same ops-auto-fix batch (already fixed by #1362 deploy).
+
+**Symptom.** ops-auto-fix #1364: `swing-active-refresh` + `vector-universe-snapshot`
+`market_hours_stale` during RTH.
+
+**Root cause.** (1) `vector-universe-snapshot` — same CF ~100s class as #1355; fixed on main via
+`after()` handshake (#1362) before this agent session; watchdog GREEN after deploy. (2)
+`swing-active-refresh` still awaited per-position Polygon/UW reads + serving-spot refresh + beta
+warm inline (`maxDuration=120`) — with a non-empty open book the combined wall-clock can exceed
+Cloudflare's origin timeout before `logCronRun` fires. Also missing from `CRON_DISPATCH`, so
+watchdog self-heal could not re-warm it.
+
+**Evidence.** Live probe 2026-07-30 ~1:57 PM ET: watchdog `rth_stale=0` post-#1362; force-run
+`swing-active-refresh` returned HTTP 200 in ~32s with empty book (would scale with position count).
+
+**Fix.** (1) Dispatch refresh via `next/server after()`; return HTTP 202 + immediate `logCronRun`
+handshake (mirrors `vector-universe-snapshot` / `coaching-alerts`). Regression test:
+`src/app/api/cron/swing-active-refresh/route.test.ts`. (2) Add `swing-active-refresh` to
+`CRON_DISPATCH` with `force: true` for watchdog self-heal.
+
+**Status.** FIXED on `fix/ops-1364-swing-active-refresh-edge-timeout`.
+
 ## 2026-07-30 — [ops] vector-full-state-snapshot RTH-stale edge timeout (#1355)
 
 **Severity.** P0 — Vector full-state cache warmer silent during RTH.

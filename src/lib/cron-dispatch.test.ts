@@ -19,6 +19,7 @@ const VECTOR_SELF_HEAL_CRONS = [
 const OPS_SELF_HEAL_CRONS = [
   "coaching-alerts",
   "bie-full-state-snapshot",
+  "swing-active-refresh",
 ];
 
 const dispatchSrc = readFileSync(join(ROOT, "src/lib/cron-dispatch.ts"), "utf8");
