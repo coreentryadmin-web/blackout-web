@@ -5,6 +5,27 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-30 — [ops] Polygon REST 403 → UW spot/GEX fallback (#1337)
+
+**Severity.** P0 `redis_gex` cold SPX + P1 `socket-health` failed during RTH after #1336 deploy.
+
+**Symptom.** ops-auto-fix #1337: `getGexPositioning("SPX")` NO matrix; socket-health HTTP 503
+(`cluster I:SPX snapshot stale or missing`). Live: Polygon `/v3/snapshot/*` + options chain
+returning `NOT_AUTHORIZED` (7498 upstream failures in provider-health-reconcile window) while
+UW `/stock-state` + `/spot-exposures/strike` remained 200.
+
+**Root cause.** #1336 fixed web-tier WS leader contention but the underlying Polygon REST key was
+returning 403 on snapshot/chain endpoints — `resolveSpotSnapshot` exhausted Polygon WS/cluster/REST
+with no tertiary source → `emptyHeatmap(spot:0)` → `redis_gex` FLAG. `spx:pulse:snapshot` never
+seeded → socket-health polygon cluster false-negative.
+
+**Fix.** (1) `resolveSpotFromUwStockState` + last-resort hook in `resolveSpotSnapshot`. (2)
+`buildGexHeatmapFromUwStrikeExposures` when Polygon chain is empty. (3) `readClusterIndexSpot` /
+`readPolygonClusterHealth` UW fallback + `seedPulseSnapshotFromUwPrices` from `uw-cache-refresh`.
+(4) Quote route: `shouldBootDataSockets` gate + UW fallback.
+
+**Status.** FIXED on `fix/ops-1337-polygon-uw-fallback`.
+
 ## 2026-07-30 — [ops] web tier WS contention → cold SPX GEX + socket-health false P1 (#1335)
 
 **Severity.** P0 data-correctness (`redis_gex` cold SPX) + P1 cron (`socket-health` failed/stale).

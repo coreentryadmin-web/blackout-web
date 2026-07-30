@@ -1,4 +1,5 @@
 import { getUwCacheRedis } from "@/lib/providers/uw-shared-cache";
+import { resolveSpotFromUwStockState } from "@/lib/providers/spot-fallback";
 import { INDEX_FEED_STALL_MS } from "@/lib/ws/polygon-socket";
 import { UW_SOCKET_STALL_MS } from "@/lib/ws/uw-socket-stall";
 import { OPTION_MARK_FRESH_MS } from "@/lib/ws/options-socket";
@@ -60,19 +61,24 @@ export async function readClusterIndexSpot(
   try {
     const redis = await getUwCacheRedis();
     const raw = redis ? await redis.get(POLYGON_SNAPSHOT_KEY) : null;
-    if (!raw) return null;
-    const snap = JSON.parse(raw) as IndexSnapshot;
-    const entry = snap[sym];
-    const price = entry?.price;
-    if (!entry || price == null || !(price > 0) || !entry.updatedAt) return null;
-    if (now - entry.updatedAt >= maxAgeMs) return null;
-    return {
-      price,
-      change_pct: Number.isFinite(entry.change_pct) ? Number(entry.change_pct) : 0,
-    };
+    if (raw) {
+      const snap = JSON.parse(raw) as IndexSnapshot;
+      const entry = snap[sym];
+      const price = entry?.price;
+      if (entry && price != null && price > 0 && entry.updatedAt && now - entry.updatedAt < maxAgeMs) {
+        return {
+          price,
+          change_pct: Number.isFinite(entry.change_pct) ? Number(entry.change_pct) : 0,
+        };
+      }
+    }
   } catch {
-    return null;
+    /* fall through to UW */
   }
+
+  // Polygon indices WS snapshot missing/stale (ingest leader down or Polygon REST 403 storm) —
+  // UW stock-state is the honest secondary spot during RTH so GEX/quote/socket-health don't go blank.
+  return resolveSpotFromUwStockState(sym, now);
 }
 
 /** Redis-backed UW cluster heartbeat — web tier reads this without booting local sockets. */
@@ -114,6 +120,16 @@ export async function readPolygonClusterHealth(
     detail = "snapshot read failed";
   }
 
+  // UW stock-state fallback: when the ingest polygon snapshot is absent, a fresh UW SPX print
+  // still proves index spot is live (Polygon REST may be 403 while UW tape is healthy).
+  if (updatedAt == null) {
+    const uw = await resolveSpotFromUwStockState("I:SPX", now);
+    if (uw && uw.price > 0) {
+      updatedAt = now;
+      detail = `I:SPX price=${uw.price} (UW stock-state fallback)`;
+    }
+  }
+
   const age = updatedAt != null ? Math.max(0, now - updatedAt) : null;
   const cluster_live = age != null && age <= POLYGON_CLUSTER_LIVE_MS;
 
@@ -124,6 +140,39 @@ export async function readPolygonClusterHealth(
     cluster_live,
     detail,
   };
+}
+
+/**
+ * Seed `spx:pulse:snapshot` from UW stock-state when the polygon indices WS is not writing.
+ * Called from uw-cache-refresh so web-tier readers + socket-health see a fresh cluster snapshot.
+ */
+export async function seedPulseSnapshotFromUwPrices(now = Date.now()): Promise<boolean> {
+  const targets = ["I:SPX", "I:SPY"] as const;
+  const snap: IndexSnapshot = {};
+  let seeded = 0;
+
+  for (const sym of targets) {
+    const uw = await resolveSpotFromUwStockState(sym, now);
+    if (!uw || !(uw.price > 0)) continue;
+    snap[sym] = {
+      price: uw.price,
+      change_pct: uw.change_pct,
+      updatedAt: now,
+      open_source: "rest",
+    };
+    seeded += 1;
+  }
+
+  if (!seeded) return false;
+
+  try {
+    const redis = await getUwCacheRedis();
+    if (!redis) return false;
+    await redis.setex(POLYGON_SNAPSHOT_KEY, 30, JSON.stringify(snap));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Cron / ops: cluster-aware OK — followers are healthy when the leader heartbeat is fresh. */

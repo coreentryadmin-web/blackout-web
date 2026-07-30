@@ -1185,7 +1185,15 @@ async function resolveSpotSnapshot(
   if (restPrice > 0) {
     return { price: restPrice, change_pct: snap?.change_pct ?? 0 };
   }
-  return resolveSpotSnapshotLastResort(root, isIndex);
+  const prevBar = await resolveSpotSnapshotLastResort(root, isIndex);
+  if (prevBar && prevBar.price > 0) return prevBar;
+
+  // Last resort: UW stock-state (Polygon 403 / circuit-open must not blank the GEX matrix).
+  const { resolveSpotFromUwStockState } = await import("./spot-fallback");
+  const uw = await resolveSpotFromUwStockState(optionsRoot, Date.now());
+  if (uw && uw.price > 0) return uw;
+
+  return null;
 }
 
 const GEX_HEATMAP_CACHE_PREFIX = "gex-heatmap";
@@ -2123,6 +2131,164 @@ export async function fetchGexHeatmap(
 }
 
 /**
+ * Degraded matrix from UW `/spot-exposures/strike` when Polygon chain snapshots return 403/empty.
+ * All-expiry dealer gamma ladder — clearly labeled in the regime read so members know it's not the
+ * canonical Polygon OI chain. Still real UW data (not fabricated).
+ */
+async function buildGexHeatmapFromUwStrikeExposures(
+  root: string,
+  spot: number,
+  changePct: number,
+  now: number,
+  cacheKey: string,
+  ttlMs: number
+): Promise<GexHeatmap | null> {
+  try {
+    const { fetchUwSpotExposuresByStrike } = await import("./unusual-whales");
+    const rows = await fetchUwSpotExposuresByStrike(root, 500);
+    if (!rows?.length) return null;
+
+    const today = todayEtYmd();
+    const bandPct = heatmapBandPct(root);
+    const lo = spot * (1 - bandPct);
+    const hi = spot * (1 + bandPct);
+
+    const gexStrikeTotals: Record<string, number> = {};
+    const vexStrikeTotals: Record<string, number> = {};
+    const dexStrikeTotals: Record<string, number> = {};
+    const charmStrikeTotals: Record<string, number> = {};
+    const gexCells: Record<string, Record<string, number>> = {};
+    const vexCells: Record<string, Record<string, number>> = {};
+    const dexCells: Record<string, Record<string, number>> = {};
+    const charmCells: Record<string, Record<string, number>> = {};
+    const strikes: number[] = [];
+
+    let totalGamma = 0;
+    let totalVanna = 0;
+    let totalDelta = 0;
+    let totalCharm = 0;
+
+    for (const r of rows) {
+      const strike = Number(r.strike ?? r.strike_price);
+      if (!Number.isFinite(strike) || strike <= 0 || strike < lo || strike > hi) continue;
+
+      const callG = Number(r.call_gamma_oi ?? r.call_gex ?? 0);
+      const putG = Number(r.put_gamma_oi ?? r.put_gex ?? 0);
+      const netG = (Number.isFinite(callG) ? callG : 0) + (Number.isFinite(putG) ? putG : 0);
+      if (netG === 0) continue;
+
+      const callV = Number(r.call_vanna_oi ?? 0);
+      const putV = Number(r.put_vanna_oi ?? 0);
+      const netV = (Number.isFinite(callV) ? callV : 0) + (Number.isFinite(putV) ? putV : 0);
+
+      const callD = Number(r.call_delta_oi ?? 0);
+      const putD = Number(r.put_delta_oi ?? 0);
+      const netD = (Number.isFinite(callD) ? callD : 0) + (Number.isFinite(putD) ? putD : 0);
+
+      const callC = Number(r.call_charm_oi ?? 0);
+      const putC = Number(r.put_charm_oi ?? 0);
+      const netC = (Number.isFinite(callC) ? callC : 0) + (Number.isFinite(putC) ? putC : 0);
+
+      const sk = String(strike);
+      gexStrikeTotals[sk] = netG;
+      vexStrikeTotals[sk] = netV;
+      dexStrikeTotals[sk] = netD;
+      charmStrikeTotals[sk] = netC;
+      gexCells[sk] = { [today]: netG };
+      vexCells[sk] = { [today]: netV };
+      dexCells[sk] = { [today]: netD };
+      charmCells[sk] = { [today]: netC };
+      strikes.push(strike);
+      totalGamma += netG;
+      totalVanna += netV;
+      totalDelta += netD;
+      totalCharm += netC;
+    }
+
+    if (!strikes.length) return null;
+    strikes.sort((a, b) => b - a);
+
+    const gexFlip = computeZeroGammaFlip(gexStrikeTotals, spot);
+    const gexLevels = computeGexRegime(gexStrikeTotals, spot, gexFlip, null);
+    const vexLevels = computeVexRegime(vexStrikeTotals, totalVanna);
+    const dexZero = computeZeroGammaFlip(dexStrikeTotals, spot);
+    const dexRegime = computeDexRegime(totalDelta);
+    const charmZero = computeZeroGammaFlip(charmStrikeTotals, spot);
+    const charmRegime = computeCharmRegime(totalCharm);
+
+    const heatmap: GexHeatmap = {
+      underlying: root,
+      spot,
+      change_pct: changePct,
+      asof: new Date(now).toISOString(),
+      expiries: [today],
+      near_term_expiries: [today],
+      strikes,
+      max_pain: null,
+      gex: {
+        cells: gexCells,
+        strike_totals: gexStrikeTotals,
+        call_wall: gexLevels.callWall,
+        put_wall: gexLevels.putWall,
+        total: totalGamma,
+        flip: gexFlip,
+        regime: {
+          flip: gexFlip,
+          posture: gexLevels.regime.posture,
+          read:
+            `${gexLevels.regime.read} (UW all-expiry dealer gamma — Polygon chain unavailable; levels are live UW OI, not the canonical near-term Polygon matrix.)`,
+        },
+      },
+      vex: {
+        cells: vexCells,
+        strike_totals: vexStrikeTotals,
+        pos_wall: vexLevels.posWall,
+        neg_wall: vexLevels.negWall,
+        total: totalVanna,
+        flip: computeZeroGammaFlip(vexStrikeTotals, spot),
+        regime: vexLevels.regime,
+      },
+      dex: {
+        cells: dexCells,
+        strike_totals: dexStrikeTotals,
+        total: totalDelta,
+        zero_level: dexZero,
+        regime: dexRegime,
+      },
+      charm: {
+        cells: charmCells,
+        strike_totals: charmStrikeTotals,
+        total: totalCharm,
+        zero_level: charmZero,
+        regime: charmRegime,
+      },
+      shift: { available: false, status: "collecting" },
+      vex_shift: { available: false, status: "collecting" },
+      dex_shift: { available: false, status: "collecting" },
+      charm_shift: { available: false, status: "collecting" },
+      source: "polygon",
+      data_delay: "UW spot-exposures fallback (Polygon chain cold)",
+    };
+
+    const entry = { at: now, data: heatmap };
+    setCachedHeatmap(cacheKey, entry);
+    void import("../shared-cache").then(({ sharedCacheSet }) =>
+      sharedCacheSet(cacheKey, entry, Math.ceil(ttlMs / 1000))
+    );
+    console.warn(
+      `[gex-heatmap] built UW strike-exposure fallback matrix for ${root} @ ${spot} (${strikes.length} strikes) — Polygon chain unavailable`
+    );
+    return heatmap;
+  } catch (err) {
+    console.warn(
+      `[gex-heatmap] UW strike-exposure fallback failed for ${root}:`,
+      err instanceof Error ? err.message : String(err)
+    );
+    return null;
+  }
+}
+
+/**
  * The uncached matrix BUILD: resolve spot, fetch the banded chain, compute the full GEX/VEX/DEX/
  * CHARM matrix + levels + shift + history context, then cache it (in-memory + Redis). Always
  * caches via the FULL base TTL (`baseTtlMs`) — the fast-move bypass only shortens how long a
@@ -2167,9 +2333,17 @@ async function buildGexHeatmapUncached(
   const contracts = await fetchHeatmapBand(optionsRoot, spot, heatmapBandPct(root));
   if (!contracts.length) {
     console.warn(
-      `[gex-heatmap] 0 contracts for ${optionsRoot} @ ${spot} via ${hostOf(BASE)} — heatmap empty (no/thin options chain).`
+      `[gex-heatmap] 0 contracts for ${optionsRoot} @ ${spot} via ${hostOf(BASE)} — trying UW strike-exposure fallback.`
     );
-    // Graceful empty (with spot so the header still renders the quote).
+    const uwMatrix = await buildGexHeatmapFromUwStrikeExposures(
+      root,
+      spot,
+      changePct,
+      now,
+      cacheKey,
+      ttlMs
+    );
+    if (uwMatrix) return uwMatrix;
     return emptyHeatmap(root, { spot, changePct, now, cacheKey, ttlMs });
   }
 

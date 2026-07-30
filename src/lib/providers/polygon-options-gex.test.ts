@@ -66,7 +66,8 @@ test("resolveSpotSnapshot falls back to prev-bar + SPY×10 proxy when snapshots 
   );
   assert.match(src, /resolveSpotSnapshotLastResort/);
   assert.match(src, /fetchSpotFromPrevBar\("SPY"\)/);
-  assert.match(src, /return resolveSpotSnapshotLastResort\(root, isIndex\)/);
+  assert.match(src, /const prevBar = await resolveSpotSnapshotLastResort\(root, isIndex\)/);
+  assert.match(src, /resolveSpotFromUwStockState/);
 });
 
 test("fetchGexHeatmap keeps stale-while-revalidate during preset fast-move (no blocking guard)", () => {
