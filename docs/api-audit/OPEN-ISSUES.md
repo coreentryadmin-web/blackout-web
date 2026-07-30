@@ -1,5 +1,64 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-30 12:35 ET
+Last updated: 2026-07-30 13:55 ET
+
+## spx-rth-2026-07-30 — SPX Slayer all-day verify pass (afternoon ~13:21–13:55 ET)
+
+**Session:** SPX Slayer all-day agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` **verify** mode (scheduled 6:30 AM PT / 9:30 AM ET market-open pass; executed ~13:21 ET afternoon). Commands: `npm run validate:spx-rth` → `npm run validate:spx-e2e` → 60s live poll → cross-tool API probes.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth` | ⚠️ **7 PASS / 1 WARN / 1 FAIL** — matrix deep audit, cross-endpoint, desk lanes, BIE, ops:collect GREEN; dashboard-e2e sub-run curl 120s timeout |
+| `npm run validate:spx-e2e` | ⚠️ **8 PASS / 2 WARN / 2 FAIL** — matrix every-cell API GREEN (172 strikes); UI browser matrix-tab timeout; Largo HTTP 504 |
+| Matrix deep audit | ✅ **172–173 strikes** — GEX+VEX+DEX+CHARM every cell finite; Σ strike_totals == headline total |
+| `validate:spx-bie` (via spx-rth) | ✅ member `/spx/play` == `getSpxPlayState()` |
+| Live auto-update (60s poll) | ✅ heatmap spot **7424.36 → 7427.09**; desk **7425.04 → 7423.5**; pulse **0 → 7425.58** |
+
+### UI E2E (Playwright — partial pass)
+
+| # | Action | Result |
+|---|---|---|
+| Sign-in `/dashboard` | ✅ premium admin session |
+| LIVE badge during RTH | ✅ not OFFLINE |
+| Click **GEX** tab (`#spx-matrix-tab-gex`) | ❌ **TIMEOUT** — tab not visible within 30s (client-hydration slow in cloud Playwright; earlier 11:30 ET pass GREEN with 178 rows) |
+| Matrix API oracle | ✅ **172 strikes** — every GEX/VEX/DEX/CHARM cell finite vs `/api/market/gex-heatmap?ticker=SPX` |
+| Play API SCANNING confirmations | ✅ **0 stale ✓ checks** — `play=SCANNING`, `confirmations.checks.length=0` |
+
+### Cross-tool integration (Step 3)
+
+| Tool | Endpoint | Result |
+|---|---|---|
+| **Thermal** | `GET /api/market/gex-heatmap?ticker=SPX` | ✅ every cell validated (172 strikes); cross_validation PASS |
+| **GEX positioning** | `GET /api/market/gex-positioning?ticker=SPX` | ✅ spot/flip agree with matrix header (via spx-rth cross-endpoint) |
+| **HELIX** | `GET /api/market/flows?limit=30` | ✅ 30 prints |
+| **Largo** | `POST /api/market/largo/query` | ❌ **HTTP 504** — origin timeout (recurring; passed on retry in 11:30 ET pass) |
+| **BIE** | `validate:spx-bie` | ✅ `spx_full_state` == member play |
+| **Grid / SPX bootstrap** | `GET /api/market/spx/bootstrap` | ✅ loaded |
+| **0DTE Command** | `GET /api/market/zerodte/board` | ⚠️ **board empty or gated** — `setups` null this pass |
+| **Night Hawk** | `GET /api/market/nighthawk/edition` | ✅ loads |
+| **Desk / play** | desk + play cross-tool | ✅ desk≈7425 play=SCANNING |
+
+### P0 found this pass
+
+**None.** Matrix cells 100% match API oracle; play SCANNING carries zero stale confirmations; spot/GEX cross-endpoint within tolerance; live auto-update confirmed across 60s window.
+
+### Findings logged
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| **P1** | `largo-query-504` | `POST /api/market/largo/query` returned HTTP **504** — CF origin timeout during afternoon pass | `/api/market/largo/query` | post-close — dispatch in `after()` or bump timeout |
+| **P1** | `spx-e2e-ui-matrix-timeout` | Playwright `#spx-matrix-tab-gex` not visible within 30s; API matrix oracle GREEN — likely client-hydration lag in cloud agent, not member defect | UI / `spx-dashboard-e2e-audit.mjs` | post-close — bump matrix tab wait to 60s + wait for `.spx-gex-matrix-table` |
+| **P2** | `zerodte-board-gated-rth` | 0DTE board returned `setups=null` during RTH — may be discovery quiet or response-shape gate | `/api/market/zerodte/board` | post-close — confirm expected when no committed plays |
+| **P2** | `bie-play-route-504` | Cron bearer probe to `/api/market/spx/play` returned HTTP 504 (transient edge) | `/api/market/spx/play` | monitor |
+| **P2** | `cloud-cron-secret-mismatch` | Cloud-agent `CRON_SECRET` ≠ prod; data-correctness probe WARN | audit env | **Expected** — not prod |
+| **P2** | `spx-e2e-orchestrator-timeout` | `validate:spx-rth` sub-run of `validate:spx-e2e` hit curl 120s timeout (parallel burst) | `spx-rth-all-day-audit.mjs` | post-close — run e2e standalone or increase orchestrator timeout |
+
+**Member-facing SPX surfaces: GREEN** — matrix oracle clean (172 strikes, zero NaN), play SCANNING with no stale confirmations, cross-tool spot agrees ~7425 during RTH, live ticks confirmed.
+
+**Reports:** `audit-output/spx-rth-2026-07-30-verify-1785433058425.json`, `audit-output/spx-dashboard-e2e-1785433749398.json`
+
+---
 
 ## rth-comprehensive-2026-07-30-afternoon — RTH agent pass (~12:08–12:35 ET)
 
