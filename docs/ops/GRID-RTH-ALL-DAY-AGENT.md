@@ -1,6 +1,8 @@
-# 0DTE Command + Market Grid — all-day RTH verification agent (autonomous)
+# 0DTE Command — all-day RTH verification agent (autonomous)
 
-**Mission:** Zero tolerance for 0DTE logic defects, play picking, trade management, and Grid UI. The agent runs **automatically from market open through close**, logs every flaw, and **fixes everything after the bell** — no operator prompts.
+**Mission:** Zero tolerance for 0DTE logic defects, play picking, trade management, and Command Deck UI. The agent runs **automatically from market open through close**, logs every flaw, and **fixes everything after the bell** — no operator prompts.
+
+> **Note (2026-07-07):** Classic Market Grid (`/grid` page + 9 `/api/grid/*` routes) was deleted. 0DTE Command now lives standalone on **`/nighthawk`**. Script names (`validate:grid-rth`, `validate:grid-e2e`) are kept for CI continuity.
 
 **First live session:** **Monday 2026-07-06** · **Opens 6:30 AM PT** (= 9:30 AM ET).
 
@@ -26,13 +28,13 @@
 ## Step 1 — Automated probe suite (every pass)
 
 ```bash
-# Primary orchestrator — grid panels, zerodte board, crons, ops
+# Primary orchestrator — zerodte board, crons, cross-tool, ops
 npm run validate:grid-rth
 
 # Exhaustive 0DTE logic — gates, plans, lifecycle, mergePlays, unit tests
 npm run validate:zerodte-logic
 
-# /grid UI + member API paths (Playwright when available)
+# /nighthawk UI + member API paths (Playwright when available)
 npm run validate:grid-e2e
 
 # Cross-provider oracle (when keys are literal)
@@ -41,14 +43,15 @@ node scripts/audit/data-validator.mjs
 
 ### What `validate:grid-rth` covers
 
-1. **`validate:rth-open`** — deploy, crons, writers
-2. **All 9 `/api/grid/*` panels** — finite numbers, `as_of` freshness (cron bearer bypasses launch gate)
-3. **`/api/market/zerodte/board`** — upstream_ok, session heat, ledger PnL math
-4. **Cross-tool** — Grid bootstrap spot vs GEX, HELIX flows, Night Hawk dedupe
-5. **`grid-warm` cron** — warms panels + `warmZeroDteBoard()`
-6. **`data-correctness`** — zero grid/zerodte flags
-7. **`validate:grid-e2e`** when Clerk keys present
-8. **`ops:collect`** — zero action items
+1. **`validate:rth-open`** — deploy, crons, writers (when `--force` or RTH)
+2. **`/api/market/zerodte/board`** — upstream_ok, session heat, ledger PnL math (cron bearer bypasses launch gate)
+3. **Cross-tool** — SPX bootstrap spot vs GEX, HELIX flows, Night Hawk dedupe
+4. **`zerodte-warm` cron** — background board warm (`warmZeroDteBoard()`)
+5. **`validate:zerodte-logic`** — nested exhaustive logic audit
+6. **`validate:zerodte-integration`** — cross-tool consistency
+7. **`data-correctness`** — zero grid/zerodte flags
+8. **`validate:grid-e2e`** when Clerk keys present
+9. **`ops:collect`** — zero grid/0DTE action items
 
 ### What `validate:zerodte-logic` covers
 
@@ -63,17 +66,17 @@ node scripts/audit/data-validator.mjs
 
 ---
 
-## Step 2 — UI E2E: `/grid`
+## Step 2 — UI E2E: `/nighthawk`
 
 Run: **`npm run validate:grid-e2e`**
 
 | # | Action | Pass |
 |---|---|---|
-| 1 | Admin session opens `/grid` | Page loads, no upgrade wall |
-| 2 | Click **0DTE Command** tab | Session heat header visible |
-| 3 | Click **Market Grid** tab | Search bar + panels mount |
-| 4 | Search **SPY** | Ticker filter accepts input |
-| 5 | Console | Zero errors |
+| 1 | Admin session opens `/nighthawk` | Page loads, no upgrade wall |
+| 2 | Default 0DTE lane | Command Deck mounts (session heat / board visible) |
+| 3 | Board API | `/api/market/zerodte/board` returns setups + ledger |
+| 4 | HELIX flows API | `/api/market/flows` returns prints |
+| 5 | Console | Zero page errors |
 
 ---
 
@@ -81,7 +84,7 @@ Run: **`npm run validate:grid-e2e`**
 
 | Layer | Source | Checks |
 |---|---|---|
-| Scanner | `scanZeroDteBoard()` via `grid-warm` cron | `max_dte:1` on flow fetch; Night Hawk dedupe |
+| Scanner | `scanZeroDteBoard()` via `zerodte-warm` cron | `max_dte:1` on flow fetch; Night Hawk dedupe |
 | Gates | `deriveZeroDteSetups()` | 4 gates + rejection funnel |
 | Plans | `buildContractPlan()` | Real quote/fill only; illiquid spread >15% |
 | Ledger | `persistZeroDteScan()` | No new plays after 15:00 ET |

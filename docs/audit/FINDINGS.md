@@ -5,6 +5,24 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-30 — [Grid/0DTE] Post-close fix agent — all validators GREEN
+
+**Severity.** P2 doc only — no product defects.
+
+**Symptom.** Scheduled post-close fix pass (~1:17 PM PT / 5:17 PM ET) per `GRID-RTH-ALL-DAY-AGENT.md` Step 4.
+
+**Evidence.** After `npm install` on current `main` (`68fa6983`):
+- `validate:grid-rth -- --phase=post-close` — **13/13 PASS** (board 13 setups / 15 ledger, ledger PnL coherent, zerodte-warm 202, data-correctness flags=0, ops:collect zero items)
+- `validate:zerodte-logic` — **17/17 PASS** (gates, plans, lifecycle OPEN→TRIM→CLOSED, mergePlays past-cutoff→SKIP, live board)
+- `validate:grid-e2e` — **4/4 PASS** (board API + HELIX flows; Playwright WARN only — chromium not installed in sandbox)
+- `validate:deploy` — GREEN
+
+First orchestrator attempt failed on missing `node_modules` (tsx/playwright/pg/react) — env-only, not prod.
+
+**Fix.** Runbook `GRID-RTH-ALL-DAY-AGENT.md` updated: classic `/grid` deleted 2026-07-07; Step 2 now `/nighthawk`; coverage list matches `grid-rth-all-day-audit.mjs` (zerodte-warm, not grid-warm).
+
+**Status.** FIXED on `fix/grid-runbook-nighthawk-20260730`.
+
 ## 2026-07-30 — [spx] Cross-replica play-state divergence on parallel `/api/market/spx/play`
 
 **Severity.** P1 — members on different ECS replicas could see different grade/score/direction in the same second.
@@ -47,7 +65,7 @@ snapshot — defeated `zerodteBoardMaxBlockMs()`. (2) `fetchGexHeatmap()` return
 GEX: `gexHeatmapMaxBlockMs()` + `awaitHeatmapBuildWithBlockCap()` serves stale mem/Redis on timeout.
 UI: `AbortSignal.timeout(10s)` + show cached matrix while `isLoading && !hasData`.
 
-**Status.** FIXED on `cursor/gex-zerodte-never-block-3d11`.
+**Status.** FIXED on main (`68fa6983` — `buildMinimalBoardFallback` + `gexHeatmapMaxBlockMs` present).
 
 ## 2026-07-30 — [vector,ops] Stream 400 without ticker + cold-deploy empty handoff
 
