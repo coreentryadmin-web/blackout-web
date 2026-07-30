@@ -17,11 +17,14 @@ evidence / fix / status per the CLAUDE.md policy.)
 handshakes with no fresh row. Already in `CRON_DISPATCH` for self-heal (#1333) but self-heal could
 not outrun repeated edge 504s on the blocking path.
 
-**Fix.** Dispatch the per-ticker×horizon Redis sweep via `next/server after()`; return HTTP 202 +
+**Fix.** (1) Dispatch the per-ticker×horizon Redis sweep via `next/server after()`; return HTTP 202 +
 immediate `logCronRun` handshake (mirrors `bie-full-state-snapshot` / `vector-dark-pool-warm`).
-Regression test: `src/app/api/cron/vector-full-state-snapshot/route.test.ts`.
+Regression test: `src/app/api/cron/vector-full-state-snapshot/route.test.ts`. (2) Follow-up on same
+deploy validation: `vector-universe-snapshot` still blocked inline (HTTP 504 @ 120s on force probe),
+stalling watchdog self-heal — applied the same `after()` handshake in
+`src/app/api/cron/vector-universe-snapshot/route.ts`.
 
-**Status.** FIXED on `fix/ops-1355-vector-full-state-edge-timeout`.
+**Status.** FIXED on `fix/ops-1355-vector-full-state-edge-timeout` + follow-up universe snapshot.
 
 ## 2026-07-30 — [ops] RTH cron edge timeouts → silent staleness (#1343)
 
