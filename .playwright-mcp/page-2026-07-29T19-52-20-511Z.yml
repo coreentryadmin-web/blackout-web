@@ -1,0 +1,178 @@
+- generic [active] [ref=f2e1]:
+  - link "Skip to content" [ref=f2e2] [cursor=pointer]:
+    - /url: "#main"
+  - generic [ref=f2e3]:
+    - banner [ref=f2e4]:
+      - generic [ref=f2e5]:
+        - link "BLACKOUT" [ref=f2e6] [cursor=pointer]:
+          - /url: /
+        - generic [ref=f2e10]:
+          - button "Open menu" [ref=f2e11] [cursor=pointer]: ☰
+          - button "Open user menu" [ref=f2e14] [cursor=pointer]:
+            - img "'s logo" [ref=f2e17]
+    - main [ref=f2e19]:
+      - generic [ref=f2e20]:
+        - generic:
+          - generic:
+            - generic:
+              - generic: FLOW
+              - generic: 0DTE
+        - generic [ref=f2e21]:
+          - generic [ref=f2e23]:
+            - paragraph [ref=f2e24]: Overnight playbook
+            - generic [ref=f2e25]:
+              - heading "Night Hawk" [level=1] [ref=f2e26]
+              - img "Night Hawk" [ref=f2e29]
+            - paragraph [ref=f2e51]: Tomorrow's ranked setups — published after the close, ready before the open.
+          - generic [ref=f2e52]:
+            - tablist "Night Hawk view" [ref=f2e53]:
+              - tab "0DTE" [selected] [ref=f2e54] [cursor=pointer]
+              - tab "Swings" [ref=f2e55] [cursor=pointer]
+              - tab "LEAPS" [ref=f2e56] [cursor=pointer]
+              - tab "Legacy" [ref=f2e57] [cursor=pointer]
+            - paragraph [ref=f2e58]: Same-day expiries across the whole market — hot flow, minutes-to-hours.
+            - generic [ref=f2e60]:
+              - generic [ref=f2e61]:
+                - generic [ref=f2e62]:
+                  - generic [ref=f2e63]: 0DTE · same-day
+                  - generic [ref=f2e64]: 5 of 9
+                - generic [ref=f2e65]:
+                  - generic [ref=f2e66]:
+                    - generic [ref=f2e67]: RISK DEPLOYED
+                    - generic [ref=f2e68]:
+                      - text: "0.0"
+                      - generic [ref=f2e69]: / 6.0 R
+                  - generic [ref=f2e71]:
+                    - generic [ref=f2e72]: SESSION P&L
+                    - generic [ref=f2e73]: "-1.0 R"
+                    - generic [ref=f2e75]: realized -1.0 · open 0.0
+                - group "Filter plays by status" [ref=f2e76]:
+                  - button "ALL 9" [ref=f2e77] [cursor=pointer]
+                  - button "OPEN 0" [ref=f2e78] [cursor=pointer]
+                  - button "WATCH 5" [ref=f2e79] [cursor=pointer]
+                  - button "CLOSED 4" [ref=f2e80] [cursor=pointer]
+                - group "Sort plays" [ref=f2e81]:
+                  - button "STATUS" [ref=f2e82] [cursor=pointer]
+                  - button "CONVICTION" [ref=f2e83] [cursor=pointer]
+                - generic [ref=f2e84]:
+                  - button "1 QQQ LONG 675C · 0DTE SKIP FLOW $0.03 MID —" [ref=f2e85] [cursor=pointer]:
+                    - generic [ref=f2e86]: "1"
+                    - generic [ref=f2e87]:
+                      - generic [ref=f2e88]: QQQ LONG
+                      - generic [ref=f2e89]: 675C · 0DTE
+                      - generic [ref=f2e90]:
+                        - generic [ref=f2e91]: SKIP
+                        - generic [ref=f2e92]: FLOW
+                    - generic [ref=f2e93]:
+                      - generic [ref=f2e94]: $0.03
+                      - generic [ref=f2e95]: MID
+                      - generic [ref=f2e96]: —
+                  - button "2 GOOGL LONG 330C · 0DTE SKIP FLOW $6.88 MID —" [ref=f2e97] [cursor=pointer]:
+                    - generic [ref=f2e98]: "2"
+                    - generic [ref=f2e99]:
+                      - generic [ref=f2e100]: GOOGL LONG
+                      - generic [ref=f2e101]: 330C · 0DTE
+                      - generic [ref=f2e102]:
+                        - generic [ref=f2e103]: SKIP
+                        - generic [ref=f2e104]: FLOW
+                    - generic [ref=f2e105]:
+                      - generic [ref=f2e106]: $6.88
+                      - generic [ref=f2e107]: MID
+                      - generic [ref=f2e108]: —
+                  - button "3 AAPL SHORT 345P · 0DTE SKIP FLOW $5.22 MID —" [ref=f2e205] [cursor=pointer]:
+                    - generic [ref=f2e110]: "3"
+                    - generic [ref=f2e111]:
+                      - generic [ref=f2e112]: AAPL SHORT
+                      - generic [ref=f2e113]: 345P · 0DTE
+                      - generic [ref=f2e114]:
+                        - generic [ref=f2e115]: SKIP
+                        - generic [ref=f2e116]: FLOW
+                    - generic [ref=f2e117]:
+                      - generic [ref=f2e118]: $5.22
+                      - generic [ref=f2e119]: MID
+                      - generic [ref=f2e120]: —
+                  - button "4 SLV SHORT 52.5P · 0DTE SKIP FLOW $0.29 MID —" [ref=f2e206] [cursor=pointer]:
+                    - generic [ref=f2e122]: "4"
+                    - generic [ref=f2e123]:
+                      - generic [ref=f2e124]: SLV SHORT
+                      - generic [ref=f2e125]: 52.5P · 0DTE
+                      - generic [ref=f2e126]:
+                        - generic [ref=f2e127]: SKIP
+                        - generic [ref=f2e128]: FLOW
+                    - generic [ref=f2e129]:
+                      - generic [ref=f2e130]: $0.29
+                      - generic [ref=f2e131]: MID
+                      - generic [ref=f2e132]: —
+                  - button "5 SMH LONG 517.5C · 0DTE SKIP FLOW $0.28 MID —" [ref=f2e207] [cursor=pointer]:
+                    - generic [ref=f2e134]: "5"
+                    - generic [ref=f2e135]:
+                      - generic [ref=f2e136]: SMH LONG
+                      - generic [ref=f2e137]: 517.5C · 0DTE
+                      - generic [ref=f2e138]:
+                        - generic [ref=f2e139]: SKIP
+                        - generic [ref=f2e140]: FLOW
+                    - generic [ref=f2e141]:
+                      - generic [ref=f2e142]: $0.28
+                      - generic [ref=f2e143]: MID
+                      - generic [ref=f2e144]: —
+              - generic [ref=f2e145]:
+                - generic [ref=f2e146]:
+                  - generic [ref=f2e147]: QQQ · LONG
+                  - generic [ref=f2e148]:
+                    - text: 675C · 0DTE
+                    - button "Copy OCC symbol O:QQQ260729C00675000" [ref=f2e149] [cursor=pointer]: ⧉ OCC
+                  - generic [ref=f2e151]:
+                    - generic [ref=f2e152]: "51"
+                    - generic [ref=f2e153]: SCORE
+                - generic [ref=f2e154]:
+                  - generic [ref=f2e155]: CONFLUENCE 0/2
+                  - generic [ref=f2e156]: FLOW
+                - generic [ref=f2e157]:
+                  - generic [ref=f2e159]: LIVE
+                  - text: · QQQ
+                  - generic [ref=f2e160]: $664.17
+                  - text: · mark
+                  - generic [ref=f2e161]: $0.03
+                  - generic [ref=f2e208]: · fill ≈$0.02
+                  - generic [ref=f2e209]: · 2s ago
+                - generic [ref=f2e210]:
+                  - generic [ref=f2e164]:
+                    - generic [ref=f2e165]: Δ DELTA
+                    - generic [ref=f2e166]: "+0.01"
+                  - generic [ref=f2e167]:
+                    - generic [ref=f2e168]: Γ GAMMA
+                    - generic [ref=f2e169]: "+0.01"
+                  - generic [ref=f2e170]:
+                    - generic [ref=f2e171]: Θ THETA
+                    - generic [ref=f2e172]: "-0.52"
+                  - generic [ref=f2e173]:
+                    - generic [ref=f2e174]: V VEGA
+                    - generic [ref=f2e175]: "+0.01"
+                  - generic [ref=f2e176]:
+                    - generic [ref=f2e177]: IV
+                    - generic [ref=f2e178]: 35%
+                - generic [ref=f2e179]:
+                  - button "[1]Thesis" [ref=f2e180] [cursor=pointer]
+                  - button "[2]Management" [ref=f2e181] [cursor=pointer]
+                  - button "[3]PnL" [ref=f2e182] [cursor=pointer]
+                - generic [ref=f2e183]:
+                  - generic [ref=f2e184]: Gates
+                  - generic [ref=f2e185]:
+                    - generic [ref=f2e186]: ✗ Hard gate
+                    - generic [ref=f2e187]: ✗ Tape align
+                  - group [ref=f2e188]:
+                    - generic "Why this play was picked · 5 factors" [ref=f2e189] [cursor=pointer]:
+                      - text: Why this play was picked
+                      - generic [ref=f2e190]: · 5 factors
+                  - generic [ref=f2e191]:
+                    - generic [ref=f2e192]: Allocation
+                    - generic [ref=f2e194]:
+                      - generic [ref=f2e195]: Exit model
+                      - generic [ref=f2e196]: ratchet
+                  - generic [ref=f2e197]:
+                    - generic [ref=f2e198]: ◉ THESIS MONITOR
+                    - generic [ref=f2e199]: ✗ THESIS DEGRADING — tape alignment lost. Recommend HOLD.
+                - generic [ref=f2e201]:
+                  - generic [ref=f2e202]: EXIT · RATCHET
+                  - generic [ref=f2e203]: · FULL
+  - alert [ref=f2e204]

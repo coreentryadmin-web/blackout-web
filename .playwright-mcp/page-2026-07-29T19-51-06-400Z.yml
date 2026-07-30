@@ -1,0 +1,2390 @@
+- generic [active] [ref=f1e1]:
+  - link "Skip to content" [ref=f1e2] [cursor=pointer]:
+    - /url: "#main"
+  - generic [ref=f1e3]:
+    - banner [ref=f1e4]:
+      - generic [ref=f1e5]:
+        - link "BLACKOUT" [ref=f1e6] [cursor=pointer]:
+          - /url: /
+        - generic [ref=f1e10]:
+          - button "Open menu" [ref=f1e11] [cursor=pointer]: ☰
+          - button "Open user menu" [ref=f1e62] [cursor=pointer]:
+            - img "'s logo" [ref=f1e65]
+    - main [ref=f1e13]:
+      - generic [ref=f1e15]:
+        - generic [ref=f1e18]:
+          - heading "BlackOut Thermal" [level=1] [ref=f1e19]
+          - img "BlackOut Thermal" [ref=f1e22]
+        - generic [ref=f1e68]:
+          - generic [ref=f1e69]:
+            - generic [ref=f1e70]:
+              - 'button "Ticker: SPY. Change ticker" [ref=f1e71] [cursor=pointer]':
+                - generic [ref=f1e72]: 🔍
+                - generic [ref=f1e73]: SPY
+                - generic [ref=f1e74]: ▾
+              - status [ref=f1e75]:
+                - generic [ref=f1e76]: SPY 731.03, up +0.00%
+                - generic [ref=f1e77]: "731.03"
+                - generic [ref=f1e78]: +0.00%
+            - tablist "GEX views" [ref=f1e80]:
+              - tab "Matrix" [selected] [ref=f1e81] [cursor=pointer]
+              - tab "Gamma Profile + Curve + Shift" [ref=f1e82] [cursor=pointer]
+            - generic [ref=f1e84]:
+              - button "Compare" [pressed] [ref=f1e85] [cursor=pointer]
+              - generic [ref=f1e86]: Quote live
+            - tablist "Exposure lens" [ref=f1e89]:
+              - tab "gex" [selected] [ref=f1e90] [cursor=pointer]
+              - tab "vex" [ref=f1e91] [cursor=pointer]
+              - tab "dex" [ref=f1e92] [cursor=pointer]
+              - tab "charm" [ref=f1e93] [cursor=pointer]
+          - generic "Thermal data freshness" [ref=f1e94]:
+            - generic "Last updated 7/29/2026, 7:50:42 PM" [ref=f1e3086]: Matrix · 23s
+            - generic "Last updated 7/29/2026, 7:50:28 PM" [ref=f1e2296]: Overlays · 37s
+            - generic [ref=f1e101]: UW check off
+            - 'generic "Call/put walls scoped to near-term expiries: 2026-07-29, 2026-07-30, 2026-07-31 +12 more. Far monthly/quarterly OpEx is excluded so walls stay consistent with γ flip." [ref=f1e104]': Walls · 15 near-term
+          - generic [ref=f1e105]:
+            - generic [ref=f1e106]:
+              - generic [ref=f1e107]: Key levels
+              - generic [ref=f1e108]: GEX structure
+            - generic [ref=f1e109]:
+              - generic [ref=f1e110]:
+                - generic [ref=f1e111]:
+                  - generic [ref=f1e112]: Gamma Flip
+                  - button "Gamma Flip — what this means" [ref=f1e114] [cursor=pointer]:
+                    - generic [ref=f1e115]: i
+                - generic [ref=f1e116]: —
+              - generic [ref=f1e117]:
+                - generic [ref=f1e118]:
+                  - generic [ref=f1e119]: Call Wall
+                  - button "Call Wall — what this means" [ref=f1e121] [cursor=pointer]:
+                    - generic [ref=f1e122]: i
+                - generic [ref=f1e123]: "760"
+                - generic "vs 2026-07-28" [ref=f1e124]: "+19"
+              - generic [ref=f1e125]:
+                - generic [ref=f1e126]:
+                  - generic [ref=f1e127]: Put Wall
+                  - button "Put Wall — what this means" [ref=f1e129] [cursor=pointer]:
+                    - generic [ref=f1e130]: i
+                - generic [ref=f1e131]: "730"
+                - generic "vs 2026-07-28" [ref=f1e132]: "-10"
+              - generic [ref=f1e133]:
+                - generic [ref=f1e134]:
+                  - generic [ref=f1e135]: Max Pain
+                  - button "Max Pain — what this means" [ref=f1e137] [cursor=pointer]:
+                    - generic [ref=f1e138]: i
+                - generic [ref=f1e139]: "740"
+              - generic [ref=f1e140]:
+                - generic [ref=f1e141]:
+                  - generic [ref=f1e142]: Net GEX
+                  - button "Net GEX — what this means" [ref=f1e144] [cursor=pointer]:
+                    - generic [ref=f1e145]: i
+                - generic [ref=f1e146]: "-$16.8B"
+                - generic "vs 2026-07-28" [ref=f1e147]: "-$9.4B"
+              - generic [ref=f1e148]:
+                - generic [ref=f1e149]:
+                  - generic [ref=f1e152]: King node · GEX anchor
+                  - button "King node · GEX anchor — what this means" [ref=f1e154] [cursor=pointer]:
+                    - generic [ref=f1e155]: i
+                - generic [ref=f1e156]: "730"
+          - generic [ref=f1e157]:
+            - generic [ref=f1e158]:
+              - generic [ref=f1e159]:
+                - generic [ref=f1e160]: NEAR-TERM TRIPLE DESK
+                - generic [ref=f1e161]:
+                  - group "Compare expiry mode" [ref=f1e162]:
+                    - button "0DTE" [ref=f1e163] [cursor=pointer]
+                    - button "Near" [pressed] [ref=f1e164] [cursor=pointer]
+                  - button "Refresh thermal matrices and recenter on spot" [ref=f1e165] [cursor=pointer]: ↻
+                - generic [ref=f1e166]:
+                  - generic [ref=f1e167]: "1"
+                  - generic [ref=f1e168]: "2"
+                  - generic [ref=f1e169]: "3"
+                  - generic [ref=f1e170]: focus
+                  - generic [ref=f1e171]: ·
+                  - generic [ref=f1e172]: "0"
+                  - generic [ref=f1e173]: 0DTE
+                  - generic [ref=f1e174]: "N"
+                  - generic [ref=f1e175]: near
+                  - generic [ref=f1e176]: ·
+                  - generic [ref=f1e177]: R
+                  - generic [ref=f1e178]: recenter
+                  - generic [ref=f1e179]: ·
+                  - generic [ref=f1e180]: G
+                  - generic [ref=f1e181]: V
+                  - generic [ref=f1e182]: D
+                  - generic [ref=f1e183]: C
+                  - generic [ref=f1e184]: lens · synced cursor
+              - generic [ref=f1e185]:
+                - region "SPY thermal column" [ref=f1e186]:
+                  - generic [ref=f1e187]:
+                    - button "SPY 730.63" [ref=f1e4798] [cursor=pointer]:
+                      - generic [ref=f1e189]: "1"
+                      - generic [ref=f1e190]: SPY
+                      - generic [ref=f1e191]: "730.63"
+                    - generic [ref=f1e192]:
+                      - generic "Last updated 7/29/2026, 7:50:41 PM" [ref=f1e4799]: Matrix · 25s
+                      - button "CSV" [ref=f1e196] [cursor=pointer]
+                  - generic "SPY levels" [ref=f1e197]:
+                    - generic [ref=f1e198]: C 760
+                    - generic [ref=f1e199]: P 730
+                  - table "SPY GEX near-term matrix" [ref=f1e201]:
+                    - rowgroup [ref=f1e202]:
+                      - row [ref=f1e203]:
+                        - columnheader "Strike" [ref=f1e204]
+                        - columnheader "Jul 29" [ref=f1e205]
+                        - columnheader "Jul 30" [ref=f1e206]
+                        - columnheader "Jul 31" [ref=f1e207]
+                        - columnheader "Aug 3" [ref=f1e208]
+                        - columnheader "Aug 4" [ref=f1e209]
+                    - rowgroup [ref=f1e210]:
+                      - row [ref=f1e4800]:
+                        - rowheader [ref=f1e226]:
+                          - button "767" [ref=f1e227] [cursor=pointer]:
+                            - generic [ref=f1e228]: ◇
+                            - text: "767"
+                        - cell "+$863K" [ref=f1e4801]
+                        - cell "+$278K" [ref=f1e4802]
+                        - cell "+$768K" [ref=f1e4803]
+                        - cell "+$73K" [ref=f1e4804]
+                        - cell "+$136K" [ref=f1e4805]
+                      - row [ref=f1e4806]:
+                        - rowheader [ref=f1e240]:
+                          - button "766" [ref=f1e241] [cursor=pointer]:
+                            - generic [ref=f1e242]: ◇
+                            - text: "766"
+                        - cell "+$334K" [ref=f1e4807]
+                        - cell "+$274K" [ref=f1e4808]
+                        - cell "+$1.4M" [ref=f1e2308]
+                        - cell "+$389K" [ref=f1e4809]
+                        - cell "+$92K" [ref=f1e4810]
+                      - row [ref=f1e4811]:
+                        - rowheader [ref=f1e254]:
+                          - button "765" [ref=f1e255] [cursor=pointer]:
+                            - generic [ref=f1e256]: ◇
+                            - text: "765"
+                        - cell "+$942K" [ref=f1e4812]
+                        - cell "+$555K" [ref=f1e4813]
+                        - cell "+$5.8M" [ref=f1e3116]
+                        - cell "+$706K" [ref=f1e4814]
+                        - cell "+$157K" [ref=f1e4815]
+                      - row [ref=f1e4816]:
+                        - rowheader [ref=f1e268]:
+                          - button "764" [ref=f1e269] [cursor=pointer]:
+                            - generic [ref=f1e270]: ◇
+                            - text: "764"
+                        - cell "+$551K" [ref=f1e4817]
+                        - cell "+$435K" [ref=f1e4818]
+                        - cell "+$1.7M" [ref=f1e3122]
+                        - cell "+$604K" [ref=f1e4819]
+                        - cell "+$586K" [ref=f1e4820]
+                      - row [ref=f1e4821]:
+                        - rowheader [ref=f1e282]:
+                          - button "763" [ref=f1e283] [cursor=pointer]:
+                            - generic [ref=f1e284]: ◇
+                            - text: "763"
+                        - cell "+$739K" [ref=f1e4822]
+                        - cell "+$689K" [ref=f1e4823]
+                        - cell "+$1.5M" [ref=f1e2325]
+                        - cell "+$2.2M" [ref=f1e3128]
+                        - cell "+$912K" [ref=f1e4824]
+                      - row [ref=f1e4825]:
+                        - rowheader [ref=f1e296]:
+                          - button "762" [ref=f1e297] [cursor=pointer]:
+                            - generic [ref=f1e298]: ◇
+                            - text: "762"
+                        - cell "+$850K" [ref=f1e4826]
+                        - cell "+$642K" [ref=f1e4827]
+                        - cell "+$4.6M" [ref=f1e2331]
+                        - cell "+$1.6M" [ref=f1e2332]
+                        - cell "+$512K" [ref=f1e4828]
+                      - row [ref=f1e4829]:
+                        - rowheader [ref=f1e310]:
+                          - button "761" [ref=f1e311] [cursor=pointer]:
+                            - generic [ref=f1e312]: ◇
+                            - text: "761"
+                        - cell "+$1.1M" [ref=f1e2335]
+                        - cell "+$1.2M" [ref=f1e3135]
+                        - cell "+$5.1M" [ref=f1e3136]
+                        - cell "+$1.0M" [ref=f1e2337]
+                        - cell "+$332K" [ref=f1e4830]
+                      - row [ref=f1e4831]:
+                        - rowheader [ref=f1e324]:
+                          - button "760" [ref=f1e325] [cursor=pointer]:
+                            - generic [ref=f1e326]: ◇
+                            - text: "760"
+                        - cell "+$1.5M" [ref=f1e3139]
+                        - cell "+$1.6M" [ref=f1e3140]
+                        - cell "+$12.4M" [ref=f1e3141]
+                        - cell "+$2.6M" [ref=f1e2341]
+                        - cell "+$490K" [ref=f1e4832]
+                      - row [ref=f1e4833]:
+                        - rowheader [ref=f1e338]:
+                          - button "759" [ref=f1e339] [cursor=pointer]:
+                            - generic [ref=f1e340]: ◇
+                            - text: "759"
+                        - cell "+$1.1M" [ref=f1e2344]
+                        - cell "+$1.3M" [ref=f1e2345]
+                        - cell "+$5.5M" [ref=f1e3144]
+                        - cell "+$1.0M" [ref=f1e2347]
+                        - cell "+$427K" [ref=f1e4834]
+                      - row [ref=f1e4835]:
+                        - rowheader [ref=f1e352]:
+                          - button "758" [ref=f1e353] [cursor=pointer]:
+                            - generic [ref=f1e354]: ◇
+                            - text: "758"
+                        - cell "+$1.8M" [ref=f1e2350]
+                        - cell "+$1.0M" [ref=f1e2351]
+                        - cell "+$5.3M" [ref=f1e3147]
+                        - cell "+$1.7M" [ref=f1e3148]
+                        - cell "+$552K" [ref=f1e4836]
+                      - row [ref=f1e4837]:
+                        - rowheader [ref=f1e366]:
+                          - button "757" [ref=f1e367] [cursor=pointer]:
+                            - generic [ref=f1e368]: ◇
+                            - text: "757"
+                        - cell "+$1.4M" [ref=f1e2356]
+                        - cell "+$1.2M" [ref=f1e2357]
+                        - cell "+$9.3M" [ref=f1e3151]
+                        - cell "+$744K" [ref=f1e4838]
+                        - cell "+$693K" [ref=f1e4839]
+                      - row [ref=f1e4840]:
+                        - rowheader [ref=f1e380]:
+                          - button "756" [ref=f1e381] [cursor=pointer]:
+                            - generic [ref=f1e382]: ◇
+                            - text: "756"
+                        - cell "+$1.6M" [ref=f1e3155]
+                        - cell "+$1.3M" [ref=f1e2363]
+                        - cell "+$6.1M" [ref=f1e4841]
+                        - cell "+$902K" [ref=f1e4842]
+                        - cell "+$2.5M" [ref=f1e3158]
+                      - row [ref=f1e4843]:
+                        - rowheader [ref=f1e394]:
+                          - button "755" [ref=f1e395] [cursor=pointer]:
+                            - generic [ref=f1e396]: ◇
+                            - text: "755"
+                        - cell "+$5.7M" [ref=f1e3160]
+                        - cell "+$2.9M" [ref=f1e3161]
+                        - cell "+$63.8M" [ref=f1e4844]
+                        - cell "+$2.3M" [ref=f1e2371]
+                        - cell "+$2.5M" [ref=f1e3163]
+                      - row [ref=f1e4845]:
+                        - rowheader [ref=f1e408]:
+                          - button "754" [ref=f1e409] [cursor=pointer]:
+                            - generic [ref=f1e410]: ◇
+                            - text: "754"
+                        - cell "+$3.3M" [ref=f1e3165]
+                        - cell "+$1.2M" [ref=f1e2374]
+                        - cell "+$8.1M" [ref=f1e4846]
+                        - cell "+$4.2M" [ref=f1e3167]
+                        - cell "+$2.9M" [ref=f1e419]
+                      - row [ref=f1e4847]:
+                        - rowheader [ref=f1e422]:
+                          - button "753" [ref=f1e423] [cursor=pointer]:
+                            - generic [ref=f1e424]: ◇
+                            - text: "753"
+                        - cell "+$11.8M" [ref=f1e4848]
+                        - cell "+$5.0M" [ref=f1e4849]
+                        - cell "+$9.8M" [ref=f1e4850]
+                        - cell "+$1.6M" [ref=f1e2380]
+                        - cell "+$2.0M" [ref=f1e3172]
+                      - row [ref=f1e4851]:
+                        - rowheader [ref=f1e436]:
+                          - button "752" [ref=f1e437] [cursor=pointer]:
+                            - generic [ref=f1e438]: ◇
+                            - text: "752"
+                        - cell "+$3.9M" [ref=f1e4852]
+                        - cell "+$2.4M" [ref=f1e3175]
+                        - cell "+$19.9M" [ref=f1e4853]
+                        - cell "+$1.6M" [ref=f1e4854]
+                        - cell "+$1.9M" [ref=f1e3177]
+                      - row [ref=f1e4855]:
+                        - rowheader [ref=f1e450]:
+                          - button "751" [ref=f1e451] [cursor=pointer]:
+                            - generic [ref=f1e452]: ◇
+                            - text: "751"
+                        - cell "+$5.9M" [ref=f1e3179]
+                        - cell "+$4.1M" [ref=f1e3180]
+                        - cell "+$16.9M" [ref=f1e4856]
+                        - cell "+$3.8M" [ref=f1e4857]
+                        - cell "+$3.2M" [ref=f1e4858]
+                      - row [ref=f1e4859]:
+                        - rowheader [ref=f1e464]:
+                          - button "750" [ref=f1e465] [cursor=pointer]:
+                            - generic [ref=f1e466]: ◇
+                            - text: "750"
+                        - cell "+$9.7M" [ref=f1e4860]
+                        - cell "+$22.0M" [ref=f1e4861]
+                        - cell "+$87.1M" [ref=f1e4862]
+                        - cell "+$10.6M" [ref=f1e4863]
+                        - cell "+$10.0M" [ref=f1e4864]
+                      - row [ref=f1e4865]:
+                        - rowheader [ref=f1e478]:
+                          - button "749" [ref=f1e479] [cursor=pointer]:
+                            - generic [ref=f1e480]: ◇
+                            - text: "749"
+                        - cell "+$9.5M" [ref=f1e4866]
+                        - cell "+$6.3M" [ref=f1e3191]
+                        - cell "+$26.7M" [ref=f1e4867]
+                        - cell "+$3.8M" [ref=f1e4868]
+                        - cell "+$5.0M" [ref=f1e4869]
+                      - row [ref=f1e4870]:
+                        - rowheader [ref=f1e492]:
+                          - button "748" [ref=f1e493] [cursor=pointer]:
+                            - generic [ref=f1e494]: ◇
+                            - text: "748"
+                        - cell "+$20.2M" [ref=f1e4871]
+                        - cell "+$20.8M" [ref=f1e4872]
+                        - cell "+$49.5M" [ref=f1e4873]
+                        - cell "+$6.6M" [ref=f1e4874]
+                        - cell "+$4.9M" [ref=f1e3199]
+                      - row [ref=f1e4875]:
+                        - rowheader [ref=f1e506]:
+                          - button "747" [ref=f1e507] [cursor=pointer]:
+                            - generic [ref=f1e508]: ◇
+                            - text: "747"
+                        - cell "+$8.8M" [ref=f1e4876]
+                        - cell "+$4.5M" [ref=f1e3202]
+                        - cell "+$32.3M" [ref=f1e4877]
+                        - cell "+$6.2M" [ref=f1e4878]
+                        - cell "+$5.5M" [ref=f1e4879]
+                      - row [ref=f1e4880]:
+                        - rowheader [ref=f1e520]:
+                          - button "746" [ref=f1e521] [cursor=pointer]:
+                            - generic [ref=f1e522]: ◇
+                            - text: "746"
+                        - cell "+$7.3M" [ref=f1e3206]
+                        - cell "+$4.5M" [ref=f1e4881]
+                        - cell "+$26.4M" [ref=f1e4882]
+                        - cell "+$10.1M" [ref=f1e3209]
+                        - cell "+$5.1M" [ref=f1e4883]
+                      - row [ref=f1e4884]:
+                        - rowheader [ref=f1e534]:
+                          - button "745" [ref=f1e535] [cursor=pointer]:
+                            - generic [ref=f1e536]: ◇
+                            - text: "745"
+                        - cell "+$12.5M" [ref=f1e4885]
+                        - cell "+$42.6M" [ref=f1e4886]
+                        - cell "+$107.8M" [ref=f1e4887]
+                        - cell "+$16.5M" [ref=f1e4888]
+                        - cell "+$5.5M" [ref=f1e3216]
+                      - row [ref=f1e4889]:
+                        - rowheader [ref=f1e548]:
+                          - button "744" [ref=f1e549] [cursor=pointer]:
+                            - generic [ref=f1e550]: ◇
+                            - text: "744"
+                        - cell "+$9.2M" [ref=f1e3218]
+                        - cell "+$17.5M" [ref=f1e4890]
+                        - cell "+$36.7M" [ref=f1e4891]
+                        - cell "+$17.5M" [ref=f1e4892]
+                        - cell "+$121K" [ref=f1e4893]
+                      - row [ref=f1e4894]:
+                        - rowheader [ref=f1e562]:
+                          - button "743" [ref=f1e563] [cursor=pointer]:
+                            - generic [ref=f1e564]: ◇
+                            - text: "743"
+                        - cell "+$13.9M" [ref=f1e4895]
+                        - cell "+$24.2M" [ref=f1e4896]
+                        - cell "-$425.7M" [ref=f1e4897]
+                        - cell "+$15.7M" [ref=f1e4898]
+                        - cell "+$7.7M" [ref=f1e4899]
+                      - row [ref=f1e4900]:
+                        - rowheader [ref=f1e576]:
+                          - button "742" [ref=f1e577] [cursor=pointer]:
+                            - generic [ref=f1e578]: ◇
+                            - text: "742"
+                        - cell "+$23.2M" [ref=f1e4901]
+                        - cell "+$21.6M" [ref=f1e4902]
+                        - cell "+$48.9M" [ref=f1e4903]
+                        - cell "-$2.3M" [ref=f1e2446]
+                        - cell "+$2.8M" [ref=f1e4904]
+                      - row [ref=f1e4905]:
+                        - rowheader [ref=f1e590]:
+                          - button "741" [ref=f1e591] [cursor=pointer]:
+                            - generic [ref=f1e592]: ◇
+                            - text: "741"
+                        - cell "+$17.8M" [ref=f1e4906]
+                        - cell "-$27.3M" [ref=f1e4907]
+                        - cell "+$3.7M" [ref=f1e4908]
+                        - cell "+$12.2M" [ref=f1e3238]
+                        - cell "-$13.0M" [ref=f1e4909]
+                      - row [ref=f1e4910]:
+                        - rowheader [ref=f1e604]:
+                          - button "740" [ref=f1e605] [cursor=pointer]:
+                            - generic [ref=f1e606]: ◇
+                            - text: "740"
+                        - cell "+$30.7M" [ref=f1e4911]
+                        - cell "-$1.2M" [ref=f1e4912]
+                        - cell "-$680.1M" [ref=f1e4913]
+                        - cell "-$21.2M" [ref=f1e4914]
+                        - cell "-$2.8M" [ref=f1e4915]
+                      - row [ref=f1e4916]:
+                        - rowheader [ref=f1e618]:
+                          - button "739" [ref=f1e619] [cursor=pointer]:
+                            - generic [ref=f1e620]: ◇
+                            - text: "739"
+                        - cell "+$42.8M" [ref=f1e4917]
+                        - cell "+$34.2M" [ref=f1e4918]
+                        - cell "-$35.0M" [ref=f1e4919]
+                        - cell "-$7.2M" [ref=f1e2463]
+                        - cell "+$1.5M" [ref=f1e4920]
+                      - row [ref=f1e4921]:
+                        - rowheader [ref=f1e632]:
+                          - button "738" [ref=f1e633] [cursor=pointer]:
+                            - generic [ref=f1e634]: ◇
+                            - text: "738"
+                        - cell "+$62.1M" [ref=f1e4922]
+                        - cell "-$25.8M" [ref=f1e4923]
+                        - cell "-$34.3M" [ref=f1e4924]
+                        - cell "-$10.7M" [ref=f1e4925]
+                        - cell "-$1.5M" [ref=f1e4926]
+                      - row [ref=f1e4927]:
+                        - rowheader [ref=f1e646]:
+                          - button "737" [ref=f1e647] [cursor=pointer]:
+                            - generic [ref=f1e648]: ◇
+                            - text: "737"
+                        - cell "+$50.9M" [ref=f1e4928]
+                        - cell "+$19.5M" [ref=f1e4929]
+                        - cell "-$40.1M" [ref=f1e4930]
+                        - cell "-$9.4M" [ref=f1e4931]
+                        - cell "-$928K" [ref=f1e4932]
+                      - row [ref=f1e4933]:
+                        - rowheader [ref=f1e660]:
+                          - button "736" [ref=f1e661] [cursor=pointer]:
+                            - generic [ref=f1e662]: ◇
+                            - text: "736"
+                        - cell "+$44.0M" [ref=f1e4934]
+                        - cell "-$67.1M" [ref=f1e4935]
+                        - cell "-$69.7M" [ref=f1e4936]
+                        - cell "-$10.1M" [ref=f1e3267]
+                        - cell "-$4.1M" [ref=f1e3268]
+                      - row [ref=f1e4937]:
+                        - rowheader [ref=f1e674]:
+                          - button "735" [ref=f1e675] [cursor=pointer]:
+                            - generic [ref=f1e676]: ◇
+                            - text: "735"
+                        - cell "+$24.4M" [ref=f1e4938]
+                        - cell "-$135.6M" [ref=f1e4939]
+                        - cell "-$412.5M" [ref=f1e4940]
+                        - cell "-$6.4M" [ref=f1e4941]
+                        - cell "-$17.2M" [ref=f1e4942]
+                      - row [ref=f1e4943]:
+                        - rowheader [ref=f1e688]:
+                          - button "734" [ref=f1e689] [cursor=pointer]:
+                            - generic [ref=f1e690]: ◇
+                            - text: "734"
+                        - cell "-$112.2M" [ref=f1e4944]
+                        - cell "-$38.6M" [ref=f1e4945]
+                        - cell "-$95.7M" [ref=f1e4946]
+                        - cell "-$13.8M" [ref=f1e4947]
+                        - cell "-$8.2M" [ref=f1e4948]
+                      - row [ref=f1e4949]:
+                        - rowheader [ref=f1e702]:
+                          - button "733" [ref=f1e703] [cursor=pointer]:
+                            - generic [ref=f1e704]: ◇
+                            - text: "733"
+                        - cell "+$31.1M" [ref=f1e4950]
+                        - cell "-$29.6M" [ref=f1e4951]
+                        - cell "-$560.9M" [ref=f1e4952]
+                        - cell "-$4.4M" [ref=f1e3285]
+                        - cell "-$3.6M" [ref=f1e4953]
+                      - row [ref=f1e4954]:
+                        - rowheader [ref=f1e716]:
+                          - button "732" [ref=f1e717] [cursor=pointer]:
+                            - generic [ref=f1e718]: ◇
+                            - text: "732"
+                        - cell "+$15.6M" [ref=f1e4955]
+                        - cell "-$103.7M" [ref=f1e4956]
+                        - cell "-$42.6M" [ref=f1e4957]
+                        - cell "-$5.0M" [ref=f1e4958]
+                        - cell "-$5.0M" [ref=f1e3291]
+                      - row [ref=f1e4959]:
+                        - rowheader [ref=f1e730]:
+                          - button "731" [ref=f1e731] [cursor=pointer]:
+                            - generic [ref=f1e732]: ◇
+                            - text: "731"
+                        - cell "-$463.6M" [ref=f1e4960]
+                        - cell "-$35.3M" [ref=f1e4961]
+                        - cell "-$34.7M" [ref=f1e4962]
+                        - cell "-$8.0M" [ref=f1e3296]
+                        - cell "-$3.4M" [ref=f1e4963]
+                      - row [ref=f1e4964]:
+                        - rowheader [ref=f1e744]:
+                          - button "730" [ref=f1e745] [cursor=pointer]:
+                            - generic [ref=f1e746]: ◇
+                            - text: "730"
+                        - cell "-$657.3M" [ref=f1e4965]:
+                          - generic: ★
+                        - cell "-$162.5M" [ref=f1e4966]:
+                          - generic: ★
+                        - cell "-$541.3M" [ref=f1e4967]
+                        - cell "-$32.3M" [ref=f1e4968]
+                        - cell "-$16.6M" [ref=f1e4969]
+                      - row [ref=f1e4970]:
+                        - rowheader [ref=f1e758]:
+                          - button "729" [ref=f1e759] [cursor=pointer]:
+                            - generic [ref=f1e760]: ◇
+                            - text: "729"
+                        - cell "-$245.3M" [ref=f1e4971]
+                        - cell "-$20.9M" [ref=f1e4972]
+                        - cell "-$66.0M" [ref=f1e4973]
+                        - cell "-$3.6M" [ref=f1e4974]
+                        - cell "-$4.6M" [ref=f1e3308]
+                      - row [ref=f1e4975]:
+                        - rowheader [ref=f1e772]:
+                          - button "728" [ref=f1e773] [cursor=pointer]:
+                            - generic [ref=f1e774]: ◇
+                            - text: "728"
+                        - cell "-$264.1M" [ref=f1e4976]
+                        - cell "-$15.6M" [ref=f1e4977]
+                        - cell "-$59.0M" [ref=f1e4978]
+                        - cell "-$4.4M" [ref=f1e2526]
+                        - cell "-$5.2M" [ref=f1e2527]
+                      - row [ref=f1e4979]:
+                        - rowheader [ref=f1e786]:
+                          - button "727" [ref=f1e787] [cursor=pointer]:
+                            - generic [ref=f1e788]: ◇
+                            - text: "727"
+                        - cell "-$203.5M" [ref=f1e4980]
+                        - cell "-$49.4M" [ref=f1e4981]
+                        - cell "-$77.7M" [ref=f1e4982]
+                        - cell "-$8.5M" [ref=f1e2532]
+                        - cell "-$3.3M" [ref=f1e4983]
+                      - row [ref=f1e4984]:
+                        - rowheader [ref=f1e800]:
+                          - button "726" [ref=f1e801] [cursor=pointer]:
+                            - generic [ref=f1e802]: ◇
+                            - text: "726"
+                        - cell "-$82.5M" [ref=f1e4985]
+                        - cell "-$119.9M" [ref=f1e4986]
+                        - cell "-$45.3M" [ref=f1e3321]
+                        - cell "-$3.9M" [ref=f1e4987]
+                        - cell "-$4.2M" [ref=f1e4988]
+                      - row [ref=f1e4989]:
+                        - rowheader [ref=f1e814]:
+                          - button "725" [ref=f1e815] [cursor=pointer]:
+                            - generic [ref=f1e816]: ◇
+                            - text: "725"
+                        - cell "-$146.5M" [ref=f1e4990]
+                        - cell "-$67.3M" [ref=f1e4991]
+                        - cell "-$791.1M" [ref=f1e4992]:
+                          - generic: ★
+                        - cell "-$12.3M" [ref=f1e4993]
+                        - cell "-$9.3M" [ref=f1e4994]
+                      - row [ref=f1e4995]:
+                        - rowheader [ref=f1e828]:
+                          - button "724" [ref=f1e829] [cursor=pointer]:
+                            - generic [ref=f1e830]: ◇
+                            - text: "724"
+                        - cell "-$39.5M" [ref=f1e4996]
+                        - cell "-$20.3M" [ref=f1e4997]
+                        - cell "-$275.1M" [ref=f1e4998]
+                        - cell "-$6.8M" [ref=f1e4999]
+                        - cell "-$5.0M" [ref=f1e3333]
+                      - row [ref=f1e5000]:
+                        - rowheader [ref=f1e842]:
+                          - button "723" [ref=f1e843] [cursor=pointer]:
+                            - generic [ref=f1e844]: ◇
+                            - text: "723"
+                        - cell "-$13.7M" [ref=f1e3335]
+                        - cell "-$17.7M" [ref=f1e3336]
+                        - cell "-$51.8M" [ref=f1e5001]
+                        - cell "-$15.4M" [ref=f1e3338]
+                        - cell "-$8.9M" [ref=f1e5002]
+                      - row [ref=f1e5003]:
+                        - rowheader [ref=f1e856]:
+                          - button "722" [ref=f1e857] [cursor=pointer]:
+                            - generic [ref=f1e858]: ◇
+                            - text: "722"
+                        - cell "-$12.5M" [ref=f1e5004]
+                        - cell "-$15.1M" [ref=f1e3342]
+                        - cell "-$74.6M" [ref=f1e5005]
+                        - cell "-$14.9M" [ref=f1e3344]
+                        - cell "-$1.9M" [ref=f1e3345]
+                      - row [ref=f1e5006]:
+                        - rowheader [ref=f1e870]:
+                          - button "721" [ref=f1e871] [cursor=pointer]:
+                            - generic [ref=f1e872]: ◇
+                            - text: "721"
+                        - cell "-$8.0M" [ref=f1e3347]
+                        - cell "-$24.6M" [ref=f1e3348]
+                        - cell "-$50.9M" [ref=f1e5007]
+                        - cell "-$6.4M" [ref=f1e3350]
+                        - cell "-$4.2M" [ref=f1e3351]
+                      - row [ref=f1e5008]:
+                        - rowheader [ref=f1e884]:
+                          - button "720" [ref=f1e885] [cursor=pointer]:
+                            - generic [ref=f1e886]: ◇
+                            - text: "720"
+                        - cell "-$22.8M" [ref=f1e5009]
+                        - cell "-$122.0M" [ref=f1e3354]
+                        - cell "-$757.0M" [ref=f1e5010]
+                        - cell "-$11.5M" [ref=f1e3356]
+                        - cell "-$4.3M" [ref=f1e3357]
+                      - row [ref=f1e5011]:
+                        - rowheader [ref=f1e898]:
+                          - button "719" [ref=f1e899] [cursor=pointer]:
+                            - generic [ref=f1e900]: ◇
+                            - text: "719"
+                        - cell "-$17.7M" [ref=f1e5012]
+                        - cell "-$69.4M" [ref=f1e3360]
+                        - cell "-$126.6M" [ref=f1e5013]
+                        - cell "-$6.1M" [ref=f1e3362]
+                        - cell "-$6.1M" [ref=f1e3363]
+                      - row [ref=f1e5014]:
+                        - rowheader [ref=f1e912]:
+                          - button "718" [ref=f1e913] [cursor=pointer]:
+                            - generic [ref=f1e914]: ◇
+                            - text: "718"
+                        - cell "-$15.0M" [ref=f1e3365]
+                        - cell "-$11.0M" [ref=f1e3366]
+                        - cell "-$114.6M" [ref=f1e5015]
+                        - cell "-$4.0M" [ref=f1e3368]
+                        - cell "-$2.6M" [ref=f1e3369]
+                      - row [ref=f1e5016]:
+                        - rowheader [ref=f1e926]:
+                          - button "717" [ref=f1e927] [cursor=pointer]:
+                            - generic [ref=f1e928]: ◇
+                            - text: "717"
+                        - cell "-$4.3M" [ref=f1e3371]
+                        - cell "-$23.8M" [ref=f1e3372]
+                        - cell "-$45.8M" [ref=f1e5017]
+                        - cell "-$5.6M" [ref=f1e3374]
+                        - cell "-$4.9M" [ref=f1e3375]
+                      - row [ref=f1e5018]:
+                        - rowheader [ref=f1e940]:
+                          - button "716" [ref=f1e941] [cursor=pointer]:
+                            - generic [ref=f1e942]: ◇
+                            - text: "716"
+                        - cell "-$3.1M" [ref=f1e5019]
+                        - cell "-$41.6M" [ref=f1e5020]
+                        - cell "-$151.4M" [ref=f1e5021]
+                        - cell "-$1.3M" [ref=f1e949]
+                        - cell "-$4.4M" [ref=f1e3380]
+                      - row [ref=f1e5022]:
+                        - rowheader [ref=f1e954]:
+                          - button "715" [ref=f1e955] [cursor=pointer]:
+                            - generic [ref=f1e956]: ◇
+                            - text: "715"
+                        - cell "-$6.5M" [ref=f1e5023]
+                        - cell "-$17.5M" [ref=f1e3383]
+                        - cell "-$516.8M" [ref=f1e5024]
+                        - cell "-$10.2M" [ref=f1e3385]
+                        - cell "-$5.0M" [ref=f1e3386]
+                      - row [ref=f1e5025]:
+                        - rowheader [ref=f1e968]:
+                          - button "714" [ref=f1e969] [cursor=pointer]:
+                            - generic [ref=f1e970]: ◇
+                            - text: "714"
+                        - cell "-$3.1M" [ref=f1e3388]
+                        - cell "-$29.3M" [ref=f1e5026]
+                        - cell "-$86.0M" [ref=f1e5027]
+                        - cell "-$12.8M" [ref=f1e3391]
+                        - cell "-$26.0M" [ref=f1e5028]
+                      - row [ref=f1e5029]:
+                        - rowheader [ref=f1e982]:
+                          - button "713" [ref=f1e983] [cursor=pointer]:
+                            - generic [ref=f1e984]: ◇
+                            - text: "713"
+                        - cell "-$2.1M" [ref=f1e3394]
+                        - cell "-$6.0M" [ref=f1e3395]
+                        - cell "-$20.3M" [ref=f1e5030]
+                        - cell "-$32.4M" [ref=f1e3397]:
+                          - generic: ★
+                        - cell "-$17.1M" [ref=f1e3398]
+                      - row [ref=f1e5031]:
+                        - rowheader [ref=f1e996]:
+                          - button "712" [ref=f1e997] [cursor=pointer]:
+                            - generic [ref=f1e998]: ◇
+                            - text: "712"
+                        - cell "-$1.3M" [ref=f1e2617]
+                        - cell "-$11.0M" [ref=f1e3400]
+                        - cell "-$35.4M" [ref=f1e5032]
+                        - cell "-$2.0M" [ref=f1e2620]
+                        - cell "-$13.5M" [ref=f1e5033]
+                      - row [ref=f1e5034]:
+                        - rowheader [ref=f1e1010]:
+                          - button "711" [ref=f1e1011] [cursor=pointer]:
+                            - generic [ref=f1e1012]: ◇
+                            - text: "711"
+                        - cell "-$881K" [ref=f1e5035]
+                        - cell "-$5.5M" [ref=f1e3405]
+                        - cell "-$12.5M" [ref=f1e5036]
+                        - cell "-$1.1M" [ref=f1e2625]
+                        - cell "-$15.9M" [ref=f1e5037]
+                      - row [ref=f1e5038]:
+                        - rowheader [ref=f1e1024]:
+                          - button "710" [ref=f1e1025] [cursor=pointer]:
+                            - generic [ref=f1e1026]: ◇
+                            - text: "710"
+                        - cell "-$3.8M" [ref=f1e2628]
+                        - cell "-$5.5M" [ref=f1e3409]
+                        - cell "-$191.4M" [ref=f1e5039]
+                        - cell "-$18.0M" [ref=f1e3411]
+                        - cell "-$4.8M" [ref=f1e3412]
+                      - row [ref=f1e5040]:
+                        - rowheader [ref=f1e1038]:
+                          - button "709" [ref=f1e1039] [cursor=pointer]:
+                            - generic [ref=f1e1040]: ◇
+                            - text: "709"
+                        - cell "-$2.0M" [ref=f1e3414]
+                        - cell "-$1.5M" [ref=f1e2635]
+                        - cell "-$44.8M" [ref=f1e5041]
+                        - cell "-$3.8M" [ref=f1e2637]
+                        - cell "-$814K" [ref=f1e5042]
+                      - row [ref=f1e5043]:
+                        - rowheader [ref=f1e1052]:
+                          - button "708" [ref=f1e1053] [cursor=pointer]:
+                            - generic [ref=f1e1054]: ◇
+                            - text: "708"
+                        - cell "-$3.7M" [ref=f1e3418]
+                        - cell "-$1.1M" [ref=f1e3419]
+                        - cell "-$10.9M" [ref=f1e5044]
+                        - cell "-$2.2M" [ref=f1e3421]
+                        - cell "-$1.1M" [ref=f1e5045]
+                      - row [ref=f1e5046]:
+                        - rowheader [ref=f1e1066]:
+                          - button "707" [ref=f1e1067] [cursor=pointer]:
+                            - generic [ref=f1e1068]: ◇
+                            - text: "707"
+                        - cell "-$489K" [ref=f1e5047]
+                        - cell "-$1.1M" [ref=f1e2647]
+                        - cell "-$21.3M" [ref=f1e3424]
+                        - cell "-$3.7M" [ref=f1e3425]
+                        - cell "-$4.2M" [ref=f1e3426]
+                      - row [ref=f1e5048]:
+                        - rowheader [ref=f1e1080]:
+                          - button "706" [ref=f1e1081] [cursor=pointer]:
+                            - generic [ref=f1e1082]: ◇
+                            - text: "706"
+                        - cell "-$217K" [ref=f1e3428]
+                        - cell "-$429K" [ref=f1e3429]
+                        - cell "-$25.0M" [ref=f1e5049]
+                        - cell "-$4.5M" [ref=f1e2655]
+                        - cell "-$729K" [ref=f1e5050]
+                      - row [ref=f1e5051]:
+                        - rowheader [ref=f1e1094]:
+                          - button "705" [ref=f1e1095] [cursor=pointer]:
+                            - generic [ref=f1e1096]: ◇
+                            - text: "705"
+                        - cell "-$836K" [ref=f1e5052]
+                        - cell "-$1.4M" [ref=f1e3434]
+                        - cell "-$58.4M" [ref=f1e5053]
+                        - cell "-$1.7M" [ref=f1e2661]
+                        - cell "-$6.5M" [ref=f1e5054]
+                      - row [ref=f1e5055]:
+                        - rowheader [ref=f1e1108]:
+                          - button "704" [ref=f1e1109] [cursor=pointer]:
+                            - generic [ref=f1e1110]: ◇
+                            - text: "704"
+                        - cell "-$1.1M" [ref=f1e2664]
+                        - cell "-$300K" [ref=f1e5056]
+                        - cell "-$24.3M" [ref=f1e5057]
+                        - cell "-$9.3M" [ref=f1e3440]
+                        - cell "-$40.8M" [ref=f1e3441]:
+                          - generic: ★
+                      - row [ref=f1e5058]:
+                        - rowheader [ref=f1e1122]:
+                          - button "703" [ref=f1e1123] [cursor=pointer]:
+                            - generic [ref=f1e1124]: ◇
+                            - text: "703"
+                        - cell "-$312K" [ref=f1e5059]
+                        - cell "-$1.2M" [ref=f1e2671]
+                        - cell "-$29.4M" [ref=f1e3444]
+                        - cell "-$823K" [ref=f1e5060]
+                        - cell "-$30.3M" [ref=f1e3446]
+                      - row [ref=f1e5061]:
+                        - rowheader [ref=f1e1136]:
+                          - button "702" [ref=f1e1137] [cursor=pointer]:
+                            - generic [ref=f1e1138]: ◇
+                            - text: "702"
+                        - cell "-$639K" [ref=f1e3448]
+                        - cell "-$378K" [ref=f1e3449]
+                        - cell "-$12.5M" [ref=f1e3450]
+                        - cell "-$473K" [ref=f1e5062]
+                        - cell "-$457K" [ref=f1e3452]
+                      - row [ref=f1e5063]:
+                        - rowheader [ref=f1e1150]:
+                          - button "701" [ref=f1e1151] [cursor=pointer]:
+                            - generic [ref=f1e1152]: ◇
+                            - text: "701"
+                        - cell "-$280K" [ref=f1e3454]
+                        - cell "-$146K" [ref=f1e3455]
+                        - cell "-$3.0M" [ref=f1e3456]
+                        - cell "-$685K" [ref=f1e5064]
+                        - cell "-$338K" [ref=f1e5065]
+                      - row [ref=f1e5066]:
+                        - rowheader [ref=f1e1164]:
+                          - button "700" [ref=f1e1165] [cursor=pointer]:
+                            - generic [ref=f1e1166]: ◇
+                            - text: "700"
+                        - cell "-$830K" [ref=f1e5067]
+                        - cell "-$778K" [ref=f1e5068]
+                        - cell "-$47.6M" [ref=f1e5069]
+                        - cell "-$2.6M" [ref=f1e3463]
+                        - cell "-$1.6M" [ref=f1e2692]
+                      - row [ref=f1e2693]:
+                        - rowheader [ref=f1e1178]:
+                          - button "699" [ref=f1e1179] [cursor=pointer]:
+                            - generic [ref=f1e1180]: ◇
+                            - text: "699"
+                        - cell "$0.0K" [ref=f1e1181]
+                        - cell "$0.0K" [ref=f1e1183]
+                        - cell "-$2.6M" [ref=f1e2694]
+                        - cell "$0.0K" [ref=f1e1187]
+                        - cell "$0.0K" [ref=f1e1189]
+                      - row [ref=f1e2695]:
+                        - rowheader [ref=f1e1192]:
+                          - button "698" [ref=f1e1193] [cursor=pointer]:
+                            - generic [ref=f1e1194]: ◇
+                            - text: "698"
+                        - cell "$0.0K" [ref=f1e1195]
+                        - cell "$0.0K" [ref=f1e1197]
+                        - cell "-$1.3M" [ref=f1e2696]
+                        - cell "$0.0K" [ref=f1e1201]
+                        - cell "$0.0K" [ref=f1e1203]
+                      - row [ref=f1e2697]:
+                        - rowheader [ref=f1e1206]:
+                          - button "697" [ref=f1e1207] [cursor=pointer]:
+                            - generic [ref=f1e1208]: ◇
+                            - text: "697"
+                        - cell "$0.0K" [ref=f1e1209]
+                        - cell "$0.0K" [ref=f1e1211]
+                        - cell "-$1.3M" [ref=f1e2698]
+                        - cell "$0.0K" [ref=f1e1215]
+                        - cell "$0.0K" [ref=f1e1217]
+                      - row [ref=f1e5070]:
+                        - rowheader [ref=f1e1220]:
+                          - button "696" [ref=f1e1221] [cursor=pointer]:
+                            - generic [ref=f1e1222]: ◇
+                            - text: "696"
+                        - cell "$0.0K" [ref=f1e1223]
+                        - cell "$0.0K" [ref=f1e1225]
+                        - cell "-$181K" [ref=f1e5071]
+                        - cell "$0.0K" [ref=f1e1229]
+                        - cell "$0.0K" [ref=f1e1231]
+                      - row [ref=f1e5072]:
+                        - rowheader [ref=f1e5073]:
+                          - button "695" [ref=f1e5074] [cursor=pointer]:
+                            - generic [ref=f1e5075]: ◇
+                            - text: "695"
+                        - cell "-$624K" [ref=f1e5076]
+                        - cell "-$860K" [ref=f1e5078]
+                        - cell "-$14.0M" [ref=f1e5080]
+                        - cell "-$1.4M" [ref=f1e5082]
+                        - cell "-$2.9M" [ref=f1e5084]
+                - region "SPX thermal column" [ref=f1e1233]:
+                  - generic [ref=f1e1234]:
+                    - button "SPX 7334.67" [ref=f1e5086] [cursor=pointer]:
+                      - generic [ref=f1e1236]: "2"
+                      - generic [ref=f1e1237]: SPX
+                      - generic [ref=f1e1238]: "7334.67"
+                    - generic [ref=f1e1239]:
+                      - generic "Last updated 7/29/2026, 7:50:36 PM" [ref=f1e5087]: Matrix · 29s
+                      - button "CSV" [ref=f1e1243] [cursor=pointer]
+                  - generic "SPX levels" [ref=f1e1244]:
+                    - generic [ref=f1e1245]: C 7500
+                    - generic [ref=f1e1246]: P 7300
+                  - table "SPX GEX near-term matrix" [ref=f1e3469]:
+                    - rowgroup [ref=f1e3470]:
+                      - row [ref=f1e3471]:
+                        - columnheader "Strike" [ref=f1e3472]
+                        - columnheader "Jul 29" [ref=f1e3473]
+                        - columnheader "Jul 30" [ref=f1e3474]
+                        - columnheader "Jul 31" [ref=f1e3475]
+                        - columnheader "Aug 3" [ref=f1e3476]
+                        - columnheader "Aug 4" [ref=f1e3477]
+                    - rowgroup [ref=f1e3478]:
+                      - row [ref=f1e5088]:
+                        - rowheader [ref=f1e3480]:
+                          - button "7,515" [ref=f1e3481] [cursor=pointer]:
+                            - generic [ref=f1e3482]: ◇
+                            - text: 7,515
+                        - cell "+$19.9M" [ref=f1e5089]
+                        - cell "+$20.1M" [ref=f1e5090]
+                        - cell "+$43.4M" [ref=f1e5091]
+                        - cell "+$17.7M" [ref=f1e5092]
+                        - cell "+$13.0M" [ref=f1e5093]
+                      - row [ref=f1e5094]:
+                        - rowheader [ref=f1e3494]:
+                          - button "7,510" [ref=f1e3495] [cursor=pointer]:
+                            - generic [ref=f1e3496]: ◇
+                            - text: 7,510
+                        - cell "+$6.8M" [ref=f1e5095]
+                        - cell "+$12.6M" [ref=f1e5096]
+                        - cell "+$64.0M" [ref=f1e5097]
+                        - cell "+$14.4M" [ref=f1e5098]
+                        - cell "+$29.9M" [ref=f1e5099]
+                      - row [ref=f1e5100]:
+                        - rowheader [ref=f1e3508]:
+                          - button "7,505" [ref=f1e3509] [cursor=pointer]:
+                            - generic [ref=f1e3510]: ◇
+                            - text: 7,505
+                        - cell "+$17.8M" [ref=f1e5101]
+                        - cell "-$61.5M" [ref=f1e5102]
+                        - cell "+$51.6M" [ref=f1e5103]
+                        - cell "+$20.8M" [ref=f1e5104]
+                        - cell "+$45.7M" [ref=f1e5105]
+                      - row [ref=f1e5106]:
+                        - rowheader [ref=f1e3522]:
+                          - button "7,500" [ref=f1e3523] [cursor=pointer]:
+                            - generic [ref=f1e3524]: ◇
+                            - text: 7,500
+                        - cell "+$59.5M" [ref=f1e5107]
+                        - cell "+$38.0M" [ref=f1e3527]
+                        - cell "+$714.8M" [ref=f1e5108]
+                        - cell "+$42.7M" [ref=f1e5109]
+                        - cell "-$41.4M" [ref=f1e5110]
+                      - row [ref=f1e5111]:
+                        - rowheader [ref=f1e3536]:
+                          - button "7,495" [ref=f1e3537] [cursor=pointer]:
+                            - generic [ref=f1e3538]: ◇
+                            - text: 7,495
+                        - cell "+$20.2M" [ref=f1e5112]
+                        - cell "+$13.2M" [ref=f1e5113]
+                        - cell "+$48.0M" [ref=f1e3543]
+                        - cell "+$7.0M" [ref=f1e5114]
+                        - cell "-$18.4M" [ref=f1e5115]
+                      - row [ref=f1e5116]:
+                        - rowheader [ref=f1e3550]:
+                          - button "7,490" [ref=f1e3551] [cursor=pointer]:
+                            - generic [ref=f1e3552]: ◇
+                            - text: 7,490
+                        - cell "+$8.9M" [ref=f1e5117]
+                        - cell "+$14.3M" [ref=f1e5118]
+                        - cell "-$2.6M" [ref=f1e5119]
+                        - cell "+$23.9M" [ref=f1e5120]
+                        - cell "+$21.2M" [ref=f1e5121]
+                      - row [ref=f1e5122]:
+                        - rowheader [ref=f1e3564]:
+                          - button "7,485" [ref=f1e3565] [cursor=pointer]:
+                            - generic [ref=f1e3566]: ◇
+                            - text: 7,485
+                        - cell "+$27.0M" [ref=f1e5123]
+                        - cell "+$10.8M" [ref=f1e5124]
+                        - cell "+$38.4M" [ref=f1e5125]
+                        - cell "+$72K" [ref=f1e5126]
+                        - cell "+$6.0M" [ref=f1e5127]
+                      - row [ref=f1e5128]:
+                        - rowheader [ref=f1e3578]:
+                          - button "7,480" [ref=f1e3579] [cursor=pointer]:
+                            - generic [ref=f1e3580]: ◇
+                            - text: 7,480
+                        - cell "+$16.9M" [ref=f1e5129]
+                        - cell "+$26.5M" [ref=f1e5130]
+                        - cell "+$56.4M" [ref=f1e5131]
+                        - cell "-$31.4M" [ref=f1e5132]
+                        - cell "+$1.6M" [ref=f1e3589]
+                      - row [ref=f1e5133]:
+                        - rowheader [ref=f1e3592]:
+                          - button "7,475" [ref=f1e3593] [cursor=pointer]:
+                            - generic [ref=f1e3594]: ◇
+                            - text: 7,475
+                        - cell "+$112.1M" [ref=f1e5134]
+                        - cell "+$21.6M" [ref=f1e3597]
+                        - cell "+$276.2M" [ref=f1e5135]
+                        - cell "+$43.2M" [ref=f1e5136]
+                        - cell "-$88.2M" [ref=f1e5137]
+                      - row [ref=f1e5138]:
+                        - rowheader [ref=f1e3606]:
+                          - button "7,470" [ref=f1e3607] [cursor=pointer]:
+                            - generic [ref=f1e3608]: ◇
+                            - text: 7,470
+                        - cell "+$5.6M" [ref=f1e5139]
+                        - cell "+$22.6M" [ref=f1e5140]
+                        - cell "+$69.4M" [ref=f1e5141]
+                        - cell "+$866K" [ref=f1e5142]
+                        - cell "-$9.2M" [ref=f1e5143]
+                      - row [ref=f1e5144]:
+                        - rowheader [ref=f1e3620]:
+                          - button "7,465" [ref=f1e3621] [cursor=pointer]:
+                            - generic [ref=f1e3622]: ◇
+                            - text: 7,465
+                        - cell "+$13.4M" [ref=f1e5145]
+                        - cell "+$16.3M" [ref=f1e5146]
+                        - cell "+$4.2M" [ref=f1e5147]
+                        - cell "-$39.3M" [ref=f1e5148]
+                        - cell "+$1.8M" [ref=f1e5149]
+                      - row [ref=f1e5150]:
+                        - rowheader [ref=f1e3634]:
+                          - button "7,460" [ref=f1e3635] [cursor=pointer]:
+                            - generic [ref=f1e3636]: ◇
+                            - text: 7,460
+                        - cell "+$16.4M" [ref=f1e5151]
+                        - cell "+$25.2M" [ref=f1e5152]
+                        - cell "-$23.0M" [ref=f1e5153]
+                        - cell "-$12.4M" [ref=f1e5154]
+                        - cell "-$47.8M" [ref=f1e5155]
+                      - row [ref=f1e5156]:
+                        - rowheader [ref=f1e3648]:
+                          - button "7,455" [ref=f1e3649] [cursor=pointer]:
+                            - generic [ref=f1e3650]: ◇
+                            - text: 7,455
+                        - cell "+$9.1M" [ref=f1e5157]
+                        - cell "+$34.8M" [ref=f1e5158]
+                        - cell "+$29.1M" [ref=f1e5159]
+                        - cell "-$60.6M" [ref=f1e5160]
+                        - cell "-$59.2M" [ref=f1e5161]
+                      - row [ref=f1e5162]:
+                        - rowheader [ref=f1e3662]:
+                          - button "7,450" [ref=f1e3663] [cursor=pointer]:
+                            - generic [ref=f1e3664]: ◇
+                            - text: 7,450
+                        - cell "-$239.3M" [ref=f1e5163]
+                        - cell "+$93.3M" [ref=f1e5164]
+                        - cell "-$125.5M" [ref=f1e5165]
+                        - cell "-$86.9M" [ref=f1e5166]
+                        - cell "-$1.1M" [ref=f1e5167]
+                      - row [ref=f1e5168]:
+                        - rowheader [ref=f1e3676]:
+                          - button "7,445" [ref=f1e3677] [cursor=pointer]:
+                            - generic [ref=f1e3678]: ◇
+                            - text: 7,445
+                        - cell "+$13.1M" [ref=f1e5169]
+                        - cell "+$14.5M" [ref=f1e3681]
+                        - cell "+$18.2M" [ref=f1e5170]
+                        - cell "+$18.5M" [ref=f1e5171]
+                        - cell "-$34.8M" [ref=f1e5172]
+                      - row [ref=f1e5173]:
+                        - rowheader [ref=f1e3690]:
+                          - button "7,440" [ref=f1e3691] [cursor=pointer]:
+                            - generic [ref=f1e3692]: ◇
+                            - text: 7,440
+                        - cell "+$43.1M" [ref=f1e5174]
+                        - cell "+$12.1M" [ref=f1e5175]
+                        - cell "-$86.8M" [ref=f1e5176]
+                        - cell "-$72.5M" [ref=f1e5177]
+                        - cell "-$63.4M" [ref=f1e5178]
+                      - row [ref=f1e5179]:
+                        - rowheader [ref=f1e3704]:
+                          - button "7,435" [ref=f1e3705] [cursor=pointer]:
+                            - generic [ref=f1e3706]: ◇
+                            - text: 7,435
+                        - cell "+$11.7M" [ref=f1e5180]
+                        - cell "-$6.1M" [ref=f1e5181]
+                        - cell "-$44.9M" [ref=f1e5182]
+                        - cell "+$2.2M" [ref=f1e5183]
+                        - cell "-$4.1M" [ref=f1e5184]
+                      - row [ref=f1e5185]:
+                        - rowheader [ref=f1e3718]:
+                          - button "7,430" [ref=f1e3719] [cursor=pointer]:
+                            - generic [ref=f1e3720]: ◇
+                            - text: 7,430
+                        - cell "+$22.4M" [ref=f1e5186]
+                        - cell "-$7.2M" [ref=f1e5187]
+                        - cell "+$83.4M" [ref=f1e5188]
+                        - cell "+$1.6M" [ref=f1e5189]
+                        - cell "+$7.2M" [ref=f1e5190]
+                      - row [ref=f1e5191]:
+                        - rowheader [ref=f1e3732]:
+                          - button "7,425" [ref=f1e3733] [cursor=pointer]:
+                            - generic [ref=f1e3734]: ◇
+                            - text: 7,425
+                        - cell "+$11.2M" [ref=f1e5192]
+                        - cell "-$20.4M" [ref=f1e5193]
+                        - cell "-$18.1M" [ref=f1e5194]
+                        - cell "-$282.1M" [ref=f1e5195]
+                        - cell "-$41.8M" [ref=f1e5196]
+                      - row [ref=f1e5197]:
+                        - rowheader [ref=f1e3746]:
+                          - button "7,420" [ref=f1e3747] [cursor=pointer]:
+                            - generic [ref=f1e3748]: ◇
+                            - text: 7,420
+                        - cell "+$22.4M" [ref=f1e5198]
+                        - cell "-$24.6M" [ref=f1e5199]
+                        - cell "-$7.4M" [ref=f1e5200]
+                        - cell "-$19.9M" [ref=f1e5201]
+                        - cell "-$42.4M" [ref=f1e5202]
+                      - row [ref=f1e5203]:
+                        - rowheader [ref=f1e3760]:
+                          - button "7,415" [ref=f1e3761] [cursor=pointer]:
+                            - generic [ref=f1e3762]: ◇
+                            - text: 7,415
+                        - cell "+$16.2M" [ref=f1e5204]
+                        - cell "+$33.7M" [ref=f1e3765]
+                        - cell "-$72.9M" [ref=f1e5205]
+                        - cell "+$7.3M" [ref=f1e5206]
+                        - cell "-$75.8M" [ref=f1e5207]
+                      - row [ref=f1e5208]:
+                        - rowheader [ref=f1e3774]:
+                          - button "7,410" [ref=f1e3775] [cursor=pointer]:
+                            - generic [ref=f1e3776]: ◇
+                            - text: 7,410
+                        - cell "+$18.3M" [ref=f1e5209]
+                        - cell "-$22.1M" [ref=f1e5210]
+                        - cell "-$119.2M" [ref=f1e5211]
+                        - cell "-$22.3M" [ref=f1e5212]
+                        - cell "-$4.7M" [ref=f1e5213]
+                      - row [ref=f1e5214]:
+                        - rowheader [ref=f1e3788]:
+                          - button "7,405" [ref=f1e3789] [cursor=pointer]:
+                            - generic [ref=f1e3790]: ◇
+                            - text: 7,405
+                        - cell "+$15.1M" [ref=f1e5215]
+                        - cell "+$28.4M" [ref=f1e5216]
+                        - cell "-$79.2M" [ref=f1e5217]
+                        - cell "-$10.1M" [ref=f1e5218]
+                        - cell "-$8.4M" [ref=f1e5219]
+                      - row [ref=f1e5220]:
+                        - rowheader [ref=f1e3802]:
+                          - button "7,400" [ref=f1e3803] [cursor=pointer]:
+                            - generic [ref=f1e3804]: ◇
+                            - text: 7,400
+                        - cell "+$52.7M" [ref=f1e5221]
+                        - cell "-$222.6M" [ref=f1e5222]
+                        - cell "-$1.1B" [ref=f1e3809]
+                        - cell "-$334.1M" [ref=f1e5223]
+                        - cell "-$72.0M" [ref=f1e5224]
+                      - row [ref=f1e5225]:
+                        - rowheader [ref=f1e3816]:
+                          - button "7,395" [ref=f1e3817] [cursor=pointer]:
+                            - generic [ref=f1e3818]: ◇
+                            - text: 7,395
+                        - cell "+$7.9M" [ref=f1e5226]
+                        - cell "+$17.3M" [ref=f1e5227]
+                        - cell "-$103.4M" [ref=f1e5228]
+                        - cell "-$17.8M" [ref=f1e5229]
+                        - cell "-$3.9M" [ref=f1e5230]
+                      - row [ref=f1e5231]:
+                        - rowheader [ref=f1e3830]:
+                          - button "7,390" [ref=f1e3831] [cursor=pointer]:
+                            - generic [ref=f1e3832]: ◇
+                            - text: 7,390
+                        - cell "+$13.9M" [ref=f1e5232]
+                        - cell "+$27.7M" [ref=f1e5233]
+                        - cell "-$191.1M" [ref=f1e5234]
+                        - cell "-$29.2M" [ref=f1e5235]
+                        - cell "-$27.4M" [ref=f1e5236]
+                      - row [ref=f1e5237]:
+                        - rowheader [ref=f1e3844]:
+                          - button "7,385" [ref=f1e3845] [cursor=pointer]:
+                            - generic [ref=f1e3846]: ◇
+                            - text: 7,385
+                        - cell "-$314.6M" [ref=f1e5238]
+                        - cell "+$16.4M" [ref=f1e3849]
+                        - cell "-$70.7M" [ref=f1e5239]
+                        - cell "-$19.3M" [ref=f1e5240]
+                        - cell "-$9.1M" [ref=f1e5241]
+                      - row [ref=f1e5242]:
+                        - rowheader [ref=f1e3858]:
+                          - button "7,380" [ref=f1e3859] [cursor=pointer]:
+                            - generic [ref=f1e3860]: ◇
+                            - text: 7,380
+                        - cell "+$18.6M" [ref=f1e5243]
+                        - cell "-$57.3M" [ref=f1e5244]
+                        - cell "-$127.3M" [ref=f1e5245]
+                        - cell "-$24.7M" [ref=f1e5246]
+                        - cell "-$3.4M" [ref=f1e5247]
+                      - row [ref=f1e5248]:
+                        - rowheader [ref=f1e3872]:
+                          - button "7,375" [ref=f1e3873] [cursor=pointer]:
+                            - generic [ref=f1e3874]: ◇
+                            - text: 7,375
+                        - cell "-$304.7M" [ref=f1e5249]
+                        - cell "-$101.4M" [ref=f1e5250]
+                        - cell "-$418.2M" [ref=f1e5251]
+                        - cell "-$69.8M" [ref=f1e5252]
+                        - cell "-$10.5M" [ref=f1e5253]
+                      - row [ref=f1e5254]:
+                        - rowheader [ref=f1e3886]:
+                          - button "7,370" [ref=f1e3887] [cursor=pointer]:
+                            - generic [ref=f1e3888]: ◇
+                            - text: 7,370
+                        - cell "+$41.9M" [ref=f1e5255]
+                        - cell "-$137.8M" [ref=f1e5256]
+                        - cell "-$130.9M" [ref=f1e5257]
+                        - cell "-$23.1M" [ref=f1e5258]
+                        - cell "-$7.8M" [ref=f1e5259]
+                      - row [ref=f1e5260]:
+                        - rowheader [ref=f1e3900]:
+                          - button "7,365" [ref=f1e3901] [cursor=pointer]:
+                            - generic [ref=f1e3902]: ◇
+                            - text: 7,365
+                        - cell "-$187.9M" [ref=f1e5261]
+                        - cell "-$30.1M" [ref=f1e5262]
+                        - cell "-$101.6M" [ref=f1e5263]
+                        - cell "-$22.1M" [ref=f1e5264]
+                        - cell "-$4.0M" [ref=f1e5265]
+                      - row [ref=f1e5266]:
+                        - rowheader [ref=f1e3914]:
+                          - button "7,360" [ref=f1e3915] [cursor=pointer]:
+                            - generic [ref=f1e3916]: ◇
+                            - text: 7,360
+                        - cell "-$191.6M" [ref=f1e5267]
+                        - cell "-$72.5M" [ref=f1e5268]
+                        - cell "-$74.9M" [ref=f1e5269]
+                        - cell "-$12.6M" [ref=f1e5270]
+                        - cell "-$20.2M" [ref=f1e5271]
+                      - row [ref=f1e5272]:
+                        - rowheader [ref=f1e3928]:
+                          - button "7,355" [ref=f1e3929] [cursor=pointer]:
+                            - generic [ref=f1e3930]: ◇
+                            - text: 7,355
+                        - cell "-$242.5M" [ref=f1e5273]
+                        - cell "-$79.9M" [ref=f1e5274]
+                        - cell "-$71.1M" [ref=f1e5275]
+                        - cell "-$43.2M" [ref=f1e5276]
+                        - cell "-$8.5M" [ref=f1e5277]
+                      - row [ref=f1e5278]:
+                        - rowheader [ref=f1e3942]:
+                          - button "7,350" [ref=f1e3943] [cursor=pointer]:
+                            - generic [ref=f1e3944]: ◇
+                            - text: 7,350
+                        - cell "-$1.2B" [ref=f1e5279]
+                        - cell "-$252.6M" [ref=f1e5280]
+                        - cell "-$1.3B" [ref=f1e3949]
+                        - cell "-$421.9M" [ref=f1e5281]:
+                          - generic: ★
+                        - cell "-$46.1M" [ref=f1e5282]
+                      - row [ref=f1e5283]:
+                        - rowheader [ref=f1e3956]:
+                          - button "7,345" [ref=f1e3957] [cursor=pointer]:
+                            - generic [ref=f1e3958]: ◇
+                            - text: 7,345
+                        - cell "-$460.2M" [ref=f1e5284]
+                        - cell "-$108.2M" [ref=f1e5285]
+                        - cell "-$168.3M" [ref=f1e5286]
+                        - cell "-$32.9M" [ref=f1e5287]
+                        - cell "-$3.0M" [ref=f1e5288]
+                      - row [ref=f1e5289]:
+                        - rowheader [ref=f1e3970]:
+                          - button "7,340" [ref=f1e3971] [cursor=pointer]:
+                            - generic [ref=f1e3972]: ◇
+                            - text: 7,340
+                        - cell "+$53.2M" [ref=f1e5290]
+                        - cell "-$111.1M" [ref=f1e5291]
+                        - cell "-$167.9M" [ref=f1e5292]
+                        - cell "-$82.0M" [ref=f1e5293]
+                        - cell "-$10.4M" [ref=f1e5294]
+                      - row [ref=f1e5295]:
+                        - rowheader [ref=f1e3984]:
+                          - button "7,335" [ref=f1e3985] [cursor=pointer]:
+                            - generic [ref=f1e3986]: ◇
+                            - text: 7,335
+                        - cell "-$617.7M" [ref=f1e5296]
+                        - cell "-$17.6M" [ref=f1e5297]
+                        - cell "-$114.0M" [ref=f1e5298]
+                        - cell "-$18.0M" [ref=f1e5299]
+                        - cell "-$4.4M" [ref=f1e5300]
+                      - row [ref=f1e5301]:
+                        - rowheader [ref=f1e3998]:
+                          - button "7,330" [ref=f1e3999] [cursor=pointer]:
+                            - generic [ref=f1e4000]: ◇
+                            - text: 7,330
+                        - cell "-$1.2B" [ref=f1e5302]
+                        - cell "-$68.1M" [ref=f1e5303]
+                        - cell "-$163.3M" [ref=f1e5304]
+                        - cell "-$8.4M" [ref=f1e5305]
+                        - cell "-$15.5M" [ref=f1e5306]
+                      - row [ref=f1e5307]:
+                        - rowheader [ref=f1e4012]:
+                          - button "7,325" [ref=f1e4013] [cursor=pointer]:
+                            - generic [ref=f1e4014]: ◇
+                            - text: 7,325
+                        - cell "-$2.1B" [ref=f1e5308]
+                        - cell "-$356.1M" [ref=f1e5309]
+                        - cell "-$273.5M" [ref=f1e5310]
+                        - cell "-$65.3M" [ref=f1e5311]
+                        - cell "-$39.8M" [ref=f1e5312]
+                      - row [ref=f1e5313]:
+                        - rowheader [ref=f1e4026]:
+                          - button "7,320" [ref=f1e4027] [cursor=pointer]:
+                            - generic [ref=f1e4028]: ◇
+                            - text: 7,320
+                        - cell "-$2.1B" [ref=f1e5314]
+                        - cell "-$79.1M" [ref=f1e5315]
+                        - cell "-$180.2M" [ref=f1e5316]
+                        - cell "-$184.6M" [ref=f1e5317]
+                        - cell "-$54.4M" [ref=f1e5318]
+                      - row [ref=f1e5319]:
+                        - rowheader [ref=f1e4040]:
+                          - button "7,315" [ref=f1e4041] [cursor=pointer]:
+                            - generic [ref=f1e4042]: ◇
+                            - text: 7,315
+                        - cell "-$596.4M" [ref=f1e5320]
+                        - cell "-$41.4M" [ref=f1e5321]
+                        - cell "-$76.1M" [ref=f1e5322]
+                        - cell "-$16.7M" [ref=f1e5323]
+                        - cell "-$52.5M" [ref=f1e5324]
+                      - row [ref=f1e5325]:
+                        - rowheader [ref=f1e4054]:
+                          - button "7,310" [ref=f1e4055] [cursor=pointer]:
+                            - generic [ref=f1e4056]: ◇
+                            - text: 7,310
+                        - cell "-$636.1M" [ref=f1e5326]
+                        - cell "-$88.6M" [ref=f1e5327]
+                        - cell "-$127.2M" [ref=f1e5328]
+                        - cell "-$193.7M" [ref=f1e5329]
+                        - cell "-$55.9M" [ref=f1e5330]
+                      - row [ref=f1e5331]:
+                        - rowheader [ref=f1e4068]:
+                          - button "7,305" [ref=f1e4069] [cursor=pointer]:
+                            - generic [ref=f1e4070]: ◇
+                            - text: 7,305
+                        - cell "-$378.0M" [ref=f1e5332]
+                        - cell "-$58.7M" [ref=f1e5333]
+                        - cell "-$94.0M" [ref=f1e5334]
+                        - cell "-$20.8M" [ref=f1e4077]
+                        - cell "-$52.5M" [ref=f1e5335]
+                      - row [ref=f1e5336]:
+                        - rowheader [ref=f1e4082]:
+                          - button "7,300" [ref=f1e4083] [cursor=pointer]:
+                            - generic [ref=f1e4084]: ◇
+                            - text: 7,300
+                        - cell "-$2.6B" [ref=f1e5337]:
+                          - generic: ★
+                        - cell "-$613.8M" [ref=f1e5338]:
+                          - generic: ★
+                        - cell "-$1.5B" [ref=f1e4089]:
+                          - generic: ★
+                        - cell "-$73.3M" [ref=f1e5339]
+                        - cell "-$112.8M" [ref=f1e5340]
+                      - row [ref=f1e5341]:
+                        - rowheader [ref=f1e4096]:
+                          - button "7,295" [ref=f1e4097] [cursor=pointer]:
+                            - generic [ref=f1e4098]: ◇
+                            - text: 7,295
+                        - cell "-$298.4M" [ref=f1e5342]
+                        - cell "-$44.2M" [ref=f1e5343]
+                        - cell "-$129.9M" [ref=f1e5344]
+                        - cell "-$24.1M" [ref=f1e4105]
+                        - cell "-$73.1M" [ref=f1e5345]
+                      - row [ref=f1e5346]:
+                        - rowheader [ref=f1e4110]:
+                          - button "7,290" [ref=f1e4111] [cursor=pointer]:
+                            - generic [ref=f1e4112]: ◇
+                            - text: 7,290
+                        - cell "-$1.2B" [ref=f1e5347]
+                        - cell "-$41.8M" [ref=f1e5348]
+                        - cell "-$193.4M" [ref=f1e5349]
+                        - cell "-$29.0M" [ref=f1e5350]
+                        - cell "-$72.6M" [ref=f1e5351]
+                      - row [ref=f1e5352]:
+                        - rowheader [ref=f1e4124]:
+                          - button "7,285" [ref=f1e4125] [cursor=pointer]:
+                            - generic [ref=f1e4126]: ◇
+                            - text: 7,285
+                        - cell "-$200.8M" [ref=f1e5353]
+                        - cell "-$178.5M" [ref=f1e5354]
+                        - cell "-$80.3M" [ref=f1e5355]
+                        - cell "-$7.4M" [ref=f1e5356]
+                        - cell "-$100.6M" [ref=f1e5357]
+                      - row [ref=f1e5358]:
+                        - rowheader [ref=f1e4138]:
+                          - button "7,280" [ref=f1e4139] [cursor=pointer]:
+                            - generic [ref=f1e4140]: ◇
+                            - text: 7,280
+                        - cell "-$421.5M" [ref=f1e5359]
+                        - cell "-$272.6M" [ref=f1e5360]
+                        - cell "-$975.5M" [ref=f1e5361]
+                        - cell "-$87.7M" [ref=f1e5362]
+                        - cell "-$54.8M" [ref=f1e5363]
+                      - row [ref=f1e5364]:
+                        - rowheader [ref=f1e4152]:
+                          - button "7,275" [ref=f1e4153] [cursor=pointer]:
+                            - generic [ref=f1e4154]: ◇
+                            - text: 7,275
+                        - cell "-$101.6M" [ref=f1e5365]
+                        - cell "-$211.7M" [ref=f1e5366]
+                        - cell "-$133.8M" [ref=f1e5367]
+                        - cell "-$53.3M" [ref=f1e5368]
+                        - cell "-$92.7M" [ref=f1e5369]
+                      - row [ref=f1e5370]:
+                        - rowheader [ref=f1e4166]:
+                          - button "7,270" [ref=f1e4167] [cursor=pointer]:
+                            - generic [ref=f1e4168]: ◇
+                            - text: 7,270
+                        - cell "-$70.9M" [ref=f1e5371]
+                        - cell "-$72.1M" [ref=f1e5372]
+                        - cell "-$960.8M" [ref=f1e5373]
+                        - cell "-$86.8M" [ref=f1e5374]
+                        - cell "-$48.9M" [ref=f1e5375]
+                      - row [ref=f1e5376]:
+                        - rowheader [ref=f1e4180]:
+                          - button "7,265" [ref=f1e4181] [cursor=pointer]:
+                            - generic [ref=f1e4182]: ◇
+                            - text: 7,265
+                        - cell "-$31.2M" [ref=f1e5377]
+                        - cell "-$27.3M" [ref=f1e5378]
+                        - cell "-$76.8M" [ref=f1e5379]
+                        - cell "-$9.9M" [ref=f1e5380]
+                        - cell "-$35.1M" [ref=f1e5381]
+                      - row [ref=f1e5382]:
+                        - rowheader [ref=f1e4194]:
+                          - button "7,260" [ref=f1e4195] [cursor=pointer]:
+                            - generic [ref=f1e4196]: ◇
+                            - text: 7,260
+                        - cell "-$39.3M" [ref=f1e5383]
+                        - cell "-$74.4M" [ref=f1e5384]
+                        - cell "-$1.2B" [ref=f1e4201]
+                        - cell "-$60.0M" [ref=f1e5385]
+                        - cell "-$30.5M" [ref=f1e5386]
+                      - row [ref=f1e5387]:
+                        - rowheader [ref=f1e4208]:
+                          - button "7,255" [ref=f1e4209] [cursor=pointer]:
+                            - generic [ref=f1e4210]: ◇
+                            - text: 7,255
+                        - cell "-$23.4M" [ref=f1e5388]
+                        - cell "-$29.1M" [ref=f1e5389]
+                        - cell "-$99.2M" [ref=f1e5390]
+                        - cell "-$6.2M" [ref=f1e4217]
+                        - cell "-$4.3M" [ref=f1e4219]
+                      - row [ref=f1e5391]:
+                        - rowheader [ref=f1e4222]:
+                          - button "7,250" [ref=f1e4223] [cursor=pointer]:
+                            - generic [ref=f1e4224]: ◇
+                            - text: 7,250
+                        - cell "-$129.4M" [ref=f1e5392]
+                        - cell "-$94.4M" [ref=f1e4227]
+                        - cell "-$1.5B" [ref=f1e4229]
+                        - cell "-$120.3M" [ref=f1e5393]
+                        - cell "-$295.5M" [ref=f1e5394]:
+                          - generic: ★
+                      - row [ref=f1e5395]:
+                        - rowheader [ref=f1e4236]:
+                          - button "7,245" [ref=f1e4237] [cursor=pointer]:
+                            - generic [ref=f1e4238]: ◇
+                            - text: 7,245
+                        - cell "-$46.4M" [ref=f1e5396]
+                        - cell "-$29.4M" [ref=f1e5397]
+                        - cell "-$94.9M" [ref=f1e5398]
+                        - cell "-$9.7M" [ref=f1e5399]
+                        - cell "-$7.5M" [ref=f1e5400]
+                      - row [ref=f1e5401]:
+                        - rowheader [ref=f1e4250]:
+                          - button "7,240" [ref=f1e4251] [cursor=pointer]:
+                            - generic [ref=f1e4252]: ◇
+                            - text: 7,240
+                        - cell "-$43.7M" [ref=f1e5402]
+                        - cell "-$61.9M" [ref=f1e4255]
+                        - cell "-$122.3M" [ref=f1e5403]
+                        - cell "-$72.7M" [ref=f1e5404]
+                        - cell "-$8.1M" [ref=f1e5405]
+                      - row [ref=f1e5406]:
+                        - rowheader [ref=f1e4264]:
+                          - button "7,235" [ref=f1e4265] [cursor=pointer]:
+                            - generic [ref=f1e4266]: ◇
+                            - text: 7,235
+                        - cell "-$21.8M" [ref=f1e5407]
+                        - cell "-$14.1M" [ref=f1e4269]
+                        - cell "-$78.8M" [ref=f1e5408]
+                        - cell "-$15.2M" [ref=f1e5409]
+                        - cell "-$4.5M" [ref=f1e4275]
+                      - row [ref=f1e5410]:
+                        - rowheader [ref=f1e4278]:
+                          - button "7,230" [ref=f1e4279] [cursor=pointer]:
+                            - generic [ref=f1e4280]: ◇
+                            - text: 7,230
+                        - cell "-$12.5M" [ref=f1e5411]
+                        - cell "-$27.2M" [ref=f1e5412]
+                        - cell "-$497.4M" [ref=f1e5413]
+                        - cell "-$9.2M" [ref=f1e5414]
+                        - cell "-$9.5M" [ref=f1e5415]
+                      - row [ref=f1e5416]:
+                        - rowheader [ref=f1e4292]:
+                          - button "7,225" [ref=f1e4293] [cursor=pointer]:
+                            - generic [ref=f1e4294]: ◇
+                            - text: 7,225
+                        - cell "-$46.9M" [ref=f1e5417]
+                        - cell "-$29.4M" [ref=f1e4297]
+                        - cell "-$428.3M" [ref=f1e5418]
+                        - cell "-$35.4M" [ref=f1e5419]
+                        - cell "-$37.3M" [ref=f1e5420]
+                      - row [ref=f1e5421]:
+                        - rowheader [ref=f1e4306]:
+                          - button "7,220" [ref=f1e4307] [cursor=pointer]:
+                            - generic [ref=f1e4308]: ◇
+                            - text: 7,220
+                        - cell "-$11.3M" [ref=f1e5422]
+                        - cell "-$34.4M" [ref=f1e5423]
+                        - cell "-$471.4M" [ref=f1e5424]
+                        - cell "-$11.3M" [ref=f1e5425]
+                        - cell "-$3.7M" [ref=f1e5426]
+                      - row [ref=f1e5427]:
+                        - rowheader [ref=f1e4320]:
+                          - button "7,215" [ref=f1e4321] [cursor=pointer]:
+                            - generic [ref=f1e4322]: ◇
+                            - text: 7,215
+                        - cell "-$13.2M" [ref=f1e5428]
+                        - cell "-$12.0M" [ref=f1e5429]
+                        - cell "-$28.7M" [ref=f1e5430]
+                        - cell "-$19.7M" [ref=f1e5431]
+                        - cell "-$4.7M" [ref=f1e5432]
+                      - row [ref=f1e5433]:
+                        - rowheader [ref=f1e4334]:
+                          - button "7,210" [ref=f1e4335] [cursor=pointer]:
+                            - generic [ref=f1e4336]: ◇
+                            - text: 7,210
+                        - cell "-$27.3M" [ref=f1e5434]
+                        - cell "-$32.3M" [ref=f1e4339]
+                        - cell "-$58.9M" [ref=f1e4341]
+                        - cell "-$17.4M" [ref=f1e5435]
+                        - cell "-$5.9M" [ref=f1e5436]
+                      - row [ref=f1e5437]:
+                        - rowheader [ref=f1e4348]:
+                          - button "7,205" [ref=f1e4349] [cursor=pointer]:
+                            - generic [ref=f1e4350]: ◇
+                            - text: 7,205
+                        - cell "-$9.2M" [ref=f1e5438]
+                        - cell "-$27.1M" [ref=f1e5439]
+                        - cell "-$61.4M" [ref=f1e4355]
+                        - cell "-$15.7M" [ref=f1e5440]
+                        - cell "-$6.9M" [ref=f1e5441]
+                      - row [ref=f1e5442]:
+                        - rowheader [ref=f1e4362]:
+                          - button "7,200" [ref=f1e4363] [cursor=pointer]:
+                            - generic [ref=f1e4364]: ◇
+                            - text: 7,200
+                        - cell "-$64.5M" [ref=f1e5443]
+                        - cell "-$111.9M" [ref=f1e5444]
+                        - cell "-$812.6M" [ref=f1e5445]
+                        - cell "-$81.7M" [ref=f1e5446]
+                        - cell "-$30.1M" [ref=f1e5447]
+                      - row [ref=f1e5448]:
+                        - rowheader [ref=f1e4376]:
+                          - button "7,195" [ref=f1e4377] [cursor=pointer]:
+                            - generic [ref=f1e4378]: ◇
+                            - text: 7,195
+                        - cell "-$5.7M" [ref=f1e5449]
+                        - cell "-$17.0M" [ref=f1e5450]
+                        - cell "-$30.6M" [ref=f1e4383]
+                        - cell "-$58.6M" [ref=f1e5451]
+                        - cell "-$3.6M" [ref=f1e5452]
+                      - row [ref=f1e5453]:
+                        - rowheader [ref=f1e4390]:
+                          - button "7,190" [ref=f1e4391] [cursor=pointer]:
+                            - generic [ref=f1e4392]: ◇
+                            - text: 7,190
+                        - cell "-$7.3M" [ref=f1e5454]
+                        - cell "-$25.3M" [ref=f1e5455]
+                        - cell "-$67.7M" [ref=f1e5456]
+                        - cell "-$18.8M" [ref=f1e5457]
+                        - cell "-$17.6M" [ref=f1e5458]
+                      - row [ref=f1e5459]:
+                        - rowheader [ref=f1e4404]:
+                          - button "7,185" [ref=f1e4405] [cursor=pointer]:
+                            - generic [ref=f1e4406]: ◇
+                            - text: 7,185
+                        - cell "-$12.8M" [ref=f1e5460]
+                        - cell "-$18.3M" [ref=f1e5461]
+                        - cell "-$65.1M" [ref=f1e5462]
+                        - cell "-$11.0M" [ref=f1e5463]
+                        - cell "-$4.4M" [ref=f1e4415]
+                      - row [ref=f1e5464]:
+                        - rowheader [ref=f1e4418]:
+                          - button "7,180" [ref=f1e4419] [cursor=pointer]:
+                            - generic [ref=f1e4420]: ◇
+                            - text: 7,180
+                        - cell "-$4.7M" [ref=f1e5465]
+                        - cell "-$15.4M" [ref=f1e4423]
+                        - cell "-$64.0M" [ref=f1e5466]
+                        - cell "-$16.4M" [ref=f1e5467]
+                        - cell "-$10.7M" [ref=f1e5468]
+                      - row [ref=f1e5469]:
+                        - rowheader [ref=f1e4432]:
+                          - button "7,175" [ref=f1e4433] [cursor=pointer]:
+                            - generic [ref=f1e4434]: ◇
+                            - text: 7,175
+                        - cell "-$64.6M" [ref=f1e5470]
+                        - cell "-$22.7M" [ref=f1e5471]
+                        - cell "-$133.9M" [ref=f1e5472]
+                        - cell "-$41.0M" [ref=f1e5473]
+                        - cell "-$27.9M" [ref=f1e5474]
+                      - row [ref=f1e5475]:
+                        - rowheader [ref=f1e4446]:
+                          - button "7,170" [ref=f1e4447] [cursor=pointer]:
+                            - generic [ref=f1e4448]: ◇
+                            - text: 7,170
+                        - cell "-$37.0M" [ref=f1e5476]
+                        - cell "-$12.9M" [ref=f1e5477]
+                        - cell "-$228.0M" [ref=f1e5478]
+                        - cell "-$15.3M" [ref=f1e5479]
+                        - cell "-$6.7M" [ref=f1e5480]
+                      - row [ref=f1e5481]:
+                        - rowheader [ref=f1e4460]:
+                          - button "7,165" [ref=f1e4461] [cursor=pointer]:
+                            - generic [ref=f1e4462]: ◇
+                            - text: 7,165
+                        - cell "-$55.7M" [ref=f1e5482]
+                        - cell "-$4.9M" [ref=f1e5483]
+                        - cell "-$88.6M" [ref=f1e5484]
+                        - cell "-$12.1M" [ref=f1e5485]
+                        - cell "-$3.7M" [ref=f1e4471]
+                      - row [ref=f1e5486]:
+                        - rowheader [ref=f1e4474]:
+                          - button "7,160" [ref=f1e4475] [cursor=pointer]:
+                            - generic [ref=f1e4476]: ◇
+                            - text: 7,160
+                        - cell "-$2.3M" [ref=f1e5487]
+                        - cell "-$13.4M" [ref=f1e5488]
+                        - cell "-$36.2M" [ref=f1e5489]
+                        - cell "-$10.7M" [ref=f1e5490]
+                        - cell "-$14.5M" [ref=f1e5491]
+                      - row [ref=f1e5492]:
+                        - rowheader [ref=f1e4488]:
+                          - button "7,155" [ref=f1e4489] [cursor=pointer]:
+                            - generic [ref=f1e4490]: ◇
+                            - text: 7,155
+                        - cell "-$3.0M" [ref=f1e4491]
+                        - cell "-$5.7M" [ref=f1e4493]
+                        - cell "-$112.0M" [ref=f1e5493]
+                        - cell "-$21.7M" [ref=f1e5494]
+                        - cell "-$1.6M" [ref=f1e5495]
+                - region "QQQ thermal column" [ref=f1e1248]:
+                  - generic [ref=f1e1249]:
+                    - button "QQQ 665.65" [ref=f1e5496] [cursor=pointer]:
+                      - generic [ref=f1e1251]: "3"
+                      - generic [ref=f1e1252]: QQQ
+                      - generic [ref=f1e1253]: "665.65"
+                    - generic [ref=f1e1254]:
+                      - generic "Last updated 7/29/2026, 7:50:34 PM" [ref=f1e5497]: Matrix · 31s
+                      - button "CSV" [ref=f1e1258] [cursor=pointer]
+                  - generic "QQQ levels" [ref=f1e1259]:
+                    - generic [ref=f1e1260]: C 730
+                    - generic [ref=f1e1261]: P 665
+                  - table "QQQ GEX near-term matrix" [ref=f1e1263]:
+                    - rowgroup [ref=f1e1264]:
+                      - row [ref=f1e1265]:
+                        - columnheader "Strike" [ref=f1e1266]
+                        - columnheader "Jul 29" [ref=f1e1267]
+                        - columnheader "Jul 30" [ref=f1e1268]
+                        - columnheader "Jul 31" [ref=f1e1269]
+                        - columnheader "Aug 3" [ref=f1e1270]
+                        - columnheader "Aug 4" [ref=f1e1271]
+                    - rowgroup [ref=f1e1272]:
+                      - row [ref=f1e5498]:
+                        - rowheader [ref=f1e5499]:
+                          - button "702" [ref=f1e5500] [cursor=pointer]:
+                            - generic [ref=f1e5501]: ◇
+                            - text: "702"
+                        - cell "+$424K" [ref=f1e5502]
+                        - cell "+$347K" [ref=f1e5504]
+                        - cell "+$3.6M" [ref=f1e5506]
+                        - cell "+$935K" [ref=f1e5508]
+                        - cell "+$661K" [ref=f1e5510]
+                      - row [ref=f1e5512]:
+                        - rowheader [ref=f1e4504]:
+                          - button "701" [ref=f1e4505] [cursor=pointer]:
+                            - generic [ref=f1e4506]: ◇
+                            - text: "701"
+                        - cell "+$427K" [ref=f1e5513]
+                        - cell "+$488K" [ref=f1e4509]
+                        - cell "+$2.4M" [ref=f1e5514]
+                        - cell "+$592K" [ref=f1e5515]
+                        - cell "+$242K" [ref=f1e5516]
+                      - row [ref=f1e5517]:
+                        - rowheader [ref=f1e1302]:
+                          - button "700" [ref=f1e1303] [cursor=pointer]:
+                            - generic [ref=f1e1304]: ◇
+                            - text: "700"
+                        - cell "+$2.3M" [ref=f1e1305]
+                        - cell "+$7.2M" [ref=f1e4518]
+                        - cell "+$68.8M" [ref=f1e5518]
+                        - cell "+$4.4M" [ref=f1e5519]
+                        - cell "+$2.7M" [ref=f1e1313]
+                      - row [ref=f1e5520]:
+                        - rowheader [ref=f1e1316]:
+                          - button "699" [ref=f1e1317] [cursor=pointer]:
+                            - generic [ref=f1e1318]: ◇
+                            - text: "699"
+                        - cell "+$593K" [ref=f1e5521]
+                        - cell "+$438K" [ref=f1e5522]
+                        - cell "+$2.9M" [ref=f1e5523]
+                        - cell "+$519K" [ref=f1e5524]
+                        - cell "+$354K" [ref=f1e5525]
+                      - row [ref=f1e5526]:
+                        - rowheader [ref=f1e1330]:
+                          - button "698" [ref=f1e1331] [cursor=pointer]:
+                            - generic [ref=f1e1332]: ◇
+                            - text: "698"
+                        - cell "+$336K" [ref=f1e5527]
+                        - cell "+$650K" [ref=f1e5528]
+                        - cell "+$1.6M" [ref=f1e1337]
+                        - cell "+$1.2M" [ref=f1e4529]
+                        - cell "+$386K" [ref=f1e5529]
+                      - row [ref=f1e5530]:
+                        - rowheader [ref=f1e1344]:
+                          - button "697" [ref=f1e1345] [cursor=pointer]:
+                            - generic [ref=f1e1346]: ◇
+                            - text: "697"
+                        - cell "+$1.4M" [ref=f1e5531]
+                        - cell "+$327K" [ref=f1e2733]
+                        - cell "+$3.1M" [ref=f1e4532]
+                        - cell "+$429K" [ref=f1e5532]
+                        - cell "+$138K" [ref=f1e5533]
+                      - row [ref=f1e5534]:
+                        - rowheader [ref=f1e1358]:
+                          - button "696" [ref=f1e1359] [cursor=pointer]:
+                            - generic [ref=f1e1360]: ◇
+                            - text: "696"
+                        - cell "+$1.8M" [ref=f1e2738]
+                        - cell "+$3.1M" [ref=f1e4536]
+                        - cell "+$1.6M" [ref=f1e5535]
+                        - cell "+$674K" [ref=f1e5536]
+                        - cell "+$508K" [ref=f1e4539]
+                      - row [ref=f1e5537]:
+                        - rowheader [ref=f1e1372]:
+                          - button "695" [ref=f1e1373] [cursor=pointer]:
+                            - generic [ref=f1e1374]: ◇
+                            - text: "695"
+                        - cell "+$11.0M" [ref=f1e5538]
+                        - cell "+$2.9M" [ref=f1e5539]
+                        - cell "+$36.5M" [ref=f1e5540]
+                        - cell "+$5.0M" [ref=f1e1381]
+                        - cell "+$1.2M" [ref=f1e1383]
+                      - row [ref=f1e5541]:
+                        - rowheader [ref=f1e1386]:
+                          - button "694" [ref=f1e1387] [cursor=pointer]:
+                            - generic [ref=f1e1388]: ◇
+                            - text: "694"
+                        - cell "+$804K" [ref=f1e5542]
+                        - cell "+$755K" [ref=f1e5543]
+                        - cell "+$8.1M" [ref=f1e4545]
+                        - cell "+$399K" [ref=f1e5544]
+                        - cell "+$5.8M" [ref=f1e5545]
+                      - row [ref=f1e5546]:
+                        - rowheader [ref=f1e1400]:
+                          - button "693" [ref=f1e1401] [cursor=pointer]:
+                            - generic [ref=f1e1402]: ◇
+                            - text: "693"
+                        - cell "+$555K" [ref=f1e5547]
+                        - cell "+$2.9M" [ref=f1e2755]
+                        - cell "+$2.1M" [ref=f1e5548]
+                        - cell "+$904K" [ref=f1e5549]
+                        - cell "+$465K" [ref=f1e5550]
+                      - row [ref=f1e5551]:
+                        - rowheader [ref=f1e1414]:
+                          - button "692" [ref=f1e1415] [cursor=pointer]:
+                            - generic [ref=f1e1416]: ◇
+                            - text: "692"
+                        - cell "+$1.8M" [ref=f1e5552]
+                        - cell "+$1.7M" [ref=f1e1419]
+                        - cell "-$31.9M" [ref=f1e5553]
+                        - cell "+$1.5M" [ref=f1e5554]
+                        - cell "+$2.2M" [ref=f1e5555]
+                      - row [ref=f1e5556]:
+                        - rowheader [ref=f1e1428]:
+                          - button "691" [ref=f1e1429] [cursor=pointer]:
+                            - generic [ref=f1e1430]: ◇
+                            - text: "691"
+                        - cell "+$1.2M" [ref=f1e1431]
+                        - cell "+$5.6M" [ref=f1e2764]
+                        - cell "+$3.2M" [ref=f1e5557]
+                        - cell "+$332K" [ref=f1e5558]
+                        - cell "+$908K" [ref=f1e5559]
+                      - row [ref=f1e5560]:
+                        - rowheader [ref=f1e1442]:
+                          - button "690" [ref=f1e1443] [cursor=pointer]:
+                            - generic [ref=f1e1444]: ◇
+                            - text: "690"
+                        - cell "+$4.1M" [ref=f1e5561]
+                        - cell "+$13.4M" [ref=f1e2770]
+                        - cell "+$76.5M" [ref=f1e5562]
+                        - cell "+$3.0M" [ref=f1e5563]
+                        - cell "+$1.5M" [ref=f1e5564]
+                      - row [ref=f1e5565]:
+                        - rowheader [ref=f1e1456]:
+                          - button "689" [ref=f1e1457] [cursor=pointer]:
+                            - generic [ref=f1e1458]: ◇
+                            - text: "689"
+                        - cell "+$2.6M" [ref=f1e5566]
+                        - cell "+$3.6M" [ref=f1e5567]
+                        - cell "-$2.9M" [ref=f1e5568]
+                        - cell "+$451K" [ref=f1e5569]
+                        - cell "+$448K" [ref=f1e5570]
+                      - row [ref=f1e5571]:
+                        - rowheader [ref=f1e1470]:
+                          - button "688" [ref=f1e1471] [cursor=pointer]:
+                            - generic [ref=f1e1472]: ◇
+                            - text: "688"
+                        - cell "+$1.9M" [ref=f1e2780]
+                        - cell "+$3.0M" [ref=f1e2781]
+                        - cell "+$7.0M" [ref=f1e5572]
+                        - cell "-$2.5M" [ref=f1e5573]
+                        - cell "+$947K" [ref=f1e5574]
+                      - row [ref=f1e5575]:
+                        - rowheader [ref=f1e1484]:
+                          - button "687" [ref=f1e1485] [cursor=pointer]:
+                            - generic [ref=f1e1486]: ◇
+                            - text: "687"
+                        - cell "+$1.4M" [ref=f1e4571]
+                        - cell "+$2.0M" [ref=f1e2787]
+                        - cell "+$7.6M" [ref=f1e4572]
+                        - cell "+$599K" [ref=f1e5576]
+                        - cell "-$1.3M" [ref=f1e2790]
+                      - row [ref=f1e5577]:
+                        - rowheader [ref=f1e1498]:
+                          - button "686" [ref=f1e1499] [cursor=pointer]:
+                            - generic [ref=f1e1500]: ◇
+                            - text: "686"
+                        - cell "+$2.1M" [ref=f1e5578]
+                        - cell "+$6.2M" [ref=f1e2793]
+                        - cell "+$4.5M" [ref=f1e5579]
+                        - cell "+$96K" [ref=f1e5580]
+                        - cell "-$175K" [ref=f1e5581]
+                      - row [ref=f1e5582]:
+                        - rowheader [ref=f1e1512]:
+                          - button "685" [ref=f1e1513] [cursor=pointer]:
+                            - generic [ref=f1e1514]: ◇
+                            - text: "685"
+                        - cell "+$24.7M" [ref=f1e5583]
+                        - cell "+$12.6M" [ref=f1e5584]
+                        - cell "+$27.7M" [ref=f1e5585]
+                        - cell "+$170K" [ref=f1e5586]
+                        - cell "+$778K" [ref=f1e5587]
+                      - row [ref=f1e5588]:
+                        - rowheader [ref=f1e1526]:
+                          - button "684" [ref=f1e1527] [cursor=pointer]:
+                            - generic [ref=f1e1528]: ◇
+                            - text: "684"
+                        - cell "+$1.7M" [ref=f1e4586]
+                        - cell "+$3.1M" [ref=f1e5589]
+                        - cell "-$30.4M" [ref=f1e5590]
+                        - cell "-$281K" [ref=f1e5591]
+                        - cell "+$132K" [ref=f1e4589]
+                      - row [ref=f1e5592]:
+                        - rowheader [ref=f1e1540]:
+                          - button "683" [ref=f1e1541] [cursor=pointer]:
+                            - generic [ref=f1e1542]: ◇
+                            - text: "683"
+                        - cell "+$5.3M" [ref=f1e5593]
+                        - cell "+$8.1M" [ref=f1e4592]
+                        - cell "+$6.7M" [ref=f1e2811]
+                        - cell "+$280K" [ref=f1e5594]
+                        - cell "+$308K" [ref=f1e5595]
+                      - row [ref=f1e5596]:
+                        - rowheader [ref=f1e1554]:
+                          - button "682" [ref=f1e1555] [cursor=pointer]:
+                            - generic [ref=f1e1556]: ◇
+                            - text: "682"
+                        - cell "+$2.8M" [ref=f1e5597]
+                        - cell "+$2.2M" [ref=f1e5598]
+                        - cell "-$21.7M" [ref=f1e5599]
+                        - cell "+$2.4M" [ref=f1e1563]
+                        - cell "+$21K" [ref=f1e5600]
+                      - row [ref=f1e5601]:
+                        - rowheader [ref=f1e1568]:
+                          - button "681" [ref=f1e1569] [cursor=pointer]:
+                            - generic [ref=f1e1570]: ◇
+                            - text: "681"
+                        - cell "+$2.2M" [ref=f1e5602]
+                        - cell "+$2.7M" [ref=f1e5603]
+                        - cell "+$4.1M" [ref=f1e5604]
+                        - cell "+$41K" [ref=f1e5605]
+                        - cell "-$1.2M" [ref=f1e4601]
+                      - row [ref=f1e5606]:
+                        - rowheader [ref=f1e1582]:
+                          - button "680" [ref=f1e1583] [cursor=pointer]:
+                            - generic [ref=f1e1584]: ◇
+                            - text: "680"
+                        - cell "+$7.0M" [ref=f1e5607]
+                        - cell "+$29.2M" [ref=f1e4603]
+                        - cell "-$185.1M" [ref=f1e5608]
+                        - cell "-$2.0M" [ref=f1e2829]
+                        - cell "-$2.6M" [ref=f1e4605]
+                      - row [ref=f1e5609]:
+                        - rowheader [ref=f1e1596]:
+                          - button "679" [ref=f1e1597] [cursor=pointer]:
+                            - generic [ref=f1e1598]: ◇
+                            - text: "679"
+                        - cell "+$2.2M" [ref=f1e2832]
+                        - cell "+$1.6M" [ref=f1e5610]
+                        - cell "-$20.3M" [ref=f1e5611]
+                        - cell "-$1.1M" [ref=f1e5612]
+                        - cell "-$116K" [ref=f1e5613]
+                      - row [ref=f1e5614]:
+                        - rowheader [ref=f1e1610]:
+                          - button "678" [ref=f1e1611] [cursor=pointer]:
+                            - generic [ref=f1e1612]: ◇
+                            - text: "678"
+                        - cell "+$6.5M" [ref=f1e5615]
+                        - cell "+$896K" [ref=f1e5616]
+                        - cell "+$10.1M" [ref=f1e5617]
+                        - cell "+$2.4M" [ref=f1e5618]
+                        - cell "-$841K" [ref=f1e5619]
+                      - row [ref=f1e5620]:
+                        - rowheader [ref=f1e1624]:
+                          - button "677" [ref=f1e1625] [cursor=pointer]:
+                            - generic [ref=f1e1626]: ◇
+                            - text: "677"
+                        - cell "+$3.6M" [ref=f1e5621]
+                        - cell "+$532K" [ref=f1e5622]
+                        - cell "-$9.5M" [ref=f1e5623]
+                        - cell "-$13.1M" [ref=f1e5624]
+                        - cell "-$1.9M" [ref=f1e1635]
+                      - row [ref=f1e5625]:
+                        - rowheader [ref=f1e1638]:
+                          - button "676" [ref=f1e1639] [cursor=pointer]:
+                            - generic [ref=f1e1640]: ◇
+                            - text: "676"
+                        - cell "+$6.1M" [ref=f1e5626]
+                        - cell "+$2.2M" [ref=f1e4619]
+                        - cell "-$48.7M" [ref=f1e5627]
+                        - cell "-$4.4M" [ref=f1e5628]
+                        - cell "-$226K" [ref=f1e5629]
+                      - row [ref=f1e5630]:
+                        - rowheader [ref=f1e1652]:
+                          - button "675" [ref=f1e1653] [cursor=pointer]:
+                            - generic [ref=f1e1654]: ◇
+                            - text: "675"
+                        - cell "+$8.2M" [ref=f1e5631]
+                        - cell "-$8.4M" [ref=f1e5632]
+                        - cell "-$82.2M" [ref=f1e5633]
+                        - cell "-$8.9M" [ref=f1e5634]
+                        - cell "-$5.8M" [ref=f1e4627]
+                      - row [ref=f1e5635]:
+                        - rowheader [ref=f1e1666]:
+                          - button "674" [ref=f1e1667] [cursor=pointer]:
+                            - generic [ref=f1e1668]: ◇
+                            - text: "674"
+                        - cell "+$5.5M" [ref=f1e5636]
+                        - cell "-$3.0M" [ref=f1e5637]
+                        - cell "-$7.1M" [ref=f1e5638]
+                        - cell "+$6.3M" [ref=f1e4632]
+                        - cell "+$445K" [ref=f1e5639]
+                      - row [ref=f1e5640]:
+                        - rowheader [ref=f1e1680]:
+                          - button "673" [ref=f1e1681] [cursor=pointer]:
+                            - generic [ref=f1e1682]: ◇
+                            - text: "673"
+                        - cell "+$9.9M" [ref=f1e5641]
+                        - cell "-$609K" [ref=f1e5642]
+                        - cell "-$17.2M" [ref=f1e5643]
+                        - cell "-$2.7M" [ref=f1e1689]
+                        - cell "-$696K" [ref=f1e5644]
+                      - row [ref=f1e5645]:
+                        - rowheader [ref=f1e1694]:
+                          - button "672" [ref=f1e1695] [cursor=pointer]:
+                            - generic [ref=f1e1696]: ◇
+                            - text: "672"
+                        - cell "+$8.7M" [ref=f1e5646]
+                        - cell "+$4.2M" [ref=f1e5647]
+                        - cell "-$33.6M" [ref=f1e5648]
+                        - cell "-$1.8M" [ref=f1e2874]
+                        - cell "-$1.0M" [ref=f1e5649]
+                      - row [ref=f1e5650]:
+                        - rowheader [ref=f1e1708]:
+                          - button "671" [ref=f1e1709] [cursor=pointer]:
+                            - generic [ref=f1e1710]: ◇
+                            - text: "671"
+                        - cell "+$14.1M" [ref=f1e5651]
+                        - cell "-$5.2M" [ref=f1e5652]
+                        - cell "-$7.5M" [ref=f1e5653]
+                        - cell "-$1.7M" [ref=f1e5654]
+                        - cell "-$387K" [ref=f1e5655]
+                      - row [ref=f1e5656]:
+                        - rowheader [ref=f1e1722]:
+                          - button "670" [ref=f1e1723] [cursor=pointer]:
+                            - generic [ref=f1e1724]: ◇
+                            - text: "670"
+                        - cell "+$28.4M" [ref=f1e5657]
+                        - cell "-$9.6M" [ref=f1e5658]
+                        - cell "-$211.7M" [ref=f1e5659]
+                        - cell "-$6.8M" [ref=f1e4652]
+                        - cell "-$5.9M" [ref=f1e4653]
+                      - row [ref=f1e5660]:
+                        - rowheader [ref=f1e1736]:
+                          - button "669" [ref=f1e1737] [cursor=pointer]:
+                            - generic [ref=f1e1738]: ◇
+                            - text: "669"
+                        - cell "-$46.5M" [ref=f1e5661]
+                        - cell "-$2.7M" [ref=f1e5662]
+                        - cell "-$8.3M" [ref=f1e5663]
+                        - cell "-$1.3M" [ref=f1e4657]
+                        - cell "-$528K" [ref=f1e5664]
+                      - row [ref=f1e5665]:
+                        - rowheader [ref=f1e1750]:
+                          - button "668" [ref=f1e1751] [cursor=pointer]:
+                            - generic [ref=f1e1752]: ◇
+                            - text: "668"
+                        - cell "-$122.6M" [ref=f1e5666]
+                        - cell "-$6.2M" [ref=f1e5667]
+                        - cell "-$66.6M" [ref=f1e5668]
+                        - cell "-$7.1M" [ref=f1e5669]
+                        - cell "-$226K" [ref=f1e5670]
+                      - row [ref=f1e5671]:
+                        - rowheader [ref=f1e1764]:
+                          - button "667" [ref=f1e1765] [cursor=pointer]:
+                            - generic [ref=f1e1766]: ◇
+                            - text: "667"
+                        - cell "-$149.8M" [ref=f1e5672]
+                        - cell "-$22.1M" [ref=f1e5673]
+                        - cell "-$18.8M" [ref=f1e5674]
+                        - cell "-$1.5M" [ref=f1e2903]
+                        - cell "-$321K" [ref=f1e5675]
+                      - row [ref=f1e5676]:
+                        - rowheader [ref=f1e1778]:
+                          - button "666" [ref=f1e1779] [cursor=pointer]:
+                            - generic [ref=f1e1780]: ◇
+                            - text: "666"
+                        - cell "-$67.1M" [ref=f1e5677]
+                        - cell "-$5.6M" [ref=f1e5678]
+                        - cell "-$17.0M" [ref=f1e5679]
+                        - cell "+$1.1M" [ref=f1e4672]
+                        - cell "-$228" [ref=f1e5680]
+                      - row [ref=f1e5681]:
+                        - rowheader [ref=f1e1792]:
+                          - button "665" [ref=f1e1793] [cursor=pointer]:
+                            - generic [ref=f1e1794]: ◇
+                            - text: "665"
+                        - cell "-$215.7M" [ref=f1e5682]
+                        - cell "-$27.3M" [ref=f1e5683]
+                        - cell "-$310.0M" [ref=f1e5684]:
+                          - generic: ★
+                        - cell "-$13.3M" [ref=f1e5685]
+                        - cell "-$5.0M" [ref=f1e1803]
+                      - row [ref=f1e5686]:
+                        - rowheader [ref=f1e1806]:
+                          - button "664" [ref=f1e1807] [cursor=pointer]:
+                            - generic [ref=f1e1808]: ◇
+                            - text: "664"
+                        - cell "-$81.9M" [ref=f1e5687]
+                        - cell "-$10.3M" [ref=f1e5688]
+                        - cell "-$27.7M" [ref=f1e5689]
+                        - cell "-$1.4M" [ref=f1e1815]
+                        - cell "-$50K" [ref=f1e5690]
+                      - row [ref=f1e5691]:
+                        - rowheader [ref=f1e1820]:
+                          - button "663" [ref=f1e1821] [cursor=pointer]:
+                            - generic [ref=f1e1822]: ◇
+                            - text: "663"
+                        - cell "-$296.1M" [ref=f1e5692]:
+                          - generic: ★
+                        - cell "-$4.9M" [ref=f1e5693]
+                        - cell "-$12.9M" [ref=f1e5694]
+                        - cell "-$453K" [ref=f1e5695]
+                        - cell "-$520K" [ref=f1e5696]
+                      - row [ref=f1e5697]:
+                        - rowheader [ref=f1e1834]:
+                          - button "662" [ref=f1e1835] [cursor=pointer]:
+                            - generic [ref=f1e1836]: ◇
+                            - text: "662"
+                        - cell "-$212.8M" [ref=f1e5698]
+                        - cell "-$3.4M" [ref=f1e2927]
+                        - cell "-$10.6M" [ref=f1e4690]
+                        - cell "-$799K" [ref=f1e5699]
+                        - cell "-$468K" [ref=f1e4692]
+                      - row [ref=f1e5700]:
+                        - rowheader [ref=f1e1848]:
+                          - button "661" [ref=f1e1849] [cursor=pointer]:
+                            - generic [ref=f1e1850]: ◇
+                            - text: "661"
+                        - cell "-$87.3M" [ref=f1e5701]
+                        - cell "-$16.2M" [ref=f1e5702]
+                        - cell "-$26.7M" [ref=f1e5703]
+                        - cell "-$1.3M" [ref=f1e5704]
+                        - cell "-$795K" [ref=f1e5705]
+                      - row [ref=f1e5706]:
+                        - rowheader [ref=f1e1862]:
+                          - button "660" [ref=f1e1863] [cursor=pointer]:
+                            - generic [ref=f1e1864]: ◇
+                            - text: "660"
+                        - cell "-$142.2M" [ref=f1e5707]
+                        - cell "-$71.1M" [ref=f1e5708]:
+                          - generic: ★
+                        - cell "-$302.2M" [ref=f1e5709]
+                        - cell "-$4.1M" [ref=f1e5710]
+                        - cell "-$4.3M" [ref=f1e5711]
+                      - row [ref=f1e5712]:
+                        - rowheader [ref=f1e1876]:
+                          - button "659" [ref=f1e1877] [cursor=pointer]:
+                            - generic [ref=f1e1878]: ◇
+                            - text: "659"
+                        - cell "-$25.9M" [ref=f1e5713]
+                        - cell "-$4.8M" [ref=f1e5714]
+                        - cell "-$25.0M" [ref=f1e5715]
+                        - cell "-$2.5M" [ref=f1e1885]
+                        - cell "-$195K" [ref=f1e5716]
+                      - row [ref=f1e5717]:
+                        - rowheader [ref=f1e1890]:
+                          - button "658" [ref=f1e1891] [cursor=pointer]:
+                            - generic [ref=f1e1892]: ◇
+                            - text: "658"
+                        - cell "-$20.4M" [ref=f1e5718]
+                        - cell "-$5.1M" [ref=f1e5719]
+                        - cell "-$15.9M" [ref=f1e5720]
+                        - cell "-$4.1M" [ref=f1e5721]
+                        - cell "-$168K" [ref=f1e5722]
+                      - row [ref=f1e5723]:
+                        - rowheader [ref=f1e1904]:
+                          - button "657" [ref=f1e1905] [cursor=pointer]:
+                            - generic [ref=f1e1906]: ◇
+                            - text: "657"
+                        - cell "-$34.9M" [ref=f1e5724]
+                        - cell "-$5.0M" [ref=f1e5725]
+                        - cell "-$21.0M" [ref=f1e5726]
+                        - cell "-$311K" [ref=f1e5727]
+                        - cell "-$253K" [ref=f1e5728]
+                      - row [ref=f1e5729]:
+                        - rowheader [ref=f1e1918]:
+                          - button "656" [ref=f1e1919] [cursor=pointer]:
+                            - generic [ref=f1e1920]: ◇
+                            - text: "656"
+                        - cell "-$14.5M" [ref=f1e5730]
+                        - cell "-$3.5M" [ref=f1e2958]
+                        - cell "-$12.0M" [ref=f1e5731]
+                        - cell "-$1.0M" [ref=f1e1927]
+                        - cell "-$403K" [ref=f1e5732]
+                      - row [ref=f1e5733]:
+                        - rowheader [ref=f1e1932]:
+                          - button "655" [ref=f1e1933] [cursor=pointer]:
+                            - generic [ref=f1e1934]: ◇
+                            - text: "655"
+                        - cell "-$25.1M" [ref=f1e5734]
+                        - cell "-$34.8M" [ref=f1e5735]
+                        - cell "-$129.3M" [ref=f1e5736]
+                        - cell "-$6.3M" [ref=f1e2965]
+                        - cell "-$1.9M" [ref=f1e1943]
+                      - row [ref=f1e5737]:
+                        - rowheader [ref=f1e1946]:
+                          - button "654" [ref=f1e1947] [cursor=pointer]:
+                            - generic [ref=f1e1948]: ◇
+                            - text: "654"
+                        - cell "-$6.8M" [ref=f1e5738]
+                        - cell "-$5.8M" [ref=f1e4725]
+                        - cell "-$17.5M" [ref=f1e5739]
+                        - cell "-$1.3M" [ref=f1e1955]
+                        - cell "-$480K" [ref=f1e5740]
+                      - row [ref=f1e5741]:
+                        - rowheader [ref=f1e1960]:
+                          - button "653" [ref=f1e1961] [cursor=pointer]:
+                            - generic [ref=f1e1962]: ◇
+                            - text: "653"
+                        - cell "-$6.5M" [ref=f1e4729]
+                        - cell "-$2.9M" [ref=f1e2973]
+                        - cell "-$16.9M" [ref=f1e5742]
+                        - cell "-$363K" [ref=f1e5743]
+                        - cell "-$274K" [ref=f1e5744]
+                      - row [ref=f1e5745]:
+                        - rowheader [ref=f1e1974]:
+                          - button "652" [ref=f1e1975] [cursor=pointer]:
+                            - generic [ref=f1e1976]: ◇
+                            - text: "652"
+                        - cell "-$4.2M" [ref=f1e5746]
+                        - cell "-$4.3M" [ref=f1e2979]
+                        - cell "-$18.4M" [ref=f1e5747]
+                        - cell "-$791K" [ref=f1e5748]
+                        - cell "-$229K" [ref=f1e5749]
+                      - row [ref=f1e5750]:
+                        - rowheader [ref=f1e1988]:
+                          - button "651" [ref=f1e1989] [cursor=pointer]:
+                            - generic [ref=f1e1990]: ◇
+                            - text: "651"
+                        - cell "-$5.3M" [ref=f1e5751]
+                        - cell "-$4.3M" [ref=f1e4739]
+                        - cell "-$7.6M" [ref=f1e2986]
+                        - cell "-$1.6M" [ref=f1e2987]
+                        - cell "-$554K" [ref=f1e5752]
+                      - row [ref=f1e5753]:
+                        - rowheader [ref=f1e2002]:
+                          - button "650" [ref=f1e2003] [cursor=pointer]:
+                            - generic [ref=f1e2004]: ◇
+                            - text: "650"
+                        - cell "-$9.4M" [ref=f1e5754]
+                        - cell "-$60.1M" [ref=f1e5755]
+                        - cell "-$219.7M" [ref=f1e5756]
+                        - cell "-$3.3M" [ref=f1e2011]
+                        - cell "-$25.9M" [ref=f1e5757]:
+                          - generic: ★
+                      - row [ref=f1e5758]:
+                        - rowheader [ref=f1e2016]:
+                          - button "649" [ref=f1e2017] [cursor=pointer]:
+                            - generic [ref=f1e2018]: ◇
+                            - text: "649"
+                        - cell "-$2.2M" [ref=f1e2995]
+                        - cell "-$7.8M" [ref=f1e5759]
+                        - cell "-$5.0M" [ref=f1e2997]
+                        - cell "$0.0K" [ref=f1e2025]
+                        - cell "$0.0K" [ref=f1e2027]
+                      - row [ref=f1e5760]:
+                        - rowheader [ref=f1e2030]:
+                          - button "648" [ref=f1e2031] [cursor=pointer]:
+                            - generic [ref=f1e2032]: ◇
+                            - text: "648"
+                        - cell "-$3.2M" [ref=f1e5761]
+                        - cell "-$4.4M" [ref=f1e4749]
+                        - cell "-$12.2M" [ref=f1e5762]
+                        - cell "$0.0K" [ref=f1e2039]
+                        - cell "$0.0K" [ref=f1e2041]
+                      - row [ref=f1e5763]:
+                        - rowheader [ref=f1e2044]:
+                          - button "647" [ref=f1e2045] [cursor=pointer]:
+                            - generic [ref=f1e2046]: ◇
+                            - text: "647"
+                        - cell "-$2.4M" [ref=f1e5764]
+                        - cell "-$3.9M" [ref=f1e3003]
+                        - cell "-$9.9M" [ref=f1e3004]
+                        - cell "$0.0K" [ref=f1e2053]
+                        - cell "$0.0K" [ref=f1e2055]
+                      - row [ref=f1e5765]:
+                        - rowheader [ref=f1e2058]:
+                          - button "646" [ref=f1e2059] [cursor=pointer]:
+                            - generic [ref=f1e2060]: ◇
+                            - text: "646"
+                        - cell "-$1.3M" [ref=f1e5766]
+                        - cell "-$1.9M" [ref=f1e2063]
+                        - cell "-$8.0M" [ref=f1e5767]
+                        - cell "$0.0K" [ref=f1e2067]
+                        - cell "$0.0K" [ref=f1e2069]
+                      - row [ref=f1e5768]:
+                        - rowheader [ref=f1e2072]:
+                          - button "645" [ref=f1e2073] [cursor=pointer]:
+                            - generic [ref=f1e2074]: ◇
+                            - text: "645"
+                        - cell "-$3.3M" [ref=f1e5769]
+                        - cell "-$15.8M" [ref=f1e5770]
+                        - cell "-$50.7M" [ref=f1e5771]
+                        - cell "-$5.5M" [ref=f1e2081]
+                        - cell "-$2.2M" [ref=f1e2083]
+                      - row [ref=f1e5772]:
+                        - rowheader [ref=f1e2086]:
+                          - button "644" [ref=f1e2087] [cursor=pointer]:
+                            - generic [ref=f1e2088]: ◇
+                            - text: "644"
+                        - cell "-$961K" [ref=f1e5773]
+                        - cell "-$7.1M" [ref=f1e3011]
+                        - cell "-$76.5M" [ref=f1e5774]
+                        - cell "$0.0K" [ref=f1e2095]
+                        - cell "$0.0K" [ref=f1e2097]
+                      - row [ref=f1e5775]:
+                        - rowheader [ref=f1e2100]:
+                          - button "643" [ref=f1e2101] [cursor=pointer]:
+                            - generic [ref=f1e2102]: ◇
+                            - text: "643"
+                        - cell "-$808K" [ref=f1e5776]
+                        - cell "-$4.0M" [ref=f1e3015]
+                        - cell "-$4.1M" [ref=f1e5777]
+                        - cell "$0.0K" [ref=f1e2109]
+                        - cell "$0.0K" [ref=f1e2111]
+                      - row [ref=f1e5778]:
+                        - rowheader [ref=f1e2114]:
+                          - button "642" [ref=f1e2115] [cursor=pointer]:
+                            - generic [ref=f1e2116]: ◇
+                            - text: "642"
+                        - cell "-$751K" [ref=f1e5779]
+                        - cell "-$10.6M" [ref=f1e5780]
+                        - cell "-$3.4M" [ref=f1e2121]
+                        - cell "$0.0K" [ref=f1e2123]
+                        - cell "$0.0K" [ref=f1e2125]
+                      - row [ref=f1e5781]:
+                        - rowheader [ref=f1e2128]:
+                          - button "641" [ref=f1e2129] [cursor=pointer]:
+                            - generic [ref=f1e2130]: ◇
+                            - text: "641"
+                        - cell "-$1.2M" [ref=f1e3019]
+                        - cell "-$7.7M" [ref=f1e3020]
+                        - cell "-$6.5M" [ref=f1e5782]
+                        - cell "$0.0K" [ref=f1e2137]
+                        - cell "$0.0K" [ref=f1e2139]
+                      - row [ref=f1e5783]:
+                        - rowheader [ref=f1e2142]:
+                          - button "640" [ref=f1e2143] [cursor=pointer]:
+                            - generic [ref=f1e2144]: ◇
+                            - text: "640"
+                        - cell "-$1.5M" [ref=f1e3022]
+                        - cell "-$8.1M" [ref=f1e5784]
+                        - cell "-$102.5M" [ref=f1e5785]
+                        - cell "-$4.8M" [ref=f1e2151]
+                        - cell "-$3.2M" [ref=f1e2153]
+                      - row [ref=f1e5786]:
+                        - rowheader [ref=f1e2156]:
+                          - button "639" [ref=f1e2157] [cursor=pointer]:
+                            - generic [ref=f1e2158]: ◇
+                            - text: "639"
+                        - cell "-$469K" [ref=f1e5787]
+                        - cell "-$2.5M" [ref=f1e5788]
+                        - cell "-$3.1M" [ref=f1e2163]
+                        - cell "$0.0K" [ref=f1e2165]
+                        - cell "$0.0K" [ref=f1e2167]
+                      - row [ref=f1e5789]:
+                        - rowheader [ref=f1e2170]:
+                          - button "638" [ref=f1e2171] [cursor=pointer]:
+                            - generic [ref=f1e2172]: ◇
+                            - text: "638"
+                        - cell "-$261K" [ref=f1e5790]
+                        - cell "-$775K" [ref=f1e5791]
+                        - cell "-$8.3M" [ref=f1e5792]
+                        - cell "$0.0K" [ref=f1e2179]
+                        - cell "$0.0K" [ref=f1e2181]
+                      - row [ref=f1e5793]:
+                        - rowheader [ref=f1e2184]:
+                          - button "637" [ref=f1e2185] [cursor=pointer]:
+                            - generic [ref=f1e2186]: ◇
+                            - text: "637"
+                        - cell "-$213K" [ref=f1e5794]
+                        - cell "-$2.8M" [ref=f1e5795]
+                        - cell "-$11.7M" [ref=f1e3034]
+                        - cell "$0.0K" [ref=f1e2193]
+                        - cell "$0.0K" [ref=f1e2195]
+                      - row [ref=f1e5796]:
+                        - rowheader [ref=f1e2198]:
+                          - button "636" [ref=f1e2199] [cursor=pointer]:
+                            - generic [ref=f1e2200]: ◇
+                            - text: "636"
+                        - cell "-$232K" [ref=f1e5797]
+                        - cell "-$358K" [ref=f1e4774]
+                        - cell "-$8.5M" [ref=f1e5798]
+                        - cell "$0.0K" [ref=f1e2207]
+                        - cell "$0.0K" [ref=f1e2209]
+                      - row [ref=f1e5799]:
+                        - rowheader [ref=f1e2212]:
+                          - button "635" [ref=f1e2213] [cursor=pointer]:
+                            - generic [ref=f1e2214]: ◇
+                            - text: "635"
+                        - cell "-$1.6M" [ref=f1e2215]
+                        - cell "-$4.5M" [ref=f1e4777]
+                        - cell "-$45.8M" [ref=f1e5800]
+                        - cell "-$15.4M" [ref=f1e5801]:
+                          - generic: ★
+                        - cell "-$5.5M" [ref=f1e5802]
+                      - row [ref=f1e5803]:
+                        - rowheader [ref=f1e2226]:
+                          - button "634" [ref=f1e2227] [cursor=pointer]:
+                            - generic [ref=f1e2228]: ◇
+                            - text: "634"
+                        - cell "-$1.3M" [ref=f1e2229]
+                        - cell "-$286K" [ref=f1e5804]
+                        - cell "-$4.8M" [ref=f1e5805]
+                        - cell "$0.0K" [ref=f1e2235]
+                        - cell "$0.0K" [ref=f1e2237]
+                      - row [ref=f1e5806]:
+                        - rowheader [ref=f1e2240]:
+                          - button "633" [ref=f1e2241] [cursor=pointer]:
+                            - generic [ref=f1e2242]: ◇
+                            - text: "633"
+                        - cell "-$417K" [ref=f1e5807]
+                        - cell "-$3.0M" [ref=f1e5808]
+                        - cell "-$1.7M" [ref=f1e5809]
+                        - cell "$0.0K" [ref=f1e2249]
+                        - cell "$0.0K" [ref=f1e2251]
+                      - row [ref=f1e5810]:
+                        - rowheader [ref=f1e2254]:
+                          - button "632" [ref=f1e2255] [cursor=pointer]:
+                            - generic [ref=f1e2256]: ◇
+                            - text: "632"
+                        - cell "-$513K" [ref=f1e5811]
+                        - cell "-$256K" [ref=f1e4788]
+                        - cell "-$3.1M" [ref=f1e2261]
+                        - cell "$0.0K" [ref=f1e2263]
+                        - cell "$0.0K" [ref=f1e2265]
+                      - row [ref=f1e5812]:
+                        - rowheader [ref=f1e2268]:
+                          - button "631" [ref=f1e2269] [cursor=pointer]:
+                            - generic [ref=f1e2270]: ◇
+                            - text: "631"
+                        - cell "-$536K" [ref=f1e5813]
+                        - cell "-$1.9M" [ref=f1e5814]
+                        - cell "-$2.9M" [ref=f1e2275]
+                        - cell "$0.0K" [ref=f1e2277]
+                        - cell "$0.0K" [ref=f1e2279]
+                      - row [ref=f1e5815]:
+                        - rowheader [ref=f1e2282]:
+                          - button "630" [ref=f1e2283] [cursor=pointer]:
+                            - generic [ref=f1e2284]: ◇
+                            - text: "630"
+                        - cell "-$466K" [ref=f1e5816]
+                        - cell "-$1.2M" [ref=f1e2287]
+                        - cell "-$10.7M" [ref=f1e5817]
+                        - cell "-$10.9M" [ref=f1e4794]
+                        - cell "-$6.7M" [ref=f1e2293]
+            - paragraph [ref=f1e2295]: ⓘTriple desk defaults to 0DTE heat strips (SPY | SPX | QQQ) with green/red cells, yellow + node, purple − node, and ★ king — same paint as the major matrix. Toggle Near for multi-expiry. Keys 1/2/3 focus; 0/N mode; G/V/D/C lens. Pin strikes; CSV exports the full chain.
+  - alert [ref=f1e59]

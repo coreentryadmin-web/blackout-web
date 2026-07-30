@@ -412,6 +412,10 @@ export interface SwingDiscoveryDeps {
   fetchGroupedDaily: () => Promise<
     Array<{ T?: string; o?: number; h?: number; l?: number; c?: number; v?: number }>
   >;
+  /** Wave C5 — optional intraday STRUCTURE screen (minute-refreshed top pool). Used on MIDDAY/POWER_HOUR. */
+  fetchIntradayStructureBars?: () => Promise<
+    Array<{ T?: string; o?: number; h?: number; l?: number; c?: number; v?: number }>
+  >;
   /** SPY ascending daily closes — fetched ONCE, passed into every Tier-1 enrich (relative-strength base). */
   fetchSpyCloses: () => Promise<number[]>;
   /** Tier-1 enrich: assemble the dossier input for a name (swing-ingest). Null → the name is dropped. */
@@ -518,7 +522,11 @@ export async function runSwingDiscoveryScan(
   }
 
   // ── TIER-0 STRUCTURE: whole-market breakout movers (already excludes ETPs/units). ──
-  const grouped = await deps.fetchGroupedDaily();
+  const grouped =
+    deps.fetchIntradayStructureBars &&
+    (deps.phase === "MIDDAY" || deps.phase === "POWER_HOUR" || deps.phase === "PRE_OPEN")
+      ? await deps.fetchIntradayStructureBars().catch(() => deps.fetchGroupedDaily())
+      : await deps.fetchGroupedDaily();
   const movers = screenBreakoutMovers(grouped, cfg.maxStructureMovers);
   const moverByTicker = new Map<string, BreakoutMover>(movers.map((m) => [m.ticker.toUpperCase(), m]));
   const structureTickers = movers.map((m) => m.ticker);

@@ -1,0 +1,434 @@
+- generic [active] [ref=f4e1]:
+  - link "Skip to content" [ref=f4e2] [cursor=pointer]:
+    - /url: "#main"
+  - generic [ref=f4e3]:
+    - banner [ref=f4e4]:
+      - generic [ref=f4e5]:
+        - link "BLACKOUT" [ref=f4e6] [cursor=pointer]:
+          - /url: /
+        - navigation "Marketing" [ref=f4e7]:
+          - link "Platform" [ref=f4e8] [cursor=pointer]:
+            - /url: /#protocol
+          - link "Products" [ref=f4e9] [cursor=pointer]:
+            - /url: /#modules
+          - link "Learn" [ref=f4e10] [cursor=pointer]:
+            - /url: /learn
+          - link "FAQ" [ref=f4e11] [cursor=pointer]:
+            - /url: /faq
+          - link "Pricing" [ref=f4e12] [cursor=pointer]:
+            - /url: /pricing
+        - link "Open desk →" [ref=f4e14] [cursor=pointer]:
+          - /url: /dashboard
+          - text: Open desk
+          - generic [ref=f4e15]: →
+    - main [ref=f4e16]:
+      - generic [ref=f4e17]:
+        - generic [ref=f4e18]:
+          - img "BlackOut" [ref=f4e23]
+          - heading "Trade like the lights are on." [level=1] [ref=f4e25]:
+            - generic [ref=f4e26]: Trade like
+            - generic [ref=f4e27]: the lights
+            - generic [ref=f4e28]: are on.
+          - generic [ref=f4e29]:
+            - paragraph [ref=f4e30]: See what the dealers see. Trade before the crowd moves.
+            - generic [ref=f4e31]:
+              - link "Open desk" [ref=f4e32] [cursor=pointer]:
+                - /url: /dashboard
+              - link "Explore the desk" [ref=f4e33] [cursor=pointer]:
+                - /url: "#modules"
+            - list [ref=f4e34]:
+              - listitem [ref=f4e35]: 6 live engines
+              - listitem [ref=f4e36]: 12,400+ contracts scanned daily
+              - listitem [ref=f4e37]: Every setup graded A–F
+        - generic [ref=f4e39]:
+          - generic [ref=f4e40]:
+            - generic [ref=f4e41]: Every module, in depth
+            - heading "Six engines. One edge." [level=2] [ref=f4e43]: Six engines.One edge.
+            - paragraph [ref=f4e44]: "Each module is a full product — purpose-built for one dimension of the tape, unified by BlackOut Intelligence. No add-ons, no upsells: the whole desk is one price."
+          - generic [ref=f4e45]:
+            - generic [ref=f4e46]:
+              - article [ref=f4e47] [cursor=pointer]:
+                - generic [ref=f4e48]: SPX Slayer · live desk
+                - img "SPX Slayer screenshot" [ref=f4e55]
+                - generic [ref=f4e56]:
+                  - generic [ref=f4e57]:
+                    - generic [ref=f4e58]: "01"
+                    - generic [ref=f4e59]: 0DTE command desk
+                    - generic [ref=f4e60]: 0DTE traders
+                  - generic [ref=f4e61]: SPX Slayer
+                  - generic [ref=f4e62]: Read SPX structure before the tape moves.
+                  - generic [ref=f4e63]: Live 0DTE gamma matrix, dealer walls, and graded play alerts — the anchor of the BlackOut desk.
+                  - list [ref=f4e64]:
+                    - listitem [ref=f4e65]: › GEX / VEX / DEX / CHARM lenses on the 0DTE ladder
+                    - listitem [ref=f4e66]: › Spot row, king strikes, and cross-validated positioning
+                    - listitem [ref=f4e67]: › Trade alerts gated by the same BIE verification stack
+                  - generic [ref=f4e68]:
+                    - generic [ref=f4e69]:
+                      - generic [ref=f4e70]: 8s
+                      - generic [ref=f4e71]: matrix refresh in RTH
+                    - link "Open SPX Slayer →" [ref=f4e72]:
+                      - /url: /dashboard
+              - article [ref=f4e73] [cursor=pointer]:
+                - generic [ref=f4e74]: HELIX · live desk
+                - generic [ref=f4e80]:
+                  - generic:
+                    - generic [ref=f4e81]:
+                      - img "HELIX screenshot 1" [ref=f4e83]
+                      - generic:
+                        - img "HELIX screenshot 2"
+                      - generic:
+                        - img "HELIX screenshot 3"
+                      - generic:
+                        - img "HELIX screenshot 4"
+                    - button "Previous" [ref=f4e84]: ‹
+                    - button "Next" [ref=f4e85]: ›
+                - generic [ref=f4e91]:
+                  - generic [ref=f4e92]:
+                    - generic [ref=f4e93]: "02"
+                    - generic [ref=f4e94]: Institutional flow tape
+                    - generic [ref=f4e95]: Flow hunters
+                  - generic [ref=f4e96]: HELIX
+                  - generic [ref=f4e97]: Institutional prints — tick by tick, not delayed screenshots.
+                  - generic [ref=f4e98]: Unusual options activity with premium filters, anomaly scoring, and deep contract context.
+                  - list [ref=f4e99]:
+                    - listitem [ref=f4e100]: › Live websocket tape with premium-tier filters
+                    - listitem [ref=f4e101]: › Top prints, sweeps, and block detection
+                    - listitem [ref=f4e102]: › Feeds SPX Slayer confluence and Night Hawk scanner
+                  - generic [ref=f4e103]:
+                    - generic [ref=f4e104]:
+                      - generic [ref=f4e105]: Live
+                      - generic [ref=f4e106]: options flow stream
+                    - link "Open HELIX →" [ref=f4e107]:
+                      - /url: /flows
+              - article [ref=f4e108] [cursor=pointer]:
+                - generic [ref=f4e109]: BlackOut Thermal · live desk
+                - generic [ref=f4e115]:
+                  - generic:
+                    - generic [ref=f4e116]:
+                      - img "BlackOut Thermal screenshot 1" [ref=f4e118]
+                      - generic:
+                        - img "BlackOut Thermal screenshot 2"
+                      - generic:
+                        - img "BlackOut Thermal screenshot 3"
+                      - generic:
+                        - img "BlackOut Thermal screenshot 4"
+                    - button "Previous" [ref=f4e119]: ‹
+                    - button "Next" [ref=f4e120]: ›
+                - generic [ref=f4e126]:
+                  - generic [ref=f4e127]:
+                    - generic [ref=f4e128]: "03"
+                    - generic [ref=f4e129]: Dealer gamma matrix
+                    - generic [ref=f4e130]: Gamma readers
+                  - generic [ref=f4e131]: BlackOut Thermal
+                  - generic [ref=f4e132]: See where dealers are pinned across the surface.
+                  - generic [ref=f4e133]: Full-screen GEX heatmap across strikes and expiries — the macro view of dealer positioning.
+                  - list [ref=f4e134]:
+                    - listitem [ref=f4e135]: › Multi-ticker presets with GEX / VEX / DEX / CHARM lenses
+                    - listitem [ref=f4e136]: › Cross-validated against the live SPX rail
+                    - listitem [ref=f4e137]: › Charm and delta shifts when positioning rotates
+                  - generic [ref=f4e138]:
+                    - generic [ref=f4e139]:
+                      - generic [ref=f4e140]: Multi
+                      - generic [ref=f4e141]: ticker presets
+                    - link "Open BlackOut Thermal →" [ref=f4e142]:
+                      - /url: /heatmap
+              - article [ref=f4e143] [cursor=pointer]:
+                - generic [ref=f4e144]: Largo · live desk
+                - generic [ref=f4e150]:
+                  - generic:
+                    - generic [ref=f4e151]:
+                      - img "Largo screenshot 1" [ref=f4e153]
+                      - generic:
+                        - img "Largo screenshot 2"
+                    - button "Previous" [ref=f4e154]: ‹
+                    - button "Next" [ref=f4e155]: ›
+                - generic [ref=f4e159]:
+                  - generic [ref=f4e160]:
+                    - generic [ref=f4e161]: "04"
+                    - generic [ref=f4e162]: Desk intelligence
+                    - generic [ref=f4e163]: Desk operators
+                  - generic [ref=f4e164]: Largo
+                  - generic [ref=f4e165]: Ask the desk — get structure, not chat fluff.
+                  - generic [ref=f4e166]: Context-aware reads on flow, gamma, and regime — grounded in the same live feeds as your tools.
+                  - list [ref=f4e167]:
+                    - listitem [ref=f4e168]: › Structure-first answers with invalidation and sizing
+                    - listitem [ref=f4e169]: › Routes through BlackOut Intelligence on every ask
+                    - listitem [ref=f4e170]: › SPX, flow, and cross-tool context in one terminal
+                  - generic [ref=f4e171]:
+                    - generic [ref=f4e172]:
+                      - generic [ref=f4e173]: BIE
+                      - generic [ref=f4e174]: structure-first AI
+                    - link "Open Largo →" [ref=f4e175]:
+                      - /url: /terminal
+              - article [ref=f4e176] [cursor=pointer]:
+                - generic [ref=f4e177]: Night Hawk · live desk
+                - img "Night Hawk screenshot" [ref=f4e184]
+                - generic [ref=f4e185]:
+                  - generic [ref=f4e186]:
+                    - generic [ref=f4e187]: "05"
+                    - generic [ref=f4e188]: Swing playbook
+                    - generic [ref=f4e189]: Swing traders
+                  - generic [ref=f4e190]: Night Hawk
+                  - generic [ref=f4e191]: Overnight and swing setups with receipts.
+                  - generic [ref=f4e192]: Graded playbook, evening scanner, and push alerts when structure clears the gate.
+                  - list [ref=f4e193]:
+                    - listitem [ref=f4e194]: › Transparent A–F play log with full thesis trail
+                    - listitem [ref=f4e195]: › Evening scanner tied to HELIX anomalies
+                    - listitem [ref=f4e196]: › Alerts when gates clear — not noise for noise's sake
+                  - generic [ref=f4e197]:
+                    - generic [ref=f4e198]:
+                      - generic [ref=f4e199]: A–F
+                      - generic [ref=f4e200]: graded play log
+                    - link "Open Night Hawk →" [ref=f4e201]:
+                      - /url: /nighthawk
+              - article [ref=f4e202] [cursor=pointer]:
+                - generic [ref=f4e203]: Vector · live desk
+                - generic [ref=f4e209]:
+                  - generic:
+                    - generic [ref=f4e210]:
+                      - img "Vector screenshot 1" [ref=f4e212]
+                      - generic:
+                        - img "Vector screenshot 2"
+                      - generic:
+                        - img "Vector screenshot 3"
+                      - generic:
+                        - img "Vector screenshot 4"
+                    - button "Previous" [ref=f4e213]: ‹
+                    - button "Next" [ref=f4e214]: ›
+                - generic [ref=f4e220]:
+                  - generic [ref=f4e221]:
+                    - generic [ref=f4e222]: "06"
+                    - generic [ref=f4e223]: Universe radar
+                    - generic [ref=f4e224]: Universe scanners
+                  - generic [ref=f4e225]: Vector
+                  - generic [ref=f4e226]: Broaden the hunt beyond SPX.
+                  - generic [ref=f4e227]: Cross-ticker flow and gamma context — ranked setups from the same verification engine as the desk.
+                  - list [ref=f4e228]:
+                    - listitem [ref=f4e229]: › Multi-ticker flow and positioning context
+                    - listitem [ref=f4e230]: › Ranked setups from BlackOut Intelligence
+                    - listitem [ref=f4e231]: › Rolling out as desk coverage expands
+                  - generic [ref=f4e232]:
+                    - generic [ref=f4e233]:
+                      - generic [ref=f4e234]: Soon
+                      - generic [ref=f4e235]: universe scan
+                    - link "Open Vector →" [ref=f4e236]:
+                      - /url: /vector
+            - generic [ref=f4e237]:
+              - button "Previous" [ref=f4e238] [cursor=pointer]: ‹
+              - button "Next" [ref=f4e246] [cursor=pointer]: ›
+        - generic [ref=f4e249]:
+          - generic [ref=f4e250]:
+            - generic [ref=f4e251]: The intelligence engine
+            - heading "How BlackOut thinks." [level=2] [ref=f4e253]: How BlackOutthinks.
+            - paragraph [ref=f4e254]: Every opportunity passes through four stages. What survives is what reaches your screen.
+          - generic [ref=f4e255]:
+            - generic [ref=f4e256]: 12,400+ contracts ingested per session
+            - generic [ref=f4e261]:
+              - generic [ref=f4e262]:
+                - generic [ref=f4e263]: "01"
+                - generic [ref=f4e264]: OFFLINE
+              - generic [ref=f4e267]:
+                - heading "Identify" [level=3] [ref=f4e268]
+                - paragraph [ref=f4e269]: Read the floor before anyone else.
+                - paragraph [ref=f4e270]: Dealer gamma, dark-pool blocks, institutional sweeps, and GEX walls — every signal that moves SPX, surfaced before the tape catches up.
+                - generic [ref=f4e271]:
+                  - generic [ref=f4e272]: SCANNING
+                  - generic [ref=f4e273]: GEX WALLS
+                  - generic [ref=f4e274]: DARK POOL
+                  - generic [ref=f4e275]: SWEEPS
+                  - generic [ref=f4e276]: DEALER FLOW
+            - generic [ref=f4e280]:
+              - generic [ref=f4e281]:
+                - generic [ref=f4e282]: "02"
+                - generic [ref=f4e283]: OFFLINE
+              - generic [ref=f4e288]:
+                - heading "Validate" [level=3] [ref=f4e289]
+                - paragraph [ref=f4e290]: Every setup gated. Every grade earned.
+                - paragraph [ref=f4e291]: The BIE verification stack scores confluence, runs Cortex analysis, checks invalidation triggers, and assigns an A–F grade. No grade, no play.
+                - generic [ref=f4e292]:
+                  - generic [ref=f4e293]: BIE ENGINE
+                  - generic [ref=f4e294]: A–F GRADE
+                  - generic [ref=f4e295]: CONFLUENCE
+                  - generic [ref=f4e296]: CORTEX
+                  - generic [ref=f4e297]: INVALIDATION
+            - generic [ref=f4e299]:
+              - generic [ref=f4e300]:
+                - generic [ref=f4e301]: "03"
+                - generic [ref=f4e302]: OFFLINE
+              - generic [ref=f4e305]:
+                - heading "Execute" [level=3] [ref=f4e306]
+                - paragraph [ref=f4e307]: Structure, strike, timing. You pull the trigger.
+                - paragraph [ref=f4e308]: Night Hawk and SPX Slayer surface the play with entry, stop, and target. No order routing, no broker lock-in — pure intelligence delivered to your screen.
+                - generic [ref=f4e309]:
+                  - generic [ref=f4e310]: READY
+                  - generic [ref=f4e311]: ENTRY
+                  - generic [ref=f4e312]: STOP
+                  - generic [ref=f4e313]: TARGET
+                  - generic [ref=f4e314]: R:R
+            - generic [ref=f4e318]:
+              - generic [ref=f4e319]:
+                - generic [ref=f4e320]: "04"
+                - generic [ref=f4e321]: OFFLINE
+              - generic [ref=f4e326]:
+                - heading "Results" [level=3] [ref=f4e327]
+                - paragraph [ref=f4e328]: Receipts. Not promises.
+                - paragraph [ref=f4e329]: Every play logged, graded, and timestamped. Win or lose, the record is public. No cherry-picking, no deleted calls — the full ledger, always.
+                - generic [ref=f4e330]:
+                  - generic [ref=f4e331]: LOGGED
+                  - generic [ref=f4e332]: GRADED A–F
+                  - generic [ref=f4e333]: TIMESTAMPED
+                  - generic [ref=f4e334]: PUBLIC RECORD
+            - generic [ref=f4e338]:
+              - generic [ref=f4e339]: ~3%
+              - generic [ref=f4e340]: of scanned setups survive to your screen
+        - generic [ref=f4e344]:
+          - generic [ref=f4e345]:
+            - generic [ref=f4e346]: Why BlackOut
+            - heading "Built like a trading desk. Not a Discord server." [level=2] [ref=f4e348]: Built like a trading desk.Not a Discord server.
+          - generic [ref=f4e349]:
+            - generic [ref=f4e350]:
+              - generic [ref=f4e351]: Everywhere else
+              - list [ref=f4e352]:
+                - listitem [ref=f4e353]: ✕ Delayed snapshots, manual refresh
+                - listitem [ref=f4e354]: ✕ Cherry-picked alerts, no receipts
+                - listitem [ref=f4e355]: ✕ Scattered across 5 tabs and 3 Discords
+                - listitem [ref=f4e356]: ✕ Gut-feel callouts, no grading
+                - listitem [ref=f4e357]: ✕ Stale data repackaged as “signals”
+                - listitem [ref=f4e358]: ✕ Monthly PDF recaps
+            - generic [ref=f4e359]:
+              - generic [ref=f4e360]: BlackOut
+              - list [ref=f4e361]:
+                - listitem [ref=f4e362]: ✓ Live tick-by-tick — zero delay
+                - listitem [ref=f4e363]: ✓ Every setup graded A–F with a logged track record
+                - listitem [ref=f4e364]: ✓ 6 engines, one screen, one membership
+                - listitem [ref=f4e365]: ✓ AI verification engine gates every play
+                - listitem [ref=f4e366]: ✓ Institutional flow, GEX, dark pool — streamed live
+                - listitem [ref=f4e367]: ✓ Real-time P&L marks, not end-of-day summaries
+        - generic [ref=f4e370]:
+          - generic [ref=f4e371]:
+            - generic [ref=f4e372]: Access
+            - heading "One desk. Your price." [level=2] [ref=f4e374]: One desk.Your price.
+          - generic [ref=f4e375]:
+            - generic [ref=f4e376]:
+              - generic [ref=f4e377]: SPX Slayer
+              - generic [ref=f4e378]: $49 / mo
+              - generic [ref=f4e379]: SPX structure + 0DTE desk access
+              - list [ref=f4e380]:
+                - listitem [ref=f4e381]: ✓ Live SPX regime & GEX
+                - listitem [ref=f4e382]: ✓ 0DTE graded plays A–F
+                - listitem [ref=f4e383]: ✓ Dealer gamma positioning
+                - listitem [ref=f4e384]: ✓ Strike-level heatmaps
+              - link "Get SPX access" [ref=f4e385] [cursor=pointer]:
+                - /url: https://whop.com/blackout-2d9c/blackout-discord-community
+              - paragraph [ref=f4e386]: Cancel anytime · No contracts
+            - generic [ref=f4e387]:
+              - generic [ref=f4e388]: FULL DESK
+              - generic [ref=f4e389]: Premium
+              - generic [ref=f4e390]: $199 / mo
+              - generic [ref=f4e391]: Every module + Discord — one membership
+              - list [ref=f4e392]:
+                - listitem [ref=f4e393]: ✓ HELIX live options-flow
+                - listitem [ref=f4e394]: ✓ SPX Slayer 0DTE desk
+                - listitem [ref=f4e395]: ✓ Largo AI analyst
+                - listitem [ref=f4e396]: ✓ Dealer gamma / GEX
+                - listitem [ref=f4e397]: ✓ Dark-pool prints
+                - listitem [ref=f4e398]: ✓ Night Hawk scanner
+                - listitem [ref=f4e399]: ✓ Strike-level heatmaps
+                - listitem [ref=f4e400]: ✓ Graded play log A-F
+              - link "Get full access →" [ref=f4e401] [cursor=pointer]:
+                - /url: https://whop.com/blackout-2d9c/blackout-trading-community
+                - text: Get full access
+                - generic [ref=f4e402]: →
+              - paragraph [ref=f4e403]: Cancel anytime · No contracts
+            - generic [ref=f4e404]:
+              - generic [ref=f4e405]: Save $389
+              - generic [ref=f4e406]: Premium · Yearly
+              - generic [ref=f4e407]: $1,999 / yr
+              - generic [ref=f4e408]: $167/mo · save $389 vs monthly
+              - list [ref=f4e409]:
+                - listitem [ref=f4e410]: ✓ HELIX live options-flow
+                - listitem [ref=f4e411]: ✓ SPX Slayer 0DTE desk
+                - listitem [ref=f4e412]: ✓ Largo AI analyst
+                - listitem [ref=f4e413]: ✓ Dealer gamma / GEX
+                - listitem [ref=f4e414]: ✓ Dark-pool prints
+                - listitem [ref=f4e415]: ✓ Night Hawk scanner
+                - listitem [ref=f4e416]: ✓ Strike-level heatmaps
+                - listitem [ref=f4e417]: ✓ Graded play log A-F
+              - link "Lock in yearly →" [ref=f4e418] [cursor=pointer]:
+                - /url: https://whop.com/blackout-2d9c/yearly-access-c0
+                - text: Lock in yearly
+                - generic [ref=f4e419]: →
+              - paragraph [ref=f4e420]: Cancel anytime · No contracts
+        - generic [ref=f4e422]:
+          - generic [ref=f4e423]:
+            - generic [ref=f4e424]: FAQ
+            - heading "Questions? Answered." [level=2] [ref=f4e426]: Questions?Answered.
+          - generic [ref=f4e427]:
+            - group [ref=f4e428]:
+              - generic "Can I cancel anytime? +" [ref=f4e429] [cursor=pointer]
+            - group [ref=f4e430]:
+              - generic "Do I need to connect a broker? +" [ref=f4e431] [cursor=pointer]
+            - group [ref=f4e432]:
+              - generic "What's the difference between SPX Slayer and Premium? +" [ref=f4e433] [cursor=pointer]
+            - group [ref=f4e434]:
+              - generic "Is any of this financial advice? +" [ref=f4e435] [cursor=pointer]
+            - group [ref=f4e436]:
+              - generic "How do I get started? +" [ref=f4e437] [cursor=pointer]
+        - generic [ref=f4e439]:
+          - generic [ref=f4e440]: BLACKOUT
+          - generic [ref=f4e441]: The intelligence layer behind modern trading.
+          - generic [ref=f4e442]:
+            - link "Open the desk →" [ref=f4e443] [cursor=pointer]:
+              - /url: /upgrade
+              - text: Open the desk
+              - generic [ref=f4e444]: →
+            - link "See the desk" [ref=f4e445] [cursor=pointer]:
+              - /url: "#modules"
+    - contentinfo [ref=f4e446]:
+      - paragraph: BLACKOUT
+      - generic [ref=f4e447]:
+        - generic [ref=f4e448]:
+          - paragraph [ref=f4e449]: BLACKOUT
+          - paragraph [ref=f4e450]: Trade like the lights are on.
+          - generic [ref=f4e451]:
+            - link "Join the BlackOut Discord" [ref=f4e452] [cursor=pointer]:
+              - /url: https://discord.gg/r8AEcnDCv
+            - link "Follow @BlackOutTrade on X" [ref=f4e455] [cursor=pointer]:
+              - /url: https://x.com/BlackOutTrade
+            - link "@blackouttrades on Instagram" [ref=f4e458] [cursor=pointer]:
+              - /url: https://www.instagram.com/blackouttrades
+        - generic [ref=f4e461]:
+          - paragraph [ref=f4e462]: Desk
+          - link "Pricing" [ref=f4e463] [cursor=pointer]:
+            - /url: /pricing
+          - link "Learn" [ref=f4e464] [cursor=pointer]:
+            - /url: /learn
+          - link "FAQ" [ref=f4e465] [cursor=pointer]:
+            - /url: /faq
+          - link "Contact" [ref=f4e466] [cursor=pointer]:
+            - /url: /contact
+        - generic [ref=f4e467]:
+          - paragraph [ref=f4e468]: Legal
+          - link "Terms of Service" [ref=f4e469] [cursor=pointer]:
+            - /url: /terms
+          - link "Privacy Policy" [ref=f4e470] [cursor=pointer]:
+            - /url: /privacy
+          - link "Risk Disclaimer" [ref=f4e471] [cursor=pointer]:
+            - /url: /disclaimer
+          - link "Refund Policy" [ref=f4e472] [cursor=pointer]:
+            - /url: /refund-policy
+          - link "Cookie Policy" [ref=f4e473] [cursor=pointer]:
+            - /url: /cookie-policy
+        - generic [ref=f4e474]:
+          - paragraph [ref=f4e475]: Community
+          - link "Discord" [ref=f4e476] [cursor=pointer]:
+            - /url: https://discord.gg/r8AEcnDCv
+          - link "X" [ref=f4e477] [cursor=pointer]:
+            - /url: https://x.com/BlackOutTrade
+          - link "Instagram" [ref=f4e478] [cursor=pointer]:
+            - /url: https://www.instagram.com/blackouttrades
+      - paragraph [ref=f4e480]:
+        - strong [ref=f4e481]: "Risk Disclosure:"
+        - text: Options and equities trading involve substantial risk and are not suitable for every investor. BlackOut provides educational tools and market analysis only and does not provide investment advice. Past performance is not indicative of future results.
+      - paragraph [ref=f4e483]: © 2026 BlackOut Trading. All Rights Reserved.
+  - alert [ref=f4e484]
