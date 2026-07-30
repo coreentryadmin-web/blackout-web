@@ -4,7 +4,7 @@
 // one user's cached pages to another on a shared device). Money-path data always
 // hits the network.
 
-const CACHE = "blackout-shell-v1";
+const CACHE = "blackout-shell-v2";
 // Static, public, non-personalized assets only.
 const SHELL = ["/offline", "/manifest.webmanifest", "/icon-192.png"];
 
