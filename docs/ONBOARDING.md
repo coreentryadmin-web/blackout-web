@@ -201,6 +201,8 @@ scripts use stale paths; trust the directory tree.
 
 ### Night Hawk (+ 0DTE Command + Swing)
 - Logic: `src/features/nighthawk/lib/` (scanner, scorer, positioning, grounding). Edition generation runs via `api/cron/nighthawk-edition`.
+- **Unified engine architecture (design of record):** [`audit/BLACKOUT-ENGINES-ARCHITECTURE.md`](audit/BLACKOUT-ENGINES-ARCHITECTURE.md) — 0DTE + Swing spine, firewall, exits, graduation loop.
+- **0DTE unification plan:** [`audit/0DTE-UNIFICATION-DESIGN.md`](audit/0DTE-UNIFICATION-DESIGN.md).
 - **Swing (2–30 DTE):** full guide [`audit/SWING-SYSTEM.md`](audit/SWING-SYSTEM.md); engine `src/lib/swing/*`; crons `swing-discovery`, `swing-active-refresh`; reader `api/market/nighthawk/horizons?view=swings`.
 - Crons: `nighthawk-edition`, `nighthawk-morning-confirm`, `nighthawk-outcomes`, `zerodte-warm`, `swing-discovery`, `swing-active-refresh`.
 - Reader: `api/market/nighthawk/edition`, `api/market/zerodte/board`, `api/market/nighthawk/horizons`. Grounding: [NIGHTHAWK_GROUNDING.md](NIGHTHAWK_GROUNDING.md).
