@@ -96,6 +96,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               "(function(){try{var RE=/ChunkLoadError|Loading chunk [0-9]+ failed|Loading CSS chunk|Failed to fetch dynamically imported module|error loading dynamically imported module|Refused to execute script|Importing a module script failed/i;var K='blackout:chunk-reload';var BK='blackout:build-id';var bid=document.querySelector('script[src*=\"/_next/static/\"]');var curBuild=bid&&(bid.src.match(/_next\\/static\\/([^\\/]+)\\//)||[])[1]||'';var prevBuild='';try{prevBuild=sessionStorage.getItem(BK)||''}catch(e){}if(curBuild&&curBuild!==prevBuild){try{sessionStorage.removeItem(K);sessionStorage.setItem(BK,curBuild)}catch(e){}}function reload(){try{var raw=sessionStorage.getItem(K);var st=raw?JSON.parse(raw):{n:0,t:0};var now=Date.now();if(st.n>=3||now-st.t<8000)return;sessionStorage.setItem(K,JSON.stringify({n:st.n+1,t:now}))}catch(e){}location.reload()}window.addEventListener('error',function(e){try{var t=e&&e.target;if(t&&(t.tagName==='SCRIPT'||t.tagName==='LINK')&&/_next\\/static\\/chunks\\//.test(t.src||t.href||'')){reload();return}if(e&&RE.test(String(e.message||''))){reload()}}catch(_){}},true);window.addEventListener('unhandledrejection',function(e){try{var r=e&&e.reason;if(r&&RE.test(String(r&&r.message||r||''))){reload()}}catch(_){}})}catch(e){}})();",
           }}
         />
+        {/* SSR streaming safety net — if React's $RC reveal callback hasn't fired
+            after 5s (GPU compositing collapse can block the paint
+            that triggers the reveal), force-reveal any pending Suspense boundaries. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "setTimeout(function(){try{if(typeof $RV==='function'&&typeof $RB!=='undefined'&&$RB.length>0)$RV($RB)}catch(e){}},5000);",
+          }}
+        />
       </head>
       <body className="void-bg antialiased">
         <a

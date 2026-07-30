@@ -273,10 +273,25 @@
 
 /* ── Hero mobile ── */
 @media(max-width:768px){
-  .hero{padding:1.5rem 1rem 1.5rem}
+  .hero{padding:1.5rem 1rem 1.5rem;isolation:isolate}
   .hero-reactor{width:clamp(240px,65vw,340px);transform:translateY(20px)}
   .hero-reactor::after{bottom:10%;width:40%;height:14%}
   .energy-canvas{width:clamp(350px,85vw,500px)}
+  /* GPU compositing relief — mobile Safari has a hard texture-memory budget;
+     the 10+ compositing layers (blend modes, filters, masks, canvases) exceed
+     it and the entire compositing context collapses to a blank rectangle.
+     Strip the heaviest GPU ops on mobile; desktop unchanged. */
+  .logo-atmos{mix-blend-mode:normal;filter:blur(12px);opacity:.12;-webkit-mask-image:none;mask-image:none}
+  .logo-energy{mix-blend-mode:normal;filter:brightness(1.3) saturate(1.2);opacity:.55;-webkit-mask-image:none;mask-image:none}
+  .logo-b{mix-blend-mode:normal;filter:contrast(1.2) brightness(1.3);opacity:1;-webkit-mask-image:none;mask-image:none}
+  .logo-edge-energy{inset:-15%;width:auto;height:auto}
+  .filament-canvas{inset:-15%;width:auto;height:auto}
+  .logo-breath{inset:0}
+  #atmos{display:none}
+  .atmos-scan{display:none}
+  .atmos-sweep{display:none}
+  .atmos-grid{animation:none}
+  .spine{display:none}
   .hero-h{margin-top:clamp(30px,5vh,50px)}
   .hero-h h1{font-size:clamp(2.8rem,12vw,4.2rem)}
   .hero-h h1 .l1{margin-bottom:8px}
