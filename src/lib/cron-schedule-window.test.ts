@@ -48,4 +48,20 @@ describe("cron-schedule-window", () => {
     const now = new Date("2026-07-30T13:00:00.000Z");
     assert.equal(isInOffScheduleIdleGap(cron, now), false);
   });
+
+  it("zerodte-grade: off-window gap before 20:00 UTC weekday post-close band", () => {
+    const cron = "*/15 20-22 * * 1-5";
+    const now = new Date("2026-07-30T12:52:00.000Z"); // Thu 8:52 AM ET — ops #1331 false positive
+    assert.equal(isInOffScheduleIdleGap(cron, now), true);
+    const last = lastExpectedCronFireUtc(cron, now);
+    const next = nextExpectedCronFireUtc(cron, now);
+    assert.equal(last?.toISOString(), "2026-07-29T22:45:00.000Z");
+    assert.equal(next?.toISOString(), "2026-07-30T20:00:00.000Z");
+  });
+
+  it("zerodte-grade: in-window between :15 fires — missed tick should not be idle", () => {
+    const cron = "*/15 20-22 * * 1-5";
+    const now = new Date("2026-07-30T20:25:00.000Z");
+    assert.equal(isInOffScheduleIdleGap(cron, now), false);
+  });
 });

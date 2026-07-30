@@ -13,14 +13,14 @@ import { CRON_SERVICE_NAMES } from "./railway-cron-services.mjs";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 const ENGINE_CRONS = [
-  { key: "zerodte-grade", scheduleHint: "*/15" },
+  { key: "zerodte-grade", scheduleHint: "*/15", scheduleCronUtc: true },
   { key: "swing-discovery", scheduleHint: null },
   { key: "swing-active-refresh", scheduleHint: "*/15" },
 ];
 
 const registry = readFileSync(join(ROOT, "src/lib/cron-registry.ts"), "utf8");
 
-for (const { key, scheduleHint } of ENGINE_CRONS) {
+for (const { key, scheduleHint, scheduleCronUtc } of ENGINE_CRONS) {
   test(`engine cron "${key}" is registered in cron-registry.ts`, () => {
     assert.ok(registry.includes(`key: "${key}"`), `cron-registry.ts is missing key "${key}"`);
   });
@@ -42,4 +42,21 @@ for (const { key, scheduleHint } of ENGINE_CRONS) {
   test(`engine cron "${key}" has a CRON_SERVICE_NAMES entry`, () => {
     assert.ok(CRON_SERVICE_NAMES[key], `railway-cron-services.mjs missing "${key}"`);
   });
+
+  if (scheduleCronUtc) {
+    test(`engine cron "${key}" schedule_cron_utc matches railway.${key}.toml`, () => {
+      const toml = readFileSync(join(ROOT, `railway.${key}.toml`), "utf8");
+      const match = toml.match(/cronSchedule = "([^"]+)"/);
+      assert.ok(match, `railway.${key}.toml must declare cronSchedule`);
+      const cronExpr = match[1];
+      const re = new RegExp(
+        `key: "${key}"[\\s\\S]*?schedule_cron_utc:\\s*"${cronExpr.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`,
+      );
+      assert.match(
+        registry,
+        re,
+        `cron-registry.ts key "${key}" must set schedule_cron_utc to match railway.${key}.toml (${cronExpr})`,
+      );
+    });
+  }
 }

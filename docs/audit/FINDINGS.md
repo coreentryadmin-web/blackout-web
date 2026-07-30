@@ -25,6 +25,23 @@ positions sampled hourly (premium_stop / structural_stop could miss intrahour mo
 permissions for `zerodte-grade` and update `swing-active-refresh` schedule (same pattern as 2026-07-30
 swing cron repair).
 
+## 2026-07-30 — [ops] zerodte-grade off-window stale false positive (#1331)
+
+**Severity.** P1 ops false positive — not a prod outage.
+
+**Symptom.** ops-auto-fix #1331 flagged `zerodte-grade` stale at 12:52 UTC (8:52 AM ET) via
+cron-staleness-watchdog.
+
+**Root cause.** `zerodte-grade` fires only `*/15 20-22 * * 1-5` UTC (post-close band) but
+`admin-cron-health` applied the 6h `stale_after_min` 24/7 with no `schedule_cron_utc` — same class
+as the x-replies off-window false positive (FINDINGS 2026-07-30). Last night's 22:00 UTC run was
+>6h old by morning RTH.
+
+**Fix.** `schedule_cron_utc: "*/15 20-22 * * 1-5"` on the registry entry + regression tests in
+`cron-schedule-window.test.ts` and `engine-cron-catalog.test.mjs`.
+
+**Status.** FIXED — PR merge + deploy clears recurring morning watchdog noise.
+
 ## 2026-07-30 — [0DTE] Draft PR #1199 items — superseded on main
 
 **Severity.** P0/P1 stack from `cursor/zerodte-multi-rail-discovery-3d11` (draft #1199).
