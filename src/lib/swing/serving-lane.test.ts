@@ -72,13 +72,13 @@ test("assembles a real sectioned lane: WATCH + RESEARCH populate; setupState sta
   const discover = async (): Promise<SwingDiscoveryLike> => ({
     dossiers: [buildSwingDossier(dossier("NVDA")), buildSwingDossier(dossier("WAT"))].map((d) => d),
     plays: [
-      play({ ticker: "NVDA", status: "COMMIT" }),
+      play({ ticker: "NVDA", status: "COMMIT", bucketGraduated: true }),
       play({ ticker: "WAT", status: "WATCH" }),
       play({ ticker: "RES", status: "WATCH" }), // no dossier match → RESEARCH
     ],
   });
   const readsByTicker = new Map<string, SwingServingReads>([
-    // NVDA: LONG at the trigger, inside the window → TRIGGERED + AT_TRIGGER → COMMIT_NOW.
+    // NVDA: LONG at the trigger, inside the window + graduated → COMMIT_NOW.
     ["NVDA", { setup: { price: 100.5, triggerPx: 100, invalidationPx: 90, atr: 3 }, entry: { price: 100.5, triggerPx: 100, atr: 3, entryZoneFar: 98 }, contract }],
     // WAT: LONG below the trigger → FORMING → WATCH.
     ["WAT", { setup: { price: 95, triggerPx: 100, invalidationPx: 90, atr: 3 } }],
@@ -95,6 +95,19 @@ test("assembles a real sectioned lane: WATCH + RESEARCH populate; setupState sta
   assert.equal(lane.sections.COMMIT_NOW[0]!.setupState, "TRIGGERED");
   assert.equal(lane.sections.COMMIT_NOW[0]!.entryStatus, "AT_TRIGGER");
   assert.equal(lane.sections.COMMIT_NOW[0]!.serving, "COMMIT_NOW"); // stamped by the section router
+});
+
+test("ungraduated AT_TRIGGER stays WAITING_FOR_ENTRY — never COMMIT_NOW on cold book", async () => {
+  const discover = async (): Promise<SwingDiscoveryLike> => ({
+    dossiers: [buildSwingDossier(dossier("NVDA"))],
+    plays: [play({ ticker: "NVDA", status: "COMMIT", bucketGraduated: false })],
+  });
+  const readsByTicker = new Map<string, SwingServingReads>([
+    ["NVDA", { setup: { price: 100.5, triggerPx: 100, invalidationPx: 90, atr: 3 }, entry: { price: 100.5, triggerPx: 100, atr: 3, entryZoneFar: 98 }, contract }],
+  ]);
+  const lane = await getSwingServingLane({ discover, readsByTicker });
+  assert.equal(lane.sections.COMMIT_NOW.length, 0);
+  assert.equal(lane.sections.WAITING_FOR_ENTRY.map((p) => p.ticker).join(","), "NVDA");
 });
 
 test("fetchOpenPositions populates MANAGING / SCALING_OUT / EXITING live sections", async () => {
@@ -207,7 +220,7 @@ test("planLevels + spots drive setup maturity beyond RESEARCH on the serve path"
   const lane = await getSwingServingLane({
     discover: async () => ({
       dossiers: [d],
-      plays: [play({ ticker: "NVDA", status: "COMMIT" })],
+      plays: [play({ ticker: "NVDA", status: "COMMIT", bucketGraduated: true })],
       readsByTicker: new Map([
         [
           "NVDA",
@@ -228,8 +241,8 @@ test("planLevels + spots drive setup maturity beyond RESEARCH on the serve path"
 
 function watchCand(over: Partial<SwingWatchCandidate>): SwingWatchCandidate {
   return {
-    ticker: "NVDA", direction: "LONG", observationCount: 3, distinctSessionDays: 2,
-    phasesSeen: ["POST_CLOSE"], lastSessionDay: "2026-07-24",
+    ticker: "NVDA", direction: "LONG", archetype: "BREAKOUT", observationCount: 3, distinctSessionDays: 2,
+    phasesSeen: ["POST_CLOSE"], signalKinds: ["STRUCTURE"], lastSessionDay: "2026-07-24",
     firstSeenAt: "2026-07-22T20:00:00.000Z", lastSeenAt: "2026-07-24T20:00:00.000Z", ...over,
   };
 }

@@ -503,6 +503,8 @@ test("SEV-3: upsertSwingAccum SQL uses strictly-newer (>) increment + GREATEST h
   assert.doesNotMatch(body, /IS DISTINCT FROM EXCLUDED\.last_session_day/, "the buggy IS DISTINCT FROM guard is gone");
   // High-water mark pinned to GREATEST so an out-of-order day cannot rewind it.
   assert.match(body, /last_session_day = GREATEST\(swing_candidate_accumulation\.last_session_day, EXCLUDED\.last_session_day\)/);
+  // Thesis-keyed PK (FINDINGS 2026-07-30): conflict target includes archetype.
+  assert.match(body, /ON CONFLICT \(ticker, direction, archetype\)/);
 });
 
 test("signal_kinds: DDL adds the column, upsertSwingAccum deduped-unions it (the corroboration set)", () => {
@@ -517,6 +519,17 @@ test("signal_kinds: DDL adds the column, upsertSwingAccum deduped-unions it (the
   // phases_seen uses, but a SEPARATE column so a legacy cadence-only phases_seen can't leak in as a kind.
   assert.match(body, /signal_kinds = \(\s*SELECT COALESCE\(jsonb_agg\(DISTINCT e\), '\[\]'::jsonb\)/);
   assert.match(body, /jsonb_array_elements\(swing_candidate_accumulation\.signal_kinds \|\| EXCLUDED\.signal_kinds\)/);
+});
+
+test("thesis PK: swing_candidate_accumulation keys persistence by (ticker, direction, archetype)", () => {
+  const src = dbSource();
+  assert.match(src, /PRIMARY KEY \(ticker, direction, archetype\)/);
+  assert.match(src, /ADD COLUMN IF NOT EXISTS archetype TEXT NOT NULL DEFAULT 'UNCLASSIFIED'/);
+  const markBody = src.slice(
+    src.indexOf("export async function markAccumPromoted"),
+    src.indexOf("export async function fadeStaleAccum"),
+  );
+  assert.match(markBody, /WHERE ticker = \$1 AND direction = \$2 AND archetype = \$4/);
 });
 
 // ─── SEV-4: root/parent identity not clobbered + graded-feature index ─────────────────────────

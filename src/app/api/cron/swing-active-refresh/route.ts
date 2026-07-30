@@ -1,13 +1,16 @@
-// Cron: hourly refresh of held SWING positions (PR-13, HOLD / evidence-only — first writer of snapshots).
+// Cron: hourly MARK-AND-REVIEW of held SWING positions (not responsive intrabar live management).
 //
 // WHY: once positions persist, the desk needs each one's live path recorded on a heartbeat. Hourly, this route
 // reads every OPEN swing position, gathers fresh underlying/mark reads, APPENDS a snapshot to the position's
-// longitudinal series, and runs the PR-7 manager (via manage-sync) to latch live state. That snapshot series
-// is the grader's (PR-8) and the trajectory studies' (PR-14) raw input.
+// longitudinal series, and runs the manager (via manage-sync) to latch live state on THAT SAMPLE. Stops,
+// premium backstops, and scale cues are evaluated at sample time — intrahour touch-and-recover can be missed.
+// Tactical (2–7 DTE) needs a faster cadence before we can claim responsive live management; until then this
+// is an hourly mark-and-review model. Snapshot series still feeds the offline multi-family grader (when bars
+// are supplied) and trajectory studies.
 //
-// INVARIANTS: NEVER opens a position (no insertSwingPosition path) and NEVER writes a terminal status —
-// closing/rolling is PR-15. Snapshots are APPEND-ONLY. FAIL-SOFT: a bad read or DB error on one position is
-// isolated and tallied; it never aborts the loop or throws out of the cron (the loop core is in active-refresh).
+// INVARIANTS: NEVER opens a position (no insertSwingPosition path). Snapshots are APPEND-ONLY. FAIL-SOFT: a
+// bad read or DB error on one position is isolated and tallied; it never aborts the loop or throws out of
+// the cron (the loop core is in active-refresh).
 //
 // THIN HANDLER: the refresh loop (active-refresh.ts) and the management mapping (manage-sync.ts) are pure/
 // injected and unit-tested; this handler only does auth, the live provider wiring, and the run/log.

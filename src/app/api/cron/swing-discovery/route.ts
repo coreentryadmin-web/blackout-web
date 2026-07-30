@@ -189,7 +189,8 @@ function buildDiscoveryDeps(nowMs: number, sessionDay: string, phase: SwingDisco
       });
     },
     insertPosition: insertSwingPosition,
-    promoteCommit: (ticker, direction, positionId) => promoteSwingCandidate(accum, ticker, direction, positionId),
+    promoteCommit: (ticker, direction, positionId, archetype) =>
+      promoteSwingCandidate(accum, ticker, direction, positionId, archetype),
     budget: resolveProductionPortfolioBudget(),
     nowMs,
     sessionDay,

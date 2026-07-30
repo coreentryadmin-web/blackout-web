@@ -5,6 +5,65 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-30 — [Swing] Hourly manage is mark-and-review (not tactical live mgmt) + grader honesty labels
+
+**Severity.** P1 documentation / product-claim — overstated management precision + grader "truth".
+
+**#4 Active refresh.** Live manage cron is hourly. Tactical 2–7 DTE can move materially between
+samples; intrahour stop touch / recover is invisible; live MFE/MAE from hourly samples understate path.
+Claiming responsive structural_stop / premium_stop / scale-out / EXITING precision from that loop is false.
+
+**#5 Grader.** Families were labeled as execution/path/management/financial "truth" while production
+entry is typically a chain mid (reference mark), path resolution equals supplied bars (not guaranteed
+minute), and financial is marked scale-out P&L. The pure grader already fail-softs (`no_fill`,
+`ungradeable`) — the overclaim was primarily terminology + docs.
+
+**Fix (honesty, not cadence infra).**
+1. Docs + cron header: **hourly mark-and-review**; faster per-sub-lane cadence deferred (rate budget).
+2. Grader docs/header: REFERENCE_EXECUTION / OBSERVED_PATH / MODEL_MANAGEMENT / MARKED_FINANCIAL;
+   `SWING_GRADE_FAMILY_LABEL` map; code keys unchanged for JSON stability.
+3. Did **not** cut EventBridge to 1–5m tactical in this change — that needs an explicit schedule split
+   + UW/Polygon budget math before deploy.
+
+**Status.** Honesty FIXED on `cursor/swing-followups-3d11`. Faster tactical cadence = open follow-up.
+
+## 2026-07-30 — [Swing] COMMIT_NOW required graduation (cold-book "Act now" defect)
+
+**Severity.** P1 product / risk-control — member "Act now" on setups the model will not open.
+
+**Root cause.** Serving section `COMMIT_NOW` keyed only on TRIGGERED + AT_TRIGGER + floor clear.
+Score floors are provisional; ledger OPEN requires archetype×sub-lane graduation (+ budget/caps).
+Docs said "Act now" for COMMIT_NOW while the cold book kept `commitEligibleCount = 0`.
+
+**Fix.** `sectionForSwingPlay` requires `bucketGraduated === true` for COMMIT_NOW; otherwise
+WAITING_FOR_ENTRY. Discovery stamps `bucketGraduated` from the same `isCommitGraduated` ladder.
+Budget/caps stay model-book-only. Did **not** adopt ENTRY_READY_UNVALIDATED / MEMBER_ACTIONABLE
+renames — desk vocabulary stays institutional; the gate is the honesty fix.
+
+**Status.** FIXED on `cursor/swing-followups-3d11`.
+
+## 2026-07-30 — [Swing] Persistence keyed only by (ticker, direction) — false WATCH eligibility
+
+**Severity.** P0 / release-blocking — thesis flip inherited another archetype's session count.
+
+**Root cause.** `swing_candidate_accumulation` PRIMARY KEY was `(ticker, direction)`. Mon
+FLOW_ACCUMULATION → Tue MEAN_REVERSION → Wed BREAKOUT on the same NVDA long shared one row, so a
+new archetype inherited `distinct_session_days` and could falsely clear the WATCH bar. Live-flow
+advances also merged into whatever classified thesis shared that name+side. Archetype was only
+applied at *read* time via `archetypeOf` on `fetchWatchEligible`.
+
+**Evidence.** DDL `PRIMARY KEY (ticker, direction)` in `db.ts`; `ON CONFLICT (ticker, direction)`;
+`observeSwingCandidate` / `markAccumPromoted` lacked archetype; docs said "one observation per
+(ticker, direction)".
+
+**Fix.** Thesis identity = `(ticker, direction, archetype)`:
+1. Schema migration adds `archetype` (default `UNCLASSIFIED`) and rebuilds PK.
+2. Upsert / promote / observe / watch / serve gates use `swingThesisKey(...)`.
+3. Live FLOW advances land in `UNCLASSIFIED` and never merge into a classified thesis.
+4. Promote is thesis-scoped so a sibling archetype on the same name+side survives.
+
+**Status.** FIXED on `cursor/swing-followups-3d11`.
+
 ## 2026-07-30 — [Swing] CTO follow-ups — feature vector, graduated rungs, serve reads, beta/IV, cron catalog
 
 **Severity.** P1 — management/serve/calibration seams left dormant after the 2026-07-29 CTO audit.

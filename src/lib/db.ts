@@ -1769,6 +1769,10 @@ async function runMigrations(): Promise<void> {
     CREATE TABLE IF NOT EXISTS swing_candidate_accumulation (
       ticker TEXT NOT NULL,
       direction TEXT NOT NULL,
+      -- Thesis identity (FINDINGS 2026-07-30): PK includes archetype so Mon FLOW_ACCUMULATION and Tue
+      -- MEAN_REVERSION on the same NVDA long do NOT share persistence history. UNCLASSIFIED = live-flow /
+      -- pre-classify sightings that must not merge into a classified thesis.
+      archetype TEXT NOT NULL DEFAULT 'UNCLASSIFIED',
       observation_count INT NOT NULL DEFAULT 0,
       distinct_session_days INT NOT NULL DEFAULT 0,
       last_session_day DATE,
@@ -1776,7 +1780,7 @@ async function runMigrations(): Promise<void> {
       promoted_position_id BIGINT,
       first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      PRIMARY KEY (ticker, direction)
+      PRIMARY KEY (ticker, direction, archetype)
     );
   `);
   await p.query(`
@@ -1792,6 +1796,41 @@ async function runMigrations(): Promise<void> {
   await p.query(`
     ALTER TABLE swing_candidate_accumulation
     ADD COLUMN IF NOT EXISTS signal_kinds JSONB NOT NULL DEFAULT '[]'::jsonb;
+  `);
+  // Migrate legacy PK (ticker, direction) → (ticker, direction, archetype). Existing rows land in
+  // UNCLASSIFIED (honest: their archetype was never stored). Classified discovery observations start
+  // fresh under their real archetype and cannot inherit that shared history.
+  await p.query(`
+    ALTER TABLE swing_candidate_accumulation
+    ADD COLUMN IF NOT EXISTS archetype TEXT NOT NULL DEFAULT 'UNCLASSIFIED';
+  `);
+  await p.query(`
+    DO $swing_accum_thesis_pk$
+    BEGIN
+      IF EXISTS (
+        SELECT 1
+          FROM pg_constraint c
+          JOIN pg_class t ON c.conrelid = t.oid
+         WHERE t.relname = 'swing_candidate_accumulation'
+           AND c.contype = 'p'
+           AND pg_get_constraintdef(c.oid) NOT LIKE '%archetype%'
+      ) THEN
+        ALTER TABLE swing_candidate_accumulation
+          DROP CONSTRAINT swing_candidate_accumulation_pkey;
+      END IF;
+      IF NOT EXISTS (
+        SELECT 1
+          FROM pg_constraint c
+          JOIN pg_class t ON c.conrelid = t.oid
+         WHERE t.relname = 'swing_candidate_accumulation'
+           AND c.contype = 'p'
+      ) THEN
+        ALTER TABLE swing_candidate_accumulation
+          ADD CONSTRAINT swing_candidate_accumulation_pkey
+          PRIMARY KEY (ticker, direction, archetype);
+      END IF;
+    END
+    $swing_accum_thesis_pk$;
   `);
   } finally {
     // Release the advisory lock + return the dedicated connection to the pool.
@@ -5812,6 +5851,11 @@ export function mapSwingSnapshotRow(r: QueryResultRow): SwingSnapshotRow {
 export type SwingAccumRow = {
   ticker: string;
   direction: "long" | "short";
+  /**
+   * Thesis partition key. Classified SwingArchetype string, or `UNCLASSIFIED` for live-flow /
+   * pre-classify sightings. Part of the PRIMARY KEY with (ticker, direction).
+   */
+  archetype: string;
   observation_count: number;
   distinct_session_days: number;
   last_session_day: string | null;
@@ -5828,6 +5872,9 @@ export function mapSwingAccumRow(r: QueryResultRow): SwingAccumRow {
   return {
     ticker: String(r.ticker),
     direction: r.direction === "short" ? "short" : "long",
+    archetype: r.archetype != null && String(r.archetype).length > 0
+      ? String(r.archetype).toUpperCase()
+      : "UNCLASSIFIED",
     observation_count: Number(r.observation_count) || 0,
     distinct_session_days: Number(r.distinct_session_days) || 0,
     last_session_day: r.last_session_day != null ? isoDateString(r.last_session_day) : null,
@@ -6278,18 +6325,21 @@ export async function fetchSwingSnapshots(positionId: number, limit = 2000): Pro
 // ─── swing_candidate_accumulation accessors ───────────────────────────────────
 
 /**
- * Accrete one observation of a candidate for (ticker, direction). distinct_session_days only
+ * Accrete one observation of a candidate for (ticker, direction, archetype). distinct_session_days only
  * increments when the incoming session day is STRICTLY NEWER than the last one recorded (genuine
  * forward progress), and last_session_day is pinned to GREATEST(existing, incoming) — so an
  * out-of-order or replayed scan (an older day) neither double-counts nor rewinds the high-water
  * mark, keeping the persistence gate ("seen across ≥2 sessions") honest. phases_seen accumulates a
  * deduped set of the discovery phases the name showed up in; signal_kinds accumulates the deduped set of
  * SCREEN provenances (FLOW / STRUCTURE / CATALYST) — the independent-signal set corroboration counts.
- * Never re-stamps first_seen_at.
+ * Never re-stamps first_seen_at. Archetype is part of the conflict key so a thesis flip does not
+ * inherit another archetype's session count.
  */
 export async function upsertSwingAccum(a: {
   ticker: string;
   direction: "long" | "short";
+  /** Classified archetype or `UNCLASSIFIED` (live-flow / unknown). Normalized uppercased. */
+  archetype: string;
   session_day: string;
   phase: string;
   /** Screen provenance (FLOW / STRUCTURE / CATALYST). Deduped-unioned into signal_kinds for corroboration.
@@ -6302,12 +6352,16 @@ export async function upsertSwingAccum(a: {
   const signalKinds = Array.isArray(a.signal_kinds)
     ? [...new Set(a.signal_kinds.map((k) => String(k)).filter((k) => k.length > 0))]
     : [];
+  const archetype =
+    a.archetype && String(a.archetype).trim().length > 0
+      ? String(a.archetype).trim().toUpperCase()
+      : "UNCLASSIFIED";
   await (await getPool()).query(
     `INSERT INTO swing_candidate_accumulation (
-       ticker, direction, observation_count, distinct_session_days, last_session_day,
+       ticker, direction, archetype, observation_count, distinct_session_days, last_session_day,
        phases_seen, signal_kinds, first_seen_at, last_seen_at
-     ) VALUES ($1,$2,1,1,$3::date,$4::jsonb,$5::jsonb,NOW(),NOW())
-     ON CONFLICT (ticker, direction) DO UPDATE SET
+     ) VALUES ($1,$2,$3,1,1,$4::date,$5::jsonb,$6::jsonb,NOW(),NOW())
+     ON CONFLICT (ticker, direction, archetype) DO UPDATE SET
        observation_count = swing_candidate_accumulation.observation_count + 1,
        -- FINDINGS 2026-07-24 (SEV-3, distinct_session_days miscount): the prior guard used IS DISTINCT
        -- FROM, which increments on ANY day *change* — including an OUT-OF-ORDER arrival (a re-run or a
@@ -6333,7 +6387,7 @@ export async function upsertSwingAccum(a: {
          FROM jsonb_array_elements(swing_candidate_accumulation.signal_kinds || EXCLUDED.signal_kinds) AS e
        ),
        last_seen_at = NOW()`,
-    [a.ticker.toUpperCase(), a.direction, normalized, JSON.stringify([a.phase]), JSON.stringify(signalKinds)]
+    [a.ticker.toUpperCase(), a.direction, archetype, normalized, JSON.stringify([a.phase]), JSON.stringify(signalKinds)]
   );
 }
 
@@ -6352,18 +6406,24 @@ export async function fetchAccumulating(minSessionDays = 1, limit = 500): Promis
 }
 
 /** Link an accumulation row to the position it promoted into (stops further accretion counting
- *  as a fresh candidate). */
+ *  as a fresh candidate). Requires the thesis archetype so a sibling thesis on the same name+side
+ *  is not falsely retired. */
 export async function markAccumPromoted(
   ticker: string,
   direction: "long" | "short",
-  positionId: number
+  positionId: number,
+  archetype: string = "UNCLASSIFIED",
 ): Promise<void> {
   await ensureSchema();
+  const arch =
+    archetype && String(archetype).trim().length > 0
+      ? String(archetype).trim().toUpperCase()
+      : "UNCLASSIFIED";
   await (await getPool()).query(
     `UPDATE swing_candidate_accumulation
        SET promoted_position_id = $3, last_seen_at = NOW()
-     WHERE ticker = $1 AND direction = $2`,
-    [ticker.toUpperCase(), direction, positionId]
+     WHERE ticker = $1 AND direction = $2 AND archetype = $4`,
+    [ticker.toUpperCase(), direction, positionId, arch]
   );
 }
 

@@ -13,10 +13,32 @@ import type { ChainContract } from "../horizon-fanout.ts";
 
 // ── router: pre-entry sections keyed on OBSERVABLE state, never on the score ──────────────────────
 
-test("82-pt AT_TRIGGER, floor cleared → COMMIT_NOW", () => {
+test("82-pt AT_TRIGGER, floor cleared, bucket GRADUATED → COMMIT_NOW", () => {
+  assert.equal(
+    sectionForSwingPlay({
+      setupState: "TRIGGERED",
+      entryStatus: "AT_TRIGGER",
+      aboveFloor: true,
+      bucketGraduated: true,
+    }),
+    "COMMIT_NOW",
+  );
+});
+
+test("AT_TRIGGER + floor cleared but bucket NOT graduated → WAITING_FOR_ENTRY (never Act now on cold book)", () => {
+  assert.equal(
+    sectionForSwingPlay({
+      setupState: "TRIGGERED",
+      entryStatus: "AT_TRIGGER",
+      aboveFloor: true,
+      bucketGraduated: false,
+    }),
+    "WAITING_FOR_ENTRY",
+  );
   assert.equal(
     sectionForSwingPlay({ setupState: "TRIGGERED", entryStatus: "AT_TRIGGER", aboveFloor: true }),
-    "COMMIT_NOW",
+    "WAITING_FOR_ENTRY",
+    "absent bucketGraduated defaults to not-COMMIT_NOW",
   );
 });
 
@@ -100,7 +122,13 @@ test("observablesFromHorizonPlay: aboveFloor is the COMMIT/WATCH gate, not the r
 
 test("buildSwingSections groups plays into the seven sections and stamps `serving`", () => {
   const sections = buildSwingSections([
-    swingPlay({ ticker: "COM", setupState: "TRIGGERED", entryStatus: "AT_TRIGGER", status: "COMMIT" }),
+    swingPlay({
+      ticker: "COM",
+      setupState: "TRIGGERED",
+      entryStatus: "AT_TRIGGER",
+      status: "COMMIT",
+      bucketGraduated: true,
+    }),
     swingPlay({ ticker: "EXT", setupState: "EXTENDED", entryStatus: "PRE_TRIGGER", status: "COMMIT" }),
     swingPlay({ ticker: "WAT", setupState: "FORMING", status: "COMMIT" }),
     swingPlay({ ticker: "UNDER", setupState: "TRIGGERED", entryStatus: "AT_TRIGGER", status: "WATCH" }),

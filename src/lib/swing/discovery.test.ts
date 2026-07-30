@@ -124,9 +124,10 @@ function makeFakeAccum() {
   const now = () => new Date("2026-07-24T21:00:00Z").toISOString();
   const accessors: SwingAccumAccessors = {
     async upsertSwingAccum(a) {
-      const key = `${a.ticker.toUpperCase()}|${a.direction}`;
+      const archetype = (a.archetype && String(a.archetype).length > 0 ? String(a.archetype).toUpperCase() : "UNCLASSIFIED");
+      const key = `${a.ticker.toUpperCase()}|${a.direction}|${archetype}`;
       const cur = rows.get(key);
-      if (!cur) rows.set(key, { ticker: a.ticker.toUpperCase(), direction: a.direction, observation_count: 1, distinct_session_days: 1, last_session_day: a.session_day, phases_seen: [a.phase], signal_kinds: [...new Set(a.signal_kinds ?? [])], promoted_position_id: null, first_seen_at: now(), last_seen_at: now() });
+      if (!cur) rows.set(key, { ticker: a.ticker.toUpperCase(), direction: a.direction, archetype, observation_count: 1, distinct_session_days: 1, last_session_day: a.session_day, phases_seen: [a.phase], signal_kinds: [...new Set(a.signal_kinds ?? [])], promoted_position_id: null, first_seen_at: now(), last_seen_at: now() });
       else {
         cur.observation_count += 1;
         if (cur.last_session_day !== a.session_day) cur.distinct_session_days += 1;

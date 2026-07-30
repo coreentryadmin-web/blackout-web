@@ -22,7 +22,7 @@
 4. Picks a **directional near-ITM contract** (≈0.50–0.75Δ), not a cheap 0DTE lottery ticket  
 5. Opens a **model ledger position** only when calibration + budget + caps + idempotency all clear  
 6. Manages open risk with **underlying-thesis-first** exits (structural stop, thesis break, premium backstop, optional roll)  
-7. Grades every closed/rolled leg with a **5-truth** grader and feeds a Wilson-LB graduation ladder  
+7. Grades every closed/rolled leg with a **5-family grader** (reference execution / observed path / thesis / model management / marked financial) and feeds a Wilson-LB graduation ladder  
 
 ### What it is not
 
@@ -53,8 +53,8 @@ The desk is **not** a flat “committed / watch” list. Each play lands in exac
 
 | Section | Meaning | Member action |
 |---|---|---|
-| **COMMIT_NOW** | Triggered + at trigger + floor cleared | Act now |
-| **WAITING_FOR_ENTRY** | Live thesis, no clean fill (pre-trigger / pullback / extended) | Wait for entry |
+| **COMMIT_NOW** | Triggered + at trigger + floor cleared + **bucket graduated** | Act now |
+| **WAITING_FOR_ENTRY** | Live thesis, no clean fill — **or** clean fill on an **ungraduated** bucket | Wait / do not treat as model commit |
 | **WATCH** | Forming, or under commit floor | Keep watching |
 | **RESEARCH** | Unclassified, invalidated, or thin data | Dig deeper / skip |
 | **MANAGING** | Open + thesis intact | Hold to plan |
@@ -225,7 +225,9 @@ Then: `swingSignalsFromReads` (canonical direction signing) → `classifyArchety
 ### Stage C — Persistence gate (`accumulation-store.ts`)
 
 Table: `swing_candidate_accumulation`  
-Key: `(ticker, direction)`
+Key: `(ticker, direction, archetype)` — thesis identity. Live-flow / unclassified sightings use
+`UNCLASSIFIED` and never merge into a classified thesis. An archetype flip starts a fresh persistence
+row (does not inherit another thesis's `distinct_session_days`).
 
 Each scan **observes** directional dossiers:
 
@@ -302,7 +304,7 @@ persistSwingServingSnapshot({
 Member path (`discoverSwingFromPersisted`):
 
 1. Read snapshot (no provider IO on the request path)  
-2. Gate plays to persistence-cleared `(ticker, direction)` only  
+2. Gate plays to persistence-cleared thesis `(ticker, direction, archetype)` only  
 3. Enrich with serving meta (factors, regime, setup/entry when reads exist)  
 4. `assembleSwingServingLane` → seven sections  
 5. Splice into `HorizonBoard.lanes.SWING` (always, not only `?view=swings`)  
@@ -315,7 +317,18 @@ Horizons route auth: premium + nighthawk tool; `Cache-Control: no-store`.
 
 ### Stage H — Active refresh & management (`swing-active-refresh`)
 
-**Schedule:** hourly, weekdays, market hours.  
+**Schedule:** hourly, weekdays, market hours (`0 11-21 * * 1-5` UTC catalog).  
+**Model:** **hourly mark-and-review** — not responsive intrabar live management.
+
+This loop samples spot + option mark once per hour and evaluates management rungs on that sample.
+It can detect a structural break / premium backstop / scale cue **as of the sample**, but it cannot
+claim stop-first intrabar precision, catch intrahour touch-and-recover, or support minute-level
+tactical management. Tactical (2–7 DTE) premium can move substantially between samples.
+
+**Faster per-sub-lane cadence (1–5m tactical / 5–15m standard / 15–30m extended) is a deliberate
+follow-up** — requires EventBridge schedule split + provider rate-budget math. Until then, describe
+and operate this as hourly mark-and-review only.
+
 **Never opens a new thesis.** Only refreshes / manages / optionally rolls.
 
 For each OPEN position:
@@ -347,15 +360,18 @@ For each OPEN position:
 
 ### Stage I — Grade → calibrate → (maybe) graduate
 
-**5-truth grader** (`grade.ts`):
+**5-family grader** (`grade.ts`) — orthogonal families, never averaged. Honest names below reflect
+what the **available data** can establish today. Stronger words (“execution truth”, “path truth”)
+are reserved for when real fills + sufficiently fine bars are actually supplied; the code still
+uses short enum keys (`EXECUTION` / `PATH` / …) with per-family `gradeable`/`ungradeable` flags.
 
-| Truth | What it answers |
-|---|---|
-| EXECUTION | Fill vs planned entry |
-| PATH | Underlying MFE/MAE / stop touch |
-| THESIS | Invalidation before target? (stop-first intrabar) |
-| MANAGEMENT | Managed exit vs naive hold |
-| FINANCIAL | Scale-out P&L (`gradeBangerScaleOut` reused) |
+| Family (honest label) | Code key | What it can establish today |
+|---|---|---|
+| **REFERENCE_EXECUTION** | `EXECUTION` | Planned entry vs an **actual fill when present**; otherwise ungradeable (`no_fill`). Commit `entry_premium` is a **chain mid / reference mark**, not a proven executable fill (no bid/ask side, latency, or fill-probability model). |
+| **OBSERVED_PATH** | `PATH` | Underlying MFE/MAE / stop touch on the **bars actually supplied**. Resolution = those bars (minute when present for TACTICAL; else coarser). Hourly live snapshots alone do **not** establish intraday path. |
+| **THESIS** | `THESIS` | Invalidation before target on the walked underlying series (stop-first **within a bar** of that series — only as fine as the bars). |
+| **MODEL_MANAGEMENT** | `MANAGEMENT` | Managed-exit model vs naive hold on the **same option series** financial used — grades the rule given the marks it saw, not whether live hourly manage fired on time. |
+| **MARKED_FINANCIAL** | `FINANCIAL` | Scale-out P&L via `gradeBangerScaleOut` on option marks/bars — **marked** P&L, not broker-realized. Truncated forward series → ungradeable (never imputed). |
 
 **Roll-chain record** (`record.ts`): composite WIN requires **all** legs positive; parent loss is preserved.
 
@@ -383,7 +399,7 @@ Graduation also needs Δ ≥ ~15pt vs off-signal. Calibration **returns verdicts
 ### RTH
 
 - MIDDAY / POWER_HOUR phases may each fire once  
-- `swing-active-refresh` hourly: marks, snapshots, manage, rolls  
+- `swing-active-refresh` hourly **mark-and-review**: marks, snapshots, manage, rolls (not intrabar live mgmt)  
 - Members poll horizons; desk updates from Redis snapshot (not per-request provider fan-out)  
 
 ### Post-close (≈16:15–20:00 ET) — primary discovery
@@ -506,12 +522,13 @@ Schedule catalog: `railway.swing-discovery.toml` (`*/30 * * * 1-5`) + `railway.s
 |---|---|
 | **Dossier** | Versioned carrier: direction, archetype, pillars, score, sub-lane, plan levels |
 | **WATCH** | Persistence-cleared, shown; not yet a live open |
-| **COMMIT (status)** | Score cleared floor / gate said commit — still not necessarily a ledger open |
-| **Open / commit (ledger)** | Real `swing_positions` row after graduation+budget+caps+idempotency |
+| **Floor clear (play status COMMIT)** | Score cleared the (possibly provisional) lane floor — geometry/gate only |
+| **COMMIT_NOW (section)** | Floor clear + triggered + at trigger + **archetype×sub-lane graduated** — member may act |
+| **Open / model ledger** | Real `swing_positions` row after graduation + budget + caps + idempotency |
 | **Sub-lane** | Tactical / Standard / Extended contract class by DTE |
 | **Serving section** | One of seven desk triage buckets |
 | **Roll** | Close+grade parent + open linked further-out child (same thesis) |
-| **Graduation** | Wilson-LB ladder cleared for a bucket → may enforce floors/rungs |
+| **Graduation** | Wilson-LB ladder cleared for a bucket → may enforce floors/rungs / unlock COMMIT_NOW |
 | **Reference lot** | Model 1-contract risk (premium×100) on the $100k reference book |
 
 ---

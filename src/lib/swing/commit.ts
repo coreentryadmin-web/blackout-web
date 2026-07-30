@@ -420,9 +420,15 @@ function buildCommitInsert(
 export interface SwingCommitDeps {
   /** Open the position (db.insertSwingPosition — upserts on commit_key, first-write-wins). Returns the id. */
   insertPosition: (pos: SwingPositionInsert) => Promise<number>;
-  /** Link the accumulation candidate to the position it promoted into (db.markAccumPromoted via the store).
-   *  Best-effort: a link failure is logged but does NOT undo the (already durable) commit. */
-  promote?: (ticker: string, direction: PlayDirection, positionId: number) => Promise<void>;
+  /** Link the accumulation thesis to the position it promoted into (db.markAccumPromoted via the store).
+   *  Best-effort: a link failure is logged but does NOT undo the (already durable) commit.
+   *  Archetype is required so a sibling thesis on the same name+side is not falsely retired. */
+  promote?: (
+    ticker: string,
+    direction: PlayDirection,
+    positionId: number,
+    archetype?: string | null,
+  ) => Promise<void>;
 }
 
 export interface SwingCommitExecEntry {
@@ -458,7 +464,7 @@ export async function executeSwingCommits(deps: SwingCommitDeps, plan: SwingComm
       const positionId = await deps.insertPosition(d.insert);
       if (deps.promote) {
         try {
-          await deps.promote(d.ticker, d.direction, positionId);
+          await deps.promote(d.ticker, d.direction, positionId, d.archetype);
         } catch (err) {
           // Linking is best-effort — the position is already open + durable; a failed link only risks the
           // candidate re-surfacing (harmless: the commit_key upsert prevents a second open).

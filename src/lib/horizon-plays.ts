@@ -95,6 +95,12 @@ export interface HorizonPlay {
   parentPlayId?: string;
   /** The serving section this play resolved to (serving.ts) — stamped once the section router runs. */
   serving?: SwingServingSection;
+  /**
+   * Whether this play's archetype×sub-lane bucket has graduated the Wilson-LB ladder. Required for
+   * COMMIT_NOW (serving.ts) — absent/false keeps a clean entry geometry in WAITING_FOR_ENTRY so the
+   * desk never says "Act now" on a cold-book setup the model will not open.
+   */
+  bucketGraduated?: boolean;
   /** Pillar contributions for the desk (label + points) — optional SWING enrichment. */
   factors?: Array<{ label: string; points: number }>;
   /** Regime / archetype label blend for the desk, or null when absent. */

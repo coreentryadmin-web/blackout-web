@@ -2,8 +2,9 @@
 # Wire it up: service Settings -> Config-as-code -> set path to "railway.swing-active-refresh.toml"
 # Requires CRON_SECRET on this service (same value as blackout-web).
 # Live fires: EventBridge → Lambda hit-cron → GET /api/cron/swing-active-refresh (synced from this
-# catalog by blackout-infra/scripts/sync-cron-schedules.mjs). Hourly refresh of OPEN swing positions
-# (snapshots + manage-sync); never opens a position.
+# catalog by blackout-infra/scripts/sync-cron-schedules.mjs). Hourly MARK-AND-REVIEW of OPEN swing
+# positions (snapshots + manage-sync on the sample) — not responsive intrabar live management.
+# Tactical faster cadence is a deliberate follow-up (rate-budget + EventBridge split).
 [build]
 builder = "nixpacks"
 buildCommand = "echo 'cron trigger service: no app build needed'"

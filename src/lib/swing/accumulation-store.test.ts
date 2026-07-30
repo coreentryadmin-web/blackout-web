@@ -6,25 +6,32 @@ import {
   fetchWatchEligible,
   promoteSwingCandidate,
   fromStoreDir,
+  swingThesisKey,
+  normalizeSwingAccumArchetype,
+  SWING_ACCUM_UNCLASSIFIED,
   MIN_PERSISTENCE_SESSIONS,
   type SwingAccumAccessors,
 } from "./accumulation-store.ts";
 import type { SwingAccumRow } from "../db.ts";
 
 // In-memory fake of the PR-10 accessors, mirroring the upsert's distinct-day semantics: a +1 distinct day
-// ONLY when the session day actually changes (repeats within a day don't count). Lets us prove the
-// persistence gate without a live Postgres (raw TCP is blocked in the sandbox anyway).
+// ONLY when the session day actually changes (repeats within a day don't count). Keyed by thesis
+// (ticker|direction|archetype) so archetype flips do not share persistence history.
 function makeFakeAccessors() {
   const rows = new Map<string, SwingAccumRow>();
   const now = () => new Date("2026-07-24T21:00:00Z").toISOString();
+  const keyOf = (ticker: string, direction: string, archetype: string) =>
+    `${ticker.toUpperCase()}|${direction}|${normalizeSwingAccumArchetype(archetype)}`;
   const accessors: SwingAccumAccessors = {
     async upsertSwingAccum(a) {
-      const key = `${a.ticker.toUpperCase()}|${a.direction}`;
+      const archetype = normalizeSwingAccumArchetype(a.archetype);
+      const key = keyOf(a.ticker, a.direction, archetype);
       const cur = rows.get(key);
       if (!cur) {
         rows.set(key, {
           ticker: a.ticker.toUpperCase(),
           direction: a.direction,
+          archetype,
           observation_count: 1,
           distinct_session_days: 1,
           last_session_day: a.session_day,
@@ -39,7 +46,6 @@ function makeFakeAccessors() {
         if (cur.last_session_day !== a.session_day) cur.distinct_session_days += 1;
         cur.last_session_day = a.session_day;
         if (!(cur.phases_seen ?? []).includes(a.phase)) cur.phases_seen = [...(cur.phases_seen ?? []), a.phase];
-        // Deduped union of the SCREEN provenance (signal kinds) — mirrors the PR-10 upsert.
         for (const k of a.signal_kinds ?? []) {
           if (!(cur.signal_kinds ?? []).includes(k)) cur.signal_kinds = [...(cur.signal_kinds ?? []), k];
         }
@@ -51,8 +57,8 @@ function makeFakeAccessors() {
         .filter((r) => r.promoted_position_id == null && r.distinct_session_days >= minSessionDays)
         .slice(0, limit);
     },
-    async markAccumPromoted(ticker, direction, positionId) {
-      const cur = rows.get(`${ticker.toUpperCase()}|${direction}`);
+    async markAccumPromoted(ticker, direction, positionId, archetype = SWING_ACCUM_UNCLASSIFIED) {
+      const cur = rows.get(keyOf(ticker, direction, archetype ?? SWING_ACCUM_UNCLASSIFIED));
       if (cur) cur.promoted_position_id = positionId;
     },
     async fadeStaleAccum() {
@@ -72,7 +78,6 @@ test("meetsPersistence: default (cross-session) — 1 session below the bar, 2 c
 });
 
 test("meetsPersistence: cross-session archetypes still require 2 distinct sessions (critique #3)", () => {
-  // FLOW_ACCUMULATION with a single (even multi-print) session is NOT promotable — a build spans days.
   assert.equal(
     meetsPersistence({ distinct_session_days: 1, observation_count: 3, signal_kinds: ["FLOW", "STRUCTURE"] }, "FLOW_ACCUMULATION"),
     false,
@@ -83,7 +88,6 @@ test("meetsPersistence: cross-session archetypes still require 2 distinct sessio
     true,
     "two distinct sessions clears the cross-session gate",
   );
-  // BREAKOUT/PULLBACK/MEAN_REVERSION/SECTOR_ROTATION behave the same (all cross-session).
   for (const a of ["BREAKOUT", "PULLBACK_CONTINUATION", "MEAN_REVERSION", "SECTOR_ROTATION"] as const) {
     assert.equal(meetsPersistence({ distinct_session_days: 1, signal_kinds: ["FLOW", "STRUCTURE"] }, a), false, `${a} needs 2 sessions`);
     assert.equal(meetsPersistence({ distinct_session_days: 2, signal_kinds: ["FLOW"] }, a), true, `${a} clears at 2 sessions`);
@@ -92,32 +96,27 @@ test("meetsPersistence: cross-session archetypes still require 2 distinct sessio
 
 test("meetsPersistence: event archetypes clear on 1 session + corroboration, NOT on a lone print (anti-lone-print)", () => {
   for (const a of ["EVENT_DRIVEN", "POST_EARNINGS_DRIFT"] as const) {
-    // 1 session + 2 distinct signal kinds (a flow print AND a structure/catalyst signal) → corroborated → promoted.
     assert.equal(
       meetsPersistence({ distinct_session_days: 1, observation_count: 2, signal_kinds: ["FLOW", "CATALYST"] }, a),
       true,
       `${a}: 1 session + 2 distinct signal kinds promotes`,
     );
-    // 1 session + a single lone print (one signal kind, one observation) → NOT corroborated → NOT promoted.
     assert.equal(
       meetsPersistence({ distinct_session_days: 1, observation_count: 1, signal_kinds: ["FLOW"] }, a),
       false,
       `${a}: a lone print never promotes (anti-lone-print invariant holds)`,
     );
-    // A 2nd session is itself independent corroboration → promoted even with a single signal kind.
     assert.equal(
       meetsPersistence({ distinct_session_days: 2, observation_count: 2, signal_kinds: ["FLOW"] }, a),
       true,
       `${a}: a 2nd session corroborates on its own`,
     );
-    // Two prints of the SAME kind in one session are NOT two independent signals → still a lone-print class.
     assert.equal(
       meetsPersistence({ distinct_session_days: 1, observation_count: 5, signal_kinds: ["FLOW"] }, a),
       false,
       `${a}: repeated same-kind prints are not corroboration`,
     );
   }
-  // FAILED_BREAKDOWN: structure reclaim alone promotes on the session it fires (Tier-0 already volume-filters).
   assert.equal(
     meetsPersistence({ distinct_session_days: 1, observation_count: 1, signal_kinds: ["STRUCTURE"] }, "FAILED_BREAKDOWN"),
     true,
@@ -126,26 +125,18 @@ test("meetsPersistence: event archetypes clear on 1 session + corroboration, NOT
 });
 
 test("meetsPersistence: corroboration counts distinct signal KINDS, not cadence PHASES (fix 2026-07-24)", () => {
-  // The load-bearing regression this fix closes: an event candidate seen with the SAME signal kind (FLOW)
-  // repeated across two CADENCE phases (POST_CLOSE then MIDDAY) is ONE independent signal — a lone print
-  // spread across the day — and must NOT corroborate. `phases_seen` carries the cadence phases; corroboration
-  // now reads `signal_kinds` (screen provenance), so those two FLOW sightings stay uncorroborated.
   for (const a of ["EVENT_DRIVEN", "POST_EARNINGS_DRIFT"] as const) {
     assert.equal(
-      // Two cadence windows, ONE signal kind → not corroborated (this used to FALSELY pass when we counted phases).
       meetsPersistence({ distinct_session_days: 1, observation_count: 2, signal_kinds: ["FLOW"] }, a),
       false,
       `${a}: one kind re-seen across cadence windows is NOT corroboration`,
     );
     assert.equal(
-      // A genuinely independent 2nd kind (a grounded CATALYST alongside the FLOW print) → corroborated.
       meetsPersistence({ distinct_session_days: 1, observation_count: 2, signal_kinds: ["FLOW", "CATALYST"] }, a),
       true,
       `${a}: a second independent signal KIND corroborates`,
     );
   }
-  // A stale `phases_seen` full of cadence entries can never masquerade as corroboration now that the predicate
-  // ignores it — a legacy row that only carried cadence phases (empty signal_kinds) needs a real 2nd session.
   assert.equal(
     meetsPersistence({ distinct_session_days: 1, observation_count: 4, signal_kinds: [] }, "EVENT_DRIVEN"),
     false,
@@ -158,20 +149,27 @@ test("fromStoreDir converts lowercase table direction back to PlayDirection", ()
   assert.equal(fromStoreDir("short"), "SHORT");
 });
 
+test("swingThesisKey partitions by archetype; null → UNCLASSIFIED", () => {
+  assert.equal(swingThesisKey("nvda", "LONG", "BREAKOUT"), "NVDA|LONG|BREAKOUT");
+  assert.equal(swingThesisKey("NVDA", "long", null), `NVDA|LONG|${SWING_ACCUM_UNCLASSIFIED}`);
+  assert.equal(normalizeSwingAccumArchetype("mean_reversion"), "MEAN_REVERSION");
+  assert.equal(normalizeSwingAccumArchetype("NOPE"), SWING_ACCUM_UNCLASSIFIED);
+});
+
 test("a 1-session candidate stays below persistence; a 2-distinct-session candidate clears it", async () => {
   const { accessors } = makeFakeAccessors();
 
-  // Session 1: first sighting.
   await observeSwingCandidate(accessors, {
     ticker: "NVDA",
     direction: "LONG",
+    archetype: "FLOW_ACCUMULATION",
     sessionDay: "2026-07-23",
     phase: "POST_CLOSE",
   });
-  // A repeat WITHIN the same session must NOT add a distinct day.
   await observeSwingCandidate(accessors, {
     ticker: "NVDA",
     direction: "LONG",
+    archetype: "FLOW_ACCUMULATION",
     sessionDay: "2026-07-23",
     phase: "MIDDAY",
   });
@@ -179,10 +177,10 @@ test("a 1-session candidate stays below persistence; a 2-distinct-session candid
   let eligible = await fetchWatchEligible(accessors);
   assert.equal(eligible.length, 0, "one distinct session day is below the WATCH bar");
 
-  // Session 2: a NEW distinct session day → now persisted.
   await observeSwingCandidate(accessors, {
     ticker: "NVDA",
     direction: "LONG",
+    archetype: "FLOW_ACCUMULATION",
     sessionDay: "2026-07-24",
     phase: "POST_CLOSE",
   });
@@ -190,37 +188,105 @@ test("a 1-session candidate stays below persistence; a 2-distinct-session candid
   eligible = await fetchWatchEligible(accessors);
   assert.equal(eligible.length, 1, "two distinct session days clears the WATCH bar");
   assert.equal(eligible[0].ticker, "NVDA");
-  assert.equal(eligible[0].direction, "LONG"); // converted back from the lowercase store dir
+  assert.equal(eligible[0].direction, "LONG");
+  assert.equal(eligible[0].archetype, "FLOW_ACCUMULATION");
   assert.equal(eligible[0].distinctSessionDays, 2);
-  assert.equal(eligible[0].observationCount, 3); // 3 sightings, only 2 distinct days
+  assert.equal(eligible[0].observationCount, 3);
   assert.deepEqual([...eligible[0].phasesSeen].sort(), ["MIDDAY", "POST_CLOSE"]);
 });
 
-test("fetchWatchEligible archetypeOf: a corroborated 1-session event candidate surfaces; a lone print does not", async () => {
-  const { accessors } = makeFakeAccessors();
+test("THESIS KEY: archetype flip does NOT inherit prior thesis session count (release-blocking)", async () => {
+  const { accessors, rows } = makeFakeAccessors();
 
-  // EVENT name: 1 session, two DISTINCT signal KINDS (a flow print AND a grounded catalyst) → corroborated.
-  // The cadence phase is the same POST_CLOSE both times — corroboration comes from the KINDS, not the phase.
-  await observeSwingCandidate(accessors, { ticker: "MRNA", direction: "LONG", sessionDay: "2026-07-24", phase: "POST_CLOSE", signalKinds: ["FLOW"] });
-  await observeSwingCandidate(accessors, { ticker: "MRNA", direction: "LONG", sessionDay: "2026-07-24", phase: "POST_CLOSE", signalKinds: ["CATALYST"] });
-  // EVENT name: 1 session, a single lone print (one FLOW kind, no corroboration).
-  await observeSwingCandidate(accessors, { ticker: "PLTR", direction: "LONG", sessionDay: "2026-07-24", phase: "POST_CLOSE", signalKinds: ["FLOW"] });
-
-  // Without a resolver (conservative default) neither clears — both are single-session.
-  assert.equal((await fetchWatchEligible(accessors)).length, 0, "default gate keeps both off (1 session)");
-
-  // With an event-classifying resolver: the corroborated one promotes, the lone print does not.
-  const eligible = await fetchWatchEligible(accessors, MIN_PERSISTENCE_SESSIONS, 500, () => "EVENT_DRIVEN");
-  assert.deepEqual(eligible.map((c) => c.ticker).sort(), ["MRNA"]);
-  assert.deepEqual([...eligible[0].signalKinds].sort(), ["CATALYST", "FLOW"], "the corroborating signal kinds are surfaced on the watch candidate");
-});
-
-test("promoted candidates drop off the WATCH-eligible rail", async () => {
-  const { accessors } = makeFakeAccessors();
-  await observeSwingCandidate(accessors, { ticker: "AMD", direction: "SHORT", sessionDay: "2026-07-22", phase: "POST_CLOSE" });
-  await observeSwingCandidate(accessors, { ticker: "AMD", direction: "SHORT", sessionDay: "2026-07-23", phase: "POST_CLOSE" });
+  // Day 1+2: FLOW_ACCUMULATION builds to WATCH-eligible.
+  await observeSwingCandidate(accessors, {
+    ticker: "NVDA", direction: "LONG", archetype: "FLOW_ACCUMULATION",
+    sessionDay: "2026-07-22", phase: "POST_CLOSE", signalKinds: ["FLOW"],
+  });
+  await observeSwingCandidate(accessors, {
+    ticker: "NVDA", direction: "LONG", archetype: "FLOW_ACCUMULATION",
+    sessionDay: "2026-07-23", phase: "POST_CLOSE", signalKinds: ["FLOW"],
+  });
   assert.equal((await fetchWatchEligible(accessors)).length, 1);
 
-  await promoteSwingCandidate(accessors, "AMD", "SHORT", 42);
-  assert.equal((await fetchWatchEligible(accessors)).length, 0, "promoted row no longer counts as a fresh candidate");
+  // Day 3: same name+side, NEW archetype (MEAN_REVERSION) — must start at 1 session, NOT inherit 2.
+  await observeSwingCandidate(accessors, {
+    ticker: "NVDA", direction: "LONG", archetype: "MEAN_REVERSION",
+    sessionDay: "2026-07-24", phase: "POST_CLOSE", signalKinds: ["STRUCTURE"],
+  });
+  const eligible = await fetchWatchEligible(accessors);
+  const mean = eligible.find((c) => c.archetype === "MEAN_REVERSION");
+  assert.equal(mean, undefined, "MEAN_REVERSION must NOT clear on a first sighting by inheriting FLOW history");
+  const flow = eligible.find((c) => c.archetype === "FLOW_ACCUMULATION");
+  assert.ok(flow, "prior FLOW_ACCUMULATION thesis still exists as its own row");
+  assert.equal(rows.size, 2, "two distinct thesis rows for the same ticker|direction");
+  assert.equal(
+    rows.get("NVDA|long|MEAN_REVERSION")?.distinct_session_days,
+    1,
+    "new archetype starts at 1 distinct session",
+  );
+});
+
+test("live UNCLASSIFIED observations never merge into a classified thesis", async () => {
+  const { accessors, rows } = makeFakeAccessors();
+  await observeSwingCandidate(accessors, {
+    ticker: "NVDA", direction: "LONG", archetype: null,
+    sessionDay: "2026-07-23", phase: "LIVE_FLOW", signalKinds: ["FLOW"],
+  });
+  await observeSwingCandidate(accessors, {
+    ticker: "NVDA", direction: "LONG", archetype: "BREAKOUT",
+    sessionDay: "2026-07-23", phase: "POST_CLOSE", signalKinds: ["STRUCTURE"],
+  });
+  assert.equal(rows.size, 2);
+  assert.equal(rows.get(`NVDA|long|${SWING_ACCUM_UNCLASSIFIED}`)?.distinct_session_days, 1);
+  assert.equal(rows.get("NVDA|long|BREAKOUT")?.distinct_session_days, 1);
+});
+
+test("fetchWatchEligible: a corroborated 1-session EVENT_DRIVEN row surfaces from its stored archetype", async () => {
+  const { accessors } = makeFakeAccessors();
+
+  await observeSwingCandidate(accessors, {
+    ticker: "MRNA", direction: "LONG", archetype: "EVENT_DRIVEN",
+    sessionDay: "2026-07-24", phase: "POST_CLOSE", signalKinds: ["FLOW"],
+  });
+  await observeSwingCandidate(accessors, {
+    ticker: "MRNA", direction: "LONG", archetype: "EVENT_DRIVEN",
+    sessionDay: "2026-07-24", phase: "POST_CLOSE", signalKinds: ["CATALYST"],
+  });
+  await observeSwingCandidate(accessors, {
+    ticker: "PLTR", direction: "LONG", archetype: "EVENT_DRIVEN",
+    sessionDay: "2026-07-24", phase: "POST_CLOSE", signalKinds: ["FLOW"],
+  });
+
+  const eligible = await fetchWatchEligible(accessors);
+  assert.deepEqual(eligible.map((c) => c.ticker).sort(), ["MRNA"]);
+  assert.equal(eligible[0].archetype, "EVENT_DRIVEN");
+  assert.deepEqual([...eligible[0].signalKinds].sort(), ["CATALYST", "FLOW"]);
+});
+
+test("promoted candidates drop off the WATCH-eligible rail (thesis-scoped)", async () => {
+  const { accessors } = makeFakeAccessors();
+  await observeSwingCandidate(accessors, {
+    ticker: "AMD", direction: "SHORT", archetype: "BREAKOUT",
+    sessionDay: "2026-07-22", phase: "POST_CLOSE",
+  });
+  await observeSwingCandidate(accessors, {
+    ticker: "AMD", direction: "SHORT", archetype: "BREAKOUT",
+    sessionDay: "2026-07-23", phase: "POST_CLOSE",
+  });
+  // Sibling thesis on same name+side must survive promotion of BREAKOUT.
+  await observeSwingCandidate(accessors, {
+    ticker: "AMD", direction: "SHORT", archetype: "MEAN_REVERSION",
+    sessionDay: "2026-07-22", phase: "POST_CLOSE",
+  });
+  await observeSwingCandidate(accessors, {
+    ticker: "AMD", direction: "SHORT", archetype: "MEAN_REVERSION",
+    sessionDay: "2026-07-23", phase: "POST_CLOSE",
+  });
+  assert.equal((await fetchWatchEligible(accessors)).length, 2);
+
+  await promoteSwingCandidate(accessors, "AMD", "SHORT", 42, "BREAKOUT");
+  const left = await fetchWatchEligible(accessors);
+  assert.equal(left.length, 1, "only the promoted thesis is retired");
+  assert.equal(left[0].archetype, "MEAN_REVERSION");
 });

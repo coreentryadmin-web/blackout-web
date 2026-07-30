@@ -88,7 +88,7 @@ type _NeverCommitByType = SwingAccumAccessors["insertSwingPosition"];
 // counter goes non-zero and the assertion below FAILS (unlike the old `const committed = false`, which
 // nothing could ever flip and so proved nothing).
 function makeFakeAccum() {
-  const upserts: Array<{ ticker: string; direction: string; session_day: string; phase: string; signal_kinds?: string[] }> = [];
+  const upserts: Array<{ ticker: string; direction: string; archetype: string; session_day: string; phase: string; signal_kinds?: string[] }> = [];
   const calls = { upsertSwingAccum: 0, fetchAccumulating: 0, markAccumPromoted: 0, fadeStaleAccum: 0 };
   const accessors: SwingAccumAccessors = {
     async upsertSwingAccum(a) { calls.upsertSwingAccum += 1; upserts.push(a); },
@@ -108,6 +108,7 @@ test("advanceSwingAccumulationFromFlow ADVANCES accumulation and NEVER commits",
   assert.equal(res.direction, "LONG");
   assert.equal(upserts.length, 1, "exactly one observation accreted");
   assert.equal(upserts[0].direction, "long", "PlayDirection converted to store casing at the boundary");
+  assert.equal(upserts[0].archetype, "UNCLASSIFIED", "live flow has no classifier → UNCLASSIFIED (never merges into a classified thesis)");
   assert.equal(upserts[0].phase, SWING_LIVE_FLOW_PHASE, "tagged as a live-tape advance (cadence provenance)");
   assert.deepEqual(upserts[0].signal_kinds, [SWING_LIVE_FLOW_SIGNAL_KIND], "a live print stamps the FLOW signal KIND (corroboration axis)");
   assert.equal(upserts[0].session_day, "2026-07-24");

@@ -18,6 +18,7 @@
 import type { SwingDossier } from "./dossier";
 import type { HorizonPlay } from "../horizon-plays";
 import type { SwingWatchCandidate } from "./accumulation-store";
+import { swingThesisKey } from "./accumulation-store";
 import { sharedCacheGet, sharedCacheSet } from "../shared-cache";
 import {
   assembleSwingServingLane,
@@ -113,10 +114,12 @@ export async function getSwingServingLane(deps: SwingServingLaneDeps = {}): Prom
         if (spots[ticker] == null && r.setup?.price != null) spots[ticker] = r.setup.price;
       }
       livePlays = livePlaysFromOpenPositions(openRows, spots);
-      // Live capital wins the section — drop the pre-entry twin for the same name+side.
-      const liveKeys = new Set(livePlays.map((p) => `${p.ticker.toUpperCase()}|${p.direction}`));
+      // Live capital wins the section — drop the pre-entry twin for the same thesis (name+side+archetype).
+      const liveKeys = new Set(
+        livePlays.map((p) => swingThesisKey(p.ticker, p.direction, p.archetype ?? null)),
+      );
       const preEntryOnly = enrichedDiscovery.filter(
-        (p) => !liveKeys.has(`${p.ticker.toUpperCase()}|${p.direction}`),
+        (p) => !liveKeys.has(swingThesisKey(p.ticker, p.direction, p.archetype ?? null)),
       );
       const merged = [...livePlays, ...preEntryOnly];
       if (merged.length === 0) return emptySwingServingLane();
@@ -141,9 +144,10 @@ export async function getSwingServingLane(deps: SwingServingLaneDeps = {}): Prom
 // always empty; and the cron persisted only the accumulation memory, never the scored dossiers/plays.
 //
 // PERSISTENCE-GATED (the swing engine's core discipline): `discoverSwingFromPersisted` surfaces ONLY plays
-// whose (ticker, direction) has cleared the cross-session persistence bar — i.e. appears in the persisted
-// `watch` list. A first-sighting name that produced a play never reaches the member board on a single
-// sighting, exactly as the accumulation gate requires. Empty watch / empty plays ⇒ an honest empty lane.
+// whose thesis (ticker, direction, archetype) has cleared the cross-session persistence bar — i.e. appears
+// in the persisted `watch` list. A first-sighting name that produced a play never reaches the member board
+// on a single sighting, exactly as the accumulation gate requires. Empty watch / empty plays ⇒ an honest
+// empty lane.
 
 /** The scored output one discovery scan hands to the serving route, persisted between the two runtimes. */
 export interface SwingServingSnapshot {
@@ -199,9 +203,26 @@ export async function readSwingServingSnapshot(): Promise<SwingServingSnapshot |
 export async function discoverSwingFromPersisted(): Promise<SwingDiscoveryLike | null> {
   const snap = await readSwingServingSnapshot();
   if (!snap) return null;
-  const cleared = new Set((snap.watch ?? []).map((c) => `${c.ticker.toUpperCase()}|${c.direction}`));
-  const plays = (snap.plays ?? []).filter((p) => cleared.has(`${p.ticker.toUpperCase()}|${p.direction}`));
   const dossiers = snap.dossiers ?? [];
+  // Thesis key on watch rows (always carry archetype). Plays from produceHorizonPlays may omit archetype —
+  // fall back to the matching dossier's classified archetype so the gate stays thesis-keyed without
+  // falsely dropping a persistence-cleared name.
+  const dossierArchByTd = new Map<string, string>();
+  for (const d of dossiers) {
+    if (!d.direction || !d.archetype?.archetype) continue;
+    dossierArchByTd.set(`${d.ticker.toUpperCase()}|${d.direction}`, d.archetype.archetype);
+  }
+  const cleared = new Set(
+    (snap.watch ?? []).map((c) => swingThesisKey(c.ticker, c.direction, c.archetype)),
+  );
+  const playThesisKey = (p: HorizonPlay): string => {
+    const arch =
+      p.archetype ??
+      dossierArchByTd.get(`${p.ticker.toUpperCase()}|${p.direction}`) ??
+      null;
+    return swingThesisKey(p.ticker, p.direction, arch);
+  };
+  const plays = (snap.plays ?? []).filter((p) => cleared.has(playThesisKey(p)));
   // Contracts from plays (best first) so entry-state can stamp when a WATCH contract is attached.
   const contractsByTicker = new Map<string, ChainContract>();
   for (const p of plays) {
