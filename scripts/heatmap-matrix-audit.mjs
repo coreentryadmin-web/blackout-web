@@ -46,7 +46,8 @@ function deriveWalls(strikeTotals) {
   return { callWall, putWall, king };
 }
 
-function deriveFlip(strikeTotals, spot) {
+/** Per-strike zero-level (VEX/DEX/CHARM zero_level checks). */
+function derivePerStrikeFlip(strikeTotals, spot) {
   const rows = Object.entries(strikeTotals ?? {})
     .map(([s, g]) => ({ strike: Number(s), gamma: Number(g) }))
     .filter((r) => Number.isFinite(r.strike) && Number.isFinite(r.gamma))
@@ -55,7 +56,7 @@ function deriveFlip(strikeTotals, spot) {
   const crossings = [];
   for (let i = 1; i < rows.length; i++) {
     const a = rows[i - 1], b = rows[i];
-    if (a.gamma < 0 && b.gamma > 0) {
+    if ((a.gamma < 0 && b.gamma > 0) || (a.gamma > 0 && b.gamma < 0)) {
       const frac = (0 - a.gamma) / (b.gamma - a.gamma);
       crossings.push(Number((a.strike + (b.strike - a.strike) * frac).toFixed(2)));
     }
@@ -64,6 +65,34 @@ function deriveFlip(strikeTotals, spot) {
   return spot > 0
     ? crossings.reduce((best, c) => (Math.abs(c - spot) < Math.abs(best - spot) ? c : best))
     : crossings[crossings.length - 1];
+}
+
+/** GAMMA flip — SpotGamma cumulative short→long crossings nearest spot (matches production). */
+function deriveCumulativeGammaFlip(strikeTotals, spot) {
+  const rows = Object.entries(strikeTotals ?? {})
+    .map(([s, g]) => ({ strike: Number(s), gamma: Number(g) }))
+    .filter((r) => Number.isFinite(r.strike) && Number.isFinite(r.gamma))
+    .sort((a, b) => a.strike - b.strike);
+  if (rows.length < 2) return null;
+  const crossings = [];
+  let cum = 0;
+  let prevStrike = rows[0].strike;
+  let prevCum = 0;
+  for (const r of rows) {
+    cum += r.gamma;
+    if (prevCum <= 0 && cum > 0) {
+      const frac = -prevCum / (cum - prevCum);
+      crossings.push(Number((prevStrike + frac * (r.strike - prevStrike)).toFixed(2)));
+    }
+    prevStrike = r.strike;
+    prevCum = cum;
+  }
+  if (!crossings.length) return null;
+  if (!(spot > 0)) return crossings[crossings.length - 1];
+  const FLIP_MAX_DIST_PCT = 0.12;
+  const plausible = crossings.filter((c) => Math.abs(c - spot) <= spot * FLIP_MAX_DIST_PCT);
+  if (!plausible.length) return null;
+  return plausible.reduce((best, c) => (Math.abs(c - spot) < Math.abs(best - spot) ? c : best));
 }
 
 function reSumCells(cells, nearExpiries) {
@@ -151,7 +180,7 @@ function auditMetricBlock(ticker, metricName, block, spot, nearExpiries) {
       fail(ticker, "gex.put_wall", `reported ${block.put_wall} != argmin- ${putWall}`);
       flags++;
     }
-    const derivedFlip = deriveFlip(st, spot);
+    const derivedFlip = deriveCumulativeGammaFlip(st, spot);
     const reportedFlip = block.flip;
     if (reportedFlip != null && derivedFlip != null) {
       if (Math.abs(reportedFlip - derivedFlip) > Math.max(spot * 0.01, 1)) {
