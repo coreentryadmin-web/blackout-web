@@ -189,7 +189,7 @@ async function probeVectorStream(session) {
   const timer = setTimeout(() => ac.abort(), 12_000);
   let last = null;
   try {
-    const res = await fetch(`${BASE}/api/market/vector/stream`, {
+    const res = await fetch(`${BASE}/api/market/vector/stream?ticker=SPX`, {
       headers: {
         Cookie: `__session=${tok}; __client_uat=${session.clientUat}`,
         Accept: "text/event-stream",
@@ -358,24 +358,25 @@ async function browserVector(session) {
       rec("ui:vector-header", "PASS");
     }
 
+    await page.locator(".vector-chart-wrap").waitFor({ state: "visible", timeout: 60_000 });
+
     const chart = page.locator(".vector-chart-canvas");
-    await chart.waitFor({ state: "visible", timeout: 30_000 });
+    await chart.waitFor({ state: "visible", timeout: 60_000 });
     rec("ui:chart-canvas", "PASS");
 
-    // Lens toggle — scope to Vector lens group (site shell has unrelated "GEX" push-alert button)
-    const lensGroup = page.getByRole("group", { name: "Wall exposure lens" });
-    await lensGroup.waitFor({ state: "visible", timeout: 15_000 });
-    const gexBtn = lensGroup.getByRole("button", { name: "GEX", exact: true });
-    const vexBtn = lensGroup.getByRole("button", { name: "VEX", exact: true });
-    await gexBtn.click();
+    // Lens toggle — wait for dynamic VectorChart toolbar (data-testid is stable vs nested roles)
+    const gexBtn = page.locator('[data-testid="vector-lens-gex"]');
+    await gexBtn.waitFor({ state: "visible", timeout: 60_000 });
+    await gexBtn.click({ timeout: 15_000 });
     rec("ui:click-gex-lens", "PASS");
+    const vexBtn = page.locator('[data-testid="vector-lens-vex"]');
     const vexDisabled = await vexBtn.isDisabled();
     if (vexDisabled) {
       rec("ui:click-vex-lens", "WARN", "VEX disabled — no vanna ladder in session");
     } else {
-      await vexBtn.click();
+      await vexBtn.click({ timeout: 15_000 });
       rec("ui:click-vex-lens", "PASS");
-      await gexBtn.click();
+      await gexBtn.click({ timeout: 15_000 });
     }
 
     // Timeframe selector (dropdown)

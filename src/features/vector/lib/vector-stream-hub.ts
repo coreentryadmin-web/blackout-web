@@ -146,3 +146,8 @@ export function _resetVectorStreamHubForTest(): void {
   hubs.clear();
   totalStreams = 0;
 }
+
+/** Boot/cron priming — one payload build without holding a subscriber slot open. */
+export async function warmVectorStreamHub(ticker: string): Promise<void> {
+  await refreshTickerHub(normalizeVectorTicker(ticker));
+}

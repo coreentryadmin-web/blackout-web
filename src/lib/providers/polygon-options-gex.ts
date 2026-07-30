@@ -1218,6 +1218,16 @@ const cachedHeatmaps = new Map<string, { at: number; data: GexHeatmap }>();
  */
 const heatmapInflight = new Map<string, Promise<GexHeatmap | null>>();
 
+/** Per-replica last usable matrix — handoff when Redis + inflight are both cold. */
+const lastGoodHeatmapLocal = new Map<string, GexHeatmap>();
+
+function rememberGoodHeatmap(cacheKey: string, data: GexHeatmap | null): GexHeatmap | null {
+  if (data && data.spot > 0 && data.strikes.length > 0) {
+    lastGoodHeatmapLocal.set(cacheKey, data);
+  }
+  return data;
+}
+
 // Bound the ticker dimension so an unusual spread of (garbage) tickers can't leak
 // memory. Insertion-order LRU + delete-oldest eviction, same pattern as
 // server-cache.ts:setStoreEntry / shared-cache.ts:setMemoryEntry. TTL/semantics
@@ -1319,16 +1329,34 @@ function pickStaleHeatmapForHandoff(
 /** Cap how long callers await an inflight/cold matrix build — serve stale instead of 20–57s hangs. */
 async function awaitHeatmapBuildWithBlockCap(
   build: Promise<GexHeatmap | null>,
+  cacheKey: string,
   mem: { at: number; data: GexHeatmap } | undefined,
   redisHit: { at: number; data: GexHeatmap } | null,
   now: number
 ): Promise<GexHeatmap | null> {
   const blockMs = gexHeatmapMaxBlockMs();
-  const staleHandoff = pickStaleHeatmapForHandoff(mem, redisHit, now);
   return Promise.race([
-    build,
+    build.then((data) => rememberGoodHeatmap(cacheKey, data)),
     new Promise<GexHeatmap | null>((resolve) => {
-      setTimeout(() => resolve(staleHandoff), blockMs);
+      setTimeout(() => {
+        void (async () => {
+          let handoff = pickStaleHeatmapForHandoff(mem, redisHit, now);
+          if (!handoff) {
+            const mem2 = cachedHeatmaps.get(cacheKey);
+            let redis2 = redisHit;
+            if (!mem2) {
+              try {
+                const { sharedCacheGet } = await import("../shared-cache");
+                redis2 = await sharedCacheGet<{ at: number; data: GexHeatmap }>(cacheKey);
+              } catch {
+                /* redis optional */
+              }
+            }
+            handoff = pickStaleHeatmapForHandoff(mem2, redis2, Date.now());
+          }
+          resolve(handoff ?? lastGoodHeatmapLocal.get(cacheKey) ?? null);
+        })();
+      }, blockMs);
     }),
   ]);
 }
@@ -2118,7 +2146,7 @@ export async function fetchGexHeatmap(
 
   if (!forceRefresh) {
     const mem = cachedHeatmaps.get(cacheKey);
-    if (mem && now - mem.at < ttlMs) return mem.data;
+    if (mem && now - mem.at < ttlMs) return rememberGoodHeatmap(cacheKey, mem.data);
 
     let redisHit: { at: number; data: GexHeatmap } | null = null;
     try {
@@ -2126,7 +2154,7 @@ export async function fetchGexHeatmap(
       redisHit = await sharedCacheGet<{ at: number; data: GexHeatmap }>(cacheKey);
       if (redisHit && now - redisHit.at < ttlMs) {
         setCachedHeatmap(cacheKey, redisHit);
-        return redisHit.data;
+        return rememberGoodHeatmap(cacheKey, redisHit.data);
       }
     } catch {
       /* redis optional */
@@ -2145,7 +2173,7 @@ export async function fetchGexHeatmap(
       mem,
       redisHit
     );
-    if (stale) return stale;
+    if (stale) return rememberGoodHeatmap(cacheKey, stale);
   }
 
   // ── Single-flight (#9): coalesce concurrent cache-miss builds for this ticker ──
@@ -2166,7 +2194,7 @@ export async function fetchGexHeatmap(
 
   const existing = heatmapInflight.get(inflightKey);
   if (existing) {
-    return awaitHeatmapBuildWithBlockCap(existing, memAtMiss, redisAtMiss, now);
+    return awaitHeatmapBuildWithBlockCap(existing, cacheKey, memAtMiss, redisAtMiss, now);
   }
 
   const build = buildGexHeatmapUncached(root, optionsRoot, cacheKey, now, baseTtlMs).finally(
@@ -2175,7 +2203,7 @@ export async function fetchGexHeatmap(
     }
   );
   heatmapInflight.set(inflightKey, build);
-  return awaitHeatmapBuildWithBlockCap(build, memAtMiss, redisAtMiss, now);
+  return awaitHeatmapBuildWithBlockCap(build, cacheKey, memAtMiss, redisAtMiss, now);
 }
 
 /**

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { pingDatabaseConnectivity, dbConfigured } from "@/lib/db";
 import { redisStatus } from "@/lib/redis-health";
-import { ensureWebBootWarm } from "@/lib/web-boot-warm";
+import { ensureWebBootWarm, awaitWebBootWarm } from "@/lib/web-boot-warm";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +16,7 @@ function sleep(ms: number): Promise<void> {
 /** Readiness probe — checks DB connectivity. Use for ECS deploy gates, not liveness. */
 export async function GET() {
   ensureWebBootWarm();
+  await awaitWebBootWarm();
 
   if (!dbConfigured()) {
     return NextResponse.json({ ok: true, db: "skipped" });
