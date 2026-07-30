@@ -5,6 +5,31 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-30 — [ops] web tier WS contention → cold SPX GEX + socket-health false P1 (#1335)
+
+**Severity.** P0 data-correctness (`redis_gex` cold SPX) + P1 cron (`socket-health` failed/stale).
+
+**Symptom.** ops-auto-fix #1335: `getGexPositioning("SPX")` returned NO matrix during RTH;
+`socket-health` flagged stale/failed. Live: `/api/market/gex-heatmap?ticker=SPX` showed `spot:0`,
+`socket-health` HTTP 503 on web replicas (`is_leader: true` locally but cluster snapshot null).
+
+**Root cause.** `ensureDataSockets()` booted upstream WS on **web tier** replicas (no
+`shouldBootDataSockets()` gate). Web tasks competed for Polygon/UW leader locks with the ingest
+market-worker, reported false-negative socket-health (local WS broken, `auth_failed`), and
+`resolveSpotSnapshot` could not read the ingest leader's Redis `spx:pulse:snapshot` when local
+`indexStore` was stale — empty SPX matrix → `redis_gex` FLAG.
+
+**Evidence.** Prod probe 2026-07-30 ~10:46 ET: `heatmap-warm?force=1` warmed 26 tickers but
+`data-correctness` still FLAGged `redis_gex`; `socket-health` showed `polygon_indices.is_leader:
+true` on a web replica with `cluster_spx_updated_at: null`.
+
+**Fix.** (1) Gate `ensureDataSockets()` on `shouldBootDataSockets()` — web tier only runs
+`rth-warm-leader`. (2) `readClusterIndexSpot` + `readUwClusterHealth` in
+`socket-cluster-health.ts`; `resolveSpotSnapshot` falls back to Redis cluster index snapshot.
+(3) `socket-health` cron evaluates cluster heartbeats on web tier without booting local sockets.
+
+**Status.** FIXED on `fix/ops-1335-socket-gex-cluster`.
+
 ## 2026-07-30 — [ops] vector-universe-snapshot RTH-stale self-heal gap (#1333)
 
 **Severity.** P0 ops — Vector scanner rail stops updating when the recorder cron goes stale during RTH.

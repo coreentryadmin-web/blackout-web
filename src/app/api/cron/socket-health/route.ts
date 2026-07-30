@@ -13,6 +13,7 @@ import {
   evaluateOptionsClusterOk,
   readOptionsClusterHealth,
   readPolygonClusterHealth,
+  readUwClusterHealth,
 } from "@/lib/ws/socket-cluster-health";
 import { shouldBootDataSockets } from "@/lib/process-role";
 
@@ -41,7 +42,10 @@ export async function GET(req: NextRequest) {
   } | null = null;
 
   try {
-    ensureDataSockets();
+    const bootSockets = shouldBootDataSockets();
+    if (bootSockets) {
+      ensureDataSockets();
+    }
 
     const options = getOptionsSocketStatus();
     const luld = getStocksSocketStatus();
@@ -51,11 +55,15 @@ export async function GET(req: NextRequest) {
 
     const polygonLocal = getIndexStoreStatus();
     const uwLocal = getUwSocketHealth();
-    const uwCluster = buildUwClusterHealth({
-      is_leader: uwLocal.is_leader,
-      cluster_last_message_at: uwLocal.cluster_last_message_at,
-    });
-    const polygonCluster = await readPolygonClusterHealth(polygonLocal.is_leader);
+    const polygonCluster = await readPolygonClusterHealth(
+      bootSockets ? polygonLocal.is_leader : false
+    );
+    const uwCluster = bootSockets
+      ? buildUwClusterHealth({
+          is_leader: uwLocal.is_leader,
+          cluster_last_message_at: uwLocal.cluster_last_message_at,
+        })
+      : await readUwClusterHealth(false);
     const uwEval = evaluateUwClusterOk(uwCluster, rth);
     const polygonEval = evaluatePolygonClusterOk(polygonCluster, rth);
 
@@ -69,20 +77,18 @@ export async function GET(req: NextRequest) {
         options_detail = "enabled, no held contracts — auth not required";
       } else if (authenticatedShards > 0) {
         options_detail = `authenticated (${authenticatedShards} shard(s), ${options.total_contracts} contracts)`;
-      } else if (authFailedShards > 0) {
-        options_ok = false;
-        options_detail = `auth failed on ${authFailedShards} shard(s) — check POLYGON_API_KEY / options WS entitlement`;
-      } else if (!shouldBootDataSockets()) {
+      } else if (!bootSockets) {
         const optionsCluster = await readOptionsClusterHealth();
         const optionsEval = evaluateOptionsClusterOk(optionsCluster, rth, false);
         options_ok = optionsEval.ok;
         options_detail = `web tier — ${optionsEval.detail}`;
-        // Ingest worker owns the live options WS — if UW/Polygon cluster heartbeats are
-        // fresh, a failed Redis mark scan on a web replica is not a live-data outage.
         if (!options_ok && uwEval.ok && polygonEval.ok) {
           options_ok = true;
           options_detail = `web tier — ingest-owned WS (UW/Polygon cluster live)`;
         }
+      } else if (authFailedShards > 0) {
+        options_ok = false;
+        options_detail = `auth failed on ${authFailedShards} shard(s) — check POLYGON_API_KEY / options WS entitlement`;
       } else {
         options_ok = false;
         options_detail = "enabled with held contracts but no authenticated shard yet";

@@ -1126,6 +1126,14 @@ async function resolveSpotSnapshot(
       const restSnap = await fetchIndexSnapshot(root).catch(() => null);
       return { price: ws.price, change_pct: ws.change_pct ?? restSnap?.change_pct ?? 0 };
     }
+    // Cross-replica fallback: ingest leader writes indexStore → Redis every ~1s. Web-tier
+    // cache readers (heatmap-warm, getGexPositioning) must not return spot 0 when the
+    // leader is live but this replica has no local WS tick.
+    const { readClusterIndexSpot } = await import("../ws/socket-cluster-health");
+    const cluster = await readClusterIndexSpot(root, GEX_INDEX_WS_STALE_MS);
+    if (cluster) {
+      return cluster;
+    }
   } else {
     const ws = await liveWsStockSpot(root);
     // Guard: never accept a non-positive WS print as "resolved" — that used to short-circuit

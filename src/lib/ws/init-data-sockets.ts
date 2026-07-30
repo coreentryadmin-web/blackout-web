@@ -3,6 +3,7 @@ import { initUwSocket, shutdownUwSocket } from "@/lib/ws/uw-socket";
 import { initOptionsSocket, shutdownOptionsSocket } from "@/lib/ws/options-socket";
 import { initStocksSocket, shutdownStocksSocket } from "@/lib/ws/stocks-socket";
 import { initFlowEventBridge } from "@/lib/flow-events";
+import { shouldBootDataSockets, shouldRunRthWarmLeader } from "@/lib/process-role";
 
 let initialized = false;
 let closed = false;
@@ -53,6 +54,22 @@ export function ensureDataSockets() {
   } catch (err) {
     console.warn("[init-data-sockets] failed to install shutdown handlers (non-fatal):", err);
   }
+  // Backup RTH warmers when ECS cron triggers stall (#90 silent-death). Runs on web + ingest
+  // (Redis leader election) and does NOT require upstream WebSockets.
+  if (shouldRunRthWarmLeader()) {
+    void import("@/lib/rth-warm-leader")
+      .then(({ ensureRthWarmLeader }) => ensureRthWarmLeader())
+      .catch((err) => console.warn("[init-data-sockets] RTH warm leader init failed (non-fatal):", err));
+  }
+
+  // Web tier (PROCESS_ROLE=web / DATA_SOCKETS_ENABLED=0) must NOT open upstream sockets —
+  // the ingest market-worker owns WS leader locks. Booting sockets on web replicas steals
+  // leadership, returns false-negative socket-health, and leaves SPX spot cold on cache readers.
+  if (!shouldBootDataSockets()) {
+    console.log("[init-data-sockets] web tier — skipping upstream WS boot (ingest worker owns sockets)");
+    return;
+  }
+
   void initFlowEventBridge();
   initUwSocket();
   initPolygonSocket();
@@ -79,11 +96,6 @@ export function ensureDataSockets() {
   } catch (err) {
     console.warn("[init-data-sockets] stocks/LULD socket init failed (non-fatal):", err);
   }
-  // Backup RTH warmers when ECS cron triggers stall (#90 silent-death). Leader-elected;
-  // dispatches idempotent cache warmers from in-process when cron_job_runs age exceeds cadence.
-  void import("@/lib/rth-warm-leader")
-    .then(({ ensureRthWarmLeader }) => ensureRthWarmLeader())
-    .catch((err) => console.warn("[init-data-sockets] RTH warm leader init failed (non-fatal):", err));
 }
 
 /**
