@@ -5,6 +5,24 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-30 — [ops] vector-full-state-snapshot RTH-stale edge timeout (#1355)
+
+**Severity.** P0 — Vector full-state cache warmer silent during RTH.
+
+**Symptom.** ops-auto-fix #1355: `vector-full-state-snapshot` `market_hours_stale` during RTH.
+
+**Root cause.** Same class as `bie-full-state-snapshot` / `coaching-alerts` (#1343): the cron awaited
+`computeVectorFullState` × universe tickers × DTE horizons inline (50s time budget, `maxDuration=60`)
+— combined wall-clock exceeded Cloudflare ~100s before `logCronRun` fired → watchdog saw stale
+handshakes with no fresh row. Already in `CRON_DISPATCH` for self-heal (#1333) but self-heal could
+not outrun repeated edge 504s on the blocking path.
+
+**Fix.** Dispatch the per-ticker×horizon Redis sweep via `next/server after()`; return HTTP 202 +
+immediate `logCronRun` handshake (mirrors `bie-full-state-snapshot` / `vector-dark-pool-warm`).
+Regression test: `src/app/api/cron/vector-full-state-snapshot/route.test.ts`.
+
+**Status.** FIXED on `fix/ops-1355-vector-full-state-edge-timeout`.
+
 ## 2026-07-30 — [ops] RTH cron edge timeouts → silent staleness (#1343)
 
 **Severity.** P0 `coaching-alerts` + `uw-cache-refresh` RTH-stale; P1 `socket-health` failed/stale.
