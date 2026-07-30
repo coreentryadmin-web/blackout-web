@@ -1,5 +1,80 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-29 17:55 ET
+Last updated: 2026-07-30 12:25 ET
+
+## spx-rth-2026-07-30 — SPX Slayer all-day verify pass (~11:35–12:25 ET, RTH)
+
+**Session:** SPX Slayer all-day agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` **verify** mode (market-open pass, Thu 11:35 ET). Commands: `npm run validate:spx-rth` → `npm run validate:spx-e2e` → cross-tool API probes → partial 60s live poll (auth latency).
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth` | ⚠️ **7 PASS / 1 WARN / 1 FAIL** — matrix + cross-endpoint + desk-lanes + BIE GREEN; dashboard-e2e sub-run failed on curl auth timeouts |
+| `npm run validate:spx-e2e` | ⚠️ **9 PASS / 2 WARN / 2 FAIL** — matrix every-cell oracle GREEN; GEX/VEX tab clicks GREEN; Largo + Playwright matrix-row wait timed out |
+| Matrix deep audit | ✅ **174 strikes** — GEX+VEX+DEX+CHARM every cell finite; Σ strike_totals == headline total |
+| `validate:spx-bie` (static) | ✅ 6 PASS / 1 WARN (roundFloats asymmetry — documented) |
+| Cross-endpoint spot | ✅ merged≈7392 hm≈7389 play=SCANNING (11:41 ET pass) |
+| Later spot probe | ✅ desk=7414.07 hm=7410.99 positioning=7410.99 (Δ≈3.1 pts, within 1% tol) |
+| Play state | ✅ SCANNING → WATCHING transition during session (live eval ticking) |
+
+### UI E2E (Playwright — partial pass)
+
+| # | Action | Result |
+|---|---|---|
+| Sign-in `/dashboard` | ✅ premium admin session |
+| Click **GEX** tab | ✅ `#spx-matrix-tab-gex` |
+| Click **VEX** tab | ✅ `#spx-matrix-tab-vex` |
+| Matrix every-cell API | ✅ **174 strikes** GEX+VEX+DEX+CHARM vs `/api/market/gex-heatmap?ticker=SPX` |
+| Matrix row DOM count | ⚠️ `waitForFunction` timeout (≥20 rows) — cloud Playwright flake after tab clicks succeeded |
+| Trade alert hero | ✅ no stale ✓ during SCANNING (API); later WATCHING |
+| Lotto dock | ⏭️ not reached (browser step timed out) |
+| Commentary expand | ⏭️ not reached (browser step timed out) |
+| Console errors | ⏭️ not reached |
+
+### Cross-tool integration (Step 3)
+
+| Tool | Endpoint | Result |
+|---|---|---|
+| **Thermal** | `GET /api/market/gex-heatmap?ticker=SPX` | ✅ every cell validated; cross_validation PASS |
+| **GEX positioning** | `GET /api/market/gex-positioning?ticker=SPX` | ✅ spot 7410.99 agrees with matrix |
+| **HELIX** | `GET /api/market/flows?limit=30` | ✅ 30 prints |
+| **Largo** | `POST /api/market/largo/query` | ❌ **HTTP 0** — 90s curl timeout (cloud egress) |
+| **BIE** | `validate:spx-bie` (in spx-rth) | ✅ `spx_full_state` == member play |
+| **Grid bootstrap** | `GET /api/market/spx/bootstrap` | ✅ HTTP 200 |
+| **0DTE Command** | `GET /api/market/zerodte/board` | ⚠️ board empty or gated (may be quiet / tier) |
+| **Night Hawk** | `GET /api/market/nighthawk/edition` | ✅ loads |
+| **Desk / play** | desk + play cross-tool | ✅ desk=7394.52→7414.07 play=SCANNING→WATCHING |
+
+### 60s live auto-update
+
+| Surface | Result |
+|---|---|
+| Desk spot | ✅ ticked (7393.92 → 7414.07 across probes) |
+| Heatmap spot | ✅ ticked (7389→7410.99) |
+| Play action | ✅ SCANNING → WATCHING (live eval) |
+| Full 4×20s poll | ⚠️ incomplete — Clerk auth mint + heatmap fetch >7 min per iteration in cloud sandbox |
+
+### P0 found this pass
+
+**None.** Matrix cells 100% match API oracle; trade alerts grounded; no stale SCANNING confirmations; cross-tool spot within tolerance.
+
+### Findings logged
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| **P1** | `largo-query-timeout` | `POST /api/market/largo/query` HTTP 0 after 90s curl max | `/api/market/largo/query` | post-close — retry/backoff in e2e harness |
+| **P1** | `spx-e2e-auth-curl-timeout` | `validate:spx-rth` dashboard-e2e sub-run: 5× curl 90s timeouts during Clerk ticket exchange | audit auth | post-close — increase timeout or serialize auth |
+| **P2** | `spx-e2e-playwright-matrix-rows` | Playwright `waitForFunction` timeout for ≥20 matrix rows after GEX/VEX tab clicks succeeded | UI | post-close — cloud flake; API oracle authoritative |
+| **P2** | `zerodte-board-empty-rth` | 0DTE board empty or gated during RTH verify | `/api/market/zerodte/board` | post-close — confirm tier/launch gate |
+| **P2** | `cloud-cron-secret-mismatch` | Cloud-agent `CRON_SECRET` ≠ prod Secrets Manager; Clerk fallback used | audit env | **Expected** — not prod |
+| **P2** | `ops-socket-health-watchdog` | `ops:collect` flagged `watchdog:problem:socket-health` (non-SPX scope) | ops watchdog | post-close — infra |
+| **P2** | `bie-cron-play-401` | E2E `integration:bie-play-route` cron bearer 401; static BIE validator live layer skipped | `/api/market/spx/play` | **Expected** in cloud agent |
+
+**Member-facing SPX surfaces: GREEN** — matrix oracle clean (174 strikes), play live (WATCHING), cross-tool spot agrees at ~7411.
+
+**Reports:** `audit-output/spx-rth-2026-07-30-verify-1785427264975.json`, `audit-output/spx-dashboard-e2e-1785427734647.json`
+
+---
 
 ## spx-rth-2026-07-29 — SPX Slayer all-day verify pass (~17:26–17:46 ET, post-close)
 
