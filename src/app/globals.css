@@ -16246,6 +16246,57 @@ body::before {
 .nh-deck-whynow .lb{color:var(--dk-ink-dim);letter-spacing:.06em;text-transform:uppercase;font-size:9px}
 .nh-deck-whynow .rs{color:var(--dk-cyan);font-weight:700;letter-spacing:.04em}
 .nh-deck-whynow .at{color:var(--dk-ink-dim);font-variant-numeric:tabular-nums}
+/* Thesis Health — Entry Truth vs Current Truth (0DTE lifecycle panel). */
+.nh-deck-thesis-health{margin:0 0 16px;padding:12px 12px 10px;border-radius:5px;border:1px solid rgba(56,230,255,.35);
+  background:linear-gradient(180deg,rgba(56,230,255,.06),rgba(4,4,7,.4))}
+.nh-deck-th-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.nh-deck-th-title{font-size:10px;font-weight:800;letter-spacing:.18em;color:var(--dk-cyan)}
+.nh-deck-th-rung{font-size:9px;font-weight:700;letter-spacing:.12em;padding:3px 8px;border-radius:3px;border:1px solid}
+.nh-deck-th-rung.ok{color:var(--dk-green);border-color:rgba(53,255,158,.45);background:rgba(53,255,158,.08)}
+.nh-deck-th-rung.warn{color:var(--dk-amber);border-color:rgba(255,184,77,.45);background:rgba(255,184,77,.08)}
+.nh-deck-th-rung.brk{color:var(--dk-red);border-color:rgba(255,77,109,.45);background:rgba(255,77,109,.08)}
+.nh-deck-th-hero{display:flex;align-items:center;gap:12px;margin-bottom:8px}
+.nh-deck-th-meter{flex:1}
+.nh-deck-th-meter .track{height:10px;border-radius:3px;background:rgba(255,255,255,.06);border:1px solid var(--dk-line);overflow:hidden}
+.nh-deck-th-meter .fill{height:100%;border-radius:2px;transition:width .35s ease}
+.nh-deck-th-meter .fill.ok{background:linear-gradient(90deg,rgba(53,255,158,.5),var(--dk-green))}
+.nh-deck-th-meter .fill.warn{background:linear-gradient(90deg,rgba(255,184,77,.5),var(--dk-amber))}
+.nh-deck-th-meter .fill.brk{background:linear-gradient(90deg,rgba(255,77,109,.5),var(--dk-red))}
+.nh-deck-th-score{font-size:32px;font-weight:800;color:var(--dk-cyan);font-variant-numeric:tabular-nums;line-height:1}
+.nh-deck-th-delta{display:flex;align-items:center;gap:8px;font-size:11px;margin-bottom:6px;flex-wrap:wrap}
+.nh-deck-th-delta .k{color:var(--dk-ink-dim);text-transform:uppercase;font-size:9px;letter-spacing:.08em}
+.nh-deck-th-delta .v{color:var(--dk-green);font-weight:700;font-variant-numeric:tabular-nums}
+.nh-deck-th-delta .arr{color:var(--dk-ink-dim)}
+.nh-deck-th-delta .d{font-weight:700;font-variant-numeric:tabular-nums}
+.nh-deck-th-delta .d.up{color:var(--dk-green)}
+.nh-deck-th-delta .d.dn{color:var(--dk-red)}
+.nh-deck-th-time{font-size:9px;color:var(--dk-cyan);letter-spacing:.06em;margin-bottom:10px}
+.nh-deck-th-grid-hd,.nh-deck-th-row{display:grid;grid-template-columns:1.1fr 1fr 1fr 28px;gap:8px;align-items:center}
+.nh-deck-th-grid-hd{font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--dk-ink-dim);margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid rgba(53,255,158,.12)}
+.nh-deck-th-row{padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:10px}
+.nh-deck-th-row .col-pillar .nm{display:block;color:var(--dk-ink);font-weight:600}
+.nh-deck-th-row .col-pillar .wt{font-size:8px;color:var(--dk-cyan);letter-spacing:.06em}
+.nh-deck-thcol{display:flex;flex-direction:column;gap:3px}
+.nh-deck-thbar{height:6px;border-radius:2px;background:rgba(255,255,255,.05);overflow:hidden}
+.nh-deck-thbar.empty{opacity:.35}
+.nh-deck-thbar .fill{height:100%;border-radius:1px}
+.nh-deck-thbar .fill.entry{background:rgba(56,230,255,.45)}
+.nh-deck-thbar .fill.now{background:rgba(53,255,158,.55)}
+.nh-deck-thbar .fill.lost,.nh-deck-thbar .fill.faded{background:rgba(255,184,77,.5)}
+.nh-deck-thlbl{font-size:8px;color:var(--dk-ink-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nh-deck-th-row .col-st{text-align:center;font-weight:800}
+.nh-deck-th-row .col-st.ok{color:var(--dk-green)}
+.nh-deck-th-row .col-st.warn{color:var(--dk-amber)}
+.nh-deck-th-row .col-st.brk{color:var(--dk-red)}
+.nh-deck-th-moves{margin-top:10px;font-size:10px}
+.nh-deck-th-moves ul{margin:4px 0 0;padding-left:14px;color:var(--dk-ink)}
+.nh-deck-th-moves li{margin:2px 0;line-height:1.45}
+.nh-deck-th-advisory{margin-top:10px;padding:8px 10px;border-radius:4px;border:1px solid rgba(53,255,158,.2);background:rgba(53,255,158,.04);font-size:10px}
+.nh-deck-th-advisory .lb{display:block;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--dk-green-dim);margin-bottom:4px}
+.nh-deck-th-advisory .tx{display:block;color:var(--dk-ink);line-height:1.45;margin-bottom:4px}
+.nh-deck-th-advisory .mgmt{display:block;color:var(--dk-cyan);font-weight:700}
+.nh-deck-commit-snap{margin-top:12px}
+.nh-deck-commit-snap>summary{cursor:pointer;margin-bottom:8px}
 /* Excursion (MAE/MFE) range bar. red floor → amber → green cap; marker = current mark. */
 .nh-deck-exc{margin-top:2px}
 .nh-deck-excbar{position:relative;height:22px;border-radius:4px;margin:20px 0 4px;border:1px solid var(--dk-line);

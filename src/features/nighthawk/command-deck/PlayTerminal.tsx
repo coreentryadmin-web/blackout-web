@@ -12,6 +12,7 @@ import { managementFor } from "./adapters";
 import { excursionBar, formatWinRateCi, signColorClass } from "@/lib/zerodte/terminal-edge";
 import type { DeckCondor } from "./types";
 import { markStreamKind } from "./deck-session-ui";
+import { ThesisHealthPanel } from "./ThesisHealthPanel";
 
 type Tab = "thesis" | "manage" | "pnl";
 
@@ -359,30 +360,34 @@ function ThesisPanel({ play, sessionClosed = false }: { play: TerminalPlay; sess
   const level = play.thesisBreak?.level ?? "intact";
   const broke = level === "warn" || level === "break";
   const unknown = level === "unknown";
-  // Keep the advisory recommendation in sync with the live (SSE-overlaid) pnlPct — same
-  // recompute ManagePanel does — so "Recommend TRIM/SELL" never lags the Management badge.
-  const liveRec = managementFor(play.exitModel, play.status, play.pnlPct ?? null).recommendation;
-  // "Why now" ribbon — the event-driven trigger that surfaced this play, with the ET flag time
-  // when the row carries one. Omitted entirely when no reason was pinned (honest absence).
+  const liveRec = play.recommendation;
   const whyAt = etClock(play.firstFlaggedAt);
   const topFactors = play.factors.slice(0, 2);
   const moreFactors = play.factors.slice(2);
+  const hasThesisHealth = play.horizon === "ZERO_DTE" && play.thesisHealth != null;
+  const isWorking =
+    play.status === "OPEN" || play.status === "HOLD" || play.status === "TRIM";
   const monitorTitle =
     play.status === "CLOSED" || sessionClosed
       ? "◉ THESIS (SESSION CLOSED)"
-      : "◉ THESIS MONITOR";
-  const monitorNote = broke
-    ? null
-    : unknown
+      : hasThesisHealth
+        ? "◉ THESIS LIFECYCLE"
+        : "◉ THESIS MONITOR";
+  const monitorNote = hasThesisHealth
+    ? play.thesisHealth!.advisory
+    : broke
       ? null
-      : play.horizon === "LEGACY"
-        ? play.regime?.includes("CONFIRMED")
-          ? "pre-market confirmed — entry levels validated."
-          : "evening thesis holds; morning confirmation updates before the open."
-        : sessionClosed || play.status === "CLOSED"
-          ? "frozen at close — gates/factors are the last board read, not a live stream."
-          : "tape alignment from the board poll; mark/P&L from the marks stream.";
-  return (
+      : unknown
+        ? null
+        : play.horizon === "LEGACY"
+          ? play.regime?.includes("CONFIRMED")
+            ? "pre-market confirmed — entry levels validated."
+            : "evening thesis holds; morning confirmation updates before the open."
+          : sessionClosed || play.status === "CLOSED"
+            ? "frozen at close — gates/factors are the last board read, not a live stream."
+            : "tape alignment from the board poll; mark/P&L from the marks stream.";
+
+  const commitSnapshot = (
     <>
       {play.whyNow && (
         <div className="nh-deck-whynow" title="The event-driven scan trigger that surfaced this play">
@@ -394,7 +399,7 @@ function ThesisPanel({ play, sessionClosed = false }: { play: TerminalPlay; sess
       )}
       {play.gates.length > 0 && (
         <>
-          <div className="nh-deck-lab">Gates</div>
+          <div className="nh-deck-lab">Gates at commit</div>
           <div className="nh-deck-gaterow">
             {play.gates.map((g) => (
               <span key={g.label} className={clsx("nh-deck-gate", g.ok ? "ok" : "no")}>{g.ok ? "✓" : "✗"} {g.label}</span>
@@ -402,7 +407,7 @@ function ThesisPanel({ play, sessionClosed = false }: { play: TerminalPlay; sess
           </div>
         </>
       )}
-      <details className="nh-deck-why" open={play.factors.length <= 2}>
+      <details className="nh-deck-why" open={!hasThesisHealth && play.factors.length <= 2}>
         <summary className="nh-deck-lab nh-deck-why-sum">
           Why this play was picked
           {play.factors.length > 0 && (
@@ -410,7 +415,7 @@ function ThesisPanel({ play, sessionClosed = false }: { play: TerminalPlay; sess
           )}
         </summary>
         {play.factors.length === 0 && (
-          <div className="nh-deck-recnote">Component breakdown not served for this lane yet — score {play.score}. {play.recNote}</div>
+          <div className="nh-deck-recnote">Component breakdown not served for this lane yet — score {play.score}.</div>
         )}
         {topFactors.map((f) => (
           <div key={f.label} className={clsx("nh-deck-fac", f.points < 0 && "neg")}>
@@ -466,6 +471,22 @@ function ThesisPanel({ play, sessionClosed = false }: { play: TerminalPlay; sess
         {play.targetLevel && <div><span className="k">Target</span><span className="v">{play.targetLevel}</span></div>}
         {play.stopLevel && <div><span className="k">Stop</span><span className="v">{play.stopLevel}</span></div>}
       </div>
+    </>
+  );
+
+  return (
+    <>
+      {hasThesisHealth && isWorking && !sessionClosed && (
+        <ThesisHealthPanel health={play.thesisHealth!} liveRec={liveRec} />
+      )}
+      {hasThesisHealth ? (
+        <details className="nh-deck-commit-snap" open={false}>
+          <summary className="nh-deck-lab nh-deck-why-sum">Why we entered · commit snapshot (frozen)</summary>
+          {commitSnapshot}
+        </details>
+      ) : (
+        commitSnapshot
+      )}
       <div
         className="nh-deck-break"
         style={broke ? undefined : { borderColor: unknown ? "rgba(255,255,255,.14)" : "rgba(53,255,158,.2)" }}
@@ -475,9 +496,14 @@ function ThesisPanel({ play, sessionClosed = false }: { play: TerminalPlay; sess
           {broke ? (
             <div><span className="brk">✗ THESIS DEGRADING</span> — {play.thesisBreak!.note}. Recommend {liveRec}.</div>
           ) : unknown ? (
-            // Data-absent (e.g. a working position with no fresh tape read) — neutral, NOT a false green
-            // and NOT a false "degrading". Honest: we're not monitoring the thesis for this play right now.
             <div><span className="warn">• thesis not monitored</span> — {play.thesisBreak?.note ?? "live tape read unavailable for this play"}.</div>
+          ) : hasThesisHealth ? (
+            <div>
+              <span className={broke ? "brk" : "ok"}>
+                {broke ? "✗" : "◉"} THESIS HEALTH {play.thesisHealth!.health}
+              </span>
+              {" — "}{monitorNote}
+            </div>
           ) : (
             <div><span className="ok">✓ thesis intact</span> — {monitorNote}</div>
           )}

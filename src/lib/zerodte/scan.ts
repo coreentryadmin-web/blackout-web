@@ -1021,6 +1021,8 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
       // itself still does NOT gate the board. Omitted when absent so the blob stays honest.
       ...(s.flow_accumulation ? { flow_accumulation: s.flow_accumulation } : {}),
       ...(s.confluence ? { confluence: s.confluence } : {}),
+      // Dossier factor weights at commit — drives thesis-health evidence profile (weighted pillars).
+      ...(s.factor_breakdown ? { factor_breakdown: { ...s.factor_breakdown } } : {}),
       // Discovery provenance SET (Phase 3a) pinned at first flag — the whole point of the origin
       // work: it must survive to the graded ledger so the calibration origin band can slice WR/PnL
       // by FLOW / BREAKOUT / FLOW+BREAKOUT. Always present (flow-only setups persist ["FLOW"]).
