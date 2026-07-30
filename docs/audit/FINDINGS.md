@@ -37,6 +37,22 @@ First orchestrator attempt failed on missing `node_modules` (tsx/playwright/pg/r
 
 **Status.** FIXED on `cursor/engines-strongest-wave-ab-3d11` (PR #1389 pending).
 
+## 2026-07-30 — [0dte,swing] Wave C discovery completeness (intraday breadth, dynamic cap, admin debug)
+
+**Severity.** P1 — grouped-daily mid-RTH breadth + static cap starved recall; swing STRUCTURE used stale bars on MIDDAY phases; no admin visibility into persistence funnel.
+
+**Fix.** `breakout-intraday-breadth.ts` hybrid minute refresh (`BREAKOUT_INTRADAY_REFRESH=1`); `resolveBreakoutCandidateCap` (`BREAKOUT_DYNAMIC_CAP=1`); swing MIDDAY/POWER_HOUR/PRE_OPEN intraday STRUCTURE path; `GET /api/admin/swing/discovery-debug`; architecture doc + Playwright standing rule on branch.
+
+**Status.** FIXED on `cursor/engines-strongest-wave-ab-3d11` (PR #1389 pending).
+
+## 2026-07-30 — [0dte] Wave C2 PIN temporal stability gate (flag-gated)
+
+**Severity.** P2 — single-snapshot PIN qualification admits transient gamma blips; INTENTIONAL-DESIGN #3 measurement path exists but no production gate.
+
+**Fix.** `pin-temporal-stability.ts` reads the shared `gex-history:{ticker}` ring, re-runs `evaluatePinRegime` per snapshot, and requires a stable multi-snap bracket when `PIN_TEMPORAL_STABILITY=1` (default OFF). Wired in `pin-discovery.ts`.
+
+**Status.** FIXED on `cursor/engines-strongest-wave-ab-3d11` (PR #1389 pending).
+
 ## 2026-07-30 — [spx] Cross-replica play-state divergence on parallel `/api/market/spx/play`
 
 **Severity.** P1 — members on different ECS replicas could see different grade/score/direction in the same second.

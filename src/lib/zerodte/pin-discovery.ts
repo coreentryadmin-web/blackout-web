@@ -33,6 +33,7 @@ import {
 } from "./condor";
 import { selectIronCondor } from "./iron-condor";
 import type { EnrichedZeroDteSetup } from "./board";
+import { pinPassesTemporalStabilityGate } from "./pin-temporal-stability";
 
 /** Directional PIN window in ET minutes-since-midnight: [9:30, 14:00) — same gate as BREAKOUT /
  *  NEW_PLAY_CUTOFF / G-14. After 14:00, discovery continues ONLY for condor-eligible index roots
@@ -224,6 +225,12 @@ export async function discoverPinSetups(opts: {
           gammaPosture: pos.gamma_posture,
         });
         if (!regime) return null; // not a clean pin — never fabricate a fade
+
+        const temporal = await pinPassesTemporalStabilityGate(ticker);
+        if (!temporal.ok) {
+          console.info(`[zerodte-pin] ${ticker} temporal stability HOLD — ${temporal.reason}`);
+          return null;
+        }
 
         // Pick the ATM fade contract off the live chain (call for a long/up fade, put for short/down).
         const chain = await resolveTickerChainRows(ticker).catch(() => null);

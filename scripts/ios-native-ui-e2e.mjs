@@ -198,12 +198,23 @@ async function testToolPage(page, tab) {
   }
 
   if (tab.route === "nighthawk") {
-    if (await clickSegment(page, "Night's Watch")) {
-      ok("hawk:segment-watch");
-      await shot(page, "hawk-watch");
+    if (await clickSegment(page, "Swings")) {
+      ok("hawk:segment-swings");
+      await page.waitForTimeout(800);
+      await shot(page, "hawk-swings");
+      const swingHint = page.locator("text=/Research|persistence|Whole-market swing/i").first();
+      if (await swingHint.isVisible().catch(() => false)) {
+        ok("hawk:swing-lane-hint");
+      } else {
+        warn("hawk:swing-lane-hint", "empty-state hint not visible");
+      }
     }
-    if (await clickSegment(page, "Playbook")) {
-      ok("hawk:segment-playbook");
+    if (await clickSegment(page, "0DTE")) {
+      ok("hawk:segment-0dte");
+      await shot(page, "hawk-0dte");
+    }
+    if (await clickSegment(page, "LEAPS")) {
+      ok("hawk:segment-leaps");
     }
   }
 
