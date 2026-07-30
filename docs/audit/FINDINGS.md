@@ -5,6 +5,23 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-30 — [spx] REST pulse cold path blocked 12s+ (single-flight + prior-day fetch)
+
+**Severity.** P0 — SPX spot felt frozen when SSE dropped; REST fallback timed out at 12–60s.
+
+**Symptom.** Prod probes: 4/5 `/api/market/spx/pulse` XHRs timed out at 12s; 1 warm hit at 30ms.
+SSE `/pulse/stream` GREEN @ 250ms. Bootstrap ~6.5s.
+
+**Root cause.** (1) `withServerCache` single-flight: concurrent pulse polls awaited one slow cold
+`buildSpxDeskPulse()` on the same replica. (2) `priorDayForPulseLane()` blocked on
+`fetchIndexDailyBars()` on first call per replica. (3) Bootstrap awaited full desk rebuild.
+
+**Fix.** `server-cache`: `staleOnInflight` + `maxBlockMs` + `fallback`. Pulse loader: 500ms cap +
+`buildSpxDeskPulseMinimal()` (Redis snapshot only). Bootstrap: 3s cap + pulse-first fast lane.
+`priorDayForPulseLane()` never blocks cold.
+
+**Status.** FIXED on `cursor/pulse-never-block-3d11`.
+
 ## 2026-07-30 — [ops] vector-full-state-snapshot RTH-stale edge timeout (#1355)
 
 **Severity.** P0 — Vector full-state cache warmer silent during RTH.

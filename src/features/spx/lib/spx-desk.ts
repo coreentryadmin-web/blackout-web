@@ -5,11 +5,13 @@ import {
   deskPulseStructureCacheTtlMs,
   deskPulseStructureRaceMs,
   deskFlowRaceMs,
+  deskPulseMaxBlockMs,
 } from "@/lib/providers/config";
 import { serverCache } from "@/lib/server-cache";
 // Pure numeric helpers (round + GEX staleness + pulse rounding) live in a server-only-free module
 // so they can be unit-tested in isolation. See spx-desk-numerics.ts.
 import { roundDeskNum, gexStaleFromAge, roundPulseNumerics } from "./spx-desk-numerics";
+import { mergePulseIntoDesk } from "./spx-desk-merge";
 import { safeTime } from "@/lib/safe-time";
 import { tapeDedupKey } from "@/lib/tape-dedup-key";
 import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
@@ -595,7 +597,7 @@ async function fetchPulseLaneSnapshots(): Promise<IndexSnapMap> {
   return merged;
 }
 
-/** Prior-day OHLC for pulse — serve stale immediately; refresh in background. */
+/** Prior-day OHLC for pulse — serve stale immediately; refresh in background. Never block cold. */
 async function priorDayForPulseLane(): Promise<{
   pdh: number | null;
   pdl: number | null;
@@ -609,7 +611,12 @@ async function priorDayForPulseLane(): Promise<{
     void fetchPriorDayCached().catch(() => {});
     return { pdh: cachedPriorDay.pdh, pdl: cachedPriorDay.pdl, pdc: cachedPriorDay.pdc };
   }
-  return fetchPriorDayCached();
+  void fetchPriorDayCached().catch(() => {});
+  return {
+    pdh: lastPulseForSignals?.pdh ?? null,
+    pdl: lastPulseForSignals?.pdl ?? null,
+    pdc: lastPulseForSignals?.prior_close ?? null,
+  };
 }
 
 async function syncDeskStickyFromRedis(): Promise<void> {
@@ -1204,6 +1211,15 @@ async function _fetchSpxDeskFlowAlertsWithDbInner(limit = 32): Promise<SpxFlowBr
   }
 }
 
+function emptyDeskPayload(asOf: string): SpxDeskPayload {
+  return emptyPayload(asOf);
+}
+
+/** Minimal desk shell merged with a pulse snapshot — bootstrap fast-lane fallback. */
+export function deskShellFromPulse(pulse: SpxDeskPulse): SpxDeskPayload {
+  return mergePulseIntoDesk(emptyDeskPayload(pulse.polled_at), pulse);
+}
+
 function emptyPayload(asOf: string): SpxDeskPayload {
   return {
     available: false,
@@ -1760,9 +1776,13 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
 
   if (!polygonConfigured()) return empty;
 
-  const marketNow = await serverCache("market-status-now", 30_000, () =>
-    fetchMarketStatusNow()
-  ).catch(() => null);
+  const marketStatusRaceMs = Math.min(250, deskPulseMaxBlockMs());
+  const marketNow = await Promise.race([
+    serverCache("market-status-now", 30_000, () => fetchMarketStatusNow()).catch(() => null),
+    new Promise<Awaited<ReturnType<typeof fetchMarketStatusNow>> | null>((resolve) =>
+      setTimeout(() => resolve(null), marketStatusRaceMs)
+    ),
+  ]);
   const now = new Date();
   const premarketPlan = isPremarketPlanningWindow(now);
   const rthOpen = isSpxRthActive(now, marketNow);
@@ -1823,13 +1843,32 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
     structure.breadth_samples
   );
 
-  const gapSnap = await resolveDeskGap({
-    spx_price: price,
-    prior_close: prior.pdc,
-    premarket: premarketPlan && !rthOpen,
-    // RTH gap is frozen at the session open, not the live price (audit 2026-07-21).
-    rth_open: structure.open,
-  });
+  const gapSnap =
+    premarketPlan && !rthOpen
+      ? await Promise.race([
+          resolveDeskGap({
+            spx_price: price,
+            prior_close: prior.pdc,
+            premarket: true,
+            rth_open: structure.open,
+          }),
+          new Promise<Awaited<ReturnType<typeof resolveDeskGap>>>((resolve) =>
+            setTimeout(
+              () =>
+                resolve({
+                  gap_pct: lastPulseForSignals?.gap_pct ?? null,
+                  gap_source: lastPulseForSignals?.gap_source ?? null,
+                }),
+              marketStatusRaceMs
+            )
+          ),
+        ])
+      : await resolveDeskGap({
+          spx_price: price,
+          prior_close: prior.pdc,
+          premarket: false,
+          rth_open: structure.open,
+        });
 
   const result: SpxDeskPulse = {
     available: true,
@@ -1882,6 +1921,148 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
   const rounded = roundPulseNumerics(result);
   lastPulseForSignals = rounded;
   return rounded;
+}
+
+/**
+ * Sub-500ms pulse for cold replicas — Redis index snapshot + last-good structure.
+ * Never calls Polygon daily bars or blocks on single-flight full builds.
+ */
+export async function buildSpxDeskPulseMinimal(): Promise<SpxDeskPulse> {
+  const polledAt = new Date().toISOString();
+  if (lastPulseForSignals?.price) {
+    return { ...lastPulseForSignals, polled_at: polledAt };
+  }
+
+  const { ensureDataSockets } = await import("@/lib/ws/init-data-sockets");
+  ensureDataSockets();
+
+  const empty: SpxDeskPulse = {
+    available: false,
+    polled_at: polledAt,
+    price: 0,
+    spx_change_pct: 0,
+    vix: null,
+    vix_change_pct: null,
+    above_vwap: false,
+    lod: null,
+    hod: null,
+    vwap: null,
+    pdh: null,
+    pdl: null,
+    prior_close: null,
+    gap_pct: null,
+    gap_source: null,
+    ema20: null,
+    ema50: null,
+    ema200: null,
+    sma50: null,
+    sma200: null,
+    tick: null,
+    trin: null,
+    add: null,
+    internals_estimated: { tick: false, trin: false, add: false },
+    regime: "unknown",
+    leader_stocks: [],
+    vix_term: { vix9d: null, vix3m: null, structure: "unknown", detail: "" },
+    data_quality: { vix_term_partial: false, missing: [] },
+    market_open: false,
+    market_status: "closed",
+    market_label: "CLOSED",
+  };
+
+  if (!polygonConfigured()) return empty;
+
+  const now = new Date();
+  const marketNow = null;
+  const premarketPlan = isPremarketPlanningWindow(now);
+  const rthOpen = isSpxRthActive(now, marketNow);
+  const label = marketStatusLabel(now, marketNow);
+
+  if (!rthOpen && !premarketPlan) {
+    return { ...empty, market_status: "closed", market_label: label };
+  }
+
+  kickPulseStructureRefresh(todayEtYmd());
+  const [snapsRaw, prior] = await Promise.all([
+    fetchPulseLaneSnapshots(),
+    priorDayForPulseLane(),
+  ]);
+  const structure = cachedPulseStructure;
+  const spxSnap = snapsRaw[SPX];
+  const vixSnap = snapsRaw[VIX];
+  if (!spxSnap?.price) return empty;
+
+  const price = spxSnap.price;
+  const spxFeed = getIndexFeedFreshness(SPX);
+  const vwap = structure.vwap;
+  const lod = premarketPlan && !rthOpen ? prior.pdl ?? null : structure.lod ?? null;
+  const hod = premarketPlan && !rthOpen ? prior.pdh ?? null : structure.hod ?? null;
+  const sessionExtremes = widenSessionExtremesWithSpot(price, hod, lod, rthOpen);
+  const ema20 = structure.ema20;
+  const ema50 = structure.ema50;
+  const vixTerm = computeVixTermStructure(
+    vixSnap?.price ?? null,
+    snapsRaw[VIX9D]?.price ?? null,
+    snapsRaw[VIX3M]?.price ?? null
+  );
+  const dataQuality = buildDeskDataQuality(snapsRaw, vixTerm);
+  const internals = resolveMarketInternals(
+    {
+      tick: snapsRaw[TICK]?.price ?? null,
+      trin: snapsRaw[TRIN]?.price ?? null,
+      add: snapsRaw[ADD]?.price ?? null,
+    },
+    structure.breadth_samples
+  );
+
+  const result: SpxDeskPulse = {
+    available: true,
+    polled_at: polledAt,
+    price,
+    spx_change_pct: spxSnap.change_pct,
+    vix: vixSnap?.price ?? null,
+    vix_change_pct: vixSnap?.change_pct ?? null,
+    above_vwap: vwap != null ? price >= vwap : false,
+    lod: sessionExtremes.lod,
+    hod: sessionExtremes.hod,
+    vwap,
+    pdh: prior.pdh,
+    pdl: prior.pdl,
+    prior_close: prior.pdc,
+    gap_pct: lastPulseForSignals?.gap_pct ?? null,
+    gap_source: lastPulseForSignals?.gap_source ?? null,
+    ema20,
+    ema50,
+    ema200: structure.ema200,
+    sma50: structure.sma50,
+    sma200: structure.sma200,
+    tick: internals.tick,
+    trin: internals.trin,
+    add: internals.add,
+    internals_estimated: internals.estimated,
+    regime: String(inferRegime(price, ema20, ema50)),
+    leader_stocks: structure.leader_stocks,
+    vix_term: {
+      vix9d: vixTerm.vix9d,
+      vix3m: vixTerm.vix3m,
+      structure: vixTerm.structure,
+      detail: vixTerm.detail,
+    },
+    data_quality: dataQuality,
+    price_age_ms: spxFeed.ageMs,
+    feed_stalled: spxFeed.stalled === true,
+    market_open: rthOpen,
+    market_status: premarketPlan && !rthOpen ? "premarket" : "open",
+    market_label: premarketPlan && !rthOpen ? "PRE-MARKET" : label,
+    active_halts: getActiveTradingHalts().map((h) => ({
+      symbol: h.symbol,
+      halt_type: h.halt_type,
+      reason: h.reason,
+    })),
+    halt_channel_stale: isTradingHaltChannelStale(),
+    lit_dark_ratio: computeLitDarkRatio(),
+  };
+  return roundPulseNumerics(result);
 }
 
 /** UW flow lane — GEX strike ladder, live tape, dark pool (~4s). */

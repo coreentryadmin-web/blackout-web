@@ -1,8 +1,16 @@
-import { deskCacheTtlMs, deskFlowCacheTtlMs, deskPulseCacheTtlMs } from "@/lib/providers/config";
+import {
+  deskBootstrapMaxBlockMs,
+  deskCacheTtlMs,
+  deskFlowCacheTtlMs,
+  deskPulseCacheTtlMs,
+  deskPulseMaxBlockMs,
+} from "@/lib/providers/config";
 import {
   buildSpxDesk,
   buildSpxDeskFlow,
   buildSpxDeskPulse,
+  buildSpxDeskPulseMinimal,
+  deskShellFromPulse,
 } from "@/features/spx/lib/spx-desk";
 import type { SpxDeskFlow, SpxDeskPayload, SpxDeskPulse } from "@/features/spx/lib/spx-desk";
 import { mergeDeskLayers } from "@/features/spx/lib/spx-desk-merge";
@@ -19,6 +27,23 @@ export type MergedSpxDeskBundle = {
   flow: SpxDeskFlow | null;
   pulse: SpxDeskPulse | null;
   merged: SpxDeskPayload;
+};
+
+const pulseCacheOpts = {
+  staleWhileRevalidate: true as const,
+  staleOnInflight: true,
+  maxBlockMs: deskPulseMaxBlockMs(),
+  fallback: buildSpxDeskPulseMinimal,
+};
+
+const deskCacheOpts = {
+  staleWhileRevalidate: true as const,
+  staleOnInflight: true,
+};
+
+const flowCacheOpts = {
+  staleWhileRevalidate: true as const,
+  staleOnInflight: true,
 };
 
 /**
@@ -41,9 +66,7 @@ export async function loadSpxDesk(): Promise<SpxDeskPayload> {
   const date = todayEtYmd();
   // SWR: return last good snapshot immediately while the background refresh runs.
   // Prevents a cold Massive chain fetch (20s+) from blocking play/desk polling.
-  return withServerCache(`spx-desk:${date}`, deskCacheTtlMs(), buildSpxDesk, {
-    staleWhileRevalidate: true,
-  });
+  return withServerCache(`spx-desk:${date}`, deskCacheTtlMs(), buildSpxDesk, deskCacheOpts);
 }
 
 /**
@@ -52,9 +75,12 @@ export async function loadSpxDesk(): Promise<SpxDeskPayload> {
  */
 export async function loadSpxDeskPulse(): Promise<SpxDeskPulse> {
   const date = todayEtYmd();
-  return withServerCache(`spx-desk-pulse:${date}`, deskPulseCacheTtlMs(), buildSpxDeskPulse, {
-    staleWhileRevalidate: true,
-  });
+  return withServerCache(
+    `spx-desk-pulse:${date}`,
+    deskPulseCacheTtlMs(),
+    buildSpxDeskPulse,
+    pulseCacheOpts
+  );
 }
 
 /**
@@ -63,9 +89,7 @@ export async function loadSpxDeskPulse(): Promise<SpxDeskPulse> {
  */
 export async function loadSpxDeskFlow(): Promise<SpxDeskFlow> {
   const date = todayEtYmd();
-  return withServerCache(`spx-desk-flow:${date}`, deskFlowCacheTtlMs(), buildSpxDeskFlow, {
-    staleWhileRevalidate: true,
-  });
+  return withServerCache(`spx-desk-flow:${date}`, deskFlowCacheTtlMs(), buildSpxDeskFlow, flowCacheOpts);
 }
 
 /**
@@ -98,6 +122,36 @@ async function buildMergedBundle(): Promise<MergedSpxDeskBundle> {
   return loadMergedSpxDesk();
 }
 
+/** Pulse-first partial bundle when the full desk rebuild exceeds the bootstrap cap. */
+async function buildBootstrapFastLane(): Promise<MergedSpxDeskBundle> {
+  const pulse = await loadSpxDeskPulse();
+  const desk = deskShellFromPulse(pulse);
+  const flow: SpxDeskFlow = {
+    available: false,
+    polled_at: pulse.polled_at,
+    price: pulse.price,
+    dark_pool: null,
+    spx_flows: [],
+    unified_tape: [],
+    gex_walls: [],
+    gex_net: null,
+    gex_king: null,
+    gamma_flip: null,
+    above_gamma_flip: false,
+    gamma_regime: "unknown",
+    flow_0dte_call_premium: null,
+    flow_0dte_put_premium: null,
+    flow_0dte_net: null,
+    strike_stacks: [],
+    net_prem_ticks: [],
+    flow_by_expiry: [],
+    net_flow_by_expiry: [],
+    greek_exposure: null,
+  };
+  const merged = mergeDeskLayers(desk, flow, pulse);
+  return { desk, flow, pulse, merged };
+}
+
 /**
  * One Redis key for GET /api/market/spx/bootstrap — single round-trip on warm cache
  * instead of three separate lane reads + merge on every dashboard load.
@@ -106,5 +160,8 @@ export async function loadBootstrapBundle(): Promise<MergedSpxDeskBundle> {
   const date = todayEtYmd();
   return withServerCache(`spx-bootstrap:${date}`, deskCacheTtlMs(), buildMergedBundle, {
     staleWhileRevalidate: true,
+    staleOnInflight: true,
+    maxBlockMs: deskBootstrapMaxBlockMs(),
+    fallback: buildBootstrapFastLane,
   });
 }
