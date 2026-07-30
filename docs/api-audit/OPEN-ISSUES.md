@@ -1,5 +1,42 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-30 17:18 ET
+Last updated: 2026-07-30 17:25 ET
+
+## spx-rth-2026-07-30 — SPX Slayer post-close fix pass (~1:18 PM PT / 4:18 PM ET)
+
+**Session:** SPX Slayer post-close fix agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` **Step 6**. Commands: `npm run validate:spx-rth -- --phase=post-close` → `npm run validate:spx-e2e` → harness hardening PR → re-validate → `npm run validate:deploy`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth -- --phase=post-close` | ✅ **6 PASS / 1 WARN / 0 FAIL** — GREEN |
+| `npm run validate:spx-e2e` | ✅ **0 FAIL / 17 checks** — GREEN |
+| Matrix deep audit (SPX) | ✅ Every GEX/VEX/DEX/CHARM cell finite; Σ strike_totals == headline; INV-2 per strike |
+| Cross-endpoint spot/GEX | ✅ desk=7437.63 / heatmap=7437.63 / play=SCANNING |
+| BIE consistency | ✅ `getSpxPlayState()` single derivation |
+| `ops:collect` | ✅ exit 0 — zero action items |
+| `npm run validate:deploy` | ✅ GREEN |
+
+### Fixes shipped this pass
+
+| ID | Severity | Fix |
+|---|---|---|
+| `spx-e2e-ui-matrix-timeout` | P1 | Matrix tab + row wait bumped to 60s in `spx-dashboard-e2e-audit.mjs` |
+| `largo-query-504` | P1 | Largo probe retries once on HTTP 504/524 (transient CF origin timeout) |
+| `spx-e2e-orchestrator-timeout` | P2 | `spawnSync` 300s ceiling + ETIMEDOUT handling in `spx-rth-all-day-audit.mjs` |
+
+### Residual (non-FAIL, expected)
+
+| Severity | ID | Detail | Fix defer? |
+|---|---|---|---|
+| P2 | SPX-RTH-DC-01 | `CRON_SECRET` auth mismatch on data-correctness probe from cloud sandbox | Yes — prod cron authoritative |
+| P2 | SPX-RTH-BIE-01 | Cron bearer on `/api/market/spx/play` returns 401 | Yes — member route requires Clerk session |
+
+**Post-close status: GREEN** — zero FAIL on `validate:spx-rth` and `validate:spx-e2e`.
+
+**Reports:** `audit-output/spx-rth-2026-07-30-post-close-1785446441556.json`, `audit-output/spx-dashboard-e2e-1785446427521.json`
+
+---
 
 ## grid-rth-2026-07-30 — 0DTE Command post-close **fix** pass (~17:16 ET)
 

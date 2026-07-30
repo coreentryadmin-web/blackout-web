@@ -371,7 +371,9 @@ async function browserDashboard(session, hm) {
     // --- Click every SPX dashboard control ---
     const gexTab = page.locator("#spx-matrix-tab-gex");
     const vexTab = page.locator("#spx-matrix-tab-vex");
-    await gexTab.waitFor({ state: "visible", timeout: 30_000 });
+    const matrixTable = page.locator(".spx-gex-matrix-table");
+    // 60s — cloud Playwright can hydrate slowly after a long orchestrator burst (SPX-RTH-2026-07-30).
+    await gexTab.waitFor({ state: "visible", timeout: 60_000 });
     await gexTab.click();
     rec("ui:click-gex-tab", "PASS");
     if (await vexTab.isVisible()) {
@@ -382,12 +384,11 @@ async function browserDashboard(session, hm) {
       rec("ui:click-vex-tab", "SKIP", "VEX tab not shown (no vex block)");
     }
 
-    const matrixTable = page.locator(".spx-gex-matrix-table");
     await page.waitForFunction(
       () => document.querySelectorAll(".spx-gex-matrix-table tbody tr").length >= 20,
-      { timeout: 45_000 }
+      { timeout: 60_000 }
     );
-    await matrixTable.waitFor({ state: "visible", timeout: 5_000 });
+    await matrixTable.waitFor({ state: "visible", timeout: 10_000 });
     const rowCount = await matrixTable.locator("tbody tr").count();
     if (rowCount < 20) {
       rec("ui:matrix-rows", "FAIL", `only ${rowCount} rows visible`);
@@ -452,14 +453,24 @@ async function browserDashboard(session, hm) {
 }
 
 async function largoSpxProbe(app) {
-  const r = app("/api/market/largo/query", {
+  const body = {
+    question:
+      "What is the current SPX Slayer play state including phase, direction, grade, and gamma flip? Cite only live platform data.",
+  };
+  let r = app("/api/market/largo/query", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    json: {
-      question:
-        "What is the current SPX Slayer play state including phase, direction, grade, and gamma flip? Cite only live platform data.",
-    },
+    json: body,
   });
+  // CF origin ~100s cap — one retry on transient 504/524 (SPX-RTH-2026-07-30 afternoon pass).
+  if (r.status === 504 || r.status === 524 || r.status === 0) {
+    await new Promise((resolve) => setTimeout(resolve, 5_000));
+    r = app("/api/market/largo/query", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      json: body,
+    });
+  }
   if (r.status !== 200) {
     rec("integration:largo-spx-query", "FAIL", `HTTP ${r.status}`);
     return;
