@@ -16,9 +16,14 @@ const VECTOR_SELF_HEAL_CRONS = [
   "vector-dark-pool-warm",
 ];
 
+const OPS_SELF_HEAL_CRONS = [
+  "coaching-alerts",
+  "bie-full-state-snapshot",
+];
+
 const dispatchSrc = readFileSync(join(ROOT, "src/lib/cron-dispatch.ts"), "utf8");
 
-for (const key of VECTOR_SELF_HEAL_CRONS) {
+for (const key of [...VECTOR_SELF_HEAL_CRONS, ...OPS_SELF_HEAL_CRONS]) {
   test(`cron-dispatch includes safe Vector warmer "${key}"`, () => {
     assert.match(
       dispatchSrc,
