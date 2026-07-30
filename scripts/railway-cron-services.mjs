@@ -34,6 +34,13 @@ export const CRON_SERVICE_NAMES = {
   "bie-full-state-snapshot": "BIE-Full-State-Snapshot",
   "coaching-alerts": "Coaching-Alerts",
   "platform-warm": "Platform-Warm",
+  // Swing lane crons (railway.swing-discovery.toml / railway.swing-active-refresh.toml). These were in
+  // cron-registry.ts + had live routes since PR-13 (#1046) but were never added to this EventBridge
+  // schedule catalog, so neither fired in prod — the direct cause of the permanently-empty SWING board
+  // (2026-07-29: 38/38 FailedInvocations). TOMLs landed on main via swing-followups; this registry
+  // entry is what blackout-infra sync-cron-schedules.mjs needs to provision EventBridge rules.
+  "swing-discovery": "Swing-Discovery",
+  "swing-active-refresh": "Swing-Active-Refresh",
 };
 
 /** All cron job keys that have a cron config railway.<key>.toml in the repo. */

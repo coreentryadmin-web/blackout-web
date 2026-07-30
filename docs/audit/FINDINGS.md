@@ -22,7 +22,20 @@ stale live sections.
 5. **Serving authoritative open state (#38):** horizons route loads latest snapshot `event_json` per open
    position; live plays stamp EXITING/MANAGING from manage-sync without waiting for discovery.
 
-**Status.** FIXED on `cursor/swing-p0-remediation-3d11`.
+**Status.** FIXED — merged #1322.
+
+## 2026-07-30 — [Swing] EventBridge schedule catalog missing swing crons
+
+**Severity.** P0 — swing-discovery / swing-active-refresh never provisioned in EventBridge despite live
+routes (38/38 FailedInvocations 2026-07-29); empty SWING board.
+
+**Root cause.** `railway.swing-*.toml` catalog files landed on main but `CRON_SERVICE_NAMES` in
+`scripts/railway-cron-services.mjs` lacked `swing-discovery` + `swing-active-refresh` entries —
+blackout-infra sync-cron-schedules.mjs uses that map to create EventBridge rules.
+
+**Fix.** Register both keys + `scripts/swing-cron-schedule.test.mjs` regression guard (6 tests).
+
+**Status.** FIXED on `cursor/swing-cron-registry-3d11`. Infra must run cron sync after merge.
 
 ## 2026-07-30 — [Swing] Hourly manage is mark-and-review (not tactical live mgmt) + grader honesty labels
 
