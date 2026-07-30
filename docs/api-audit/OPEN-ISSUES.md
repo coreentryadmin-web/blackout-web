@@ -1,5 +1,76 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-30 16:52 ET
+Last updated: 2026-07-30 16:57 ET
+
+## rth-comprehensive-2026-07-30-16h57 — RTH agent pass (~16:52–16:57 ET, post-close)
+
+**Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` including **RTH COMPREHENSIVE TEST SWEEP**. Commands: `npm run validate:rth-open` → `GET /api/cron/data-correctness?force=1` → `npm run validate:rth-sweep` → `npm run validate:grid-rth --force` → `npm run validate:spx-rth --force` → `npm run ops:collect`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` | ✅ **GREEN** — deploy smoke (post-close window; full RTH writer checks skipped after 16:15 ET) |
+| `GET /api/cron/data-correctness?force=1` | ✅ **202 async** dispatched (`flags=0` via grid/spx orchestrators); sync `?surface=heatmap` skipped outside RTH window |
+| `npm run validate:rth-sweep` | ✅ **GREEN** — 7 pages, 0 missing fields, 0 P0/P1; Largo grounded NVDA $76.3M in 6.1s |
+| `npm run validate:grid-rth --force` | ⚠️ **13 PASS / 1 FAIL** transient — `zerodte:cross-tool-integration` truncated mid-run; immediate re-run **14/14 GREEN** |
+| `npm run validate:spx-rth --force` | ⚠️ **6 PASS / 1 FAIL / 1 WARN** transient — `spx:dashboard-e2e` race on first pass; re-run **7 PASS / 1 WARN GREEN** |
+| `npm run ops:collect` | ✅ **exit 0** — zero action items |
+
+**No new P0/P1 product defects.** No fix branch required.
+
+### Speed (comprehensive sweep — Playwright premium session)
+
+| Page | Nav | Load | Console |
+|---|---|---|---|
+| `/dashboard` (SPX Slayer) | hard | 1885ms | 7× ChunkLoadError (transient deploy-race; chunks now 200) |
+| `/flows` (HELIX) | soft | 1633ms | 8× ChunkLoadError (transient) |
+| `/heatmap` (Thermal matrix) | soft | **2445ms** | 10× ChunkLoadError (transient; >1.9s soft-nav flag) |
+| `/vector` | soft | 1635ms | 0 |
+| `/nighthawk` (0DTE Command) | soft | 1680ms | 6× ChunkLoadError (transient) |
+| `/terminal` (Largo) | soft | 1688ms | 4× ChunkLoadError (transient) |
+| `/track-record` | soft | 1594ms | 4× ChunkLoadError (transient) |
+
+Sign-in ~60s (Clerk FAPI). Heatmap soft-nav 2.4s — borderline; matrix API warm at 99ms. Classic `/grid` + 9 `/api/grid/*` panels deleted 2026-07-07; 0DTE Command on `/nighthawk` validated via `validate:grid-rth` (13 setups / 15 ledger).
+
+### Live auto-update
+
+| Surface | Observed | Notes |
+|---|---|---|
+| Dashboard pulse | `liveTick=null` | SPX stable post-close (12s window) |
+| HELIX flows | API 20 prints | tape fresh via `/api/market/flows` |
+| Thermal matrix | 20s poll cadence | gex-heatmap SPX 99ms |
+| 0DTE board | `as_of` 15s | 13 setups / 15 ledger |
+
+### Data correctness (API cross-check)
+
+| Field | Sources | Result |
+|---|---|---|
+| SPX spot | desk 7437.63 / merged / hm / play | ✅ aligned |
+| GEX walls | cross-tool | ✅ no flip mismatch |
+| NH dedupe | 4 tickers | ✅ `covered_elsewhere` |
+| Largo NVDA | HELIX $76,307,554 premium | ✅ grounded |
+
+### Missing-field audit
+
+**0 flagged patterns** across all 7 pages. Largo `Regime: **—**` on single-ticker HELIX query — upstream regime label absent (expected off-hours).
+
+### Console / render health
+
+Transient `ChunkLoadError` on chunks `6987`/`67` during Playwright session — chunks return **200** on direct curl post-pass; `layout.tsx` one-shot chunk-reload guard handles deploy races. Classified **P2 headless artifact** (see `headless-stale-chunk-console`).
+
+### API verification
+
+All probed `/api/market/*` → **200**. Platform snapshot `as_of` age 0s. `spx:data-correctness` WARN — env `CRON_SECRET` stale vs AWS Secrets Manager; `auditSecret()` path works.
+
+### Reports
+
+- `audit-output/rth-sweep-2026-07-30T20-53-29-730Z.json`
+- `audit-output/grid-rth-2026-07-30-verify-1785445046384.json`
+- `audit-output/spx-rth-2026-07-30-verify-1785445094093.json`
+- `audit-output/zerodte-integration-1785445004724.json`
+- `audit-output/spx-dashboard-e2e-1785445009381.json`
+
+---
 
 ## spx-rth-2026-07-30 — SPX Slayer all-day verify pass (~16:50 ET, post-close)
 
