@@ -237,13 +237,20 @@
 }
 
 /* Hero text */
-.hero-h{position:relative;z-index:8;text-align:center;margin-top:-20px}
+.hero-h{position:relative;z-index:8;text-align:center;margin-top:-20px;max-width:clamp(320px,75vw,820px);margin-inline:auto}
 .hero-h h1{
   font-family:var(--d);
-  font-size:clamp(5rem,13vw,10rem);
-  line-height:.78;
-  letter-spacing:-.01em;
+  font-size:clamp(4.2rem,11vw,8.5rem);
+  line-height:1;
+  letter-spacing:-.03em;
   text-transform:uppercase;
+  font-weight:800;
+}
+.hero-h h1 .l1{
+  display:block;font-size:.82em;letter-spacing:-.02em;margin-bottom:14px;
+}
+.hero-h h1 .l2{
+  display:block;font-size:.88em;letter-spacing:-.02em;margin-bottom:18px;
 }
 .hero-h h1 .on{
   display:block;font-size:1.2em;color:var(--g);

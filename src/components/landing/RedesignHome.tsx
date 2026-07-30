@@ -52,7 +52,7 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
         </div>
 
         <div className="hero-h">
-          <h1>Trade like<br />the lights<br /><span className="on">are on.</span></h1>
+          <h1><span className="l1">Trade like</span><span className="l2">the lights</span><span className="on">are on.</span></h1>
         </div>
 
         <div className="hero-sub">
