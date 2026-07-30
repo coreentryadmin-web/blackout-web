@@ -7,6 +7,8 @@ import type { OptionMark } from "@/lib/ws/options-socket";
 
 const POLYGON_SNAPSHOT_KEY = "spx:pulse:snapshot";
 const UW_CLUSTER_LAST_MSG_KEY = "uw:ws:last_msg_at";
+/** Matches uw-socket.ts TTL — REST cache refresh re-seeds this when WS delivery is absent. */
+const UW_CLUSTER_LAST_MSG_TTL_SEC = 180;
 const OPTIONS_LEADER_KEY = "options:ws:leader";
 const OPTIONS_MARK_PREFIX = "nw:optmark:";
 /** RTH liveness window for cluster heartbeats (matches admin UW channel silence threshold). */
@@ -169,6 +171,22 @@ export async function seedPulseSnapshotFromUwPrices(now = Date.now()): Promise<b
     const redis = await getUwCacheRedis();
     if (!redis) return false;
     await redis.setex(POLYGON_SNAPSHOT_KEY, 30, JSON.stringify(snap));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Seed `uw:ws:last_msg_at` when UW REST cache refresh succeeds but the ingest WS heartbeat is
+ * absent (web-tier socket-health probes, or market-worker WS reconnecting). Honest liveness:
+ * the REST warm just proved UW data is flowing.
+ */
+export async function seedUwClusterHeartbeat(now = Date.now()): Promise<boolean> {
+  try {
+    const redis = await getUwCacheRedis();
+    if (!redis) return false;
+    await redis.setex(UW_CLUSTER_LAST_MSG_KEY, UW_CLUSTER_LAST_MSG_TTL_SEC, String(now));
     return true;
   } catch {
     return false;

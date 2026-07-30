@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { vectorUniverseTickers } from "@/lib/heatmap-allowlist";
@@ -23,35 +23,54 @@ export async function GET(req: NextRequest) {
   }
 
   const tickers = vectorUniverseTickers();
-  const results = await Promise.allSettled(tickers.map((t) => warmVectorDarkPool(t)));
 
-  // warmVectorDarkPool swallows UW errors internally and reports them via
-  // fetchFailed — counting only Promise rejections here made a total UW outage
-  // report ok:true / failed:0 while serving nothing (watchdog-blind).
-  let warmed = 0;
-  let levels = 0;
-  let fetchFailed = 0;
-  for (const r of results) {
-    if (r.status === "fulfilled") {
-      if (r.value.fetchFailed) {
-        fetchFailed += 1;
-      } else {
-        warmed += 1;
-        levels += r.value.levels;
-      }
-    }
-  }
-  const rejected = results.length - warmed - fetchFailed;
-  const failed = fetchFailed + rejected;
-
-  const payload = {
-    ok: failed < results.length,
-    warmed,
-    failed,
-    fetch_failed: fetchFailed,
-    total: tickers.length,
-    levels,
+  const dispatchWarm = () => {
+    void Promise.allSettled(tickers.map((t) => warmVectorDarkPool(t)))
+      .then((results) => {
+        let warmed = 0;
+        let levels = 0;
+        let fetchFailed = 0;
+        for (const r of results) {
+          if (r.status === "fulfilled") {
+            if (r.value.fetchFailed) fetchFailed += 1;
+            else {
+              warmed += 1;
+              levels += r.value.levels;
+            }
+          }
+        }
+        const rejected = results.length - warmed - fetchFailed;
+        const failed = fetchFailed + rejected;
+        console.info(
+          `[cron/vector-dark-pool-warm] background done — warmed=${warmed} failed=${failed} levels=${levels} elapsed=${Date.now() - started}ms`
+        );
+        if (failed > 0) {
+          console.warn(`[cron/vector-dark-pool-warm] background: ${failed}/${results.length} warm(s) failed`);
+        }
+      })
+      .catch((err) => {
+        console.error("[cron/vector-dark-pool-warm] background warm REJECTED:", err);
+      });
   };
-  await logCronRun("vector-dark-pool-warm", started, payload);
-  return NextResponse.json(payload);
+
+  try {
+    after(dispatchWarm);
+  } catch {
+    dispatchWarm();
+  }
+
+  const accepted = {
+    ok: true,
+    status: "accepted",
+    reason: "vector dark pool warm dispatched in background (fire-and-forget)",
+    total: tickers.length,
+  };
+  await logCronRun("vector-dark-pool-warm", started, accepted);
+  return NextResponse.json(
+    {
+      ...accepted,
+      note: "Heavy warm runs in background — Vector dark pool cache still advances on the ECS worker.",
+    },
+    { status: 202 }
+  );
 }

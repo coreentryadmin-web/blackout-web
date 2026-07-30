@@ -9,7 +9,7 @@
 // warmer, the first member poll after each TTL expiry blocks on the full rebuild. This
 // cron keeps those lanes hot so dashboard XHR stays sub-second during RTH.
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { loadBootstrapBundle, loadMergedSpxDesk } from "@/features/spx/lib/spx-desk-loader";
@@ -41,67 +41,77 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(payload);
   }
 
-  const [mergedResult, gexResults, bootstrapResult] = await Promise.allSettled([
-    loadMergedSpxDesk(),
-    Promise.allSettled(["SPX", "SPY"].map((t) => fetchGexHeatmap(t))),
-    loadBootstrapBundle(),
-  ]);
+  const dispatchWarm = () => {
+    void (async () => {
+      const [mergedResult, gexResults, bootstrapResult] = await Promise.allSettled([
+        loadMergedSpxDesk(),
+        Promise.allSettled(["SPX", "SPY"].map((t) => fetchGexHeatmap(t))),
+        loadBootstrapBundle(),
+      ]);
+
+      try {
+        const redis = await getUwCacheRedis();
+        if (redis) await seedUwCacheFromWsStores(redis);
+      } catch {
+        /* non-fatal */
+      }
+
+      const deskOk = mergedResult.status === "fulfilled";
+      const gexOk =
+        gexResults.status === "fulfilled" &&
+        gexResults.value.some((r) => r.status === "fulfilled");
+      const bootstrapOk = bootstrapResult.status === "fulfilled";
+
+      let enrichOk = false;
+      let bootstrapEnrichedOk = bootstrapOk;
+      try {
+        await prefetchSpxDeskEnrichment();
+        enrichOk = true;
+        await loadBootstrapBundle();
+        bootstrapEnrichedOk = true;
+      } catch {
+        enrichOk = false;
+        bootstrapEnrichedOk = false;
+      }
+
+      if (!deskOk) {
+        console.warn(
+          "[cron/desk-warm] background loadMergedSpxDesk failed:",
+          mergedResult.status === "rejected" ? mergedResult.reason : "unknown"
+        );
+      }
+      if (!gexOk) {
+        console.warn(
+          "[cron/desk-warm] background fetchGexHeatmap(SPX/SPY) failed:",
+          gexResults.status === "rejected" ? gexResults.reason : "all tickers failed"
+        );
+      }
+
+      console.info(
+        `[cron/desk-warm] background done — desk=${deskOk} gex=${gexOk} bootstrap=${bootstrapOk} enrich=${enrichOk} elapsed=${Date.now() - started}ms`
+      );
+    })().catch((err) => {
+      console.error("[cron/desk-warm] background warm REJECTED:", err);
+    });
+  };
 
   try {
-    const redis = await getUwCacheRedis();
-    if (redis) await seedUwCacheFromWsStores(redis);
+    after(dispatchWarm);
   } catch {
-    /* non-fatal */
+    dispatchWarm();
   }
 
-  const deskOk = mergedResult.status === "fulfilled";
-  const gexOk =
-    gexResults.status === "fulfilled" &&
-    gexResults.value.some((r) => r.status === "fulfilled");
-  const bootstrapOk = bootstrapResult.status === "fulfilled";
-
-  let enrichOk = false;
-  let bootstrapEnrichedOk = bootstrapOk;
-  try {
-    await prefetchSpxDeskEnrichment();
-    enrichOk = true;
-    await loadBootstrapBundle();
-    bootstrapEnrichedOk = true;
-  } catch {
-    enrichOk = false;
-    bootstrapEnrichedOk = false;
-  }
-
-  if (!deskOk) {
-    console.warn(
-      "[cron/desk-warm] loadMergedSpxDesk failed:",
-      mergedResult.status === "rejected" ? mergedResult.reason : "unknown"
-    );
-  }
-  if (!gexOk) {
-    console.warn(
-      "[cron/desk-warm] fetchGexHeatmap(SPX/SPY) failed:",
-      gexResults.status === "rejected" ? gexResults.reason : "all tickers failed"
-    );
-  }
-
-  const allFailed = !deskOk && !gexOk && !bootstrapOk;
-  await logCronRun("desk-warm", started, {
-    ok: !allFailed,
-    desk: deskOk,
-    gex: gexOk,
-    bootstrap: bootstrapOk,
-    enrich: enrichOk,
-    bootstrap_enriched: bootstrapEnrichedOk,
-    ...(allFailed ? { error: "desk, gex, and bootstrap warm all failed" } : {}),
-  });
-
-  return NextResponse.json({
-    ok: !allFailed,
-    desk: deskOk,
-    gex: gexOk,
-    bootstrap: bootstrapOk,
-    enrich: enrichOk,
-    bootstrap_enriched: bootstrapEnrichedOk,
-  });
+  const accepted = {
+    ok: true,
+    status: "accepted",
+    reason: "desk + gex + bootstrap warm dispatched in background (fire-and-forget)",
+  };
+  await logCronRun("desk-warm", started, accepted);
+  return NextResponse.json(
+    {
+      ...accepted,
+      note: "Heavy warm runs in background — SPX desk lanes still advance on the ECS worker.",
+    },
+    { status: 202 }
+  );
 }

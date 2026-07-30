@@ -22,7 +22,7 @@ import {
 } from "@/lib/providers/unusual-whales";
 import { fetchMarketMovers } from "@/lib/providers/polygon";
 import { seedUwCacheFromWsStores, shouldSkipUwCacheRefreshTask } from "@/lib/uw-ws-cache-bridge";
-import { seedPulseSnapshotFromUwPrices } from "@/lib/ws/socket-cluster-health";
+import { seedPulseSnapshotFromUwPrices, seedUwClusterHeartbeat } from "@/lib/ws/socket-cluster-health";
 
 const INDEX_TICKERS = ["SPX", "SPY", "QQQ", "IWM"] as const;
 const FLOW_STRIKE_TICKERS = ["SPX", "SPY"] as const;
@@ -118,6 +118,9 @@ export async function GET(req: NextRequest) {
   }
 
   const pulse_seeded = await seedPulseSnapshotFromUwPrices();
+  // When REST warm succeeds, touch the cluster heartbeat so web-tier socket-health / RTH probes
+  // see fresh UW liveness even if the ingest WS is reconnecting.
+  const uw_heartbeat_seeded = refreshed > 0 ? await seedUwClusterHeartbeat() : false;
 
   const failed = results.filter((r) => r.status === "rejected").length;
   if (failed > 0) {
@@ -133,8 +136,17 @@ export async function GET(req: NextRequest) {
     ws_seeded,
     ws_skipped,
     pulse_seeded,
+    uw_heartbeat_seeded,
     ...(failed > 0 ? { error: `${failed}/${tasks.length} refresh task(s) failed` } : {}),
   });
 
-  return NextResponse.json({ ok: true, refreshed, total: tasks.length, ws_seeded, ws_skipped, pulse_seeded });
+  return NextResponse.json({
+    ok: true,
+    refreshed,
+    total: tasks.length,
+    ws_seeded,
+    ws_skipped,
+    pulse_seeded,
+    uw_heartbeat_seeded,
+  });
 }

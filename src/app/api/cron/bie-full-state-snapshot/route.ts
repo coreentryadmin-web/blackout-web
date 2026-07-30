@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { isEtCashRth } from "@/lib/et-market-hours";
@@ -31,18 +31,40 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const state = await buildBieFullState();
-    const payload = {
-      ok: true,
-      asOf: state.asOf,
-      wrote: ["platform", "intel", "vectorUniverse", "darkPool", "hotTickers"].filter(
-        (k) => (state as unknown as Record<string, unknown>)[k] != null
-      ),
-      loaderErrors: Object.keys(state.errors),
-      elapsedMs: Date.now() - started,
+    const dispatchBuild = () => {
+      void buildBieFullState()
+        .then((state) => {
+          console.info(
+            `[cron/bie-full-state-snapshot] background done — asOf=${state.asOf} errors=${Object.keys(state.errors).length} elapsed=${Date.now() - started}ms`
+          );
+        })
+        .catch((err) => {
+          console.error(
+            "[cron/bie-full-state-snapshot] background build REJECTED:",
+            err instanceof Error ? err.message : err
+          );
+        });
     };
-    await logCronRun("bie-full-state-snapshot", started, payload);
-    return NextResponse.json(payload);
+
+    try {
+      after(dispatchBuild);
+    } catch {
+      dispatchBuild();
+    }
+
+    const accepted = {
+      ok: true,
+      status: "accepted",
+      reason: "full-platform snapshot dispatched in background (fire-and-forget)",
+    };
+    await logCronRun("bie-full-state-snapshot", started, accepted);
+    return NextResponse.json(
+      {
+        ...accepted,
+        note: "Heavy build runs in background — bie:full-state still advances on the ECS worker.",
+      },
+      { status: 202 }
+    );
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     await logCronRun("bie-full-state-snapshot", started, { ok: false, error: detail });
