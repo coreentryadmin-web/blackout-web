@@ -133,7 +133,7 @@
 .nav-c:hover{box-shadow:0 0 30px rgba(163,230,53,.5)}
 
 /* ═══════ §1 HERO — ENERGY REACTOR ═══════ */
-.hero{position:relative;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:5rem 1.5rem 2rem;overflow:hidden}
+.hero{position:relative;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2rem 1.5rem 2rem;overflow:hidden}
 
 /* CSS-only subtle ambient — no spotlight, just faint warmth before canvas loads */
 .hero::before{
@@ -158,8 +158,8 @@
   position:relative;z-index:4;
   display:flex;align-items:center;justify-content:center;
   width:clamp(360px,55vw,620px);aspect-ratio:1;
-  margin:.5rem auto -100px;
-  transform:translateY(60px);
+  margin:0 auto;
+  transform:translateY(10px);
 }
 
 /* ── LAYER 1: Tight edge atmosphere — hugs the B, no distant halo ── */
@@ -235,7 +235,7 @@
 }
 
 /* Hero text */
-.hero-h{position:relative;z-index:8;text-align:center;margin-top:-20px;max-width:clamp(320px,75vw,820px);margin-inline:auto}
+.hero-h{position:relative;z-index:8;text-align:center;margin-top:clamp(50px,7vh,70px);max-width:clamp(320px,75vw,820px);margin-inline:auto}
 .hero-h h1{
   font-family:var(--d);
   font-size:clamp(4.2rem,11vw,8.5rem);
