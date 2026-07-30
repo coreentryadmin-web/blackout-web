@@ -22,6 +22,7 @@ import {
   isPrivateVpcDbUrl,
 } from "./pg-audit.mjs";
 import { auditSecret } from "./audit/lib/prod-secrets.mjs";
+import { probeDataCorrectness } from "./audit/lib/data-correctness-probe.mjs";
 import { isXMarketingCronSuppressed } from "./audit/lib/x-marketing-paused.mjs";
 
 const pretty = process.argv.includes("--pretty");
@@ -232,7 +233,7 @@ async function httpItems() {
   }
 
   try {
-    const dc = await fetchWithTimeout(`${BASE}/api/cron/data-correctness?force=1`, H, 90_000);
+    const dc = await probeDataCorrectness({ base: BASE, cronSecret: CRON, timeoutMs: 90_000 });
     const dj = dc.json ?? {};
     if (dc.status === 200 && (dj.flags?.length ?? 0) > 0) {
       const top = dj.flags.slice(0, 5).map((f) => `[${f.layer}/${f.metric}] ${f.detail}`).join("; ");

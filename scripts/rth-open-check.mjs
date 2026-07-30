@@ -166,12 +166,16 @@ async function main() {
         const res = await fetch(`${base}/api/cron/socket-health`, {
           headers: { Authorization: `Bearer ${cron}` },
         });
-        const body = await res.json();
+        const body = await res.json().catch(() => ({}));
         const opt = body.websockets?.options;
-        if (res.status === 200 && opt) {
+        const uw = body.websockets?.unusual_whales;
+        if (opt) {
           if (opt.ok) ok(`options-socket: ${opt.detail}`);
           else if (et.mins >= 9 * 60 + 30) fail(`options-socket: ${opt.detail}`);
           else console.log(`  ⚠ options-socket: pre-09:30 — ${opt.detail}`);
+          if (uw && !uw.ok && et.mins >= 9 * 60 + 30) {
+            console.log(`  ⚠ unusual_whales: ${uw.detail}`);
+          }
         } else if (res.status === 401) {
           console.log(
             "  ⚠ options-socket probe HTTP 401 — CRON_SECRET in this env may not match prod (ECS crons unaffected)"

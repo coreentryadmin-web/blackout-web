@@ -15,6 +15,7 @@ import {
   readPolygonClusterHealth,
   readUwClusterHealth,
   seedPulseSnapshotFromUwPrices,
+  seedUwClusterHeartbeat,
 } from "@/lib/ws/socket-cluster-health";
 import { shouldBootDataSockets } from "@/lib/process-role";
 
@@ -59,6 +60,7 @@ export async function GET(req: NextRequest) {
     // when ingest polygon WS is down but UW tape is live (#1337 / ops #1343).
     if (rth) {
       await seedPulseSnapshotFromUwPrices();
+      await seedUwClusterHeartbeat();
     }
 
     const polygonLocal = getIndexStoreStatus();

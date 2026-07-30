@@ -22,7 +22,7 @@ import {
 } from "@/lib/providers/unusual-whales";
 import { fetchMarketMovers } from "@/lib/providers/polygon";
 import { seedUwCacheFromWsStores, shouldSkipUwCacheRefreshTask } from "@/lib/uw-ws-cache-bridge";
-import { seedPulseSnapshotFromUwPrices } from "@/lib/ws/socket-cluster-health";
+import { seedPulseSnapshotFromUwPrices, seedUwClusterHeartbeat } from "@/lib/ws/socket-cluster-health";
 
 const INDEX_TICKERS = ["SPX", "SPY", "QQQ", "IWM"] as const;
 const FLOW_STRIKE_TICKERS = ["SPX", "SPY"] as const;
@@ -101,12 +101,16 @@ async function runUwCacheRefreshTasks(
   ];
 
   const results = await Promise.allSettled(tasks.map((fn) => fn()));
+  const refreshed = results.filter((r) => r.status === "fulfilled").length;
   const failed = results.filter((r) => r.status === "rejected").length;
+  if (refreshed > 0) {
+    await seedUwClusterHeartbeat();
+  }
   if (failed > 0) {
     console.warn(`[cron/uw-cache-refresh] background: ${failed}/${tasks.length} task(s) failed`);
   }
   console.info(
-    `[cron/uw-cache-refresh] background done — refreshed=${results.filter((r) => r.status === "fulfilled").length} failed=${failed} elapsed=${Date.now() - started}ms`
+    `[cron/uw-cache-refresh] background done — refreshed=${refreshed} failed=${failed} elapsed=${Date.now() - started}ms`
   );
 }
 
