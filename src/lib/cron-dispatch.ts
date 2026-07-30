@@ -20,6 +20,7 @@ import { GET as vectorWallsWarmGet } from "@/app/api/cron/vector-walls-warm/rout
 import { GET as vectorDarkPoolWarmGet } from "@/app/api/cron/vector-dark-pool-warm/route";
 import { GET as coachingAlertsGet } from "@/app/api/cron/coaching-alerts/route";
 import { GET as bieFullStateSnapshotGet } from "@/app/api/cron/bie-full-state-snapshot/route";
+import { GET as swingActiveRefreshGet } from "@/app/api/cron/swing-active-refresh/route";
 
 export type CronHandler = (req: NextRequest) => Promise<Response>;
 
@@ -53,6 +54,9 @@ export const CRON_DISPATCH: Record<string, { handler: CronHandler; force: boolea
   // RTH alert/snapshot writers — append-only or idempotent Redis/PG writes (#1343).
   "coaching-alerts": { handler: coachingAlertsGet, force: true },
   "bie-full-state-snapshot": { handler: bieFullStateSnapshotGet, force: true },
+  // Swing mark-and-review — idempotent append-only snapshots + manage-sync; self-heal must cover
+  // RTH staleness on swing-active-refresh (#1364).
+  "swing-active-refresh": { handler: swingActiveRefreshGet, force: true },
 };
 
 export const DISPATCHABLE_CRONS = Object.keys(CRON_DISPATCH);

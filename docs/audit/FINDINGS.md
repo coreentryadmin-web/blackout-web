@@ -22,6 +22,31 @@ SSE `/pulse/stream` GREEN @ 250ms. Bootstrap ~6.5s.
 
 **Status.** FIXED on `cursor/pulse-never-block-3d11`.
 
+## 2026-07-30 — [ops] swing-active-refresh RTH-stale edge timeout (#1364)
+
+**Severity.** P0 — Swing mark-and-review loop silent during RTH; `vector-universe-snapshot` also
+flagged in the same ops-auto-fix batch (already fixed by #1362 deploy).
+
+**Symptom.** ops-auto-fix #1364: `swing-active-refresh` + `vector-universe-snapshot`
+`market_hours_stale` during RTH.
+
+**Root cause.** (1) `vector-universe-snapshot` — same CF ~100s class as #1355; fixed on main via
+`after()` handshake (#1362) before this agent session; watchdog GREEN after deploy. (2)
+`swing-active-refresh` still awaited per-position Polygon/UW reads + serving-spot refresh + beta
+warm inline (`maxDuration=120`) — with a non-empty open book the combined wall-clock can exceed
+Cloudflare's origin timeout before `logCronRun` fires. Also missing from `CRON_DISPATCH`, so
+watchdog self-heal could not re-warm it.
+
+**Evidence.** Live probe 2026-07-30 ~1:57 PM ET: watchdog `rth_stale=0` post-#1362; force-run
+`swing-active-refresh` returned HTTP 200 in ~32s with empty book (would scale with position count).
+
+**Fix.** (1) Dispatch refresh via `next/server after()`; return HTTP 202 + immediate `logCronRun`
+handshake (mirrors `vector-universe-snapshot` / `coaching-alerts`). Regression test:
+`src/app/api/cron/swing-active-refresh/route.test.ts`. (2) Add `swing-active-refresh` to
+`CRON_DISPATCH` with `force: true` for watchdog self-heal.
+
+**Status.** FIXED on `fix/ops-1364-swing-active-refresh-edge-timeout`.
+
 ## 2026-07-30 — [ops] vector-full-state-snapshot RTH-stale edge timeout (#1355)
 
 **Severity.** P0 — Vector full-state cache warmer silent during RTH.
@@ -472,7 +497,7 @@ watchdog; `data-correctness?force=1` reproduced FLAG pre-fix.
 violation only (same direction + valid subset → independently confirmed).
 
 **Status.** `fix/ops-1287-autopost-flow-xcheck` → PR.
-=======
+
 ## 2026-07-29 — [Thermal+Vector] Shared sticky universe (≤100 / 14d)
 
 **Severity.** P2 product gap — Vector already sticky-recorded member-viewed names (cap 100,
@@ -489,7 +514,6 @@ already called `listDynamicUniverseTickers` — not Thermal matrix warm.
 overlays stay on the static allowlist (2 RPS). CORE SPY/SPX/QQQ still force-refresh first.
 
 **Status.** `cursor/thermal-share-dynamic-universe-3d11` → PR.
->>>>>>> 1d12b294 (feat(thermal): share Vector sticky universe (≤100/14d) for matrix warm)
 
 ## 2026-07-29 — [Thermal] Triple desk SPY/QQQ not refreshing every 5–10s
 
