@@ -5,6 +5,27 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-30 — [ops] vector-universe-snapshot RTH-stale edge timeout (#1360)
+
+**Severity.** P0 — Vector scanner rail stops updating when the recorder cron goes stale during RTH.
+
+**Symptom.** ops-auto-fix #1360 flagged `vector-universe-snapshot` `market_hours_stale` during RTH.
+
+**Root cause.** Same class as `vector-full-state-snapshot` (#1355): the cron awaited
+`refreshVectorUniverseSnapshot` × ~25 tickers + wall-history recording inline — combined wall-clock
+exceeded Cloudflare origin timeout (~43s 502 observed) before `logCronRun` fired → watchdog saw stale
+handshakes with no fresh row. Already in `CRON_DISPATCH` for self-heal (#1333) but self-heal could
+not outrun repeated edge 502s on the blocking path.
+
+**Evidence.** Live probe 2026-07-30 ~17:34 UTC: `GET /api/cron/vector-universe-snapshot?force=1` HTTP
+**502** at ~44s; watchdog `rth_stale_keys: ["vector-universe-snapshot"]`.
+
+**Fix.** Dispatch the universe sweep + wall-history recording via `next/server after()`; return HTTP
+202 + immediate `logCronRun` handshake (mirrors `vector-full-state-snapshot` / `vector-dark-pool-warm`).
+Regression test: `src/app/api/cron/vector-universe-snapshot/route.test.ts`.
+
+**Status.** FIXED on `fix/ops-1360-vector-universe-edge-timeout`.
+
 ## 2026-07-30 — [ops] vector-full-state-snapshot RTH-stale edge timeout (#1355)
 
 **Severity.** P0 — Vector full-state cache warmer silent during RTH.
