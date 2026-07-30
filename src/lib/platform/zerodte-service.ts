@@ -8,6 +8,7 @@ import type { ZeroDteSetupLogRow } from "@/lib/db";
 import { fetchNighthawkEchoForTickers, type EcosystemNightHawkTake } from "@/lib/bie/ecosystem-context";
 import { etNowParts, isTradingDayEt, nextTradingDayEt, todayEt } from "@/features/nighthawk/lib/session";
 import { fetchBenzingaNews } from "@/lib/providers/polygon";
+import { zerodteBoardMaxBlockMs } from "@/lib/providers/config";
 import { readGridEarnings } from "@/lib/zerodte/earnings";
 import { serverCache, TTL } from "@/lib/server-cache";
 import { sharedCacheDel, sharedCacheGet, sharedCacheSet, sharedCacheSetNx } from "@/lib/shared-cache";
@@ -739,7 +740,6 @@ export async function getZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
   }
 
   const build = coldBuildInflight;
-  const { zerodteBoardMaxBlockMs } = await import("@/lib/providers/config");
   const blockMs = zerodteBoardMaxBlockMs();
   return Promise.race([
     build,
