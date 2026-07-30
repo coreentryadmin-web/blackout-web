@@ -1,5 +1,59 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-30 17:25 ET
+Last updated: 2026-07-30 17:46 ET
+
+## grid-rth-2026-07-30 — 0DTE Command **verify** pass (~5:44 PM ET, post-close)
+
+**Session:** Grid RTH all-day agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` **verify** mode. Commands: `npm run validate:grid-rth -- --force` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e` → Playwright Night Hawk tab sweep → `node scripts/audit/data-validator.mjs` → `npm run validate:deploy`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:grid-rth -- --force` | ✅ **13 PASS / 0 FAIL** — full orchestrator GREEN |
+| `npm run validate:zerodte-logic` | ✅ **17 PASS / 0 FAIL** — gates, plans, lifecycle, mergePlays, live board |
+| `npm run validate:grid-e2e` | ✅ **5 PASS / 0 FAIL** — board API + HELIX flows + Playwright UI |
+| Night Hawk UI tab sweep | ✅ 0DTE / Swings / LEAPS / Legacy — all tabs click, zero console errors |
+| `data-validator.mjs` | ⚠️ 6 FAIL / 1 WARN — extended-hours spot vs Polygon prev-close (expected post-close; not 0DTE logic) |
+| `npm run validate:deploy` | ✅ GREEN |
+| `ops:collect` (via grid-rth) | ✅ exit 0 — zero action items |
+
+**No P0/P1 product defects.** All 0DTE gate logic, plan exits (stop −50% / target +100% / 15:30 ET time stop), trade lifecycle (OPEN→TRIM→CLOSED), mergePlays UI (past-cutoff/MOVED→SKIP), session heat cutoffs, ledger PnL math (15 rows coherent), zerodte-warm cron, and cross-tool probes (SPX GEX spot 7437.63, HELIX 20 prints, Night Hawk dedupe) GREEN.
+
+### 0DTE logic probes (exhaustive)
+
+| Probe | Result |
+|---|---|
+| Gate funnel (SETUP_MIN_GROSS, aggression, dominance, ITM) | ✅ 3 eligible / 9 total, 0 violations |
+| Plan exits | ✅ stop=2.1 target=8.4 |
+| Play lifecycle | ✅ OPEN/TRIM/CLOSED/CLOSED |
+| Plan grade stop-first | ✅ stopped |
+| Session heat | ✅ RTH→POST_COMMIT→POWER_HOUR; live CLOSED heat=0% |
+| mergePlays past cutoff | ✅ SKIP |
+| mergePlays MOVED | ✅ SKIP |
+| Ledger PnL reconcile | ✅ 15 rows, 0 issues |
+| Commit cutoff constant | ✅ 14:00 ET |
+
+### UI / routing notes
+
+| Item | Status |
+|---|---|
+| `/nighthawk` 0DTE Command Deck | ✅ mounts; session CLOSED; 21 plays (6 WATCH / 15 CLOSED) |
+| Night Hawk view tabs | ✅ 0DTE · Swings · LEAPS · Legacy all render |
+| `/grid` (classic Market Grid) | ✅ 404 — deleted 2026-07-07 per runbook; use `/nighthawk` |
+| Classic 9 `/api/grid/*` panels | N/A — routes removed; 0DTE board is `/api/market/zerodte/board` |
+
+### Residual (non-FAIL, expected)
+
+| Severity | ID | Detail | Fix defer? |
+|---|---|---|---|
+| P2 | GRID-RTH-DC-EXT | data-validator spot FAILs vs Polygon prev-close during extended hours | Yes — oracle uses prev-close when RTH=false |
+| P2 | GRID-RTH-ROUTE | `/grid` returns 404 (intentional); iOS shell still lists `grid` in pending-shell regex | Yes — cosmetic |
+
+**Verify status: GREEN** — zero FAIL on all three grid harnesses. No fix branch required.
+
+**Reports:** `audit-output/grid-rth-2026-07-30-verify-1785447876562.json`, `audit-output/zerodte-logic-1785447884645.json`, `audit-output/grid-e2e-1785447891405.json`, `/opt/cursor/artifacts/grid-rth-verify/nighthawk-*.png`
+
+---
 
 ## spx-rth-2026-07-30 — SPX Slayer post-close fix pass (~1:18 PM PT / 4:18 PM ET)
 
