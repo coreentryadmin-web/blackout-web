@@ -1,5 +1,81 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-30 11:52 ET
+Last updated: 2026-07-30 13:05 ET
+
+## grid-rth-2026-07-30 — 0DTE Command + Market Grid all-day verify pass (market-open ~12:06–13:05 ET)
+
+**Session:** Grid/0DTE all-day agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` **verify** mode (scheduled 6:30 AM PT / 9:30 AM ET pass; executed ~12:06–13:05 ET mid-RTH). Commands: `npm run validate:grid-rth` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e` → sequential cross-tool API probes.
+
+**Note:** Classic Grid (`/grid`, 9 `/api/grid/*` panels) was deleted 2026-07-07. 0DTE Command now lives on `/nighthawk`; `validate:grid-e2e` audits `/nighthawk` + `/api/market/zerodte/board`. `grid-warm` cron renamed `zerodte-warm`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:zerodte-logic` | ✅ **17 PASS / 0 FAIL** — gates, plan exits, lifecycle, session heat, mergePlays, live board |
+| `npm run validate:grid-e2e` (best pass) | ✅ **5 PASS / 0 FAIL** — board API 79 setups · ledger 15, HELIX 20 prints, `/nighthawk` UI zero console errors |
+| `npm run validate:grid-e2e` (cold-board retries) | ⚠️ **1 FAIL** — `e2e:zerodte-board-api` HTTP 0 (90s curl timeout); passed on retry when snapshot warm |
+| `npm run validate:grid-rth` (orchestrator) | ⚠️ **6 PASS / 2 FAIL / 2 WARN** — logic + cross-tool-integration + dashboard-e2e GREEN; board 502/504 under parallel burst; zerodte-warm 504 |
+| `npm run validate:rth-open` (standalone) | ✅ GREEN — deploy smoke, desk-warm, options-socket leader lock |
+| `npm run ops:collect` | ✅ zero items |
+
+### 0DTE logic audit (exhaustive)
+
+| Layer | Result |
+|---|---|
+| Gate funnel (SETUP_MIN_GROSS, aggression, dominance, ITM) | ✅ 2 eligible / 78 total, 0 violations |
+| Plan exits (stop −50%, target +100%, time stop 15:30 ET) | ✅ `stop=2.1 target=8.4` |
+| Trade lifecycle (OPEN → TRIM → CLOSED, sticky trough stop) | ✅ OPEN/TRIM/CLOSED/CLOSED |
+| Plan grading (stop wins when both touch same bar) | ✅ stopped |
+| Session heat (RTH → POST_COMMIT → POWER_HOUR, 15:00 ET cutoff) | ✅ RTH heat=100% |
+| mergePlays UI (past cutoff / MOVED → SKIP not OPEN) | ✅ SKIP |
+| Ledger PnL math (`reconcileLedgerLivePnlPct`) | ✅ 15 rows, 0 issues |
+| Live board finite numbers | ✅ PASS |
+
+### UI E2E (Playwright — successful pass)
+
+| # | Action | Result |
+|---|---|---|
+| Admin session | ✅ Clerk temp user |
+| `/nighthawk` page load | ✅ "Night Hawk · BlackOut" |
+| 0DTE board API | ✅ 79 setups · ledger 15 |
+| HELIX flows | ✅ 20 prints |
+| Console errors | ✅ zero |
+
+*(Classic `/grid` tabs "0DTE Command" + "Market Grid" removed 2026-07-07; E2E scope is `/nighthawk` only.)*
+
+### Cross-tool integration
+
+| Tool | Endpoint | Result |
+|---|---|---|
+| **0DTE board** | `GET /api/market/zerodte/board` | ✅ 71–79 setups, ledger 15, heat=RTH (117–365s cold build; <10s warm) |
+| **HELIX** | `GET /api/market/flows?limit=20` | ✅ 20 prints |
+| **Grid bootstrap / SPX** | `GET /api/market/spx/bootstrap` | ✅ loaded |
+| **GEX spot** | `GET /api/market/gex-positioning?ticker=SPX` | ✅ spot ~7415 |
+| **SPX bootstrap vs GEX** | cross-tool | ✅ agree within tolerance |
+| **Night Hawk dedupe** | board `covered_elsewhere` | ✅ 4 tickers withheld |
+| **Night Hawk edition** | `GET /api/market/nighthawk/edition` | ✅ loads |
+| **zerodte-warm cron** | `GET /api/cron/zerodte-warm` | ⚠️ HTTP **504** at 120s (CF origin timeout) |
+| **BIE consistency** | `validate:zerodte-integration` | ✅ ledger PnL 15 rows |
+
+### P0 found this pass
+
+**None.** All 0DTE gates, plan exits, lifecycle states, ledger PnL math, session heat cutoffs, and mergePlays rules verified GREEN. Member-facing board data correct when snapshot is warm.
+
+### Findings logged
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| **P1** | `zerodte-board-cold-build-504` | Board cold-build blocks 117–365s; parallel audit burst → HTTP 504; `zerodte-warm` cron also 504 at 120s CF timeout. Warm snapshot serves in <10s. Recurrence of FINDINGS 2026-07-29 `fix/zerodte-board-swr-504` class. | `/api/market/zerodte/board`, `/api/cron/zerodte-warm` | post-close — decouple warm from blocking build; extend SWR serve or async publish |
+| **P1** | `grid-e2e-cold-board-timeout` | `grid-zerodte-e2e-audit.mjs` curl 90s max exceeded on cold board (HTTP 0); passes on retry when Redis snapshot warm | `/api/market/zerodte/board` | post-close — raise timeout or retry backoff (partial fix 2026-07-29) |
+| **P2** | `grid-rth-orchestrator-hang` | Orchestrator hangs >20 min on `grid:data-correctness` probe after parallel board 504s | `grid-rth-all-day-audit.mjs` | post-close — add probe timeout; serialize board fetches |
+| **P2** | `grid-rth-first-run-pg-missing` | First orchestrator pass failed `infra:validate:rth-open` (`Cannot find module 'pg'`) before `npm install` in cloud agent | agent env | **Expected** — cloud agent boot |
+| **P2** | `grid-runbook-stale-grid-ui` | `GRID-RTH-ALL-DAY-AGENT.md` Step 2 still references `/grid` tabs; classic Grid deleted 2026-07-07 | docs | post-close — update runbook to `/nighthawk` |
+
+**Member-facing 0DTE surfaces: GREEN** — logic oracle clean, ledger PnL correct, 79 setups / 15 ledger during RTH, cross-tool spot agrees ~7415, Night Hawk dedupe active.
+
+**Reports:** `audit-output/zerodte-logic-1785429862053.json`, `audit-output/grid-e2e-1785430932822.json`, `audit-output/zerodte-integration-1785428938530.json`, `audit-output/grid-rth-2026-07-30-verify-1785428953078.json`
+
+---
 
 ## spx-rth-2026-07-30 — SPX Slayer all-day verify pass (market-open ~11:30–11:52 ET)
 
