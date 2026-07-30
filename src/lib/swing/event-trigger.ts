@@ -122,8 +122,10 @@ export interface SwingFlowRouteResult {
 
 /**
  * Route ONE material live print into the accumulation memory — ADVANCE ONLY. Records a single observation for
- * (ticker, direction) via `observeSwingCandidate`; there is deliberately NO commit path here — this shell
- * cannot reach `insertSwingPosition`, so a live event can never open a trade, only accrete persistence. Returns
+ * (ticker, direction, UNCLASSIFIED) via `observeSwingCandidate`. Live prints have no classified archetype,
+ * so they land in the UNCLASSIFIED bucket and NEVER merge into a classified thesis's session count
+ * (FINDINGS 2026-07-30). There is deliberately NO commit path here — this shell cannot reach
+ * `insertSwingPosition`, so a live event can never open a trade, only accrete persistence. Returns
  * advanced:false (with a reason) for a non-material or non-directional/untickered print — never throws.
  */
 export async function advanceSwingAccumulationFromFlow(
@@ -139,10 +141,11 @@ export async function advanceSwingAccumulationFromFlow(
   if (!ticker || direction == null) {
     return { advanced: false, ticker: ticker || null, direction, reason: "no ticker / non-directional — nothing to advance" };
   }
-  // ADVANCE-ONLY: accrete one observation. Never commits (no insertSwingPosition reachable from here).
+  // ADVANCE-ONLY: accrete one UNCLASSIFIED observation. Never commits; never merges into a classified thesis.
   await observeSwingCandidate(deps.accum, {
     ticker,
     direction,
+    archetype: null, // → UNCLASSIFIED — honest: live flow has no classifier verdict yet
     sessionDay: deps.sessionDay,
     phase: SWING_LIVE_FLOW_PHASE,
     signalKinds: [SWING_LIVE_FLOW_SIGNAL_KIND], // a live print is FLOW-kind provenance

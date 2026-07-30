@@ -82,13 +82,21 @@ test("SWING lane carries the seven serving sections; 0DTE/LEAPS carry none (back
     makePlaySet({
       ZERO_DTE: [play({ status: "COMMIT" })],
       SWING: [
-        play({ ticker: "COM", horizon: "SWING", scoreFloor: 60, status: "COMMIT", setupState: "TRIGGERED", entryStatus: "AT_TRIGGER" }),
+        play({
+          ticker: "COM",
+          horizon: "SWING",
+          scoreFloor: 60,
+          status: "COMMIT",
+          setupState: "TRIGGERED",
+          entryStatus: "AT_TRIGGER",
+          bucketGraduated: true,
+        }),
         play({ ticker: "EXT", horizon: "SWING", scoreFloor: 60, status: "COMMIT", setupState: "EXTENDED", entryStatus: "PRE_TRIGGER" }),
       ],
     }),
     "2026-07-23T15:00:00Z",
   );
-  // 91-pt EXTENDED → WAITING_FOR_ENTRY; 82-pt AT_TRIGGER → COMMIT_NOW (observable state, not the score).
+  // Graduated AT_TRIGGER → COMMIT_NOW; EXTENDED → WAITING_FOR_ENTRY (observable state, not the score).
   assert.equal(board.lanes.SWING.sections!.COMMIT_NOW[0]!.ticker, "COM");
   assert.equal(board.lanes.SWING.sections!.WAITING_FOR_ENTRY[0]!.ticker, "EXT");
   // 0DTE/LEAPS untouched: no sections, committed/watch still populated.
@@ -101,7 +109,17 @@ test("scopeBoardToHorizon zeroes sections on non-selected lanes; keeps them on t
   const full = assembleHorizonBoard(
     makePlaySet({
       ZERO_DTE: [play({ status: "COMMIT" })],
-      SWING: [play({ ticker: "COM", horizon: "SWING", scoreFloor: 60, status: "COMMIT", setupState: "TRIGGERED", entryStatus: "AT_TRIGGER" })],
+      SWING: [
+        play({
+          ticker: "COM",
+          horizon: "SWING",
+          scoreFloor: 60,
+          status: "COMMIT",
+          setupState: "TRIGGERED",
+          entryStatus: "AT_TRIGGER",
+          bucketGraduated: true,
+        }),
+      ],
     }),
     "2026-07-23T15:00:00Z",
   );

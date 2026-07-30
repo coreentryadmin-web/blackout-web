@@ -557,3 +557,14 @@ export function analyzeSwingCalibration(rows: SwingCalibrationRow[]): SwingCalib
     available: graded.length > 0,
   };
 }
+
+/**
+ * Edge rungs the ladder has graduated to enforcement — the set manage.ts `graduatedRungs` consumes.
+ * Fail-soft: empty report / no graduated rungs → [] (all edge rungs stay advisory).
+ */
+export function graduatedEdgeRungsFromReport(
+  report: SwingCalibrationReport | null | undefined,
+): SwingEdgeRung[] {
+  if (!report?.exit_rungs?.length) return [];
+  return report.exit_rungs.filter((r) => r.rungGraduated).map((r) => r.rung);
+}

@@ -35,6 +35,7 @@ import {
   deriveCatalystReads,
   contractQualityFromIvRank,
   freshestCatalystAgeDays,
+  latestIvRankFromSeries,
   parseEarningsWindows,
   type SwingCatalystNewsItem,
   type SwingEarningsWindows,
@@ -45,6 +46,7 @@ import {
   type GroupBenchmark,
 } from "./industry-group-rs";
 import { getSector } from "../sector-map";
+import { atrProxyFromCloses, deriveSwingPlanLevels } from "./structure-levels";
 
 const clamp01 = (n: number): number => Math.max(0, Math.min(1, n));
 const isNum = (v: number | null | undefined): v is number => v != null && Number.isFinite(v);
@@ -221,6 +223,16 @@ export function assembleSwingDossierInput(args: SwingReadsAssemblyArgs): SwingDo
     earnings: args.catalyst?.earnings ?? { nextEarnings: null, lastEarnings: null },
   });
 
+  // Event/catalyst theses have a short natural horizon — shorten intended DTE so earnings-in-window and
+  // sub-lane resolution don't treat a 3-day drift as a 14-day STANDARD hold (which over-vetoes via
+  // event_in_window and picks the wrong delta band).
+  const catalystShortHorizon =
+    (isNum(catReads.earningsGapRecent01) && catReads.earningsGapRecent01 >= 0.5) ||
+    (isNum(catReads.catalystInWindow01) && catReads.catalystInWindow01 >= 0.5);
+  const effectiveIntendedDte = catalystShortHorizon
+    ? Math.min(args.intendedDte ?? 14, 5)
+    : (args.intendedDte ?? null);
+
   // ── VOLATILITY (from IV rank) + REGIME (from the SPY trend, direction-aligned). ──
   const contractQuality01 = contractQualityFromIvRank(args.ivRank);
   const regime01 = regimeFromSpyTrend(args.spyCloses, signed.direction);
@@ -237,11 +249,27 @@ export function assembleSwingDossierInput(args: SwingReadsAssemblyArgs): SwingDo
     lookback: SWING_RETURN_LOOKBACK_SESSIONS,
   });
 
+  // ── Plan levels (entry / structural invalidation / target) — grounded from last close + ATR proxy so the
+  // commit ledger can pin thesis_invalidation_px and the manager's structural_stop gate can fire. ──
+  const lastClose = args.nameCloses.length > 0 ? args.nameCloses[args.nameCloses.length - 1]! : null;
+  const planLevels =
+    signed.direction != null && isNum(lastClose)
+      ? deriveSwingPlanLevels(signed.direction, lastClose, atrProxyFromCloses(args.nameCloses))
+      : null;
+  const topFlowStrike = (() => {
+    const m = args.accumulation?.magnet?.strike;
+    return isNum(m) && m > 0 ? m : null;
+  })();
+
   return {
     ticker: args.ticker.toUpperCase(),
     asOf: args.asOf,
-    intendedDte: args.intendedDte ?? null,
+    intendedDte: effectiveIntendedDte,
     reads,
+    planLevels,
+    topFlowStrike,
+    // Pin the resolved IV rank onto the dossier so commit can stamp it into the feature vector (capture-only).
+    ivRank: isNum(args.ivRank) ? args.ivRank : null,
     // Breakout-screen extras + the grounded event-archetype extras (catalyst / earnings-drift). A null extra
     // simply drops from its archetype's fit — POST_EARNINGS_DRIFT / EVENT_DRIVEN classify only when grounded.
     archetypeExtras: {
@@ -300,6 +328,8 @@ export interface SwingIngestDeps {
   fetchEarningsRows?: (ticker: string) => Promise<Array<Record<string, unknown>> | null>;
   /** The name's UW EOD IV rank (0–100 or 0–1) — `fetchUwIvRank`. */
   fetchIvRank?: (ticker: string) => Promise<number | null>;
+  /** Historical IV-rank / percentile series — `fetchUwIvRankSeries`. Used when the point rank is thin. */
+  fetchIvRankSeries?: (ticker: string) => Promise<Array<Record<string, unknown>> | null>;
   /** Classify the name for SECTOR_ROTATION benchmark resolution — Polygon `/v3/reference/tickers/{ticker}`
    *  reference data (`sic_code`/`sic_description`/`type`; rate-limit-free, `fetchPolygonTickerDetails`).
    *  OPTIONAL + fail-soft: omitted or null → benchmark resolution falls back to the static sector-map (or
@@ -351,14 +381,20 @@ export async function ingestSwingReads(
   // ever carry it. Gate the classifier + benchmark IO on that: a neutral / flow-less (structure-only) candidate
   // skips the extra reference call and benchmark-closes fetch entirely (it could never classify SECTOR_ROTATION).
   const hasDirection = args.accumulation?.direction === "bull" || args.accumulation?.direction === "bear";
-  const [newsItems, earningsRows, ivRank, classification] = await Promise.all([
+  const [newsItems, earningsRows, ivRankPoint, ivRankSeries, classification] = await Promise.all([
     deps.fetchCatalystNews?.(args.ticker).catch(() => null) ?? Promise.resolve(null),
     deps.fetchEarningsRows?.(args.ticker).catch(() => null) ?? Promise.resolve(null),
     deps.fetchIvRank?.(args.ticker).catch(() => null) ?? Promise.resolve(null),
+    deps.fetchIvRankSeries?.(args.ticker).catch(() => null) ?? Promise.resolve(null),
     hasDirection
       ? (deps.fetchTickerClassification?.(args.ticker).catch(() => null) ?? Promise.resolve(null))
       : Promise.resolve(null),
   ]);
+  // Prefer the point rank (volatility/stats); fall back to the latest series point (historical percentile).
+  const ivRank =
+    ivRankPoint != null && Number.isFinite(ivRankPoint)
+      ? ivRankPoint
+      : latestIvRankFromSeries(ivRankSeries);
 
   // SECTOR_ROTATION benchmark: resolve the name's industry-group / sector ETF (finest-first; the static
   // sector-map is the zero-IO fallback even when the classifier is absent) and fetch its daily closes — the

@@ -5,6 +5,87 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 evidence / fix / status per the CLAUDE.md policy.)
 
+## 2026-07-30 — [Swing] Hourly manage is mark-and-review (not tactical live mgmt) + grader honesty labels
+
+**Severity.** P1 documentation / product-claim — overstated management precision + grader "truth".
+
+**#4 Active refresh.** Live manage cron is hourly. Tactical 2–7 DTE can move materially between
+samples; intrahour stop touch / recover is invisible; live MFE/MAE from hourly samples understate path.
+Claiming responsive structural_stop / premium_stop / scale-out / EXITING precision from that loop is false.
+
+**#5 Grader.** Families were labeled as execution/path/management/financial "truth" while production
+entry is typically a chain mid (reference mark), path resolution equals supplied bars (not guaranteed
+minute), and financial is marked scale-out P&L. The pure grader already fail-softs (`no_fill`,
+`ungradeable`) — the overclaim was primarily terminology + docs.
+
+**Fix (honesty, not cadence infra).**
+1. Docs + cron header: **hourly mark-and-review**; faster per-sub-lane cadence deferred (rate budget).
+2. Grader docs/header: REFERENCE_EXECUTION / OBSERVED_PATH / MODEL_MANAGEMENT / MARKED_FINANCIAL;
+   `SWING_GRADE_FAMILY_LABEL` map; code keys unchanged for JSON stability.
+3. Did **not** cut EventBridge to 1–5m tactical in this change — that needs an explicit schedule split
+   + UW/Polygon budget math before deploy.
+
+**Status.** Honesty FIXED on `cursor/swing-followups-3d11`. Faster tactical cadence = open follow-up.
+
+## 2026-07-30 — [Swing] COMMIT_NOW required graduation (cold-book "Act now" defect)
+
+**Severity.** P1 product / risk-control — member "Act now" on setups the model will not open.
+
+**Root cause.** Serving section `COMMIT_NOW` keyed only on TRIGGERED + AT_TRIGGER + floor clear.
+Score floors are provisional; ledger OPEN requires archetype×sub-lane graduation (+ budget/caps).
+Docs said "Act now" for COMMIT_NOW while the cold book kept `commitEligibleCount = 0`.
+
+**Fix.** `sectionForSwingPlay` requires `bucketGraduated === true` for COMMIT_NOW; otherwise
+WAITING_FOR_ENTRY. Discovery stamps `bucketGraduated` from the same `isCommitGraduated` ladder.
+Budget/caps stay model-book-only. Did **not** adopt ENTRY_READY_UNVALIDATED / MEMBER_ACTIONABLE
+renames — desk vocabulary stays institutional; the gate is the honesty fix.
+
+**Status.** FIXED on `cursor/swing-followups-3d11`.
+
+## 2026-07-30 — [Swing] Persistence keyed only by (ticker, direction) — false WATCH eligibility
+
+**Severity.** P0 / release-blocking — thesis flip inherited another archetype's session count.
+
+**Root cause.** `swing_candidate_accumulation` PRIMARY KEY was `(ticker, direction)`. Mon
+FLOW_ACCUMULATION → Tue MEAN_REVERSION → Wed BREAKOUT on the same NVDA long shared one row, so a
+new archetype inherited `distinct_session_days` and could falsely clear the WATCH bar. Live-flow
+advances also merged into whatever classified thesis shared that name+side. Archetype was only
+applied at *read* time via `archetypeOf` on `fetchWatchEligible`.
+
+**Evidence.** DDL `PRIMARY KEY (ticker, direction)` in `db.ts`; `ON CONFLICT (ticker, direction)`;
+`observeSwingCandidate` / `markAccumPromoted` lacked archetype; docs said "one observation per
+(ticker, direction)".
+
+**Fix.** Thesis identity = `(ticker, direction, archetype)`:
+1. Schema migration adds `archetype` (default `UNCLASSIFIED`) and rebuilds PK.
+2. Upsert / promote / observe / watch / serve gates use `swingThesisKey(...)`.
+3. Live FLOW advances land in `UNCLASSIFIED` and never merge into a classified thesis.
+4. Promote is thesis-scoped so a sibling archetype on the same name+side survives.
+
+**Status.** FIXED on `cursor/swing-followups-3d11`.
+
+## 2026-07-30 — [Swing] CTO follow-ups — feature vector, graduated rungs, serve reads, beta/IV, cron catalog
+
+**Severity.** P1 — management/serve/calibration seams left dormant after the 2026-07-29 CTO audit.
+
+**Root cause / gaps.**
+1. `buildCommitInsert` pinned `feature_vector`, but discovery never threaded pillars / classification meta / ivRank onto commit candidates → every commit vector was hollow.
+2. `manage.ts` honored `graduatedRungs`, but active-refresh never loaded the calibration ladder → edge rungs stayed advisory forever.
+3. Horizons called `getSwingServingLane` without `readsByTicker` → setup maturity stuck at RESEARCH/`thesis unknown`.
+4. `fetchNameBeta` was a permanent stub; IV series fetcher existed but ingest only used the point rank.
+5. Swing crons had no `railway.swing-*.toml` catalog → EventBridge sync could not manage them.
+6. `time_stop` required `thesisProgress01` which was never supplied; TRIM never latched → `EXIT_RUNNER` unreachable.
+7. Live sections (MANAGING/SCALING_OUT/EXITING) never received open ledger rows.
+
+**Fix.**
+1. Discovery maps dossier pillars + `classificationMetaFromVerdict` + `ivRank` onto commit candidates; dossier.plan carries `atr`.
+2. Active-refresh loads graduated rungs once/tick; refreshes IV + `thesisProgress01` + `volCollapsed`; latches TRIM; warms beta cache; refreshes serving spots.
+3. Discovery persists `spotsByTicker`; serve path builds reads + merges `fetchOpenSwingPositions` into live sections.
+4. `fetchNameBeta` + `createDailyClosesBetaSource`; ingest IV series fallback via `latestIvRankFromSeries`.
+5. Added `railway.swing-discovery.toml` + `railway.swing-active-refresh.toml`.
+
+**Status.** FIXED on `cursor/swing-followups-3d11`. Infra sync still required for EventBridge rule create/update.
+
 ## 2026-07-29 — [Grid/0DTE] grid-e2e board HTTP 504 under orchestrator burst
 
 **Severity.** P1 — flaky `validate:grid-rth --phase=post-close` on `grid:dashboard-e2e` when nested
@@ -50,7 +131,31 @@ in `auth-status.mjs` (also dedupes `audit-auth-fetch.mjs`).
 
 **Status.** `cursor/spx-post-close-findings-2224` → PR.
 
+## 2026-07-29 — [Swing] CTO audit — management gates null-wired + desk ignored sections
+
+**Severity.** P0 capital-path / P1 member UX — Swing engine looked “built” but premium_stop,
+structural_stop, time_stop, and mark-frozen rolls could never fire; desk flattened the 7-section triage.
+
+**Root cause.**
+1. `commit.ts` wrote `contract_occ: null`; active-refresh `loadOptionMark` gated on OCC → mark always null.
+2. Commit candidates never received `thesisInvalidationPx` / entry / target from dossier.
+3. `fadeStaleSwingCandidates` never called from discovery.
+4. `sessionsHeld` omitted from active-refresh reads.
+5. `HorizonDeck` used flat committed/watch and dropped serving meta (factors/setup/thesis).
+6. Persist failure still upgraded phase NX claim to DONE (22h stale board).
+
+**Evidence.** Code audit 2026-07-29; `npm run healthcheck:swing` AMBER (empty book, serving GREEN).
+Full matrix: `docs/audit/SWING-CTO-AUDIT-2026-07-29.md`.
+
+**Fix.** OCC reconstruct + plan levels at ingest/commit; fade stale; sessionsHeld; section-aware
+HorizonDeck; persist boolean + claim release; FAILED_BREAKDOWN 1-session structure promote;
+archetype intended-DTE realign. Branch `cursor/swing-cto-audit-3d11`.
+
+**Status.** Merged into follow-ups branch; PR #1310.
+
+
 ## 2026-07-29 — [Grid/0DTE] zerodte board HTTP 504 on aged snapshot cold-build
+
 
 **Severity.** P0 member path (Night Hawk `/api/market/zerodte/board`).
 

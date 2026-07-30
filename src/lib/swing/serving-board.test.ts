@@ -20,7 +20,13 @@ function swingPlay(over: Partial<HorizonPlay>): HorizonPlay {
 
 test("assembleSwingServingLane: all seven sections present; pre-entry populated, live-position empty", () => {
   const lane = assembleSwingServingLane([
-    swingPlay({ ticker: "COM", setupState: "TRIGGERED", entryStatus: "AT_TRIGGER", status: "COMMIT" }),
+    swingPlay({
+      ticker: "COM",
+      setupState: "TRIGGERED",
+      entryStatus: "AT_TRIGGER",
+      status: "COMMIT",
+      bucketGraduated: true,
+    }),
     swingPlay({ ticker: "WAT", setupState: "FORMING", status: "COMMIT" }),
     swingPlay({ ticker: "UNDER", setupState: "TRIGGERED", entryStatus: "AT_TRIGGER", status: "WATCH" }),
     swingPlay({ ticker: "RES", status: "WATCH" }), // no setupState → RESEARCH

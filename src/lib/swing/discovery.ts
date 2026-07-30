@@ -32,6 +32,8 @@ import { buildSwingDossier, type SwingDossier, type SwingDossierInput } from "./
 import {
   observeSwingCandidate,
   fetchWatchEligible,
+  fadeStaleSwingCandidates,
+  swingThesisKey,
   MIN_PERSISTENCE_SESSIONS,
   type SwingAccumAccessors,
   type SwingWatchCandidate,
@@ -51,10 +53,13 @@ import {
 } from "../horizon-plays";
 import type { PlayDirection, ChainContract } from "../horizon-fanout";
 import type { SwingArchetype } from "./taxonomy";
+import { subLaneForDte } from "./taxonomy";
 import { analyzeSwingCalibration, type SwingCalibrationRow, type SwingCalibrationReport } from "./calibration";
+import { classificationMetaFromVerdict } from "./archetype";
 import {
   computeSwingCommitPlan,
   executeSwingCommits,
+  isCommitGraduated,
   type SwingCommitCandidate,
   type CommitBookPosition,
   type SwingCommitDeps,
@@ -122,6 +127,22 @@ export const DEFAULT_SWING_DISCOVERY_CONFIG: SwingDiscoveryConfig = {
   intendedDte: 14,
   enrichConcurrency: 8,
 };
+
+/** Per-archetype intended DTE overrides — event/immediate theses are short-horizon; STANDARD 14d is the default. */
+export const ARCHETYPE_INTENDED_DTE: Partial<Record<SwingArchetype, number>> = {
+  EVENT_DRIVEN: 5,
+  POST_EARNINGS_DRIFT: 5,
+  FAILED_BREAKDOWN: 7,
+};
+
+/** Resolve the intended DTE for a classified archetype (falls back to the scan default). */
+export function intendedDteForArchetype(
+  archetype: SwingArchetype | null | undefined,
+  fallback = DEFAULT_SWING_DISCOVERY_CONFIG.intendedDte,
+): number {
+  if (archetype && ARCHETYPE_INTENDED_DTE[archetype] != null) return ARCHETYPE_INTENDED_DTE[archetype]!;
+  return fallback;
+}
 
 /** Bounded-concurrency map — preserve input order in the output array. */
 async function mapPool<T, R>(items: readonly T[], concurrency: number, fn: (item: T, idx: number) => Promise<R>): Promise<R[]> {
@@ -420,8 +441,13 @@ export interface SwingDiscoveryDeps {
   fetchOpenBook?: () => Promise<CommitBookPosition[]>;
   /** Open a committed position (db.insertSwingPosition). Its PRESENCE is what authorizes real commits. */
   insertPosition?: (pos: SwingPositionInsert) => Promise<number>;
-  /** OPTIONAL: link the promoted candidate to its position (db.markAccumPromoted via the store). */
-  promoteCommit?: (ticker: string, direction: PlayDirection, positionId: number) => Promise<void>;
+  /** OPTIONAL: link the promoted thesis to its position (db.markAccumPromoted via the store). */
+  promoteCommit?: (
+    ticker: string,
+    direction: PlayDirection,
+    positionId: number,
+    archetype?: string | null,
+  ) => Promise<void>;
   /** The ARMED portfolio budget (resolveProductionPortfolioBudget). Absent ⇒ the disarmed default (no-op gate). */
   budget?: PortfolioBudget;
   /** The book-percent caps (defaults to DEFAULT_SWING_CAPS). */
@@ -463,6 +489,8 @@ export interface SwingDiscoveryResult {
   commit?: SwingCommitResult;
   /** Discovery-recall instrumentation (evidence-only; does NOT change what surfaces). See WHY-RECALL header. */
   recall: SwingDiscoveryRecall;
+  /** Rows retired by fadeStaleAccum this scan (0 when none / fade skipped). */
+  fadedStale?: number;
 }
 
 /**
@@ -514,7 +542,13 @@ export async function runSwingDiscoveryScan(
   const candidateSeeds: SwingCandidateSeed[] = enrichedOrNull.filter((s): s is SwingCandidateSeed => s != null);
 
   // ── SCORE (pure). ──
-  const dossiers = deriveSwingCandidates(candidateSeeds);
+  // After classify, realign sub-lane to the archetype's natural horizon (event theses → TACTICAL) so the
+  // contract ranker + graduation bucket match the thesis duration — not a flat 14d STANDARD for every name.
+  const dossiers = deriveSwingCandidates(candidateSeeds).map((d) => {
+    const want = intendedDteForArchetype(d.archetype.archetype, cfg.intendedDte);
+    const lane = subLaneForDte(want);
+    return lane != null && lane !== d.subLane ? { ...d, subLane: lane } : d;
+  });
 
   // ── RECALL (pure, evidence-only): measure the funnel so a dropped-strong-candidate is VISIBLE. ──
   const recall = computeSwingDiscoveryRecall({
@@ -541,34 +575,44 @@ export async function runSwingDiscoveryScan(
   const pathsByTicker = new Map<string, SwingDiscoveryPath[]>(
     candidateSeeds.map((s) => [s.ticker.toUpperCase(), s.paths]),
   );
-  // (ticker,direction) → archetype resolver for this scan's dossiers — makes WATCH promotion ARCHETYPE-AWARE
-  // so an event/immediate archetype (EVENT_DRIVEN / POST_EARNINGS_DRIFT / FAILED_BREAKDOWN) can clear on a
-  // single CORROBORATED session (its intended 1-session fast-track) instead of the conservative 2-session
-  // default that fetchWatchEligible falls back to WITHOUT a resolver.
-  const archetypeByKey = new Map<string, SwingArchetype | null>();
+  // Thesis-keyed observe: each (ticker, direction, archetype) accretes its OWN persistence history so a
+  // thesis flip cannot inherit another archetype's session count (FINDINGS 2026-07-30).
   for (const d of dossiers) {
     if (!d.direction) continue;
-    archetypeByKey.set(`${d.ticker.toUpperCase()}|${d.direction}`, d.archetype.archetype);
     await observeSwingCandidate(deps.accum, {
       ticker: d.ticker,
       direction: d.direction,
+      archetype: d.archetype.archetype,
       sessionDay: deps.sessionDay,
       phase: deps.phase,
       signalKinds: signalKindsForObservation(pathsByTicker.get(d.ticker.toUpperCase()) ?? [], d),
     });
   }
   // The WATCH rail = persistence-cleared candidates that ALSO appear in this scan (a stale memory row for a
-  // name that didn't show up today is not surfaced here — fadeStaleAccum retires those on the cron path).
+  // name that didn't show up today is not surfaced here — fadeStaleAccum retires those below).
   const seenThisScan = new Set(
-    dossiers.filter((d) => d.direction).map((d) => `${d.ticker}|${d.direction}`),
+    dossiers
+      .filter((d) => d.direction)
+      .map((d) => swingThesisKey(d.ticker, d.direction!, d.archetype.archetype)),
   );
+  // Retire accumulation rows not touched in 14 days so zombie candidates can't re-surface with stale
+  // distinct_session_days. Best-effort — a fade failure must never abort the scan.
+  let fadedStale = 0;
+  try {
+    const cutoffIso = new Date(deps.nowMs - 14 * 86_400_000).toISOString();
+    fadedStale = await fadeStaleSwingCandidates(deps.accum, cutoffIso);
+  } catch (err) {
+    console.error("[swing-discovery] fadeStaleSwingCandidates failed — continuing", err);
+  }
+  // Row archetype is the authority now (stored on the accumulation PK); no ticker|direction resolver.
   const eligible = await fetchWatchEligible(
     deps.accum,
     cfg.minPersistenceSessions,
     WATCH_ELIGIBLE_FETCH_LIMIT,
-    (c) => archetypeByKey.get(`${c.ticker.toUpperCase()}|${c.direction}`) ?? null,
   );
-  const watchCandidates = eligible.filter((c) => seenThisScan.has(`${c.ticker}|${c.direction}`));
+  const watchCandidates = eligible.filter((c) =>
+    seenThisScan.has(swingThesisKey(c.ticker, c.direction, c.archetype)),
+  );
 
   // ── OPTIONAL play production: attach a concrete WATCH contract when chains are available. ──
   let playSet: HorizonPlaySet = { ZERO_DTE: [], SWING: [], LEAPS: [] };
@@ -590,6 +634,40 @@ export async function runSwingDiscoveryScan(
     playSet = produceHorizonPlays(horizonCands);
   }
 
+  // ── GRADUATION STAMP (serving honesty) — always when graded history is injectable. ──
+  // COMMIT_NOW on the member desk requires bucketGraduated === true. Stamp each SWING play from the
+  // same Wilson-LB ladder the ledger open uses. Absent history / cold book → flag stays false/absent
+  // → section router keeps clean geometry in WAITING_FOR_ENTRY (never "Act now" on a prohibited open).
+  let report: SwingCalibrationReport | null = null;
+  if (deps.fetchGradedHistory) {
+    try {
+      report = analyzeSwingCalibration(await deps.fetchGradedHistory());
+    } catch (err) {
+      console.error("[swing-discovery] graded-history read failed — treating as no graduation", err);
+      report = null;
+    }
+  }
+  if (playSet.SWING.length > 0) {
+    const dossierByTicker = new Map(dossiers.map((d) => [d.ticker.toUpperCase(), d]));
+    playSet = {
+      ...playSet,
+      SWING: playSet.SWING.map((p) => {
+        const d = dossierByTicker.get(p.ticker.toUpperCase());
+        const archetype = p.archetype ?? d?.archetype.archetype ?? null;
+        const subLane =
+          p.subLane ??
+          d?.subLane ??
+          (p.contract?.dte != null ? subLaneForDte(p.contract.dte) : null);
+        return {
+          ...p,
+          archetype: archetype ?? p.archetype,
+          subLane: subLane ?? p.subLane,
+          bucketGraduated: isCommitGraduated(report, archetype, subLane).graduated,
+        };
+      }),
+    };
+  }
+
   // ── LIVE COMMIT (go-live 2026-07-24) — WIRED ONLY when the authorized cron injects `insertPosition`. ──
   // A WATCH candidate opens a REAL position ONLY when its archetype×sub-lane bucket has GRADUATED through the
   // staged Wilson-LB ladder AND it clears the armed budget + book-percent caps + idempotency (commit.ts). When
@@ -599,17 +677,7 @@ export async function runSwingDiscoveryScan(
   let commitEligibleCount = 0;
   let commit: SwingCommitResult | undefined;
   if (deps.insertPosition) {
-    // The graduation input: graded roll-chain legs → the calibration report (reused wrappers, zero new math).
-    let report: SwingCalibrationReport | null = null;
-    try {
-      const gradedRows = deps.fetchGradedHistory ? await deps.fetchGradedHistory() : [];
-      report = analyzeSwingCalibration(gradedRows);
-    } catch (err) {
-      // Fail-soft: a history-read failure means NOTHING graduates (nothing commits) — never a crash, never a
-      // commit on unknown evidence. This is the safe direction for real money.
-      console.error("[swing-discovery] graded-history read failed — treating as no graduation", err);
-      report = null;
-    }
+    // Reuse the graduation report stamped above (same ladder; no second fetch).
 
     // The live book (budget + caps + idempotency). A read failure FAILS CLOSED: we compute the plan for the
     // observable `commitEligibleCount` (graduation is book-independent) but SKIP execution — opening risk against
@@ -639,6 +707,8 @@ export async function runSwingDiscoveryScan(
     const commitCandidates: SwingCommitCandidate[] = watchCandidates.map((w) => {
       const key = `${w.ticker.toUpperCase()}|${w.direction}`;
       const d = dossierByKey.get(key);
+      // Full classification metadata for the feature-vector pin (primary is already on archetype).
+      const classMeta = d ? classificationMetaFromVerdict(d.archetype) : null;
       return {
         ticker: w.ticker,
         direction: w.direction,
@@ -647,10 +717,20 @@ export async function runSwingDiscoveryScan(
         score: d?.score.score ?? 0,
         contract: contractByKey.get(key) ?? null,
         sessionDate: deps.sessionDay,
-        // Underlying-terms levels + top-flow strike are not carried on the scored dossier; the ledger columns
-        // are nullable and the manager/grader never require them, so they stay null-honest at commit time. A
-        // future PR can thread real structure levels through without touching the commit gate.
-        topFlowStrike: null,
+        // Underlying-terms levels from the dossier (structure-levels via ingest) — pin onto the ledger so
+        // structural_stop can fire. Null when the dossier had no grounded price/ATR (honest absence).
+        entryUnderlyingPx: d?.plan?.entryUnderlyingPx ?? null,
+        thesisInvalidationPx: d?.plan?.thesisInvalidationPx ?? null,
+        targetUnderlyingPx: d?.plan?.targetUnderlyingPx ?? null,
+        topFlowStrike: d?.topFlowStrike ?? null,
+        // Static thesis feature-vector fields — pinned at commit so every later snapshot can echo them.
+        pillars: d?.pillarSignals ?? null,
+        presentPillars: d?.dataQuality.presentPillars ?? null,
+        dataQualityDegraded: d?.dataQuality.degraded ?? null,
+        archetypeSecondary: classMeta?.secondary ?? null,
+        archetypeScores: classMeta?.scores ?? null,
+        classificationMargin: classMeta?.margin ?? null,
+        ivRank: d?.ivRank ?? null,
       };
     });
 
@@ -693,5 +773,6 @@ export async function runSwingDiscoveryScan(
     commitEligibleCount,
     commit,
     recall,
+    fadedStale,
   };
 }

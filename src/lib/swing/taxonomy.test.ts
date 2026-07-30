@@ -53,11 +53,14 @@ test("critique #3: archetype-aware persistence policy — cross-session=2, event
     assert.equal(ARCHETYPE_PERSISTENCE[a].minDistinctSessions, 2, `${a} keeps the 2-session gate`);
     assert.equal(ARCHETYPE_PERSISTENCE[a].requiresCorroboration, false, `${a} needs no corroboration`);
   }
-  const eventImmediate = ["EVENT_DRIVEN", "POST_EARNINGS_DRIFT", "FAILED_BREAKDOWN"] as const;
+  const eventImmediate = ["EVENT_DRIVEN", "POST_EARNINGS_DRIFT"] as const;
   for (const a of eventImmediate) {
     assert.equal(ARCHETYPE_PERSISTENCE[a].minDistinctSessions, 1, `${a} may fire the session it triggers`);
     assert.equal(ARCHETYPE_PERSISTENCE[a].requiresCorroboration, true, `${a} still needs a 2nd independent signal`);
   }
+  // FAILED_BREAKDOWN: volume-confirmed structure reclaim IS the thesis — 1 session, no 2nd KIND required.
+  assert.equal(ARCHETYPE_PERSISTENCE.FAILED_BREAKDOWN.minDistinctSessions, 1);
+  assert.equal(ARCHETYPE_PERSISTENCE.FAILED_BREAKDOWN.requiresCorroboration, false);
   // Every archetype is covered (no missing rule).
   for (const a of SWING_ARCHETYPES) assert.ok(ARCHETYPE_PERSISTENCE[a], `persistence rule for ${a}`);
 });

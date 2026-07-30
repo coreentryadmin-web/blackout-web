@@ -47,7 +47,12 @@ import { resolveTickerChainRows } from "@/features/nighthawk/lib/option-chain-pr
 import { fetchDailyMarketSummary, fetchStockDailyBars } from "@/lib/providers/polygon";
 import { fetchPolygonTickerDetails } from "@/lib/providers/polygon-largo";
 import { fetchTickerNews, DEFAULT_CATALYST_CHANNELS } from "@/lib/providers/polygon-news";
-import { fetchUwTickerEarningsHistory, fetchUwIvRank } from "@/lib/providers/unusual-whales";
+import {
+  fetchUwTickerEarningsHistory,
+  fetchUwIvRank,
+  fetchUwIvRankSeries,
+} from "@/lib/providers/unusual-whales";
+import { fetchStockLastTrade } from "@/lib/providers/polygon-largo";
 import {
   MULTI_DAY_FLOW_HOURS,
   MULTI_DAY_MIN_PREMIUM,
@@ -114,6 +119,12 @@ function buildDiscoveryDeps(nowMs: number, sessionDay: string, phase: SwingDisco
           fetchEarningsRows: (ticker) =>
             fetchUwTickerEarningsHistory(ticker, 8) as Promise<Array<Record<string, unknown>>>,
           fetchIvRank: (ticker) => fetchUwIvRank(ticker),
+          // Historical IV-rank series — fills the VOLATILITY pillar / feature-vector iv_rank when the
+          // point stats endpoint is thin (SWING-ENGINE §6 gap #2). Long-TTL cached; fail-soft → null.
+          fetchIvRankSeries: async (ticker) => {
+            const rows = await fetchUwIvRankSeries(ticker, 30);
+            return Array.isArray(rows) ? (rows as Array<Record<string, unknown>>) : null;
+          },
           // SECTOR_ROTATION benchmark classifier: Polygon reference data (sic_code/sic_description/type) —
           // rate-limit-free and already fail-open (→ null). Resolves the name's industry-group / sector ETF so
           // the archetype classifies on real industry-group RS instead of the coarse name-vs-SPY RS. A hiccup
@@ -178,7 +189,8 @@ function buildDiscoveryDeps(nowMs: number, sessionDay: string, phase: SwingDisco
       });
     },
     insertPosition: insertSwingPosition,
-    promoteCommit: (ticker, direction, positionId) => promoteSwingCandidate(accum, ticker, direction, positionId),
+    promoteCommit: (ticker, direction, positionId, archetype) =>
+      promoteSwingCandidate(accum, ticker, direction, positionId, archetype),
     budget: resolveProductionPortfolioBudget(),
     nowMs,
     sessionDay,
@@ -259,20 +271,53 @@ export async function GET(req: NextRequest) {
     const deps = buildDiscoveryDeps(nowMs, sessionDay, decision.phase!);
     const result = await runSwingDiscoveryScan(deps);
 
-    // Persist the scored output so the member horizons route can serve it (getSwingServingLane's `discover`
-    // reads this blob). Before this, the scan advanced only the accumulation memory — the dossiers/plays/watch
-    // it produced were dropped, so the SWING board had nothing to read and rendered permanently empty.
-    // Best-effort (persist swallows its own errors) — a cache miss must never fail the discovery cron.
-    // `playSet.SWING` is only non-empty once discovery attaches concrete WATCH contracts (the OPTIONAL
-    // fetchChainRows dep — the evidence-only "WATCH by persistence, not by contract" posture); until then the
-    // member board is honestly empty, but the dossiers + watch list are persisted and the read path is live.
-    await persistSwingServingSnapshot({
+    // Persist the scored output so the member horizons route can serve it. If the write fails, RELEASE the
+    // phase claim so the next EventBridge fire can retry — upgrading to DONE without a snapshot locks the
+    // member board on a stale/empty state for 22h.
+    // Ground setup-maturity spots for the member serve path (cache-reader): start from each dossier's
+    // plan entry (last close at ingest), then refresh live last-trade for persistence-cleared WATCH
+    // names so FORMING/TRIGGERED/EXTENDED can diverge from the pinned trigger during RTH.
+    const spotsByTicker: Record<string, number> = {};
+    for (const d of result.dossiers) {
+      const px = d.plan?.entryUnderlyingPx;
+      if (px != null && Number.isFinite(px) && px > 0) spotsByTicker[d.ticker.toUpperCase()] = px;
+    }
+    const watchTickers = [...new Set(result.watchCandidates.map((w) => w.ticker.toUpperCase()))].slice(0, 40);
+    await Promise.all(
+      watchTickers.map(async (ticker) => {
+        try {
+          const trade = await fetchStockLastTrade(ticker);
+          const p = trade && typeof trade === "object" ? Number((trade as Record<string, unknown>).p) : NaN;
+          if (Number.isFinite(p) && p > 0) spotsByTicker[ticker] = p;
+        } catch {
+          // fail-soft: keep the plan-entry fallback
+        }
+      }),
+    );
+
+    const persisted = await persistSwingServingSnapshot({
       asOf: result.asOf,
       sessionDay,
       dossiers: result.dossiers,
       plays: result.playSet.SWING,
       watch: result.watchCandidates,
+      spotsByTicker,
     });
+    if (!persisted) {
+      if (decision.key) {
+        await sharedCacheDel(decision.key).catch(() => undefined);
+      }
+      const payload = {
+        ok: false,
+        phase: decision.phase,
+        sessionDay,
+        error: "serving snapshot persist failed — phase claim released for retry",
+        claim_released: true,
+        fadedStale: result.fadedStale ?? 0,
+      };
+      await logCronRun("swing-discovery", started, payload);
+      return NextResponse.json(payload, { status: 500 });
+    }
 
     // Upgrade running → done (full-day lock). Only after persist so a crash mid-scan does not lock the day.
     if (decision.key) {
@@ -300,6 +345,7 @@ export async function GET(req: NextRequest) {
       committed: result.commit?.committed.filter((c) => c.positionId != null).length ?? 0,
       commitErrors: result.commit?.errors ?? 0,
       commitSkipped: result.commit?.skipped.length ?? 0,
+      fadedStale: result.fadedStale ?? 0,
       duration_ms: Date.now() - started,
     };
     await logCronRun("swing-discovery", started, payload);

@@ -1,6 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { computeBeta, fetchNameBeta, FETCH_NAME_BETA_DEFERRED, MIN_BETA_RETURNS, type CloseBar } from "./beta.ts";
+import {
+  computeBeta,
+  fetchNameBeta,
+  createDailyClosesBetaSource,
+  FETCH_NAME_BETA_DEFERRED,
+  MIN_BETA_RETURNS,
+  type CloseBar,
+} from "./beta.ts";
 
 /** Build a close series from a starting price and a list of daily returns. */
 function closesFromReturns(start: number, returns: number[]): CloseBar[] {
@@ -59,8 +66,30 @@ test("timestamp-aligned inner join pairs the same sessions", () => {
   assert.ok(res.beta != null && Math.abs(res.beta - 3) < 1e-9);
 });
 
-test("fetchNameBeta is a documented DEFERRED stub — no IO, always betaMissing", async () => {
-  assert.equal(FETCH_NAME_BETA_DEFERRED, true);
+test("fetchNameBeta without a source does no IO and reports betaMissing", async () => {
+  // Provider is no longer a permanent stub — but without an IndexBetaSource it still refuses to invent β.
+  assert.equal(FETCH_NAME_BETA_DEFERRED, false);
   const res = await fetchNameBeta("NVDA");
+  assert.deepEqual(res, { beta: null, betaMissing: true, n: 0 });
+});
+
+test("fetchNameBeta + createDailyClosesBetaSource recovers OLS beta from injected closes", async () => {
+  const indexBars = closesFromReturns(100, INDEX_RETURNS);
+  const nameBars = closesFromReturns(50, INDEX_RETURNS.map((r) => 1.5 * r));
+  const source = createDailyClosesBetaSource({
+    fetchCloses: async (ticker) => (ticker === "SPY" ? indexBars : nameBars),
+  });
+  const res = await fetchNameBeta("NVDA", source);
+  assert.equal(res.betaMissing, false);
+  assert.ok(res.beta != null && Math.abs(res.beta - 1.5) < 1e-9);
+});
+
+test("fetchNameBeta fail-softs when the source throws", async () => {
+  const source = createDailyClosesBetaSource({
+    fetchCloses: async () => {
+      throw new Error("upstream down");
+    },
+  });
+  const res = await fetchNameBeta("NVDA", source);
   assert.deepEqual(res, { beta: null, betaMissing: true, n: 0 });
 });

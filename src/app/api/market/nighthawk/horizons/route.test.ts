@@ -18,7 +18,10 @@ const RAW_SWING_FLOAT = 1234.5600000000004;
 const EPOCH_MS = 1721835000000; // integer — must pass through roundFloats untouched
 
 mock.module("../../../../../lib/db", {
-  namedExports: { requireDatabaseInProduction: () => null },
+  namedExports: {
+    requireDatabaseInProduction: () => null,
+    fetchOpenSwingPositions: async () => [],
+  },
 });
 mock.module("../../../../../lib/market-api-auth", {
   namedExports: { authorizeCronOrTierApi: async () => ({ via: "cron" as const }) },
@@ -55,6 +58,10 @@ mock.module("../../../../../lib/horizon-board", {
 mock.module("../../../../../lib/swing/serving-lane", {
   namedExports: {
     getSwingServingLane: async () => ({ swingFloat: RAW_SWING_FLOAT, sections: [] }),
+    // Route also reads the persisted snapshot / discover seam — stub so the mock module shape matches
+    // the live import list (missing named exports → TypeError → degraded {available:false} body).
+    discoverSwingFromPersisted: async () => null,
+    readSwingServingSnapshot: async () => null,
   },
 });
 

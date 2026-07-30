@@ -68,11 +68,8 @@ export interface SwingFeatureInputs {
    * CAPTURE-ONLY metadata (like the archetype secondary fields): it feeds the feature row for later
    * study but is NOT bucketed by calibration/graduation. Honest-null when the feed is missing — never 0.
    *
-   * TODO(swing-ledger persist hook): this vector is not yet invoked by any production persist path (the
-   * snapshot-write hook lives in the HELD ledger PRs — see the module header). When that hook lands, pass
-   * the swing dossier's already-resolved IV rank here — `resolveIvRank` in features/nighthawk/lib/dossier.ts
-   * already computes it (Polygon VIX percentile for index proxies, the now-cached fetchUwIvRank for single
-   * names), so the wiring is a single null-safe field pass, no new UW IO on the vector-build path.
+   * Wired: commit pins via `buildCommitInsert`; manage-sync echoes/refreshes on every snapshot
+   * (`reads.ivRank` wins over the commit-pinned value when a fresh cached read is available).
    */
   ivRank?: number | null;
   // ── dynamic longitudinal part (recomputed every snapshot) ──

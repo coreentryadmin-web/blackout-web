@@ -1,0 +1,24 @@
+# Railway config for the Night Hawk Swing Active-Refresh cron service (schedule catalog).
+# Wire it up: service Settings -> Config-as-code -> set path to "railway.swing-active-refresh.toml"
+# Requires CRON_SECRET on this service (same value as blackout-web).
+# Live fires: EventBridge → Lambda hit-cron → GET /api/cron/swing-active-refresh (synced from this
+# catalog by blackout-infra/scripts/sync-cron-schedules.mjs). Hourly MARK-AND-REVIEW of OPEN swing
+# positions (snapshots + manage-sync on the sample) — not responsive intrabar live management.
+# Tactical faster cadence is a deliberate follow-up (rate-budget + EventBridge split).
+[build]
+builder = "nixpacks"
+buildCommand = "echo 'cron trigger service: no app build needed'"
+watchPatterns = [
+  "scripts/hit-cron.mjs",
+  "railway.swing-active-refresh.toml",
+  "nixpacks.toml",
+]
+
+[deploy]
+startCommand = "CRON_HTTP_TIMEOUT_MS=180000 node scripts/hit-cron.mjs /api/cron/swing-active-refresh"
+# Top of each hour during the UTC band that covers RTH in BOTH EDT and EST (11-21 UTC ≈ 7AM–5PM ET).
+# Registry marks this market_hours_only; an empty open book is a cheap no-op.
+# NOTE: EventBridge sync must pick this up via sync-cron-schedules.mjs — the TOML alone is the catalog.
+cronSchedule = "0 11-21 * * 1-5"
+restartPolicyType = "ON_FAILURE"
+numReplicas = 1

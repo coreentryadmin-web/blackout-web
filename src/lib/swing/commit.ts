@@ -37,7 +37,10 @@
 import type { PlayDirection, ChainContract } from "../horizon-fanout";
 import type { SwingArchetype, SwingSubLane } from "./taxonomy";
 import { subLaneForDte } from "./taxonomy";
+import { occFromChainContract } from "./occ-from-row";
 import type { SwingCalibrationReport } from "./calibration";
+import type { SwingPillarSignals } from "./swing-pillars";
+import { buildSwingFeatureVector } from "./feature-vector";
 import {
   evaluateSwingCommitBudget,
   DEFAULT_PORTFOLIO_BUDGET,
@@ -122,6 +125,15 @@ export interface SwingCommitCandidate {
   thesisInvalidationPx?: number | null;
   targetUnderlyingPx?: number | null;
   topFlowStrike?: number | null;
+  // ── Feature-vector static thesis part (pinned at commit; echoed on every snapshot) ──
+  pillars?: SwingPillarSignals | null;
+  presentPillars?: number | null;
+  dataQualityDegraded?: boolean | null;
+  archetypeSecondary?: SwingArchetype[] | null;
+  archetypeScores?: Record<string, number> | null;
+  classificationMargin?: number | null;
+  /** UW IV rank (0–100) when known at commit — honest null otherwise; first refresh tick can fill it. */
+  ivRank?: number | null;
 }
 
 /** A live-book position the commit gate reads for budget + caps + idempotency. */
@@ -341,7 +353,13 @@ function buildCommitInsert(
     contract_strike: isFin(c.strike) ? c.strike : null,
     contract_expiry: c.expiry ?? null,
     contract_type: c.right === "C" ? "call" : "put",
-    contract_occ: null, // ChainContract carries no OCC; the ledger allows null
+    // Reconstruct OCC at commit so active-refresh can load live marks (premium_stop / rolls / ladder).
+    contract_occ: occFromChainContract({
+      ticker: cand.ticker,
+      expiry: c.expiry,
+      right: c.right,
+      strike: c.strike,
+    }),
     contract_delta: isFin(c.delta) ? c.delta : null,
     entry_underlying_px: cand.entryUnderlyingPx ?? null,
     thesis_invalidation_px: cand.thesisInvalidationPx ?? null,
@@ -374,6 +392,25 @@ function buildCommitInsert(
       graduated: true,
       reason: grad.reason,
     },
+    // Pin the static thesis feature vector at commit so trajectory studies can echo pillars/score on
+    // every later snapshot (manage-sync reads this via staticSwingFeatureInputsFromPinned).
+    feature_vector: buildSwingFeatureVector({
+      ticker: cand.ticker,
+      direction: dirLc,
+      archetype: cand.archetype,
+      subLane,
+      evidenceScore: cand.score,
+      presentPillars: cand.presentPillars ?? null,
+      dataQualityDegraded: cand.dataQualityDegraded ?? null,
+      pillars: cand.pillars ?? null,
+      archetypeSecondary: cand.archetypeSecondary ?? null,
+      archetypeScores: cand.archetypeScores ?? null,
+      classificationMargin: cand.classificationMargin ?? null,
+      ivRank: cand.ivRank ?? null,
+      snapshotKind: "commit",
+      snapshotSeq: 0,
+      sessionsElapsed: 0,
+    }) as unknown as Record<string, unknown>,
     status: "OPEN",
   };
 }
@@ -383,9 +420,15 @@ function buildCommitInsert(
 export interface SwingCommitDeps {
   /** Open the position (db.insertSwingPosition — upserts on commit_key, first-write-wins). Returns the id. */
   insertPosition: (pos: SwingPositionInsert) => Promise<number>;
-  /** Link the accumulation candidate to the position it promoted into (db.markAccumPromoted via the store).
-   *  Best-effort: a link failure is logged but does NOT undo the (already durable) commit. */
-  promote?: (ticker: string, direction: PlayDirection, positionId: number) => Promise<void>;
+  /** Link the accumulation thesis to the position it promoted into (db.markAccumPromoted via the store).
+   *  Best-effort: a link failure is logged but does NOT undo the (already durable) commit.
+   *  Archetype is required so a sibling thesis on the same name+side is not falsely retired. */
+  promote?: (
+    ticker: string,
+    direction: PlayDirection,
+    positionId: number,
+    archetype?: string | null,
+  ) => Promise<void>;
 }
 
 export interface SwingCommitExecEntry {
@@ -421,7 +464,7 @@ export async function executeSwingCommits(deps: SwingCommitDeps, plan: SwingComm
       const positionId = await deps.insertPosition(d.insert);
       if (deps.promote) {
         try {
-          await deps.promote(d.ticker, d.direction, positionId);
+          await deps.promote(d.ticker, d.direction, positionId, d.archetype);
         } catch (err) {
           // Linking is best-effort — the position is already open + durable; a failed link only risks the
           // candidate re-surfacing (harmless: the commit_key upsert prevents a second open).

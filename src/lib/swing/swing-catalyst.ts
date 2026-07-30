@@ -294,3 +294,25 @@ export function contractQualityFromIvRank(ivRank: number | null | undefined): nu
   const rank01 = ivRank > 1 ? ivRank / 100 : ivRank; // tolerate a 0–100 rank OR an already-0–1 fraction
   return clamp01(1 - clamp01(rank01));
 }
+
+/**
+ * Latest finite IV-rank / percentile reading from a historical series (UW `/iv-rank` rows). Prefer an
+ * explicit `iv_rank` field; fall back to common aliases. Returns null when the series is empty/
+ * unparseable — never fabricates a percentile. Pure. Closes SWING-ENGINE §6 gap #2 (series fetcher
+ * exists; this is the grounded "current from series" read the feature vector / VOLATILITY pillar use
+ * when volatility/stats is thin).
+ */
+export function latestIvRankFromSeries(
+  rows: ReadonlyArray<Record<string, unknown>> | null | undefined,
+): number | null {
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+  // Series is typically ascending by date — walk from the end for the freshest point.
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const r = rows[i];
+    if (!r || typeof r !== "object") continue;
+    const raw = r.iv_rank ?? r.ivRank ?? r.rank ?? r.value;
+    const n = typeof raw === "number" ? raw : Number(raw);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}

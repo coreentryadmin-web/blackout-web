@@ -5,6 +5,7 @@ import {
   parseEarningsWindows,
   deriveCatalystReads,
   contractQualityFromIvRank,
+  latestIvRankFromSeries,
   isCatalystNewsItem,
   SWING_CATALYST_WINDOW_DAYS,
   POST_EARNINGS_DRIFT_WINDOW_DAYS,
@@ -178,4 +179,15 @@ test("contractQualityFromIvRank: inverse to IV rank (cheap premium = high qualit
   assert.equal(contractQualityFromIvRank(null), null, "no rank → null (pillar drops, never a fabricated 0)");
   assert.equal(contractQualityFromIvRank(undefined), null);
   assert.equal(contractQualityFromIvRank(Number.NaN), null);
+});
+
+test("latestIvRankFromSeries: freshest finite iv_rank; empty/garbage → null", () => {
+  assert.equal(latestIvRankFromSeries(null), null);
+  assert.equal(latestIvRankFromSeries([]), null);
+  assert.equal(
+    latestIvRankFromSeries([{ iv_rank: 20 }, { iv_rank: 41 }, { iv_rank: "nope" }]),
+    41,
+    "walks from the end; skips non-finite",
+  );
+  assert.equal(latestIvRankFromSeries([{ value: 33 }]), 33, "falls back to value alias");
 });

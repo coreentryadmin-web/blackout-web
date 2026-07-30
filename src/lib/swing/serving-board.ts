@@ -6,10 +6,9 @@
 // observable router (`buildSwingSections` → `sectionForSwingPlay`), and wraps them in the lane's spec
 // metadata (label / tag / hold / exit / floor + whether the floor is calibration-graduated).
 //
-// FOUR OF SEVEN LIVE (PR-12): the four PRE-ENTRY sections (COMMIT_NOW / WAITING_FOR_ENTRY / WATCH / RESEARCH)
-// populate from discovery plays; the three LIVE-POSITION sections (MANAGING / SCALING_OUT / EXITING) stay
-// EMPTY until PR-13 persists real positions — they are present (never omitted) so the desk always renders
-// every bucket. `committed`/`watch` stay as derived back-compat views the old renderers still read.
+// FOUR PRE-ENTRY + THREE LIVE: pre-entry sections populate from discovery plays; live-position sections
+// (MANAGING / SCALING_OUT / EXITING) populate when `getSwingServingLane` is given open ledger rows via
+// `fetchOpenPositions`. Empty live buckets are still always present so the desk renders every section.
 //
 // CALIBRATION-FIRST / MEMBER-SAFE: the lane carries the PROVISIONAL-floor flag (`scoreFloorGraduated:false`
 // for SWING — the desk marks the floor as not-yet-graded) and holds `calibratedProbability`/`expectedValue`

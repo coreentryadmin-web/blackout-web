@@ -1,0 +1,27 @@
+# Railway config for the Night Hawk Swing Discovery cron service (schedule catalog).
+# Wire it up: service Settings -> Config-as-code -> set path to "railway.swing-discovery.toml"
+# Requires CRON_SECRET on this service (same value as blackout-web).
+# Live fires: EventBridge → Lambda hit-cron → GET /api/cron/swing-discovery (synced from this catalog
+# by blackout-infra/scripts/sync-cron-schedules.mjs). The route is phase-anchored (scan-cadence.ts) —
+# most firings self-skip; ONE scan runs per (session day, phase).
+[build]
+builder = "nixpacks"
+buildCommand = "echo 'cron trigger service: no app build needed'"
+# Only redeploy this trigger service when its OWN driver/config changes — NOT on docs/src/
+# log commits. Mirrors railway.heatmap-warm.toml watchPatterns.
+watchPatterns = [
+  "scripts/hit-cron.mjs",
+  "railway.swing-discovery.toml",
+  "nixpacks.toml",
+]
+
+[deploy]
+# Discovery can take >60s (whole-market flow + closes + chains). Give headroom like heatmap-warm.
+startCommand = "CRON_HTTP_TIMEOUT_MS=300000 node scripts/hit-cron.mjs /api/cron/swing-discovery"
+# Every 30 min weekdays. The route is phase-anchored (scan-cadence.ts): firings outside an ET phase
+# window self-skip; Redis NX claims make re-fires inside the same (day, phase) a no-op. A 24h UTC
+# schedule is required so PRE_OPEN (≈10–13 UTC) AND OVERNIGHT (≈00–04 UTC) both get hits in EDT/EST.
+# NOTE: EventBridge sync must pick this up via sync-cron-schedules.mjs — the TOML alone is the catalog.
+cronSchedule = "*/30 * * * 1-5"
+restartPolicyType = "ON_FAILURE"
+numReplicas = 1

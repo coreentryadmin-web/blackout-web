@@ -4,13 +4,13 @@
 // whole-market discovery lanes ship (they render as empty lanes until then, never omitted).
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { requireDatabaseInProduction } from "@/lib/db";
+import { requireDatabaseInProduction, fetchOpenSwingPositions } from "@/lib/db";
 import { authorizeCronOrTierApi } from "@/lib/market-api-auth";
 import { getZeroDteBoardPayload } from "@/lib/platform/zerodte-service";
 import { scopeBoardToHorizon } from "@/lib/horizon-board";
 import { horizonForView, parseNightHawkView } from "@/features/nighthawk/lib/nighthawk-view";
 import { horizonBoardFromZeroDtePayload } from "@/lib/zerodte/horizon-board-from-payload";
-import { getSwingServingLane, discoverSwingFromPersisted } from "@/lib/swing/serving-lane";
+import { getSwingServingLane, discoverSwingFromPersisted, readSwingServingSnapshot } from "@/lib/swing/serving-lane";
 import { requireToolApi } from "@/lib/tool-access-server";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
 import { roundFloats } from "@/lib/round-floats";
@@ -41,11 +41,14 @@ export async function GET(req: NextRequest) {
     const payload = await getZeroDteBoardPayload();
     let board = horizonBoardFromZeroDtePayload(payload, payload.as_of);
 
-    // SWING branch (PR-12 + 2026-07-29 fix): ALWAYS splice the persisted serving lane into the board —
-    // not only when `?view=swings`. The 0DTE payload's SWING lane is an empty placeholder; members on the
-    // default (all-lanes) desk were seeing a permanently empty Swing rail even when discovery had written
-    // a snapshot. `getSwingServingLane` degrades to an empty structured lane on any discovery hiccup.
-    const swingLane = await getSwingServingLane({ discover: discoverSwingFromPersisted });
+    // SWING branch: persisted discovery lane + OPEN ledger rows for live sections. Cache-reader on
+    // providers (spots come from the serving snapshot); DB open-book read is the member board's job.
+    const snap = await readSwingServingSnapshot().catch(() => null);
+    const swingLane = await getSwingServingLane({
+      discover: discoverSwingFromPersisted,
+      fetchOpenPositions: () => fetchOpenSwingPositions().catch(() => []),
+      spotsByTicker: snap?.spotsByTicker,
+    });
     board = { ...board, lanes: { ...board.lanes, SWING: swingLane } };
     board = scopeBoardToHorizon(board, horizon);
     // roundFloats at the boundary: the 0DTE lane is already rounded inside zerodte-service,

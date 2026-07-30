@@ -123,7 +123,21 @@ export function ZeroDteDeck({
 export function HorizonDeck({ horizon }: { horizon: "SWING" | "LEAPS" }) {
   const { data } = useSWR(["deck-horizons", horizon], () => fetchNightHawkHorizons(horizon), { refreshInterval: 30_000 });
   const lane = data?.board?.lanes?.[horizon];
-  const rows = [...(lane?.committed ?? []), ...(lane?.watch ?? [])];
+  // Prefer the seven serving sections when present (SWING) — flat committed/watch is back-compat only and
+  // collapses COMMIT_NOW + WAITING_FOR_ENTRY into one misleading "committed" rail.
+  const sectionRows =
+    horizon === "SWING" && lane?.sections
+      ? [
+          ...(lane.sections.COMMIT_NOW ?? []),
+          ...(lane.sections.WAITING_FOR_ENTRY ?? []),
+          ...(lane.sections.WATCH ?? []),
+          ...(lane.sections.RESEARCH ?? []),
+          ...(lane.sections.MANAGING ?? []),
+          ...(lane.sections.SCALING_OUT ?? []),
+          ...(lane.sections.EXITING ?? []),
+        ]
+      : null;
+  const rows = sectionRows ?? [...(lane?.committed ?? []), ...(lane?.watch ?? [])];
   const plays: TerminalPlay[] = rows.map((p) =>
     terminalPlayFromHorizon({
       ticker: p.ticker,
@@ -133,6 +147,17 @@ export function HorizonDeck({ horizon }: { horizon: "SWING" | "LEAPS" }) {
       status: p.status,
       reason: p.reason,
       contract: { strike: p.contract.strike, right: p.contract.right, expiry: p.contract.expiry, dte: p.contract.dte, mid: p.contract.mid },
+      factors: p.factors,
+      regime: p.regime ?? null,
+      setupState: p.setupState ?? null,
+      entryStatus: p.entryStatus ?? null,
+      archetype: p.archetype ?? null,
+      subLane: p.subLane ?? null,
+      servingSection: p.serving ?? null,
+      thesisBreak:
+        p.thesisLevel != null
+          ? { level: p.thesisLevel, note: p.thesisNote ?? undefined }
+          : undefined,
     }),
   );
   return (

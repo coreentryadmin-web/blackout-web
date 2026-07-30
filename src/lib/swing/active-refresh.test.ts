@@ -50,13 +50,14 @@ function positionRow(over: Partial<SwingPositionRow> = {}): SwingPositionRow {
   };
 }
 
-test("planManageSync: thesis intact → snapshot appended, status stays OPEN (never terminal)", () => {
+test("planManageSync: thesis intact → snapshot appended, OPEN promotes to HOLD (never terminal)", () => {
   const reads: ManageSyncReads = { underlyingPrice: 152, dte: 21, underlyingMfe: 152, underlyingMae: 152 };
   const plan = planManageSync(positionRow(), reads, { snapshotKind: "eod" });
   assert.equal(plan.snapshot.snapshot_kind, "eod");
   assert.equal(plan.snapshot.position_id, 1);
   assert.equal(plan.snapshot.thesis_state, "INTACT");
-  assert.equal(plan.liveState.status, "OPEN", "NEVER-CLOSE invariant: refresh keeps a live status");
+  // Intact manage tick latches OPEN→HOLD (actively managed); never CLOSED/ROLLED here.
+  assert.equal(plan.liveState.status, "HOLD");
   assert.notEqual(plan.liveState.status, "CLOSED");
 });
 
@@ -217,6 +218,42 @@ test("planManageSync: a fresh-resolved ivRank read wins over the commit-pinned v
     { snapshotKind: "eod" },
   );
   assert.equal((plan.snapshot.feature_vector as Record<string, unknown>).iv_rank, 61);
+});
+
+test("planManageSync: TAKE_PARTIAL latches TRIM; TRIM row sets scaledAlready", () => {
+  // Mark at 2× entry → profit ladder TAKE_PARTIAL → live status becomes TRIM.
+  const plan = planManageSync(
+    positionRow({ status: "OPEN", entry_premium: 4, peak_premium: 8 }),
+    { underlyingPrice: 156, dte: 20, mark: 8 },
+    { snapshotKind: "eod" },
+  );
+  assert.equal(plan.verdict.action, "TAKE_PARTIAL");
+  assert.equal(plan.liveState.status, "TRIM", "scale-out latch must advance OPEN→TRIM");
+
+  // Once TRIM, a further runner mark with scaledAlready inferred from status can reach EXIT_RUNNER path.
+  const after = planManageSync(
+    positionRow({ status: "TRIM", entry_premium: 4, peak_premium: 10 }),
+    { underlyingPrice: 156, dte: 20, mark: 7 }, // below trail after scale
+    { snapshotKind: "eod" },
+  );
+  assert.equal(after.liveState.status, "TRIM", "TRIM stays sticky");
+});
+
+test("planManageSync: thesisProgress01 + sessionsHeld can fire time_stop when stagnant", () => {
+  const plan = planManageSync(
+    positionRow({ status: "OPEN", entry_premium: 4, sub_lane: "STANDARD" }),
+    {
+      underlyingPrice: 150, // at entry → progress ~0
+      dte: 14,
+      mark: 4.1,
+      sessionsHeld: 10, // > STANDARD 8
+      thesisProgress01: 0.05, // stagnant
+      graduatedRungs: ["time_stop"],
+    },
+    { snapshotKind: "eod" },
+  );
+  assert.equal(plan.verdict.rung, "time_stop");
+  assert.equal(plan.verdict.enforced, true, "graduated time_stop enforces");
 });
 
 // ── FIX 4: an option mark loaded per-position lands on the snapshot + feature vector ───────────────────────

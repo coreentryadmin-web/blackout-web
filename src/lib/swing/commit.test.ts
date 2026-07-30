@@ -95,6 +95,44 @@ test("commit FIRES only when graduated ∧ contract-present ∧ budget-cleared �
   assert.equal((d.insert!.gate_calibration_json as Record<string, unknown>).graduated, true);
 });
 
+test("commit pins a feature_vector with static thesis fields (pillars / iv_rank / classification meta)", () => {
+  const plan = computeSwingCommitPlan({
+    candidates: [
+      candidate({
+        pillars: {
+          STRUCTURE: 0.8,
+          REL_STRENGTH: 0.6,
+          FLOW: 0.7,
+          VOLATILITY: 0.4,
+          CATALYST: null,
+          REGIME: 0.5,
+          DATA_QUALITY: 0.9,
+        },
+        presentPillars: 6,
+        dataQualityDegraded: false,
+        archetypeSecondary: ["FLOW_ACCUMULATION"],
+        archetypeScores: { BREAKOUT: 0.9, FLOW_ACCUMULATION: 0.7 },
+        classificationMargin: 0.2,
+        ivRank: 37,
+      }),
+    ],
+    report: graduatedReport(),
+    book: [],
+    budget: PRODUCTION_PORTFOLIO_BUDGET,
+  });
+  const fv = plan.decisions[0]!.insert!.feature_vector as Record<string, unknown>;
+  assert.ok(fv, "feature_vector is pinned at commit");
+  assert.equal(fv.snapshot_kind, "commit");
+  assert.equal(fv.evidence_score, 85);
+  assert.equal(fv.present_pillars, 6);
+  assert.equal(fv.dq_degraded, 0);
+  assert.equal(fv.pil_structure, 0.8);
+  assert.equal(fv.pil_catalyst, null, "absent pillar stays null, never 0");
+  assert.equal(fv.iv_rank, 37);
+  assert.equal(fv.classification_margin, 0.2);
+  assert.deepEqual(fv.secondary, ["FLOW_ACCUMULATION"]);
+});
+
 test("commitEligibleCount = the REAL graduated count (graduated but budget-blocked STILL counts as eligible)", () => {
   // Two graduated candidates; the 2nd is priced so its single lot exceeds the 2% per-trade cap → blocked, but it
   // is still GRADUATED, so commitEligibleCount = 2 while committableCount = 1.

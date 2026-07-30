@@ -3,10 +3,16 @@
 // WHY THIS EXISTS (the persistence gate): a swing thesis is "a move building across DAYS," so acting on a
 // name the FIRST session it surfaces is exactly the single-day amnesia the 0DTE accumulation layer was
 // built to cure — a lone print looks identical to a three-day build. This store gives whole-market swing
-// discovery a cross-session memory: every scan accretes ONE observation per (ticker, direction) into
+// discovery a cross-session memory: every scan accretes ONE observation per THESIS into
 // `swing_candidate_accumulation` (PR-10), and a candidate is only promotable to the WATCH rail once its
 // thesis has PERSISTED enough — never on a single sighting. That is the whole point of the pre-commit
 // ledger: separate "showed up once" from "keeps showing up."
+//
+// THESIS IDENTITY (FINDINGS 2026-07-30 — release-blocking): persistence is keyed by
+// `(ticker, direction, archetype)`, NOT `(ticker, direction)`. Mon FLOW_ACCUMULATION → Tue MEAN_REVERSION
+// → Wed BREAKOUT on the same NVDA long MUST NOT share one persistence record (inherited session count =
+// false WATCH eligibility). Live-flow advances without a classified archetype land in `UNCLASSIFIED` and
+// never merge into a classified thesis. The canonical string form is `swingThesisKey(...)`.
 //
 // ARCHETYPE-AWARE PERSISTENCE (operator critique #3): the gate is NO LONGER uniform. A "≥2 distinct
 // sessions" bar is right for theses that BUILD across days (flow accumulation, pullback continuation,
@@ -40,7 +46,7 @@
 import type { PlayDirection } from "../horizon-fanout";
 import type { SwingAccumRow } from "../db";
 import type { SwingArchetype } from "./taxonomy";
-import { persistenceRuleFor } from "./taxonomy";
+import { SWING_ARCHETYPES, persistenceRuleFor } from "./taxonomy";
 
 /** Distinct session days a CROSS-SESSION candidate (or an unclassified name) must persist before it can be
  *  promoted to the WATCH rail. Two is the minimum that distinguishes a real multi-session build from a
@@ -49,26 +55,76 @@ import { persistenceRuleFor } from "./taxonomy";
  *  Provisional — never a graduated edge, just the persistence floor. */
 export const MIN_PERSISTENCE_SESSIONS = 2;
 
+/**
+ * Sentinel archetype for live-flow / pre-classify sightings. Stored as the third PK component so those
+ * observations NEVER accrete into a classified thesis's session count.
+ */
+export const SWING_ACCUM_UNCLASSIFIED = "UNCLASSIFIED";
+
+const ARCHETYPE_SET = new Set<string>(SWING_ARCHETYPES);
+
+/** Normalize an archetype for the accumulation PK. Null/empty/unknown → UNCLASSIFIED. */
+export function normalizeSwingAccumArchetype(
+  archetype: SwingArchetype | string | null | undefined,
+): string {
+  if (archetype == null) return SWING_ACCUM_UNCLASSIFIED;
+  const raw = String(archetype).trim().toUpperCase();
+  if (!raw || raw === SWING_ACCUM_UNCLASSIFIED) return SWING_ACCUM_UNCLASSIFIED;
+  return ARCHETYPE_SET.has(raw) ? raw : SWING_ACCUM_UNCLASSIFIED;
+}
+
+/** Persist-store archetype → classifier archetype (UNCLASSIFIED → null for the persistence rule). */
+export function classifiedArchetypeOf(archetype: string | null | undefined): SwingArchetype | null {
+  const n = normalizeSwingAccumArchetype(archetype);
+  return n === SWING_ACCUM_UNCLASSIFIED ? null : (n as SwingArchetype);
+}
+
+/**
+ * Canonical thesis identity string: `TICKER|LONG|BREAKOUT`. Material change to any component is a NEW
+ * thesis (fresh persistence). Direction accepts PlayDirection or store lowercase.
+ */
+export function swingThesisKey(
+  ticker: string,
+  direction: PlayDirection | "long" | "short",
+  archetype: SwingArchetype | string | null | undefined,
+): string {
+  const dir =
+    direction === "long" || direction === "LONG"
+      ? "LONG"
+      : direction === "short" || direction === "SHORT"
+        ? "SHORT"
+        : String(direction).toUpperCase();
+  return `${ticker.toUpperCase()}|${dir}|${normalizeSwingAccumArchetype(archetype)}`;
+}
+
 /** The PR-10 db.ts accessor surface this store drives. Injected so persistence policy is testable without a
  *  live DB. Shapes mirror the exported accessor signatures exactly (direction lowercased at the boundary). */
 export interface SwingAccumAccessors {
   upsertSwingAccum(a: {
     ticker: string;
     direction: "long" | "short";
+    archetype: string;
     session_day: string;
     phase: string;
     /** Screen provenance (FLOW / STRUCTURE / CATALYST) accreted into `signal_kinds` — the corroboration set. */
     signal_kinds?: string[];
   }): Promise<void>;
   fetchAccumulating(minSessionDays?: number, limit?: number): Promise<SwingAccumRow[]>;
-  markAccumPromoted(ticker: string, direction: "long" | "short", positionId: number): Promise<void>;
+  markAccumPromoted(
+    ticker: string,
+    direction: "long" | "short",
+    positionId: number,
+    archetype?: string,
+  ): Promise<void>;
   fadeStaleAccum(beforeIso: string): Promise<number>;
 }
 
-/** One per-scan sighting: this (ticker, direction) thesis was observed on `sessionDay` during `phase`. */
+/** One per-scan sighting: this thesis was observed on `sessionDay` during `phase`. */
 export interface SwingAccumObservation {
   ticker: string;
   direction: PlayDirection;
+  /** Classified archetype; null/omit → UNCLASSIFIED (live-flow bucket — never merges into a classified thesis). */
+  archetype?: SwingArchetype | string | null;
   /** ET calendar session day (YYYY-MM-DD) — the distinct-day key that measures persistence. */
   sessionDay: string;
   /** Discovery CADENCE phase tag (POST_CLOSE first; see discovery.ts) — accreted into `phases_seen`. Provenance
@@ -83,6 +139,8 @@ export interface SwingAccumObservation {
 export interface SwingWatchCandidate {
   ticker: string;
   direction: PlayDirection;
+  /** Thesis archetype (classified or UNCLASSIFIED). */
+  archetype: string;
   observationCount: number;
   distinctSessionDays: number;
   phasesSeen: string[];
@@ -143,8 +201,8 @@ function hasCorroboration(row: PersistenceRowFields): boolean {
  * archetypes the 2-session floor enforces it; for event archetypes `requiresCorroboration` enforces it
  * (a lone print has 1 signal kind + 1 session → not corroborated → not promoted). See the header.
  *
- * `archetype` is passed by the caller (the accumulation row itself carries no archetype column). Omitting
- * it — or passing null — selects the conservative cross-session default, i.e. the pre-critique-#3 gate.
+ * Prefer the row's stored archetype when present; the optional `archetype` arg overrides for callers that
+ * already resolved the thesis (tests / legacy resolvers).
  */
 export function meetsPersistence(
   row: PersistenceRowFields,
@@ -167,7 +225,7 @@ export function meetsPersistence(
   return row.distinct_session_days >= rule.minDistinctSessions && hasCorroboration(row);
 }
 
-/** Record one sighting for a directional swing candidate (accretes an observation; +1 distinct day only when
+/** Record one sighting for a directional swing thesis (accretes an observation; +1 distinct day only when
  *  the session day changed — the PR-10 upsert owns that logic). Ticker is normalized upstream by the accessor.
  *  The sighting's SCREEN provenance (`signalKinds`) is accreted into the corroboration set. */
 export async function observeSwingCandidate(
@@ -177,6 +235,7 @@ export async function observeSwingCandidate(
   await accessors.upsertSwingAccum({
     ticker: obs.ticker.toUpperCase(),
     direction: toStoreDir(obs.direction),
+    archetype: normalizeSwingAccumArchetype(obs.archetype),
     session_day: obs.sessionDay,
     phase: obs.phase,
     signal_kinds: obs.signalKinds,
@@ -186,6 +245,7 @@ export async function observeSwingCandidate(
 const mapWatchRow = (r: SwingAccumRow): SwingWatchCandidate => ({
   ticker: r.ticker.toUpperCase(),
   direction: fromStoreDir(r.direction),
+  archetype: normalizeSwingAccumArchetype(r.archetype),
   observationCount: r.observation_count,
   distinctSessionDays: r.distinct_session_days,
   phasesSeen: r.phases_seen ?? [],
@@ -205,30 +265,38 @@ export const MIN_EVENT_PERSISTENCE_SESSIONS = 1;
  * persistence bar. `meetsPersistence` is the authority on the bar (per-archetype); the DB accessor's
  * `distinct_session_days >= floor` filter is only a coarse pre-narrow.
  *
- * Pass `archetypeOf` to make promotion ARCHETYPE-AWARE: event/immediate archetypes may clear on a single
- * corroborated session, so we fetch at the global minimum floor (1) and let `meetsPersistence` apply the
- * real per-archetype rule — otherwise the scalar DB filter would drop those candidates before we could
- * classify them. WITHOUT a resolver the behavior is the conservative cross-session default (≥2 distinct
- * sessions for every candidate): `meetsPersistence(r, null)` re-applies the 2-session floor defensively so
- * a laxer accessor default can't leak a one-session candidate onto the rail.
+ * The row's stored `archetype` IS the thesis partition — use it for the persistence rule. Pass
+ * `archetypeOf` only when you need to override (tests) or when fetching at the event floor so
+ * 1-session event candidates survive the DB pre-filter. WITHOUT a resolver we still fetch at the
+ * event floor when any row might be event-class (always fetch at 1) and apply `meetsPersistence`
+ * from the row archetype — so classified event theses still fast-track.
  */
 export async function fetchWatchEligible(
   accessors: SwingAccumAccessors,
   minSessions: number = MIN_PERSISTENCE_SESSIONS,
   limit = 500,
-  archetypeOf?: (c: { ticker: string; direction: PlayDirection }) => SwingArchetype | null,
+  archetypeOf?: (c: {
+    ticker: string;
+    direction: PlayDirection;
+    archetype: string;
+  }) => SwingArchetype | null,
 ): Promise<SwingWatchCandidate[]> {
-  const fetchFloor = archetypeOf ? MIN_EVENT_PERSISTENCE_SESSIONS : minSessions;
+  // Always pre-fetch at the event floor so a 1-session EVENT_DRIVEN row isn't dropped before its
+  // per-archetype rule runs. Cross-session theses still fail meetsPersistence until day 2.
+  const fetchFloor = Math.min(minSessions, MIN_EVENT_PERSISTENCE_SESSIONS);
   const rows = await accessors.fetchAccumulating(fetchFloor, limit);
   return rows
-    .filter((r) =>
-      meetsPersistence(
-        r,
-        archetypeOf
-          ? archetypeOf({ ticker: r.ticker.toUpperCase(), direction: fromStoreDir(r.direction) })
-          : null,
-      ),
-    )
+    .filter((r) => {
+      const rowArch = normalizeSwingAccumArchetype(r.archetype);
+      const fromResolver = archetypeOf
+        ? archetypeOf({
+            ticker: r.ticker.toUpperCase(),
+            direction: fromStoreDir(r.direction),
+            archetype: rowArch,
+          })
+        : classifiedArchetypeOf(rowArch);
+      return meetsPersistence(r, fromResolver);
+    })
     .map(mapWatchRow);
 }
 
@@ -239,8 +307,14 @@ export async function promoteSwingCandidate(
   ticker: string,
   direction: PlayDirection,
   positionId: number,
+  archetype?: SwingArchetype | string | null,
 ): Promise<void> {
-  await accessors.markAccumPromoted(ticker.toUpperCase(), toStoreDir(direction), positionId);
+  await accessors.markAccumPromoted(
+    ticker.toUpperCase(),
+    toStoreDir(direction),
+    positionId,
+    normalizeSwingAccumArchetype(archetype),
+  );
 }
 
 /** Fade candidates that stopped showing up (unpromoted rows not seen since `beforeIso`). Returns the count. */

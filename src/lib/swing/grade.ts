@@ -1,18 +1,28 @@
-// src/lib/swing/grade.ts — the MULTI-TRUTH swing grader (PR-8). Pure. Evidence-only.
+// src/lib/swing/grade.ts — the MULTI-FAMILY swing grader (PR-8). Pure. Evidence-only.
 //
-// WHY FIVE INDEPENDENT TRUTHS (not one P&L number): a same-day 0DTE lottery collapses to a single
+// WHY FIVE INDEPENDENT FAMILIES (not one P&L number): a same-day 0DTE lottery collapses to a single
 // −50/+100 outcome, so one number grades it. A multi-SESSION swing thesis does not. The same position
-// can fill badly yet still print money, or fill perfectly on a thesis that never played out, or realize
-// a small P&L on a move that the exit rule left most of on the table. Netting those into one "score"
+// can "fill" badly yet still print money, or mark perfectly on a thesis that never played out, or realize
+// a small marked P&L on a move that the exit rule left most of on the table. Netting those into one "score"
 // destroys exactly the signal calibration needs: WHICH stage failed. So we grade five orthogonal
-// families and NEVER average them — execution (did the fill match the plan?), path (how far did the
-// underlying travel for/against us?), thesis (did the archetype's structural call confirm or break, in
-// UNDERLYING terms?), management (did the managed exit capture the move vs a naive hold?), and financial
-// (the realized scale-out P&L). Each carries its own gradeable/ungradeable flag with a reason, so a
-// truncated OPTION series can make financial+management ungradeable while path+thesis (walked on the
-// UNDERLYING) still grade honestly — the whole grade never collapses because one feed was thin.
+// families and NEVER average them.
 //
-// SURVIVORSHIP GUARD (the repo's standing law): the financial truth reuses `gradeBangerScaleOut` — the
+// HONEST LABELS (FINDINGS 2026-07-30 — do not over-claim):
+//   REFERENCE_EXECUTION (code: EXECUTION) — planned entry vs actual fill WHEN a real fill is supplied;
+//     otherwise ungradeable (`no_fill`). Commit entry_premium is typically a chain mid / reference mark,
+//     not broker execution (no bid/ask side, latency, fill probability, or slippage model).
+//   OBSERVED_PATH (code: PATH) — underlying MFE/MAE on the bars actually walked. Resolution = those bars.
+//     Hourly live snapshots alone do not establish intraday path.
+//   THESIS — structural confirm/break on the walked underlying series (stop-first within a bar of THAT series).
+//   MODEL_MANAGEMENT (code: MANAGEMENT) — managed-exit model vs naive hold on the same option series
+//     financial used — not a claim that the live hourly manage loop fired on time.
+//   MARKED_FINANCIAL (code: FINANCIAL) — scale-out P&L on option marks/bars (`gradeBangerScaleOut`), not
+//     broker-realized cash. Truncated forward series → ungradeable (never imputed).
+//
+// Each family carries its own gradeable/ungradeable flag with a reason, so a truncated OPTION series can
+// make financial+management ungradeable while path+thesis (walked on the UNDERLYING) still grade honestly.
+//
+// SURVIVORSHIP GUARD (the repo's standing law): the financial family reuses `gradeBangerScaleOut` — the
 // ONE production scale-out grader — verbatim (`gradeSwingScaleOut` is a thin parity wrapper, never a
 // reimplementation), and its `ungradeable` verdict is surfaced as-is: a missing entry premium, no
 // forward bars, or a series truncated before expiry is reported as `ungradeable` with the reason and
@@ -22,7 +32,7 @@
 // CONSERVATIVE INTRABAR ORDERING: in the thesis walk the structural STOP (invalidation) is checked
 // BEFORE the target within the same bar — no look-ahead, the same discipline `gradeScaleOut` applies to
 // its hard-stop-before-2× test. A bar that straddles both levels resolves to INVALIDATED, never a
-// phantom "hit target then stopped" win.
+// phantom "hit target then stopped" win. "Intrabar" here means within one bar of the SUPPLIED series.
 
 import type { GraderTimeframe } from "../horizons";
 import type { PlayDirection } from "../horizon-fanout";
@@ -38,14 +48,20 @@ const clamp01 = (n: number): number => (n < 0 ? 0 : n > 1 ? 1 : n);
 const finite = (n: number | null | undefined): n is number => n != null && Number.isFinite(n);
 
 /**
- * Which of the five truth families a grader-timeframe query is for. The timeframe a family SHOULD be
- * walked on is not one-size-per-lane: a multi-day directional THESIS is a structural call best judged on
- * the coarse pinned lane bars (a 22–30d EXTENDED thesis confirms/breaks on DAILY structure, not on
- * intrabar noise), while the FINANCIAL P&L and the PATH excursion (MFE/MAE/stop-touch) are point-in-time
- * measurements that only get MORE honest with finer bars. EXECUTION reads a single fill (no bar walk) and
- * MANAGEMENT reuses FINANCIAL's exact option series, so they inherit FINANCIAL's preference.
+ * Which of the five grade families a timeframe query is for.
+ * Honest doc labels: REFERENCE_EXECUTION / OBSERVED_PATH / THESIS / MODEL_MANAGEMENT / MARKED_FINANCIAL
+ * (see file header). Code keys stay short for JSON/calibration stability.
  */
 export type SwingGradeDimension = "EXECUTION" | "PATH" | "THESIS" | "MANAGEMENT" | "FINANCIAL";
+
+/** Honest family labels for docs / operator surfaces — maps 1:1 onto SwingGradeDimension. */
+export const SWING_GRADE_FAMILY_LABEL: Record<SwingGradeDimension, string> = {
+  EXECUTION: "REFERENCE_EXECUTION",
+  PATH: "OBSERVED_PATH",
+  THESIS: "THESIS",
+  MANAGEMENT: "MODEL_MANAGEMENT",
+  FINANCIAL: "MARKED_FINANCIAL",
+};
 
 /** Sub-daily = the finer resolution FINANCIAL/PATH want for real P&L / MFE / MAE / stop-touch. */
 const isIntraday = (tf: GraderTimeframe): boolean => tf === "minute" || tf === "hour";

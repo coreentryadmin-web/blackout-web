@@ -39,6 +39,7 @@ import { SWING_DOSSIER_VERSION } from "./dossier";
 import type { ArchetypeVerdict } from "./archetype";
 import { buildSwingFeatureVector, type SwingFeatureInputs } from "./feature-vector";
 import type { SwingPillarSignals } from "./swing-pillars";
+import { SWING_PILLARS } from "./swing-archetype";
 import {
   evaluateSwingManagement,
   GATING_RUNGS,
@@ -64,6 +65,21 @@ function coerceSubLane(raw: string | null | undefined): SwingSubLane | null {
 }
 function coerceArchetype(raw: string | null | undefined): SwingArchetype | null {
   return raw != null && (SWING_ARCHETYPES as readonly string[]).includes(raw) ? (raw as SwingArchetype) : null;
+}
+
+/**
+ * Map a manage verdict onto the next live status for the latch. TRIM is sticky once a scale-out fires
+ * (TAKE_PARTIAL / EXIT_RUNNER). HOLD promotes OPEN→HOLD. EXIT/STOP_OUT keep the current status —
+ * terminals are written only by the roll executor. Never invents CLOSED/ROLLED here.
+ */
+export function latchSwingLiveStatus(current: string, verdict: SwingManageVerdict): string {
+  if (verdict.action === "TAKE_PARTIAL" || verdict.action === "EXIT_RUNNER") return "TRIM";
+  if (current === "TRIM") return "TRIM";
+  if (verdict.action === "HOLD" || verdict.action === "ADD") {
+    return current === "OPEN" ? "HOLD" : current;
+  }
+  // EXIT / STOP_OUT — keep current (OPEN/HOLD/TRIM); roll executor owns the terminal write.
+  return current;
 }
 
 /** The fresh reads the refresh loop supplies per position. Every field optional/nullable — the manager skips
@@ -140,7 +156,7 @@ function syntheticDossierFromPosition(row: SwingPositionRow): SwingDossier {
     pillarSignals: {},
     score: { score: 0, archetype: archetype.archetype, subLane: coerceSubLane(row.sub_lane), contributions: [], presentCount: 0, reason: "synthetic" },
     subLane: coerceSubLane(row.sub_lane),
-    dataQuality: { degraded: true, presentPillars: 0, missing: [] },
+    dataQuality: { degraded: true, presentPillars: 0, missing: [...SWING_PILLARS] },
   };
 }
 
@@ -260,7 +276,8 @@ export function planManageSync(
     entryPremium: numOrNull(row.entry_premium),
     peakPremium: numOrNull(reads.peakPremium ?? row.peak_premium),
     lastMark: numOrNull(reads.mark),
-    scaledAlready: reads.scaledAlready === true,
+    // TRIM status means a prior tick already scaled — without this, EXIT_RUNNER can never fire.
+    scaledAlready: reads.scaledAlready === true || row.status === "TRIM",
     underlyingPrice: numOrNull(reads.underlyingPrice),
     // Ledger stores the thesis-invalidation level in underlying terms — use it as the structural stop when a
     // live one wasn't supplied. Both null → the manager skips the structural rung (never guesses).
@@ -280,9 +297,10 @@ export function planManageSync(
   const verdict = evaluateSwingManagement(input);
 
   const liveState: ManageSyncLiveState = {
-    // NEVER-CLOSE invariant: keep the position's current (live) status. The updateSwingLiveState SQL guard
-    // holds it monotonic; we deliberately never pass CLOSED/ROLLED here — terminal transitions are PR-15.
-    status: row.status,
+    // Latch TRIM when the profit ladder (or a graduated edge rung) banks a tranche — otherwise EXIT_RUNNER
+    // can never fire (scaledAlready stays false forever). NEVER write CLOSED/ROLLED here — terminals are
+    // the roll executor's job (PR-15). Unknown/HOLD keep the current monotonic status.
+    status: latchSwingLiveStatus(row.status, verdict),
     mark: numOrNull(reads.mark),
     // These stay PRICE candidates for the ledger's high/low-water columns (GREATEST/LEAST); the snapshot's
     // running_mfe/running_mae below is the SIGNED excursion %, derived separately.

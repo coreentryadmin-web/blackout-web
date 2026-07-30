@@ -29,6 +29,7 @@ import {
 // as a type). These enrich a play with the OBSERVABLE swing state the serving router keys on.
 import type { SwingArchetype, SwingSubLane, SwingSetupState, SwingEntryState } from "./swing/taxonomy";
 import type { SwingServingSection } from "./swing/serving";
+import type { SwingManageAction } from "./swing/manage";
 
 /**
  * A whole-market candidate from discovery, with its full option chain attached.
@@ -94,6 +95,23 @@ export interface HorizonPlay {
   parentPlayId?: string;
   /** The serving section this play resolved to (serving.ts) — stamped once the section router runs. */
   serving?: SwingServingSection;
+  /**
+   * Whether this play's archetype×sub-lane bucket has graduated the Wilson-LB ladder. Required for
+   * COMMIT_NOW (serving.ts) — absent/false keeps a clean entry geometry in WAITING_FOR_ENTRY so the
+   * desk never says "Act now" on a cold-book setup the model will not open.
+   */
+  bucketGraduated?: boolean;
+  /** Pillar contributions for the desk (label + points) — optional SWING enrichment. */
+  factors?: Array<{ label: string; points: number }>;
+  /** Regime / archetype label blend for the desk, or null when absent. */
+  regime?: string | null;
+  /** Thesis-health level for the desk — "unknown" when no setup read (never a fabricated intact). */
+  thesisLevel?: "intact" | "warn" | "break" | "unknown";
+  thesisNote?: string | null;
+  /** Live-position status when this play is an OPEN swing (OPEN/HOLD/TRIM) — drives live sections. */
+  liveStatus?: "OPEN" | "HOLD" | "TRIM";
+  /** Management action for a live position (manage.ts) — drives MANAGING/SCALING_OUT/EXITING. */
+  manageAction?: SwingManageAction;
 }
 
 /** The three lanes a candidate pool fans out into. */

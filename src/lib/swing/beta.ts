@@ -1,7 +1,7 @@
 // src/lib/swing/beta.ts — index beta via OLS over daily returns (PR-6).
 //
 // The β-weighted-delta risk cap (swing-risk.ts) needs each name's beta to the broad index, but there is NO
-// live beta fetcher in v1 (SWING-ENGINE.md §6 gap #4). So we DERIVE it the only honest way available: ordinary
+// vendor beta field in v1 (SWING-ENGINE.md §6 gap #4). So we DERIVE it the only honest way available: ordinary
 // least squares of the name's daily returns against the index's daily returns over the overlapping window —
 // beta = cov(name, index) / var(index). That's the same number a data vendor would ship; we just compute it
 // from bars the caller already holds instead of paying for a field.
@@ -10,8 +10,10 @@
 // `betaMissing:true`, `beta:null`, and the propagating risk math marks the position `partial`. `n` reports how
 // many paired daily returns actually fed the regression so a caller can see how thin the estimate is.
 //
-// `fetchNameBeta` is DEFERRED: no provider is wired in v1 (per the §6 gap). It exists as a documented
-// interface/stub so a future provider slots in without changing call sites — it does NO IO today.
+// `fetchNameBeta` accepts an injected `IndexBetaSource` (daily closes for name + index). Without a source it
+// returns betaMissing (no silent IO). Production wires `createDailyClosesBetaSource` over the same daily-bar
+// fetcher discovery already memoizes — Redis-cache the result (beta moves slowly) so hourly refresh never
+// blasts the upstream.
 //
 // PURE & deterministic — no IO in `computeBeta`.
 
@@ -119,24 +121,60 @@ export function computeBeta(nameBars: CloseBar[], indexBars: CloseBar[]): BetaRe
   return { beta, betaMissing: false, n };
 }
 
-// ─── DEFERRED live fetcher (v1 gap #4) ─────────────────────────────────────────
+// ─── Live fetcher (IndexBetaSource + computeBeta) ─────────────────────────────
 /**
- * A future index-beta source. When a provider exists it returns two aligned daily-close series (name + index)
- * so `computeBeta` can regress them. DEFERRED — no implementation is wired in v1; the interface is here so a
- * provider drops in without touching callers.
+ * An index-beta source returns two aligned daily-close series (name + index) so `computeBeta` can regress
+ * them. Production wires this over the daily-bar provider discovery already memoizes.
  */
 export interface IndexBetaSource {
   alignedDailyBars(ticker: string): Promise<{ nameBars: CloseBar[]; indexBars: CloseBar[] } | null>;
 }
 
-/** True while no live beta provider is wired — callers derive beta via `computeBeta` over bars they already hold. */
-export const FETCH_NAME_BETA_DEFERRED = true;
+/**
+ * False once an IndexBetaSource can be wired — the stub path (no source) still returns betaMissing.
+ * Kept as a named constant so call sites / tests can branch on "provider available vs not".
+ */
+export const FETCH_NAME_BETA_DEFERRED = false;
 
 /**
- * DEFERRED stub. There is no live index-beta provider in v1, so this does NO IO and always reports
- * `betaMissing:true`. A caller wanting a real beta computes it with `computeBeta` over bars it already fetched.
- * When a provider is provisioned, implement it via `IndexBetaSource` + `computeBeta` here — no call site changes.
+ * Resolve a name's index beta via an injected source. Without a source this does NO IO and reports
+ * `betaMissing:true` (never fabricates β=1). With a source: fetch aligned bars → `computeBeta`. Fail-soft
+ * on any throw (provider hiccup → partial risk, not a crash).
  */
-export async function fetchNameBeta(_ticker: string, _source?: IndexBetaSource): Promise<BetaResult> {
-  return { beta: null, betaMissing: true, n: 0 };
+export async function fetchNameBeta(ticker: string, source?: IndexBetaSource): Promise<BetaResult> {
+  if (!source) return { beta: null, betaMissing: true, n: 0 };
+  try {
+    const bars = await source.alignedDailyBars(ticker);
+    if (!bars || !bars.nameBars?.length || !bars.indexBars?.length) {
+      return { beta: null, betaMissing: true, n: 0 };
+    }
+    return computeBeta(bars.nameBars, bars.indexBars);
+  } catch {
+    return { beta: null, betaMissing: true, n: 0 };
+  }
+}
+
+/**
+ * Build an IndexBetaSource over a daily-closes fetcher (name + SPY by default). The fetcher should already
+ * be memoized/cached by the caller (discovery's `closesFor`, or a Redis-backed wrapper) — this helper does
+ * not add its own cache so tests stay pure.
+ */
+export function createDailyClosesBetaSource(opts: {
+  fetchCloses: (ticker: string) => Promise<CloseBar[]>;
+  indexTicker?: string;
+}): IndexBetaSource {
+  const index = (opts.indexTicker ?? "SPY").toUpperCase();
+  return {
+    async alignedDailyBars(ticker: string) {
+      const name = ticker.trim().toUpperCase();
+      if (!name) return null;
+      const [nameBars, indexBars] = await Promise.all([
+        opts.fetchCloses(name),
+        opts.fetchCloses(index),
+      ]);
+      if (!Array.isArray(nameBars) || !Array.isArray(indexBars)) return null;
+      if (nameBars.length === 0 || indexBars.length === 0) return null;
+      return { nameBars, indexBars };
+    },
+  };
 }
