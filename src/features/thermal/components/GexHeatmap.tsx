@@ -2758,8 +2758,7 @@ export function GexHeatmap({
     setForceNonce(0);
     setFastFlash(false);
     setExpiryScope("all");
-    if (nativeShell) setPairView("pair-a");
-  }, [ticker, nativeShell]);
+  }, [ticker]);
 
   // Clear any pending timers on unmount.
   useEffect(() => {
@@ -2933,7 +2932,7 @@ export function GexHeatmap({
   // the success-branch gate below so the view TabList on the control row only shows when
   // there's a real block to switch between (not during load / stale / empty states).
   const showViewTabs = !((isLoading && !data) || stale) && !empty && !blockEmpty;
-  const showMatrixTabs = showViewTabs && !nativeShell;
+  const showMatrixTabs = showViewTabs;
 
   // Peak magnitude across the active block's cells drives the matrix color scale.
   const peak = useMemo(() => {
@@ -3879,28 +3878,27 @@ export function GexHeatmap({
               <span aria-hidden>⚡</span> fast-move refresh
             </span>
           )}
-          {!nativeShell && (
-            <button
-              type="button"
-              aria-pressed={compare}
-              onClick={() => {
-                setCompare((v) => {
-                  const next = !v;
-                  if (next) setPairView("pair-a");
-                  return next;
-                });
-              }}
-              className={clsx(
-                "rounded-full border px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] transition-colors",
-                compare
-                  ? "border-cyan-400/40 bg-cyan-400/10 text-cyan-400"
-                  : "border-white/15 text-sky-300/80 hover:text-white"
-              )}
-              title="Toggle SPY | SPX | QQQ triple desk"
-            >
-              Compare
-            </button>
-          )}
+          <button
+            type="button"
+            aria-pressed={compare}
+            onClick={() => {
+              setCompare((v) => {
+                const next = !v;
+                if (next) setPairView("pair-a");
+                return next;
+              });
+            }}
+            className={clsx(
+              "rounded-full border px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] transition-colors",
+              nativeShell && "min-h-[var(--ios-compact-touch,2.25rem)]",
+              compare
+                ? "border-cyan-400/40 bg-cyan-400/10 text-cyan-400"
+                : "border-white/15 text-sky-300/80 hover:text-white"
+            )}
+            title="Toggle SPY | SPX | QQQ triple desk"
+          >
+            Compare
+          </button>
           {live ? (
             <Badge tone="bull" dot>
               Quote live
@@ -4024,7 +4022,7 @@ export function GexHeatmap({
 
       {/* Compare ON + Matrix tab → SPY | SPX | QQQ triple desk (each column self-fetches).
           Bypasses the focused-ticker skeleton/empty gate so one quiet name never blanks the desk. */}
-      {compare && !nativeShell && pairView === "pair-a" ? (
+      {compare && pairView === "pair-a" ? (
         <div className="mt-1">
           {data && !stale && !empty ? <AlertsStrip events={events} /> : null}
           <ThermalTripleDesk
@@ -4099,16 +4097,18 @@ export function GexHeatmap({
           <Tabs value={pairView} onValueChange={(v) => setPairView(v as "pair-a" | "pair-b")} className="mt-3">
             <TabPanels>
               <TabPanel value="pair-a">{matrixPanel}</TabPanel>
-              {!nativeShell ? (
-                <TabPanel value="pair-b">
-                  {sharedProfileControls}
-                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-                    <div className="min-w-0">{profilePanel}</div>
-                    <div className="min-w-0">{curvePanel}</div>
-                    <div className="min-w-0">{shiftPanel}</div>
-                  </div>
-                </TabPanel>
-              ) : null}
+              <TabPanel value="pair-b">
+                {sharedProfileControls}
+                <div className={clsx("grid grid-cols-1 gap-4", nativeShell ? "" : "lg:grid-cols-3")}>
+                  <div className="min-w-0">{profilePanel}</div>
+                  {!nativeShell ? (
+                    <>
+                      <div className="min-w-0">{curvePanel}</div>
+                      <div className="min-w-0">{shiftPanel}</div>
+                    </>
+                  ) : null}
+                </div>
+              </TabPanel>
             </TabPanels>
           </Tabs>
 

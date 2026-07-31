@@ -187,14 +187,7 @@ html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-vector-col
   overflow: hidden;
 }
 
-/* Vector-first — segment on top, compact hero, chart owns the canvas */
-html.ios-app.ios-native-shell[data-ios-route="dashboard"] .ios-native-desk-segment-spx {
-  position: sticky;
-  top: calc(var(--ios-header-offset) + 2px);
-  z-index: 25;
-  margin-bottom: 0.25rem;
-}
-
+/* Vector-first — compact hero, chart owns the canvas (segment stacks under top rail in spx-desk.css) */
 html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-desk--ios-vector-focus .spx-sniper-command-native {
   padding-bottom: 0.35rem;
 }

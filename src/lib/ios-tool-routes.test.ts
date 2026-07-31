@@ -91,8 +91,9 @@ describe("getIosRouteKey", () => {
 describe("getIosHeaderMeta", () => {
   it("returns tagline kickers for tools", () => {
     assert.equal(getIosHeaderMeta("/flows").kicker, "Institutional flow tape");
-    assert.equal(getIosHeaderMeta("/flows").title, "HELIX");
+    assert.equal(getIosHeaderMeta("/flows").title, "Intelligence");
     assert.equal(getIosHeaderMeta("/flows").showBack, false);
+    assert.equal(getIosHeaderMeta("/heatmap").title, "Intelligence");
   });
 
   it("returns Vector as a first-class tool with no back button", () => {

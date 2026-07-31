@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { clsx } from "clsx";
+import { useIosChartDoubleTapFullscreen } from "@/hooks/useIosChartDoubleTapFullscreen";
 import {
   createChart,
   createSeriesMarkers,
@@ -1153,6 +1154,7 @@ export function VectorChart({
   const openingDteHorizon: VectorDteHorizon = defaultDteHorizon ?? "weekly";
   const initialIndicators = defaultVectorIndicators();
   const containerRef = useRef<HTMLDivElement>(null);
+  const { fullscreen: chartFullscreen, exitFullscreen, chartStageRef } = useIosChartDoubleTapFullscreen(true);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   // Shared-price-axis seam: latest callback in a ref (the mount effect is []-dep), plus the
@@ -3666,7 +3668,20 @@ export function VectorChart({
           the chart, without a tall page-level header block eating chart height. */}
       {regimeSlot ? <div className="mb-2">{regimeSlot}</div> : null}
 
-      <div className="relative">
+      <div
+        ref={chartStageRef}
+        className={clsx("relative vector-chart-stage", chartFullscreen && "vector-chart-stage--fullscreen")}
+      >
+        {chartFullscreen ? (
+          <button
+            type="button"
+            className="ios-chart-fullscreen-exit"
+            onClick={exitFullscreen}
+            aria-label="Exit fullscreen chart"
+          >
+            ✕
+          </button>
+        ) : null}
         <VectorCrosshairLegend state={crosshair} ticker={ticker} />
         <p className="pointer-events-none absolute bottom-2 left-2 z-10 font-mono text-[10px] uppercase tracking-wide text-sky-300">
           SPY vol

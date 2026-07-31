@@ -31,6 +31,7 @@ import "../ios-native-tab-rail.css";
 import "../ios-native-cards.css";
 import "../ios-native-compact-controls.css";
 import "../ios-native-spx-desk.css";
+import "../ios-native-phase2.css";
 import "../styles/admin-console.css";
 
 /**

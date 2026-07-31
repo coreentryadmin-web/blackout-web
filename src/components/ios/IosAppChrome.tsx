@@ -8,6 +8,7 @@ import { getIosRouteKey, isIosNativeShellRoute } from "@/lib/ios-tool-routes";
 import type { ToolKey } from "@/lib/tool-access";
 import { IosNativeHeader } from "./IosNativeHeader";
 import { IosNativeMenu } from "./IosNativeMenu";
+import { IosLargoFab } from "./IosLargoFab";
 
 /**
  * Native iOS product shell — replaces the web Nav on signed-in routes inside
@@ -105,6 +106,7 @@ export function IosAppChrome({ lockedTools = [] }: { lockedTools?: ToolKey[] }) 
         lockedTools={lockedTools}
         showAdmin={isAdmin}
       />
+      <IosLargoFab />
     </>
   );
 }
