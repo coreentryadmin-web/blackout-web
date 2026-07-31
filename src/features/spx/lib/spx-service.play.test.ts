@@ -21,4 +21,10 @@ test("getSpxPlayState owns the shared play-read cache (member + BIE + Largo)", (
   assert.match(service, /maxBlockMs:\s*playMemberReadMaxBlockMs/);
   assert.match(service, /evaluateSpxPlayStateCrossReplica/);
   assert.match(service, /sharedCacheSetNx/);
+  assert.match(service, /degradedPlayPayload/);
+});
+
+test("member /api/market/spx/play catch returns degradedPlayPayload shape", () => {
+  const route = readFileSync(join(ROOT, "src/app/api/market/spx/play/route.ts"), "utf8");
+  assert.match(route, /degradedPlayPayload/);
 });

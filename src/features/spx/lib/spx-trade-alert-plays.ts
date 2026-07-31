@@ -21,7 +21,7 @@ function structureStrikeLabel(play: SpxPlayPayload): string {
   return formatSpxContractLabel(
     play.option_ticket?.contract_label ?? play.open_play?.option_label,
     {
-      strike: play.levels.entry ?? play.open_play?.entry_price ?? 0,
+      strike: play.levels?.entry ?? play.open_play?.entry_price ?? 0,
       direction: play.direction,
     }
   );

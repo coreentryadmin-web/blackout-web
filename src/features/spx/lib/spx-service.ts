@@ -14,6 +14,7 @@ import { resolveGuardedPlaybookMatch } from "@/features/spx/lib/playbook-match-r
 import { buildPlaybookShadowPanel } from "@/features/spx/lib/playbook-shadow-panel";
 import { refreshOrBreakMemory } from "@/features/spx/lib/playbook-break-memory-store";
 import { maybeLogPlaybookShadowMatch } from "@/features/spx/lib/playbook-shadow-log";
+import { degradedPlayPayload } from "@/features/spx/lib/spx-play-payload";
 import { playMemberReadCacheSec } from "@/features/spx/lib/spx-play-config";
 import { playMemberReadMaxBlockMs } from "@/lib/providers/config";
 import { todayEtYmd } from "@/lib/providers/spx-session";
@@ -199,16 +200,7 @@ async function evaluateSpxPlayStateCrossReplica(): Promise<Awaited<ReturnType<ty
  * stale-while-revalidate so BIE/Largo and the dashboard never disagree on grade/score.
  */
 function spxPlayReadDegraded(): Awaited<ReturnType<typeof evaluateSpxPlayState>> {
-  return {
-    available: false,
-    action: "SCANNING",
-    degraded: true,
-    score: 0,
-    grade: "D",
-    direction: null,
-    gates: { blocks: [], first_block_category: null },
-    playbook_shadow: null,
-  } as unknown as Awaited<ReturnType<typeof evaluateSpxPlayState>>;
+  return degradedPlayPayload() as Awaited<ReturnType<typeof evaluateSpxPlayState>>;
 }
 
 async function spxPlayReadFallback(): Promise<Awaited<ReturnType<typeof evaluateSpxPlayState>>> {

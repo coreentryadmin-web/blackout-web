@@ -151,6 +151,53 @@ export function intelGates(
   };
 }
 
+/** Safe fallback when play eval times out or the route errors — must satisfy SpxPlayPayload so UI never crashes on missing `levels`. */
+export function degradedPlayPayload(
+  extras?: Partial<SpxPlayPayload>
+): SpxPlayPayload {
+  const asOf = new Date().toISOString();
+  return {
+    available: false,
+    phase: "SCANNING",
+    action: "SCANNING",
+    direction: null,
+    grade: "D",
+    score: 0,
+    confidence: 0,
+    headline: "Desk warming — play state unavailable",
+    thesis: "Scanning all lanes.",
+    idle_message: "Desk warming — play state unavailable",
+    factors: [],
+    levels: { entry: null, stop: null, target: null, invalidation: "" },
+    gates: {
+      passed: false,
+      blocks: [],
+      blocks_by_category: emptyCategorizedGateBlocks(),
+      first_block_category: null,
+      warnings: [],
+      entry_mode: "none",
+      play_idea: null,
+    },
+    claude: null,
+    cortex: null,
+    open_play: null,
+    confirmations: null,
+    technicals: null,
+    mtf: null,
+    option_ticket: null,
+    watch: null,
+    telemetry: null,
+    lotto_play: null,
+    power_play: null,
+    session_phase: "closed",
+    signal_committed: false,
+    playbook_shadow: null,
+    as_of: asOf,
+    degraded: true,
+    ...extras,
+  } as SpxPlayPayload;
+}
+
 /** API contract: SCANNING must not expose confirmation checks (stale-layer guard). */
 export function confirmationsForAction(
   action: SpxPlayAction,

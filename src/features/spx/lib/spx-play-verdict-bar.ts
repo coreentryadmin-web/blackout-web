@@ -28,7 +28,7 @@ function contractLabel(play: SpxPlayPayload): string | null {
     play.open_play?.option_label ??
     play.option_ticket?.contract_label ??
     null;
-  const strike = play.open_play?.entry_price ?? play.levels.entry;
+  const strike = play.open_play?.entry_price ?? play.levels?.entry;
   const premium =
     play.open_play?.option_premium ??
     play.option_ticket?.premium_range ??
@@ -41,9 +41,9 @@ function contractLabel(play: SpxPlayPayload): string | null {
 }
 
 function levelsLine(play: SpxPlayPayload): string | null {
-  const entry = play.open_play?.entry_price ?? play.levels.entry;
-  const stop = play.open_play?.stop ?? play.levels.stop;
-  const target = play.open_play?.target ?? play.levels.target;
+  const entry = play.open_play?.entry_price ?? play.levels?.entry;
+  const stop = play.open_play?.stop ?? play.levels?.stop;
+  const target = play.open_play?.target ?? play.levels?.target;
   if (entry == null && stop == null && target == null) return null;
   const parts: string[] = [];
   if (entry != null) parts.push(`entry ${fmt(entry, 2)}`);
