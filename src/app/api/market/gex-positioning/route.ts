@@ -11,6 +11,18 @@ import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+/** Polygon bundle fallback must stay bounded — an unbounded cold chain fetch can exceed the edge origin timeout and 504 the route even though the handler would eventually return `available:false`. */
+const POSITIONING_FALLBACK_TIMEOUT_MS = 8_000;
+
+function withPositioningFallbackTimeout<T>(promise: Promise<T>): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error("positioning fallback timeout")), POSITIONING_FALLBACK_TIMEOUT_MS);
+    }),
+  ]);
+}
+
 /**
  * GET /api/market/gex-positioning?ticker=SPY — the CANONICAL internal GEX/VEX
  * positioning surface. Any service/tool/AI surface can GET this to read the SAME
@@ -59,7 +71,7 @@ export async function GET(req: NextRequest) {
       // return the documented empty contract — never fabricated.
       console.warn("[market/gex-positioning] primary cache miss for", ticker, "— trying direct bundle fallback");
       try {
-        const bundle = await fetchPolygonPositioningBundle(ticker);
+        const bundle = await withPositioningFallbackTimeout(fetchPolygonPositioningBundle(ticker));
         if (bundle.rows.length > 0) {
           const gexAnalysis = analyzeStrikeGexRows(bundle.rows);
           const flip = bundle.spot > 0 ? computeGammaFlip(gexAnalysis.ranked_levels, bundle.spot) : null;

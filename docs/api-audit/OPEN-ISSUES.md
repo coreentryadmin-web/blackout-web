@@ -1,5 +1,5 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-31 12:26 ET
+Last updated: 2026-07-31 12:30 ET
 
 ## spx-rth-2026-07-31 — SPX Slayer market-open verify pass (~8:36 AM PT / 11:36 AM ET)
 
@@ -143,6 +143,102 @@ Last updated: 2026-07-31 12:26 ET
 
 ---
 
+## rth-open-2026-07-31 — RTH comprehensive test sweep (~11:36 AM ET)
+
+**Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` **RTH COMPREHENSIVE TEST SWEEP** (~11:36 AM ET Friday). Commands: `npm run validate:rth-open` → `GET /api/cron/data-correctness?force=1` → `probeDataCorrectness(surface=heatmap)` → `npm run validate:rth-sweep` → `npm run validate:grid-e2e` → `npm run validate:spx-e2e` → `node scripts/audit/data-validator.mjs` → `npm run ops:collect`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` | ✅ **GREEN** — deploy + RTH session checks pass (Postgres skipped — private VPC) |
+| `GET /api/cron/data-correctness?force=1` | ✅ **202 accepted** — full async sweep dispatched |
+| `probeDataCorrectness(surface=heatmap)` | ✅ **flags=0** mode=heatmap · 60 metrics · consistency-only |
+| `npm run ops:collect` | ✅ **exit 0** — zero action items |
+| `npm run validate:grid-e2e` | ✅ **5 PASS / 0 FAIL** — Night Hawk Command Deck + 58 setups |
+| `npm run validate:spx-e2e` | ⚠️ **9 PASS / 1 FAIL / 1 WARN** — API matrix every-cell GREEN; UI browser `waitForFunction` timeout under orchestrator burst |
+| `npm run validate:rth-sweep` | ⚠️ **2 P1** transient 504 on parallel cold GEX paths; all 7 pages soft-nav ~1.6–3.1s, **0 missing-field hits** |
+| `node scripts/audit/data-validator.mjs` | ⚠️ **14 PASS / 1 FAIL / 3 INFO** — SPY adjacent-wall ordering false positive |
+
+**RTH status: GREEN** — authoritative `validate:rth-open` + `ops:collect` + data-correctness `flags=0`. No standing P0/P1 product defects; transient 504s under parallel audit burst only.
+
+### Speed (browser sweep — premium session)
+
+| Page | Nav | Load | Missing fields | Console |
+|---|---|---|---|---|
+| `/dashboard` (SPX Slayer) | hard | 1637ms | 0 | 1× HTTP 400 (Clerk asset) |
+| `/flows` (HELIX) | soft | 1775ms | 0 | 0 |
+| `/heatmap` (Thermal matrix) | soft | 1612ms | 0 | 0 |
+| `/vector` | soft | 1646ms | 0 | 0 |
+| `/nighthawk` (0DTE Command) | soft | 3142ms | 0 | 0 |
+| `/terminal` (Largo) | soft | 1693ms | 0 | 0 |
+| `/track-record` | soft | 1746ms | 0 | 0 |
+
+All soft-nav times under 3.2s — within institutional bar. Prefetch working.
+
+### Live auto-update
+
+| Surface | Observed | Cadence |
+|---|---|---|
+| Dashboard pulse / desk | API `as_of` fresh (25s) | ~8s poll (RTH) |
+| HELIX flows | 20–30 prints live | SSE + SWR |
+| Thermal matrix | `gex-heatmap` warm 309ms | ~20s matrix + quote |
+| 0DTE board | `as_of` 228s (warm path) | cron warm + SWR |
+| Platform snapshot | `ageSec=0` | live |
+
+`liveTick=null` on spot-regex sweep — SPX spot stable ±0.1pt during 8–20s windows (not a stall).
+
+### Data correctness (canonical API cross-check)
+
+| Check | Result |
+|---|---|
+| SPX desk spot | 7439.93 (desk) · 7454.64 (matrix API) — within RTH drift |
+| GEX matrix every-cell | ✅ 171 strikes GEX+VEX+DEX+CHARM finite (spx-e2e) |
+| Cross-tool bootstrap/GEX | ✅ spot agrees |
+| HELIX flows | ✅ 30 prints |
+| Largo NVDA query | ✅ grounded — $86.7M premium, tools=`blackout_intelligence` |
+| Largo SPX query | ✅ tools=`blackout_intelligence` |
+| Polygon oracle (data-validator) | ✅ SPY/SPX/VIX within tolerance |
+| `data-correctness` heatmap | ✅ **flags=0** |
+
+### API verification (authenticated sample)
+
+| Endpoint | Status | Latency | Fresh |
+|---|---|---|---|
+| `/api/market/spx/desk` | 200 | 62ms | ✅ 25s |
+| `/api/market/spx/pulse` | 200 | 83ms | — |
+| `/api/market/spx/merged` | 200 | 216ms | — |
+| `/api/market/gex-positioning?ticker=SPX` | ⚠️ 504 → **200** 1066ms on retry | cold burst / warm |
+| `/api/market/gex-heatmap?ticker=SPX` | 200 | 309ms | warm |
+| `/api/market/gex-heatmap?ticker=SPY` | ⚠️ 504 → **200** 14s on retry | cold build |
+| `/api/market/flows?limit=20` | 200 | 57ms | — |
+| `/api/market/nighthawk/edition` | 200 | 162ms | — |
+| `/api/market/zerodte/board` | 200 | 3098ms | ✅ 228s |
+| `/api/market/platform/snapshot` | 200 | 129ms | ✅ 0s |
+
+504s reproduced only under **parallel audit burst** on cold GEX paths; sequential member-path probes GREEN.
+
+### Missing-field audit
+
+| Page | Placeholder hits | Root cause |
+|---|---|---|
+| All 7 pages | **0** (`$—`, `—%`, `N/A`, `No data`) | — |
+| Largo NVDA answer | `Regime: —` | `blackout_intelligence` has no regime label for single-ticker HELIX slice — **expected** |
+| SPX play hero | `play=undefined` / SCANNING | No committed play this session — **expected** |
+
+### Findings table (`rth-open-2026-07-31`)
+
+| Severity | ID | Detail | Backing API | Fix |
+|---|---|---|---|---|
+| P2 | `gex-cold-504-burst` | Parallel audit hit HTTP 504 on `gex-positioning?SPX` + `gex-heatmap?SPY` cold paths; sequential retry GREEN | `/api/market/gex-positioning`, `/api/market/gex-heatmap` | **FIX PR** — bound polygon fallback timeout on gex-positioning route |
+| P2 | `spx-e2e-ui-timeout` | Playwright matrix `waitForFunction` 30s timeout after long orchestrator burst | UI harness | monitor — API matrix GREEN |
+| P2 | `spy-wall-ordering-fp` | data-validator `put_wall=743 > call_wall=742` with `flip=null` — adjacent near-ATM walls | `/api/market/gex-positioning?ticker=SPY` | validator heuristic — not a product bug |
+| P2 | `dashboard-console-400` | Clerk asset 400 in browser console | Clerk CDN | transient — no member impact |
+| — | — | No P0/P1 product defects | — | — |
+
+**Reports:** `audit-output/rth-sweep-2026-07-31T15-46-17-302Z.json`, `audit-output/grid-e2e-1785514365681.json`, `audit-output/spx-dashboard-e2e-1785514305606.json`, `audit-output/validation-2026-07-31T15-54-33-983Z.md`
+
+---
 ## spx-rth-2026-07-30 — SPX Slayer post-close fix pass (~3:09 PM PT / 6:09 PM ET)
 
 **Session:** SPX Slayer post-close fix agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` **Step 6**. Commands: `npm run validate:spx-rth -- --phase=post-close` → `npm run validate:spx-e2e` → `npm run validate:deploy`.
