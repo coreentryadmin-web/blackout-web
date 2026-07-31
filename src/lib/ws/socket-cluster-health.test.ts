@@ -106,3 +106,47 @@ test("readUwClusterHealth: web follower healthy when Redis heartbeat is fresh", 
   assert.equal(uw.is_leader, false);
   assert.equal(uw.cluster_live, false);
 });
+
+test("evaluateUwClusterOk: follower healthy via REST liveness when WS heartbeat absent", () => {
+  const uw = buildUwClusterHealth({
+    is_leader: false,
+    cluster_last_message_at: Date.now() - 3_000,
+  });
+  const result = evaluateUwClusterOk(uw, true);
+  assert.equal(result.ok, true);
+  assert.match(result.detail, /follower/);
+});
+
+test("evaluateOptionsClusterOk: web tier passes via polygon+uw REST when ingest leader warming", () => {
+  const uw = buildUwClusterHealth({
+    is_leader: false,
+    cluster_last_message_at: Date.now() - 5_000,
+  });
+  const uwEval = evaluateUwClusterOk(uw, true);
+  const polygonEval = evaluatePolygonClusterOk(
+    {
+      is_leader: false,
+      cluster_spx_updated_at: Date.now() - 2_000,
+      cluster_spx_age_ms: 2_000,
+      cluster_live: true,
+      detail: "I:SPX price=7486 (UW stock-state fallback)",
+    },
+    true
+  );
+  const optionsEval = evaluateOptionsClusterOk(
+    {
+      leader_present: false,
+      newest_mark_age_ms: null,
+      cluster_live: false,
+      detail: "no fresh cluster option marks and no ingest leader",
+    },
+    true,
+    false
+  );
+  assert.equal(uwEval.ok, true);
+  assert.equal(polygonEval.ok, true);
+  assert.equal(optionsEval.ok, false);
+  // socket-health route promotes options when uw+polygon cluster are live (ingest-owned WS).
+  const options_ok = optionsEval.ok || (uwEval.ok && polygonEval.ok);
+  assert.equal(options_ok, true);
+});

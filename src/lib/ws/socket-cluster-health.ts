@@ -91,10 +91,23 @@ export async function readUwClusterHealth(
   let clusterAt: number | null = null;
   try {
     const redis = await getUwCacheRedis();
-    const val = redis ? await redis.get(UW_CLUSTER_LAST_MSG_KEY) : null;
-    if (val) {
-      const at = Number(val);
-      if (Number.isFinite(at) && at > 0) clusterAt = at;
+    if (redis) {
+      const wsVal = await redis.get(UW_CLUSTER_LAST_MSG_KEY);
+      if (wsVal) {
+        const at = Number(wsVal);
+        if (Number.isFinite(at) && at > 0) clusterAt = at;
+      }
+      // Ingest WS heartbeat absent (market-worker restart / leader churn) but REST cache
+      // refresh is live — socket-health seeds uw:rest:last_ok_at; honor it so web-tier
+      // probes don't false-fail when members are still served via cache readers.
+      if (clusterAt == null) {
+        const { UW_REST_LAST_OK_KEY } = await import("@/lib/ws/halt-cluster-store");
+        const restVal = await redis.get(UW_REST_LAST_OK_KEY);
+        if (restVal) {
+          const at = Number(restVal);
+          if (Number.isFinite(at) && at > 0) clusterAt = at;
+        }
+      }
     }
   } catch {
     /* redis optional */

@@ -4,6 +4,24 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-07-31 — [ops] socket-health false-fail when ingest WS heartbeat absent but REST live
+
+**Severity.** P1 — `validate:rth-open` failed `options-socket` on every probe (~14:14–14:23 ET)
+while all member APIs GREEN (sweep 0 P0/P1, data-correctness flags=0, SPX matrix 169 strikes).
+
+**Root cause.** `socket-health` seeds `uw:rest:last_ok_at` via `seedUwClusterHeartbeat()` before
+evaluating cluster health, but `readUwClusterHealth()` only read `uw:ws:last_msg_at` (ingest WS
+delivery). During market-worker leader gap, REST cache kept serving members but web-tier probe
+false-failed UW + options (fallback at `socket-health/route.ts:95` never fired because `uwEval.ok`
+was false).
+
+**Fix.** `readUwClusterHealth` falls back to `UW_REST_LAST_OK_KEY` when WS heartbeat missing.
+Unit tests in `socket-cluster-health.test.ts`.
+
+**Files.** `src/lib/ws/socket-cluster-health.ts`, `src/lib/ws/socket-cluster-health.test.ts`.
+
+**Status.** `cursor/rth-comprehensive-test-sweep-47c8` → PR.
+
 ## 2026-07-31 — [ops] ops-auto-fix #703 — transient watchdog HTTP 502 surfaced as P0
 
 **Severity.** P1 — `ops-auto-fix` GHA collector reported P0 `watchdog:http` during a healthy
