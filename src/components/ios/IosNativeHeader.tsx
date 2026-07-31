@@ -1,9 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AuthUserMenu } from "@/components/auth/AuthUserMenu";
 import { AnimatePresence, motion } from "framer-motion";
-import { getIosHeaderMeta } from "@/lib/ios-tool-routes";
+import { getIosHeaderMeta, getIosRouteKey } from "@/lib/ios-tool-routes";
 import { ProductMark } from "@/components/marks/ProductMark";
 
 const CLERK_APPEARANCE = {
@@ -36,9 +37,11 @@ export function IosNativeHeader({ path, onMenuOpen }: Props) {
   const router = useRouter();
   const meta = getIosHeaderMeta(path);
   const titleKey = `${meta.key}:${meta.title}`;
+  const routeKey = getIosRouteKey(path);
+  const showLiveKicker = routeKey === "dashboard";
 
   return (
-    <header className="ios-native-header" role="banner">
+    <header className="ios-native-header ios-native-header-compact" role="banner">
       <div className="ios-native-header-inner">
         {meta.showBack ? (
           <button
@@ -82,7 +85,12 @@ export function IosNativeHeader({ path, onMenuOpen }: Props) {
               exit={{ opacity: 0, y: -4 }}
               transition={TITLE_SPRING}
             >
-              {meta.kicker && meta.showBack ? (
+              {showLiveKicker ? (
+                <span className="ios-native-header-kicker ios-native-header-kicker-live">
+                  <span className="spx-ios-live-dot" aria-hidden />
+                  Today · Live · SPX
+                </span>
+              ) : meta.kicker && meta.showBack ? (
                 <span className="ios-native-header-kicker">{meta.kicker}</span>
               ) : null}
               <div className="flex items-center justify-center gap-1.5 min-w-0">
@@ -96,6 +104,14 @@ export function IosNativeHeader({ path, onMenuOpen }: Props) {
         </div>
 
         <div className="ios-native-header-actions">
+          <Link
+            href="/terminal"
+            className="ios-native-icon-btn ios-native-largo-btn"
+            aria-label="Ask Largo"
+            title="Ask Largo"
+          >
+            <span aria-hidden>✦</span>
+          </Link>
           {meta.showBack ? (
             <button
               type="button"

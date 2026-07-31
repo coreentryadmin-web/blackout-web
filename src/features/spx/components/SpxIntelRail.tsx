@@ -24,11 +24,13 @@ export function SpxIntelRail({
   desk,
   live,
   focus,
+  nativeShell = false,
   onFocusLevel,
 }: {
   desk?: SpxDeskPayload;
   live?: boolean;
   focus?: boolean;
+  nativeShell?: boolean;
   /** Chart-anchor seam — threaded straight to SpxPulseRail so a Pulse "→ chart" click reaches the
    *  embedded Vector chart. Largo (SpxCommentaryRail) has no per-event levels, so it doesn't take it. */
   onFocusLevel?: (level: number, label: string, tone: PulseSignal["tone"]) => void;
@@ -84,7 +86,7 @@ export function SpxIntelRail({
         </button>
       </div>
       {mode === "commentary" ? (
-        <SpxCommentaryRail desk={desk} live={live} focus={focus} />
+        <SpxCommentaryRail desk={desk} live={live} focus={focus} nativeShell={nativeShell} />
       ) : (
         <SpxPulseRail desk={desk} live={live} focus={focus} onFocusLevel={onFocusLevel} />
       )}

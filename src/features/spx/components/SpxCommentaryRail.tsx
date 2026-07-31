@@ -122,6 +122,7 @@ export function SpxCommentaryRail({
   desk,
   live,
   focus,
+  nativeShell = false,
 }: {
   desk?: SpxDeskPayload;
   live?: boolean;
@@ -129,13 +130,16 @@ export function SpxCommentaryRail({
    *  effects keep running (state/feed keep accumulating) so exiting focus restores the
    *  full rail with nothing missed. */
   focus?: boolean;
+  /** iOS native — decision-card layout; analysis collapsed until expand. */
+  nativeShell?: boolean;
 }) {
   const [pinned, setPinned] = useState<PinnedBias | null>(null);
   const [feed, setFeed] = useState<FeedItem[]>([]);
   // Wall-migration memory: the last 3 king-migration/flip-cross transitions with their
   // ET timestamps. Sourced ONLY from detectSpxVoiceEvents output — never re-derived.
   const [shifts, setShifts] = useState<FeedItem[]>([]);
-  const [railCollapsed, setRailCollapsed] = useState(false);
+  const [railCollapsed, setRailCollapsed] = useState(nativeShell);
+  const [analysisExpanded, setAnalysisExpanded] = useState(false);
 
   const prevSnapRef = useRef<SpxVoiceSnapshot | null>(null);
   const prevPlayRef = useRef<SpxVoicePlayState>(null);
@@ -413,7 +417,18 @@ export function SpxCommentaryRail({
               >
                 {pinned.headerLine}
               </h3>
-              <p className="spx-commentary-body text-[12px] leading-relaxed">{pinned.voice}</p>
+              {(!nativeShell || analysisExpanded) && (
+                <p className="spx-commentary-body text-[12px] leading-relaxed">{pinned.voice}</p>
+              )}
+              {nativeShell && !analysisExpanded && (
+                <button
+                  type="button"
+                  className="spx-ios-largo-expand-btn"
+                  onClick={() => setAnalysisExpanded(true)}
+                >
+                  Read full analysis
+                </button>
+              )}
               {(contextChips.length > 0 || catalyst) && (
                 <div id="spx-largo-context-chips" className="mt-2 flex flex-col gap-1">
                   {contextChips.map((c) => (

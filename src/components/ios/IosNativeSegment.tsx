@@ -14,6 +14,8 @@ type Props<T extends string> = {
   segments: Segment<T>[];
   accent?: string;
   className?: string;
+  /** compact = UISegmentedControl-style (~40% shorter) for iPhone desks */
+  variant?: "default" | "compact";
   "aria-label"?: string;
 };
 
@@ -26,11 +28,16 @@ export function IosNativeSegment<T extends string>({
   segments,
   accent = "#a3e635",
   className,
+  variant = "default",
   "aria-label": ariaLabel = "View lens",
 }: Props<T>) {
   return (
     <div
-      className={clsx("ios-native-segment", className)}
+      className={clsx(
+        "ios-native-segment",
+        variant === "compact" && "ios-native-segment-compact",
+        className
+      )}
       role="tablist"
       aria-label={ariaLabel}
       style={{ "--segment-accent": accent } as React.CSSProperties}
