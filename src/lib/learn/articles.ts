@@ -386,3 +386,16 @@ Want the full picture? Start with the pillar guide: [Dealer Gamma & Options Flow
 export function getArticle(slug: string): LearnArticle | undefined {
   return LEARN_ARTICLES.find((a) => a.slug === slug);
 }
+
+export function articleNav(slug: string): { prev: LearnArticle | undefined; next: LearnArticle | undefined } {
+  const idx = LEARN_ARTICLES.findIndex((a) => a.slug === slug);
+  return {
+    prev: idx > 0 ? LEARN_ARTICLES[idx - 1] : undefined,
+    next: idx >= 0 && idx < LEARN_ARTICLES.length - 1 ? LEARN_ARTICLES[idx + 1] : undefined,
+  };
+}
+
+export function readingTime(body: string): number {
+  const words = body.split(/\s+/).length;
+  return Math.max(1, Math.round(words / 230));
+}
