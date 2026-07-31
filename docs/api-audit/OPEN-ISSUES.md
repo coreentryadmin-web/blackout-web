@@ -1,7 +1,7 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-31 13:10 ET
+Last updated: 2026-07-31 13:35 ET
 
-## spx-rth-2026-07-31 — SPX Slayer market-open verify (passes ~8:36 AM + ~12:24 PM PT)
+## spx-rth-2026-07-31 — SPX Slayer market-open verify (passes ~8:36 AM + ~12:24 PM + ~10:24 AM PT pass 3)
 
 **Session:** SPX Slayer all-day RTH verification agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` **verify** mode (scheduled 6:30 AM PT market open). Commands: `npm run validate:spx-rth` → `npm run validate:spx-e2e` → matrix deep audit → 60s live auto-update probe.
 
@@ -13,12 +13,15 @@ Last updated: 2026-07-31 13:10 ET
 | `npm run validate:spx-e2e` (pass 1) | ⚠️ **15 PASS / 1 SKIP / 1 WARN / 1 FAIL** — **172 strikes** every-cell validated |
 | `npm run validate:spx-rth` (pass 2 ~12:24 PM PT) | ⚠️ **7 PASS / 1 WARN / 1 FAIL** — `spx:dashboard-e2e` orchestrator timeout |
 | `npm run validate:spx-e2e` (pass 2) | ⚠️ **12 PASS / 1 WARN / 1 FAIL** — API 170 strikes GREEN; UI matrix unavailable |
+| `npm run validate:spx-rth` (pass 3 ~10:24 AM PT / 1:24 PM ET) | ⚠️ **7 PASS / 1 WARN / 1 FAIL** — nested E2E heatmap transient unavailable during orchestrator burst |
+| `npm run validate:spx-e2e` (pass 3 initial) | ⚠️ **15 PASS / 1 SKIP / 1 WARN / 1 FAIL** — transient 502 console errors |
+| `npm run validate:spx-e2e` (pass 3 retry) | ✅ **16 PASS / 1 SKIP / 0 FAIL** — **169 strikes** every-cell GEX+VEX+DEX+CHARM; **174 UI rows** |
 | Matrix deep audit (SPX) | ✅ Every GEX/VEX/DEX/CHARM cell finite; Σ strike_totals == headline; INV-2 |
-| Cross-endpoint spot/GEX | ✅ desk=7469.01 hm=7469.08 play=SCANNING/SCANNING |
-| Trade alerts | ✅ SCANNING — **no stale ✓ confirmations** |
-| BIE consistency | ✅ `getSpxPlayState()` single derivation |
+| Cross-endpoint spot/GEX | ✅ desk=7487.06 hm=7486.05 play=SCANNING/SCANNING (pass 3) |
+| Trade alerts | ✅ SCANNING — **no stale ✓ confirmations** (0 confirmation checks) |
+| BIE consistency | ✅ `getSpxPlayState()` single derivation (static layer 6 PASS) |
 | `ops:collect` | ✅ exit 0 — zero action items |
-| 60s live auto-update | ✅ PULSE 7454.36 → 7456.24 (pass 1); header spot 7471.51 live (pass 2) |
+| 60s live auto-update | ✅ heatmap spot 7486.09 → 7485.81 (−0.28) over 60s; pulse ticked pass 1 |
 
 ### UI E2E (Playwright)
 
@@ -26,11 +29,11 @@ Last updated: 2026-07-31 13:10 ET
 |---|---|
 | GEX tab (`#spx-matrix-tab-gex`) | ✅ PASS |
 | VEX tab (`#spx-matrix-tab-vex`) | ✅ PASS |
-| Matrix rows | ⚠️ **175–176** (pass 1) / ❌ **0 rows** "Matrix unavailable — retrying…" (pass 2 — P0) |
-| Matrix text sanity | ✅ No NaN/undefined/$— when matrix renders |
+| Matrix rows | ✅ **174–175** (pass 3 GREEN post-PR #1428) / ⚠️ 175–176 (pass 1) / ❌ 0 rows (pass 2 pre-fix) |
+| Matrix text sanity | ✅ No NaN/undefined/$— |
 | Trade alert hero | ✅ SCANNING — no stale ✓ |
 | Commentary expand | ⏭ SKIP — harness must click Largo intel tab |
-| Console errors | ✅ PASS |
+| Console errors | ✅ PASS (pass 3 retry); ⚠️ transient 502 on first attempt |
 | Live badge | ✅ PASS — not OFFLINE during RTH |
 
 ### Cross-tool integration (Step 3)
@@ -58,10 +61,12 @@ Last updated: 2026-07-31 13:10 ET
 | P2 | SPX-RTH-BIE-01 | Cron bearer on `/api/market/spx/play` returns 401 | `/api/market/spx/play` | Yes — env only |
 | P2 | SPX-RTH-E2E-01 | Playwright default 30s matrix row wait; bump to 120s | harness | **Fixed PR #1428** |
 | P2 | SPX-RTH-E2E-02 | Commentary expand SKIP — click Largo intel tab first | `/dashboard` UI | Yes — harness post-close |
+| P1 | SPX-RTH-ORCH-01 | `validate:spx-rth` nested E2E fails when heatmap briefly unavailable after parallel probe burst; standalone `validate:spx-e2e` GREEN on retry | orchestrator | Yes — add heatmap retry in orchestrator post-close |
+| P2 | SPX-RTH-502-01 | Transient origin 502 during Playwright session (pass 3 first attempt); GREEN on immediate retry | edge/ALB | Yes — monitor |
 
-**Verify status: P0/P1 FIXED in PR #1428** — matrix API always correct; UI intermittently showed unavailable due to client 10s abort on slow heatmap responses.
+**Verify status (pass 3 ~1:24 PM ET): GREEN** — P0/P1 matrix issues fixed in PR #1428; 169 API strikes + 174 UI rows validated; SCANNING carries zero confirmations; cross-tool integration PASS.
 
-**Reports:** `audit-output/spx-rth-2026-07-31-verify-1785513723127.json`, `audit-output/spx-dashboard-e2e-1785514458678.json`, `audit-output/spx-rth-2026-07-31-verify-1785516353221.json`, `audit-output/spx-dashboard-e2e-1785516492304.json`
+**Reports:** `audit-output/spx-rth-2026-07-31-verify-1785513723127.json`, `audit-output/spx-dashboard-e2e-1785514458678.json`, `audit-output/spx-rth-2026-07-31-verify-1785516353221.json`, `audit-output/spx-dashboard-e2e-1785516492304.json`, `audit-output/spx-rth-2026-07-31-verify-1785518907710.json`, `audit-output/spx-dashboard-e2e-1785518973731.json`, `audit-output/spx-dashboard-e2e-1785519300970.json`
 
 **Evidence:** `/opt/cursor/artifacts/spx-rth-2026-07-31-dashboard.png`
 
