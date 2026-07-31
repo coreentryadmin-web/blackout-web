@@ -98,6 +98,16 @@ test("fetchGexHeatmap caps inflight/cold builds with gexHeatmapMaxBlockMs (never
   );
 });
 
+test("gex heatmap Redis TTL covers SWR window (not 5s matrix TTL only)", () => {
+  const src = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "polygon-options-gex.ts"),
+    "utf8"
+  );
+  assert.match(src, /function gexHeatmapRedisTtlSec/);
+  assert.match(src, /sharedCacheSet\(cacheKey, entry, gexHeatmapRedisTtlSec\(\)\)/);
+  assert.match(src, /export async function readGexHeatmapSnapshot/);
+});
+
 // ── task #136: computeGexEvents — the pure diff durable persistence (gex-regime-
 // events.ts) and /api/cron/gex-alerts both consume without re-deriving. ──
 

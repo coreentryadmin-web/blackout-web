@@ -54,6 +54,7 @@ mock.module("../../../../lib/providers/polygon-options-gex", {
       spot: null,
       events_count: null,
     }),
+    readGexHeatmapSnapshot: async () => null,
   },
 });
 mock.module("../../../../lib/providers/gex-cross-validation", {
