@@ -19,7 +19,7 @@ import { playMemberReadCacheSec } from "@/features/spx/lib/spx-play-config";
 import { playMemberReadMaxBlockMs } from "@/lib/providers/config";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import { sharedCacheDel, sharedCacheGetWithTtl, sharedCacheSet, sharedCacheSetNx } from "@/lib/shared-cache";
-import { withServerCache } from "@/lib/server-cache";
+import { withServerCache, peekServerCache } from "@/lib/server-cache";
 import { loadPowerHourRecord } from "@/features/spx/lib/spx-power-hour-store";
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
 import type { SpxDeskSummary } from "@/lib/platform/types";
@@ -150,7 +150,7 @@ function spxPlayServerCacheKey(date: string): string {
 /** When another replica holds the eval lock, poll Redis for its published snapshot. */
 async function waitForPeerSpxPlaySnapshot(
   date: string,
-  maxMs = 3_000
+  maxMs = 800
 ): Promise<Awaited<ReturnType<typeof evaluateSpxPlayState>> | null> {
   const deadline = Date.now() + maxMs;
   while (Date.now() < deadline) {
@@ -173,12 +173,12 @@ async function evaluateSpxPlayStateCrossReplica(): Promise<Awaited<ReturnType<ty
   const lockKey = `${SPX_PLAY_EVAL_LOCK_PREFIX}:${date}`;
   const won = await sharedCacheSetNx(lockKey, Date.now(), SPX_PLAY_EVAL_LOCK_TTL_SEC);
   if (!won) {
-    const peer = await waitForPeerSpxPlaySnapshot(date);
-    if (peer) return peer;
     const stale = await sharedCacheGetWithTtl<Awaited<ReturnType<typeof evaluateSpxPlayState>>>(
       spxPlayServerCacheKey(date)
     );
     if (stale?.value) return stale.value;
+    const peer = await waitForPeerSpxPlaySnapshot(date);
+    if (peer) return peer;
     return spxPlayReadDegraded();
   }
   try {
@@ -209,9 +209,21 @@ async function spxPlayReadFallback(): Promise<Awaited<ReturnType<typeof evaluate
     spxPlayServerCacheKey(date)
   );
   if (hit?.value) return hit.value;
-  const peer = await waitForPeerSpxPlaySnapshot(date, 1_500);
+  const peer = await waitForPeerSpxPlaySnapshot(date, 800);
   if (peer) return peer;
   return spxPlayReadDegraded();
+}
+
+export async function peekSpxPlayState(): Promise<Awaited<ReturnType<typeof evaluateSpxPlayState>> | null> {
+  const date = todayEtYmd();
+  const mem = await peekServerCache<Awaited<ReturnType<typeof evaluateSpxPlayState>>>(
+    `spx-play-read:${date}`
+  );
+  if (mem) return mem;
+  const hit = await sharedCacheGetWithTtl<Awaited<ReturnType<typeof evaluateSpxPlayState>>>(
+    spxPlayServerCacheKey(date)
+  );
+  return hit?.value ?? null;
 }
 
 export async function getSpxPlayState() {
