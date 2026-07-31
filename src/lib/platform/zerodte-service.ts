@@ -793,13 +793,16 @@ async function runColdBoardBuild(): Promise<ZeroDteBoardPayload> {
 
 /** Last-resort empty board when Redis and build both unavailable (route still 200). */
 function buildMinimalBoardFallback(): ZeroDteBoardPayload {
+  const today = todayEt();
+  const tradingDay = isTradingDayEt(today);
+  const { hour, minute } = etNowParts();
+  const heat = sessionHeat(hour * 60 + minute, tradingDay);
   const now = new Date().toISOString();
-  const heat = sessionHeat(12 * 60, true);
   return {
     available: true,
     as_of: now,
     upstream_ok: false,
-    session: { date: now.slice(0, 10), trading_day: true, heat },
+    session: { date: today, trading_day: tradingDay, heat },
     setups: [],
     ledger: [],
     covered_elsewhere: [],
