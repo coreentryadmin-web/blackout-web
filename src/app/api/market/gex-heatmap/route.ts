@@ -138,6 +138,16 @@ async function buildDarkPoolLevels(ticker: string): Promise<GexDarkPoolLevel[] |
 /** The overlay-free (matrix-only) contract — both overlays unavailable, never fabricated. */
 const NO_OVERLAYS: GexHeatmapOverlays = { flow_by_strike: null, dark_pool_levels: null };
 
+/** Never block the matrix response on slow UW overlay / cross-val / NH lookups. */
+const ROUTE_FANOUT_TIMEOUT_MS = 8_000;
+
+function withRouteFanoutTimeout<T>(promise: Promise<T>, fallback: T): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ROUTE_FANOUT_TIMEOUT_MS)),
+  ]);
+}
+
 type NightHawkContext = {
   play_direction: string;
   target_strike: string | number | null;
@@ -329,9 +339,9 @@ export async function GET(req: NextRequest) {
         : Promise.resolve(null);
 
     const [{ overlays, at: overlaysAt }, nighthawkContext, cross_validation] = await Promise.all([
-      overlaysPromise,
-      nighthawkPromise,
-      crossValPromise,
+      withRouteFanoutTimeout(overlaysPromise, { overlays: NO_OVERLAYS, at: null }),
+      withRouteFanoutTimeout(nighthawkPromise, null),
+      withRouteFanoutTimeout(crossValPromise, null),
     ]);
 
     // A non-null heatmap can still be UNUSABLE: fetchGexHeatmap's emptyHeatmap() fallback

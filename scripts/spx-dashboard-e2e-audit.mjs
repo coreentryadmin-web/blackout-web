@@ -348,6 +348,7 @@ async function browserDashboard(session, hm) {
   await context.addInitScript(onboardingInitScript());
   await context.addCookies(pw.cookies);
   const page = await context.newPage();
+  page.setDefaultTimeout(120_000);
   const consoleErrors = [];
   page.on("console", (msg) => {
     if (msg.type() === "error") consoleErrors.push(msg.text());
