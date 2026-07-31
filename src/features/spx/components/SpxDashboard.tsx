@@ -220,6 +220,7 @@ export function SpxDashboard({ vectorEnabled }: SpxDashboardProps) {
     <div
       className={clsx(
         "spx-sniper-desk spx-sniper-desk-fill",
+        compactPanels && nativeShell && "spx-sniper-desk-ios-scroll",
         compactPanels && iosPanel === "vector" && "spx-sniper-desk--ios-vector-focus"
       )}
       data-ios-panel={compactPanels ? iosPanel : undefined}
@@ -260,6 +261,7 @@ export function SpxDashboard({ vectorEnabled }: SpxDashboardProps) {
           value={iosPanel}
           onChange={selectIosPanel}
           accent="#a3e635"
+          variant="compact"
           aria-label="SPX desk view"
           className="ios-native-desk-segment ios-native-desk-segment-spx"
           segments={[
@@ -270,7 +272,13 @@ export function SpxDashboard({ vectorEnabled }: SpxDashboardProps) {
         />
       ) : null}
       <SpxPanelErrorBoundary>
-        <SpxSniperHeader desk={desk} live={live} nativeShell={nativeShell} />
+        <SpxSniperHeader
+          desk={desk}
+          live={live}
+          nativeShell={nativeShell}
+          sessionActive={sessionActive}
+          iosVectorFocus={compactPanels && iosPanel === "vector"}
+        />
       </SpxPanelErrorBoundary>
 
       {/* Web / non-native compact: segment below header */}
@@ -317,6 +325,7 @@ export function SpxDashboard({ vectorEnabled }: SpxDashboardProps) {
                 desk={desk}
                 live={live}
                 focus={focusActive}
+                nativeShell={nativeShell}
                 onFocusLevel={(price, label, tone) =>
                   setChartFocus((prev) => ({ price, label, tone, seq: (prev?.seq ?? 0) + 1 }))
                 }

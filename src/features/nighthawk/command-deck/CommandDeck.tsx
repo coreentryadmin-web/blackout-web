@@ -130,6 +130,7 @@ export function CommandDeck({
       <div className="nh-deck-left">
         <div className="nh-deck-lh"><span>{laneLabel}</span><span>{degraded ? "data down" : statusFilter === "ALL" ? `${plays.length} plays` : `${filtered.length} of ${plays.length}`}</span></div>
         <CockpitStrip risk={risk} tape={tape} />
+        <div className="nh-deck-chrome-row">
         <div className="nh-deck-filterbar" role="group" aria-label="Filter plays by status">
           <button type="button" className={clsx("nh-deck-filtbtn", statusFilter === "ALL" && "on")} onClick={() => setStatusFilter("ALL")}>ALL <span className="cnt">{plays.length}</span></button>
           <button type="button" className={clsx("nh-deck-filtbtn", statusFilter === "OPEN" && "on")} onClick={() => setStatusFilter("OPEN")}>OPEN <span className="cnt">{counts.open}</span></button>
@@ -139,6 +140,7 @@ export function CommandDeck({
         <div className="nh-deck-sortbar" role="group" aria-label="Sort plays">
           <button type="button" className={clsx("nh-deck-sortbtn", sortMode === "status" && "on")} onClick={() => setSortMode("status")}>STATUS</button>
           <button type="button" className={clsx("nh-deck-sortbtn", sortMode === "conviction" && "on")} onClick={() => setSortMode("conviction")}>CONVICTION</button>
+        </div>
         </div>
         <div className="nh-deck-rows">
           {degraded && (

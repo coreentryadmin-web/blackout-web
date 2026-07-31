@@ -1,0 +1,278 @@
+/**
+ * SPX Slayer — native iPhone desk (decision-support layout).
+ * Small controls, large insights. Chart-first on Vector segment.
+ */
+
+html.ios-app.ios-native-shell {
+  --ios-header-offset: calc(2.35rem + env(safe-area-inset-top, 0px));
+}
+
+html.ios-app.ios-native-shell .ios-native-header-compact .ios-native-header-inner {
+  min-height: 2.35rem;
+  padding-top: max(0.15rem, env(safe-area-inset-top, 0px));
+  padding-bottom: 0.15rem;
+}
+
+html.ios-app.ios-native-shell .ios-native-header-kicker-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: none;
+  color: #7dd3fc;
+}
+
+html.ios-app.ios-native-shell .spx-ios-live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #34d399;
+  box-shadow: 0 0 8px rgba(52, 211, 153, 0.65);
+}
+
+html.ios-app.ios-native-shell .ios-native-largo-btn {
+  font-size: 14px;
+  color: #c4b5fd;
+  text-decoration: none;
+}
+
+/* Compact UISegmentedControl — ~40% shorter than command grid */
+html.ios-app.ios-native-shell .ios-native-segment-compact {
+  min-height: 1.75rem;
+  margin: 0.2rem 0 0.35rem;
+  border-radius: 8px;
+  padding: 2px;
+}
+
+html.ios-app.ios-native-shell .ios-native-segment-compact .ios-native-segment-btn {
+  min-height: 1.65rem !important;
+  padding: 0.2rem 0.35rem !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0 !important;
+  border-radius: 6px !important;
+  border-right: 0 !important;
+}
+
+html.ios-app.ios-native-shell .ios-native-segment-compact .ios-native-segment-indicator {
+  display: block !important;
+  border-radius: 6px;
+}
+
+/* SPX scroll shell */
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-desk-ios-scroll {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-desk--ios-vector-focus .spx-ios-metrics-details {
+  display: none;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-ios-command {
+  flex-shrink: 0;
+  margin: 0 0 0.25rem;
+  padding: 0.45rem 0.55rem !important;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-ios-command .spx-sniper-command-grid,
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-ios-command .spx-sniper-command-band {
+  display: contents;
+}
+
+/* Market strip — one row ~72pt */
+html.ios-app.ios-native-shell .spx-ios-market-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+html.ios-app.ios-native-shell .spx-ios-market-strip-main {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+html.ios-app.ios-native-shell .spx-ios-market-strip-ticker {
+  font-family: var(--cmd-mono, monospace);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: #7dd3fc;
+}
+
+html.ios-app.ios-native-shell .spx-ios-market-strip-price {
+  font-size: 1.35rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+html.ios-app.ios-native-shell .spx-ios-market-strip-pct {
+  font-size: 0.85rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+html.ios-app.ios-native-shell .spx-ios-market-strip-chips {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.35rem;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+html.ios-app.ios-native-shell .spx-ios-market-strip-chips::-webkit-scrollbar {
+  display: none;
+}
+
+html.ios-app.ios-native-shell .spx-ios-market-chip {
+  flex: 0 0 auto;
+  padding: 0.2rem 0.55rem;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 10px;
+  font-weight: 600;
+  color: #e0f2fe;
+  white-space: nowrap;
+}
+
+html.ios-app.ios-native-shell .spx-ios-market-chip-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border-color: rgba(52, 211, 153, 0.35);
+  color: #6ee7b7;
+}
+
+html.ios-app.ios-native-shell .spx-ios-market-chip-bull {
+  border-color: rgba(52, 211, 153, 0.3);
+  color: #86efac;
+}
+
+html.ios-app.ios-native-shell .spx-ios-market-chip-bear {
+  border-color: rgba(251, 113, 133, 0.3);
+  color: #fda4af;
+}
+
+html.ios-app.ios-native-shell .spx-ios-market-chip-neutral {
+  border-color: rgba(125, 211, 252, 0.25);
+  color: #bae6fd;
+}
+
+/* Grouped metrics — collapsible cards */
+html.ios-app.ios-native-shell .spx-ios-metrics-details {
+  margin-top: 0.35rem;
+}
+
+html.ios-app.ios-native-shell .spx-ios-metrics-summary {
+  list-style: none;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #7dd3fc;
+  padding: 0.25rem 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html.ios-app.ios-native-shell .spx-ios-metrics-summary::-webkit-details-marker {
+  display: none;
+}
+
+html.ios-app.ios-native-shell .spx-ios-metric-groups {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+}
+
+html.ios-app.ios-native-shell .spx-ios-metric-group {
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+}
+
+html.ios-app.ios-native-shell .spx-ios-metric-group-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.4rem 0.55rem;
+  border: 0;
+  background: transparent;
+  color: #e0f2fe;
+  font-size: 11px;
+  font-weight: 700;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html.ios-app.ios-native-shell .spx-ios-metric-group-body {
+  padding: 0 0.55rem 0.45rem;
+}
+
+html.ios-app.ios-native-shell .spx-ios-metric-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.15rem 0;
+  font-size: 10px;
+}
+
+html.ios-app.ios-native-shell .spx-ios-metric-label {
+  color: #7dd3fc;
+  font-weight: 600;
+}
+
+html.ios-app.ios-native-shell .spx-ios-metric-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+/* Largo intel — decision card on iOS */
+html.ios-app.ios-native-shell .spx-ios-largo-expand-btn {
+  margin-top: 0.5rem;
+  width: 100%;
+  min-height: 2.5rem;
+  border-radius: 8px;
+  border: 1px solid rgba(196, 181, 253, 0.35);
+  background: rgba(196, 181, 253, 0.08);
+  color: #ddd6fe;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-triple {
+  flex: 1;
+  min-height: 0;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-desk--ios-vector-focus .spx-sniper-vector-col {
+  min-height: min(64dvh, calc(100dvh - var(--ios-header-offset) - var(--ios-tab-offset) - 6.5rem));
+}
+
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-desk--ios-vector-focus .vector-chart-canvas,
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-desk--ios-vector-focus .vector-chart-canvas--fill-host {
+  min-height: min(58dvh, calc(100dvh - var(--ios-header-offset) - var(--ios-tab-offset) - 7.5rem)) !important;
+}
+
+/* Hide legacy 12-pill strip on iOS */
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-desk-top-stats--strip {
+  display: none !important;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-hero-price {
+  display: none !important;
+}
