@@ -178,19 +178,12 @@ export async function seedPulseSnapshotFromUwPrices(now = Date.now()): Promise<b
 }
 
 /**
- * Seed `uw:ws:last_msg_at` when UW REST cache refresh succeeds but the ingest WS heartbeat is
- * absent (web-tier socket-health probes, or market-worker WS reconnecting). Honest liveness:
- * the REST warm just proved UW data is flowing.
+ * Seed `uw:rest:last_ok_at` when UW REST cache refresh succeeds but the ingest WS heartbeat is
+ * absent. Used for ops liveness only — MUST NOT write `uw:ws:last_msg_at` (WS delivery key).
  */
 export async function seedUwClusterHeartbeat(now = Date.now()): Promise<boolean> {
-  try {
-    const redis = await getUwCacheRedis();
-    if (!redis) return false;
-    await redis.setex(UW_CLUSTER_LAST_MSG_KEY, UW_CLUSTER_LAST_MSG_TTL_SEC, String(now));
-    return true;
-  } catch {
-    return false;
-  }
+  const { seedUwRestLiveness } = await import("@/lib/ws/halt-cluster-store");
+  return seedUwRestLiveness(now);
 }
 
 /** Cron / ops: cluster-aware OK — followers are healthy when the leader heartbeat is fresh. */

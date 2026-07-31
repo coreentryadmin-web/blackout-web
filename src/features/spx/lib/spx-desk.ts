@@ -98,7 +98,7 @@ import {
 import { runUwPooled } from "@/lib/providers/uw-rate-limiter";
 import { fetchEngine } from "@/lib/engine";
 import { parseEngineIntelOverlay, type EngineIntelOverlay } from "@/lib/engine-intel-overlay";
-import { indexStore, getIndexFeedFreshness } from "@/lib/ws/polygon-socket";
+import { indexStore, getIndexFeedFreshness, INDEX_FEED_STALL_MS } from "@/lib/ws/polygon-socket";
 import { getActiveTradingHalts, isTradingHaltChannelStale, warmUwClusterFreshnessFromRedis } from "@/lib/ws/uw-socket";
 
 /** GEX-wall ladder size — a balanced ~5-per-side two-sided ladder (call wall above spot,
@@ -595,6 +595,23 @@ async function fetchPulseLaneSnapshots(): Promise<IndexSnapMap> {
     };
   }
   return merged;
+}
+
+/** Stall signal aligned with the pulse price source (Redis cluster snapshot → local WS). */
+async function resolvePulseFeedStalled(now = Date.now()): Promise<boolean | null> {
+  try {
+    const { getUwCacheRedis } = await import("@/lib/providers/uw-shared-cache");
+    const redis = await getUwCacheRedis();
+    const raw = redis ? await redis.get("spx:pulse:snapshot") : null;
+    if (raw) {
+      const snap = JSON.parse(raw) as Record<string, { updatedAt?: number }>;
+      const at = snap["I:SPX"]?.updatedAt;
+      if (at && at > 0) return now - at > INDEX_FEED_STALL_MS;
+    }
+  } catch {
+    /* fall through */
+  }
+  return getIndexFeedFreshness(SPX, now).stalled;
 }
 
 /** Prior-day OHLC for pulse — serve stale immediately; refresh in background. Never block cold. */
@@ -1353,6 +1370,7 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
   // Gap #11: liveness of the SPX index tick backing `price`. A frozen WS feed (TCP half-open)
   // shows a non-zero-but-stale price; surface its age + stall so the UI never labels it live.
   const spxFeed = getIndexFeedFreshness(SPX);
+  const feedStalled = await resolvePulseFeedStalled();
 
   const session = await sessionStatsWithProxyVwap(minuteBars, today);
   const intraday = computeIntradayRead(
@@ -1598,7 +1616,7 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
     flow_data_age_ms: flowDataAgeMs,
     flow_cluster_live: flowClusterLive,
     price_age_ms: spxFeed.ageMs,
-    feed_stalled: spxFeed.stalled === true,
+    feed_stalled: feedStalled === true,
     gex_age_ms: gexAgeMs,
     gex_stale: gexStale,
     sector_heat: sectorHeat,
@@ -1817,6 +1835,7 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
   const price = spxSnap.price;
   // Gap #11: liveness of the SPX index tick on the FAST lane (the price the desk shows as live).
   const spxFeed = getIndexFeedFreshness(SPX);
+  const feedStalled = await resolvePulseFeedStalled();
   const vwap = structure.vwap;
   // Audit gap #14 (truth mandate): when there is NO real session extreme yet (empty minute
   // bars early in RTH, or no prior-day bar in premarket), return null — NOT spot. Seeding
@@ -1906,7 +1925,7 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
     },
     data_quality: dataQuality,
     price_age_ms: spxFeed.ageMs,
-    feed_stalled: spxFeed.stalled === true,
+    feed_stalled: feedStalled === true,
     market_open: rthOpen,
     market_status: premarketPlan && !rthOpen ? "premarket" : marketNow?.market ?? "open",
     market_label: premarketPlan && !rthOpen ? "PRE-MARKET" : label,
@@ -1996,6 +2015,7 @@ export async function buildSpxDeskPulseMinimal(): Promise<SpxDeskPulse> {
 
   const price = spxSnap.price;
   const spxFeed = getIndexFeedFreshness(SPX);
+  const feedStalled = await resolvePulseFeedStalled();
   const vwap = structure.vwap;
   const lod = premarketPlan && !rthOpen ? prior.pdl ?? null : structure.lod ?? null;
   const hod = premarketPlan && !rthOpen ? prior.pdh ?? null : structure.hod ?? null;
@@ -2052,7 +2072,7 @@ export async function buildSpxDeskPulseMinimal(): Promise<SpxDeskPulse> {
     },
     data_quality: dataQuality,
     price_age_ms: spxFeed.ageMs,
-    feed_stalled: spxFeed.stalled === true,
+    feed_stalled: feedStalled === true,
     market_open: rthOpen,
     market_status: premarketPlan && !rthOpen ? "premarket" : "open",
     market_label: premarketPlan && !rthOpen ? "PRE-MARKET" : label,

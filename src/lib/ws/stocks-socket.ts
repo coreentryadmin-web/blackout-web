@@ -10,6 +10,7 @@ import { MASSIVE_WS_STOCKS } from "@/lib/polygon-docs-nav";
 import { normalizeLuldWsMessages } from "@/lib/providers/polygon-luld";
 import { getUwCacheRedis } from "@/lib/providers/uw-shared-cache";
 import { inOptionsMarketHours } from "@/lib/ws/options-socket";
+import { getClusterLuldLastMessageAt } from "@/lib/ws/halt-cluster-store";
 import { applyLuldHaltEvents, luldHaltsStore, touchLuldMessageAt } from "@/lib/ws/luld-halts-store";
 import {
   alertWsLeaderFailClosedOnce,
@@ -312,10 +313,12 @@ export function getStocksSocketStatus() {
   };
 }
 
-/** False when the LULD socket is authenticated+open (quiet sessions are OK). */
+/** False when the LULD feed is unavailable (local ingest socket OR cluster heartbeat). */
 export function isLuldHaltSourceStale(maxAgeMs: number): boolean {
   if (!luldWsEnabled()) return true;
   if (stocksAuthenticated && stocksWs?.readyState === WebSocket.OPEN) return false;
+  const clusterAt = getClusterLuldLastMessageAt();
+  if (clusterAt != null && Date.now() - clusterAt <= maxAgeMs) return false;
   const at = luldHaltsStore.last_message_at;
   return at <= 0 || Date.now() - at > maxAgeMs;
 }

@@ -56,6 +56,11 @@ import {
   isLuldHaltSourceStale,
   luldWsEnabled,
 } from "@/lib/ws/stocks-socket";
+import {
+  mergeClusterHalts,
+  persistClusterUwHalts,
+  warmClusterHaltsFromRedis,
+} from "@/lib/ws/halt-cluster-store";
 import { getUwCacheRedis } from "@/lib/providers/uw-shared-cache";
 import { inOptionsMarketHours } from "./options-socket";
 import {
@@ -1055,13 +1060,25 @@ export function shouldBlockForTradingHalt(
   return { block: false, reason: null };
 }
 
-/** List active halts for watched symbols. */
+/** List active halts for watched symbols (local ingest store + Redis cluster mirror). */
 export function getActiveTradingHalts(symbols: readonly string[] = PLAY_HALT_WATCH_SYMBOLS): TradingHaltEvent[] {
   const luld = getActiveLuldHalts(symbols);
   pruneExpiredHalts(tradingHaltsStore.halts, Date.now(), TRADING_HALT_MAX_AGE_MS);
   const watch = new Set(symbols.map((s) => s.toUpperCase()));
   const uw = Array.from(tradingHaltsStore.halts.values()).filter((h) => watch.has(h.symbol) && h.active);
-  return [...luld, ...uw];
+  return mergeClusterHalts(
+    uw.map((h) => ({
+      symbol: h.symbol,
+      halt_type: h.halt_type,
+      reason: h.reason,
+      halted_at: h.halted_at,
+      active: true,
+    })),
+    luld
+  ).filter((h) => {
+    const sym = h.symbol.toUpperCase();
+    return watch.has(sym) || sym.includes("←");
+  });
 }
 
 const flowAlertDedup = makeFlowDedup();
@@ -1111,8 +1128,9 @@ function recordUwDelivery(channel: UwWsChannel): void {
   touchClusterFreshness(at);
 }
 
-/** Read ingest leader heartbeat from Redis into clusterFreshestAt (web-tier followers). */
+/** Web tier: load cluster halts + LULD heartbeat before sync gate reads. */
 export async function warmUwClusterFreshnessFromRedis(): Promise<void> {
+  await warmClusterHaltsFromRedis();
   try {
     const redis = await getUwCacheRedis();
     if (!redis) return;
@@ -1414,6 +1432,7 @@ export function initUwSocket() {
       }
     }
     tradingHaltsStore.updatedAt = now;
+    void persistClusterUwHalts(tradingHaltsStore.halts, now);
   });
 
   uwSocket.subscribe("net_flow", (payload) => {
