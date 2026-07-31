@@ -38,7 +38,16 @@ let redisClient: RedisClient | null | undefined;
 let redisInitPromise: Promise<RedisClient | null> | null = null;
 // Track last failure time instead of a permanent flag; retry after backoff.
 const RETRY_BACKOFF_MS = 30_000;
+/** Never block member polls on a wedged ElastiCache hop — fall through to in-memory. */
+const REDIS_GET_RACE_MS = 500;
 let lastFailedAt = 0;
+
+async function redisGetWithTimeout(redis: RedisClient, key: string): Promise<string | null> {
+  return Promise.race([
+    redis.get(key),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), REDIS_GET_RACE_MS)),
+  ]);
+}
 
 function redisEnabled(): boolean {
   return Boolean(process.env.REDIS_URL?.trim());
@@ -75,7 +84,7 @@ export async function sharedCacheGet<T>(key: string): Promise<T | null> {
   const redis = await getRedis();
   if (redis) {
     try {
-      const raw = await redis.get(`blackout:${key}`);
+      const raw = await redisGetWithTimeout(redis, `blackout:${key}`);
       if (raw) return JSON.parse(raw) as T;
     } catch {
       // fall through to memory
@@ -101,7 +110,13 @@ export async function sharedCacheGetWithTtl<T>(
   if (redis) {
     try {
       const redisKey = `blackout:${key}`;
-      const [raw, ttl] = await Promise.all([redis.get(redisKey), redis.ttl(redisKey)]);
+      const [raw, ttl] = await Promise.all([
+        redisGetWithTimeout(redis, redisKey),
+        Promise.race([
+          redis.ttl(redisKey),
+          new Promise<number>((resolve) => setTimeout(() => resolve(-2), REDIS_GET_RACE_MS)),
+        ]),
+      ]);
       if (raw && ttl > 0) {
         return { value: JSON.parse(raw) as T, remainingTtlSec: ttl };
       }
