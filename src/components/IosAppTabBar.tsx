@@ -7,7 +7,7 @@ import { motion } from "framer-motion";
 import { useAppAuth } from "@/lib/auth-client";
 import { clsx } from "clsx";
 import { ProductMark } from "@/components/marks/ProductMark";
-import { isIosAppShell } from "@/lib/ios-app-shell";
+import { isIosAppShell, isIosNativeEmbed } from "@/lib/ios-app-shell";
 import { IOS_TOOLS, isIosToolRoute } from "@/lib/ios-tool-routes";
 import { toolKeyForHref, type ToolKey } from "@/lib/tool-access";
 import { iosHapticSelection } from "@/lib/ios-haptics";
@@ -19,13 +19,16 @@ export function IosAppTabBar({ lockedTools = [] }: { lockedTools?: ToolKey[] }) 
   const path = usePathname();
   const { isSignedIn, isLoaded } = useAppAuth();
   const [iosApp, setIosApp] = useState(false);
+  const [nativeEmbed, setNativeEmbed] = useState(false);
 
   useEffect(() => {
     setIosApp(isIosAppShell());
+    setNativeEmbed(isIosNativeEmbed());
   }, []);
 
   const visible =
     iosApp &&
+    !nativeEmbed &&
     isLoaded &&
     isSignedIn &&
     isIosToolRoute(path) &&

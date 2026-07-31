@@ -18,3 +18,9 @@ export function isIosAppShell(): boolean {
   if (typeof document === "undefined") return false;
   return document.documentElement.classList.contains("ios-app");
 }
+
+/** Native SwiftUI app embeds a desk WKWebView — hide web nav chrome. */
+export function isIosNativeEmbed(): boolean {
+  if (typeof document === "undefined") return false;
+  return document.documentElement.classList.contains("ios-native-embed");
+}

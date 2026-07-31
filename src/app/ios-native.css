@@ -9,6 +9,24 @@ html.ios-app.ios-native-shell {
   --nav-offset: var(--ios-header-offset);
 }
 
+/* Native SwiftUI embed — desk fills the WebView; no web header/tab rail. */
+html.ios-app.ios-native-embed {
+  --ios-header-offset: 0px;
+  --nav-offset: 0px;
+  --ios-tab-offset: 0px;
+}
+
+html.ios-app.ios-native-embed .ios-native-header,
+html.ios-app.ios-native-embed .ios-app-tab-bar {
+  display: none !important;
+}
+
+html.ios-app.ios-native-embed.ios-native-shell .page-shell,
+html.ios-app.ios-native-embed.ios-native-shell .ios-desk-shell {
+  padding-top: 0 !important;
+  min-height: 100dvh !important;
+}
+
 /* Replace web Nav with native header */
 html.ios-app.ios-native-shell .nav-bar {
   display: none !important;

@@ -27,6 +27,9 @@ public final class SessionStore: ObservableObject {
     /// server-side and hands us its value. If Clerk rotates the cookie
     /// convention we adjust here + in the server route together.
     private static let cookieName = "__session"
+    /// Clerk client session signal — required alongside `__session` so the
+    /// web app's client auth hydrates on first paint inside embedded desks.
+    private static let clientUatCookieName = "__client_uat"
 
     /// The host the token is scoped to. Cookie is only attached to requests
     /// against this host + subdomains — matches the site's cookie domain.
@@ -75,25 +78,34 @@ public final class SessionStore: ObservableObject {
         // First remove any stale copy — otherwise HTTPCookieStorage keeps
         // the older one for cookies that differ only in trivial attrs.
         removeCookie()
-        let props: [HTTPCookiePropertyKey: Any] = [
-            .name: Self.cookieName,
-            .value: token,
-            .domain: Self.cookieDomain,
-            .path: "/",
-            .secure: true,
-            // JWTs Clerk issues are typically ~1h. Use a 24h expiry on the
-            // client cookie so a brief clock skew doesn't drop the cookie
-            // mid-session; if the server rejects it as expired we get a 401
-            // and hand the user back to the sign-in screen.
-            .expires: Date().addingTimeInterval(60 * 60 * 24),
+        let expires = Date().addingTimeInterval(60 * 60 * 24)
+        let clientUat = String(Int(Date().timeIntervalSince1970))
+        let pairs: [(String, String)] = [
+            (Self.cookieName, token),
+            (Self.clientUatCookieName, clientUat),
         ]
-        if let cookie = HTTPCookie(properties: props) {
-            HTTPCookieStorage.shared.setCookie(cookie)
+        for (name, value) in pairs {
+            let props: [HTTPCookiePropertyKey: Any] = [
+                .name: name,
+                .value: value,
+                .domain: Self.cookieDomain,
+                .path: "/",
+                .secure: true,
+                // JWTs Clerk issues are typically ~1h. Use a 24h expiry on the
+                // client cookie so a brief clock skew doesn't drop the cookie
+                // mid-session; if the server rejects it as expired we get a 401
+                // and hand the user back to the sign-in screen.
+                .expires: expires,
+            ]
+            if let cookie = HTTPCookie(properties: props) {
+                HTTPCookieStorage.shared.setCookie(cookie)
+            }
         }
     }
 
     private func removeCookie() {
-        for c in HTTPCookieStorage.shared.cookies ?? [] where c.name == Self.cookieName {
+        for c in HTTPCookieStorage.shared.cookies ?? []
+            where c.name == Self.cookieName || c.name == Self.clientUatCookieName {
             HTTPCookieStorage.shared.deleteCookie(c)
         }
     }
