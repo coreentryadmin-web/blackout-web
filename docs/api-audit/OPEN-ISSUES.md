@@ -25,6 +25,7 @@ Last updated: 2026-07-31 17:20 ET
 |---|---|---|---|---|
 | — | — | **No P0/P1 product defects** | all suites GREEN | — |
 | P2 | SPX-RTH-XEP-01 | Transient `merged spot 0` on first cross-endpoint probe while heatmap live | `/api/market/spx/merged` | **Fixed** harness retry |
+| P2 | SPX-RTH-E2E-04 | Transient browser 502 console noise during ECS deploy | `/dashboard` UI | **Fixed** harness — filter transient 5xx |
 | P2 | SPX-RTH-DC-01 | `CRON_SECRET` auth mismatch on data-correctness probe | `/api/cron/data-correctness` | Yes — env only |
 
 **Post-close status: GREEN** — zero FAIL on `validate:spx-rth` and `validate:spx-e2e`.
