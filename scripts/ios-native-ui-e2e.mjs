@@ -21,6 +21,7 @@ import {
   mintIosPlaywrightSession,
   onboardingInitScript,
   readShellProbe,
+  waitForNativeShell,
 } from "./audit/lib/ios-playwright-auth.mjs";
 
 const BASE = (process.env.VALIDATE_BASE || "https://blackouttrades.com").replace(/\/$/, "");
@@ -85,7 +86,131 @@ async function clickRoleTab(page, pattern) {
   return false;
 }
 
-async function testToolPage(page, tab) {
+/** Fail-closed: each tool route must render visible desk content (not a blank shell). */
+async function assertToolContent(page, route, prefix = "") {
+  const metrics = await page.evaluate((r) => {
+    const box = (sel) => {
+      const el = document.querySelector(sel);
+      if (!el) return null;
+      const rect = el.getBoundingClientRect();
+      const style = getComputedStyle(el);
+      return {
+        h: rect.height,
+        w: rect.width,
+        top: rect.top,
+        display: style.display,
+        visibility: style.visibility,
+        opacity: style.opacity,
+      };
+    };
+    const textLen = document.body.innerText.replace(/\s+/g, " ").trim().length;
+    const vh = window.innerHeight;
+    const common = {
+      textLen,
+      vh,
+      locked: !!document.querySelector(".ios-tool-locked-screen"),
+      stageOpacity: document.querySelector(".ios-native-page-stage")?.style.opacity ?? "n/a",
+    };
+    if (r === "dashboard") {
+      return {
+        ...common,
+        hero: box(".spx-hero-price, .spx-sniper-command-native .spx-hero-price"),
+        segment: !!document.querySelector(".ios-native-desk-segment"),
+        vector: box(".spx-sniper-vector-col:not(.ios-native-panel-hidden)"),
+        matrix: box(".spx-left-matrix:not(.ios-native-panel-hidden)"),
+      };
+    }
+    if (r === "flows") {
+      return {
+        ...common,
+        gridHidden: document.querySelector(".helix-desk-terminal-grid.ios-native-panel-hidden") != null,
+        tape: box(".helix-ios-tape-col:not(.ios-native-panel-hidden)"),
+        analytics: box(".helix-ios-analytics-col:not(.ios-native-panel-hidden)"),
+        flowPanels: document.querySelectorAll(".flow-panel").length,
+        flowTable: box(".helix-flow-table, .flow-scroll-max, .flow-scroll"),
+      };
+    }
+    if (r === "heatmap") {
+      return {
+        ...common,
+        control: box(".gex-heatmap-control-row"),
+        matrix: box(".gex-matrix-scroll"),
+        cells: document.querySelectorAll(".gex-matrix-scroll td, .gex-matrix-scroll th").length,
+      };
+    }
+    if (r === "largo") {
+      return {
+        ...common,
+        input: box(".largo-input-fullpage, .largo-native-input, .desk-largo-input"),
+        messages: box(".largo-messages-fullpage, .largo-native-messages"),
+      };
+    }
+    if (r === "nighthawk") {
+      return {
+        ...common,
+        playbook: box(".nighthawk-playbook, .nighthawk-layout"),
+        segment: !!document.querySelector(".ios-native-desk-segment"),
+      };
+    }
+    return common;
+  }, route);
+
+  if (metrics.locked) {
+    warn(`${prefix}content:${route}`, "tool locked (ComingSoon) — skip blank check");
+    return;
+  }
+
+  if (metrics.textLen < 80) {
+    fail(`${prefix}content:${route}`, `body text too short (${metrics.textLen})`);
+    return;
+  }
+
+  if (route === "dashboard") {
+    const heroOk = metrics.hero && metrics.hero.h > 20 && metrics.hero.opacity !== "0";
+    if (heroOk || metrics.segment) ok(`${prefix}content:dashboard`, `hero h=${metrics.hero?.h ?? 0}`);
+    else fail(`${prefix}content:dashboard`, "SPX hero/segment not visible");
+    return;
+  }
+
+  if (route === "flows") {
+    if (metrics.gridHidden) {
+      fail(`${prefix}content:flows`, "helix-desk-terminal-grid hidden — blank HELIX bug");
+      return;
+    }
+    const tapeOk = metrics.tape && metrics.tape.h > 40 && metrics.tape.top < metrics.vh - 80;
+    const analyticsOk = metrics.analytics && metrics.analytics.h > 40;
+    if (tapeOk || analyticsOk || metrics.flowPanels > 0) {
+      ok(`${prefix}content:flows`, `tape h=${metrics.tape?.h ?? 0} panels=${metrics.flowPanels}`);
+    } else {
+      fail(`${prefix}content:flows`, `no visible tape/analytics (tape h=${metrics.tape?.h ?? 0})`);
+    }
+    return;
+  }
+
+  if (route === "heatmap") {
+    const controlOk = metrics.control && metrics.control.h > 30;
+    const matrixOk = metrics.matrix && metrics.matrix.h > 40;
+    if (controlOk && (matrixOk || metrics.cells > 20)) {
+      ok(`${prefix}content:heatmap`, `control h=${metrics.control.h} cells=${metrics.cells}`);
+    } else {
+      fail(`${prefix}content:heatmap`, `matrix/control not visible (ctrl=${metrics.control?.h ?? 0} mat=${metrics.matrix?.h ?? 0})`);
+    }
+    return;
+  }
+
+  if (route === "largo") {
+    if (metrics.input && metrics.input.h > 20) ok(`${prefix}content:largo`, `input h=${metrics.input.h}`);
+    else fail(`${prefix}content:largo`, "composer input not visible");
+    return;
+  }
+
+  if (route === "nighthawk") {
+    if (metrics.playbook && metrics.playbook.h > 40) ok(`${prefix}content:nighthawk`, `playbook h=${metrics.playbook.h}`);
+    else fail(`${prefix}content:nighthawk`, "playbook canvas not visible");
+  }
+}
+
+async function testToolPage(page, tab, prefix = "") {
   const tabLink = page.getByRole("link", { name: tab.label }).first();
   const codeLink = page.locator(".ios-app-tab-link", { hasText: tab.code }).first();
   if (await tabLink.isVisible().catch(() => false)) {
@@ -99,7 +224,17 @@ async function testToolPage(page, tab) {
   await page.waitForURL((url) => url.pathname === tab.href || url.pathname.startsWith(`${tab.href}/`), {
     timeout: 45_000,
   });
-  await page.waitForTimeout(1500);
+  await page.waitForTimeout(tab.route === "heatmap" ? 3500 : 2000);
+  if (tab.route === "heatmap") {
+    await page.waitForSelector(".gex-heatmap-control-row, .gex-heatmap-panel", { timeout: 30_000 }).catch(() => null);
+  }
+  if (tab.route === "flows") {
+    await page.waitForSelector(".helix-desk-terminal-grid, .helix-flow-table, .flow-scroll-max", {
+      timeout: 30_000,
+    }).catch(() => null);
+  }
+
+  await assertToolContent(page, tab.route, prefix);
 
   const probe = await readShellProbe(page);
   if (probe.route === tab.route || tab.route === "dashboard" && probe.route === "dashboard") {
@@ -114,8 +249,8 @@ async function testToolPage(page, tab) {
 
   if (tab.route === "dashboard") {
     if (await clickSegment(page, "Matrix")) {
-      ok("spx:segment-matrix");
-      await shot(page, "spx-matrix");
+      ok(`${prefix}spx:segment-matrix`);
+      await shot(page, `${prefix}spx-matrix`);
       const gexTab = page.locator("#spx-matrix-tab-gex, [id*='matrix-tab-gex']").first();
       if (await gexTab.isVisible().catch(() => false)) {
         await gexTab.click();
@@ -127,13 +262,14 @@ async function testToolPage(page, tab) {
         ok("spx:matrix-vex-tab");
       }
     }
-    if (await clickSegment(page, "Plays")) {
-      ok("spx:segment-plays");
-      await shot(page, "spx-plays");
+    if (await clickSegment(page, "Vector")) {
+      ok(`${prefix}spx:segment-vector`);
+      await shot(page, `${prefix}spx-vector`);
     }
     if (await clickSegment(page, "Intel")) {
-      ok("spx:segment-intel");
-      await shot(page, "spx-intel");
+      ok(`${prefix}spx:segment-intel`);
+      await shot(page, `${prefix}spx-intel`);
+      await assertToolContent(page, "dashboard", prefix);
     }
     const identity = page.locator(".spx-sniper-identity");
     if (await identity.isVisible().catch(() => false)) {
@@ -144,13 +280,15 @@ async function testToolPage(page, tab) {
   }
 
   if (tab.route === "flows") {
-    if (await clickSegment(page, "Analytics")) {
-      ok("helix:segment-analytics");
-      await shot(page, "helix-analytics");
-    }
     if (await clickSegment(page, "Live tape")) {
-      ok("helix:segment-tape");
-      await shot(page, "helix-tape");
+      ok(`${prefix}helix:segment-tape`);
+      await shot(page, `${prefix}helix-tape`);
+      await assertToolContent(page, "flows", prefix);
+    }
+    if (await clickSegment(page, "Analytics")) {
+      ok(`${prefix}helix:segment-analytics`);
+      await shot(page, `${prefix}helix-analytics`);
+      await assertToolContent(page, "flows", prefix);
     }
     if (await clickFlowSeg(page, "CALL")) ok("helix:filter-call");
     if (await clickFlowSeg(page, "PUT")) ok("helix:filter-put");
@@ -265,6 +403,13 @@ async function runDevicePass(deviceFactory, session, prefix = "") {
     await page.waitForFunction(() => window.Clerk?.user?.id, { timeout: 60_000 });
     ok(`${prefix}auth:clerk-session`);
 
+    try {
+      await waitForNativeShell(page, 45_000);
+      ok(`${prefix}shell:native-active`, "ios-native-shell + tab bar");
+    } catch {
+      warn(`${prefix}shell:native-active`, "ios-native-shell slow — continuing with probes");
+    }
+
     const tierOk = await page.evaluate((expected) => document.documentElement.classList.contains(expected), tierClass);
     if (tierOk) ok(`${prefix}device:tier-class`, tierClass);
     else warn(`${prefix}device:tier-class`, `expected ${tierClass} on html`);
@@ -304,7 +449,7 @@ async function runDevicePass(deviceFactory, session, prefix = "") {
     await shot(page, `${prefix}00-dashboard-entry`);
 
     for (const tab of TABS) {
-      await testToolPage(page, tab);
+      await testToolPage(page, tab, prefix);
     }
 
     const returnTab = page.locator(".ios-app-tab-link", { hasText: "SPX" }).first();
