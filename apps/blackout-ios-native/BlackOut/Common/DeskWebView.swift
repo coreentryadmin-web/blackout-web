@@ -109,8 +109,8 @@ private struct DeskWebViewRepresentable: UIViewRepresentable {
 
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
             let ns = error as NSError
-            // User tapped a link that opens externally — not a desk failure.
-            if ns.domain == WKError.errorDomain && ns.code == WKError.Code.cancelled.rawValue {
+            // External link handoff cancels the in-webview load — not a desk failure.
+            if ns.domain == NSURLErrorDomain && ns.code == NSURLErrorCancelled {
                 return
             }
             parent.isLoading = false

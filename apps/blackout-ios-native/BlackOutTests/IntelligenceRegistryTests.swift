@@ -47,10 +47,6 @@ final class IntelligenceRegistryTests: XCTestCase {
     }
 
     func test_webPaths_matchTheTabRouteRegistryOnTheWeb() {
-        // These MUST equal the corresponding IOS_TOOLS paths in
-        // src/lib/ios-tool-routes.ts so a deep link from a push notification
-        // reaches the same page whether it opens in the WebView shell or a
-        // future native detail view routes through the shell.
         let expected: [String: String] = [
             "spx-slayer": "/dashboard",
             "helix":      "/flows",
@@ -62,6 +58,29 @@ final class IntelligenceRegistryTests: XCTestCase {
         let byId = Dictionary(uniqueKeysWithValues: IntelligenceRegistry.all.map { ($0.id, $0) })
         for (id, path) in expected {
             XCTAssertEqual(byId[id]?.webPath, path, "\(id) webPath drift")
+        }
+    }
+
+    func test_displayNames_matchWebsiteProductCatalog() {
+        // Must mirror src/lib/tool-access.ts TOOLS labels + src/lib/marketing/products.ts
+        let expected: [String: String] = [
+            "spx-slayer": "SPX Slayer",
+            "helix":      "HELIX",
+            "thermal":    "BlackOut Thermal",
+            "largo":      "Largo",
+            "night-hawk": "Night Hawk",
+            "vector":     "Vector",
+        ]
+        let byId = Dictionary(uniqueKeysWithValues: IntelligenceRegistry.all.map { ($0.id, $0) })
+        for (id, name) in expected {
+            XCTAssertEqual(byId[id]?.name, name, "\(id) label drift vs website")
+        }
+    }
+
+    func test_everyWebsiteProduct_opensLiveDeskPath() {
+        for module in IntelligenceRegistry.all {
+            XCTAssertFalse(module.webPath.isEmpty)
+            XCTAssertTrue(AppConfig.deskURL(path: module.webPath).absoluteString.contains("blackouttrades.com"))
         }
     }
 }

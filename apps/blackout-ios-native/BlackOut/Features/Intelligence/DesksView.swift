@@ -1,32 +1,48 @@
 import SwiftUI
 
-/// Primary tab — six live desks. Tap a module → full-screen authenticated web desk.
-/// No marketing scaffolding, no duplicate regime cards, no skeleton placeholders.
+/// Primary tab — live market context + all six product desks.
 struct DesksView: View {
     @EnvironmentObject private var tabRouter: TabRouter
     @StateObject private var pulse = IntelligencePulseStore()
+    @StateObject private var regimeStore = DeskRegimeStore()
     @State private var path = NavigationPath()
 
     private let modules = IntelligenceRegistry.all
+    private let gridColumns = [
+        GridItem(.flexible(), spacing: BOSpacing.snug),
+        GridItem(.flexible(), spacing: BOSpacing.snug),
+    ]
 
     var body: some View {
         NavigationStack(path: $path) {
             ScrollView {
-                LazyVStack(spacing: BOSpacing.snug) {
-                    ForEach(modules) { module in
-                        NavigationLink(value: module) {
-                            DeskRow(module: module, pulse: pulse.pulse(for: module.id))
+                VStack(alignment: .leading, spacing: BOSpacing.block) {
+                    IndexTickerStrip()
+                    DeskSessionHeader(regime: regimeStore.regime, fetchedAt: regimeStore.fetchedAt)
+                    if let feed = pulse.feed {
+                        LiveSignalsRail(signals: feed.signals) { module in
+                            path.append(module)
                         }
-                        .buttonStyle(.plain)
                     }
+                    ProductQuickLaunchBar(modules: modules) { module in
+                        path.append(module)
+                    }
+                    desksSection
                 }
                 .padding(BOSpacing.comfortable)
             }
             .background(BOColor.backgroundBase.ignoresSafeArea())
             .navigationTitle("Desks")
             .navigationBarTitleDisplayMode(.large)
-            .task { await pulse.startAutoRefresh() }
-            .refreshable { await pulse.refresh() }
+            .task {
+                async let regimeLoop: Void = regimeStore.startAutoRefresh()
+                async let pulseLoop: Void = pulse.startAutoRefresh()
+                _ = await (regimeLoop, pulseLoop)
+            }
+            .refreshable {
+                await regimeStore.refresh()
+                await pulse.refresh()
+            }
             .navigationDestination(for: IntelligenceModule.self) { module in
                 ProductDetailView(module: module)
             }
@@ -38,85 +54,79 @@ struct DesksView: View {
             }
         }
     }
+
+    private var desksSection: some View {
+        VStack(alignment: .leading, spacing: BOSpacing.snug) {
+            BOSectionLabel("All products")
+            Text("SPX Slayer · HELIX · Thermal · Largo · Night Hawk · Vector — each opens the live desk.")
+                .font(BOFont.caption)
+                .foregroundStyle(BOColor.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            LazyVGrid(columns: gridColumns, spacing: BOSpacing.snug) {
+                ForEach(modules) { module in
+                    NavigationLink(value: module) {
+                        DeskTile(module: module, pulse: pulse.pulse(for: module.id))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
 }
 
-private struct DeskRow: View {
+private struct DeskTile: View {
     let module: IntelligenceModule
     let pulse: IntelligencePulseStore.Pulse?
 
     var body: some View {
         BOCard(tint: .accent(module.accent)) {
-            HStack(alignment: .center, spacing: BOSpacing.comfortable) {
-                ZStack {
-                    Circle()
-                        .fill(module.accent.opacity(0.14))
-                        .frame(width: 44, height: 44)
-                    Image(systemName: module.systemImage)
-                        .font(.system(size: 20, weight: .semibold))
+            VStack(alignment: .leading, spacing: BOSpacing.unit) {
+                HStack {
+                    ZStack {
+                        Circle()
+                            .fill(module.accent.opacity(0.16))
+                            .frame(width: 36, height: 36)
+                        Image(systemName: module.systemImage)
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(module.accent)
+                    }
+                    Spacer(minLength: 0)
+                    Text(module.mark)
+                        .font(BOFont.label)
+                        .tracking(1.4)
                         .foregroundStyle(module.accent)
                 }
-                .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(alignment: .firstTextBaseline, spacing: BOSpacing.unit) {
-                        Text(module.name)
-                            .font(BOFont.heading3)
-                            .foregroundStyle(BOColor.textPrimary)
-                        Text(module.mark)
-                            .font(BOFont.label)
-                            .tracking(1.4)
-                            .foregroundStyle(module.accent)
-                        Spacer(minLength: 0)
-                        if let pulse {
-                            pulseChip(pulse)
-                        }
-                    }
-                    if pulse == nil {
-                        Text(module.tagline)
-                            .font(BOFont.caption)
-                            .foregroundStyle(BOColor.textSecondary)
-                            .lineLimit(1)
-                    }
+                Text(module.name)
+                    .font(BOFont.bodyBold)
+                    .foregroundStyle(BOColor.textPrimary)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.85)
+                if let pulse {
+                    Text(pulse.label)
+                        .font(BOFont.caption)
+                        .foregroundStyle(pulseTint(pulse.tint))
+                        .lineLimit(1)
+                } else {
+                    Text(module.tagline)
+                        .font(BOFont.caption)
+                        .foregroundStyle(BOColor.textSecondary)
+                        .lineLimit(2)
                 }
-                Image(systemName: "chevron.right")
-                    .font(BOFont.caption)
-                    .foregroundStyle(BOColor.textCaption)
             }
+            .frame(maxWidth: .infinity, minHeight: 118, alignment: .topLeading)
         }
-        .frame(minHeight: BOTouchTarget.minimum + 12)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(accessibilityLabel)
-        .accessibilityHint("Opens \(module.name)")
-        .accessibilityAddTraits(.isButton)
+        .accessibilityLabel("\(module.name). \(pulse?.label ?? module.tagline)")
+        .accessibilityHint("Opens live desk")
     }
 
-    private var accessibilityLabel: String {
-        if let pulse {
-            return "\(module.name). Live: \(pulse.label)"
-        }
-        return "\(module.name). \(module.tagline)"
-    }
-
-    private func pulseChip(_ pulse: IntelligencePulseStore.Pulse) -> some View {
-        let tint = tintColor(pulse.tint)
-        return Text(pulse.label)
-            .font(BOFont.label)
-            .tracking(1.1)
-            .foregroundStyle(tint)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(
-                RoundedRectangle(cornerRadius: 4)
-                    .stroke(tint.opacity(0.4), lineWidth: 1)
-            )
-    }
-
-    private func tintColor(_ tint: IntelligencePulseStore.Pulse.Tint) -> Color {
+    private func pulseTint(_ tint: IntelligencePulseStore.Pulse.Tint) -> Color {
         switch tint {
-        case .positive:      return BOColor.statusPositive
-        case .negative:      return BOColor.statusNegative
-        case .caution:       return BOColor.statusCaution
+        case .positive: return BOColor.statusPositive
+        case .negative: return BOColor.statusNegative
+        case .caution: return BOColor.statusCaution
         case .informational: return BOColor.statusInformational
-        case .caption:       return BOColor.textCaption
+        case .caption: return BOColor.textCaption
         }
     }
 }
