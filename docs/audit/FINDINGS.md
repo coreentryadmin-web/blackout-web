@@ -4,6 +4,35 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-07-31 — [Grid/0DTE] Minimal board fallback hardcoded noon RTH heat post-close
+
+**Severity.** P1 — degraded `/api/market/zerodte/board` polls returned `heat=RTH` with empty setups/ledger after the bell while the real board (via Clerk/cron) showed `CLOSED` with 7 setups / 2 ledger rows.
+
+**Symptom.** Post-close `validate:grid-rth` pass (~5:30 PM ET): `zerodte:upstream` WARN + `zerodte:session` `heat=RTH setups=0 ledger=0`; nested `validate:zerodte-logic` on same pass: `live:session-heat CLOSED`, `live:board setups=7 ledger=2`.
+
+**Root cause.** `buildMinimalBoardFallback()` (`zerodte-service.ts:795`) used `sessionHeat(12 * 60, true)` — always noon RTH — when Redis snapshot and per-replica `lastGoodBoardLocal` were both missing during a cold-build cap handoff.
+
+**Fix.** Derive `today`, `tradingDay`, and live `etNowParts()` in the fallback (same as `buildZeroDteBoardPayload`). Regression: `zerodte-board-convergence.test.ts` asserts fallback heat matches mocked clock.
+
+**Files.** `src/lib/platform/zerodte-service.ts`, `src/lib/platform/zerodte-board-convergence.test.ts`.
+
+**Status.** `fix/grid-minimal-fallback-session-heat` → PR.
+
+## 2026-07-31 — [Grid/0DTE] Post-close fix agent pass 4 — all validators GREEN (~5:39 PM ET)
+
+**Severity.** — (no additional product defects after fix above)
+
+**Session.** Scheduled post-close fix agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` Step 4 (~1:39 PM PT / 5:39 PM ET).
+
+**Evidence.**
+- `validate:grid-rth -- --phase=post-close` → **12/12 PASS** (0 FAIL; upstream WARN transient)
+- `validate:zerodte-logic` → **17/17 PASS**
+- `validate:grid-e2e` → **5/5 PASS** (Playwright `/nighthawk`, zero console errors)
+
+**Root cause.** Initial cloud-agent run failed on missing `node_modules` (tsx/playwright/pg) — environment only. One product defect: minimal fallback session heat (above).
+
+**Status.** FIXED on `fix/grid-minimal-fallback-session-heat`.
+
 ## 2026-07-31 — [ops] socket-health false-fail when ingest WS heartbeat absent but REST live
 
 **Severity.** P1 — `validate:rth-open` failed `options-socket` on every probe (~14:14–14:23 ET)

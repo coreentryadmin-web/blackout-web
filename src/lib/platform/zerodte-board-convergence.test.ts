@@ -197,6 +197,7 @@ test("never-block: cold miss past maxBlockMs returns minimal fallback immediatel
     assert.equal(board.available, true);
     assert.equal(board.upstream_ok, false, "minimal fallback while cold build still running");
     assert.deepEqual(board.setups, []);
+    assert.equal(board.session.heat.state, "RTH", "minimal fallback uses live ET clock, not a hardcoded noon");
   } finally {
     sharedState.slowScanMs = 0;
     if (prev === undefined) delete process.env.ZERODTE_BOARD_MAX_BLOCK_MS;

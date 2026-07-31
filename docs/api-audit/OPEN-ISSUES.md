@@ -1,5 +1,34 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-31 17:20 ET
+Last updated: 2026-07-31 17:45 ET
+
+## grid-rth-2026-07-31-pass4 — 0DTE Command post-close fix agent (~1:39 PM PT / 5:39 PM ET)
+
+**Session:** Autonomous Grid RTH **fix mode** per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` Step 4. Commands: `npm run validate:grid-rth -- --phase=post-close` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `validate:grid-rth -- --phase=post-close` | ✅ **GREEN** — 12/12 PASS (0 FAIL; transient `zerodte:upstream` WARN on degraded cold handoff) |
+| `validate:zerodte-logic` | ✅ **GREEN** — 17/17 PASS (gates, lifecycle, mergePlays SKIP, live board 7 setups / 2 ledger) |
+| `validate:grid-e2e` | ✅ **GREEN** — 5/5 PASS (board API, HELIX 20 prints, Playwright `/nighthawk`, zero console errors) |
+
+**Verify status: GREEN** after fix for minimal-fallback session heat (FINDINGS 2026-07-31).
+
+### Findings table (`grid-rth-2026-07-31-pass4`)
+
+| Severity | ID | Detail | Fix |
+|---|---|---|---|
+| P1 | ZDTE-MIN-FALLBACK-HEAT | `buildMinimalBoardFallback()` hardcoded noon RTH → wrong `heat=RTH` + empty board post-close when Redis/local miss | `fix/grid-minimal-fallback-session-heat` — live ET clock in fallback |
+| — | — | All other probes GREEN | — |
+
+### Reports
+
+- `audit-output/grid-rth-2026-07-31-post-close-1785533920912.json`
+- `audit-output/zerodte-logic-1785533926320.json`
+- `audit-output/grid-e2e-1785533940454.json`
+
+---
 
 ## spx-rth-2026-07-31-post-close — SPX Slayer post-close fix (~1:05 PM PT / 4:05 PM ET)
 
