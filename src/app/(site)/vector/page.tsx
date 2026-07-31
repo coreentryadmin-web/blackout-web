@@ -7,13 +7,11 @@ import {
   loadVectorSeedProps,
   normalizeVectorTicker,
 } from "@/features/vector";
+import { noindexPageMetadata } from "@/lib/page-metadata";
 
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
-  title: "Vector · BlackOut",
-  description: "Live price action with GEX/VEX wall beads, flip levels, and dark-pool overlays.",
-};
+export const metadata: Metadata = noindexPageMetadata("Vector · BlackOut");
 
 type PageProps = {
   searchParams: Promise<{ ticker?: string }>;

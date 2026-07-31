@@ -1,20 +1,13 @@
 import type { Metadata } from "next";
 import { MarketingPageShell } from "@/components/landing/MarketingPageShell";
 import { LegalPageLayout } from "@/components/landing/LegalPageLayout";
-import { SITE } from "@/lib/site";
+import { publicPageMetadata } from "@/lib/page-metadata";
 
-export const metadata: Metadata = {
-  title: "Risk Disclaimer · BlackOut",
-  description:
-    "Risk disclosure for BlackOut Trades — trading options, futures, and equities involves substantial risk of loss.",
-  alternates: { canonical: `${SITE.url}/disclaimer` },
-  openGraph: {
-    title: "Risk Disclaimer · BlackOut",
-    description:
-      "Risk disclosure for BlackOut Trades — trading options, futures, and equities involves substantial risk of loss.",
-    url: `${SITE.url}/disclaimer`,
-  },
-};
+export const metadata: Metadata = publicPageMetadata(
+  "Risk Disclaimer — BlackOut",
+  "Important risk disclosures. BlackOut provides educational tools and market analysis only and does not provide investment advice.",
+  "/disclaimer"
+);
 
 export default function DisclaimerPage() {
   return (

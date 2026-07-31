@@ -1,19 +1,13 @@
 import type { Metadata } from "next";
 import { MarketingPageShell } from "@/components/landing/MarketingPageShell";
 import { LegalPageLayout } from "@/components/landing/LegalPageLayout";
-import { SITE } from "@/lib/site";
+import { publicPageMetadata } from "@/lib/page-metadata";
 
-export const metadata: Metadata = {
-  title: "Cookie Policy · BlackOut",
-  description:
-    "How BlackOut Trades uses cookies — what we collect, why, and how to manage your preferences.",
-  alternates: { canonical: `${SITE.url}/cookie-policy` },
-  openGraph: {
-    title: "Cookie Policy · BlackOut",
-    description: "How BlackOut Trades uses cookies — what we collect, why, and how to manage your preferences.",
-    url: `${SITE.url}/cookie-policy`,
-  },
-};
+export const metadata: Metadata = publicPageMetadata(
+  "Cookie Policy — BlackOut",
+  "How BlackOut uses cookies and similar technologies, and how you can manage your cookie preferences.",
+  "/cookie-policy"
+);
 
 export default function CookiePolicyPage() {
   return (

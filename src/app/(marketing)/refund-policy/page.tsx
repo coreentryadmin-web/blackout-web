@@ -1,20 +1,13 @@
 import type { Metadata } from "next";
 import { MarketingPageShell } from "@/components/landing/MarketingPageShell";
 import { LegalPageLayout } from "@/components/landing/LegalPageLayout";
-import { SITE } from "@/lib/site";
+import { publicPageMetadata } from "@/lib/page-metadata";
 
-export const metadata: Metadata = {
-  title: "Refund Policy · BlackOut",
-  description:
-    "BlackOut Trades refund policy — monthly subscriptions, annual subscriptions, and how to request a refund.",
-  alternates: { canonical: `${SITE.url}/refund-policy` },
-  openGraph: {
-    title: "Refund Policy · BlackOut",
-    description:
-      "BlackOut Trades refund policy — monthly subscriptions, annual subscriptions, and how to request a refund.",
-    url: `${SITE.url}/refund-policy`,
-  },
-};
+export const metadata: Metadata = publicPageMetadata(
+  "Refund Policy — BlackOut",
+  "BlackOut's subscription refund and cancellation policy. Cancel anytime, with no long-term contracts.",
+  "/refund-policy"
+);
 
 export default function RefundPolicyPage() {
   return (

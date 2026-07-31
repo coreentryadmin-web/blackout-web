@@ -10,12 +10,11 @@ import { clerkPostAuthReturnPath } from "@/lib/clerk-redirect-url";
 import { activeClerkUserIdFromRequestCookies } from "@/lib/clerk-session-cookies";
 import { isCognitoAuth } from "@/lib/auth-provider";
 
+import { noindexPageMetadata } from "@/lib/page-metadata";
+
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
-  title: "Sign in · BlackOut",
-  description: "Sign in to your BlackOut account to access the live trading desk.",
-};
+export const metadata: Metadata = noindexPageMetadata("Sign in · BlackOut");
 
 type Props = {
   searchParams: Promise<{ redirect_url?: string }>;
