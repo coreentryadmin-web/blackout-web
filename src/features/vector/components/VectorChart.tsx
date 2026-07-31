@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { clsx } from "clsx";
 import {
   createChart,
   createSeriesMarkers,
@@ -317,6 +318,8 @@ type Props = {
    * line is drawn and behavior is byte-identical.
    */
   playLevels?: PlayLevelsInput;
+  /** Host-desk embed (SPX Slayer): fill flex column — no standalone-page viewport height. */
+  fillHost?: boolean;
 };
 
 function lensVisuals(lens: VectorWallLens) {
@@ -1144,6 +1147,7 @@ export function VectorChart({
   onPriceScaleRender,
   focusLevel,
   playLevels,
+  fillHost = false,
 }: Props) {
   const initialTimeframe = defaultTimeframe ?? VECTOR_DEFAULT_TIMEFRAME;
   const openingDteHorizon: VectorDteHorizon = defaultDteHorizon ?? "weekly";
@@ -3192,7 +3196,17 @@ export function VectorChart({
 
     if (liveSession) connectLive();
 
+    // Host embeds (SPX iOS segment) mount after flex layout settles — nudge autosize when the
+    // container gains real dimensions (WKWebView can miss the first ResizeObserver tick at 0×0).
+    const layoutObserver = new ResizeObserver(() => {
+      const w = container.clientWidth;
+      const h = container.clientHeight;
+      if (w > 0 && h > 0) chart.resize(w, h);
+    });
+    layoutObserver.observe(container);
+
     return () => {
+      layoutObserver.disconnect();
       container.removeEventListener("wheel", onWheel);
       container.removeEventListener("mousedown", onChartPointerDown);
       container.removeEventListener("touchstart", onChartPointerDown);
@@ -3661,8 +3675,12 @@ export function VectorChart({
         )}
         <div
           ref={containerRef}
-          className="vector-chart-canvas"
-          style={{ height: "calc(100vh - 132px)", minHeight: 520 }}
+          className={clsx("vector-chart-canvas", fillHost && "vector-chart-canvas--fill-host")}
+          style={
+            fillHost
+              ? undefined
+              : { height: "calc(100vh - 132px)", minHeight: 520 }
+          }
           aria-busy={liveSession && !replayMode}
         />
       </div>

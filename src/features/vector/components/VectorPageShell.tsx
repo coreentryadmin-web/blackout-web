@@ -362,6 +362,7 @@ export function VectorPageShell({
           onPriceScaleRender={onPriceScaleRender}
           focusLevel={focusLevel}
           playLevels={playLevels}
+          fillHost
           onFreshness={liveSession ? setStreamUpdatedAt : undefined}
           onRegimeChange={setRegime}
           alertRules={alertRules}

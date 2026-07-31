@@ -354,11 +354,13 @@ export function SpxDashboard({ vectorEnabled }: SpxDashboardProps) {
             aria-label="SPX Vector chart"
           >
             {vectorEnabled ? (
-              <SpxVectorEmbed
-                onPriceScaleRender={setPriceScaleMap}
-                focusLevel={chartFocus}
-                playLevels={playLevels}
-                toolbarReplayLeadSlot={
+              !compactPanels || iosPanel === "vector" ? (
+                <SpxVectorEmbed
+                  key="spx-vector-embed"
+                  onPriceScaleRender={setPriceScaleMap}
+                  focusLevel={chartFocus}
+                  playLevels={playLevels}
+                  toolbarReplayLeadSlot={
                   // Focus toggle relocated here from the removed session time bar
                   // (user-directed 2026-07-14: "move Focus to left of Replay").
                   !compactPanels ? (
@@ -375,6 +377,7 @@ export function SpxDashboard({ vectorEnabled }: SpxDashboardProps) {
                   ) : undefined
                 }
               />
+              ) : null
             ) : (
               <EmptyState
                 title="Vector chart launching soon"

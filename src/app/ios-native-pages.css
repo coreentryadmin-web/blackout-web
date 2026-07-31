@@ -205,7 +205,12 @@ html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-vector-col
 html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-vector-col .vector-chart-canvas {
   flex: 1 1 auto;
   height: 100% !important;
-  min-height: 12rem !important;
+  min-height: min(36dvh, calc(100dvh - var(--ios-header-offset) - var(--ios-tab-offset) - 13rem)) !important;
+  max-height: none;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .vector-chart-canvas--fill-host {
+  min-height: min(36dvh, calc(100dvh - var(--ios-header-offset) - var(--ios-tab-offset) - 13rem)) !important;
 }
 
 html.ios-app.ios-native-shell[data-ios-route="dashboard"] .vector-toolbar {

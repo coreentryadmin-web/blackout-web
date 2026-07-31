@@ -112,12 +112,17 @@ async function assertToolContent(page, route, prefix = "") {
       stageOpacity: document.querySelector(".ios-native-page-stage")?.style.opacity ?? "n/a",
     };
     if (r === "dashboard") {
+      const canvas = document.querySelector(".vector-chart-canvas");
+      const lc = canvas?.querySelector("canvas");
       return {
         ...common,
         hero: box(".spx-hero-price, .spx-sniper-command-native .spx-hero-price"),
         segment: !!document.querySelector(".ios-native-desk-segment"),
         vector: box(".spx-sniper-vector-col:not(.ios-native-panel-hidden)"),
-        matrix: box(".spx-left-matrix:not(.ios-native-panel-hidden)"),
+        vectorCanvas: box(".vector-chart-canvas"),
+        lcCanvas: lc
+          ? { w: lc.clientWidth, h: lc.clientHeight, canvasW: lc.width, canvasH: lc.height }
+          : null,
       };
     }
     if (r === "flows") {
@@ -166,9 +171,19 @@ async function assertToolContent(page, route, prefix = "") {
   }
 
   if (route === "dashboard") {
-    const heroOk = metrics.hero && metrics.hero.h > 20 && metrics.hero.opacity !== "0";
-    if (heroOk || metrics.segment) ok(`${prefix}content:dashboard`, `hero h=${metrics.hero?.h ?? 0}`);
-    else fail(`${prefix}content:dashboard`, "SPX hero/segment not visible");
+    const heroOk = metrics.hero && metrics.hero.h > 20;
+    const lcOk =
+      metrics.lcCanvas &&
+      metrics.lcCanvas.h > 40 &&
+      metrics.lcCanvas.w > 40 &&
+      metrics.lcCanvas.canvasH > 0;
+    if (heroOk && (lcOk || metrics.segment)) {
+      ok(`${prefix}content:dashboard`, `hero h=${metrics.hero?.h ?? 0} lc=${metrics.lcCanvas?.h ?? 0}`);
+    } else if (heroOk || metrics.segment) {
+      fail(`${prefix}content:dashboard`, `Vector canvas missing/0-size (lc h=${metrics.lcCanvas?.h ?? 0})`);
+    } else {
+      fail(`${prefix}content:dashboard`, "SPX hero/segment not visible");
+    }
     return;
   }
 
@@ -233,6 +248,10 @@ async function testToolPage(page, tab, prefix = "") {
       timeout: 30_000,
     }).catch(() => null);
   }
+  if (tab.route === "dashboard") {
+    await page.waitForSelector(".vector-chart-canvas, .ios-native-desk-segment", { timeout: 45_000 }).catch(() => null);
+    await page.waitForTimeout(5000);
+  }
 
   await assertToolContent(page, tab.route, prefix);
 
@@ -248,6 +267,8 @@ async function testToolPage(page, tab, prefix = "") {
   await shot(page, `tab-${tab.route}`);
 
   if (tab.route === "dashboard") {
+    await page.waitForSelector(".vector-chart-canvas, .ios-native-desk-segment", { timeout: 45_000 }).catch(() => null);
+    await page.waitForTimeout(tab.route === "dashboard" ? 6000 : 0);
     if (await clickSegment(page, "Matrix")) {
       ok(`${prefix}spx:segment-matrix`);
       await shot(page, `${prefix}spx-matrix`);

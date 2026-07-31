@@ -8,7 +8,17 @@ const VectorPageShell = dynamic(
     import("@/features/vector/components/VectorPageShell").then((m) => ({
       default: m.VectorPageShell,
     })),
-  { loading: () => null }
+  {
+    loading: () => (
+      <div
+        className="vector-embed-loading flex min-h-[min(36dvh,320px)] flex-1 items-center justify-center rounded-xl border border-cyan-500/20 bg-black/40 text-sm text-cyan-300"
+        role="status"
+        aria-live="polite"
+      >
+        Loading Vector chart…
+      </div>
+    ),
+  }
 );
 
 type SpxVectorEmbedProps = {
