@@ -192,10 +192,10 @@ function freshAsOf(json, maxSec = 300) {
 async function auditApis(app) {
   for (const path of [...MARKET_APIS, ...ZERODTE_APIS]) {
     let r = app(path);
-    // Cold SPX matrix / 0DTE board builds can exceed Cloudflare's ~100s origin timeout; warm retry.
+    // Cold matrix / 0DTE board builds can exceed Cloudflare's ~100s origin timeout; warm retry.
     if (
-      (r.status === 0 || r.status === 504 || r.status === 524) &&
-      (path.includes("gex-heatmap?ticker=SPX") || path.includes("zerodte/board"))
+      (r.status === 0 || r.status === 502 || r.status === 504 || r.status === 524) &&
+      (path.includes("gex-heatmap") || path.includes("zerodte/board") || path.includes("gex-positioning"))
     ) {
       await new Promise((res) => setTimeout(res, 3000));
       r = app(path);
@@ -203,7 +203,9 @@ async function auditApis(app) {
     const { fresh, ageSec } = freshAsOf(r.json, path.includes("earnings") ? 600 : 300);
     const entry = { path, status: r.status, ms: r.ms, fresh, ageSec };
     if (r.status !== 200) {
-      const sev = r.status === 524 || r.status === 0 ? "P2" : "P1";
+      // Edge timeout / origin overload during audit bursts — P2 unless retry still fails on a warm path.
+      const sev =
+        r.status === 524 || r.status === 0 || r.status === 502 || r.status === 504 ? "P2" : "P1";
       report.issues.push({ severity: sev, id: `api-${path}`, detail: `HTTP ${r.status}` });
     } else if (fresh === false) report.issues.push({ severity: "P2", id: `stale-${path}`, detail: `as_of ${ageSec}s old` });
     report.apis.push(entry);

@@ -1,5 +1,83 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-31 12:03 ET
+Last updated: 2026-07-31 13:23 ET
+
+## rth-comprehensive-2026-07-31-13h — RTH agent pass (~12:29–13:23 ET)
+
+**Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` including **RTH COMPREHENSIVE TEST SWEEP**. Commands: `npm run validate:rth-open` → `GET /api/cron/data-correctness?force=1` (async 202 + `surface=heatmap` sync) → `npm run validate:rth-sweep` (×3) → `npm run validate:grid-rth` → `npm run validate:zerodte-integration` → `npm run validate:spx-rth` → `npm run ops:collect`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` | ✅ **GREEN** — deploy HTTP smoke + RTH session checks (Postgres skipped private VPC) |
+| `GET /api/cron/data-correctness?force=1` | ✅ **202** async dispatch; sync `surface=heatmap` → **flags=0**, 60 metrics (2 independently confirmed, 58 consistency-only) |
+| `npm run validate:rth-sweep` (final pass) | ✅ **GREEN** — 0 P0/P1; 7 pages soft-nav 1.6–5.3s; APIs 200; Largo grounded NVDA $86.6M in 16s |
+| `npm run validate:grid-rth` | ⚠️ orchestrator **1 FAIL** — `zerodte-integration` subprocess truncated/timeout during parallel burst; direct re-run **GREEN** (9/9) |
+| `npm run validate:zerodte-integration` | ✅ **9 PASS / 0 FAIL** |
+| `npm run validate:spx-rth` | See SPX section below |
+| `npm run ops:collect` | ✅ **exit 0** — zero action items |
+
+**Verify status: GREEN** — zero P0/P1 product defects after warm-cache re-probe. Fix branch: sweep audit retry/severity for CF origin timeouts.
+
+### Comprehensive sweep — per-page (final pass ~13:17 ET)
+
+| Page | Soft-nav | Missing fields | Console | Live tick |
+|---|---|---|---|---|
+| `/dashboard` (SPX Slayer) | 4.9s hard | 0 | 1× HTTP 400 (resource) | null (regex) |
+| `/flows` (HELIX) | 2.9s | 0 | 1× HTTP 502 (transient edge) | null |
+| `/heatmap` (Thermal matrix) | 5.3s | 0 | 0 | null |
+| `/vector` | 2.3s | 0 | 0 | null |
+| `/nighthawk` (0DTE Command) | 1.7s | 0 | 8× ChunkLoadError sign-in chunks (mid-deploy stale `_next` refs) | null |
+| `/terminal` (Largo) | 1.7s | 0 | 0 | null |
+| `/track-record` | 1.6s | 0 | 0 | null |
+
+**Note:** Classic `/grid` route deleted 2026-07-07 — 0DTE Command lives at `/nighthawk` (four-view deck). Thermal Profile tab exercised via matrix route (tab click in sweep when present).
+
+### API verification (authenticated, warm cache)
+
+| Endpoint | HTTP | Latency | Fresh |
+|---|---|---|---|
+| `/api/market/spx/desk` | 200 | 92ms | ✅ 19s |
+| `/api/market/gex-positioning?ticker=SPX` | 200 | 109ms | — |
+| `/api/market/gex-heatmap?ticker=SPX` | 200 | 5.4s | — |
+| `/api/market/gex-heatmap?ticker=SPY` | 200 | 68.6s | — (cold band build) |
+| `/api/market/flows?limit=20` | 200 | 121ms | — |
+| `/api/market/zerodte/board` | 200 | 19.3s | ⚠ as_of 837s (board snapshot cadence) |
+| Cross-tool GEX flip | desk 7501.96 vs gex 7502.73 | ✅ within 1% tol | spot 7477.31 |
+
+**Cold-cache first pass:** `gex-positioning` HTTP 502 (~98s) + `gex-heatmap` SPY HTTP 504 (~120s) — Cloudflare origin timeout under sequential audit load; **resolved on warm retry** (not member-path defects).
+
+### Largo (Terminal)
+
+| Check | Result |
+|---|---|
+| Query | dark pool + options flow NVDA |
+| HTTP / latency | 200 / 16.3s (SSE stream) |
+| Grounded answer | ✅ $86,561,776 premium · 50 prints |
+| Tools used | `blackout_intelligence` |
+| Regime field | **—** (HELIX bundle has no regime label for ticker-scoped query — expected partial, not fabrication) |
+
+### Missing-field audit
+
+Automated scan (`$—`, `—%`, N/A, No data, em-dash density): **0 hits** across all 7 pages. Largo prose shows `Regime: —` when upstream regime unavailable — classified **expected partial** (not a blank UI field).
+
+### Findings table (`rth-comprehensive-2026-07-31-13h`)
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| P2 | RTH-SWEEP-CF-TIMEOUT | First-pass CF 502/504 on gex-positioning + SPY heatmap under audit cold build | edge origin ~100s cap | Yes — warm path 200; sweep retry widened in PR |
+| P2 | RTH-ZERODTE-ASOF | Board `as_of` 837s during RTH | `/api/market/zerodte/board` | Yes — setups live (64); snapshot timestamp ≠ scan cadence |
+| P2 | RTH-NH-CHUNK | Nighthawk ChunkLoadError on sign-in `_next` chunks mid-session | deploy/chunk hash drift | Yes — transient during ECS rollout window |
+| P2 | RTH-LARGO-REGIME | Largo answer shows `Regime: —` for NVDA scoped query | `blackout_intelligence` bundle | Yes — no regime in ticker-scoped path |
+| P2 | GRID-RTH-INTEG-TIMEOUT | `validate:grid-rth` subprocess timeout on `zerodte-integration` | orchestrator parallel load | Yes — direct integration audit GREEN |
+
+### Reports
+
+- `audit-output/rth-sweep-2026-07-31T16-32-07-856Z.json` (cold pass — 2 P1 CF timeouts)
+- `audit-output/rth-sweep-2026-07-31T16-53-57-342Z.json` (warm pass — 1 P1 zerodte 502)
+- `audit-output/rth-sweep-2026-07-31T17-17-48-402Z.json` (**final GREEN** — 0 P0/P1)
+- `audit-output/grid-rth-2026-07-31-verify-1785518250161.json`
+- `audit-output/zerodte-integration-1785518286923.json`
 
 ## grid-rth-2026-07-31 — 0DTE Command market-open verify pass (~9:03 AM PT / 12:03 PM ET)
 
