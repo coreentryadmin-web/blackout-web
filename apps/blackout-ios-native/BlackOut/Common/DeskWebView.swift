@@ -1,13 +1,19 @@
 import SwiftUI
 import WebKit
 
+/// How much web navigation chrome to show inside the WKWebView.
+enum DeskWebChrome {
+    /// Full iOS product shell — header + instrument rail (Capacitor parity).
+    case iosShell
+    /// Desk-only embed — native SwiftUI owns title/back; hide web chrome.
+    case nativeEmbed
+}
+
 /// Embeds a live BlackOut desk page (`/dashboard`, `/flows`, …) inside native
-/// SwiftUI. Uses the same Clerk session cookies as `APIClient` and appends the
-/// `BlackOutiOSApp` + `BlackOutNativeEmbed` user-agent tokens so the web app
-/// applies iOS desk CSS without rendering duplicate nav chrome (the native
-/// `NavigationStack` owns the title/back affordance).
+/// SwiftUI. Uses the same Clerk session cookies as `APIClient`.
 struct DeskWebView: View {
     let url: URL
+    var chrome: DeskWebChrome = .nativeEmbed
 
     @State private var isLoading = true
     @State private var loadError: String?
@@ -16,6 +22,7 @@ struct DeskWebView: View {
         ZStack {
             DeskWebViewRepresentable(
                 url: url,
+                userAgent: userAgent,
                 isLoading: $isLoading,
                 loadError: $loadError
             )
@@ -40,12 +47,20 @@ struct DeskWebView: View {
         }
         .background(BOColor.backgroundBase.ignoresSafeArea())
     }
+
+    private var userAgent: String {
+        switch chrome {
+        case .iosShell:    return AppConfig.iosShellWebUserAgent
+        case .nativeEmbed: return AppConfig.deskWebUserAgent
+        }
+    }
 }
 
 // MARK: - UIKit bridge
 
 private struct DeskWebViewRepresentable: UIViewRepresentable {
     let url: URL
+    let userAgent: String
     @Binding var isLoading: Bool
     @Binding var loadError: String?
 
@@ -60,7 +75,7 @@ private struct DeskWebViewRepresentable: UIViewRepresentable {
         webView.isOpaque = false
         webView.backgroundColor = UIColor(red: 4 / 255, green: 4 / 255, blue: 7 / 255, alpha: 1)
         webView.scrollView.backgroundColor = webView.backgroundColor
-        webView.customUserAgent = AppConfig.deskWebUserAgent
+        webView.customUserAgent = userAgent
         webView.navigationDelegate = context.coordinator
         webView.allowsBackForwardNavigationGestures = false
 
@@ -93,7 +108,7 @@ private struct DeskWebViewRepresentable: UIViewRepresentable {
                 guard let webView else { return }
                 await syncSessionCookies(into: webView.configuration.websiteDataStore.httpCookieStore)
                 var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 30)
-                request.setValue(AppConfig.deskWebUserAgent, forHTTPHeaderField: "User-Agent")
+                request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
                 webView.load(request)
             }
         }

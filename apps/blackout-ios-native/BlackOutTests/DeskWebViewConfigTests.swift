@@ -16,10 +16,16 @@ final class DeskWebViewConfigTests: XCTestCase {
         XCTAssertEqual(url.path, "/flows")
     }
 
-    func test_deskWebUserAgent_includesRequiredWebTokens() {
+    func test_iosShellUserAgent_includesIosAppToken_only() {
+        let ua = AppConfig.iosShellWebUserAgent
+        XCTAssertTrue(ua.contains("BlackOutiOSApp"), "web ios-app CSS + instrument rail")
+        XCTAssertFalse(ua.contains("BlackOutNativeEmbed"), "must not hide web chrome")
+    }
+
+    func test_deskWebUserAgent_includesNativeEmbed_forSwiftUIChrome() {
         let ua = AppConfig.deskWebUserAgent
-        XCTAssertTrue(ua.contains("BlackOutiOSApp"), "web ios-app CSS")
-        XCTAssertTrue(ua.contains("BlackOutNativeEmbed"), "hide duplicate web chrome")
+        XCTAssertTrue(ua.contains("BlackOutiOSApp"))
+        XCTAssertTrue(ua.contains("BlackOutNativeEmbed"))
     }
 
     func test_everyIntelligenceModule_deskURLMatchesRegistryPath() {

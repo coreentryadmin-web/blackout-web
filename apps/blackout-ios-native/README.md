@@ -14,24 +14,25 @@ apps/blackout-ios-native/
 ├── project.yml                     # XcodeGen spec — source of truth for the Xcode project
 ├── BlackOut/
 │   ├── BlackOutApp.swift           # @main SwiftUI App
-│   ├── RootView.swift              # 4-tab IA (Desks / Signals / Watchlist / Account)
+│   ├── RootView.swift              # Full-screen web iOS shell (instrument rail)
 │   ├── DesignSystem/
 │   │   ├── Colors.swift            # semantic + palette tokens (grounded in DESIGN-SYSTEM.md)
 │   │   ├── Typography.swift        # SF Pro Display/Text + SF Mono, Dynamic-Type-first
 │   │   ├── Spacing.swift           # 4pt scale + radii + touch target
 │   │   └── Motion.swift            # semantic animation tokens
 │   ├── Features/
-│   │   ├── Intelligence/           # Desks tab (six products + live context)
-│   │   ├── Signals/                # Signals tab (setup lifecycle feed)
-│   │   ├── Watchlist/              # Watchlist tab (tickers + positioning detail)
-│   │   └── Account/                # Account tab (security, push, web utilities)
+│   │   ├── Shell/                  # IosShellView — Capacitor-parity web chrome
+│   │   ├── Intelligence/           # Desk modules (WebView embed helpers)
+│   │   ├── Signals/                # Native signals feed (available for future menu)
+│   │   ├── Watchlist/              # Native watchlist (available for future menu)
+│   │   └── Account/                # Native sign-in utilities
 │   ├── Common/
 │   │   ├── PlaceholderView.swift   # design-system-conformant scaffold used by unbuilt tabs
 │   │   └── BiometricGate.swift     # Face ID / Touch ID service (LocalAuthentication + Keychain-adjacent)
 │   └── Resources/Assets.xcassets/  # AppIcon (from public/images/blackout-emblem.webp), AccentColor, LaunchBackground
 └── BlackOutTests/
     ├── DesignSystemTests.swift     # token contract tests
-    ├── RootViewTests.swift         # 4-tab IA contract tests
+    ├── RootViewTests.swift         # Shell IA contract tests
     └── BiometricGateTests.swift    # LAContext-mocked biometric flow tests
 ```
 

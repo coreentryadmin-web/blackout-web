@@ -73,7 +73,7 @@ struct BlackOutApp: App {
             // immediately after routing so a subsequent view re-render
             // can't re-fire the same tap.
             .onReceive(appDelegate.pushRouter.$pending.compactMap { $0 }) { destination in
-                tabRouter.route(to: destination.tab, deskModuleId: destination.deskModuleId)
+                tabRouter.navigate(to: destination.webPath)
                 appDelegate.pushRouter.consume()
             }
             .task {

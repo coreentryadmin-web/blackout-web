@@ -2,7 +2,6 @@ import SwiftUI
 
 /// Primary tab — live market context + all six product desks.
 struct DesksView: View {
-    @EnvironmentObject private var tabRouter: TabRouter
     @StateObject private var pulse = IntelligencePulseStore()
     @StateObject private var regimeStore = DeskRegimeStore()
     @State private var path = NavigationPath()
@@ -45,13 +44,6 @@ struct DesksView: View {
             }
             .navigationDestination(for: IntelligenceModule.self) { module in
                 ProductDetailView(module: module)
-            }
-            .onChange(of: tabRouter.pendingDeskModuleId) { _, moduleId in
-                guard tabRouter.selectedTab == .desks,
-                      let moduleId,
-                      let module = modules.first(where: { $0.id == moduleId }) else { return }
-                path.append(module)
-                tabRouter.consumePendingDesk()
             }
         }
     }
