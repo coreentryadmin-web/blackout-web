@@ -251,7 +251,8 @@ async function main() {
 
   // 5. Dashboard E2E (clicks + cross-tool) when Clerk keys present
   if (process.env.CLERK_SECRET_KEY && process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) {
-    run("npm run validate:spx-e2e", "spx:dashboard-e2e");
+    // Largo + Playwright matrix validation routinely exceeds 300s under RTH load (SPX-RTH-2026-07-31).
+    run("npm run validate:spx-e2e", "spx:dashboard-e2e", 600_000);
   } else {
     rec("spx:dashboard-e2e", "SKIP", "CLERK keys not set — API-only pass");
   }
