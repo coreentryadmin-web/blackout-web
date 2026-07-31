@@ -45,18 +45,20 @@ export function IosNativePageTransition({ children }: Props) {
 
   const dir = dirRef.current;
   const utility = utilityRef.current || getIosToolRouteIndex(path) < 0;
-  const offset = reduced || utility ? 0 : dir * 32;
+  const offset = reduced || utility ? 0 : dir * 24;
 
+  // WKWebView can stick on opacity:0/blur initial states during fast tab switches —
+  // keep tool routes opaque so desks never flash blank between instrument-rail taps.
   return (
     <AnimatePresence mode="wait" initial={false}>
       <motion.div
         key={path}
         className="ios-native-page-stage"
         initial={{
-          opacity: reduced ? 0.94 : utility ? 0.88 : 0,
+          opacity: 1,
           x: offset,
-          y: reduced || !utility ? 0 : 10,
-          filter: reduced || utility ? "none" : "blur(6px)",
+          y: 0,
+          filter: "none",
         }}
         animate={{
           opacity: 1,
@@ -65,12 +67,12 @@ export function IosNativePageTransition({ children }: Props) {
           filter: "blur(0px)",
         }}
         exit={{
-          opacity: reduced ? 0.94 : utility ? 0.88 : 0,
-          x: reduced || utility ? 0 : dir * -18,
-          y: reduced || !utility ? 0 : -6,
-          filter: reduced || utility ? "none" : "blur(4px)",
+          opacity: utility ? 0.92 : 0.85,
+          x: reduced || utility ? 0 : dir * -14,
+          y: 0,
+          filter: "none",
         }}
-        transition={reduced ? { duration: 0.12 } : utility ? FADE : SPRING}
+        transition={reduced ? { duration: 0.1 } : utility ? FADE : SPRING}
       >
         {children}
       </motion.div>

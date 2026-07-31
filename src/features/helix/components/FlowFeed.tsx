@@ -169,7 +169,8 @@ export function FlowFeed() {
   // Data
   const [alerts, setAlerts]               = useState<FlowAlert[]>([]);
   const nativeShell = useIosNativeShell();
-  const [iosView, setIosView] = useState<"tape" | "analytics">("analytics");
+  // Live tape is the primary HELIX surface on iOS — default here, not Analytics.
+  const [iosView, setIosView] = useState<"tape" | "analytics">("tape");
   const [helixToolsOpen, setHelixToolsOpen] = useState(false);
   const [loading, setLoading]             = useState(true);
   const [loadingOlder, setLoadingOlder]   = useState(false);
@@ -1100,14 +1101,16 @@ export function FlowFeed() {
       <div
         className={clsx(
           "helix-desk-terminal-grid",
-          !analyticsOpen && !nativeShell && "helix-desk-terminal-grid--tape-max",
-          nativeShell && iosView !== "tape" && "ios-native-panel-hidden",
-          nativeShell && iosView === "tape" && "ios-native-panel-visible"
+          !analyticsOpen && !nativeShell && "helix-desk-terminal-grid--tape-max"
         )}
       >
         <div
           key={nativeShell ? iosView : "tape"}
-          className="helix-desk-tape-col helix-ios-tape-col"
+          className={clsx(
+            "helix-desk-tape-col helix-ios-tape-col",
+            nativeShell && iosView !== "tape" && "ios-native-panel-hidden",
+            nativeShell && iosView === "tape" && "ios-native-panel-visible"
+          )}
         >
           <HelixFlowTable {...flowTapeProps} />
         </div>

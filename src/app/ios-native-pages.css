@@ -251,6 +251,24 @@ html.ios-app.ios-native-shell[data-ios-route="flows"] .helix-page-content-native
 
 html.ios-app.ios-native-shell[data-ios-route="flows"] .helix-page-inner-native {
   padding: calc(var(--ios-header-offset) + 0.15rem) 0.65rem 0;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="flows"] .helix-desk {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="flows"] .helix-desk-terminal-grid {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 html.ios-app.ios-native-shell[data-ios-route="flows"] .helix-native-tide {
@@ -314,6 +332,10 @@ html.ios-app.ios-native-shell[data-ios-route="heatmap"] .thermal-page-content-na
 
 html.ios-app.ios-native-shell[data-ios-route="heatmap"] .thermal-page-inner-native {
   padding: calc(var(--ios-header-offset) + 0.35rem) 0.65rem 0;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
 }
 
 html.ios-app.ios-native-shell[data-ios-route="heatmap"] .page-tool-header,
@@ -323,6 +345,10 @@ html.ios-app.ios-native-shell[data-ios-route="heatmap"] .page-shell > .px-4 > .p
 
 html.ios-app.ios-native-shell[data-ios-route="heatmap"] .gex-heatmap-desk-native {
   gap: 0.5rem;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 html.ios-app.ios-native-shell[data-ios-route="heatmap"] .gex-heatmap-panel-native {
