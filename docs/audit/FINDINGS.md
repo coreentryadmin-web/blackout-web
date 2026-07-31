@@ -73,6 +73,20 @@ now includes 503.
 
 **Status.** `cursor/autonomous-ops-maintenance-be56` → PR.
 
+## 2026-07-31 — [spx] Post-close fix agent final — all validators GREEN (~3:10 PM PT / 6:10 PM ET)
+
+**Severity:** — (no product defect)
+
+**Session:** SPX Slayer post-close fix agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` Step 6 (Cloud Agent `cursor/spx-post-close-findings-9fd0`).
+
+**Evidence.** `npm run validate:spx-rth -- --phase=post-close` → 6 PASS / 1 WARN / 0 FAIL; `npm run validate:spx-e2e` → 0 FAIL / 17 checks; `npm run validate:deploy` → GREEN. Matrix oracle: 170 strikes GEX+VEX+DEX+CHARM finite; cross-endpoint spot merged=7489.72 hm=7489.72; play SCANNING with no stale confirmations; BIE `getSpxPlayState()` consistent; cross-tool integration (Thermal, HELIX, Largo, Grid, 0DTE, Night Hawk) all PASS.
+
+**Environment flake.** First cloud-agent pass failed on missing `node_modules` (tsx/playwright/pg) — resolved with `npm install` + Playwright Chromium install. Transient `merged spot 0` on first cross-endpoint probe resolved on retry (harness retry already merged #1456).
+
+**Product fixes already on main.** P0 matrix unavailable (#1428), heatmap enrichment timeout, socket-health REST fallback, SPX E2E Clerk mint hardening (#1454), merged-spot retry + 502 filter (#1456).
+
+**Status.** GREEN — no additional fix branch required.
+
 ## 2026-07-31 — [spx] Post-close fix agent — all validators GREEN (~1:05 PM PT)
 
 **Severity:** — (no product defect)

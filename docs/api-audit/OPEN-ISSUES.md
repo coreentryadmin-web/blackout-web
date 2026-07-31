@@ -1,5 +1,38 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-31 17:56 ET
+Last updated: 2026-07-31 18:10 ET
+
+## spx-rth-2026-07-31-post-close-final — SPX Slayer post-close fix agent (~3:10 PM PT / 6:10 PM ET)
+
+**Session:** SPX Slayer post-close fix agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` Step 6 (Cloud Agent `cursor/spx-post-close-findings-9fd0`). Commands: `npm run validate:spx-rth -- --phase=post-close` → `npm run validate:spx-e2e` → `npm run validate:deploy`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth -- --phase=post-close` | ✅ **6 PASS / 1 WARN / 0 FAIL** |
+| `npm run validate:spx-e2e` | ✅ **15 PASS / 2 SKIP / 1 WARN / 0 FAIL** — **175 UI rows** · **170 API strikes** |
+| `npm run validate:deploy` | ✅ GREEN |
+| Matrix deep audit (SPX) | ✅ Every GEX/VEX/DEX/CHARM cell finite; INV-2 |
+| Cross-endpoint spot/GEX | ✅ merged=7489.72 hm=7489.72 play=SCANNING/SCANNING |
+| Trade alerts | ✅ SCANNING — no stale ✓ confirmations |
+| BIE consistency | ✅ `getSpxPlayState()` single derivation |
+| Cross-tool integration | ✅ Thermal, HELIX, Largo, Grid, 0DTE, Night Hawk PASS |
+| `ops:collect` | ✅ exit 0 — zero action items |
+
+### Findings table (`spx-rth-2026-07-31`)
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| — | — | **No P0/P1 product defects** | all suites GREEN | — |
+| P2 | SPX-RTH-ENV-01 | Cloud-agent first pass failed on missing `node_modules` (tsx/playwright/pg) | harness env | Yes — `npm install` + `npx playwright install chromium` |
+| P2 | SPX-RTH-XEP-01 | Transient `merged spot 0` on first cross-endpoint probe while heatmap live | `/api/market/spx/merged` | **Fixed** harness retry (#1456) |
+| P2 | SPX-RTH-DC-01 | `CRON_SECRET` auth mismatch on data-correctness probe | `/api/cron/data-correctness` | Yes — env only |
+
+**Post-close status: GREEN** — zero FAIL on `validate:spx-rth` and `validate:spx-e2e`. All product fixes from today already merged (#1428 matrix timeout, #1454 E2E Clerk mint, #1456 merged-spot retry + 502 filter).
+
+**Reports:** `audit-output/spx-rth-2026-07-31-post-close-1785535842621.json`, `audit-output/spx-dashboard-e2e-1785535806573.json`
+
+---
 
 ## grid-rth-2026-07-31-pass5 — 0DTE Command RTH verify agent (~2:56 PM PT / 5:56 PM ET)
 
