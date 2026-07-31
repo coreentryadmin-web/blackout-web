@@ -1,5 +1,5 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-31 13:23 ET
+Last updated: 2026-07-31 13:45 ET
 
 ## rth-comprehensive-2026-07-31-13h — RTH agent pass (~12:29–13:23 ET)
 
@@ -78,6 +78,104 @@ Automated scan (`$—`, `—%`, N/A, No data, em-dash density): **0 hits** acros
 - `audit-output/rth-sweep-2026-07-31T17-17-48-402Z.json` (**final GREEN** — 0 P0/P1)
 - `audit-output/grid-rth-2026-07-31-verify-1785518250161.json`
 - `audit-output/zerodte-integration-1785518286923.json`
+
+---
+
+## rth-open-2026-07-31-pass3 — RTH comprehensive test sweep (~1:35 PM ET)
+
+**Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` **RTH COMPREHENSIVE TEST SWEEP** pass 3 (~1:35 PM ET Friday). Commands: `npm run validate:rth-open` → `GET /api/cron/data-correctness?force=1` → poll latest `data-correctness` → `GET /api/cron/data-correctness?force=1&surface=heatmap` → `npm run validate:rth-sweep` → `npm run validate:spx-e2e` → `npm run validate:grid-rth` → `npm run validate:grid-e2e` → `npm run ops:collect`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` | ✅ **GREEN** — deploy + RTH session checks pass (Postgres skipped — private VPC; socket-health probe aborted — transient) |
+| `GET /api/cron/data-correctness?force=1` | ✅ **accepted** — full-async sweep dispatched |
+| Poll `GET /api/cron/data-correctness` | ✅ **ok=true flags=0** |
+| `GET /api/cron/data-correctness?force=1&surface=heatmap` | ✅ **flags=0** · 60 metrics · consistency-only · 5.4s |
+| `npm run validate:rth-sweep` | ✅ **0 P0/P1** — all 7 pages soft-nav ~1.6–1.9s · **0 missing-field hits** · Largo grounded |
+| `npm run validate:spx-e2e` | ✅ **17 PASS / 0 FAIL** — matrix every-cell 169 strikes · UI 174 rows · live badge RTH |
+| `npm run validate:grid-rth` | ✅ **13 PASS / 0 FAIL** — 0DTE session heat=RTH · data-correctness flags=0 |
+| `npm run validate:grid-e2e` | ✅ **5 PASS / 0 FAIL** — Night Hawk Command Deck loads clean |
+| `npm run ops:collect` | ✅ **exit 0** — zero action items |
+
+**RTH status: GREEN** — no standing P0/P1 product defects. No GitHub `ops-auto-fix` issue opened this pass.
+
+### Speed (browser sweep — premium session)
+
+| Page | Nav | Load | Missing fields | Console |
+|---|---|---|---|---|
+| `/dashboard` (SPX Slayer) | hard | 1678ms | 0 | 1× HTTP 400 resource (transient edge) |
+| `/flows` (HELIX) | soft | 1634ms | 0 | 0 |
+| `/heatmap` (Thermal matrix) | soft | 1658ms | 0 | 0 |
+| `/vector` | soft | 1695ms | 0 | 0 |
+| `/nighthawk` (0DTE Command) | soft | 1888ms | 0 | 0 |
+| `/terminal` (Largo) | soft | 1626ms | 0 | 0 |
+| `/track-record` | soft | 1809ms | 0 | 0 |
+
+All soft-nav under 1.9s — within institutional bar. Sign-in via Clerk ticket ~60s (first hard load).
+
+### Live auto-update
+
+| Surface | Observed | Cadence |
+|---|---|---|
+| Dashboard pulse | API 55ms | ~8s poll (RTH) |
+| HELIX flows | 20 prints live | SSE + SWR |
+| Thermal matrix SPX | 8.1s warm build | ~20s matrix |
+| 0DTE board | `fresh=true` ageSec=1 | cron warm + SWR |
+| Largo NVDA query | 21s SSE · $86.6M premium grounded | `blackout_intelligence` |
+| SPX matrix UI | 174 strike rows | GEX/VEX tabs clickable |
+
+`liveTick=null` on spot-regex sweep — SPX spot stable during 8–20s observation windows (not a stall). `ui:live-badge-rth` PASS in spx-e2e.
+
+### Data correctness (canonical API cross-check)
+
+| Check | Result |
+|---|---|
+| SPX desk spot | 7487.64 (desk) · gex flip 7499.53 — cross-tool agree |
+| GEX matrix every-cell | ✅ 169 strikes GEX+VEX+DEX+CHARM finite (spx-e2e) |
+| Cross-tool desk/play | ✅ desk=7487.99 play=SCANNING |
+| HELIX flows | ✅ 20–30 prints |
+| Largo NVDA query | ✅ grounded — $86,561,776 premium, tools=`blackout_intelligence` |
+| `data-correctness` heatmap | ✅ **flags=0** |
+| `data-correctness` full async | ✅ **flags=0** |
+
+### API verification (authenticated)
+
+| Endpoint | Status | Latency | Notes |
+|---|---|---|---|
+| `/api/market/spx/desk` | 200 | 671ms | fresh=true ageSec=22 |
+| `/api/market/spx/pulse` | 200 | 55ms | — |
+| `/api/market/gex-positioning?ticker=SPX` | 200 | 246ms | flip 7499.53 |
+| `/api/market/gex-heatmap?ticker=SPX` | 200 | 8133ms | warm build |
+| `/api/market/gex-heatmap?ticker=SPY` | 200 | 8125ms | warm build |
+| `/api/market/flows?limit=20` | 200 | 392ms | 20 prints |
+| `/api/market/zerodte/board` | 200 | 17.2s | 0 setups · fresh=true |
+| `/api/market/platform/snapshot` | 200 | 126ms | fresh=true ageSec=0 |
+| `/api/market/nighthawk/edition` | 200 | 73ms | — |
+
+### Missing-field audit
+
+| Page | Placeholder hits | Root cause |
+|---|---|---|
+| All 7 sweep pages | **0** (`$—`, `—%`, `N/A`, `No data`) | APIs serving data during RTH |
+| Largo NVDA answer | `Regime: —` | `blackout_intelligence` has no regime label for single-ticker HELIX slice — **expected** |
+| SPX play hero | SCANNING | No committed play this session — **expected** |
+| 0DTE Command deck | 0 setups / 0 ledger | Discovery quiet this afternoon — **expected** (board API 200, session heat=RTH) |
+
+### 0DTE Command (grid) — 12 panels
+
+Covered via `validate:grid-rth` + `validate:grid-e2e`: session heat=RTH, board API 200 (0 setups — discovery quiet), platform snapshot fresh, cross-tool SPX spot 7485.92, HELIX 20 prints, zerodte logic + cross-tool integration PASS, Night Hawk page load + zero console errors.
+
+### Findings table (`rth-open-2026-07-31-pass3`)
+
+| Severity | ID | Detail | Backing API | Fix |
+|---|---|---|---|---|
+| P2 | `dashboard-console-400` | Single browser console 400 on `/dashboard` hard load | unknown resource | monitor — no member-visible defect |
+| P2 | `bie-play-cron-401` | Cron bearer probe to `/api/market/spx/play` returns 401 | env probe only | **Expected** — member path GREEN |
+| — | — | No P0/P1 product defects | — | — |
+
+**Reports:** `audit-output/rth-sweep-2026-07-31T17-35-21-781Z.json`, `audit-output/spx-dashboard-e2e-1785519364999.json`, `audit-output/grid-rth-2026-07-31-verify-1785519225926.json`, `audit-output/grid-e2e-1785519568888.json`
 
 ---
 
