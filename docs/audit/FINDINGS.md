@@ -101,7 +101,15 @@ now includes 503.
 
 **Files.** `src/features/spx/lib/spx-play-payload.ts`, `src/features/spx/lib/spx-service.ts`, `src/app/api/market/spx/play/route.ts`, `src/features/spx/lib/spx-play-verdict-bar.ts`, `src/features/spx/lib/spx-trade-alert-plays.ts`, `src/features/spx/lib/spx-play-kanban-chips.ts`.
 
-**Status.** `fix/spx-degraded-play-levels` → PR.
+**Status.** **Merged** PR #1468.
+
+## 2026-07-31 — [spx] E2E cross-tool desk spot 0 while matrix live (P2 harness)
+
+**Severity.** P2 — `validate:spx-e2e` FAIL `integration:spx-cross-tool` on transient `desk spot 0` while heatmap held 7489.72 (cold desk cache edge, same class as SPX-RTH-XEP-01).
+
+**Fix.** `spx-dashboard-e2e-audit.mjs`: retry desk + merged fetch when matrix spot live but desk price 0; only compare when `deskSpot > 0`.
+
+**Status.** `fix/spx-e2e-desk-spot-retry` → PR.
 
 ## 2026-07-31 — [spx] Post-close fix agent final — all validators GREEN (~3:10 PM PT / 6:10 PM ET)
 

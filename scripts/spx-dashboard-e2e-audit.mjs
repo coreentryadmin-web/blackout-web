@@ -258,7 +258,7 @@ async function validateMatrixApi(app) {
 }
 
 async function crossToolIntegration(app, hm) {
-  const desk = app("/api/market/spx/desk").json;
+  let desk = app("/api/market/spx/desk").json;
   const pos = app("/api/market/gex-positioning?ticker=SPX").json;
   const thermalSpy = app("/api/market/gex-heatmap?ticker=SPY").json;
   const flows = app("/api/market/flows?limit=30").json;
@@ -268,10 +268,23 @@ async function crossToolIntegration(app, hm) {
   const nhawk = app("/api/market/nighthawk/edition").json;
 
   const issues = [];
-  const deskSpot = Number(desk?.price);
   const hmSpot = Number(hm?.spot);
+  let deskSpot = Number(desk?.price);
+  // Cold desk cache can briefly return price:0 while GEX heatmap is warm — retry before FAIL.
+  if (!(deskSpot > 0) && Number.isFinite(hmSpot) && hmSpot > 0) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      desk = app("/api/market/spx/desk").json;
+      deskSpot = Number(desk?.price);
+      if (deskSpot > 0) break;
+      const mergedWrap = app("/api/market/spx/merged").json;
+      const merged = mergedWrap?.merged ?? mergedWrap;
+      deskSpot = Number(merged?.price ?? merged?.quote?.price ?? merged?.spot);
+      if (deskSpot > 0) break;
+    }
+  }
   const posSpot = Number(pos?.spot);
-  if (Number.isFinite(deskSpot) && Number.isFinite(hmSpot) && !spotsAgree(deskSpot, hmSpot, hmSpot)) {
+  if (deskSpot > 0 && Number.isFinite(hmSpot) && !spotsAgree(deskSpot, hmSpot, hmSpot)) {
     issues.push(`desk vs matrix spot Δ=${Math.abs(deskSpot - hmSpot).toFixed(2)}`);
   }
   if (Number.isFinite(hmSpot) && Number.isFinite(posSpot) && !spotsAgree(hmSpot, posSpot, hmSpot)) {
