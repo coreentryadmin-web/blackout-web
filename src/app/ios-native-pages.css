@@ -895,6 +895,34 @@ html.ios-app.ios-native-shell[data-ios-route="nighthawk"] .nighthawk-layout {
   gap: var(--ios-content-gap);
 }
 
+html.ios-app.ios-native-shell[data-ios-route="nighthawk"] .nighthawk-single-view {
+  min-height: 0 !important;
+  flex: 1;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="nighthawk"] .nh-deck {
+  flex: 1;
+  min-height: min(420px, calc(100dvh - var(--ios-header-offset) - var(--ios-tab-offset) - 7rem));
+  flex-direction: column;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="nighthawk"] .nh-deck-left {
+  width: 100%;
+  min-width: 0;
+  max-height: min(46dvh, 360px);
+  border-right: 0;
+  border-bottom: 1px solid rgba(53, 255, 158, 0.22);
+}
+
+html.ios-app.ios-native-shell[data-ios-route="nighthawk"] .nh-deck-right {
+  flex: 1;
+  min-height: 180px;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="nighthawk"] .nh-deck-rows {
+  max-height: none;
+}
+
 html.ios-app.ios-native-shell[data-ios-route="nighthawk"] .nighthawk-playbook-kicker {
   display: none;
 }

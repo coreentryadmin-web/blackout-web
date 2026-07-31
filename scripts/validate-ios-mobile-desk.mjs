@@ -261,14 +261,14 @@ if (nav.includes("iosToolLabel") && nav.includes("getIosToolNavLabel")) {
 }
 
 const siteLayout = readFileSync(join(root, "src/app/(site)/layout.tsx"), "utf8");
-const spxDash = readFileSync(join(root, "src/components/SpxDashboard.tsx"), "utf8");
+const spxDash = readFileSync(join(root, "src/features/spx/components/SpxDashboard.tsx"), "utf8");
 if (spxDash.includes("IosNativeSegment") && spxDash.includes("iosPanel")) {
   ok("spx:ios-panel-switcher");
 } else {
   fail("spx:ios-panel-switcher", "expected IosNativeSegment panel switcher");
 }
 
-const flowFeed = readFileSync(join(root, "src/components/FlowFeed.tsx"), "utf8");
+const flowFeed = readFileSync(join(root, "src/features/helix/components/FlowFeed.tsx"), "utf8");
 if (flowFeed.includes("iosView") && flowFeed.includes("helix-ios-toolbar")) {
   ok("helix:ios-view-switcher");
 } else {
@@ -316,25 +316,25 @@ else fail("flows:uses-helix-page-shell", "expected HelixPageShell");
 if (nhPage.includes("NighthawkPageShell")) ok("nighthawk:uses-nighthawk-page-shell");
 else fail("nighthawk:uses-nighthawk-page-shell", "expected NighthawkPageShell");
 
-const faqPage = readFileSync(join(root, "src/app/(site)/faq/page.tsx"), "utf8");
-const learnLayout = readFileSync(join(root, "src/app/(site)/learn/layout.tsx"), "utf8");
-if (faqPage.includes("FaqPageShell")) ok("faq:uses-faq-page-shell");
-else fail("faq:uses-faq-page-shell", "expected FaqPageShell");
-if (learnLayout.includes("LearnPageShell")) ok("learn:uses-learn-page-shell");
-else fail("learn:uses-learn-page-shell", "expected LearnPageShell");
+const faqPage = readFileSync(join(root, "src/app/(marketing)/faq/page.tsx"), "utf8");
+const learnLayout = readFileSync(join(root, "src/app/(marketing)/learn/layout.tsx"), "utf8");
+if (faqPage.includes("MarketingPageShell") && faqPage.includes("RedesignFaq")) ok("faq:uses-marketing-shell");
+else fail("faq:uses-marketing-shell", "expected MarketingPageShell + RedesignFaq");
+if (learnLayout.includes("MarketingPageShell")) ok("learn:uses-marketing-shell");
+else fail("learn:uses-marketing-shell", "expected MarketingPageShell in learn layout");
 
-const faqNative = readFileSync(join(root, "src/components/faq/FaqNativeView.tsx"), "utf8");
-if (faqNative.includes("faq-native-view") && faqNative.includes("IosNativeChipRail")) {
-  ok("faq:native-accordion-view");
+const redesignFaq = readFileSync(join(root, "src/components/landing/RedesignFaq.tsx"), "utf8");
+if (redesignFaq.includes("rl-faq-item") && redesignFaq.includes("<details")) {
+  ok("faq:accordion-details");
 } else {
-  fail("faq:native-accordion-view", "expected FaqNativeView accordion layout");
+  fail("faq:accordion-details", "expected RedesignFaq native details accordion");
 }
 
-const faqSection = readFileSync(join(root, "src/components/landing/FaqSection.tsx"), "utf8");
-if (faqSection.includes("FaqNativeView") && faqSection.includes("useIosNativeShell")) {
-  ok("faq:native-shell-gate");
+const pagesCssNh = readFileSync(join(root, "src/app/ios-native-pages.css"), "utf8");
+if (pagesCssNh.includes('[data-ios-route="nighthawk"] .nh-deck') && pagesCssNh.includes("flex-direction: column")) {
+  ok("nighthawk:ios-deck-stack");
 } else {
-  fail("faq:native-shell-gate", "expected FaqSection to gate native view");
+  fail("nighthawk:ios-deck-stack", "expected stacked nh-deck layout on iOS");
 }
 
 const learnHub = readFileSync(join(root, "src/components/learn/LearnHub.tsx"), "utf8");

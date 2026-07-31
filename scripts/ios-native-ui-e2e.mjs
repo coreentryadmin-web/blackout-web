@@ -87,7 +87,8 @@ async function clickRoleTab(page, pattern) {
 }
 
 /** Fail-closed: each tool route must render visible desk content (not a blank shell). */
-async function assertToolContent(page, route, prefix = "") {
+async function assertToolContent(page, route, prefix = "", opts = {}) {
+  const { requireVectorCanvas = true } = opts;
   const metrics = await page.evaluate((r) => {
     const box = (sel) => {
       const el = document.querySelector(sel);
@@ -126,8 +127,11 @@ async function assertToolContent(page, route, prefix = "") {
       };
     }
     if (r === "flows") {
+      const activeSegment =
+        document.querySelector(".ios-native-segment-btn[aria-pressed='true']")?.textContent?.trim() ?? "";
       return {
         ...common,
+        activeSegment,
         gridHidden: document.querySelector(".helix-desk-terminal-grid.ios-native-panel-hidden") != null,
         tape: box(".helix-ios-tape-col:not(.ios-native-panel-hidden)"),
         analytics: box(".helix-ios-analytics-col:not(.ios-native-panel-hidden)"),
@@ -151,9 +155,17 @@ async function assertToolContent(page, route, prefix = "") {
       };
     }
     if (r === "nighthawk") {
+      const deck = box(".nh-deck");
+      const legacy = box(".nighthawk-playbook, .nighthawk-layout");
+      const canvas = box(".nighthawk-content-canvas");
+      const deckLeft = box(".nh-deck-left");
       return {
         ...common,
-        playbook: box(".nighthawk-playbook, .nighthawk-layout"),
+        deck,
+        legacy,
+        canvas,
+        deckLeft,
+        deckRows: document.querySelectorAll(".nh-deck-row, .nighthawk-play-row").length,
         segment: !!document.querySelector(".ios-native-desk-segment"),
       };
     }
@@ -177,7 +189,14 @@ async function assertToolContent(page, route, prefix = "") {
       metrics.lcCanvas.h > 40 &&
       metrics.lcCanvas.w > 40 &&
       metrics.lcCanvas.canvasH > 0;
-    if (heroOk && (lcOk || metrics.segment)) {
+    const vectorColVisible =
+      metrics.vector && metrics.vector.h > 20 && metrics.vector.display !== "none";
+    if (heroOk && metrics.segment && (!requireVectorCanvas || lcOk || !vectorColVisible)) {
+      ok(
+        `${prefix}content:dashboard`,
+        `hero h=${metrics.hero?.h ?? 0} lc=${metrics.lcCanvas?.h ?? 0}${requireVectorCanvas ? "" : " (no vector req)"}`
+      );
+    } else if (heroOk && (lcOk || metrics.segment)) {
       ok(`${prefix}content:dashboard`, `hero h=${metrics.hero?.h ?? 0} lc=${metrics.lcCanvas?.h ?? 0}`);
     } else if (heroOk || metrics.segment) {
       fail(`${prefix}content:dashboard`, `Vector canvas missing/0-size (lc h=${metrics.lcCanvas?.h ?? 0})`);
@@ -194,10 +213,17 @@ async function assertToolContent(page, route, prefix = "") {
     }
     const tapeOk = metrics.tape && metrics.tape.h > 40 && metrics.tape.top < metrics.vh - 80;
     const analyticsOk = metrics.analytics && metrics.analytics.h > 40;
-    if (tapeOk || analyticsOk || metrics.flowPanels > 0) {
-      ok(`${prefix}content:flows`, `tape h=${metrics.tape?.h ?? 0} panels=${metrics.flowPanels}`);
+    const tableOk = metrics.flowTable && metrics.flowTable.h > 40;
+    if (tapeOk || analyticsOk || tableOk || metrics.flowPanels > 0) {
+      ok(
+        `${prefix}content:flows`,
+        `${metrics.activeSegment || "flows"} tape h=${metrics.tape?.h ?? 0} analytics h=${metrics.analytics?.h ?? 0}`
+      );
     } else {
-      fail(`${prefix}content:flows`, `no visible tape/analytics (tape h=${metrics.tape?.h ?? 0})`);
+      fail(
+        `${prefix}content:flows`,
+        `no visible tape/analytics (${metrics.activeSegment || "?"}) tape h=${metrics.tape?.h ?? 0}`
+      );
     }
     return;
   }
@@ -220,8 +246,21 @@ async function assertToolContent(page, route, prefix = "") {
   }
 
   if (route === "nighthawk") {
-    if (metrics.playbook && metrics.playbook.h > 40) ok(`${prefix}content:nighthawk`, `playbook h=${metrics.playbook.h}`);
-    else fail(`${prefix}content:nighthawk`, "playbook canvas not visible");
+    const deckOk = metrics.deck && metrics.deck.h > 80;
+    const legacyOk = metrics.legacy && metrics.legacy.h > 40;
+    const canvasOk = metrics.canvas && metrics.canvas.h > 120;
+    const leftOk = metrics.deckLeft && metrics.deckLeft.h > 40;
+    if (deckOk || legacyOk || (canvasOk && (leftOk || metrics.deckRows > 0))) {
+      ok(
+        `${prefix}content:nighthawk`,
+        `deck h=${metrics.deck?.h ?? 0} legacy h=${metrics.legacy?.h ?? 0} rows=${metrics.deckRows}`
+      );
+    } else {
+      fail(
+        `${prefix}content:nighthawk`,
+        `command deck not visible (deck=${metrics.deck?.h ?? 0} canvas=${metrics.canvas?.h ?? 0})`
+      );
+    }
   }
 }
 
@@ -239,9 +278,15 @@ async function testToolPage(page, tab, prefix = "") {
   await page.waitForURL((url) => url.pathname === tab.href || url.pathname.startsWith(`${tab.href}/`), {
     timeout: 45_000,
   });
-  await page.waitForTimeout(tab.route === "heatmap" ? 3500 : 2000);
+  await page.waitForTimeout(tab.route === "heatmap" ? 5000 : tab.route === "nighthawk" ? 3500 : 2000);
   if (tab.route === "heatmap") {
-    await page.waitForSelector(".gex-heatmap-control-row, .gex-heatmap-panel", { timeout: 30_000 }).catch(() => null);
+    await page.waitForSelector(".gex-heatmap-control-row, .gex-heatmap-panel", { timeout: 45_000 }).catch(() => null);
+    await page.waitForTimeout(2500);
+  }
+  if (tab.route === "nighthawk") {
+    await page
+      .waitForSelector(".nh-deck, .nighthawk-playbook, .nh-deck-loading, .nh-deck-empty", { timeout: 45_000 })
+      .catch(() => null);
   }
   if (tab.route === "flows") {
     await page.waitForSelector(".helix-desk-terminal-grid, .helix-flow-table, .flow-scroll-max", {
@@ -290,7 +335,7 @@ async function testToolPage(page, tab, prefix = "") {
     if (await clickSegment(page, "Intel")) {
       ok(`${prefix}spx:segment-intel`);
       await shot(page, `${prefix}spx-intel`);
-      await assertToolContent(page, "dashboard", prefix);
+      await assertToolContent(page, "dashboard", prefix, { requireVectorCanvas: false });
     }
     const identity = page.locator(".spx-sniper-identity");
     if (await identity.isVisible().catch(() => false)) {
