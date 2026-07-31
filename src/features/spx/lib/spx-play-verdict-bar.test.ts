@@ -108,3 +108,13 @@ test("buildPlayVerdictBarModel: closed when session inactive", () => {
   assert.equal(model.mode, "closed");
   assert.equal(model.badge, "CLOSED");
 });
+
+test("buildPlayVerdictBarModel: missing levels does not throw (degraded play path)", () => {
+  const { levels: _omit, ...withoutLevels } = basePlay();
+  const model = buildPlayVerdictBarModel(withoutLevels as SpxPlayPayload, {
+    sessionActive: true,
+    loading: false,
+  });
+  assert.equal(model.mode, "hunting");
+  assert.equal(model.levelsLine, null);
+});
