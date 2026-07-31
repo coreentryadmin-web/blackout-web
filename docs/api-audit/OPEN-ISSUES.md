@@ -18,7 +18,7 @@ Last updated: 2026-07-31 14:28 ET
 | `npm run validate:grid-rth` | ⚠️ **12/13** — only `infra:validate:rth-open` failed (same options-socket probe); all product checks PASS |
 | `npm run ops:collect` | ✅ **exit 0** (after `npm install` restored `pg` dep) |
 
-**Verify status:** Member-facing **GREEN** — zero missing-field hits, data-correctness flags=0. **Fix shipped:** `readUwClusterHealth` now falls back to `uw:rest:last_ok_at` (seeded by socket-health / uw-cache-refresh) when ingest WS heartbeat is absent — unblocks options-socket web-tier probe via existing polygon+uw promotion path.
+**Verify status:** Member-facing **GREEN** — zero missing-field hits, data-correctness flags=0. **Fix shipped:** PR #1443 (`readUwClusterHealth` REST fallback) + PR #1445 (direct seeded timestamp in socket-health). **Post-deploy re-verify (~2:57 PM ET):** `validate:rth-open` ✅ GREEN — `options-socket: web tier — ingest-owned WS (UW/Polygon cluster live)`.
 
 ### Comprehensive sweep — per-page (~2:18 PM ET)
 
