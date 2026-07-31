@@ -2704,7 +2704,11 @@ export function VectorChart({
       .then(async (res) => {
         if (!res.ok) return;
         const data = (await res.json()) as { bars?: VectorBar[]; sessionYmd?: string };
-        if (!data.bars?.length || data.sessionYmd !== sessionYmd) return;
+        if (!data.bars?.length) return;
+        // Embed hosts may still carry calendar-today while the seed API reports the latest
+        // session with bars (pre-open, weekend, Polygon lag). Seed when empty — never discard
+        // real bars on reconnect when the member already has a session painted.
+        if (data.sessionYmd !== sessionYmd && minuteBarsRef.current.length > 0) return;
         const merged = mergeBarsByTime(minuteBarsRef.current, data.bars);
         if (merged === minuteBarsRef.current) return;
         minuteBarsRef.current = merged;
@@ -3614,7 +3618,7 @@ export function VectorChart({
 
   return (
     <div className="vector-chart-wrap">
-      {!initialBars.length && (
+      {!sessionBars.length && (
         <p className="mb-3 font-mono text-xs text-sky-300">
           No SPX session bars available yet — wall beads, flip, and dark-pool levels load when data is present.
         </p>
