@@ -147,12 +147,12 @@ async function resolveNighthawkEdition(
     const edition = rowToNightHawkEdition(activePlayable);
     edition.carry_until_close = true;
     edition.served_for = activePlayable.edition_for;
-    return withPullOverlay(edition);
+    return await withPullOverlay(edition);
   }
 
   const exact = await fetchNighthawkEditionByDate(editionFor);
   if (exact) {
-    return withPullOverlay(rowToNightHawkEdition(exact));
+    return await withPullOverlay(rowToNightHawkEdition(exact));
   }
 
   const latest = await fetchLatestNighthawkEdition();
@@ -174,7 +174,7 @@ async function resolveNighthawkEdition(
       edition.stale = true;
       edition.served_for = edition.edition_for;
     }
-    return withPullOverlay(edition);
+    return await withPullOverlay(edition);
   }
 
   const legacy = await fetchLegacyPlays();

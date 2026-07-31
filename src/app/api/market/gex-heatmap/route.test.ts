@@ -44,6 +44,16 @@ mock.module("../../../../lib/providers/polygon-options-gex", {
       fetchGexHeatmapCalls++;
       return mockHeatmap;
     },
+    peekGexHeatmapCache: async () => ({
+      ticker: "SPY",
+      cached: false,
+      last_compute_at: null,
+      age_sec: null,
+      ttl_sec: 5,
+      stale: true,
+      spot: null,
+      events_count: null,
+    }),
   },
 });
 mock.module("../../../../lib/providers/gex-cross-validation", {
