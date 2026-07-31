@@ -197,6 +197,7 @@ mock.module("../ws/uw-socket", {
     // active-halt only), exactly like the real read scan.ts does with failClosedOnStale:false —
     // so the OLD scan (which never read staleness) committed here, proving the fail-before.
     isTradingHaltChannelStale: () => state.haltFeedStale,
+    warmUwClusterFreshnessFromRedis: async () => {},
     // WS-21: scan.ts reads the live source-health snapshot for the (default-off) recovery gate.
     // The mock must mirror the real module's surface; a benign "HEALTHY" keeps the gate inert.
     getFlowSourceHealthState: () => "HEALTHY",

@@ -1111,6 +1111,22 @@ function recordUwDelivery(channel: UwWsChannel): void {
   touchClusterFreshness(at);
 }
 
+/** Read ingest leader heartbeat from Redis into clusterFreshestAt (web-tier followers). */
+export async function warmUwClusterFreshnessFromRedis(): Promise<void> {
+  try {
+    const redis = await getUwCacheRedis();
+    if (!redis) return;
+    const val = await redis.get(UW_CLUSTER_LAST_MSG_KEY);
+    if (!val) return;
+    const at = Number(val);
+    if (Number.isFinite(at) && at > 0) {
+      clusterFreshestAt = mergeFreshestTimestamps(clusterFreshestAt, at);
+    }
+  } catch {
+    /* redis optional — stale check stays fail-closed until a later warm */
+  }
+}
+
 /**
  * Start the Redis-backed UW cluster freshness poller without opening an upstream socket.
  * Web tier (PROCESS_ROLE=web) must call this — initUwSocket is skipped there, but
@@ -1119,6 +1135,7 @@ function recordUwDelivery(channel: UwWsChannel): void {
 export function ensureUwClusterFreshnessPoller(): void {
   if (clusterFreshnessPollerStarted) return;
   clusterFreshnessPollerStarted = true;
+  void warmUwClusterFreshnessFromRedis();
   const poll = () => {
     void getUwCacheRedis()
       .then(async (redis) => {

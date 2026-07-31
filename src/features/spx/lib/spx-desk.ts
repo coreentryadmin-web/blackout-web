@@ -99,7 +99,7 @@ import { runUwPooled } from "@/lib/providers/uw-rate-limiter";
 import { fetchEngine } from "@/lib/engine";
 import { parseEngineIntelOverlay, type EngineIntelOverlay } from "@/lib/engine-intel-overlay";
 import { indexStore, getIndexFeedFreshness } from "@/lib/ws/polygon-socket";
-import { getActiveTradingHalts, isTradingHaltChannelStale } from "@/lib/ws/uw-socket";
+import { getActiveTradingHalts, isTradingHaltChannelStale, warmUwClusterFreshnessFromRedis } from "@/lib/ws/uw-socket";
 
 /** GEX-wall ladder size — a balanced ~5-per-side two-sided ladder (call wall above spot,
  *  put wall below). 10 fits the scrollable panel without crushing the Live Tape (bug #93). */
@@ -1739,6 +1739,7 @@ function gexSnapshotForPrice(price: number) {
 export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
   const { ensureDataSockets } = await import("@/lib/ws/init-data-sockets");
   ensureDataSockets();
+  await warmUwClusterFreshnessFromRedis();
   const polledAt = new Date().toISOString();
   const empty: SpxDeskPulse = {
     available: false,
@@ -1935,6 +1936,7 @@ export async function buildSpxDeskPulseMinimal(): Promise<SpxDeskPulse> {
 
   const { ensureDataSockets } = await import("@/lib/ws/init-data-sockets");
   ensureDataSockets();
+  await warmUwClusterFreshnessFromRedis();
 
   const empty: SpxDeskPulse = {
     available: false,

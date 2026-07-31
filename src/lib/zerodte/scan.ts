@@ -627,7 +627,8 @@ async function attachGateVerdicts(
         // module key the test harness mocks (mock.module("../ws/uw-socket")) — an alias vs relative
         // mismatch forces an extra resolution step that the experimental module-mock loader can lose
         // under concurrent-import contention, silently dropping the block (CI flake). Identical module.
-        const { shouldBlockForTradingHalt, isTradingHaltChannelStale } = await import("../ws/uw-socket");
+        const { shouldBlockForTradingHalt, isTradingHaltChannelStale, warmUwClusterFreshnessFromRedis } = await import("../ws/uw-socket");
+        await warmUwClusterFreshnessFromRedis();
         const active = new Set<string>();
         for (const t of freshTickers) {
           if (shouldBlockForTradingHalt([t], { failClosedOnStale: false }).block) active.add(t);
