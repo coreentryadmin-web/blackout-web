@@ -1,20 +1,13 @@
 import type { Metadata } from "next";
 import { MarketingPageShell } from "@/components/landing/MarketingPageShell";
 import { LegalPageLayout } from "@/components/landing/LegalPageLayout";
-import { SITE } from "@/lib/site";
+import { publicPageMetadata } from "@/lib/page-metadata";
 
-export const metadata: Metadata = {
-  title: "Terms of Service · BlackOut",
-  description:
-    "Terms of Service for BlackOut Trades — memberships, billing, cancellation, intellectual property, and user conduct.",
-  alternates: { canonical: `${SITE.url}/terms` },
-  openGraph: {
-    title: "Terms of Service · BlackOut",
-    description:
-      "Terms of Service for BlackOut Trades — memberships, billing, cancellation, intellectual property, and user conduct.",
-    url: `${SITE.url}/terms`,
-  },
-};
+export const metadata: Metadata = publicPageMetadata(
+  "Terms of Service — BlackOut",
+  "The terms and conditions governing your use of the BlackOut platform, subscriptions, and services.",
+  "/terms"
+);
 
 export default function TermsPage() {
   return (

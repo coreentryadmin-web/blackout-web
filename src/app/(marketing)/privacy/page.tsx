@@ -1,20 +1,13 @@
 import type { Metadata } from "next";
 import { MarketingPageShell } from "@/components/landing/MarketingPageShell";
 import { LegalPageLayout } from "@/components/landing/LegalPageLayout";
-import { SITE } from "@/lib/site";
+import { publicPageMetadata } from "@/lib/page-metadata";
 
-export const metadata: Metadata = {
-  title: "Privacy Policy · BlackOut",
-  description:
-    "How BlackOut Trades collects, uses, and protects your personal information — cookies, analytics, payments, and data retention.",
-  alternates: { canonical: `${SITE.url}/privacy` },
-  openGraph: {
-    title: "Privacy Policy · BlackOut",
-    description:
-      "How BlackOut Trades collects, uses, and protects your personal information — cookies, analytics, payments, and data retention.",
-    url: `${SITE.url}/privacy`,
-  },
-};
+export const metadata: Metadata = publicPageMetadata(
+  "Privacy Policy — BlackOut",
+  "How BlackOut collects, uses, and protects your personal information and data.",
+  "/privacy"
+);
 
 export default function PrivacyPage() {
   return (

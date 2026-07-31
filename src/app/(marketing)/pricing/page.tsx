@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import { MarketingPageShell } from "@/components/landing/MarketingPageShell";
 import { RedesignPricing } from "@/components/landing/RedesignPricing";
+import { publicPageMetadata } from "@/lib/page-metadata";
 
-export const metadata: Metadata = {
-  title: "Pricing · BlackOut",
-  description: "Premium membership — full desk access: HELIX flow, SPX Slayer, Largo, Night Hawk, and more.",
-};
+export const metadata: Metadata = publicPageMetadata(
+  "BlackOut Pricing — Plans From $49/mo, Cancel Anytime",
+  "Get BlackOut's SPX 0DTE desk from $49/mo, or all six trading modules plus Discord from $199/mo. No contracts, cancel anytime. See plans and get access.",
+  "/pricing"
+);
 
 export default function PricingPage() {
   return (

@@ -4,13 +4,11 @@ import { canAccessTool } from "@/lib/tool-access-server";
 import { ComingSoon } from "@/components/ComingSoon";
 import { NighthawkPageShell } from "@/features/nighthawk/components/NighthawkPageShell";
 import { parseNightHawkView } from "@/features/nighthawk/lib/nighthawk-view";
+import { noindexPageMetadata } from "@/lib/page-metadata";
 
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
-  title: "Night Hawk · BlackOut",
-  description: "Tomorrow's playbook — evening setups ranked and scored for the next session.",
-};
+export const metadata: Metadata = noindexPageMetadata("Night Hawk · BlackOut");
 
 type PageProps = {
   searchParams: Promise<{ view?: string }>;

@@ -2,20 +2,14 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { MarketingPageShell } from "@/components/landing/MarketingPageShell";
 import { LegalPageLayout } from "@/components/landing/LegalPageLayout";
+import { publicPageMetadata } from "@/lib/page-metadata";
 import { SITE } from "@/lib/site";
 
-export const metadata: Metadata = {
-  title: "Contact · BlackOut",
-  description:
-    "Get in touch with BlackOut Trades — support, billing questions, and community channels.",
-  alternates: { canonical: `${SITE.url}/contact` },
-  openGraph: {
-    title: "Contact · BlackOut",
-    description:
-      "Get in touch with BlackOut Trades — support, billing questions, and community channels.",
-    url: `${SITE.url}/contact`,
-  },
-};
+export const metadata: Metadata = publicPageMetadata(
+  "Contact BlackOut — Support & Questions",
+  "Get in touch with the BlackOut team for support, billing, or questions about the platform. Reach us here or join the community on Discord.",
+  "/contact"
+);
 
 export default function ContactPage() {
   return (

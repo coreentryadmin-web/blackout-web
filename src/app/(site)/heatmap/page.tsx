@@ -3,13 +3,11 @@ import { requireTier } from "@/lib/auth-access";
 import { canAccessTool } from "@/lib/tool-access-server";
 import { ComingSoon } from "@/components/ComingSoon";
 import { ThermalPageShell } from "@/features/thermal/components/ThermalPageShell";
+import { noindexPageMetadata } from "@/lib/page-metadata";
 
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
-  title: "BlackOut Thermal · BlackOut",
-  description: "Dealer gamma & vanna exposure mapped across the full options chain.",
-};
+export const metadata: Metadata = noindexPageMetadata("BlackOut Thermal · BlackOut");
 
 export default async function HeatmapPage() {
   await requireTier("premium");

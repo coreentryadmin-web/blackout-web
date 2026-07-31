@@ -1,8 +1,16 @@
 export const dynamic = "force-dynamic";
 
+import type { Metadata } from "next";
 import { MarketingPageShell } from "@/components/landing/MarketingPageShell";
 import { RedesignHome } from "@/components/landing/RedesignHome";
 import { signedInFromRequestCookies } from "@/lib/clerk-session-cookies";
+import { publicPageMetadata } from "@/lib/page-metadata";
+
+export const metadata: Metadata = publicPageMetadata(
+  "BlackOut — Live Dealer Gamma & 0DTE SPX Options Flow",
+  "BlackOut gives options traders live dealer gamma, 0DTE flow, and A–F graded SPX setups. See what the desks see and trade before the crowd moves.",
+  "/"
+);
 
 const LANDING_REDIRECT_SCRIPT =
   "try{var h=location.hash.slice(1);if(h==='faq')location.replace('/faq');else if(h==='pricing')location.replace('/pricing')}catch(e){}";

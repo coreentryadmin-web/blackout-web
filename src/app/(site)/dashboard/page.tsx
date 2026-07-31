@@ -3,14 +3,12 @@ import { requireTier } from "@/lib/auth-access";
 import { canAccessTool } from "@/lib/tool-access-server";
 import { SpxDashboard } from "@/features/spx";
 import { DeskShell } from "@/components/layout/DeskShell";
+import { noindexPageMetadata } from "@/lib/page-metadata";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export const metadata: Metadata = {
-  title: "SPX Slayer · BlackOut",
-  description: "Live SPX structure — GEX walls, dealer positioning, and session levels.",
-};
+export const metadata: Metadata = noindexPageMetadata("SPX Slayer · BlackOut");
 
 export default async function DashboardPage() {
   await requireTier("community");
