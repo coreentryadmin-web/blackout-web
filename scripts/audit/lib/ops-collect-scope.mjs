@@ -1,3 +1,20 @@
+import { isAuthFailureStatus, isTransientOriginError } from "./auth-status.mjs";
+
+/** True when the watchdog HTTP probe should backoff and retry (deploy blip / edge overload). */
+export function shouldRetryWatchdogFetch(status) {
+  return status === 0 || isTransientOriginError(status);
+}
+
+/**
+ * Priority for a failed cron-staleness-watchdog HTTP probe.
+ * Auth gaps (401/403) and transient origin 5xx are audit-env / deploy noise — not prod cron outages.
+ */
+export function watchdogHttpPriority(status) {
+  if (isAuthFailureStatus(status)) return "P2";
+  if (isTransientOriginError(status)) return "P2";
+  return "P0";
+}
+
 /** Parse ops:collect JSON from stdout (stderr may carry postgres-skip info). */
 export function parseOpsCollectPayload(stdout, stderr) {
   const blob = `${stdout}\n${stderr}`;

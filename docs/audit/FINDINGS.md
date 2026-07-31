@@ -4,6 +4,28 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-07-31 — [ops] ops-auto-fix #703 — transient watchdog HTTP 502 surfaced as P0
+
+**Severity.** P1 — `ops-auto-fix` GHA collector reported P0 `watchdog:http` during a healthy
+prod session; blocked autonomous close loop on issue #703.
+
+**Symptom.** `ops-auto-fix.yml` run `30652259150` (2026-07-31 17:44 UTC): `P0 Cron watchdog
+HTTP error` fingerprint `65a19bff24d2`. Cloud Agent re-probe with AWS `CRON_SECRET` → HTTP 200,
+`checked=34 problems=0`. `validate:cron` GREEN.
+
+**Root cause.** `ops-collect-action-items.mjs` retried only 524/network-0 on the watchdog probe;
+a single transient ALB/ECS **502** during rolling deploy was classified P0 and kept the standing
+issue open. Same class as post-close audit 502 flakes (FINDINGS 2026-07-29).
+
+**Fix.** `shouldRetryWatchdogFetch` + 3× backoff retry on 502/503/504/524/0; `watchdogHttpPriority`
+downgrades auth gaps **and** transient origin 5xx to P2 (not prod cron outage). `isTransientOriginError`
+now includes 503.
+
+**Files.** `scripts/ops-collect-action-items.mjs`, `scripts/audit/lib/ops-collect-scope.mjs`,
+`scripts/audit/lib/auth-status.mjs`.
+
+**Status.** `cursor/autonomous-ops-maintenance-be56` → PR.
+
 ## 2026-07-31 — [spx] Matrix UI "unavailable" while API valid — client 10s fetch abort (P0)
 
 **Severity.** P0 — members saw "Matrix unavailable — retrying…" on `/dashboard` during RTH while `/api/market/gex-heatmap?ticker=SPX` held 170–175 valid strikes.

@@ -24,6 +24,7 @@ import {
 import { auditSecret } from "./audit/lib/prod-secrets.mjs";
 import { probeDataCorrectness } from "./audit/lib/data-correctness-probe.mjs";
 import { isXMarketingCronSuppressed } from "./audit/lib/x-marketing-paused.mjs";
+import { shouldRetryWatchdogFetch, watchdogHttpPriority } from "./audit/lib/ops-collect-scope.mjs";
 
 const pretty = process.argv.includes("--pretty");
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
@@ -199,18 +200,20 @@ async function httpItems() {
 
   try {
     // Cloudflare origin timeout is ~100s; self-heal used to block the watchdog past that.
-    // 90s cap + one retry avoids a transient 524 becoming a standing P0.
+    // Retry transient 502/503/504/524 (ECS rolling deploy, ALB drain) before paging.
     const WATCHDOG_TIMEOUT_MS = 90_000;
-    let w = await fetchWithTimeout(`${BASE}/api/cron/cron-staleness-watchdog`, H, WATCHDOG_TIMEOUT_MS);
-    if (w.status === 524 || w.status === 0) {
-      await new Promise((r) => setTimeout(r, 2000));
+    const WATCHDOG_MAX_ATTEMPTS = 3;
+    let w = { status: 0, json: null };
+    for (let attempt = 0; attempt < WATCHDOG_MAX_ATTEMPTS; attempt++) {
+      if (attempt > 0) {
+        await new Promise((r) => setTimeout(r, 2000 * attempt));
+      }
       w = await fetchWithTimeout(`${BASE}/api/cron/cron-staleness-watchdog`, H, WATCHDOG_TIMEOUT_MS);
+      if (w.status === 200 || !shouldRetryWatchdogFetch(w.status)) break;
     }
     const wj = w.json ?? {};
     if (w.status !== 200) {
-      // Cloud-agent CRON_SECRET often mismatches prod Secrets Manager — 401 here is
-      // an audit-env auth gap, not a prod cron outage (ECS tasks use the real secret).
-      const pri = w.status === 401 ? "P2" : "P0";
+      const pri = watchdogHttpPriority(w.status);
       add(pri, "watchdog", "watchdog:http", "Cron watchdog HTTP error", `HTTP ${w.status}${w.err ? ` (${w.err})` : ""}`);
     } else {
       for (const key of wj.rth_stale_keys ?? []) {
