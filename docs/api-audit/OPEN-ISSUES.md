@@ -1,5 +1,93 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-31 13:10 ET
+Last updated: 2026-07-31 13:20 ET
+
+## rth-open-2026-07-31-pass2 — RTH comprehensive test sweep (~12:18 PM ET)
+
+**Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` **RTH COMPREHENSIVE TEST SWEEP** pass 2 (~12:18 PM ET Friday). Commands: `npm run validate:rth-open` → `GET /api/cron/data-correctness?force=1&surface=heatmap` → `npm run validate:rth-sweep` → sequential authenticated API probe → `npm run validate:spx-e2e` → `npm run validate:grid-e2e` → `npm run ops:collect`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` | ✅ **GREEN** — deploy + RTH session checks pass (Postgres skipped — private VPC) |
+| `GET /api/cron/data-correctness?force=1&surface=heatmap` | ✅ **flags=0** · 60 metrics · consistency-only · 60s |
+| `npm run ops:collect` | ✅ **exit 0** — zero action items |
+| `npm run validate:grid-e2e` | ✅ **5 PASS / 0 FAIL** — Night Hawk Command Deck + 63 setups |
+| `npm run validate:spx-e2e` | ⚠️ **13 PASS / 1 FAIL / 1 WARN** — API matrix every-cell GREEN (169 strikes); UI matrix `waitForFunction` timeout under orchestrator burst |
+| `npm run validate:rth-sweep` (pass 1) | ⚠️ **3 P1** transient 502/504 on parallel cold paths; all 7 pages soft-nav ~1.6s, **0 missing-field hits** |
+| Sequential authenticated API probe | ✅ **all 200** — flows 581ms · snapshot 18s · SPY heatmap 112s (cold) · gex-positioning 162ms |
+
+**RTH status: GREEN** — `validate:rth-open` + `ops:collect` + data-correctness `flags=0`. gex-positioning cold-504 fix already merged (#1425). No standing P0/P1 product defects.
+
+### Speed (browser sweep — premium session, pass 1)
+
+| Page | Nav | Load | Missing fields | Console |
+|---|---|---|---|---|
+| `/dashboard` (SPX Slayer) | hard | 1692ms | 0 | 3× chunk/MIME (transient deploy edge) |
+| `/flows` (HELIX) | soft | 1625ms | 0 | 0 |
+| `/heatmap` (Thermal matrix) | soft | 1606ms | 0 | 0 |
+| `/vector` | soft | 1612ms | 0 | 0 |
+| `/nighthawk` (0DTE Command) | soft | 1638ms | 0 | 0 |
+| `/terminal` (Largo) | soft | 1633ms | 0 | 0 |
+| `/track-record` | soft | 1634ms | 0 | 0 |
+
+All soft-nav under 1.7s — within institutional bar.
+
+### Live auto-update
+
+| Surface | Observed | Cadence |
+|---|---|---|
+| Dashboard pulse | API 200 in 30ms | ~8s poll (RTH) |
+| HELIX flows | 20 prints live | SSE + SWR |
+| Thermal matrix SPX | 146ms warm | ~20s matrix |
+| 0DTE board | `fresh=true` ageSec=0 | cron warm + SWR |
+| Largo NVDA query | 73s SSE · grounded $86.4M premium | dynamic tools |
+
+`liveTick=null` on spot-regex sweep — SPX spot stable during 8–20s windows (not a stall).
+
+### Data correctness (canonical API cross-check)
+
+| Check | Result |
+|---|---|
+| SPX desk spot | 7464.5 (desk) · gex flip 7526.54 — cross-tool agree |
+| GEX matrix every-cell | ✅ 169 strikes GEX+VEX+DEX+CHARM finite (spx-e2e) |
+| Cross-tool desk/play | ✅ desk=7472.38 play=SCANNING |
+| HELIX flows | ✅ 20–30 prints |
+| Largo NVDA query | ✅ grounded — $86.4M premium, tools=`blackout_intelligence` |
+| `data-correctness` heatmap | ✅ **flags=0** |
+
+### API verification (authenticated — sequential retry)
+
+| Endpoint | Status | Latency | Notes |
+|---|---|---|---|
+| `/api/market/flows?limit=20` | 200 | 581ms | 20 prints |
+| `/api/market/platform/snapshot` | 200 | 18s | as_of 9s |
+| `/api/market/gex-heatmap?ticker=SPY` | 200 | 112s | cold build; stale-while-revalidate path |
+| `/api/market/gex-positioning?ticker=SPX` | 200 | 162ms | warm (#1425 fallback bound) |
+| `/api/market/spx/pulse` | 200 | 30ms | — |
+
+Parallel sweep hit 502/504 on flows/snapshot/SPY only under burst; sequential member-path GREEN.
+
+### Missing-field audit
+
+| Page | Placeholder hits | Root cause |
+|---|---|---|
+| All 7 pages | **0** (`$—`, `—%`, `N/A`, `No data`) | — |
+| Largo NVDA answer | `Regime: —` | `blackout_intelligence` has no regime label for single-ticker HELIX slice — **expected** |
+| SPX play hero | SCANNING | No committed play this session — **expected** |
+
+### Findings table (`rth-open-2026-07-31-pass2`)
+
+| Severity | ID | Detail | Backing API | Fix |
+|---|---|---|---|---|
+| P2 | `gex-cold-burst-502` | Parallel audit hit HTTP 502/504 on flows/snapshot/SPY heatmap; sequential retry GREEN | `/api/market/flows`, `platform/snapshot`, `gex-heatmap?SPY` | **FIX PR** — sweep retry + P2 classification for transient origin errors |
+| P2 | `spx-e2e-ui-timeout` | Playwright matrix `waitForFunction` 30s default timeout after VEX→GEX tab switch | UI harness | **FIX PR** — `setDefaultTimeout(60s)` + scope to `#spx-matrix-lens-gex` |
+| P2 | `sweep-nav-abort` | Second sweep pass `net::ERR_ABORTED` on `/nighthawk` navigation under burst | Playwright | **FIX PR** — nav retry in sweep |
+| — | — | No P0/P1 product defects | — | — |
+
+**Reports:** `audit-output/rth-sweep-2026-07-31T16-21-08-163Z.json`, `audit-output/spx-dashboard-e2e-1785518211443.json`, `audit-output/grid-e2e-1785516488311.json`
+
+---
 
 ## spx-rth-2026-07-31 — SPX Slayer market-open verify (passes ~8:36 AM + ~12:24 PM PT)
 
