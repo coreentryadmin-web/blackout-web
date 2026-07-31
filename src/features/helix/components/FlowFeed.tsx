@@ -935,14 +935,9 @@ export function FlowFeed() {
 
       {/* ── Filter bar ──────────────────────────────────────────────────── */}
       {nativeShell ? (
-        <div
-          className={clsx(
-            "helix-native-toolbar",
-            nativeShell && iosView !== "tape" && "ios-native-panel-hidden"
-          )}
-        >
+        <div className="helix-native-toolbar">
           <IosSectionHeader
-            label="Tape filters"
+            label={iosView === "tape" ? "Tape filters" : "Scope & filters"}
             action={{
               label: helixToolsOpen ? "Hide tools" : "More tools",
               onClick: () => setHelixToolsOpen((v) => !v),
@@ -978,9 +973,10 @@ export function FlowFeed() {
               placeholder="Ticker"
               aria-label="Search ticker"
               maxLength={6}
-              className="font-mono font-bold rounded-lg border bg-[rgba(8,9,14,0.85)] outline-none tracking-widest uppercase border-[rgba(0,230,118,0.35)] text-[#a3e635] placeholder:text-[rgba(0,230,118,0.35)]"
+              className="helix-native-ticker-input font-mono font-bold rounded-lg border bg-[rgba(8,9,14,0.85)] outline-none tracking-widest uppercase border-[rgba(0,230,118,0.35)] text-[#a3e635] placeholder:text-[rgba(0,230,118,0.35)]"
             />
           </div>
+          {iosView === "tape" ? (
           <div className="helix-native-toolbar-row">
             <div className="flow-seg-group">
               {PREMIUM_PRESETS.map((v) => (
@@ -995,6 +991,7 @@ export function FlowFeed() {
               ))}
             </div>
           </div>
+          ) : null}
           {helixToolsOpen ? (
             <div className="helix-native-toolbar-tools">
               <button

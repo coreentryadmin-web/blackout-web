@@ -11,6 +11,15 @@ test("FlowFeed iOS segment must not hide parent helix-desk-terminal-grid", () =>
   );
   assert.match(src, /helix-ios-tape-col[\s\S]*iosView !== "tape" && "ios-native-panel-hidden"/);
   assert.match(src, /useState<"tape" \| "analytics">\("tape"\)/);
+  assert.doesNotMatch(
+    src,
+    /helix-native-toolbar[\s\S]{0,120}ios-native-panel-hidden/
+  );
+});
+
+test("ios-native-nav panel enter keeps opacity at 1 (WKWebView safe)", () => {
+  const css = readFileSync(join(process.cwd(), "src/app/ios-native-nav.css"), "utf8");
+  assert.match(css, /ios-panel-enter[\s\S]*opacity:\s*1/);
 });
 
 test("IosNativePageTransition keeps tool routes opaque on enter (no blank WKWebView flash)", () => {
