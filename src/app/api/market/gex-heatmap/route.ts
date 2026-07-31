@@ -14,6 +14,7 @@ import { isUwCircuitOpen } from "@/lib/providers/uw-rate-limiter";
 import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
 import { requireAnyToolApi } from "@/lib/tool-access-server";
 import { isHeatmapOverlayAllowed } from "@/lib/heatmap-allowlist";
+import { gexHeatmapEnrichmentMaxMs } from "@/lib/providers/config";
 import { dbConfigured, fetchLatestNighthawkEdition } from "@/lib/db";
 import { roundFloats, reconcileStrikeTotal } from "@/lib/round-floats";
 import { isEtCashRth } from "@/lib/et-market-hours";
@@ -139,12 +140,11 @@ async function buildDarkPoolLevels(ticker: string): Promise<GexDarkPoolLevel[] |
 const NO_OVERLAYS: GexHeatmapOverlays = { flow_by_strike: null, dark_pool_levels: null };
 
 /** Never block the matrix response on slow UW overlay / cross-val / NH lookups. */
-const ROUTE_FANOUT_TIMEOUT_MS = 8_000;
-
-function withRouteFanoutTimeout<T>(promise: Promise<T>, fallback: T): Promise<T> {
+function withEnrichmentTimeout<T>(promise: Promise<T>, fallback: T): Promise<T> {
+  const ms = gexHeatmapEnrichmentMaxMs();
   return Promise.race([
     promise,
-    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ROUTE_FANOUT_TIMEOUT_MS)),
+    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
   ]);
 }
 
@@ -323,25 +323,31 @@ export async function GET(req: NextRequest) {
 
     // Cross-tool overlays, Night Hawk context, and UW cross-validation are independent —
     // fan out in parallel (was sequential: overlays → nighthawk → validate).
-    const overlaysPromise = getOverlays(ticker, heatmap.strikes);
-    const nighthawkPromise = getNightHawkContext(ticker);
+    const overlaysPromise = withEnrichmentTimeout(
+      getOverlays(ticker, heatmap.strikes),
+      { overlays: NO_OVERLAYS, at: null }
+    );
+    const nighthawkPromise = withEnrichmentTimeout(getNightHawkContext(ticker), null);
     const crossValPromise =
       isHeatmapPreset(ticker) && heatmap.gex
-        ? validateGexAgainstUW(
-            ticker,
-            {
-              callWall: heatmap.gex.call_wall,
-              putWall: heatmap.gex.put_wall,
-              gammaFlip: heatmap.gex.flip,
-            },
-            { spot: heatmap.spot, nearTermExpiries }
-          ).catch(() => null)
+        ? withEnrichmentTimeout(
+            validateGexAgainstUW(
+              ticker,
+              {
+                callWall: heatmap.gex.call_wall,
+                putWall: heatmap.gex.put_wall,
+                gammaFlip: heatmap.gex.flip,
+              },
+              { spot: heatmap.spot, nearTermExpiries }
+            ).catch(() => null),
+            null
+          )
         : Promise.resolve(null);
 
     const [{ overlays, at: overlaysAt }, nighthawkContext, cross_validation] = await Promise.all([
-      withRouteFanoutTimeout(overlaysPromise, { overlays: NO_OVERLAYS, at: null }),
-      withRouteFanoutTimeout(nighthawkPromise, null),
-      withRouteFanoutTimeout(crossValPromise, null),
+      overlaysPromise,
+      nighthawkPromise,
+      crossValPromise,
     ]);
 
     // A non-null heatmap can still be UNUSABLE: fetchGexHeatmap's emptyHeatmap() fallback

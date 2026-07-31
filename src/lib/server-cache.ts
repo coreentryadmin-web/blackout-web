@@ -104,11 +104,19 @@ export function isDegraded(key: string): boolean {
   return degradedKeys.has(key);
 }
 
+/** Cold-path Redis reads must never wedge member polls behind a slow ElastiCache hop. */
+const REDIS_READ_RACE_MS = 500;
+
 async function readRedisCache<T>(key: string): Promise<{ value: T; remainingTtlSec: number } | null> {
   if (!process.env.REDIS_URL?.trim()) return null;
   try {
     const { sharedCacheGetWithTtl } = await import("./shared-cache");
-    return sharedCacheGetWithTtl<T>(`server:${key}`);
+    const read = sharedCacheGetWithTtl<T>(`server:${key}`);
+    const raced = await Promise.race([
+      read,
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), REDIS_READ_RACE_MS)),
+    ]);
+    return raced;
   } catch {
     return null;
   }
@@ -224,7 +232,17 @@ export async function withServerCache<T>(
     if (raced !== "timeout") return raced;
     if (opts.fallback) return opts.fallback() as Promise<T>;
     if (hit) return hit.value;
-    return refresh;
+    // Never await the slow cold build after the cap — keep refreshing in background.
+    refreshCacheInBackground(key, ttlMs, loader, localOnly);
+    const pending = inflight.get(key) as Promise<T> | undefined;
+    if (pending) {
+      const racedPending = await Promise.race([
+        pending,
+        new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), maxBlock)),
+      ]);
+      if (racedPending !== "timeout") return racedPending;
+    }
+    throw new Error(`[server-cache] ${key}: cold miss exceeded maxBlockMs`);
   }
 
   return refreshCache(key, ttlMs, loader, localOnly);
