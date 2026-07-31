@@ -1,3 +1,5 @@
+import type { LearnArticle } from '@/lib/learn/articles'
+
 const BASE = 'https://blackouttrades.com'
 
 export const organizationSchema = {
@@ -46,4 +48,20 @@ export const faqSchema = {
     { q: 'Is BlackOut good for beginners?', a: 'BlackOut is most useful once you understand basic options concepts, but the Learn/Academy section teaches dealer gamma, 0DTE, and flow from the ground up so newer traders can grow into it.' },
     { q: 'How do I get access?', a: 'Choose a plan on the Pricing page and sign up. You can start with SPX Slayer at $49/month and upgrade to Premium anytime.' },
   ].map(({ q, a }) => ({ '@type': 'Question', name: q, acceptedAnswer: { '@type': 'Answer', text: a } })),
+}
+
+export function articleSchema(article: LearnArticle) {
+  const words = article.body.split(/\s+/).length;
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'Article',
+    headline: article.title,
+    description: article.metaDescription,
+    url: `${BASE}${article.path}`,
+    wordCount: words,
+    author: { '@type': 'Organization', name: 'BlackOut Trades', url: BASE },
+    publisher: { '@type': 'Organization', name: 'BlackOut Trades', url: BASE, logo: { '@type': 'ImageObject', url: `${BASE}/images/blackout-emblem.webp` } },
+    mainEntityOfPage: { '@type': 'WebPage', '@id': `${BASE}${article.path}` },
+    isPartOf: { '@type': 'WebSite', name: 'BlackOut Trades', url: BASE },
+  }
 }

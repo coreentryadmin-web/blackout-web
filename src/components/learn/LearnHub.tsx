@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { motion, useReducedMotion } from "framer-motion";
-import { BookOpen, Compass } from "lucide-react";
+import { BookOpen, Compass, FileText } from "lucide-react";
 import { clsx } from "clsx";
 import { ProductMark } from "@/components/marks/ProductMark";
 import { CURRICULUM } from "@/lib/learn/curriculum";
 import { LEARN_NAV, learnHref } from "@/lib/learn/nav";
+import { LEARN_ARTICLES } from "@/lib/learn/articles";
 import { LearnHeroGlow, LearnStagger, LearnStaggerItem } from "@/components/learn/LearnMotion";
 import { useIosNativeShell } from "@/hooks/useIosNativeShell";
 import { BorderBeam } from "@/components/ui/motion/BorderBeam";
@@ -99,6 +100,64 @@ export function LearnHub() {
           </LearnStaggerItem>
         ))}
       </LearnStagger>
+
+      {/* SEO Guides section */}
+      <div className={clsx("mt-14", native && "mt-8")}>
+        <div className="mb-6 flex items-center gap-2">
+          <FileText className="size-4 text-cyan-300" aria-hidden />
+          <h2 className="font-mono text-[11px] font-semibold uppercase tracking-[0.2em] text-cyan-300">
+            Guides
+          </h2>
+        </div>
+
+        {/* Pillar guide — featured */}
+        {LEARN_ARTICLES.filter((a) => a.type === "pillar").map((article) => (
+          <Link key={article.slug} href={article.path} className="group mb-4 block">
+            <motion.div
+              className={clsx("learn-hub-featured", native && "learn-hub-featured-native")}
+              whileHover={reduced ? undefined : { y: -2 }}
+              transition={{ duration: 0.25 }}
+            >
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                <span className="grid size-12 shrink-0 place-items-center rounded-2xl border border-cyan-400/30 bg-cyan-400/10">
+                  <BookOpen className="size-6 text-cyan-300" aria-hidden />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.25em] text-cyan-300">
+                    Pillar Guide
+                  </p>
+                  <p className="mt-1 font-syne text-xl font-bold text-white">{article.title}</p>
+                  <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-secondary">{article.description}</p>
+                </div>
+                <span className="font-mono text-sm text-cyan-300 opacity-80 transition group-hover:opacity-100">
+                  Read →
+                </span>
+              </div>
+            </motion.div>
+          </Link>
+        ))}
+
+        <LearnStagger className={clsx("grid gap-4", native ? "grid-cols-1" : "sm:grid-cols-2 xl:grid-cols-3")}>
+          {LEARN_ARTICLES.filter((a) => a.type !== "pillar").map((article) => (
+            <LearnStaggerItem key={article.slug}>
+              <Link href={article.path} className="group block h-full">
+                <div className="learn-hub-card h-full">
+                  <div className="flex items-center gap-3">
+                    <span className="grid size-10 place-items-center rounded-xl border border-white/10 bg-white/[0.04] font-mono text-xs text-cyan-300">
+                      <FileText className="size-4" aria-hidden />
+                    </span>
+                    <span className="font-sans text-sm font-semibold text-white">{article.title}</span>
+                  </div>
+                  <p className="mt-3 flex-1 text-sm leading-relaxed text-secondary">{article.description}</p>
+                  <span className="mt-4 font-mono text-[11px] text-cyan-300/80 opacity-0 transition group-hover:opacity-100">
+                    Read guide →
+                  </span>
+                </div>
+              </Link>
+            </LearnStaggerItem>
+          ))}
+        </LearnStagger>
+      </div>
     </div>
   );
 }

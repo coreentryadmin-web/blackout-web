@@ -3,9 +3,11 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { clsx } from "clsx";
+import { FileText } from "lucide-react";
 import { ProductMark } from "@/components/marks/ProductMark";
 import { CURRICULUM } from "@/lib/learn/curriculum";
 import { LEARN_NAV, learnHref, type LearnSlug } from "@/lib/learn/nav";
+import { LEARN_ARTICLES } from "@/lib/learn/articles";
 
 function slugFromPath(path: string): LearnSlug | undefined {
   if (path === "/learn") return undefined;
@@ -78,6 +80,34 @@ export function LearnSidebar() {
           );
         })}
       </ol>
+
+      <div className="mt-6 border-t border-white/10 pt-4">
+        <p className="mb-2 font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-mute">
+          Guides
+        </p>
+        <ul className="learn-sidebar-list">
+          {LEARN_ARTICLES.map((article) => {
+            const isActive = path === article.path;
+            return (
+              <li key={article.slug}>
+                <Link
+                  href={article.path}
+                  className={clsx(
+                    "learn-sidebar-link group",
+                    isActive && "learn-sidebar-link--active",
+                  )}
+                  aria-current={isActive ? "page" : undefined}
+                >
+                  <FileText className="size-3.5 shrink-0 text-mute" aria-hidden />
+                  <span className="min-w-0 truncate font-mono text-[12px] leading-snug">
+                    {article.title}
+                  </span>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
     </nav>
   );
 }
