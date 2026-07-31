@@ -9,7 +9,7 @@ import {
 import { sanitizeFeedText } from "@/lib/largo/sanitize-feed-text";
 import { roundFloats } from "@/lib/round-floats";
 import { getGexPositioning } from "@/lib/providers/gex-positioning";
-import { getActiveTradingHalts, isTradingHaltChannelStale, tideStore } from "@/lib/ws/uw-socket";
+import { getActiveTradingHalts, isTradingHaltChannelStale, tideStore, warmUwClusterFreshnessFromRedis } from "@/lib/ws/uw-socket";
 import { getLargoSpxLiveDesk } from "@/lib/largo/spx-desk-cache";
 import { computeSpxConfluence } from "@/features/spx/lib/spx-signals";
 import { loadLottoRecord } from "@/features/spx/lib/spx-lotto-store";
@@ -147,7 +147,10 @@ export async function captureLargoLiveFeed(
   const settled = await Promise.all(jobs.map(async (j) => ({ key: j.key, data: await j.promise })));
   const feed: LargoLiveFeed = {};
   for (const row of settled) feed[row.key] = row.data;
-  // Trading halt state is synchronous (in-process store) — no async job needed.
+  // Trading halt state — warm cluster heartbeat on web tier before the sync stale read.
+  const { ensureDataSockets } = await import("@/lib/ws/init-data-sockets");
+  ensureDataSockets();
+  await warmUwClusterFreshnessFromRedis();
   const activeHalts = getActiveTradingHalts();
   feed.halts = {
     active_halts: activeHalts.map((h) => ({ symbol: h.symbol, halt_type: h.halt_type, reason: h.reason })),
