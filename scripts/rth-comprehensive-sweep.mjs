@@ -189,21 +189,33 @@ function freshAsOf(json, maxSec = 300) {
   return { fresh: ageSec <= maxSec, ageSec: Math.round(ageSec) };
 }
 
+function isTransientOriginStatus(status) {
+  return status === 0 || status === 502 || status === 503 || status === 504 || status === 524;
+}
+
+function shouldRetryColdPath(path, status) {
+  if (!isTransientOriginStatus(status)) return false;
+  return (
+    path.includes("gex-heatmap") ||
+    path.includes("gex-positioning") ||
+    path.includes("zerodte/board") ||
+    path.includes("/flows") ||
+    path.includes("platform/snapshot")
+  );
+}
+
 async function auditApis(app) {
   for (const path of [...MARKET_APIS, ...ZERODTE_APIS]) {
     let r = app(path);
-    // Cold SPX matrix / 0DTE board builds can exceed Cloudflare's ~100s origin timeout; warm retry.
-    if (
-      (r.status === 0 || r.status === 504 || r.status === 524) &&
-      (path.includes("gex-heatmap?ticker=SPX") || path.includes("zerodte/board"))
-    ) {
+    // Cold matrix / snapshot / flows under parallel audit burst can 502/504 at the edge; warm retry.
+    if (shouldRetryColdPath(path, r.status)) {
       await new Promise((res) => setTimeout(res, 3000));
       r = app(path);
     }
     const { fresh, ageSec } = freshAsOf(r.json, path.includes("earnings") ? 600 : 300);
     const entry = { path, status: r.status, ms: r.ms, fresh, ageSec };
     if (r.status !== 200) {
-      const sev = r.status === 524 || r.status === 0 ? "P2" : "P1";
+      const sev = isTransientOriginStatus(r.status) ? "P2" : "P1";
       report.issues.push({ severity: sev, id: `api-${path}`, detail: `HTTP ${r.status}` });
     } else if (fresh === false) report.issues.push({ severity: "P2", id: `stale-${path}`, detail: `as_of ${ageSec}s old` });
     report.apis.push(entry);
@@ -287,7 +299,18 @@ async function browserSweep(signInUrl) {
   for (const { path, label, liveWaitMs } of PAGES) {
     const hardT0 = Date.now();
     const navType = prevPath ? "soft" : "hard";
-    await page.goto(`${BASE}${path}`, { waitUntil: "domcontentloaded", timeout: 60000 });
+    for (let navAttempt = 0; navAttempt < 2; navAttempt++) {
+      try {
+        await page.goto(`${BASE}${path}`, { waitUntil: "domcontentloaded", timeout: 60000 });
+        break;
+      } catch (err) {
+        if (navAttempt === 0) {
+          await page.waitForTimeout(2000);
+          continue;
+        }
+        throw err;
+      }
+    }
     await page.waitForTimeout(1500);
     const loadMs = Date.now() - hardT0;
 
