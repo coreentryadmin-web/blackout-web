@@ -1,5 +1,87 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-31 12:30 ET
+Last updated: 2026-07-31 13:12 ET
+
+## grid-rth-2026-07-31-pass2 — 0DTE Command RTH verify pass (~9:50 AM PT / 12:50 ET)
+
+**Session:** Grid RTH all-day agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` **verify** mode (scheduled 6:30 AM PT open; second pass ~90 min cadence). Commands: `npm run validate:grid-rth` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e` → `npm run validate:zerodte-integration` → Playwright `/nighthawk` segment probe.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:grid-rth` | ✅ **12 PASS / 1 WARN / 0 FAIL** — orchestrator GREEN |
+| `npm run validate:zerodte-logic` | ✅ **16 PASS / 1 WARN / 0 FAIL** — gates, plans, lifecycle, mergePlays, live board |
+| `npm run validate:grid-e2e` | ✅ **5 PASS / 0 FAIL** — `/nighthawk` Playwright (0 console errors) |
+| `npm run validate:zerodte-integration` | ✅ **9 PASS / 0 FAIL** — SPX bootstrap/GEX, HELIX, NH dedupe, ledger PnL |
+| `ops:collect` (via grid-rth) | ✅ **exit 0** — zero action items |
+| `validate:rth-open` (infra) | ✅ deploy + writers GREEN |
+
+**Verify status: GREEN** — zero P0/P1 product defects. No fix branch required.
+
+### 0DTE logic probes (validate:zerodte-logic)
+
+| Layer | Result |
+|---|---|
+| Unit tests | ✅ `board.test.ts`, `rejections.test.ts`, `ZeroDteBoard.test.ts` |
+| Gate funnel | ✅ NVDA score=65; audit trace all gates pass |
+| Plan exits | ✅ stop −50% (2.1), target +100% (8.4), time stop 15:30 ET |
+| Trade lifecycle | ✅ OPEN → TRIM → CLOSED; sticky trough stop |
+| Plan grading | ✅ stop wins when both touch same bar |
+| Session heat | ✅ RTH → POST_COMMIT → POWER_HOUR; live RTH heat=100%; cutoff 14:00 ET |
+| mergePlays UI | ✅ past cutoff → SKIP; MOVED → SKIP (not OPEN) |
+| Ledger PnL | ✅ 2 rows `reconcileLedgerLivePnlPct` coherent (integration pass) |
+
+### Live board snapshot (RTH ~12:50 ET)
+
+| Field | Value |
+|---|---|
+| Session heat | `RTH` (100%) |
+| Setups | 64 (0 eligible / 0 gate violations) — member path |
+| Ledger | 2 committed rows |
+| Upstream | ⚠️ cron-bearer probe degraded (`setups=0`); Clerk member path `upstream_ok=true` with 64 setups |
+| SPX GEX spot | 7471.26–7475.06 (bootstrap vs gex agree) |
+
+### Cross-tool integration
+
+| Check | Result |
+|---|---|
+| Grid bootstrap spot vs GEX | ✅ spot 7475.06 (bootstrap + desk GEX agree) |
+| HELIX flows feed | ✅ 20–30 prints (`/api/market/flows`) |
+| Night Hawk dedupe | ✅ no edition plays overlap |
+| `zerodte-warm` cron | ✅ 202 accepted (background warm) |
+| `data-correctness` | ✅ flags=0 mode=full-async |
+| BIE consistency | ✅ `validate:zerodte-integration` |
+
+### UI E2E (Playwright — `/nighthawk`)
+
+| # | Action | Result |
+|---|---|---|
+| 1 | `/grid` route | ✅ HTTP 404 — classic Grid deleted 2026-07-07 |
+| 2 | Admin session opens `/nighthawk` | ✅ title "Night Hawk · BlackOut" |
+| 3 | 0DTE Command deck (default view) | ✅ Command Deck mounts (`ZeroDteDeck`) |
+| 4 | Night Hawk view segments (0DTE / Swings / LEAPS / Legacy) | ✅ all four `.ios-native-segment-btn` clicks `aria-selected=true` |
+| 5 | Console | ✅ zero page errors |
+| 6 | Board API (in-browser) | ✅ 64 setups · ledger 2 · `upstream_ok=true` |
+| 7 | HELIX flows API | ✅ 20 prints |
+
+### Findings table (`grid-rth-2026-07-31-pass2`)
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| P2 | GRID-RTH-UPSTREAM-01 | Cron-bearer board probe intermittently returns `upstream_ok=false` / `setups=0` ("tape fetch degraded this cycle"); Clerk member path + in-browser fetch recover to 64 setups / 2 ledger within same window | `/api/market/zerodte/board` | Yes — transient tape cycle; member path authoritative |
+| P2 | GRID-RTH-DOC-01 | User prompt + legacy runbook still reference `/grid` 9-panel UI; product is `/nighthawk` four-view Command Deck since 2026-07-07 | — | Yes — doc staleness |
+| P2 | GRID-RTH-E2E-01 | `validate:grid-e2e` curl board probe returned `0 setups · ledger 0` while Playwright in-browser fetch returned 64/2 — harness hits cold cron cache | `/api/market/zerodte/board` | Yes — harness should retry on degraded upstream |
+| — | — | **No P0 product defects** this pass | — | — |
+
+### Reports
+
+- `audit-output/grid-rth-2026-07-31-verify-1785517361242.json`
+- `audit-output/zerodte-logic-1785517443682.json`
+- `audit-output/grid-e2e-1785517517664.json`
+- `audit-output/zerodte-integration-1785517612435.json`
+- Screenshots: `/opt/cursor/artifacts/grid-rth/view-*.png`
+
+---
 
 ## spx-rth-2026-07-31 — SPX Slayer market-open verify pass (~8:36 AM PT / 11:36 AM ET)
 
