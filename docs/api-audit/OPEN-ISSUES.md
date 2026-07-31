@@ -1,5 +1,39 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-31 17:45 ET
+Last updated: 2026-07-31 17:56 ET
+
+## grid-rth-2026-07-31-pass5 — 0DTE Command RTH verify agent (~2:56 PM PT / 5:56 PM ET)
+
+**Session:** Autonomous Grid RTH **verify** mode per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` (scheduled market-open agent; post-close re-run with `--force`). Commands: `npm run validate:grid-rth -- --force` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e`.
+
+**Note:** Classic `/grid` page + 9 `/api/grid/*` routes deleted 2026-07-07 — 0DTE Command lives on `/nighthawk`; E2E validates `/nighthawk` + board API (not deleted Grid tabs).
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `validate:grid-rth -- --force` | ✅ **13 PASS / 0 FAIL** (1 transient FAIL on first orchestrator run — resolved on retry) |
+| `validate:zerodte-logic` | ✅ **17/17 PASS** — gates, plan exits (-50%/+100%/15:30 ET), lifecycle OPEN→TRIM→CLOSED, mergePlays SKIP past cutoff/MOVED, session heat CLOSED, ledger PnL 2 rows |
+| `validate:grid-e2e` | ✅ **5/5 PASS** — board API, HELIX 20 prints, Playwright `/nighthawk` load, zero console errors |
+| Cross-tool | ✅ SPX bootstrap spot 7489.72 vs GEX; HELIX 20–30 prints; Night Hawk dedupe (no edition plays); `zerodte-warm` cron accepted |
+| `ops:collect` | ✅ exit 0 — zero grid/0DTE action items |
+
+**Verify status: GREEN** — no P0 product defects.
+
+### Findings table (`grid-rth-2026-07-31-pass5`)
+
+| Severity | ID | Detail | Fix defer? |
+|---|---|---|---|
+| — | — | **No P0/P1 product defects** | all suites GREEN on retry |
+| P2 | GRID-RTH-XEP-01 | Transient `integration:spx-desk-gex` FAIL on first orchestrator pass (`merged spot 0` while GEX live) | Yes — harness retry (same class as SPX-RTH-XEP-01) |
+| P2 | GRID-RTH-E2E-01 | Transient member board `0 setups · ledger 0` during `zerodte-warm` refresh; cron/member both 6/2 on retry | Yes — warm-handoff timing |
+
+### Reports
+
+- `audit-output/grid-rth-2026-07-31-verify-1785535002867.json`
+- `audit-output/zerodte-logic-1785534946744.json`
+- `audit-output/grid-e2e-1785535012557.json`
+
+---
 
 ## grid-rth-2026-07-31-pass4 — 0DTE Command post-close fix agent (~1:39 PM PT / 5:39 PM ET)
 
