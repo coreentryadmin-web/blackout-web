@@ -5,7 +5,8 @@ import { fetchMarketFlowAlerts } from "@/lib/providers/unusual-whales";
 import { uwConfigured } from "@/lib/providers/config";
 import { maybeRunFlowIngest } from "@/lib/providers/flow-ingest";
 import { marketPlatform } from "@/lib/platform";
-import { serverCache, TTL } from "@/lib/server-cache";
+import { serverCache, withServerCache, TTL } from "@/lib/server-cache";
+import { flowsMemberReadMaxBlockMs } from "@/lib/providers/config";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
 import { enrichFlowsWithGex } from "@/lib/flow-gex-enrichment";
 import { roundFloats } from "@/lib/round-floats";
@@ -24,6 +25,22 @@ export const dynamic = "force-dynamic";
 // nodejs runtime is required: ensureDataSockets (and the pg/UW providers used below)
 // pull node-only modules (ioredis / ws / node:crypto) that the edge runtime rejects.
 export const runtime = "nodejs";
+
+type FlowsPayload = {
+  source: "cache" | "live";
+  flows: Awaited<ReturnType<typeof enrichFlowsWithGex>>;
+  count: number;
+  has_more: boolean;
+  next_before: string | null;
+  platform_refs?: { spx: unknown; nighthawk: unknown } | null;
+  degraded?: boolean;
+};
+
+let lastGoodFlowsPayload: FlowsPayload | null = null;
+
+function emptyFlowsPayload(): FlowsPayload {
+  return { source: "cache", flows: [], count: 0, has_more: false, next_before: null, degraded: true };
+}
 
 function paginateRows<T extends { alerted_at: string; event_at?: string | null }>(
   rows: T[],
@@ -101,18 +118,20 @@ export async function GET(req: NextRequest) {
         has_more: hasMore,
         next_before: nextBefore,
         platform_refs: platform,
-      };
+      } satisfies FlowsPayload;
     };
 
     try {
       // Cursor pages are never cached — each `before` is a distinct slice.
+      const cacheKey = `flows:pg:${since_hours}:${min_premium ?? 0}:${ticker ?? "all"}:${max_dte ?? "any"}:${pageLimit}`;
       const payload = before
         ? await runQuery()
-        : await serverCache(
-            `flows:pg:${since_hours}:${min_premium ?? 0}:${ticker ?? "all"}:${max_dte ?? "any"}:${pageLimit}`,
-            TTL.DARK_POOL,
-            runQuery
-          );
+        : await withServerCache(cacheKey, TTL.DARK_POOL, runQuery, {
+            maxBlockMs: flowsMemberReadMaxBlockMs(),
+            staleOnInflight: true,
+            fallback: async () => lastGoodFlowsPayload ?? emptyFlowsPayload(),
+          });
+      if (payload.count > 0) lastGoodFlowsPayload = payload as FlowsPayload;
       return NextResponse.json(roundFloats(payload), { headers: NO_STORE_HEADERS });
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);

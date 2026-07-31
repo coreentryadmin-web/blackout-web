@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
 import { claudeEnabled } from "@/lib/ai-env";
 import { anthropicConfigured, anthropicText } from "@/lib/providers/anthropic";
-import { serverCache, TTL } from "@/lib/server-cache";
+import { serverCache, peekServerCache, TTL } from "@/lib/server-cache";
 import { dbConfigured, fetchRecentFlows } from "@/lib/db";
 import { fetchMarketFlowAlerts, fetchUwDarkPoolRecent } from "@/lib/providers/unusual-whales";
 import { uwConfigured } from "@/lib/providers/config";
@@ -18,6 +18,7 @@ export const dynamic = "force-dynamic";
 // One shared brief per 15-minute window — same response for every user.
 // First request in the window triggers Claude; all others get the cached result instantly.
 const BRIEF_TTL_MS    = 15 * 60 * 1000;
+const BRIEF_CACHE_PREFIX = "flow-brief:shared:v3:";
 const MASSIVE_FLOW    = 15_000_000;   // $15M+ options flow
 const MASSIVE_BLOCK   = 15_000_000;   // $15M+ dark pool block
 
@@ -139,75 +140,106 @@ async function fetchSharedData(): Promise<{ alerts: FlowAlert[]; darkPrints: Nor
   return { alerts, darkPrints };
 }
 
+type BriefPayload = {
+  brief: string | null;
+  massive_signals: number;
+  generated_at: string;
+};
+
+async function generateBriefPayload(): Promise<BriefPayload | null> {
+  const { alerts, darkPrints } = await fetchSharedData();
+  const prompt = buildPrompt(alerts, darkPrints);
+
+  const massiveCount =
+    alerts.filter((a) => a.premium >= MASSIVE_FLOW).length +
+    darkPrints.filter((d) => d.premium >= MASSIVE_BLOCK).length;
+
+  if (!prompt) {
+    if (!claudeEnabled()) {
+      const platform = await getCachedBiePlatformContext({ scope: "market", flowLimit: 12 });
+      return {
+        brief: composeQuietFlowBrief(platform),
+        massive_signals: massiveCount,
+        generated_at: new Date().toISOString(),
+      };
+    }
+    return null;
+  }
+
+  if (!claudeEnabled()) {
+    const brief = composeFlowBrief(alerts, darkPrints);
+    return {
+      brief,
+      massive_signals: massiveCount,
+      generated_at: new Date().toISOString(),
+    };
+  }
+
+  const brief = await anthropicText(
+    prompt,
+    180,
+    "You are a terse trading desk analyst. 2-3 sentences only. Highlight $15M+ signals by ticker name.",
+    { maxRetries: 1 }
+  );
+  const trimmed = brief?.trim() || null;
+
+  const grounded =
+    trimmed == null || checkNumbersGrounded(trimmed, extractNumbersFromText(prompt)).grounded;
+  if (!grounded) {
+    console.warn("[flow-brief] ungrounded value in generated brief — caching null for this window.");
+  }
+
+  return {
+    brief: grounded ? trimmed : null,
+    massive_signals: massiveCount,
+    generated_at: new Date().toISOString(),
+  };
+}
+
+const briefInflight = new Map<number, Promise<BriefPayload | null>>();
+
+function ensureBriefWindow(windowSlot: number): Promise<BriefPayload | null> {
+  const existing = briefInflight.get(windowSlot);
+  if (existing) return existing;
+  const cacheKey = `${BRIEF_CACHE_PREFIX}${windowSlot}`;
+  const pending = serverCache(cacheKey, BRIEF_TTL_MS, generateBriefPayload).finally(() => {
+    briefInflight.delete(windowSlot);
+  });
+  briefInflight.set(windowSlot, pending);
+  return pending;
+}
+
 // ─── GET — shared endpoint, one Claude call per 15-min window ─────────────────
 export async function GET(req: NextRequest) {
   const auth = await authorizeMarketDeskApi(req);
   if (auth instanceof Response) return auth;
 
   const windowSlot = Math.floor(Date.now() / BRIEF_TTL_MS);
-  const cacheKey   = `flow-brief:shared:v3:${windowSlot}`;
+  const cacheKey   = `${BRIEF_CACHE_PREFIX}${windowSlot}`;
+  const prevKey    = `${BRIEF_CACHE_PREFIX}${windowSlot - 1}`;
 
   try {
-    const result = await serverCache(cacheKey, BRIEF_TTL_MS, async () => {
-      const { alerts, darkPrints } = await fetchSharedData();
-      const prompt = buildPrompt(alerts, darkPrints);
+    const current = await peekServerCache<BriefPayload>(cacheKey);
+    const instant = current ?? (await peekServerCache<BriefPayload>(prevKey));
 
-      const massiveCount = alerts.filter((a) => a.premium >= MASSIVE_FLOW).length +
-                           darkPrints.filter((d) => d.premium >= MASSIVE_BLOCK).length;
-
-      if (!prompt) {
-        if (!claudeEnabled()) {
-          const platform = await getCachedBiePlatformContext({ scope: "market", flowLimit: 12 });
-          return {
-            brief: composeQuietFlowBrief(platform),
-            massive_signals: massiveCount,
-            generated_at: new Date().toISOString(),
-          };
-        }
-        return null;
-      }
-
-      if (!claudeEnabled()) {
-        const brief = composeFlowBrief(alerts, darkPrints);
-        return {
-          brief,
-          massive_signals: massiveCount,
-          generated_at: new Date().toISOString(),
-        };
-      }
-
-      const brief = await anthropicText(
-        prompt,
-        180,
-        "You are a terse trading desk analyst. 2-3 sentences only. Highlight $15M+ signals by ticker name.",
-        { maxRetries: 1 }
+    if (instant) {
+      void ensureBriefWindow(windowSlot).catch((err) => {
+        console.warn("[flow-brief] background refresh failed:", err);
+      });
+      return NextResponse.json(
+        {
+          brief: instant.brief ?? null,
+          massive_signals: instant.massive_signals ?? 0,
+          window_slot: windowSlot,
+          next_refresh_ms: BRIEF_TTL_MS - (Date.now() % BRIEF_TTL_MS),
+          generated_at: instant.generated_at ?? null,
+          stale_window: !current,
+        },
+        { headers: NO_STORE_HEADERS }
       );
-      const trimmed = brief?.trim() || null;
+    }
 
-      // FABRICATION GUARD: this shared 15-min memo was cached and served to every user with
-      // zero check that cited dollar figures/tickers match the actual alerts/dark-prints it
-      // was given. Ground against every number literally present in the SAME prompt text
-      // Claude was shown (the prompt is plain text, not a structured object, so extracting
-      // numbers from it directly is the simplest accurate "known good" source). On failure,
-      // cache brief:null for this window rather than a possibly-hallucinated line — a retry
-      // within the same 15-min window would see the same flow data and likely hallucinate
-      // again, so there's no point throwing to force an immediate re-generation.
-      const grounded =
-        trimmed == null || checkNumbersGrounded(trimmed, extractNumbersFromText(prompt)).grounded;
-      if (!grounded) {
-        console.warn("[flow-brief] ungrounded value in generated brief — caching null for this window.");
-      }
-
-      // Stamp generated_at INSIDE the cached closure so it records when the brief was
-      // actually written by Claude — not serve time. The memo is shared across a 15-min
-      // window, so a user opening at 10:14 must see "as of 10:00", the real authoring
-      // time, rather than a fabricated "10:14" that reads as just-now.
-      return {
-        brief: grounded ? trimmed : null,
-        massive_signals: massiveCount,
-        generated_at: new Date().toISOString(),
-      };
-    });
+    const result = await ensureBriefWindow(windowSlot);
 
     return NextResponse.json({
       brief: result?.brief ?? null,

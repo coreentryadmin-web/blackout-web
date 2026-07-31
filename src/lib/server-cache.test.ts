@@ -159,6 +159,35 @@ test("staleOnInflight returns stale instead of awaiting a slow pending refresh",
   await slowRefresh;
 });
 
+test("maxBlockMs on expired fast lane serves stale instead of blocking refresh", async () => {
+  const { withServerCache } = await import("./server-cache");
+  const key = `test:max-block-expired:${Math.random()}`;
+  const ttl = 5;
+
+  await withServerCache(key, ttl, async () => ({ n: 1 }), { staleWhileRevalidate: false });
+  await new Promise((r) => setTimeout(r, ttl + 5));
+
+  let invoked = 0;
+  const value = await Promise.race([
+    withServerCache(
+      key,
+      ttl,
+      async () => {
+        invoked += 1;
+        await new Promise((r) => setTimeout(r, 500));
+        return { n: 2 };
+      },
+      { maxBlockMs: 30, staleWhileRevalidate: false, fallback: async () => ({ n: 99 }) }
+    ),
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 100)),
+  ]);
+
+  assert.deepEqual(value, { n: 1 });
+  // Fast lane must not block on rebuild; background refresh may start after return.
+  await new Promise((r) => setImmediate(r));
+  assert.ok(invoked <= 1, `expected at most one background refresh, got ${invoked}`);
+});
+
 test("maxBlockMs serves fallback instead of blocking on a slow cold loader", async () => {
   const { withServerCache } = await import("./server-cache");
   const key = `test:max-block:${Math.random()}`;

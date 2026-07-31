@@ -11,28 +11,29 @@
 // per warm window and writes this snapshot to Redis; readGridEarnings() below only ever reads
 // that snapshot (falling back to a direct fetch on a cold cache, same as before the move).
 //
-// Naming: the Redis key literal ("grid:earnings") and the warmGridEarnings/readGridEarnings
-// function names are kept verbatim on purpose — renaming the key would cold-miss the live
-// production cache on deploy for zero benefit (it's an internal implementation detail with no
-// external consumer), and keeping the function names matches the two call sites unchanged
-// (zerodte-service.ts, cron/zerodte-warm/route.ts) so this move is a pure import-path change.
-// Only the exported TYPE names drop the "Grid" prefix (GridEarnings* -> ZeroDteEarnings*) since
-// they no longer describe a Grid panel.
+// FALLBACK (2026-07-31): when the UW earnings read fails or times out, shape the Alpha Vantage
+// earnings calendar (same source as `/api/market/earnings-calendar`) into this snapshot so G-11
+// fail-closed does not blanket-block every fresh 0DTE commit on a blind feed.
 
 import {
   getUwCacheRedis,
   uwCacheGet,
+  uwCacheRead,
   uwCacheSet,
 } from "@/lib/providers/uw-shared-cache";
 import {
   fetchUwEarningsPremarket,
   fetchUwEarningsAfterhours,
 } from "@/lib/providers/unusual-whales";
+import { serverCache } from "@/lib/server-cache";
+import { todayEt, nextTradingDayEt } from "@/features/nighthawk/lib/session";
 
 /** Exported so cron-writer-target-fresh.ts can freshness-probe the raw Redis key without
  *  triggering a live upstream fetch (readGridEarnings() falls back to fetching on a cache miss). */
 export const ZERODTE_EARNINGS_KEY = "grid:earnings";
 const ZERODTE_EARNINGS_TTL = 300; // 5 min — earnings reporters update a few times per day
+const UW_READ_RACE_MS = 2_000;
+const AV_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 
 export type ZeroDteEarningsItem = {
   ticker: string;
@@ -57,8 +58,6 @@ function shapeEarningsRows(
   when: "premarket" | "afterhours"
 ): ZeroDteEarningsItem[] {
   return rows.map((r) => {
-    // UW /api/earnings/{premarket,afterhours} field names: street_mean_est, actual_eps,
-    // full_name, report_date, expected_move_perc (fraction). Older fallbacks kept for safety.
     const epsEst = r.street_mean_est ?? r.eps_estimate ?? r.estimate ?? r.estimated_eps ?? null;
     const epsAct = r.actual_eps ?? r.eps_actual ?? r.actual ?? r.reported_eps ?? null;
     const est = epsEst != null ? Number(epsEst) : null;
@@ -68,7 +67,6 @@ function shapeEarningsRows(
         ? Number((((act - est) / Math.abs(est)) * 100).toFixed(1))
         : null;
     const emRaw = r.expected_move_perc ?? r.expected_move_pct ?? null;
-    // UW returns expected_move_perc as a fraction (e.g. "0.1148"); render as a percent.
     const emPct = emRaw != null && Number.isFinite(Number(emRaw)) ? Number(emRaw) * 100 : null;
     return {
       ticker: String(r.ticker ?? r.symbol ?? "").toUpperCase(),
@@ -83,7 +81,7 @@ function shapeEarningsRows(
   }).filter((x) => x.ticker);
 }
 
-async function fetchEarnings(): Promise<ZeroDteEarningsSnapshot> {
+async function fetchUwEarnings(): Promise<ZeroDteEarningsSnapshot> {
   const [pm, ah] = await Promise.all([
     fetchUwEarningsPremarket(20).then((r) =>
       shapeEarningsRows(r as Record<string, unknown>[], "premarket")
@@ -95,8 +93,78 @@ async function fetchEarnings(): Promise<ZeroDteEarningsSnapshot> {
   return { as_of: new Date().toISOString(), items: [...pm, ...ah] };
 }
 
+async function loadAvEarningsCalendar(): Promise<Record<string, string>> {
+  const apiKey =
+    process.env.ALPHAVANTAGE_API_KEY?.trim() ||
+    (process.env.NODE_ENV === "production" ? "" : "demo");
+  if (!apiKey) return {};
+  const url = `https://www.alphavantage.co/query?function=EARNINGS_CALENDAR&horizon=3month&apikey=${apiKey}`;
+  const res = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(8_000) });
+  if (!res.ok) throw new Error(`Alpha Vantage ${res.status}`);
+  const csv = await res.text();
+  const lines = csv.trim().split("\n");
+  if (lines.length < 2) return {};
+  const out: Record<string, string> = {};
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].split(",");
+    const symbol = cols[0]?.trim().toUpperCase();
+    const date = cols[2]?.trim();
+    if (symbol && date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      if (!out[symbol] || date < out[symbol]) out[symbol] = date;
+    }
+  }
+  return out;
+}
+
+export function inferWhenForDate(
+  reportDate: string,
+  today: string,
+  nextDay: string,
+  nowMs = Date.now()
+): "premarket" | "afterhours" {
+  if (reportDate === today) {
+    const hour = Number(
+      new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/New_York",
+        hour: "numeric",
+        hour12: false,
+      }).format(new Date(nowMs))
+    ) % 24;
+    return hour < 12 ? "premarket" : "afterhours";
+  }
+  if (reportDate === nextDay) return "afterhours";
+  return "afterhours";
+}
+
+/** Alpha Vantage calendar fallback — same 3-month feed as `/api/market/earnings-calendar`. */
+export async function readAvEarningsSnapshot(): Promise<ZeroDteEarningsSnapshot | null> {
+  try {
+    const calendar = await serverCache("earnings-calendar:av:3m", AV_CACHE_TTL_MS, loadAvEarningsCalendar);
+    const today = todayEt();
+    const nextDay = nextTradingDayEt(today);
+    const items: ZeroDteEarningsItem[] = [];
+    for (const [ticker, report_date] of Object.entries(calendar)) {
+      if (report_date !== today && report_date !== nextDay) continue;
+      items.push({
+        ticker,
+        name: "",
+        eps_estimate: null,
+        eps_actual: null,
+        surprise_pct: null,
+        report_date,
+        expected_move_pct: null,
+        when: inferWhenForDate(report_date, today, nextDay),
+      });
+    }
+    if (!items.length) return null;
+    return { as_of: new Date().toISOString(), items };
+  } catch {
+    return null;
+  }
+}
+
 export async function warmGridEarnings(): Promise<ZeroDteEarningsSnapshot | null> {
-  const snapshot = await fetchEarnings();
+  const snapshot = await fetchUwEarnings();
   const redis = await getUwCacheRedis();
   await uwCacheSet(redis, ZERODTE_EARNINGS_KEY, ZERODTE_EARNINGS_TTL, snapshot);
   return snapshot.items.length ? snapshot : null;
@@ -104,11 +172,28 @@ export async function warmGridEarnings(): Promise<ZeroDteEarningsSnapshot | null
 
 export async function readGridEarnings(): Promise<ZeroDteEarningsSnapshot | null> {
   const redis = await getUwCacheRedis();
-  const snapshot = await uwCacheGet(
-    redis,
-    ZERODTE_EARNINGS_KEY,
-    ZERODTE_EARNINGS_TTL,
-    () => fetchEarnings(),
-  );
-  return snapshot as ZeroDteEarningsSnapshot;
+
+  if (redis) {
+    try {
+      const cached = await uwCacheRead<ZeroDteEarningsSnapshot>(ZERODTE_EARNINGS_KEY);
+      if (cached?.items?.length) return cached;
+    } catch {
+      /* fall through */
+    }
+  }
+
+  try {
+    const uw = await Promise.race([
+      fetchUwEarnings(),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), UW_READ_RACE_MS)),
+    ]);
+    if (uw?.items?.length) {
+      void uwCacheSet(redis, ZERODTE_EARNINGS_KEY, ZERODTE_EARNINGS_TTL, uw).catch(() => undefined);
+      return uw;
+    }
+  } catch {
+    /* fall through to AV */
+  }
+
+  return readAvEarningsSnapshot();
 }
