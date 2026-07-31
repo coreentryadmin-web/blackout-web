@@ -21,3 +21,16 @@ test("VectorPageShell passes fillHost for chart-only SPX embed", () => {
   const src = readFileSync(join(process.cwd(), "src/features/vector/components/VectorPageShell.tsx"), "utf8");
   assert.match(src, /fillHost/);
 });
+
+test("SpxVectorEmbed bootstraps bars + sessionYmd from /api/market/vector/bars", () => {
+  const src = readFileSync(join(process.cwd(), "src/features/spx/components/SpxVectorEmbed.tsx"), "utf8");
+  assert.match(src, /\/api\/market\/vector\/bars\?ticker=SPX/);
+  assert.match(src, /sessionYmd: data\.sessionYmd/);
+  assert.match(src, /liveSession=\{liveSession\}/);
+  assert.doesNotMatch(src, /sessionYmd=\{todayEtYmd\(\)\}/);
+});
+
+test("VectorChart empty-state banner tracks live sessionBars not static initialBars", () => {
+  const src = readFileSync(join(process.cwd(), "src/features/vector/components/VectorChart.tsx"), "utf8");
+  assert.match(src, /!sessionBars\.length/);
+});
