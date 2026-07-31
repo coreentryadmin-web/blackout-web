@@ -31,9 +31,7 @@ export function IosAppTabBar({ lockedTools = [] }: { lockedTools?: ToolKey[] }) 
     !nativeEmbed &&
     isLoaded &&
     isSignedIn &&
-    isIosToolRoute(path) &&
-    path !== "/terminal" &&
-    !path.startsWith("/terminal/");
+    isIosToolRoute(path);
   useEffect(() => {
     document.documentElement.classList.toggle("ios-tab-bar", visible);
     return () => document.documentElement.classList.remove("ios-tab-bar");

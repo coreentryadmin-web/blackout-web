@@ -16,37 +16,25 @@ public final class PushRouter: ObservableObject {
     }
 
     public static func destination(from userInfo: [AnyHashable: Any]) -> PushDestination {
-        if let tabRaw = userInfo["tab"] as? String,
-           let tab = AppTab(rawValue: tabRaw.lowercased()) {
-            let deskId = (userInfo["desk"] as? String) ?? deskModuleId(from: userInfo["url"] as? String)
-            return .init(tab: tab, deskModuleId: deskId, source: .explicitTab)
+        if let url = userInfo["url"] as? String, !url.isEmpty {
+            return .init(webPath: normalizePath(url), source: .url(url))
+        }
+
+        if let tabRaw = userInfo["tab"] as? String {
+            if let path = pathForTab(tabRaw, desk: userInfo["desk"] as? String) {
+                return .init(webPath: path, source: .explicitTab)
+            }
         }
 
         if let signalId = userInfo["signalId"] as? String, !signalId.isEmpty {
-            let module = signalId.lowercased().contains("hawk") ? "night-hawk" : "spx-slayer"
-            return .init(tab: .signals, deskModuleId: module, source: .signalId(signalId))
+            let path = signalId.lowercased().contains("hawk") ? "/nighthawk" : "/dashboard"
+            return .init(webPath: path, source: .signalId(signalId))
         }
 
-        if let url = userInfo["url"] as? String {
-            let path = url.lowercased()
-            if path.hasPrefix("/account") {
-                return .init(tab: .account, deskModuleId: nil, source: .url(url))
-            }
-            if path.hasPrefix("/watchlist") {
-                return .init(tab: .watchlist, deskModuleId: nil, source: .url(url))
-            }
-            if path.hasPrefix("/nighthawk") {
-                return .init(tab: .signals, deskModuleId: "night-hawk", source: .url(url))
-            }
-            if let moduleId = deskModuleId(from: url) {
-                return .init(tab: .desks, deskModuleId: moduleId, source: .url(url))
-            }
-        }
-
-        return .init(tab: .desks, deskModuleId: "spx-slayer", source: .fallback)
+        return .init(webPath: "/dashboard", source: .fallback)
     }
 
-    /// Map a desk path to the IntelligenceRegistry module id.
+    /// Map a desk path to the IntelligenceRegistry module id (tests + helpers).
     public static func deskModuleId(from url: String?) -> String? {
         guard let url else { return nil }
         let path = url.lowercased()
@@ -58,11 +46,39 @@ public final class PushRouter: ObservableObject {
         if path.hasPrefix("/vector")    { return "vector" }
         return nil
     }
+
+    private static func pathForTab(_ tabRaw: String, desk: String?) -> String? {
+        switch tabRaw.lowercased() {
+        case "desks", "intelligence", "command":
+            if let desk, let module = IntelligenceRegistry.all.first(where: { $0.id == desk.lowercased() }) {
+                return module.webPath
+            }
+            return "/dashboard"
+        case "signals":
+            return "/nighthawk"
+        case "watchlist":
+            return "/dashboard"
+        case "account":
+            return "/account"
+        default:
+            return nil
+        }
+    }
+
+    private static func normalizePath(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.hasPrefix("http") {
+            if let url = URL(string: trimmed), let host = url.host?.lowercased(),
+               host == "blackouttrades.com" || host.hasSuffix(".blackouttrades.com") {
+                return url.path.isEmpty ? "/" : url.path
+            }
+        }
+        return trimmed.hasPrefix("/") ? trimmed : "/\(trimmed)"
+    }
 }
 
 public struct PushDestination: Equatable, Sendable {
-    public let tab: AppTab
-    public let deskModuleId: String?
+    public let webPath: String
     public let source: Source
 
     public enum Source: Equatable, Sendable {

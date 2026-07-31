@@ -7,7 +7,6 @@ import SwiftUI
 /// rail filters client-side (instant stage switches). Tap a row to open the
 /// owning desk in the live WebView bridge.
 struct SignalsView: View {
-    @EnvironmentObject private var tabRouter: TabRouter
     @StateObject private var vm = SignalsViewModel()
     @State private var path = NavigationPath()
 
@@ -30,13 +29,6 @@ struct SignalsView: View {
             .refreshable { await vm.refresh() }
             .navigationDestination(for: IntelligenceModule.self) { module in
                 ProductDetailView(module: module)
-            }
-            .onChange(of: tabRouter.pendingDeskModuleId) { _, moduleId in
-                guard tabRouter.selectedTab == .signals,
-                      let moduleId,
-                      let module = IntelligenceRegistry.all.first(where: { $0.id == moduleId }) else { return }
-                path.append(module)
-                tabRouter.consumePendingDesk()
             }
         }
     }

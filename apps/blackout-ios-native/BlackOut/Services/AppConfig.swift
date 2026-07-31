@@ -53,13 +53,15 @@ public enum AppConfig {
         return "\(short) (\(build))"
     }
 
-    /// User-agent for embedded desk WebViews. Must stay in sync with the web
-    /// app's head-script detection in `src/app/layout.tsx`:
-    ///   - `BlackOutiOSApp` → `html.ios-app` (desk CSS, hide purchase copy)
-    ///   - `BlackOutNativeEmbed` → `html.ios-native-embed` (hide web nav chrome;
-    ///     native SwiftUI owns the title/back affordance)
+    /// User-agent when native SwiftUI owns nav chrome (ProductDetailView embed).
     public static var deskWebUserAgent: String {
-        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 BlackOutiOSApp BlackOutNativeEmbed BlackOutNative/\(appVersion)"
+        "\(iosShellWebUserAgent) BlackOutNativeEmbed"
+    }
+
+    /// User-agent for the full web iOS shell — instrument rail + native header.
+    /// Must include `BlackOutiOSApp` and must NOT include `BlackOutNativeEmbed`.
+    public static var iosShellWebUserAgent: String {
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 BlackOutiOSApp BlackOutNative/\(appVersion)"
     }
 
     /// Compose a fully-qualified desk URL from a site path (`/dashboard`, …).

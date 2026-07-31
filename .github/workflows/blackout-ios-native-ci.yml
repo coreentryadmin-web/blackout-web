@@ -205,17 +205,12 @@ jobs:
         if: steps.find-app.outputs.found == '1'
         run: |
           set -eo pipefail
-          for tab in desks signals watchlist account; do
-            echo "== capturing $tab =="
-            # Terminate any prior run so the launch actually re-reads the
-            # startup args instead of just resuming.
+          for path in dashboard terminal flows; do
+            echo "== capturing shell $path =="
             xcrun simctl terminate "$SIMULATOR_ID" com.blackout-trades.app 2>/dev/null || true
-            xcrun simctl launch "$SIMULATOR_ID" com.blackout-trades.app -startTab "$tab"
-            # 2.5s covers the SwiftUI window mount, tab flip, first-render
-            # data fetch flash → skeleton, and the ScenePhase active pass.
-            # Longer than 3s starts eating CI budget without adding fidelity.
-            sleep 2.5
-            xcrun simctl io "$SIMULATOR_ID" screenshot "screenshots/tab-${tab}.png"
+            xcrun simctl launch "$SIMULATOR_ID" com.blackout-trades.app
+            sleep 3
+            xcrun simctl io "$SIMULATOR_ID" screenshot "screenshots/shell-${path//\//}.png"
           done
           xcrun simctl terminate "$SIMULATOR_ID" com.blackout-trades.app 2>/dev/null || true
           xcrun simctl status_bar "$SIMULATOR_ID" clear || true

@@ -4,89 +4,61 @@ import XCTest
 @MainActor
 final class PushRouterTests: XCTestCase {
 
-    func test_explicitTab_key_routesToNamedTab() {
-        let dest = PushRouter.destination(from: ["tab": "account"])
-        XCTAssertEqual(dest.tab, .account)
-        XCTAssertEqual(dest.source, .explicitTab)
-    }
-
-    func test_explicitTab_key_isCaseInsensitive() {
-        XCTAssertEqual(PushRouter.destination(from: ["tab": "DESKS"]).tab, .desks)
-        XCTAssertEqual(PushRouter.destination(from: ["tab": "Account"]).tab, .account)
-    }
-
-    func test_explicitTab_withDeskKey() {
-        let dest = PushRouter.destination(from: ["tab": "desks", "desk": "helix"])
-        XCTAssertEqual(dest.tab, .desks)
-        XCTAssertEqual(dest.deskModuleId, "helix")
-    }
-
-    func test_signalId_routesToSignalsTabWithModule() {
-        let dest = PushRouter.destination(from: ["signalId": "spx-open-42"])
-        XCTAssertEqual(dest.tab, .signals)
-        XCTAssertEqual(dest.deskModuleId, "spx-slayer")
-    }
-
-    func test_signalId_hawk_routesToNightHawkModule() {
-        let dest = PushRouter.destination(from: ["signalId": "hawk-edition-1"])
-        XCTAssertEqual(dest.tab, .signals)
-        XCTAssertEqual(dest.deskModuleId, "night-hawk")
-    }
-
     func test_url_dashboard_opensSpxDesk() {
         let dest = PushRouter.destination(from: ["url": "/dashboard"])
-        XCTAssertEqual(dest.tab, .desks)
-        XCTAssertEqual(dest.deskModuleId, "spx-slayer")
+        XCTAssertEqual(dest.webPath, "/dashboard")
     }
 
-    func test_url_allDesks_mapToRegistryIds() {
-        let expected: [(String, String)] = [
-            ("/flows", "helix"),
-            ("/heatmap", "thermal"),
-            ("/terminal", "largo"),
-            ("/nighthawk", "night-hawk"),
-            ("/vector", "vector"),
-        ]
-        for (path, id) in expected {
+    func test_url_allDesks_mapToPaths() {
+        let expected = ["/flows", "/heatmap", "/terminal", "/nighthawk", "/vector"]
+        for path in expected {
             let dest = PushRouter.destination(from: ["url": path])
-            XCTAssertEqual(dest.tab, .desks, path)
-            XCTAssertEqual(dest.deskModuleId, id, path)
+            XCTAssertEqual(dest.webPath, path)
         }
     }
 
-    func test_url_account_routesToAccountTab() {
-        XCTAssertEqual(PushRouter.destination(from: ["url": "/account"]).tab, .account)
+    func test_url_account_routesToAccount() {
+        XCTAssertEqual(PushRouter.destination(from: ["url": "/account"]).webPath, "/account")
     }
 
-    func test_url_watchlist_routesToWatchlistTab() {
-        XCTAssertEqual(PushRouter.destination(from: ["url": "/watchlist"]).tab, .watchlist)
+    func test_signalId_spx_routesToDashboard() {
+        let dest = PushRouter.destination(from: ["signalId": "spx-open-42"])
+        XCTAssertEqual(dest.webPath, "/dashboard")
+        XCTAssertEqual(dest.source, .signalId("spx-open-42"))
     }
 
-    func test_url_nighthawk_routesToSignalsTab() {
-        let dest = PushRouter.destination(from: ["url": "/nighthawk"])
-        XCTAssertEqual(dest.tab, .signals)
-        XCTAssertEqual(dest.deskModuleId, "night-hawk")
+    func test_signalId_hawk_routesToNightHawk() {
+        let dest = PushRouter.destination(from: ["signalId": "hawk-edition-1"])
+        XCTAssertEqual(dest.webPath, "/nighthawk")
     }
 
-    func test_unknownUrl_fallsBackToSpxDesk() {
+    func test_explicitTab_desks_withDeskKey() {
+        let dest = PushRouter.destination(from: ["tab": "desks", "desk": "helix"])
+        XCTAssertEqual(dest.webPath, "/flows")
+    }
+
+    func test_explicitTab_signals_routesToNightHawk() {
+        XCTAssertEqual(PushRouter.destination(from: ["tab": "signals"]).webPath, "/nighthawk")
+    }
+
+    func test_explicitTab_account() {
+        XCTAssertEqual(PushRouter.destination(from: ["tab": "account"]).webPath, "/account")
+    }
+
+    func test_unknownUrl_fallsBackToDashboard() {
         let dest = PushRouter.destination(from: ["url": "/some-future-desk"])
-        XCTAssertEqual(dest.tab, .desks)
-        XCTAssertEqual(dest.deskModuleId, "spx-slayer")
-        XCTAssertEqual(dest.source, .fallback)
+        XCTAssertEqual(dest.webPath, "/some-future-desk")
     }
 
-    func test_emptyUserInfo_fallsBackToSpxDesk() {
-        let dest = PushRouter.destination(from: [:])
-        XCTAssertEqual(dest.tab, .desks)
-        XCTAssertEqual(dest.deskModuleId, "spx-slayer")
+    func test_emptyUserInfo_fallsBackToDashboard() {
+        XCTAssertEqual(PushRouter.destination(from: [:]).webPath, "/dashboard")
     }
 
     func test_handleTap_publishesPending_thenConsumeClears() {
         let router = PushRouter()
         XCTAssertNil(router.pending)
         router.handleTap(userInfo: ["url": "/heatmap"])
-        XCTAssertEqual(router.pending?.tab, .desks)
-        XCTAssertEqual(router.pending?.deskModuleId, "thermal")
+        XCTAssertEqual(router.pending?.webPath, "/heatmap")
         router.consume()
         XCTAssertNil(router.pending)
     }
