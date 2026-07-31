@@ -1,5 +1,75 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-31 13:45 ET
+Last updated: 2026-07-31 14:06 ET
+
+## grid-rth-2026-07-31 — 0DTE Command + Grid RTH verify pass (~14:00 ET)
+
+**Session:** Autonomous Grid RTH agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` **verify mode** (afternoon pass, RTH). Commands: `npm run validate:grid-rth` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e` → `node scripts/audit/data-validator.mjs` → Playwright `/nighthawk` four-view click-through.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:grid-rth` | ✅ **GREEN** — 13/13 PASS (deploy, board, ledger PnL, SPX↔GEX spot, HELIX flows, `zerodte-warm` cron, logic audit, cross-tool, data-correctness flags=0, E2E, ops:collect zero items) |
+| `npm run validate:zerodte-logic` | ✅ **GREEN** — 17/17 PASS (gates, plan exits -50%/+100%/15:30 ET, lifecycle OPEN→TRIM→CLOSED, session heat RTH→POST_COMMIT→POWER_HOUR, mergePlays past-cutoff/MOVED→SKIP, live board 65 setups / 2 ledger, 0 gate violations) |
+| `npm run validate:grid-e2e` | ✅ **GREEN** — 5/5 PASS (board API 65 setups · ledger 2, HELIX 20 prints, `/nighthawk` page load, zero console errors) |
+| `data-validator.mjs` | ⚠️ **32 PASS / 1 FAIL / 1 WARN** — FRMI underlying 1.899% vs Polygon (tol 1.5% single-name); net_gex sign WARN (near-flip, expected) |
+| Playwright `/nighthawk` views | ✅ **GREEN** — 0DTE / Swings / LEAPS / Legacy all clicked, content rendered, zero page errors |
+| `/grid` route | **404** (expected — classic Market Grid deleted 2026-07-07; 0DTE Command lives at `/nighthawk?view=ZERO_DTE`) |
+
+**Verify status: GREEN** — zero P0 product defects. No live fixes required this pass.
+
+### Live board snapshot (~14:00 ET)
+
+| Field | Value |
+|---|---|
+| Session heat | RTH (100%) |
+| Setups | 65–66 live |
+| Ledger | 2 rows (SPY put, RDDT put) |
+| Eligible (gates) | 1 / 65 |
+| SPX spot (bootstrap↔GEX) | 7482.43 (within tol) |
+| HELIX flows | 20 prints |
+| `zerodte-warm` cron | accepted (background warm) |
+| data-correctness | flags=0 full-async |
+
+### Cross-tool integration (nested in grid-rth)
+
+| Check | Result |
+|---|---|
+| SPX bootstrap spot vs GEX | ✅ PASS |
+| HELIX flows feed scanner | ✅ 20 prints |
+| Night Hawk dedupe (`covered_elsewhere`) | ✅ PASS |
+| Ledger PnL reconcile | ✅ 2 rows, 0 math issues |
+
+### 0DTE logic probes (validate:zerodte-logic)
+
+| Probe | Result |
+|---|---|
+| Gate funnel (SETUP_MIN_GROSS, aggression, dominance, ITM) | ✅ all gates pass |
+| Plan exits (stop/target/time) | ✅ stop=2.1 target=8.4 |
+| Play lifecycle | ✅ OPEN/TRIM/CLOSED/CLOSED |
+| Plan grade stop-first | ✅ stopped wins same bar |
+| Session heat cutoffs | ✅ RTH→POST_COMMIT→POWER_HOUR; cutoff constant 14:00 ET |
+| mergePlays past cutoff | ✅ SKIP |
+| mergePlays MOVED | ✅ SKIP |
+| Live finite numbers | ✅ PASS |
+
+### Findings table (`grid-rth-2026-07-31`)
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| — | — | **No P0/P1 defects** | all suites GREEN | — |
+| P2 | GRID-RTH-FRMI-SPOT | FRMI `underlying_price` 1.899% off Polygon live (tol 1.5% single-name) | data-validator live probe | Yes — volatile small-cap tick; chain/strike checks PASS |
+| P2 | GRID-ROUTE-404 | `/grid` returns 404; classic 9-panel Market Grid removed 2026-07-07 | HTTP probe | N/A — by design; use `/nighthawk` |
+| INFO | GRID-RTH-VIEW-REMAP | User prompt "click 0DTE Command + Market Grid tabs on /grid" → remap to `/nighthawk` four-view deck (0DTE default) | Playwright click-through | N/A |
+
+### Reports
+
+- `audit-output/grid-rth-2026-07-31-verify-1785521050843.json`
+- `audit-output/zerodte-logic-1785521072702.json`
+- `audit-output/grid-e2e-1785521105385.json`
+- `audit-output/validation-2026-07-31T18-05-37-327Z.md`
+
+---
 
 ## rth-comprehensive-2026-07-31-13h — RTH agent pass (~12:29–13:23 ET)
 
