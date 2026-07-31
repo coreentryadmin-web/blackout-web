@@ -228,7 +228,7 @@ const BOARD_SNAPSHOT_KEY = "zerodte:board:snapshot:v1";
 // How long the published snapshot lives in Redis. Comfortably longer than the serve/
 // refresh windows below so freshness is governed by the snapshot's own `as_of` age
 // (BOARD_SNAPSHOT_*_MS), never by the Redis key silently expiring under us.
-const BOARD_SNAPSHOT_TTL_SEC = 60;
+const BOARD_SNAPSHOT_TTL_SEC = 600;
 // Soft age: once the shared snapshot is older than this, the NEXT reader kicks a
 // background rebuild (non-blocking SWR) so the cycle advances. Matches the ~5s member
 // poll cadence — most polls land inside a fresh snapshot and never trigger a rebuild.

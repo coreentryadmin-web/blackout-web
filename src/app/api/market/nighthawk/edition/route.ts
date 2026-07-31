@@ -16,6 +16,11 @@ import { requireToolApi } from "@/lib/tool-access-server";
 import type { NightHawkEdition } from "@/features/nighthawk/lib/types";
 import { roundFloats } from "@/lib/round-floats";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
+import { withServerCache, peekServerCache } from "@/lib/server-cache";
+import {
+  nighthawkEditionCacheTtlMs,
+  nighthawkEditionReadMaxBlockMs,
+} from "@/lib/providers/config";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -125,6 +130,59 @@ async function withPullOverlay(edition: NightHawkEdition): Promise<NightHawkEdit
   }
 }
 
+let lastGoodEdition: NightHawkEdition | null = null;
+
+async function resolveNighthawkEdition(
+  editionFor: string,
+  explicitDate: string | null
+): Promise<NightHawkEdition> {
+  const activePlayable = await fetchLatestPlayableNighthawkEdition();
+
+  if (
+    !explicitDate &&
+    activePlayable &&
+    activePlayable.edition_for !== editionFor &&
+    isBeforeOrAtMarketCloseEt(activePlayable.edition_for)
+  ) {
+    const edition = rowToNightHawkEdition(activePlayable);
+    edition.carry_until_close = true;
+    edition.served_for = activePlayable.edition_for;
+    return withPullOverlay(edition);
+  }
+
+  const exact = await fetchNighthawkEditionByDate(editionFor);
+  if (exact) {
+    return withPullOverlay(rowToNightHawkEdition(exact));
+  }
+
+  const latest = await fetchLatestNighthawkEdition();
+  if (latest) {
+    const edition = rowToNightHawkEdition(latest);
+
+    const MAX_EDITION_AGE_DAYS = 4;
+    if (edition.edition_for) {
+      const edAge = Math.floor(
+        (new Date(editionFor + "T00:00:00").getTime() - new Date(edition.edition_for + "T00:00:00").getTime())
+          / 86_400_000
+      );
+      if (edAge > MAX_EDITION_AGE_DAYS) {
+        return emptyEdition(editionFor);
+      }
+    }
+
+    if (edition.edition_for && edition.edition_for !== editionFor) {
+      edition.stale = true;
+      edition.served_for = edition.edition_for;
+    }
+    return withPullOverlay(edition);
+  }
+
+  const legacy = await fetchLegacyPlays();
+  if (legacy) return legacy;
+
+  return emptyEdition(editionFor);
+}
+
 export async function GET(req: NextRequest) {
   const authResult = await authorizeCronOrTierApi(req, "premium");
   if (authResult instanceof Response) return authResult;
@@ -138,72 +196,31 @@ export async function GET(req: NextRequest) {
 
   const explicitDate = req.nextUrl.searchParams.get("date");
   const editionFor = explicitDate ?? nextTradingDayEt(todayEt());
+  const cacheKey = `nighthawk:edition:v1:${editionFor}:${explicitDate ?? "_live"}`;
 
   try {
-    const activePlayable = await fetchLatestPlayableNighthawkEdition();
-
-    // A generated playbook remains actionable until its target session closes. If the next evening
-    // build has already written a recap-only/pending row, do NOT hide today's live plays before 4PM ET.
-    // Historical ?date= lookups skip carry — they must resolve the exact session, not today's board.
-    if (
-      !explicitDate &&
-      activePlayable &&
-      activePlayable.edition_for !== editionFor &&
-      isBeforeOrAtMarketCloseEt(activePlayable.edition_for)
-    ) {
-      const edition = rowToNightHawkEdition(activePlayable);
-      edition.carry_until_close = true;
-      edition.served_for = activePlayable.edition_for;
-      return NextResponse.json(roundFloats(await withPullOverlay(edition)), { headers: NO_STORE_HEADERS });
+    const instant = await peekServerCache<NightHawkEdition>(cacheKey);
+    if (instant) {
+      void withServerCache(cacheKey, nighthawkEditionCacheTtlMs(), () => resolveNighthawkEdition(editionFor, explicitDate), {
+        maxBlockMs: nighthawkEditionReadMaxBlockMs(),
+        staleOnInflight: true,
+        fallback: async () => lastGoodEdition ?? emptyEdition(editionFor),
+      }).catch(() => undefined);
+      return NextResponse.json(roundFloats(instant), { headers: NO_STORE_HEADERS });
     }
 
-    // Exact requested edition — fresh for the requested session when it has published.
-    const exact = await fetchNighthawkEditionByDate(editionFor);
-    if (exact) {
-      return NextResponse.json(roundFloats(await withPullOverlay(rowToNightHawkEdition(exact))), {
-        headers: NO_STORE_HEADERS,
-      });
-    }
-
-    // Requested edition isn't published yet. Fall back to the latest stored edition ONLY if it is
-    // recent enough to still be actionable — within the recency window (requested session, current,
-    // or prior trading day). An older fallback is still served (so the page isn't blank), but flagged
-    // `stale: true` so the UI shows "Showing {date} edition — tonight's not published yet" instead of
-    // asserting a green "Edition live" over plays whose levels are no longer current (#77 residual).
-    const latest = await fetchLatestNighthawkEdition();
-    if (latest) {
-      const edition = rowToNightHawkEdition(latest);
-
-      // Hard age cutoff: never serve an edition older than 4 calendar days — its levels,
-      // targets, and stops are dangerously stale (covers Fri→Mon weekend gap; a Thu edition
-      // serving on Mon = 4 days, still ok; anything older = empty).
-      const MAX_EDITION_AGE_DAYS = 4;
-      if (edition.edition_for) {
-        const edAge = Math.floor(
-          (new Date(editionFor + "T00:00:00").getTime() - new Date(edition.edition_for + "T00:00:00").getTime())
-          / (86_400_000),
-        );
-        if (edAge > MAX_EDITION_AGE_DAYS) {
-          return NextResponse.json(emptyEdition(editionFor), { headers: NO_STORE_HEADERS });
-        }
+    const edition = await withServerCache(
+      cacheKey,
+      nighthawkEditionCacheTtlMs(),
+      () => resolveNighthawkEdition(editionFor, explicitDate),
+      {
+        maxBlockMs: nighthawkEditionReadMaxBlockMs(),
+        staleOnInflight: true,
+        fallback: async () => lastGoodEdition ?? emptyEdition(editionFor),
       }
-
-      // Serving a prior session's plays when tonight's edition_for is not published yet must
-      // always read as stale — the recency window alone let Jul 21's five names masquerade as
-      // Jul 22's live board.
-      if (edition.edition_for && edition.edition_for !== editionFor) {
-        edition.stale = true;
-        edition.served_for = edition.edition_for;
-      }
-      return NextResponse.json(roundFloats(await withPullOverlay(edition)), { headers: NO_STORE_HEADERS });
-    }
-
-    const legacy = await fetchLegacyPlays();
-    if (legacy) {
-      return NextResponse.json(roundFloats(legacy), { headers: NO_STORE_HEADERS });
-    }
-
-    return NextResponse.json(emptyEdition(editionFor), { headers: NO_STORE_HEADERS });
+    );
+    if (edition.available !== false) lastGoodEdition = edition;
+    return NextResponse.json(roundFloats(edition), { headers: NO_STORE_HEADERS });
   } catch (err) {
     console.error("[nighthawk/edition] unhandled error:", err);
     return NextResponse.json(
