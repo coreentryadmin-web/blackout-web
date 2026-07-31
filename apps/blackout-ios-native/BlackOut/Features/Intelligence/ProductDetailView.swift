@@ -14,5 +14,6 @@ public struct ProductDetailView: View {
         DeskWebView(url: AppConfig.deskURL(path: module.webPath))
             .navigationTitle(module.name)
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .tabBar)
     }
 }

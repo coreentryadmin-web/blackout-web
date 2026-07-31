@@ -10,7 +10,7 @@ import Combine
 /// Vector) don't have a mobile aggregator hit yet, so this store returns
 /// nil for them; the row falls back to its static tagline.
 ///
-/// Owned once at IntelligenceView level and shared across ModuleRows so
+/// Owned once at DesksView level and shared across desk rows so
 /// six rows don't fan out into six parallel requests.
 @MainActor
 public final class IntelligencePulseStore: ObservableObject {

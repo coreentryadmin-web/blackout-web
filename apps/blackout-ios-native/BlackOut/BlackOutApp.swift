@@ -19,10 +19,6 @@ struct BlackOutApp: App {
     // for the app's lifetime; passing a URLSession-backed syncer wires it to
     // /api/user/watchlist. Local UserDefaults remains the render source, so
     // the app is instant + offline-safe; hydrate on first .active phase.
-    @StateObject private var watchlist = WatchlistStore(sync: URLSessionWatchlistSync())
-    // Cross-tab navigation. Command's "Active opportunities" card taps into
-    // Signals; deep links jump to Watchlist. Owned here so its lifetime is
-    // the whole app and every tab sees the same instance via environment.
     @StateObject private var tabRouter = TabRouter()
     // Sign-in state. Hydrates from Keychain on init so a signed-in user
     // never sees the sign-in screen flash on cold launch.
@@ -55,7 +51,6 @@ struct BlackOutApp: App {
             .animation(BOMotion.contextSwitch, value: appLock.state)
             .animation(BOMotion.contextSwitch, value: session.isSignedIn)
             .environmentObject(appLock)
-            .environmentObject(watchlist)
             .environmentObject(tabRouter)
             .environmentObject(session)
             // Handle the callback URL from `blackouttrades.com/native-signin`.
@@ -76,14 +71,8 @@ struct BlackOutApp: App {
             // immediately after routing so a subsequent view re-render
             // can't re-fire the same tap.
             .onReceive(appDelegate.pushRouter.$pending.compactMap { $0 }) { destination in
-                tabRouter.route(to: destination.tab)
+                tabRouter.route(to: destination.tab, deskModuleId: destination.deskModuleId)
                 appDelegate.pushRouter.consume()
-            }
-            .task {
-                // One-shot server pull on first mount. Failures are silent
-                // (the local list still renders); the pull retries on any
-                // subsequent successful push (last-write-wins).
-                await watchlist.hydrateFromServer()
             }
             .preferredColorScheme(.dark)
             .tint(BOColor.textAccent)
