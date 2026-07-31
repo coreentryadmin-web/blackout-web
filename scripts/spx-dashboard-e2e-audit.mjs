@@ -18,7 +18,8 @@ import { chromium } from "playwright";
 import { inRthOpenWindow } from "./gha-et-window.mjs";
 import { isAuthFailureStatus } from "./audit/lib/auth-status.mjs";
 import { spotsAgree, flipsAgree } from "./audit/lib/cross-tool-tolerance.mjs";
-import { mintIosPlaywrightSession, onboardingInitScript } from "./audit/lib/ios-playwright-auth.mjs";
+import { onboardingInitScript } from "./audit/lib/ios-playwright-auth.mjs";
+import { createAuditClerkUser, deleteAuditClerkUser } from "./audit/lib/clerk-audit-user.mjs";
 import { resolveNearTermExpiriesForAudit } from "./audit/lib/near-term-expiries.mjs";
 
 const baseArg = process.argv.find((a) => a.startsWith("--base="));
@@ -30,7 +31,6 @@ const SECRET = process.env.CLERK_SECRET_KEY;
 const PUB = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || "";
 const CRON = process.env.CRON_SECRET || "";
 const EMAIL = process.env.AUDIT_EMAIL || `spx-e2e-${Date.now()}@blackouttrades.com`;
-const PHONE = process.env.AUDIT_PHONE || "+1415555" + String(Math.floor(Math.random() * 9000) + 1000);
 const API = "https://api.clerk.com/v1";
 const CJS = "5.57.0";
 const UA =
@@ -95,28 +95,13 @@ const backend = (m, p, j) =>
 
 async function authSession() {
   if (!SECRET) throw new Error("CLERK_SECRET_KEY missing");
-  const create = backend("POST", "/users", {
-    email_address: [EMAIL],
-    phone_number: [PHONE],
-    public_metadata: { role: "admin", tier: "premium" },
-    skip_password_requirement: true,
-    skip_legal_checks: true,
+  const created = await createAuditClerkUser({
+    secret: SECRET,
+    email: EMAIL,
+    publicMetadata: { role: "admin", tier: "premium" },
   });
-  const cj = J(create);
-  let userId = cj?.id;
-  if (!userId && /form_identifier_exists/.test(JSON.stringify(cj?.errors || ""))) {
-    const lookup = curl({
-      method: "GET",
-      url: `${API}/users?email_address=${encodeURIComponent(EMAIL)}`,
-      headers: { Authorization: `Bearer ${SECRET}` },
-    });
-    const existing = J(lookup)?.[0];
-    userId = existing?.id;
-    if (userId) {
-      backend("PATCH", `/users/${userId}`, { public_metadata: { role: "admin", tier: "premium" } });
-    }
-  }
-  if (!userId) throw new Error(`Clerk user create failed: ${create.b.slice(0, 200)}`);
+  const userId = created.userId;
+  if (!userId) throw new Error(`Clerk user create failed: ${created.error ?? "unknown"}`);
   const ticket = J(backend("POST", "/sign_in_tokens", { user_id: userId }))?.token;
   if (!ticket) throw new Error("sign_in_token failed");
   const si = curl({
@@ -180,7 +165,7 @@ async function authSession() {
     userId,
     signInUrl: `${BASE}/sign-in?__clerk_ticket=${ticket}`,
     app,
-    cleanup: () => backend("DELETE", `/users/${userId}`),
+    cleanup: () => deleteAuditClerkUser(SECRET, userId),
   };
 }
 
@@ -337,16 +322,9 @@ async function crossToolIntegration(app, hm) {
 }
 
 async function browserDashboard(session, hm) {
-  const pw = await mintIosPlaywrightSession({ appUrl: BASE });
-  if (pw.skip) {
-    rec("ui:browser-dashboard", "FAIL", pw.reason);
-    return;
-  }
-
   const browser = await chromium.launch({ headless: true, args: ["--no-sandbox"] });
   const context = await browser.newContext({ userAgent: UA });
   await context.addInitScript(onboardingInitScript());
-  await context.addCookies(pw.cookies);
   const page = await context.newPage();
   // Playwright default is 30s — cloud agents hydrate slowly after long orchestrator bursts.
   page.setDefaultTimeout(120_000);
@@ -357,7 +335,8 @@ async function browserDashboard(session, hm) {
   page.on("pageerror", (err) => consoleErrors.push(String(err.message)));
 
   try {
-    await page.goto(`${BASE}/dashboard`, { waitUntil: "domcontentloaded", timeout: 120_000 });
+    await page.goto(session.signInUrl, { waitUntil: "domcontentloaded", timeout: 120_000 });
+    await page.waitForURL(/\/dashboard/, { timeout: 120_000 });
     await page.waitForFunction(() => window.Clerk?.user?.id, { timeout: 60_000 });
     rec("ui:sign-in-dashboard", "PASS");
 
@@ -452,9 +431,6 @@ async function browserDashboard(session, hm) {
   } catch (e) {
     rec("ui:browser-dashboard", "FAIL", e.message);
   } finally {
-    try {
-      await pw.cleanup?.();
-    } catch {}
     await browser.close();
   }
 }
