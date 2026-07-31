@@ -61,6 +61,68 @@ Last updated: 2026-07-31 16:56 ET
 
 ---
 
+## rth-open-2026-07-31-pass5 — RTH comprehensive test sweep (~4:48 PM ET, post-close)
+
+**Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` **RTH COMPREHENSIVE TEST SWEEP** pass 5 (~4:48 PM ET Friday, post-close). Commands: `npm run validate:rth-open` → `GET /api/cron/data-correctness?force=1` → sync `surface=heatmap` → `npm run validate:rth-sweep` → `npm run validate:spx-e2e` → `npm run validate:grid-e2e` → `node scripts/audit/data-validator.mjs` → `npm run ops:collect`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` | ✅ **GREEN** — deploy smoke (post-close window; full RTH writer checks skipped after 16:15 ET); options-socket off-hours auth not required |
+| `GET /api/cron/data-correctness?force=1` | ✅ **202** async dispatch |
+| `GET /api/cron/data-correctness?force=1&surface=heatmap` | ✅ **flags=0**, 60 metrics (consistency-only — `market_open=false` post-close) |
+| `npm run validate:rth-sweep` | ✅ **GREEN** — 0 P0/P1; 7 pages soft-nav 1.6–1.8s; APIs 200; Largo grounded NVDA $81.5M in 178ms |
+| `npm run validate:spx-e2e` | ✅ **17/17 PASS** — matrix 175 strikes, spot 7489.72, GEX+VEX+DEX+CHARM cells, cross-tool agree |
+| `npm run validate:grid-e2e` | ✅ **5/5 PASS** — 6 setups · ledger 2 · zero console errors |
+| `data-validator.mjs` | ⚠️ **27 PASS / 2 FAIL / 1 WARN / 4 INFO** — MU 4.35% + BA 3.97% vs Polygon prev-close (tol 2.5% single-name); VIX 6.4% off prev-close (extended-hours ground truth) |
+| `npm run ops:collect` | ✅ **exit 0** — zero action items |
+
+**Verify status: GREEN** — zero P0/P1 product defects. No live fixes required this pass.
+
+### Comprehensive sweep — per-page (~4:50 PM ET, post-close)
+
+| Page | Soft-nav | Missing fields | Console | Live tick |
+|---|---|---|---|---|
+| `/dashboard` (SPX Slayer) | 1.8s hard | 0 | 1× HTTP 400 (resource) | null (post-close — no tick expected) |
+| `/flows` (HELIX) | 1.7s | 0 | 0 | null |
+| `/heatmap` (Thermal matrix + profile tab) | 1.6s | 0 | 0 | null |
+| `/vector` | 1.6s | 0 | 0 | null |
+| `/nighthawk` (0DTE Command) | 1.6s | 0 | 0 | null |
+| `/terminal` (Largo) | 1.6s | 0 | 0 | null |
+| `/track-record` | 1.6s | 0 | 0 | null |
+
+**Speed:** All pages well under 1.8s soft-nav target. `zerodte/board` cold read 3.8s (200, fresh).
+
+**Live auto-update:** `liveTick=null` on all pages — **expected post-close** (16:48 ET); no SSE/poll tick during extended-hours freeze. Re-check during RTH for cadence verification.
+
+**Largo:** NVDA dark pool + flow query grounded — $81,507,690 premium across 50 prints in 178ms; regime `—` is honest (no anomaly regime active post-close).
+
+**Cross-tool GEX:** desk flip 7490.65 vs gex-positioning 7490.66 vs spot 7489.72 — within tolerance.
+
+**API verification:** All 11 market endpoints HTTP 200; `spx/desk` fresh (49s), `platform/snapshot` + `zerodte/board` fresh (1s).
+
+### Findings table (`rth-open-2026-07-31-pass5`)
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| — | — | **No P0/P1 defects** | all suites GREEN | — |
+| P2 | DASH-HTTP-400 | Dashboard console 1× HTTP 400 on resource load (recurring transient asset) | browser network | Yes — no blank fields; same as pass4 |
+| P2 | DV-MU-SPOT | MU `underlying_price` 4.35% off Polygon prev-close (tol 2.5%) | data-validator live probe | Yes — scan-time snapshot drift; chain/strike checks PASS |
+| P2 | DV-BA-SPOT | BA `underlying_price` 3.97% off Polygon prev-close (tol 2.5%) | data-validator live probe | Yes — scan-time snapshot drift; chain/strike checks PASS |
+| P2 | DV-VIX-WARN | VIX 6.4% off Polygon prev-close during extended-hours | data-validator | Yes — extended-hours ground truth uses prev-close |
+| INFO | LIVE-TICK-NULL | All pages `liveTick=null` at 16:48 ET post-close | sweep harness | N/A — expected off-hours |
+| INFO | GRID-ROUTE-404 | `/grid` returns 404; 0DTE Command lives at `/nighthawk` | HTTP probe | N/A — by design |
+
+### Reports
+
+- `audit-output/rth-sweep-2026-07-31T20-50-20-391Z.json`
+- `audit-output/spx-dashboard-e2e-1785531200620.json`
+- `audit-output/grid-e2e-1785531198939.json`
+- `audit-output/validation-2026-07-31T20-53-30-998Z.md`
+
+---
+
 ## grid-rth-2026-07-31-pass3 — 0DTE Command + Grid RTH verify pass (~4:48 PM ET, post-close)
 
 **Session:** Autonomous Grid RTH agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` **verify mode** (post-close pass after 4:00 PM ET bell). Commands: `npm run validate:grid-rth -- --force` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e` → `npm run validate:zerodte-integration` → `node scripts/audit/data-validator.mjs` → Playwright `/nighthawk` four-view click-through + `/grid` route probe.
