@@ -2565,8 +2565,8 @@ export function GexHeatmap({
   // string. The subset re-sums cells[strike] over the chosen expiry/expiries entirely
   // client-side (no refetch) and re-derives walls/flip from those filtered totals.
   const [expiryScope, setExpiryScope] = useState<string>("all");
-  const matrixPollMs = usePollIntervalMs(5_000, 5_000);
-  const quotePollMs = usePollIntervalMs(5_000, 5_000);
+  const matrixPollMs = usePollIntervalMs(2_000, 5_000);
+  const quotePollMs = usePollIntervalMs(2_000, 5_000);
 
   // Deep-link: keep ?ticker=&lens=&compare= in sync so desks can share the exact view.
   useEffect(() => {
