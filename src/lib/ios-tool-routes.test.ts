@@ -18,6 +18,8 @@ describe("isIosToolRoute", () => {
     assert.equal(isIosToolRoute("/heatmap"), true);
     assert.equal(isIosToolRoute("/terminal"), true);
     assert.equal(isIosToolRoute("/nighthawk/edition"), true);
+    assert.equal(isIosToolRoute("/vector"), true);
+    assert.equal(isIosToolRoute("/vector?ticker=SPY"), true);
   });
 
   it("rejects marketing and auth paths", () => {
@@ -51,13 +53,13 @@ describe("isIosNativeShellRoute", () => {
 });
 
 describe("IOS_TOOLS metadata", () => {
-  it("defines five primary tools with accents and instrument codes", () => {
-    assert.equal(IOS_TOOLS.length, 5);
+  it("defines six primary tools with accents and instrument codes", () => {
+    assert.equal(IOS_TOOLS.length, 6);
     assert.ok(IOS_TOOLS.every((t) => t.accent.startsWith("#")));
     assert.ok(IOS_TOOLS.every((t) => t.code.length >= 2 && t.code.length <= 4));
     assert.deepEqual(
       IOS_TOOLS.map((t) => t.code),
-      ["SPX", "HLX", "THM", "LRG", "HWK"]
+      ["SPX", "HLX", "THM", "LRG", "HWK", "VEC"]
     );
   });
 
@@ -71,6 +73,7 @@ describe("IOS_TOOLS metadata", () => {
     assert.equal(getIosToolRouteIndex("/dashboard"), 0);
     assert.equal(getIosToolRouteIndex("/flows"), 1);
     assert.equal(getIosToolRouteIndex("/nighthawk"), 4);
+    assert.equal(getIosToolRouteIndex("/vector"), 5);
     assert.equal(getIosToolRouteIndex("/account"), -1);
   });
 });
@@ -90,6 +93,13 @@ describe("getIosHeaderMeta", () => {
     assert.equal(getIosHeaderMeta("/flows").kicker, "Institutional flow tape");
     assert.equal(getIosHeaderMeta("/flows").title, "HELIX");
     assert.equal(getIosHeaderMeta("/flows").showBack, false);
+  });
+
+  it("returns Vector as a first-class tool with no back button", () => {
+    const vector = getIosHeaderMeta("/vector");
+    assert.equal(vector.title, "Vector");
+    assert.equal(vector.kicker, "Gamma-wall radar · cross-ticker");
+    assert.equal(vector.showBack, false);
   });
 
   it("returns utility titles with back affordance", () => {

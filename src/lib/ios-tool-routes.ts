@@ -7,9 +7,14 @@ export const IOS_TOOL_ROUTES = [
   "/heatmap",
   "/terminal",
   "/nighthawk",
+  "/vector",
 ] as const;
 
 export type IosToolRoute = (typeof IOS_TOOL_ROUTES)[number];
+
+function normalizeIosPath(path: string): string {
+  return path.split(/[?#]/)[0] ?? path;
+}
 
 export type IosRouteKey =
   | "dashboard"
@@ -83,10 +88,19 @@ export const IOS_TOOLS: IosToolMeta[] = [
     tagline: "Overnight playbook",
     code: "HWK",
   },
+  {
+    href: "/vector",
+    label: "Vector",
+    short: "Vector",
+    mark: "vector",
+    accent: "#2dd4bf",
+    tagline: "Gamma-wall radar · cross-ticker",
+    code: "VEC",
+  },
 ];
 
 const IOS_UTILITY_META: Record<
-  "account" | "faq" | "learn" | "upgrade" | "admin" | "vector" | "other",
+  "account" | "faq" | "learn" | "upgrade" | "admin" | "other",
   { title: string; accent: string }
 > = {
   account: { title: "Account", accent: "#7dd3fc" },
@@ -94,10 +108,6 @@ const IOS_UTILITY_META: Record<
   learn: { title: "Learn", accent: "#7dd3fc" },
   upgrade: { title: "Membership", accent: "#7dd3fc" },
   admin: { title: "Admin", accent: "#7dd3fc" },
-  // Not a bottom-tab tool (see IOS_NATIVE_SHELL_PATH_PREFIXES below) — routed through the
-  // utility-header branch so it still gets a proper title/accent without joining the
-  // fixed 6-tool tab bar registry that iOS Phase 0d is consolidating.
-  vector: { title: "Vector", accent: "#2dd4bf" },
   other: { title: "BlackOut", accent: "#a3e635" },
 };
 
@@ -122,16 +132,19 @@ export const IOS_TOOL_NAV_LABELS: Record<IosToolRoute, string> = Object.fromEntr
 ) as Record<IosToolRoute, string>;
 
 export function isIosToolRoute(path: string): boolean {
-  return IOS_TOOL_ROUTES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
+  const p = normalizeIosPath(path);
+  return IOS_TOOL_ROUTES.some((prefix) => p === prefix || p.startsWith(`${prefix}/`));
 }
 
 /** Tab order index for direction-aware iOS page transitions (-1 when not a tool route). */
 export function getIosToolRouteIndex(path: string): number {
-  return IOS_TOOL_ROUTES.findIndex((prefix) => path === prefix || path.startsWith(`${prefix}/`));
+  const p = normalizeIosPath(path);
+  return IOS_TOOL_ROUTES.findIndex((prefix) => p === prefix || p.startsWith(`${prefix}/`));
 }
 
 export function getIosToolMeta(path: string): IosToolMeta | null {
-  return IOS_TOOLS.find((t) => path === t.href || path.startsWith(`${t.href}/`)) ?? null;
+  const p = normalizeIosPath(path);
+  return IOS_TOOLS.find((t) => p === t.href || p.startsWith(`${t.href}/`)) ?? null;
 }
 
 /** Resolve the active tool label for iOS nav chrome (null when not on a tool route). */
@@ -169,7 +182,6 @@ export function getIosHeaderMeta(path: string): IosHeaderMeta {
     key === "learn" ||
     key === "upgrade" ||
     key === "admin" ||
-    key === "vector" ||
     key === "other"
       ? key
       : "other";
