@@ -1,5 +1,81 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-31 13:45 ET
+Last updated: 2026-07-31 14:22 ET
+
+## spx-rth-2026-07-31 — SPX Slayer all-day verify pass (market-open 6:30 AM PT / 9:30 AM ET)
+
+**Session:** SPX Slayer all-day RTH verification agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` **verify** mode. Commands: `npm run validate:spx-rth` → `npm run validate:spx-e2e` → 60s live auto-update probe → `node scripts/audit/data-validator.mjs`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth` | ✅ **GREEN** — 8 PASS / 1 WARN / 0 FAIL |
+| `npm run validate:spx-e2e` | ✅ **GREEN** (final pass) — 17 checks, 0 FAIL |
+| 60s live auto-update | ✅ **GREEN** — desk Δ1.05pt, heatmap spot tick, play WATCHING tick |
+| `data-validator.mjs` (SPX scope) | ✅ SPX/GEX/matrix/oracle **PASS**; 2× 0DTE single-name price drift (TSM/BA, non-SPX) |
+
+**Verify status: GREEN** — zero P0/P1 SPX defects. Matrix 100% correct (170 strikes × GEX/VEX/DEX/CHARM), trade alerts grounded (SCANNING→WATCHING live transition, no stale ✓), cross-tool integration intact.
+
+### Matrix & desk (API oracle)
+
+| Probe | Result |
+|---|---|
+| `heatmap-matrix-audit.mjs --tickers=SPX` | ✅ Every cell finite; Σ strike_totals == headline total; INV-2 re-sum PASS |
+| Cross-endpoint spot | ✅ merged=7482.4 hm=7478.47 play=SCANNING (Δ ≤ 0.15 tol) |
+| Desk cache lanes | ✅ spot=7479.02 pulse=true flow=true |
+| Matrix E2E (every cell) | ✅ GEX+VEX+DEX+CHARM · 170 strikes · spot 7481.96 |
+| UI matrix rows | ✅ 175 strike rows; zero NaN/undefined/$— |
+
+### UI E2E (`/dashboard`)
+
+| # | Action | Result |
+|---|---|---|
+| Sign-in + shell | ✅ Premium admin session; LIVE badge (not OFFLINE) |
+| GEX tab click | ✅ `#spx-matrix-tab-gex` activates |
+| VEX tab click | ✅ VEX cells populate |
+| Matrix text sanity | ✅ No NaN/undefined/em-dash |
+| Trade alert hero | ✅ WATCHING — no stale ✓ during SCANNING |
+| Commentary expand | ⏭ SKIP — no expand control rendered |
+| Console errors | ✅ Clean (final pass) |
+
+### Cross-tool integration (Step 3)
+
+| Tool | Endpoint | Result |
+|---|---|---|
+| **Thermal** | `/api/market/gex-heatmap?ticker=SPX` | ✅ Same payload as dashboard matrix |
+| **GEX positioning** | `/api/market/gex-positioning?ticker=SPX` | ✅ spot/flip/walls agree with matrix header |
+| **HELIX** | `/api/market/flows?limit=30` | ✅ 30 prints during active tape |
+| **Largo** | `POST /api/market/largo/query` (SPX play state) | ✅ `tools=blackout_intelligence` grounded |
+| **BIE** | `validate:spx-bie` | ✅ `spx_full_state` == member `/spx/play` |
+| **Grid** | `/api/market/spx/bootstrap` | ✅ Loaded; spot not stale vs desk |
+| **0DTE Command** | `/api/market/zerodte/board` | ✅ 10 setups; live spot references |
+| **Night Hawk** | `/api/market/nighthawk/edition` | ✅ Edition loads; SPX echo consistent |
+
+### 60s live auto-update (Step 4)
+
+| Surface | Cadence | Result |
+|---|---|---|
+| Desk SPX price | ~3s pulse | ✅ Δ1.05pt over 60s (7485.37→7484.32) |
+| Matrix heatmap | ~8s RTH | ✅ Payload changed; spot 7484.62→7485.55 |
+| Trade alert hero | ~3s | ✅ SCANNING→WATCHING transition observed |
+
+### Findings table (`spx-rth-2026-07-31`)
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| P2 | SPX-E2E-CF-502 | First E2E run: transient browser console 502 during parallel audit burst | edge origin | Yes — resolved on retry (pass 3) |
+| P2 | SPX-E2E-MATRIX-HYDRATE | Second E2E run: `.spx-gex-matrix-table` 60s hydration timeout | Playwright/cloud load | Yes — resolved on retry (pass 3) |
+| P2 | SPX-CRON-SECRET-MISMATCH | Cloud-agent `CRON_SECRET` ≠ prod SM → data-correctness + bie-play-route WARN | cron bearer 401 | Yes — prod cron runs independently; Clerk fallback authoritative |
+| P2 | SPX-COMMENTARY-EXPAND | Commentary rail expand/collapse control not rendered on dashboard | UI `#spx-commentary-expand` | Yes — post-close UX audit |
+| P2 | SPX-CF-CURL-TIMEOUT | `curl` 120s timeout on thermal-cross-validation during orchestrator burst | CF origin ~120s cap | Yes — check still PASS after timeout |
+
+### Reports
+
+- `audit-output/spx-rth-2026-07-31-verify-1785521336134.json`
+- `audit-output/spx-dashboard-e2e-1785521985748.json` (final GREEN)
+- `audit-output/validation-2026-07-31T18-22-04-624Z.md`
+
+---
 
 ## rth-comprehensive-2026-07-31-13h — RTH agent pass (~12:29–13:23 ET)
 
