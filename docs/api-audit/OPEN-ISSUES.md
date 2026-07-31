@@ -1,5 +1,67 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-31 14:28 ET
+Last updated: 2026-07-31 14:58 ET
+
+## spx-rth-2026-07-31 — SPX Slayer all-day verify pass (~2:56 PM ET)
+
+**Session:** SPX Slayer all-day RTH verification agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` **verify mode** (afternoon pass, RTH). Commands: `npm run validate:spx-rth` → `npm run validate:spx-e2e` → 60s live auto-update probe.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth` | ✅ **GREEN** — 8 PASS / 1 WARN / 0 FAIL |
+| `npm run validate:spx-e2e` | ✅ **GREEN** — 17 checks, 0 FAIL |
+| 60s live auto-update | ✅ **PASS** — header SPX 7486.13→7488.17; API spot 7484.29→7484.76 |
+| Matrix deep audit | ✅ 170 strikes · GEX+VEX+DEX+CHARM every cell finite · INV-2 resum |
+| Cross-endpoint spot | ✅ merged=7484.54 hm=7484.4 play=SCANNING/SCANNING (Δ ≤ 0.15) |
+| Desk cache lanes | ✅ spot=7484.28 pulse=true flow=true |
+| BIE consistency | ✅ `getSpxPlayState()` == member `/spx/play` |
+| `ops:collect` | ✅ zero items |
+
+**Verify status: GREEN** — zero P0 product defects. No live fixes required this pass.
+
+### UI E2E (`/dashboard`)
+
+| Control | Result |
+|---|---|
+| Sign-in + shell | ✅ PASS |
+| LIVE badge (RTH) | ✅ PASS — not OFFLINE |
+| GEX tab click | ✅ PASS |
+| VEX tab click | ✅ PASS |
+| Matrix rows | ✅ 175 strike rows (≥80) |
+| Matrix text sanity | ✅ no NaN/undefined/`$—` |
+| Trade alert hero | ✅ SCANNING — no stale ✓ confirmations |
+| Console errors | ✅ zero |
+| Commentary expand | ⏭ SKIP — toggle only renders when commentary `live` |
+
+### Cross-tool integration (Step 3)
+
+| Tool | Endpoint | Result |
+|---|---|---|
+| Thermal | `gex-heatmap?ticker=SPX` | ✅ same payload as dashboard matrix |
+| Thermal SPY | `gex-heatmap?ticker=SPY` | ✅ cross_validation PASS |
+| GEX positioning | `gex-positioning?ticker=SPX` | ✅ spot/flip agree |
+| HELIX | `flows?limit=30` | ✅ 30 prints |
+| Largo | `largo/query` "Current SPX play state?" | ✅ tools=blackout_intelligence |
+| BIE | `validate:spx-bie` | ✅ PASS |
+| Grid | `spx/bootstrap` | ✅ loaded |
+| 0DTE Command | `zerodte/board` | ✅ 9 setups |
+| Night Hawk | `nighthawk/edition` | ✅ loads |
+
+### Findings table (`spx-rth-2026-07-31`)
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| INFO | STALE-GH-CRON-SECRET | Env `CRON_SECRET` 401 on data-correctness + BIE play-route probes; AWS SM secret works on prod cron | curl probe | N/A — sandbox only |
+| P2 | COMMENTARY-TOGGLE-HIDDEN | `#spx-commentary-rail-toggle` only mounts when `live=true`; E2E SKIP when commentary standby | `SpxCommentaryRail.tsx:357` | Post-close — add audit note or always render toggle |
+| INFO | SCANNING-STATE | Play action SCANNING with no stale confirmations — correct per PR #539 | `/api/market/spx/play` | N/A |
+
+### Reports
+
+- `audit-output/spx-rth-2026-07-31-verify-1785524274238.json`
+- `audit-output/spx-dashboard-e2e-1785524346738.json`
+
+---
 
 ## rth-open-2026-07-31-pass4 — RTH comprehensive test sweep (~2:14 PM ET)
 
