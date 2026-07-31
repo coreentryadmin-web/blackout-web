@@ -29,6 +29,7 @@ import "../ios-native-tokens.css";
 import "../ios-native-organize.css";
 import "../ios-native-tab-rail.css";
 import "../ios-native-cards.css";
+import "../ios-native-compact-controls.css";
 import "../styles/admin-console.css";
 
 /**

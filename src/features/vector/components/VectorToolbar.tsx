@@ -95,7 +95,60 @@ export function VectorToolbar(props: Props) {
   } = props;
 
   return (
-    <div className="vector-toolbar mb-2" role="group" aria-label="Chart timeframe">
+    <div className="vector-toolbar ios-compact-toolbar mb-2" role="group" aria-label="Chart timeframe">
+      <div className="vector-toolbar-row-primary ios-compact-scroll-row">
+        {leadSlot}
+        <VectorTimeframeSelect
+          interval={interval}
+          onInterval={onInterval}
+          disabled={timeframeDisabled}
+        />
+        <VectorIndicatorMenu
+          enabled={indicators}
+          onToggle={onToggleIndicator}
+          onClear={onClearIndicators}
+          barCount={barCount}
+        />
+        {replayLeadSlot}
+        <VectorReplayControls
+          replayMode={replayMode}
+          playing={playing}
+          canReplay={canReplay}
+          cursorIndex={cursorIndex}
+          stepCount={stepCount}
+          clockLabel={clockLabel}
+          speed={speed}
+          loop={loop}
+          onToggleReplay={onToggleReplay}
+          onTogglePlay={onTogglePlay}
+          onScrub={onScrub}
+          onSpeed={onSpeed}
+          onStep={onStep}
+          onJumpOpen={onJumpOpen}
+          onJumpClose={onJumpClose}
+          onToggleLoop={onToggleLoop}
+        />
+      </div>
+      <div className="vector-toolbar-row-secondary ios-compact-scroll-row">
+        <VectorLensToggle
+          lens={lens}
+          vexAvailable={vexAvailable}
+          onLens={onLens}
+          gexAsOf={gexAsOf}
+          vexAsOf={vexAsOf}
+          liveSession={liveSession}
+        />
+        {lens === "gex" && (
+          <VectorDteToggle
+            horizon={dteHorizon}
+            onHorizon={onDteHorizon}
+            available={dteAvailable}
+            disabled={replayMode}
+          />
+        )}
+        {trailSlot}
+      </div>
+      {/* Desktop / wide web — legacy wrap row (hidden on iOS via ios-native-compact-controls.css) */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           {leadSlot}

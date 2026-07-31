@@ -1,0 +1,265 @@
+/**
+ * iOS compact controls — HIG-aligned density for native shell.
+ * 44pt touch targets via min-height, but chips do NOT stretch full-width.
+ * Filter rows scroll horizontally instead of stacking tall equal-width pills.
+ */
+
+/* Compact rows default hidden — iOS shell only */
+.vector-toolbar-row-primary,
+.vector-toolbar-row-secondary {
+  display: none;
+}
+
+html.ios-app.ios-native-shell {
+  --ios-compact-touch: 2.5rem; /* 40px — dense desk; still tappable */
+  --ios-compact-pad-x: 0.65rem;
+  --ios-compact-gap: 0.35rem;
+}
+
+html.ios-app.ios-native-shell .vector-toolbar-row-primary,
+html.ios-app.ios-native-shell .vector-toolbar-row-secondary {
+  display: flex;
+}
+
+/* ── Horizontal scroll row (filters, toolbar chips) ── */
+html.ios-app.ios-native-shell .ios-compact-scroll-row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--ios-compact-gap);
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  min-width: 0;
+  padding-bottom: 2px;
+}
+
+html.ios-app.ios-native-shell .ios-compact-scroll-row::-webkit-scrollbar {
+  display: none;
+}
+
+html.ios-app.ios-native-shell .ios-compact-scroll-row > * {
+  flex: 0 0 auto;
+}
+
+/* Segmented groups inside scroll rows — shrink-wrap, no equal-width stretch */
+html.ios-app.ios-native-shell .ios-compact-scroll-row .flow-seg-group {
+  display: inline-flex !important;
+  flex: 0 0 auto !important;
+  width: auto !important;
+  max-width: none !important;
+}
+
+html.ios-app.ios-native-shell .ios-compact-scroll-row .flow-seg-btn {
+  flex: 0 0 auto !important;
+  min-width: 2.75rem;
+  min-height: var(--ios-compact-touch) !important;
+  padding: 0 0.65rem !important;
+  font-size: 10px !important;
+  letter-spacing: 0.1em !important;
+}
+
+/* ═══ VECTOR TOOLBAR (dashboard embed + /vector) ═══ */
+html.ios-app.ios-native-shell .ios-compact-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ios-compact-gap);
+  margin-bottom: 0.35rem !important;
+}
+
+html.ios-app.ios-native-shell .ios-compact-toolbar .vector-toolbar-row-primary,
+html.ios-app.ios-native-shell .ios-compact-toolbar .vector-toolbar-row-secondary {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--ios-compact-gap);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+html.ios-app.ios-native-shell .ios-compact-toolbar .vector-toolbar-row-primary::-webkit-scrollbar,
+html.ios-app.ios-native-shell .ios-compact-toolbar .vector-toolbar-row-secondary::-webkit-scrollbar {
+  display: none;
+}
+
+html.ios-app.ios-native-shell .ios-compact-toolbar button,
+html.ios-app.ios-native-shell .ios-compact-toolbar select,
+html.ios-app.ios-native-shell .ios-compact-toolbar .vector-ind-trigger {
+  min-height: var(--ios-compact-touch) !important;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+html.ios-app.ios-native-shell .ios-compact-toolbar .vector-replay-controls {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+html.ios-app.ios-native-shell .ios-compact-toolbar .vector-replay-bar {
+  flex-wrap: nowrap !important;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  max-width: min(100%, 22rem);
+}
+
+html.ios-app.ios-native-shell .ios-compact-toolbar .vector-replay-bar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Collapse replay transport until replay mode — saves a toolbar row */
+html.ios-app.ios-native-shell .ios-compact-toolbar .vector-replay-controls[data-replay-active="false"] .vector-replay-bar button:not([data-testid="vector-replay-toggle"]),
+html.ios-app.ios-native-shell .ios-compact-toolbar .vector-replay-controls[data-replay-active="false"] .vector-replay-bar select {
+  display: none;
+}
+
+html.ios-app.ios-native-shell .ios-compact-toolbar > .flex.flex-wrap {
+  display: none !important;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-vector-col {
+  min-height: min(52dvh, calc(100dvh - var(--ios-header-offset) - var(--ios-tab-offset) - 9rem));
+}
+
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-desk--ios-vector-focus .spx-sniper-vector-col {
+  min-height: min(60dvh, calc(100dvh - var(--ios-header-offset) - var(--ios-tab-offset) - 7rem));
+}
+
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-desk--ios-vector-focus .vector-chart-canvas,
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-desk--ios-vector-focus .vector-chart-canvas--fill-host {
+  min-height: min(54dvh, calc(100dvh - var(--ios-header-offset) - var(--ios-tab-offset) - 8rem)) !important;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="vector"] .vector-chart-canvas {
+  min-height: min(58dvh, calc(100dvh - var(--ios-header-offset) - var(--ios-tab-offset) - 5.5rem)) !important;
+}
+
+/* ═══ HELIX — scrollable filter rows ═══ */
+html.ios-app.ios-native-shell[data-ios-route="flows"] .helix-native-toolbar-row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--ios-compact-gap);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="flows"] .helix-native-toolbar-row::-webkit-scrollbar {
+  display: none;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="flows"] .helix-native-toolbar-row .flow-seg-group {
+  flex: 0 0 auto !important;
+  display: inline-flex !important;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="flows"] .helix-native-toolbar-row .flow-seg-btn {
+  min-height: var(--ios-compact-touch) !important;
+  flex: 0 0 auto !important;
+  padding: 0 0.6rem !important;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="flows"] .helix-native-ticker-input {
+  flex: 0 0 5.5rem !important;
+  min-width: 5.5rem !important;
+  max-width: 5.5rem !important;
+  min-height: var(--ios-compact-touch) !important;
+  font-size: 13px !important;
+  padding: 0 0.5rem !important;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="flows"] .helix-native-toolbar-tools {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: var(--ios-compact-gap);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ═══ NIGHT HAWK — single scroll filter + sort row ═══ */
+html.ios-app.ios-native-shell[data-ios-route="nighthawk"] .nh-deck-chrome-row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--ios-compact-gap);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  margin-bottom: 0.25rem;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="nighthawk"] .nh-deck-chrome-row::-webkit-scrollbar {
+  display: none;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="nighthawk"] .nh-deck-filterbar,
+html.ios-app.ios-native-shell[data-ios-route="nighthawk"] .nh-deck-sortbar {
+  display: inline-flex;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  gap: var(--ios-compact-gap);
+  overflow: visible;
+  margin-bottom: 0;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="nighthawk"] .nh-deck-filtbtn,
+html.ios-app.ios-native-shell[data-ios-route="nighthawk"] .nh-deck-sortbtn {
+  flex: 0 0 auto !important;
+  min-height: var(--ios-compact-touch) !important;
+  min-width: auto !important;
+  padding: 0.35rem 0.65rem !important;
+  font-size: 10px !important;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="nighthawk"] .nh-deck-lh {
+  font-size: 10px;
+  margin-bottom: 0.2rem;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="nighthawk"] .nh-deck-left {
+  max-height: min(44dvh, 340px);
+}
+
+/* ═══ THERMAL — single-row control strip ═══ */
+html.ios-app.ios-native-shell[data-ios-route="heatmap"] .gex-heatmap-control-row {
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  align-items: center !important;
+  gap: var(--ios-compact-gap) !important;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0.45rem 0.55rem !important;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="heatmap"] .gex-heatmap-control-row [role="tablist"] {
+  flex: 0 0 auto;
+  display: inline-flex !important;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="heatmap"] .gex-heatmap-control-row [role="tab"] {
+  min-height: var(--ios-compact-touch) !important;
+  flex: 0 0 auto !important;
+  padding: 0 0.65rem !important;
+  font-size: 11px !important;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="heatmap"] .gex-ticker-native-trigger {
+  flex: 0 0 auto;
+  min-height: var(--ios-compact-touch) !important;
+  padding: 0 0.75rem !important;
+  font-size: 12px !important;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="heatmap"] .gex-matrix-scroll {
+  max-height: calc(100dvh - var(--ios-header-offset) - var(--ios-tab-offset) - 11rem) !important;
+}
+
+/* ═══ VIEW SEGMENTS — readable labels, compact height ═══ */
+html.ios-app.ios-native-shell .ios-native-segment-btn {
+  min-height: var(--ios-compact-touch) !important;
+  font-size: 12px !important;
+  padding: 0.35rem 0.45rem !important;
+}

@@ -48,7 +48,7 @@ export function VectorReplayControls({
   const maxIndex = Math.max(0, stepCount - 1);
 
   return (
-    <div className="vector-replay-controls flex min-w-0 flex-col gap-1.5">
+    <div className="vector-replay-controls flex min-w-0 flex-col gap-1.5" data-replay-active={replayMode ? "true" : "false"}>
       <div className="vector-replay-bar flex flex-wrap items-center gap-1.5">
         <button
           type="button"
