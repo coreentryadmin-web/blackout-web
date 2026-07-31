@@ -107,11 +107,19 @@ html.ios-app.ios-native-shell .helix-native-tools-toggle {
   color: #7dd3fc;
 }
 
-html.ios-app.ios-native-shell .helix-native-toolbar input {
-  width: 5.5rem !important;
+html.ios-app.ios-native-shell .helix-native-toolbar input,
+html.ios-app.ios-native-shell .helix-native-ticker-input {
+  flex: 1 1 6.5rem;
+  width: auto !important;
+  max-width: 9rem;
   min-height: var(--ios-touch) !important;
   padding: 0 0.65rem !important;
   font-size: 16px !important;
+}
+
+html.ios-app.ios-native-shell .helix-native-toolbar-tools button {
+  min-height: var(--ios-touch, 2.75rem);
+  padding: 0.45rem 0.75rem;
 }
 
 /* SPX collapsible desk stats */

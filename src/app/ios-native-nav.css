@@ -96,11 +96,12 @@ html.ios-app.ios-native-shell .ios-native-segment-btn-active {
   box-shadow: none;
 }
 
-/* Internal panel crossfade (segment switches within a tool) */
+/* Internal panel crossfade (segment switches within a tool) — WKWebView can stick
+   on opacity:0 initial keyframes; keep panels opaque and use a subtle slide only. */
 @keyframes ios-panel-enter {
   from {
-    opacity: 0;
-    transform: translateY(10px);
+    opacity: 1;
+    transform: translateY(6px);
   }
   to {
     opacity: 1;
@@ -109,7 +110,7 @@ html.ios-app.ios-native-shell .ios-native-segment-btn-active {
 }
 
 html.ios-app.ios-native-shell .ios-native-panel-visible {
-  animation: ios-panel-enter 0.32s var(--ios-nav-spring) both;
+  animation: ios-panel-enter 0.24s var(--ios-nav-spring) both;
 }
 
 @media (prefers-reduced-motion: reduce) {

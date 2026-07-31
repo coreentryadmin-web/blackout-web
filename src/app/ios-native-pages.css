@@ -288,7 +288,7 @@ html.ios-app.ios-native-shell[data-ios-route="flows"] .helix-desk {
   gap: 0.45rem;
 }
 
-html.ios-app.ios-native-shell[data-ios-route="flows"] .helix-ios-toolbar {
+html.ios-app.ios-native-shell[data-ios-route="flows"] .helix-native-toolbar {
   position: static;
   top: auto;
   margin: 0.2rem 0;
@@ -296,14 +296,20 @@ html.ios-app.ios-native-shell[data-ios-route="flows"] .helix-ios-toolbar {
   border-radius: var(--ios-panel-radius);
 }
 
-html.ios-app.ios-native-shell[data-ios-route="flows"] .helix-ios-toolbar .font-mono.hidden.sm\:block {
+html.ios-app.ios-native-shell[data-ios-route="flows"] .helix-native-toolbar .font-mono.hidden.sm\:block {
   display: none;
 }
 
-html.ios-app.ios-native-shell[data-ios-route="flows"] .helix-ios-toolbar > button:not(.flow-seg-btn) {
+html.ios-app.ios-native-shell[data-ios-route="flows"] .helix-native-toolbar > button:not(.flow-seg-btn) {
   min-height: 2.25rem;
   padding-left: 0.5rem;
   padding-right: 0.5rem;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="flows"] .helix-native-toolbar-tools button {
+  min-height: var(--ios-touch, 2.75rem);
+  padding: 0.45rem 0.75rem;
+  font-size: 11px;
 }
 
 html.ios-app.ios-native-shell[data-ios-route="flows"] .flow-scroll-max {
@@ -921,6 +927,25 @@ html.ios-app.ios-native-shell[data-ios-route="nighthawk"] .nh-deck-right {
 
 html.ios-app.ios-native-shell[data-ios-route="nighthawk"] .nh-deck-rows {
   max-height: none;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="nighthawk"] .nh-deck-filtbtn,
+html.ios-app.ios-native-shell[data-ios-route="nighthawk"] .nh-deck-sortbtn {
+  min-height: var(--ios-touch, 2.75rem);
+  min-width: 3.25rem;
+  padding: 0.45rem 0.55rem;
+  font-size: 11px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="nighthawk"] .nh-deck-row {
+  min-height: var(--ios-touch, 2.75rem);
+  -webkit-tap-highlight-color: transparent;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="nighthawk"] .nh-deck-tabs button {
+  min-height: var(--ios-touch, 2.75rem);
+  padding: 0.55rem 0.85rem;
 }
 
 html.ios-app.ios-native-shell[data-ios-route="nighthawk"] .nighthawk-playbook-kicker {

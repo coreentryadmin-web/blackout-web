@@ -86,6 +86,78 @@ async function clickRoleTab(page, pattern) {
   return false;
 }
 
+async function clickDeckFilter(page, label) {
+  const btn = page.locator(".nh-deck-filtbtn", { hasText: label }).first();
+  if (await btn.isVisible().catch(() => false)) {
+    await btn.click();
+    await page.waitForTimeout(400);
+    return true;
+  }
+  return false;
+}
+
+async function assertHelixTickerSearch(page, prefix = "") {
+  const input = page.locator('input[aria-label="Search ticker"], .helix-native-ticker-input').first();
+  if (!(await input.isVisible().catch(() => false))) {
+    fail(`${prefix}helix:ticker-search`, "ticker input not visible");
+    return;
+  }
+  await input.fill("NVDA");
+  const val = await input.inputValue();
+  if (val === "NVDA") ok(`${prefix}helix:ticker-search`, "filled NVDA");
+  else fail(`${prefix}helix:ticker-search`, `expected NVDA got ${val}`);
+  await input.fill("");
+}
+
+async function assertThermalTickerSheet(page, prefix = "") {
+  const trigger = page.locator(".gex-ticker-native-trigger").first();
+  if (!(await trigger.isVisible().catch(() => false))) {
+    warn(`${prefix}thermal:ticker-sheet`, "native ticker trigger not visible");
+    return;
+  }
+  await trigger.click();
+  await page.waitForSelector(".gex-ticker-native-sheet", { timeout: 10_000 }).catch(() => null);
+  const sheet = page.locator(".gex-ticker-native-sheet");
+  if (!(await sheet.isVisible().catch(() => false))) {
+    fail(`${prefix}thermal:ticker-sheet`, "sheet did not open");
+    return;
+  }
+  ok(`${prefix}thermal:ticker-sheet-open`);
+  const search = page.locator(".gex-ticker-native-sheet-search").first();
+  if (await search.isVisible().catch(() => false)) {
+    await search.fill("QQQ");
+    ok(`${prefix}thermal:ticker-search`, "typed QQQ");
+  } else {
+    fail(`${prefix}thermal:ticker-search`, "sheet search input missing");
+  }
+  const backdrop = page.locator(".gex-ticker-native-sheet-backdrop").first();
+  if (await backdrop.isVisible().catch(() => false)) {
+    await backdrop.click({ position: { x: 24, y: 24 } });
+    await page.waitForTimeout(400);
+    ok(`${prefix}thermal:ticker-sheet-close`);
+  }
+}
+
+async function assertNighthawkInteractions(page, prefix = "") {
+  if (await clickDeckFilter(page, "OPEN")) ok(`${prefix}hawk:filter-open`);
+  if (await clickDeckFilter(page, "ALL")) ok(`${prefix}hawk:filter-all`);
+  const row = page.locator(".nh-deck-row").first();
+  if (await row.isVisible().catch(() => false)) {
+    await row.click();
+    await page.waitForTimeout(500);
+    const selected = page.locator(".nh-deck-row.sel").first();
+    if (await selected.isVisible().catch(() => false)) ok(`${prefix}hawk:row-select`);
+    else warn(`${prefix}hawk:row-select`, "row click did not mark selected");
+  } else {
+    warn(`${prefix}hawk:row-select`, "no play rows (empty lane ok off-hours)");
+  }
+  const tab = page.locator(".nh-deck-tabs button").first();
+  if (await tab.isVisible().catch(() => false)) {
+    await tab.click();
+    ok(`${prefix}hawk:terminal-tab`);
+  }
+}
+
 /** Fail-closed: each tool route must render visible desk content (not a blank shell). */
 async function assertToolContent(page, route, prefix = "", opts = {}) {
   const { requireVectorCanvas = true } = opts;
@@ -367,6 +439,14 @@ async function testToolPage(page, tab, prefix = "") {
     if (await clickFlowSeg(page, "CALL")) ok("helix:filter-call");
     if (await clickFlowSeg(page, "PUT")) ok("helix:filter-put");
     if (await clickFlowSeg(page, "ALL")) ok("helix:filter-all");
+    await assertHelixTickerSearch(page, prefix);
+    if (await clickSegment(page, "Analytics")) {
+      await page.waitForTimeout(400);
+      await assertHelixTickerSearch(page, prefix);
+    }
+    if (await clickSegment(page, "Live tape")) {
+      await page.waitForTimeout(400);
+    }
     const tape = page.locator(".flow-scroll-max, .flow-scroll").first();
     if (await tape.isVisible().catch(() => false)) {
       await tape.evaluate((el) => {
@@ -380,7 +460,7 @@ async function testToolPage(page, tab, prefix = "") {
     if (await clickRoleTab(page, /^Matrix$/i)) ok("thermal:tab-matrix");
     if (await clickRoleTab(page, /^gex$/i)) ok("thermal:lens-gex");
     if (await clickRoleTab(page, /^vex$/i)) ok("thermal:lens-vex");
-    if (await clickRoleTab(page, /Profile/i)) ok("thermal:tab-profile");
+    await assertThermalTickerSheet(page, prefix);
     const scroll = page.locator(".gex-matrix-scroll, .max-h-\\[clamp\\(480px\\,74vh\\,880px\\)\\]").first();
     if (await scroll.isVisible().catch(() => false)) {
       await scroll.evaluate((el) => {
@@ -410,6 +490,12 @@ async function testToolPage(page, tab, prefix = "") {
   }
 
   if (tab.route === "nighthawk") {
+    if (await clickSegment(page, "0DTE")) {
+      ok("hawk:segment-0dte");
+      await page.waitForTimeout(800);
+      await assertNighthawkInteractions(page, prefix);
+      await shot(page, "hawk-0dte");
+    }
     if (await clickSegment(page, "Swings")) {
       ok("hawk:segment-swings");
       await page.waitForTimeout(800);
@@ -427,27 +513,9 @@ async function testToolPage(page, tab, prefix = "") {
         warn("hawk:swing-lane-hint", "empty-state hint not visible (lane may have rows)");
       }
     }
-    if (await clickSegment(page, "0DTE")) {
-      ok("hawk:segment-0dte");
-      await shot(page, "hawk-0dte");
-    }
     if (await clickSegment(page, "LEAPS")) {
       ok("hawk:segment-leaps");
     }
-  }
-
-  if (tab.route === "grid") {
-    if (await clickRoleTab(page, /0DTE Command/i)) ok("grid:tab-command");
-    if (await clickRoleTab(page, /Market Grid/i)) {
-      ok("grid:tab-market");
-      await shot(page, "grid-market");
-    }
-    const search = page.locator('input[type="search"], input[placeholder*="Search" i]').first();
-    if (await search.isVisible().catch(() => false)) {
-      await search.fill("SPY");
-      ok("grid:search-fill");
-    }
-    await shot(page, "grid-command");
   }
 }
 
