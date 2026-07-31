@@ -83,6 +83,8 @@ const pagesNeedles = [
   [".faq-native-view", "FAQ native accordion layout"],
   [".learn-page-shell-native", "Learn native page shell hook"],
   [".gex-ticker-native-sheet", "Thermal native ticker bottom sheet"],
+  ["html.ios-app .ios-native-panel-hidden", "panel hide without native-shell wait"],
+  [".vector-toolbar", "SPX vector toolbar iOS stack"],
 ];
 for (const [needle, label] of pagesNeedles) {
   if (pagesCss.includes(needle)) ok(`pages-css:${label}`, needle);
@@ -100,6 +102,7 @@ const sourceNeedles = [
   ["src/components/ios/IosSectionHeader.tsx", "IosSectionHeader"],
   ["src/components/ios/IosNativeChipRail.tsx", "IosNativeChipRail"],
   ["src/lib/ios-tool-routes.ts", "ios-tool-routes"],
+  ["src/hooks/useCompactDeskPanels.ts", "useCompactDeskPanels"],
 ];
 const navCss = readFileSync(join(root, "src/app/ios-native-nav.css"), "utf8");
 const motionCss = readFileSync(join(root, "src/app/ios-native-motion.css"), "utf8");

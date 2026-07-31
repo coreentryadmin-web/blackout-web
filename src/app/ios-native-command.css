@@ -523,8 +523,9 @@ html.ios-app.ios-native-shell .learn-mobile-nav-chip-active {
   box-shadow: inset 0 2px 0 var(--ios-accent);
 }
 
-/* Pending shell — kill web nav flash */
+/* Pending shell — kill web nav flash (display:none reclaims layout space; visibility:hidden did not) */
 html.ios-app.ios-app-pending-shell .nav-bar {
+  display: none !important;
   visibility: hidden !important;
   pointer-events: none !important;
 }
