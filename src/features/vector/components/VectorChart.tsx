@@ -3204,6 +3204,16 @@ export function VectorChart({
       if (w > 0 && h > 0) chart.resize(w, h);
     });
     layoutObserver.observe(container);
+    // WKWebView flex layouts often settle one frame late — double-rAF resize for fillHost embeds.
+    if (fillHost) {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const w = container.clientWidth;
+          const h = container.clientHeight;
+          if (w > 0 && h > 0) chart.resize(w, h);
+        });
+      });
+    }
 
     return () => {
       layoutObserver.disconnect();

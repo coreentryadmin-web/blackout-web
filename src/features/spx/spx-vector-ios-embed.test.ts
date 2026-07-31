@@ -6,7 +6,8 @@ import { join } from "node:path";
 test("SpxDashboard unmounts Vector embed when iOS segment leaves Vector tab", () => {
   const src = readFileSync(join(process.cwd(), "src/features/spx/components/SpxDashboard.tsx"), "utf8");
   assert.match(src, /!compactPanels \|\| iosPanel === "vector"/);
-  assert.match(src, /key="spx-vector-embed"/);
+  assert.match(src, /selectIosPanel/);
+  assert.match(src, /spx-sniper-desk--ios-vector-focus/);
 });
 
 test("VectorChart supports fillHost embed mode without standalone viewport height", () => {

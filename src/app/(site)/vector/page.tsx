@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { requireTier } from "@/lib/auth-access";
 import { canAccessTool } from "@/lib/tool-access-server";
 import { ComingSoon } from "@/components/ComingSoon";
+import { DeskShell } from "@/components/layout/DeskShell";
 import {
   VectorPageShell,
   loadVectorSeedProps,
@@ -34,10 +35,12 @@ export default async function VectorPage({ searchParams }: PageProps) {
   const seed = await loadVectorSeedProps(ticker, { seedDteHorizon: "0dte" });
 
   return (
-    <VectorPageShell
-      {...seed}
-      defaultDteHorizon={ticker === "SPX" ? "0dte" : undefined}
-      defaultChartViewport="session"
-    />
+    <DeskShell fullBleed className="ios-native-page ios-native-page-vector">
+      <VectorPageShell
+        {...seed}
+        defaultDteHorizon={ticker === "SPX" ? "0dte" : undefined}
+        defaultChartViewport="session"
+      />
+    </DeskShell>
   );
 }

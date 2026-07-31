@@ -83,6 +83,25 @@ export function SpxDashboard({ vectorEnabled }: SpxDashboardProps) {
   const compactPanels = useCompactDeskPanels(nativeShell);
   const [iosPanel, setIosPanel] = useState<"vector" | "matrix" | "intel">("vector");
 
+  useEffect(() => {
+    if (!compactPanels) return;
+    try {
+      const saved = window.sessionStorage.getItem("spx-ios-panel");
+      if (saved === "vector" || saved === "matrix" || saved === "intel") setIosPanel(saved);
+    } catch {
+      /* sessionStorage unavailable */
+    }
+  }, [compactPanels]);
+
+  const selectIosPanel = useCallback((next: "vector" | "matrix" | "intel") => {
+    setIosPanel(next);
+    try {
+      window.sessionStorage.setItem("spx-ios-panel", next);
+    } catch {
+      /* best-effort */
+    }
+  }, []);
+
   // SHARED PRICE AXIS (2026-07-13): the embedded Vector chart reports its live y-mapping
   // through the VectorPageShell seam; the matrix column's ladder view consumes it so bars
   // and the spot line land at the SAME pixel heights as the chart.
@@ -198,7 +217,13 @@ export function SpxDashboard({ vectorEnabled }: SpxDashboardProps) {
   });
 
   return (
-    <div className="spx-sniper-desk spx-sniper-desk-fill">
+    <div
+      className={clsx(
+        "spx-sniper-desk spx-sniper-desk-fill",
+        compactPanels && iosPanel === "vector" && "spx-sniper-desk--ios-vector-focus"
+      )}
+      data-ios-panel={compactPanels ? iosPanel : undefined}
+    >
       {deskLaneFailed && (
         <div
           className="flex items-center gap-2 rounded border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-xs font-mono text-amber-200"
@@ -230,17 +255,29 @@ export function SpxDashboard({ vectorEnabled }: SpxDashboardProps) {
           <span>Halt feed degraded — restricted entry mode; verify no active halts before entering</span>
         </div>
       )}
+      {compactPanels && nativeShell ? (
+        <IosNativeSegment
+          value={iosPanel}
+          onChange={selectIosPanel}
+          accent="#a3e635"
+          aria-label="SPX desk view"
+          className="ios-native-desk-segment ios-native-desk-segment-spx"
+          segments={[
+            { id: "vector", label: "Vector" },
+            { id: "matrix", label: "Matrix" },
+            { id: "intel", label: "Intel" },
+          ]}
+        />
+      ) : null}
       <SpxPanelErrorBoundary>
         <SpxSniperHeader desk={desk} live={live} nativeShell={nativeShell} />
       </SpxPanelErrorBoundary>
 
-      {/* SESSION TIME BAR removed (user-directed 2026-07-14): the strip cost a row of panel
-          height for information the ribbon/banner already carry. Component stays in the repo;
-          the focus toggle it hosted now lives in the Vector toolbar, left of Replay. */}
-      {compactPanels && (
+      {/* Web / non-native compact: segment below header */}
+      {compactPanels && !nativeShell ? (
         <IosNativeSegment
           value={iosPanel}
-          onChange={setIosPanel}
+          onChange={selectIosPanel}
           accent="#a3e635"
           aria-label="SPX desk view"
           className="ios-native-desk-segment"
@@ -250,7 +287,7 @@ export function SpxDashboard({ vectorEnabled }: SpxDashboardProps) {
             { id: "intel", label: "Intel" },
           ]}
         />
-      )}
+      ) : null}
 
       {/*
         Three grid slots (desk v3, 2026-07-13 member-directed consolidation):
