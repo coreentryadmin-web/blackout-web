@@ -1,6 +1,39 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { parseOpsCollectPayload, gridOpsItems, spxOpsItems } from "./ops-collect-scope.mjs";
+import {
+  parseOpsCollectPayload,
+  gridOpsItems,
+  spxOpsItems,
+  shouldRetryWatchdogFetch,
+  watchdogHttpPriority,
+} from "./ops-collect-scope.mjs";
+
+describe("watchdogHttpPriority", () => {
+  it("downgrades auth gaps and transient origin errors to P2", () => {
+    assert.equal(watchdogHttpPriority(401), "P2");
+    assert.equal(watchdogHttpPriority(403), "P2");
+    assert.equal(watchdogHttpPriority(502), "P2");
+    assert.equal(watchdogHttpPriority(503), "P2");
+    assert.equal(watchdogHttpPriority(504), "P2");
+    assert.equal(watchdogHttpPriority(524), "P2");
+  });
+
+  it("keeps real app failures at P0", () => {
+    assert.equal(watchdogHttpPriority(500), "P0");
+  });
+});
+
+describe("shouldRetryWatchdogFetch", () => {
+  it("retries transient and network failures", () => {
+    assert.equal(shouldRetryWatchdogFetch(0), true);
+    assert.equal(shouldRetryWatchdogFetch(502), true);
+    assert.equal(shouldRetryWatchdogFetch(503), true);
+    assert.equal(shouldRetryWatchdogFetch(504), true);
+    assert.equal(shouldRetryWatchdogFetch(524), true);
+    assert.equal(shouldRetryWatchdogFetch(401), false);
+    assert.equal(shouldRetryWatchdogFetch(500), false);
+  });
+});
 
 describe("parseOpsCollectPayload", () => {
   it("parses JSON line from stdout with stderr postgres skip", () => {

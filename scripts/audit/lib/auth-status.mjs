@@ -10,5 +10,5 @@ export function isAuthFailureStatus(status) {
 
 /** Edge/origin overload or cold-build timeout — safe to retry after backoff. */
 export function isTransientOriginError(status) {
-  return status === 502 || status === 504 || status === 524;
+  return status === 502 || status === 503 || status === 504 || status === 524;
 }
