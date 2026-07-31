@@ -3,12 +3,12 @@ import XCTest
 
 final class RootViewTests: XCTestCase {
 
-    func test_exactlyTwoPrimaryTabs() {
-        XCTAssertEqual(AppTab.allCases.count, 2)
+    func test_exactlyFourPrimaryTabs() {
+        XCTAssertEqual(AppTab.allCases.count, 4)
     }
 
     func test_tabOrderMatchesIA() {
-        XCTAssertEqual(AppTab.allCases, [.desks, .account])
+        XCTAssertEqual(AppTab.allCases, [.desks, .signals, .watchlist, .account])
     }
 
     func test_tabSlugs_areStableAndUrlSafe() {

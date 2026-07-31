@@ -205,7 +205,7 @@ jobs:
         if: steps.find-app.outputs.found == '1'
         run: |
           set -eo pipefail
-          for tab in desks account; do
+          for tab in desks signals watchlist account; do
             echo "== capturing $tab =="
             # Terminate any prior run so the launch actually re-reads the
             # startup args instead of just resuming.

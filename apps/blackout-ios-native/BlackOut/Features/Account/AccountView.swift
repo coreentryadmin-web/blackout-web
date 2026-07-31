@@ -62,6 +62,21 @@ struct AccountView: View {
                 .listRowBackground(BOColor.backgroundCard)
             }
 
+            Section(header: sectionHeader("Desk & education")) {
+                NavigationLink(destination: WebUtilityView(title: "Profile & alerts", path: "/account")) {
+                    rowLink(title: "Profile & alerts", subtitle: "Clerk profile, personal alerts", icon: "person.crop.circle")
+                }
+                .listRowBackground(BOColor.backgroundCard)
+                NavigationLink(destination: WebUtilityView(title: "Learn", path: "/learn")) {
+                    rowLink(title: "Learn", subtitle: "Product guides and glossary", icon: "book")
+                }
+                .listRowBackground(BOColor.backgroundCard)
+                NavigationLink(destination: WebUtilityView(title: "FAQ", path: "/faq")) {
+                    rowLink(title: "FAQ", subtitle: "Membership, billing, desk basics", icon: "questionmark.circle")
+                }
+                .listRowBackground(BOColor.backgroundCard)
+            }
+
             Section(header: sectionHeader("About")) {
                 infoRow(title: "Version", value: AppConfig.appVersion, icon: "info.circle")
                 if let url = URL(string: AppConfig.backendURL.absoluteString + "/privacy") {
@@ -176,6 +191,16 @@ struct AccountView: View {
             Text(value).font(BOFont.caption).foregroundStyle(BOColor.textCaption)
         }
         .listRowBackground(BOColor.backgroundCard)
+    }
+
+    private func rowLink(title: String, subtitle: String, icon: String) -> some View {
+        HStack(spacing: BOSpacing.snug) {
+            Image(systemName: icon).foregroundStyle(BOColor.textAccent)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(BOFont.body).foregroundStyle(BOColor.textPrimary)
+                Text(subtitle).font(BOFont.caption).foregroundStyle(BOColor.textCaption)
+            }
+        }
     }
 
     private func infoRow(title: String, value: String, icon: String) -> some View {
