@@ -36,7 +36,7 @@ public enum IntelligenceRegistry {
         ),
         IntelligenceModule(
             id: "helix",
-            name: "Helix",
+            name: "HELIX",
             mark: "HLX",
             systemImage: "waveform.path.ecg",
             accent: BOColor.Product.helix,
