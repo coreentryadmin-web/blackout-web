@@ -100,9 +100,9 @@ export async function maybeLogSpxPlay(
     score: play.score,
     confidence: play.confidence,
     price: desk.price,
-    entry: play.levels.entry,
-    stop: play.levels.stop,
-    target: play.levels.target,
+    entry: play.levels?.entry ?? null,
+    stop: play.levels?.stop ?? null,
+    target: play.levels?.target ?? null,
     headline: play.headline,
     factors: play.factors,
   });

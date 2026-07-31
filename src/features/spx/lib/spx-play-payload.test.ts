@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { confirmationsForAction } from "./spx-play-payload";
+import { confirmationsForAction, degradedPlayPayload } from "./spx-play-payload";
 
 const sampleConfirmations = {
   passed: true,
@@ -16,4 +16,14 @@ test("confirmationsForAction strips checks on SCANNING", () => {
 test("confirmationsForAction keeps checks on WATCHING and BUY", () => {
   assert.equal(confirmationsForAction("WATCHING", sampleConfirmations), sampleConfirmations);
   assert.equal(confirmationsForAction("BUY", sampleConfirmations), sampleConfirmations);
+});
+
+test("degradedPlayPayload includes levels so UI never reads undefined.entry", () => {
+  const payload = degradedPlayPayload();
+  assert.equal(payload.action, "SCANNING");
+  assert.equal(payload.phase, "SCANNING");
+  assert.ok(payload.levels);
+  assert.equal(payload.levels.entry, null);
+  assert.equal(payload.gates.passed, false);
+  assert.deepEqual(payload.gates.blocks, []);
 });
