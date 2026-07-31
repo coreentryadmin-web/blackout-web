@@ -4,6 +4,22 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-07-31 — [Grid/0DTE] Post-close fix agent pass 6 — all validators GREEN (~3:17 PM PT / 6:17 PM ET)
+
+**Severity.** — (no additional product defects)
+
+**Session.** Scheduled post-close fix agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` Step 4 (~1:05 PM PT slot; executed ~3:17 PM PT / 6:17 PM ET).
+
+**Evidence.**
+- `validate:grid-rth -- --phase=post-close` → **12/12 PASS** (0 FAIL; transient `zerodte:upstream` + `integration:helix-flows` WARN off-hours)
+- `validate:zerodte-logic` → **17/17 PASS**
+- `validate:grid-e2e` → **4/4 PASS** (Playwright WARN only — chromium not installed in sandbox; API probes authoritative)
+- `validate:deploy` → **GREEN**
+
+**Root cause.** Initial cloud-agent run failed on missing `node_modules` (tsx/playwright/pg) — environment only. After `npm install`, all suites GREEN. Prior pass-4 fix (`buildMinimalBoardFallback` live ET session heat, PR #1457) holds.
+
+**Status.** FIXED — no new code changes required; docs only on `fix/grid-post-close-pass6-green`.
+
 ## 2026-07-31 — [Grid/0DTE] Minimal board fallback hardcoded noon RTH heat post-close
 
 **Severity.** P1 — degraded `/api/market/zerodte/board` polls returned `heat=RTH` with empty setups/ledger after the bell while the real board (via Clerk/cron) showed `CLOSED` with 7 setups / 2 ledger rows.

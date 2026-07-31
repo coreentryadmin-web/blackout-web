@@ -1,5 +1,35 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-31 18:10 ET
+Last updated: 2026-07-31 18:17 ET
+
+## grid-rth-2026-07-31-pass6 — 0DTE Command post-close fix agent (~3:17 PM PT / 6:17 PM ET)
+
+**Session:** Autonomous Grid RTH **fix mode** per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` Step 4. Commands: `npm run validate:grid-rth -- --phase=post-close` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e` → `npm run validate:deploy`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `validate:grid-rth -- --phase=post-close` | ✅ **12/12 PASS** (0 FAIL; off-hours WARN on upstream tape + HELIX 0 prints) |
+| `validate:zerodte-logic` | ✅ **17/17 PASS** — gates, plan exits, lifecycle OPEN→TRIM→CLOSED, mergePlays SKIP, session heat CLOSED |
+| `validate:grid-e2e` | ✅ **4/4 PASS** — board API, HELIX flows; Playwright WARN (chromium not in sandbox) |
+| `validate:deploy` | ✅ **GREEN** — health/ready 200, desk-warm ok |
+
+**Fix status: GREEN** — no new P0/P1 product defects. Pass-4 minimal-fallback session-heat fix (PR #1457) holds.
+
+### Findings table (`grid-rth-2026-07-31-pass6`)
+
+| Severity | ID | Detail | Fix defer? |
+|---|---|---|---|
+| — | — | **No P0/P1 product defects** | all suites GREEN |
+| INFO | ENV-NODE-MODULES | Initial run failed on missing `node_modules` (tsx/playwright/pg) | Resolved via `npm install` — environment only |
+
+### Reports
+
+- `audit-output/grid-rth-2026-07-31-post-close-1785536216506.json`
+- `audit-output/zerodte-logic-1785536019011.json`
+- `audit-output/grid-e2e-1785536028125.json`
+
+---
 
 ## spx-rth-2026-07-31-post-close-final — SPX Slayer post-close fix agent (~3:10 PM PT / 6:10 PM ET)
 
