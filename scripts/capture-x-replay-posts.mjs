@@ -14,7 +14,7 @@ import { join } from "path";
 import { mintIosPlaywrightSession } from "./audit/lib/ios-playwright-auth.mjs";
 
 const BASE = (process.env.VALIDATE_BASE || process.env.CAPTURE_BASE_URL || "https://blackouttrades.com").replace(/\/$/, "");
-const OUT = process.env.X_REPLAY_OUT || "/opt/cursor/artifacts/x-replay-jul30";
+const OUT = process.env.X_REPLAY_OUT || join(process.cwd(), "content/x-posts", process.env.X_REPLAY_DATE || "2026-07-30", "attachments");
 const TICKERS = (process.env.X_REPLAY_TICKERS || "MU,SNDK,NBIS,SNXX").split(",").map((s) => s.trim()).filter(Boolean);
 
 mkdirSync(OUT, { recursive: true });
