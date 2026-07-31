@@ -257,29 +257,45 @@ export function SpxDashboard({ vectorEnabled }: SpxDashboardProps) {
         </div>
       )}
       {compactPanels && nativeShell ? (
-        <IosNativeSegment
-          value={iosPanel}
-          onChange={selectIosPanel}
-          accent="#a3e635"
-          variant="compact"
-          aria-label="SPX desk view"
-          className="ios-native-desk-segment ios-native-desk-segment-spx"
-          segments={[
-            { id: "vector", label: "Vector" },
-            { id: "matrix", label: "Matrix" },
-            { id: "intel", label: "Intel" },
-          ]}
-        />
+        <div className="spx-ios-desk-chrome">
+          <SpxPanelErrorBoundary>
+            <div className="spx-ios-top-rail">
+              <SpxSniperHeader
+                desk={desk}
+                live={live}
+                nativeShell={nativeShell}
+                sessionActive={sessionActive}
+                iosVectorFocus={iosPanel === "vector"}
+                stripOnly={iosPanel === "vector"}
+              />
+            </div>
+          </SpxPanelErrorBoundary>
+          <IosNativeSegment
+            value={iosPanel}
+            onChange={selectIosPanel}
+            accent="#a3e635"
+            variant="compact"
+            aria-label="SPX desk view"
+            className="ios-native-desk-segment ios-native-desk-segment-spx"
+            segments={[
+              { id: "vector", label: "Vector" },
+              { id: "matrix", label: "Matrix" },
+              { id: "intel", label: "Intel" },
+            ]}
+          />
+        </div>
       ) : null}
-      <SpxPanelErrorBoundary>
-        <SpxSniperHeader
-          desk={desk}
-          live={live}
-          nativeShell={nativeShell}
-          sessionActive={sessionActive}
-          iosVectorFocus={compactPanels && iosPanel === "vector"}
-        />
-      </SpxPanelErrorBoundary>
+      {!(compactPanels && nativeShell) ? (
+        <SpxPanelErrorBoundary>
+          <SpxSniperHeader
+            desk={desk}
+            live={live}
+            nativeShell={nativeShell}
+            sessionActive={sessionActive}
+            iosVectorFocus={compactPanels && iosPanel === "vector"}
+          />
+        </SpxPanelErrorBoundary>
+      ) : null}
 
       {/* Web / non-native compact: segment below header */}
       {compactPanels && !nativeShell ? (
@@ -401,28 +417,40 @@ export function SpxDashboard({ vectorEnabled }: SpxDashboardProps) {
           >
             {vectorEnabled ? (
               !compactPanels || iosPanel === "vector" ? (
-                <SpxVectorEmbed
-                  key="spx-vector-embed"
-                  onPriceScaleRender={setPriceScaleMap}
-                  focusLevel={chartFocus}
-                  playLevels={playLevels}
-                  toolbarReplayLeadSlot={
-                  // Focus toggle relocated here from the removed session time bar
-                  // (user-directed 2026-07-14: "move Focus to left of Replay").
-                  !compactPanels ? (
-                    <button
-                      type="button"
-                      id="spx-desk-focus-toggle"
-                      className={clsx("spx-desk-focus-btn", focusActive && "spx-desk-focus-btn--active")}
-                      onClick={toggleFocus}
-                      aria-pressed={focusActive}
-                      title={focusActive ? "Exit focus mode (F or Esc)" : "Focus mode — chart fills the desk (F)"}
-                    >
-                      ⛶ Focus
-                    </button>
-                  ) : undefined
-                }
-              />
+                <>
+                  <SpxVectorEmbed
+                    key="spx-vector-embed"
+                    onPriceScaleRender={setPriceScaleMap}
+                    focusLevel={chartFocus}
+                    playLevels={playLevels}
+                    toolbarReplayLeadSlot={
+                    // Focus toggle relocated here from the removed session time bar
+                    // (user-directed 2026-07-14: "move Focus to left of Replay").
+                    !compactPanels ? (
+                      <button
+                        type="button"
+                        id="spx-desk-focus-toggle"
+                        className={clsx("spx-desk-focus-btn", focusActive && "spx-desk-focus-btn--active")}
+                        onClick={toggleFocus}
+                        aria-pressed={focusActive}
+                        title={focusActive ? "Exit focus mode (F or Esc)" : "Focus mode — chart fills the desk (F)"}
+                      >
+                        ⛶ Focus
+                      </button>
+                    ) : undefined
+                  }
+                  />
+                  {nativeShell && iosPanel === "vector" ? (
+                    <div className="spx-ios-trade-setup mt-2">
+                      <SpxPlayVerdictBar
+                        play={play}
+                        playLoading={playLoading}
+                        sessionActive={playSessionActive}
+                        compactDefaultCollapsed={false}
+                      />
+                    </div>
+                  ) : null}
+                </>
               ) : null
             ) : (
               <EmptyState

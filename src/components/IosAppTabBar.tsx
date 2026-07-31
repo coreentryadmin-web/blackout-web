@@ -9,6 +9,7 @@ import { clsx } from "clsx";
 import { ProductMark } from "@/components/marks/ProductMark";
 import { isIosAppShell, isIosNativeEmbed } from "@/lib/ios-app-shell";
 import { IOS_TOOLS, isIosToolRoute } from "@/lib/ios-tool-routes";
+import { IOS_TAB_RAIL, isIosTabRailActive } from "@/lib/ios-tab-rail";
 import { toolKeyForHref, type ToolKey } from "@/lib/tool-access";
 import { iosHapticSelection } from "@/lib/ios-haptics";
 
@@ -42,8 +43,8 @@ export function IosAppTabBar({ lockedTools = [] }: { lockedTools?: ToolKey[] }) 
   return (
     <nav className="ios-app-tab-bar" aria-label="Instrument rail">
       <ul className="ios-app-tab-list">
-        {IOS_TOOLS.map((tab) => {
-          const active = path === tab.href || path.startsWith(`${tab.href}/`);
+        {IOS_TAB_RAIL.map((tab) => {
+          const active = isIosTabRailActive(tab, path);
           const key = toolKeyForHref(tab.href);
           const locked = key != null && lockedTools.includes(key);
           return (

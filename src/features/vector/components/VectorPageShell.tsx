@@ -346,16 +346,19 @@ export function VectorPageShell({
   // timeframe/indicator controls share one line, reclaiming the vertical space the old full-width
   // PageHeader + separate regime block ate. Product decision per member request: maximise chart area.
   const iosCompactChrome = compactPanels && nativeShell;
-  const chartLead =
-    chartOnly || iosCompactChrome ? (
-      chartOnly ? (
+  /** SPX Slayer iOS embed — spot + gamma chips live in SpxIosMarketStrip above the segment. */
+  const spxIosEmbed = chartOnly && nativeShell;
+  const chartLead = spxIosEmbed
+    ? null
+    : chartOnly || iosCompactChrome
+      ? chartOnly ? (
         <span className="rounded border border-cyan-500/30 bg-cyan-500/10 px-1.5 py-0.5 font-mono text-[11px] font-bold tracking-widest text-cyan-200">
           {activeTicker}
         </span>
       ) : (
         <VectorTickerSelect ticker={activeTicker} />
       )
-    ) : (
+    : (
       <div className="flex items-center gap-2 pr-1">
         <ProductMark product="vector" size={22} animated={false} />
         <span className="font-mono text-sm font-bold uppercase tracking-[0.18em] text-cyan-100">Vector</span>
@@ -365,7 +368,7 @@ export function VectorPageShell({
         <VectorTickerSelect ticker={activeTicker} />
       </div>
     );
-  const chartFreshness = (
+  const chartFreshness = spxIosEmbed ? null : (
     <FreshnessChip
       status={freshnessStatus}
       asOf={liveSession && streamUpdatedAt ? new Date(streamUpdatedAt) : null}
@@ -373,6 +376,7 @@ export function VectorPageShell({
       label={liveSession ? "Live session" : `${sessionLabel} close`}
     />
   );
+  const embedRegimeSlot = spxIosEmbed ? null : <VectorRegimeBanner regime={regime} />;
 
   // Chart-only embed (SPX Slayer flagship desk): the SAME VectorChart with the SAME seed props and
   // the SAME toolbar/regime/freshness/toast plumbing — just none of the page chrome or side rails.
@@ -409,7 +413,7 @@ export function VectorPageShell({
           leadSlot={chartLead}
           trailSlot={chartFreshness}
           replayLeadSlot={toolbarReplayLeadSlot}
-          regimeSlot={<VectorRegimeBanner regime={regime} />}
+          regimeSlot={embedRegimeSlot}
         />
         {toast && (
           <div className="vector-alert-toast" role="status" aria-live="polite">

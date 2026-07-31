@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AuthUserMenu } from "@/components/auth/AuthUserMenu";
+import { PushNotificationToggle } from "@/components/PushNotificationToggle";
 import { AnimatePresence, motion } from "framer-motion";
-import { getIosHeaderMeta, getIosRouteKey } from "@/lib/ios-tool-routes";
+import { getIosHeaderMeta } from "@/lib/ios-tool-routes";
 import { ProductMark } from "@/components/marks/ProductMark";
 
 const CLERK_APPEARANCE = {
@@ -37,8 +38,6 @@ export function IosNativeHeader({ path, onMenuOpen }: Props) {
   const router = useRouter();
   const meta = getIosHeaderMeta(path);
   const titleKey = `${meta.key}:${meta.title}`;
-  const routeKey = getIosRouteKey(path);
-  const showLiveKicker = routeKey === "dashboard";
 
   return (
     <header className="ios-native-header ios-native-header-compact" role="banner">
@@ -85,12 +84,7 @@ export function IosNativeHeader({ path, onMenuOpen }: Props) {
               exit={{ opacity: 0, y: -4 }}
               transition={TITLE_SPRING}
             >
-              {showLiveKicker ? (
-                <span className="ios-native-header-kicker ios-native-header-kicker-live">
-                  <span className="spx-ios-live-dot" aria-hidden />
-                  Today · Live · SPX
-                </span>
-              ) : meta.kicker && meta.showBack ? (
+              {meta.kicker && meta.showBack ? (
                 <span className="ios-native-header-kicker">{meta.kicker}</span>
               ) : null}
               <div className="flex items-center justify-center gap-1.5 min-w-0">
@@ -104,6 +98,7 @@ export function IosNativeHeader({ path, onMenuOpen }: Props) {
         </div>
 
         <div className="ios-native-header-actions">
+          <PushNotificationToggle compact className="ios-native-notify-btn !border-0 !bg-transparent !p-0 min-h-[var(--ios-touch,2.75rem)] min-w-[var(--ios-touch,2.75rem)] justify-center" />
           <Link
             href="/terminal"
             className="ios-native-icon-btn ios-native-largo-btn"

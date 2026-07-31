@@ -1,0 +1,119 @@
+/**
+ * iOS Phase 2 — Intelligence hub IA, Largo FAB, chart fullscreen, trade setup, notify bell.
+ */
+
+/* ── Contextual Largo FAB ── */
+html.ios-app.ios-native-shell .ios-largo-fab {
+  position: fixed;
+  right: 0.85rem;
+  bottom: calc(var(--ios-tab-offset, 0px) + 0.85rem);
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 999px;
+  border: 1px solid rgba(34, 211, 238, 0.45);
+  background: rgba(34, 211, 238, 0.14);
+  color: #7dd3fc;
+  font-size: 1.35rem;
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow:
+    0 8px 28px rgba(0, 0, 0, 0.45),
+    0 0 24px rgba(34, 211, 238, 0.18);
+  -webkit-tap-highlight-color: transparent;
+}
+
+html.ios-app.ios-native-shell .ios-largo-fab:active {
+  transform: scale(0.96);
+}
+
+html.ios-app.ios-native-shell[data-ios-route="largo"] .ios-largo-fab {
+  display: none;
+}
+
+/* ── Intelligence hub segment (Flow | Thermal under Intel tab) ── */
+html.ios-app.ios-native-shell .ios-intel-hub-segment {
+  margin: 0.15rem 0 0.45rem;
+}
+
+/* ── Notifications bell in header ── */
+html.ios-app.ios-native-shell .ios-native-notify-btn {
+  color: #7dd3fc !important;
+}
+
+html.ios-app.ios-native-shell .ios-native-notify-btn[aria-pressed="true"] {
+  color: #22d3ee !important;
+}
+
+/* ── SPX Trade Setup on Vector panel ── */
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-ios-trade-setup {
+  flex-shrink: 0;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-ios-trade-setup .spx-play-verdict-bar {
+  border-radius: var(--ios-panel-radius, 14px);
+}
+
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-desk--ios-vector-focus .spx-ios-trade-setup {
+  display: none;
+}
+
+/* ── Double-tap chart fullscreen ── */
+html.ios-app.ios-native-shell.ios-chart-fullscreen .ios-native-header,
+html.ios-app.ios-native-shell.ios-chart-fullscreen .ios-app-tab-bar,
+html.ios-app.ios-native-shell.ios-chart-fullscreen .ios-largo-fab {
+  opacity: 0;
+  pointer-events: none;
+}
+
+html.ios-app.ios-native-shell .vector-chart-stage--fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px);
+  background: #040407;
+}
+
+html.ios-app.ios-native-shell .vector-chart-stage--fullscreen .vector-chart-canvas,
+html.ios-app.ios-native-shell .vector-chart-stage--fullscreen .vector-chart-canvas--fill-host {
+  height: 100% !important;
+  min-height: 100% !important;
+  max-height: none !important;
+}
+
+html.ios-app.ios-native-shell .ios-chart-fullscreen-exit {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 0.45rem);
+  right: 0.65rem;
+  z-index: 210;
+  min-width: var(--ios-touch, 2.75rem);
+  min-height: var(--ios-touch, 2.75rem);
+  border: 1px solid rgba(125, 211, 252, 0.35);
+  border-radius: 10px;
+  background: rgba(4, 4, 7, 0.88);
+  color: #fff;
+  font-size: 1rem;
+}
+
+/* ── Thermal native Matrix | Profile tabs ── */
+html.ios-app.ios-native-shell[data-ios-route="heatmap"] .gex-heatmap-control-row [role="tablist"][aria-label*="views"] {
+  flex: 0 0 auto;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="heatmap"] .gex-heatmap-control-row [role="tablist"][aria-label*="views"] [role="tab"] {
+  min-height: var(--ios-compact-touch, 2.25rem) !important;
+  font-size: 11px !important;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="heatmap"] .gex-heatmap-desk-native .mt-1 {
+  margin-top: 0.35rem;
+}
+
+/* 5-tab rail — slightly tighter labels */
+html.ios-app.ios-native-shell .ios-app-tab-label {
+  font-size: 9px;
+  letter-spacing: 0.06em;
+}

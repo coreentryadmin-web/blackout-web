@@ -14,8 +14,10 @@ type Props = {
   /** Native iOS shell — drop duplicate product title; compact hero layout. */
   nativeShell?: boolean;
   sessionActive?: boolean;
-  /** Vector focus — collapse metric groups by default for chart-first layout. */
+  /** Vector focus — strip-only header; metrics live in Matrix/Intel panels. */
   iosVectorFocus?: boolean;
+  /** Strip-only mode — price + live chips, no metric cards. */
+  stripOnly?: boolean;
 };
 
 export function SpxSniperHeader({
@@ -24,24 +26,33 @@ export function SpxSniperHeader({
   nativeShell = false,
   sessionActive = false,
   iosVectorFocus = false,
+  stripOnly = false,
 }: Props) {
   const hasQuote = Boolean(desk?.available && (desk?.price ?? 0) > 0);
   const showValues = Boolean(live || hasQuote);
   const spot = desk?.price ?? null;
+  const metricsOnly = stripOnly || iosVectorFocus;
 
   if (nativeShell) {
     return (
-      <header className="spx-sniper-command spx-sniper-command-native spx-ios-command">
+      <header
+        className={clsx(
+          "spx-sniper-command spx-sniper-command-native spx-ios-command",
+          metricsOnly && "spx-ios-command--strip-only"
+        )}
+      >
         <SpxIosMarketStrip desk={desk} live={live} sessionActive={sessionActive} />
-        <details className="spx-ios-metrics-details" open={!iosVectorFocus}>
-          <summary className="spx-ios-metrics-summary">Market context</summary>
-          <SpxIosMetricGroups
-            desk={desk}
-            showValues={showValues}
-            spot={spot}
-            defaultCollapsed={iosVectorFocus}
-          />
-        </details>
+        {!metricsOnly ? (
+          <details className="spx-ios-metrics-details" open={!iosVectorFocus}>
+            <summary className="spx-ios-metrics-summary">Market context</summary>
+            <SpxIosMetricGroups
+              desk={desk}
+              showValues={showValues}
+              spot={spot}
+              defaultCollapsed={iosVectorFocus}
+            />
+          </details>
+        ) : null}
       </header>
     );
   }

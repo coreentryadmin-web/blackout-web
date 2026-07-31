@@ -6,6 +6,7 @@ import { ProductMark } from "@/components/marks/ProductMark";
 import { FlowFeed } from "@/features/helix/components/FlowFeed";
 import { FlowAnomalyBanner } from "@/components/FlowAnomalyBanner";
 import { HelixTideBar } from "@/features/helix/components/HelixTideBar";
+import { IosIntelligenceHubSegment } from "@/components/ios/IosIntelligenceHubSegment";
 import { useIosNativeShell } from "@/hooks/useIosNativeShell";
 
 /** /flows page frame — tide + tape on native; full header on web. */
@@ -47,6 +48,7 @@ export function HelixPageShell() {
             <HelixTideBar />
           </div>
         )}
+        <IosIntelligenceHubSegment />
         <FlowAnomalyBanner />
         <FlowFeed />
       </div>

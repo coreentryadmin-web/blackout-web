@@ -164,6 +164,27 @@ export type IosHeaderMeta = {
 
 /** Header title/accent for native chrome — tools + utility routes. */
 export function getIosHeaderMeta(path: string): IosHeaderMeta {
+  const p = path.split(/[?#]/)[0] ?? path;
+  if (p === "/heatmap" || p.startsWith("/heatmap/")) {
+    return {
+      key: "heatmap",
+      title: "Intelligence",
+      kicker: "Dealer gamma map",
+      accent: "#ff6b2b",
+      mark: "heatmap",
+      showBack: false,
+    };
+  }
+  if (p === "/flows" || p.startsWith("/flows/")) {
+    return {
+      key: "flows",
+      title: "Intelligence",
+      kicker: "Institutional flow tape",
+      accent: "#bf5fff",
+      mark: "helix",
+      showBack: false,
+    };
+  }
   const tool = getIosToolMeta(path);
   if (tool) {
     return {

@@ -10,7 +10,22 @@ type Props = {
   sessionActive?: boolean;
 };
 
-/** Compact one-row market read — ~72pt, not a hero card. */
+function gammaRegimeChip(desk?: SpxDeskPayload): string | null {
+  if (desk?.gex_net != null) {
+    return desk.gex_net >= 0 ? "Positive gamma" : "Negative gamma";
+  }
+  if (desk?.gamma_regime === "mean_revert") return "Long gamma";
+  if (desk?.gamma_regime === "amplification") return "Short gamma";
+  return null;
+}
+
+function localRegimeChip(desk?: SpxDeskPayload): string | null {
+  if (desk?.gamma_regime === "amplification") return "Amplification";
+  if (desk?.gamma_regime === "mean_revert") return "Mean revert";
+  return null;
+}
+
+/** Compact top rail — SPX spot + live state chips (sticky under native header). */
 export function SpxIosMarketStrip({ desk, live, sessionActive }: Props) {
   const hasQuote = Boolean(desk?.available && (desk?.price ?? 0) > 0);
   const showValues = Boolean(live || hasQuote);
@@ -19,7 +34,8 @@ export function SpxIosMarketStrip({ desk, live, sessionActive }: Props) {
     desk?.vwap != null && desk?.price != null
       ? desk.price >= desk.vwap
       : Boolean(desk?.above_vwap);
-  const gexPositive = (desk?.gex_net ?? 0) >= 0;
+  const gammaChip = gammaRegimeChip(desk);
+  const localChip = localRegimeChip(desk);
 
   return (
     <div className="spx-ios-market-strip" aria-label="Live market summary">
@@ -39,17 +55,25 @@ export function SpxIosMarketStrip({ desk, live, sessionActive }: Props) {
             Live
           </span>
         ) : null}
-        {showValues && desk?.gex_net != null ? (
-          <span className={clsx("spx-ios-market-chip", gexPositive ? "spx-ios-market-chip-bull" : "spx-ios-market-chip-bear")}>
-            {gexPositive ? "Positive gamma" : "Negative gamma"}
+        {showValues && gammaChip ? (
+          <span
+            className={clsx(
+              "spx-ios-market-chip",
+              desk?.gex_net != null && desk.gex_net >= 0 ? "spx-ios-market-chip-bull" : "spx-ios-market-chip-bear"
+            )}
+          >
+            {gammaChip}
           </span>
+        ) : null}
+        {showValues && localChip && localChip !== gammaChip ? (
+          <span className="spx-ios-market-chip spx-ios-market-chip-neutral">{localChip}</span>
         ) : null}
         {showValues && desk?.vwap != null ? (
           <span className={clsx("spx-ios-market-chip", aboveVwap ? "spx-ios-market-chip-bull" : "spx-ios-market-chip-bear")}>
             {aboveVwap ? "Above VWAP" : "Below VWAP"}
           </span>
         ) : null}
-        {showValues && desk?.regime ? (
+        {showValues && desk?.regime && desk.regime !== "unknown" ? (
           <span className="spx-ios-market-chip spx-ios-market-chip-neutral capitalize">{desk.regime}</span>
         ) : null}
       </div>
