@@ -32,6 +32,11 @@ on:
         description: "External TestFlight beta group name (only used when submit_to_external_testflight is true)."
         type: string
         default: ""
+  push:
+    branches: [main]
+    paths:
+      - "apps/blackout-ios-native/**"
+      - ".github/workflows/blackout-ios-native-testflight.yml"
 
 # One build per ref at a time. Do NOT cancel-in-progress — killing a build
 # mid-upload can leave a half-processed build in ASC (same rule the WebView
