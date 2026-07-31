@@ -2,9 +2,13 @@
 
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { clsx } from "clsx";
 import { PageShell, FreshnessChip } from "@/components/ui";
 import { ProductMark } from "@/components/marks/ProductMark";
+import { IosNativeSegment } from "@/components/ios/IosNativeSegment";
+import { useIosNativeShell } from "@/hooks/useIosNativeShell";
+import { useCompactDeskPanels } from "@/hooks/useCompactDeskPanels";
 import type { VectorBar } from "@/features/vector/components/VectorChart";
 import type { PlayLevelsInput } from "@/features/vector/lib/vector-play-levels";
 import type { VectorDarkPoolLevel, VectorWalls } from "@/lib/api";
@@ -100,6 +104,15 @@ type Props = {
   toolbarReplayLeadSlot?: React.ReactNode;
 };
 
+type VectorIosPanel = "chart" | "pulse" | "ladder" | "scanner";
+
+const VECTOR_IOS_PANELS: { id: VectorIosPanel; label: string }[] = [
+  { id: "chart", label: "Chart" },
+  { id: "pulse", label: "Pulse" },
+  { id: "ladder", label: "Ladder" },
+  { id: "scanner", label: "Scanner" },
+];
+
 function formatSessionLabel(ymd: string): string {
   const [y, m, d] = ymd.split("-").map(Number);
   const dt = new Date(Date.UTC(y, m - 1, d, 17, 0, 0));
@@ -134,6 +147,9 @@ export function VectorPageShell({
 }: Props) {
   const chartOnly = embed === "chart-only";
   const router = useRouter();
+  const nativeShell = useIosNativeShell();
+  const compactPanels = useCompactDeskPanels(nativeShell);
+  const [iosPanel, setIosPanel] = useState<VectorIosPanel>("chart");
   const sessionLabel = formatSessionLabel(sessionYmd);
   const [streamUpdatedAt, setStreamUpdatedAt] = useState<number | null>(null);
   const [wallEvents, setWallEvents] = useState<VectorWallEvent[]>([]);
@@ -146,6 +162,27 @@ export function VectorPageShell({
   const [dteHorizon, setDteHorizon] = useState<VectorDteHorizon>(defaultDteHorizon ?? "weekly");
   const [scannerOpen, setScannerOpen] = useState(false);
   const activeTicker = ticker || VECTOR_DEFAULT_TICKER;
+
+  useEffect(() => {
+    if (!compactPanels) return;
+    try {
+      const saved = window.sessionStorage.getItem("vector-ios-panel");
+      if (saved === "chart" || saved === "pulse" || saved === "ladder" || saved === "scanner") {
+        setIosPanel(saved);
+      }
+    } catch {
+      /* sessionStorage unavailable */
+    }
+  }, [compactPanels]);
+
+  const selectIosPanel = useCallback((next: VectorIosPanel) => {
+    setIosPanel(next);
+    try {
+      window.sessionStorage.setItem("vector-ios-panel", next);
+    } catch {
+      /* best-effort */
+    }
+  }, []);
 
   // Seed the regime from the SSR snapshot so the banner is right on first paint;
   // VectorChart streams live updates via onRegimeChange during a session.
@@ -308,24 +345,26 @@ export function VectorPageShell({
   // Compact page title cluster — folded INTO the chart toolbar row (far left) so the header and the
   // timeframe/indicator controls share one line, reclaiming the vertical space the old full-width
   // PageHeader + separate regime block ate. Product decision per member request: maximise chart area.
-  const chartLead = (
-    <div className="flex items-center gap-2 pr-1">
-      <ProductMark product="vector" size={22} animated={false} />
-      <span className="font-mono text-sm font-bold uppercase tracking-[0.18em] text-cyan-100">Vector</span>
-      <span className="hidden font-mono text-[10px] uppercase tracking-[0.2em] text-cyan-400/60 md:inline">
-        · {kicker}
-      </span>
-      {/* Embedded desks pin the ticker (a select would navigate away from the host page) — show a
-          static chip instead so the member still sees exactly which symbol the chart is locked to. */}
-      {chartOnly ? (
+  const iosCompactChrome = compactPanels && nativeShell;
+  const chartLead =
+    chartOnly || iosCompactChrome ? (
+      chartOnly ? (
         <span className="rounded border border-cyan-500/30 bg-cyan-500/10 px-1.5 py-0.5 font-mono text-[11px] font-bold tracking-widest text-cyan-200">
           {activeTicker}
         </span>
       ) : (
         <VectorTickerSelect ticker={activeTicker} />
-      )}
-    </div>
-  );
+      )
+    ) : (
+      <div className="flex items-center gap-2 pr-1">
+        <ProductMark product="vector" size={22} animated={false} />
+        <span className="font-mono text-sm font-bold uppercase tracking-[0.18em] text-cyan-100">Vector</span>
+        <span className="hidden font-mono text-[10px] uppercase tracking-[0.2em] text-cyan-400/60 md:inline">
+          · {kicker}
+        </span>
+        <VectorTickerSelect ticker={activeTicker} />
+      </div>
+    );
   const chartFreshness = (
     <FreshnessChip
       status={freshnessStatus}
@@ -385,16 +424,132 @@ export function VectorPageShell({
     );
   }
 
+  const pulseRail = (
+    <>
+      <GexShiftLeadersStrip
+        leaders={shiftLeaders}
+        scopeLabel={`${vectorGexScopeLabel(dteHorizon)} matrix`}
+        className="mb-2"
+      />
+      <VectorPulse
+        ticker={activeTicker}
+        lens={lens}
+        wallEvents={wallEvents}
+        liveSession={liveSession}
+        streamUpdatedAt={streamUpdatedAt}
+        regime={regime}
+        proximity={proximity}
+        magnet={magnet}
+        confluence={confluence}
+        technicals={technicals}
+        expectedMove={expectedMove}
+        alerts={recentAlerts.slice(0, 5).map((f) => f.message)}
+        wallIntegrity={wallIntegrity}
+        liveSpot={liveSpot}
+      />
+      <VectorAlertsPanel
+        ticker={activeTicker}
+        rules={alertRules}
+        recent={recentAlerts}
+        onAdd={handleAddRule}
+        onToggle={handleToggleRule}
+        onRemove={handleRemoveRule}
+        notifyEnabled={notifyEnabled}
+        notifyPermission={notifyPerm}
+        onToggleNotify={handleToggleNotify}
+      />
+    </>
+  );
+
+  const chartBlock = (
+    <VectorChart
+      key={activeTicker}
+      ticker={activeTicker}
+      initialBars={initialBars}
+      initialWalls={initialWalls}
+      initialVexWalls={initialVexWalls}
+      initialWallHistory={initialWallHistory}
+      initialHorizonWallHistory={initialHorizonWallHistory}
+      initialGammaFlip={initialGammaFlip}
+      initialVexFlip={initialVexFlip}
+      initialDarkPoolLevels={initialDarkPoolLevels}
+      sessionYmd={sessionYmd}
+      liveSession={liveSession}
+      defaultDteHorizon={defaultDteHorizon}
+      defaultTimeframe={defaultTimeframe}
+      defaultChartViewport={defaultChartViewport}
+      onFreshness={liveSession ? setStreamUpdatedAt : undefined}
+      onSpotChange={liveSession ? setLiveSpot : undefined}
+      onWallEventsChange={setWallEvents}
+      onLensChange={setLens}
+      onRegimeChange={setRegime}
+      onProximityChange={setProximity}
+      onMagnetChange={setMagnet}
+      onConfluenceChange={setConfluence}
+      onWallIntegrityChange={setWallIntegrity}
+      onDteHorizonChange={setDteHorizon}
+      onTechnicalsChange={setTechnicals}
+      onExpectedMoveChange={setExpectedMove}
+      alertRules={alertRules}
+      onAlertsFired={handleAlertsFired}
+      leadSlot={chartLead}
+      trailSlot={chartFreshness}
+      regimeSlot={<VectorRegimeBanner regime={regime} />}
+    />
+  );
+
+  const alertToast =
+    toast != null ? (
+      <div className="vector-alert-toast" role="status" aria-live="polite">
+        <span className="vector-alert-toast-dot" aria-hidden="true" />
+        <span className="vector-alert-toast-msg">🔔 {toast.message}</span>
+        <button type="button" className="vector-alert-toast-x" onClick={() => setToast(null)} aria-label="Dismiss">
+          ✕
+        </button>
+      </div>
+    ) : null;
+
   return (
-    <PageShell fullBleed className="vector-page-shell">
-      <div className="px-2 pt-2 sm:px-4 xl:px-6">
-        {/* Chart is the hero — it leads the page. The title/ticker/freshness are folded into the
-            chart toolbar row, and the regime banner sits just above the canvas. The universe scanner
-            is a secondary, collapsible panel below. */}
-        <div className="vector-chart-terminal-grid">
-          {/* Thin LEFT rail: the per-strike GEX ladder (few rows, dense) — moved off the right so the
-              chart gets the centre and the desk terminal owns the full right column. */}
-          <div className="vector-ladder-rail">
+    <PageShell
+      fullBleed
+      backdrop={false}
+      className={clsx(
+        "vector-page-shell ios-native-page ios-native-page-vector",
+        nativeShell && "vector-page-shell-native"
+      )}
+      contentClassName={clsx(nativeShell && "vector-page-content-native !py-0")}
+    >
+      <div
+        className={clsx(
+          nativeShell ? "vector-page-inner-native px-2 pt-0 sm:px-3" : "px-2 pt-2 sm:px-4 xl:px-6"
+        )}
+      >
+        {compactPanels && nativeShell ? (
+          <IosNativeSegment
+            value={iosPanel}
+            onChange={selectIosPanel}
+            accent="#2dd4bf"
+            variant="compact"
+            aria-label="Vector desk view"
+            className="ios-native-desk-segment ios-native-desk-segment-vector"
+            segments={VECTOR_IOS_PANELS}
+          />
+        ) : null}
+
+        <div
+          className={clsx(
+            "vector-chart-terminal-grid",
+            compactPanels && nativeShell && "vector-chart-terminal-grid-native",
+            compactPanels && nativeShell && iosPanel === "chart" && "vector-ios-chart-focus"
+          )}
+          data-ios-panel={compactPanels && nativeShell ? iosPanel : undefined}
+        >
+          <div
+            className={clsx(
+              "vector-ladder-rail",
+              compactPanels && nativeShell && iosPanel !== "ladder" && "ios-native-panel-hidden"
+            )}
+          >
             <VectorGexLadder
               ticker={activeTicker}
               liveSession={liveSession}
@@ -403,110 +558,35 @@ export function VectorPageShell({
               dteHorizon={dteHorizon}
             />
           </div>
-          <div className="vector-chart-terminal-chart min-w-0">
-            <VectorChart
-              // Ticker switches are client-side searchParams navigations — they
-              // re-render in place and do NOT remount unkeyed client components.
-              // VectorChart seeds bars/walls/SSE from initial props via refs and its
-              // mount-only effect owns the EventSource, so without this key a switch
-              // to NVDA kept streaming and displaying SPX candles under the NVDA
-              // header. Keying forces a clean remount with the new ticker's SSR seed.
-              key={activeTicker}
-              ticker={activeTicker}
-              initialBars={initialBars}
-              initialWalls={initialWalls}
-              initialVexWalls={initialVexWalls}
-              initialWallHistory={initialWallHistory}
-              initialHorizonWallHistory={initialHorizonWallHistory}
-              initialGammaFlip={initialGammaFlip}
-              initialVexFlip={initialVexFlip}
-              initialDarkPoolLevels={initialDarkPoolLevels}
-              sessionYmd={sessionYmd}
-              liveSession={liveSession}
-              defaultDteHorizon={defaultDteHorizon}
-              defaultTimeframe={defaultTimeframe}
-              defaultChartViewport={defaultChartViewport}
-              onFreshness={liveSession ? setStreamUpdatedAt : undefined}
-              onSpotChange={liveSession ? setLiveSpot : undefined}
-              onWallEventsChange={setWallEvents}
-              onLensChange={setLens}
-              onRegimeChange={setRegime}
-              onProximityChange={setProximity}
-              onMagnetChange={setMagnet}
-              onConfluenceChange={setConfluence}
-              onWallIntegrityChange={setWallIntegrity}
-              onDteHorizonChange={setDteHorizon}
-              onTechnicalsChange={setTechnicals}
-              onExpectedMoveChange={setExpectedMove}
-              alertRules={alertRules}
-              onAlertsFired={handleAlertsFired}
-              leadSlot={chartLead}
-              trailSlot={chartFreshness}
-              regimeSlot={<VectorRegimeBanner regime={regime} />}
-            />
+
+          <div
+            className={clsx(
+              "vector-chart-terminal-chart min-w-0",
+              compactPanels && nativeShell && iosPanel !== "chart" && "ios-native-panel-hidden"
+            )}
+          >
+            {chartBlock}
           </div>
-          {/* Full RIGHT column: Vector Pulse — live signal feed + intel context. */}
-          <div className="vector-terminal-rail">
-            <GexShiftLeadersStrip
-              leaders={shiftLeaders}
-              scopeLabel={`${vectorGexScopeLabel(dteHorizon)} matrix`}
-              className="mb-2"
-            />
-            <VectorPulse
-              ticker={activeTicker}
-              lens={lens}
-              wallEvents={wallEvents}
-              liveSession={liveSession}
-              streamUpdatedAt={streamUpdatedAt}
-              regime={regime}
-              proximity={proximity}
-              magnet={magnet}
-              confluence={confluence}
-              technicals={technicals}
-              expectedMove={expectedMove}
-              alerts={recentAlerts.slice(0, 5).map((f) => f.message)}
-              wallIntegrity={wallIntegrity}
-              liveSpot={liveSpot}
-            />
-            <VectorAlertsPanel
-              ticker={activeTicker}
-              rules={alertRules}
-              recent={recentAlerts}
-              onAdd={handleAddRule}
-              onToggle={handleToggleRule}
-              onRemove={handleRemoveRule}
-              notifyEnabled={notifyEnabled}
-              notifyPermission={notifyPerm}
-              onToggleNotify={handleToggleNotify}
-            />
+
+          <div
+            className={clsx(
+              "vector-terminal-rail",
+              compactPanels && nativeShell && iosPanel !== "pulse" && "ios-native-panel-hidden"
+            )}
+          >
+            {pulseRail}
           </div>
         </div>
 
-        {/* Transient toast for the newest fired alert (in-page delivery; Web Push lands in slice 2). */}
-        {toast && (
-          <div className="vector-alert-toast" role="status" aria-live="polite">
-            <span className="vector-alert-toast-dot" aria-hidden="true" />
-            <span className="vector-alert-toast-msg">🔔 {toast.message}</span>
-            <button type="button" className="vector-alert-toast-x" onClick={() => setToast(null)} aria-label="Dismiss">
-              ✕
-            </button>
-          </div>
-        )}
+        {alertToast}
 
-        <details className="vector-scanner-panel" open={scannerOpen}>
-          <summary
-            className="vector-scanner-summary"
-            onClick={(e) => {
-              e.preventDefault();
-              setScannerOpen((v) => !v);
-            }}
+        {compactPanels && nativeShell ? (
+          <div
+            className={clsx(
+              "vector-scanner-native",
+              iosPanel !== "scanner" && "ios-native-panel-hidden"
+            )}
           >
-            <span className="vector-scanner-summary-label">Universe scanner</span>
-            <span className="vector-scanner-summary-hint">
-              {scannerOpen ? "Hide" : "Gamma structure across the liquid universe"}
-            </span>
-          </summary>
-          <div className="vector-scanner-body">
             <VectorScanner
               activeTicker={activeTicker}
               onSelect={(t) =>
@@ -514,7 +594,30 @@ export function VectorPageShell({
               }
             />
           </div>
-        </details>
+        ) : (
+          <details className="vector-scanner-panel" open={scannerOpen}>
+            <summary
+              className="vector-scanner-summary"
+              onClick={(e) => {
+                e.preventDefault();
+                setScannerOpen((v) => !v);
+              }}
+            >
+              <span className="vector-scanner-summary-label">Universe scanner</span>
+              <span className="vector-scanner-summary-hint">
+                {scannerOpen ? "Hide" : "Gamma structure across the liquid universe"}
+              </span>
+            </summary>
+            <div className="vector-scanner-body">
+              <VectorScanner
+                activeTicker={activeTicker}
+                onSelect={(t) =>
+                  router.push(t === VECTOR_DEFAULT_TICKER ? "/vector" : `/vector?ticker=${encodeURIComponent(t)}`)
+                }
+              />
+            </div>
+          </details>
+        )}
       </div>
     </PageShell>
   );

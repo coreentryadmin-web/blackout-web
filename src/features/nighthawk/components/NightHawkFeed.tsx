@@ -2,9 +2,11 @@
 
 import useSWR from "swr";
 import { useEffect, useState } from "react";
+import { clsx } from "clsx";
 import { fetchNightHawkEdition } from "@/lib/api";
 import { ZeroDteDeck, HorizonDeck, LegacyDeck } from "@/features/nighthawk/command-deck/containers";
 import { IosNativeSegment } from "@/components/ios/IosNativeSegment";
+import { useIosNativeShell } from "@/hooks/useIosNativeShell";
 import {
   NIGHTHAWK_VIEWS,
   NIGHTHAWK_VIEW_META,
@@ -21,6 +23,7 @@ import type { BoardResp } from "@/features/nighthawk/command-deck/zerodte-source
  * ENTIRE desk to it and only that view's data is fetched. The choice persists in the URL (?view=).
  */
 export function NightHawkFeed({ seed }: { seed?: NightHawkSeedProps | null }) {
+  const nativeShell = useIosNativeShell();
   // SSR may pass view from ?view=; client still re-reads URL on mount for soft-nav edge cases.
   const [view, setView] = useState<NightHawkView>(seed?.view ?? DEFAULT_NIGHTHAWK_VIEW);
 
@@ -48,13 +51,21 @@ export function NightHawkFeed({ seed }: { seed?: NightHawkSeedProps | null }) {
         value={view}
         onChange={selectView}
         accent="#ff2d55"
+        variant={nativeShell ? "compact" : "default"}
         aria-label="Night Hawk view"
         className="ios-native-desk-segment mb-3"
         segments={NIGHTHAWK_VIEWS.map((v) => ({ id: v, label: NIGHTHAWK_VIEW_META[v].label }))}
       />
-      <p className="mb-3 text-sm font-bold leading-snug text-sky-100">{NIGHTHAWK_VIEW_META[view].blurb}</p>
+      {!nativeShell ? (
+        <p className="mb-3 text-sm font-bold leading-snug text-sky-100">{NIGHTHAWK_VIEW_META[view].blurb}</p>
+      ) : null}
 
-      <div className="nighthawk-single-view flex min-h-[560px] w-full max-w-none flex-1 flex-col">
+      <div
+        className={clsx(
+          "nighthawk-single-view flex w-full max-w-none flex-1 flex-col",
+          nativeShell ? "min-h-0" : "min-h-[560px]"
+        )}
+      >
         {view === "ZERO_DTE" && (
           <ZeroDteDeck initialBoard={(seed?.board as BoardResp | null | undefined) ?? null} />
         )}

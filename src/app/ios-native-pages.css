@@ -1042,20 +1042,60 @@ html.ios-app.ios-native-shell[data-ios-route="nighthawk"] .nighthawk-market-cont
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   VECTOR — full-page chart (/vector from command deck)
+   VECTOR — full-page chart (/vector tab)
    ═══════════════════════════════════════════════════════════════════════════ */
-html.ios-app.ios-native-shell[data-ios-route="vector"] .ios-desk-shell {
-  padding-top: var(--ios-header-offset) !important;
-  min-height: var(--ios-viewport-h);
+html.ios-app.ios-native-shell[data-ios-route="vector"] .vector-page-shell-native.page-shell {
+  padding-top: 0 !important;
+  min-height: 100dvh;
 }
 
-html.ios-app.ios-native-shell[data-ios-route="vector"] .vector-page-shell {
+html.ios-app.ios-native-shell[data-ios-route="vector"] .vector-page-content-native {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  padding-bottom: calc(var(--ios-tab-offset, 0px) + 0.35rem) !important;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="vector"] .vector-page-inner-native {
+  padding-top: calc(var(--ios-header-offset) + 0.25rem);
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="vector"] .ios-native-desk-segment-vector {
+  position: static;
+  top: auto;
+  margin: 0 0 0.4rem;
+  flex-shrink: 0;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="vector"] .vector-chart-terminal-grid-native {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: var(--ios-content-gap);
+}
+
+html.ios-app.ios-native-shell[data-ios-route="vector"] .vector-ios-chart-focus .vector-chart-terminal-chart {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
 }
 
+html.ios-app.ios-native-shell[data-ios-route="vector"] .vector-ios-chart-focus .vector-chart-wrap,
+html.ios-app.ios-native-shell[data-ios-route="vector"] .vector-ios-chart-focus .vector-chart-wrap > .relative {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="vector"] .vector-page-shell,
 html.ios-app.ios-native-shell[data-ios-route="vector"] .vector-chart-terminal-grid,
 html.ios-app.ios-native-shell[data-ios-route="vector"] .vector-chart-terminal-chart {
   flex: 1;
@@ -1064,6 +1104,33 @@ html.ios-app.ios-native-shell[data-ios-route="vector"] .vector-chart-terminal-ch
 
 html.ios-app.ios-native-shell[data-ios-route="vector"] .vector-chart-canvas {
   min-height: min(56dvh, calc(100dvh - var(--ios-header-offset) - var(--ios-tab-offset) - 6rem)) !important;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="vector"] .vector-ios-chart-focus .vector-chart-canvas,
+html.ios-app.ios-native-shell[data-ios-route="vector"] .vector-ios-chart-focus .vector-chart-canvas--fill-host {
+  flex: 1 1 auto;
+  min-height: min(58dvh, calc(100dvh - var(--ios-header-offset) - var(--ios-tab-offset) - 5.5rem)) !important;
+  max-height: none;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="vector"] .vector-terminal-rail:not(.ios-native-panel-hidden),
+html.ios-app.ios-native-shell[data-ios-route="vector"] .vector-ladder-rail:not(.ios-native-panel-hidden) {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  max-height: calc(100dvh - var(--ios-header-offset) - var(--ios-tab-offset) - 5.5rem);
+}
+
+html.ios-app.ios-native-shell[data-ios-route="vector"] .vector-scanner-native:not(.ios-native-panel-hidden) {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  max-height: calc(100dvh - var(--ios-header-offset) - var(--ios-tab-offset) - 5.5rem);
+  border-radius: var(--ios-panel-radius);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 0.65rem;
 }
 
 html.ios-app.ios-native-shell[data-ios-route="vector"] .vector-toolbar button,
@@ -1080,7 +1147,17 @@ html.ios-app.ios-native-shell[data-ios-route="account"] .account-page-title-bloc
 
 html.ios-app.ios-native-shell[data-ios-route="account"] .ios-account-page {
   padding-top: calc(var(--ios-header-offset) + 0.5rem);
-  padding-bottom: max(1.5rem, env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(var(--ios-tab-offset, 0px) + max(1.5rem, env(safe-area-inset-bottom, 0px)));
+  min-height: 100dvh;
+  overflow: hidden;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="account"] .ios-account-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 0.5rem;
 }
 
 html.ios-app.ios-native-shell[data-ios-route="account"] .cl-rootBox {

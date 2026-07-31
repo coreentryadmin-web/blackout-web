@@ -912,6 +912,7 @@ export function FlowFeed() {
           value={iosView}
           onChange={setIosView}
           accent="#bf5fff"
+          variant="compact"
           aria-label="HELIX lens"
           className="ios-native-desk-segment"
           segments={[
@@ -1144,10 +1145,10 @@ export function FlowFeed() {
         }}
       />
 
-      {/* Persistent compliance disclaimer (matches SPX / GEX wording) */}
-      <p className="helix-pro-disclaimer">
-        Educational. Not advice. You decide.
-      </p>
+      {/* Persistent compliance disclaimer (matches SPX / GEX wording) — web only; native header carries tool context */}
+      {!nativeShell && (
+        <p className="helix-pro-disclaimer">Educational. Not advice. You decide.</p>
+      )}
     </div>
   );
 }
