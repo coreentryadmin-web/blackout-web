@@ -95,7 +95,7 @@ function runwayDetail(
     if (play?.action === "SELL" || lotto?.phase === "SELL" || powerHour?.phase === "SELL") {
       return "Active — exit in progress / logged";
     }
-    if (play?.levels.invalidation) return `Plan — exit if invalidation hits (${play.levels.invalidation})`;
+    if (play?.levels?.invalidation) return `Plan — exit if invalidation hits (${play.levels.invalidation})`;
     return "Plan — full exit at target or hard stop";
   }
   return "Final — close remainder on stop, target, or thesis break";
@@ -264,7 +264,7 @@ function structureLines(
         indent: 1,
       });
     }
-    if (play.levels.invalidation) {
+    if (play.levels?.invalidation) {
       lines.push({
         icon: "sell",
         tone: "warn",

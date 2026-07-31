@@ -1,5 +1,64 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-31 17:45 ET
+Last updated: 2026-07-31 18:00 ET
+
+## spx-rth-2026-07-31 — SPX Slayer all-day verify (market-open agent, 6:30 AM PT)
+
+**Session:** SPX Slayer all-day RTH verification agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` **verify** mode. Commands: `npm run validate:spx-rth -- --force` → `npm run validate:spx-e2e` → 60s desk auto-update probe.
+
+**Note:** Pass executed **post-close** (17:52–18:00 ET Friday); RTH-only gates skipped or marked SKIP as expected.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth -- --force` | ✅ **7 PASS / 1 WARN / 0 FAIL** — orchestrator GREEN |
+| `npm run validate:spx-e2e` | ✅ **15 PASS / 2 SKIP / 1 WARN / 0 FAIL** (final retry after levels guard fix) |
+| Matrix deep audit (SPX) | ✅ Every GEX/VEX/DEX/CHARM cell finite; Σ strike_totals == headline; INV-2 · **170 strikes** |
+| Cross-endpoint spot/GEX | ✅ desk=7489.72 hm=7489.72 play=SCANNING/SCANNING |
+| Trade alerts | ✅ SCANNING — no stale ✓ confirmations |
+| BIE consistency | ✅ `getSpxPlayState()` single derivation |
+| `ops:collect` | ✅ exit 0 — zero action items |
+| 60s live auto-update | ⏭ SKIP — post-close; API spot static as expected |
+
+### UI E2E (Playwright)
+
+| Control | Result |
+|---|---|
+| GEX tab (`#spx-matrix-tab-gex`) | ✅ PASS |
+| VEX tab (`#spx-matrix-tab-vex`) | ✅ PASS |
+| Matrix rows | ✅ **175** strike rows |
+| Matrix text sanity | ✅ No NaN/undefined/$— |
+| Commentary expand | ⏭ SKIP — post-close offline hero (no `#spx-commentary-expand`) |
+| Console errors | ✅ PASS (after `levels?.entry` guard fix) |
+| Live badge | ⏭ SKIP — OFFLINE/EXTENDED expected post-close |
+
+### Cross-tool integration (Step 3)
+
+| Tool | Endpoint | Result |
+|---|---|---|
+| Thermal | `GET /api/market/gex-heatmap?ticker=SPX` | ✅ Same payload as dashboard matrix |
+| HELIX | `GET /api/market/flows?limit=30` | ✅ 30 prints |
+| GEX positioning | cross-validation block | ✅ PASS |
+| Largo | `POST /api/market/largo/query` | ✅ `blackout_intelligence` tools |
+| BIE | `validate:spx-bie` | ✅ single derivation |
+| Grid | `GET /api/market/spx/bootstrap` | ✅ loaded |
+| 0DTE Command | `GET /api/market/zerodte/board` | ✅ 6 setups |
+| Night Hawk | `GET /api/market/nighthawk/edition` | ✅ PASS |
+
+### Findings table (`spx-rth-2026-07-31`)
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| P1 | SPX-RTH-LEVELS-01 | `TypeError: Cannot read properties of undefined (reading 'entry')` when play payload briefly lacks `levels` during SWR hydrate | `/dashboard` console | **Fixed** — optional `levels?.entry` in kanban/verdict/terminal |
+| P2 | SPX-RTH-DC-01 | `CRON_SECRET` auth mismatch on data-correctness probe | `/api/cron/data-correctness` | Yes — env only |
+| P2 | SPX-RTH-BIE-01 | Cron play route HTTP 401 in E2E harness | `/api/market/spx/play` Bearer | Yes — harness uses Clerk session |
+| P2 | SPX-RTH-CHUNK-01 | Transient ChunkLoadError 404 on `_next/static/chunks/*` during ECS deploy | `/dashboard` | Harness retry; CF purge after deploy |
+
+**Verify status: GREEN** after `levels?.entry` guard.
+
+**Reports:** `audit-output/spx-rth-2026-07-31-verify-1785535044449.json`, `audit-output/spx-dashboard-e2e-1785534999896.json`
+
+---
 
 ## grid-rth-2026-07-31-pass4 — 0DTE Command post-close fix agent (~1:39 PM PT / 5:39 PM ET)
 
