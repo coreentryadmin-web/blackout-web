@@ -6300,6 +6300,25 @@ body::before {
     overflow-x: hidden;
   }
 
+  /* EOD Pin + compact Slayer play verdict — one scrollable 0DTE column. */
+  .spx-left-pin-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    min-height: 0;
+    width: 100%;
+  }
+
+  .spx-left-pin-stack > :first-child {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  .spx-sniper-triple--desk-v2 .spx-left-pin .spx-left-pin-stack {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
   .spx-matrix-column-spot {
     @apply px-1 pt-0.5 shrink-0;
   }
