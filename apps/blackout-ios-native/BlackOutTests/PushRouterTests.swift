@@ -21,14 +21,15 @@ final class PushRouterTests: XCTestCase {
         XCTAssertEqual(dest.deskModuleId, "helix")
     }
 
-    func test_signalId_routesToDesksWithModule() {
+    func test_signalId_routesToSignalsTabWithModule() {
         let dest = PushRouter.destination(from: ["signalId": "spx-open-42"])
-        XCTAssertEqual(dest.tab, .desks)
+        XCTAssertEqual(dest.tab, .signals)
         XCTAssertEqual(dest.deskModuleId, "spx-slayer")
     }
 
-    func test_signalId_hawk_routesToNightHawk() {
+    func test_signalId_hawk_routesToNightHawkModule() {
         let dest = PushRouter.destination(from: ["signalId": "hawk-edition-1"])
+        XCTAssertEqual(dest.tab, .signals)
         XCTAssertEqual(dest.deskModuleId, "night-hawk")
     }
 
@@ -55,6 +56,16 @@ final class PushRouterTests: XCTestCase {
 
     func test_url_account_routesToAccountTab() {
         XCTAssertEqual(PushRouter.destination(from: ["url": "/account"]).tab, .account)
+    }
+
+    func test_url_watchlist_routesToWatchlistTab() {
+        XCTAssertEqual(PushRouter.destination(from: ["url": "/watchlist"]).tab, .watchlist)
+    }
+
+    func test_url_nighthawk_routesToSignalsTab() {
+        let dest = PushRouter.destination(from: ["url": "/nighthawk"])
+        XCTAssertEqual(dest.tab, .signals)
+        XCTAssertEqual(dest.deskModuleId, "night-hawk")
     }
 
     func test_unknownUrl_fallsBackToSpxDesk() {

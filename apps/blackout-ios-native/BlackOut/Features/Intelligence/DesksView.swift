@@ -47,7 +47,8 @@ struct DesksView: View {
                 ProductDetailView(module: module)
             }
             .onChange(of: tabRouter.pendingDeskModuleId) { _, moduleId in
-                guard let moduleId,
+                guard tabRouter.selectedTab == .desks,
+                      let moduleId,
                       let module = modules.first(where: { $0.id == moduleId }) else { return }
                 path.append(module)
                 tabRouter.consumePendingDesk()

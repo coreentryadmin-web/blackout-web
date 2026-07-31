@@ -19,6 +19,7 @@ struct BlackOutApp: App {
     // for the app's lifetime; passing a URLSession-backed syncer wires it to
     // /api/user/watchlist. Local UserDefaults remains the render source, so
     // the app is instant + offline-safe; hydrate on first .active phase.
+    @StateObject private var watchlist = WatchlistStore(sync: URLSessionWatchlistSync())
     @StateObject private var tabRouter = TabRouter()
     // Sign-in state. Hydrates from Keychain on init so a signed-in user
     // never sees the sign-in screen flash on cold launch.
@@ -51,6 +52,7 @@ struct BlackOutApp: App {
             .animation(BOMotion.contextSwitch, value: appLock.state)
             .animation(BOMotion.contextSwitch, value: session.isSignedIn)
             .environmentObject(appLock)
+            .environmentObject(watchlist)
             .environmentObject(tabRouter)
             .environmentObject(session)
             // Handle the callback URL from `blackouttrades.com/native-signin`.
@@ -73,6 +75,9 @@ struct BlackOutApp: App {
             .onReceive(appDelegate.pushRouter.$pending.compactMap { $0 }) { destination in
                 tabRouter.route(to: destination.tab, deskModuleId: destination.deskModuleId)
                 appDelegate.pushRouter.consume()
+            }
+            .task {
+                await watchlist.hydrateFromServer()
             }
             .preferredColorScheme(.dark)
             .tint(BOColor.textAccent)

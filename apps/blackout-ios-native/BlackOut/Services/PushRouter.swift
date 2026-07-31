@@ -24,12 +24,19 @@ public final class PushRouter: ObservableObject {
 
         if let signalId = userInfo["signalId"] as? String, !signalId.isEmpty {
             let module = signalId.lowercased().contains("hawk") ? "night-hawk" : "spx-slayer"
-            return .init(tab: .desks, deskModuleId: module, source: .signalId(signalId))
+            return .init(tab: .signals, deskModuleId: module, source: .signalId(signalId))
         }
 
         if let url = userInfo["url"] as? String {
-            if url.lowercased().hasPrefix("/account") {
+            let path = url.lowercased()
+            if path.hasPrefix("/account") {
                 return .init(tab: .account, deskModuleId: nil, source: .url(url))
+            }
+            if path.hasPrefix("/watchlist") {
+                return .init(tab: .watchlist, deskModuleId: nil, source: .url(url))
+            }
+            if path.hasPrefix("/nighthawk") {
+                return .init(tab: .signals, deskModuleId: "night-hawk", source: .url(url))
             }
             if let moduleId = deskModuleId(from: url) {
                 return .init(tab: .desks, deskModuleId: moduleId, source: .url(url))
