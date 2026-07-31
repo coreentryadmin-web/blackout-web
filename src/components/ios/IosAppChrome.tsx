@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useAppAuth } from "@/lib/auth-client";
-import { isIosAppShell } from "@/lib/ios-app-shell";
+import { isIosAppShell, isIosNativeEmbed } from "@/lib/ios-app-shell";
 import { getIosRouteKey, isIosNativeShellRoute } from "@/lib/ios-tool-routes";
 import type { ToolKey } from "@/lib/tool-access";
 import { IosNativeHeader } from "./IosNativeHeader";
@@ -17,11 +17,13 @@ export function IosAppChrome({ lockedTools = [] }: { lockedTools?: ToolKey[] }) 
   const path = usePathname();
   const { isSignedIn, isLoaded, userId } = useAppAuth();
   const [iosApp, setIosApp] = useState(false);
+  const [nativeEmbed, setNativeEmbed] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     setIosApp(isIosAppShell());
+    setNativeEmbed(isIosNativeEmbed());
   }, []);
 
   useEffect(() => {
@@ -90,6 +92,8 @@ export function IosAppChrome({ lockedTools = [] }: { lockedTools?: ToolKey[] }) 
   }, [nativeActive, path]);
 
   if (!nativeActive) return null;
+  // Native SwiftUI embeds the desk in its own NavigationStack — skip web chrome.
+  if (nativeEmbed) return null;
 
   return (
     <>
