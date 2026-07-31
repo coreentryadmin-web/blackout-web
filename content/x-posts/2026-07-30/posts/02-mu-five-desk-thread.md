@@ -18,7 +18,8 @@ The whole semis complex went parabolic — and we can replay exactly when each t
 
 ## Tweet 2/7
 
-**Attach:** `../attachments/mu/vector-replay.png`
+**Attach:** `../attachments/mu/vector-replay-qqq-context.png`  
+*(Full-day QQQ 0DTE bead rails @ session close — Jul 30 tech/semis session. For MU-specific structure use `mu/vector-replay.png`.)*
 
 ① VECTOR · MU structure replay
 

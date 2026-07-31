@@ -3,10 +3,12 @@
 **Format:** X carousel (4 slides)  
 **Attach in order:**
 
-1. `../attachments/mu/vector-replay.png`
+1. `../attachments/mu/vector-replay-qqq-context.png` ← **full-day wall beads (QQQ 0DTE replay @ close)**
 2. `../attachments/mu/helix-replay-tape.png`
 3. `../attachments/nbis/thermal-matrix.png`
 4. `../attachments/nighthawk/closed-board.png`
+
+> **Note:** Single-name tickers (MU/NBIS) may have sparse Vector wall-history until viewed during RTH. Use `vector-replay-qqq-context.png` for dense bead rails; use `mu/vector-replay.png` for the ticker-specific structure when available.
 
 ---
 

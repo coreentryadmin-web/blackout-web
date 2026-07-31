@@ -80,34 +80,57 @@ async function shot(page, relPath, locator = null) {
   return path;
 }
 
-async function captureVectorReplay(page, ticker) {
+async function captureVectorReplay(page, ticker, opts = {}) {
+  const indexLike = ["SPX", "SPY", "QQQ", "IWM"].includes(ticker.toUpperCase());
   await page.goto(`${BASE}/vector?ticker=${encodeURIComponent(ticker)}`, {
     waitUntil: "domcontentloaded",
     timeout: 120000,
   });
   await page.waitForFunction(() => window.Clerk?.user?.id, { timeout: 60000 });
   await dismissOverlays(page);
-  await page.waitForSelector(".vector-chart-shell, .vector-page-shell, main", { timeout: 60000 });
-  await page.waitForTimeout(4000);
+  await page.waitForSelector(".vector-replay-bar, .vector-page-shell, main", { timeout: 60000 });
+  await page.waitForTimeout(3500);
 
-  const replayBtn = page.locator('[data-testid="vector-replay-toggle"]').first();
-  const canReplay = await replayBtn.isEnabled().catch(() => false);
-  if (canReplay) {
-    await replayBtn.click();
-    await page.waitForTimeout(800);
-    // Jump toward session mid — Open then a few steps forward
-    const openBtn = page.getByRole("button", { name: /open/i }).first();
-    if (await openBtn.isVisible().catch(() => false)) await openBtn.click().catch(() => {});
-    await page.waitForTimeout(400);
-    for (let i = 0; i < 8; i++) {
-      await page.keyboard.press("ArrowRight").catch(() => {});
-      await page.waitForTimeout(120);
+  // 0DTE for indices / index proxies — denser bead rails on session day
+  if (indexLike || opts.force0dte) {
+    const dteBtn = page.getByRole("button", { name: /^0DTE$/i }).first();
+    if (await dteBtn.isVisible().catch(() => false)) {
+      await dteBtn.click().catch(() => {});
+      await page.waitForTimeout(2000);
     }
-    await page.waitForTimeout(500);
   }
 
-  await shot(page, `${ticker.toLowerCase()}/vector-replay.png`, ".vector-chart-shell, .vector-page-shell");
-  await shot(page, `${ticker.toLowerCase()}/vector-toolbar.png`, ".vector-replay-bar, .vector-toolbar");
+  const replayBtn = page.locator('[data-testid="vector-replay-toggle"]').first();
+  await replayBtn.waitFor({ state: "visible", timeout: 30000 }).catch(() => {});
+  const canReplay = await replayBtn.isEnabled().catch(() => false);
+
+  if (canReplay) {
+    await replayBtn.click();
+    await page.waitForTimeout(600);
+
+    // Jump to session CLOSE — full accumulated wall beads (not Open's 2-bar snapshot)
+    const closeBtn = page.locator(".vector-replay-bar button").filter({ hasText: /^Close$/ }).first();
+    if (await closeBtn.isVisible().catch(() => false)) {
+      await closeBtn.click({ force: true });
+      await page.waitForTimeout(400);
+    }
+
+    // Scrubber to absolute max step
+    const scrub = page.locator('input[type="range"][aria-label="Replay position"]').first();
+    if (await scrub.isVisible().catch(() => false)) {
+      const max = await scrub.getAttribute("max");
+      if (max && Number(max) > 0) {
+        await scrub.fill(max);
+        await scrub.dispatchEvent("input");
+        await scrub.dispatchEvent("change");
+      }
+    }
+    await page.waitForTimeout(2000);
+  }
+
+  const outDir = opts.outDir || ticker.toLowerCase();
+  await shot(page, `${outDir}/vector-replay.png`, ".vector-page-shell, main");
+  await shot(page, `${outDir}/vector-replay-chart.png`, ".vector-chart-panel, [class*='vector-chart'], canvas");
 }
 
 async function captureHelixReplay(page, ticker) {
@@ -161,14 +184,19 @@ async function captureSpxSlayerReplay(page) {
   const replayBtn = page.locator('[data-testid="vector-replay-toggle"]').first();
   if (await replayBtn.isEnabled().catch(() => false)) {
     await replayBtn.click();
-    await page.waitForTimeout(800);
-    for (let i = 0; i < 12; i++) {
-      await page.keyboard.press("ArrowRight").catch(() => {});
-      await page.waitForTimeout(100);
+    await page.waitForTimeout(600);
+    const closeBtn = page.locator(".vector-replay-bar button").filter({ hasText: /^Close$/ }).first();
+    if (await closeBtn.isVisible().catch(() => false)) await closeBtn.click({ force: true });
+    await page.waitForTimeout(400);
+    const scrub = page.locator('input[type="range"][aria-label="Replay position"]').first();
+    if (await scrub.isVisible().catch(() => false)) {
+      const max = await scrub.getAttribute("max");
+      if (max) await scrub.fill(max);
     }
+    await page.waitForTimeout(2500);
   }
 
-  await shot(page, "spx/slayer-vector-replay.png", ".spx-sniper-vector-col, .vector-chart-shell");
+  await shot(page, "spx/slayer-vector-replay.png", ".spx-sniper-vector-col, .vector-page-shell");
   await shot(page, "spx/slayer-desk-full.png", ".spx-sniper-desk");
   await shot(page, "spx/slayer-pin-verdict.png", ".spx-left-pin-stack");
 }
@@ -221,6 +249,33 @@ try {
       manifest.shots.push(`${ticker.toLowerCase()}/vector-replay.png`);
     } catch (e) {
       console.warn("vector", ticker, e.message);
+    }
+    // Single-name tickers often have sparse wall-history on first view — also capture
+    // QQQ/SPY full-session bead rails for X posts (76+ samples vs MU's ~4).
+    if (!["SPX", "SPY", "QQQ"].includes(ticker.toUpperCase())) {
+      try {
+        await page.goto(`${BASE}/vector?ticker=QQQ`, { waitUntil: "domcontentloaded", timeout: 120000 });
+        await dismissOverlays(page);
+        await page.waitForTimeout(3500);
+        const dteBtn = page.getByRole("button", { name: /^0DTE$/i }).first();
+        if (await dteBtn.isVisible().catch(() => false)) await dteBtn.click().catch(() => {});
+        await page.waitForTimeout(1500);
+        const replayBtn = page.locator('[data-testid="vector-replay-toggle"]').first();
+        if (await replayBtn.isEnabled().catch(() => false)) {
+          await replayBtn.click();
+          await page.waitForTimeout(500);
+          const closeBtn = page.locator(".vector-replay-bar button").filter({ hasText: /^Close$/ }).first();
+          if (await closeBtn.isVisible().catch(() => false)) await closeBtn.click({ force: true });
+          const scrub = page.locator('input[type="range"][aria-label="Replay position"]').first();
+          const max = await scrub.getAttribute("max").catch(() => null);
+          if (max) await scrub.fill(max);
+          await page.waitForTimeout(2000);
+        }
+        await shot(page, `${ticker.toLowerCase()}/vector-replay-qqq-context.png`, ".vector-page-shell, main");
+        manifest.shots.push(`${ticker.toLowerCase()}/vector-replay-qqq-context.png`);
+      } catch (e) {
+        console.warn("vector-qqq-context", ticker, e.message);
+      }
     }
     try {
       await captureHelixReplay(page, ticker);

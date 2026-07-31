@@ -20,17 +20,13 @@
 
 ### SPX Slayer
 - `attachments/spx/desk-full.png`
-- `attachments/spx/pin-play-column.png`
+- `attachments/spx/vector-spx-fullsession-replay.png` ← **SPX 0DTE full-day beads (Vector page @ close)**
+- `attachments/spx/slayer-vector-replay.png` (embed — may be sparser off-hours)
 - `attachments/spx/play-verdict-bar.png`
-- `attachments/spx/gex-matrix.png`
-- `attachments/spx/vector-chart.png`
-- `attachments/spx/pulse-intel.png`
-- `attachments/spx/slayer-vector-replay.png`
-- `attachments/spx/slayer-desk-full.png`
-- `attachments/spx/slayer-pin-verdict.png`
 
 ### MU (replay pack)
-- `attachments/mu/vector-replay.png`
+- `attachments/mu/vector-replay-qqq-context.png` ← **use for X posts (full bead rails)**
+- `attachments/mu/vector-replay.png` (MU-specific — sparse history if ticker wasn't warmed RTH)
 - `attachments/mu/helix-replay-tape.png`
 - `attachments/mu/thermal-matrix.png`
 

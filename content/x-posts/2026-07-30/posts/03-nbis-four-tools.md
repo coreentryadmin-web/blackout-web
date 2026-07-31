@@ -43,7 +43,7 @@ Same wall Night Hawk veto'd — visible on the matrix before you trade.
 
 ## Tweet 4/4
 
-**Attach:** `../attachments/nbis/vector-replay.png`
+**Attach:** `../attachments/nbis/vector-replay-qqq-context.png` or `../attachments/nbis/vector-replay.png`
 
 VECTOR · replay NBIS
 
