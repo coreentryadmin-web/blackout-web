@@ -48,6 +48,7 @@ const TABS = [
   { href: "/heatmap", label: "BlackOut Thermal", code: "THM", route: "heatmap" },
   { href: "/terminal", label: "Largo", code: "LRG", route: "largo" },
   { href: "/nighthawk", label: "Night Hawk", code: "HWK", route: "nighthawk" },
+  { href: "/vector", label: "Vector", code: "VEC", route: "vector" },
 ];
 
 async function shot(page, name) {
@@ -241,6 +242,18 @@ async function assertToolContent(page, route, prefix = "", opts = {}) {
         segment: !!document.querySelector(".ios-native-desk-segment"),
       };
     }
+    if (r === "vector") {
+      const canvas = document.querySelector(".vector-chart-canvas");
+      const lc = canvas?.querySelector("canvas");
+      return {
+        ...common,
+        vectorCanvas: box(".vector-chart-canvas"),
+        lcCanvas: lc
+          ? { w: lc.clientWidth, h: lc.clientHeight, canvasW: lc.width, canvasH: lc.height }
+          : null,
+        vectorShell: box(".vector-page-shell, .vector-desk-shell"),
+      };
+    }
     return common;
   }, route);
 
@@ -338,6 +351,29 @@ async function assertToolContent(page, route, prefix = "", opts = {}) {
         `command deck not visible (deck=${metrics.deck?.h ?? 0} canvas=${metrics.canvas?.h ?? 0})`
       );
     }
+    return;
+  }
+
+  if (route === "vector") {
+    const lcOk =
+      metrics.lcCanvas &&
+      metrics.lcCanvas.h > 80 &&
+      metrics.lcCanvas.w > 80 &&
+      metrics.lcCanvas.canvasH > 0;
+    const shellOk = metrics.vectorShell && metrics.vectorShell.h > 80;
+    if (lcOk) {
+      ok(
+        `${prefix}content:vector`,
+        `canvas h=${metrics.lcCanvas.h} w=${metrics.lcCanvas.w}`
+      );
+    } else if (shellOk) {
+      warn(`${prefix}content:vector`, `shell visible but canvas 0-size (h=${metrics.lcCanvas?.h ?? 0})`);
+    } else {
+      fail(
+        `${prefix}content:vector`,
+        `Vector chart not visible (canvas h=${metrics.lcCanvas?.h ?? 0} shell h=${metrics.vectorShell?.h ?? 0})`
+      );
+    }
   }
 }
 
@@ -375,6 +411,12 @@ async function testToolPage(page, tab, prefix = "") {
   }
   if (tab.route === "dashboard") {
     await page.waitForSelector(".vector-chart-canvas, .ios-native-desk-segment", { timeout: 45_000 }).catch(() => null);
+    await page.waitForTimeout(5000);
+  }
+  if (tab.route === "vector") {
+    await page.waitForSelector(".vector-chart-canvas, .vector-page-shell, .vector-desk-shell", {
+      timeout: 45_000,
+    }).catch(() => null);
     await page.waitForTimeout(5000);
   }
 
@@ -524,6 +566,17 @@ async function testToolPage(page, tab, prefix = "") {
     if (await clickSegment(page, "LEAPS")) {
       ok("hawk:segment-leaps");
     }
+  }
+
+  if (tab.route === "vector") {
+    await page.waitForTimeout(3000);
+    const lc = await page.evaluate(() => {
+      const canvas = document.querySelector(".vector-chart-canvas canvas");
+      return canvas ? { w: canvas.clientWidth, h: canvas.clientHeight } : null;
+    });
+    if (lc && lc.h > 80 && lc.w > 80) ok(`${prefix}vector:canvas`, `h=${lc.h} w=${lc.w}`);
+    else fail(`${prefix}vector:canvas`, `canvas 0-size or missing (h=${lc?.h ?? 0})`);
+    await shot(page, `${prefix}vector-tab`);
   }
 }
 
