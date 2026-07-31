@@ -1,5 +1,68 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-31 12:30 ET
+Last updated: 2026-07-31 13:10 ET
+
+## spx-rth-2026-07-31 — SPX Slayer midday verify pass (~9:48 AM PT / 12:48 PM ET)
+
+**Session:** SPX Slayer all-day RTH verification agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` **verify** mode (scheduled midday pass). Commands: `npm run validate:spx-rth` → `npm run validate:spx-e2e` → focused UI probe (GEX/VEX/commentary) → 60s live auto-update.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth` | ⚠️ **6 PASS / 1 WARN / 2 FAIL** — orchestrator (infra stderr + E2E sub-run 300s cap) |
+| `npm run validate:spx-e2e` | ⚠️ **10 PASS / 2 WARN / 2 FAIL** — product GREEN; harness session/timeout noise |
+| Matrix deep audit (SPX) | ✅ Every GEX/VEX/DEX/CHARM cell finite; Σ strike_totals == headline; INV-2 per strike |
+| Matrix E2E (every cell) | ✅ **169–170 strikes** validated GEX+VEX+DEX+CHARM vs `/api/market/gex-heatmap?ticker=SPX` |
+| Cross-endpoint spot/GEX | ✅ merged=7471.4 / hm=7471.37 / play=SCANNING (within tol) |
+| Trade alerts | ✅ SCANNING — **0 confirmations** (no stale ✓ checks) |
+| BIE consistency (`validate:spx-bie`) | ✅ PASS |
+| `ops:collect` | ✅ exit 0 — zero action items |
+| 60s live auto-update | ✅ heatmap spot 7478.31 → 7479.09 (+0.78 pts) without manual refresh |
+
+### UI E2E (Playwright)
+
+| Control | Result |
+|---|---|
+| GEX tab (`#spx-matrix-tab-gex`) | ✅ PASS |
+| VEX tab (`#spx-matrix-tab-vex`) | ✅ PASS |
+| Matrix rows | ✅ **175** strike rows |
+| Matrix text sanity | ✅ No NaN/undefined/$— |
+| Commentary expand | ✅ PASS — after clicking **Largo** intel tab → `#spx-commentary-rail-toggle` |
+| SCANNING confirmations | ✅ PASS — no stale ✓ during SCANNING |
+| Console errors | ✅ PASS (focused probe) |
+| Live badge | ✅ PASS — not OFFLINE during RTH |
+
+### Cross-tool integration (Step 3)
+
+| Tool | Endpoint | Result |
+|---|---|---|
+| Thermal | `GET /api/market/gex-heatmap?ticker=SPX` | ✅ Same payload as dashboard matrix |
+| Thermal SPY | cross_validation | ✅ PASS |
+| GEX positioning | `GET /api/market/gex-positioning?ticker=SPX` | ✅ spot/flip agree with matrix header |
+| HELIX | `GET /api/market/flows?limit=30` | ✅ 30 prints |
+| Largo | `POST /api/market/largo/query` | ⚠️ HTTP 401 after ~14 min orchestrator run (Clerk session expiry); product path OK on fresh session |
+| BIE | `validate:spx-bie` | ✅ PASS — single-derivation invariants |
+| Grid | `GET /api/market/spx/bootstrap` | ✅ Loaded |
+| 0DTE Command | `GET /api/market/zerodte/board` | ✅ **64 setups** (fresh auth) |
+| Night Hawk | `GET /api/market/nighthawk/edition` | ✅ Edition loads |
+
+### Findings table (`spx-rth-2026-07-31` — midday pass)
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| P2 | SPX-RTH-DC-01 | `CRON_SECRET` auth mismatch on data-correctness probe from cloud sandbox | `/api/cron/data-correctness` | Yes — prod cron authoritative |
+| P2 | SPX-RTH-BIE-01 | Cron bearer on `/api/market/spx/play` returns 401 | `/api/market/spx/play` | Yes — member route requires Clerk session |
+| P2 | SPX-RTH-E2E-01 | Largo query HTTP 401 after long orchestrator run (Clerk session expiry) | `/api/market/largo/query` | Yes — harness should re-mint session |
+| P2 | SPX-RTH-E2E-03 | Orchestrator `spx:dashboard-e2e` sub-run times out at 300s (full E2E ~15 min) | `scripts/spx-rth-all-day-audit.mjs` | Yes — bump sub-run timeout post-close |
+| P2 | SPX-RTH-E2E-04 | `ui:browser-dashboard` matrix row waitForFunction timeout after long API phase | `/dashboard` UI | Yes — harness should run browser phase first or re-auth |
+| P2 | SPX-RTH-INFRA-01 | Orchestrator marks `validate:rth-open` FAIL on pg SSL **stderr warning** even when checks pass | `scripts/spx-rth-all-day-audit.mjs` | Yes — stderr filter post-close |
+| — | — | **No P0 product defects** — matrix cells, play state, trade alerts, cross-tool numbers all correct | — | — |
+
+**Verify status: GREEN (product)** — zero wrong matrix cells, zero stale SCANNING confirmations, live tape ticking. Orchestrator exit 1 driven by infra/harness noise only; no fix branch required for P0.
+
+**Reports:** `audit-output/spx-rth-2026-07-31-verify-1785517586045.json`, `audit-output/spx-dashboard-e2e-1785518467375.json`
+
+---
 
 ## spx-rth-2026-07-31 — SPX Slayer market-open verify pass (~8:36 AM PT / 11:36 AM ET)
 
