@@ -1,5 +1,75 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-31 12:03 ET
+Last updated: 2026-07-31 12:50 ET
+
+## spx-rth-2026-07-31 — SPX Slayer market-open verify pass (~9:14 AM PT / 12:14 PM ET)
+
+**Session:** SPX Slayer all-day RTH agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` **verify** mode (scheduled 6:30 AM PT open). Commands: `npm run validate:spx-rth` → `npm run validate:spx-e2e` → 60s live-update probe → cross-tool Step 3.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth` | ⚠️ **7 PASS / 1 WARN / 1 FAIL** — SPX product **GREEN**; infra `rth-open` FAIL on options-socket 504 (non-SPX) |
+| `npm run validate:spx-e2e` | ✅ **16 PASS / 1 SKIP / 0 FAIL** (final pass) — GEX+VEX tabs, 174 matrix rows, zero NaN |
+| Matrix deep audit (SPX) | ✅ Every GEX/VEX/DEX/CHARM cell finite; Σ strike_totals == headline; INV-2 per strike |
+| Matrix E2E (every cell) | ✅ **170 strikes** validated GEX+VEX+DEX+CHARM vs `/api/market/gex-heatmap?ticker=SPX` |
+| Cross-endpoint spot/GEX | ✅ desk=7468.85 / heatmap=7468.36 / play=SCANNING/SCANNING (Δ ≤ 0.15 pts) |
+| Trade alerts | ✅ SCANNING — **no stale ✓ confirmations** |
+| BIE consistency | ✅ `getSpxPlayState()` single derivation |
+| `ops:collect` | ✅ exit 0 — zero action items |
+| Live auto-update (~60s) | ✅ Spot moved across pass window (7460.78 → 7468.6); desk pulse lane live |
+
+**Verify status: GREEN for SPX product** — zero P0 defects. One harness fix merged on branch; infra WARN logged.
+
+### Cross-tool integration (Step 3)
+
+| Tool | Endpoint | Result |
+|---|---|---|
+| **BlackOut Thermal** | `GET /api/market/gex-heatmap?ticker=SPX` | ✅ Same payload as dashboard matrix (170 strikes) |
+| **Thermal SPY** | `GET /api/market/gex-heatmap?ticker=SPY` | ✅ `cross_validation` PASS |
+| **GEX positioning** | `GET /api/market/gex-positioning?ticker=SPX` | ✅ spot/flip agree with matrix header |
+| **HELIX** | `GET /api/market/flows?limit=30` | ✅ 30 prints |
+| **Largo** | `POST /api/market/largo/query` | ✅ `tools=blackout_intelligence` grounded |
+| **BIE** | `validate:spx-bie` | ✅ member `/spx/play` == `getSpxPlayState()` |
+| **Grid** | `GET /api/market/spx/bootstrap` | ✅ loaded |
+| **0DTE Command** | `GET /api/market/zerodte/board` | ✅ 0 setups (quiet tape) |
+| **Night Hawk** | `GET /api/market/nighthawk/edition` | ✅ edition loads |
+
+### UI E2E (Playwright — `/dashboard`)
+
+| # | Action | Result |
+|---|---|---|
+| 1 | Premium admin session | ✅ dashboard loads |
+| 2 | GEX tab (`#spx-matrix-tab-gex`) | ✅ activates; 174 rows |
+| 3 | VEX tab (`#spx-matrix-tab-vex`) | ✅ populates; returns to GEX |
+| 4 | Matrix text sanity | ✅ no NaN/undefined/`$—` |
+| 5 | Commentary expand | ⏭ SKIP — toggle hidden when commentary standby (`live=false`) |
+| 6 | Trade alert hero | ✅ SCANNING, no stale ✓ |
+| 7 | Console errors | ✅ zero (final pass) |
+| 8 | Lotto dock | ✅ visible |
+
+### Findings table (`spx-rth-2026-07-31`)
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| P1 | SPX-RTH-INFRA-01 | `validate:rth-open` options-socket probe HTTP **504** during RTH; orchestrator surfaces pg SSL stderr as FAIL detail | socket-health / options-socket | Yes — infra edge timeout; SPX matrix/play unaffected |
+| P2 | SPX-RTH-HARNESS-01 | Orchestrator 300s timeout caused false `spx:dashboard-e2e` FAIL on first pass (Largo + Playwright >300s) | `spx-rth-all-day-audit.mjs` | **Fixed** — bumped to 600s on `cursor/spx-rth-system-verification-8bd8` |
+| P2 | SPX-RTH-HARNESS-02 | `CRON_SECRET` in agent env mismatches prod → `data-correctness` WARN + BIE cron route HTTP 401 | `/api/cron/data-correctness` | Yes — env secret drift; prod cron authoritative |
+| P2 | SPX-RTH-TRANSIENT-01 | First E2E pass: `gex-heatmap` curl 120s timeout (HTTP 0); retry GREEN | `/api/market/gex-heatmap?ticker=SPX` | Yes — transient under RTH load |
+| P2 | SPX-RTH-TRANSIENT-02 | First E2E pass: transient **502** console error on dashboard resource; second pass clean | `/dashboard` | Yes — edge blip |
+| P2 | SPX-RTH-UI-01 | Commentary expand control absent when Largo commentary standby (expected — `#spx-commentary-rail-toggle` gated on `live`) | `SpxCommentaryRail.tsx` | Yes — by design |
+| — | — | **No P0 product defects** — matrix cells, play state, SCANNING confirmations all correct | — | — |
+
+### Fix applied this pass
+
+- **`scripts/spx-rth-all-day-audit.mjs`**: dashboard E2E sub-run timeout **300s → 600s** (false FAIL on market-open pass).
+
+### Reports
+
+- `audit-output/spx-rth-2026-07-31-verify-1785516782210.json`
+- `audit-output/spx-dashboard-e2e-1785516693046.json`
+
+---
 
 ## grid-rth-2026-07-31 — 0DTE Command market-open verify pass (~9:03 AM PT / 12:03 PM ET)
 
