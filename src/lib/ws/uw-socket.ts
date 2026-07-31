@@ -1111,7 +1111,12 @@ function recordUwDelivery(channel: UwWsChannel): void {
   touchClusterFreshness(at);
 }
 
-function startClusterFreshnessPoller(): void {
+/**
+ * Start the Redis-backed UW cluster freshness poller without opening an upstream socket.
+ * Web tier (PROCESS_ROLE=web) must call this — initUwSocket is skipped there, but
+ * isTradingHaltChannelStale() still needs clusterFreshestAt from the ingest leader heartbeat.
+ */
+export function ensureUwClusterFreshnessPoller(): void {
   if (clusterFreshnessPollerStarted) return;
   clusterFreshnessPollerStarted = true;
   const poll = () => {
@@ -1241,7 +1246,7 @@ export function initUwSocket() {
     return;
   }
   uwSocketInitialized = true;
-  startClusterFreshnessPoller();
+  ensureUwClusterFreshnessPoller();
 
   uwSocket.subscribe("flow_alerts", (payload) => {
     try {

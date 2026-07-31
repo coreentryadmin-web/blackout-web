@@ -1,5 +1,5 @@
 import { initPolygonSocket, shutdownPolygonSocket } from "@/lib/ws/polygon-socket";
-import { initUwSocket, shutdownUwSocket } from "@/lib/ws/uw-socket";
+import { ensureUwClusterFreshnessPoller, initUwSocket, shutdownUwSocket } from "@/lib/ws/uw-socket";
 import { initOptionsSocket, shutdownOptionsSocket } from "@/lib/ws/options-socket";
 import { initStocksSocket, shutdownStocksSocket } from "@/lib/ws/stocks-socket";
 import { initFlowEventBridge } from "@/lib/flow-events";
@@ -67,6 +67,9 @@ export function ensureDataSockets() {
   // leadership, returns false-negative socket-health, and leaves SPX spot cold on cache readers.
   if (!shouldBootDataSockets()) {
     console.log("[init-data-sockets] web tier — skipping upstream WS boot (ingest worker owns sockets)");
+    // Halt-feed staleness reads clusterFreshestAt (Redis uw:ws:last_msg_at). Without this poller,
+    // web replicas never seed it → isTradingHaltChannelStale() false-positives and blocks entries.
+    ensureUwClusterFreshnessPoller();
     return;
   }
 
