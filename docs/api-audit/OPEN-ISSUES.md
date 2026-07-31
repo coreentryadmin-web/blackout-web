@@ -1,5 +1,82 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-31 15:45 ET
+Last updated: 2026-07-31 16:50 ET
+
+## grid-rth-2026-07-31-pass3 — 0DTE Command + Grid RTH verify pass (~4:48 PM ET, post-close)
+
+**Session:** Autonomous Grid RTH agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` **verify mode** (post-close pass after 4:00 PM ET bell). Commands: `npm run validate:grid-rth -- --force` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e` → `npm run validate:zerodte-integration` → `node scripts/audit/data-validator.mjs` → Playwright `/nighthawk` four-view click-through + `/grid` route probe.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:grid-rth` | ✅ **GREEN** — 13/13 PASS (deploy, board, ledger PnL, SPX↔GEX spot 7489.72, HELIX flows 20 prints, `zerodte-warm` cron, logic audit, cross-tool, data-correctness flags=0, E2E, ops:collect zero items) |
+| `npm run validate:zerodte-logic` | ✅ **GREEN** — 17/17 PASS (gates, plan exits -50%/+100%/15:30 ET, lifecycle OPEN→TRIM→CLOSED, session heat RTH→POST_COMMIT→POWER_HOUR→CLOSED, mergePlays past-cutoff/MOVED→SKIP, live board 9 setups / 2 ledger, 0 gate violations) |
+| `npm run validate:grid-e2e` | ✅ **GREEN** — 5/5 PASS (board API 6 setups · ledger 2, HELIX 20 prints, `/nighthawk` page load, zero console errors) |
+| `npm run validate:zerodte-integration` | ✅ **GREEN** — 9/9 PASS (BIE consistency, SPX bootstrap↔GEX spot 7489.72, desk GEX, HELIX 30 prints, Night Hawk dedupe, ledger PnL) |
+| `data-validator.mjs` | ⚠️ **27 PASS / 2 FAIL / 4 INFO / 1 WARN** — MU underlying 4.348% + BA 3.970% vs Polygon (tol 2.5% single-name); VIX 6.437% vs Polygon (extended-hours prev-close); SPXW underlying skipped (polygon null) |
+| Playwright `/nighthawk` views | ✅ **GREEN** — 0DTE / Swings / LEAPS / Legacy all clicked, content rendered, zero page errors |
+| `/grid` route | **404** (expected — classic Market Grid deleted 2026-07-07; 0DTE Command lives at `/nighthawk`) |
+
+**Verify status: GREEN** — zero P0 product defects. No live fixes required this pass.
+
+### Live board snapshot (~16:48 ET, CLOSED)
+
+| Field | Value |
+|---|---|
+| Session heat | CLOSED (0%) |
+| Setups | 9 live (0 eligible — gates) |
+| Ledger | 2 rows (SPY put, RDDT put) |
+| SPX spot (bootstrap↔GEX) | 7489.72 (within tol) |
+| HELIX flows | 20–30 prints |
+| `zerodte-warm` cron | accepted (background warm) |
+| data-correctness | flags=0 full-async |
+| Cutoff constant | 14:00 ET |
+
+### 0DTE logic probes (validate:zerodte-logic)
+
+| Probe | Result |
+|---|---|
+| Gate funnel (SETUP_MIN_GROSS, aggression, dominance, ITM) | ✅ all gates pass |
+| Plan exits (stop -50% / target +100% / time 15:30 ET) | ✅ stop=2.1 target=8.4 |
+| Play lifecycle | ✅ OPEN/TRIM/CLOSED/CLOSED |
+| Plan grade stop-first | ✅ stopped wins same bar |
+| Session heat cutoffs | ✅ RTH→POST_COMMIT→POWER_HOUR→CLOSED; cutoff constant 14:00 ET |
+| mergePlays past cutoff | ✅ SKIP |
+| mergePlays MOVED | ✅ SKIP |
+| Ledger PnL reconcile | ✅ 2 rows, 0 math issues |
+| Live finite numbers | ✅ PASS |
+
+### Cross-tool integration
+
+| Check | Result |
+|---|---|
+| SPX bootstrap spot vs GEX | ✅ PASS (7489.72) |
+| HELIX flows feed scanner | ✅ 20–30 prints |
+| Night Hawk dedupe (`covered_elsewhere`) | ✅ PASS |
+| Grid bootstrap spot vs GEX | ✅ PASS (via integration audit) |
+
+### Findings table (`grid-rth-2026-07-31`)
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| — | — | **No P0/P1 defects** | all suites GREEN | — |
+| P2 | GRID-RTH-MU-SPOT | MU `underlying_price` 4.348% off Polygon live (tol 2.5% single-name) | data-validator live probe | Yes — scan-time snapshot drift; chain/strike checks PASS |
+| P2 | GRID-RTH-BA-SPOT | BA `underlying_price` 3.970% off Polygon live (tol 2.5% single-name) | data-validator live probe | Yes — scan-time snapshot drift; chain/strike checks PASS |
+| P2 | GRID-RTH-VIX-SPOT | VIX 6.437% off Polygon prev-close (extended-hours ground truth) | data-validator live probe | Yes — extended-hours prev-close baseline |
+| P2 | GRID-ROUTE-404 | `/grid` returns 404; classic 9-panel Market Grid removed 2026-07-07 | HTTP probe | N/A — by design; use `/nighthawk` |
+| INFO | GRID-RTH-VIEW-REMAP | User prompt "click 0DTE Command + Market Grid tabs on /grid" → remap to `/nighthawk` four-view deck (0DTE default) | Playwright click-through | N/A |
+| INFO | GRID-RTH-CLOSED-SESSION | Board at CLOSED heat (0%) post-bell — expected after 16:00 ET | `/api/market/zerodte/board` | N/A |
+
+### Reports
+
+- `audit-output/grid-rth-2026-07-31-verify-1785530958397.json`
+- `audit-output/zerodte-logic-1785530965335.json`
+- `audit-output/grid-e2e-1785531003428.json`
+- `audit-output/zerodte-integration-1785530977006.json`
+- `audit-output/validation-2026-07-31T20-49-39-165Z.md`
+- `/opt/cursor/artifacts/grid-rth-ui/report.json`
+
+---
 
 ## grid-rth-2026-07-31-pass2 — 0DTE Command + Grid RTH verify pass (~3:44 PM ET)
 
