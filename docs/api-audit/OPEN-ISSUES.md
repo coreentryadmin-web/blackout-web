@@ -1,5 +1,85 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-30 18:10 ET
+Last updated: 2026-07-31 12:03 ET
+
+## grid-rth-2026-07-31 — 0DTE Command market-open verify pass (~9:03 AM PT / 12:03 PM ET)
+
+**Session:** Grid RTH all-day agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` **verify** mode (scheduled 6:30 AM PT open). Commands: `npm run validate:grid-rth` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e` → `npm run validate:zerodte-integration` → Playwright `/nighthawk` tab probe.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:grid-rth` | ✅ **12 PASS / 1 WARN / 0 FAIL** — orchestrator GREEN |
+| `npm run validate:zerodte-logic` | ✅ **17 PASS / 0 FAIL** — gates, plans, lifecycle, mergePlays, live board |
+| `npm run validate:grid-e2e` | ✅ **5 PASS / 0 FAIL** — board API + `/nighthawk` Playwright (0 console errors) |
+| `npm run validate:zerodte-integration` | ✅ **9 PASS / 0 FAIL** — SPX bootstrap/GEX, HELIX, NH dedupe, ledger PnL |
+| `ops:collect` (via grid-rth) | ✅ **exit 0** — zero action items |
+| `validate:rth-open` (infra) | ✅ deploy + writers GREEN |
+
+**Verify status: GREEN** — zero P0/P1 product defects. No fix branch required.
+
+### 0DTE logic probes (validate:zerodte-logic)
+
+| Layer | Result |
+|---|---|
+| Unit tests | ✅ `board.test.ts`, `rejections.test.ts`, `ZeroDteBoard.test.ts` |
+| Gate funnel | ✅ NVDA score=65; audit trace all gates pass |
+| Plan exits | ✅ stop −50% (2.1), target +100% (8.4), time stop 15:30 ET |
+| Trade lifecycle | ✅ OPEN → TRIM → CLOSED; sticky trough stop |
+| Plan grading | ✅ stop wins when both touch same bar |
+| Session heat | ✅ RTH → POST_COMMIT → POWER_HOUR; live RTH heat=100%; cutoff 14:00 ET |
+| mergePlays UI | ✅ past cutoff → SKIP; MOVED → SKIP (not OPEN) |
+| Ledger PnL | ✅ 2 rows `reconcileLedgerLivePnlPct` coherent |
+
+### Live board snapshot (RTH ~12:03 ET)
+
+| Field | Value |
+|---|---|
+| Session heat | `RTH` (100%) |
+| Setups | 54 (1 eligible / 0 gate violations) |
+| Ledger | 2 committed rows |
+| Upstream | ✅ `upstream_ok` via Clerk member path |
+| SPX GEX spot | 7454.68 (bootstrap vs gex agree) |
+
+### Cross-tool integration
+
+| Check | Result |
+|---|---|
+| Grid bootstrap spot vs GEX | ✅ spot 7450.81–7454.68 |
+| HELIX flows feed | ✅ 20–30 prints (`/api/market/flows`) |
+| Night Hawk dedupe | ✅ no edition plays overlap |
+| `zerodte-warm` cron | ✅ 202 accepted (background warm) |
+| `data-correctness` | ✅ flags=0 mode=full-async |
+| BIE consistency | ✅ `validate:zerodte-integration` |
+
+### UI E2E (Playwright — `/nighthawk`)
+
+| # | Action | Result |
+|---|---|---|
+| 1 | `/grid` route | ✅ HTTP 404 — classic Grid deleted 2026-07-07 |
+| 2 | Admin session opens `/nighthawk` | ✅ title "Night Hawk · BlackOut" |
+| 3 | 0DTE Command deck (default view) | ✅ Command Deck mounts via `ZeroDteDeck` |
+| 4 | Night Hawk view segments (0DTE / Swings / LEAPS / Legacy) | ⏭ SSR tablist present; ad-hoc Playwright hydration timing — official `validate:grid-e2e` GREEN |
+| 5 | Console | ✅ zero page errors |
+| 6 | Board API | ✅ 54 setups · ledger 2 |
+| 7 | HELIX flows API | ✅ 20 prints |
+
+### Findings table (`grid-rth-2026-07-31`)
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| P2 | GRID-RTH-UPSTREAM-01 | Cron-bearer probe hit `upstream_ok=false` ("tape fetch degraded this cycle") with setups=0; Clerk member path recovered to 54 setups / 2 ledger within same pass window | `/api/market/zerodte/board` | Yes — transient tape cycle; member path authoritative |
+| P2 | GRID-RTH-DOC-01 | User prompt + legacy runbook still reference `/grid` 9-panel UI; product is `/nighthawk` four-view Command Deck since 2026-07-07 | — | Yes — doc staleness |
+| — | — | No P0/P1 product defects this pass | — | — |
+
+### Reports
+
+- `audit-output/grid-rth-2026-07-31-verify-1785513481227.json`
+- `audit-output/zerodte-logic-1785513503181.json`
+- `audit-output/grid-e2e-1785513528938.json`
+- `audit-output/zerodte-integration-1785513575096.json`
+
+---
 
 ## spx-rth-2026-07-30 — SPX Slayer post-close fix pass (~3:09 PM PT / 6:09 PM ET)
 
