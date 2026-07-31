@@ -56,9 +56,11 @@ The Xcode project is **not committed**. It's generated on every build from
 - **AWS EC2 Mac (once the quota clears):** provides an interactive session
   for iteration + local signing; same commands as the local-Mac path.
 
-Signing / TestFlight upload for the native app will be wired through the
-existing `blackout-ios-testflight.yml` pipeline (same ASC API key)
-after the native app matures beyond scaffold.
+Signing / TestFlight: `.github/workflows/blackout-ios-native-testflight.yml`
+runs on every merge to `main` that touches this directory (and via manual
+`workflow_dispatch`). Uploads to the same TestFlight app as the Capacitor shell
+(`com.blackout-trades.app`) — internal testers get the new build once processing
+finishes in App Store Connect (~5–15 min).
 
 ## What's shipped in the scaffold
 
