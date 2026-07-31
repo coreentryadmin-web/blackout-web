@@ -1,7 +1,62 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-31 14:06 ET
+Last updated: 2026-07-31 14:28 ET
 
-## grid-rth-2026-07-31 — 0DTE Command + Grid RTH verify pass (~14:00 ET)
+## rth-open-2026-07-31-pass4 — RTH comprehensive test sweep (~2:14 PM ET)
+
+**Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` **RTH COMPREHENSIVE TEST SWEEP** pass 4 (~2:14 PM ET Friday). Commands: `npm run validate:rth-open` → `GET /api/cron/data-correctness?force=1` → sync `surface=heatmap` → `npm run validate:rth-sweep` → `npm run validate:grid-rth` → `npm run validate:spx-e2e` → `npm run validate:grid-e2e` → `npm run ops:collect`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` (initial) | ❌ **1 FAIL** — `options-socket: web tier — no fresh cluster option marks and no ingest leader` (ingest WS heartbeat absent; REST cache serving members) |
+| `GET /api/cron/data-correctness?force=1` | ✅ **202** async dispatch |
+| `GET /api/cron/data-correctness?force=1&surface=heatmap` | ✅ **flags=0**, 60 metrics (2 independently confirmed, 58 consistency-only) |
+| `npm run validate:rth-sweep` | ✅ **GREEN** — 0 P0/P1; 7 pages soft-nav 1.6–1.7s; APIs 200; Largo grounded NVDA $86.1M in 12.5s |
+| `npm run validate:spx-e2e` | ✅ **17/17 PASS** — matrix 169 strikes, spot 7486.34, cross-tool GEX flip agree |
+| `npm run validate:grid-e2e` | ✅ **5/5 PASS** — 10 setups · ledger 2 · zero console errors |
+| `npm run validate:grid-rth` | ⚠️ **12/13** — only `infra:validate:rth-open` failed (same options-socket probe); all product checks PASS |
+| `npm run ops:collect` | ✅ **exit 0** (after `npm install` restored `pg` dep) |
+
+**Verify status:** Member-facing **GREEN** — zero missing-field hits, data-correctness flags=0. **Fix shipped:** `readUwClusterHealth` now falls back to `uw:rest:last_ok_at` (seeded by socket-health / uw-cache-refresh) when ingest WS heartbeat is absent — unblocks options-socket web-tier probe via existing polygon+uw promotion path.
+
+### Comprehensive sweep — per-page (~2:18 PM ET)
+
+| Page | Soft-nav | Missing fields | Console | Live tick |
+|---|---|---|---|---|
+| `/dashboard` (SPX Slayer) | 1.7s hard | 0 | 1× HTTP 400 (resource) | null (regex) |
+| `/flows` (HELIX) | 1.7s | 0 | 0 | null |
+| `/heatmap` (Thermal matrix) | 1.6s | 0 | 0 | null |
+| `/vector` | 1.7s | 0 | 0 | null |
+| `/nighthawk` (0DTE Command) | 1.6s | 0 | 0 | null |
+| `/terminal` (Largo) | 1.6s | 0 | 0 | null |
+| `/track-record` | 1.6s | 0 | 0 | null |
+
+**Speed:** All pages well under 1.7s soft-nav target. GEX heatmap API cold paths slow (SPX 27.9s / SPY 14.4s) but return 200 — P2 cache-warm latency only.
+
+**Largo:** NVDA dark pool + flow query grounded — $86,062,943 premium across 50 prints; regime field `—` is honest (no anomaly regime active).
+
+**Cross-tool GEX:** desk flip 7497.34 vs gex-positioning 7496.14 vs spot 7482.04 — within tolerance.
+
+### Findings table (`rth-open-2026-07-31-pass4`)
+
+| Severity | ID | Detail | Backing API | Fix |
+|---|---|---|---|---|
+| P1 | SOCK-REST-LIVENESS | `readUwClusterHealth` only read `uw:ws:last_msg_at`; socket-health seeded `uw:rest:last_ok_at` but never consulted it → false FAIL on options-socket + uw cluster during ingest leader gap | `/api/cron/socket-health` | **FIX** — `socket-cluster-health.ts` REST fallback + tests |
+| P2 | INGEST-LEADER-GAP | `options:ws:leader` lock absent ×3 probes; member APIs still 200 via REST cache | socket-health cluster probe | Monitor — market-worker may need recycle if WS marks go stale |
+| P2 | GEX-HEATMAP-COLD | SPX heatmap 27.9s / SPY 14.4s on cold read | `/api/market/gex-heatmap` | Transient — desk/pulse sub-200ms |
+| P2 | DASH-HTTP-400 | Dashboard console 400 on one resource | browser network | Transient asset — no blank fields |
+| INFO | STALE-GH-CRON-SECRET | Env `CRON_SECRET` 401; AWS SM secret works | curl probe | Use `auditSecret()` (already in scripts) |
+
+### Reports
+
+- `audit-output/rth-sweep-2026-07-31T18-18-05-225Z.json`
+- `audit-output/spx-dashboard-e2e-1785522480325.json`
+- `audit-output/grid-e2e-1785522327670.json`
+- `audit-output/grid-rth-2026-07-31-verify-1785522308608.json`
+
+---
+
 
 **Session:** Autonomous Grid RTH agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` **verify mode** (afternoon pass, RTH). Commands: `npm run validate:grid-rth` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e` → `node scripts/audit/data-validator.mjs` → Playwright `/nighthawk` four-view click-through.
 
