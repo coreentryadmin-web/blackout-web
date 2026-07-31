@@ -108,7 +108,7 @@ private struct DeskWebViewRepresentable: UIViewRepresentable {
                 guard let webView else { return }
                 await syncSessionCookies(into: webView.configuration.websiteDataStore.httpCookieStore)
                 var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 30)
-                request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+                request.setValue(parent.userAgent, forHTTPHeaderField: "User-Agent")
                 webView.load(request)
             }
         }
