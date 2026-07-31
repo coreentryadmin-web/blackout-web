@@ -1,5 +1,5 @@
 import { isWebProcess, shouldRunRthWarmLeader } from "@/lib/process-role";
-import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
+import { seedGexHeatmapFromRedis } from "@/lib/providers/polygon-options-gex";
 import { heatmapPresetTickers } from "@/lib/heatmap-allowlist";
 import { getZeroDteBoardPayload } from "@/lib/platform/zerodte-service";
 import {
@@ -44,7 +44,7 @@ export function ensureWebBootWarm(): void {
       await Promise.allSettled([
         loadBootstrapBundle(),
         loadMergedSpxDesk(),
-        ...presets.map((t) => fetchGexHeatmap(t)),
+        ...presets.map((t) => seedGexHeatmapFromRedis(t)),
         getZeroDteBoardPayload(),
         warmVectorStreamHub(VECTOR_DEFAULT_TICKER),
       ]);

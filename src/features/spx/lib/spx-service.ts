@@ -15,6 +15,7 @@ import { buildPlaybookShadowPanel } from "@/features/spx/lib/playbook-shadow-pan
 import { refreshOrBreakMemory } from "@/features/spx/lib/playbook-break-memory-store";
 import { maybeLogPlaybookShadowMatch } from "@/features/spx/lib/playbook-shadow-log";
 import { playMemberReadCacheSec } from "@/features/spx/lib/spx-play-config";
+import { playMemberReadMaxBlockMs } from "@/lib/providers/config";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import { sharedCacheDel, sharedCacheGetWithTtl, sharedCacheSetNx } from "@/lib/shared-cache";
 import { withServerCache } from "@/lib/server-cache";
@@ -148,7 +149,7 @@ function spxPlayServerCacheKey(date: string): string {
 /** When another replica holds the eval lock, poll Redis for its published snapshot. */
 async function waitForPeerSpxPlaySnapshot(
   date: string,
-  maxMs = 25_000
+  maxMs = 3_000
 ): Promise<Awaited<ReturnType<typeof evaluateSpxPlayState>> | null> {
   const deadline = Date.now() + maxMs;
   while (Date.now() < deadline) {
@@ -173,6 +174,11 @@ async function evaluateSpxPlayStateCrossReplica(): Promise<Awaited<ReturnType<ty
   if (!won) {
     const peer = await waitForPeerSpxPlaySnapshot(date);
     if (peer) return peer;
+    const stale = await sharedCacheGetWithTtl<Awaited<ReturnType<typeof evaluateSpxPlayState>>>(
+      spxPlayServerCacheKey(date)
+    );
+    if (stale?.value) return stale.value;
+    return spxPlayReadDegraded();
   }
   try {
     return await evaluateSpxPlayState();
@@ -186,11 +192,38 @@ async function evaluateSpxPlayStateCrossReplica(): Promise<Awaited<ReturnType<ty
  * `get_spx_play`. Collapses member polls into one eval per cache window — no
  * stale-while-revalidate so BIE/Largo and the dashboard never disagree on grade/score.
  */
+function spxPlayReadDegraded(): Awaited<ReturnType<typeof evaluateSpxPlayState>> {
+  return {
+    available: false,
+    action: "SCANNING",
+    degraded: true,
+    score: 0,
+    grade: "D",
+    direction: null,
+    gates: { blocks: [], first_block_category: null },
+    playbook_shadow: null,
+  } as unknown as Awaited<ReturnType<typeof evaluateSpxPlayState>>;
+}
+
+async function spxPlayReadFallback(): Promise<Awaited<ReturnType<typeof evaluateSpxPlayState>>> {
+  const date = todayEtYmd();
+  const hit = await sharedCacheGetWithTtl<Awaited<ReturnType<typeof evaluateSpxPlayState>>>(
+    spxPlayServerCacheKey(date)
+  );
+  if (hit?.value) return hit.value;
+  const peer = await waitForPeerSpxPlaySnapshot(date, 1_500);
+  if (peer) return peer;
+  return spxPlayReadDegraded();
+}
+
 export async function getSpxPlayState() {
   const date = todayEtYmd();
   const ttlMs = playMemberReadCacheSec() * 1000;
   return withServerCache(`spx-play-read:${date}`, ttlMs, evaluateSpxPlayStateCrossReplica, {
     staleWhileRevalidate: false,
+    staleOnInflight: true,
+    maxBlockMs: playMemberReadMaxBlockMs(),
+    fallback: spxPlayReadFallback,
   });
 }
 

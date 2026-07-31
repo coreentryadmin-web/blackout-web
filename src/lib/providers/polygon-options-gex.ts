@@ -1243,6 +1243,28 @@ function setCachedHeatmap(key: string, entry: { at: number; data: GexHeatmap }):
   cachedHeatmaps.set(key, entry);
 }
 
+/**
+ * Boot-time / warm-path ONLY: hydrate the in-memory mirror from Redis without triggering
+ * a Polygon chain build. Cold ECS replicas must not fire 11 concurrent matrix builds on
+ * `/api/ready` — that OOMs the web tier and wedges the first member poll behind 30s+ builds.
+ */
+export async function seedGexHeatmapFromRedis(underlying: string): Promise<void> {
+  const { root } = resolveOptionsRoot(underlying);
+  if (!root) return;
+  const cacheKey = `${GEX_HEATMAP_CACHE_PREFIX}:${root}`;
+  if (cachedHeatmaps.has(cacheKey)) return;
+  try {
+    const { sharedCacheGet } = await import("../shared-cache");
+    const hit = await Promise.race([
+      sharedCacheGet<{ at: number; data: GexHeatmap }>(cacheKey),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 500)),
+    ]);
+    if (hit) setCachedHeatmap(cacheKey, hit);
+  } catch {
+    /* redis optional */
+  }
+}
+
 function gexHeatmapCacheMs(): number {
   const sec = Number(process.env.GEX_HEATMAP_CACHE_SEC ?? 5);
   return Number.isFinite(sec) && sec > 0 ? sec * 1000 : 5_000;

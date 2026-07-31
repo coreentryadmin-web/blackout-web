@@ -79,6 +79,22 @@ export function gexHeatmapMaxBlockMs(): number {
   return Math.round(ms);
 }
 
+/** Max ms member `/api/market/spx/play` may block on cold eval before serving stale/degraded. Default 3s. */
+export function playMemberReadMaxBlockMs(): number {
+  const raw = process.env.SPX_PLAY_MEMBER_READ_MAX_BLOCK_MS?.trim();
+  const ms = raw ? Number(raw) : 3_000;
+  if (!Number.isFinite(ms) || ms < 500) return 3_000;
+  return Math.round(ms);
+}
+
+/** Max ms gex-heatmap overlay/cross-validation enrichment may block after matrix read. Default 2s. */
+export function gexHeatmapEnrichmentMaxMs(): number {
+  const raw = process.env.GEX_HEATMAP_ENRICHMENT_MAX_MS?.trim();
+  const ms = raw ? Number(raw) : 2_000;
+  if (!Number.isFinite(ms) || ms < 200) return 2_000;
+  return Math.round(ms);
+}
+
 /** Slower pulse structure refresh (EMAs, minute bars, mega-caps). Default 5s with live Polygon. */
 export function deskPulseStructureCacheTtlMs(): number {
   const raw = process.env.SPX_PULSE_STRUCTURE_SEC?.trim();
