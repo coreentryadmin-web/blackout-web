@@ -31,7 +31,8 @@ Thesis exit when 200 call wall blocked the target path.
 
 ## Tweet 3/4
 
-**Attach:** `../attachments/nbis/thermal-matrix.png`
+**Attach:** `../attachments/nbis/thermal-matrix.png`  
+*(Thermal: turn **Compare OFF**, search **NBIS** — single-ticker matrix with 200 call wall. URL: `/heatmap?ticker=NBIS&lens=gex&compare=0`)*
 
 THERMAL · search NBIS
 
