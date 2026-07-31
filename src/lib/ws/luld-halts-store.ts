@@ -5,6 +5,7 @@ import {
 } from "@/lib/ws/trading-halts-expiry";
 import { LULD_INDEX_PROXIES } from "@/lib/live-api-integrations";
 import type { TradingHaltEvent } from "@/lib/providers/unusual-whales";
+import { persistClusterLuldHalts, touchClusterLuldFreshness } from "@/lib/ws/halt-cluster-store";
 
 const LULD_HALT_MAX_AGE_MS = 30 * 60_000;
 
@@ -20,6 +21,7 @@ export const luldHaltsStore: {
 
 export function touchLuldMessageAt(at = Date.now()): void {
   luldHaltsStore.last_message_at = at;
+  void touchClusterLuldFreshness(at);
 }
 
 export function applyLuldHaltEvents(
@@ -45,6 +47,7 @@ export function applyLuldHaltEvents(
     }
   }
   luldHaltsStore.updatedAt = now;
+  void persistClusterLuldHalts(luldHaltsStore.halts, now);
 }
 
 export function hasActiveLuldHalt(symbols: readonly string[]): boolean {
