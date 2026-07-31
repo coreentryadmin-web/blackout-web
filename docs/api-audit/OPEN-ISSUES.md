@@ -14,7 +14,7 @@ Last updated: 2026-07-31 13:23 ET
 | `npm run validate:rth-sweep` (final pass) | ✅ **GREEN** — 0 P0/P1; 7 pages soft-nav 1.6–5.3s; APIs 200; Largo grounded NVDA $86.6M in 16s |
 | `npm run validate:grid-rth` | ⚠️ orchestrator **1 FAIL** — `zerodte-integration` subprocess truncated/timeout during parallel burst; direct re-run **GREEN** (9/9) |
 | `npm run validate:zerodte-integration` | ✅ **9 PASS / 0 FAIL** |
-| `npm run validate:spx-rth` | See SPX section below |
+| `npm run validate:spx-rth` | ⚠️ orchestrator **2 false FAIL** (pg SSL stderr + truncated spx-e2e subprocess); underlying matrix/cross-endpoint/desk **PASS** |
 | `npm run ops:collect` | ✅ **exit 0** — zero action items |
 
 **Verify status: GREEN** — zero P0/P1 product defects after warm-cache re-probe. Fix branch: sweep audit retry/severity for CF origin timeouts.
