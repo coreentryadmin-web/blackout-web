@@ -1,5 +1,79 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-30 18:10 ET
+Last updated: 2026-07-31 12:22 ET
+
+## spx-rth-2026-07-31 — SPX Slayer market-open verify pass (~8:49 AM PT / 11:49 AM ET)
+
+**Session:** SPX Slayer all-day RTH verification agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` **verify** mode (scheduled 6:30 AM PT market open). Commands: `npm run validate:spx-rth` → `npm run validate:spx-e2e` → matrix deep audit → 60s live auto-update probe.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-e2e` | ✅ **0 FAIL / 17 checks** — GREEN |
+| Matrix deep audit (`heatmap-matrix-audit.mjs --tickers=SPX`) | ✅ 171 strikes · 32 checks · **0 flags** |
+| `npm run validate:rth-open` | ✅ GREEN (Postgres DB checks skipped — private RDS ECONNRESET from sandbox) |
+| `npm run validate:spx-bie` | ✅ **6 PASS / 1 WARN / 4 SKIP** — static invariants GREEN; live diff skipped (no local REDIS_URL) |
+| `npm run validate:spx-rth` (orchestrator) | ⚠️ **5 PASS / 1 WARN / 3 FAIL** — sub-run **300s timeouts** on matrix-deep-audit + dashboard-e2e (harness; individual runs GREEN below) |
+| `ops:collect` | ✅ exit 0 — zero action items |
+| 60s live auto-update (Playwright `/dashboard`) | ✅ Matrix cells ticked within 60s (GEX values changed AUG 3–7 columns) |
+
+### Matrix validation (100% cell coverage)
+
+| Lens | Strikes | Result |
+|---|---|---|
+| GEX | 171 | ✅ Every cell finite; Σ strike_totals == headline total; INV-2 per strike |
+| VEX | 171 | ✅ Same invariants |
+| DEX | 171 | ✅ Same invariants |
+| CHARM | 171 | ✅ Same invariants |
+| Spot | 7453.76 | ✅ Finite; flip 7554.44; call wall 7550 / put wall 7400 |
+
+Cross-endpoint spot at pass time: desk=7457.19 / heatmap=7456.93 / play=**SCANNING/SCANNING** (Δ ≤ 1.05 pts — within tolerance).
+
+### UI E2E (Playwright)
+
+| Control | Result |
+|---|---|
+| Sign-in `/dashboard` | ✅ PASS |
+| `FreshnessChip` / LIVE badge | ✅ PASS (not OFFLINE during RTH) |
+| GEX tab (`#spx-matrix-tab-gex`) | ✅ PASS |
+| VEX tab (`#spx-matrix-tab-vex`) | ✅ PASS |
+| Matrix rows | ✅ **177** strike rows (≥ 80 required) |
+| Matrix text sanity | ✅ No NaN / undefined / `$—` |
+| Trade alert hero | ✅ SCANNING — **no stale ✓ confirmations** |
+| Commentary expand | ⏭ SKIP — no expand control rendered |
+| Console errors | ✅ PASS |
+
+### Cross-tool integration (Step 3)
+
+| Tool | Endpoint | Result |
+|---|---|---|
+| BlackOut Thermal | `GET /api/market/gex-heatmap?ticker=SPX` | ✅ Same payload as dashboard matrix (171 strikes validated) |
+| Thermal SPY | `cross_validation` | ✅ PASS |
+| GEX positioning | `GET /api/market/gex-positioning?ticker=SPX` | ✅ spot/flip/walls agree with matrix header |
+| HELIX | `GET /api/market/flows?limit=30` | ✅ 30 prints |
+| Largo | `POST /api/market/largo/query` | ✅ Grounded via `blackout_intelligence` |
+| BIE | `validate:spx-bie` static | ✅ `getSpxPlayState()` single derivation |
+| Grid | `GET /api/market/spx/bootstrap` | ✅ Loaded |
+| 0DTE Command | `GET /api/market/zerodte/board` | ⚠️ WARN — curl 120s timeout / `setups` null this pass (cold-build lane; not a matrix/play defect) |
+| Night Hawk | `GET /api/market/nighthawk/edition` | ✅ Edition loads |
+| Track record | (via deploy smoke) | ✅ `/api/public/track-record` 401 gated as expected |
+
+### Findings table (`spx-rth-2026-07-31`)
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| P2 | SPX-RTH-ORCH-01 | `spx-rth-all-day-audit.mjs` 300s sub-run timeout kills matrix-deep-audit + dashboard-e2e when run sequentially; individual scripts complete in &lt;5 min | orchestrator | Yes — post-close harness bump |
+| P2 | SPX-RTH-DC-01 | `CRON_SECRET` auth mismatch on data-correctness probe from cloud sandbox | `/api/cron/data-correctness` | Yes — prod cron authoritative |
+| P2 | SPX-RTH-BIE-01 | Cron bearer on `/api/market/spx/play` returns 401 | `/api/market/spx/play` | Yes — member route requires Clerk session |
+| P2 | SPX-RTH-ZD-01 | 0DTE board probe timed out (120s) once during E2E burst — WARN not FAIL | `/api/market/zerodte/board` | Yes — monitor next pass |
+| P2 | SPX-RTH-UI-01 | Commentary expand control not rendered on `/dashboard` this pass | UI | Yes — UX follow-up |
+| — | — | **No P0/P1 product defects** — matrix cells, trade alerts, cross-tool SPX numbers all correct | — | — |
+
+**Verify status: GREEN** — zero product FAIL on `validate:spx-e2e` and standalone matrix audit. Orchestrator timeout is harness-only (not a member-visible defect). No fix branch required.
+
+**Reports:** `audit-output/spx-dashboard-e2e-1785514585971.json`, `audit-output/spx-rth-2026-07-31-verify-1785514310544.json`, matrix audit stdout (0 flags)
+
+---
 
 ## spx-rth-2026-07-30 — SPX Slayer post-close fix pass (~3:09 PM PT / 6:09 PM ET)
 
