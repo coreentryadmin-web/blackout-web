@@ -58,9 +58,11 @@ export async function GET(req: NextRequest) {
     // Web-tier probes run without local polygon WS — seed the shared pulse snapshot from UW
     // stock-state BEFORE evaluating cluster health so socket-health doesn't false-negative
     // when ingest polygon WS is down but UW tape is live (#1337 / ops #1343).
+    let restLivenessAt: number | null = null;
     if (rth) {
       await seedPulseSnapshotFromUwPrices();
-      await seedUwClusterHeartbeat();
+      const seeded = await seedUwClusterHeartbeat();
+      if (seeded) restLivenessAt = Date.now();
     }
 
     const polygonLocal = getIndexStoreStatus();
@@ -73,7 +75,12 @@ export async function GET(req: NextRequest) {
           is_leader: uwLocal.is_leader,
           cluster_last_message_at: uwLocal.cluster_last_message_at,
         })
-      : await readUwClusterHealth(false);
+      : restLivenessAt != null
+        ? buildUwClusterHealth({
+            is_leader: false,
+            cluster_last_message_at: restLivenessAt,
+          })
+        : await readUwClusterHealth(false);
     const uwEval = evaluateUwClusterOk(uwCluster, rth);
     const polygonEval = evaluatePolygonClusterOk(polygonCluster, rth);
 
