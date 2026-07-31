@@ -18,6 +18,7 @@ test("getSpxPlayState owns the shared play-read cache (member + BIE + Largo)", (
   assert.match(service, /withServerCache\(`spx-play-read:\$\{date\}`/);
   assert.match(service, /playMemberReadCacheSec/);
   assert.match(service, /staleWhileRevalidate:\s*false/);
+  assert.match(service, /maxBlockMs:\s*playMemberReadMaxBlockMs/);
   assert.match(service, /evaluateSpxPlayStateCrossReplica/);
   assert.match(service, /sharedCacheSetNx/);
 });

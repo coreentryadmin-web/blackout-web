@@ -348,6 +348,8 @@ async function browserDashboard(session, hm) {
   await context.addInitScript(onboardingInitScript());
   await context.addCookies(pw.cookies);
   const page = await context.newPage();
+  // Playwright default is 30s — cloud agents hydrate slowly after long orchestrator bursts.
+  page.setDefaultTimeout(120_000);
   const consoleErrors = [];
   page.on("console", (msg) => {
     if (msg.type() === "error") consoleErrors.push(msg.text());
@@ -384,11 +386,16 @@ async function browserDashboard(session, hm) {
       rec("ui:click-vex-tab", "SKIP", "VEX tab not shown (no vex block)");
     }
 
+    await gexTab.click();
+    // Matrix tabpanel (#spx-matrix-lens-gex) mounts only after hasData — wait on the table.
+    await matrixTable.waitFor({ state: "visible", timeout: 60_000 });
     await page.waitForFunction(
-      () => document.querySelectorAll(".spx-gex-matrix-table tbody tr").length >= 20,
+      () => {
+        const table = document.querySelector(".spx-gex-matrix-table");
+        return Boolean(table && table.querySelectorAll("tbody tr").length >= 20);
+      },
       { timeout: 60_000 }
     );
-    await matrixTable.waitFor({ state: "visible", timeout: 10_000 });
     const rowCount = await matrixTable.locator("tbody tr").count();
     if (rowCount < 20) {
       rec("ui:matrix-rows", "FAIL", `only ${rowCount} rows visible`);

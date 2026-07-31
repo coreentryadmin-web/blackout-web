@@ -547,7 +547,12 @@ async function fetchPulseLaneSnapshots(): Promise<IndexSnapMap> {
   try {
     const { getUwCacheRedis } = await import("@/lib/providers/uw-shared-cache");
     const redis = await getUwCacheRedis();
-    const raw = redis ? await redis.get("spx:pulse:snapshot") : null;
+    const raw = redis
+      ? await Promise.race([
+          redis.get("spx:pulse:snapshot"),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 500)),
+        ])
+      : null;
     if (raw) {
       const snap = JSON.parse(raw) as Record<
         string,
@@ -1944,18 +1949,14 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
 }
 
 /**
- * Sub-500ms pulse for cold replicas — Redis index snapshot + last-good structure.
- * Never calls Polygon daily bars or blocks on single-flight full builds.
+ * Sub-500ms pulse for cold replicas — last-good in-process snapshot or Redis index tick only.
+ * Never calls Polygon daily bars, never blocks on single-flight full builds.
  */
 export async function buildSpxDeskPulseMinimal(): Promise<SpxDeskPulse> {
   const polledAt = new Date().toISOString();
   if (lastPulseForSignals?.price) {
     return { ...lastPulseForSignals, polled_at: polledAt };
   }
-
-  const { ensureDataSockets } = await import("@/lib/ws/init-data-sockets");
-  ensureDataSockets();
-  await warmUwClusterFreshnessFromRedis();
 
   const empty: SpxDeskPulse = {
     available: false,
@@ -1991,100 +1992,34 @@ export async function buildSpxDeskPulseMinimal(): Promise<SpxDeskPulse> {
     market_label: "CLOSED",
   };
 
-  if (!polygonConfigured()) return empty;
-
-  const now = new Date();
-  const marketNow = null;
-  const premarketPlan = isPremarketPlanningWindow(now);
-  const rthOpen = isSpxRthActive(now, marketNow);
-  const label = marketStatusLabel(now, marketNow);
-
-  if (!rthOpen && !premarketPlan) {
-    return { ...empty, market_status: "closed", market_label: label };
-  }
-
+  void warmUwClusterFreshnessFromRedis().catch(() => undefined);
   kickPulseStructureRefresh(todayEtYmd());
-  const [snapsRaw, prior] = await Promise.all([
-    fetchPulseLaneSnapshots(),
-    priorDayForPulseLane(),
+
+  const raced = await Promise.race([
+    (async () => {
+      const snapsRaw = await fetchPulseLaneSnapshots();
+      const spxSnap = snapsRaw[SPX];
+      if (!spxSnap?.price) return empty;
+      const structure = cachedPulseStructure;
+      return {
+        ...empty,
+        available: true,
+        price: spxSnap.price,
+        spx_change_pct: spxSnap.change_pct,
+        vix: snapsRaw[VIX]?.price ?? null,
+        vix_change_pct: snapsRaw[VIX]?.change_pct ?? null,
+        vwap: structure.vwap,
+        ema20: structure.ema20,
+        ema50: structure.ema50,
+        market_open: isSpxRthActive(new Date(), null),
+        market_status: "open",
+        market_label: marketStatusLabel(new Date(), null),
+      } satisfies SpxDeskPulse;
+    })(),
+    new Promise<SpxDeskPulse>((resolve) => setTimeout(() => resolve(empty), 400)),
   ]);
-  const structure = cachedPulseStructure;
-  const spxSnap = snapsRaw[SPX];
-  const vixSnap = snapsRaw[VIX];
-  if (!spxSnap?.price) return empty;
 
-  const price = spxSnap.price;
-  const spxFeed = getIndexFeedFreshness(SPX);
-  const feedStalled = await resolvePulseFeedStalled();
-  const vwap = structure.vwap;
-  const lod = premarketPlan && !rthOpen ? prior.pdl ?? null : structure.lod ?? null;
-  const hod = premarketPlan && !rthOpen ? prior.pdh ?? null : structure.hod ?? null;
-  const sessionExtremes = widenSessionExtremesWithSpot(price, hod, lod, rthOpen);
-  const ema20 = structure.ema20;
-  const ema50 = structure.ema50;
-  const vixTerm = computeVixTermStructure(
-    vixSnap?.price ?? null,
-    snapsRaw[VIX9D]?.price ?? null,
-    snapsRaw[VIX3M]?.price ?? null
-  );
-  const dataQuality = buildDeskDataQuality(snapsRaw, vixTerm);
-  const internals = resolveMarketInternals(
-    {
-      tick: snapsRaw[TICK]?.price ?? null,
-      trin: snapsRaw[TRIN]?.price ?? null,
-      add: snapsRaw[ADD]?.price ?? null,
-    },
-    structure.breadth_samples
-  );
-
-  const result: SpxDeskPulse = {
-    available: true,
-    polled_at: polledAt,
-    price,
-    spx_change_pct: spxSnap.change_pct,
-    vix: vixSnap?.price ?? null,
-    vix_change_pct: vixSnap?.change_pct ?? null,
-    above_vwap: vwap != null ? price >= vwap : false,
-    lod: sessionExtremes.lod,
-    hod: sessionExtremes.hod,
-    vwap,
-    pdh: prior.pdh,
-    pdl: prior.pdl,
-    prior_close: prior.pdc,
-    gap_pct: lastPulseForSignals?.gap_pct ?? null,
-    gap_source: lastPulseForSignals?.gap_source ?? null,
-    ema20,
-    ema50,
-    ema200: structure.ema200,
-    sma50: structure.sma50,
-    sma200: structure.sma200,
-    tick: internals.tick,
-    trin: internals.trin,
-    add: internals.add,
-    internals_estimated: internals.estimated,
-    regime: String(inferRegime(price, ema20, ema50)),
-    leader_stocks: structure.leader_stocks,
-    vix_term: {
-      vix9d: vixTerm.vix9d,
-      vix3m: vixTerm.vix3m,
-      structure: vixTerm.structure,
-      detail: vixTerm.detail,
-    },
-    data_quality: dataQuality,
-    price_age_ms: spxFeed.ageMs,
-    feed_stalled: feedStalled === true,
-    market_open: rthOpen,
-    market_status: premarketPlan && !rthOpen ? "premarket" : "open",
-    market_label: premarketPlan && !rthOpen ? "PRE-MARKET" : label,
-    active_halts: getActiveTradingHalts().map((h) => ({
-      symbol: h.symbol,
-      halt_type: h.halt_type,
-      reason: h.reason,
-    })),
-    halt_channel_stale: isTradingHaltChannelStale(),
-    lit_dark_ratio: computeLitDarkRatio(),
-  };
-  return roundPulseNumerics(result);
+  return roundPulseNumerics(raced);
 }
 
 /** UW flow lane — GEX strike ladder, live tape, dark pool (~4s). */

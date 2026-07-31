@@ -1128,8 +1128,17 @@ function recordUwDelivery(channel: UwWsChannel): void {
   touchClusterFreshness(at);
 }
 
+const UW_CLUSTER_WARM_RACE_MS = 250;
+
 /** Web tier: load cluster halts + LULD heartbeat before sync gate reads. */
 export async function warmUwClusterFreshnessFromRedis(): Promise<void> {
+  await Promise.race([
+    warmUwClusterFreshnessFromRedisCore(),
+    new Promise<void>((resolve) => setTimeout(resolve, UW_CLUSTER_WARM_RACE_MS)),
+  ]);
+}
+
+async function warmUwClusterFreshnessFromRedisCore(): Promise<void> {
   await warmClusterHaltsFromRedis();
   try {
     const redis = await getUwCacheRedis();

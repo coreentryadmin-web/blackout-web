@@ -4,6 +4,20 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-07-31 — [spx] Matrix UI "unavailable" while API valid — client 10s fetch abort (P0)
+
+**Severity.** P0 — members saw "Matrix unavailable — retrying…" on `/dashboard` during RTH while `/api/market/gex-heatmap?ticker=SPX` held 170–175 valid strikes.
+
+**Symptom.** SPX Slayer market-open verify (`spx-rth-2026-07-31`): Playwright screenshot shows Dealer Gamma Map stuck on "Matrix unavailable — retrying…"; matrix-deep-audit and `matrix:every-cell-api` PASS on same pass. Clerk-authenticated heatmap latency 110–187s (runs 1–3).
+
+**Root cause.** `SpxGexMatrixHeatmap.tsx` `fetchGexHeatmap` used `AbortSignal.timeout(10_000)` — Thermal's `GexHeatmap.tsx` does not. Client aborted before slow route responded. Secondary: `gex-heatmap/route.ts` `Promise.all` on overlays + UW cross-val + NH could block the full response when UW fan-out was slow.
+
+**Fix.** `fix/spx-matrix-fetch-timeout`: remove client AbortSignal timeout; add `withRouteFanoutTimeout` (8s) on route supplementary fetches; bump Playwright default timeout in `spx-dashboard-e2e-audit.mjs` to 120s.
+
+**Files.** `src/features/spx/components/SpxGexMatrixHeatmap.tsx:95-105`, `src/app/api/market/gex-heatmap/route.ts:139-148`, `scripts/spx-dashboard-e2e-audit.mjs`.
+
+**Status.** PR open — merge after CI green + deploy re-validate.
+
 ## 2026-07-30 — [spx] Post-close fix agent — all validators GREEN (~3:09 PM PT)
 
 **Severity:** — (no product defect)

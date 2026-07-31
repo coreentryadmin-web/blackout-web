@@ -24,5 +24,7 @@ test("web-boot-warm awaits priming before ready returns and warms vector hub", (
   );
   assert.match(warm, /awaitWebBootWarm/);
   assert.match(warm, /warmVectorStreamHub/);
+  assert.match(warm, /seedGexHeatmapFromRedis/);
+  assert.doesNotMatch(warm, /fetchGexHeatmap/);
   assert.match(ready, /await awaitWebBootWarm/);
 });
