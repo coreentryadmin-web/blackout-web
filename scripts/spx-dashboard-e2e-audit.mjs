@@ -18,7 +18,7 @@ import { chromium } from "playwright";
 import { inRthOpenWindow } from "./gha-et-window.mjs";
 import { isAuthFailureStatus } from "./audit/lib/auth-status.mjs";
 import { spotsAgree, flipsAgree } from "./audit/lib/cross-tool-tolerance.mjs";
-import { onboardingInitScript } from "./audit/lib/ios-playwright-auth.mjs";
+import { mintIosPlaywrightSession, onboardingInitScript } from "./audit/lib/ios-playwright-auth.mjs";
 import { createAuditClerkUser, deleteAuditClerkUser } from "./audit/lib/clerk-audit-user.mjs";
 import { resolveNearTermExpiriesForAudit } from "./audit/lib/near-term-expiries.mjs";
 
@@ -322,9 +322,16 @@ async function crossToolIntegration(app, hm) {
 }
 
 async function browserDashboard(session, hm) {
+  const pw = await mintIosPlaywrightSession({ appUrl: BASE });
+  if (pw.skip) {
+    rec("ui:browser-dashboard", "FAIL", pw.reason);
+    return;
+  }
+
   const browser = await chromium.launch({ headless: true, args: ["--no-sandbox"] });
   const context = await browser.newContext({ userAgent: UA });
   await context.addInitScript(onboardingInitScript());
+  await context.addCookies(pw.cookies);
   const page = await context.newPage();
   // Playwright default is 30s — cloud agents hydrate slowly after long orchestrator bursts.
   page.setDefaultTimeout(120_000);
@@ -335,8 +342,7 @@ async function browserDashboard(session, hm) {
   page.on("pageerror", (err) => consoleErrors.push(String(err.message)));
 
   try {
-    await page.goto(session.signInUrl, { waitUntil: "domcontentloaded", timeout: 120_000 });
-    await page.waitForURL(/\/dashboard/, { timeout: 120_000 });
+    await page.goto(`${BASE}/dashboard`, { waitUntil: "domcontentloaded", timeout: 120_000 });
     await page.waitForFunction(() => window.Clerk?.user?.id, { timeout: 60_000 });
     rec("ui:sign-in-dashboard", "PASS");
 
@@ -431,6 +437,9 @@ async function browserDashboard(session, hm) {
   } catch (e) {
     rec("ui:browser-dashboard", "FAIL", e.message);
   } finally {
+    try {
+      await pw.cleanup?.();
+    } catch {}
     await browser.close();
   }
 }
