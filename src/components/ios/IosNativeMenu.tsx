@@ -130,6 +130,9 @@ export function IosNativeMenu({ open, onClose, lockedTools = [], showAdmin }: Pr
               <Link href="/learn" scroll={false} onClick={onClose} className="ios-native-menu-link">
                 Learn
               </Link>
+              <Link href="/vector" scroll={false} onClick={onClose} className="ios-native-menu-link">
+                Vector chart
+              </Link>
               {showAdmin && (
                 <Link href="/admin" scroll={false} onClick={onClose} className="ios-native-menu-link text-bear">
                   Admin

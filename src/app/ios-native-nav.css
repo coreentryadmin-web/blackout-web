@@ -110,7 +110,8 @@ html.ios-app.ios-native-shell .ios-native-segment-btn-active {
 }
 
 html.ios-app.ios-native-shell .ios-native-panel-visible {
-  animation: ios-panel-enter 0.24s var(--ios-nav-spring) both;
+  animation: none;
+  opacity: 1;
 }
 
 @media (prefers-reduced-motion: reduce) {

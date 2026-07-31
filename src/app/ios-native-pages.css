@@ -183,8 +183,51 @@ html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-vector-col
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
-  min-height: 0;
+  min-height: min(48dvh, calc(100dvh - var(--ios-header-offset) - var(--ios-tab-offset) - 11rem));
   overflow: hidden;
+}
+
+/* Vector-first — segment on top, compact hero, chart owns the canvas */
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .ios-native-desk-segment-spx {
+  position: sticky;
+  top: calc(var(--ios-header-offset) + 2px);
+  z-index: 25;
+  margin-bottom: 0.25rem;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-desk--ios-vector-focus .spx-sniper-command-native {
+  padding-bottom: 0.35rem;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-desk--ios-vector-focus .spx-desk-top-stats--strip {
+  display: none;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-desk--ios-vector-focus .spx-hero-metric-blocks {
+  display: none;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-desk--ios-vector-focus .spx-sniper-vector-col {
+  flex: 1 1 auto;
+  min-height: min(58dvh, calc(100dvh - var(--ios-header-offset) - var(--ios-tab-offset) - 8.5rem));
+}
+
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-desk--ios-vector-focus .vector-chart-canvas,
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-desk--ios-vector-focus .vector-chart-canvas--fill-host {
+  min-height: min(52dvh, calc(100dvh - var(--ios-header-offset) - var(--ios-tab-offset) - 10rem)) !important;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-vector-col:not(.ios-native-panel-hidden) {
+  order: 1;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-triple[data-ios-panel="matrix"] .spx-left-matrix,
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-triple[data-ios-panel="matrix"] .spx-left-pin {
+  order: 1;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-triple[data-ios-panel="intel"] .spx-sniper-intel-col {
+  order: 1;
 }
 
 html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-vector-col .vector-embed-chart-only,
@@ -996,6 +1039,36 @@ html.ios-app.ios-native-shell[data-ios-route="nighthawk"] .nighthawk-market-cont
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.35rem;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   VECTOR — full-page chart (/vector from command deck)
+   ═══════════════════════════════════════════════════════════════════════════ */
+html.ios-app.ios-native-shell[data-ios-route="vector"] .ios-desk-shell {
+  padding-top: var(--ios-header-offset) !important;
+  min-height: var(--ios-viewport-h);
+}
+
+html.ios-app.ios-native-shell[data-ios-route="vector"] .vector-page-shell {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="vector"] .vector-chart-terminal-grid,
+html.ios-app.ios-native-shell[data-ios-route="vector"] .vector-chart-terminal-chart {
+  flex: 1;
+  min-height: 0;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="vector"] .vector-chart-canvas {
+  min-height: min(56dvh, calc(100dvh - var(--ios-header-offset) - var(--ios-tab-offset) - 6rem)) !important;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="vector"] .vector-toolbar button,
+html.ios-app.ios-native-shell[data-ios-route="vector"] .gex-ticker-native-trigger {
+  min-height: var(--ios-touch, 2.75rem);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

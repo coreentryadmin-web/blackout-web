@@ -410,6 +410,14 @@ async function testToolPage(page, tab, prefix = "") {
     }
     if (await clickSegment(page, "Vector")) {
       ok(`${prefix}spx:segment-vector`);
+      await page.locator(".spx-sniper-vector-col").scrollIntoViewIfNeeded().catch(() => null);
+      await page.waitForTimeout(3000);
+      const lc = await page.evaluate(() => {
+        const canvas = document.querySelector(".vector-chart-canvas canvas");
+        return canvas ? { w: canvas.clientWidth, h: canvas.clientHeight } : null;
+      });
+      if (lc && lc.h > 80 && lc.w > 80) ok(`${prefix}spx:vector-canvas`, `h=${lc.h} w=${lc.w}`);
+      else fail(`${prefix}spx:vector-canvas`, `canvas 0-size or missing (h=${lc?.h ?? 0})`);
       await shot(page, `${prefix}spx-vector`);
     }
     if (await clickSegment(page, "Intel")) {
