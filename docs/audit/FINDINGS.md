@@ -44,6 +44,20 @@ now includes 503.
 
 **Status.** `cursor/autonomous-ops-maintenance-be56` → PR.
 
+## 2026-07-31 — [spx] Post-close fix agent — all validators GREEN (~1:05 PM PT)
+
+**Severity:** — (no product defect)
+
+**Session:** SPX Slayer post-close fix agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` Step 6.
+
+**Evidence.** `npm run validate:spx-rth -- --phase=post-close` → 6 PASS / 1 WARN / 0 FAIL; `npm run validate:spx-e2e` → 0 FAIL / 17 checks; `npm run validate:deploy` → GREEN. Matrix oracle: 170 strikes GEX+VEX+DEX+CHARM finite; cross-endpoint spot merged=7489.72 hm=7489.72; play SCANNING with no stale confirmations; BIE `getSpxPlayState()` consistent; cross-tool integration (Thermal, HELIX, Largo, Grid, 0DTE, Night Hawk) all PASS.
+
+**Harness flake.** First post-close orchestrator pass failed `spx:cross-endpoint` on transient `merged spot 0` while heatmap held 7489.72 — cold merged cache edge (same class as 2026-07-30). Retry passed; harness now retries merged fetch when heatmap spot is live but merged price is 0.
+
+**Product fixes already on main.** P0 matrix unavailable (#1428), heatmap enrichment timeout, socket-health REST fallback, SPX E2E Clerk mint hardening (#1454).
+
+**Status.** GREEN — harness retry in `fix/spx-cross-endpoint-merged-retry`.
+
 ## 2026-07-31 — [spx] Matrix UI "unavailable" while API valid — client 10s fetch abort (P0)
 
 **Severity.** P0 — members saw "Matrix unavailable — retrying…" on `/dashboard` during RTH while `/api/market/gex-heatmap?ticker=SPX` held 170–175 valid strikes.
@@ -56,7 +70,7 @@ now includes 503.
 
 **Files.** `src/features/spx/components/SpxGexMatrixHeatmap.tsx:95-105`, `src/app/api/market/gex-heatmap/route.ts:139-148`, `scripts/spx-dashboard-e2e-audit.mjs`.
 
-**Status.** PR open — merge after CI green + deploy re-validate.
+**Status.** **Merged** PR #1428.
 
 ## 2026-07-30 — [spx] Post-close fix agent — all validators GREEN (~3:09 PM PT)
 
