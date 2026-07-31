@@ -576,6 +576,17 @@ async function testToolPage(page, tab, prefix = "") {
     });
     if (lc && lc.h > 80 && lc.w > 80) ok(`${prefix}vector:canvas`, `h=${lc.h} w=${lc.w}`);
     else fail(`${prefix}vector:canvas`, `canvas 0-size or missing (h=${lc?.h ?? 0})`);
+    if (await clickSegment(page, "Pulse")) {
+      ok(`${prefix}vector:segment-pulse`);
+      await shot(page, `${prefix}vector-pulse`);
+    }
+    if (await clickSegment(page, "Ladder")) {
+      ok(`${prefix}vector:segment-ladder`);
+      await shot(page, `${prefix}vector-ladder`);
+    }
+    if (await clickSegment(page, "Chart")) {
+      ok(`${prefix}vector:segment-chart`);
+    }
     await shot(page, `${prefix}vector-tab`);
   }
 }
