@@ -10,7 +10,7 @@ html.ios-app.ios-native-shell {
   --ios-panel-radius: 14px;
 }
 
-html.ios-app.ios-native-shell .ios-native-panel-hidden {
+html.ios-app .ios-native-panel-hidden {
   display: none !important;
 }
 
@@ -176,6 +176,62 @@ html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-command .g
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   width: 100%;
+}
+
+/* Vector embed — flex chain + stacked toolbar (prevents control overlap on phone) */
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-vector-col {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-vector-col .vector-embed-chart-only,
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-vector-col .vector-chart-wrap {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-vector-col .vector-chart-wrap > .relative {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-sniper-vector-col .vector-chart-canvas {
+  flex: 1 1 auto;
+  height: 100% !important;
+  min-height: 12rem !important;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .vector-toolbar {
+  flex-shrink: 0;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .vector-toolbar > .flex {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.35rem;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .vector-toolbar > .flex > div {
+  width: 100%;
+  min-width: 0;
+  justify-content: flex-start !important;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .vector-toolbar .vector-replay-bar {
+  flex-wrap: wrap;
+  row-gap: 0.35rem;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .vector-toolbar .vector-ind-trigger,
+html.ios-app.ios-native-shell[data-ios-route="dashboard"] .vector-toolbar button {
+  min-height: 2.25rem;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

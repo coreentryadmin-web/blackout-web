@@ -10,7 +10,6 @@ struct IosShellView: View {
 
     var body: some View {
         DeskWebView(url: AppConfig.deskURL(path: path), chrome: .iosShell)
-            .ignoresSafeArea(.container, edges: .bottom)
             .onChange(of: router.pendingWebPath) { _, pending in
                 guard let pending else { return }
                 path = pending
