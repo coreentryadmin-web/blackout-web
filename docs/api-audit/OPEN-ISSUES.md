@@ -1,20 +1,21 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-31 12:03 ET
+Last updated: 2026-07-31 12:48 ET
 
-## grid-rth-2026-07-31 — 0DTE Command market-open verify pass (~9:03 AM PT / 12:03 PM ET)
+## grid-rth-2026-07-31 — 0DTE Command RTH verify pass #2 (~9:48 AM PT / 12:48 PM ET)
 
-**Session:** Grid RTH all-day agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` **verify** mode (scheduled 6:30 AM PT open). Commands: `npm run validate:grid-rth` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e` → `npm run validate:zerodte-integration` → Playwright `/nighthawk` tab probe.
+**Session:** Grid RTH all-day agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` **verify** mode (~90 min cadence). Commands: `npm run validate:grid-rth` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e` → `npm run validate:zerodte-integration` → `nighthawk-prod-check` → Playwright `/nighthawk` tab click-through (0DTE / Swings / LEAPS / Legacy).
 
 ### Validation summary
 
 | Check | Result |
 |---|---|
-| `npm run validate:grid-rth` | ✅ **12 PASS / 1 WARN / 0 FAIL** — orchestrator GREEN |
-| `npm run validate:zerodte-logic` | ✅ **17 PASS / 0 FAIL** — gates, plans, lifecycle, mergePlays, live board |
+| `npm run validate:grid-rth` | ⚠️ **11 PASS / 2 WARN / 1 FAIL** — product probes GREEN; nested `infra:validate:rth-open` false-FAIL (standalone GREEN) |
+| `npm run validate:zerodte-logic` | ✅ **16 PASS / 1 WARN / 0 FAIL** — gates, plans, lifecycle, mergePlays, live board |
 | `npm run validate:grid-e2e` | ✅ **5 PASS / 0 FAIL** — board API + `/nighthawk` Playwright (0 console errors) |
 | `npm run validate:zerodte-integration` | ✅ **9 PASS / 0 FAIL** — SPX bootstrap/GEX, HELIX, NH dedupe, ledger PnL |
+| `nighthawk-prod-check` | ✅ **9 PASS / 0 FAIL** — horizons API (0DTE/Swings/LEAPS), command deck deployed |
 | `ops:collect` (via grid-rth) | ✅ **exit 0** — zero action items |
-| `validate:rth-open` (infra) | ✅ deploy + writers GREEN |
+| `validate:rth-open` (standalone) | ✅ deploy + writers GREEN |
 
 **Verify status: GREEN** — zero P0/P1 product defects. No fix branch required.
 
@@ -31,24 +32,24 @@ Last updated: 2026-07-31 12:03 ET
 | mergePlays UI | ✅ past cutoff → SKIP; MOVED → SKIP (not OPEN) |
 | Ledger PnL | ✅ 2 rows `reconcileLedgerLivePnlPct` coherent |
 
-### Live board snapshot (RTH ~12:03 ET)
+### Live board snapshot (RTH ~12:48 ET)
 
 | Field | Value |
 |---|---|
 | Session heat | `RTH` (100%) |
-| Setups | 54 (1 eligible / 0 gate violations) |
+| Setups | 63 (recovered from transient 0 during warm rebuild) |
 | Ledger | 2 committed rows |
-| Upstream | ✅ `upstream_ok` via Clerk member path |
-| SPX GEX spot | 7454.68 (bootstrap vs gex agree) |
+| Upstream | ✅ `upstream_ok=true` via Clerk member path (after warm) |
+| SPX GEX spot | 7470.71 (bootstrap vs gex agree) |
 
 ### Cross-tool integration
 
 | Check | Result |
 |---|---|
-| Grid bootstrap spot vs GEX | ✅ spot 7450.81–7454.68 |
+| Grid bootstrap spot vs GEX | ✅ spot 7464.4–7470.71 |
 | HELIX flows feed | ✅ 20–30 prints (`/api/market/flows`) |
 | Night Hawk dedupe | ✅ no edition plays overlap |
-| `zerodte-warm` cron | ✅ 202 accepted (background warm) |
+| `zerodte-warm` cron | ⚠️ intermittent HTTP 504 @120s under load; retry → **202** in ~18s (background warm) |
 | `data-correctness` | ✅ flags=0 mode=full-async |
 | BIE consistency | ✅ `validate:zerodte-integration` |
 
@@ -58,19 +59,48 @@ Last updated: 2026-07-31 12:03 ET
 |---|---|---|
 | 1 | `/grid` route | ✅ HTTP 404 — classic Grid deleted 2026-07-07 |
 | 2 | Admin session opens `/nighthawk` | ✅ title "Night Hawk · BlackOut" |
-| 3 | 0DTE Command deck (default view) | ✅ Command Deck mounts via `ZeroDteDeck` |
-| 4 | Night Hawk view segments (0DTE / Swings / LEAPS / Legacy) | ⏭ SSR tablist present; ad-hoc Playwright hydration timing — official `validate:grid-e2e` GREEN |
+| 3 | 0DTE Command deck (default view) | ✅ Command Deck mounts (`nh-deck`, 19 elements) |
+| 4 | Night Hawk view segments (0DTE / Swings / LEAPS / Legacy) | ✅ all four tabs clicked — zero console errors |
 | 5 | Console | ✅ zero page errors |
-| 6 | Board API | ✅ 54 setups · ledger 2 |
+| 6 | Board API | ✅ 58–63 setups · ledger 2 |
 | 7 | HELIX flows API | ✅ 20 prints |
 
 ### Findings table (`grid-rth-2026-07-31`)
 
 | Severity | ID | Detail | Backing API | Fix defer? |
 |---|---|---|---|---|
-| P2 | GRID-RTH-UPSTREAM-01 | Cron-bearer probe hit `upstream_ok=false` ("tape fetch degraded this cycle") with setups=0; Clerk member path recovered to 54 setups / 2 ledger within same pass window | `/api/market/zerodte/board` | Yes — transient tape cycle; member path authoritative |
-| P2 | GRID-RTH-DOC-01 | User prompt + legacy runbook still reference `/grid` 9-panel UI; product is `/nighthawk` four-view Command Deck since 2026-07-07 | — | Yes — doc staleness |
+| P2 | GRID-RTH-UPSTREAM-01 | Mid-pass `upstream_ok=false` + setups=0 during warm rebuild; Clerk path recovered to 63 setups / 2 ledger within ~30s | `/api/market/zerodte/board` | Yes — transient warm-cycle race |
+| P2 | GRID-RTH-WARM-504 | `zerodte-warm` cron probe hit HTTP 504 @120s (CF origin cap); retry returned 202 in ~18s — deployed `after()` fix present but handshake still slow under RTH load | `/api/cron/zerodte-warm` | Yes — known; board self-heals |
+| P2 | GRID-RTH-RTHOPEN-FLAKY | Nested `validate:rth-open` inside grid-rth reported FAIL (SSL warning stderr); standalone run GREEN | `scripts/grid-rth-all-day-audit.mjs` | Yes — harness flake, not product |
+| P2 | GRID-RTH-DOC-01 | Legacy prompts still reference `/grid` 9-panel UI; product is `/nighthawk` four-view Command Deck since 2026-07-07 | — | Yes — doc staleness |
 | — | — | No P0/P1 product defects this pass | — | — |
+
+### Reports
+
+- `audit-output/grid-rth-2026-07-31-verify-1785516003618.json`
+- `audit-output/zerodte-logic-1785516020995.json`
+- `audit-output/grid-e2e-1785516083329.json`
+- `audit-output/zerodte-integration-1785516067924.json`
+- Screenshot: `/opt/cursor/artifacts/grid-rth/nighthawk-tabs.png`
+
+---
+
+## grid-rth-2026-07-31 — 0DTE Command market-open verify pass #1 (~9:03 AM PT / 12:03 PM ET)
+
+**Session:** Grid RTH all-day agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` **verify** mode (scheduled 6:30 AM PT open). Commands: `npm run validate:grid-rth` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e` → `npm run validate:zerodte-integration` → Playwright `/nighthawk` tab probe.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:grid-rth` | ✅ **12 PASS / 1 WARN / 0 FAIL** — orchestrator GREEN |
+| `npm run validate:zerodte-logic` | ✅ **17 PASS / 0 FAIL** — gates, plans, lifecycle, mergePlays, live board |
+| `npm run validate:grid-e2e` | ✅ **5 PASS / 0 FAIL** — board API + `/nighthawk` Playwright (0 console errors) |
+| `npm run validate:zerodte-integration` | ✅ **9 PASS / 0 FAIL** — SPX bootstrap/GEX, HELIX, NH dedupe, ledger PnL |
+| `ops:collect` (via grid-rth) | ✅ **exit 0** — zero action items |
+| `validate:rth-open` (infra) | ✅ deploy + writers GREEN |
+
+**Verify status: GREEN** — zero P0/P1 product defects. No fix branch required.
 
 ### Reports
 
