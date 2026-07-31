@@ -76,7 +76,7 @@ const pagesNeedles = [
   [".largo-page-main-native", "Largo full-bleed main hook"],
   [".largo-terminal-native", "Largo edge-to-edge terminal hook"],
   [".account-page-title-block", "account title hide hook"],
-  [".helix-ios-toolbar", "HELIX sticky filter bar"],
+  [".helix-native-toolbar", "HELIX sticky filter bar"],
   [".grid-page-tabs", "grid page tabs hook"],
   ['data-ios-route="faq"', "FAQ native page scope"],
   ['data-ios-route="learn"', "Learn native page scope"],
@@ -269,17 +269,17 @@ if (spxDash.includes("IosNativeSegment") && spxDash.includes("iosPanel")) {
 }
 
 const flowFeed = readFileSync(join(root, "src/features/helix/components/FlowFeed.tsx"), "utf8");
-if (flowFeed.includes("iosView") && flowFeed.includes("helix-ios-toolbar")) {
+if (flowFeed.includes("iosView") && flowFeed.includes("helix-native-toolbar")) {
   ok("helix:ios-view-switcher");
 } else {
-  fail("helix:ios-view-switcher", "expected tape/analytics switcher");
+  fail("helix:ios-view-switcher", "expected tape/analytics switcher + native toolbar");
 }
 
 const nhFeed = readFileSync(join(root, "src/features/nighthawk/components/NightHawkFeed.tsx"), "utf8");
-if (nhFeed.includes("iosView") && nhFeed.includes("playbook")) {
+if (nhFeed.includes("IosNativeSegment") && nhFeed.includes("NIGHTHAWK_VIEWS")) {
   ok("nighthawk:ios-view-switcher");
 } else {
-  fail("nighthawk:ios-view-switcher", "expected playbook/watch switcher");
+  fail("nighthawk:ios-view-switcher", "expected horizon segment switcher");
 }
 
 const largoShell = readFileSync(join(root, "src/features/largo/components/LargoPageShell.tsx"), "utf8");
