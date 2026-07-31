@@ -1042,6 +1042,36 @@ html.ios-app.ios-native-shell[data-ios-route="nighthawk"] .nighthawk-market-cont
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   VECTOR — full-page chart (/vector from command deck)
+   ═══════════════════════════════════════════════════════════════════════════ */
+html.ios-app.ios-native-shell[data-ios-route="vector"] .ios-desk-shell {
+  padding-top: var(--ios-header-offset) !important;
+  min-height: var(--ios-viewport-h);
+}
+
+html.ios-app.ios-native-shell[data-ios-route="vector"] .vector-page-shell {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="vector"] .vector-chart-terminal-grid,
+html.ios-app.ios-native-shell[data-ios-route="vector"] .vector-chart-terminal-chart {
+  flex: 1;
+  min-height: 0;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="vector"] .vector-chart-canvas {
+  min-height: min(56dvh, calc(100dvh - var(--ios-header-offset) - var(--ios-tab-offset) - 6rem)) !important;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="vector"] .vector-toolbar button,
+html.ios-app.ios-native-shell[data-ios-route="vector"] .gex-ticker-native-trigger {
+  min-height: var(--ios-touch, 2.75rem);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
    ACCOUNT
    ═══════════════════════════════════════════════════════════════════════════ */
 html.ios-app.ios-native-shell[data-ios-route="account"] .account-page-title-block {
