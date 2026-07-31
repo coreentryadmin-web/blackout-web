@@ -59,9 +59,15 @@ export async function GET(req: NextRequest) {
   const core = CORE.filter((t) => tickers.includes(t));
   const rest = tickers.filter((t) => !coreSet.has(t));
 
-  const coreResults = await Promise.allSettled(
-    core.map((t) => fetchGexHeatmap(t, { forceRefresh: true }))
-  );
+  const coreResults: PromiseSettledResult<Awaited<ReturnType<typeof fetchGexHeatmap>>>[] = [];
+  for (const t of core) {
+    try {
+      const data = await fetchGexHeatmap(t, { forceRefresh: true });
+      coreResults.push({ status: "fulfilled", value: data });
+    } catch (reason) {
+      coreResults.push({ status: "rejected", reason });
+    }
+  }
   const restResults = await Promise.allSettled(rest.map((t) => fetchGexHeatmap(t)));
   const orderedTickers = [...core, ...rest];
   const results = [...coreResults, ...restResults];

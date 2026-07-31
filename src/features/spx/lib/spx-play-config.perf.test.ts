@@ -26,9 +26,9 @@ describe("playClaudeGateEnabled", () => {
 });
 
 describe("playMemberReadCacheSec", () => {
-  it("defaults to 2 seconds for member play read collapse", () => {
+  it("defaults to 5 seconds for member play read collapse", () => {
     delete process.env.SPX_PLAY_MEMBER_READ_CACHE_SEC;
-    assert.equal(playMemberReadCacheSec(), 2);
+    assert.equal(playMemberReadCacheSec(), 5);
   });
 
   it("reads SPX_PLAY_MEMBER_READ_CACHE_SEC override", () => {

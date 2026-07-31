@@ -166,7 +166,14 @@ export async function withServerCache<T>(
   if (hit && hit.expiresAt <= now && !swr) {
     if (inflight.has(key)) {
       if (opts.staleOnInflight) return hit.value;
+      if (opts.maxBlockMs != null && opts.fallback) return opts.fallback() as Promise<T>;
       return inflight.get(key) as Promise<T>;
+    }
+    const maxBlock = opts.maxBlockMs;
+    if (maxBlock != null && Number.isFinite(maxBlock) && maxBlock > 0) {
+      // Expired fast lane with a stale copy: never block member polls on rebuild.
+      scheduleBackgroundRefresh(key, ttlMs, loader, localOnly);
+      return hit.value;
     }
     return refreshCache(key, ttlMs, loader, localOnly);
   }
@@ -203,7 +210,7 @@ export async function withServerCache<T>(
 
   const pending = inflight.get(key) as Promise<T> | undefined;
   if (pending) {
-    if (opts.staleOnInflight) {
+    if (opts.staleOnInflight || (opts.maxBlockMs != null && opts.fallback)) {
       if (hit) return hit.value;
       if (!localOnly) {
         const redisHit = await readRedisCache<T>(key);
@@ -279,6 +286,24 @@ export async function serverCache<T>(
   return withServerCache(key, ttlMs, fn);
 }
 
+/** Read a cached value without invoking the loader (in-memory + Redis, capped read). */
+export async function peekServerCache<T>(key: string): Promise<T | null> {
+  const now = Date.now();
+  const hit = store.get(key) as CacheEntry<T> | undefined;
+  if (hit && hit.expiresAt > now) return hit.value;
+  const redisHit = await readRedisCache<T>(key);
+  if (redisHit != null) {
+    setStoreEntry(key, {
+      value: redisHit.value,
+      expiresAt: now + redisHit.remainingTtlSec * 1000,
+      refreshedAt: now,
+    });
+    return redisHit.value;
+  }
+  if (hit) return hit.value;
+  return null;
+}
+
 /** Fire-and-forget SWR refresh — must never surface as an unhandledRejection (prod #1261). */
 function refreshCacheInBackground<T>(
   key: string,
@@ -289,12 +314,28 @@ function refreshCacheInBackground<T>(
   void refreshCache(key, ttlMs, loader, localOnly).catch(() => undefined);
 }
 
+/** Defer background refresh so fast-lane callers return stale before the loader runs. */
+function scheduleBackgroundRefresh<T>(
+  key: string,
+  ttlMs: number,
+  loader: () => Promise<T>,
+  localOnly = false
+): void {
+  queueMicrotask(() => {
+    if (inflight.has(key)) return;
+    refreshCacheInBackground(key, ttlMs, loader, localOnly);
+  });
+}
+
 async function refreshCache<T>(
   key: string,
   ttlMs: number,
   loader: () => Promise<T>,
   localOnly = false
 ): Promise<T> {
+  const existing = inflight.get(key) as Promise<T> | undefined;
+  if (existing) return existing;
+
   const promise = loader()
     .then((value) => {
       const refreshedAt = Date.now();

@@ -87,6 +87,14 @@ export function playMemberReadMaxBlockMs(): number {
   return Math.round(ms);
 }
 
+/** Max ms HELIX /api/market/flows may block on cold PG read before serving last-good snapshot. Default 800ms. */
+export function flowsMemberReadMaxBlockMs(): number {
+  const raw = process.env.FLOWS_MEMBER_READ_MAX_BLOCK_MS?.trim();
+  const ms = raw ? Number(raw) : 800;
+  if (!Number.isFinite(ms) || ms < 200) return 800;
+  return Math.round(ms);
+}
+
 /** Max ms gex-heatmap overlay/cross-validation enrichment may block after matrix read. Default 2s. */
 export function gexHeatmapEnrichmentMaxMs(): number {
   const raw = process.env.GEX_HEATMAP_ENRICHMENT_MAX_MS?.trim();

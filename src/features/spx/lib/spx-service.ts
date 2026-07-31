@@ -17,7 +17,7 @@ import { maybeLogPlaybookShadowMatch } from "@/features/spx/lib/playbook-shadow-
 import { playMemberReadCacheSec } from "@/features/spx/lib/spx-play-config";
 import { playMemberReadMaxBlockMs } from "@/lib/providers/config";
 import { todayEtYmd } from "@/lib/providers/spx-session";
-import { sharedCacheDel, sharedCacheGetWithTtl, sharedCacheSetNx } from "@/lib/shared-cache";
+import { sharedCacheDel, sharedCacheGetWithTtl, sharedCacheSet, sharedCacheSetNx } from "@/lib/shared-cache";
 import { withServerCache } from "@/lib/server-cache";
 import { loadPowerHourRecord } from "@/features/spx/lib/spx-power-hour-store";
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
@@ -181,7 +181,13 @@ async function evaluateSpxPlayStateCrossReplica(): Promise<Awaited<ReturnType<ty
     return spxPlayReadDegraded();
   }
   try {
-    return await evaluateSpxPlayState();
+    const result = await evaluateSpxPlayState();
+    void sharedCacheSet(
+      spxPlayServerCacheKey(date),
+      result,
+      Math.max(playMemberReadCacheSec() * 2, 10)
+    ).catch(() => undefined);
+    return result;
   } finally {
     await sharedCacheDel(lockKey).catch(() => undefined);
   }
