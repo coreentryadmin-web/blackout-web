@@ -1,4 +1,4 @@
-const BASE = 'https://www.blackouttrades.com'
+const BASE = 'https://blackouttrades.com'
 
 export const organizationSchema = {
   '@context': 'https://schema.org',
