@@ -92,14 +92,14 @@ type GexHeatmapResponse = {
   } | null;
 };
 
-const MATRIX_FETCH_TIMEOUT_MS = 10_000;
-
 async function fetchGexHeatmap(url: string): Promise<GexHeatmapResponse> {
+  // No client AbortSignal timeout — Thermal's GexHeatmap uses the same route without one.
+  // A 10s cap caused "Matrix unavailable — retrying…" during RTH when /gex-heatmap took
+  // 60–180s on a cold cache-miss or slow UW overlay fan-out (spx-rth-2026-07-31).
   const res = await fetch(url, {
     cache: "no-store",
     credentials: "same-origin",
     headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
-    signal: AbortSignal.timeout(MATRIX_FETCH_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`GEX heatmap → ${res.status}`);
   return res.json();
