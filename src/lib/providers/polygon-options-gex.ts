@@ -1292,6 +1292,11 @@ function gexHeatmapMaxStaleMs(): number {
   return Number.isFinite(sec) && sec > 0 ? sec * 1000 : 90_000;
 }
 
+/** Redis key TTL must cover the SWR window — a 5s Redis TTL evicted cross-replica stale copies. */
+function gexHeatmapRedisTtlSec(): number {
+  return Math.max(1, Math.ceil(gexHeatmapMaxStaleMs() / 1000));
+}
+
 /** Serve an expired matrix immediately and kick off a background rebuild (single-flight). */
 function tryStaleWhileRevalidateHeatmap(
   cacheKey: string,
@@ -2371,7 +2376,7 @@ async function buildGexHeatmapFromUwStrikeExposures(
     const entry = { at: now, data: heatmap };
     setCachedHeatmap(cacheKey, entry);
     void import("../shared-cache").then(({ sharedCacheSet }) =>
-      sharedCacheSet(cacheKey, entry, Math.ceil(ttlMs / 1000))
+      sharedCacheSet(cacheKey, entry, gexHeatmapRedisTtlSec())
     );
     console.warn(
       `[gex-heatmap] built UW strike-exposure fallback matrix for ${root} @ ${spot} (${strikes.length} strikes) — Polygon chain unavailable`
@@ -2883,7 +2888,7 @@ async function buildGexHeatmapUncached(
   const entry = { at: now, data: heatmap };
   setCachedHeatmap(cacheKey, entry);
   void import("../shared-cache").then(({ sharedCacheSet }) =>
-    sharedCacheSet(cacheKey, entry, Math.ceil(ttlMs / 1000))
+    sharedCacheSet(cacheKey, entry, gexHeatmapRedisTtlSec())
   );
 
   return heatmap;
@@ -2965,10 +2970,57 @@ function emptyHeatmap(
     const entry = { at: ctx.now, data: heatmap };
     setCachedHeatmap(ctx.cacheKey, entry);
     void import("../shared-cache").then(({ sharedCacheSet }) =>
-      sharedCacheSet(ctx.cacheKey!, entry, Math.ceil(ctx.ttlMs! / 1000))
+      sharedCacheSet(ctx.cacheKey!, entry, gexHeatmapRedisTtlSec())
     );
   }
   return heatmap;
+}
+
+/**
+ * Read-only matrix snapshot for member routes — in-memory, then Redis (500ms cap), then SWR
+ * stale handoff. Never blocks on a cold Polygon chain build (use fetchGexHeatmap for that).
+ */
+export async function readGexHeatmapSnapshot(underlying = "SPX"): Promise<GexHeatmap | null> {
+  if (!polygonConfigured()) return null;
+  const { root, optionsRoot } = resolveOptionsRoot(underlying);
+  if (!root) return null;
+  const cacheKey = `${GEX_HEATMAP_CACHE_PREFIX}:${root}`;
+  const now = Date.now();
+  const baseTtlMs = gexHeatmapCacheMsFor(root);
+  const fastMove = isHeatmapPreset(root) && isHeatmapFastMove(root);
+  const ttlMs = fastMove ? Math.min(baseTtlMs, GEX_HEATMAP_FAST_MOVE_TTL_MS) : baseTtlMs;
+
+  const mem = cachedHeatmaps.get(cacheKey);
+  if (mem && now - mem.at < ttlMs) return rememberGoodHeatmap(cacheKey, mem.data);
+
+  let redisHit: { at: number; data: GexHeatmap } | null = null;
+  try {
+    const { sharedCacheGet } = await import("../shared-cache");
+    redisHit = await Promise.race([
+      sharedCacheGet<{ at: number; data: GexHeatmap }>(cacheKey),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 500)),
+    ]);
+    if (redisHit && now - redisHit.at < ttlMs) {
+      setCachedHeatmap(cacheKey, redisHit);
+      return rememberGoodHeatmap(cacheKey, redisHit.data);
+    }
+  } catch {
+    /* redis optional */
+  }
+
+  const stale = tryStaleWhileRevalidateHeatmap(
+    cacheKey,
+    root,
+    optionsRoot,
+    now,
+    ttlMs,
+    baseTtlMs,
+    mem,
+    redisHit
+  );
+  if (stale) return rememberGoodHeatmap(cacheKey, stale);
+
+  return pickStaleHeatmapForHandoff(mem, redisHit, now);
 }
 
 /** One ticker's shared-cache freshness, as reported by peekGexHeatmapCache. */

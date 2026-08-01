@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
-import { fetchGexHeatmap, peekGexHeatmapCache } from "@/lib/providers/polygon-options-gex";
+import { fetchGexHeatmap, peekGexHeatmapCache, readGexHeatmapSnapshot } from "@/lib/providers/polygon-options-gex";
 import type {
   GexFlowByStrike,
   GexDarkPoolLevel,
@@ -309,7 +309,18 @@ export async function GET(req: NextRequest) {
     const matrixPeek = await peekGexHeatmapCache(ticker);
     const skipSlowEnrichment = matrixPeek.cached && !matrixPeek.stale;
 
-    const heatmap = await fetchGexHeatmap(ticker, { forceRefresh });
+    let heatmap = !forceRefresh ? await readGexHeatmapSnapshot(ticker) : null;
+    if (!heatmap) {
+      heatmap = await fetchGexHeatmap(ticker, { forceRefresh });
+    } else if (
+      !forceRefresh &&
+      matrixPeek.cached &&
+      matrixPeek.age_sec != null &&
+      matrixPeek.ttl_sec != null &&
+      matrixPeek.age_sec >= matrixPeek.ttl_sec
+    ) {
+      void fetchGexHeatmap(ticker).catch(() => undefined);
+    }
     if (!heatmap) {
       // Polygon unavailable / empty chain — never fabricate. Client renders empty state.
       return NextResponse.json(

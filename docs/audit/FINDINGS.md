@@ -89,6 +89,28 @@ now includes 503.
 
 **Status.** `cursor/autonomous-ops-maintenance-be56` → PR.
 
+## 2026-07-31 — [spx] Degraded play payload missing `levels` crashes dashboard (P1)
+
+**Severity.** P1 — `/dashboard` console `TypeError: Cannot read properties of undefined (reading 'entry')` when `/api/market/spx/play` returns degraded SCANNING without `levels`.
+
+**Symptom.** Post-close `validate:spx-e2e` FAIL `ui:console-errors` — chunk 4466 (`SpxPlayVerdictBar` / `buildPlayVerdictBarModel`) throws on `play.levels.entry` while heatmap API valid.
+
+**Root cause.** `spxPlayReadDegraded()` in `spx-service.ts` and the `/api/market/spx/play` catch block returned a partial object (`action: SCANNING`, no `levels`, no `phase`) during cache-miss timeout or route error. Client assumed full `SpxPlayPayload`.
+
+**Fix.** `degradedPlayPayload()` in `spx-play-payload.ts` — complete SCANNING shape with null `levels`; server paths use it; client accessors use `play.levels?.entry` belt-and-suspenders.
+
+**Files.** `src/features/spx/lib/spx-play-payload.ts`, `src/features/spx/lib/spx-service.ts`, `src/app/api/market/spx/play/route.ts`, `src/features/spx/lib/spx-play-verdict-bar.ts`, `src/features/spx/lib/spx-trade-alert-plays.ts`, `src/features/spx/lib/spx-play-kanban-chips.ts`.
+
+**Status.** **Merged** PR #1468.
+
+## 2026-07-31 — [spx] E2E cross-tool desk spot 0 while matrix live (P2 harness)
+
+**Severity.** P2 — `validate:spx-e2e` FAIL `integration:spx-cross-tool` on transient `desk spot 0` while heatmap held 7489.72 (cold desk cache edge, same class as SPX-RTH-XEP-01).
+
+**Fix.** `spx-dashboard-e2e-audit.mjs`: retry desk + merged fetch when matrix spot live but desk price 0; only compare when `deskSpot > 0`.
+
+**Status.** `fix/spx-e2e-desk-spot-retry` → PR.
+
 ## 2026-07-31 — [spx] Post-close fix agent final — all validators GREEN (~3:10 PM PT / 6:10 PM ET)
 
 **Severity:** — (no product defect)
