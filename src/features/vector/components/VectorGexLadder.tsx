@@ -1,7 +1,7 @@
 "use client";
 
 import clsx from "clsx";
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { buildGexLadder, type GexLadder, type GexLadderRow } from "@/features/vector/lib/vector-gex-ladder";
 import { VECTOR_WALLS_SCOPE_POLL_MS } from "@/features/vector/lib/vector-cadence";
 import { vectorGexScopeLabel } from "@/lib/gex-scope-labels";
@@ -161,16 +161,34 @@ export function VectorGexLadder({
         </div>
       ) : (
         <ol className="vector-gex-ladder-rows" ref={listRef}>
-          {rows.map((r, i) => (
-            <LadderRow key={r.strike} row={r} showSpotAbove={i === spotIdx} spot={spot} />
-          ))}
+          {rows.map((r, i) => {
+            const showSpotAbove = i === spotIdx;
+            return (
+              <LadderRow
+                key={r.strike}
+                row={r}
+                showSpotAbove={showSpotAbove}
+                // Only the spot-adjacent row needs the live price — every other row gets a
+                // stable `null` so its props never change between spot ticks (see LadderRow's
+                // memo comment below for why this matters).
+                spot={showSpotAbove ? spot : null}
+              />
+            );
+          })}
         </ol>
       )}
     </section>
   );
 }
 
-function LadderRow({
+// Root cause (2026-08-01 audit, finding #19): `liveSpot` ticks every ~1s from the chart's SSE
+// stream (see the `useEffect` above that calls `setSpot(liveSpot)`), and that state lives on the
+// PARENT (VectorGexLadder), so every tick re-rendered every row in this list — 30-60+ <li>s just
+// to update the ONE row showing the live spot marker/price. memo() + only feeding a changing
+// `spot` prop to that one row (see the map() call site above) means every other row's props are
+// referentially stable between ticks (same `row` object — `rows` only changes on the 15s ladder
+// poll — and a constant `spot={null}`), so React skips re-rendering them entirely.
+const LadderRow = memo(function LadderRow({
   row,
   showSpotAbove,
   spot,
@@ -210,4 +228,4 @@ function LadderRow({
       </li>
     </>
   );
-}
+});
