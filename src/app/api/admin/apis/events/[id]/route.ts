@@ -3,6 +3,7 @@ import { resolveAdminApi } from "@/lib/admin-access";
 import { buildEventDetail } from "@/lib/api-telemetry";
 import { fetchPersistedApiEvent } from "@/lib/api-telemetry-persist";
 import { logAdminAction } from "@/lib/admin-audit";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +30,7 @@ export async function GET(
   }
 
   if (!detail) {
-    return NextResponse.json({ error: "Event not found" }, { status: 404 });
+    return NextResponse.json({ error: "Event not found" }, { status: 404, headers: NO_STORE_HEADERS });
   }
 
   // actor was resolved above by resolveAdminApi()
@@ -40,5 +41,5 @@ export async function GET(
     detail: { event_id: id, provider: detail.event.provider },
   });
 
-  return NextResponse.json(detail);
+  return NextResponse.json(detail, { headers: NO_STORE_HEADERS });
 }

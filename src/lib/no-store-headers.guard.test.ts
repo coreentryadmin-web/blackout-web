@@ -13,12 +13,20 @@ import { NO_STORE_HEADERS, NO_STORE_STREAM_HEADERS } from "./no-store-headers";
 
 const API_ROOT = join(process.cwd(), "src/app/api");
 
-/** Paths that may intentionally omit no-store (public CDN TTL or non-JSON plumbing). */
+/** Paths that may intentionally omit no-store (public CDN TTL, non-JSON plumbing, or
+ *  POST-only external webhook receivers that no browser/CDN ever GETs or caches). */
 const ALLOWLIST = new Set([
   "src/app/api/market/news/route.ts",
   "src/app/api/market/regime/route.ts",
   "src/app/api/health/route.ts",
   "src/app/api/ready/route.ts",
+  // Admin-gated boolean health check, same shape as /health and /ready above.
+  "src/app/api/engine/health/route.ts",
+  // POST-only webhook receivers called server-to-server by Clerk/Whop — never a
+  // browser GET, so there is no edge-caching surface for a no-store header to guard.
+  "src/app/api/webhook/whop/route.ts",
+  "src/app/api/webhook/clerk/route.ts",
+  "src/app/api/webhooks/clerk/route.ts",
 ]);
 
 /** Prefixes that MUST use the shared no-store constant. */
@@ -34,6 +42,15 @@ const REQUIRED_PREFIXES = [
   "src/app/api/brief/",
   "src/app/api/coaching/",
   "src/app/api/platform/",
+  // 2026-08-01 audit: these four prefixes were never covered, so nothing caught
+  // admin/errors, admin/health, admin/signal-analytics, and a dozen other
+  // admin-dashboard routes serving sensitive JSON with zero cache headers, or the
+  // /api/engine proxy route serving premium-tier-gated heatmap/nighthawk data.
+  "src/app/api/admin/",
+  "src/app/api/nighthawk/",
+  "src/app/api/webhook/",
+  "src/app/api/webhooks/",
+  "src/app/api/engine/",
 ];
 
 function walk(dir: string, out: string[] = []): string[] {

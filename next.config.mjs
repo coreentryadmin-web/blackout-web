@@ -62,22 +62,16 @@ const isCognitoBuild =
 // Math.max(1, ...-1) clamp so we never produce NaN or a value < 1.
 const cpuCount = os.cpus()?.length || 1;
 
-const isStagingSite = (process.env.NEXT_PUBLIC_SITE_URL ?? "").includes("staging.");
+// Auth-dependent document routes must never be edge-cached: a cached HTML response
+// would freeze one user's signed-in/signed-out chrome and serve it to everyone else
+// (see the Cloudflare edge-cache incident in CLAUDE.md, fixed 2026-07-22 by adding a
+// __session cookie bypass to the dashboard-managed cache rule). Vary: Cookie tells any
+// downstream cache that a different cookie means a different response.
 const authDocumentEdgeBypass = [
   { key: "CDN-Cache-Control", value: "no-store" },
   { key: "Cloudflare-CDN-Cache-Control", value: "no-store" },
   { key: "Cache-Control", value: "private, no-cache, no-store, must-revalidate, max-age=0" },
   { key: "Vary", value: "Cookie" },
-];
-const stagingEdgeBypass = [
-  { key: "CDN-Cache-Control", value: "no-store" },
-  { key: "Cloudflare-CDN-Cache-Control", value: "no-store" },
-  { key: "Cache-Control", value: "private, no-cache, no-store, must-revalidate, max-age=0" },
-];
-/** Hash-named build assets — edge-cache 1y on staging (purge on deploy via CF_PURGE_DEPLOY_ID). */
-const stagingStaticCache = [
-  { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
-  { key: "CDN-Cache-Control", value: "public, max-age=31536000" },
 ];
 
 const nextConfig = {
@@ -108,25 +102,6 @@ const nextConfig = {
     // rule owns /embed/* exclusively. Net effect: framing stays denied app-wide and
     // is relaxed only for the public embed cards.
     return [
-      // Staging: hash-named /_next/static/* and /_next/image are safe to edge-cache
-      // (new deploy = new hashes). no-store only on HTML/document routes so landing
-      // pages don't re-fetch 48 JS/CSS chunks from ECS on every visit.
-      ...(isStagingSite
-        ? [
-            {
-              source: "/_next/static/:path*",
-              headers: [...securityHeaders, ...stagingStaticCache],
-            },
-            {
-              source: "/_next/image",
-              headers: [...securityHeaders, ...stagingStaticCache],
-            },
-            {
-              source: "/_next/:path*",
-              headers: securityHeaders,
-            },
-          ]
-        : []),
       {
         source: "/",
         headers: [...securityHeaders, ...authDocumentEdgeBypass],
@@ -147,9 +122,19 @@ const nextConfig = {
         source: "/sign-up/:path*",
         headers: [...securityHeaders, ...authDocumentEdgeBypass],
       },
+      // Root cause (2026-08-01 audit): this rule used to gate the no-store bypass on
+      // `isStagingSite` (NEXT_PUBLIC_SITE_URL containing "staging."), a leftover from
+      // when staging and production had different edge-cache postures. Staging was
+      // fully decommissioned 2026-07-25 (see CLAUDE.md), so `isStagingSite` is now
+      // permanently false — every document route matched by this catch-all (e.g.
+      // /vector, /nighthawk, /admin, /terminal, /flows — anything not covered by the
+      // explicit / , /upgrade, /sign-in, /sign-up rules above) was silently getting
+      // bare `securityHeaders` in production, with NO Cache-Control/CDN-Cache-Control
+      // at all. Since production is the only environment left, apply the same
+      // no-store + Vary:Cookie bypass unconditionally instead of dead-conditionally.
       {
         source: "/((?!embed/|_next/).*)",
-        headers: isStagingSite ? [...securityHeaders, ...stagingEdgeBypass] : securityHeaders,
+        headers: [...securityHeaders, ...authDocumentEdgeBypass],
       },
       {
         source: "/embed/:path*",

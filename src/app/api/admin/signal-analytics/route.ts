@@ -4,6 +4,7 @@ import { dbQuery } from "@/lib/db";
 import { recordAdminRouteError } from "@/lib/admin-route-errors";
 import { initSpxSignalTables } from "@/features/spx/lib/spx-signal-db";
 import { roundFloats } from "@/lib/round-floats";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
 
@@ -307,10 +308,14 @@ export async function GET(req: NextRequest) {
         gate_block_frequency:      gateBlockFrequency,
         hourly_accuracy:           hourlyAccuracy,
         recent_observations:       recentObservations,
-      })
+      }),
+      { headers: NO_STORE_HEADERS }
     );
   } catch (error) {
     recordAdminRouteError("admin/signal-analytics", error);
-    return NextResponse.json({ error: "Failed to load signal analytics" }, { status: 502 });
+    return NextResponse.json(
+      { error: "Failed to load signal analytics" },
+      { status: 502, headers: NO_STORE_HEADERS },
+    );
   }
 }

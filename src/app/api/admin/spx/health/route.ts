@@ -25,7 +25,12 @@ export async function GET() {
 
   try {
     const snapshot = await fetchSpxHealthSnapshot();
-    return NextResponse.json(roundFloats(snapshot), { headers: { "Cache-Control": "no-store" } });
+    // Root cause (2026-08-01 audit): this route imported NO_STORE_HEADERS but never
+    // applied it — a bare `Cache-Control: no-store` is missing the CDN-scoped
+    // CDN-Cache-Control/Cloudflare-CDN-Cache-Control headers that are the actually
+    // load-bearing ones (see the doc comment on NO_STORE_HEADERS), so a Cloudflare
+    // cache rule with override_origin could still edge-cache this response.
+    return NextResponse.json(roundFloats(snapshot), { headers: NO_STORE_HEADERS });
   } catch (error) {
     // fetchSpxHealthSnapshot() already catches every individual leg internally
     // and reports partial failures via its own `errors` field — reaching this
@@ -34,6 +39,9 @@ export async function GET() {
     // state (AdminBieDashboard.tsx) renders "—" and never blanks the rest of
     // the dashboard.
     recordAdminRouteError("admin/spx/health", error);
-    return NextResponse.json({ error: "Failed to load SPX health snapshot" }, { status: 502 });
+    return NextResponse.json(
+      { error: "Failed to load SPX health snapshot" },
+      { status: 502, headers: NO_STORE_HEADERS },
+    );
   }
 }

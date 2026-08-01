@@ -5483,3 +5483,51 @@ Also fixed P&L display precision: 0DTE card/PnlPanel rendered raw `pnlPct` witho
 showing values like `+64.29%` vs Legacy's clean `+64.3%`. Now consistently `.toFixed(1)` everywhere.
 
 **Status:** PR #1190 — CI running.
+
+## 2026-08-01 — [security/correctness] no-store CDN-cache guard coverage gaps (admin/nighthawk/webhook/engine) — FIXED
+
+**Severity.** P1 — the guard test (`no-store-headers.guard.test.ts`) exists specifically to catch API
+routes that can be edge-cached by a Cloudflare `override_origin` cache rule despite the origin
+returning member-/admin-specific JSON. Its `REQUIRED_PREFIXES` list never covered `admin/`,
+`nighthawk/`, `webhook/`, `webhooks/`, or `engine/` — so nothing verified those routes at all.
+
+**Root cause + evidence.** Expanding `REQUIRED_PREFIXES` to the four missing prefixes and re-running
+the guard immediately surfaced 15 real offenders: 9 admin GET routes serving sensitive dashboard data
+with zero cache headers (`admin/incidents`, `admin/errors`, `admin/apis/events/[id]`,
+`admin/apis/dashboard`, `admin/health`, `admin/tools/access`, `admin/debug-uw`, `admin/analytics/spx`,
+`admin/signal-analytics`), 5 admin POST mutation routes missing the header for consistency
+(`admin/users/sync`, `admin/users/create`, `admin/users/tools/bulk`, `admin/run-migration`,
+`admin/apis/rescan`), and — the most substantive — `src/app/api/engine/[...path]/route.ts`'s `GET`
+proxy, which serves premium-tier-gated Heatmaps/Night Hawk data forwarded from the internal engine
+with **no cache headers of any kind**. Separately, while auditing every existing importer of
+`NO_STORE_HEADERS`, found two routes (`admin/analytics/x`, `admin/spx/health`) that imported the
+constant but never applied it — each set a bare `{"Cache-Control": "no-store"}` instead, missing the
+CDN-scoped `CDN-Cache-Control`/`Cloudflare-CDN-Cache-Control` headers that are the actually
+load-bearing ones per the constant's own doc comment. The guard's import-only regex check cannot
+catch this class of bug (import present ≠ header applied) — flagging as a known test-design
+limitation, not fixed in this PR (would need real usage/AST verification, out of scope here).
+
+Also fixed, same root cause (dead staging-only conditional): `next.config.mjs`'s document-route
+catch-all (`/((?!embed/|_next/).*)`) gated its `Cache-Control`/`Vary: Cookie` no-store bypass on
+`isStagingSite` (`NEXT_PUBLIC_SITE_URL` containing `"staging."`). Staging was fully decommissioned
+2026-07-25, so `isStagingSite` is now permanently `false` — every document route not explicitly listed
+above it (`/vector`, `/nighthawk`, `/admin`, `/terminal`, `/flows`, etc.) was silently served bare
+`securityHeaders` in production with no `Cache-Control` at all.
+
+**Fix.** Expanded `REQUIRED_PREFIXES` (admin/, nighthawk/, webhook/, webhooks/, engine/); added
+`NO_STORE_HEADERS` to all 15 real offenders (both success and error/validation response branches);
+fixed the 2 import-only routes to actually spread the constant; ALLOWLISTed 3 POST-only external
+webhook receivers (Clerk/Whop — no browser ever GETs them, no edge-caching surface) and
+`engine/health` (admin-gated boolean, same shape as `/health`/`/ready`). Removed the dead
+`isStagingSite`/`stagingEdgeBypass`/`stagingStaticCache` code from `next.config.mjs` and applied
+`authDocumentEdgeBypass` (no-store + `Vary: Cookie`) unconditionally to the document-route catch-all.
+
+**Blast radius.** 18 files: `next.config.mjs`, the guard test, and 16 route.ts files. No response
+*bodies* changed — only cache-control headers added/corrected. `nighthawk/play-status` was already
+correctly covered before this fix (untouched).
+
+**Validation.** `npx tsx --test src/lib/no-store-headers.guard.test.ts` — 2/2 pass (was 1/2 before the
+route fixes, once `REQUIRED_PREFIXES` was expanded). `npx tsc --noEmit` clean. `npx eslint` on all 18
+touched files — 0 errors/warnings. `npm run build` — clean production build.
+
+**Status:** PR `fix/no-store-guard-coverage-gaps` — pending CI.

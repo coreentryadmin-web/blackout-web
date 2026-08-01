@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { resolveAdminApi } from "@/lib/admin-access";
 import { getLaunchStatusSnapshot, TOOLS, type ToolKey } from "@/lib/tool-access";
 import { buildToolAccessRows } from "@/lib/tool-user-access";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
 
@@ -29,5 +30,5 @@ export async function GET() {
     locked_keys: snapshot.locked_keys,
     /** Example row shape for UI previews (no user overrides). */
     access_preview: buildToolAccessRows(globalLaunched, undefined),
-  });
+  }, { headers: NO_STORE_HEADERS });
 }
