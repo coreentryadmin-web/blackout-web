@@ -4808,9 +4808,84 @@ export async function upsertZeroDteSetupLog(rows: ZeroDteSetupLogUpsert[]): Prom
   if (!rows.length) return new Set();
   await ensureSchema();
   const p = await getPool();
+
+  // 2026-08-01 CTO perf audit (P2): was one upsertOneZeroDteSetupRow round-trip per row on
+  // every 0DTE scan commit — same anti-pattern already fixed for upsertNighthawkPlayOutcomes.
+  // Batched into one multi-row VALUES INSERT..ON CONFLICT (same ZERODTE_SETUP_LOG_UPSERT_SQL
+  // pinning rules, just N rows in one round-trip); each row's tuple repeats its own `score` and
+  // `underlying` params (score_max/underlying_latest mirror score/underlying at insert time,
+  // matching the single-row SQL's $6,$6 / $11,$11 exactly). RETURNING now also carries `ticker`
+  // so the multi-row response can be mapped back to the fresh-insert Set — the single-row path
+  // didn't need this since each query already knew which row it was.
+  //
+  // commitFreshZeroDteRowsAtomic's loop (below) is intentionally left as a per-row loop: it runs
+  // inside an existing pg_advisory_xact_lock-held transaction, and the audit's own adversarial
+  // verification found its per-cycle N is realistically small/bounded (fresh commits after
+  // governor/gate filtering, not the full candidate universe) — lower marginal value for more
+  // risk than this plain-pool path, and this PR keeps to one well-scoped fix.
+  const params: Array<string | number | boolean | Record<string, unknown> | null> = [];
+  const tuples = rows
+    .map((r, i) => {
+      const b = i * 18;
+      params.push(
+        r.session_date,
+        r.ticker.toUpperCase(),
+        r.direction,
+        r.top_strike,
+        r.expiry,
+        Math.round(r.score),
+        r.dossier_score != null ? Math.round(r.dossier_score) : null,
+        r.conviction,
+        r.gross_premium,
+        r.spike,
+        r.underlying,
+        r.flags_json,
+        r.entry_premium,
+        r.flow_avg_fill,
+        r.plan_json,
+        r.gate_calibration_json,
+        r.entry_context ?? null,
+        r.feature_vector ?? null
+      );
+      return `($${b + 1},$${b + 2},$${b + 3},$${b + 4},$${b + 5},$${b + 6},$${b + 6},$${b + 7},$${b + 8},$${b + 9},$${b + 10},$${b + 11},$${b + 11},$${b + 12},$${b + 13},$${b + 14},$${b + 15},$${b + 16},$${b + 17},$${b + 18},NOW(),NOW())`;
+    })
+    .join(", ");
+
+  const res = await p.query<{ ticker: string; inserted: boolean }>(
+    `
+    INSERT INTO zerodte_setup_log (
+      session_date, ticker, direction, top_strike, expiry, score, score_max,
+      dossier_score, conviction, gross_premium, spike, underlying_at_flag,
+      underlying_latest, flags_json, entry_premium, flow_avg_fill, plan_json,
+      gate_calibration_json, entry_context, feature_vector, first_flagged_at, last_seen_at
+    ) VALUES ${tuples}
+    ON CONFLICT (session_date, ticker) DO UPDATE SET
+      score = EXCLUDED.score,
+      score_max = GREATEST(zerodte_setup_log.score_max, EXCLUDED.score),
+      dossier_score = COALESCE(EXCLUDED.dossier_score, zerodte_setup_log.dossier_score),
+      conviction = COALESCE(EXCLUDED.conviction, zerodte_setup_log.conviction),
+      gross_premium = EXCLUDED.gross_premium,
+      spike = zerodte_setup_log.spike OR EXCLUDED.spike,
+      underlying_latest = COALESCE(EXCLUDED.underlying_latest, zerodte_setup_log.underlying_latest),
+      flags_json = COALESCE(EXCLUDED.flags_json, zerodte_setup_log.flags_json),
+      direction = COALESCE(zerodte_setup_log.direction, EXCLUDED.direction),
+      top_strike = COALESCE(zerodte_setup_log.top_strike, EXCLUDED.top_strike),
+      expiry = COALESCE(zerodte_setup_log.expiry, EXCLUDED.expiry),
+      entry_premium = COALESCE(zerodte_setup_log.entry_premium, EXCLUDED.entry_premium),
+      flow_avg_fill = COALESCE(zerodte_setup_log.flow_avg_fill, EXCLUDED.flow_avg_fill),
+      plan_json = COALESCE(zerodte_setup_log.plan_json, EXCLUDED.plan_json),
+      gate_calibration_json = COALESCE(zerodte_setup_log.gate_calibration_json, EXCLUDED.gate_calibration_json),
+      entry_context = COALESCE(zerodte_setup_log.entry_context, EXCLUDED.entry_context),
+      feature_vector = COALESCE(zerodte_setup_log.feature_vector, EXCLUDED.feature_vector),
+      last_seen_at = NOW()
+    RETURNING ticker, (xmax = 0) AS inserted
+    `,
+    params
+  );
+
   const freshlyFlagged = new Set<string>();
-  for (const r of rows) {
-    if (await upsertOneZeroDteSetupRow(p, r)) freshlyFlagged.add(r.ticker.toUpperCase());
+  for (const row of res.rows) {
+    if (row.inserted === true) freshlyFlagged.add(row.ticker.toUpperCase());
   }
   return freshlyFlagged;
 }
