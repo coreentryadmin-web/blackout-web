@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { clsx } from "clsx";
 import { PlayTerminal } from "./PlayTerminal";
 import { sortPlaysForDeckBy, type DeckSortMode } from "./deck-sort";
@@ -164,18 +164,22 @@ export function CommandDeck({
             <div className="nh-deck-empty">No {statusFilter.toLowerCase()} plays right now.</div>
           )}
           {sorted.map((p, i) => (
-            <PlayCard key={p.id} play={p} rank={i + 1} selected={p.id === selId} onSelect={() => setSelId(p.id)} nowMs={nowMs} />
+            <PlayCard key={p.id} play={p} rank={i + 1} selected={p.id === selId} onSelect={setSelId} nowMs={nowMs} />
           ))}
         </div>
       </div>
-      <PlayTerminal play={selected} sessionClosed={sessionClosed} />
+      <PlayTerminal play={selected} sessionClosed={sessionClosed} nowMs={nowMs} />
     </div>
   );
 }
 
 /** The live portfolio cockpit: R deployed vs the allocator limit + the running session P&L tape. Both
- *  degrade to "—" when their inputs aren't on the payload (never a fabricated figure). */
-function CockpitStrip({
+ *  degrade to "—" when their inputs aren't on the payload (never a fabricated figure).
+ *
+ * Memoized: CommandDeck re-renders every 1000ms on useSecondTick (nowMs, needed by PlayCard's
+ * staleness/age display) — this strip depends on neither, so memo bails it out of that churn.
+ */
+const CockpitStrip = memo(function CockpitStrip({
   risk,
   tape,
 }: {
@@ -213,7 +217,7 @@ function CockpitStrip({
       </div>
     </div>
   );
-}
+});
 
 /** A compact condor breach indicator for the left card — room to the nearest short strike (points),
  *  colored by health (red once the range is breached). Never shows a directional premium P&L. */
@@ -258,8 +262,14 @@ function HealthRing({ health, rung }: { health: number; rung: string }) {
 }
 
 /** One left-pane play card. Wave 2 surfaces the tier + discovery-origin badges, the mid mark + its
- *  executable-fill P&L, and honest staleness (dim + age) — all reading the Wave-1 payload fields. */
-function PlayCard({
+ *  executable-fill P&L, and honest staleness (dim + age) — all reading the Wave-1 payload fields.
+ *
+ * Memoized: CommandDeck re-renders every 1000ms (useSecondTick, needed here for staleness/age), and
+ * without memo every row re-executed on every tick regardless of whether its OWN play data changed.
+ * `onSelect` takes the play id (rather than the parent handing each row a fresh `() => setSelId(id)`
+ * closure) so the parent can pass the stable `setSelId` setter directly — a fresh closure per row per
+ * tick would otherwise defeat this memoization outright. */
+const PlayCard = memo(function PlayCard({
   play: p,
   rank,
   selected,
@@ -269,7 +279,7 @@ function PlayCard({
   play: TerminalPlay;
   rank: number;
   selected: boolean;
-  onSelect: () => void;
+  onSelect: (id: string) => void;
   nowMs: number;
 }) {
   const markFlash = useFlash(p.mark ?? p.pnlPct ?? null);
@@ -296,7 +306,7 @@ function PlayCard({
     <button
       type="button"
       className={clsx("nh-deck-row", selected && "sel", stale && "nh-deck-card-stale", markFlash && "nh-deck-row-flash")}
-      onClick={onSelect}
+      onClick={() => onSelect(p.id)}
       aria-current={selected}
     >
       <span className="nh-deck-rk-wrap">
@@ -368,4 +378,4 @@ function PlayCard({
       </span>
     </button>
   );
-}
+});

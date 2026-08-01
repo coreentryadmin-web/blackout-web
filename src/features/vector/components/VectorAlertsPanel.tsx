@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { memo, useState } from "react";
 import type { AlertRule, AlertKind, FiredAlert } from "@/features/vector/lib/vector-alerts";
 
 type Props = {
@@ -29,8 +29,12 @@ const KIND_LABEL: Record<AlertKind, string> = {
  * member adds wall-touch / flip-cross rules; the chart evaluates them on each live tick and fired
  * alerts surface here + as a toast + in the desk terminal. Rules persist to localStorage (handled by
  * the shell) so they survive reloads. Purely presentational — all state lives in the shell.
+ *
+ * Memoized: the shell re-renders once/sec on the live SSE spot tick (liveSpot), and none of this
+ * panel's own props change on that cadence — memo bails it out of that churn as long as the shell
+ * passes stable callback identities (useCallback) for onAdd/onToggle/onRemove/onToggleNotify.
  */
-export function VectorAlertsPanel({
+export const VectorAlertsPanel = memo(function VectorAlertsPanel({
   ticker,
   rules,
   recent,
@@ -159,4 +163,4 @@ export function VectorAlertsPanel({
       )}
     </section>
   );
-}
+});

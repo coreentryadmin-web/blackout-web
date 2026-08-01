@@ -4,6 +4,83 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-01 — [CTO perf audit] Multi-agent audit (8 domains, adversarially verified) — Vector/Nighthawk 1Hz full-tree re-renders fixed; 15 more findings ranked
+
+**Context.** User-requested exhaustive performance audit ("the entire website feels slow... I just
+need it faster"). Ran an 8-domain parallel audit (SSR payload, rendering, network/caching, bundle,
+auth overhead, realtime/SSE, DB queries, AWS infra sizing) + an adversarial verification pass that
+independently re-read every cited file before accepting a finding — 3 findings were downgraded from
+their auto-generated severity after the verifier found the claimed blast radius didn't hold up
+(e.g. an N+1 upsert claimed to hit "every member poll" actually sits on an internal cron-only path).
+Full 16-finding ranked list is in the PR description for `fix/vector-nighthawk-1hz-rerender`.
+
+**This entry covers the two P1 rendering fixes shipped now** (highest confidence + lowest risk +
+most directly tied to "feels laggy" on the highest-traffic live surfaces):
+
+### 1. VectorPageShell.liveSpot — 1Hz full-tree re-render (P1)
+**Root cause.** `liveSpot` state updates on every SSE spot tick (~1/sec during live sessions) and
+feeds `pulseRail`/`chartBlock` — plain inline JSX blocks, not memoized. Every sibling
+(`GexShiftLeadersStrip`, `VectorAlertsPanel`) re-rendered on every tick even though neither consumes
+`liveSpot` — the exact "1Hz full-tree re-render" bug class already fixed once for the `setNow`
+freshness clock (2026-07-29, FreshnessChip's own `staleAfterMs`), reappearing through a different
+state hook that was never given the same treatment.
+
+**Fix.** Wrapped `VectorAlertsPanel` and `GexShiftLeadersStrip` in `React.memo`. This alone would
+have been a no-op — their callback props (`onAdd`/`onToggle`/`onRemove`/`onToggleNotify`) were
+plain function expressions recreated every `VectorPageShell` render, defeating memo's shallow
+prop comparison — so `persistRules`/`handleAddRule`/`handleToggleRule`/`handleRemoveRule`/
+`handleToggleNotify` are now `useCallback`'d with correct deps. `VectorChart` (3,718 lines,
+imperative lightweight-charts integration) and `VectorGexLadder` (a genuine `liveSpot` consumer)
+are deliberately NOT touched here — memoizing VectorChart blindly on a live revenue-critical
+surface without profiling data first is a separate, higher-risk follow-up.
+
+### 2. Nighthawk CommandDeck/PlayTerminal — duplicate 1Hz timers + unmemoized row list (P1/P3 combined)
+**Root cause.** `CommandDeck` calls `useSecondTick()` for mark-staleness/age display, forcing every
+`PlayCard` (one per play) and `CockpitStrip` to re-execute every second regardless of whether their
+own data changed — same bug class as #1, never remediated here. Independently, `PlayTerminal`
+(mounted as CommandDeck's child) ran its **own**, unsynchronized `useSecondTick()` — two duplicate
+1Hz timers ticking out of phase for the same wall-clock purpose (age labels between the row list and
+the detail panel could drift by up to ~1s).
+
+**Fix.**
+- `useSecondTick(enabled = true)` in `use-deck-live.ts` now accepts an `enabled` flag — the hook
+  stays mounted (rules of hooks) but its `setInterval` never fires when disabled, so a component fed
+  an external clock costs nothing extra.
+- `PlayTerminal` accepts an optional `nowMs` prop; falls back to its own tick (`enabled: nowMsProp
+  === undefined`) so standalone callers/tests are unaffected. `CommandDeck` now passes its own
+  `nowMs` down — one shared 1Hz timer for the whole deck instead of two.
+- `CockpitStrip` and `PlayCard` wrapped in `React.memo`. `PlayCard`'s `onSelect` signature changed
+  from `() => void` (a fresh per-row closure from `() => setSelId(p.id)` in the parent's `.map`,
+  which would have defeated memo outright) to `(id: string) => void`, so the parent passes the
+  stable `setSelId` setter directly and the `() => onSelect(p.id)` closure moves inside `PlayCard`'s
+  own render (harmless — it doesn't affect PlayCard's incoming-prop identity, only memo's parent-side
+  comparison does).
+
+**Tests.** `PlayTerminal.ssr.test.ts` — 2 new cases: an injected `nowMs` correctly drives staleness
+detection (asserts `STALE` absent when `nowMs == markAsOf`, present 5min later — proving the prop is
+actually used, not silently ignored), and the no-prop fallback path still renders. Full
+`command-deck/*.test.ts` + `vector-seed-props.test.ts` suite: 171/171 passing. `tsc --noEmit` clean.
+`next build` clean.
+
+**Deliberately NOT fixed in this PR** (documented in the PR body, ranked, for follow-up):
+- P0 infra: `market-worker` ECS service has zero autoscaling, hardcoded to 1 task at 0.5vCPU/1GB —
+  needs a Terraform PR + the operator's own `terraform apply` (human-gated per this file's policy).
+- P1: production API routes have no framework-level Cache-Control fallback (`next.config.mjs`'s
+  no-store safety net only fires when `isStagingSite`, permanently false since staging was
+  decommissioned); the CI guard test's `REQUIRED_PREFIXES` allowlist misses `admin/`, `nighthawk/`,
+  `webhook/`, `engine/` route trees entirely.
+- P1: `insertPlaybookInstanceEvents` (db.ts) holds a session-scoped advisory lock across N sequential
+  INSERTs instead of one batched multi-row statement (the pattern is already established elsewhere
+  in the same file for `nighthawk_play_outcomes` — just not applied here).
+- P2: `VectorChart`/`VectorGexLadder` internal re-render inefficiency (needs profiling before
+  touching, per above), 2 more N+1 DB upsert loops, 7 routes over 200KB First Load JS, one
+  remaining raw `<img>` (homepage footer emblem — the hero instance was fixed 2026-07-29, this
+  second instance was missed), RDS on burstable `db.t4g.medium` with no read replica.
+- P3: missing partial index on `zerodte_setup_log.graded_at`, Redis/ECS-web sizing (informational,
+  no incident evidence), a duplicate-fetch trap (`fetchSpxPlay` under two disjoint SWR keys).
+
+**Status.** `fix/vector-nighthawk-1hz-rerender` → PR.
+
 ## 2026-08-01 — [Vector/SPX Slayer] SSR payload embedded up to 24h of prior-session wall history — 28-50MB HTML, 10-12s downloads
 
 **Severity.** P1 — perf/UX. Member-reported "the entire website feels slow"; traced to the highest-traffic

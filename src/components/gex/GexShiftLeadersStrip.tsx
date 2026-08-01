@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import clsx from "clsx";
 import type { GexShiftLeader } from "@/lib/gex-shift-leaders";
 import { fmtHeatmapStrike } from "@/lib/gex-heatmap-display";
@@ -27,8 +28,16 @@ function strengthPct(l: GexShiftLeader): number | null {
  * Top call + put wall-shift leaders — one strip across desk surfaces. Side is the strike's OWN
  * gamma dominance (net-GEX sign) and the % is magnitude-based (built +, melted −), so a building
  * put wall reads "+X%" under P (not the inverted "−X%" the raw signed-delta convention produced).
+ *
+ * Memoized: mounted alongside VectorPageShell's ~1Hz liveSpot state (SSE spot ticks), which this
+ * strip never consumes — memo bails it out of that unrelated re-render churn.
  */
-export function GexShiftLeadersStrip({ leaders, scopeLabel, className, compact }: Props) {
+export const GexShiftLeadersStrip = memo(function GexShiftLeadersStrip({
+  leaders,
+  scopeLabel,
+  className,
+  compact,
+}: Props) {
   if (!leaders.length) return null;
 
   const calls = leaders.filter((l) => l.currentValue >= 0);
@@ -70,4 +79,4 @@ export function GexShiftLeadersStrip({ leaders, scopeLabel, className, compact }
       ) : null}
     </div>
   );
-}
+});

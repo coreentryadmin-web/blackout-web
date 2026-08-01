@@ -33,9 +33,9 @@ function play(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
   };
 }
 
-async function render(p: TerminalPlay | null): Promise<string> {
+async function render(p: TerminalPlay | null, extraProps: Record<string, unknown> = {}): Promise<string> {
   const { PlayTerminal } = await load();
-  return renderToStaticMarkup(React.createElement(PlayTerminal, { play: p }));
+  return renderToStaticMarkup(React.createElement(PlayTerminal, { play: p, ...extraProps }));
 }
 
 // ── OCC one-tap copy control ───────────────────────────────────────────────────────────
@@ -86,4 +86,24 @@ test("scorecard: non-finite win-rate (n=0) renders '— WR', never 'NaN% WR'", a
   const html = await render(play({ scorecard: { winRate: Number.NaN, avg: 0, n: 0 } }));
   assert.match(html, /— WR \(n=0 · CI n\/a\)/);
   assert.doesNotMatch(html, /NaN/);
+});
+
+// ── nowMs prop (shared clock from CommandDeck — avoids a duplicate 1Hz timer) ─────────
+test("nowMs prop: an injected clock drives staleness detection instead of the component's own tick", async () => {
+  const markAsOf = new Date("2026-07-25T10:00:00-04:00").toISOString();
+  // Fresh at the mark's own instant — nowMs == markAsOf should NOT read stale.
+  const freshHtml = await render(play({ markAsOf, status: "OPEN" }), { nowMs: Date.parse(markAsOf) });
+  assert.doesNotMatch(freshHtml, /STALE/);
+
+  // Same play, clock pushed 5 minutes past markAsOf via the injected prop (not real time) — must
+  // read stale, proving the render used the injected nowMs rather than Date.now()/its own tick.
+  const staleHtml = await render(play({ markAsOf, status: "OPEN" }), {
+    nowMs: Date.parse(markAsOf) + 5 * 60_000,
+  });
+  assert.match(staleHtml, /STALE/);
+});
+
+test("nowMs prop: omitted → renders without throwing (falls back to the component's own tick)", async () => {
+  const html = await render(play({ markAsOf: new Date().toISOString(), status: "OPEN" }));
+  assert.match(html, /<div/); // sanity: still produces real markup, not a crash
 });

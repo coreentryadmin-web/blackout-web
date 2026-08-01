@@ -295,7 +295,10 @@ export function VectorPageShell({
   // registers a web-push subscription when VAPID is configured — inert otherwise). We only persist
   // the opt-in when permission actually lands 'granted', so a dismissed/denied prompt doesn't leave
   // the toggle stuck "on" with no way for banners to fire.
-  const handleToggleNotify = async () => {
+  // useCallback here (not just an inline function): VectorAlertsPanel/GexShiftLeadersStrip are
+  // React.memo'd specifically to skip the ~1Hz liveSpot re-render churn (SSE spot ticks) — a plain
+  // function expression would hand memo a fresh identity every render and silently defeat it.
+  const handleToggleNotify = useCallback(async () => {
     if (notifyEnabled) {
       setNotifyEnabled(false);
       saveNotifyEnabled(false);
@@ -306,17 +309,28 @@ export function VectorPageShell({
     const on = perm === "granted";
     setNotifyEnabled(on);
     saveNotifyEnabled(on);
-  };
+  }, [notifyEnabled]);
 
-  const persistRules = (next: AlertRule[]) => {
-    setAlertRules(next);
-    saveAlertRules(activeTicker, next);
-  };
-  const handleAddRule = (kind: AlertKind, tolerancePct?: number) =>
-    persistRules([...alertRules, buildAlertRule(alertRules, activeTicker, kind, tolerancePct)]);
-  const handleToggleRule = (id: string) =>
-    persistRules(alertRules.map((r) => (r.id === id ? { ...r, enabled: !r.enabled } : r)));
-  const handleRemoveRule = (id: string) => persistRules(alertRules.filter((r) => r.id !== id));
+  const persistRules = useCallback(
+    (next: AlertRule[]) => {
+      setAlertRules(next);
+      saveAlertRules(activeTicker, next);
+    },
+    [activeTicker]
+  );
+  const handleAddRule = useCallback(
+    (kind: AlertKind, tolerancePct?: number) =>
+      persistRules([...alertRules, buildAlertRule(alertRules, activeTicker, kind, tolerancePct)]),
+    [alertRules, activeTicker, persistRules]
+  );
+  const handleToggleRule = useCallback(
+    (id: string) => persistRules(alertRules.map((r) => (r.id === id ? { ...r, enabled: !r.enabled } : r))),
+    [alertRules, persistRules]
+  );
+  const handleRemoveRule = useCallback(
+    (id: string) => persistRules(alertRules.filter((r) => r.id !== id)),
+    [alertRules, persistRules]
+  );
   const handleAlertsFired = (fired: FiredAlert[]) => {
     if (!fired.length) return;
     setRecentAlerts((prev) => [...fired].reverse().concat(prev).slice(0, 20));
