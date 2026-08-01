@@ -19,8 +19,6 @@ export const MATRIX_STALE_MS = 15_000;
  * the 1-minute heatmap-warm EventBridge floor while the client polls every 5s.
  */
 export const MATRIX_FORCE_REFRESH_AGE_MS = 5_000;
-/** Off-hours / closed session — heatmap-warm is ~1/min; do not force-rebuild every 5s. */
-export const MATRIX_FORCE_REFRESH_AGE_OFF_MS = 90_000;
 /** Client-side spacing between force attempts (matches server FORCE_THROTTLE_MS). */
 export const MATRIX_FORCE_THROTTLE_MS = 5_000;
 /** Overlay cache is ~30s — treat as live under 45s. */
@@ -206,7 +204,7 @@ export function isUsableGexHeatmapPayload(data: {
 
 /**
  * Should the Thermal client request `?force=1` to refresh a stale matrix?
- * Pure — age vs force threshold, plus client throttle since last force.
+ * RTH-only — off-hours reads warm Redis / heatmap-warm cron; never force-rebuild chains.
  */
 export function shouldForceMatrixRefresh(input: {
   asofMs: number | null;
@@ -214,14 +212,14 @@ export function shouldForceMatrixRefresh(input: {
   lastForceAtMs: number;
   forceAgeMs?: number;
   forceThrottleMs?: number;
-  /** When false (off-hours / closed), age-based force uses MATRIX_FORCE_REFRESH_AGE_OFF_MS. */
+  /** When false (off-hours / closed), never force — normal poll + cron warm only. */
   sessionLive?: boolean;
 }): boolean {
-  const { asofMs, nowMs, lastForceAtMs } = input;
   const sessionLive = input.sessionLive ?? true;
-  const forceAgeMs =
-    input.forceAgeMs ??
-    (sessionLive ? MATRIX_FORCE_REFRESH_AGE_MS : MATRIX_FORCE_REFRESH_AGE_OFF_MS);
+  if (!sessionLive) return false;
+
+  const { asofMs, nowMs, lastForceAtMs } = input;
+  const forceAgeMs = input.forceAgeMs ?? MATRIX_FORCE_REFRESH_AGE_MS;
   const forceThrottleMs = input.forceThrottleMs ?? MATRIX_FORCE_THROTTLE_MS;
   if (asofMs == null || !Number.isFinite(asofMs)) return false;
   const age = nowMs - asofMs;

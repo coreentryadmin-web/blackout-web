@@ -2696,6 +2696,7 @@ export function GexHeatmap({
   // is purely an ADDITIONAL trigger. Compares quote.price vs data.spot per the spec.
   const quotePrice = quote?.price ?? 0;
   useEffect(() => {
+    if (!sessionLive) return;
     // Guard: only compare when BOTH feeds are for the currently-selected ticker.
     // On a ticker switch keepPreviousData leaves the old matrix/quote in hand for a
     // round-trip; comparing the new quote vs the old spot would manufacture a huge
@@ -2718,12 +2719,11 @@ export function GexHeatmap({
     // first (4s ≫ a round-trip), so the bypass is never short-circuited. (Rank 19)
     if (forceResetTimerRef.current) clearTimeout(forceResetTimerRef.current);
     forceResetTimerRef.current = setTimeout(() => setForceActive(false), 4_000);
-  }, [quotePrice, spot, stale, quoteMatches]);
+  }, [quotePrice, spot, stale, quoteMatches, sessionLive]);
 
-  // Age-based force (SPX Slayer parity): EventBridge heatmap-warm is 1/min. Without this,
-  // Thermal asof ages past the 5s poll. Force when asof >5s (MATRIX_FORCE_REFRESH_AGE_MS).
+  // Age-based force (SPX Slayer parity): RTH only — off-hours uses cron warm + cached poll.
   useEffect(() => {
-    if (stale) return;
+    if (stale || !sessionLive) return;
     const tick = () => {
       if (forceActive) return;
       const asofRaw = data?.asof;
