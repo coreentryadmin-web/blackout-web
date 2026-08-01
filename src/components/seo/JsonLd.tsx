@@ -1,0 +1,159 @@
+import { SITE } from "@/lib/site";
+
+type JsonLdProps = { data: Record<string, unknown> };
+
+function JsonLdScript({ data }: JsonLdProps) {
+  return (
+    <script
+      type="application/ld+json"
+      dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }}
+    />
+  );
+}
+
+export function OrganizationJsonLd() {
+  return (
+    <JsonLdScript
+      data={{
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        name: SITE.name,
+        legalName: SITE.legalName,
+        url: SITE.url,
+        logo: `${SITE.url}/og-image.png`,
+        description: SITE.description,
+        sameAs: [
+          SITE.social.x.url,
+          SITE.social.instagram.url,
+          SITE.social.discord.url,
+        ],
+        contactPoint: {
+          "@type": "ContactPoint",
+          email: "support@blackouttrades.com",
+          contactType: "customer support",
+        },
+      }}
+    />
+  );
+}
+
+export function WebSiteJsonLd() {
+  return (
+    <JsonLdScript
+      data={{
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        name: SITE.name,
+        url: SITE.url,
+        description: SITE.description,
+        publisher: {
+          "@type": "Organization",
+          name: SITE.name,
+          url: SITE.url,
+        },
+      }}
+    />
+  );
+}
+
+export function FAQPageJsonLd({ items }: { items: { question: string; answer: string }[] }) {
+  return (
+    <JsonLdScript
+      data={{
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        mainEntity: items.map((item) => ({
+          "@type": "Question",
+          name: item.question,
+          acceptedAnswer: {
+            "@type": "Answer",
+            text: item.answer,
+          },
+        })),
+      }}
+    />
+  );
+}
+
+export function BreadcrumbJsonLd({ items }: { items: { name: string; href: string }[] }) {
+  return (
+    <JsonLdScript
+      data={{
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        itemListElement: items.map((item, i) => ({
+          "@type": "ListItem",
+          position: i + 1,
+          name: item.name,
+          item: `${SITE.url}${item.href}`,
+        })),
+      }}
+    />
+  );
+}
+
+export function SoftwareApplicationJsonLd() {
+  return (
+    <JsonLdScript
+      data={{
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        name: SITE.name,
+        applicationCategory: "FinanceApplication",
+        operatingSystem: "Web, iOS",
+        url: SITE.url,
+        description: SITE.description,
+        offers: [
+          {
+            "@type": "Offer",
+            name: "SPX Slayer",
+            price: "49",
+            priceCurrency: "USD",
+            url: `${SITE.url}/pricing`,
+          },
+          {
+            "@type": "Offer",
+            name: "Premium",
+            price: "199",
+            priceCurrency: "USD",
+            url: `${SITE.url}/pricing`,
+          },
+        ],
+        provider: {
+          "@type": "Organization",
+          name: SITE.name,
+          url: SITE.url,
+        },
+      }}
+    />
+  );
+}
+
+export function ArticleJsonLd({
+  title,
+  description,
+  path,
+}: {
+  title: string;
+  description: string;
+  path: string;
+}) {
+  return (
+    <JsonLdScript
+      data={{
+        "@context": "https://schema.org",
+        "@type": "Article",
+        headline: title,
+        description,
+        url: `${SITE.url}${path}`,
+        publisher: {
+          "@type": "Organization",
+          name: SITE.name,
+          url: SITE.url,
+          logo: { "@type": "ImageObject", url: `${SITE.url}/og-image.png` },
+        },
+        mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE.url}${path}` },
+      }}
+    />
+  );
+}

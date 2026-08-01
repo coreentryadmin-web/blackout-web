@@ -1,9 +1,18 @@
 import type { Metadata } from "next";
 import { SITE } from "@/lib/site";
 
-/** Public marketing/legal page — canonical URL plus matching OG/Twitter copy. */
-export function publicPageMetadata(title: string, description: string, path: string): Metadata {
+/** Public marketing/legal page — canonical URL plus matching OG/Twitter copy + per-page OG image. */
+export function publicPageMetadata(
+  title: string,
+  description: string,
+  path: string,
+  opts?: { kicker?: string },
+): Metadata {
   const url = path === "/" ? SITE.url : `${SITE.url}${path}`;
+  const ogParams = new URLSearchParams({ title, subtitle: description });
+  if (opts?.kicker) ogParams.set("kicker", opts.kicker);
+  const ogImageUrl = `${SITE.url}/api/og?${ogParams.toString()}`;
+
   return {
     title,
     description,
@@ -12,10 +21,13 @@ export function publicPageMetadata(title: string, description: string, path: str
       title,
       description,
       url,
+      images: [{ url: ogImageUrl, width: 1200, height: 630, alt: title }],
     },
     twitter: {
+      card: "summary_large_image",
       title,
       description,
+      images: [ogImageUrl],
     },
   };
 }

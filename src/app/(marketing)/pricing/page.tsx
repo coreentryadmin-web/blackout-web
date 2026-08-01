@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { MarketingPageShell } from "@/components/landing/MarketingPageShell";
 import { RedesignPricing } from "@/components/landing/RedesignPricing";
+import { SoftwareApplicationJsonLd } from "@/components/seo/JsonLd";
 import { publicPageMetadata } from "@/lib/page-metadata";
 
 export const metadata: Metadata = publicPageMetadata(
@@ -12,6 +13,7 @@ export const metadata: Metadata = publicPageMetadata(
 export default function PricingPage() {
   return (
     <MarketingPageShell showChart={false}>
+      <SoftwareApplicationJsonLd />
       <div className="hide-in-ios-app">
         <RedesignPricing />
       </div>

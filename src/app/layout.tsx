@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Anton, Syne, JetBrains_Mono } from "next/font/google";
 import { IMAGES } from "@/lib/images";
 import { SITE } from "@/lib/site";
+import { OrganizationJsonLd, WebSiteJsonLd } from "@/components/seo/JsonLd";
 // PHOSPHOR LADDER token foundation — additive tokens + utility primitives, loaded
 // ONCE here so marketing = desk = ios all read the same instrument grid. Placed in
 // the root layout (globals.css is only imported per route-group) so the tokens are
@@ -107,6 +108,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body className="void-bg antialiased">
+        <OrganizationJsonLd />
+        <WebSiteJsonLd />
         <a
           href="#main"
           className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[300] focus:rounded-lg focus:border focus:border-bull/50 focus:bg-black/90 focus:px-4 focus:py-2 focus:font-mono focus:text-xs focus:uppercase focus:tracking-[0.2em] focus:text-bull focus:outline-none"
