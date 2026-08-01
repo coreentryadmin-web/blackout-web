@@ -489,8 +489,15 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
 
       {/* ═══ §6 CINEMATIC ENDING ═══ */}
       <section className="footer">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={IMAGES.brandEmblem} alt="" className="footer-ghost" />
+        <Image
+          src={IMAGES.brandEmblem}
+          alt=""
+          width={1254}
+          height={1254}
+          className="footer-ghost"
+          loading="lazy"
+          aria-hidden
+        />
         <div className="footer-content">
           <div className="footer-brand">BLACKOUT</div>
           <div className="footer-tagline">The intelligence layer behind modern trading.</div>
