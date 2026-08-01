@@ -4,6 +4,61 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-01 — [Vector/SPX Slayer] SSR payload embedded up to 24h of prior-session wall history — 28-50MB HTML, 10-12s downloads
+
+**Severity.** P1 — perf/UX. Member-reported "the entire website feels slow"; traced to the highest-traffic
+authenticated surface (Vector standalone page + the SPX Slayer flagship dashboard embed).
+
+**Symptom.** Live prod probe (temp admin+premium Clerk user, headless fetch): `/vector` returned
+28.9MB-50.7MB of HTML per load, 10-12+ seconds to fully download, vs 70-650ms for every other
+authenticated desk page (`/helix` 246ms/168KB). Marketing pages were unaffected (200-650ms TTFB,
+confirmed separately) — the slowness is isolated to any surface embedding Vector.
+
+**Root cause.** `loadVectorSeedProps()` (`vector-seed-props.ts`) SSR-embeds the wall-history rail
+directly into the initial HTML for first paint. The in-memory/Redis/Postgres rail intentionally
+retains up to `MAX_HISTORY` = 5760 samples (24h of 15s-bucketed ladders, ~3-4 sessions) for recorder
+resilience across restarts/replays — but the page only ever displays ONE session (`sessionYmd`,
+session-scoped bar range). Two full historical rails were being seeded per load —
+`initialWallHistory` (up to 5760 samples) AND `initialHorizonWallHistory` (a second, separately
+loaded rail for the default DTE horizon, also unbounded) — each carrying full 20-strike-per-side
+ladders (measured live: 17,626 wall snapshots / 853,494 individual strike entries in one 28.9MB
+response). Prior-session samples were pure dead weight: no client consumer (`trailsByStrike`,
+`trailForFlipLevel`) ever reads a sample outside the current session's bar range.
+
+**Why not just trim strikes per sample.** `trailsByStrike` computes "dominant wall" rank PER BUCKET
+across the full ladder to give each wall an honest birth (a strike that's weak now but becomes
+dominant later needs its full-ladder presence in every historical bucket, not just the ones where it
+already ranked top-N) — trimming the 20-strike ladder itself would silently break that feature. The
+safe axis to cut is TIME (prior sessions), not per-sample strike depth.
+
+**Fix.** New `trimHistoryToSession(history, firstBarTime)` in `vector-wall-history.ts` — drops any
+sample with `time < firstBarTime` (the current session's first bar). Applied to both
+`initialWallHistory` and `initialHorizonWallHistory` in `vector-seed-props.ts`, right before they're
+returned to the page. Never clips `backfillRailPrefix`'s modeled prefix (its samples always sit at
+`time >= firstBarTime` by construction) or any of the current session's observed rail — only
+discards genuinely prior-session carryover accumulated under the 24h/72h retention windows.
+
+**Blast radius.** Both consumers of `loadVectorSeedProps` share the fix: the standalone `/vector`
+page AND `SpxVectorEmbed.tsx` (SPX Slayer flagship dashboard). The recorder's 24h retention window,
+Redis 72h TTL, and Postgres durable mirror are UNCHANGED — this only trims what gets shipped in the
+SSR payload for THIS render, not what's retained for resilience/replay. Client-side live updates
+(SSE/SWR) are untouched.
+
+**Secondary finding (not fixed in this PR, smaller/config-only).** `/why-blackout` is NOT edge-cached
+by Cloudflare (`cf-cache-status: DYNAMIC`, every request hits ECS origin directly, ~470ms) while `/`
+and `/learn` ARE (`cf-cache-status: HIT`, ~200ms) — the hand-made CF cache rule's path match doesn't
+cover the new route. Cache rules live in the CF dashboard, not `blackout-infra` terraform (per the
+Environment realities note above) — a follow-up CF API edit, not a code PR.
+
+**Tests.** `vector-wall-history.test.ts` — 4 new cases for `trimHistoryToSession` (drops
+pre-session samples; never clips the modeled backfill prefix; no-op on undefined/NaN/already-empty
+input; no-op when the whole rail already belongs to the session). Full suite green (45/45).
+
+**Files.** `src/features/vector/lib/vector-wall-history.ts`, `src/features/vector/lib/vector-seed-props.ts`,
+`src/features/vector/lib/vector-wall-history.test.ts`.
+
+**Status.** `fix/vector-ssr-session-scope-payload` → PR.
+
 ## 2026-07-31 — [Grid/0DTE] Post-close fix agent pass 6 — all validators GREEN (~3:17 PM PT / 6:17 PM ET)
 
 **Severity.** — (no additional product defects)
