@@ -12,7 +12,7 @@ import {
 import { clsx } from "clsx";
 import useSWR from "swr";
 import { FreshnessChip } from "@/components/ui";
-import { usePollIntervalMs } from "@/hooks/use-et-market-open";
+import { usePollIntervalMs, useEtMarketOpen } from "@/hooks/use-et-market-open";
 import type { GexHeatmapLens } from "@/lib/gex-heatmap-display";
 import {
   THERMAL_COMPARE_TICKERS,
@@ -211,6 +211,7 @@ function TripleColumn({
   onRegisterMutate,
 }: ColumnProps) {
   const pollMs = usePollIntervalMs(5_000, 5_000);
+  const sessionLive = useEtMarketOpen();
   // Age-based force (SPX Slayer parity): EventBridge heatmap-warm floors at 1m, so without
   // ?force=1 SPY/QQQ asof ages well past the 5s poll. Force when asof is >5s old (server
   // throttles ≤1/5s; single-flight coalesces concurrent viewers).
@@ -278,6 +279,7 @@ function TripleColumn({
           asofMs: Number.isFinite(asofMs) ? asofMs : null,
           nowMs,
           lastForceAtMs: lastForceAtRef.current,
+          sessionLive,
         });
       if (!blank && !stale) return;
       triggerForce();
@@ -285,7 +287,7 @@ function TripleColumn({
     tick();
     const id = setInterval(tick, 1_000);
     return () => clearInterval(id);
-  }, [view, ticker, forceActive, triggerForce]);
+  }, [view, ticker, forceActive, triggerForce, sessionLive]);
 
   // Reset last-good when the column ticker changes so we never paint SPX cells under a SPY header.
   useEffect(() => {
