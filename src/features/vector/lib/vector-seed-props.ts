@@ -18,6 +18,7 @@ import {
   backfillRailPrefix,
   mergeWallHistory,
   seedWallHistoryForDisplay,
+  trimHistoryToSession,
   type WallHistorySample,
 } from "@/features/vector/lib/vector-wall-history";
 import { loadSessionWallHistory } from "@/features/vector/lib/vector-wall-persist";
@@ -112,11 +113,19 @@ export async function loadVectorSeedProps(
     : ([] as WallHistorySample[]);
   const backfilled = backfillRailPrefix(combined, modeledRail, firstBar);
 
+  // SSR-payload size guard (2026-08-01): `combined`/`backfilled` can carry up to MAX_HISTORY
+  // (24h of 15s buckets, ~3-4 sessions) for recorder resilience across restarts, but this page
+  // renders ONE session (bars is session-scoped display data). Prior-session samples were riding
+  // along into every SSR payload as dead weight the client never draws — measured 28-50MB HTML /
+  // 10-12s downloads on /vector and the SPX Slayer embed before this trim. Never clips the
+  // backfilled prefix (always >= firstBar) or the current session's observed rail.
+  const sessionScopedHistory = trimHistoryToSession(backfilled, firstBar);
+
   // Empty-case fallback: a single as-of-close snapshot at the last bar when there is genuinely
   // nothing recorded OR reconstructable for this session. No-ops whenever the rail already has
   // samples. Never a full-day fabrication.
   const initialWallHistory = seedWallHistoryForDisplay(
-    backfilled,
+    sessionScopedHistory,
     bars.map((b) => b.time),
     walls,
     gammaFlip,
@@ -127,8 +136,11 @@ export async function loadVectorSeedProps(
   const seedHorizon = opts.seedDteHorizon;
   const initialHorizonWallHistory =
     seedHorizon && seedHorizon !== "all"
-      ? await loadSessionWallHistory(sessionYmd, ticker, seedHorizon).catch(
-          () => [] as WallHistorySample[]
+      ? trimHistoryToSession(
+          await loadSessionWallHistory(sessionYmd, ticker, seedHorizon).catch(
+            () => [] as WallHistorySample[]
+          ),
+          firstBar
         )
       : [];
 

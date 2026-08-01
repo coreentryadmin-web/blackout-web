@@ -457,6 +457,27 @@ export function backfillRailPrefix(
   return mergeModeledUnderlay(observed, prefix);
 }
 
+/**
+ * Drop wall-history samples that predate the CURRENT session's first bar before an SSR seed ships
+ * to the client. `combined`/`mergeWallHistory` retain up to MAX_HISTORY (24h of 15s buckets, ~3-4
+ * sessions) for recorder resilience across restarts/replays, but a single-session Vector page (one
+ * `sessionYmd`, one visible bar range) never renders a prior session's beads — every consumer
+ * (`trailsByStrike`, `trailForFlipLevel`) only ever sees `barTimes` for the CURRENT session. Prior
+ * sessions' full 20-strike-per-side ladders were riding along in the SSR payload as pure dead
+ * weight (measured: 28-50MB HTML, 10-12s to download on `/vector` and the SPX Slayer embed).
+ * `firstBarTime` is the current session's first bar — `backfillRailPrefix`'s modeled prefix always
+ * sits at `time >= firstBarTime`, so this never clips the intentional gap-fill.
+ */
+export function trimHistoryToSession(
+  history: WallHistorySample[],
+  firstBarTime: number | undefined
+): WallHistorySample[] {
+  if (firstBarTime == null || !Number.isFinite(firstBarTime) || history.length === 0) return history;
+  const firstIdx = history.findIndex((s) => s.time >= firstBarTime);
+  if (firstIdx <= 0) return history;
+  return history.slice(firstIdx);
+}
+
 export function mergeModeledUnderlay(
   observed: WallHistorySample[],
   modeled: WallHistorySample[]

@@ -19,6 +19,7 @@ import {
   trailForGammaFlip,
   trailForRank,
   trimHistoryForLiveTrails,
+  trimHistoryToSession,
   LIVE_TRAIL_LOOKBACK_SEC,
   hasVexInHistory,
   type WallHistorySample,
@@ -151,6 +152,35 @@ test("backfillRailPrefix: no-op when observed already starts near the open, mode
   // Empty observed rail: the whole modeled session becomes the (ghost) rail.
   const seeded = backfillRailPrefix([], [{ time: 0, walls: walls([101], [89]) }, { time: 300, walls: walls([101], [89]) }], 0);
   assert.deepEqual(seeded.map((s) => [s.time, s.modeled]), [[0, true], [300, true]]);
+});
+
+test("trimHistoryToSession: drops samples strictly before the session's first bar", () => {
+  const history = [0, 300, 50000, 50400, 50700].map((time) => ({ time, walls: walls([100], [90]) }));
+  // Two prior sessions (t=0, t=300 from an earlier calendar day) plus the current session (>= 50000).
+  const trimmed = trimHistoryToSession(history, 50000);
+  assert.deepEqual(trimmed.map((s) => s.time), [50000, 50400, 50700]);
+});
+
+test("trimHistoryToSession: never clips backfillRailPrefix's modeled prefix (always >= firstBarTime)", () => {
+  // Observed rail starts at 14:00 (t=50400 rel), session opens at t=0 — a 50400s gap, well past
+  // the 20min backfill threshold, so the modeled prefix (>= firstBarTime=0) fills it.
+  const observed = [{ time: 50400, walls: walls([100], [90]) }];
+  const modeled = [0, 300, 50100, 50400].map((time) => ({ time, walls: walls([101], [89]) }));
+  const backfilled = backfillRailPrefix(observed, modeled, 0);
+  const trimmed = trimHistoryToSession(backfilled, 0);
+  assert.deepEqual(trimmed.map((s) => s.time), [0, 300, 50100, 50400]);
+});
+
+test("trimHistoryToSession: no-op when firstBarTime is undefined/non-finite or history is empty", () => {
+  const history = [{ time: 100, walls: walls([100], [90]) }];
+  assert.equal(trimHistoryToSession(history, undefined), history);
+  assert.equal(trimHistoryToSession(history, Number.NaN), history);
+  assert.deepEqual(trimHistoryToSession([], 100), []);
+});
+
+test("trimHistoryToSession: no-op when every sample already belongs to the session", () => {
+  const history = [100, 200, 300].map((time) => ({ time, walls: walls([100], [90]) }));
+  assert.equal(trimHistoryToSession(history, 0), history);
 });
 
 test("trailsByStrike: a strike earns beads ONLY in buckets where it is a DOMINANT wall (birth ≠ session open)", () => {
