@@ -34,6 +34,7 @@ import { enrichFlowsWithGex } from "@/lib/flow-gex-enrichment";
 import { runUwPooled } from "@/lib/providers/uw-rate-limiter";
 import { gexHeatmapForLargo } from "@/lib/largo/gex-heatmap-for-largo";
 import { gexMatrixChangesForLargo } from "@/lib/largo/gex-matrix-changes";
+import { registerVectorUniverseView } from "@/features/vector/lib/vector-universe";
 import { flowAnomalyNearMissesForLargo } from "@/lib/platform/flow-anomaly-near-misses";
 import {
   buildPeerRelativeStrength,
@@ -1339,6 +1340,11 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       return { ticker: sym, ...(await fetchPositioningSummary(sym)) };
     }
     case "get_gex_heatmap":
+      // Shared dynamic universe (Vector/Thermal/Helix already register views here) —
+      // a member asking Largo for a ticker's GEX matrix is the same "someone is
+      // looking at this ticker" signal those surfaces already emit, so it should
+      // count toward the same warm-cache/bead-recording set, not a fourth silo.
+      registerVectorUniverseView(uwTicker(ticker));
       return gexHeatmapForLargo(uwTicker(ticker), {
         lens: (input.lens as "gex" | "vex" | "dex" | "charm" | undefined) ?? "gex",
         top_strikes: Number(input.top_strikes ?? 12),
