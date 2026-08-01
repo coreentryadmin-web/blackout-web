@@ -769,6 +769,18 @@ async function runMigrations(): Promise<void> {
   await p.query(`
     ALTER TABLE zerodte_setup_log ADD COLUMN IF NOT EXISTS feature_vector JSONB;
   `);
+  // 2026-08-01 CTO perf audit (P3): fetchUngradedZeroDteRows (below) scans
+  // `WHERE graded_at IS NULL AND session_date < $1` with no supporting index — a
+  // backward PRIMARY KEY (session_date, ticker) scan that filters out every already-graded
+  // row before finding LIMIT-12 ungraded ones, cost growing with total graded-row volume
+  // rather than backlog size. swing_positions already has the identical partial index
+  // (idx_swing_positions_ungraded, line ~1722) for the exact same lazy-grader access pattern;
+  // this table never got the sibling index.
+  await p.query(`
+    CREATE INDEX IF NOT EXISTS idx_zerodte_setup_log_ungraded
+    ON zerodte_setup_log(session_date DESC)
+    WHERE graded_at IS NULL;
+  `);
   // BLACKOUT Intelligence Engine — every answered question logged with its route
   // (deterministic router vs Claude fallback) and numeric-claim verification, so
   // router coverage, verification rate, and cost avoided are queryable from day one.
