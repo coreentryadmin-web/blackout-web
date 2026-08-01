@@ -5530,4 +5530,33 @@ correctly covered before this fix (untouched).
 route fixes, once `REQUIRED_PREFIXES` was expanded). `npx tsc --noEmit` clean. `npx eslint` on all 18
 touched files — 0 errors/warnings. `npm run build` — clean production build.
 
-**Status:** PR `fix/no-store-guard-coverage-gaps` — pending CI.
+**Status:** PR #1496 — merged.
+
+## 2026-08-01 — [efficiency] VectorPulse double-polled /spx/play via a second SWR key — FIXED
+
+**Severity.** P2 — findings #16+#20 from the 20-item audit list, fixed together (same root cause).
+
+**Root cause.** `useSpxPlay` (the SPX Slayer desk's play hook) polls `/spx/play` every 2s under the
+key `spx-play:${sessionDate}`. `VectorPulse.tsx` — mounted inside `SpxDashboard` (the Vector chart is
+embedded in the flagship SPX Slayer desk, replacing the old separate terminal panels) — ran its OWN
+`useSWR("vector-spx-playbook", fetchSpxPlay, { refreshInterval: 1_000, ... })` fetching the identical
+endpoint under a different cache key. Because SWR dedupes/shares by key, two different keys for the
+same resource meant two fully independent poll loops (2s and 1s) against `/spx/play` running
+concurrently on every SPX Slayer page view — the 1s loop in particular was pure waste, re-fetching a
+resource the desk itself already had fresh at 2s.
+
+**Fix.** `VectorPulse` now calls `useSpxPlay(isSpx && liveSession)` directly instead of its own
+`useSWR`, so it shares the exact same key/cache/poll cadence as the desk. This removes the redundant
+1s poller entirely. Side benefit: `useSpxPlay`'s session-cache gap-fill (`mergePlayWithCache`) now
+also covers VectorPulse's playbook rendering, which previously had no fallback and could blank on a
+transient poll gap.
+
+**Blast radius.** `VectorPulse.tsx` only (dropped the `fetchSpxPlay`/`useSWR`-for-play import, added
+`useSpxPlay`). `useSpxPlay.ts` itself is unchanged — it's designed for multiple concurrent consumers
+sharing one key, which is exactly what this fix now does.
+
+**Validation.** `npx tsc --noEmit` clean. `npx eslint src/features/vector/components/VectorPulse.tsx`
+clean. `node --import tsx --experimental-test-module-mocks --test src/features/spx/hooks/useSpxPlay.test.ts`
+3/3 pass (unchanged file, sanity check). `npm run build` clean.
+
+**Status:** PR pending.
