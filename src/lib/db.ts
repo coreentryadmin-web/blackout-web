@@ -2947,17 +2947,15 @@ export async function insertPlaybookInstanceEvents(
   if (!locked) return;
   const pool = await getPool();
   try {
-    for (const row of rows) {
-      await pool.query(
-        `
-      INSERT INTO spx_playbook_instance_events (
-        session_date, instance_id, playbook_id, event_type, direction,
-        price_at_event, reason, gate_blocks, feature_snapshot, engine_action,
-        executable, counterfactual_mfe_pts, counterfactual_mae_pts
-      )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb,$10,$11,$12,$13)
-      `,
-        [
+    // 2026-08-01 CTO perf audit (P1): this loop used to run N sequential INSERTs while HOLDING
+    // the advisory lock, so lock hold time (and any other caller blocked on the same
+    // session-date key) scaled linearly with row count. Single multi-row INSERT (one
+    // round-trip) instead — same pattern as upsertNighthawkPlayOutcomes (~line 7352).
+    const params: Array<string | number | boolean | null> = [];
+    const tuples = rows
+      .map((row, i) => {
+        const b = i * 13;
+        params.push(
           row.session_date,
           row.instance_id,
           row.playbook_id,
@@ -2970,10 +2968,23 @@ export async function insertPlaybookInstanceEvents(
           row.engine_action,
           row.executable,
           row.counterfactual_mfe_pts,
-          row.counterfactual_mae_pts,
-        ]
-      );
-    }
+          row.counterfactual_mae_pts
+        );
+        return `($${b + 1},$${b + 2},$${b + 3},$${b + 4},$${b + 5},$${b + 6},$${b + 7},$${b + 8}::jsonb,$${b + 9}::jsonb,$${b + 10},$${b + 11},$${b + 12},$${b + 13})`;
+      })
+      .join(", ");
+
+    await pool.query(
+      `
+      INSERT INTO spx_playbook_instance_events (
+        session_date, instance_id, playbook_id, event_type, direction,
+        price_at_event, reason, gate_blocks, feature_snapshot, engine_action,
+        executable, counterfactual_mfe_pts, counterfactual_mae_pts
+      )
+      VALUES ${tuples}
+      `,
+      params
+    );
   } finally {
     await releaseAdvisoryLock(lockKey);
   }
