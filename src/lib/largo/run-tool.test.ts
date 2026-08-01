@@ -65,8 +65,25 @@ let mockScoringHistory: Array<{
 }> = [];
 
 let runLargoTool: typeof import("./run-tool").runLargoTool;
+let registeredUniverseTickers: string[] = [];
 
 before(async () => {
+  // get_gex_heatmap now registers the ticker in the shared platform-wide dynamic
+  // universe (see vector-dynamic-universe.ts) — stub it to a spy so the test
+  // asserts the wiring fires without touching the real Redis-backed module, and
+  // stub gexHeatmapForLargo so this test never reaches the real Polygon fetch.
+  mock.module("../../features/vector/lib/vector-universe", {
+    namedExports: {
+      registerVectorUniverseView: (ticker: string) => {
+        registeredUniverseTickers.push(ticker);
+      },
+    },
+  });
+  mock.module("./gex-heatmap-for-largo", {
+    namedExports: {
+      gexHeatmapForLargo: async (ticker: string) => ({ ticker, available: true }),
+    },
+  });
   const realDb = await import("../db");
   mock.module("../db", {
     namedExports: {
@@ -366,5 +383,23 @@ describe("runLargoTool: get_nighthawk_dossier (task #129 durable scoring-history
 
     assert.deepEqual(result.tickers, []);
     assert.equal(result.archived, false);
+  });
+});
+
+describe("get_gex_heatmap: registers the ticker in the shared platform-wide dynamic universe", () => {
+  test("a member asking Largo for a ticker's GEX heatmap counts as a view, same as Thermal/Helix/Vector", async () => {
+    registeredUniverseTickers = [];
+
+    await runLargoTool("get_gex_heatmap", { ticker: "NVDA" });
+
+    assert.deepEqual(registeredUniverseTickers, ["NVDA"]);
+  });
+
+  test("registers the normalized (uwTicker) form, not the raw input", async () => {
+    registeredUniverseTickers = [];
+
+    await runLargoTool("get_gex_heatmap", { ticker: "spx" });
+
+    assert.deepEqual(registeredUniverseTickers, ["SPX"]);
   });
 });

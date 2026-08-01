@@ -187,8 +187,9 @@ export async function ensureTickerInUniverseSnapshot(rawTicker: string): Promise
 }
 
 /**
- * A member opened a ticker on Thermal, Helix, or Vector — track it in the dynamic universe and
- * surface it in the scanner snapshot on the next poll (~5s) without waiting for the cron rebuild.
+ * A member opened a ticker on Thermal, Helix, Vector, or asked Largo for its GEX heatmap — track
+ * it in the (platform-wide, despite the module name) dynamic universe and surface it in the
+ * scanner snapshot on the next poll (~5s) without waiting for the cron rebuild.
  */
 export function registerVectorUniverseView(rawTicker: string): void {
   void (async () => {
