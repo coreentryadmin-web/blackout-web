@@ -13,6 +13,7 @@
  */
 import { todayEtYmd } from "../providers/spx-session";
 import { sharedCacheGet, sharedCacheSet } from "../shared-cache";
+import { fetchStockSnapshot } from "../providers/polygon";
 
 export type StockCandle = {
   time: number;
@@ -23,7 +24,11 @@ export type StockCandle = {
   volume?: number;
 };
 
-type CandleSnapshot = { current: StockCandle | null; updatedAt: number };
+type CandleSnapshot = {
+  current: StockCandle | null;
+  updatedAt: number;
+  changePct: number;
+};
 
 type TickerState = {
   current: StockCandle | null;
@@ -32,6 +37,25 @@ type TickerState = {
   lastRedisWriteAt: number;
   /** True when someone has called getStockLiveCandle() for this ticker recently. */
   demanded: boolean;
+  /**
+   * Day-change anchor, mirroring the indexStore FIX-A pattern in polygon-socket.ts:
+   * prefer the true session open from an authoritative REST snapshot's prev_close
+   * ("rest") over the first WS bar's open ("ws-bar", which on a mid-session
+   * reconnect would anchor off whatever price happened to be live at boot, not
+   * the real 09:30 open). Once "rest" is set for the day it is never downgraded.
+   */
+  sessionOpen: number;
+  openSource: "rest" | "ws-bar" | "";
+  /** Guards against firing a duplicate REST seed while one is already in flight. */
+  seedInflight: Promise<void> | null;
+  /**
+   * Timestamp of the last REST seed attempt (success OR failure/empty), so a
+   * ticker whose snapshot legitimately has no prev_close (bad/delisted symbol,
+   * transient upstream failure) doesn't get re-queried on every single
+   * getStockLiveCandle() call for the rest of the session — only openSource
+   * ever gates a SUCCESSFUL seed; this cooldown gates RETRY attempts.
+   */
+  lastSeedAttemptAt: number;
 };
 
 const stores = new Map<string, TickerState>();
@@ -50,10 +74,73 @@ function redisKey(ticker: string): string {
 function getOrCreateState(ticker: string): TickerState {
   let s = stores.get(ticker);
   if (!s) {
-    s = { current: null, sessionDate: "", updatedAt: 0, lastRedisWriteAt: 0, demanded: false };
+    s = {
+      current: null,
+      sessionDate: "",
+      updatedAt: 0,
+      lastRedisWriteAt: 0,
+      demanded: false,
+      sessionOpen: 0,
+      openSource: "",
+      seedInflight: null,
+      lastSeedAttemptAt: 0,
+    };
     stores.set(ticker, s);
   }
   return s;
+}
+
+export function computeChangePct(close: number, sessionOpen: number): number {
+  return sessionOpen > 0 ? Number((((close - sessionOpen) / sessionOpen) * 100).toFixed(2)) : 0;
+}
+
+/**
+ * Injectable so unit tests never trigger a real Polygon network call — defaults
+ * to the real provider. `_setSnapshotFetcherForTest` swaps it for a stub; there
+ * is no `mock.module` available in this repo's node:test environment (see
+ * db.test.ts notes), so plain dependency injection is the established pattern
+ * here for anything that would otherwise reach a live upstream.
+ */
+let snapshotFetcher: (ticker: string) => ReturnType<typeof fetchStockSnapshot> = fetchStockSnapshot;
+
+/** Test-only: override the REST snapshot fetcher used to seed session_open. */
+export function _setSnapshotFetcherForTest(fn: typeof snapshotFetcher | null): void {
+  snapshotFetcher = fn ?? fetchStockSnapshot;
+}
+
+/**
+ * Retry cooldown for a seed attempt that didn't land a "rest" anchor (bad/
+ * delisted ticker, transient upstream failure, or a genuinely quote-less
+ * symbol). Without this, EVERY getStockLiveCandle() call for such a ticker
+ * would re-fire a REST request forever — for a hot polling/streaming path,
+ * that is an unbounded-rate retry storm, not a one-time seed.
+ */
+const SEED_RETRY_COOLDOWN_MS = 30_000;
+
+/**
+ * Lazily seed the true session-open anchor from an authoritative REST snapshot's
+ * prev_close, ONCE per (ticker, session date) — mirrors indexStore's FIX-A. Only
+ * fires for "demanded" tickers (someone is actually reading this ticker's live
+ * quote); with ~8K tickers streaming ticks, seeding all of them via REST would be
+ * an 8K-request storm for tickers nobody is looking at.
+ */
+function seedSessionOpenIfNeeded(ticker: string, s: TickerState): void {
+  if (s.openSource === "rest" || s.seedInflight) return;
+  if (s.lastSeedAttemptAt > 0 && Date.now() - s.lastSeedAttemptAt < SEED_RETRY_COOLDOWN_MS) return;
+  s.lastSeedAttemptAt = Date.now();
+  s.seedInflight = snapshotFetcher(ticker)
+    .then((snap) => {
+      // A reconnect/new-day race could have already reset sessionDate; only apply
+      // if this ticker is still on the session we seeded for and hasn't since
+      // gotten a "rest" anchor from a concurrent caller.
+      if (!snap || s.openSource === "rest" || !(snap.prev_close > 0)) return;
+      s.sessionOpen = snap.prev_close;
+      s.openSource = "rest";
+    })
+    .catch(() => {})
+    .finally(() => {
+      s.seedInflight = null;
+    });
 }
 
 /** Feed one live stock price tick into the per-ticker aggregator. */
@@ -66,6 +153,12 @@ export function recordStockTick(ticker: string, price: number, volume?: number, 
   if (sessionDate !== s.sessionDate) {
     s.current = null;
     s.sessionDate = sessionDate;
+    // New session: the prior day's anchor no longer applies. Reset to unseeded —
+    // getStockLiveCandle will re-fire the REST seed for demanded tickers, and any
+    // ws-bar fallback below will re-derive from today's first bar in the meantime.
+    s.sessionOpen = 0;
+    s.openSource = "";
+    s.lastSeedAttemptAt = 0;
   }
 
   const barTime = Math.floor(atMs / BAR_MS) * (BAR_MS / 1000);
@@ -78,8 +171,19 @@ export function recordStockTick(ticker: string, price: number, volume?: number, 
   } else {
     if (s.current && barTime < s.current.time) return;
     s.current = { time: barTime, open: price, high: price, low: price, close: price, ...(volume != null && volume > 0 ? { volume } : {}) };
+    // First bar of the (re)connect: if no authoritative REST anchor has landed
+    // yet, use this bar's open as a provisional session_open — same "ws-bar"
+    // fallback tier as indexStore. The REST seed (fired from getStockLiveCandle)
+    // will overwrite this with the true 09:30 open once it resolves; "rest" is
+    // never downgraded back to "ws-bar" (see seedSessionOpenIfNeeded).
+    if (s.openSource === "") {
+      s.sessionOpen = price;
+      s.openSource = "ws-bar";
+    }
   }
   s.updatedAt = Date.now();
+
+  const changePct = computeChangePct(s.current.close, s.sessionOpen);
 
   // On-demand Redis write: only push to Redis for tickers someone is actively
   // reading (getStockLiveCandle sets demanded=true). With A.* we get ~8K tickers;
@@ -89,7 +193,7 @@ export function recordStockTick(ticker: string, price: number, volume?: number, 
     s.lastRedisWriteAt = s.updatedAt;
     void sharedCacheSet(
       redisKey(sym),
-      { current: s.current, updatedAt: s.updatedAt } satisfies CandleSnapshot,
+      { current: s.current, updatedAt: s.updatedAt, changePct } satisfies CandleSnapshot,
       REDIS_TTL_SEC,
     ).catch(() => {});
   }
@@ -125,8 +229,17 @@ export function getStockLiveCandle(ticker: string): CandleSnapshot {
   const s = getOrCreateState(sym);
   // Mark as demanded so recordStockTick writes this ticker to Redis for cross-replica fallback.
   s.demanded = true;
+  // Only seed a day-change anchor when THIS process actually has live WS data for the
+  // ticker (s.current != null). Two cases where that's false, both correctly skipped:
+  //  - a genuinely untraded/nonexistent ticker (nothing to anchor a % change against —
+  //    the REST fallback in quote/route.ts will independently fetch price+change_pct);
+  //  - a non-leader replica, which never accumulates s.current locally (no WS
+  //    connection there) — its Redis fallback snapshot already carries the LEADER's
+  //    precomputed changePct, so seeding here would be redundant AND wasted, since a
+  //    follower's own (permanently-null) sessionOpen is never read by anything.
+  if (s.current) seedSessionOpenIfNeeded(sym, s);
   const local: CandleSnapshot | null = s.current
-    ? { current: s.current, updatedAt: s.updatedAt }
+    ? { current: s.current, updatedAt: s.updatedAt, changePct: computeChangePct(s.current.close, s.sessionOpen) }
     : null;
 
   const localFresh = local != null && Date.now() - local.updatedAt <= LOCAL_STALE_MS;
@@ -138,9 +251,9 @@ export function getStockLiveCandle(ticker: string): CandleSnapshot {
   const best: CandleSnapshot | null =
     local && fb.snap && fb.snap.updatedAt > local.updatedAt ? fb.snap : local ?? fb.snap;
 
-  if (!best) return { current: null, updatedAt: 0 };
+  if (!best) return { current: null, updatedAt: 0, changePct: 0 };
   if (Date.now() - best.updatedAt > MAX_CANDLE_AGE_MS) {
-    return { current: null, updatedAt: best.updatedAt };
+    return { current: null, updatedAt: best.updatedAt, changePct: 0 };
   }
   return best;
 }
