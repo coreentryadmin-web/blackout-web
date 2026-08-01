@@ -68,14 +68,9 @@ test("isUsableGexHeatmapPayload / shouldForceMatrixRefresh", () => {
     "throttle blocks force"
   );
   assert.equal(
-    shouldForceMatrixRefresh({ asofMs: now - 60_000, nowMs: now, lastForceAtMs: 0, sessionLive: false }),
-    false,
-    "off-hours: 60s age must not force (90s threshold)"
-  );
-  assert.equal(
     shouldForceMatrixRefresh({ asofMs: now - 120_000, nowMs: now, lastForceAtMs: 0, sessionLive: false }),
-    true,
-    "off-hours: >90s age may force"
+    false,
+    "off-hours: never force (RTH-only policy)"
   );
 });
 

@@ -174,6 +174,7 @@ export function SpxGexMatrixHeatmap({
     MATRIX_POLL_RTH_MS,
     MATRIX_POLL_OFF_MS
   );
+  const sessionLive = Boolean(sessionActive ?? deskLive);
   // Fast-move bypass (Thermal parity): when live desk spot diverges from cached matrix
   // spot by >0.5%, force ONE immediate matrix recompute via &force=1 (throttled ≤1/8s).
   const [forceNonce, setForceNonce] = useState(0);
@@ -296,6 +297,7 @@ export function SpxGexMatrixHeatmap({
     liveSpot != null && liveSpot > 0 ? liveSpot : matrixSpot > 0 ? matrixSpot : 0;
 
   useEffect(() => {
+    if (!sessionLive) return;
     if (!(matrixSpot > 0) || !(overlaySpot > 0)) return;
     if (liveSpot == null || liveSpot <= 0) return;
     const divergence = Math.abs(liveSpot - matrixSpot) / matrixSpot;
@@ -309,7 +311,7 @@ export function SpxGexMatrixHeatmap({
     flashTimerRef.current = setTimeout(() => setFastFlash(false), 2_000);
     if (forceResetTimerRef.current) clearTimeout(forceResetTimerRef.current);
     forceResetTimerRef.current = setTimeout(() => setForceNonce(0), 4_000);
-  }, [liveSpot, matrixSpot, overlaySpot]);
+  }, [liveSpot, matrixSpot, overlaySpot, sessionLive]);
 
   useEffect(() => {
     return () => {

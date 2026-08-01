@@ -265,6 +265,7 @@ function TripleColumn({
 
   useEffect(() => {
     const tick = () => {
+      if (!sessionLive) return;
       const nowMs = Date.now();
       if (forceActive) return; // wait for in-flight force to settle before arming another
       if (nowMs - lastForceAtRef.current < MATRIX_FORCE_THROTTLE_MS) return;
