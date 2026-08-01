@@ -3,6 +3,7 @@ import { requireAdminApi } from "@/lib/admin-access";
 import { fetchSpxAdminAnalytics } from "@/lib/admin-spx-analytics";
 import { recordAdminRouteError } from "@/lib/admin-route-errors";
 import { roundFloats } from "@/lib/round-floats";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
 
@@ -12,9 +13,12 @@ export async function GET() {
 
   try {
     const analytics = await fetchSpxAdminAnalytics();
-    return NextResponse.json(roundFloats(analytics));
+    return NextResponse.json(roundFloats(analytics), { headers: NO_STORE_HEADERS });
   } catch (error) {
     recordAdminRouteError("admin/analytics/spx", error);
-    return NextResponse.json({ error: "Failed to load SPX analytics" }, { status: 502 });
+    return NextResponse.json(
+      { error: "Failed to load SPX analytics" },
+      { status: 502, headers: NO_STORE_HEADERS },
+    );
   }
 }

@@ -13,9 +13,12 @@ export async function GET() {
 
   try {
     const analytics = await fetchXAdminAnalytics();
-    return NextResponse.json(roundFloats(analytics), {
-      headers: { "Cache-Control": "no-store" },
-    });
+    // Root cause (2026-08-01 audit): this route imported NO_STORE_HEADERS but never
+    // applied it — a bare `Cache-Control: no-store` is missing the CDN-scoped
+    // CDN-Cache-Control/Cloudflare-CDN-Cache-Control headers that are the actually
+    // load-bearing ones (see the doc comment on NO_STORE_HEADERS), so a Cloudflare
+    // cache rule with override_origin could still edge-cache this response.
+    return NextResponse.json(roundFloats(analytics), { headers: NO_STORE_HEADERS });
   } catch (error) {
     recordAdminRouteError("admin/analytics/x", error);
     return NextResponse.json(

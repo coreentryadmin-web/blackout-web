@@ -6,6 +6,7 @@ import { parseAdminUserRole, upsertAdminUserRow } from "@/lib/admin-users";
 import { isCognitoAuth } from "@/lib/auth-provider";
 import { syncWhopMembershipForEmail } from "@/lib/membership";
 import { parseTier } from "@/lib/tiers";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
 
@@ -14,25 +15,31 @@ export async function POST(req: NextRequest) {
   if (denied) return denied;
 
   if (isCognitoAuth()) {
-    return NextResponse.json({ error: "User management requires Clerk auth." }, { status: 501 });
+    return NextResponse.json(
+      { error: "User management requires Clerk auth." },
+      { status: 501, headers: NO_STORE_HEADERS },
+    );
   }
 
   const body = await req.json();
   const { email, firstName, lastName, tier, role, phone, syncWhop } = body;
 
   if (!email?.trim()) {
-    return NextResponse.json({ error: "Email is required" }, { status: 400 });
+    return NextResponse.json({ error: "Email is required" }, { status: 400, headers: NO_STORE_HEADERS });
   }
   if (!phone?.trim()) {
     return NextResponse.json(
       { error: "Phone number is required for manual account creation" },
-      { status: 400 }
+      { status: 400, headers: NO_STORE_HEADERS }
     );
   }
 
   const parsedRole = parseAdminUserRole(role);
   if (role != null && role !== "" && parsedRole === undefined) {
-    return NextResponse.json({ error: "Invalid role — use admin or member" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Invalid role — use admin or member" },
+      { status: 400, headers: NO_STORE_HEADERS },
+    );
   }
 
   const client = await clerkClient();
@@ -96,10 +103,10 @@ export async function POST(req: NextRequest) {
       email.trim().replace(/[\r\n]/g, "")
     );
 
-    return NextResponse.json({ id: user.id, email, whopTier }, { status: 201 });
+    return NextResponse.json({ id: user.id, email, whopTier }, { status: 201, headers: NO_STORE_HEADERS });
   } catch (err) {
     const errors = (err as { errors?: Array<{ message: string }> })?.errors;
     const msg = errors?.[0]?.message ?? "Failed to create user";
-    return NextResponse.json({ error: msg }, { status: 422 });
+    return NextResponse.json({ error: msg }, { status: 422, headers: NO_STORE_HEADERS });
   }
 }

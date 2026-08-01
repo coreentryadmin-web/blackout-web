@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAdminApi } from "@/lib/admin-access";
 import { fetchRecentErrorEvents } from "@/lib/error-sink";
 import { recordAdminRouteError } from "@/lib/admin-route-errors";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -16,9 +17,12 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const limit = Number(url.searchParams.get("limit") ?? "100");
     const events = await fetchRecentErrorEvents(Number.isFinite(limit) ? limit : 100);
-    return NextResponse.json({ ok: true, events });
+    return NextResponse.json({ ok: true, events }, { headers: NO_STORE_HEADERS });
   } catch (error) {
     recordAdminRouteError("admin/errors", error);
-    return NextResponse.json({ ok: false, error: "failed to load error events" }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: "failed to load error events" },
+      { status: 500, headers: NO_STORE_HEADERS },
+    );
   }
 }

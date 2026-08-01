@@ -10,6 +10,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminApi } from "@/lib/admin-access";
 import { applyMigrationFile } from "@/lib/run-migration";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,17 +24,20 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     filename = body?.filename;
   } catch {
-    return NextResponse.json({ ok: false, error: "Invalid JSON body" }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "Invalid JSON body" },
+      { status: 400, headers: NO_STORE_HEADERS },
+    );
   }
 
   if (!filename || typeof filename !== "string") {
     return NextResponse.json(
       { ok: false, error: "Missing required field: filename" },
-      { status: 400 }
+      { status: 400, headers: NO_STORE_HEADERS }
     );
   }
 
   const result = await applyMigrationFile(filename);
 
-  return NextResponse.json(result, { status: result.ok ? 200 : 500 });
+  return NextResponse.json(result, { status: result.ok ? 200 : 500, headers: NO_STORE_HEADERS });
 }
