@@ -2860,53 +2860,20 @@ export async function upsertPlaybookInstances(
   if (!rows.length) return;
   await ensureSchema();
   const pool = await getPool();
-  for (const row of rows) {
-    await pool.query(
-      `
-      INSERT INTO spx_playbook_instances (
-        instance_id, session_date, playbook_id, direction, state,
-        armed_at, triggered_at, invalidated_at, opened_at, closed_at,
-        feature_snapshot, detail,
-        trigger_price, reason_invalidated, reason_blocked, armed_poll_count, trigger_count, updated_at
-      )
-      VALUES ($1,$2,$3,$4,$5,
-        CASE WHEN $5 = 'armed' THEN NOW() ELSE NULL END,
-        CASE WHEN $5 IN ('triggered', 'blocked', 'entry_pending') THEN NOW() ELSE NULL END,
-        CASE WHEN $5 = 'invalidated' THEN NOW() ELSE NULL END,
-        CASE WHEN $5 = 'open' THEN NOW() ELSE NULL END,
-        CASE WHEN $5 = 'closed' THEN NOW() ELSE NULL END,
-        $6::jsonb, $7,
-        $8, $9, $10, COALESCE($11, 0),
-        CASE WHEN $5 = 'triggered' THEN 1 ELSE 0 END,
-        NOW())
-      ON CONFLICT (instance_id) DO UPDATE SET
-        direction = EXCLUDED.direction,
-        state = EXCLUDED.state,
-        armed_at = COALESCE(spx_playbook_instances.armed_at,
-          CASE WHEN EXCLUDED.state = 'armed' THEN NOW() ELSE NULL END),
-        triggered_at = COALESCE(spx_playbook_instances.triggered_at,
-          CASE WHEN EXCLUDED.state IN ('triggered', 'blocked', 'entry_pending') THEN NOW() ELSE NULL END),
-        invalidated_at = COALESCE(spx_playbook_instances.invalidated_at,
-          CASE WHEN EXCLUDED.state = 'invalidated' THEN NOW() ELSE NULL END),
-        opened_at = COALESCE(spx_playbook_instances.opened_at,
-          CASE WHEN EXCLUDED.state = 'open' THEN NOW() ELSE NULL END),
-        closed_at = COALESCE(spx_playbook_instances.closed_at,
-          CASE WHEN EXCLUDED.state = 'closed' THEN NOW() ELSE NULL END),
-        feature_snapshot = EXCLUDED.feature_snapshot,
-        detail = EXCLUDED.detail,
-        trigger_price = COALESCE(spx_playbook_instances.trigger_price, EXCLUDED.trigger_price),
-        reason_invalidated = COALESCE(EXCLUDED.reason_invalidated, spx_playbook_instances.reason_invalidated),
-        reason_blocked = COALESCE(EXCLUDED.reason_blocked, spx_playbook_instances.reason_blocked),
-        armed_poll_count = GREATEST(COALESCE(spx_playbook_instances.armed_poll_count, 0), COALESCE(EXCLUDED.armed_poll_count, 0)),
-        trigger_count = CASE
-          WHEN EXCLUDED.state = 'triggered'
-            AND spx_playbook_instances.state IS DISTINCT FROM 'triggered'
-          THEN COALESCE(spx_playbook_instances.trigger_count, 0) + 1
-          ELSE COALESCE(spx_playbook_instances.trigger_count, EXCLUDED.trigger_count, 0)
-        END,
-        updated_at = NOW()
-      `,
-      [
+
+  // 2026-08-01 CTO perf audit (P2): was one INSERT..ON CONFLICT round-trip per row on the SPX
+  // playbook scan hot path — same fixable anti-pattern as upsertNighthawkPlayOutcomes (~line
+  // 7352), just applied here. Each row's tuple repeats its own `state` parameter (e.g. $b+5)
+  // across the armed_at/triggered_at/.../trigger_count CASE expressions — a bound parameter can
+  // appear multiple times within one statement, so this reproduces the exact per-row derived-
+  // timestamp logic from the old per-row query, just batched into one multi-row VALUES list. The
+  // ON CONFLICT...DO UPDATE clause is unchanged and unconditionally shared: Postgres evaluates it
+  // per conflicting row against EXCLUDED regardless of how many rows are in the VALUES list.
+  const params: Array<string | number | null> = [];
+  const tuples = rows
+    .map((row, i) => {
+      const b = i * 11;
+      params.push(
         row.instance_id,
         sessionDate,
         row.playbook_id,
@@ -2917,10 +2884,59 @@ export async function upsertPlaybookInstances(
         row.trigger_price ?? null,
         row.reason_invalidated ?? null,
         row.reason_blocked ?? null,
-        row.armed_poll_count ?? null,
-      ]
-    );
-  }
+        row.armed_poll_count ?? null
+      );
+      return `($${b + 1},$${b + 2},$${b + 3},$${b + 4},$${b + 5},
+        CASE WHEN $${b + 5} = 'armed' THEN NOW() ELSE NULL END,
+        CASE WHEN $${b + 5} IN ('triggered', 'blocked', 'entry_pending') THEN NOW() ELSE NULL END,
+        CASE WHEN $${b + 5} = 'invalidated' THEN NOW() ELSE NULL END,
+        CASE WHEN $${b + 5} = 'open' THEN NOW() ELSE NULL END,
+        CASE WHEN $${b + 5} = 'closed' THEN NOW() ELSE NULL END,
+        $${b + 6}::jsonb, $${b + 7},
+        $${b + 8}, $${b + 9}, $${b + 10}, COALESCE($${b + 11}, 0),
+        CASE WHEN $${b + 5} = 'triggered' THEN 1 ELSE 0 END,
+        NOW())`;
+    })
+    .join(", ");
+
+  await pool.query(
+    `
+    INSERT INTO spx_playbook_instances (
+      instance_id, session_date, playbook_id, direction, state,
+      armed_at, triggered_at, invalidated_at, opened_at, closed_at,
+      feature_snapshot, detail,
+      trigger_price, reason_invalidated, reason_blocked, armed_poll_count, trigger_count, updated_at
+    )
+    VALUES ${tuples}
+    ON CONFLICT (instance_id) DO UPDATE SET
+      direction = EXCLUDED.direction,
+      state = EXCLUDED.state,
+      armed_at = COALESCE(spx_playbook_instances.armed_at,
+        CASE WHEN EXCLUDED.state = 'armed' THEN NOW() ELSE NULL END),
+      triggered_at = COALESCE(spx_playbook_instances.triggered_at,
+        CASE WHEN EXCLUDED.state IN ('triggered', 'blocked', 'entry_pending') THEN NOW() ELSE NULL END),
+      invalidated_at = COALESCE(spx_playbook_instances.invalidated_at,
+        CASE WHEN EXCLUDED.state = 'invalidated' THEN NOW() ELSE NULL END),
+      opened_at = COALESCE(spx_playbook_instances.opened_at,
+        CASE WHEN EXCLUDED.state = 'open' THEN NOW() ELSE NULL END),
+      closed_at = COALESCE(spx_playbook_instances.closed_at,
+        CASE WHEN EXCLUDED.state = 'closed' THEN NOW() ELSE NULL END),
+      feature_snapshot = EXCLUDED.feature_snapshot,
+      detail = EXCLUDED.detail,
+      trigger_price = COALESCE(spx_playbook_instances.trigger_price, EXCLUDED.trigger_price),
+      reason_invalidated = COALESCE(EXCLUDED.reason_invalidated, spx_playbook_instances.reason_invalidated),
+      reason_blocked = COALESCE(EXCLUDED.reason_blocked, spx_playbook_instances.reason_blocked),
+      armed_poll_count = GREATEST(COALESCE(spx_playbook_instances.armed_poll_count, 0), COALESCE(EXCLUDED.armed_poll_count, 0)),
+      trigger_count = CASE
+        WHEN EXCLUDED.state = 'triggered'
+          AND spx_playbook_instances.state IS DISTINCT FROM 'triggered'
+        THEN COALESCE(spx_playbook_instances.trigger_count, 0) + 1
+        ELSE COALESCE(spx_playbook_instances.trigger_count, EXCLUDED.trigger_count, 0)
+      END,
+      updated_at = NOW()
+    `,
+    params
+  );
 }
 
 export async function insertPlaybookInstanceEvents(
