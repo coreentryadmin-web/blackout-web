@@ -3,6 +3,11 @@
  * all connections watching that symbol. Mirrors spx/pulse/stream shared refresher pattern.
  */
 import { buildVectorStreamPayload, type VectorStreamPayload } from "./vector-snapshot";
+import {
+  trimWallHistoryForTransport,
+  trimWallHistorySampleForTransport,
+  VECTOR_SSE_FULL_FRAME_MAX_SAMPLES,
+} from "./vector-wall-transport";
 import { normalizeVectorTicker } from "./vector-ticker";
 
 const TICK_MS = 1_000;
@@ -53,9 +58,15 @@ async function refreshTickerHub(ticker: string): Promise<void> {
   hub.refreshInFlight = true;
   try {
     const payload: VectorStreamPayload = await buildVectorStreamPayload(t);
-    hub.latestFullFrame = frame(payload);
+    const attachHistory = trimWallHistoryForTransport(payload.wallHistory, {
+      maxSamples: VECTOR_SSE_FULL_FRAME_MAX_SAMPLES,
+    });
+    hub.latestFullFrame = frame({ ...payload, wallHistory: attachHistory });
     const tail = payload.wallHistory[payload.wallHistory.length - 1];
-    hub.latestDeltaFrame = frame({ ...payload, wallHistory: tail ? [tail] : [] });
+    hub.latestDeltaFrame = frame({
+      ...payload,
+      wallHistory: tail ? [trimWallHistorySampleForTransport(tail)] : [],
+    });
   } catch {
     /* keep previous frames on transient error */
   } finally {
