@@ -74,6 +74,23 @@ const stagingEdgeBypass = [
   { key: "Cloudflare-CDN-Cache-Control", value: "no-store" },
   { key: "Cache-Control", value: "private, no-cache, no-store, must-revalidate, max-age=0" },
 ];
+/**
+ * 2026-08-01 CTO perf/security audit (P0/P1): the catch-all headers() rule below only applied
+ * `stagingEdgeBypass` when `isStagingSite` — permanently false since staging was decommissioned
+ * (see CLAUDE.md), so production's API tree got ZERO Cache-Control/CDN-Cache-Control from the
+ * framework, leaving every route entirely dependent on remembering to import
+ * `@/lib/no-store-headers` (src/lib/no-store-headers.guard.test.ts's REQUIRED_PREFIXES allowlist
+ * had gaps too — admin/, nighthawk/, webhook(s)/, worker/, telemetry/, push/, engine/ — fixed
+ * separately). This is a framework-level FLOOR for the whole /api tree, unconditional in every
+ * environment: a route's own response headers still win on any collision (Next.js applies
+ * per-route headers after config-level ones), so a route that already sets NO_STORE_HEADERS is
+ * unaffected — this only protects routes that forget to.
+ */
+const apiEdgeBypass = [
+  { key: "CDN-Cache-Control", value: "no-store" },
+  { key: "Cloudflare-CDN-Cache-Control", value: "no-store" },
+  { key: "Cache-Control", value: "no-store, no-cache, must-revalidate, max-age=0" },
+];
 /** Hash-named build assets — edge-cache 1y on staging (purge on deploy via CF_PURGE_DEPLOY_ID). */
 const stagingStaticCache = [
   { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
@@ -148,8 +165,15 @@ const nextConfig = {
         headers: [...securityHeaders, ...authDocumentEdgeBypass],
       },
       {
-        source: "/((?!embed/|_next/).*)",
+        source: "/((?!embed/|_next/|api/).*)",
         headers: isStagingSite ? [...securityHeaders, ...stagingEdgeBypass] : securityHeaders,
+      },
+      // Unconditional /api/* no-store floor (see apiEdgeBypass comment above) — split out of the
+      // catch-all (which now excludes api/ via the negative lookahead) so this doesn't double-apply
+      // securityHeaders/CSP alongside the catch-all on the same path.
+      {
+        source: "/api/:path*",
+        headers: [...securityHeaders, ...apiEdgeBypass],
       },
       {
         source: "/embed/:path*",

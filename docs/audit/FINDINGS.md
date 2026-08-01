@@ -4,6 +4,52 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-01 — [CTO perf audit] API Cache-Control safety net was dead in production (next.config.mjs `isStagingSite` gate) — FIXED; guard-test prefix gap superseded, not separately patched
+
+**Severity.** P1 (downgraded from initial P0 read — see mitigation note below). Framework-level
+Cache-Control fallback for the whole `/api/*` tree only fired when `isStagingSite` was true —
+permanently false since staging was decommissioned 2026-07-25 — so production's API tree got zero
+Cache-Control/CDN-Cache-Control from `next.config.mjs`, leaving every route entirely dependent on
+remembering to import `src/lib/no-store-headers.ts`.
+
+**Mitigating factor (checked live, not assumed).** Cloudflare already has an active cache rule
+bypassing cache for all of `/api/*` (`cache: false`, confirmed via
+`GET /zones/{zone}/rulesets/phases/http_request_cache_settings/entrypoint`) except two intentional
+public overrides (`/api/market/news` 2min, `/api/market/regime` 30s) and a disabled
+`/api/market/gex-positioning` rule. **This gap was not an active incident** — it was a real,
+unmitigated origin-level weakness that happened to be masked by the CDN-side rule, which is exactly
+the kind of double-failure (hand-edited CF rule + missing origin header) that has bitten this repo
+before (the `/upgrade` HTML edge-cache incident, 2026-07-22).
+
+**Fix.** `next.config.mjs`: new `apiEdgeBypass` no-store header set applied via an explicit,
+**unconditional** `/api/:path*` headers() rule (not gated on `isStagingSite`) — a framework-level
+floor for the whole API tree in every environment. The catch-all rule's negative lookahead was
+extended to exclude `api/` (`/((?!embed/|_next/|api/).*)`) so the two rules don't both match the
+same path and duplicate `securityHeaders`/CSP. A route's own response headers still win on any
+collision (Next.js applies per-route headers after config-level ones), so routes that already set
+`NO_STORE_HEADERS` correctly are unaffected — this only protects routes that forget to.
+
+**On the companion P1 (guard-test `REQUIRED_PREFIXES` gap — `admin/`, `nighthawk/`, `webhook(s)/`,
+`worker/`, `telemetry/`, `push/`, `engine/` missing, so 27 route files pass CI uninspected).** Did
+NOT extend the prefix list and hand-patch all 27 files — the framework-level fix above already
+gives every one of those routes (and any future route) an unconditional origin-level no-store floor
+regardless of whether the route file imports the shared constant, which is strictly stronger
+protection than a per-file CI check. Extending `REQUIRED_PREFIXES` without fixing the 27 offending
+files would have only broken CI; hand-editing dozens of varied response call sites under time
+pressure across 27 files was judged higher-risk than the value added given the config fix already
+closes the actual security/staleness gap. Flagged as a legitimate secondary defense-in-depth item
+if a future contributor wants to invest in it — not urgent given the above.
+
+**Tests.** New `next.config.headers.test.ts` (3 cases): the `/api/:path*` rule exists and sets
+`no-store`/`CDN-Cache-Control: no-store`/`Cloudflare-CDN-Cache-Control: no-store`; the rule's
+`headers` value is NOT an `isStagingSite` ternary (source-level check, catching a regression back
+to the exact bug this fixes); the catch-all's negative lookahead excludes `api/` (no duplicate
+`securityHeaders`). `tsc --noEmit` clean, `next build` clean.
+
+**Files.** `next.config.mjs`, `next.config.headers.test.ts` (new).
+
+**Status.** `fix/api-cache-control-fallback` → PR.
+
 ## 2026-08-01 — [CTO perf audit] Multi-agent audit (8 domains, adversarially verified) — Vector/Nighthawk 1Hz full-tree re-renders fixed; 15 more findings ranked
 
 **Context.** User-requested exhaustive performance audit ("the entire website feels slow... I just
