@@ -156,6 +156,36 @@ test("getStockLiveCandle: a REST-seeded session_open anchor overrides the ws-bar
   _setSnapshotFetcherForTest(async () => null);
 });
 
+test("getStockLiveCandle: a seed attempt that comes back empty does NOT retry on every subsequent call", async () => {
+  // Regression: the first cut of this fix re-fired fetchStockSnapshot on EVERY
+  // getStockLiveCandle() call whenever the seed attempt didn't land a "rest"
+  // anchor (bad/delisted ticker, transient failure) — an unbounded per-request
+  // retry storm against the upstream, caught by quote/route.test.ts's mocked
+  // call-count assertions going from "called once" to "called on every poll."
+  _resetStockCandleStoreForTest();
+  let calls = 0;
+  _setSnapshotFetcherForTest(async () => {
+    calls++;
+    return null;
+  });
+  const atMs = Date.parse("2026-07-15T14:48:00.000Z");
+  recordStockTick("ZZZZ", 10, undefined, atMs);
+
+  getStockLiveCandle("ZZZZ");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(calls, 1);
+
+  // Several more reads in quick succession (well within the cooldown window)
+  // must NOT re-trigger the fetch.
+  getStockLiveCandle("ZZZZ");
+  getStockLiveCandle("ZZZZ");
+  getStockLiveCandle("ZZZZ");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(calls, 1);
+
+  _setSnapshotFetcherForTest(async () => null);
+});
+
 test("separate tickers have independent state", () => {
   _resetStockCandleStoreForTest();
   const atMs = Date.parse("2026-07-15T14:40:00.000Z");
