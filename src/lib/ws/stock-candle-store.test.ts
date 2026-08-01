@@ -1,6 +1,19 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { recordStockTick, getStockLiveCandle, getStockCandleStoreStats, wsSpotPrice, _resetStockCandleStoreForTest } from "./stock-candle-store";
+import {
+  recordStockTick,
+  getStockLiveCandle,
+  getStockCandleStoreStats,
+  wsSpotPrice,
+  computeChangePct,
+  _resetStockCandleStoreForTest,
+  _setSnapshotFetcherForTest,
+} from "./stock-candle-store";
+
+// Every test in this file must stay network-free: stub the REST session-open
+// seed to resolve to "no anchor" immediately (same effect as offline/no key),
+// so getStockLiveCandle()'s lazy seed never reaches the real Polygon provider.
+_setSnapshotFetcherForTest(async () => null);
 
 test("recordStockTick: first tick opens a bar with open=high=low=close", () => {
   _resetStockCandleStoreForTest();
@@ -99,6 +112,48 @@ test("getStockLiveCandle: returns null for unknown ticker", () => {
   const snap = getStockLiveCandle("ZZZZ");
   assert.equal(snap.current, null);
   assert.equal(snap.updatedAt, 0);
+  assert.equal(snap.changePct, 0);
+});
+
+test("computeChangePct: rounds to 2dp and matches the indexStore sibling's rounding", () => {
+  assert.equal(computeChangePct(605.5, 600), 0.92);
+  assert.equal(computeChangePct(595, 600), -0.83);
+});
+
+test("computeChangePct: returns 0 when there is no session-open anchor yet", () => {
+  assert.equal(computeChangePct(605.5, 0), 0);
+});
+
+test("recordStockTick: first bar of the day seeds a provisional ws-bar session_open when REST hasn't resolved", () => {
+  _resetStockCandleStoreForTest();
+  const atMs = Date.parse("2026-07-15T14:45:00.000Z");
+  recordStockTick("PLTR", 40, undefined, atMs);
+  recordStockTick("PLTR", 41, undefined, atMs + 5_000);
+
+  // No REST anchor (stubbed to null) — change% is computed off the first bar's
+  // open (40), same fallback tier indexStore uses on a mid-session reconnect.
+  const snap = getStockLiveCandle("PLTR");
+  assert.equal(snap.current?.close, 41);
+  assert.equal(snap.changePct, computeChangePct(41, 40));
+});
+
+test("getStockLiveCandle: a REST-seeded session_open anchor overrides the ws-bar open", async () => {
+  _resetStockCandleStoreForTest();
+  _setSnapshotFetcherForTest(async () => ({ prev_close: 100 }) as Awaited<ReturnType<typeof import("../providers/polygon").fetchStockSnapshot>>);
+  const atMs = Date.parse("2026-07-15T14:46:00.000Z");
+  recordStockTick("ORCL", 105, undefined, atMs);
+
+  // First read fires the REST seed (async) — the ws-bar open (105, its own
+  // first tick) briefly anchors changePct=0 until the stub resolves.
+  getStockLiveCandle("ORCL");
+  // Flush past a macrotask boundary (not just one microtask hop) so the
+  // stubbed fetch's .then() chain inside seedSessionOpenIfNeeded is guaranteed
+  // to have run before we re-read, regardless of exact microtask interleaving.
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const snap = getStockLiveCandle("ORCL");
+  assert.equal(snap.changePct, computeChangePct(105, 100));
+  _setSnapshotFetcherForTest(async () => null);
 });
 
 test("separate tickers have independent state", () => {
