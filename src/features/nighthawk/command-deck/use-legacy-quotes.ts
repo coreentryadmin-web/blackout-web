@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { TerminalPlay } from "./types";
 import { parseLevelNum } from "./adapters";
+import { useLiveQuoteStream } from "@/hooks/useLiveQuoteStream";
 
 interface StockQuote {
   price: number;
@@ -15,14 +16,43 @@ interface StockQuote {
 const POLL_MS = 5_000;
 
 /**
- * Polls /api/market/quote for each unique Legacy ticker (~5s). Returns a Map<ticker, StockQuote>.
- * Only active during market hours (the endpoint handles off-hours gracefully — returns last
- * available). Deduplicates tickers so 5 plays = at most 5 concurrent fetches (shared-cached
- * server-side at 1.5s, so the real upstream pressure is minimal).
+ * Polls /api/market/quote for each unique Legacy ticker (~5s), overlaid with the sub-second
+ * stock/ETF push stream (PR 3/N of the sub-second-spot project — see FINDINGS.md; same
+ * stock-candle-store WS feed GexHeatmap/ThermalTripleDesk already read from). Returns
+ * Map<ticker, StockQuote>. Only active during market hours (the endpoint handles off-hours
+ * gracefully — returns last available). Deduplicates tickers so 5 plays = at most 5 concurrent
+ * REST fetches (shared-cached server-side at 1.5s) plus one shared SSE connection for all of them.
+ *
+ * Unlike GexHeatmap/ThermalTripleDesk's header-only overlay, both sources feed the SAME
+ * observed-price pipeline here (not a display-only overlay): a push tick and a REST poll are
+ * both "the stock moved to $X at time T" and update sessionHigh/sessionLow + trigger the
+ * overlayLegacyQuotes stop/target-crossing check identically. This is intentional — Legacy's
+ * progress bars and stop/target recommendation should react to an intra-5s stop/target breach
+ * as soon as the push stream reports it, not wait for the next 5s REST poll.
  */
 export function useLegacyStockQuotes(tickers: string[], enabled = true, pollMs = POLL_MS): Map<string, StockQuote> {
   const [quotes, setQuotes] = useState<Map<string, StockQuote>>(() => new Map());
   const key = tickers.join(",");
+  const uniqueTickers = useMemo(() => (enabled ? [...new Set(tickers)] : []), [key, enabled]);
+
+  const applyObservedPrice = useCallback(
+    (ticker: string, price: number, changePct: number, asof: string) => {
+      setQuotes((prev) => {
+        const old = prev.get(ticker);
+        if (old && old.asof === asof && old.price === price) return prev;
+        const next = new Map(prev);
+        next.set(ticker, {
+          price,
+          changePct,
+          asof,
+          sessionHigh: Math.max(price, old?.sessionHigh ?? price),
+          sessionLow: Math.min(price, old?.sessionLow ?? price),
+        });
+        return next;
+      });
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!enabled || tickers.length === 0) return;
@@ -46,22 +76,11 @@ export function useLegacyStockQuotes(tickers: string[], enabled = true, pollMs =
 
       if (cancelled) return;
 
-      setQuotes((prev) => {
-        const next = new Map(prev);
-        for (const r of results) {
-          if (r.status === "fulfilled" && r.value) {
-            const old = prev.get(r.value.ticker);
-            next.set(r.value.ticker, {
-              price: r.value.price,
-              changePct: r.value.changePct,
-              asof: r.value.asof,
-              sessionHigh: Math.max(r.value.price, old?.sessionHigh ?? r.value.price),
-              sessionLow: Math.min(r.value.price, old?.sessionLow ?? r.value.price),
-            });
-          }
+      for (const r of results) {
+        if (r.status === "fulfilled" && r.value) {
+          applyObservedPrice(r.value.ticker, r.value.price, r.value.changePct, r.value.asof);
         }
-        return next;
-      });
+      }
     };
 
     void poll();
@@ -70,7 +89,16 @@ export function useLegacyStockQuotes(tickers: string[], enabled = true, pollMs =
       cancelled = true;
       clearInterval(id);
     };
-  }, [key, enabled, pollMs]);
+  }, [key, enabled, pollMs, applyObservedPrice]);
+
+  // Sub-second overlay: a fresh push tick is treated as an observed price exactly like a REST
+  // poll result — see the doc comment above for why (progress/stop/target reacts immediately).
+  const { quotes: pushQuotes } = useLiveQuoteStream(uniqueTickers);
+  useEffect(() => {
+    for (const [ticker, q] of Object.entries(pushQuotes)) {
+      if (q.price > 0) applyObservedPrice(ticker, q.price, q.changePct, q.asof);
+    }
+  }, [pushQuotes, applyObservedPrice]);
 
   return quotes;
 }
