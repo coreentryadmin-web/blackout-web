@@ -88,6 +88,15 @@ type TypeFilter = "ALL" | "CALL" | "PUT";
 const FLOW_POLL_MS   = 30_000;
 const REPLAY_TICK_MS = 450;
 
+/** Defer non-critical panel fetches until after the main tape paints (reduces /flows load contention). */
+function deferNonCriticalWork(fn: () => void) {
+  if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+    window.requestIdleCallback(() => fn(), { timeout: 2_500 });
+    return;
+  }
+  setTimeout(fn, 250);
+}
+
 // Audit gap #6: LIVE/freshness uses real UW print time only — not ingest fallback.
 function flowFreshnessAtMs(a: {
   event_at?: string | null;
@@ -224,38 +233,35 @@ export function FlowFeed() {
   // Bug 14: keep ref in sync so SSE closure always reads current value
   useEffect(() => { audioEnabledRef.current = audioEnabled; }, [audioEnabled]);
 
-  // Feature 7: earnings calendar (cached 12h server-side). Refresh on an interval so a
-  // long-open session picks up calendar changes without a manual reload (was mount-only).
+  // Feature 7: earnings calendar (cached 12h server-side). Deferred until idle so the
+  // primary flows tape wins the first network slice on /flows navigation.
   useEffect(() => {
     const load = () =>
       fetchEarningsCalendar().then(setEarningsMap).catch((e) => console.warn("[FlowFeed] earnings fetch:", e));
-    load();
+    deferNonCriticalWork(load);
     const id = setInterval(load, 30 * 60_000);
     return () => clearInterval(id);
   }, []);
 
-  // Feature 2: dark pool prints for coordination detection (refresh every 60s)
+  // Feature 2: dark pool prints — deferred like earnings (secondary panel).
   useEffect(() => {
     const load = () =>
       fetchDarkPoolPrints({ min_premium: 500_000 })
         .then((d) => setDarkPoolPrints(d.prints ?? []))
         .catch((e) => console.warn("[FlowFeed] dark-pool fetch:", e));
-    load();
+    deferNonCriticalWork(load);
     const id = setInterval(load, 60_000);
     return () => clearInterval(id);
   }, []);
 
-  // Feature 12: Night Hawk latest edition.
-  // Auto-refresh every 120s (mirrors NightHawkFeed's SWR refreshInterval) so the
-  // edition is picked up across the ~4:30/5:30pm ET cron boundary — the prior
-  // bare mount-only fetch left /flows frozen on a stale (often empty) edition.
+  // Feature 12: Night Hawk edition — deferred; tape is P0 on /flows first paint.
   useEffect(() => {
     const load = () =>
       fetch("/api/market/nighthawk/edition", { credentials: "same-origin", cache: "no-store" })
         .then((r) => r.ok ? r.json() : null)
         .then((d: NightHawkEdition | null) => { if (d?.plays) setNighthawkEdition(d); })
         .catch((e) => console.warn("[FlowFeed] nighthawk edition fetch:", e));
-    load();
+    deferNonCriticalWork(load);
     const id = setInterval(load, 120_000);
     return () => clearInterval(id);
   }, []);
