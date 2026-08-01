@@ -29,7 +29,7 @@ import {
 import { GEX_KING_COMPACT_LABEL, GEX_KING_DUAL_LABEL, GEX_KING_NODE_HELP, gexKingDualLabel } from "@/lib/gex-king-node-labels";
 import { shiftPercentForStrike } from "@/features/thermal/lib/gex-heatmap/shift-math";
 import { createPulseEventSource, type PulseStreamSnapshot } from "@/lib/api";
-import { usePollIntervalMs } from "@/hooks/use-et-market-open";
+import { usePollIntervalMs, useEtMarketOpen } from "@/hooks/use-et-market-open";
 import { resetIosViewport } from "@/hooks/useIosKeyboardInset";
 import { todayEt } from "@/lib/et-date";
 import {
@@ -2567,6 +2567,7 @@ export function GexHeatmap({
   const [expiryScope, setExpiryScope] = useState<string>("all");
   const matrixPollMs = usePollIntervalMs(2_000, 5_000);
   const quotePollMs = usePollIntervalMs(2_000, 5_000);
+  const sessionLive = useEtMarketOpen();
 
   // Deep-link: keep ?ticker=&lens=&compare= in sync so desks can share the exact view.
   useEffect(() => {
@@ -2733,6 +2734,7 @@ export function GexHeatmap({
           asofMs: Number.isFinite(asofMs) ? asofMs : null,
           nowMs,
           lastForceAtMs: lastForceAtRef.current,
+          sessionLive,
         })
       ) {
         return;
@@ -2748,7 +2750,7 @@ export function GexHeatmap({
     tick();
     const id = setInterval(tick, 1_000);
     return () => clearInterval(id);
-  }, [data?.asof, stale, ticker, forceActive]);
+  }, [data?.asof, stale, ticker, forceActive, sessionLive]);
 
   // Reset throttle + force state when the ticker changes so a switch starts clean.
   // Also reset the expiry scope back to "All" — the expiry axis differs per chain, so a

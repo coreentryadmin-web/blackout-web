@@ -19,6 +19,8 @@ export const MATRIX_STALE_MS = 15_000;
  * the 1-minute heatmap-warm EventBridge floor while the client polls every 5s.
  */
 export const MATRIX_FORCE_REFRESH_AGE_MS = 5_000;
+/** Off-hours / closed session — heatmap-warm is ~1/min; do not force-rebuild every 5s. */
+export const MATRIX_FORCE_REFRESH_AGE_OFF_MS = 90_000;
 /** Client-side spacing between force attempts (matches server FORCE_THROTTLE_MS). */
 export const MATRIX_FORCE_THROTTLE_MS = 5_000;
 /** Overlay cache is ~30s — treat as live under 45s. */
@@ -212,9 +214,14 @@ export function shouldForceMatrixRefresh(input: {
   lastForceAtMs: number;
   forceAgeMs?: number;
   forceThrottleMs?: number;
+  /** When false (off-hours / closed), age-based force uses MATRIX_FORCE_REFRESH_AGE_OFF_MS. */
+  sessionLive?: boolean;
 }): boolean {
   const { asofMs, nowMs, lastForceAtMs } = input;
-  const forceAgeMs = input.forceAgeMs ?? MATRIX_FORCE_REFRESH_AGE_MS;
+  const sessionLive = input.sessionLive ?? true;
+  const forceAgeMs =
+    input.forceAgeMs ??
+    (sessionLive ? MATRIX_FORCE_REFRESH_AGE_MS : MATRIX_FORCE_REFRESH_AGE_OFF_MS);
   const forceThrottleMs = input.forceThrottleMs ?? MATRIX_FORCE_THROTTLE_MS;
   if (asofMs == null || !Number.isFinite(asofMs)) return false;
   const age = nowMs - asofMs;
