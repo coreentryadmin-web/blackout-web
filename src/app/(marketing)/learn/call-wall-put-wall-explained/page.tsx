@@ -7,7 +7,7 @@ import { publicPageMetadata } from "@/lib/page-metadata";
 
 const article = getArticle("call-wall-put-wall-explained")!;
 
-export const metadata: Metadata = publicPageMetadata(article.metaTitle, article.metaDescription, article.path);
+export const metadata: Metadata = publicPageMetadata(article.metaTitle, article.metaDescription, article.path, { ogType: "article" });
 
 export default function CallWallPutWallExplained() {
   return (

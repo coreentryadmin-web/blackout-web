@@ -7,7 +7,7 @@ import { publicPageMetadata } from "@/lib/page-metadata";
 
 const article = getArticle("gamma-flip-explained")!;
 
-export const metadata: Metadata = publicPageMetadata(article.metaTitle, article.metaDescription, article.path);
+export const metadata: Metadata = publicPageMetadata(article.metaTitle, article.metaDescription, article.path, { ogType: "article" });
 
 export default function GammaFlipExplained() {
   return (

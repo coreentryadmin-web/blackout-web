@@ -7,7 +7,7 @@ import { publicPageMetadata } from "@/lib/page-metadata";
 
 const article = getArticle("is-0dte-gambling")!;
 
-export const metadata: Metadata = publicPageMetadata(article.metaTitle, article.metaDescription, article.path);
+export const metadata: Metadata = publicPageMetadata(article.metaTitle, article.metaDescription, article.path, { ogType: "article" });
 
 export default function Is0dteGambling() {
   return (

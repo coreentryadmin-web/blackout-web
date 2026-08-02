@@ -9,7 +9,7 @@ export const metadata: Metadata = publicPageMetadata(
   "Getting Started With BlackOut — Trader's Quick Guide",
   "New to BlackOut? Start here. Learn how the platform scans, grades, and logs setups, and how to read your first dealer gamma and options flow signals.",
   "/learn/getting-started",
-  { kicker: "BlackOut Academy" }
+  { kicker: "BlackOut Academy", ogType: "article" }
 );
 
 export default function GettingStartedPage() {

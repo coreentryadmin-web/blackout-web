@@ -9,7 +9,7 @@ export const metadata: Metadata = publicPageMetadata(
   "SPX Slayer Guide — Trading 0DTE SPX Options",
   "Learn how SPX Slayer's 0DTE desk works: gamma matrices, tick-by-tick data, and A–F graded SPX alerts, and how to act on the setups that survive screening.",
   "/learn/spx-slayer",
-  { kicker: "BlackOut Academy" }
+  { kicker: "BlackOut Academy", ogType: "article" }
 );
 
 export default function Page() {
