@@ -816,11 +816,11 @@ You can't see individual dealer hedges, but you can see the aggregate effect. Th
 
 ## The three-column layout
 
-**Left column — GEX/VEX matrix.** This is the dealer-positioning panel. It shows a strike-by-expiry grid of signed gamma (or vanna) exposure, color-coded from deep red (heavy put gamma) to deep green (heavy call gamma). You toggle between GEX and VEX lenses here. Key levels — the [gamma flip](/learn/gamma-flip-explained), [call wall, and put wall](/learn/call-wall-put-wall-explained) — are highlighted so you can see the day's structure at a glance. For a deeper dive into reading the matrix itself, see [Reading the SPX Slayer GEX Matrix](/learn/spx-slayer-gex-matrix-guide).
+**Left column — GEX/VEX matrix.** A strike-by-expiry grid of signed gamma (or vanna) exposure, color-coded from deep red (heavy put gamma) to deep green (heavy call gamma). Key levels — the [gamma flip](/learn/gamma-flip-explained), [call wall, and put wall](/learn/call-wall-put-wall-explained) — are highlighted. See [Reading the SPX Slayer GEX Matrix](/learn/spx-slayer-gex-matrix-guide).
 
-**Center column — play engine.** This is where the graded setups live. Each play card shows the ticker, direction, strike, expiry, confluence grade (A+ through D), score, confidence percentage, and current action state (SCANNING, WATCHING, BUY, HOLD, TRIM, SELL). The center column is the decision layer — positioning data from the left feeds into the grading engine, and the output is a filtered, ranked list of plays worth watching. See [SPX Slayer Play Grades Explained](/learn/spx-slayer-play-grades-explained) for how the grading works.
+**Center column — play engine.** Graded setups showing ticker, direction, strike, expiry, confluence grade (A+ through D), score, confidence percentage, and action state (SCANNING, WATCHING, BUY, HOLD, TRIM, SELL). Positioning data from the left feeds the grading engine; the output is a filtered list of plays worth watching. See [SPX Slayer Play Grades Explained](/learn/spx-slayer-play-grades-explained).
 
-**Right column — Largo commentary.** [Largo AI](/learn/largo-ai) provides a running narrative of the session — regime reads, level commentary, and context for why the engine is or isn't firing. Think of it as a senior trader sitting next to you explaining the board. During RTH it updates as conditions change; outside market hours it summarizes the prior session.
+**Right column — Largo commentary.** [Largo AI](/learn/largo-ai) provides a running narrative — regime reads, level commentary, and context for why the engine is or isn't firing. During RTH it updates as conditions change; outside market hours it summarizes the prior session.
 
 ## The hero bar
 
@@ -828,9 +828,9 @@ Across the top of the dashboard sits the hero bar — the five-second read on wh
 
 **Hero SPX price.** The large number front and center. It updates in near-real-time via SSE and shows the last traded price for SPX.
 
-**VIX pill.** A small badge next to price showing the current VIX level. VIX is the market's 30-day [implied volatility](/learn/implied-volatility-explained) read for SPX — a quick proxy for how expensive options are and, loosely, whether dealers are likely positioned in a positive or negative [gamma regime](/learn/what-is-gex). A VIX under 15 usually means calm; above 25 means volatility is elevated and premiums are rich.
+**VIX pill.** A badge showing the current VIX level — the market's 30-day [implied volatility](/learn/implied-volatility-explained) read for SPX. VIX under 15 usually means calm; above 25 means volatility is elevated and premiums are rich.
 
-**VWAP pill.** Shows SPX's volume-weighted average price for the session. The pill tints **green (bull)** when price is trading above VWAP — buyers are in control on a volume-weighted basis — and **red (bear)** when price is below. VWAP is a widely watched institutional reference; its tint gives you the intraday posture without opening a chart.
+**VWAP pill.** SPX's volume-weighted average price for the session. The pill tints **green (bull)** when price is above VWAP and **red (bear)** when below — a quick institutional-level posture read without opening a chart.
 
 **Net GEX.** The aggregate [gamma exposure](/learn/what-is-gex) number for the SPX chain. Positive means dealers are long gamma (expect range compression); negative means short gamma (expect amplification). This single number sets the session's baseline character.
 
@@ -850,10 +850,10 @@ These levels are inputs into the play engine's confluence scoring. You don't nee
 Data freshness matters on a 0DTE desk. The **FreshnessChip** in the header shows one of three states:
 
 - **Live** (green) — data is current and streaming. The board is tradeable.
-- **Stale** (amber) — data hasn't updated within the expected window. This can happen during brief connectivity interruptions or low-activity pre-market periods. Treat the board with caution.
-- **Offline** (red) — the data feed is disconnected. Do not trade off a stale board.
+- **Stale** (amber) — data hasn't updated within the expected window. Treat the board with caution.
+- **Offline** (red) — the data feed is disconnected. Do not trade off stale data.
 
-Next to the chip, the **market status** indicator shows whether regular trading hours are active, whether the market is in pre-market or after-hours, or whether it is closed for the day.
+Next to the chip, the **market status** indicator shows whether RTH is active, pre-market, after-hours, or closed.
 
 ## Regime indicator
 
@@ -861,11 +861,11 @@ A badge showing the current [gamma regime](/learn/gamma-flip-explained) — posi
 
 ## Trading halt banners
 
-If SPX or a major component triggers a trading halt (a market-wide circuit breaker or a single-stock LULD halt on a name the engine is tracking), a red banner appears across the top of the dashboard. Halts mean the order book is frozen — no fills, no hedging, no reliable pricing. The banner stays until the halt lifts. During a halt, the play engine pauses grading and the FreshnessChip switches to stale, because the last quote is no longer actionable.
+If SPX or a major component triggers a trading halt (circuit breaker or single-stock LULD), a red banner appears across the top. Halts mean the order book is frozen — no fills, no hedging, no reliable pricing. The play engine pauses grading until the halt lifts.
 
 ## Putting it together
 
-The dashboard is designed to be read top-down: hero bar for the five-second pulse, technical strip for context, left column for positioning, center for actionable plays, right for narrative. Before you look at any individual play, glance at the regime indicator and net GEX — they tell you whether it's a day to sell premium or respect momentum, and that single read shapes everything else on the screen. For the full story on how plays get graded, see [SPX Slayer Play Grades Explained](/learn/spx-slayer-play-grades-explained). New to BlackOut? [Getting Started](/learn/getting-started) walks through the platform end to end. [Get access →](/pricing)
+Read the dashboard top-down: hero bar for the five-second pulse, technical strip for context, left column for positioning, center for actionable plays, right for narrative. Before looking at any individual play, glance at the regime indicator and net GEX — they set the day's playbook. For the full story on grading, see [SPX Slayer Play Grades Explained](/learn/spx-slayer-play-grades-explained). New to BlackOut? [Getting Started](/learn/getting-started) walks through the platform end to end. [Get access →](/pricing)
 
 > *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options trading involves substantial risk and is not suitable for every investor.*`,
   },
@@ -884,25 +884,25 @@ The dashboard is designed to be read top-down: hero bar for the five-second puls
 
 ## What confluence means here
 
-Confluence is the overlap of independent inputs pointing in the same direction. A single bullish signal is a hypothesis; five bullish signals that each come from a different data source — positioning, flow, technicals, volatility regime, risk-reward — are confluence. The grading engine counts how many of those independent inputs agree, weighs them by reliability, and outputs a score. The more gates a play clears, the higher the grade.
+Confluence is the overlap of independent inputs pointing in the same direction. A single bullish signal is a hypothesis; five signals from different data sources — positioning, flow, technicals, volatility regime, risk-reward — are confluence. The engine counts how many agree, weighs them, and outputs a score.
 
 ## The sequential gate logic
 
-The engine evaluates each candidate play through a series of gates in order. A play must pass each gate to reach the next. If it fails at any stage, it either gets downgraded or rejected entirely. The gates run in this sequence:
+The engine evaluates each candidate through a series of gates in order. If a play fails at any stage, it gets downgraded or rejected. The gates:
 
-**Gate 1 — GEX regime.** Is the session's [gamma exposure](/learn/what-is-gex) environment compatible with this trade's direction and structure? A directional long in a strongly positive-GEX, range-bound session gets penalized; the same long in a negative-GEX trending session gets a boost. This gate doesn't kill a play outright, but it sets the ceiling — a play fighting the regime can never grade above B.
+**Gate 1 — GEX regime.** Is the session's [gamma exposure](/learn/what-is-gex) compatible with this trade's direction? A directional long in a positive-GEX, range-bound session gets penalized. This gate sets the ceiling — a play fighting the regime can never grade above B.
 
-**Gate 2 — VWAP posture.** Where is price relative to the session's volume-weighted average price? A bullish play with price above VWAP gets a tailwind; below VWAP it is swimming upstream. The VWAP pill on the [dashboard](/learn/spx-slayer-dashboard-guide) shows this in real time.
+**Gate 2 — VWAP posture.** A bullish play with price above VWAP gets a tailwind; below VWAP it swims upstream. The VWAP pill on the [dashboard](/learn/spx-slayer-dashboard-guide) shows this in real time.
 
-**Gate 3 — EMA stack alignment.** The engine checks whether the 20, 50, and 200 EMAs are stacked in the direction of the trade. A bullish call with 20 > 50 > 200 (a fully aligned uptrend stack) earns full marks. A mixed or inverted stack means the trend structure disagrees with the trade's direction — that costs points.
+**Gate 3 — EMA stack alignment.** Are the 20, 50, and 200 EMAs stacked in the trade's direction? A bullish call with 20 > 50 > 200 earns full marks. A mixed or inverted stack costs points.
 
-**Gate 4 — Flow bias.** Is institutional [options flow](/learn/how-to-read-options-flow) leaning in the same direction? The engine reads the net premium bias from [HELIX](/learn/helix-flows) — whether call-side or put-side premium dominates the session — and checks whether that lean supports the play. Aggressive sweeps in the same direction add conviction; flow running the opposite way is a red flag.
+**Gate 4 — Flow bias.** Is institutional [options flow](/learn/how-to-read-options-flow) leaning the same way? The engine reads net premium bias from [HELIX](/learn/helix-flows) and checks whether aggressive sweeps support the play.
 
-**Gate 5 — Risk-to-reward.** The engine calculates the R:R on the specific contract — how much the option can gain to target versus how much is at risk to stop. Plays with thin R:R (less than 1:1) get penalized regardless of how many other gates they cleared. A favorable R:R alone won't produce a high grade, but an unfavorable one will cap the grade.
+**Gate 5 — Risk-to-reward.** The R:R on the specific contract — gain to target versus risk to stop. Plays with R:R below 1:1 get penalized regardless of other gates.
 
-**Gate 6 — BlackOut Intelligence verdict.** The final filter. [Largo AI](/learn/largo-ai) and the broader BlackOut Intelligence layer assess the full context — macro calendar, earnings proximity, regime stability, any conflicting signals the mechanical gates cannot weigh. This gate can veto an otherwise-passing play if the qualitative context is wrong, or give a final boost to a play where every quantitative gate aligned.
+**Gate 6 — BlackOut Intelligence verdict.** [Largo AI](/learn/largo-ai) assesses full context — macro calendar, earnings proximity, regime stability, conflicting signals the mechanical gates cannot weigh. This gate can veto an otherwise-passing play or boost one where every gate aligned.
 
-**Gate 7 — Option ticket.** The engine selects the specific contract (strike, expiry) and confirms that liquidity, spread width, and premium are acceptable. A great setup on an illiquid contract with a wide bid-ask gets downgraded or skipped.
+**Gate 7 — Option ticket.** The engine confirms that the selected contract's liquidity, spread width, and premium are acceptable. A great setup on an illiquid contract gets downgraded.
 
 ## The grades
 
@@ -931,9 +931,9 @@ The action state updates in real time as price moves. A play can cycle from BUY 
 
 ## How to use grades for sizing
 
-The simplest framework: A+ and A get your standard position size. B gets half. C gets quarter size or skip. D is a no-trade. This isn't a rule — it's a starting point you calibrate to your own risk tolerance. The grade tells you how much agreement exists among independent signals; your size should reflect that agreement. Fewer signals agreeing means less conviction, which means less capital at risk.
+The simplest framework: A+ and A get your standard size. B gets half. C gets quarter size or skip. D is a no-trade. The grade tells you how much agreement exists among independent signals; your size should reflect that agreement.
 
-Pair the grade with the [GEX regime](/learn/what-is-dealer-gamma-exposure) and the dashboard's net GEX reading for the full picture. A B-grade play in a strongly supportive regime is different from a B-grade play in a hostile one — the regime sets the ceiling, and the grade tells you where within that ceiling the play sits. For the full dashboard context, see [SPX Slayer Dashboard Walkthrough](/learn/spx-slayer-dashboard-guide). New to BlackOut? Start with [Getting Started](/learn/getting-started). [Get access →](/pricing)
+Pair the grade with the [GEX regime](/learn/what-is-dealer-gamma-exposure) and the dashboard's net GEX for the full picture — a B-grade play in a supportive regime is different from one in a hostile regime. For the full dashboard context, see [SPX Slayer Dashboard Walkthrough](/learn/spx-slayer-dashboard-guide). New to BlackOut? Start with [Getting Started](/learn/getting-started). [Get access →](/pricing)
 
 > *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options trading involves substantial risk and is not suitable for every investor.*`,
   },
@@ -954,15 +954,15 @@ Pair the grade with the [GEX regime](/learn/what-is-dealer-gamma-exposure) and t
 
 The matrix is a heatmap table. Each row is a strike price. Each column is an expiration date — the leftmost column is the 0DTE (same-day) expiry, and subsequent columns move out to weeklies and monthlies. Each cell contains a **signed dollar value** representing the net gamma exposure at that specific strike-expiry intersection.
 
-Positive cells (green) mean dealers are net long gamma at that strike — hedging will dampen moves toward it. Negative cells (red) mean dealers are net short gamma — hedging will amplify moves through it. The **diverging color scale** runs from deep red (largest negative) through neutral (near-zero, gray) to deep green (largest positive), so the visual heat pattern tells the story before you read a single number.
+Positive cells (green) mean dealers are net long gamma — hedging dampens moves. Negative cells (red) mean short gamma — hedging amplifies. The **diverging color scale** runs from deep red through gray (near-zero) to deep green, so the visual pattern tells the story before you read a single number.
 
 ## The spot row highlight
 
-The row corresponding to the current SPX price is highlighted — usually with a distinct border or background tint. This anchors your eye to where price sits relative to the gamma landscape. Everything above the spot row is overhead resistance context; everything below is downside support context. As SPX moves, the highlight follows.
+The row at the current SPX price is highlighted. Everything above is overhead resistance context; everything below is downside support context. As SPX moves, the highlight follows.
 
 ## King nodes
 
-Certain cells carry a **star marker** — these are **King nodes**, the single largest absolute gamma concentration in their respective column (expiry). A King node at the 5,550 strike in the 0DTE column means that strike carries more gamma for today's expiry than any other. King nodes are where the most aggressive dealer hedging will occur for that expiry. They often coincide with — but are not always identical to — the call wall or put wall, because the wall is the largest concentration across all expirations, while a King node is the largest within a single expiry.
+Certain cells carry a **star marker** — these are **King nodes**, the single largest absolute gamma concentration in their column (expiry). A King node at the 5,550 strike in the 0DTE column means that strike carries more gamma for today's expiry than any other. King nodes often coincide with the [call wall or put wall](/learn/call-wall-put-wall-explained), but not always — the wall is the largest concentration across all expirations, while a King node is the largest within a single expiry.
 
 ## Column max +/- (gamma walls)
 
@@ -990,9 +990,9 @@ Watch for **wall migration** during the session. If the call wall at 5,550 weake
 
 ## Cross-referencing with the play engine
 
-The graded plays in the center column of the [dashboard](/learn/spx-slayer-dashboard-guide) already incorporate the matrix data — the [gate logic](/learn/spx-slayer-play-grades-explained) reads the regime, walls, and flip from this same grid. But seeing the raw matrix lets you understand *why* a play graded the way it did. A B-grade play near a thick wall makes sense — the wall adds resistance that lowers conviction. An A-grade play in open space between walls makes sense too — nothing mechanical is blocking the move.
+The [gate logic](/learn/spx-slayer-play-grades-explained) in the center column already reads the regime, walls, and flip from this grid. But seeing the raw matrix lets you understand *why* a play graded the way it did — a B near a thick wall makes sense; an A in open space between walls makes sense too.
 
-For the full Thermal heatmap with profile view and additional overlays, see [How to Read Thermal Heatmaps](/learn/thermal-heatmap-reading-guide). [Get access →](/pricing)
+For the full Thermal heatmap with profile view and overlays, see [How to Read Thermal Heatmaps](/learn/thermal-heatmap-reading-guide). [Get access →](/pricing)
 
 > *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options trading involves substantial risk and is not suitable for every investor.*`,
   },
@@ -1013,37 +1013,37 @@ For the full Thermal heatmap with profile view and additional overlays, see [How
 
 The Lotto engine fires during the first hours of the session, when [gamma](/learn/what-is-gex) is at its peak on 0DTE contracts and intraday moves can be oversized relative to the rest of the day.
 
-**Strike selection.** Lotto plays target strikes roughly **25 points out of the money** from the current SPX price. That distance is deliberate — close enough that a strong directional move brings the contract into play, far enough that the premium is cheap and the R:R is asymmetric. These are not at-the-money setups; they are defined-risk lottery tickets on the thesis that the morning session will produce a directional push.
+**Strike selection.** Lotto plays target strikes roughly **25 points out of the money** — close enough that a strong move brings the contract into play, far enough that premium is cheap and R:R is asymmetric.
 
-**Target and stop.** Each Lotto play carries a **25-point target** and an **8-point stop**. The target-to-stop ratio (~3:1) reflects the asymmetric bet: you expect to lose more often than you win, but the wins are large enough to make the expected value positive over a sample. This is a classic skew trade — frequent small losses, occasional large gains.
+**Target and stop.** A **25-point target** and **8-point stop** (~3:1 ratio). You expect to lose more often than you win, but the wins are large enough to make expected value positive over a sample — a classic skew trade.
 
-**Premium cap.** The engine enforces a **VIX-indexed premium cap** — the maximum you should pay for the contract adjusts based on the current VIX level. When VIX is elevated and premiums are rich, the cap rises to reflect that the same OTM strike costs more. When VIX is low, the cap tightens. This prevents overpaying in a calm market where the asymmetric payoff disappears once premium gets too expensive. See [Implied Volatility Explained](/learn/implied-volatility-explained) for why VIX level directly drives option prices.
+**Premium cap.** The engine enforces a **VIX-indexed premium cap** — the maximum you pay adjusts with current [VIX](/learn/implied-volatility-explained). When VIX is elevated, the cap rises; when VIX is low, the cap tightens. This prevents overpaying in a calm market where the asymmetric payoff disappears.
 
-**Why the morning window.** Between 7:00 and 10:30 AM ET, 0DTE gamma is at its session maximum — the contracts still have most of the day's theta left, and delta can swing dramatically on even modest price moves. By 10:30, much of that initial gamma has decayed and the session's character has typically committed — the Lotto edge (asymmetric gamma on cheap OTM strikes) weakens, so the engine shuts off.
+**Why the morning window.** Between 7:00 and 10:30 AM ET, 0DTE gamma is at its session maximum — delta can swing dramatically on even modest moves. By 10:30, gamma has decayed and the session's character has committed, so the engine shuts off.
 
 ## Power Hour engine (2:45 - 3:15 PM ET)
 
 The Power Hour engine fires in the final 30 minutes before the close becomes imminent. By this point in the session, 0DTE contracts have almost no time value left — [theta](/learn/options-greeks-explained) has eaten most of the premium — and any remaining gamma is binary: a move either happens now or it does not.
 
-**Strike selection.** Power Hour targets strikes roughly **8 points out of the money** — much closer than Lotto. With so little time left, a 25-point OTM strike is essentially worthless, so the engine moves in closer where delta can still respond to a late-session push.
+**Strike selection.** Power Hour targets strikes roughly **8 points out of the money** — much closer than Lotto, because with so little time left a 25-point OTM strike is essentially worthless.
 
-**Target and stop.** The target is **13 points** with a **4-point stop** (~3:1 ratio, similar risk profile to Lotto but scaled to the tighter range of a session winding down).
+**Target and stop.** A **13-point target** and **4-point stop** (~3:1 ratio, scaled to the tighter late-session range).
 
-**Premium and quality caps.** The maximum premium is **$0.50** — because there's almost no time value remaining, paying more than $0.50 for a near-OTM 0DTE contract at 2:45 PM means you are overpaying for what is essentially a binary outcome. Additionally, the engine requires a **minimum score of 45** and a **minimum grade of B** — Power Hour plays must still pass the [confluence filter](/learn/spx-slayer-play-grades-explained), just at a lower bar than the main engine, reflecting the reduced data available so late in the session.
+**Premium and quality caps.** Maximum premium is **$0.50** — paying more for a near-OTM contract at 2:45 PM overpays for what is essentially a binary outcome. The engine also requires a **minimum score of 45** and **minimum grade of B** from the [confluence filter](/learn/spx-slayer-play-grades-explained).
 
-**One play max.** The engine limits output to a single Power Hour play per session. This is a discipline rule: with 15-30 minutes of life remaining and binary outcomes, one well-selected play is a strategy; three is gambling.
+**One play max.** The engine limits output to a single Power Hour play per session — with binary outcomes, one well-selected play is a strategy; three is gambling.
 
-**Why the narrow window.** The 2:45 - 3:15 PM ET window captures the point where intraday gamma is at its most extreme decay rate. Contracts expiring in under an hour can double or go to zero on a single SPX tick. By 3:15 the window closes — too little time remains for even an 8-point move to develop with any consistency.
+**Why the narrow window.** The 2:45 - 3:15 PM ET window captures peak gamma decay rate. Contracts expiring in under an hour can double or zero on a single SPX tick. By 3:15, too little time remains for even an 8-point move to develop.
 
 ## How they differ from the main play engine
 
-The main play engine looks for the highest-confluence setups the session offers, at standard OTM distances, with no fixed timing window during RTH. Lotto and Power Hour are edge-of-session specialists:
+The main engine looks for highest-confluence setups at standard OTM distances across all of RTH. Lotto and Power Hour are edge-of-session specialists:
 
-- **Lotto** exploits morning gamma amplitude with wider strikes and larger targets — a low-probability, high-payoff structure.
-- **Power Hour** exploits end-of-day gamma decay with tight strikes and cheap premium — a binary bet on a late directional push.
-- **Main engine** operates in the core session where positioning data is richest and the [gate logic](/learn/spx-slayer-play-grades-explained) has the most inputs to weigh.
+- **Lotto** exploits morning gamma amplitude with wider strikes and larger targets — low-probability, high-payoff.
+- **Power Hour** exploits end-of-day decay with tight strikes and cheap premium — a binary bet on a late push.
+- **Main engine** operates in the core session where positioning data is richest and the [gate logic](/learn/spx-slayer-play-grades-explained) has the most inputs.
 
-All three share the same underlying positioning data from the [GEX matrix](/learn/spx-slayer-gex-matrix-guide) and [Thermal](/learn/heat-maps), and all three log results to the same public record. The difference is *when* they fire, *what* strikes they target, and *how* they define risk — each tuned to the gamma environment of its specific window. See the full [SPX Slayer Dashboard Walkthrough](/learn/spx-slayer-dashboard-guide) for how they appear on screen. [Get access →](/pricing)
+All three share the same positioning data from the [GEX matrix](/learn/spx-slayer-gex-matrix-guide) and [Thermal](/learn/heat-maps), and all log to the same public record. The difference is *when* they fire, *what* strikes they target, and *how* they define risk. See the [SPX Slayer Dashboard Walkthrough](/learn/spx-slayer-dashboard-guide) for how they appear on screen. [Get access →](/pricing)
 
 > *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options trading involves substantial risk and is not suitable for every investor.*`,
   },
@@ -1062,9 +1062,7 @@ All three share the same underlying positioning data from the [GEX matrix](/lear
 
 ## Matrix view
 
-The matrix is a **strike-by-expiry heat table**. Each row is a strike price; each column is an expiration date. Each cell contains the signed dollar exposure at that intersection — positive (green) where dealers are long gamma and hedging dampens the move, negative (red) where dealers are short gamma and hedging amplifies it. The **diverging color scale** runs from deep red through gray (near zero) to deep green, so the visual pattern reveals the positioning landscape before you read a single number.
-
-The **spot row** — the row closest to the current underlying price — is highlighted with a distinct border. Everything above spot is overhead resistance context (where call-side gamma builds); everything below is downside support context (where put-side gamma lives). The default ticker is **SPY**, but you can switch to any supported name.
+A **strike-by-expiry heat table**. Each cell contains the signed dollar exposure at that intersection — positive (green) where dealers are long gamma, negative (red) where short. The **diverging color scale** runs from deep red through gray to deep green. The **spot row** (current price) is highlighted; the default ticker is **SPY**, switchable to any supported name.
 
 ## Profile view
 
@@ -1472,6 +1470,519 @@ During RTH, glance at the Dark Pool panel periodically for developing block clus
 For the foundations of dark pool mechanics, see [What Is Dark Pool Trading?](/learn/what-is-dark-pool-trading). For how to interpret the options flow side of the equation, see [How to Read Options Flow](/learn/how-to-read-options-flow) and [Unusual Options Activity Guide](/learn/unusual-options-activity-guide). [Get access →](/pricing)
 
 > *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options trading involves substantial risk and is not suitable for every investor.*`,
+  },
+
+// ── 1. Night Hawk Evening Edition ──────────────────────────────────────────────
+  {
+    slug: "night-hawk-evening-edition-guide",
+    path: "/learn/night-hawk-evening-edition-guide",
+    metaTitle: "Night Hawk Evening Edition Guide | BlackOut",
+    metaDescription: "How to read the Night Hawk Evening Edition: ranked overnight plays, conviction tiers, track record, market context, and morning confirmation workflow.",
+    targetKeyword: "overnight options playbook",
+    type: "article",
+    title: "Night Hawk Evening Edition: Your Overnight Playbook",
+    description: "How to read the Night Hawk Evening Edition: ranked overnight plays, conviction tiers, track record, market context, and morning confirmation workflow.",
+    body: `Every trading session starts the night before. While most retail traders wait for the opening bell, the BlackOut **Night Hawk Evening Edition** publishes a ranked playbook after the close — five ideas for the next session, each scored, tiered, and managed to hard invalidation levels before you even sit down at the desk.
+
+## What the Evening Edition delivers
+
+The PlaybookBoard layout presents **five play slots ranked #1 through #5**. Each slot carries a complete thesis — not a vague directional lean but a fully specified setup with the data behind it. For every play you see:
+
+- **Ticker and direction** (long or short)
+- **Conviction tier** (A+, A, B, or C — more on these below)
+- **Composite score** from the multi-factor scoring engine
+- **Flow streak** — how many consecutive days institutional flow has stacked in this direction
+- **IV rank** and a **premium cap** flag indicating whether entry cost is reasonable
+- **Thesis** — the one-paragraph argument for the trade
+- **Entry range, target, and stop** — concrete levels, not guesses
+- **Options contract** — the specific strike and expiry the edition suggests
+
+All of this is derived from the same [dealer gamma exposure](/learn/what-is-dealer-gamma-exposure) framework, [options flow](/learn/how-to-read-options-flow) analysis, and catalyst scanning that powers the rest of BlackOut's desk tools.
+
+## The tier system: A+ is earned, never assigned
+
+Night Hawk tiers plays **A, B, or C** at build time based on three independent factors the raw composite score does not already capture:
+
+- **Score band placement** — where the play sits in the measured overnight track record. The **prime band (40-55)** is the sweet spot, averaging **+2.99% return** historically. The mid band (55-69) produces modest returns. The top band (70+) showed a measured inversion in early data — high raw scores did not mean high returns — so the engine **discounts** that band (weighted lower, not hard-capped) rather than rewarding it blindly.
+- **Signal breadth** — how many of the nine scoring dimensions agree. A play needs at least three confirming dimensions to reach A-tier; fewer than two caps it at B.
+- **Earnings risk** — a binary event tomorrow into an overnight hold automatically caps the play at B and adds a penalty.
+
+The critical design choice: **A+ is never assignable at build time**. It is only earned once a play has at least **10 graded outcomes** with an **80%+ win rate**. This prevents the system from ever labeling a play "highest conviction" before the evidence supports it — the same honesty spine the [0DTE Command](/learn/night-hawk-0dte-command-guide) engine uses.
+
+## The HawkRecordStrip: calibration, not prediction
+
+Below the playbook header sits the **HawkRecordStrip** — a rolling window (default 30 days) of resolved Night Hawk plays. It shows:
+
+- Total resolved count
+- Target hit percentage
+- Profitable percentage (closed above entry, even if target was not reached)
+- Average return across all resolved plays
+
+When the sample size is small, the strip shows a "building track record" notice rather than percentages that could mislead. Use these numbers for calibration — how the system has performed recently in the current regime — not as a prediction of the next play.
+
+## MarketContextBar: the macro snapshot
+
+The **MarketContextBar** captures the end-of-day snapshot carried into the edition: the **tide bias** (the desk's read on the tape's directional character), **SPX and VIX levels** (e.g., SPX 5,500, VIX 18), and the session's **sector leaders and laggards**. This context frames the plays — a bullish semiconductor setup is stronger when the sector led that session, weaker when it lagged.
+
+## Morning confirmation: the 9:15 AM ET cron
+
+Overnight, the market does not stand still. Futures move, news breaks, Asia and Europe trade. At **9:15 AM ET**, a cron job re-evaluates every play against current conditions and stamps each with a confirmation status:
+
+- **CONFIRMED** — the thesis holds; levels are intact; the setup is live.
+- **DEGRADED** — some supporting conditions have weakened, but the core thesis survives. Proceed with caution or reduce size.
+- **INVALIDATED** — the setup is dead. A gap through the stop, a material catalyst reversal, or a regime flip killed it overnight.
+- **UNVERIFIED** — the cron could not evaluate conditions (data feed issue, pre-market illiquidity). Treat as unconfirmed until you verify manually.
+
+Read the confirmation badges before the open. A play that was conviction A last night is meaningless if it stamped INVALIDATED at 9:15.
+
+## Edition status badges
+
+The edition itself carries a freshness state that tells you what you are looking at:
+
+- **Live** — tonight's edition is published and current.
+- **Syncing** — the edition pipeline is actively building; plays may still be ranking.
+- **Prior** — tonight's edition is not published yet; you are seeing yesterday's board. Validate every level before acting.
+- **Legacy** — the board is serving from a fallback source, not the first-class pipeline. Data may be incomplete.
+- **Building** — the scoring and ranking funnel is running.
+- **Recap only** — a market recap published, but no play survived the funnel (all candidates were below the viability threshold).
+
+## Data cadences
+
+The Evening Edition refreshes on slower cadences than the intraday desks: **120 seconds** for the edition payload, **60 seconds** for play status updates (confirmation badges, mark-to-market), and **300 seconds** for the track record strip. These are appropriate — overnight plays do not need tick-level updates.
+
+## How it fits the desk
+
+Night Hawk is asynchronous preparation, not live execution. It tells you what to watch and where the levels are before the open. Once the bell rings, [SPX Slayer](/learn/spx-slayer) and the [0DTE Command scanner](/learn/night-hawk-0dte-command-guide) take over for intraday execution. The [Cortex evidence system](/learn/night-hawk-cortex-evidence-system) provides the deeper analysis layer behind both the evening edition and the intraday scanner. If you want to interrogate the edition conversationally — "Why is NVDA ranked #1?" or "How does the flow streak compare to last week?" — [Largo AI](/learn/largo-ai-terminal-guide) can pull the full edition and walk you through it.
+
+For a high-level overview of the Night Hawk surface, see the [Night Hawk guide](/learn/night-hawk). For the broader gamma and flow framework, start with [Dealer Gamma & Options Flow: The Complete Guide](/learn/dealer-gamma-options-flow-guide). New to BlackOut? The [Getting Started guide](/learn/getting-started) maps every tool. [Get access →](/pricing)
+
+> *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options and equities trading involve substantial risk and are not suitable for every investor.*`,
+  },
+
+  // ── 2. Night Hawk 0DTE Command ────────────────────────────────────────────────
+  {
+    slug: "night-hawk-0dte-command-guide",
+    path: "/learn/night-hawk-0dte-command-guide",
+    metaTitle: "0DTE Command: Intraday Scanner Guide | BlackOut",
+    metaDescription: "How the 0DTE Command scanner works: session heat states, hard entry gates, confluence system, thesis health, and the always-on multi-ticker intraday engine.",
+    targetKeyword: "0DTE scanner intraday",
+    type: "article",
+    title: "0DTE Command: The Always-On Intraday Scanner",
+    description: "How the 0DTE Command scanner works: session heat states, hard entry gates, confluence system, thesis health, and the always-on multi-ticker intraday engine.",
+    body: `The **0DTE Command** scanner is a different engine from [SPX Slayer](/learn/spx-slayer). While Slayer trades one instrument (SPX/SPXW) through a single play lifecycle, 0DTE Command hunts the **entire tape** all session — SPY, QQQ, NVDA, any name where the flow, structure, and positioning line up for a same-day expiration trade. It lives on the right side of the Night Hawk page and runs continuously from the pre-market warm through the close.
+
+## Session heat: the desk follows the clock
+
+The scanner adapts its intensity to where the session stands. Seven **session heat states** control how aggressively it scans and whether it will commit new plays:
+
+| State | Window (ET) | Heat | Behavior |
+|---|---|---|---|
+| **PRE_MARKET** | Before 9:30 | 0-40% | Feeds warming, overnight plays confirming |
+| **OPENING_DRIVE** | 9:30-10:00 | 70% | Ranges forming, engines arming — no commits yet |
+| **RTH** | 10:00-14:00 | 100% | Fully hot — directional 0DTE plays fire when gates clear |
+| **POST_COMMIT** | 14:00-15:00 | 70% | No fresh directional commits; manage open risk |
+| **POWER_HOUR** | 15:00-15:30 | 100% | Power-hour engine window |
+| **LATE_SESSION** | 15:30-16:00 | 50% | Winding down, no fresh entries |
+| **CLOSED** | After 16:00 | 0% | Hand off to the [Evening Edition](/learn/night-hawk-evening-edition-guide) |
+
+The heat meter on the header visual reflects this — watch it to know whether the desk is actively committing or just managing existing positions.
+
+## Hard entry gates: G-1 through G-14
+
+Every candidate must clear a stack of **hard entry gates** before it can become a committed play. These are not score adjustments — they are binary pass/fail checks. If any one fails, the candidate surfaces as a **SKIP** card with the exact reason visible, never silently dropped.
+
+The key gates:
+
+- **G-1 (Tape alignment)** — the setup's direction must agree with the live SPY tape. Counter-tape entries are the single biggest loser in the historical dataset.
+- **G-2 (Opening window)** — no commits before **10:00 ET**. Evidence: a fixed entry at 9:45 ran the worst expectancy of any tested time window. Setups found earlier appear as WATCH cards carrying the unlock time.
+- **G-3 (Score floor)** — the post-adjustment score must clear 65 (the measured viability threshold). The 55-64 band ran 18.8% win rate and -24.5% average return.
+- **G-4 (VIX threshold)** — elevated VIX (17+) demands a higher score floor (75). Extreme VIX (20+) restricts to index/ETF products only. The measured win-rate gap between normal and elevated VIX was **44 percentage points**.
+- **G-5 (Governor)** — a concurrency limit prevents the board from overloading with correlated risk.
+- **G-6 (Cross-system conflict)** — blocks a 0DTE setup that directly opposes SPX Slayer's live play or the Night Hawk edition's take on the same ticker.
+- **G-7 (Macro calendar)** — blocks fresh commits when a high-impact macro event (FOMC, CPI, NFP) lands during the session. [Iron condor](/learn/iron-condor-strategy-guide) setups are blocked for the full session on a macro day (a release is a condor's worst case).
+- **G-12 (Confluence floor)** — requires at least 2 independent confirmations (see below). The measured expectancy: 0 confirmations ran -12.5%, 1 confirmation broke even, 2 confirmations ran **+15.9%**.
+- **G-13 (Accumulation alignment)** — multi-day flow accumulation must agree with the setup direction.
+- **G-14 (Late block)** — no new directional entries after **14:00 ET**. Evidence: the 14:00-15:30 window ran 14.3% win rate with -19% average P&L. Iron condors are exempt — they benefit from late-session theta.
+
+Every gate failure is logged with a machine-readable code and a human explanation. The SKIP card on the board shows exactly which gates blocked the candidate and why.
+
+## The confluence system: independent agreement
+
+The confluence read is the sharpest edge in the 0DTE research. It measures how many **independent confirmations** agree with the setup's direction:
+
+- **Timing** — entered inside the favorable post-open, pre-cutoff window
+- **VWAP side** — price is on the trend side of session VWAP for the direction
+- **Market alignment** — setup direction agrees with the live tape
+
+The measured EV ladders with the confirmation count: **0 confirmations = -12.5% EV**, **1 = 0%**, **2 (VWAP + market) = +15.9% EV** with a 41% win rate. This is why G-12 gates on a minimum of 2 confirmations — the zero-confirmation bucket is a money-losing filter the additive score alone could not catch.
+
+## Plan rules: fixed risk discipline
+
+Every committed play follows the same mechanical risk rules:
+
+- **-50% stop** — cut when premium loses half its entry value
+- **+100% target** — take at least a trim when premium doubles
+- **15:30 ET time stop** — hard exit before the close; 0DTE theta collapse is unforgiving
+- **55% chase protection** — if the option has already moved 55% from the flag point, the entry is stale
+
+These are rules, not predictions. The system manages to the plan, and the [track record](/learn/spx-slayer-play-grades-explained) grades every play against these exact levels.
+
+## Fresh finds: WATCH and SKIP
+
+Candidates that surface from the scanner but have not been committed to the ledger appear as **fresh finds**:
+
+- **WATCH** — an uncommitted candidate that is still being evaluated. If it clears all gates on the next scan cycle, it commits.
+- **SKIP** — the scanner found it, evaluated it, and refused it. The card shows the gate code and reason.
+
+A fresh find is never an open position. The distinction between "the scanner sees it" and "the desk committed to it" is fundamental.
+
+## Why-now triggers
+
+Each committed play carries a **why-now** ribbon explaining what put it on the board. The trigger taxonomy, from most specific to most generic:
+
+- **accumulation** — multi-day stacked flow build (2+ days of consistent directional flow)
+- **breakout** — the breakout discovery rail surfaced it (price structure)
+- **pin** — the gamma-wall pin discovery rail surfaced it (dealer positioning)
+- **sweep** — aggressive swept flow (50%+ of the tape swept at the ask)
+- **flow_spike** — sudden 30-minute flow surge
+- **aggressor_flow** — plain dominant at-the-ask aggressor tape
+
+Every trigger maps to a real, committed signal. When none is present, the ribbon is omitted — never fabricated.
+
+## Thesis health: is the trade still alive?
+
+Once a play is committed, the **thesis health system** monitors whether the original reasons for entry are still intact. It scores 0-100 across **12 weighted pillars**: flow, tape, VWAP, market, confluence, [cortex](/learn/night-hawk-cortex-evidence-system), dealer, structure, darkpool, relative volume, momentum, and volatility.
+
+The health degrades through six rungs:
+
+**INTACT** → **MINOR** (small erosion) → **WEAKENING** → **DEGRADED** → **BROKEN** → **OPPOSITE** (evidence has fully reversed)
+
+A thesis-break exit — when the evidence that justified entry actively argues against the position — triggers an immediate unconditional exit, separate from the mechanical stop. The profit ratchet floor only moves up, never down.
+
+## How it connects
+
+0DTE Command is the intraday execution layer. The [Evening Edition](/learn/night-hawk-evening-edition-guide) prepares your overnight watchlist. The [Cortex evidence system](/learn/night-hawk-cortex-evidence-system) provides the deep multi-source analysis. [Vector](/learn/vector-scanner-guide) gives the cross-ticker gamma map. And [Largo AI](/learn/largo-ai-terminal-guide) can walk you through any of it — "Why did the scanner skip TSLA at 10:15?" or "What gates are blocking right now?"
+
+For the [gamma exposure](/learn/what-is-gex) and [flow](/learn/how-to-read-options-flow) framework behind the gates and triggers, see the [Complete Guide to Dealer Gamma & Options Flow](/learn/dealer-gamma-options-flow-guide). [Get access →](/pricing)
+
+> *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options and equities trading involve substantial risk and are not suitable for every investor.*`,
+  },
+
+  // ── 3. Night Hawk Cortex Evidence System ──────────────────────────────────────
+  {
+    slug: "night-hawk-cortex-evidence-system",
+    path: "/learn/night-hawk-cortex-evidence-system",
+    metaTitle: "Night Hawk Cortex: Evidence Brain | BlackOut",
+    metaDescription: "How the Cortex evidence system works: 8 independent sources, evidence decay, veto asymmetry, conviction bands, and the precision-first commit model.",
+    targetKeyword: "options trading evidence system",
+    type: "article",
+    title: "Night Hawk Cortex: The Evidence Brain Behind Every Commit",
+    description: "How the Cortex evidence system works: 8 independent sources, evidence decay, veto asymmetry, conviction bands, and the precision-first commit model.",
+    body: `Most trading systems reduce a dozen indicators to a single score and act on a threshold. The Night Hawk **Cortex** does something fundamentally different: it composes evidence from eight independent data sources, each timestamped and signed, into a structured verdict where **any single source can veto an entry but no single source can force one**. This is a precision-first architecture — designed to keep you out of bad trades rather than to get you into more trades.
+
+## The eight evidence sources
+
+Each source reads a distinct slice of the market. They are composed in a fixed order for deterministic output, but ordering never affects weighting:
+
+1. **GEX walls** — Reads the [Vector](/learn/vector-scanner-guide) GEX ladder: is the play's target path blocked by a dominant opposing dealer wall? Checks wall positioning, regime-style match (long gamma vs. short gamma), and path clearance. *Veto-capable*: a dominant wall sitting directly in your path vetoes the commit.
+
+2. **Wall lifecycle** — The flagship wall-trend signal. Reads the session wall-history rail (the beads' lifecycle over time) to determine whether walls are building, holding, or dissolving. A wall that has held all session is a materially different structure from one that appeared two minutes ago.
+
+3. **Flow quality** — Reads the [HELIX](/learn/helix-flows) print texture: sweep clusters, block trades, opposing whale activity. *Veto-capable*: an opposing sweep/block cluster exceeding $1M within 15 minutes vetoes the commit — an institutional-size bet against your thesis.
+
+4. **Sector heat** — Reads [Thermal](/learn/heat-maps) sector alignment and market breadth tone. A bullish tech setup is stronger when the technology sector leads; a bearish one is stronger when breadth is negative.
+
+5. **Catalyst/news** — Reads Benzinga news channels through deterministic tagging (headline keywords, channel classification). No LLM in the money path — the discrimination is rule-based and reproducible. Earnings-day prints get special treatment: an after-hours report into a long-premium position opposes.
+
+6. **VEX/charm** — Reads the net dealer dollar-vanna across the [GEX matrix](/learn/spx-slayer-gex-matrix-guide) and the "king" node (the strike with the most net gamma). Models charm as a time-of-day heuristic against pin distance — how theta decay at different points in the session affects the dealer hedging anchor.
+
+7. **Dark-pool confluence** — Reads institutional [dark pool](/learn/what-is-dark-pool-trading) levels and checks whether they cluster near gamma walls. When dark-pool institutional accumulation and dealer positioning point to the same zone, the confluence bonus fires.
+
+8. **Opening harvest** — A time-locked window (9:30-9:45 ET) that reads the character of the open: the overnight gap versus the prior close, the opening drive's direction and conviction, and market internals. This source self-silences after the first 15 minutes.
+
+## Evidence decay: stale data self-silences
+
+Every evidence item carries an **exponential half-life** measured in seconds. Fresh evidence contributes its full weight. As time passes, the contribution decays exponentially. After **3 half-lives** (at which point the item is worth less than 12.5% of its original weight), the evidence is demoted to **absent** — the honest statement "this source cannot answer right now" rather than a microscopic weight pretending to be a real signal.
+
+This decay is critical for 0DTE. A wall that was dominant at 10:00 AM may not be dominant at 1:00 PM. A flow cluster from 9:35 means less by noon. The Cortex does not carry stale readings as if they are fresh — it explicitly ages them out and marks them absent when they have expired.
+
+## Veto asymmetry: the precision-first design
+
+The most important architectural decision in the Cortex is its **asymmetry between supports and vetoes**:
+
+- **Supports are capped per source.** No single bullish signal — no matter how loud — can by itself force a commit. Each source has a documented support cap, and the total supporting score is the sum of these bounded contributions.
+- **Vetoes are unbounded hard blocks.** A single veto from any veto-capable source (GEX walls or flow quality) blocks the commit regardless of the total supporting score. A dominant opposing dealer wall in the play's path kills the entry even if every other source supports it.
+
+This means the Cortex cannot be "out-scored." A 93-score setup with a wall in its path is blocked. A setup with five sources supporting but one $1.5M opposing sweep cluster is blocked. One loud bearish fact can kill an entry; one loud bullish signal can never buy one.
+
+When both veto-capable sources fail to read entirely (provider outage, timeout), the system enters a **veto-blind** state and holds fresh commits rather than letting them through without dealer-wall and whale-flow protection. Opening new risk blind to both channels is exactly what fail-closed is for.
+
+## Conviction bands
+
+The composed score maps to conviction:
+
+- **A** (score >= 2.0) — requires the dealer landscape AND its lifecycle to both argue for the play, or equivalent breadth across multiple smaller sources.
+- **B** (score >= 0.75) — one full mid-tier signal net of opposition. A real edge, but not a structural argument.
+- **C** (below 0.75) — nothing here earns size.
+
+Display conviction is capped at A. The A+ tier is reserved for the [tier system's](/learn/night-hawk-evening-edition-guide) record-based unlock — 10+ plays at 80%+ win rate — not for the Cortex score alone.
+
+## The full vector is pinned at commit
+
+When a play commits to the ledger, the **complete evidence vector** is frozen and pinned to the ledger row. This is a first-write-wins model: the evidence that justified entry is preserved exactly as it was at commit time, even as the live sources continue to update.
+
+This pinned snapshot serves three purposes: it lets the [thesis health system](/learn/night-hawk-0dte-command-guide) compare "what I believed at entry" to "what the evidence says now," it lets the calibration loop measure whether Cortex scores predicted outcomes, and it gives the member an honest audit trail of why the trade was taken.
+
+## Exit mechanisms driven by evidence
+
+The Cortex does not only gate entry. Two exit mechanisms flow from the evidence:
+
+- **Thesis-break exit** — when the evidence that justified entry has not merely faded but actively reversed (health rung: BROKEN or OPPOSITE), the system triggers an immediate unconditional exit. This is not a stop-loss; it is an evidence-driven "the reason for this trade no longer exists."
+- **Profit ratchet** — the floor only ratchets up, never down. As the position moves in your favor, the minimum acceptable exit price rises. This interacts with the thesis health — a trade where the thesis is intact holds its runner; one where the thesis is weakening locks in more aggressively.
+
+## How this differs from indicator systems
+
+Traditional systems stack indicators (RSI, MACD, moving-average crossovers) and act on a threshold. The Cortex differs in three structural ways: (1) every evidence item is **signed and timestamped**, not a snapshot-in-time number — it decays and self-silences; (2) the **veto asymmetry** means the system is precision-first, not recall-first; and (3) the full evidence vector is **pinned and auditable** on every committed trade, so performance can be traced to specific evidence patterns rather than aggregate scores.
+
+For the gate stack that runs before the Cortex, see the [0DTE Command guide](/learn/night-hawk-0dte-command-guide). For the evening playbook the Cortex also feeds, see the [Evening Edition guide](/learn/night-hawk-evening-edition-guide). For the underlying [gamma exposure](/learn/what-is-dealer-gamma-exposure), [options flow](/learn/how-to-read-options-flow), and [dark pool](/learn/what-is-dark-pool-trading) data the sources read, see those deep-dives. [Get access →](/pricing)
+
+> *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options and equities trading involve substantial risk and are not suitable for every investor.*`,
+  },
+
+  // ── 4. Largo AI Terminal Guide ────────────────────────────────────────────────
+  {
+    slug: "largo-ai-terminal-guide",
+    path: "/learn/largo-ai-terminal-guide",
+    metaTitle: "Largo AI Terminal: Desk Analyst Guide | BlackOut",
+    metaDescription: "How to use Largo AI as your desk analyst: chat interface, tool traces, live data queries, and the questions that get the best structured answers.",
+    targetKeyword: "AI options trading terminal",
+    type: "article",
+    title: "Largo AI Terminal: Your AI Desk Analyst",
+    description: "How to use Largo AI as your desk analyst: chat interface, tool traces, live data queries, and the questions that get the best structured answers.",
+    body: `**Largo AI** is not a chatbot. It is a desk analyst wired directly into BlackOut's live data layer — [GEX structure](/learn/what-is-gex), [options flow](/learn/how-to-read-options-flow), [dealer positioning](/learn/what-is-dealer-gamma-exposure), the [Night Hawk edition](/learn/night-hawk-evening-edition-guide), the [0DTE Command board](/learn/night-hawk-0dte-command-guide), and dozens more sources. When you ask a question, Largo does not guess. It calls the same tools the dashboards render and composes a grounded answer from real numbers.
+
+## The chat interface
+
+Largo lives at \`/terminal\` — a single full-page chat surface. The layout is simple:
+
+- **Message log** — the scrolling conversation between you and Largo. Your questions appear as user bubbles; Largo's answers render as markdown with tables, levels, and structured analysis.
+- **Starter prompts** — when the session is empty, four example questions appear above the input row. These are not decorative — they demonstrate good query shape. Click one to send it immediately.
+- **Follow-up chips** — after each answer, up to three contextual next questions appear below the response. These are generated from the answer's content and point toward the natural next investigation.
+- **Input row** — type your question and send. Sessions persist in browser sessionStorage, so a multi-step investigation survives a page refresh within the same browser session.
+
+## LargoThinkingState: watching the pipeline work
+
+While Largo is processing your question, idle UI is replaced by the **LargoThinkingState**: rotating status phrases that show what the system is doing, pipeline visualization indicating progress, and **active tool labels** naming the specific data sources being queried. If you see "get_gex" and "get_options_flow" in the labels, Largo is pulling the live dealer map and flow tape for your ticker right now.
+
+## Tool trace chips: verify every number
+
+Under each Largo answer, **tool trace chips** list every data source that was actually fetched for that response. This is the most important element on the page. If you ask "Is SPX pinned right now?" and the chips show \`get_gex\` and \`get_spx_structure\`, you know the answer is grounded in the live [GEX matrix](/learn/spx-slayer-gex-matrix-guide) and the current [SPX Slayer](/learn/spx-slayer) desk state. If no tools ran, the output is general commentary only — treat it accordingly.
+
+Always read the tool chips before trusting a number in the prose.
+
+## Key tools Largo accesses
+
+Largo has access to a deep surface of live data tools. The ones you will see most often:
+
+- **get_quote** — live price, change%, day range, VWAP, volume from Polygon. The baseline for any ticker question.
+- **get_technicals** — multi-timeframe chart analysis: daily, hourly, and 15-minute EMAs, RSI, MACD, ATR, support/resistance levels, and weekly/monthly breakout highs and lows.
+- **get_spx_structure** — the full live [SPX Slayer desk](/learn/spx-slayer-dashboard-guide): price, GEX, flow tape, [dark pool](/learn/what-is-dark-pool-trading) levels, news headlines, macro context, and tide. The same data the dashboard shows.
+- **get_spx_play** — SPX Slayer's own play-engine snapshot: phase, action, direction, score, thesis, confluence factors, gate state, the AI arbiter verdict, and the currently open play if any.
+- **get_options_flow** — per-ticker flow analysis. For SPX/SPXW this returns the desk's own flow slice. For every other ticker it merges three live Unusual Whales pulls with BlackOut's own [HELIX](/learn/helix-flow-scanner-guide) ingested tape, deduped and enriched with strike stacks.
+- **get_gex** — the [dealer gamma map](/learn/what-is-dealer-gamma-exposure): GEX by strike, gamma flip, call wall, put wall. For SPX, all levels are SPX-denomination.
+- **get_nighthawk_edition** — the full [Night Hawk Evening Edition](/learn/night-hawk-evening-edition-guide): all plays with rank, conviction, thesis, entry/target/stop, score, flow streak, and IV rank. Can pull a specific past date.
+- **get_zerodte_plays** — the [0DTE Command](/learn/night-hawk-0dte-command-guide) scanner board: today's committed plays with lifecycle status, fresh finds, and excluded tickers.
+
+Beyond these core tools, Largo accesses earnings, news (Benzinga channels), dark pool data, IV statistics, sector flow, market movers, economic calendar, short interest, institutional ownership, and more — over **70 tools** in total.
+
+## Questions that get the best answers
+
+Largo performs best with specific, data-grounded questions. Good patterns:
+
+- **"What's the gamma regime for SPY right now?"** — triggers get_gex, returns the flip level, walls, and regime posture.
+- **"Walk me through the current SPX structure."** — triggers get_spx_structure, returns the full desk read including GEX, flow, dark pool, and macro context.
+- **"Is there unusual flow in NVDA today?"** — triggers get_options_flow, returns the merged flow tape, strike stacks, and aggression metrics.
+- **"What does the Cortex evidence say about this ticker?"** — triggers the platform snapshot with Cortex context, returns the evidence vector assessment.
+- **"Show me tonight's Night Hawk plays with their theses."** — triggers get_nighthawk_edition, returns the full ranked edition.
+- **"What [options greeks](/learn/options-greeks-explained) matter most for this setup?"** — triggers get_greeks, returns strike-level greeks with context.
+
+Poor patterns: "What should I trade?" (too vague — no tool can answer this), "Will AAPL go up?" (Largo does not predict), "Give me a play" (that is the [Evening Edition's](/learn/night-hawk-evening-edition-guide) job, not Largo's).
+
+## Verification and honesty
+
+Every Largo answer runs through a claim verification layer that checks whether numeric claims in the prose trace to numbers the tools actually returned. When coverage is low — many numbers in the text but few traced to source data — Largo surfaces a verification caveat in the response. This is not a disclaimer; it is a factual statement about grounding.
+
+For a high-level overview, see the [Largo AI guide](/learn/largo-ai). Use Largo as a faster, more thorough way to interrogate the desk — not as a replacement for reading the [dashboards](/learn/spx-slayer-dashboard-guide) yourself. The best workflow is to ask Largo a focused question, verify the tool chips match your intent, then cross-check the key levels on the live [Thermal](/learn/thermal-heatmap-reading-guide) or [Vector](/learn/vector-scanner-guide) displays. [Get access →](/pricing)
+
+> *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options and equities trading involve substantial risk and are not suitable for every investor.*`,
+  },
+
+  // ── 5. Largo AI Market Analysis Tips ──────────────────────────────────────────
+  {
+    slug: "largo-ai-market-analysis-tips",
+    path: "/learn/largo-ai-market-analysis-tips",
+    metaTitle: "Better Answers from Largo AI | BlackOut",
+    metaDescription: "Tips for getting structured, data-grounded answers from Largo AI: effective queries, tool traces, pre-market prep, intraday reads, and post-session review.",
+    targetKeyword: "AI market analysis options",
+    type: "article",
+    title: "Getting Better Answers from Largo AI",
+    description: "Tips for getting structured, data-grounded answers from Largo AI: effective queries, tool traces, pre-market prep, intraday reads, and post-session review.",
+    body: `Largo AI has access to over **70 live data tools** — quotes, multi-timeframe technicals, [options flow](/learn/how-to-read-options-flow), [GEX positioning](/learn/what-is-dealer-gamma-exposure), [dark pool](/learn/what-is-dark-pool-trading) prints, news channels, earnings, screeners, predictions consensus, sector flow, volatility regime, and more. The quality of the answer depends entirely on the quality of the question. Here is how to get the most out of it.
+
+## Be specific, not general
+
+Largo's data tools are designed for **precise, falsifiable queries**. The more specific your question, the sharper the tools Largo selects and the more grounded the answer.
+
+**Effective:** "What's the SPX [GEX](/learn/what-is-gex) structure right now — where's the flip, and what regime are we in?"
+This triggers \`get_gex\` with ticker I:SPX. Largo returns the [gamma flip](/learn/gamma-flip-explained), [call wall and put wall](/learn/call-wall-put-wall-explained), and the regime posture (long gamma = pinning, short gamma = trending). Every number traces to the live dealer map.
+
+**Ineffective:** "What should I trade?"
+No tool can answer this. Largo has no position-sizing model, no risk tolerance profile, and no opinion on your portfolio. What it can do is tell you the state of the board — which is what you actually need to make that decision yourself.
+
+## Ask follow-ups and combine data
+
+Largo sessions persist, so you can build an investigation across multiple turns. Start broad, then narrow:
+
+1. "What's the current market regime?" — pulls market context, VIX, breadth, tide bias
+2. "How does the flow align with that regime for NVDA?" — pulls per-ticker flow, merges with the regime context from turn 1
+3. "Is there a [confluence zone](/learn/vector-scanner-guide) near the gamma flip on NVDA?" — pulls GEX positioning, checks wall alignment
+
+Each follow-up benefits from the context built in earlier turns. Largo remembers what it fetched and can reference prior data without re-fetching.
+
+The most powerful questions combine multiple lenses: "How does the [options flow](/learn/helix-flow-scanner-guide) align with the [gamma regime](/learn/gamma-flip-explained)?" forces Largo to fetch both and compose an answer that neither source alone could produce.
+
+## Understanding the tool trace
+
+Every answer shows tool chips. Learning which tools Largo pulls — and when it does not pull one you expected — sharpens your usage:
+
+- **get_spx_structure** fires for broad SPX desk questions. It returns the same live state the [SPX Slayer dashboard](/learn/spx-slayer-dashboard-guide) shows.
+- **get_gex** fires for dealer positioning questions. If you ask about "gamma" or "walls" or "flip" and this tool does not appear in the chips, the answer is not grounded in fresh positioning data.
+- **get_options_flow** fires for per-ticker flow questions. For SPX it returns the desk's own flow slice; for everything else, the merged HELIX + live pull.
+- **get_flow_tape** fires for the broader ingested tape (the HELIX pipeline's Postgres data). Different from get_options_flow — this one skips the live UW pull and returns the already-ingested historical tape with aggregates.
+- **get_nighthawk_edition** fires when you ask about overnight or swing plays. It is the only tool that can pull a specific past date.
+- **get_zerodte_plays** fires for the [0DTE Command](/learn/night-hawk-0dte-command-guide) board state.
+- **get_zerodte_rejections** fires when you ask why a ticker did not make the 0DTE board — the rejection log with gate codes and thresholds.
+
+If you want a specific tool to fire, name the data in your question: "Show me the GEX ladder" guarantees get_gex runs.
+
+## Pre-market prep with Largo
+
+Before the open, Largo is at its best for preparation:
+
+- "What did Night Hawk pick last night and what's confirmed this morning?" — pulls the full edition with morning-confirm badges.
+- "What's the macro calendar today?" — pulls the economic calendar tool for FOMC, CPI, NFP events that would trigger the [0DTE G-7 gate](/learn/night-hawk-0dte-command-guide).
+- "Where are the key SPX gamma levels for today?" — pulls GEX, returns the flip, walls, and regime before you look at a chart.
+- "What's the [implied volatility](/learn/implied-volatility-explained) regime?" — pulls VIX indices and IV rank, tells you whether premium is rich or cheap.
+
+## Intraday reads
+
+During the session, Largo helps with real-time interrogation:
+
+- "Why did the 0DTE scanner skip TSLA at 10:15?" — pulls the rejection log, shows exactly which gate blocked and the threshold it missed.
+- "What's the thesis health on the open SPY play?" — pulls the 0DTE board, returns the pillar-by-pillar health breakdown.
+- "Is there a dark pool level near the SPX call wall?" — combines dark pool and GEX tools to check for confluence.
+
+## Post-session review
+
+After the close, Largo can pull the settled data for review:
+
+- "How did tonight's Night Hawk plays grade?" — pulls the edition with resolved outcomes.
+- "What was the 0DTE board's win rate this week?" — pulls the track record and grading data.
+- "Show me the flow tape for NVDA over the last 48 hours." — pulls the HELIX ingested tape with premium aggregates and top prints.
+
+## Largo vs. reading the dashboards
+
+Both have a place. The [SPX Slayer dashboard](/learn/spx-slayer-dashboard-guide), [Thermal](/learn/thermal-heatmap-reading-guide), [HELIX](/learn/helix-flow-scanner-guide), and [Vector](/learn/vector-scanner-guide) are purpose-built for fast visual scanning — you see the whole state at a glance. Largo is better for **cross-referencing**, **investigating anomalies**, and **getting a composed read** when you need to combine data from multiple surfaces into one answer. Use the dashboards for monitoring; use Largo for interrogation.
+
+For the full tool surface and interface layout, see the [Largo AI Terminal guide](/learn/largo-ai-terminal-guide). [Get access →](/pricing)
+
+> *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options and equities trading involve substantial risk and are not suitable for every investor.*`,
+  },
+
+  // ── 6. Vector Scanner Guide ───────────────────────────────────────────────────
+  {
+    slug: "vector-scanner-guide",
+    path: "/learn/vector-scanner-guide",
+    metaTitle: "Vector Scanner: Gamma & Flow Radar | BlackOut",
+    metaDescription: "How to read the Vector scanner: cross-ticker GEX ladders, wall integrity scoring, gamma magnet, confluence zones, regime banner, and the universe screener.",
+    targetKeyword: "options gamma scanner multi ticker",
+    type: "article",
+    title: "Vector Scanner: Cross-Ticker Gamma & Flow Radar",
+    description: "How to read the Vector scanner: cross-ticker GEX ladders, wall integrity scoring, gamma magnet, confluence zones, regime banner, and the universe screener.",
+    body: `[SPX Slayer](/learn/spx-slayer) and [Thermal](/learn/heat-maps) focus on SPX. **Vector** extends the same [dealer gamma exposure](/learn/what-is-dealer-gamma-exposure) framework across the **entire universe** — ranked setups from the BIE verification engine across multiple tickers, each with its own GEX ladder, regime posture, wall integrity scores, and confluence zones. If Thermal is the microscope on SPX's gamma structure, Vector is the radar dish scanning the broader market.
+
+## The universe screener
+
+The top-level view is a ranked table of tickers, each carrying the core positioning read:
+
+| Column | What it shows |
+|---|---|
+| **Ticker** | The instrument — SPY, QQQ, NVDA, AAPL, any name in the scanner universe |
+| **Spot** | Current price |
+| **Gamma flip** | The price where [dealer gamma crosses zero](/learn/gamma-flip-explained) — above = pinned, below = trending |
+| **VEX flip** | The vanna-exposure crossover — the hedging-pressure counterpart from delta-vanna, not gamma |
+| **Top call wall** | The strike with the largest concentration of call gamma (likely resistance) |
+| **Top put wall** | The strike with the largest concentration of put gamma (likely support) |
+| **Top call %** | The call wall's net-gamma share (0-100) — how dominant that wall is |
+| **Top put %** | The put wall's net-gamma share — how dominant the support level is |
+
+The screener supports preset views: **nearest-flip** (tickers closest to crossing their gamma flip — the most actionable regime-change candidates), **most-pinned** (above the flip with strong walls — mean-reversion setups), and **most-explosive** (below the flip and close to it — dealers amplifying, vol-expansion risk). Each preset is a sort and filter on the data already loaded, not a different data source.
+
+## VectorGexLadder: the per-strike breakdown
+
+Select a ticker and the panel expands to the **VectorGexLadder** — the per-strike [GEX](/learn/what-is-gex) profile for that name. This is the same data concept as [Thermal's heatmap](/learn/thermal-heatmap-reading-guide) but in ladder form: each strike shows the net gamma parked there, with the [call wall, put wall](/learn/call-wall-put-wall-explained), and [gamma flip](/learn/gamma-flip-explained) marked directly on the ladder. Wall beads — the visual markers for gamma concentration — track across the session, building a wall lifecycle that the [Cortex evidence system](/learn/night-hawk-cortex-evidence-system) reads as one of its eight independent sources.
+
+## VectorRegimeBanner: the one-line regime read
+
+Above the ladder sits the **VectorRegimeBanner** — the current gamma regime in a single line:
+
+- **LONG GAMMA** (calm tone) — spot is above the gamma flip. Dealers hedge against moves: sell rallies, buy dips. Price tends to pin and mean-revert. Expect chop; fade extremes.
+- **SHORT GAMMA** (volatile tone) — spot is below the flip. Dealers hedge with the move: sell weakness, buy strength. Volatility feeds on itself. Respect momentum.
+- **TRANSITION** (neutral tone) — spot is within 0.1% of the flip. The regime is undecided. Sit on your hands or use smaller positions until it commits.
+
+The banner includes the flip level, the nearest wall on each side, and a plain-English read of what the regime implies for the session. This is the same interpretation layer covered in the [gamma flip explainer](/learn/gamma-flip-explained) — the Vector banner just computes it live for every ticker in the universe, not just SPX.
+
+## Wall integrity scoring: is this wall real?
+
+Not all gamma walls are equal. A bead on the chart could represent a wall that has held all session against multiple tests, or one that blinked into existence two minutes ago. The **wall integrity score** (0-100) distinguishes them by blending three independent factors:
+
+- **STRENGTH (weight 0.45)** — the wall's net-gamma share (\`pct\`). A wall that concentrates 40% of the side's gamma is structurally more important than one at 8%. This is the dominant driver.
+- **PERSISTENCE (weight 0.35)** — what fraction of recent history-rail samples included this strike as a wall. A level defended across 50+ snapshots over the session is far more trustworthy than one with a single appearance. When the history rail has fewer than 3 samples (e.g., shortly after the open), persistence reports "unknown" (neutral 0.5) rather than fabricating "proven."
+- **ISOLATION (weight 0.20)** — how far the wall towers over the next wall on its side. A clean, dominant level is isolated; one inside a cluster of similar-sized walls is diffuse. A single-wall side (no second wall) scores as fully isolated.
+
+The score maps to three tiers: **firm** (70+), **moderate** (45-69), **thin** (below 45). A firm wall has held, dominates, and stands alone — trade around it with confidence. A thin wall is a suggestion, not a structure — do not rely on it for your stop or target.
+
+## Gamma magnet: the hedging center of mass
+
+The **gamma magnet** is the strength-weighted mean of all gamma wall strikes — the center of mass of dealer hedging pressure. Its behavior depends on the regime:
+
+- In **long gamma** (spot above the flip), the magnet is a genuine **pin** — price is drawn toward it because dealers hedge against moves, creating a gravitational pull.
+- In **short gamma** (spot below the flip), the same level is a **pivot** — once broken, price accelerates away because dealers hedge with the move. Calling it a "magnet" in short gamma would misrepresent the flow.
+- In **transition** or **unknown**, it is reported as a neutral center of mass with no directional claim.
+
+The magnet reports its distance from spot (as a signed percentage), which way it pulls (up, down, or "at" when within 0.15% — effectively sitting on it), and a desk-terminal one-liner phrased by regime.
+
+## Confluence zones: where multiple levels agree
+
+Vector derives many independent price levels: gamma walls, the gamma flip, [max pain](/learn/max-pain-options-explained), auto-fib golden pockets, session and prior-day levels, floor pivots. A single level is interesting. **Several independent levels stacking within ~0.15% of spot** is a trade location.
+
+The **confluence engine** clusters these levels and scores each cluster using transparent weights: [dealer positioning](/learn/what-is-dealer-gamma-exposure) levels (walls, flip) weigh most heavily (weight 3.0 for walls, 2.5 for the flip), then derived levels (max pain, golden pocket at 2.0), then classical levels (prior-day high/low, pivots at 1.5). A cluster only ranks as confluence with **2 or more distinct level types** — five fib lines stacked on each other is one signal repeated, not five signals agreeing.
+
+## GexShiftLeadersStrip: who moved the most
+
+The **GexShiftLeadersStrip** surfaces the tickers with the largest intraday GEX shift — names where the dealer positioning landscape changed the most since the prior read. A large shift signals that the gamma structure is actively reorganizing, which often precedes a regime change or a wall break.
+
+## Alerts and replay
+
+The Vector alerts panel flags when a watched ticker crosses a material threshold: a gamma flip crossing (regime change), a wall break, a confluence zone test. **Replay controls** let you step backward through the session's snapshots, watching how the GEX ladder and walls evolved over time — the same lifecycle data the [Cortex wall-trend source](/learn/night-hawk-cortex-evidence-system) reads, but presented visually.
+
+## How Vector fits the desk
+
+Vector answers "where in the broader market is the gamma structure most interesting right now?" [Thermal](/learn/thermal-four-lenses-explained) gives you the deep heatmap for SPX. [SPX Slayer](/learn/spx-slayer-dashboard-guide) executes on SPX. [HELIX](/learn/helix-flow-scanner-guide) scans the flow tape. The [0DTE Command](/learn/night-hawk-0dte-command-guide) scanner uses multi-ticker flow and structure for intraday entries. And [Largo AI](/learn/largo-ai-terminal-guide) can pull any Vector ticker's GEX, regime, and walls into a conversational answer.
+
+For the underlying concepts — [what gamma exposure means](/learn/what-is-dealer-gamma-exposure), [how the gamma flip works](/learn/gamma-flip-explained), [why the Greeks matter](/learn/options-greeks-explained), and [how delta hedging creates these levels](/learn/delta-hedging-explained) — see the deep-dive library. [Get access →](/pricing)
+
+> *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options and equities trading involve substantial risk and are not suitable for every investor.*`,
   },
 ];
 
