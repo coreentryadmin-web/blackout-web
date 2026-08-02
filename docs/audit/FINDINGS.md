@@ -6076,5 +6076,39 @@ class described above, 70 PASS/INFO everywhere else. `npx tsx --test src/lib/rou
 — 17/17 pass (13 pre-existing + 4 new). `npx tsc --noEmit` clean. `npx eslint` on all touched
 files — 0 errors. `npx next build` — clean.
 
-**Status:** PR pending → CI → auto-merge per standing policy, then a live post-deploy re-run of
-`npm run validate:thermal-matrix` to confirm the FAIL count drops to 0.
+**Status:** PR #1513 merged. CodeQL flagged 2 high-severity "remote property injection" alerts on
+`reconcileCellStrikeTotals`'s `strikeTotals[strike] = ...` assignments (strike keys trace back
+toward the `ticker` query param in CodeQL's dataflow, even though in practice they're numeric
+strike-price strings from Polygon's own chain — not a reachable exploit, but cheap to harden).
+First fix attempt (`Object.create(null)`, still pushed pre-merge) didn't satisfy CodeQL — its
+sink pattern matches the bracket-assignment SYNTAX itself, not prototype reachability, so it
+still fired post-merge. Follow-up PR `fix/thermal-codeql-property-injection` replaces the
+plain-object accumulator with a `Map` + a single `Object.fromEntries()` call at the end (no
+dynamic-key assignment expression at all, so there's no such sink to flag) — see next entry.
+
+## 2026-08-02 — [Thermal] CodeQL remote-property-injection follow-up on reconcileCellStrikeTotals — FIXED
+
+**Root cause.** The previous entry's fix built `strike_totals` via direct bracket assignment
+(`strikeTotals[strike] = value`) into a plain object. CodeQL's "remote property injection" query
+flags that assignment SYNTAX whenever the key's dataflow traces toward a request parameter
+(here: `ticker` → `fetchGexHeatmap` → strike keys) — it doesn't matter that `Object.create(null)`
+(the first attempted fix, merged in PR #1513) makes prototype pollution unreachable; the query
+isn't about reachability, it's a blanket "don't dynamically write properties whose name derives
+from user input" pattern-match, and `Object.create(null)` doesn't change that assignment's shape.
+
+**Fix.** Replace the object + bracket-assignment with a `Map<string, number>` built via `.set()`,
+then convert to the final plain object with ONE `Object.fromEntries(map)` call. `Map.set()` isn't
+a property-assignment expression CodeQL's query targets, and `Object.fromEntries` is a single
+built-in call, not a dynamic-key write in user code — there is no assignment expression left for
+the query to match, closing the alert at the pattern level rather than only at the reachability
+level.
+
+**Blast radius.** `round-floats.ts` only — same function, same tests (all 17 still pass
+unchanged; the public behavior/shape of `reconcileCellStrikeTotals` is identical, only its
+internal accumulator changed).
+
+**Evidence.** `npx tsx --test src/lib/round-floats.test.ts` — 17/17 pass. `npx tsc --noEmit`
+clean. `npx eslint` — 0 errors. `npx next build` — clean.
+
+**Status:** PR pending → CI (including CodeQL re-scan) → auto-merge per standing policy, then a
+live post-deploy re-run of `npm run validate:thermal-matrix` to confirm the FAIL count drops to 0.

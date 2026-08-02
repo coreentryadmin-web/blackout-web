@@ -80,19 +80,21 @@ export function reconcileCellStrikeTotals<
   if (!block?.cells || !block.strike_totals || !nearTermExpiries?.length) return block;
   const factor = 10 ** dp;
   const nearSet = new Set(nearTermExpiries);
-  // Object.create(null) — strike keys are numeric strike-price strings from the Polygon
-  // chain, never attacker-supplied, but a proto-less object means a key like "__proto__"
-  // can never repoint this object's prototype no matter where the key ultimately traces
-  // from (CodeQL "remote property injection" — hardening, not a real reachable exploit).
-  const strikeTotals: Record<string, number> = Object.create(null);
+  // Accumulate into a Map, not a plain-object bracket assignment (`obj[strike] = ...`) —
+  // strike keys are numeric strike-price strings from the Polygon chain, never
+  // attacker-supplied, but CodeQL's "remote property injection" sink matches the
+  // assignment SYNTAX itself regardless of taint reachability. Object.fromEntries()
+  // at the end builds the plain object via a single trusted call, not a dynamic-key
+  // assignment expression, so there is no such sink to flag.
+  const strikeTotals = new Map<string, number>();
   for (const [strike, existing] of Object.entries(block.strike_totals)) {
     const row = block.cells[strike];
-    if (!row) { strikeTotals[strike] = existing; continue; }
+    if (!row) { strikeTotals.set(strike, existing); continue; }
     let sum = 0;
     for (const [expiry, val] of Object.entries(row)) {
       if (nearSet.has(expiry) && Number.isFinite(val)) sum += val;
     }
-    strikeTotals[strike] = Math.round(sum * factor) / factor;
+    strikeTotals.set(strike, Math.round(sum * factor) / factor);
   }
-  return { ...block, strike_totals: strikeTotals } as B;
+  return { ...block, strike_totals: Object.fromEntries(strikeTotals) } as B;
 }
