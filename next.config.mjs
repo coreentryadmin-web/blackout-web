@@ -78,6 +78,34 @@ const nextConfig = {
   poweredByHeader: false,
   // ECS/Fargate Docker image — emits .next/standalone for multi-stage Dockerfile.
   output: "standalone",
+  // Force all metadata (<title>, meta, OG, canonical, JSON-LD) into <head> for
+  // crawlers that don't execute JS. Without this, Next 15.2+ streams metadata
+  // into <body> for non-bot UAs, but Googlebot, GPTBot, PerplexityBot and
+  // ClaudeBot all receive an empty <head>. This list extends Next's built-in
+  // htmlLimitedBots with AI crawlers relevant to a finance/trading platform.
+  htmlLimitedBots: [
+    "Googlebot",
+    "Bingbot",
+    "Yandex",
+    "DuckDuckBot",
+    "Baiduspider",
+    "Twitterbot",
+    "facebookexternalhit",
+    "LinkedInBot",
+    "Slackbot",
+    "WhatsApp",
+    "Discordbot",
+    "GPTBot",
+    "ChatGPT-User",
+    "ClaudeBot",
+    "PerplexityBot",
+    "Applebot",
+    "Google-Extended",
+    "CCBot",
+    "anthropic-ai",
+    "Bytespider",
+    "cohere-ai",
+  ],
   experimental: {
     cpus: Math.max(1, cpuCount - 1),
   },

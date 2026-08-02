@@ -1,40 +1,49 @@
-import type { MetadataRoute } from 'next'
-
-const BASE = 'https://blackouttrades.com'
+import type { MetadataRoute } from "next";
+import { SITE } from "@/lib/site";
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const now = new Date()
-  const routes: { path: string; priority: number; freq: MetadataRoute.Sitemap[number]['changeFrequency'] }[] = [
-    { path: '/',                      priority: 1.0, freq: 'weekly' },
-    { path: '/pricing',               priority: 0.9, freq: 'weekly' },
-    { path: '/faq',                   priority: 0.7, freq: 'monthly' },
-    { path: '/why-blackout',           priority: 0.8, freq: 'monthly' },
-    { path: '/contact',               priority: 0.5, freq: 'yearly' },
-    { path: '/learn',                 priority: 0.8, freq: 'weekly' },
-    { path: '/learn/getting-started', priority: 0.7, freq: 'monthly' },
-    { path: '/learn/spx-slayer',      priority: 0.7, freq: 'monthly' },
-    { path: '/learn/helix-flows',     priority: 0.7, freq: 'monthly' },
-    { path: '/learn/largo-ai',        priority: 0.7, freq: 'monthly' },
-    { path: '/learn/night-hawk',      priority: 0.7, freq: 'monthly' },
-    { path: '/learn/heat-maps',       priority: 0.7, freq: 'monthly' },
-    { path: '/learn/glossary',        priority: 0.7, freq: 'monthly' },
-    { path: '/learn/dealer-gamma-options-flow-guide', priority: 0.8, freq: 'monthly' },
-    { path: '/learn/what-is-dealer-gamma-exposure',   priority: 0.7, freq: 'monthly' },
-    { path: '/learn/gamma-flip-explained',            priority: 0.7, freq: 'monthly' },
-    { path: '/learn/call-wall-put-wall-explained',    priority: 0.7, freq: 'monthly' },
-    { path: '/learn/what-is-gex',                     priority: 0.7, freq: 'monthly' },
-    { path: '/learn/0dte-spx-options-strategy',       priority: 0.7, freq: 'monthly' },
-    { path: '/learn/is-0dte-gambling',                priority: 0.7, freq: 'monthly' },
-    { path: '/learn/how-to-read-options-flow',        priority: 0.7, freq: 'monthly' },
-    { path: '/learn/gamma-squeeze-explained',         priority: 0.7, freq: 'monthly' },
-    { path: '/learn/options-trading-glossary',        priority: 0.7, freq: 'monthly' },
-    { path: '/terms',                 priority: 0.3, freq: 'yearly' },
-    { path: '/privacy',               priority: 0.3, freq: 'yearly' },
-    { path: '/disclaimer',            priority: 0.3, freq: 'yearly' },
-    { path: '/refund-policy',         priority: 0.3, freq: 'yearly' },
-    { path: '/cookie-policy',         priority: 0.3, freq: 'yearly' },
-  ]
-  return routes.map(({ path, priority, freq }) => ({
-    url: `${BASE}${path}`, lastModified: now, changeFrequency: freq, priority,
-  }))
+  const now = new Date();
+
+  const marketing: MetadataRoute.Sitemap = [
+    { url: SITE.url, lastModified: now, changeFrequency: "weekly", priority: 1.0 },
+    { url: `${SITE.url}/pricing`, lastModified: now, changeFrequency: "weekly", priority: 0.9 },
+    { url: `${SITE.url}/faq`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/why-blackout`, lastModified: now, changeFrequency: "monthly", priority: 0.8 },
+    { url: `${SITE.url}/contact`, lastModified: now, changeFrequency: "yearly", priority: 0.5 },
+  ];
+
+  const learn: MetadataRoute.Sitemap = [
+    { url: `${SITE.url}/learn`, lastModified: now, changeFrequency: "weekly", priority: 0.8 },
+    { url: `${SITE.url}/learn/getting-started`, lastModified: now, changeFrequency: "monthly", priority: 0.8 },
+    { url: `${SITE.url}/learn/spx-slayer`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/helix-flows`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/largo-ai`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/night-hawk`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/heat-maps`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/glossary`, lastModified: now, changeFrequency: "monthly", priority: 0.6 },
+    { url: `${SITE.url}/learn/dealer-gamma-options-flow-guide`, lastModified: now, changeFrequency: "monthly", priority: 0.8 },
+    { url: `${SITE.url}/learn/what-is-dealer-gamma-exposure`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/gamma-flip-explained`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/call-wall-put-wall-explained`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/what-is-gex`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/0dte-spx-options-strategy`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/is-0dte-gambling`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/how-to-read-options-flow`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/gamma-squeeze-explained`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/options-trading-glossary`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+  ];
+
+  const trust: MetadataRoute.Sitemap = [
+    { url: `${SITE.url}/track-record`, lastModified: now, changeFrequency: "daily", priority: 0.8 },
+  ];
+
+  const legal: MetadataRoute.Sitemap = [
+    { url: `${SITE.url}/terms`, lastModified: now, changeFrequency: "yearly", priority: 0.3 },
+    { url: `${SITE.url}/privacy`, lastModified: now, changeFrequency: "yearly", priority: 0.3 },
+    { url: `${SITE.url}/disclaimer`, lastModified: now, changeFrequency: "yearly", priority: 0.2 },
+    { url: `${SITE.url}/refund-policy`, lastModified: now, changeFrequency: "yearly", priority: 0.2 },
+    { url: `${SITE.url}/cookie-policy`, lastModified: now, changeFrequency: "yearly", priority: 0.2 },
+  ];
+
+  return [...marketing, ...learn, ...trust, ...legal];
 }

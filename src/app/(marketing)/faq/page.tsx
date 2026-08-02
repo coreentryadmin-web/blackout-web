@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 import { MarketingPageShell } from "@/components/landing/MarketingPageShell";
 import { RedesignFaq } from "@/components/landing/RedesignFaq";
-import JsonLd from "@/components/JsonLd";
+import { FAQPageJsonLd } from "@/components/seo/JsonLd";
+import { FAQ_ITEMS } from "@/lib/faq/content";
 import { publicPageMetadata } from "@/lib/page-metadata";
-import { faqSchema } from "@/lib/schema";
 
 export const metadata: Metadata = publicPageMetadata(
   "BlackOut FAQ — Plans, Data, and How It Works",
@@ -14,7 +14,7 @@ export const metadata: Metadata = publicPageMetadata(
 export default function FaqPage() {
   return (
     <MarketingPageShell>
-      <JsonLd data={faqSchema} />
+      <FAQPageJsonLd items={FAQ_ITEMS.map((i) => ({ question: i.q, answer: i.a }))} />
       <RedesignFaq />
     </MarketingPageShell>
   );

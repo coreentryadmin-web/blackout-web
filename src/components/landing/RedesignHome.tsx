@@ -114,8 +114,7 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
                       <div className="gal-track">
                         {MARKETING_MODULE_GALLERY[m.id].map((img, j) => (
                           <div key={j} className={`gal-slide${j === 0 ? " gal-active" : ""}`}>
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img className="cmd-img" src={img} alt={`${m.label} screenshot ${j + 1}`} loading="lazy" />
+                            <Image className="cmd-img" src={img} alt={`${m.label} screenshot ${j + 1}`} fill sizes="(max-width: 768px) 100vw, 600px" loading="lazy" />
                           </div>
                         ))}
                       </div>
@@ -128,8 +127,7 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
                       </div>
                     </div>
                   ) : (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img className="cmd-img" src={MARKETING_MODULE_GALLERY[m.id][0]} alt={`${m.label} screenshot`} loading="lazy" />
+                    <Image className="cmd-img" src={MARKETING_MODULE_GALLERY[m.id][0]} alt={`${m.label} screenshot`} fill sizes="(max-width: 768px) 100vw, 600px" loading="lazy" />
                   )}
                   <div className="cmd-scan" aria-hidden="true" />
                 </div>

@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
 import { MarketingPageShell } from "@/components/landing/MarketingPageShell";
 import { RedesignPricing } from "@/components/landing/RedesignPricing";
-import JsonLd from "@/components/JsonLd";
+import { SoftwareApplicationJsonLd } from "@/components/seo/JsonLd";
 import { publicPageMetadata } from "@/lib/page-metadata";
-import { productSchema } from "@/lib/schema";
 
 export const metadata: Metadata = publicPageMetadata(
   "BlackOut Pricing — Plans From $49/mo, Cancel Anytime",
@@ -14,7 +13,7 @@ export const metadata: Metadata = publicPageMetadata(
 export default function PricingPage() {
   return (
     <MarketingPageShell showChart={false}>
-      <JsonLd data={productSchema} />
+      <SoftwareApplicationJsonLd />
       <div className="hide-in-ios-app">
         <RedesignPricing />
       </div>
