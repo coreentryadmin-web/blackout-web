@@ -492,6 +492,7 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
           alt=""
           width={1254}
           height={1254}
+          sizes="(max-width: 768px) 250px, 420px"
           className="footer-ghost"
           loading="lazy"
           aria-hidden
