@@ -31,6 +31,13 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${SITE.url}/learn/how-to-read-options-flow`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
     { url: `${SITE.url}/learn/gamma-squeeze-explained`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
     { url: `${SITE.url}/learn/options-trading-glossary`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/iron-condor-strategy-guide`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/what-is-dark-pool-trading`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/options-greeks-explained`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/implied-volatility-explained`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/unusual-options-activity-guide`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/max-pain-options-explained`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/delta-hedging-explained`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
   ];
 
   const legal: MetadataRoute.Sitemap = [
