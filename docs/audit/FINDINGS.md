@@ -5720,5 +5720,47 @@ changes — purely presentational. `npx tsc --noEmit` clean; `npx eslint` on the
 0 errors (1 pre-existing, unrelated `timeAnchor` exhaustive-deps warning, not introduced here);
 `npx tsx --test` on the new test file — 2/2 pass.
 
-**Status:** PR pending. Remaining Tier 1 items (filters → mobile bottom sheet; rebuild
+**Status:** PR #1501, merged. Remaining Tier 1 items (filters → mobile bottom sheet; rebuild
 `FlowAlertStream` as the real mobile layout) tracked as separate PRs.
+
+## 2026-08-02 — [Helix Tier 1] Mobile web + native shell get a real card tape, not the desktop grid — FIXED
+
+**Root cause.** Both mobile web (Safari/Chrome on a phone) AND the native iOS shell rendered
+`HelixFlowTable` — the SAME CSS-grid "table" built for a wide desk viewport, with a hard
+`min-width` scroll floor (44rem+) — regardless of viewport width. This is the underlying bug
+behind the audit's confirmed screenshot finding ("mobile web renders the full desktop terminal
+grid, requiring horizontal scroll") and the reason the old `FlowAlertStream` card component
+existed in the first place before Tier 0 deleted it as dead code (it had been built for exactly
+this case, then silently orphaned when `HelixFlowTable` replaced it everywhere, mobile included).
+
+**Fix.** New `HelixMobileFlowTape.tsx` — a single-column, card-per-print layout sized for a
+narrow viewport. Deliberately NOT a resurrection of the deleted `FlowAlertStream`: reuses the
+desktop table's OWN `flowSignals()` badge computation and `sortFlows()` (imported from
+`helix-flow-format.ts`, both already unit-tested) instead of re-deriving a second, driftable copy
+of the same badge logic, and uses the current real server-cursor pagination
+(`hasMorePages`/`onLoadOlder`/`loadingOlder`) instead of the old component's client-side
+150-card `RENDER_LIMIT` slicing that Tier 0's audit flagged as already-inaccurate-vs-docs.
+
+Wired into `FlowFeed.tsx` via the existing `useCompactDeskPanels(nativeShell)` hook (same hook
+`SpxDashboard`/`VectorPageShell` already use for their own compact-viewport switch, same 767px
+threshold) — no new bespoke breakpoint. `compactTape` gates which tape component mounts; only one
+of the two is ever in the DOM at a time (not a CSS show/hide of both, which would double the
+render cost of a list that can run to thousands of rows).
+
+**Evidence.** Same live-authenticated screenshot session referenced in the two fixes above.
+`flowSignals`/`sortFlows`/`daysToExpiry` are pre-existing, independently unit-tested pure
+functions (`helix-flow-format.test.ts`) reused here, not new untested logic — no new pure-logic
+surface was introduced that needed its own test (this repo has no component-rendering test
+harness; every existing test here is pure-function-only, and this PR is JSX composition of
+already-tested pieces, not new derivation logic).
+
+**Blast radius.** New file `HelixMobileFlowTape.tsx`; `FlowFeed.tsx` (+2 imports, +1 hook call, +1
+conditional at the tape-column render site — the analytics rail, filter bar, ticker/contract
+drawers are all untouched). No behavior change for desktop viewports (`compactTape` is false
+there, so `HelixFlowTable` renders exactly as before).
+
+**Validation.** `npx tsc --noEmit` clean. `npx eslint` on both touched/new files — 0 errors (1
+warning, `jsx-a11y/no-static-element-interactions` on the card's conditional interactive role —
+confirmed pre-existing on `HelixFlowTable`'s structurally identical row, not new).
+
+**Status:** PR pending.
