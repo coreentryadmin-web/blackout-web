@@ -246,6 +246,10 @@ The exact dollar value matters less than the sign and relative magnitude. A GEX 
 
 The price where total GEX crosses zero is the [gamma flip](/learn/gamma-flip-explained) — the boundary between the two regimes. Watching where price sits relative to that line is the fastest read on the day's likely behavior. The delta hedging that actually generates these flows is covered in [Delta Hedging Explained](/learn/delta-hedging-explained).
 
+## GEX and implied volatility
+
+GEX and [implied volatility](/learn/implied-volatility-explained) are two sides of the same coin. High positive GEX mechanically suppresses realized volatility — dealers are selling rallies and buying dips, compressing the range. When realized vol drops below what IV was pricing in, options are overpriced relative to what's actually happening, and premium sellers benefit from both theta decay and the IV contraction that follows. Conversely, negative GEX amplifies realized vol: moves overshoot, the session's range blows past what IV implied, and option buyers get paid. Checking GEX alongside the VIX (the market's 30-day implied vol for SPX) tells you whether the volatility the market is pricing is likely to understate or overstate what actually plays out — a direct input into whether you want to be a net buyer or seller of premium on any given session.
+
 ## How to actually use it
 
 GEX is a *context* tool, not a signal by itself. Use it to decide *how* to trade — fade extremes in positive GEX, respect momentum in negative GEX — and combine it with the [call wall and put wall](/learn/call-wall-put-wall-explained) for specific levels. On a practical level:
@@ -289,7 +293,7 @@ With so much gamma expiring today, dealer hedging flows are massive and concentr
 
 ## Entry timing matters
 
-Not all hours are equal. The first 30 minutes after the open carry the widest spreads, the most noise, and the most fakeouts — gamma is at its absolute peak, and a move that looks decisive at 9:35 AM often reverses by 10:00. The window from roughly 10:00 AM to 11:30 AM ET is where the session typically commits to its character: the regime becomes clear, flow settles, and the levels that held the first test are more likely to hold the second. Late-day entries (after 2:00 PM) carry a different edge: theta decay accelerates toward zero and any remaining gamma becomes binary — you're either right immediately or you're out. Many professional 0DTE traders skip the first 30 minutes entirely and limit their entries to a 3-hour window where the signal-to-noise ratio is highest.
+Not all hours are equal. The first 30 minutes after the open carry the widest spreads, the most noise, and the most fakeouts — gamma is at its absolute peak, and a move that looks decisive at 9:35 AM often reverses by 10:00. The window from roughly 10:00 AM to 11:30 AM ET is where the session typically commits to its character: the regime becomes clear, flow settles, and the levels that held the first test are more likely to hold the second. Late-day entries (after 2:00 PM) carry a different edge: theta decay accelerates toward zero and any remaining gamma becomes binary — you're either right immediately or you're out. [Implied volatility](/learn/implied-volatility-explained) also has an intraday pattern — it tends to be highest at the open and compresses as the session progresses, which matters for how much premium you're paying or collecting at any given hour. Many professional 0DTE traders skip the first 30 minutes entirely and limit their entries to a 3-hour window where the signal-to-noise ratio is highest.
 
 ## Regime-based sizing
 
@@ -390,6 +394,10 @@ A **sweep** is an order split across multiple exchanges simultaneously to fill f
 
 Not all institutional activity shows up on the lit options tape. Roughly 40–50% of U.S. equity volume trades in **dark pools** — private venues where institutions buy and sell size without showing their hand. A large dark pool print in the stock often *precedes* the options activity, not the other way around: the institution builds a position off-exchange first, then layers on calls or puts for leverage or hedging. A heavy dark pool block followed by unusual call buying in the same name within the same session is a much stronger signal than either one alone. See [What Is Dark Pool Trading?](/learn/what-is-dark-pool-trading) for how to read those prints.
 
+## Unusual activity vs. routine flow
+
+The hardest part of reading flow is deciding what counts as unusual. SPX prints millions of contracts a day; a "large" trade on SPX is routine. The same-size print in a mid-cap name with a fraction of the normal options volume is genuinely unusual. The distinction is always *relative* — volume compared to that name's own baseline, not a universal dollar threshold. The most reliable filter: compare today's volume on a specific contract to its open interest. When volume on a single strike exceeds its open interest, those are new positions being created, not existing ones churning. That's where real institutional signal lives. Pair that with sweep detection and bid/ask aggression, and you've filtered out the vast majority of noise before you even look at direction. See [Unusual Options Activity Guide](/learn/unusual-options-activity-guide) for the full breakdown of this filter.
+
 ## Flow + positioning = the full picture
 
 Flow tells you *who's showing up*; dealer positioning tells you *where the levels are*. The strongest setups happen when both agree — aggressive opening flow pushing into a [gamma level](/learn/gamma-flip-explained) that's likely to give way. Either one alone is half a picture.
@@ -421,9 +429,13 @@ A **gamma squeeze** starts with heavy call buying. Dealers who sell those calls 
 
 The key is that dealers here are **short gamma** — the negative-gamma regime where hedging flows *with* price instead of against it. In that regime, moves self-reinforce rather than self-correct. It's the violent cousin of a [negative-GEX](/learn/what-is-gex) day. A small catalyst can snowball into a vertical move because every uptick mechanically creates more buying. The Greek driving the feedback is gamma itself — as delta increases with each uptick, the hedging demand grows nonlinearly (see [Options Greeks Explained](/learn/options-greeks-explained) for how gamma relates to delta).
 
+## What delta hedging has to do with it
+
+A gamma squeeze is really just [delta hedging](/learn/delta-hedging-explained) taken to its extreme. Under normal conditions, a dealer who sold calls delta hedges by buying a modest number of shares and rebalancing gradually as price moves. That's routine and orderly. A gamma squeeze turns it violent: call buying is so concentrated, and the resulting short gamma so deep, that the *rate* at which dealers need to buy shares to stay hedged overwhelms the available liquidity. Each purchase pushes price higher; each tick higher increases delta on the remaining short calls; each delta increase demands more buying. The hedging mechanic that normally stabilizes a market becomes the engine of a runaway move because the scale of the short gamma position is too large for the underlying's liquidity to absorb quietly. Understanding that the squeeze is a hedging phenomenon — not a sentiment phenomenon — is what tells you when the move is likely to exhaust: once the calls go deep in-the-money and delta approaches 1.0, the incremental hedging demand disappears, and the mechanical fuel burns off.
+
 ## Squeeze vs. short squeeze
 
-A short squeeze is driven by *short sellers* covering. A gamma squeeze is driven by *dealers* hedging options. They often happen together — call buying plus short covering — which is why the biggest melt-ups tend to combine both forces.
+A short squeeze is driven by *short sellers* covering. A gamma squeeze is driven by *dealers* hedging options. They often happen together — call buying plus short covering — which is why the biggest melt-ups tend to combine both forces. The gamma squeeze is the mechanical amplifier; the short squeeze is the directional fuel.
 
 ## Real-world examples
 
