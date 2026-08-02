@@ -34,7 +34,7 @@ export function LearnHub() {
             BlackOut Academy
           </p>
         )}
-        {!native && <h1 className="learn-hub-title">Learn the platform</h1>}
+        {!native && <h1 className="learn-hub-title">Learn Options Trading: Dealer Gamma, Flow &amp; 0DTE Strategy</h1>}
         <p className={clsx(native ? "text-sm leading-relaxed text-sky-300" : "learn-hub-subtitle")}>
           {native
             ? "Structured chapters from first login to advanced workflows — cross-linked to live desks."

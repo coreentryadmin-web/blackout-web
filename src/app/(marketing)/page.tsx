@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import type { Metadata } from "next";
 import { MarketingPageShell } from "@/components/landing/MarketingPageShell";
 import { RedesignHome } from "@/components/landing/RedesignHome";
+import { OrganizationJsonLd, WebSiteJsonLd } from "@/components/seo/JsonLd";
 import { signedInFromRequestCookies } from "@/lib/clerk-session-cookies";
 import { publicPageMetadata } from "@/lib/page-metadata";
 
@@ -27,6 +28,8 @@ export default async function LandingPage() {
 
   return (
     <MarketingPageShell showChart={false}>
+      <OrganizationJsonLd />
+      <WebSiteJsonLd />
       <script dangerouslySetInnerHTML={{ __html: LANDING_REDIRECT_SCRIPT }} />
       <RedesignHome signedIn={signedIn} />
     </MarketingPageShell>
