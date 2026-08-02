@@ -3928,9 +3928,9 @@ export function GexHeatmap({
                 ? "border-cyan-400/40 bg-cyan-400/10 text-cyan-400"
                 : "border-white/15 text-sky-300/80 hover:text-white"
             )}
-            title="Toggle SPY | SPX | QQQ triple desk"
+            title="Toggle SPY | SPX | QQQ grid"
           >
-            Triple Desk
+            Grid
           </button>
           {live ? (
             <Badge tone="bull" dot>
@@ -4066,7 +4066,7 @@ export function GexHeatmap({
           />
           <p className="mt-4 border-t border-white/8 pt-3 text-[10px] leading-snug text-sky-300/75 gex-heatmap-methodology">
             <span aria-hidden className="mr-1 text-sky-300/70">ⓘ</span>
-            Triple desk defaults to 0DTE heat strips (SPY | SPX | QQQ) with green/red cells,
+            Grid defaults to 0DTE heat strips (SPY | SPX | QQQ) with green/red cells,
             yellow + node, purple − node, and ★ king — same paint as the major matrix. Toggle
             Near for multi-expiry. Keys 1/2/3 focus; 0/N mode; G/V/D/C lens. Pin strikes; CSV
             exports the full chain.

@@ -6174,3 +6174,11 @@ default + event-handler wiring only, reusing already-tested parser logic), so no
 
 **Status:** PR pending → CI → auto-merge per standing policy, then live screenshot verification
 (search NVDA/TSLA and confirm the single-ticker Matrix shows instead of the Triple Desk).
+
+**Addendum (same PR, before merge):** user asked to rename the toggle/section from "Triple Desk"
+to "Grid" (shorter, matches how members refer to the SPY|SPX|QQQ compare view). Renamed
+consistently: the toggle button (`GexHeatmap.tsx`), its tooltip, the methodology paragraph, and
+`ThermalTripleDesk.tsx`'s own section header ("0DTE TRIPLE DESK"/"NEAR-TERM TRIPLE DESK" →
+"0DTE GRID"/"NEAR-TERM GRID"). Internal variable/CSS-class names (`compare`, `ThermalTripleDesk`,
+`.thermal-triple-*`) deliberately left unchanged — this is a user-facing copy change only, no
+behavior touched. Re-verified `tsc`/`eslint`/`next build` clean after the rename.
