@@ -5958,3 +5958,50 @@ build` — clean. No new pure-logic surface (pure JSX/CSS restructure reusing ex
 class="grid" components), so no new test file.
 
 **Status:** PR pending → CI → auto-merge per standing policy, then live screenshot verification.
+
+**Follow-up (live validation caught a second bug in the same feature):** the live screenshot of
+the fullscreen overlay taken with an empty/off-hours dataset showed only 4 of the 7 "more" panels
+(Route Breakdown, Signal Outcomes, Sector Flow, Cumulative Net Prem) — VelocityRadar,
+NightHawkFlowPanel, and SplitFlowRadar were silently absent, leaving unexplained gaps in the
+grid. User flagged this directly from the screenshot: expected ALL panels to always be present in
+the overlay (comparing to SPX Slayer's convention of never silently collapsing a panel), not have
+some vanish when their underlying dataset happens to be empty.
+
+## 2026-08-02 — [Helix] Fullscreen overlay silently drops panels with zero entries — FIXED
+
+**Root cause.** `VelocityRadar.tsx:24` and `SplitFlowRadar.tsx:27` `return null` whenever
+`entries.length === 0`; `NightHawkFlowPanel.tsx:45` `return null` whenever `plays.length === 0 &&
+!scopedTicker`; `RouteBreakdown.tsx:53` and `SectorFlowPanel.tsx:22` did the same for their own
+empty inputs. These were written for the OLD inline-rail placement, where disappearing quietly
+kept the narrow column short. Now that all 7 "more" panels render together in one fixed grid
+(previous entry, same day), a `return null` leaves a silent gap instead of collapsing the layout
+around it — during any off-hours/quiet window (no velocity spikes, no Night Hawk plays yet, no
+split-flow tickers) the grid looks broken/incomplete rather than showing "nothing to report yet,"
+exactly what the live validation screenshot exposed.
+
+**Fix.** Each of the 5 components now renders a small empty-state card (matching the existing
+`SignalOutcomeTracker` "Collecting data" convention and `NightHawkFlowPanel`'s own
+already-existing scoped-ticker empty state) instead of `return null` — same header/kicker, a
+one-line "no data this session" message, and (where relevant) the qualifying condition so it
+reads as an explanation, not a blank space. `NightHawkFlowPanel`'s existing scoped-ticker branch
+is now the ONLY branch (its `if (!scopedTicker) return null` guard was removed) so it always
+renders regardless of whether a ticker filter is active.
+
+**Fix rationale.** All 5 components' only remaining call site is the fullscreen overlay
+(confirmed via `grep -rln` — `VelocityRadar`/`SplitFlowRadar`/`NightHawkFlowPanel` are referenced
+only from `FlowFeed.tsx`), so changing their empty-state behavior directly is safe rather than
+threading an opt-in prop through. `VelocityRadar`/`SectorFlowPanel` staying gated behind
+`marketWidePanels` (ticker-scoped views legitimately hide market-wide-only panels — confirmed
+intentional via `helix-analytics-scope.ts`/its own test) is unchanged; that's a scope decision,
+not the empty-data bug being fixed here.
+
+**Blast radius.** `VelocityRadar.tsx`, `SplitFlowRadar.tsx`, `NightHawkFlowPanel.tsx`,
+`RouteBreakdown.tsx`, `SectorFlowPanel.tsx` — each only changes its own zero-entries branch, no
+prop signature or data-fetching changed. `FlowFeed.tsx` is untouched (same props passed in).
+
+**Evidence.** `npx tsc --noEmit` clean. `npx eslint` on all 5 files — 0 errors (1 pre-existing
+unrelated Tailwind shorthand warning in `SplitFlowRadar.tsx`, not touched by this diff). `npx
+next build` — clean. No new pure-logic branch (each change is a JSX-only empty-state render), so
+no new test file.
+
+**Status:** PR pending → CI → auto-merge per standing policy, then live screenshot re-verification.

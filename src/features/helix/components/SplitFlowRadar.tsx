@@ -24,7 +24,24 @@ export function SplitFlowRadar({
 }) {
   // Hoisted above the early return (Rules of Hooks). Static for reduced-motion users.
   const pulse = usePulse({ opacity: [1, 0.3, 1] }, { repeat: Infinity, duration: 2, ease: "easeInOut" });
-  if (entries.length === 0) return null;
+  if (entries.length === 0) {
+    return (
+      <Panel
+        accent="sky"
+        bodyClassName="!px-4 !py-3.5"
+        header={
+          <div className="flex items-center gap-2 border-b border-white/10 px-5 py-4 md:px-6">
+            <h3 className="t-label text-[15px] uppercase leading-tight text-white">Split Flow Radar</h3>
+          </div>
+        }
+      >
+        <div className="flow-panel-body py-6 text-center">
+          <p className="font-mono text-[11px] text-gold/70">No split-flow tickers this session</p>
+          <p className="font-mono text-[10px] text-sky-300/55 mt-1">Needs both call and put flow in the last 30 min</p>
+        </div>
+      </Panel>
+    );
+  }
 
   return (
     <Panel
