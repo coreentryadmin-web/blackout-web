@@ -1616,6 +1616,34 @@ async function runMigrations(): Promise<void> {
     ADD COLUMN IF NOT EXISTS tool_results JSONB;
   `);
 
+  // Helix signal-outcome ledger (008_helix_signal_outcomes.sql) — inlined for ECS
+  // standalone cold starts. Dedicated per-feature table (NOT the dead generic
+  // signal_events/signal_outcomes bridge — see that file's header comment for why).
+  // UNIQUE(signal_type, ticker, window_start) makes the recorder's insert idempotent
+  // across cron runs that re-scan an overlapping window.
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS helix_signal_outcomes (
+      id BIGSERIAL PRIMARY KEY,
+      signal_type TEXT NOT NULL CHECK (signal_type IN ('velocity_spike', 'split_flow')),
+      ticker TEXT NOT NULL,
+      window_start TIMESTAMPTZ NOT NULL,
+      fired_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      direction TEXT,
+      context JSONB,
+      price_at_fire NUMERIC,
+      price_5m NUMERIC,
+      price_15m NUMERIC,
+      price_1h NUMERIC,
+      outcome TEXT NOT NULL DEFAULT 'pending' CHECK (outcome IN ('pending', 'continued', 'reversed', 'flat')),
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE (signal_type, ticker, window_start)
+    );
+    CREATE INDEX IF NOT EXISTS idx_helix_signal_outcomes_pending
+      ON helix_signal_outcomes(fired_at) WHERE outcome = 'pending';
+    CREATE INDEX IF NOT EXISTS idx_helix_signal_outcomes_ticker
+      ON helix_signal_outcomes(ticker, fired_at DESC);
+  `);
+
   // ─────────────────────────────────────────────────────────────────────────────
   // Night Hawk SWING engine ledger (docs/audit/SWING-ENGINE.md §3.3, PR-10).
   //
@@ -2394,6 +2422,110 @@ export async function fetchRecentFlows(params: {
     })(),
   };
   });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helix signal-outcome ledger (Tier 2 item #9, 2026-08-02 audit). See
+// 008_helix_signal_outcomes.sql for the full root-cause writeup — this is a
+// dedicated per-feature table, not the confirmed-dead generic signal_events bridge.
+
+export type HelixSignalOutcomeInsert = {
+  signal_type: "velocity_spike" | "split_flow";
+  ticker: string;
+  window_start: string; // ISO — the detection window this firing belongs to (dedup key)
+  direction: string | null;
+  context: Record<string, unknown>;
+  price_at_fire: number | null;
+};
+
+/** Insert newly-detected signal firings. ON CONFLICT DO NOTHING — the recorder cron
+ *  re-scans an overlapping window every run, so already-recorded firings for the same
+ *  (signal_type, ticker, window_start) are silently skipped, not duplicated or updated
+ *  (a firing's context is a snapshot of the moment it fired, not a rolling upsert). */
+export async function insertHelixSignalOutcomes(
+  rows: HelixSignalOutcomeInsert[]
+): Promise<number> {
+  if (!rows.length) return 0;
+  await ensureSchema();
+  const pool = await getPool();
+
+  const params: Array<string | number | null> = [];
+  const tuples = rows
+    .map((row, i) => {
+      const b = i * 6;
+      params.push(
+        row.signal_type,
+        row.ticker,
+        row.window_start,
+        row.direction,
+        JSON.stringify(row.context),
+        row.price_at_fire
+      );
+      return `($${b + 1}, $${b + 2}, $${b + 3}::timestamptz, $${b + 4}, $${b + 5}::jsonb, $${b + 6})`;
+    })
+    .join(", ");
+
+  const res = await pool.query(
+    `
+    INSERT INTO helix_signal_outcomes (
+      signal_type, ticker, window_start, direction, context, price_at_fire
+    ) VALUES ${tuples}
+    ON CONFLICT (signal_type, ticker, window_start) DO NOTHING
+    `,
+    params
+  );
+  return res.rowCount ?? 0;
+}
+
+export type HelixSignalOutcomePendingRow = {
+  id: number;
+  signal_type: string;
+  ticker: string;
+  direction: string | null;
+  fired_at: string;
+  price_at_fire: number | null;
+};
+
+/** Rows whose `checkpoint` (5m/15m/1h) is still unfilled AND old enough that the
+ *  checkpoint time has actually elapsed — never asks Polygon for a price that's still
+ *  in the future. */
+export async function fetchPendingHelixSignalCheckpoints(
+  checkpoint: "price_5m" | "price_15m" | "price_1h",
+  minAgeMinutes: number,
+  limit = 200
+): Promise<HelixSignalOutcomePendingRow[]> {
+  await ensureSchema();
+  const res = await (await getPool()).query<HelixSignalOutcomePendingRow>(
+    `
+    SELECT id, signal_type, ticker, direction,
+           fired_at::text AS fired_at, price_at_fire
+    FROM helix_signal_outcomes
+    WHERE ${checkpoint} IS NULL
+      AND price_at_fire IS NOT NULL
+      AND fired_at <= NOW() - ($1 || ' minutes')::interval
+    ORDER BY fired_at ASC
+    LIMIT $2
+    `,
+    [minAgeMinutes, limit]
+  );
+  return res.rows;
+}
+
+/** Write one checkpoint price; when `outcome` is provided (the grader's final 1h
+ *  checkpoint), the row's outcome graduates out of 'pending' in the same statement. */
+export async function updateHelixSignalCheckpoint(
+  id: number,
+  checkpoint: "price_5m" | "price_15m" | "price_1h",
+  price: number,
+  outcome?: "continued" | "reversed" | "flat"
+): Promise<void> {
+  await ensureSchema();
+  const setOutcome = outcome ? `, outcome = $3` : ``;
+  const params: Array<number | string> = outcome ? [id, price, outcome] : [id, price];
+  await (await getPool()).query(
+    `UPDATE helix_signal_outcomes SET ${checkpoint} = $2${setOutcome} WHERE id = $1`,
+    params
+  );
 }
 
 function parseDate(value: string | null | undefined): string | null {

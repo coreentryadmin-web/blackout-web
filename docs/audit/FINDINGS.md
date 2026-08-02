@@ -5803,4 +5803,76 @@ there, so `HelixFlowTable` renders exactly as before).
 warning, `jsx-a11y/no-static-element-interactions` on the card's conditional interactive role —
 confirmed pre-existing on `HelixFlowTable`'s structurally identical row, not new).
 
-**Status:** PR pending.
+**Status:** PR #1503, merged.
+
+## 2026-08-02 — [Helix Tier 2] Persist signal firings + grade outcomes (item #9) — FIXED
+
+**Root cause.** Helix's velocity-spike and split-flow signals were computed live in the browser
+(`FlowFeed.tsx`'s own `useMemo` blocks) and thrown away — no record anywhere of "did a velocity
+spike actually predict continuation." This is the exact sequencing risk flagged in the
+2026-08-02 Helix product audit: any confidence/win-rate number surfaced later (Tier 3) would be
+vibes, not evidence, without this ledger existing first.
+
+A generic bridge table already existed for exactly this purpose (`signal_events`/
+`signal_outcomes`, `004_god_tier_features.sql`) — but it's confirmed DEAD in production
+(`src/lib/signal-accuracy.ts`'s own comment: zero writes ever, since nothing outside its own
+route ever called it). This repo has already learned, the hard way, that a generic
+cross-feature bridge table silently rots; the proven pattern is a dedicated per-feature table
+(`nighthawk_play_outcomes`, `spx_play_outcomes`). This fix follows that established pattern
+instead of resurrecting the dead one.
+
+**Fix — four parts:**
+1. **`helix-signal-detection.ts`** (new, shared) — `detectVelocitySpikes`/`detectSplitFlow`
+   extracted VERBATIM from `FlowFeed.tsx`'s own inline logic, so the live client badge and the
+   new server-side recorder share ONE definition and can never disagree about what counts as a
+   spike/split. `FlowFeed.tsx` now imports and calls these instead of its own copies — behavior
+   is byte-identical (see the extraction tests below), not a rewrite.
+2. **`helix_signal_outcomes` table** (new migration, `008_helix_signal_outcomes.sql` +
+   inlined in `db.ts runMigrations()`) — dedicated per-feature table:
+   `signal_type, ticker, window_start` (UNIQUE, the idempotent dedup key), `direction`,
+   `context` (JSONB snapshot), `price_at_fire`, `price_5m/15m/1h`, `outcome`.
+3. **`helix-signal-outcomes-job.ts`** (new) — `recordHelixSignalFirings()` re-runs the shared
+   detectors over the last hour of the ALREADY-PERSISTED `flow_alerts` table (`fetchRecentFlows`)
+   and inserts newly-fired signals (`ON CONFLICT DO NOTHING` on the window bucket — re-running
+   over an overlapping window across cron ticks never duplicates a firing). `price_at_fire` comes
+   from the firing print's own `underlying_price` column — no external API call needed to record
+   a firing. `gradeHelixSignalOutcomes()` fills each elapsed checkpoint from Polygon minute bars
+   (the ONLY point this touches an external API) and grades the final 1h outcome
+   (continued/reversed/flat) against the firing's own direction read; a failed/empty Polygon
+   lookup leaves the row `pending` for the next run rather than fabricating a value.
+4. **`/api/cron/helix-signal-outcomes`** (new, advisory-locked, registered in
+   `cron-registry.ts`) — runs record() then grade() on a schedule. User-confirmed design
+   (2026-08-02): **async/best-effort off the market-worker cron cadence, NOT inline on the
+   member-facing `/flows` request** — a DB write or a slow/failed Polygon call must never add
+   latency or a new failure mode to the live page.
+
+**Scope decision, logged not hidden.** The audit's third tape signal ("coordinated": dark-pool
+block + options sweep within 5min) is deliberately NOT persisted by this cron — it depends on a
+live `fetchDarkPoolPrints` UW call, not a DB-backed table, so persisting it from a background
+job would add a live external-API read/write dependency to every scheduled tick. Tracked here as
+an explicit follow-up, not silently dropped.
+
+**Evidence.** `helix-signal-detection.test.ts` (5 tests) pins the exact thresholds (recent>=2 AND
+ratio>=3 for velocity; both legs >=$500K for split) against hand-built fixtures, confirming the
+extraction preserved FlowFeed's original behavior exactly. `helix-signal-outcomes-job.test.ts`
+(5 tests) pins the window-bucketing dedup key and the outcome-grading logic (bullish/bearish/
+directionless × continued/reversed/flat, including the flat-threshold boundary).
+
+**Blast radius.** New: `helix-signal-detection.ts`(+test), `helix-signal-outcomes-job.ts`(+test),
+`008_helix_signal_outcomes.sql`, `/api/cron/helix-signal-outcomes/route.ts`. Modified:
+`db.ts` (+table DDL, +3 exported functions: `insertHelixSignalOutcomes`,
+`fetchPendingHelixSignalCheckpoints`, `updateHelixSignalCheckpoint`), `cron-registry.ts`
+(+1 entry), `FlowFeed.tsx` (velocity/split-flow `useMemo` bodies replaced with calls into the
+shared module — no prop/behavior change downstream). No change to any member-facing response
+shape; the cron writes to a brand-new table only.
+
+**Validation.** `npx tsc --noEmit` clean. `npx eslint` on all touched/new files — 0 errors.
+`npx next build` — clean, new route `/api/cron/helix-signal-outcomes` present, `/flows` route
+unaffected beyond the shared-module import. `npx tsx --test` on both new test files — 10/10 pass.
+Not independently verified against a live Postgres in this sandbox (raw TCP to prod Postgres is
+blocked here per this repo's own environment notes) — first live run will be observed via
+`logCronRun`'s recorded payload once deployed.
+
+**Status:** PR pending. Tier 2 item #10 (follow-through/outcome UI reading this ledger) and
+Tier 3 (which needs weeks of this ledger's real data before showing a grounded conviction score
+— see the original audit's sequencing-risk section) are separate, later PRs.
