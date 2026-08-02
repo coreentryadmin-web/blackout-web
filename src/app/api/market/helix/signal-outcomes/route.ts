@@ -3,7 +3,7 @@ import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
 import { dbConfigured, fetchRecentHelixSignalOutcomes } from "@/lib/db";
 import { roundFloats } from "@/lib/round-floats";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
-import { MIN_GRADED_SAMPLE_FOR_WIN_RATE, summarizeHelixSignalOutcomes } from "@/features/helix/lib/helix-signal-outcome-summary";
+import { summarizeHelixSignalOutcomes } from "@/features/helix/lib/helix-signal-outcome-summary";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
