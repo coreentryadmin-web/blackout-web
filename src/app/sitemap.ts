@@ -38,6 +38,22 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${SITE.url}/learn/unusual-options-activity-guide`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
     { url: `${SITE.url}/learn/max-pain-options-explained`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
     { url: `${SITE.url}/learn/delta-hedging-explained`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/spx-slayer-dashboard-guide`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/spx-slayer-play-grades-explained`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/spx-slayer-gex-matrix-guide`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/spx-slayer-lotto-power-hour`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/thermal-heatmap-reading-guide`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/thermal-four-lenses-explained`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/thermal-strike-selection-guide`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/helix-flow-scanner-guide`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/helix-flow-signals-explained`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/helix-dark-pool-analysis`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/night-hawk-evening-edition-guide`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/night-hawk-0dte-command-guide`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/night-hawk-cortex-evidence-system`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/largo-ai-terminal-guide`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/largo-ai-market-analysis-tips`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/vector-scanner-guide`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
   ];
 
   const legal: MetadataRoute.Sitemap = [
