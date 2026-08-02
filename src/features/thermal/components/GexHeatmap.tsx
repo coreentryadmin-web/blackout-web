@@ -2546,10 +2546,15 @@ export function GexHeatmap({
     () => urlBoot.ticker ?? initialTicker.toUpperCase()
   );
   const [lens, setLens] = useState<Lens>(() => (urlBoot.lens as Lens) ?? "gex");
-  // SPY/SPX/QQQ compare strip — default ON (product ask). URL `compare=0` turns it off.
-  const [compare, setCompare] = useState(
-    () => (searchParams.get("compare") === "0" ? false : true)
-  );
+  // SPY/SPX/QQQ triple desk — default OFF so a ticker search always lands on that
+  // ticker's own matrix (previously this inline default (true unless `compare=0`)
+  // contradicted parseThermalUrlState's own tested contract (false unless
+  // `compare=1`/`true`) — the triple desk is hardcoded to SPY/SPX/QQQ
+  // (THERMAL_COMPARE_TICKERS), so searching e.g. NVDA while it defaulted ON left the
+  // search silently inert until a member manually toggled the triple desk off.
+  // Reading urlBoot.compare (the shared, tested parser) instead of re-deriving the
+  // default here fixes the inconsistency at its source. See docs/audit/FINDINGS.md.
+  const [compare, setCompare] = useState(() => urlBoot.compare);
   const urlSyncedRef = useRef(false);
   // View selection ("pair-a" = Matrix (full width); "pair-b" = Profile + Curve + Shift).
   // Lifted to a controlled state (UI refactor) so the view TabList can live on the
@@ -3866,7 +3871,13 @@ export function GexHeatmap({
         {/* Compact searchable ticker + the ONE kept clean spot reference. */}
         <TickerSwitcher
           ticker={ticker}
-          onPick={setTicker}
+          onPick={(t) => {
+            // Searching a ticker means "show me THIS name" — exit triple-desk mode
+            // (hardcoded to SPY/SPX/QQQ) so the search always lands on that ticker's
+            // own matrix instead of being silently ignored underneath the compare grid.
+            setTicker(t);
+            setCompare(false);
+          }}
           spot={headerSpot}
           changePct={headerChangePct}
           showSpot={(live || quoteOnly) && headerSpot > 0}
@@ -3917,9 +3928,9 @@ export function GexHeatmap({
                 ? "border-cyan-400/40 bg-cyan-400/10 text-cyan-400"
                 : "border-white/15 text-sky-300/80 hover:text-white"
             )}
-            title="Toggle SPY | SPX | QQQ triple desk"
+            title="Toggle SPY | SPX | QQQ grid"
           >
-            Compare
+            Grid
           </button>
           {live ? (
             <Badge tone="bull" dot>
@@ -4055,7 +4066,7 @@ export function GexHeatmap({
           />
           <p className="mt-4 border-t border-white/8 pt-3 text-[10px] leading-snug text-sky-300/75 gex-heatmap-methodology">
             <span aria-hidden className="mr-1 text-sky-300/70">ⓘ</span>
-            Triple desk defaults to 0DTE heat strips (SPY | SPX | QQQ) with green/red cells,
+            Grid defaults to 0DTE heat strips (SPY | SPX | QQQ) with green/red cells,
             yellow + node, purple − node, and ★ king — same paint as the major matrix. Toggle
             Near for multi-expiry. Keys 1/2/3 focus; 0/N mode; G/V/D/C lens. Pin strikes; CSV
             exports the full chain.

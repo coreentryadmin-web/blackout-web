@@ -543,7 +543,7 @@ export default function ThermalTripleDesk({
       <div className="thermal-triple-atmosphere" aria-hidden />
       <div className="thermal-triple-rail">
         <div className="thermal-triple-rail-label">
-          {mode === "0dte" ? "0DTE TRIPLE DESK" : "NEAR-TERM TRIPLE DESK"}
+          {mode === "0dte" ? "0DTE GRID" : "NEAR-TERM GRID"}
         </div>
         <div className="thermal-triple-rail-actions">
           <div className="thermal-triple-mode" role="group" aria-label="Compare expiry mode">

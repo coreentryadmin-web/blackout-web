@@ -6110,5 +6110,75 @@ internal accumulator changed).
 **Evidence.** `npx tsx --test src/lib/round-floats.test.ts` — 17/17 pass. `npx tsc --noEmit`
 clean. `npx eslint` — 0 errors. `npx next build` — clean.
 
-**Status:** PR pending → CI (including CodeQL re-scan) → auto-merge per standing policy, then a
-live post-deploy re-run of `npm run validate:thermal-matrix` to confirm the FAIL count drops to 0.
+**Status:** PR #1514 merged (CodeQL green). Live post-deploy re-run of
+`npm run validate:thermal-matrix --tickers=SPY,SPX,QQQ` confirmed the fix: 56 checks, 0 FAIL,
+every "cells → strike_totals integrity" check now shows `Δ=0.0000` exactly on SPX/QQQ across all
+4 metrics (SPY was momentarily unavailable that sample, an off-hours data gap unrelated to this
+fix). Thermal matrix data-correctness audit closed.
+
+## 2026-08-02 — [Thermal] Ticker search silently inert while the Triple Desk is showing — FIXED
+
+**Context.** User reported: "Users are having hard time to look at triple grid and search for
+individual stocks for thermal maps" — proposed making the triple grid an explicit toggle so
+individual-ticker search works by default. Confirmed via live screenshot + code read before
+touching anything.
+
+**Root cause.** Two compounding bugs in `GexHeatmap.tsx`:
+1. The `compare` (Triple Desk) state booted with its OWN inline default —
+   `searchParams.get("compare") === "0" ? false : true` (default **ON**) — which directly
+   **contradicted** the shared, already-TESTED URL-state contract in
+   `thermal-desk-state.ts`'s `parseThermalUrlState()`: `compare: params.get("compare") === "1" ||
+   === "true"` (default **OFF**), pinned by `thermal-desk-state.test.ts`. `urlBoot` (built from
+   that exact parser) was computed but its `.compare` field was never read — the component
+   re-derived its own, opposite default instead of trusting its own tested source of truth.
+2. `TickerSwitcher`'s `onPick={setTicker}` only ever touched the `ticker` state — never
+   `compare`. The Triple Desk (`ThermalTripleDesk`) is hardcoded to
+   `THERMAL_COMPARE_TICKERS` (SPY/SPX/QQQ only, confirmed via `grep`) and renders whenever
+   `compare && pairView === "pair-a"`, completely independent of `ticker`. So searching e.g. NVDA
+   while Compare defaulted ON (bug #1) left the search **silently inert** — `ticker` updated in
+   state but nothing on screen reflected it until a member manually toggled Compare off to reach
+   the single-ticker Matrix branch further down the same conditional. Confirmed via `grep`: no
+   code path resets `compare` on a ticker pick.
+
+**Fix.**
+1. `compare` now boots from `urlBoot.compare` (the existing tested parser) instead of a
+   duplicated, contradictory inline default — Triple Desk now defaults OFF, matching the already-
+   shipped, already-tested URL contract (`buildThermalUrlSearch`'s own test already asserted
+   `compare` off drops the query param — the bug was that the READ side never honored it).
+2. `TickerSwitcher`'s `onPick` now also calls `setCompare(false)` — searching any ticker always
+   exits Triple Desk mode and lands on that ticker's own single-ticker Matrix, exactly the user's
+   proposed behavior ("if [triple grid] not [toggled], individual stock search works").
+3. Renamed the toggle button from "Compare" to "Triple Desk" so its purpose (SPY|SPX|QQQ
+   comparison grid) is self-evident without relying on the tooltip — matches the user's ask to
+   "rename the triple grid as a toggle."
+
+**Fix rationale.** Reusing `urlBoot.compare` instead of hand-rolling a second default consolidates
+the URL-state contract to ONE tested source of truth (`thermal-desk-state.ts`), which is the
+smaller, safer fix versus patching the inline boolean expression again. Auto-exiting Triple Desk
+on search (rather than, say, making the Triple Desk cross-fade in a 4th searched-ticker column)
+was chosen because the Triple Desk is a fixed 3-column SPY/SPX/QQQ compare tool by design — adding
+arbitrary tickers to it is a larger, separate feature the user didn't ask for; exiting to the
+existing single-ticker Matrix view uses code that already works today.
+
+**Blast radius.** `GexHeatmap.tsx` only — 3 small changes (state-boot default, one onPick
+handler, one button label). No change to `ThermalTripleDesk.tsx`, `thermal-desk-state.ts`, or the
+API route. Deep-linking behavior for members who explicitly bookmarked `?compare=1` is unchanged
+(still opens Triple Desk); a bookmark with no `compare` param now opens the single-ticker Matrix
+instead of Triple Desk — this IS the intended behavior change.
+
+**Evidence.** `npx tsc --noEmit` clean. `npx eslint` on `GexHeatmap.tsx` — 0 errors (6
+pre-existing unrelated warnings, none touched by this diff). `npx tsx --test
+src/features/thermal/lib/thermal-desk-state.test.ts` — 6/6 pass unchanged (confirms the parser
+this fix now defers to is unaffected). `npx next build` — clean. No new pure-logic branch (state-
+default + event-handler wiring only, reusing already-tested parser logic), so no new test file.
+
+**Status:** PR pending → CI → auto-merge per standing policy, then live screenshot verification
+(search NVDA/TSLA and confirm the single-ticker Matrix shows instead of the Triple Desk).
+
+**Addendum (same PR, before merge):** user asked to rename the toggle/section from "Triple Desk"
+to "Grid" (shorter, matches how members refer to the SPY|SPX|QQQ compare view). Renamed
+consistently: the toggle button (`GexHeatmap.tsx`), its tooltip, the methodology paragraph, and
+`ThermalTripleDesk.tsx`'s own section header ("0DTE TRIPLE DESK"/"NEAR-TERM TRIPLE DESK" →
+"0DTE GRID"/"NEAR-TERM GRID"). Internal variable/CSS-class names (`compare`, `ThermalTripleDesk`,
+`.thermal-triple-*`) deliberately left unchanged — this is a user-facing copy change only, no
+behavior touched. Re-verified `tsc`/`eslint`/`next build` clean after the rename.
