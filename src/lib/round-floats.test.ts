@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { roundFloats, reconcileStrikeTotal } from "./round-floats";
+import { roundFloats, reconcileStrikeTotal, reconcileCellStrikeTotals } from "./round-floats";
 
 test("rounds spurious float noise to 2dp by default", () => {
   assert.equal(roundFloats(7499.360000000001), 7499.36);
@@ -77,6 +77,51 @@ test("reconcileStrikeTotal: an empty strike_totals map reconciles to a zero tota
 test("reconcileStrikeTotal: ignores non-finite strike values rather than propagating NaN", () => {
   const block = { total: 5, strike_totals: { "1": 10, "2": NaN } };
   assert.equal(reconcileStrikeTotal(block)!.total, 10);
+});
+
+// ── reconcileCellStrikeTotals — Thermal matrix deep audit (2026-08-02): every ticker/
+// metric showed a strike's displayed total drift 1-3 cents from what a member would
+// get manually summing that strike's own displayed near-term cells ─────────────────
+
+test("reconcileCellStrikeTotals: reproduces the live Thermal drift — a strike's rounded total disagrees with the sum of its own rounded near-term cells, and gets fixed", () => {
+  // Same shape as production: strike_totals[730] rounded independently (730.02) from
+  // cells (already-rounded 243.34 + 243.34 + 243.34 = 730.02 — but say upstream
+  // rounding order produced 730.03 for strike_totals before this fix).
+  const block = {
+    cells: { "730": { "2026-08-03": 243.34, "2026-08-04": 243.34, "2026-08-05": 243.34 } },
+    strike_totals: { "730": 730.03 },
+  };
+  const fixed = reconcileCellStrikeTotals(block, ["2026-08-03", "2026-08-04", "2026-08-05"])!;
+  assert.equal(fixed.strike_totals["730"], 730.02);
+  const cellSum = Object.values(block.cells["730"]).reduce((a, b) => a + b, 0);
+  assert.equal(fixed.strike_totals["730"], Math.round(cellSum * 100) / 100);
+});
+
+test("reconcileCellStrikeTotals: only sums near-term expiries, leaving far-dated matrix columns out of strike_totals", () => {
+  const block = {
+    cells: { "100": { "2026-08-03": 50, "2027-01-15": 999 } }, // 2027-01-15 = far-dated monthly
+    strike_totals: { "100": 50 },
+  };
+  const fixed = reconcileCellStrikeTotals(block, ["2026-08-03"])!;
+  assert.equal(fixed.strike_totals["100"], 50);
+});
+
+test("reconcileCellStrikeTotals: passes through when cells/strike_totals/near_term_expiries are absent", () => {
+  assert.equal(reconcileCellStrikeTotals(undefined, ["2026-08-03"]), undefined);
+  const noCells = { strike_totals: { "100": 5 } };
+  assert.equal(reconcileCellStrikeTotals(noCells, ["2026-08-03"]), noCells);
+  const block = { cells: { "100": { "2026-08-03": 5 } }, strike_totals: { "100": 5 } };
+  assert.equal(reconcileCellStrikeTotals(block, undefined), block);
+  assert.equal(reconcileCellStrikeTotals(block, []), block);
+});
+
+test("reconcileCellStrikeTotals: a strike missing from cells keeps its existing strike_totals entry", () => {
+  const block = {
+    cells: { "100": { "2026-08-03": 5 } },
+    strike_totals: { "100": 5, "105": 12 }, // 105 has no cells row (far-only strike edge case)
+  };
+  const fixed = reconcileCellStrikeTotals(block, ["2026-08-03"])!;
+  assert.equal(fixed.strike_totals["105"], 12);
 });
 
 // RTH-scan regression (2026-07-13): Vector served the weekly gamma flip as 7622.381430556295. The
