@@ -5873,6 +5873,47 @@ Not independently verified against a live Postgres in this sandbox (raw TCP to p
 blocked here per this repo's own environment notes) — first live run will be observed via
 `logCronRun`'s recorded payload once deployed.
 
-**Status:** PR pending. Tier 2 item #10 (follow-through/outcome UI reading this ledger) and
+**Status:** PR #1504, merged. Tier 2 item #10 (follow-through/outcome UI reading this ledger) and
 Tier 3 (which needs weeks of this ledger's real data before showing a grounded conviction score
 — see the original audit's sequencing-risk section) are separate, later PRs.
+
+## 2026-08-02 — [Helix Tier 2] Follow-through tracker UI (item #10) — FIXED
+
+**Context.** Item #9 (previous entry) built the ledger; this is the read side ChatGPT's critique
+called the "second biggest missing feature" — a member-visible record of what Helix's own
+signals actually did afterward, not just a live badge.
+
+**Fix.** New `SignalOutcomeTracker.tsx` panel in the analytics rail (behind "More panels", same
+placement as `SplitFlowRadar`/`RouteBreakdown`) — polls a new read-only endpoint
+(`GET /api/market/helix/signal-outcomes`, tier-gated via the existing
+`authorizeMarketDeskApi`) that reads the item-#9 ledger and returns both the raw recent rows and
+a summary.
+
+**The sequencing-risk discipline, concretely enforced here.** `helix-signal-outcome-summary.ts`'s
+`summarizeHelixSignalOutcomes()` returns `winRatePct: null` below
+`MIN_GRADED_SAMPLE_FOR_WIN_RATE` (10 — matches the repo's own established
+`signal-accuracy.ts` threshold for "don't claim a verdict off a handful of samples"). The panel
+shows "Collecting data (N/10)" instead of a percentage until then. This is the literal
+implementation of the audit's warning that a fabricated confidence number is worse than showing
+none — the FIRST UI surface in this roadmap where that rule had to actually hold, not just be
+stated. Individual graded rows (ticker, signal type, CONTINUED/REVERSED/FLAT) are shown
+regardless of sample size — a single row's own real outcome is honest history, not a claimed
+statistic, so it isn't gated.
+
+**Evidence.** `helix-signal-outcome-summary.test.ts` (4 tests) pins: no win rate below the
+minimum sample; a win rate appears once the threshold is reached; pending rows never count as a
+loss; 'flat' outcomes count as graded but not a win.
+
+**Blast radius.** New: `helix-signal-outcome-summary.ts`(+test), `SignalOutcomeTracker.tsx`,
+`/api/market/helix/signal-outcomes/route.ts`. Modified: `db.ts` (+`fetchRecentHelixSignalOutcomes`),
+`api.ts` (+`fetchHelixSignalOutcomes` client fetcher + types), `FlowFeed.tsx` (+1 panel behind the
+existing "More panels" toggle — no change to any panel shown by default).
+
+**Validation.** `npx tsc --noEmit` clean. `npx eslint` on all touched/new files — 0 errors.
+`npx next build` — clean, new route `/api/market/helix/signal-outcomes` present, `/flows` route
+size grew by ~1kB (the new panel's own code), nothing else changed. `npx tsx --test` — 4/4 pass.
+
+**Status:** PR pending. This closes out Helix Tier 2. Tier 3 (Campaign Intelligence, Largo hook,
+contract-drawer stats) is explicitly parked until this ledger has accumulated weeks of real
+graded data — building it sooner would mean either fabricating numbers or shipping inert
+scaffolding with nothing behind it, exactly the risk the original audit flagged.

@@ -342,6 +342,34 @@ export async function fetchDarkPoolPrints(params?: { limit?: number; min_premium
   );
 }
 
+export interface HelixSignalOutcomeRow {
+  id: number;
+  signal_type: string;
+  ticker: string;
+  direction: string | null;
+  fired_at: string;
+  price_at_fire: number | null;
+  price_5m: number | null;
+  price_15m: number | null;
+  price_1h: number | null;
+  outcome: string;
+}
+
+export interface HelixSignalOutcomeSummary {
+  gradedCount: number;
+  pendingCount: number;
+  winCount: number;
+  winRatePct: number | null;
+}
+
+/** Tier 2 item #10 follow-through tracker — reads the ledger helix-signal-outcomes-job.ts
+ *  (Tier 2 item #9) writes. See docs/audit/FINDINGS.md for the full root-cause writeup. */
+export async function fetchHelixSignalOutcomes() {
+  return marketFetch<{ rows: HelixSignalOutcomeRow[]; summary: HelixSignalOutcomeSummary | null }>(
+    "/helix/signal-outcomes"
+  );
+}
+
 /** Per-ticker dark pool snapshot — call/put split, PCR, institutional prints by strike. */
 export async function fetchDarkPoolTicker(symbol: string) {
   return marketFetch<{ snapshot: DarkPoolTickerSnapshot | null; symbol: string }>(

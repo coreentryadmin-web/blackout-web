@@ -2438,6 +2438,38 @@ export type HelixSignalOutcomeInsert = {
   price_at_fire: number | null;
 };
 
+export type HelixSignalOutcomeRow = {
+  id: number;
+  signal_type: string;
+  ticker: string;
+  direction: string | null;
+  fired_at: string;
+  price_at_fire: number | null;
+  price_5m: number | null;
+  price_15m: number | null;
+  price_1h: number | null;
+  outcome: string;
+};
+
+/** Recent signal firings for the Tier 2 follow-through tracker UI (item #10) — most-recent
+ *  first, graded and pending rows both included (a member should see a firing exists even
+ *  before its 1h checkpoint has elapsed, not just once it's graded). */
+export async function fetchRecentHelixSignalOutcomes(limit = 50): Promise<HelixSignalOutcomeRow[]> {
+  await ensureSchema();
+  const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.min(Math.trunc(limit), 200) : 50;
+  const res = await (await getPool()).query<HelixSignalOutcomeRow>(
+    `
+    SELECT id, signal_type, ticker, direction, fired_at::text AS fired_at,
+           price_at_fire, price_5m, price_15m, price_1h, outcome
+    FROM helix_signal_outcomes
+    ORDER BY fired_at DESC
+    LIMIT $1
+    `,
+    [safeLimit]
+  );
+  return res.rows;
+}
+
 /** Insert newly-detected signal firings. ON CONFLICT DO NOTHING — the recorder cron
  *  re-scans an overlapping window every run, so already-recorded firings for the same
  *  (signal_type, ticker, window_start) are silently skipped, not duplicated or updated

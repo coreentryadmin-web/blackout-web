@@ -71,6 +71,7 @@ import { SectorFlowPanel, type SectorFlowEntry } from "@/features/helix/componen
 import { NightHawkFlowPanel, type NightHawkPlayWithFlow } from "@/features/helix/components/NightHawkFlowPanel";
 import { ExpiryConcentration } from "@/features/helix/components/ExpiryConcentration";
 import { RouteBreakdown } from "@/features/helix/components/RouteBreakdown";
+import { SignalOutcomeTracker } from "@/features/helix/components/SignalOutcomeTracker";
 import { HighScorePrints } from "@/features/helix/components/HighScorePrints";
 import { WatchlistBar } from "@/features/helix/components/WatchlistBar";
 import { useWatchlist } from "@/hooks/useWatchlist";
@@ -841,6 +842,7 @@ export function FlowFeed() {
           />
           <SplitFlowRadar entries={splitFlowEntries} onTickerClick={setSelectedTicker} />
           <RouteBreakdown alerts={displayAlerts} loading={loading} />
+          <SignalOutcomeTracker />
           {marketWidePanels && <SectorFlowPanel entries={sectorFlowEntries} />}
           <div className="helix-analytics-wide">
             <CumulativeNetPremiumChart alerts={displayAlerts} />
