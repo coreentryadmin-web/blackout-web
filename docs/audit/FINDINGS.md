@@ -5675,6 +5675,46 @@ pre-existing, unrelated tailwind-shorthand warning carried over verbatim in the 
 file). `node --import tsx --experimental-test-module-mocks --test` on both touched test files —
 8/8 pass. `npm run build` — clean, `/flows` route size unchanged (39.5kB).
 
+**Status:** PR #1501 (visual hierarchy + glow cut) and PR pending below (this fix) — both
+part of the Helix Tier 1 batch; see PR #1501 for the visual-hierarchy/glow fix's own writeup.
+
+## 2026-08-02 — [Helix Tier 1] Filters collapse into a mobile bottom sheet — FIXED
+
+**Root cause.** `HelixCommandBar` (the desktop filter bar shown to any non-native-shell client,
+including mobile web Safari/Chrome — the native iOS app has its own separate toolbar branch in
+`FlowFeed.tsx`) had no responsive fallback at all: on a phone-width viewport it rendered the same
+wide `flex-wrap` row of Floor/Side/Symbol/Quick/DTE controls as desktop, forcing a cramped,
+partially-wrapped layout with no way to see the whole filter set at once (ChatGPT Problem 8 /
+Tier 1 item #7 — the same underlying "mobile web renders the desktop terminal" class of issue as
+the Tier 0 audit's mobile-scroll finding, scoped here to just the filter bar).
+
+**Fix.** Below 640px (this repo's established phone breakpoint) the bar is now `display:none` by
+default and a new compact trigger (`Filters · N` + the live/stale status dot) is shown instead.
+Tapping it opens the SAME filter markup as a fixed bottom sheet (slide-up panel, `max-height:80vh`,
+tap-outside/`Done` to close) — no duplicated JSX, the sheet is the existing `.helix-tape-bar-primary`
+content re-flowed to full-width rows via CSS only. Above 640px, none of the new rules apply and
+the bar renders exactly as it did before (verified: the new CSS is entirely inside a
+`@media (max-width: 640px)` block plus a class that only exists when the sheet is toggled open).
+
+Also extracted `countActiveHelixFilters()` (was inline JSX arithmetic) into a standalone,
+independently testable pure function that drives the trigger's `Filters · N` count.
+
+**Evidence.** Same live-authenticated `/flows` screenshot session used for the visual-hierarchy
+fix above confirmed the pre-fix desktop bar was in fact what mobile web received (no separate
+mobile markup existed anywhere in `HelixCommandBar`/`FlowFeed`). New test
+`HelixCommandBar.test.ts` pins `countActiveHelixFilters`'s behavior across zero/one/multiple active
+filters.
+
+**Blast radius.** `HelixCommandBar.tsx` (+test), `globals.css` (new rules, additive only — no
+existing selector's behavior changed above 640px). The Analytics/Tools toggle buttons remain fully
+functional inside the sheet (they still control the real `analyticsOpen`/`toolsOpen` state in
+`FlowFeed.tsx` — an earlier draft of this fix accidentally hid them via CSS in the sheet, caught
+and fixed before commit since the analytics rail is genuinely user-toggleable on mobile, not just
+a desktop convenience).
+
+**Validation.** `npx tsc --noEmit` clean. `npx eslint` on the touched component — 0 errors.
+`npx tsx --test src/features/helix/components/HelixCommandBar.test.ts` — 3/3 pass.
+
 **Status:** PR pending.
 
 ## 2026-08-02 — [Helix Tier 1] Visual hierarchy pass + cut decorative glow ~40% — FIXED

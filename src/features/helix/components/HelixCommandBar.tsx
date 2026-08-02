@@ -15,6 +15,28 @@ const DTE_OPTIONS: { id: HelixDteFilter; label: string }[] = [
 ];
 export type HelixTypeFilter = "ALL" | "CALL" | "PUT";
 
+/** Count of non-default tape filters — drives the mobile trigger's "Filters · N" label
+ *  so a member can tell at a glance whether the sheet is worth opening. */
+export function countActiveHelixFilters(f: {
+  minPremium: number;
+  typeFilter: HelixTypeFilter;
+  whalesOnly: boolean;
+  dteFilter: HelixDteFilter;
+  indicesOnly: boolean;
+  watchlistOnly: boolean;
+  tickerFilter: string;
+}): number {
+  return (
+    (f.minPremium !== 200_000 ? 1 : 0) +
+    (f.typeFilter !== "ALL" ? 1 : 0) +
+    (f.whalesOnly ? 1 : 0) +
+    (f.dteFilter !== "all" ? 1 : 0) +
+    (f.indicesOnly ? 1 : 0) +
+    (f.watchlistOnly ? 1 : 0) +
+    (f.tickerFilter ? 1 : 0)
+  );
+}
+
 function ChipToggle({
   active,
   onClick,
@@ -116,10 +138,77 @@ export function HelixCommandBar({
   replayDisabled: boolean;
 }) {
   const [toolsOpen, setToolsOpen] = useState(false);
+  // Mobile web (not the native app) has no room for this desktop filter row — it was
+  // rendering as-is, cramped, with no responsive fallback (2026-08-01 Helix audit,
+  // ChatGPT Problem 8 / Tier 1 item #7). Below 640px (globals.css, this repo's phone
+  // breakpoint) the bar collapses into a trigger + this same content as a bottom sheet.
+  const [mobileSheetOpen, setMobileSheetOpen] = useState(false);
+
+  const activeFilterCount = countActiveHelixFilters({
+    minPremium,
+    typeFilter,
+    whalesOnly,
+    dteFilter,
+    indicesOnly,
+    watchlistOnly,
+    tickerFilter,
+  });
 
   return (
     <div className="helix-tape-bar">
-      <div className="helix-tape-bar-primary">
+      {/* Mobile-only compact trigger — CSS-hidden above --helix-mobile-bp */}
+      <button
+        type="button"
+        onClick={() => setMobileSheetOpen(true)}
+        className="helix-tape-mobile-trigger"
+        aria-haspopup="dialog"
+        aria-expanded={mobileSheetOpen}
+      >
+        <span
+          className={clsx(
+            "helix-tape-status-dot",
+            !live && "helix-tape-status-dot--off",
+            live && dataStale && "helix-tape-status-dot--stale",
+            live && !dataStale && "helix-tape-status-dot--live"
+          )}
+        />
+        <span className="helix-tape-mobile-trigger-label">
+          Filters{activeFilterCount > 0 ? ` · ${activeFilterCount}` : ""}
+        </span>
+        <span className="helix-tape-mobile-trigger-meta">
+          {loading ? "Scanning…" : `${displayCount.toLocaleString()} · ${newestAgeLabel}`}
+        </span>
+      </button>
+
+      {mobileSheetOpen && (
+        <div
+          className="helix-tape-mobile-backdrop"
+          onClick={() => setMobileSheetOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      <div
+        className={clsx(
+          "helix-tape-bar-primary",
+          mobileSheetOpen && "helix-tape-bar-primary--sheet-open"
+        )}
+        role={mobileSheetOpen ? "dialog" : undefined}
+        aria-modal={mobileSheetOpen ? true : undefined}
+      >
+        {mobileSheetOpen && (
+          <div className="helix-tape-mobile-sheet-head">
+            <span className="helix-tape-mobile-sheet-title">Tape filters</span>
+            <button
+              type="button"
+              onClick={() => setMobileSheetOpen(false)}
+              className="helix-tape-mobile-sheet-close"
+              aria-label="Close filters"
+            >
+              Done
+            </button>
+          </div>
+        )}
         <div className="helix-tape-bar-block">
           <span className="helix-tape-bar-label helix-tape-bar-label--cyan">Floor</span>
           <div className="helix-tape-seg helix-tape-seg--floor">
