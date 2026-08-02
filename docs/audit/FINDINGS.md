@@ -5559,4 +5559,32 @@ sharing one key, which is exactly what this fix now does.
 clean. `node --import tsx --experimental-test-module-mocks --test src/features/spx/hooks/useSpxPlay.test.ts`
 3/3 pass (unchanged file, sanity check). `npm run build` clean.
 
+**Status:** PR #1497 — merged.
+
+## 2026-08-01 — [efficiency] VectorGexLadder full-list re-render on every spot tick — FIXED
+
+**Severity.** P2 — finding #19 from the 20-item audit list.
+
+**Root cause.** `VectorGexLadder`'s `liveSpot` prop ticks every ~1s from the chart's SSE stream; a
+`useEffect` mirrors it into local `spot` state on the ladder's own top-level component. Because
+`spot` lives on the PARENT and was passed identically to every `LadderRow`, every tick re-rendered
+every row in the list (30-60+ `<li>`s) just to update the ONE row that actually shows the live
+spot marker/price — the rest of the rows' content (strike, GEX magnitude bar, king crown) never
+changes between ladder-structure polls (15s) and had no reason to re-render every second.
+
+**Fix.** Wrapped `LadderRow` in `React.memo`. Changed the map-call site so only the spot-adjacent
+row (`i === spotIdx`) receives the live, changing `spot` value — every other row now receives a
+constant `spot={null}` (which the row already treats as "no spot marker here", matching prior
+behavior exactly). Combined with `rows` itself being referentially stable between spot ticks
+(the `ladder` state only changes on the 15s poll or ticker/horizon switch, never on `liveSpot`
+alone), every row's props are now unchanged tick-to-tick except the one row that must update —
+`memo` skips re-rendering the rest.
+
+**Blast radius.** `VectorGexLadder.tsx` only. No behavior change: the spot-marker row still shows
+live price at the same cadence; the scroll-centering effect, fetch/poll logic, and error/loading
+states are untouched.
+
+**Validation.** `npx tsc --noEmit` clean. `npx eslint` clean. `npm run build` clean. No existing
+test file for this component (confirmed via `find`).
+
 **Status:** PR pending.
