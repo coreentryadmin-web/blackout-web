@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
-import { loadSpxDesk } from "@/features/spx/lib/spx-desk-loader";
+import { loadSpxDesk, peekSpxDesk } from "@/features/spx/lib/spx-desk-loader";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
 import { roundFloats } from "@/lib/round-floats";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
@@ -13,6 +13,13 @@ export async function GET(req: NextRequest) {
 
   ensureDataSockets();
   try {
+    const instant = await peekSpxDesk();
+    if (instant) {
+      return NextResponse.json(
+        roundFloats({ ...instant, polled_at: instant.polled_at ?? instant.as_of }),
+        { headers: NO_STORE_HEADERS }
+      );
+    }
     // loadSpxDesk() is THE single cache lane for buildSpxDesk() — shared with
     // /api/market/spx/play and /api/admin/spx/dashboard (via loadMergedSpxDesk) so the
     // member dashboard and the trade-alert panel can never diverge on a race between two

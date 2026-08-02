@@ -12,7 +12,8 @@ import {
 import { clsx } from "clsx";
 import useSWR from "swr";
 import { FreshnessChip } from "@/components/ui";
-import { usePollIntervalMs } from "@/hooks/use-et-market-open";
+import { usePollIntervalMs, useEtMarketOpen } from "@/hooks/use-et-market-open";
+import { useLiveQuoteStream } from "@/hooks/useLiveQuoteStream";
 import type { GexHeatmapLens } from "@/lib/gex-heatmap-display";
 import {
   THERMAL_COMPARE_TICKERS,
@@ -211,6 +212,24 @@ function TripleColumn({
   onRegisterMutate,
 }: ColumnProps) {
   const pollMs = usePollIntervalMs(5_000, 5_000);
+  const sessionLive = useEtMarketOpen();
+
+  // Sub-second header spot overlay (PR 3/N of the sub-second-spot project —
+  // see GexHeatmap.tsx for PR 3a). Display-only: this ticker column's header
+  // badge prefers the push tick when available, falling back to the matrix
+  // snapshot's own `spot` field otherwise. Deliberately NOT threaded into
+  // `data.spot` passed to ThermalCompactMatrix below — that value drives the
+  // ladder's ATM-row highlight and Slayer-parity auto-scroll-to-spot, which is
+  // intentionally paced to the matrix's own 5s/force-refresh cadence, not a
+  // faster independent clock (a push-fast spot there would highlight/scroll
+  // to a strike ahead of the strikes/cells actually painted). SPX has no
+  // stock-candle-store WS coverage (index, not a Polygon stock/ETF ticker) —
+  // the hook simply never reports a quote for it and the matrix's own spot
+  // is used, per useLiveQuoteStream's documented "absent = no live tick yet"
+  // contract.
+  const { quotes: livePushQuotes } = useLiveQuoteStream([ticker]);
+  const pushQuote = livePushQuotes[ticker.toUpperCase()];
+  const pushSpot = pushQuote != null && pushQuote.price > 0 ? pushQuote.price : null;
   // Age-based force (SPX Slayer parity): EventBridge heatmap-warm floors at 1m, so without
   // ?force=1 SPY/QQQ asof ages well past the 5s poll. Force when asof is >5s old (server
   // throttles ≤1/5s; single-flight coalesces concurrent viewers).
@@ -264,6 +283,7 @@ function TripleColumn({
 
   useEffect(() => {
     const tick = () => {
+      if (!sessionLive) return;
       const nowMs = Date.now();
       if (forceActive) return; // wait for in-flight force to settle before arming another
       if (nowMs - lastForceAtRef.current < MATRIX_FORCE_THROTTLE_MS) return;
@@ -278,6 +298,7 @@ function TripleColumn({
           asofMs: Number.isFinite(asofMs) ? asofMs : null,
           nowMs,
           lastForceAtMs: lastForceAtRef.current,
+          sessionLive,
         });
       if (!blank && !stale) return;
       triggerForce();
@@ -285,7 +306,7 @@ function TripleColumn({
     tick();
     const id = setInterval(tick, 1_000);
     return () => clearInterval(id);
-  }, [view, ticker, forceActive, triggerForce]);
+  }, [view, ticker, forceActive, triggerForce, sessionLive]);
 
   // Reset last-good when the column ticker changes so we never paint SPX cells under a SPY header.
   useEffect(() => {
@@ -309,6 +330,8 @@ function TripleColumn({
 
   const block = view ? pickBlock(view, lens) : undefined;
   const walls = wallPair(block, lens);
+  const matrixSpot = view?.spot != null && view.spot > 0 ? view.spot : null;
+  const headerSpot = pushSpot ?? matrixSpot;
 
   return (
     <section
@@ -322,8 +345,8 @@ function TripleColumn({
             {shortcut}
           </span>
           <span className="thermal-triple-ticker">{ticker}</span>
-          {view?.spot != null && view.spot > 0 ? (
-            <span className="thermal-triple-spot">{Number(view.spot).toFixed(2)}</span>
+          {headerSpot != null ? (
+            <span className="thermal-triple-spot">{Number(headerSpot).toFixed(2)}</span>
           ) : (
             <span className="thermal-triple-spot is-empty">—</span>
           )}

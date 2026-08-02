@@ -3,8 +3,10 @@ export const dynamic = "force-dynamic";
 import type { Metadata } from "next";
 import { MarketingPageShell } from "@/components/landing/MarketingPageShell";
 import { RedesignHome } from "@/components/landing/RedesignHome";
+import JsonLd from "@/components/JsonLd";
 import { signedInFromRequestCookies } from "@/lib/clerk-session-cookies";
 import { publicPageMetadata } from "@/lib/page-metadata";
+import { organizationSchema } from "@/lib/schema";
 
 export const metadata: Metadata = publicPageMetadata(
   "BlackOut — Live Dealer Gamma & 0DTE SPX Options Flow",
@@ -27,6 +29,7 @@ export default async function LandingPage() {
 
   return (
     <MarketingPageShell showChart={false}>
+      <JsonLd data={organizationSchema} />
       <script dangerouslySetInnerHTML={{ __html: LANDING_REDIRECT_SCRIPT }} />
       <RedesignHome signedIn={signedIn} />
     </MarketingPageShell>

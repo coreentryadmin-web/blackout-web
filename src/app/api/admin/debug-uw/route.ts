@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminApi } from "@/lib/admin-access";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,12 +25,12 @@ export async function GET(req: NextRequest) {
     baseHost = new URL(UW_BASE).host;
     target = new URL(endpoint, `${UW_BASE}/`);
   } catch {
-    return NextResponse.json({ error: "Invalid endpoint" }, { status: 400 });
+    return NextResponse.json({ error: "Invalid endpoint" }, { status: 400, headers: NO_STORE_HEADERS });
   }
   if (target.host !== baseHost || target.protocol !== "https:") {
     return NextResponse.json(
       { error: "endpoint must be a path on the UW host", host: target.host },
-      { status: 400 }
+      { status: 400, headers: NO_STORE_HEADERS }
     );
   }
   target.searchParams.set("limit", "5");
@@ -46,12 +47,15 @@ export async function GET(req: NextRequest) {
     const text = await r.text();
     let parsed: unknown;
     try { parsed = JSON.parse(text); } catch { parsed = text; }
-    return NextResponse.json({ status: r.status, endpoint, raw: parsed });
+    return NextResponse.json({ status: r.status, endpoint, raw: parsed }, { headers: NO_STORE_HEADERS });
   } catch (e) {
     // Admin-gated (low blast radius), but keep the same hygiene as every other route in this
     // sweep -- log the real fetch/network error server-side only, return a fixed string. Same
     // pattern established in /api/ready (task #66).
     console.error("[admin/debug-uw] fetch failed:", e);
-    return NextResponse.json({ error: "Failed to reach Unusual Whales endpoint", endpoint });
+    return NextResponse.json(
+      { error: "Failed to reach Unusual Whales endpoint", endpoint },
+      { headers: NO_STORE_HEADERS },
+    );
   }
 }

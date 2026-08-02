@@ -40,7 +40,8 @@ const API_PATHS = [
   "/api/market/flows?limit=30",
   "/api/market/nighthawk/edition",
   "/api/market/zerodte/board",
-  "/api/public/track-record",
+  // Public member path — /api/public/track-record is admin-gated (401 for audit users).
+  "/api/market/regime",
 ];
 
 const WARM_PATHS = [
@@ -104,6 +105,39 @@ async function fetchApi(url, headers) {
   return fetchRetry(url, { headers }, { retries: IS_STAGING ? 4 : 2, baseDelayMs: 1200, timeoutMs: 90_000 });
 }
 
+function cookieHeaderFromSession(cookies) {
+  return cookies
+    .filter((c) => c.name === "__session" || c.name === "__client_uat")
+    .map((c) => `${c.name}=${c.value}`)
+    .join("; ");
+}
+
+/** Premium desk routes — a 401 is an auth failure, not a latency measurement. */
+function isPremiumApiPath(path) {
+  return path.startsWith("/api/market/") || path.startsWith("/api/admin/");
+}
+
+async function fetchApiMeasured(url, headers, { authState = null } = {}) {
+  let res = await fetchApi(url, headers);
+  if (
+    res.status === 401 &&
+    authState &&
+    !authState.retried &&
+    isPremiumApiPath(new URL(url).pathname)
+  ) {
+    authState.retried = true;
+    const session = await mintIosPlaywrightSession({ appUrl: BASE });
+    if (!session.skip) {
+      await authState.cleanup?.();
+      authState.cleanup = session.cleanup;
+      authState.cookies = session.cookies;
+      headers.Cookie = cookieHeaderFromSession(session.cookies);
+      res = await fetchApi(url, headers);
+    }
+  }
+  return res;
+}
+
 async function stagingForceWarmCrons() {
   if (!IS_STAGING || process.env.STAGING_CRON_WARM !== "1") return;
   const secret = process.env.CRON_SECRET?.trim();
@@ -138,6 +172,7 @@ async function main() {
   let apiHeaders = { Accept: "application/json" };
   let cleanup = null;
   let browserCookies = null;
+  const authState = { cleanup: null, cookies: null, retried: false };
 
   if (useCronAuth) {
     apiHeaders.Authorization = `Bearer ${cronSecret}`;
@@ -149,34 +184,40 @@ async function main() {
       process.exit(1);
     }
     cleanup = session.cleanup;
+    authState.cleanup = session.cleanup;
     browserCookies = session.cookies;
-    const cookieHeader = session.cookies
-      .filter((c) => c.name === "__session" || c.name === "__client_uat")
-      .map((c) => `${c.name}=${c.value}`)
-      .join("; ");
-    apiHeaders.Cookie = cookieHeader;
+    authState.cookies = session.cookies;
+    apiHeaders.Cookie = cookieHeaderFromSession(session.cookies);
+  }
+
+  async function measurePath(path, labelPrefix) {
+    const t0 = performance.now();
+    try {
+      const res = await fetchApiMeasured(`${BASE}${path}`, apiHeaders, { authState });
+      await res.text();
+      const ms = Math.round(performance.now() - t0);
+      if (res.status === 401 && isPremiumApiPath(path.split("?")[0])) {
+        rec(`${labelPrefix}:${path.split("?")[0]}`, "FAIL", "HTTP 401 auth", ms);
+        return;
+      }
+      rec(`${labelPrefix}:${path.split("?")[0]}`, grade(ms), `HTTP ${res.status}`, ms);
+    } catch (e) {
+      rec(`${labelPrefix}:${path}`, "FAIL", e.message);
+    }
   }
 
   console.log("--- Pre-warm (desk-warm lane proxies) ---");
   // Seed each path once (3 ECS replicas → first measured hit may still be cold).
   for (const path of WARM_PATHS) {
     try {
-      const res = await fetchApi(`${BASE}${path}`, apiHeaders);
+      const res = await fetchApiMeasured(`${BASE}${path}`, apiHeaders, { authState });
       await res.text();
     } catch {
       /* seed best-effort */
     }
   }
   for (const path of WARM_PATHS) {
-    const t0 = performance.now();
-    try {
-      const res = await fetchApi(`${BASE}${path}`, apiHeaders);
-      await res.text();
-      const ms = Math.round(performance.now() - t0);
-      rec(`prewarm:${path.split("?")[0]}`, grade(ms), `HTTP ${res.status}`, ms);
-    } catch (e) {
-      rec(`prewarm:${path}`, "FAIL", e.message);
-    }
+    await measurePath(path, "prewarm");
   }
 
   console.log("\n--- API warm pass (2nd = cached) ---");
@@ -184,11 +225,16 @@ async function main() {
     for (let pass = 1; pass <= 2; pass++) {
       const t0 = performance.now();
       try {
-        const res = await fetchApi(`${BASE}${path}`, apiHeaders);
+        const res = await fetchApiMeasured(`${BASE}${path}`, apiHeaders, { authState });
         await res.text();
         const ms = Math.round(performance.now() - t0);
-        const label = pass === 1 ? `api:${path.split("?")[0]}` : `api:${path.split("?")[0]}:warm`;
-        rec(label, grade(ms), `HTTP ${res.status}`, ms);
+        const fullLabel =
+          pass === 1 ? `api:${path.split("?")[0]}` : `api:${path.split("?")[0]}:warm`;
+        if (res.status === 401 && isPremiumApiPath(path.split("?")[0])) {
+          rec(fullLabel, "FAIL", "HTTP 401 auth", ms);
+        } else {
+          rec(fullLabel, grade(ms), `HTTP ${res.status}`, ms);
+        }
       } catch (e) {
         rec(`api:${path}`, "FAIL", e.message);
       }
@@ -230,6 +276,7 @@ async function main() {
   }
 
   await cleanup?.();
+  await authState.cleanup?.();
 
   const reportPath = join(OUT, `site-latency-${Date.now()}.json`);
   writeFileSync(reportPath, JSON.stringify({ ts: new Date().toISOString(), base: BASE, checks }, null, 2));

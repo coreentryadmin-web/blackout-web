@@ -103,7 +103,7 @@ export function useMergedDesk() {
   const heavyLanesActive = bootstrapSettled;
 
   const { data: pulseRest, isValidating: pulseValidating } = useSWR(
-    "spx-desk-pulse",
+    bootstrapLoading ? null : "spx-desk-pulse",
     fetchSpxDeskPulse,
     {
       ...swrLiveOpts,

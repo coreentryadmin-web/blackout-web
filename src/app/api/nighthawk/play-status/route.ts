@@ -19,15 +19,11 @@ import { requireToolApi } from "@/lib/tool-access-server";
 import { makeRedis } from "@/lib/make-redis";
 import { todayEt } from "@/features/nighthawk/lib/session";
 import type { MorningConfirmResult } from "@/app/api/cron/nighthawk-morning-confirm/route";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 10;
-
-const NO_STORE_HEADERS = {
-  "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-  "CDN-Cache-Control": "no-store",
-} as const;
 
 const REDIS_KEY = (date: string) => `nh:play-status:${date}`;
 

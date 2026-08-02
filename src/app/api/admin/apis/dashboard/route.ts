@@ -3,6 +3,7 @@ import { requireAdminApi, getAdminApiActor } from "@/lib/admin-access";
 import { fetchApiDashboard } from "@/lib/admin-api-dashboard";
 import { logAdminAction } from "@/lib/admin-audit";
 import { recordAdminRouteError } from "@/lib/admin-route-errors";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
 
@@ -28,9 +29,12 @@ export async function GET(req: NextRequest) {
         },
       });
     }
-    return NextResponse.json(dashboard);
+    return NextResponse.json(dashboard, { headers: NO_STORE_HEADERS });
   } catch (error) {
     recordAdminRouteError("admin/apis/dashboard", error);
-    return NextResponse.json({ error: "Failed to load API dashboard" }, { status: 502 });
+    return NextResponse.json(
+      { error: "Failed to load API dashboard" },
+      { status: 502, headers: NO_STORE_HEADERS },
+    );
   }
 }

@@ -204,7 +204,7 @@ export function isUsableGexHeatmapPayload(data: {
 
 /**
  * Should the Thermal client request `?force=1` to refresh a stale matrix?
- * Pure — age vs force threshold, plus client throttle since last force.
+ * RTH-only — off-hours reads warm Redis / heatmap-warm cron; never force-rebuild chains.
  */
 export function shouldForceMatrixRefresh(input: {
   asofMs: number | null;
@@ -212,7 +212,12 @@ export function shouldForceMatrixRefresh(input: {
   lastForceAtMs: number;
   forceAgeMs?: number;
   forceThrottleMs?: number;
+  /** When false (off-hours / closed), never force — normal poll + cron warm only. */
+  sessionLive?: boolean;
 }): boolean {
+  const sessionLive = input.sessionLive ?? true;
+  if (!sessionLive) return false;
+
   const { asofMs, nowMs, lastForceAtMs } = input;
   const forceAgeMs = input.forceAgeMs ?? MATRIX_FORCE_REFRESH_AGE_MS;
   const forceThrottleMs = input.forceThrottleMs ?? MATRIX_FORCE_THROTTLE_MS;

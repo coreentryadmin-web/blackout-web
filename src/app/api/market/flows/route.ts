@@ -5,8 +5,8 @@ import { fetchMarketFlowAlerts } from "@/lib/providers/unusual-whales";
 import { uwConfigured } from "@/lib/providers/config";
 import { maybeRunFlowIngest } from "@/lib/providers/flow-ingest";
 import { marketPlatform } from "@/lib/platform";
-import { serverCache, withServerCache, TTL } from "@/lib/server-cache";
-import { flowsMemberReadMaxBlockMs } from "@/lib/providers/config";
+import { serverCache, withServerCache, peekServerCache, TTL } from "@/lib/server-cache";
+import { flowsMemberReadMaxBlockMs, flowsCacheTtlMs } from "@/lib/providers/config";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
 import { enrichFlowsWithGex } from "@/lib/flow-gex-enrichment";
 import { roundFloats } from "@/lib/round-floats";
@@ -124,9 +124,21 @@ export async function GET(req: NextRequest) {
     try {
       // Cursor pages are never cached — each `before` is a distinct slice.
       const cacheKey = `flows:pg:${since_hours}:${min_premium ?? 0}:${ticker ?? "all"}:${max_dte ?? "any"}:${pageLimit}`;
+      const flowsTtlMs = flowsCacheTtlMs();
+      if (!before) {
+        const instant = await peekServerCache<FlowsPayload>(cacheKey);
+        if (instant) {
+          void withServerCache(cacheKey, flowsTtlMs, runQuery, {
+            maxBlockMs: flowsMemberReadMaxBlockMs(),
+            staleOnInflight: true,
+            fallback: async () => lastGoodFlowsPayload ?? emptyFlowsPayload(),
+          }).catch(() => undefined);
+          return NextResponse.json(roundFloats(instant), { headers: NO_STORE_HEADERS });
+        }
+      }
       const payload = before
         ? await runQuery()
-        : await withServerCache(cacheKey, TTL.DARK_POOL, runQuery, {
+        : await withServerCache(cacheKey, flowsTtlMs, runQuery, {
             maxBlockMs: flowsMemberReadMaxBlockMs(),
             staleOnInflight: true,
             fallback: async () => lastGoodFlowsPayload ?? emptyFlowsPayload(),

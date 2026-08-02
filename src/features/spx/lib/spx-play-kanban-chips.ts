@@ -28,7 +28,7 @@ function structureStrikeChip(play: SpxPlayPayload): string | null {
     play.option_ticket?.contract_label ??
     play.open_play?.option_label ??
     null;
-  const strike = play.levels.entry ?? play.open_play?.entry_price;
+  const strike = play.levels?.entry ?? play.open_play?.entry_price;
   const premium =
     play.open_play?.option_premium ??
     play.option_ticket?.premium_range ??
@@ -250,7 +250,7 @@ export function buildPlayKanbanChips(input: {
   if (play && filterMatches("structure", filter) && history.length > 1) {
     for (const row of history.slice(1, 8)) {
       const label = formatSpxContractChipLabel(row.open_play?.option_label, {
-        strike: row.levels.entry ?? row.open_play?.entry_price ?? 0,
+        strike: row.levels?.entry ?? row.open_play?.entry_price ?? 0,
         direction: row.direction,
       }, row.open_play?.option_premium);
       const fallback = label !== "—" ? label : row.action.slice(0, 4);

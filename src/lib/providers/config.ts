@@ -79,11 +79,11 @@ export function gexHeatmapMaxBlockMs(): number {
   return Math.round(ms);
 }
 
-/** Max ms member `/api/market/spx/play` may block on cold eval before serving stale/degraded. Default 3s. */
+/** Max ms member `/api/market/spx/play` may block on cold eval before serving stale/degraded. Default 800ms. */
 export function playMemberReadMaxBlockMs(): number {
   const raw = process.env.SPX_PLAY_MEMBER_READ_MAX_BLOCK_MS?.trim();
-  const ms = raw ? Number(raw) : 3_000;
-  if (!Number.isFinite(ms) || ms < 500) return 3_000;
+  const ms = raw ? Number(raw) : 800;
+  if (!Number.isFinite(ms) || ms < 200) return 800;
   return Math.round(ms);
 }
 
@@ -95,11 +95,35 @@ export function flowsMemberReadMaxBlockMs(): number {
   return Math.round(ms);
 }
 
-/** Max ms gex-heatmap overlay/cross-validation enrichment may block after matrix read. Default 2s. */
+/** Member flows tape cache TTL. Default 60s — flows ingest via WS/cron; longer TTL cuts cross-replica PG hits. */
+export function flowsCacheTtlMs(): number {
+  const raw = process.env.FLOWS_CACHE_SEC?.trim();
+  const sec = raw ? Number(raw) : 60;
+  if (!Number.isFinite(sec) || sec < 5) return 60_000;
+  return Math.round(sec * 1000);
+}
+
+/** Max ms nighthawk edition read may block before serving last-good snapshot. Default 500ms. */
+export function nighthawkEditionReadMaxBlockMs(): number {
+  const raw = process.env.NIGHTHAWK_EDITION_READ_MAX_BLOCK_MS?.trim();
+  const ms = raw ? Number(raw) : 500;
+  if (!Number.isFinite(ms) || ms < 100) return 500;
+  return Math.round(ms);
+}
+
+/** Nighthawk edition response cache. Default 60s — edition changes once per session after close. */
+export function nighthawkEditionCacheTtlMs(): number {
+  const raw = process.env.NIGHTHAWK_EDITION_CACHE_SEC?.trim();
+  const sec = raw ? Number(raw) : 60;
+  if (!Number.isFinite(sec) || sec < 5) return 60_000;
+  return Math.round(sec * 1000);
+}
+
+/** Max ms gex-heatmap overlay/cross-validation enrichment may block after matrix read. Default 800ms. */
 export function gexHeatmapEnrichmentMaxMs(): number {
   const raw = process.env.GEX_HEATMAP_ENRICHMENT_MAX_MS?.trim();
-  const ms = raw ? Number(raw) : 2_000;
-  if (!Number.isFinite(ms) || ms < 200) return 2_000;
+  const ms = raw ? Number(raw) : 800;
+  if (!Number.isFinite(ms) || ms < 200) return 800;
   return Math.round(ms);
 }
 

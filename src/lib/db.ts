@@ -769,6 +769,18 @@ async function runMigrations(): Promise<void> {
   await p.query(`
     ALTER TABLE zerodte_setup_log ADD COLUMN IF NOT EXISTS feature_vector JSONB;
   `);
+  // 2026-08-01 CTO perf audit (P3): fetchUngradedZeroDteRows (below) scans
+  // `WHERE graded_at IS NULL AND session_date < $1` with no supporting index — a
+  // backward PRIMARY KEY (session_date, ticker) scan that filters out every already-graded
+  // row before finding LIMIT-12 ungraded ones, cost growing with total graded-row volume
+  // rather than backlog size. swing_positions already has the identical partial index
+  // (idx_swing_positions_ungraded, line ~1722) for the exact same lazy-grader access pattern;
+  // this table never got the sibling index.
+  await p.query(`
+    CREATE INDEX IF NOT EXISTS idx_zerodte_setup_log_ungraded
+    ON zerodte_setup_log(session_date DESC)
+    WHERE graded_at IS NULL;
+  `);
   // BLACKOUT Intelligence Engine — every answered question logged with its route
   // (deterministic router vs Claude fallback) and numeric-claim verification, so
   // router coverage, verification rate, and cost avoided are queryable from day one.
@@ -2848,53 +2860,20 @@ export async function upsertPlaybookInstances(
   if (!rows.length) return;
   await ensureSchema();
   const pool = await getPool();
-  for (const row of rows) {
-    await pool.query(
-      `
-      INSERT INTO spx_playbook_instances (
-        instance_id, session_date, playbook_id, direction, state,
-        armed_at, triggered_at, invalidated_at, opened_at, closed_at,
-        feature_snapshot, detail,
-        trigger_price, reason_invalidated, reason_blocked, armed_poll_count, trigger_count, updated_at
-      )
-      VALUES ($1,$2,$3,$4,$5,
-        CASE WHEN $5 = 'armed' THEN NOW() ELSE NULL END,
-        CASE WHEN $5 IN ('triggered', 'blocked', 'entry_pending') THEN NOW() ELSE NULL END,
-        CASE WHEN $5 = 'invalidated' THEN NOW() ELSE NULL END,
-        CASE WHEN $5 = 'open' THEN NOW() ELSE NULL END,
-        CASE WHEN $5 = 'closed' THEN NOW() ELSE NULL END,
-        $6::jsonb, $7,
-        $8, $9, $10, COALESCE($11, 0),
-        CASE WHEN $5 = 'triggered' THEN 1 ELSE 0 END,
-        NOW())
-      ON CONFLICT (instance_id) DO UPDATE SET
-        direction = EXCLUDED.direction,
-        state = EXCLUDED.state,
-        armed_at = COALESCE(spx_playbook_instances.armed_at,
-          CASE WHEN EXCLUDED.state = 'armed' THEN NOW() ELSE NULL END),
-        triggered_at = COALESCE(spx_playbook_instances.triggered_at,
-          CASE WHEN EXCLUDED.state IN ('triggered', 'blocked', 'entry_pending') THEN NOW() ELSE NULL END),
-        invalidated_at = COALESCE(spx_playbook_instances.invalidated_at,
-          CASE WHEN EXCLUDED.state = 'invalidated' THEN NOW() ELSE NULL END),
-        opened_at = COALESCE(spx_playbook_instances.opened_at,
-          CASE WHEN EXCLUDED.state = 'open' THEN NOW() ELSE NULL END),
-        closed_at = COALESCE(spx_playbook_instances.closed_at,
-          CASE WHEN EXCLUDED.state = 'closed' THEN NOW() ELSE NULL END),
-        feature_snapshot = EXCLUDED.feature_snapshot,
-        detail = EXCLUDED.detail,
-        trigger_price = COALESCE(spx_playbook_instances.trigger_price, EXCLUDED.trigger_price),
-        reason_invalidated = COALESCE(EXCLUDED.reason_invalidated, spx_playbook_instances.reason_invalidated),
-        reason_blocked = COALESCE(EXCLUDED.reason_blocked, spx_playbook_instances.reason_blocked),
-        armed_poll_count = GREATEST(COALESCE(spx_playbook_instances.armed_poll_count, 0), COALESCE(EXCLUDED.armed_poll_count, 0)),
-        trigger_count = CASE
-          WHEN EXCLUDED.state = 'triggered'
-            AND spx_playbook_instances.state IS DISTINCT FROM 'triggered'
-          THEN COALESCE(spx_playbook_instances.trigger_count, 0) + 1
-          ELSE COALESCE(spx_playbook_instances.trigger_count, EXCLUDED.trigger_count, 0)
-        END,
-        updated_at = NOW()
-      `,
-      [
+
+  // 2026-08-01 CTO perf audit (P2): was one INSERT..ON CONFLICT round-trip per row on the SPX
+  // playbook scan hot path — same fixable anti-pattern as upsertNighthawkPlayOutcomes (~line
+  // 7352), just applied here. Each row's tuple repeats its own `state` parameter (e.g. $b+5)
+  // across the armed_at/triggered_at/.../trigger_count CASE expressions — a bound parameter can
+  // appear multiple times within one statement, so this reproduces the exact per-row derived-
+  // timestamp logic from the old per-row query, just batched into one multi-row VALUES list. The
+  // ON CONFLICT...DO UPDATE clause is unchanged and unconditionally shared: Postgres evaluates it
+  // per conflicting row against EXCLUDED regardless of how many rows are in the VALUES list.
+  const params: Array<string | number | null> = [];
+  const tuples = rows
+    .map((row, i) => {
+      const b = i * 11;
+      params.push(
         row.instance_id,
         sessionDate,
         row.playbook_id,
@@ -2905,10 +2884,59 @@ export async function upsertPlaybookInstances(
         row.trigger_price ?? null,
         row.reason_invalidated ?? null,
         row.reason_blocked ?? null,
-        row.armed_poll_count ?? null,
-      ]
-    );
-  }
+        row.armed_poll_count ?? null
+      );
+      return `($${b + 1},$${b + 2},$${b + 3},$${b + 4},$${b + 5},
+        CASE WHEN $${b + 5} = 'armed' THEN NOW() ELSE NULL END,
+        CASE WHEN $${b + 5} IN ('triggered', 'blocked', 'entry_pending') THEN NOW() ELSE NULL END,
+        CASE WHEN $${b + 5} = 'invalidated' THEN NOW() ELSE NULL END,
+        CASE WHEN $${b + 5} = 'open' THEN NOW() ELSE NULL END,
+        CASE WHEN $${b + 5} = 'closed' THEN NOW() ELSE NULL END,
+        $${b + 6}::jsonb, $${b + 7},
+        $${b + 8}, $${b + 9}, $${b + 10}, COALESCE($${b + 11}, 0),
+        CASE WHEN $${b + 5} = 'triggered' THEN 1 ELSE 0 END,
+        NOW())`;
+    })
+    .join(", ");
+
+  await pool.query(
+    `
+    INSERT INTO spx_playbook_instances (
+      instance_id, session_date, playbook_id, direction, state,
+      armed_at, triggered_at, invalidated_at, opened_at, closed_at,
+      feature_snapshot, detail,
+      trigger_price, reason_invalidated, reason_blocked, armed_poll_count, trigger_count, updated_at
+    )
+    VALUES ${tuples}
+    ON CONFLICT (instance_id) DO UPDATE SET
+      direction = EXCLUDED.direction,
+      state = EXCLUDED.state,
+      armed_at = COALESCE(spx_playbook_instances.armed_at,
+        CASE WHEN EXCLUDED.state = 'armed' THEN NOW() ELSE NULL END),
+      triggered_at = COALESCE(spx_playbook_instances.triggered_at,
+        CASE WHEN EXCLUDED.state IN ('triggered', 'blocked', 'entry_pending') THEN NOW() ELSE NULL END),
+      invalidated_at = COALESCE(spx_playbook_instances.invalidated_at,
+        CASE WHEN EXCLUDED.state = 'invalidated' THEN NOW() ELSE NULL END),
+      opened_at = COALESCE(spx_playbook_instances.opened_at,
+        CASE WHEN EXCLUDED.state = 'open' THEN NOW() ELSE NULL END),
+      closed_at = COALESCE(spx_playbook_instances.closed_at,
+        CASE WHEN EXCLUDED.state = 'closed' THEN NOW() ELSE NULL END),
+      feature_snapshot = EXCLUDED.feature_snapshot,
+      detail = EXCLUDED.detail,
+      trigger_price = COALESCE(spx_playbook_instances.trigger_price, EXCLUDED.trigger_price),
+      reason_invalidated = COALESCE(EXCLUDED.reason_invalidated, spx_playbook_instances.reason_invalidated),
+      reason_blocked = COALESCE(EXCLUDED.reason_blocked, spx_playbook_instances.reason_blocked),
+      armed_poll_count = GREATEST(COALESCE(spx_playbook_instances.armed_poll_count, 0), COALESCE(EXCLUDED.armed_poll_count, 0)),
+      trigger_count = CASE
+        WHEN EXCLUDED.state = 'triggered'
+          AND spx_playbook_instances.state IS DISTINCT FROM 'triggered'
+        THEN COALESCE(spx_playbook_instances.trigger_count, 0) + 1
+        ELSE COALESCE(spx_playbook_instances.trigger_count, EXCLUDED.trigger_count, 0)
+      END,
+      updated_at = NOW()
+    `,
+    params
+  );
 }
 
 export async function insertPlaybookInstanceEvents(
@@ -2935,17 +2963,15 @@ export async function insertPlaybookInstanceEvents(
   if (!locked) return;
   const pool = await getPool();
   try {
-    for (const row of rows) {
-      await pool.query(
-        `
-      INSERT INTO spx_playbook_instance_events (
-        session_date, instance_id, playbook_id, event_type, direction,
-        price_at_event, reason, gate_blocks, feature_snapshot, engine_action,
-        executable, counterfactual_mfe_pts, counterfactual_mae_pts
-      )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb,$10,$11,$12,$13)
-      `,
-        [
+    // 2026-08-01 CTO perf audit (P1): this loop used to run N sequential INSERTs while HOLDING
+    // the advisory lock, so lock hold time (and any other caller blocked on the same
+    // session-date key) scaled linearly with row count. Single multi-row INSERT (one
+    // round-trip) instead — same pattern as upsertNighthawkPlayOutcomes (~line 7352).
+    const params: Array<string | number | boolean | null> = [];
+    const tuples = rows
+      .map((row, i) => {
+        const b = i * 13;
+        params.push(
           row.session_date,
           row.instance_id,
           row.playbook_id,
@@ -2958,10 +2984,23 @@ export async function insertPlaybookInstanceEvents(
           row.engine_action,
           row.executable,
           row.counterfactual_mfe_pts,
-          row.counterfactual_mae_pts,
-        ]
-      );
-    }
+          row.counterfactual_mae_pts
+        );
+        return `($${b + 1},$${b + 2},$${b + 3},$${b + 4},$${b + 5},$${b + 6},$${b + 7},$${b + 8}::jsonb,$${b + 9}::jsonb,$${b + 10},$${b + 11},$${b + 12},$${b + 13})`;
+      })
+      .join(", ");
+
+    await pool.query(
+      `
+      INSERT INTO spx_playbook_instance_events (
+        session_date, instance_id, playbook_id, event_type, direction,
+        price_at_event, reason, gate_blocks, feature_snapshot, engine_action,
+        executable, counterfactual_mfe_pts, counterfactual_mae_pts
+      )
+      VALUES ${tuples}
+      `,
+      params
+    );
   } finally {
     await releaseAdvisoryLock(lockKey);
   }
@@ -4808,9 +4847,84 @@ export async function upsertZeroDteSetupLog(rows: ZeroDteSetupLogUpsert[]): Prom
   if (!rows.length) return new Set();
   await ensureSchema();
   const p = await getPool();
+
+  // 2026-08-01 CTO perf audit (P2): was one upsertOneZeroDteSetupRow round-trip per row on
+  // every 0DTE scan commit — same anti-pattern already fixed for upsertNighthawkPlayOutcomes.
+  // Batched into one multi-row VALUES INSERT..ON CONFLICT (same ZERODTE_SETUP_LOG_UPSERT_SQL
+  // pinning rules, just N rows in one round-trip); each row's tuple repeats its own `score` and
+  // `underlying` params (score_max/underlying_latest mirror score/underlying at insert time,
+  // matching the single-row SQL's $6,$6 / $11,$11 exactly). RETURNING now also carries `ticker`
+  // so the multi-row response can be mapped back to the fresh-insert Set — the single-row path
+  // didn't need this since each query already knew which row it was.
+  //
+  // commitFreshZeroDteRowsAtomic's loop (below) is intentionally left as a per-row loop: it runs
+  // inside an existing pg_advisory_xact_lock-held transaction, and the audit's own adversarial
+  // verification found its per-cycle N is realistically small/bounded (fresh commits after
+  // governor/gate filtering, not the full candidate universe) — lower marginal value for more
+  // risk than this plain-pool path, and this PR keeps to one well-scoped fix.
+  const params: Array<string | number | boolean | Record<string, unknown> | null> = [];
+  const tuples = rows
+    .map((r, i) => {
+      const b = i * 18;
+      params.push(
+        r.session_date,
+        r.ticker.toUpperCase(),
+        r.direction,
+        r.top_strike,
+        r.expiry,
+        Math.round(r.score),
+        r.dossier_score != null ? Math.round(r.dossier_score) : null,
+        r.conviction,
+        r.gross_premium,
+        r.spike,
+        r.underlying,
+        r.flags_json,
+        r.entry_premium,
+        r.flow_avg_fill,
+        r.plan_json,
+        r.gate_calibration_json,
+        r.entry_context ?? null,
+        r.feature_vector ?? null
+      );
+      return `($${b + 1},$${b + 2},$${b + 3},$${b + 4},$${b + 5},$${b + 6},$${b + 6},$${b + 7},$${b + 8},$${b + 9},$${b + 10},$${b + 11},$${b + 11},$${b + 12},$${b + 13},$${b + 14},$${b + 15},$${b + 16},$${b + 17},$${b + 18},NOW(),NOW())`;
+    })
+    .join(", ");
+
+  const res = await p.query<{ ticker: string; inserted: boolean }>(
+    `
+    INSERT INTO zerodte_setup_log (
+      session_date, ticker, direction, top_strike, expiry, score, score_max,
+      dossier_score, conviction, gross_premium, spike, underlying_at_flag,
+      underlying_latest, flags_json, entry_premium, flow_avg_fill, plan_json,
+      gate_calibration_json, entry_context, feature_vector, first_flagged_at, last_seen_at
+    ) VALUES ${tuples}
+    ON CONFLICT (session_date, ticker) DO UPDATE SET
+      score = EXCLUDED.score,
+      score_max = GREATEST(zerodte_setup_log.score_max, EXCLUDED.score),
+      dossier_score = COALESCE(EXCLUDED.dossier_score, zerodte_setup_log.dossier_score),
+      conviction = COALESCE(EXCLUDED.conviction, zerodte_setup_log.conviction),
+      gross_premium = EXCLUDED.gross_premium,
+      spike = zerodte_setup_log.spike OR EXCLUDED.spike,
+      underlying_latest = COALESCE(EXCLUDED.underlying_latest, zerodte_setup_log.underlying_latest),
+      flags_json = COALESCE(EXCLUDED.flags_json, zerodte_setup_log.flags_json),
+      direction = COALESCE(zerodte_setup_log.direction, EXCLUDED.direction),
+      top_strike = COALESCE(zerodte_setup_log.top_strike, EXCLUDED.top_strike),
+      expiry = COALESCE(zerodte_setup_log.expiry, EXCLUDED.expiry),
+      entry_premium = COALESCE(zerodte_setup_log.entry_premium, EXCLUDED.entry_premium),
+      flow_avg_fill = COALESCE(zerodte_setup_log.flow_avg_fill, EXCLUDED.flow_avg_fill),
+      plan_json = COALESCE(zerodte_setup_log.plan_json, EXCLUDED.plan_json),
+      gate_calibration_json = COALESCE(zerodte_setup_log.gate_calibration_json, EXCLUDED.gate_calibration_json),
+      entry_context = COALESCE(zerodte_setup_log.entry_context, EXCLUDED.entry_context),
+      feature_vector = COALESCE(zerodte_setup_log.feature_vector, EXCLUDED.feature_vector),
+      last_seen_at = NOW()
+    RETURNING ticker, (xmax = 0) AS inserted
+    `,
+    params
+  );
+
   const freshlyFlagged = new Set<string>();
-  for (const r of rows) {
-    if (await upsertOneZeroDteSetupRow(p, r)) freshlyFlagged.add(r.ticker.toUpperCase());
+  for (const row of res.rows) {
+    if (row.inserted === true) freshlyFlagged.add(row.ticker.toUpperCase());
   }
   return freshlyFlagged;
 }

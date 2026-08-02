@@ -3,22 +3,34 @@ import { vectorUniverseTickers } from "@/lib/heatmap-allowlist";
 import { normalizeVectorTicker, isVectorTickerAllowed } from "./vector-ticker";
 
 /**
- * DYNAMIC UNIVERSE — "open it once and Vector keeps recording it" (user-directed, 2026-07-13).
+ * DYNAMIC UNIVERSE — "open it once and the platform keeps it warm" (user-directed, 2026-07-13;
+ * generalized beyond Vector 2026-08-01 — see below). Despite the module path, this is now a
+ * PLATFORM-WIDE shared ticker set, not a Vector-only concept — every product below writes and
+ * reads the same underlying Redis map.
  *
  * The static ~22-name universe is the only set the 5-min recorder cron covered, so any other
  * ticker's rail existed only while someone was actively viewing it — the next morning it started
  * from scratch ("first thing I see is one bead"). This module makes every VIEWED ticker part of
  * the recorded universe automatically:
  *
- *  - `touchDynamicUniverse(ticker)` fires when a member opens the ticker on Vector, Thermal
- *    (gex-heatmap), or Helix (flows filter/stream) — debounced per process, fire-and-forget.
+ *  - `touchDynamicUniverse(ticker)` (via `registerVectorUniverseView`) fires when a member opens
+ *    the ticker on **Vector**, **Thermal** (gex-heatmap route), **Helix** (flows filter/stream),
+ *    or asks **Largo** for a ticker's GEX heatmap (`get_gex_heatmap` tool) — debounced per
+ *    process, fire-and-forget. Night Hawk is deliberately NOT wired in here: its ticker universe
+ *    is discovery-driven (flow/breakout/pin scanners), not a member opening a specific symbol, so
+ *    a per-viewer "touch" has nothing to attach to — if Night Hawk ever needs its board's active
+ *    tickers kept warm, that should be a bulk union of discovery output, not this per-view path.
  *  - The recorder cron unions `listDynamicUniverseTickers()` into its ticker set, so a name viewed
  *    today is recorded from TOMORROW'S OPENING BELL onward, viewer or not.
  *  - Thermal `heatmap-warm` uses the SAME union (`listSharedUniverseTickers`) so a viewed name's
- *    GEX matrix stays cache-hot for both desks — one shared sticky universe, not two lists.
+ *    GEX matrix stays cache-hot for every consumer — one shared sticky universe, not N lists.
  *  - Retention: names not viewed for RETENTION_DAYS drop out (a one-time curiosity must not tax
  *    the cron forever — reopening re-adds instantly). Capacity: newest CAP names by last-view
  *    (recording is Polygon-cache work per ticker per 5 min; the cap bounds cron runtime).
+ *  - Membership in this set is a warm-cache/background-recording concern ONLY — it never gates
+ *    whether a member can see a ticker's live GEX/VEX matrix. /api/market/gex-heatmap serves any
+ *    syntactically valid ticker on demand (cold-fetching from Polygon if not cache-warm)
+ *    regardless of universe membership.
  *
  * Storage is one shared-Redis map (ticker → lastViewedMs) so all replicas and the cron task see
  * the same set. Concurrent touches do read-modify-write and can lose a race — acceptable: the

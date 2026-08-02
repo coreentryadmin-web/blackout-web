@@ -108,22 +108,40 @@ function spotDelta(a, b) {
   return Math.abs(a - b);
 }
 
+function mergedLiveSpot(mergedWrap) {
+  const merged = mergedWrap?.merged ?? mergedWrap;
+  return Number(merged?.price ?? merged?.quote?.price ?? merged?.spot);
+}
+
+/** Cold merged desk cache can briefly return price:0 while GEX heatmap is warm — retry before FAIL. */
+async function fetchMergedLiveSpot(hmSpot) {
+  let mergedWrap = await fetchJson("/api/market/spx/merged");
+  let liveSpot = mergedLiveSpot(mergedWrap);
+  if (liveSpot > 0 || !(Number.isFinite(hmSpot) && hmSpot > 0)) {
+    return { mergedWrap, liveSpot };
+  }
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    mergedWrap = await fetchJson("/api/market/spx/merged");
+    liveSpot = mergedLiveSpot(mergedWrap);
+    if (liveSpot > 0) break;
+  }
+  return { mergedWrap, liveSpot };
+}
+
 async function spxCrossEndpointCheck() {
   if (!CRON && !(process.env.CLERK_SECRET_KEY && process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)) {
     rec("spx:cross-endpoint", "SKIP", "no CRON or Clerk keys");
     return;
   }
   try {
-    const [mergedWrap, heatmap, positioning, play] = await Promise.all([
-      fetchJson("/api/market/spx/merged"),
+    const [heatmap, positioning, play] = await Promise.all([
       fetchJson("/api/market/gex-heatmap?ticker=SPX"),
       fetchJson("/api/market/gex-positioning?ticker=SPX"),
       fetchJson("/api/market/spx/play"),
     ]);
-    const merged = mergedWrap?.merged ?? mergedWrap;
-
-    const liveSpot = Number(merged?.price ?? merged?.quote?.price ?? merged?.spot);
     const hmSpot = Number(heatmap?.spot);
+    const { liveSpot } = await fetchMergedLiveSpot(hmSpot);
     const posSpot = Number(positioning?.spot);
 
     const issues = [];

@@ -19,7 +19,7 @@ import { mergeDeskLayers } from "@/features/spx/lib/spx-desk-merge";
 // server-only chain dependency into non-server-condition contexts (e.g. the mocked unit
 // tests for this file, which stub ./spx-desk but not the reconstruct chain loader).
 import type { SpxPinForecast } from "@/features/spx/lib/spx-pin";
-import { withServerCache } from "@/lib/server-cache";
+import { withServerCache, peekServerCache } from "@/lib/server-cache";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 
 export type MergedSpxDeskBundle = {
@@ -95,6 +95,12 @@ export async function loadSpxDesk(): Promise<SpxDeskPayload> {
   // SWR: return last good snapshot immediately while the background refresh runs.
   // Prevents a cold Massive chain fetch (20s+) from blocking play/desk polling.
   return withServerCache(`spx-desk:${date}`, deskCacheTtlMs(), buildSpxDesk, deskCacheOpts);
+}
+
+/** Instant desk read — Redis/L1 only, never invokes buildSpxDesk. */
+export async function peekSpxDesk(): Promise<SpxDeskPayload | null> {
+  const date = todayEtYmd();
+  return peekServerCache<SpxDeskPayload>(`spx-desk:${date}`);
 }
 
 /**

@@ -215,7 +215,7 @@ export async function GET(req: NextRequest) {
           available: true,
           ticker,
           price: candle.current.close,
-          change_pct: 0,
+          change_pct: candle.changePct,
           source: "ws",
           asof: new Date(candle.updatedAt).toISOString(),
         };

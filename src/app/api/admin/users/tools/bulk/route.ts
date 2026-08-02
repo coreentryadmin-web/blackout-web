@@ -12,6 +12,7 @@ import {
 import { setToolAccessForUserId } from "@/lib/tool-access-server";
 import type { ToolKey } from "@/lib/tool-access";
 import { TOOLS } from "@/lib/tool-access";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +31,10 @@ export async function POST(req: NextRequest) {
   if (denied) return denied;
 
   if (isCognitoAuth()) {
-    return NextResponse.json({ error: "Tool bulk updates require Clerk auth." }, { status: 501 });
+    return NextResponse.json(
+      { error: "Tool bulk updates require Clerk auth." },
+      { status: 501, headers: NO_STORE_HEADERS },
+    );
   }
 
   const body = (await req.json()) as BulkBody;
@@ -40,10 +44,13 @@ export async function POST(req: NextRequest) {
   const limit = Math.min(500, Math.max(1, Number(body.limit ?? 200)));
 
   if (!VALID_TOOLS.has(tool)) {
-    return NextResponse.json({ error: "Invalid tool key" }, { status: 400 });
+    return NextResponse.json({ error: "Invalid tool key" }, { status: 400, headers: NO_STORE_HEADERS });
   }
   if (mode !== "inherit" && mode !== "grant" && mode !== "block") {
-    return NextResponse.json({ error: "Invalid mode — use inherit, grant, or block" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Invalid mode — use inherit, grant, or block" },
+      { status: 400, headers: NO_STORE_HEADERS },
+    );
   }
 
   const client = await clerkClient();
@@ -92,7 +99,7 @@ export async function POST(req: NextRequest) {
     updated,
     scanned,
     errors: errors.slice(0, 10),
-  });
+  }, { headers: NO_STORE_HEADERS });
 }
 
 /** PATCH body helper — moved out of route for reuse. */

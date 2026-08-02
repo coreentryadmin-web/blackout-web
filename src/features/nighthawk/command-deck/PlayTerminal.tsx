@@ -105,10 +105,17 @@ function fractionGlyph(f: number): string {
 export function PlayTerminal({
   play,
   sessionClosed = false,
+  nowMs: nowMsProp,
 }: {
   play: TerminalPlay | null;
   /** Board heat.state === CLOSED — right-rail must not claim LIVE/greeks after the session. */
   sessionClosed?: boolean;
+  /**
+   * Optional shared clock from a parent that already runs its own useSecondTick (e.g. CommandDeck) —
+   * avoids a second, unsynchronized 1s setInterval ticking alongside the parent's when both mount
+   * together. Falls back to this component's own tick so standalone callers are unaffected.
+   */
+  nowMs?: number;
 }) {
   // Default to Management for working 0DTE rows (action first); Thesis otherwise.
   const [tab, setTab] = useState<Tab>("thesis");
@@ -131,10 +138,13 @@ export function PlayTerminal({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
-  // Hooks must run unconditionally (before any early return).
+  // Hooks must run unconditionally (before any early return). Pause the internal tick when a
+  // parent already supplies one (see the nowMs prop doc above) — the hook stays mounted (rules of
+  // hooks) but its own setInterval never fires, so only one 1Hz timer runs for the whole deck.
   const markFlash = useFlash(play?.mark ?? null);
   const stockFlash = useFlash(play?.stockPrice ?? null);
-  const nowMs = useSecondTick();
+  const internalNowMs = useSecondTick(nowMsProp === undefined);
+  const nowMs = nowMsProp ?? internalNowMs;
 
   if (!play) {
     return <div className="nh-deck-right"><div className="nh-deck-empty">◂ select a play to break it down</div></div>;

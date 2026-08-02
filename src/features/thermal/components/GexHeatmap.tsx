@@ -29,8 +29,9 @@ import {
 import { GEX_KING_COMPACT_LABEL, GEX_KING_DUAL_LABEL, GEX_KING_NODE_HELP, gexKingDualLabel } from "@/lib/gex-king-node-labels";
 import { shiftPercentForStrike } from "@/features/thermal/lib/gex-heatmap/shift-math";
 import { createPulseEventSource, type PulseStreamSnapshot } from "@/lib/api";
-import { usePollIntervalMs } from "@/hooks/use-et-market-open";
+import { usePollIntervalMs, useEtMarketOpen } from "@/hooks/use-et-market-open";
 import { resetIosViewport } from "@/hooks/useIosKeyboardInset";
+import { useLiveQuoteStream } from "@/hooks/useLiveQuoteStream";
 import { todayEt } from "@/lib/et-date";
 import {
   fmtHeatmapExpiry,
@@ -2567,6 +2568,7 @@ export function GexHeatmap({
   const [expiryScope, setExpiryScope] = useState<string>("all");
   const matrixPollMs = usePollIntervalMs(2_000, 5_000);
   const quotePollMs = usePollIntervalMs(2_000, 5_000);
+  const sessionLive = useEtMarketOpen();
 
   // Deep-link: keep ?ticker=&lens=&compare= in sync so desks can share the exact view.
   useEffect(() => {
@@ -2644,11 +2646,20 @@ export function GexHeatmap({
   // Live spot tape — a SEPARATE, fast (~1.5s) SWR just for the header price. Index
   // spot is true real-time WS; stocks/ETFs are shared-cached REST. The gamma
   // matrix keeps its own 5s cache above; the header quote polls at 5s.
+  // Kept as the REST safety net (and the sole source for tickers the push stream
+  // hasn't reported yet) — the push stream below overlays on top when live.
   const { data: quote } = useSWR<QuoteResponse>(
     `/api/market/quote?ticker=${encodeURIComponent(ticker)}`,
     fetchQuote,
     { refreshInterval: quotePollMs, refreshWhenHidden: false, revalidateOnFocus: true, keepPreviousData: true }
   );
+
+  // Sub-second stock/ETF push (PR 3/3 of the sub-second-spot project) — reads the
+  // same stock-candle-store WS feed the quote route's "ws" source already used,
+  // just pushed instead of polled. Sits between the index pulse overlay (below,
+  // sub-second, SPX/VIX-only) and the ~1.5s quote SWR in the header's freshness
+  // chain: index pulse > this stock push > quote SWR > matrix snapshot spot.
+  const { quotes: stockPushQuotes } = useLiveQuoteStream([ticker]);
 
   // ── Sub-second INDEX spot via the pulse SSE (zero new REST cost) ───────────────
   // The same proven pulse stream that feeds the SPX desk header / SpxLiveStrip
@@ -2695,6 +2706,7 @@ export function GexHeatmap({
   // is purely an ADDITIONAL trigger. Compares quote.price vs data.spot per the spec.
   const quotePrice = quote?.price ?? 0;
   useEffect(() => {
+    if (!sessionLive) return;
     // Guard: only compare when BOTH feeds are for the currently-selected ticker.
     // On a ticker switch keepPreviousData leaves the old matrix/quote in hand for a
     // round-trip; comparing the new quote vs the old spot would manufacture a huge
@@ -2717,12 +2729,11 @@ export function GexHeatmap({
     // first (4s ≫ a round-trip), so the bypass is never short-circuited. (Rank 19)
     if (forceResetTimerRef.current) clearTimeout(forceResetTimerRef.current);
     forceResetTimerRef.current = setTimeout(() => setForceActive(false), 4_000);
-  }, [quotePrice, spot, stale, quoteMatches]);
+  }, [quotePrice, spot, stale, quoteMatches, sessionLive]);
 
-  // Age-based force (SPX Slayer parity): EventBridge heatmap-warm is 1/min. Without this,
-  // Thermal asof ages past the 5s poll. Force when asof >5s (MATRIX_FORCE_REFRESH_AGE_MS).
+  // Age-based force (SPX Slayer parity): RTH only — off-hours uses cron warm + cached poll.
   useEffect(() => {
-    if (stale) return;
+    if (stale || !sessionLive) return;
     const tick = () => {
       if (forceActive) return;
       const asofRaw = data?.asof;
@@ -2733,6 +2744,7 @@ export function GexHeatmap({
           asofMs: Number.isFinite(asofMs) ? asofMs : null,
           nowMs,
           lastForceAtMs: lastForceAtRef.current,
+          sessionLive,
         })
       ) {
         return;
@@ -2748,7 +2760,7 @@ export function GexHeatmap({
     tick();
     const id = setInterval(tick, 1_000);
     return () => clearInterval(id);
-  }, [data?.asof, stale, ticker, forceActive]);
+  }, [data?.asof, stale, ticker, forceActive, sessionLive]);
 
   // Reset throttle + force state when the ticker changes so a switch starts clean.
   // Also reset the expiry scope back to "All" — the expiry axis differs per chain, so a
@@ -3226,16 +3238,26 @@ export function GexHeatmap({
   const pushedLive = pushedSpot != null && pushedSpot > 0;
   const pushedChangePct = pulseField ? pulseSnap?.[pulseField]?.change_pct : undefined;
 
+  // STOCK/ETF sub-second overlay: the same ticker-scoped guard as the index pulse
+  // above (only trust it for the currently-selected ticker), sitting one tier below
+  // the index pulse and one tier above the REST quote SWR.
+  const stockPush = quoteMatches ? stockPushQuotes[ticker.toUpperCase()] : undefined;
+  const stockPushLive = stockPush != null && stockPush.price > 0;
+
   const headerSpot = pushedLive
     ? (pushedSpot as number)
-    : quoteLive
-      ? (quote!.price as number)
-      : spot;
+    : stockPushLive
+      ? stockPush!.price
+      : quoteLive
+        ? (quote!.price as number)
+        : spot;
   const headerChangePct = pushedLive
     ? (pushedChangePct ?? (quoteLive ? (quote!.change_pct ?? 0) : changePct))
-    : quoteLive
-      ? (quote!.change_pct ?? 0)
-      : changePct;
+    : stockPushLive
+      ? stockPush!.changePct
+      : quoteLive
+        ? (quote!.change_pct ?? 0)
+        : changePct;
   // NOTE: the old `headerChangeBull` + `quoteFresh` derivations powered the big central
   // spot tape (removed in the UI refactor — spot was shown 4+ times). The compact spot
   // beside the ticker selector derives its own up/down sign, and the panel's Live /

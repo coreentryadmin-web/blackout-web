@@ -4,6 +4,7 @@ import { logAdminAction } from "@/lib/admin-audit";
 import { isCognitoAuth } from "@/lib/auth-provider";
 import { syncWhopMembershipForEmail } from "@/lib/membership";
 import { publishTierChanged } from "@/lib/tier-cache";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
 
@@ -12,14 +13,17 @@ export async function POST(req: NextRequest) {
   if (denied) return denied;
 
   if (isCognitoAuth()) {
-    return NextResponse.json({ error: "User management requires Clerk auth." }, { status: 501 });
+    return NextResponse.json(
+      { error: "User management requires Clerk auth." },
+      { status: 501, headers: NO_STORE_HEADERS },
+    );
   }
 
   const body = await req.json();
   const { email } = body;
 
   if (!email?.trim()) {
-    return NextResponse.json({ error: "Email is required" }, { status: 400 });
+    return NextResponse.json({ error: "Email is required" }, { status: 400, headers: NO_STORE_HEADERS });
   }
 
   try {
@@ -47,9 +51,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       ...result,
       billingKind: result.billingKind,
-    });
+    }, { headers: NO_STORE_HEADERS });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Sync failed";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return NextResponse.json({ error: msg }, { status: 500, headers: NO_STORE_HEADERS });
   }
 }

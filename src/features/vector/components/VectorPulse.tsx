@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
-import { fetchSpxPlay, fetchFlows, type FlowAlert } from "@/lib/api";
+import { fetchFlows, type FlowAlert } from "@/lib/api";
+import { useSpxPlay } from "@/features/spx/hooks/useSpxPlay";
 import { buildPlaybookTerminalLines } from "@/features/spx/lib/spx-play-terminal-lines";
 import type { PlayTerminalLine } from "@/features/spx/lib/spx-play-terminal-lines";
 import {
@@ -163,11 +164,16 @@ export function VectorPulse({
   }, [regime, proximity, magnet, wallIntegrity, wallEvents, streamUpdatedAt]);
 
   // ── SPX play engine (state + playbook) ──
-  const { data: spxPlay } = useSWR(
-    isSpx && liveSession ? "vector-spx-playbook" : null,
-    fetchSpxPlay,
-    { refreshInterval: liveSession ? 1_000 : 0, revalidateOnFocus: false, revalidateOnReconnect: false }
-  );
+  // Root cause (2026-08-01 audit): this used to be its own useSWR("vector-spx-playbook", ...)
+  // at a 1s refreshInterval — a SECOND independent poll of the exact same /spx/play endpoint
+  // useSpxPlay() already polls (spx-desk's `useSpxPlay` hook, 2s default via SPX_PLAY_POLL_MS),
+  // running concurrently whenever VectorPulse is mounted inside SpxDashboard (Vector chart is
+  // embedded in the flagship SPX Slayer desk — see SpxDashboard.tsx). Two SWR keys for one
+  // endpoint means SWR's cache/dedup can't collapse them: every poll cycle double-fetched
+  // /spx/play. Sharing useSpxPlay's key+cache here removes the second poller entirely and, as
+  // a side benefit, gap-fills from the session cache the same way the desk's own play data does
+  // (previously this panel would blank on a transient poll gap; the desk data does not).
+  const { play: spxPlay } = useSpxPlay(isSpx && liveSession);
 
   // Diff play state for transition signals
   useEffect(() => {

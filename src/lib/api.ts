@@ -861,6 +861,42 @@ export function createVectorEventSource(
   return es;
 }
 
+// ── Stock/ETF live spot-price stream (PR 2/3 of the sub-second-spot project) ──
+
+export type SpotStreamQuote = { price: number; changePct: number; asof: string };
+export type SpotStreamFrame = { type: "quotes"; quotes: Record<string, SpotStreamQuote>; ts: number };
+
+/**
+ * One SSE connection carrying live spot price + day-change% for a SET of
+ * tickers (whatever is on the caller's screen) — NOT one-connection-per-ticker
+ * like Vector. Backed by /api/market/stocks/spot-stream, itself reading
+ * stock-candle-store.ts's tick-by-tick WS feed for ALL stocks/ETFs.
+ */
+export function createSpotStreamEventSource(
+  tickers: string[],
+  onMessage: (frame: SpotStreamFrame) => void,
+  hooks?: { onOpen?: () => void; onClose?: () => void }
+): ReconnectingEventSource | null {
+  if (typeof window === "undefined") return null;
+  const list = Array.from(new Set(tickers.map((t) => t.trim().toUpperCase()).filter(Boolean))).sort();
+  if (list.length === 0) return null;
+  const url = `/api/market/stocks/spot-stream?tickers=${encodeURIComponent(list.join(","))}`;
+
+  return createReconnectingEventSource(
+    url,
+    (raw) => {
+      try {
+        const data = JSON.parse(raw) as SpotStreamFrame;
+        if (data.type !== "quotes") return;
+        onMessage(data);
+      } catch {
+        /* ignore */
+      }
+    },
+    hooks
+  );
+}
+
 // Removed deprecated createFlowSocket() — it was never called and was the only
 // client reference to NEXT_PUBLIC_ENGINE_WS_KEY / NEXT_PUBLIC_ENGINE_WS_URL,
 // which inlined a static engine WS key into the browser bundle. The live feed

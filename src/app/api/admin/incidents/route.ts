@@ -3,6 +3,7 @@ import { requireAdminApi, getAdminApiActor } from "@/lib/admin-access";
 import { ackAdminIncident, listOpenAdminIncidents, resolveAdminIncident } from "@/lib/admin-incidents";
 import { logAdminAction } from "@/lib/admin-audit";
 import { recordAdminRouteError } from "@/lib/admin-route-errors";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
 
@@ -12,10 +13,13 @@ export async function GET() {
 
   try {
     const incidents = await listOpenAdminIncidents(30);
-    return NextResponse.json({ incidents, generated_at: new Date().toISOString() });
+    return NextResponse.json(
+      { incidents, generated_at: new Date().toISOString() },
+      { headers: NO_STORE_HEADERS },
+    );
   } catch (error) {
     recordAdminRouteError("admin/incidents", error);
-    return NextResponse.json({ error: "Failed to load incidents" }, { status: 502 });
+    return NextResponse.json({ error: "Failed to load incidents" }, { status: 502, headers: NO_STORE_HEADERS });
   }
 }
 
@@ -26,10 +30,13 @@ export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as { id?: string; action?: "ack" | "resolve" };
     if (!body.id || !body.action) {
-      return NextResponse.json({ error: "id and action required" }, { status: 400 });
+      return NextResponse.json({ error: "id and action required" }, { status: 400, headers: NO_STORE_HEADERS });
     }
     if (body.action !== "ack" && body.action !== "resolve") {
-      return NextResponse.json({ error: "action must be 'ack' or 'resolve'" }, { status: 400 });
+      return NextResponse.json(
+        { error: "action must be 'ack' or 'resolve'" },
+        { status: 400, headers: NO_STORE_HEADERS },
+      );
     }
 
     const actor = await getAdminApiActor();
@@ -40,7 +47,12 @@ export async function POST(req: NextRequest) {
       ok = await resolveAdminIncident(body.id);
     }
 
-    if (!ok) return NextResponse.json({ error: "Incident not found or already closed" }, { status: 404 });
+    if (!ok) {
+      return NextResponse.json(
+        { error: "Incident not found or already closed" },
+        { status: 404, headers: NO_STORE_HEADERS },
+      );
+    }
 
     void logAdminAction({
       actorUserId: actor?.userId,
@@ -49,9 +61,9 @@ export async function POST(req: NextRequest) {
       detail: { incident_id: body.id },
     });
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true }, { headers: NO_STORE_HEADERS });
   } catch (error) {
     recordAdminRouteError("admin/incidents", error);
-    return NextResponse.json({ error: "Incident action failed" }, { status: 502 });
+    return NextResponse.json({ error: "Incident action failed" }, { status: 502, headers: NO_STORE_HEADERS });
   }
 }

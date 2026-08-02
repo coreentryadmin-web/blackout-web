@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { engineConfigured, fetchEngine } from "@/lib/engine";
 import { authorizeCronOrTierApi } from "@/lib/market-api-auth";
 import { requireToolApi } from "@/lib/tool-access-server";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 type RouteContext = { params: Promise<{ path: string[] }> };
 
@@ -28,7 +29,7 @@ async function proxyGet(req: NextRequest, context: RouteContext) {
   const { path } = await context.params;
   const safePath = normalizeEnginePath(path);
   if (!safePath) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
+    return NextResponse.json({ error: "Not found" }, { status: 404, headers: NO_STORE_HEADERS });
   }
 
   // Launch gate — the allowlisted engine paths serve LOCKED-tool data ("heatmap" → Heatmaps,
@@ -43,7 +44,10 @@ async function proxyGet(req: NextRequest, context: RouteContext) {
   }
 
   if (!engineConfigured()) {
-    return NextResponse.json({ error: "Engine not configured", available: false }, { status: 503 });
+    return NextResponse.json(
+      { error: "Engine not configured", available: false },
+      { status: 503, headers: NO_STORE_HEADERS },
+    );
   }
 
   const query = req.nextUrl.searchParams.toString();
@@ -51,10 +55,10 @@ async function proxyGet(req: NextRequest, context: RouteContext) {
 
   try {
     const data = await fetchEngine(fullPath);
-    return NextResponse.json(data);
+    return NextResponse.json(data, { headers: NO_STORE_HEADERS });
   } catch (error) {
     console.error("[engine proxy]", fullPath, error);
-    return NextResponse.json({ error: "Engine unreachable" }, { status: 502 });
+    return NextResponse.json({ error: "Engine unreachable" }, { status: 502, headers: NO_STORE_HEADERS });
   }
 }
 

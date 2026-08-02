@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
-import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
+import { fetchGexHeatmap, peekGexHeatmapCache, readGexHeatmapSnapshot } from "@/lib/providers/polygon-options-gex";
 import type {
   GexFlowByStrike,
   GexDarkPoolLevel,
@@ -35,6 +35,17 @@ export const dynamic = "force-dynamic";
  */
 const OVERLAY_TTL_MS = 30_000;
 const overlayMem = new Map<string, { at: number; overlays: GexHeatmapOverlays }>();
+
+type NightHawkContext = {
+  play_direction: string;
+  target_strike: string | number | null;
+  grade: string;
+  summary: string;
+} | null;
+
+/** Night Hawk overlay context — one PG read per ticker per minute, not every matrix poll. */
+const NH_CONTEXT_TTL_MS = 60_000;
+const nighthawkContextMem = new Map<string, { at: number; value: NightHawkContext }>();
 
 /**
  * Server-side force-refresh gate. `?force=1` bypasses BOTH the in-memory and Redis matrix cache,
@@ -148,26 +159,24 @@ function withEnrichmentTimeout<T>(promise: Promise<T>, fallback: T): Promise<T> 
   ]);
 }
 
-type NightHawkContext = {
-  play_direction: string;
-  target_strike: string | number | null;
-  grade: string;
-  summary: string;
-} | null;
-
-/**
- * Fetch the current Night Hawk play context for a ticker from the latest edition.
- * "Current" = most recent edition created within the last 24 hours.
- * Best-effort: any failure returns null (never throws, never fabricates).
- */
 async function getNightHawkContext(ticker: string): Promise<NightHawkContext> {
+  const now = Date.now();
+  const mem = nighthawkContextMem.get(ticker);
+  if (mem && now - mem.at < NH_CONTEXT_TTL_MS) return mem.value;
+
   if (!dbConfigured()) return null;
   try {
     const edition = await fetchLatestNighthawkEdition();
-    if (!edition) return null;
+    if (!edition) {
+      nighthawkContextMem.set(ticker, { at: now, value: null });
+      return null;
+    }
     // Only surface editions from the last 24 hours.
     const age = Date.now() - new Date(edition.published_at).getTime();
-    if (age > 24 * 60 * 60 * 1000) return null;
+    if (age > 24 * 60 * 60 * 1000) {
+      nighthawkContextMem.set(ticker, { at: now, value: null });
+      return null;
+    }
     const plays = Array.isArray(edition.plays) ? edition.plays : [];
     const play = plays.find(
       (p) =>
@@ -175,13 +184,19 @@ async function getNightHawkContext(ticker: string): Promise<NightHawkContext> {
         typeof p === "object" &&
         String((p as Record<string, unknown>).ticker ?? "").toUpperCase() === ticker
     ) as Record<string, unknown> | undefined;
-    if (!play) return null;
-    return {
+    if (!play) {
+      nighthawkContextMem.set(ticker, { at: now, value: null });
+      return null;
+    }
+    const value: NightHawkContext = {
       play_direction: String(play.direction ?? ""),
       target_strike: (play.target ?? play.options_play ?? null) as string | number | null,
       grade: String(play.conviction ?? play.grade ?? ""),
       summary: String(play.thesis ?? play.key_signal ?? "").slice(0, 200),
     };
+    if (nighthawkContextMem.size > 200) nighthawkContextMem.clear();
+    nighthawkContextMem.set(ticker, { at: now, value });
+    return value;
   } catch {
     return null;
   }
@@ -291,7 +306,21 @@ export async function GET(req: NextRequest) {
   registerVectorUniverseView(ticker);
 
   try {
-    const heatmap = await fetchGexHeatmap(ticker, { forceRefresh });
+    const matrixPeek = await peekGexHeatmapCache(ticker);
+    const skipSlowEnrichment = matrixPeek.cached && !matrixPeek.stale;
+
+    let heatmap = !forceRefresh ? await readGexHeatmapSnapshot(ticker) : null;
+    if (!heatmap) {
+      heatmap = await fetchGexHeatmap(ticker, { forceRefresh });
+    } else if (
+      !forceRefresh &&
+      matrixPeek.cached &&
+      matrixPeek.age_sec != null &&
+      matrixPeek.ttl_sec != null &&
+      matrixPeek.age_sec >= matrixPeek.ttl_sec
+    ) {
+      void fetchGexHeatmap(ticker).catch(() => undefined);
+    }
     if (!heatmap) {
       // Polygon unavailable / empty chain — never fabricate. Client renders empty state.
       return NextResponse.json(
@@ -327,10 +356,13 @@ export async function GET(req: NextRequest) {
       getOverlays(ticker, heatmap.strikes),
       { overlays: NO_OVERLAYS, at: null }
     );
-    const nighthawkPromise = withEnrichmentTimeout(getNightHawkContext(ticker), null);
+    const nighthawkPromise = skipSlowEnrichment
+      ? Promise.resolve(null)
+      : withEnrichmentTimeout(getNightHawkContext(ticker), null);
     const crossValPromise =
-      isHeatmapPreset(ticker) && heatmap.gex
-        ? withEnrichmentTimeout(
+      skipSlowEnrichment || !isHeatmapPreset(ticker) || !heatmap.gex
+        ? Promise.resolve(null)
+        : withEnrichmentTimeout(
             validateGexAgainstUW(
               ticker,
               {
@@ -341,8 +373,7 @@ export async function GET(req: NextRequest) {
               { spot: heatmap.spot, nearTermExpiries }
             ).catch(() => null),
             null
-          )
-        : Promise.resolve(null);
+          );
 
     const [{ overlays, at: overlaysAt }, nighthawkContext, cross_validation] = await Promise.all([
       overlaysPromise,

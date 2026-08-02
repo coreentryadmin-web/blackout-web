@@ -487,7 +487,15 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
 
       {/* ═══ §6 CINEMATIC ENDING ═══ */}
       <section className="footer">
-        <Image src={IMAGES.brandEmblem} alt="" className="footer-ghost" width={1254} height={1254} loading="lazy" />
+        <Image
+          src={IMAGES.brandEmblem}
+          alt=""
+          width={1254}
+          height={1254}
+          className="footer-ghost"
+          loading="lazy"
+          aria-hidden
+        />
         <div className="footer-content">
           <div className="footer-brand">BLACKOUT</div>
           <div className="footer-tagline">The intelligence layer behind modern trading.</div>

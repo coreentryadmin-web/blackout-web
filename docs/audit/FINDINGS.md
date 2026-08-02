@@ -4,6 +4,183 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-01 — [CTO perf audit] Multi-agent audit (8 domains, adversarially verified) — Vector/Nighthawk 1Hz full-tree re-renders fixed; 15 more findings ranked
+
+**Context.** User-requested exhaustive performance audit ("the entire website feels slow... I just
+need it faster"). Ran an 8-domain parallel audit (SSR payload, rendering, network/caching, bundle,
+auth overhead, realtime/SSE, DB queries, AWS infra sizing) + an adversarial verification pass that
+independently re-read every cited file before accepting a finding — 3 findings were downgraded from
+their auto-generated severity after the verifier found the claimed blast radius didn't hold up
+(e.g. an N+1 upsert claimed to hit "every member poll" actually sits on an internal cron-only path).
+Full 16-finding ranked list is in the PR description for `fix/vector-nighthawk-1hz-rerender`.
+
+**This entry covers the two P1 rendering fixes shipped now** (highest confidence + lowest risk +
+most directly tied to "feels laggy" on the highest-traffic live surfaces):
+
+### 1. VectorPageShell.liveSpot — 1Hz full-tree re-render (P1)
+**Root cause.** `liveSpot` state updates on every SSE spot tick (~1/sec during live sessions) and
+feeds `pulseRail`/`chartBlock` — plain inline JSX blocks, not memoized. Every sibling
+(`GexShiftLeadersStrip`, `VectorAlertsPanel`) re-rendered on every tick even though neither consumes
+`liveSpot` — the exact "1Hz full-tree re-render" bug class already fixed once for the `setNow`
+freshness clock (2026-07-29, FreshnessChip's own `staleAfterMs`), reappearing through a different
+state hook that was never given the same treatment.
+
+**Fix.** Wrapped `VectorAlertsPanel` and `GexShiftLeadersStrip` in `React.memo`. This alone would
+have been a no-op — their callback props (`onAdd`/`onToggle`/`onRemove`/`onToggleNotify`) were
+plain function expressions recreated every `VectorPageShell` render, defeating memo's shallow
+prop comparison — so `persistRules`/`handleAddRule`/`handleToggleRule`/`handleRemoveRule`/
+`handleToggleNotify` are now `useCallback`'d with correct deps. `VectorChart` (3,718 lines,
+imperative lightweight-charts integration) and `VectorGexLadder` (a genuine `liveSpot` consumer)
+are deliberately NOT touched here — memoizing VectorChart blindly on a live revenue-critical
+surface without profiling data first is a separate, higher-risk follow-up.
+
+### 2. Nighthawk CommandDeck/PlayTerminal — duplicate 1Hz timers + unmemoized row list (P1/P3 combined)
+**Root cause.** `CommandDeck` calls `useSecondTick()` for mark-staleness/age display, forcing every
+`PlayCard` (one per play) and `CockpitStrip` to re-execute every second regardless of whether their
+own data changed — same bug class as #1, never remediated here. Independently, `PlayTerminal`
+(mounted as CommandDeck's child) ran its **own**, unsynchronized `useSecondTick()` — two duplicate
+1Hz timers ticking out of phase for the same wall-clock purpose (age labels between the row list and
+the detail panel could drift by up to ~1s).
+
+**Fix.**
+- `useSecondTick(enabled = true)` in `use-deck-live.ts` now accepts an `enabled` flag — the hook
+  stays mounted (rules of hooks) but its `setInterval` never fires when disabled, so a component fed
+  an external clock costs nothing extra.
+- `PlayTerminal` accepts an optional `nowMs` prop; falls back to its own tick (`enabled: nowMsProp
+  === undefined`) so standalone callers/tests are unaffected. `CommandDeck` now passes its own
+  `nowMs` down — one shared 1Hz timer for the whole deck instead of two.
+- `CockpitStrip` and `PlayCard` wrapped in `React.memo`. `PlayCard`'s `onSelect` signature changed
+  from `() => void` (a fresh per-row closure from `() => setSelId(p.id)` in the parent's `.map`,
+  which would have defeated memo outright) to `(id: string) => void`, so the parent passes the
+  stable `setSelId` setter directly and the `() => onSelect(p.id)` closure moves inside `PlayCard`'s
+  own render (harmless — it doesn't affect PlayCard's incoming-prop identity, only memo's parent-side
+  comparison does).
+
+**Tests.** `PlayTerminal.ssr.test.ts` — 2 new cases: an injected `nowMs` correctly drives staleness
+detection (asserts `STALE` absent when `nowMs == markAsOf`, present 5min later — proving the prop is
+actually used, not silently ignored), and the no-prop fallback path still renders. Full
+`command-deck/*.test.ts` + `vector-seed-props.test.ts` suite: 171/171 passing. `tsc --noEmit` clean.
+`next build` clean.
+
+**Deliberately NOT fixed in this PR** (documented in the PR body, ranked, for follow-up):
+- P0 infra: `market-worker` ECS service has zero autoscaling, hardcoded to 1 task at 0.5vCPU/1GB —
+  needs a Terraform PR + the operator's own `terraform apply` (human-gated per this file's policy).
+- P1: production API routes have no framework-level Cache-Control fallback (`next.config.mjs`'s
+  no-store safety net only fires when `isStagingSite`, permanently false since staging was
+  decommissioned); the CI guard test's `REQUIRED_PREFIXES` allowlist misses `admin/`, `nighthawk/`,
+  `webhook/`, `engine/` route trees entirely.
+- P1: `insertPlaybookInstanceEvents` (db.ts) holds a session-scoped advisory lock across N sequential
+  INSERTs instead of one batched multi-row statement (the pattern is already established elsewhere
+  in the same file for `nighthawk_play_outcomes` — just not applied here).
+- P2: `VectorChart`/`VectorGexLadder` internal re-render inefficiency (needs profiling before
+  touching, per above), 2 more N+1 DB upsert loops, 7 routes over 200KB First Load JS, one
+  remaining raw `<img>` (homepage footer emblem — the hero instance was fixed 2026-07-29, this
+  second instance was missed), RDS on burstable `db.t4g.medium` with no read replica.
+- P3: missing partial index on `zerodte_setup_log.graded_at`, Redis/ECS-web sizing (informational,
+  no incident evidence), a duplicate-fetch trap (`fetchSpxPlay` under two disjoint SWR keys).
+
+**Status.** `fix/vector-nighthawk-1hz-rerender` → PR.
+
+## 2026-08-01 — [Vector/SPX Slayer] SSR payload embedded up to 24h of prior-session wall history — 28-50MB HTML, 10-12s downloads
+
+**Severity.** P1 — perf/UX. Member-reported "the entire website feels slow"; traced to the highest-traffic
+authenticated surface (Vector standalone page + the SPX Slayer flagship dashboard embed).
+
+**Symptom.** Live prod probe (temp admin+premium Clerk user, headless fetch): `/vector` returned
+28.9MB-50.7MB of HTML per load, 10-12+ seconds to fully download, vs 70-650ms for every other
+authenticated desk page (`/helix` 246ms/168KB). Marketing pages were unaffected (200-650ms TTFB,
+confirmed separately) — the slowness is isolated to any surface embedding Vector.
+
+**Root cause.** `loadVectorSeedProps()` (`vector-seed-props.ts`) SSR-embeds the wall-history rail
+directly into the initial HTML for first paint. The in-memory/Redis/Postgres rail intentionally
+retains up to `MAX_HISTORY` = 5760 samples (24h of 15s-bucketed ladders, ~3-4 sessions) for recorder
+resilience across restarts/replays — but the page only ever displays ONE session (`sessionYmd`,
+session-scoped bar range). Two full historical rails were being seeded per load —
+`initialWallHistory` (up to 5760 samples) AND `initialHorizonWallHistory` (a second, separately
+loaded rail for the default DTE horizon, also unbounded) — each carrying full 20-strike-per-side
+ladders (measured live: 17,626 wall snapshots / 853,494 individual strike entries in one 28.9MB
+response). Prior-session samples were pure dead weight: no client consumer (`trailsByStrike`,
+`trailForFlipLevel`) ever reads a sample outside the current session's bar range.
+
+**Why not just trim strikes per sample.** `trailsByStrike` computes "dominant wall" rank PER BUCKET
+across the full ladder to give each wall an honest birth (a strike that's weak now but becomes
+dominant later needs its full-ladder presence in every historical bucket, not just the ones where it
+already ranked top-N) — trimming the 20-strike ladder itself would silently break that feature. The
+safe axis to cut is TIME (prior sessions), not per-sample strike depth.
+
+**Fix.** New `trimHistoryToSession(history, firstBarTime)` in `vector-wall-history.ts` — drops any
+sample with `time < firstBarTime` (the current session's first bar). Applied to both
+`initialWallHistory` and `initialHorizonWallHistory` in `vector-seed-props.ts`, right before they're
+returned to the page. Never clips `backfillRailPrefix`'s modeled prefix (its samples always sit at
+`time >= firstBarTime` by construction) or any of the current session's observed rail — only
+discards genuinely prior-session carryover accumulated under the 24h/72h retention windows.
+
+**Blast radius.** Both consumers of `loadVectorSeedProps` share the fix: the standalone `/vector`
+page AND `SpxVectorEmbed.tsx` (SPX Slayer flagship dashboard). The recorder's 24h retention window,
+Redis 72h TTL, and Postgres durable mirror are UNCHANGED — this only trims what gets shipped in the
+SSR payload for THIS render, not what's retained for resilience/replay. Client-side live updates
+(SSE/SWR) are untouched.
+
+**Secondary finding (not fixed in this PR, smaller/config-only).** `/why-blackout` is NOT edge-cached
+by Cloudflare (`cf-cache-status: DYNAMIC`, every request hits ECS origin directly, ~470ms) while `/`
+and `/learn` ARE (`cf-cache-status: HIT`, ~200ms) — the hand-made CF cache rule's path match doesn't
+cover the new route. Cache rules live in the CF dashboard, not `blackout-infra` terraform (per the
+Environment realities note above) — a follow-up CF API edit, not a code PR.
+
+**Tests.** `vector-wall-history.test.ts` — 4 new cases for `trimHistoryToSession` (drops
+pre-session samples; never clips the modeled backfill prefix; no-op on undefined/NaN/already-empty
+input; no-op when the whole rail already belongs to the session). Full suite green (45/45).
+
+**Files.** `src/features/vector/lib/vector-wall-history.ts`, `src/features/vector/lib/vector-seed-props.ts`,
+`src/features/vector/lib/vector-wall-history.test.ts`.
+
+**Status.** `fix/vector-ssr-session-scope-payload` → PR.
+
+## 2026-07-31 — [Grid/0DTE] Post-close fix agent pass 6 — all validators GREEN (~3:17 PM PT / 6:17 PM ET)
+
+**Severity.** — (no additional product defects)
+
+**Session.** Scheduled post-close fix agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` Step 4 (~1:05 PM PT slot; executed ~3:17 PM PT / 6:17 PM ET).
+
+**Evidence.**
+- `validate:grid-rth -- --phase=post-close` → **12/12 PASS** (0 FAIL; transient `zerodte:upstream` + `integration:helix-flows` WARN off-hours)
+- `validate:zerodte-logic` → **17/17 PASS**
+- `validate:grid-e2e` → **4/4 PASS** (Playwright WARN only — chromium not installed in sandbox; API probes authoritative)
+- `validate:deploy` → **GREEN**
+
+**Root cause.** Initial cloud-agent run failed on missing `node_modules` (tsx/playwright/pg) — environment only. After `npm install`, all suites GREEN. Prior pass-4 fix (`buildMinimalBoardFallback` live ET session heat, PR #1457) holds.
+
+**Status.** FIXED — no new code changes required; docs only on `fix/grid-post-close-pass6-green`.
+
+## 2026-07-31 — [Grid/0DTE] Minimal board fallback hardcoded noon RTH heat post-close
+
+**Severity.** P1 — degraded `/api/market/zerodte/board` polls returned `heat=RTH` with empty setups/ledger after the bell while the real board (via Clerk/cron) showed `CLOSED` with 7 setups / 2 ledger rows.
+
+**Symptom.** Post-close `validate:grid-rth` pass (~5:30 PM ET): `zerodte:upstream` WARN + `zerodte:session` `heat=RTH setups=0 ledger=0`; nested `validate:zerodte-logic` on same pass: `live:session-heat CLOSED`, `live:board setups=7 ledger=2`.
+
+**Root cause.** `buildMinimalBoardFallback()` (`zerodte-service.ts:795`) used `sessionHeat(12 * 60, true)` — always noon RTH — when Redis snapshot and per-replica `lastGoodBoardLocal` were both missing during a cold-build cap handoff.
+
+**Fix.** Derive `today`, `tradingDay`, and live `etNowParts()` in the fallback (same as `buildZeroDteBoardPayload`). Regression: `zerodte-board-convergence.test.ts` asserts fallback heat matches mocked clock.
+
+**Files.** `src/lib/platform/zerodte-service.ts`, `src/lib/platform/zerodte-board-convergence.test.ts`.
+
+**Status.** `fix/grid-minimal-fallback-session-heat` → PR.
+
+## 2026-07-31 — [Grid/0DTE] Post-close fix agent pass 4 — all validators GREEN (~5:39 PM ET)
+
+**Severity.** — (no additional product defects after fix above)
+
+**Session.** Scheduled post-close fix agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` Step 4 (~1:39 PM PT / 5:39 PM ET).
+
+**Evidence.**
+- `validate:grid-rth -- --phase=post-close` → **12/12 PASS** (0 FAIL; upstream WARN transient)
+- `validate:zerodte-logic` → **17/17 PASS**
+- `validate:grid-e2e` → **5/5 PASS** (Playwright `/nighthawk`, zero console errors)
+
+**Root cause.** Initial cloud-agent run failed on missing `node_modules` (tsx/playwright/pg) — environment only. One product defect: minimal fallback session heat (above).
+
+**Status.** FIXED on `fix/grid-minimal-fallback-session-heat`.
+
 ## 2026-07-31 — [ops] socket-health false-fail when ingest WS heartbeat absent but REST live
 
 **Severity.** P1 — `validate:rth-open` failed `options-socket` on every probe (~14:14–14:23 ET)
@@ -44,6 +221,56 @@ now includes 503.
 
 **Status.** `cursor/autonomous-ops-maintenance-be56` → PR.
 
+## 2026-07-31 — [spx] Degraded play payload missing `levels` crashes dashboard (P1)
+
+**Severity.** P1 — `/dashboard` console `TypeError: Cannot read properties of undefined (reading 'entry')` when `/api/market/spx/play` returns degraded SCANNING without `levels`.
+
+**Symptom.** Post-close `validate:spx-e2e` FAIL `ui:console-errors` — chunk 4466 (`SpxPlayVerdictBar` / `buildPlayVerdictBarModel`) throws on `play.levels.entry` while heatmap API valid.
+
+**Root cause.** `spxPlayReadDegraded()` in `spx-service.ts` and the `/api/market/spx/play` catch block returned a partial object (`action: SCANNING`, no `levels`, no `phase`) during cache-miss timeout or route error. Client assumed full `SpxPlayPayload`.
+
+**Fix.** `degradedPlayPayload()` in `spx-play-payload.ts` — complete SCANNING shape with null `levels`; server paths use it; client accessors use `play.levels?.entry` belt-and-suspenders.
+
+**Files.** `src/features/spx/lib/spx-play-payload.ts`, `src/features/spx/lib/spx-service.ts`, `src/app/api/market/spx/play/route.ts`, `src/features/spx/lib/spx-play-verdict-bar.ts`, `src/features/spx/lib/spx-trade-alert-plays.ts`, `src/features/spx/lib/spx-play-kanban-chips.ts`.
+
+**Status.** **Merged** PR #1468.
+
+## 2026-07-31 — [spx] E2E cross-tool desk spot 0 while matrix live (P2 harness)
+
+**Severity.** P2 — `validate:spx-e2e` FAIL `integration:spx-cross-tool` on transient `desk spot 0` while heatmap held 7489.72 (cold desk cache edge, same class as SPX-RTH-XEP-01).
+
+**Fix.** `spx-dashboard-e2e-audit.mjs`: retry desk + merged fetch when matrix spot live but desk price 0; only compare when `deskSpot > 0`.
+
+**Status.** `fix/spx-e2e-desk-spot-retry` → PR.
+
+## 2026-07-31 — [spx] Post-close fix agent final — all validators GREEN (~3:10 PM PT / 6:10 PM ET)
+
+**Severity:** — (no product defect)
+
+**Session:** SPX Slayer post-close fix agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` Step 6 (Cloud Agent `cursor/spx-post-close-findings-9fd0`).
+
+**Evidence.** `npm run validate:spx-rth -- --phase=post-close` → 6 PASS / 1 WARN / 0 FAIL; `npm run validate:spx-e2e` → 0 FAIL / 17 checks; `npm run validate:deploy` → GREEN. Matrix oracle: 170 strikes GEX+VEX+DEX+CHARM finite; cross-endpoint spot merged=7489.72 hm=7489.72; play SCANNING with no stale confirmations; BIE `getSpxPlayState()` consistent; cross-tool integration (Thermal, HELIX, Largo, Grid, 0DTE, Night Hawk) all PASS.
+
+**Environment flake.** First cloud-agent pass failed on missing `node_modules` (tsx/playwright/pg) — resolved with `npm install` + Playwright Chromium install. Transient `merged spot 0` on first cross-endpoint probe resolved on retry (harness retry already merged #1456).
+
+**Product fixes already on main.** P0 matrix unavailable (#1428), heatmap enrichment timeout, socket-health REST fallback, SPX E2E Clerk mint hardening (#1454), merged-spot retry + 502 filter (#1456).
+
+**Status.** GREEN — no additional fix branch required.
+
+## 2026-07-31 — [spx] Post-close fix agent — all validators GREEN (~1:05 PM PT)
+
+**Severity:** — (no product defect)
+
+**Session:** SPX Slayer post-close fix agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` Step 6.
+
+**Evidence.** `npm run validate:spx-rth -- --phase=post-close` → 6 PASS / 1 WARN / 0 FAIL; `npm run validate:spx-e2e` → 0 FAIL / 17 checks; `npm run validate:deploy` → GREEN. Matrix oracle: 170 strikes GEX+VEX+DEX+CHARM finite; cross-endpoint spot merged=7489.72 hm=7489.72; play SCANNING with no stale confirmations; BIE `getSpxPlayState()` consistent; cross-tool integration (Thermal, HELIX, Largo, Grid, 0DTE, Night Hawk) all PASS.
+
+**Harness flake.** First post-close orchestrator pass failed `spx:cross-endpoint` on transient `merged spot 0` while heatmap held 7489.72 — cold merged cache edge (same class as 2026-07-30). Retry passed; harness now retries merged fetch when heatmap spot is live but merged price is 0.
+
+**Product fixes already on main.** P0 matrix unavailable (#1428), heatmap enrichment timeout, socket-health REST fallback, SPX E2E Clerk mint hardening (#1454).
+
+**Status.** GREEN — harness retry in `fix/spx-cross-endpoint-merged-retry`.
+
 ## 2026-07-31 — [spx] Matrix UI "unavailable" while API valid — client 10s fetch abort (P0)
 
 **Severity.** P0 — members saw "Matrix unavailable — retrying…" on `/dashboard` during RTH while `/api/market/gex-heatmap?ticker=SPX` held 170–175 valid strikes.
@@ -56,7 +283,7 @@ now includes 503.
 
 **Files.** `src/features/spx/components/SpxGexMatrixHeatmap.tsx:95-105`, `src/app/api/market/gex-heatmap/route.ts:139-148`, `scripts/spx-dashboard-e2e-audit.mjs`.
 
-**Status.** PR open — merge after CI green + deploy re-validate.
+**Status.** **Merged** PR #1428.
 
 ## 2026-07-30 — [spx] Post-close fix agent — all validators GREEN (~3:09 PM PT)
 
@@ -5256,3 +5483,108 @@ Also fixed P&L display precision: 0DTE card/PnlPanel rendered raw `pnlPct` witho
 showing values like `+64.29%` vs Legacy's clean `+64.3%`. Now consistently `.toFixed(1)` everywhere.
 
 **Status:** PR #1190 — CI running.
+
+## 2026-08-01 — [security/correctness] no-store CDN-cache guard coverage gaps (admin/nighthawk/webhook/engine) — FIXED
+
+**Severity.** P1 — the guard test (`no-store-headers.guard.test.ts`) exists specifically to catch API
+routes that can be edge-cached by a Cloudflare `override_origin` cache rule despite the origin
+returning member-/admin-specific JSON. Its `REQUIRED_PREFIXES` list never covered `admin/`,
+`nighthawk/`, `webhook/`, `webhooks/`, or `engine/` — so nothing verified those routes at all.
+
+**Root cause + evidence.** Expanding `REQUIRED_PREFIXES` to the four missing prefixes and re-running
+the guard immediately surfaced 15 real offenders: 9 admin GET routes serving sensitive dashboard data
+with zero cache headers (`admin/incidents`, `admin/errors`, `admin/apis/events/[id]`,
+`admin/apis/dashboard`, `admin/health`, `admin/tools/access`, `admin/debug-uw`, `admin/analytics/spx`,
+`admin/signal-analytics`), 5 admin POST mutation routes missing the header for consistency
+(`admin/users/sync`, `admin/users/create`, `admin/users/tools/bulk`, `admin/run-migration`,
+`admin/apis/rescan`), and — the most substantive — `src/app/api/engine/[...path]/route.ts`'s `GET`
+proxy, which serves premium-tier-gated Heatmaps/Night Hawk data forwarded from the internal engine
+with **no cache headers of any kind**. Separately, while auditing every existing importer of
+`NO_STORE_HEADERS`, found two routes (`admin/analytics/x`, `admin/spx/health`) that imported the
+constant but never applied it — each set a bare `{"Cache-Control": "no-store"}` instead, missing the
+CDN-scoped `CDN-Cache-Control`/`Cloudflare-CDN-Cache-Control` headers that are the actually
+load-bearing ones per the constant's own doc comment. The guard's import-only regex check cannot
+catch this class of bug (import present ≠ header applied) — flagging as a known test-design
+limitation, not fixed in this PR (would need real usage/AST verification, out of scope here).
+
+Also fixed, same root cause (dead staging-only conditional): `next.config.mjs`'s document-route
+catch-all (`/((?!embed/|_next/).*)`) gated its `Cache-Control`/`Vary: Cookie` no-store bypass on
+`isStagingSite` (`NEXT_PUBLIC_SITE_URL` containing `"staging."`). Staging was fully decommissioned
+2026-07-25, so `isStagingSite` is now permanently `false` — every document route not explicitly listed
+above it (`/vector`, `/nighthawk`, `/admin`, `/terminal`, `/flows`, etc.) was silently served bare
+`securityHeaders` in production with no `Cache-Control` at all.
+
+**Fix.** Expanded `REQUIRED_PREFIXES` (admin/, nighthawk/, webhook/, webhooks/, engine/); added
+`NO_STORE_HEADERS` to all 15 real offenders (both success and error/validation response branches);
+fixed the 2 import-only routes to actually spread the constant; ALLOWLISTed 3 POST-only external
+webhook receivers (Clerk/Whop — no browser ever GETs them, no edge-caching surface) and
+`engine/health` (admin-gated boolean, same shape as `/health`/`/ready`). Removed the dead
+`isStagingSite`/`stagingEdgeBypass`/`stagingStaticCache` code from `next.config.mjs` and applied
+`authDocumentEdgeBypass` (no-store + `Vary: Cookie`) unconditionally to the document-route catch-all.
+
+**Blast radius.** 18 files: `next.config.mjs`, the guard test, and 16 route.ts files. No response
+*bodies* changed — only cache-control headers added/corrected. `nighthawk/play-status` was already
+correctly covered before this fix (untouched).
+
+**Validation.** `npx tsx --test src/lib/no-store-headers.guard.test.ts` — 2/2 pass (was 1/2 before the
+route fixes, once `REQUIRED_PREFIXES` was expanded). `npx tsc --noEmit` clean. `npx eslint` on all 18
+touched files — 0 errors/warnings. `npm run build` — clean production build.
+
+**Status:** PR #1496 — merged.
+
+## 2026-08-01 — [efficiency] VectorPulse double-polled /spx/play via a second SWR key — FIXED
+
+**Severity.** P2 — findings #16+#20 from the 20-item audit list, fixed together (same root cause).
+
+**Root cause.** `useSpxPlay` (the SPX Slayer desk's play hook) polls `/spx/play` every 2s under the
+key `spx-play:${sessionDate}`. `VectorPulse.tsx` — mounted inside `SpxDashboard` (the Vector chart is
+embedded in the flagship SPX Slayer desk, replacing the old separate terminal panels) — ran its OWN
+`useSWR("vector-spx-playbook", fetchSpxPlay, { refreshInterval: 1_000, ... })` fetching the identical
+endpoint under a different cache key. Because SWR dedupes/shares by key, two different keys for the
+same resource meant two fully independent poll loops (2s and 1s) against `/spx/play` running
+concurrently on every SPX Slayer page view — the 1s loop in particular was pure waste, re-fetching a
+resource the desk itself already had fresh at 2s.
+
+**Fix.** `VectorPulse` now calls `useSpxPlay(isSpx && liveSession)` directly instead of its own
+`useSWR`, so it shares the exact same key/cache/poll cadence as the desk. This removes the redundant
+1s poller entirely. Side benefit: `useSpxPlay`'s session-cache gap-fill (`mergePlayWithCache`) now
+also covers VectorPulse's playbook rendering, which previously had no fallback and could blank on a
+transient poll gap.
+
+**Blast radius.** `VectorPulse.tsx` only (dropped the `fetchSpxPlay`/`useSWR`-for-play import, added
+`useSpxPlay`). `useSpxPlay.ts` itself is unchanged — it's designed for multiple concurrent consumers
+sharing one key, which is exactly what this fix now does.
+
+**Validation.** `npx tsc --noEmit` clean. `npx eslint src/features/vector/components/VectorPulse.tsx`
+clean. `node --import tsx --experimental-test-module-mocks --test src/features/spx/hooks/useSpxPlay.test.ts`
+3/3 pass (unchanged file, sanity check). `npm run build` clean.
+
+**Status:** PR #1497 — merged.
+
+## 2026-08-01 — [efficiency] VectorGexLadder full-list re-render on every spot tick — FIXED
+
+**Severity.** P2 — finding #19 from the 20-item audit list.
+
+**Root cause.** `VectorGexLadder`'s `liveSpot` prop ticks every ~1s from the chart's SSE stream; a
+`useEffect` mirrors it into local `spot` state on the ladder's own top-level component. Because
+`spot` lives on the PARENT and was passed identically to every `LadderRow`, every tick re-rendered
+every row in the list (30-60+ `<li>`s) just to update the ONE row that actually shows the live
+spot marker/price — the rest of the rows' content (strike, GEX magnitude bar, king crown) never
+changes between ladder-structure polls (15s) and had no reason to re-render every second.
+
+**Fix.** Wrapped `LadderRow` in `React.memo`. Changed the map-call site so only the spot-adjacent
+row (`i === spotIdx`) receives the live, changing `spot` value — every other row now receives a
+constant `spot={null}` (which the row already treats as "no spot marker here", matching prior
+behavior exactly). Combined with `rows` itself being referentially stable between spot ticks
+(the `ladder` state only changes on the 15s poll or ticker/horizon switch, never on `liveSpot`
+alone), every row's props are now unchanged tick-to-tick except the one row that must update —
+`memo` skips re-rendering the rest.
+
+**Blast radius.** `VectorGexLadder.tsx` only. No behavior change: the spot-marker row still shows
+live price at the same cadence; the scroll-centering effect, fetch/poll logic, and error/loading
+states are untouched.
+
+**Validation.** `npx tsc --noEmit` clean. `npx eslint` clean. `npm run build` clean. No existing
+test file for this component (confirmed via `find`).
+
+**Status:** PR pending.

@@ -6,13 +6,14 @@ export default function sitemap(): MetadataRoute.Sitemap {
 
   const marketing: MetadataRoute.Sitemap = [
     { url: SITE.url, lastModified: now, changeFrequency: "weekly", priority: 1.0 },
-    { url: `${SITE.url}/pricing`, lastModified: now, changeFrequency: "monthly", priority: 0.9 },
+    { url: `${SITE.url}/pricing`, lastModified: now, changeFrequency: "weekly", priority: 0.9 },
     { url: `${SITE.url}/faq`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/why-blackout`, lastModified: now, changeFrequency: "monthly", priority: 0.8 },
     { url: `${SITE.url}/contact`, lastModified: now, changeFrequency: "yearly", priority: 0.5 },
   ];
 
   const learn: MetadataRoute.Sitemap = [
-    { url: `${SITE.url}/learn`, lastModified: now, changeFrequency: "monthly", priority: 0.8 },
+    { url: `${SITE.url}/learn`, lastModified: now, changeFrequency: "weekly", priority: 0.8 },
     { url: `${SITE.url}/learn/getting-started`, lastModified: now, changeFrequency: "monthly", priority: 0.8 },
     { url: `${SITE.url}/learn/spx-slayer`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
     { url: `${SITE.url}/learn/helix-flows`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
@@ -20,6 +21,16 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${SITE.url}/learn/night-hawk`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
     { url: `${SITE.url}/learn/heat-maps`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
     { url: `${SITE.url}/learn/glossary`, lastModified: now, changeFrequency: "monthly", priority: 0.6 },
+    { url: `${SITE.url}/learn/dealer-gamma-options-flow-guide`, lastModified: now, changeFrequency: "monthly", priority: 0.8 },
+    { url: `${SITE.url}/learn/what-is-dealer-gamma-exposure`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/gamma-flip-explained`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/call-wall-put-wall-explained`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/what-is-gex`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/0dte-spx-options-strategy`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/is-0dte-gambling`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/how-to-read-options-flow`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/gamma-squeeze-explained`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/options-trading-glossary`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
   ];
 
   const trust: MetadataRoute.Sitemap = [

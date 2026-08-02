@@ -67,6 +67,11 @@ test("isUsableGexHeatmapPayload / shouldForceMatrixRefresh", () => {
     false,
     "throttle blocks force"
   );
+  assert.equal(
+    shouldForceMatrixRefresh({ asofMs: now - 120_000, nowMs: now, lastForceAtMs: 0, sessionLive: false }),
+    false,
+    "off-hours: never force (RTH-only policy)"
+  );
 });
 
 test("thermalLayerFreshness: matrix live / stale / overlays off / UW off", () => {
