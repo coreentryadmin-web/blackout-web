@@ -7,10 +7,13 @@ import { computeGexProximity, enrichFlowWithGex } from "@/lib/flow-gex-proximity
 // 30-80+ names) silently left most rows with no gex_proximity at all. This test pins the fix:
 // default maxTickers must cover well beyond 8 unique tickers.
 test("enrichFlowsWithGex enriches beyond the old 8-ticker cap by default", async () => {
-  // Relative specifier (not the "@/..." alias) — mock.module()'s runtime resolution doesn't
-  // consistently apply tsx's alias rewrite across node/tsx versions (confirmed: passed locally,
-  // failed in CI with "Cannot find module .../src/lib/@/lib/providers/gex-positioning"). Matches
-  // the existing convention elsewhere in the repo (e.g. run-tool.test.ts).
+  // Relative specifiers everywhere in this test (not the "@/..." alias) — CI's node/tsx does
+  // NOT rewrite "@/..." for either mock.module()'s specifier OR a dynamic import() call; tsx's
+  // alias rewrite only applies to statically-parsed top-level `import ... from` statements.
+  // Confirmed the hard way: mock.module("@/...") failed in CI (this sandbox's tsx happened to
+  // resolve it anyway — not a reliable signal), then after fixing that, the dynamic import()
+  // below hit the identical error. Matches the existing convention elsewhere in the repo (e.g.
+  // run-tool.test.ts's mock.module calls use relative paths).
   mock.module("./providers/gex-positioning", {
     namedExports: {
       getGexPositioning: async (ticker: string) => ({
@@ -21,7 +24,7 @@ test("enrichFlowsWithGex enriches beyond the old 8-ticker cap by default", async
       }),
     },
   });
-  const { enrichFlowsWithGex } = await import("@/lib/flow-gex-enrichment");
+  const { enrichFlowsWithGex } = await import("./flow-gex-enrichment");
 
   const TICKER_COUNT = 15; // > the old hardcoded cap of 8
   const flows = Array.from({ length: TICKER_COUNT }, (_, i) => ({
