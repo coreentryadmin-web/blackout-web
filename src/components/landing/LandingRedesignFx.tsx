@@ -1900,7 +1900,7 @@ export function LandingRedesignFx() {
       const lb = document.createElement("div");
       lb.className = "gal-lightbox";
       lb.innerHTML =
-        '<button class="gal-lb-close">&times;</button><button class="gal-lb-arrow gal-lb-prev">&#8249;</button><img class="gal-lb-img" src="" alt=""><button class="gal-lb-arrow gal-lb-next">&#8250;</button><div class="gal-lb-dots"></div>';
+        '<button class="gal-lb-close">&times;</button><button class="gal-lb-arrow gal-lb-prev">&#8249;</button><img class="gal-lb-img" src="" alt="BlackOut desk screenshot"><button class="gal-lb-arrow gal-lb-next">&#8250;</button><div class="gal-lb-dots"></div>';
       document.body.appendChild(lb);
       cleanups.push(() => { document.body.style.overflow = ""; lb.remove(); });
 

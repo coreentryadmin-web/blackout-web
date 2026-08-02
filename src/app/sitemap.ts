@@ -22,6 +22,10 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${SITE.url}/learn/glossary`, lastModified: now, changeFrequency: "monthly", priority: 0.6 },
   ];
 
+  const trust: MetadataRoute.Sitemap = [
+    { url: `${SITE.url}/track-record`, lastModified: now, changeFrequency: "daily", priority: 0.8 },
+  ];
+
   const legal: MetadataRoute.Sitemap = [
     { url: `${SITE.url}/terms`, lastModified: now, changeFrequency: "yearly", priority: 0.3 },
     { url: `${SITE.url}/privacy`, lastModified: now, changeFrequency: "yearly", priority: 0.3 },
@@ -30,5 +34,5 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${SITE.url}/cookie-policy`, lastModified: now, changeFrequency: "yearly", priority: 0.2 },
   ];
 
-  return [...marketing, ...learn, ...legal];
+  return [...marketing, ...learn, ...trust, ...legal];
 }
