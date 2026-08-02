@@ -41,17 +41,20 @@ import { FlowBrief } from "@/features/helix/components/FlowBrief";
 import { NetPremiumLeaderboard } from "@/features/helix/components/NetPremiumLeaderboard";
 import { StrikeStackDetector } from "@/features/helix/components/StrikeStackDetector";
 import dynamic from "next/dynamic";
-// Code-split: recharts lives only inside FlowMomentumChart, so lazy-load it
+// Code-split: recharts lives only inside CumulativeNetPremiumChart, so lazy-load it
 // (ssr:false) to keep recharts out of the initial /flows client chunk. The
 // chart already renders client-side once >=2 samples exist, so deferring it is
 // behavior-identical; the loading placeholder matches its 72px container.
-const FlowMomentumChart = dynamic(
-  () => import("@/features/helix/components/FlowMomentumChart").then((m) => m.FlowMomentumChart),
+const CumulativeNetPremiumChart = dynamic(
+  () =>
+    import("@/features/helix/components/CumulativeNetPremiumChart").then(
+      (m) => m.CumulativeNetPremiumChart
+    ),
   { ssr: false, loading: () => <div className="flow-panel"><div className="flow-panel-header"><span className="flow-panel-title">Cumulative Net Prem (running)</span></div><div className="px-1 pt-2 pb-1"><div className="h-[72px]"><Skeleton width="100%" height={72} rounded="md" /></div></div></div> },
 );
 import { DarkPoolPanel } from "@/features/helix/components/DarkPoolPanel";
 import { TickerDrawer } from "@/features/helix/components/TickerDrawer";
-// Same recharts trap as FlowMomentumChart — drawer also imports recharts; keep it
+// Same recharts trap as CumulativeNetPremiumChart — drawer also imports recharts; keep it
 // out of the initial /flows chunk until a member opens a contract.
 const ContractDrilldownDrawer = dynamic(
   () =>
@@ -891,7 +894,7 @@ export function FlowFeed() {
           <RouteBreakdown alerts={displayAlerts} loading={loading} />
           {marketWidePanels && <SectorFlowPanel entries={sectorFlowEntries} />}
           <div className="helix-analytics-wide">
-            <FlowMomentumChart alerts={displayAlerts} />
+            <CumulativeNetPremiumChart alerts={displayAlerts} />
           </div>
         </>
       )}

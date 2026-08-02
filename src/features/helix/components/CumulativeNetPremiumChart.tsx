@@ -23,7 +23,10 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: { valu
   );
 }
 
-export function FlowMomentumChart({ alerts }: { alerts: FlowAlert[] }) {
+// Named for what this actually plots — see the comment in the effect below. Was
+// `FlowMomentumChart`/exported as such until the 2026-08-01 Helix audit flagged that name as
+// overselling a running cumulative total as a momentum/rate measurement.
+export function CumulativeNetPremiumChart({ alerts }: { alerts: FlowAlert[] }) {
   const [points, setPoints] = useState<Point[]>([]);
   const lastFpRef = useRef("");
 

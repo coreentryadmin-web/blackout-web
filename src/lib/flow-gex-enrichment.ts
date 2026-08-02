@@ -35,9 +35,17 @@ export async function getGexLevelsForTicker(ticker: string): Promise<GexLevelSna
   }
 }
 
+// Root cause (2026-08-01 Helix audit): the caller (`/api/market/flows`) passed a fixed
+// maxTickers=8, so any page with more than 8 distinct tickers — routine on a busy session,
+// a 500-row page commonly spans 30-80+ names — silently left most rows with no gex_proximity
+// at all. Not "not near a wall": never evaluated. 100 comfortably covers realistic ticker
+// diversity even on a max-size (5000-row, HELIX_FLOW_MAX_LIMIT) page while still bounding
+// worst-case fan-out; each lookup is individually capped at GEX_ENRICH_TIMEOUT_MS (300ms) and
+// hits getGexLevelsForTicker's own 60s per-ticker cache, and this whole function only runs on
+// a flows-cache miss (flowsCacheTtlMs(), also 60s) rather than per member request.
 export async function enrichFlowsWithGex<T extends { ticker: string; strike: number }>(
   flows: T[],
-  maxTickers = 8
+  maxTickers = 100
 ): Promise<Array<T & { gex_proximity?: import("@/lib/flow-gex-proximity").GexProximityLabel }>> {
   const uniqueTickers = [...new Set(flows.map((f) => f.ticker))].slice(0, maxTickers);
   const gexMap = new Map<string, GexLevelSnapshot>();
