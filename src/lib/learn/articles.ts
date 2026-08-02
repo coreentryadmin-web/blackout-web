@@ -814,6 +814,8 @@ You can't see individual dealer hedges, but you can see the aggregate effect. Th
       "Walk through every panel and value on the SPX Slayer dashboard — the three-column layout, hero price, GEX regime, VWAP tint, and freshness indicators.",
     body: `The [SPX Slayer](/learn/spx-slayer) dashboard is a three-column 0DTE command center. Every number, pill, and color on screen exists because it feeds a trading decision — nothing decorative makes the cut. This walkthrough explains what each element means so you can read the board cold.
 
+![SPX Slayer Dashboard — the full 0DTE command center with GEX matrix, gamma flip chart, and play engine](/images/learn/spx-slayer-dashboard.webp)
+
 ## The three-column layout
 
 **Left column — GEX/VEX matrix.** A strike-by-expiry grid of signed gamma (or vanna) exposure, color-coded from deep red (heavy put gamma) to deep green (heavy call gamma). Key levels — the [gamma flip](/learn/gamma-flip-explained), [call wall, and put wall](/learn/call-wall-put-wall-explained) — are highlighted. See [Reading the SPX Slayer GEX Matrix](/learn/spx-slayer-gex-matrix-guide).
@@ -1060,6 +1062,8 @@ All three share the same positioning data from the [GEX matrix](/learn/spx-slaye
       "How to read BlackOut Thermal heatmaps — matrix view, exposure profile, King nodes, flip and wall levels, HELIX flow overlay, dark pool lines, and alerts.",
     body: `[Thermal](/learn/heat-maps) is BlackOut's dealer-positioning visualization — a live heatmap that shows where [gamma exposure](/learn/what-is-gex) (and vanna, delta, and charm) concentrates across the options chain. It has two primary views, a set of overlay layers, and a key-level summary box. Here is how to read each component.
 
+![BlackOut Thermal — dealer gamma heatmap with strike-by-expiry matrix, key levels, and GEX structure](/images/learn/thermal-heatmap.webp)
+
 ## Matrix view
 
 A **strike-by-expiry heat table**. Each cell contains the signed dollar exposure at that intersection — positive (green) where dealers are long gamma, negative (red) where short. The **diverging color scale** runs from deep red through gray to deep green. The **spot row** (current price) is highlighted; the default ticker is **SPY**, switchable to any supported name.
@@ -1246,6 +1250,8 @@ Before selecting any strike: (1) open Thermal and note the flip, call wall, put 
     description:
       "A complete walkthrough of the HELIX flow scanner — columns, premium filters, type toggles, analytics panel, replay mode, and the ticker drill-down drawer.",
     body: `[HELIX](/learn/helix-flows) is BlackOut's institutional options flow scanner. It filters the raw firehose of options trades into the prints that actually carry signal — [unusual activity](/learn/unusual-options-activity-guide), aggressive sweeps, and anomalies that stand out from routine hedging noise. Here is how to read every element on the screen.
+
+![HELIX Flow Scanner — live institutional options flow tape with conviction scoring and analytics panel](/images/learn/helix-flow-scanner.webp)
 
 ## HelixFlowTable: the core feed
 
@@ -1443,6 +1449,8 @@ For dark pool fundamentals, see [What Is Dark Pool Trading?](/learn/what-is-dark
     title: "Night Hawk Evening Edition: Your Overnight Playbook",
     description: "How to read the Night Hawk Evening Edition: ranked overnight plays, conviction tiers, track record, market context, and morning confirmation workflow.",
     body: `Every trading session starts the night before. While most retail traders wait for the opening bell, the BlackOut **Night Hawk Evening Edition** publishes a ranked playbook after the close — five ideas for the next session, each scored, tiered, and managed to hard invalidation levels before you even sit down at the desk.
+
+![Night Hawk — overnight playbook and 0DTE command board](/images/learn/night-hawk-board.webp)
 
 ## What the Evening Edition delivers
 
@@ -1721,6 +1729,8 @@ For the gate stack that runs before the Cortex, see the [0DTE Command guide](/le
     description: "How to use Largo AI as your desk analyst: chat interface, tool traces, live data queries, and the questions that get the best structured answers.",
     body: `**Largo AI** is not a chatbot. It is a desk analyst wired directly into BlackOut's live data layer — [GEX structure](/learn/what-is-gex), [options flow](/learn/how-to-read-options-flow), [dealer positioning](/learn/what-is-dealer-gamma-exposure), the [Night Hawk edition](/learn/night-hawk-evening-edition-guide), the [0DTE Command board](/learn/night-hawk-0dte-command-guide), and dozens more sources. When you ask a question, Largo does not guess. It calls the same tools the dashboards render and composes a grounded answer from real numbers.
 
+![Largo AI Terminal — your AI desk analyst with live data access](/images/learn/largo-ai-terminal.webp)
+
 ## The chat interface
 
 Largo lives at \`/terminal\` — a single full-page chat surface. The layout is simple:
@@ -1870,6 +1880,8 @@ For the full tool surface and interface layout, see the [Largo AI Terminal guide
     title: "Vector Scanner: Cross-Ticker Gamma & Flow Radar",
     description: "How to read the Vector scanner: cross-ticker GEX ladders, wall integrity scoring, gamma magnet, confluence zones, regime banner, and the universe screener.",
     body: `[SPX Slayer](/learn/spx-slayer) and [Thermal](/learn/heat-maps) focus on SPX. **Vector** extends the same [dealer gamma exposure](/learn/what-is-dealer-gamma-exposure) framework across the **entire universe** — ranked setups from the BIE verification engine across multiple tickers, each with its own GEX ladder, regime posture, wall integrity scores, and confluence zones. If Thermal is the microscope on SPX's gamma structure, Vector is the radar dish scanning the broader market.
+
+![Vector Scanner — cross-ticker gamma radar with GEX ladder, signal feed, and regime detection](/images/learn/vector-scanner.webp)
 
 ## The universe screener
 
