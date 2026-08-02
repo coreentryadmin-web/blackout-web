@@ -1074,24 +1074,24 @@ The profile view collapses the matrix into a single-axis chart — exposure by s
 - **Flip marker** — the price where the bars cross from positive to negative, the [gamma flip](/learn/gamma-flip-explained). Above it, expect range compression; below it, expect amplification.
 - **King marker** — the strike with the single largest absolute gamma concentration. It often — but not always — coincides with the [call wall or put wall](/learn/call-wall-put-wall-explained). When the King node sits at the call wall, that level carries extra weight as a ceiling.
 
-**HELIX flow overlay.** Aggregated [institutional options flow](/learn/how-to-read-options-flow) from [HELIX](/learn/helix-flows) can be layered directly onto the profile. Flow activity appears as markers or shading at the strikes where large prints hit, so you can see in one view whether aggressive flow is pushing into a gamma wall (likely rejection) or into thin positioning (likely follow-through). For a full walkthrough of the flow scanner itself, see [HELIX Flow Scanner Guide](/learn/helix-flow-scanner-guide).
+**HELIX flow overlay.** Aggregated [institutional flow](/learn/how-to-read-options-flow) from [HELIX](/learn/helix-flows) layered onto the profile — see whether aggressive flow is pushing into a gamma wall (likely rejection) or thin positioning (likely follow-through). See [HELIX Flow Scanner Guide](/learn/helix-flow-scanner-guide).
 
-**Dark pool lines.** [Dark pool](/learn/what-is-dark-pool-trading) block prints are plotted as horizontal reference lines on the profile at the prices where off-exchange size traded. These lines show where institutions have quietly accumulated or distributed — levels that may act as support or resistance independent of options positioning. When a dark pool line sits at the same price as a gamma wall, the reinforcement is significant.
+**Dark pool lines.** [Dark pool](/learn/what-is-dark-pool-trading) block prints plotted as horizontal reference lines where off-exchange size traded. When a dark pool line sits at a gamma wall, the reinforcement is significant.
 
-**CumulativeCurve.** A running sum of exposure from the lowest strike to the highest, plotted as a curve over the profile. The curve's slope tells you where exposure is building fastest, and the point where it crosses zero corresponds to the gamma flip. A steeply rising curve means positive gamma is accumulating rapidly — strong stabilization above that zone.
+**CumulativeCurve.** A running sum of exposure from lowest to highest strike. The slope shows where exposure builds fastest; where it crosses zero corresponds to the gamma flip.
 
-**ShiftView.** A comparison overlay showing how the exposure profile has *changed* since the prior snapshot (open, prior close, or a user-selected reference). Green shading means exposure increased (walls strengthened or shifted toward a strike); red shading means exposure decreased (walls weakened). ShiftView is how you catch wall migration mid-session without remembering what the morning profile looked like.
+**ShiftView.** Shows how the profile has *changed* since the prior snapshot (open, prior close, or user-selected reference). Green shading = exposure increased; red = decreased. This is how you catch wall migration mid-session.
 
 ## ExpiryScope chips
 
 A row of toggle chips at the top of the profile lets you filter which expirations feed the profile:
 
-- **All** — every open expiry, giving the full-chain picture.
-- **0DTE** — same-day contracts only. This isolates the intraday gamma that matters most for 0DTE trades. See [0DTE SPX Options Strategy](/learn/0dte-spx-options-strategy).
-- **Near** — the next few expirations (typically 0-3 DTE). Useful for seeing the short-term positioning without the noise of far-out monthlies.
-- **Monthly** — monthly expirations only, which tend to carry the most open interest and define the structural walls.
+- **All** — every open expiry, the full-chain picture.
+- **0DTE** — same-day contracts only, isolating intraday gamma. See [0DTE SPX Options Strategy](/learn/0dte-spx-options-strategy).
+- **Near** — next few expirations (0-3 DTE), short-term positioning without far-out monthly noise.
+- **Monthly** — monthly expirations only, which carry the most open interest and define structural walls.
 
-Switching scopes lets you answer questions like "is the call wall driven by 0DTE gamma or by the monthly?" — a distinction that matters because 0DTE walls evaporate by the close while monthly walls persist.
+Switching scopes answers "is the call wall driven by 0DTE gamma or by the monthly?" — 0DTE walls evaporate by the close while monthly walls persist.
 
 ## KeyLevelBox
 
@@ -1115,9 +1115,9 @@ Alerts are timestamped and persist for the session so you can scroll back to see
 
 ## Putting it all together
 
-Start with the KeyLevelBox for the five-second read: flip, walls, net exposure, and whether any levels shifted overnight. Then check the profile to see the shape — is gamma concentrated or spread out? Is the King node reinforcing a wall or sitting at a different strike? Layer on HELIX flow and dark pool lines to see where activity is converging with positioning. Use ExpiryScope to isolate 0DTE vs. monthly contributions. And watch the AlertsStrip for real-time wall breaks and flip crosses that change the playbook mid-session.
+Start with the KeyLevelBox for the five-second read. Check the profile shape and King node. Layer on HELIX flow and dark pool lines for activity convergence. Use ExpiryScope to isolate 0DTE vs. monthly contributions, and watch AlertsStrip for wall breaks and flip crosses.
 
-For a deep dive into the four exposure lenses (GEX, VEX, DEX, CHARM), see [Thermal's Four Lenses Explained](/learn/thermal-four-lenses-explained). For how to turn Thermal levels into actual strike selection, see [Using Thermal for Strike Selection](/learn/thermal-strike-selection-guide). [Get access →](/pricing)
+For the four exposure lenses, see [Thermal's Four Lenses Explained](/learn/thermal-four-lenses-explained). For strike selection, see [Using Thermal for Strike Selection](/learn/thermal-strike-selection-guide). [Get access →](/pricing)
 
 > *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options trading involves substantial risk and is not suitable for every investor.*`,
   },
@@ -1136,39 +1136,19 @@ For a deep dive into the four exposure lenses (GEX, VEX, DEX, CHARM), see [Therm
 
 ## GEX lens — gamma exposure
 
-The default and most widely used lens. GEX maps where dealer [gamma](/learn/what-is-gex) concentrates across strikes, showing the mechanical buying and selling pressure dealers must exert as price moves.
-
-**What it shows you:**
-
-- **Gamma flip** — the price where aggregate gamma crosses from positive to negative, the boundary between a range-bound session and a trending one. See [Gamma Flip Explained](/learn/gamma-flip-explained).
-- **Call wall** — the strike above price with the largest gamma concentration; acts as resistance. See [Call Wall & Put Wall Explained](/learn/call-wall-put-wall-explained).
-- **Put wall** — the strike below price with the largest gamma concentration; acts as support.
-- **Max pain** — the strike where the most options expire worthless. See [Max Pain Explained](/learn/max-pain-options-explained).
-- **King node** — the single largest absolute gamma cell on the board.
-
-**When to use it:** The GEX lens is your primary positioning read. Check it before the open to set the day's regime, and mid-session to catch wall migration. It answers the fundamental question: is dealer hedging working for you or against you today?
+The default lens. GEX maps where dealer [gamma](/learn/what-is-gex) concentrates across strikes — the mechanical buying and selling pressure dealers must exert as price moves. It shows the [gamma flip](/learn/gamma-flip-explained), [call wall and put wall](/learn/call-wall-put-wall-explained), [max pain](/learn/max-pain-options-explained), and **King node** (the single largest gamma cell). Check it before the open to set the regime, and mid-session to catch wall migration. The fundamental question it answers: is dealer hedging working for you or against you today?
 
 ## VEX lens — vanna exposure
 
-Vanna measures how dealer delta shifts as [implied volatility](/learn/implied-volatility-explained) changes. The VEX lens maps that sensitivity by strike — telling you what happens to the positioning picture if the VIX spikes or collapses.
+Vanna measures how dealer delta shifts as [implied volatility](/learn/implied-volatility-explained) changes. The VEX lens maps that sensitivity by strike. It shows **vanna walls** (strikes most sensitive to an IV change) and the **vanna flip** (where the vanna profile crosses zero — above it, a VIX spike forces dealers to buy; below, it forces selling).
 
-**What it shows you:**
-
-- **Vanna walls** — strikes where a change in IV would trigger the largest delta re-hedging by dealers. These are the levels most sensitive to a volatility event.
-- **Vanna flip** — the price where the vanna profile crosses zero. Above it, a VIX spike forces dealers to buy; below it, the same spike forces selling.
-
-**When to use it:** VEX matters most on days when IV itself is moving — macro data releases, FOMC days, earnings-heavy sessions. On a quiet day with stable VIX, the VEX lens adds little to what GEX already shows. But on a day when the VIX jumps 3 points, VEX tells you where the *second-order* hedging pressure will hit — the levels that only become important because volatility itself shifted. Think of it as "what does the gamma map look like *after* a vol shock?"
+**When to use it:** VEX matters most when IV itself is moving — FOMC days, macro releases, earnings-heavy sessions. On a quiet day it adds little to GEX. On a day when VIX jumps 3 points, VEX shows where the *second-order* hedging pressure hits. Think of it as "what does the gamma map look like *after* a vol shock?"
 
 ## DEX lens — delta exposure
 
-Delta exposure shows the net directional positioning of dealers across strikes — how many shares' worth of hedging dealers are carrying at each price level.
+Delta exposure shows dealers' net directional positioning across strikes. It reveals the **delta-zero pivot** (where aggregate dealer delta crosses zero — above it, bullish hedge bias; below, bearish) and **posture** (whether the overall tilt is positive, negative, or flat).
 
-**What it shows you:**
-
-- **Delta-zero pivot** — the price where aggregate dealer delta exposure crosses zero. This is the point of directional neutrality: above it, dealers are net long delta (bullish hedge bias); below it, they are net short delta (bearish hedge bias).
-- **Posture** — whether the overall dealer delta tilt is positive (supportive of upside), negative (supportive of downside), or flat. A large positive DEX reading means dealers own a lot of stock to hedge their short calls, and that stockpile acts as a cushion on dips.
-
-**When to use it:** DEX is the directional read. GEX tells you volatility regime (calm vs. fast); DEX tells you directional lean (bulls vs. bears in the hedging book). When GEX says "expect a move" (negative gamma) and DEX says "dealers are leaning short delta," the setup favors downside — the hedging book is positioned to accelerate a selloff. Conversely, negative GEX with positive DEX means dealers have long-delta hedges that can fuel a squeeze higher.
+**When to use it:** DEX is the directional read. GEX tells you volatility regime; DEX tells you directional lean. When negative GEX meets short dealer delta, the setup favors downside. Negative GEX with positive DEX means long-delta hedges that can fuel a squeeze higher.
 
 ## CHARM lens — charm exposure
 
@@ -1177,9 +1157,9 @@ Charm measures how [delta](/learn/options-greeks-explained) changes purely from 
 **What it shows you:**
 
 - **Charm-zero pivot** — the price where time-driven delta drift crosses zero. Above it, time decay is adding to dealer delta (supportive); below it, time decay is subtracting delta (pressuring).
-- **Pinning pressure** — charm concentrates at strikes with heavy open interest close to expiration. As theta erodes option value through the day, delta at those strikes migrates toward zero (for OTM) or 1.0 (for ITM), and dealers re-hedge accordingly. That re-hedging pulls price toward the heavy strikes — the mechanical underpinning of the "expiration pin." See [Max Pain Explained](/learn/max-pain-options-explained) for the related concept.
+- **Pinning pressure** — charm concentrates at strikes with heavy open interest close to expiration. Dealers re-hedge as delta migrates, pulling price toward heavy strikes — the mechanical "expiration pin." See [Max Pain Explained](/learn/max-pain-options-explained).
 
-**When to use it:** CHARM matters most in the afternoon of an expiration day, when time decay is accelerating and the pinning effect is strongest. On a Monday with a Friday expiry, charm is a minor force. On Friday at 2 PM with massive 0DTE open interest, charm is actively dragging price toward the heaviest strikes. Use it to gauge whether a late-session move has mechanical time-decay support or is fighting against a charm-driven pin.
+**When to use it:** CHARM matters most in the afternoon of an expiration day. On a Monday with a Friday expiry, charm is minor. On Friday at 2 PM with massive 0DTE open interest, charm is actively dragging price toward the heaviest strikes.
 
 ## One payload, four views
 
@@ -1212,13 +1192,11 @@ For how to read the heatmap and profile views themselves, see [How to Read Therm
 
 The [call wall](/learn/call-wall-put-wall-explained) is the strike above price with the largest concentration of call-side [gamma](/learn/what-is-gex). Dealer hedging at that strike mechanically sells rallies — every tick toward the wall triggers more selling, creating a ceiling effect. That makes the call wall a natural candidate for **short call strike placement** in credit spreads or [iron condors](/learn/iron-condor-strategy-guide).
 
-Practical example: SPX is at 5,500, and Thermal shows the call wall at 5,550 with a large, stable gamma reading. If you are selling a call spread, placing your short call at 5,550 means you are collecting premium on a strike where mechanical selling pressure is working in your favor — the wall acts as a built-in headwind for any rally that tries to reach your short strike. If the wall is thick (high gamma value) and has been stable across multiple snapshots (check ShiftView), the case is stronger. If the wall is thin or migrating, treat it with less confidence.
+Practical example: SPX is at 5,500, call wall at 5,550. Selling a call spread with a 5,550 short call means mechanical selling pressure works in your favor. If the wall is thick and stable across snapshots (check ShiftView), the case is stronger. Thin or migrating walls deserve less confidence.
 
 ## Put wall as support: short put placement
 
-The mirror logic applies on the downside. The [put wall](/learn/call-wall-put-wall-explained) is where put-side gamma concentrates below price, creating a cushion effect — dealer hedging buys dips as price approaches the wall. For a short put spread, placing your short put at or just inside the put wall means mechanical buying pressure works in your favor if price slides toward your strike.
-
-Example: SPX at 5,500, put wall at 5,440. Selling a put spread with a 5,440 short put gives you a strike where dealers are incentivized to buy the dip. That gamma cushion does not guarantee the wall holds — walls break — but it provides a structural edge that picking a round number does not.
+The mirror applies on the downside. The [put wall](/learn/call-wall-put-wall-explained) concentrates put-side gamma below price — dealer hedging buys dips as price approaches. SPX at 5,500, put wall at 5,440: a 5,440 short put gives you a strike where dealers are incentivized to buy the dip. That cushion does not guarantee the wall holds, but it provides a structural edge that a round number does not.
 
 ## Iron condor strike placement using walls
 
@@ -1232,11 +1210,11 @@ Check the [GEX regime](/learn/what-is-gex) before placing the condor. A high pos
 
 The [gamma flip](/learn/gamma-flip-explained) is not a strike you trade directly — it is a filter that determines *which direction* to trade and *how aggressively* to size.
 
-**Price above the flip (positive gamma):** The session favors mean reversion. Directional entries should lean toward fading extremes — buying puts near the call wall or calls near the put wall. Premium-selling structures thrive. Choose strikes closer to the money because the range is compressed.
+**Price above the flip (positive gamma):** Fade extremes, sell premium, choose strikes closer to the money — the range is compressed.
 
-**Price below the flip (negative gamma):** The session favors momentum. Directional entries should lean toward continuation — calls if price is pushing higher through the flip, puts if it broke down through it. Wider strikes are appropriate because the range is expanded. Condors are riskier — consider directional spreads instead.
+**Price below the flip (negative gamma):** Lean toward continuation. Wider strikes are appropriate; condors are riskier — consider directional spreads instead.
 
-**Price oscillating near the flip:** The regime is undefined. This is the hardest environment for strike selection because the market can flip from range-bound to trending and back within an hour. The best strike selection here is often *no strike* — sitting on your hands until the session commits to one side.
+**Price oscillating near the flip:** The regime is undefined. The best strike selection here is often *no strike* — sit on your hands until the session commits.
 
 ## Wall integrity: when walls might break
 
