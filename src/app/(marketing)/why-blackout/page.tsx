@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { MarketingPageShell } from "@/components/landing/MarketingPageShell";
 import { WhyBlackoutContent } from "@/components/landing/WhyBlackoutContent";
-import JsonLd from "@/components/JsonLd";
+import { WebPageJsonLd } from "@/components/seo/JsonLd";
+import { Breadcrumbs } from "@/components/seo/Breadcrumbs";
 import { publicPageMetadata } from "@/lib/page-metadata";
 
 export const metadata: Metadata = publicPageMetadata(
@@ -10,19 +11,18 @@ export const metadata: Metadata = publicPageMetadata(
   "/why-blackout"
 );
 
-const jsonLd = {
-  "@context": "https://schema.org",
-  "@type": "WebPage",
-  name: "Why BlackOut?",
-  description: "Why traders choose BlackOut: live dealer gamma, A–F graded 0DTE setups, and every trade logged publicly.",
-  url: "https://blackouttrades.com/why-blackout",
-  isPartOf: { "@type": "WebSite", name: "BlackOut Trades", url: "https://blackouttrades.com" },
-};
-
 export default function WhyBlackoutPage() {
   return (
     <MarketingPageShell>
-      <JsonLd data={jsonLd} />
+      <WebPageJsonLd
+        title="Why BlackOut?"
+        description="Why traders choose BlackOut: live dealer gamma, A–F graded 0DTE setups, and every trade logged publicly."
+        path="/why-blackout"
+      />
+      <Breadcrumbs items={[
+        { name: "Home", href: "/" },
+        { name: "Why BlackOut?", href: "/why-blackout" },
+      ]} />
       <WhyBlackoutContent />
     </MarketingPageShell>
   );
