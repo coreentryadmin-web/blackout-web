@@ -11,6 +11,7 @@ import { computeFlowStrikeStacks } from "@/lib/largo/flow-strike-stacks";
 import { HELIX_TOP_STRIKES_LIMIT } from "@/features/helix/lib/helix-strike-leaders";
 import { getSector } from "@/lib/sector-map";
 import { HelixFlowTable } from "@/features/helix/components/HelixFlowTable";
+import { HelixMobileFlowTape } from "@/features/helix/components/HelixMobileFlowTape";
 import { HelixCommandBar } from "@/features/helix/components/HelixCommandBar";
 import {
   HELIX_INDEX_TICKERS,
@@ -76,6 +77,7 @@ import { Skeleton } from "@/components/ui";
 import type { NightHawkEdition } from "@/features/nighthawk/lib/types";
 import { flowEventTimeMs } from "@/lib/flow-timestamp";
 import { useIosNativeShell } from "@/hooks/useIosNativeShell";
+import { useCompactDeskPanels } from "@/hooks/useCompactDeskPanels";
 import { IosNativeSegment } from "@/components/ios/IosNativeSegment";
 import { IosSectionHeader } from "@/components/ios/IosSectionHeader";
 import { IosNativeChipRail } from "@/components/ios/IosNativeChipRail";
@@ -181,6 +183,11 @@ export function FlowFeed() {
   // Data
   const [alerts, setAlerts]               = useState<FlowAlert[]>([]);
   const nativeShell = useIosNativeShell();
+  // Tier 1 item #8 (2026-08-02 Helix audit): mobile web + the native iOS shell both went
+  // through this same wide desktop grid table, forcing horizontal scroll on a phone. Reuse
+  // the SPX/Vector desks' own compact-viewport hook (same 767px threshold) rather than a
+  // new bespoke breakpoint here.
+  const compactTape = useCompactDeskPanels(nativeShell);
   // Live tape is the primary HELIX surface on iOS — default here, not Analytics.
   const [iosView, setIosView] = useState<"tape" | "analytics">("tape");
   const [helixToolsOpen, setHelixToolsOpen] = useState(false);
@@ -1119,7 +1126,11 @@ export function FlowFeed() {
             nativeShell && iosView === "tape" && "ios-native-panel-visible"
           )}
         >
-          <HelixFlowTable {...flowTapeProps} />
+          {compactTape ? (
+            <HelixMobileFlowTape {...flowTapeProps} />
+          ) : (
+            <HelixFlowTable {...flowTapeProps} />
+          )}
         </div>
         {(analyticsOpen || (nativeShell && iosView === "analytics")) && (
           <div
