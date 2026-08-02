@@ -80,7 +80,11 @@ export function reconcileCellStrikeTotals<
   if (!block?.cells || !block.strike_totals || !nearTermExpiries?.length) return block;
   const factor = 10 ** dp;
   const nearSet = new Set(nearTermExpiries);
-  const strikeTotals: Record<string, number> = {};
+  // Object.create(null) — strike keys are numeric strike-price strings from the Polygon
+  // chain, never attacker-supplied, but a proto-less object means a key like "__proto__"
+  // can never repoint this object's prototype no matter where the key ultimately traces
+  // from (CodeQL "remote property injection" — hardening, not a real reachable exploit).
+  const strikeTotals: Record<string, number> = Object.create(null);
   for (const [strike, existing] of Object.entries(block.strike_totals)) {
     const row = block.cells[strike];
     if (!row) { strikeTotals[strike] = existing; continue; }
