@@ -801,6 +801,678 @@ You can't see individual dealer hedges, but you can see the aggregate effect. Th
 
 > *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options trading involves substantial risk and is not suitable for every investor.*`,
   },
+  {
+    slug: "spx-slayer-dashboard-guide",
+    path: "/learn/spx-slayer-dashboard-guide",
+    metaTitle: "SPX Slayer Dashboard Walkthrough | BlackOut",
+    metaDescription:
+      "Walk through every panel and value on the SPX Slayer dashboard — the three-column layout, hero price, GEX regime, VWAP tint, and freshness indicators.",
+    targetKeyword: "SPX Slayer dashboard guide",
+    type: "article" as const,
+    title: "SPX Slayer Dashboard: A Complete Walkthrough",
+    description:
+      "Walk through every panel and value on the SPX Slayer dashboard — the three-column layout, hero price, GEX regime, VWAP tint, and freshness indicators.",
+    body: `The [SPX Slayer](/learn/spx-slayer) dashboard is a three-column 0DTE command center. Every number, pill, and color on screen exists because it feeds a trading decision — nothing decorative makes the cut. This walkthrough explains what each element means so you can read the board cold.
+
+## The three-column layout
+
+**Left column — GEX/VEX matrix.** This is the dealer-positioning panel. It shows a strike-by-expiry grid of signed gamma (or vanna) exposure, color-coded from deep red (heavy put gamma) to deep green (heavy call gamma). You toggle between GEX and VEX lenses here. Key levels — the [gamma flip](/learn/gamma-flip-explained), [call wall, and put wall](/learn/call-wall-put-wall-explained) — are highlighted so you can see the day's structure at a glance. For a deeper dive into reading the matrix itself, see [Reading the SPX Slayer GEX Matrix](/learn/spx-slayer-gex-matrix-guide).
+
+**Center column — play engine.** This is where the graded setups live. Each play card shows the ticker, direction, strike, expiry, confluence grade (A+ through D), score, confidence percentage, and current action state (SCANNING, WATCHING, BUY, HOLD, TRIM, SELL). The center column is the decision layer — positioning data from the left feeds into the grading engine, and the output is a filtered, ranked list of plays worth watching. See [SPX Slayer Play Grades Explained](/learn/spx-slayer-play-grades-explained) for how the grading works.
+
+**Right column — Largo commentary.** [Largo AI](/learn/largo-ai) provides a running narrative of the session — regime reads, level commentary, and context for why the engine is or isn't firing. Think of it as a senior trader sitting next to you explaining the board. During RTH it updates as conditions change; outside market hours it summarizes the prior session.
+
+## The hero bar
+
+Across the top of the dashboard sits the hero bar — the five-second read on where SPX stands right now.
+
+**Hero SPX price.** The large number front and center. It updates in near-real-time via SSE and shows the last traded price for SPX.
+
+**VIX pill.** A small badge next to price showing the current VIX level. VIX is the market's 30-day [implied volatility](/learn/implied-volatility-explained) read for SPX — a quick proxy for how expensive options are and, loosely, whether dealers are likely positioned in a positive or negative [gamma regime](/learn/what-is-gex). A VIX under 15 usually means calm; above 25 means volatility is elevated and premiums are rich.
+
+**VWAP pill.** Shows SPX's volume-weighted average price for the session. The pill tints **green (bull)** when price is trading above VWAP — buyers are in control on a volume-weighted basis — and **red (bear)** when price is below. VWAP is a widely watched institutional reference; its tint gives you the intraday posture without opening a chart.
+
+**Net GEX.** The aggregate [gamma exposure](/learn/what-is-gex) number for the SPX chain. Positive means dealers are long gamma (expect range compression); negative means short gamma (expect amplification). This single number sets the session's baseline character.
+
+## Technical levels strip
+
+Below the hero bar, a strip of reference levels gives you the day's structural map:
+
+- **EMA 20 / 50 / 200** — exponential moving averages on SPX. The stack order (20 above 50 above 200, or inverted) tells you whether the short-term, intermediate, and long-term trends agree or conflict.
+- **SMA 50 / 200** — simple moving averages. When the SMA 50 crosses above the SMA 200 (a "golden cross") or below it (a "death cross"), the event shows up here as a reference.
+- **HOD / PDH** — today's high of day and the prior day's high. Price breaking above PDH is a momentum tell; failing at it is resistance.
+- **LOD / PDL** — today's low of day and the prior day's low. A break below PDL signals continuation weakness; holding it suggests support.
+
+These levels are inputs into the play engine's confluence scoring. You don't need to memorize them — the grading system weighs them for you — but seeing them lets you understand *why* a grade came out the way it did.
+
+## FreshnessChip and market status
+
+Data freshness matters on a 0DTE desk. The **FreshnessChip** in the header shows one of three states:
+
+- **Live** (green) — data is current and streaming. The board is tradeable.
+- **Stale** (amber) — data hasn't updated within the expected window. This can happen during brief connectivity interruptions or low-activity pre-market periods. Treat the board with caution.
+- **Offline** (red) — the data feed is disconnected. Do not trade off a stale board.
+
+Next to the chip, the **market status** indicator shows whether regular trading hours are active, whether the market is in pre-market or after-hours, or whether it is closed for the day.
+
+## Regime indicator
+
+A badge showing the current [gamma regime](/learn/gamma-flip-explained) — positive or negative — so you know in one glance whether the session favors fading or following. This is derived from the net GEX sign and the position of price relative to the gamma flip.
+
+## Trading halt banners
+
+If SPX or a major component triggers a trading halt (a market-wide circuit breaker or a single-stock LULD halt on a name the engine is tracking), a red banner appears across the top of the dashboard. Halts mean the order book is frozen — no fills, no hedging, no reliable pricing. The banner stays until the halt lifts. During a halt, the play engine pauses grading and the FreshnessChip switches to stale, because the last quote is no longer actionable.
+
+## Putting it together
+
+The dashboard is designed to be read top-down: hero bar for the five-second pulse, technical strip for context, left column for positioning, center for actionable plays, right for narrative. Before you look at any individual play, glance at the regime indicator and net GEX — they tell you whether it's a day to sell premium or respect momentum, and that single read shapes everything else on the screen. For the full story on how plays get graded, see [SPX Slayer Play Grades Explained](/learn/spx-slayer-play-grades-explained). New to BlackOut? [Getting Started](/learn/getting-started) walks through the platform end to end. [Get access →](/pricing)
+
+> *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options trading involves substantial risk and is not suitable for every investor.*`,
+  },
+  {
+    slug: "spx-slayer-play-grades-explained",
+    path: "/learn/spx-slayer-play-grades-explained",
+    metaTitle: "SPX Slayer Play Grades: A+ Through D | BlackOut",
+    metaDescription:
+      "How SPX Slayer's confluence grading works — score, confidence, gate logic from GEX regime through BlackOut Intelligence, and what each grade means for sizing.",
+    targetKeyword: "SPX Slayer play grades",
+    type: "article" as const,
+    title: "SPX Slayer Play Grades: A+ Through D Explained",
+    description:
+      "How SPX Slayer's confluence grading works — score, confidence, gate logic from GEX regime through BlackOut Intelligence, and what each grade means for sizing.",
+    body: `Every play on the [SPX Slayer](/learn/spx-slayer) dashboard carries a **confluence grade** — a letter from A+ down to D — plus a numeric score (0-100) and a confidence percentage (0-100%). The grade is the engine's verdict on how many independent signals agree that this setup is worth taking. Here is how the grading pipeline works, gate by gate.
+
+## What confluence means here
+
+Confluence is the overlap of independent inputs pointing in the same direction. A single bullish signal is a hypothesis; five bullish signals that each come from a different data source — positioning, flow, technicals, volatility regime, risk-reward — are confluence. The grading engine counts how many of those independent inputs agree, weighs them by reliability, and outputs a score. The more gates a play clears, the higher the grade.
+
+## The sequential gate logic
+
+The engine evaluates each candidate play through a series of gates in order. A play must pass each gate to reach the next. If it fails at any stage, it either gets downgraded or rejected entirely. The gates run in this sequence:
+
+**Gate 1 — GEX regime.** Is the session's [gamma exposure](/learn/what-is-gex) environment compatible with this trade's direction and structure? A directional long in a strongly positive-GEX, range-bound session gets penalized; the same long in a negative-GEX trending session gets a boost. This gate doesn't kill a play outright, but it sets the ceiling — a play fighting the regime can never grade above B.
+
+**Gate 2 — VWAP posture.** Where is price relative to the session's volume-weighted average price? A bullish play with price above VWAP gets a tailwind; below VWAP it is swimming upstream. The VWAP pill on the [dashboard](/learn/spx-slayer-dashboard-guide) shows this in real time.
+
+**Gate 3 — EMA stack alignment.** The engine checks whether the 20, 50, and 200 EMAs are stacked in the direction of the trade. A bullish call with 20 > 50 > 200 (a fully aligned uptrend stack) earns full marks. A mixed or inverted stack means the trend structure disagrees with the trade's direction — that costs points.
+
+**Gate 4 — Flow bias.** Is institutional [options flow](/learn/how-to-read-options-flow) leaning in the same direction? The engine reads the net premium bias from [HELIX](/learn/helix-flows) — whether call-side or put-side premium dominates the session — and checks whether that lean supports the play. Aggressive sweeps in the same direction add conviction; flow running the opposite way is a red flag.
+
+**Gate 5 — Risk-to-reward.** The engine calculates the R:R on the specific contract — how much the option can gain to target versus how much is at risk to stop. Plays with thin R:R (less than 1:1) get penalized regardless of how many other gates they cleared. A favorable R:R alone won't produce a high grade, but an unfavorable one will cap the grade.
+
+**Gate 6 — BlackOut Intelligence verdict.** The final filter. [Largo AI](/learn/largo-ai) and the broader BlackOut Intelligence layer assess the full context — macro calendar, earnings proximity, regime stability, any conflicting signals the mechanical gates cannot weigh. This gate can veto an otherwise-passing play if the qualitative context is wrong, or give a final boost to a play where every quantitative gate aligned.
+
+**Gate 7 — Option ticket.** The engine selects the specific contract (strike, expiry) and confirms that liquidity, spread width, and premium are acceptable. A great setup on an illiquid contract with a wide bid-ask gets downgraded or skipped.
+
+## The grades
+
+**A+ (score 90-100, confidence 85-100%).** Every gate cleared with strength. Regime, flow, technicals, R:R, and Intelligence all agree. These are rare — most sessions produce zero or one. Size with conviction when they appear.
+
+**A (score 75-89, confidence 70-84%).** Strong confluence with one minor disagreement — perhaps the EMA stack is mixed while everything else aligns. Still a high-conviction setup; full standard sizing.
+
+**B (score 55-74, confidence 50-69%).** Solid but not unanimous. Typically two gates are neutral or mildly conflicting. Playable, but size down — this is a half-position grade.
+
+**C (score 35-54, confidence 30-49%).** Marginal. Several gates disagree or are neutral. Only experienced traders should consider these, and only at minimum size. The engine surfaces them for transparency, not as recommendations.
+
+**D (score 0-34, confidence 0-29%).** Failing. The setup lacks meaningful confluence. The engine logs it but does not suggest action. If you find yourself wanting to trade a D-grade play, step back — you are overriding the filter, not using it.
+
+## Play actions: the lifecycle
+
+Each play moves through a lifecycle of action states:
+
+- **SCANNING** — the engine is evaluating the candidate. No action for you yet.
+- **WATCHING** — the play passed initial gates but hasn't hit entry criteria. Watch the level.
+- **BUY** — entry criteria are met. The play is at its graded price with the graded R:R.
+- **HOLD** — the position is open and within the expected range. No action needed.
+- **TRIM** — the play has hit a partial target. Consider taking partial profits.
+- **SELL** — the play has hit its full target or stop. Exit.
+
+The action state updates in real time as price moves. A play can cycle from BUY back to WATCHING if price pulls away from the entry zone before you act — it does not chase.
+
+## How to use grades for sizing
+
+The simplest framework: A+ and A get your standard position size. B gets half. C gets quarter size or skip. D is a no-trade. This isn't a rule — it's a starting point you calibrate to your own risk tolerance. The grade tells you how much agreement exists among independent signals; your size should reflect that agreement. Fewer signals agreeing means less conviction, which means less capital at risk.
+
+Pair the grade with the [GEX regime](/learn/what-is-dealer-gamma-exposure) and the dashboard's net GEX reading for the full picture. A B-grade play in a strongly supportive regime is different from a B-grade play in a hostile one — the regime sets the ceiling, and the grade tells you where within that ceiling the play sits. For the full dashboard context, see [SPX Slayer Dashboard Walkthrough](/learn/spx-slayer-dashboard-guide). New to BlackOut? Start with [Getting Started](/learn/getting-started). [Get access →](/pricing)
+
+> *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options trading involves substantial risk and is not suitable for every investor.*`,
+  },
+  {
+    slug: "spx-slayer-gex-matrix-guide",
+    path: "/learn/spx-slayer-gex-matrix-guide",
+    metaTitle: "Reading the SPX Slayer GEX Matrix | BlackOut",
+    metaDescription:
+      "How to read the SPX Slayer GEX matrix — strike-by-expiry gamma grid, King nodes, gamma walls, GEX vs VEX toggle, and gamma flip for the 0DTE column.",
+    targetKeyword: "GEX matrix heatmap",
+    type: "article" as const,
+    title: "Reading the SPX Slayer GEX Matrix",
+    description:
+      "How to read the SPX Slayer GEX matrix — strike-by-expiry gamma grid, King nodes, gamma walls, GEX vs VEX toggle, and gamma flip for the 0DTE column.",
+    body: `The GEX matrix on [SPX Slayer](/learn/spx-slayer) is a strike-by-expiry grid that maps where dealer [gamma exposure](/learn/what-is-gex) concentrates across the entire SPX options chain. It is the positioning backbone of the dashboard — every graded play factors in where the walls sit and which regime price is trading in. Here is how to read it cell by cell.
+
+## The grid: strikes x expirations
+
+The matrix is a heatmap table. Each row is a strike price. Each column is an expiration date — the leftmost column is the 0DTE (same-day) expiry, and subsequent columns move out to weeklies and monthlies. Each cell contains a **signed dollar value** representing the net gamma exposure at that specific strike-expiry intersection.
+
+Positive cells (green) mean dealers are net long gamma at that strike — hedging will dampen moves toward it. Negative cells (red) mean dealers are net short gamma — hedging will amplify moves through it. The **diverging color scale** runs from deep red (largest negative) through neutral (near-zero, gray) to deep green (largest positive), so the visual heat pattern tells the story before you read a single number.
+
+## The spot row highlight
+
+The row corresponding to the current SPX price is highlighted — usually with a distinct border or background tint. This anchors your eye to where price sits relative to the gamma landscape. Everything above the spot row is overhead resistance context; everything below is downside support context. As SPX moves, the highlight follows.
+
+## King nodes
+
+Certain cells carry a **star marker** — these are **King nodes**, the single largest absolute gamma concentration in their respective column (expiry). A King node at the 5,550 strike in the 0DTE column means that strike carries more gamma for today's expiry than any other. King nodes are where the most aggressive dealer hedging will occur for that expiry. They often coincide with — but are not always identical to — the call wall or put wall, because the wall is the largest concentration across all expirations, while a King node is the largest within a single expiry.
+
+## Column max +/- (gamma walls)
+
+At the top or bottom of each column, the matrix marks the **column maximum positive** and **column maximum negative** values. These are that expiry's local gamma walls — the strike where the most call-side or put-side gamma sits for that specific expiration. When you aggregate these across all columns, you get the overall [call wall and put wall](/learn/call-wall-put-wall-explained) for the full chain. Watching the column-level walls lets you see whether a particular expiry (say, this Friday's monthly) is driving the aggregate wall, or whether the wall is spread across many expirations.
+
+## GEX vs VEX lens toggle
+
+A toggle at the top of the matrix switches between two views:
+
+**GEX lens** — the default. Shows [gamma exposure](/learn/what-is-dealer-gamma-exposure) per cell. This is the primary positioning read: where dealers must buy and sell as price moves, and how aggressively. Use this for regime reads, wall identification, and flip-level awareness.
+
+**VEX lens** — shows **vanna exposure** per cell. Vanna measures how dealer delta changes as [implied volatility](/learn/implied-volatility-explained) shifts. VEX tells you what happens to the positioning picture if the VIX spikes or drops — a critical second layer on days when IV is moving sharply. For more on what the VEX lens reveals, see [Thermal's Four Lenses](/learn/thermal-four-lenses-explained). The toggle is the same concept used on [Thermal](/learn/heat-maps), applied here to the SPX-specific matrix.
+
+## Gamma flip and the 0DTE column
+
+The [gamma flip](/learn/gamma-flip-explained) — the strike where aggregate dealer gamma crosses from positive to negative — is marked directly on the matrix, typically as a horizontal line or a color-change boundary. For the 0DTE column specifically, the flip is especially important because same-day gamma is enormous and fast-decaying. The 0DTE column's flip level can differ from the full-chain flip when longer-dated expirations carry gamma at different strikes. On days when the 0DTE flip diverges from the overall flip, price behavior can be choppy as the two signals conflict.
+
+The **net exposure** summary at the bottom of the 0DTE column shows aggregate gamma for all same-day contracts — positive or negative, with a magnitude. This is the quick-glance answer to "is today's session stabilized or amplified by 0DTE positioning?"
+
+## Convergence and divergence between walls and price
+
+The matrix's real power is pattern recognition. When the call wall, put wall, and flip converge on a narrow range around current price, expect a grinding, range-bound session — all three forces are acting as magnets and barriers in a tight zone. When they diverge — flip far below price, call wall far above, put wall far below — the range is wide open, and price has room to trend before hitting a mechanical barrier.
+
+Watch for **wall migration** during the session. If the call wall at 5,550 weakens (its cell value shrinks) while a new gamma cluster builds at 5,570, the ceiling is shifting higher. The matrix updates in real time, so checking it mid-session — not just at the open — is how you catch repositioning before the chart shows it.
+
+## Cross-referencing with the play engine
+
+The graded plays in the center column of the [dashboard](/learn/spx-slayer-dashboard-guide) already incorporate the matrix data — the [gate logic](/learn/spx-slayer-play-grades-explained) reads the regime, walls, and flip from this same grid. But seeing the raw matrix lets you understand *why* a play graded the way it did. A B-grade play near a thick wall makes sense — the wall adds resistance that lowers conviction. An A-grade play in open space between walls makes sense too — nothing mechanical is blocking the move.
+
+For the full Thermal heatmap with profile view and additional overlays, see [How to Read Thermal Heatmaps](/learn/thermal-heatmap-reading-guide). [Get access →](/pricing)
+
+> *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options trading involves substantial risk and is not suitable for every investor.*`,
+  },
+  {
+    slug: "spx-slayer-lotto-power-hour",
+    path: "/learn/spx-slayer-lotto-power-hour",
+    metaTitle: "SPX Slayer Lotto & Power Hour Plays | BlackOut",
+    metaDescription:
+      "How SPX Slayer's Lotto and Power Hour engines work — strike selection, timing windows, premium caps, and what separates them from the main play engine.",
+    targetKeyword: "0DTE lotto plays power hour",
+    type: "article" as const,
+    title: "SPX Slayer Lotto & Power Hour Plays",
+    description:
+      "How SPX Slayer's Lotto and Power Hour engines work — strike selection, timing windows, premium caps, and what separates them from the main play engine.",
+    body: `The main [SPX Slayer](/learn/spx-slayer) play engine runs throughout regular trading hours, looking for high-confluence 0DTE setups at standard strikes and premium levels. Alongside it, two specialized engines target the edges of the session where gamma dynamics are most extreme: the **Lotto Play** engine in the morning and the **Power Hour** engine near the close. Each has its own timing window, strike logic, and risk rules — they are not looser versions of the main engine, but separate systems designed for different market conditions.
+
+## Lotto Play engine (7:00 - 10:30 AM ET)
+
+The Lotto engine fires during the first hours of the session, when [gamma](/learn/what-is-gex) is at its peak on 0DTE contracts and intraday moves can be oversized relative to the rest of the day.
+
+**Strike selection.** Lotto plays target strikes roughly **25 points out of the money** from the current SPX price. That distance is deliberate — close enough that a strong directional move brings the contract into play, far enough that the premium is cheap and the R:R is asymmetric. These are not at-the-money setups; they are defined-risk lottery tickets on the thesis that the morning session will produce a directional push.
+
+**Target and stop.** Each Lotto play carries a **25-point target** and an **8-point stop**. The target-to-stop ratio (~3:1) reflects the asymmetric bet: you expect to lose more often than you win, but the wins are large enough to make the expected value positive over a sample. This is a classic skew trade — frequent small losses, occasional large gains.
+
+**Premium cap.** The engine enforces a **VIX-indexed premium cap** — the maximum you should pay for the contract adjusts based on the current VIX level. When VIX is elevated and premiums are rich, the cap rises to reflect that the same OTM strike costs more. When VIX is low, the cap tightens. This prevents overpaying in a calm market where the asymmetric payoff disappears once premium gets too expensive. See [Implied Volatility Explained](/learn/implied-volatility-explained) for why VIX level directly drives option prices.
+
+**Why the morning window.** Between 7:00 and 10:30 AM ET, 0DTE gamma is at its session maximum — the contracts still have most of the day's theta left, and delta can swing dramatically on even modest price moves. By 10:30, much of that initial gamma has decayed and the session's character has typically committed — the Lotto edge (asymmetric gamma on cheap OTM strikes) weakens, so the engine shuts off.
+
+## Power Hour engine (2:45 - 3:15 PM ET)
+
+The Power Hour engine fires in the final 30 minutes before the close becomes imminent. By this point in the session, 0DTE contracts have almost no time value left — [theta](/learn/options-greeks-explained) has eaten most of the premium — and any remaining gamma is binary: a move either happens now or it does not.
+
+**Strike selection.** Power Hour targets strikes roughly **8 points out of the money** — much closer than Lotto. With so little time left, a 25-point OTM strike is essentially worthless, so the engine moves in closer where delta can still respond to a late-session push.
+
+**Target and stop.** The target is **13 points** with a **4-point stop** (~3:1 ratio, similar risk profile to Lotto but scaled to the tighter range of a session winding down).
+
+**Premium and quality caps.** The maximum premium is **$0.50** — because there's almost no time value remaining, paying more than $0.50 for a near-OTM 0DTE contract at 2:45 PM means you are overpaying for what is essentially a binary outcome. Additionally, the engine requires a **minimum score of 45** and a **minimum grade of B** — Power Hour plays must still pass the [confluence filter](/learn/spx-slayer-play-grades-explained), just at a lower bar than the main engine, reflecting the reduced data available so late in the session.
+
+**One play max.** The engine limits output to a single Power Hour play per session. This is a discipline rule: with 15-30 minutes of life remaining and binary outcomes, one well-selected play is a strategy; three is gambling.
+
+**Why the narrow window.** The 2:45 - 3:15 PM ET window captures the point where intraday gamma is at its most extreme decay rate. Contracts expiring in under an hour can double or go to zero on a single SPX tick. By 3:15 the window closes — too little time remains for even an 8-point move to develop with any consistency.
+
+## How they differ from the main play engine
+
+The main play engine looks for the highest-confluence setups the session offers, at standard OTM distances, with no fixed timing window during RTH. Lotto and Power Hour are edge-of-session specialists:
+
+- **Lotto** exploits morning gamma amplitude with wider strikes and larger targets — a low-probability, high-payoff structure.
+- **Power Hour** exploits end-of-day gamma decay with tight strikes and cheap premium — a binary bet on a late directional push.
+- **Main engine** operates in the core session where positioning data is richest and the [gate logic](/learn/spx-slayer-play-grades-explained) has the most inputs to weigh.
+
+All three share the same underlying positioning data from the [GEX matrix](/learn/spx-slayer-gex-matrix-guide) and [Thermal](/learn/heat-maps), and all three log results to the same public record. The difference is *when* they fire, *what* strikes they target, and *how* they define risk — each tuned to the gamma environment of its specific window. See the full [SPX Slayer Dashboard Walkthrough](/learn/spx-slayer-dashboard-guide) for how they appear on screen. [Get access →](/pricing)
+
+> *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options trading involves substantial risk and is not suitable for every investor.*`,
+  },
+  {
+    slug: "thermal-heatmap-reading-guide",
+    path: "/learn/thermal-heatmap-reading-guide",
+    metaTitle: "How to Read Thermal Heatmaps | BlackOut",
+    metaDescription:
+      "How to read BlackOut Thermal heatmaps — matrix view, exposure profile, King nodes, flip and wall levels, HELIX flow overlay, dark pool lines, and alerts.",
+    targetKeyword: "dealer gamma heatmap guide",
+    type: "article" as const,
+    title: "How to Read BlackOut Thermal Heatmaps",
+    description:
+      "How to read BlackOut Thermal heatmaps — matrix view, exposure profile, King nodes, flip and wall levels, HELIX flow overlay, dark pool lines, and alerts.",
+    body: `[Thermal](/learn/heat-maps) is BlackOut's dealer-positioning visualization — a live heatmap that shows where [gamma exposure](/learn/what-is-gex) (and vanna, delta, and charm) concentrates across the options chain. It has two primary views, a set of overlay layers, and a key-level summary box. Here is how to read each component.
+
+## Matrix view
+
+The matrix is a **strike-by-expiry heat table**. Each row is a strike price; each column is an expiration date. Each cell contains the signed dollar exposure at that intersection — positive (green) where dealers are long gamma and hedging dampens the move, negative (red) where dealers are short gamma and hedging amplifies it. The **diverging color scale** runs from deep red through gray (near zero) to deep green, so the visual pattern reveals the positioning landscape before you read a single number.
+
+The **spot row** — the row closest to the current underlying price — is highlighted with a distinct border. Everything above spot is overhead resistance context (where call-side gamma builds); everything below is downside support context (where put-side gamma lives). The default ticker is **SPY**, but you can switch to any supported name.
+
+## Profile view
+
+The profile view collapses the matrix into a single-axis chart — exposure by strike, summed across all selected expirations. This is where the shape of dealer positioning becomes visually obvious.
+
+**ExposureProfile bars.** Horizontal bars extending left (negative, red) or right (positive, green) from a zero axis. The length of each bar is the net exposure at that strike. Three markers anchor the profile:
+
+- **Spot marker** — a vertical line at the current price, so you see where the underlying sits relative to the gamma landscape.
+- **Flip marker** — the price where the bars cross from positive to negative, the [gamma flip](/learn/gamma-flip-explained). Above it, expect range compression; below it, expect amplification.
+- **King marker** — the strike with the single largest absolute gamma concentration. It often — but not always — coincides with the [call wall or put wall](/learn/call-wall-put-wall-explained). When the King node sits at the call wall, that level carries extra weight as a ceiling.
+
+**HELIX flow overlay.** Aggregated [institutional options flow](/learn/how-to-read-options-flow) from [HELIX](/learn/helix-flows) can be layered directly onto the profile. Flow activity appears as markers or shading at the strikes where large prints hit, so you can see in one view whether aggressive flow is pushing into a gamma wall (likely rejection) or into thin positioning (likely follow-through). For a full walkthrough of the flow scanner itself, see [HELIX Flow Scanner Guide](/learn/helix-flow-scanner-guide).
+
+**Dark pool lines.** [Dark pool](/learn/what-is-dark-pool-trading) block prints are plotted as horizontal reference lines on the profile at the prices where off-exchange size traded. These lines show where institutions have quietly accumulated or distributed — levels that may act as support or resistance independent of options positioning. When a dark pool line sits at the same price as a gamma wall, the reinforcement is significant.
+
+**CumulativeCurve.** A running sum of exposure from the lowest strike to the highest, plotted as a curve over the profile. The curve's slope tells you where exposure is building fastest, and the point where it crosses zero corresponds to the gamma flip. A steeply rising curve means positive gamma is accumulating rapidly — strong stabilization above that zone.
+
+**ShiftView.** A comparison overlay showing how the exposure profile has *changed* since the prior snapshot (open, prior close, or a user-selected reference). Green shading means exposure increased (walls strengthened or shifted toward a strike); red shading means exposure decreased (walls weakened). ShiftView is how you catch wall migration mid-session without remembering what the morning profile looked like.
+
+## ExpiryScope chips
+
+A row of toggle chips at the top of the profile lets you filter which expirations feed the profile:
+
+- **All** — every open expiry, giving the full-chain picture.
+- **0DTE** — same-day contracts only. This isolates the intraday gamma that matters most for 0DTE trades. See [0DTE SPX Options Strategy](/learn/0dte-spx-options-strategy).
+- **Near** — the next few expirations (typically 0-3 DTE). Useful for seeing the short-term positioning without the noise of far-out monthlies.
+- **Monthly** — monthly expirations only, which tend to carry the most open interest and define the structural walls.
+
+Switching scopes lets you answer questions like "is the call wall driven by 0DTE gamma or by the monthly?" — a distinction that matters because 0DTE walls evaporate by the close while monthly walls persist.
+
+## KeyLevelBox
+
+A summary panel showing the critical levels extracted from the active lens and scope:
+
+- **Flip** — the [gamma flip](/learn/gamma-flip-explained) price.
+- **Walls** — the [call wall and put wall](/learn/call-wall-put-wall-explained) strikes and their magnitudes.
+- **Max pain** — the [max pain](/learn/max-pain-options-explained) strike for the selected expiry scope.
+- **King node** — the single largest gamma concentration.
+- **Net total** — the aggregate signed exposure (positive = long gamma environment, negative = short gamma).
+- **Day-over-day deltas** — how each of these levels has shifted since the prior session's close. A call wall that moved up 20 points overnight tells a different story than one that sat still.
+
+## AlertsStrip
+
+A banner of real-time alerts that fires when key events occur:
+
+- **Wall breaks** — price has moved through a call wall or put wall. A wall break is a momentum signal, not a fade (see [Call Wall & Put Wall Explained](/learn/call-wall-put-wall-explained)).
+- **Flip crosses** — price has crossed the gamma flip, switching the session's regime from positive to negative gamma or vice versa. This is the single most important intraday event on the Thermal board.
+
+Alerts are timestamped and persist for the session so you can scroll back to see what levels were tested and when.
+
+## Putting it all together
+
+Start with the KeyLevelBox for the five-second read: flip, walls, net exposure, and whether any levels shifted overnight. Then check the profile to see the shape — is gamma concentrated or spread out? Is the King node reinforcing a wall or sitting at a different strike? Layer on HELIX flow and dark pool lines to see where activity is converging with positioning. Use ExpiryScope to isolate 0DTE vs. monthly contributions. And watch the AlertsStrip for real-time wall breaks and flip crosses that change the playbook mid-session.
+
+For a deep dive into the four exposure lenses (GEX, VEX, DEX, CHARM), see [Thermal's Four Lenses Explained](/learn/thermal-four-lenses-explained). For how to turn Thermal levels into actual strike selection, see [Using Thermal for Strike Selection](/learn/thermal-strike-selection-guide). [Get access →](/pricing)
+
+> *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options trading involves substantial risk and is not suitable for every investor.*`,
+  },
+  {
+    slug: "thermal-four-lenses-explained",
+    path: "/learn/thermal-four-lenses-explained",
+    metaTitle: "Thermal's Four Lenses: GEX VEX DEX CHARM | BlackOut",
+    metaDescription:
+      "Thermal's four exposure lenses — GEX for gamma walls, VEX for vanna, DEX for delta posture, CHARM for time-decay pinning — and when to use each one.",
+    targetKeyword: "GEX VEX DEX CHARM explained",
+    type: "article" as const,
+    title: "Thermal's Four Lenses: GEX, VEX, DEX & CHARM",
+    description:
+      "Thermal's four exposure lenses — GEX for gamma walls, VEX for vanna, DEX for delta posture, CHARM for time-decay pinning — and when to use each one.",
+    body: `[Thermal](/learn/heat-maps) computes dealer exposure from a single options-chain payload — one data pull covers all four views. A client-side toggle switches between four **lenses**, each showing a different Greek's exposure profile across strikes. Same data, four angles. Here is what each lens reveals and when to use it.
+
+## GEX lens — gamma exposure
+
+The default and most widely used lens. GEX maps where dealer [gamma](/learn/what-is-gex) concentrates across strikes, showing the mechanical buying and selling pressure dealers must exert as price moves.
+
+**What it shows you:**
+
+- **Gamma flip** — the price where aggregate gamma crosses from positive to negative, the boundary between a range-bound session and a trending one. See [Gamma Flip Explained](/learn/gamma-flip-explained).
+- **Call wall** — the strike above price with the largest gamma concentration; acts as resistance. See [Call Wall & Put Wall Explained](/learn/call-wall-put-wall-explained).
+- **Put wall** — the strike below price with the largest gamma concentration; acts as support.
+- **Max pain** — the strike where the most options expire worthless. See [Max Pain Explained](/learn/max-pain-options-explained).
+- **King node** — the single largest absolute gamma cell on the board.
+
+**When to use it:** The GEX lens is your primary positioning read. Check it before the open to set the day's regime, and mid-session to catch wall migration. It answers the fundamental question: is dealer hedging working for you or against you today?
+
+## VEX lens — vanna exposure
+
+Vanna measures how dealer delta shifts as [implied volatility](/learn/implied-volatility-explained) changes. The VEX lens maps that sensitivity by strike — telling you what happens to the positioning picture if the VIX spikes or collapses.
+
+**What it shows you:**
+
+- **Vanna walls** — strikes where a change in IV would trigger the largest delta re-hedging by dealers. These are the levels most sensitive to a volatility event.
+- **Vanna flip** — the price where the vanna profile crosses zero. Above it, a VIX spike forces dealers to buy; below it, the same spike forces selling.
+
+**When to use it:** VEX matters most on days when IV itself is moving — macro data releases, FOMC days, earnings-heavy sessions. On a quiet day with stable VIX, the VEX lens adds little to what GEX already shows. But on a day when the VIX jumps 3 points, VEX tells you where the *second-order* hedging pressure will hit — the levels that only become important because volatility itself shifted. Think of it as "what does the gamma map look like *after* a vol shock?"
+
+## DEX lens — delta exposure
+
+Delta exposure shows the net directional positioning of dealers across strikes — how many shares' worth of hedging dealers are carrying at each price level.
+
+**What it shows you:**
+
+- **Delta-zero pivot** — the price where aggregate dealer delta exposure crosses zero. This is the point of directional neutrality: above it, dealers are net long delta (bullish hedge bias); below it, they are net short delta (bearish hedge bias).
+- **Posture** — whether the overall dealer delta tilt is positive (supportive of upside), negative (supportive of downside), or flat. A large positive DEX reading means dealers own a lot of stock to hedge their short calls, and that stockpile acts as a cushion on dips.
+
+**When to use it:** DEX is the directional read. GEX tells you volatility regime (calm vs. fast); DEX tells you directional lean (bulls vs. bears in the hedging book). When GEX says "expect a move" (negative gamma) and DEX says "dealers are leaning short delta," the setup favors downside — the hedging book is positioned to accelerate a selloff. Conversely, negative GEX with positive DEX means dealers have long-delta hedges that can fuel a squeeze higher.
+
+## CHARM lens — charm exposure
+
+Charm measures how [delta](/learn/options-greeks-explained) changes purely from the passage of time — no price movement required. The CHARM lens maps this time-decay effect by strike, showing where delta is drifting as the session wears on.
+
+**What it shows you:**
+
+- **Charm-zero pivot** — the price where time-driven delta drift crosses zero. Above it, time decay is adding to dealer delta (supportive); below it, time decay is subtracting delta (pressuring).
+- **Pinning pressure** — charm concentrates at strikes with heavy open interest close to expiration. As theta erodes option value through the day, delta at those strikes migrates toward zero (for OTM) or 1.0 (for ITM), and dealers re-hedge accordingly. That re-hedging pulls price toward the heavy strikes — the mechanical underpinning of the "expiration pin." See [Max Pain Explained](/learn/max-pain-options-explained) for the related concept.
+
+**When to use it:** CHARM matters most in the afternoon of an expiration day, when time decay is accelerating and the pinning effect is strongest. On a Monday with a Friday expiry, charm is a minor force. On Friday at 2 PM with massive 0DTE open interest, charm is actively dragging price toward the heaviest strikes. Use it to gauge whether a late-session move has mechanical time-decay support or is fighting against a charm-driven pin.
+
+## One payload, four views
+
+All four lenses derive from the same underlying options chain data — open interest, strikes, expirations, and the Greeks at each point. Thermal computes all four exposures server-side and delivers them in a single payload. The client-side toggle simply selects which exposure to render on the profile and heatmap. There is no additional data fetch when you switch lenses, so toggling is instant.
+
+## Putting them together
+
+A practical workflow: start with **GEX** to set the day's regime and mark the walls. If VIX is moving, switch to **VEX** to see which levels are most sensitive to the vol shift. Check **DEX** for the directional lean — does the hedging book favor bulls or bears? And late in the session on an expiry day, glance at **CHARM** to see whether time decay is pulling price toward a pin or letting it run.
+
+No single lens is "the best" — each answers a different question about the same positioning data. GEX is the workhorse; the other three are context layers you reach for when the session demands them.
+
+For how to read the heatmap and profile views themselves, see [How to Read Thermal Heatmaps](/learn/thermal-heatmap-reading-guide). For how to turn these levels into strike decisions, see [Using Thermal for Strike Selection](/learn/thermal-strike-selection-guide). [Get access →](/pricing)
+
+> *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options trading involves substantial risk and is not suitable for every investor.*`,
+  },
+  {
+    slug: "thermal-strike-selection-guide",
+    path: "/learn/thermal-strike-selection-guide",
+    metaTitle: "Using Thermal for Strike Selection | BlackOut",
+    metaDescription:
+      "How to use Thermal's gamma levels for options strike selection — call wall resistance, put wall support, iron condor placement, and gamma flip as a filter.",
+    targetKeyword: "options strike selection gamma",
+    type: "article" as const,
+    title: "Using Thermal for Options Strike Selection",
+    description:
+      "How to use Thermal's gamma levels for options strike selection — call wall resistance, put wall support, iron condor placement, and gamma flip as a filter.",
+    body: `Reading [Thermal](/learn/heat-maps) is one thing; translating what it shows into a specific strike on a specific contract is the step that actually matters. This guide covers how to use the gamma flip, call wall, put wall, and King nodes as direct inputs into strike selection — for directional trades, premium-selling structures, and hedges.
+
+## Call wall as resistance: short call placement
+
+The [call wall](/learn/call-wall-put-wall-explained) is the strike above price with the largest concentration of call-side [gamma](/learn/what-is-gex). Dealer hedging at that strike mechanically sells rallies — every tick toward the wall triggers more selling, creating a ceiling effect. That makes the call wall a natural candidate for **short call strike placement** in credit spreads or [iron condors](/learn/iron-condor-strategy-guide).
+
+Practical example: SPX is at 5,500, and Thermal shows the call wall at 5,550 with a large, stable gamma reading. If you are selling a call spread, placing your short call at 5,550 means you are collecting premium on a strike where mechanical selling pressure is working in your favor — the wall acts as a built-in headwind for any rally that tries to reach your short strike. If the wall is thick (high gamma value) and has been stable across multiple snapshots (check ShiftView), the case is stronger. If the wall is thin or migrating, treat it with less confidence.
+
+## Put wall as support: short put placement
+
+The mirror logic applies on the downside. The [put wall](/learn/call-wall-put-wall-explained) is where put-side gamma concentrates below price, creating a cushion effect — dealer hedging buys dips as price approaches the wall. For a short put spread, placing your short put at or just inside the put wall means mechanical buying pressure works in your favor if price slides toward your strike.
+
+Example: SPX at 5,500, put wall at 5,440. Selling a put spread with a 5,440 short put gives you a strike where dealers are incentivized to buy the dip. That gamma cushion does not guarantee the wall holds — walls break — but it provides a structural edge that picking a round number does not.
+
+## Iron condor strike placement using walls
+
+An [iron condor](/learn/iron-condor-strategy-guide) is a call spread above price plus a put spread below. The simplest Thermal-driven approach: place your short call at or just past the call wall, and your short put at or just past the put wall. This brackets the session inside the zone where dealer hedging actively defends both boundaries.
+
+Example: call wall 5,550, put wall 5,440, SPX at 5,500. Sell the 5,550/5,570 call spread and the 5,440/5,420 put spread. Both short strikes sit at levels where mechanical hedging works in your favor. The long strikes (wings) are 20 points past each wall — wide enough to capture credit, narrow enough to cap max loss.
+
+Check the [GEX regime](/learn/what-is-gex) before placing the condor. A high positive-GEX session supports the range thesis; negative GEX warns that the walls may not hold. In a negative-GEX environment, either widen the wings, reduce size, or skip the condor entirely.
+
+## Gamma flip as a directional filter
+
+The [gamma flip](/learn/gamma-flip-explained) is not a strike you trade directly — it is a filter that determines *which direction* to trade and *how aggressively* to size.
+
+**Price above the flip (positive gamma):** The session favors mean reversion. Directional entries should lean toward fading extremes — buying puts near the call wall or calls near the put wall. Premium-selling structures thrive. Choose strikes closer to the money because the range is compressed.
+
+**Price below the flip (negative gamma):** The session favors momentum. Directional entries should lean toward continuation — calls if price is pushing higher through the flip, puts if it broke down through it. Wider strikes are appropriate because the range is expanded. Condors are riskier — consider directional spreads instead.
+
+**Price oscillating near the flip:** The regime is undefined. This is the hardest environment for strike selection because the market can flip from range-bound to trending and back within an hour. The best strike selection here is often *no strike* — sitting on your hands until the session commits to one side.
+
+## Wall integrity: when walls might break
+
+A wall is not a guarantee. Three conditions weaken a gamma wall:
+
+1. **Thinning gamma.** If the cell values at the wall strike are declining across snapshots (visible in ShiftView), the wall is weakening. Dealers have less hedging to do there, so the mechanical barrier is smaller.
+
+2. **Heavy directional flow.** Check the [HELIX flow overlay](/learn/helix-flow-scanner-guide) on the Thermal profile. If aggressive, opening sweeps are pushing directly at the wall — and the volume dwarfs the wall's gamma — the flow may overwhelm the hedging. This is how wall breaks happen: conviction-driven buying (or selling) large enough to absorb the dealer selling (or buying) at the wall.
+
+3. **Catalyst override.** A macro event (FOMC, CPI) or a mega-cap earnings surprise can produce a move that blows through any gamma wall. Walls built on yesterday's open interest don't know about today's news. On high-catalyst days, treat walls as softer and widen your strikes or skip short-premium structures.
+
+When a wall breaks, it flips from resistance to a momentum signal. Price that closes decisively past a broken call wall often continues higher as the hedging pressure that was capping the move is now gone. See [Call Wall & Put Wall Explained](/learn/call-wall-put-wall-explained) for more on what breaks look like and how to react.
+
+## A practical workflow
+
+Before selecting any strike: (1) open Thermal and note the flip, call wall, put wall, and King node from the [KeyLevelBox](/learn/thermal-heatmap-reading-guide); (2) check the GEX regime — positive or negative; (3) layer on HELIX flow and dark pool lines to see whether activity is converging with or diverging from the gamma levels; (4) then pick your structure (directional, condor, spread) and your strikes based on where the levels sit. This takes about 60 seconds and replaces guesswork with data. [Get access →](/pricing)
+
+> *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options trading involves substantial risk and is not suitable for every investor.*`,
+  },
+  {
+    slug: "helix-flow-scanner-guide",
+    path: "/learn/helix-flow-scanner-guide",
+    metaTitle: "HELIX Flow Scanner Walkthrough | BlackOut",
+    metaDescription:
+      "A complete walkthrough of the HELIX flow scanner — columns, premium filters, type toggles, analytics panel, replay mode, and the ticker drill-down drawer.",
+    targetKeyword: "options flow scanner guide",
+    type: "article" as const,
+    title: "HELIX Flow Scanner: Complete Walkthrough",
+    description:
+      "A complete walkthrough of the HELIX flow scanner — columns, premium filters, type toggles, analytics panel, replay mode, and the ticker drill-down drawer.",
+    body: `[HELIX](/learn/helix-flows) is BlackOut's institutional options flow scanner. It filters the raw firehose of options trades into the prints that actually carry signal — [unusual activity](/learn/unusual-options-activity-guide), aggressive sweeps, and anomalies that stand out from routine hedging noise. Here is how to read every element on the screen.
+
+## HelixFlowTable: the core feed
+
+The main panel is a real-time table of options trades that pass HELIX's premium and signal filters. Each row is a single print or aggregated burst. The columns:
+
+- **Time** — when the trade hit the tape, displayed in ET.
+- **Ticker** — the underlying symbol.
+- **CALL / PUT** — the contract type, color-coded (green for calls, red for puts).
+- **Expiry / Strike / DTE** — the contract's expiration date, strike price, and days to expiry. Short-dated contracts (especially 0DTE) carry a DTE badge to flag the accelerated gamma profile.
+- **Premium** — the dollar value of the trade. HELIX surfaces trades above configurable premium thresholds.
+- **Fill** — the fill price of the contract.
+- **Ask%** — a critical conviction metric. This is total\_ask\_side\_premium / total\_premium x 100. An Ask% of **60% or higher** means the buyer paid at the ask (aggressive, conviction buying). An Ask% of **40% or lower** means the seller hit the bid (aggressive selling or passive liquidation). Mid-range values suggest a neutral or mixed fill. See [HELIX Flow Signals Explained](/learn/helix-flow-signals-explained) for more on interpreting this.
+- **OI** — open interest on that contract. Compare to volume: when today's volume exceeds OI, these are new positions being created, not existing ones churning.
+- **IV** — [implied volatility](/learn/implied-volatility-explained) of the contract at fill time. Elevated IV on the specific contract (relative to its own history) is one more signal of unusual positioning.
+- **OTM%** — how far out of the money the strike is, expressed as a percentage of the underlying's price. Deeper OTM prints at large premiums are more unusual and therefore more interesting.
+- **Rule** — the execution type: **SWEEP** (split across multiple exchanges for speed — signals urgency), **BLOCK** (large single-exchange print — often institutional), or **FLOOR** (executed on the physical floor — typically large or complex orders). See [HELIX Flow Signals Explained](/learn/helix-flow-signals-explained) for what each rule type implies.
+- **Score** — HELIX's internal signal score for the trade, combining premium, aggression, OI ratio, and rule type.
+- **Signals** — badges showing contextual flags: GEX proximity (is the strike near the [gamma flip](/learn/gamma-flip-explained), [call wall, or put wall](/learn/call-wall-put-wall-explained)?), [dark pool](/learn/what-is-dark-pool-trading) correlation, and other anomaly markers.
+
+## Premium floor filters
+
+A row of chips at the top sets the minimum premium threshold for trades to appear in the table:
+
+- **$200K** — the broadest view; captures mid-size institutional prints.
+- **$500K** — filters to larger trades only.
+- **$1M** — major institutional activity.
+- **$20M+** — whale-tier prints; rare but highly significant when they appear.
+
+Raising the floor reduces noise and surfaces only the largest bets. Lowering it gives more context but requires more filtering skill. Start at $500K and move up or down based on the session's volume.
+
+## Type filter and counts
+
+Toggle between **ALL**, **CALL**, or **PUT** to filter the table by contract type. Each toggle shows a **live count** of how many qualifying trades are in each bucket for the current session — a quick read on whether the day's flow leans bullish (call-heavy) or bearish (put-heavy) at a glance.
+
+## Ticker filter and watchlist
+
+A search bar lets you filter the table to a single ticker. For names you watch regularly, **star** them to add to your watchlist — starred tickers float to the top of the filter and can be toggled on as a group. A **CSV export** button downloads the current filtered table for offline analysis or journaling.
+
+## Replay mode
+
+HELIX supports **replay mode** for historical review. Select a past date and the table loads that session's flow in chronological order, so you can step through the prints and see how the tape developed. Replay is how you study — pick a day the market moved hard, replay the flow, and see which prints led the move and which were noise. It's also useful for post-session debriefs: did the flow you acted on that day actually signal what you thought it did?
+
+## Analytics column
+
+To the right of the flow table, an analytics panel provides aggregated views:
+
+- **Net Premium leaderboard** — the tickers with the largest net call-minus-put (or put-minus-call) premium on the session. This surfaces the names where directional conviction is most concentrated, regardless of how many individual prints there are.
+- **Strike Stacks** — shows where premium is stacking at specific strikes on a given ticker. A heavy stack at one strike suggests a consensus price target among institutional flow.
+- **Dark Pool panel** — aggregated [dark pool](/learn/what-is-dark-pool-trading) prints for the session, showing where off-exchange block trades are concentrating. Cross-reference with the flow table to see whether dark pool stock activity precedes or follows the options prints. For a deeper walkthrough, see [Reading Dark Pool Data on HELIX](/learn/helix-dark-pool-analysis).
+- **Velocity Radar** — tracks the *rate* of flow, not just the total. A spike in velocity (many qualifying prints in a short window) is an urgency signal independent of premium size.
+
+## TickerDrawer: per-ticker drill-down
+
+Clicking a ticker in the flow table opens the **TickerDrawer** — a slide-out panel with a focused view of that single name. It shows all qualifying prints for the ticker, aggregated premium by direction, strike distribution, and a mini exposure profile from [Thermal](/learn/heat-maps) (if available for that name). The drawer is where you go from "interesting print" to "full picture on this name" — seeing whether the single trade you noticed is part of a larger pattern or a one-off.
+
+## Practical workflow
+
+A typical session with HELIX: set the premium floor at $500K, toggle to ALL, and scan the table for names appearing repeatedly with high Ask% and SWEEP rules. When a ticker catches your eye, click into the TickerDrawer for the full picture. Cross-check the signals column — is the print near a gamma wall? Is there dark pool activity in the same name? Then decide whether the flow supports a trade thesis. For how to interpret the Tide bar, anomaly banners, and AI brief that sit above the table, see [HELIX Flow Signals Explained](/learn/helix-flow-signals-explained). For background on separating signal from noise, see [How to Read Options Flow](/learn/how-to-read-options-flow). [Get access →](/pricing)
+
+> *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options trading involves substantial risk and is not suitable for every investor.*`,
+  },
+  {
+    slug: "helix-flow-signals-explained",
+    path: "/learn/helix-flow-signals-explained",
+    metaTitle: "HELIX Flow Signals: Tide & Sweeps | BlackOut",
+    metaDescription:
+      "HELIX flow signals explained — the Tide bar, flow anomaly banners, AI brief, ask-percent conviction, sweep vs block vs floor rules, and GEX proximity pills.",
+    targetKeyword: "options flow signals sweeps",
+    type: "article" as const,
+    title: "HELIX Flow Signals: Tide, Sweeps & Anomalies",
+    description:
+      "HELIX flow signals explained — the Tide bar, flow anomaly banners, AI brief, ask-percent conviction, sweep vs block vs floor rules, and GEX proximity pills.",
+    body: `The [HELIX flow scanner](/learn/helix-flow-scanner-guide) shows you the raw prints. The signals layer on top tells you what those prints *mean* in aggregate — whether the session's flow leans bullish or bearish, whether anything anomalous is happening, and whether the prints are landing near levels that matter on the [gamma map](/learn/heat-maps). Here is how to read each signal component.
+
+## HelixTideBar: the session's directional lean
+
+The **TideBar** sits above the flow table and provides a single-glance read on the aggregate direction of institutional flow for the current session.
+
+**The pill.** A label showing **BULLISH**, **BEARISH**, or **NEUTRAL** — the net directional verdict based on cumulative premium weight across all qualifying trades.
+
+**The split bar.** A horizontal bar divided into a green (call premium) section and a red (put premium) section, proportional to total dollar premium on each side. If the bar is 70% green, call-side premium is dominating the session 7-to-3. The bar updates on a **15-second polling cycle**, so the read stays current without flooding you with noise on every tick.
+
+The Tide is a context signal, not a trade trigger. A BULLISH tide doesn't mean "buy calls now" — it means the weight of institutional money flowing through the scanner is leaning call-side. Combined with a [positive GEX regime](/learn/what-is-gex) and price above the [gamma flip](/learn/gamma-flip-explained), a bullish Tide adds confluence. Against a negative-GEX regime, a bullish Tide might simply be hedging rather than conviction.
+
+## FlowAnomalyBanner: when something unusual is happening
+
+When HELIX detects [unusual options activity](/learn/unusual-options-activity-guide) that rises above the baseline noise, the **FlowAnomalyBanner** appears at the top of the scanner.
+
+**Severity badges.** Each anomaly carries a severity level. Low-severity anomalies (notable but not extreme) appear as standard badges. High-severity anomalies that cross a critical threshold — a $20M+ single print, a burst of sweeps on a single name within minutes — get a **pulsing badge** that draws your eye. The pulse is intentional: in a stream of data, critical items need to break through attention fatigue.
+
+**Per-ticker grouping.** Anomalies are grouped by ticker, so you can see at a glance whether the unusual activity is concentrated on one name (a focused institutional thesis) or spread across many (a broad market event).
+
+The banner polls every **20 seconds** — fast enough to catch a developing anomaly, slow enough to avoid false-positive flicker from isolated prints.
+
+## FlowBrief: the AI narrative
+
+During regular trading hours, HELIX generates a **FlowBrief** — a short, AI-written narrative summarizing the most significant flow developments of the session. The brief calls out the names with the heaviest flow, the direction of that flow, and any contextual factors (earnings proximity, macro data releases) that color the interpretation. It refreshes every **15 minutes** during RTH and pauses after the close.
+
+Think of the FlowBrief as a second opinion. If you have been staring at the tape for two hours and lost the thread, the brief re-centers you on what actually matters this session versus what is noise. It is a summary, not a recommendation — use it for context, not as a trade signal.
+
+## Ask% calculation: conviction in the fill
+
+One of the most important columns in the [flow table](/learn/helix-flow-scanner-guide) is **Ask%**, and understanding its math is essential:
+
+**Ask% = total ask-side premium / total premium x 100**
+
+A print where the buyer pays at the ask is an aggressive fill — they wanted the contract enough to pay the offer price rather than sitting on the bid and waiting. An Ask% of **60% or higher** signals conviction buying: the institution crossed the spread to get filled, which costs money and implies urgency. An Ask% of **40% or lower** signals the opposite — the trade was executed at or below the midpoint, suggesting a less urgent or potentially bearish motivation (selling premium, liquidating a position).
+
+Ask% is not a direction signal by itself — a 70% Ask% on puts means aggressive put *buying*, which is bearish. Always read Ask% in the context of whether the contract is a call or a put, and whether the trade is opening or closing a position.
+
+## SWEEP vs. BLOCK vs. FLOOR
+
+Every trade in the HELIX table carries a **rule type** badge:
+
+**SWEEP** — the order was split across multiple exchanges simultaneously to fill fast. The buyer wanted size *now* and paid up across venues. Sweeps signal urgency and conviction. Aggressive sweeps at the ask (calls) or at the bid (puts) are the strongest flow signal in the scanner. See [How to Read Options Flow](/learn/how-to-read-options-flow) for more on sweep mechanics.
+
+**BLOCK** — a large single-venue print, typically negotiated between two parties. Blocks are common for institutional position-building where the institution has time and can negotiate pricing. They carry less urgency than sweeps but more size conviction — someone committed significant capital in one print.
+
+**FLOOR** — executed on the physical trading floor, usually for large or complex orders (multi-leg spreads, packages). Floor trades are often the largest and most carefully structured prints on the tape, but they can also be hedges rather than directional bets. Context from the other columns (Ask%, OI, IV) helps distinguish.
+
+## GEX proximity signals
+
+HELIX cross-references every trade against the live [Thermal](/learn/heat-maps) gamma profile. When a print's strike sits near a key gamma level, it gets a proximity pill:
+
+- **FLIP** — the strike is near the [gamma flip](/learn/gamma-flip-explained). Flow hitting the flip is especially significant because it is pushing at the regime boundary.
+- **CALL WALL** — the strike is at or near the [call wall](/learn/call-wall-put-wall-explained). Large call buying at the call wall can either reinforce it (more hedging selling, stronger ceiling) or signal an attempt to break through.
+- **PUT WALL** — the strike is at or near the put wall. Large put buying at the put wall can weaken or break the support.
+
+These pills turn the flow table from a standalone feed into a positioning-aware scanner. A $2M call sweep is interesting. A $2M call sweep at the gamma flip is a potential regime-change catalyst. A $2M call sweep at a thinning call wall might be the break signal.
+
+## Combining signals
+
+The most actionable flow setups layer multiple HELIX signals together:
+
+- **Bullish Tide + sweeps at the ask + strikes near a weakening call wall** — buyers are pushing aggressively at a level that is losing its mechanical defense. Watch for a wall break.
+- **Anomaly banner pulsing on one ticker + dark pool block in the same name + Ask% > 70%** — institutional accumulation across both dark and lit venues with conviction fills. Cross-reference with the [TickerDrawer](/learn/helix-flow-scanner-guide) for the full picture.
+- **Bearish Tide + put sweeps + FLIP proximity pill** — flow is driving price toward the gamma flip from above. If price crosses below, the regime change can accelerate the move. See [Gamma Flip Explained](/learn/gamma-flip-explained).
+
+For a deeper look at how dark pool data fits into this picture, see [Reading Dark Pool Data on HELIX](/learn/helix-dark-pool-analysis). For background on separating signal from noise more generally, see [How to Read Options Flow](/learn/how-to-read-options-flow). [Get access →](/pricing)
+
+> *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options trading involves substantial risk and is not suitable for every investor.*`,
+  },
+  {
+    slug: "helix-dark-pool-analysis",
+    path: "/learn/helix-dark-pool-analysis",
+    metaTitle: "Reading Dark Pool Data on HELIX | BlackOut",
+    metaDescription:
+      "How to read dark pool data on HELIX — the dark pool panel, Thermal overlay rail, spotting institutional accumulation, and cross-referencing with gamma levels.",
+    targetKeyword: "dark pool options flow analysis",
+    type: "article" as const,
+    title: "Reading Dark Pool Data on HELIX",
+    description:
+      "How to read dark pool data on HELIX — the dark pool panel, Thermal overlay rail, spotting institutional accumulation, and cross-referencing with gamma levels.",
+    body: `[Dark pool](/learn/what-is-dark-pool-trading) activity is the off-exchange layer most retail traders never see. Roughly 40-50% of U.S. equity volume trades through these private venues before showing up on the tape, and the prints often precede — not follow — the options flow that appears on a public scanner. [HELIX](/learn/helix-flows) surfaces that data so you can see it alongside everything else.
+
+## The Dark Pool panel
+
+In the analytics column of the [HELIX flow scanner](/learn/helix-flow-scanner-guide), the **Dark Pool panel** aggregates off-exchange block prints for the session. Each entry shows the ticker, price level, and aggregate block volume at that level. The panel answers a simple question: at which prices have institutions been quietly building or liquidating positions off the lit tape?
+
+**What to look for:**
+
+- **Large blocks at a single price.** Repeated dark pool prints clustered at the same price level suggest an institution is methodically accumulating (or distributing) at that price. The consistency matters more than any single print — one block is an anecdote; five blocks at the same price is a pattern.
+- **Block size relative to the name.** A $10M dark pool print in AAPL is large but not extraordinary. The same print in a $5B market-cap name is enormous and far more likely to move the stock once the position is established.
+- **Timing relative to options flow.** Dark pool stock prints frequently *precede* options activity. An institution buys shares off-exchange first, then layers on calls for leverage or puts for hedging. When you see a dark pool block appear in the panel and then, minutes or hours later, see aggressive call sweeps on the same name in the HELIX flow table — that convergence is one of the strongest institutional-conviction signals available to retail traders.
+
+## DarkPoolRail on Thermal
+
+Beyond the HELIX panel, dark pool levels also appear on [Thermal](/learn/heat-maps) as the **DarkPoolRail** — horizontal reference lines overlaid on the gamma exposure profile. Each line marks a price where significant off-exchange volume traded.
+
+The power of the Thermal overlay is **context**. Seeing a dark pool line in isolation tells you where institutions traded. Seeing it on Thermal tells you where they traded relative to the [gamma flip](/learn/gamma-flip-explained), the [call wall, and the put wall](/learn/call-wall-put-wall-explained). A dark pool accumulation level that sits right at the put wall means that level has two independent reasons to act as support — mechanical dealer hedging *and* institutional demand. If price dips to that zone, both forces push back. Conversely, a dark pool distribution level near the call wall adds a second layer of resistance on top of the gamma ceiling.
+
+## Spotting institutional accumulation
+
+The textbook pattern for institutional accumulation on HELIX looks like this:
+
+1. **Dark pool blocks appear** at a consistent price level over hours or days — quiet, steady buying off-exchange.
+2. **[Unusual options activity](/learn/unusual-options-activity-guide) follows** — opening call purchases with high Ask% (conviction fills), often sweeps, on the same ticker.
+3. **The convergence** — dark pool stock buying followed by aggressive options positioning in the same direction suggests the institution has built a core stock position and is now adding leveraged upside via calls (or hedging with puts).
+
+Neither signal alone is conclusive. Dark pool blocks can be hedging, index rebalancing, or crosses between related funds. Call sweeps can be closing trades or legs of a spread. But the combination — off-exchange accumulation in the stock followed by opening, aggressive, unusual call flow — is a materially stronger signal than either in isolation.
+
+On the distribution side, the pattern inverts: dark pool blocks appearing at a price above recent range (profit-taking or exit), followed by put buying or call selling on the options tape. This is harder to spot because distribution is often quieter and more gradual, but HELIX's anomaly detection ([FlowAnomalyBanner](/learn/helix-flow-signals-explained)) can flag the options leg when the activity crosses the unusual threshold.
+
+## Cross-referencing with gamma levels
+
+The most actionable dark pool reads involve layering the data against [Thermal's gamma profile](/learn/thermal-heatmap-reading-guide):
+
+**Dark pool at the put wall.** Double support — dealer hedging buys dips at the wall, and institutional demand lives at the same price. A dip to this level has strong odds of bouncing unless both forces fail simultaneously (a wall break driven by flow larger than both the gamma and the dark pool demand).
+
+**Dark pool at the call wall.** Double resistance if the dark pool prints are distribution. But if the dark pool prints are *accumulation* at the call wall, it suggests the institution expects a breakout — they are buying where dealers are selling, betting the wall will break. That setup is rare but powerful: watch for aggressive sweeps at the same level to confirm whether the wall is about to give way.
+
+**Dark pool at the gamma flip.** Positioning at the regime boundary. If institutions are accumulating stock at the flip price, they may be betting on the session committing to positive gamma (price holding above the flip). If they are distributing, they may expect the flip to break to the downside. Cross-check with the [HELIX Tide](/learn/helix-flow-signals-explained) to see whether the broader flow agrees.
+
+**Dark pool in open space.** When a large dark pool level sits between the call wall and the put wall — away from any gamma level — it can act as an independent support or resistance zone that the gamma profile alone would miss. These levels are "hidden" on a pure gamma read but visible on HELIX. Mark them as supplemental reference levels alongside the wall, flip, and [max pain](/learn/max-pain-options-explained).
+
+## Practical routine
+
+During RTH, glance at the Dark Pool panel periodically for developing block clusters. When a ticker shows up with heavy dark pool activity, open the [TickerDrawer](/learn/helix-flow-scanner-guide) to see the full flow picture for that name. Then switch to Thermal and check the DarkPoolRail against the gamma profile — does the dark pool level reinforce a wall, or does it sit in a gap? That two-screen check takes seconds and adds a layer of institutional context that most retail setups completely ignore.
+
+For the foundations of dark pool mechanics, see [What Is Dark Pool Trading?](/learn/what-is-dark-pool-trading). For how to interpret the options flow side of the equation, see [How to Read Options Flow](/learn/how-to-read-options-flow) and [Unusual Options Activity Guide](/learn/unusual-options-activity-guide). [Get access →](/pricing)
+
+> *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options trading involves substantial risk and is not suitable for every investor.*`,
+  },
 ];
 
 export function getArticle(slug: string): LearnArticle | undefined {
