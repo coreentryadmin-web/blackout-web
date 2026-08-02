@@ -5676,3 +5676,49 @@ file). `node --import tsx --experimental-test-module-mocks --test` on both touch
 8/8 pass. `npm run build` — clean, `/flows` route size unchanged (39.5kB).
 
 **Status:** PR pending.
+
+## 2026-08-02 — [Helix Tier 1] Visual hierarchy pass + cut decorative glow ~40% — FIXED
+
+**Root cause (visual hierarchy).** A live-authenticated screenshot of `/flows` (temp Clerk
+admin+premium session via `mintClerkPremiumSession`, `proxy-browser.cjs`'s TLS-tunnel technique)
+showed the "Top Prints" rail (`HighScorePrints.tsx`) rendering every visible row with the SAME
+strong gold border+glow, regardless of whether the print was $1.0M or $62.8M — `scoreTone()`
+buckets by raw score (`>=9` → gold), and on a real session the top-N by score routinely clusters
+near the max, so almost every row hit the same bucket. Nothing on the panel read as THE standout
+print — literally the definition of "no visual hierarchy" (ChatGPT's Problem 1 / ex-audit Tier 1
+item #5).
+
+**Fix.** Added `rowStyle(isTop, tone)`: only rank 0 (the single highest-conviction print in the
+list) keeps `scoreTone`'s full background/border, plus a mild box-shadow glow scaled to the SAME
+reduced intensity as the rest of this fix (not the old full-strength value). Every other row is
+flattened to one quiet neutral style (`rgba(255,255,255,0.02)` bg, `rgba(255,255,255,0.06)`
+border, no shadow) — the score digit itself keeps its tier color as a small legible cue, but the
+panel-level chrome no longer competes with it.
+
+**Root cause (decorative glow).** `globals.css`'s Helix/flow rule set layered `text-shadow` +
+`box-shadow` + saturated `border`/`background` on nearly every interactive element (segmented
+filter buttons, badges, card hover states, the live-dot pulse ring, the compound-stack glow
+animation, the HELIX wordmark itself) — all at full intensity simultaneously, which is what reads
+as visually loud/cluttered rather than one thing standing out (Problem 12).
+
+**Fix.** Cut every identified glow's alpha and blur radius ~40% (a `0 0 24px rgba(x,0.12)` box-
+shadow → `0 0 15px rgba(x,0.07)`, etc.) across: `.flow-card-call`/`.flow-card-put` hover glows,
+`.flow-seg-group`/`.flow-seg-btn`/`.flow-seg-btn-active-all` text/box-shadow, `.flow-badge-stack`,
+the `flow-stack-glow` and `flow-alert-flash` keyframes, `.helix-pro-status-dot--live`,
+`.helix-pro-title(--compact)` wordmark text-shadow, and `.helix-flow-row--compound`'s inset
+border. Left untouched: two purely structural depth cues that aren't decorative color glow
+(`.helix-flow-terminal`'s ambient drop-shadow, `.helix-flow-table thead`'s 1px sticky-header
+hairline) — cutting those would just make panel edges harder to read, not calmer.
+
+**Evidence.** Baseline + reasoning captured from a live authenticated screenshot of prod `/flows`
+(same temp-user auth pattern as `data-validator.mjs`, deleted after). New test
+`HighScorePrints.test.ts` pins the row-hierarchy behavior: rank 0 gets the tone's real
+background/border/glow; every non-top row is identical regardless of its own score tier.
+
+**Blast radius.** `HighScorePrints.tsx` (+test), `globals.css` (11 rule sites). No API/data
+changes — purely presentational. `npx tsc --noEmit` clean; `npx eslint` on the touched component —
+0 errors (1 pre-existing, unrelated `timeAnchor` exhaustive-deps warning, not introduced here);
+`npx tsx --test` on the new test file — 2/2 pass.
+
+**Status:** PR pending. Remaining Tier 1 items (filters → mobile bottom sheet; rebuild
+`FlowAlertStream` as the real mobile layout) tracked as separate PRs.
