@@ -814,6 +814,8 @@ You can't see individual dealer hedges, but you can see the aggregate effect. Th
       "Walk through every panel and value on the SPX Slayer dashboard — the three-column layout, hero price, GEX regime, VWAP tint, and freshness indicators.",
     body: `The [SPX Slayer](/learn/spx-slayer) dashboard is a three-column 0DTE command center. Every number, pill, and color on screen exists because it feeds a trading decision — nothing decorative makes the cut. This walkthrough explains what each element means so you can read the board cold.
 
+![SPX Slayer Dashboard — the full 0DTE command center with GEX matrix, gamma flip chart, and play engine](/images/learn/spx-slayer-dashboard.webp)
+
 ## The three-column layout
 
 **Left column — GEX/VEX matrix.** A strike-by-expiry grid of signed gamma (or vanna) exposure, color-coded from deep red (heavy put gamma) to deep green (heavy call gamma). Key levels — the [gamma flip](/learn/gamma-flip-explained), [call wall, and put wall](/learn/call-wall-put-wall-explained) — are highlighted. See [Reading the SPX Slayer GEX Matrix](/learn/spx-slayer-gex-matrix-guide).
@@ -1060,6 +1062,8 @@ All three share the same positioning data from the [GEX matrix](/learn/spx-slaye
       "How to read BlackOut Thermal heatmaps — matrix view, exposure profile, King nodes, flip and wall levels, HELIX flow overlay, dark pool lines, and alerts.",
     body: `[Thermal](/learn/heat-maps) is BlackOut's dealer-positioning visualization — a live heatmap that shows where [gamma exposure](/learn/what-is-gex) (and vanna, delta, and charm) concentrates across the options chain. It has two primary views, a set of overlay layers, and a key-level summary box. Here is how to read each component.
 
+![BlackOut Thermal — dealer gamma heatmap with strike-by-expiry matrix, key levels, and GEX structure](/images/learn/thermal-heatmap.webp)
+
 ## Matrix view
 
 A **strike-by-expiry heat table**. Each cell contains the signed dollar exposure at that intersection — positive (green) where dealers are long gamma, negative (red) where short. The **diverging color scale** runs from deep red through gray to deep green. The **spot row** (current price) is highlighted; the default ticker is **SPY**, switchable to any supported name.
@@ -1246,6 +1250,8 @@ Before selecting any strike: (1) open Thermal and note the flip, call wall, put 
     description:
       "A complete walkthrough of the HELIX flow scanner — columns, premium filters, type toggles, analytics panel, replay mode, and the ticker drill-down drawer.",
     body: `[HELIX](/learn/helix-flows) is BlackOut's institutional options flow scanner. It filters the raw firehose of options trades into the prints that actually carry signal — [unusual activity](/learn/unusual-options-activity-guide), aggressive sweeps, and anomalies that stand out from routine hedging noise. Here is how to read every element on the screen.
+
+![HELIX Flow Scanner — live institutional options flow tape with conviction scoring and analytics panel](/images/learn/helix-flow-scanner.webp)
 
 ## HelixFlowTable: the core feed
 
@@ -1443,6 +1449,8 @@ For dark pool fundamentals, see [What Is Dark Pool Trading?](/learn/what-is-dark
     title: "Night Hawk Evening Edition: Your Overnight Playbook",
     description: "How to read the Night Hawk Evening Edition: ranked overnight plays, conviction tiers, track record, market context, and morning confirmation workflow.",
     body: `Every trading session starts the night before. While most retail traders wait for the opening bell, the BlackOut **Night Hawk Evening Edition** publishes a ranked playbook after the close — five ideas for the next session, each scored, tiered, and managed to hard invalidation levels before you even sit down at the desk.
+
+![Night Hawk — overnight playbook and 0DTE command board](/images/learn/night-hawk-board.webp)
 
 ## What the Evening Edition delivers
 
@@ -1721,6 +1729,8 @@ For the gate stack that runs before the Cortex, see the [0DTE Command guide](/le
     description: "How to use Largo AI as your desk analyst: chat interface, tool traces, live data queries, and the questions that get the best structured answers.",
     body: `**Largo AI** is not a chatbot. It is a desk analyst wired directly into BlackOut's live data layer — [GEX structure](/learn/what-is-gex), [options flow](/learn/how-to-read-options-flow), [dealer positioning](/learn/what-is-dealer-gamma-exposure), the [Night Hawk edition](/learn/night-hawk-evening-edition-guide), the [0DTE Command board](/learn/night-hawk-0dte-command-guide), and dozens more sources. When you ask a question, Largo does not guess. It calls the same tools the dashboards render and composes a grounded answer from real numbers.
 
+![Largo AI Terminal — your AI desk analyst with live data access](/images/learn/largo-ai-terminal.webp)
+
 ## The chat interface
 
 Largo lives at \`/terminal\` — a single full-page chat surface. The layout is simple:
@@ -1871,6 +1881,8 @@ For the full tool surface and interface layout, see the [Largo AI Terminal guide
     description: "How to read the Vector scanner: cross-ticker GEX ladders, wall integrity scoring, gamma magnet, confluence zones, regime banner, and the universe screener.",
     body: `[SPX Slayer](/learn/spx-slayer) and [Thermal](/learn/heat-maps) focus on SPX. **Vector** extends the same [dealer gamma exposure](/learn/what-is-dealer-gamma-exposure) framework across the **entire universe** — ranked setups from the BIE verification engine across multiple tickers, each with its own GEX ladder, regime posture, wall integrity scores, and confluence zones. If Thermal is the microscope on SPX's gamma structure, Vector is the radar dish scanning the broader market.
 
+![Vector Scanner — cross-ticker gamma radar with GEX ladder, signal feed, and regime detection](/images/learn/vector-scanner.webp)
+
 ## The universe screener
 
 The top-level view is a ranked table of tickers, each carrying the core positioning read:
@@ -1941,6 +1953,554 @@ The Vector alerts panel flags when a watched ticker crosses a material threshold
 Vector answers "where in the broader market is the gamma structure most interesting right now?" [Thermal](/learn/thermal-four-lenses-explained) gives you the deep heatmap for SPX. [SPX Slayer](/learn/spx-slayer-dashboard-guide) executes on SPX. [HELIX](/learn/helix-flow-scanner-guide) scans the flow tape. The [0DTE Command](/learn/night-hawk-0dte-command-guide) scanner uses multi-ticker flow and structure for intraday entries. And [Largo AI](/learn/largo-ai-terminal-guide) can pull any Vector ticker's GEX, regime, and walls into a conversational answer.
 
 For the underlying concepts — [what gamma exposure means](/learn/what-is-dealer-gamma-exposure), [how the gamma flip works](/learn/gamma-flip-explained), [why the Greeks matter](/learn/options-greeks-explained), and [how delta hedging creates these levels](/learn/delta-hedging-explained) — see the deep-dive library. [Get access →](/pricing)
+
+> *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options and equities trading involve substantial risk and are not suitable for every investor.*`,
+  },
+  {
+    slug: "vwap-trading-explained",
+    path: "/learn/vwap-trading-explained",
+    metaTitle: "VWAP Trading Explained | BlackOut",
+    metaDescription: "Learn what VWAP is, how it's calculated, why institutions use it as a benchmark, and how to trade around it for mean-reversion and trend confirmation.",
+    targetKeyword: "VWAP trading explained",
+    type: "article",
+    title: "VWAP Trading Explained: The Institutional Anchor",
+    description: "Learn what VWAP is, how it's calculated, why institutions use it as a benchmark, and how to trade around it for mean-reversion and trend confirmation.",
+    body: `Every institutional desk on the street watches the same line: **VWAP** — the volume-weighted average price. It is the benchmark against which portfolio managers judge execution quality, algorithms pace their fills, and intraday traders decide whether price is trading "rich" or "cheap" relative to the session's true average. If you trade without it, you are missing the single reference point the biggest participants anchor to.
+
+## What VWAP is and how it's calculated
+
+VWAP stands for **volume-weighted average price**. The calculation is simple: take each trade's price, multiply it by the number of shares traded at that price, sum those products across the session, and divide by total cumulative volume.
+
+**VWAP = cumulative (price x volume) / cumulative volume**
+
+Unlike a simple moving average that weights every candle equally, VWAP gives more influence to prices where volume actually transacted. A 5-point rally on thin pre-market volume barely budges VWAP; a 2-point grind on heavy mid-morning flow moves it meaningfully. That makes VWAP a measure of where real money changed hands — not just where price happened to print.
+
+VWAP resets every session. There is no multi-day VWAP on a standard chart — it is purely an intraday tool, which is one reason it pairs so well with 0DTE trading.
+
+## Why institutions care
+
+A portfolio manager who needs to buy 500,000 shares of SPY does not care about the last price; she cares about her average fill relative to VWAP. If she finishes the day at VWAP or better, execution was good. If she paid above VWAP, the algo overpaid. This benchmark effect means that large orders cluster *around* VWAP throughout the session, creating a natural zone of interest — one where institutional supply and demand actually meet.
+
+That clustering is why VWAP often acts as intraday **support and resistance**. When price pulls back to VWAP on a strong day, buyers who are benchmarked to it step in — their algos are programmed to buy dips to VWAP. When price rallies back to VWAP on a weak day, sellers lean on it for the same reason.
+
+## Two ways to trade around VWAP
+
+**Mean-reversion:** In a range-bound session — typically when [GEX is positive](/learn/what-is-gex) and price is above the [gamma flip](/learn/gamma-flip-explained) — VWAP acts like a magnet. Price stretches away, then snaps back. Traders fade moves to the upper or lower standard-deviation bands and target a return to VWAP. This works best in low-volatility, positive-gamma environments where dealer hedging suppresses directional moves.
+
+**Trend confirmation:** On a trending day, price stays on one side of VWAP for hours. A session where SPX opens above VWAP and never reclaims it from below is a clean trend day — and every bounce *to* VWAP that holds becomes a continuation entry, not a fade. The key tell: if price tests VWAP and the volume on the test is light, the trend is still intact. If it tests VWAP on heavy volume and reclaims the other side, the trend is broken.
+
+## VWAP on the BlackOut desk
+
+BlackOut builds VWAP into its core decision layers:
+
+**SPX Slayer** displays the **VWAP pill** directly on the [dashboard](/learn/spx-slayer-dashboard-guide) — a tinted indicator that reads bull (price above VWAP) or bear (price below). At a glance you know which side of the institutional anchor the session sits on, without overlaying a separate chart study.
+
+**0DTE Command** uses VWAP-side confirmation as one of its confluence pillars. When a play's direction agrees with the VWAP side — a call when price is above VWAP, a put when below — the historical edge is measurable: **+15.9% expected value versus -12.5% without** that confirmation. VWAP alignment does not guarantee a winner, but fighting it has a negative expected outcome across hundreds of graded sessions. Read more in the [0DTE Command guide](/learn/night-hawk-0dte-command-guide).
+
+**Thesis health** in the [0DTE strategy system](/learn/0dte-spx-options-strategy) treats VWAP side as one of its pillars. A play that was entered on a VWAP-confirmed thesis and then watches price cross back through VWAP has lost a pillar — the thesis is degrading, and the system flags it. That feedback loop prevents a trader from holding a position after the institutional anchor has flipped against it.
+
+## VWAP's limits
+
+VWAP is an intraday tool. It says nothing about overnight positioning, multi-day trends, or structural gamma levels. It works best when combined with [dealer positioning](/learn/what-is-dealer-gamma-exposure) (which tells you whether the session should be range-bound or trending) and [options flow](/learn/how-to-read-options-flow) (which tells you what the fast money is doing right now). Alone, VWAP is an anchor. Combined with the gamma map, it becomes a decision framework.
+
+> *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options and equities trading involve substantial risk and are not suitable for every investor.*`,
+  },
+  {
+    slug: "options-expiration-explained",
+    path: "/learn/options-expiration-explained",
+    metaTitle: "Options Expiration Explained | BlackOut",
+    metaDescription: "What happens when options expire, why expiration cycles matter for gamma and volatility, and how 0DTE changes the expiration game for SPX traders.",
+    targetKeyword: "options expiration explained",
+    type: "article",
+    title: "Options Expiration: What Happens & Why It Matters",
+    description: "What happens when options expire, why expiration cycles matter for gamma and volatility, and how 0DTE changes the expiration game for SPX traders.",
+    body: `Every option has a death date. What happens on that date — and in the hours leading up to it — drives some of the most predictable and violent price action in the market. Understanding **options expiration** is not optional if you trade anything with a strike and an expiry.
+
+## What happens at expiry
+
+At expiration, an option resolves into one of two outcomes:
+
+**In the money (ITM):** The option has intrinsic value. Equity options that are ITM by at least $0.01 are **auto-exercised** by the OCC — the holder is assigned a stock position (long shares for calls, short for puts) whether they wanted it or not. Index options like SPX settle in cash: you receive the difference between the strike and the settlement price. No shares change hands.
+
+**Out of the money (OTM):** The option expires worthless. The premium the buyer paid is gone; the premium the seller collected is kept. No assignment, no position — just a loss for the buyer and a win for the seller.
+
+**The pin risk zone** is the gray area: when the underlying closes very near a short strike, assignment becomes uncertain. A stock sitting at $550.05 with a $550 short call will likely trigger assignment — but after-hours moves could flip that. SPX index options avoid this problem because they settle to a calculated value, not a closing print, but equity options traders must manage it. More on this below and in the [pin risk deep dive](/learn/pin-risk-options-explained).
+
+## Expiration cycles
+
+**Monthly expirations** (third Friday) have been the standard since listed options began. They still carry the heaviest open interest for longer-dated contracts and concentrate the most gamma at expiry.
+
+**Weekly expirations** added more granularity — most liquid names now have options expiring every Friday. This spreads gamma events across the month rather than concentrating everything on one date.
+
+**0DTE daily expirations** changed everything. SPX, SPY, QQQ, and a growing list of names now have contracts expiring every trading day. That means every single session is an expiration event — with the enormous, fast-decaying [gamma](/learn/options-greeks-explained) that comes with it.
+
+## Why expiration concentrates gamma
+
+As expiration approaches, the [gamma](/learn/what-is-gex) of at-the-money options explodes. A $5,500-strike SPX call with 30 days to expiry has modest gamma — a 10-point move changes its delta slightly. The same strike with 2 hours to expiry has enormous gamma — a 10-point move can swing delta from 0.30 to 0.90. That makes dealer hedging on expiration day far more aggressive than on any other day of the cycle.
+
+This is why Friday expirations — when monthly and weekly contracts both roll off — tend to produce the session's most dramatic intraday reversals. The hedging flows are mechanical, large, and time-sensitive.
+
+## The expiration effects
+
+**Max pain pull:** As expiration nears, the underlying often gravitates toward [max pain](/learn/max-pain-options-explained) — the strike where the most options expire worthless. This is not a conspiracy; it is the natural result of dealer hedging and gamma pinning around strikes with heavy open interest.
+
+**Gamma unwind:** Once options expire, the gamma associated with those contracts vanishes. Dealers no longer need to hedge them. This "gamma unwind" can cause a shift in the market's character — a session pinned at 5,500 all morning might suddenly break loose in the final hour as expiring gamma rolls off and the stabilizing force disappears.
+
+**Volatility crush:** [Implied volatility](/learn/implied-volatility-explained) drops sharply after a known event passes (earnings, FOMC, expiration). Premium sellers who sold before expiration and held through the crush collect the decay; premium buyers who held too long watch their options lose value even if direction was right.
+
+**Elevated volume:** Expiration days consistently rank among the highest-volume sessions of the month. Rolling, closing, and adjusting all concentrate on the same calendar date.
+
+## How 0DTE changes the game
+
+With 0DTE contracts, every session is an expiration event. The [theta decay](/learn/theta-decay-options-explained) that used to take a week now compresses into hours. A $2.50 SPX call at 10:00 AM can be worth $0.30 by 2:00 PM — even if SPX has barely moved. That acceleration makes timing as important as direction.
+
+The gamma effect is equally compressed. Intraday dealer positioning becomes the dominant force — not the weekly or monthly cycle, but the *hourly* cycle of gamma building, peaking, and expiring. This is why the [0DTE SPX strategy](/learn/0dte-spx-options-strategy) at BlackOut treats each session as a standalone event with its own gamma regime, wall structure, and expiration dynamics rather than looking at multi-day charts.
+
+## Managing expiration risk
+
+The practical rules: (1) Know when your contracts expire — checking the calendar is free, getting surprised by assignment is not. (2) Close or roll positions before the final hour unless you have a specific reason to hold into the pin zone. (3) On 0DTE, respect the time stop — BlackOut's system uses a 15:30 ET cutoff to avoid the final 30 minutes of chaotic gamma unwind. (4) Never hold a short equity option into expiration without understanding the assignment math — after-hours moves can turn a breakeven into a liability.
+
+> *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options and equities trading involve substantial risk and are not suitable for every investor.*`,
+  },
+  {
+    slug: "how-to-read-options-chain",
+    path: "/learn/how-to-read-options-chain",
+    metaTitle: "How to Read an Options Chain | BlackOut",
+    metaDescription: "Learn to read an options chain like a pro: bid/ask, volume, open interest, IV, greeks columns, and how to spot unusual activity in the chain.",
+    targetKeyword: "how to read options chain",
+    type: "article",
+    title: "How to Read an Options Chain Like a Pro",
+    description: "Learn to read an options chain like a pro: bid/ask, volume, open interest, IV, greeks columns, and how to spot unusual activity in the chain.",
+    body: `The **options chain** is the raw interface between you and the market. Every option available on a given underlying is laid out in a single table — and if you know how to read it, you can see institutional positioning, liquidity, volatility expectations, and directional bets before they show up on the price chart. Here is how to read it without getting lost.
+
+## Anatomy of the chain
+
+A standard options chain is organized around the **strike price** in the center column. To the left sit the **calls**; to the right sit the **puts**. Each row represents one strike, and within each row you will see several columns:
+
+**Bid / Ask:** The best price someone is willing to pay (bid) and the lowest price someone is willing to sell at (ask). The difference — the **spread** — tells you how liquid that strike is. SPX at-the-money options might show a $0.50 spread; an illiquid biotech 20 strikes out of the money might show $2.00. Wider spreads mean higher friction and worse fills.
+
+**Last:** The most recent trade price. Useful for context but can be stale — a "last" of $3.00 on a contract that has not traded in an hour tells you nothing about the current market. Always look at the bid/ask for the live picture.
+
+**Volume:** How many contracts have traded today at that strike. Volume is a *flow* measure — it tells you what is happening right now.
+
+**Open Interest (OI):** The total number of outstanding contracts at that strike. OI is a *stock* measure — it tells you what has accumulated over time. The relationship between these two numbers is one of the most powerful reads in the chain. See [Open Interest Explained](/learn/open-interest-options-explained) for the full breakdown.
+
+**Implied Volatility (IV):** The market's forecast of future volatility priced into that specific contract. Higher IV means more expensive premium. IV varies across strikes — the pattern of IV across the chain is the **volatility skew**, and it reveals how the market prices tail risk. Deep OTM puts almost always carry higher IV than ATM calls because the market prices crash risk at a premium. → [Implied Volatility Explained](/learn/implied-volatility-explained)
+
+**Greeks columns:** Delta, gamma, theta, vega — the sensitivities of each contract to price, time, and volatility. Most traders focus on delta (directional exposure) and theta (daily time decay). The full breakdown: [Options Greeks Explained](/learn/options-greeks-explained).
+
+## What to look for
+
+**Volume vs. OI ratio:** When volume at a strike significantly exceeds open interest, new positions are being opened — someone is making a fresh bet. If volume is high but OI is flat or declining, existing positions are being closed. The distinction matters: new positioning is a signal; closing is cleanup.
+
+**Bid-ask spread as a liquidity filter:** Before trading any strike, check the spread. A contract with a $0.10 spread is liquid and easy to enter and exit. A contract with a $1.50 spread means you are paying $150 per contract just to cross. The tightest spreads cluster around the at-the-money strikes and the nearest expirations — that is where the market makers concentrate their quoting.
+
+**IV skew across strikes:** Compare the IV of the 25-delta put to the 25-delta call. In equity indices, the put almost always carries higher IV (the "skew"). When that skew steepens — puts getting even more expensive relative to calls — the market is pricing in more downside risk. When it flattens, fear is receding. Skew is a sentiment indicator embedded directly in the chain.
+
+## Spotting unusual activity
+
+The chain is where [unusual options activity](/learn/unusual-options-activity-guide) first shows up, before any alert fires:
+
+**Volume >> OI:** When a strike shows 5,000 contracts traded today against an open interest of 800, that is overwhelmingly new money. If it is concentrated on the call side, someone is making a directional bet on upside. If it is on the put side, either a hedge or a directional downside bet.
+
+**Sweeps at the ask:** A large order that hits the ask price across multiple exchanges simultaneously is a **sweep**. It signals urgency — the buyer is not waiting for a fill; they are taking whatever is offered. Sweeps at the ask on calls are aggressively bullish; sweeps at the ask on puts are aggressively bearish.
+
+**Large block prints:** A single print of 1,000+ contracts at one strike, especially at or near the ask, is an institutional block trade. The size and price (at-the-ask vs. at-the-bid vs. mid) tell you whether the institution is buying or selling, and how urgently.
+
+## How HELIX automates the chain read
+
+Reading the chain manually across dozens of names and expirations is a full-time job. BlackOut's [HELIX flow scanner](/learn/helix-flow-scanner-guide) automates it: it monitors the entire options tape in real time, filters for [unusual activity](/learn/unusual-options-activity-guide) (sweeps, blocks, high ask-side percentage), and surfaces the contracts that matter — so you can spend your time on the decision, not the data. The signal extraction methodology is detailed in [How to Read Options Flow](/learn/how-to-read-options-flow).
+
+## Putting it together
+
+The chain is not a single indicator — it is the full picture. Volume tells you what is happening now. OI tells you what has built up. IV tells you what the market expects. The Greeks tell you how each contract will respond. And the pattern across all of them — the skew, the volume clusters, the sweeps — tells you where the smart money is positioning. Learn to read it, and you are reading the same data the desks see.
+
+> *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options and equities trading involve substantial risk and are not suitable for every investor.*`,
+  },
+  {
+    slug: "theta-decay-options-explained",
+    path: "/learn/theta-decay-options-explained",
+    metaTitle: "Theta Decay in Options Explained | BlackOut",
+    metaDescription: "Theta measures how time eats options premium. Learn the non-linear decay curve, the 0DTE acceleration effect, and how BlackOut manages theta risk.",
+    targetKeyword: "theta decay options",
+    type: "article",
+    title: "Theta Decay: How Time Eats Options Premium",
+    description: "Theta measures how time eats options premium. Learn the non-linear decay curve, the 0DTE acceleration effect, and how BlackOut manages theta risk.",
+    body: `Every option you own is melting. From the moment you buy it, time is working against you — quietly at first, then violently as expiration approaches. That melting is called **theta decay**, and understanding its shape is the difference between trading time profitably and watching your premium evaporate while you wait for a move that comes too late.
+
+## What theta measures
+
+**Theta** is one of the options [Greeks](/learn/options-greeks-explained), and it represents the dollar amount an option's price declines per calendar day, all else equal. If an SPX call shows theta of -$0.85, it loses approximately 85 cents of value for every day that passes with no change in the underlying or implied volatility. Theta is always negative for long options (time hurts the buyer) and positive for short options (time helps the seller).
+
+The key phrase is "all else equal." In practice, price moves and [IV](/learn/implied-volatility-explained) shifts can overwhelm theta on any given day. But over a series of trades, theta is the persistent headwind that long options buyers must overcome with directional accuracy — and the persistent tailwind that premium sellers collect.
+
+## The non-linear curve: slow, then fast
+
+Theta does not decay at a constant rate. A 30-day option loses a small amount of value each day — maybe $0.15 on a $5.00 contract. But as expiration approaches, the decay accelerates sharply. The same contract at 7 days to expiry might lose $0.40/day. At 2 days, $0.80. At 1 day, $1.50. The curve is non-linear: it looks like a hockey stick, flat on the left and steep on the right.
+
+This is why selling premium with 30+ days to expiry feels slow — the theta is real but small. And why buying weeklies feels punishing — the decay is relentless and accelerating.
+
+## ATM vs. OTM theta
+
+**At-the-money (ATM)** options have the highest absolute theta because they carry the most extrinsic (time) value. A $5,500-strike SPX call with SPX at 5,500 is pure extrinsic value — and all of it will decay to zero by expiration.
+
+**Out-of-the-money (OTM)** options have lower absolute theta (less total premium to decay) but higher *percentage* theta relative to their price. A $0.50 OTM option losing $0.10/day is losing 20% of its value daily — far more punishing on a percentage basis than an ATM option losing $0.50 on a $5.00 price. This is why cheap OTM lottery tickets feel like they "go to zero overnight" — the percentage decay is brutal.
+
+**In-the-money (ITM)** options have lower theta because a larger share of their value is intrinsic (the built-in SPX-minus-strike component), which does not decay. Theta only eats extrinsic value.
+
+## 0DTE theta: the extreme case
+
+On a zero-days-to-expiration contract, the hockey stick is not a curve — it is a cliff. A $2.00 SPX call at 10:00 AM can be worth $0.20 by 2:00 PM even if SPX has not moved a single point. That is pure theta at work, compressed into hours instead of weeks.
+
+This speed creates opportunity on both sides. Premium sellers can collect meaningful decay in a single session — an [iron condor](/learn/iron-condor-strategy-guide) opened at 10 AM and closed at 3 PM captures a day's worth of theta in five hours. Premium buyers must overcome that same decay with a fast, directional move — which is why the [0DTE SPX strategy](/learn/0dte-spx-options-strategy) emphasizes timing, not just direction. Being right by the close is not enough if you were early and theta ate your position before the move arrived.
+
+## Selling theta vs. buying theta
+
+**Selling theta** (short options, credit spreads, iron condors) means time is your ally. You collect premium and hope the underlying stays in a range. The risk is a large move that overwhelms the credit collected. This works best in positive [GEX](/learn/what-is-gex) regimes where dealer hedging suppresses volatility and the range holds.
+
+**Buying theta** (long options, directional 0DTE) means time is your enemy. You pay premium and need a move large enough and fast enough to overcome the decay. This works best in negative GEX regimes where momentum feeds on itself and directional moves are large.
+
+The regime — positive vs. negative gamma — determines which side of the theta trade has the structural edge on any given session. That is why reading dealer positioning is not separate from managing theta; it *is* managing theta.
+
+## How BlackOut manages theta risk
+
+The [Night Hawk 0DTE system](/learn/night-hawk-0dte-command-guide) embeds theta management directly into its rules:
+
+**-50% hard stops:** If a position loses half its entry premium, it is closed. No exceptions. This prevents theta from bleeding a directional bet to zero on a slow day.
+
+**15:30 ET time stops:** Any open 0DTE position is closed by 3:30 PM Eastern, 30 minutes before the close. This avoids the final window where theta is at its most extreme and gamma unwind makes price action chaotic. See [SPX Slayer's lotto power hour guide](/learn/spx-slayer-lotto-power-hour) for how the system handles the end-of-day window.
+
+**Premium caps:** The system caps entry premium on 0DTE trades to limit the absolute dollar amount exposed to theta. A $500 max premium on a directional call means theta can take at most $500 — and the -50% stop cuts it to $250. Bounded losses, not open-ended decay.
+
+These rules do not eliminate theta — they structure it. The premium seller gets a defined range and a time window. The directional buyer gets a hard ceiling on how much time can take. Either way, theta is accounted for in the trade plan, not discovered after the fact.
+
+> *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options and equities trading involve substantial risk and are not suitable for every investor.*`,
+  },
+  {
+    slug: "open-interest-options-explained",
+    path: "/learn/open-interest-options-explained",
+    metaTitle: "Open Interest in Options Explained | BlackOut",
+    metaDescription: "Open interest maps where options positions are concentrated. Learn the difference between OI and volume, why OI builds walls, and how to read the map.",
+    targetKeyword: "open interest options explained",
+    type: "article",
+    title: "Open Interest in Options: Reading the Positioning Map",
+    description: "Open interest maps where options positions are concentrated. Learn the difference between OI and volume, why OI builds walls, and how to read the map.",
+    body: `Volume tells you what happened today. **Open interest** tells you what is still on the table. It is the accumulated footprint of every options position that has been opened and not yet closed — and it maps exactly where dealer gamma concentrates, where walls form, and where the market is most likely to pin at expiration. If volume is the flow, open interest is the structure.
+
+## What open interest is
+
+**Open interest (OI)** is the total number of outstanding option contracts at a given strike and expiration. Every time a buyer opens a new position and a seller writes a new contract, OI increases by one. When either side closes their position (the buyer sells, or the writer buys back), OI decreases by one. If a closing buyer is matched with an opening seller, OI stays the same — one contract was retired and one was created.
+
+OI is updated once per day, after the close. It is not a real-time number during the session — that is volume's job.
+
+## OI vs. volume: the critical distinction
+
+**Volume** counts contracts traded during the current session. It resets to zero every morning. It is a *flow* measure: what is moving right now.
+
+**OI** counts contracts outstanding — it carries over from day to day. It is a *stock* measure: what has accumulated over time.
+
+The relationship between the two reveals intent:
+
+| Volume | OI change | Interpretation |
+|--------|-----------|----------------|
+| High | Increasing | New positions being opened — fresh directional or hedging bets |
+| High | Decreasing | Existing positions being closed — profit-taking or stop-outs |
+| High | Flat | Turnover — one side opening while the other closes, net neutral |
+| Low | Flat | Nothing happening — the strike is dormant |
+
+A spike in volume at a strike where OI subsequently rises is the strongest signal: new money is coming in with conviction. A spike in volume where OI drops is cleanup — do not read it as a fresh bet.
+
+## Why OI concentrations matter
+
+Large OI at a specific strike is where dealer [gamma](/learn/what-is-gex) piles up. Dealers who sold those options must continuously hedge them, and the hedging pressure at that strike creates a mechanical force — what traders call a **wall**.
+
+When OI is concentrated in calls at SPX 5,550, that strike becomes the [call wall](/learn/call-wall-put-wall-explained) — a zone where dealer selling pressure intensifies as price approaches. The more contracts outstanding, the larger the hedging flow, and the "stickier" the wall. The same logic applies to the [put wall](/learn/call-wall-put-wall-explained) below price.
+
+This is not abstract theory. It is the direct link between open interest (a chain-level data point) and the gamma levels (the [call wall, put wall](/learn/call-wall-put-wall-explained), and [gamma flip](/learn/gamma-flip-explained)) that BlackOut surfaces on every session.
+
+## OI + volume combos: what they mean in practice
+
+**High OI + high volume:** Active position management. The big players are adjusting their exposure at this strike — rolling, adding, or trimming. The wall is alive and being maintained, which makes it more reliable as a level.
+
+**High OI + low volume:** A dormant wall. The positions were placed days or weeks ago and have not been touched. The gamma is still there — dealers still hedge it — but the holders are passive. These walls tend to hold until expiration unless a catalyst forces them to act.
+
+**Low OI + high volume:** New positioning. Someone is building a fresh bet at a strike that had little interest before. Watch whether OI actually increases the next morning — if it does, a new wall may be forming.
+
+**Low OI + low volume:** Irrelevant. No positioning, no flow, no gamma. Ignore it.
+
+## OI at specific strikes: walls and max pain
+
+The strikes with the highest call OI and put OI define the structural boundaries of the session. The call wall brackets the upside; the put wall brackets the downside. Between them, dealer hedging tends to pin price.
+
+[Max pain](/learn/max-pain-options-explained) is calculated from the same open interest data: it is the strike price at which the total dollar value of all expiring options would be minimized — the price that causes maximum pain to option holders. Max pain and the gamma walls tend to cluster in the same zone because they are built from the same OI distribution. When they converge, the case for a pinning session is strong.
+
+## How to use OI in your workflow
+
+Start each session by checking where the largest OI clusters sit relative to current price. That gives you the walls. Then check volume during the session — is new OI building at different strikes? Are the existing walls being reinforced or dismantled? The [Thermal heatmap](/learn/thermal-heatmap-reading-guide) visualizes this across strikes and expirations in real time, so you do not need to scan the raw chain manually.
+
+Open interest is not a directional signal — it is a structural one. It tells you where the battle lines are drawn and where the mechanical forces concentrate. Direction comes from flow, gamma regime, and price action. Structure comes from OI.
+
+> *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options and equities trading involve substantial risk and are not suitable for every investor.*`,
+  },
+  {
+    slug: "vix-trading-guide",
+    path: "/learn/vix-trading-guide",
+    metaTitle: "VIX Explained: The Fear Gauge | BlackOut",
+    metaDescription: "The VIX measures 30-day implied volatility on SPX options. Learn VIX regimes, its relationship to gamma, and how BlackOut uses VIX in 0DTE gating.",
+    targetKeyword: "VIX explained trading",
+    type: "article",
+    title: "VIX Explained: The Market's Fear Gauge",
+    description: "The VIX measures 30-day implied volatility on SPX options. Learn VIX regimes, its relationship to gamma, and how BlackOut uses VIX in 0DTE gating.",
+    body: `When the market panics, one number leads the conversation: the **VIX**. Formally the CBOE Volatility Index, it is the market's real-time estimate of expected volatility over the next 30 days — derived from the prices of SPX options. It does not measure what *has* happened; it measures what the market *expects* to happen. That forward-looking nature is why it earns the nickname "fear gauge," and why traders who ignore it are flying without an altimeter.
+
+## What VIX actually measures
+
+The VIX is calculated from the prices of a wide strip of out-of-the-money SPX puts and calls across two near-term expirations. Higher option prices mean the market is pricing in larger expected moves, which pushes VIX up. Lower option prices mean the market expects calm, and VIX falls.
+
+Critically, VIX measures **implied volatility** — what [option premiums](/learn/implied-volatility-explained) suggest about future moves — not realized (historical) volatility. The two diverge regularly. VIX can be elevated while the market grinds sideways (fear without follow-through), or it can be low while a slow trend is underway (complacency before a shock).
+
+A VIX reading of 20 roughly translates to an expected annualized move of 20% in SPX — or about 1.26% per day (20 / sqrt(252)). At VIX 15, the daily expected move is ~0.95%. At VIX 30, it is ~1.89%. Those numbers set the boundaries for what is "normal" movement on any given session.
+
+## VIX regimes
+
+Not all VIX levels are equal. The market behaves differently at each tier:
+
+**Low VIX (below 15):** Complacency. Premiums are cheap, realized volatility is low, and the market grinds higher on light volume. This is where premium sellers thrive — but it is also where the *next* volatility event is being priced out, which means the shock, when it comes, is under-hedged and therefore sharper.
+
+**Normal VIX (15-20):** The market is pricing in a healthy level of uncertainty. Options are fairly priced, hedging is neither cheap nor expensive, and directional trades have a reasonable cost of entry.
+
+**Elevated VIX (20-30):** Fear is in the market. Premiums are rich, which rewards sellers who can stomach the risk. Daily ranges expand. [Gamma](/learn/what-is-gex) effects are amplified because the larger moves force more aggressive dealer hedging.
+
+**Crisis VIX (30+):** Panic. The March 2020 COVID crash pushed VIX above 80. At these levels, options are extremely expensive, daily moves of 3-5% are normal, and the market can gap through any level overnight. Premium selling carries enormous risk; directional conviction (if correct) is richly rewarded.
+
+## VIX and gamma: the acceleration link
+
+VIX and [dealer gamma exposure](/learn/what-is-dealer-gamma-exposure) are deeply connected. When VIX rises, it usually means SPX is falling — and falling price often pushes SPX below the [gamma flip](/learn/gamma-flip-explained), putting dealers in negative gamma territory. Negative gamma means dealers hedge *with* the move (selling as price falls), which amplifies the decline, which pushes VIX higher, which makes hedging more aggressive. It is a feedback loop: falling price → negative gamma → more selling → higher VIX → larger expected moves → more hedging demand.
+
+This is the environment behind every "waterfall day." VIX above 25 with price below the gamma flip is the acceleration regime — directional moves feed on themselves, and fading the trend gets run over.
+
+The reverse is also true. Low VIX with positive GEX is the compression regime: dealers suppress moves, ranges tighten, and premium sellers collect. Understanding which regime you are in — and VIX is one of the fastest reads — sets the playbook before the first trade.
+
+## How BlackOut uses VIX
+
+VIX is embedded in BlackOut's decision system at multiple levels:
+
+**0DTE gate G-4 (VIX regime):** The [Night Hawk 0DTE system](/learn/night-hawk-0dte-command-guide) applies VIX-based gating to every candidate play. When VIX is above 17, the score floor rises — only higher-conviction setups pass. When VIX is above 20, the system restricts to index-only plays (SPX, SPY, QQQ) because single-stock gamma is too noisy in a high-vol environment. The gate is not a binary on/off — it is a sliding scale that tightens discipline as uncertainty rises.
+
+**SPX Slayer VIX pill:** The [SPX Slayer dashboard](/learn/spx-slayer-dashboard-guide) displays a VIX pill with the current reading and a regime classification (low / normal / elevated / crisis). One glance tells you whether today is a premium-selling environment or a respect-the-trend environment — before you look at a single chart.
+
+**Regime classification:** VIX feeds into the system's overall regime read alongside GEX sign, gamma flip position, and [implied volatility](/learn/implied-volatility-explained) term structure. The regime determines which strategies are appropriate: [iron condors](/learn/iron-condor-strategy-guide) in low-VIX positive-gamma sessions, directional trades in high-VIX negative-gamma sessions.
+
+## VIX term structure: contango vs. backwardation
+
+VIX itself is a spot index — you cannot trade it directly. But VIX futures trade across multiple months, and their term structure reveals market sentiment:
+
+**Contango (normal):** Front-month VIX futures trade below back-month futures. The market expects current calm to persist and prices rising uncertainty further out. This is the default state — the market spends roughly 80% of the time in contango.
+
+**Backwardation (fear):** Front-month VIX futures trade above back-month futures. The market expects the current storm to be worse than what follows. Backwardation is the structural signal for crisis — when it appears, the market is pricing in near-term pain that exceeds the long-term outlook. It typically resolves quickly (days to weeks), but while it persists, it is a warning not to fade the volatility.
+
+## The practical takeaway
+
+VIX is not a trade signal — it is a context setter. It tells you how wide the market's distribution of outcomes is, which regime the session belongs to, and whether the premium you are paying (or collecting) is cheap or expensive relative to expected movement. Check it before the session, check it when the market moves, and let it inform the structure of your trades — not the direction.
+
+> *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options and equities trading involve substantial risk and are not suitable for every investor.*`,
+  },
+  {
+    slug: "credit-spreads-strategy-guide",
+    path: "/learn/credit-spreads-strategy-guide",
+    metaTitle: "Credit Spreads Strategy Guide | BlackOut",
+    metaDescription: "Credit spreads are defined-risk premium-selling structures. Learn bull put and bear call spreads, strike selection using gamma walls, and when to deploy them.",
+    targetKeyword: "credit spreads options strategy",
+    type: "article",
+    title: "Credit Spreads: Defined-Risk Premium Selling",
+    description: "Credit spreads are defined-risk premium-selling structures. Learn bull put and bear call spreads, strike selection using gamma walls, and when to deploy them.",
+    body: `Premium selling is how most professional desks make money — but naked short options carry unlimited risk. A **credit spread** solves that problem: it collects premium while capping the maximum loss at a known dollar amount. It is the simplest defined-risk structure in the options playbook, and it is the building block of more complex strategies like the [iron condor](/learn/iron-condor-strategy-guide).
+
+## What a credit spread is
+
+A credit spread involves two options of the same type (both calls or both puts), same expiration, at different strikes. You **sell** the closer-to-the-money strike (higher premium) and **buy** the further-out strike (lower premium). The difference is a net **credit** — cash you collect upfront.
+
+**Max profit** = the credit received. If both options expire worthless, you keep the full credit.
+
+**Max loss** = the width of the strikes minus the credit. If SPX blows through both strikes, the long option caps your loss.
+
+Example: SPX is at 5,500. You sell the 5,450 put for $4.50 and buy the 5,440 put for $3.50. Net credit = $1.00. Width = 10 points. Max loss = $10.00 - $1.00 = $9.00. Max profit = $1.00. You need SPX to stay above 5,450 at expiration to keep the full credit.
+
+## Bull put spread vs. bear call spread
+
+**Bull put spread (bullish):** Sell a higher-strike put, buy a lower-strike put. You want the underlying to stay above your short put. This is the go-to structure when you expect support to hold — when the underlying is above the [gamma flip](/learn/gamma-flip-explained) and the [put wall](/learn/call-wall-put-wall-explained) is defending a level below.
+
+**Bear call spread (bearish):** Sell a lower-strike call, buy a higher-strike call. You want the underlying to stay below your short call. Use this when you expect resistance to hold — when the [call wall](/learn/call-wall-put-wall-explained) is capping upside and dealer selling is leaning against rallies.
+
+Both structures profit from time decay ([theta](/learn/theta-decay-options-explained)) and volatility contraction. Both lose when the underlying moves decisively through the short strike.
+
+## When to use credit spreads
+
+Credit spreads are not always appropriate. They thrive in specific conditions:
+
+**Positive GEX (above the [gamma flip](/learn/gamma-flip-explained)):** When dealers are long gamma, they sell rallies and buy dips — suppressing volatility and keeping price in a range. This is the regime where premium-selling structures have the highest probability of staying inside the zone. Negative GEX environments can blow through your strikes before theta has a chance to work.
+
+**Near gamma walls:** Placing your short strike at or just past the [call wall](/learn/call-wall-put-wall-explained) (for bear call spreads) or the [put wall](/learn/call-wall-put-wall-explained) (for bull put spreads) gives a mechanical reason to expect the range to hold. The wall represents concentrated dealer hedging that acts as a barrier — not a guarantee, but a structural edge.
+
+**Elevated IV:** When [implied volatility](/learn/implied-volatility-explained) is above its recent average, premiums are rich and the credit collected is larger relative to the risk. Selling a $1.50 credit on a 10-wide spread is a different trade than selling $0.40 on the same width. Higher IV means better risk/reward on the credit side — and if IV contracts after entry, the spread profits from both theta and vega.
+
+**Time-defined events:** Credit spreads that expire before a known catalyst (earnings, FOMC) collect the pre-event premium without taking the event risk — as long as the expiration precedes the event. On 0DTE, every session is its own event, and theta is extreme enough to make same-day credit spreads viable.
+
+## Strike selection using gamma walls
+
+The traditional approach to strike selection — "sell the 20-delta" or "sell 2 standard deviations out" — is a statistical shortcut. Gamma walls offer a *structural* reason for strike placement:
+
+**Short strike:** Place it at or just past the relevant gamma wall. For a bull put spread, the put wall is your structural defense — sell your put at or slightly below that level. For a bear call spread, sell your call at or just past the call wall.
+
+**Long strike:** Place it further out — the "wing" — to define your max loss. The width determines your max risk. Narrower widths (5-point spreads on SPX) have lower max loss but worse credit-to-risk ratios. Wider widths (20-25 points) collect more credit but expose more capital. See the [thermal strike selection guide](/learn/thermal-strike-selection-guide) for how to read the gamma profile when choosing your strikes.
+
+## The relationship to iron condors
+
+An [iron condor](/learn/iron-condor-strategy-guide) is simply a bull put spread and a bear call spread opened simultaneously. You sell premium on both sides — collecting the put-side credit and the call-side credit — and define a range where you profit. If you are comfortable with credit spreads, iron condors are the natural next step: same mechanics, double the theta collection, and the gamma-wall logic applies to both legs.
+
+## Managing the trade
+
+Credit spreads are set-and-forget *in theory*. In practice, management matters:
+
+**Close at a target:** Many traders close at 50-75% of max profit rather than holding to expiration. The last 25% of profit carries the most gamma risk — price can move sharply in the final hours.
+
+**Cut on a wall break:** If the [put wall](/learn/call-wall-put-wall-explained) you built your bull put spread around breaks decisively, the structural defense is gone. Close the spread and accept a small loss rather than holding into max loss territory.
+
+**Respect regime changes:** If GEX flips negative mid-session, the environment has changed. A spread that looked safe in positive gamma may be at risk in negative gamma. Re-evaluate rather than hoping the wall holds against a regime that no longer supports it.
+
+> *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options and equities trading involve substantial risk and are not suitable for every investor.*`,
+  },
+  {
+    slug: "pin-risk-options-explained",
+    path: "/learn/pin-risk-options-explained",
+    metaTitle: "Pin Risk in Options Explained | BlackOut",
+    metaDescription: "Pin risk occurs when the underlying closes near a short strike at expiration. Learn why it happens, the dangers of partial assignment, and how to avoid it.",
+    targetKeyword: "pin risk options expiration",
+    type: "article",
+    title: "Pin Risk in Options: When Expiration Gets Dangerous",
+    description: "Pin risk occurs when the underlying closes near a short strike at expiration. Learn why it happens, the dangers of partial assignment, and how to avoid it.",
+    body: `Most options expire cleanly — well in the money or well out of it. The dangerous ones are in between. When the underlying closes *near* your short strike at expiration, you enter the zone of **pin risk** — where assignment is uncertain, after-hours moves create surprise exposure, and a trade you thought was over comes back to life in the worst way.
+
+## What pin risk is
+
+**Pin risk** arises when the underlying's price at expiration is very close to a strike where you are short an option. The term "pinning" refers to two related phenomena: (1) the tendency of the underlying to gravitate toward high-OI strikes near expiration (the mechanical pinning effect), and (2) the assignment uncertainty that creates when your short option finishes right at the line.
+
+If SPY closes at $550.02 and you are short the $550 call, that call is technically in the money — but by only $0.02. The OCC will auto-exercise it, assigning you short 100 shares of SPY per contract. If SPY closes at $549.98, it expires worthless. A $0.04 difference — invisible on a chart — is the difference between no position and a large stock exposure you did not want.
+
+## Why pinning happens
+
+Pinning is not random. It is a mechanical consequence of dealer gamma hedging around strikes with high [open interest](/learn/open-interest-options-explained).
+
+As expiration approaches, [gamma](/learn/options-greeks-explained) at the at-the-money strike becomes enormous. Dealers who are short that gamma must hedge aggressively: buying as price dips below the strike and selling as it rises above. That hedging creates a gravitational pull *toward* the strike — every move away is partially offset by mechanical flow pushing price back. The result: price "pins" to the high-OI strike.
+
+This effect is strongest at strikes where both call and put open interest are heavy — typically the round numbers (SPY 550, SPX 5,500) and strikes near [max pain](/learn/max-pain-options-explained). The more OI, the stronger the hedging, the tighter the pin.
+
+On monthly expirations (third Friday), when the largest OI concentrations expire simultaneously, pinning can hold price within a 2-3 point range for hours. Weekly and daily expirations produce the same effect but on a smaller scale — the OI is lower, so the pin is weaker but still present.
+
+## The dangers
+
+**Partial assignment:** If you sold 10 SPY $550 calls and SPY closes at $550.10, all 10 will likely be exercised. But what if SPY closes at $550.01? The OCC exercises ITM options automatically, but the holders of those options can also choose *not* to exercise (they must notify their broker). You might be assigned on 7 of 10 contracts, leaving you with an unexpected 700-share short position — not the clean all-or-nothing result you planned for.
+
+**After-hours moves:** Equity options stop trading at 4:00 PM ET, but the stock keeps trading until 8:00 PM. An option that was OTM at the close ($549.95 vs. a $550 strike) can flip ITM if the stock rallies in after-hours — and the holder can exercise until 5:30 PM. You find out Monday morning that you have been assigned on an option you assumed expired worthless.
+
+**Unexpected exposure:** Assignment on a short call creates a short stock position. Assignment on a short put creates a long stock position. Either way, you now have equity exposure you did not plan for — with full overnight and weekend gap risk. A $550 short put assigned on Friday means you own 100 shares of SPY over the weekend with no hedge.
+
+## Pin risk and 0DTE
+
+On a 0DTE contract, the pinning effect is compressed into hours instead of days. [Gamma](/learn/what-is-gex) is at its absolute peak, and dealer hedging is at its most aggressive, so the gravitational pull toward high-OI strikes is intense during the final hours.
+
+However, 0DTE also introduces a natural mitigation: **SPX options are cash-settled**. There is no stock assignment — just a cash difference. A SPX 5,500 call that finishes ITM by $2.00 settles for $200 per contract in cash. No short stock, no after-hours surprise, no weekend gap risk. This is one reason SPX is the preferred vehicle for 0DTE over SPY: cash settlement eliminates the assignment tail risk entirely.
+
+For equity options (SPY, QQQ, individual stocks), the 0DTE pin risk is real but the BlackOut system avoids it structurally: the **15:30 ET time stop** closes all 0DTE positions 30 minutes before the 4:00 PM close. That 30-minute buffer means you are never holding a short equity option into the final pinning window where assignment uncertainty peaks. The time stop exists precisely because the last 30 minutes of an expiration session are when pin risk is most dangerous and least predictable.
+
+## Gamma walls as pin indicators
+
+The [call wall and put wall](/learn/call-wall-put-wall-explained) bracket the zone where pinning is most likely. Price between the walls is in the "pin zone" — dealer hedging from both sides pushes price toward the center. A session where price stays between the walls from 2:00 PM to the close is textbook gamma pinning.
+
+When a wall breaks — price closes decisively beyond the call wall or below the put wall — the pin is broken and momentum takes over. A broken pin in the final hour is one of the sharpest intraday moves available, because all the hedging that was suppressing the move suddenly becomes fuel for it.
+
+## Managing pin risk
+
+**Close early:** The simplest defense. Close short options before the final 30 minutes of the session when pin risk peaks. The $0.05 of remaining premium is not worth the assignment uncertainty.
+
+**Use cash-settled instruments:** SPX, XSP, and other index options settle in cash. No shares, no assignment, no after-hours surprise.
+
+**Avoid short strikes at round numbers:** Round-number strikes (SPY 550, AAPL 200) carry the heaviest OI and the strongest pinning — which also means the most assignment uncertainty. Strikes one or two ticks away from the round number carry less OI and less pin risk.
+
+**Know your broker's exercise rules:** Each broker handles expiration-day assignment differently. Know the cutoff times, the do-not-exercise process, and the margin implications before you hold a short option into the close.
+
+> *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options and equities trading involve substantial risk and are not suitable for every investor.*`,
+  },
+  {
+    slug: "options-volume-analysis",
+    path: "/learn/options-volume-analysis",
+    metaTitle: "Options Volume Analysis Guide | BlackOut",
+    metaDescription: "Learn to read options volume: at-the-ask vs at-the-bid, sweep orders, block trades, and how HELIX automates tape reading for directional signals.",
+    targetKeyword: "options volume analysis",
+    type: "article",
+    title: "Options Volume Analysis: Reading the Tape",
+    description: "Learn to read options volume: at-the-ask vs at-the-bid, sweep orders, block trades, and how HELIX automates tape reading for directional signals.",
+    body: `Price tells you where the market is. Volume tells you *who is showing up and how urgently*. In options, volume is not just a count of contracts traded — it is a directional signal, an urgency indicator, and a window into institutional intent. Learning to read the options tape separates traders who react to price from traders who anticipate it.
+
+## Volume vs. open interest: the essential distinction
+
+**Volume** counts contracts traded during the current session. It resets to zero every morning. It tells you what is happening *now*.
+
+**[Open interest (OI)](/learn/open-interest-options-explained)** counts total outstanding contracts. It carries over day to day. It tells you what has accumulated.
+
+The relationship between the two is where the signal lives. A strike with 8,000 volume against 2,000 OI means new positions are being opened — fresh directional bets. A strike with 8,000 volume against 12,000 OI means existing positions are being closed — profit-taking or capitulation. The distinction changes the interpretation entirely: new positioning is a forward-looking signal; closing is backward-looking cleanup.
+
+Volume spikes on their own are attention signals — something is happening at that strike. But the *quality* of that volume (who is buying, at what price, how urgently) is what turns a spike into a trade idea.
+
+## Reading the tape: bid-side vs. ask-side
+
+Every options trade prints at a price between the bid and the ask. Where within that spread the trade executes reveals aggression:
+
+**At the ask (buyer aggression):** The buyer paid the full ask price — they wanted the contract badly enough to cross the spread. On calls, ask-side buying is bullish: someone is paying up for upside exposure. On puts, ask-side buying is bearish or hedging.
+
+**At the bid (seller aggression):** The seller hit the bid — they wanted out (or wanted to open a short position) badly enough to accept the lower price. On calls, bid-side selling is bearish or de-risking. On puts, bid-side selling can be closing a hedge or selling premium.
+
+**Ask percentage (ask%)** is the share of total volume that traded at or near the ask. An ask% above 60% on call flow is solidly bullish — more buyers are crossing the spread than sellers are hitting the bid. Below 40% is bearish. Between 40-60% is mixed. Ask% is one of the most reliable short-term directional indicators on the tape because it measures *intent*, not just activity.
+
+## Sweep orders: urgency on display
+
+A **sweep order** hits the ask price across multiple exchanges simultaneously. Unlike a standard order that routes to one exchange and waits for a fill, a sweep fires at every available offer at the same time — clearing the book across venues in a single burst.
+
+Sweeps are the loudest signal on the tape. They communicate three things:
+
+1. **Urgency:** The buyer is not willing to wait for a passive fill. They want exposure *now*.
+2. **Size:** Sweeps are typically large — hundreds or thousands of contracts — because small orders do not need to hit multiple exchanges.
+3. **Conviction:** Paying the ask across multiple venues is expensive. The buyer is accepting worse fills to guarantee execution speed.
+
+A sweep of 2,000 SPX 5,550 calls at the ask, executing across four exchanges in the same second, is a trader (almost certainly institutional) making a fast, committed directional bet. That is not noise — that is signal.
+
+## Block trades: institutional footprints
+
+A **block trade** is a single large print — typically 500+ contracts on liquid names, 100+ on less liquid ones — negotiated off the public order book and then reported. Blocks appear on the tape as a sudden large print, often at the mid-price or a negotiated level between bid and ask.
+
+What blocks reveal:
+
+**Size:** By definition, blocks are institutional. Retail does not trade 1,000 SPX calls at once. The size confirms that a large player is entering or exiting a position.
+
+**Price:** Where the block prints relative to the bid/ask tells you who had leverage. A block at the ask means the buyer paid up (bullish urgency). A block at the bid means the seller accepted less (bearish urgency or forced liquidation). A block at the mid was negotiated — both sides compromised.
+
+**Context:** A block of deep OTM puts on a name that just reported earnings is likely a new hedge. A block of ATM calls on a name breaking out of a base is likely a directional bet. Context determines whether the block is offensive or defensive.
+
+## How HELIX reads volume
+
+Scanning the options tape manually is impractical — thousands of prints per minute across hundreds of names. BlackOut's [HELIX flow scanner](/learn/helix-flow-scanner-guide) automates the entire process:
+
+**Ask%:** HELIX calculates the ask-side percentage for each ticker's flow in real time, surfacing names where buyers are aggressively crossing the spread. The [flow signals breakdown](/learn/helix-flow-signals-explained) details how ask% feeds into directional reads.
+
+**Sweep detection:** HELIX flags sweep orders automatically, tagging them by size, strike, and direction. A sweep filter lets you isolate only the most urgent flow — cutting through routine hedging and market-making noise.
+
+**Premium filters:** Not all volume is equal. HELIX applies minimum premium thresholds to filter out penny-option noise and small speculative bets. Only flow above a meaningful dollar commitment shows up — ensuring that what you see represents real capital at risk.
+
+**Velocity radar:** HELIX tracks how fast flow is arriving — not just total volume, but the *acceleration* of volume. A steady 500 contracts per minute is different from a spike to 3,000 in a single minute. Velocity catches the inflection point when institutional attention arrives.
+
+**Dark pool correlation:** Institutional players often route their equity flow through [dark pools](/learn/what-is-dark-pool-trading) before or alongside their options flow. HELIX cross-references dark pool prints with options activity to surface names where both the equity tape and the options tape agree — a dual confirmation that strengthens the signal.
+
+The result: instead of watching a raw tape, you see the *filtered, scored, contextualized* output — the contracts that represent real institutional intent, not the noise. For the methodology behind the scanner, see the full guide: [How to Read Options Flow](/learn/how-to-read-options-flow) and the [unusual options activity guide](/learn/unusual-options-activity-guide).
 
 > *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options and equities trading involve substantial risk and are not suitable for every investor.*`,
   },
