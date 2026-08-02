@@ -5917,3 +5917,44 @@ size grew by ~1kB (the new panel's own code), nothing else changed. `npx tsx --t
 contract-drawer stats) is explicitly parked until this ledger has accumulated weeks of real
 graded data — building it sooner would mean either fabricating numbers or shipping inert
 scaffolding with nothing behind it, exactly the risk the original audit flagged.
+
+## 2026-08-02 — [Helix] "More panels" stacked into the narrow rail, forcing a full-page scroll to see any of them — FIXED
+
+**Root cause.** `analyticsRail` in `FlowFeed.tsx` rendered the 5 always-on panels AND, when
+`showMorePanels` was true, appended 7 more (VelocityRadar, NightHawkFlowPanel, SplitFlowRadar,
+RouteBreakdown, SignalOutcomeTracker, SectorFlowPanel, CumulativeNetPremiumChart) into the same
+`.helix-desk-analytics-rail` container — a single fixed-width (`min(36vh,380px)` mobile /
+50%-width desktop) internally-scrolling column. Stacking 12 panels into that one column meant a
+member (or this audit, screenshotting the Signal Outcomes panel for the previous entry) had to
+scroll through the whole narrow column to reach panels near the bottom. Caught two ways: first
+as a screenshot-capture annoyance (needed a `scrollIntoView` hack to even frame the panel), then
+independently reported by the user in plain language: "to see every panel I would have to scroll
+through the entire page which is not user friendly at all."
+
+**Fix.** Split the rail into two JSX groups: `analyticsRail` keeps the 5 always-visible panels
+unchanged in the narrow column exactly as before. The 7 "more" panels moved into
+`moreAnalyticsPanels`, rendered inside the repo's existing accessible `<Modal>`
+(`src/components/ui/Modal.tsx` — focus-trap, scroll-lock, Esc/scrim-close, already used
+elsewhere) as a fullscreen overlay (`size="lg"` + a `helix-analytics-overlay` className override
+widening it to `min(96vw,1400px)`/`92vh`), laid out in a responsive CSS grid
+(`helix-analytics-overlay-grid`: 1 column mobile, 2 at `md`, 3 at `xl`) so every panel is visible
+without threading through a single narrow scroll column. The "More panels"/"Fewer panels" toggle
+button is unchanged — it still flips `showMorePanels`, which now controls the Modal's `open`
+prop instead of an inline conditional render.
+
+**Fix rationale.** Considered a hand-rolled portal+animation component first, then found the
+repo already ships `Modal` with the same behavior (focus-trap, scroll-lock, Esc/scrim-close) more
+robustly and consistently with how every other dialog in the app works — reusing it instead of
+duplicating that logic.
+
+**Blast radius.** Only `FlowFeed.tsx` (JSX restructure, `Modal` import added) and `globals.css`
+(new `.helix-analytics-overlay`/`.helix-analytics-overlay-grid`/`.helix-analytics-grid-wide`
+rules). No panel component's own props or behavior changed — all 7 render with the exact same
+props as before, just inside the Modal instead of inline. The 5 always-visible panels are
+untouched.
+
+**Evidence.** `npx tsc --noEmit` clean. `npx eslint` on `FlowFeed.tsx` — 0 errors. `npx next
+build` — clean. No new pure-logic surface (pure JSX/CSS restructure reusing existing, already
+class="grid" components), so no new test file.
+
+**Status:** PR pending → CI → auto-merge per standing policy, then live screenshot verification.
