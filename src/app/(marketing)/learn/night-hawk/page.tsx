@@ -19,6 +19,8 @@ export default function Page() {
         title="Night Hawk Guide — Swing Trading Setups Explained"
         description="Learn how Night Hawk grades swing trading setups and runs its evening scanner to surface the next day's best opportunities after the market closes."
         path="/learn/night-hawk"
+        datePublished="2026-04-01"
+        dateModified="2026-08-01"
       />
       <Breadcrumbs items={[
         { name: "Home", href: "/" },

@@ -18,6 +18,8 @@ export default function Page() {
         title="Options Trading Glossary — Gamma, 0DTE, Flow Terms"
         description="A plain-English glossary of options trading terms: dealer gamma, 0DTE, GEX, gamma flip, call wall, put wall, order flow, and more, explained simply."
         path="/learn/glossary"
+        datePublished="2026-01-15"
+        dateModified="2026-08-01"
       />
       <Breadcrumbs items={[
         { name: "Home", href: "/" },

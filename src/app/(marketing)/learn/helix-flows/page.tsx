@@ -19,6 +19,8 @@ export default function Page() {
         title="HELIX Guide — Reading Institutional Options Flow"
         description="Learn to read institutional options order flow with HELIX: premium filters, anomaly detection, and how to spot the unusual activity that moves markets."
         path="/learn/helix-flows"
+        datePublished="2026-01-15"
+        dateModified="2026-08-01"
       />
       <Breadcrumbs items={[
         { name: "Home", href: "/" },

@@ -19,6 +19,8 @@ export default function GettingStartedPage() {
         title="Getting Started With BlackOut — Trader's Quick Guide"
         description="New to BlackOut? Start here. Learn how the platform scans, grades, and logs setups, and how to read your first dealer gamma and options flow signals."
         path="/learn/getting-started"
+        datePublished="2026-01-15"
+        dateModified="2026-08-01"
       />
       <Breadcrumbs items={[
         { name: "Home", href: "/" },

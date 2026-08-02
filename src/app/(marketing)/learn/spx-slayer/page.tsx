@@ -19,6 +19,8 @@ export default function Page() {
         title="SPX Slayer Guide — Trading 0DTE SPX Options"
         description="Learn how SPX Slayer's 0DTE desk works: gamma matrices, tick-by-tick data, and A–F graded SPX alerts, and how to act on the setups that survive screening."
         path="/learn/spx-slayer"
+        datePublished="2026-01-15"
+        dateModified="2026-08-01"
       />
       <Breadcrumbs items={[
         { name: "Home", href: "/" },

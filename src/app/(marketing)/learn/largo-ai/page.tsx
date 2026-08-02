@@ -19,6 +19,8 @@ export default function Page() {
         title="Largo Guide — Your AI Market Structure Analyst"
         description="Learn how Largo, BlackOut's AI desk analyst, delivers structure-focused market context so you understand what the positioning data is actually telling you."
         path="/learn/largo-ai"
+        datePublished="2026-03-01"
+        dateModified="2026-08-01"
       />
       <Breadcrumbs items={[
         { name: "Home", href: "/" },

@@ -133,10 +133,16 @@ export function ArticleJsonLd({
   title,
   description,
   path,
+  datePublished,
+  dateModified,
+  authorName = "BlackOut Trades",
 }: {
   title: string;
   description: string;
   path: string;
+  datePublished?: string;
+  dateModified?: string;
+  authorName?: string;
 }) {
   return (
     <JsonLdScript
@@ -146,6 +152,13 @@ export function ArticleJsonLd({
         headline: title,
         description,
         url: `${SITE.url}${path}`,
+        ...(datePublished && { datePublished }),
+        ...(dateModified && { dateModified }),
+        author: {
+          "@type": "Organization",
+          name: authorName,
+          url: SITE.url,
+        },
         publisher: {
           "@type": "Organization",
           name: SITE.name,
