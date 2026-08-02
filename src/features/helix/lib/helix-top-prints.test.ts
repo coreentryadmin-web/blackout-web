@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { FlowAlert } from "@/lib/api";
 import { HELIX_STRIKE_HITS_WINDOW_MS } from "./helix-strike-leaders";
-import { selectTopPrints } from "./helix-top-prints";
+import { HELIX_TOP_PRINTS_MIN_SCORE, selectTopPrints } from "./helix-top-prints";
 
 function row(partial: Partial<FlowAlert> & Pick<FlowAlert, "ticker">): FlowAlert {
   return {
@@ -19,10 +19,10 @@ function row(partial: Partial<FlowAlert> & Pick<FlowAlert, "ticker">): FlowAlert
   } as FlowAlert;
 }
 
-test("selectTopPrints prefers score >= 5 when available", () => {
+test("selectTopPrints prefers score >= HELIX_TOP_PRINTS_MIN_SCORE when available", () => {
   const { rows, mode } = selectTopPrints([
-    row({ ticker: "SPY", score: 8, premium: 1_000_000 }),
-    row({ ticker: "QQQ", score: 3, premium: 5_000_000 }),
+    row({ ticker: "SPY", score: HELIX_TOP_PRINTS_MIN_SCORE + 8, premium: 1_000_000 }),
+    row({ ticker: "QQQ", score: HELIX_TOP_PRINTS_MIN_SCORE - 5, premium: 5_000_000 }),
   ]);
   assert.equal(mode, "score");
   assert.equal(rows[0]?.ticker, "SPY");
@@ -30,11 +30,18 @@ test("selectTopPrints prefers score >= 5 when available", () => {
 
 test("selectTopPrints falls back to premium when no high scores", () => {
   const { rows, mode } = selectTopPrints([
-    row({ ticker: "SPY", score: 2, premium: 2_000_000 }),
-    row({ ticker: "QQQ", score: 1, premium: 5_000_000 }),
+    row({ ticker: "SPY", score: HELIX_TOP_PRINTS_MIN_SCORE - 2, premium: 2_000_000 }),
+    row({ ticker: "QQQ", score: HELIX_TOP_PRINTS_MIN_SCORE - 6, premium: 5_000_000 }),
   ]);
   assert.equal(mode, "premium");
   assert.equal(rows[0]?.ticker, "QQQ");
+});
+
+test("a plain floor-premium alert (no sweep, no 0DTE) no longer clears the gate", () => {
+  // Regression pin for the 2026-08-01 fix: at the $200K ingest floor with no sweep/0DTE bonus,
+  // premPts alone = round(200_000/1_000_000*60) = 12, which must NOT clear MIN_SCORE (20).
+  const { mode } = selectTopPrints([row({ ticker: "SPY", score: 12, premium: 200_000 })]);
+  assert.equal(mode, "premium", "a floor-premium, unflagged alert should fail the score gate");
 });
 
 test("selectTopPrints prefers in-window prints over stale session whales", () => {

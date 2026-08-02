@@ -5588,3 +5588,91 @@ states are untouched.
 test file for this component (confirmed via `find`).
 
 **Status:** PR pending.
+
+## 2026-08-01 — [Helix Tier 0] GEX-enrichment cap, no-op score gate, dead component + stale docs, mislabeled chart — FIXED
+
+**Context.** Findings from a deep CTO-level audit of Helix (options-flow tape at `/flows`), driven
+via a temp admin+premium Clerk session (minted, verified, deleted) plus a full code read of
+`src/features/helix/**`. Four "Tier 0" fixes — small, scoped, no design/product decisions needed —
+bundled into one PR per the audit's own prioritization (UX/visual hierarchy and new-feature work
+are separate, deliberately NOT started here).
+
+### 1. GEX-wall-proximity enrichment silently capped at 8 tickers per page
+**Root cause.** `enrichFlowsWithGex(page, 8)` (`src/app/api/market/flows/route.ts:108`, old code)
+only computed `gex_proximity` for the first 8 unique tickers in a page. A busy session's 500-row
+page routinely spans 30-80+ distinct tickers, so most rows silently never got evaluated for wall
+proximity — not "not near a wall," never checked. No error, no log.
+
+**Fix.** Default `maxTickers` raised from 8 to 100 in `enrichFlowsWithGex`
+(`src/lib/flow-gex-enrichment.ts`) — comfortably covers realistic per-page ticker diversity even at
+the 5000-row (`HELIX_FLOW_MAX_LIMIT`) hard cap, while still bounding worst-case fan-out. Each
+per-ticker lookup is individually timeout-capped (300ms) and 60s-cached, and the whole function
+only runs on a flows-cache miss (also 60s TTL) rather than per member request, so the cost is
+bounded regardless of ticker count.
+
+**Evidence/validation.** New test in `flow-gex-enrichment.test.ts` mocks `getGexPositioning` and
+asserts 15 unique tickers (> the old cap of 8) all get enriched — was previously impossible to pass
+with the old default.
+
+### 2. Top Prints' "min score" gate was a no-op
+**Root cause.** `HELIX_TOP_PRINTS_MIN_SCORE = 5`, but the ingest floor (`UW_FLOW_MIN_PREMIUM`,
+default $200K) already guarantees every alert scores at least `round(200_000/1_000_000*60) = 12`
+on the `premPts+sweepPts+dtePts` scale (`unusual-whales.ts`) before any sweep/0DTE bonus — so the
+gate could never filter anything. "Top Prints" was really "top by premium, +25 if swept, +15 if
+0DTE" wearing a conviction-score label that did no filtering.
+
+**Fix.** Raised to 20 — strictly above the guaranteed floor (12). A plain (non-swept, non-0DTE)
+alert must now clear ~$333K premium to qualify; any swept or 0DTE alert still clears 20 even at
+the floor premium (12+15=27, 12+25=37), so flagged/high-premium activity still surfaces and only
+unflagged near-floor noise gets filtered. The existing premium-fallback mode still guarantees the
+panel never empties on a quiet tape.
+
+**Evidence/validation.** Updated `helix-top-prints.test.ts` fixtures to use scores relative to
+`HELIX_TOP_PRINTS_MIN_SCORE` (not hardcoded numbers, so they can't silently drift out of sync
+again) + a new regression test pinning that a floor-premium/unflagged alert (score 12) now fails
+the gate.
+
+### 3. Dead `FlowAlertStream` component + stale Learn guide describing it as the live page
+**Root cause.** `FlowAlertStream.tsx` (520 lines, card-based tape layout) was fully replaced by
+`HelixFlowTable` (virtualized CSS-grid table, server-cursor pagination) at some prior point, but
+was never deleted — still exported from `src/features/helix/index.ts`, imported by nothing. Worse:
+the member-facing Learn guide (`/learn/helix-flows`) still documented `FlowAlertStream` as *"the
+HELIX panel proper"* with a "Load more cap at 150 cards" — neither the component nor that behavior
+exists on the live page today.
+
+**Fix.** Deleted `FlowAlertStream.tsx` and its export. Rewrote the Learn guide's tape panel entry
+to describe the real `HelixFlowTable` (per-row columns, Signals pill column, cursor-paginated
+"Load older," no fixed card cap). Fixed a stray comment in `flow-raw-fields.ts` that still cited
+`FlowAlertStream`'s "% ask" chip (now cites `HelixFlowTable`'s Ask% column, the actual live
+consumer). Also removed an orphaned `vitals-flow-entry` CSS keyframe in `globals.css` that was
+already dead before this fix — its own comment admitted the animation it described was implemented
+via inline framer-motion in the now-deleted component, not this keyframe.
+
+**Blast radius confirmed via grep** before deleting: zero remaining references outside the two
+files fixed above (plus the deleted file's own definition).
+
+### 4. `FlowMomentumChart` doesn't measure momentum
+**Root cause.** The component/file name implied a rate/momentum measurement, but the code (and its
+own existing comment) is candid that each point is a CUMULATIVE call−put premium running total
+across the whole loaded tape — its slope tracks how many alerts have loaded and jumps on reload,
+not a real event-time-bucketed flow rate. The on-screen panel title ("Cumulative Net Prem
+(running)") was already accurate; only the internal component/file name oversold what it does.
+
+**Fix.** Renamed `FlowMomentumChart` → `CumulativeNetPremiumChart` (file + export + both call
+sites in `FlowFeed.tsx`) so the name matches the already-honest UI copy. No behavior change — a
+real event-time-bucketed momentum series is a separate, larger build (tracked as Helix
+Tier 2/3 follow-up, not done here).
+
+**Blast radius.** 11 files total across the four fixes: `flow-gex-enrichment.ts`(+test),
+`app/api/market/flows/route.ts`, `helix-top-prints.ts`(+test), `features/helix/index.ts`,
+`FlowAlertStream.tsx` (deleted), `flow-raw-fields.ts`, `globals.css`,
+`learn/guides/instruments/helix-flows.ts`, `FlowMomentumChart.tsx`→`CumulativeNetPremiumChart.tsx`,
+`FlowFeed.tsx`. No response/UI behavior changes for members beyond items 1-2 (more tickers get GEX
+badges; Top Prints filters slightly tighter) — items 3-4 are dead-code/naming/docs only.
+
+**Validation.** `npx tsc --noEmit` clean. `npx eslint` on all touched files — 0 errors (1
+pre-existing, unrelated tailwind-shorthand warning carried over verbatim in the renamed chart
+file). `node --import tsx --experimental-test-module-mocks --test` on both touched test files —
+8/8 pass. `npm run build` — clean, `/flows` route size unchanged (39.5kB).
+
+**Status:** PR pending.

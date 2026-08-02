@@ -33,7 +33,7 @@ export type FlowChainFields = {
  * Ask-side share of a print's two-sided premium, as a 0-100 PERCENTAGE — the SAME scale UW's
  * own `ask_side_pct` uses and that every downstream consumer reads: board.ts aggressionWeight's
  * 60/45 thresholds, helix aggressorRead/printBias (`askPct >= 60` = bought, `<= 40` = sold), and
- * the FlowAlertStream "% ask" chip. It is deliberately NOT a 0-1 fraction: returning 0.70 for a
+ * HelixFlowTable's "Ask%" column. It is deliberately NOT a 0-1 fraction: returning 0.70 for a
  * 70%-at-ask print would land under aggressionWeight's 45 floor and be bucketed as fully SOLD
  * premium (weight 0.15) — inverting conviction on every derived print instead of confirming it.
  *

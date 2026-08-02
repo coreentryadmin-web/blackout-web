@@ -87,24 +87,27 @@ export const helixFlowsGuide = defineToolGuide({
       tip: "Pressing star on a ticker both saves it and enables quick filter-from-watchlist workflow.",
     },
     {
-      name: "FlowAlertStream",
+      // Corrected 2026-08-01 (Helix audit): this panel used to document `FlowAlertStream`, a
+      // card-based layout that was fully replaced by `HelixFlowTable` (a virtualized CSS-grid
+      // table with server-side cursor pagination) — `FlowAlertStream` is dead code, never
+      // imported by the live page, and this guide was the only thing still describing it as
+      // "the HELIX panel proper." See helix-flow-limits.ts for the real page-size constant.
+      name: "HelixFlowTable",
       location: "Main grid — left column (8/12 on lg+)",
       purpose: "Primary live options flow tape — the HELIX panel proper.",
       shows: [
-        "Per card: ticker, CALL/PUT, rule badges (SWEEP/FLOOR/BLOCK/etc.), WHALE, 0DTE",
-        "Premium, age, strike/expiry/DTE, ask%, score, direction",
-        "Context badges: STACKING, SPLIT, HAWK, VELOCITY, COORD, GEX proximity (FLIP/CALL WALL/PUT WALL), earnings",
-        "OTM%, open interest, IV",
-        "↑ N new scroll prompt when scrolled down; Load more cap at 150 cards",
+        "Per row: time, ticker, CALL/PUT side, expiry/strike/DTE, premium, fill, ask%, OI, IV, OTM%, rule (SWEEP/BLOCK/FLOOR/etc.), score",
+        "Signals column: pill badges bundling GEX proximity (FLIP/CALL WALL/PUT WALL) and other per-row flags, with a \"+N\" overflow count",
+        "↑ N new scroll prompt when scrolled down; \"Load older\" fetches the next 500-row page via cursor pagination — there is no fixed total cap",
       ],
       actions: [
-        "Click card → open TickerDrawer",
-        "Star/unstar ticker from card",
-        "Scroll to catch up on backlog",
+        "Click a row → open TickerDrawer",
+        "Star/unstar ticker from the row",
+        "Scroll to catch up on backlog; click Load older for history beyond the current page",
       ],
       cadence: "SSE live when connected; REST fallback 30s when SSE down",
       consume:
-        "Scan top-down for recency — age column tells you if you are late. WHALE and SWEEP together imply urgency. GEX proximity badges tie prints to Slayer structure — a sweep into call wall is structurally different from random OTM lotto. STACKING and COORD suggest repeated institutional activity; use TickerDrawer to confirm. Do not chase every print — context at walls and flip matters.",
+        "Scan top-down for recency — the time column tells you if you are late. A large premium print with a SWEEP rule implies urgency. GEX-proximity signal pills tie prints to Slayer structure — a sweep into call wall is structurally different from random OTM lotto. Do not chase every print — context at walls and flip matters.",
       tip: "UNKNOWN option_type rows are dropped server-side — if a name disappears, it failed type validation.",
     },
     {

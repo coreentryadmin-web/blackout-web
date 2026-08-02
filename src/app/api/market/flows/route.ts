@@ -105,7 +105,9 @@ export async function GET(req: NextRequest) {
       ]);
 
       const { page, hasMore, nextBefore } = paginateRows(rawRows, pageLimit);
-      const enrichedFlows = await enrichFlowsWithGex(page, 8);
+      // See enrichFlowsWithGex's doc comment — default maxTickers (100) now covers realistic
+      // per-page ticker diversity instead of the old hardcoded 8.
+      const enrichedFlows = await enrichFlowsWithGex(page);
 
       console.log(
         `[market/flows] postgres ok — ${page.length} rows (min_premium=${min_premium}, since_hours=${since_hours}, max_dte=${max_dte ?? "any"}, before=${before ? "yes" : "no"})`

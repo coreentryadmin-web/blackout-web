@@ -886,16 +886,8 @@ body::before {
 }
 
 /* ── VITALS Phase 4 — Live signal micro-animations ──────────────────────────
-   Flow row entry: slide in from right (translateX 20px→0) in 150ms.
    Night Hawk grade-A border pulse: 3-step cyan border flash.
-   Both respect prefers-reduced-motion. */
-
-@keyframes vitals-flow-entry {
-  from { opacity: 0; transform: translateX(20px); }
-  to   { opacity: 1; transform: translateX(0); }
-}
-
-/* Applied via CSS class; framer-motion in FlowAlertStream handles entry via x:20 */
+   Respects prefers-reduced-motion. */
 
 @keyframes vitals-nh-border-pulse {
   0%   { box-shadow: 0 0 0 0 rgba(34,211,238,0.0),  inset 0 0 0 1px rgba(34,211,238,0.0); }
