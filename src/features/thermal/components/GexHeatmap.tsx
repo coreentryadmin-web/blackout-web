@@ -2546,10 +2546,15 @@ export function GexHeatmap({
     () => urlBoot.ticker ?? initialTicker.toUpperCase()
   );
   const [lens, setLens] = useState<Lens>(() => (urlBoot.lens as Lens) ?? "gex");
-  // SPY/SPX/QQQ compare strip — default ON (product ask). URL `compare=0` turns it off.
-  const [compare, setCompare] = useState(
-    () => (searchParams.get("compare") === "0" ? false : true)
-  );
+  // SPY/SPX/QQQ triple desk — default OFF so a ticker search always lands on that
+  // ticker's own matrix (previously this inline default (true unless `compare=0`)
+  // contradicted parseThermalUrlState's own tested contract (false unless
+  // `compare=1`/`true`) — the triple desk is hardcoded to SPY/SPX/QQQ
+  // (THERMAL_COMPARE_TICKERS), so searching e.g. NVDA while it defaulted ON left the
+  // search silently inert until a member manually toggled the triple desk off.
+  // Reading urlBoot.compare (the shared, tested parser) instead of re-deriving the
+  // default here fixes the inconsistency at its source. See docs/audit/FINDINGS.md.
+  const [compare, setCompare] = useState(() => urlBoot.compare);
   const urlSyncedRef = useRef(false);
   // View selection ("pair-a" = Matrix (full width); "pair-b" = Profile + Curve + Shift).
   // Lifted to a controlled state (UI refactor) so the view TabList can live on the
@@ -3866,7 +3871,13 @@ export function GexHeatmap({
         {/* Compact searchable ticker + the ONE kept clean spot reference. */}
         <TickerSwitcher
           ticker={ticker}
-          onPick={setTicker}
+          onPick={(t) => {
+            // Searching a ticker means "show me THIS name" — exit triple-desk mode
+            // (hardcoded to SPY/SPX/QQQ) so the search always lands on that ticker's
+            // own matrix instead of being silently ignored underneath the compare grid.
+            setTicker(t);
+            setCompare(false);
+          }}
           spot={headerSpot}
           changePct={headerChangePct}
           showSpot={(live || quoteOnly) && headerSpot > 0}
@@ -3919,7 +3930,7 @@ export function GexHeatmap({
             )}
             title="Toggle SPY | SPX | QQQ triple desk"
           >
-            Compare
+            Triple Desk
           </button>
           {live ? (
             <Badge tone="bull" dot>
