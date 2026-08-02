@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import Script from "next/script";
 import { Anton, Syne, JetBrains_Mono } from "next/font/google";
 import { IMAGES } from "@/lib/images";
 import { SITE } from "@/lib/site";
@@ -108,6 +109,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body className="void-bg antialiased">
+        <Script src="https://www.googletagmanager.com/gtag/js?id=G-YLN4K37KYF" strategy="afterInteractive" />
+        <Script id="ga4-init" strategy="afterInteractive">
+          {`window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-YLN4K37KYF');`}
+        </Script>
         <OrganizationJsonLd />
         <WebSiteJsonLd />
         <a
