@@ -75,7 +75,7 @@ import { SignalOutcomeTracker } from "@/features/helix/components/SignalOutcomeT
 import { HighScorePrints } from "@/features/helix/components/HighScorePrints";
 import { WatchlistBar } from "@/features/helix/components/WatchlistBar";
 import { useWatchlist } from "@/hooks/useWatchlist";
-import { Skeleton } from "@/components/ui";
+import { Skeleton, Modal } from "@/components/ui";
 import type { NightHawkEdition } from "@/features/nighthawk/lib/types";
 import { flowEventTimeMs } from "@/lib/flow-timestamp";
 import { useIosNativeShell } from "@/hooks/useIosNativeShell";
@@ -829,26 +829,27 @@ export function FlowFeed() {
         <StrikeStackDetector alerts={displayAlerts} onSelectTicker={setSelectedTicker} />
       </div>
       <DarkPoolPanel tapeTicker={tickerFilter} />
-      {showMorePanels && (
-        <>
-          {marketWidePanels && (
-            <VelocityRadar entries={velocityEntries} onTickerClick={setSelectedTicker} />
-          )}
-          <NightHawkFlowPanel
-            plays={nighthawkPlaysVisible}
-            editionFor={nighthawkEdition?.edition_for}
-            scopedTicker={scopedTicker || undefined}
-            onTickerClick={setSelectedTicker}
-          />
-          <SplitFlowRadar entries={splitFlowEntries} onTickerClick={setSelectedTicker} />
-          <RouteBreakdown alerts={displayAlerts} loading={loading} />
-          <SignalOutcomeTracker />
-          {marketWidePanels && <SectorFlowPanel entries={sectorFlowEntries} />}
-          <div className="helix-analytics-wide">
-            <CumulativeNetPremiumChart alerts={displayAlerts} />
-          </div>
-        </>
+    </>
+  );
+
+  const moreAnalyticsPanels = (
+    <>
+      {marketWidePanels && (
+        <VelocityRadar entries={velocityEntries} onTickerClick={setSelectedTicker} />
       )}
+      <NightHawkFlowPanel
+        plays={nighthawkPlaysVisible}
+        editionFor={nighthawkEdition?.edition_for}
+        scopedTicker={scopedTicker || undefined}
+        onTickerClick={setSelectedTicker}
+      />
+      <SplitFlowRadar entries={splitFlowEntries} onTickerClick={setSelectedTicker} />
+      <RouteBreakdown alerts={displayAlerts} loading={loading} />
+      <SignalOutcomeTracker />
+      {marketWidePanels && <SectorFlowPanel entries={sectorFlowEntries} />}
+      <div className="helix-analytics-grid-wide">
+        <CumulativeNetPremiumChart alerts={displayAlerts} />
+      </div>
     </>
   );
 
@@ -1089,6 +1090,20 @@ export function FlowFeed() {
           </div>
         )}
       </div>
+
+      {/* "More panels" — fullscreen grid instead of stacking into the narrow rail
+          (root cause: the rail is a fixed-width scrolling column, so appending 7
+          more analytics panels into it meant scrolling the whole page to see any
+          of them). */}
+      <Modal
+        open={showMorePanels}
+        onClose={() => setShowMorePanels(false)}
+        title={`All analytics panels · ${analyticsScopeLabel}`}
+        size="lg"
+        className="helix-analytics-overlay"
+      >
+        <div className="helix-analytics-overlay-grid">{moreAnalyticsPanels}</div>
+      </Modal>
 
       {/* Ticker drawer — all prints for symbol */}
       <TickerDrawer
