@@ -15082,6 +15082,80 @@ body::before {
     @apply flex flex-wrap items-center gap-x-3 gap-y-2 px-3.5 py-2.5;
   }
 
+  /* Mobile bottom sheet (Tier 1 item #7): the compact trigger only shows below 640px,
+     the desktop filter row (.helix-tape-bar-primary) only becomes a fixed bottom sheet
+     when explicitly opened AND the viewport is narrow — otherwise it renders inline as
+     before, so nothing changes above 640px. */
+  .helix-tape-mobile-trigger {
+    @apply hidden w-full items-center gap-2 px-3.5 py-2.5 text-left;
+  }
+  .helix-tape-mobile-trigger-label {
+    @apply font-mono text-[12px] font-bold text-white;
+  }
+  .helix-tape-mobile-trigger-meta {
+    @apply font-mono text-[10px] text-sky-300/60 ml-auto tabular-nums;
+  }
+  .helix-tape-mobile-backdrop {
+    @apply hidden;
+  }
+
+  @media (max-width: 640px) {
+    .helix-tape-mobile-trigger {
+      @apply flex;
+    }
+    .helix-tape-bar-primary {
+      display: none;
+    }
+    .helix-tape-bar-primary--sheet-open {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 60;
+      max-height: 80vh;
+      overflow-y: auto;
+      border-radius: 16px 16px 0 0;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(8, 9, 14, 0.98);
+      backdrop-filter: blur(16px);
+      box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.4);
+      padding-bottom: env(safe-area-inset-bottom, 0);
+    }
+    .helix-tape-bar-primary--sheet-open .helix-tape-bar-block,
+    .helix-tape-bar-primary--sheet-open .helix-tape-bar-search,
+    .helix-tape-bar-primary--sheet-open .helix-tape-bar-chips,
+    .helix-tape-bar-primary--sheet-open .helix-tape-tool-btn {
+      flex: 1 1 100%;
+      max-width: none;
+    }
+    /* The live/stale status pill is already surfaced on the trigger row itself —
+       showing it again inside the sheet would just be a duplicate. */
+    .helix-tape-bar-primary--sheet-open .helix-tape-status {
+      display: none;
+    }
+    .helix-tape-mobile-backdrop {
+      display: block;
+      position: fixed;
+      inset: 0;
+      z-index: 55;
+      background: rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(2px);
+    }
+    .helix-tape-mobile-sheet-head {
+      @apply flex items-center justify-between px-1 pb-2 mb-1 border-b border-white/10;
+    }
+    .helix-tape-mobile-sheet-title {
+      @apply font-mono text-[12px] font-bold uppercase tracking-[0.14em] text-sky-300/70;
+    }
+    .helix-tape-mobile-sheet-close {
+      @apply font-mono text-[11px] font-bold uppercase text-bull px-3 py-1.5 rounded-lg;
+      background: rgba(0, 230, 118, 0.12);
+    }
+  }
+
   .helix-tape-bar-block {
     @apply flex items-center gap-2 min-w-0;
   }
