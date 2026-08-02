@@ -16,7 +16,7 @@ import { requireAnyToolApi } from "@/lib/tool-access-server";
 import { isHeatmapOverlayAllowed } from "@/lib/heatmap-allowlist";
 import { gexHeatmapEnrichmentMaxMs } from "@/lib/providers/config";
 import { dbConfigured, fetchLatestNighthawkEdition } from "@/lib/db";
-import { roundFloats, reconcileStrikeTotal } from "@/lib/round-floats";
+import { roundFloats, reconcileStrikeTotal, reconcileCellStrikeTotals } from "@/lib/round-floats";
 import { isEtCashRth } from "@/lib/et-market-hours";
 import { joinGexStrikeExpiryTicker, hasLiveGexStrikeExpiry, getGexStrikeExpiryLadder } from "@/lib/ws/uw-socket";
 import { registerVectorUniverseView } from "@/features/vector/lib/vector-universe";
@@ -447,19 +447,24 @@ export async function GET(req: NextRequest) {
       if (rounded.charm_shift) rounded.charm_shift = { available: false, status: "collecting" };
     }
 
-    // Reconcile each metric's total AFTER rounding: independently rounding total and
-    // each strike_totals entry can drift by a cent or two (live-caught P0: NVDA GEX
-    // Σstrike_totals != total, docs/audit/FINDINGS.md 2026-07-03). The pre-rounding
-    // totals were always mathematically identical (built in the same accumulation
-    // loop); this makes the DISPLAYED total match what a member would get by manually
-    // summing the displayed rows.
+    // Reconcile each metric AFTER rounding, TWO levels: (1) a strike's own
+    // strike_totals entry vs the sum of that strike's rounded near-term cells, then
+    // (2) the grand total vs the sum of the now cell-consistent strike_totals. Both
+    // are the same rounding-composition issue reconcileStrikeTotal (below) already
+    // fixed for level 2 — extended one level deeper after the Thermal matrix deep
+    // audit (scripts/audit/thermal-matrix-validator.mjs) live-caught every
+    // ticker/metric showing a 1-3 cent drift between a strike's displayed total and
+    // what a member would get manually summing that strike's own displayed cells
+    // (docs/audit/FINDINGS.md). Order matters: reconcileCellStrikeTotals must run
+    // BEFORE reconcileStrikeTotal so the grand total sums the CORRECTED strike
+    // totals, not the original ones.
     // gex/vex are always present on a non-empty heatmap; dex/charm are optional
-    // (older cached payloads, empty heatmap) — reconcileStrikeTotal is a no-op
-    // passthrough on undefined, so the dex/charm assignments stay type-correct.
-    rounded.gex = reconcileStrikeTotal(rounded.gex)!;
-    rounded.vex = reconcileStrikeTotal(rounded.vex)!;
-    rounded.dex = reconcileStrikeTotal(rounded.dex);
-    rounded.charm = reconcileStrikeTotal(rounded.charm);
+    // (older cached payloads, empty heatmap) — both helpers are no-op passthroughs
+    // on undefined, so the dex/charm assignments stay type-correct.
+    rounded.gex = reconcileStrikeTotal(reconcileCellStrikeTotals(rounded.gex, rounded.near_term_expiries))!;
+    rounded.vex = reconcileStrikeTotal(reconcileCellStrikeTotals(rounded.vex, rounded.near_term_expiries))!;
+    rounded.dex = reconcileStrikeTotal(reconcileCellStrikeTotals(rounded.dex, rounded.near_term_expiries));
+    rounded.charm = reconcileStrikeTotal(reconcileCellStrikeTotals(rounded.charm, rounded.near_term_expiries));
 
     return NextResponse.json(rounded, {
       headers: NO_STORE_HEADERS,

@@ -6005,3 +6005,76 @@ next build` — clean. No new pure-logic branch (each change is a JSX-only empty
 no new test file.
 
 **Status:** PR pending → CI → auto-merge per standing policy, then live screenshot re-verification.
+
+## 2026-08-02 — [Thermal] Deep matrix data-correctness audit (all values) + new validator tool
+
+**Context.** User asked for the same top-down deep dive done for Helix, applied to Thermal
+(`/heatmap`, "BlackOut Thermal" — the full GEX/VEX/DEX/CHARM dealer-positioning matrix, distinct
+from SPX Slayer's own matrix though they share cell-formatting helpers). Scoped to "the matrix
+data — all values."
+
+**Gap found first.** `scripts/audit/data-validator.mjs` fetches `/api/market/gex-heatmap`
+(`P.heatmap`) but — confirmed via `grep -n "P\.heatmap"` — never actually checks it; only
+`gex-positioning`'s simpler top-level fields (`P.gex`) get cross-validated. `scripts/validate-gex-parity.mjs`
+is a 5-strike "are these finite" smoke check with no wall/flip/max_pain recomputation, no
+cell↔strike_totals reconciliation, no cross-provider spot check, and no VEX/DEX/CHARM coverage.
+No dedicated deep validator existed for Thermal's actual matrix values.
+
+**New tool.** `scripts/audit/thermal-matrix-validator.mjs` (`npm run validate:thermal-matrix`) —
+per ticker (default SPY,SPX,QQQ,IWM), against the LIVE production endpoint: (1) spot vs an
+independent fresh Polygon quote; (2) for every present metric block (gex/vex/dex/charm): total
+reconciles with Σstrike_totals, strike_totals independently re-derived from `cells` summed over
+`near_term_expiries` (the server's exact `buildMetric()` near/far split, faithfully re-verified
+client-side), call_wall/put_wall (or pos_wall/neg_wall) independently re-derived via the
+documented "largest +/- strike" rule, and flip/zero_level independently re-derived with FAITHFUL
+PORTS of the server's own `cumulativeGammaFlip` (gex only) and `zeroGammaFlip` (vex/dex/charm) —
+these are deliberately different functions and the validator gets this right rather than
+naively reusing one for both; (3) max_pain within the served strike range; (4) expiry-axis
+subset/ordering sanity; (5) off-hours shift-gate re-verification (task #174's fix, checked live
+on every run rather than trusted once); (6) cross_validation shape sanity; (7) malformed-number
+scan. Flags: `--tickers --json --quiet`. ONE temp Clerk user per run, always deleted.
+
+**Finding (real, live-caught).** First run (off-hours, SPY/SPX/QQQ): 82 checks, 12 FAIL — every
+single FAIL was the same check, "cells → strike_totals integrity," on all 4 metrics × all 3
+tickers, each showing a 1-3 cent (`Δ≈0.02-0.03`) drift between a strike's displayed
+`strike_totals[strike]` and what a member would get manually summing that strike's own displayed
+near-term `cells`. Every other check (walls, flip/zero_level, spot, max_pain, shift-gate,
+cross_validation, malformed-number scan) PASSED cleanly across the board.
+
+**Root cause.** `polygon-options-gex.ts`'s `buildMetric()` computes `strike_totals[strike]` from
+the UNROUNDED near-term cell accumulation, independently of the (also unrounded) `cells` values —
+both are mathematically identical pre-rounding (same accumulation loop). `roundFloats()` at the
+route boundary then rounds `strike_totals` and `cells` INDEPENDENTLY. Since a strike can have up
+to ~15 near-term expiries, "round each cell then sum" vs "sum then round" can legitimately drift
+by up to `15 × 0.005 = 0.075` — observed values (0.02-0.03) are well within that band, confirming
+this is rounding-composition noise, not a wrong dealer-gamma/-vanna/-delta/-charm number (exactly
+the SAME class of issue `reconcileStrikeTotal` (`round-floats.ts`) already fixed one level up
+for `total` vs `strike_totals`, live-caught 2026-07-03 — this is that same bug class one level
+deeper, never previously checked because nothing had compared a strike's cells to its own total
+before this audit).
+
+**Fix.** New `reconcileCellStrikeTotals()` in `round-floats.ts`, same pattern as
+`reconcileStrikeTotal()`: after `roundFloats()`, recompute each `strike_totals[strike]` as
+`round(Σ over near_term_expiries of the ALREADY-ROUNDED cells[strike][expiry])` instead of
+trusting the independently-rounded pre-existing value — self-consistent by construction, so a
+strike's displayed total always equals what a member gets manually summing that strike's own
+displayed cells. Wired into `gex-heatmap/route.ts` for all 4 metrics, called BEFORE the existing
+`reconcileStrikeTotal()` so the grand total then sums the now-corrected strike totals (order
+matters — verified in code comment). `call_wall`/`put_wall`/`flip`/`zero_level` are deliberately
+LEFT UNCHANGED (still derived from the unrounded pre-rounding values upstream) — those are
+structural/regime decisions, not the "manually add up the displayed rows" self-consistency this
+fix targets, matching the existing design philosophy already documented for `reconcileStrikeTotal`.
+
+**Blast radius.** `round-floats.ts` (+`reconcileCellStrikeTotals`, +4 tests),
+`gex-heatmap/route.ts` (4 call-site wiring, 1 import). No other consumer of `reconcileStrikeTotal`
+touched. SPX Slayer's own matrix (`SpxGexMatrixHeatmap.tsx`) reads a DIFFERENT bundle
+(`fetchPolygonPositioningBundle`, not `fetchGexHeatmap`) — out of scope for this fix, flagged as
+a candidate for the same treatment if the same live-check is run against it.
+
+**Evidence.** Live validator run (off-hours, before fix): 82 checks, 12 FAIL, all the cells↔total
+class described above, 70 PASS/INFO everywhere else. `npx tsx --test src/lib/round-floats.test.ts`
+— 17/17 pass (13 pre-existing + 4 new). `npx tsc --noEmit` clean. `npx eslint` on all touched
+files — 0 errors. `npx next build` — clean.
+
+**Status:** PR pending → CI → auto-merge per standing policy, then a live post-deploy re-run of
+`npm run validate:thermal-matrix` to confirm the FAIL count drops to 0.

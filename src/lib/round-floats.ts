@@ -55,3 +55,44 @@ export function reconcileStrikeTotal<
   // here (we never touch any other property) — TS can't infer that through a spread, hence the cast.
   return { ...block, total: Math.round(sum * factor) / factor } as B;
 }
+
+/**
+ * Same rounding-composition fix as reconcileStrikeTotal, one level deeper: a
+ * per-strike `strike_totals[strike]` is built from the UNROUNDED near-term cell
+ * accumulation (polygon-options-gex.ts buildMetric()), then rounded independently
+ * from `cells[strike][expiry]` — so Σ(round(cell)) over that strike's near-term
+ * expiries can drift from round(strike_totals[strike]) by up to
+ * `nearTermExpiries.length * 0.005` (each cell rounds to within half a step).
+ * Live-caught via scripts/audit/thermal-matrix-validator.mjs (Thermal matrix deep
+ * audit): every ticker/metric showed a 1-3 cent drift at one strike, consistent
+ * with pure rounding-order noise, not a wrong dealer-gamma/-vanna/-delta/-charm
+ * number (both sides derive from the same raw accumulation). Recomputing
+ * `strike_totals[strike]` from the ALREADY-ROUNDED, member-visible cells makes a
+ * strike's displayed total always equal what a member would get by manually
+ * summing that strike's own displayed near-term cells — self-consistent by
+ * construction, same principle as reconcileStrikeTotal one level up. Call this
+ * AFTER roundFloats() and BEFORE reconcileStrikeTotal() (grand total should sum
+ * these corrected, not the original, strike totals).
+ */
+export function reconcileCellStrikeTotals<
+  B extends { cells?: Record<string, Record<string, number>>; strike_totals?: Record<string, number> },
+>(block: B | undefined, nearTermExpiries: string[] | undefined, dp = 2): B | undefined {
+  if (!block?.cells || !block.strike_totals || !nearTermExpiries?.length) return block;
+  const factor = 10 ** dp;
+  const nearSet = new Set(nearTermExpiries);
+  // Object.create(null) — strike keys are numeric strike-price strings from the Polygon
+  // chain, never attacker-supplied, but a proto-less object means a key like "__proto__"
+  // can never repoint this object's prototype no matter where the key ultimately traces
+  // from (CodeQL "remote property injection" — hardening, not a real reachable exploit).
+  const strikeTotals: Record<string, number> = Object.create(null);
+  for (const [strike, existing] of Object.entries(block.strike_totals)) {
+    const row = block.cells[strike];
+    if (!row) { strikeTotals[strike] = existing; continue; }
+    let sum = 0;
+    for (const [expiry, val] of Object.entries(row)) {
+      if (nearSet.has(expiry) && Number.isFinite(val)) sum += val;
+    }
+    strikeTotals[strike] = Math.round(sum * factor) / factor;
+  }
+  return { ...block, strike_totals: strikeTotals } as B;
+}
