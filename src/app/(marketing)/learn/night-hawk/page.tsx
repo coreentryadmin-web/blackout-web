@@ -9,7 +9,7 @@ export const metadata: Metadata = publicPageMetadata(
   "Night Hawk Guide — Swing Trading Setups Explained",
   "Learn how Night Hawk grades swing trading setups and runs its evening scanner to surface the next day's best opportunities after the market closes.",
   "/learn/night-hawk",
-  { kicker: "BlackOut Academy" }
+  { kicker: "BlackOut Academy", ogType: "article" }
 );
 
 export default function Page() {

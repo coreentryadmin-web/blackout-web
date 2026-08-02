@@ -4,8 +4,8 @@ import { LegalPageLayout } from "@/components/landing/LegalPageLayout";
 import { publicPageMetadata } from "@/lib/page-metadata";
 
 export const metadata: Metadata = publicPageMetadata(
-  "Privacy Policy — BlackOut",
-  "How BlackOut collects, uses, and protects your personal information and data.",
+  "Privacy Policy — BlackOut Trades",
+  "How BlackOut Trades collects, uses, and protects your personal information, data retention practices, third-party providers, and your rights under CCPA and GDPR.",
   "/privacy"
 );
 

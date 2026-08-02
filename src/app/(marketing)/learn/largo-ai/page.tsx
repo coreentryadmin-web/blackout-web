@@ -9,7 +9,7 @@ export const metadata: Metadata = publicPageMetadata(
   "Largo Guide — Your AI Market Structure Analyst",
   "Learn how Largo, BlackOut's AI desk analyst, delivers structure-focused market context so you understand what the positioning data is actually telling you.",
   "/learn/largo-ai",
-  { kicker: "BlackOut Academy" }
+  { kicker: "BlackOut Academy", ogType: "article" }
 );
 
 export default function Page() {

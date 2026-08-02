@@ -129,6 +129,29 @@ export function SoftwareApplicationJsonLd() {
   );
 }
 
+export function WebPageJsonLd({
+  title,
+  description,
+  path,
+}: {
+  title: string;
+  description: string;
+  path: string;
+}) {
+  return (
+    <JsonLdScript
+      data={{
+        "@context": "https://schema.org",
+        "@type": "WebPage",
+        name: title,
+        description,
+        url: `${SITE.url}${path}`,
+        isPartOf: { "@type": "WebSite", name: SITE.name, url: SITE.url },
+      }}
+    />
+  );
+}
+
 export function ArticleJsonLd({
   title,
   description,

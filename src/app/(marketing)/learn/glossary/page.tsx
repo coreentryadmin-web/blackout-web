@@ -8,7 +8,7 @@ export const metadata: Metadata = publicPageMetadata(
   "Options Trading Glossary — Gamma, 0DTE, Flow Terms",
   "A plain-English glossary of options trading terms: dealer gamma, 0DTE, GEX, gamma flip, call wall, put wall, order flow, and more, explained simply.",
   "/learn/glossary",
-  { kicker: "BlackOut Academy" }
+  { kicker: "BlackOut Academy", ogType: "article" }
 );
 
 export default function Page() {

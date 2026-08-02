@@ -6,7 +6,7 @@ export function publicPageMetadata(
   title: string,
   description: string,
   path: string,
-  opts?: { kicker?: string },
+  opts?: { kicker?: string; ogType?: "website" | "article" },
 ): Metadata {
   const url = path === "/" ? SITE.url : `${SITE.url}${path}`;
   const ogParams = new URLSearchParams({ title, subtitle: description });
@@ -21,6 +21,7 @@ export function publicPageMetadata(
       title,
       description,
       url,
+      type: opts?.ogType ?? "website",
       images: [{ url: ogImageUrl, width: 1200, height: 630, alt: title }],
     },
     twitter: {
