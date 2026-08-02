@@ -116,11 +116,11 @@ New to the terminology? See the [Options Trading Glossary](/learn/options-tradin
     type: "article",
     title: "Gamma Flip Explained: The Single Most Important Level on the Board",
     description: "The gamma flip is the price where dealers switch from stabilizing the market to amplifying it. Learn to find it and why it defines the character of the day.",
-    body: `If you only learn one dealer-positioning concept, make it the gamma flip. It's the price level where the market's behavior fundamentally changes — from calm and mean-reverting to fast and trending. Pros obsess over it because it tells them the *character* of the day before they place a single trade.
+    body: `If you only learn one dealer-positioning concept, make it the **gamma flip**. It's the price level where the market's behavior fundamentally changes — from calm and mean-reverting to fast and trending. Pros obsess over it because it tells them the *character* of the day before they place a single trade.
 
 ## What the gamma flip actually is
 
-The gamma flip is the price at which aggregate dealer gamma crosses from positive to negative. Above it, dealers are typically long gamma and *stabilize* the market. Below it, they flip short gamma and *destabilize* it. (For the underlying mechanics, see [What Is Dealer Gamma Exposure?](/learn/what-is-dealer-gamma-exposure))
+The gamma flip is the price at which aggregate dealer gamma crosses from positive to negative. Above it, dealers are typically long gamma and *stabilize* the market. Below it, they flip short gamma and *destabilize* it. (For the underlying mechanics, see [What Is Dealer Gamma Exposure?](/learn/what-is-dealer-gamma-exposure). For how the hedging process works step by step, see [Delta Hedging Explained](/learn/delta-hedging-explained).)
 
 ## Above the flip: expect chop
 
@@ -129,6 +129,22 @@ When price is above the flip and dealers are long gamma, they sell every rally a
 ## Below the flip: expect fireworks
 
 When price falls below the flip, dealers flip short gamma. Now their hedging works *with* the move — they sell as price falls and buy as it rises. Small moves snowball into big ones. This is where the fast, violent selloffs and sharp reversals live. Momentum works; fading gets run over.
+
+## A concrete example
+
+SPX opens at 5,520. The gamma flip sits at 5,490, and aggregate [GEX](/learn/what-is-gex) is positive. For the first two hours the market bounces between 5,510 and 5,535 — classic long-gamma chop. Dealers sell every push toward the call wall at 5,550 and buy every dip toward 5,510. Range-bound fades work; breakout longs get chopped up.
+
+At 1:15 PM a weak Treasury auction drops SPX through 5,490. Now dealers are short gamma. Selling begets selling: the 30-point dip in positive gamma becomes a 70-point waterfall in 45 minutes. Anyone who faded the break at 5,485 got steamrolled; anyone who recognized the regime change and respected momentum caught the trend of the day.
+
+The only variable that changed was which side of the flip price sat on. The level itself told you the playbook — before the candle printed.
+
+## How to trade around it
+
+**Above the flip (positive gamma):** Fade extremes, sell premium, and expect the session to stay within the [call wall](/learn/call-wall-put-wall-explained) and [put wall](/learn/call-wall-put-wall-explained). Structures like the [iron condor](/learn/iron-condor-strategy-guide) thrive here because price tends to stay in a range. [Implied volatility](/learn/implied-volatility-explained) often drifts lower as the session progresses, so premium sellers benefit from both theta and IV contraction.
+
+**Below the flip (negative gamma):** Respect momentum. Directional trades work; premium-selling is riskier because the range can blow out fast. Size down, widen stops, and wait for the move to exhaust rather than fading the first push through a level.
+
+**Near the flip:** This is the messiest zone — price can oscillate across the line, flipping the regime intraday. Sit on your hands or use smaller positions until the session commits to one side.
 
 ## Why it changes how you trade
 
@@ -140,7 +156,7 @@ The flip works alongside the [call wall and put wall](/learn/call-wall-put-wall-
 
 ## See it live
 
-BlackOut Thermal maps the gamma flip in real time every morning, so you know which regime you're trading before the open. [Get access →](/pricing)
+BlackOut [Thermal](/learn/heat-maps) maps the gamma flip in real time every morning, so you know which regime you're trading before the open. Pair it with [SPX Slayer](/learn/spx-slayer) for graded 0DTE setups that factor in the regime, or ask [Largo AI](/learn/largo-ai) to walk you through the day's flip level if you're still learning. [Get access →](/pricing)
 
 > *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options trading involves substantial risk and is not suitable for every investor.*`,
   },
@@ -153,7 +169,7 @@ BlackOut Thermal maps the gamma flip in real time every morning, so you know whi
     type: "article",
     title: "Call Wall & Put Wall Explained: The Gamma Levels That Act Like Magnets",
     description: "Call walls and put walls are where dealer gamma concentrates — often acting as magnets, resistance, and support. Learn to read them on the SPX chain.",
-    body: `Traders draw support and resistance from past price. Dealers have a different kind of level — one built from where options gamma piles up. The two biggest are the call wall and the put wall, and they often behave like magnets and barriers on the SPX chart.
+    body: `Traders draw support and resistance from past price. Dealers have a different kind of level — one built from where options gamma piles up. The two biggest are the **call wall** and the **put wall**, and they often behave like magnets and barriers on the SPX chart.
 
 ## What a call wall is
 
@@ -163,17 +179,35 @@ The call wall is the strike above current price with the largest concentration o
 
 The put wall is the mirror image below price — the strike with the largest concentration of put gamma. It frequently acts as support: dealer hedging tends to cushion declines as price approaches it. A decisive break *below* the put wall often signals that support has failed and volatility is about to expand.
 
+## A concrete example
+
+SPX opens at 5,500. The call wall sits at 5,550 — a massive cluster of open call interest at that strike — and the put wall sits at 5,430. Between those two levels, the session has a defined range: dealer hedging sells every push toward 5,550 and buys every dip toward 5,430, keeping price bracketed.
+
+At 11 AM, a strong earnings beat from a mega-cap tech name pushes SPX to 5,545. It stalls. Pushes to 5,548, pulls back to 5,540, pushes again — and can't break through. That's the call wall: each tick toward 5,550 triggers more dealer selling as they hedge the gamma concentrated there. By noon the market has given up and settled back to 5,520.
+
+Now consider the opposite. A weak macro print sends SPX sliding toward 5,430. The put wall catches the first test, then the second. But on the third attempt, price closes decisively below 5,425 and doesn't bounce. The hedging cushion is gone — the put wall has broken — and the session accelerates lower. That break is a momentum signal, not a fade.
+
 ## Why these levels work
 
-They aren't superstition. Large gamma concentrations force large hedging flows exactly at those strikes, and that mechanical buying and selling is what creates the "stickiness." It's the same force behind the [gamma flip](/learn/gamma-flip-explained) — just concentrated at specific strikes instead of a single regime line. (Background: [What Is Dealer Gamma Exposure?](/learn/what-is-dealer-gamma-exposure))
+They aren't superstition. Large gamma concentrations force large hedging flows exactly at those strikes, and that mechanical buying and selling is what creates the "stickiness." It's the same force behind the [gamma flip](/learn/gamma-flip-explained) — just concentrated at specific strikes instead of a single regime line. The underlying mechanism is delta hedging at scale: as price approaches a strike loaded with gamma, dealers must buy or sell aggressively to stay neutral (see [Delta Hedging Explained](/learn/delta-hedging-explained) for how that process works tick by tick). Background: [What Is Dealer Gamma Exposure?](/learn/what-is-dealer-gamma-exposure).
+
+## How walls shift during the session
+
+Walls are not static. They move as new options are opened, existing positions are closed, and contracts expire. A call wall at 5,550 in the morning can weaken by the afternoon if large call holders roll or close their positions. Conversely, a surge in put buying can strengthen the put wall or shift it to a different strike entirely.
+
+On 0DTE expirations, the effect is even more pronounced: same-day contracts carry enormous gamma that evaporates by the close, so the walls that define the morning range may not be the ones that matter at 3 PM. Checking the live gamma profile mid-session — not just at the open — is how you catch these shifts before they catch you.
+
+## Walls and max pain
+
+You'll often see [max pain](/learn/max-pain-options-explained) sitting near a wall — that's not a coincidence. Max pain is calculated from the same open interest that builds the walls, so they tend to cluster in the same zone. When max pain, the call wall, and the put wall all converge on a tight range, the case for a pinning session is strong — three independent reads pointing the same direction. When they diverge — say max pain at 5,490 but the call wall at 5,560 and the put wall at 5,420 — the gamma walls are the more mechanically grounded levels to trade against, because they represent actual hedging flow rather than a static payout calculation. Use max pain as a tiebreaker, not a primary level.
 
 ## How to use them
 
-Treat the call wall as a likely ceiling and the put wall as a likely floor *while they hold* — and treat breaks of either as momentum signals, not fades. Combine them with the gamma flip to build a full picture: where the day pins, and where it breaks.
+Treat the call wall as a likely ceiling and the put wall as a likely floor *while they hold* — and treat breaks of either as momentum signals, not fades. Combine them with the gamma flip to build a full picture: where the day pins, and where it breaks. Walls also inform premium-selling structures: placing [iron condor](/learn/iron-condor-strategy-guide) short strikes at or just past the walls gives a mechanical reason to expect the range to hold.
 
 ## See them live
 
-BlackOut Thermal plots the call wall and put wall across strikes and expirations in real time, so you're trading the same levels the desks are. [Get access →](/pricing)
+BlackOut [Thermal](/learn/heat-maps) plots the call wall and put wall across strikes and expirations in real time, so you're trading the same levels the desks are — not drawing lines from yesterday's chart. [Get access →](/pricing)
 
 > *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options trading involves substantial risk and is not suitable for every investor.*`,
   },
@@ -186,11 +220,11 @@ BlackOut Thermal plots the call wall and put wall across strikes and expirations
     type: "article",
     title: "What Is GEX (Gamma Exposure)? A Plain-English Guide",
     description: "GEX, or gamma exposure, aggregates dealer hedging across the options chain to reveal where the market stabilizes or accelerates. Learn to read GEX.",
-    body: `You'll see "GEX" all over fintwit. It stands for gamma exposure, and it's one of the most useful single numbers an options trader can watch — a summary of where dealers, in aggregate, are forced to buy and sell. Here's what it means and how to read it without a quant degree.
+    body: `You'll see "GEX" all over fintwit. It stands for **gamma exposure**, and it's one of the most useful single numbers an options trader can watch — a summary of where dealers, in aggregate, are forced to buy and sell. Here's what it means and how to read it without a quant degree.
 
 ## GEX in one line
 
-GEX aggregates the gamma of every open option on an underlying (like SPX) into a total measure of dealer positioning. Positive GEX means dealers are net long gamma and tend to *stabilize* the market; negative GEX means they're net short gamma and tend to *amplify* moves. (For the mechanics under the hood, start with [What Is Dealer Gamma Exposure?](/learn/what-is-dealer-gamma-exposure))
+GEX aggregates the gamma of every open option on an underlying (like SPX) into a total measure of dealer positioning. Positive GEX means dealers are net long gamma and tend to *stabilize* the market; negative GEX means they're net short gamma and tend to *amplify* moves. (For the mechanics under the hood, start with [What Is Dealer Gamma Exposure?](/learn/what-is-dealer-gamma-exposure). For what gamma itself measures, see [Options Greeks Explained](/learn/options-greeks-explained).)
 
 ## Positive GEX: the market self-corrects
 
@@ -200,15 +234,29 @@ In a high positive-GEX environment, dealer hedging leans against price — selli
 
 In negative GEX, hedging flows *with* price. Selloffs feed on themselves, rallies can go parabolic, and realized volatility jumps. This is the regime behind most of the scary red days — and the sharp V-shaped reversals. See how a violent version of this unfolds in [Gamma Squeeze Explained](/learn/gamma-squeeze-explained).
 
+## Reading GEX in practice
+
+Numbers help make this tangible. When aggregate SPX GEX is at +$5 billion, dealers need to sell roughly $5 billion in stock for every 1% up-move and buy the same for every 1% down-move. That's a massive stabilizing force — price has to fight through a wall of mechanical selling to rally, and a wall of mechanical buying to sell off. The result is compression: the session's range tightens, realized vol underperforms implied, and premium-selling structures like the [iron condor](/learn/iron-condor-strategy-guide) have a higher probability of staying in the zone.
+
+When GEX flips to -$3 billion, the picture inverts. Now every 1% decline forces dealers to sell roughly $3 billion more, pushing price further down, which triggers more selling. A small gap down at the open becomes a momentum day. Range-bound assumptions get punished; directional conviction (and tight risk management) gets paid.
+
+The exact dollar value matters less than the sign and relative magnitude. A GEX reading in the top quartile of its recent range screams "chop day." A reading in the bottom quartile warns of trend potential. And crossing zero — the [gamma flip](/learn/gamma-flip-explained) — is the regime change that rewires the playbook entirely.
+
 ## GEX and the flip level
 
-The price where total GEX crosses zero is the [gamma flip](/learn/gamma-flip-explained) — the boundary between the two regimes. Watching where price sits relative to that line is the fastest read on the day's likely behavior.
+The price where total GEX crosses zero is the [gamma flip](/learn/gamma-flip-explained) — the boundary between the two regimes. Watching where price sits relative to that line is the fastest read on the day's likely behavior. The delta hedging that actually generates these flows is covered in [Delta Hedging Explained](/learn/delta-hedging-explained).
 
 ## How to actually use it
 
-GEX is a *context* tool, not a signal by itself. Use it to decide *how* to trade — fade extremes in positive GEX, respect momentum in negative GEX — and combine it with the [call wall and put wall](/learn/call-wall-put-wall-explained) for specific levels.
+GEX is a *context* tool, not a signal by itself. Use it to decide *how* to trade — fade extremes in positive GEX, respect momentum in negative GEX — and combine it with the [call wall and put wall](/learn/call-wall-put-wall-explained) for specific levels. On a practical level:
 
-BlackOut computes and visualizes all of this live. [See it in action →](/pricing)
+- **High positive GEX:** Sell premium, fade range extremes, expect tight ranges. Good days for iron condors and mean-reversion entries.
+- **Low or negative GEX:** Respect momentum, widen stops, consider directional entries. Poor days for premium selling; strong days for trend-following.
+- **Near-zero GEX:** The messiest regime. Price oscillates across the flip. Reduce size or wait for a commitment.
+
+## See it live
+
+BlackOut [Thermal](/learn/heat-maps) computes and visualizes GEX across strikes and expirations in real time — the gamma profile, the flip, and the walls on one screen. [See it in action →](/pricing)
 
 > *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options trading involves substantial risk and is not suitable for every investor.*`,
   },
@@ -225,7 +273,7 @@ BlackOut computes and visualizes all of this live. [See it in action →](/prici
 
 ## What "0DTE" means
 
-A 0DTE option expires the same day you trade it. On SPX there are expirations every trading day, so there's always a same-day contract. Because expiration is hours away, these options have almost no time value and enormous, fast-decaying **gamma** — which is exactly why dealer hedging matters more here than on any other timeframe. (Background: [What Is Dealer Gamma Exposure?](/learn/what-is-dealer-gamma-exposure))
+A 0DTE option expires the same day you trade it. On SPX there are expirations every trading day, so there's always a same-day contract. Because expiration is hours away, these options have almost no time value and enormous, fast-decaying **gamma** — which is exactly why dealer hedging matters more here than on any other timeframe. (Background: [What Is Dealer Gamma Exposure?](/learn/what-is-dealer-gamma-exposure). To understand the Greeks driving it, see [Options Greeks Explained](/learn/options-greeks-explained).)
 
 ## Why dealer gamma is the whole game intraday
 
@@ -239,6 +287,16 @@ With so much gamma expiring today, dealer hedging flows are massive and concentr
 4. **Size for the regime.** Smaller when guessing, larger only when the positioning read and the flow agree.
 5. **Wait for confluence.** The best setups are where positioning, flow, and price all line up — which is exactly what a grading system is for.
 
+## Entry timing matters
+
+Not all hours are equal. The first 30 minutes after the open carry the widest spreads, the most noise, and the most fakeouts — gamma is at its absolute peak, and a move that looks decisive at 9:35 AM often reverses by 10:00. The window from roughly 10:00 AM to 11:30 AM ET is where the session typically commits to its character: the regime becomes clear, flow settles, and the levels that held the first test are more likely to hold the second. Late-day entries (after 2:00 PM) carry a different edge: theta decay accelerates toward zero and any remaining gamma becomes binary — you're either right immediately or you're out. Many professional 0DTE traders skip the first 30 minutes entirely and limit their entries to a 3-hour window where the signal-to-noise ratio is highest.
+
+## Regime-based sizing
+
+Size is where most 0DTE traders blow up. A simple framework: in a strongly positive GEX session where price is well above the gamma flip, you can size up slightly because the range is compressed and the probability of a violent move against you is lower. In a negative GEX session below the flip, cut size by half or more — realized vol can be 2–3x what it is in positive gamma, and a normal loss becomes an outsized one if you're carrying the same risk. Near the flip, where the regime can switch intraday, minimum size protects you from getting whipsawed.
+
+The same logic applies to structure choice. Positive gamma sessions favor premium-selling structures like the [iron condor](/learn/iron-condor-strategy-guide) — you're collecting credit in an environment that naturally suppresses the range. Negative gamma sessions favor directional plays where momentum can pay off, and where condors get their short strikes tested.
+
 ## Why grading beats guessing
 
 Not every setup is worth taking. BlackOut's engine scans thousands of contracts and grades each setup A–F — only about 3% survive. That filter is the difference between reacting to noise and acting on signal.
@@ -247,7 +305,9 @@ Not every setup is worth taking. BlackOut's engine scans thousands of contracts 
 
 It doesn't have to be. The honest answer is nuanced enough to deserve its own piece: [Is 0DTE Gambling?](/learn/is-0dte-gambling)
 
-BlackOut's SPX Slayer is a 0DTE desk built on exactly this approach — live gamma, graded setups, public logging. [Get access →](/pricing)
+## See the 0DTE desk
+
+BlackOut's [SPX Slayer](/learn/spx-slayer) is a 0DTE desk built on exactly this approach — live gamma, graded setups, public logging. For setups that carry overnight, [Night Hawk](/learn/night-hawk) handles the swing side. New to the platform? [Getting Started](/learn/getting-started) walks you through how the tools fit together. [Get access →](/pricing)
 
 > *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options trading involves substantial risk and is not suitable for every investor.*`,
   },
@@ -274,9 +334,22 @@ Now flip it. You know where the [gamma flip](/learn/gamma-flip-explained) sits, 
 
 A casino bet has a fixed, negative expected value and no information edge. A structured 0DTE trade is the opposite: your job is to only act when the information — dealer positioning plus [options flow](/learn/how-to-read-options-flow) — is on your side, and to stand aside when it isn't. The instrument is the same. The presence or absence of an edge is what separates the two.
 
+## The numbers: what realistic edge looks like
+
+Honest expectations help separate structured trading from fantasy. A well-filtered 0DTE system does not win 80% of the time on directional plays — anyone claiming that is either selling something or cherry-picking. Realistic win rates on graded, directional 0DTE setups tend to land in the 45–55% range, which sounds underwhelming until you look at the payoff structure. Because gamma is so large on same-day contracts, a winning trade often returns 80–150% on the premium risked, while a losing trade is capped at the premium paid (on long options) or the defined spread width minus the credit (on spreads).
+
+What matters is **expected value**: a 50% win rate with a 2:1 average winner-to-loser ratio is a strong positive-EV system, even though it loses half its trades. A 70% win rate with winners that are a third the size of losers is negative EV despite looking "good." The filter — only taking graded setups where positioning and flow agree — is what keeps the ratio honest. Most sessions produce zero qualifying entries. That's the point: standing aside when the read isn't clear is the single biggest contributor to long-term positive EV.
+
 ## How to move from one to the other
 
-Stop trading every idea. Start reading the regime, marking the levels, defining risk, and demanding confluence before you click. Structure turns a coin flip into a process. That's the entire premise behind BlackOut — live dealer gamma, A–F graded setups, and publicly logged results so there's no hiding from the record. [See what the desks see →](/pricing)
+Stop trading every idea. Start reading the regime, marking the levels, defining risk, and demanding confluence before you click. Structure turns a coin flip into a process. A few concrete starting points:
+
+1. **Learn the levels.** Before your first trade of the day, check the gamma flip, call wall, and put wall. If you can't name them, you don't have a read — don't trade.
+2. **Define risk in dollars, not feelings.** Before clicking, know exactly how much you'll lose if you're wrong. On a long 0DTE option, that's the premium. On a spread, it's the spread width minus the credit.
+3. **Demand a filter.** Only take setups that pass a checklist — positioning, flow, regime. If any input is missing or conflicting, stand aside. Most days, standing aside *is* the trade.
+4. **Track the record.** Log every entry, every exit, every reason. A trading process without a record is a narrative, not a system.
+
+That's the entire premise behind BlackOut — live dealer gamma, A–F graded setups, and publicly logged results so there's no hiding from the record. [SPX Slayer](/learn/spx-slayer) is the 0DTE desk built on this approach; [Getting Started](/learn/getting-started) walks through how to set up and use the tools from day one. [See what the desks see →](/pricing)
 
 > *BlackOut provides educational tools and market analysis only and does not provide investment advice. Trading involves substantial risk and is not suitable for every investor. This is a sensitive topic for many — if trading is causing financial or emotional harm, please seek appropriate support.*`,
   },
@@ -305,17 +378,27 @@ Before you read anything into a print, ask:
 
 **Is it hedged against stock?** A big call buy paired with a stock sale may be a neutral position, not a bullish bet.
 
-**Is it unusual for that name?** Size only matters relative to a ticker's normal volume — that's what "unusual" flow really means.
+**Is it unusual for that name?** Size only matters relative to a ticker's normal volume — that's what "unusual" flow really means. For a full breakdown of how to filter unusual activity systematically, see [Unusual Options Activity Guide](/learn/unusual-options-activity-guide).
 
 Answer those and a "huge bullish print" often turns out to be a hedge. Context is everything. (Background on the positioning side: [What Is Dealer Gamma Exposure?](/learn/what-is-dealer-gamma-exposure))
+
+## Sweep detection: urgency on the tape
+
+A **sweep** is an order split across multiple exchanges simultaneously to fill fast. The buyer wants size *now* and is willing to pay up across venues rather than wait on one book. Sweeps at the ask for calls (or at the bid for puts) signal urgency and conviction — someone paid a premium to get filled immediately. Contrast that with a single large passive fill on one exchange, which could be a market maker unwinding inventory or a fund rolling an existing position. When you see a sweep in a contract whose volume already dwarfs its open interest, that's a strong combined tell: new, urgent, aggressive positioning. That's the kind of flow worth acting on.
+
+## The dark pool layer
+
+Not all institutional activity shows up on the lit options tape. Roughly 40–50% of U.S. equity volume trades in **dark pools** — private venues where institutions buy and sell size without showing their hand. A large dark pool print in the stock often *precedes* the options activity, not the other way around: the institution builds a position off-exchange first, then layers on calls or puts for leverage or hedging. A heavy dark pool block followed by unusual call buying in the same name within the same session is a much stronger signal than either one alone. See [What Is Dark Pool Trading?](/learn/what-is-dark-pool-trading) for how to read those prints.
 
 ## Flow + positioning = the full picture
 
 Flow tells you *who's showing up*; dealer positioning tells you *where the levels are*. The strongest setups happen when both agree — aggressive opening flow pushing into a [gamma level](/learn/gamma-flip-explained) that's likely to give way. Either one alone is half a picture.
 
+For example: you see a sweep of 5,000 SPX 5,550 calls at the ask, opening new positions. You check Thermal and see the call wall sits at 5,550 with price at 5,530. That level is about to absorb heavy buying *and* heavy dealer hedging simultaneously — the flow and the positioning are converging on the same strike. That's a setup worth watching closely for a breakout or a rejection, depending on how the wall responds.
+
 ## How BlackOut handles flow
 
-HELIX tracks institutional options flow with premium filters and anomaly detection, so you see the unusual activity that actually matters instead of drowning in prints. Combined with dealer gamma from Thermal, it's signal over noise. [Get access →](/pricing)
+[HELIX](/learn/helix-flows) tracks institutional options flow with premium filters, sweep detection, and anomaly flags, so you see the [unusual activity](/learn/unusual-options-activity-guide) that actually matters instead of drowning in prints. Combined with dealer gamma from [Thermal](/learn/heat-maps), it's signal over noise — flow and positioning on one screen. [Get access →](/pricing)
 
 > *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options trading involves substantial risk and is not suitable for every investor.*`,
   },
@@ -332,23 +415,29 @@ HELIX tracks institutional options flow with premium filters and anomaly detecti
 
 ## The setup
 
-A gamma squeeze starts with heavy call buying. Dealers who sell those calls are now short gamma, and to stay hedged they must buy the underlying as price rises. That buying pushes price higher — which forces them to buy *even more* to stay hedged. The hedging feeds the move, the move forces more hedging, and a feedback loop forms. (For the underlying mechanics, see [What Is Dealer Gamma Exposure?](/learn/what-is-dealer-gamma-exposure).)
+A **gamma squeeze** starts with heavy call buying. Dealers who sell those calls are now short gamma, and to stay hedged they must buy the underlying as price rises — this is the delta hedging process (see [Delta Hedging Explained](/learn/delta-hedging-explained) for the step-by-step mechanics). That buying pushes price higher — which forces them to buy *even more* to stay hedged. The hedging feeds the move, the move forces more hedging, and a feedback loop forms. (For the underlying positioning concept, see [What Is Dealer Gamma Exposure?](/learn/what-is-dealer-gamma-exposure).)
 
 ## Why it accelerates
 
-The key is that dealers here are **short gamma** — the negative-gamma regime where hedging flows *with* price instead of against it. In that regime, moves self-reinforce rather than self-correct. It's the violent cousin of a [negative-GEX](/learn/what-is-gex) day. A small catalyst can snowball into a vertical move because every uptick mechanically creates more buying.
+The key is that dealers here are **short gamma** — the negative-gamma regime where hedging flows *with* price instead of against it. In that regime, moves self-reinforce rather than self-correct. It's the violent cousin of a [negative-GEX](/learn/what-is-gex) day. A small catalyst can snowball into a vertical move because every uptick mechanically creates more buying. The Greek driving the feedback is gamma itself — as delta increases with each uptick, the hedging demand grows nonlinearly (see [Options Greeks Explained](/learn/options-greeks-explained) for how gamma relates to delta).
 
 ## Squeeze vs. short squeeze
 
 A short squeeze is driven by *short sellers* covering. A gamma squeeze is driven by *dealers* hedging options. They often happen together — call buying plus short covering — which is why the biggest melt-ups tend to combine both forces.
 
+## Real-world examples
+
+**GameStop, January 2021.** The most famous gamma squeeze in recent history. Retail traders on Reddit piled into GME calls, which forced dealers — now massively short gamma — to buy shares as the stock rallied. That mechanical buying pushed GME higher, which triggered more call buying, which forced more hedging. The stock rose from roughly $20 to nearly $500 in two weeks. Short sellers covering their positions (a classic short squeeze) ran alongside the gamma squeeze, creating a double feedback loop that overwhelmed the entire market structure.
+
+**Broader market squeezes.** Gamma squeezes don't require a meme stock. They happen in SPX itself when heavy call positioning meets a catalyst. A strong jobs number or a Fed surprise can push the index through a level where call gamma is concentrated — say, past the call wall at 5,550 — and the mechanical hedging from dealers who sold those calls pushes SPX further than the news alone would justify. The move often exhausts abruptly once the gamma burns off (the calls go deep in-the-money and delta approaches 1.0, so incremental buying stops), leaving a spike-and-fade pattern on the chart. Recognizing when a move is being amplified by gamma — versus driven by genuine reassessment of value — tells you when to ride and when to expect the reversal.
+
 ## How to spot the conditions
 
-Gamma squeezes need heavy call positioning, a short-gamma dealer regime, and a catalyst. You can see the first two in the positioning data: concentrated call gamma and price below or breaking through the [gamma flip](/learn/gamma-flip-explained). That's the setup; the catalyst provides the spark.
+Gamma squeezes need three ingredients: heavy call positioning, a short-gamma dealer regime, and a catalyst. You can see the first two in the positioning data: concentrated call gamma (a large call wall) and price below or breaking through the [gamma flip](/learn/gamma-flip-explained). When those conditions are present and a catalyst arrives — earnings, macro data, a short-squeeze trigger — the feedback loop has fuel. Without the positioning setup, the same catalyst produces a normal move, not a squeeze. That distinction is the entire value of reading positioning before trading the headline.
 
 ## See the positioning live
 
-BlackOut maps dealer gamma positioning in real time, so you can see when the conditions for an amplified move are building instead of learning about it after the candle. [Get access →](/pricing)
+BlackOut [Thermal](/learn/heat-maps) maps dealer gamma positioning in real time, so you can see when the conditions for an amplified move are building instead of learning about it after the candle. [Get access →](/pricing)
 
 > *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options trading involves substantial risk and is not suitable for every investor.*`,
   },
@@ -367,11 +456,17 @@ BlackOut maps dealer gamma positioning in real time, so you can see when the con
 
 **Call Wall** — The strike above current price with the largest concentration of call gamma; often acts as resistance or a magnet. See [Call Wall & Put Wall](/learn/call-wall-put-wall-explained).
 
+**Dark Pool** — A private trading venue where institutions buy and sell size away from the public exchange, with trades reported only after the fact. Roughly 40–50% of U.S. equity volume trades through dark pools. See [What Is Dark Pool Trading?](/learn/what-is-dark-pool-trading).
+
 **Dealer** — A market maker who takes the other side of your options trades and hedges continuously to stay neutral. Their hedging is what moves markets intraday.
 
 **Dealer Gamma Exposure** — A measure of how much dealers must buy or sell as price moves. The foundation of positioning analysis. See [What Is Dealer Gamma Exposure?](/learn/what-is-dealer-gamma-exposure).
 
-**Gamma** — The rate of change of an option's delta as the underlying moves. High gamma means hedging needs change quickly.
+**Delta** — How much an option's price changes for a $1 move in the underlying. Also approximates the probability of finishing in-the-money. See [Options Greeks Explained](/learn/options-greeks-explained).
+
+**Delta Hedging** — The continuous process by which market makers buy and sell the underlying to stay directionally neutral as delta shifts. The mechanical engine behind why positioning moves the market. See [Delta Hedging Explained](/learn/delta-hedging-explained).
+
+**Gamma** — The rate of change of an option's delta as the underlying moves. High gamma means hedging needs change quickly. See [Options Greeks Explained](/learn/options-greeks-explained).
 
 **Gamma Flip** — The price where aggregate dealer gamma crosses from positive to negative — the line between a calm, pinning market and a fast, trending one. See [Gamma Flip Explained](/learn/gamma-flip-explained).
 
@@ -379,7 +474,13 @@ BlackOut maps dealer gamma positioning in real time, so you can see when the con
 
 **GEX (Gamma Exposure)** — Total dealer gamma aggregated across the options chain; positive stabilizes the market, negative amplifies it. See [What Is GEX?](/learn/what-is-gex).
 
+**Implied Volatility (IV)** — The market's forecast of how much an underlying will move, priced into the option. Higher IV means richer premiums on both calls and puts. IV rank and IV percentile put current IV in the context of its own history. See [Implied Volatility Explained](/learn/implied-volatility-explained).
+
+**Iron Condor** — A four-leg options strategy that collects a credit by selling a call spread above price and a put spread below, profiting when the underlying stays within a range. See [Iron Condor Strategy Guide](/learn/iron-condor-strategy-guide).
+
 **Long Gamma** — When dealers hedge against the move (sell rallies, buy dips), dampening volatility and pinning price.
+
+**Max Pain** — The strike price at which the most options expire worthless and option sellers pay out the least. A secondary reference, not a primary signal — gamma walls tend to be more mechanically grounded. See [Max Pain in Options](/learn/max-pain-options-explained).
 
 **Options Flow** — The stream of options trades hitting the tape. Useful only with context — opening vs. closing, bid vs. ask, hedged vs. directional. See [How to Read Options Flow](/learn/how-to-read-options-flow).
 
@@ -388,6 +489,12 @@ BlackOut maps dealer gamma positioning in real time, so you can see when the con
 **Short Gamma** — When dealers hedge with the move (buy strength, sell weakness), amplifying volatility. The regime behind fast selloffs and squeezes.
 
 **SPX** — Options on the S&P 500 index, cash-settled and European-style — the primary market for dealer-gamma and 0DTE trading.
+
+**Theta** — The amount of value an option loses per day from time decay alone. Accelerates as expiration approaches and is especially punishing on 0DTE contracts. See [Options Greeks Explained](/learn/options-greeks-explained).
+
+**Unusual Options Activity (UOA)** — Volume in a specific contract that's meaningfully higher than its baseline. The real filter is whether volume exceeds open interest (new positions) and whether it's aggressive (sweeps at the ask). See [Unusual Options Activity Guide](/learn/unusual-options-activity-guide).
+
+**Vega** — How much an option's price changes for a 1-point move in implied volatility. Matters most on longer-dated options; nearly zero on 0DTE. See [Options Greeks Explained](/learn/options-greeks-explained).
 
 Want the full picture? Start with the pillar guide: [Dealer Gamma & Options Flow](/learn/dealer-gamma-options-flow-guide). Or [see it all live →](/pricing)
 
