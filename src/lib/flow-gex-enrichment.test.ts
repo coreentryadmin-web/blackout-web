@@ -7,7 +7,11 @@ import { computeGexProximity, enrichFlowWithGex } from "@/lib/flow-gex-proximity
 // 30-80+ names) silently left most rows with no gex_proximity at all. This test pins the fix:
 // default maxTickers must cover well beyond 8 unique tickers.
 test("enrichFlowsWithGex enriches beyond the old 8-ticker cap by default", async () => {
-  mock.module("@/lib/providers/gex-positioning", {
+  // Relative specifier (not the "@/..." alias) — mock.module()'s runtime resolution doesn't
+  // consistently apply tsx's alias rewrite across node/tsx versions (confirmed: passed locally,
+  // failed in CI with "Cannot find module .../src/lib/@/lib/providers/gex-positioning"). Matches
+  // the existing convention elsewhere in the repo (e.g. run-tool.test.ts).
+  mock.module("./providers/gex-positioning", {
     namedExports: {
       getGexPositioning: async (ticker: string) => ({
         flip: 100,
