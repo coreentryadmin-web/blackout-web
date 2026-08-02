@@ -9,6 +9,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${SITE.url}/pricing`, lastModified: now, changeFrequency: "weekly", priority: 0.9 },
     { url: `${SITE.url}/faq`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
     { url: `${SITE.url}/why-blackout`, lastModified: now, changeFrequency: "monthly", priority: 0.8 },
+    { url: `${SITE.url}/about`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
     { url: `${SITE.url}/contact`, lastModified: now, changeFrequency: "yearly", priority: 0.5 },
   ];
 
@@ -54,6 +55,15 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${SITE.url}/learn/largo-ai-terminal-guide`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
     { url: `${SITE.url}/learn/largo-ai-market-analysis-tips`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
     { url: `${SITE.url}/learn/vector-scanner-guide`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/vwap-trading-explained`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/options-expiration-explained`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/how-to-read-options-chain`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/theta-decay-options-explained`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/open-interest-options-explained`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/vix-trading-guide`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/credit-spreads-strategy-guide`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/pin-risk-options-explained`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE.url}/learn/options-volume-analysis`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
   ];
 
   const legal: MetadataRoute.Sitemap = [
