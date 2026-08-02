@@ -50,7 +50,17 @@ export function RouteBreakdown({ alerts, loading }: { alerts: FlowAlert[]; loadi
       .sort((a, b) => b.premium - a.premium);
   }, [alerts]);
 
-  if (loading || entries.length === 0) return null;
+  if (loading) return null;
+
+  if (entries.length === 0) {
+    return (
+      <Panel accent="sky" kicker="◇ execution" title="Route Breakdown">
+        <div className="flow-panel-body py-6 text-center">
+          <p className="font-mono text-[11px] text-sky-300/70">No routed prints this session</p>
+        </div>
+      </Panel>
+    );
+  }
 
   const maxPremium = entries[0]?.premium ?? 1;
 

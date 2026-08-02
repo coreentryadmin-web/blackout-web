@@ -21,7 +21,19 @@ export function VelocityRadar({
 }) {
   // Hoisted above the early return (Rules of Hooks). Static for reduced-motion users.
   const pulse = usePulse({ opacity: [1, 0.2, 1] }, { repeat: Infinity, duration: 1.4, ease: "easeInOut" });
-  if (entries.length === 0) return null;
+  if (entries.length === 0) {
+    return (
+      <div className="flow-panel">
+        <div className="flow-panel-header">
+          <span className="flow-panel-title">Velocity Radar</span>
+        </div>
+        <div className="flow-panel-body py-6 text-center">
+          <p className="font-mono text-[11px] text-orange-300/70">No velocity spikes this session</p>
+          <p className="font-mono text-[10px] text-sky-300/55 mt-1">≥3× acceleration vs prior 15 min window</p>
+        </div>
+      </div>
+    );
+  }
 
   const maxRatio = Math.max(...entries.map((e) => e.ratio), 1);
 

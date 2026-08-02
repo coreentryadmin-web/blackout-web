@@ -19,7 +19,15 @@ export function SectorFlowPanel({
 }: {
   entries: SectorFlowEntry[];
 }) {
-  if (entries.length === 0) return null;
+  if (entries.length === 0) {
+    return (
+      <Panel accent="ember" kicker="▦ 7d rotation" title="Sector Flow">
+        <div className="flow-panel-body py-6 text-center">
+          <p className="font-mono text-[11px] text-orange-300/70">No sector rotation data this session</p>
+        </div>
+      </Panel>
+    );
+  }
 
   // Sort by SECTOR_ORDER then by total premium for unlisted sectors
   const sorted = [...entries].sort((a, b) => {
