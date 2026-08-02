@@ -135,7 +135,7 @@ BlackOut Thermal maps the gamma flip in real time every morning, so you know whi
   {
     slug: "call-wall-put-wall-explained",
     path: "/learn/call-wall-put-wall-explained",
-    metaTitle: "Call Wall & Put Wall Explained: Gamma Support & Resistance | BlackOut",
+    metaTitle: "Call Wall & Put Wall Explained: Gamma Levels | BlackOut",
     metaDescription: "Call walls and put walls are where dealer gamma concentrates — often acting as magnets, resistance, and support. Learn to read them on the SPX chain.",
     targetKeyword: "call wall put wall explained",
     type: "article",
@@ -310,7 +310,7 @@ HELIX tracks institutional options flow with premium filters and anomaly detecti
   {
     slug: "gamma-squeeze-explained",
     path: "/learn/gamma-squeeze-explained",
-    metaTitle: "Gamma Squeeze Explained: How a Feedback Loop Moves Price | BlackOut",
+    metaTitle: "Gamma Squeeze Explained: The Feedback Loop | BlackOut",
     metaDescription: "A gamma squeeze happens when dealer hedging forces them to chase price higher, feeding a rally. Learn how gamma squeezes form and how to spot the setup.",
     targetKeyword: "gamma squeeze explained",
     type: "article",
