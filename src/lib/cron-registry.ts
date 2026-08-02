@@ -344,6 +344,18 @@ export const CRON_JOBS: CronJobDefinition[] = [
       "Grades historical alert_audit_log rows by copying each row's already-computed outcome from its origin table (zerodte_setup_log/nighthawk_play_outcomes/spx_play_outcomes) — feeds BIE precedent search (get_similar_precedents), which was a complete no-op before this cron existed",
   },
   {
+    key: "helix-signal-outcomes",
+    name: "Helix Signal Outcomes",
+    kind: "http",
+    path: "/api/cron/helix-signal-outcomes",
+    schedule_label: "~Every 15 min (market hours)",
+    stale_after_min: 45,
+    weekdays_only: true,
+    market_hours_only: true,
+    description:
+      "Persists Helix velocity-spike/split-flow firings (same detection as the live /flows badges) and grades each one's 5m/15m/1h price outcome — Tier 2 evidence loop for Helix's own signal-grading infrastructure, which didn't exist before this cron (signals were computed live and thrown away)",
+  },
+  {
     key: "vector-universe-snapshot",
     name: "Vector Universe Snapshot",
     kind: "http",

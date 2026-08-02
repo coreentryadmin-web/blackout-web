@@ -64,8 +64,9 @@ const ContractDrilldownDrawer = dynamic(
     ),
   { ssr: false }
 );
-import { SplitFlowRadar, type SplitFlowEntry } from "@/features/helix/components/SplitFlowRadar";
-import { VelocityRadar, type VelocityEntry } from "@/features/helix/components/VelocityRadar";
+import { SplitFlowRadar } from "@/features/helix/components/SplitFlowRadar";
+import { VelocityRadar } from "@/features/helix/components/VelocityRadar";
+import { detectSplitFlow, detectVelocitySpikes } from "@/features/helix/lib/helix-signal-detection";
 import { SectorFlowPanel, type SectorFlowEntry } from "@/features/helix/components/SectorFlowPanel";
 import { NightHawkFlowPanel, type NightHawkPlayWithFlow } from "@/features/helix/components/NightHawkFlowPanel";
 import { ExpiryConcentration } from "@/features/helix/components/ExpiryConcentration";
@@ -347,47 +348,17 @@ export function FlowFeed() {
     return new Set(stacks.map((s) => s.ticker));
   }, [filteredTapeBuffer]);
 
-  // Feature 6: detect opposing call+put flow within 30-min window (>= $500K each leg)
-  const splitFlowMap = useMemo<Map<string, SplitFlowEntry>>(() => {
-    const now       = Date.now();
-    const WINDOW_MS = 30 * 60 * 1000;
-    const MIN_LEG   = 500_000;
-    const byTicker  = new Map<string, { callPrem: number; putPrem: number }>();
-
-    for (const alert of filteredTapeBuffer) {
-      // Gap #6: a row with no trustworthy alerted_at must be EXCLUDED from the 30-min
-      // split window — not silently kept (NaN compare fell through the old guard) where
-      // it could fabricate an opposing-flow signal out of an undated print.
-      const ms = flowFreshnessAtMs(alert);
-      if (ms == null || now - ms > WINDOW_MS) continue;
-      const cur = byTicker.get(alert.ticker) ?? { callPrem: 0, putPrem: 0 };
-      if (alert.option_type === "CALL") cur.callPrem += alert.premium;
-      else if (alert.option_type === "PUT") cur.putPrem += alert.premium;
-      byTicker.set(alert.ticker, cur);
-    }
-
-    const result = new Map<string, SplitFlowEntry>();
-    for (const [ticker, { callPrem, putPrem }] of Array.from(byTicker)) {
-      if (callPrem >= MIN_LEG && putPrem >= MIN_LEG) {
-        const total   = callPrem + putPrem;
-        const callPct = Math.round((callPrem / total) * 100);
-        result.set(ticker, {
-          ticker,
-          callPremium: callPrem,
-          putPremium:  putPrem,
-          callPct,
-          total,
-          direction: callPct >= 60 ? "bullish" : callPct <= 40 ? "bearish" : "mixed",
-        });
-      }
-    }
-    return result;
-  }, [filteredTapeBuffer]);
-
-  const splitFlowTickers = useMemo(() => new Set(splitFlowMap.keys()), [splitFlowMap]);
+  // Feature 6: detect opposing call+put flow within 30-min window (>= $500K each leg).
+  // Detection logic lives in helix-signal-detection.ts (Tier 2 item #9) — shared with
+  // the server cron that persists these firings for outcome grading, so the live badge
+  // here and the persisted record can never disagree about what counts as a split.
   const splitFlowEntries = useMemo(
-    () => Array.from(splitFlowMap.values()).sort((a, b) => b.total - a.total),
-    [splitFlowMap]
+    () => detectSplitFlow(filteredTapeBuffer, Date.now()),
+    [filteredTapeBuffer]
+  );
+  const splitFlowTickers = useMemo(
+    () => new Set(splitFlowEntries.map((e) => e.ticker)),
+    [splitFlowEntries]
   );
 
   // Feature 7: earnings days until event (ticker → days, only ≤ 30d shown)
@@ -403,39 +374,10 @@ export function FlowFeed() {
     return out;
   }, [earningsMap]);
 
-  // Feature 1: velocity spike detection — prints per 15min vs prior 15min window
+  // Feature 1: velocity spike detection — prints per 15min vs prior 15min window.
+  // Same shared helix-signal-detection.ts as the split-flow detector above.
   const { velocityEntries, velocitySpikeTickers } = useMemo(() => {
-    const now      = Date.now();
-    const R_MS     = 15 * 60 * 1000; // recent window
-    const P_MS     = 30 * 60 * 1000; // prior window end
-    const byTicker = new Map<string, { recent: number; prior: number; recentPremium: number }>();
-
-    for (const alert of filteredTapeBuffer) {
-      // Velocity must use the REAL alert time (event_at), not alerted_at — a
-      // just-ingested stale print has alerted_at≈now and would fake a spike. Prints
-      // with no known event_at (UW gave no timestamp) are skipped, not assumed recent.
-      if (!alert.event_at) continue;
-      const age = now - new Date(alert.event_at).getTime();
-      if (!Number.isFinite(age)) continue;
-      const cur = byTicker.get(alert.ticker) ?? { recent: 0, prior: 0, recentPremium: 0 };
-      if (age <= R_MS) {
-        cur.recent++;
-        cur.recentPremium += alert.premium;
-      } else if (age <= P_MS) {
-        cur.prior++;
-      }
-      byTicker.set(alert.ticker, cur);
-    }
-
-    const spikes: VelocityEntry[] = [];
-    for (const [ticker, { recent, prior, recentPremium }] of Array.from(byTicker)) {
-      const ratio = recent / Math.max(1, prior);
-      if (recent >= 2 && ratio >= 3) {
-        spikes.push({ ticker, recent, prior, ratio, recentPremium });
-      }
-    }
-    spikes.sort((a, b) => b.ratio - a.ratio);
-
+    const spikes = detectVelocitySpikes(filteredTapeBuffer, Date.now());
     return {
       velocityEntries: spikes.slice(0, 8),
       velocitySpikeTickers: new Set(spikes.map((e) => e.ticker)),
