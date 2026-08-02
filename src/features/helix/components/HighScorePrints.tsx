@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, type CSSProperties } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { clsx } from "clsx";
 import { fmtPremium, type FlowAlert } from "@/lib/api";
@@ -15,10 +15,26 @@ import {
 import { fmtExpiryShort } from "@/features/helix/lib/helix-flow-format";
 import { aggressorRead } from "@/features/helix/lib/helix-print-detail";
 
-function scoreTone(score: number): { bg: string; border: string; text: string } {
+export function scoreTone(score: number): { bg: string; border: string; text: string } {
   if (score >= 9) return { bg: "rgba(250,204,21,0.08)", border: "rgba(250,204,21,0.3)", text: "#facc15" };
   if (score >= 7) return { bg: "rgba(0,230,118,0.06)", border: "rgba(0,230,118,0.25)", text: "#a3e635" };
   return { bg: "rgba(125,211,252,0.06)", border: "rgba(125,211,252,0.2)", text: "#7dd3fc" };
+}
+
+// Visual hierarchy (2026-08-02 Helix audit, Tier 1): scoreTone alone made almost every
+// row gold, since the top-N by score routinely clusters near the max — nothing read as
+// THE standout print. Only rank 0 (the single most conviction-worthy print) now gets the
+// full-strength tone + a mild glow; every other row is flattened to one quiet neutral
+// style so the #1 print is the one thing that visually pops, not all ten.
+export function rowStyle(isTop: boolean, tone: { bg: string; border: string }): CSSProperties {
+  if (!isTop) {
+    return { background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" };
+  }
+  return {
+    background: tone.bg,
+    border: `1px solid ${tone.border}`,
+    boxShadow: `0 0 10px ${tone.border.replace(/[\d.]+\)$/, "0.12)")}`,
+  };
 }
 
 export function HighScorePrints({
@@ -85,7 +101,7 @@ export function HighScorePrints({
                     : undefined
                 }
                 className="flex flex-col gap-1 rounded-lg px-3 py-2 cursor-pointer transition-colors hover:bg-white/[0.04]"
-                style={{ background: tone.bg, border: `1px solid ${tone.border}` }}
+                style={rowStyle(i === 0, tone)}
               >
                 <div className="flex items-center justify-between gap-2 min-w-0">
                   <div className="flex items-center gap-2 min-w-0 flex-wrap">

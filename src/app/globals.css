@@ -14251,14 +14251,14 @@ body::before {
 
   /* New-alert entrance flash */
   @keyframes flow-alert-flash {
-    0%   { background-color: rgba(139, 92, 246, 0.18); }
+    0%   { background-color: rgba(139, 92, 246, 0.11); }
     100% { background-color: transparent; }
   }
 
   /* Compound stacking pulse glow */
   @keyframes flow-stack-glow {
     0%, 100% { box-shadow: 0 0 0 0 rgba(255, 210, 63, 0.0), inset 0 0 0 0 rgba(255, 210, 63, 0.0); }
-    50%       { box-shadow: 0 0 16px 1px rgba(255, 210, 63, 0.18), inset 0 0 20px rgba(255, 210, 63, 0.05); }
+    50%       { box-shadow: 0 0 10px 1px rgba(255, 210, 63, 0.11), inset 0 0 12px rgba(255, 210, 63, 0.03); }
   }
 
   /* Flow card base */
@@ -14292,7 +14292,7 @@ body::before {
   .flow-card-call:hover {
     border-color: rgba(0, 230, 118, 0.35);
     background: rgba(0, 230, 118, 0.08);
-    box-shadow: 0 0 24px rgba(0, 230, 118, 0.12);
+    box-shadow: 0 0 15px rgba(0, 230, 118, 0.07);
   }
   .flow-card-call:hover::before { width: 4px; }
 
@@ -14304,7 +14304,7 @@ body::before {
   .flow-card-put:hover {
     border-color: rgba(255, 45, 85, 0.3);
     background: rgba(255, 45, 85, 0.08);
-    box-shadow: 0 0 24px rgba(255, 45, 85, 0.08);
+    box-shadow: 0 0 15px rgba(255, 45, 85, 0.05);
   }
   .flow-card-put:hover::before { width: 4px; }
 
@@ -14345,7 +14345,7 @@ body::before {
     border-radius: 8px;
     padding: 2px;
     gap: 1px;
-    box-shadow: 0 0 12px rgba(0, 255, 102, 0.06);
+    box-shadow: 0 0 7px rgba(0, 255, 102, 0.04);
   }
   .flow-seg-btn {
     font-family: monospace;
@@ -14360,10 +14360,10 @@ body::before {
     cursor: pointer;
     transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
     white-space: nowrap;
-    text-shadow: 0 0 8px rgba(0, 230, 118, 0.5);
+    text-shadow: 0 0 5px rgba(0, 230, 118, 0.3);
   }
-  .flow-seg-btn:hover { color: #34d399; background: rgba(0,230,118,0.08); text-shadow: 0 0 12px rgba(0,230,118,0.7); }
-  .flow-seg-btn-active-all   { background: rgba(0,230,118,0.12); color: #34d399; border: 1px solid rgba(0,230,118,0.5); box-shadow: 0 0 10px rgba(0,230,118,0.2); text-shadow: 0 0 10px rgba(0,230,118,0.8); }
+  .flow-seg-btn:hover { color: #34d399; background: rgba(0,230,118,0.08); text-shadow: 0 0 7px rgba(0,230,118,0.42); }
+  .flow-seg-btn-active-all   { background: rgba(0,230,118,0.12); color: #34d399; border: 1px solid rgba(0,230,118,0.5); box-shadow: 0 0 6px rgba(0,230,118,0.12); text-shadow: 0 0 6px rgba(0,230,118,0.48); }
   .flow-seg-btn-active-call  { background: rgba(217,70,239,0.18); color: #f0abfc; border: 1px solid rgba(217,70,239,0.5); }
   .flow-seg-btn-active-put   { background: rgba(244,63,94,0.2);  color: #fb7185; border: 1px solid rgba(244,63,94,0.4); }
 
@@ -14410,7 +14410,7 @@ body::before {
   .flow-badge-repeat  { color: #fde68a; border-color: rgba(245,158,11,0.4);  background: rgba(245,158,11,0.1);  }
   .flow-badge-whale   { color: #c4b5fd; border-color: rgba(139,92,246,0.4);  background: rgba(139,92,246,0.1);  }
   .flow-badge-0dte    { color: #fca5a5; border-color: rgba(239,68,68,0.5);   background: rgba(239,68,68,0.12); }
-  .flow-badge-stack   { color: #fde68a; border-color: rgba(245,158,11,0.5);  background: rgba(245,158,11,0.12); box-shadow: 0 0 6px rgba(245,158,11,0.2); }
+  .flow-badge-stack   { color: #fde68a; border-color: rgba(245,158,11,0.5);  background: rgba(245,158,11,0.12); box-shadow: 0 0 4px rgba(245,158,11,0.12); }
 
   /* Right panel (stacked panels) */
   .flow-panel {
@@ -14497,7 +14497,7 @@ body::before {
   .helix-pro-title--compact {
     @apply text-lg md:text-xl;
     line-height: 1;
-    text-shadow: 0 0 18px rgba(191, 95, 255, 0.18);
+    text-shadow: 0 0 11px rgba(191, 95, 255, 0.11);
   }
 
   .helix-pro-tide--compact {
@@ -14523,7 +14523,7 @@ body::before {
   .helix-pro-title {
     @apply font-mono text-3xl font-extrabold uppercase tracking-[0.16em] text-white md:text-[2.5rem];
     line-height: 1.05;
-    text-shadow: 0 0 28px rgba(191, 95, 255, 0.22);
+    text-shadow: 0 0 17px rgba(191, 95, 255, 0.13);
   }
 
   .helix-pro-subtitle {
@@ -14649,7 +14649,7 @@ body::before {
 
   .helix-pro-status-dot--live {
     @apply bg-bull;
-    box-shadow: 0 0 8px rgba(0, 230, 118, 0.45);
+    box-shadow: 0 0 5px rgba(0, 230, 118, 0.27);
   }
 
   .helix-pro-status-dot--stale {
@@ -14971,7 +14971,7 @@ body::before {
 
   .helix-flow-row--compound {
     background: rgba(255, 210, 63, 0.06);
-    box-shadow: inset 3px 0 0 rgba(255, 210, 63, 0.55);
+    box-shadow: inset 3px 0 0 rgba(255, 210, 63, 0.33);
   }
 
   .helix-flow-row--flash {
