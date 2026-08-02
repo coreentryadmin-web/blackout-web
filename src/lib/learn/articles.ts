@@ -966,7 +966,7 @@ Certain cells carry a **star marker** — these are **King nodes**, the single l
 
 ## Column max +/- (gamma walls)
 
-At the top or bottom of each column, the matrix marks the **column maximum positive** and **column maximum negative** values. These are that expiry's local gamma walls — the strike where the most call-side or put-side gamma sits for that specific expiration. When you aggregate these across all columns, you get the overall [call wall and put wall](/learn/call-wall-put-wall-explained) for the full chain. Watching the column-level walls lets you see whether a particular expiry (say, this Friday's monthly) is driving the aggregate wall, or whether the wall is spread across many expirations.
+Each column marks the **column maximum positive** and **column maximum negative** values — that expiry's local gamma walls. Aggregated across all columns, these produce the overall [call wall and put wall](/learn/call-wall-put-wall-explained). Column-level walls reveal whether a single expiry (say, this Friday's monthly) is driving the aggregate wall or whether it is spread across many.
 
 ## GEX vs VEX lens toggle
 
@@ -974,13 +974,13 @@ A toggle at the top of the matrix switches between two views:
 
 **GEX lens** — the default. Shows [gamma exposure](/learn/what-is-dealer-gamma-exposure) per cell. This is the primary positioning read: where dealers must buy and sell as price moves, and how aggressively. Use this for regime reads, wall identification, and flip-level awareness.
 
-**VEX lens** — shows **vanna exposure** per cell. Vanna measures how dealer delta changes as [implied volatility](/learn/implied-volatility-explained) shifts. VEX tells you what happens to the positioning picture if the VIX spikes or drops — a critical second layer on days when IV is moving sharply. For more on what the VEX lens reveals, see [Thermal's Four Lenses](/learn/thermal-four-lenses-explained). The toggle is the same concept used on [Thermal](/learn/heat-maps), applied here to the SPX-specific matrix.
+**VEX lens** — shows **vanna exposure** per cell — how dealer delta changes as [implied volatility](/learn/implied-volatility-explained) shifts. Critical on days when IV is moving sharply. See [Thermal's Four Lenses](/learn/thermal-four-lenses-explained).
 
 ## Gamma flip and the 0DTE column
 
-The [gamma flip](/learn/gamma-flip-explained) — the strike where aggregate dealer gamma crosses from positive to negative — is marked directly on the matrix, typically as a horizontal line or a color-change boundary. For the 0DTE column specifically, the flip is especially important because same-day gamma is enormous and fast-decaying. The 0DTE column's flip level can differ from the full-chain flip when longer-dated expirations carry gamma at different strikes. On days when the 0DTE flip diverges from the overall flip, price behavior can be choppy as the two signals conflict.
+The [gamma flip](/learn/gamma-flip-explained) is marked directly on the matrix. For the 0DTE column, the flip is especially important because same-day gamma is enormous and fast-decaying. The 0DTE flip can differ from the full-chain flip when longer-dated expirations carry gamma at different strikes — when they diverge, expect choppy price behavior.
 
-The **net exposure** summary at the bottom of the 0DTE column shows aggregate gamma for all same-day contracts — positive or negative, with a magnitude. This is the quick-glance answer to "is today's session stabilized or amplified by 0DTE positioning?"
+The **net exposure** summary at the bottom of the 0DTE column shows aggregate gamma for all same-day contracts — the quick-glance answer to "is today's session stabilized or amplified by 0DTE positioning?"
 
 ## Convergence and divergence between walls and price
 
@@ -1220,13 +1220,13 @@ The [gamma flip](/learn/gamma-flip-explained) is not a strike you trade directly
 
 A wall is not a guarantee. Three conditions weaken a gamma wall:
 
-1. **Thinning gamma.** If the cell values at the wall strike are declining across snapshots (visible in ShiftView), the wall is weakening. Dealers have less hedging to do there, so the mechanical barrier is smaller.
+1. **Thinning gamma.** Cell values at the wall strike declining across snapshots (visible in ShiftView) — the mechanical barrier is shrinking.
 
-2. **Heavy directional flow.** Check the [HELIX flow overlay](/learn/helix-flow-scanner-guide) on the Thermal profile. If aggressive, opening sweeps are pushing directly at the wall — and the volume dwarfs the wall's gamma — the flow may overwhelm the hedging. This is how wall breaks happen: conviction-driven buying (or selling) large enough to absorb the dealer selling (or buying) at the wall.
+2. **Heavy directional flow.** Aggressive sweeps pushing directly at the wall on the [HELIX overlay](/learn/helix-flow-scanner-guide) — conviction-driven volume large enough to absorb the dealer hedging.
 
-3. **Catalyst override.** A macro event (FOMC, CPI) or a mega-cap earnings surprise can produce a move that blows through any gamma wall. Walls built on yesterday's open interest don't know about today's news. On high-catalyst days, treat walls as softer and widen your strikes or skip short-premium structures.
+3. **Catalyst override.** FOMC, CPI, or a mega-cap earnings surprise can blow through any wall. On high-catalyst days, widen strikes or skip short-premium structures.
 
-When a wall breaks, it flips from resistance to a momentum signal. Price that closes decisively past a broken call wall often continues higher as the hedging pressure that was capping the move is now gone. See [Call Wall & Put Wall Explained](/learn/call-wall-put-wall-explained) for more on what breaks look like and how to react.
+When a wall breaks, it flips from resistance to a momentum signal — see [Call Wall & Put Wall Explained](/learn/call-wall-put-wall-explained).
 
 ## A practical workflow
 
@@ -1251,30 +1251,28 @@ Before selecting any strike: (1) open Thermal and note the flip, call wall, put 
 
 The main panel is a real-time table of options trades that pass HELIX's premium and signal filters. Each row is a single print or aggregated burst. The columns:
 
-- **Time** — when the trade hit the tape, displayed in ET.
+- **Time** — when the trade hit the tape (ET).
 - **Ticker** — the underlying symbol.
-- **CALL / PUT** — the contract type, color-coded (green for calls, red for puts).
-- **Expiry / Strike / DTE** — the contract's expiration date, strike price, and days to expiry. Short-dated contracts (especially 0DTE) carry a DTE badge to flag the accelerated gamma profile.
-- **Premium** — the dollar value of the trade. HELIX surfaces trades above configurable premium thresholds.
-- **Fill** — the fill price of the contract.
-- **Ask%** — a critical conviction metric. This is total\_ask\_side\_premium / total\_premium x 100. An Ask% of **60% or higher** means the buyer paid at the ask (aggressive, conviction buying). An Ask% of **40% or lower** means the seller hit the bid (aggressive selling or passive liquidation). Mid-range values suggest a neutral or mixed fill. See [HELIX Flow Signals Explained](/learn/helix-flow-signals-explained) for more on interpreting this.
-- **OI** — open interest on that contract. Compare to volume: when today's volume exceeds OI, these are new positions being created, not existing ones churning.
-- **IV** — [implied volatility](/learn/implied-volatility-explained) of the contract at fill time. Elevated IV on the specific contract (relative to its own history) is one more signal of unusual positioning.
-- **OTM%** — how far out of the money the strike is, expressed as a percentage of the underlying's price. Deeper OTM prints at large premiums are more unusual and therefore more interesting.
-- **Rule** — the execution type: **SWEEP** (split across multiple exchanges for speed — signals urgency), **BLOCK** (large single-exchange print — often institutional), or **FLOOR** (executed on the physical floor — typically large or complex orders). See [HELIX Flow Signals Explained](/learn/helix-flow-signals-explained) for what each rule type implies.
-- **Score** — HELIX's internal signal score for the trade, combining premium, aggression, OI ratio, and rule type.
-- **Signals** — badges showing contextual flags: GEX proximity (is the strike near the [gamma flip](/learn/gamma-flip-explained), [call wall, or put wall](/learn/call-wall-put-wall-explained)?), [dark pool](/learn/what-is-dark-pool-trading) correlation, and other anomaly markers.
+- **CALL / PUT** — contract type, color-coded (green/red).
+- **Expiry / Strike / DTE** — expiration date, strike price, and days to expiry. 0DTE contracts carry a badge.
+- **Premium** — dollar value of the trade.
+- **Fill** — fill price of the contract.
+- **Ask%** — conviction metric: total\_ask\_side\_premium / total\_premium x 100. **60%+** = buyer paid at the ask (conviction). **40%-** = seller hit the bid. See [HELIX Flow Signals Explained](/learn/helix-flow-signals-explained).
+- **OI** — open interest. When volume exceeds OI, new positions are being created.
+- **IV** — [implied volatility](/learn/implied-volatility-explained) at fill time.
+- **OTM%** — how far out of the money the strike is. Deeper OTM at large premium = more unusual.
+- **Rule** — execution type: **SWEEP** (multi-exchange, signals urgency), **BLOCK** (large single-venue), or **FLOOR** (physical floor). See [HELIX Flow Signals](/learn/helix-flow-signals-explained).
+- **Score** — internal signal score combining premium, aggression, OI ratio, and rule type.
+- **Signals** — contextual badges: GEX proximity ([gamma flip](/learn/gamma-flip-explained), [walls](/learn/call-wall-put-wall-explained)), [dark pool](/learn/what-is-dark-pool-trading) correlation, anomaly markers.
 
 ## Premium floor filters
 
 A row of chips at the top sets the minimum premium threshold for trades to appear in the table:
 
-- **$200K** — the broadest view; captures mid-size institutional prints.
-- **$500K** — filters to larger trades only.
+- **$200K** — broadest view, mid-size institutional prints.
+- **$500K** — larger trades only (recommended starting point).
 - **$1M** — major institutional activity.
-- **$20M+** — whale-tier prints; rare but highly significant when they appear.
-
-Raising the floor reduces noise and surfaces only the largest bets. Lowering it gives more context but requires more filtering skill. Start at $500K and move up or down based on the session's volume.
+- **$20M+** — whale-tier prints; rare but significant.
 
 ## Type filter and counts
 
@@ -1286,7 +1284,7 @@ A search bar lets you filter the table to a single ticker. For names you watch r
 
 ## Replay mode
 
-HELIX supports **replay mode** for historical review. Select a past date and the table loads that session's flow in chronological order, so you can step through the prints and see how the tape developed. Replay is how you study — pick a day the market moved hard, replay the flow, and see which prints led the move and which were noise. It's also useful for post-session debriefs: did the flow you acted on that day actually signal what you thought it did?
+HELIX supports **replay mode** for historical review. Select a past date and the table loads that session's flow chronologically. Pick a day the market moved hard, replay the flow, and see which prints led the move. Also useful for post-session debriefs.
 
 ## Analytics column
 
@@ -1299,11 +1297,11 @@ To the right of the flow table, an analytics panel provides aggregated views:
 
 ## TickerDrawer: per-ticker drill-down
 
-Clicking a ticker in the flow table opens the **TickerDrawer** — a slide-out panel with a focused view of that single name. It shows all qualifying prints for the ticker, aggregated premium by direction, strike distribution, and a mini exposure profile from [Thermal](/learn/heat-maps) (if available for that name). The drawer is where you go from "interesting print" to "full picture on this name" — seeing whether the single trade you noticed is part of a larger pattern or a one-off.
+Clicking a ticker opens the **TickerDrawer** — a slide-out panel showing all qualifying prints for that name, aggregated premium by direction, strike distribution, and a mini [Thermal](/learn/heat-maps) exposure profile. The drawer takes you from "interesting print" to "full picture on this name."
 
 ## Practical workflow
 
-A typical session with HELIX: set the premium floor at $500K, toggle to ALL, and scan the table for names appearing repeatedly with high Ask% and SWEEP rules. When a ticker catches your eye, click into the TickerDrawer for the full picture. Cross-check the signals column — is the print near a gamma wall? Is there dark pool activity in the same name? Then decide whether the flow supports a trade thesis. For how to interpret the Tide bar, anomaly banners, and AI brief that sit above the table, see [HELIX Flow Signals Explained](/learn/helix-flow-signals-explained). For background on separating signal from noise, see [How to Read Options Flow](/learn/how-to-read-options-flow). [Get access →](/pricing)
+Set the premium floor at $500K, scan for names with high Ask% and SWEEP rules. Click into the TickerDrawer for the full picture. Cross-check the signals column for gamma proximity and dark pool correlation. For interpreting the Tide bar, anomaly banners, and AI brief, see [HELIX Flow Signals Explained](/learn/helix-flow-signals-explained). For separating signal from noise, see [How to Read Options Flow](/learn/how-to-read-options-flow). [Get access →](/pricing)
 
 > *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options trading involves substantial risk and is not suitable for every investor.*`,
   },
@@ -1324,27 +1322,19 @@ A typical session with HELIX: set the premium floor at $500K, toggle to ALL, and
 
 The **TideBar** sits above the flow table and provides a single-glance read on the aggregate direction of institutional flow for the current session.
 
-**The pill.** A label showing **BULLISH**, **BEARISH**, or **NEUTRAL** — the net directional verdict based on cumulative premium weight across all qualifying trades.
+**The pill** shows **BULLISH**, **BEARISH**, or **NEUTRAL** based on cumulative premium weight. **The split bar** divides green (call premium) and red (put premium) proportionally — if 70% green, calls dominate 7-to-3. It updates on a **15-second polling cycle**.
 
-**The split bar.** A horizontal bar divided into a green (call premium) section and a red (put premium) section, proportional to total dollar premium on each side. If the bar is 70% green, call-side premium is dominating the session 7-to-3. The bar updates on a **15-second polling cycle**, so the read stays current without flooding you with noise on every tick.
-
-The Tide is a context signal, not a trade trigger. A BULLISH tide doesn't mean "buy calls now" — it means the weight of institutional money flowing through the scanner is leaning call-side. Combined with a [positive GEX regime](/learn/what-is-gex) and price above the [gamma flip](/learn/gamma-flip-explained), a bullish Tide adds confluence. Against a negative-GEX regime, a bullish Tide might simply be hedging rather than conviction.
+The Tide is context, not a trigger. A BULLISH tide means institutional money is leaning call-side. Combined with [positive GEX](/learn/what-is-gex) and price above the [gamma flip](/learn/gamma-flip-explained), it adds confluence. Against negative GEX, a bullish Tide might be hedging, not conviction.
 
 ## FlowAnomalyBanner: when something unusual is happening
 
 When HELIX detects [unusual options activity](/learn/unusual-options-activity-guide) that rises above the baseline noise, the **FlowAnomalyBanner** appears at the top of the scanner.
 
-**Severity badges.** Each anomaly carries a severity level. Low-severity anomalies (notable but not extreme) appear as standard badges. High-severity anomalies that cross a critical threshold — a $20M+ single print, a burst of sweeps on a single name within minutes — get a **pulsing badge** that draws your eye. The pulse is intentional: in a stream of data, critical items need to break through attention fatigue.
-
-**Per-ticker grouping.** Anomalies are grouped by ticker, so you can see at a glance whether the unusual activity is concentrated on one name (a focused institutional thesis) or spread across many (a broad market event).
-
-The banner polls every **20 seconds** — fast enough to catch a developing anomaly, slow enough to avoid false-positive flicker from isolated prints.
+Each anomaly carries a **severity badge**. Critical items — a $20M+ print, a burst of sweeps on one name — get a **pulsing badge** to break through attention fatigue. Anomalies are grouped **per-ticker**, so you see whether activity is focused on one name or spread broadly. The banner polls every **20 seconds**.
 
 ## FlowBrief: the AI narrative
 
-During regular trading hours, HELIX generates a **FlowBrief** — a short, AI-written narrative summarizing the most significant flow developments of the session. The brief calls out the names with the heaviest flow, the direction of that flow, and any contextual factors (earnings proximity, macro data releases) that color the interpretation. It refreshes every **15 minutes** during RTH and pauses after the close.
-
-Think of the FlowBrief as a second opinion. If you have been staring at the tape for two hours and lost the thread, the brief re-centers you on what actually matters this session versus what is noise. It is a summary, not a recommendation — use it for context, not as a trade signal.
+During RTH, HELIX generates a **FlowBrief** — an AI-written narrative summarizing the session's most significant flow. It calls out the heaviest names, direction, and contextual factors (earnings, macro). Refreshes every **15 minutes** during RTH. Use it as a second opinion when you've lost the thread — context, not a trade signal.
 
 ## Ask% calculation: conviction in the fill
 
@@ -1352,19 +1342,17 @@ One of the most important columns in the [flow table](/learn/helix-flow-scanner-
 
 **Ask% = total ask-side premium / total premium x 100**
 
-A print where the buyer pays at the ask is an aggressive fill — they wanted the contract enough to pay the offer price rather than sitting on the bid and waiting. An Ask% of **60% or higher** signals conviction buying: the institution crossed the spread to get filled, which costs money and implies urgency. An Ask% of **40% or lower** signals the opposite — the trade was executed at or below the midpoint, suggesting a less urgent or potentially bearish motivation (selling premium, liquidating a position).
-
-Ask% is not a direction signal by itself — a 70% Ask% on puts means aggressive put *buying*, which is bearish. Always read Ask% in the context of whether the contract is a call or a put, and whether the trade is opening or closing a position.
+**60%+** signals conviction buying — the institution crossed the spread to get filled. **40%-** signals less urgency or selling at the bid. Always read Ask% alongside whether the contract is a call or put: a 70% Ask% on puts means aggressive put *buying*, which is bearish.
 
 ## SWEEP vs. BLOCK vs. FLOOR
 
 Every trade in the HELIX table carries a **rule type** badge:
 
-**SWEEP** — the order was split across multiple exchanges simultaneously to fill fast. The buyer wanted size *now* and paid up across venues. Sweeps signal urgency and conviction. Aggressive sweeps at the ask (calls) or at the bid (puts) are the strongest flow signal in the scanner. See [How to Read Options Flow](/learn/how-to-read-options-flow) for more on sweep mechanics.
+**SWEEP** — split across multiple exchanges simultaneously. The buyer wanted size *now*. Aggressive sweeps at the ask are the strongest flow signal in the scanner. See [How to Read Options Flow](/learn/how-to-read-options-flow).
 
-**BLOCK** — a large single-venue print, typically negotiated between two parties. Blocks are common for institutional position-building where the institution has time and can negotiate pricing. They carry less urgency than sweeps but more size conviction — someone committed significant capital in one print.
+**BLOCK** — a large single-venue print, typically negotiated. Less urgency than sweeps but more size conviction — significant capital in one print.
 
-**FLOOR** — executed on the physical trading floor, usually for large or complex orders (multi-leg spreads, packages). Floor trades are often the largest and most carefully structured prints on the tape, but they can also be hedges rather than directional bets. Context from the other columns (Ask%, OI, IV) helps distinguish.
+**FLOOR** — executed on the physical floor, usually for large or complex multi-leg orders. Often the largest prints but can be hedges. Use Ask%, OI, and IV to distinguish.
 
 ## GEX proximity signals
 
@@ -1374,7 +1362,7 @@ HELIX cross-references every trade against the live [Thermal](/learn/heat-maps) 
 - **CALL WALL** — the strike is at or near the [call wall](/learn/call-wall-put-wall-explained). Large call buying at the call wall can either reinforce it (more hedging selling, stronger ceiling) or signal an attempt to break through.
 - **PUT WALL** — the strike is at or near the put wall. Large put buying at the put wall can weaken or break the support.
 
-These pills turn the flow table from a standalone feed into a positioning-aware scanner. A $2M call sweep is interesting. A $2M call sweep at the gamma flip is a potential regime-change catalyst. A $2M call sweep at a thinning call wall might be the break signal.
+These pills turn the flow table into a positioning-aware scanner. A $2M call sweep is interesting; the same sweep at the gamma flip is a potential regime-change catalyst.
 
 ## Combining signals
 
@@ -1403,49 +1391,43 @@ For a deeper look at how dark pool data fits into this picture, see [Reading Dar
 
 ## The Dark Pool panel
 
-In the analytics column of the [HELIX flow scanner](/learn/helix-flow-scanner-guide), the **Dark Pool panel** aggregates off-exchange block prints for the session. Each entry shows the ticker, price level, and aggregate block volume at that level. The panel answers a simple question: at which prices have institutions been quietly building or liquidating positions off the lit tape?
+In the [HELIX flow scanner](/learn/helix-flow-scanner-guide) analytics column, the **Dark Pool panel** aggregates off-exchange block prints for the session — ticker, price level, and aggregate volume. Look for:
 
-**What to look for:**
-
-- **Large blocks at a single price.** Repeated dark pool prints clustered at the same price level suggest an institution is methodically accumulating (or distributing) at that price. The consistency matters more than any single print — one block is an anecdote; five blocks at the same price is a pattern.
-- **Block size relative to the name.** A $10M dark pool print in AAPL is large but not extraordinary. The same print in a $5B market-cap name is enormous and far more likely to move the stock once the position is established.
-- **Timing relative to options flow.** Dark pool stock prints frequently *precede* options activity. An institution buys shares off-exchange first, then layers on calls for leverage or puts for hedging. When you see a dark pool block appear in the panel and then, minutes or hours later, see aggressive call sweeps on the same name in the HELIX flow table — that convergence is one of the strongest institutional-conviction signals available to retail traders.
+- **Repeated blocks at one price** — methodical accumulation or distribution. Five blocks at the same price is a pattern; one is an anecdote.
+- **Block size relative to the name** — a $10M print in AAPL is routine; the same in a $5B-cap name is enormous.
+- **Timing relative to options flow** — dark pool prints frequently *precede* options activity. An institution buys shares off-exchange, then layers on calls for leverage. Block + sweep convergence on the same name is one of the strongest signals available.
 
 ## DarkPoolRail on Thermal
 
-Beyond the HELIX panel, dark pool levels also appear on [Thermal](/learn/heat-maps) as the **DarkPoolRail** — horizontal reference lines overlaid on the gamma exposure profile. Each line marks a price where significant off-exchange volume traded.
-
-The power of the Thermal overlay is **context**. Seeing a dark pool line in isolation tells you where institutions traded. Seeing it on Thermal tells you where they traded relative to the [gamma flip](/learn/gamma-flip-explained), the [call wall, and the put wall](/learn/call-wall-put-wall-explained). A dark pool accumulation level that sits right at the put wall means that level has two independent reasons to act as support — mechanical dealer hedging *and* institutional demand. If price dips to that zone, both forces push back. Conversely, a dark pool distribution level near the call wall adds a second layer of resistance on top of the gamma ceiling.
+Dark pool levels also appear on [Thermal](/learn/heat-maps) as the **DarkPoolRail** — horizontal lines overlaid on the gamma exposure profile. The power is **context**: seeing where institutions traded relative to the [gamma flip](/learn/gamma-flip-explained), [call wall, and put wall](/learn/call-wall-put-wall-explained). A dark pool level at the put wall means two independent forces supporting price — dealer hedging *and* institutional demand. A distribution level near the call wall adds a second resistance layer on top of the gamma ceiling.
 
 ## Spotting institutional accumulation
 
-The textbook pattern for institutional accumulation on HELIX looks like this:
+The textbook accumulation pattern:
 
-1. **Dark pool blocks appear** at a consistent price level over hours or days — quiet, steady buying off-exchange.
-2. **[Unusual options activity](/learn/unusual-options-activity-guide) follows** — opening call purchases with high Ask% (conviction fills), often sweeps, on the same ticker.
-3. **The convergence** — dark pool stock buying followed by aggressive options positioning in the same direction suggests the institution has built a core stock position and is now adding leveraged upside via calls (or hedging with puts).
+1. **Dark pool blocks** at a consistent price over hours or days — quiet, steady off-exchange buying.
+2. **[Unusual options activity](/learn/unusual-options-activity-guide) follows** — opening call purchases with high Ask%, often sweeps, on the same ticker.
+3. **Convergence** — the institution built a core stock position and is now adding leveraged upside via calls.
 
-Neither signal alone is conclusive. Dark pool blocks can be hedging, index rebalancing, or crosses between related funds. Call sweeps can be closing trades or legs of a spread. But the combination — off-exchange accumulation in the stock followed by opening, aggressive, unusual call flow — is a materially stronger signal than either in isolation.
-
-On the distribution side, the pattern inverts: dark pool blocks appearing at a price above recent range (profit-taking or exit), followed by put buying or call selling on the options tape. This is harder to spot because distribution is often quieter and more gradual, but HELIX's anomaly detection ([FlowAnomalyBanner](/learn/helix-flow-signals-explained)) can flag the options leg when the activity crosses the unusual threshold.
+Neither signal alone is conclusive — dark pool blocks can be hedging or rebalancing, and sweeps can be closing trades. But the combination is materially stronger than either in isolation. On the distribution side, the pattern inverts: blocks above recent range followed by put buying or call selling. HELIX's [FlowAnomalyBanner](/learn/helix-flow-signals-explained) flags the options leg when it crosses the unusual threshold.
 
 ## Cross-referencing with gamma levels
 
 The most actionable dark pool reads involve layering the data against [Thermal's gamma profile](/learn/thermal-heatmap-reading-guide):
 
-**Dark pool at the put wall.** Double support — dealer hedging buys dips at the wall, and institutional demand lives at the same price. A dip to this level has strong odds of bouncing unless both forces fail simultaneously (a wall break driven by flow larger than both the gamma and the dark pool demand).
+**Dark pool at the put wall.** Double support — dealer hedging *and* institutional demand at the same price. Strong odds of bouncing unless both forces fail simultaneously.
 
-**Dark pool at the call wall.** Double resistance if the dark pool prints are distribution. But if the dark pool prints are *accumulation* at the call wall, it suggests the institution expects a breakout — they are buying where dealers are selling, betting the wall will break. That setup is rare but powerful: watch for aggressive sweeps at the same level to confirm whether the wall is about to give way.
+**Dark pool at the call wall.** Double resistance if distribution. But *accumulation* at the call wall suggests the institution expects a breakout — they are buying where dealers are selling. Watch for sweeps to confirm.
 
-**Dark pool at the gamma flip.** Positioning at the regime boundary. If institutions are accumulating stock at the flip price, they may be betting on the session committing to positive gamma (price holding above the flip). If they are distributing, they may expect the flip to break to the downside. Cross-check with the [HELIX Tide](/learn/helix-flow-signals-explained) to see whether the broader flow agrees.
+**Dark pool at the gamma flip.** Accumulation at the flip suggests a bet on positive gamma (price holding above). Distribution suggests the flip will break down. Cross-check with the [HELIX Tide](/learn/helix-flow-signals-explained).
 
-**Dark pool in open space.** When a large dark pool level sits between the call wall and the put wall — away from any gamma level — it can act as an independent support or resistance zone that the gamma profile alone would miss. These levels are "hidden" on a pure gamma read but visible on HELIX. Mark them as supplemental reference levels alongside the wall, flip, and [max pain](/learn/max-pain-options-explained).
+**Dark pool in open space.** Between the walls, away from any gamma level, dark pool prints act as independent support/resistance that the gamma profile alone would miss. Mark them alongside the wall, flip, and [max pain](/learn/max-pain-options-explained).
 
 ## Practical routine
 
-During RTH, glance at the Dark Pool panel periodically for developing block clusters. When a ticker shows up with heavy dark pool activity, open the [TickerDrawer](/learn/helix-flow-scanner-guide) to see the full flow picture for that name. Then switch to Thermal and check the DarkPoolRail against the gamma profile — does the dark pool level reinforce a wall, or does it sit in a gap? That two-screen check takes seconds and adds a layer of institutional context that most retail setups completely ignore.
+During RTH, watch the Dark Pool panel for developing block clusters. When a ticker shows heavy activity, open the [TickerDrawer](/learn/helix-flow-scanner-guide) for the full picture, then check Thermal's DarkPoolRail against the gamma profile — does the level reinforce a wall or sit in a gap? That two-screen check takes seconds and adds institutional context most retail setups ignore.
 
-For the foundations of dark pool mechanics, see [What Is Dark Pool Trading?](/learn/what-is-dark-pool-trading). For how to interpret the options flow side of the equation, see [How to Read Options Flow](/learn/how-to-read-options-flow) and [Unusual Options Activity Guide](/learn/unusual-options-activity-guide). [Get access →](/pricing)
+For dark pool fundamentals, see [What Is Dark Pool Trading?](/learn/what-is-dark-pool-trading). For options flow interpretation, see [How to Read Options Flow](/learn/how-to-read-options-flow) and [Unusual Options Activity Guide](/learn/unusual-options-activity-guide). [Get access →](/pricing)
 
 > *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options trading involves substantial risk and is not suitable for every investor.*`,
   },
