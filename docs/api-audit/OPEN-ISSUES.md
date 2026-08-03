@@ -1,5 +1,70 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-31 18:17 ET
+Last updated: 2026-08-03 16:58 ET
+
+## rth-open-2026-08-03-pass1 — RTH comprehensive test sweep (~4:50 PM ET, post-close)
+
+**Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` **RTH COMPREHENSIVE TEST SWEEP** pass 1 (~4:50 PM ET Monday, post-close). Commands: `npm run validate:rth-open` → `GET /api/cron/data-correctness?force=1` → sync `surface=heatmap` → `npm run validate:rth-sweep` → `npm run validate:spx-e2e` → `npm run validate:grid-e2e` → `npm run validate:grid-rth -- --phase=post-close` → `node scripts/audit/data-validator.mjs` → `npm run ops:collect`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` | ✅ **GREEN** — deploy smoke (post-close window; full RTH writer checks skipped after 16:15 ET) |
+| `GET /api/cron/data-correctness?force=1` | ✅ **202** async dispatch |
+| `GET /api/cron/data-correctness?force=1&surface=heatmap` | ✅ **flags=0**, 60 metrics (`market_open=false`, consistency-only) |
+| `npm run validate:rth-sweep` | ✅ **GREEN** — 0 P0/P1; 7 pages soft-nav ~1.6–1.7s; APIs 200; Largo grounded NVDA $50.5M |
+| `npm run validate:spx-e2e` | ✅ **15 PASS / 2 SKIP / 0 FAIL** — matrix 167 strikes, spot 7600.5, GEX+VEX+DEX+CHARM |
+| `npm run validate:grid-e2e` | ✅ **5/5 PASS** — 7 setups · ledger 2 |
+| `npm run validate:grid-rth -- --phase=post-close` | ✅ **12/12 PASS** |
+| `data-validator.mjs` | ⚠️ **28 PASS / 3 FAIL / 4 INFO** — QQQ 1.76% + AMZN 4.64% + MSFT 5.74% vs Polygon prev-close (extended-hours ground truth) |
+| `npm run ops:collect` | ✅ **exit 0** — zero action items |
+
+**Verify status: GREEN** — zero P0/P1 product defects. No live fixes required this pass.
+
+### Comprehensive sweep — per-page (~4:52 PM ET, post-close)
+
+| Page | Nav | Load | Missing fields | Console | Live tick |
+|---|---|---|---|---|---|
+| `/dashboard` (SPX Slayer) | hard 1.7s | — | 0 | 1× HTTP 400 | null (post-close) |
+| `/flows` (HELIX) | soft 1.7s | 0 | 0 | null |
+| `/heatmap` (Thermal matrix) | soft 1.6s | 0 | 0 | null |
+| `/vector` | soft 1.7s | 0 | 0 | null |
+| `/nighthawk` (0DTE Command) | soft 1.6s | 0 | 0 | null |
+| `/terminal` (Largo) | soft 1.6s | 0 | 0 | null |
+| `/track-record` | soft 1.6s | 0 | 0 | null |
+
+**Speed:** All pages under 1.8s soft-nav target (sign-in ~60s cold Clerk ticket).
+
+**Live auto-update:** `liveTick=null` on all pages — **expected post-close** (16:50 ET); re-check during RTH for cadence.
+
+**Largo:** NVDA dark pool + flow query grounded — $50,512,698 premium across 50 prints in 2.6s; regime `—` honest (no active anomaly regime post-close).
+
+**Cross-tool GEX:** desk flip 7553.2 = gex-positioning 7553.2; spot 7600.5.
+
+**API verification:** All 11 market endpoints HTTP 200; `spx/desk` fresh (36s), `platform/snapshot` + `zerodte/board` fresh.
+
+### Findings table (`rth-open-2026-08-03-pass1`)
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| — | — | **No P0/P1 defects** | all suites GREEN | — |
+| P2 | DASH-HTTP-400 | Dashboard console 1× HTTP 400 on resource load (recurring transient) | browser network | Yes — no blank fields |
+| P2 | SWEEP-PROFILE-TAB | Profile tab not clicked in sweep (tabs not visible to harness before fix) | `/heatmap` UI | **Fixed** harness `data-value=pair-b` wait |
+| P2 | DV-QQQ-SPOT | QQQ underlying 1.76% off Polygon prev-close (tol 1.5% index) | data-validator | Yes — extended-hours vs prev-close |
+| P2 | DV-AMZN-SPOT | AMZN underlying 4.64% off Polygon prev-close (tol 2.5%) | data-validator | Yes — extended-hours drift |
+| P2 | DV-MSFT-SPOT | MSFT underlying 5.74% off Polygon prev-close (tol 2.5%) | data-validator | Yes — extended-hours drift |
+| INFO | LIVE-TICK-NULL | All pages `liveTick=null` at 16:50 ET post-close | sweep harness | N/A — expected |
+| INFO | GRID-ROUTE-404 | `/grid` 404; 0DTE Command at `/nighthawk` | HTTP | N/A — by design |
+
+### Reports
+
+- `audit-output/rth-sweep-2026-08-03T20-52-50-602Z.json`
+- `audit-output/spx-dashboard-e2e-1785790554697.json`
+- `audit-output/grid-e2e-1785790552473.json`
+- `audit-output/grid-rth-2026-08-03-post-close-1785790666749.json`
+- `audit-output/validation-2026-08-03T20-58-32-429Z.md`
+
+---
 
 ## grid-rth-2026-07-31-pass6 — 0DTE Command post-close fix agent (~3:17 PM PT / 6:17 PM ET)
 

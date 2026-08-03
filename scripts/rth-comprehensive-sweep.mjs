@@ -327,16 +327,33 @@ async function browserSweep(signInUrl) {
     const missing = scanMissing(textAfter, label);
     report.missing.push(...missing);
 
-    // Heatmap profile tab
+    // Thermal profile view (pair-b tab — Profile + Curve + Shift)
     if (path === "/heatmap") {
-      const profileTab = page.getByRole("tab", { name: /profile/i });
+      const tabT0 = Date.now();
+      const matrixTab = page.getByRole("tab", { name: /matrix/i });
+      await matrixTab.waitFor({ state: "visible", timeout: 45000 }).catch(() => {});
+      const profileTab =
+        (await page.locator('[role="tab"][data-value="pair-b"]').count())
+          ? page.locator('[role="tab"][data-value="pair-b"]')
+          : page.getByRole("tab", { name: /profile/i });
       if (await profileTab.count()) {
-        const tabT0 = Date.now();
         await profileTab.click();
-        await page.waitForTimeout(2000);
+        await page.waitForTimeout(3000);
         const profileText = await page.locator("body").innerText().catch(() => "");
         report.missing.push(...scanMissing(profileText, "heatmap-profile"));
-        report.pages.push({ label: "heatmap-profile", navType: "tab", loadMs: Date.now() - tabT0, consoleErrors: [] });
+        report.pages.push({
+          label: "heatmap-profile",
+          navType: "tab",
+          loadMs: Date.now() - tabT0,
+          consoleErrors: consoleErrors.splice(0),
+          missingCount: scanMissing(profileText, "heatmap-profile").reduce((a, m) => a + m.count, 0),
+        });
+      } else {
+        report.issues.push({
+          severity: "P2",
+          id: "heatmap-profile-tab-missing",
+          detail: "Profile tab not visible after matrix load (stale/empty block?)",
+        });
       }
     }
 
