@@ -6,11 +6,19 @@ export function publicPageMetadata(
   title: string,
   description: string,
   path: string,
-  opts?: { kicker?: string; ogType?: "website" | "article" },
+  opts?: {
+    kicker?: string;
+    ogType?: "website" | "article";
+    /** Article type shown as a category badge on the OG image ("article", "pillar", "glossary"). */
+    articleType?: "article" | "pillar" | "glossary";
+  },
 ): Metadata {
   const url = path === "/" ? SITE.url : `${SITE.url}${path}`;
-  const ogParams = new URLSearchParams({ title, subtitle: description });
-  if (opts?.kicker) ogParams.set("kicker", opts.kicker);
+
+  const ogParams = new URLSearchParams({ title, description });
+  if (opts?.articleType) ogParams.set("type", opts.articleType);
+  else if (opts?.kicker) ogParams.set("kicker", opts.kicker);
+
   const ogImageUrl = `${SITE.url}/api/og?${ogParams.toString()}`;
 
   return {

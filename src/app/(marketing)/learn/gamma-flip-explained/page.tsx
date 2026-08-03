@@ -8,7 +8,7 @@ import { getArticleFaqs } from "@/lib/learn/article-faqs";
 
 const article = getArticle("gamma-flip-explained")!;
 
-export const metadata: Metadata = publicPageMetadata(article.metaTitle, article.metaDescription, article.path, { ogType: "article" });
+export const metadata: Metadata = publicPageMetadata(article.metaTitle, article.metaDescription, article.path, { ogType: "article", articleType: article.type });
 
 export default function GammaFlipExplained() {
   return (
