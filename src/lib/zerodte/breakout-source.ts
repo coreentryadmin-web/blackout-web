@@ -140,6 +140,46 @@ function sideHasLiquidity(row: BreakoutChainRow, side: "call" | "put"): boolean 
   return (row.put_bid != null && row.put_bid > 0) || (row.put_ask != null && row.put_ask > 0) || row.put_oi > 0;
 }
 
+/** NH-R5 fix: spread quality clips at this pct-of-mid — a two-sided quote wider than 25% of mid
+ *  earns zero spread credit (still admitted by sideHasLiquidity, just ranked no better than a
+ *  quoteless OI-only row on this dimension). */
+const SPREAD_QUALITY_CLIP_PCT = 0.25;
+
+/** OI beyond this depth earns no further quality credit (diminishing returns) — 500 contracts is
+ *  comfortably past "thin" for a 0DTE ATM strike on a liquid mover; more OI past that doesn't make
+ *  a strike materially easier to fill. */
+const OI_QUALITY_SATURATION = 500;
+
+/** How many dollars of ATM distance one full quality point (max 2.0: spread credit + OI credit) is
+ *  "worth" when tie-breaking near-ATM candidates. Deliberately small — a strike 1+ points closer to
+ *  spot still wins regardless of liquidity; this only decides between strikes that are ALREADY
+ *  close (the ATM pick stays ATM-first, quality only breaks genuine near-ties). */
+const LIQUIDITY_TIE_BREAK_DOLLARS_PER_POINT = 0.15;
+
+/**
+ * NH-R5 fix: `sideHasLiquidity` was a pure binary admission gate — every row that cleared it
+ * (any non-zero bid/ask/OI) then ranked purely on distance-to-spot, so a strike with a razor-thin
+ * quote and 1 contract of OI could beat an equally-close strike with a tight two-sided market and
+ * real depth. This scores REAL liquidity quality — spread tightness (tighter = better, clipped at
+ * `SPREAD_QUALITY_CLIP_PCT`) plus OI depth (more = better, saturating at `OI_QUALITY_SATURATION`)
+ * — each contributing up to 1.0, so the composite ranges 0–2. A quoteless OI-only row (the
+ * `sideHasLiquidity` OI>0 branch with no live bid/ask) scores only the OI component, honestly
+ * reflecting that its fill quality is unknown. */
+export function liquidityQualityScore(row: BreakoutChainRow, side: "call" | "put"): number {
+  const bid = side === "call" ? row.call_bid : row.put_bid;
+  const ask = side === "call" ? row.call_ask : row.put_ask;
+  const oi = side === "call" ? row.call_oi : row.put_oi;
+
+  let score = 0;
+  if (bid != null && bid > 0 && ask != null && ask > 0 && ask >= bid) {
+    const mid = (bid + ask) / 2;
+    const spreadPct = mid > 0 ? (ask - bid) / mid : 1;
+    score += Math.max(0, Math.min(1, 1 - spreadPct / SPREAD_QUALITY_CLIP_PCT));
+  }
+  score += Math.max(0, Math.min(1, oi / OI_QUALITY_SATURATION));
+  return score;
+}
+
 /**
  * Pick the ATM contract on `side` on the nearest usable expiry >= today, WITHIN the 0DTE horizon.
  * 0DTE (dte 0) is preferred, then dte 1 (ONE_DTE). HORIZON INTEGRITY (PR-1, design Q2): `maxDte`
@@ -161,18 +201,28 @@ export function pickAtmZeroDteContract(
   side: "call" | "put" = "call"
 ): PickedBreakoutContract | null {
   if (!(spot > 0) || rows.length === 0) return null;
-  type Cand = { strike: number; expiry: string; dte: number; dist: number };
+  type Cand = { strike: number; expiry: string; dte: number; dist: number; effectiveDist: number };
   const cands: Cand[] = [];
   for (const row of rows) {
     if (!sideHasLiquidity(row, side)) continue;
     const dte = calendarDteBetween(todayYmd, row.expiry);
     if (!Number.isFinite(dte) || dte < 0 || dte > maxDte) continue;
-    cands.push({ strike: row.strike, expiry: row.expiry.slice(0, 10), dte, dist: Math.abs(row.strike - spot) });
+    const dist = Math.abs(row.strike - spot);
+    const quality = liquidityQualityScore(row, side);
+    cands.push({
+      strike: row.strike,
+      expiry: row.expiry.slice(0, 10),
+      dte,
+      dist,
+      // NH-R5: quality only narrows near-ties (LIQUIDITY_TIE_BREAK_DOLLARS_PER_POINT is small) —
+      // a strike materially closer to spot still wins regardless of liquidity quality.
+      effectiveDist: dist - quality * LIQUIDITY_TIE_BREAK_DOLLARS_PER_POINT,
+    });
   }
   if (cands.length === 0) return null;
   // Nearest expiry first (0DTE preferred, then 1DTE within the clamped horizon), then closest-to-
-  // spot, then the lower strike -- the same deterministic tie-break shape pickChainContract uses.
-  cands.sort((a, b) => a.dte - b.dte || a.dist - b.dist || a.strike - b.strike);
+  // spot NET OF liquidity quality (NH-R5), then the lower strike -- deterministic.
+  cands.sort((a, b) => a.dte - b.dte || a.effectiveDist - b.effectiveDist || a.strike - b.strike);
   const best = cands[0]!;
   return { strike: best.strike, expiry: best.expiry, dte: best.dte };
 }
