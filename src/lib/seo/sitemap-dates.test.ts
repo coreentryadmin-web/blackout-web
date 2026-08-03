@@ -10,7 +10,7 @@ describe("sitemapLastModified", () => {
 
   it("uses article batch date for learn articles", () => {
     const d = sitemapLastModified("/learn/what-is-gex");
-    assert.equal(d.toISOString().slice(0, 10), "2026-08-02");
+    assert.equal(d.toISOString().slice(0, 10), "2026-08-03");
   });
 
   it("uses marketing dates for homepage", () => {
