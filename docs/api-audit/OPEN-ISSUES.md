@@ -1,5 +1,67 @@
 # BlackOut Open Issues Log
-Last updated: 2026-08-03 17:45 ET
+Last updated: 2026-08-03 17:55 ET
+
+## grid-rth-2026-08-03 — 0DTE Command RTH verify agent (scheduled open pass, ~2:53 PM PT / 5:53 PM ET post-close)
+
+**Session:** Autonomous Grid RTH **verify** mode per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md`. Commands: `npm run validate:grid-rth -- --force` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e` → `npm run validate:zerodte-integration` → `node scripts/audit/nighthawk-prod-check.mjs` → `node scripts/audit/data-validator.mjs` → Playwright `/grid` route + `/nighthawk` segment tabs.
+
+**Note:** Classic `/grid` page + 9 `/api/grid/*` routes deleted 2026-07-07 — returns **404**. 0DTE Command lives on `/nighthawk` with four view tabs (0DTE / Swings / LEAPS / Legacy), not deleted Grid panels.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `validate:grid-rth -- --force` | ✅ **13/13 PASS** (0 FAIL) — deploy, upstream, session heat CLOSED, ledger PnL 2 rows, SPX spot 7600.5 vs GEX, HELIX 20 prints, `zerodte-warm` cron, logic + integration, data-correctness flags=0, E2E, ops:collect zero items |
+| `validate:zerodte-logic` | ✅ **17/17 PASS** — gates, plan exits (-50%/+100%/15:30 ET), lifecycle OPEN→TRIM→CLOSED, mergePlays SKIP past cutoff/MOVED, session heat RTH→POST_COMMIT→POWER_HOUR, live board 7 setups / 2 ledger (2 eligible, 0 gate violations), cutoff 14:00 ET |
+| `validate:grid-e2e` | ✅ **5/5 PASS** — board API 7/2, HELIX 20 prints, Playwright `/nighthawk` load, zero console errors |
+| `validate:zerodte-integration` | ✅ **9/9 PASS** — BIE consistency, SPX bootstrap spot 7600.5, desk GEX spot, HELIX 30 prints, Night Hawk dedupe, ledger PnL 2 rows |
+| `nighthawk-prod-check` | ✅ **9/9 PASS** — horizons API zerodte/swings/leaps, toggle build deployed, command deck markup |
+| `data-validator.mjs` | ⚠️ **29 PASS / 2 FAIL / 4 INFO** — GOOGL Δ4.98% + QQQ Δ1.76% vs Polygon prev-close (extended-hours tape; not RTH ground truth) |
+| Night Hawk UI segments | ✅ **0DTE / Swings / LEAPS / Legacy** — all tabs click; LEAPS honest empty state ("coming online") |
+| `/grid` routing | ✅ **404** — intentional (classic Market Grid removed) |
+
+**Verify status: GREEN** — zero FAIL on all three Grid harnesses + integration. No P0 product defects.
+
+### 0DTE logic coverage (exhaustive)
+
+| Layer | Verified |
+|---|---|
+| Gates | SETUP_MIN_GROSS, aggression, dominance, ITM guard — 0 violations on live board |
+| Plan exits | stop −50%, target +100%, time stop 15:30 ET |
+| Trade lifecycle | OPEN → TRIM → CLOSED (sticky trough stop) |
+| Session heat | CLOSED post-bell; RTH→POST_COMMIT→POWER_HOUR unit-tested |
+| mergePlays UI | past cutoff → SKIP; MOVED → SKIP |
+| Ledger PnL | 2 rows, finite numbers, consistency checks PASS |
+| `zerodte-warm` cron | accepted (background warm) |
+
+### Cross-tool integration
+
+| Link | Result |
+|---|---|
+| HELIX flows → scanner | 20–30 prints feeding flow accumulation |
+| Night Hawk dedupe | no edition plays overlapping board |
+| SPX bootstrap spot vs GEX | 7600.5 aligned |
+| Grid bootstrap (via SPX) | spot consistent across desk + heatmap |
+
+### Findings table (`grid-rth-2026-08-03`)
+
+| Severity | ID | Detail | Fix defer? |
+|---|---|---|---|
+| — | — | **No P0/P1 product defects** | all Grid suites GREEN |
+| INFO | GRID-RTH-ROUTING-01 | `/grid` returns 404 — classic Market Grid deleted; 0DTE Command on `/nighthawk` | N/A — intentional |
+| INFO | GRID-RTH-LEAPS-EMPTY | LEAPS tab shows honest "coming online" empty state (0 plays) | N/A — provisional lane |
+| P2 | GRID-RTH-ENV-04 | Initial orchestrator FAIL on missing `node_modules` (pg/react/playwright) in cloud agent | Yes — `npm install` + `npx playwright install chromium` |
+| P2 | DATA-VAL-EXT-HOURS | data-validator GOOGL/QQQ FAIL vs Polygon prev-close during extended-hours | Yes — RTH ground truth only |
+
+### Reports
+
+- `audit-output/grid-rth-2026-08-03-verify-1785794111916.json`
+- `audit-output/zerodte-logic-1785794117735.json`
+- `audit-output/grid-e2e-1785794123973.json`
+- `audit-output/zerodte-integration-1785794134367.json`
+- `/opt/cursor/artifacts/grid-rth-ui/report.json`
+
+---
 
 ## grid-rth-2026-08-03-evening — 0DTE Command RTH verify agent (~2:41 PM PT / 5:41 PM ET)
 
