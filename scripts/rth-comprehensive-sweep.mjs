@@ -179,7 +179,33 @@ async function authSession() {
     }
     return { status: 401, json: null, ms: 0, raw: "" };
   };
-  return { userId, signInUrl: `${BASE}/sign-in?__clerk_ticket=${ticket}`, app, cleanup: () => backend("DELETE", `/users/${userId}`) };
+  const appDomain = new URL(BASE).hostname;
+  const playwrightCookies = [
+    {
+      name: "__session",
+      value: tok,
+      domain: appDomain,
+      path: "/",
+      secure: true,
+      sameSite: "Lax",
+      httpOnly: true,
+    },
+    {
+      name: "__client_uat",
+      value: String(clientUat),
+      domain: appDomain,
+      path: "/",
+      secure: true,
+      sameSite: "Lax",
+    },
+  ];
+  return {
+    userId,
+    signInUrl: `${BASE}/sign-in?__clerk_ticket=${ticket}`,
+    playwrightCookies,
+    app,
+    cleanup: () => backend("DELETE", `/users/${userId}`),
+  };
 }
 
 function freshAsOf(json, maxSec = 300) {
@@ -278,9 +304,10 @@ async function testLargo(app) {
   else if (!report.largo.hasAnswer) report.issues.push({ severity: "P2", id: "largo-empty", detail: "No grounded answer body" });
 }
 
-async function browserSweep(signInUrl) {
-  const browser = await chromium.launch({ headless: true });
+async function browserSweep(playwrightCookies) {
+  const browser = await chromium.launch({ headless: true, args: ["--no-sandbox"] });
   const context = await browser.newContext({ userAgent: UA });
+  await context.addCookies(playwrightCookies);
   const page = await context.newPage();
   const consoleErrors = [];
 
@@ -289,19 +316,22 @@ async function browserSweep(signInUrl) {
   });
   page.on("pageerror", (err) => consoleErrors.push(err.message));
 
-  // Sign in via ticket
-  const signT0 = Date.now();
-  await page.goto(signInUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
-  await page.waitForURL(/dashboard|terminal|upgrade/, { timeout: 60000 }).catch(() => {});
-  const signMs = Date.now() - signT0;
-
   let prevPath = null;
   for (const { path, label, liveWaitMs } of PAGES) {
     const hardT0 = Date.now();
     const navType = prevPath ? "soft" : "hard";
     for (let navAttempt = 0; navAttempt < 2; navAttempt++) {
       try {
-        await page.goto(`${BASE}${path}`, { waitUntil: "domcontentloaded", timeout: 60000 });
+        if (path === "/heatmap") {
+          await Promise.all([
+            page.goto(`${BASE}${path}`, { waitUntil: "domcontentloaded", timeout: 60000 }),
+            page
+              .waitForSelector(".gex-heatmap-panel, .gex-heatmap-control-row", { timeout: 120000 })
+              .catch(() => null),
+          ]);
+        } else {
+          await page.goto(`${BASE}${path}`, { waitUntil: "domcontentloaded", timeout: 60000 });
+        }
         break;
       } catch (err) {
         if (navAttempt === 0) {
@@ -331,7 +361,7 @@ async function browserSweep(signInUrl) {
     if (path === "/heatmap") {
       const tabT0 = Date.now();
       const matrixTab = page.getByRole("tab", { name: /matrix/i });
-      await matrixTab.waitFor({ state: "visible", timeout: 45000 }).catch(() => {});
+      await matrixTab.waitFor({ state: "visible", timeout: 30000 }).catch(() => {});
       const profileTab =
         (await page.locator('[role="tab"][data-value="pair-b"]').count())
           ? page.locator('[role="tab"][data-value="pair-b"]')
@@ -349,10 +379,16 @@ async function browserSweep(signInUrl) {
           missingCount: scanMissing(profileText, "heatmap-profile").reduce((a, m) => a + m.count, 0),
         });
       } else {
+        const idle = (await page.locator("body").innerText().catch(() => "")).includes("profile idle");
+        const panelMounted = (await page.locator(".gex-heatmap-panel").count()) > 0;
         report.issues.push({
           severity: "P2",
           id: "heatmap-profile-tab-missing",
-          detail: "Profile tab not visible after matrix load (stale/empty block?)",
+          detail: panelMounted
+            ? idle
+              ? "GexHeatmap mounted but blockEmpty (profile idle empty state)"
+              : "GexHeatmap mounted but Matrix/Profile tabs hidden (loading/stale/empty)"
+            : `GexHeatmap panel never mounted (url=${page.url()})`,
         });
       }
     }
@@ -366,7 +402,6 @@ async function browserSweep(signInUrl) {
       liveTick,
       consoleErrors: consoleErrors.splice(0),
       missingCount: missing.reduce((a, m) => a + m.count, 0),
-      signInMs: navType === "hard" ? signMs : undefined,
     });
     prevPath = path;
   }
@@ -376,11 +411,11 @@ async function browserSweep(signInUrl) {
 
 async function main() {
   console.log(`\n=== RTH Comprehensive Sweep ===\nTarget: ${BASE}\nTime: ${report.ts}\n`);
-  const { signInUrl, app, cleanup } = await authSession();
+  const { playwrightCookies, app, cleanup } = await authSession();
   try {
     await auditApis(app);
     await testLargo(app);
-    await browserSweep(signInUrl);
+    await browserSweep(playwrightCookies);
 
     const p0p1 = report.issues.filter((i) => i.severity === "P0" || i.severity === "P1");
     const outFile = join(OUT, `rth-sweep-${report.ts.replace(/[:.]/g, "-")}.json`);

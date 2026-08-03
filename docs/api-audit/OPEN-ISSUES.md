@@ -49,7 +49,7 @@ Last updated: 2026-08-03 16:58 ET
 |---|---|---|---|---|
 | — | — | **No P0/P1 defects** | all suites GREEN | — |
 | P2 | DASH-HTTP-400 | Dashboard console 1× HTTP 400 on resource load (recurring transient) | browser network | Yes — no blank fields |
-| P2 | SWEEP-PROFILE-TAB | Profile tab not clicked in sweep (tabs not visible to harness before fix) | `/heatmap` UI | **Fixed** harness `data-value=pair-b` wait |
+| P2 | SWEEP-PROFILE-TAB | Profile tab harness flake — API has 255 SPY strike_totals; manual Playwright repro mounts panel in <1s after dashboard→flows→heatmap; sweep intermittent 120s timeout | `/heatmap` harness | **Fixed** — Promise.all mount wait + non-fatal P2; re-verify RTH |
 | P2 | DV-QQQ-SPOT | QQQ underlying 1.76% off Polygon prev-close (tol 1.5% index) | data-validator | Yes — extended-hours vs prev-close |
 | P2 | DV-AMZN-SPOT | AMZN underlying 4.64% off Polygon prev-close (tol 2.5%) | data-validator | Yes — extended-hours drift |
 | P2 | DV-MSFT-SPOT | MSFT underlying 5.74% off Polygon prev-close (tol 2.5%) | data-validator | Yes — extended-hours drift |
