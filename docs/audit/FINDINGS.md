@@ -6492,3 +6492,51 @@ against real graded plays (the codebase's own calibration-first discipline — S
 `scoreFloorGraduated: false` pattern) — the honest next step once plays start hitting it is to watch
 whether `wrong_direction` actually declines in the debrief report, not to assume it from the design
 alone.
+
+## 2026-08-03 — [Thermal] Ticker search buries the real ticker behind derivative/name matches — fixed
+
+**Trigger.** User asked directly: "why is PLTR not on thermal?? Is this a bug?" — verified live
+before answering rather than assuming Thermal's known preset-chip/dynamic-universe architecture
+was the explanation.
+
+**Root cause.** `GET /api/market/ticker-search?q=PLTR&limit=8` (Thermal's ticker-switcher dropdown,
+`GexHeatmap.tsx`) never returned the real Palantir stock. `fetchPolygonTickerSearch`
+(`polygon-largo.ts:478`, pre-fix) called Polygon's `/v3/reference/tickers?search=` with
+`sort: "ticker", order: "asc"` — alphabetical-by-ticker, NOT relevance. Polygon's `search` param
+fuzzy-matches ticker AND company name, so any product whose ticker sorts alphabetically ahead of
+"PLTR" but whose NAME merely mentions Palantir also matches: `I:PLTRCW`/`I:PLTRDI`/`I:PLTRIO`
+(index derivatives), `PLA` ("GraniteShares Autocallable PLTR ETF"), `PLIB`, `PLTA`, `PLTD`, `PLTG`
+(leveraged/inverse single-stock ETFs). Live-verified: with `limit=8` (Thermal's actual dropdown
+size) these 7 derivative/index hits filled every slot — the real `PLTR` common stock never
+appeared on the first page at all, even though it's a valid, liquid, active ticker.
+
+**Evidence.** Live query against prod (`scratchpad/pltr-check.mjs`, temp Clerk session):
+`ticker-search?q=PLTR&limit=8` → `["I:PLTRCW","I:PLTRDI","I:PLTRIO","PLA","PLIB","PLTA","PLTD","PLTG"]`,
+zero occurrences of `"PLTR"` itself. Separately confirmed `gex-heatmap?ticker=PLTR` returns a full,
+correct GEX/VEX matrix (spot, walls, max_pain) — the underlying data pipeline was never broken;
+this was purely a search-ranking bug gating discovery of an otherwise-fully-supported ticker.
+
+**Fix.** `fetchPolygonTickerSearch` now over-fetches upstream (`max(limit*5, 25)`, capped 50) and
+re-ranks client-side via new `rankTickerSearchResults`: exact ticker match first, then
+ticker-starts-with-query (common-stock/`market:"stocks"` boosted over ETF/index within each tier),
+then everything else — stable-sorted within each tier so Polygon's own ordering is preserved as the
+tiebreak. Only the final `.slice(0, limit)` changed; the route/component contract is untouched.
+
+**Blast radius.** Single function (`polygon-largo.ts`) with 3 consumers: `ticker-search/route.ts`
+(Thermal's dropdown — the reported symptom), `GexHeatmap.tsx` (imports the type only), and
+`largo/run-tool.ts` (imports the type only, no ranking-sensitive call site). No other file re-sorts
+or slices these results, so the fix is fully additive at the one call site that mattered.
+
+**Fix rationale.** Re-ranking beats switching Polygon's `sort` param — Polygon's reference-tickers
+endpoint has no relevance/`_score` sort option, only alphabetical fields (ticker/name/etc), so any
+`sort=` value would still front-load some other publisher-side ordering. Over-fetching a wider
+candidate window (capped at 50 to bound upstream cost) and ranking locally is the only way to
+guarantee an exact match surfaces within a small page size, without changing the public API shape.
+
+**Tests.** New `polygon-largo-ticker-search.test.ts` (3 cases): reproduces the live PLTR bug
+verbatim (exact match must surface first), prefix-match-common-stock beats a name-only ETF match,
+and tier-stability (no exact/prefix candidates → original alphabetical order preserved). All pass.
+`npx tsc --noEmit` clean on the changed file (pre-existing unrelated `.next/types/validator.ts`
+staleness errors are present on `main` too, unrelated to this change).
+
+**Status:** PR pending → CI → auto-merge per standing policy.

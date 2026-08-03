@@ -475,12 +475,47 @@ export type TickerSearchResult = {
   currency_name: string;
 };
 
+/**
+ * Relevance rank for a ticker-search hit against the typed query — LOWER sorts first.
+ * Polygon's `/v3/reference/tickers?search=` fuzzy-matches ticker AND name, but the only
+ * sort it offers is alphabetical by ticker (`sort=ticker`), not relevance. So an exact
+ * ticker match (e.g. "PLTR") can sort well past leveraged/derivative products whose
+ * NAME merely mentions it ("PLA" GraniteShares Autocallable PLTR ETF, "I:PLTRCW" index,
+ * "PLTA"/"PLTD"/"PLTG" leveraged single-stock ETFs) because their tickers happen to sort
+ * alphabetically earlier. With a small page size (Thermal's search dropdown asks for
+ * limit=8) the real underlying can be pushed off the page entirely — confirmed live for
+ * "PLTR" (see FINDINGS 2026-08-03: I:PLTRCW/PLA/PLIB/PLTA/PLTD/PLTG filled all 8 slots,
+ * the actual PLTR common stock never appeared).
+ */
+function tickerSearchRank(r: TickerSearchResult, queryUpper: string): number {
+  const tickerUpper = r.ticker.toUpperCase();
+  if (tickerUpper === queryUpper) return 0;
+  if (tickerUpper.startsWith(queryUpper)) return r.market === "stocks" && r.type === "CS" ? 1 : 2;
+  return r.market === "stocks" && r.type === "CS" ? 3 : 4;
+}
+
+/** Re-rank Polygon's alphabetical hits by relevance to `query`, stable within each rank tier. */
+export function rankTickerSearchResults(
+  results: TickerSearchResult[],
+  query: string
+): TickerSearchResult[] {
+  const queryUpper = query.trim().toUpperCase();
+  return results
+    .map((r, index) => ({ r, index, rank: tickerSearchRank(r, queryUpper) }))
+    .sort((a, b) => a.rank - b.rank || a.index - b.index)
+    .map(({ r }) => r);
+}
+
 export async function fetchPolygonTickerSearch(query: string, limit = 10): Promise<TickerSearchResult[]> {
+  // Over-fetch upstream so the exact/prefix match has room to surface after re-ranking —
+  // Polygon returns alphabetical-by-ticker, so the real match can sit outside a `limit`-sized
+  // page of purely alphabetical results (see rankTickerSearchResults doc above).
+  const upstreamLimit = Math.min(Math.max(limit * 5, 25), 50);
   const data = await polygonGet<{ results?: Array<Record<string, unknown>> }>(
     "/v3/reference/tickers",
-    { search: query, active: "true", limit: String(limit), sort: "ticker", order: "asc" }
+    { search: query, active: "true", limit: String(upstreamLimit), sort: "ticker", order: "asc" }
   );
-  return (data?.results ?? []).map((r) => ({
+  const mapped = (data?.results ?? []).map((r) => ({
     ticker: String(r.ticker ?? ""),
     name: String(r.name ?? ""),
     market: String(r.market ?? ""),
@@ -489,6 +524,7 @@ export async function fetchPolygonTickerSearch(query: string, limit = 10): Promi
     active: r.active !== false,
     currency_name: String(r.currency_name ?? "usd"),
   }));
+  return rankTickerSearchResults(mapped, query).slice(0, limit);
 }
 
 // ── Options OHLC bars ─────────────────────────────────────────────────────────
