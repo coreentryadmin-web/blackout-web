@@ -45,9 +45,9 @@ export function effectiveSynthesisPool(): number {
   return envInt("NH_LEGACY_SYNTHESIS_POOL", 18, 5, MAX_DOSSIER_STOCKS);
 }
 
-/** Minimum merit tier to publish (A = best only in global-strongest mode). */
+/** Minimum merit tier to publish (B while global-strongest is validated on live post-close). */
 export function legacyMinPublishTier(): NighthawkTier {
-  const raw = (process.env.NH_LEGACY_MIN_TIER ?? (legacyGlobalStrongest() ? "A" : "B")).trim().toUpperCase();
+  const raw = (process.env.NH_LEGACY_MIN_TIER ?? "B").trim().toUpperCase();
   if (raw === "B") return "B";
   if (raw === "C") return "C";
   return "A";
@@ -103,7 +103,7 @@ export function forcedContrarianHedgeEnabled(): boolean {
 }
 
 export function criticRescueEnabled(): boolean {
-  if (legacyGlobalStrongest()) return envFlag("NH_LEGACY_CRITIC_RESCUE", false);
+  // ON by default until global-strongest merit bar is validated on live post-close editions.
   return envFlag("NH_LEGACY_CRITIC_RESCUE", true);
 }
 

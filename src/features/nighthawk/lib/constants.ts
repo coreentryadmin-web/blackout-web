@@ -87,10 +87,15 @@ export const MIN_HOT_CHAIN_PREMIUM = 500_000;
 export const MARKET_FLOW_ALERT_LIMIT = 450;
 export const DOSSIER_BATCH_SIZE = Math.max(
   1,
-  Math.floor(Number(process.env.NH_DOSSIER_BATCH_SIZE ?? 3))
+  Math.floor(Number(process.env.NH_DOSSIER_BATCH_SIZE ?? 2))
 );
 export const DOSSIER_FETCH_TIMEOUT_MS = 8000;
 export const DOSSIER_INTER_BATCH_MS = 800;
+/** Hard cap per ticker so one hung UW/Polygon call cannot stall the whole 60-name stage. */
+export const DOSSIER_TICKER_WALL_MS = Math.max(
+  15_000,
+  Math.floor(Number(process.env.NH_DOSSIER_TICKER_WALL_MS ?? 45_000))
+);
 
 /** Max option entry premium per share — 1 standard contract (100 shares) ≤ $3,500.
  *  Raised from $20 to $35 (PR-N15): the $20 cap blocked every ATM option on stocks above
