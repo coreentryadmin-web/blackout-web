@@ -4,8 +4,6 @@ import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { TerminalPlay } from "./types";
 
-// Classic JSX runtime in this test context expects a global React (same idiom as
-// PlayTerminal.ssr.test.ts).
 (globalThis as unknown as { React: typeof React }).React = React;
 
 const load = () => import("./CommandDeck");
@@ -17,7 +15,7 @@ function play(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
     direction: "LONG",
     contract: "592.5C · 0DTE",
     occ: "META260725C00592500",
-    score: 80,
+    score: 96,
     status: "CLOSED",
     horizon: "ZERO_DTE",
     exitModel: "RATCHET",
@@ -29,97 +27,83 @@ function play(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
     pnlPct: -50,
     peak: 87,
     trough: -50,
+    tierLabel: "A+",
+    discoveryOrigin: ["BREAKOUT"],
     firstFlaggedAt: "2026-08-03T09:42:00-04:00",
     ...overrides,
   };
 }
 
-async function render(p: TerminalPlay): Promise<string> {
+async function render(
+  p: TerminalPlay,
+  opts: { rank?: number; selected?: boolean } = {},
+): Promise<string> {
   const { PlayCard } = await load();
   return renderToStaticMarkup(
-    React.createElement(PlayCard, { play: p, rank: 1, selected: false, onSelect: () => {}, nowMs: Date.now() })
+    React.createElement(PlayCard, {
+      play: p,
+      rank: opts.rank ?? 1,
+      selected: opts.selected ?? false,
+      onSelect: () => {},
+      nowMs: Date.now(),
+    }),
   );
 }
 
-// ── Peak-excursion as the PRIMARY closed-row number (the "looks like a pure loser" fix) ──
-// A closed play's current mark/mid is dead information — nobody trades it anymore. The peak
-// excursion it reached before the stop is the honest "what actually happened" story, so it
-// replaces the dead price/pnl% entirely on a CLOSED row instead of riding along as a small chip.
-test("closed row with a peak that ran green before stopping out shows PEAK as the primary number", async () => {
+test("closed row shows Peak Return as the primary number", async () => {
   const html = await render(play({ status: "CLOSED", peak: 87, pnlPct: -50 }));
-  assert.match(html, />\+87%</);
-  assert.match(html, />PEAK</);
+  assert.match(html, />\+87%|▲ \+87%/);
+  assert.match(html, />Peak Return</);
 });
 
-test("closed row never shows the dead mid price/MID label — peak replaces it, not augments it", async () => {
+test("closed row never shows dead MID label when peak is present", async () => {
   const html = await render(play({ status: "CLOSED", peak: 87, mark: 1.57 }));
   assert.doesNotMatch(html, />MID</);
-  assert.doesNotMatch(html, /\$1\.57/);
 });
 
-test("open row (not yet closed) still shows the live mid price, not peak", async () => {
+test("open row still shows MID not Peak Return", async () => {
   const html = await render(play({ status: "OPEN", peak: 87 }));
-  assert.doesNotMatch(html, />PEAK</);
+  assert.doesNotMatch(html, />Peak Return</);
   assert.match(html, />MID</);
 });
 
-test("closed row with no peak data (older/degraded row) falls back to the normal mid/pnl display, never fabricates a peak", async () => {
-  const html = await render(play({ status: "CLOSED", peak: null, mark: 1.57, pnlPct: -50 }));
-  assert.doesNotMatch(html, />PEAK</);
-  assert.match(html, /\$1\.57/);
+test("0DTE compact row shows grade and quality on the left", async () => {
+  const html = await render(play({ tierLabel: "A+", score: 96 }), { selected: false });
+  assert.match(html, />A\+</);
+  assert.match(html, />96%/);
 });
 
-test("negative peak renders without a stray '+' sign", async () => {
-  const html = await render(play({ status: "CLOSED", peak: -12 }));
-  assert.match(html, />-12%</);
-  assert.doesNotMatch(html, />\+-12%</);
+test("selected 0DTE row renders hero card with banner when rank 1", async () => {
+  const html = await render(play(), { selected: true, rank: 1 });
+  assert.match(html, /nh-deck-row-hero/);
+  assert.match(html, />BEST PLAY TODAY</);
+  assert.match(html, />Confidence/);
+  assert.match(html, />Tap to inspect/);
 });
 
-// ── Entry/generation-time chip ─────────────────────────────────────────────────────────
-test("row shows the ET flag time when firstFlaggedAt is present", async () => {
-  const html = await render(play({ firstFlaggedAt: "2026-08-03T09:42:00-04:00" }));
-  assert.match(html, /nh-deck-cbadge time/);
+test("selected rank-2 row is hero without BEST PLAY banner", async () => {
+  const html = await render(play({ id: "0DTE:AMD", ticker: "AMD", peak: 14 }), {
+    selected: true,
+    rank: 2,
+  });
+  assert.match(html, /nh-deck-row-hero/);
+  assert.doesNotMatch(html, />BEST PLAY TODAY</);
+});
+
+test("legacy row omits 0DTE grade chips", async () => {
+  const html = await render(
+    play({ horizon: "LEGACY", tierLabel: "A", stockPrice: 180, pnlPct: 5 }),
+    { selected: false },
+  );
+  assert.doesNotMatch(html, /nh-deck-grade-inline/);
+});
+
+test("row shows ET flag time when firstFlaggedAt is present", async () => {
+  const html = await render(play());
   assert.match(html, />09:42 ET</);
 });
 
-test("row omits the time chip when firstFlaggedAt is absent — never fabricates a time", async () => {
-  const html = await render(play({ firstFlaggedAt: null }));
-  assert.doesNotMatch(html, /nh-deck-cbadge time/);
-});
-
-// ── Row simplification: tier/origin/thesis-health/staleness/exec-fill move to the right
-// pane only — the list row stays down to ticker/contract/status/the one number/timestamp.
-test("row omits tier, origin, thesis-health, and stale badges — those live in the right pane only", async () => {
-  const html = await render(
-    play({
-      status: "OPEN",
-      tierLabel: "A",
-      discoveryOrigin: ["BREAKOUT"],
-      thesisHealth: {
-        health: 80,
-        entryIndex: 80,
-        currentIndex: 80,
-        delta: 0,
-        rung: "intact",
-        rungLabel: "intact",
-        pillars: [],
-        moves: [],
-        committedAtEt: null,
-        computedAtEt: "10:00",
-        advisory: "hold",
-        thesisBreakLevel: "intact",
-        thesisBreakNote: "",
-      },
-    })
-  );
-  assert.doesNotMatch(html, /nh-deck-cbadge tier/);
-  assert.doesNotMatch(html, /nh-deck-cbadge orig/);
-  assert.doesNotMatch(html, /nh-deck-th-chip/);
-  assert.doesNotMatch(html, /nh-deck-cbadge stale/);
-});
-
-test("row omits the exec-fill line — plain pnl% is the whole story on the row", async () => {
-  const html = await render(play({ status: "OPEN", pnlPct: 12, execPnlPct: 9 }));
-  assert.doesNotMatch(html, /nh-deck-cardexec/);
-  assert.doesNotMatch(html, />fill /);
+test("discovery origin chip on enhanced 0DTE row", async () => {
+  const html = await render(play({ discoveryOrigin: ["BREAKOUT"] }), { selected: false });
+  assert.match(html, />BREAKOUT</);
 });

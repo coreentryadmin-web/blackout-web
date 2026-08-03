@@ -16068,6 +16068,48 @@ body::before {
   border-bottom:1px solid rgba(53,255,158,.06);border-left:2px solid transparent;background:none;width:100%;text-align:left;font-family:inherit;color:inherit}
 .nh-deck-row:hover{background:rgba(53,255,158,.04)}
 .nh-deck-row.sel{background:rgba(53,255,158,.09);border-left-color:var(--dk-green)}
+/* ── 0DTE hero card (selected row) ── */
+.nh-deck-row-hero{display:flex;flex-direction:column;align-items:stretch;gap:0;padding:0;margin:8px 10px 10px;
+  border:1px solid rgba(53,255,158,.45);border-left:3px solid var(--dk-green);border-radius:6px;
+  background:linear-gradient(165deg,rgba(53,255,158,.14) 0%,rgba(7,13,10,.95) 55%);
+  box-shadow:0 0 24px rgba(53,255,158,.12);grid-template-columns:unset;text-align:left}
+.nh-deck-row-hero:hover{background:linear-gradient(165deg,rgba(53,255,158,.18) 0%,rgba(7,13,10,.95) 55%)}
+.nh-deck-hero-banner{padding:6px 14px;font-size:10px;font-weight:800;letter-spacing:.22em;text-transform:uppercase;
+  color:var(--dk-green-hi);background:rgba(53,255,158,.12);border-bottom:1px solid rgba(53,255,158,.25);
+  text-shadow:var(--dk-glow)}
+.nh-deck-hero-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:12px 14px 8px}
+.nh-deck-hero-grade{display:flex;flex-direction:column;gap:4px;align-items:flex-start}
+.nh-deck-grade-badge{font-size:22px;font-weight:800;color:var(--dk-green-hi);letter-spacing:.06em;text-shadow:var(--dk-glow);
+  line-height:1}
+.nh-deck-grade-badge.dim{color:var(--dk-cyan);opacity:.7}
+.nh-deck-grade-stars{font-size:11px;color:var(--dk-cyan);letter-spacing:.08em;line-height:1}
+.nh-deck-quality{font-size:11px;color:var(--dk-cyan);font-weight:600;letter-spacing:.04em}
+.nh-deck-quality b{color:var(--dk-green-hi);font-weight:800;text-shadow:var(--dk-glow)}
+.nh-deck-hero-metric{text-align:right}
+.nh-deck-hero-pct{display:block;font-size:28px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums;
+  color:var(--dk-green-hi);text-shadow:var(--dk-glow)}
+.nh-deck-hero-pct.dim{color:var(--dk-cyan);opacity:.6;font-size:20px;text-shadow:none}
+.nh-deck-hero-pct-lab{display:block;margin-top:4px;font-size:10px;font-weight:800;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--dk-cyan)}
+.nh-deck-hero-mid{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:0 14px 10px}
+.nh-deck-hero-tk{font-size:20px;font-weight:800;color:var(--dk-green-hi);text-shadow:var(--dk-glow);letter-spacing:.04em}
+.nh-deck-hero-contract{font-size:13px;font-weight:600;color:var(--dk-cyan);width:100%}
+.nh-deck-hero-divider{height:1px;margin:0 14px;background:linear-gradient(90deg,transparent,rgba(53,255,158,.35),transparent)}
+.nh-deck-hero-foot{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 14px}
+.nh-deck-hero-cta{padding:8px 14px 12px;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--dk-cyan);border-top:1px dashed rgba(53,255,158,.2);width:100%;text-align:left}
+/* ── Enhanced compact 0DTE rows ── */
+.nh-deck-row-enhanced{padding:13px 14px;align-items:flex-start}
+.nh-deck-row-body{display:flex;flex-direction:column;gap:5px;min-width:0}
+.nh-deck-row-head{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.nh-deck-grade-inline{font-size:12px;font-weight:800;color:var(--dk-green-hi);padding:1px 6px;border-radius:3px;
+  border:1px solid rgba(53,255,158,.45);letter-spacing:.04em;text-shadow:var(--dk-glow)}
+.nh-deck-quality-inline{font-size:11px;font-weight:700;color:var(--dk-cyan);font-variant-numeric:tabular-nums}
+.nh-deck-row-divider{display:block;height:1px;margin:4px 0;background:rgba(53,255,158,.15)}
+.nh-deck-prem-lg{font-size:20px!important;line-height:1.05}
+.nh-deck-pnl-lg{font-size:14px!important;font-weight:800}
+.nh-deck-cbadge.orig{font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--dk-cyan);border-color:rgba(56,230,255,.35);padding:2px 6px}
 .nh-deck-rk{color:var(--dk-green-dim);font-size:11px;width:16px;text-align:right}
 .nh-deck-tk{font-weight:700;color:var(--dk-ink)}
 .nh-deck-row.sel .nh-deck-tk{color:var(--dk-green-hi);text-shadow:var(--dk-glow)}

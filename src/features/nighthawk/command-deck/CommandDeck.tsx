@@ -21,6 +21,16 @@ import {
 } from "./deck-session-ui";
 import { etNowParts } from "@/features/nighthawk/lib/session";
 import { useSecondTick, useFlash } from "./use-deck-live";
+import {
+  formatReturnPct,
+  originChip,
+  playGradeLabel,
+  playQualityPct,
+  primaryReturnPct,
+  tierStars,
+  useEnhancedZeroDteRow,
+  useHeroPlayCard,
+} from "./play-card-display";
 
 /** Status filter mode: which plays to show in the list. */
 type StatusFilter = DeckStatusFilter;
@@ -290,14 +300,100 @@ export const PlayCard = memo(function PlayCard({
   const stale = hasAsOf ? isZeroDteMarkStale(asOfMs, nowMs, staleThresholdMs) : false;
 
   const isCondor = p.isCondor === true;
-
   const showThRing =
     p.thesisHealth != null && (p.status === "OPEN" || p.status === "HOLD" || p.status === "TRIM");
+
+  const hero = useHeroPlayCard(p, selected, rank);
+  const enhanced = useEnhancedZeroDteRow(p);
+  const grade = playGradeLabel(p);
+  const quality = playQualityPct(p);
+  const ret = primaryReturnPct(p);
+  const origin = originChip(p);
+
+  if (hero) {
+    return (
+      <button
+        type="button"
+        className={clsx(
+          "nh-deck-row nh-deck-row-hero",
+          stale && "nh-deck-card-stale",
+          markFlash && "nh-deck-row-flash",
+        )}
+        onClick={() => onSelect(p.id)}
+        aria-current={selected}
+      >
+        {rank === 1 && (
+          <div className="nh-deck-hero-banner" aria-hidden>
+            BEST PLAY TODAY
+          </div>
+        )}
+        <div className="nh-deck-hero-top">
+          <div className="nh-deck-hero-grade">
+            {grade ? (
+              <span className="nh-deck-grade-badge">{grade}</span>
+            ) : (
+              <span className="nh-deck-grade-badge dim">—</span>
+            )}
+            {grade && <span className="nh-deck-grade-stars" aria-hidden>{tierStars(grade)}</span>}
+            {quality != null && (
+              <span className="nh-deck-quality">
+                Confidence <b>{quality}%</b>
+              </span>
+            )}
+          </div>
+          <div className="nh-deck-hero-metric">
+            {ret != null ? (
+              <>
+                <span
+                  className={clsx(
+                    "nh-deck-hero-pct",
+                    ret > 0 && "nh-deck-pos",
+                    ret < 0 && "nh-deck-neg",
+                  )}
+                >
+                  {ret > 0 ? "▲ " : ret < 0 ? "▼ " : ""}
+                  {formatReturnPct(ret)}
+                </span>
+                <span className="nh-deck-hero-pct-lab">
+                  {p.status === "CLOSED" ? "Peak Return" : "Live P&L"}
+                </span>
+              </>
+            ) : (
+              <span className="nh-deck-hero-pct dim">—</span>
+            )}
+          </div>
+        </div>
+        <div className="nh-deck-hero-mid">
+          <span className="nh-deck-hero-tk">{p.ticker}</span>
+          <span className={clsx("nh-deck-dp", p.direction === "LONG" ? "long" : "short")}>
+            {p.direction}
+          </span>
+          <span className="nh-deck-hero-contract">{p.contract}</span>
+        </div>
+        <div className="nh-deck-hero-divider" aria-hidden />
+        <div className="nh-deck-hero-foot">
+          <span className={clsx("nh-deck-st", p.status)}>{p.status}</span>
+          {p.firstFlaggedAt && (
+            <span className="nh-deck-cbadge time">{etClock(p.firstFlaggedAt)} ET</span>
+          )}
+          {origin && <span className="nh-deck-cbadge orig">{origin}</span>}
+          {isCondor && <CondorCardChip play={p} />}
+        </div>
+        <div className="nh-deck-hero-cta">Tap to inspect →</div>
+      </button>
+    );
+  }
 
   return (
     <button
       type="button"
-      className={clsx("nh-deck-row", selected && "sel", stale && "nh-deck-card-stale", markFlash && "nh-deck-row-flash")}
+      className={clsx(
+        "nh-deck-row",
+        selected && "sel",
+        enhanced && "nh-deck-row-enhanced",
+        stale && "nh-deck-card-stale",
+        markFlash && "nh-deck-row-flash",
+      )}
       onClick={() => onSelect(p.id)}
       aria-current={selected}
     >
@@ -307,17 +403,19 @@ export const PlayCard = memo(function PlayCard({
         )}
         <span className="nh-deck-rk">{rank}</span>
       </span>
-      <span>
-        <span>
-          <span className="nh-deck-tk">{p.ticker}</span>{" "}
-          <span className={clsx("nh-deck-dp", p.direction === "LONG" ? "long" : "short")}>{p.direction}</span>
+      <span className="nh-deck-row-body">
+        <span className="nh-deck-row-head">
+          <span className="nh-deck-tk">{p.ticker}</span>
+          <span className={clsx("nh-deck-dp", p.direction === "LONG" ? "long" : "short")}>
+            {p.direction}
+          </span>
+          {enhanced && grade && <span className="nh-deck-grade-inline">{grade}</span>}
+          {enhanced && quality != null && (
+            <span className="nh-deck-quality-inline">{quality}%</span>
+          )}
         </span>
-        <span className="nh-deck-sub" style={{ display: "block" }}>{p.contract}</span>
-        {/* Row kept deliberately minimal: ticker/contract, status, the one number that matters
-           (peak for CLOSED, live P&L for everything else), and when it happened. Tier, discovery
-           origin, pre-market confirm/degrade status, thesis-health score, and staleness age are
-           all still one click away in the right-pane detail (PlayTerminal.tsx header + Thesis
-           tab) — they don't need to compete for space on every row in the list. */}
+        <span className="nh-deck-sub">{p.contract}</span>
+        {enhanced && <span className="nh-deck-row-divider" aria-hidden />}
         <span className="nh-deck-cardbadges">
           <span className={clsx("nh-deck-st", p.status)}>{p.status}</span>
           {p.firstFlaggedAt && (
@@ -325,23 +423,24 @@ export const PlayCard = memo(function PlayCard({
               {etClock(p.firstFlaggedAt)} ET
             </span>
           )}
+          {enhanced && origin && <span className="nh-deck-cbadge orig">{origin}</span>}
+          {isCondor && <CondorCardChip play={p} />}
         </span>
       </span>
       <span className="nh-deck-rr">
-        {/* A CLOSED row's current mark/mid is dead information — nobody is trading it anymore.
-           What matters is the peak excursion it reached before the stop (already latched
-           server-side as peak_premium, see adapters.ts peakDisplay): a play that ran +87% and
-           gave it back at -50% is a different story than one that just lost, and that story is
-           now the PRIMARY number on the row instead of a small badge next to a dead price. */}
         {p.status === "CLOSED" && p.peak != null ? (
           <>
             <span
-              className={clsx("nh-deck-prem", p.peak > 0 && "nh-deck-pos", p.peak < 0 && "nh-deck-neg")}
-              style={{ display: "block" }}
+              className={clsx(
+                "nh-deck-prem nh-deck-prem-lg",
+                p.peak > 0 && "nh-deck-pos",
+                p.peak < 0 && "nh-deck-neg",
+              )}
             >
-              {p.peak > 0 ? "+" : ""}{p.peak.toFixed(0)}%
+              {p.peak > 0 ? "▲ " : ""}
+              {formatReturnPct(p.peak)}
             </span>
-            <span className="nh-deck-premlab">PEAK</span>
+            <span className="nh-deck-premlab">Peak Return</span>
           </>
         ) : p.horizon === "LEGACY" && p.stockPrice != null ? (
           <>
@@ -349,22 +448,41 @@ export const PlayCard = memo(function PlayCard({
               ${p.stockPrice.toFixed(2)}
             </span>
             <span className="nh-deck-premlab">{p.pnlPct != null ? "P&L" : "STOCK"}</span>
-            <span className={clsx("nh-deck-pnl", (p.pnlPct ?? p.stockChangePct ?? 0) > 0 && "nh-deck-pos", (p.pnlPct ?? p.stockChangePct ?? 0) < 0 && "nh-deck-neg")} style={{ display: "block" }}>
+            <span
+              className={clsx(
+                "nh-deck-pnl",
+                (p.pnlPct ?? p.stockChangePct ?? 0) > 0 && "nh-deck-pos",
+                (p.pnlPct ?? p.stockChangePct ?? 0) < 0 && "nh-deck-neg",
+              )}
+              style={{ display: "block" }}
+            >
               {p.pnlPct != null
                 ? `${p.pnlPct >= 0 ? "+" : ""}${p.pnlPct.toFixed(1)}%`
-                : p.stockChangePct != null ? `${p.stockChangePct >= 0 ? "+" : ""}${p.stockChangePct.toFixed(1)}%` : "—"}
+                : p.stockChangePct != null
+                  ? `${p.stockChangePct >= 0 ? "+" : ""}${p.stockChangePct.toFixed(1)}%`
+                  : "—"}
             </span>
           </>
         ) : (
           <>
-            <span className="nh-deck-prem" style={{ display: "block" }}>
+            <span className="nh-deck-prem nh-deck-prem-lg" style={{ display: "block" }}>
               {p.mark != null || p.entry != null
                 ? `$${(p.mark != null ? p.mark : p.entry!).toFixed(2)}`
                 : "—"}
             </span>
             <span className="nh-deck-premlab">{isCondor ? "MARK" : "MID"}</span>
-            <span className={clsx("nh-deck-pnl", (p.pnlPct ?? 0) > 0 && "nh-deck-pos", (p.pnlPct ?? 0) < 0 && "nh-deck-neg", markFlash && "neon")} style={{ display: "block" }}>
-              {p.pnlPct != null && p.pnlPct !== 0 ? `${p.pnlPct > 0 ? "+" : ""}${p.pnlPct.toFixed(1)}%` : "—"}
+            <span
+              className={clsx(
+                "nh-deck-pnl nh-deck-pnl-lg",
+                (p.pnlPct ?? 0) > 0 && "nh-deck-pos",
+                (p.pnlPct ?? 0) < 0 && "nh-deck-neg",
+                markFlash && "neon",
+              )}
+              style={{ display: "block" }}
+            >
+              {p.pnlPct != null && p.pnlPct !== 0
+                ? `${p.pnlPct > 0 ? "▲ " : ""}${formatReturnPct(p.pnlPct)}`
+                : "—"}
             </span>
           </>
         )}
