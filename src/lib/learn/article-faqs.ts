@@ -774,6 +774,60 @@ export const ARTICLE_FAQS: Record<string, FAQItem[]> = {
         "Ask percentage measures the share of total volume that traded at or near the ask price. Above 60% on call flow is solidly bullish (buyers crossing the spread), while below 40% suggests selling or less urgency.",
     },
   ],
+
+  "how-to-trade-spx-options": [
+    {
+      question: "How do you trade SPX options as a beginner?",
+      answer:
+        "Start by reading dealer positioning — gamma flip, GEX sign, and call/put walls — before picking direction. Then choose 0DTE or weekly structure, use defined-risk spreads, and size for SPX notional (one point is roughly ten SPY points).",
+    },
+    {
+      question: "What is the difference between SPX and SPY options?",
+      answer:
+        "SPX is cash-settled European-style index options with favorable tax treatment for many accounts and enormous liquidity. SPY is ETF-settled with smaller notional per point. SPX dealer gamma is the dominant force on index sessions.",
+    },
+    {
+      question: "Should you trade 0DTE or weekly SPX options?",
+      answer:
+        "Use 0DTE when you have a clear intraday regime read and can watch the position. Use weekly SPXW when you need more time for a thesis or want to sell premium via condors and credit spreads in a positive-GEX range.",
+    },
+  ],
+
+  "market-maker-hedging-explained": [
+    {
+      question: "How do market makers hedge options?",
+      answer:
+        "Market makers delta hedge by buying or selling the underlying as price moves to stay neutral on the options they sold. That continuous mechanical flow creates gamma flip levels, call and put walls, and intraday pins on SPX.",
+    },
+    {
+      question: "Why does market maker hedging move stock prices?",
+      answer:
+        "When aggregate dealer gamma is large, required hedge rebalancing happens at a scale that overwhelms discretionary flow. In positive gamma dealers dampen moves; in negative gamma they amplify them.",
+    },
+    {
+      question: "What is the relationship between hedging and GEX?",
+      answer:
+        "GEX aggregates how much dealers must hedge across the chain. Positive GEX means hedging works against price; negative GEX means hedging works with price — the core regime read for index day trading.",
+    },
+  ],
+
+  "best-0dte-trading-strategies": [
+    {
+      question: "What are the best 0DTE trading strategies?",
+      answer:
+        "The best 0DTE strategy depends on dealer gamma that day: fade walls in positive GEX above the flip, ride momentum below the flip in negative GEX, sell iron condors in tight positive-GEX ranges, and take one structured open scalp when gamma peaks.",
+    },
+    {
+      question: "When should you fade vs follow on 0DTE?",
+      answer:
+        "Fade toward call and put walls when GEX is positive and spot is above the gamma flip. Follow momentum with directional spreads when GEX is negative and price sits below the flip — hedging accelerates the move.",
+    },
+    {
+      question: "Is 0DTE iron condor a good strategy?",
+      answer:
+        "Iron condors work on 0DTE when walls bracket price, IV is elevated, and GEX is positive. Skip or cut size when gamma flips negative or a macro catalyst can break the range — short premium without a regime read is how 0DTE accounts blow up.",
+    },
+  ],
 };
 
 /**

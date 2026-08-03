@@ -10,7 +10,7 @@ import { LandingRedesignFxLazy } from "./LandingRedesignFxLazy";
 import { MarketingAuthAnchor, MarketingAuthCta, MarketingAuthLabel } from "./MarketingAuthCta";
 
 /** Redesigned homepage body — server-rendered content + one client FX layer (canvas, reveal, ticker). */
-export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
+export function RedesignHome() {
   return (
     <div className="rl">
       {/* ═══ Atmosphere layers ═══ */}
@@ -60,7 +60,7 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
           <p><b>See what the dealers see.</b> Trade before the crowd moves.</p>
           <div className="cta-row">
             <MarketingAuthCta
-              serverSignedIn={signedIn}
+              serverSignedIn={false}
               hrefSignedIn="/dashboard"
               hrefSignedOut="/sign-up"
               labelSignedIn="Open desk"
@@ -412,7 +412,7 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
                 <a href={WHOP_CHECKOUT.community} className="btn-g">Get SPX access</a>
               ) : (
                 <MarketingAuthAnchor
-                  serverSignedIn={signedIn}
+                  serverSignedIn={false}
                   hrefSignedIn="/upgrade"
                   hrefSignedOut="/sign-up?redirect_url=%2Fupgrade"
                   className="btn-g"
@@ -443,7 +443,7 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
                 <a href={WHOP_CHECKOUT.monthly} className="btn-p">Get full access <span className="cta-arrow">&rarr;</span></a>
               ) : (
                 <MarketingAuthAnchor
-                  serverSignedIn={signedIn}
+                  serverSignedIn={false}
                   hrefSignedIn="/upgrade"
                   hrefSignedOut="/sign-up?redirect_url=%2Fupgrade"
                   className="btn-p"
@@ -474,7 +474,7 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
                 <a href={WHOP_CHECKOUT.yearly} className="btn-p">Lock in yearly <span className="cta-arrow">&rarr;</span></a>
               ) : (
                 <MarketingAuthAnchor
-                  serverSignedIn={signedIn}
+                  serverSignedIn={false}
                   hrefSignedIn="/upgrade"
                   hrefSignedOut="/sign-up?redirect_url=%2Fupgrade"
                   className="btn-p"
@@ -537,7 +537,7 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
           <div className="footer-tagline">The intelligence layer behind modern trading.</div>
           <div className="footer-cta cta-row">
             <MarketingAuthCta
-              serverSignedIn={signedIn}
+              serverSignedIn={false}
               hrefSignedIn="/upgrade"
               hrefSignedOut="/sign-up?redirect_url=%2Fupgrade"
               labelSignedIn="Open the desk"
@@ -556,12 +556,12 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
       <div className="mobile-sticky-cta" id="mobile-sticky-cta">
         <div className="sticky-text">
           <strong>
-            <MarketingAuthLabel serverSignedIn={signedIn} signedInLabel="Open desk" signedOutLabel="Get access" />
+            <MarketingAuthLabel serverSignedIn={false} signedInLabel="Open desk" signedOutLabel="Get access" />
           </strong>
           From {usd(MEMBERSHIP_PRICING.monthly)}/mo
         </div>
         <MarketingAuthCta
-          serverSignedIn={signedIn}
+          serverSignedIn={false}
           hrefSignedIn="/upgrade"
           hrefSignedOut="/sign-up?redirect_url=%2Fupgrade"
           labelSignedIn="Start now →"
