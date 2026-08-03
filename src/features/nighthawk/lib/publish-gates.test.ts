@@ -75,6 +75,7 @@ function dossier(
     priceSession?: string | null;
     scored?: ScoredCandidate;
     tech?: null;
+    trend?: string;
   } = {}
 ): TickerDossier {
   if (overrides.tech === null) {
@@ -88,7 +89,7 @@ function dossier(
       ticker: overrides.ticker ?? "AMD",
       price: overrides.price ?? 108,
       price_session: overrides.priceSession === undefined ? SESSION : overrides.priceSession,
-      trend: "up",
+      trend: overrides.trend ?? "mixed",
       setup_tags: [],
       support_levels: [],
       resistance_levels: [],
@@ -126,6 +127,7 @@ test("healthy play PUBLISHes and the result carries every gate's PASS margin", (
       ["band_detached", true],
       ["target_unreachable", true],
       ["stale_quote_basis", true],
+      ["book_tape_conflict", true],
     ]
   );
   const band = res.checks.find((c) => c.code === "band_detached")!;
@@ -245,6 +247,52 @@ test("G-N3 lenient: an UNDATEABLE quote (price_session null) passes — hourly f
 test("G-N3 accepts ANY listed session (intraday build: today's partial bar or prior close)", () => {
   const res = evaluate(play(), dossier({ priceSession: "2026-07-10" }), [SESSION, "2026-07-10"]);
   assert.equal(res.verdict, "PUBLISH");
+});
+
+// ── G-N4 book-vs-tape alignment ─────────────────────────────────────────────────────────
+
+test("G-N4: a LONG play against a bearish tape (EMA stack) BLOCKS with book_tape_conflict", () => {
+  const res = evaluate(play({ direction: "LONG" }), dossier({ trend: "bearish" }));
+  assert.equal(res.verdict, "BLOCK");
+  assert.deepEqual(res.blocks.map((b) => b.code), ["book_tape_conflict"]);
+  assert.equal(res.blocks[0]!.value, "bearish");
+  assert.match(res.blocks[0]!.reason, /against this long/);
+});
+
+test("G-N4 SHORT mirror: a SHORT play against a bullish tape BLOCKS", () => {
+  const res = evaluate(
+    play({ direction: "SHORT", entry_range: "$103.50-$104.00", target: "$100.00", stop: "$106.00" }),
+    dossier({ price: 100, atr14: 4, trend: "bullish" })
+  );
+  assert.equal(res.verdict, "BLOCK");
+  assert.deepEqual(res.blocks.map((b) => b.code), ["book_tape_conflict"]);
+  assert.equal(res.blocks[0]!.value, "bullish");
+  assert.match(res.blocks[0]!.reason, /against this short/);
+});
+
+test("G-N4: a LONG play WITH a bullish tape (agreement) PASSes", () => {
+  const res = evaluate(play(), dossier({ trend: "bullish" }));
+  assert.equal(res.verdict, "PUBLISH");
+});
+
+test("G-N4: a 'mixed' tape (no clear EMA stack) never blocks either direction — honest ambiguity is not a veto", () => {
+  const long = evaluate(play({ direction: "LONG" }), dossier({ trend: "mixed" }));
+  assert.equal(long.verdict, "PUBLISH");
+  const short = evaluate(
+    play({ direction: "SHORT", entry_range: "$103.50-$104.00", target: "$100.00", stop: "$106.00" }),
+    dossier({ price: 100, atr14: 4, trend: "mixed" })
+  );
+  assert.equal(short.verdict, "PUBLISH");
+});
+
+test("G-N4 is NON-PROMOTABLE: a book/tape conflict never rescues via gate_promoted, unlike stale_quote_basis alone", () => {
+  const blocked = {
+    ticker: "AMD",
+    play: play({ score: 90 }),
+    result: evaluate(play({ score: 90, direction: "LONG" }), dossier({ trend: "bearish" })),
+    scored: scored({ score: 90 }),
+  };
+  assert.equal(isPromotableBlockedPlay(blocked), false);
 });
 
 // ── Fail-closed geometry_unknown ────────────────────────────────────────────────────────

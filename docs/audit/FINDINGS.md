@@ -6404,3 +6404,57 @@ up to itself.
 `FINDINGS.md` doc correction only, no code.
 
 **Status:** PR pending → CI → auto-merge per standing policy.
+
+## 2026-08-03 — [Legacy edition] G-N4 book-vs-tape alignment veto — built (closes the `wrong_direction` gap)
+
+**Context.** User explicitly requested this after the 2026-08-03 Legacy debrief re-verification
+found `wrong_direction` as the dominant unresolved failure mode (conviction-A plays: 26 total, 12
+scoreable, 0 wins, dominant failure mode `wrong_direction`) with **no publish gate covering it** —
+`debrief-aggregate.ts`'s own fix-lever note named the missing piece: "add a book-vs-tape alignment
+veto at publish (decision doc N-4/PR-N9 class)". `docs/audit/NIGHTHAWK-OVERNIGHT-DECISION.md` (§0,
+§1.1) named this gate back on 2026-07-14 ("book-vs-tape direction alignment" — a gate that does NOT
+exist) but it was never built; G-N1 (band_detached) and G-N2 (target_unreachable) shipped instead
+(#1186/#1215-class fixes), leaving directional confirmation as the one un-vetoed dimension.
+
+**Root cause.** The play's chosen direction (LONG/SHORT — the "book", set by the flow/scorer
+pipeline) was never checked against the stock's OWN recent price structure (the "tape") at publish
+time. `scoreTechnicalSetup` (`scorer.ts`) already reads `TechnicalCard.trend` and nudges the score
+±6-8 points when direction and trend disagree — but a nudge is not a veto: a strong flow/news score
+easily drowns out an ±8 penalty, so a play whose OWN chart structure argues against it could still
+publish and carry conviction A. This is exactly the gap the debrief calls out — Cortex's NH-R9 fix
+(#1519, earlier this session) solved the analogous "loud disagreement drowned in a scalar" problem
+for 0DTE; Legacy had no gate at all for the same failure shape.
+
+**Fix.** New **G-N4** in `publish-gates.ts`: `book_tape_conflict`. Reuses `TechnicalCard.trend`
+(`polygon-largo.ts`'s `trend_stack` — literally `price vs EMA20 vs EMA50`, computed independently of
+any flow/option data — no new fetching, no new provider call) — exactly the "wire the already-built
+... discipline stack ... rather than building anything new" instruction the 2026-07-14 design doc
+gives for this class of fix. Deliberately narrow and binary: blocks ONLY when the tape reads a
+STRUCTURAL, unambiguous contradiction (`trend === "bearish"` for a LONG, `trend === "bullish"` for a
+SHORT) — `"mixed"` (the tech card's own honest "EMA stack doesn't agree with itself" state) never
+blocks, matching the Cortex design's own asymmetry (only a loud, unambiguous fact earns a veto).
+Added to `NON_PROMOTABLE_GATE_CODES` alongside `band_detached`/`geometry_unknown` — a directional
+conflict must not be rescuable via `gate_promoted`, or the gate defeats its own purpose (silently
+publishing the exact plays it exists to catch, just with a caveat label).
+
+**Blast radius.** `publish-gates.ts` only: new gate code + check + block, wired into the existing
+`evaluateNighthawkPublishGates` alongside G-N1/G-N2/G-N3 (same function, same fail-closed
+precondition — `tech` is guaranteed present by the time G-N4 runs, since a missing tech card already
+blocks earlier as `geometry_unknown`). `board.ts`'s `ZeroDteGateFailure` is a DIFFERENT (0DTE) gate-
+code union — not touched; Legacy's `NighthawkGateCode` union lives entirely in `publish-gates.ts`.
+No other file reads `NighthawkGateCode` exhaustively (verified via `tsc --noEmit` clean) so this is
+purely additive.
+
+**Evidence.** 6 new tests in `publish-gates.test.ts` (LONG-vs-bearish blocks, SHORT-vs-bullish
+blocks, LONG-vs-bullish passes, `"mixed"` never blocks either direction, non-promotable). Existing
+33-test file re-run clean (one pre-existing assertion updated: the healthy-play test's checks-array
+now lists 5 gates instead of 4, and the fixture's placeholder `trend: "up"` — never a real
+`trend_stack` value — corrected to the honest default `"mixed"`, matching the two real values this
+gate cares about). Full `src/features/nighthawk/lib/*.test.ts` suite (636 tests) re-run clean with
+`--experimental-test-module-mocks`. `npx tsc --noEmit` clean. `npx eslint` clean.
+
+**Status:** PR pending → CI → auto-merge per standing policy. This gate has NOT yet been measured
+against real graded plays (the codebase's own calibration-first discipline — Swing's
+`scoreFloorGraduated: false` pattern) — the honest next step once plays start hitting it is to watch
+whether `wrong_direction` actually declines in the debrief report, not to assume it from the design
+alone.
