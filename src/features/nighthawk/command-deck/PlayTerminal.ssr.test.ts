@@ -71,10 +71,9 @@ test("premium thesis panels render for 0DTE", async () => {
       },
     }),
   );
-  assert.match(html, /nh-deck-conviction/);
-  assert.match(html, /Thesis Strength/);
-  assert.match(html, /Confluence/);
-  assert.match(html, /Engine Checklist/);
+  assert.match(html, /nh-deck-trade-hero/);
+  assert.match(html, /Engine Checks/);
+  assert.match(html, /Conviction/);
 });
 
 test("Play timeline tab absent on Legacy horizon", async () => {

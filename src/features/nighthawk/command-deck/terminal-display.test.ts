@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { TerminalPlay } from "./types";
 import {
+  expectedMovePct,
+  marketContextItems,
+  tradeSummaryDisplay,
   confluenceChecklist,
   convictionDisplay,
   decisionWindowLabel,
@@ -43,8 +46,8 @@ function play(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
         { id: "dealer", label: "Dealer", status: "intact" },
         { id: "vwap", label: "VWAP", status: "intact" },
         { id: "market", label: "Breadth", status: "intact" },
-        { id: "structure", label: "Gamma", status: "weakened" },
-        { id: "volatility", label: "Vol", status: "broken" },
+        { id: "structure", label: "Gamma", status: "faded" },
+        { id: "volatility", label: "Vol", status: "lost" },
       ],
       committedAtEt: "10:15",
     },
@@ -75,7 +78,37 @@ test("confluenceChecklist: six lenses from pillars", () => {
 
 test("engineChecklist: gates fallback when no thesis health", () => {
   const items = engineChecklist(play({ thesisHealth: null }));
-  assert.equal(items.find((i) => i.label === "Dealer")?.ok, true);
+  assert.equal(items.length, 5);
+  assert.equal(items.find((i) => i.label === "Breadth")?.ok, true);
+});
+
+test("marketContextItems: gamma trend dealer from pillars", () => {
+  const items = marketContextItems(play());
+  assert.ok(items.length >= 2);
+  assert.equal(items.find((i) => i.label === "Gamma")?.value, "Positive");
+});
+
+test("expectedMovePct: from target premium vs entry", () => {
+  const pct = expectedMovePct(play({
+    entry: 2,
+    exitPolicy: {
+      policy: "trim_scale",
+      trim_levels: [],
+      runner_fraction: 1,
+      stop_premium: 1,
+      target_premium: 2.86,
+      time_stop_et: "15:30",
+    },
+  }));
+  assert.equal(pct, 43);
+});
+
+test("tradeSummaryDisplay: persistent hero fields", () => {
+  const s = tradeSummaryDisplay(play({ status: "CLOSED", pnlPct: -50, peak: 87 }));
+  assert.equal(s.ticker, "NVDA");
+  assert.equal(s.grade, "A");
+  assert.equal(s.peakPct, 87);
+  assert.equal(s.currentPct, -50);
 });
 
 test("managementActionDisplay: SELL sizing and probability", () => {

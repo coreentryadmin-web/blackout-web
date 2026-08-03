@@ -508,6 +508,7 @@ export const PlayCard = memo(function PlayCard({
       )}
       onClick={() => onSelect(p.id)}
       aria-current={selected}
+      style={enhanced && quality != null ? { ["--nh-quality" as string]: `${quality}%` } : undefined}
     >
       <span className={clsx("nh-deck-rk-wrap", enhanced && "nh-deck-rank-lead")}>
         {showThRing && (
@@ -532,6 +533,7 @@ export const PlayCard = memo(function PlayCard({
               )}
             </span>
             <span className="nh-deck-sub">{p.contract}</span>
+            {origin && <span className="nh-deck-origin-pill">{origin}</span>}
           </>
         ) : (
           <>

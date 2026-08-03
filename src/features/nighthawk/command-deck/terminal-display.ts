@@ -65,15 +65,13 @@ export function confluenceChecklist(play: TerminalPlay): ChecklistItem[] {
 /** Engine checklist — gates + thesis pillars when available. */
 export function engineChecklist(play: TerminalPlay): ChecklistItem[] {
   const h = play.thesisHealth;
-  const hardGate = play.gates.find((g) => /hard/i.test(g.label));
   const tapeGate = play.gates.find((g) => /tape/i.test(g.label));
   return [
     { label: "Flow", ok: h ? pillarOk(findPillar(h, ["flow"])) : null },
-    { label: "Trend", ok: h ? pillarOk(findPillar(h, ["tape", "momentum"])) : null },
     { label: "Gamma", ok: h ? pillarOk(findPillar(h, ["dealer", "structure"])) : null },
+    { label: "Structure", ok: h ? pillarOk(findPillar(h, ["structure"])) : null },
     { label: "Breadth", ok: h ? pillarOk(findPillar(h, ["market"])) : (tapeGate?.ok ?? null) },
-    { label: "VWAP", ok: h ? pillarOk(findPillar(h, ["vwap"])) : null },
-    { label: "Dealer", ok: h ? pillarOk(findPillar(h, ["dealer"])) : (hardGate?.ok ?? null) },
+    { label: "Momentum", ok: h ? pillarOk(findPillar(h, ["tape", "momentum"])) : null },
   ];
 }
 
@@ -231,4 +229,112 @@ export function decisionWindowLabel(minutesRemaining: number): { mins: string; s
   const m = Math.floor(totalSec / 60);
   const s = totalSec % 60;
   return { mins: String(m), secs: String(s).padStart(2, "0") };
+}
+
+export type MarketContextItem = {
+  label: string;
+  value: string;
+  tone: "pos" | "neg" | "neutral";
+};
+
+/** Human-readable market context from thesis-health pillars — replaces empty greeks row. */
+export function marketContextItems(play: TerminalPlay): MarketContextItem[] {
+  const h = play.thesisHealth;
+  if (!h) return [];
+
+  const gamma = findPillar(h, ["dealer", "structure"]);
+  const trend = findPillar(h, ["tape", "momentum"]);
+  const dealer = findPillar(h, ["dealer"]);
+
+  const items: MarketContextItem[] = [];
+
+  if (gamma && gamma.status !== "na") {
+    const pos = gamma.status === "intact" || gamma.status === "strengthened";
+    items.push({
+      label: "Gamma",
+      value: pos ? "Positive" : "Negative",
+      tone: pos ? "pos" : "neg",
+    });
+  }
+  if (trend && trend.status !== "na") {
+    const bull = trend.status === "intact" || trend.status === "strengthened";
+    const bear = trend.status === "lost" || trend.status === "faded";
+    items.push({
+      label: "Trend",
+      value: bull ? "Bullish" : bear ? "Bearish" : "Neutral",
+      tone: bull ? "pos" : bear ? "neg" : "neutral",
+    });
+  }
+  if (dealer && dealer.status !== "na") {
+    const sup = dealer.status === "intact" || dealer.status === "strengthened";
+    items.push({
+      label: "Dealer",
+      value: sup ? "Supportive" : "Headwind",
+      tone: sup ? "pos" : "neg",
+    });
+  }
+  return items;
+}
+
+/** Expected move % from frozen target premium vs entry — null when not grounded. */
+export function expectedMovePct(play: TerminalPlay): number | null {
+  const entry = play.entry;
+  const target = play.exitPolicy?.target_premium ?? null;
+  if (entry == null || target == null || entry <= 0) return null;
+  const pct = ((target / entry) - 1) * 100;
+  return Number.isFinite(pct) ? Math.round(pct) : null;
+}
+
+/** Risk unit label — 1R when plan geometry exists. */
+export function riskUnitLabel(play: TerminalPlay): string | null {
+  if (play.rrRatio != null && Number.isFinite(play.rrRatio)) return "1R";
+  const entry = play.entry;
+  const stop = play.exitPolicy?.stop_premium ?? null;
+  if (entry != null && stop != null && entry > 0) return "1R";
+  return null;
+}
+
+/** Dollar P&L from entry mark delta (long premium framing). */
+export function markDollarPnl(play: TerminalPlay): number | null {
+  if (play.entry == null || play.mark == null) return null;
+  const d = play.mark - play.entry;
+  return Number.isFinite(d) ? d : null;
+}
+
+/** Peak mark from entry + peak % when both grounded. */
+export function peakMark(play: TerminalPlay): number | null {
+  if (play.entry == null || play.peak == null) return null;
+  const m = play.entry * (1 + play.peak / 100);
+  return Number.isFinite(m) ? m : null;
+}
+
+export type TradeSummaryDisplay = {
+  ticker: string;
+  direction: string;
+  grade: string | null;
+  confidence: number | null;
+  peakPct: number | null;
+  currentPct: number | null;
+  status: string;
+  origin: string | null;
+  contract: string;
+  horizonLabel: string;
+  dollarPnl: number | null;
+};
+
+export function tradeSummaryDisplay(play: TerminalPlay): TradeSummaryDisplay {
+  const conviction = convictionDisplay(play);
+  return {
+    ticker: play.ticker,
+    direction: play.direction,
+    grade: conviction.grade,
+    confidence: conviction.score,
+    peakPct: play.peak ?? null,
+    currentPct: play.pnlPct ?? null,
+    status: play.status,
+    origin: play.discoveryOrigin?.[0]?.replace(/_/g, " ") ?? null,
+    contract: play.contract,
+    horizonLabel: play.horizon === "ZERO_DTE" ? "0DTE" : play.horizon,
+    dollarPnl: markDollarPnl(play),
+  };
 }

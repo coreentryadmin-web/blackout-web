@@ -17,12 +17,15 @@ import { PlayTimelinePanel } from "./PlayTimelinePanel";
 import { useSecondTick, useFlash } from "./use-deck-live";
 import { isZeroDtePremiumTerminal } from "./terminal-display";
 import {
-  ConvictionHero,
   ConfluenceGrid,
   EngineChecklistPanel,
   ManagementActionCard,
+  MarketContextRow,
+  PremiumMarkChart,
+  ThesisExpectedMove,
   ThesisStrengthBlock,
   TradeOutcomePanel,
+  TradeSummaryHero,
   VisualTrimLadder,
 } from "./TerminalPremiumPanels";
 
@@ -200,9 +203,33 @@ export function PlayTerminal({
     g && (g.delta != null || g.gamma != null || g.theta != null || g.vega != null || g.iv != null),
   );
   const greeksOff = !live || !greeksLive || streamKind === "CLOSED";
+  const premium = isZeroDtePremiumTerminal(play);
 
   return (
-    <div className={clsx("nh-deck-right", (stale || streamKind === "CLOSED") && "nh-deck-dim")}>
+    <div className={clsx("nh-deck-right", premium && "nh-deck-right-premium", (stale || streamKind === "CLOSED") && "nh-deck-dim")}>
+      {premium ? (
+        <>
+          <TradeSummaryHero play={play} streamKind={streamKind} markFlash={markFlash} />
+          <div className="nh-deck-stream nh-deck-stream-compact" title={streamKind === "CLOSED" ? "Session closed — showing last known marks" : undefined}>
+            {streamKind === "LIVE" ? (
+              <><span className="nh-deck-dot" /><span className="lv">LIVE</span></>
+            ) : streamKind === "CLOSED" ? (
+              <><span className="nh-deck-dot off" /><span className="cl">SESSION CLOSED</span></>
+            ) : streamKind === "SYNC" ? (
+              <><span className="nh-deck-dot sync" /><span className="sy">SYNC</span></>
+            ) : streamKind === "STALE" ? (
+              <><span className="nh-deck-dot off" /><span className="of">STALE</span></>
+            ) : (
+              <><span className="nh-deck-dot off" /><span className="of">—</span></>
+            )}
+            {" · mark "}
+            <span className={clsx(markFlash && "neon", (stale || streamKind === "CLOSED") && "nh-deck-stale-mark")}>{usd(play.mark)}</span>
+            {play.occ && <OccCopy occ={play.occ} />}
+            {streamKind === "LIVE" && ageLabel && <span className="nh-deck-age"> · {ageLabel}</span>}
+          </div>
+        </>
+      ) : (
+        <>
       <div className="nh-deck-th">
         <span className="tk">{play.ticker} · {play.direction}</span>
         <span className="ct">{play.contract}<OccCopy occ={play.occ} /></span>
@@ -276,8 +303,10 @@ export function PlayTerminal({
           )}
         </div>
       )}
+        </>
+      )}
 
-      {!isLegacy && (
+      {!isLegacy && !premium && (
         <div className={clsx("nh-deck-greeks", greeksOff && "off")} title={greeksOff ? "Greeks update with live marks — offline after the session" : undefined}>
           <GreekCell k="delta" v={greeksOff ? null : (g?.delta ?? null)} />
           <GreekCell k="gamma" v={greeksOff ? null : (g?.gamma ?? null)} />
@@ -286,6 +315,16 @@ export function PlayTerminal({
           <GreekCell k="iv" v={greeksOff ? null : (g?.iv ?? null)} />
         </div>
       )}
+
+      {premium && (greeksOff ? <MarketContextRow play={play} /> : (
+        <div className={clsx("nh-deck-greeks", greeksOff && "off")} title={greeksOff ? "Greeks update with live marks" : undefined}>
+          <GreekCell k="delta" v={g?.delta ?? null} />
+          <GreekCell k="gamma" v={g?.gamma ?? null} />
+          <GreekCell k="theta" v={g?.theta ?? null} />
+          <GreekCell k="vega" v={g?.vega ?? null} />
+          <GreekCell k="iv" v={g?.iv ?? null} />
+        </div>
+      ))}
 
       <div className="nh-deck-tabs">
         <button className={clsx(tab === "thesis" && "on")} onClick={() => { setTabTouched(true); setTab("thesis"); }}><span className="n">[1]</span>Thesis</button>
@@ -307,7 +346,7 @@ export function PlayTerminal({
 
       <div className="nh-deck-foot">
         <span>EXIT · {play.exitModel === "SCALE_OUT" ? "TRIM-SCALE" : play.horizon === "LEGACY" ? "STOCK LEVELS" : play.exitModel}</span>
-        <span>{play.tierLabel ? `TIER ${play.tierLabel}` : play.scorecard ? `WR ${Number.isFinite(play.scorecard.winRate) ? `${play.scorecard.winRate}%` : "—"}` : ""}</span>
+        <span>{play.tierLabel ? `TIER ${play.tierLabel}` : play.scorecard ? formatWinRateCi(play.scorecard) : ""}</span>
         {play.allocation && <span style={{ marginLeft: "auto" }}>{play.allocation.role} · {play.allocation.sizing}</span>}
       </div>
     </div>
@@ -478,10 +517,10 @@ function ThesisPanel({ play, sessionClosed = false }: { play: TerminalPlay; sess
     <>
       {premium && (
         <div className="nh-deck-premium-stack">
-          <ConvictionHero play={play} />
-          <ThesisStrengthBlock play={play} />
-          <ConfluenceGrid play={play} />
           <EngineChecklistPanel play={play} />
+          <ThesisStrengthBlock play={play} />
+          <ThesisExpectedMove play={play} />
+          <ConfluenceGrid play={play} />
         </div>
       )}
       {hasThesisHealth && isWorking && !sessionClosed && !premium && (
@@ -813,7 +852,12 @@ function PnlPanel({ play }: { play: TerminalPlay }) {
   const exec = play.execPnlPct;
   return (
     <>
-      {premium && has && <TradeOutcomePanel play={play} />}
+      {premium && has && (
+        <>
+          <TradeOutcomePanel play={play} />
+          <PremiumMarkChart play={play} />
+        </>
+      )}
       {!premium && (
         <>
           <div className="nh-deck-lab">Live P&amp;L</div>
@@ -832,7 +876,7 @@ function PnlPanel({ play }: { play: TerminalPlay }) {
       {!has && play.mark != null && (
         <ZeroDtePreEntryContext play={play} />
       )}
-      {has && <ExcursionViz play={play} />}
+      {has && !premium && <ExcursionViz play={play} />}
       <div className="nh-deck-grid">
         <div><span className="k">Entry</span><span className="v">{has ? usd(play.entry) : "—"}</span></div>
         <div><span className="k">Live mark</span><span className="v">{usd(play.mark)}</span></div>
