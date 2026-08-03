@@ -39,9 +39,12 @@ import {
   applyNighthawkPublishGates,
   capGatePromotedConviction,
   promoteTopBlocked,
-  publishGateRecapReason,
   type NighthawkPublishGateResult,
 } from "./publish-gates";
+import {
+  recapReasonAtPublishExit,
+  type EditionFunnelCounts,
+} from "./edition-funnel";
 import { partitionPlaysByGeometry } from "./play-constraints";
 import { applyCrossEditionGovernor, GOV_LOOKBACK_EDITIONS } from "./cross-edition-governor";
 import type { RecentOutcomeRow } from "./cross-edition-governor";
@@ -49,7 +52,7 @@ import { applyBearishPosture, BEARISH_RECAP_REASON } from "./bearish-posture";
 import { etNowParts, isTradingDayEt, nextTradingDayEt, todayEt } from "./session";
 import { notifyOpsDiscord } from "@/features/spx/lib/spx-play-notify";
 import type { NightHawkEdition, PlaybookPlay } from "./types";
-import { recapOnlyReasonFromMeta } from "./edition-meta";
+import { recapOnlyReasonFromMeta, funnelFromMetaForEdition } from "./edition-meta";
 
 /**
  * Consolidated funnel counts for ONE edition build (#77 deliverable (a)). Every stage of the
@@ -63,22 +66,7 @@ import { recapOnlyReasonFromMeta } from "./edition-meta";
  *   critic_passed — plays surviving critiquePlays
  *   published   — final plays written to the edition row (0 ⇒ recap-only)
  */
-type FunnelCounts = {
-  candidates: number;
-  ranked: number;
-  governor_passed: number;
-  posture_applied: number;
-  dossiers: number;
-  synthesized: number;
-  critic_passed: number;
-  published: number;
-  // NUMERIC-GROUNDING (audit P0): plays that passed deterministic chain/dossier grounding, plays
-  // HARD-dropped as ungrounded (off-chain strike / null|way-off premium), and plays kept-but-flagged
-  // for a SOFT divergence (flow/level/prose/PT). Emitted on the funnel line so grounding is observable.
-  grounded: number;
-  dropped_ungrounded: number;
-  flagged: number;
-};
+type FunnelCounts = EditionFunnelCounts;
 
 function formatFunnelLine(editionFor: string, f: Partial<FunnelCounts>): string {
   const c = (n: number | undefined) => (n == null ? "-" : n);
@@ -226,8 +214,9 @@ async function publishRecapOnlyEdition(params: {
   candidates: number;
   checkpointing: boolean;
   force: boolean;
+  funnel?: Partial<FunnelCounts>;
 }) {
-  const { editionFor, ctx, reason, candidates, checkpointing, force } = params;
+  const { editionFor, ctx, reason, candidates, checkpointing, force, funnel } = params;
   const recap = buildMarketRecap(ctx);
 
   // Best-effort enrich the recap with index context + desk/tape so the recap-only edition is still a
@@ -273,6 +262,23 @@ async function publishRecapOnlyEdition(params: {
       play_explanations: {},
       critic_notes: [],
       critic_applied: false,
+      ...(funnel
+        ? {
+            funnel: {
+              candidates: funnel.candidates ?? candidates,
+              ranked: funnel.ranked ?? 0,
+              governor_passed: funnel.governor_passed,
+              posture_applied: funnel.posture_applied,
+              dossiers: funnel.dossiers ?? 0,
+              synthesized: funnel.synthesized ?? 0,
+              critic_passed: funnel.critic_passed ?? 0,
+              published: funnel.published ?? 0,
+              grounded: funnel.grounded,
+              dropped_ungrounded: funnel.dropped_ungrounded,
+              flagged: funnel.flagged,
+            },
+          }
+        : {}),
       platform: {
         spx_price: spxDesk?.price ?? null,
         spx_regime: spxDesk?.gamma_regime ?? null,
@@ -610,7 +616,15 @@ export async function buildEveningEdition(opts?: {
       funnel.published = 0;
       logFunnel(editionFor, funnel);
       await alertRecapOnlyIfAnomalous(editionFor, funnel, reason);
-      await publishRecapOnlyEdition({ editionFor, ctx, reason, candidates: candidates.length, checkpointing, force: Boolean(opts?.force) });
+      await publishRecapOnlyEdition({
+        editionFor,
+        ctx,
+        reason,
+        candidates: candidates.length,
+        checkpointing,
+        force: Boolean(opts?.force),
+        funnel,
+      });
       return {
         ok: true,
         edition_for: editionFor,
@@ -723,7 +737,15 @@ export async function buildEveningEdition(opts?: {
       funnel.published = 0;
       logFunnel(editionFor, funnel);
       await alertRecapOnlyIfAnomalous(editionFor, funnel, reason);
-      await publishRecapOnlyEdition({ editionFor, ctx, reason, candidates: candidates.length, checkpointing, force: Boolean(opts?.force) });
+      await publishRecapOnlyEdition({
+        editionFor,
+        ctx,
+        reason,
+        candidates: candidates.length,
+        checkpointing,
+        force: Boolean(opts?.force),
+        funnel,
+      });
       return {
         ok: true,
         edition_for: editionFor,
@@ -984,13 +1006,20 @@ export async function buildEveningEdition(opts?: {
             `(${blocked.length} total blocked: ${blocked.map((b) => `${b.ticker}:${b.result.blocks.map((x) => x.code).join(",")}`).join("; ")})`
           );
         } else {
-          // True zero: no blocked plays either (shouldn't happen — defensive only).
-          const reason = publishGateRecapReason(blocked);
+          const reason = recapReasonAtPublishExit(blocked, funnel);
           console.warn(`[nighthawk/edition] publish gates zeroed, no plays to promote — recap-only: ${reason}`);
           funnel.published = 0;
           logFunnel(editionFor, funnel);
           await alertRecapOnlyIfAnomalous(editionFor, funnel, reason);
-          await publishRecapOnlyEdition({ editionFor, ctx, reason, candidates: candidates.length, checkpointing, force: Boolean(opts?.force) });
+          await publishRecapOnlyEdition({
+            editionFor,
+            ctx,
+            reason,
+            candidates: candidates.length,
+            checkpointing,
+            force: Boolean(opts?.force),
+            funnel,
+          });
           return {
             ok: true,
             edition_for: editionFor,
@@ -1023,7 +1052,15 @@ export async function buildEveningEdition(opts?: {
       funnel.published = 0;
       logFunnel(editionFor, funnel);
       await alertRecapOnlyIfAnomalous(editionFor, funnel, reason);
-      await publishRecapOnlyEdition({ editionFor, ctx, reason, candidates: candidates.length, checkpointing, force: Boolean(opts?.force) });
+      await publishRecapOnlyEdition({
+        editionFor,
+        ctx,
+        reason,
+        candidates: candidates.length,
+        checkpointing,
+        force: Boolean(opts?.force),
+        funnel,
+      });
       return {
         ok: true,
         edition_for: editionFor,
@@ -1298,5 +1335,6 @@ export function rowToNightHawkEdition(row: {
     plays: plays.map((p, i) => ({ ...p, rank: p.rank ?? i + 1 })),
     recap_only: recapOnly,
     recap_only_reason: recapOnly ? recapOnlyReasonFromMeta(row.meta, plays.length) : null,
+    funnel: recapOnly ? funnelFromMetaForEdition(row.meta) : null,
   };
 }

@@ -84,7 +84,9 @@ export type NightHawkEdition = {
   /** Funnel-stage reason when recap_only (e.g. "No candidates…", publish-gate zero). Ops already
    *  stores this in meta.recap_only_reason — members see a one-line explanation when present. */
   recap_only_reason?: string | null;
-  /** True when this edition came from a degraded/legacy source (e.g. the BlackOut intel engine
+  /** Stage counts when recap_only — candidates → synthesized → published (from meta.funnel). */
+  funnel?: import("./edition-funnel").EditionFunnelCounts | null;
+  /** True when this edition came from a degraded/legacy source
    *  fallback) rather than the first-class published pipeline. The UI must NOT present a degraded
    *  edition as a fresh "Edition live" recap — show a legacy/degraded notice instead. */
   degraded?: boolean;
