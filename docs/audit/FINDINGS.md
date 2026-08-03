@@ -1527,6 +1527,31 @@ min-width raised to ~4.85rem so `+$261.0M`-class labels fit.
 
 **Status.** Merged #1216.
 
+## 2026-08-03 — [Night Hawk Legacy] Stale-edition skip + dossier stall + publish bar (evening cron)
+
+**Severity.** P0 — tonight's 7:00/7:15 PM cron must publish a real post-close playbook, not
+resume a pre-window `published` row or hang on dossier 6/60.
+
+**Symptom.** Job stays `published` with `published_at` before 17:30 ET; evening cron returns
+`resumed: true` without rebuild. Dossier stage logs stop at `(6/60)`; critic/global-strongest bar
+blocks thin post-close books.
+
+**Root cause.**
+1. Stale rebuild required `job.published_at` truthy — missing stamp skipped rebuild; hour parsing
+   used `hour: "numeric"` (fragile vs `2-digit`).
+2. Global-strongest defaults: `NH_LEGACY_MIN_TIER=A`, `NH_LEGACY_CRITIC_RESCUE=0` — too strict
+   before live post-close validation.
+3. Dossier UW phase used `runUwSequential` (10 calls/ticker); one hung ticker blocked batch 3;
+   no per-ticker wall clock.
+
+**Fix.** `edition-stale.ts` + tests; rebuild when in window and stamp missing or before 17:30 ET.
+Default min tier **B**, critic rescue **ON**. Dossier: `runUwPooled(2)`, batch size 2,
+`DOSSIER_TICKER_WALL_MS=45s` skip.
+
+**Status.** PR `cursor/nighthawk-edition-tonight-3d11` — merge before 19:15 ET cron.
+
+---
+
 ## 2026-07-29 — [Night Hawk Legacy] Stale edition: cron never rebuilds after market close
 
 **Severity.** P0 — Legacy tab shows pre-market plays night after night; the whole purpose of

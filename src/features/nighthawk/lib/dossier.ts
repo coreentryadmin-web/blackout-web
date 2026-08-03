@@ -44,8 +44,8 @@ import { buildTechnicalCard, type TechnicalCard } from "./technicals";
 import type { ScoredCandidate, NightHawkRegimeContext } from "./scorer";
 import { scoreCandidate } from "./scorer";
 import { shouldBlockForTradingHalt } from "@/lib/ws/uw-socket";
-import { runUwSequential } from "@/lib/providers/uw-rate-limiter";
-import { DOSSIER_BATCH_SIZE, DOSSIER_FETCH_TIMEOUT_MS, DOSSIER_INTER_BATCH_MS } from "./constants";
+import { runUwPooled } from "@/lib/providers/uw-rate-limiter";
+import { DOSSIER_BATCH_SIZE, DOSSIER_FETCH_TIMEOUT_MS, DOSSIER_INTER_BATCH_MS, DOSSIER_TICKER_WALL_MS } from "./constants";
 import { dossierFetch } from "./fetch-timeout";
 import { parseLatestRealizedVol, parseLatestRiskReversalSkew } from "./vol-metrics";
 
@@ -413,7 +413,7 @@ export async function fetchTickerDossier(
     institutional,
     greekFlowRaw,
   ] = uw
-    ? await runUwSequential([
+    ? await runUwPooled([
         () => dossierFetch(() => fetchUwDarkPool(sym), null, t),
         () => dossierFetch(() => fetchUwOiChange(sym), [], t),
         () => dossierFetch(() => fetchUwIvTermStructure(sym), [], t),
@@ -428,7 +428,7 @@ export async function fetchTickerDossier(
         () => dossierFetch(() => fetchUwCongressUnusualTrades(sym, 5), [], t),
         () => dossierFetch(() => fetchUwInstitutionOwnership(sym, 8), [], t),
         () => dossierFetch(() => fetchUwGreekFlow(sym), [], t),
-      ])
+      ], 2)
     : [null, [], [], [], [], [], [], [], [], []];
 
   const flows = flowRows.map((r) => r.raw);
@@ -530,6 +530,32 @@ export async function fetchTickerDossier(
   return dossier;
 }
 
+async function fetchTickerDossierWithWall(
+  ticker: string,
+  regime?: NightHawkRegimeContext | null,
+  buildCache?: DossierBuildCache
+): Promise<TickerDossier | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      fetchTickerDossier(ticker, regime, buildCache),
+      new Promise<null>((resolve) => {
+        timer = setTimeout(() => {
+          console.warn(
+            `[nighthawk/dossier] ${ticker.toUpperCase()} wall timeout (${DOSSIER_TICKER_WALL_MS}ms) — skipping`
+          );
+          resolve(null);
+        }, DOSSIER_TICKER_WALL_MS);
+      }),
+    ]);
+  } catch (err) {
+    console.error(`[nighthawk/dossier] ${ticker} failed:`, err);
+    return null;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export async function fetchAllDossiers(
   tickers: string[],
   batchSize = DOSSIER_BATCH_SIZE,
@@ -545,14 +571,7 @@ export async function fetchAllDossiers(
   for (let i = 0; i < tickers.length; i += batchSize) {
     const batch = tickers.slice(i, i + batchSize);
     const results = await Promise.all(
-      batch.map(async (ticker) => {
-        try {
-          return await fetchTickerDossier(ticker, regime, buildCache);
-        } catch (err) {
-          console.error(`[nighthawk/dossier] ${ticker} failed:`, err);
-          return null;
-        }
-      })
+      batch.map((ticker) => fetchTickerDossierWithWall(ticker, regime, buildCache))
     );
 
     for (const d of results) {
