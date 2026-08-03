@@ -15,6 +15,7 @@ import {
 } from "@/lib/clerk-env";
 import { isClientCognitoAuth } from "@/lib/auth-provider";
 import { CognitoAuthProvider, ClerkAuthBridge } from "@/lib/auth-client";
+import { Ga4ConversionTracker } from "@/components/analytics/Ga4ConversionTracker";
 
 function DeskShell({ children }: { children: React.ReactNode }) {
   return (
@@ -26,6 +27,7 @@ function DeskShell({ children }: { children: React.ReactNode }) {
       <IosViewportLock />
       <IosKeyboardRoot />
       <OnboardingGuide />
+      <Ga4ConversionTracker />
       {children}
     </MotionProvider>
   );
