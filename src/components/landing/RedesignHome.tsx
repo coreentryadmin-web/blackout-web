@@ -316,6 +316,41 @@ export function RedesignHome({ signedIn = false }: { signedIn?: boolean }) {
 
       <div className="node" aria-hidden="true" />
 
+      {/* ═══ §4 ACADEMY — free learn content funnel ═══ */}
+      <section className="sec-academy" id="academy">
+        <div className="w">
+          <div className="academy-head">
+            <span className="kk"><span className="dot" />BlackOut Academy</span>
+            <h2>Learn dealer gamma<br /><span className="gt">before you trade it.</span></h2>
+            <p className="academy-sub">
+              Free guides on GEX, 0DTE structure, and institutional flow — the same concepts the desk is built on.
+            </p>
+            <Link href="/learn" prefetch={false} className="btn-g academy-hub-link">
+              Browse all guides →
+            </Link>
+          </div>
+          <div className="academy-grid">
+            <Link href="/learn/dealer-gamma-options-flow-guide" prefetch={false} className="academy-card">
+              <span className="academy-tag">Pillar</span>
+              <h3>Dealer gamma &amp; options flow</h3>
+              <p>The complete map — gamma flip, walls, GEX, and how dealers move SPX.</p>
+            </Link>
+            <Link href="/learn/what-is-gex" prefetch={false} className="academy-card">
+              <span className="academy-tag">Core</span>
+              <h3>What is GEX?</h3>
+              <p>Aggregate gamma exposure across the chain — and why it pins or accelerates price.</p>
+            </Link>
+            <Link href="/learn/how-to-read-options-flow" prefetch={false} className="academy-card">
+              <span className="academy-tag">Flow</span>
+              <h3>How to read options flow</h3>
+              <p>Separate institutional signal from hedging noise on the live tape.</p>
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      <div className="node" aria-hidden="true" />
+
       {/* ═══ §4 WHY BLACKOUT — THEM VS US ═══ */}
       <section className="sec-edge" id="edge">
         <div className="w">

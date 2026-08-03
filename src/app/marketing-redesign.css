@@ -1141,3 +1141,15 @@
 @media(prefers-reduced-motion:reduce){.rl-deep-visual::after{animation:none;display:none}.rl-deep-visual,.rl-deep-row.rev .rl-deep-visual{transform:none}}
 
 @media(prefers-reduced-motion:reduce){.rl *{animation:none!important;transition:none!important}.rl-reveal{opacity:1;transform:none}}
+
+/* ── Academy block (homepage → /learn funnel) ── */
+.rl .sec-academy{padding:clamp(4rem,8vw,6rem) 0}
+.rl .academy-head{max-width:40rem;margin:0 auto;text-align:center}
+.rl .academy-sub{margin-top:1rem;color:var(--rl-muted);line-height:1.6;font-size:.95rem}
+.rl .academy-hub-link{margin-top:1.5rem;display:inline-flex}
+.rl .academy-grid{display:grid;gap:1rem;margin-top:2.5rem;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+.rl .academy-card{display:block;padding:1.25rem 1.35rem;border-radius:14px;border:1px solid var(--rl-line2);background:rgba(255,255,255,.02);text-decoration:none;transition:border-color .2s,background .2s}
+.rl .academy-card:hover{border-color:color-mix(in srgb,var(--rl-cyan) 40%,transparent);background:rgba(34,211,238,.04)}
+.rl .academy-tag{font-family:var(--font-jetbrains);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--rl-cyan)}
+.rl .academy-card h3{margin-top:.65rem;font-family:var(--font-syne);font-size:1.05rem;font-weight:700;color:#fff}
+.rl .academy-card p{margin-top:.5rem;font-size:.82rem;line-height:1.55;color:var(--rl-muted)}

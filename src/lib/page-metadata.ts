@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { SITE } from "@/lib/site";
 
+const TWITTER_SITE = `@${SITE.social.x.handle}`;
+
 /** Public marketing/legal page — canonical URL plus matching OG/Twitter copy + per-page OG image. */
 export function publicPageMetadata(
   title: string,
@@ -34,6 +36,7 @@ export function publicPageMetadata(
     },
     twitter: {
       card: "summary_large_image",
+      site: TWITTER_SITE,
       title,
       description,
       images: [ogImageUrl],

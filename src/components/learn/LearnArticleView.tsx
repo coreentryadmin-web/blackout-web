@@ -4,8 +4,11 @@ import Link from "next/link";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { LearnArticle } from "@/lib/learn/articles";
 import { articleNav, readingTime } from "@/lib/learn/articles";
+import { relatedArticles } from "@/lib/learn/related-articles";
 import { LearnDoc } from "@/components/learn/LearnDoc";
 import { LearnHeroGlow } from "@/components/learn/LearnMotion";
+import { LearnRelatedArticles } from "@/components/learn/LearnRelatedArticles";
+import { LearnShareButtons } from "@/components/learn/LearnShareButtons";
 import { MarkdownBody } from "@/components/learn/MarkdownBody";
 
 const KICKER: Record<string, string> = {
@@ -25,6 +28,7 @@ export function LearnArticleView({ article }: { article: LearnArticle }) {
 
   const { prev, next } = articleNav(article.slug);
   const minutes = readingTime(article.body);
+  const related = relatedArticles(article.slug);
 
   return (
     <div className="relative">
@@ -39,6 +43,23 @@ export function LearnArticleView({ article }: { article: LearnArticle }) {
         }
       >
         <MarkdownBody content={article.body} />
+
+        {article.type === "pillar" ? (
+          <LearnShareButtons title={article.title} path={article.path} />
+        ) : null}
+
+        <LearnRelatedArticles articles={related} />
+
+        <div className="mt-12 rounded-2xl border border-bull/20 bg-bull/5 p-6 text-center">
+          <p className="font-syne text-lg font-bold text-white">Ready to trade with live dealer gamma?</p>
+          <p className="mt-2 text-sm text-sky-300">See plans and open the desk — SPX Slayer from $49/mo.</p>
+          <Link
+            href={`/pricing?utm_source=learn&utm_medium=referral&utm_campaign=${encodeURIComponent(article.slug)}`}
+            className="mt-4 inline-flex items-center justify-center rounded-xl bg-bull px-6 py-3 font-syne text-xs font-extrabold uppercase tracking-[0.12em] text-[#0a1102]"
+          >
+            View pricing →
+          </Link>
+        </div>
 
         <nav
           aria-label="Article navigation"

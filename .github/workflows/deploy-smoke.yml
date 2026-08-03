@@ -41,5 +41,9 @@ jobs:
           CRON_TARGET_BASE_URL: https://blackouttrades.com
         run: node scripts/gha-http-smoke.mjs
 
+      - name: IndexNow ping (learn URLs)
+        run: npm run seo:indexnow
+        continue-on-error: true
+
       - name: Summary
         run: echo "Deploy smoke passed at $(date -u +%Y-%m-%dT%H:%M:%SZ)"

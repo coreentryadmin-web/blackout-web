@@ -1,0 +1,54 @@
+import { SITE } from "@/lib/site";
+import { LEARN_ARTICLES } from "@/lib/learn/articles";
+import { LEARN_NAV } from "@/lib/learn/nav";
+
+export type SitemapEntry = {
+  path: string;
+  changeFrequency: "always" | "hourly" | "daily" | "weekly" | "monthly" | "yearly" | "never";
+  priority: number;
+};
+
+/** Canonical public paths for sitemap.xml + IndexNow pings. */
+export function publicSitemapEntries(): SitemapEntry[] {
+  const marketing: SitemapEntry[] = [
+    { path: "/", changeFrequency: "weekly", priority: 1.0 },
+    { path: "/pricing", changeFrequency: "weekly", priority: 0.9 },
+    { path: "/faq", changeFrequency: "monthly", priority: 0.7 },
+    { path: "/why-blackout", changeFrequency: "monthly", priority: 0.8 },
+    { path: "/about", changeFrequency: "monthly", priority: 0.7 },
+    { path: "/contact", changeFrequency: "yearly", priority: 0.5 },
+    { path: "/learn", changeFrequency: "weekly", priority: 0.8 },
+  ];
+
+  const curriculum: SitemapEntry[] = LEARN_NAV.map((item) => ({
+    path: `/learn/${item.slug}`,
+    changeFrequency: "monthly" as const,
+    priority: item.slug === "getting-started" ? 0.8 : 0.7,
+  }));
+
+  const articles: SitemapEntry[] = LEARN_ARTICLES.map((a) => ({
+    path: a.path,
+    changeFrequency: "monthly" as const,
+    priority: a.type === "pillar" ? 0.8 : 0.7,
+  }));
+
+  const legal: SitemapEntry[] = [
+    { path: "/terms", changeFrequency: "yearly", priority: 0.3 },
+    { path: "/privacy", changeFrequency: "yearly", priority: 0.3 },
+    { path: "/disclaimer", changeFrequency: "yearly", priority: 0.2 },
+    { path: "/refund-policy", changeFrequency: "yearly", priority: 0.2 },
+    { path: "/cookie-policy", changeFrequency: "yearly", priority: 0.2 },
+  ];
+
+  return [...marketing, ...curriculum, ...articles, ...legal];
+}
+
+export function absolutePublicUrls(): string[] {
+  return publicSitemapEntries().map((e) => `${SITE.url}${e.path}`);
+}
+
+/** Learn + hub URLs for IndexNow after content deploys. */
+export function learnIndexNowUrls(): string[] {
+  const paths = ["/learn", ...LEARN_NAV.map((n) => `/learn/${n.slug}`), ...LEARN_ARTICLES.map((a) => a.path)];
+  return paths.map((p) => `${SITE.url}${p}`);
+}
