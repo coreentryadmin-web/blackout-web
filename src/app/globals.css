@@ -16769,6 +16769,8 @@ body::before {
 .nh-deck-tabs button:focus-visible{box-shadow:0 0 0 1px rgba(50,240,138,.35)}
 .nh-deck-trade-hero{background:var(--dk-bg-elevated);border-bottom:1px solid var(--dk-border);box-shadow:var(--dk-shadow-soft)}
 .nh-deck-trade-hero__tk{font-size:32px;font-weight:800;color:var(--dk-text-primary);text-shadow:none}
+.nh-deck-trade-hero-dense .nh-deck-trade-hero__tk{font-size:26px;line-height:1}
+.nh-deck-trade-hero__metric.is-primary .v{font-size:24px;font-weight:900}
 .nh-deck-trade-hero__conf{font-size:18px;font-weight:800;color:var(--dk-bull)}
 .nh-deck-trade-hero__conf-lab{font-size:12px;color:var(--dk-text-secondary)}
 .nh-deck-trade-hero__chip{color:var(--dk-text-secondary);border-color:var(--dk-border);background:transparent}
@@ -16808,7 +16810,8 @@ body::before {
 .nh-deck-row-lifecycle-compact .nh-deck-lc,.nh-deck-row-lifecycle .nh-deck-lc{padding:12px 14px}
 .nh-deck-row-lifecycle{margin:8px 10px 10px;border-radius:6px}
 .nh-deck-lc{display:flex;flex-direction:column;gap:6px;min-width:0}
-.nh-deck-lc-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px}
+.nh-deck-lc-head{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:8px}
+.nh-deck-lc-head-main{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px;min-width:0}
 .nh-deck-lc-grade{font-size:13px;font-weight:800;color:var(--dk-bull);letter-spacing:.04em}
 .nh-deck-lc-hero .nh-deck-lc-grade{font-size:15px}
 .nh-deck-lc-rank{font-size:10px;font-weight:700;color:var(--dk-info);letter-spacing:.08em}
@@ -16849,8 +16852,60 @@ body::before {
 .nh-deck-lc-status.active{color:var(--dk-bull)}
 .nh-deck-lc-status.watching{color:var(--dk-warn)}
 .nh-deck-lc-status.closed{color:var(--dk-info)}
+.nh-deck-lc-status.failed{color:var(--dk-bear)}
+/* ── Confidence badge (left rail + right hero) ── */
+.nh-deck-conf-badge{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border-radius:6px;
+  border:1px solid rgba(50,240,138,.32);background:rgba(50,240,138,.06);flex-shrink:0}
+.nh-deck-conf-badge-hero{padding:8px 12px;border-color:rgba(50,240,138,.45);background:rgba(50,240,138,.08);
+  box-shadow:0 0 18px rgba(50,240,138,.1)}
+.nh-deck-conf-badge__grade{font-size:22px;font-weight:900;line-height:1;color:var(--dk-bull);letter-spacing:.04em}
+.nh-deck-conf-badge-hero .nh-deck-conf-badge__grade{font-size:28px}
+.nh-deck-conf-badge__stack{display:flex;flex-direction:column;align-items:flex-end;gap:4px;min-width:3.5rem}
+.nh-deck-conf-badge__bar{display:flex;gap:2px;width:100%;height:8px}
+.nh-deck-conf-badge__seg{flex:1;border-radius:2px;background:rgba(255,255,255,.08)}
+.nh-deck-conf-badge__seg.is-on{background:linear-gradient(180deg,var(--dk-bull),rgba(50,240,138,.55))}
+.nh-deck-conf-badge__score{font-size:20px;font-weight:900;line-height:1;color:var(--dk-text-primary);font-variant-numeric:tabular-nums}
+.nh-deck-conf-badge-hero .nh-deck-conf-badge__score{font-size:26px}
+/* ── Status pills + age decay ── */
+.nh-deck-status-pill{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:4px;
+  font-size:9px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;border:1px solid transparent}
+.nh-deck-status-pill__dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.nh-deck-status-pill.is-active{color:var(--dk-bull);border-color:rgba(50,240,138,.35);background:rgba(50,240,138,.08)}
+.nh-deck-status-pill.is-active .nh-deck-status-pill__dot{background:var(--dk-bull);box-shadow:0 0 6px rgba(50,240,138,.45)}
+.nh-deck-status-pill.is-watch{color:var(--dk-warn);border-color:rgba(255,200,87,.35);background:rgba(255,200,87,.08)}
+.nh-deck-status-pill.is-watch .nh-deck-status-pill__dot{background:var(--dk-warn)}
+.nh-deck-status-pill.is-closed{color:var(--dk-info);border-color:rgba(82,167,255,.35);background:rgba(82,167,255,.08)}
+.nh-deck-status-pill.is-closed .nh-deck-status-pill__dot{background:var(--dk-info)}
+.nh-deck-status-pill.is-failed{color:var(--dk-bear);border-color:rgba(255,91,107,.35);background:rgba(255,91,107,.08)}
+.nh-deck-status-pill.is-failed .nh-deck-status-pill__dot{background:var(--dk-bear);box-shadow:0 0 6px rgba(255,91,107,.35)}
+.nh-deck-age-decay{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:800;
+  letter-spacing:.06em;font-variant-numeric:tabular-nums;padding:2px 7px;border-radius:4px;border:1px solid transparent}
+.nh-deck-age-decay__dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.nh-deck-age-decay.is-fresh{color:var(--dk-bull);border-color:rgba(50,240,138,.3);background:rgba(50,240,138,.06)}
+.nh-deck-age-decay.is-fresh .nh-deck-age-decay__dot{background:var(--dk-bull)}
+.nh-deck-age-decay.is-aging{color:var(--dk-warn);border-color:rgba(255,200,87,.3);background:rgba(255,200,87,.06)}
+.nh-deck-age-decay.is-aging .nh-deck-age-decay__dot{background:var(--dk-warn)}
+.nh-deck-age-decay.is-stale{color:#ff9f43;border-color:rgba(255,159,67,.35);background:rgba(255,159,67,.06)}
+.nh-deck-age-decay.is-stale .nh-deck-age-decay__dot{background:#ff9f43}
+.nh-deck-age-decay.is-late{color:var(--dk-bear);border-color:rgba(255,91,107,.35);background:rgba(255,91,107,.06)}
+.nh-deck-age-decay.is-late .nh-deck-age-decay__dot{background:var(--dk-bear)}
+.nh-deck-age-decay.is-pulse{animation:nh-deck-lc-pulse 1.6s ease-in-out infinite}
+.nh-deck-lc-wait{font-size:10px;font-weight:700;color:var(--dk-warn);letter-spacing:.06em;
+  padding:4px 8px;border-radius:4px;border:1px dashed rgba(255,200,87,.35);background:rgba(255,200,87,.04)}
 .nh-deck-lc-condor{padding:0 14px 8px}
-.nh-deck-lifecycle-strip{display:flex;flex-wrap:wrap;gap:8px 14px;padding:8px 0 4px;border-bottom:1px solid var(--dk-border-subtle);margin-bottom:10px}
+.nh-deck-trade-hero-dense{padding:12px 14px 10px}
+.nh-deck-trade-hero__headrow{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.nh-deck-trade-hero__identity{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0}
+.nh-deck-trade-hero__conf-badge{align-self:flex-start}
+.nh-deck-trade-hero__metrics{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;
+  margin-top:10px;padding-top:10px;border-top:1px solid var(--dk-border-subtle)}
+.nh-deck-trade-hero__metric{display:flex;flex-direction:column;gap:3px;min-width:0}
+.nh-deck-trade-hero__metric .k{font-size:9px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--dk-text-secondary)}
+.nh-deck-trade-hero__metric .v{font-size:15px;font-weight:900;font-variant-numeric:tabular-nums;color:var(--dk-text-primary);line-height:1.1}
+.nh-deck-trade-hero__metric.is-primary .v{font-size:22px}
+.nh-deck-trade-hero__rank-den{font-size:11px;font-weight:700;color:var(--dk-text-secondary)}
+.nh-deck-trade-hero__age .nh-deck-age-decay{padding:0;border:none;background:transparent;font-size:14px}
+.nh-deck-lifecycle-strip{display:flex;flex-wrap:wrap;gap:8px 14px;padding:8px 0 0;margin-top:8px;border-top:1px solid var(--dk-border-subtle)}
 .nh-deck-lifecycle-strip__cell{display:flex;flex-direction:column;gap:2px;min-width:4.5rem}
 .nh-deck-lifecycle-strip__lab{font-size:9px;font-weight:700;color:var(--dk-info);letter-spacing:.08em;text-transform:uppercase}
 .nh-deck-trade-hero__fresh{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:6px 0 2px}

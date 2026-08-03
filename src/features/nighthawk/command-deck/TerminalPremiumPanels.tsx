@@ -26,7 +26,11 @@ import {
   playFreshnessDisplay,
   playLifecycleTimestamps,
   playPrimaryEvent,
+  playStatusDisplay,
 } from "./play-card-lifecycle";
+import { formatReturnPct } from "./play-card-display";
+import { ConfidenceBadge } from "./ConfidenceBadge";
+import { AgeDecayBadge, StatusPill } from "./DeckStatusBadges";
 import { etNowParts } from "@/features/nighthawk/lib/session";
 import { etClock } from "./PlayTerminal";
 import { timeStopClock } from "@/lib/zerodte/terminal-ladder";
@@ -85,7 +89,7 @@ export function PlayLifecycleStrip({ play }: { play: TerminalPlay }) {
   );
 }
 
-/** Persistent trade summary — visible across all tabs (0DTE). */
+/** Persistent trade summary — dense hero visible across all tabs (0DTE). */
 export function TradeSummaryHero({
   play,
   streamKind,
@@ -104,85 +108,82 @@ export function TradeSummaryHero({
   const dollarSign = dollar != null && dollar >= 0 ? "+" : "";
   const primary = playPrimaryEvent(play);
   const freshness = playFreshnessDisplay(play, nowMs, primary.iso);
-  const primaryClock = primary.iso ? etClock(primary.iso) : null;
-  const tone =
-    freshness.tier === "just_fired" || freshness.tier === "fresh"
-      ? "fresh"
-      : freshness.tier === "aging"
-        ? "aging"
-        : freshness.tier === "late"
-          ? "late"
-          : "closed";
+  const status = playStatusDisplay(play.status);
+  const ageLabel = freshness.compactAge ?? "—";
 
   return (
-    <header className="nh-deck-trade-hero" aria-label="Selected trade summary">
-      <div className="nh-deck-trade-hero__top">
+    <header className="nh-deck-trade-hero nh-deck-trade-hero-dense" aria-label="Selected trade summary">
+      <div className="nh-deck-trade-hero__headrow">
         <div className="nh-deck-trade-hero__identity">
           <span className="nh-deck-trade-hero__tk">{summary.ticker}</span>
           <span className={clsx("nh-deck-trade-hero__dir", play.direction === "LONG" ? "long" : "short")}>
             {summary.direction}
             {summary.origin ? ` • ${summary.origin}` : ""}
           </span>
+          <StatusPill label={status.label} tone={status.tone} />
         </div>
-        <div className="nh-deck-trade-hero__grade-block">
-          {summary.grade && <span className="nh-deck-trade-hero__grade">{summary.grade}</span>}
-          {summary.confidence != null && (
-            <span className="nh-deck-trade-hero__conf">
-              {summary.confidence} <span className="nh-deck-trade-hero__conf-lab">Confidence</span>
-            </span>
-          )}
-        </div>
+        <ConfidenceBadge play={play} hero className="nh-deck-trade-hero__conf-badge" />
       </div>
-
-      <EngineConfidenceBlock play={play} rankContext={rankContext} />
-
-      {(primaryClock || freshness.relativeAge) && play.status !== "CLOSED" && (
-        <div className="nh-deck-trade-hero__fresh">
-          <span className={clsx("nh-deck-lc-fresh", `is-${tone}`, freshness.pulse && "is-pulse")}>
-            <span className="nh-deck-lc-fresh-dot" aria-hidden />
-            {freshness.badgeLabel}
-          </span>
-          <span className="nh-deck-trade-hero__fresh-time">
-            {primary.label} {primaryClock ? `${primaryClock} ET` : ""}
-            {freshness.relativeAge && primaryClock ? ` • ${freshness.relativeAge}` : freshness.relativeAge ?? ""}
-          </span>
-          {freshness.lateEntry && <span className="nh-deck-lc-late">Late Entry</span>}
-        </div>
-      )}
-
-      <PlayLifecycleStrip play={play} />
 
       <div className="nh-deck-trade-hero__chips">
         <span className="nh-deck-trade-hero__chip">{summary.horizonLabel}</span>
         <span className="nh-deck-trade-hero__chip contract">{summary.contract}</span>
+        {rankContext?.isHighestToday && (
+          <span className="nh-deck-trade-hero__chip orig">Highest today</span>
+        )}
       </div>
 
-      {dollar != null && play.entry != null && (
-        <div className={clsx("nh-deck-trade-hero__pnl", markFlash && "neon", dollar >= 0 ? "nh-deck-pos" : "nh-deck-neg")}>
-          {dollarSign}{usd(dollar)}
+      <div className="nh-deck-trade-hero__metrics" aria-label="Live trade metrics">
+        <div className="nh-deck-trade-hero__metric is-primary">
+          <span className="k">Current</span>
+          <span
+            className={clsx(
+              "v",
+              markFlash && "neon",
+              dollar != null ? (dollar >= 0 ? "nh-deck-pos" : "nh-deck-neg") : (summary.currentPct ?? 0) >= 0 ? "nh-deck-pos" : "nh-deck-neg",
+            )}
+          >
+            {dollar != null && play.entry != null
+              ? `${dollarSign}${usd(dollar)}`
+              : summary.currentPct != null
+                ? formatReturnPct(summary.currentPct)
+                : "—"}
+          </span>
         </div>
-      )}
-
-      <div className="nh-deck-trade-hero__strip">
-        <div className="nh-deck-trade-hero__stat">
+        <div className="nh-deck-trade-hero__metric">
           <span className="k">Peak</span>
           <span className={clsx("v", (summary.peakPct ?? 0) >= 0 ? "nh-deck-pos" : "nh-deck-neg")}>
-            {summary.peakPct != null ? `${summary.peakPct > 0 ? "+" : ""}${Math.round(summary.peakPct)}%` : "—"}
+            {summary.peakPct != null ? formatReturnPct(summary.peakPct) : "—"}
           </span>
         </div>
-        <div className="nh-deck-trade-hero__stat">
-          <span className="k">Current</span>
-          <span className={clsx("v", markFlash && "neon", (summary.currentPct ?? 0) >= 0 ? "nh-deck-pos" : "nh-deck-neg")}>
-            {summary.currentPct != null ? `${summary.currentPct > 0 ? "+" : ""}${Math.round(summary.currentPct)}%` : "—"}
+        <div className="nh-deck-trade-hero__metric">
+          <span className="k">Confidence</span>
+          <span className="v">{summary.confidence ?? "—"}</span>
+        </div>
+        <div className="nh-deck-trade-hero__metric">
+          <span className="k">Rank</span>
+          <span className="v">
+            {rankContext ? `#${rankContext.rank}` : "—"}
+            {rankContext ? <span className="nh-deck-trade-hero__rank-den"> / {rankContext.total}</span> : null}
           </span>
         </div>
-        <div className="nh-deck-trade-hero__stat">
-          <span className="k">Status</span>
-          <span className={clsx("v", "nh-deck-trade-hero__status", play.status.toLowerCase())}>
-            {play.status === "CLOSED" ? "CLOSED" : play.status === "WATCH" || play.status === "SKIP" ? "WATCHING" : "ACTIVE"}
+        <div className="nh-deck-trade-hero__metric">
+          <span className="k">Age</span>
+          <span className="v nh-deck-trade-hero__age">
+            {play.status !== "CLOSED" ? (
+              <AgeDecayBadge
+                compactAge={ageLabel}
+                decayTone={freshness.decayTone}
+                pulse={freshness.pulse}
+              />
+            ) : (
+              "Closed"
+            )}
           </span>
         </div>
       </div>
+
+      <PlayLifecycleStrip play={play} />
     </header>
   );
 }

@@ -71,11 +71,13 @@ test("open lifecycle row shows freshness, current, and active status", async () 
     }),
     { nowMs: Date.parse("2026-08-03T12:00:00-04:00") },
   );
-  assert.match(html, /JUST FIRED|MIN AGO/);
+  assert.match(html, /nh-deck-age-decay/);
+  assert.match(html, />2m</);
   assert.match(html, />Triggered</);
   assert.match(html, />Current</);
   assert.match(html, />\+42%</);
   assert.match(html, />ACTIVE</);
+  assert.match(html, /nh-deck-status-pill is-active/);
 });
 
 test("watch lifecycle row shows published clock and watching status", async () => {
@@ -92,14 +94,15 @@ test("watch lifecycle row shows published clock and watching status", async () =
   assert.match(html, />WATCH</);
   assert.match(html, />Waiting for Trigger</);
   assert.match(html, />Published</);
-  assert.match(html, />WATCHING</);
+  assert.match(html, /nh-deck-status-pill/);
+  assert.match(html, /nh-deck-conf-badge/);
 });
 
 test("selected 0DTE row renders hero lifecycle card with banner when rank 1", async () => {
   const html = await render(play({ status: "OPEN", pnlPct: 42 }), { selected: true, rank: 1 });
   assert.match(html, /nh-deck-row-hero/);
   assert.match(html, />BEST PLAY TODAY</);
-  assert.match(html, />Confidence/);
+  assert.match(html, /nh-deck-conf-badge/);
   assert.match(html, />Tap to inspect/);
 });
 

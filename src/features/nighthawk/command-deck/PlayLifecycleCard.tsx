@@ -12,39 +12,28 @@ import {
   playFreshnessDisplay,
   playLifecyclePhase,
   playPrimaryEvent,
-  playStatusLabel,
+  playStatusDisplay,
   playTriggeredEvent,
   setupTypeLabel,
   watchWaitLabel,
 } from "./play-card-lifecycle";
-import { formatReturnPct, playGradeLabel, playQualityPct, tierStars } from "./play-card-display";
+import { formatReturnPct } from "./play-card-display";
+import { ConfidenceBadge } from "./ConfidenceBadge";
+import { AgeDecayBadge, StatusPill } from "./DeckStatusBadges";
 
 function FreshnessBadge({
   freshness,
 }: {
   freshness: ReturnType<typeof playFreshnessDisplay>;
 }) {
-  const tone =
-    freshness.tier === "just_fired" || freshness.tier === "fresh"
-      ? "fresh"
-      : freshness.tier === "aging"
-        ? "aging"
-        : freshness.tier === "late"
-          ? "late"
-          : "closed";
-
+  const age = freshness.compactAge ?? freshness.badgeLabel;
   return (
     <span className="nh-deck-lc-fresh-wrap">
-      <span
-        className={clsx(
-          "nh-deck-lc-fresh",
-          `is-${tone}`,
-          freshness.pulse && "is-pulse",
-        )}
-      >
-        <span className="nh-deck-lc-fresh-dot" aria-hidden />
-        {freshness.badgeLabel}
-      </span>
+      <AgeDecayBadge
+        compactAge={age}
+        decayTone={freshness.decayTone}
+        pulse={freshness.pulse}
+      />
       {freshness.lateEntry && (
         <span className="nh-deck-lc-late">Late Entry</span>
       )}
@@ -88,12 +77,9 @@ export function PlayLifecycleCardBody({
   markFlash?: boolean;
 }) {
   const phase = playLifecyclePhase(play.status);
-  const grade = playGradeLabel(play);
-  const quality = playQualityPct(play);
-  const stars = grade ? tierStars(grade) : "";
   const primary = playPrimaryEvent(play);
   const freshness = playFreshnessDisplay(play, nowMs, primary.iso);
-  const statusLabel = playStatusLabel(play.status);
+  const status = playStatusDisplay(play.status);
   const setup = setupTypeLabel(play);
   const horizonLabel = horizonDisplayLabel(play.horizon);
   const metricLabels = openMetricsLabels(play);
@@ -113,27 +99,19 @@ export function PlayLifecycleCardBody({
       )}
 
       <div className="nh-deck-lc-head">
-        <div className="nh-deck-lc-grade-row">
-          {grade && (
-            <span className="nh-deck-lc-grade" aria-label={`Grade ${grade}`}>
-              {hero && <span className="nh-deck-lc-trophy" aria-hidden>🏆 </span>}
-              {grade}
-            </span>
-          )}
+        <div className="nh-deck-lc-head-main">
+          <span className="nh-deck-lc-ticker">{play.ticker}</span>
           {!hero && rank > 0 && (
             <span className="nh-deck-lc-rank">#{rank}</span>
           )}
-          {stars && !hero && (
-            <span className="nh-deck-lc-stars" aria-hidden>{stars}</span>
-          )}
         </div>
-        <span className="nh-deck-lc-ticker">{play.ticker}</span>
+        <ConfidenceBadge play={play} hero={hero} />
       </div>
 
       <div className="nh-deck-lc-setup">
+        <StatusPill label={status.label} tone={status.tone} />
         {phase === "watch" ? (
           <>
-            <span className="nh-deck-lc-watch-tag">WATCH</span>
             <span className="nh-deck-lc-horizon">{horizonLabel}</span>
           </>
         ) : (
@@ -145,12 +123,6 @@ export function PlayLifecycleCardBody({
           </>
         )}
       </div>
-
-      {quality != null && (
-        <div className="nh-deck-lc-conf">
-          Confidence <b>{quality}</b>
-        </div>
-      )}
 
       {phase === "watch" && (
         <div className="nh-deck-lc-wait">{watchWaitLabel(play)}</div>
@@ -213,8 +185,8 @@ export function PlayLifecycleCardBody({
       )}
 
       <div className="nh-deck-lc-foot">
-        <span className="k">Status</span>
-        <span className={clsx("nh-deck-lc-status", statusLabel.toLowerCase())}>{statusLabel}</span>
+        <span className="k">State</span>
+        <StatusPill label={status.label} tone={status.tone} />
       </div>
 
       {hero && setup && (

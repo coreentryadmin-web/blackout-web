@@ -4,6 +4,8 @@ import {
   FRESHNESS_JUST_FIRED_MS,
   closedRealizedPct,
   formatRelativeAge,
+  formatCompactAge,
+  ageDecayToneFromAge,
   freshnessBadgeLabel,
   freshnessTierFromAge,
   playFreshnessDisplay,
@@ -11,6 +13,7 @@ import {
   playLifecycleTimestamps,
   playPrimaryEvent,
   playStatusLabel,
+  playStatusDisplay,
 } from "./play-card-lifecycle.ts";
 import type { TerminalPlay } from "./types.ts";
 
@@ -140,10 +143,31 @@ describe("play-card-lifecycle", () => {
     );
   });
 
-  it("playStatusLabel maps ACTIVE and WATCHING", () => {
+  it("formatCompactAge returns short decay labels", () => {
+    assert.equal(formatCompactAge("2026-08-03T11:56:00-04:00", NOW), "4m");
+    assert.equal(formatCompactAge("2026-08-03T11:32:00-04:00", NOW), "28m");
+    assert.equal(formatCompactAge("2026-08-03T10:00:00-04:00", NOW), "2h");
+  });
+
+  it("ageDecayTone escalates through fresh → aging → stale → late", () => {
+    assert.equal(ageDecayToneFromAge(4 * 60_000, "open"), "fresh");
+    assert.equal(ageDecayToneFromAge(28 * 60_000, "open"), "aging");
+    assert.equal(ageDecayToneFromAge(63 * 60_000, "open"), "stale");
+    assert.equal(ageDecayToneFromAge(130 * 60_000, "open"), "late");
+  });
+
+  it("playStatusDisplay maps scannable tones", () => {
+    assert.deepEqual(playStatusDisplay("OPEN"), { label: "ACTIVE", tone: "active" });
+    assert.deepEqual(playStatusDisplay("WATCH"), { label: "WATCH", tone: "watch" });
+    assert.deepEqual(playStatusDisplay("SKIP"), { label: "FAILED", tone: "failed" });
+    assert.deepEqual(playStatusDisplay("CLOSED"), { label: "CLOSED", tone: "closed" });
+  });
+
+  it("playStatusLabel mirrors playStatusDisplay labels", () => {
     assert.equal(playStatusLabel("OPEN"), "ACTIVE");
-    assert.equal(playStatusLabel("WATCH"), "WATCHING");
+    assert.equal(playStatusLabel("WATCH"), "WATCH");
     assert.equal(playStatusLabel("CLOSED"), "CLOSED");
+    assert.equal(playStatusLabel("SKIP"), "FAILED");
   });
 
   it("closedRealizedPct prefers exit stamp", () => {
