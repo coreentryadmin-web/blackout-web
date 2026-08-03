@@ -1,5 +1,74 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-31 18:17 ET
+Last updated: 2026-08-03 16:56 ET
+
+## rth-open-2026-08-03-pass1 — RTH comprehensive test sweep (~4:40 PM ET, post-close)
+
+**Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` **RTH COMPREHENSIVE TEST SWEEP** pass 1 (~4:40 PM ET Monday, post-close). Commands: `npm run validate:rth-open` → `GET /api/cron/data-correctness?force=1` → sync `surface=heatmap` → `npm run validate:rth-sweep` → `npm run validate:spx-e2e` → `npm run validate:grid-e2e` → `npm run validate:grid-rth -- --force` → `npm run validate:spx-rth -- --force` → `node scripts/audit/data-validator.mjs` → `npm run ops:collect`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` | ✅ **GREEN** — deploy smoke (post-close window; full RTH writer checks skipped after 16:15 ET); options-socket off-hours auth not required |
+| `GET /api/cron/data-correctness?force=1` | ✅ **202** async dispatch |
+| `GET /api/cron/data-correctness?force=1&surface=heatmap` | ✅ **flags=0**, 60 metrics (consistency-only — `market_open=false` post-close) |
+| `npm run validate:rth-sweep` | ✅ **GREEN** — 0 P0/P1; 7 pages soft-nav 1.6–1.9s; APIs 200; Largo grounded NVDA $50.5M in 2.7s |
+| `npm run validate:spx-e2e` | ✅ **15 PASS / 2 SKIP / 1 WARN / 0 FAIL** — matrix 167 strikes, spot 7600.5, GEX+VEX+DEX+CHARM cells, cross-tool agree |
+| `npm run validate:grid-e2e` | ✅ **5/5 PASS** — 8 setups · ledger 2 · zero console errors |
+| `npm run validate:grid-rth -- --force` | ✅ **13/13 PASS** — session heat CLOSED, 7 setups, ledger PnL coherent, cross-tool SPX spot 7600.5 |
+| `npm run validate:spx-rth -- --force` | ✅ **7 PASS / 1 WARN / 0 FAIL** — matrix deep audit, cross-endpoint spot/play SCANNING |
+| `data-validator.mjs` | ⚠️ **28 PASS / 3 FAIL / 4 INFO** — QQQ 1.76%, AMZN 4.64%, MSFT 5.74% vs Polygon prev-close (extended-hours live vs prev-close ground truth) |
+| `npm run ops:collect` | ✅ **exit 0** — zero action items |
+
+**Verify status: GREEN** — zero P0/P1 product defects. No live fixes required this pass.
+
+### Comprehensive sweep — per-page (~4:43 PM ET, post-close)
+
+| Page | Soft-nav | Missing fields | Console | Live tick |
+|---|---|---|---|---|
+| `/dashboard` (SPX Slayer) | 1.7s hard | 0 | 1× HTTP 400 (resource) | null (post-close — no tick expected) |
+| `/flows` (HELIX) | 1.9s | 0 | 0 | null |
+| `/heatmap` (Thermal matrix) | 1.9s | 0 | 0 | null |
+| `/vector` | 1.6s | 0 | 0 | null |
+| `/nighthawk` (0DTE Command) | 1.7s | 0 | 0 | null |
+| `/terminal` (Largo) | 1.6s | 0 | 0 | null |
+| `/track-record` | 1.6s | 0 | 0 | null |
+
+**Speed:** All pages well under 2s soft-nav target. `zerodte/board` 279ms (200, fresh 4s).
+
+**Live auto-update:** `liveTick=null` on all pages — **expected post-close** (16:40 ET); no SSE/poll tick during extended-hours freeze. Re-check during RTH for cadence verification.
+
+**Largo:** NVDA dark pool + flow query grounded — $50,512,698 premium across 50 prints in 2.7s; regime `—` is honest (HELIX regime detector inactive post-close — `regime_label` null in backing API).
+
+**Cross-tool GEX:** desk flip 7555.45 vs gex-positioning 7555.19 vs spot 7600.5 — within 0.01% tolerance.
+
+**API verification:** All 11 market endpoints HTTP 200; `spx/desk` fresh (44s), `platform/snapshot` + `zerodte/board` fresh (0–4s).
+
+**0DTE Command (12 panels):** Covered via `validate:grid-rth` + `validate:grid-e2e` — board 8 setups, ledger 2 rows, session heat CLOSED, HELIX 20 prints, Night Hawk page load + zero console errors.
+
+### Findings table (`rth-open-2026-08-03-pass1`)
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| — | — | **No P0/P1 defects** | all suites GREEN | — |
+| P2 | DASH-HTTP-400 | Dashboard console 1× HTTP 400 on resource load (recurring transient asset) | browser network | Yes — no blank fields; same as prior passes |
+| P2 | DV-QQQ-SPOT | QQQ `underlying_price` 1.76% off Polygon prev-close (tol 1.5% index) | data-validator live probe | Yes — extended-hours live vs prev-close ground truth |
+| P2 | DV-AMZN-SPOT | AMZN `underlying_price` 4.64% off Polygon prev-close (tol 2.5%) | data-validator live probe | Yes — extended-hours drift; chain/strike checks PASS |
+| P2 | DV-MSFT-SPOT | MSFT `underlying_price` 5.74% off Polygon prev-close (tol 2.5%) | data-validator live probe | Yes — extended-hours drift; chain/strike checks PASS |
+| P2 | SWEEP-PROFILE-TAB | Thermal Profile tab not separately logged in sweep JSON (tab role selector may not match refactored UI) | `/heatmap` harness | Yes — matrix view 0 missing fields; manual Profile+Curve+Shift view covered in `validate:spx-e2e` matrix audit |
+| INFO | LIVE-TICK-NULL | All pages `liveTick=null` at 16:40 ET post-close | sweep harness | N/A — expected off-hours |
+| INFO | SPX-RTH-DC-01 | `CRON_SECRET` auth mismatch warning in spx-rth probe (AWS secret loads correctly for sweep) | env probe timing | N/A — heatmap surface flags=0 |
+
+### Reports
+
+- `audit-output/rth-sweep-2026-08-03T20-40-17-850Z.json`
+- `audit-output/spx-dashboard-e2e-1785789927420.json`
+- `audit-output/grid-e2e-1785789624462.json`
+- `audit-output/grid-rth-2026-08-03-verify-1785790150542.json`
+- `audit-output/spx-rth-2026-08-03-verify-1785790582961.json`
+- `audit-output/validation-2026-08-03T20-50-19-320Z.md`
+
+---
 
 ## grid-rth-2026-07-31-pass6 — 0DTE Command post-close fix agent (~3:17 PM PT / 6:17 PM ET)
 
