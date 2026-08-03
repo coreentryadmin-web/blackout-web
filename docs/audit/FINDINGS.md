@@ -4,6 +4,18 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-03 — [ops,nighthawk] Edition stuck at stage_synthesis checkpoint — FIXED (ops-auto-fix #1572)
+
+**Severity.** P0 — Night Hawk edition `2026-08-04` not published; `job_status=stage_scoring` / `current_stage=stage_synthesis`.
+
+**Root cause.** The fire-and-forget builder checkpointed after ranking but the background `after()` synthesis pass did not complete before ops-collect paged (~6:55 PM ET). The 4h `failStaleNighthawkJobs` ceiling and 60m admin-cron-health stuck threshold were too slow for same-night recovery; `nighthawk-playbook` was excluded from watchdog `CRON_DISPATCH` self-heal.
+
+**Evidence.** Live probe: `GET /api/cron/nighthawk-edition?status=1` showed non-terminal job with 60 staged candidates; `?force=1` nudge published within ~2m (`job_status=published`). ops-collect fingerprint `de63dbdb6a68` cleared after publish.
+
+**Fix.** (1) Edition-window-aware stale job reap: `nighthawkStaleJobIdleMinutes()` → 25m during 5:30–7:30 PM ET (`failStaleNighthawkJobs` uses minutes). (2) Admin cron health stuck threshold 15m (was 60m) during edition window. (3) Add `nighthawk-playbook` to `CRON_DISPATCH` + evening stale self-heal in `cron-staleness-watchdog`. (4) `ops-collect-action-items.mjs` auto-nudges `?force=1` and polls before paging P0.
+
+**Status.** FIXED on `cursor/autonomous-ops-fixes-88e1`.
+
 ## 2026-08-03 — [Grid/0DTE] Post-close fix agent (cloud session) — all validators GREEN (~3:14 PM PT / 6:14 PM ET)
 
 **Severity.** — (no additional product defects)

@@ -14,6 +14,7 @@ import {
   isWeekdayEt,
   nextTradingDayEt,
 } from "@/features/nighthawk/lib/session";
+import { isInEditionWindow } from "@/features/nighthawk/lib/edition-stale";
 import { isEtCashRth } from "@/lib/et-market-hours";
 import {
   isFlowIngestAlternateWriterSkip,
@@ -325,7 +326,7 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
       // minutes, so >60m without progress and without publishing means the background build died
       // silently (host kill, OOM, hung Claude call). Escalate to `stale` so the watchdog alerts the
       // same night instead of waiting out the 4h registry ceiling. (#77 hardening D, item 10)
-      const STUCK_JOB_MIN = 60;
+      const STUCK_JOB_MIN = isInEditionWindow() ? 15 : 60;
       const nonTerminal = latestNhJob.status !== "published" && latestNhJob.status !== "failed";
       const stuck = nonTerminal && ageMin != null && ageMin > STUCK_JOB_MIN;
 
