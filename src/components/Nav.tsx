@@ -85,6 +85,11 @@ function FeatureCards({
               <ProductMark product={NAV_TO_MARK[it.accent]} size={46} />
             </span>
             <span className="nav-card-label font-syne">{it.label}</span>
+            {path.startsWith(it.href) && (
+              <span className="nav-card-live font-mono" aria-label="Current product">
+                ● LIVE
+              </span>
+            )}
             <span className="nav-card-sub font-mono">{it.sub}</span>
             <span className="nav-card-open font-mono" aria-hidden>
               {locked ? "Preview" : "Open →"}

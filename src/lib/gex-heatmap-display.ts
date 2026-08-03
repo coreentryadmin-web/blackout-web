@@ -34,49 +34,49 @@ export function heatmapCellStyle(
 ): CSSProperties {
   if (!value || peak <= 0) return {};
   const mag = Math.min(1, Math.abs(value) / peak);
-  const alpha = 0.04 + Math.pow(mag, 1.35) * 0.88;
+  const alpha = 0.03 + Math.pow(mag, 1.35) * 0.7;
   const c = LENS_COLORS[lens];
   const rgb = value > 0 ? c.posRgb : c.negRgb;
   return {
     backgroundColor: `rgba(${rgb},${alpha.toFixed(3)})`,
-    boxShadow: mag > 0.45 ? `inset 0 0 18px rgba(${rgb},${(mag * 0.4).toFixed(2)})` : undefined,
+    boxShadow: mag > 0.55 ? `inset 0 0 14px rgba(${rgb},${(mag * 0.32).toFixed(2)})` : undefined,
   };
 }
 
 export function heatmapCellTextStyle(value: number, peak: number): CSSProperties {
   if (!value || peak <= 0) return {};
   const mag = Math.min(1, Math.abs(value) / peak);
-  if (mag > 0.45) return { color: "#ffffff", textShadow: "0 1px 2px rgba(0,0,0,0.55)" };
+  if (mag > 0.55) return { color: "#ffffff", textShadow: "0 1px 2px rgba(0,0,0,0.55)" };
   return { textShadow: "0 1px 2px rgba(0,0,0,0.72)" };
 }
 
 /** Per-column highest positive cell — call-bead yellow (dominant +GEX node). */
 export function heatmapExtremePositiveStyle(): CSSProperties {
   return {
-    backgroundColor: `rgba(${GEX_BEAD_CALL_RGB}, 0.58)`,
-    boxShadow: `inset 0 0 0 1px rgba(${GEX_BEAD_CALL_RGB}, 0.9), 0 0 16px rgba(${GEX_BEAD_CALL_RGB}, 0.38)`,
+    backgroundColor: `rgba(${GEX_BEAD_CALL_RGB}, 0.46)`,
+    boxShadow: `inset 0 0 0 1px rgba(${GEX_BEAD_CALL_RGB}, 0.75), 0 0 12px rgba(${GEX_BEAD_CALL_RGB}, 0.28)`,
   };
 }
 
 /** Per-column highest negative cell — put-bead purple (dominant −GEX node). */
 export function heatmapExtremeNegativeStyle(): CSSProperties {
   return {
-    backgroundColor: `rgba(${GEX_BEAD_PUT_RGB}, 0.55)`,
-    boxShadow: `inset 0 0 0 1px rgba(${GEX_BEAD_PUT_RGB}, 0.9), 0 0 16px rgba(${GEX_BEAD_PUT_RGB}, 0.38)`,
+    backgroundColor: `rgba(${GEX_BEAD_PUT_RGB}, 0.44)`,
+    boxShadow: `inset 0 0 0 1px rgba(${GEX_BEAD_PUT_RGB}, 0.75), 0 0 12px rgba(${GEX_BEAD_PUT_RGB}, 0.26)`,
   };
 }
 
 export function heatmapExtremePositiveTextStyle(): CSSProperties {
   return {
     color: "#fffbeb",
-    textShadow: `0 0 10px rgba(${GEX_BEAD_CALL_RGB}, 0.95), 0 1px 2px rgba(0,0,0,0.65)`,
+    textShadow: `0 0 8px rgba(${GEX_BEAD_CALL_RGB}, 0.75), 0 1px 2px rgba(0,0,0,0.65)`,
   };
 }
 
 export function heatmapExtremeNegativeTextStyle(): CSSProperties {
   return {
     color: "#faf5ff",
-    textShadow: `0 0 10px rgba(${GEX_BEAD_PUT_RGB}, 0.95), 0 1px 2px rgba(0,0,0,0.65)`,
+    textShadow: `0 0 8px rgba(${GEX_BEAD_PUT_RGB}, 0.75), 0 1px 2px rgba(0,0,0,0.65)`,
   };
 }
 
