@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { AttributedLink } from "@/components/analytics/CheckoutLink";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { LearnArticle } from "@/lib/learn/articles";
 import { articleNav, readingTime } from "@/lib/learn/articles";
@@ -53,12 +54,14 @@ export function LearnArticleView({ article }: { article: LearnArticle }) {
         <div className="mt-12 rounded-2xl border border-bull/20 bg-bull/5 p-6 text-center">
           <p className="font-syne text-lg font-bold text-white">Ready to trade with live dealer gamma?</p>
           <p className="mt-2 text-sm text-sky-300">See plans and open the desk — SPX Slayer from $49/mo.</p>
-          <Link
-            href={`/pricing?utm_source=learn&utm_medium=referral&utm_campaign=${encodeURIComponent(article.slug)}`}
+          <AttributedLink
+            href="/pricing"
+            source="learn"
+            campaign={article.slug}
             className="mt-4 inline-flex items-center justify-center rounded-xl bg-bull px-6 py-3 font-syne text-xs font-extrabold uppercase tracking-[0.12em] text-[#0a1102]"
           >
             View pricing →
-          </Link>
+          </AttributedLink>
         </div>
 
         <nav

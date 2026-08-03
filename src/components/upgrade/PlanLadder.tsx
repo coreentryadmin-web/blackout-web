@@ -1,3 +1,4 @@
+import { CheckoutLink } from "@/components/analytics/CheckoutLink";
 import {
   WHOP_CHECKOUT,
   WHOP_COMMUNITY_CHECKOUT_OPTION,
@@ -92,15 +93,16 @@ export function PlanLadder() {
                   Current Plan
                 </span>
               ) : (
-                <a
+                <CheckoutLink
                   href={yearlyOption.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                  plan="yearly"
+                  campaignSource="upgrade"
+                  campaign="premium_yearly"
                   aria-label="Unlock Premium Yearly"
                   className="inline-flex items-center justify-center rounded-xl bg-bull px-8 py-4 font-syne text-sm font-extrabold uppercase tracking-[0.12em] text-[#0a1102] transition-all duration-200 hover:scale-105 hover:shadow-[0_0_30px_rgba(163,230,53,0.3)]"
                 >
                   Unlock Premium →
-                </a>
+                </CheckoutLink>
               )}
               <p className="font-mono text-[10px] text-white/30">Cancel anytime · instant access</p>
             </div>
@@ -138,15 +140,16 @@ export function PlanLadder() {
                 Current Plan
               </span>
             ) : (
-              <a
+              <CheckoutLink
                 href={monthlyOption.href}
-                target="_blank"
-                rel="noopener noreferrer"
+                plan="monthly"
+                campaignSource="upgrade"
+                campaign="premium_monthly"
                 aria-label="Unlock Premium Monthly"
                 className="mt-6 inline-flex w-full items-center justify-center rounded-xl border-2 border-white/15 py-3 font-syne text-xs font-extrabold uppercase tracking-[0.1em] whitespace-nowrap text-white/70 transition-all duration-200 hover:border-bull/50 hover:bg-bull/5 hover:text-bull"
               >
                 Unlock Monthly →
-              </a>
+              </CheckoutLink>
             )}
           </div>
         )}
@@ -179,15 +182,16 @@ export function PlanLadder() {
                 Current Plan
               </span>
             ) : (
-              <a
+              <CheckoutLink
                 href={WHOP_COMMUNITY_CHECKOUT_OPTION.href}
-                target="_blank"
-                rel="noopener noreferrer"
+                plan="community"
+                campaignSource="upgrade"
+                campaign="spx_slayer"
                 aria-label="Get SPX Slayer access"
                 className="mt-6 inline-flex w-full items-center justify-center rounded-xl border-2 border-sky-300/20 py-3 font-syne text-xs font-extrabold uppercase tracking-[0.1em] whitespace-nowrap text-sky-300/70 transition-all duration-200 hover:border-sky-300/50 hover:bg-sky-300/5 hover:text-sky-300"
               >
                 Get SPX Access →
-              </a>
+              </CheckoutLink>
             )}
           </div>
         )}

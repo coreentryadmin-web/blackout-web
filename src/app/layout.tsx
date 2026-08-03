@@ -3,6 +3,7 @@ import Script from "next/script";
 import { Anton, Syne, JetBrains_Mono } from "next/font/google";
 import { IMAGES } from "@/lib/images";
 import { SITE } from "@/lib/site";
+import { Ga4Attribution } from "@/components/analytics/Ga4Attribution";
 import { OrganizationJsonLd, WebSiteJsonLd } from "@/components/seo/JsonLd";
 import { googleSiteVerificationToken } from "@/lib/seo/verification";
 // PHOSPHOR LADDER token foundation — additive tokens + utility primitives, loaded
@@ -119,6 +120,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Script id="ga4-init" strategy="afterInteractive">
           {`window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-YLN4K37KYF');`}
         </Script>
+        <Ga4Attribution />
         <OrganizationJsonLd />
         <WebSiteJsonLd />
         <a

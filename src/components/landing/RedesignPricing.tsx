@@ -1,5 +1,8 @@
+"use client";
+
 import { BorderBeam } from "@/components/ui/motion/BorderBeam";
 import { RetroGrid } from "@/components/ui/motion/RetroGrid";
+import { CheckoutLink } from "@/components/analytics/CheckoutLink";
 import { MEMBERSHIP_PRICING, usd } from "@/lib/pricing";
 import { WHOP_CHECKOUT } from "@/lib/whop-checkout";
 
@@ -47,7 +50,15 @@ export function RedesignPricing() {
               <ul className="perks">
                 {SPX_PERKS.map((p) => <li key={p}>{p}</li>)}
               </ul>
-              <a href={WHOP_CHECKOUT.community || "/sign-up?redirect_url=%2Fupgrade"} className="rl-btn rl-btn-ghost">Get SPX access</a>
+              <CheckoutLink
+                href={WHOP_CHECKOUT.community || "/sign-up?redirect_url=%2Fupgrade"}
+                plan="community"
+                campaignSource="pricing"
+                campaign="spx_slayer"
+                className="rl-btn rl-btn-ghost"
+              >
+                Get SPX access
+              </CheckoutLink>
             </div>
 
             {/* Premium Monthly — featured */}
@@ -61,7 +72,15 @@ export function RedesignPricing() {
               <ul className="perks">
                 {DESK_PERKS.map((p) => <li key={p}>{p}</li>)}
               </ul>
-              <a href={WHOP_CHECKOUT.monthly || "/sign-up?redirect_url=%2Fupgrade"} className="rl-btn rl-btn-primary">Start monthly →</a>
+              <CheckoutLink
+                href={WHOP_CHECKOUT.monthly || "/sign-up?redirect_url=%2Fupgrade"}
+                plan="monthly"
+                campaignSource="pricing"
+                campaign="premium_monthly"
+                className="rl-btn rl-btn-primary"
+              >
+                Start monthly →
+              </CheckoutLink>
             </div>
 
             {/* Premium Yearly */}
@@ -72,7 +91,15 @@ export function RedesignPricing() {
               <ul className="perks">
                 {DESK_PERKS.map((p) => <li key={p}>{p}</li>)}
               </ul>
-              <a href={WHOP_CHECKOUT.yearly || "/sign-up?redirect_url=%2Fupgrade"} className="rl-btn rl-btn-ghost">Go yearly</a>
+              <CheckoutLink
+                href={WHOP_CHECKOUT.yearly || "/sign-up?redirect_url=%2Fupgrade"}
+                plan="yearly"
+                campaignSource="pricing"
+                campaign="premium_yearly"
+                className="rl-btn rl-btn-ghost"
+              >
+                Go yearly
+              </CheckoutLink>
             </div>
           </div>
         </div>
