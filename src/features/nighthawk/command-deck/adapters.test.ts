@@ -840,6 +840,16 @@ test("0DTE adapter (Wave 3): why_now + first_flagged_at map through to whyNow/fi
   assert.equal(p.firstFlaggedAt, "2026-07-25T10:42:00-04:00");
 });
 
+test("0DTE adapter: setup.first_seen maps to detectedAt for WATCH published clock", () => {
+  const p = terminalPlayFromZeroDte({
+    ticker: "amd",
+    status: "WATCH",
+    score: 72,
+    setup: { direction: "long", dte: 0, first_seen: "2026-08-03T10:47:00-04:00" },
+  });
+  assert.equal(p.detectedAt, "2026-08-03T10:47:00-04:00");
+});
+
 test("0DTE adapter (Wave 3): absent why_now → whyNow null (ribbon omitted, no fabrication)", () => {
   const p = terminalPlayFromZeroDte({
     ticker: "coin", status: "HOLD", score: 60, entry_premium: 5.0, last_mark: 5.0, live_pnl_pct: 0,
