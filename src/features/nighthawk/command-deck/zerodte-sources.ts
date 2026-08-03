@@ -15,6 +15,7 @@ export interface BoardResp {
   available?: boolean;
   degraded?: boolean;
   upstream_ok?: boolean;
+  as_of?: string;
   setups?: Array<Record<string, unknown>>;
   ledger?: Array<Record<string, unknown>>;
   allocation?: Array<{ ticker: string; role: string; sizing: string; reasons?: string[] }>;

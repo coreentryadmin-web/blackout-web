@@ -33,6 +33,7 @@ import {
   convictionRankContext,
   formatWinRate30d,
 } from "./deck-command-center";
+import { deriveEngineStatus } from "./deck-engine-status";
 
 /** Status filter mode: which plays to show in the list. */
 type StatusFilter = DeckStatusFilter;
@@ -61,6 +62,8 @@ export function CommandDeck({
   sessionHeat = null,
   commandCenter = false,
   winRate30d = null,
+  boardAsOf = null,
+  upstreamOk = null,
 }: {
   plays: TerminalPlay[];
   laneLabel: string;
@@ -80,6 +83,10 @@ export function CommandDeck({
   commandCenter?: boolean;
   /** 30d as-managed win rate from `/api/market/zerodte/record` — null when unavailable. */
   winRate30d?: number | null;
+  /** Board snapshot instant (`as_of`) — drives Live Engine Status last-update age. */
+  boardAsOf?: string | null;
+  /** Board upstream health flag — false forces engine Offline (never fabricated). */
+  upstreamOk?: boolean | null;
 }) {
   // Counts per status group for the filter badges (and the session-aware default filter).
   const counts = useMemo(() => {
@@ -150,6 +157,21 @@ export function CommandDeck({
     () => (selected && commandCenter ? convictionRankContext(plays, selected.id) : null),
     [commandCenter, plays, selected],
   );
+  const engineStatus = useMemo(
+    () =>
+      commandCenter
+        ? deriveEngineStatus({
+            degraded,
+            loading,
+            sessionHeat,
+            boardAsOf,
+            nowMs,
+            etMinutes: hour * 60 + minute,
+            upstreamOk,
+          })
+        : null,
+    [commandCenter, degraded, loading, sessionHeat, boardAsOf, nowMs, hour, minute, upstreamOk],
+  );
 
   return (
     <div className="nh-deck">
@@ -160,6 +182,7 @@ export function CommandDeck({
             degraded={degraded}
             stats={cmdStats}
             winRate30d={winRate30d}
+            engineStatus={engineStatus}
           />
         ) : (
           <div className="nh-deck-lh">
@@ -228,11 +251,13 @@ function DeckCommandCenter({
   degraded,
   stats,
   winRate30d,
+  engineStatus,
 }: {
   laneLabel: string;
   degraded: boolean;
   stats: ReturnType<typeof buildDeckCommandCenterStats> | null;
   winRate30d: number | null;
+  engineStatus: ReturnType<typeof deriveEngineStatus> | null;
 }) {
   const topLine = stats?.topRated
     ? `${stats.topRated.ticker} (${stats.topRated.grade})`
@@ -260,6 +285,36 @@ function DeckCommandCenter({
             {degraded ? "—" : edge ?? "—"}
           </span>
         </div>
+      </div>
+      {engineStatus && <DeckEngineStatus status={engineStatus} />}
+    </div>
+  );
+}
+
+/** Live engine heartbeat — grounded on the board snapshot's `as_of`, ticks every second. */
+function DeckEngineStatus({
+  status,
+}: {
+  status: ReturnType<typeof deriveEngineStatus>;
+}) {
+  return (
+    <div className="nh-deck-engine-status" aria-label="Engine status">
+      <div className="nh-deck-engine-status__cell">
+        <span className="nh-deck-engine-status__lab">Engine</span>
+        <span className={clsx("nh-deck-engine-status__val", status.ok && "is-ok")}>
+          {status.label}
+          {status.ok && (
+            <span className="nh-deck-engine-status__ok" aria-hidden>
+              ✔
+            </span>
+          )}
+        </span>
+      </div>
+      <div className="nh-deck-engine-status__cell nh-deck-engine-status__cell--right">
+        <span className="nh-deck-engine-status__lab">Last Update</span>
+        <span className="nh-deck-engine-status__val nh-deck-engine-status__age">
+          {status.lastUpdateAge ?? "—"}
+        </span>
       </div>
     </div>
   );
