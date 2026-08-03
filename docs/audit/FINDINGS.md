@@ -6296,3 +6296,41 @@ hand-flagged-contested-but-decisive verdict still PASSes). Full `thesis-health.t
 set). `npx tsc --noEmit` clean. `npx eslint` clean on every touched file.
 
 **Status:** PR pending → CI → auto-merge per standing policy.
+
+## 2026-08-03 — [Night Hawk breakout picker] NH-R5: binary liquidity gate replaced with a quality rank — FIXED
+
+**Context.** Last of the four confirmed gaps from the independent Cortex-audit table (NH-R11/NH-R9
+in one earlier PR, NH-R8 in another). NH-R5: "Breakout picker: `sideHasLiquidity` + sort by
+DTE/distance. Edition picker: OI/premium pools + ATM distance. No OI/volume/spread/greeks
+composite rank across candidates." On inspection, `pickChainContract` (the EDITION picker,
+`deterministic-edition.ts`) already has a real tiered relaxation ladder (strict OI+premium →
+premium-only → OI-only → any-quoted → short-dated), so it wasn't a bare binary gate. The genuine
+binary-gate gap is `pickAtmZeroDteContract`'s `sideHasLiquidity` (`breakout-source.ts`) — a flat
+"any non-zero bid/ask/OI" admission check with NOTHING beyond it: every admitted row then ranked
+purely on distance-to-spot, so a razor-thin 1-lot quote could beat an equally-close strike with a
+tight two-sided market and real depth.
+
+**Fix.** `breakout-source.ts`: new `liquidityQualityScore(row, side)` — a genuine composite (0–2):
+spread-tightness credit (0–1, clipped at `SPREAD_QUALITY_CLIP_PCT`=25% of mid) plus OI-depth credit
+(0–1, saturating at `OI_QUALITY_SATURATION`=500 contracts). `pickAtmZeroDteContract` now sorts on
+`effectiveDist = dist - quality * LIQUIDITY_TIE_BREAK_DOLLARS_PER_POINT` (0.15) instead of raw
+`dist`. The dollar-per-point weight is deliberately small: it only breaks NEAR-ties between
+strikes that are already close to spot — a strike materially closer to spot always wins regardless
+of liquidity quality, so the picker stays ATM-first (the strategy requirement), with quality now
+mattering when two candidates are genuinely close. `sideHasLiquidity` (the binary admission gate)
+is unchanged — a dead strike (no quote, no OI) is still dropped outright, never ranked.
+
+**Blast radius.** `breakout-source.ts` only (`pickAtmZeroDteContract`'s candidate scoring/sort).
+`pickChainContract` (edition picker) was NOT touched — its existing tiered ladder already does
+real quality-aware relaxation; this entry's fix targets the one picker that genuinely lacked it.
+
+**Evidence.** New tests: `liquidityQualityScore` unit tests (tighter spread wins, deeper OI wins,
+no live quote scores below an equal-OI quoted row, score bounded 0–2); `pickAtmZeroDteContract`
+near-tie test (a materially more liquid slightly-farther strike now wins a close tie); ATM-still-
+dominates test (a multi-dollar distance gap is never overridden by liquidity quality). All 14
+`breakout-source.test.ts` tests pass, including the pre-existing ATM-selection test unchanged (its
+exact expected strike still wins — the fix only reorders genuine near-ties). `npx tsc --noEmit`
+clean. `npx eslint` clean.
+
+**Status:** PR pending → CI → auto-merge per standing policy. This completes all four gaps the
+user selected from the independent audit table (NH-R11, NH-R9, NH-R8, NH-R5).
