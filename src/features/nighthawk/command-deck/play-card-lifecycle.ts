@@ -81,6 +81,41 @@ export function formatRelativeAge(iso: string | null | undefined, nowMs: number)
   return `${hr}h ago`;
 }
 
+/** Compact age for decay badges — "4m", "28m", "2h" (no "ago" suffix). */
+export function formatCompactAge(iso: string | null | undefined, nowMs: number): string | null {
+  if (!iso || !(nowMs > 0)) return null;
+  const at = Date.parse(iso);
+  if (!Number.isFinite(at)) return null;
+  const delta = nowMs - at;
+  if (delta < 0) return "now";
+  const sec = Math.floor(delta / 1000);
+  if (sec < 60) return sec <= 8 ? "now" : `${sec}s`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m`;
+  const hr = Math.floor(min / 60);
+  return `${hr}h`;
+}
+
+/** Decay tone for age badges — how actionable a 0DTE row feels by time since trigger. */
+export type AgeDecayTone = "fresh" | "aging" | "stale" | "late" | "closed";
+
+export function ageDecayToneFromAge(
+  ageMs: number | null,
+  phase: PlayLifecyclePhase,
+  thresholds: FreshnessThresholds = {
+    justFiredMs: FRESHNESS_JUST_FIRED_MS,
+    freshMs: FRESHNESS_FRESH_MS,
+    agingMs: FRESHNESS_AGING_MS,
+  },
+): AgeDecayTone {
+  if (phase === "closed") return "closed";
+  if (ageMs == null) return "fresh";
+  if (ageMs <= thresholds.freshMs) return "fresh";
+  if (ageMs <= 45 * 60_000) return "aging";
+  if (ageMs <= 120 * 60_000) return "stale";
+  return "late";
+}
+
 export function eventAgeMs(iso: string | null | undefined, nowMs: number): number | null {
   if (!iso || !(nowMs > 0)) return null;
   const at = Date.parse(iso);
@@ -162,9 +197,17 @@ export function playTriggeredEvent(play: TerminalPlay): { label: string; iso: st
 }
 
 export function playStatusLabel(status: DeckStatus): string {
-  if (status === "CLOSED") return "CLOSED";
-  if (status === "WATCH" || status === "SKIP") return "WATCHING";
-  return "ACTIVE";
+  return playStatusDisplay(status).label;
+}
+
+export type StatusTone = "active" | "watch" | "closed" | "failed";
+
+/** Scannable status pill — ACTIVE / WATCH / CLOSED / FAILED with consistent color tones. */
+export function playStatusDisplay(status: DeckStatus): { label: string; tone: StatusTone } {
+  if (status === "CLOSED") return { label: "CLOSED", tone: "closed" };
+  if (status === "SKIP") return { label: "FAILED", tone: "failed" };
+  if (status === "WATCH") return { label: "WATCH", tone: "watch" };
+  return { label: "ACTIVE", tone: "active" };
 }
 
 export function setupTypeLabel(play: TerminalPlay): string | null {
@@ -206,6 +249,8 @@ export type PlayFreshnessDisplay = {
   pulse: boolean;
   lateEntry: boolean;
   relativeAge: string | null;
+  compactAge: string | null;
+  decayTone: AgeDecayTone;
 };
 
 export function playFreshnessDisplay(
@@ -215,13 +260,18 @@ export function playFreshnessDisplay(
 ): PlayFreshnessDisplay {
   const phase = playLifecyclePhase(play.status);
   const ageMs = eventAgeMs(primaryIso, nowMs);
-  const tier = freshnessTierFromAge(ageMs, phase, freshnessThresholdsForHorizon(play.horizon));
+  const thresholds = freshnessThresholdsForHorizon(play.horizon);
+  const tier = freshnessTierFromAge(ageMs, phase, thresholds);
+  const decayTone = ageDecayToneFromAge(ageMs, phase, thresholds);
+  const compactAge = formatCompactAge(primaryIso, nowMs);
   return {
     tier,
-    badgeLabel: freshnessBadgeLabel(tier, ageMs),
+    badgeLabel: compactAge ?? freshnessBadgeLabel(tier, ageMs),
     pulse: tier === "just_fired" && phase === "open",
     lateEntry: tier === "late" && phase === "open",
     relativeAge: formatRelativeAge(primaryIso, nowMs),
+    compactAge,
+    decayTone,
   };
 }
 

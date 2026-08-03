@@ -9,7 +9,7 @@ import { condorTent, condorWinRateLine } from "@/lib/zerodte/condor-render";
 import { etNowParts } from "@/features/nighthawk/lib/session";
 import { showsTimeStopClock, showsTrimScaleLadder } from "./terminal-guards";
 import { managementFor } from "./adapters";
-import { excursionBar, formatWinRateCi, signColorClass } from "@/lib/zerodte/terminal-edge";
+import { formatWinRateCi } from "@/lib/zerodte/terminal-edge";
 import type { DeckCondor } from "./types";
 import { markStreamKind } from "./deck-session-ui";
 import { ThesisHealthPanel } from "./ThesisHealthPanel";
@@ -22,7 +22,7 @@ import {
   EngineChecklistPanel,
   ManagementActionCard,
   MarketContextRow,
-  PremiumMarkChart,
+  TradeExcursionGraphic,
   ThesisExpectedMove,
   ThesisStrengthBlock,
   TradeOutcomePanel,
@@ -855,6 +855,7 @@ function TimeStopClock({ nowMs }: { nowMs: number }) {
 }
 
 function PnlPanel({ play }: { play: TerminalPlay }) {
+  const markFlash = useFlash(play.mark ?? play.pnlPct ?? null);
   if (play.horizon === "LEGACY") return <LegacyPnlPanel play={play} />;
   const premium = isZeroDtePremiumTerminal(play);
   const has = play.entry != null;
@@ -865,7 +866,7 @@ function PnlPanel({ play }: { play: TerminalPlay }) {
       {premium && has && (
         <>
           <TradeOutcomePanel play={play} />
-          <PremiumMarkChart play={play} />
+          <TradeExcursionGraphic play={play} markFlash={markFlash} />
         </>
       )}
       {!premium && (
@@ -886,7 +887,7 @@ function PnlPanel({ play }: { play: TerminalPlay }) {
       {!has && play.mark != null && (
         <ZeroDtePreEntryContext play={play} />
       )}
-      {has && !premium && <ExcursionViz play={play} />}
+      {has && !premium && <TradeExcursionGraphic play={play} markFlash={markFlash} />}
       <div className="nh-deck-grid">
         <div><span className="k">Entry</span><span className="v">{has ? usd(play.entry) : "—"}</span></div>
         <div><span className="k">Live mark</span><span className="v">{usd(play.mark)}</span></div>
@@ -1057,6 +1058,7 @@ function LegacyManageGeometry({ play }: { play: TerminalPlay }) {
 }
 
 function LegacyPnlPanel({ play }: { play: TerminalPlay }) {
+  const markFlash = useFlash(play.pnlPct ?? null);
   const hasStock = play.stockPrice != null;
   const chg = play.stockChangePct;
   const pnl = play.pnlPct;
@@ -1122,52 +1124,14 @@ function LegacyPnlPanel({ play }: { play: TerminalPlay }) {
           </div>
         </div>
       )}
-      <ExcursionViz play={play} />
+      {(play.peak != null || play.trough != null) && (
+        <TradeExcursionGraphic play={play} markFlash={markFlash} />
+      )}
       <div className="nh-deck-recnote" style={{ marginTop: 16 }}>
         {pnl != null
           ? "Stock-level P&L from entry mid — tracks your thesis direction. Option premium P&L requires a live option quote subscription."
           : "Awaiting live stock quote to compute P&L from entry."}
       </div>
     </>
-  );
-}
-
-/** EXCURSION (MAE/MFE) mini-viz — the heat RANGE since entry: MFE (best) at one end, MAE (worst)
- *  at the other, and the current mark placed between them. Structure-aware WITHOUT re-inverting:
- *  the adapter already seller-frames a condor's peak/trough/pnl, so best/worst/current arrive in
- *  one consistent %-space here. Honest labeling: this is the excursion RANGE, not a per-tick path
- *  (the payload carries only the latched extremes — no tick history — so no sparkline is drawn).
- *  Omitted when the extremes aren't on the row (nothing to draw). */
-function ExcursionViz({ play }: { play: TerminalPlay }) {
-  const bar = excursionBar(play.peak, play.trough, play.pnlPct);
-  const flash = useFlash(play.pnlPct ?? null);
-  if (!bar) return null;
-  const fmt = (n: number): string => `${n > 0 ? "+" : ""}${Math.round(n)}%`;
-  const pos = bar.currentFrac == null ? null : Math.round(bar.currentFrac * 100);
-  return (
-    <div className="nh-deck-exc">
-      <div className="nh-deck-lab" style={{ marginTop: 14 }}>Excursion range — heat taken since entry (MAE ↔ MFE)</div>
-      <div className="nh-deck-excbar">
-        {/* Caps are colored BY SIGN (signColorClass), not by which end they sit on — an all-green
-            run shows its MAE cap green, an all-red run its MFE cap red. Honest number AND color. */}
-        <span className={clsx("cap lo", signColorClass(bar.worst))}>{fmt(bar.worst)}</span>
-        <span className={clsx("cap hi", signColorClass(bar.best))}>{fmt(bar.best)}</span>
-        {pos != null && (
-          <span className={clsx("mk", flash && "neon")} style={{ left: `${pos}%` }}>
-            <span className="dot" />
-            <span className="lbl">{play.pnlPct != null ? fmt(play.pnlPct) : "—"}</span>
-          </span>
-        )}
-      </div>
-      <div className="nh-deck-exclabels">
-        <span className={clsx("mae", signColorClass(bar.worst))}>MAE {fmt(bar.worst)}</span>
-        <span className={clsx("mfe", signColorClass(bar.best))}>MFE {fmt(bar.best)}</span>
-      </div>
-      <div className="nh-deck-recnote">
-        {pos == null
-          ? "Best/worst excursion since entry — current mark not priced right now."
-          : "Marker = where the mark sits now between its worst (MAE) and best (MFE) since entry. Range, not a tick-by-tick path."}
-      </div>
-    </div>
   );
 }

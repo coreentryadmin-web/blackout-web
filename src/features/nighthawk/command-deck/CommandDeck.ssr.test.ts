@@ -71,14 +71,18 @@ test("open lifecycle row shows freshness, current, and active status", async () 
     }),
     { nowMs: Date.parse("2026-08-03T12:00:00-04:00") },
   );
-  assert.match(html, /JUST FIRED|MIN AGO/);
-  assert.match(html, />Triggered</);
+  assert.match(html, /nh-deck-age-decay/);
+  assert.match(html, />2m</);
   assert.match(html, />Current</);
   assert.match(html, />\+42%</);
   assert.match(html, />ACTIVE</);
+  assert.match(html, /nh-deck-status-pill is-active/);
+  assert.match(html, /nh-deck-lc-ticker/);
+  assert.match(html, /★★★★★/);
+  assert.doesNotMatch(html, />Triggered</);
 });
 
-test("watch lifecycle row shows published clock and watching status", async () => {
+test("watch lifecycle row shows hierarchy, confidence, and compact age", async () => {
   const html = await render(
     play({
       status: "WATCH",
@@ -87,19 +91,28 @@ test("watch lifecycle row shows published clock and watching status", async () =
       pnlPct: null,
       peak: null,
     }),
-    { nowMs: Date.parse("2026-08-03T12:00:00-04:00") },
+    { nowMs: Date.parse("2026-08-03T12:00:00-04:00"), rank: 2 },
   );
+  assert.match(html, /nh-deck-lc-ticker/);
+  assert.match(html, />META</);
+  assert.match(html, /★★★★★/);
+  assert.match(html, /nh-deck-lc-rank-corner/);
+  assert.match(html, />#2</);
   assert.match(html, />WATCH</);
   assert.match(html, />Waiting for Trigger</);
-  assert.match(html, />Published</);
-  assert.match(html, />WATCHING</);
+  assert.match(html, />Confidence</);
+  assert.match(html, />96</);
+  assert.match(html, />6m</);
+  assert.doesNotMatch(html, />Published</);
+  assert.match(html, /nh-deck-status-pill/);
+  assert.match(html, /nh-deck-conf-badge-list/);
 });
 
 test("selected 0DTE row renders hero lifecycle card with banner when rank 1", async () => {
   const html = await render(play({ status: "OPEN", pnlPct: 42 }), { selected: true, rank: 1 });
   assert.match(html, /nh-deck-row-hero/);
   assert.match(html, />BEST PLAY TODAY</);
-  assert.match(html, />Confidence/);
+  assert.match(html, /nh-deck-conf-badge/);
   assert.match(html, />Tap to inspect/);
 });
 

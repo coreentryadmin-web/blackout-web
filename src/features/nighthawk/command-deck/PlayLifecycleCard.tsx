@@ -12,39 +12,28 @@ import {
   playFreshnessDisplay,
   playLifecyclePhase,
   playPrimaryEvent,
-  playStatusLabel,
+  playStatusDisplay,
   playTriggeredEvent,
   setupTypeLabel,
   watchWaitLabel,
 } from "./play-card-lifecycle";
-import { formatReturnPct, playGradeLabel, playQualityPct, tierStars } from "./play-card-display";
+import { formatReturnPct, playGradeLabel, tierStars } from "./play-card-display";
+import { ConfidenceBadge } from "./ConfidenceBadge";
+import { AgeDecayBadge, StatusPill } from "./DeckStatusBadges";
 
 function FreshnessBadge({
   freshness,
 }: {
   freshness: ReturnType<typeof playFreshnessDisplay>;
 }) {
-  const tone =
-    freshness.tier === "just_fired" || freshness.tier === "fresh"
-      ? "fresh"
-      : freshness.tier === "aging"
-        ? "aging"
-        : freshness.tier === "late"
-          ? "late"
-          : "closed";
-
+  const age = freshness.compactAge ?? freshness.badgeLabel;
   return (
     <span className="nh-deck-lc-fresh-wrap">
-      <span
-        className={clsx(
-          "nh-deck-lc-fresh",
-          `is-${tone}`,
-          freshness.pulse && "is-pulse",
-        )}
-      >
-        <span className="nh-deck-lc-fresh-dot" aria-hidden />
-        {freshness.badgeLabel}
-      </span>
+      <AgeDecayBadge
+        compactAge={age}
+        decayTone={freshness.decayTone}
+        pulse={freshness.pulse}
+      />
       {freshness.lateEntry && (
         <span className="nh-deck-lc-late">Late Entry</span>
       )}
@@ -88,16 +77,15 @@ export function PlayLifecycleCardBody({
   markFlash?: boolean;
 }) {
   const phase = playLifecyclePhase(play.status);
-  const grade = playGradeLabel(play);
-  const quality = playQualityPct(play);
-  const stars = grade ? tierStars(grade) : "";
   const primary = playPrimaryEvent(play);
   const freshness = playFreshnessDisplay(play, nowMs, primary.iso);
-  const statusLabel = playStatusLabel(play.status);
+  const status = playStatusDisplay(play.status);
   const setup = setupTypeLabel(play);
   const horizonLabel = horizonDisplayLabel(play.horizon);
   const metricLabels = openMetricsLabels(play);
   const { currentPct, peakPct } = openMetricsValues(play);
+  const grade = playGradeLabel(play);
+  const stars = grade ? tierStars(grade) : "";
 
   const realized = closedRealizedPct(play);
 
@@ -112,70 +100,47 @@ export function PlayLifecycleCardBody({
         </div>
       )}
 
-      <div className="nh-deck-lc-head">
-        <div className="nh-deck-lc-grade-row">
-          {grade && (
-            <span className="nh-deck-lc-grade" aria-label={`Grade ${grade}`}>
-              {hero && <span className="nh-deck-lc-trophy" aria-hidden>🏆 </span>}
-              {grade}
+      <div className="nh-deck-lc-identity">
+        {!hero && rank > 0 && (
+          <span className="nh-deck-lc-rank-corner" aria-label={`Rank ${rank}`}>
+            #{rank}
+          </span>
+        )}
+        <div className="nh-deck-lc-title-block">
+          <span className="nh-deck-lc-ticker">{play.ticker}</span>
+          {stars && (
+            <span className="nh-deck-lc-stars" aria-label={`Tier ${grade}`}>
+              {stars}
             </span>
-          )}
-          {!hero && rank > 0 && (
-            <span className="nh-deck-lc-rank">#{rank}</span>
-          )}
-          {stars && !hero && (
-            <span className="nh-deck-lc-stars" aria-hidden>{stars}</span>
           )}
         </div>
-        <span className="nh-deck-lc-ticker">{play.ticker}</span>
       </div>
 
-      <div className="nh-deck-lc-setup">
-        {phase === "watch" ? (
-          <>
-            <span className="nh-deck-lc-watch-tag">WATCH</span>
-            <span className="nh-deck-lc-horizon">{horizonLabel}</span>
-          </>
-        ) : (
-          <>
-            <span className={clsx("nh-deck-lc-dir", play.direction === "LONG" ? "long" : "short")}>
-              {directionSetupLine(play)}
-            </span>
-            <span className="nh-deck-lc-horizon">{horizonLabel}</span>
-          </>
-        )}
+      <div className="nh-deck-lc-status-row">
+        <StatusPill label={status.label} tone={status.tone} />
+        <span className="nh-deck-lc-horizon">{horizonLabel}</span>
       </div>
 
-      {quality != null && (
-        <div className="nh-deck-lc-conf">
-          Confidence <b>{quality}</b>
+      {phase !== "watch" && (
+        <div className="nh-deck-lc-dir-row">
+          <span className={clsx("nh-deck-lc-dir", play.direction === "LONG" ? "long" : "short")}>
+            {directionSetupLine(play)}
+          </span>
         </div>
       )}
+
+      <div className="nh-deck-lc-conf-row">
+        <ConfidenceBadge play={play} hero={hero} list={!hero} />
+      </div>
 
       {phase === "watch" && (
         <div className="nh-deck-lc-wait">{watchWaitLabel(play)}</div>
       )}
 
       {phase !== "closed" && (
-        <>
+        <div className="nh-deck-lc-age-row">
           <FreshnessBadge freshness={freshness} />
-          <EventLine
-            label={primary.label}
-            iso={primary.iso}
-            relativeAge={freshness.relativeAge}
-          />
-        </>
-      )}
-
-      {phase === "closed" && (
-        <>
-          <EventLine
-            label={playTriggeredEvent(play).label}
-            iso={playTriggeredEvent(play).iso}
-            relativeAge={null}
-          />
-          <EventLine label={primary.label} iso={primary.iso} relativeAge={null} />
-        </>
+        </div>
       )}
 
       {phase === "open" && (
@@ -196,26 +161,31 @@ export function PlayLifecycleCardBody({
       )}
 
       {phase === "closed" && (
-        <div className="nh-deck-lc-metrics">
-          <div className="nh-deck-lc-metric">
-            <span className="k">Peak</span>
-            <span className={clsx("v", signClass(peakPct ?? play.peak))}>
-              {(peakPct ?? play.peak) != null ? formatReturnPct(peakPct ?? play.peak!) : "—"}
-            </span>
+        <>
+          <div className="nh-deck-lc-closed-times">
+            <EventLine
+              label={playTriggeredEvent(play).label}
+              iso={playTriggeredEvent(play).iso}
+              relativeAge={null}
+            />
+            <EventLine label={primary.label} iso={primary.iso} relativeAge={null} />
           </div>
-          <div className="nh-deck-lc-metric">
-            <span className="k">Realized</span>
-            <span className={clsx("v", signClass(realized))}>
-              {realized != null ? formatReturnPct(realized) : "—"}
-            </span>
+          <div className="nh-deck-lc-metrics">
+            <div className="nh-deck-lc-metric">
+              <span className="k">Peak</span>
+              <span className={clsx("v", signClass(peakPct ?? play.peak))}>
+                {(peakPct ?? play.peak) != null ? formatReturnPct(peakPct ?? play.peak!) : "—"}
+              </span>
+            </div>
+            <div className="nh-deck-lc-metric">
+              <span className="k">Realized</span>
+              <span className={clsx("v", signClass(realized))}>
+                {realized != null ? formatReturnPct(realized) : "—"}
+              </span>
+            </div>
           </div>
-        </div>
+        </>
       )}
-
-      <div className="nh-deck-lc-foot">
-        <span className="k">Status</span>
-        <span className={clsx("nh-deck-lc-status", statusLabel.toLowerCase())}>{statusLabel}</span>
-      </div>
 
       {hero && setup && (
         <div className="nh-deck-hero-cta">Tap to inspect →</div>

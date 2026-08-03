@@ -14,7 +14,6 @@ import {
   managementActionDisplay,
   marketContextItems,
   markDollarPnl,
-  peakMark,
   riskUnitLabel,
   strengthBarSegmentFills,
   thesisStrengthPct,
@@ -26,7 +25,17 @@ import {
   playFreshnessDisplay,
   playLifecycleTimestamps,
   playPrimaryEvent,
+  playStatusDisplay,
 } from "./play-card-lifecycle";
+import {
+  entryCenteredExcursionLayout,
+  formatExcursionPct,
+  tradeJourneyLayout,
+} from "./trade-excursion-graphic";
+import { signColorClass } from "@/lib/zerodte/terminal-edge";
+import { formatReturnPct } from "./play-card-display";
+import { ConfidenceBadge } from "./ConfidenceBadge";
+import { AgeDecayBadge, StatusPill } from "./DeckStatusBadges";
 import { etNowParts } from "@/features/nighthawk/lib/session";
 import { etClock } from "./PlayTerminal";
 import { timeStopClock } from "@/lib/zerodte/terminal-ladder";
@@ -85,7 +94,7 @@ export function PlayLifecycleStrip({ play }: { play: TerminalPlay }) {
   );
 }
 
-/** Persistent trade summary — visible across all tabs (0DTE). */
+/** Persistent trade summary — dense hero visible across all tabs (0DTE). */
 export function TradeSummaryHero({
   play,
   streamKind,
@@ -104,85 +113,82 @@ export function TradeSummaryHero({
   const dollarSign = dollar != null && dollar >= 0 ? "+" : "";
   const primary = playPrimaryEvent(play);
   const freshness = playFreshnessDisplay(play, nowMs, primary.iso);
-  const primaryClock = primary.iso ? etClock(primary.iso) : null;
-  const tone =
-    freshness.tier === "just_fired" || freshness.tier === "fresh"
-      ? "fresh"
-      : freshness.tier === "aging"
-        ? "aging"
-        : freshness.tier === "late"
-          ? "late"
-          : "closed";
+  const status = playStatusDisplay(play.status);
+  const ageLabel = freshness.compactAge ?? "—";
 
   return (
-    <header className="nh-deck-trade-hero" aria-label="Selected trade summary">
-      <div className="nh-deck-trade-hero__top">
+    <header className="nh-deck-trade-hero nh-deck-trade-hero-dense" aria-label="Selected trade summary">
+      <div className="nh-deck-trade-hero__headrow">
         <div className="nh-deck-trade-hero__identity">
           <span className="nh-deck-trade-hero__tk">{summary.ticker}</span>
           <span className={clsx("nh-deck-trade-hero__dir", play.direction === "LONG" ? "long" : "short")}>
             {summary.direction}
             {summary.origin ? ` • ${summary.origin}` : ""}
           </span>
+          <StatusPill label={status.label} tone={status.tone} />
         </div>
-        <div className="nh-deck-trade-hero__grade-block">
-          {summary.grade && <span className="nh-deck-trade-hero__grade">{summary.grade}</span>}
-          {summary.confidence != null && (
-            <span className="nh-deck-trade-hero__conf">
-              {summary.confidence} <span className="nh-deck-trade-hero__conf-lab">Confidence</span>
-            </span>
-          )}
-        </div>
+        <ConfidenceBadge play={play} hero className="nh-deck-trade-hero__conf-badge" />
       </div>
-
-      <EngineConfidenceBlock play={play} rankContext={rankContext} />
-
-      {(primaryClock || freshness.relativeAge) && play.status !== "CLOSED" && (
-        <div className="nh-deck-trade-hero__fresh">
-          <span className={clsx("nh-deck-lc-fresh", `is-${tone}`, freshness.pulse && "is-pulse")}>
-            <span className="nh-deck-lc-fresh-dot" aria-hidden />
-            {freshness.badgeLabel}
-          </span>
-          <span className="nh-deck-trade-hero__fresh-time">
-            {primary.label} {primaryClock ? `${primaryClock} ET` : ""}
-            {freshness.relativeAge && primaryClock ? ` • ${freshness.relativeAge}` : freshness.relativeAge ?? ""}
-          </span>
-          {freshness.lateEntry && <span className="nh-deck-lc-late">Late Entry</span>}
-        </div>
-      )}
-
-      <PlayLifecycleStrip play={play} />
 
       <div className="nh-deck-trade-hero__chips">
         <span className="nh-deck-trade-hero__chip">{summary.horizonLabel}</span>
         <span className="nh-deck-trade-hero__chip contract">{summary.contract}</span>
+        {rankContext?.isHighestToday && (
+          <span className="nh-deck-trade-hero__chip orig">Highest today</span>
+        )}
       </div>
 
-      {dollar != null && play.entry != null && (
-        <div className={clsx("nh-deck-trade-hero__pnl", markFlash && "neon", dollar >= 0 ? "nh-deck-pos" : "nh-deck-neg")}>
-          {dollarSign}{usd(dollar)}
+      <div className="nh-deck-trade-hero__metrics" aria-label="Live trade metrics">
+        <div className="nh-deck-trade-hero__metric is-primary">
+          <span className="k">Current</span>
+          <span
+            className={clsx(
+              "v",
+              markFlash && "neon",
+              dollar != null ? (dollar >= 0 ? "nh-deck-pos" : "nh-deck-neg") : (summary.currentPct ?? 0) >= 0 ? "nh-deck-pos" : "nh-deck-neg",
+            )}
+          >
+            {dollar != null && play.entry != null
+              ? `${dollarSign}${usd(dollar)}`
+              : summary.currentPct != null
+                ? formatReturnPct(summary.currentPct)
+                : "—"}
+          </span>
         </div>
-      )}
-
-      <div className="nh-deck-trade-hero__strip">
-        <div className="nh-deck-trade-hero__stat">
+        <div className="nh-deck-trade-hero__metric">
           <span className="k">Peak</span>
           <span className={clsx("v", (summary.peakPct ?? 0) >= 0 ? "nh-deck-pos" : "nh-deck-neg")}>
-            {summary.peakPct != null ? `${summary.peakPct > 0 ? "+" : ""}${Math.round(summary.peakPct)}%` : "—"}
+            {summary.peakPct != null ? formatReturnPct(summary.peakPct) : "—"}
           </span>
         </div>
-        <div className="nh-deck-trade-hero__stat">
-          <span className="k">Current</span>
-          <span className={clsx("v", markFlash && "neon", (summary.currentPct ?? 0) >= 0 ? "nh-deck-pos" : "nh-deck-neg")}>
-            {summary.currentPct != null ? `${summary.currentPct > 0 ? "+" : ""}${Math.round(summary.currentPct)}%` : "—"}
+        <div className="nh-deck-trade-hero__metric">
+          <span className="k">Confidence</span>
+          <span className="v">{summary.confidence ?? "—"}</span>
+        </div>
+        <div className="nh-deck-trade-hero__metric">
+          <span className="k">Rank</span>
+          <span className="v">
+            {rankContext ? `#${rankContext.rank}` : "—"}
+            {rankContext ? <span className="nh-deck-trade-hero__rank-den"> / {rankContext.total}</span> : null}
           </span>
         </div>
-        <div className="nh-deck-trade-hero__stat">
-          <span className="k">Status</span>
-          <span className={clsx("v", "nh-deck-trade-hero__status", play.status.toLowerCase())}>
-            {play.status === "CLOSED" ? "CLOSED" : play.status === "WATCH" || play.status === "SKIP" ? "WATCHING" : "ACTIVE"}
+        <div className="nh-deck-trade-hero__metric">
+          <span className="k">Age</span>
+          <span className="v nh-deck-trade-hero__age">
+            {play.status !== "CLOSED" ? (
+              <AgeDecayBadge
+                compactAge={ageLabel}
+                decayTone={freshness.decayTone}
+                pulse={freshness.pulse}
+              />
+            ) : (
+              "Closed"
+            )}
           </span>
         </div>
       </div>
+
+      <PlayLifecycleStrip play={play} />
     </header>
   );
 }
@@ -228,57 +234,107 @@ export function ThesisExpectedMove({ play }: { play: TerminalPlay }) {
   );
 }
 
-/** Entry / peak / current premium chart — grounded on mark math, not tick history. */
-export function PremiumMarkChart({ play }: { play: TerminalPlay }) {
-  const entry = play.entry;
-  const current = play.mark;
-  const peak = peakMark(play);
-  if (entry == null) return null;
+/** Entry-centered MAE/MFE bar + journey spine — replaces the old premium line chart. */
+export function TradeExcursionGraphic({
+  play,
+  markFlash = false,
+}: {
+  play: TerminalPlay;
+  markFlash?: boolean;
+}) {
+  const closed = play.status === "CLOSED";
+  const currentPct = closed ? (play.exitPnlPct ?? play.pnlPct) : play.pnlPct;
+  const layout = entryCenteredExcursionLayout(play.trough, play.peak, currentPct, { closed });
+  const journey = tradeJourneyLayout(play.trough, play.peak, currentPct, { closed });
 
-  const points = [
-    { x: 0, y: entry, label: "Entry", val: entry },
-    peak != null ? { x: 0.5, y: peak, label: "Peak", val: peak } : null,
-    current != null ? { x: 1, y: current, label: "Current", val: current } : null,
-  ].filter(Boolean) as Array<{ x: number; y: number; label: string; val: number }>;
+  if (!layout) return null;
 
-  if (points.length < 2) return null;
-
-  const ys = points.map((p) => p.y);
-  const minY = Math.min(...ys);
-  const maxY = Math.max(...ys);
-  const span = maxY - minY || 1;
-  const w = 200;
-  const h = 48;
-  const pad = 4;
-  const toSvg = (p: { x: number; y: number }) => ({
-    sx: pad + p.x * (w - pad * 2),
-    sy: pad + (1 - (p.y - minY) / span) * (h - pad * 2),
-  });
-  const svgPts = points.map((p) => toSvg(p));
-  const pathD = svgPts.map((p, i) => `${i === 0 ? "M" : "L"}${p.sx.toFixed(1)},${p.sy.toFixed(1)}`).join(" ");
+  const entryUsd =
+    play.entry != null && Number.isFinite(play.entry) ? `$${play.entry.toFixed(2)}` : "—";
 
   return (
-    <section className="nh-deck-mark-chart" aria-label="Premium excursion chart">
-      <div className="nh-deck-mark-chart__labels">
-        {points.map((p) => (
-          <div key={p.label} className="nh-deck-mark-chart__label">
-            <span className="k">{p.label}</span>
-            <span className="v">{usd(p.val)}</span>
+    <section className="nh-deck-excursion-graphic" aria-label="Trade excursion">
+      <div className="nh-deck-excursion-graphic__stats">
+        <div className="nh-deck-excursion-graphic__stat">
+          <span className="k">Entry</span>
+          <span className="v">{entryUsd}</span>
+          <span className="s">0%</span>
+        </div>
+        <div className="nh-deck-excursion-graphic__stat">
+          <span className="k">Peak</span>
+          <span className={clsx("v", signColorClass(layout.best))}>{formatExcursionPct(layout.best)}</span>
+        </div>
+        <div className="nh-deck-excursion-graphic__stat">
+          <span className="k">{closed ? "Close" : "Current"}</span>
+          <span
+            className={clsx(
+              "v",
+              markFlash && "neon",
+              currentPct != null ? signColorClass(currentPct) : "flat",
+            )}
+          >
+            {currentPct != null ? formatExcursionPct(currentPct) : "—"}
+          </span>
+        </div>
+      </div>
+
+      <div className="nh-deck-excursion-graphic__bar-head">
+        <span>Worst</span>
+        <span>Entry</span>
+        <span>Best</span>
+      </div>
+      <div className="nh-deck-excursion-graphic__bar" role="img" aria-hidden>
+        <div className="nh-deck-excursion-graphic__bar-fill" />
+        <span className="nh-deck-excursion-graphic__bar-zero" style={{ left: "50%" }} aria-hidden />
+        {layout.markers.map((m) => (
+          <div
+            key={m.key}
+            className={clsx(
+              "nh-deck-excursion-graphic__marker",
+              `is-${m.key}`,
+              m.key === "current" && markFlash && "is-flash",
+            )}
+            style={{ left: `${m.posPct}%` }}
+          >
+            <span className={clsx("nh-deck-excursion-graphic__dot", signColorClass(m.pct))} />
+            <span className={clsx("nh-deck-excursion-graphic__marker-lab", signColorClass(m.pct))}>
+              {m.label}
+            </span>
+            <span className={clsx("nh-deck-excursion-graphic__marker-val", signColorClass(m.pct))}>
+              {formatExcursionPct(m.pct)}
+            </span>
           </div>
         ))}
       </div>
-      <svg className="nh-deck-mark-chart__svg" viewBox={`0 0 ${w} ${h}`} aria-hidden>
-        <path className="nh-deck-mark-chart__line" d={pathD} fill="none" />
-        {svgPts.map((p, i) => (
-          <circle key={i} className="nh-deck-mark-chart__dot" cx={p.sx} cy={p.sy} r={3} />
-        ))}
-      </svg>
-      <div className="nh-deck-mark-chart__note">
-        Entry → peak → current — excursion path from latched marks, not tick-by-tick history.
-      </div>
+
+      {journey && journey.nodes.length >= 2 && (
+        <div className="nh-deck-excursion-graphic__journey" aria-hidden>
+          <svg className="nh-deck-excursion-graphic__journey-svg" viewBox="0 0 200 72">
+            <path className="nh-deck-excursion-graphic__journey-path" d={journey.pathD} fill="none" />
+            {journey.nodes.map((n) => (
+              <g key={n.key} transform={`translate(${n.x * 200}, ${n.y * 72})`}>
+                <circle className="nh-deck-excursion-graphic__journey-dot" r={4} />
+                <text className="nh-deck-excursion-graphic__journey-lab" x={0} y={-10} textAnchor="middle">
+                  {n.label}
+                </text>
+                <text className="nh-deck-excursion-graphic__journey-val" x={0} y={16} textAnchor="middle">
+                  {formatExcursionPct(n.pct)}
+                </text>
+              </g>
+            ))}
+          </svg>
+        </div>
+      )}
+
+      <p className="nh-deck-excursion-graphic__note">
+        Excursion from entry — latched best/worst marks, not tick-by-tick history.
+      </p>
     </section>
   );
 }
+
+/** @deprecated Use TradeExcursionGraphic — kept as alias for any stale imports. */
+export const PremiumMarkChart = TradeExcursionGraphic;
 
 function StrengthBar({
   pct,
@@ -501,13 +557,6 @@ export function TradeOutcomePanel({ play }: { play: TerminalPlay }) {
   const outcome = tradeOutcomeDisplay(play);
   const closePct = outcome.closePct;
   const sign = closePct != null && closePct >= 0 ? "+" : "";
-  const best = outcome.bestPct;
-  const worst = outcome.worstPct;
-  const range = best != null && worst != null ? best - worst : null;
-  const closePos =
-    closePct != null && worst != null && range != null && range > 0
-      ? Math.min(96, Math.max(4, ((closePct - worst) / range) * 100))
-      : 50;
 
   return (
     <section className="nh-deck-outcome" aria-label="Trade outcome">
@@ -523,34 +572,6 @@ export function TradeOutcomePanel({ play }: { play: TerminalPlay }) {
       >
         {closePct != null ? `${sign}${closePct.toFixed(0)}%` : "—"}
       </div>
-      {(best != null || worst != null) && (
-        <div className="nh-deck-outcome__excursion">
-          <div className="nh-deck-outcome__excursion-track">
-            {range != null && range > 0 && (
-              <span
-                className="nh-deck-outcome__excursion-range"
-                style={{
-                  left: "4%",
-                  width: "92%",
-                }}
-              />
-            )}
-            {closePct != null && (
-              <span
-                className="nh-deck-outcome__excursion-close"
-                style={{ left: `${closePos}%` }}
-              />
-            )}
-          </div>
-          <div className="nh-deck-outcome__excursion-labels">
-            <span>Best {best != null ? `+${best.toFixed(0)}%` : "—"}</span>
-            <span>Worst {worst != null ? `${worst.toFixed(0)}%` : "—"}</span>
-            <span>
-              Close {closePct != null ? `${sign}${closePct.toFixed(0)}%` : "—"}
-            </span>
-          </div>
-        </div>
-      )}
     </section>
   );
 }
