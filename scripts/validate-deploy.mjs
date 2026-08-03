@@ -166,7 +166,12 @@ async function fetchJson(path, opts = {}) {
   } catch {
     body = text.slice(0, 200);
   }
-  return { status: res.status, body };
+  return { status: res.status, body, text };
+}
+
+async function fetchText(path, opts = {}) {
+  const { status, text } = await fetchJson(path, opts);
+  return { status, text: typeof text === "string" ? text : String(text) };
 }
 
 console.log("\n=== BlackOut post-deploy validation ===\n");
@@ -246,6 +251,33 @@ for (const c of checks) {
     const pass = status === c.expect && (c.field ? c.field(body) : true);
     if (pass) ok(`${c.path} → ${status}`);
     else fail(`${c.path} → ${status} (expected ${c.expect}) ${JSON.stringify(body).slice(0, 80)}`);
+  } catch (e) {
+    fail(`${c.path} fetch failed: ${e.message}`);
+  }
+}
+
+const seoChecks = [
+  {
+    path: "/robots.txt",
+    expect: 200,
+    test: (text) =>
+      text.includes("User-Agent: *") &&
+      text.includes("Allow: /") &&
+      text.includes(`Sitemap: ${BASE}/sitemap.xml`),
+  },
+  {
+    path: "/sitemap.xml",
+    expect: 200,
+    test: (text) => text.includes("<urlset") && text.includes(`${BASE}/learn`),
+  },
+];
+
+for (const c of seoChecks) {
+  try {
+    const { status, text } = await fetchText(c.path);
+    const pass = status === c.expect && c.test(text);
+    if (pass) ok(`${c.path} → ${status}`);
+    else fail(`${c.path} → ${status} (expected ${c.expect})`);
   } catch (e) {
     fail(`${c.path} fetch failed: ${e.message}`);
   }
