@@ -33,6 +33,7 @@ import {
 } from "./play-card-display";
 import {
   buildDeckCommandCenterStats,
+  convictionRankContext,
   formatWinRate30d,
 } from "./deck-command-center";
 
@@ -148,6 +149,10 @@ export function CommandDeck({
     () => (commandCenter ? buildDeckCommandCenterStats(plays) : null),
     [commandCenter, plays],
   );
+  const convictionRank = useMemo(
+    () => (selected && commandCenter ? convictionRankContext(plays, selected.id) : null),
+    [commandCenter, plays, selected],
+  );
 
   return (
     <div className="nh-deck">
@@ -210,7 +215,12 @@ export function CommandDeck({
           ))}
         </div>
       </div>
-      <PlayTerminal play={selected} sessionClosed={sessionClosed} nowMs={nowMs} />
+      <PlayTerminal
+        play={selected}
+        sessionClosed={sessionClosed}
+        nowMs={nowMs}
+        convictionRank={convictionRank}
+      />
     </div>
   );
 }

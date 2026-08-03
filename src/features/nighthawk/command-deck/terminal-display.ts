@@ -224,6 +224,12 @@ export function isZeroDtePremiumTerminal(play: TerminalPlay): boolean {
   return play.horizon === "ZERO_DTE";
 }
 
+/** Engine confidence 0–100 — same grounded stack as conviction display. */
+export function engineConfidencePct(play: TerminalPlay): number | null {
+  const c = convictionDisplay(play);
+  return c.score;
+}
+
 export function decisionWindowLabel(minutesRemaining: number): { mins: string; secs: string } {
   const totalSec = Math.max(0, minutesRemaining * 60);
   const m = Math.floor(totalSec / 60);

@@ -16765,6 +16765,14 @@ body::before {
 .nh-deck-trade-hero__pnl{font-size:40px;font-weight:900;text-shadow:none}
 .nh-deck-trade-hero__stat .k{color:var(--dk-text-secondary)}
 .nh-deck-trade-hero__stat .v{color:var(--dk-text-primary);text-shadow:none}
+.nh-deck-engine-conf{margin:12px 0 10px;padding:0 2px}
+.nh-deck-engine-conf__bar{height:12px;margin-bottom:8px}
+.nh-deck-engine-conf__row{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+.nh-deck-engine-conf__label{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--dk-text-secondary)}
+.nh-deck-engine-conf__score{font-size:22px;font-weight:900;color:var(--dk-bull);font-variant-numeric:tabular-nums;line-height:1}
+.nh-deck-engine-conf__badge{display:inline-block;margin-top:8px;font-size:9px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;
+  padding:3px 8px;border-radius:3px;color:var(--dk-bull);border:1px solid rgba(50,240,138,.28);background:rgba(50,240,138,.08)}
+.nh-deck-engine-conf__rank{margin-top:8px;font-size:12px;font-weight:800;letter-spacing:.06em;color:var(--dk-text-primary);font-variant-numeric:tabular-nums}
 .nh-deck-premium-stack .nh-deck-premium__heading,.nh-deck-confluence__name,.nh-deck-engine-check__name{color:var(--dk-text-secondary)}
 .nh-deck-confluence__cell,.nh-deck-engine-check__row,.nh-deck-thesis-move__cell,.nh-deck-mark-chart,.nh-deck-outcome{
   border-color:var(--dk-border);background:var(--dk-bg-elevated);box-shadow:none}

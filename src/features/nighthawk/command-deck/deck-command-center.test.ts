@@ -3,6 +3,7 @@ import test from "node:test";
 import type { TerminalPlay } from "./types";
 import {
   buildDeckCommandCenterStats,
+  convictionRankContext,
   deriveTodaysEdge,
   formatWinRate30d,
   topRatedPlay,
@@ -84,4 +85,17 @@ test("formatWinRate30d never fabricates — null/NaN → em dash", () => {
   assert.equal(formatWinRate30d(null), "—");
   assert.equal(formatWinRate30d(Number.NaN), "—");
   assert.equal(formatWinRate30d(81.4), "81%");
+});
+
+test("convictionRankContext: rank on full board + highest today flag", () => {
+  const board = [
+    play({ id: "1", ticker: "AMD", tierLabel: "B", score: 90 }),
+    play({ id: "2", ticker: "META", tierLabel: "A+", score: 70, confluence: 2 }),
+    play({ id: "3", ticker: "NVDA", tierLabel: "A", score: 95 }),
+  ];
+  const meta = convictionRankContext(board, "2");
+  assert.deepEqual(meta, { rank: 1, total: 3, isHighestToday: true });
+  const nvda = convictionRankContext(board, "3");
+  assert.equal(nvda?.rank, 2);
+  assert.equal(nvda?.isHighestToday, false);
 });

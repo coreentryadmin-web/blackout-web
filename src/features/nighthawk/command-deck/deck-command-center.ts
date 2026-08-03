@@ -7,6 +7,29 @@ import { sortPlaysByConviction, tierRank } from "./deck-sort";
 import { playGradeLabel } from "./play-card-display";
 import type { TerminalPlay } from "./types";
 
+export type ConvictionRankContext = {
+  rank: number;
+  total: number;
+  /** True when this play is #1 by engine conviction on today's full board. */
+  isHighestToday: boolean;
+};
+
+/** Conviction rank on the full opportunity set — grounded in sortPlaysByConviction. */
+export function convictionRankContext(
+  allPlays: TerminalPlay[],
+  playId: string,
+): ConvictionRankContext | null {
+  if (allPlays.length === 0) return null;
+  const sorted = sortPlaysByConviction(allPlays);
+  const idx = sorted.findIndex((p) => p.id === playId);
+  if (idx < 0) return null;
+  return {
+    rank: idx + 1,
+    total: allPlays.length,
+    isHighestToday: idx === 0,
+  };
+}
+
 export type TodaysEdgeLevel = "High" | "Medium" | "Low";
 
 export type DeckCommandCenterStats = {

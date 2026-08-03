@@ -3,11 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { clsx } from "clsx";
 import type { TerminalPlay } from "./types";
+import type { ConvictionRankContext } from "./deck-command-center";
 import {
   confluenceChecklist,
   convictionDisplay,
   decisionWindowLabel,
   engineChecklist,
+  engineConfidencePct,
   expectedMovePct,
   managementActionDisplay,
   marketContextItems,
@@ -27,15 +29,51 @@ import type { Recommendation } from "./types";
 const usd = (n: number | null | undefined): string =>
   n != null && Number.isFinite(n) ? `$${n.toFixed(2)}` : "—";
 
+/** Engine confidence strip — directly under the ticker in the trade hero. */
+export function EngineConfidenceBlock({
+  play,
+  rankContext,
+}: {
+  play: TerminalPlay;
+  rankContext: ConvictionRankContext | null;
+}) {
+  const pct = engineConfidencePct(play);
+  if (pct == null && !rankContext) return null;
+
+  return (
+    <section className="nh-deck-engine-conf" aria-label="Engine confidence">
+      {pct != null && (
+        <>
+          <StrengthBar pct={pct} className="nh-deck-engine-conf__bar" />
+          <div className="nh-deck-engine-conf__row">
+            <span className="nh-deck-engine-conf__label">Engine Confidence</span>
+            <span className="nh-deck-engine-conf__score">{pct}</span>
+          </div>
+        </>
+      )}
+      {rankContext?.isHighestToday && (
+        <div className="nh-deck-engine-conf__badge">Highest today</div>
+      )}
+      {rankContext && (
+        <div className="nh-deck-engine-conf__rank">
+          Rank #{rankContext.rank} / {rankContext.total}
+        </div>
+      )}
+    </section>
+  );
+}
+
 /** Persistent trade summary — visible across all tabs (0DTE). */
 export function TradeSummaryHero({
   play,
   streamKind,
   markFlash,
+  rankContext = null,
 }: {
   play: TerminalPlay;
   streamKind: string;
   markFlash?: boolean;
+  rankContext?: ConvictionRankContext | null;
 }) {
   const summary = tradeSummaryDisplay(play);
   const dollar = summary.dollarPnl;
@@ -59,6 +97,8 @@ export function TradeSummaryHero({
           )}
         </div>
       </div>
+
+      <EngineConfidenceBlock play={play} rankContext={rankContext} />
 
       <div className="nh-deck-trade-hero__chips">
         <span className="nh-deck-trade-hero__chip">{summary.horizonLabel}</span>

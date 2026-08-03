@@ -16,6 +16,7 @@ import { ThesisHealthPanel } from "./ThesisHealthPanel";
 import { PlayTimelinePanel } from "./PlayTimelinePanel";
 import { useSecondTick, useFlash } from "./use-deck-live";
 import { isZeroDtePremiumTerminal } from "./terminal-display";
+import type { ConvictionRankContext } from "./deck-command-center";
 import {
   ConfluenceGrid,
   EngineChecklistPanel,
@@ -122,6 +123,7 @@ export function PlayTerminal({
   play,
   sessionClosed = false,
   nowMs: nowMsProp,
+  convictionRank = null,
 }: {
   play: TerminalPlay | null;
   /** Board heat.state === CLOSED — right-rail must not claim LIVE/greeks after the session. */
@@ -132,6 +134,8 @@ export function PlayTerminal({
    * together. Falls back to this component's own tick so standalone callers are unaffected.
    */
   nowMs?: number;
+  /** Engine conviction rank on today's full board (0DTE command deck). */
+  convictionRank?: ConvictionRankContext | null;
 }) {
   // Default to Management for working 0DTE rows (action first); Thesis otherwise.
   const [tab, setTab] = useState<Tab>("thesis");
@@ -209,7 +213,12 @@ export function PlayTerminal({
     <div className={clsx("nh-deck-right", premium && "nh-deck-right-premium", (stale || streamKind === "CLOSED") && "nh-deck-dim")}>
       {premium ? (
         <>
-          <TradeSummaryHero play={play} streamKind={streamKind} markFlash={markFlash} />
+          <TradeSummaryHero
+            play={play}
+            streamKind={streamKind}
+            markFlash={markFlash}
+            rankContext={convictionRank}
+          />
           <div className="nh-deck-stream nh-deck-stream-compact" title={streamKind === "CLOSED" ? "Session closed — showing last known marks" : undefined}>
             {streamKind === "LIVE" ? (
               <><span className="nh-deck-dot" /><span className="lv">LIVE</span></>

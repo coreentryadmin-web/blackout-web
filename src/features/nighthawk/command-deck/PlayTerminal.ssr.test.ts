@@ -70,10 +70,12 @@ test("premium thesis panels render for 0DTE", async () => {
         committedAtEt: "10:15",
       },
     }),
+    { convictionRank: { rank: 1, total: 18, isHighestToday: true } },
   );
   assert.match(html, /nh-deck-trade-hero/);
-  assert.match(html, /Engine Checks/);
-  assert.match(html, /Conviction/);
+  assert.match(html, /Engine Confidence/);
+  assert.match(html, /Highest today/);
+  assert.match(html, /Rank #1 \/ 18/);
 });
 
 test("Play timeline tab absent on Legacy horizon", async () => {
