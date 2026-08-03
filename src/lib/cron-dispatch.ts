@@ -21,6 +21,7 @@ import { GET as vectorDarkPoolWarmGet } from "@/app/api/cron/vector-dark-pool-wa
 import { GET as coachingAlertsGet } from "@/app/api/cron/coaching-alerts/route";
 import { GET as bieFullStateSnapshotGet } from "@/app/api/cron/bie-full-state-snapshot/route";
 import { GET as swingActiveRefreshGet } from "@/app/api/cron/swing-active-refresh/route";
+import { GET as nighthawkEditionGet } from "@/app/api/cron/nighthawk-edition/route";
 
 export type CronHandler = (req: NextRequest) => Promise<Response>;
 
@@ -31,9 +32,9 @@ export type CronHandler = (req: NextRequest) => Promise<Response>;
  *
  * SAFETY: only SAFE + IDEMPOTENT crons live here. Every handler is a cache pre-warm or an
  * append-only ingest tick — running it twice (or off its normal cadence) is harmless. We
- * deliberately exclude one-shot/destructive jobs (db-cleanup, outcome resolution, the Night
- * Hawk publish worker, etc.) so the watchdog's self-heal can never double-fire something with
- * side effects.
+ * deliberately exclude one-shot/destructive jobs (db-cleanup, outcome resolution, etc.) so the
+ * watchdog's self-heal can never double-fire something with irreversible side effects. Night Hawk
+ * edition is checkpoint-resume + fire-and-forget (safe to re-nudge when stuck).
  */
 export const CRON_DISPATCH: Record<string, { handler: CronHandler; force: boolean }> = {
   "flow-ingest": { handler: flowIngestGet, force: false },
@@ -57,6 +58,9 @@ export const CRON_DISPATCH: Record<string, { handler: CronHandler; force: boolea
   // Swing mark-and-review — idempotent append-only snapshots + manage-sync; self-heal must cover
   // RTH staleness on swing-active-refresh (#1364).
   "swing-active-refresh": { handler: swingActiveRefreshGet, force: true },
+  // Night Hawk evening edition — checkpoint-resume fire-and-forget; safe to re-nudge when stuck
+  // during the edition window (ops-auto-fix #1572: stage_synthesis checkpoint with no publish).
+  "nighthawk-playbook": { handler: nighthawkEditionGet, force: true },
 };
 
 export const DISPATCHABLE_CRONS = Object.keys(CRON_DISPATCH);

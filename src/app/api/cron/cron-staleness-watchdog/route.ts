@@ -5,6 +5,7 @@ import { notifyOpsDiscord } from "@/features/spx/lib/spx-play-notify";
 import { logCronRun } from "@/lib/cron-run";
 import { dispatchCronWarm, isDispatchableCron } from "@/lib/cron-dispatch";
 import { countRecentErrorEvents, classifyErrorSpike } from "@/lib/error-sink";
+import { isInEditionWindow } from "@/features/nighthawk/lib/edition-stale";
 
 function envNum(name: string, fallback: number): number {
   const n = Number(process.env[name]);
@@ -55,7 +56,17 @@ export async function GET(req: NextRequest) {
     // + IDEMPOTENT (only those in the cron-dispatch table). We target the in-RTH market-hours
     // stale jobs — those are the ones breaking live data — and never one-shot/destructive jobs.
     const selfHealEnabled = process.env.CRON_WATCHDOG_SELF_HEAL?.trim() === "1";
-    const healTargets = rthStale.filter((j) => isDispatchableCron(j.key));
+    const nhEveningStale =
+      isInEditionWindow() ?
+        snapshot.jobs.filter((j) => j.key === "nighthawk-playbook" && j.status === "stale")
+      : [];
+    const healTargetKeys = new Set<string>();
+    const healTargets = [...rthStale, ...nhEveningStale].filter((j) => {
+      if (!isDispatchableCron(j.key)) return false;
+      if (healTargetKeys.has(j.key)) return false;
+      healTargetKeys.add(j.key);
+      return true;
+    });
     const healed: Array<{ key: string; ok: boolean; status: number; detail?: string }> = [];
 
     // Self-heal MUST NOT block the HTTP response. Each dispatchCronWarm can run a full warmer

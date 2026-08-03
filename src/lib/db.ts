@@ -8523,10 +8523,14 @@ export async function fetchNighthawkScoringHistory(
 
 /** Fail jobs stuck in `running` (or intermediate stage) long enough to block resume/idempotency. */
 export async function failStaleNighthawkJobs(
-  staleAfterHours = Number(process.env.NIGHTHAWK_STALE_JOB_HOURS ?? "4")
+  staleAfterMinutes?: number
 ): Promise<number> {
   await ensureSchema();
-  const hours = Number.isFinite(staleAfterHours) && staleAfterHours > 0 ? staleAfterHours : 4;
+  const { nighthawkStaleJobIdleMinutes } = await import("@/features/nighthawk/lib/edition-stale");
+  const minutes =
+    staleAfterMinutes != null && Number.isFinite(staleAfterMinutes) && staleAfterMinutes > 0
+      ? staleAfterMinutes
+      : nighthawkStaleJobIdleMinutes();
   const res = await (await getPool()).query<{ edition_for: string }>(
     `
     UPDATE nighthawk_jobs j
@@ -8534,7 +8538,7 @@ export async function failStaleNighthawkJobs(
         error = COALESCE(error, 'Stale running job cleared for resume'),
         updated_at = NOW()
     WHERE j.status NOT IN ('published', 'failed')
-      AND j.updated_at < NOW() - ($1::text || ' hours')::interval
+      AND j.updated_at < NOW() - ($1::text || ' minutes')::interval
       AND NOT EXISTS (
         SELECT 1
         FROM nighthawk_jobs newer
@@ -8543,10 +8547,10 @@ export async function failStaleNighthawkJobs(
       )
     RETURNING edition_for::text AS edition_for
     `,
-    [String(hours)]
+    [String(minutes)]
   );
   for (const row of res.rows) {
-    logNighthawkJob(String(row.edition_for), "warn", null, `Stale job marked failed after ${hours}h idle`);
+    logNighthawkJob(String(row.edition_for), "warn", null, `Stale job marked failed after ${minutes}m idle`);
   }
   return res.rowCount ?? 0;
 }

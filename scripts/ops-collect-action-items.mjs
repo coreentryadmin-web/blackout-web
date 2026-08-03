@@ -255,13 +255,36 @@ async function httpItems() {
       const playCount = Array.isArray(ej.plays) ? ej.plays.length : 0;
       const inWindow = inEtEditionCatchup();
       if (inWindow && nj.job_status !== "published") {
-        add(
-          "P0",
-          "nighthawk",
-          `nighthawk:unpublished:${nj.edition_for}`,
-          `Night Hawk edition not published: ${nj.edition_for}`,
-          `job_status=${nj.job_status ?? "?"} stage=${nj.current_stage ?? "?"} error=${nj.error ?? "none"}`
+        // Self-heal: nudge the checkpointed builder to resume before paging. The cron route
+        // returns 202 immediately; synthesis+publish from stage_synthesis typically lands in ~2m.
+        console.error(
+          `[ops-collect] nighthawk self-heal nudge for ${nj.edition_for} (${nj.job_status}/${nj.current_stage ?? "?"})`
         );
+        await fetch(`${BASE}/api/cron/nighthawk-edition?force=1`, { headers: H });
+        const NUDGE_POLLS = 4;
+        const NUDGE_INTERVAL_MS = 45_000;
+        let healed = false;
+        for (let i = 0; i < NUDGE_POLLS; i++) {
+          await new Promise((r) => setTimeout(r, NUDGE_INTERVAL_MS));
+          const recheck = await fetch(`${BASE}/api/cron/nighthawk-edition?status=1`, { headers: H });
+          const rj = await recheck.json().catch(() => ({}));
+          if (recheck.status === 200 && rj.job_status === "published") {
+            healed = true;
+            console.error(`[ops-collect] nighthawk self-heal GREEN after ${(i + 1) * (NUDGE_INTERVAL_MS / 1000)}s`);
+            break;
+          }
+        }
+        if (!healed) {
+          const latest = await fetch(`${BASE}/api/cron/nighthawk-edition?status=1`, { headers: H });
+          const lj = await latest.json().catch(() => ({}));
+          add(
+            "P0",
+            "nighthawk",
+            `nighthawk:unpublished:${nj.edition_for}`,
+            `Night Hawk edition not published: ${nj.edition_for}`,
+            `job_status=${lj.job_status ?? nj.job_status ?? "?"} stage=${lj.current_stage ?? nj.current_stage ?? "?"} error=${lj.error ?? nj.error ?? "none"} (self-heal nudged)`
+          );
+        }
       } else if (inWindow && nj.job_status === "published" && playCount === 0 && !ej.recap_only) {
         add(
           "P1",

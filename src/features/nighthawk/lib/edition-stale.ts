@@ -9,13 +9,50 @@ export function editionWindowStartMinutes(): number {
 
 /** True on NYSE trading days inside the evening edition catch-up window. */
 export function isInEditionWindow(now = new Date()): boolean {
-  void now;
-  if (!isTradingDayEt(todayEt())) return false;
-  const { hour, minute } = etNowParts();
-  const nowMinutes = hour * 60 + minute;
+  const etDate = formatEtDate(now);
+  if (!isTradingDayEt(etDate)) return false;
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    hour: "numeric",
+    minute: "numeric",
+    hour12: false,
+  }).formatToParts(now);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  const nowMinutes = Number(get("hour")) * 60 + Number(get("minute"));
   const windowStart = editionWindowStartMinutes();
   const catchup = Number(process.env.NIGHTHAWK_EDITION_CATCHUP_MIN ?? "120");
   return nowMinutes >= windowStart && nowMinutes <= windowStart + catchup;
+}
+
+/**
+ * Ops paging window: one hour after edition start through the catch-up deadline.
+ * Gives the fire-and-forget builder time to land before ops-collect pages.
+ */
+export function inNighthawkEditionCatchupAlertWindow(now = new Date()): boolean {
+  const etDate = formatEtDate(now);
+  if (!isTradingDayEt(etDate)) return false;
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    hour: "numeric",
+    minute: "numeric",
+    hour12: false,
+  }).formatToParts(now);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  const nowMin = Number(get("hour")) * 60 + Number(get("minute"));
+  const windowStart = editionWindowStartMinutes();
+  const catchup = Number(process.env.NIGHTHAWK_EDITION_CATCHUP_MIN ?? "120");
+  return nowMin >= windowStart + 60 && nowMin <= windowStart + catchup;
+}
+
+/** Max idle minutes before a non-terminal nighthawk_jobs row is failed for resume. Shorter during edition window. */
+export function nighthawkStaleJobIdleMinutes(now = new Date()): number {
+  const defaultHours = Number(process.env.NIGHTHAWK_STALE_JOB_HOURS ?? "4");
+  const defaultMin = Number.isFinite(defaultHours) && defaultHours > 0 ? defaultHours * 60 : 240;
+  const editionMin = Number(process.env.NIGHTHAWK_STALE_JOB_MIN_EDITION ?? "25");
+  if (isInEditionWindow(now)) {
+    return Number.isFinite(editionMin) && editionMin > 0 ? editionMin : 25;
+  }
+  return defaultMin;
 }
 
 /** Parse a published_at ISO stamp into ET calendar date + minutes-from-midnight. */
