@@ -53,9 +53,13 @@ export async function GET(req: NextRequest) {
 
   const force = req.nextUrl.searchParams.get("force") === "1";
   const statusOnly = req.nextUrl.searchParams.get("status") === "1";
+  const persist = req.nextUrl.searchParams.get("persist") === "1";
+  const asOfEtParam = req.nextUrl.searchParams.get("asOfEt")?.trim() || null;
+  const editionForParam = req.nextUrl.searchParams.get("edition_for")?.trim() || null;
   // Use ET date explicitly so the edition target doesn't flip at UTC midnight.
   const todayInEt = todayEt();
-  const editionFor = nextTradingDayEt(todayInEt);
+  const sessionEt = asOfEtParam ?? todayInEt;
+  const editionFor = editionForParam ?? nextTradingDayEt(sessionEt);
   const job = await fetchNighthawkJob(editionFor);
 
   if (statusOnly) {
@@ -96,7 +100,10 @@ export async function GET(req: NextRequest) {
   // `.catch` serializes + ops-alerts so an unhandled rejection can NEVER crash the replica. A re-fire
   // (cron schedule or ?force=1) resumes from the last checkpoint exactly as before.
   const dispatchBuild = () => {
-    void buildEveningEdition({ force })
+    void buildEveningEdition({
+      force,
+      ...(asOfEtParam ? { asOfEt: asOfEtParam, persist: persist || force } : {}),
+    })
       .then((result) => {
         if (result.ok) {
           console.info(
