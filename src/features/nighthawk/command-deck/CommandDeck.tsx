@@ -31,6 +31,10 @@ import {
   useEnhancedZeroDteRow,
   useHeroPlayCard,
 } from "./play-card-display";
+import {
+  buildDeckCommandCenterStats,
+  formatWinRate30d,
+} from "./deck-command-center";
 
 /** Status filter mode: which plays to show in the list. */
 type StatusFilter = DeckStatusFilter;
@@ -57,6 +61,8 @@ export function CommandDeck({
   loading = false,
   allocation,
   sessionHeat = null,
+  commandCenter = false,
+  winRate30d = null,
 }: {
   plays: TerminalPlay[];
   laneLabel: string;
@@ -72,6 +78,10 @@ export function CommandDeck({
   allocation?: CockpitAllocation[] | null;
   /** Board `session.heat.state` — drives default filter + right-rail LIVE/CLOSED honesty. */
   sessionHeat?: DeckSessionHeatState;
+  /** 0DTE only — replace the "X of Y" header with the command-center stat strip. */
+  commandCenter?: boolean;
+  /** 30d as-managed win rate from `/api/market/zerodte/record` — null when unavailable. */
+  winRate30d?: number | null;
 }) {
   // Counts per status group for the filter badges (and the session-aware default filter).
   const counts = useMemo(() => {
@@ -134,11 +144,33 @@ export function CommandDeck({
   const selected = sorted.find((p) => p.id === selId) ?? null;
   const sessionClosed = String(sessionHeat ?? "").toUpperCase() === "CLOSED";
   const nowMs = useSecondTick();
+  const cmdStats = useMemo(
+    () => (commandCenter ? buildDeckCommandCenterStats(plays) : null),
+    [commandCenter, plays],
+  );
 
   return (
     <div className="nh-deck">
       <div className="nh-deck-left">
-        <div className="nh-deck-lh"><span>{laneLabel}</span><span>{degraded ? "data down" : statusFilter === "ALL" ? `${plays.length} plays` : `${filtered.length} of ${plays.length}`}</span></div>
+        {commandCenter ? (
+          <DeckCommandCenter
+            laneLabel={laneLabel}
+            degraded={degraded}
+            stats={cmdStats}
+            winRate30d={winRate30d}
+          />
+        ) : (
+          <div className="nh-deck-lh">
+            <span>{laneLabel}</span>
+            <span>
+              {degraded
+                ? "data down"
+                : statusFilter === "ALL"
+                  ? `${plays.length} plays`
+                  : `${filtered.length} of ${plays.length}`}
+            </span>
+          </div>
+        )}
         <CockpitStrip risk={risk} tape={tape} />
         <div className="nh-deck-chrome-row">
         <div className="nh-deck-filterbar" role="group" aria-label="Filter plays by status">
@@ -179,6 +211,49 @@ export function CommandDeck({
         </div>
       </div>
       <PlayTerminal play={selected} sessionClosed={sessionClosed} nowMs={nowMs} />
+    </div>
+  );
+}
+
+/** 0DTE left-rail command center — today's opportunity set at a glance. */
+function DeckCommandCenter({
+  laneLabel,
+  degraded,
+  stats,
+  winRate30d,
+}: {
+  laneLabel: string;
+  degraded: boolean;
+  stats: ReturnType<typeof buildDeckCommandCenterStats> | null;
+  winRate30d: number | null;
+}) {
+  const topLine = stats?.topRated
+    ? `${stats.topRated.ticker} (${stats.topRated.grade})`
+    : "—";
+  const edge = degraded ? null : stats?.edge ?? null;
+  return (
+    <div className="nh-deck-cmd" aria-label="Today's command center">
+      <div className="nh-deck-cmd-lane">{laneLabel}</div>
+      <div className="nh-deck-cmd-grid">
+        <div className="nh-deck-cmd-stat">
+          <span className="nh-deck-cmd-lab">Today&apos;s Opportunities</span>
+          <span className="nh-deck-cmd-val">{degraded ? "—" : stats?.opportunities ?? 0}</span>
+        </div>
+        <div className="nh-deck-cmd-stat">
+          <span className="nh-deck-cmd-lab">Top Rated</span>
+          <span className="nh-deck-cmd-val nh-deck-cmd-top">{degraded ? "—" : topLine}</span>
+        </div>
+        <div className="nh-deck-cmd-stat">
+          <span className="nh-deck-cmd-lab">Win Rate (30d)</span>
+          <span className="nh-deck-cmd-val">{degraded ? "—" : formatWinRate30d(winRate30d)}</span>
+        </div>
+        <div className="nh-deck-cmd-stat">
+          <span className="nh-deck-cmd-lab">Today&apos;s Edge</span>
+          <span className={clsx("nh-deck-cmd-val", edge && `edge-${edge.toLowerCase()}`)}>
+            {degraded ? "—" : edge ?? "—"}
+          </span>
+        </div>
+      </div>
     </div>
   );
 }

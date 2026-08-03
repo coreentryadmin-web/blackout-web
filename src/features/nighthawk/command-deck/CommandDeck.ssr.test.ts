@@ -107,3 +107,26 @@ test("discovery origin chip on enhanced 0DTE row", async () => {
   const html = await render(play({ discoveryOrigin: ["BREAKOUT"] }), { selected: false });
   assert.match(html, />BREAKOUT</);
 });
+
+test("CommandDeck command center renders stat strip for 0DTE", async () => {
+  const { CommandDeck } = await load();
+  const html = renderToStaticMarkup(
+    React.createElement(CommandDeck, {
+      plays: [
+        play({ id: "0DTE:META", ticker: "META", tierLabel: "A+" }),
+        play({ id: "0DTE:AMD", ticker: "AMD", tierLabel: "B" }),
+      ],
+      laneLabel: "0DTE · same-day",
+      commandCenter: true,
+      winRate30d: 81,
+    }),
+  );
+  assert.match(html, /nh-deck-cmd/);
+  assert.match(html, /Opportunities/);
+  assert.match(html, />Top Rated</);
+  assert.match(html, />META \(A\+\)/);
+  assert.match(html, />Win Rate \(30d\)</);
+  assert.match(html, />81%/);
+  assert.match(html, /Today.*Edge/);
+  assert.match(html, />High</);
+});
