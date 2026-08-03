@@ -4,6 +4,23 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-03 — [ops] spx-signal-weight-optimize off-window stale false positive (#1550)
+
+**Severity.** P1 ops false positive — not a prod outage.
+
+**Symptom.** ops-auto-fix #1550 flagged `spx-signal-weight-optimize` stale at 20:38 UTC (4:38 PM ET)
+via cron-staleness-watchdog.
+
+**Root cause.** `spx-signal-weight-optimize` fires only `0 22 * * 1-5` UTC (nightly post-close) but
+`admin-cron-health` applied the 36h `stale_after_min` 24/7 with no `schedule_cron_utc` — same class
+as the zerodte-grade off-window false positive (FINDINGS 2026-07-30 #1331). Friday's 22:00 UTC run
+was >36h old by Monday pre-fire.
+
+**Fix.** `schedule_cron_utc: "0 22 * * 1-5"` on the registry entry + regression tests in
+`cron-schedule-window.test.ts`.
+
+**Status.** FIXED — PR merge + deploy clears recurring pre-fire watchdog noise.
+
 ## 2026-08-03 — [SEO] Internal cross-link audit: 27 links added across 42 learn articles
 
 **Severity:** Low (SEO / discoverability improvement, no runtime behavior change).
