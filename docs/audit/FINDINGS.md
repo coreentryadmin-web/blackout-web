@@ -4,6 +4,22 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-03 — [Grid/0DTE] Post-close fix agent (cloud session) — all validators GREEN (~3:14 PM PT / 6:14 PM ET)
+
+**Severity.** — (no additional product defects)
+
+**Session.** Cloud Agent post-close fix per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` Step 4 (executed ~3:14 PM PT / 6:14 PM ET / 22:14 UTC).
+
+**Evidence.**
+- `validate:grid-rth -- --phase=post-close` → **12/12 PASS** (0 FAIL; `zerodte-warm` cron WARN HTTP 502 transient; data-correctness flags=0; ops:collect zero items)
+- `validate:zerodte-logic` → **17/17 PASS** — gates, plan exits (-50%/+100%/15:30 ET), lifecycle OPEN→TRIM→CLOSED, mergePlays SKIP past cutoff/MOVED, live board 7 setups / 2 ledger, cutoff 14:00 ET
+- `validate:grid-e2e` → **5/5 PASS** — board API 7/2, HELIX 20 prints, Playwright `/nighthawk` load, zero console errors
+- `validate:deploy` → **GREEN**
+
+**Root cause.** First run in fresh cloud env failed on missing `node_modules` (tsx/playwright/pg/react) — environment only. After `npm install` + `npx playwright install chromium`, all suites GREEN on re-run. No gate logic, play picking, trade management, mergePlays, cron bypass, or ledger PnL defects found.
+
+**Status.** FIXED — no code changes required; docs only on `fix/grid-post-close-aug3-agent-evening`.
+
 ## 2026-08-03 — [Grid/0DTE] Post-close fix agent — all validators GREEN (~1:05 PM PT / 5:10 PM ET)
 
 **Severity.** — (no additional product defects)
