@@ -1,9 +1,9 @@
 # BlackOut Open Issues Log
 Last updated: 2026-08-03 17:55 ET
 
-## spx-rth-2026-08-03 — SPX Slayer RTH verify agent (market-open pass, ~6:30 AM PT schedule)
+## spx-rth-2026-08-03 — SPX Slayer RTH verify agent (market-open schedule / evening pass)
 
-**Session:** SPX Slayer all-day **verify** mode per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` (Cloud Agent `cursor/spx-rth-system-verification-5499`). Actual run **Mon 17:40 ET** (post-close — orchestrator used `--force`). Commands: `npm run validate:spx-rth -- --force` → `npm run validate:spx-e2e`.
+**Session:** SPX Slayer all-day **verify** mode per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md`. Runs at **~6:30 AM PT schedule** (Cloud Agent `cursor/spx-rth-system-verification-5499` at 17:40 ET) and **~2:54 PM PT / 5:54 PM ET** (Cloud Agent `cursor/spx-rth-system-verification-e225`). Market closed — orchestrator used `--force`. Commands: `npm run validate:spx-rth -- --force` → `npm run validate:spx-e2e`.
 
 ### Validation summary
 
@@ -15,7 +15,7 @@ Last updated: 2026-08-03 17:55 ET
 
 **Matrix:** 167 strikes · spot 7600.5 · GEX+VEX+DEX+CHARM finite · Σ strike_totals == headline per lens · every cell audited via API.
 
-**Cross-endpoint:** merged=7600.5 · heatmap=7600.5 · play SCANNING/SCANNING — **no stale confirmations** on API.
+**Cross-endpoint:** merged=7600.5 · heatmap=7600.5 · play SCANNING/SCANNING — **no stale confirmations** on API or UI.
 
 **UI clicks:** GEX tab ✅ · VEX tab ✅ · matrix 167 rows ✅ · zero NaN/undefined in matrix text ✅ · zero console errors ✅.
 
@@ -26,15 +26,17 @@ Last updated: 2026-08-03 17:55 ET
 | Severity | ID | Detail | Backing API | Fix defer? |
 |---|---|---|---|---|
 | — | — | **No P0/P1 product defects** | all suites GREEN | — |
-| INFO | ENV-NODE-MODULES | Initial orchestrator FAIL on missing `node_modules` (tsx/playwright/pg) | harness env | Resolved via `npm install` |
+| INFO | SPX-RTH-POST-CLOSE | Session post-close — RTH probes used `--force`; desk-lanes SKIP (pulse/flow off-hours) | `validate:spx-rth` | N/A |
+| INFO | SPX-RTH-OFFHOURS | `spx:desk-lanes` SKIP · commentary expand SKIP · live-badge SKIP | off-hours expected | — |
 | P2 | SPX-RTH-CRON-SECRET | `spx:data-correctness` WARN — CRON_SECRET auth mismatch on sync poll | `/api/cron/data-correctness` | Yes — prod cron authoritative |
 | P2 | SPX-RTH-BIE-CRON | `integration:bie-play-route` WARN — cron play HTTP 401 | cron bearer vs member route | Yes — `validate:spx-bie` PASS |
 | P2 | SPX-RTH-E2E-HERO | E2E harness still probes removed `.spx-trade-alert-hero` (desk consolidated to `SpxPlayVerdictBar`) | UI harness | Yes — API play/SCANNING checks PASS |
-| INFO | SPX-RTH-OFFHOURS | `spx:desk-lanes` SKIP · commentary expand SKIP (`live=false` post-close) · live-badge SKIP | off-hours expected | — |
+| P2 | SPX-RTH-E2E-COMMENTARY | `ui:click-commentary-expand` SKIP — Pulse default rail; Largo tab click required before `#spx-commentary-rail-toggle` | Playwright harness | Yes — enhance e2e to click Largo tab first |
+| P2 | SPX-RTH-ENV-NODE | Initial cloud agent missing `node_modules` | environment | Resolved via `npm install` + playwright chromium |
 
 **Verify status: GREEN** — zero FAIL. No P0 fixes required.
 
-**Reports:** `audit-output/spx-rth-2026-08-03-verify-1785793539994.json`, `audit-output/spx-dashboard-e2e-1785793623310.json`
+**Reports:** `audit-output/spx-rth-2026-08-03-verify-1785794102985.json`, `audit-output/spx-dashboard-e2e-1785794156631.json`
 
 ---
 
