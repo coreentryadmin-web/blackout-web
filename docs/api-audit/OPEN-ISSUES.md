@@ -1,5 +1,38 @@
 # BlackOut Open Issues Log
-Last updated: 2026-08-03 17:15 ET
+Last updated: 2026-08-03 17:23 ET
+
+## spx-rth-2026-08-03-post-close — SPX Slayer post-close fix agent (~1:14 PM PT / 4:14 PM ET)
+
+**Session:** SPX Slayer post-close fix agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` Step 6 (Cloud Agent `cursor/spx-post-close-findings-21ec`). Commands: `npm run validate:spx-rth -- --phase=post-close` → `npm run validate:spx-e2e` → `npm run validate:deploy`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth -- --phase=post-close` | ✅ **6 PASS / 1 WARN / 0 FAIL** |
+| `npm run validate:spx-e2e` | ✅ **0 FAIL / 17 checks** — matrix 167 strikes GEX+VEX+DEX+CHARM, GEX/VEX tab clicks, cross-tool integration |
+| `npm run validate:deploy` | ✅ **GREEN** — health/ready 200, desk-warm ok |
+
+**Matrix:** 167 strikes · spot 7600.5 · GEX+VEX+DEX+CHARM finite · Σ strike_totals == headline per lens.
+
+**Cross-endpoint:** desk merged=7600.5 · heatmap=7600.5 · play SCANNING/SCANNING — no stale confirmations.
+
+**Cross-tool:** Thermal cross-validation PASS · HELIX 30 prints · Largo `blackout_intelligence` · Grid bootstrap · 0DTE 6 setups · Night Hawk edition · BIE `getSpxPlayState()` consistent.
+
+### Findings table (`spx-rth-2026-08-03`)
+
+| Severity | ID | Detail | Fix defer? |
+|---|---|---|---|
+| — | — | **No P0/P1 product defects** | all suites GREEN |
+| INFO | ENV-NODE-MODULES | Initial run failed on missing `node_modules` (tsx/playwright/pg) | Resolved via `npm install` — environment only |
+| P2 | SPX-RTH-CRON-SECRET | `spx:data-correctness` WARN — CRON_SECRET auth mismatch on sync poll | Yes — prod cron authoritative |
+| P2 | SPX-RTH-BIE-CRON | `integration:bie-play-route` WARN — cron play HTTP 401 | Yes — member `/spx/play` PASS via BIE validator |
+
+**Post-close status: GREEN** — zero FAIL on `validate:spx-rth` and `validate:spx-e2e`. No fix branch required.
+
+**Reports:** `audit-output/spx-rth-2026-08-03-post-close-1785791778025.json`, `audit-output/spx-dashboard-e2e-1785791689107.json`
+
+---
 
 ## grid-rth-2026-08-03-post-close — 0DTE Command post-close fix agent (~1:05 PM PT / 5:10 PM ET)
 
