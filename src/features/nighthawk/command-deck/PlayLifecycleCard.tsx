@@ -6,12 +6,16 @@ import { etClock } from "./PlayTerminal";
 import {
   closedRealizedPct,
   directionSetupLine,
+  horizonDisplayLabel,
+  openMetricsLabels,
+  openMetricsValues,
   playFreshnessDisplay,
   playLifecyclePhase,
   playPrimaryEvent,
   playStatusLabel,
   playTriggeredEvent,
   setupTypeLabel,
+  watchWaitLabel,
 } from "./play-card-lifecycle";
 import { formatReturnPct, playGradeLabel, playQualityPct, tierStars } from "./play-card-display";
 
@@ -91,9 +95,10 @@ export function PlayLifecycleCardBody({
   const freshness = playFreshnessDisplay(play, nowMs, primary.iso);
   const statusLabel = playStatusLabel(play.status);
   const setup = setupTypeLabel(play);
+  const horizonLabel = horizonDisplayLabel(play.horizon);
+  const metricLabels = openMetricsLabels(play);
+  const { currentPct, peakPct } = openMetricsValues(play);
 
-  const currentPct = play.pnlPct;
-  const peakPct = play.peak;
   const realized = closedRealizedPct(play);
 
   const signClass = (n: number | null | undefined) =>
@@ -129,14 +134,14 @@ export function PlayLifecycleCardBody({
         {phase === "watch" ? (
           <>
             <span className="nh-deck-lc-watch-tag">WATCH</span>
-            <span className="nh-deck-lc-horizon">0DTE</span>
+            <span className="nh-deck-lc-horizon">{horizonLabel}</span>
           </>
         ) : (
           <>
             <span className={clsx("nh-deck-lc-dir", play.direction === "LONG" ? "long" : "short")}>
               {directionSetupLine(play)}
             </span>
-            <span className="nh-deck-lc-horizon">0DTE</span>
+            <span className="nh-deck-lc-horizon">{horizonLabel}</span>
           </>
         )}
       </div>
@@ -148,7 +153,7 @@ export function PlayLifecycleCardBody({
       )}
 
       {phase === "watch" && (
-        <div className="nh-deck-lc-wait">Waiting for Trigger</div>
+        <div className="nh-deck-lc-wait">{watchWaitLabel(play)}</div>
       )}
 
       {phase !== "closed" && (
@@ -176,13 +181,13 @@ export function PlayLifecycleCardBody({
       {phase === "open" && (
         <div className="nh-deck-lc-metrics">
           <div className="nh-deck-lc-metric">
-            <span className="k">Current</span>
+            <span className="k">{metricLabels.current}</span>
             <span className={clsx("v", signClass(currentPct), markFlash && currentPct != null && "neon")}>
               {currentPct != null ? formatReturnPct(currentPct) : "—"}
             </span>
           </div>
           <div className="nh-deck-lc-metric">
-            <span className="k">Peak</span>
+            <span className="k">{metricLabels.peak}</span>
             <span className={clsx("v", signClass(peakPct))}>
               {peakPct != null ? formatReturnPct(peakPct) : "—"}
             </span>
@@ -194,8 +199,8 @@ export function PlayLifecycleCardBody({
         <div className="nh-deck-lc-metrics">
           <div className="nh-deck-lc-metric">
             <span className="k">Peak</span>
-            <span className={clsx("v", signClass(peakPct))}>
-              {peakPct != null ? formatReturnPct(peakPct) : "—"}
+            <span className={clsx("v", signClass(peakPct ?? play.peak))}>
+              {(peakPct ?? play.peak) != null ? formatReturnPct(peakPct ?? play.peak!) : "—"}
             </span>
           </div>
           <div className="nh-deck-lc-metric">

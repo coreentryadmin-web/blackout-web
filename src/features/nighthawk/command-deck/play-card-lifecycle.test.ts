@@ -65,24 +65,44 @@ describe("play-card-lifecycle", () => {
     assert.equal(freshnessBadgeLabel("closed", null), "CLOSED");
   });
 
-  it("playPrimaryEvent picks state-relevant clock", () => {
-    assert.deepEqual(playPrimaryEvent(base()), {
-      label: "Triggered",
-      iso: "2026-08-03T11:46:00-04:00",
-    });
+  it("playPrimaryEvent uses swing Discovered and Entered labels", () => {
+    assert.deepEqual(
+      playPrimaryEvent(base({ horizon: "SWING", status: "WATCH", detectedAt: "2026-08-01T10:00:00-04:00" })),
+      { label: "Discovered", iso: "2026-08-01T10:00:00-04:00" },
+    );
     assert.deepEqual(
       playPrimaryEvent(
         base({
-          status: "WATCH",
-          detectedAt: "2026-08-03T10:47:00-04:00",
-          firstFlaggedAt: null,
+          horizon: "SWING",
+          status: "OPEN",
+          firstFlaggedAt: "2026-08-02T10:00:00-04:00",
         }),
       ),
-      { label: "Published", iso: "2026-08-03T10:47:00-04:00" },
+      { label: "Entered", iso: "2026-08-02T10:00:00-04:00" },
+    );
+  });
+
+  it("playPrimaryEvent uses legacy Published and Confirmed labels", () => {
+    assert.deepEqual(
+      playPrimaryEvent(
+        base({
+          horizon: "LEGACY",
+          status: "WATCH",
+          detectedAt: "2026-08-02T17:30:00-04:00",
+        }),
+      ),
+      { label: "Published", iso: "2026-08-02T17:30:00-04:00" },
     );
     assert.deepEqual(
-      playPrimaryEvent(base({ status: "CLOSED", exitAt: "2026-08-03T12:06:00-04:00" })),
-      { label: "Closed", iso: "2026-08-03T12:06:00-04:00" },
+      playPrimaryEvent(
+        base({
+          horizon: "LEGACY",
+          status: "OPEN",
+          morningStatus: "CONFIRMED",
+          firstFlaggedAt: "2026-08-03T09:05:00-04:00",
+        }),
+      ),
+      { label: "Confirmed", iso: "2026-08-03T09:05:00-04:00" },
     );
   });
 

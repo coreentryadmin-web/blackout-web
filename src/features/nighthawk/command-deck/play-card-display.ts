@@ -52,12 +52,17 @@ export function originChip(play: TerminalPlay): string | null {
   return o.replace(/_/g, " ");
 }
 
-/** Hero treatment: the selected 0DTE row expands into the primary card. */
+/** Hero treatment: the selected row expands into the primary lifecycle card. */
 export function useHeroPlayCard(play: TerminalPlay, selected: boolean, _rank: number): boolean {
-  return play.horizon === "ZERO_DTE" && selected;
+  return selected;
 }
 
-/** Enhanced 0DTE row (grade + quality visible) — all 0DTE rows, not Legacy/Swing. */
+/** Lifecycle card layout — all four Night Hawk lanes. */
+export function useLifecyclePlayCard(_play: TerminalPlay): boolean {
+  return true;
+}
+
+/** @deprecated Use useLifecyclePlayCard — kept for call-site clarity during migration. */
 export function useEnhancedZeroDteRow(play: TerminalPlay): boolean {
-  return play.horizon === "ZERO_DTE";
+  return useLifecyclePlayCard(play);
 }

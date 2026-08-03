@@ -13,6 +13,53 @@ export const FRESHNESS_FRESH_MS = 15 * 60_000;
 /** Amber — 15–30 minutes; no pulse. */
 export const FRESHNESS_AGING_MS = 30 * 60_000;
 
+export type FreshnessThresholds = {
+  justFiredMs: number;
+  freshMs: number;
+  agingMs: number;
+};
+
+/** Horizon-specific urgency windows — swings/legacy use longer horizons than 0DTE. */
+export function freshnessThresholdsForHorizon(
+  horizon: TerminalPlay["horizon"],
+): FreshnessThresholds {
+  switch (horizon) {
+    case "SWING":
+    case "LEAPS":
+      return {
+        justFiredMs: 60 * 60_000,
+        freshMs: 6 * 60 * 60_000,
+        agingMs: 24 * 60 * 60_000,
+      };
+    case "LEGACY":
+      return {
+        justFiredMs: 2 * 60 * 60_000,
+        freshMs: 12 * 60 * 60_000,
+        agingMs: 24 * 60 * 60_000,
+      };
+    default:
+      return {
+        justFiredMs: FRESHNESS_JUST_FIRED_MS,
+        freshMs: FRESHNESS_FRESH_MS,
+        agingMs: FRESHNESS_AGING_MS,
+      };
+  }
+}
+
+/** Short horizon badge for lifecycle cards — never names infra. */
+export function horizonDisplayLabel(horizon: TerminalPlay["horizon"]): string {
+  switch (horizon) {
+    case "ZERO_DTE":
+      return "0DTE";
+    case "SWING":
+      return "SWING";
+    case "LEAPS":
+      return "LEAPS";
+    case "LEGACY":
+      return "LEGACY";
+  }
+}
+
 export function playLifecyclePhase(status: DeckStatus): PlayLifecyclePhase {
   if (status === "CLOSED") return "closed";
   if (status === "WATCH" || status === "SKIP") return "watch";
@@ -42,12 +89,20 @@ export function eventAgeMs(iso: string | null | undefined, nowMs: number): numbe
   return delta >= 0 ? delta : 0;
 }
 
-export function freshnessTierFromAge(ageMs: number | null, phase: PlayLifecyclePhase): FreshnessTier {
+export function freshnessTierFromAge(
+  ageMs: number | null,
+  phase: PlayLifecyclePhase,
+  thresholds: FreshnessThresholds = {
+    justFiredMs: FRESHNESS_JUST_FIRED_MS,
+    freshMs: FRESHNESS_FRESH_MS,
+    agingMs: FRESHNESS_AGING_MS,
+  },
+): FreshnessTier {
   if (phase === "closed") return "closed";
   if (ageMs == null) return "fresh";
-  if (ageMs <= FRESHNESS_JUST_FIRED_MS) return "just_fired";
-  if (ageMs <= FRESHNESS_FRESH_MS) return "fresh";
-  if (ageMs <= FRESHNESS_AGING_MS) return "aging";
+  if (ageMs <= thresholds.justFiredMs) return "just_fired";
+  if (ageMs <= thresholds.freshMs) return "fresh";
+  if (ageMs <= thresholds.agingMs) return "aging";
   return "late";
 }
 
@@ -78,7 +133,25 @@ export function playPrimaryEvent(play: TerminalPlay): { label: string; iso: stri
     return { label: "Closed", iso: play.exitAt ?? null };
   }
   if (phase === "watch") {
+    if (play.horizon === "SWING" || play.horizon === "LEAPS") {
+      return { label: "Discovered", iso: play.detectedAt ?? play.firstFlaggedAt ?? null };
+    }
+    if (play.horizon === "LEGACY") {
+      return { label: "Published", iso: play.detectedAt ?? play.firstFlaggedAt ?? null };
+    }
     return { label: "Published", iso: play.detectedAt ?? play.firstFlaggedAt ?? null };
+  }
+  if (play.horizon === "SWING" || play.horizon === "LEAPS") {
+    return {
+      label: "Entered",
+      iso: play.firstFlaggedAt ?? play.committedAt ?? play.detectedAt ?? null,
+    };
+  }
+  if (play.horizon === "LEGACY") {
+    return {
+      label: play.morningStatus === "CONFIRMED" ? "Confirmed" : "Active",
+      iso: play.firstFlaggedAt ?? play.detectedAt ?? null,
+    };
   }
   return { label: "Triggered", iso: play.firstFlaggedAt ?? null };
 }
@@ -95,9 +168,29 @@ export function playStatusLabel(status: DeckStatus): string {
 }
 
 export function setupTypeLabel(play: TerminalPlay): string | null {
+  if (play.archetype) {
+    return play.archetype.replace(/_/g, " ");
+  }
   const o = play.discoveryOrigin?.[0];
   if (!o) return null;
   return o.replace(/_/g, " ");
+}
+
+/** Pre-entry wait line — horizon-specific, never fabricated. */
+export function watchWaitLabel(play: TerminalPlay): string {
+  if (play.horizon === "SWING" || play.horizon === "LEAPS") {
+    if (play.servingSection === "WAITING_FOR_ENTRY" || play.entryStatus === "PRE_TRIGGER") {
+      return "Waiting for Entry";
+    }
+    if (play.servingSection === "RESEARCH" || play.setupState === "FORMING") {
+      return "Building Persistence";
+    }
+    return "Waiting for Entry";
+  }
+  if (play.horizon === "LEGACY") {
+    return play.morningStatus === "DEGRADED" ? "Validate Before Entry" : "Awaiting Pre-Market Confirm";
+  }
+  return "Waiting for Trigger";
 }
 
 export function directionSetupLine(play: TerminalPlay): string {
@@ -122,7 +215,7 @@ export function playFreshnessDisplay(
 ): PlayFreshnessDisplay {
   const phase = playLifecyclePhase(play.status);
   const ageMs = eventAgeMs(primaryIso, nowMs);
-  const tier = freshnessTierFromAge(ageMs, phase);
+  const tier = freshnessTierFromAge(ageMs, phase, freshnessThresholdsForHorizon(play.horizon));
   return {
     tier,
     badgeLabel: freshnessBadgeLabel(tier, ageMs),
@@ -171,4 +264,29 @@ export function closedRealizedPct(play: TerminalPlay): number | null {
   if (play.exitPnlPct != null && Number.isFinite(play.exitPnlPct)) return play.exitPnlPct;
   if (play.pnlPct != null && Number.isFinite(play.pnlPct)) return play.pnlPct;
   return null;
+}
+
+/** Open-row primary metric labels — legacy uses stock progress, others use option P&L. */
+export function openMetricsLabels(play: TerminalPlay): { current: string; peak: string } {
+  if (play.horizon === "LEGACY") {
+    return { current: "Stock", peak: "Day" };
+  }
+  return { current: "Current", peak: "Peak" };
+}
+
+/** Open-row metric values — honest null when the tape carries no number. */
+export function openMetricsValues(play: TerminalPlay): {
+  currentPct: number | null;
+  peakPct: number | null;
+} {
+  if (play.horizon === "LEGACY") {
+    return {
+      currentPct: play.pnlPct ?? play.stockChangePct ?? null,
+      peakPct: play.stockChangePct ?? null,
+    };
+  }
+  return {
+    currentPct: play.pnlPct ?? null,
+    peakPct: play.peak ?? null,
+  };
 }

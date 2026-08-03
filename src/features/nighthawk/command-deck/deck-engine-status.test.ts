@@ -49,6 +49,20 @@ describe("deck-engine-status", () => {
     assert.equal(s.ok, true);
   });
 
+  it("deriveEngineStatus returns Monitoring for legacy during pre-market window", () => {
+    const s = deriveEngineStatus({
+      degraded: false,
+      loading: false,
+      sessionHeat: "PRE_MARKET",
+      boardAsOf: "2026-08-03T08:00:00-04:00",
+      nowMs: NOW,
+      etMinutes: 8 * 60,
+      horizon: "LEGACY",
+    });
+    assert.equal(s.mode, "monitoring");
+    assert.equal(s.label, "Monitoring");
+  });
+
   it("deriveEngineStatus returns Syncing on first load", () => {
     const s = deriveEngineStatus({
       degraded: false,

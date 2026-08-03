@@ -103,12 +103,13 @@ test("selected 0DTE row renders hero lifecycle card with banner when rank 1", as
   assert.match(html, />Tap to inspect/);
 });
 
-test("legacy row omits lifecycle layout", async () => {
+test("legacy row uses lifecycle layout", async () => {
   const html = await render(
-    play({ horizon: "LEGACY", tierLabel: "A", stockPrice: 180, pnlPct: 5 }),
+    play({ horizon: "LEGACY", tierLabel: "A", stockPrice: 180, pnlPct: 5, detectedAt: "2026-08-03T17:30:00-04:00" }),
     { selected: false },
   );
-  assert.doesNotMatch(html, /nh-deck-lc/);
+  assert.match(html, /nh-deck-lc/);
+  assert.match(html, />LEGACY</);
 });
 
 test("CommandDeck command center renders stat strip for 0DTE", async () => {

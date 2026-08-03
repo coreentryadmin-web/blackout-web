@@ -232,7 +232,15 @@ export async function discoverSwingFromPersisted(): Promise<SwingDiscoveryLike |
       null;
     return swingThesisKey(p.ticker, p.direction, arch);
   };
-  const clearedPlays = (snap.plays ?? []).filter((p) => cleared.has(playThesisKey(p)));
+  const clearedPlays = (snap.plays ?? []).filter((p) => cleared.has(playThesisKey(p))).map((p) => {
+    const key = playThesisKey(p);
+    const cand = (snap.watch ?? []).find((c) => swingThesisKey(c.ticker, c.direction, c.archetype) === key);
+    return {
+      ...p,
+      firstSeenAt: cand?.firstSeenAt ?? p.firstSeenAt,
+      signalKinds: cand?.signalKinds ?? p.signalKinds,
+    };
+  });
   const observedPlays = (snap.plays ?? [])
     .filter((p) => {
       const key = playThesisKey(p);
@@ -244,6 +252,8 @@ export async function discoverSwingFromPersisted(): Promise<SwingDiscoveryLike |
       const gap = obs ? persistenceGapReason(obs) : null;
       return {
         ...p,
+        firstSeenAt: obs?.firstSeenAt ?? p.firstSeenAt,
+        signalKinds: obs?.signalKinds ?? p.signalKinds,
         persistenceObserved: true as const,
         persistenceGapReason: gap ?? "Building cross-session persistence.",
         reason: gap ? `${p.reason} · ${gap}` : p.reason,

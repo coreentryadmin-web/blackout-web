@@ -139,6 +139,8 @@ export function livePlayFromSwingPosition(
     liveStatus,
     manageAction,
     thesisLevel,
+    firstSeenAt: row.first_seen_at ?? undefined,
+    committedAt: row.committed_at ?? undefined,
   };
 }
 

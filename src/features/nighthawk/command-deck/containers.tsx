@@ -104,6 +104,7 @@ export function ZeroDteDeck({
         allocation={data?.allocation ?? null}
         sessionHeat={sessionHeat}
         commandCenter
+        deckHorizon="ZERO_DTE"
         winRate30d={winRate30d}
         boardAsOf={typeof data?.as_of === "string" ? data.as_of : null}
         upstreamOk={data?.upstream_ok ?? null}
@@ -169,12 +170,16 @@ export function HorizonDeck({ horizon }: { horizon: "SWING" | "LEAPS" }) {
       archetype: p.archetype ?? null,
       subLane: p.subLane ?? null,
       servingSection: p.serving ?? null,
+      firstSeenAt: p.firstSeenAt ?? null,
+      committedAt: p.committedAt ?? null,
+      signalKinds: p.signalKinds ?? null,
       thesisBreak:
         p.thesisLevel != null
           ? { level: p.thesisLevel, note: p.thesisNote ?? undefined }
           : undefined,
     }),
   );
+  const sessionHeat = data?.session?.heat?.state ?? null;
   return (
     <CommandDeck
       plays={plays}
@@ -182,6 +187,11 @@ export function HorizonDeck({ horizon }: { horizon: "SWING" | "LEAPS" }) {
       degraded={degraded}
       loading={isLoading && !data}
       emptyHint={emptyHint}
+      commandCenter
+      deckHorizon={horizon}
+      boardAsOf={typeof data?.board?.asOf === "string" ? data.board.asOf : null}
+      upstreamOk={data?.upstream_ok ?? null}
+      sessionHeat={sessionHeat}
     />
   );
 }
@@ -202,6 +212,8 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
       confirmByTicker.set(ps.ticker?.toUpperCase(), { status: ps.status, reason: ps.reason });
     }
   }
+
+  const confirmCheckedAt: string | null = confirmData?.checked_at ?? null;
 
   const rawPlays = (edition?.plays ?? []).slice(0, EDITION_TARGET_PLAYS);
   const basePlays = useMemo<TerminalPlay[]>(() => rawPlays.map((p, i) => {
@@ -237,8 +249,10 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
       pulled_reason: p.pulled_reason ?? null,
       morning_status: confirm?.status as "CONFIRMED" | "DEGRADED" | "INVALIDATED" | "UNVERIFIED" | undefined ?? null,
       morning_reason: confirm?.reason ?? null,
+      published_at: edition?.published_at ?? null,
+      confirmed_at: confirmCheckedAt,
     });
-  }), [rawPlays, confirmByTicker]);
+  }), [rawPlays, confirmByTicker, edition?.published_at, confirmCheckedAt]);
 
   // Per-conviction scorecard: fetch the track record once (long refresh) and overlay
   // the conviction-level win rate onto each play so the scorecard badge lights up.
@@ -276,9 +290,14 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
 
   // Morning-confirm staleness: the verdict is a one-time 9am snapshot that never updates.
   // After 4h it misleads if shown without qualification.
-  const checkedAt: string | null = confirmData?.checked_at ?? null;
+  const checkedAt: string | null = confirmCheckedAt;
   const confirmStale = isMorningConfirmStale(checkedAt, Date.now());
   const checkedAtLabel = checkedAt ? formatCheckedAtEt(checkedAt) : null;
+
+  const legacyWinRate30d =
+    recordData?.win_rate_pct != null && Number.isFinite(recordData.win_rate_pct)
+      ? recordData.win_rate_pct
+      : null;
 
   // Edition health banners — stale/degraded/carry/error states must be visible, never silently hidden.
   const isStale = edition?.stale === true;
@@ -336,6 +355,10 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
         laneLabel="Legacy · Tonight's playbook"
         degraded={hasFetchError || isDegraded}
         loading={!edition && !error}
+        commandCenter
+        deckHorizon="LEGACY"
+        boardAsOf={edition?.published_at ?? null}
+        winRate30d={legacyWinRate30d}
         emptyHint={
           hasFetchError
             ? "Edition data unavailable right now — retrying. Check back shortly."
