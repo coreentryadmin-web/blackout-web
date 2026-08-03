@@ -64,4 +64,20 @@ describe("cron-schedule-window", () => {
     const now = new Date("2026-07-30T20:25:00.000Z");
     assert.equal(isInOffScheduleIdleGap(cron, now), false);
   });
+
+  it("spx-signal-weight-optimize: off-window gap Mon before 22:00 UTC after Fri run — ops #1550", () => {
+    const cron = "0 22 * * 1-5";
+    const now = new Date("2026-08-03T20:38:00.000Z"); // Mon 4:38 PM ET — ops #1550 false positive
+    assert.equal(isInOffScheduleIdleGap(cron, now), true);
+    const last = lastExpectedCronFireUtc(cron, now);
+    const next = nextExpectedCronFireUtc(cron, now);
+    assert.equal(last?.toISOString(), "2026-07-31T22:00:00.000Z");
+    assert.equal(next?.toISOString(), "2026-08-03T22:00:00.000Z");
+  });
+
+  it("spx-signal-weight-optimize: in-window at scheduled 22:00 UTC — missed tick should not be idle", () => {
+    const cron = "0 22 * * 1-5";
+    const now = new Date("2026-08-03T22:00:00.000Z");
+    assert.equal(isInOffScheduleIdleGap(cron, now), false);
+  });
 });
