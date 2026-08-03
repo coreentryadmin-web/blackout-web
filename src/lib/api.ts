@@ -425,9 +425,9 @@ export const fetchNightHawkRecord = (days = 30) =>
 
 /** The unified three-board response, scoped to one horizon via ?view= (0dte/swings/leaps). */
 export type NightHawkHorizonsResponse = {
-  board: import("@/lib/horizon-board").HorizonBoard;
+  board: import("@/lib/horizon-board").HorizonBoard | null;
   upstream_ok?: boolean;
-  session?: { date: string; trading_day: boolean };
+  session?: { date: string; trading_day: boolean; heat?: { state?: string | null } | null };
 };
 
 /** Fetch the Night Hawk horizon board for one toggle view (the whole desk scopes to it). */

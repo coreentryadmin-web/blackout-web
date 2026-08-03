@@ -95,6 +95,12 @@ export interface HorizonPlay {
   parentPlayId?: string;
   /** The serving section this play resolved to (serving.ts) — stamped once the section router runs. */
   serving?: SwingServingSection;
+  /** ISO instant the thesis was first observed (accumulation store). */
+  firstSeenAt?: string;
+  /** ISO instant capital was committed (live ledger). */
+  committedAt?: string;
+  /** Discovery provenance kinds (FLOW / STRUCTURE / CATALYST). */
+  signalKinds?: string[];
   /**
    * Whether this play's archetype×sub-lane bucket has graduated the Wilson-LB ladder. Required for
    * COMMIT_NOW (serving.ts) — absent/false keeps a clean entry geometry in WAITING_FOR_ENTRY so the

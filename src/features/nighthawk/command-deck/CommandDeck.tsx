@@ -24,7 +24,7 @@ import { useSecondTick, useFlash } from "./use-deck-live";
 import {
   formatReturnPct,
   playQualityPct,
-  useEnhancedZeroDteRow,
+  useLifecyclePlayCard,
   useHeroPlayCard,
 } from "./play-card-display";
 import { PlayLifecycleCardBody } from "./PlayLifecycleCard";
@@ -62,6 +62,7 @@ export function CommandDeck({
   sessionHeat = null,
   commandCenter = false,
   winRate30d = null,
+  deckHorizon = "ZERO_DTE",
   boardAsOf = null,
   upstreamOk = null,
 }: {
@@ -79,10 +80,12 @@ export function CommandDeck({
   allocation?: CockpitAllocation[] | null;
   /** Board `session.heat.state` — drives default filter + right-rail LIVE/CLOSED honesty. */
   sessionHeat?: DeckSessionHeatState;
-  /** 0DTE only — replace the "X of Y" header with the command-center stat strip. */
+  /** Replace the "X of Y" header with the command-center stat strip + engine status. */
   commandCenter?: boolean;
-  /** 30d as-managed win rate from `/api/market/zerodte/record` — null when unavailable. */
+  /** 30d win rate from the lane record — null when unavailable (never fabricated). */
   winRate30d?: number | null;
+  /** Lane context for engine-status session logic (defaults to ZERO_DTE cadence). */
+  deckHorizon?: TerminalPlay["horizon"];
   /** Board snapshot instant (`as_of`) — drives Live Engine Status last-update age. */
   boardAsOf?: string | null;
   /** Board upstream health flag — false forces engine Offline (never fabricated). */
@@ -168,9 +171,10 @@ export function CommandDeck({
             nowMs,
             etMinutes: hour * 60 + minute,
             upstreamOk,
+            horizon: deckHorizon,
           })
         : null,
-    [commandCenter, degraded, loading, sessionHeat, boardAsOf, nowMs, hour, minute, upstreamOk],
+    [commandCenter, degraded, loading, sessionHeat, boardAsOf, nowMs, hour, minute, upstreamOk, deckHorizon],
   );
 
   return (
@@ -435,7 +439,7 @@ export const PlayCard = memo(function PlayCard({
     p.thesisHealth != null && (p.status === "OPEN" || p.status === "HOLD" || p.status === "TRIM");
 
   const hero = useHeroPlayCard(p, selected, rank);
-  const enhanced = useEnhancedZeroDteRow(p);
+  const enhanced = useLifecyclePlayCard(p);
   const quality = playQualityPct(p);
 
   if (enhanced) {

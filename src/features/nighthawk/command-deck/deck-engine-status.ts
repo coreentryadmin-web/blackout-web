@@ -1,5 +1,6 @@
 import type { DeckSessionHeatState } from "./deck-session-ui";
 import { isZeroDteSessionActive } from "./deck-session-ui";
+import type { TerminalPlay } from "./types";
 
 export type EngineStatusMode = "monitoring" | "idle" | "offline" | "syncing";
 
@@ -28,6 +29,27 @@ export function formatEngineUpdateAge(iso: string | null | undefined, nowMs: num
   return `${hr}h ago`;
 }
 
+/** Whether the lane's engine loop should read as actively monitoring (vs standby). */
+export function isEngineSessionActive(
+  horizon: TerminalPlay["horizon"],
+  heatState: DeckSessionHeatState,
+  etMinutes?: number,
+): boolean {
+  if (horizon === "LEGACY") {
+    // Legacy monitors during pre-market confirm + RTH (07:00–16:05 ET).
+    if (etMinutes != null && Number.isFinite(etMinutes)) {
+      return etMinutes >= 7 * 60 && etMinutes < 16 * 60 + 5;
+    }
+    const h = String(heatState ?? "").toUpperCase();
+    return h === "PRE_MARKET" || isZeroDteSessionActive(heatState, etMinutes);
+  }
+  if (horizon === "SWING" || horizon === "LEAPS") {
+    // Swing discovery runs on a phase cadence — show Monitoring during RTH.
+    return isZeroDteSessionActive(heatState, etMinutes);
+  }
+  return isZeroDteSessionActive(heatState, etMinutes);
+}
+
 export function deriveEngineStatus(opts: {
   degraded: boolean;
   loading: boolean;
@@ -36,6 +58,7 @@ export function deriveEngineStatus(opts: {
   nowMs: number;
   etMinutes?: number;
   upstreamOk?: boolean | null;
+  horizon?: TerminalPlay["horizon"];
 }): EngineStatusDisplay {
   const lastUpdateIso =
     opts.boardAsOf && Number.isFinite(Date.parse(opts.boardAsOf)) ? opts.boardAsOf : null;
@@ -61,7 +84,11 @@ export function deriveEngineStatus(opts: {
     };
   }
 
-  const sessionLive = isZeroDteSessionActive(opts.sessionHeat, opts.etMinutes);
+  const sessionLive = isEngineSessionActive(
+    opts.horizon ?? "ZERO_DTE",
+    opts.sessionHeat,
+    opts.etMinutes,
+  );
   if (!sessionLive) {
     return {
       mode: "idle",

@@ -410,6 +410,12 @@ export interface HorizonDeckSource {
   archetype?: string | null;
   subLane?: string | null;
   servingSection?: SwingServingSection | null;
+  /** ISO instant the thesis was first observed. */
+  firstSeenAt?: string | null;
+  /** ISO instant capital was committed. */
+  committedAt?: string | null;
+  /** Discovery provenance kinds. */
+  signalKinds?: string[] | null;
 }
 
 /**
@@ -462,6 +468,11 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     setupState: src.setupState ?? null,
     entryStatus: src.entryStatus ?? null,
     servingSection: src.servingSection ?? null,
+    detectedAt: src.firstSeenAt ?? null,
+    firstFlaggedAt: src.committedAt ?? null,
+    committedAt: src.committedAt ?? null,
+    discoveryOrigin:
+      Array.isArray(src.signalKinds) && src.signalKinds.length > 0 ? src.signalKinds : null,
   };
 }
 
@@ -502,6 +513,10 @@ export interface EditionDeckSource {
   // Morning confirmation overlay (merged by the container).
   morning_status?: "CONFIRMED" | "DEGRADED" | "INVALIDATED" | "UNVERIFIED" | null;
   morning_reason?: string | null;
+  /** Edition publish instant — WATCH "Published" clock. */
+  published_at?: string | null;
+  /** Morning confirm snapshot instant — OPEN "Confirmed" clock when verified. */
+  confirmed_at?: string | null;
 }
 
 /** Parse a dollar-level string ("$205", "$205.50") to a numeric value. Used for target/stop
@@ -659,5 +674,11 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
     confluence,
     discoveryOrigin: discoveryOrigin.length > 0 ? discoveryOrigin : undefined,
     whyNow: whyNow ?? undefined,
+    detectedAt:
+      typeof src.published_at === "string" && src.published_at.length > 0 ? src.published_at : null,
+    firstFlaggedAt:
+      ms === "CONFIRMED" && typeof src.confirmed_at === "string" && src.confirmed_at.length > 0
+        ? src.confirmed_at
+        : null,
   };
 }

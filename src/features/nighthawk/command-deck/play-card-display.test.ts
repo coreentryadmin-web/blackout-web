@@ -6,6 +6,7 @@ import {
   tierStarCount,
   tierStars,
   useHeroPlayCard,
+  useLifecyclePlayCard,
 } from "./play-card-display.ts";
 import type { TerminalPlay } from "./types.ts";
 
@@ -41,9 +42,15 @@ describe("play-card-display", () => {
     assert.equal(formatReturnPct(-12), "-12%");
   });
 
-  it("useHeroPlayCard is true for selected 0DTE only", () => {
+  it("useHeroPlayCard is true when selected on any horizon", () => {
     assert.equal(useHeroPlayCard(base, true, 1), true);
     assert.equal(useHeroPlayCard(base, false, 1), false);
-    assert.equal(useHeroPlayCard({ ...base, horizon: "LEGACY" }, true, 1), false);
+    assert.equal(useHeroPlayCard({ ...base, horizon: "LEGACY" }, true, 1), true);
+  });
+
+  it("useLifecyclePlayCard enables lifecycle layout on all lanes", () => {
+    assert.equal(useLifecyclePlayCard(base), true);
+    assert.equal(useLifecyclePlayCard({ ...base, horizon: "SWING" }), true);
+    assert.equal(useLifecyclePlayCard({ ...base, horizon: "LEGACY" }), true);
   });
 });

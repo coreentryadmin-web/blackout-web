@@ -150,6 +150,8 @@ export interface TerminalPlay {
   /** ISO instant the scanner first surfaced this name (setup.first_seen) — the WATCH "Published"
    *  clock. Null when the board never carried a detection time. */
   detectedAt?: string | null;
+  /** ISO instant capital was committed (swing ledger committed_at). Null when unknown. */
+  committedAt?: string | null;
 
   /** Timeline replay — engine exit + reconstructed tranches (0DTE only, never fabricated). */
   closedReason?: string | null;
