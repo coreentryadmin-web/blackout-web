@@ -302,6 +302,18 @@ now includes 503.
 
 **Status.** **Merged** PR #1468.
 
+## 2026-08-03 — [spx] Post-close fix agent — all validators GREEN (~6:10 PM ET)
+
+**Severity:** — (no product defect)
+
+**Session:** SPX Slayer post-close fix agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` Step 6 (Cloud Agent `cursor/spx-post-close-findings-1080`).
+
+**Evidence.** `npm run validate:spx-rth -- --phase=post-close` → 6 PASS / 1 WARN / 0 FAIL; `npm run validate:spx-e2e` → 0 FAIL / 17 checks; `npm run validate:deploy` → GREEN. Matrix oracle: 167 strikes GEX+VEX+DEX+CHARM finite; cross-endpoint spot merged=7600.5 hm=7600.5; play SCANNING with no stale confirmations; BIE `getSpxPlayState()` consistent; cross-tool integration (Thermal, HELIX, Largo, Grid, 0DTE, Night Hawk) all PASS.
+
+**Harness fix.** P2 `SPX-RTH-E2E-HERO`: E2E still probed removed `.spx-trade-alert-hero` — updated to `.spx-play-verdict-bar` (`SpxPlayVerdictBar`) with SCANNING/HUNTING stale-confirmation guard.
+
+**Status.** `fix/spx-e2e-verdict-bar-selector` → PR.
+
 ## 2026-08-03 — [spx] Post-close fix agent — all validators GREEN (~1:14 PM PT / 4:14 PM ET)
 
 **Severity:** — (no product defect)

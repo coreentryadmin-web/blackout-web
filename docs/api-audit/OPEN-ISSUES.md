@@ -1,5 +1,39 @@
 # BlackOut Open Issues Log
-Last updated: 2026-08-03 17:55 ET
+Last updated: 2026-08-03 18:12 ET
+
+## spx-rth-2026-08-03-post-close-evening — SPX Slayer post-close fix agent (~6:10 PM ET)
+
+**Session:** SPX Slayer post-close fix agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` Step 6 (Cloud Agent `cursor/spx-post-close-findings-1080`). Commands: `npm run validate:spx-rth -- --phase=post-close` → `npm run validate:spx-e2e` → `npm run validate:deploy`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth -- --phase=post-close` | ✅ **6 PASS / 1 WARN / 0 FAIL** |
+| `npm run validate:spx-e2e` | ✅ **0 FAIL / 17 checks** — matrix 167 strikes GEX+VEX+DEX+CHARM, GEX/VEX tab clicks, cross-tool integration |
+| `npm run validate:deploy` | ✅ **GREEN** — health/ready 200, desk-warm ok |
+
+**Matrix:** 167 strikes · spot 7600.5 · GEX+VEX+DEX+CHARM finite · Σ strike_totals == headline per lens.
+
+**Cross-endpoint:** desk merged=7600.5 · heatmap=7600.5 · play SCANNING/SCANNING — no stale confirmations.
+
+**Cross-tool:** Thermal cross-validation PASS · HELIX 30 prints · Largo `blackout_intelligence` · Grid bootstrap · 0DTE 7 setups · Night Hawk edition · BIE `getSpxPlayState()` consistent.
+
+### Findings table (`spx-rth-2026-08-03`)
+
+| Severity | ID | Detail | Fix defer? |
+|---|---|---|---|
+| — | — | **No P0/P1 product defects** | all suites GREEN |
+| INFO | ENV-NODE-MODULES | Initial run failed on missing `node_modules` (tsx/playwright/pg) | Resolved via `npm install` — environment only |
+| P2 | SPX-RTH-CRON-SECRET | `spx:data-correctness` WARN — CRON_SECRET auth mismatch on sync poll | Yes — prod cron authoritative |
+| P2 | SPX-RTH-BIE-CRON | `integration:bie-play-route` WARN — cron play HTTP 401 | Yes — member `/spx/play` PASS via BIE validator |
+| P2 | SPX-RTH-E2E-HERO | E2E probed removed `.spx-trade-alert-hero` | **Fixed** — `fix/spx-e2e-verdict-bar-selector` probes `.spx-play-verdict-bar` |
+
+**Post-close status: GREEN** — zero FAIL on `validate:spx-rth` and `validate:spx-e2e`.
+
+**Reports:** `audit-output/spx-rth-2026-08-03-post-close-1785795012212.json`, `audit-output/spx-dashboard-e2e-1785795024711.json`
+
+---
 
 ## spx-rth-2026-08-03 — SPX Slayer RTH verify agent (market-open schedule / evening pass)
 
