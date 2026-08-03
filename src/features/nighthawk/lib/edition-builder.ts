@@ -31,7 +31,17 @@ import { fetchMarketWideContext, type MarketWideContext } from "./market-wide";
 import { critiquePlays } from "./play-critic";
 import { rankCandidates, regimeContextFromMarket, type ScoredCandidate } from "./scorer";
 import { rescoreDossier } from "./hunt-builder";
-import { DOSSIER_BATCH_SIZE, EDITION_MIN_PUBLISH_PLAYS, EDITION_SYNTHESIS_POOL, EDITION_TARGET_PLAYS, MAX_CANDIDATES, MAX_DOSSIER_STOCKS, MIN_PUBLISH_SCORE } from "./constants";
+import { DOSSIER_BATCH_SIZE, MAX_CANDIDATES, MAX_DOSSIER_STOCKS } from "./constants";
+import {
+  criticRescueEnabled,
+  effectiveMinPublishPlays,
+  effectiveMinPublishScore,
+  effectiveSynthesisPool,
+  effectiveTargetPlays,
+  filterPlaysByMerit,
+  gatePromoteEnabled,
+  thinEditionBackfillEnabled,
+} from "./edition-quality";
 import { backfillThinEditionPlays } from "./play-backfill";
 import { buildNighthawkPublishContexts } from "./publish-context";
 import {
@@ -723,7 +733,7 @@ export async function buildEveningEdition(opts?: {
     funnel.posture_applied = ranked.length;
 
     const topDossiers = ranked.map((s) => dossiers[s.ticker]).filter(Boolean);
-    const synthesisRanked = ranked.slice(0, EDITION_SYNTHESIS_POOL);
+    const synthesisRanked = ranked.slice(0, effectiveSynthesisPool());
     const synthesisDossiers = synthesisRanked.map((s) => dossiers[s.ticker]).filter(Boolean);
     funnel.dossiers = synthesisDossiers.length;
 
@@ -795,7 +805,7 @@ export async function buildEveningEdition(opts?: {
     let groundingSummary: { grounded: number; dropped_ungrounded: number; flagged: number; notes: string[] } | null = null;
 
     if (checkpointedSynthesis && Array.isArray(checkpointedSynthesis.plays) && checkpointedSynthesis.plays.length) {
-      finalPlays = checkpointedSynthesis.plays.slice(0, EDITION_TARGET_PLAYS).map((p, i) => ({
+      finalPlays = checkpointedSynthesis.plays.slice(0, effectiveTargetPlays()).map((p, i) => ({
         ...p,
         rank: i + 1,
       }));
@@ -871,15 +881,15 @@ export async function buildEveningEdition(opts?: {
         ctx,
       });
 
-      finalPlays = vettedPlays.slice(0, EDITION_TARGET_PLAYS).map((p, i) => ({ ...p, rank: i + 1 }));
+      finalPlays = vettedPlays.slice(0, effectiveTargetPlays()).map((p, i) => ({ ...p, rank: i + 1 }));
       finalCriticNotes = criticNotes;
       funnel.critic_passed = finalPlays.length;
-      if (!finalPlays.length) {
+      const meritFloor = effectiveMinPublishScore();
+      if (!finalPlays.length && criticRescueEnabled()) {
         // Critic zeroed — promote only raw plays that clear the organic score floor.
-        // Was: promote anything to avoid empty books → shipped score-20 filler.
-        const rescue = rawPlays.filter((p) => (p.score ?? 0) >= MIN_PUBLISH_SCORE);
+        const rescue = rawPlays.filter((p) => (p.score ?? 0) >= meritFloor);
         if (rescue.length) {
-          finalPlays = rescue.slice(0, EDITION_MIN_PUBLISH_PLAYS).map((p, i) =>
+          finalPlays = rescue.slice(0, effectiveMinPublishPlays()).map((p, i) =>
             capGatePromotedConviction({
               ...p,
               rank: i + 1,
@@ -889,7 +899,7 @@ export async function buildEveningEdition(opts?: {
           );
           funnel.critic_passed = finalPlays.length;
           console.info(
-            `[nighthawk/edition] critic zeroed — promoted ${finalPlays.length} score≥${MIN_PUBLISH_SCORE} raw plays with gate warnings`
+            `[nighthawk/edition] critic zeroed — promoted ${finalPlays.length} score≥${meritFloor} raw plays with gate warnings`
           );
         }
         // If nothing clears the floor, fall through — publish gates / recap-only handle empty.
@@ -906,22 +916,32 @@ export async function buildEveningEdition(opts?: {
       }
     }
 
-    // STAGE 5b — Thin-edition backfill. When grounding/critic over-prune below the ops floor,
-    // top up from the ranked pool with chain-grounded affordable contracts (never fabricated quotes).
-    {
+    if (thinEditionBackfillEnabled()) {
       const { plays: toppedUp, notes: backfillNotes } = await backfillThinEditionPlays({
         finalPlays,
         ranked: synthesisRanked,
         dossiers,
       });
       if (backfillNotes.length) {
-        finalPlays = toppedUp.slice(0, EDITION_TARGET_PLAYS).map((p, i) => ({ ...p, rank: i + 1 }));
+        finalPlays = toppedUp.slice(0, effectiveTargetPlays()).map((p, i) => ({ ...p, rank: i + 1 }));
         finalCriticNotes = [...finalCriticNotes, ...backfillNotes];
         funnel.critic_passed = finalPlays.length;
         console.info(
           `[nighthawk/edition] thin-edition backfill — ${finalPlays.length} play(s) after ranked-pool top-up`
         );
       }
+    }
+
+    // MERIT FILTER — global strongest: drop sub-tier / sub-score plays before publish gates.
+    {
+      const { plays: meritPlays, dropped } = filterPlaysByMerit(finalPlays, dossiers, ranked);
+      if (dropped.length) {
+        console.info(
+          `[nighthawk/edition] merit filter dropped: ${dropped.map((d) => `${d.ticker} (${d.reason})`).join("; ")}`
+        );
+      }
+      finalPlays = meritPlays;
+      funnel.critic_passed = finalPlays.length;
     }
 
     // STAGE 6 — Publish
@@ -979,8 +999,8 @@ export async function buildEveningEdition(opts?: {
       // Precision (2026-07-29): only promote when BELOW the ops minimum (3), never to
       // pad out to 5. Filling 3→5 with gate_promoted plays was how weak hedges/filler
       // reached members next to one real name (live AMZN@49 + AI@26 + SNDQ@20).
-      if (finalPlays.length < EDITION_MIN_PUBLISH_PLAYS && blocked.length) {
-        const need = EDITION_MIN_PUBLISH_PLAYS - finalPlays.length;
+      if (gatePromoteEnabled() && finalPlays.length < effectiveMinPublishPlays() && blocked.length) {
+        const need = effectiveMinPublishPlays() - finalPlays.length;
         const promoted = promoteTopBlocked(blocked, need);
         if (promoted.length) {
           const startRank = finalPlays.length + 1;
@@ -990,14 +1010,16 @@ export async function buildEveningEdition(opts?: {
           ];
           funnel.critic_passed = finalPlays.length;
           console.info(
-            `[nighthawk/edition] publish gates left ${finalPlays.length - promoted.length} play(s) — promoted ${promoted.length} score-qualified best-available to reach min ${EDITION_MIN_PUBLISH_PLAYS} ` +
+            `[nighthawk/edition] publish gates left ${finalPlays.length - promoted.length} play(s) — promoted ${promoted.length} score-qualified best-available to reach min ${effectiveMinPublishPlays()} ` +
             `(${blocked.length} total blocked: ${blocked.map((b) => `${b.ticker}:${b.result.blocks.map((x) => x.code).join(",")}`).join("; ")})`
           );
         }
       }
       if (!finalPlays.length) {
         // Gates zeroed everything — promote up to the ops minimum with score floor, else recap.
-        const promoted = promoteTopBlocked(blocked, EDITION_MIN_PUBLISH_PLAYS);
+        const promoted = gatePromoteEnabled()
+          ? promoteTopBlocked(blocked, effectiveMinPublishPlays())
+          : [];
         if (promoted.length) {
           finalPlays = promoted;
           funnel.critic_passed = finalPlays.length;
