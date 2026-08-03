@@ -1,5 +1,42 @@
 # BlackOut Open Issues Log
-Last updated: 2026-08-03 17:45 ET
+Last updated: 2026-08-03 17:55 ET
+
+## spx-rth-2026-08-03 — SPX Slayer RTH verify agent (market-open pass, ~6:30 AM PT schedule)
+
+**Session:** SPX Slayer all-day **verify** mode per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` (Cloud Agent `cursor/spx-rth-system-verification-5499`). Actual run **Mon 17:40 ET** (post-close — orchestrator used `--force`). Commands: `npm run validate:spx-rth -- --force` → `npm run validate:spx-e2e`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth -- --force` | ✅ **7 PASS / 1 WARN / 0 FAIL** |
+| `npm run validate:spx-e2e` | ✅ **0 FAIL / 17 checks** — matrix 167 strikes GEX+VEX+DEX+CHARM, GEX/VEX tab clicks, cross-tool integration |
+| Step 4 live auto-update (60s) | ⏭️ **SKIP** — outside RTH; no tick expected post-close |
+
+**Matrix:** 167 strikes · spot 7600.5 · GEX+VEX+DEX+CHARM finite · Σ strike_totals == headline per lens · every cell audited via API.
+
+**Cross-endpoint:** merged=7600.5 · heatmap=7600.5 · play SCANNING/SCANNING — **no stale confirmations** on API.
+
+**UI clicks:** GEX tab ✅ · VEX tab ✅ · matrix 167 rows ✅ · zero NaN/undefined in matrix text ✅ · zero console errors ✅.
+
+**Cross-tool (Step 3):** Thermal cross-validation PASS · HELIX 30 prints · Largo `blackout_intelligence` · Grid bootstrap · 0DTE 7 setups · Night Hawk edition · BIE `getSpxPlayState()` consistent · desk=7600.5 play=SCANNING.
+
+### Findings table (`spx-rth-2026-08-03`)
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| — | — | **No P0/P1 product defects** | all suites GREEN | — |
+| INFO | ENV-NODE-MODULES | Initial orchestrator FAIL on missing `node_modules` (tsx/playwright/pg) | harness env | Resolved via `npm install` |
+| P2 | SPX-RTH-CRON-SECRET | `spx:data-correctness` WARN — CRON_SECRET auth mismatch on sync poll | `/api/cron/data-correctness` | Yes — prod cron authoritative |
+| P2 | SPX-RTH-BIE-CRON | `integration:bie-play-route` WARN — cron play HTTP 401 | cron bearer vs member route | Yes — `validate:spx-bie` PASS |
+| P2 | SPX-RTH-E2E-HERO | E2E harness still probes removed `.spx-trade-alert-hero` (desk consolidated to `SpxPlayVerdictBar`) | UI harness | Yes — API play/SCANNING checks PASS |
+| INFO | SPX-RTH-OFFHOURS | `spx:desk-lanes` SKIP · commentary expand SKIP (`live=false` post-close) · live-badge SKIP | off-hours expected | — |
+
+**Verify status: GREEN** — zero FAIL. No P0 fixes required.
+
+**Reports:** `audit-output/spx-rth-2026-08-03-verify-1785793539994.json`, `audit-output/spx-dashboard-e2e-1785793623310.json`
+
+---
 
 ## grid-rth-2026-08-03-evening — 0DTE Command RTH verify agent (~2:41 PM PT / 5:41 PM ET)
 
