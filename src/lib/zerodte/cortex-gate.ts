@@ -45,6 +45,7 @@ import {
   composeCortexEvidence,
   fetchCortexInputs,
   CORTEX_SOURCES,
+  CONVICTION_A_MIN_SCORE,
   VETO_CAPABLE_SOURCES,
   type CortexConviction,
   type CortexDirection,
@@ -71,7 +72,7 @@ export const THIN_EVIDENCE_MIN_SOURCES = 2;
 export const THIN_EVIDENCE_SCORE_FLOOR = 0.5;
 
 /** What the Cortex layer decided about a gate-surviving find. */
-export type ZeroDteCortexDecision = "PASS" | "VETO" | "VETO_BLIND" | "NET_NEGATIVE" | "ABSTAIN";
+export type ZeroDteCortexDecision = "PASS" | "VETO" | "VETO_BLIND" | "NET_NEGATIVE" | "CONTESTED" | "ABSTAIN";
 
 /** Rejection code for the veto-blind firewall block (mirrors board.ts's ZeroDteGateFailure). */
 export const CORTEX_VETO_BLIND_CODE = "cortex_veto_blind" as const;
@@ -86,7 +87,7 @@ export const CORTEX_VETO_BLIND_CODE = "cortex_veto_blind" as const;
 export type ZeroDteCortexAssessment =
   | { decision: "ABSTAIN"; abstained: true; reason: string }
   | { decision: "VETO_BLIND"; abstained: false; verdict: CortexVerdict; reason: string }
-  | { decision: "PASS" | "VETO" | "NET_NEGATIVE"; abstained: false; verdict: CortexVerdict };
+  | { decision: "PASS" | "VETO" | "NET_NEGATIVE" | "CONTESTED"; abstained: false; verdict: CortexVerdict };
 
 /** Signed score rendering ("+1.85" / "-0.6" / "0") — matches compose.ts's narrative. */
 function fmtSigned(v: number): string {
@@ -180,6 +181,19 @@ export function assessCortexVerdict(
 
   if (verdict.score < 0) return { decision: "NET_NEGATIVE", abstained: false, verdict };
 
+  // NH-R9 contested gate: verdict.contested means both a real support case AND a
+  // real oppose case are on the table (compose.ts CONTESTED_MIN_MAGNITUDE on both
+  // sides) — a genuine internal disagreement, not a quiet composite. Score alone
+  // can't tell these apart: +2.0 support / -1.9 oppose nets to +0.1, identical to
+  // two nearly-silent sources idling at +0.1/0. Below the A floor that fight isn't
+  // resolved decisively enough to trust — BLOCK rather than let a contested wash
+  // pass as if nothing argued against it. At/above CONVICTION_A_MIN_SCORE the
+  // support side has already won decisively enough that residual opposition is
+  // expected noise, not a live contest — that band still PASSes.
+  if (verdict.contested && verdict.score < CONVICTION_A_MIN_SCORE) {
+    return { decision: "CONTESTED", abstained: false, verdict };
+  }
+
   // Thin-evidence gate: few sources answered → require a meaningful positive
   // score, not just a bare non-negative. The number of answering sources is
   // total minus absent (each absent source is listed by ID in verdict.absent).
@@ -223,6 +237,27 @@ export function cortexGateBlocks(assessment: ZeroDteCortexAssessment | null): Ze
       })
     );
   }
+  if (assessment.decision === "CONTESTED") {
+    // CONTESTED — one block; unlike NET_NEGATIVE (which only ever cites the
+    // opposing side, since a negative score means opposition dominates), this
+    // reason cites BOTH sides — the whole point is that support was real too, not
+    // just noise the net score hid.
+    const supports = topEvidenceLines(assessment.verdict.supports, 3);
+    const opposes = topEvidenceLines(assessment.verdict.opposes, 3);
+    return [
+      {
+        code: "cortex_contested",
+        reason:
+          `Cortex evidence is contested, not clean: real support and real opposition are ` +
+          `both on the table (net ${fmtSigned(assessment.verdict.score)}, below the ` +
+          `${CONVICTION_A_MIN_SCORE} decisive floor) — a gate-passing setup does not print on an ` +
+          `unresolved internal disagreement. Supporting: ${supports.join(" ")} Opposing: ${opposes.join(" ")}`,
+        threshold: CONVICTION_A_MIN_SCORE,
+        unlock_et: null,
+      },
+    ];
+  }
+
   // NET_NEGATIVE — one block; the threshold is the 0 floor the score was judged
   // against, and the reason carries the top opposing evidence so the SKIP card
   // argues the block instead of just asserting it.
@@ -247,7 +282,7 @@ export type ZeroDteCortexSummary =
   | { abstained: true; reason: string }
   | {
       abstained: false;
-      decision: "PASS" | "VETO" | "VETO_BLIND" | "NET_NEGATIVE";
+      decision: "PASS" | "VETO" | "VETO_BLIND" | "NET_NEGATIVE" | "CONTESTED";
       score: number;
       conviction: CortexConviction;
       /** Every veto as a "[source] detail" line (empty when clear). */
@@ -284,7 +319,7 @@ export type ZeroDteCortexEntryContext =
   | { abstained: true; reason: string }
   | {
       abstained: false;
-      decision: "PASS" | "VETO" | "VETO_BLIND" | "NET_NEGATIVE";
+      decision: "PASS" | "VETO" | "VETO_BLIND" | "NET_NEGATIVE" | "CONTESTED";
       as_of: string;
       score: number;
       conviction: CortexConviction;

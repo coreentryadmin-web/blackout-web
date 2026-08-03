@@ -189,7 +189,7 @@ function cortexScore(blob: Record<string, unknown> | null | undefined): { score:
   if (blob.abstained === true) return { score: 0.5, label: "abstained" };
   const decision = String(blob.decision ?? "");
   const score = fin(blob.score);
-  if (decision === "VETO" || decision === "VETO_BLIND" || decision === "NET_NEGATIVE") {
+  if (decision === "VETO" || decision === "VETO_BLIND" || decision === "NET_NEGATIVE" || decision === "CONTESTED") {
     return { score: 0, label: `${decision}` };
   }
   if (score == null) return null;
