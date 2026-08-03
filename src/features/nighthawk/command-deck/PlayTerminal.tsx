@@ -855,12 +855,12 @@ function TimeStopClock({ nowMs }: { nowMs: number }) {
 }
 
 function PnlPanel({ play }: { play: TerminalPlay }) {
+  const markFlash = useFlash(play.mark ?? play.pnlPct ?? null);
   if (play.horizon === "LEGACY") return <LegacyPnlPanel play={play} />;
   const premium = isZeroDtePremiumTerminal(play);
   const has = play.entry != null;
   const live = play.pnlPct;
   const exec = play.execPnlPct;
-  const markFlash = useFlash(play.mark ?? play.pnlPct ?? null);
   return (
     <>
       {premium && has && (
