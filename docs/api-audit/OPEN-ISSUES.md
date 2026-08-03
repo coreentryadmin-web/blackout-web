@@ -1,5 +1,5 @@
 # BlackOut Open Issues Log
-Last updated: 2026-08-03 17:46 ET
+Last updated: 2026-08-03 17:55 ET
 
 ## spx-rth-2026-08-03 — SPX Slayer RTH verify agent (market-open pass, ~6:30 AM PT schedule)
 
@@ -35,6 +35,42 @@ Last updated: 2026-08-03 17:46 ET
 **Verify status: GREEN** — zero FAIL. No P0 fixes required.
 
 **Reports:** `audit-output/spx-rth-2026-08-03-verify-1785793539994.json`, `audit-output/spx-dashboard-e2e-1785793623310.json`
+
+---
+
+## grid-rth-2026-08-03-evening — 0DTE Command RTH verify agent (~2:41 PM PT / 5:41 PM ET)
+
+**Session:** Autonomous Grid RTH **verify** mode per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md`. Commands: `npm run validate:grid-rth -- --force` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e` (+ `nighthawk-prod-check.mjs`, Playwright Night Hawk segment tabs).
+
+**Note:** Classic `/grid` page + 9 `/api/grid/*` routes deleted 2026-07-07 — returns **404**. 0DTE Command lives on `/nighthawk` with four view tabs (0DTE / Swings / LEAPS / Legacy), not deleted Grid panels.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `validate:grid-rth -- --force` | ✅ **13/13 PASS** (0 FAIL) — upstream, session heat CLOSED, ledger PnL 2 rows, SPX spot 7600.5 vs GEX, HELIX 20 prints, logic + integration, data-correctness flags=0, ops:collect zero items |
+| `validate:zerodte-logic` | ✅ **17/17 PASS** — gates, plan exits (-50%/+100%/15:30 ET), lifecycle OPEN→TRIM→CLOSED, mergePlays SKIP past cutoff/MOVED, session heat RTH→POST_COMMIT→POWER_HOUR, live board 8 setups / 2 ledger, cutoff 14:00 ET |
+| `validate:grid-e2e` | ✅ **5/5 PASS** — board API 8/2, HELIX 20 prints, Playwright `/nighthawk` load, zero console errors |
+| `nighthawk-prod-check` | ✅ **9/9 PASS** — horizons API zerodte/swings/leaps, toggle build deployed, command deck markup |
+| Night Hawk UI segments | ✅ **0DTE / Swings / LEAPS / Legacy** — all tabs click + deck renders (Playwright `role=tab`) |
+| `/grid` routing | ✅ **404** — intentional (classic Market Grid removed) |
+
+**Verify status: GREEN** — zero FAIL on all three Grid harnesses. No P0 product defects.
+
+### Findings table (`grid-rth-2026-08-03-evening`)
+
+| Severity | ID | Detail | Fix defer? |
+|---|---|---|---|
+| — | — | **No P0/P1 product defects** | all Grid suites GREEN |
+| INFO | GRID-RTH-ROUTING-01 | `/grid` returns 404 — classic Market Grid deleted; 0DTE Command on `/nighthawk` | N/A — intentional |
+| P2 | GRID-RTH-ENV-03 | Initial orchestrator FAIL on missing `node_modules` (pg/react/playwright) in cloud agent | Yes — `npm install` + `npx playwright install chromium` |
+| P2 | GRID-RTH-CRON-WARM-504 | `cron:zerodte-warm` WARN — HTTP 504 at post-close (gateway timeout on background warm) | Yes — off-hours; prod cron authoritative during RTH |
+
+### Reports
+
+- `audit-output/grid-rth-2026-08-03-verify-1785793455955.json`
+- `audit-output/zerodte-logic-1785793460450.json`
+- `audit-output/grid-e2e-1785793466631.json`
 
 ---
 
