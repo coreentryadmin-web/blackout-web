@@ -16116,6 +16116,23 @@ body::before {
 .nh-deck-row-enhanced{padding:13px 14px;align-items:flex-start}
 .nh-deck-row-body{display:flex;flex-direction:column;gap:5px;min-width:0}
 .nh-deck-row-head{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.nh-deck-row-enhanced .nh-deck-row-head .nh-deck-tk{font-size:13px;font-weight:700;color:var(--dk-cyan)}
+.nh-deck-row-enhanced .nh-deck-row-head .nh-deck-dp{font-size:9px}
+.nh-deck-row-meta{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.nh-deck-row-enhanced .nh-deck-row-meta .nh-deck-tk{font-size:12px;font-weight:700;color:var(--dk-cyan)}
+.nh-deck-row-enhanced .nh-deck-row-meta .nh-deck-dp{font-size:9px;opacity:.9}
+/* Rank lead — #N, grade, stars replace ticker as the primary scan target */
+.nh-deck-rk-wrap.nh-deck-rank-lead{width:52px;height:auto;min-height:52px;align-self:stretch;
+  flex-direction:column;justify-content:center;padding:2px 0}
+.nh-deck-rank-stack{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  position:relative;z-index:1;text-align:center;line-height:1.1}
+.nh-deck-rank-num{font-size:11px;font-weight:800;letter-spacing:.06em;color:var(--dk-cyan);font-variant-numeric:tabular-nums}
+.nh-deck-rank-num-hero{font-size:13px;margin-bottom:2px}
+.nh-deck-grade-lead{font-size:17px;font-weight:800;color:var(--dk-green-hi);letter-spacing:.04em;
+  text-shadow:var(--dk-glow);line-height:1}
+.nh-deck-grade-lead.dim{color:var(--dk-cyan);opacity:.65;font-size:14px;text-shadow:none}
+.nh-deck-grade-stars-lead{font-size:10px;color:var(--dk-cyan);letter-spacing:-.02em;line-height:1;
+  white-space:nowrap}
 .nh-deck-grade-inline{font-size:12px;font-weight:800;color:var(--dk-green-hi);padding:1px 6px;border-radius:3px;
   border:1px solid rgba(53,255,158,.45);letter-spacing:.04em;text-shadow:var(--dk-glow)}
 .nh-deck-quality-inline{font-size:11px;font-weight:700;color:var(--dk-cyan);font-variant-numeric:tabular-nums}

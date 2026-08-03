@@ -346,6 +346,48 @@ function HealthRing({ health, rung }: { health: number; rung: string }) {
   );
 }
 
+/** Visible rank identity for 0DTE rows — #N, letter grade, star row (never fabricated). */
+function PlayRankLead({
+  rank,
+  grade,
+  compact = false,
+}: {
+  rank: number;
+  grade: string | null;
+  /** Compact left-rail stack vs hero-grade block. */
+  compact?: boolean;
+}) {
+  const stars = grade ? tierStars(grade) : "";
+  if (compact) {
+    return (
+      <span className="nh-deck-rank-stack" aria-label={grade ? `Rank ${rank}, grade ${grade}` : `Rank ${rank}`}>
+        <span className="nh-deck-rank-num">#{rank}</span>
+        {grade ? (
+          <>
+            <span className="nh-deck-grade-lead">{grade}</span>
+            {stars && <span className="nh-deck-grade-stars nh-deck-grade-stars-lead" aria-hidden>{stars}</span>}
+          </>
+        ) : (
+          <span className="nh-deck-grade-lead dim">—</span>
+        )}
+      </span>
+    );
+  }
+  return (
+    <>
+      <span className="nh-deck-rank-num nh-deck-rank-num-hero">#{rank}</span>
+      {grade ? (
+        <>
+          <span className="nh-deck-grade-badge">{grade}</span>
+          {stars && <span className="nh-deck-grade-stars" aria-hidden>{stars}</span>}
+        </>
+      ) : (
+        <span className="nh-deck-grade-badge dim">—</span>
+      )}
+    </>
+  );
+}
+
 /** One left-pane play card. Wave 2 surfaces the tier + discovery-origin badges, the mid mark + its
  *  executable-fill P&L, and honest staleness (dim + age) — all reading the Wave-1 payload fields.
  *
@@ -404,12 +446,7 @@ export const PlayCard = memo(function PlayCard({
         )}
         <div className="nh-deck-hero-top">
           <div className="nh-deck-hero-grade">
-            {grade ? (
-              <span className="nh-deck-grade-badge">{grade}</span>
-            ) : (
-              <span className="nh-deck-grade-badge dim">—</span>
-            )}
-            {grade && <span className="nh-deck-grade-stars" aria-hidden>{tierStars(grade)}</span>}
+            <PlayRankLead rank={rank} grade={grade} />
             {quality != null && (
               <span className="nh-deck-quality">
                 Confidence <b>{quality}%</b>
@@ -472,24 +509,41 @@ export const PlayCard = memo(function PlayCard({
       onClick={() => onSelect(p.id)}
       aria-current={selected}
     >
-      <span className="nh-deck-rk-wrap">
+      <span className={clsx("nh-deck-rk-wrap", enhanced && "nh-deck-rank-lead")}>
         {showThRing && (
           <HealthRing health={p.thesisHealth!.health} rung={p.thesisHealth!.rungLabel} />
         )}
-        <span className="nh-deck-rk">{rank}</span>
+        {enhanced ? (
+          <PlayRankLead rank={rank} grade={grade} compact />
+        ) : (
+          <span className="nh-deck-rk">{rank}</span>
+        )}
       </span>
       <span className="nh-deck-row-body">
-        <span className="nh-deck-row-head">
-          <span className="nh-deck-tk">{p.ticker}</span>
-          <span className={clsx("nh-deck-dp", p.direction === "LONG" ? "long" : "short")}>
-            {p.direction}
-          </span>
-          {enhanced && grade && <span className="nh-deck-grade-inline">{grade}</span>}
-          {enhanced && quality != null && (
-            <span className="nh-deck-quality-inline">{quality}%</span>
-          )}
-        </span>
-        <span className="nh-deck-sub">{p.contract}</span>
+        {enhanced ? (
+          <>
+            <span className="nh-deck-row-meta">
+              <span className="nh-deck-tk">{p.ticker}</span>
+              <span className={clsx("nh-deck-dp", p.direction === "LONG" ? "long" : "short")}>
+                {p.direction}
+              </span>
+              {quality != null && (
+                <span className="nh-deck-quality-inline">{quality}%</span>
+              )}
+            </span>
+            <span className="nh-deck-sub">{p.contract}</span>
+          </>
+        ) : (
+          <>
+            <span className="nh-deck-row-head">
+              <span className="nh-deck-tk">{p.ticker}</span>
+              <span className={clsx("nh-deck-dp", p.direction === "LONG" ? "long" : "short")}>
+                {p.direction}
+              </span>
+            </span>
+            <span className="nh-deck-sub">{p.contract}</span>
+          </>
+        )}
         {enhanced && <span className="nh-deck-row-divider" aria-hidden />}
         <span className="nh-deck-cardbadges">
           <span className={clsx("nh-deck-st", p.status)}>{p.status}</span>

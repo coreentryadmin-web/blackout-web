@@ -67,16 +67,28 @@ test("open row still shows MID not Peak Return", async () => {
   assert.match(html, />MID</);
 });
 
-test("0DTE compact row shows grade and quality on the left", async () => {
-  const html = await render(play({ tierLabel: "A+", score: 96 }), { selected: false });
+test("0DTE compact row leads with rank, grade, and stars", async () => {
+  const html = await render(play({ tierLabel: "A+", score: 96 }), { selected: false, rank: 1 });
+  assert.match(html, /nh-deck-rank-lead/);
+  assert.match(html, />#1</);
   assert.match(html, />A\+</);
+  assert.match(html, /★{5}/);
   assert.match(html, />96%/);
+});
+
+test("0DTE compact row demotes ticker below rank lead", async () => {
+  const html = await render(play({ tierLabel: "A+" }), { selected: false, rank: 1 });
+  const rankIdx = html.indexOf("#1");
+  const metaIdx = html.indexOf(">META<");
+  assert.ok(rankIdx >= 0 && metaIdx > rankIdx, "rank should appear before ticker in markup");
+  assert.doesNotMatch(html, /nh-deck-row-head/);
 });
 
 test("selected 0DTE row renders hero card with banner when rank 1", async () => {
   const html = await render(play(), { selected: true, rank: 1 });
   assert.match(html, /nh-deck-row-hero/);
   assert.match(html, />BEST PLAY TODAY</);
+  assert.match(html, />#1</);
   assert.match(html, />Confidence/);
   assert.match(html, />Tap to inspect/);
 });
