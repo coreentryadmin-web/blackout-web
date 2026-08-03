@@ -58,6 +58,25 @@ test("Play timeline tab renders for 0DTE horizon", async () => {
   assert.match(html, />Timeline</);
 });
 
+test("premium thesis panels render for 0DTE", async () => {
+  const html = await render(
+    play({
+      tierLabel: "A",
+      thesisHealth: {
+        health: 82,
+        currentIndex: 92,
+        advisory: "Thesis intact",
+        pillars: [{ id: "flow", label: "Flow", status: "intact" }],
+        committedAtEt: "10:15",
+      },
+    }),
+  );
+  assert.match(html, /nh-deck-conviction/);
+  assert.match(html, /Thesis Strength/);
+  assert.match(html, /Confluence/);
+  assert.match(html, /Engine Checklist/);
+});
+
 test("Play timeline tab absent on Legacy horizon", async () => {
   const html = await render(play({ horizon: "LEGACY" }));
   assert.doesNotMatch(html, />Timeline</);

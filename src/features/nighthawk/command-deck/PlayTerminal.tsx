@@ -15,6 +15,16 @@ import { markStreamKind } from "./deck-session-ui";
 import { ThesisHealthPanel } from "./ThesisHealthPanel";
 import { PlayTimelinePanel } from "./PlayTimelinePanel";
 import { useSecondTick, useFlash } from "./use-deck-live";
+import { isZeroDtePremiumTerminal } from "./terminal-display";
+import {
+  ConvictionHero,
+  ConfluenceGrid,
+  EngineChecklistPanel,
+  ManagementActionCard,
+  ThesisStrengthBlock,
+  TradeOutcomePanel,
+  VisualTrimLadder,
+} from "./TerminalPremiumPanels";
 
 type Tab = "thesis" | "manage" | "pnl" | "timeline";
 
@@ -354,6 +364,7 @@ function ThesisPanel({ play, sessionClosed = false }: { play: TerminalPlay; sess
   const topFactors = play.factors.slice(0, 2);
   const moreFactors = play.factors.slice(2);
   const hasThesisHealth = play.horizon === "ZERO_DTE" && play.thesisHealth != null;
+  const premium = isZeroDtePremiumTerminal(play);
   const isWorking =
     play.status === "OPEN" || play.status === "HOLD" || play.status === "TRIM";
   const monitorTitle =
@@ -465,7 +476,15 @@ function ThesisPanel({ play, sessionClosed = false }: { play: TerminalPlay; sess
 
   return (
     <>
-      {hasThesisHealth && isWorking && !sessionClosed && (
+      {premium && (
+        <div className="nh-deck-premium-stack">
+          <ConvictionHero play={play} />
+          <ThesisStrengthBlock play={play} />
+          <ConfluenceGrid play={play} />
+          <EngineChecklistPanel play={play} />
+        </div>
+      )}
+      {hasThesisHealth && isWorking && !sessionClosed && !premium && (
         <ThesisHealthPanel health={play.thesisHealth!} liveRec={liveRec} />
       )}
       {hasThesisHealth ? (
@@ -517,6 +536,7 @@ function ManagePanel({ play, nowMs }: { play: TerminalPlay; nowMs: number }) {
       : play.exitModel === "PLAN" && play.recNote
         ? play.recNote
         : mgmt.recNote;
+  const premium = isZeroDtePremiumTerminal(play);
   // A CONDOR is a credit structure — its profit comes from decay/pin, NOT a rising long premium,
   // so it must never draw the directional trim ladder OR the −50/+100 ratchet track (both inverted).
   const isCondor = play.isCondor === true;
@@ -540,12 +560,24 @@ function ManagePanel({ play, nowMs }: { play: TerminalPlay; nowMs: number }) {
   })();
   return (
     <>
-      <div className="nh-deck-lab">Trade management — advisory (we recommend, you execute)</div>
-      <div className="nh-deck-rec">
-        <span className={clsx("nh-deck-recb", badge)}>{badge}</span>
-        {/* Plain text only — never inject HTML (recNote is authored plain; React escapes it safely). */}
-        <span className="nh-deck-recnote">{recNote}</span>
-      </div>
+      {premium && !isCondor && (
+        <div className="nh-deck-premium-stack">
+          <ManagementActionCard play={play} recommendation={badge} progress={mgmt.progress} />
+          <VisualTrimLadder play={play} />
+        </div>
+      )}
+      {!premium && (
+        <>
+          <div className="nh-deck-lab">Trade management — advisory (we recommend, you execute)</div>
+          <div className="nh-deck-rec">
+            <span className={clsx("nh-deck-recb", badge)}>{badge}</span>
+            <span className="nh-deck-recnote">{recNote}</span>
+          </div>
+        </>
+      )}
+      {premium && recNote && (
+        <div className="nh-deck-recnote nh-deck-premium-note">{recNote}</div>
+      )}
       {distLine && play.horizon === "ZERO_DTE" && !isCondor && (
         <div className="nh-deck-dist" title="Distance from live mark to the plan rails">
           <span className="k">Rails</span>
@@ -580,7 +612,7 @@ function ManagePanel({ play, nowMs }: { play: TerminalPlay; nowMs: number }) {
       {/* The REAL trim-scale ladder — each tranche with its trigger %, real premium level, and FIRED
           (banked) vs pending. Rendered only when the row's FROZEN policy is trim_scale (dormant under
           the prod ratchet default) AND it is not a condor. */}
-      {isTrimScale && <TrimScaleLadder play={play} />}
+      {isTrimScale && !premium && <TrimScaleLadder play={play} />}
 
       {/* Legacy entry plan — the recommended option contract + R:R ratio. */}
       {play.horizon === "LEGACY" && <LegacyEntryPlan play={play} />}
@@ -775,15 +807,21 @@ function TimeStopClock({ nowMs }: { nowMs: number }) {
 
 function PnlPanel({ play }: { play: TerminalPlay }) {
   if (play.horizon === "LEGACY") return <LegacyPnlPanel play={play} />;
+  const premium = isZeroDtePremiumTerminal(play);
   const has = play.entry != null;
   const live = play.pnlPct;
   const exec = play.execPnlPct;
   return (
     <>
-      <div className="nh-deck-lab">Live P&amp;L</div>
-      <div className={clsx("nh-deck-pnlbig", (live ?? 0) > 0 && "nh-deck-pos", (live ?? 0) < 0 && "nh-deck-neg")}>
-        {has && live != null ? `${live > 0 ? "+" : ""}${live.toFixed(1)}%` : "— not entered"}
-      </div>
+      {premium && has && <TradeOutcomePanel play={play} />}
+      {!premium && (
+        <>
+          <div className="nh-deck-lab">Live P&amp;L</div>
+          <div className={clsx("nh-deck-pnlbig", (live ?? 0) > 0 && "nh-deck-pos", (live ?? 0) < 0 && "nh-deck-neg")}>
+            {has && live != null ? `${live > 0 ? "+" : ""}${live.toFixed(1)}%` : "— not entered"}
+          </div>
+        </>
+      )}
       {exec != null && (
         <div className="nh-deck-execline">
           mid <b>{live != null ? `${live > 0 ? "+" : ""}${live.toFixed(1)}%` : "—"}</b>
