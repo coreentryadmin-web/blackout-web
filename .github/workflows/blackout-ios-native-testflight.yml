@@ -103,7 +103,7 @@ jobs:
       # Clean CPython avoids the macOS system-Python PEP 668 "externally-managed"
       # pip failure and puts app-store-connect / xcode-project / keychain on PATH.
       # (Same rationale as the WebView workflow.)
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
