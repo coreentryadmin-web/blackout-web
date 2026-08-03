@@ -1,5 +1,40 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-31 18:17 ET
+Last updated: 2026-08-03 16:51 ET
+
+## spx-rth-2026-08-03 — SPX Slayer all-day RTH verify agent (post-close ~1:48 PM PT / 4:48 PM ET)
+
+**Session:** SPX Slayer all-day RTH verification agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` **verify** mode. Commands: `npm run validate:spx-rth -- --force` → `npm run validate:spx-e2e` → 60s live UI check (`spx-live-check.mjs` FRAMES=2 INTERVAL_MS=60000).
+
+**Note:** Market closed (Mon 16:48 ET). `--force` used for full probe suite. Desk lanes SKIP (pulse/flow off-hours). LIVE badge SKIP (OFFLINE/EXTENDED expected post-close). Commentary expand SKIP (`live=false` hides toggle — correct).
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `validate:spx-rth -- --force` | ✅ **7 PASS / 1 WARN / 0 FAIL** |
+| `validate:spx-e2e` | ✅ **15 PASS / 2 SKIP / 1 WARN / 0 FAIL** — **167 UI rows** · **167 API strikes** |
+| Matrix deep audit (SPX) | ✅ Every GEX/VEX/DEX/CHARM cell finite; INV-2 |
+| Cross-endpoint spot/GEX | ✅ merged=7600.5 hm=7600.5 play=SCANNING/SCANNING |
+| Trade alerts | ✅ SCANNING — no stale ✓ confirmations |
+| BIE consistency | ✅ `getSpxPlayState()` single derivation |
+| Cross-tool integration | ✅ Thermal, HELIX (30 prints), Largo, Grid bootstrap, 0DTE (7 setups), Night Hawk PASS |
+| `ops:collect` | ✅ exit 0 — zero items |
+| 60s live UI check | ✅ signedInAll=true; spot values changed across frames (post-close static tape expected) |
+
+### Findings table (`spx-rth-2026-08-03`)
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| — | — | **No P0/P1 product defects** | all suites GREEN | — |
+| P2 | SPX-RTH-ENV-02 | Cloud-agent first pass failed on missing `node_modules` (tsx/playwright/pg) | harness env | Yes — `npm install` + `npx playwright install chromium` |
+| P2 | SPX-RTH-DC-02 | `CRON_SECRET` auth mismatch on data-correctness probe (HTTP 401) | `/api/cron/data-correctness` | Yes — cloud-agent env ≠ prod secret |
+| P2 | SPX-RTH-BIE-02 | BIE cron play route HTTP 401 in E2E (off-hours cron bearer) | `/api/cron/spx-evaluate` | Yes — env only |
+
+**Verify status: GREEN** — zero FAIL on `validate:spx-rth` and `validate:spx-e2e`. No P0 fixes required.
+
+**Reports:** `audit-output/spx-rth-2026-08-03-verify-1785790121668.json`, `audit-output/spx-dashboard-e2e-1785790133586.json`, `/opt/cursor/artifacts/spx-live-60s/report-2026-08-03.json`
+
+---
 
 ## grid-rth-2026-07-31-pass6 — 0DTE Command post-close fix agent (~3:17 PM PT / 6:17 PM ET)
 
