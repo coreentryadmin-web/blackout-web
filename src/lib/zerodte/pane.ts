@@ -72,9 +72,13 @@ export function readCortexVerdict(raw: unknown): CortexVerdictLike | null {
 /** The pane's normalized cortex state for one play/skip card. */
 export type PaneCortexView =
   | { abstained: true; reason: string }
-  | { abstained: false; decision: "PASS" | "VETO" | "VETO_BLIND" | "NET_NEGATIVE" | null; verdict: CortexVerdictLike };
+  | {
+      abstained: false;
+      decision: "PASS" | "VETO" | "VETO_BLIND" | "NET_NEGATIVE" | "CONTESTED" | null;
+      verdict: CortexVerdictLike;
+    };
 
-const CORTEX_DECISIONS = new Set(["PASS", "VETO", "VETO_BLIND", "NET_NEGATIVE"]);
+const CORTEX_DECISIONS = new Set(["PASS", "VETO", "VETO_BLIND", "NET_NEGATIVE", "CONTESTED"]);
 
 /**
  * Normalize either cortex shape (nested assessment / flattened entry-context blob)
@@ -98,7 +102,10 @@ export function readCortexView(raw: unknown): PaneCortexView | null {
       reason: `no Cortex source produced evidence (${verdict.absent.length} absent).`,
     };
   }
-  const decision = typeof a.decision === "string" && CORTEX_DECISIONS.has(a.decision) ? (a.decision as "PASS" | "VETO" | "VETO_BLIND" | "NET_NEGATIVE") : null;
+  const decision =
+    typeof a.decision === "string" && CORTEX_DECISIONS.has(a.decision)
+      ? (a.decision as "PASS" | "VETO" | "VETO_BLIND" | "NET_NEGATIVE" | "CONTESTED")
+      : null;
   return { abstained: false, decision, verdict };
 }
 

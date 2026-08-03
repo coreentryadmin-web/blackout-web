@@ -55,6 +55,32 @@ export const CORTEX_SOURCES = [
 export type CortexSourceId = (typeof CORTEX_SOURCES)[number];
 
 /**
+ * Signal families for the per-source support caps (design §0). Four of the eight
+ * sources — gex-walls, wall-trend, vex-charm, darkpool-confluence — all read the
+ * SAME underlying dealer options book (the GEX ladder, its lifecycle, its VEX/vanna
+ * tilt, and dark-pool prints confirming the same levels); they are correlated, not
+ * independent, corroboration. Per-source caps alone let all four line up and stack
+ * unbounded (NH-R11: "dealer-positioning sources can stack"). flow-quality reads a
+ * different evidentiary channel (order-flow prints) and the remaining three
+ * (sector-heat, catalyst-news, opening-harvest) are each a distinct, uncorrelated
+ * context read — so only "dealer-positioning" gets a family cap (compose.ts
+ * FAMILY_SUPPORT_CAPS); the other two families exist for completeness/documentation
+ * but carry no additional cap today.
+ */
+export type CortexSourceFamily = "dealer-positioning" | "order-flow" | "context";
+
+export const CORTEX_SOURCE_FAMILY: Record<CortexSourceId, CortexSourceFamily> = {
+  "gex-walls": "dealer-positioning",
+  "wall-trend": "dealer-positioning",
+  "vex-charm": "dealer-positioning",
+  "darkpool-confluence": "dealer-positioning",
+  "flow-quality": "order-flow",
+  "sector-heat": "context",
+  "catalyst-news": "context",
+  "opening-harvest": "context",
+};
+
+/**
  * The ONLY sources whose derive functions can emit a `veto` stance (the unbounded
  * hard-block channel): gex-walls vetoes when the play's target path crosses a dominant
  * OPPOSING wall inside 0.5× EM ("a dealer wall in your path"); flow-quality vetoes on an
@@ -114,6 +140,16 @@ export type CortexVerdict = {
   opposes: EvidenceItem[];
   /** Sources that could not answer, as "source: reason" lines — visible, worth zero. */
   absent: string[];
+  /**
+   * NH-R9: true when BOTH the support total and the oppose total clear
+   * CONTESTED_MIN_MAGNITUDE (compose.ts) — a genuine internal disagreement between
+   * sources, not merely a quiet composite. Without this flag, two loud opposing
+   * reads that happen to net near zero are indistinguishable from "nothing
+   * answered": both show score≈0 and pass through identically. `contested` lets
+   * the gate stack (cortex-gate.ts) treat "sources are fighting" differently from
+   * "sources are silent" even when the arithmetic looks the same.
+   */
+  contested: boolean;
   conviction: CortexConviction;
   /** Deterministic member-facing "why" lines — every number traces to an input. */
   narrative: string[];

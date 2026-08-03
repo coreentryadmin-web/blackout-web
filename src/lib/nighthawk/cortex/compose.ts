@@ -19,12 +19,13 @@
 import type {
   CortexConviction,
   CortexInputs,
+  CortexSourceFamily,
   CortexSourceFn,
   CortexSourceId,
   CortexVerdict,
   EvidenceItem,
 } from "./types";
-import { CORTEX_SOURCES } from "./types";
+import { CORTEX_SOURCE_FAMILY, CORTEX_SOURCES } from "./types";
 import { deriveCatalystNewsEvidence, CATALYST_SUPPORT_CAP } from "./sources/catalyst-news";
 import { deriveDarkPoolConfluenceEvidence, DARKPOOL_SUPPORT_CAP } from "./sources/darkpool-confluence";
 import { deriveFlowQualityEvidence, FLOW_SUPPORT_CAP } from "./sources/flow-quality";
@@ -53,6 +54,12 @@ export const CONVICTION_A_MIN_SCORE = 2;
  *  structural argument. Below it the verdict is a C ("nothing here earns size"). */
 export const CONVICTION_B_MIN_SCORE = 0.75;
 
+/** NH-R9 contested floor: 0.75 = one full mid-tier signal's worth (same magnitude
+ *  as CONVICTION_B_MIN_SCORE, deliberately) — below this on EITHER side is "one
+ *  small source disagreeing", which is normal and not worth flagging; at or above
+ *  it on BOTH sides is two real, independent arguments actively fighting. */
+export const CONTESTED_MIN_MAGNITUDE = 0.75;
+
 /** Per-source SUPPORT caps (design §0 "supporting evidence is capped per source
  *  (max +N)"). Values are each source module's own exported cap constant — the cap
  *  lives next to the weights it bounds; this table only assembles them. Opposes are
@@ -68,6 +75,23 @@ export const SOURCE_SUPPORT_CAPS: Record<CortexSourceId, number> = {
   "vex-charm": VEX_CHARM_SUPPORT_CAP,
   "darkpool-confluence": DARKPOOL_SUPPORT_CAP,
   "opening-harvest": OPENING_HARVEST_SUPPORT_CAP,
+};
+
+/**
+ * NH-R11 fix: an AGGREGATE cap over the dealer-positioning family (gex-walls +
+ * wall-trend + vex-charm + darkpool-confluence — types.ts CortexSourceFamily doc),
+ * on top of each member's own per-source cap. 2.75 sits just above the documented
+ * "flagship" two-source case (a fresh gex-walls read near its 1.0 cap plus a fresh
+ * wall-trend read near its 1.5 cap ≈ 2.5 — design §0's own worked example), so a
+ * legitimate structural argument from the two core dealer reads is untouched. It
+ * bites only when 3+ of the family are simultaneously near their individual caps —
+ * i.e. when the SAME dealer-book fact is being counted four different ways instead
+ * of once. Families with no entry here (order-flow, context) are uncapped beyond
+ * their existing per-source caps — flow-quality/sector-heat/catalyst-news/opening-
+ * harvest each read a genuinely distinct evidentiary channel (see CORTEX_SOURCE_FAMILY).
+ */
+export const FAMILY_SUPPORT_CAPS: Partial<Record<CortexSourceFamily, number>> = {
+  "dealer-positioning": 2.75,
 };
 
 /** The source registry, in CORTEX_SOURCES order (deterministic evidence/narrative
@@ -162,9 +186,34 @@ export function composeCortexEvidence(input: CortexInputs): CortexVerdict {
     }
   }
 
+  // Family caps (NH-R11, §0 above SOURCE_SUPPORT_CAPS): applied AFTER per-source
+  // capping, on top of it — a second, coarser ceiling over the already-capped
+  // per-source contributions so correlated sources in the same family can't stack
+  // past what one dealer-book fact is worth in aggregate.
+  const supportSumByFamily = new Map<CortexSourceFamily, number>();
+  for (const s of supports) {
+    const family = CORTEX_SOURCE_FAMILY[s.source];
+    supportSumByFamily.set(family, (supportSumByFamily.get(family) ?? 0) + s.weight);
+  }
+  for (const [family, sum] of supportSumByFamily) {
+    const cap = FAMILY_SUPPORT_CAPS[family];
+    if (cap != null && sum > cap && sum > 0) {
+      const scale = cap / sum;
+      for (const s of supports) {
+        if (CORTEX_SOURCE_FAMILY[s.source] === family) s.weight = round(s.weight * scale, 3);
+      }
+    }
+  }
+
   const supportTotal = supports.reduce((acc, s) => acc + s.weight, 0);
   const opposeTotal = opposes.reduce((acc, o) => acc + o.weight, 0);
   const score = round(supportTotal - opposeTotal, 2);
+
+  // NH-R9: a genuine internal disagreement — both sides material — reads
+  // differently from a quiet composite even when they happen to net near zero
+  // (see CortexVerdict.contested doc). Computed on the RAW (pre-round) totals so
+  // the flag isn't sensitive to the score's own 2dp display rounding.
+  const contested = supportTotal >= CONTESTED_MIN_MAGNITUDE && opposeTotal >= CONTESTED_MIN_MAGNITUDE;
 
   // Conviction banding. A vetoed play wears a C no matter its score — a band is a
   // sizing statement and a blocked play must never read as size-worthy. Display is
@@ -196,6 +245,12 @@ export function composeCortexEvidence(input: CortexInputs): CortexVerdict {
         : `net score ${fmtSigned(score)}`) +
       `, conviction ${conviction}.`
   );
+  if (contested) {
+    narrative.push(
+      `CONTESTED: +${round(supportTotal, 2)} support vs -${round(opposeTotal, 2)} oppose are both material — ` +
+        "sources genuinely disagree, not merely quiet."
+    );
+  }
   for (const v of vetoes) narrative.push(`VETO [${v.source}] ${v.detail}`);
   for (const s of supports) narrative.push(`+${s.weight} [${s.source}] ${s.detail}`);
   for (const o of opposes) narrative.push(`-${o.weight} [${o.source}] ${o.detail}`);
@@ -210,6 +265,7 @@ export function composeCortexEvidence(input: CortexInputs): CortexVerdict {
     supports,
     opposes,
     absent,
+    contested,
     conviction,
     narrative,
   };

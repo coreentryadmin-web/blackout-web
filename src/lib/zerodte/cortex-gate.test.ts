@@ -9,7 +9,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { composeCortexEvidence, VETO_CAPABLE_SOURCES, type CortexConviction, type CortexInputs, type CortexVerdict } from "@/lib/nighthawk/cortex";
+import {
+  composeCortexEvidence,
+  CONVICTION_A_MIN_SCORE,
+  VETO_CAPABLE_SOURCES,
+  type CortexConviction,
+  type CortexInputs,
+  type CortexVerdict,
+} from "@/lib/nighthawk/cortex";
 import { QQQ_SHORT_2026_07_13, SPY_LONG_2026_07_13 } from "@/lib/nighthawk/cortex/fixtures-2026-07-13";
 import { baseInputs } from "@/lib/nighthawk/cortex/test-helpers";
 import {
@@ -154,6 +161,52 @@ test("net-zero is a wash, not net-negative: evidence that exactly cancels never 
   // score boundary, not evidence breadth — that's tested separately above).
   const washed = { ...opposed, score: 0, absent: [] };
   assert.equal(assessCortexVerdict(washed).decision, "PASS");
+});
+
+test("contested evidence (NH-R9): both sides material, net score below the A floor => CONTESTED, not a silent PASS", () => {
+  const now = "2026-07-13T19:00:00.000Z"; // 15:00 ET — after the charm-heuristic gate
+  const contested = composeCortexEvidence(
+    baseInputs({
+      direction: "long",
+      now,
+      spot: 500,
+      expectedMovePts: 10,
+      // flow (0.75) + sector-heat (0.5) support = 1.25, vs vex-charm's VEX-align
+      // (0.4) + charm-pin (0.6) oppose = 1.0 — both clear CONTESTED_MIN_MAGNITUDE,
+      // net +0.25 (positive, but nowhere near the A floor).
+      flow: {
+        asOf: now,
+        prints: [0, 1, 2].map((i) => ({
+          premium: 300_000,
+          direction: "bullish" as const,
+          kind: "sweep" as const,
+          at: new Date(Date.parse(now) - (i + 1) * 60_000).toISOString(),
+        })),
+      },
+      sector: { asOf: now, sectorName: "Tech", sectorChangePct: 1.0, breadthTone: null, tickerChangePct: 1.0 },
+      vex: { asOf: now, netVex: -50, kingStrike: 502 },
+    })
+  );
+  assert.equal(contested.contested, true);
+  assert.ok(contested.score > 0 && contested.score < CONVICTION_A_MIN_SCORE, `score ${contested.score}`);
+  const a = assessCortexVerdict(contested);
+  assert.equal(a.decision, "CONTESTED");
+  assert.ok(!a.abstained);
+  const blocks = cortexGateBlocks(a);
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0]!.code, "cortex_contested");
+  assert.equal(blocks[0]!.threshold, CONVICTION_A_MIN_SCORE);
+  assert.match(blocks[0]!.reason, /Supporting:/);
+  assert.match(blocks[0]!.reason, /Opposing:/);
+});
+
+test("contested but decisive (score >= the A floor): support has clearly won the fight => still PASS, not blocked", () => {
+  // A hand-flagged contested verdict on the QQQ 7/13 fixture (real score, well
+  // above CONVICTION_A_MIN_SCORE) — proves the contested gate only bites while the
+  // fight is unresolved, never a decisively-won verdict.
+  const decisive: CortexVerdict = { ...composeCortexEvidence(QQQ_SHORT_2026_07_13), contested: true };
+  assert.ok(decisive.score >= CONVICTION_A_MIN_SCORE, `score ${decisive.score}`);
+  assert.equal(assessCortexVerdict(decisive).decision, "PASS");
 });
 
 test("ABSTAIN: an all-absent composition (total outage) passes through with zero blocks and an honest reason", () => {

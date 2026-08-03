@@ -3,7 +3,14 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import { composeCortexEvidence, cortexDecayFactor, ABSENT_AFTER_HALF_LIVES, SOURCE_SUPPORT_CAPS } from "./compose";
+import {
+  composeCortexEvidence,
+  cortexDecayFactor,
+  ABSENT_AFTER_HALF_LIVES,
+  SOURCE_SUPPORT_CAPS,
+  FAMILY_SUPPORT_CAPS,
+  CONTESTED_MIN_MAGNITUDE,
+} from "./compose";
 import { QQQ_SHORT_2026_07_13, SPY_LONG_2026_07_13 } from "./fixtures-2026-07-13";
 import { baseInputs, TEST_NOW } from "./test-helpers";
 import { CORTEX_SOURCES } from "./types";
@@ -96,6 +103,74 @@ describe("compose: evidence decay (design §0 — alpha that expires)", () => {
     assert.equal(cortexDecayFactor(0, 600), 1);
     assert.equal(cortexDecayFactor(600, 600), 0.5);
     assert.equal(cortexDecayFactor(1200, 600), 0.25);
+  });
+});
+
+describe("compose: family caps (NH-R11 — dealer-positioning sources can't stack)", () => {
+  test("QQQ 7/13 fixture: gex-walls + wall-trend + vex-charm + darkpool-confluence are capped in aggregate", () => {
+    const v = composeCortexEvidence(QQQ_SHORT_2026_07_13);
+    const dealerSources = new Set(["gex-walls", "wall-trend", "vex-charm", "darkpool-confluence"]);
+    const dealerSum = v.supports.filter((s) => dealerSources.has(s.source)).reduce((a, s) => a + s.weight, 0);
+    const cap = FAMILY_SUPPORT_CAPS["dealer-positioning"]!;
+    assert.ok(dealerSum <= cap + 1e-6, `dealer-positioning sum ${dealerSum} exceeds family cap ${cap}`);
+    // The cap doesn't kill the legitimate flagship case: still net-supportive, still A.
+    assert.ok(v.score > 0, `score ${v.score}`);
+    assert.equal(v.conviction, "A");
+  });
+
+  test("uncapped family (order-flow / context) sources are unaffected by the dealer-positioning cap", () => {
+    const v = composeCortexEvidence(QQQ_SHORT_2026_07_13);
+    const flow = v.supports.find((s) => s.source === "flow-quality");
+    assert.ok(flow);
+    assert.ok(flow!.weight <= SOURCE_SUPPORT_CAPS["flow-quality"] + 1e-6);
+  });
+});
+
+describe("compose: contested flag (NH-R9 — a real internal disagreement, not a quiet wash)", () => {
+  /** Both sides material: flow (0.75 support) + sector-heat (0.5 support) vs
+   *  vex-charm's two opposing reads (VEX align 0.4 + charm pin 0.6 = 1.0 oppose).
+   *  supportTotal 1.25, opposeTotal 1.0 — both clear CONTESTED_MIN_MAGNITUDE, net
+   *  score +0.25 (positive, but nowhere near a decisive A). */
+  function contestedInput() {
+    const now = "2026-07-13T19:00:00.000Z"; // 15:00 ET — after the 14:30 charm gate
+    const cluster = [0, 1, 2].map((i) => ({
+      premium: 300_000,
+      direction: "bullish" as const,
+      kind: "sweep" as const,
+      at: new Date(Date.parse(now) - (i + 1) * 60_000).toISOString(),
+    }));
+    return baseInputs({
+      direction: "long",
+      now,
+      spot: 500,
+      expectedMovePts: 10,
+      flow: { asOf: now, prints: cluster },
+      sector: { asOf: now, sectorName: "Tech", sectorChangePct: 1.0, breadthTone: null, tickerChangePct: 1.0 },
+      vex: { asOf: now, netVex: -50, kingStrike: 502 },
+    });
+  }
+
+  test("both sides material and roughly canceling => contested:true", () => {
+    const v = composeCortexEvidence(contestedInput());
+    const supportTotal = v.supports.reduce((a, s) => a + s.weight, 0);
+    const opposeTotal = v.opposes.reduce((a, o) => a + o.weight, 0);
+    assert.ok(supportTotal >= CONTESTED_MIN_MAGNITUDE, `support ${supportTotal}`);
+    assert.ok(opposeTotal >= CONTESTED_MIN_MAGNITUDE, `oppose ${opposeTotal}`);
+    assert.equal(v.contested, true);
+    assert.ok(v.narrative.some((n) => n.startsWith("CONTESTED:")), v.narrative.join("\n"));
+  });
+
+  test("a quiet all-absent composite is NOT contested (score 0 alone doesn't mean disagreement)", () => {
+    const v = composeCortexEvidence(baseInputs());
+    assert.equal(v.score, 0);
+    assert.equal(v.contested, false);
+  });
+
+  test("one-sided evidence (support only, no material opposition) is NOT contested", () => {
+    const v = composeCortexEvidence(QQQ_SHORT_2026_07_13);
+    const opposeTotal = v.opposes.reduce((a, o) => a + o.weight, 0);
+    assert.ok(opposeTotal < CONTESTED_MIN_MAGNITUDE, `oppose ${opposeTotal}`);
+    assert.equal(v.contested, false);
   });
 });
 
