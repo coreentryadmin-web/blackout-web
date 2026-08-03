@@ -6,6 +6,7 @@ import {
   breakoutScore,
   breakoutSourceEnabled,
   buildBreakoutSetup,
+  liquidityQualityScore,
   mergeDiscoveryOrigins,
   pickAtmZeroDteContract,
   type BreakoutChainRow,
@@ -294,6 +295,53 @@ test("pickAtmZeroDteContract prefers 0DTE, allows 1DTE, EXCLUDES the weekly (dte
     { expiry: TODAY, strike: 100, call_bid: null, call_ask: null, call_oi: 0 },
   ];
   assert.equal(pickAtmZeroDteContract(dead, 100.4, TODAY), null);
+});
+
+// ── NH-R5: liquidity QUALITY now ranks near-ATM candidates, not just admits them ─────
+test("liquidityQualityScore: tighter spread and deeper OI both raise the score, each capped at 1.0", () => {
+  const tight = { expiry: TODAY, strike: 100, call_bid: 1.0, call_ask: 1.02, call_oi: 1000 } as BreakoutChainRow;
+  const wide = { expiry: TODAY, strike: 100, call_bid: 1.0, call_ask: 2.0, call_oi: 1000 } as BreakoutChainRow;
+  const thin = { expiry: TODAY, strike: 100, call_bid: 1.0, call_ask: 1.02, call_oi: 10 } as BreakoutChainRow;
+  const noQuote = { expiry: TODAY, strike: 100, call_bid: null, call_ask: null, call_oi: 10 } as BreakoutChainRow;
+
+  const tightScore = liquidityQualityScore(tight, "call");
+  const wideScore = liquidityQualityScore(wide, "call");
+  const thinScore = liquidityQualityScore(thin, "call");
+  const noQuoteScore = liquidityQualityScore(noQuote, "call");
+
+  assert.ok(tightScore > wideScore, `${tightScore} vs ${wideScore}`); // tighter spread wins
+  assert.ok(tightScore > thinScore, `${tightScore} vs ${thinScore}`); // deeper OI wins
+  // Same OI (10) as `thin`, but no live quote at all — losing the spread-quality component
+  // must score strictly lower than having that same OI PLUS a live (even thin-depth) quote.
+  assert.ok(noQuoteScore < thinScore, `${noQuoteScore} vs ${thinScore}`);
+  assert.ok(tightScore <= 2, `score exceeds the documented 0-2 range: ${tightScore}`);
+});
+
+test("pickAtmZeroDteContract: among near-ATM candidates, materially better liquidity wins a close tie", () => {
+  // Both strikes are within a dollar of spot (100.4); strike 100 is nominally closer (dist 0.4 vs
+  // 100.3's dist 0.1) but strike 100 has a razor-thin quote (huge spread) and 1 lot of OI, while
+  // strike 100.3 has a tight two-sided market and real depth. The quality tie-break should now
+  // prefer the genuinely tradeable strike over the marginally-closer, effectively-illiquid one.
+  const rows: BreakoutChainRow[] = [
+    { expiry: TODAY, strike: 100, call_bid: 0.05, call_ask: 0.5, call_oi: 1 },
+    { expiry: TODAY, strike: 100.3, call_bid: 1.0, call_ask: 1.02, call_oi: 800 },
+  ];
+  const pick = pickAtmZeroDteContract(rows, 100.4, TODAY);
+  assert.ok(pick);
+  assert.equal(pick!.strike, 100.3, "the materially more liquid near-tie strike wins");
+});
+
+test("pickAtmZeroDteContract: ATM still dominates — liquidity quality never overrides a materially closer strike", () => {
+  // Strike 100 is comfortably closer to spot (dist 0.4) than strike 105 (dist 4.6), even though
+  // 105 has a pristine quote and 100 is merely admissible (thin OI, wider spread). The small
+  // per-quality-point dollar credit must never flip a multi-dollar distance gap.
+  const rows: BreakoutChainRow[] = [
+    { expiry: TODAY, strike: 100, call_bid: 0.9, call_ask: 1.1, call_oi: 5 },
+    { expiry: TODAY, strike: 105, call_bid: 1.0, call_ask: 1.01, call_oi: 900 },
+  ];
+  const pick = pickAtmZeroDteContract(rows, 100.4, TODAY);
+  assert.ok(pick);
+  assert.equal(pick!.strike, 100, "ATM proximity still wins over a distant, higher-quality strike");
 });
 
 // ── Flags: ON by default, OFF only when explicitly set to "0" ──────────────────────
