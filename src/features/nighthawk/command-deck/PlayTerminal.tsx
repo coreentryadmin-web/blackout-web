@@ -31,9 +31,11 @@ function fmtGreek(k: string, v: number | null): string {
 const usd = (n: number | null | undefined): string => (n != null ? `$${n.toFixed(2)}` : "—");
 const signPct = (n: number | null | undefined): string => (n != null ? `${n > 0 ? "+" : ""}${Math.round(n)}%` : "—");
 
-/** ET wall-clock (HH:MM) of an ISO instant, for the why-now ribbon. Formats in America/New_York
- *  regardless of the instant's stored offset (a DB row may be UTC). Null/unparseable → null. */
-function etClock(iso: string | null | undefined): string | null {
+/** ET wall-clock (HH:MM) of an ISO instant, for the why-now ribbon (and the deck row's entry-time
+ *  chip — CommandDeck.tsx imports this rather than duplicating the tz-safe parse). Formats in
+ *  America/New_York regardless of the instant's stored offset (a DB row may be UTC).
+ *  Null/unparseable → null. */
+export function etClock(iso: string | null | undefined): string | null {
   if (!iso) return null;
   const ms = Date.parse(iso);
   if (!Number.isFinite(ms)) return null;
