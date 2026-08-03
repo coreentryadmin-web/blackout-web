@@ -45,6 +45,7 @@ export function WebSiteJsonLd() {
         "@type": "WebSite",
         name: SITE.name,
         url: SITE.url,
+        inLanguage: "en-US",
         description: SITE.description,
         publisher: {
           "@type": "Organization",
@@ -170,6 +171,30 @@ export function CollectionPageJsonLd({
         description,
         url: `${SITE.url}${path}`,
         isPartOf: { "@type": "WebSite", name: SITE.name, url: SITE.url },
+      }}
+    />
+  );
+}
+
+export function ItemListJsonLd({
+  name,
+  items,
+}: {
+  name: string;
+  items: { name: string; url: string }[];
+}) {
+  return (
+    <JsonLdScript
+      data={{
+        "@context": "https://schema.org",
+        "@type": "ItemList",
+        name,
+        itemListElement: items.map((item, i) => ({
+          "@type": "ListItem",
+          position: i + 1,
+          name: item.name,
+          url: item.url,
+        })),
       }}
     />
   );

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { MarketingPageShell } from "@/components/landing/MarketingPageShell";
 import { LegalPageLayout } from "@/components/landing/LegalPageLayout";
+import { BreadcrumbJsonLd, WebPageJsonLd } from "@/components/seo/JsonLd";
 import { publicPageMetadata } from "@/lib/page-metadata";
 
 export const metadata: Metadata = publicPageMetadata(
@@ -12,6 +13,15 @@ export const metadata: Metadata = publicPageMetadata(
 export default function TermsPage() {
   return (
     <MarketingPageShell showChart={false}>
+      <WebPageJsonLd
+        title="Terms of Service — BlackOut"
+        description="The terms and conditions governing your use of the BlackOut platform, subscriptions, and services."
+        path="/terms"
+      />
+      <BreadcrumbJsonLd items={[
+        { name: "Home", href: "/" },
+        { name: "Terms of Service", href: "/terms" },
+      ]} />
       <LegalPageLayout kicker="Legal" title="Terms of Service" updated="July 27, 2026">
         <h2>1. Agreement to Terms</h2>
         <p>

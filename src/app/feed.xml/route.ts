@@ -1,5 +1,5 @@
 import { SITE } from "@/lib/site";
-import { LEARN_ARTICLES } from "@/lib/learn/articles";
+import { feedArticles, feedPubDateForArticle } from "@/lib/seo/sitemap-dates";
 
 export const dynamic = "force-static";
 export const revalidate = 86400;
@@ -29,11 +29,15 @@ function stripMarkdown(md: string): string {
 }
 
 export function GET() {
-  const pubDate = new Date("2026-08-02T00:00:00Z").toUTCString();
+  const articles = feedArticles();
+  const lastBuildDate = new Date(
+    Math.max(...articles.map((a) => Date.parse(feedPubDateForArticle(a.slug)))),
+  ).toUTCString();
 
-  const items = LEARN_ARTICLES.filter((a) => a.type === "article" || a.type === "pillar")
+  const items = articles
     .map((a) => {
       const description = stripMarkdown(a.body).slice(0, 500);
+      const pubDate = feedPubDateForArticle(a.slug);
       return `    <item>
       <title>${escapeXml(a.title)}</title>
       <link>${SITE.url}${a.path}</link>
@@ -52,7 +56,7 @@ export function GET() {
     <link>${SITE.url}/learn</link>
     <description>${escapeXml(SITE.description)}</description>
     <language>en-us</language>
-    <lastBuildDate>${pubDate}</lastBuildDate>
+    <lastBuildDate>${lastBuildDate}</lastBuildDate>
     <atom:link href="${SITE.url}/feed.xml" rel="self" type="application/rss+xml" />
     <image>
       <url>${SITE.url}/images/blackout-emblem.webp</url>

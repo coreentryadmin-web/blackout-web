@@ -3,8 +3,9 @@ export const dynamic = "force-dynamic";
 import type { Metadata } from "next";
 import { MarketingPageShell } from "@/components/landing/MarketingPageShell";
 import { RedesignHome } from "@/components/landing/RedesignHome";
-import { OrganizationJsonLd, WebSiteJsonLd } from "@/components/seo/JsonLd";
+import { FAQPageJsonLd, WebPageJsonLd } from "@/components/seo/JsonLd";
 import { signedInFromRequestCookies } from "@/lib/clerk-session-cookies";
+import { HOME_FAQ_ITEMS } from "@/lib/seo/home-faq";
 import { publicPageMetadata } from "@/lib/page-metadata";
 
 export const metadata: Metadata = publicPageMetadata(
@@ -28,8 +29,12 @@ export default async function LandingPage() {
 
   return (
     <MarketingPageShell showChart={false}>
-      <OrganizationJsonLd />
-      <WebSiteJsonLd />
+      <FAQPageJsonLd items={[...HOME_FAQ_ITEMS]} />
+      <WebPageJsonLd
+        title="BlackOut — Live Dealer Gamma & 0DTE SPX Options Flow"
+        description="BlackOut gives options traders live dealer gamma, 0DTE flow, and A–F graded SPX setups. See what the desks see and trade before the crowd moves."
+        path="/"
+      />
       <script dangerouslySetInnerHTML={{ __html: LANDING_REDIRECT_SCRIPT }} />
       <RedesignHome signedIn={signedIn} />
     </MarketingPageShell>

@@ -11,9 +11,7 @@ import { getLearnGuide } from "@/lib/learn/guides";
 import { GUIDE_SEO, isLearnGuideSlug } from "@/lib/learn/guide-seo";
 import { LEARN_NAV } from "@/lib/learn/nav";
 import { getArticleFaqs } from "@/lib/learn/article-faqs";
-
-const ARTICLE_DATE_PUBLISHED = "2026-07-31";
-const ARTICLE_DATE_MODIFIED = "2026-08-02";
+import { ARTICLE_DATE_MODIFIED, ARTICLE_DATE_PUBLISHED } from "@/lib/seo/sitemap-dates";
 
 type Props = { params: Promise<{ slug: string }> };
 

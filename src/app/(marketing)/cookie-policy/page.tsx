@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { MarketingPageShell } from "@/components/landing/MarketingPageShell";
 import { LegalPageLayout } from "@/components/landing/LegalPageLayout";
+import { BreadcrumbJsonLd, WebPageJsonLd } from "@/components/seo/JsonLd";
 import { publicPageMetadata } from "@/lib/page-metadata";
 
 export const metadata: Metadata = publicPageMetadata(
@@ -12,6 +13,15 @@ export const metadata: Metadata = publicPageMetadata(
 export default function CookiePolicyPage() {
   return (
     <MarketingPageShell showChart={false}>
+      <WebPageJsonLd
+        title="Cookie Policy — BlackOut"
+        description="How BlackOut uses cookies and similar technologies."
+        path="/cookie-policy"
+      />
+      <BreadcrumbJsonLd items={[
+        { name: "Home", href: "/" },
+        { name: "Cookie Policy", href: "/cookie-policy" },
+      ]} />
       <LegalPageLayout kicker="Legal" title="Cookie Policy" updated="July 27, 2026">
         <h2>What Are Cookies</h2>
         <p>
