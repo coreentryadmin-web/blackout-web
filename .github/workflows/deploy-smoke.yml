@@ -45,5 +45,11 @@ jobs:
         run: npm run seo:indexnow
         continue-on-error: true
 
+      - name: SEO visibility audit
+        env:
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+        run: npm run validate:seo
+
       - name: Summary
         run: echo "Deploy smoke passed at $(date -u +%Y-%m-%dT%H:%M:%SZ)"

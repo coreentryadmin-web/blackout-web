@@ -5,7 +5,7 @@ import { IMAGES } from "@/lib/images";
 import { SITE } from "@/lib/site";
 import { Ga4Attribution } from "@/components/analytics/Ga4Attribution";
 import { OrganizationJsonLd, WebSiteJsonLd } from "@/components/seo/JsonLd";
-import { googleSiteVerificationToken } from "@/lib/seo/verification";
+import { bingSiteVerificationToken, googleSiteVerificationToken } from "@/lib/seo/verification";
 // PHOSPHOR LADDER token foundation — additive tokens + utility primitives, loaded
 // ONCE here so marketing = desk = ios all read the same instrument grid. Placed in
 // the root layout (globals.css is only imported per route-group) so the tokens are
@@ -65,8 +65,15 @@ export const metadata: Metadata = {
     description: SITE.tagline,
     images: [IMAGES.ogImage],
   },
-  ...(googleSiteVerificationToken()
-    ? { verification: { google: googleSiteVerificationToken() } }
+  ...(googleSiteVerificationToken() || bingSiteVerificationToken()
+    ? {
+        verification: {
+          ...(googleSiteVerificationToken() ? { google: googleSiteVerificationToken() } : {}),
+          ...(bingSiteVerificationToken()
+            ? { other: { "msvalidate.01": bingSiteVerificationToken()! } }
+            : {}),
+        },
+      }
     : {}),
   manifest: "/manifest.webmanifest",
   appleWebApp: { capable: true, title: SITE.name, statusBarStyle: "black-translucent" },
