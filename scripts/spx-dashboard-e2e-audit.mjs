@@ -420,14 +420,20 @@ async function browserDashboard(session, hm) {
       rec("ui:click-commentary-expand", "SKIP", "no expand control");
     }
 
-    const hero = page.locator(".spx-trade-alert-hero");
-    if (await hero.count()) {
-      const heroText = await hero.innerText();
-      if (heroText.includes("SCANNING") && heroText.includes("✓")) {
-        rec("ui:scanning-confirmations", "FAIL", "stale ✓ visible during SCANNING");
+    // SpxPlayVerdictBar replaced legacy .spx-trade-alert-hero (removed 2026-07-13).
+    const verdictBar = page.locator(".spx-play-verdict-bar");
+    if (await verdictBar.count()) {
+      const barText = await verdictBar.innerText();
+      const isScanning = /HUNTING|SCANNING/i.test(barText);
+      if (isScanning && barText.includes("✓")) {
+        rec("ui:scanning-confirmations", "FAIL", "stale ✓ visible during SCANNING/HUNTING");
+      } else if (isScanning && /Gates clear/i.test(barText)) {
+        rec("ui:scanning-confirmations", "FAIL", "Gates clear shown during SCANNING/HUNTING");
       } else {
-        rec("ui:trade-alert-hero", "PASS", heroText.split("\n")[0]?.slice(0, 60));
+        rec("ui:play-verdict-bar", "PASS", barText.split("\n")[0]?.slice(0, 60));
       }
+    } else {
+      rec("ui:play-verdict-bar", "SKIP", "verdict bar not rendered");
     }
 
     const lottoDock = page.locator(".spx-lotto-dock");
