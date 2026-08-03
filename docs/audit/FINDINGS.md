@@ -6540,3 +6540,48 @@ and tier-stability (no exact/prefix candidates → original alphabetical order p
 staleness errors are present on `main` too, unrelated to this change).
 
 **Status:** PR pending → CI → auto-merge per standing policy.
+
+## 2026-08-03 — [Night Hawk] Closed play row hid the real peak excursion + entry time — added
+
+**Trigger.** User flagged a UX issue with a screenshot: a CLOSED play (META 592.5C, entered $3.15,
+stopped out at $1.57/-50%) reads as a pure loser on the left-side play list row, which shows only
+the final `pnlPct`. The right-pane PNL tab (one click deeper) reveals the play actually ran to
+**+87% peak** before giving it back at the stop — a materially different story ("captured real
+upside, then lost it at the stop" vs "this just lost"). User also asked for the entry/generation
+time on the row, and for T1/T2/T3 partial-trim tier markers.
+
+**Investigation before building anything** (per the "verify before assuming" pattern from the PLTR
+case earlier the same day): confirmed peak/trough and the first-flag timestamp are ALREADY
+persisted server-side and already reach the client on every play — `zerodte_setup_log.peak_premium`/
+`trough_premium` (latched via `GREATEST`/`LEAST` on every mark update, `db.ts`) and
+`first_flagged_at` (`db.ts:705`), both mapped through `adapters.ts` into `TerminalPlay.peak`/
+`.trough`/`.firstFlaggedAt` — so this is a pure UI change, no new data plumbing. T1/T2/T3 trim-tier
+markers, however, do NOT exist as a real data concept: the `trim_scale` exit ladder is dormant in
+prod (the shipped default is the single-stop `ratchet` model — `ZERODTE_EXIT_MODE` unset), and even
+its `trim_levels`/`fired` shape has no per-tier hit timestamp. Per the user's explicit choice
+(asked directly, given the scope difference), T1/T2/T3 is deferred as a separate follow-up that
+would need real exit-engine/schema work, not shipped here.
+
+**Fix.** `CommandDeck.tsx`'s `PlayCard` row (the left-pane list item) now shows, in the existing
+badge row: (1) a `pk +NN%` chip when `status === "CLOSED"` and `peak` is present — the honest
+"what actually happened" context, shown only on closed rows so it never competes with the live
+mark on an OPEN/HOLD/TRIM row; (2) an ET-formatted `HH:MM ET` chip from `firstFlaggedAt` whenever
+present, on any row. `etClock` (previously module-local to `PlayTerminal.tsx`) is now exported and
+reused rather than duplicated. Two new CSS badge variants (`.pk`, `.time`) added alongside the
+existing `.tier`/`.orig`/`.conf`/`.warn` set in `globals.css`.
+
+**Blast radius.** `CommandDeck.tsx` (row rendering only — `PlayCard` exported for testability, no
+behavior change to exports elsewhere), `PlayTerminal.tsx` (`etClock` export only, same function
+body), `globals.css` (2 new additive classes). No data/API/type changes — `TerminalPlay.peak`/
+`.trough`/`.firstFlaggedAt` already existed in `types.ts`.
+
+**Tests.** New `CommandDeck.ssr.test.ts` (6 cases, SSR-render pattern matching `PlayTerminal.ssr.test.ts`):
+peak badge shows on a CLOSED row with peak data; absent on an OPEN row even with peak data (scope
+guard); absent on a CLOSED row with no peak data (never fabricates); negative peak renders without
+a stray `+`; time chip shows the ET-formatted flag time when present; absent when `firstFlaggedAt`
+is null. All pass. Existing `PlayTerminal.ssr.test.ts` (9 cases) re-run clean after the `etClock`
+export change. `npx tsc --noEmit` clean on all three changed files.
+
+**Status:** PR pending → CI → auto-merge per standing policy. T1/T2/T3 trim-tier markers
+deliberately NOT included — logged here as a known follow-up gated on either enabling `trim_scale`
+in prod or building tier-hit tracking under `ratchet`, whichever the team decides.

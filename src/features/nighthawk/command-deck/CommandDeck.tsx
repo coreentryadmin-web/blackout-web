@@ -2,7 +2,7 @@
 
 import { memo, useEffect, useMemo, useState } from "react";
 import { clsx } from "clsx";
-import { PlayTerminal } from "./PlayTerminal";
+import { PlayTerminal, etClock } from "./PlayTerminal";
 import { sortPlaysForDeckBy, type DeckSortMode } from "./deck-sort";
 import {
   deployedRisk,
@@ -269,7 +269,7 @@ function HealthRing({ health, rung }: { health: number; rung: string }) {
  * `onSelect` takes the play id (rather than the parent handing each row a fresh `() => setSelId(id)`
  * closure) so the parent can pass the stable `setSelId` setter directly — a fresh closure per row per
  * tick would otherwise defeat this memoization outright. */
-const PlayCard = memo(function PlayCard({
+export const PlayCard = memo(function PlayCard({
   play: p,
   rank,
   selected,
@@ -342,6 +342,20 @@ const PlayCard = memo(function PlayCard({
             </span>
           )}
           {stale && <span className="nh-deck-cbadge stale" title="Mark is stale — frozen">◷ {ageLabel}</span>}
+          {/* A CLOSED row's final pnlPct alone reads as a pure loser even when the play ran deep
+             green before giving it back at the stop — the peak excursion (already latched server-
+             side as peak_premium, see adapters.ts peakDisplay) is the honest "what actually
+             happened" context a glance at the list should carry, not just the right-pane PNL tab. */}
+          {p.status === "CLOSED" && p.peak != null && (
+            <span className="nh-deck-cbadge pk" title="Peak excursion before this play closed">
+              pk {p.peak > 0 ? "+" : ""}{p.peak.toFixed(0)}%
+            </span>
+          )}
+          {p.firstFlaggedAt && (
+            <span className="nh-deck-cbadge time" title="Time this play was first flagged">
+              {etClock(p.firstFlaggedAt)} ET
+            </span>
+          )}
         </span>
       </span>
       <span className="nh-deck-rr">
