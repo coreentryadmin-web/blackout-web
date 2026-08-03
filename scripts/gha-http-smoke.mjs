@@ -17,21 +17,51 @@ const publicChecks = [
 
 const failures = [];
 
-async function fetchJson(path, headers = {}) {
+async function fetchText(path, headers = {}) {
   const res = await fetch(`${BASE}${path}`, { headers });
-  const text = await res.text();
+  return { status: res.status, text: await res.text() };
+}
+
+async function fetchJson(path, headers = {}) {
+  const { status, text } = await fetchText(path, headers);
   let body;
   try {
     body = JSON.parse(text);
   } catch {
     body = text.slice(0, 120);
   }
-  return { status: res.status, body };
+  return { status, body };
 }
+
+const seoTextChecks = [
+  {
+    path: "/robots.txt",
+    expect: 200,
+    test: (text) =>
+      text.includes("User-Agent: *") &&
+      text.includes("Allow: /") &&
+      text.includes(`Sitemap: ${BASE}/sitemap.xml`),
+  },
+  {
+    path: "/sitemap.xml",
+    expect: 200,
+    test: (text) => text.includes("<urlset") && text.includes(`${BASE}/learn`),
+  },
+];
 
 for (const c of publicChecks) {
   const { status, body } = await fetchJson(c.path);
   const pass = status === c.expect && (c.test ? c.test(body) : true);
+  if (pass) console.log(`  ✓ ${c.path} → ${status}`);
+  else {
+    failures.push(`${c.path} → ${status}`);
+    console.log(`  ✗ ${c.path} → ${status}`);
+  }
+}
+
+for (const c of seoTextChecks) {
+  const { status, text } = await fetchText(c.path);
+  const pass = status === c.expect && c.test(text);
   if (pass) console.log(`  ✓ ${c.path} → ${status}`);
   else {
     failures.push(`${c.path} → ${status}`);
