@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { MarketingPageShell } from "@/components/landing/MarketingPageShell";
 import { LegalPageLayout } from "@/components/landing/LegalPageLayout";
+import { BreadcrumbJsonLd, WebPageJsonLd } from "@/components/seo/JsonLd";
 import { publicPageMetadata } from "@/lib/page-metadata";
 import { SITE } from "@/lib/site";
 
@@ -14,6 +15,15 @@ export const metadata: Metadata = publicPageMetadata(
 export default function ContactPage() {
   return (
     <MarketingPageShell showChart={false}>
+      <WebPageJsonLd
+        title="Contact BlackOut — Support & Questions"
+        description="Get in touch with the BlackOut team for support, billing, or questions about the platform."
+        path="/contact"
+      />
+      <BreadcrumbJsonLd items={[
+        { name: "Home", href: "/" },
+        { name: "Contact", href: "/contact" },
+      ]} />
       <LegalPageLayout kicker="Support" title="Contact Us" updated="July 27, 2026">
         <div className="legal-contact-cta">
           <h2>Send Us a Message</h2>

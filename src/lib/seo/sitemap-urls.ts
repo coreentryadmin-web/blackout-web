@@ -47,7 +47,12 @@ export function absolutePublicUrls(): string[] {
   return publicSitemapEntries().map((e) => `${SITE.url}${e.path}`);
 }
 
-/** Learn + hub URLs for IndexNow after content deploys. */
+/** Full public URL set for IndexNow (marketing + learn + legal). */
+export function indexNowUrls(): string[] {
+  return absolutePublicUrls();
+}
+
+/** @deprecated Use indexNowUrls — kept for callers that only ping learn paths. */
 export function learnIndexNowUrls(): string[] {
   const paths = ["/learn", ...LEARN_NAV.map((n) => `/learn/${n.slug}`), ...LEARN_ARTICLES.map((a) => a.path)];
   return paths.map((p) => `${SITE.url}${p}`);

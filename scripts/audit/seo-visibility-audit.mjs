@@ -204,6 +204,7 @@ async function main() {
   has(home.html, /G-YLN4K37KYF/i, "GA4 measurement ID");
   has(home.html, /twitter:site|name="twitter:site"/i, "twitter:site meta");
   has(home.html, /application\/ld\+json/i, "structured data (JSON-LD)");
+  has(home.html, /"@type":"FAQPage"|"@type": "FAQPage"/, "homepage FAQ schema");
   has(home.html, /id="academy"|BlackOut Academy/i, "homepage Academy section");
 
   const pricing = await fetchPublic("/pricing");

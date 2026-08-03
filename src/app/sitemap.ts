@@ -1,12 +1,12 @@
 import type { MetadataRoute } from "next";
+import { withSitemapDates } from "@/lib/seo/sitemap-dates";
 import { publicSitemapEntries } from "@/lib/seo/sitemap-urls";
 import { SITE } from "@/lib/site";
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const now = new Date();
-  return publicSitemapEntries().map((entry) => ({
+  return withSitemapDates(publicSitemapEntries()).map((entry) => ({
     url: `${SITE.url}${entry.path}`,
-    lastModified: now,
+    lastModified: entry.lastModified,
     changeFrequency: entry.changeFrequency,
     priority: entry.priority,
   }));

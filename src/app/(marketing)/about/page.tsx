@@ -38,7 +38,7 @@ All six ship with Premium ($199/month or $1,999/year). [See all plans](/pricing)
 
 const APPROACH = `## Our Approach
 
-**Data-driven, not opinion-driven.** Every number on the desk comes from verifiable sources — [Polygon](https://polygon.io), [Unusual Whales](https://unusualwhales.com), and our own models built on top of them. When the data says sit, we sit.
+**Data-driven, not opinion-driven.** Every number on the desk comes from verifiable market data feeds and our own models built on top of them. When the data says sit, we sit.
 
 **Transparent track records.** Every setup BlackOut flags is logged publicly, graded, and time-stamped — including the losers. No hindsight edits, no deleted trades, no cherry-picked screenshots. The record speaks for itself.
 

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { MarketingPageShell } from "@/components/landing/MarketingPageShell";
 import { LegalPageLayout } from "@/components/landing/LegalPageLayout";
+import { BreadcrumbJsonLd, WebPageJsonLd } from "@/components/seo/JsonLd";
 import { publicPageMetadata } from "@/lib/page-metadata";
 
 export const metadata: Metadata = publicPageMetadata(
@@ -12,6 +13,15 @@ export const metadata: Metadata = publicPageMetadata(
 export default function PrivacyPage() {
   return (
     <MarketingPageShell showChart={false}>
+      <WebPageJsonLd
+        title="Privacy Policy — BlackOut Trades"
+        description="How BlackOut Trades collects, uses, and protects your personal information."
+        path="/privacy"
+      />
+      <BreadcrumbJsonLd items={[
+        { name: "Home", href: "/" },
+        { name: "Privacy Policy", href: "/privacy" },
+      ]} />
       <LegalPageLayout kicker="Legal" title="Privacy Policy" updated="July 27, 2026">
         <h2>1. Information We Collect</h2>
 

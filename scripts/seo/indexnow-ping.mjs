@@ -1,18 +1,18 @@
 #!/usr/bin/env node
 /**
- * Ping Bing IndexNow with learn + marketing URLs after deploy.
+ * Ping Bing IndexNow with all public sitemap URLs after deploy.
  * Key file: public/a1522e9c3ec34cf57a2f7ce063981593.txt (must stay reachable).
  *
  * Usage: node scripts/seo/indexnow-ping.mjs
  * Env: INDEXNOW_BASE (default https://blackouttrades.com)
  */
-import { learnIndexNowUrls } from "../../src/lib/seo/sitemap-urls.ts";
+import { indexNowUrls } from "../../src/lib/seo/sitemap-urls.ts";
 import { INDEXNOW_KEY, INDEXNOW_KEY_URL } from "../../src/lib/seo/verification.ts";
 
 const BASE = (process.env.INDEXNOW_BASE || "https://blackouttrades.com").replace(/\/$/, "");
 const host = new URL(BASE).hostname;
 
-const urlList = learnIndexNowUrls().map((u) => u.replace("https://blackouttrades.com", BASE));
+const urlList = indexNowUrls().map((u) => u.replace("https://blackouttrades.com", BASE));
 
 async function main() {
   const body = {

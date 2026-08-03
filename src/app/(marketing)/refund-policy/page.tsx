@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { MarketingPageShell } from "@/components/landing/MarketingPageShell";
 import { LegalPageLayout } from "@/components/landing/LegalPageLayout";
+import { BreadcrumbJsonLd, WebPageJsonLd } from "@/components/seo/JsonLd";
 import { publicPageMetadata } from "@/lib/page-metadata";
 
 export const metadata: Metadata = publicPageMetadata(
@@ -12,6 +13,15 @@ export const metadata: Metadata = publicPageMetadata(
 export default function RefundPolicyPage() {
   return (
     <MarketingPageShell showChart={false}>
+      <WebPageJsonLd
+        title="Refund Policy — BlackOut"
+        description="BlackOut subscription refund and cancellation policy."
+        path="/refund-policy"
+      />
+      <BreadcrumbJsonLd items={[
+        { name: "Home", href: "/" },
+        { name: "Refund Policy", href: "/refund-policy" },
+      ]} />
       <LegalPageLayout kicker="Legal" title="Refund Policy" updated="July 27, 2026">
         <h2>Monthly Subscriptions</h2>
         <p>

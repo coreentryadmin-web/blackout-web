@@ -64,6 +64,8 @@ Secrets Manager. **Never commit real values.**
 | `VAPID_PRIVATE_KEY` | Push notifications |
 | `CF_ZONE_ID` | Cache purge on deploy |
 | `CF_API_TOKEN` | Cache purge on deploy |
+| `GOOGLE_SITE_VERIFICATION` | Google Search Console HTML-tag verification |
+| `BING_SITE_VERIFICATION` | Bing Webmaster HTML-tag verification |
 | `NEXT_PUBLIC_SITE_URL` | `https://blackouttrades.com` |
 | `CRON_TARGET_BASE_URL` | EventBridge Lambda target |
 
