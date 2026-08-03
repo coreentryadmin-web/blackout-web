@@ -21,6 +21,19 @@ import {
 } from "./deck-session-ui";
 import { etNowParts } from "@/features/nighthawk/lib/session";
 import { useSecondTick, useFlash } from "./use-deck-live";
+import {
+  formatReturnPct,
+  playQualityPct,
+  useEnhancedZeroDteRow,
+  useHeroPlayCard,
+} from "./play-card-display";
+import { PlayLifecycleCardBody } from "./PlayLifecycleCard";
+import {
+  buildDeckCommandCenterStats,
+  convictionRankContext,
+  formatWinRate30d,
+} from "./deck-command-center";
+import { deriveEngineStatus } from "./deck-engine-status";
 
 /** Status filter mode: which plays to show in the list. */
 type StatusFilter = DeckStatusFilter;
@@ -47,6 +60,10 @@ export function CommandDeck({
   loading = false,
   allocation,
   sessionHeat = null,
+  commandCenter = false,
+  winRate30d = null,
+  boardAsOf = null,
+  upstreamOk = null,
 }: {
   plays: TerminalPlay[];
   laneLabel: string;
@@ -62,6 +79,14 @@ export function CommandDeck({
   allocation?: CockpitAllocation[] | null;
   /** Board `session.heat.state` — drives default filter + right-rail LIVE/CLOSED honesty. */
   sessionHeat?: DeckSessionHeatState;
+  /** 0DTE only — replace the "X of Y" header with the command-center stat strip. */
+  commandCenter?: boolean;
+  /** 30d as-managed win rate from `/api/market/zerodte/record` — null when unavailable. */
+  winRate30d?: number | null;
+  /** Board snapshot instant (`as_of`) — drives Live Engine Status last-update age. */
+  boardAsOf?: string | null;
+  /** Board upstream health flag — false forces engine Offline (never fabricated). */
+  upstreamOk?: boolean | null;
 }) {
   // Counts per status group for the filter badges (and the session-aware default filter).
   const counts = useMemo(() => {
@@ -124,11 +149,53 @@ export function CommandDeck({
   const selected = sorted.find((p) => p.id === selId) ?? null;
   const sessionClosed = String(sessionHeat ?? "").toUpperCase() === "CLOSED";
   const nowMs = useSecondTick();
+  const cmdStats = useMemo(
+    () => (commandCenter ? buildDeckCommandCenterStats(plays) : null),
+    [commandCenter, plays],
+  );
+  const convictionRank = useMemo(
+    () => (selected && commandCenter ? convictionRankContext(plays, selected.id) : null),
+    [commandCenter, plays, selected],
+  );
+  const engineStatus = useMemo(
+    () =>
+      commandCenter
+        ? deriveEngineStatus({
+            degraded,
+            loading,
+            sessionHeat,
+            boardAsOf,
+            nowMs,
+            etMinutes: hour * 60 + minute,
+            upstreamOk,
+          })
+        : null,
+    [commandCenter, degraded, loading, sessionHeat, boardAsOf, nowMs, hour, minute, upstreamOk],
+  );
 
   return (
     <div className="nh-deck">
       <div className="nh-deck-left">
-        <div className="nh-deck-lh"><span>{laneLabel}</span><span>{degraded ? "data down" : statusFilter === "ALL" ? `${plays.length} plays` : `${filtered.length} of ${plays.length}`}</span></div>
+        {commandCenter ? (
+          <DeckCommandCenter
+            laneLabel={laneLabel}
+            degraded={degraded}
+            stats={cmdStats}
+            winRate30d={winRate30d}
+            engineStatus={engineStatus}
+          />
+        ) : (
+          <div className="nh-deck-lh">
+            <span>{laneLabel}</span>
+            <span>
+              {degraded
+                ? "data down"
+                : statusFilter === "ALL"
+                  ? `${plays.length} plays`
+                  : `${filtered.length} of ${plays.length}`}
+            </span>
+          </div>
+        )}
         <CockpitStrip risk={risk} tape={tape} />
         <div className="nh-deck-chrome-row">
         <div className="nh-deck-filterbar" role="group" aria-label="Filter plays by status">
@@ -168,7 +235,87 @@ export function CommandDeck({
           ))}
         </div>
       </div>
-      <PlayTerminal play={selected} sessionClosed={sessionClosed} nowMs={nowMs} />
+      <PlayTerminal
+        play={selected}
+        sessionClosed={sessionClosed}
+        nowMs={nowMs}
+        convictionRank={convictionRank}
+      />
+    </div>
+  );
+}
+
+/** 0DTE left-rail command center — today's opportunity set at a glance. */
+function DeckCommandCenter({
+  laneLabel,
+  degraded,
+  stats,
+  winRate30d,
+  engineStatus,
+}: {
+  laneLabel: string;
+  degraded: boolean;
+  stats: ReturnType<typeof buildDeckCommandCenterStats> | null;
+  winRate30d: number | null;
+  engineStatus: ReturnType<typeof deriveEngineStatus> | null;
+}) {
+  const topLine = stats?.topRated
+    ? `${stats.topRated.ticker} (${stats.topRated.grade})`
+    : "—";
+  const edge = degraded ? null : stats?.edge ?? null;
+  return (
+    <div className="nh-deck-cmd" aria-label="Today's command center">
+      <div className="nh-deck-cmd-lane">{laneLabel}</div>
+      <div className="nh-deck-cmd-grid">
+        <div className="nh-deck-cmd-stat">
+          <span className="nh-deck-cmd-lab">Today&apos;s Opportunities</span>
+          <span className="nh-deck-cmd-val">{degraded ? "—" : stats?.opportunities ?? 0}</span>
+        </div>
+        <div className="nh-deck-cmd-stat">
+          <span className="nh-deck-cmd-lab">Top Rated</span>
+          <span className="nh-deck-cmd-val nh-deck-cmd-top">{degraded ? "—" : topLine}</span>
+        </div>
+        <div className="nh-deck-cmd-stat">
+          <span className="nh-deck-cmd-lab">Win Rate (30d)</span>
+          <span className="nh-deck-cmd-val">{degraded ? "—" : formatWinRate30d(winRate30d)}</span>
+        </div>
+        <div className="nh-deck-cmd-stat">
+          <span className="nh-deck-cmd-lab">Today&apos;s Edge</span>
+          <span className={clsx("nh-deck-cmd-val", edge && `edge-${edge.toLowerCase()}`)}>
+            {degraded ? "—" : edge ?? "—"}
+          </span>
+        </div>
+      </div>
+      {engineStatus && <DeckEngineStatus status={engineStatus} />}
+    </div>
+  );
+}
+
+/** Live engine heartbeat — grounded on the board snapshot's `as_of`, ticks every second. */
+function DeckEngineStatus({
+  status,
+}: {
+  status: ReturnType<typeof deriveEngineStatus>;
+}) {
+  return (
+    <div className="nh-deck-engine-status" aria-label="Engine status">
+      <div className="nh-deck-engine-status__cell">
+        <span className="nh-deck-engine-status__lab">Engine</span>
+        <span className={clsx("nh-deck-engine-status__val", status.ok && "is-ok")}>
+          {status.label}
+          {status.ok && (
+            <span className="nh-deck-engine-status__ok" aria-hidden>
+              ✔
+            </span>
+          )}
+        </span>
+      </div>
+      <div className="nh-deck-engine-status__cell nh-deck-engine-status__cell--right">
+        <span className="nh-deck-engine-status__lab">Last Update</span>
+        <span className="nh-deck-engine-status__val nh-deck-engine-status__age">
+          {status.lastUpdateAge ?? "—"}
+        </span>
+      </div>
     </div>
   );
 }
@@ -261,14 +408,8 @@ function HealthRing({ health, rung }: { health: number; rung: string }) {
   );
 }
 
-/** One left-pane play card. Wave 2 surfaces the tier + discovery-origin badges, the mid mark + its
- *  executable-fill P&L, and honest staleness (dim + age) — all reading the Wave-1 payload fields.
- *
- * Memoized: CommandDeck re-renders every 1000ms (useSecondTick, needed here for staleness/age), and
- * without memo every row re-executed on every tick regardless of whether its OWN play data changed.
- * `onSelect` takes the play id (rather than the parent handing each row a fresh `() => setSelId(id)`
- * closure) so the parent can pass the stable `setSelId` setter directly — a fresh closure per row per
- * tick would otherwise defeat this memoization outright. */
+/** Visible rank identity for 0DTE rows — moved to PlayLifecycleCard (lifecycle layout). */
+
 export const PlayCard = memo(function PlayCard({
   play: p,
   rank,
@@ -290,14 +431,53 @@ export const PlayCard = memo(function PlayCard({
   const stale = hasAsOf ? isZeroDteMarkStale(asOfMs, nowMs, staleThresholdMs) : false;
 
   const isCondor = p.isCondor === true;
-
   const showThRing =
     p.thesisHealth != null && (p.status === "OPEN" || p.status === "HOLD" || p.status === "TRIM");
+
+  const hero = useHeroPlayCard(p, selected, rank);
+  const enhanced = useEnhancedZeroDteRow(p);
+  const quality = playQualityPct(p);
+
+  if (enhanced) {
+    return (
+      <button
+        type="button"
+        className={clsx(
+          "nh-deck-row",
+          hero ? "nh-deck-row-hero nh-deck-row-lifecycle" : "nh-deck-row-lifecycle-compact",
+          selected && "sel",
+          stale && "nh-deck-card-stale",
+          markFlash && "nh-deck-row-flash",
+        )}
+        onClick={() => onSelect(p.id)}
+        aria-current={selected}
+        style={!hero && quality != null ? { ["--nh-quality" as string]: `${quality}%` } : undefined}
+      >
+        <PlayLifecycleCardBody
+          play={p}
+          rank={rank}
+          nowMs={nowMs}
+          hero={hero}
+          markFlash={markFlash}
+        />
+        {isCondor && (
+          <span className="nh-deck-lc-condor">
+            <CondorCardChip play={p} />
+          </span>
+        )}
+      </button>
+    );
+  }
 
   return (
     <button
       type="button"
-      className={clsx("nh-deck-row", selected && "sel", stale && "nh-deck-card-stale", markFlash && "nh-deck-row-flash")}
+      className={clsx(
+        "nh-deck-row",
+        selected && "sel",
+        stale && "nh-deck-card-stale",
+        markFlash && "nh-deck-row-flash",
+      )}
       onClick={() => onSelect(p.id)}
       aria-current={selected}
     >
@@ -307,17 +487,14 @@ export const PlayCard = memo(function PlayCard({
         )}
         <span className="nh-deck-rk">{rank}</span>
       </span>
-      <span>
-        <span>
-          <span className="nh-deck-tk">{p.ticker}</span>{" "}
-          <span className={clsx("nh-deck-dp", p.direction === "LONG" ? "long" : "short")}>{p.direction}</span>
+      <span className="nh-deck-row-body">
+        <span className="nh-deck-row-head">
+          <span className="nh-deck-tk">{p.ticker}</span>
+          <span className={clsx("nh-deck-dp", p.direction === "LONG" ? "long" : "short")}>
+            {p.direction}
+          </span>
         </span>
-        <span className="nh-deck-sub" style={{ display: "block" }}>{p.contract}</span>
-        {/* Row kept deliberately minimal: ticker/contract, status, the one number that matters
-           (peak for CLOSED, live P&L for everything else), and when it happened. Tier, discovery
-           origin, pre-market confirm/degrade status, thesis-health score, and staleness age are
-           all still one click away in the right-pane detail (PlayTerminal.tsx header + Thesis
-           tab) — they don't need to compete for space on every row in the list. */}
+        <span className="nh-deck-sub">{p.contract}</span>
         <span className="nh-deck-cardbadges">
           <span className={clsx("nh-deck-st", p.status)}>{p.status}</span>
           {p.firstFlaggedAt && (
@@ -325,23 +502,23 @@ export const PlayCard = memo(function PlayCard({
               {etClock(p.firstFlaggedAt)} ET
             </span>
           )}
+          {isCondor && <CondorCardChip play={p} />}
         </span>
       </span>
       <span className="nh-deck-rr">
-        {/* A CLOSED row's current mark/mid is dead information — nobody is trading it anymore.
-           What matters is the peak excursion it reached before the stop (already latched
-           server-side as peak_premium, see adapters.ts peakDisplay): a play that ran +87% and
-           gave it back at -50% is a different story than one that just lost, and that story is
-           now the PRIMARY number on the row instead of a small badge next to a dead price. */}
         {p.status === "CLOSED" && p.peak != null ? (
           <>
             <span
-              className={clsx("nh-deck-prem", p.peak > 0 && "nh-deck-pos", p.peak < 0 && "nh-deck-neg")}
-              style={{ display: "block" }}
+              className={clsx(
+                "nh-deck-prem nh-deck-prem-lg",
+                p.peak > 0 && "nh-deck-pos",
+                p.peak < 0 && "nh-deck-neg",
+              )}
             >
-              {p.peak > 0 ? "+" : ""}{p.peak.toFixed(0)}%
+              {p.peak > 0 ? "▲ " : ""}
+              {formatReturnPct(p.peak)}
             </span>
-            <span className="nh-deck-premlab">PEAK</span>
+            <span className="nh-deck-premlab">Peak Return</span>
           </>
         ) : p.horizon === "LEGACY" && p.stockPrice != null ? (
           <>
@@ -349,22 +526,41 @@ export const PlayCard = memo(function PlayCard({
               ${p.stockPrice.toFixed(2)}
             </span>
             <span className="nh-deck-premlab">{p.pnlPct != null ? "P&L" : "STOCK"}</span>
-            <span className={clsx("nh-deck-pnl", (p.pnlPct ?? p.stockChangePct ?? 0) > 0 && "nh-deck-pos", (p.pnlPct ?? p.stockChangePct ?? 0) < 0 && "nh-deck-neg")} style={{ display: "block" }}>
+            <span
+              className={clsx(
+                "nh-deck-pnl",
+                (p.pnlPct ?? p.stockChangePct ?? 0) > 0 && "nh-deck-pos",
+                (p.pnlPct ?? p.stockChangePct ?? 0) < 0 && "nh-deck-neg",
+              )}
+              style={{ display: "block" }}
+            >
               {p.pnlPct != null
                 ? `${p.pnlPct >= 0 ? "+" : ""}${p.pnlPct.toFixed(1)}%`
-                : p.stockChangePct != null ? `${p.stockChangePct >= 0 ? "+" : ""}${p.stockChangePct.toFixed(1)}%` : "—"}
+                : p.stockChangePct != null
+                  ? `${p.stockChangePct >= 0 ? "+" : ""}${p.stockChangePct.toFixed(1)}%`
+                  : "—"}
             </span>
           </>
         ) : (
           <>
-            <span className="nh-deck-prem" style={{ display: "block" }}>
+            <span className="nh-deck-prem nh-deck-prem-lg" style={{ display: "block" }}>
               {p.mark != null || p.entry != null
                 ? `$${(p.mark != null ? p.mark : p.entry!).toFixed(2)}`
                 : "—"}
             </span>
             <span className="nh-deck-premlab">{isCondor ? "MARK" : "MID"}</span>
-            <span className={clsx("nh-deck-pnl", (p.pnlPct ?? 0) > 0 && "nh-deck-pos", (p.pnlPct ?? 0) < 0 && "nh-deck-neg", markFlash && "neon")} style={{ display: "block" }}>
-              {p.pnlPct != null && p.pnlPct !== 0 ? `${p.pnlPct > 0 ? "+" : ""}${p.pnlPct.toFixed(1)}%` : "—"}
+            <span
+              className={clsx(
+                "nh-deck-pnl nh-deck-pnl-lg",
+                (p.pnlPct ?? 0) > 0 && "nh-deck-pos",
+                (p.pnlPct ?? 0) < 0 && "nh-deck-neg",
+                markFlash && "neon",
+              )}
+              style={{ display: "block" }}
+            >
+              {p.pnlPct != null && p.pnlPct !== 0
+                ? `${p.pnlPct > 0 ? "▲ " : ""}${formatReturnPct(p.pnlPct)}`
+                : "—"}
             </span>
           </>
         )}

@@ -147,6 +147,17 @@ export interface TerminalPlay {
   /** ISO instant this play was first flagged by the scan — the honest "when" for the why-now
    *  ribbon (rendered as an ET clock time). Null on a row that carried no flag time. */
   firstFlaggedAt?: string | null;
+  /** ISO instant the scanner first surfaced this name (setup.first_seen) — the WATCH "Published"
+   *  clock. Null when the board never carried a detection time. */
+  detectedAt?: string | null;
+
+  /** Timeline replay — engine exit + reconstructed tranches (0DTE only, never fabricated). */
+  closedReason?: string | null;
+  exitReason?: string | null;
+  exitDetail?: string | null;
+  exitAt?: string | null;
+  exitPnlPct?: number | null;
+  timelineTranches?: import("@/lib/zerodte/play-timeline").PlayTimelineTranche[] | null;
 
   // ── greeks (live) ──
   greeks?: DeckGreeks | null;

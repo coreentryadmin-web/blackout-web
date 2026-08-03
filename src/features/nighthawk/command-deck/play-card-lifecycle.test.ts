@@ -1,0 +1,132 @@
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+import {
+  FRESHNESS_JUST_FIRED_MS,
+  closedRealizedPct,
+  formatRelativeAge,
+  freshnessBadgeLabel,
+  freshnessTierFromAge,
+  playFreshnessDisplay,
+  playLifecyclePhase,
+  playLifecycleTimestamps,
+  playPrimaryEvent,
+  playStatusLabel,
+} from "./play-card-lifecycle.ts";
+import type { TerminalPlay } from "./types.ts";
+
+const NOW = Date.parse("2026-08-03T12:00:00-04:00");
+
+function base(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
+  return {
+    id: "0DTE:META",
+    ticker: "META",
+    direction: "LONG",
+    contract: "592.5C · 0DTE",
+    score: 94,
+    status: "OPEN",
+    horizon: "ZERO_DTE",
+    exitModel: "RATCHET",
+    factors: [],
+    gates: [],
+    recommendation: "HOLD",
+    tierLabel: "A+",
+    discoveryOrigin: ["BREAKOUT"],
+    firstFlaggedAt: "2026-08-03T11:46:00-04:00",
+    pnlPct: 42,
+    peak: 87,
+    ...overrides,
+  };
+}
+
+describe("play-card-lifecycle", () => {
+  it("playLifecyclePhase maps status buckets", () => {
+    assert.equal(playLifecyclePhase("OPEN"), "open");
+    assert.equal(playLifecyclePhase("WATCH"), "watch");
+    assert.equal(playLifecyclePhase("CLOSED"), "closed");
+  });
+
+  it("formatRelativeAge returns human relative strings", () => {
+    assert.equal(formatRelativeAge("2026-08-03T11:46:00-04:00", NOW), "14m ago");
+    assert.equal(formatRelativeAge("2026-08-03T11:59:30-04:00", NOW), "30s ago");
+  });
+
+  it("freshness tier escalates with age on open trades", () => {
+    assert.equal(freshnessTierFromAge(2 * 60_000, "open"), "just_fired");
+    assert.equal(freshnessTierFromAge(10 * 60_000, "open"), "fresh");
+    assert.equal(freshnessTierFromAge(22 * 60_000, "open"), "aging");
+    assert.equal(freshnessTierFromAge(47 * 60_000, "open"), "late");
+    assert.equal(freshnessTierFromAge(null, "closed"), "closed");
+  });
+
+  it("freshnessBadgeLabel matches urgency tiers", () => {
+    assert.equal(freshnessBadgeLabel("just_fired", FRESHNESS_JUST_FIRED_MS - 1000), "JUST FIRED");
+    assert.equal(freshnessBadgeLabel("fresh", 8 * 60_000), "8 MIN AGO");
+    assert.equal(freshnessBadgeLabel("aging", 28 * 60_000), "28 MIN OLD");
+    assert.equal(freshnessBadgeLabel("closed", null), "CLOSED");
+  });
+
+  it("playPrimaryEvent picks state-relevant clock", () => {
+    assert.deepEqual(playPrimaryEvent(base()), {
+      label: "Triggered",
+      iso: "2026-08-03T11:46:00-04:00",
+    });
+    assert.deepEqual(
+      playPrimaryEvent(
+        base({
+          status: "WATCH",
+          detectedAt: "2026-08-03T10:47:00-04:00",
+          firstFlaggedAt: null,
+        }),
+      ),
+      { label: "Published", iso: "2026-08-03T10:47:00-04:00" },
+    );
+    assert.deepEqual(
+      playPrimaryEvent(base({ status: "CLOSED", exitAt: "2026-08-03T12:06:00-04:00" })),
+      { label: "Closed", iso: "2026-08-03T12:06:00-04:00" },
+    );
+  });
+
+  it("playFreshnessDisplay pulses just-fired open trades", () => {
+    const fresh = playFreshnessDisplay(
+      base({ firstFlaggedAt: "2026-08-03T11:58:00-04:00" }),
+      NOW,
+      "2026-08-03T11:58:00-04:00",
+    );
+    assert.equal(fresh.tier, "just_fired");
+    assert.equal(fresh.pulse, true);
+    assert.equal(fresh.lateEntry, false);
+
+    const late = playFreshnessDisplay(
+      base({ firstFlaggedAt: "2026-08-03T11:10:00-04:00" }),
+      NOW,
+      "2026-08-03T11:10:00-04:00",
+    );
+    assert.equal(late.tier, "late");
+    assert.equal(late.lateEntry, true);
+  });
+
+  it("playLifecycleTimestamps only returns grounded clocks", () => {
+    const rows = playLifecycleTimestamps(
+      base({
+        detectedAt: "2026-08-03T10:58:00-04:00",
+        thesisHealth: { health: 80, rungLabel: "HOLD", committedAtEt: "11:00 ET" } as TerminalPlay["thesisHealth"],
+        exitAt: "2026-08-03T12:06:00-04:00",
+        status: "CLOSED",
+      }),
+    );
+    assert.deepEqual(
+      rows.map((r) => r.label),
+      ["Detected", "Committed", "Triggered", "Closed"],
+    );
+  });
+
+  it("playStatusLabel maps ACTIVE and WATCHING", () => {
+    assert.equal(playStatusLabel("OPEN"), "ACTIVE");
+    assert.equal(playStatusLabel("WATCH"), "WATCHING");
+    assert.equal(playStatusLabel("CLOSED"), "CLOSED");
+  });
+
+  it("closedRealizedPct prefers exit stamp", () => {
+    assert.equal(closedRealizedPct(base({ status: "CLOSED", exitPnlPct: 42, pnlPct: -50 })), 42);
+  });
+});

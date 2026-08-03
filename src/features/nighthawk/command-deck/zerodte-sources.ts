@@ -15,6 +15,7 @@ export interface BoardResp {
   available?: boolean;
   degraded?: boolean;
   upstream_ok?: boolean;
+  as_of?: string;
   setups?: Array<Record<string, unknown>>;
   ledger?: Array<Record<string, unknown>>;
   allocation?: Array<{ ticker: string; role: string; sizing: string; reasons?: string[] }>;
@@ -138,6 +139,12 @@ function sourceFrom(
     why_now: (lg?.why_now as ZeroDteDeckSource["why_now"]) ?? null,
     first_flagged_at: (lg?.first_flagged_at as string) ?? null,
     thesis_health: (lg?.thesis_health as ThesisHealthPayload | null) ?? null,
+    closed_reason: (lg?.closed_reason as string) ?? null,
+    exit_reason: (lg?.exit_reason as string) ?? null,
+    exit_detail: (lg?.exit_detail as string) ?? null,
+    exit_at: (lg?.exit_at as string) ?? null,
+    exit_pnl_pct: (lg?.exit_pnl_pct as number) ?? null,
+    timeline_tranches: (lg?.timeline_tranches as ZeroDteDeckSource["timeline_tranches"]) ?? null,
   };
 }
 

@@ -13,9 +13,24 @@ import { excursionBar, formatWinRateCi, signColorClass } from "@/lib/zerodte/ter
 import type { DeckCondor } from "./types";
 import { markStreamKind } from "./deck-session-ui";
 import { ThesisHealthPanel } from "./ThesisHealthPanel";
+import { PlayTimelinePanel } from "./PlayTimelinePanel";
 import { useSecondTick, useFlash } from "./use-deck-live";
+import { isZeroDtePremiumTerminal } from "./terminal-display";
+import type { ConvictionRankContext } from "./deck-command-center";
+import {
+  ConfluenceGrid,
+  EngineChecklistPanel,
+  ManagementActionCard,
+  MarketContextRow,
+  PremiumMarkChart,
+  ThesisExpectedMove,
+  ThesisStrengthBlock,
+  TradeOutcomePanel,
+  TradeSummaryHero,
+  VisualTrimLadder,
+} from "./TerminalPremiumPanels";
 
-type Tab = "thesis" | "manage" | "pnl";
+type Tab = "thesis" | "manage" | "pnl" | "timeline";
 
 const GLAB: Record<string, string> = {
   delta: "Δ DELTA", gamma: "Γ GAMMA", theta: "Θ THETA", vega: "V VEGA", iv: "IV",
@@ -108,6 +123,7 @@ export function PlayTerminal({
   play,
   sessionClosed = false,
   nowMs: nowMsProp,
+  convictionRank = null,
 }: {
   play: TerminalPlay | null;
   /** Board heat.state === CLOSED — right-rail must not claim LIVE/greeks after the session. */
@@ -118,6 +134,8 @@ export function PlayTerminal({
    * together. Falls back to this component's own tick so standalone callers are unaffected.
    */
   nowMs?: number;
+  /** Engine conviction rank on today's full board (0DTE command deck). */
+  convictionRank?: ConvictionRankContext | null;
 }) {
   // Default to Management for working 0DTE rows (action first); Thesis otherwise.
   const [tab, setTab] = useState<Tab>("thesis");
@@ -136,10 +154,11 @@ export function PlayTerminal({
       if (e.key === "1") { setTabTouched(true); setTab("thesis"); }
       else if (e.key === "2") { setTabTouched(true); setTab("manage"); }
       else if (e.key === "3") { setTabTouched(true); setTab("pnl"); }
+      else if (e.key === "4" && play?.horizon === "ZERO_DTE") { setTabTouched(true); setTab("timeline"); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [play?.horizon]);
   // Hooks must run unconditionally (before any early return). Pause the internal tick when a
   // parent already supplies one (see the nowMs prop doc above) — the hook stays mounted (rules of
   // hooks) but its own setInterval never fires, so only one 1Hz timer runs for the whole deck.
@@ -188,9 +207,39 @@ export function PlayTerminal({
     g && (g.delta != null || g.gamma != null || g.theta != null || g.vega != null || g.iv != null),
   );
   const greeksOff = !live || !greeksLive || streamKind === "CLOSED";
+  const premium = isZeroDtePremiumTerminal(play);
 
   return (
-    <div className={clsx("nh-deck-right", (stale || streamKind === "CLOSED") && "nh-deck-dim")}>
+    <div className={clsx("nh-deck-right", premium && "nh-deck-right-premium", (stale || streamKind === "CLOSED") && "nh-deck-dim")}>
+      {premium ? (
+        <>
+          <TradeSummaryHero
+            play={play}
+            streamKind={streamKind}
+            markFlash={markFlash}
+            rankContext={convictionRank}
+            nowMs={nowMs}
+          />
+          <div className="nh-deck-stream nh-deck-stream-compact" title={streamKind === "CLOSED" ? "Session closed — showing last known marks" : undefined}>
+            {streamKind === "LIVE" ? (
+              <><span className="nh-deck-dot" /><span className="lv">LIVE</span></>
+            ) : streamKind === "CLOSED" ? (
+              <><span className="nh-deck-dot off" /><span className="cl">SESSION CLOSED</span></>
+            ) : streamKind === "SYNC" ? (
+              <><span className="nh-deck-dot sync" /><span className="sy">SYNC</span></>
+            ) : streamKind === "STALE" ? (
+              <><span className="nh-deck-dot off" /><span className="of">STALE</span></>
+            ) : (
+              <><span className="nh-deck-dot off" /><span className="of">—</span></>
+            )}
+            {" · mark "}
+            <span className={clsx(markFlash && "neon", (stale || streamKind === "CLOSED") && "nh-deck-stale-mark")}>{usd(play.mark)}</span>
+            {play.occ && <OccCopy occ={play.occ} />}
+            {streamKind === "LIVE" && ageLabel && <span className="nh-deck-age"> · {ageLabel}</span>}
+          </div>
+        </>
+      ) : (
+        <>
       <div className="nh-deck-th">
         <span className="tk">{play.ticker} · {play.direction}</span>
         <span className="ct">{play.contract}<OccCopy occ={play.occ} /></span>
@@ -264,8 +313,10 @@ export function PlayTerminal({
           )}
         </div>
       )}
+        </>
+      )}
 
-      {!isLegacy && (
+      {!isLegacy && !premium && (
         <div className={clsx("nh-deck-greeks", greeksOff && "off")} title={greeksOff ? "Greeks update with live marks — offline after the session" : undefined}>
           <GreekCell k="delta" v={greeksOff ? null : (g?.delta ?? null)} />
           <GreekCell k="gamma" v={greeksOff ? null : (g?.gamma ?? null)} />
@@ -275,21 +326,37 @@ export function PlayTerminal({
         </div>
       )}
 
+      {premium && (greeksOff ? <MarketContextRow play={play} /> : (
+        <div className={clsx("nh-deck-greeks", greeksOff && "off")} title={greeksOff ? "Greeks update with live marks" : undefined}>
+          <GreekCell k="delta" v={g?.delta ?? null} />
+          <GreekCell k="gamma" v={g?.gamma ?? null} />
+          <GreekCell k="theta" v={g?.theta ?? null} />
+          <GreekCell k="vega" v={g?.vega ?? null} />
+          <GreekCell k="iv" v={g?.iv ?? null} />
+        </div>
+      ))}
+
       <div className="nh-deck-tabs">
         <button className={clsx(tab === "thesis" && "on")} onClick={() => { setTabTouched(true); setTab("thesis"); }}><span className="n">[1]</span>Thesis</button>
         <button className={clsx(tab === "manage" && "on")} onClick={() => { setTabTouched(true); setTab("manage"); }}><span className="n">[2]</span>Management</button>
         <button className={clsx(tab === "pnl" && "on")} onClick={() => { setTabTouched(true); setTab("pnl"); }}><span className="n">[3]</span>PnL</button>
+        {play.horizon === "ZERO_DTE" && (
+          <button className={clsx(tab === "timeline" && "on")} onClick={() => { setTabTouched(true); setTab("timeline"); }}><span className="n">[4]</span>Timeline</button>
+        )}
       </div>
 
       <div className="nh-deck-body">
         {tab === "thesis" && <ThesisPanel play={play} sessionClosed={sessionClosed} />}
         {tab === "manage" && <ManagePanel play={play} nowMs={nowMs} />}
         {tab === "pnl" && <PnlPanel play={play} />}
+        {tab === "timeline" && play.horizon === "ZERO_DTE" && (
+          <PlayTimelinePanel play={play} nowMs={nowMs} />
+        )}
       </div>
 
       <div className="nh-deck-foot">
         <span>EXIT · {play.exitModel === "SCALE_OUT" ? "TRIM-SCALE" : play.horizon === "LEGACY" ? "STOCK LEVELS" : play.exitModel}</span>
-        <span>{play.tierLabel ? `TIER ${play.tierLabel}` : play.scorecard ? `WR ${Number.isFinite(play.scorecard.winRate) ? `${play.scorecard.winRate}%` : "—"}` : ""}</span>
+        <span>{play.tierLabel ? `TIER ${play.tierLabel}` : play.scorecard ? formatWinRateCi(play.scorecard) : ""}</span>
         {play.allocation && <span style={{ marginLeft: "auto" }}>{play.allocation.role} · {play.allocation.sizing}</span>}
       </div>
     </div>
@@ -346,6 +413,7 @@ function ThesisPanel({ play, sessionClosed = false }: { play: TerminalPlay; sess
   const topFactors = play.factors.slice(0, 2);
   const moreFactors = play.factors.slice(2);
   const hasThesisHealth = play.horizon === "ZERO_DTE" && play.thesisHealth != null;
+  const premium = isZeroDtePremiumTerminal(play);
   const isWorking =
     play.status === "OPEN" || play.status === "HOLD" || play.status === "TRIM";
   const monitorTitle =
@@ -457,7 +525,15 @@ function ThesisPanel({ play, sessionClosed = false }: { play: TerminalPlay; sess
 
   return (
     <>
-      {hasThesisHealth && isWorking && !sessionClosed && (
+      {premium && (
+        <div className="nh-deck-premium-stack">
+          <EngineChecklistPanel play={play} />
+          <ThesisStrengthBlock play={play} />
+          <ThesisExpectedMove play={play} />
+          <ConfluenceGrid play={play} />
+        </div>
+      )}
+      {hasThesisHealth && isWorking && !sessionClosed && !premium && (
         <ThesisHealthPanel health={play.thesisHealth!} liveRec={liveRec} />
       )}
       {hasThesisHealth ? (
@@ -509,6 +585,7 @@ function ManagePanel({ play, nowMs }: { play: TerminalPlay; nowMs: number }) {
       : play.exitModel === "PLAN" && play.recNote
         ? play.recNote
         : mgmt.recNote;
+  const premium = isZeroDtePremiumTerminal(play);
   // A CONDOR is a credit structure — its profit comes from decay/pin, NOT a rising long premium,
   // so it must never draw the directional trim ladder OR the −50/+100 ratchet track (both inverted).
   const isCondor = play.isCondor === true;
@@ -532,12 +609,24 @@ function ManagePanel({ play, nowMs }: { play: TerminalPlay; nowMs: number }) {
   })();
   return (
     <>
-      <div className="nh-deck-lab">Trade management — advisory (we recommend, you execute)</div>
-      <div className="nh-deck-rec">
-        <span className={clsx("nh-deck-recb", badge)}>{badge}</span>
-        {/* Plain text only — never inject HTML (recNote is authored plain; React escapes it safely). */}
-        <span className="nh-deck-recnote">{recNote}</span>
-      </div>
+      {premium && !isCondor && (
+        <div className="nh-deck-premium-stack">
+          <ManagementActionCard play={play} recommendation={badge} progress={mgmt.progress} />
+          <VisualTrimLadder play={play} />
+        </div>
+      )}
+      {!premium && (
+        <>
+          <div className="nh-deck-lab">Trade management — advisory (we recommend, you execute)</div>
+          <div className="nh-deck-rec">
+            <span className={clsx("nh-deck-recb", badge)}>{badge}</span>
+            <span className="nh-deck-recnote">{recNote}</span>
+          </div>
+        </>
+      )}
+      {premium && recNote && (
+        <div className="nh-deck-recnote nh-deck-premium-note">{recNote}</div>
+      )}
       {distLine && play.horizon === "ZERO_DTE" && !isCondor && (
         <div className="nh-deck-dist" title="Distance from live mark to the plan rails">
           <span className="k">Rails</span>
@@ -572,7 +661,7 @@ function ManagePanel({ play, nowMs }: { play: TerminalPlay; nowMs: number }) {
       {/* The REAL trim-scale ladder — each tranche with its trigger %, real premium level, and FIRED
           (banked) vs pending. Rendered only when the row's FROZEN policy is trim_scale (dormant under
           the prod ratchet default) AND it is not a condor. */}
-      {isTrimScale && <TrimScaleLadder play={play} />}
+      {isTrimScale && !premium && <TrimScaleLadder play={play} />}
 
       {/* Legacy entry plan — the recommended option contract + R:R ratio. */}
       {play.horizon === "LEGACY" && <LegacyEntryPlan play={play} />}
@@ -767,15 +856,26 @@ function TimeStopClock({ nowMs }: { nowMs: number }) {
 
 function PnlPanel({ play }: { play: TerminalPlay }) {
   if (play.horizon === "LEGACY") return <LegacyPnlPanel play={play} />;
+  const premium = isZeroDtePremiumTerminal(play);
   const has = play.entry != null;
   const live = play.pnlPct;
   const exec = play.execPnlPct;
   return (
     <>
-      <div className="nh-deck-lab">Live P&amp;L</div>
-      <div className={clsx("nh-deck-pnlbig", (live ?? 0) > 0 && "nh-deck-pos", (live ?? 0) < 0 && "nh-deck-neg")}>
-        {has && live != null ? `${live > 0 ? "+" : ""}${live.toFixed(1)}%` : "— not entered"}
-      </div>
+      {premium && has && (
+        <>
+          <TradeOutcomePanel play={play} />
+          <PremiumMarkChart play={play} />
+        </>
+      )}
+      {!premium && (
+        <>
+          <div className="nh-deck-lab">Live P&amp;L</div>
+          <div className={clsx("nh-deck-pnlbig", (live ?? 0) > 0 && "nh-deck-pos", (live ?? 0) < 0 && "nh-deck-neg")}>
+            {has && live != null ? `${live > 0 ? "+" : ""}${live.toFixed(1)}%` : "— not entered"}
+          </div>
+        </>
+      )}
       {exec != null && (
         <div className="nh-deck-execline">
           mid <b>{live != null ? `${live > 0 ? "+" : ""}${live.toFixed(1)}%` : "—"}</b>
@@ -786,7 +886,7 @@ function PnlPanel({ play }: { play: TerminalPlay }) {
       {!has && play.mark != null && (
         <ZeroDtePreEntryContext play={play} />
       )}
-      {has && <ExcursionViz play={play} />}
+      {has && !premium && <ExcursionViz play={play} />}
       <div className="nh-deck-grid">
         <div><span className="k">Entry</span><span className="v">{has ? usd(play.entry) : "—"}</span></div>
         <div><span className="k">Live mark</span><span className="v">{usd(play.mark)}</span></div>

@@ -4,8 +4,6 @@ import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { TerminalPlay } from "./types";
 
-// Classic JSX runtime in this test context expects a global React (same idiom as
-// PlayTerminal.ssr.test.ts).
 (globalThis as unknown as { React: typeof React }).React = React;
 
 const load = () => import("./CommandDeck");
@@ -17,7 +15,7 @@ function play(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
     direction: "LONG",
     contract: "592.5C · 0DTE",
     occ: "META260725C00592500",
-    score: 80,
+    score: 96,
     status: "CLOSED",
     horizon: "ZERO_DTE",
     exitModel: "RATCHET",
@@ -29,97 +27,109 @@ function play(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
     pnlPct: -50,
     peak: 87,
     trough: -50,
+    tierLabel: "A+",
+    discoveryOrigin: ["BREAKOUT"],
     firstFlaggedAt: "2026-08-03T09:42:00-04:00",
+    exitAt: "2026-08-03T12:06:00-04:00",
+    exitPnlPct: 42,
     ...overrides,
   };
 }
 
-async function render(p: TerminalPlay): Promise<string> {
+async function render(
+  p: TerminalPlay,
+  opts: { rank?: number; selected?: boolean; nowMs?: number } = {},
+): Promise<string> {
   const { PlayCard } = await load();
   return renderToStaticMarkup(
-    React.createElement(PlayCard, { play: p, rank: 1, selected: false, onSelect: () => {}, nowMs: Date.now() })
+    React.createElement(PlayCard, {
+      play: p,
+      rank: opts.rank ?? 1,
+      selected: opts.selected ?? false,
+      onSelect: () => {},
+      nowMs: opts.nowMs ?? Date.parse("2026-08-03T12:00:00-04:00"),
+    }),
   );
 }
 
-// ── Peak-excursion as the PRIMARY closed-row number (the "looks like a pure loser" fix) ──
-// A closed play's current mark/mid is dead information — nobody trades it anymore. The peak
-// excursion it reached before the stop is the honest "what actually happened" story, so it
-// replaces the dead price/pnl% entirely on a CLOSED row instead of riding along as a small chip.
-test("closed row with a peak that ran green before stopping out shows PEAK as the primary number", async () => {
-  const html = await render(play({ status: "CLOSED", peak: 87, pnlPct: -50 }));
+test("closed lifecycle row shows peak and realized returns", async () => {
+  const html = await render(play());
+  assert.match(html, />Peak</);
   assert.match(html, />\+87%</);
-  assert.match(html, />PEAK</);
+  assert.match(html, />Realized</);
+  assert.match(html, />\+42%</);
+  assert.match(html, />CLOSED</);
 });
 
-test("closed row never shows the dead mid price/MID label — peak replaces it, not augments it", async () => {
-  const html = await render(play({ status: "CLOSED", peak: 87, mark: 1.57 }));
-  assert.doesNotMatch(html, />MID</);
-  assert.doesNotMatch(html, /\$1\.57/);
-});
-
-test("open row (not yet closed) still shows the live mid price, not peak", async () => {
-  const html = await render(play({ status: "OPEN", peak: 87 }));
-  assert.doesNotMatch(html, />PEAK</);
-  assert.match(html, />MID</);
-});
-
-test("closed row with no peak data (older/degraded row) falls back to the normal mid/pnl display, never fabricates a peak", async () => {
-  const html = await render(play({ status: "CLOSED", peak: null, mark: 1.57, pnlPct: -50 }));
-  assert.doesNotMatch(html, />PEAK</);
-  assert.match(html, /\$1\.57/);
-});
-
-test("negative peak renders without a stray '+' sign", async () => {
-  const html = await render(play({ status: "CLOSED", peak: -12 }));
-  assert.match(html, />-12%</);
-  assert.doesNotMatch(html, />\+-12%</);
-});
-
-// ── Entry/generation-time chip ─────────────────────────────────────────────────────────
-test("row shows the ET flag time when firstFlaggedAt is present", async () => {
-  const html = await render(play({ firstFlaggedAt: "2026-08-03T09:42:00-04:00" }));
-  assert.match(html, /nh-deck-cbadge time/);
-  assert.match(html, />09:42 ET</);
-});
-
-test("row omits the time chip when firstFlaggedAt is absent — never fabricates a time", async () => {
-  const html = await render(play({ firstFlaggedAt: null }));
-  assert.doesNotMatch(html, /nh-deck-cbadge time/);
-});
-
-// ── Row simplification: tier/origin/thesis-health/staleness/exec-fill move to the right
-// pane only — the list row stays down to ticker/contract/status/the one number/timestamp.
-test("row omits tier, origin, thesis-health, and stale badges — those live in the right pane only", async () => {
+test("open lifecycle row shows freshness, current, and active status", async () => {
   const html = await render(
     play({
       status: "OPEN",
-      tierLabel: "A",
-      discoveryOrigin: ["BREAKOUT"],
-      thesisHealth: {
-        health: 80,
-        entryIndex: 80,
-        currentIndex: 80,
-        delta: 0,
-        rung: "intact",
-        rungLabel: "intact",
-        pillars: [],
-        moves: [],
-        committedAtEt: null,
-        computedAtEt: "10:00",
-        advisory: "hold",
-        thesisBreakLevel: "intact",
-        thesisBreakNote: "",
-      },
-    })
+      pnlPct: 42,
+      peak: 87,
+      firstFlaggedAt: "2026-08-03T11:58:00-04:00",
+    }),
+    { nowMs: Date.parse("2026-08-03T12:00:00-04:00") },
   );
-  assert.doesNotMatch(html, /nh-deck-cbadge tier/);
-  assert.doesNotMatch(html, /nh-deck-cbadge orig/);
-  assert.doesNotMatch(html, /nh-deck-th-chip/);
-  assert.doesNotMatch(html, /nh-deck-cbadge stale/);
+  assert.match(html, /JUST FIRED|MIN AGO/);
+  assert.match(html, />Triggered</);
+  assert.match(html, />Current</);
+  assert.match(html, />\+42%</);
+  assert.match(html, />ACTIVE</);
 });
 
-test("row omits the exec-fill line — plain pnl% is the whole story on the row", async () => {
-  const html = await render(play({ status: "OPEN", pnlPct: 12, execPnlPct: 9 }));
-  assert.doesNotMatch(html, /nh-deck-cardexec/);
-  assert.doesNotMatch(html, />fill /);
+test("watch lifecycle row shows published clock and watching status", async () => {
+  const html = await render(
+    play({
+      status: "WATCH",
+      detectedAt: "2026-08-03T11:54:00-04:00",
+      firstFlaggedAt: null,
+      pnlPct: null,
+      peak: null,
+    }),
+    { nowMs: Date.parse("2026-08-03T12:00:00-04:00") },
+  );
+  assert.match(html, />WATCH</);
+  assert.match(html, />Waiting for Trigger</);
+  assert.match(html, />Published</);
+  assert.match(html, />WATCHING</);
+});
+
+test("selected 0DTE row renders hero lifecycle card with banner when rank 1", async () => {
+  const html = await render(play({ status: "OPEN", pnlPct: 42 }), { selected: true, rank: 1 });
+  assert.match(html, /nh-deck-row-hero/);
+  assert.match(html, />BEST PLAY TODAY</);
+  assert.match(html, />Confidence/);
+  assert.match(html, />Tap to inspect/);
+});
+
+test("legacy row omits lifecycle layout", async () => {
+  const html = await render(
+    play({ horizon: "LEGACY", tierLabel: "A", stockPrice: 180, pnlPct: 5 }),
+    { selected: false },
+  );
+  assert.doesNotMatch(html, /nh-deck-lc/);
+});
+
+test("CommandDeck command center renders stat strip for 0DTE", async () => {
+  const { CommandDeck } = await load();
+  const html = renderToStaticMarkup(
+    React.createElement(CommandDeck, {
+      plays: [
+        play({ id: "0DTE:META", ticker: "META", tierLabel: "A+" }),
+        play({ id: "0DTE:AMD", ticker: "AMD", tierLabel: "B" }),
+      ],
+      laneLabel: "0DTE · same-day",
+      commandCenter: true,
+      winRate30d: 81,
+      boardAsOf: "2026-08-03T11:59:58-04:00",
+      sessionHeat: "RTH",
+    }),
+  );
+  assert.match(html, /nh-deck-cmd/);
+  assert.match(html, />META \(A\+\)/);
+  assert.match(html, /nh-deck-engine-status/);
+  assert.match(html, />Engine</);
+  assert.match(html, />Monitoring</);
+  assert.match(html, />Last Update</);
 });

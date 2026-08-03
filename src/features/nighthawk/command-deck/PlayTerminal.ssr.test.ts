@@ -46,6 +46,43 @@ test("OCC copy: control renders (accessible button, aria-label) when an OCC is o
   assert.match(html, /<button/); // a real, keyboard-focusable control
 });
 
+test("Play timeline tab renders for 0DTE horizon", async () => {
+  const html = await render(
+    play({
+      firstFlaggedAt: "2026-08-03T11:20:00-04:00",
+      pnlPct: 35,
+      peak: 87,
+    }),
+  );
+  assert.match(html, />\[4\]</);
+  assert.match(html, />Timeline</);
+});
+
+test("premium thesis panels render for 0DTE", async () => {
+  const html = await render(
+    play({
+      tierLabel: "A",
+      thesisHealth: {
+        health: 82,
+        currentIndex: 92,
+        advisory: "Thesis intact",
+        pillars: [{ id: "flow", label: "Flow", status: "intact" }],
+        committedAtEt: "10:15",
+      },
+    }),
+    { convictionRank: { rank: 1, total: 18, isHighestToday: true } },
+  );
+  assert.match(html, /nh-deck-trade-hero/);
+  assert.match(html, /Engine Confidence/);
+  assert.match(html, /Highest today/);
+  assert.match(html, /Rank #1 \/ 18/);
+});
+
+test("Play timeline tab absent on Legacy horizon", async () => {
+  const html = await render(play({ horizon: "LEGACY" }));
+  assert.doesNotMatch(html, />Timeline</);
+});
+
 test("OCC copy: absent OCC → no control rendered (graceful, no dead button)", async () => {
   const html = await render(play({ occ: null }));
   assert.doesNotMatch(html, /nh-deck-occcopy/);

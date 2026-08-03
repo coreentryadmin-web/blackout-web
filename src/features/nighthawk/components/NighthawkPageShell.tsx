@@ -1,7 +1,7 @@
 "use client";
 
 import { clsx } from "clsx";
-import { PageShell, PageHeader } from "@/components/ui";
+import { PageShell, PageHeader, FreshnessChip } from "@/components/ui";
 import { ProductMark } from "@/components/marks/ProductMark";
 import { NightHawkFeed } from "@/features/nighthawk/components/NightHawkFeed";
 import { NighthawkRadarBackdrop } from "@/features/nighthawk/components/NighthawkRadarBackdrop";
@@ -35,7 +35,12 @@ export function NighthawkPageShell({ seed }: { seed?: NightHawkSeedProps | null 
             kicker="Overnight playbook"
             title="Night Hawk"
             subtitle="Tomorrow's ranked setups — published after the close, ready before the open."
-            badge={<ProductMark product="nighthawk" size={44} animated={false} />}
+            badge={
+              <span className="flex items-center gap-2">
+                <ProductMark product="nighthawk" size={44} animated={false} />
+                <FreshnessChip status="live" label="Night Hawk" />
+              </span>
+            }
             className="nh-v2-page-header mb-3 shrink-0 [&_p]:font-semibold [&_p]:text-sky-200 [&_.t-kicker]:font-bold [&_.t-kicker]:text-sky-300"
           />
         )}
