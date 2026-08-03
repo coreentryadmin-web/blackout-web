@@ -38,9 +38,10 @@ describe("publicPageMetadata", () => {
     assert.ok(ogUrl.includes("type=pillar"), `expected type=pillar in ${ogUrl}`);
   });
 
-  it("sets twitter card to summary_large_image", () => {
+  it("sets twitter card to summary_large_image with @site", () => {
     const meta = publicPageMetadata("Test", "Desc.", "/test");
     assert.equal(meta.twitter?.card, "summary_large_image");
+    assert.equal(meta.twitter?.site, "@BlackOutTrade");
     const twitterImages = meta.twitter?.images;
     assert.ok(Array.isArray(twitterImages) && twitterImages.length === 1);
   });

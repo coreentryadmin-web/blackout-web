@@ -5,6 +5,7 @@ import { IMAGES } from "@/lib/images";
 import { SITE } from "@/lib/site";
 import { Ga4Attribution } from "@/components/analytics/Ga4Attribution";
 import { OrganizationJsonLd, WebSiteJsonLd } from "@/components/seo/JsonLd";
+import { googleSiteVerificationToken } from "@/lib/seo/verification";
 // PHOSPHOR LADDER token foundation — additive tokens + utility primitives, loaded
 // ONCE here so marketing = desk = ios all read the same instrument grid. Placed in
 // the root layout (globals.css is only imported per route-group) so the tokens are
@@ -59,10 +60,14 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
+    site: `@${SITE.social.x.handle}`,
     title: SITE.name,
     description: SITE.tagline,
     images: [IMAGES.ogImage],
   },
+  ...(googleSiteVerificationToken()
+    ? { verification: { google: googleSiteVerificationToken() } }
+    : {}),
   manifest: "/manifest.webmanifest",
   appleWebApp: { capable: true, title: SITE.name, statusBarStyle: "black-translucent" },
 };

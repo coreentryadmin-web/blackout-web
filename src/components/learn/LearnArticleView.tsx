@@ -5,8 +5,11 @@ import { AttributedLink } from "@/components/analytics/CheckoutLink";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { LearnArticle } from "@/lib/learn/articles";
 import { articleNav, readingTime } from "@/lib/learn/articles";
+import { relatedArticles } from "@/lib/learn/related-articles";
 import { LearnDoc } from "@/components/learn/LearnDoc";
 import { LearnHeroGlow } from "@/components/learn/LearnMotion";
+import { LearnRelatedArticles } from "@/components/learn/LearnRelatedArticles";
+import { LearnShareButtons } from "@/components/learn/LearnShareButtons";
 import { MarkdownBody } from "@/components/learn/MarkdownBody";
 
 const KICKER: Record<string, string> = {
@@ -26,6 +29,7 @@ export function LearnArticleView({ article }: { article: LearnArticle }) {
 
   const { prev, next } = articleNav(article.slug);
   const minutes = readingTime(article.body);
+  const related = relatedArticles(article.slug);
 
   return (
     <div className="relative">
@@ -40,6 +44,12 @@ export function LearnArticleView({ article }: { article: LearnArticle }) {
         }
       >
         <MarkdownBody content={article.body} />
+
+        {article.type === "pillar" ? (
+          <LearnShareButtons title={article.title} path={article.path} />
+        ) : null}
+
+        <LearnRelatedArticles articles={related} />
 
         <div className="mt-12 rounded-2xl border border-bull/20 bg-bull/5 p-6 text-center">
           <p className="font-syne text-lg font-bold text-white">Ready to trade with live dealer gamma?</p>
