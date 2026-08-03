@@ -61,6 +61,9 @@
 | X-XSS-Protection | 1; mode=block |
 | Referrer-Policy | strict-origin-when-cross-origin |
 | Permissions-Policy | camera=(), microphone=(), geolocation=() |
+| Content-Security-Policy | Mirrors `baseCsp` in `next.config.mjs` — **must stay in sync**. Includes `https://www.googletagmanager.com` and `https://www.google-analytics.com` in `script-src` for GA4 (`G-YLN4K37KYF`). If GA Realtime shows 0 while the tag is in HTML, check live CSP: `curl -sI https://blackouttrades.com/ | grep -i content-security-policy`. |
+
+**CSP drift incident (2026-08-03):** Cloudflare transform rule was missing GA domains; gtag.js was blocked → zero collect beacons → Realtime always 0. Fixed live via ruleset `2f92b7412d1e40c0897ccd6d082810bc`. Probe: `npm run validate:ga4`.
 
 ---
 
