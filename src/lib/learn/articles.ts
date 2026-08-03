@@ -494,6 +494,10 @@ BlackOut [Thermal](/learn/heat-maps) maps dealer gamma positioning in real time,
 
 **Max Pain** — The strike price at which the most options expire worthless and option sellers pay out the least. A secondary reference, not a primary signal — gamma walls tend to be more mechanically grounded. See [Max Pain in Options](/learn/max-pain-options-explained).
 
+**Open Interest (OI)** — The total number of outstanding option contracts at a given strike and expiration. Large OI concentrations drive the [gamma walls](/learn/call-wall-put-wall-explained) and hedging flows that move the market. See [Open Interest Explained](/learn/open-interest-options-explained).
+
+**Options Chain** — The full table of every available option on an underlying, organized by strike, expiration, and type (call/put), showing bid/ask, volume, OI, IV, and the Greeks. See [How to Read an Options Chain](/learn/how-to-read-options-chain).
+
 **Options Flow** — The stream of options trades hitting the tape. Useful only with context — opening vs. closing, bid vs. ask, hedged vs. directional. See [How to Read Options Flow](/learn/how-to-read-options-flow).
 
 **Put Wall** — The strike below current price with the largest concentration of put gamma; often acts as support. See [Call Wall & Put Wall](/learn/call-wall-put-wall-explained).
@@ -502,7 +506,7 @@ BlackOut [Thermal](/learn/heat-maps) maps dealer gamma positioning in real time,
 
 **SPX** — Options on the S&P 500 index, cash-settled and European-style — the primary market for dealer-gamma and 0DTE trading.
 
-**Theta** — The amount of value an option loses per day from time decay alone. Accelerates as expiration approaches and is especially punishing on 0DTE contracts. See [Options Greeks Explained](/learn/options-greeks-explained).
+**Theta** — The amount of value an option loses per day from time decay alone. Accelerates as expiration approaches and is especially punishing on 0DTE contracts. See [Options Greeks Explained](/learn/options-greeks-explained) and [Theta Decay Explained](/learn/theta-decay-options-explained).
 
 **Unusual Options Activity (UOA)** — Volume in a specific contract that's meaningfully higher than its baseline. The real filter is whether volume exceeds open interest (new positions) and whether it's aggressive (sweeps at the ask). See [Unusual Options Activity Guide](/learn/unusual-options-activity-guide).
 
