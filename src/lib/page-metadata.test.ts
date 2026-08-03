@@ -18,6 +18,32 @@ describe("publicPageMetadata", () => {
     const meta = publicPageMetadata("Home", "Home description.", "/");
     assert.equal(meta.alternates?.canonical, "https://blackouttrades.com");
   });
+
+  it("includes description param in OG image URL", () => {
+    const meta = publicPageMetadata("Test", "A short desc.", "/test");
+    const ogImages = meta.openGraph?.images;
+    assert.ok(Array.isArray(ogImages) && ogImages.length === 1);
+    const ogUrl = (ogImages[0] as { url: string }).url;
+    assert.ok(ogUrl.includes("description=A+short+desc."), `expected description param in ${ogUrl}`);
+  });
+
+  it("passes articleType as type param on OG image URL", () => {
+    const meta = publicPageMetadata("Art", "Desc.", "/learn/test", {
+      ogType: "article",
+      articleType: "pillar",
+    });
+    const ogImages = meta.openGraph?.images;
+    assert.ok(Array.isArray(ogImages) && ogImages.length === 1);
+    const ogUrl = (ogImages[0] as { url: string }).url;
+    assert.ok(ogUrl.includes("type=pillar"), `expected type=pillar in ${ogUrl}`);
+  });
+
+  it("sets twitter card to summary_large_image", () => {
+    const meta = publicPageMetadata("Test", "Desc.", "/test");
+    assert.equal(meta.twitter?.card, "summary_large_image");
+    const twitterImages = meta.twitter?.images;
+    assert.ok(Array.isArray(twitterImages) && twitterImages.length === 1);
+  });
 });
 
 describe("noindexPageMetadata", () => {

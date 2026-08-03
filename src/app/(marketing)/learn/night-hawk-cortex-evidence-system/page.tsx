@@ -8,7 +8,7 @@ import { getArticleFaqs } from "@/lib/learn/article-faqs";
 
 const article = getArticle("night-hawk-cortex-evidence-system")!;
 
-export const metadata: Metadata = publicPageMetadata(article.metaTitle, article.metaDescription, article.path, { ogType: "article" });
+export const metadata: Metadata = publicPageMetadata(article.metaTitle, article.metaDescription, article.path, { ogType: "article", articleType: article.type });
 
 export default function NightHawkCortex() {
   return (
