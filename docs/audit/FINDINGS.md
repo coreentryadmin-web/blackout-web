@@ -6585,3 +6585,42 @@ export change. `npx tsc --noEmit` clean on all three changed files.
 **Status:** PR pending → CI → auto-merge per standing policy. T1/T2/T3 trim-tier markers
 deliberately NOT included — logged here as a known follow-up gated on either enabling `trim_scale`
 in prod or building tier-hit tracking under `ratchet`, whichever the team decides.
+
+## 2026-08-03 — [Night Hawk] Row simplified further — peak/pnl% is now the PRIMARY number, badge clutter moved to the right pane
+
+**Trigger.** Direct follow-up to the same-day peak%/timestamp change (previous entry). User reviewed
+the shipped result live and asked for two more things: (1) for a CLOSED row, don't just add a small
+`pk +NN%` chip next to the now-dead mid price — nobody cares about a closed play's current mark, so
+PEAK should REPLACE the price/pnl display as the primary number, not sit beside it; (2) the ET
+timestamp chip read too small; (3) the same simplicity should apply to OPEN rows too — "current pnl%
+and timestamp .. simple .. rest everything can go into right side panels."
+
+**Fix.**
+- `CommandDeck.tsx`'s `PlayCard` right column (`nh-deck-rr`): a CLOSED row with `peak` data now
+  shows `+NN%`/`-NN%` as the PRIMARY number (same `nh-deck-prem` styling as a live mid price) with
+  a `PEAK` label, replacing the mid-price/MID display entirely — not augmenting it. Falls back to
+  the normal mid/pnl display when `peak` is absent (older/degraded rows), never fabricates a peak.
+- Badge row (`nh-deck-cardbadges`) simplified to just `status` + the ET time chip. Removed from the
+  row (still fully available one click away in `PlayTerminal.tsx`'s header/Thesis tab, confirmed by
+  reading that file): tier badge, discovery-origin badge, LEGACY morning-status badges
+  (CONFIRMED/DEGRADED/INVALIDATED/PENDING), the thesis-health `TH NN` chip, and the stale/frozen-mark
+  text badge (staleness still shows via the existing `nh-deck-card-stale` row-dimming style, just not
+  as a separate text chip).
+- Right column also drops the `fill ±N%` exec-line for OPEN rows — plain `pnlPct` is now the one
+  number the row shows, matching the "current pnl% and timestamp, simple" ask.
+- `.nh-deck-cbadge.time` bumped from the shared 8.5px badge size to 11px/bold — no longer easy to
+  miss.
+- Dead code removed: `thFlash`, `ageLabel`, `showExec` (all only fed the now-removed badges/line).
+
+**Blast radius.** `CommandDeck.tsx` only (row rendering) + `globals.css` (one CSS rule edited, no
+rules removed — the now-unused `.tier`/`.orig`/`.stale`/`.th-chip`/`.cardexec` class definitions are
+left in place since other components may reuse the same class names; harmless dead CSS, not touched
+to keep this diff scoped to the row behavior the user asked about). No data/type changes.
+
+**Tests.** `CommandDeck.ssr.test.ts` updated/extended to 9 cases: peak-as-primary (replaces, not
+augments, the mid price), open row still shows live mid/pnl, peak-absent row falls back honestly,
+negative-peak sign handling, time-chip presence/absence, and two new cases confirming tier/origin/
+thesis-health/stale badges and the exec-fill line no longer render on the row. All pass. Full
+`command-deck/*.test.ts` suite (179 tests) re-run clean. `npx tsc --noEmit` clean.
+
+**Status:** PR pending → CI → auto-merge per standing policy.

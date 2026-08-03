@@ -283,21 +283,13 @@ export const PlayCard = memo(function PlayCard({
   nowMs: number;
 }) {
   const markFlash = useFlash(p.mark ?? p.pnlPct ?? null);
-  const thFlash = useFlash(p.thesisHealth?.health ?? null);
 
   const asOfMs = p.markAsOf ? Date.parse(p.markAsOf) : NaN;
   const hasAsOf = Number.isFinite(asOfMs);
   const staleThresholdMs = p.horizon === "LEGACY" ? LEGACY_QUOTE_STALE_MS : ZERODTE_MARK_STALE_MS;
   const stale = hasAsOf ? isZeroDteMarkStale(asOfMs, nowMs, staleThresholdMs) : false;
-  const ageMs = hasAsOf ? Math.max(0, nowMs - asOfMs) : null;
-  const ageLabel =
-    ageMs == null ? null : ageMs < 60_000 ? `${Math.round(ageMs / 1000)}s` : `${Math.round(ageMs / 60_000)}m`;
 
   const isCondor = p.isCondor === true;
-  // Mid mark (the live/entry premium the card leads with) + the executable P&L. A CONDOR is a credit
-  // structure — the directional "sell into the bid" fill P&L is inverted for it, so the card shows its
-  // decay P&L (pnlPct) only, never a directional exec line.
-  const showExec = !isCondor && p.execPnlPct != null;
 
   const showThRing =
     p.thesisHealth != null && (p.status === "OPEN" || p.status === "HOLD" || p.status === "TRIM");
@@ -321,36 +313,13 @@ export const PlayCard = memo(function PlayCard({
           <span className={clsx("nh-deck-dp", p.direction === "LONG" ? "long" : "short")}>{p.direction}</span>
         </span>
         <span className="nh-deck-sub" style={{ display: "block" }}>{p.contract}</span>
+        {/* Row kept deliberately minimal: ticker/contract, status, the one number that matters
+           (peak for CLOSED, live P&L for everything else), and when it happened. Tier, discovery
+           origin, pre-market confirm/degrade status, thesis-health score, and staleness age are
+           all still one click away in the right-pane detail (PlayTerminal.tsx header + Thesis
+           tab) — they don't need to compete for space on every row in the list. */}
         <span className="nh-deck-cardbadges">
           <span className={clsx("nh-deck-st", p.status)}>{p.status}</span>
-          {p.tierLabel && <span className="nh-deck-cbadge tier">{p.tierLabel}</span>}
-          {p.discoveryOrigin?.[0] && <span className="nh-deck-cbadge orig">{p.discoveryOrigin[0]}</span>}
-          {p.horizon === "LEGACY" && p.morningStatus === "CONFIRMED" && <span className="nh-deck-cbadge conf">CONFIRMED</span>}
-          {p.horizon === "LEGACY" && p.morningStatus === "DEGRADED" && <span className="nh-deck-cbadge warn">DEGRADED</span>}
-          {p.horizon === "LEGACY" && p.morningStatus === "INVALIDATED" && <span className="nh-deck-cbadge brk">INVALIDATED</span>}
-          {p.horizon === "LEGACY" && p.morningStatus === "UNVERIFIED" && <span className="nh-deck-cbadge pending">PENDING</span>}
-          {p.thesisHealth && (p.status === "OPEN" || p.status === "HOLD" || p.status === "TRIM") && (
-            <span
-              className={clsx(
-                "nh-deck-cbadge nh-deck-th-chip",
-                thFlash && "neon",
-                p.thesisHealth.health >= 75 ? "conf" : p.thesisHealth.health >= 45 ? "warn" : "brk",
-              )}
-              title={p.thesisHealth.rungLabel}
-            >
-              TH {p.thesisHealth.health}
-            </span>
-          )}
-          {stale && <span className="nh-deck-cbadge stale" title="Mark is stale — frozen">◷ {ageLabel}</span>}
-          {/* A CLOSED row's final pnlPct alone reads as a pure loser even when the play ran deep
-             green before giving it back at the stop — the peak excursion (already latched server-
-             side as peak_premium, see adapters.ts peakDisplay) is the honest "what actually
-             happened" context a glance at the list should carry, not just the right-pane PNL tab. */}
-          {p.status === "CLOSED" && p.peak != null && (
-            <span className="nh-deck-cbadge pk" title="Peak excursion before this play closed">
-              pk {p.peak > 0 ? "+" : ""}{p.peak.toFixed(0)}%
-            </span>
-          )}
           {p.firstFlaggedAt && (
             <span className="nh-deck-cbadge time" title="Time this play was first flagged">
               {etClock(p.firstFlaggedAt)} ET
@@ -359,7 +328,22 @@ export const PlayCard = memo(function PlayCard({
         </span>
       </span>
       <span className="nh-deck-rr">
-        {p.horizon === "LEGACY" && p.stockPrice != null ? (
+        {/* A CLOSED row's current mark/mid is dead information — nobody is trading it anymore.
+           What matters is the peak excursion it reached before the stop (already latched
+           server-side as peak_premium, see adapters.ts peakDisplay): a play that ran +87% and
+           gave it back at -50% is a different story than one that just lost, and that story is
+           now the PRIMARY number on the row instead of a small badge next to a dead price. */}
+        {p.status === "CLOSED" && p.peak != null ? (
+          <>
+            <span
+              className={clsx("nh-deck-prem", p.peak > 0 && "nh-deck-pos", p.peak < 0 && "nh-deck-neg")}
+              style={{ display: "block" }}
+            >
+              {p.peak > 0 ? "+" : ""}{p.peak.toFixed(0)}%
+            </span>
+            <span className="nh-deck-premlab">PEAK</span>
+          </>
+        ) : p.horizon === "LEGACY" && p.stockPrice != null ? (
           <>
             <span className="nh-deck-prem" style={{ display: "block" }}>
               ${p.stockPrice.toFixed(2)}
@@ -382,11 +366,6 @@ export const PlayCard = memo(function PlayCard({
             <span className={clsx("nh-deck-pnl", (p.pnlPct ?? 0) > 0 && "nh-deck-pos", (p.pnlPct ?? 0) < 0 && "nh-deck-neg", markFlash && "neon")} style={{ display: "block" }}>
               {p.pnlPct != null && p.pnlPct !== 0 ? `${p.pnlPct > 0 ? "+" : ""}${p.pnlPct.toFixed(1)}%` : "—"}
             </span>
-            {showExec && (
-              <span className={clsx("nh-deck-cardexec", p.execPnlPct! < 0 && "nh-deck-neg")}>
-                fill {p.execPnlPct! > 0 ? "+" : ""}{p.execPnlPct!.toFixed(1)}%
-              </span>
-            )}
           </>
         )}
       </span>
