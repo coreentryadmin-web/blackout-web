@@ -6182,3 +6182,47 @@ consistently: the toggle button (`GexHeatmap.tsx`), its tooltip, the methodology
 "0DTE GRID"/"NEAR-TERM GRID"). Internal variable/CSS-class names (`compare`, `ThermalTripleDesk`,
 `.thermal-triple-*`) deliberately left unchanged — this is a user-facing copy change only, no
 behavior touched. Re-verified `tsc`/`eslint`/`next build` clean after the rename.
+
+## 2026-08-03 — [Night Hawk re-verification] Live healthcheck + Legacy win-rate re-check, PR #1211 lineage confirmed
+
+**Context.** User asked to "re verify everything" after a research-only synthesis of the 0DTE/
+Swing/LEAPS/Legacy systems. Three concrete items were re-checked live against prod (with valid AWS
+creds supplied in-session, never committed).
+
+**1. `npm run healthcheck:0dte` — GREEN, no regressions, and now includes stage A.** Previous run
+was 8 days stale (2026-07-25). Fresh run (off-hours, Sunday market-closed) shows all AMBER stages
+are the documented benign off-hours state (0 live setups/ledger rows — nothing to assert), stage G
+(GRADING/RECORD) GREEN (41 wins + 81 losses + 0 BE = 122 == 122 graded, WR 33.6%/19 sessions). A
+second run with the operator's AWS creds turned stage A (previously SKIPPED) GREEN: both ECS
+services healthy (`blackout-production-web` 8/8, `blackout-production-market-worker` 2/2, rollouts
+COMPLETED) and all four `ZERODTE_*` discovery flags on. No RED anywhere.
+
+**2. PR #1211 lineage — confirmed merged under a different PR number.** #1211 itself is
+closed/unmerged (draft; killed by a persistent GitHub GraphQL rate-limit blocking the undraft
+mutation — see its own description). The identical fix (MIN_DTE_CALENDAR_DAYS 5→2 +
+stale-edition auto-rebuild) was re-pushed as **PR #1215** from the same branch/commits and *that*
+PR merged to `main` (`09a93460`, confirmed live in `deterministic-edition.ts`/`edition-builder.ts`
+on `main`). #1211 is a dead duplicate, not an open gap.
+
+**3. Legacy win rate — still genuinely 0% on scoreable plays; NOT the same root cause as #1186.**
+Queried `/api/market/nighthawk/record?days=30` and the admin debrief report
+(`/api/admin/nighthawk/analytics?window=30`, `debrief-aggregate.ts`) live:
+- Current methodology (post #1186 entry-band fix): 15 scoreable, 0 wins, 2 losses, 13 still open.
+- The published-mirror confirms `band_detached` is no longer the leak: 0 rows would now be
+  blocked by that gate; the 15 that pass it are 0% WR regardless — the entry-band fix worked, it
+  just isn't the thing losing money anymore.
+- Dominant failure mode for conviction-A plays (26 total, 12 scoreable) is **`wrong_direction`** —
+  a thesis-quality problem with **no corresponding publish gate**. The debrief methodology's own
+  fix-lever note says this needs a "book-vs-tape alignment veto at publish (N-4/PR-N9 class)",
+  which was never built.
+- The gate-validation counterfactual flags a second, distinct issue: **`stale_quote_basis` blocked
+  7 plays that would have won 66.7% of the time (4/7)** — the system's own improvement-queue
+  output says "re-examine its threshold" (n=7, so this is a lean, not a slam dunk).
+  `target_unreachable`, by contrast, is confirmed correctly earning its keep (would-have-won only
+  31.3% of what it blocks — mostly filtering real losers).
+
+**Status.** No code changed this entry — both open items (wrong_direction has no gate; possible
+stale_quote_basis over-blocking) are risk-relevant judgment calls on live trading gates, surfaced
+for user direction rather than auto-fixed on thin samples (12 and 7 rows respectively). Logged
+here per standing policy; next step is user-directed (build the direction veto, and/or loosen
+`stale_quote_basis`, and/or wait for more of the 13 open Legacy plays to resolve before acting).
