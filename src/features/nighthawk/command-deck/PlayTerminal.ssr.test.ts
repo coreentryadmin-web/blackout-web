@@ -72,10 +72,14 @@ test("premium thesis panels render for 0DTE", async () => {
     }),
     { convictionRank: { rank: 1, total: 18, isHighestToday: true } },
   );
-  assert.match(html, /nh-deck-trade-hero/);
-  assert.match(html, /Engine Confidence/);
+  assert.match(html, /nh-deck-trade-hero-dense/);
+  assert.match(html, /nh-deck-conf-badge/);
+  assert.match(html, /nh-deck-trade-hero__metrics/);
+  assert.match(html, />Current</);
+  assert.match(html, />Peak</);
+  assert.match(html, />Rank</);
+  assert.match(html, /#1/);
   assert.match(html, /Highest today/);
-  assert.match(html, /Rank #1 \/ 18/);
 });
 
 test("Play timeline tab absent on Legacy horizon", async () => {
