@@ -66,6 +66,29 @@ export const GATE_BAND_MAX_DISTANCE_PCT = 3.5;
  */
 export const GATE_TARGET_MAX_ATR_MULTIPLE = 3.5;
 
+/**
+ * G-N4 book-vs-tape alignment (`book_tape_conflict`) — the gate named but never built in
+ * docs/audit/NIGHTHAWK-OVERNIGHT-DECISION.md (§0 finding N-4, the debrief's own fix-lever
+ * note: "direction calls themselves are failing — add a book-vs-tape alignment veto at
+ * publish"). The "book" is the play's chosen direction (LONG/SHORT, set by the flow/scorer
+ * pipeline); the "tape" is the STOCK'S OWN recent price structure — `TechnicalCard.trend`
+ * (`polygon-largo.ts`'s `trend_stack`: price vs EMA20 vs EMA50, computed independently of
+ * any flow data). Before this gate, tape disagreement only ever nudged the score
+ * (`scoreTechnicalSetup`, ±6-8 pts, drowned out by a strong flow/news score) — it could
+ * never stop a publish. That is the exact gap the debrief's gate-counterfactual mirror
+ * flags as the DOMINANT failure mode now that G-N1 (band_detached) is fixed: `wrong_direction`
+ * is 9/40 resolved plays and has no corresponding gate (FINDINGS.md 2026-08-03).
+ *
+ * Deliberately binary and narrow: only the STRUCTURAL two-EMA stack counts as "the tape
+ * disagrees" (`trend === "bearish"` for a LONG, `trend === "bullish"` for a SHORT) —
+ * `"mixed"` (price and EMA20/50 don't agree with each other) is an honest "no clear tape
+ * read" and never blocks, matching the tech-card's own semantics (technicals.ts / trend_stack
+ * comment) and the codebase's standing rule that ambiguous evidence must never be treated as
+ * a veto-grade fact (Cortex design §0's same asymmetry: only a LOUD, unambiguous signal earns
+ * a block).
+ */
+export const BOOK_TAPE_CONFLICT_CODE = "book_tape_conflict" as const;
+
 /** Gate failures that must NEVER be rescued via gate_promoted — the geometry is
  *  structurally wrong, not merely ambitious. `band_detached` = entry literally
  *  unfillable; `geometry_unknown` = can't even compute the sanity check.
@@ -78,12 +101,14 @@ export const GATE_TARGET_MAX_ATR_MULTIPLE = 3.5;
 export const NON_PROMOTABLE_GATE_CODES: ReadonlySet<NighthawkGateCode> = new Set<NighthawkGateCode>([
   "band_detached",
   "geometry_unknown",
+  "book_tape_conflict",
 ]);
 
 export type NighthawkGateCode =
   | "band_detached" // G-N1
   | "target_unreachable" // G-N2
   | "stale_quote_basis" // G-N3
+  | "book_tape_conflict" // G-N4
   | "geometry_unknown"; // fail-closed: gate inputs missing/uncomputable
 
 export type NighthawkGateBlock = {
@@ -226,6 +251,33 @@ export function evaluateNighthawkPublishGates(opts: {
       reason: `spot quote is from ${geo.quote_session}, not the session being published from (${opts.quoteSessions.join(" or ")}) — the stale-backfill signature (§N-3: six plays 6.4%–45.5% detached)`,
       threshold: opts.quoteSessions.join("|"),
       value: geo.quote_session,
+    });
+  }
+
+  // ── G-N4 book-vs-tape alignment ──────────────────────────────────────────────────
+  // "mixed" (the tech card's honest no-clear-read state) never blocks — only a STRUCTURAL
+  // stack that directly contradicts the play's own direction counts as the tape disagreeing.
+  const tapeTrend = opts.dossier?.tech?.trend ?? null;
+  const bookDirection = geo.direction === "LONG" ? "long" : "short";
+  const tapeConflicts =
+    tapeTrend != null &&
+    ((bookDirection === "long" && tapeTrend === "bearish") ||
+      (bookDirection === "short" && tapeTrend === "bullish"));
+  checks.push({
+    code: "book_tape_conflict",
+    passed: !tapeConflicts,
+    value: tapeTrend,
+    threshold: bookDirection === "long" ? "not bearish" : "not bullish",
+  });
+  if (tapeConflicts) {
+    blocks.push({
+      code: "book_tape_conflict",
+      reason:
+        `the play's own tape (price vs EMA20/EMA50) reads ${tapeTrend} — directly against this ` +
+        `${bookDirection} — the flow/scorer book and the stock's own price structure disagree ` +
+        `(§N-4: direction calls failing without a discipline check)`,
+      threshold: bookDirection === "long" ? "not bearish" : "not bullish",
+      value: tapeTrend,
     });
   }
 
