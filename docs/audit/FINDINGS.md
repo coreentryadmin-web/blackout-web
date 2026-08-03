@@ -4,6 +4,40 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-03 — [SEO] Internal cross-link audit: 27 links added across 42 learn articles
+
+**Severity:** Low (SEO / discoverability improvement, no runtime behavior change).
+
+**Root cause.** Six articles had zero incoming links from other articles (orphans), and three more
+had only 1 incoming link. Google's crawler treats internal links as votes of relevance; orphan pages
+get crawled less frequently, rank lower, and bleed link equity. The batch-3 articles added in
+mid-July (`vwap-trading-explained`, `options-expiration-explained`, `vix-trading-guide`,
+`credit-spreads-strategy-guide`, `options-volume-analysis`, `how-to-read-options-chain`,
+`pin-risk-options-explained`, `theta-decay-options-explained`, `open-interest-options-explained`)
+were published without cross-links from the existing corpus, and the product deep-dive
+`largo-ai-market-analysis-tips` had no inbound links outside its own cluster.
+
+**Fix.** Added 27 contextual markdown cross-links across the `body` fields of 20 articles in
+`src/lib/learn/articles.ts`. Each link was placed in existing prose where the target concept was
+already discussed, using natural anchor text (e.g. "mean-reversion strategies -- like fading moves
+away from [VWAP](/learn/vwap-trading-explained) -- tend to work"). No structural, metadata, or
+schema changes.
+
+**Evidence (before -> after):**
+- Orphan articles (0 incoming): 6 -> 0
+- Articles with <2 incoming: 9 -> 0
+- All 42 articles now have 2+ incoming and 3+ outgoing inter-article links
+- Total inter-article link edges: ~310 -> ~338
+
+**File:** `src/lib/learn/articles.ts` (body fields only, 27 insertions / 27 deletions).
+
+**Test:** `src/lib/learn/articles.test.ts` — new test file validating minimum incoming (2),
+outgoing (3), no orphans, no broken links, and total link count >= 300.
+
+**Status:** SHIPPED via `fix/learn-internal-crosslinks`.
+
+---
+
 ## 2026-08-01 — [CTO perf audit] Multi-agent audit (8 domains, adversarially verified) — Vector/Nighthawk 1Hz full-tree re-renders fixed; 15 more findings ranked
 
 **Context.** User-requested exhaustive performance audit ("the entire website feels slow... I just
