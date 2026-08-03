@@ -331,6 +331,44 @@ function flowSideMultiplier(side: "A" | "B" | "M"): number {
   return 1;
 }
 
+/**
+ * NH-R8 fix: the streak bonus used to reward `streak_days` monotonically, capped
+ * flat at +12 once `streak_days >= 5` — a fresh 5-day streak and a stretched
+ * 15-day streak scored IDENTICALLY, with nothing modeling exhaustion (the same
+ * multi-day-flow logic this codebase already treats as evidence elsewhere — e.g.
+ * the accumulation-store cross-session gate — a same-direction run that has kept
+ * building for two-plus weeks is stretched further than the typical multi-day
+ * setup window and is more exhaustion-prone than a fresh 5-day print, not equally
+ * safe). `STREAK_FADE_START_DAYS` (8) is fresh-through, matching the "last 30–60
+ * min"-scale reasoning the wall-trend factor uses for its own window, sized up to
+ * the daily-bucket cadence here; `STREAK_FADE_SPAN_DAYS` (7) linearly fades the
+ * bonus down to `STREAK_EXHAUSTION_FLOOR_MULTIPLIER` (0.5, not 0 — an extended
+ * streak is still real corroborating flow, just discounted for reversal risk) by
+ * day 15. Provisional like every other un-graduated threshold in this codebase
+ * (Swing's `scoreFloorGraduated: false` pattern) — these numbers are a documented
+ * first cut, not a calibrated fit; NH-R6's calibration table builder is the
+ * natural place to graduate them once graded rows accumulate.
+ */
+export const STREAK_FADE_START_DAYS = 8;
+export const STREAK_FADE_SPAN_DAYS = 7;
+export const STREAK_EXHAUSTION_FLOOR_MULTIPLIER = 0.5;
+
+export function streakBonusPoints(streakDays: number, streakWeight: number): number {
+  let base: number;
+  if (streakDays >= 5) base = 12;
+  else if (streakDays >= 3) base = 8;
+  else if (streakDays >= 2) base = 4;
+  else return 0;
+
+  if (streakDays > STREAK_FADE_START_DAYS) {
+    const daysOverFadeStart = Math.min(streakDays - STREAK_FADE_START_DAYS, STREAK_FADE_SPAN_DAYS);
+    const fadeFraction = daysOverFadeStart / STREAK_FADE_SPAN_DAYS;
+    const multiplier = 1 - fadeFraction * (1 - STREAK_EXHAUSTION_FLOOR_MULTIPLIER);
+    base *= multiplier;
+  }
+  return Math.round(base * streakWeight);
+}
+
 export function scoreFlowQuality(
   flows: Record<string, unknown>[],
   flowStreak?: FlowStreak,
@@ -409,9 +447,7 @@ export function scoreFlowQuality(
 
   if (flowStreak?.streak_days) {
     const streakWeight = opts?.streakWeight ?? 1;
-    if (flowStreak.streak_days >= 5) score += Math.round(12 * streakWeight);
-    else if (flowStreak.streak_days >= 3) score += Math.round(8 * streakWeight);
-    else if (flowStreak.streak_days >= 2) score += Math.round(4 * streakWeight);
+    score += streakBonusPoints(flowStreak.streak_days, streakWeight);
   }
 
   score = Math.min(38, score);

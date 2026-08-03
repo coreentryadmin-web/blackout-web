@@ -6230,6 +6230,39 @@ for user direction rather than auto-fixed on thin samples (12 and 7 rows respect
 here per standing policy; next step is user-directed (build the direction veto, and/or loosen
 `stale_quote_basis`, and/or wait for more of the 13 open Legacy plays to resolve before acting).
 
+## 2026-08-03 — [Night Hawk scorer] NH-R8: flow-streak bonus rewarded length monotonically, no exhaustion — FIXED
+
+**Context.** Same independent Cortex-audit table as the NH-R11/NH-R9 entry above; user selected
+all four confirmed gaps. This is the third (NH-R5 liquidity ranking remains).
+
+**Root cause.** `scorer.ts` (`scoreFlowQuality`, formerly inline ~line 410-414) awarded a flat
++12 points once `flowStreak.streak_days >= 5`, with no ceiling behavior beyond that band: a fresh
+5-day same-direction flow streak and a stretched 15-day streak scored IDENTICALLY. Nothing in the
+scorer modeled the fact that an extended same-direction run is more prone to exhaustion/reversal
+than a fresh one — the bonus kept implying "more consecutive days = equally safe" indefinitely.
+
+**Fix.** Extracted the streak-bonus logic into `streakBonusPoints(streakDays, streakWeight)`
+(exported for direct unit testing). Behavior below `STREAK_FADE_START_DAYS` (8) is byte-identical
+to before (0/4/8/12-point bands at 0-1/2/3-4/5+ days — the existing tiers are untouched). Past day
+8, the +12 base linearly fades over `STREAK_FADE_SPAN_DAYS` (7) down to
+`STREAK_EXHAUSTION_FLOOR_MULTIPLIER` (0.5× = 6 points) by day 15, and stays at that floor for any
+longer streak — never fading to zero, since an extended streak is still real corroborating flow,
+just discounted for reversal risk rather than treated as free upside. Thresholds are a documented
+first cut (provisional, like every other un-graduated threshold in this codebase — Swing's
+`scoreFloorGraduated: false` pattern) pending NH-R6's calibration table builder.
+
+**Blast radius.** `scorer.ts` only (`scoreFlowQuality`'s streak block). `FlowStreak`'s shape
+(`flow-streak.ts`) is unchanged — `dossier.ts`'s consumption is unaffected. No other caller reads
+the streak points directly.
+
+**Evidence.** New `scorer-streak.test.ts` (4 tests: bands unchanged below the fade start, strictly
+decreasing past it, floor never reached zero, `streakWeight` still scales the faded base) — all
+pass. Existing `scorer-direction.test.ts` (64 tests) and `flow-streak.test.ts` re-run clean — no
+existing test used a `streak_days` value above 3, so none exercised the new fade path.
+`npx tsc --noEmit` clean. `npx eslint` clean.
+
+**Status:** PR pending → CI → auto-merge per standing policy.
+
 ## 2026-08-03 — [Night Hawk Cortex] NH-R11 (source-family stacking) + NH-R9 (silent internal disagreement) — FIXED
 
 **Context.** An independent Cortex-audit table (user-supplied, cross-checked against `main`)
