@@ -14,6 +14,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 const ENGINE_CRONS = [
   { key: "zerodte-grade", scheduleHint: "*/15", scheduleCronUtc: true },
+  { key: "spx-signal-weight-optimize", scheduleHint: "0 22", scheduleCronUtc: true },
   { key: "swing-discovery", scheduleHint: null },
   { key: "swing-active-refresh", scheduleHint: "*/15" },
 ];

@@ -4,6 +4,23 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-03 — [ops] spx-signal-weight-optimize false stale (#1550)
+
+**Severity.** P1 ops false positive — cron route healthy; watchdog schedule-window gap.
+
+**Symptom.** ops-auto-fix #1550 flagged `spx-signal-weight-optimize` stale via
+`cron-staleness-watchdog` (fingerprint `05025a22b881`). Manual `GET /api/cron/spx-signal-weight-optimize`
+returned 200 with 2142 observations / 21 signals analyzed.
+
+**Root cause.** EventBridge fires `0 22 * * 1-5` UTC (railway.spx-signal-weight-optimize.toml) but
+`cron-registry.ts` had no `schedule_cron_utc`, so `admin-cron-health` applied the 36h `stale_after_min`
+24/7 — same class as `zerodte-grade` (FINDINGS 2026-07-30) and X marketing off-window fixes.
+
+**Fix.** `schedule_cron_utc: "0 22 * * 1-5"` on the registry entry + regression tests in
+`cron-schedule-window.test.ts` and `engine-cron-catalog.test.mjs`.
+
+**Status.** FIXED — PR merge + deploy clears recurring watchdog noise.
+
 ## 2026-08-03 — [SEO] Internal cross-link audit: 27 links added across 42 learn articles
 
 **Severity:** Low (SEO / discoverability improvement, no runtime behavior change).

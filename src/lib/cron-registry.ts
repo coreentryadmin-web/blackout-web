@@ -306,6 +306,8 @@ export const CRON_JOBS: CronJobDefinition[] = [
     kind: "http",
     path: "/api/cron/spx-signal-weight-optimize",
     schedule_label: "Nightly 10 PM UTC",
+    // Mirrors railway.spx-signal-weight-optimize.toml — off-window stale suppression (ops #1550).
+    schedule_cron_utc: "0 22 * * 1-5",
     stale_after_min: 36 * 60,
     weekdays_only: true,
     description: "Compute per-signal directional accuracy vs baseline; write ranked alpha report to spx_signal_weight_reports",
