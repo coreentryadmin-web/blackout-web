@@ -8,7 +8,7 @@ import { getArticleFaqs } from "@/lib/learn/article-faqs";
 
 const article = getArticle("how-to-read-options-chain")!;
 
-export const metadata: Metadata = publicPageMetadata(article.metaTitle, article.metaDescription, article.path, { ogType: "article" });
+export const metadata: Metadata = publicPageMetadata(article.metaTitle, article.metaDescription, article.path, { ogType: "article", articleType: article.type });
 
 export default function HowToReadOptionsChain() {
   return (

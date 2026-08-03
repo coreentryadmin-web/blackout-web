@@ -3,11 +3,29 @@ import type { NextRequest } from "next/server";
 
 export const runtime = "edge";
 
+/** Map article type slugs to human-readable category labels. */
+const TYPE_LABELS: Record<string, string> = {
+  article: "Learn Academy",
+  pillar: "Learn Academy",
+  glossary: "Glossary",
+};
+
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
+
   const title = searchParams.get("title") ?? "BlackOut Trades";
-  const subtitle = searchParams.get("subtitle") ?? "Trade like the lights are on.";
-  const kicker = searchParams.get("kicker") ?? "";
+  // Support both "description" (new) and "subtitle" (legacy) params.
+  const description =
+    searchParams.get("description") ??
+    searchParams.get("subtitle") ??
+    "";
+  // Support both "type" (new) and "kicker" (legacy) params.
+  // "type" maps to a category label; "kicker" is displayed verbatim.
+  const rawType = searchParams.get("type");
+  const kicker = searchParams.get("kicker");
+  const categoryLabel = rawType
+    ? TYPE_LABELS[rawType] ?? rawType
+    : kicker ?? "";
 
   return new ImageResponse(
     (
@@ -19,49 +37,127 @@ export async function GET(req: NextRequest) {
           flexDirection: "column",
           justifyContent: "center",
           padding: "80px",
-          background: "linear-gradient(135deg, #040407 0%, #0a0a14 50%, #12061e 100%)",
+          background:
+            "linear-gradient(145deg, #050509 0%, #0a0a14 40%, #0c1020 100%)",
           color: "#fff",
-          fontFamily: "system-ui, sans-serif",
+          fontFamily: "system-ui, -apple-system, sans-serif",
         }}
       >
-        {kicker && (
-          <div
-            style={{
-              fontSize: 18,
-              fontWeight: 600,
-              letterSpacing: "0.2em",
-              textTransform: "uppercase" as const,
-              color: "#bf5fff",
-              marginBottom: 24,
-            }}
-          >
-            {kicker}
-          </div>
-        )}
-        <div style={{ fontSize: 56, fontWeight: 700, lineHeight: 1.15, marginBottom: 24 }}>
-          {title}
-        </div>
-        <div
-          style={{
-            fontSize: 24,
-            color: "rgba(255,255,255,0.6)",
-            lineHeight: 1.5,
-            maxWidth: 800,
-          }}
-        >
-          {subtitle}
-        </div>
+        {/* Subtle top-edge accent line */}
         <div
           style={{
             position: "absolute",
-            bottom: 60,
-            left: 80,
-            fontSize: 16,
-            color: "rgba(255,255,255,0.35)",
-            letterSpacing: "0.15em",
+            top: 0,
+            left: 0,
+            width: "100%",
+            height: "4px",
+            background:
+              "linear-gradient(90deg, transparent 0%, #22d3ee 30%, #22d3ee 70%, transparent 100%)",
+          }}
+        />
+
+        {/* Category badge at top */}
+        {categoryLabel && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              marginBottom: 28,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 15,
+                fontWeight: 700,
+                letterSpacing: "0.18em",
+                textTransform: "uppercase" as const,
+                color: "#22d3ee",
+                borderBottom: "2px solid rgba(34, 211, 238, 0.3)",
+                paddingBottom: 4,
+              }}
+            >
+              {categoryLabel}
+            </div>
+          </div>
+        )}
+
+        {/* Title */}
+        <div
+          style={{
+            fontSize: title.length > 60 ? 42 : title.length > 40 ? 48 : 56,
+            fontWeight: 700,
+            lineHeight: 1.15,
+            marginBottom: description ? 20 : 0,
+            maxWidth: 1000,
           }}
         >
-          blackouttrades.com
+          {title}
+        </div>
+
+        {/* Description / subtitle */}
+        {description && (
+          <div
+            style={{
+              fontSize: 22,
+              color: "rgba(255,255,255,0.55)",
+              lineHeight: 1.5,
+              maxWidth: 850,
+            }}
+          >
+            {description.length > 140
+              ? description.slice(0, 137) + "..."
+              : description}
+          </div>
+        )}
+
+        {/* Bottom branding bar */}
+        <div
+          style={{
+            position: "absolute",
+            bottom: 50,
+            left: 80,
+            right: 80,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+            }}
+          >
+            {/* Cyan dot brand mark */}
+            <div
+              style={{
+                width: 12,
+                height: 12,
+                borderRadius: "50%",
+                background: "#22d3ee",
+              }}
+            />
+            <div
+              style={{
+                fontSize: 18,
+                fontWeight: 700,
+                letterSpacing: "0.06em",
+                color: "rgba(255,255,255,0.85)",
+              }}
+            >
+              BlackOut Trades
+            </div>
+          </div>
+          <div
+            style={{
+              fontSize: 14,
+              color: "rgba(255,255,255,0.3)",
+              letterSpacing: "0.1em",
+            }}
+          >
+            blackouttrades.com
+          </div>
         </div>
       </div>
     ),

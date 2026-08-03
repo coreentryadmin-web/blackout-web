@@ -79,6 +79,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <link rel="preconnect" href={SITE.url} />
         <link rel="dns-prefetch" href={SITE.url} />
+        <link rel="alternate" type="application/rss+xml" title="BlackOut Trades — Learn" href="/feed.xml" />
         <script
           dangerouslySetInnerHTML={{
             __html:
