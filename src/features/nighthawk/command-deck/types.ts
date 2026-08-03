@@ -148,6 +148,14 @@ export interface TerminalPlay {
    *  ribbon (rendered as an ET clock time). Null on a row that carried no flag time. */
   firstFlaggedAt?: string | null;
 
+  /** Timeline replay — engine exit + reconstructed tranches (0DTE only, never fabricated). */
+  closedReason?: string | null;
+  exitReason?: string | null;
+  exitDetail?: string | null;
+  exitAt?: string | null;
+  exitPnlPct?: number | null;
+  timelineTranches?: import("@/lib/zerodte/play-timeline").PlayTimelineTranche[] | null;
+
   // ── greeks (live) ──
   greeks?: DeckGreeks | null;
 

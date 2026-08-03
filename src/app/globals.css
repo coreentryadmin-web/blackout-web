@@ -16195,6 +16195,28 @@ body::before {
   background:var(--dk-green);box-shadow:var(--dk-glow)}
 .nh-deck-tabs button.on .n{color:var(--dk-green-hi);text-shadow:var(--dk-glow)}
 .nh-deck-body{flex:1;overflow-y:auto;padding:15px 18px;min-height:0}
+/* ── Play timeline replay (0DTE terminal tab) ── */
+.nh-deck-timeline{display:flex;flex-direction:column;gap:12px}
+.nh-deck-timeline-rail{display:flex;flex-direction:column;gap:0}
+.nh-deck-timeline-node{display:grid;grid-template-columns:52px 20px 1fr;gap:10px;align-items:stretch;min-height:52px}
+.nh-deck-timeline-time{font-size:12px;font-weight:800;color:var(--dk-cyan);font-variant-numeric:tabular-nums;
+  padding-top:2px;text-align:right;letter-spacing:.04em}
+.nh-deck-timeline-track{display:flex;flex-direction:column;align-items:center;position:relative;padding-top:4px}
+.nh-deck-timeline-dot{width:10px;height:10px;border-radius:50%;background:var(--dk-green);
+  box-shadow:0 0 8px rgba(53,255,158,.55);flex-shrink:0;z-index:1}
+.nh-deck-timeline-line{flex:1;width:2px;margin-top:4px;background:linear-gradient(180deg,rgba(53,255,158,.55),rgba(53,255,158,.12));
+  min-height:28px}
+.nh-deck-timeline-body{padding-bottom:14px;min-width:0}
+.nh-deck-timeline-label{font-size:15px;font-weight:800;color:var(--dk-green-hi);letter-spacing:.04em;text-shadow:var(--dk-glow)}
+.nh-deck-timeline-detail{margin-top:3px;font-size:11px;font-weight:600;color:var(--dk-cyan);line-height:1.35}
+.nh-deck-timeline-body.up .nh-deck-timeline-label{color:var(--dk-green-hi)}
+.nh-deck-timeline-body.dn .nh-deck-timeline-label{color:var(--dk-red)}
+.nh-deck-timeline-body.trim .nh-deck-timeline-label{color:var(--dk-amber)}
+.nh-deck-timeline-body.stop .nh-deck-timeline-label{color:var(--dk-red)}
+.nh-deck-timeline-body.sched .nh-deck-timeline-label{color:var(--dk-cyan)}
+.nh-deck-timeline-note{font-size:10px;font-weight:600;color:var(--dk-cyan);letter-spacing:.04em;line-height:1.4;
+  padding-top:8px;border-top:1px dashed rgba(53,255,158,.18)}
+.nh-deck-timeline-empty{font-size:12px;font-weight:600;color:var(--dk-cyan);line-height:1.45}
 .nh-deck-lab{color:var(--dk-green-dim);font-size:11px;letter-spacing:.18em;text-transform:uppercase;margin:2px 0 10px;font-weight:800}
 .nh-deck-fac{display:grid;grid-template-columns:1fr auto;gap:10px;padding:5px 0;border-bottom:1px dashed rgba(53,255,158,.12)}
 .nh-deck-fac .bar{height:5px;background:rgba(53,255,158,.1);border-radius:2px;overflow:hidden;margin-top:5px}

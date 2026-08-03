@@ -13,9 +13,10 @@ import { excursionBar, formatWinRateCi, signColorClass } from "@/lib/zerodte/ter
 import type { DeckCondor } from "./types";
 import { markStreamKind } from "./deck-session-ui";
 import { ThesisHealthPanel } from "./ThesisHealthPanel";
+import { PlayTimelinePanel } from "./PlayTimelinePanel";
 import { useSecondTick, useFlash } from "./use-deck-live";
 
-type Tab = "thesis" | "manage" | "pnl";
+type Tab = "thesis" | "manage" | "pnl" | "timeline";
 
 const GLAB: Record<string, string> = {
   delta: "Δ DELTA", gamma: "Γ GAMMA", theta: "Θ THETA", vega: "V VEGA", iv: "IV",
@@ -136,10 +137,11 @@ export function PlayTerminal({
       if (e.key === "1") { setTabTouched(true); setTab("thesis"); }
       else if (e.key === "2") { setTabTouched(true); setTab("manage"); }
       else if (e.key === "3") { setTabTouched(true); setTab("pnl"); }
+      else if (e.key === "4" && play?.horizon === "ZERO_DTE") { setTabTouched(true); setTab("timeline"); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [play?.horizon]);
   // Hooks must run unconditionally (before any early return). Pause the internal tick when a
   // parent already supplies one (see the nowMs prop doc above) — the hook stays mounted (rules of
   // hooks) but its own setInterval never fires, so only one 1Hz timer runs for the whole deck.
@@ -279,12 +281,18 @@ export function PlayTerminal({
         <button className={clsx(tab === "thesis" && "on")} onClick={() => { setTabTouched(true); setTab("thesis"); }}><span className="n">[1]</span>Thesis</button>
         <button className={clsx(tab === "manage" && "on")} onClick={() => { setTabTouched(true); setTab("manage"); }}><span className="n">[2]</span>Management</button>
         <button className={clsx(tab === "pnl" && "on")} onClick={() => { setTabTouched(true); setTab("pnl"); }}><span className="n">[3]</span>PnL</button>
+        {play.horizon === "ZERO_DTE" && (
+          <button className={clsx(tab === "timeline" && "on")} onClick={() => { setTabTouched(true); setTab("timeline"); }}><span className="n">[4]</span>Timeline</button>
+        )}
       </div>
 
       <div className="nh-deck-body">
         {tab === "thesis" && <ThesisPanel play={play} sessionClosed={sessionClosed} />}
         {tab === "manage" && <ManagePanel play={play} nowMs={nowMs} />}
         {tab === "pnl" && <PnlPanel play={play} />}
+        {tab === "timeline" && play.horizon === "ZERO_DTE" && (
+          <PlayTimelinePanel play={play} nowMs={nowMs} />
+        )}
       </div>
 
       <div className="nh-deck-foot">

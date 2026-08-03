@@ -191,6 +191,12 @@ export interface ZeroDteDeckSource {
   underlying_price?: number | null;
   /** Thesis Health payload from the board ledger row (server-computed each board build). */
   thesis_health?: import("@/lib/zerodte/thesis-health").ThesisHealthPayload | null;
+  closed_reason?: string | null;
+  exit_reason?: string | null;
+  exit_detail?: string | null;
+  exit_at?: string | null;
+  exit_pnl_pct?: number | null;
+  timeline_tranches?: import("@/lib/zerodte/play-timeline").PlayTimelineTranche[] | null;
 }
 
 const FB_LABELS: Record<string, string> = {
@@ -364,6 +370,12 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
     // row with neither renders no ribbon (honest absence), never a fabricated reason.
     whyNow: src.why_now ?? null,
     firstFlaggedAt: src.first_flagged_at ?? null,
+    closedReason: src.closed_reason ?? null,
+    exitReason: src.exit_reason ?? null,
+    exitDetail: src.exit_detail ?? null,
+    exitAt: src.exit_at ?? null,
+    exitPnlPct: fin(src.exit_pnl_pct),
+    timelineTranches: src.timeline_tranches ?? null,
   };
 }
 

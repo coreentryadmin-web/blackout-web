@@ -59,6 +59,11 @@ import {
   type ZeroDteGovernorSummary,
 } from "@/lib/zerodte/governor";
 import { gradeZeroDteLedger, readZeroDteLedgerChecked, scanZeroDteBoard, syncLedgerLiveState } from "@/lib/zerodte/scan";
+import {
+  readExitStampFromEntryContext,
+  readTimelineTranchesFromEntryContext,
+  type PlayTimelineTranche,
+} from "@/lib/zerodte/play-timeline";
 // Type-only (erased at compile) — the runtime handle is dynamically imported in
 // registerSetupQuotes below, same relative-specifier pattern as attachLiveMarkMeta.
 import type { ZeroDteSetupQuote } from "@/lib/zerodte/live-marks";
@@ -114,6 +119,12 @@ export type ZeroDteBoardLedgerRow = {
    *  This is the member-facing guidance sentence, surfaced verbatim (already rounded at the
    *  data layer by buildExitContext). */
   exit_detail: string | null;
+  /** ISO instant when the exit engine stamped entry_context.exit — timeline replay anchor. */
+  exit_at: string | null;
+  /** Realized P&L % at the engine exit stamp — null without a pinned exit. */
+  exit_pnl_pct: number | null;
+  /** WS-11 reconstructed trim legs (post-session) — each carries an honest at_et. */
+  timeline_tranches: PlayTimelineTranche[] | null;
   /** ISO instant of the quote behind last_mark, when the live-marks lane served
    *  it (B-9). Null = legacy sync lane (no per-quote timestamp available). */
   mark_as_of: string | null;
@@ -342,6 +353,7 @@ function mapLedgerRow(
   // data ALREADY on the row: the pinned entry_context.exit blob (stamped on an engine
   // EXIT) + the latched peak (for the live ratchet floor). All pure — no new IO.
   const pinnedExit = readPinnedExit(r.entry_context);
+  const exitStamp = readExitStampFromEntryContext(r.entry_context);
   const engineExitCategory = categorizeExitReason(pinnedExit.reason);
   // Live ratchet floor (the shipped default mode): "your stop is now at breakeven/+20/
   // +50". Derived purely from the latched peak vs the pinned entry; TRIM status is the
@@ -394,6 +406,9 @@ function mapLedgerRow(
     floor_pnl_pct: floorPnlPct,
     exit_reason: engineExitCategory,
     exit_detail: pinnedExit.detail,
+    exit_at: exitStamp.at,
+    exit_pnl_pct: exitStamp.pnl_pct,
+    timeline_tranches: readTimelineTranchesFromEntryContext(r.entry_context),
     mark_as_of: liveMark?.mark_as_of ?? null,
     mark_source: liveMark?.mark_source ?? null,
     // SEV-4: flag a mark served by the SYNC lane (no per-quote timestamp) so the deck can

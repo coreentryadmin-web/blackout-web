@@ -46,6 +46,23 @@ test("OCC copy: control renders (accessible button, aria-label) when an OCC is o
   assert.match(html, /<button/); // a real, keyboard-focusable control
 });
 
+test("Play timeline tab renders for 0DTE horizon", async () => {
+  const html = await render(
+    play({
+      firstFlaggedAt: "2026-08-03T11:20:00-04:00",
+      pnlPct: 35,
+      peak: 87,
+    }),
+  );
+  assert.match(html, />\[4\]</);
+  assert.match(html, />Timeline</);
+});
+
+test("Play timeline tab absent on Legacy horizon", async () => {
+  const html = await render(play({ horizon: "LEGACY" }));
+  assert.doesNotMatch(html, />Timeline</);
+});
+
 test("OCC copy: absent OCC → no control rendered (graceful, no dead button)", async () => {
   const html = await render(play({ occ: null }));
   assert.doesNotMatch(html, /nh-deck-occcopy/);
