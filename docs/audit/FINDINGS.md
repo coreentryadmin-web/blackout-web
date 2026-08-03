@@ -4,6 +4,22 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-03 — [Grid/0DTE] Post-close fix agent — all validators GREEN (~1:05 PM PT / 5:10 PM ET)
+
+**Severity.** — (no additional product defects)
+
+**Session.** Scheduled post-close fix agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` Step 4 (~1:05 PM PT slot; executed ~5:10 PM ET / 21:10 UTC).
+
+**Evidence.**
+- `validate:grid-rth -- --phase=post-close` → **12/12 PASS** (0 FAIL; `zerodte-warm` cron accepted, data-correctness flags=0, ops:collect zero items)
+- `validate:zerodte-logic` → **17/17 PASS** — gates, plan exits (-50%/+100%/15:30 ET), lifecycle OPEN→TRIM→CLOSED, mergePlays SKIP past cutoff/MOVED, live board 6 setups / 2 ledger, cutoff 14:00 ET
+- `validate:grid-e2e` → **5/5 PASS** — board API 6/2, HELIX 20 prints, Playwright `/nighthawk` load, zero console errors
+- `validate:deploy` → **GREEN**
+
+**Root cause.** Initial cloud-agent run failed on missing `node_modules` (tsx/playwright/pg) — environment only. After `npm install` + `npx playwright install chromium`, all suites GREEN. RTH verify pass earlier today (`grid-rth-2026-08-03`, PR #1554) already confirmed zero P0/P1 Grid/0DTE defects; no gate logic, play picking, trade management, mergePlays, cron bypass, or ledger PnL fixes required.
+
+**Status.** FIXED — no new code changes required; docs only on `fix/grid-post-close-aug3-green`.
+
 ## 2026-08-03 — [ops] spx-signal-weight-optimize off-window stale false positive (#1550)
 
 **Severity.** P1 ops false positive — not a prod outage.

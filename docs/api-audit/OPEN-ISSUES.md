@@ -1,5 +1,35 @@
 # BlackOut Open Issues Log
-Last updated: 2026-08-03 16:45 ET
+Last updated: 2026-08-03 17:15 ET
+
+## grid-rth-2026-08-03-post-close — 0DTE Command post-close fix agent (~1:05 PM PT / 5:10 PM ET)
+
+**Session:** Autonomous Grid RTH **fix mode** per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` Step 4. Commands: `npm run validate:grid-rth -- --phase=post-close` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e` → `npm run validate:deploy`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `validate:grid-rth -- --phase=post-close` | ✅ **12/12 PASS** (0 FAIL; `zerodte-warm` cron accepted, data-correctness flags=0, ops:collect zero items) |
+| `validate:zerodte-logic` | ✅ **17/17 PASS** — gates, plan exits, lifecycle OPEN→TRIM→CLOSED, mergePlays SKIP, session heat CLOSED, ledger PnL 2 rows |
+| `validate:grid-e2e` | ✅ **5/5 PASS** — board API 6/2, HELIX 20 prints, Playwright `/nighthawk` load, zero console errors |
+| `validate:deploy` | ✅ **GREEN** |
+
+**Post-close status: GREEN** — zero FAIL on all three Grid harnesses. No code fixes required.
+
+### Findings table (`grid-rth-2026-08-03-post-close`)
+
+| Severity | ID | Detail | Fix defer? |
+|---|---|---|---|
+| — | — | **No P0/P1 product defects** | all Grid suites GREEN |
+| P2 | GRID-RTH-ENV-02 | Initial orchestrator FAIL on missing `node_modules` (tsx/playwright/pg) in cloud agent | Yes — `npm install` + `npx playwright install chromium` |
+
+### Reports
+
+- `audit-output/grid-rth-2026-08-03-post-close-1785791448969.json`
+- `audit-output/zerodte-logic-1785791420956.json`
+- `audit-output/grid-e2e-1785791462282.json`
+
+---
 
 ## grid-rth-2026-08-03 — 0DTE Command RTH verify agent (market-open pass, ~6:30 AM PT / 9:30 AM ET schedule)
 
