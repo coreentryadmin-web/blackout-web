@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { beforeEach } from "node:test";
 import {
   buildDeterministicEditionPlays,
   buildRescuePlays,
@@ -101,6 +101,13 @@ function scored(ticker: string, direction: "long" | "short", score: number): Sco
     trading_halt: false,
   };
 }
+
+// Volume-first defaults for existing unit tests — global-strongest policy is tested explicitly.
+beforeEach(() => {
+  process.env.NH_LEGACY_GLOBAL_STRONGEST = "0";
+  process.env.NH_LEGACY_DIVERSITY_HEDGE = "1";
+  process.env.NH_LEGACY_FORCED_HEDGE = "1";
+});
 
 // ── Tests ─────────────────────────────────────────────────────────────────────────────────────
 test("emits N valid plays with correct geometry and direction from the score sign", () => {
@@ -847,4 +854,44 @@ test("buildRescuePlays: missing sector on ScoredCandidate → sector undefined",
   });
   assert.equal(plays.length, 1);
   assert.equal(plays[0]!.sector, undefined, "no sector on scored → play.sector should be undefined");
+});
+
+test("global strongest: skips halted top ranks and picks best tradable name", () => {
+  const ranked = [
+    { ...scored("TOP1", "long", 80), trading_halt: true },
+    { ...scored("TOP2", "long", 78), trading_halt: true },
+    scored("DEEP", "long", 62),
+  ];
+  const chains = { DEEP: chainAround(100) };
+  const dossierMap = { DEEP: dossier("DEEP", 100) };
+  const { plays } = buildDeterministicEditionPlays({ ranked, dossierMap, chains, target: 1 });
+  assert.equal(plays.length, 1);
+  assert.equal(plays[0]!.ticker, "DEEP", "must scan full ranked pool, not stop at truncated slice");
+});
+
+test("diversity hedge skipped when NH_LEGACY_DIVERSITY_HEDGE=0", () => {
+  const key = "NH_LEGACY_DIVERSITY_HEDGE";
+  const prev = process.env[key];
+  process.env[key] = "0";
+  try {
+    const ranked = [
+      scored("AA", "long", 70),
+      scored("BB", "long", 65),
+      scored("CC", "long", 60),
+      scored("FF", "short", 55),
+    ];
+    const chains: Record<string, ReturnType<typeof chainAround>> = {};
+    const dossierMap: Record<string, ReturnType<typeof dossier>> = {};
+    for (const r of ranked) {
+      chains[r.ticker] = chainAround(100);
+      dossierMap[r.ticker] = dossier(r.ticker, 100);
+    }
+    const { plays } = buildDeterministicEditionPlays({ ranked, dossierMap, chains, target: 3 });
+    assert.equal(plays.length, 3);
+    assert.ok(plays.every((p) => p.direction === "LONG"), "no hedge swap when diversity disabled");
+    assert.equal(plays[0]!.ticker, "AA");
+  } finally {
+    if (prev === undefined) delete process.env[key];
+    else process.env[key] = prev;
+  }
 });

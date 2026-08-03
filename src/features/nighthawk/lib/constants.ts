@@ -51,7 +51,7 @@ export const CANDIDATE_UNUSUALNESS_LOOKBACK_DAYS = 30;
 /** Floor for 30d avg premium — avoids divide-by-zero on thin history. */
 export const CANDIDATE_MIN_BASELINE_PREMIUM = 75_000;
 export const MAX_DOSSIER_STOCKS = 40;
-/** Top dossiers sent to Claude for play synthesis (not the full ranked pool). */
+/** Legacy volume-first synthesis cap. Global-strongest mode uses MAX_DOSSIER_STOCKS instead. */
 export const EDITION_SYNTHESIS_POOL = 18;
 /** Final play count shown in the UI (PlaybookBoard renders 5 slots). */
 export const EDITION_TARGET_PLAYS = 5;

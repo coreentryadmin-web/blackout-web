@@ -45,6 +45,10 @@ import { applyPremiumCapToPlay, validatePlayGeometry, canonicalTicker } from "./
 import { groundPlays } from "./grounding";
 import { GROUNDING_MIN_OI, tieredMinOi } from "./grounding";
 import { MAX_OPTION_PREMIUM_PER_SHARE, MIN_PUBLISH_SCORE, DIVERSITY_HEDGE_FLOOR, FORCED_CONTRARIAN_FLOOR, INDEX_SET, INDEX_ETF_PLAYS } from "./constants";
+import {
+  diversityHedgeEnabled,
+  forcedContrarianHedgeEnabled,
+} from "./edition-quality";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import { bangerScaleOutNote } from "@/lib/zerodte/scale-out";
 
@@ -691,7 +695,7 @@ export function buildDeterministicEditionPlays(params: {
   // contrarian thesis), but tech/positioning/news/smart-money are honestly re-scored. The best
   // forced contrarian above DIVERSITY_HEDGE_FLOOR gets the hedge slot.
   let finalPlays = merged.slice(0, target);
-  if (finalPlays.length >= 3) {
+  if (diversityHedgeEnabled() && finalPlays.length >= 3) {
     const dirs = new Set(finalPlays.map((p) => p.direction));
     if (dirs.size === 1) {
       const dominant = finalPlays[0]!.direction;

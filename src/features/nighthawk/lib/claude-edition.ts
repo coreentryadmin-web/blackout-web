@@ -33,6 +33,7 @@ import {
   MAX_OPTION_COST_PER_CONTRACT,
   MAX_OPTION_PREMIUM_PER_SHARE,
 } from "./constants";
+import { rescuePlaysEnabled } from "./edition-quality";
 import type { GroundingSummary } from "./grounding";
 import type { ScoredCandidate } from "./scorer";
 import { assignNighthawkTier, nhTierInputFromScored, nhConvictionRank } from "./nighthawk-tiers";
@@ -135,7 +136,7 @@ export async function generateEditionPlays(params: {
   // PR-N13: when normal synthesis produces zero plays (all candidates failed geometry,
   // premium cap, or grounding), build rescue plays from the ranked pool without those
   // constraints so the edition always surfaces picks.
-  if (!detPlays.length && params.ranked.length) {
+  if (!detPlays.length && params.ranked.length && rescuePlaysEnabled()) {
     const rescue = buildRescuePlays({
       ranked: params.ranked,
       dossierMap,
