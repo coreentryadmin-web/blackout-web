@@ -9,10 +9,13 @@ import { strengthBarSegmentFills } from "./terminal-display";
 export function ConfidenceBadge({
   play,
   hero = false,
+  list = false,
   className,
 }: {
   play: TerminalPlay;
   hero?: boolean;
+  /** List rail: stars carry tier — show "Confidence" + score only. */
+  list?: boolean;
   className?: string;
 }) {
   const grade = playGradeLabel(play);
@@ -20,10 +23,16 @@ export function ConfidenceBadge({
   if (grade == null && quality == null) return null;
 
   const fills = strengthBarSegmentFills(quality, 10);
+  const showGrade = grade != null && !list;
 
   return (
     <div
-      className={clsx("nh-deck-conf-badge", hero && "nh-deck-conf-badge-hero", className)}
+      className={clsx(
+        "nh-deck-conf-badge",
+        hero && "nh-deck-conf-badge-hero",
+        list && "nh-deck-conf-badge-list",
+        className,
+      )}
       aria-label={
         quality != null
           ? `Confidence ${quality}${grade ? `, grade ${grade}` : ""}`
@@ -32,9 +41,10 @@ export function ConfidenceBadge({
             : undefined
       }
     >
-      {grade && <span className="nh-deck-conf-badge__grade">{grade}</span>}
+      {showGrade && <span className="nh-deck-conf-badge__grade">{grade}</span>}
       {quality != null && (
         <div className="nh-deck-conf-badge__stack">
+          {list && <span className="nh-deck-conf-badge__label">Confidence</span>}
           <div className="nh-deck-conf-badge__bar" aria-hidden>
             {fills.map((filled, i) => (
               <span key={i} className={clsx("nh-deck-conf-badge__seg", filled && "is-on")} />
