@@ -11,3 +11,5 @@ export function recapOnlyReasonFromMeta(
   const trimmed = raw.trim();
   return trimmed || null;
 }
+
+export { funnelFromMeta as funnelFromMetaForEdition } from "./edition-funnel";

@@ -22,6 +22,7 @@
 //    same skip-grading philosophy as the 0DTE rejection funnel.
 
 import { MIN_PUBLISH_SCORE } from "./constants";
+import { publishGateBlockedRecapReason } from "./edition-funnel";
 import type { PlaybookPlay } from "./types";
 import type { TickerDossier } from "./dossier";
 import type { ScoredCandidate } from "./scorer";
@@ -344,13 +345,9 @@ export function applyNighthawkPublishGates(opts: {
   };
 }
 
-/** The recap-only reason line when the gates zero the whole edition — zero honest plays
- *  beats one unfillable play (tonight's real 7/14 edition was already honestly zero-play). */
+/** @deprecated Prefer recapReasonAtPublishExit from edition-funnel.ts (distinguishes synthesis-empty vs gate-blocked). */
 export function publishGateRecapReason(blocked: NighthawkGateBlockedPlay[]): string {
-  const detail = blocked
-    .map((b) => `${b.ticker}: ${b.result.blocks.map((x) => x.code).join(",")}`)
-    .join("; ");
-  return `Publish gates blocked all ${blocked.length} play(s) (${detail}) — zero honest plays beats an unfillable pick.`;
+  return publishGateBlockedRecapReason(blocked);
 }
 
 // ── Best-available promotion (PR-N13): when the gates zero the entire edition,
