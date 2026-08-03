@@ -6226,3 +6226,73 @@ stale_quote_basis over-blocking) are risk-relevant judgment calls on live tradin
 for user direction rather than auto-fixed on thin samples (12 and 7 rows respectively). Logged
 here per standing policy; next step is user-directed (build the direction veto, and/or loosen
 `stale_quote_basis`, and/or wait for more of the 13 open Legacy plays to resolve before acting).
+
+## 2026-08-03 — [Night Hawk Cortex] NH-R11 (source-family stacking) + NH-R9 (silent internal disagreement) — FIXED
+
+**Context.** An independent Cortex-audit table (user-supplied, cross-checked against `main`)
+confirmed four real, previously-unactioned gaps in the Night Hawk Cortex evidence composer
+(`src/lib/nighthawk/cortex/`): NH-R11 (8 sources capped only per-source, so correlated sources
+can stack), NH-R5 (binary liquidity gate), NH-R8 (streak rewarded with no exhaustion), NH-R9 (no
+cross-source contradiction flag — a scalar net score of 0 is indistinguishable from "nothing
+answered"). User selected all four; this entry covers NH-R11 + NH-R9 (built together — both live
+in `compose.ts` and share the same per-source-cap machinery). NH-R5/NH-R8 are separate PRs.
+
+**NH-R11 root cause.** Four of the eight Cortex sources — `gex-walls`, `wall-trend`, `vex-charm`,
+`darkpool-confluence` — all read the SAME underlying dealer options book (the GEX ladder, its
+15/45-min lifecycle trend, its VEX/vanna tilt, and dark-pool prints that only ever confirm a wall
+already found by `gex-walls`). `SOURCE_SUPPORT_CAPS` bounds each individually (1.0 / 1.5 / 0.4 /
+0.4) but nothing bounded the FAMILY, so a name with all four lit up could stack ~3.3 raw points of
+what is really one dealer-positioning fact counted four ways — inflating conviction beyond what
+independent corroboration actually earned.
+
+**NH-R11 fix.** `types.ts`: new `CortexSourceFamily` type + `CORTEX_SOURCE_FAMILY` map (the four
+dealer sources → `"dealer-positioning"`; `flow-quality` → `"order-flow"`; the remaining three →
+`"context"`). `compose.ts`: new `FAMILY_SUPPORT_CAPS = { "dealer-positioning": 2.75 }`, applied
+AFTER the existing per-source cap (same proportional-scaling pattern, one more pass keyed on
+family instead of source). 2.75 sits just above the documented "flagship" two-source case (fresh
+gex-walls ≈1.0 + fresh wall-trend ≈1.25–1.5 ≈ 2.25–2.5 — compose.ts's own worked example), so the
+legitimate two-core-source structural argument is untouched; it only bites when 3+ family members
+are simultaneously near their individual caps. Verified on the design doc's own QQQ 7/13 fixture:
+raw dealer-positioning sum 3.176 → capped to 2.75, verdict stays net-supportive and conviction A
+(the fix tightens redundant stacking, it doesn't kill the real case). order-flow/context families
+are left uncapped beyond their existing per-source caps — each of those four sources reads a
+genuinely distinct evidentiary channel, not a duplicate of another source in the same family.
+
+**NH-R9 root cause.** `compose.ts` nets `score = Σsupports − Σopposes` and hands the gate stack
+(`cortex-gate.ts`) that one scalar. A verdict built from +2.0 support and −1.9 oppose (real
+disagreement, nearly resolved either way) composes to the identical score, conviction, and PASS
+outcome as a verdict where every source reported absent (+0/−0). `cortex-gate.test.ts` already had
+a test named exactly for this ("net-zero is a wash... never overrules green gates") — the
+composer had no way to distinguish "wash" from "contest".
+
+**NH-R9 fix.** `types.ts`: new `CortexVerdict.contested: boolean`. `compose.ts`: new
+`CONTESTED_MIN_MAGNITUDE = 0.75` (one full mid-tier signal, same magnitude as
+`CONVICTION_B_MIN_SCORE`); `contested = supportTotal >= 0.75 && opposeTotal >= 0.75`, computed on
+the raw pre-round totals. A contested verdict gets a `"CONTESTED: ..."` narrative line citing both
+totals. `cortex-gate.ts`: new `"CONTESTED"` decision — when `verdict.contested` is true AND
+`score < CONVICTION_A_MIN_SCORE` (i.e. the fight isn't decisively won), the gate BLOCKS with a new
+`cortex_contested` rejection code citing top evidence from BOTH sides (unlike `cortex_net_negative`,
+which only ever cites the opposing side, since a negative score means opposition already won). At
+or above the A floor a contested verdict still PASSES — deliberate: real edges often carry some
+residual opposition, and the gate should only intervene on an UNRESOLVED fight, not tax every
+verdict that has any opposition at all. A quiet all-absent composite (score 0, contested:false)
+is unaffected — `CONTESTED` only fires when BOTH sides are independently loud.
+
+**Blast radius.** `types.ts`, `compose.ts` (core). `cortex-gate.ts` (`ZeroDteCortexDecision`,
+`ZeroDteCortexAssessment`, `assessCortexVerdict`, `cortexGateBlocks`, the summary/entry-context
+decision unions — all extended with `"CONTESTED"`, additively). `board.ts`
+(`ZeroDteGateFailure` — added `"cortex_contested"` so the new rejection code type-checks through
+the shared gate-block plumbing). `thesis-health.ts` (treats `CONTESTED` as a health-degrading
+decision alongside `VETO`/`VETO_BLIND`/`NET_NEGATIVE`). `pane.ts` (`PaneCortexView` decision union
++ `CORTEX_DECISIONS` set, so the SKIP card renders the new decision instead of reading it as
+`null`). `spx-play-engine.ts`/`scan.ts`/`board.ts`'s existing `decision === "PASS"` checks are
+inclusive-of-non-PASS already, so a CONTESTED find is blocked there with NO code change needed
+(same as any other non-PASS decision) — verified via `tsc --noEmit` (clean) rather than assumed.
+
+**Evidence.** 15/15 new + existing `compose.test.ts` tests pass (family-cap + contested suites
+added). 30/28 `cortex-gate.test.ts` tests pass (2 new: CONTESTED blocks below the A floor; a
+hand-flagged-contested-but-decisive verdict still PASSes). Full `thesis-health.test.ts` /
+`pane.test.ts` / `calibration.test.ts` suites re-run clean (101 total across the affected file
+set). `npx tsc --noEmit` clean. `npx eslint` clean on every touched file.
+
+**Status:** PR pending → CI → auto-merge per standing policy.
