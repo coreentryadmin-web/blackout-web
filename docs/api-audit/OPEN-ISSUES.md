@@ -1,5 +1,42 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-31 18:17 ET
+Last updated: 2026-08-03 16:45 ET
+
+## spx-rth-2026-08-03 — SPX Slayer all-day RTH verify agent (market-open pass, ~1:41 PM PT / 4:41 PM ET)
+
+**Session:** SPX Slayer all-day RTH verification agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` **verify** mode (scheduled market-open pass; re-run with `--force` post-close). Commands: `npm run validate:spx-rth -- --force` → `npm run validate:spx-e2e` → 60s live auto-update probe.
+
+**Note:** Session ran **post-close** (16:41 ET). RTH-only probes (desk-lanes, live-badge) correctly SKIP; matrix + cross-tool integration fully validated.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth -- --force` | ✅ **7 PASS / 1 WARN / 0 FAIL** |
+| `npm run validate:spx-e2e` | ✅ **14 PASS / 2 SKIP / 1 WARN / 0 FAIL** — **167 UI strike rows** · **167 API strikes** |
+| Matrix deep audit (SPX) | ✅ Every GEX/VEX/DEX/CHARM cell finite; INV-2 strike_totals re-sum |
+| Cross-endpoint spot/GEX | ✅ merged=7600.5 hm=7600.5 play=SCANNING/SCANNING |
+| Trade alerts | ✅ SCANNING — no stale ✓ confirmations |
+| BIE consistency | ✅ `getSpxPlayState()` single derivation |
+| Cross-tool integration | ✅ Thermal, HELIX (30 prints), Largo, Grid bootstrap, 0DTE (8 setups), Night Hawk PASS |
+| UI E2E | ✅ GEX/VEX tabs clicked; matrix text sanity; zero console errors |
+| 60s live auto-update | ✅ Post-close stable; no stale SCANNING confirmations |
+| `ops:collect` | ✅ exit 0 — zero action items |
+
+### Findings table (`spx-rth-2026-08-03`)
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| — | — | **No P0/P1 product defects** | all suites GREEN | — |
+| P2 | SPX-RTH-ENV-01 | Cloud-agent first pass failed on missing `node_modules` (pg/tsx/playwright) | harness env | Yes — `npm install` + `npx playwright install chromium` |
+| P2 | SPX-RTH-DC-01 | `CRON_SECRET` auth mismatch on data-correctness probe | `/api/cron/data-correctness` | Yes — env only |
+| P2 | SPX-RTH-BIE-01 | BIE cron play route HTTP 401 (cron bearer required) | `/api/cron/spx-evaluate` | Yes — expected off-hours |
+| P2 | SPX-RTH-UI-01 | Commentary expand control not present on dashboard | UI | Yes — post-close UX review |
+
+**Verify status: GREEN** — zero FAIL on `validate:spx-rth` and `validate:spx-e2e`. No P0 fixes required.
+
+**Reports:** `audit-output/spx-rth-2026-08-03-verify-1785789883020.json`, `audit-output/spx-dashboard-e2e-1785789924784.json`, `audit-output/spx-dashboard-e2e-1785789924174.png`
+
+---
 
 ## grid-rth-2026-07-31-pass6 — 0DTE Command post-close fix agent (~3:17 PM PT / 6:17 PM ET)
 
