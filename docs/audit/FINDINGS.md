@@ -1451,8 +1451,11 @@ fresh and skip as before.
 TACTICAL sub-lane (2-7 DTE) contracts from the Legacy edition. A 3-DTE contract that passes
 every gate was demoted to a last-resort pool.
 
-**Status.** PR #1211 — pushed, CI green on first commit, awaiting rate-limit reset to undraft
-and merge. Both fixes on `claude/wall-beads-data-validation-4re5wo`.
+**Status.** ~~PR #1211 — pushed, CI green on first commit, awaiting rate-limit reset to undraft
+and merge.~~ **Superseded 2026-08-03**: #1211 was closed unmerged (the GraphQL rate limit blocking
+its undraft never cleared). The identical fix was re-pushed as **PR #1215**, which DID merge to
+`main` (`09a93460`) — confirmed live via the 2026-08-03 re-verification entry below. Both fixes
+(MIN_DTE 5→2, stale-edition auto-rebuild) are on `main` today; no action pending on this entry.
 
 ## 2026-07-29 — [Thermal] Discord card still unreadable on mobile (nodes/drift)
 
@@ -6294,5 +6297,39 @@ added). 30/28 `cortex-gate.test.ts` tests pass (2 new: CONTESTED blocks below th
 hand-flagged-contested-but-decisive verdict still PASSes). Full `thesis-health.test.ts` /
 `pane.test.ts` / `calibration.test.ts` suites re-run clean (101 total across the affected file
 set). `npx tsc --noEmit` clean. `npx eslint` clean on every touched file.
+
+**Status:** PR pending → CI → auto-merge per standing policy.
+
+## 2026-08-03 — [Night Hawk] HorizonDeck missing degraded/loading props + stale PR #1211 note corrected
+
+**Context.** A second independent verification pass (user-supplied) cross-checked the earlier
+synthesis against `main` and confirmed two small, previously-unactioned items.
+
+**1. `HorizonDeck` (Swing/LEAPS lane) had no degraded/loading signal — FIXED.**
+`ZeroDteDeck` (same file, `containers.tsx:76-101`) already computes `isBoardDegraded(data)` and
+passes `degraded`/`loading`/an outage-aware `emptyHint` into `CommandDeck` (which has supported
+both props all along). `HorizonDeck` passed neither — a genuine fetch failure and a genuinely-
+empty lane rendered identically ("scanning... coming online"). Root cause: `fetchNightHawkHorizons`
+(`src/lib/api.ts:434-437`) fail-softs any network/upstream error to `{board: null}` (a defensible
+choice — the caller must never throw into a poll loop), but nothing downstream distinguished that
+from `board.lanes[horizon]` being legitimately empty. **Fix:** `containers.tsx`'s `HorizonDeck`
+now destructures `isLoading` from the `useSWR` call, computes `degraded = data != null && data.board
+== null` (a response arrived but carried no board = the fetch failed and was swallowed), branches
+`emptyHint` to an honest "data outage, not an empty board" message when degraded, and passes
+`degraded`/`loading` through to `CommandDeck` — the exact same pattern `ZeroDteDeck` already uses,
+just not previously ported to the horizon lanes. No new test file: this is additive prop-wiring
+onto an already-tested component (`CommandDeck`'s degraded/loading rendering has no dedicated test
+either — this repo doesn't RTL-test these container components; verified via `tsc --noEmit` +
+`eslint` clean instead).
+
+**2. FINDINGS.md's PR #1211 status note was stale — corrected.** The 2026-07-29 stale-edition-
+rebuild entry still read "PR #1211 — pushed, CI green, awaiting rate-limit reset to undraft and
+merge." #1211 was actually closed unmerged days ago; #1215 (identical fix, re-pushed) merged
+instead. Corrected in place with a strikethrough + pointer to the 2026-08-03 re-verification entry
+that already established this — no new finding, just closing the loop on a doc that hadn't caught
+up to itself.
+
+**Blast radius.** `containers.tsx` (`HorizonDeck` only — `ZeroDteDeck` untouched, already correct).
+`FINDINGS.md` doc correction only, no code.
 
 **Status:** PR pending → CI → auto-merge per standing policy.

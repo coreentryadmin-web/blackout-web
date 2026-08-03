@@ -106,7 +106,14 @@ export function ZeroDteDeck({
 // ── Swings / LEAPS: the horizon lane ────────────────────────────────────────────────
 
 export function HorizonDeck({ horizon }: { horizon: "SWING" | "LEAPS" }) {
-  const { data } = useSWR(["deck-horizons", horizon], () => fetchNightHawkHorizons(horizon), { refreshInterval: 30_000 });
+  const { data, isLoading } = useSWR(["deck-horizons", horizon], () => fetchNightHawkHorizons(horizon), {
+    refreshInterval: 30_000,
+  });
+  // fetchNightHawkHorizons (lib/api.ts) fail-softs a network/upstream error to `{board: null}` —
+  // otherwise indistinguishable from a genuinely-empty lane (both render zero rows). Surface that
+  // distinction here the same way ZeroDteDeck's isBoardDegraded does for the 0DTE lane: a response
+  // that arrived with board:null is an outage, not "scanning, nothing yet".
+  const degraded = data != null && data.board == null;
   const lane = data?.board?.lanes?.[horizon];
   // Prefer the seven serving sections when present (SWING) — flat committed/watch is back-compat only and
   // collapses COMMIT_NOW + WAITING_FOR_ENTRY into one misleading "committed" rail.
@@ -125,8 +132,9 @@ export function HorizonDeck({ horizon }: { horizon: "SWING" | "LEAPS" }) {
   const rows = sectionRows ?? [...(lane?.committed ?? []), ...(lane?.watch ?? [])];
   const researchCount = horizon === "SWING" ? (lane?.sections?.RESEARCH?.length ?? 0) : 0;
   const watchCount = horizon === "SWING" ? (lane?.sections?.WATCH?.length ?? 0) : 0;
-  const emptyHint =
-    horizon === "SWING" && rows.length === 0
+  const emptyHint = degraded
+    ? "Lane data unavailable right now — retrying. This is a data outage, not an empty board."
+    : horizon === "SWING" && rows.length === 0
       ? researchCount > 0 || watchCount > 0
         ? "Swing scan active — names building persistence appear in Research once enriched."
         : "Whole-market swing discovery runs on a phase cadence — first sightings need ≥2 sessions (or corroboration for event setups) before WATCH."
@@ -157,6 +165,8 @@ export function HorizonDeck({ horizon }: { horizon: "SWING" | "LEAPS" }) {
     <CommandDeck
       plays={plays}
       laneLabel={horizon === "SWING" ? "Swings · 2–30 DTE" : "LEAPS · ≤90 DTE"}
+      degraded={degraded}
+      loading={isLoading && !data}
       emptyHint={emptyHint}
     />
   );
