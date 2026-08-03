@@ -1,5 +1,43 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-31 18:17 ET
+Last updated: 2026-08-03 16:45 ET
+
+## grid-rth-2026-08-03 — 0DTE Command RTH verify agent (market-open pass, ~6:30 AM PT / 9:30 AM ET schedule)
+
+**Session:** Autonomous Grid RTH **verify** mode per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md`. Commands: `npm run validate:grid-rth -- --force` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e` (+ focused Playwright Night Hawk segment clicks, `data-validator.mjs`).
+
+**Note:** Classic `/grid` page + 9 `/api/grid/*` routes deleted 2026-07-07 — returns **404**. 0DTE Command lives on `/nighthawk` with four view segments (0DTE / Swings / LEAPS / Legacy), not deleted Grid tabs.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `validate:grid-rth -- --force` | ✅ **13/13 PASS** — upstream, session heat CLOSED, ledger PnL 2 rows, SPX spot 7600.5 vs GEX, HELIX 20 prints, `zerodte-warm` cron, logic + integration, data-correctness flags=0, ops:collect zero items |
+| `validate:zerodte-logic` | ✅ **17/17 PASS** — gates, plan exits (-50%/+100%/15:30 ET), lifecycle OPEN→TRIM→CLOSED, mergePlays SKIP past cutoff/MOVED, session heat RTH→POST_COMMIT→POWER_HOUR, live board 8 setups / 2 ledger, cutoff 14:00 ET |
+| `validate:grid-e2e` | ✅ **5/5 PASS** — board API 8/2, HELIX 20 prints, Playwright `/nighthawk` load, zero console errors |
+| Night Hawk UI segments | ✅ **0DTE / Swings / LEAPS / Legacy** — all decks visible; board API 200 (8 setups, 2 ledger) |
+| `data-validator.mjs` | ⚠️ 28 PASS / 3 FAIL / 5 INFO — SPY/QQQ extended-hours spot vs Polygon prev-close (off-hours oracle; not 0DTE logic) |
+| `test:ios-ui-e2e` | ⚠️ SPX dashboard Matrix segment click timeout (top-rail chip intercepts pointer) — **SPX desk**, not Grid/0DTE |
+
+**Verify status: GREEN** — zero FAIL on all three Grid harnesses. No P0 product defects.
+
+### Findings table (`grid-rth-2026-08-03`)
+
+| Severity | ID | Detail | Fix defer? |
+|---|---|---|---|
+| — | — | **No P0/P1 product defects** | all Grid suites GREEN |
+| INFO | GRID-RTH-ROUTING-01 | `/grid` returns 404 — classic Market Grid deleted; 0DTE Command on `/nighthawk` | N/A — intentional |
+| P2 | GRID-RTH-ENV-01 | Initial `validate:grid-e2e` WARN — Playwright chromium not installed | Yes — `npx playwright install chromium` |
+| P2 | SPX-RTH-UI-01 | `test:ios-ui-e2e` Matrix segment click blocked by `spx-ios-top-rail` chip overlay | Yes — SPX desk scope, not Grid |
+| P2 | DATA-VAL-EXT-01 | `data-validator` SPY/QQQ FAIL vs Polygon prev-close during extended hours | Yes — extended tape vs prev-close oracle |
+
+### Reports
+
+- `audit-output/grid-rth-2026-08-03-verify-1785789795989.json`
+- `audit-output/zerodte-logic-1785789802442.json`
+- `audit-output/grid-e2e-1785789830383.json`
+- `audit-output/validation-2026-08-03T20-45-30-611Z.md`
+
+---
 
 ## grid-rth-2026-07-31-pass6 — 0DTE Command post-close fix agent (~3:17 PM PT / 6:17 PM ET)
 
