@@ -27,7 +27,7 @@ Last updated: 2026-08-03 16:58 ET
 |---|---|---|---|---|---|
 | `/dashboard` (SPX Slayer) | hard 1.7s | — | 0 | 1× HTTP 400 | null (post-close) |
 | `/flows` (HELIX) | soft 1.7s | 0 | 0 | null |
-| `/heatmap` (Thermal matrix) | soft 1.6s | 0 | 0 | null |
+| `/heatmap` (Thermal matrix + profile tab) | 1.9s + profile 3.3s | 0 matrix / 4 profile | 0 | null |
 | `/vector` | soft 1.7s | 0 | 0 | null |
 | `/nighthawk` (0DTE Command) | soft 1.6s | 0 | 0 | null |
 | `/terminal` (Largo) | soft 1.6s | 0 | 0 | null |
@@ -49,7 +49,7 @@ Last updated: 2026-08-03 16:58 ET
 |---|---|---|---|---|
 | — | — | **No P0/P1 defects** | all suites GREEN | — |
 | P2 | DASH-HTTP-400 | Dashboard console 1× HTTP 400 on resource load (recurring transient) | browser network | Yes — no blank fields |
-| P2 | SWEEP-PROFILE-TAB | Profile tab harness flake — API has 255 SPY strike_totals; manual Playwright repro mounts panel in <1s after dashboard→flows→heatmap; sweep intermittent 120s timeout | `/heatmap` harness | **Fixed** — Promise.all mount wait + non-fatal P2; re-verify RTH |
+| P2 | SWEEP-PROFILE-TAB | Profile tab harness failed — browser lost Clerk session on `/heatmap` (`sign-in?redirect_url=/heatmap`); ticket URL sign-in unreliable in Playwright | harness | **Fixed** — inject `__session` cookies from FAPI; profile tab now exercises in ~3s |
 | P2 | DV-QQQ-SPOT | QQQ underlying 1.76% off Polygon prev-close (tol 1.5% index) | data-validator | Yes — extended-hours vs prev-close |
 | P2 | DV-AMZN-SPOT | AMZN underlying 4.64% off Polygon prev-close (tol 2.5%) | data-validator | Yes — extended-hours drift |
 | P2 | DV-MSFT-SPOT | MSFT underlying 5.74% off Polygon prev-close (tol 2.5%) | data-validator | Yes — extended-hours drift |
