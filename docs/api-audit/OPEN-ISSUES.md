@@ -1,5 +1,36 @@
 # BlackOut Open Issues Log
-Last updated: 2026-07-31 18:17 ET
+Last updated: 2026-08-03 16:51 ET
+
+## grid-rth-2026-08-03 — 0DTE Command RTH verify agent (~1:49 PM PT / 4:49 PM ET)
+
+**Session:** Autonomous Grid RTH **verify** mode per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` (post-close re-run with `--force` — market closed 16:00 ET). Commands: `npm run validate:grid-rth -- --force` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e`.
+
+**Note:** Classic `/grid` page + 9 `/api/grid/*` routes deleted 2026-07-07 — 0DTE Command lives on `/nighthawk`; E2E validates `/nighthawk` + board API.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `validate:grid-rth -- --force` | ✅ **13/13 PASS** — upstream, session heat CLOSED, ledger PnL 2 rows, SPX spot 7600.5 vs GEX, HELIX 20 prints, `zerodte-warm` cron, cross-tool, data-correctness flags=0, ops:collect zero items |
+| `validate:zerodte-logic` | ✅ **17/17 PASS** — gates, plan exits (-50%/+100%/15:30 ET), lifecycle OPEN→TRIM→CLOSED, mergePlays SKIP past cutoff/MOVED, session heat CLOSED, ledger PnL 2 rows, cutoff 14:00 ET |
+| `validate:grid-e2e` | ✅ **5/5 PASS** — board API 7 setups/ledger 2, HELIX 20 prints, Playwright `/nighthawk` load, zero console errors |
+| Cross-tool | ✅ SPX bootstrap spot 7600.5 vs GEX; HELIX 20 prints; Night Hawk dedupe; `zerodte-warm` cron accepted |
+
+### Findings table (`grid-rth-2026-08-03`)
+
+| Severity | ID | Detail | Fix defer? |
+|---|---|---|---|
+| — | — | **No P0/P1 product defects** | all suites GREEN |
+| INFO | ENV-NODE-MODULES | Initial run required `npm install` + `npx playwright install chromium` | Resolved — environment only |
+| INFO | RTH-SKIP | First `validate:grid-rth` skipped off-hours; re-ran with `--force` | Expected post-close behavior |
+
+### Reports
+
+- `audit-output/grid-rth-2026-08-03-verify-1785790254986.json`
+- `audit-output/zerodte-logic-1785790259293.json`
+- `audit-output/grid-e2e-1785790265918.json`
+
+---
 
 ## grid-rth-2026-07-31-pass6 — 0DTE Command post-close fix agent (~3:17 PM PT / 6:17 PM ET)
 
