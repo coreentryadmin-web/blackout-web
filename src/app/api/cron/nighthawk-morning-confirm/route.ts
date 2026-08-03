@@ -50,6 +50,7 @@ import { todayEt, isTradingDayEt } from "@/features/nighthawk/lib/session";
 import { inEtWindow } from "@/features/nighthawk/lib/et-window";
 import { parsePlayLevels, entryHalfWidth } from "@/features/nighthawk/lib/play-levels";
 import type { PlaybookPlay } from "@/features/nighthawk/lib/types";
+import { promoteLegacyConfirmedToSwing } from "@/lib/swing/legacy-confirm-promote";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -528,6 +529,39 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    // ── Phase 3.8: promote CONFIRMED legacy plays into the Swings serving lane ─
+    // Runs after thesis validation + durable verdict persist + entry re-anchor.
+    // Serve-only: names land in WAITING_FOR_ENTRY/WATCH with a NIGHT HAWK badge — no auto-commit.
+    let legacySwingPromoted = 0;
+    let legacySwingSkipped = 0;
+    const legacySwingErrors: string[] = [];
+    try {
+      const promote = await promoteLegacyConfirmedToSwing({
+        editionFor,
+        checkedAt: result.checked_at,
+        confirmed: finalStatuses,
+        plays,
+        stockPremarketByTicker: Object.fromEntries(
+          plays.map((p) => [p.ticker.toUpperCase(), stockSnaps[p.ticker.toUpperCase()]?.price ?? null]),
+        ),
+      });
+      legacySwingPromoted = promote.promoted;
+      legacySwingSkipped = promote.skipped;
+      legacySwingErrors.push(...promote.errors);
+      if (promote.promoted > 0) {
+        console.info(
+          `[nighthawk-morning-confirm] promoted ${promote.promoted} CONFIRMED legacy play(s) to Swings`,
+        );
+      }
+      if (promote.errors.length > 0) {
+        console.warn("[nighthawk-morning-confirm] legacy→swing promotion issues:", promote.errors.join("; "));
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      legacySwingErrors.push(msg);
+      console.warn("[nighthawk-morning-confirm] legacy→swing promotion failed (non-fatal):", err);
+    }
+
     // ── Phase 4: write to Redis ─────────────────────────────────────────────
     try {
       const redisUrl = process.env.REDIS_URL ?? "";
@@ -577,6 +611,9 @@ export async function GET(req: NextRequest) {
       // PR-N6: Cortex morning re-veto ledger.
       cortex_reveto: cortexRevetoMeta,
       entry_bands_reanchored: reanchored,
+      legacy_swing_promoted: legacySwingPromoted,
+      legacy_swing_skipped: legacySwingSkipped,
+      legacy_swing_errors: legacySwingErrors,
       duration_ms: Date.now() - started,
     };
     await logCronRun(CRON_KEY, started, payload);
