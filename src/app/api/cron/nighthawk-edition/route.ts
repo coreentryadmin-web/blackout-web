@@ -52,6 +52,7 @@ export async function GET(req: NextRequest) {
   }
 
   const force = req.nextUrl.searchParams.get("force") === "1";
+  const overwrite = req.nextUrl.searchParams.get("overwrite") === "1";
   const statusOnly = req.nextUrl.searchParams.get("status") === "1";
   // Use ET date explicitly so the edition target doesn't flip at UTC midnight.
   const todayInEt = todayEt();
@@ -96,7 +97,7 @@ export async function GET(req: NextRequest) {
   // `.catch` serializes + ops-alerts so an unhandled rejection can NEVER crash the replica. A re-fire
   // (cron schedule or ?force=1) resumes from the last checkpoint exactly as before.
   const dispatchBuild = () => {
-    void buildEveningEdition({ force })
+    void buildEveningEdition({ force, overwrite })
       .then((result) => {
         if (result.ok) {
           console.info(

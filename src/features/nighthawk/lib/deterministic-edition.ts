@@ -45,6 +45,7 @@ import { applyPremiumCapToPlay, validatePlayGeometry, canonicalTicker } from "./
 import { groundPlays } from "./grounding";
 import { GROUNDING_MIN_OI, tieredMinOi } from "./grounding";
 import { MAX_OPTION_PREMIUM_PER_SHARE, MIN_PUBLISH_SCORE, DIVERSITY_HEDGE_FLOOR, FORCED_CONTRARIAN_FLOOR, INDEX_SET, INDEX_ETF_PLAYS } from "./constants";
+import { effectiveMinPublishScore, forcedContrarianHedgeEnabled } from "./edition-quality";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import { bangerScaleOutNote } from "@/lib/zerodte/scale-out";
 
@@ -617,7 +618,7 @@ export function buildDeterministicEditionPlays(params: {
   for (const scored of params.ranked) {
     if (built.length >= buffer) break;
     if (scored.trading_halt) continue;
-    if (scored.score < MIN_PUBLISH_SCORE) { scoreBelowFloorCount += 1; continue; }
+    if (scored.score < effectiveMinPublishScore()) { scoreBelowFloorCount += 1; continue; }
     const ticker = scored.ticker.toUpperCase();
     const canon = canonicalTicker(ticker);
     if (selectedFamilies.has(canon)) continue;
@@ -660,7 +661,7 @@ export function buildDeterministicEditionPlays(params: {
     if (contract && !contract.caveat) strictContractTickers.add(ticker);
   }
 
-  console.info(`[nighthawk/det-edition] funnel: ${params.ranked.length} candidates → ${scoreBelowFloorCount} below score floor (${MIN_PUBLISH_SCORE}) → chains for ${Object.keys(params.chains).length} tickers → ${contractOk} with contract, ${stockOnly} stock-only, ${noChainCount} no chain, ${noSpotCount} no spot, ${premiumCapCount} premium-capped, ${geometryFailCount} geometry-fail → ${built.length} built`);
+  console.info(`[nighthawk/det-edition] funnel: ${params.ranked.length} candidates → ${scoreBelowFloorCount} below score floor (${effectiveMinPublishScore()}) → chains for ${Object.keys(params.chains).length} tickers → ${contractOk} with contract, ${stockOnly} stock-only, ${noChainCount} no chain, ${noSpotCount} no spot, ${premiumCapCount} premium-capped, ${geometryFailCount} geometry-fail → ${built.length} built`);
 
   // Ground survivors that HAVE strict (non-caveated) chain contracts. Caveated-contract and
   // stock-only plays skip grounding — their levels come from real S/R data and the contract
@@ -725,7 +726,7 @@ export function buildDeterministicEditionPlays(params: {
       // Floor matches DIVERSITY_HEDGE_FLOOR (35): forced scores are inherently lower (flow
       // discounted 0.3x) so only dossiers with real tech/positioning support clear it.
       // The play carries a gate_warning so members know.
-      if (!diversitySwapped) {
+      if (!diversitySwapped && forcedContrarianHedgeEnabled()) {
         console.info(`[nighthawk/edition] no natural ${oppositeDir} candidates — trying forced contrarian re-score (floor=${FORCED_CONTRARIAN_FLOOR})`);
         let bestContrarian: { scored: ScoredCandidate; play: PlaybookPlay } | null = null;
 
@@ -829,7 +830,7 @@ export function buildRescuePlays(params: {
   for (const scored of params.ranked) {
     if (plays.length >= target) break;
     if (scored.trading_halt) continue;
-    if (scored.score < MIN_PUBLISH_SCORE) continue;
+    if (scored.score < effectiveMinPublishScore()) continue;
     const ticker = scored.ticker.toUpperCase();
     const canon = canonicalTicker(ticker);
     if (selectedFamilies.has(canon)) continue;

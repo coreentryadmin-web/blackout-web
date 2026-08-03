@@ -1,3 +1,4 @@
+import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireAdminApi } from "@/lib/admin-access";
 import { recordAdminRouteError } from "@/lib/admin-route-errors";
@@ -8,18 +9,18 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 800;
 
 /**
- * Admin-triggered manual run of the Night Hawk edition pipeline. Same builder the
- * cron hits — force-runs (bypasses the time window) and resumes the checkpointed
- * job. Admin-auth only (no CRON_SECRET needed). Capped at 800s/call to match the cron route
- * (was 300, which killed the build before its internal checkpoint budget could fire); a
- * long Claude build returns 202 mid-stage; click again to resume until job_status=published.
+ * Admin-triggered manual run of the Night Hawk edition pipeline.
+ * Default: resume/recap-only rebuild only — does NOT replace an existing playbook.
+ * Pass ?overwrite=1 to intentionally replace a published book (recovery).
  */
-export async function POST() {
+export async function POST(request: NextRequest) {
   const denied = await requireAdminApi();
   if (denied) return denied;
 
+  const overwrite = request.nextUrl.searchParams.get("overwrite") === "1";
+
   try {
-    const result = await buildEveningEdition({ force: true });
+    const result = await buildEveningEdition({ force: true, overwrite });
     const status = result.ok ? 200 : result.job_status === "failed" ? 500 : 202;
     return NextResponse.json(
       {
