@@ -218,6 +218,7 @@ export function PlayTerminal({
             streamKind={streamKind}
             markFlash={markFlash}
             rankContext={convictionRank}
+            nowMs={nowMs}
           />
           <div className="nh-deck-stream nh-deck-stream-compact" title={streamKind === "CLOSED" ? "Session closed — showing last known marks" : undefined}>
             {streamKind === "LIVE" ? (

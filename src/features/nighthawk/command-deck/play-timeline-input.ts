@@ -9,6 +9,7 @@ export function playTimelineInputFromTerminal(
 ): PlayTimelineInput {
   return {
     status: play.status,
+    detectedAt: play.detectedAt ?? null,
     firstFlaggedAt: play.firstFlaggedAt ?? null,
     committedAtEt: play.thesisHealth?.committedAtEt ?? null,
     whyNowLabel: play.whyNow?.label ?? play.whyNow?.reason ?? null,

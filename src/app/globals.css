@@ -16790,8 +16790,60 @@ body::before {
 .nh-deck-stream .lv{color:var(--dk-bull);text-shadow:none}
 
 @media (max-width:820px){.nh-deck{flex-direction:column}.nh-deck-left{width:100%;max-height:42vh}.nh-deck-right{border-top:1px solid var(--dk-line)}}
-@media (prefers-reduced-motion:reduce){.nh-deck-dot,.nh-deck-cursor{animation:none}.nh-deck-clock .decay i,.nh-deck-right.nh-deck-dim,.nh-deck-ck .ckbar i,.nh-deck-excbar .mk .lbl,.nh-deck-occcopy{transition:none}}
+@media (prefers-reduced-motion:reduce){.nh-deck-dot,.nh-deck-cursor{animation:none}.nh-deck-clock .decay i,.nh-deck-right.nh-deck-dim,.nh-deck-ck .ckbar i,.nh-deck-excbar .mk .lbl,.nh-deck-occcopy{transition:none}.nh-deck-lc-fresh.is-pulse{animation:none}}
 
+/* ── 0DTE lifecycle play cards (left queue) ── */
+.nh-deck-row-lifecycle-compact,.nh-deck-row-lifecycle{display:block;width:100%;text-align:left;padding:0;border-left-width:2px}
+.nh-deck-row-lifecycle-compact .nh-deck-lc,.nh-deck-row-lifecycle .nh-deck-lc{padding:12px 14px}
+.nh-deck-row-lifecycle{margin:8px 10px 10px;border-radius:6px}
+.nh-deck-lc{display:flex;flex-direction:column;gap:6px;min-width:0}
+.nh-deck-lc-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px}
+.nh-deck-lc-grade{font-size:13px;font-weight:800;color:var(--dk-bull);letter-spacing:.04em}
+.nh-deck-lc-hero .nh-deck-lc-grade{font-size:15px}
+.nh-deck-lc-rank{font-size:10px;font-weight:700;color:var(--dk-info);letter-spacing:.08em}
+.nh-deck-lc-stars{font-size:9px;color:var(--dk-warn);letter-spacing:-1px}
+.nh-deck-lc-ticker{font-size:14px;font-weight:800;color:var(--dk-text-primary);letter-spacing:.02em}
+.nh-deck-lc-hero .nh-deck-lc-ticker{font-size:16px}
+.nh-deck-lc-setup{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase}
+.nh-deck-lc-dir.long{color:var(--dk-bull)}.nh-deck-lc-dir.short{color:var(--dk-bear)}
+.nh-deck-lc-watch-tag{color:var(--dk-warn);border:1px solid rgba(255,200,87,.35);padding:1px 6px;border-radius:3px}
+.nh-deck-lc-horizon{color:var(--dk-info);font-size:9px}
+.nh-deck-lc-conf{font-size:10px;color:var(--dk-text-secondary);letter-spacing:.06em}
+.nh-deck-lc-conf b{color:var(--dk-text-primary);font-weight:800;margin-left:4px}
+.nh-deck-lc-wait{font-size:10px;font-weight:700;color:var(--dk-warn);letter-spacing:.08em;text-transform:uppercase}
+.nh-deck-lc-fresh-wrap{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.nh-deck-lc-fresh{display:inline-flex;align-items:center;gap:5px;font-size:9px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;padding:2px 7px;border-radius:3px;border:1px solid transparent}
+.nh-deck-lc-fresh-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.nh-deck-lc-fresh.is-fresh{color:var(--dk-bull);border-color:rgba(50,240,138,.35);background:rgba(50,240,138,.08)}
+.nh-deck-lc-fresh.is-fresh .nh-deck-lc-fresh-dot{background:var(--dk-bull);box-shadow:0 0 6px rgba(50,240,138,.5)}
+.nh-deck-lc-fresh.is-aging{color:var(--dk-warn);border-color:rgba(255,200,87,.35);background:rgba(255,200,87,.06)}
+.nh-deck-lc-fresh.is-aging .nh-deck-lc-fresh-dot{background:var(--dk-warn)}
+.nh-deck-lc-fresh.is-late{color:var(--dk-bear);border-color:rgba(255,91,107,.35);background:rgba(255,91,107,.06)}
+.nh-deck-lc-fresh.is-late .nh-deck-lc-fresh-dot{background:var(--dk-bear)}
+.nh-deck-lc-fresh.is-closed{color:var(--dk-text-secondary);border-color:var(--dk-border-subtle);background:var(--dk-bg-elevated)}
+.nh-deck-lc-fresh.is-closed .nh-deck-lc-fresh-dot{background:var(--dk-text-secondary)}
+.nh-deck-lc-fresh.is-pulse{animation:nh-deck-lc-pulse 1.6s ease-in-out infinite}
+@keyframes nh-deck-lc-pulse{0%,100%{box-shadow:none}50%{box-shadow:0 0 0 1px rgba(50,240,138,.35),0 0 12px rgba(50,240,138,.18)}}
+.nh-deck-lc-late{font-size:8px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--dk-bear);border:1px solid rgba(255,91,107,.35);padding:1px 5px;border-radius:3px}
+.nh-deck-lc-event{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px;font-size:10px}
+.nh-deck-lc-event-lab{font-weight:700;color:var(--dk-info);letter-spacing:.08em;text-transform:uppercase}
+.nh-deck-lc-event-val{color:var(--dk-text-primary);font-variant-numeric:tabular-nums}
+.nh-deck-lc-metrics{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:2px}
+.nh-deck-lc-metric{display:flex;flex-direction:column;gap:2px}
+.nh-deck-lc-metric .k{font-size:9px;font-weight:700;color:var(--dk-text-secondary);letter-spacing:.1em;text-transform:uppercase}
+.nh-deck-lc-metric .v{font-size:14px;font-weight:800;font-variant-numeric:tabular-nums}
+.nh-deck-lc-foot{display:flex;align-items:center;gap:8px;margin-top:2px;padding-top:6px;border-top:1px solid var(--dk-border-subtle)}
+.nh-deck-lc-foot .k{font-size:9px;font-weight:700;color:var(--dk-text-secondary);letter-spacing:.1em;text-transform:uppercase}
+.nh-deck-lc-status{font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}
+.nh-deck-lc-status.active{color:var(--dk-bull)}
+.nh-deck-lc-status.watching{color:var(--dk-warn)}
+.nh-deck-lc-status.closed{color:var(--dk-info)}
+.nh-deck-lc-condor{padding:0 14px 8px}
+.nh-deck-lifecycle-strip{display:flex;flex-wrap:wrap;gap:8px 14px;padding:8px 0 4px;border-bottom:1px solid var(--dk-border-subtle);margin-bottom:10px}
+.nh-deck-lifecycle-strip__cell{display:flex;flex-direction:column;gap:2px;min-width:4.5rem}
+.nh-deck-lifecycle-strip__lab{font-size:9px;font-weight:700;color:var(--dk-info);letter-spacing:.08em;text-transform:uppercase}
+.nh-deck-trade-hero__fresh{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:6px 0 2px}
+.nh-deck-trade-hero__fresh-time{font-size:10px;color:var(--dk-text-primary);font-variant-numeric:tabular-nums}
 /* ── Thermal Triple Desk (SPY | SPX | QQQ) ───────────────────────────────────
    Ultra-dense expiry columns so three live matrices share one viewport.
    Atmosphere + active-column pulse — institutional, not Discordy. */

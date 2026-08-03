@@ -43,6 +43,7 @@ export type PlayTimelineEvent = {
 
 export type PlayTimelineInput = {
   status: DeckStatus;
+  detectedAt?: string | null;
   firstFlaggedAt?: string | null;
   committedAtEt?: string | null;
   whyNowLabel?: string | null;
@@ -187,6 +188,17 @@ export function readExitStampFromEntryContext(entryContext: Record<string, unkno
 export function buildPlayTimeline(input: PlayTimelineInput): PlayTimelineEvent[] {
   const events: PlayTimelineEvent[] = [];
   let order = 0;
+
+  const detectedEt = isoToEtClock(input.detectedAt);
+  if (detectedEt) {
+    pushEvent(events, {
+      kind: "triggered",
+      label: "Detected",
+      detail: null,
+      atEt: detectedEt,
+      timeSource: "live",
+    }, order++);
+  }
 
   const flagEt = isoToEtClock(input.firstFlaggedAt);
   if (flagEt) {

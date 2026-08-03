@@ -23,14 +23,11 @@ import { etNowParts } from "@/features/nighthawk/lib/session";
 import { useSecondTick, useFlash } from "./use-deck-live";
 import {
   formatReturnPct,
-  originChip,
-  playGradeLabel,
   playQualityPct,
-  primaryReturnPct,
-  tierStars,
   useEnhancedZeroDteRow,
   useHeroPlayCard,
 } from "./play-card-display";
+import { PlayLifecycleCardBody } from "./PlayLifecycleCard";
 import {
   buildDeckCommandCenterStats,
   convictionRankContext,
@@ -356,56 +353,8 @@ function HealthRing({ health, rung }: { health: number; rung: string }) {
   );
 }
 
-/** Visible rank identity for 0DTE rows — #N, letter grade, star row (never fabricated). */
-function PlayRankLead({
-  rank,
-  grade,
-  compact = false,
-}: {
-  rank: number;
-  grade: string | null;
-  /** Compact left-rail stack vs hero-grade block. */
-  compact?: boolean;
-}) {
-  const stars = grade ? tierStars(grade) : "";
-  if (compact) {
-    return (
-      <span className="nh-deck-rank-stack" aria-label={grade ? `Rank ${rank}, grade ${grade}` : `Rank ${rank}`}>
-        <span className="nh-deck-rank-num">#{rank}</span>
-        {grade ? (
-          <>
-            <span className="nh-deck-grade-lead">{grade}</span>
-            {stars && <span className="nh-deck-grade-stars nh-deck-grade-stars-lead" aria-hidden>{stars}</span>}
-          </>
-        ) : (
-          <span className="nh-deck-grade-lead dim">—</span>
-        )}
-      </span>
-    );
-  }
-  return (
-    <>
-      <span className="nh-deck-rank-num nh-deck-rank-num-hero">#{rank}</span>
-      {grade ? (
-        <>
-          <span className="nh-deck-grade-badge">{grade}</span>
-          {stars && <span className="nh-deck-grade-stars" aria-hidden>{stars}</span>}
-        </>
-      ) : (
-        <span className="nh-deck-grade-badge dim">—</span>
-      )}
-    </>
-  );
-}
+/** Visible rank identity for 0DTE rows — moved to PlayLifecycleCard (lifecycle layout). */
 
-/** One left-pane play card. Wave 2 surfaces the tier + discovery-origin badges, the mid mark + its
- *  executable-fill P&L, and honest staleness (dim + age) — all reading the Wave-1 payload fields.
- *
- * Memoized: CommandDeck re-renders every 1000ms (useSecondTick, needed here for staleness/age), and
- * without memo every row re-executed on every tick regardless of whether its OWN play data changed.
- * `onSelect` takes the play id (rather than the parent handing each row a fresh `() => setSelId(id)`
- * closure) so the parent can pass the stable `setSelId` setter directly — a fresh closure per row per
- * tick would otherwise defeat this memoization outright. */
 export const PlayCard = memo(function PlayCard({
   play: p,
   rank,
@@ -432,76 +381,35 @@ export const PlayCard = memo(function PlayCard({
 
   const hero = useHeroPlayCard(p, selected, rank);
   const enhanced = useEnhancedZeroDteRow(p);
-  const grade = playGradeLabel(p);
   const quality = playQualityPct(p);
-  const ret = primaryReturnPct(p);
-  const origin = originChip(p);
 
-  if (hero) {
+  if (enhanced) {
     return (
       <button
         type="button"
         className={clsx(
-          "nh-deck-row nh-deck-row-hero",
+          "nh-deck-row",
+          hero ? "nh-deck-row-hero nh-deck-row-lifecycle" : "nh-deck-row-lifecycle-compact",
+          selected && "sel",
           stale && "nh-deck-card-stale",
           markFlash && "nh-deck-row-flash",
         )}
         onClick={() => onSelect(p.id)}
         aria-current={selected}
+        style={!hero && quality != null ? { ["--nh-quality" as string]: `${quality}%` } : undefined}
       >
-        {rank === 1 && (
-          <div className="nh-deck-hero-banner" aria-hidden>
-            BEST PLAY TODAY
-          </div>
-        )}
-        <div className="nh-deck-hero-top">
-          <div className="nh-deck-hero-grade">
-            <PlayRankLead rank={rank} grade={grade} />
-            {quality != null && (
-              <span className="nh-deck-quality">
-                Confidence <b>{quality}%</b>
-              </span>
-            )}
-          </div>
-          <div className="nh-deck-hero-metric">
-            {ret != null ? (
-              <>
-                <span
-                  className={clsx(
-                    "nh-deck-hero-pct",
-                    ret > 0 && "nh-deck-pos",
-                    ret < 0 && "nh-deck-neg",
-                  )}
-                >
-                  {ret > 0 ? "▲ " : ret < 0 ? "▼ " : ""}
-                  {formatReturnPct(ret)}
-                </span>
-                <span className="nh-deck-hero-pct-lab">
-                  {p.status === "CLOSED" ? "Peak Return" : "Live P&L"}
-                </span>
-              </>
-            ) : (
-              <span className="nh-deck-hero-pct dim">—</span>
-            )}
-          </div>
-        </div>
-        <div className="nh-deck-hero-mid">
-          <span className="nh-deck-hero-tk">{p.ticker}</span>
-          <span className={clsx("nh-deck-dp", p.direction === "LONG" ? "long" : "short")}>
-            {p.direction}
+        <PlayLifecycleCardBody
+          play={p}
+          rank={rank}
+          nowMs={nowMs}
+          hero={hero}
+          markFlash={markFlash}
+        />
+        {isCondor && (
+          <span className="nh-deck-lc-condor">
+            <CondorCardChip play={p} />
           </span>
-          <span className="nh-deck-hero-contract">{p.contract}</span>
-        </div>
-        <div className="nh-deck-hero-divider" aria-hidden />
-        <div className="nh-deck-hero-foot">
-          <span className={clsx("nh-deck-st", p.status)}>{p.status}</span>
-          {p.firstFlaggedAt && (
-            <span className="nh-deck-cbadge time">{etClock(p.firstFlaggedAt)} ET</span>
-          )}
-          {origin && <span className="nh-deck-cbadge orig">{origin}</span>}
-          {isCondor && <CondorCardChip play={p} />}
-        </div>
-        <div className="nh-deck-hero-cta">Tap to inspect →</div>
+        )}
       </button>
     );
   }
@@ -512,51 +420,26 @@ export const PlayCard = memo(function PlayCard({
       className={clsx(
         "nh-deck-row",
         selected && "sel",
-        enhanced && "nh-deck-row-enhanced",
         stale && "nh-deck-card-stale",
         markFlash && "nh-deck-row-flash",
       )}
       onClick={() => onSelect(p.id)}
       aria-current={selected}
-      style={enhanced && quality != null ? { ["--nh-quality" as string]: `${quality}%` } : undefined}
     >
-      <span className={clsx("nh-deck-rk-wrap", enhanced && "nh-deck-rank-lead")}>
+      <span className="nh-deck-rk-wrap">
         {showThRing && (
           <HealthRing health={p.thesisHealth!.health} rung={p.thesisHealth!.rungLabel} />
         )}
-        {enhanced ? (
-          <PlayRankLead rank={rank} grade={grade} compact />
-        ) : (
-          <span className="nh-deck-rk">{rank}</span>
-        )}
+        <span className="nh-deck-rk">{rank}</span>
       </span>
       <span className="nh-deck-row-body">
-        {enhanced ? (
-          <>
-            <span className="nh-deck-row-meta">
-              <span className="nh-deck-tk">{p.ticker}</span>
-              <span className={clsx("nh-deck-dp", p.direction === "LONG" ? "long" : "short")}>
-                {p.direction}
-              </span>
-              {quality != null && (
-                <span className="nh-deck-quality-inline">{quality}%</span>
-              )}
-            </span>
-            <span className="nh-deck-sub">{p.contract}</span>
-            {origin && <span className="nh-deck-origin-pill">{origin}</span>}
-          </>
-        ) : (
-          <>
-            <span className="nh-deck-row-head">
-              <span className="nh-deck-tk">{p.ticker}</span>
-              <span className={clsx("nh-deck-dp", p.direction === "LONG" ? "long" : "short")}>
-                {p.direction}
-              </span>
-            </span>
-            <span className="nh-deck-sub">{p.contract}</span>
-          </>
-        )}
-        {enhanced && <span className="nh-deck-row-divider" aria-hidden />}
+        <span className="nh-deck-row-head">
+          <span className="nh-deck-tk">{p.ticker}</span>
+          <span className={clsx("nh-deck-dp", p.direction === "LONG" ? "long" : "short")}>
+            {p.direction}
+          </span>
+        </span>
+        <span className="nh-deck-sub">{p.contract}</span>
         <span className="nh-deck-cardbadges">
           <span className={clsx("nh-deck-st", p.status)}>{p.status}</span>
           {p.firstFlaggedAt && (
@@ -564,7 +447,6 @@ export const PlayCard = memo(function PlayCard({
               {etClock(p.firstFlaggedAt)} ET
             </span>
           )}
-          {enhanced && origin && <span className="nh-deck-cbadge orig">{origin}</span>}
           {isCondor && <CondorCardChip play={p} />}
         </span>
       </span>

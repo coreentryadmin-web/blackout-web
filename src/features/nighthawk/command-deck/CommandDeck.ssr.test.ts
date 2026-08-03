@@ -30,13 +30,15 @@ function play(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
     tierLabel: "A+",
     discoveryOrigin: ["BREAKOUT"],
     firstFlaggedAt: "2026-08-03T09:42:00-04:00",
+    exitAt: "2026-08-03T12:06:00-04:00",
+    exitPnlPct: 42,
     ...overrides,
   };
 }
 
 async function render(
   p: TerminalPlay,
-  opts: { rank?: number; selected?: boolean } = {},
+  opts: { rank?: number; selected?: boolean; nowMs?: number } = {},
 ): Promise<string> {
   const { PlayCard } = await load();
   return renderToStaticMarkup(
@@ -45,79 +47,68 @@ async function render(
       rank: opts.rank ?? 1,
       selected: opts.selected ?? false,
       onSelect: () => {},
-      nowMs: Date.now(),
+      nowMs: opts.nowMs ?? Date.parse("2026-08-03T12:00:00-04:00"),
     }),
   );
 }
 
-test("closed row shows Peak Return as the primary number", async () => {
-  const html = await render(play({ status: "CLOSED", peak: 87, pnlPct: -50 }));
-  assert.match(html, />\+87%|▲ \+87%/);
-  assert.match(html, />Peak Return</);
+test("closed lifecycle row shows peak and realized returns", async () => {
+  const html = await render(play());
+  assert.match(html, />Peak</);
+  assert.match(html, />\+87%</);
+  assert.match(html, />Realized</);
+  assert.match(html, />\+42%</);
+  assert.match(html, />CLOSED</);
 });
 
-test("closed row never shows dead MID label when peak is present", async () => {
-  const html = await render(play({ status: "CLOSED", peak: 87, mark: 1.57 }));
-  assert.doesNotMatch(html, />MID</);
+test("open lifecycle row shows freshness, current, and active status", async () => {
+  const html = await render(
+    play({
+      status: "OPEN",
+      pnlPct: 42,
+      peak: 87,
+      firstFlaggedAt: "2026-08-03T11:58:00-04:00",
+    }),
+    { nowMs: Date.parse("2026-08-03T12:00:00-04:00") },
+  );
+  assert.match(html, /JUST FIRED|MIN AGO/);
+  assert.match(html, />Triggered</);
+  assert.match(html, />Current</);
+  assert.match(html, />\+42%</);
+  assert.match(html, />ACTIVE</);
 });
 
-test("open row still shows MID not Peak Return", async () => {
-  const html = await render(play({ status: "OPEN", peak: 87 }));
-  assert.doesNotMatch(html, />Peak Return</);
-  assert.match(html, />MID</);
+test("watch lifecycle row shows published clock and watching status", async () => {
+  const html = await render(
+    play({
+      status: "WATCH",
+      detectedAt: "2026-08-03T11:54:00-04:00",
+      firstFlaggedAt: null,
+      pnlPct: null,
+      peak: null,
+    }),
+    { nowMs: Date.parse("2026-08-03T12:00:00-04:00") },
+  );
+  assert.match(html, />WATCH</);
+  assert.match(html, />Waiting for Trigger</);
+  assert.match(html, />Published</);
+  assert.match(html, />WATCHING</);
 });
 
-test("0DTE compact row leads with rank, grade, and stars", async () => {
-  const html = await render(play({ tierLabel: "A+", score: 96 }), { selected: false, rank: 1 });
-  assert.match(html, /nh-deck-rank-lead/);
-  assert.match(html, />#1</);
-  assert.match(html, />A\+</);
-  assert.match(html, /★{5}/);
-  assert.match(html, />96%/);
-});
-
-test("0DTE compact row demotes ticker below rank lead", async () => {
-  const html = await render(play({ tierLabel: "A+" }), { selected: false, rank: 1 });
-  const rankIdx = html.indexOf("#1");
-  const metaIdx = html.indexOf(">META<");
-  assert.ok(rankIdx >= 0 && metaIdx > rankIdx, "rank should appear before ticker in markup");
-  assert.doesNotMatch(html, /nh-deck-row-head/);
-});
-
-test("selected 0DTE row renders hero card with banner when rank 1", async () => {
-  const html = await render(play(), { selected: true, rank: 1 });
+test("selected 0DTE row renders hero lifecycle card with banner when rank 1", async () => {
+  const html = await render(play({ status: "OPEN", pnlPct: 42 }), { selected: true, rank: 1 });
   assert.match(html, /nh-deck-row-hero/);
   assert.match(html, />BEST PLAY TODAY</);
-  assert.match(html, />#1</);
   assert.match(html, />Confidence/);
   assert.match(html, />Tap to inspect/);
 });
 
-test("selected rank-2 row is hero without BEST PLAY banner", async () => {
-  const html = await render(play({ id: "0DTE:AMD", ticker: "AMD", peak: 14 }), {
-    selected: true,
-    rank: 2,
-  });
-  assert.match(html, /nh-deck-row-hero/);
-  assert.doesNotMatch(html, />BEST PLAY TODAY</);
-});
-
-test("legacy row omits 0DTE grade chips", async () => {
+test("legacy row omits lifecycle layout", async () => {
   const html = await render(
     play({ horizon: "LEGACY", tierLabel: "A", stockPrice: 180, pnlPct: 5 }),
     { selected: false },
   );
-  assert.doesNotMatch(html, /nh-deck-grade-inline/);
-});
-
-test("row shows ET flag time when firstFlaggedAt is present", async () => {
-  const html = await render(play());
-  assert.match(html, />09:42 ET</);
-});
-
-test("discovery origin chip on enhanced 0DTE row", async () => {
-  const html = await render(play({ discoveryOrigin: ["BREAKOUT"] }), { selected: false });
-  assert.match(html, />BREAKOUT</);
+  assert.doesNotMatch(html, /nh-deck-lc/);
 });
 
 test("CommandDeck command center renders stat strip for 0DTE", async () => {
@@ -134,11 +125,5 @@ test("CommandDeck command center renders stat strip for 0DTE", async () => {
     }),
   );
   assert.match(html, /nh-deck-cmd/);
-  assert.match(html, /Opportunities/);
-  assert.match(html, />Top Rated</);
   assert.match(html, />META \(A\+\)/);
-  assert.match(html, />Win Rate \(30d\)</);
-  assert.match(html, />81%/);
-  assert.match(html, /Today.*Edge/);
-  assert.match(html, />High</);
 });

@@ -9,6 +9,7 @@ import {
   timelineFootnote,
   type PlayTimelineEvent,
 } from "@/lib/zerodte/play-timeline";
+import { PlayLifecycleStrip } from "./TerminalPremiumPanels";
 
 const REPLAY_STEP_MS = 900;
 
@@ -73,6 +74,7 @@ export function PlayTimelinePanel({
 
   return (
     <div className="nh-deck-timeline" aria-label="Play timeline replay">
+      <PlayLifecycleStrip play={play} />
       <div className="nh-deck-timeline-controls">
         <button
           type="button"

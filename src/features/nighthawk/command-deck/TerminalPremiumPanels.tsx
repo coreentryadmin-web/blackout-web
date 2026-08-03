@@ -22,7 +22,13 @@ import {
   tradeSummaryDisplay,
   trimLadderVisual,
 } from "./terminal-display";
+import {
+  playFreshnessDisplay,
+  playLifecycleTimestamps,
+  playPrimaryEvent,
+} from "./play-card-lifecycle";
 import { etNowParts } from "@/features/nighthawk/lib/session";
+import { etClock } from "./PlayTerminal";
 import { timeStopClock } from "@/lib/zerodte/terminal-ladder";
 import type { Recommendation } from "./types";
 
@@ -63,21 +69,50 @@ export function EngineConfidenceBlock({
   );
 }
 
+/** Lifecycle timestamps — detail surfaces (trade hero + timeline tab). */
+export function PlayLifecycleStrip({ play }: { play: TerminalPlay }) {
+  const stamps = playLifecycleTimestamps(play);
+  if (stamps.length === 0) return null;
+  return (
+    <div className="nh-deck-lifecycle-strip" aria-label="Trade lifecycle">
+      {stamps.map((s) => (
+        <div key={s.key} className="nh-deck-lifecycle-strip__cell">
+          <span className="nh-deck-lifecycle-strip__lab">{s.label}</span>
+          <span className="nh-deck-lifecycle-strip__val">{s.et} ET</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /** Persistent trade summary — visible across all tabs (0DTE). */
 export function TradeSummaryHero({
   play,
   streamKind,
   markFlash,
   rankContext = null,
+  nowMs = Date.now(),
 }: {
   play: TerminalPlay;
   streamKind: string;
   markFlash?: boolean;
   rankContext?: ConvictionRankContext | null;
+  nowMs?: number;
 }) {
   const summary = tradeSummaryDisplay(play);
   const dollar = summary.dollarPnl;
   const dollarSign = dollar != null && dollar >= 0 ? "+" : "";
+  const primary = playPrimaryEvent(play);
+  const freshness = playFreshnessDisplay(play, nowMs, primary.iso);
+  const primaryClock = primary.iso ? etClock(primary.iso) : null;
+  const tone =
+    freshness.tier === "just_fired" || freshness.tier === "fresh"
+      ? "fresh"
+      : freshness.tier === "aging"
+        ? "aging"
+        : freshness.tier === "late"
+          ? "late"
+          : "closed";
 
   return (
     <header className="nh-deck-trade-hero" aria-label="Selected trade summary">
@@ -86,6 +121,7 @@ export function TradeSummaryHero({
           <span className="nh-deck-trade-hero__tk">{summary.ticker}</span>
           <span className={clsx("nh-deck-trade-hero__dir", play.direction === "LONG" ? "long" : "short")}>
             {summary.direction}
+            {summary.origin ? ` • ${summary.origin}` : ""}
           </span>
         </div>
         <div className="nh-deck-trade-hero__grade-block">
@@ -100,9 +136,24 @@ export function TradeSummaryHero({
 
       <EngineConfidenceBlock play={play} rankContext={rankContext} />
 
+      {(primaryClock || freshness.relativeAge) && play.status !== "CLOSED" && (
+        <div className="nh-deck-trade-hero__fresh">
+          <span className={clsx("nh-deck-lc-fresh", `is-${tone}`, freshness.pulse && "is-pulse")}>
+            <span className="nh-deck-lc-fresh-dot" aria-hidden />
+            {freshness.badgeLabel}
+          </span>
+          <span className="nh-deck-trade-hero__fresh-time">
+            {primary.label} {primaryClock ? `${primaryClock} ET` : ""}
+            {freshness.relativeAge && primaryClock ? ` • ${freshness.relativeAge}` : freshness.relativeAge ?? ""}
+          </span>
+          {freshness.lateEntry && <span className="nh-deck-lc-late">Late Entry</span>}
+        </div>
+      )}
+
+      <PlayLifecycleStrip play={play} />
+
       <div className="nh-deck-trade-hero__chips">
         <span className="nh-deck-trade-hero__chip">{summary.horizonLabel}</span>
-        {summary.origin && <span className="nh-deck-trade-hero__chip orig">{summary.origin}</span>}
         <span className="nh-deck-trade-hero__chip contract">{summary.contract}</span>
       </div>
 
@@ -126,9 +177,9 @@ export function TradeSummaryHero({
           </span>
         </div>
         <div className="nh-deck-trade-hero__stat">
-          <span className="k">Trade</span>
+          <span className="k">Status</span>
           <span className={clsx("v", "nh-deck-trade-hero__status", play.status.toLowerCase())}>
-            {play.status === "CLOSED" ? "Closed" : streamKind === "LIVE" ? "Live" : play.status}
+            {play.status === "CLOSED" ? "CLOSED" : play.status === "WATCH" || play.status === "SKIP" ? "WATCHING" : "ACTIVE"}
           </span>
         </div>
       </div>
