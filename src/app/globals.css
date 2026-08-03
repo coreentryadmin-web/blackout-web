@@ -16084,7 +16084,9 @@ body::before {
   --dk-amber:var(--dk-warn);--dk-red:var(--dk-bear);--dk-cyan:var(--dk-info);
   --dk-line:var(--dk-border-subtle);
   --dk-glow:none;--dk-glow-accent:0 0 10px rgba(50,240,138,.22);
-  --dk-shadow-soft:0 2px 14px rgba(0,0,0,.5);--dk-shadow-selected:0 0 0 1px rgba(50,240,138,.22),0 4px 18px rgba(0,0,0,.55);
+  --dk-bg-selected:#070809;--dk-glow-selected:0 0 20px rgba(50,240,138,.18),0 0 40px rgba(50,240,138,.06);
+  --dk-shadow-soft:0 2px 14px rgba(0,0,0,.5);
+  --dk-shadow-selected:0 0 0 1px rgba(50,240,138,.5),var(--dk-glow-selected),0 6px 28px rgba(0,0,0,.65);
   --dk-mono:ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
   display:flex;min-height:0;height:100%;font-family:var(--dk-mono);color:var(--dk-text-primary);
   background:var(--dk-bg);border:1px solid var(--dk-border);border-radius:8px;overflow:hidden;position:relative;font-weight:500}
@@ -16741,13 +16743,18 @@ body::before {
 .nh-deck-cmd-lane,.nh-deck-cmd-lab,.nh-deck-rk,.nh-deck-rank-num{color:var(--dk-text-secondary)}
 .nh-deck-cmd-val{color:var(--dk-text-primary);text-shadow:none;font-weight:700}
 .nh-deck-cmd-val.edge-high{color:var(--dk-bull)}
-.nh-deck-row{border-bottom:1px solid var(--dk-border-subtle);border-left:2px solid transparent}
+.nh-deck-row{border-bottom:1px solid var(--dk-border-subtle);border-left:4px solid transparent;position:relative;transition:background .15s,box-shadow .15s,border-color .15s}
 .nh-deck-row:hover{background:rgba(255,255,255,.022)}
-.nh-deck-row.sel{background:rgba(50,240,138,.05);border-left-color:var(--dk-bull);box-shadow:var(--dk-shadow-selected)}
-.nh-deck-row.sel .nh-deck-tk{color:var(--dk-text-primary);text-shadow:none}
-.nh-deck-row-hero{border:1px solid var(--dk-border);border-left:3px solid var(--dk-bull);border-radius:6px;
-  background:var(--dk-bg-elevated);box-shadow:var(--dk-shadow-selected)}
-.nh-deck-row-hero:hover{background:var(--dk-bg-elevated)}
+/* Selected row — obvious driver for the right panel: darker fill, bright border, glow, 4px left accent. */
+.nh-deck-row.sel{background:var(--dk-bg-selected);border-left:4px solid var(--dk-bull);
+  border-top:1px solid rgba(50,240,138,.22);border-right:1px solid rgba(50,240,138,.28);border-bottom:1px solid rgba(50,240,138,.22);
+  box-shadow:var(--dk-shadow-selected);z-index:1}
+.nh-deck-row.sel .nh-deck-tk,.nh-deck-row.sel .nh-deck-lc-ticker{color:var(--dk-text-primary);text-shadow:none}
+.nh-deck-row-hero{border:1px solid rgba(50,240,138,.38);border-left:4px solid var(--dk-bull);border-radius:6px;
+  background:linear-gradient(165deg,rgba(50,240,138,.07) 0%,var(--dk-bg-selected) 42%,#050607 100%);
+  box-shadow:var(--dk-shadow-selected)}
+.nh-deck-row-hero:hover{background:linear-gradient(165deg,rgba(50,240,138,.09) 0%,var(--dk-bg-selected) 42%,#050607 100%)}
+.nh-deck-row-hero.sel,.nh-deck-row-lifecycle.sel{border-color:rgba(50,240,138,.52);border-left-width:4px;border-left-color:var(--dk-bull)}
 .nh-deck-hero-banner{color:var(--dk-text-secondary);background:transparent;border-bottom:1px solid var(--dk-border-subtle);text-shadow:none}
 .nh-deck-grade-badge,.nh-deck-grade-lead,.nh-deck-grade-inline{color:var(--dk-text-primary);text-shadow:none}
 .nh-deck-grade-badge.dim,.nh-deck-grade-lead.dim{color:var(--dk-text-secondary)}
@@ -16804,9 +16811,12 @@ body::before {
 @media (prefers-reduced-motion:reduce){.nh-deck-dot,.nh-deck-cursor{animation:none}.nh-deck-clock .decay i,.nh-deck-right.nh-deck-dim,.nh-deck-ck .ckbar i,.nh-deck-excbar .mk .lbl,.nh-deck-occcopy{transition:none}.nh-deck-lc-fresh.is-pulse{animation:none}}
 
 /* ── 0DTE lifecycle play cards (left queue) ── */
-.nh-deck-row-lifecycle-compact,.nh-deck-row-lifecycle{display:block;width:100%;text-align:left;padding:0;border-left-width:2px}
+.nh-deck-row-lifecycle-compact,.nh-deck-row-lifecycle{display:block;width:100%;text-align:left;padding:0;border-left-width:4px;border-left-color:transparent}
 .nh-deck-row-lifecycle-compact .nh-deck-lc,.nh-deck-row-lifecycle .nh-deck-lc{padding:12px 14px}
-.nh-deck-row-lifecycle{margin:8px 10px 10px;border-radius:6px}
+.nh-deck-row-lifecycle{margin:8px 8px 10px;border-radius:6px}
+.nh-deck-row-lifecycle.sel{margin:8px 6px 10px}
+.nh-deck-row-lifecycle-compact:not(.sel){opacity:.92}
+.nh-deck-row-lifecycle-compact:not(.sel):hover{opacity:1}
 .nh-deck-lc{display:flex;flex-direction:column;gap:6px;min-width:0}
 .nh-deck-lc-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px}
 .nh-deck-lc-grade{font-size:13px;font-weight:800;color:var(--dk-bull);letter-spacing:.04em}
