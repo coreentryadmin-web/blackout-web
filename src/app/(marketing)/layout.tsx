@@ -1,8 +1,8 @@
 /**
  * Public marketing surface — lean CSS only (~8KB base + CTA styles, not full globals).
- * force-dynamic: nav reads __session for signed-in CTA (Open desk vs Sign in).
+ * ISR: nav auth chrome heals client-side via __client_uat (NavAuthLinks).
  */
-export const dynamic = "force-dynamic";
+export const revalidate = 3600;
 
 import "../marketing-base.css";
 import "../marketing-shell.css";

@@ -1,12 +1,11 @@
-export const dynamic = "force-dynamic";
-
 import type { Metadata } from "next";
 import { MarketingPageShell } from "@/components/landing/MarketingPageShell";
 import { RedesignHome } from "@/components/landing/RedesignHome";
 import { FAQPageJsonLd, WebPageJsonLd } from "@/components/seo/JsonLd";
-import { signedInFromRequestCookies } from "@/lib/clerk-session-cookies";
 import { HOME_FAQ_ITEMS } from "@/lib/seo/home-faq";
 import { publicPageMetadata } from "@/lib/page-metadata";
+
+export const revalidate = 3600;
 
 export const metadata: Metadata = publicPageMetadata(
   "BlackOut — Live Dealer Gamma & 0DTE SPX Options Flow",
@@ -24,9 +23,7 @@ const LANDING_REDIRECT_SCRIPT =
  * FX layer for the canvas/reveal/ticker. Chrome (nav/footer) stays with MarketingPageShell;
  * the shell's ambient chart backdrop is off (showChart=false) since the hero has its own canvas.
  */
-export default async function LandingPage() {
-  const signedIn = await signedInFromRequestCookies();
-
+export default function LandingPage() {
   return (
     <MarketingPageShell showChart={false}>
       <FAQPageJsonLd items={[...HOME_FAQ_ITEMS]} />
@@ -36,7 +33,7 @@ export default async function LandingPage() {
         path="/"
       />
       <script dangerouslySetInnerHTML={{ __html: LANDING_REDIRECT_SCRIPT }} />
-      <RedesignHome signedIn={signedIn} />
+      <RedesignHome />
     </MarketingPageShell>
   );
 }

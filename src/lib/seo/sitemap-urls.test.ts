@@ -13,6 +13,6 @@ describe("publicSitemapEntries", () => {
 
   it("matches article count plus marketing, curriculum, and legal", () => {
     const entries = publicSitemapEntries();
-    assert.ok(entries.length >= 42 + 7 + 5);
+    assert.ok(entries.length >= 45 + 7 + 5);
   });
 });

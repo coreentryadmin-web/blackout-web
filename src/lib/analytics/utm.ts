@@ -85,6 +85,20 @@ export function internalCampaignParams(
   };
 }
 
+/** Server-safe UTM append (no sessionStorage). */
+export function appendUtmParams(href: string, params: AttributionParams): string {
+  try {
+    const url = new URL(href);
+    for (const key of UTM_PARAM_KEYS) {
+      const value = params[key];
+      if (value) url.searchParams.set(key, value);
+    }
+    return url.toString();
+  } catch {
+    return href;
+  }
+}
+
 /** Append stored + optional override UTMs to an absolute or relative URL. */
 export function appendAttributionToUrl(
   href: string,

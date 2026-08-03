@@ -24,7 +24,7 @@ export const LEARN_ARTICLES: LearnArticle[] = [
 
 ## Why dealer positioning moves the market
 
-Every time you buy or sell an option, a market maker takes the other side. To stay neutral, they continuously hedge by buying and selling the underlying as price moves — a process called **delta hedging** (see [Delta Hedging Explained](/learn/delta-hedging-explained) for the full mechanics). Multiply that hedging across every open contract in SPX and you get a force large enough to pin the market at some levels and accelerate it through others. Understanding that force is the single biggest edge available to a retail options trader — and it's the foundation everything at BlackOut is built on.
+Every time you buy or sell an option, a market maker takes the other side. To stay neutral, they continuously hedge by buying and selling the underlying as price moves — a process called **delta hedging** (see [Delta Hedging Explained](/learn/delta-hedging-explained) and [Market Maker Hedging Explained](/learn/market-maker-hedging-explained) for the full mechanics). Multiply that hedging across every open contract in SPX and you get a force large enough to pin the market at some levels and accelerate it through others. Understanding that force is the single biggest edge available to a retail options trader — and it's the foundation everything at BlackOut is built on.
 
 Consider a concrete example. SPX is trading at 5,500. There are tens of thousands of open call contracts clustered at the 5,550 strike. Every tick higher forces dealers to buy shares to hedge those calls, and those purchases push SPX higher still. The reverse happens on the way down with puts. That mechanical buying and selling is not opinion — it's math — and it happens on a scale that dwarfs most directional order flow.
 
@@ -48,7 +48,7 @@ Positioning tells you *where* the battle lines are; options order flow tells you
 
 ## Applying it to 0DTE
 
-Zero-days-to-expiration options carry enormous, fast-decaying gamma, which makes intraday dealer positioning more important for 0DTE than for any other timeframe. That same gamma concentration is what makes premium-selling structures like the [iron condor](/learn/iron-condor-strategy-guide) viable when the positioning read supports a range. Meanwhile, [implied volatility](/learn/implied-volatility-explained) determines how rich the premiums are on any given session — and whether the trade is worth taking at all. → [0DTE SPX Options Strategy Guide](/learn/0dte-spx-options-strategy) and [Is 0DTE Gambling?](/learn/is-0dte-gambling)
+Zero-days-to-expiration options carry enormous, fast-decaying gamma, which makes intraday dealer positioning more important for 0DTE than for any other timeframe. That same gamma concentration is what makes premium-selling structures like the [iron condor](/learn/iron-condor-strategy-guide) viable when the positioning read supports a range. Meanwhile, [implied volatility](/learn/implied-volatility-explained) determines how rich the premiums are on any given session — and whether the trade is worth taking at all. → [0DTE SPX Options Strategy Guide](/learn/0dte-spx-options-strategy), [Best 0DTE Trading Strategies](/learn/best-0dte-trading-strategies), and [Is 0DTE Gambling?](/learn/is-0dte-gambling)
 
 ## Where to go next
 
@@ -71,7 +71,7 @@ New to the terms? Start with the [Options Trading Glossary](/learn/options-tradi
 
 ## The core idea in one sentence
 
-When you buy or sell an option, a market maker takes the other side — and to stay neutral, they continuously buy and sell the underlying as price moves (see [Delta Hedging Explained](/learn/delta-hedging-explained) for the mechanics of that process). Gamma exposure measures how much they'll have to buy or sell, and in which direction. Multiply that across every open contract and you get a map of where dealers become forced buyers and forced sellers.
+When you buy or sell an option, a market maker takes the other side — and to stay neutral, they continuously buy and sell the underlying as price moves (see [Delta Hedging Explained](/learn/delta-hedging-explained) and [Market Maker Hedging Explained](/learn/market-maker-hedging-explained) for the mechanics of that process). Gamma exposure measures how much they'll have to buy or sell, and in which direction. Multiply that across every open contract and you get a map of where dealers become forced buyers and forced sellers.
 
 ## Positive gamma vs. negative gamma
 
@@ -260,6 +260,8 @@ GEX is a *context* tool, not a signal by itself. Use it to decide *how* to trade
 
 ## See it live
 
+Ready to apply this on SPX? Start with [How to Trade SPX Options](/learn/how-to-trade-spx-options) — regime, walls, and structure before direction.
+
 BlackOut [Thermal](/learn/heat-maps) computes and visualizes GEX across strikes and expirations in real time — the gamma profile, the flip, and the walls on one screen. [See it in action →](/pricing)
 
 > *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options trading involves substantial risk and is not suitable for every investor.*`,
@@ -311,7 +313,7 @@ It doesn't have to be. The honest answer is nuanced enough to deserve its own pi
 
 ## See the 0DTE desk
 
-BlackOut's [SPX Slayer](/learn/spx-slayer) is a 0DTE desk built on exactly this approach — live gamma, graded setups, public logging. For setups that carry overnight, [Night Hawk](/learn/night-hawk) handles the swing side. New to the platform? [Getting Started](/learn/getting-started) walks you through how the tools fit together. [Get access →](/pricing)
+BlackOut's [SPX Slayer](/learn/spx-slayer) is a 0DTE desk built on exactly this approach — live gamma, graded setups, public logging. For the full SPX playbook and regime-matched templates, see [How to Trade SPX Options](/learn/how-to-trade-spx-options) and [Best 0DTE Trading Strategies](/learn/best-0dte-trading-strategies). For setups that carry overnight, [Night Hawk](/learn/night-hawk) handles the swing side. New to the platform? [Getting Started](/learn/getting-started) walks you through how the tools fit together. [Get access →](/pricing)
 
 > *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options trading involves substantial risk and is not suitable for every investor.*`,
   },
@@ -352,6 +354,8 @@ Stop trading every idea. Start reading the regime, marking the levels, defining 
 2. **Define risk in dollars, not feelings.** Before clicking, know exactly how much you'll lose if you're wrong. On a long 0DTE option, that's the premium. On a [credit spread](/learn/credit-spreads-strategy-guide), it's the spread width minus the credit.
 3. **Demand a filter.** Only take setups that pass a checklist — positioning, flow, regime. If any input is missing or conflicting, stand aside. Most days, standing aside *is* the trade.
 4. **Track the record.** Log every entry, every exit, every reason. A trading process without a record is a narrative, not a system.
+
+For regime-matched strategy templates — wall fades, momentum continuation, condors — see [Best 0DTE Trading Strategies](/learn/best-0dte-trading-strategies).
 
 That's the entire premise behind BlackOut — live dealer gamma, A–F graded setups, and publicly logged results so there's no hiding from the record. [SPX Slayer](/learn/spx-slayer) is the 0DTE desk built on this approach; [Getting Started](/learn/getting-started) walks through how to set up and use the tools from day one. [See what the desks see →](/pricing)
 
@@ -800,6 +804,8 @@ Whether delta hedging calms the market or amplifies it depends on the dealer's g
 When heavy call buying pushes dealers deep into short gamma on a name, their delta hedging can spiral: buying to hedge pushes the stock up, which increases delta further, which forces more buying. That feedback loop is a [gamma squeeze](/learn/gamma-squeeze-explained) — the mechanical, non-opinion-driven reason a stock can go vertical on no real news. It's delta hedging taken to its most visible extreme.
 
 ## Watching it in real time
+
+For a trader-focused walkthrough of how aggregate hedging creates walls, pins, and breakouts, see [Market Maker Hedging Explained](/learn/market-maker-hedging-explained).
 
 You can't see individual dealer hedges, but you can see the aggregate effect. Thermal's DEX lens plots delta exposure by strike — the delta-zero pivot and posture that tells you roughly where hedging flow leans — right alongside the gamma profile: [see it live →](/learn/heat-maps). Pair that with SPX Slayer's live gamma read on the session to see how the hedging backdrop is shaping the day's setups: [see SPX Slayer →](/learn/spx-slayer). [Get access →](/pricing)
 
@@ -2507,6 +2513,145 @@ Scanning the options tape manually is impractical — thousands of prints per mi
 The result: instead of watching a raw tape, you see the *filtered, scored, contextualized* output — the contracts that represent real institutional intent, not the noise. For the methodology behind the scanner, see the full guide: [How to Read Options Flow](/learn/how-to-read-options-flow) and the [unusual options activity guide](/learn/unusual-options-activity-guide).
 
 > *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options and equities trading involve substantial risk and are not suitable for every investor.*`,
+  },
+  {
+    slug: "how-to-trade-spx-options",
+    path: "/learn/how-to-trade-spx-options",
+    metaTitle: "How to Trade SPX Options: A Structured Guide | BlackOut",
+    metaDescription:
+      "Learn how to trade SPX options with structure — read dealer gamma and GEX first, mark the walls, pick 0DTE or weekly expiries, and manage risk like a desk.",
+    targetKeyword: "how to trade SPX options",
+    type: "article",
+    title: "How to Trade SPX Options: A Structured Guide",
+    description:
+      "Learn how to trade SPX options with structure — read dealer gamma and GEX first, mark the walls, pick 0DTE or weekly expiries, and manage risk like a desk.",
+    body: `SPX is the most liquid index options product in the world — cash-settled, tight spreads, and enormous dealer positioning every session. That also makes it unforgiving if you trade it like a single-name stock. This guide is the structured playbook: read the regime first, then pick structure, then size.
+
+## Step 1: Read dealer positioning before you pick a direction
+
+SPX is driven by **dealer gamma** more than any other underlying. Before you buy a call or put, know three things:
+
+1. Where is the **[gamma flip](/learn/gamma-flip-explained)** relative to spot?
+2. Is aggregate **[GEX](/learn/what-is-gex)** positive (expect chop) or negative (expect trend)?
+3. Where are the **[call wall and put wall](/learn/call-wall-put-wall-explained)**?
+
+Above the flip in positive GEX, fade extremes toward the walls. Below the flip in negative GEX, respect momentum and widen stops. Skipping this step is how traders buy calls into a pin day and wonder why nothing moves.
+
+## Step 2: Choose your timeframe — 0DTE vs weekly
+
+**0DTE SPX** (same-day expiry) is a positioning game. Gamma is massive, theta burns fast, and the [0DTE strategy guide](/learn/0dte-spx-options-strategy) covers the full playbook. Use 0DTE when you have a clear regime read and can watch the position intraday.
+
+**Weekly SPX (SPXW)** gives you more time for a thesis to play out — useful when [implied volatility](/learn/implied-volatility-explained) is elevated and you want to sell premium via [iron condors](/learn/iron-condor-strategy-guide) or defined-risk spreads.
+
+## Step 3: Pick structure — directional vs premium selling
+
+**Directional:** Long calls/puts or debit spreads when flow, GEX, and [options flow](/learn/how-to-read-options-flow) align. HELIX-style urgency (sweeps, ask-side aggression) adds confluence.
+
+**Premium selling:** Credit spreads and condors when positive GEX supports a range and IV is rich. Place short strikes near walls, not round numbers — see [thermal strike selection](/learn/thermal-strike-selection-guide).
+
+## Step 4: Size and risk — SPX is not SPY
+
+One SPX point ≈ ten SPY points in notional. A "small" 0DTE position can move hundreds of dollars per handle. Rules that work on SPY break on SPX:
+
+- **Defined risk only** — spreads, not naked short options, until you have a track record.
+- **Hard stops** — especially on negative-GEX days ([gamma squeeze](/learn/gamma-squeeze-explained) territory).
+- **No averaging down** on 0DTE — theta does not give you time.
+
+## Step 5: Use a live positioning desk
+
+Reading static screenshots is not enough. [SPX Slayer](/learn/spx-slayer) shows live GEX, graded setups, and the matrix in one place. [Thermal](/learn/heat-maps) maps walls across strikes. Combine both before every SPX session.
+
+> *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options trading involves substantial risk and is not suitable for every investor.*`,
+  },
+  {
+    slug: "market-maker-hedging-explained",
+    path: "/learn/market-maker-hedging-explained",
+    metaTitle: "Market Maker Hedging Explained for Options Traders | BlackOut",
+    metaDescription:
+      "Market makers hedge every options trade by buying and selling the underlying. Learn how that mechanical flow creates gamma flip, walls, and intraday SPX pins.",
+    targetKeyword: "market maker hedging options",
+    type: "article",
+    title: "Market Maker Hedging Explained for Options Traders",
+    description:
+      "Market makers hedge every options trade by buying and selling the underlying. Learn how that mechanical flow creates gamma flip, walls, and intraday SPX pins.",
+    body: `When you buy an SPX call from your broker, a market maker almost always takes the other side. They do not want directional risk — so they **hedge** by trading the underlying (or futures) to stay delta-neutral. That hedging is not optional; it is continuous, mechanical, and large enough to move SPX. Understanding it is the core of modern index options trading.
+
+## Delta hedging in one paragraph
+
+An option's **delta** tells you how much the option price changes when the underlying moves $1. A market maker who is short that call must **buy stock (or ES futures)** as price rises and **sell** as price falls to offset the delta they sold you. That process is [delta hedging](/learn/delta-hedging-explained) — and it happens all day, on every strike, across the entire chain.
+
+## Why gamma makes hedging nonlinear
+
+**Gamma** measures how fast delta itself changes. Near expiration on ATM strikes, gamma explodes — so the market maker's required hedge size changes violently with every tick. Aggregate that across the whole SPX chain and you get **[dealer gamma exposure](/learn/what-is-dealer-gamma-exposure)**: the force that pins price at walls or accelerates breakouts.
+
+## Positive vs negative gamma regimes
+
+When dealers are **net long gamma**, hedging flows *against* price — sell rallies, buy dips. Volatility compresses. This is the "chop day" regime traders describe when [GEX is positive](/learn/what-is-gex).
+
+When dealers are **net short gamma**, hedging flows *with* price — buy strength, sell weakness. Moves extend. This is when [0DTE](/learn/0dte-spx-options-strategy) traders see vertical candles and stop-outs cluster.
+
+The price where the sign flips is the **[gamma flip](/learn/gamma-flip-explained)** — the single most important level on the board many mornings.
+
+## Walls are hedging concentrations
+
+The **call wall** and **put wall** are strikes where open interest and gamma pile up. Dealers hedge most aggressively there, which is why price often stalls at those levels. They are not magic — they are **mechanical** — which is why they work until positioning shifts.
+
+## How to trade with the hedgers, not against them
+
+1. **Identify the regime** (positive vs negative GEX) before picking a strategy.
+2. **Mark the flip and walls** — trade toward them in positive gamma, away from them in negative gamma.
+3. **Watch flow** — [unusual options activity](/learn/unusual-options-activity-guide) shows when new positioning is being added that will change tomorrow's hedge book.
+
+BlackOut [Thermal](/learn/heat-maps) and [SPX Slayer](/learn/spx-slayer) surface this positioning live so you are not guessing from yesterday's chart.
+
+> *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options trading involves substantial risk and is not suitable for every investor.*`,
+  },
+  {
+    slug: "best-0dte-trading-strategies",
+    path: "/learn/best-0dte-trading-strategies",
+    metaTitle: "Best 0DTE Trading Strategies (Structured, Not Random) | BlackOut",
+    metaDescription:
+      "The best 0DTE trading strategies start with dealer gamma: fade walls in positive GEX, ride momentum below the flip, sell condors in range regimes, and size for SPX notional.",
+    targetKeyword: "best 0dte trading strategies",
+    type: "article",
+    title: "Best 0DTE Trading Strategies (Structured, Not Random)",
+    description:
+      "The best 0DTE trading strategies start with dealer gamma: fade walls in positive GEX, ride momentum below the flip, sell condors in range regimes, and size for SPX notional.",
+    body: `"Best 0DTE strategy" posts usually list generic tips. The honest answer is simpler: **the best strategy depends on dealer gamma that day**. Positive GEX favors premium selling and fades; negative GEX favors directional momentum and tight risk. Here are the four strategies that survive when you match them to the regime — not the other way around.
+
+## Strategy 1: Wall fade (positive GEX, above the flip)
+
+When [GEX is positive](/learn/what-is-gex) and spot is above the [gamma flip](/learn/gamma-flip-explained), dealers dampen moves. Fading toward the **[call wall](/learn/call-wall-put-wall-explained)** (short calls or call spreads) or buying dips toward the put wall fits the mechanical flow. Works best mid-morning after the open volatility settles.
+
+**Fails when:** GEX flips negative intraday or a headline breaks the range — have a hard stop.
+
+## Strategy 2: Momentum continuation (negative GEX, below the flip)
+
+Below the flip in negative gamma, hedging **accelerates** moves. Directional 0DTE calls or puts (or debit spreads) with the trend align with dealer flow. Confirm with [options flow](/learn/how-to-read-options-flow) — ask-side aggression on the same side as the move.
+
+**Fails when:** You chase after the move is extended; gamma cuts both ways on reversals.
+
+## Strategy 3: Iron condor (positive GEX, tight range)
+
+When walls bracket price and IV is elevated, [iron condors](/learn/iron-condor-strategy-guide) harvest theta with defined risk. Place shorts just outside the walls, not at round numbers. See [SPX condor geometry](/learn/spx-slayer-gex-matrix-guide) for how positioning informs strike selection.
+
+**Fails when:** Negative GEX or macro events — skip or cut size in half.
+
+## Strategy 4: Scalp the open (high gamma, first 30 minutes)
+
+The first 30 minutes of 0DTE carry peak gamma. Traders with a clear [opening positioning read](/learn/how-to-trade-spx-options) take one structured shot — then stop. Revenge trading 0DTE is how accounts die; see [Is 0DTE Gambling?](/learn/is-0dte-gambling) for the discipline checklist.
+
+## What not to do
+
+- Buy lottery OTM calls with no regime read.
+- Hold short premium into negative GEX without a hedge.
+- Size SPX like SPY — one point is ~$100 on SPX options notional.
+
+## Tools that enforce structure
+
+[Night Hawk 0DTE Command](/learn/night-hawk-0dte-command-guide) scans intraday setups against live positioning. [SPX Slayer](/learn/spx-slayer) grades plays A–F so you see which structures passed the desk's gates today.
+
+> *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options trading involves substantial risk and is not suitable for every investor.*`,
   },
 ];
 

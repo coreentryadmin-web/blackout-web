@@ -4,7 +4,7 @@ import type { SitemapEntry } from "@/lib/seo/sitemap-urls";
 
 /** Default publish/modify dates for long-form learn articles (batch SEO ship). */
 export const ARTICLE_DATE_PUBLISHED = "2026-07-31";
-export const ARTICLE_DATE_MODIFIED = "2026-08-02";
+export const ARTICLE_DATE_MODIFIED = "2026-08-03";
 
 const MARKETING_DATES: Record<string, string> = {
   "/": "2026-08-02",
@@ -13,7 +13,7 @@ const MARKETING_DATES: Record<string, string> = {
   "/why-blackout": "2026-07-28",
   "/about": "2026-08-01",
   "/contact": "2026-07-27",
-  "/learn": "2026-08-02",
+  "/learn": "2026-08-03",
 };
 
 const LEGAL_DATE = "2026-07-27";
