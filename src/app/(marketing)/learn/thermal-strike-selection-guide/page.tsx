@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import { LearnArticleView } from "@/components/learn/LearnArticleView";
 import { getArticle } from "@/lib/learn/articles";
-import { ArticleJsonLd } from "@/components/seo/JsonLd";
+import { ArticleJsonLd, FAQPageJsonLd } from "@/components/seo/JsonLd";
 import { Breadcrumbs } from "@/components/seo/Breadcrumbs";
 import { publicPageMetadata } from "@/lib/page-metadata";
+import { getArticleFaqs } from "@/lib/learn/article-faqs";
 
 const article = getArticle("thermal-strike-selection-guide")!;
 
@@ -19,6 +20,7 @@ export default function ThermalStrikeSelection() {
         datePublished="2026-08-02"
         dateModified="2026-08-02"
       />
+      <FAQPageJsonLd items={getArticleFaqs(article.slug)} />
       <Breadcrumbs items={[
         { name: "Home", href: "/" },
         { name: "Learn", href: "/learn" },
