@@ -124,7 +124,7 @@
     "@types/web-push": "^3.6.4",
     "@whop/sdk": "0.0.42",
     "clsx": "^2.1.1",
-    "framer-motion": "^11.18.2",
+    "framer-motion": "^12.43.0",
     "ioredis": "5.11.1",
     "jose": "^5.10.0",
     "lightweight-charts": "^5.2.0",
