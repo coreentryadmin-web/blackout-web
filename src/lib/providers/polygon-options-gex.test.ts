@@ -11,6 +11,8 @@ import {
   computeMaxPainFromChain,
   resolveExpiryAxis,
   resolveOptionsRoot,
+  resolveHeatmapStrikeBounds,
+  heatmapMinHalfWidthUsd,
   computeZeroGammaFlip,
   computeCharmRegime,
   type GexHistorySnapshot,
@@ -469,4 +471,46 @@ test("heatmapBandPct: SPX stays tight (±6%), non-SPX widens to ±20% for multi-
     if (savedGlobal === undefined) delete process.env.GEX_HEATMAP_BAND_PCT;
     else process.env.GEX_HEATMAP_BAND_PCT = savedGlobal;
   }
+});
+
+test("resolveHeatmapStrikeBounds: low-priced NIO gets $ floor (not tiny ±20% window)", () => {
+  const b = resolveHeatmapStrikeBounds(4.81, "NIO");
+  assert.equal(b.lo, 0);
+  assert.equal(b.hi, 13);
+  assert.equal(b.halfWidthUsd, 7.5);
+  assert.ok(b.hi - b.lo >= 10, "NIO window spans enough strikes for a $0.50 grid");
+});
+
+test("resolveHeatmapStrikeBounds: SPY keeps %-based ±20% band", () => {
+  const b = resolveHeatmapStrikeBounds(757.67, "SPY");
+  assert.equal(b.halfWidthUsd, 757.67 * 0.2);
+  assert.equal(b.lo, Math.floor(757.67 - b.halfWidthUsd));
+  assert.equal(b.hi, Math.ceil(757.67 + b.halfWidthUsd));
+});
+
+test("resolveHeatmapStrikeBounds: SPX stays on tight ±6% band", () => {
+  const b = resolveHeatmapStrikeBounds(6000, "SPX");
+  assert.equal(b.halfWidthUsd, 6000 * 0.06);
+  assert.equal(heatmapMinHalfWidthUsd(6000), 0);
+});
+
+test("resolveHeatmapStrikeBounds: low-priced NIO gets $ floor (not tiny ±20% window)", () => {
+  const b = resolveHeatmapStrikeBounds(4.81, "NIO");
+  assert.equal(b.lo, 0);
+  assert.equal(b.hi, 13);
+  assert.equal(b.halfWidthUsd, 7.5);
+  assert.ok(b.hi - b.lo >= 10, "NIO window spans enough strikes for a $0.50 grid");
+});
+
+test("resolveHeatmapStrikeBounds: SPY keeps %-based ±20% band", () => {
+  const b = resolveHeatmapStrikeBounds(757.67, "SPY");
+  assert.equal(b.halfWidthUsd, 757.67 * 0.2);
+  assert.equal(b.lo, Math.floor(757.67 - b.halfWidthUsd));
+  assert.equal(b.hi, Math.ceil(757.67 + b.halfWidthUsd));
+});
+
+test("resolveHeatmapStrikeBounds: SPX stays on tight ±6% band", () => {
+  const b = resolveHeatmapStrikeBounds(6000, "SPX");
+  assert.equal(b.halfWidthUsd, 6000 * 0.06);
+  assert.equal(heatmapMinHalfWidthUsd(6000), 0);
 });

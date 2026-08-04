@@ -1485,15 +1485,53 @@ function heatmapBandPct(root: string): number {
 
 export const __test_heatmapBandPct = heatmapBandPct;
 
-async function fetchHeatmapBand(
-  underlying: string,
-  spot: number,
-  bandPct: number
-): Promise<ChainContract[]> {
-  const band = Math.max(spot * bandPct, 1);
-  const lo = Math.floor(spot - band);
-  const hi = Math.ceil(spot + band);
+/**
+ * Minimum $ half-width each side of spot so low-priced chains (NIO ~$5, F ~$11) fetch enough
+ * strike rows. A flat ±20% on a $5 name is only ~$1 → ~7 strikes on a $0.50 grid; the full
+ * listed chain is often ≤30 strikes and cheap to pull.
+ */
+export function heatmapMinHalfWidthUsd(spot: number): number {
+  if (!(spot > 0)) return 0;
+  if (spot <= 10) return 7.5;
+  if (spot <= 25) return 12.5;
+  if (spot <= 50) return 20;
+  return 0;
+}
 
+/** Strike window for the banded heatmap chain pull — %-based with a $ floor on low-priced names. */
+export function resolveHeatmapStrikeBounds(
+  spot: number,
+  root: string
+): { lo: number; hi: number; bandPct: number; halfWidthUsd: number } {
+  const bandPct = heatmapBandPct(root);
+  const pctHalf = Math.max(spot * bandPct, 1);
+  const minHalf = heatmapMinHalfWidthUsd(spot);
+  const halfWidthUsd = Math.max(pctHalf, minHalf);
+  const lo = Math.max(0, Math.floor(spot - halfWidthUsd));
+  const hi = Math.ceil(spot + halfWidthUsd);
+  return { lo, hi, bandPct, halfWidthUsd };
+}
+
+/** Count distinct listed strikes in a chain snapshot (ignores expiry/type). */
+export function countUniqueChainStrikes(contracts: readonly ChainContract[]): number {
+  const s = new Set<number>();
+  for (const c of contracts) {
+    const strike = Number(c.details?.strike_price);
+    if (Number.isFinite(strike) && strike > 0) s.add(strike);
+  }
+  return s.size;
+}
+
+/** Spot below this + thin band → fall back to the full unfiltered chain (bounded pages). */
+const LOW_PRICE_FULL_CHAIN_SPOT_MAX = 15;
+const LOW_PRICE_MIN_STRIKES_BEFORE_FULL = 12;
+const HEATMAP_UNFILTERED_PAGE_GUARD = 12;
+
+async function fetchHeatmapBandLoHi(
+  underlying: string,
+  lo: number,
+  hi: number
+): Promise<ChainContract[]> {
   const params = new URLSearchParams({
     "strike_price.gte": String(lo),
     "strike_price.lte": String(hi),
@@ -1503,10 +1541,6 @@ async function fetchHeatmapBand(
 
   const out: ChainContract[] = [];
   let page = await polygonFetchUrl(`/v3/snapshot/options/${underlying}?${params}`);
-  // ~15 stored expiries × banded strikes × calls+puts routinely exceeds even a generous static
-  // page cap (see HEATMAP_PAGE_GUARD above) — this loop follows next_url until Polygon reports
-  // the chain is exhausted; HEATMAP_PAGE_GUARD is a runaway-loop backstop, not the expected stop
-  // condition.
   let guard = 0;
   while (page && guard < HEATMAP_PAGE_GUARD) {
     out.push(...(page.results ?? []));
@@ -1516,6 +1550,45 @@ async function fetchHeatmapBand(
   }
   if (page?.next_url) warnChainTruncated("fetchHeatmapBand", underlying, guard);
   return out;
+}
+
+/** Full chain snapshot (no strike filter) — only for tiny low-priced chains (NIO-class). */
+async function fetchHeatmapBandUnfiltered(underlying: string): Promise<ChainContract[]> {
+  const params = new URLSearchParams({ limit: "250", apiKey: KEY });
+  const out: ChainContract[] = [];
+  let page = await polygonFetchUrl(`/v3/snapshot/options/${underlying}?${params}`);
+  let guard = 0;
+  while (page && guard < HEATMAP_UNFILTERED_PAGE_GUARD) {
+    out.push(...(page.results ?? []));
+    if (!page.next_url) break;
+    page = await polygonFetchUrl(page.next_url);
+    guard += 1;
+  }
+  if (page?.next_url) warnChainTruncated("fetchHeatmapBandUnfiltered", underlying, guard);
+  return out;
+}
+
+async function fetchHeatmapBand(
+  underlying: string,
+  spot: number,
+  root: string
+): Promise<ChainContract[]> {
+  const { lo, hi } = resolveHeatmapStrikeBounds(spot, root);
+  let contracts = await fetchHeatmapBandLoHi(underlying, lo, hi);
+
+  // NIO-class: entire chain is ~2 pages; if the % band still yields a tiny ladder, pull all strikes.
+  if (
+    spot > 0 &&
+    spot <= LOW_PRICE_FULL_CHAIN_SPOT_MAX &&
+    countUniqueChainStrikes(contracts) < LOW_PRICE_MIN_STRIKES_BEFORE_FULL
+  ) {
+    const full = await fetchHeatmapBandUnfiltered(underlying);
+    if (countUniqueChainStrikes(full) > countUniqueChainStrikes(contracts)) {
+      contracts = full;
+    }
+  }
+
+  return contracts;
 }
 
 
@@ -2252,9 +2325,7 @@ async function buildGexHeatmapFromUwStrikeExposures(
     if (!rows?.length) return null;
 
     const today = todayEtYmd();
-    const bandPct = heatmapBandPct(root);
-    const lo = spot * (1 - bandPct);
-    const hi = spot * (1 + bandPct);
+    const { lo, hi } = resolveHeatmapStrikeBounds(spot, root);
 
     const gexStrikeTotals: Record<string, number> = {};
     const vexStrikeTotals: Record<string, number> = {};
@@ -2433,7 +2504,7 @@ async function buildGexHeatmapUncached(
   if (isHeatmapPreset(root)) recordHeatmapPriceObservation(root, spot);
 
   // Band sizing stays RELATIVE (% of spot) so it works for $5 and $900 names.
-  const contracts = await fetchHeatmapBand(optionsRoot, spot, heatmapBandPct(root));
+  const contracts = await fetchHeatmapBand(optionsRoot, spot, root);
   if (!contracts.length) {
     console.warn(
       `[gex-heatmap] 0 contracts for ${optionsRoot} @ ${spot} via ${hostOf(BASE)} — trying UW strike-exposure fallback.`
