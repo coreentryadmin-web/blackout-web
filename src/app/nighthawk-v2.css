@@ -75,6 +75,7 @@
   }
 
   /* Fixed chrome above the play queue must not shrink — only .nh-deck-rows scrolls. */
+  html:not(.ios-native-shell) .nh-v2-page .nh-deck-left > .nh-deck-header-compact,
   html:not(.ios-native-shell) .nh-v2-page .nh-deck-left > .nh-deck-cmd,
   html:not(.ios-native-shell) .nh-v2-page .nh-deck-left > .nh-deck-lh,
   html:not(.ios-native-shell) .nh-v2-page .nh-deck-left > .nh-deck-cockpit,

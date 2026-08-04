@@ -6,6 +6,8 @@ import {
   discoverBreakoutSetups,
   rankMoversForChainFetch,
   BREAKOUT_MAX_BAR_AGE_MS,
+  BREAKOUT_MAX_CANDIDATES,
+  BREAKOUT_MAX_CANDIDATES_CEILING,
   type BreakoutDiscoveryDeps,
 } from "./breakout-discovery";
 import type { DailyMarketBar } from "@/lib/providers/polygon";
@@ -265,4 +267,66 @@ test("discoverBreakoutSetups: walks past weekly-only misses to fill same-day set
     `expected MU to be walked-to after weekly-only misses; got ${out.setups.map((s) => s.ticker).join(",")}`
   );
   assert.ok(calls.resolveChain > 1, "must attempt more than the first weekly-only name");
+});
+
+// ── Dynamic-N (2026-08-04) ────────────────────────────────────────────────────────────
+// resolveBreakoutCandidateCap sizes the live cap to the day's qualifying breadth instead of the
+// fixed BREAKOUT_MAX_CANDIDATES=40. These exercise the production path end-to-end (opts.maxCandidates
+// intentionally omitted, matching how the real board calls discoverBreakoutSetups).
+
+test("discoverBreakoutSetups: huge-breadth day fills PAST the static floor, bounded by the ceiling", async () => {
+  const now = Date.parse("2026-07-24T15:00:00Z");
+  const freshT = now - 19 * 3_600_000;
+  const QUALIFYING = 300; // real 2026-07-30-class breadth (390 qualifying observed live)
+  const bars = Array.from({ length: QUALIFYING }, (_, i) => bar(`AAA${i}`, freshT, { c: 100 + i, v: 5_000_000 + i }));
+  const { deps } = makeDeps({
+    screenBreakdowns: (() => [] as BreakoutMover[]) as BreakoutDiscoveryDeps["screenBreakdowns"],
+  });
+  const out = await discoverBreakoutSetups({
+    today: "2026-07-24",
+    nowEtMinutes: RTH_NOW_ET_MINUTES,
+    excludeTickers: new Set(),
+    nowMs: now,
+    // NOTE: no maxCandidates override — production never passes one, so this exercises the real
+    // dynamic-cap formula (resolveBreakoutCandidateCap) rather than a test-injected hard cap.
+    deps: {
+      ...deps,
+      fetchSummary: (async () => ({ results: bars })) as never,
+    },
+  });
+  assert.equal(out.status, "ok");
+  // ceil(300 * 0.30) = 90, clamped to [BREAKOUT_MAX_CANDIDATES, BREAKOUT_MAX_CANDIDATES_CEILING].
+  const expected = Math.max(BREAKOUT_MAX_CANDIDATES, Math.min(BREAKOUT_MAX_CANDIDATES_CEILING, Math.ceil(QUALIFYING * 0.3)));
+  assert.equal(expected, 90, "sanity: this test's own math should land at 90");
+  assert.equal(out.setups.length, expected);
+  assert.ok(
+    out.setups.length > BREAKOUT_MAX_CANDIDATES,
+    "a huge-breadth day must fill past the old static cap — this is the whole point of dynamic-N"
+  );
+  assert.ok(
+    out.setups.length <= BREAKOUT_MAX_CANDIDATES_CEILING,
+    "dynamic-N must never exceed the ceiling regardless of how large the qualifying pool is"
+  );
+});
+
+test("discoverBreakoutSetups: thin day still fills up to the static floor (no regression vs pre-dynamic behavior)", async () => {
+  const now = Date.parse("2026-07-24T15:00:00Z");
+  const freshT = now - 19 * 3_600_000;
+  // 50 qualifying movers → ceil(50*0.30)=15 < floor(40) → clamped up to 40, same as the old static cap.
+  const bars = Array.from({ length: 50 }, (_, i) => bar(`BBB${i}`, freshT, { c: 100 + i, v: 5_000_000 + i }));
+  const { deps } = makeDeps({
+    screenBreakdowns: (() => [] as BreakoutMover[]) as BreakoutDiscoveryDeps["screenBreakdowns"],
+  });
+  const out = await discoverBreakoutSetups({
+    today: "2026-07-24",
+    nowEtMinutes: RTH_NOW_ET_MINUTES,
+    excludeTickers: new Set(),
+    nowMs: now,
+    deps: {
+      ...deps,
+      fetchSummary: (async () => ({ results: bars })) as never,
+    },
+  });
+  assert.equal(out.status, "ok");
+  assert.equal(out.setups.length, BREAKOUT_MAX_CANDIDATES, "thin day must still hit the floor, unchanged from pre-dynamic behavior");
 });

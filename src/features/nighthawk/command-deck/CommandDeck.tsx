@@ -189,43 +189,50 @@ export function CommandDeck({
     <div className="nh-deck nh-deck-fill">
       <div className="nh-deck-left">
         {commandCenter ? (
-          <DeckCommandCenter
+          <DeckCompactHeader
             laneLabel={laneLabel}
             degraded={degraded}
             stats={cmdStats}
             engineStatus={engineStatus}
+            risk={risk}
+            tape={tape}
+            deckHorizon={deckHorizon}
+            marketState={marketState}
+            discoveryFunnel={discoveryFunnel}
+            statusFilter={statusFilter}
+            setStatusFilter={setStatusFilter}
+            sortMode={sortMode}
+            setSortMode={setSortMode}
+            playCounts={{ all: plays.length, open: counts.open, watch: counts.watch, closed: counts.closed }}
           />
         ) : (
-          <div className="nh-deck-lh">
-            <span>{laneLabel}</span>
-            <span>
-              {degraded
-                ? "data down"
-                : statusFilter === "ALL"
-                  ? `${plays.length} plays`
-                  : `${filtered.length} of ${plays.length}`}
-            </span>
-          </div>
+          <>
+            <div className="nh-deck-lh">
+              <span>{laneLabel}</span>
+              <span>
+                {degraded
+                  ? "data down"
+                  : statusFilter === "ALL"
+                    ? `${plays.length} plays`
+                    : `${filtered.length} of ${plays.length}`}
+              </span>
+            </div>
+            {deckHorizon === "ZERO_DTE" && !degraded && (marketState || discoveryFunnel?.summary) ? (
+              <div className="nh-deck-context-strips mb-2 space-y-2 px-0.5">
+                <MarketStateStrip ms={marketState} />
+                <DiscoveryFunnelStrip funnel={discoveryFunnel} />
+              </div>
+            ) : null}
+            <CockpitStrip risk={risk} tape={tape} />
+            <DeckChromeRow
+              statusFilter={statusFilter}
+              setStatusFilter={setStatusFilter}
+              sortMode={sortMode}
+              setSortMode={setSortMode}
+              playCounts={{ all: plays.length, open: counts.open, watch: counts.watch, closed: counts.closed }}
+            />
+          </>
         )}
-        {deckHorizon === "ZERO_DTE" && !degraded && (marketState || discoveryFunnel?.summary) ? (
-          <div className="nh-deck-context-strips mb-2 space-y-2 px-0.5">
-            <MarketStateStrip ms={marketState} />
-            <DiscoveryFunnelStrip funnel={discoveryFunnel} />
-          </div>
-        ) : null}
-        <CockpitStrip risk={risk} tape={tape} />
-        <div className="nh-deck-chrome-row">
-        <div className="nh-deck-filterbar" role="group" aria-label="Filter plays by status">
-          <button type="button" className={clsx("nh-deck-filtbtn", statusFilter === "ALL" && "on")} onClick={() => setStatusFilter("ALL")}>ALL <span className="cnt">{plays.length}</span></button>
-          <button type="button" className={clsx("nh-deck-filtbtn", statusFilter === "OPEN" && "on")} onClick={() => setStatusFilter("OPEN")}>OPEN <span className="cnt">{counts.open}</span></button>
-          <button type="button" className={clsx("nh-deck-filtbtn", statusFilter === "WATCH" && "on")} onClick={() => setStatusFilter("WATCH")}>WATCH <span className="cnt">{counts.watch}</span></button>
-          <button type="button" className={clsx("nh-deck-filtbtn", statusFilter === "CLOSED" && "on")} onClick={() => setStatusFilter("CLOSED")}>CLOSED <span className="cnt">{counts.closed}</span></button>
-        </div>
-        <div className="nh-deck-sortbar" role="group" aria-label="Sort plays">
-          <button type="button" className={clsx("nh-deck-sortbtn", sortMode === "status" && "on")} onClick={() => setSortMode("status")}>STATUS</button>
-          <button type="button" className={clsx("nh-deck-sortbtn", sortMode === "conviction" && "on")} onClick={() => setSortMode("conviction")}>CONVICTION</button>
-        </div>
-        </div>
         <div className="nh-deck-rows">
           {degraded && (
             <div className="nh-deck-degraded" role="alert">⚠ Board data unavailable — retrying</div>
@@ -262,42 +269,127 @@ export function CommandDeck({
   );
 }
 
-/** 0DTE left-rail command center — today's opportunity set at a glance. */
-function DeckCommandCenter({
+/** Filter + sort chrome shared by compact and legacy left-rail headers. */
+function DeckChromeRow({
+  statusFilter,
+  setStatusFilter,
+  sortMode,
+  setSortMode,
+  playCounts,
+}: {
+  statusFilter: StatusFilter;
+  setStatusFilter: (f: StatusFilter) => void;
+  sortMode: DeckSortMode;
+  setSortMode: (m: DeckSortMode) => void;
+  playCounts: { all: number; open: number; watch: number; closed: number };
+}) {
+  return (
+    <div className="nh-deck-chrome-row">
+      <div className="nh-deck-filterbar" role="group" aria-label="Filter plays by status">
+        <button type="button" className={clsx("nh-deck-filtbtn", statusFilter === "ALL" && "on")} onClick={() => setStatusFilter("ALL")}>
+          ALL <span className="cnt">{playCounts.all}</span>
+        </button>
+        <button type="button" className={clsx("nh-deck-filtbtn", statusFilter === "OPEN" && "on")} onClick={() => setStatusFilter("OPEN")}>
+          OPEN <span className="cnt">{playCounts.open}</span>
+        </button>
+        <button type="button" className={clsx("nh-deck-filtbtn", statusFilter === "WATCH" && "on")} onClick={() => setStatusFilter("WATCH")}>
+          WATCH <span className="cnt">{playCounts.watch}</span>
+        </button>
+        <button type="button" className={clsx("nh-deck-filtbtn", statusFilter === "CLOSED" && "on")} onClick={() => setStatusFilter("CLOSED")}>
+          CLOSED <span className="cnt">{playCounts.closed}</span>
+        </button>
+      </div>
+      <div className="nh-deck-sortbar" role="group" aria-label="Sort plays">
+        <button type="button" className={clsx("nh-deck-sortbtn", sortMode === "status" && "on")} onClick={() => setSortMode("status")}>
+          STATUS
+        </button>
+        <button type="button" className={clsx("nh-deck-sortbtn", sortMode === "conviction" && "on")} onClick={() => setSortMode("conviction")}>
+          CONVICTION
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Two-row compact header — stats/engine/risk on row 1; context + filters on row 2. */
+function DeckCompactHeader({
   laneLabel,
   degraded,
   stats,
   engineStatus,
+  risk,
+  tape,
+  deckHorizon,
+  marketState,
+  discoveryFunnel,
+  statusFilter,
+  setStatusFilter,
+  sortMode,
+  setSortMode,
+  playCounts,
 }: {
   laneLabel: string;
   degraded: boolean;
   stats: ReturnType<typeof buildDeckCommandCenterStats> | null;
   engineStatus: ReturnType<typeof deriveEngineStatus> | null;
+  risk: ReturnType<typeof deployedRisk>;
+  tape: ReturnType<typeof sessionTape>;
+  deckHorizon: TerminalPlay["horizon"];
+  marketState: MarketStateSnapshot | null;
+  discoveryFunnel: DiscoveryFunnelHint | null;
+  statusFilter: StatusFilter;
+  setStatusFilter: (f: StatusFilter) => void;
+  sortMode: DeckSortMode;
+  setSortMode: (m: DeckSortMode) => void;
+  playCounts: { all: number; open: number; watch: number; closed: number };
 }) {
-  const topLine = stats?.topRated
-    ? `${stats.topRated.ticker} (${stats.topRated.grade})`
-    : "—";
+  const topLine = stats?.topRated ? `${stats.topRated.ticker} (${stats.topRated.grade})` : "—";
   const edge = degraded ? null : stats?.edge ?? null;
+  const showContext =
+    deckHorizon === "ZERO_DTE" && !degraded && (marketState || discoveryFunnel?.summary);
+
   return (
-    <div className="nh-deck-cmd" aria-label="Today's command center">
-      <div className="nh-deck-cmd-lane">{laneLabel}</div>
-      <div className="nh-deck-cmd-grid">
-        <div className="nh-deck-cmd-stat">
-          <span className="nh-deck-cmd-lab">Today&apos;s Opportunities</span>
-          <span className="nh-deck-cmd-val">{degraded ? "—" : stats?.opportunities ?? 0}</span>
+    <div className="nh-deck-header-compact" aria-label="Today's command center">
+      <div className="nh-deck-hdr-row nh-deck-hdr-row--primary">
+        <div className="nh-deck-cmd nh-deck-cmd--inline">
+          <div className="nh-deck-cmd-lane">{laneLabel}</div>
+          <div className="nh-deck-cmd-grid nh-deck-cmd-grid--inline">
+            <div className="nh-deck-cmd-stat">
+              <span className="nh-deck-cmd-lab">Opps</span>
+              <span className="nh-deck-cmd-val">{degraded ? "—" : stats?.opportunities ?? 0}</span>
+            </div>
+            <div className="nh-deck-cmd-stat">
+              <span className="nh-deck-cmd-lab">Top</span>
+              <span className="nh-deck-cmd-val nh-deck-cmd-top">{degraded ? "—" : topLine}</span>
+            </div>
+            <div className="nh-deck-cmd-stat">
+              <span className="nh-deck-cmd-lab">Edge</span>
+              <span className={clsx("nh-deck-cmd-val", edge && `edge-${edge.toLowerCase()}`)}>
+                {degraded ? "—" : edge ?? "—"}
+              </span>
+            </div>
+          </div>
         </div>
-        <div className="nh-deck-cmd-stat">
-          <span className="nh-deck-cmd-lab">Top Rated</span>
-          <span className="nh-deck-cmd-val nh-deck-cmd-top">{degraded ? "—" : topLine}</span>
-        </div>
-        <div className="nh-deck-cmd-stat">
-          <span className="nh-deck-cmd-lab">Today&apos;s Edge</span>
-          <span className={clsx("nh-deck-cmd-val", edge && `edge-${edge.toLowerCase()}`)}>
-            {degraded ? "—" : edge ?? "—"}
-          </span>
-        </div>
+        {engineStatus && <DeckEngineStatus status={engineStatus} compact />}
+        <CockpitStrip risk={risk} tape={tape} compact />
       </div>
-      {engineStatus && <DeckEngineStatus status={engineStatus} />}
+      <div className="nh-deck-hdr-row nh-deck-hdr-row--secondary">
+        {showContext ? (
+          <div className="nh-deck-hdr-context">
+            <MarketStateStrip ms={marketState} compact />
+            <DiscoveryFunnelStrip funnel={discoveryFunnel} compact />
+          </div>
+        ) : (
+          <div className="nh-deck-hdr-context nh-deck-hdr-context--empty" aria-hidden />
+        )}
+        <DeckChromeRow
+          statusFilter={statusFilter}
+          setStatusFilter={setStatusFilter}
+          sortMode={sortMode}
+          setSortMode={setSortMode}
+          playCounts={playCounts}
+        />
+      </div>
     </div>
   );
 }
@@ -305,11 +397,13 @@ function DeckCommandCenter({
 /** Live engine heartbeat — grounded on the board snapshot's `as_of`, ticks every second. */
 function DeckEngineStatus({
   status,
+  compact = false,
 }: {
   status: ReturnType<typeof deriveEngineStatus>;
+  compact?: boolean;
 }) {
   return (
-    <div className="nh-deck-engine-status" aria-label="Engine status">
+    <div className={clsx("nh-deck-engine-status", compact && "nh-deck-engine-status--compact")} aria-label="Engine status">
       <div className="nh-deck-engine-status__cell">
         <span className="nh-deck-engine-status__lab">Engine</span>
         <span className={clsx("nh-deck-engine-status__val", status.ok && "is-ok")}>
@@ -322,7 +416,7 @@ function DeckEngineStatus({
         </span>
       </div>
       <div className="nh-deck-engine-status__cell nh-deck-engine-status__cell--right">
-        <span className="nh-deck-engine-status__lab">Last Update</span>
+        <span className="nh-deck-engine-status__lab">Updated</span>
         <span className="nh-deck-engine-status__val nh-deck-engine-status__age">
           {status.lastUpdateAge ?? "—"}
         </span>
@@ -340,13 +434,47 @@ function DeckEngineStatus({
 const CockpitStrip = memo(function CockpitStrip({
   risk,
   tape,
+  compact = false,
 }: {
   risk: ReturnType<typeof deployedRisk>;
   tape: ReturnType<typeof sessionTape>;
+  compact?: boolean;
 }) {
   const riskFrac = risk && risk.limitR > 0 ? Math.max(0, Math.min(1, risk.deployedR / risk.limitR)) : 0;
   const total = tape.empty ? null : tape.totalR;
   const totalCls = total == null ? "" : total > 0 ? "nh-deck-pos" : total < 0 ? "nh-deck-neg" : "";
+
+  if (compact) {
+    return (
+      <div className="nh-deck-cockpit nh-deck-cockpit--compact" aria-label="Session risk and P&L">
+        <div className="nh-deck-ck nh-deck-ck--compact">
+          <span className="ckh">Risk</span>
+          {risk ? (
+            <span className="ckv">
+              <b>{risk.deployedR.toFixed(1)}</b>
+              <span className="dim">/{risk.limitR.toFixed(1)}R</span>
+              <span className="nh-deck-ck-mini-bar" aria-hidden>
+                <i style={{ width: `${Math.round(riskFrac * 100)}%` }} />
+              </span>
+            </span>
+          ) : (
+            <span className="ckv dim">—</span>
+          )}
+        </div>
+        <div className="nh-deck-ck nh-deck-ck--compact">
+          <span className="ckh">P&amp;L</span>
+          {total == null ? (
+            <span className="ckv dim">—</span>
+          ) : (
+            <span className={clsx("ckv", totalCls)}>
+              <b>{total > 0 ? "+" : ""}{total.toFixed(1)}R</b>
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="nh-deck-cockpit">
       <div className="nh-deck-ck">

@@ -136,7 +136,12 @@ if (results.length === 0) {
   console.error(`No grouped-daily data for ${DATE} (weekend/holiday, or provider miss).`);
   process.exit(2);
 }
-const movers = screenBreakoutMovers(results); // EXACT production ranking (by $-volume desc)
+// BUG FIX (2026-08-04): screenBreakoutMovers's own signature is (results, maxKeep=40) — calling
+// it with no second arg silently truncated to top-40 INSIDE the production function, before this
+// probe's own KEEP/DROPPED split ever ran. Every prior multi-session run measured 40 qualifying /
+// 0 dropped on every single day because the function never returned rank 41+ in the first place.
+// Pass SCAN_TOP explicitly so the probe actually sees the full requested range.
+const movers = screenBreakoutMovers(results, SCAN_TOP); // EXACT production ranking (by $-volume desc)
 const kept = movers.slice(0, KEEP);
 const dropped = movers.slice(KEEP, SCAN_TOP);
 

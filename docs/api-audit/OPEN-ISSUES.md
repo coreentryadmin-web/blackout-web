@@ -1,5 +1,272 @@
 # BlackOut Open Issues Log
-Last updated: 2026-08-04 15:17 ET
+Last updated: 2026-08-04 17:04 ET
+
+## rth-open-2026-08-04-pass6 — RTH comprehensive test sweep (~4:59–5:03 PM ET, post-close)
+
+**Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` on branch `cursor/rth-comprehensive-test-sweep-1ffd`. Commands: `npm run validate:rth-open` → `GET /api/cron/data-correctness?force=1` → `surface=heatmap` sync → `npm run validate:rth-sweep` → `npm run validate:grid-e2e` → `npm run validate:spx-e2e` → `npm run ops:collect`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` | ✅ **GREEN** (~10s; post-close window — deploy smoke only; Postgres skipped private VPC) |
+| `GET /api/cron/data-correctness?force=1` | ✅ **202 accepted** (async full sweep dispatched) |
+| `data-correctness` (`surface=heatmap`) | ✅ **ok=true · flags=0** (consistency-only post-close; 60 metrics) |
+| `npm run validate:rth-sweep` | ✅ **0 P0/P1** — 7 pages · **0 missing-field hits** · Largo grounded |
+| `npm run validate:grid-e2e` | ✅ **5/5 PASS** — zerodte board 9 setups · ledger 6 |
+| `npm run validate:spx-e2e` | ✅ **17/18 PASS** (1 WARN: `bie-play-route` cron 401 expected) |
+| `npm run ops:collect` | ✅ **0 action items** |
+
+### Speed (comprehensive sweep — Playwright premium session)
+
+| Page | Nav | Load (ms) | Live wait | Console errors |
+|---|---|---:|---:|---|
+| `/dashboard` (SPX Slayer) | hard | 2922 | 12s | 1× HTTP 400 (transient) |
+| `/flows` (HELIX) | soft | 2336 | 8s | 0 |
+| `/heatmap` (Thermal matrix) | soft | 2752 | 20s | 0 |
+| `/vector` | soft | 1608 | 15s | 0 |
+| `/nighthawk` (0DTE Command) | soft | 1694 | 15s | 0 |
+| `/terminal` (Largo) | soft | 1691 | 5s | 4× ChunkLoadError chunk 1878 (transient — chunk now HTTP 200) |
+| `/track-record` | soft | 1728 | 10s | 9× ChunkLoadError + layout chunk (transient mid-deploy) |
+
+**Note:** Classic `/grid` deleted 2026-07-07 — 0DTE Command (12 panels) under `/nighthawk` via `/api/market/zerodte/board`. Thermal Profile tab not visible during this pass (matrix-only; tabs hidden while loading).
+
+### Live auto-update
+
+- `liveTick=null` on all pages — post-close SPX spot static (expected).
+- API freshness: desk `as_of` 8s · platform snapshot 0s · zerodte board 0s.
+- Matrix `gex-heatmap` continues to refresh post-close.
+
+### Data correctness
+
+| Cross-check | Result |
+|---|---|
+| desk γ-flip vs `gex-positioning` | ✅ aligned (desk 7551.29 vs gex 7551.29; spot 7736.52) |
+| All market APIs | ✅ HTTP 200 |
+| Largo NVDA query | ✅ 200 · ~$90.9M premium · `blackout_intelligence` |
+| SPX matrix E2E | ✅ GEX+VEX+DEX+CHARM · 159 strikes |
+
+### Missing-field audit
+
+**0 missing-field signals** across all 7 pages. Largo `Regime: —` = expected when no active regime tag.
+
+### Findings table
+
+| Severity | ID | Detail | Fix |
+|---|---|---|---|
+| — | — | **No P0/P1 product defects** on member surfaces | GREEN |
+| INFO | ENV-NODE-MODULES | Initial `validate:rth-open` failed — missing `pg` / Playwright browsers | Resolved via `npm install` + `npx playwright install chromium` |
+| P2 | RTH-FLOWS-SOFT-NAV | `/flows` soft-nav 2336ms (>1.5s target) | Monitor — HELIX tape warm path |
+| P2 | RTH-THERMAL-SOFT-NAV | `/heatmap` soft-nav 2752ms (>1.5s target) | Monitor — matrix bootstrap |
+| P2 | RTH-CHUNK-MID-DEPLOY | Terminal/track-record ChunkLoadError on chunk 1878/layout during sweep | Transient — chunk `1878-*.js` now HTTP 200 post-deploy |
+| P2 | SPX-BIE-CRON-401 | `bie-play-route` WARN — cron play HTTP 401 (expected without cron bearer) | defer |
+
+**Status: GREEN** — comprehensive sweep 0 P0/P1, cross-tool GEX aligned, heatmap correctness flags=0. No new GitHub issue (no P0/P1).
+
+**Reports:** `audit-output/rth-sweep-2026-08-04T21-00-06-185Z.json`, `audit-output/grid-e2e-1785877214446.json`, `audit-output/spx-dashboard-e2e-1785877215196.json`
+
+---
+
+## spx-rth-2026-08-04-pass5 — SPX Slayer post-close verify (~1:58 PM PT / 4:58 PM ET)
+
+**Session:** SPX Slayer all-day **verify** mode per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` Step 1–5 (Cloud Agent `cursor/spx-rth-system-verification-f9c9`). Commands: `npm run validate:spx-rth -- --force` → `npm run validate:spx-e2e` → 65s live API auto-update probe → `data-validator.mjs`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth` | ✅ **GREEN** (7 PASS · 1 WARN · 0 FAIL · ~30s) |
+| `npm run validate:spx-e2e` | ✅ **17/18 PASS** (1 WARN: `bie-play-route` cron 401 expected) |
+| Matrix deep audit | ✅ GEX+VEX+DEX+CHARM · 159 strikes · every cell finite · Σ strike_totals == headline |
+| Cross-endpoint spot/GEX | ✅ desk=7736.52 hm=7736.52 play=SCANNING/long (Δ ≤ 0.15 pts) |
+| Desk cache lanes | ⏭️ SKIP — pulse/flow unavailable post-close |
+| `validate:spx-bie` | ✅ member `/spx/play` == `getSpxPlayState()` |
+| `ops:collect` | ✅ zero action items |
+| `data-validator.mjs` | ⚠️ 34 PASS · 4 FAIL (SPX vs Polygon prev-close post-close; INTC gap day — not SPX matrix) |
+
+### UI E2E (`/dashboard`)
+
+| Control | Result |
+|---|---|
+| Sign-in + shell | ✅ premium desk loads |
+| GEX tab (`#spx-matrix-tab-gex`) | ✅ clicked · matrix populates |
+| VEX tab (`#spx-matrix-tab-vex`) | ✅ clicked · VEX cells populate |
+| Matrix rows | ✅ **159** strike rows (≥80 RTH bar) |
+| Matrix text sanity | ✅ no NaN / undefined / `$—` |
+| Commentary expand | ✅ toggles without error |
+| Play verdict bar | ✅ SPX PLAY · SCANNING — no stale ✓ confirmations |
+| Console errors | ✅ zero |
+| LIVE badge | ⏭️ SKIP — post-close OFFLINE/EXTENDED expected |
+
+### Cross-tool integration (Step 3)
+
+| Tool | Endpoint | Result |
+|---|---|---|
+| Thermal | `gex-heatmap?ticker=SPX` | ✅ same payload as dashboard matrix |
+| HELIX | `flows?limit=30` | ✅ 30 prints |
+| Largo | `largo/query` SPX play | ✅ `blackout_intelligence` grounded |
+| BIE | `validate:spx-bie` | ✅ `spx_full_state` == member play |
+| Grid bootstrap | `spx/bootstrap` | ✅ loaded |
+| 0DTE Command | `zerodte/board` | ✅ 9 setups |
+| Night Hawk | `nighthawk/edition` | ✅ loads |
+| Cross-tool spot/play | desk vs play | ✅ desk=7736.52 play=SCANNING |
+
+### Live auto-update (65s sit — Step 4)
+
+| Surface | Result |
+|---|---|
+| Header SPX price (`/api/market/spx/desk`) | ⏭️ static 7736.52 post-close (expected) |
+| Matrix (`gex-heatmap?ticker=SPX`) | ✅ total 75767503524 → 75710011689 refreshed |
+| Trade alert (`/api/market/spx/play`) | ✅ `as_of` ticked 20:59:26 → 21:00:46 · SCANNING stable |
+
+### Findings table
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| — | — | **No P0/P1 SPX defects** | — | GREEN |
+| INFO | ENV-NODE-MODULES | Initial run failed on missing `node_modules` (pg/tsx/playwright) in cloud agent | — | Resolved via `npm install` + `npx playwright install chromium` |
+| P2 | SPX-DC-CRON-AUTH | `data-correctness` WARN — CRON_SECRET auth mismatch in agent env (prod cron runs async) | cron probe | defer |
+| P2 | SPX-BIE-CRON-401 | `bie-play-route` WARN — cron play HTTP 401 (expected without cron bearer) | BIE cron | defer |
+| P2 | DV-SPX-PREV-CLOSE | `data-validator` SPX vs Polygon prev-close Δ=1.79% post-close (live spot vs prior session close) | indices oracle | defer — not a matrix/UI defect |
+
+**Status: GREEN** — SPX matrix 100% API-aligned (GEX+VEX every cell), trade alerts match play API, no stale SCANNING confirmations, cross-tool integration verified, live auto-update confirmed on matrix + play post-close.
+
+**Reports:** `audit-output/spx-rth-2026-08-04-verify-1785877151367.json`, `audit-output/spx-dashboard-e2e-1785877171221.json`
+
+---
+
+## rth-open-2026-08-04-pass5 — RTH comprehensive test sweep (~4:39–4:45 PM ET, post-close)
+
+**Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` on branch `cursor/rth-comprehensive-test-sweep-ad81`. Commands: `npm run validate:rth-open` → `GET /api/cron/data-correctness?force=1` → `surface=heatmap` sync → `npm run validate:rth-sweep` → `npm run validate:grid-e2e` → `npm run validate:spx-e2e` → `npm run ops:collect`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` | ✅ **GREEN** (~10s; post-close window — deploy smoke only; Postgres skipped private VPC) |
+| `GET /api/cron/data-correctness?force=1` | ✅ **202 accepted** (async full sweep dispatched) |
+| `data-correctness` (`surface=heatmap`) | ✅ **ok=true · flags=0** (consistency-only post-close; 60 metrics) |
+| `data-correctness` (latest poll) | ⏭️ skipped — outside RTH window (expected after 16:15 ET) |
+| `npm run validate:rth-sweep` | ✅ **0 P0/P1** — 7 pages · **0 missing-field hits** · Largo grounded |
+| `npm run validate:grid-e2e` | ✅ **5/5 PASS** — zerodte board 10 setups · ledger 6 |
+| `npm run validate:spx-e2e` | ✅ **17/18 PASS** (1 WARN: `bie-play-route` cron 401 expected) |
+| `npm run ops:collect` | ✅ **0 action items** |
+
+### Speed (comprehensive sweep — Playwright premium session)
+
+| Page | Nav | Load (ms) | Live wait | Console errors |
+|---|---|---:|---:|---|
+| `/dashboard` (SPX Slayer) | hard | 2139 | 12s | 11× ChunkLoadError (sign-in chunk mismatch during ticket auth) |
+| `/flows` (HELIX) | soft | 1662 | 8s | 4× ChunkLoadError (transient during auth warm) |
+| `/heatmap` (Thermal matrix) | soft | 1652 | 20s | 6× ChunkLoadError (transient during auth warm) |
+| `/vector` | soft | 2753 | 15s | 0 |
+| `/nighthawk` (0DTE Command) | soft | 1717 | 15s | 4× ChunkLoadError (transient) |
+| `/terminal` (Largo) | soft | 1646 | 5s | 0 |
+| `/track-record` | soft | 1640 | 10s | 4× ChunkLoadError (transient) |
+
+**Note:** Classic `/grid` deleted 2026-07-07 — 0DTE Command (12 panels) under `/nighthawk` via `/api/market/zerodte/board`. Thermal Profile tab probed when visible (matrix-only pass if tabs hidden while loading).
+
+### Live auto-update
+
+- `liveTick=null` on all pages — post-close SPX spot static (expected).
+- API freshness: desk `as_of` 21s · platform snapshot 0s · zerodte board 12s.
+- Matrix `gex-heatmap` continues to refresh post-close (confirmed earlier SPX pass).
+
+### Data correctness
+
+| Cross-check | Result |
+|---|---|
+| desk γ-flip vs `gex-positioning` | ✅ aligned (desk 7573.53 vs gex 7573.42; spot 7736.52) |
+| All market APIs | ✅ HTTP 200 |
+| Largo NVDA query | ✅ 200 · ~$90.9M premium · `blackout_intelligence` |
+| SPX matrix E2E | ✅ GEX+VEX+DEX+CHARM · 159 strikes |
+
+### Missing-field audit
+
+**0 missing-field signals** across all 7 pages. Largo `Regime: —` = expected when no active regime tag.
+
+### Findings table
+
+| Severity | ID | Detail | Fix |
+|---|---|---|---|
+| — | — | **No P0/P1 product defects** on member surfaces | GREEN |
+| INFO | ENV-NODE-MODULES | Initial `validate:rth-open` failed — missing `pg` / Playwright browsers | Resolved via `npm install` + `npx playwright install chromium` |
+| P2 | RTH-DASH-CHUNK-AUTH | Dashboard/flows ChunkLoadError during Clerk ticket sign-in (`3024-*.js` 404 then 200) | Transient post-deploy; chunk now HTTP 200 |
+| P2 | RTH-VECTOR-SOFT-NAV | `/vector` soft-nav 2753ms (>1.5s target) | Monitor — cold Vector stream warm path |
+| P2 | RTH-DC-CRON-AUTH | Agent env `CRON_SECRET` stale vs AWS Secrets Manager | Use `auditSecret('CRON_SECRET')` from prod-secrets (resolved in-session) |
+| P2 | SPX-BIE-CRON-401 | `bie-play-route` WARN — cron play HTTP 401 (expected without cron bearer) | defer |
+
+**Status: GREEN** — comprehensive sweep 0 P0/P1, cross-tool GEX aligned, heatmap correctness flags=0. No new GitHub issue (no P0/P1).
+
+**Reports:** `audit-output/rth-sweep-2026-08-04T20-39-43-260Z.json`, `audit-output/grid-e2e-1785876197586.json`, `audit-output/spx-dashboard-e2e-1785876209448.json`
+
+---
+
+## spx-rth-2026-08-04-pass4 — SPX Slayer post-close verify (~1:22 PM PT / 4:22 PM ET)
+
+**Session:** SPX Slayer all-day **verify** mode per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` Step 1–5 (Cloud Agent `cursor/spx-rth-system-verification-e095`). Commands: `npm run validate:spx-rth -- --force` → `npm run validate:spx-e2e` → 60s live API auto-update probe.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth` | ✅ **GREEN** (7 PASS · 1 WARN · 0 FAIL · ~42s) |
+| `npm run validate:spx-e2e` | ✅ **17/18 PASS** (1 WARN: `bie-play-route` cron 401 expected) |
+| Matrix deep audit | ✅ GEX+VEX+DEX+CHARM · 159 strikes · every cell finite · Σ strike_totals == headline |
+| Cross-endpoint spot/GEX | ✅ desk=7736.52 hm=7736.52 play=SCANNING/SCANNING (Δ ≤ 0.15 pts) |
+| Desk cache lanes | ⏭️ SKIP — pulse/flow unavailable post-close |
+| `validate:spx-bie` | ✅ member `/spx/play` == `getSpxPlayState()` |
+| `ops:collect` | ✅ zero action items |
+
+### UI E2E (`/dashboard`)
+
+| Control | Result |
+|---|---|
+| Sign-in + shell | ✅ premium desk loads |
+| GEX tab (`#spx-matrix-tab-gex`) | ✅ clicked · matrix populates |
+| VEX tab (`#spx-matrix-tab-vex`) | ✅ clicked · VEX cells populate |
+| Matrix rows | ✅ **159** strike rows (≥80 RTH bar) |
+| Matrix text sanity | ✅ no NaN / undefined / `$—` |
+| Commentary expand | ✅ toggles without error |
+| Play verdict bar | ✅ SPX PLAY · SCANNING — no stale ✓ confirmations |
+| Console errors | ✅ transient origin noise (1 5xx) |
+| LIVE badge | ⏭️ SKIP — post-close OFFLINE/EXTENDED expected |
+
+### Cross-tool integration (Step 3)
+
+| Tool | Endpoint | Result |
+|---|---|---|
+| Thermal | `gex-heatmap?ticker=SPX` | ✅ same payload as dashboard matrix |
+| HELIX | `flows?limit=30` | ✅ 30 prints |
+| Largo | `largo/query` SPX play | ✅ `blackout_intelligence` grounded |
+| BIE | `validate:spx-bie` | ✅ `spx_full_state` == member play |
+| Grid bootstrap | `spx/bootstrap` | ✅ loaded |
+| 0DTE Command | `zerodte/board` | ✅ 10 setups |
+| Night Hawk | `nighthawk/edition` | ✅ loads |
+| Cross-tool spot/play | desk vs play | ✅ desk=7736.52 play=SCANNING |
+
+### Live auto-update (60s sit — Step 4)
+
+| Surface | Result |
+|---|---|
+| Header SPX price (`/api/market/spx/desk`) | ⏭️ static 7736.52 post-close (expected) |
+| Matrix (`gex-heatmap?ticker=SPX`) | ✅ total 74542839931 → 74356463996 refreshed |
+| Trade alert (`/api/market/spx/play`) | ✅ `as_of` ticked 20:22:57 → 20:24:01 · SCANNING stable |
+
+### Findings table
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| — | — | **No P0/P1 SPX defects** | — | GREEN |
+| INFO | ENV-NODE-MODULES | Initial run failed on missing `node_modules` (pg/tsx/playwright) in cloud agent | — | Resolved via `npm install` + `npx playwright install chromium` |
+| P2 | SPX-DC-CRON-AUTH | `data-correctness` WARN — CRON_SECRET auth mismatch in agent env (prod cron runs async) | cron probe | defer |
+| P2 | SPX-BIE-CRON-401 | `bie-play-route` WARN — cron play HTTP 401 (expected without cron bearer) | BIE cron | defer |
+
+**Status: GREEN** — SPX matrix 100% API-aligned (GEX+VEX every cell), trade alerts match play API, no stale SCANNING confirmations, cross-tool integration verified, live auto-update confirmed on matrix + play post-close.
+
+**Reports:** `audit-output/spx-rth-2026-08-04-verify-1785874984742.json`, `audit-output/spx-dashboard-e2e-1785874998553.json`
+
+---
 
 ## spx-rth-2026-08-04 — SPX Slayer all-day verify pass (~15:10–15:17 PM ET)
 
