@@ -4,8 +4,9 @@
  * CACHE-READER: reads shared `fetchGexHeatmap` snapshots only — no per-request upstream.
  * INERT unless `DISCORD_THERMAL_WEBHOOK_URL` is set.
  *
- * Runs 24/7 by default. Set `THERMAL_DISCORD_RTH_ONLY=1` to skip outside cash RTH
- * (unless `?force=1`).
+ * **Cash RTH only by default** (9:30 AM–4:00 PM ET, early-close aware). Skips pre-market,
+ * after-hours, weekends, and holidays. Set `THERMAL_DISCORD_RTH_ONLY=0` to opt back into 24/7
+ * off-hours snapshots (not recommended). `?force=1` bypasses the RTH gate for smoke tests.
  *
  * DEDUP: Redis NX claim `thermal-discord:posted` (~14 min) so overlapping EventBridge
  * ticks / multi-task races / accidental force-hits cannot flood the channel. Bypass with
@@ -33,6 +34,7 @@ import {
   THERMAL_DISCORD_DEDUP_TTL_SEC,
   thermalDiscordBypassesDedup,
 } from "./thermal-discord-dedup";
+import { thermalDiscordRthOnly } from "./thermal-discord-rth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -40,11 +42,6 @@ export const maxDuration = 120;
 
 function thermalWebhook(): string | null {
   return process.env.DISCORD_THERMAL_WEBHOOK_URL?.trim() || null;
-}
-
-function rthOnly(): boolean {
-  const v = process.env.THERMAL_DISCORD_RTH_ONLY?.trim().toLowerCase();
-  return v === "1" || v === "true" || v === "yes";
 }
 
 export async function GET(req: NextRequest) {
@@ -66,8 +63,8 @@ export async function GET(req: NextRequest) {
 
   const force = req.nextUrl.searchParams.get("force") === "1";
   const allowDup = req.nextUrl.searchParams.get("allow_dup") === "1";
-  if (!force && rthOnly() && !isEtCashRth()) {
-    const payload = { ok: true, skipped: true, reason: "Outside cash RTH (THERMAL_DISCORD_RTH_ONLY)" };
+  if (!force && thermalDiscordRthOnly() && !isEtCashRth()) {
+    const payload = { ok: true, skipped: true, reason: "Outside cash RTH — Thermal Discord is RTH-only by default" };
     await logCronRun("thermal-discord", started, payload);
     return NextResponse.json(payload);
   }
