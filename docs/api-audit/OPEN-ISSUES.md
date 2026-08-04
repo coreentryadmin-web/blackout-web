@@ -1,5 +1,83 @@
 # BlackOut Open Issues Log
-Last updated: 2026-08-04 16:45 ET
+Last updated: 2026-08-04 17:02 ET
+
+## grid-rth-2026-08-04 — 0DTE Command verify pass (~4:58–5:02 PM ET, post-close)
+
+**Session:** Autonomous Grid/0DTE all-day **verify** mode per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` on branch `cursor/0dte-grid-rth-agent-f400`. Commands: `node scripts/grid-rth-all-day-audit.mjs --force` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e` → `node scripts/audit/data-validator.mjs` → extended `/nighthawk` tab click-through.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `validate:grid-rth` (`--force`) | ✅ **14/14 PASS** — deploy, zerodte board, ledger PnL, cross-tool, zerodte-warm cron, logic, data-correctness flags=0, E2E, ops |
+| `validate:zerodte-logic` | ✅ **17/17 PASS** — gates, plan exits (-50%/+100%/15:30 ET), lifecycle OPEN→TRIM→CLOSED, session heat, mergePlays SKIP past cutoff/MOVED, live board 3 eligible / 9 total |
+| `validate:grid-e2e` | ✅ **5/5 PASS** — board API 9 setups · ledger 6 · HELIX 20 prints · `/nighthawk` loads · 0 console errors |
+| `data-validator.mjs` | ⚠️ **34 PASS · 4 FAIL · 4 INFO** — SPY/SPX/INTC vs Polygon prev-close during extended-hours (expected post-close); 0DTE chain/OCC + ledger premium checks PASS |
+| `ops:collect` | ✅ **0 action items** |
+
+### Live board state (post-close)
+
+| Field | Value |
+|---|---|
+| Session heat | `CLOSED` · heat=0% |
+| Setups | 9 total · 3 eligible · 0 gate violations |
+| Ledger | 6 rows · PnL math consistent · all CLOSED |
+| SPX bootstrap spot vs GEX | ✅ 7736.52 aligned |
+| HELIX flows | ✅ 20 prints |
+| Night Hawk dedupe | ✅ 5 tickers covered elsewhere |
+| `zerodte-warm` cron | ✅ accepted (background warm) |
+
+### 0DTE logic probes (exhaustive)
+
+| Layer | Result |
+|---|---|
+| Gate funnel (SETUP_MIN_GROSS, aggression, dominance, ITM) | ✅ NVDA score=65 · audit trace all gates pass |
+| Plan exits | ✅ stop=2.1 target=8.4 (-50%/+100%) |
+| Trade lifecycle | ✅ OPEN/TRIM/CLOSED/CLOSED |
+| Plan grading (stop-first same bar) | ✅ stopped |
+| Session heat cutoffs | ✅ RTH→POST_COMMIT→LATE_SESSION |
+| mergePlays UI rules | ✅ past cutoff → SKIP · MOVED → SKIP |
+| Ledger grade | ✅ 5% realized on sample |
+| Cutoff constant | ✅ 15:30 ET |
+
+### Cross-tool integration
+
+| Link | Result |
+|---|---|
+| SPX bootstrap spot vs GEX heatmap | ✅ spot 7736.52 |
+| HELIX flows → scanner feed | ✅ 20 prints |
+| Night Hawk edition dedupe vs 0DTE board | ✅ 5 tickers |
+| `zerodte-warm` cron | ✅ background board warm |
+
+### UI E2E (`/nighthawk` — classic `/grid` deleted 2026-07-07)
+
+| Control | Result |
+|---|---|
+| `/grid` route | 404 (expected — 0DTE Command lives on `/nighthawk`) |
+| Default 0DTE lane | ✅ Command Deck mounts · market-state + discovery-funnel strips |
+| View toggles | ✅ 0DTE · Swings · LEAPS · Legacy all click without errors |
+| Ledger cards | ✅ 6 CLOSED plays (SPXW, INTC, GOOGL, QQQ, IWM, AVGO) |
+| Console errors | ✅ 0 |
+
+**Note:** Runbook references to "9 grid panels" and `/grid` tabs are legacy — classic Market Grid was removed 2026-07-07. 0DTE Command Deck + horizon lanes (Swings/LEAPS) + Legacy playbook are under `/nighthawk`.
+
+### Findings table
+
+| Severity | ID | Detail | Fix |
+|---|---|---|---|
+| — | — | **No P0/P1 product defects** on 0DTE Command / Night Hawk | GREEN |
+| INFO | ENV-NODE-MODULES | Initial audit pass failed — missing `node_modules` (`pg`, `react`, `playwright`) | Resolved via `npm install` + `npx playwright install chromium` |
+| INFO | GRID-ROUTE-404 | `/grid` returns 404 | By design since 2026-07-07 decommission |
+| P2 | DV-EXT-HOURS-SPOT | data-validator SPY/SPX Δ~1.8–1.9% vs Polygon prev-close during extended-hours | Expected off RTH; not a live-board defect |
+| P2 | DV-INTC-MOVER | INTC underlying Δ10.4% vs prev-close (intraday mover; chain/OCC + ledger premium still PASS) | Monitor — extended-hours oracle uses prev-close baseline |
+
+**Status: GREEN** — all three Grid RTH harnesses 0 FAIL; no P0 fixes required in verify mode.
+
+**Reports:** `audit-output/grid-rth-2026-08-04-verify-1785877189413.json`, `audit-output/zerodte-logic-1785877198436.json`, `audit-output/grid-e2e-1785877203037.json`, `audit-output/validation-2026-08-04T21-01-46-148Z.md`
+
+**Screenshots:** `/opt/cursor/artifacts/grid-rth-2026-08-04/` (nighthawk default + 0DTE/Swings/LEAPS/Legacy tabs)
+
+---
 
 ## rth-open-2026-08-04-pass5 — RTH comprehensive test sweep (~4:39–4:45 PM ET, post-close)
 
