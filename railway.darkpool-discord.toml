@@ -1,0 +1,18 @@
+# Railway/EventBridge catalog: Dark pool Discord alerts + 15m top-blocks digest.
+# Live fire requires EventBridge rule sync (TOML alone is not enough).
+# Inert unless DARKPOOL_DISCORD_ALERTS=1 and DISCORD_DARKPOOL_WEBHOOK_URL is set.
+[build]
+builder = "nixpacks"
+buildCommand = "echo 'cron trigger service: no app build needed'"
+watchPatterns = [
+  "scripts/hit-cron.mjs",
+  "railway.darkpool-discord.toml",
+  "nixpacks.toml",
+]
+
+[deploy]
+startCommand = "CRON_HTTP_TIMEOUT_MS=60000 node scripts/hit-cron.mjs /api/cron/darkpool-discord"
+# Every 2 minutes Mon–Fri UTC 11–21 (~RTH band). Route gates to cash RTH by default.
+cronSchedule = "*/2 11-21 * * 1-5"
+restartPolicyType = "never"
+numReplicas = 1

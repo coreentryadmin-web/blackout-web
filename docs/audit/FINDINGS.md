@@ -4,6 +4,19 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-04 — [P1, Dark pool Discord] #blackout-darkpool channel alerts — FIXED
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P1 — dark pool visible in HELIX app but no Discord channel |
+| **Root cause** | No Discord formatter/cron/WS hook; only options flow wired to community webhooks |
+| **Fix** | `darkpool-discord-format` + notify (Redis dedup); WS `off_lit_trades` live posts on ingest worker; `/api/cron/darkpool-discord` 2m scan + 15m top-blocks digest; reads cached UW data only |
+| **Env** | `DARKPOOL_DISCORD_ALERTS=1`, `DISCORD_DARKPOOL_WEBHOOK_URL`, optional `DARKPOOL_DISCORD_MIN_PREMIUM` (default $1M) |
+| **Ops** | Sync EventBridge from `railway.darkpool-discord.toml`; add secrets + restart web + market-worker |
+| **Status** | FIXED — PR `cursor/darkpool-discord-3d11` |
+
+---
+
 ## 2026-08-04 — [P0, 0DTE exits] Profit-protection floor armed too late + honored mark gap-through — FIXED
 
 | Field | Value |
