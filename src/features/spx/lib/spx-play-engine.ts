@@ -816,6 +816,17 @@ async function evaluateOpenPlay(
   };
 }
 
+/** Chain-grounded preview ticket for WATCH/SCANNING surfaces — never index-entry fabrication. */
+async function resolveGroundedPreviewTicket(
+  desk: SpxDeskPayload,
+  confluence: SpxConfluence
+): Promise<OptionTicket | null> {
+  if (confluence.direction == null || desk.price <= 0) return null;
+  const ticket = await buildOptionTicket(desk.price, confluence.direction, confluence.grade);
+  if (ticket.blocked || !ticket.contract_label?.trim()) return null;
+  return ticket;
+}
+
 async function evaluateFlatPlay(
   desk: SpxDeskPayload,
   confluence: SpxConfluence,
@@ -875,6 +886,7 @@ async function evaluateFlatPlay(
   const gatesView = intelGates(desk, confluence, gatesWatch);
   const abs = Math.abs(confluence.score);
   const techSum = technicalsSummary(technicals, mtf);
+  const previewOptionTicket = await resolveGroundedPreviewTicket(desk, confluence);
 
   const watchRec = await loadWatchRecord();
   if (mutate && watchRec && direction != null && watchRec.direction !== direction) {
@@ -967,7 +979,9 @@ async function evaluateFlatPlay(
   if (nearMiss && !promoteEligible) {
     const dirLabel = confluence.direction === "long" ? "bullish" : "bearish";
     return {
-      ...scanningPayload(desk, confluence, watchMessage(confluence.grade, dirLabel), gatesView),
+      ...scanningPayload(desk, confluence, watchMessage(confluence.grade, dirLabel), gatesView, {
+        option_ticket: previewOptionTicket,
+      }),
       phase: "WATCHING",
       action: "WATCHING",
       headline: `${confluence.grade} ${dirLabel} — almost there`,
@@ -1024,7 +1038,10 @@ async function evaluateFlatPlay(
     }
   }
   const entryGatesView = intelGates(desk, confluence, entryGatesRaw);
-  const sessionExtras = { session_phase: currentSessionPhase(desk) };
+  const sessionExtras = {
+    session_phase: currentSessionPhase(desk),
+    option_ticket: previewOptionTicket,
+  };
 
   if (!entryGatesRaw.passed) {
     spxPlayDebug('[spx-play-engine] entry gates blocked:', {

@@ -118,3 +118,63 @@ test("buildPlayVerdictBarModel: missing levels does not throw (degraded play pat
   assert.equal(model.mode, "hunting");
   assert.equal(model.levelsLine, null);
 });
+
+test("buildPlayVerdictBarModel: WATCH without option_ticket does NOT fabricate index entry as 7606C", () => {
+  const model = buildPlayVerdictBarModel(
+    basePlay({
+      phase: "WATCHING",
+      action: "WATCHING",
+      direction: "long",
+      levels: { entry: 7606.2, stop: 7590, target: 7630, invalidation: "" },
+      option_ticket: null,
+      watch: { active: true, promote_ready: false, reason: "Break above call wall", since: null },
+    }),
+    { sessionActive: true, loading: false }
+  );
+  assert.equal(model.mode, "watch");
+  assert.equal(model.contract, null);
+});
+
+test("buildPlayVerdictBarModel: grounded option_ticket surfaces real strike", () => {
+  const model = buildPlayVerdictBarModel(
+    basePlay({
+      phase: "WATCHING",
+      action: "WATCHING",
+      direction: "long",
+      option_ticket: {
+        underlying: "SPXW",
+        strike: 7610,
+        option_type: "call",
+        contract_label: "7610C",
+        ticker: "O:SPXW260804C07610000",
+        bid: 4.5,
+        ask: 4.8,
+        mid: 4.65,
+        spread_pct: 6.5,
+        delta: 0.42,
+        open_interest: 1200,
+        premium_range: "4.50–4.80",
+        blocked: false,
+        block_reason: null,
+      },
+    }),
+    { sessionActive: true, loading: false }
+  );
+  assert.equal(model.contract, "7610C @ 4.7");
+});
+
+test("buildPlayVerdictBarModel: pin/play divergence surfaces align hint", () => {
+  const model = buildPlayVerdictBarModel(
+    basePlay({ direction: "long" }),
+    {
+      sessionActive: true,
+      loading: false,
+      pin: {
+        available: true,
+        magnet: { strike: 7580, kind: "put_wall", direction: "down", strengthPct: 0.4 },
+      } as never,
+    }
+  );
+  assert.match(model.alignHint ?? "", /downward pin drift/i);
+  assert.match(model.alignHint ?? "", /bullish structure/i);
+});

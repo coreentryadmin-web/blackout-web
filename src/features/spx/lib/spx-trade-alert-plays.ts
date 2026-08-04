@@ -2,7 +2,7 @@ import type { SpxPlayPayload } from "@/features/spx/lib/spx-play-engine";
 import type { LottoPlayPayload } from "@/features/spx/lib/spx-lotto-engine";
 import type { PowerHourPlayPayload } from "@/features/spx/lib/spx-power-hour-engine";
 import { buildPlayKanbanChips, type PlayKanbanChip } from "@/features/spx/lib/spx-play-kanban-chips";
-import { formatSpxContractLabel } from "@/features/spx/lib/spx-play-contract-label";
+import { resolveSpxPlayContractHumanLabel } from "@/features/spx/lib/spx-play-contract-label";
 
 export type TradeStageId = "hold" | "trim" | "sell";
 
@@ -18,13 +18,7 @@ export type TradeAlertPlay = {
 type HistoryRow = SpxPlayPayload & { id: string };
 
 function structureStrikeLabel(play: SpxPlayPayload): string {
-  return formatSpxContractLabel(
-    play.option_ticket?.contract_label ?? play.open_play?.option_label,
-    {
-      strike: play.levels?.entry ?? play.open_play?.entry_price ?? 0,
-      direction: play.direction,
-    }
-  );
+  return resolveSpxPlayContractHumanLabel(play);
 }
 
 function structureActiveStage(play: SpxPlayPayload): TradeStageId {

@@ -5,7 +5,11 @@ import {
   formatSpxContractLabel,
   formatPremiumAt,
   parseSpxContractLabel,
+  pinPlayAlignmentHint,
+  resolveGroundedSpxContractChip,
+  resolveSpxPlayContractChip,
 } from "./spx-play-contract-label";
+import type { SpxPlayPayload } from "@/features/spx/lib/spx-play-engine";
 
 test("parseSpxContractLabel: compact 7550C", () => {
   assert.deepEqual(parseSpxContractLabel("7550C"), { strike: 7550, side: "call" });
@@ -33,4 +37,39 @@ test("formatSpxContractLabel: human Call/Put copy", () => {
   assert.equal(formatSpxContractLabel("7450P"), "7450 Put");
   assert.equal(formatSpxContractLabel(null, { strike: 7400, direction: "long" }), "7400 Call");
   assert.equal(formatSpxContractLabel(null, { strike: 7400, direction: "short" }), "7400 Put");
+});
+
+test("resolveGroundedSpxContractChip: index entry alone never becomes 7606C", () => {
+  assert.equal(
+    resolveGroundedSpxContractChip({
+      ticketStrike: 7606,
+      ticketType: "call",
+      ticketBlocked: false,
+    }),
+    "7606C"
+  );
+  assert.equal(resolveGroundedSpxContractChip({ rawLabel: null }), null);
+  assert.equal(
+    resolveGroundedSpxContractChip({
+      ticketStrike: 7606,
+      ticketType: "call",
+      ticketBlocked: true,
+    }),
+    null
+  );
+});
+
+test("resolveSpxPlayContractChip: levels.entry is not used as option strike", () => {
+  const play = {
+    direction: "long",
+    levels: { entry: 7606, stop: null, target: null, invalidation: "" },
+    option_ticket: null,
+    open_play: null,
+  } as SpxPlayPayload;
+  assert.equal(resolveSpxPlayContractChip(play), null);
+});
+
+test("pinPlayAlignmentHint: surfaces when pin drift and play direction diverge", () => {
+  assert.match(pinPlayAlignmentHint("long", "down") ?? "", /independent of the magnet/i);
+  assert.equal(pinPlayAlignmentHint("long", "up"), null);
 });
