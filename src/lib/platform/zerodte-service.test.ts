@@ -384,7 +384,7 @@ test("exit visibility: META-class stopped runner with +87% peak returns trim-sca
   const board = await buildZeroDteBoardPayload();
   assert.equal(board.ledger[0]!.closed_reason, "stopped");
   assert.equal(board.ledger[0]!.peak_pnl_pct, 87.3);
-  assert.equal(board.ledger[0]!.live_pnl_pct, 8.33, "⅓@+25 + ⅓@+50 + ⅓@(−50) runner");
+  assert.equal(board.ledger[0]!.live_pnl_pct, 6.67, "⅓@+20 + ⅓@+50 + ⅓@(−50) runner");
 });
 
 test("exit visibility: a plain 15:30 close with no engine exit reads closed_reason 'time_stop'", async () => {
