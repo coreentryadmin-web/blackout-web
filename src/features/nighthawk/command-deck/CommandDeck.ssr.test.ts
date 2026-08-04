@@ -143,13 +143,14 @@ test("CommandDeck command center renders stat strip for 0DTE", async () => {
       sessionHeat: "RTH",
     }),
   );
+  assert.match(html, /nh-deck-header-compact/);
   assert.match(html, /nh-deck-cmd/);
   assert.match(html, />META \(A\+\)/);
   assert.doesNotMatch(html, /Win Rate \(30d\)/);
   assert.match(html, /nh-deck-engine-status/);
   assert.match(html, />Engine</);
   assert.match(html, />Monitoring</);
-  assert.match(html, />Last Update</);
+  assert.match(html, />Updated</);
 });
 
 test("CommandDeck renders market state + funnel strips for 0DTE", async () => {
@@ -183,5 +184,5 @@ test("CommandDeck renders market state + funnel strips for 0DTE", async () => {
   );
   assert.match(html, /data-testid="zerodte-market-state-strip"/);
   assert.match(html, /data-testid="zerodte-discovery-funnel-strip"/);
-  assert.match(html, /Funnel · Top gate today/);
+  assert.match(html, /Funnel · Top gate today|Top gate today/);
 });
