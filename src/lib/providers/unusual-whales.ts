@@ -14,6 +14,8 @@ import {
 import {
   getUwCacheRedis,
   uwCacheGet,
+  uwCacheRead,
+  uwCacheSet,
   UW_CACHE_TTL,
   UW_KEYS,
 } from "@/lib/providers/uw-shared-cache";
@@ -987,6 +989,35 @@ export async function fetchUwDarkPoolMarketWide(
   };
 }
 
+/** Extract raw UW dark-pool row objects from REST or WS payloads (preserves ticker + size). */
+export function extractDarkPoolRawRows(raw: unknown): Record<string, unknown>[] {
+  const rows = Array.isArray(raw) ? raw : (raw as Record<string, unknown>)?.data;
+  const list = Array.isArray(rows) ? rows : typeof raw === "object" && raw !== null ? [raw] : [];
+  return list.filter((row): row is Record<string, unknown> => Boolean(row && typeof row === "object"));
+}
+
+/**
+ * `dark_pool_recent` must store raw UW rows (array). Older builds mistakenly cached a
+ * DarkPoolSnapshot object when WS was fresh — unwrap so HELIX/Largo don't see an empty tape.
+ */
+export function coerceDarkPoolRecentRows(cached: unknown): Record<string, unknown>[] | null {
+  if (Array.isArray(cached)) {
+    return cached.filter((row): row is Record<string, unknown> => Boolean(row && typeof row === "object"));
+  }
+  if (cached && typeof cached === "object" && Array.isArray((cached as DarkPoolSnapshot).prints)) {
+    const snap = cached as DarkPoolSnapshot;
+    return snap.prints.map((p) => ({
+      ticker: p.ticker,
+      premium: p.premium,
+      side: p.side,
+      executed_at: p.executed_at,
+      price: p.strike,
+      strike: p.strike,
+    }));
+  }
+  return null;
+}
+
 /**
  * Normalize a raw UW `off_lit_trades` WebSocket payload into DarkPoolSnapshot shape.
  * The WS sends individual trade objects (or arrays of them) — not the REST aggregate structure.
@@ -1026,7 +1057,8 @@ export function normalizeDarkPoolWsPayload(raw: unknown): DarkPoolSnapshot | nul
     const strike = Number.isFinite(strikeRaw) ? bucketPrice(strikeRaw) : 0;
     const side = String(r.side ?? r.direction ?? "unknown").toLowerCase();
     const optType = String(r.type ?? r.option_type ?? "").toLowerCase();
-    prints.push({ strike, premium, side, executed_at: execAt.slice(0, 19) });
+    const ticker = String(r.ticker ?? r.symbol ?? r.underlying ?? "").toUpperCase() || undefined;
+    prints.push({ strike, premium, side, executed_at: execAt.slice(0, 19), ticker });
     total += premium;
     if (optType.includes("call")) callPrem += premium;
     else if (optType.includes("put")) putPrem += premium;
@@ -1729,10 +1761,26 @@ export async function fetchUwGreekExposureStrike(ticker: string, limit = 500) {
 /** Market-wide dark pool prints. */
 export async function fetchUwDarkPoolRecent(limit = 25) {
   const redis = await getUwCacheRedis();
-  return uwCacheGet(redis, UW_KEYS.darkPoolRecent(), UW_CACHE_TTL.darkPoolRecent, async () => {
-    const data = await uwGetSafe<unknown>("/api/darkpool/recent", { limit: Math.min(limit, 100) });
-    return extractRows(data).slice(0, limit);
+  const key = UW_KEYS.darkPoolRecent();
+  const capped = Math.min(limit, 100);
+  const cached = await uwCacheRead<unknown>(key);
+  const coerced = coerceDarkPoolRecentRows(cached);
+  if (coerced?.length) return coerced.slice(0, capped);
+
+  const rows = await uwCacheGet(redis, key, UW_CACHE_TTL.darkPoolRecent, async () => {
+    const data = await uwGetSafe<unknown>("/api/darkpool/recent", { limit: capped });
+    return extractRows(data).slice(0, capped);
   });
+  const normalized = coerceDarkPoolRecentRows(rows);
+  if (normalized?.length) return normalized.slice(0, capped);
+
+  // Poisoned cache (snapshot object) — bypass and rewrite with a REST pull.
+  const data = await uwGetSafe<unknown>("/api/darkpool/recent", { limit: capped });
+  const fresh = extractRows(data).slice(0, capped);
+  if (redis && fresh.length) {
+    await uwCacheSet(redis, key, UW_CACHE_TTL.darkPoolRecent, fresh);
+  }
+  return fresh;
 }
 
 /** Hottest chains / bullish-bearish option screener. */

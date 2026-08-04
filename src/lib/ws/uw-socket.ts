@@ -30,6 +30,7 @@ import { isUwErrorFrame } from "@/lib/ws/uw-frame";
 import { ladderFromGexStrikeExpiryCells } from "@/lib/providers/gex-strike-expiry-ladder";
 import {
   normalizeDarkPoolWsPayload,
+  extractDarkPoolRawRows,
   normalizeGexStrikeExpiryWsPayload,
   normalizeIntervalFlowWsPayload,
   normalizeLitTradesWsPayload,
@@ -753,6 +754,38 @@ export const darkPoolStore: {
   updatedAt: number;
 } = { data: null, updatedAt: 0 };
 
+/** Session ring of raw UW dark-pool rows — feeds Redis `dark_pool_recent` (HELIX tape). */
+const DARK_POOL_RING_MAX = 200;
+
+export const darkPoolRecentRing: {
+  rows: Record<string, unknown>[];
+  updatedAt: number;
+  total_received: number;
+} = { rows: [], updatedAt: 0, total_received: 0 };
+
+function darkPoolRawDedupKey(row: Record<string, unknown>): string {
+  const ticker = String(row.ticker ?? row.symbol ?? row.underlying ?? "").toUpperCase();
+  const prem = Math.round(Number(row.premium ?? row.notional ?? row.size_premium ?? 0));
+  const at = String(row.executed_at ?? row.date ?? row.timestamp ?? "").slice(0, 19);
+  const px = Math.round(Number(row.price ?? row.strike ?? row.ref_price ?? 0) * 100);
+  return `${ticker}|${at}|${prem}|${px}`;
+}
+
+function pushDarkPoolRawRows(rows: Record<string, unknown>[]) {
+  if (!rows.length) return;
+  const seen = new Set(darkPoolRecentRing.rows.map(darkPoolRawDedupKey));
+  const fresh = rows.filter((row) => {
+    const key = darkPoolRawDedupKey(row);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  if (!fresh.length) return;
+  darkPoolRecentRing.rows = [...fresh, ...darkPoolRecentRing.rows].slice(0, DARK_POOL_RING_MAX);
+  darkPoolRecentRing.updatedAt = Date.now();
+  darkPoolRecentRing.total_received += fresh.length;
+}
+
 export const intervalFlowStore: {
   rows: Record<string, unknown>[];
   updatedAt: number;
@@ -1393,6 +1426,7 @@ export function initUwSocket() {
     if (payload && typeof payload === "object" && "status" in (payload as Record<string, unknown>)) {
       return;
     }
+    pushDarkPoolRawRows(extractDarkPoolRawRows(payload));
     const normalized = normalizeDarkPoolWsPayload(payload);
     if (normalized) {
       recordUwDelivery("off_lit_trades");
