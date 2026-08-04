@@ -11,6 +11,7 @@ import {
 } from "@/lib/providers/unusual-whales";
 import { UW_CACHE_TTL, UW_KEYS, uwCacheRead, uwCacheSet } from "@/lib/providers/uw-shared-cache";
 import {
+  darkPoolRecentRing,
   darkPoolStore,
   getNetPremTicksForTicker,
   isUwChannelFresh,
@@ -40,11 +41,15 @@ export async function seedUwCacheFromWsStores(
     skipped_ws.push("market_tide");
   }
 
-  if (isUwChannelFresh("off_lit_trades", 120_000) && darkPoolStore.updatedAt > 0 && darkPoolStore.data) {
-    await uwCacheSet(redis, UW_KEYS.darkPoolRecent(), UW_CACHE_TTL.darkPoolRecent, darkPoolStore.data);
-    await uwCacheSet(redis, UW_KEYS.darkPoolTicker("SPX"), UW_CACHE_TTL.darkPoolTicker, darkPoolStore.data);
+  if (isUwChannelFresh("off_lit_trades", 120_000) && darkPoolRecentRing.rows.length > 0) {
+    // dark_pool_recent must be raw UW rows (array) — NOT a DarkPoolSnapshot object.
+    await uwCacheSet(redis, UW_KEYS.darkPoolRecent(), UW_CACHE_TTL.darkPoolRecent, darkPoolRecentRing.rows);
     seeded += 1;
     skipped_ws.push("off_lit_trades");
+  }
+
+  if (isUwChannelFresh("off_lit_trades", 120_000) && darkPoolStore.updatedAt > 0 && darkPoolStore.data) {
+    await uwCacheSet(redis, UW_KEYS.darkPoolTicker("SPX"), UW_CACHE_TTL.darkPoolTicker, darkPoolStore.data);
   }
 
   if (isUwChannelFresh("net_flow", 120_000)) {
@@ -91,7 +96,11 @@ export async function readUwDarkPoolFromRedis(ticker = "SPX"): Promise<DarkPoolS
 }
 
 function darkPoolWsFresh(): boolean {
-  return isUwChannelFresh("off_lit_trades", 120_000) && darkPoolStore.updatedAt > 0 && Boolean(darkPoolStore.data);
+  return (
+    isUwChannelFresh("off_lit_trades", 120_000) &&
+    darkPoolRecentRing.rows.length > 0 &&
+    darkPoolRecentRing.updatedAt > 0
+  );
 }
 
 export function shouldSkipUwCacheRefreshTask(

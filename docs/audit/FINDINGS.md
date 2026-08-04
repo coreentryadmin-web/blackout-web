@@ -4,6 +4,18 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-04 — [P0, HELIX dark pool] Empty tape when WS fresh — snapshot cached under `dark_pool_recent` — FIXED
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P0 — HELIX Dark Pool panel often empty during RTH while Discord WS path worked |
+| **Root cause** | `seedUwCacheFromWsStores` wrote a `DarkPoolSnapshot` object into Redis `dark_pool_recent`; `/api/market/dark-pool` + `fetchUwDarkPoolRecent` expect a **raw row array**. When WS was fresh, REST refresh was skipped → consumers saw `Array.isArray(rawRows) ? … : []` → zero prints |
+| **Evidence** | Code comment at `unusual-whales.ts:947` explicitly forbids snapshot under `dark_pool_recent`; bridge violated it at `uw-ws-cache-bridge.ts:44`; Discord bypasses this cache via direct WS extract |
+| **Fix** | Ring-buffer raw WS rows (`darkPoolRecentRing`); seed `dark_pool_recent` with raw rows only; `coerceDarkPoolRecentRows` unwraps legacy poisoned cache; include `ticker` in WS snapshot prints |
+| **Status** | FIXED — PR `cursor/darkpool-cache-fix-3d11` |
+
+---
+
 ## 2026-08-04 — [P1, Dark pool Discord] #blackout-darkpool channel alerts — FIXED
 
 | Field | Value |
