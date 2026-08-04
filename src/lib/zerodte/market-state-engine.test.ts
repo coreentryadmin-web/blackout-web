@@ -38,6 +38,20 @@ describe("market-state-engine", () => {
     assert.ok(state.rail_weights.PIN < 1);
   });
 
+  it("blendRegimeWithCalibrationPriors mixes shadow weights", () => {
+    const state = buildMarketState({
+      regime: trendRegime,
+      sessionDate: "2026-08-03",
+      shadowCalibration: {
+        rail_weights: { FLOW: 0.8, BREAKOUT: 1.3, PIN: 1.1 },
+        confidence: 1,
+        blend: 0.5,
+      },
+    });
+    assert.ok(state.calibration_shadow?.active);
+    assert.ok(state.rail_weights.BREAKOUT > 1.1);
+  });
+
   it("applyRailWeightToScore scales by primary origin", () => {
     const state = buildMarketState({ regime: trendRegime, sessionDate: "2026-08-03" });
     const flowScore = applyRailWeightToScore(80, ["FLOW"], state);

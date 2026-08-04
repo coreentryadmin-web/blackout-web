@@ -39,6 +39,7 @@ import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
 import { PLAN_RULES } from "./plan";
 import type { ZeroDteSetupLogRow } from "@/lib/db";
 import type { ZeroDteGateBlock } from "./gates";
+import { timeOfDayFactor } from "./intraday";
 
 /** Concurrent open-plan ceiling — env `ZERODTE_MAX_CONCURRENT` (default 100).
  *  Product intent (2026-07-29): do NOT starve the desk with an artificial scarcity
@@ -176,6 +177,23 @@ function envFlag(name: string, defaultOn: boolean): boolean {
 /** Q9 same-direction concentration — enforced by default (2026-07-30 crypto cluster session). */
 export const GOVERNOR_ENFORCE_CONCENTRATION = envFlag("GOVERNOR_ENFORCE_CONCENTRATION", true);
 
+/** Phase 2c — max aggregate entry premium across open plans (measure-first; enforce opt-in). */
+function envPremiumCap(): number {
+  const raw = process.env.GOVERNOR_MAX_PREMIUM_AT_RISK?.trim();
+  if (!raw) return 500_000;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 500_000;
+}
+export const GOVERNOR_MAX_PREMIUM_AT_RISK = envPremiumCap();
+export const GOVERNOR_ENFORCE_PREMIUM_BUDGET = envFlag("GOVERNOR_ENFORCE_PREMIUM_BUDGET", false);
+
+/** Phase 2c — short-gamma directional exposure cap (dealer-amplifying regime). Measure-first. */
+export const GOVERNOR_MAX_SHORT_GAMMA_OPEN = 4;
+export const GOVERNOR_ENFORCE_GAMMA_BUDGET = envFlag("GOVERNOR_ENFORCE_GAMMA_BUDGET", false);
+
+/** Phase 2c — time-of-day concurrent cap scaling (lunch chop / opening chop). Enforce opt-in. */
+export const GOVERNOR_ENFORCE_TOD_SIZING = envFlag("GOVERNOR_ENFORCE_TOD_SIZING", false);
+
 /** The largest same-direction cluster of open plans within a single correlation group, or
  *  null if no two open plans share a group+direction. Pure. Used both by the board measure
  *  and by the per-candidate evaluator, so the "what counts as concentration" logic lives
@@ -198,6 +216,63 @@ export function maxCorrelatedSameDirection(
     }
   }
   return best;
+}
+
+/** Sum entry premium across open ledger rows (rounded). Pure. */
+export function aggregatePremiumAtRisk(rows: GovernorLedgerRow[]): number {
+  let sum = 0;
+  for (const r of rows) {
+    if (r.status === "CLOSED") continue;
+    if (r.entry_premium != null && Number.isFinite(r.entry_premium) && r.entry_premium > 0) {
+      sum += r.entry_premium;
+    }
+  }
+  return Math.round(sum);
+}
+
+/** Count open plans with short-gamma regime pinned at commit. Pure. */
+export function countShortGammaOpen(
+  rows: Array<Pick<GovernorLedgerRow, "status"> & { entry_context?: Record<string, unknown> | null }>
+): number {
+  let n = 0;
+  for (const r of rows) {
+    if (r.status === "CLOSED") continue;
+    const ec = r.entry_context;
+    const gamma = typeof ec?.gamma_regime === "string" ? ec.gamma_regime.toLowerCase() : "";
+    if (gamma.includes("short")) n += 1;
+  }
+  return n;
+}
+
+/** Time-of-day concurrent cap multiplier — lunch/opening chop size-down (Phase 2c). Pure. */
+export function timeOfDaySizingFactor(etMinutes: number): {
+  factor: number;
+  label: string | null;
+  effective_max_concurrent: number;
+} {
+  const tod = timeOfDayFactor(etMinutes);
+  let factor = 1;
+  if (etMinutes < 10 * 60) factor = 0.85;
+  else if (etMinutes >= 12 * 60 + 30 && etMinutes < 13 * 60 + 30) factor = 0.75;
+  const effective = Math.max(1, Math.floor(GOVERNOR_MAX_CONCURRENT_PLANS * factor));
+  return { factor, label: tod.label, effective_max_concurrent: effective };
+}
+
+export function premiumBudgetReason(premiumAtRisk: number): string | null {
+  if (premiumAtRisk < GOVERNOR_MAX_PREMIUM_AT_RISK) return null;
+  return (
+    `Session governor (MEASURE): aggregate entry premium $${premiumAtRisk.toLocaleString()} at/over ` +
+    `$${GOVERNOR_MAX_PREMIUM_AT_RISK.toLocaleString()} budget — further adds over-concentrate capital. ` +
+    "Surfaced as calibration evidence, not enforced unless GOVERNOR_ENFORCE_PREMIUM_BUDGET=1."
+  );
+}
+
+export function gammaBudgetReason(shortGammaOpen: number): string | null {
+  if (shortGammaOpen < GOVERNOR_MAX_SHORT_GAMMA_OPEN) return null;
+  return (
+    `Session governor (MEASURE): ${shortGammaOpen} open short-gamma plays (max ${GOVERNOR_MAX_SHORT_GAMMA_OPEN}) — ` +
+    "dealer-amplifying exposure clustered. Surfaced as evidence, not enforced unless GOVERNOR_ENFORCE_GAMMA_BUDGET=1."
+  );
 }
 
 // ── WS-05: FREEZE the concentration STATE at commit (MEASURE ONLY — no gating) ──────────
@@ -421,10 +496,15 @@ export function mergeGovernorStops(
  * (and it is what the morning-gate checklist simulates).
  */
 export function evaluateZeroDteGovernor(
-  candidate: { ticker: string; direction: "long" | "short" },
+  candidate: { ticker: string; direction: "long" | "short"; entry_premium?: number | null; gamma_regime?: string | null },
   snap: GovernorSnapshot,
   nowMs: number,
-  committedThisCycle: GovernorOpenPlan[] = []
+  committedThisCycle: GovernorOpenPlan[] = [],
+  opts?: {
+    etMinutes?: number;
+    premiumAtRisk?: number;
+    shortGammaOpen?: number;
+  }
 ): ZeroDteGateBlock[] {
   const blocks: ZeroDteGateBlock[] = [];
 
@@ -462,13 +542,45 @@ export function evaluateZeroDteGovernor(
 
   const liveExposure = [...snap.open_plans, ...committedThisCycle];
 
-  if (liveExposure.length >= GOVERNOR_MAX_CONCURRENT_PLANS) {
+  const todSizing =
+    opts?.etMinutes != null ? timeOfDaySizingFactor(opts.etMinutes) : null;
+  const concurrentCap =
+    GOVERNOR_ENFORCE_TOD_SIZING && todSizing
+      ? todSizing.effective_max_concurrent
+      : GOVERNOR_MAX_CONCURRENT_PLANS;
+
+  if (liveExposure.length >= concurrentCap) {
     blocks.push({
       code: "governor_max_concurrent",
       reason:
         `Session governor: ${liveExposure.length} plans already live (max ` +
-        `${GOVERNOR_MAX_CONCURRENT_PLANS} concurrent) — manage what's open before adding exposure.`,
-      threshold: GOVERNOR_MAX_CONCURRENT_PLANS,
+        `${concurrentCap} concurrent${todSizing?.label ? ` — ${todSizing.label}` : ""}) — manage what's open before adding exposure.`,
+      threshold: concurrentCap,
+      unlock_et: null,
+    });
+  }
+
+  const premiumAtRisk = opts?.premiumAtRisk ?? 0;
+  const candidatePremium = candidate.entry_premium ?? 0;
+  const premiumReason = premiumBudgetReason(premiumAtRisk + candidatePremium);
+  if (GOVERNOR_ENFORCE_PREMIUM_BUDGET && premiumReason) {
+    blocks.push({
+      code: "governor_premium_budget",
+      reason: premiumReason.replace(" (MEASURE)", "").replace(/Surfaced as calibration evidence.*/, "Blocked — premium budget exceeded."),
+      threshold: GOVERNOR_MAX_PREMIUM_AT_RISK,
+      unlock_et: null,
+    });
+  }
+
+  const shortGammaOpen = opts?.shortGammaOpen ?? 0;
+  const candidateShortGamma =
+    typeof candidate.gamma_regime === "string" && candidate.gamma_regime.toLowerCase().includes("short");
+  const gammaReason = gammaBudgetReason(shortGammaOpen + (candidateShortGamma ? 1 : 0));
+  if (GOVERNOR_ENFORCE_GAMMA_BUDGET && candidateShortGamma && gammaReason) {
+    blocks.push({
+      code: "governor_gamma_budget",
+      reason: gammaReason.replace(" (MEASURE)", "").replace(/Surfaced as evidence.*/, "Blocked — short-gamma exposure cap."),
+      threshold: GOVERNOR_MAX_SHORT_GAMMA_OPEN,
       unlock_et: null,
     });
   }
@@ -580,13 +692,31 @@ export type ZeroDteGovernorSummary = {
    *  (a further correlated same-direction add would be over-concentration), else null.
    *  SURFACED for the operator + the ledger; NOT reflected in `halted` (measure only, Q9). */
   would_block_concentration: string | null;
+  // ── Phase 2c portfolio governor extensions (measure-first) ───────────────────────
+  /** Sum of entry premium across open plans. */
+  premium_at_risk: number;
+  max_premium_at_risk: number;
+  would_block_premium_budget: string | null;
+  /** Open plans with short-gamma regime at commit. */
+  short_gamma_open: number;
+  max_short_gamma_open: number;
+  would_block_gamma_budget: string | null;
+  /** Time-of-day sizing label (lunch chop / prime window). */
+  time_of_day_label: string | null;
+  /** Effective concurrent cap after time-of-day sizing factor. */
+  effective_max_concurrent: number;
+  time_of_day_sizing_factor: number;
 };
 
 /** Pure: the payload's governor block from today's ledger rows + the recorded
  *  (timestamped) stop events — the exact snapshot evaluateZeroDteGovernor judges. */
 export function summarizeGovernorForBoard(
   rows: GovernorLedgerRow[],
-  recordedStops: GovernorStopEvent[]
+  recordedStops: GovernorStopEvent[],
+  opts?: {
+    etMinutes?: number;
+    shortGammaOpen?: number;
+  }
 ): ZeroDteGovernorSummary {
   const snap = deriveGovernorFromLedger(rows);
   const stops = mergeGovernorStops(snap.stops, recordedStops);
@@ -603,6 +733,12 @@ export function summarizeGovernorForBoard(
         `${GOVERNOR_MAX_CORRELATED_SAME_DIR}-play concentration ceiling; a further correlated ` +
         `${concentration.direction} add would over-concentrate one direction. Surfaced as evidence, not enforced (Q9).`
       : null;
+
+  const premiumAtRisk = aggregatePremiumAtRisk(rows);
+  const shortGammaOpen = opts?.shortGammaOpen ?? 0;
+  const todSizing =
+    opts?.etMinutes != null ? timeOfDaySizingFactor(opts.etMinutes) : timeOfDaySizingFactor(12 * 60);
+
   return {
     open_plans: snap.open_plans,
     max_concurrent: GOVERNOR_MAX_CONCURRENT_PLANS,
@@ -618,6 +754,15 @@ export function summarizeGovernorForBoard(
     correlated_concentration: concentration,
     max_correlated_same_dir: GOVERNOR_MAX_CORRELATED_SAME_DIR,
     would_block_concentration: wouldBlockConcentration,
+    premium_at_risk: premiumAtRisk,
+    max_premium_at_risk: GOVERNOR_MAX_PREMIUM_AT_RISK,
+    would_block_premium_budget: premiumBudgetReason(premiumAtRisk),
+    short_gamma_open: shortGammaOpen,
+    max_short_gamma_open: GOVERNOR_MAX_SHORT_GAMMA_OPEN,
+    would_block_gamma_budget: gammaBudgetReason(shortGammaOpen),
+    time_of_day_label: todSizing.label,
+    effective_max_concurrent: todSizing.effective_max_concurrent,
+    time_of_day_sizing_factor: todSizing.factor,
   };
 }
 

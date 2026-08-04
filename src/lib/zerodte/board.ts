@@ -695,7 +695,9 @@ export type ZeroDteGateFailure =
   | "condor_range_break" // spot has approached/breached a short strike — the defended range is failing
   | "flow_accumulation_conflict" // G-13: multi-day flow direction opposes the setup (aligned === false)
   | "regime_blind" // Regime Plane: VIX/macro/halt/GEX blind — no fresh commits
-  | "governor_concentration"; // Q9 enforced: too many correlated same-direction opens
+  | "governor_concentration" // Q9 enforced: too many correlated same-direction opens
+  | "governor_premium_budget" // Phase 2c: aggregate entry premium budget exceeded
+  | "governor_gamma_budget"; // Phase 2c: short-gamma open count exceeded
 
 export type ZeroDteGateRejection = {
   ticker: string;

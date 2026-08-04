@@ -73,6 +73,10 @@ import {
 import { gradeCondorFromBars } from "./condor";
 import { buildZeroDteEntryContext, fetchZeroDteSessionContext } from "./entry-context";
 import { buildMarketState, weightedScoreForMerge, type MarketStateSnapshot } from "./market-state-engine";
+import {
+  calibrationPriorBlendFactor,
+  loadShadowRailPriors,
+} from "./calibration-rail-priors";
 // WS-14/15 observability (additive, best-effort — never a decision input). See
 // latency-telemetry.ts's module doc: it records spans/durations and freezes a per-commit
 // input-age manifest; every recorder swallows its own errors so it can't affect the scan.
@@ -116,6 +120,8 @@ import {
   mergeGovernorStops,
   recordGovernorStops,
   freezeConcentrationState,
+  aggregatePremiumAtRisk,
+  countShortGammaOpen,
   type GovernorSnapshot,
   type GovernorOpenPlan,
 } from "./governor";
@@ -227,9 +233,19 @@ export async function scanZeroDteBoard(flags?: {
 }): Promise<ZeroDteScanResult> {
   const today = todayEt();
   const sessionCtx = await fetchZeroDteSessionContext().catch(() => null);
+  const shadowPriors = await loadShadowRailPriors().catch(() => null);
+  const calBlend = calibrationPriorBlendFactor();
   const marketState: MarketStateSnapshot = buildMarketState({
     regime: sessionCtx?.regime ?? null,
     sessionDate: today,
+    shadowCalibration:
+      shadowPriors && calBlend > 0
+        ? {
+            rail_weights: shadowPriors.rail_weights,
+            confidence: shadowPriors.confidence,
+            blend: calBlend,
+          }
+        : null,
   });
   // WS-14 span capture (observability only): stamp the wall-clock at each pipeline hop the
   // scan actually knows. These never gate anything — they feed recordScanSpans below.
@@ -562,6 +578,8 @@ async function attachGateVerdicts(
     ...ledgerGovernor,
     stops: mergeGovernorStops(ledgerGovernor.stops, recordedStops),
   };
+  const governorPremiumAtRisk = aggregatePremiumAtRisk(ledgerRows);
+  const governorShortGammaOpen = countShortGammaOpen(ledgerRows);
 
   // G-4/G-6 calibration context + the Phase-0 firewall inputs — all best-effort. The
   // calibration/echo reads never block (a miss degrades to an honest "unknown"/no-conflict
@@ -744,6 +762,9 @@ async function attachGateVerdicts(
       biasAsOfMs,
       governor,
       committedThisCycle,
+      governorPremiumAtRisk,
+      governorShortGammaOpen,
+      gamma_regime: s.gamma_regime ?? null,
       vixDayOpen: effectiveVix,
       // Phase-0 firewall: G-4 fails a fresh commit closed when the VIX read was attempted
       // but unavailable AND no stale-but-recent fallback exists for this session.
@@ -1238,12 +1259,22 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
       // cycle correctly when the highest-conviction candidates are offered the last open slots
       // first (the same order the scan-time gate applied it).
       const ordered = [...freshPairs].sort((a, b) => b.setup.score - a.setup.score);
+      const premiumAtRisk = aggregatePremiumAtRisk(currentLedger);
+      const shortGammaOpen = countShortGammaOpen(currentLedger);
+      const { hour, minute } = etNowParts();
+      const recountEtMinutes = hour * 60 + minute;
       for (const { setup, row } of ordered) {
         const blocks = evaluateZeroDteGovernor(
-          { ticker: setup.ticker, direction: setup.direction },
+          {
+            ticker: setup.ticker,
+            direction: setup.direction,
+            entry_premium: row.entry_premium ?? setup.plan?.entry_max ?? setup.plan?.mark ?? null,
+            gamma_regime: setup.gamma_regime ?? null,
+          },
           snap,
           committedAtMs,
-          acceptedThisTxn
+          acceptedThisTxn,
+          { etMinutes: recountEtMinutes, premiumAtRisk, shortGammaOpen }
         );
         if (blocks.length > 0) {
           // Dropped by the transactional recount — durable, visible SKIP with the governor

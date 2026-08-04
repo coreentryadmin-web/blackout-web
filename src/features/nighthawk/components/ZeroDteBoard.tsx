@@ -104,6 +104,23 @@ type BoardGovernor = {
   max_session_stops: number;
   halted: boolean;
   reentry_lock_ms: number;
+  premium_at_risk?: number;
+  max_premium_at_risk?: number;
+  short_gamma_open?: number;
+  max_short_gamma_open?: number;
+  time_of_day_label?: string | null;
+  effective_max_concurrent?: number;
+  time_of_day_sizing_factor?: number;
+};
+
+type BoardDiscoveryFunnel = {
+  detected_tickers: number;
+  gate_blocked_events: number;
+  commit_events: number;
+  top_gate: string | null;
+  top_gate_label: string | null;
+  top_gate_n: number;
+  summary: string | null;
 };
 
 type BoardResponse = {
@@ -120,6 +137,7 @@ type BoardResponse = {
   covered_elsewhere?: string[];
   governor?: BoardGovernor | null;
   market_state?: BoardMarketState | null;
+  discovery_funnel?: BoardDiscoveryFunnel | null;
 };
 
 /** Market State Engine block (Phase 2b) — regime-adaptive rail weights at merge rank. */
@@ -130,6 +148,12 @@ type BoardMarketState = {
   confidence: number;
   rail_weights: { FLOW: number; BREAKOUT: number; PIN: number };
   summary: string;
+  calibration_shadow?: {
+    active: boolean;
+    blend: number;
+    rail_weights: { FLOW: number; BREAKOUT: number; PIN: number };
+    confidence: number;
+  } | null;
 };
 
 /** Pure: derives a real freshness status from the scan's own success signal + response
@@ -539,6 +563,34 @@ function GovernorStrip({
             title={c.reason}
           />
         ))}
+        {gov.premium_at_risk != null && gov.max_premium_at_risk != null && (
+          <GovPill
+            label="Premium"
+            value={`$${Math.round(gov.premium_at_risk / 1000)}k/$${Math.round(gov.max_premium_at_risk / 1000)}k`}
+            tone={gov.premium_at_risk >= gov.max_premium_at_risk ? "gold" : "sky"}
+            title="Aggregate entry premium across open plans"
+          />
+        )}
+        {gov.short_gamma_open != null && gov.max_short_gamma_open != null && gov.short_gamma_open > 0 && (
+          <GovPill
+            label="Short γ"
+            value={`${gov.short_gamma_open}/${gov.max_short_gamma_open}`}
+            tone={gov.short_gamma_open >= gov.max_short_gamma_open ? "gold" : "sky"}
+            title="Open short-gamma plays (dealer-amplifying regime)"
+          />
+        )}
+        {gov.time_of_day_label && (
+          <GovPill
+            label="Window"
+            value={gov.time_of_day_label.split("—")[0]?.trim() ?? gov.time_of_day_label}
+            tone="sky"
+            title={
+              gov.effective_max_concurrent != null
+                ? `Effective concurrent cap ${gov.effective_max_concurrent} (×${gov.time_of_day_sizing_factor ?? 1})`
+                : gov.time_of_day_label
+            }
+          />
+        )}
       </div>
       {gov.halted && (
         <p className="rounded-lg border border-bear/40 bg-bear/[0.08] px-3 py-2 font-mono text-[11px] font-bold uppercase tracking-widest text-bear">
@@ -580,9 +632,27 @@ function MarketStateStrip({ ms }: { ms: BoardMarketState | null | undefined }) {
             title="Regime clarity — low confidence keeps weights near equal"
           />
         )}
+        {ms.calibration_shadow?.active && (
+          <GovPill
+            label="Cal shadow"
+            value={`${Math.round(ms.calibration_shadow.blend * 100)}%`}
+            tone="gold"
+            title="Calibration origin-band priors blended into merge rank (shadow mode)"
+          />
+        )}
       </div>
       <p className="font-mono text-[10px] uppercase tracking-widest text-cyan-400">{ms.summary}</p>
     </div>
+  );
+}
+
+/** Phase 2c — top session rejection reason from discovery funnel. */
+function DiscoveryFunnelStrip({ funnel }: { funnel: BoardDiscoveryFunnel | null | undefined }) {
+  if (!funnel?.summary) return null;
+  return (
+    <p className="mt-2 font-mono text-[10px] uppercase tracking-widest text-sky-200" title="Discovery funnel — why candidates didn't commit">
+      Funnel · {funnel.summary}
+    </p>
   );
 }
 
@@ -631,6 +701,7 @@ function PaneHeader({
       </div>
       <GovernorStrip gov={data.governor} conflicts={conflicts} nowMs={nowMs} />
       <MarketStateStrip ms={data.market_state} />
+      <DiscoveryFunnelStrip funnel={data.discovery_funnel} />
       <p className="mt-2 font-mono text-[10px] uppercase tracking-widest text-sky-200">
         0DTE discipline: no new plays after 3:00 ET · everything closes by 3:30 ET · nothing held overnight
       </p>

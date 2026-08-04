@@ -57,8 +57,10 @@ import { PLAN_RULES } from "@/lib/zerodte/plan";
 import {
   loadRecordedGovernorStops,
   summarizeGovernorForBoard,
+  countShortGammaOpen,
   type ZeroDteGovernorSummary,
 } from "@/lib/zerodte/governor";
+import { fetchDiscoveryFunnelHint, type DiscoveryFunnelHint } from "@/lib/zerodte/discovery-funnel-hint";
 import { gradeZeroDteLedger, readZeroDteLedgerChecked, scanZeroDteBoard, syncLedgerLiveState } from "@/lib/zerodte/scan";
 import {
   readExitStampFromEntryContext,
@@ -224,6 +226,8 @@ export type ZeroDteBoardPayload = {
   allocation: AllocationDecision[];
   /** Market State Engine snapshot for this scan — regime-adaptive rail weights (Phase 2b UI provenance). */
   market_state: import("@/lib/zerodte/market-state-engine").MarketStateSnapshot | null;
+  /** Phase 2c — top session rejection reason for the discovery funnel strip. */
+  discovery_funnel: DiscoveryFunnelHint | null;
 };
 
 // ── Shared, converged board snapshot (fix/zerodte-board-convergence) ──────────────
@@ -564,7 +568,8 @@ export async function buildZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
   const rawLedger = ledgerRead.rows;
 
   const ledgerRows = await syncLedgerLiveState(rawLedger).catch(() => rawLedger);
-  const [nighthawkEcho, liveMarks, governor] = await Promise.all([
+  const nowEtMinutes = hour * 60 + minute;
+  const [nighthawkEcho, liveMarks, governor, discovery_funnel] = await Promise.all([
     fetchNighthawkEchoForTickers(ledgerRows.map((r) => r.ticker)),
     attachLiveMarkMeta(ledgerRows),
     // PR-D governor strip: same ledger + recorded-stop snapshot the gate stack's
@@ -573,8 +578,14 @@ export async function buildZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
     // which the pane renders as "unavailable" — never fabricated risk state.
     loadRecordedGovernorStops(today)
       .catch(() => [])
-      .then((recorded) => summarizeGovernorForBoard(ledgerRows, recorded))
+      .then((recorded) =>
+        summarizeGovernorForBoard(ledgerRows, recorded, {
+          etMinutes: nowEtMinutes,
+          shortGammaOpen: countShortGammaOpen(ledgerRows),
+        })
+      )
       .catch((): ZeroDteGovernorSummary | null => null),
+    fetchDiscoveryFunnelHint(today).catch((): DiscoveryFunnelHint | null => null),
   ]);
 
   const nextDay = nextTradingDayEt(today);
@@ -615,7 +626,6 @@ export async function buildZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
     console.warn("[zerodte-service] allocation failed (advisory, empty):", err);
   }
 
-  const nowEtMinutes = hour * 60 + minute;
   const setupByTicker = new Map(displaySetups.map((s) => [s.ticker.toUpperCase(), s]));
 
   const payload = roundFloats({
@@ -645,6 +655,7 @@ export async function buildZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
     governor,
     allocation,
     market_state,
+    discovery_funnel,
   }) as ZeroDteBoardPayload;
 
   // roundFloats() rounds entry_premium/last_mark independently; recompute PnL from the
@@ -834,6 +845,7 @@ function buildMinimalBoardFallback(): ZeroDteBoardPayload {
     governor: null,
     allocation: [],
     market_state: null,
+    discovery_funnel: null,
   };
 }
 
