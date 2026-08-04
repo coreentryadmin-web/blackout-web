@@ -17,6 +17,19 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 
 ---
 
+## 2026-08-04 — [P2, UX] Night Hawk right detail panel lost scroll after left-rail fix (#1596) — FIXED
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P2 UX — thesis/management content clipped on Swings + 0DTE when play detail exceeds viewport |
+| **Evidence** | Member screenshot: left `.nh-deck-rows` scrollbar visible; right CORZ thesis cut off with no page or panel scroll |
+| **Root cause** | #1596 capped shell at `100svh` + `overflow:hidden` and added flex scroll only for `.nh-deck-rows` (left). Right panel relied on page scroll before; `.nh-deck-body` had `overflow-y:auto` in globals but no flex-shrink chrome / min-height chain under the new viewport lock |
+| **Fix** | Mirror left rules on right: `nh-deck-right` flex column; pin header/tabs/footer; `.nh-deck-body` flex fill + visible scrollbar |
+| **Files** | `src/app/nighthawk-v2.css` |
+| **Status** | FIXED — PR `cursor/nighthawk-right-scroll-3d11` |
+
+---
+
 ## 2026-08-04 — [P2, UX/correctness disclosure] Thermal key levels looked "way off" vs matrix peaks / competitor tools — FIXED (scope labels)
 
 | Field | Value |
@@ -27,6 +40,18 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Fix** | KeyLevelBox kicker → `GEX · near-term (N)`; scope footnote under bar; METRIC_HELP + max-pain tooltip name front expiry; King node label `gexKingDualLabel("near-term")`. Helpers: `keyLevelsKicker` / `keyLevelsFootnote` in `thermal-desk-state.ts`. |
 | **Files** | `GexHeatmap.tsx`, `thermal-desk-state.ts`, `thermal-desk-state.test.ts` |
 | **Status** | FIXED — PR `cursor/thermal-key-levels-scope-3d11` |
+=======
+## 2026-08-04 — [P2, UX] Night Hawk right detail panel lost scroll after left-rail fix (#1596) — FIXED
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P2 UX — thesis/management content clipped on Swings + 0DTE when play detail exceeds viewport |
+| **Evidence** | Member screenshot: left `.nh-deck-rows` scrollbar visible; right CORZ thesis cut off with no page or panel scroll |
+| **Root cause** | #1596 capped shell at `100svh` + `overflow:hidden` and added flex scroll only for `.nh-deck-rows` (left). Right panel relied on page scroll before; `.nh-deck-body` had `overflow-y:auto` in globals but no flex-shrink chrome / min-height chain under the new viewport lock |
+| **Fix** | Mirror left rules on right: `nh-deck-right` flex column; pin header/tabs/footer; `.nh-deck-body` flex fill + visible scrollbar |
+| **Files** | `src/app/nighthawk-v2.css` |
+| **Status** | FIXED — PR `cursor/nighthawk-right-scroll-3d11` |
+>>>>>>> 9d248815 (docs: FINDINGS entry for nighthawk right panel scroll)
 
 ---
 
