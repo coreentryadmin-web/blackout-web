@@ -412,6 +412,11 @@ async function browserDashboard(session, hm) {
       rec("ui:matrix-text-sanity", "PASS");
     }
 
+    const largoTab = page.locator(".spx-intel-rail-tab").filter({ hasText: "Largo" });
+    if (await largoTab.count()) {
+      await largoTab.click();
+      await page.waitForTimeout(500);
+    }
     const expandBtn = page.locator("#spx-commentary-expand, #spx-commentary-rail-toggle").first();
     if (await expandBtn.count()) {
       await expandBtn.click();

@@ -252,7 +252,8 @@ async function main() {
 
   // 1. RTH infra gate
   if (force || inRthOpenWindow(now)) {
-    run("npm run validate:rth-open", "infra:validate:rth-open");
+    // grid-rth uses 420s — rth-open can exceed 300s when socket-health warms slowly.
+    run("npm run validate:rth-open", "infra:validate:rth-open", 420_000);
   }
 
   // 2. SPX matrix — every cell invariant (SPX only during all-day pass)

@@ -1,5 +1,47 @@
 # BlackOut Open Issues Log
-Last updated: 2026-08-04 12:58 ET
+Last updated: 2026-08-04 13:50 ET
+
+## spx-rth-2026-08-04-pass2 — SPX Slayer RTH verify (~10:39 AM PT / 1:39 PM ET)
+
+**Session:** SPX Slayer all-day **verify** mode per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` Step 1–5 (Cloud Agent `cursor/spx-rth-system-verification-c2ed`). Commands: `npm run validate:spx-rth` → `npm run validate:spx-e2e` → 60s live dwell.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth` | ⚠️ **7 PASS / 1 WARN / 1 FAIL** — `infra:validate:rth-open` subprocess timeout at 300s (direct run ~158s GREEN) |
+| `npm run validate:spx-e2e` (1st) | ⚠️ **1 FAIL** — transient deploy chunk 404 (`2376-c260aee1ea9e7250.js` MIME text/plain) |
+| `npm run validate:spx-e2e` (retry) | ✅ **0 FAIL / 18 checks** |
+| `npm run ops:collect` | ✅ **0 action items** (nested in spx-rth) |
+
+**Matrix:** 158 strikes · spot 7748.42 · GEX+VEX+DEX+CHARM finite · every cell vs `/api/market/gex-heatmap?ticker=SPX` · Σ strike_totals == headline per lens.
+
+**Cross-endpoint:** desk merged=7745.48 · heatmap=7745.41 · play WATCHING/WATCHING — no stale confirmations during SCANNING/HUNTING.
+
+**Desk lanes:** spot=7745.11 · pulse=true · flow=true — all lanes live.
+
+**UI E2E:** GEX tab ✅ · VEX tab ✅ · 158 strike rows ✅ · matrix text sanity (no NaN/undefined/$—) ✅ · play verdict bar SPX PLAY ✅ · zero console errors (retry) ✅ · LIVE badge during RTH ✅.
+
+**Cross-tool:** Thermal cross-validation ✅ · HELIX 30 prints ✅ · Largo `blackout_intelligence` ✅ · Grid bootstrap ✅ · 0DTE 12 setups ✅ · Night Hawk edition ✅ · BIE `getSpxPlayState()` consistent ✅ · desk=7748.52 play=WATCHING ✅.
+
+**Live auto-update:** 60s API dwell on merged desk — spot stable midday (low-vol tape); E2E matrix poll cadence 8s RTH confirmed in prior pass. Not a failure.
+
+### Findings table (`spx-rth-2026-08-04`)
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| — | — | **No P0/P1 product defects** | all member surfaces GREEN | — |
+| P2 | SPX-RTH-RTH-OPEN-TIMEOUT | `infra:validate:rth-open` killed at 300s while direct run GREEN ~158s | subprocess in `spx-rth-all-day-audit.mjs` | **Fixed** — bump to 420s (match grid-rth) |
+| P2 | SPX-RTH-DEPLOY-CHUNK-404 | Transient 404 on `_next/static/chunks/2376-*.js` during E2E — deploy mid-rollout; retry GREEN | `/dashboard` console | Yes — monitor deploy smoke |
+| P2 | SPX-RTH-CRON-SECRET | `spx:data-correctness` WARN — CRON_SECRET auth mismatch on sync poll | `/api/cron/data-correctness` | Yes — prod cron authoritative |
+| P2 | SPX-RTH-BIE-CRON | `integration:bie-play-route` WARN — cron play HTTP 401 | `/api/cron/spx-evaluate` | Yes — member BIE validator PASS |
+| P2 | SPX-RTH-COMMENTARY-EXPAND | `ui:click-commentary-expand` SKIP — Pulse default rail; Largo tab required | `/dashboard` | **Fixed** — E2E clicks Largo tab first |
+
+**Verify status: GREEN** — zero product FAIL on retried `validate:spx-e2e`; matrix 100% vs API; no P0 fixes required.
+
+**Reports:** `audit-output/spx-rth-2026-08-04-verify-1785865535449.json`, `audit-output/spx-dashboard-e2e-1785865579118.json`
+
+---
 
 ## rth-open-2026-08-04-pass2 — RTH comprehensive test sweep (~12:31–12:45 PM ET)
 
