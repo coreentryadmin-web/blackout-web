@@ -64,7 +64,9 @@ Last updated: 2026-08-04 13:58 ET
 | P2 | DC-SKHY-THIN-OI | SKHY $143 CALL chain OI 324 &lt; floor 500 | **Open** — intraday OI decay on OTM weekly; consider illiquid latch |
 | P2 | DC-FLOWS-504-BURST | `surface=flows` 504 during parallel correctness burst | Transient CF timeout |
 
-**Status: GREEN** — comprehensive sweep 0 P0/P1. Fix PR for ANET overlay → merge → re-verify data-correctness.
+**Status: GREEN** — comprehensive sweep 0 P0/P1. PR #1623 merged — post-deploy `data-correctness?surface=spx` no longer flags latch-pulled ANET; SKHY thin-OI flag remains (P2).
+
+**Post-deploy re-verify (18:15–18:23 ET):** `data-correctness?surface=spx` → flags=1 (SKHY OI 324 only; ANET excluded after pull-overlay fix live).
 
 **Reports:** `audit-output/rth-sweep-2026-08-04T17-50-39-712Z.json`, `audit-output/grid-e2e-1785866052668.json`, `audit-output/spx-dashboard-e2e-1785866067069.json`
 
