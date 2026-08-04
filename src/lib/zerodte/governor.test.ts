@@ -14,6 +14,8 @@ import {
   mergeGovernorStops,
   recordGovernorStops,
   summarizeGovernorForBoard,
+  aggregatePremiumAtRisk,
+  timeOfDaySizingFactor,
   maxCorrelatedSameDirection,
   concentrationReasonForCandidate,
   freezeConcentrationState,
@@ -633,4 +635,34 @@ test("governor state: malformed recorded entries (bad direction / non-finite at_
   assert.equal(recorded[0]!.ticker, "SPY");
   assert.equal(recorded[0]!.direction, "long");
   assert.ok(Number.isFinite(recorded[0]!.at_ms!));
+});
+
+// ── Phase 2c portfolio governor extensions ───────────────────────────────────────────
+test("aggregatePremiumAtRisk sums open plan entry premiums", () => {
+  assert.equal(
+    aggregatePremiumAtRisk([
+      row({ ticker: "NVDA", status: "OPEN", entry_premium: 1200 }),
+      row({ ticker: "AMD", status: "HOLD", entry_premium: 800 }),
+      row({ ticker: "META", status: "CLOSED", entry_premium: 500 }),
+    ]),
+    2000
+  );
+});
+
+test("timeOfDaySizingFactor reduces cap during lunch chop", () => {
+  const lunch = timeOfDaySizingFactor(13 * 60);
+  assert.ok(lunch.factor < 1);
+  assert.ok(lunch.effective_max_concurrent < GOVERNOR_MAX_CONCURRENT_PLANS);
+  assert.match(lunch.label ?? "", /lunch/i);
+});
+
+test("summarizeGovernorForBoard: surfaces premium + TOD sizing fields", () => {
+  const s = summarizeGovernorForBoard(
+    [row({ ticker: "NVDA", status: "OPEN", entry_premium: 50_000 })],
+    [],
+    { etMinutes: 13 * 60, shortGammaOpen: 2 }
+  );
+  assert.equal(s.premium_at_risk, 50_000);
+  assert.equal(s.short_gamma_open, 2);
+  assert.ok(s.effective_max_concurrent <= GOVERNOR_MAX_CONCURRENT_PLANS);
 });

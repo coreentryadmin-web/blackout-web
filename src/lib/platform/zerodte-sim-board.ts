@@ -95,6 +95,7 @@ export function emptySimBoardPayload(): ZeroDteBoardPayload {
     governor: null,
     allocation: [],
     market_state: null,
+    discovery_funnel: null,
   };
 }
 

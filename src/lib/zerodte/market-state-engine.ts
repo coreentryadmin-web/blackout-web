@@ -23,6 +23,13 @@ export type MarketStateSnapshot = {
   rail_weights: RailWeightMap;
   /** Human one-liner for ops/UI — no vendor names. */
   summary: string;
+  /** Phase 2c — shadow calibration priors blended into rail_weights when enabled. */
+  calibration_shadow?: {
+    active: boolean;
+    blend: number;
+    rail_weights: RailWeightMap;
+    confidence: number;
+  } | null;
 };
 
 /** Baseline priors before regime adjustment (equal rails). */
@@ -72,18 +79,57 @@ export function blendRailWeights(raw: RailWeightMap, confidence: number): RailWe
   };
 }
 
+/** Blend regime rail weights with shadow calibration priors (Phase 2c). Pure. */
+export function blendRegimeWithCalibrationPriors(
+  regimeWeights: RailWeightMap,
+  calibrationWeights: RailWeightMap,
+  blend: number
+): RailWeightMap {
+  const b = Math.max(0, Math.min(1, blend));
+  if (b <= 0) return { ...regimeWeights };
+  const mix = (key: DiscoveryRail) =>
+    clampWeight(regimeWeights[key] * (1 - b) + calibrationWeights[key] * b);
+  return { FLOW: mix("FLOW"), BREAKOUT: mix("BREAKOUT"), PIN: mix("PIN") };
+}
+
 export function buildMarketState(input: {
   regime: MarketRegime | null;
   sessionDate: string;
+  /** Optional shadow calibration priors from Redis (Phase 2c). */
+  shadowCalibration?: {
+    rail_weights: RailWeightMap;
+    confidence: number;
+    blend: number;
+  } | null;
 }): MarketStateSnapshot {
   const confidence = regimeConfidence(input.regime);
   const raw = rawRailWeightsForStructure(input.regime?.structure ?? null);
-  const rail_weights = blendRailWeights(raw, confidence);
+  let rail_weights = blendRailWeights(raw, confidence);
   const structure = input.regime?.structure ?? null;
+
+  let calibration_shadow: MarketStateSnapshot["calibration_shadow"] = null;
+  const shadow = input.shadowCalibration;
+  if (shadow && shadow.blend > 0 && shadow.confidence > 0) {
+    const effectiveBlend = shadow.blend * shadow.confidence;
+    rail_weights = blendRegimeWithCalibrationPriors(rail_weights, shadow.rail_weights, effectiveBlend);
+    calibration_shadow = {
+      active: true,
+      blend: effectiveBlend,
+      rail_weights: shadow.rail_weights,
+      confidence: shadow.confidence,
+    };
+  }
+
+  const calNote =
+    calibration_shadow?.active === true
+      ? ` · cal×${Math.round(calibration_shadow.blend * 100)}%`
+      : "";
   const summary =
     confidence >= 0.7 && structure
-      ? `${structure.replace("_", " ").toLowerCase()} session — FLOW×${rail_weights.FLOW} BREAKOUT×${rail_weights.BREAKOUT} PIN×${rail_weights.PIN}`
-      : "Mixed regime — equal rail weights";
+      ? `${structure.replace("_", " ").toLowerCase()} session — FLOW×${rail_weights.FLOW} BREAKOUT×${rail_weights.BREAKOUT} PIN×${rail_weights.PIN}${calNote}`
+      : calibration_shadow?.active
+        ? `Mixed regime — calibration-blended rails${calNote}`
+        : "Mixed regime — equal rail weights";
 
   return {
     session_date: input.sessionDate,
@@ -93,6 +139,7 @@ export function buildMarketState(input: {
     confidence,
     rail_weights,
     summary,
+    calibration_shadow,
   };
 }
 

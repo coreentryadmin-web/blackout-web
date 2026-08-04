@@ -13,6 +13,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { gradeZeroDteLedger } from "@/lib/zerodte/scan";
+import { refreshShadowRailPriors } from "@/lib/zerodte/calibration-rail-priors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,7 +30,8 @@ export async function GET(req: NextRequest) {
     // grades on its own schedule, never skipped because warmZeroDteBoard ran
     // recently.
     const graded = await gradeZeroDteLedger(/* force */ true);
-    const payload = { ok: true, graded };
+    const shadowPriors = await refreshShadowRailPriors().catch(() => null);
+    const payload = { ok: true, graded, shadow_priors_refreshed: shadowPriors != null };
     await logCronRun("zerodte-grade", started, payload);
     return NextResponse.json(payload);
   } catch (err) {

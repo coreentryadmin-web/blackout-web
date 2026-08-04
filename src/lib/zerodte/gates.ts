@@ -304,6 +304,12 @@ export type ZeroDteGateInput = {
    *  governor's concurrency cap + correlated-conflict check so one cycle can't
    *  overshoot the cap or commit correlated-but-opposed plans together. */
   committedThisCycle?: GovernorOpenPlan[];
+  /** Phase 2c — aggregate entry premium across open plans (governor premium budget). */
+  governorPremiumAtRisk?: number;
+  /** Phase 2c — open short-gamma play count (governor gamma budget). */
+  governorShortGammaOpen?: number;
+  /** Dealer gamma regime for the name (dossier) — governor gamma budget candidate check. */
+  gamma_regime?: string | null;
   /** Day-open VIX (Polygon I:VIX daily bar open). Null = value not supplied to the gate —
    *  the G-4 regime throttle only fires on a present value, never guesses. To fail a fresh
    *  commit CLOSED on an unavailable VIX, set `vixUnavailable` (below) as well. */
@@ -808,10 +814,20 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
   } else {
     blocks.push(
       ...evaluateZeroDteGovernor(
-        { ticker: input.ticker, direction: input.direction },
+        {
+          ticker: input.ticker,
+          direction: input.direction,
+          entry_premium: input.plan?.entry_max ?? input.plan?.mark ?? null,
+          gamma_regime: input.gamma_regime ?? null,
+        },
         input.governor,
         input.nowMs,
-        input.committedThisCycle ?? []
+        input.committedThisCycle ?? [],
+        {
+          etMinutes: input.nowEtMinutes,
+          premiumAtRisk: input.governorPremiumAtRisk,
+          shortGammaOpen: input.governorShortGammaOpen,
+        }
       )
     );
   }
