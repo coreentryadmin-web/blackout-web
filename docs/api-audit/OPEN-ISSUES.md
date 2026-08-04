@@ -1,5 +1,46 @@
 # BlackOut Open Issues Log
-Last updated: 2026-08-04 12:33 ET
+Last updated: 2026-08-04 12:58 ET
+
+## spx-rth-2026-08-04-pass2 — SPX Slayer RTH verify agent (post-open ~9:49 AM PT / 12:49 PM ET)
+
+**Session:** SPX Slayer all-day **verify** mode per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` Step 1–5 (Cloud Agent `cursor/spx-rth-system-verification-8fca`). Commands: `npm run validate:spx-rth` → `npm run validate:spx-e2e` → 60s authenticated live-update probe.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth` | ✅ **8 PASS / 1 WARN / 0 FAIL** |
+| `npm run validate:spx-e2e` | ✅ **0 FAIL / 18 checks** — matrix 160 strikes GEX+VEX+DEX+CHARM, GEX/VEX tab clicks, cross-tool integration |
+| `npm run ops:collect` | ✅ **0 action items** (nested in spx-rth) |
+| 60s live auto-update (auth) | ✅ **PASS** — desk Δ0.36 · pulse Δ0.90 · heatmap spot Δ0.43 · `as_of` advanced |
+
+**Matrix:** 160 strikes · spot 7725.94 · GEX+VEX+DEX+CHARM finite · every cell vs `/api/market/gex-heatmap?ticker=SPX` · Σ strike_totals == headline per lens.
+
+**Cross-endpoint:** desk merged=7725.52 · heatmap=7725.82 · play HOLD/OPEN — no stale confirmations during active play state.
+
+**Desk lanes:** spot=7725.54 · pulse=true · flow=true — all lanes live.
+
+**UI E2E:** GEX tab ✅ · VEX tab ✅ · 160 strike rows ✅ · matrix text sanity (no NaN/undefined/$—) ✅ · play verdict bar SPX PLAY ✅ · zero console errors ✅ · LIVE badge during RTH ✅.
+
+**Cross-tool:** Thermal cross-validation ✅ · HELIX 30 prints ✅ · Largo `blackout_intelligence` ✅ · Grid bootstrap ✅ · 0DTE 10 setups ✅ · Night Hawk edition ✅ · BIE `getSpxPlayState()` consistent ✅ · desk=7726.4 play=HOLD ✅.
+
+**Live auto-update:** 62s authenticated dwell — desk price 7724.67→7725.03 · pulse 7725.06→7725.96 · heatmap spot 7724.87→7725.30 · `desk.as_of` advanced.
+
+### Findings table (`spx-rth-2026-08-04`)
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| — | — | **No P0/P1 product defects** | all suites GREEN | — |
+| INFO | ENV-NODE-MODULES | Initial run failed on missing `node_modules` (pg/tsx/playwright) in cloud agent | — | Resolved via `npm install` + `npx playwright install chromium` |
+| P2 | SPX-RTH-CRON-SECRET | `spx:data-correctness` WARN — CRON_SECRET auth mismatch on sync poll | `/api/cron/data-correctness` | Yes — prod cron authoritative |
+| P2 | SPX-RTH-BIE-CRON | `integration:bie-play-route` WARN — cron play HTTP 401 | `/api/cron/spx-evaluate` | Yes — member `/spx/play` PASS via BIE validator |
+| P2 | SPX-RTH-COMMENTARY-EXPAND | `ui:click-commentary-expand` SKIP — no expand control on commentary rail | `/dashboard` | Yes — post-close UX audit |
+
+**Verify status: GREEN** — zero FAIL on `validate:spx-rth` and `validate:spx-e2e`. No P0 fixes required.
+
+**Reports:** `audit-output/spx-rth-2026-08-04-verify-1785862502515.json`, `audit-output/spx-dashboard-e2e-1785862520075.json`
+
+---
 
 ## spx-rth-2026-08-04 — SPX Slayer RTH verify agent (market-open ~9:26 AM PT / 12:26 PM ET)
 
