@@ -10,6 +10,13 @@
  * GEX/walls — proximity is only woven in when the caller supplies it.
  */
 import type { GexProximityLabel } from "@/lib/flow-gex-proximity";
+import {
+  computeFlowStrikeStacks,
+  flowStackSideLabel,
+  type FlowStackHit,
+  type FlowStrikeStack,
+} from "@/lib/largo/flow-strike-stacks";
+import { HELIX_STRIKE_HITS_WINDOW_MIN } from "@/features/helix/lib/helix-strike-leaders";
 
 export const HELIX_DISCORD_MIN_PREMIUM = 500_000;
 export const HELIX_DISCORD_MAX_FILL = 10;
@@ -34,6 +41,8 @@ export type HelixDiscordFlowInput = {
   implied_volatility?: number | null;
   alert_rule?: string | null;
   gex_proximity?: GexProximityLabel | string | null;
+  /** Same-contract hits inside the rolling window — enriches Repeat Hits embeds. */
+  stack_hits?: Array<{ at: string; premium: number; fill_price?: number | null }>;
 };
 
 export type HelixDiscordKind = "whale" | "structure" | "whale-structure" | "stack" | "near";
@@ -84,6 +93,43 @@ export function moneyShort(n: number): string {
   }
   if (Math.abs(n) >= 1e3) return `$${Math.round(n / 1e3).toLocaleString("en-US")}K`;
   return `$${Math.round(n).toLocaleString("en-US")}`;
+}
+
+/** ET timestamp for Discord hit timelines — date + time, no relative fluff. */
+export function formatHelixHitTimestampEt(iso: string, opts?: { date?: boolean }): string {
+  const ms = new Date(iso).getTime();
+  if (!Number.isFinite(ms)) return "—";
+  const withDate = opts?.date !== false;
+  return new Date(iso).toLocaleString("en-US", {
+    timeZone: "America/New_York",
+    ...(withDate ? { month: "short", day: "numeric" } : {}),
+    hour: "numeric",
+    minute: "2-digit",
+    second: withDate ? "2-digit" : undefined,
+    hour12: true,
+  });
+}
+
+function fmtFillPrice(fill: number | null | undefined): string {
+  if (fill == null || !Number.isFinite(fill)) return "";
+  return ` @ $${fill % 1 ? fill.toFixed(2) : fill}`;
+}
+
+/** Timeline block for stacked / repeat-hit Discord copy. */
+export function formatHelixStackHitTimeline(
+  hits: readonly FlowStackHit[],
+  opts?: { maxLines?: number }
+): string {
+  const max = opts?.maxLines ?? 6;
+  if (!hits.length) return "";
+  const lines = hits.slice(-max).map((h) => {
+    const et = formatHelixHitTimestampEt(h.at);
+    return `• ${et} ET · ${moneyShort(h.premium)}${fmtFillPrice(h.fill_price ?? null)}`;
+  });
+  if (hits.length > max) {
+    lines.unshift(`_…${hits.length - max} earlier hit${hits.length - max === 1 ? "" : "s"}_`);
+  }
+  return lines.join("\n");
 }
 
 function fmtStrike(s: number): string {
@@ -208,7 +254,17 @@ export function helixDiscordWriteup(flow: HelixDiscordFlowInput, now = new Date(
     if (Math.abs(otm) >= 0.3) bits.push(`${Math.abs(otm).toFixed(1)}% ${otm >= 0 ? "OTM" : "ITM"}`);
   }
 
-  return bits.length ? `${line1}\n${bits.join(" · ")}.` : line1;
+  let body = bits.length ? `${line1}\n${bits.join(" · ")}.` : line1;
+  const hits = flow.stack_hits ?? [];
+  if (hits.length >= 2) {
+    const windowLabel =
+      hits.length === flow.stack_hits?.length
+        ? `${hits.length} hits`
+        : `${hits.length} hits in window`;
+    body += `\n\n**Stack timeline** (${windowLabel}):\n${formatHelixStackHitTimeline(hits)}`;
+  }
+
+  return body;
 }
 
 export function buildHelixDiscordEmbed(
@@ -295,6 +351,149 @@ export function buildHelixTopHitsDigestEmbed(input: {
     timestamp: now.toISOString(),
     url: `${APP_BASE}/flows`,
   };
+}
+
+function stackHeadline(stack: FlowStrikeStack, now = new Date()): string {
+  const side = String(stack.option_type || "").toUpperCase().startsWith("C") ? "C" : "P";
+  const dte = dteFromExpiry(stack.expiry, now);
+  const dteStr = dteLabel(dte);
+  return `${stack.ticker} ${fmtStrike(stack.strike)}${side} ${fmtExpiry(stack.expiry)}${
+    dteStr ? ` — ${dteStr}` : ""
+  }`;
+}
+
+function stackKindLabel(kind: FlowStrikeStack["kind"]): string {
+  switch (kind) {
+    case "repeated_and_stacked":
+      return "Repeat + stack";
+    case "repeated_hits":
+      return "Repeat hits";
+    default:
+      return "Stacked";
+  }
+}
+
+export function buildHelixStackedHitsDigestEmbed(input: {
+  windowMin: number;
+  stacks: FlowStrikeStack[];
+  now?: Date;
+}): DiscordEmbed {
+  const now = input.now ?? new Date();
+  const et = now.toLocaleString("en-US", {
+    timeZone: "America/New_York",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+
+  if (!input.stacks.length) {
+    return {
+      title: `📚 HELIX · Stacked hits · last ${input.windowMin}m`,
+      description: `No multi-hit stacks in the last **${input.windowMin} minutes** under the community filters.`,
+      color: 0x64748b,
+      footer: { text: `BlackOut HELIX · ${et} ET` },
+      timestamp: now.toISOString(),
+    };
+  }
+
+  const head = `Contracts with **2+ hits** in the last **${input.windowMin} minutes** · ≥$500K · fill <$10 · ≤30 DTE.\n`;
+
+  const body = input.stacks
+    .map((stack, i) => {
+      const side = flowStackSideLabel(stack.option_type, stack.avg_ask_pct);
+      const header =
+        `**${i + 1}. ${stackHeadline(stack, now)}** — ${stack.recent_hit_count} hits · ` +
+        `${moneyShort(stack.recent_premium)} · ${stackKindLabel(stack.kind)} · ${side.lean}`;
+      const timeline = formatHelixStackHitTimeline(stack.recent_hits, { maxLines: 5 });
+      return timeline ? `${header}\n${timeline}` : header;
+    })
+    .join("\n\n");
+
+  return {
+    title: `📚 HELIX · Stacked hits · last ${input.windowMin}m`,
+    description: `${head}\n${body}\n\n[Open in HELIX](${APP_BASE}/flows)`,
+    color: 0xa3e635,
+    footer: {
+      text: `BlackOut HELIX · ${et} ET · ${input.stacks.length} stack${input.stacks.length === 1 ? "" : "s"}`,
+    },
+    timestamp: now.toISOString(),
+    url: `${APP_BASE}/flows`,
+  };
+}
+
+/** Map HELIX flow rows into stack-engine input (includes fill when present). */
+export function helixFlowToStackAlert(flow: HelixDiscordFlowInput): Record<string, unknown> {
+  return {
+    ticker: flow.ticker,
+    strike: flow.strike,
+    option_type: flow.option_type,
+    expiry: flow.expiry,
+    premium: flow.premium,
+    alerted_at: flow.alerted_at ?? flow.event_at ?? "",
+    event_at: flow.event_at ?? null,
+    ask_pct: flow.ask_pct ?? null,
+    alert_rule: flow.alert_rule ?? null,
+    trade_count: null,
+    fill_price: flow.fill_price ?? null,
+  };
+}
+
+/**
+ * Stacked-hit digests — same contract, 2+ hits inside the rolling window, Discord filters on
+ * each hit (fail closed on missing fill/dte).
+ */
+export function selectHelixDiscordStacks(
+  flows: readonly HelixDiscordFlowInput[],
+  opts?: { windowMin?: number; now?: Date; limit?: number }
+): FlowStrikeStack[] {
+  const windowMin = opts?.windowMin ?? HELIX_STRIKE_HITS_WINDOW_MIN;
+  const windowMs = windowMin * 60_000;
+  const now = opts?.now ?? new Date();
+  const limit = opts?.limit ?? HELIX_DISCORD_DIGEST_LIMIT;
+
+  const eligible = flows.filter((f) => passesHelixDiscordFilters(f, now));
+  const stacks = computeFlowStrikeStacks(eligible.map(helixFlowToStackAlert), {
+    minAlerts: 2,
+    limit: limit * 2,
+    windowMs,
+    nowMs: now.getTime(),
+  });
+
+  return stacks
+    .filter((s) => s.recent_hit_count >= 2 && s.recent_hits.length >= 2)
+    .slice(0, limit);
+}
+
+/** Pull same-contract hits from a flow pool for live Repeat Hits embeds. */
+export function contractStackHitsFromFlows(
+  flow: HelixDiscordFlowInput,
+  pool: readonly HelixDiscordFlowInput[],
+  opts?: { windowMin?: number; now?: Date }
+): FlowStackHit[] {
+  const windowMin = opts?.windowMin ?? HELIX_STRIKE_HITS_WINDOW_MIN;
+  const windowMs = windowMin * 60_000;
+  const nowMs = (opts?.now ?? new Date()).getTime();
+  const ticker = String(flow.ticker).toUpperCase();
+  const side = String(flow.option_type || "").toUpperCase().startsWith("C") ? "CALL" : "PUT";
+  const exp = String(flow.expiry).slice(0, 10);
+  const strike = Number(flow.strike);
+
+  const hits: FlowStackHit[] = [];
+  for (const row of pool) {
+    if (String(row.ticker).toUpperCase() !== ticker) continue;
+    if (Math.round(Number(row.strike)) !== Math.round(strike)) continue;
+    if (String(row.expiry).slice(0, 10) !== exp) continue;
+    const rowSide = String(row.option_type || "").toUpperCase().startsWith("C") ? "CALL" : "PUT";
+    if (rowSide !== side) continue;
+    if (!passesHelixDiscordFilters(row, opts?.now)) continue;
+    const at = row.event_at || row.alerted_at;
+    if (!at) continue;
+    const ms = new Date(at).getTime();
+    if (!Number.isFinite(ms) || nowMs - ms > windowMs) continue;
+    hits.push({ at, premium: Number(row.premium), fill_price: row.fill_price ?? null });
+  }
+
+  return hits.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
 }
 
 /** Opt-in: set HELIX_DISCORD_ALERTS=1 (uses DISCORD_HELIX_WEBHOOK_URL). */
