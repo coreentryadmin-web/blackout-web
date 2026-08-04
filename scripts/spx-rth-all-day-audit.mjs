@@ -36,9 +36,16 @@ const rec = (name, status, detail) => {
   console.log(`  [${status}] ${name}${detail ? " — " + detail : ""}`);
 };
 
-function run(cmd, label, timeoutMs = 300_000) {
-  const r = spawnSync(cmd, { shell: true, encoding: "utf8", env: process.env, timeout: timeoutMs });
-  if (r.error?.code === "ETIMEDOUT") {
+function run(cmd, label, opts = {}) {
+  const timeoutMs = opts.timeoutMs ?? 300_000;
+  const r = spawnSync(cmd, {
+    shell: true,
+    encoding: "utf8",
+    env: opts.env ?? process.env,
+    maxBuffer: 10 * 1024 * 1024,
+    timeout: timeoutMs,
+  });
+  if (r.error?.code === "ETIMEDOUT" || r.signal === "SIGTERM") {
     rec(label, "FAIL", `sub-run timed out after ${timeoutMs / 1000}s`);
     return false;
   }
@@ -269,7 +276,8 @@ async function main() {
 
   // 5. Dashboard E2E (clicks + cross-tool) when Clerk keys present
   if (process.env.CLERK_SECRET_KEY && process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) {
-    run("npm run validate:spx-e2e", "spx:dashboard-e2e");
+    // Largo query + Playwright UI can exceed 300s after upstream suite burst (SPX-RTH-2026-08-04).
+    run("npm run validate:spx-e2e", "spx:dashboard-e2e", { timeoutMs: 600_000 });
   } else {
     rec("spx:dashboard-e2e", "SKIP", "CLERK keys not set — API-only pass");
   }

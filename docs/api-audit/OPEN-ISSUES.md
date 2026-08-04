@@ -248,7 +248,44 @@ Last updated: 2026-08-04 14:28 ET
 
 ---
 
-## rth-open-2026-08-04-pass1 — RTH comprehensive test sweep (~12:00 PM ET)
+## spx-rth-2026-08-04-pass2 — SPX Slayer afternoon verify (~11:11 AM PT / 2:11 PM ET)
+
+**Session:** SPX Slayer all-day **verify** mode per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` Step 1–5 (Cloud Agent `cursor/spx-rth-system-verification-afa8`). Commands: `npm run validate:spx-rth` → `npm run validate:spx-e2e` + 60s live auto-update (`spx-live-check.mjs` FRAMES=2).
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth` | ✅ **8 PASS / 1 WARN / 0 FAIL** (final run after harness fix) |
+| `npm run validate:spx-e2e` | ✅ **0 FAIL / 18 checks** — matrix 158 strikes GEX+VEX+DEX+CHARM, GEX/VEX tab clicks, cross-tool integration |
+| `npm run ops:collect` | ✅ **0 action items** (nested in spx-rth) |
+| Live auto-update (60s) | ✅ spot header ticked 7300→7450 across 2 frames; pin forecast 7729.4→7729.7 |
+
+**Matrix:** 158–159 strikes · spot 7744–7747 · GEX+VEX+DEX+CHARM finite · every cell vs `/api/market/gex-heatmap?ticker=SPX` · Σ strike_totals == headline per lens.
+
+**Cross-endpoint:** desk merged=7744.83 · heatmap=7744.92 · play WATCHING/WATCHING — no stale confirmations during SCANNING.
+
+**Desk lanes:** spot=7744.83 · pulse=true · flow=true — all lanes live.
+
+**UI E2E:** GEX tab ✅ · VEX tab ✅ · Largo commentary expand/collapse ✅ · 158 strike rows ✅ · matrix text sanity (no NaN/undefined/$—) ✅ · play verdict bar SPX PLAY ✅ · zero console errors ✅ · LIVE badge during RTH ✅.
+
+**Cross-tool:** Thermal cross-validation ✅ · HELIX 30 prints ✅ · Largo `blackout_intelligence` ✅ · Grid bootstrap ✅ · 0DTE 11 setups ✅ · Night Hawk edition ✅ · BIE `getSpxPlayState()` consistent ✅ · desk=7746.53 play=WATCHING ✅.
+
+### Findings table (`spx-rth-2026-08-04`)
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| — | — | **No P0/P1 product defects** | all suites GREEN | — |
+| INFO | ENV-NODE-MODULES | Initial run failed on missing `node_modules` (pg/tsx/playwright) in cloud agent | — | Resolved via `npm install` + `npx playwright install chromium` |
+| P2 | SPX-RTH-CRON-SECRET | `spx:data-correctness` WARN — CRON_SECRET auth mismatch on sync poll | `/api/cron/data-correctness` | Yes — prod cron authoritative |
+| P2 | SPX-RTH-BIE-CRON | `integration:bie-play-route` WARN — cron play HTTP 401 | `/api/cron/spx-evaluate` | Yes — member `/spx/play` PASS via BIE validator |
+| P2 | SPX-RTH-E2E-ORCH-TIMEOUT | Nested `spx:dashboard-e2e` intermittently FAIL inside orchestrator (Largo+nighthawk burst &gt;300s) | `validate:spx-rth` spawnSync | **Fixed** — bump nested E2E timeout to 600s (`scripts/spx-rth-all-day-audit.mjs`) |
+
+**Verify status: GREEN** — zero FAIL on final `validate:spx-rth` and standalone `validate:spx-e2e`. No P0 fixes required.
+
+**Reports:** `audit-output/spx-rth-2026-08-04-verify-1785868195844.json`, `audit-output/spx-dashboard-e2e-1785867956909.json`, `/opt/cursor/artifacts/spx-live-update/report-2026-08-04-afternoon.json`
+
+---
 
 **Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` + full comprehensive sweep (Cloud Agent `cursor/rth-comprehensive-test-sweep-d63d`). Commands: `npm run validate:rth-open` → `GET /api/cron/data-correctness?force=1` → `npm run validate:rth-sweep`.
 
