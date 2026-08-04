@@ -204,17 +204,17 @@ export function closedStopReason(row: {
 
 /** Neutral trim-scale schedule (mirrors TRIM_SCALE_RULES.tranches_by_regime.neutral in exit-engine.ts).
  *  Used to estimate the AS-MANAGED blended P&L when a stopped runner still banked earlier tranches. */
-const TRIM_SCALE_NEUTRAL_PCTS: readonly [number, number] = [25, 50];
+const TRIM_SCALE_NEUTRAL_PCTS: readonly [number, number] = [20, 50];
 const TRIM_SCALE_TRANCHE_FRAC = 1 / 3;
 
 /**
  * Estimate trim-scale AS-MANAGED blended P&L when the runner exits at `runnerPnlPct` (default −50%
  * plan stop) but the latched peak had already armed one or both trim tranches. Returns null when
- * peak never reached the first trim (+25%) — the mechanical stop pin is then honest.
+ * peak never reached the first trim (+20%) — the mechanical stop pin is then honest.
  *
  * Example: peak +87%, runner stopped at −50% → ⅓@+25 + ⅓@+50 + ⅓@(−50) ≈ +8.33%.
  */
-/** Count of neutral trim-scale tranches the latched peak had armed (+25% / +50%). */
+/** Count of neutral trim-scale tranches the latched peak had armed (+20% / +50%). */
 export function trimScaleTranchesArmed(peakPnlPct: number | null): number {
   if (peakPnlPct == null || !Number.isFinite(peakPnlPct)) return 0;
   let armed = 0;
@@ -335,7 +335,8 @@ export function advancePlayLatch(
   play: { entry_premium: number | null; peak_premium: number | null; trough_premium: number | null },
   prior: PlayLatch | null,
   mark: number | null,
-  nowEtMinutes: number
+  nowEtMinutes: number,
+  opts?: { deferPlanStop?: boolean }
 ): PlayLatch {
   const entry = play.entry_premium;
   const seedPeak = prior?.peak ?? play.peak_premium ?? entry ?? null;
@@ -348,6 +349,7 @@ export function advancePlayLatch(
     peak,
     trough,
     nowEtMinutes,
+    deferPlanStop: opts?.deferPlanStop,
   });
   return { peak, trough, status: state.status };
 }

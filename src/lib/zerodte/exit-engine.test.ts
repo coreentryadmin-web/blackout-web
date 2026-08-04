@@ -14,6 +14,8 @@ import {
   detectThesisBreak,
   evaluateExitState,
   ratchetFloorPct,
+  resolveExitMark,
+  protectiveFloorMark,
   trimTranchesArmed,
   DEFAULT_EXIT_MODE,
   TRIM_SCALE_RULES,
@@ -53,29 +55,36 @@ function evidence(items: Array<Partial<EvidenceItem>>): EvidenceItem[] {
 
 // ── 1. Profit ratchet — never let green turn red ──────────────────────────────────
 
-test("ratchet: below +25% peak nothing is armed — the trade keeps its room", () => {
-  const d = evaluateExitState(input({ peakPremium: 4.96, currentMark: 3.92 })); // peak +24%, now −2%
+test("ratchet: below +15% peak nothing is armed — the trade keeps its room", () => {
+  const d = evaluateExitState(input({ peakPremium: 4.56, currentMark: 3.92 })); // peak +14%, now −2%
   assert.equal(d.action, "HOLD");
   assert.equal(d.floorPnlPct, null);
   assert.equal(d.reason, "hold");
 });
 
-test("ratchet: +25% peak arms the breakeven floor (no exit while above it)", () => {
-  const d = evaluateExitState(input({ exitMode: "ratchet", peakPremium: 5.0, currentMark: 4.4 })); // peak +25%, now +10%
+test("ratchet: +15% peak arms the early +5% floor", () => {
+  const d = evaluateExitState(input({ exitMode: "ratchet", peakPremium: 4.6, currentMark: 4.3 })); // peak +15%, now +7.5%
+  assert.equal(d.action, "RAISE_FLOOR");
+  assert.equal(d.floorPnlPct, 5);
+  assert.equal(d.reason, "ratchet_early_profit_floor_set");
+});
+
+test("ratchet: +20% peak arms the breakeven floor (no exit while above it)", () => {
+  const d = evaluateExitState(input({ exitMode: "ratchet", peakPremium: 4.8, currentMark: 4.4 })); // peak +20%, now +10%
   assert.equal(d.action, "RAISE_FLOOR");
   assert.equal(d.floorPnlPct, 0);
   assert.equal(d.reason, "ratchet_breakeven_floor_set");
 });
 
-test("ratchet: a mark AT the breakeven floor after a +25% peak exits — green never finishes red", () => {
-  const d = evaluateExitState(input({ exitMode: "ratchet", peakPremium: 5.0, currentMark: 4.0 })); // back to 0%
+test("ratchet: a mark AT the breakeven floor after a +20% peak exits — green never finishes red", () => {
+  const d = evaluateExitState(input({ exitMode: "ratchet", peakPremium: 4.8, currentMark: 4.0 })); // back to 0%
   assert.equal(d.action, "EXIT");
   assert.equal(d.reason, "ratchet_breakeven_floor");
   assert.equal(d.floorPnlPct, 0);
 });
 
 test("ratchet: a mark BELOW the floor exits too (breach, not just touch)", () => {
-  const d = evaluateExitState(input({ exitMode: "ratchet", peakPremium: 5.0, currentMark: 3.9 })); // −2.5%
+  const d = evaluateExitState(input({ exitMode: "ratchet", peakPremium: 4.8, currentMark: 3.9 })); // −2.5%
   assert.equal(d.action, "EXIT");
   assert.equal(d.reason, "ratchet_breakeven_floor");
 });
@@ -101,10 +110,12 @@ test("ratchet: the floor is MONOTONIC — a deep retrace never lowers +20% back 
   assert.equal(d.floorPnlPct, 20, "floor derives from the latched peak, never the retraced mark");
 });
 
-test("ratchetFloorPct: pure floor table (arm 25→0, lock 50→20, trim→50, monotonic in peak)", () => {
+test("ratchetFloorPct: pure floor table (early 15→5, arm 20→0, lock 50→20, trim→50)", () => {
   assert.equal(ratchetFloorPct(null, false), null);
-  assert.equal(ratchetFloorPct(24.99, false), null);
-  assert.equal(ratchetFloorPct(25, false), 0);
+  assert.equal(ratchetFloorPct(14.99, false), null);
+  assert.equal(ratchetFloorPct(15, false), 5);
+  assert.equal(ratchetFloorPct(19.99, false), 5);
+  assert.equal(ratchetFloorPct(20, false), 0);
   assert.equal(ratchetFloorPct(49.99, false), 0);
   assert.equal(ratchetFloorPct(50, false), 20);
   assert.equal(ratchetFloorPct(400, false), 20);
@@ -256,7 +267,7 @@ test("precedence: ratchet floor breach + thesis veto on the same tick → the fl
   const d = evaluateExitState(
     input({
       exitMode: "ratchet",
-      peakPremium: 5.2, // +30% → breakeven floor armed
+      peakPremium: 5.0, // +25% → breakeven floor armed
       currentMark: 3.95, // below the floor
       cortexEvidence: evidence([{ stance: "veto", source: "flow-quality" }]),
     })
@@ -326,14 +337,31 @@ test("guard: no entry premium → HOLD (P&L underivable)", () => {
 
 // ── 7. The counterfactual exit record ─────────────────────────────────────────────
 
-test("buildExitContext: reason + rounded mark + pinned P&L + peak P&L + ISO stamp", () => {
-  const decision = evaluateExitState(input({ exitMode: "ratchet", peakPremium: 5.0, currentMark: 3.9 }));
-  const ctx = buildExitContext(decision, ENTRY, 3.90000000004, 5.0, Date.UTC(2026, 6, 14, 15, 0, 0));
-  assert.equal(ctx.reason, "ratchet_breakeven_floor");
-  assert.equal(ctx.mark, 3.9, "rounded at the data layer — no malformed floats persist");
-  assert.equal(ctx.pnl_pct, -2.5);
-  assert.equal(ctx.peak_pnl_pct, 25);
-  assert.equal(ctx.at, "2026-07-14T15:00:00.000Z");
+test("buildExitContext: floor breach honors the floor mark — never persists a red finish", () => {
+  const decision = evaluateExitState(input({ exitMode: "ratchet", peakPremium: 4.8, currentMark: 3.48 })); // −13% observed
+  assert.equal(decision.reason, "ratchet_breakeven_floor");
+  const ctx = buildExitContext(decision, ENTRY, 3.48, 4.8, Date.UTC(2026, 6, 14, 15, 0, 0));
+  assert.equal(ctx.mark, 4.0, "breakeven floor honored even when mark gapped through");
+  assert.equal(ctx.pnl_pct, 0);
+  assert.equal(ctx.peak_pnl_pct, 20);
+});
+
+test("resolveExitMark: ratchet floor caps at floor premium; thesis uses observed", () => {
+  const floorDecision = evaluateExitState(input({ exitMode: "ratchet", peakPremium: 4.8, currentMark: 3.5 }));
+  assert.equal(resolveExitMark(floorDecision, ENTRY, 3.5), 4.0);
+  const thesisDecision = evaluateExitState(
+    input({
+      currentMark: 3.2,
+      peakPremium: 4.1,
+      cortexEvidence: evidence([{ stance: "veto", source: "wall-trend" }]),
+    })
+  );
+  assert.equal(resolveExitMark(thesisDecision, ENTRY, 3.2), 3.2);
+});
+
+test("protectiveFloorMark: entry-scaled floor premium", () => {
+  assert.equal(protectiveFloorMark(ENTRY, 0), 4.0);
+  assert.equal(protectiveFloorMark(ENTRY, 5), 4.2);
 });
 
 // ── 8. Exit MODE: ratchet is the default; trim_scale is the E5 ⅓/⅓/run replacement ──
@@ -343,35 +371,35 @@ test("buildExitContext: reason + rounded mark + pinned P&L + peak P&L + ISO stam
 
 test("mode: DEFAULT_EXIT_MODE is trim_scale — partial trims fire by default", () => {
   assert.equal(DEFAULT_EXIT_MODE, "trim_scale");
-  // A +25% peak with NO exitMode fires the FIRST trim tranche (neutral regime).
-  const d = evaluateExitState(input({ peakPremium: 5.0, currentMark: 5.0 })); // peak +25%, at peak
+  // A +20% peak with NO exitMode fires the FIRST trim tranche (neutral regime).
+  const d = evaluateExitState(input({ peakPremium: 4.8, currentMark: 4.8 })); // peak +20%, at peak
   assert.equal(d.action, "TRIM");
   assert.equal(d.reason, "trim_scale_first");
 });
 
 test("trimTranchesArmed: monotonic tranche count off the latched peak, per regime", () => {
   assert.equal(trimTranchesArmed(null, "neutral"), 0);
-  assert.equal(trimTranchesArmed(24.99, "neutral"), 0);
-  assert.equal(trimTranchesArmed(25, "neutral"), 1);
+  assert.equal(trimTranchesArmed(19.99, "neutral"), 0);
+  assert.equal(trimTranchesArmed(20, "neutral"), 1);
   assert.equal(trimTranchesArmed(49.99, "neutral"), 1);
   assert.equal(trimTranchesArmed(50, "neutral"), 2);
   assert.equal(trimTranchesArmed(400, "neutral"), 2, "capped at the two tranches");
-  // range banks sooner (+20/+40); trend lets it run (+40/+80).
-  assert.equal(trimTranchesArmed(20, "range"), 1);
+  // range banks sooner (+15/+40); trend lets it run (+40/+80).
+  assert.equal(trimTranchesArmed(15, "range"), 1);
   assert.equal(trimTranchesArmed(40, "range"), 2);
-  assert.equal(trimTranchesArmed(25, "trend"), 0, "trend does not trim at +25% — it runs");
+  assert.equal(trimTranchesArmed(20, "trend"), 0, "trend does not trim at +20% — it runs");
   assert.equal(trimTranchesArmed(40, "trend"), 1);
   assert.equal(trimTranchesArmed(80, "trend"), 2);
 });
 
-test("TRIM_SCALE_RULES: neutral base is the exact E5-measured schedule (+25/+50, ⅓ each)", () => {
-  assert.deepEqual(TRIM_SCALE_RULES.tranches_by_regime.neutral, [25, 50]);
+test("TRIM_SCALE_RULES: neutral base is +20/+50 (early arm aligned with breakeven floor)", () => {
+  assert.deepEqual(TRIM_SCALE_RULES.tranches_by_regime.neutral, [20, 50]);
   assert.ok(Math.abs(TRIM_SCALE_RULES.tranche_fraction - 1 / 3) < 1e-12);
 });
 
-test("trim_scale: +25% peak banks the FIRST third (neutral)", () => {
+test("trim_scale: +20% peak banks the FIRST third (neutral)", () => {
   const d = evaluateExitState(
-    input({ exitMode: "trim_scale", peakPremium: 5.0, currentMark: 5.0, trimsTaken: 0 })
+    input({ exitMode: "trim_scale", peakPremium: 4.8, currentMark: 4.8, trimsTaken: 0 })
   );
   assert.equal(d.action, "TRIM");
   assert.equal(d.reason, "trim_scale_first");
@@ -401,9 +429,9 @@ test("trim_scale: banks ONE third per tick — a peak that armed BOTH still trim
 });
 
 test("trim_scale: the tranche arms off the LATCHED PEAK — a retraced mark still banks it", () => {
-  // Peak +50% earlier, mark now +10%: the second third still arms (peak, not the mark, decides).
+  // Peak +50% earlier; mark now +25% (above the +20% profit floor). Second third still arms.
   const d = evaluateExitState(
-    input({ exitMode: "trim_scale", peakPremium: 6.0, currentMark: 4.4, trimsTaken: 1 })
+    input({ exitMode: "trim_scale", peakPremium: 6.0, currentMark: 5.0, trimsTaken: 1 })
   );
   assert.equal(d.action, "TRIM");
   assert.equal(d.reason, "trim_scale_second");
@@ -428,30 +456,39 @@ test("trim_scale: the last third banks in full when it tags the +100% target", (
 
 test("trim_scale: below the first tranche, nothing fires (holds — room to work)", () => {
   const d = evaluateExitState(
-    input({ exitMode: "trim_scale", peakPremium: 4.96, currentMark: 4.9, trimsTaken: 0 }) // peak +24%
+    input({ exitMode: "trim_scale", peakPremium: 4.76, currentMark: 4.7, trimsTaken: 0 }) // peak +19%
   );
   assert.equal(d.action, "HOLD");
   assert.equal(d.reason, "hold");
-  assert.match(d.detail, /next trim at \+25%/);
+  assert.match(d.detail, /next trim at \+20%/);
 });
 
-test("trim_scale regime: RANGE banks tighter (+20% arms the first third)", () => {
+test("trim_scale: +15% peak with retrace exits on shared early floor before first trim", () => {
+  const d = evaluateExitState(
+    input({ exitMode: "trim_scale", peakPremium: 4.6, currentMark: 4.1, trimsTaken: 0 }) // peak +15%, now +2.5%
+  );
+  assert.equal(d.action, "EXIT");
+  assert.equal(d.reason, "ratchet_early_profit_floor");
+  assert.equal(d.floorPnlPct, 5);
+});
+
+test("trim_scale regime: RANGE banks tighter (+15% arms the first third)", () => {
   const armed = evaluateExitState(
-    input({ exitMode: "trim_scale", regime: "range", peakPremium: 4.8, currentMark: 4.8, trimsTaken: 0 }) // +20%
+    input({ exitMode: "trim_scale", regime: "range", peakPremium: 4.6, currentMark: 4.6, trimsTaken: 0 }) // +15%
   );
   assert.equal(armed.action, "TRIM");
   assert.equal(armed.reason, "trim_scale_first");
   const notYet = evaluateExitState(
-    input({ exitMode: "trim_scale", regime: "range", peakPremium: 4.76, currentMark: 4.76, trimsTaken: 0 }) // +19%
+    input({ exitMode: "trim_scale", regime: "range", peakPremium: 4.56, currentMark: 4.56, trimsTaken: 0 }) // +14%
   );
   assert.equal(notYet.action, "HOLD");
 });
 
-test("trim_scale regime: TREND lets it run (+25% does NOT trim; +40% arms the first third)", () => {
+test("trim_scale regime: TREND lets it run (+20% does NOT trim; +40% arms the first third)", () => {
   const runs = evaluateExitState(
-    input({ exitMode: "trim_scale", regime: "trend", peakPremium: 5.0, currentMark: 5.0, trimsTaken: 0 }) // +25%
+    input({ exitMode: "trim_scale", regime: "trend", peakPremium: 4.8, currentMark: 4.8, trimsTaken: 0 }) // +20%
   );
-  assert.equal(runs.action, "HOLD", "trend day — a +25% momentum leg is let run, not trimmed");
+  assert.equal(runs.action, "HOLD", "trend day — a +20% momentum leg is let run, not trimmed");
   const arms = evaluateExitState(
     input({ exitMode: "trim_scale", regime: "trend", peakPremium: 5.6, currentMark: 5.6, trimsTaken: 0 }) // +40%
   );
@@ -459,9 +496,9 @@ test("trim_scale regime: TREND lets it run (+25% does NOT trim; +40% arms the fi
   assert.equal(arms.reason, "trim_scale_first");
 });
 
-test("trim_scale: the plan stop still exits (the runner's only hard floor)", () => {
+test("trim_scale: the plan stop still exits when no protective floor is armed", () => {
   const d = evaluateExitState(
-    input({ exitMode: "trim_scale", currentMark: 2.0, peakPremium: 6.0, trimsTaken: 1 })
+    input({ exitMode: "trim_scale", currentMark: 2.0, peakPremium: 4.2, trimsTaken: 0 })
   );
   assert.equal(d.action, "EXIT");
   assert.equal(d.reason, "plan_stop");
@@ -512,6 +549,7 @@ test("categorizeExitReason: every persisted reason maps to its coarse family; no
   assert.equal(categorizeExitReason("trim_scale_first"), "target");
   assert.equal(categorizeExitReason("trim_scale_runner_target"), "target");
   assert.equal(categorizeExitReason("ratchet_breakeven_floor"), "ratchet");
+  assert.equal(categorizeExitReason("ratchet_early_profit_floor"), "ratchet");
   assert.equal(categorizeExitReason("ratchet_profit_floor"), "ratchet");
   assert.equal(categorizeExitReason("runner_floor"), "ratchet");
   // Non-exit reasons (holds / floor-arm reports / guards) and unknown tokens are NOT a family.
@@ -533,9 +571,9 @@ test("categorizeExitReason: a real EXIT decision's reason round-trips to a famil
 
 // ── protective collision: when the plan stop sits ABOVE the floor mark, plan_stop labels it ──
 test("precedence: stop AND floor breached but the STOP mark is the higher protector → plan_stop labels the exit", () => {
-  // Breakeven floor armed by a +25% peak → floor mark = entry = 4.0. A plan stop set ABOVE that
+  // Breakeven floor armed by a +20% peak → floor mark = entry = 4.0. A plan stop set ABOVE that
   // (4.2) is the higher protective level, so the exit is labeled plan_stop, not the floor.
-  const d = evaluateExitState(input({ exitMode: "ratchet", peakPremium: 5.0, currentMark: 4.0, planStop: 4.2 }));
+  const d = evaluateExitState(input({ exitMode: "ratchet", peakPremium: 4.8, currentMark: 4.0, planStop: 4.2 }));
   assert.equal(d.action, "EXIT");
   assert.equal(d.reason, "plan_stop", "the higher protective mark (the stop) labels the exit");
 });

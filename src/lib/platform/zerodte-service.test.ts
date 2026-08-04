@@ -306,9 +306,9 @@ test("exit visibility: an OPEN play's latched peak surfaces the live ratchet flo
   assert.equal(board.ledger[0]!.exit_detail, null);
 });
 
-test("exit visibility: a live play below the +25% arm has no floor (floor_pnl_pct null)", async () => {
+test("exit visibility: a live play below the +15% arm has no floor (floor_pnl_pct null)", async () => {
   state.ledgerRead = {
-    rows: [ledgerRow({ entry_premium: 4.0, peak_premium: 4.6, last_mark: 4.2, trough_premium: 4.0, status: "HOLD" })],
+    rows: [ledgerRow({ entry_premium: 4.0, peak_premium: 4.5, last_mark: 4.2, trough_premium: 4.0, status: "HOLD" })],
     committed_known: true,
   };
   state.setups = [];
@@ -384,7 +384,7 @@ test("exit visibility: META-class stopped runner with +87% peak returns trim-sca
   const board = await buildZeroDteBoardPayload();
   assert.equal(board.ledger[0]!.closed_reason, "stopped");
   assert.equal(board.ledger[0]!.peak_pnl_pct, 87.3);
-  assert.equal(board.ledger[0]!.live_pnl_pct, 8.33, "⅓@+25 + ⅓@+50 + ⅓@(−50) runner");
+  assert.equal(board.ledger[0]!.live_pnl_pct, 6.67, "⅓@+20 + ⅓@+50 + ⅓@(−50) runner");
 });
 
 test("exit visibility: a plain 15:30 close with no engine exit reads closed_reason 'time_stop'", async () => {

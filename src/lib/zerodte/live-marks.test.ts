@@ -478,10 +478,9 @@ test("exit ENGINE holds on a >5s-stale mark (syncMark withheld); a fresh mark st
   assert.ok(persisted.some((p) => p.status === "CLOSED" && p.mark === 3.98), "the fresh mark drives the engine exit");
 });
 
-test("plan hard-stop via the latched trough STILL fires under staleness (engine not consulted)", async () => {
-  // FIX 1 counterpart: staleness must NOT disable the protective stop. A stale
-  // (>5s, ≤30s) mark below the plan stop closes the row off the LATCH; the mark-
-  // driven engine is never even consulted for a latch-closed row.
+test("plan hard-stop via the latched trough fires after engine pass when mark is stale", async () => {
+  // deferPlanStop: the engine gets one pass before the latch stop. With a stale
+  // engine mark (null) the engine cannot exit; the full latch then closes stopped.
   const lm = await loadLane();
   lm._resetZeroDteLiveMarksForTest();
   const occ = "O:NVDA260714C00180000";
@@ -508,7 +507,7 @@ test("plan hard-stop via the latched trough STILL fires under staleness (engine 
     nowMs: now, nowEtMinutes: 12 * 60,
   } as never);
   assert.ok(persisted.some((p) => p.status === "CLOSED" && p.mark === 1.9), "the latched trough stop closes the row even on a stale mark");
-  assert.equal(engineCalls, 0, "a latch-closed row never consults the mark-driven engine");
+  assert.equal(engineCalls, 1, "deferPlanStop consults the engine once before the latch stop");
 });
 
 test("mark store prunes OCCs no longer in the active set, never evicting an active one", async () => {

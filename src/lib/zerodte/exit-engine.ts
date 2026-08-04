@@ -6,12 +6,12 @@
 // or logic breaks, enforce the exit strongly; everything should have a valid reason."
 //
 // Four rule families:
-//   1. PROFIT RATCHET — an ACTIVATION-THRESHOLD floor (not a literal never-red lock
-//      at +1%, which would scratch every winner into 0DTE noise — contracts oscillate
-//      ±15% doing nothing): peak P&L ≥ +25% arms a breakeven floor; ≥ +50% raises it
-//      to +20%; after a TRIM the runner's floor is +50%. The floor derives from the
-//      LATCHED PEAK, so it is monotonic by construction — a retracing mark can never
-//      lower it, only breach it.
+//   1. PROFIT RATCHET — graduated activation floors (not a literal never-red lock at
+//      +1%, which would scratch every winner into 0DTE noise): peak ≥ +15% arms +5%;
+//      ≥ +20% arms breakeven; ≥ +50% raises to +20%; after a TRIM the runner floor
+//      is +50%. The floor derives from the LATCHED PEAK, so it is monotonic — a
+//      retracing mark can never lower it, only breach it. On breach the exit HONORS
+//      the floor mark (never records a red finish when breakeven was armed).
 //   2. THESIS-BREAK — unconditional and independent of P&L: a Cortex VETO-class
 //      evidence item against the play, or ≥2 opposing items whose combined decayed
 //      weight exceeds the entry's committed score margin, exits at market even at a
@@ -51,10 +51,13 @@ import { pinnedLivePnlPct } from "./marks-math";
 /** v1 exit constants (B-8: "thresholds are v1 constants; the counterfactual exit
  *  grader measures scratched-winner cost vs saved-losses and tunes them with data"). */
 export const EXIT_RULES = {
-  /** Peak P&L % that ARMS the ratchet (floor at breakeven). Below this the trade is
-   *  still inside 0DTE noise and gets room to work. */
-  ratchet_arm_pnl_pct: 25,
-  /** The armed floor: breakeven — a trade that reached +25% may never finish red. */
+  /** Peak P&L % that ARMS the first early floor (+5%). Captures modest winners that
+   *  never reach the breakeven tier (FINDINGS 2026-08-04: GOOGL +22%, RDDT +12%). */
+  ratchet_early_arm_pnl_pct: 15,
+  ratchet_early_arm_floor_pct: 5,
+  /** Peak P&L % that ARMS breakeven — a trade that reached +20% may never finish red. */
+  ratchet_arm_pnl_pct: 20,
+  /** The breakeven-armed floor (0%). */
   ratchet_arm_floor_pct: 0,
   /** Peak P&L % that LOCKS profit: floor rises from breakeven to +20%. */
   ratchet_lock_pnl_pct: 50,
@@ -112,8 +115,8 @@ export const TRIM_SCALE_RULES = {
    *  banks its two thirds before the target rule takes the runner. */
   tranches_by_regime: {
     trend: [40, 80],
-    neutral: [25, 50],
-    range: [20, 40],
+    neutral: [20, 50],
+    range: [15, 40],
   },
 } as const satisfies Record<"tranche_fraction", number> & {
   tranches_by_regime: Record<ZeroDteRegime, readonly [number, number]>;
@@ -185,13 +188,42 @@ export function ratchetFloorPct(peakPnlPct: number | null, trimmed: boolean): nu
   if (peakPnlPct == null) return null;
   if (peakPnlPct >= EXIT_RULES.ratchet_lock_pnl_pct) return EXIT_RULES.ratchet_lock_floor_pct;
   if (peakPnlPct >= EXIT_RULES.ratchet_arm_pnl_pct) return EXIT_RULES.ratchet_arm_floor_pct;
+  if (peakPnlPct >= EXIT_RULES.ratchet_early_arm_pnl_pct) return EXIT_RULES.ratchet_early_arm_floor_pct;
   return null;
+}
+
+/** Premium mark that honors an armed protective floor — never worse than the floor. */
+export function protectiveFloorMark(entryPremium: number, floorPnlPct: number): number {
+  return round2(entryPremium * (1 + floorPnlPct / 100));
+}
+
+/**
+ * The mark to persist on an engine EXIT. Ratchet/runner floor exits honor the floor
+ * (a gap-through between poll ticks cannot finish red when breakeven was armed).
+ * Thesis/plan/flat exits use the observed mark.
+ */
+export function resolveExitMark(
+  decision: ExitDecision,
+  entryPremium: number,
+  observedMark: number
+): number {
+  const floor = decision.floorPnlPct;
+  if (
+    decision.action === "EXIT" &&
+    floor != null &&
+    (decision.reason.startsWith("ratchet") || decision.reason.startsWith("runner_floor"))
+  ) {
+    return round2(Math.max(observedMark, protectiveFloorMark(entryPremium, floor)));
+  }
+  return round2(observedMark);
 }
 
 /** The snake_case reason for a floor breach/arm at this floor level. */
 function floorReason(floor: number, trimmed: boolean): string {
   if (trimmed) return "runner_floor";
-  return floor >= EXIT_RULES.ratchet_lock_floor_pct ? "ratchet_profit_floor" : "ratchet_breakeven_floor";
+  if (floor >= EXIT_RULES.ratchet_lock_floor_pct) return "ratchet_profit_floor";
+  if (floor > EXIT_RULES.ratchet_arm_floor_pct) return "ratchet_early_profit_floor";
+  return "ratchet_breakeven_floor";
 }
 
 /**
@@ -281,14 +313,33 @@ function decideTrimScale(
   // How many thirds the caller has already banked (clamped/floored — the latch is 0/1/2).
   const taken = Math.max(0, Math.min(thresholds.length, Math.floor(input.trimsTaken ?? 0)));
 
-  // 1. Protective: the plan stop is the runner's only hard floor in this mode — the trims
-  //    already banked the profit, so the last third simply rides the printed stop.
+  // 1. Protective: plan stop OR the shared early/breakeven ratchet floor (trim_scale
+  //    has no whole-position dump at breakeven, but a +15%/+20% peak still arms a
+  //    floor so a modest winner cannot round-trip to −50% between trim tranches).
+  const sharedFloor = ratchetFloorPct(peakPnlPct, input.trimmed);
+  const floorBreached = sharedFloor != null && pnlPct <= sharedFloor;
   if (input.planStop != null && currentMark <= input.planStop) {
+    const floorMark = sharedFloor != null ? protectiveFloorMark(ctx.entryPremium, sharedFloor) : null;
+    const stopIsHigher =
+      floorMark == null || (input.planStop as number) >= floorMark;
+    if (stopIsHigher && !floorBreached) {
+      return {
+        action: "EXIT",
+        floorPnlPct: null,
+        reason: "plan_stop",
+        detail: `Mark ${currentMark} (${fmtPct(pnlPct)}) is at/below the plan stop ${input.planStop} — the printed stop is authoritative.`,
+      };
+    }
+  }
+  if (floorBreached && sharedFloor != null) {
+    const reason = floorReason(sharedFloor, input.trimmed);
     return {
       action: "EXIT",
-      floorPnlPct: null,
-      reason: "plan_stop",
-      detail: `Mark ${currentMark} (${fmtPct(pnlPct)}) is at/below the plan stop ${input.planStop} — the printed stop is authoritative.`,
+      floorPnlPct: sharedFloor,
+      reason,
+      detail:
+        `Mark ${currentMark} (${fmtPct(pnlPct)}) is at/below the ${fmtPct(sharedFloor)} floor armed by a ` +
+        `${fmtPct(peakPnlPct)} peak — the protective floor exits so the green trade cannot finish red.`,
     };
   }
 
@@ -567,14 +618,18 @@ export type ZeroDteExitContext = {
 export function buildExitContext(
   decision: ExitDecision,
   entryPremium: number | null,
-  mark: number,
+  observedMark: number,
   peakPremium: number | null,
   nowMs: number
 ): ZeroDteExitContext {
+  const mark =
+    entryPremium != null && entryPremium > 0
+      ? resolveExitMark(decision, entryPremium, observedMark)
+      : round2(observedMark);
   return {
     reason: decision.reason,
     detail: decision.detail,
-    mark: round2(mark),
+    mark,
     pnl_pct: pinnedLivePnlPct(entryPremium, mark),
     peak_pnl_pct: pinnedLivePnlPct(entryPremium, peakPremium),
     at: new Date(nowMs).toISOString(),

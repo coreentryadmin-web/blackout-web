@@ -807,6 +807,27 @@ test("lifecycle: a play that hits the stop WITHOUT ever reaching target still cl
   assert.equal(s.closed_reason, "stopped");
 });
 
+test("lifecycle: deferPlanStop skips latched stop close so the exit engine can honor a floor first", () => {
+  const deferred = derivePlayStatus({
+    entryPremium: 4.0,
+    mark: 2.0,
+    peak: 5.0,
+    trough: 1.9,
+    nowEtMinutes: 13 * 60,
+    deferPlanStop: true,
+  });
+  assert.equal(deferred.status, "HOLD");
+  const full = derivePlayStatus({
+    entryPremium: 4.0,
+    mark: 2.0,
+    peak: 5.0,
+    trough: 1.9,
+    nowEtMinutes: 13 * 60,
+  });
+  assert.equal(full.status, "CLOSED");
+  assert.equal(full.closed_reason, "stopped");
+});
+
 test("lifecycle: everything is CLOSED after the 15:50 ET hard exit", () => {
   const s = derivePlayStatus({ entryPremium: 4.2, mark: 4.8, peak: 4.8, trough: 4.0, nowEtMinutes: 15 * 60 + 51 });
   assert.equal(s.status, "CLOSED");

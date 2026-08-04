@@ -179,7 +179,7 @@ describe("play-card-lifecycle", () => {
       closedRealizedPct(
         base({ status: "CLOSED", closedReason: "stopped", peak: 87.3, pnlPct: -50 }),
       ),
-      8.33,
+      6.67,
     );
   });
 });
