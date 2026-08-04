@@ -306,9 +306,9 @@ test("exit visibility: an OPEN play's latched peak surfaces the live ratchet flo
   assert.equal(board.ledger[0]!.exit_detail, null);
 });
 
-test("exit visibility: a live play below the +25% arm has no floor (floor_pnl_pct null)", async () => {
+test("exit visibility: a live play below the +15% arm has no floor (floor_pnl_pct null)", async () => {
   state.ledgerRead = {
-    rows: [ledgerRow({ entry_premium: 4.0, peak_premium: 4.6, last_mark: 4.2, trough_premium: 4.0, status: "HOLD" })],
+    rows: [ledgerRow({ entry_premium: 4.0, peak_premium: 4.5, last_mark: 4.2, trough_premium: 4.0, status: "HOLD" })],
     committed_known: true,
   };
   state.setups = [];

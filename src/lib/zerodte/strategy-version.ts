@@ -83,7 +83,7 @@ export const CONTRACT_SELECTOR_VERSION = "v1";
 export const EXIT_POLICY: ZeroDteExitMode = DEFAULT_EXIT_MODE;
 /** Exit-rule VERSION within the active policy (the numeric thresholds — arm/lock/trim
  *  levels, time-stop). Bump when those move even if the POLICY name is unchanged. */
-export const EXIT_VERSION = "v2";
+export const EXIT_VERSION = "v3";
 /** Grader — how a committed play is turned into a WIN/LOSS + PnL (−50/+100 directional,
  *  condor breach, time-stop rules). Bump when the grading rule changes (it re-labels
  *  the very outcomes calibration counts). */
@@ -271,7 +271,8 @@ export function buildResolvedExitPolicy(mode: ZeroDteExitMode = EXIT_POLICY): Re
     trim_levels = [{ trigger_pct: PLAN_RULES.target_pct, fraction: 0.5 }];
     runner_fraction = 0.5;
     trailing_rule =
-      `ratchet:arm@+${EXIT_RULES.ratchet_arm_pnl_pct}%->floor+${EXIT_RULES.ratchet_arm_floor_pct}%,` +
+      `ratchet:early@+${EXIT_RULES.ratchet_early_arm_pnl_pct}%->floor+${EXIT_RULES.ratchet_early_arm_floor_pct}%,` +
+      `arm@+${EXIT_RULES.ratchet_arm_pnl_pct}%->floor+${EXIT_RULES.ratchet_arm_floor_pct}%,` +
       `lock@+${EXIT_RULES.ratchet_lock_pnl_pct}%->floor+${EXIT_RULES.ratchet_lock_floor_pct}%,` +
       `runner_floor+${EXIT_RULES.runner_floor_pct}%;` +
       `flat_timeout=${EXIT_RULES.flat_timeout_min}min@±${EXIT_RULES.flat_band_pct}%`;

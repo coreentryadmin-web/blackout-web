@@ -531,19 +531,17 @@ export async function runZeroDteMarkTick(deps?: {
         // so the engine can never exit at a price nobody currently sees. The latch stop
         // above is unaffected, so capital protection never depends on live-mark freshness.
         const engineMark = m && !isZeroDteMarkStale(m.asOf, now) ? m.mark : null;
-        let latch = advancePlayLatch(play, latchMemo.get(key) ?? null, mark, nowEtMinutes);
+        let latch = advancePlayLatch(play, latchMemo.get(key) ?? null, mark, nowEtMinutes, {
+          deferPlanStop: true,
+        });
         let finalStatus = latch.status;
         let persistMark = mark;
 
-        // B-8 exit engine on the ~1s lane — ratchet / thesis / flat-timeout exits
-        // that used to wait for the ~10s board sync. Cortex evidence is cached ~30s
-        // per (ticker, direction) inside evaluateLedgerRowExit so this does not fan
-        // out providers every tick. Plan stop/time-stop still come from advancePlayLatch.
+        // B-8 exit engine on the ~1s lane — runs BEFORE the plan-stop latch so a
+        // breakeven floor can fire when trough already crossed −50%.
         if (finalStatus !== "CLOSED") {
           const row = rowsByKey.get(key);
           if (row) {
-            // Pass the FRESH-only engineMark, not the ≤30s latch mark: the engine
-            // must hold when the only mark is stale (see the engineMark note above).
             const exit = await evalExit(row, { syncMark: engineMark, status: finalStatus }, { nowMs: now }).catch(
               () => null
             );
@@ -553,6 +551,11 @@ export async function runZeroDteMarkTick(deps?: {
               latch = { ...latch, status: "CLOSED" };
             }
           }
+        }
+
+        if (finalStatus !== "CLOSED") {
+          latch = advancePlayLatch(play, latchMemo.get(key) ?? null, mark, nowEtMinutes);
+          finalStatus = latch.status;
         }
 
         latchMemo.set(key, latch);

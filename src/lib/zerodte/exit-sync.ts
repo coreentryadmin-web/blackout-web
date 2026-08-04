@@ -300,6 +300,7 @@ export async function evaluateLedgerRowExit(
     if (decision.action !== "EXIT") return null;
 
     const exitContext = buildExitContext(decision, entry, mark, peak, nowMs);
+    // Persist the floor-honored mark (buildExitContext applies resolveExitMark).
     // Counterfactual record, first-write-wins (the SQL guards re-stamps): the
     // record page can later compute "exit saved X% vs riding to the close" from
     // this + the grader's close_price, with no new table. Best-effort by design —
@@ -308,7 +309,7 @@ export async function evaluateLedgerRowExit(
     if (stamp) {
       await stamp(row.session_date, row.ticker, exitContext as unknown as Record<string, unknown>).catch(() => {});
     }
-    return { mark, decision, exitContext };
+    return { mark: exitContext.mark, decision, exitContext };
   } catch {
     // A bug in the engine wiring must never break the ledger sync: no exit this
     // tick; the plan's own stop/time-stop rules still stand.

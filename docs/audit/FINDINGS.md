@@ -4,6 +4,19 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-04 — [P0, 0DTE exits] Profit-protection floor armed too late + honored mark gap-through — FIXED
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P0 — 12/19 measurable peaks gave back ~51 pts premium; OKLO/SNDK exited `ratchet_breakeven_floor` yet finished red (−12%, −4.2%) |
+| **Evidence** | Session forensics table (AMD +51.8%→−26.9%, GOOGL +22%→−3% thesis, OKLO +26.4%→−12% floor reason); `exit-engine.ts:56` arm at +25%; `buildExitContext` persisted observed gap-through mark not floor |
+| **Root cause** | (1) No floor below +25% peak — GOOGL/NVTS/RDDT class had zero protection. (2) Floor breach labeled `ratchet_breakeven_floor` but closed at current mark below floor. (3) `syncLedgerLiveState` ran exit engine AFTER `derivePlayStatus` latched −50% stop, skipping floor on fast round-trips |
+| **Fix** | Graduated floors (+15%→+5%, +20%→breakeven); `resolveExitMark()` honors floor on ratchet exits; engine runs before plan-stop latch (`deferPlanStop`); trim_scale shares early floors + first tranche +20%; EXIT_VERSION v3 |
+| **Files** | `exit-engine.ts`, `exit-sync.ts`, `scan.ts`, `live-marks.ts`, `plan.ts`, `marks-math.ts`, `strategy-version.ts` |
+| **Status** | FIXED — PR `cursor/exit-floor-arm-fix-3d11` |
+
+---
+
 ## 2026-08-04 — [P1, data path] CONFIRMED Legacy plays wiped from Swings by swing-discovery overwrite — FIXED
 
 | Field | Value |

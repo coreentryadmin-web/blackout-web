@@ -236,14 +236,14 @@ test("ratchet floor breach via the sync mark: row CLOSES at the exit mark and en
   const rows = await syncLedgerLiveState(state.ledgerRows as never);
 
   assert.equal(rows[0]!.status, "CLOSED");
-  assert.equal(rows[0]!.last_mark, 3.98, "the frozen mark is the mark the engine exited at");
+  assert.equal(rows[0]!.last_mark, 4.0, "breakeven floor honored — exit at entry, not the gapped-through mark");
   assert.equal(state.updateCalls.length, 1);
-  assert.deepEqual(state.updateCalls[0]!.patch, { status: "CLOSED", mark: 3.98 });
+  assert.deepEqual(state.updateCalls[0]!.patch, { status: "CLOSED", mark: 4.0 });
   assert.equal(state.stampCalls.length, 1, "the counterfactual exit record must persist");
   const exit = state.stampCalls[0]!.exit as { reason: string; mark: number; pnl_pct: number; peak_pnl_pct: number };
   assert.equal(exit.reason, "ratchet_breakeven_floor");
-  assert.equal(exit.mark, 3.98);
-  assert.equal(exit.pnl_pct, -0.5);
+  assert.equal(exit.mark, 4.0);
+  assert.equal(exit.pnl_pct, 0);
   assert.equal(exit.peak_pnl_pct, 30);
 });
 
@@ -259,7 +259,7 @@ test("freshest mark wins: a FRESH lane mark below the floor exits even when the 
   const rows = await syncLedgerLiveState(state.ledgerRows as never);
 
   assert.equal(rows[0]!.status, "CLOSED");
-  assert.equal(rows[0]!.last_mark, 3.9, "the exit freezes at the LANE's fresher mark, not the snapshot's");
+  assert.equal(rows[0]!.last_mark, 4.0, "floor honored even when lane mark gapped below breakeven");
   assert.equal((state.stampCalls[0]!.exit as { reason: string }).reason, "ratchet_breakeven_floor");
   lane._resetZeroDteLiveMarksForTest();
 });

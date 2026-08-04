@@ -305,9 +305,9 @@ test("ledgerDisplayPnlPct: a stopped row with no trim tranches armed pins to PLA
   assert.equal(ledgerDisplayPnlPct(row), PLAN_RULES.stop_pct); // peak +10% — no tranche armed
 });
 
-test("ledgerDisplayPnlPct: META-class stopped runner with +87% peak returns trim-scale blend (~+8.33%)", () => {
+test("ledgerDisplayPnlPct: META-class stopped runner with +87% peak returns trim-scale blend (~+6.67%)", () => {
   const row = { status: "CLOSED", entry_premium: 3.15, last_mark: 1.57, peak_premium: 5.9, trough_premium: 1.57 };
-  assert.equal(ledgerDisplayPnlPct(row), 8.33);
+  assert.equal(ledgerDisplayPnlPct(row), 6.67);
 });
 
 test("ledgerDisplayPnlPct: a non-stopped row derives from the mark (target/time-stop/live)", () => {
@@ -445,6 +445,6 @@ test("reconcileLedgerLivePnlPct: winning condor POSITIVE, breached condor NEGATI
       peak_premium: 5.9,
       trough_premium: 1.57,
     }),
-    8.33
+    6.67
   );
 });

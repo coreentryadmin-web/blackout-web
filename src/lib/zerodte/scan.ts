@@ -1645,25 +1645,30 @@ export async function syncLedgerLiveState(rows: ZeroDteSetupLogRow[]): Promise<Z
       const entryRef = r.entry_premium ?? 0;
       const peak = Math.max(r.peak_premium ?? entryRef, mark ?? 0);
       const trough = Math.min(r.trough_premium ?? (r.entry_premium ?? Number.MAX_VALUE), mark ?? Number.MAX_VALUE);
-      const state = derivePlayStatus({
+      // Exit engine FIRST with plan-stop deferred — a latched trough at −50% must not
+      // skip the ratchet floor when peak had armed breakeven (FINDINGS 2026-08-04).
+      const preStop = derivePlayStatus({
         entryPremium: r.entry_premium,
         mark: mark ?? r.last_mark,
         peak,
         trough,
         nowEtMinutes,
+        deferPlanStop: true,
       });
-      // ── 0DTE exit engine (B-8, ./exit-engine.ts) — runs AFTER derivePlayStatus so
-      // the plan's own latched stop/target/time-stop machinery is untouched; the
-      // engine only ADDS exits on rows the plan still considers live: profit-ratchet
-      // floors (green never finishes red), thesis break (Cortex evidence turned
-      // against the play — unconditional, fires even at a loss), flat timeout
-      // (25min inside ±10% = theta bleed), and fresh-lane-mark stop breaches the
-      // ~2.5s snapshot above hasn't seen yet. Fail-soft by contract: any missing
-      // input (no mark, no evidence) → null → the row proceeds exactly as before.
       const exit =
-        state.status !== "CLOSED"
-          ? await evaluateLedgerRowExit(r, { syncMark: mark, status: state.status }).catch(() => null)
+        preStop.status !== "CLOSED"
+          ? await evaluateLedgerRowExit(r, { syncMark: mark, status: preStop.status }).catch(() => null)
           : null;
+      const state =
+        exit == null
+          ? derivePlayStatus({
+              entryPremium: r.entry_premium,
+              mark: mark ?? r.last_mark,
+              peak,
+              trough,
+              nowEtMinutes,
+            })
+          : preStop;
       const status = exit ? ("CLOSED" as const) : state.status;
       const finalMark = exit ? exit.mark : mark;
       // Governor stop accounting: a plan-stop exit IS a stop wherever it was
