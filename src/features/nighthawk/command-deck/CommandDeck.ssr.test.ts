@@ -144,7 +144,7 @@ test("CommandDeck command center renders stat strip for 0DTE", async () => {
   assert.match(html, />Updated</);
 });
 
-test("CommandDeck renders market state + funnel strips for 0DTE", async () => {
+test("CommandDeck command center hides regime/funnel strips; prominent status filters", async () => {
   const { CommandDeck } = await load();
   const html = renderToStaticMarkup(
     React.createElement(CommandDeck, {
@@ -173,7 +173,12 @@ test("CommandDeck renders market state + funnel strips for 0DTE", async () => {
       },
     }),
   );
-  assert.match(html, /data-testid="zerodte-market-state-strip"/);
-  assert.match(html, /data-testid="zerodte-discovery-funnel-strip"/);
-  assert.match(html, /Funnel · Top gate today|Top gate today/);
+  assert.doesNotMatch(html, /data-testid="zerodte-market-state-strip"/);
+  assert.doesNotMatch(html, /data-testid="zerodte-discovery-funnel-strip"/);
+  assert.doesNotMatch(html, /Top gate today/);
+  assert.match(html, /nh-deck-filterbar--prominent/);
+  assert.match(html, />ALL /);
+  assert.match(html, />OPEN /);
+  assert.match(html, />WATCH /);
+  assert.match(html, />CLOSED /);
 });
