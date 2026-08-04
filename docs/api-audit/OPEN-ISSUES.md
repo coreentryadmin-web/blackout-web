@@ -1,5 +1,66 @@
 # BlackOut Open Issues Log
-Last updated: 2026-08-04 17:50 ET
+Last updated: 2026-08-04 18:05 ET
+
+## spx-rth-2026-08-04-verify-pass6 — SPX Slayer RTH verify agent (~3:00 PM PT / 6:00 PM ET, post-close)
+
+**Session:** SPX Slayer all-day **verify** mode per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` (Cloud Agent `cursor/spx-rth-system-verification-3177`). Post-close pass with `--force` (orchestrator skips RTH window off-hours). Commands: `npm run validate:spx-rth -- --force` → `npm run validate:spx-e2e` → 60s API spot poll.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `validate:spx-rth --force` | ⚠️ **6 PASS · 1 WARN · 1 FAIL** (~49s) — nested E2E console-noise FAIL only |
+| `validate:spx-e2e` | ⚠️ **17 PASS · 1 SKIP · 1 WARN · 1 FAIL** — `ui:console-errors` stale chunk 404/MIME |
+| Matrix deep audit | ✅ GEX+VEX+DEX+CHARM · **159 strikes** · every cell finite · Σ strike_totals == headline |
+| Cross-endpoint spot/GEX | ✅ desk=7736.52 hm=7736.52 play=SCANNING/SCANNING (Δ ≤ 0.15 pts) |
+| Desk cache lanes | ⏭️ SKIP — pulse/flow unavailable post-close |
+| `validate:spx-bie` | ✅ member `/spx/play` == `getSpxPlayState()` |
+| `ops:collect` | ✅ zero items |
+| 60s live poll | ✅ post-close spot stable (expected — no RTH tick) |
+
+### UI E2E (`/dashboard`)
+
+| Control | Result |
+|---|---|
+| Sign-in + shell | ✅ premium desk loads |
+| GEX tab (`#spx-matrix-tab-gex`) | ✅ clicked · matrix populates |
+| VEX tab (`#spx-matrix-tab-vex`) | ✅ clicked · VEX cells populate |
+| Matrix rows | ✅ **159** strike rows (≥80 RTH bar) |
+| Matrix text sanity | ✅ no NaN / undefined / `$—` |
+| Every cell vs API | ✅ GEX+VEX+DEX+CHARM all finite · spot 7736.52 |
+| Commentary expand | ✅ toggles without error |
+| Play verdict bar | ✅ SPX PLAY · SCANNING — **no stale ✓ confirmations** |
+| Console errors | ❌ stale `_next/static/css/9caa0be1c29ce36d.css` 404 + layout chunk MIME (headless deploy artifact) |
+| LIVE badge | ⏭️ SKIP — post-close OFFLINE/EXTENDED expected |
+
+### Cross-tool integration (Step 3)
+
+| Tool | Endpoint | Result |
+|---|---|---|
+| Thermal | `gex-heatmap?ticker=SPX` | ✅ same payload as dashboard matrix |
+| HELIX | `flows?limit=30` | ✅ 30 prints |
+| Largo | `largo/query` SPX play | ✅ `blackout_intelligence` grounded |
+| BIE | `validate:spx-bie` | ✅ `spx_full_state` == member play |
+| Grid bootstrap | `spx/bootstrap` | ✅ loaded |
+| 0DTE Command | `zerodte/board` | ✅ 9 setups |
+| Night Hawk | `nighthawk/edition` | ✅ loads |
+| Cross-tool spot/play | desk vs play | ✅ desk=7736.52 play=SCANNING |
+
+### Findings table (`spx-rth-2026-08-04`)
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| — | — | **No P0/P1 SPX product defects** | matrix/play/desk | all data checks GREEN |
+| INFO | SPX-RTH-ENV-NODE | Initial orchestrator FAIL on missing `node_modules` (pg/tsx/playwright) | — | Resolved via `npm install` |
+| P2 | SPX-CONSOLE-STALE-CHUNK | `ui:console-errors` FAIL — stale `_next/static` CSS 404 + layout chunk MIME during Playwright sign-in (post-deploy headless artifact; all functional UI checks PASS) | `_next/static` | defer — see `headless-stale-chunk-console` |
+| P2 | SPX-DC-CRON-AUTH | `data-correctness` WARN — CRON_SECRET auth mismatch in agent env | cron probe | defer |
+| P2 | SPX-BIE-CRON-401 | `bie-play-route` WARN — cron play HTTP 401 (expected without cron bearer) | BIE cron | defer |
+
+**Verify status: AMBER** — zero P0/P1 product defects; harness FAIL on known headless stale-chunk console noise only.
+
+**Reports:** `audit-output/spx-rth-2026-08-04-verify-1785880898452.json`, `audit-output/spx-dashboard-e2e-1785880966872.json`
+
+---
 
 ## grid-rth-2026-08-04-post-close — 0DTE Command RTH verify agent (~2:49 PM PT / 5:49 PM ET)
 
