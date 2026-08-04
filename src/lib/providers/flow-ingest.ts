@@ -1,5 +1,5 @@
 import { dbConfigured, getMeta, setMeta, tryAdvisoryLock, releaseAdvisoryLock } from "@/lib/db";
-import { persistAndPublishFlowAlert } from "@/lib/flow-persist";
+import { persistAndPublishFlowAlert, MIN_PREMIUM_FETCH_FLOOR } from "@/lib/flow-persist";
 import { fetchMarketFlowAlertRows } from "@/lib/providers/unusual-whales";
 import { uwConfigured } from "@/lib/providers/config";
 import { uwSocket, isUwChannelFresh } from "@/lib/ws/uw-socket";
@@ -81,7 +81,11 @@ export async function runFlowIngest(): Promise<FlowIngestResult> {
     try {
       rows = await fetchMarketFlowAlertRows({
         limit: 100,
-        min_premium: Number(process.env.UW_FLOW_MIN_PREMIUM ?? 200_000),
+        // FINDINGS 2026-08-04: fetch at the LOWER (near-dated) floor so 0-1DTE prints between
+        // the two floors actually arrive here — persistAndPublishFlowAlert applies the precise,
+        // DTE-aware floor per-row afterward; fetching at MIN_PREMIUM would have discarded them
+        // upstream before persist ever got a chance to apply the lower 0DTE-specific floor.
+        min_premium: MIN_PREMIUM_FETCH_FLOOR,
         newer_than: cursor ?? undefined,
       });
     } catch (error) {

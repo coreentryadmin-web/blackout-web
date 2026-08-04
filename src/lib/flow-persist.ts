@@ -17,6 +17,42 @@ export type PublishedFlowRow = FlowRow & { alert_id: string };
 
 export const MIN_PREMIUM = Number(process.env.UW_FLOW_MIN_PREMIUM ?? 200_000);
 
+/**
+ * NEAR-DATED (0-1DTE) floor — deliberately lower than MIN_PREMIUM (FINDINGS 2026-08-04).
+ * A same-day option's absolute premium-per-contract is far smaller than a swing/LEAPS
+ * contract even for an equally large DIRECTIONAL conviction bet, because most of an
+ * 0DTE contract's extrinsic value has already decayed away by the time most of the
+ * session has passed. Applying the swing-sized $200k floor uniformly meant a genuinely
+ * large 0DTE bet on a name that isn't SPY/QQQ/a mega-cap could easily total under $200k
+ * in a single print and never even enter the flow pipeline FLOW discovery reads from —
+ * structurally biasing FLOW toward the same handful of liquid names every session.
+ */
+export const MIN_PREMIUM_NEAR_DATED = Number(process.env.UW_FLOW_MIN_PREMIUM_0DTE ?? 50_000);
+
+/** The floor a given print must clear to persist — lower for 0-1DTE, MIN_PREMIUM otherwise.
+ *  `dte` absent/null (can't confirm near-dated) conservatively uses the higher floor. */
+export function requiredMinPremium(dte: number | null | undefined): number {
+  return dte != null && Number.isFinite(dte) && dte <= 1 ? MIN_PREMIUM_NEAR_DATED : MIN_PREMIUM;
+}
+
+/** Calendar days from now (UTC) to an expiry (YYYY-MM-DD). `MarketFlowAlert` carries only
+ *  `expiry`, not a precomputed `dte`, so this derives it — same calendar-day convention as
+ *  `horizon-fanout.ts`'s `calendarDte`, kept local here to avoid coupling a persistence
+ *  module to the horizon-scoring module for one date-diff. */
+export function dteFromExpiry(expiryYmd: string, nowMs = Date.now()): number | null {
+  const expiryMs = Date.parse(`${expiryYmd.slice(0, 10)}T00:00:00Z`);
+  if (!Number.isFinite(expiryMs)) return null;
+  const todayMs = Date.parse(`${new Date(nowMs).toISOString().slice(0, 10)}T00:00:00Z`);
+  return Math.round((expiryMs - todayMs) / 86_400_000);
+}
+
+/** The broadest floor any UPSTREAM fetch/subscribe should apply — always the lower of the
+ *  two, so near-dated prints between the two floors actually reach `requiredMinPremium`'s
+ *  DTE-aware check instead of being discarded by the provider call before persist ever sees
+ *  them. Callers that can't determine DTE at fetch time (e.g. a WS subscribe filter) use
+ *  this; `requiredMinPremium` remains the one authoritative, precise gate at persist time. */
+export const MIN_PREMIUM_FETCH_FLOOR = Math.min(MIN_PREMIUM, MIN_PREMIUM_NEAR_DATED);
+
 function toFlowRow(alert: MarketFlowAlert): FlowRow {
   return {
     ticker: alert.ticker,
@@ -127,7 +163,7 @@ export async function persistAndPublishFlowAlert(
   raw: Record<string, unknown>,
   flow: MarketFlowAlert
 ): Promise<{ inserted: boolean; published: boolean }> {
-  if (flow.premium < MIN_PREMIUM) {
+  if (flow.premium < requiredMinPremium(dteFromExpiry(flow.expiry))) {
     return { inserted: false, published: false };
   }
 

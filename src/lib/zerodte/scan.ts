@@ -30,6 +30,7 @@ import {
   type ZeroDteSetupLogUpsert,
 } from "@/lib/db";
 import { fetchNighthawkEchoForTickers } from "@/lib/bie/ecosystem-context";
+import { MIN_PREMIUM_NEAR_DATED } from "@/lib/flow-persist";
 import {
   accumulationSignalsFromFlow,
   attachFlowAccumulation,
@@ -244,7 +245,11 @@ export async function scanZeroDteBoard(flags?: {
     // max_dte: 1 is LOAD-BEARING — it scopes the premium ranking to 0-1DTE prints in
     // SQL. Without it the top-400 spans ALL expiries and heavy-day whale prints crowd
     // every 0DTE print out of the scan's input (live-reproduced: $3.1M AAPL stack → 0 setups).
-    fetchRecentFlows({ since_hours: 7, min_premium: 100_000, order: "premium", limit: 500, max_dte: 1 }).catch(
+    // FINDINGS 2026-08-04: min_premium matches the ingestion-side near-dated floor (was a flat
+    // 100_000, redundant-then-stricter than the old $200k ingestion floor — but now that
+    // ingestion admits 0-1DTE prints down to MIN_PREMIUM_NEAR_DATED, this query must not
+    // re-exclude them, or the lower ingestion floor accomplishes nothing for FLOW discovery).
+    fetchRecentFlows({ since_hours: 7, min_premium: MIN_PREMIUM_NEAR_DATED, order: "premium", limit: 500, max_dte: 1 }).catch(
       () => {
         upstreamOk = false;
         return [];
