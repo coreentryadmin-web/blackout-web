@@ -28,6 +28,7 @@ import {
 } from "@/lib/swing/discovery";
 import { ingestSwingReads } from "@/lib/swing/swing-ingest";
 import { persistSwingServingSnapshot, readSwingServingSnapshot } from "@/lib/swing/serving-lane";
+import { carryLegacyPromotedIntoSnapshot } from "@/lib/swing/legacy-confirm-promote";
 import { swingThesisKey } from "@/lib/swing/accumulation-store";
 import {
   fetchRecentFlows,
@@ -349,16 +350,21 @@ export async function GET(req: NextRequest) {
       if (px != null && Number.isFinite(px) && px > 0) flagAnchorsByThesisKey[key] = px;
     }
 
-    const persisted = await persistSwingServingSnapshot({
-      asOf: result.asOf,
-      sessionDay,
-      dossiers: result.dossiers,
-      plays: result.playSet.SWING,
-      watch: result.watchCandidates,
-      observed: result.observedCandidates,
-      spotsByTicker,
-      flagAnchorsByThesisKey,
-    });
+    const persisted = await persistSwingServingSnapshot(
+      carryLegacyPromotedIntoSnapshot(
+        {
+          asOf: result.asOf,
+          sessionDay,
+          dossiers: result.dossiers,
+          plays: result.playSet.SWING,
+          watch: result.watchCandidates,
+          observed: result.observedCandidates,
+          spotsByTicker,
+          flagAnchorsByThesisKey,
+        },
+        existing,
+      ),
+    );
     if (!persisted) {
       if (decision.key) {
         await sharedCacheDel(decision.key).catch(() => undefined);

@@ -4,6 +4,7 @@ import type { PlaybookPlay } from "@/features/nighthawk/lib/types";
 import {
   LEGACY_SWING_SIGNAL_KIND,
   buildLegacySwingArtifacts,
+  carryLegacyPromotedIntoSnapshot,
   legacyPlayDirection,
   mergeLegacyPromotedSnapshot,
 } from "./legacy-confirm-promote.ts";
@@ -97,6 +98,62 @@ test("mergeLegacyPromotedSnapshot dedupes existing thesis keys", () => {
     swingThesisKey(merged.watch[0]!.ticker, merged.watch[0]!.direction, merged.watch[0]!.archetype),
     key,
   );
+});
+
+test("carryLegacyPromotedIntoSnapshot survives a discovery overwrite", () => {
+  const artifact = buildLegacySwingArtifacts({
+    play: legacyPlay({ ticker: "SKHY" }),
+    checkedAt: "2026-08-04T13:20:00.000Z",
+    editionFor: "2026-08-04",
+    spot: 150.55,
+    chainRows: [{ ...chainRows[0]!, strike: 150 }],
+    chainSpot: 150.55,
+  })!;
+  const prior = mergeLegacyPromotedSnapshot(null, [artifact], {
+    sessionDay: "2026-08-04",
+    asOf: "2026-08-04T13:20:00.000Z",
+    spotsByTicker: { SKHY: 150.55 },
+  });
+  const discoveryOnly = {
+    asOf: "2026-08-04T14:00:00.000Z",
+    sessionDay: "2026-08-04",
+    dossiers: [],
+    plays: [
+      {
+        ticker: "ORCL",
+        direction: "LONG" as const,
+        horizon: "SWING" as const,
+        score: 70,
+        contract: { strike: 137, right: "C" as const, expiry: "2026-08-14", dte: 10, mid: 3.2 },
+        reason: "discovery row",
+      },
+    ],
+    watch: [
+      {
+        ticker: "ORCL",
+        direction: "LONG" as const,
+        archetype: "SECTOR_ROTATION" as const,
+        observationCount: 2,
+        distinctSessionDays: 2,
+        phasesSeen: ["RTH"],
+        signalKinds: ["FLOW"],
+        sessionSignalKinds: ["FLOW"],
+        firstSeenAt: "2026-08-04T14:00:00.000Z",
+        lastSeenAt: "2026-08-04T14:00:00.000Z",
+        lastSessionDay: "2026-08-04",
+      },
+    ],
+    observed: [],
+    spotsByTicker: { ORCL: 137 },
+  };
+  const carried = carryLegacyPromotedIntoSnapshot(discoveryOnly, prior);
+  assert.equal(carried.watch.some((w) => w.ticker === "SKHY"), true);
+  assert.equal(
+    carried.watch.find((w) => w.ticker === "SKHY")?.signalKinds?.[0],
+    LEGACY_SWING_SIGNAL_KIND,
+  );
+  assert.equal(carried.plays.some((p) => p.ticker === "SKHY"), true);
+  assert.equal(carried.plays.some((p) => p.ticker === "ORCL"), true);
 });
 
 test("persisted legacy promotion surfaces through discoverSwingFromPersisted gate", async () => {
