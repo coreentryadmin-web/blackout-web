@@ -26,12 +26,15 @@ import {
   HELIX_DISCORD_DIGEST_LIMIT,
   HELIX_DISCORD_MAX_DTE,
   HELIX_DISCORD_MIN_PREMIUM,
+  buildHelixStackedHitsDigestEmbed,
   buildHelixTopHitsDigestEmbed,
   helixDiscordAlertsEnabled,
   helixDiscordWebhookUrl,
   selectHelixDiscordDigest,
+  selectHelixDiscordStacks,
   type HelixDiscordFlowInput,
 } from "@/lib/helix-discord-format";
+import { HELIX_STRIKE_HITS_WINDOW_MIN } from "@/features/helix/lib/helix-strike-leaders";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -164,6 +167,11 @@ export async function GET(req: NextRequest) {
       now,
       limit: HELIX_DISCORD_DIGEST_LIMIT,
     });
+    const stacks15 = selectHelixDiscordStacks(inputs, {
+      windowMin: HELIX_STRIKE_HITS_WINDOW_MIN,
+      now,
+      limit: HELIX_DISCORD_DIGEST_LIMIT,
+    });
 
     async function withGex(selected: HelixDiscordFlowInput[]): Promise<HelixDiscordFlowInput[]> {
       if (!selected.length) return selected;
@@ -176,16 +184,31 @@ export async function GET(req: NextRequest) {
 
     // Skip quiet empty digests unless force — avoid spamming "Quiet tape" every 15m.
     const post15 = force || digest15.rows.length > 0;
+    const postStacks15 = force || stacks15.length > 0;
     let delivered15 = false;
-    if (post15) {
-      const embed = buildHelixTopHitsDigestEmbed({
-        windowMin: 15,
-        rows: await withGex(digest15.rows),
-        inWindowCount: digest15.inWindowCount,
-        sessionFallback: digest15.sessionFallback,
-        now,
-      });
-      delivered15 = await postDiscordWebhook(webhook, { embeds: [embed] }, "helix-digest-15m");
+    if (post15 || postStacks15) {
+      const embeds = [];
+      if (post15) {
+        embeds.push(
+          buildHelixTopHitsDigestEmbed({
+            windowMin: 15,
+            rows: await withGex(digest15.rows),
+            inWindowCount: digest15.inWindowCount,
+            sessionFallback: digest15.sessionFallback,
+            now,
+          })
+        );
+      }
+      if (postStacks15) {
+        embeds.push(
+          buildHelixStackedHitsDigestEmbed({
+            windowMin: HELIX_STRIKE_HITS_WINDOW_MIN,
+            stacks: stacks15,
+            now,
+          })
+        );
+      }
+      delivered15 = await postDiscordWebhook(webhook, { embeds }, "helix-digest-15m");
       if (!delivered15 && claim15.held) {
         await sharedCacheDel(DEDUP_15_KEY);
       }
@@ -206,23 +229,43 @@ export async function GET(req: NextRequest) {
           now,
           limit: HELIX_DISCORD_DIGEST_LIMIT,
         });
+        const stacks30 = selectHelixDiscordStacks(inputs, {
+          windowMin: 30,
+          now,
+          limit: HELIX_DISCORD_DIGEST_LIMIT,
+        });
         digest30Summary = {
           inWindowCount: digest30.inWindowCount,
           rows: digest30.rows.length,
           sessionFallback: digest30.sessionFallback,
         };
         const post30 = force || digest30.rows.length > 0;
-        if (post30) {
-          const embed = buildHelixTopHitsDigestEmbed({
-            windowMin: 30,
-            rows: await withGex(digest30.rows),
-            inWindowCount: digest30.inWindowCount,
-            sessionFallback: digest30.sessionFallback,
-            now,
-          });
+        const postStacks30 = force || stacks30.length > 0;
+        if (post30 || postStacks30) {
+          const embeds = [];
+          if (post30) {
+            embeds.push(
+              buildHelixTopHitsDigestEmbed({
+                windowMin: 30,
+                rows: await withGex(digest30.rows),
+                inWindowCount: digest30.inWindowCount,
+                sessionFallback: digest30.sessionFallback,
+                now,
+              })
+            );
+          }
+          if (postStacks30) {
+            embeds.push(
+              buildHelixStackedHitsDigestEmbed({
+                windowMin: 30,
+                stacks: stacks30,
+                now,
+              })
+            );
+          }
           delivered30 = await postDiscordWebhook(
             webhook,
-            { embeds: [embed] },
+            { embeds },
             "helix-digest-30m"
           );
           if (!delivered30 && claim30.held) await sharedCacheDel(DEDUP_30_KEY);
@@ -242,6 +285,7 @@ export async function GET(req: NextRequest) {
         inWindowCount: digest15.inWindowCount,
         rows: digest15.rows.length,
         sessionFallback: digest15.sessionFallback,
+        stacks: stacks15.length,
       },
       digest_30: digest30Summary,
     };

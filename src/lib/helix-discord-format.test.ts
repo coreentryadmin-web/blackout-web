@@ -2,11 +2,15 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   buildHelixDiscordEmbed,
+  buildHelixStackedHitsDigestEmbed,
   buildHelixTopHitsDigestEmbed,
   classifyHelixDiscordKind,
+  contractStackHitsFromFlows,
+  formatHelixStackHitTimeline,
   helixDiscordWriteup,
   passesHelixDiscordFilters,
   selectHelixDiscordDigest,
+  selectHelixDiscordStacks,
   HELIX_DISCORD_MIN_PREMIUM,
 } from "./helix-discord-format.ts";
 
@@ -81,6 +85,99 @@ test("digest embed lists ranked rows", () => {
   assert.match(emb.description, /NVDA/);
   assert.match(emb.description, /MSFT/);
   assert.match(emb.description, /Lead:/);
+});
+
+test("repeat hits writeup includes stack timeline when stack_hits provided", () => {
+  const text = helixDiscordWriteup({
+    ...base,
+    alert_rule: "RepeatedHits",
+    stack_hits: [
+      { at: "2026-08-04T14:18:11.000Z", premium: 840_000, fill_price: 4.2 },
+      { at: "2026-08-04T14:25:44.000Z", premium: 890_000, fill_price: 4.15 },
+    ],
+  });
+  assert.match(text, /Stack timeline/);
+  assert.match(text, /\$840K/);
+  assert.match(text, /\$890K/);
+  assert.match(text, /@ \$4\.2/);
+});
+
+test("stacked hits digest lists per-hit ET timestamps", () => {
+  const emb = buildHelixStackedHitsDigestEmbed({
+    windowMin: 15,
+    stacks: [
+      {
+        ticker: "NVDA",
+        strike: 140,
+        option_type: "CALL",
+        expiry: "2026-08-15",
+        alert_count: 3,
+        total_premium: 2_100_000,
+        premiums: [700_000, 700_000, 700_000],
+        trade_count: null,
+        repeated_hits: true,
+        same_strike_accumulation: true,
+        alert_rules: ["RepeatedHits"],
+        kind: "repeated_and_stacked",
+        recent_hit_count: 3,
+        recent_premium: 2_100_000,
+        hits_window_min: 15,
+        recent_hits: [
+          { at: "2026-08-04T14:18:11.000Z", premium: 700_000, fill_price: 4.2 },
+          { at: "2026-08-04T14:25:44.000Z", premium: 700_000, fill_price: 4.15 },
+          { at: "2026-08-04T14:30:02.000Z", premium: 700_000, fill_price: 4.1 },
+        ],
+        avg_ask_pct: 68,
+      },
+    ],
+    now: new Date("2026-08-04T14:32:00.000Z"),
+  });
+  assert.match(emb.title, /Stacked hits/);
+  assert.match(emb.description, /NVDA 140C/);
+  assert.match(emb.description, /3 hits/);
+  assert.match(emb.description, /ET · \$700K/);
+});
+
+test("selectHelixDiscordStacks requires 2+ qualifying hits in window", () => {
+  const now = new Date("2026-08-04T14:32:00.000Z");
+  const recent = "2026-08-04T14:28:00.000Z";
+  const flow = {
+    ...base,
+    fill_price: 6,
+    dte: 10,
+    event_at: recent,
+    alerted_at: recent,
+  };
+  const stacks = selectHelixDiscordStacks(
+    [
+      flow,
+      { ...flow, premium: 600_000, event_at: "2026-08-04T14:20:00.000Z", alerted_at: "2026-08-04T14:20:00.000Z" },
+      { ...flow, ticker: "MSFT", event_at: "2026-08-04T14:22:00.000Z", alerted_at: "2026-08-04T14:22:00.000Z" },
+    ],
+    { now, limit: 5 }
+  );
+  assert.equal(stacks.length, 1);
+  assert.equal(stacks[0]?.ticker, "SPY");
+  assert.ok(stacks[0]!.recent_hits.length >= 2);
+});
+
+test("contractStackHitsFromFlows returns oldest-first timeline", () => {
+  const now = new Date("2026-08-04T14:32:00.000Z");
+  const target = {
+    ...base,
+    fill_price: 5,
+    dte: 8,
+    event_at: "2026-08-04T14:30:00.000Z",
+  };
+  const hits = contractStackHitsFromFlows(target, [
+    target,
+    { ...target, premium: 650_000, event_at: "2026-08-04T14:18:00.000Z", fill_price: 4.8 },
+    { ...target, premium: 700_000, event_at: "2026-08-04T14:24:00.000Z", fill_price: 4.9 },
+  ], { now });
+  assert.equal(hits.length, 3);
+  assert.ok(new Date(hits[0]!.at).getTime() < new Date(hits[1]!.at).getTime());
+  const timeline = formatHelixStackHitTimeline(hits);
+  assert.match(timeline, /ET ·/);
 });
 
 test("selectHelixDiscordDigest prefers in-window score then premium", () => {

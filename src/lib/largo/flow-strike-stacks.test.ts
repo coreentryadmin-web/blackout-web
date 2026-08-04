@@ -42,6 +42,7 @@ test("computeFlowStrikeStacks: recent_hit_count respects windowMs", () => {
   assert.equal(stacks.length, 1);
   assert.equal(stacks[0]!.recent_hit_count, 2);
   assert.equal(stacks[0]!.alert_count, 3);
+  assert.equal(stacks[0]!.recent_hits.length, 2);
 });
 
 test("computeFlowStrikeStacks: input cap keeps most recent alerts, not tape head", () => {

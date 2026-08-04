@@ -28,6 +28,7 @@ are cheap no-ops — the wide UTC band avoids maintaining separate EDT/EST cron 
 | Job key | Railway service | Cron (UTC) | Purpose / notes |
 |---------|-----------------|------------|-----------------|
 | flow-ingest | Flow-Ingest-Cron | `*/2 11-21 * * 1-5` | HELIX flow persist |
+| **helix-discord-digest** | **HELIX-Discord-Digest** | **`*/15 11-21 * * 1-5`** | **#blackout-helix top-hits + stacked-hits digests (15m/30m); requires `HELIX_DISCORD_ALERTS=1` + EventBridge sync** |
 | spx-evaluate | SPX-Engine-Evaluation | `*/5 11-21 * * 1-5` | SPX engine |
 | uw-cache-refresh | UW-Cache-Refresh-New | `*/2 11-21 * * 1-5` | UW REST cache warm |
 | heatmap-warm | heatmap-warm | `* 11-21 * * 1-5` | Thermal matrix warm |

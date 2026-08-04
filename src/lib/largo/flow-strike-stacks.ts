@@ -20,6 +20,14 @@ export type FlowAlertForStack = {
   ask_pct?: number | null;
   alert_rule: string | null;
   trade_count: number | null;
+  fill_price?: number | null;
+};
+
+export type FlowStackHit = {
+  /** ISO timestamp — event_at when present, else alerted_at. */
+  at: string;
+  premium: number;
+  fill_price?: number | null;
 };
 
 export type FlowStrikeStack = {
@@ -39,6 +47,8 @@ export type FlowStrikeStack = {
   recent_hit_count: number;
   recent_premium: number;
   hits_window_min: number;
+  /** Per-hit detail inside the rolling window — oldest first for timeline copy. */
+  recent_hits: FlowStackHit[];
   /** Weighted avg ask-side % when available — drives bought/sold copy. */
   avg_ask_pct: number | null;
 };
@@ -93,6 +103,11 @@ export function normalizeFlowAlertForStack(item: unknown): FlowAlertForStack | n
   const eventAt = o.event_at != null ? String(o.event_at) : null;
   const askRaw = o.ask_pct ?? o.ask_side_pct;
   const askPct = askRaw != null && Number.isFinite(Number(askRaw)) ? Number(askRaw) : null;
+  const fillRaw = o.fill_price ?? o.price;
+  const fillPrice =
+    fillRaw != null && Number.isFinite(Number(fillRaw)) && Number(fillRaw) > 0
+      ? Number(fillRaw)
+      : null;
 
   return {
     ticker: String(o.ticker ?? o.symbol ?? "").toUpperCase(),
@@ -105,6 +120,7 @@ export function normalizeFlowAlertForStack(item: unknown): FlowAlertForStack | n
     ask_pct: askPct,
     alert_rule: ruleRaw || null,
     trade_count: Number.isFinite(tradeRaw) && tradeRaw > 0 ? tradeRaw : null,
+    fill_price: fillPrice,
   };
 }
 
@@ -142,6 +158,18 @@ function alertRecencyMs(raw: unknown): number {
   const row = normalizeFlowAlertForStack(raw);
   if (!row) return 0;
   return flowStackAlertTimeMs(row) ?? 0;
+}
+
+function hitFromRow(row: FlowAlertForStack): FlowStackHit | null {
+  const ms = flowStackAlertTimeMs(row);
+  if (ms == null) return null;
+  const at = row.event_at || row.alerted_at;
+  if (!at) return null;
+  return {
+    at,
+    premium: row.premium,
+    fill_price: row.fill_price ?? null,
+  };
 }
 
 const FLOW_STACK_INPUT_CAP = 500;
@@ -204,6 +232,10 @@ export function computeFlowStrikeStacks(
       return ms != null && nowMs - ms <= windowMs;
     });
     const recentPremiums = recentRows.map((r) => r.premium);
+    const recent_hits = recentRows
+      .map(hitFromRow)
+      .filter((h): h is FlowStackHit => h != null)
+      .sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
 
     stacks.push({
       ticker: sorted[0].ticker,
@@ -221,6 +253,7 @@ export function computeFlowStrikeStacks(
       recent_hit_count: recentRows.length,
       recent_premium: recentPremiums.reduce((s, p) => s + p, 0),
       hits_window_min: hitsWindowMin,
+      recent_hits,
       avg_ask_pct: avgAskPct(sorted),
     });
   }
