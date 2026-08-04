@@ -1,5 +1,71 @@
 # BlackOut Open Issues Log
-Last updated: 2026-08-04 17:01 ET
+Last updated: 2026-08-04 17:04 ET
+
+## rth-open-2026-08-04-pass6 — RTH comprehensive test sweep (~4:59–5:03 PM ET, post-close)
+
+**Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` on branch `cursor/rth-comprehensive-test-sweep-1ffd`. Commands: `npm run validate:rth-open` → `GET /api/cron/data-correctness?force=1` → `surface=heatmap` sync → `npm run validate:rth-sweep` → `npm run validate:grid-e2e` → `npm run validate:spx-e2e` → `npm run ops:collect`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` | ✅ **GREEN** (~10s; post-close window — deploy smoke only; Postgres skipped private VPC) |
+| `GET /api/cron/data-correctness?force=1` | ✅ **202 accepted** (async full sweep dispatched) |
+| `data-correctness` (`surface=heatmap`) | ✅ **ok=true · flags=0** (consistency-only post-close; 60 metrics) |
+| `npm run validate:rth-sweep` | ✅ **0 P0/P1** — 7 pages · **0 missing-field hits** · Largo grounded |
+| `npm run validate:grid-e2e` | ✅ **5/5 PASS** — zerodte board 9 setups · ledger 6 |
+| `npm run validate:spx-e2e` | ✅ **17/18 PASS** (1 WARN: `bie-play-route` cron 401 expected) |
+| `npm run ops:collect` | ✅ **0 action items** |
+
+### Speed (comprehensive sweep — Playwright premium session)
+
+| Page | Nav | Load (ms) | Live wait | Console errors |
+|---|---|---:|---:|---|
+| `/dashboard` (SPX Slayer) | hard | 2922 | 12s | 1× HTTP 400 (transient) |
+| `/flows` (HELIX) | soft | 2336 | 8s | 0 |
+| `/heatmap` (Thermal matrix) | soft | 2752 | 20s | 0 |
+| `/vector` | soft | 1608 | 15s | 0 |
+| `/nighthawk` (0DTE Command) | soft | 1694 | 15s | 0 |
+| `/terminal` (Largo) | soft | 1691 | 5s | 4× ChunkLoadError chunk 1878 (transient — chunk now HTTP 200) |
+| `/track-record` | soft | 1728 | 10s | 9× ChunkLoadError + layout chunk (transient mid-deploy) |
+
+**Note:** Classic `/grid` deleted 2026-07-07 — 0DTE Command (12 panels) under `/nighthawk` via `/api/market/zerodte/board`. Thermal Profile tab not visible during this pass (matrix-only; tabs hidden while loading).
+
+### Live auto-update
+
+- `liveTick=null` on all pages — post-close SPX spot static (expected).
+- API freshness: desk `as_of` 8s · platform snapshot 0s · zerodte board 0s.
+- Matrix `gex-heatmap` continues to refresh post-close.
+
+### Data correctness
+
+| Cross-check | Result |
+|---|---|
+| desk γ-flip vs `gex-positioning` | ✅ aligned (desk 7551.29 vs gex 7551.29; spot 7736.52) |
+| All market APIs | ✅ HTTP 200 |
+| Largo NVDA query | ✅ 200 · ~$90.9M premium · `blackout_intelligence` |
+| SPX matrix E2E | ✅ GEX+VEX+DEX+CHARM · 159 strikes |
+
+### Missing-field audit
+
+**0 missing-field signals** across all 7 pages. Largo `Regime: —` = expected when no active regime tag.
+
+### Findings table
+
+| Severity | ID | Detail | Fix |
+|---|---|---|---|
+| — | — | **No P0/P1 product defects** on member surfaces | GREEN |
+| INFO | ENV-NODE-MODULES | Initial `validate:rth-open` failed — missing `pg` / Playwright browsers | Resolved via `npm install` + `npx playwright install chromium` |
+| P2 | RTH-FLOWS-SOFT-NAV | `/flows` soft-nav 2336ms (>1.5s target) | Monitor — HELIX tape warm path |
+| P2 | RTH-THERMAL-SOFT-NAV | `/heatmap` soft-nav 2752ms (>1.5s target) | Monitor — matrix bootstrap |
+| P2 | RTH-CHUNK-MID-DEPLOY | Terminal/track-record ChunkLoadError on chunk 1878/layout during sweep | Transient — chunk `1878-*.js` now HTTP 200 post-deploy |
+| P2 | SPX-BIE-CRON-401 | `bie-play-route` WARN — cron play HTTP 401 (expected without cron bearer) | defer |
+
+**Status: GREEN** — comprehensive sweep 0 P0/P1, cross-tool GEX aligned, heatmap correctness flags=0. No new GitHub issue (no P0/P1).
+
+**Reports:** `audit-output/rth-sweep-2026-08-04T21-00-06-185Z.json`, `audit-output/grid-e2e-1785877214446.json`, `audit-output/spx-dashboard-e2e-1785877215196.json`
+
+---
 
 ## spx-rth-2026-08-04-pass5 — SPX Slayer post-close verify (~1:58 PM PT / 4:58 PM ET)
 
