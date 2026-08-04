@@ -4,6 +4,19 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-04 — [P2, UX] WATCH tab SKIP (FAILED) rows missing "Since flag" track % — FIXED
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P2 UX — gate-blocked 0DTE setups show confidence (55/43) but no hypothetical track % |
+| **Evidence** | Member screenshot 09:42 ET: SPXW + SPY under WATCH filter with FAILED pill, large "55"/"43" confidence scores, no `Since flag` % row |
+| **Root cause** | PR #1592 wired `trackPct` only when `status === "WATCH"`. Opening-window gate blocks map to `SKIP` (FAILED pill) but `filterByStatus(WATCH)` includes SKIP and `playLifecyclePhase(SKIP)` → `"watch"` — adapter left `trackPct` null so UI fell back to `ConfidenceBadge` |
+| **Fix** | `isWatchTrackStatus()` (WATCH \| SKIP) drives trackReference/trackPct in adapters, list row, live-mark overlay, and `primaryReturnPct`/`primaryReturnLabel` |
+| **Files** | `adapters.ts`, `play-card-display.ts`, `CommandDeck.tsx`, `use-live-marks.ts`, `play-card-lifecycle.ts` |
+| **Status** | FIXED — PR `cursor/watch-skip-track-pct-3d11` (merge after close) |
+
+---
+
 ## 2026-08-04 — [P2, data coverage] Thermal low-priced tickers (NIO) showed ~4–5 strikes — FIXED
 
 | Field | Value |

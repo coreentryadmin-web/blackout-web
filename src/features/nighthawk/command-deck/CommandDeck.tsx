@@ -32,6 +32,7 @@ import {
   useLifecyclePlayCard,
   useHeroPlayCard,
 } from "./play-card-display";
+import { isWatchTrackStatus } from "./play-card-lifecycle";
 import { PlayLifecycleCardBody } from "./PlayLifecycleCard";
 import {
   buildDeckCommandCenterStats,
@@ -530,7 +531,7 @@ export const PlayCard = memo(function PlayCard({
             </span>
             <span className="nh-deck-premlab">Peak Return</span>
           </>
-        ) : p.status === "WATCH" && p.trackPct != null ? (
+        ) : isWatchTrackStatus(p.status) && p.trackPct != null ? (
           <>
             <span
               className={clsx(
