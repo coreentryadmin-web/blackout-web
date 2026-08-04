@@ -195,9 +195,6 @@ export function CommandDeck({
             engineStatus={engineStatus}
             risk={risk}
             tape={tape}
-            deckHorizon={deckHorizon}
-            marketState={marketState}
-            discoveryFunnel={discoveryFunnel}
             statusFilter={statusFilter}
             setStatusFilter={setStatusFilter}
             sortMode={sortMode}
@@ -268,6 +265,66 @@ export function CommandDeck({
   );
 }
 
+/** Status filter toggles — ALL / OPEN / WATCH / CLOSED. */
+function DeckStatusFilterBar({
+  statusFilter,
+  setStatusFilter,
+  playCounts,
+  prominent = false,
+}: {
+  statusFilter: StatusFilter;
+  setStatusFilter: (f: StatusFilter) => void;
+  playCounts: { all: number; open: number; watch: number; closed: number };
+  prominent?: boolean;
+}) {
+  return (
+    <div
+      className={clsx("nh-deck-filterbar", prominent && "nh-deck-filterbar--prominent")}
+      role="group"
+      aria-label="Filter plays by status"
+    >
+      <button type="button" className={clsx("nh-deck-filtbtn", statusFilter === "ALL" && "on")} onClick={() => setStatusFilter("ALL")}>
+        ALL <span className="cnt">{playCounts.all}</span>
+      </button>
+      <button type="button" className={clsx("nh-deck-filtbtn", statusFilter === "OPEN" && "on")} onClick={() => setStatusFilter("OPEN")}>
+        OPEN <span className="cnt">{playCounts.open}</span>
+      </button>
+      <button type="button" className={clsx("nh-deck-filtbtn", statusFilter === "WATCH" && "on")} onClick={() => setStatusFilter("WATCH")}>
+        WATCH <span className="cnt">{playCounts.watch}</span>
+      </button>
+      <button type="button" className={clsx("nh-deck-filtbtn", statusFilter === "CLOSED" && "on")} onClick={() => setStatusFilter("CLOSED")}>
+        CLOSED <span className="cnt">{playCounts.closed}</span>
+      </button>
+    </div>
+  );
+}
+
+/** Sort toggles — status banding, rating, triggered time, peak return. */
+function DeckSortBar({
+  sortMode,
+  setSortMode,
+}: {
+  sortMode: DeckSortMode;
+  setSortMode: (m: DeckSortMode) => void;
+}) {
+  return (
+    <div className="nh-deck-sortbar" role="group" aria-label="Sort plays">
+      <button type="button" className={clsx("nh-deck-sortbtn", sortMode === "status" && "on")} onClick={() => setSortMode("status")}>
+        STATUS
+      </button>
+      <button type="button" className={clsx("nh-deck-sortbtn", sortMode === "rating" && "on")} onClick={() => setSortMode("rating")}>
+        RATING
+      </button>
+      <button type="button" className={clsx("nh-deck-sortbtn", sortMode === "time" && "on")} onClick={() => setSortMode("time")}>
+        TRIGGERED
+      </button>
+      <button type="button" className={clsx("nh-deck-sortbtn", sortMode === "peak" && "on")} onClick={() => setSortMode("peak")}>
+        PEAK
+      </button>
+    </div>
+  );
+}
+
 /** Filter + sort chrome shared by compact and legacy left-rail headers. */
 function DeckChromeRow({
   statusFilter,
@@ -275,48 +332,29 @@ function DeckChromeRow({
   sortMode,
   setSortMode,
   playCounts,
+  prominentFilters = false,
 }: {
   statusFilter: StatusFilter;
   setStatusFilter: (f: StatusFilter) => void;
   sortMode: DeckSortMode;
   setSortMode: (m: DeckSortMode) => void;
   playCounts: { all: number; open: number; watch: number; closed: number };
+  prominentFilters?: boolean;
 }) {
   return (
     <div className="nh-deck-chrome-row">
-      <div className="nh-deck-filterbar" role="group" aria-label="Filter plays by status">
-        <button type="button" className={clsx("nh-deck-filtbtn", statusFilter === "ALL" && "on")} onClick={() => setStatusFilter("ALL")}>
-          ALL <span className="cnt">{playCounts.all}</span>
-        </button>
-        <button type="button" className={clsx("nh-deck-filtbtn", statusFilter === "OPEN" && "on")} onClick={() => setStatusFilter("OPEN")}>
-          OPEN <span className="cnt">{playCounts.open}</span>
-        </button>
-        <button type="button" className={clsx("nh-deck-filtbtn", statusFilter === "WATCH" && "on")} onClick={() => setStatusFilter("WATCH")}>
-          WATCH <span className="cnt">{playCounts.watch}</span>
-        </button>
-        <button type="button" className={clsx("nh-deck-filtbtn", statusFilter === "CLOSED" && "on")} onClick={() => setStatusFilter("CLOSED")}>
-          CLOSED <span className="cnt">{playCounts.closed}</span>
-        </button>
-      </div>
-      <div className="nh-deck-sortbar" role="group" aria-label="Sort plays">
-        <button type="button" className={clsx("nh-deck-sortbtn", sortMode === "status" && "on")} onClick={() => setSortMode("status")}>
-          STATUS
-        </button>
-        <button type="button" className={clsx("nh-deck-sortbtn", sortMode === "rating" && "on")} onClick={() => setSortMode("rating")}>
-          RATING
-        </button>
-        <button type="button" className={clsx("nh-deck-sortbtn", sortMode === "time" && "on")} onClick={() => setSortMode("time")}>
-          TRIGGERED
-        </button>
-        <button type="button" className={clsx("nh-deck-sortbtn", sortMode === "peak" && "on")} onClick={() => setSortMode("peak")}>
-          PEAK
-        </button>
-      </div>
+      <DeckStatusFilterBar
+        statusFilter={statusFilter}
+        setStatusFilter={setStatusFilter}
+        playCounts={playCounts}
+        prominent={prominentFilters}
+      />
+      <DeckSortBar sortMode={sortMode} setSortMode={setSortMode} />
     </div>
   );
 }
 
-/** Two-row compact header — stats/engine/risk on row 1; context + filters on row 2. */
+/** Two-row compact header — stats/engine/risk on row 1; status filters + sort on row 2. */
 function DeckCompactHeader({
   laneLabel,
   degraded,
@@ -324,9 +362,6 @@ function DeckCompactHeader({
   engineStatus,
   risk,
   tape,
-  deckHorizon,
-  marketState,
-  discoveryFunnel,
   statusFilter,
   setStatusFilter,
   sortMode,
@@ -339,9 +374,6 @@ function DeckCompactHeader({
   engineStatus: ReturnType<typeof deriveEngineStatus> | null;
   risk: ReturnType<typeof deployedRisk>;
   tape: ReturnType<typeof sessionTape>;
-  deckHorizon: TerminalPlay["horizon"];
-  marketState: MarketStateSnapshot | null;
-  discoveryFunnel: DiscoveryFunnelHint | null;
   statusFilter: StatusFilter;
   setStatusFilter: (f: StatusFilter) => void;
   sortMode: DeckSortMode;
@@ -350,8 +382,6 @@ function DeckCompactHeader({
 }) {
   const topLine = stats?.topRated ? `${stats.topRated.ticker} (${stats.topRated.grade})` : "—";
   const edge = degraded ? null : stats?.edge ?? null;
-  const showContext =
-    deckHorizon === "ZERO_DTE" && !degraded && (marketState || discoveryFunnel?.summary);
 
   return (
     <div className="nh-deck-header-compact" aria-label="Today's command center">
@@ -378,22 +408,14 @@ function DeckCompactHeader({
         {engineStatus && <DeckEngineStatus status={engineStatus} compact />}
         <CockpitStrip risk={risk} tape={tape} compact />
       </div>
-      <div className="nh-deck-hdr-row nh-deck-hdr-row--secondary">
-        {showContext ? (
-          <div className="nh-deck-hdr-context">
-            <MarketStateStrip ms={marketState} compact />
-            <DiscoveryFunnelStrip funnel={discoveryFunnel} compact />
-          </div>
-        ) : (
-          <div className="nh-deck-hdr-context nh-deck-hdr-context--empty" aria-hidden />
-        )}
-        <DeckChromeRow
+      <div className="nh-deck-hdr-row nh-deck-hdr-row--secondary nh-deck-hdr-row--filters">
+        <DeckStatusFilterBar
           statusFilter={statusFilter}
           setStatusFilter={setStatusFilter}
-          sortMode={sortMode}
-          setSortMode={setSortMode}
           playCounts={playCounts}
+          prominent
         />
+        <DeckSortBar sortMode={sortMode} setSortMode={setSortMode} />
       </div>
     </div>
   );

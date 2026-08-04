@@ -60,8 +60,10 @@ test("closed compact row shows symbol line, times, peak", async () => {
   assert.match(html, />Peak</);
   assert.match(html, />\+87%/);
   assert.match(html, />CLOSED</);
-  assert.match(html, /nh-deck-conf-inline/);
+  assert.match(html, /nh-deck-lc-strip-grade/);
   assert.match(html, />A\+</);
+  assert.match(html, /★{5}/);
+  assert.match(html, />96</);
 });
 
 test("open compact row shows active status and return", async () => {
@@ -142,7 +144,7 @@ test("CommandDeck command center renders stat strip for 0DTE", async () => {
   assert.match(html, />Updated</);
 });
 
-test("CommandDeck renders market state + funnel strips for 0DTE", async () => {
+test("CommandDeck command center hides regime/funnel strips; prominent status filters", async () => {
   const { CommandDeck } = await load();
   const html = renderToStaticMarkup(
     React.createElement(CommandDeck, {
@@ -171,7 +173,12 @@ test("CommandDeck renders market state + funnel strips for 0DTE", async () => {
       },
     }),
   );
-  assert.match(html, /data-testid="zerodte-market-state-strip"/);
-  assert.match(html, /data-testid="zerodte-discovery-funnel-strip"/);
-  assert.match(html, /Funnel · Top gate today|Top gate today/);
+  assert.doesNotMatch(html, /data-testid="zerodte-market-state-strip"/);
+  assert.doesNotMatch(html, /data-testid="zerodte-discovery-funnel-strip"/);
+  assert.doesNotMatch(html, /Top gate today/);
+  assert.match(html, /nh-deck-filterbar--prominent/);
+  assert.match(html, />ALL /);
+  assert.match(html, />OPEN /);
+  assert.match(html, />WATCH /);
+  assert.match(html, />CLOSED /);
 });
