@@ -139,6 +139,7 @@ test("CommandDeck member default renders filters only — no ops header", async 
     }),
   );
   assert.match(html, /nh-deck-filtbtn/);
+  assert.doesNotMatch(html, /nh-deck-sortbtn/);
   assert.doesNotMatch(html, /nh-deck-header-compact/);
   assert.doesNotMatch(html, /nh-deck-cockpit/);
   assert.doesNotMatch(html, /zerodte-market-state-strip/);

@@ -6,7 +6,7 @@ import { PlayTerminal, etClock } from "./PlayTerminal";
 import { DiscoveryFunnelStrip, MarketStateStrip } from "@/features/nighthawk/components/zerodte-board-strips";
 import type { DiscoveryFunnelHint } from "@/lib/zerodte/discovery-funnel-hint";
 import type { MarketStateSnapshot } from "@/lib/zerodte/market-state-engine";
-import { sortPlaysForDeckBy, type DeckSortMode } from "./deck-sort";
+import { sortPlaysForDeck } from "./deck-sort";
 import {
   deployedRisk,
   sessionTape,
@@ -130,10 +130,8 @@ export function CommandDeck({
 
   const filtered = useMemo(() => filterByStatus(plays, statusFilter), [plays, statusFilter]);
 
-  // Sort lens: the status banding (default) or the Wave-2 conviction ranking. Additive — the status
-  // sort is unchanged; conviction is a second view over the SAME list (deck-sort.ts).
-  const [sortMode, setSortMode] = useState<DeckSortMode>("status");
-  const sorted = useMemo(() => sortPlaysForDeckBy(filtered, sortMode), [filtered, sortMode]);
+  // Default order: working book on top, watch in the middle, closed at the bottom (stable within each band).
+  const sorted = useMemo(() => sortPlaysForDeck(filtered), [filtered]);
 
   // Cockpit figures — computed off the FULL board (not the display order), so they're identical under
   // either sort. Both auto-update on the SWR board refresh that replaces `plays`.
@@ -201,16 +199,12 @@ export function CommandDeck({
             discoveryFunnel={discoveryFunnel}
             statusFilter={statusFilter}
             setStatusFilter={setStatusFilter}
-            sortMode={sortMode}
-            setSortMode={setSortMode}
             playCounts={{ all: plays.length, open: counts.open, watch: counts.watch, closed: counts.closed }}
           />
         ) : (
           <DeckChromeRow
             statusFilter={statusFilter}
             setStatusFilter={setStatusFilter}
-            sortMode={sortMode}
-            setSortMode={setSortMode}
             playCounts={{ all: plays.length, open: counts.open, watch: counts.watch, closed: counts.closed }}
           />
         )}
@@ -250,23 +244,19 @@ export function CommandDeck({
   );
 }
 
-/** Filter + sort chrome shared by compact and legacy left-rail headers. */
+/** Status filter chrome — ALL / OPEN / WATCH / CLOSED. */
 function DeckChromeRow({
   statusFilter,
   setStatusFilter,
-  sortMode,
-  setSortMode,
   playCounts,
 }: {
   statusFilter: StatusFilter;
   setStatusFilter: (f: StatusFilter) => void;
-  sortMode: DeckSortMode;
-  setSortMode: (m: DeckSortMode) => void;
   playCounts: { all: number; open: number; watch: number; closed: number };
 }) {
   return (
     <div className="nh-deck-chrome-row nh-deck-chrome-row--solo">
-      <div className="nh-deck-filterbar" role="group" aria-label="Filter plays by status">
+      <div className="nh-deck-filterbar nh-deck-filterbar--solo" role="group" aria-label="Filter plays by status">
         <button type="button" className={clsx("nh-deck-filtbtn", statusFilter === "ALL" && "on")} onClick={() => setStatusFilter("ALL")}>
           ALL <span className="cnt">{playCounts.all}</span>
         </button>
@@ -278,14 +268,6 @@ function DeckChromeRow({
         </button>
         <button type="button" className={clsx("nh-deck-filtbtn", statusFilter === "CLOSED" && "on")} onClick={() => setStatusFilter("CLOSED")}>
           CLOSED <span className="cnt">{playCounts.closed}</span>
-        </button>
-      </div>
-      <div className="nh-deck-sortbar" role="group" aria-label="Sort plays">
-        <button type="button" className={clsx("nh-deck-sortbtn", sortMode === "status" && "on")} onClick={() => setSortMode("status")}>
-          STATUS
-        </button>
-        <button type="button" className={clsx("nh-deck-sortbtn", sortMode === "conviction" && "on")} onClick={() => setSortMode("conviction")}>
-          CONVICTION
         </button>
       </div>
     </div>
@@ -305,8 +287,6 @@ function DeckCompactHeader({
   discoveryFunnel,
   statusFilter,
   setStatusFilter,
-  sortMode,
-  setSortMode,
   playCounts,
 }: {
   laneLabel: string;
@@ -320,8 +300,6 @@ function DeckCompactHeader({
   discoveryFunnel: DiscoveryFunnelHint | null;
   statusFilter: StatusFilter;
   setStatusFilter: (f: StatusFilter) => void;
-  sortMode: DeckSortMode;
-  setSortMode: (m: DeckSortMode) => void;
   playCounts: { all: number; open: number; watch: number; closed: number };
 }) {
   const topLine = stats?.topRated ? `${stats.topRated.ticker} (${stats.topRated.grade})` : "—";
@@ -366,8 +344,6 @@ function DeckCompactHeader({
         <DeckChromeRow
           statusFilter={statusFilter}
           setStatusFilter={setStatusFilter}
-          sortMode={sortMode}
-          setSortMode={setSortMode}
           playCounts={playCounts}
         />
       </div>

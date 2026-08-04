@@ -16651,8 +16651,7 @@ body::before {
 /* Status filter bar — ALL / OPEN / WATCH / CLOSED with live counts. */
 .nh-deck-chrome-row--solo{border-bottom:1px solid var(--dk-line);background:#050c08;padding:5px 8px;display:flex;gap:4px;align-items:center;flex-shrink:0}
 .nh-deck-filterbar{display:flex;gap:4px;padding:6px 10px;border-bottom:1px solid var(--dk-line);background:#050c08}
-.nh-deck-chrome-row--solo .nh-deck-filterbar,
-.nh-deck-chrome-row--solo .nh-deck-sortbar{padding:0;border:0;background:transparent}
+.nh-deck-chrome-row--solo .nh-deck-filterbar--solo{padding:0;border:0;background:transparent;flex:1}
 .nh-deck-filtbtn{flex:1;background:rgba(53,255,158,.05);border:1px solid rgba(53,255,158,.12);border-radius:3px;
   color:var(--dk-ink-dim);font-family:inherit;font-size:10px;font-weight:800;letter-spacing:.1em;padding:6px 4px;cursor:pointer}
 .nh-deck-filtbtn:hover{color:var(--dk-ink);background:rgba(53,255,158,.08)}
