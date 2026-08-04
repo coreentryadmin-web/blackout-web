@@ -160,7 +160,16 @@ test("flow evidence gates reject a bare (no-flow) ticker, but a breakout setup b
     halted: false,
     earnings: null,
     todayYmd: TODAY,
-    confluence: { confirmations: 2, tier: "double", vwapSide: true, marketAligned: true } as never,
+    confluence: {
+      score: 80,
+      confirmations: 2,
+      timing_ok: true,
+      early_window: false,
+      vwap_ok: true,
+      market_ok: true,
+      tier: "double",
+      label: "VWAP + market",
+    },
   };
   const verdict = evaluateZeroDteGates(baseGateInput);
   assert.equal(verdict.verdict, "COMMIT", `strong breakout should clear the shared gates (blocks: ${verdict.blocks.map((b) => b.code).join(",")})`);
