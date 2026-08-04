@@ -14,8 +14,9 @@
 }
 
 /* ── Desktop split-pane fill (2026-08-04) ───────────────────────────────────────
-   Lock the command deck to the viewport so the LEFT plays list scrolls independently
-   while the RIGHT detail panel stays pinned — same flex-fill pattern as SPX desk.
+   Lock the command deck to the viewport so BOTH panes scroll internally: LEFT play
+   queue (.nh-deck-rows) and RIGHT detail (.nh-deck-body). Page scroll is off —
+   without explicit body scroll the thesis panel gets clipped (#1596 follow-up).
    Mobile (≤820px) keeps the stacked layout from globals.css + ios-native-pages.css. */
 @media (min-width: 821px) {
   html:not(.ios-native-shell) .nh-v2-page.nighthawk-page-shell-fill {
