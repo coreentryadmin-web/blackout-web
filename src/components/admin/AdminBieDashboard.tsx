@@ -269,6 +269,29 @@ type ZeroDteFunnelPayload = {
   errors: string[];
 };
 
+type ZeroDteGraduationPayload = {
+  generated_at: string;
+  graded_plays: number;
+  baseline_win_rate_pct: number | null;
+  any_rail_ready: boolean;
+  db_configured: boolean;
+  shadow_week: { started_at: string | null; days_elapsed: number | null; mode: string };
+  rails: Array<{
+    rail: string;
+    verdict: string;
+    n: number;
+    win_rate_pct: number | null;
+    delta_win_rate_pts: number | null;
+    reason: string;
+  }>;
+  shadow_priors: {
+    rail_weights: { FLOW: number; BREAKOUT: number; PIN: number };
+    confidence: number;
+  } | null;
+  origin_regime_cells: Array<{ origin: string; reg_structure: string; n: number; win_rate_pct: number | null }>;
+  errors: string[];
+};
+
 // HELIX health panel (task #134) — payload shape of /api/admin/helix/health, the
 // HELIX flow-ingestion-pipeline analogue of the two panels above: cron liveness for
 // flow-ingest + market-regime-detector, a read-only cluster-wide live-tape heartbeat
@@ -485,6 +508,29 @@ export function AdminBieDashboard() {
     void loadZeroDteFunnel();
   }, [loadZeroDteFunnel]);
 
+  const [zeroDteGraduation, setZeroDteGraduation] = useState<ZeroDteGraduationPayload | null>(null);
+  const [zeroDteGraduationLoading, setZeroDteGraduationLoading] = useState(true);
+  const [zeroDteGraduationError, setZeroDteGraduationError] = useState<string | null>(null);
+
+  const loadZeroDteGraduation = useCallback(async (refresh = false) => {
+    setZeroDteGraduationLoading(true);
+    setZeroDteGraduationError(null);
+    try {
+      const url = refresh ? "/api/admin/zerodte/graduation?refresh=1" : "/api/admin/zerodte/graduation";
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setZeroDteGraduation((await res.json()) as ZeroDteGraduationPayload);
+    } catch (e) {
+      setZeroDteGraduationError(e instanceof Error ? e.message : "failed to load");
+    } finally {
+      setZeroDteGraduationLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadZeroDteGraduation();
+  }, [loadZeroDteGraduation]);
+
   // HELIX health panel (task #134) — same independence contract as every other
   // health fetch above: its own state/effect, so a failure here can never blank or
   // block the rest of this dashboard (or any other panel), and vice versa. Wired
@@ -625,6 +671,7 @@ export function AdminBieDashboard() {
               void loadGexHealth();
               void loadZeroDteHealth();
               void loadZeroDteFunnel();
+              void loadZeroDteGraduation(true);
               void loadHelixHealth();
             }}
             disabled={loading}
@@ -1184,6 +1231,79 @@ export function AdminBieDashboard() {
         )}
         {zeroDteFunnel && !zeroDteFunnel.db_configured && (
           <p className="admin-warn">DATABASE_URL not set — funnel reads empty.</p>
+        )}
+      </DeckPanel>
+
+      <DeckPanel
+        title="0DTE rail graduation (Phase 3)"
+        accent={zeroDteGraduation?.any_rail_ready ? "bull" : "cyan"}
+        defaultOpen={false}
+        storageKey="bie-zerodte-graduation"
+      >
+        <p className="admin-bie-coverage-note mb-3">
+          Post-close origin×regime graduation · n≥30 + 5pp WR lift to enforce · shadow week parallel
+        </p>
+        {zeroDteGraduationError && (
+          <p className="admin-bie-error-text">Graduation fetch failed: {zeroDteGraduationError}</p>
+        )}
+        <div className="admin-mega-grid admin-nh-stats-row">
+          <MegaStat
+            label="Graded plays"
+            value={zeroDteGraduation ? String(zeroDteGraduation.graded_plays) : "—"}
+            sub={zeroDteGraduation?.baseline_win_rate_pct != null ? `Baseline WR ${zeroDteGraduation.baseline_win_rate_pct}%` : undefined}
+            tone="cyan"
+          />
+          <MegaStat
+            label="Priors mode"
+            value={zeroDteGraduation?.shadow_week.mode?.toUpperCase() ?? "—"}
+            sub={
+              zeroDteGraduation?.shadow_week.days_elapsed != null
+                ? `Shadow week day ${zeroDteGraduation.shadow_week.days_elapsed}`
+                : undefined
+            }
+            tone="amber"
+          />
+          <MegaStat
+            label="Ready to enforce"
+            value={zeroDteGraduation?.any_rail_ready ? "YES" : "NO"}
+            sub="Any rail cleared n≥30 + 5pp"
+            tone={zeroDteGraduation?.any_rail_ready ? "bull" : "bear"}
+          />
+        </div>
+        {zeroDteGraduationLoading && !zeroDteGraduation && (
+          <p className="admin-bie-coverage-note">Loading graduation…</p>
+        )}
+        {zeroDteGraduation?.rails && zeroDteGraduation.rails.length > 0 && (
+          <DataTable>
+            <thead>
+              <tr>
+                <th>Rail</th>
+                <th>Verdict</th>
+                <th>n</th>
+                <th>WR%</th>
+                <th>Δ vs base</th>
+              </tr>
+            </thead>
+            <tbody>
+              {zeroDteGraduation.rails.map((r) => (
+                <tr key={r.rail}>
+                  <td>{r.rail}</td>
+                  <td>{r.verdict.replace(/_/g, " ")}</td>
+                  <td>{r.n}</td>
+                  <td>{r.win_rate_pct != null ? `${r.win_rate_pct}%` : "—"}</td>
+                  <td>{r.delta_win_rate_pts != null ? `${r.delta_win_rate_pts >= 0 ? "+" : ""}${r.delta_win_rate_pts}pp` : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </DataTable>
+        )}
+        {zeroDteGraduation?.shadow_priors && (
+          <p className="admin-bie-coverage-note mt-2">
+            Shadow weights · FLOW×{zeroDteGraduation.shadow_priors.rail_weights.FLOW} BREAKOUT×
+            {zeroDteGraduation.shadow_priors.rail_weights.BREAKOUT} PIN×
+            {zeroDteGraduation.shadow_priors.rail_weights.PIN} (conf{" "}
+            {Math.round(zeroDteGraduation.shadow_priors.confidence * 100)}%)
+          </p>
         )}
       </DeckPanel>
 
