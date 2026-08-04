@@ -198,8 +198,6 @@ export function CommandDeck({
             tape={tape}
             statusFilter={statusFilter}
             setStatusFilter={setStatusFilter}
-            sortMode={sortMode}
-            setSortMode={setSortMode}
             playCounts={{ all: plays.length, open: counts.open, watch: counts.watch, closed: counts.closed }}
           />
         ) : (
@@ -224,8 +222,6 @@ export function CommandDeck({
             <DeckChromeRow
               statusFilter={statusFilter}
               setStatusFilter={setStatusFilter}
-              sortMode={sortMode}
-              setSortMode={setSortMode}
               playCounts={{ all: plays.length, open: counts.open, watch: counts.watch, closed: counts.closed }}
             />
           </>
@@ -251,7 +247,9 @@ export function CommandDeck({
           {!loading && plays.length > 0 && filtered.length === 0 && (
             <div className="nh-deck-empty">No {statusFilter.toLowerCase()} plays right now.</div>
           )}
-          {commandCenter && !loading && sorted.length > 0 && <DeckPlayTableHeader />}
+          {commandCenter && !loading && sorted.length > 0 && (
+            <DeckPlayTableHeader sortMode={sortMode} setSortMode={setSortMode} />
+          )}
           {sorted.map((p, i) => (
             <PlayCard key={p.id} play={p} rank={i + 1} selected={p.id === selId} onSelect={setSelId} nowMs={nowMs} />
           ))}
@@ -301,45 +299,15 @@ function DeckStatusFilterBar({
   );
 }
 
-/** Sort toggles — status banding, rating, triggered time, peak return. */
-function DeckSortBar({
-  sortMode,
-  setSortMode,
-}: {
-  sortMode: DeckSortMode;
-  setSortMode: (m: DeckSortMode) => void;
-}) {
-  return (
-    <div className="nh-deck-sortbar" role="group" aria-label="Sort plays">
-      <button type="button" className={clsx("nh-deck-sortbtn", sortMode === "status" && "on")} onClick={() => setSortMode("status")}>
-        STATUS
-      </button>
-      <button type="button" className={clsx("nh-deck-sortbtn", sortMode === "rating" && "on")} onClick={() => setSortMode("rating")}>
-        RATING
-      </button>
-      <button type="button" className={clsx("nh-deck-sortbtn", sortMode === "time" && "on")} onClick={() => setSortMode("time")}>
-        TRIGGERED
-      </button>
-      <button type="button" className={clsx("nh-deck-sortbtn", sortMode === "peak" && "on")} onClick={() => setSortMode("peak")}>
-        PEAK
-      </button>
-    </div>
-  );
-}
-
-/** Filter + sort chrome shared by compact and legacy left-rail headers. */
+/** Filter chrome — status toggles; sort lives on table column headers in command center. */
 function DeckChromeRow({
   statusFilter,
   setStatusFilter,
-  sortMode,
-  setSortMode,
   playCounts,
   prominentFilters = false,
 }: {
   statusFilter: StatusFilter;
   setStatusFilter: (f: StatusFilter) => void;
-  sortMode: DeckSortMode;
-  setSortMode: (m: DeckSortMode) => void;
   playCounts: { all: number; open: number; watch: number; closed: number };
   prominentFilters?: boolean;
 }) {
@@ -351,12 +319,11 @@ function DeckChromeRow({
         playCounts={playCounts}
         prominent={prominentFilters}
       />
-      <DeckSortBar sortMode={sortMode} setSortMode={setSortMode} />
     </div>
   );
 }
 
-/** Two-row compact header — stats/engine/risk on row 1; status filters + sort on row 2. */
+/** Two-row compact header — stats/engine/risk on row 1; status filters on row 2. */
 function DeckCompactHeader({
   laneLabel,
   degraded,
@@ -366,8 +333,6 @@ function DeckCompactHeader({
   tape,
   statusFilter,
   setStatusFilter,
-  sortMode,
-  setSortMode,
   playCounts,
 }: {
   laneLabel: string;
@@ -378,8 +343,6 @@ function DeckCompactHeader({
   tape: ReturnType<typeof sessionTape>;
   statusFilter: StatusFilter;
   setStatusFilter: (f: StatusFilter) => void;
-  sortMode: DeckSortMode;
-  setSortMode: (m: DeckSortMode) => void;
   playCounts: { all: number; open: number; watch: number; closed: number };
 }) {
   const topLine = stats?.topRated ? `${stats.topRated.ticker} (${stats.topRated.grade})` : "—";
@@ -417,7 +380,6 @@ function DeckCompactHeader({
           playCounts={playCounts}
           prominent
         />
-        <DeckSortBar sortMode={sortMode} setSortMode={setSortMode} />
       </div>
     </div>
   );

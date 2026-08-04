@@ -118,7 +118,7 @@ test("legacy row uses compact strip", async () => {
   assert.match(html, />META 592\.5C 0DTE</);
 });
 
-test("command center renders play table column headers", async () => {
+test("command center renders sortable play table column headers", async () => {
   const { CommandDeck } = await load();
   const html = renderToStaticMarkup(
     React.createElement(CommandDeck, {
@@ -128,11 +128,15 @@ test("command center renders play table column headers", async () => {
     }),
   );
   assert.match(html, /nh-deck-play-table-head/);
+  assert.match(html, /nh-deck-play-th--sort/);
   assert.match(html, />Status</);
   assert.match(html, />Play</);
   assert.match(html, />Rating</);
   assert.match(html, />Time</);
   assert.match(html, />PnL</);
+  assert.match(html, /aria-sort="descending"/);
+  assert.doesNotMatch(html, /nh-deck-sortbar/);
+  assert.doesNotMatch(html, />TRIGGERED</);
 });
 
 test("CommandDeck command center renders stat strip for 0DTE", async () => {
