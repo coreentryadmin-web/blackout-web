@@ -168,21 +168,11 @@ const DOSSIER_CACHE_TTL_MS = 10 * 60 * 1000;
  *  or poll (~15s) gets the enriched row instantly — the board "heats up". */
 const ENRICH_WAIT_MS = 3_000;
 
-// Fail-closed resilience: last-known-good fallback for provider timeouts.
-// When a provider fetch times out (within() → null), the fail-closed gates (G-4/G-7/G-11)
-// empty the board for that entire scan pass. A single transient timeout shouldn't kill
-// every play — if we have a recent successful read from this session, use it instead.
-// On a TRUE cold start (process restart, no prior read), there's nothing to fall back to
-// and the fail-closed gates correctly hold the board until the provider responds.
-// Max-age cap: a fallback older than 30 minutes is treated as truly unavailable — stale
-// VIX/macro/earnings from hours ago is worse than fail-closed (data-resilience audit 2026-07-27).
-const MAX_FALLBACK_AGE_MS = 30 * 60 * 1000; // 30 minutes
-let _lastVix: number | null = null;
-let _lastVixAt = 0;
-let _lastMacroRead: Awaited<ReturnType<typeof macroEventsOnDateLive>> | null = null;
-let _lastMacroReadAt = 0;
-let _lastEarnings: { map: Map<string, EarningsFlag>; unavailable: boolean } | null = null;
-let _lastEarningsAt = 0;
+import {
+  resolveFirewallEarnings,
+  resolveFirewallMacro,
+  resolveFirewallNumeric,
+} from "./firewall-fallback";
 
 /** Await `p` for at most `ms`, else null — without cancelling `p` (it continues in
  *  the background and populates the server cache). */
@@ -688,29 +678,19 @@ async function attachGateVerdicts(
       }
     })(),
   ]);
-  // Phase-0 firewall signals — with stale-but-recent fallback (2026-07-27).
-  // If a provider fetch timed out (null) but we have a successful read from earlier
-  // this session, use the fallback instead of marking unavailable. On a fresh read,
-  // store it as the new fallback.
+  // Phase-0 firewall signals — cluster-visible LKG + 5m fail-closed stale policy (2026-08-04).
   const now = Date.now();
-  let effectiveVix = vixDayOpen;
-  if (vixDayOpen != null) { _lastVix = vixDayOpen; _lastVixAt = now; }
-  else if (_lastVix != null && (now - _lastVixAt) < MAX_FALLBACK_AGE_MS) effectiveVix = _lastVix;
-  const vixUnavailable = effectiveVix == null;
+  const vixResolved = await resolveFirewallNumeric(today, "vix", vixDayOpen, now);
+  const effectiveVix = vixResolved.value;
+  const vixUnavailable = vixResolved.unavailable;
 
-  let effectiveMacro = macroRead;
-  if (macroRead != null) { _lastMacroRead = macroRead; _lastMacroReadAt = now; }
-  else if (_lastMacroRead != null && (now - _lastMacroReadAt) < MAX_FALLBACK_AGE_MS) effectiveMacro = _lastMacroRead;
-  const macroUnavailable = effectiveMacro == null;
-  const macroEvents = effectiveMacro ?? [];
+  const macroResolved = await resolveFirewallMacro(today, macroRead, now);
+  const macroEvents = macroResolved.events;
+  const macroUnavailable = macroResolved.unavailable;
 
-  // D1 firewall: TRUE only when the earnings read was ATTEMPTED-but-FAILED AND no
-  // prior successful read exists for this session.
-  let effectiveEarnings = freshEarningsResult;
-  if (!freshEarningsResult.unavailable) { _lastEarnings = freshEarningsResult; _lastEarningsAt = now; }
-  else if (_lastEarnings != null && (now - _lastEarningsAt) < MAX_FALLBACK_AGE_MS) effectiveEarnings = _lastEarnings;
-  const freshEarnings = effectiveEarnings.map;
-  const earningsUnavailable = effectiveEarnings.unavailable;
+  const earningsResolved = await resolveFirewallEarnings(today, freshEarningsResult, now);
+  const freshEarnings = earningsResolved.map;
+  const earningsUnavailable = earningsResolved.unavailable;
   // D2 firewall: the halt read yields a per-ticker ACTIVE-halt set plus one GLOBAL feed-stale
   // flag (both UW + LULD halt sources cold). freshHaltFeedStale gates G-11's halt_feed_stale
   // fail-closed for EVERY committable candidate (see gates.ts G11_HALT_FAIL_CLOSED_ENABLED).
