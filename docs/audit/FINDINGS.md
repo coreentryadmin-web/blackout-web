@@ -4,6 +4,19 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-04 — [P2, data coverage] Thermal low-priced tickers (NIO) showed ~4–5 strikes — FIXED
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P2 — matrix ladder too thin on sub-$10 names; not a calculation bug |
+| **Evidence** | Polygon: NIO @ $4.81 full chain = 23 strikes ($0.50–$15); ±20% band = only $3–$6 → ~7–11 contracts, often ~4–5 rows with near-term OI in Thermal |
+| **Root cause** | `fetchHeatmapBand` used flat ±20% of spot with no $ floor — on a $5 stock that's ~$1 each side → handful of $0.50-spaced strikes. SPX intentionally stays ±6% (dense grid); low-priced names need a wider dollar window or full-chain pull |
+| **Fix** | `resolveHeatmapStrikeBounds()` — $ min half-width tiers (≤$10 → ±$7.50, ≤$25 → ±$12.50, ≤$50 → ±$20); for spot ≤$15 if band still yields <12 strikes, fall back to full unfiltered chain (≤12 pages). UW fallback band uses same bounds |
+| **Files** | `polygon-options-gex.ts`, `polygon-options-gex.test.ts` |
+| **Status** | FIXED — PR `cursor/thermal-low-price-strikes-3d11` |
+
+---
+
 ## 2026-08-04 — [P2, UX/correctness disclosure] Thermal key levels looked "way off" vs matrix peaks / competitor tools — FIXED (scope labels)
 
 | Field | Value |
