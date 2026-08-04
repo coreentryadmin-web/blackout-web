@@ -31,7 +31,7 @@
   }
 
   html:not(.ios-native-shell) .nh-v2-page.nighthawk-page-shell-fill .nighthawk-page-content {
-    flex: 1 1 auto;
+    flex: 1 1 0%;
     min-height: 0;
     display: flex;
     flex-direction: column;
@@ -39,7 +39,7 @@
   }
 
   html:not(.ios-native-shell) .nh-v2-page .nighthawk-page-root {
-    flex: 1 1 auto;
+    flex: 1 1 0%;
     min-height: 0;
     display: flex;
     flex-direction: column;
@@ -48,7 +48,7 @@
 
   html:not(.ios-native-shell) .nh-v2-page .nighthawk-content-canvas,
   html:not(.ios-native-shell) .nh-v2-page .nighthawk-single-view {
-    flex: 1 1 auto;
+    flex: 1 1 0%;
     min-height: 0;
     display: flex;
     flex-direction: column;
@@ -56,16 +56,18 @@
   }
 
   html:not(.ios-native-shell) .nh-v2-page .nh-deck.nh-deck-fill {
-    flex: 1 1 auto;
+    /* flex-basis 0% — NOT min(70vh): that floor overrode min-height:0 and let the deck
+       outgrow the shell; overflow:hidden on ancestors then clipped the right rail with
+       no scrollport on .nh-deck-body (flex-basis:auto sized to content). */
+    flex: 1 1 0%;
     min-height: 0;
     max-height: 100%;
     overflow: hidden;
-    /* Collapse guard — budget header + segment + blurb (~14rem) under fixed nav. */
-    min-height: min(70vh, calc(100dvh - var(--nav-offset) - 14rem));
   }
 
   html:not(.ios-native-shell) .nh-v2-page .nh-deck-left,
   html:not(.ios-native-shell) .nh-v2-page .nh-deck-right {
+    flex: 1 1 0%;
     min-height: 0;
     overflow: hidden;
     display: flex;
@@ -82,8 +84,8 @@
   }
 
   html:not(.ios-native-shell) .nh-v2-page .nh-deck-rows {
+    flex: 1 1 0%;
     min-height: 0;
-    flex: 1 1 auto;
     overflow-y: auto;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
@@ -113,8 +115,8 @@
   }
 
   html:not(.ios-native-shell) .nh-v2-page .nh-deck-body {
+    flex: 1 1 0%;
     min-height: 0;
-    flex: 1 1 auto;
     overflow-y: auto;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
