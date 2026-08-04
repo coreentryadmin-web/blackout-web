@@ -110,11 +110,11 @@ export function buildTerminalExitLadder(
 export const RTH_OPEN_ET_MINUTES = 9 * 60 + 30;
 
 export type TimeStopClock = {
-  /** Whole minutes until the 15:30 hard time-stop (0 once past it — never negative). */
+  /** Whole minutes until the hard time-stop (0 once past it — never negative). */
   minutes_remaining: number;
   /** "H:MM" of the remaining time (e.g. "2:14"); "0:00" at/after the stop. */
   label: string;
-  /** 0→1 fraction of the RTH window (09:30→15:30) already elapsed — the decay bar fill.
+  /** 0→1 fraction of the RTH window (09:30→hard exit) already elapsed — the decay bar fill.
    *  Clamped [0,1]; before the open it is 0, after the time-stop it is 1. */
   elapsed_frac: number;
   /** True once the hard time-stop has passed (drives the "TIME STOP" flag). */
@@ -123,7 +123,7 @@ export type TimeStopClock = {
 
 /** Pure time-stop clock from an ET minute-of-day. Testable without a real clock. */
 export function timeStopClock(nowEtMinutes: number): TimeStopClock {
-  const stop = PLAN_RULES.time_stop_et_minutes; // 15:30 = 930
+  const stop = PLAN_RULES.time_stop_et_minutes;
   const remaining = Math.max(0, stop - nowEtMinutes);
   const span = stop - RTH_OPEN_ET_MINUTES; // 360 min RTH window
   const elapsed = span > 0 ? (nowEtMinutes - RTH_OPEN_ET_MINUTES) / span : 0;

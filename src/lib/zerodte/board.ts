@@ -11,10 +11,9 @@
 export type SessionHeatState =
   | "PRE_MARKET" // before 9:30 ET — system warming: feeds, morning confirm, lotto scan
   | "OPENING_DRIVE" // 9:30-10:00 ET — heating up: ranges forming, engines arming
-  | "RTH" // 10:00-14:00 ET — fully hot; directional 0DTE commits allowed
-  | "POST_COMMIT" // 14:00-15:00 ET — no fresh directional commits (G-14 / NEW_PLAY_CUTOFF); manage open risk
-  | "POWER_HOUR" // 15:00-15:30 ET — power-hour engine window
-  | "LATE_SESSION" // 15:30-16:00 ET — winding down, no fresh entries
+  | "RTH" // 10:00-15:30 ET — fully hot; directional 0DTE commits allowed
+  | "POST_COMMIT" // 15:30-15:50 ET — no fresh commits (G-14); manage open risk to hard exit
+  | "LATE_SESSION" // 15:50-16:00 ET — flat by time stop; no fresh entries
   | "CLOSED"; // outside RTH — hand off to Night Hawk
 
 export type SessionHeat = {
@@ -38,11 +37,8 @@ export function sessionHeat(etMinutes: number, isTradingDay: boolean): SessionHe
   }
   const OPEN = 9 * 60 + 30;
   const TEN = 10 * 60;
-  // Must match NEW_PLAY_CUTOFF_ET_MINUTES / G-14 (14:00 ET) — heat must not advertise
-  // "Desk hot" / WATCH while the commit door is already closed (FINDINGS 2026-07-28).
-  const COMMIT_CUTOFF = 14 * 60;
-  const PH = 15 * 60;
-  const PH_END = 15 * 60 + 30;
+  const COMMIT_CUTOFF = 15 * 60 + 30; // NEW_PLAY_CUTOFF / G-14
+  const TIME_STOP = 15 * 60 + 50; // PLAN_RULES hard exit
   const CLOSE = 16 * 60;
 
   if (etMinutes < OPEN) {
@@ -68,23 +64,15 @@ export function sessionHeat(etMinutes: number, isTradingDay: boolean): SessionHe
       state: "RTH",
       label: "Desk hot",
       heat_pct: 100,
-      note: "All engines live — plays fire when gates align.",
+      note: "All engines live — new 0DTE commits until 3:30 PM ET.",
     };
   }
-  if (etMinutes < PH) {
+  if (etMinutes < TIME_STOP) {
     return {
       state: "POST_COMMIT",
       label: "Managing",
       heat_pct: 70,
-      note: "No new directional 0DTE commits after 14:00 ET — managing open risk; index credit seats may still print.",
-    };
-  }
-  if (etMinutes < PH_END) {
-    return {
-      state: "POWER_HOUR",
-      label: "Power hour",
-      heat_pct: 100,
-      note: "Power-hour engine window — closing-drive setups.",
+      note: "No new 0DTE commits after 3:30 PM ET — managing open risk to the 3:50 PM hard exit.",
     };
   }
   if (etMinutes < CLOSE) {
@@ -92,7 +80,7 @@ export function sessionHeat(etMinutes: number, isTradingDay: boolean): SessionHe
       state: "LATE_SESSION",
       label: "Winding down",
       heat_pct: 50,
-      note: "Late session — managing open risk, no fresh entries.",
+      note: "Past the 3:50 PM time stop — everything should be flat.",
     };
   }
   return {
@@ -105,7 +93,7 @@ export function sessionHeat(etMinutes: number, isTradingDay: boolean): SessionHe
 
 /**
  * Status for a FRESH (not-yet-ledgered) find, given the session clock and the
- * find's own plan flags — the same "no new directional plays after 14:00 ET"
+ * find's own plan flags — the same "no new 0DTE plays after 3:30 PM ET"
  * cutoff every consumer of a fresh find must apply consistently. `heatState`
  * undefined is treated as closed (matches sessionHeat()'s own "no session today"
  * fallback).
@@ -128,7 +116,6 @@ export function resolveFreshFindStatus(
 ): "WATCH" | "SKIP" {
   const pastCutoff =
     heatState === "POST_COMMIT" ||
-    heatState === "POWER_HOUR" ||
     heatState === "LATE_SESSION" ||
     heatState === "CLOSED" ||
     heatState === undefined;
@@ -641,7 +628,7 @@ export type ZeroDteGateFailure =
   | "tape_alignment" // G-1: direction fights the SPY session bias
   | "no_market_bias" // G-1 fail-closed: bias read missing or stale
   | "opening_window" // G-2: no new commits before 10:00 ET
-  | "late_afternoon" // G-14: no new directional commits after 14:00 ET
+  | "late_afternoon" // G-14: no new directional commits after 15:30 ET
   | "score_floor" // G-3: post-edge-layer score below 65
   | "confluence_floor" // G-12: too few VWAP-side/market-aligned confirmations (0-conf −12.5% EV; higher floor 10:00–10:45)
   | "governor_max_concurrent" // G-5: 3 plans already open

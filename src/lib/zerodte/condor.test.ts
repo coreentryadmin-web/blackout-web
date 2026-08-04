@@ -479,8 +479,8 @@ test("grader: no bars strictly AFTER the flag → ungradeable (never a fabricate
 
 test("grader: every in-window bar past the time-stop → ungradeable (no close was ever inside the window)", () => {
   const p = cleanCondorPlan();
-  // Both bars are after 15:30 → the loop breaks before recording any close.
-  const bars = [barAt("15:31:00", 601, 599, 600), barAt("15:45:00", 601, 599, 600)];
+  // Both bars are after 15:50 → the loop breaks before recording any close.
+  const bars = [barAt("15:51:00", 601, 599, 600), barAt("15:55:00", 601, 599, 600)];
   const o = gradeCondorFromBars(bars, p, flaggedAtMs);
   assert.equal(o.outcome, "ungradeable");
 });
@@ -498,7 +498,7 @@ test("grader: a FROZEN earlier time-stop excludes a later breach bar → the pre
   // 14:15 stays inside (win); 15:00 would breach, but a 14:30 frozen time-stop excludes it.
   const bars = [barAt("14:15:00", 601, 599, 600), barAt("15:00:00", 610, 601, 606)];
   const withDefault = gradeCondorFromBars(bars, p, flaggedAtMs);
-  assert.equal(withDefault.outcome, "condor_breach_loss", "default 15:30 time-stop sees the 15:00 breach");
+  assert.equal(withDefault.outcome, "condor_breach_loss", "default 15:50 time-stop sees the 15:00 breach");
   const frozen = gradeCondorFromBars(bars, p, flaggedAtMs, { time_stop_et_minutes: 14 * 60 + 30 });
   assert.equal(frozen.outcome, "condor_win", "a 14:30 frozen stop settles before the 15:00 breach");
 });

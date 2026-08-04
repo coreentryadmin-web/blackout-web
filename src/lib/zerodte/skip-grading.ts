@@ -116,7 +116,7 @@ export function gradeSkippedPlay(input: {
     return ungradeable("block time unreadable — no counterfactual entry point exists", nowMs);
   }
   if (etMinutesOf(blockedAtMs) > PLAN_RULES.time_stop_et_minutes) {
-    return ungradeable("blocked after the 15:30 ET hard exit — no plan window existed to grade", nowMs);
+    return ungradeable("blocked after the 3:50 ET hard exit — no plan window existed to grade", nowMs);
   }
 
   // Premium basis — only when the actual contract's bars are in hand.

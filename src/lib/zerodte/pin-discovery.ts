@@ -35,12 +35,12 @@ import { selectIronCondor } from "./iron-condor";
 import type { EnrichedZeroDteSetup } from "./board";
 import { pinPassesTemporalStabilityGate } from "./pin-temporal-stability";
 
-/** Directional PIN window in ET minutes-since-midnight: [9:30, 14:00) — same gate as BREAKOUT /
- *  NEW_PLAY_CUTOFF / G-14. After 14:00, discovery continues ONLY for condor-eligible index roots
- *  until CONDOR_LATE_CUTOFF (G-14 exempts credit seats; persist mirrors that — FINDINGS 2026-07-28). */
+/** Directional PIN window in ET minutes-since-midnight: [9:30, 15:30) — same gate as BREAKOUT /
+ *  NEW_PLAY_CUTOFF / G-14. After 15:30, discovery continues ONLY for condor-eligible index roots
+ *  until CONDOR_LATE_CUTOFF (no new seats after the directional cutoff). */
 const RTH_OPEN_ET_MINUTES = 9 * 60 + 30;
-const RTH_CUTOFF_ET_MINUTES = 14 * 60;
-/** Stop hunting new condors into the last half-hour — liquidity + settlement noise. */
+const RTH_CUTOFF_ET_MINUTES = 15 * 60 + 30;
+/** Stop hunting new condors after the directional commit cutoff (3:30 PM ET). */
 const CONDOR_LATE_CUTOFF_ET_MINUTES = 15 * 60 + 30;
 
 /** The curated LIQUID pin universe (see the file header). Index products first -- the deepest,

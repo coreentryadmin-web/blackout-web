@@ -117,8 +117,8 @@ test("advancePlayLatch: target touch makes TRIM sticky; null mark still time-sto
   assert.equal(l1.status, "TRIM");
   const l2 = advancePlayLatch(play, l1, 3.0, noon); // gave the double back — still TRIM
   assert.equal(l2.status, "TRIM");
-  // Past 15:30 ET everything closes, even with no quote this tick.
-  const l3 = advancePlayLatch(play, l2, null, 15 * 60 + 31);
+  // Past 15:50 ET everything closes, even with no quote this tick.
+  const l3 = advancePlayLatch(play, l2, null, 15 * 60 + 51);
   assert.equal(l3.status, "CLOSED");
   assert.equal(l3.peak, 8.1); // null mark never touches the latches
 });

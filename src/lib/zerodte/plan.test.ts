@@ -10,6 +10,7 @@ import {
   evaluateQuoteValidity,
   gradePlanExecutableFromBars,
   gradePlanFromBars,
+  NEW_PLAY_CUTOFF_ET_MINUTES,
   PLAN_RULES,
   QUOTE_VALIDITY,
   reconstructTrimScaleExecutableFromBars,
@@ -17,8 +18,8 @@ import {
   type TrimScaleSpec,
 } from "./plan";
 
-// Summer EDT (UTC-4): 14:00Z = 10:00 ET (600 min), 19:30Z = 15:30 ET (the time stop),
-// 19:31Z = 15:31 ET (past it). All bars below sit deterministically in that frame.
+// Summer EDT (UTC-4): 14:00Z = 10:00 ET (600 min), 19:50Z = 15:50 ET (the time stop),
+// 19:51Z = 15:51 ET (past it). All bars below sit deterministically in that frame.
 const T = (hhmm: string): number => Date.parse(`2026-07-10T${hhmm}:00Z`);
 
 // ════════════════════════════════════════════════════════════════════════════════════
@@ -51,24 +52,24 @@ test("gradePlanFromBars: the FLAG bar itself is excluded (bar.t ≤ flag skipped
   assert.equal(out.pnl_pct, 10); // last close 1.1
 });
 
-test("gradePlanFromBars: past 15:30 ET the walk BREAKS before grading — a late spike/crash is ignored", () => {
+test("gradePlanFromBars: past 15:50 ET the walk BREAKS before grading — a late spike/crash is ignored", () => {
   const flag = T("13:59");
   const bars: PlanBar[] = [
     { t: T("14:00"), h: 1.2, l: 0.9, c: 1.1 }, // 10:00 ET, in window
     { t: T("19:00"), h: 1.4, l: 1.2, c: 1.3 }, // 15:00 ET, in window → last usable close
-    { t: T("19:31"), h: 5.0, l: 0.1, c: 4.0 }, // 15:31 ET, PAST the stop → must be ignored
+    { t: T("19:51"), h: 5.0, l: 0.1, c: 4.0 }, // 15:51 ET, PAST the stop → must be ignored
   ];
   const out = gradePlanFromBars(bars, 1.0, flag);
   assert.equal(out.outcome, "time_stop"); // the late bar neither doubled nor stopped it
   assert.equal(out.pnl_pct, 30); // (1.3 − 1)/1 — the last in-window close
 });
 
-test("gradePlanFromBars: a bar AT exactly 15:30 ET is still in the window (boundary inclusive)", () => {
+test("gradePlanFromBars: a bar AT exactly 15:50 ET is still in the window (boundary inclusive)", () => {
   const flag = T("13:59");
-  const bars: PlanBar[] = [{ t: T("19:30"), h: 1.5, l: 1.4, c: 1.45 }]; // 15:30 ET exactly
+  const bars: PlanBar[] = [{ t: T("19:50"), h: 1.5, l: 1.4, c: 1.45 }]; // 15:50 ET exactly
   const out = gradePlanFromBars(bars, 1.0, flag);
   assert.equal(out.outcome, "time_stop");
-  assert.equal(out.pnl_pct, 45); // close 1.45 graded — 15:30 is NOT past the stop
+  assert.equal(out.pnl_pct, 45); // close 1.45 graded — 15:50 is NOT past the stop
 });
 
 test("gradePlanFromBars: NO bars strictly after the flag → ungradeable (never a fabricated fill)", () => {
@@ -267,5 +268,6 @@ test("evaluateQuoteValidity: precedence — the MOST degenerate reason wins (cro
 test("PLAN_RULES: the fixed 0DTE discipline is what the grades key on", () => {
   assert.equal(PLAN_RULES.stop_pct, -50);
   assert.equal(PLAN_RULES.target_pct, 100);
-  assert.equal(PLAN_RULES.time_stop_et_minutes, 15 * 60 + 30);
+  assert.equal(PLAN_RULES.time_stop_et_minutes, 15 * 60 + 50);
+  assert.equal(NEW_PLAY_CUTOFF_ET_MINUTES, 15 * 60 + 30);
 });

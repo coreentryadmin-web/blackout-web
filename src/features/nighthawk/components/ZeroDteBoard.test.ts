@@ -90,7 +90,7 @@ function fakeSetup(ticker: string, plan: ContractPlan | null): EnrichedZeroDteSe
   };
 }
 
-test("mergePlays: fresh find after 14:00 POST_COMMIT cutoff shows SKIP not OPEN", () => {
+test("mergePlays: fresh find after 15:30 POST_COMMIT cutoff shows SKIP not OPEN", () => {
   const plan = fakeSetup("TSLA", {
     occ: "T",
     flow_avg_fill: 4.2,
@@ -104,15 +104,13 @@ test("mergePlays: fresh find after 14:00 POST_COMMIT cutoff shows SKIP not OPEN"
     illiquid: false,
     stop_premium: 2.1,
     target_premium: 8.4,
-    time_stop_et: "15:30",
+    time_stop_et: "15:50",
     underlying_target: null,
     underlying_invalid: null,
   }).plan!;
   const atPostCommit = mergePlays([fakeSetup("TSLA", plan)], [], "POST_COMMIT");
   assert.equal(atPostCommit.length, 1);
   assert.equal(atPostCommit[0]!.status, "SKIP");
-  const atPowerHour = mergePlays([fakeSetup("TSLA", plan)], [], "POWER_HOUR");
-  assert.equal(atPowerHour[0]!.status, "SKIP");
 });
 
 test("mergePlays: MOVED entry_status always SKIP even during RTH", () => {

@@ -49,11 +49,10 @@ export const BREAKOUT_INTRADAY_REFRESH = envFlag("BREAKOUT_INTRADAY_REFRESH");
 /** Max tickers to minute-refresh per scan (Polygon budget guard). */
 export const BREAKOUT_INTRADAY_REFRESH_LIMIT = 40;
 
-/** RTH commit window in ET minutes-since-midnight: [9:30, 14:00). Aligned with
- *  NEW_PLAY_CUTOFF / G-14 (FINDINGS 2026-07-28) — discovering after the commit gate is closed
- *  only wastes chain-fetch budget. Was left at 15:00 when the cutoff moved to 14:00. */
+/** RTH commit window in ET minutes-since-midnight: [9:30, 15:30). Aligned with
+ *  NEW_PLAY_CUTOFF / G-14 — discovering after the commit gate is closed only wastes chain-fetch budget. */
 const RTH_OPEN_ET_MINUTES = 9 * 60 + 30;
-const RTH_CUTOFF_ET_MINUTES = 14 * 60;
+const RTH_CUTOFF_ET_MINUTES = 15 * 60 + 30;
 
 /** Cap the per-ticker chain fetches per scan. The liquidity screen keeps a wider $-volume pool
  *  (`BREAKOUT_SCREEN_POOL`); this cap is applied AFTER re-ranking by momentum quality

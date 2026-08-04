@@ -132,7 +132,7 @@ const { appendFileSync } = await import("node:fs"); // for RATCHET_DUMP (offline
  *      floor (or trim) off a price the trade never had. The live peak latch only starts at flag time.
  */
 const PROTECT_AT = process.env.RATCHET_PROTECT_AT === "close" ? "close" : "low";
-const REPLAY_STOP_ET_MIN = 15 * 60 + 30; // 930 = 15:30 ET board hard time-stop (PLAN_RULES.time_stop_et_minutes)
+const REPLAY_STOP_ET_MIN = 15 * 60 + 50; // 950 = 15:50 ET board hard time-stop (PLAN_RULES.time_stop_et_minutes)
 const SIM_TRIM_REGIME = ["trend", "neutral", "range"].includes(process.env.ZERODTE_SIM_REGIME) ? process.env.ZERODTE_SIM_REGIME : "neutral";
 
 /**

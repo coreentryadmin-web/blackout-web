@@ -983,6 +983,6 @@ export async function zeroDtePlaysForLargo(): Promise<Record<string, unknown>> {
     plays,
     fresh_finds: fresh,
     excluded_covered_elsewhere: board.covered_elsewhere,
-    rules: "0DTE discipline: no new directional plays after 14:00 ET; stop -50%, trim +100%, hard exit 15:30 ET.",
+    rules: "0DTE discipline: new directional plays 10:00–15:30 ET; stop -50%, trim +100%, hard exit 15:50 ET.",
   };
 }

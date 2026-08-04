@@ -16,9 +16,23 @@ export const PLAN_RULES = {
   stop_pct: -50,
   /** Take (at least a trim) when premium doubles. */
   target_pct: 100,
-  /** Hard time stop — 0DTE theta collapse into the close; ET minutes (15:30). */
-  time_stop_et_minutes: 15 * 60 + 30,
+  /** Hard time stop — flat by 15:50 ET (10 min before cash close). */
+  time_stop_et_minutes: 15 * 60 + 50,
 } as const;
+
+/** 0DTE directional commits open at 10:00 ET (G-2 unlock). */
+export const ZERODTE_COMMIT_OPEN_ET_MINUTES = 10 * 60;
+
+/** No NEW 0DTE plays after 15:30 ET — gate G-14 + persist backstop. */
+export const NEW_PLAY_CUTOFF_ET_MINUTES = 15 * 60 + 30;
+
+/** Human ET label for the hard exit (derived from PLAN_RULES). */
+export function zerodteTimeStopEtLabel(): string {
+  const m = PLAN_RULES.time_stop_et_minutes;
+  const h = Math.floor(m / 60);
+  const min = m % 60;
+  return `${h}:${String(min).padStart(2, "0")}`;
+}
 
 // 55 not 35: 0DTE ATM options have extreme gamma — a 0.2% underlying move can
 // swing the option premium 30-50%, so 35% sat inside normal intraday noise and
@@ -256,7 +270,7 @@ export function buildContractPlan(input: {
     quote_invalid_reason: quoteInvalidReason,
     stop_premium: entryMax != null ? round2(entryMax * (1 + PLAN_RULES.stop_pct / 100)) : null,
     target_premium: entryMax != null ? round2(entryMax * (1 + PLAN_RULES.target_pct / 100)) : null,
-    time_stop_et: "15:30",
+    time_stop_et: zerodteTimeStopEtLabel(),
     underlying_target: target,
     underlying_invalid: invalid,
   };
@@ -634,12 +648,6 @@ export function reconstructTrimScaleExecutableFromBars(
 // contract's live mark (with latched peak/trough so a stop stays a stop even if
 // the premium bounces). 0DTE discipline: no new plays after the entry cutoff,
 // everything closes by the time stop — nothing is ever carried overnight.
-
-/** No NEW plays after 14:00 ET; existing plays are managed to exit by the time stop.
- *  Gate G-14 is the primary defense (directional only, condor-exempt); this persist-layer
- *  cutoff is the backstop. Aligned with LATE_AFTERNOON_BLOCK_ET_MINUTES (FINDINGS 2026-07-28:
- *  late 14:00–15:30 bucket = 14.3% WR / −19% avg). */
-export const NEW_PLAY_CUTOFF_ET_MINUTES = 14 * 60;
 
 export type PlayStatus = "OPEN" | "HOLD" | "TRIM" | "CLOSED";
 

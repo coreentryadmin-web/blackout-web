@@ -10,8 +10,7 @@
 // NDX/QQQ…) ARE eligible — the dominance gate naturally admits them only when
 // their normally two-sided tape genuinely leans. Night Hawk edition tickers are
 // NOT excluded (2026-07-28 remodel — NH is next-day digest, not same-session).
-// 0DTE discipline: no NEW directional plays after the 14:00 ET cutoff; CONDOR may
-// still seat in the late window. Everything is managed to a close by 15:30 ET.
+// 0DTE discipline: new directional plays 10:00–15:30 ET; hard exit 15:50 ET.
 
 import {
   dbConfigured,

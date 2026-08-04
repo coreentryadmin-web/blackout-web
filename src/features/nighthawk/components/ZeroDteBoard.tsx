@@ -298,7 +298,7 @@ export function mergePlays(
   ledger: LedgerRow[],
   heatState: SessionHeat["state"] | undefined
 ): PlayRow[] {
-  // Past POST_COMMIT / 14:00 ET cutoff no NEW directional play can open; after close nothing is live.
+  // Past POST_COMMIT / 3:30 PM ET cutoff no NEW directional play can open; after close nothing is live.
   const sessionClosed = heatState === "CLOSED" || heatState === undefined;
   const byTicker = new Map(setups.map((s) => [s.ticker, s]));
   const rows: PlayRow[] = ledger.map((r) => ({
@@ -594,7 +594,7 @@ function PaneHeader({
       <MarketStateStrip ms={data.market_state} />
       <DiscoveryFunnelStrip funnel={data.discovery_funnel} />
       <p className="mt-2 font-mono text-[10px] uppercase tracking-widest text-sky-200">
-        0DTE discipline: no new plays after 3:00 ET · everything closes by 3:30 ET · nothing held overnight
+        0DTE discipline: new plays 10:00–3:30 ET · everything closes by 3:50 ET · nothing held overnight
       </p>
     </Panel>
   );
@@ -1060,7 +1060,7 @@ function PlayDetail({ row, nowMs }: { row: PlayRow; nowMs: number }) {
           Entry {entryStr}
           {p?.flow_avg_fill != null ? ` (flow paid ~$${p.flow_avg_fill.toFixed(2)})` : ""} · stop −50%
           {stop != null ? ` ($${stop.toFixed(2)})` : ""} · trim/target +100%
-          {target != null ? ` ($${target.toFixed(2)})` : ""} · hard exit 3:30 ET
+          {target != null ? ` ($${target.toFixed(2)})` : ""} · hard exit 3:50 ET
         </p>
         {(p?.underlying_target != null || p?.underlying_invalid != null || s?.key_supports.length || s?.key_resistances.length) && (
           <p className="mt-1 t-num text-[11px] text-sky-100">
@@ -1075,7 +1075,7 @@ function PlayDetail({ row, nowMs }: { row: PlayRow; nowMs: number }) {
         )}
         {row.status === "TRIM" && (
           <p className="mt-1 text-[11px] font-semibold text-cyan-300">
-            Premium tagged +100% — take at least half off; manage the rest to the 3:30 ET exit.
+            Premium tagged +100% — take at least half off; manage the rest to the 3:50 ET exit.
           </p>
         )}
       </BriefingSection>
@@ -1173,7 +1173,7 @@ function PlayCard({ row, nowMs }: { row: PlayRow; nowMs: number }) {
               title={row.exit_detail ?? undefined}
               className="rounded-md border border-sky-300/35 bg-sky-300/[0.08] px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-sky-200"
             >
-              {row.closed_reason === "time_stop" ? "15:30 exit" : `${row.closed_reason} exit`}
+              {row.closed_reason === "time_stop" ? "3:50 exit" : `${row.closed_reason} exit`}
             </span>
           )}
           {row.status === "TRIM" && (
@@ -1351,7 +1351,7 @@ function SkipCard({ row, nowMs }: { row: PlayRow; nowMs: number }) {
             <span className="mr-2 rounded-md border border-sky-300/25 bg-sky-300/[0.05] px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-sky-300">
               late window
             </span>
-            Flagged after the 3:00 ET cutoff — 0DTE discipline: no fresh entries this late. Watch-only.
+            Flagged after the 3:30 ET cutoff — 0DTE discipline: no fresh entries this late. Watch-only.
           </li>
         )}
       </ul>
@@ -1406,8 +1406,8 @@ function SkipsSection({ rows, nowMs }: { rows: PlayRow[]; nowMs: number }) {
  * (every gate-blocked/skipped setup with its reason), and the session governor strip.
  * Multi-day track record lives on /track-record, not here. Statuses are derived
  * server-side from each play's premium vs its fixed rules and latched extremes —
- * OPEN → HOLD → TRIM → CLOSED, everything force-closed by 3:30 ET, no new plays
- * after 3:00 ET.
+ * OPEN → HOLD → TRIM → CLOSED, everything force-closed by 3:50 ET, no new plays
+ * after 3:30 ET.
  */
 export function ZeroDteBoard() {
   const { data, error } = useSWR<BoardResponse>("/api/market/zerodte/board", fetcher, {
@@ -1513,7 +1513,7 @@ export function ZeroDteBoard() {
         <p className="mt-3 border-t border-white/[0.06] px-1 pt-3 text-[10px] leading-relaxed text-sky-200">
           Click a play for its evidence and plan. Statuses update automatically: OPEN (in the entry
           range) → HOLD → TRIM (premium doubled — take some off) → CLOSED (stop, target discipline,
-          or the 3:30 ET hard exit). Plays already published elsewhere on the desk are excluded
+          or the 3:50 ET hard exit). Plays already published elsewhere on the desk are excluded
           {covered.length > 0 ? ` (today: ${covered.join(", ")})` : ""}; grades come from each
           contract&apos;s own prices, not opinion.
         </p>

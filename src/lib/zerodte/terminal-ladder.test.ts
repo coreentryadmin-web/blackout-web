@@ -22,7 +22,7 @@ const TRIM_SCALE: TerminalPolicyInput = {
     { trigger_pct: 50, fraction: 1 / 3 },
   ],
   runner_fraction: 1 / 3,
-  time_stop_et: "15:30",
+  time_stop_et: "15:50",
 };
 
 test("ladder: prices each trim level off entry and stop/target rails", () => {
@@ -62,7 +62,7 @@ test("ladder: the SHIPPED trim_scale ResolvedExitPolicy resolves to a real ⅓/�
   assert.equal(l.policy, "trim_scale");
   assert.ok(l.trim_levels.length >= 2, "trim_scale has >=2 profit tranches");
   assert.ok(l.trim_levels[0]!.trigger_pct > 0 && l.trim_levels[0]!.trigger_pct < 100);
-  assert.equal(l.time_stop_et, "15:30");
+  assert.equal(l.time_stop_et, "15:50");
 });
 
 test("ladder: ratchet policy stays a single-trim policy (legacy render unchanged)", () => {
@@ -72,17 +72,17 @@ test("ladder: ratchet policy stays a single-trim policy (legacy render unchanged
   assert.equal(l.trim_levels.length, 1); // the single +100% half-trim
 });
 
-test("clock: minutes remaining + label + elapsed fraction to 15:30", () => {
-  const stop = PLAN_RULES.time_stop_et_minutes; // 930
+test("clock: minutes remaining + label + elapsed fraction to 15:50", () => {
+  const stop = PLAN_RULES.time_stop_et_minutes; // 950
   const c = timeStopClock(RTH_OPEN_ET_MINUTES); // at the open
-  assert.equal(c.minutes_remaining, stop - RTH_OPEN_ET_MINUTES); // 360
+  assert.equal(c.minutes_remaining, stop - RTH_OPEN_ET_MINUTES); // 380
   assert.equal(c.elapsed_frac, 0);
   assert.equal(c.past_time_stop, false);
 
-  const mid = timeStopClock(12 * 60 + 30); // 12:30 → 3h in, 3h left
-  assert.equal(mid.minutes_remaining, 180);
-  assert.equal(mid.label, "3:00");
-  assert.ok(Math.abs(mid.elapsed_frac - 0.5) < 1e-9);
+  const mid = timeStopClock(12 * 60 + 30); // 12:30 → 3h20 left to 15:50
+  assert.equal(mid.minutes_remaining, 200);
+  assert.equal(mid.label, "3:20");
+  assert.ok(Math.abs(mid.elapsed_frac - 180 / 380) < 1e-9);
 });
 
 test("clock: at/after the time-stop clamps to 0 remaining / full decay", () => {
