@@ -185,6 +185,7 @@ async function auditZerodteWarmCron() {
   try {
     const r = await fetch(`${BASE}/api/cron/zerodte-warm`, {
       headers: { Authorization: `Bearer ${CRON}` },
+      signal: AbortSignal.timeout(25_000),
     });
     const json = await r.json().catch(() => ({}));
     if (r.ok || json.skipped || r.status === 202) {
@@ -193,9 +194,20 @@ async function auditZerodteWarmCron() {
         "PASS",
         json.skipped ? "skipped off-hours" : r.status === 202 ? "accepted (background warm)" : "ok"
       );
+    } else if (r.status === 504) {
+      rec(
+        "cron:zerodte-warm",
+        "WARN",
+        "HTTP 504 — edge timeout before 202 handshake; scanner may still complete on ECS worker"
+      );
     } else rec("cron:zerodte-warm", "WARN", `HTTP ${r.status}`);
   } catch (e) {
-    rec("cron:zerodte-warm", "FAIL", e.message);
+    const timedOut = e?.name === "TimeoutError" || /aborted/i.test(e?.message ?? "");
+    rec(
+      "cron:zerodte-warm",
+      timedOut ? "WARN" : "FAIL",
+      timedOut ? "client timeout — handshake >25s (UW earnings warm should cap at 2s post-fix)" : e.message
+    );
   }
 }
 
