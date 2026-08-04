@@ -26,7 +26,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Root cause** | PR #1592 wired `trackPct` only when `status === "WATCH"`. Opening-window gate blocks map to `SKIP` (FAILED pill) but `filterByStatus(WATCH)` includes SKIP and `playLifecyclePhase(SKIP)` → `"watch"` — adapter left `trackPct` null so UI fell back to `ConfidenceBadge` |
 | **Fix** | `isWatchTrackStatus()` (WATCH \| SKIP) drives trackReference/trackPct in adapters, list row, live-mark overlay, and `primaryReturnPct`/`primaryReturnLabel` |
 | **Files** | `adapters.ts`, `play-card-display.ts`, `CommandDeck.tsx`, `use-live-marks.ts`, `play-card-lifecycle.ts` |
-| **Status** | FIXED — PR #1605 |
+| **Status** | FIXED — PR `cursor/watch-skip-track-pct-3d11` (merge after close) |
 
 ---
 
@@ -66,6 +66,10 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Fix** | KeyLevelBox kicker → `GEX · near-term (N)`; scope footnote under bar; METRIC_HELP + max-pain tooltip name front expiry; King node label `gexKingDualLabel("near-term")`. Helpers: `keyLevelsKicker` / `keyLevelsFootnote` in `thermal-desk-state.ts`. |
 | **Files** | `GexHeatmap.tsx`, `thermal-desk-state.ts`, `thermal-desk-state.test.ts` |
 | **Status** | FIXED — PR `cursor/thermal-key-levels-scope-3d11` |
+
+---
+
+## 2026-08-04 — [P2, UX] Night Hawk right detail panel lost scroll after left-rail fix (#1596) — FIXED (flex-basis)
 
 ---
 
@@ -6839,47 +6843,64 @@ negative-peak sign handling, time-chip presence/absence, and two new cases confi
 thesis-health/stale badges and the exec-fill line no longer render on the row. All pass. Full
 `command-deck/*.test.ts` suite (179 tests) re-run clean. `npx tsc --noEmit` clean.
 
-**Status:** PR pending → CI → auto-merge per standing policy.
+**Status:** FIXED — PR #1604
 
-## 2026-08-03 — [Night Hawk full-system audit] Admin edition-rebuild route ignores `?persist=` — always writes
+## 2026-08-03 — [Night Hawk full-system audit] Legacy per-tier debrief record silently empty; forced-contrarian hedge flag was a no-op
 
-**Trigger.** Full-day, all-systems Night Hawk audit (0DTE/Swings/Legacy/UI/recent-commits, 6 parallel
-deep-read passes) requested directly by the user, cross-checked line-by-line against the live code.
-This finding survived cross-check against `origin/main` — most other findings from the same audit
-had already been independently fixed by a concurrent session between the audit running and this
-write-up (Legacy merit-tier conflict #1573/#1577, the fail-closed firewall reconciliation #1589, the
-CLOSED-row peak/realized regression #1593/#1595) — this one had not.
+**Trigger.** Same full-system Night Hawk audit as the admin-route persist fix above (PR #1603).
+Two more findings survived cross-check against `origin/main` at write-up time.
 
-**Root cause.** `src/app/api/admin/nighthawk/run/route.ts:28` (added in #1531, 2026-08-02):
-```ts
-...(asOfEt ? { asOfEt, persist: persist || true } : {}),
-```
-`persist || true` is unconditionally `true` regardless of the actual `persist` boolean parsed one
-line above from `?persist=1`. `edition-builder.ts:361-372`'s own documented contract is *"Historical
-asOfEt defaults to dry-run unless persist=true — never silently overwrite a past published edition
-from a probe."* This route defeated that guard for every historical (`asOfEt`) call: any admin
-probing a past date — including a typo'd one — persisted to prod instead of dry-running, opposite of
-what the route's own doc comment and the #1531 commit message ("`?asOfEt=…&persist=1` opt-in")
-describe.
+### Finding A — `readPinnedTier` reads the wrong shape; `by_tier` has been empty since the tier engine shipped
 
-**Evidence.** Read the exact line; confirmed the `||` makes the right operand unreachable-false-wise
-(`false || true` and `true || true` both evaluate `true`). New regression test
-(`route.test.ts`, 3 cases) proves the pre-fix expression would report `persist: true` even with no
-`?persist` param at all, matching the bug.
+**Root cause.** `debrief-aggregate.ts:81-85` required `typeof publishContext.tier === "string"`.
+But `publish-context.ts:250-254` (PR-N7, the merit-tier engine) pins tier as an OBJECT —
+`tier: { tier: NighthawkTier, factors: [...] }` — never a bare string. So `readPinnedTier` returned
+`null` for every graded row, and `analyzeNighthawkDebriefs`'s `by_tier` array (the record that would
+let anyone measure whether tier-A picks actually outperform tier-B, the entire reason the tier engine
+exists) has been silently empty the whole time the tier engine has been live.
 
-**Fix.** `persist: persist` (the parsed boolean, unmodified) — one token removed.
+**Evidence.** Read `publish-context.ts:250-254` directly — the pin is unambiguously an object. The
+existing test (`debrief-aggregate.test.ts:72-75`) asserted the OLD placeholder shape
+(`{tier: "a"}` → `"A"`) which predates the tier engine and was never updated once PR-N7 shipped —
+exactly the "stale test locks in stale behavior" pattern found elsewhere in this audit.
 
-**Blast radius.** Single call site; `buildEveningEdition`'s `persist` param has exactly one other
-reader (the `dryRun` computation at `edition-builder.ts:377`), unaffected.
+**Fix.** `readPinnedTier` now unwraps the object (`publishContext.tier.tier`), falling back to
+`null` for a missing/malformed/legacy-shaped pin — never fabricates a letter.
 
-**Fix rationale.** Restore the documented default (dry-run) rather than removing the guard or adding
-a second flag — the query param + doc comment already describe the intended contract correctly, only
-the wiring was wrong.
+**Blast radius.** Single function, one call site (`debrief-aggregate.ts:192`). No schema change,
+no other reader of `readPinnedTier` found.
 
-**Tests.** New `src/app/api/admin/nighthawk/run/route.test.ts` (3 cases, mocking `buildEveningEdition`
-per the `spx-issues-sync/route.test.ts` pattern): no `?persist` on a historical rebuild → `persist:
-false`; `?persist=1` → `persist: true`; no `asOfEt` → both keys omitted (today's normal run).
-All pass. `npx tsc --noEmit` clean.
+**Tests.** `debrief-aggregate.test.ts`'s `readPinnedTier` test rewritten to the real object shape
+(5 cases: lowercase-uppercased, a second tier, no-tier, explicit-null-tier, and an explicit check
+that a bare string is correctly rejected as NOT the real shape). All pass.
 
-**Status:** PR opened, NOT merged — standing instruction for today is observe/fix/PR only, no
-auto-merge, pending user review.
+### Finding B — `forcedContrarianHedgeEnabled()` is imported and never checked — the env var has zero effect
+
+**Root cause.** `deterministic-edition.ts` imports `forcedContrarianHedgeEnabled` (line 50) but the
+Phase 2 forced-contrarian re-score block (the one that forces an opposite-direction re-score when no
+natural opposite exists in an all-one-direction book) only gated on `!diversitySwapped` — nested
+inside the OUTER `diversityHedgeEnabled()` guard. So `NH_LEGACY_FORCED_HEDGE=0` did nothing: Phase 2
+still fired as long as the outer diversity-hedge flag was on. The commit that introduced this env var
+(#1530, "Legacy picks global strongest plays from full universe") described it as one of several
+"weaken paths" now disabled by default — it wasn't; only Phase 1 (natural-opposite swap) and the
+outer flag ever mattered.
+
+**Evidence.** Read the full `if (diversityHedgeEnabled() && finalPlays.length >= 3)` block
+(`deterministic-edition.ts:698-770`) — `forcedContrarianHedgeEnabled` never appears in it before this
+fix. grep confirms it has exactly one call site in the whole repo (now two, post-fix).
+
+**Fix.** Added `&& forcedContrarianHedgeEnabled()` to the Phase 2 condition — Phase 1 (natural
+opposite) still runs under `diversityHedgeEnabled()` alone; Phase 2 (forced re-score) now
+additionally requires its own flag, matching what #1530's commit message already claimed shipped.
+
+**Blast radius.** Single conditional; the existing test file's `beforeEach` already sets
+`NH_LEGACY_FORCED_HEDGE=1` globally (line 109), so no existing test's behavior changes — they were
+already implicitly exercising the "flag on" path even before this fix could distinguish it from "flag
+off."
+
+**Tests.** New case in `deterministic-edition.test.ts` — same all-LONG-monoculture-with-a-bearish-
+dossier fixture as the existing Phase 2 test, but with `NH_LEGACY_FORCED_HEDGE=0`, asserting zero
+SHORT plays result (proving the flag now actually gates something). All 37 tests in the file pass;
+full `src/features/nighthawk/lib/*.test.ts` suite (659 tests) re-run clean. `npx tsc --noEmit` clean.
+
+**Status:** FIXED — PR #1604

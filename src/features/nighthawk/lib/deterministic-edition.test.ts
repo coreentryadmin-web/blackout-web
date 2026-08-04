@@ -604,6 +604,66 @@ test("PR-N32: forced contrarian swap fires when ALL candidates are LONG and doss
   assert.equal(plays[4]!.direction, "SHORT", "contrarian hedge should be in the last slot");
 });
 
+test("NH_LEGACY_FORCED_HEDGE=0 disables Phase 2 forced-contrarian re-score (the flag used to be a no-op)", () => {
+  // Regression guard: `forcedContrarianHedgeEnabled` was imported but never checked — Phase 2 only
+  // gated on `!diversitySwapped`, so this env var had zero effect on the all-LONG monoculture case.
+  process.env.NH_LEGACY_FORCED_HEDGE = "0";
+  const ranked = [
+    scored("AA", "long", 72),
+    scored("BB", "long", 68),
+    scored("CC", "long", 63),
+    scored("DD", "long", 58),
+    scored("EE", "long", 52),
+    scored("FF", "long", 48),
+  ];
+  for (const r of ranked) r.flow_score = 20;
+
+  const chains: Record<string, any> = {};
+  const dossierMap: Record<string, any> = {};
+  for (const r of ranked) {
+    const spot = 100;
+    chains[r.ticker] = chainAround(spot);
+    dossierMap[r.ticker] = dossier(r.ticker, spot);
+  }
+  dossierMap["FF"] = dossier("FF", 100, {
+    tech: {
+      ticker: "FF",
+      price: 100,
+      trend: "bearish",
+      setup_tags: ["gap down", "bearish ma", "breakdown"],
+      support_levels: [95],
+      resistance_levels: [105],
+      gap_zones: [],
+      breakout_zones: [],
+      prior_day: { high: 105, low: 95, close: 100 },
+      weekly: { high: null, low: null },
+      rsi14: 72,
+      rel_volume: 3.0,
+      atr14: 3,
+      vwap: 103,
+      ema20: 104,
+      ema50: 105,
+      ema200: 108,
+      summary: "test",
+    },
+    dark_pool: { total_premium: 6_000_000, bias: "bearish" },
+    positioning: {
+      net_gex: -800000,
+      gex_king_strike: 95,
+      gamma_flip: 98,
+      gamma_regime: "negative",
+      net_vex: -300000,
+      max_pain: 95,
+      negative_gamma: true,
+      wall_summary: "call wall $105 (+5pts) · put wall $90 (-10pts)",
+    } as any,
+  });
+
+  const { plays } = buildDeterministicEditionPlays({ ranked, dossierMap, chains, target: 5 });
+  const shorts = plays.filter((p) => p.direction === "SHORT");
+  assert.equal(shorts.length, 0, "flag off → no forced-contrarian short, book stays all-LONG monoculture");
+});
+
 test("PR-N32: forced contrarian does NOT fire when natural opposite-direction candidate exists", () => {
   // FF is a natural short above DIVERSITY_HEDGE_FLOOR (35) — Phase 1 handles it, Phase 2 never runs.
   const ranked = [

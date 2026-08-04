@@ -75,13 +75,16 @@ export function readPinnedDebriefTag(raw: unknown): DebriefFailureMode | null {
     : null;
 }
 
-/** Pinned publish-context tier, when one exists. No NH tier engine ships yet (decision
- *  doc PR-N7) — this reads the slot structurally so per-tier records light up the day a
- *  tier is pinned, with zero schema/aggregate changes then. */
+/** Pinned publish-context tier, when one exists. The tier engine (PR-N7) pins
+ *  `tier: { tier: NighthawkTier, factors: [...] }` (publish-context.ts), NOT a bare
+ *  string — this used to check `typeof t === "string"` against that object and always
+ *  returned null, silently keeping `by_tier` empty since the tier engine shipped. */
 export function readPinnedTier(publishContext: unknown): string | null {
   if (publishContext == null || typeof publishContext !== "object" || Array.isArray(publishContext)) return null;
   const t = (publishContext as Record<string, unknown>).tier;
-  return typeof t === "string" && t.length > 0 ? t.toUpperCase() : null;
+  if (t == null || typeof t !== "object" || Array.isArray(t)) return null;
+  const letter = (t as Record<string, unknown>).tier;
+  return typeof letter === "string" && letter.length > 0 ? letter.toUpperCase() : null;
 }
 
 // ── Summary (also served on the member record route — compact, segments-aware) ──────
