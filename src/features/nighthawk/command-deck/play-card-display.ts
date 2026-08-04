@@ -1,5 +1,6 @@
 import type { TerminalPlay } from "./types";
 import { tierRank } from "./deck-sort";
+import { isWatchTrackStatus } from "./play-card-lifecycle";
 
 /** Quality / confidence % for the row — score is 0–100 on 0DTE; confidence is 0–1 when wired. */
 export function playQualityPct(play: TerminalPlay): number | null {
@@ -35,7 +36,7 @@ export function tierStars(tier: string | null | undefined): string {
 /** Primary return number for the row — peak when closed, live P&L when open, track when WATCH. */
 export function primaryReturnPct(play: TerminalPlay): number | null {
   if (play.status === "CLOSED" && play.peak != null) return play.peak;
-  if (play.status === "WATCH" && play.trackPct != null && Number.isFinite(play.trackPct)) {
+  if (isWatchTrackStatus(play.status) && play.trackPct != null && Number.isFinite(play.trackPct)) {
     return play.trackPct;
   }
   if (play.pnlPct != null && play.pnlPct !== 0) return play.pnlPct;
@@ -45,7 +46,7 @@ export function primaryReturnPct(play: TerminalPlay): number | null {
 
 /** Label beside the return % on list rows — WATCH uses "Since flag", not "P&L". */
 export function primaryReturnLabel(play: TerminalPlay): string {
-  if (play.status === "WATCH" && play.trackPct != null) return "Since flag";
+  if (isWatchTrackStatus(play.status) && play.trackPct != null) return "Since flag";
   if (play.horizon === "LEGACY" && play.pnlPct != null) return "P&L";
   if (play.status === "CLOSED") return "Peak Return";
   return "P&L";

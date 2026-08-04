@@ -4,6 +4,19 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-04 — [P2, UX] WATCH tab SKIP (FAILED) rows missing "Since flag" track % — FIXED
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P2 UX — gate-blocked 0DTE setups show confidence (55/43) but no hypothetical track % |
+| **Evidence** | Member screenshot 09:42 ET: SPXW + SPY under WATCH filter with FAILED pill, large "55"/"43" confidence scores, no `Since flag` % row |
+| **Root cause** | PR #1592 wired `trackPct` only when `status === "WATCH"`. Opening-window gate blocks map to `SKIP` (FAILED pill) but `filterByStatus(WATCH)` includes SKIP and `playLifecyclePhase(SKIP)` → `"watch"` — adapter left `trackPct` null so UI fell back to `ConfidenceBadge` |
+| **Fix** | `isWatchTrackStatus()` (WATCH \| SKIP) drives trackReference/trackPct in adapters, list row, live-mark overlay, and `primaryReturnPct`/`primaryReturnLabel` |
+| **Files** | `adapters.ts`, `play-card-display.ts`, `CommandDeck.tsx`, `use-live-marks.ts`, `play-card-lifecycle.ts` |
+| **Status** | FIXED — PR `cursor/watch-skip-track-pct-3d11` (merge after close) |
+
+---
+
 ## 2026-08-04 — [P2, data coverage] Thermal low-priced tickers (NIO) showed ~4–5 strikes — FIXED
 
 | Field | Value |
@@ -40,18 +53,10 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Fix** | KeyLevelBox kicker → `GEX · near-term (N)`; scope footnote under bar; METRIC_HELP + max-pain tooltip name front expiry; King node label `gexKingDualLabel("near-term")`. Helpers: `keyLevelsKicker` / `keyLevelsFootnote` in `thermal-desk-state.ts`. |
 | **Files** | `GexHeatmap.tsx`, `thermal-desk-state.ts`, `thermal-desk-state.test.ts` |
 | **Status** | FIXED — PR `cursor/thermal-key-levels-scope-3d11` |
-=======
-## 2026-08-04 — [P2, UX] Night Hawk right detail panel lost scroll after left-rail fix (#1596) — FIXED
 
-| Field | Value |
-|-------|-------|
-| **Severity** | P2 UX — thesis/management content clipped on Swings + 0DTE when play detail exceeds viewport |
-| **Evidence** | Member screenshot: left `.nh-deck-rows` scrollbar visible; right CORZ thesis cut off with no page or panel scroll |
-| **Root cause** | #1596 capped shell at `100svh` + `overflow:hidden` and added flex scroll only for `.nh-deck-rows` (left). Right panel relied on page scroll before; `.nh-deck-body` had `overflow-y:auto` in globals but no flex-shrink chrome / min-height chain under the new viewport lock |
-| **Fix** | Mirror left rules on right: `nh-deck-right` flex column; pin header/tabs/footer; `.nh-deck-body` flex fill + visible scrollbar |
-| **Files** | `src/app/nighthawk-v2.css` |
-| **Status** | FIXED — PR `cursor/nighthawk-right-scroll-3d11` |
->>>>>>> 9d248815 (docs: FINDINGS entry for nighthawk right panel scroll)
+---
+
+## 2026-08-04 — [P2, UX] Night Hawk right detail panel lost scroll after left-rail fix (#1596) — FIXED (flex-basis)
 
 ---
 
@@ -6825,7 +6830,7 @@ negative-peak sign handling, time-chip presence/absence, and two new cases confi
 thesis-health/stale badges and the exec-fill line no longer render on the row. All pass. Full
 `command-deck/*.test.ts` suite (179 tests) re-run clean. `npx tsc --noEmit` clean.
 
-**Status:** PR pending → CI → auto-merge per standing policy.
+**Status:** FIXED — PR #1604
 
 ## 2026-08-03 — [Night Hawk full-system audit] Legacy per-tier debrief record silently empty; forced-contrarian hedge flag was a no-op
 
@@ -6885,5 +6890,4 @@ dossier fixture as the existing Phase 2 test, but with `NH_LEGACY_FORCED_HEDGE=0
 SHORT plays result (proving the flag now actually gates something). All 37 tests in the file pass;
 full `src/features/nighthawk/lib/*.test.ts` suite (659 tests) re-run clean. `npx tsc --noEmit` clean.
 
-**Status:** PR opened, NOT merged — standing instruction for today is observe/fix/PR only, no
-auto-merge, pending user review.
+**Status:** FIXED — PR #1604

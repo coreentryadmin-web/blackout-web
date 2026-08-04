@@ -63,4 +63,12 @@ describe("play-card-display", () => {
     );
     assert.equal(primaryReturnLabel({ ...base, status: "WATCH", trackPct: 12 }), "Since flag");
   });
+
+  it("primaryReturnPct prefers trackPct on SKIP (FAILED pill) WATCH-tab rows", () => {
+    assert.equal(
+      primaryReturnPct({ ...base, status: "SKIP", trackPct: -3, pnlPct: null }),
+      -3,
+    );
+    assert.equal(primaryReturnLabel({ ...base, status: "SKIP", trackPct: -3 }), "Since flag");
+  });
 });

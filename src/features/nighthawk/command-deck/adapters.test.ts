@@ -880,6 +880,23 @@ test("0DTE adapter: WATCH stamps trackPct from flow fill anchor, not pnlPct", ()
   assert.equal(p.trackPct, 25);
 });
 
+test("0DTE adapter: SKIP (gate-blocked WATCH tab) stamps trackPct same as WATCH", () => {
+  const p = terminalPlayFromZeroDte({
+    ticker: "spxw",
+    status: "SKIP",
+    score: 55,
+    last_mark: 19.15,
+    setup: {
+      direction: "long",
+      dte: 0,
+      plan: { flow_avg_fill: 18.0, entry_max: 19.0, mark: 19.15 },
+    },
+  });
+  assert.equal(p.pnlPct, null);
+  assert.equal(p.trackReferencePremium, 18.0);
+  assert.equal(p.trackPct, 6.39); // (19.15-18)/18*100 rounded 2dp
+});
+
 test("horizon adapter: pre-entry COMMIT maps to WATCH; live OPEN maps to OPEN", () => {
   const watch = terminalPlayFromHorizon({
     ticker: "aapl",
