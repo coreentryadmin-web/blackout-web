@@ -412,12 +412,20 @@ async function browserDashboard(session, hm) {
       rec("ui:matrix-text-sanity", "PASS");
     }
 
+    // Pulse is the default intel rail — Largo commentary toggle mounts only after switching tabs.
+    const largoTab = page.locator('.spx-intel-rail-tab:has-text("Largo")').first();
+    if (await largoTab.count()) {
+      await largoTab.click();
+      await page.waitForTimeout(400);
+    }
     const expandBtn = page.locator("#spx-commentary-expand, #spx-commentary-rail-toggle").first();
     if (await expandBtn.count()) {
       await expandBtn.click();
+      await page.waitForTimeout(200);
+      if (await expandBtn.count()) await expandBtn.click();
       rec("ui:click-commentary-expand", "PASS");
     } else {
-      rec("ui:click-commentary-expand", "SKIP", "no expand control");
+      rec("ui:click-commentary-expand", "SKIP", "no expand control (Largo rail not live)");
     }
 
     // SpxPlayVerdictBar replaced legacy .spx-trade-alert-hero (removed 2026-07-13).

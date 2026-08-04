@@ -89,7 +89,7 @@ Last updated: 2026-08-04 12:58 ET
 
 **Desk lanes:** spot=7715.01 · pulse=true · flow=true — all lanes live.
 
-**UI E2E:** GEX tab ✅ · VEX tab ✅ · 161 strike rows ✅ · matrix text sanity (no NaN/undefined/$—) ✅ · play verdict bar SPX PLAY ✅ · zero console errors ✅ · LIVE badge during RTH ✅.
+**UI E2E:** GEX tab ✅ · VEX tab ✅ · Largo commentary expand/collapse ✅ (harness: Largo tab first — PR #1611) · 161 strike rows ✅ · matrix text sanity (no NaN/undefined/$—) ✅ · play verdict bar SPX PLAY ✅ · zero console errors ✅ · LIVE badge during RTH ✅.
 
 **Cross-tool:** Thermal cross-validation ✅ · HELIX 30 prints ✅ · Largo `blackout_intelligence` ✅ · Grid bootstrap ✅ · 0DTE 7 setups ✅ · Night Hawk edition ✅ · BIE `getSpxPlayState()` consistent ✅ · desk=7716.58 play=SELL ✅.
 
@@ -103,7 +103,7 @@ Last updated: 2026-08-04 12:58 ET
 | INFO | ENV-NODE-MODULES | Initial run failed on missing `node_modules` (pg/tsx/playwright) in cloud agent | — | Resolved via `npm install` + `npx playwright install chromium` |
 | P2 | SPX-RTH-CRON-SECRET | `spx:data-correctness` WARN — CRON_SECRET auth mismatch on sync poll | `/api/cron/data-correctness` | Yes — prod cron authoritative |
 | P2 | SPX-RTH-BIE-CRON | `integration:bie-play-route` WARN — cron play HTTP 401 | `/api/cron/spx-evaluate` | Yes — member `/spx/play` PASS via BIE validator |
-| P2 | SPX-RTH-COMMENTARY-EXPAND | `ui:click-commentary-expand` SKIP — no expand control on commentary rail | `/dashboard` | Yes — post-close UX audit |
+| P2 | SPX-RTH-COMMENTARY-EXPAND | `ui:click-commentary-expand` SKIP — Pulse default rail hid Largo `#spx-commentary-rail-toggle` | `/dashboard` | **Fixed** — PR #1611: click Largo tab before expand |
 
 **Verify status: GREEN** — zero FAIL on `validate:spx-rth` and `validate:spx-e2e`. No P0 fixes required.
 
