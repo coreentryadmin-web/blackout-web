@@ -23,7 +23,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Severity** | P1 — dark pool visible in HELIX app but no Discord channel |
 | **Root cause** | No Discord formatter/cron/WS hook; only options flow wired to community webhooks |
 | **Fix** | `darkpool-discord-format` + notify (Redis dedup); WS `off_lit_trades` live posts on ingest worker; `/api/cron/darkpool-discord` 2m scan + 15m top-blocks digest; reads cached UW data only |
-| **Env** | `DARKPOOL_DISCORD_ALERTS=1`, `DISCORD_DARKPOOL_WEBHOOK_URL`, optional `DARKPOOL_DISCORD_MIN_PREMIUM` (default $1M) |
+| **Env** | `DARKPOOL_DISCORD_ALERTS=1`, `DISCORD_DARKPOOL_WEBHOOK_URL`, optional `DARKPOOL_DISCORD_MIN_PREMIUM` (default $5M) |
 | **Ops** | Sync EventBridge from `railway.darkpool-discord.toml`; add secrets + restart web + market-worker |
 | **Status** | FIXED — PR `cursor/darkpool-discord-3d11` |
 
