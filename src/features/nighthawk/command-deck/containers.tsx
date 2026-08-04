@@ -167,6 +167,10 @@ export function HorizonDeck({ horizon }: { horizon: "SWING" | "LEAPS" }) {
       signalKinds: p.signalKinds ?? null,
       liveStatus: p.liveStatus ?? null,
       flagUnderlyingPx: p.flagUnderlyingPx ?? null,
+      entryPremium: p.entryPremium ?? null,
+      livePnlPct: p.livePnlPct ?? null,
+      peakPremium: p.peakPremium ?? null,
+      troughPremium: p.troughPremium ?? null,
       thesisBreak:
         p.thesisLevel != null
           ? { level: p.thesisLevel, note: p.thesisNote ?? undefined }

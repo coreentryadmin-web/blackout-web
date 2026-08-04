@@ -85,6 +85,15 @@ test("livePlayFromSwingPosition: latest manage snapshot overrides spot-only inta
   assert.equal(play.thesisLevel, "intact");
 });
 
+test("livePlayFromSwingPosition: stamps real DTE, entry, and live P&L from ledger row", () => {
+  const play = livePlayFromSwingPosition(row(), 178)!;
+  assert.ok(play.contract.dte >= 0);
+  assert.notEqual(play.contract.dte, 0);
+  assert.equal(play.entryPremium, 5.1);
+  assert.equal(play.livePnlPct, 7.8); // (5.5/5.1 - 1)*100 ≈ 7.8
+  assert.equal(play.peakPremium, 5.5);
+});
+
 test("livePlaysFromOpenPositions skips CLOSED and contract-less rows", () => {
   const plays = livePlaysFromOpenPositions(
     [

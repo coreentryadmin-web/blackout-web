@@ -75,10 +75,10 @@ function dossiersByTicker(dossiers: SwingDossier[]): Map<string, SwingDossier> {
 function enrichPlay(play: HorizonPlay, dossier: SwingDossier | undefined, reads?: SwingServingReads): HorizonPlay {
   if (!dossier) return play; // no thesis found for this ticker → leave it as-is (routes to RESEARCH honestly)
   const meta = swingServingMetaFromDossier(dossier, reads);
+  // WATCH track anchor: pinned first-flag price only — never the live scan spot (reads.setup.price).
   const flagPx =
-    reads?.setup?.price ??
-    dossier.plan?.entryUnderlyingPx ??
     play.flagUnderlyingPx ??
+    dossier.plan?.entryUnderlyingPx ??
     null;
   return {
     ...play,
@@ -181,6 +181,8 @@ export interface SwingServingSnapshot {
    * WITHOUT a per-request provider fan-out (cache-reader rule).
    */
   spotsByTicker?: Record<string, number>;
+  /** First-flag underlying anchor per thesis key — WATCH track must not drift with scan spot. */
+  flagAnchorsByThesisKey?: Record<string, number>;
 }
 
 /** Shared-cache key + TTL. TTL outlives a full session day so the latest scan serves until the next scan
@@ -242,10 +244,12 @@ export async function discoverSwingFromPersisted(): Promise<SwingDiscoveryLike |
   const clearedPlays = (snap.plays ?? []).filter((p) => cleared.has(playThesisKey(p))).map((p) => {
     const key = playThesisKey(p);
     const cand = (snap.watch ?? []).find((c) => swingThesisKey(c.ticker, c.direction, c.archetype) === key);
+    const flagPx = snap.flagAnchorsByThesisKey?.[key] ?? p.flagUnderlyingPx ?? null;
     return {
       ...p,
       firstSeenAt: cand?.firstSeenAt ?? p.firstSeenAt,
       signalKinds: cand?.signalKinds ?? p.signalKinds,
+      flagUnderlyingPx: flagPx,
     };
   });
   const observedPlays = (snap.plays ?? [])
@@ -257,10 +261,12 @@ export async function discoverSwingFromPersisted(): Promise<SwingDiscoveryLike |
       const key = playThesisKey(p);
       const obs = observedByKey.get(key);
       const gap = obs ? persistenceGapReason(obs) : null;
+      const flagPx = snap.flagAnchorsByThesisKey?.[key] ?? p.flagUnderlyingPx ?? null;
       return {
         ...p,
         firstSeenAt: obs?.firstSeenAt ?? p.firstSeenAt,
         signalKinds: obs?.signalKinds ?? p.signalKinds,
+        flagUnderlyingPx: flagPx,
         persistenceObserved: true as const,
         persistenceGapReason: gap ?? "Building cross-session persistence.",
         reason: gap ? `${p.reason} · ${gap}` : p.reason,

@@ -99,6 +99,11 @@ export interface HorizonPlay {
   firstSeenAt?: string;
   /** Underlying price when the thesis was first flagged — WATCH track anchor (stock-level proxy). */
   flagUnderlyingPx?: number | null;
+  /** Live swing book — option entry/mark/P&L when this row is an OPEN ledger position. */
+  entryPremium?: number | null;
+  livePnlPct?: number | null;
+  peakPremium?: number | null;
+  troughPremium?: number | null;
   /** ISO instant capital was committed (live ledger). */
   committedAt?: string;
   /** Discovery provenance kinds (FLOW / STRUCTURE / CATALYST). */

@@ -12,14 +12,21 @@ test("isBoardDegraded: null (first load) is NOT degraded; available:false / degr
 });
 
 test("zeroDteSources: a gate-BLOCKED fresh find is a SKIP, not a WATCH (9-6a)", () => {
-  const resp: BoardResp = { setups: [{ ticker: "nvda", score: 70, gate: { verdict: "BLOCKED" } }], ledger: [] };
+  const resp: BoardResp = {
+    session: { heat: { state: "RTH" } },
+    setups: [{ ticker: "nvda", score: 70, gate: { verdict: "BLOCKED" } }],
+    ledger: [],
+  };
   const [s] = zeroDteSources(resp);
   assert.equal(s!.ticker, "NVDA");
   assert.equal(s!.status, "SKIP");
 });
 
 test("zeroDteSources: a fresh find with no ledger + non-blocked gate is a WATCH", () => {
-  const resp: BoardResp = { setups: [{ ticker: "amd", score: 66, gate: { verdict: "WATCH" } }] };
+  const resp: BoardResp = {
+    session: { heat: { state: "RTH" } },
+    setups: [{ ticker: "amd", score: 66, gate: { verdict: "WATCH" } }],
+  };
   assert.equal(zeroDteSources(resp)[0]!.status, "WATCH");
 });
 
@@ -108,6 +115,7 @@ test("zeroDteSources: WATCH setup plan.mark/bid/ask/occ plumb when ledger has no
   // Prod 2026-07-28 after-hours: marks SSE returns stale nulls, but board setups carry plan.mark.
   // Without this plumbing the Thesis/Management/PnL panels show "—" forever off the live lane.
   const resp: BoardResp = {
+    session: { heat: { state: "RTH" } },
     setups: [{
       ticker: "MU",
       score: 83,
@@ -126,6 +134,51 @@ test("zeroDteSources: WATCH setup plan.mark/bid/ask/occ plumb when ledger has no
   assert.equal(s!.occ, "O:MU260729C00825000");
   assert.equal(s!.mark_is_sync, true); // plan quote, no per-tick mark_as_of
   assert.equal(s!.underlying_price, 819.94);
+});
+
+test("zeroDteSources: POST_COMMIT heat + MOVED/illiquid fresh finds resolve to SKIP (9-6a session heat)", () => {
+  const postCommit: BoardResp = {
+    session: { heat: { state: "POST_COMMIT" } },
+    setups: [{ ticker: "spy", score: 70, gate: { verdict: "WATCH" } }],
+    ledger: [],
+  };
+  assert.equal(zeroDteSources(postCommit)[0]!.status, "SKIP");
+
+  const moved: BoardResp = {
+    session: { heat: { state: "RTH" } },
+    setups: [{ ticker: "nvda", score: 70, gate: { verdict: "WATCH" }, plan: { entry_status: "MOVED" } }],
+    ledger: [],
+  };
+  assert.equal(zeroDteSources(moved)[0]!.status, "SKIP");
+
+  const illiquid: BoardResp = {
+    session: { heat: { state: "RTH" } },
+    setups: [{ ticker: "amd", score: 66, gate: { verdict: "WATCH" }, plan: { illiquid: true } }],
+    ledger: [],
+  };
+  assert.equal(zeroDteSources(illiquid)[0]!.status, "SKIP");
+});
+
+test("zeroDteSources: after close, fresh finds are omitted unless a ledger row exists", () => {
+  const resp: BoardResp = {
+    session: { heat: { state: "CLOSED" } },
+    setups: [
+      { ticker: "spy", score: 70, gate: { verdict: "WATCH" } },
+      { ticker: "nvda", score: 80, gate: { verdict: "WATCH" } },
+    ],
+    ledger: [{ ticker: "NVDA", status: "CLOSED", direction: "long", top_strike: 180 }],
+  };
+  const out = zeroDteSources(resp);
+  assert.deepEqual(out.map((s) => s.ticker).sort(), ["NVDA"]);
+  assert.equal(out[0]!.status, "CLOSED");
+});
+
+test("zeroDteSources: WATCH/SKIP rows null live_pnl_pct even when ledger carries a stale pct", () => {
+  const resp: BoardResp = {
+    setups: [{ ticker: "mu", score: 70, gate: { verdict: "WATCH" } }],
+    ledger: [{ ticker: "MU", status: "WATCH", live_pnl_pct: 12 }],
+  };
+  assert.equal(zeroDteSources(resp)[0]!.live_pnl_pct, null);
 });
 
 test("zeroDteSources: ledger occ wins + synthesizes plan on ledger-only working rows", () => {

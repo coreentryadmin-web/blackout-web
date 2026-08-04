@@ -574,6 +574,7 @@ function ThesisPanel({ play, sessionClosed = false }: { play: TerminalPlay; sess
 }
 
 function ManagePanel({ play, nowMs }: { play: TerminalPlay; nowMs: number }) {
+  const isCandidate = play.status === "WATCH" || play.status === "SKIP";
   // ZERO_DTE: recommendation/recNote already carry thesis overlay from the ~1s live deck pipeline.
   const mgmt = managementFor(play.exitModel, play.status, play.pnlPct ?? null);
   const badge =
@@ -612,13 +613,16 @@ function ManagePanel({ play, nowMs }: { play: TerminalPlay; nowMs: number }) {
   })();
   return (
     <>
-      {premium && !isCondor && (
+      {isCandidate && (
+        <div className="nh-deck-recnote nh-deck-premium-note">{recNote}</div>
+      )}
+      {premium && !isCondor && !isCandidate && (
         <div className="nh-deck-premium-stack">
           <ManagementActionCard play={play} recommendation={badge} progress={mgmt.progress} />
           <VisualTrimLadder play={play} />
         </div>
       )}
-      {!premium && (
+      {!premium && !isCandidate && (
         <>
           <div className="nh-deck-lab">Trade management — advisory (we recommend, you execute)</div>
           <div className="nh-deck-rec">
@@ -630,7 +634,7 @@ function ManagePanel({ play, nowMs }: { play: TerminalPlay; nowMs: number }) {
       {premium && recNote && (
         <div className="nh-deck-recnote nh-deck-premium-note">{recNote}</div>
       )}
-      {distLine && play.horizon === "ZERO_DTE" && !isCondor && (
+      {distLine && play.horizon === "ZERO_DTE" && !isCondor && !isCandidate && (
         <div className="nh-deck-dist" title="Distance from live mark to the plan rails">
           <span className="k">Rails</span>
           <span className="v">{distLine}</span>
@@ -649,9 +653,9 @@ function ManagePanel({ play, nowMs }: { play: TerminalPlay; nowMs: number }) {
 
       {isCondor && <CondorPanel play={play} />}
 
-      {play.horizon === "ZERO_DTE" && !isCondor && <ZeroDteEntryPlan play={play} />}
+      {play.horizon === "ZERO_DTE" && !isCondor && !isCandidate && <ZeroDteEntryPlan play={play} />}
 
-      {!isCondor && play.exitModel === "RATCHET" && mgmt.progress != null && (
+      {!isCondor && !isCandidate && play.exitModel === "RATCHET" && mgmt.progress != null && (
         <>
           <div className="nh-deck-track">
             <span className="lo">STOP −50%</span><span className="hi">TARGET +100%</span>
@@ -664,7 +668,7 @@ function ManagePanel({ play, nowMs }: { play: TerminalPlay; nowMs: number }) {
       {/* The REAL trim-scale ladder — each tranche with its trigger %, real premium level, and FIRED
           (banked) vs pending. Rendered only when the row's FROZEN policy is trim_scale (dormant under
           the prod ratchet default) AND it is not a condor. */}
-      {isTrimScale && !premium && <TrimScaleLadder play={play} />}
+      {isTrimScale && !premium && !isCandidate && <TrimScaleLadder play={play} />}
 
       {/* Legacy entry plan — the recommended option contract + R:R ratio. */}
       {play.horizon === "LEGACY" && <LegacyEntryPlan play={play} />}
@@ -676,7 +680,7 @@ function ManagePanel({ play, nowMs }: { play: TerminalPlay; nowMs: number }) {
 
       {/* Legacy SCALE_OUT fallback (horizon lanes carry no resolved policy): the pre-Terminal-v2
           derive-from-status tranche view, unchanged. */}
-      {!isCondor && play.exitModel === "SCALE_OUT" && !isTrimScale && (
+      {!isCondor && !isCandidate && play.exitModel === "SCALE_OUT" && !isTrimScale && (
         <>
           <div className="nh-deck-tranches">
             <div className={clsx("nh-deck-tr", (play.pnlPct ?? 0) >= 50 && "done")}><span className="p">⅓</span>@ +50%</div>

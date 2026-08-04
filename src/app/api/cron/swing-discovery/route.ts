@@ -27,7 +27,8 @@ import {
   type SwingDiscoveryDeps,
 } from "@/lib/swing/discovery";
 import { ingestSwingReads } from "@/lib/swing/swing-ingest";
-import { persistSwingServingSnapshot } from "@/lib/swing/serving-lane";
+import { persistSwingServingSnapshot, readSwingServingSnapshot } from "@/lib/swing/serving-lane";
+import { swingThesisKey } from "@/lib/swing/accumulation-store";
 import {
   fetchRecentFlows,
   upsertSwingAccum,
@@ -337,6 +338,17 @@ export async function GET(req: NextRequest) {
       }),
     );
 
+    const existing = await readSwingServingSnapshot();
+    const flagAnchorsByThesisKey: Record<string, number> = {
+      ...(existing?.flagAnchorsByThesisKey ?? {}),
+    };
+    for (const cand of [...result.watchCandidates, ...result.observedCandidates]) {
+      const key = swingThesisKey(cand.ticker, cand.direction, cand.archetype);
+      if (flagAnchorsByThesisKey[key] != null) continue;
+      const px = spotsByTicker[cand.ticker.toUpperCase()];
+      if (px != null && Number.isFinite(px) && px > 0) flagAnchorsByThesisKey[key] = px;
+    }
+
     const persisted = await persistSwingServingSnapshot({
       asOf: result.asOf,
       sessionDay,
@@ -345,6 +357,7 @@ export async function GET(req: NextRequest) {
       watch: result.watchCandidates,
       observed: result.observedCandidates,
       spotsByTicker,
+      flagAnchorsByThesisKey,
     });
     if (!persisted) {
       if (decision.key) {

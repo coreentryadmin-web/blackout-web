@@ -111,6 +111,11 @@ test("tradeSummaryDisplay: persistent hero fields", () => {
   assert.equal(s.currentPct, -50);
 });
 
+test("managementActionDisplay: WATCH candidates never fabricate probability", () => {
+  const action = managementActionDisplay(play({ status: "WATCH", pnlPct: null }), "HOLD", null);
+  assert.equal(action.probabilityPct, null);
+});
+
 test("managementActionDisplay: SELL sizing and probability", () => {
   const action = managementActionDisplay(play(), "SELL", 0.9);
   assert.equal(action.verb, "SELL");
