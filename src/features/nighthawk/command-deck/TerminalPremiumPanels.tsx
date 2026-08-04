@@ -5,10 +5,8 @@ import { clsx } from "clsx";
 import type { TerminalPlay } from "./types";
 import type { ConvictionRankContext } from "./deck-command-center";
 import {
-  confluenceChecklist,
   convictionDisplay,
   decisionWindowLabel,
-  engineChecklist,
   engineConfidencePct,
   expectedMovePct,
   managementActionDisplay,
@@ -20,6 +18,7 @@ import {
   tradeOutcomeDisplay,
   tradeSummaryDisplay,
   trimLadderVisual,
+  unifiedChecklist,
 } from "./terminal-display";
 import {
   playFreshnessDisplay,
@@ -30,7 +29,6 @@ import {
 import {
   entryCenteredExcursionLayout,
   formatExcursionPct,
-  tradeJourneyLayout,
 } from "./trade-excursion-graphic";
 import { signColorClass } from "@/lib/zerodte/terminal-edge";
 import { formatReturnPct } from "./play-card-display";
@@ -245,7 +243,6 @@ export function TradeExcursionGraphic({
   const closed = play.status === "CLOSED";
   const currentPct = closed ? (play.exitPnlPct ?? play.pnlPct) : play.pnlPct;
   const layout = entryCenteredExcursionLayout(play.trough, play.peak, currentPct, { closed });
-  const journey = tradeJourneyLayout(play.trough, play.peak, currentPct, { closed });
 
   if (!layout) return null;
 
@@ -306,25 +303,6 @@ export function TradeExcursionGraphic({
           </div>
         ))}
       </div>
-
-      {journey && journey.nodes.length >= 2 && (
-        <div className="nh-deck-excursion-graphic__journey" aria-hidden>
-          <svg className="nh-deck-excursion-graphic__journey-svg" viewBox="0 0 200 72">
-            <path className="nh-deck-excursion-graphic__journey-path" d={journey.pathD} fill="none" />
-            {journey.nodes.map((n) => (
-              <g key={n.key} transform={`translate(${n.x * 200}, ${n.y * 72})`}>
-                <circle className="nh-deck-excursion-graphic__journey-dot" r={4} />
-                <text className="nh-deck-excursion-graphic__journey-lab" x={0} y={-10} textAnchor="middle">
-                  {n.label}
-                </text>
-                <text className="nh-deck-excursion-graphic__journey-val" x={0} y={16} textAnchor="middle">
-                  {formatExcursionPct(n.pct)}
-                </text>
-              </g>
-            ))}
-          </svg>
-        </div>
-      )}
 
       <p className="nh-deck-excursion-graphic__note">
         Excursion from entry — latched best/worst marks, not tick-by-tick history.
@@ -406,56 +384,63 @@ export function ThesisStrengthBlock({ play }: { play: TerminalPlay }) {
   );
 }
 
-export function ConfluenceGrid({ play }: { play: TerminalPlay }) {
-  const items = confluenceChecklist(play);
-  return (
-    <section className="nh-deck-confluence" aria-label="Confluence">
-      <h4 className="nh-deck-premium__heading">Confluence</h4>
-      <div className="nh-deck-confluence__grid">
-        {items.map((item) => (
-          <div
-            key={item.label}
-            className={clsx(
-              "nh-deck-confluence__cell",
-              item.ok === true && "is-pass",
-              item.ok === false && "is-fail",
-              item.ok == null && "is-na",
-            )}
-          >
-            <span className="nh-deck-confluence__mark">
-              {item.ok === true ? "✓" : item.ok === false ? "✕" : "—"}
-            </span>
-            <span className="nh-deck-confluence__name">{item.label}</span>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
+/** ONE merged checklist — replaces the prior three separate renders that described
+ *  overlapping/related gate-and-scoring state under three different label taxonomies
+ *  (`EngineChecklistPanel`'s 5-row list, `ConfluenceGrid`'s 6-cell grid, and the "Conviction
+ *  tier breakdown" list built from `play.tierFactors`). Section 1 (pillar checks) fires for
+ *  0DTE plays with thesis-health wired; Section 2 (tier factors) fires for Legacy plays with a
+ *  pinned tier blob — the two data sources are mutually exclusive per play today (see
+ *  docs/audit/FINDINGS.md 2026-08-04), so in practice a given play shows exactly one section,
+ *  but both live in this single component/taxonomy instead of three separate render sites.
+ *  Renders nothing when neither source has data (never an empty shell). */
+export function ThesisChecklistPanel({ play }: { play: TerminalPlay }) {
+  const pillarItems = unifiedChecklist(play);
+  const hasPillarSignal = pillarItems.some((item) => item.ok !== null);
+  const tierFactors = play.tierFactors ?? [];
 
-export function EngineChecklistPanel({ play }: { play: TerminalPlay }) {
-  const items = engineChecklist(play);
+  if (!hasPillarSignal && tierFactors.length === 0) return null;
+
   return (
     <section className="nh-deck-engine-check" aria-label="Engine checklist">
-      <h4 className="nh-deck-premium__heading">Engine Checks</h4>
-      <div className="nh-deck-engine-check__list">
-        {items.map((item) => (
-          <div
-            key={item.label}
-            className={clsx(
-              "nh-deck-engine-check__row",
-              item.ok === true && "is-pass",
-              item.ok === false && "is-fail",
-              item.ok == null && "is-na",
-            )}
-          >
-            <span className="nh-deck-engine-check__mark">
-              {item.ok === true ? "✓" : item.ok === false ? "✕" : "—"}
-            </span>
-            <span className="nh-deck-engine-check__name">{item.label}</span>
+      <h4 className="nh-deck-premium__heading">Engine Checklist</h4>
+      {hasPillarSignal && (
+        <div className="nh-deck-confluence__grid">
+          {pillarItems.map((item) => (
+            <div
+              key={item.label}
+              className={clsx(
+                "nh-deck-confluence__cell",
+                item.ok === true && "is-pass",
+                item.ok === false && "is-fail",
+                item.ok == null && "is-na",
+              )}
+            >
+              <span className="nh-deck-confluence__mark">
+                {item.ok === true ? "✓" : item.ok === false ? "✕" : "—"}
+              </span>
+              <span className="nh-deck-confluence__name">{item.label}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {tierFactors.length > 0 && (
+        <div className="nh-deck-tierfactors" style={hasPillarSignal ? { marginTop: 10 } : undefined}>
+          <div className="nh-deck-tierfactors-hd">
+            <span className="nh-deck-tierfactors-lb">Merit tier · graded at publish</span>
+            <span className="nh-deck-tierfactors-val">tier {play.tierLabel ?? "?"}</span>
           </div>
-        ))}
-      </div>
+          <ul className="nh-deck-tierfactors-list">
+            {tierFactors.map((f, i) => (
+              <li key={`${f.label}-${i}`} className="nh-deck-tierfactor">
+                <span className={`nh-deck-tierfactor-dir ${f.direction}`}>
+                  {f.direction === "up" ? "▲" : "▼"} {f.label}
+                </span>
+                <span className="nh-deck-tierfactor-detail">{f.detail}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </section>
   );
 }

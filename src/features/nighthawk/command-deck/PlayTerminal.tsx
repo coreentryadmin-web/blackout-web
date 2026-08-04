@@ -18,11 +18,10 @@ import { useSecondTick, useFlash } from "./use-deck-live";
 import { isZeroDtePremiumTerminal } from "./terminal-display";
 import type { ConvictionRankContext } from "./deck-command-center";
 import {
-  ConfluenceGrid,
-  EngineChecklistPanel,
   ManagementActionCard,
   MarketContextRow,
   TradeExcursionGraphic,
+  ThesisChecklistPanel,
   ThesisExpectedMove,
   ThesisStrengthBlock,
   TradeOutcomePanel,
@@ -495,27 +494,6 @@ function ThesisPanel({ play, sessionClosed = false }: { play: TerminalPlay; sess
           </details>
         )}
       </details>
-      {play.tierFactors && play.tierFactors.length > 0 && (
-        <>
-          <div className="nh-deck-lab" style={{ marginTop: 16 }}>Conviction tier breakdown</div>
-          <div className="nh-deck-tierfactors">
-            <div className="nh-deck-tierfactors-hd">
-              <span className="nh-deck-tierfactors-lb">Merit tier · graded at publish</span>
-              <span className="nh-deck-tierfactors-val">tier {play.tierLabel ?? "?"}</span>
-            </div>
-            <ul className="nh-deck-tierfactors-list">
-              {play.tierFactors.map((f, i) => (
-                <li key={`${f.label}-${i}`} className="nh-deck-tierfactor">
-                  <span className={`nh-deck-tierfactor-dir ${f.direction}`}>
-                    {f.direction === "up" ? "▲" : "▼"} {f.label}
-                  </span>
-                  <span className="nh-deck-tierfactor-detail">{f.detail}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </>
-      )}
       {play.thesis && (
         <div className="nh-deck-recnote" style={{ marginTop: 8, fontStyle: "italic" }}>{play.thesis}</div>
       )}
@@ -536,13 +514,17 @@ function ThesisPanel({ play, sessionClosed = false }: { play: TerminalPlay; sess
 
   return (
     <>
-      {premium && (
+      {premium ? (
         <div className="nh-deck-premium-stack">
-          <EngineChecklistPanel play={play} />
+          <ThesisChecklistPanel play={play} />
           <ThesisStrengthBlock play={play} />
           <ThesisExpectedMove play={play} />
-          <ConfluenceGrid play={play} />
         </div>
+      ) : (
+        // Non-premium (e.g. Legacy) plays never carry thesisHealth pillars, but may carry a
+        // pinned tier-factor breakdown — ThesisChecklistPanel renders that section alone here
+        // (was previously a separate "Conviction tier breakdown" block further down this panel).
+        <ThesisChecklistPanel play={play} />
       )}
       {hasThesisHealth && isWorking && !sessionClosed && !premium && (
         <ThesisHealthPanel health={play.thesisHealth!} liveRec={liveRec} />
@@ -896,10 +878,14 @@ function PnlPanel({ play }: { play: TerminalPlay }) {
       <div className="nh-deck-grid">
         <div><span className="k">Entry</span><span className="v">{has ? usd(play.entry) : "—"}</span></div>
         <div><span className="k">Live mark</span><span className="v">{usd(play.mark)}</span></div>
-        {has && <div><span className="k">Peak</span><span className="v nh-deck-pos">{signPct(play.peak)}</span></div>}
-        {has && <div><span className="k">Trough</span><span className="v nh-deck-neg">{signPct(play.trough)}</span></div>}
+        {/* Peak/trough already shown once in the hero (0DTE) and again in the excursion-graphic
+            stats row above — a 3rd rendering here was redundant for premium (0DTE) plays. Kept
+            for non-premium (Swing/LEAPS) rows, which carry neither the hero nor this excursion
+            stats row, so this grid is their only Peak/Trough surface. */}
+        {has && !premium && <div><span className="k">Peak</span><span className="v nh-deck-pos">{signPct(play.peak)}</span></div>}
+        {has && !premium && <div><span className="k">Trough</span><span className="v nh-deck-neg">{signPct(play.trough)}</span></div>}
       </div>
-      {has && <div className="nh-deck-recnote" style={{ marginTop: 16 }}>Peak/trough = the full excursion since entry — how much heat you took and gave back.</div>}
+      {has && !premium && <div className="nh-deck-recnote" style={{ marginTop: 16 }}>Peak/trough = the full excursion since entry — how much heat you took and gave back.</div>}
     </>
   );
 }
