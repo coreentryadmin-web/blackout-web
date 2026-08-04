@@ -164,10 +164,18 @@ export async function readAvEarningsSnapshot(): Promise<ZeroDteEarningsSnapshot 
 }
 
 export async function warmGridEarnings(): Promise<ZeroDteEarningsSnapshot | null> {
-  const snapshot = await fetchUwEarnings();
+  // Mirror readGridEarnings()'s UW race — an unbounded UW pull blocked zerodte-warm's handshake
+  // past Cloudflare's ~100s origin timeout during RTH (grid-rth-2026-08-04: HTTP 504).
+  const uw = await Promise.race([
+    fetchUwEarnings(),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), UW_READ_RACE_MS)),
+  ]);
+  const snapshot =
+    uw?.items?.length ? uw : await readAvEarningsSnapshot();
+  if (!snapshot?.items?.length) return null;
   const redis = await getUwCacheRedis();
   await uwCacheSet(redis, ZERODTE_EARNINGS_KEY, ZERODTE_EARNINGS_TTL, snapshot);
-  return snapshot.items.length ? snapshot : null;
+  return snapshot;
 }
 
 export async function readGridEarnings(): Promise<ZeroDteEarningsSnapshot | null> {

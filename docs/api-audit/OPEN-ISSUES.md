@@ -1,5 +1,52 @@
 # BlackOut Open Issues Log
-Last updated: 2026-08-04 12:58 ET
+Last updated: 2026-08-04 14:10 ET
+
+## grid-rth-2026-08-04 — 0DTE Command + Grid RTH verify agent (~9:57 AM PT / 12:57 PM ET)
+
+**Session:** Autonomous **verify** mode per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` (Cloud Agent `cursor/0dte-grid-rth-agent-a87b`). Commands: `npm run validate:grid-rth` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e`.
+
+**Note:** Classic `/grid` + 9 `/api/grid/*` panels deleted **2026-07-07** — 0DTE Command lives on **`/nighthawk`** (`?view=0dte` default). Night Hawk segment toggles: **0DTE · Swings · LEAPS · Legacy** (not the old “Market Grid” tab).
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:zerodte-logic` | ✅ **17/17 GREEN** — gates, plan exits (-50%/+100%/15:30 ET), lifecycle OPEN→TRIM→CLOSED, session heat RTH, mergePlays SKIP past cutoff/MOVED |
+| `npm run validate:grid-e2e` | ✅ **5/5 PASS** — board API 11 setups · ledger 4 · HELIX 20 prints · `/nighthawk` loads · 0 console errors |
+| `npm run validate:grid-rth` | ✅ **14/14 GREEN** (0 FAIL) — full orchestrator ~341s after deps install |
+| `validate:rth-open` (nested) | ✅ PASS |
+| `zerodte:board` | ✅ upstream_ok · heat=RTH · 11 setups · ledger 4 · PnL math 4 rows |
+| Cross-tool | ✅ SPX bootstrap spot vs GEX (7740.49) · HELIX flows 20 · Night Hawk dedupe 5 tickers |
+| `grid:data-correctness` | ✅ flags=0 mode=full-async |
+| `ops:collect` | ✅ zero items |
+
+### 0DTE logic probes (exhaustive)
+
+| Probe | Result |
+|---|---|
+| Gate funnel (SETUP_MIN_GROSS, aggression, dominance, ITM) | ✅ 3 eligible / 11 total · 0 violations |
+| Plan exits | ✅ stop=2.1 target=8.4 |
+| Lifecycle + sticky trough stop | ✅ OPEN/TRIM/CLOSED/CLOSED |
+| Plan grade stop-first | ✅ stopped when both touch same bar |
+| Session heat cutoff | ✅ RTH→POST_COMMIT→LATE_SESSION |
+| mergePlays past cutoff / MOVED | ✅ SKIP not OPEN |
+| Ledger PnL reconcile | ✅ 4 rows · 0 issues |
+| Time-stop constant | ✅ 15:30 ET |
+
+### Findings table
+
+| Severity | ID | Detail | Fix |
+|---|---|---|---|
+| — | — | **No P0/P1 product defects** — member 0DTE board GREEN | — |
+| P2 | GRID-ZERODTE-WARM-504 | `cron:zerodte-warm` HTTP **504** on RTH probe — `warmGridEarnings()` awaited unbounded UW fetch before 202 handshake | **Fixed** — race UW at `UW_READ_RACE_MS` + AV fallback in `warmGridEarnings()` |
+| P2 | GRID-CLASSIC-GRID-404 | `/grid` returns **404** (expected — page deleted 2026-07-07) | Documented in runbook |
+| P2 | GRID-AUDIT-DEPS | First orchestrator pass failed on missing `pg`/`react`/`playwright` in cold sandbox | Env bootstrap — `npm install` + `npx playwright install chromium` |
+
+**Status: GREEN** — verify pass complete; no P0/P1 GitHub issue.
+
+**Reports:** `audit-output/grid-rth-2026-08-04-verify-1785866569901.json`, `audit-output/zerodte-logic-1785866205417.json`, `audit-output/grid-e2e-1785866585459.json`
+
+---
 
 ## rth-open-2026-08-04-pass2 — RTH comprehensive test sweep (~12:31–12:45 PM ET)
 
