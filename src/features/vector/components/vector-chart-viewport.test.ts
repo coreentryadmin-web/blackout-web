@@ -32,6 +32,15 @@ test("VectorChart: session viewport defers live-edge scroll until member pans", 
   assert.match(src, /wantsSessionOverviewViewport/);
 });
 
+test("VectorChart: manual zoom/pan blocks programmatic session refits", () => {
+  const src = read("src/features/vector/components/VectorChart.tsx");
+  assert.match(src, /function memberViewportLocked/);
+  assert.match(src, /chartUserPannedRef\.current = true/);
+  assert.match(src, /memberViewportLocked\(chartUserPannedRef\.current, wheelZoomCooldownRef\.current\)/);
+  assert.match(src, /sessionOverview && !following && !viewportLocked/);
+  assert.match(src, /Wall-history poll runs every 5s/);
+});
+
 test("vector-chart-viewport: session time range uses lastSessionBars", () => {
   const lib = read("src/features/vector/lib/vector-chart-viewport.ts");
   assert.match(lib, /lastSessionBars/);
