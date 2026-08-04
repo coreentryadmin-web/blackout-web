@@ -54,13 +54,12 @@ async function render(
 
 test("closed compact row shows symbol line, times, peak", async () => {
   const html = await render(play());
-  assert.match(html, /nh-deck-lc-strip/);
+  assert.match(html, /nh-deck-play-grid/);
   assert.match(html, />META 592\.5C 0DTE</);
   assert.match(html, />09:42→12:06</);
-  assert.match(html, />Peak</);
   assert.match(html, />\+87%/);
   assert.match(html, />CLOSED</);
-  assert.match(html, /nh-deck-lc-strip-grade/);
+  assert.match(html, /nh-deck-play-grade/);
   assert.match(html, />A\+</);
   assert.match(html, /★{5}/);
   assert.match(html, />96</);
@@ -99,7 +98,6 @@ test("watch compact row shows track and rank", async () => {
   assert.match(html, />META 592\.5C 0DTE</);
   assert.match(html, />#2</);
   assert.match(html, />WATCH</);
-  assert.match(html, />Track</);
   assert.match(html, />\+18%/);
   assert.match(html, />11:54</);
 });
@@ -116,8 +114,25 @@ test("legacy row uses compact strip", async () => {
     play({ horizon: "LEGACY", tierLabel: "A", stockPrice: 180, pnlPct: 5, detectedAt: "2026-08-03T17:30:00-04:00" }),
     { selected: false },
   );
-  assert.match(html, /nh-deck-lc-strip/);
+  assert.match(html, /nh-deck-play-grid/);
   assert.match(html, />META 592\.5C 0DTE</);
+});
+
+test("command center renders play table column headers", async () => {
+  const { CommandDeck } = await load();
+  const html = renderToStaticMarkup(
+    React.createElement(CommandDeck, {
+      plays: [play()],
+      laneLabel: "0DTE · same-day",
+      commandCenter: true,
+    }),
+  );
+  assert.match(html, /nh-deck-play-table-head/);
+  assert.match(html, />Status</);
+  assert.match(html, />Play</);
+  assert.match(html, />Rating</);
+  assert.match(html, />Time</);
+  assert.match(html, />PnL</);
 });
 
 test("CommandDeck command center renders stat strip for 0DTE", async () => {
