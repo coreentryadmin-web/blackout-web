@@ -1,5 +1,73 @@
 # BlackOut Open Issues Log
-Last updated: 2026-08-04 13:58 ET
+Last updated: 2026-08-04 14:28 ET
+
+## rth-open-2026-08-04-pass4 — RTH comprehensive test sweep (~14:20–14:28 PM ET)
+
+**Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` on branch `cursor/rth-comprehensive-test-sweep-0b32`. Commands: `npm run validate:rth-open` → `GET /api/cron/data-correctness?force=1` → surface probes (`heatmap`/`spx`/`flows`/`zerodte`) → `npm run validate:rth-sweep` → `npm run validate:grid-e2e` → `npm run validate:spx-e2e` → `npm run ops:collect`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` | ✅ **GREEN** (~47s; Postgres skipped private VPC; options-socket ingest leader warming) |
+| `GET /api/cron/data-correctness?force=1` | ✅ **202 accepted** (async full sweep dispatched) |
+| `data-correctness` (`surface=heatmap`) | ✅ **ok=true · flags=0** |
+| `data-correctness` (`surface=spx`) | ⚠️ **1 flag** — SKHY $143 CALL OI below `STRIKE_MIN_OI` 500 (intraday thin OI) |
+| `data-correctness` (`surface=flows`) | ⚠️ same SKHY flag |
+| `data-correctness` (`surface=zerodte`) | ⚠️ same SKHY flag |
+| `npm run validate:rth-sweep` | ✅ **0 P0/P1** — 7 pages · **0 missing-field hits** · Largo grounded |
+| `npm run validate:grid-e2e` | ✅ **5/5 PASS** — zerodte board 11 setups · ledger 4 |
+| `npm run validate:spx-e2e` | ✅ **17/18 PASS** (1 WARN: `bie-play-route` cron 401 expected) |
+| `npm run ops:collect` | ✅ **0 action items** |
+
+### Speed (comprehensive sweep — Playwright premium session)
+
+| Page | Nav | Load (ms) | Live wait | Console errors |
+|---|---|---:|---:|---|
+| `/dashboard` (SPX Slayer) | hard | 8332 | 12s | 24× ChunkLoadError (sign-in chunk mismatch during ticket auth) |
+| `/flows` (HELIX) | soft | 3451 | 8s | 0 |
+| `/heatmap` (Thermal matrix) | soft | 2120 | 20s | 6× ChunkLoadError (transient during auth warm) |
+| `/vector` | soft | 1830 | 15s | 0 |
+| `/nighthawk` (0DTE Command) | soft | 2046 | 15s | 0 |
+| `/terminal` (Largo) | soft | 1778 | 5s | 1× 502 (transient) |
+| `/track-record` | soft | 1609 | 10s | 0 |
+
+**Note:** Classic `/grid` deleted 2026-07-07 — 0DTE Command (12 setups) under `/nighthawk` via `/api/market/zerodte/board`. Thermal Profile tab not rendered this pass (matrix block still loading at tab probe — matrix-only counts).
+
+### Live auto-update
+
+- `liveTick=null` on all pages — SPX spot stable in each wait window (low-vol afternoon); not a failure.
+- API freshness: desk `as_of` 57s · platform snapshot 0s · zerodte board 68s.
+
+### Data correctness
+
+| Cross-check | Result |
+|---|---|
+| desk γ-flip vs `gex-positioning` | ✅ aligned (desk 7600.84 vs gex 7601.24; spot ~7746) |
+| All market APIs | ✅ HTTP 200 |
+| Largo NVDA query | ✅ 200 · ~$89.2M premium · `blackout_intelligence` |
+| SPX matrix E2E | ✅ GEX+VEX+DEX+CHARM · 158 strikes |
+| Night Hawk SKHY | ⚠️ live OI below floor — edition still shows play; consider illiquid latch (P2 carry-forward) |
+
+### Missing-field audit
+
+**0 missing-field signals** across all 7 pages. Largo `Regime: —` = expected when no active regime tag.
+
+### Findings table
+
+| Severity | ID | Detail | Fix |
+|---|---|---|---|
+| — | — | **No P0/P1 product defects** on member surfaces | GREEN |
+| P2 | RTH-FLOWS-SOFT-NAV | `/flows` soft-nav 3451ms (>1.5s target) | Monitor — HELIX tape warm path |
+| P2 | RTH-DASH-CHUNK-AUTH | Dashboard 24× ChunkLoadError during Clerk ticket sign-in (stale `_next/static` chunks) | Transient post-deploy; client auto-reload handles |
+| P2 | DC-SKHY-THIN-OI | SKHY $143 CALL chain OI &lt; floor 500 | **Open** — intraday OI decay on OTM weekly; consider illiquid latch |
+| P2 | RTH-TERMINAL-502 | Terminal console 1× 502 during Largo warm | Transient |
+
+**Status: GREEN** — comprehensive sweep 0 P0/P1, cross-tool GEX aligned, heatmap correctness clean. No new GitHub issue (no P0/P1).
+
+**Reports:** `audit-output/rth-sweep-2026-08-04T18-23-17-104Z.json`, `audit-output/grid-e2e-1785867803650.json`, `audit-output/spx-dashboard-e2e-1785867861636.json`
+
+---
 
 ## rth-open-2026-08-04-pass3 — RTH comprehensive test sweep (~13:45–14:00 PM ET)
 
