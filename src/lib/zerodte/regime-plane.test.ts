@@ -19,16 +19,28 @@ test("buildRegimePlaneSnapshot — high confidence when inputs readable", () => 
   assert.equal(snap.blockFreshCommits, false);
 });
 
-test("buildRegimePlaneSnapshot — blind + block when VIX unavailable", () => {
+test("buildRegimePlaneSnapshot — blind + block when halt feed stale", () => {
+  const snap = buildRegimePlaneSnapshot({
+    vixUnavailable: false,
+    macroUnavailable: false,
+    haltFeedStale: true,
+    gexQuality: "polygon_chain",
+  });
+  assert.equal(snap.confidence, "blind");
+  assert.equal(snap.blockFreshCommits, REGIME_BLIND_FAIL_CLOSED);
+  assert.ok(snap.humanReason?.includes("halt"));
+});
+
+test("buildRegimePlaneSnapshot — VIX unavailable is degraded, not universal block (G-4 owns narrowing)", () => {
   const snap = buildRegimePlaneSnapshot({
     vixUnavailable: true,
     macroUnavailable: false,
     haltFeedStale: false,
     gexQuality: "polygon_chain",
   });
-  assert.equal(snap.confidence, "blind");
-  assert.equal(snap.blockFreshCommits, REGIME_BLIND_FAIL_CLOSED);
-  assert.ok(snap.humanReason?.includes("VIX"));
+  assert.equal(snap.confidence, "degraded");
+  assert.equal(snap.blockFreshCommits, false);
+  assert.equal(snap.vixUnavailable, true);
 });
 
 test("buildRegimePlaneSnapshot — degraded (not blind) on UW GEX fallback only", () => {

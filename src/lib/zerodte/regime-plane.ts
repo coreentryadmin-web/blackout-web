@@ -26,7 +26,9 @@ function envFlag(name: string, defaultOn: boolean): boolean {
   return defaultOn;
 }
 
-/** Kill-switch for regime-blind fail-closed (default ON). */
+/** Kill-switch for regime-blind fail-closed (default ON). Mirrors G-4: set
+ *  ZERODTE_G4_FAIL_CLOSED=0 to trade through a VIX outage — regime plane no longer
+ *  universal-blocks on VIX (G-4's per-candidate couldBlock narrowing owns that path). */
 export const REGIME_BLIND_FAIL_CLOSED =
   envFlag("ZERODTE_REGIME_BLIND_FAIL_CLOSED", true);
 
@@ -43,10 +45,13 @@ export function buildRegimePlaneSnapshot(input: {
   const haltFeedStale = input.haltFeedStale === true;
   const gexQuality = input.gexQuality ?? "polygon_chain";
 
+  // VIX + macro fail-closed are per-candidate in G-4/G-7 (with narrowing) — NOT a universal
+  // kill switch here. Regime plane only universal-blocks on inputs that have no per-ticker
+  // nuance: cold halt feed + empty GEX (both direction-agnostic safety holds).
   let confidence: RegimeCommitConfidence = "high";
-  if (vixUnavailable || macroUnavailable || haltFeedStale || gexQuality === "empty") {
+  if (haltFeedStale || gexQuality === "empty") {
     confidence = "blind";
-  } else if (gexQuality === "uw_strike_fallback") {
+  } else if (vixUnavailable || macroUnavailable || gexQuality === "uw_strike_fallback") {
     confidence = "degraded";
   }
 
@@ -56,8 +61,6 @@ export function buildRegimePlaneSnapshot(input: {
   let humanReason: string | null = null;
   if (blockFreshCommits) {
     const parts: string[] = [];
-    if (vixUnavailable) parts.push("day-open VIX unreadable");
-    if (macroUnavailable) parts.push("macro calendar unavailable");
     if (haltFeedStale) parts.push("halt feed stale");
     if (gexQuality === "empty") parts.push("GEX unavailable");
     humanReason =

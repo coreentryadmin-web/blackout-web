@@ -1340,3 +1340,41 @@ test("G-13 does not block when flow accumulation aligned or absent", () => {
   assert.equal(evaluateZeroDteGates(input({ flowAccumulationAligned: true })).verdict, "COMMIT");
   assert.equal(evaluateZeroDteGates(input({ flowAccumulationAligned: null })).verdict, "COMMIT");
 });
+
+test("stack fix: VIX unavailable without regime_blind — index ETF flat at 70 commits (G-4 narrowing)", () => {
+  const v = evaluateZeroDteGates(
+    input({
+      ticker: "QQQ",
+      score: 70,
+      bias: "flat",
+      vixDayOpen: null,
+      vixUnavailable: true,
+      regimeBlockFreshCommits: false,
+    }),
+  );
+  assert.equal(v.verdict, "COMMIT");
+  assert.ok(!v.blocks.some((b) => b.code === "regime_blind"));
+  assert.ok(!v.blocks.some((b) => b.code === "vix_unavailable"));
+});
+
+test("stack fix: single name with null SPY tape does not fail G-12 when VWAP-side confirms", () => {
+  const v = evaluateZeroDteGates(
+    input({
+      ticker: "NVDA",
+      bias: null,
+      confluence: {
+        score: 1,
+        confirmations: 1,
+        timing_ok: true,
+        early_window: false,
+        vwap_ok: true,
+        market_ok: false,
+        tier: "weak",
+        label: "VWAP only",
+      },
+    }),
+  );
+  assert.equal(v.verdict, "COMMIT");
+  assert.ok(!v.blocks.some((b) => b.code === "confluence_floor"));
+  assert.ok(!v.blocks.some((b) => b.code === "no_market_bias"));
+});

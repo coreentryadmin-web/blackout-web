@@ -141,6 +141,12 @@ export function confluenceFloorAt(nowEtMinutes: number): number {
   return early ? ZERODTE_CONFLUENCE_MIN_EARLY : ZERODTE_CONFLUENCE_MIN;
 }
 
+/** G-12 floor — single names only gate VWAP-side (G-1 exempts them from SPY tape). */
+export function g12ConfluenceFloor(ticker: string, nowEtMinutes: number): number {
+  if (isIndexEtfTicker(ticker)) return confluenceFloorAt(nowEtMinutes);
+  return 1;
+}
+
 // ── G-4 · VIX regime throttle — HARD GATE (promoted from calibration 2026-07-16) ──
 // Evidence (F-1): the strongest per-play split in the whole forensics dataset —
 // Slayer plays on days opening VIX 15-17 ran 69.2% WR (n=13, +1.85 pts avg) vs
@@ -179,6 +185,26 @@ export const G11_HALT_FAIL_CLOSED_ENABLED = process.env.ZERODTE_G11_HALT_FAIL_CL
 export const INDEX_ETF_TICKERS = new Set([
   "SPX", "SPXW", "XSP", "SPY", "QQQ", "NDX", "NDXP", "IWM", "RUT", "RUTW", "DIA",
 ]);
+
+export function isIndexEtfTicker(ticker: string): boolean {
+  return INDEX_ETF_TICKERS.has(ticker.toUpperCase());
+}
+
+/** G-12 confirmation count — index ETFs need VWAP + SPY tape; single names are G-1-exempt
+ *  from tape alignment and must not re-impose the market leg via confluence. */
+export function g12ConfirmationCount(
+  confluence: ZeroDteConfluence,
+  ticker: string
+): number {
+  if (isIndexEtfTicker(ticker)) return confluence.confirmations;
+  return confluence.vwap_ok ? 1 : 0;
+}
+
+export function g12ConfirmationLegLabel(ticker: string): string {
+  return isIndexEtfTicker(ticker)
+    ? "VWAP-side + market-aligned"
+    : "VWAP-side (single-name — SPY tape leg exempt, same as G-1)";
+}
 
 export type ZeroDteVixCalibration = {
   day_open_vix: number | null;
@@ -391,7 +417,9 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
   // `isCondor` block after the shared gates. Unknown/absent play_type is DIRECTIONAL (unchanged).
   const isCondor = input.play_type === "CONDOR";
 
-  // Regime Plane — fail-closed when commit confidence is blind (VIX/macro/halt/GEX).
+  // Regime Plane — universal fail-closed ONLY for halt-feed + empty GEX (no per-ticker nuance).
+  // VIX/macro blindness is handled per-candidate by G-4/G-7 with couldBlock narrowing —
+  // do NOT duplicate a board-emptying kill switch here (stack audit 2026-08-04).
   if (input.regimeBlockFreshCommits) {
     blocks.push({
       code: "regime_blind",
@@ -492,15 +520,16 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
   // direction to confirm, so this gate does not apply to it (the sell-regime router + range-intact
   // check are the condor's equivalent "is the structure right" test).
   if (!isCondor && input.confluence != null) {
-    const floor = confluenceFloorAt(input.nowEtMinutes);
-    const have = input.confluence.confirmations;
+    const floor = g12ConfluenceFloor(input.ticker, input.nowEtMinutes);
+    const have = g12ConfirmationCount(input.confluence, input.ticker);
+    const legLabel = g12ConfirmationLegLabel(input.ticker);
     if (have < floor) {
       const early = floor > ZERODTE_CONFLUENCE_MIN;
       blocks.push({
         code: "confluence_floor",
         reason:
           `Only ${have} of the needed ${floor} confluence confirmations ` +
-          `(VWAP-side + market-aligned) agree with this ${input.direction} — ` +
+          `(${legLabel}) agree with this ${input.direction} — ` +
           (early
             ? `the ${OPENING_WINDOW_UNLOCK_LABEL}–10:45 early window backtests negative (E2), so it takes the full VWAP+market double to commit here.`
             : "the 0-confirmation bucket ran −12.5% EV (E3, 25 sessions); a loud premium print alone isn't a trade."),
