@@ -11,8 +11,8 @@ watchPatterns = [
 
 [deploy]
 startCommand = "CRON_HTTP_TIMEOUT_MS=180000 node scripts/hit-cron.mjs /api/cron/thermal-discord"
-# Every 15 minutes, 24/7 — route posts off-hours snapshots too (set THERMAL_DISCORD_RTH_ONLY=1 to gate).
-# Inert without DISCORD_THERMAL_WEBHOOK_URL.
-cronSchedule = "*/15 * * * *"
+# Every 15 minutes on weekdays (~cash RTH UTC band). Route also gates via isEtCashRth() (default ON).
+# Opt out of RTH gate: THERMAL_DISCORD_RTH_ONLY=0 (not recommended). Inert without DISCORD_THERMAL_WEBHOOK_URL.
+cronSchedule = "*/15 13-21 * * 1-5"
 restartPolicyType = "never"
 numReplicas = 1
