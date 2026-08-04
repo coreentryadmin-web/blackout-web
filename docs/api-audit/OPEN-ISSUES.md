@@ -1,5 +1,44 @@
 # BlackOut Open Issues Log
-Last updated: 2026-08-03 18:12 ET
+Last updated: 2026-08-04 12:02 ET
+
+## grid-rth-2026-08-04 — 0DTE Command RTH verify agent (market-open ~8:56 AM PT / 11:56 AM ET)
+
+**Session:** Autonomous Grid RTH **verify** mode per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` (6:30 AM PT market-open schedule). Commands: `npm run validate:grid-rth` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e` (+ `nighthawk-prod-check.mjs`, Playwright `/grid` + Night Hawk segment tabs).
+
+**Note:** Classic `/grid` page + 9 `/api/grid/*` routes deleted 2026-07-07 — returns **404**. 0DTE Command lives on `/nighthawk` with four view tabs (0DTE / Swings / LEAPS / Legacy), not the deleted 9-panel Market Grid.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `validate:grid-rth` | ✅ **14/14 PASS** (0 FAIL) — RTH-open, upstream, session heat RTH, ledger PnL 1 row, SPX spot 7710.26 vs GEX, HELIX 20 prints, Night Hawk dedupe 5 tickers, `zerodte-warm` cron, logic + integration, data-correctness flags=0, E2E nested, ops:collect zero items |
+| `validate:zerodte-logic` | ✅ **17/17 PASS** — gates (SETUP_MIN_GROSS/aggression/dominance/ITM), plan exits (-50%/+100%/15:30 ET), lifecycle OPEN→TRIM→CLOSED, mergePlays SKIP past cutoff/MOVED, session heat RTH→POST_COMMIT→LATE_SESSION, live board 8 setups / 1 ledger, cutoff 15:30 ET |
+| `validate:grid-e2e` | ✅ **5/5 PASS** — board API 8/1, HELIX 20 prints, Playwright `/nighthawk` load, zero console errors |
+| `nighthawk-prod-check` | ✅ **9/9 PASS** — edition 5 plays, horizons zerodte/swings/leaps, toggle + command deck markup |
+| Night Hawk UI segments | ✅ **0DTE / Swings / LEAPS / Legacy** — all tabs click + deck renders (Playwright `role=tab`) |
+| `/grid` routing | ✅ **404** — intentional (classic Market Grid removed) |
+
+**Live board (RTH):** 8 setups · 1 ledger · session heat RTH 100% · 1 eligible / 0 gate violations · upstream OK.
+
+**Cross-tool:** SPX bootstrap spot 7710.26 vs GEX ✅ · HELIX flows 20 prints ✅ · Night Hawk dedupe 5 tickers covered elsewhere ✅ · Grid bootstrap spot alignment ✅.
+
+**Verify status: GREEN** — zero FAIL on all Grid harnesses. No P0 fixes required.
+
+### Findings table (`grid-rth-2026-08-04`)
+
+| Severity | ID | Detail | Fix defer? |
+|---|---|---|---|
+| — | — | **No P0/P1 product defects** | all Grid suites GREEN |
+| INFO | GRID-RTH-ROUTING-01 | `/grid` returns 404 — classic Market Grid + 9 `/api/grid/*` routes deleted; 0DTE Command on `/nighthawk` | N/A — intentional |
+| INFO | GRID-RTH-ENV-NODE | Initial orchestrator FAIL on missing `node_modules` (pg/react/playwright) in cloud agent | Resolved via `npm install` + `npx playwright install chromium` |
+
+### Reports
+
+- `audit-output/grid-rth-2026-08-04-verify-1785859267670.json`
+- `audit-output/zerodte-logic-1785859275005.json`
+- `audit-output/grid-e2e-1785859282025.json`
+
+---
 
 ## spx-rth-2026-08-03-post-close-evening — SPX Slayer post-close fix agent (~6:10 PM ET)
 
