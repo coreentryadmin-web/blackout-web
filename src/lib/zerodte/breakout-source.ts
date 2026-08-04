@@ -227,6 +227,36 @@ export function pickAtmZeroDteContract(
   return { strike: best.strike, expiry: best.expiry, dte: best.dte };
 }
 
+/** Phase 2a — env-gated 1DTE fallback when no listed 0DTE contract clears liquidity.
+ *  Default ON (`ZERODTE_BREAKOUT_ALLOW_1DTE` unset or `1`); set `=0` for strict 0DTE-only BREAKOUT. */
+export function breakoutAllow1DteFallback(): boolean {
+  return process.env.ZERODTE_BREAKOUT_ALLOW_1DTE !== "0";
+}
+
+export type PickedBreakoutContractWithFallback = PickedBreakoutContract & {
+  /** True when the picker fell back to dte=1 because no liquid 0DTE existed. */
+  used_1dte_fallback: boolean;
+};
+
+/**
+ * Explicit two-phase BREAKOUT contract pick: try 0DTE first, then (when env allows) 1DTE only.
+ * Equivalent to `pickAtmZeroDteContract(..., maxDte=1)` when fallback is ON; when OFF, 0DTE-only.
+ * Returns null when neither horizon has a liquid same-day contract (weekly-only names).
+ */
+export function pickBreakoutContractWithFallback(
+  rows: BreakoutChainRow[],
+  spot: number,
+  todayYmd: string,
+  side: "call" | "put" = "call"
+): PickedBreakoutContractWithFallback | null {
+  const zero = pickAtmZeroDteContract(rows, spot, todayYmd, 0, side);
+  if (zero) return { ...zero, used_1dte_fallback: false };
+  if (!breakoutAllow1DteFallback()) return null;
+  const one = pickAtmZeroDteContract(rows, spot, todayYmd, 1, side);
+  if (!one || one.dte !== 1) return null;
+  return { ...one, used_1dte_fallback: true };
+}
+
 // ── Seed→setup bridge ───────────────────────────────────────────────────────────────
 
 /**

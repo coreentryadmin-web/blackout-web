@@ -238,7 +238,7 @@ test("discoverBreakoutSetups: walks past weekly-only misses to fill same-day set
     pickContract: undefined,
   });
   // Re-bind pickContract to the real one from breakout-source (makeDeps default stubs a hit).
-  const { pickAtmZeroDteContract } = await import("./breakout-source");
+  const { pickBreakoutContractWithFallback } = await import("./breakout-source");
   const out = await discoverBreakoutSetups({
     today: "2026-07-29",
     nowEtMinutes: RTH_NOW_ET_MINUTES,
@@ -247,7 +247,7 @@ test("discoverBreakoutSetups: walks past weekly-only misses to fill same-day set
     maxCandidates: 2,
     deps: {
       ...deps,
-      pickContract: pickAtmZeroDteContract,
+      pickContract: pickBreakoutContractWithFallback,
       fetchSummary: (async () => ({
         results: [
           bar("JUNK1", freshT, { c: 40, o: 30, v: 2_000_000 }),

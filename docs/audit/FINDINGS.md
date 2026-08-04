@@ -25,7 +25,17 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 
 **Fix (Phase 1).** `market-state-engine.ts` + scan re-rank; `zerodte_discovery_events` schema; BREAKOUT G-3 floor 70→65; `validate:zerodte-market-opportunity` audit script. Doc: `docs/audit/0DTE-ARCHITECTURE-V2.md`.
 
-**Status.** PR #1581 pending rebase after #1580.
+**Status.** PR #1581 pending merge; Phase 2a in PR pending.
+
+---
+
+## 2026-08-04 — [0DTE] Architecture V2 Phase 2a: discovery event persist + BREAKOUT 1DTE fallback — IN PROGRESS
+
+**Severity.** MEDIUM — closes the event-sourcing loop started in Phase 1; improves BREAKOUT chain-walk observability.
+
+**Fix.** `pickBreakoutContractWithFallback()` (explicit 0DTE then env-gated 1DTE); `discovery-events-persist.ts` wires `detected`/`gate_blocked`/`commit` on cron; breakout logs `1dte_fallback=` count.
+
+**Status.** PR pending.
 
 ## 2026-08-03 — [ops,nighthawk] Edition stuck at stage_synthesis checkpoint — FIXED (ops-auto-fix #1572)
 

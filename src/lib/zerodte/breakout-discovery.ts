@@ -25,7 +25,9 @@ import { screenBreakoutMovers, screenBreakdownMovers } from "@/features/nighthaw
 import { resolveTickerChainRows } from "@/features/nighthawk/lib/option-chain-prompt";
 import {
   buildBreakoutSetup,
+  pickBreakoutContractWithFallback,
   pickAtmZeroDteContract,
+  breakoutAllow1DteFallback,
   type BreakoutChainRow,
 } from "./breakout-source";
 import type { EnrichedZeroDteSetup } from "./board";
@@ -159,7 +161,7 @@ export type BreakoutDiscoveryDeps = {
   screenBreakdowns: typeof screenBreakdownMovers;
   resolveChain: typeof resolveTickerChainRows;
   buildSetup: typeof buildBreakoutSetup;
-  pickContract: typeof pickAtmZeroDteContract;
+  pickContract: typeof pickBreakoutContractWithFallback;
   /** Wave C1 — optional minute bar fetch for intraday breadth refresh (tests inject fakes). */
   fetchMinuteBars?: (ticker: string, from: string, to: string) => Promise<MinuteBarLike[]>;
 };
@@ -170,7 +172,7 @@ const DEFAULT_DEPS: BreakoutDiscoveryDeps = {
   screenBreakdowns: screenBreakdownMovers,
   resolveChain: resolveTickerChainRows,
   buildSetup: buildBreakoutSetup,
-  pickContract: pickAtmZeroDteContract,
+  pickContract: pickBreakoutContractWithFallback,
 };
 
 /**
@@ -288,12 +290,12 @@ export async function discoverBreakoutSetups(opts: {
   // produced zero setups (the 2026-07-29 FLOW-only regression: every momentum-top
   // name had only weeklies → no_same_day_contract, and the $400 price cap had already
   // dropped MU/AMD/META — the names that DO list 0DTE).
-  type BuildMiss = "no_chain" | "no_same_day_contract" | "error";
+  type BuildMiss = "no_chain" | "no_0dte_contract" | "no_same_day_contract" | "error";
   const buildOne = async (
     mover: (typeof longMovers)[number],
     direction: "long" | "short",
     maxDollar: number
-  ): Promise<{ setup: EnrichedZeroDteSetup | null; miss: BuildMiss | null }> => {
+  ): Promise<{ setup: EnrichedZeroDteSetup | null; miss: BuildMiss | null; oneDteFallback?: boolean }> => {
     try {
       const chain = await resolveChain(mover.ticker).catch(() => null);
       if (!chain || !(chain.spot > 0) || chain.rows.length === 0) {
@@ -311,12 +313,22 @@ export async function discoverBreakoutSetups(opts: {
       }));
       // Breakouts pick a CALL; breakdowns pick a PUT.
       const side = direction === "long" ? ("call" as const) : ("put" as const);
-      const contract = pickContract(rows, chain.spot, today, 1, side);
-      if (!contract) return { setup: null, miss: "no_same_day_contract" };
+      const picked = pickContract(rows, chain.spot, today, side);
+      if (!picked) {
+        const has0 = pickAtmZeroDteContract(rows, chain.spot, today, 0, side);
+        const has1 =
+          breakoutAllow1DteFallback() ? pickAtmZeroDteContract(rows, chain.spot, today, 1, side) : null;
+        if (!has0 && has1 && !breakoutAllow1DteFallback()) {
+          return { setup: null, miss: "no_0dte_contract" as const };
+        }
+        return { setup: null, miss: "no_same_day_contract" as const };
+      }
+      const { used_1dte_fallback, ...contract } = picked;
       const dollarNorm = maxDollar > 0 ? mover.dollar / maxDollar : 0;
       return {
         setup: buildSetup({ mover, spot: chain.spot, contract, dollarNorm, direction }),
         miss: null,
+        oneDteFallback: used_1dte_fallback,
       };
     } catch {
       return { setup: null, miss: "error" }; // best-effort per ticker — one bad chain never sinks the batch
@@ -341,7 +353,7 @@ export async function discoverBreakoutSetups(opts: {
   const dedupedShort = rankedShort.filter((m) => !longTickers.has(m.ticker.toUpperCase()));
 
   const BATCH = 8;
-  const stats = { attempted: 0, no_chain: 0, no_same_day_contract: 0, error: 0 };
+  const stats = { attempted: 0, no_chain: 0, no_0dte_contract: 0, no_same_day_contract: 0, one_dte_fallback: 0, error: 0 };
 
   async function fillSide(
     ranked: typeof rankedLong,
@@ -357,6 +369,7 @@ export async function discoverBreakoutSetups(opts: {
         stats.attempted += 1;
         if (r.setup) {
           out.push(r.setup);
+          if (r.oneDteFallback) stats.one_dte_fallback += 1;
           if (out.length >= limit) break;
         } else if (r.miss) {
           stats[r.miss] += 1;
@@ -379,7 +392,8 @@ export async function discoverBreakoutSetups(opts: {
       `built ${setups.length} setup(s) (${longSetups.length}L/${shortSetups.length}S) ` +
       `from walk ${rankedLong.length}L+${dedupedShort.length}S ` +
       `attempted=${stats.attempted} no_chain=${stats.no_chain} ` +
-      `no_same_day=${stats.no_same_day_contract} err=${stats.error}`
+      `no_0dte=${stats.no_0dte_contract} no_same_day=${stats.no_same_day_contract} ` +
+      `1dte_fallback=${stats.one_dte_fallback} err=${stats.error}`
   );
   return { status: "ok", setups };
 }

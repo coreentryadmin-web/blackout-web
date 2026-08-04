@@ -45,7 +45,7 @@ const { rankMoversForChainFetch, BREAKOUT_MAX_CANDIDATES, BREAKOUT_SCREEN_POOL }
 const { resolveTickerChainRows } = await import(
   `${SRC}features/nighthawk/lib/option-chain-prompt.ts`
 );
-const { pickAtmZeroDteContract } = await import(`${SRC}lib/zerodte/breakout-source.ts`);
+const { pickBreakoutContractWithFallback } = await import(`${SRC}lib/zerodte/breakout-source.ts`);
 const { classifyRegime } = await import(`${SRC}lib/zerodte/regime.ts`);
 const { buildMarketState } = await import(`${SRC}lib/zerodte/market-state-engine.ts`);
 const { fetchAggBars } = await import(`${SRC}lib/providers/polygon-largo.ts`);
@@ -168,7 +168,7 @@ async function auditBreakout(session) {
           put_oi: r.put_oi,
         }));
         const side = direction === "long" ? "call" : "put";
-        const contract = pickAtmZeroDteContract(rows, chain.spot, session, 1, side);
+        const contract = pickBreakoutContractWithFallback(rows, chain.spot, session, side);
         if (!contract) {
           stats.no_same_day_contract += 1;
           continue;
