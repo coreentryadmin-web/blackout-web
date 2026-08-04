@@ -237,7 +237,7 @@ export const ZERODTE_SCORE_FLOOR = 65;
  *  commit bar as FLOW. The 58 "unstarve" floor sat inside the measured near-flat 55–64 band
  *  (−3.6% avg / 36.8% WR) and admitted weak single-rail movers. Multi-rail +8 corroboration
  *  still helps real confluence clear 65; env overrides remain available. */
-export const ZERODTE_SCORE_FLOOR_BREAKOUT = envInt("ZERODTE_SCORE_FLOOR_BREAKOUT", 70);
+export const ZERODTE_SCORE_FLOOR_BREAKOUT = envInt("ZERODTE_SCORE_FLOOR_BREAKOUT", 65);
 export const ZERODTE_SCORE_FLOOR_PIN = envInt("ZERODTE_SCORE_FLOOR_PIN", 65);
 
 /** Resolve the G-3 score floor for a setup's discovery origin set. Pure. */

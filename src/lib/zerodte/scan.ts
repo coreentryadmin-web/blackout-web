@@ -72,6 +72,7 @@ import {
 } from "./board";
 import { gradeCondorFromBars } from "./condor";
 import { buildZeroDteEntryContext, fetchZeroDteSessionContext } from "./entry-context";
+import { buildMarketState, weightedScoreForMerge, type MarketStateSnapshot } from "./market-state-engine";
 // WS-14/15 observability (additive, best-effort — never a decision input). See
 // latency-telemetry.ts's module doc: it records spans/durations and freezes a per-commit
 // input-age manifest; every recorder swallows its own errors so it can't affect the scan.
@@ -218,6 +219,11 @@ export async function scanZeroDteBoard(flags?: {
   news?: Map<string, NewsHeat>;
 }): Promise<ZeroDteScanResult> {
   const today = todayEt();
+  const sessionCtx = await fetchZeroDteSessionContext().catch(() => null);
+  const marketState: MarketStateSnapshot = buildMarketState({
+    regime: sessionCtx?.regime ?? null,
+    sessionDate: today,
+  });
   // WS-14 span capture (observability only): stamp the wall-clock at each pipeline hop the
   // scan actually knows. These never gate anything — they feed recordScanSpans below.
   const scanStartedAt = Date.now();
@@ -379,6 +385,24 @@ export async function scanZeroDteBoard(flags?: {
     } catch (err) {
       console.warn("[zerodte-pin] discovery failed — flow-only board this cycle:", err);
     }
+  }
+
+  // Market State Engine v0 — regime-adaptive rail priors at merge rank (shadow-safe: re-sorts only).
+  if (marketState.confidence > 0 && process.env.ZERODTE_MARKET_STATE_ENABLED !== "0") {
+    setups.sort((a, b) => {
+      const wb = weightedScoreForMerge(b.score, b.discovery_origin, marketState);
+      const wa = weightedScoreForMerge(a.score, a.discovery_origin, marketState);
+      if (wb !== wa) return wb - wa;
+      const ha = a.contract_horizon === "ZERO_DTE" ? 1 : 0;
+      const hb = b.contract_horizon === "ZERO_DTE" ? 1 : 0;
+      if (ha !== hb) return hb - ha;
+      return b.score - a.score;
+    });
+    console.info(
+      `[zerodte-scan] market_state structure=${marketState.regime_structure ?? "unknown"} ` +
+        `conf=${marketState.confidence} FLOW×${marketState.rail_weights.FLOW} ` +
+        `BREAKOUT×${marketState.rail_weights.BREAKOUT} PIN×${marketState.rail_weights.PIN}`
+    );
   }
 
   // Observability: surface the post-merge rail mix every cycle so a FLOW-only board is diagnosable

@@ -1384,6 +1384,24 @@ async function runMigrations(): Promise<void> {
     -- rows predate the hard-gate stack and whose numeric columns already tell the whole story.
     ALTER TABLE zerodte_scan_rejections ADD COLUMN IF NOT EXISTS reason TEXT;
 
+    -- zerodte_discovery_events (Phase 1 event sourcing): append-only lifecycle log for
+    -- 0DTE discovery objects — detected, score bumps, gate blocks, commit, trim, stop.
+    CREATE TABLE IF NOT EXISTS zerodte_discovery_events (
+      id           BIGSERIAL PRIMARY KEY,
+      observed_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      session_date DATE NOT NULL,
+      ticker       TEXT NOT NULL,
+      kind         TEXT NOT NULL,
+      origins      JSONB,
+      score        NUMERIC,
+      weighted_score NUMERIC,
+      gate_code    TEXT,
+      detail       TEXT,
+      payload      JSONB
+    );
+    CREATE INDEX IF NOT EXISTS idx_zerodte_discovery_events_session
+      ON zerodte_discovery_events (session_date, ticker, observed_at DESC);
+
     -- gex_regime_events (task #136): durable log of BlackOut Thermal's GEX
     -- regime/flip/wall-crossing events, detected by computeGexEvents() (src/lib/
     -- providers/polygon-options-gex.ts) on every fresh GEX matrix compute (cache
@@ -3670,6 +3688,36 @@ export async function fetchZeroDteScanRejections(opts?: { ticker?: string; limit
     last_seen: r.last_seen != null ? String(r.last_seen) : null,
     reason: r.reason != null ? String(r.reason) : null,
   }));
+}
+
+export async function insertZeroDteDiscoveryEvent(row: {
+  session_date: string;
+  ticker: string;
+  kind: string;
+  origins?: string[] | null;
+  score?: number | null;
+  weighted_score?: number | null;
+  gate_code?: string | null;
+  detail?: string | null;
+  payload?: Record<string, unknown> | null;
+}): Promise<void> {
+  await ensureSchema();
+  await (await getPool()).query(
+    `INSERT INTO zerodte_discovery_events (
+      session_date, ticker, kind, origins, score, weighted_score, gate_code, detail, payload
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+    [
+      row.session_date,
+      row.ticker.toUpperCase(),
+      row.kind,
+      row.origins ? JSON.stringify(row.origins) : null,
+      row.score ?? null,
+      row.weighted_score ?? null,
+      row.gate_code ?? null,
+      row.detail ?? null,
+      row.payload ? JSON.stringify(row.payload) : null,
+    ]
+  );
 }
 
 /**
