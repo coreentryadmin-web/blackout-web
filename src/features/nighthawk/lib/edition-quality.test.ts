@@ -1,9 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  effectiveMinPublishPlays,
   effectiveSynthesisPool,
+  effectiveTargetPlays,
   filterPlaysByMerit,
+  gatePromoteEnabled,
+  gatePromoteMinScore,
   legacyGlobalStrongest,
+  thinEditionBackfillEnabled,
 } from "./edition-quality";
 import { MAX_DOSSIER_STOCKS } from "./constants";
 import type { PlaybookPlay } from "./types";
@@ -33,6 +38,40 @@ test("legacyGlobalStrongest defaults ON and uses full dossier pool", () => {
   try {
     assert.equal(legacyGlobalStrongest(), true);
     assert.equal(effectiveSynthesisPool(), MAX_DOSSIER_STOCKS);
+  } finally {
+    for (const k of keys) {
+      if (prev[k] === undefined) delete process.env[k];
+      else process.env[k] = prev[k];
+    }
+  }
+});
+
+test("global-strongest book floor defaults: 3–5 target, rescue paths ON, merit promote floor", () => {
+  const keys = [
+    "NH_LEGACY_GLOBAL_STRONGEST",
+    "NH_LEGACY_MIN_PLAYS",
+    "NH_LEGACY_MAX_PLAYS",
+    "NH_LEGACY_RESCUE",
+    "NH_LEGACY_GATE_PROMOTE",
+    "NH_LEGACY_BACKFILL",
+    "NH_MIN_PUBLISH_SCORE",
+  ] as const;
+  const prev: Record<string, string | undefined> = {};
+  for (const k of keys) prev[k] = process.env[k];
+  delete process.env.NH_LEGACY_GLOBAL_STRONGEST;
+  delete process.env.NH_LEGACY_MIN_PLAYS;
+  delete process.env.NH_LEGACY_MAX_PLAYS;
+  delete process.env.NH_LEGACY_RESCUE;
+  delete process.env.NH_LEGACY_GATE_PROMOTE;
+  delete process.env.NH_LEGACY_BACKFILL;
+  delete process.env.NH_MIN_PUBLISH_SCORE;
+  try {
+    assert.equal(legacyGlobalStrongest(), true);
+    assert.equal(effectiveMinPublishPlays(), 3);
+    assert.equal(effectiveTargetPlays(), 5);
+    assert.equal(gatePromoteEnabled(), true);
+    assert.equal(thinEditionBackfillEnabled(), true);
+    assert.equal(gatePromoteMinScore(), 55);
   } finally {
     for (const k of keys) {
       if (prev[k] === undefined) delete process.env[k];

@@ -22,6 +22,7 @@
 //    same skip-grading philosophy as the 0DTE rejection funnel.
 
 import { MIN_PUBLISH_SCORE } from "./constants";
+import { gatePromoteMinScore } from "./edition-quality";
 import { publishGateBlockedRecapReason } from "./edition-funnel";
 import type { PlaybookPlay } from "./types";
 import type { TickerDossier } from "./dossier";
@@ -405,8 +406,9 @@ export function promoteTopBlocked(
 ): PlaybookPlay[] {
   if (!blocked.length || count <= 0) return [];
 
+  const minScore = gatePromoteMinScore();
   const promotable = blocked.filter(
-    (b) => isPromotableBlockedPlay(b) && (b.play.score ?? 0) >= GATE_PROMOTE_MIN_SCORE,
+    (b) => isPromotableBlockedPlay(b) && (b.play.score ?? 0) >= minScore,
   );
   if (!promotable.length) return [];
 

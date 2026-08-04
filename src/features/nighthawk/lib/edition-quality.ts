@@ -3,7 +3,11 @@
  *
  * Product rule (2026-08-03): the Legacy book must be the strongest plays out of the
  * entire scored universe (all dossier'd names), not a truncated top-18 slice padded
- * with rescue/backfill/hedge filler. Publish fewer names at a higher merit bar.
+ * with rescue/backfill/hedge filler.
+ *
+ * Book floor (2026-08-04): still publish 3–5 names when the organic path thins out,
+ * but ONLY by promoting the next-highest merit names from the same ranked universe —
+ * score + tier floor, gate_promoted + warnings, never score-20 hedge filler.
  */
 
 import type { PlaybookPlay } from "./types";
@@ -62,7 +66,7 @@ export function effectiveMinPublishScore(): number {
 export function effectiveTargetPlays(): number {
   return envInt(
     "NH_LEGACY_MAX_PLAYS",
-    legacyGlobalStrongest() ? 3 : EDITION_TARGET_PLAYS,
+    legacyGlobalStrongest() ? EDITION_TARGET_PLAYS : EDITION_TARGET_PLAYS,
     1,
     5
   );
@@ -71,24 +75,26 @@ export function effectiveTargetPlays(): number {
 export function effectiveMinPublishPlays(): number {
   return envInt(
     "NH_LEGACY_MIN_PLAYS",
-    legacyGlobalStrongest() ? 1 : EDITION_MIN_PUBLISH_PLAYS,
+    legacyGlobalStrongest() ? EDITION_MIN_PUBLISH_PLAYS : EDITION_MIN_PUBLISH_PLAYS,
     0,
     5
   );
 }
 
+/** Score floor for gate-promote + ranked-pool backfill rescue (tracks effectiveMinPublishScore). */
+export function gatePromoteMinScore(): number {
+  return effectiveMinPublishScore();
+}
+
 export function rescuePlaysEnabled(): boolean {
-  if (legacyGlobalStrongest()) return envFlag("NH_LEGACY_RESCUE", false);
   return envFlag("NH_LEGACY_RESCUE", true);
 }
 
 export function gatePromoteEnabled(): boolean {
-  if (legacyGlobalStrongest()) return envFlag("NH_LEGACY_GATE_PROMOTE", false);
   return envFlag("NH_LEGACY_GATE_PROMOTE", true);
 }
 
 export function thinEditionBackfillEnabled(): boolean {
-  if (legacyGlobalStrongest()) return envFlag("NH_LEGACY_BACKFILL", false);
   return envFlag("NH_LEGACY_BACKFILL", true);
 }
 
