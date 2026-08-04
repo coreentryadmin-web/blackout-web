@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { clsx } from "clsx";
 import { fetchNightHawkEdition } from "@/lib/api";
 import { ZeroDteDeck, HorizonDeck, LegacyDeck } from "@/features/nighthawk/command-deck/containers";
+import { BangerBoard } from "@/features/nighthawk/components/BangerBoard";
 import { IosNativeSegment } from "@/components/ios/IosNativeSegment";
 import { useIosNativeShell } from "@/hooks/useIosNativeShell";
 import {
@@ -18,9 +19,14 @@ import type { NightHawkSeedProps } from "@/features/nighthawk/lib/nighthawk-seed
 import type { BoardResp } from "@/features/nighthawk/command-deck/zerodte-sources";
 
 /**
- * Night Hawk — one surface, four views (0DTE / Swings / LEAPS / Legacy), single-select. Each view renders the
- * COMMAND DECK: a two-panel matrix terminal (plays left, live breakdown right). Selecting a view scopes the
- * ENTIRE desk to it and only that view's data is fetched. The choice persists in the URL (?view=).
+ * Night Hawk — one surface, four views (0DTE / Swings / Bangers / Legacy), single-select. ZERO_DTE/SWING/
+ * LEGACY render the COMMAND DECK (a two-panel matrix terminal: plays left, live breakdown right); BANGER
+ * renders BangerBoard — Engine B's standalone whole-market weekly-banger board (not part of the Command
+ * Deck / horizon-ledger shape, see BangerBoard.tsx). Selecting a view scopes the ENTIRE desk to it and only
+ * that view's data is fetched. The choice persists in the URL (?view=).
+ *
+ * LEAPS was removed from this toggle 2026-08-04 (no live signal adapter fed it, so it only ever rendered an
+ * empty lane) — see the header comment in `nighthawk-view.ts` for the full note and revival path.
  */
 export function NightHawkFeed({ seed }: { seed?: NightHawkSeedProps | null }) {
   const nativeShell = useIosNativeShell();
@@ -70,7 +76,7 @@ export function NightHawkFeed({ seed }: { seed?: NightHawkSeedProps | null }) {
           <ZeroDteDeck initialBoard={(seed?.board as BoardResp | null | undefined) ?? null} />
         )}
         {view === "SWING" && <HorizonDeck horizon="SWING" />}
-        {view === "LEAPS" && <HorizonDeck horizon="LEAPS" />}
+        {view === "BANGER" && <BangerBoard />}
         {isLegacy && <LegacyDeck edition={edition} error={editionError} />}
       </div>
     </div>
