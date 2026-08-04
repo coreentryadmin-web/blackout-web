@@ -30,7 +30,6 @@ import {
   primaryReturnLabel,
   primaryReturnPct,
   useLifecyclePlayCard,
-  useHeroPlayCard,
 } from "./play-card-display";
 import { isWatchTrackStatus } from "./play-card-lifecycle";
 import { PlayLifecycleCardBody } from "./PlayLifecycleCard";
@@ -303,8 +302,14 @@ function DeckChromeRow({
         <button type="button" className={clsx("nh-deck-sortbtn", sortMode === "status" && "on")} onClick={() => setSortMode("status")}>
           STATUS
         </button>
-        <button type="button" className={clsx("nh-deck-sortbtn", sortMode === "conviction" && "on")} onClick={() => setSortMode("conviction")}>
-          CONVICTION
+        <button type="button" className={clsx("nh-deck-sortbtn", sortMode === "rating" && "on")} onClick={() => setSortMode("rating")}>
+          RATING
+        </button>
+        <button type="button" className={clsx("nh-deck-sortbtn", sortMode === "time" && "on")} onClick={() => setSortMode("time")}>
+          TRIGGERED
+        </button>
+        <button type="button" className={clsx("nh-deck-sortbtn", sortMode === "peak" && "on")} onClick={() => setSortMode("peak")}>
+          PEAK
         </button>
       </div>
     </div>
@@ -570,33 +575,26 @@ export const PlayCard = memo(function PlayCard({
   const stale = hasAsOf ? isZeroDteMarkStale(asOfMs, nowMs, staleThresholdMs) : false;
 
   const isCondor = p.isCondor === true;
-  const showThRing =
-    p.thesisHealth != null && (p.status === "OPEN" || p.status === "HOLD" || p.status === "TRIM");
-
-  const hero = useHeroPlayCard(p, selected, rank);
   const enhanced = useLifecyclePlayCard(p);
-  const quality = playQualityPct(p);
+  const showThRing = p.thesisHealth != null && Number.isFinite(p.thesisHealth.health);
 
   if (enhanced) {
     return (
       <button
         type="button"
         className={clsx(
-          "nh-deck-row",
-          hero ? "nh-deck-row-hero nh-deck-row-lifecycle" : "nh-deck-row-lifecycle-compact",
+          "nh-deck-row nh-deck-row-lifecycle-compact",
           selected && "sel",
           stale && "nh-deck-card-stale",
           markFlash && "nh-deck-row-flash",
         )}
         onClick={() => onSelect(p.id)}
         aria-current={selected}
-        style={!hero && quality != null ? { ["--nh-quality" as string]: `${quality}%` } : undefined}
       >
         <PlayLifecycleCardBody
           play={p}
           rank={rank}
           nowMs={nowMs}
-          hero={hero}
           markFlash={markFlash}
         />
         {isCondor && (

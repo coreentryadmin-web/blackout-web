@@ -361,3 +361,50 @@ export function openMetricsValues(play: TerminalPlay): {
 export function watchMetricsValues(play: TerminalPlay): { trackPct: number | null } {
   return { trackPct: play.trackPct ?? null };
 }
+
+/** List-row headline: ticker + strike/right + DTE — e.g. SPXW 7595C 0DTE. */
+export function playSymbolLine(play: TerminalPlay): string {
+  const leg = play.contract.replace(/\s*·\s*/g, " ").trim();
+  return `${play.ticker} ${leg}`;
+}
+
+/** Primary trigger/discovery instant for sort — ms since epoch; 0 when unknown. */
+export function playTriggeredAtMs(play: TerminalPlay): number {
+  const phase = playLifecyclePhase(play.status);
+  const iso =
+    phase === "watch"
+      ? play.detectedAt ?? play.firstFlaggedAt
+      : play.firstFlaggedAt ?? play.committedAt ?? play.detectedAt;
+  if (!iso) return 0;
+  const at = Date.parse(iso);
+  return Number.isFinite(at) ? at : 0;
+}
+
+/** Compact ET time(s) for the list rail — triggered→closed, or single event clock. */
+export function playTimeRangeCompact(play: TerminalPlay): string | null {
+  const phase = playLifecyclePhase(play.status);
+  const triggered = play.firstFlaggedAt ? isoToEtClock(play.firstFlaggedAt) : null;
+  if (phase === "closed") {
+    const closed = play.exitAt ? isoToEtClock(play.exitAt) : null;
+    if (triggered && closed) return `${triggered}→${closed}`;
+    return closed ?? triggered;
+  }
+  if (phase === "watch") {
+    const iso = play.detectedAt ?? play.firstFlaggedAt;
+    return iso ? isoToEtClock(iso) : null;
+  }
+  return triggered;
+}
+
+/** Primary return % for the compact list column (peak when closed, else best live read). */
+export function playListReturnPct(play: TerminalPlay): number | null {
+  const phase = playLifecyclePhase(play.status);
+  if (phase === "watch") return watchMetricsValues(play).trackPct;
+  if (phase === "closed") {
+    const peak = openMetricsValues(play).peakPct ?? play.peak;
+    return peak ?? closedRealizedPct(play);
+  }
+  const { currentPct, peakPct } = openMetricsValues(play);
+  const ret = peakPct ?? currentPct ?? play.pnlPct;
+  return ret ?? null;
+}

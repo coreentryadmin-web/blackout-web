@@ -44,10 +44,10 @@ describe("play-card-display", () => {
     assert.equal(formatReturnPct(-12), "-12%");
   });
 
-  it("useHeroPlayCard is true when selected on any horizon", () => {
-    assert.equal(useHeroPlayCard(base, true, 1), true);
+  it("useHeroPlayCard is always false — detail lives on the right rail", () => {
+    assert.equal(useHeroPlayCard(base, true, 1), false);
     assert.equal(useHeroPlayCard(base, false, 1), false);
-    assert.equal(useHeroPlayCard({ ...base, horizon: "LEGACY" }, true, 1), true);
+    assert.equal(useHeroPlayCard({ ...base, horizon: "LEGACY" }, true, 1), false);
   });
 
   it("useLifecyclePlayCard enables lifecycle layout on all lanes", () => {

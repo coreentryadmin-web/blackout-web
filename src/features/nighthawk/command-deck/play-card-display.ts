@@ -64,9 +64,9 @@ export function originChip(play: TerminalPlay): string | null {
   return o.replace(/_/g, " ");
 }
 
-/** Hero treatment: the selected row expands into the primary lifecycle card. */
-export function useHeroPlayCard(play: TerminalPlay, selected: boolean, _rank: number): boolean {
-  return selected;
+/** Hero treatment: detail lives on the right rail — list rows stay compact. */
+export function useHeroPlayCard(_play: TerminalPlay, _selected: boolean, _rank: number): boolean {
+  return false;
 }
 
 /** Lifecycle card layout — all four Night Hawk lanes. */

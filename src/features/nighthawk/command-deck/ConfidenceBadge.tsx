@@ -5,22 +5,43 @@ import type { TerminalPlay } from "./types";
 import { playGradeLabel, playQualityPct } from "./play-card-display";
 import { strengthBarSegmentFills } from "./terminal-display";
 
-/** Prominent grade + score badge — the first thing traders compare across rows. */
+/** Inline grade + score for compact list rows — e.g. B 82. */
 export function ConfidenceBadge({
   play,
   hero = false,
   list = false,
+  inline = false,
   className,
 }: {
   play: TerminalPlay;
   hero?: boolean;
   /** List rail: stars carry tier — show "Confidence" + score only. */
   list?: boolean;
+  /** Single-row list card: grade + score only. */
+  inline?: boolean;
   className?: string;
 }) {
   const grade = playGradeLabel(play);
   const quality = playQualityPct(play);
   if (grade == null && quality == null) return null;
+
+  if (inline) {
+    return (
+      <span
+        className={clsx("nh-deck-conf-inline", className)}
+        aria-label={
+          quality != null
+            ? `Grade ${grade ?? ""} score ${quality}`.trim()
+            : grade
+              ? `Grade ${grade}`
+              : undefined
+        }
+      >
+        {grade != null && <span className="nh-deck-conf-inline__grade">{grade}</span>}
+        {quality != null && <span className="nh-deck-conf-inline__score">{quality}</span>}
+      </span>
+    );
+  }
 
   const fills = strengthBarSegmentFills(quality, 10);
   const showGrade = grade != null && !list;
