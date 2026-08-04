@@ -389,8 +389,11 @@ export async function verifyNightHawk(_marketOpen: boolean): Promise<TickerScore
       )
     );
   } else {
-    // Sample the top-ranked plays whose options_play has a parseable strike.
+    // Sample the top-ranked actionable plays whose options_play has a parseable strike.
+    // Pulled plays stay visible at their rank with a reason badge (pull-overlay) — they are
+    // already excluded from the actionable surface, so chain-confirm must not flag them.
     const parseable = plays
+      .filter((p) => !p.pulled)
       .map((p) => ({ play: p, parsed: parseOptionsContract(p.options_play ?? "") }))
       .filter((x) => x.parsed != null)
       .sort((a, b) => Number(a.play.rank) - Number(b.play.rank))

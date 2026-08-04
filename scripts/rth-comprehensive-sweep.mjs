@@ -198,6 +198,7 @@ function shouldRetryColdPath(path, status) {
   return (
     path.includes("gex-heatmap") ||
     path.includes("gex-positioning") ||
+    path.includes("spx/pulse") ||
     path.includes("zerodte/board") ||
     path.includes("/flows") ||
     path.includes("platform/snapshot")
