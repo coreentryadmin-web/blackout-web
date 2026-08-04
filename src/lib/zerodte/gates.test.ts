@@ -1340,6 +1340,21 @@ test("G-13 flow_accumulation_conflict blocks when aligned === false", () => {
   assert.ok(v.blocks.some((b) => b.code === "flow_accumulation_conflict"));
 });
 
+test("G-13 reason names the ACTUAL blocked ticker/direction, not a hardcoded example", () => {
+  // Regression: the reason string used to hardcode a literal "(MU-long/bearish-acc class)"
+  // example with no interpolation at all — every blocked setup, regardless of its real
+  // ticker or direction, rendered that identical sentence (confirmed live: SPXW/SPY/QQQ/NVDA
+  // all showed "(MU-long/bearish-acc class)" verbatim on 2026-08-04).
+  const nvda = evaluateZeroDteGates(input({ ticker: "NVDA", direction: "long", flowAccumulationAligned: false }));
+  const block1 = nvda.blocks.find((b) => b.code === "flow_accumulation_conflict");
+  assert.ok(block1?.reason.includes("NVDA-long"), `expected NVDA-long in reason, got: ${block1?.reason}`);
+  assert.ok(!block1?.reason.includes("MU-long"), "must not carry the stale hardcoded example ticker");
+
+  const tsla = evaluateZeroDteGates(input({ ticker: "TSLA", direction: "short", flowAccumulationAligned: false }));
+  const block2 = tsla.blocks.find((b) => b.code === "flow_accumulation_conflict");
+  assert.ok(block2?.reason.includes("TSLA-short"), `expected TSLA-short in reason, got: ${block2?.reason}`);
+});
+
 test("G-13 does not block when flow accumulation aligned or absent", () => {
   assert.equal(evaluateZeroDteGates(input({ flowAccumulationAligned: true })).verdict, "COMMIT");
   assert.equal(evaluateZeroDteGates(input({ flowAccumulationAligned: null })).verdict, "COMMIT");
