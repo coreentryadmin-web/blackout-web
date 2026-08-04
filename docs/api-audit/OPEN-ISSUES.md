@@ -1,5 +1,44 @@
 # BlackOut Open Issues Log
-Last updated: 2026-08-04 15:17 ET
+Last updated: 2026-08-04 15:45 ET
+
+## grid-rth-2026-08-04-pass2 — 0DTE Command RTH verify agent (~12:42 PM PT / 3:42 PM ET)
+
+**Session:** Autonomous Grid RTH **verify** mode per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` on branch `cursor/0dte-grid-rth-agent-0f55`. Commands: `npm run validate:grid-rth` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e` → `data-validator.mjs`.
+
+**Note:** Classic `/grid` page + 9 `/api/grid/*` routes deleted 2026-07-07 — returns **404**. 0DTE Command lives on `/nighthawk` (Command Deck with session heat / board).
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `validate:grid-rth` | ✅ **14/14 PASS** (0 FAIL · ~50s) — RTH-open, upstream, session heat POST_COMMIT, ledger PnL 6 rows, SPX spot 7753.69 vs GEX, HELIX 20 prints, Night Hawk dedupe 5 tickers, `zerodte-warm` cron accepted, logic + integration, data-correctness flags=0, E2E nested, ops:collect zero items |
+| `validate:zerodte-logic` | ✅ **17/17 PASS** — gates (SETUP_MIN_GROSS/aggression/dominance/ITM), plan exits (-50%/+100%/15:30 ET), lifecycle OPEN→TRIM→CLOSED, mergePlays SKIP past cutoff/MOVED, session heat RTH→POST_COMMIT→LATE_SESSION, live board 10 setups / 6 ledger, 3 eligible / 0 gate violations, cutoff 15:30 ET |
+| `validate:grid-e2e` | ✅ **5/5 PASS** — board API 10/6, HELIX 20 prints, Playwright `/nighthawk` load, zero console errors |
+| `data-validator.mjs` | ⚠️ 39 PASS · 1 FAIL (GOOGL `underlying_at_flag` vs Polygon minute bars — P2 defer) |
+| `/grid` routing | ✅ **404** — intentional (classic Market Grid removed) |
+
+**Live board (POST_COMMIT):** 10 setups · 6 ledger · session heat POST_COMMIT 70% · 3 eligible / 10 total · 0 gate violations · upstream OK.
+
+**Cross-tool:** SPX bootstrap spot 7753.69 vs GEX ✅ · HELIX flows 20 prints ✅ · Night Hawk dedupe 5 tickers covered elsewhere ✅ · Grid bootstrap spot alignment ✅.
+
+**Verify status: GREEN** — zero FAIL on all Grid harnesses. No P0 fixes required.
+
+### Findings table (`grid-rth-2026-08-04-pass2`)
+
+| Severity | ID | Detail | Fix defer? |
+|---|---|---|---|
+| — | — | **No P0/P1 product defects** | all Grid suites GREEN |
+| P2 | DV-GOOGL-UNDERLYING | 0DTE ledger GOOGL `underlying_at_flag` logged=372.62 vs Polygon range [375.12, 376.63] at 14:03 ET | defer (post-close) |
+| INFO | GRID-RTH-ROUTING-01 | `/grid` returns 404 — classic Market Grid + 9 `/api/grid/*` routes deleted; 0DTE Command on `/nighthawk` | N/A — intentional |
+
+### Reports
+
+- `audit-output/grid-rth-2026-08-04-verify-1785872664638.json`
+- `audit-output/zerodte-logic-1785872668384.json`
+- `audit-output/grid-e2e-1785872673460.json`
+- `audit-output/validation-2026-08-04T19-44-43-153Z.md`
+
+---
 
 ## spx-rth-2026-08-04 — SPX Slayer all-day verify pass (~15:10–15:17 PM ET)
 
