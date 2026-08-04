@@ -1,5 +1,69 @@
 # BlackOut Open Issues Log
-Last updated: 2026-08-04 14:28 ET
+Last updated: 2026-08-04 15:25 ET
+
+## grid-rth-2026-08-04 — 0DTE Command all-day verify pass (~15:10–15:25 PM ET)
+
+**Session:** Autonomous Grid RTH agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` (verify mode) on branch `cursor/0dte-grid-rth-agent-ea2e`. Commands: `npm run validate:grid-rth` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:grid-rth` | ✅ **GREEN** (14/14 after deps install; final pass ~112s) |
+| `npm run validate:zerodte-logic` | ✅ **17/17 PASS** — gates, plan exits, lifecycle, mergePlays SKIP rules, session heat, ledger PnL |
+| `npm run validate:grid-e2e` | ✅ **11/11 PASS** — board API, HELIX flows, Night Hawk view tabs, 0DTE deck strip |
+| `npm run ops:collect` | ✅ **0 action items** (nested in grid-rth) |
+
+### Live board (15:20 ET)
+
+| Signal | Value |
+|---|---|
+| Session heat | RTH · 100% |
+| Setups | 11 (2 eligible, 0 gate violations) |
+| Ledger | 5 rows · PnL math reconciled |
+| SPX bootstrap vs GEX spot | ✅ ~7754 |
+| HELIX flows | 20 prints |
+| Night Hawk dedupe | 5 tickers `covered_elsewhere` |
+| `zerodte-warm` cron | ✅ 202 accepted (background warm) |
+| `data-correctness` | ✅ flags=0 |
+
+### 0DTE logic matrix (unit + live probes)
+
+| Area | Result |
+|---|---|
+| Gate funnel (SETUP_MIN_GROSS, aggression, dominance, ITM) | ✅ PASS |
+| Plan exits (stop −50%, target +100%, 15:30 ET time stop) | ✅ PASS |
+| Lifecycle OPEN → TRIM → CLOSED + sticky trough | ✅ PASS |
+| Plan grading stop-first when both touch | ✅ PASS |
+| Session heat RTH → POST_COMMIT → LATE_SESSION | ✅ PASS |
+| `mergePlays` past cutoff / MOVED → SKIP | ✅ PASS |
+| Ledger grade + finite numbers | ✅ PASS |
+
+### UI E2E (`/nighthawk` — classic `/grid` deleted)
+
+| Action | Result |
+|---|---|
+| `GET /grid` | ✅ **404** (Market Grid removed 2026-07-07) |
+| Night Hawk view tabs | ✅ 0DTE / Swings / LEAPS / Legacy — URL `?view=` persists |
+| 0DTE Command deck | ✅ `zerodte-market-state-strip` visible |
+| Console | ✅ 0 page errors |
+
+**Artifacts:** `/opt/cursor/artifacts/grid-e2e/nighthawk-view-*.png`
+
+### Findings table
+
+| Severity | ID | Detail | Fix |
+|---|---|---|---|
+| — | — | **No P0/P1 product defects** on 0DTE Command / Night Hawk | GREEN |
+| P2 | GRID-RTH-WARM-504-FLAKE | First `zerodte-warm` probe returned HTTP 504 under concurrent audit load; immediate retry → 202 | Transient edge timeout; cron design is fire-and-forget 202 |
+| P2 | GRID-RTH-RTH-OPEN-FLAKE | First full `validate:grid-rth` nested `validate:rth-open` FAIL (cold VM + missing `node_modules`); standalone + retry GREEN | Cloud Agent env must `npm install` before audit |
+| P2 | GRID-E2E-TAB-COVERAGE | E2E previously skipped Night Hawk view toggles | **Fixed this pass** — `grid-zerodte-e2e-audit.mjs` clicks all four views |
+
+**Status: GREEN** — all gates, ledger PnL, cross-tool integration, and Night Hawk UI verified. No P0 fixes required.
+
+**Reports:** `audit-output/grid-rth-2026-08-04-verify-1785871324837.json`, `audit-output/zerodte-logic-1785870931225.json`, `audit-output/grid-e2e-1785871545785.json`
+
+---
 
 ## rth-open-2026-08-04-pass4 — RTH comprehensive test sweep (~14:20–14:28 PM ET)
 

@@ -38,7 +38,9 @@ const CJS = "5.57.0";
 const UA =
   "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36";
 const OUT = join(process.cwd(), "audit-output");
+const ARTIFACTS = "/opt/cursor/artifacts/grid-e2e";
 mkdirSync(OUT, { recursive: true });
+mkdirSync(ARTIFACTS, { recursive: true });
 
 const checks = [];
 const rec = (name, status, detail) => {
@@ -195,6 +197,14 @@ async function auditGridApis(app) {
   const flows = app("/api/market/flows?limit=20");
   const count = flows.json?.flows?.length ?? flows.json?.alerts?.length ?? 0;
   rec("e2e:helix-flows", count > 0 ? "PASS" : "WARN", `${count} prints`);
+
+  // Classic Market Grid deleted 2026-07-07 — /grid must not resurrect a stale route.
+  const gridPage = curl({ url: `${BASE}/grid` });
+  if (gridPage.s === 404) {
+    rec("e2e:classic-grid-removed", "PASS", "GET /grid → 404");
+  } else {
+    rec("e2e:classic-grid-removed", "FAIL", `GET /grid → HTTP ${gridPage.s} (expected 404)`);
+  }
 }
 
 async function auditGridUi() {
@@ -215,9 +225,8 @@ async function auditGridUi() {
     const errs = [];
     page.on("pageerror", (e) => errs.push(e.message));
 
-    // /grid is gone — 0DTE Command absorbed into /nighthawk (see FINDINGS.md). This UI check is
-    // intentionally minimal (page loads, no console errors) rather than clicking tabs/search that
-    // belonged to the deleted classic-Grid UI — NightHawkFeed's own structure is out of scope here.
+    // Classic /grid + Market Grid panels deleted 2026-07-07 — 0DTE Command lives on /nighthawk
+    // (Night Hawk view toggle: 0DTE / Swings / LEAPS / Legacy).
     await page.goto(`${BASE}/nighthawk`, { waitUntil: "domcontentloaded", timeout: 90_000 });
     await page.waitForFunction(() => window.Clerk?.user?.id, { timeout: 60_000 }).catch(() => {});
 
@@ -228,7 +237,34 @@ async function auditGridUi() {
       rec("ui:page-load", "WARN", title.slice(0, 60));
     }
 
-    await page.waitForTimeout(3000);
+    const viewTabs = [
+      { label: "0DTE", expected: "zero_dte" },
+      { label: "Swings", expected: "swing" },
+      { label: "LEAPS", expected: "leaps" },
+      { label: "Legacy", expected: "legacy" },
+    ];
+    for (const { label, expected } of viewTabs) {
+      const tab = page.getByRole("tab", { name: label, exact: true });
+      await tab.click({ timeout: 30_000 });
+      await page.waitForTimeout(1500);
+      const urlView = new URL(page.url()).searchParams.get("view");
+      if (urlView === expected) {
+        rec(`ui:view-tab:${label}`, "PASS", `?view=${urlView}`);
+      } else {
+        rec(`ui:view-tab:${label}`, "FAIL", `?view=${urlView ?? "missing"} expected ${expected}`);
+      }
+      await page.screenshot({
+        path: join(ARTIFACTS, `nighthawk-view-${expected}.png`),
+        fullPage: false,
+      });
+    }
+
+    // Return to flagship 0DTE Command deck and assert board chrome mounted.
+    await page.getByRole("tab", { name: "0DTE", exact: true }).click({ timeout: 30_000 });
+    const deckStrip = page.locator("[data-testid='zerodte-market-state-strip']");
+    await deckStrip.waitFor({ state: "visible", timeout: 45_000 });
+    rec("ui:zerodte-command-deck", "PASS", "market-state strip visible");
+
     rec("ui:console-errors", errs.length === 0 ? "PASS" : "FAIL", errs.slice(0, 2).join("; "));
   } catch (e) {
     rec("ui:playwright", "WARN", e.message?.slice(0, 120) ?? "browser blocked");
