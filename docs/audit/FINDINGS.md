@@ -4,6 +4,19 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-04 — [P1, data path] CONFIRMED Legacy plays wiped from Swings by swing-discovery overwrite — FIXED
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P1 — morning-confirm legacy→swing handoff (#1576) runs but names vanish before RTH desk |
+| **Evidence** | Live prod 09:50 ET: play-status CONFIRMED CRWV/SKHY/GOOGL/RDDT; Swings lane **0** NIGHT HAWK rows; SKHY/GOOGL/RDDT absent (CRWV only from discovery FLOW) |
+| **Root cause** | Morning confirm merges into `swing:serving:latest:v1`; `swing-discovery` then **replaces** the full snapshot — only `flagAnchorsByThesisKey` carried forward |
+| **Fix** | `carryLegacyPromotedIntoSnapshot()` re-attaches prior NIGHT HAWK triples after each discovery persist |
+| **Files** | `legacy-confirm-promote.ts`, `swing-discovery/route.ts` |
+| **Status** | FIXED — PR #1606 |
+
+---
+
 ## 2026-08-04 — [P2, data coverage] Thermal low-priced tickers (NIO) showed ~4–5 strikes — FIXED
 
 | Field | Value |
