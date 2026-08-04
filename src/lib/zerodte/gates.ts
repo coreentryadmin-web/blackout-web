@@ -554,7 +554,7 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
       code: "flow_accumulation_conflict",
       reason:
         "Multi-day options flow accumulation opposes this setup's direction — " +
-        "the stacked positioning read disagrees with the commit (MU-long/bearish-acc class).",
+        `the stacked positioning read disagrees with the ${input.ticker}-${input.direction} commit.`,
       threshold: null,
       unlock_et: null,
     });

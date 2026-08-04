@@ -6904,3 +6904,38 @@ SHORT plays result (proving the flag now actually gates something). All 37 tests
 full `src/features/nighthawk/lib/*.test.ts` suite (659 tests) re-run clean. `npx tsc --noEmit` clean.
 
 **Status:** FIXED — PR #1604
+
+## 2026-08-04 — [0DTE, live] G-13 flow-accumulation-conflict reason hardcodes an example ticker on every block
+
+**Trigger.** Full-day live deep-scan monitoring of Night Hawk (0DTE/Swings/Legacy), requested
+directly by the user, market-open 2026-08-04. Pulled the live `/api/market/zerodte/board` response
+directly (not just the shallow price/count health check the hourly cron runs) and inspected every
+setup's `gate.blocks[].reason` text.
+
+**Evidence.** Live capture at 13:57 UTC: SIX different tickers/directions — SPXW long, MU short, SPY
+long, QQQ long, NVDA long — each carrying a `flow_accumulation_conflict` block with the **byte-identical**
+reason string, including the literal parenthetical `"(MU-long/bearish-acc class)"` regardless of the
+setup's actual ticker or direction. A SPXW-long block and an NVDA-long block read exactly the same
+sentence, naming a ticker (MU) that in one of those cases wasn't even the blocked ticker.
+
+**Root cause.** `src/lib/zerodte/gates.ts:553-560` (G-13, "multi-day flow accumulation direction
+conflict"): the reason string was written with a hardcoded illustrative example
+`(MU-long/bearish-acc class)` and never interpolated the real `input.ticker`/`input.direction` —
+looks like a placeholder left over from when the sentence was first drafted, shipped as literal text.
+
+**Fix.** Interpolate `${input.ticker}-${input.direction}` in place of the hardcoded `"MU-long"`
+literal — one line.
+
+**Blast radius.** Single reason string, one gate (G-13). Not currently rendered in the member-facing
+Command Deck UI (grepped `command-deck/*.tsx` for any consumer of `gate.blocks[].reason` — none
+found today), but it IS returned verbatim by the authenticated `/api/market/zerodte/board` endpoint
+any member can call directly, and is the kind of field a future UI feature (or an admin/calibration
+view) would reasonably surface — a live production response should never contain a stale example
+regardless of whether the current UI happens to read it.
+
+**Tests.** New case in `gates.test.ts`: asserts an NVDA-long block's reason contains `"NVDA-long"`
+and does NOT contain the stale `"MU-long"`, and a second ticker/direction (TSLA-short) to prove it's
+genuinely dynamic, not a second hardcoded value. All 111 tests (2 new) in `gates.test.ts` pass.
+`npx tsc --noEmit` clean.
+
+**Status:** FIXED — PR #1607
