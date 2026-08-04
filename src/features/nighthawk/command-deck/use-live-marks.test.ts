@@ -229,6 +229,21 @@ test("overlayLiveMarks: WATCH 0DTE updates trackPct from live mark, never pnlPct
   assert.equal(out!.mark, 5.0);
 });
 
+test("overlayLiveMarks: SKIP 0DTE updates trackPct like WATCH", () => {
+  const [out] = overlayLiveMarks(
+    [play({
+      status: "SKIP",
+      pnlPct: null,
+      trackReferencePremium: 18.0,
+      trackPct: null,
+      entry: null,
+    })],
+    new Map([[row().occ, row({ mark: 19.15, live_pnl_pct: 99 })]]),
+  );
+  assert.equal(out!.pnlPct, null);
+  assert.equal(out!.trackPct, 6.39);
+});
+
 test("overlayHorizonWatchTrack: WATCH swing stamps underlying track from live quote", () => {
   const [out] = overlayHorizonWatchTrack(
     [{

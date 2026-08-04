@@ -340,10 +340,9 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
   // keys the ~1s marks overlay even when setup.plan was never attached.
   const occ = (typeof src.occ === "string" && src.occ.length > 0 ? src.occ : null) ?? setup?.plan?.occ ?? null;
 
-  const trackReference =
-    status === "WATCH" ? watchReferencePremium(setup?.plan ?? null) : null;
-  const trackPct =
-    status === "WATCH" ? watchTrackPct(trackReference, markNum) : null;
+  const watchTrack = status === "WATCH" || status === "SKIP";
+  const trackReference = watchTrack ? watchReferencePremium(setup?.plan ?? null) : null;
+  const trackPct = watchTrack ? watchTrackPct(trackReference, markNum) : null;
 
   return {
     id: `0DTE:${src.ticker}`,
@@ -484,10 +483,10 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
   const livePnl = fin(src.livePnlPct);
   const mgmt = managementFor("SCALE_OUT", status, status === "WATCH" || status === "SKIP" ? null : livePnl);
   const flagPx = fin(src.flagUnderlyingPx);
-  const trackPct =
-    status === "WATCH"
-      ? watchUnderlyingTrackPct(src.direction, flagPx, src.liveSpot ?? null)
-      : null;
+  const watchTrack = status === "WATCH" || status === "SKIP";
+  const trackPct = watchTrack
+    ? watchUnderlyingTrackPct(src.direction, flagPx, src.liveSpot ?? null)
+    : null;
   const peakDisplay =
     entry != null && fin(src.peakPremium)
       ? Math.round(((src.peakPremium! / entry - 1) * 100) * 10) / 10
