@@ -1897,6 +1897,55 @@ async function runMigrations(): Promise<void> {
     END
     $swing_accum_thesis_pk$;
   `);
+  // ENGINE B — banger_positions (009_banger_positions.sql), inlined for ECS standalone cold starts.
+  // Whole-market weekly banger discovery + live mechanical scale-out tracking — a SEPARATE horizon from
+  // swing_positions (multi-session underlying-terms thesis + roll chain). See that file's header for the
+  // why-not-reuse-swing_positions rationale. Modeled after swing_positions' idempotency (commit_key
+  // unique upsert) + monotonic status-ladder (schema CHECK as the last line of defense) patterns.
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS banger_positions (
+      id BIGSERIAL PRIMARY KEY,
+      commit_key TEXT NOT NULL,
+      session_date DATE NOT NULL,
+      ticker TEXT NOT NULL,
+      discovery_gain NUMERIC,
+      discovery_vol NUMERIC,
+      discovery_dollar_vol NUMERIC,
+      discovery_close_strength NUMERIC,
+      contract_strike NUMERIC NOT NULL,
+      contract_expiry DATE NOT NULL,
+      contract_occ TEXT NOT NULL,
+      entry_premium NUMERIC NOT NULL,
+      last_mark NUMERIC,
+      peak_premium NUMERIC,
+      scaled_already BOOLEAN NOT NULL DEFAULT FALSE,
+      scale_out_action TEXT,
+      scale_out_reason TEXT,
+      partial_realized_premium NUMERIC,
+      realized_pnl_pct NUMERIC,
+      realized_pnl_usd NUMERIC,
+      entry_context JSONB,
+      status TEXT NOT NULL DEFAULT 'OPEN',
+      first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      committed_at TIMESTAMPTZ,
+      closed_at TIMESTAMPTZ,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await p.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_banger_positions_commit_key ON banger_positions(commit_key)`);
+  await p.query(`
+    DO $$ BEGIN
+      ALTER TABLE banger_positions ADD CONSTRAINT banger_positions_status_ck
+        CHECK (status IN ('OPEN', 'PARTIAL', 'CLOSED_RUNNER', 'STOPPED'));
+    EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+  `);
+  await p.query(`
+    CREATE INDEX IF NOT EXISTS idx_banger_positions_open
+    ON banger_positions(status, session_date DESC)
+    WHERE status NOT IN ('CLOSED_RUNNER', 'STOPPED');
+  `);
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_banger_positions_session ON banger_positions(session_date DESC)`);
+
   } finally {
     // Release the advisory lock + return the dedicated connection to the pool.
     try { await lockClient.query(`SELECT pg_advisory_unlock($1)`, [MIGRATION_LOCK_ID]); } catch { /* ignore */ }
