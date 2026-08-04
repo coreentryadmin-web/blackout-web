@@ -69,9 +69,18 @@ test("readPinnedDebriefTag: version-gated + taxonomy-gated (malformed/unknown �
   assert.equal(readPinnedDebriefTag([pin("clean_win")]), null);
 });
 
-test("readPinnedTier: reads the slot structurally; absent today (no NH tier engine)", () => {
-  assert.equal(readPinnedTier({ context_version: 2, tier: "a" }), "A");
-  assert.equal(readPinnedTier({ context_version: 2 }), null);
+test("readPinnedTier: reads the real PR-N7 pinned shape ({ tier: { tier, factors } })", () => {
+  // publish-context.ts pins tier as an OBJECT ({ tier, factors }), never a bare string —
+  // this regression-guards that shape, not the pre-tier-engine placeholder shape.
+  assert.equal(readPinnedTier({ context_version: 2, tier: { tier: "a", factors: [] } }), "A");
+  assert.equal(readPinnedTier({ context_version: 2, tier: { tier: "B", factors: [{ label: "x" }] } }), "B");
+  assert.equal(readPinnedTier({ context_version: 2 }), null, "no tier pinned → null, never fabricated");
+  assert.equal(readPinnedTier({ context_version: 2, tier: null }), null, "explicit null tier (untiered play)");
+  assert.equal(
+    readPinnedTier({ context_version: 2, tier: "a" }),
+    null,
+    "a bare string is NOT the real pinned shape — must not silently accept it as if it were",
+  );
   assert.equal(readPinnedTier(null), null);
 });
 
