@@ -11,6 +11,9 @@
 import type { ZeroDteDeckSource } from "./adapters";
 import type { ThesisHealthPayload } from "@/lib/zerodte/thesis-health";
 
+import type { DiscoveryFunnelHint } from "@/lib/zerodte/discovery-funnel-hint";
+import type { MarketStateSnapshot } from "@/lib/zerodte/market-state-engine";
+
 export interface BoardResp {
   available?: boolean;
   degraded?: boolean;
@@ -20,6 +23,10 @@ export interface BoardResp {
   ledger?: Array<Record<string, unknown>>;
   allocation?: Array<{ ticker: string; role: string; sizing: string; reasons?: string[] }>;
   session?: { heat?: { state?: string | null } | null; date?: string; trading_day?: boolean } | null;
+  /** Phase 2b — regime-adaptive rail weights at merge rank. */
+  market_state?: MarketStateSnapshot | null;
+  /** Phase 2c — top session gate/rejection hint for the member strip. */
+  discovery_funnel?: DiscoveryFunnelHint | null;
 }
 
 /** Ledger statuses that represent a WORKING (member-held) position — always rendered (9-4). */

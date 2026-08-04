@@ -12,6 +12,9 @@ import {
   type FreshnessStatus,
 } from "@/components/ui";
 import { resolveFreshFindStatus, type EnrichedZeroDteSetup, type SessionHeat } from "@/lib/zerodte/board";
+import type { DiscoveryFunnelHint } from "@/lib/zerodte/discovery-funnel-hint";
+import type { MarketStateSnapshot } from "@/lib/zerodte/market-state-engine";
+import { DiscoveryFunnelStrip, GovPill, MarketStateStrip } from "./zerodte-board-strips";
 import { buildIntelNote, type IntelAction } from "@/lib/zerodte/intel";
 import { capConvictionDisplay } from "@/lib/zerodte/conviction";
 import { isZeroDteMarkStale, trimScaleTranchesArmed, type ZeroDteMarkSource } from "@/lib/zerodte/marks-math";
@@ -113,16 +116,6 @@ type BoardGovernor = {
   time_of_day_sizing_factor?: number;
 };
 
-type BoardDiscoveryFunnel = {
-  detected_tickers: number;
-  gate_blocked_events: number;
-  commit_events: number;
-  top_gate: string | null;
-  top_gate_label: string | null;
-  top_gate_n: number;
-  summary: string | null;
-};
-
 type BoardResponse = {
   available: boolean;
   degraded?: boolean;
@@ -136,24 +129,8 @@ type BoardResponse = {
   ledger?: LedgerRow[];
   covered_elsewhere?: string[];
   governor?: BoardGovernor | null;
-  market_state?: BoardMarketState | null;
-  discovery_funnel?: BoardDiscoveryFunnel | null;
-};
-
-/** Market State Engine block (Phase 2b) — regime-adaptive rail weights at merge rank. */
-type BoardMarketState = {
-  session_date: string;
-  regime_structure: string | null;
-  regime_label: string | null;
-  confidence: number;
-  rail_weights: { FLOW: number; BREAKOUT: number; PIN: number };
-  summary: string;
-  calibration_shadow?: {
-    active: boolean;
-    blend: number;
-    rail_weights: { FLOW: number; BREAKOUT: number; PIN: number };
-    confidence: number;
-  } | null;
+  market_state?: MarketStateSnapshot | null;
+  discovery_funnel?: DiscoveryFunnelHint | null;
 };
 
 /** Pure: derives a real freshness status from the scan's own success signal + response
@@ -464,38 +441,6 @@ function ReadinessChip({
   );
 }
 
-/** One mono stat pill for the governor strip — desk v3 silhouette (spx-hero style). */
-function GovPill({
-  label,
-  value,
-  tone = "sky",
-  title,
-}: {
-  label: string;
-  value: string;
-  tone?: "sky" | "bull" | "bear" | "gold";
-  title?: string;
-}) {
-  const toneCls: Record<string, string> = {
-    sky: "border-sky-400/20 text-sky-100",
-    bull: "border-bull/30 text-bull",
-    bear: "border-bear/40 text-bear",
-    gold: "border-gold/35 text-gold",
-  };
-  return (
-    <span
-      title={title}
-      className={clsx(
-        "inline-flex items-baseline gap-1.5 rounded-lg border bg-void-deep/80 px-2.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]",
-        toneCls[tone]
-      )}
-    >
-      <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-sky-200">{label}</span>
-      <span className="t-num text-[12px] font-bold">{value}</span>
-    </span>
-  );
-}
-
 /** Session governor strip: open-plan cap, stop halt, re-entry locks, correlated-
  *  conflict blocks. Every number is the payload's own; the client adds only the
  *  ticking clock for lock countdowns. */
@@ -599,60 +544,6 @@ function GovernorStrip({
         </p>
       )}
     </div>
-  );
-}
-
-/** Regime-adaptive discovery weights — honest provenance chip (Phase 2b). */
-function MarketStateStrip({ ms }: { ms: BoardMarketState | null | undefined }) {
-  if (!ms) return null;
-  const w = ms.rail_weights;
-  const active = ms.confidence > 0.05;
-  return (
-    <div className="mt-3 space-y-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <GovPill
-          label="Regime"
-          value={ms.regime_label ?? ms.regime_structure ?? "unknown"}
-          tone={active ? "bull" : "sky"}
-          title={ms.summary}
-        />
-        <GovPill label="FLOW" value={`×${w.FLOW}`} tone={w.FLOW > 1 ? "bull" : w.FLOW < 1 ? "gold" : "sky"} title="Merge rank weight" />
-        <GovPill
-          label="Breakout"
-          value={`×${w.BREAKOUT}`}
-          tone={w.BREAKOUT > 1 ? "bull" : w.BREAKOUT < 1 ? "gold" : "sky"}
-          title="Merge rank weight"
-        />
-        <GovPill label="PIN" value={`×${w.PIN}`} tone={w.PIN > 1 ? "bull" : w.PIN < 1 ? "gold" : "sky"} title="Merge rank weight" />
-        {active && (
-          <GovPill
-            label="Conf"
-            value={`${Math.round(ms.confidence * 100)}%`}
-            tone="sky"
-            title="Regime clarity — low confidence keeps weights near equal"
-          />
-        )}
-        {ms.calibration_shadow?.active && (
-          <GovPill
-            label="Cal shadow"
-            value={`${Math.round(ms.calibration_shadow.blend * 100)}%`}
-            tone="gold"
-            title="Calibration origin-band priors blended into merge rank (shadow mode)"
-          />
-        )}
-      </div>
-      <p className="font-mono text-[10px] uppercase tracking-widest text-cyan-400">{ms.summary}</p>
-    </div>
-  );
-}
-
-/** Phase 2c — top session rejection reason from discovery funnel. */
-function DiscoveryFunnelStrip({ funnel }: { funnel: BoardDiscoveryFunnel | null | undefined }) {
-  if (!funnel?.summary) return null;
-  return (
-    <p className="mt-2 font-mono text-[10px] uppercase tracking-widest text-sky-200" title="Discovery funnel — why candidates didn't commit">
-      Funnel · {funnel.summary}
-    </p>
   );
 }
 

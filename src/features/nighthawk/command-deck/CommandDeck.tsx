@@ -3,6 +3,9 @@
 import { memo, useEffect, useMemo, useState } from "react";
 import { clsx } from "clsx";
 import { PlayTerminal, etClock } from "./PlayTerminal";
+import { DiscoveryFunnelStrip, MarketStateStrip } from "@/features/nighthawk/components/zerodte-board-strips";
+import type { DiscoveryFunnelHint } from "@/lib/zerodte/discovery-funnel-hint";
+import type { MarketStateSnapshot } from "@/lib/zerodte/market-state-engine";
 import { sortPlaysForDeckBy, type DeckSortMode } from "./deck-sort";
 import {
   deployedRisk,
@@ -65,6 +68,8 @@ export function CommandDeck({
   deckHorizon = "ZERO_DTE",
   boardAsOf = null,
   upstreamOk = null,
+  marketState = null,
+  discoveryFunnel = null,
 }: {
   plays: TerminalPlay[];
   laneLabel: string;
@@ -90,6 +95,10 @@ export function CommandDeck({
   boardAsOf?: string | null;
   /** Board upstream health flag — false forces engine Offline (never fabricated). */
   upstreamOk?: boolean | null;
+  /** 0DTE only — regime-adaptive rail weights (Phase 2b). */
+  marketState?: MarketStateSnapshot | null;
+  /** 0DTE only — top session gate hint (Phase 2c). */
+  discoveryFunnel?: DiscoveryFunnelHint | null;
 }) {
   // Counts per status group for the filter badges (and the session-aware default filter).
   const counts = useMemo(() => {
@@ -200,6 +209,12 @@ export function CommandDeck({
             </span>
           </div>
         )}
+        {deckHorizon === "ZERO_DTE" && !degraded && (marketState || discoveryFunnel?.summary) ? (
+          <div className="nh-deck-context-strips mb-2 space-y-2 px-0.5">
+            <MarketStateStrip ms={marketState} />
+            <DiscoveryFunnelStrip funnel={discoveryFunnel} />
+          </div>
+        ) : null}
         <CockpitStrip risk={risk} tape={tape} />
         <div className="nh-deck-chrome-row">
         <div className="nh-deck-filterbar" role="group" aria-label="Filter plays by status">
