@@ -4,6 +4,19 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-04 — [P2, cron] zerodte-warm handshake HTTP 504 when UW earnings fetch blocks — FIXED
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P2 — `grid-rth-2026-08-04` WARN `cron:zerodte-warm` HTTP 504; probe hung >30s without `?force=1` |
+| **Evidence** | Live probe: `/api/cron/zerodte-warm` client timeout 30s RTH; `?force=1` returned 202 in ~18s; board still GREEN (11 setups / 4 ledger) |
+| **Root cause** | `warmGridEarnings()` awaited unbounded `fetchUwEarnings()` before dispatching scanner `after()` — `readGridEarnings()` already races UW at 2s but the writer path did not |
+| **Fix** | Race UW at `UW_READ_RACE_MS` + AV fallback in `warmGridEarnings()`; grid-rth audit client timeout 25s + explicit 504 WARN text |
+| **Files** | `src/lib/zerodte/earnings.ts`, `scripts/grid-rth-all-day-audit.mjs`, `earnings.test.ts` |
+| **Status** | FIXED — PR `cursor/0dte-grid-rth-agent-a87b` |
+
+---
+
 ## 2026-08-04 — [P0, 0DTE exits] Profit-protection floor armed too late + honored mark gap-through — FIXED
 
 | Field | Value |
