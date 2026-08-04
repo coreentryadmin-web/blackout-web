@@ -1,5 +1,7 @@
 import type { DeckStatus, TerminalPlay } from "./types";
 import { isoToEtClock, parseCommittedAtEt } from "@/lib/zerodte/play-timeline";
+import { trimScaleBlendedPnlAtStop } from "@/lib/zerodte/marks-math";
+import { PLAN_RULES } from "@/lib/zerodte/plan";
 
 /** Which lifecycle bucket drives the left-rail card layout. */
 export type PlayLifecyclePhase = "open" | "watch" | "closed";
@@ -308,10 +310,19 @@ export function playLifecycleTimestamps(play: TerminalPlay): LifecycleTimestamp[
   return rows.filter((r) => r.et != null);
 }
 
-/** Realized return on a closed row — exit stamp first, then live P&L. */
+/** Realized return on a closed row — exit stamp first, then trim-scale as-managed, then live P&L. */
 export function closedRealizedPct(play: TerminalPlay): number | null {
   if (play.status !== "CLOSED") return null;
   if (play.exitPnlPct != null && Number.isFinite(play.exitPnlPct)) return play.exitPnlPct;
+  // Server-side live_pnl_pct already carries trim-scale blend when applicable; fall back to
+  // peak-derived estimate when the payload only has excursion + mechanical stop label.
+  if (play.pnlPct != null && Number.isFinite(play.pnlPct) && play.closedReason !== "stopped") {
+    return play.pnlPct;
+  }
+  if (play.closedReason === "stopped" && play.peak != null) {
+    const managed = trimScaleBlendedPnlAtStop(play.peak, PLAN_RULES.stop_pct);
+    if (managed != null) return managed;
+  }
   if (play.pnlPct != null && Number.isFinite(play.pnlPct)) return play.pnlPct;
   return null;
 }

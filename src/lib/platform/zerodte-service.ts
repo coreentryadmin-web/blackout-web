@@ -30,6 +30,7 @@ import { tierForSkip } from "@/lib/zerodte/tiers";
 import {
   closedStopReason,
   isZeroDteMarkStale,
+  peakPnlPct,
   pinnedLivePnlPct,
   reconcileLedgerLivePnlPct,
   ZERODTE_MARK_STALE_MS,
@@ -94,11 +95,13 @@ export type ZeroDteBoardLedgerRow = {
    *  these via advancePlayLatch; without them on the payload the terminal's Peak/Trough render "—"). */
   peak_premium: number | null;
   trough_premium: number | null;
+  /** Latched peak excursion vs pinned entry — the high-water mark for closed-card display. */
+  peak_pnl_pct: number | null;
   live_pnl_pct: number | null;
   /** Why a CLOSED play closed — now DISTINGUISHES the exit type (pre-this-change a
-   *  ratchet exit and a target trim were both null, indistinguishable). "stopped" still
-   *  pins live_pnl_pct to the −50% stop (B-9 D-1 fix — the number the post-session grader
-   *  will stamp) and drives the "stopped −50%" badge; "ratchet"/"thesis"/"flat"/"target"
+   *  ratchet exit and a target trim were both null, indistinguishable). "stopped" uses
+   *  trim-scale AS-MANAGED live_pnl_pct when the peak armed tranches (shipped default exit
+   *  mode); else the mechanical −50% hold-to-stop pin. Drives the exit badge; "ratchet"/"thesis"/"flat"/"target"
    *  categorize an engine exit from the pinned entry_context.exit; "time_stop" is a plain
    *  15:30 close with no engine exit; null = a live (still-open) row. Additive: only
    *  "stopped" pins P&L — every other value is a display label. */
@@ -394,13 +397,17 @@ function mapLedgerRow(
     occ: typeof r.plan_json?.occ === "string" && r.plan_json.occ.length > 0 ? r.plan_json.occ : null,
     peak_premium: r.peak_premium,
     trough_premium: r.trough_premium,
-    // Structure-aware: seller-framed for a credit condor, long-framed (with the stopped stop-pin)
-    // for a directional row — the ONE derivation (marks-math) both build sites share.
+    peak_pnl_pct: peakPnlPct(r.entry_premium, r.peak_premium),
+    // Structure-aware: seller-framed for a credit condor; directional stopped closes use
+    // trim-scale AS-MANAGED when peak armed tranches — the ONE derivation both build sites share.
     live_pnl_pct: reconcileLedgerLivePnlPct({
       is_condor: isCondor,
       closed_reason: closedReason === "stopped" ? "stopped" : null,
       entry_premium: r.entry_premium,
       last_mark: lastMark,
+      peak_premium: r.peak_premium,
+      trough_premium: r.trough_premium,
+      status: r.status,
     }),
     closed_reason: boardClosedReason,
     floor_pnl_pct: floorPnlPct,

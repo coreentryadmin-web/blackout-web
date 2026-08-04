@@ -4,6 +4,19 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-04 — [0DTE] Closed stopped plays show peak (+87%) not mechanical −50% when trim tranches armed — FIXED
+
+| Field | Value |
+|-------|-------|
+| **Severity** | HIGH (member-visible wrong P&L on closed cards) |
+| **Evidence** | Aug 3 META: entry $3.15, peak $5.90 (+87.3%), trough $1.57; board showed `live_pnl_pct: -50`, `closed_reason: stopped`; post-close `plan_pnl_pct` still null |
+| **Root cause** | `reconcileLedgerLivePnlPct` pinned every `closed_reason === "stopped"` row to −50% (D-1 hold-to-stop grade), ignoring trim-scale tranches already banked at +25%/+50% |
+| **Fix** | `trimScaleBlendedPnlAtStop()` in `marks-math.ts`; wire `peak_premium` into both `mapLedgerRow` sites; expose `peak_pnl_pct` on board payload; CLOSED `StatsCell` shows peak excursion; chip reads `peak +87%` when tranches armed; `closedRealizedPct` returns as-managed blend (~+8.33%) |
+| **Files** | `src/lib/zerodte/marks-math.ts`, `src/lib/platform/zerodte-service.ts`, `ZeroDteBoard.tsx`, `play-card-lifecycle.ts`, tests |
+| **Status** | FIXED (PR pending) |
+
+---
+
 ## 2026-08-03 — [ops,nighthawk] Edition stuck at stage_synthesis checkpoint — FIXED (ops-auto-fix #1572)
 
 **Severity.** P0 — Night Hawk edition `2026-08-04` not published; `job_status=stage_scoring` / `current_stage=stage_synthesis`.
