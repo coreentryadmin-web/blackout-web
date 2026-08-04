@@ -2,9 +2,8 @@
 
 // ENGINE B — Banger board. A standalone, minimal member-facing surface (mirrors the read-only shape of
 // ZeroDteBoard/HorizonLaneBoard) for the whole-market weekly-banger discovery + live scale-out engine.
-// Not yet wired into NighthawkPageShell's view switcher (kept deliberately small for this PR's review —
-// see the PR description) — this component is real and functional against /api/market/banger/board and
-// can be mounted by a follow-up once the operator has reviewed the engine live for a session or two.
+// Mounted 2026-08-04 as the "Bangers" tab in the Night Hawk toggle (replacing the inactive LEAPS slot —
+// see nighthawk-view.ts) — functional against /api/market/banger/board, polled every 30s.
 
 import useSWR from "swr";
 
