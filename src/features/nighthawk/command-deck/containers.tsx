@@ -108,6 +108,8 @@ export function ZeroDteDeck({
         winRate30d={winRate30d}
         boardAsOf={typeof data?.as_of === "string" ? data.as_of : null}
         upstreamOk={data?.upstream_ok ?? null}
+        marketState={data?.market_state ?? null}
+        discoveryFunnel={data?.discovery_funnel ?? null}
         emptyHint={
           degraded
             ? "Board data unavailable right now — retrying. Any open position is still live; this is a data outage, not a flat tape."
