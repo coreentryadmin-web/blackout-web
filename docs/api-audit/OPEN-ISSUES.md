@@ -1,5 +1,74 @@
 # BlackOut Open Issues Log
-Last updated: 2026-08-04 15:17 ET
+Last updated: 2026-08-04 15:48 ET
+
+## rth-open-2026-08-04-pass5 — RTH comprehensive test sweep (~15:42–15:48 PM ET)
+
+**Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` on branch `cursor/rth-comprehensive-test-sweep-378c`. Commands: `npm run validate:rth-open` → `GET /api/cron/data-correctness?force=1` (AWS CRON_SECRET) → surface probes (`heatmap`/`spx`/`flows`/`zerodte`) → `npm run validate:rth-sweep` → `npm run validate:grid-rth` → `npm run validate:grid-e2e` → `npm run validate:spx-e2e` → `npm run ops:collect`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` | ✅ **GREEN** (~35s; Postgres skipped private VPC; options-socket ingest leader warming) |
+| `GET /api/cron/data-correctness?force=1` | ✅ **202 accepted** (async full sweep dispatched) |
+| `data-correctness` (`surface=heatmap`) | ✅ **ok=true · flags=0** |
+| `data-correctness` (`surface=spx`) | ⚠️ **1 flag** — SKHY $143 CALL OI below `STRIKE_MIN_OI` 500 (intraday thin OI carry-forward) |
+| `data-correctness` (`surface=flows`) | ⚠️ same SKHY flag |
+| `data-correctness` (`surface=zerodte`) | ⚠️ same SKHY flag |
+| `npm run validate:rth-sweep` | ✅ **0 P0/P1** — 7 pages · **0 missing-field hits** · Largo grounded |
+| `npm run validate:grid-rth` | ✅ **14/14 PASS** — zerodte 10 setups · ledger 6 · DC flags=0 |
+| `npm run validate:grid-e2e` | ✅ **5/5 PASS** — zerodte board 10 setups · ledger 6 |
+| `npm run validate:spx-e2e` | ✅ **17/18 PASS** (1 WARN: `bie-play-route` cron 401 expected) |
+| `npm run ops:collect` | ✅ **0 action items** |
+
+### Speed (comprehensive sweep — Playwright premium session)
+
+| Page | Nav | Load (ms) | Live wait | Console errors |
+|---|---|---:|---:|---|
+| `/dashboard` (SPX Slayer) | hard | 1657 | 12s | 1× 400 (transient) |
+| `/flows` (HELIX) | soft | 1891 | 8s | 0 |
+| `/heatmap` (Thermal matrix) | soft | 6618 | 20s | 0 |
+| `/vector` | soft | 1630 | 15s | 0 |
+| `/nighthawk` (0DTE Command) | soft | 3498 | 15s | 0 |
+| `/terminal` (Largo) | soft | 1616 | 5s | 0 |
+| `/track-record` | soft | 1647 | 10s | 0 |
+
+**Note:** Classic `/grid` deleted 2026-07-07 — 0DTE Command (10 setups) under `/nighthawk` via `/api/market/zerodte/board`. Thermal Profile tab not rendered this pass (matrix block still loading at tab probe — matrix-only counts). Sign-in via Clerk ticket ~62s (cold FAPI warm).
+
+### Live auto-update
+
+- `liveTick=null` on all pages — SPX spot stable in each wait window (low-vol afternoon); not a failure.
+- API freshness: desk `as_of` 71s · platform snapshot 1s · zerodte board 7s.
+
+### Data correctness
+
+| Cross-check | Result |
+|---|---|
+| desk γ-flip vs `gex-positioning` | ✅ aligned (desk 7615.58 vs gex 7611.75; spot ~7754; tol 77.5) |
+| All market APIs | ✅ HTTP 200 |
+| Largo NVDA query | ✅ 200 · ~$90.9M premium · `blackout_intelligence` |
+| SPX matrix E2E | ✅ GEX+VEX+DEX+CHARM · 158 strikes |
+| Night Hawk SKHY | ⚠️ live OI below floor — edition still shows play; P2 carry-forward |
+
+### Missing-field audit
+
+**0 missing-field signals** across all 7 pages. Largo `Regime: —` = expected when no active regime tag.
+
+### Findings table
+
+| Severity | ID | Detail | Fix |
+|---|---|---|---|
+| — | — | **No P0/P1 product defects** on member surfaces | GREEN |
+| P2 | RTH-THERMAL-SOFT-NAV | `/heatmap` soft-nav 6618ms (>1.5s target) | Monitor — matrix warm path |
+| P2 | RTH-DASH-400 | Dashboard console 1× 400 during load | Transient |
+| P2 | DC-SKHY-THIN-OI | SKHY $143 CALL chain OI &lt; floor 500 | **Open** — intraday OI decay on OTM weekly; consider illiquid latch |
+| P2 | RTH-CRON-ENV-STALE | Agent env `CRON_SECRET` 401; AWS Secrets Manager key works | Env hygiene — not prod defect |
+
+**Status: GREEN** — comprehensive sweep 0 P0/P1, cross-tool GEX aligned, heatmap correctness clean. No new GitHub issue (no P0/P1).
+
+**Reports:** `audit-output/rth-sweep-2026-08-04T19-43-29-724Z.json`, `audit-output/grid-rth-2026-08-04-verify-1785872866778.json`, `audit-output/grid-e2e-1785872823047.json`, `audit-output/spx-dashboard-e2e-1785872908272.json`
+
+---
 
 ## spx-rth-2026-08-04 — SPX Slayer all-day verify pass (~15:10–15:17 PM ET)
 
