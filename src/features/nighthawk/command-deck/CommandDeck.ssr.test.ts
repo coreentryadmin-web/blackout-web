@@ -60,8 +60,10 @@ test("closed compact row shows symbol line, times, peak", async () => {
   assert.match(html, />Peak</);
   assert.match(html, />\+87%/);
   assert.match(html, />CLOSED</);
-  assert.match(html, /nh-deck-conf-inline/);
+  assert.match(html, /nh-deck-lc-strip-grade/);
   assert.match(html, />A\+</);
+  assert.match(html, /★{5}/);
+  assert.match(html, />96</);
 });
 
 test("open compact row shows active status and return", async () => {
