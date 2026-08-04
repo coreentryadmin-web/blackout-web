@@ -286,7 +286,7 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
     if (p.scorecard) return p;
     const conv = p.tierLabel?.toUpperCase();
     const sc = conv ? convictionScorecard.get(conv) : null;
-    return sc ? { ...p, scorecard: sc } : p;
+    return sc ? { ...p, scorecard: { ...sc, scope: "conviction_bucket" as const } } : p;
   }), [basePlays, convictionScorecard]);
 
   // Live stock quotes — polls /api/market/quote for each Legacy ticker so the deck shows

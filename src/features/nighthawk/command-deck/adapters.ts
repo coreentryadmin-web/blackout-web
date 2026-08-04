@@ -603,20 +603,9 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
     .filter(([, v]) => typeof v === "number" && v !== 0)
     .map(([k, v]) => ({ label: FB_LABELS[k] ?? k, points: v as number }));
 
-  // Surface IV rank and R:R ratio as factors when the pipeline computed them — these are real
-  // scoring components the edition carries but were previously discarded by the adapter.
-  if (src.iv_rank != null && Number.isFinite(src.iv_rank)) {
-    factors.push({ label: "IV Rank", points: src.iv_rank });
-  }
-  if (src.rr_ratio != null && Number.isFinite(src.rr_ratio)) {
-    factors.push({ label: "R:R Ratio", points: src.rr_ratio });
-  }
-  if (src.flow_streak_days != null && Number.isFinite(src.flow_streak_days) && src.flow_streak_days > 0) {
-    factors.push({ label: "Flow Streak", points: src.flow_streak_days });
-  }
-  if (src.confirming_signals != null && Number.isFinite(src.confirming_signals) && src.confirming_signals > 0) {
-    factors.push({ label: "Confirming", points: src.confirming_signals });
-  }
+  // IV rank, R:R, flow streak, and confirming count are edition metadata — NOT scored factor
+  // points. They render in the P&L/thesis panels (rrRatio, ivRank, confluence) instead of the
+  // "Why this play was picked" bar chart, which would mislabel them as additive score pillars.
 
   const direction = asDir(src.direction);
   const entryMid = parseEntryMid(src.entry_range);
@@ -722,7 +711,8 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
     recommendation: pulled || ms === "INVALIDATED" ? "SELL" : ms === "CONFIRMED" ? "BUY" : "HOLD",
     recNote,
     progress: null,
-    entry: fin(src.entry_premium) ?? entryMid,
+    // Stock entry mid drives P&L overlay (overlayLegacyQuotes) — option premium stays separate.
+    entry: entryMid ?? fin(src.entry_premium),
     mark: null,
     pnlPct: null,
     greeks: null,
@@ -733,7 +723,8 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
     keySignal: src.key_signal ?? null,
     optionsPlay: src.options_play ?? null,
     rrRatio: fin(src.rr_ratio),
-    entryCostPerContract: fin(src.entry_cost_per_contract),
+    ivRank: fin(src.iv_rank),
+    entryCostPerContract: fin(src.entry_premium) ?? fin(src.entry_cost_per_contract),
     premiumCapOk: src.premium_cap_ok ?? null,
     sector: src.sector?.toLowerCase() ?? null,
     morningStatus: ms ?? null,

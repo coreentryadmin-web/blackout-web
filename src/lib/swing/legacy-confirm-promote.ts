@@ -36,11 +36,13 @@ export function legacyPlayDirection(play: PlaybookPlay): PlayDirection {
 function syntheticAccumulation(play: PlaybookPlay, direction: PlayDirection, spot: number): ZeroDteFlowAccumulation {
   const days = Math.max(1, play.flow_streak_days ?? 2);
   const isLong = direction === "LONG";
+  // Ground strength in the published edition score — never fabricate a whale-print premium.
+  const strength = Math.min(100, Math.max(40, play.score ?? 70));
   return {
     direction: isLong ? "bull" : "bear",
-    strength: play.score ?? 70,
+    strength,
     days,
-    net_signed_premium: isLong ? 5e6 : -5e6,
+    net_signed_premium: 0,
     magnet_strike: spot > 0 ? spot : 100,
     magnet_side: isLong ? "call" : "put",
     aligned: true,
@@ -50,11 +52,12 @@ function syntheticAccumulation(play: PlaybookPlay, direction: PlayDirection, spo
 function swingReadsForLegacy(play: PlaybookPlay, direction: PlayDirection, spot: number): SwingReads {
   const accum = syntheticAccumulation(play, direction, spot);
   const days = Math.max(1, play.flow_streak_days ?? 2);
+  // Structural reads only — no fabricated 10d returns; lineage is edition-confirmed, not live flow.
   return {
     accumulation: accum,
     flowWindowDays: days + 2,
-    returnPct10d: direction === "LONG" ? 5 : -5,
-    spyReturnPct10d: 1,
+    returnPct10d: null,
+    spyReturnPct10d: null,
     priceAboveEma20: direction === "LONG",
     ema20AboveEma50: direction === "LONG",
     ema50Rising: direction === "LONG",
@@ -118,7 +121,8 @@ export function buildLegacySwingArtifacts(params: {
     },
     volatility: { contractQuality01: 0.65, thetaBurden01: 0.35 },
     regime01: 0.55,
-    dataQuality01: 0.7,
+    // Lower data quality — accumulation reads are edition-grounded, not live UW flow.
+    dataQuality01: 0.55,
     planLevels: plan,
     ivRank: play.iv_rank ?? null,
   });

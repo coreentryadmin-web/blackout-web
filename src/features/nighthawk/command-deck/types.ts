@@ -144,7 +144,7 @@ export interface TerminalPlay {
    *  95% confidence bounds (percent units, from calibration's win_rate_ci_pct, WS-07/WS-09) so
    *  the win-rate NEVER renders as a bare point estimate — present → "63% WR (95% CI 55–70%,
    *  n=214)"; absent → "63% WR (n=214 · CI n/a)". Never a fabricated interval. */
-  scorecard?: { winRate: number; avg: number; n: number; ciLow?: number | null; ciHigh?: number | null } | null;
+  scorecard?: { winRate: number; avg: number; n: number; ciLow?: number | null; ciHigh?: number | null; /** When "conviction_bucket", the stats are tier-level — not this play alone. */ scope?: "conviction_bucket" | "play" } | null;
 
   // ── edge layer (Wave 3) ──
   /** The trigger reason that surfaced this play (event-driven scan). Drives the Thesis tab's
@@ -183,6 +183,8 @@ export interface TerminalPlay {
   keySignal?: string | null;
   optionsPlay?: string | null;
   rrRatio?: number | null;
+  /** Implied-vol rank at publish (0–100), when the edition carried it — metadata, not a scored factor. */
+  ivRank?: number | null;
   entryCostPerContract?: number | null;
   premiumCapOk?: boolean | null;
 
