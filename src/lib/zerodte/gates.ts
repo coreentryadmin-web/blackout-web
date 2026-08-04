@@ -30,6 +30,7 @@ import type { EarningsFlag, EnrichedZeroDteSetup, PlayType, ZeroDteGateFailure, 
 import { evaluateZeroDteGovernor, type GovernorOpenPlan, type GovernorSnapshot } from "./governor";
 import { CHASE_PCT, type ContractPlan } from "./plan";
 import type { ZeroDteConfluence } from "./confluence";
+import { NEW_PLAY_CUTOFF_ET_MINUTES } from "./plan";
 import { commitAuthorizedBySourceHealth, type SourceHealthState } from "@/lib/ws/source-health";
 import { EARLY_ENTRY_WINDOW_END_ET_MINUTES } from "./confluence";
 import { evaluateMacroHardBlock, hasHighImpactMacroEvent, type MacroEventLike } from "@/lib/macro-hard-block";
@@ -84,8 +85,8 @@ export const OPENING_WINDOW_UNLOCK_LABEL = "10:00 ET";
 // (FINDINGS 2026-07-28) — the prior 15:00 cutoff left the entire toxic bucket open.
 // CONDOR-EXEMPT: an iron condor WANTS late-session theta crush (credit seller); the late
 // window is only destructive for long-premium entries.
-export const LATE_AFTERNOON_BLOCK_ET_MINUTES = 14 * 60;
-export const LATE_AFTERNOON_BLOCK_LABEL = "14:00 ET";
+export const LATE_AFTERNOON_BLOCK_ET_MINUTES = NEW_PLAY_CUTOFF_ET_MINUTES;
+export const LATE_AFTERNOON_BLOCK_LABEL = "15:30 ET";
 
 // ── G-12 · Confluence floor — HARD GATE (Phase 1, 2026-07-24) ─────────────────────
 // Evidence (E3, 25 sessions, docs/audit/0DTE-RESEARCH.md): expectancy ladders with the number of

@@ -297,7 +297,7 @@ export function buildPlayTimeline(input: PlayTimelineInput): PlayTimelineEvent[]
         timeSource: "live",
       }, order++);
     }
-    const closeEt = input.exitPolicy?.time_stop_et ?? "15:30";
+    const closeEt = input.exitPolicy?.time_stop_et ?? "15:50";
     pushEvent(events, {
       kind: "close",
       label: "Close",

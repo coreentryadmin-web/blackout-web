@@ -216,7 +216,7 @@ test("ungradeable: no bars, no direction, post-15:30 block, or no bar after entr
     underlyingBars: [bar("15:31", 500), bar("15:32", 501)],
     nowMs: NOW,
   });
-  assert.match(late.reason!, /blocked after the 15:30 ET hard exit/);
+  assert.match(late.reason!, /blocked after the 3:50 ET hard exit/);
 
   const noExit = gradeSkippedPlay({
     direction: "long",

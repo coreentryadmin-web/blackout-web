@@ -8,6 +8,7 @@
 
 import type { EnrichedZeroDteSetup } from "./board";
 import type { ContractPlan } from "./plan";
+import { NEW_PLAY_CUTOFF_ET_MINUTES, PLAN_RULES } from "./plan";
 import { fmtPremium as money } from "@/lib/fmt-money";
 
 export type IntelAction = "ADD" | "HOLD" | "TRIM" | "SELL" | "PASS" | "WATCH";
@@ -72,7 +73,7 @@ export function buildIntelNote(input: {
   livePnlPct: number | null;
   planOutcome: string | null;
   planPnlPct: number | null;
-  /** Live clock (ET minutes) — enables countdowns to the 15:00 cutoff / 15:30 exit. */
+  /** Live clock (ET minutes) — enables countdowns to the commit cutoff / hard exit. */
   nowEtMinutes?: number | null;
   /** Live contract mark — enables $-distances to the trim/stop triggers. */
   lastMark?: number | null;
@@ -83,8 +84,8 @@ export function buildIntelNote(input: {
   const confirm = confirmClause(setup);
   const minsTo = (deadline: number): number | null =>
     nowEtMinutes != null && nowEtMinutes < deadline ? deadline - nowEtMinutes : null;
-  const toCutoff = minsTo(15 * 60);
-  const toExit = minsTo(15 * 60 + 30);
+  const toCutoff = minsTo(NEW_PLAY_CUTOFF_ET_MINUTES);
+  const toExit = minsTo(PLAN_RULES.time_stop_et_minutes);
 
   if (status === "SKIP") {
     if (plan?.illiquid) {
@@ -101,7 +102,7 @@ export function buildIntelNote(input: {
     }
     return {
       action: "PASS",
-      reason: "Flagged after the 3:00 ET cutoff — a fresh 0DTE entry this late trades against the clock, not the tape. Watch-only.",
+      reason: "Flagged after the 3:30 ET cutoff — a fresh 0DTE entry this late trades against the clock, not the tape. Watch-only.",
     };
   }
 
@@ -133,7 +134,7 @@ export function buildIntelNote(input: {
       action: "ADD",
       reason:
         `${evidenceClause(setup)}${confirm ? `; ${confirm}` : ""}. ` +
-        `${reload ? "Flow is reloading now — " : ""}Enter ≤ ${prem(plan?.entry_max ?? entryPremium)}, stop ${prem(stop)}, out by 3:30 ET` +
+        `${reload ? "Flow is reloading now — " : ""}Enter ≤ ${prem(plan?.entry_max ?? entryPremium)}, stop ${prem(stop)}, out by 3:50 ET` +
         `${toCutoff != null && toCutoff <= 90 ? ` (${toCutoff}m left in the entry window)` : ""}.${caution}`,
     };
   }
@@ -171,7 +172,7 @@ export function buildIntelNote(input: {
       reason:
         `Thesis intact — ${pnlBit}${dist}${confirm ? `; ${confirm}` : ""}. ` +
         `Triggers: ${prem(target)} (+100% trim) / ${prem(stop)} (−50% cut)` +
-        `${toExit != null ? `; ${toExit}m to the 3:30 hard exit` : "; hard exit 3:30 ET"}.`,
+        `${toExit != null ? `; ${toExit}m to the 3:50 hard exit` : "; hard exit 3:50 ET"}.`,
     };
   }
 

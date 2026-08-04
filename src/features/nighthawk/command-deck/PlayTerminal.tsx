@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { clsx } from "clsx";
 import type { TerminalPlay } from "./types";
 import { timeStopClock } from "@/lib/zerodte/terminal-ladder";
+import { zerodteTimeStopEtLabel } from "@/lib/zerodte/plan";
 import { isZeroDteMarkStale, ZERODTE_MARK_STALE_MS, LEGACY_QUOTE_STALE_MS } from "@/lib/zerodte/marks-math";
 import { condorTent } from "@/lib/zerodte/condor-render";
 import { etNowParts } from "@/features/nighthawk/lib/session";
@@ -641,8 +642,8 @@ function ManagePanel({ play, nowMs }: { play: TerminalPlay; nowMs: number }) {
         </div>
       )}
 
-      {/* Time-stop clock is a 0DTE-ONLY discipline (flat by 15:30 ET the SAME session). A Swing/
-          LEAPS/Legacy position runs for days/weeks, so showing it a "flat by 15:30 today" countdown
+      {/* Time-stop clock is a 0DTE-ONLY discipline (flat by hard exit the SAME session). A Swing/
+          LEAPS/Legacy position runs for days/weeks, so showing it a same-day countdown
           would be flatly false. Also suppressed once a 0DTE row is CLOSED (nothing left to time out). */}
       {showsTimeStopClock(play) && <TimeStopClock nowMs={nowMs} />}
 
@@ -826,8 +827,9 @@ function CondorPanel({ play }: { play: TerminalPlay }) {
   );
 }
 
-/** Countdown to the 15:30 ET hard time-stop + a session-decay bar (09:30→15:30 elapsed). */
+/** Countdown to the hard time-stop + a session-decay bar (09:30→exit elapsed). */
 function TimeStopClock({ nowMs }: { nowMs: number }) {
+  const exitLabel = zerodteTimeStopEtLabel();
   // Recompute ET minute-of-day each tick (etNowParts reads the live clock).
   void nowMs; // depend on the tick so this recomputes every second
   const { hour, minute } = etNowParts();
@@ -837,7 +839,7 @@ function TimeStopClock({ nowMs }: { nowMs: number }) {
       <div className="row">
         <span className="lab">◷ THETA / TIME-STOP</span>
         <span className={clsx("val", clock.minutes_remaining <= 30 && "warn")}>
-          {clock.past_time_stop ? "TIME STOP — flat by 15:30" : `${clock.label} to 15:30 ET`}
+          {clock.past_time_stop ? `TIME STOP — flat by ${exitLabel}` : `${clock.label} to ${exitLabel} ET`}
         </span>
       </div>
       <div className="decay"><i style={{ width: `${Math.round(clock.elapsed_frac * 100)}%` }} /></div>

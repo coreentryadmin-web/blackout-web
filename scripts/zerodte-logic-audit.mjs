@@ -110,7 +110,7 @@ async function liveBoardAudit() {
   const SETUP_MIN_DOMINANCE = 0.55;
   const SETUP_MIN_AGGR_SHARE = 0.3;
   const SETUP_MAX_ITM_PCT = 2;
-  const NEW_PLAY_CUTOFF_ET_MINUTES = 14 * 60;
+  const NEW_PLAY_CUTOFF_ET_MINUTES = 15 * 60 + 30;
 
   const badNums = scanFinite(zb).slice(0, 5);
   rec("live:finite-numbers", badNums.length === 0 ? "PASS" : "FAIL", badNums.join("; "));
@@ -157,7 +157,7 @@ async function liveBoardAudit() {
   }
 
   // Cutoff discipline label present in product (UI contract).
-  rec("live:cutoff-constant", NEW_PLAY_CUTOFF_ET_MINUTES === 14 * 60 ? "PASS" : "FAIL", "14:00 ET");
+  rec("live:cutoff-constant", NEW_PLAY_CUTOFF_ET_MINUTES === 15 * 60 + 30 ? "PASS" : "FAIL", "15:30 ET");
 }
 
 async function main() {

@@ -105,12 +105,12 @@ const bar = (tOff: number, h: number, l: number, c: number) => ({ t: T0 + tOff *
 const both = gradePlanFromBars([bar(0, 9.0, 2.0, 5.0)], 4.2, T0 - MIN);
 rec("logic:plan-grade-stop-first", both.outcome === "stopped" ? "PASS" : "FAIL", both.outcome);
 
-// COMMIT_CUTOFF moved to 14:00 ET (G-14) — 14:30 is POST_COMMIT, not RTH; POWER_HOUR starts 15:00.
+// COMMIT_CUTOFF at 15:30 ET (G-14) — 15:30 is POST_COMMIT; LATE_SESSION starts 15:50.
 const rth = sessionHeat(11 * 60, true);
 const postCommit = sessionHeat(NEW_PLAY_CUTOFF_ET_MINUTES, true);
-const ph = sessionHeat(15 * 60 + 15, true);
-const heatOk = rth.state === "RTH" && postCommit.state === "POST_COMMIT" && ph.state === "POWER_HOUR";
-rec("logic:session-heat", heatOk ? "PASS" : "FAIL", `${rth.state}→${postCommit.state}→${ph.state}`);
+const late = sessionHeat(PLAN_RULES.time_stop_et_minutes, true);
+const heatOk = rth.state === "RTH" && postCommit.state === "POST_COMMIT" && late.state === "LATE_SESSION";
+rec("logic:session-heat", heatOk ? "PASS" : "FAIL", `${rth.state}→${postCommit.state}→${late.state}`);
 
 const grade = computeLedgerGrade("long", 100, 105);
 rec("logic:ledger-grade", grade.direction_hit === true && grade.move_pct === 5 ? "PASS" : "FAIL", `${grade.move_pct}%`);
@@ -118,7 +118,7 @@ rec("logic:ledger-grade", grade.direction_hit === true && grade.move_pct === 5 ?
 const mergedLate = mergePlays(
   [{ ...enriched, ticker: "TSLA", direction: "long", top_strike: 250, score: 80, spike: false, plan: { ...plan, entry_status: "IN_RANGE" as const, illiquid: false } }],
   [],
-  "POWER_HOUR"
+  "POST_COMMIT"
 );
 rec("logic:merge-past-cutoff", mergedLate[0]?.status === "SKIP" ? "PASS" : "FAIL", mergedLate[0]?.status ?? "empty");
 

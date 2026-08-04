@@ -42,10 +42,11 @@ test("heat: full ramp through a trading day", () => {
   assert.equal(sessionHeat(9 * 60 + 45, true).state, "OPENING_DRIVE");
   assert.equal(sessionHeat(12 * 60, true).state, "RTH");
   assert.equal(sessionHeat(12 * 60, true).heat_pct, 100);
-  assert.equal(sessionHeat(14 * 60, true).state, "POST_COMMIT", "14:00 matches G-14 / NEW_PLAY_CUTOFF");
-  assert.equal(sessionHeat(14 * 60 + 30, true).state, "POST_COMMIT");
-  assert.equal(sessionHeat(15 * 60 + 10, true).state, "POWER_HOUR");
-  assert.equal(sessionHeat(15 * 60 + 45, true).state, "LATE_SESSION");
+  assert.equal(sessionHeat(14 * 60, true).state, "RTH");
+  assert.equal(sessionHeat(15 * 60 + 29, true).state, "RTH");
+  assert.equal(sessionHeat(15 * 60 + 30, true).state, "POST_COMMIT", "15:30 matches G-14 / NEW_PLAY_CUTOFF");
+  assert.equal(sessionHeat(15 * 60 + 45, true).state, "POST_COMMIT");
+  assert.equal(sessionHeat(15 * 60 + 50, true).state, "LATE_SESSION");
   assert.equal(sessionHeat(16 * 60 + 1, true).state, "CLOSED");
 });
 
@@ -71,9 +72,8 @@ test("resolveFreshFindStatus: WATCH during RTH with no moved/illiquid flags — 
   assert.equal(resolveFreshFindStatus("OPENING_DRIVE", false, false), "WATCH");
 });
 
-test("resolveFreshFindStatus: SKIP once POST_COMMIT/POWER_HOUR/LATE_SESSION/CLOSED — the 14:00 entry cutoff", () => {
+test("resolveFreshFindStatus: SKIP once POST_COMMIT/LATE_SESSION/CLOSED — the 3:30 PM entry cutoff", () => {
   assert.equal(resolveFreshFindStatus("POST_COMMIT", false, false), "SKIP");
-  assert.equal(resolveFreshFindStatus("POWER_HOUR", false, false), "SKIP");
   assert.equal(resolveFreshFindStatus("LATE_SESSION", false, false), "SKIP");
   assert.equal(resolveFreshFindStatus("CLOSED", false, false), "SKIP");
 });
@@ -705,9 +705,9 @@ test("plan grade: stop touch → stopped at −50%; same-bar both-touch counts t
   assert.equal(both.outcome, "stopped");
 });
 
-test("plan grade: neither level by 15:30 ET → time stop at last close in window", () => {
-  // bars: 10:30 ET onward, closing at 4.62 (+10%); a late bar past 15:30 ET is ignored.
-  const late = Date.parse("2026-07-06T19:45:00Z"); // 15:45 ET
+test("plan grade: neither level by 15:50 ET → time stop at last close in window", () => {
+  // bars: 10:30 ET onward, closing at 4.62 (+10%); a late bar past 15:50 ET is ignored.
+  const late = Date.parse("2026-07-06T19:55:00Z"); // 15:55 ET
   const g = gradePlanFromBars(
     [bar(0, 4.4, 4.0, 4.3), bar(1, 4.7, 4.2, 4.62), { t: late, h: 12, l: 1, c: 1 }],
     4.2,
@@ -746,7 +746,7 @@ test("lifecycle: OPEN while enterable, HOLD past cutoff or above the band", () =
   const base = { entryPremium: 4.2, peak: 4.2, trough: 4.2 };
   const open = derivePlayStatus({ ...base, mark: 4.1, nowEtMinutes: 11 * 60 });
   assert.equal(open.status, "OPEN");
-  // Same mark after the NEW_PLAY_CUTOFF (14:00 ET) → no longer enterable.
+  // Same mark after the NEW_PLAY_CUTOFF (15:30 ET) → no longer enterable.
   const held = derivePlayStatus({ ...base, mark: 4.1, nowEtMinutes: NEW_PLAY_CUTOFF_ET_MINUTES + 5 });
   assert.equal(held.status, "HOLD");
   // Mark well above the entry band intraday → HOLD (manage, don't add).
@@ -807,8 +807,8 @@ test("lifecycle: a play that hits the stop WITHOUT ever reaching target still cl
   assert.equal(s.closed_reason, "stopped");
 });
 
-test("lifecycle: everything is CLOSED after the 15:30 ET hard exit", () => {
-  const s = derivePlayStatus({ entryPremium: 4.2, mark: 4.8, peak: 4.8, trough: 4.0, nowEtMinutes: 15 * 60 + 31 });
+test("lifecycle: everything is CLOSED after the 15:50 ET hard exit", () => {
+  const s = derivePlayStatus({ entryPremium: 4.2, mark: 4.8, peak: 4.8, trough: 4.0, nowEtMinutes: 15 * 60 + 51 });
   assert.equal(s.status, "CLOSED");
   assert.equal(s.closed_reason, "time_stop");
 });
@@ -1216,14 +1216,14 @@ test("intel: HOLD carries live trigger distances and the exit countdown", () => 
   assert.equal(note.action, "HOLD");
   assert.match(note.reason, /\$2\.80 below the trim/); // 8.00 target − 5.20 mark
   assert.match(note.reason, /\$3\.20 above the stop/); // 5.20 mark − 2.00 stop
-  assert.match(note.reason, /90m to the 3:30 hard exit/);
+  assert.match(note.reason, /110m to the 3:50 hard exit/);
 });
 
 test("intel: ADD shows the entry-window countdown when inside 90 minutes", () => {
   const note = buildIntelNote({
     status: "OPEN", setup: null, plan: null,
     entryPremium: 4.0, livePnlPct: null, planOutcome: null, planPnlPct: null,
-    nowEtMinutes: 14 * 60 + 20, lastMark: 4.0,
+    nowEtMinutes: 14 * 60 + 50, lastMark: 4.0,
   });
   assert.match(note.reason, /40m left in the entry window/);
 });
