@@ -13,6 +13,62 @@
   z-index: 2;
 }
 
+/* ── Desktop split-pane fill (2026-08-04) ───────────────────────────────────────
+   Lock the command deck to the viewport so the LEFT plays list scrolls independently
+   while the RIGHT detail panel stays pinned — same flex-fill pattern as SPX desk.
+   Mobile (≤820px) keeps the stacked layout from globals.css + ios-native-pages.css. */
+@media (min-width: 821px) {
+  html:not(.ios-native-shell) .nh-v2-page.nighthawk-page-shell-fill {
+    display: flex;
+    flex-direction: column;
+    min-height: 100svh;
+    box-sizing: border-box;
+  }
+
+  html:not(.ios-native-shell) .nh-v2-page.nighthawk-page-shell-fill .nighthawk-page-content {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  html:not(.ios-native-shell) .nh-v2-page .nighthawk-page-root {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  html:not(.ios-native-shell) .nh-v2-page .nighthawk-content-canvas,
+  html:not(.ios-native-shell) .nh-v2-page .nighthawk-single-view {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  html:not(.ios-native-shell) .nh-v2-page .nh-deck.nh-deck-fill {
+    flex: 1 1 auto;
+    min-height: 0;
+    /* Collapse guard — budget header + segment + blurb (~14rem) under fixed nav. */
+    min-height: min(70vh, calc(100dvh - var(--nav-offset) - 14rem));
+  }
+
+  html:not(.ios-native-shell) .nh-v2-page .nh-deck-left,
+  html:not(.ios-native-shell) .nh-v2-page .nh-deck-right {
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  html:not(.ios-native-shell) .nh-v2-page .nh-deck-rows {
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
 /* ── Trading contrast floor (2026-07-29) ─────────────────────────────────────────
    Live desk audit: labels/tabs/secondary copy were too thin against #040407 + radar HUD.
    Scope ONLY under .nh-v2-page — raise weight + luminance so a trader can scan under pressure.

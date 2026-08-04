@@ -53,17 +53,17 @@ export function NightHawkFeed({ seed }: { seed?: NightHawkSeedProps | null }) {
         accent="#ff2d55"
         variant={nativeShell ? "compact" : "default"}
         aria-label="Night Hawk view"
-        className="ios-native-desk-segment mb-3"
+        className="ios-native-desk-segment mb-3 shrink-0"
         segments={NIGHTHAWK_VIEWS.map((v) => ({ id: v, label: NIGHTHAWK_VIEW_META[v].label }))}
       />
       {!nativeShell ? (
-        <p className="mb-3 text-sm font-bold leading-snug text-sky-100">{NIGHTHAWK_VIEW_META[view].blurb}</p>
+        <p className="mb-3 shrink-0 text-sm font-bold leading-snug text-sky-100">{NIGHTHAWK_VIEW_META[view].blurb}</p>
       ) : null}
 
       <div
         className={clsx(
           "nighthawk-single-view flex w-full max-w-none flex-1 flex-col",
-          nativeShell ? "min-h-0" : "min-h-[560px]"
+          "min-h-0"
         )}
       >
         {view === "ZERO_DTE" && (
