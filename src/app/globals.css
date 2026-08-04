@@ -16127,7 +16127,8 @@ body::before {
 .nh-deck-hdr-row{display:flex;align-items:stretch;gap:6px;min-width:0;overflow-x:auto;scrollbar-width:thin}
 .nh-deck-hdr-row--primary{padding:5px 8px;border-bottom:1px solid rgba(53,255,158,.08);flex-wrap:nowrap}
 .nh-deck-hdr-row--secondary{padding:4px 6px;align-items:center;gap:6px;flex-wrap:nowrap}
-.nh-deck-hdr-row--filters{justify-content:space-between;gap:8px;padding:6px 8px}
+.nh-deck-hdr-row--filters{justify-content:flex-start;gap:8px;padding:6px 8px}
+.nh-deck-header-compact .nh-deck-filterbar--prominent{flex:1 1 auto;width:100%}
 .nh-deck-filterbar--prominent{flex:1 1 auto;gap:6px;min-width:0;padding:0;border:0;background:transparent}
 .nh-deck-header-compact .nh-deck-filterbar--prominent .nh-deck-filtbtn{flex:1 1 0;min-width:56px;padding:8px 10px;font-size:11px;font-weight:800;letter-spacing:.08em}
 .nh-deck-header-compact .nh-deck-filterbar--prominent .nh-deck-filtbtn .cnt{font-size:11px;margin-left:4px}
@@ -16899,6 +16900,12 @@ body::before {
 .nh-deck-play-table-head{padding:8px 12px 10px;margin:0 6px;border-bottom:1px solid rgba(82,167,255,.18);
   position:sticky;top:0;z-index:2;background:linear-gradient(180deg,#050c08 0%,#040407 100%)}
 .nh-deck-play-th{font-size:10px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--dk-cyan);white-space:nowrap}
+.nh-deck-play-th--sort{cursor:pointer;border:0;padding:0;background:transparent;font:inherit;font-size:10px;font-weight:800;
+  letter-spacing:.14em;text-transform:uppercase;color:var(--dk-cyan);text-align:inherit;transition:color .12s ease,text-shadow .12s ease}
+.nh-deck-play-th--sort:hover{color:var(--dk-text-primary)}
+.nh-deck-play-th--sort.is-on{color:var(--dk-green-hi);text-shadow:var(--dk-glow)}
+.nh-deck-play-th--sort:focus-visible{outline:none;box-shadow:0 0 0 1px var(--dk-green);border-radius:2px}
+.nh-deck-play-cell--pnl .nh-deck-play-th--sort{text-align:right;width:100%}
 .nh-deck-play-cell{min-width:0;font-variant-numeric:tabular-nums}
 .nh-deck-play-cell--rank{font-size:10px;font-weight:700;color:var(--dk-text-secondary);letter-spacing:.04em}
 .nh-deck-play-cell--play{font-size:14px;font-weight:800;color:var(--dk-text-primary);letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
