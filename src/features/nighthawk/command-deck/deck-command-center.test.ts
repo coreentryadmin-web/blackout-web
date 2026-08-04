@@ -5,7 +5,6 @@ import {
   buildDeckCommandCenterStats,
   convictionRankContext,
   deriveTodaysEdge,
-  formatWinRate30d,
   topRatedPlay,
 } from "./deck-command-center";
 
@@ -79,12 +78,6 @@ test("buildDeckCommandCenterStats aggregates opportunities + top + edge", () => 
   assert.equal(stats.opportunities, 2);
   assert.deepEqual(stats.topRated, { ticker: "META", grade: "A+" });
   assert.equal(stats.edge, "High");
-});
-
-test("formatWinRate30d never fabricates — null/NaN → em dash", () => {
-  assert.equal(formatWinRate30d(null), "—");
-  assert.equal(formatWinRate30d(Number.NaN), "—");
-  assert.equal(formatWinRate30d(81.4), "81%");
 });
 
 test("convictionRankContext: rank on full board + highest today flag", () => {

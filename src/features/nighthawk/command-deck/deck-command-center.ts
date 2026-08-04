@@ -71,9 +71,3 @@ export function buildDeckCommandCenterStats(plays: TerminalPlay[]): DeckCommandC
     edge: deriveTodaysEdge(plays),
   };
 }
-
-/** Format the 30d ledger win rate — null/NaN → em dash (never a fake %). */
-export function formatWinRate30d(winRatePct: number | null | undefined): string {
-  if (winRatePct == null || !Number.isFinite(winRatePct)) return "—";
-  return `${Math.round(winRatePct)}%`;
-}

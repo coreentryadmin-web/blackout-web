@@ -112,20 +112,16 @@ test("why-now ribbon: omitted entirely when whyNow is absent (no fabricated reas
   assert.doesNotMatch(html, /triggered by:/);
 });
 
-// ── Wilson-CI scorecard badge ─────────────────────────────────────────────────────────
-test("scorecard: win-rate renders WITH the Wilson CI when the payload carries it", async () => {
+// ── Scorecard badge (avg return only — no win rate on Night Hawk) ───────────────────
+test("scorecard: renders average return and sample size without win rate", async () => {
   const html = await render(play({ scorecard: { winRate: 63, avg: 12, n: 214, ciLow: 55, ciHigh: 70 } }));
-  assert.match(html, /63% WR \(95% CI 55–70%, n=214\)/);
+  assert.match(html, /\+12% avg · n=214/);
+  assert.doesNotMatch(html, /WR/);
 });
 
-test("scorecard: CI absent → explicit 'CI n/a', never a bare point estimate", async () => {
-  const html = await render(play({ scorecard: { winRate: 63, avg: 12, n: 214 } }));
-  assert.match(html, /63% WR \(n=214 · CI n\/a\)/);
-});
-
-test("scorecard: non-finite win-rate (n=0) renders '— WR', never 'NaN% WR'", async () => {
+test("scorecard: non-finite avg still shows sample size, never NaN", async () => {
   const html = await render(play({ scorecard: { winRate: Number.NaN, avg: 0, n: 0 } }));
-  assert.match(html, /— WR \(n=0 · CI n\/a\)/);
+  assert.match(html, /0% avg · n=0/);
   assert.doesNotMatch(html, /NaN/);
 });
 

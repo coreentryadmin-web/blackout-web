@@ -34,7 +34,6 @@ import { PlayLifecycleCardBody } from "./PlayLifecycleCard";
 import {
   buildDeckCommandCenterStats,
   convictionRankContext,
-  formatWinRate30d,
 } from "./deck-command-center";
 import { deriveEngineStatus } from "./deck-engine-status";
 
@@ -64,7 +63,6 @@ export function CommandDeck({
   allocation,
   sessionHeat = null,
   commandCenter = false,
-  winRate30d = null,
   deckHorizon = "ZERO_DTE",
   boardAsOf = null,
   upstreamOk = null,
@@ -87,8 +85,6 @@ export function CommandDeck({
   sessionHeat?: DeckSessionHeatState;
   /** Replace the "X of Y" header with the command-center stat strip + engine status. */
   commandCenter?: boolean;
-  /** 30d win rate from the lane record — null when unavailable (never fabricated). */
-  winRate30d?: number | null;
   /** Lane context for engine-status session logic (defaults to ZERO_DTE cadence). */
   deckHorizon?: TerminalPlay["horizon"];
   /** Board snapshot instant (`as_of`) — drives Live Engine Status last-update age. */
@@ -194,7 +190,6 @@ export function CommandDeck({
             laneLabel={laneLabel}
             degraded={degraded}
             stats={cmdStats}
-            winRate30d={winRate30d}
             engineStatus={engineStatus}
           />
         ) : (
@@ -269,13 +264,11 @@ function DeckCommandCenter({
   laneLabel,
   degraded,
   stats,
-  winRate30d,
   engineStatus,
 }: {
   laneLabel: string;
   degraded: boolean;
   stats: ReturnType<typeof buildDeckCommandCenterStats> | null;
-  winRate30d: number | null;
   engineStatus: ReturnType<typeof deriveEngineStatus> | null;
 }) {
   const topLine = stats?.topRated
@@ -293,10 +286,6 @@ function DeckCommandCenter({
         <div className="nh-deck-cmd-stat">
           <span className="nh-deck-cmd-lab">Top Rated</span>
           <span className="nh-deck-cmd-val nh-deck-cmd-top">{degraded ? "—" : topLine}</span>
-        </div>
-        <div className="nh-deck-cmd-stat">
-          <span className="nh-deck-cmd-lab">Win Rate (30d)</span>
-          <span className="nh-deck-cmd-val">{degraded ? "—" : formatWinRate30d(winRate30d)}</span>
         </div>
         <div className="nh-deck-cmd-stat">
           <span className="nh-deck-cmd-lab">Today&apos;s Edge</span>

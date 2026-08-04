@@ -11,7 +11,6 @@ import {
 } from "./adapters";
 import { fetchNightHawkHorizons } from "@/lib/api";
 import type { NightHawkEdition, NightHawkRecordResponse } from "@/features/nighthawk/lib/types";
-import type { ZeroDteRecord } from "@/lib/zerodte/record";
 import type { TerminalPlay } from "./types";
 import { overlayLegacyQuotes, useLegacyStockQuotes } from "./use-legacy-quotes";
 import { useZeroDteLiveDeck } from "./use-zero-dte-live-deck";
@@ -76,15 +75,6 @@ export function ZeroDteDeck({
   // — that hides a real outage AND any open position. (isBoardDegraded treats first-load null as not-degraded.)
   const degraded = isBoardDegraded(data);
   const sessionHeat = data?.session?.heat?.state ?? null;
-  const { data: recordData } = useSWR<ZeroDteRecord>(
-    sim ? null : "zerodte-record-30d",
-    () => json("/api/market/zerodte/record?days=30"),
-    { refreshInterval: 600_000 },
-  );
-  const winRate30d =
-    recordData?.available !== false && recordData?.win_rate_pct != null
-      ? recordData.win_rate_pct
-      : null;
   return (
     <>
       {sim && (
@@ -105,7 +95,6 @@ export function ZeroDteDeck({
         sessionHeat={sessionHeat}
         commandCenter
         deckHorizon="ZERO_DTE"
-        winRate30d={winRate30d}
         boardAsOf={typeof data?.as_of === "string" ? data.as_of : null}
         upstreamOk={data?.upstream_ok ?? null}
         marketState={data?.market_state ?? null}
@@ -296,11 +285,6 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
   const confirmStale = isMorningConfirmStale(checkedAt, Date.now());
   const checkedAtLabel = checkedAt ? formatCheckedAtEt(checkedAt) : null;
 
-  const legacyWinRate30d =
-    recordData?.win_rate_pct != null && Number.isFinite(recordData.win_rate_pct)
-      ? recordData.win_rate_pct
-      : null;
-
   // Edition health banners — stale/degraded/carry/error states must be visible, never silently hidden.
   const isStale = edition?.stale === true;
   const isDegraded = edition?.degraded === true;
@@ -360,7 +344,6 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
         commandCenter
         deckHorizon="LEGACY"
         boardAsOf={edition?.published_at ?? null}
-        winRate30d={legacyWinRate30d}
         emptyHint={
           hasFetchError
             ? "Edition data unavailable right now — retrying. Check back shortly."

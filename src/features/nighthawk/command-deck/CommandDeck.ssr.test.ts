@@ -135,13 +135,13 @@ test("CommandDeck command center renders stat strip for 0DTE", async () => {
       ],
       laneLabel: "0DTE · same-day",
       commandCenter: true,
-      winRate30d: 81,
       boardAsOf: "2026-08-03T11:59:58-04:00",
       sessionHeat: "RTH",
     }),
   );
   assert.match(html, /nh-deck-cmd/);
   assert.match(html, />META \(A\+\)/);
+  assert.doesNotMatch(html, /Win Rate \(30d\)/);
   assert.match(html, /nh-deck-engine-status/);
   assert.match(html, />Engine</);
   assert.match(html, />Monitoring</);

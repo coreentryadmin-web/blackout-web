@@ -232,10 +232,11 @@ test("record chip below the minimum sample is an amber LOW-N marker, never a win
   assert.doesNotMatch(html, /% WR/);
 });
 
-test("record chip at/above the minimum sample shows n resolved and the win rate", async () => {
+test("record chip at/above the minimum sample shows resolved count only (no win rate)", async () => {
   const html = await render({ edition: edition(), record: record() });
 
-  assert.match(html, /42 resolved (·|&#xB7;) 57% WR/);
+  assert.match(html, /42 resolved/);
+  assert.doesNotMatch(html, /% WR/);
 });
 
 // ── honesty notices + status pill precedence ───────────────────────────────────────
