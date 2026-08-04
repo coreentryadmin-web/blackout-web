@@ -192,6 +192,6 @@ export function buildIntelNote(input: {
   }
   return {
     action: "SELL",
-    reason: `Closed at the 3:30 ET hard exit${livePnlPct != null ? ` (${livePnlPct >= 0 ? "+" : ""}${livePnlPct.toFixed(0)}%)` : ""} — 0DTE theta owns the final stretch; never hold through it.`,
+    reason: `Closed at the 3:50 ET hard exit${livePnlPct != null ? ` (${livePnlPct >= 0 ? "+" : ""}${livePnlPct.toFixed(0)}%)` : ""} — 0DTE theta owns the final stretch; never hold through it.`,
   };
 }

@@ -46,9 +46,10 @@ function fmtGreek(k: string, v: number | null): string {
 const usd = (n: number | null | undefined): string => (n != null ? `$${n.toFixed(2)}` : "—");
 const signPct = (n: number | null | undefined): string => (n != null ? `${n > 0 ? "+" : ""}${Math.round(n)}%` : "—");
 
-function formatScorecardHint(s: { avg: number; n: number }): string {
+function formatScorecardHint(s: { avg: number; n: number; scope?: "conviction_bucket" | "play" }): string {
   const n = Number.isFinite(s.n) ? s.n : 0;
-  return `${signPct(s.avg)} avg · n=${n}`;
+  const bucket = s.scope === "conviction_bucket" ? " · tier bucket" : "";
+  return `${signPct(s.avg)} avg · n=${n}${bucket}`;
 }
 
 /** ET wall-clock (HH:MM) of an ISO instant, for the why-now ribbon (and the deck row's entry-time
@@ -398,7 +399,14 @@ function HeaderBadges({ play }: { play: TerminalPlay }) {
         <span key={o} className="nh-deck-badge orig">{o}</span>
       ))}
       {play.scorecard && (
-        <span className="nh-deck-badge sc" title="Calibrated strategy average return (sample size)">
+        <span
+          className="nh-deck-badge sc"
+          title={
+            play.scorecard.scope === "conviction_bucket"
+              ? `Historical average return for all ${play.tierLabel ?? "this tier"}-tier plays (n=${play.scorecard.n}) — not this play alone`
+              : "Calibrated strategy average return (sample size)"
+          }
+        >
           {formatScorecardHint(play.scorecard)}
         </span>
       )}
@@ -1084,7 +1092,8 @@ function LegacyPnlPanel({ play }: { play: TerminalPlay }) {
       )}
       <div className="nh-deck-grid" style={{ marginTop: 12 }}>
         <div><span className="k">Stock</span><span className="v">{hasStock ? `$${spot!.toFixed(2)}` : "—"}</span></div>
-        <div><span className="k">Entry premium</span><span className="v">{play.entry != null ? usd(play.entry) : "—"}</span></div>
+        <div><span className="k">Stock entry</span><span className="v">{play.entry != null ? `$${play.entry.toFixed(2)}` : play.entryRange ?? "—"}</span></div>
+        <div><span className="k">Entry premium</span><span className="v">{play.entryCostPerContract != null ? usd(play.entryCostPerContract) : "—"}</span></div>
         {play.targetLevel && (
           <div>
             <span className="k">Target</span>
@@ -1101,6 +1110,12 @@ function LegacyPnlPanel({ play }: { play: TerminalPlay }) {
               {play.stopLevel}
               {distStop && <span className="nh-deck-dist"> ({distStop.dollars >= 0 ? "+" : ""}{distStop.dollars.toFixed(2)} / {distStop.pct >= 0 ? "+" : ""}{distStop.pct.toFixed(1)}%)</span>}
             </span>
+          </div>
+        )}
+        {play.ivRank != null && (
+          <div>
+            <span className="k">IV rank</span>
+            <span className="v">{Math.round(play.ivRank)}</span>
           </div>
         )}
         {play.rrRatio != null && (

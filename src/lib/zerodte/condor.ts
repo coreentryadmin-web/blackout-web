@@ -404,7 +404,7 @@ export type CondorOutcome = {
 
 /**
  * Grade a condor against the UNDERLYING's own minute bars, walked in time order from the bar AFTER
- * the flag to the 15:30 ET time stop. The exit is deliberately SIMPLE (this first version): hold to
+ * the flag to the 15:50 ET hard exit. The exit is deliberately SIMPLE (this first version): hold to
  * close, with a breach stop. The FIRST bar whose range touches or crosses a short strike (low ≤
  * breach_lower OR high ≥ breach_upper) is the managed breach exit — a DEFINED LOSS capped at
  * `max_loss` (the long wings / stop guarantee the cap). If no bar ever breaches and the last in-

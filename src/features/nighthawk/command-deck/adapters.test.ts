@@ -151,13 +151,14 @@ test("edition adapter: parseEntryMid from entry_range (two-price range → midpo
   assert.equal(play.entry, 193.75);
 });
 
-test("edition adapter: entry_premium takes precedence over parsed entry_range", () => {
+test("edition adapter: stock entry mid drives entry; option premium on entryCostPerContract", () => {
   const play = terminalPlayFromEdition({
     ticker: "AAPL", direction: "long", rank: 2, score: 80,
     entry_range: "$190.00 – $195.00",
     entry_premium: 3.5,
   });
-  assert.equal(play.entry, 3.5);
+  assert.equal(play.entry, 192.5);
+  assert.equal(play.entryCostPerContract, 3.5);
 });
 
 test("edition adapter: options_play replaces rank-based contract label", () => {
@@ -1033,17 +1034,15 @@ test("Legacy adapter: surfaces conviction as tierLabel", () => {
   assert.equal(play.tierLabel, "A+");
 });
 
-test("Legacy adapter: surfaces iv_rank and rr_ratio as factors", () => {
+test("Legacy adapter: surfaces iv_rank and rr_ratio as metadata, not scored factors", () => {
   const play = terminalPlayFromEdition({
     ticker: "TSLA", direction: "long", rank: 1, score: 75,
     iv_rank: 72, rr_ratio: 3.2,
   });
-  const ivFactor = play.factors.find((f) => f.label === "IV Rank");
-  const rrFactor = play.factors.find((f) => f.label === "R:R Ratio");
-  assert.ok(ivFactor, "iv_rank should appear as a factor");
-  assert.equal(ivFactor!.points, 72);
-  assert.ok(rrFactor, "rr_ratio should appear as a factor");
-  assert.equal(rrFactor!.points, 3.2);
+  assert.equal(play.ivRank, 72);
+  assert.equal(play.rrRatio, 3.2);
+  assert.ok(!play.factors.some((f) => f.label === "IV Rank"));
+  assert.ok(!play.factors.some((f) => f.label === "R:R Ratio"));
 });
 
 test("Legacy adapter: key_signal enriches recNote", () => {
@@ -1081,14 +1080,13 @@ test("Legacy adapter: missing conviction → tierLabel null", () => {
   assert.equal(play.tierLabel, null);
 });
 
-test("Legacy adapter: flow_streak_days surfaces as a factor", () => {
+test("Legacy adapter: flow_streak_days surfaces as FLOW origin, not a factor", () => {
   const play = terminalPlayFromEdition({
     ticker: "NVDA", direction: "long", rank: 1, score: 55,
     flow_streak_days: 4,
   });
-  const streak = play.factors.find((f) => f.label === "Flow Streak");
-  assert.ok(streak, "expected a Flow Streak factor");
-  assert.equal(streak!.points, 4);
+  assert.ok(play.discoveryOrigin?.includes("FLOW"));
+  assert.ok(!play.factors.some((f) => f.label === "Flow Streak"));
 });
 
 test("Legacy adapter: flow_streak_days zero or null → no factor", () => {
@@ -1160,11 +1158,20 @@ test("overlayLegacyQuotes: computes stock-level pnlPct from entry (SHORT)", () =
   assert.ok(result.pnlPct! > 4.5 && result.pnlPct! < 5.5, `expected ~4.95%, got ${result.pnlPct}`);
 });
 
-test("Legacy adapter: confirming_signals → Confirming factor", () => {
+test("Legacy adapter: confirming_signals → confluence badge, not a factor", () => {
   const play = terminalPlayFromEdition({ ticker: "AAA", direction: "long", rank: 1, score: 68, confirming_signals: 5 });
-  const f = play.factors.find((f) => f.label === "Confirming");
-  assert.ok(f, "expected a Confirming factor");
-  assert.equal(f!.points, 5);
+  assert.equal(play.confluence, 5);
+  assert.ok(!play.factors.some((f) => f.label === "Confirming"));
+});
+
+test("Legacy adapter: stock entry mid preferred over option premium for entry field", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "NVDA", direction: "long", rank: 1, score: 80,
+    entry_range: "$98.00-$100.00",
+    entry_premium: 6.2,
+  });
+  assert.equal(play.entry, 99);
+  assert.equal(play.entryCostPerContract, 6.2);
 });
 
 test("Legacy adapter: earnings_risk → EARNINGS RISK gate", () => {
@@ -1203,12 +1210,12 @@ test("Legacy adapter: premium_cap_ok true → no PREMIUM HIGH gate", () => {
   assert.equal(play.premiumCapOk, true);
 });
 
-test("Legacy adapter: entry_cost_per_contract surfaces on TerminalPlay", () => {
+test("Legacy adapter: entry_premium maps to entryCostPerContract when no entry_cost_per_contract", () => {
   const play = terminalPlayFromEdition({
     ticker: "NVDA", direction: "long", rank: 1, score: 80,
-    entry_cost_per_contract: 680,
+    entry_premium: 4.5,
   });
-  assert.equal(play.entryCostPerContract, 680);
+  assert.equal(play.entryCostPerContract, 4.5);
 });
 
 test("Legacy adapter: missing optionsPlay/rrRatio → null", () => {

@@ -35,7 +35,7 @@ import { wilsonInterval, proportionDiffCI } from "./calibration-stats";
  *  plan-outcome grades on option premium, never blended with other methodologies. */
 export const ZERODTE_CALIBRATION_METHODOLOGY =
   "0DTE gate calibration over GRADED ledger plays (plan-outcome grades on option premium, " +
-  "stop -50% / trim +100% / hard exit 15:30 ET). Calibration-mode gates (G-4 VIX, G-6 conflict) " +
+  "stop -50% / trim +100% / hard exit 15:50 ET). Calibration-mode gates (G-4 VIX, G-6 conflict) " +
   "are bucketed by their pinned would-block verdict; a gate graduates to enforcing only when " +
   "its would-block bucket is large enough AND measurably worse than would-pass. Buckets under " +
   `n=${LOW_N_THRESHOLD} are low_n and never produce a recommendation. Blocked-value lines grade ` +

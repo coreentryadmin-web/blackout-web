@@ -21,6 +21,7 @@ mock.module("../../../../../lib/db", {
   namedExports: {
     requireDatabaseInProduction: () => null,
     fetchOpenSwingPositions: async () => [],
+    fetchLatestSwingSnapshotEvents: async () => new Map(),
   },
 });
 mock.module("../../../../../lib/market-api-auth", {
@@ -53,7 +54,15 @@ mock.module("../../../../../lib/zerodte/horizon-board-from-payload", {
 });
 mock.module("../../../../../lib/horizon-board", {
   // Identity scope so the test observes the route's rounding, not scoping math.
-  namedExports: { scopeBoardToHorizon: (board: unknown) => board },
+  namedExports: {
+    scopeBoardToHorizon: (board: unknown) => board,
+    assembleHorizonBoard: (_set: unknown, asOf: string) => ({
+      asOf,
+      lanes: { SWING: { plays: [] }, ZERO_DTE: { plays: [] }, LEAPS: { plays: [] } },
+      generatedFloat: RAW_BOARD_FLOAT,
+    }),
+    makePlaySet: (parts: unknown) => parts,
+  },
 });
 mock.module("../../../../../lib/swing/serving-lane", {
   namedExports: {

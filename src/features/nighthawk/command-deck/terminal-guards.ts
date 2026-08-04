@@ -4,16 +4,17 @@
  * extract-pure discipline as zerodte-sources / use-live-marks).
  *
  * The rules encode two correctness constraints:
- *  - The 15:30-ET time-stop countdown is a 0DTE-only, still-open discipline. A Swing/LEAPS/
- *    Legacy position runs for days/weeks, so a "flat by 15:30 today" countdown would be flatly
- *    false and member-misleading; a CLOSED 0DTE row has nothing left to time out.
+ *  - The 15:50-ET hard-exit countdown is a 0DTE-only, still-open discipline (new commits stop
+ *    at 15:30; open risk is managed to the 15:50 flat). A Swing/LEAPS/Legacy position runs for
+ *    days/weeks, so that same-day countdown would be flatly false and member-misleading; a CLOSED
+ *    0DTE row has nothing left to time out.
  *  - A CREDIT iron condor must NEVER draw a DIRECTIONAL exit view (the trim-scale ⅓/⅓ ladder or
  *    the −50/+100 ratchet track) — its profit comes from decay/pin, not a rising long premium,
  *    so those ladders are inverted for it.
  */
 import type { TerminalPlay } from "./types";
 
-/** The 15:30-ET time-stop countdown shows ONLY for a still-open 0DTE row. */
+/** The 15:50-ET hard-exit countdown shows ONLY for a still-open 0DTE row. */
 export function showsTimeStopClock(play: Pick<TerminalPlay, "horizon" | "status">): boolean {
   return play.horizon === "ZERO_DTE" && play.status !== "CLOSED";
 }

@@ -77,7 +77,7 @@ const METHODOLOGY =
   "Night Hawk results are resolved target/stop outcomes from published editions. " +
   "Night Hawk returns reflect next-day underlying stock price movement from the published entry range midpoint — " +
   "not option-premium returns. Actual option P&L will differ based on strike selection, expiry, and implied volatility at entry. " +
-  "0DTE Command results are plan-outcome grades on the printed contract plan (stop -50% / trim +100% / hard exit 15:30 ET) " +
+  "0DTE Command results are plan-outcome grades on the printed contract plan (stop -50% / trim +100% / hard exit 15:50 ET) " +
   "against the option's own premium, from the scanner ledger (every committed setup). " +
   "The three methodologies measure different things and are never blended into one win rate. " +
   "Scratch/breakeven counts appear in the embed and desk panels where applicable.";

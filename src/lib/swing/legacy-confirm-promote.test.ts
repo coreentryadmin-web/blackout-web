@@ -68,6 +68,7 @@ test("buildLegacySwingArtifacts stamps NIGHT HAWK provenance and serve-only grad
   assert.deepEqual(artifact!.play.signalKinds, [LEGACY_SWING_SIGNAL_KIND]);
   assert.deepEqual(artifact!.watch.signalKinds, [LEGACY_SWING_SIGNAL_KIND]);
   assert.equal(artifact!.watch.distinctSessionDays, 2);
+  assert.equal(artifact!.dossier.feature_vector?.accumulation?.net_signed_premium ?? 0, 0);
 });
 
 test("mergeLegacyPromotedSnapshot dedupes existing thesis keys", () => {

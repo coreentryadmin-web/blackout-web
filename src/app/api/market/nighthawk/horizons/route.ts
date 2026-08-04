@@ -7,7 +7,7 @@ import { NextResponse } from "next/server";
 import { requireDatabaseInProduction, fetchOpenSwingPositions, fetchLatestSwingSnapshotEvents } from "@/lib/db";
 import { authorizeCronOrTierApi } from "@/lib/market-api-auth";
 import { getZeroDteBoardPayload } from "@/lib/platform/zerodte-service";
-import { scopeBoardToHorizon } from "@/lib/horizon-board";
+import { scopeBoardToHorizon, assembleHorizonBoard, makePlaySet } from "@/lib/horizon-board";
 import { horizonForView, parseNightHawkView } from "@/features/nighthawk/lib/nighthawk-view";
 import { horizonBoardFromZeroDtePayload } from "@/lib/zerodte/horizon-board-from-payload";
 import { getSwingServingLane, discoverSwingFromPersisted, readSwingServingSnapshot } from "@/lib/swing/serving-lane";
@@ -38,8 +38,19 @@ export async function GET(req: NextRequest) {
     // lane here (it's served by the separate evening-edition route), so it scopes to an all-empty board.
     const viewParam = req.nextUrl.searchParams.get("view") ?? req.nextUrl.searchParams.get("horizon");
     const horizon = viewParam ? horizonForView(parseNightHawkView(viewParam)) : null;
-    const payload = await getZeroDteBoardPayload();
-    let board = horizonBoardFromZeroDtePayload(payload, payload.as_of);
+
+    // Scoped Swing/LEAPS views never need the live 0DTE board rebuild — skip the heavy payload
+    // when the response will zero that lane anyway (P2-5 latency fix).
+    let payload: Awaited<ReturnType<typeof getZeroDteBoardPayload>> | null = null;
+    let board =
+      horizon === "SWING" || horizon === "LEAPS"
+        ? assembleHorizonBoard(makePlaySet({}), new Date().toISOString())
+        : null;
+
+    if (!board) {
+      payload = await getZeroDteBoardPayload();
+      board = horizonBoardFromZeroDtePayload(payload, payload.as_of);
+    }
 
     // SWING branch: persisted discovery lane + OPEN ledger rows for live sections. Cache-reader on
     // providers (spots come from the serving snapshot); DB open-book read is the member board's job.
@@ -59,7 +70,11 @@ export async function GET(req: NextRequest) {
     // payload at the response edge is the same backstop every sibling market route applies and
     // touches no computed value (roundFloats only trims IEEE float noise on numbers).
     return NextResponse.json(
-      roundFloats({ board, upstream_ok: payload.upstream_ok, session: payload.session }),
+      roundFloats({
+        board,
+        upstream_ok: payload?.upstream_ok ?? true,
+        session: payload?.session ?? null,
+      }),
       {
         headers: NO_STORE_HEADERS,
       }
