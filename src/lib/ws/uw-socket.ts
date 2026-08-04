@@ -1399,6 +1399,17 @@ export function initUwSocket() {
       darkPoolStore.data = normalized;
       darkPoolStore.updatedAt = Date.now();
     }
+    // Community #blackout-darkpool — fire-and-forget on ingest worker only.
+    void (async () => {
+      try {
+        const { extractDarkPoolWsPrints } = await import("@/lib/darkpool-discord-format");
+        const { notifyDarkpoolDiscordPrints } = await import("@/lib/darkpool-discord-notify");
+        const prints = extractDarkPoolWsPrints(payload);
+        if (prints.length) await notifyDarkpoolDiscordPrints(prints);
+      } catch (err) {
+        console.warn("[uw-socket] darkpool discord notify:", err);
+      }
+    })();
   });
 
   uwSocket.subscribe("interval_flow", (payload) => {
