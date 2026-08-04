@@ -83,7 +83,7 @@ export const CONTRACT_SELECTOR_VERSION = "v1";
 export const EXIT_POLICY: ZeroDteExitMode = DEFAULT_EXIT_MODE;
 /** Exit-rule VERSION within the active policy (the numeric thresholds — arm/lock/trim
  *  levels, time-stop). Bump when those move even if the POLICY name is unchanged. */
-export const EXIT_VERSION = "v1";
+export const EXIT_VERSION = "v2";
 /** Grader — how a committed play is turned into a WIN/LOSS + PnL (−50/+100 directional,
  *  condor breach, time-stop rules). Bump when the grading rule changes (it re-labels
  *  the very outcomes calibration counts). */

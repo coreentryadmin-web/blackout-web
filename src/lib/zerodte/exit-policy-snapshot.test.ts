@@ -34,8 +34,8 @@ import {
 // (PLAN_RULES stop/target/time-stop, EXIT_RULES arm/lock/runner floors, TRIM_SCALE tranches)
 // changes config_hash; if that edit is NOT accompanied by an EXIT_VERSION bump, THIS test
 // fails, forcing the deliberate version bump the calibration cohort relies on.
-const GOLDEN_RATCHET_HASH = "exitcfg-7feddc1a";
-const GOLDEN_TRIM_SCALE_HASH = "exitcfg-cf037107";
+const GOLDEN_RATCHET_HASH = "exitcfg-ee609639";
+const GOLDEN_TRIM_SCALE_HASH = "exitcfg-d4f71004";
 
 test("WS-02 buildResolvedExitPolicy: resolves the real numeric exit params from the sources of truth", () => {
   const r = buildResolvedExitPolicy("ratchet");
@@ -44,7 +44,7 @@ test("WS-02 buildResolvedExitPolicy: resolves the real numeric exit params from 
   // Numbers come straight from PLAN_RULES — the snapshot mirrors the code exactly at build time.
   assert.equal(r.hard_stop_pct, PLAN_RULES.stop_pct);
   assert.equal(r.target_pct, PLAN_RULES.target_pct);
-  assert.equal(r.time_stop_et, "15:30");
+  assert.equal(r.time_stop_et, "15:50");
   assert.equal(r.collision_rule, "stop_before_target_same_bar");
   assert.deepEqual(r.trim_levels, [{ trigger_pct: 100, fraction: 0.5 }]);
   assert.equal(r.runner_fraction, 0.5);

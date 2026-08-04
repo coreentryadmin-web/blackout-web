@@ -148,7 +148,7 @@ test("premium bars with nothing after entry fall back to the underlying basis, n
 
 // ── Underlying basis (no OCC pinned — the honest fallback) ───────────────────────
 
-test("underlying basis: long graded on direction to the 15:30 close-equivalent, premium P&L never fabricated", async () => {
+test("underlying basis: long graded on direction to the 15:50 close-equivalent, premium P&L never fabricated", async () => {
   const { gradeSkippedPlay } = await mod();
   const v = gradeSkippedPlay({
     direction: "long",
@@ -157,8 +157,8 @@ test("underlying basis: long graded on direction to the 15:30 close-equivalent, 
       bar("09:55", 498),
       bar("10:00", 500), // entry
       bar("12:00", 507),
-      bar("15:30", 505), // last usable close inside the plan window
-      bar("15:45", 490), // past the hard exit — must be ignored
+      bar("15:50", 505), // last usable close inside the plan window
+      bar("15:55", 490), // past the hard exit — must be ignored
     ],
     nowMs: NOW,
   });
@@ -194,7 +194,7 @@ test("underlying basis: short wins on a down move, loses a dead-flat tie", async
 
 // ── Ungradeable (honest limits) ──────────────────────────────────────────────────
 
-test("ungradeable: no bars, no direction, post-15:30 block, or no bar after entry — each with its reason", async () => {
+test("ungradeable: no bars, no direction, post-15:50 block, or no bar after entry — each with its reason", async () => {
   const { gradeSkippedPlay } = await mod();
 
   const noBars = gradeSkippedPlay({ direction: "long", blockedAtMs: et("10:00"), nowMs: NOW });
@@ -212,16 +212,16 @@ test("ungradeable: no bars, no direction, post-15:30 block, or no bar after entr
 
   const late = gradeSkippedPlay({
     direction: "long",
-    blockedAtMs: et("15:31"),
-    underlyingBars: [bar("15:31", 500), bar("15:32", 501)],
+    blockedAtMs: et("15:51"),
+    underlyingBars: [bar("15:51", 500), bar("15:52", 501)],
     nowMs: NOW,
   });
   assert.match(late.reason!, /blocked after the 3:50 ET hard exit/);
 
   const noExit = gradeSkippedPlay({
     direction: "long",
-    blockedAtMs: et("15:29"),
-    underlyingBars: [bar("15:29", 500), bar("15:45", 505)], // only bar after entry is past the window
+    blockedAtMs: et("15:49"),
+    underlyingBars: [bar("15:49", 500), bar("15:55", 505)], // only bar after entry is past the window
     nowMs: NOW,
   });
   assert.equal(noExit.verdict, "ungradeable");
