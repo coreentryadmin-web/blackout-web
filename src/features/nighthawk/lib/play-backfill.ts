@@ -1,8 +1,17 @@
 import { mapClaudePlayToEdition } from "./claude-edition";
-import { EDITION_MIN_PUBLISH_PLAYS, MAX_OPTION_PREMIUM_PER_SHARE, MIN_PUBLISH_SCORE } from "./constants";
+import { MAX_OPTION_PREMIUM_PER_SHARE } from "./constants";
 import type { TickerDossier } from "./dossier";
+import {
+  effectiveMeritScore,
+  effectiveMinPublishPlays,
+  effectiveMinPublishScore,
+  legacyMinPublishTier,
+  playMeritTier,
+} from "./edition-quality";
+import { nhConvictionRank } from "./nighthawk-tiers";
 import { tieredMinOi } from "./grounding";
 import { validatePlayGeometry } from "./play-constraints";
+import { capGatePromotedConviction } from "./publish-gates";
 import { buildDirectionalStockLevels } from "./play-levels";
 import {
   fetchEditionChains,
@@ -50,9 +59,38 @@ export function pickAffordableChainContract(
   };
 }
 
+/** True when a ranked candidate clears the global-strongest merit bar (score + tier). */
+export function rankedCandidateMeritEligible(
+  scored: ScoredCandidate,
+  dossiers: Record<string, TickerDossier>,
+): boolean {
+  const minScore = effectiveMinPublishScore();
+  const minTier = legacyMinPublishTier();
+  if (effectiveMeritScore(scored) < minScore) return false;
+  const probe: PlaybookPlay = {
+    rank: 1,
+    ticker: scored.ticker,
+    direction: scored.direction === "short" ? "SHORT" : "LONG",
+    conviction: scored.conviction,
+    play_type: "stock",
+    thesis: "",
+    key_signal: "",
+    entry_range: "-",
+    target: "-",
+    stop: "-",
+    options_play: "-",
+    score: scored.score,
+    confirming_signals: scored.confirming_signals,
+    earnings_risk: scored.earnings_risk,
+  };
+  const tier = playMeritTier(probe, dossiers);
+  return nhConvictionRank(tier) >= nhConvictionRank(minTier);
+}
+
 /**
- * When critic/grounding leaves fewer than {@link EDITION_MIN_PUBLISH_PLAYS}, backfill from the
- * ranked candidate pool with chain-grounded affordable contracts (or honest levels-only cards).
+ * When critic/grounding/merit filter leaves fewer than the ops minimum, backfill from the
+ * highest-merit ranked candidates (same universe as synthesis) with chain-grounded contracts.
+ * Every backfill play is gate_promoted with an honest warning — never silent filler.
  */
 export async function backfillThinEditionPlays(params: {
   finalPlays: PlaybookPlay[];
@@ -60,13 +98,16 @@ export async function backfillThinEditionPlays(params: {
   dossiers: Record<string, TickerDossier>;
   minPlays?: number;
 }): Promise<{ plays: PlaybookPlay[]; notes: string[] }> {
-  const minPlays = params.minPlays ?? EDITION_MIN_PUBLISH_PLAYS;
+  const minPlays = params.minPlays ?? effectiveMinPublishPlays();
   if (params.finalPlays.length >= minPlays) {
     return { plays: params.finalPlays, notes: [] };
   }
 
   const used = new Set(params.finalPlays.map((p) => p.ticker.toUpperCase()));
-  const pool = params.ranked.filter((r) => !used.has(r.ticker.toUpperCase()));
+  const pool = params.ranked
+    .filter((r) => !used.has(r.ticker.toUpperCase()))
+    .filter((r) => rankedCandidateMeritEligible(r, params.dossiers))
+    .sort((a, b) => effectiveMeritScore(b) - effectiveMeritScore(a));
   if (!pool.length) return { plays: params.finalPlays, notes: [] };
 
   const dossierList = pool
@@ -83,9 +124,6 @@ export async function backfillThinEditionPlays(params: {
 
   for (const scored of pool) {
     if (backfilled.length >= minPlays) break;
-    // Score floor: backfill must clear the organic publish bar — do NOT reuse the
-    // softer hedge floor (that admitted score-20 filler into live editions).
-    if (scored.score < MIN_PUBLISH_SCORE) continue;
     const ticker = scored.ticker.toUpperCase();
     const dossier = params.dossiers[ticker];
     if (!dossier) continue;
@@ -124,10 +162,18 @@ export async function backfillThinEditionPlays(params: {
       console.warn(`[nighthawk/backfill] skipped ${ticker} — levels fail geometry gate`);
       continue;
     }
-    backfilled.push(play);
+    backfilled.push(
+      capGatePromotedConviction({
+        ...play,
+        gate_promoted: true,
+        gate_warnings: [
+          `Ranked-pool merit fill (#${backfilled.length + 1} by score ${Math.round(effectiveMeritScore(scored))}) — verify entry geometry before acting`,
+        ],
+      }),
+    );
     used.add(ticker);
     notes.push(
-      `Backfill ${ticker} (score ${Math.round(scored.score)})${contract ? " — chain-grounded contract" : " — levels only"}.`
+      `Merit backfill ${ticker} (merit ${Math.round(effectiveMeritScore(scored))})${contract ? " — chain-grounded contract" : " — levels only"}.`
     );
   }
 

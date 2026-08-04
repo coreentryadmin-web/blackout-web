@@ -910,22 +910,6 @@ export async function buildEveningEdition(opts?: {
       }
     }
 
-    if (thinEditionBackfillEnabled()) {
-      const { plays: toppedUp, notes: backfillNotes } = await backfillThinEditionPlays({
-        finalPlays,
-        ranked: synthesisRanked,
-        dossiers,
-      });
-      if (backfillNotes.length) {
-        finalPlays = toppedUp.slice(0, effectiveTargetPlays()).map((p, i) => ({ ...p, rank: i + 1 }));
-        finalCriticNotes = [...finalCriticNotes, ...backfillNotes];
-        funnel.critic_passed = finalPlays.length;
-        console.info(
-          `[nighthawk/edition] thin-edition backfill — ${finalPlays.length} play(s) after ranked-pool top-up`
-        );
-      }
-    }
-
     // MERIT FILTER — global strongest: drop sub-tier / sub-score plays before publish gates.
     {
       const { plays: meritPlays, dropped } = filterPlaysByMerit(finalPlays, dossiers, ranked);
@@ -936,6 +920,24 @@ export async function buildEveningEdition(opts?: {
       }
       finalPlays = meritPlays;
       funnel.critic_passed = finalPlays.length;
+    }
+
+    // Ranked-universe floor fill AFTER merit filter — only the next-strongest merit names.
+    if (thinEditionBackfillEnabled() && finalPlays.length < effectiveMinPublishPlays()) {
+      const { plays: toppedUp, notes: backfillNotes } = await backfillThinEditionPlays({
+        finalPlays,
+        ranked: synthesisRanked,
+        dossiers,
+        minPlays: effectiveMinPublishPlays(),
+      });
+      if (backfillNotes.length) {
+        finalPlays = toppedUp.slice(0, effectiveTargetPlays()).map((p, i) => ({ ...p, rank: i + 1 }));
+        finalCriticNotes = [...finalCriticNotes, ...backfillNotes];
+        funnel.critic_passed = finalPlays.length;
+        console.info(
+          `[nighthawk/edition] merit book floor (post-filter) — ${finalPlays.length} play(s)`
+        );
+      }
     }
 
     // STAGE 6 — Publish
@@ -1022,6 +1024,23 @@ export async function buildEveningEdition(opts?: {
             `(${blocked.length} total blocked: ${blocked.map((b) => `${b.ticker}:${b.result.blocks.map((x) => x.code).join(",")}`).join("; ")})`
           );
         } else {
+          // Last resort before recap-only: fill from highest-merit ranked names (honest gate_promoted).
+          if (thinEditionBackfillEnabled()) {
+            const { plays: toppedUp, notes: floorNotes } = await backfillThinEditionPlays({
+              finalPlays,
+              ranked: synthesisRanked,
+              dossiers,
+              minPlays: effectiveMinPublishPlays(),
+            });
+            if (floorNotes.length) {
+              finalPlays = toppedUp.slice(0, effectiveTargetPlays()).map((p, i) => ({ ...p, rank: i + 1 }));
+              funnel.critic_passed = finalPlays.length;
+              console.info(
+                `[nighthawk/edition] merit book floor rescued gate-zero exit — ${finalPlays.length} play(s)`
+              );
+            }
+          }
+          if (!finalPlays.length) {
           const reason = recapReasonAtPublishExit(blocked, funnel);
           console.warn(`[nighthawk/edition] publish gates zeroed, no plays to promote — recap-only: ${reason}`);
           funnel.published = 0;
@@ -1046,6 +1065,7 @@ export async function buildEveningEdition(opts?: {
             job_status: "published",
             current_stage: "published",
           };
+          }
         }
       }
     }
@@ -1062,6 +1082,23 @@ export async function buildEveningEdition(opts?: {
     // This last-resort guard catches any way finalPlays could arrive empty here — a stale/old
     // checkpoint, a future regression — and routes it to the SAME recap-only publish so the row is
     // never written with plays=0 + recap_only:false. Guarantees: published && plays==0 ⟹ recap_only.
+    if (!finalPlays.length) {
+      if (thinEditionBackfillEnabled()) {
+        const { plays: toppedUp, notes: floorNotes } = await backfillThinEditionPlays({
+          finalPlays,
+          ranked: synthesisRanked,
+          dossiers,
+          minPlays: effectiveMinPublishPlays(),
+        });
+        if (floorNotes.length) {
+          finalPlays = toppedUp.slice(0, effectiveTargetPlays()).map((p, i) => ({ ...p, rank: i + 1 }));
+          funnel.critic_passed = finalPlays.length;
+          console.info(
+            `[nighthawk/edition] merit book floor rescued publish guard — ${finalPlays.length} play(s)`
+          );
+        }
+      }
+    }
     if (!finalPlays.length) {
       const reason = "Synthesis reached publish with zero plays (checkpoint/guard slip) — recap-only.";
       console.warn(`[nighthawk/edition] publish guard — empty finalPlays, recap-only fallback: ${reason}`);
