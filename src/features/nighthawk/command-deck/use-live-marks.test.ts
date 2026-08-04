@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   overlayLiveMarks,
+  overlayHorizonWatchTrack,
   overlayZeroDteStockQuotes,
   latchLiveExcursion,
   marksMapFromPayload,
@@ -210,4 +211,31 @@ test("overlayZeroDteStockQuotes: refreshes stockPrice (+ condor spot) from the q
   assert.equal(out!.stockPrice, 101.5);
   assert.equal(out!.condor!.spot, 101.5);
   assert.equal(out!.condor!.spotIsLive, true);
+});
+
+test("overlayLiveMarks: WATCH 0DTE updates trackPct from live mark, never pnlPct", () => {
+  const [out] = overlayLiveMarks(
+    [play({
+      status: "WATCH",
+      pnlPct: null,
+      trackReferencePremium: 4.0,
+      trackPct: 10,
+      entry: null,
+    })],
+    new Map([[row().occ, row({ mark: 5.0, live_pnl_pct: 99 })]]),
+  );
+  assert.equal(out!.pnlPct, null);
+  assert.equal(out!.trackPct, 25);
+  assert.equal(out!.mark, 5.0);
+});
+
+test("overlayHorizonWatchTrack: WATCH swing stamps underlying track from live quote", () => {
+  const [out] = overlayHorizonWatchTrack(
+    [{
+      ...play({ horizon: "SWING", status: "WATCH", pnlPct: null, flagUnderlyingPx: 100 }),
+    }],
+    new Map([["NVDA", { price: 108 }]]),
+  );
+  assert.equal(out!.trackPct, 8);
+  assert.equal(out!.stockPrice, 108);
 });

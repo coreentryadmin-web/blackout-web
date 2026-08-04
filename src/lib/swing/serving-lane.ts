@@ -75,6 +75,11 @@ function dossiersByTicker(dossiers: SwingDossier[]): Map<string, SwingDossier> {
 function enrichPlay(play: HorizonPlay, dossier: SwingDossier | undefined, reads?: SwingServingReads): HorizonPlay {
   if (!dossier) return play; // no thesis found for this ticker → leave it as-is (routes to RESEARCH honestly)
   const meta = swingServingMetaFromDossier(dossier, reads);
+  const flagPx =
+    reads?.setup?.price ??
+    dossier.plan?.entryUnderlyingPx ??
+    play.flagUnderlyingPx ??
+    null;
   return {
     ...play,
     setupState: meta.setupState ?? play.setupState,
@@ -85,6 +90,8 @@ function enrichPlay(play: HorizonPlay, dossier: SwingDossier | undefined, reads?
     regime: meta.regime,
     thesisLevel: meta.thesisLevel,
     thesisNote: meta.thesisNote,
+    flagUnderlyingPx:
+      typeof flagPx === "number" && Number.isFinite(flagPx) && flagPx > 0 ? flagPx : play.flagUnderlyingPx,
   };
 }
 

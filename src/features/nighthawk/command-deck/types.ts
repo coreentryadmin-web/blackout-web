@@ -109,6 +109,12 @@ export interface TerminalPlay {
   entry?: number | null;
   mark?: number | null;
   pnlPct?: number | null;
+  /** WATCH-only hypothetical move since the desk flagged the setup — NOT entry P&L. */
+  trackPct?: number | null;
+  /** Anchor premium (0DTE) or underlying px (Swings) behind `trackPct` — for honest labeling. */
+  trackReferencePremium?: number | null;
+  /** Underlying price when the swing thesis was first flagged — WATCH track anchor. */
+  flagUnderlyingPx?: number | null;
   peak?: number | null;
   trough?: number | null;
   /** Executable exit fill (the BID a long sells into) + its P&L vs entry — the honest realizable

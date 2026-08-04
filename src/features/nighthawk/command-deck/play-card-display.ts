@@ -32,12 +32,23 @@ export function tierStars(tier: string | null | undefined): string {
   return "★".repeat(n) + "☆".repeat(5 - n);
 }
 
-/** Primary return number for the row — peak when closed, live P&L otherwise. */
+/** Primary return number for the row — peak when closed, live P&L when open, track when WATCH. */
 export function primaryReturnPct(play: TerminalPlay): number | null {
   if (play.status === "CLOSED" && play.peak != null) return play.peak;
+  if (play.status === "WATCH" && play.trackPct != null && Number.isFinite(play.trackPct)) {
+    return play.trackPct;
+  }
   if (play.pnlPct != null && play.pnlPct !== 0) return play.pnlPct;
   if (play.status === "CLOSED" && play.pnlPct != null) return play.pnlPct;
   return null;
+}
+
+/** Label beside the return % on list rows — WATCH uses "Since flag", not "P&L". */
+export function primaryReturnLabel(play: TerminalPlay): string {
+  if (play.status === "WATCH" && play.trackPct != null) return "Since flag";
+  if (play.horizon === "LEGACY" && play.pnlPct != null) return "P&L";
+  if (play.status === "CLOSED") return "Peak Return";
+  return "P&L";
 }
 
 export function formatReturnPct(n: number | null): string {

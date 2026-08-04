@@ -27,6 +27,8 @@ import { useSecondTick, useFlash } from "./use-deck-live";
 import {
   formatReturnPct,
   playQualityPct,
+  primaryReturnLabel,
+  primaryReturnPct,
   useLifecyclePlayCard,
   useHeroPlayCard,
 } from "./play-card-display";
@@ -431,7 +433,7 @@ export const PlayCard = memo(function PlayCard({
   onSelect: (id: string) => void;
   nowMs: number;
 }) {
-  const markFlash = useFlash(p.mark ?? p.pnlPct ?? null);
+  const markFlash = useFlash(p.mark ?? p.pnlPct ?? p.trackPct ?? null);
 
   const asOfMs = p.markAsOf ? Date.parse(p.markAsOf) : NaN;
   const hasAsOf = Number.isFinite(asOfMs);
@@ -527,6 +529,21 @@ export const PlayCard = memo(function PlayCard({
               {formatReturnPct(p.peak)}
             </span>
             <span className="nh-deck-premlab">Peak Return</span>
+          </>
+        ) : p.status === "WATCH" && p.trackPct != null ? (
+          <>
+            <span
+              className={clsx(
+                "nh-deck-prem nh-deck-prem-lg",
+                p.trackPct > 0 && "nh-deck-pos",
+                p.trackPct < 0 && "nh-deck-neg",
+                markFlash && "neon",
+              )}
+            >
+              {p.trackPct > 0 ? "▲ " : ""}
+              {formatReturnPct(p.trackPct)}
+            </span>
+            <span className="nh-deck-premlab">{primaryReturnLabel(p)}</span>
           </>
         ) : p.horizon === "LEGACY" && p.stockPrice != null ? (
           <>

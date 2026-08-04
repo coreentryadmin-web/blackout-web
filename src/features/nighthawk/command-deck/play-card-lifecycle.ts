@@ -351,3 +351,8 @@ export function openMetricsValues(play: TerminalPlay): {
     peakPct: play.peak ?? null,
   };
 }
+
+/** WATCH-row track metric — hypothetical move since flag, never entry P&L. */
+export function watchMetricsValues(play: TerminalPlay): { trackPct: number | null } {
+  return { trackPct: play.trackPct ?? null };
+}
