@@ -1,5 +1,65 @@
 # BlackOut Open Issues Log
-Last updated: 2026-08-04 12:44 ET
+Last updated: 2026-08-04 13:05 ET
+
+## grid-rth-2026-08-04 — 0DTE Command + Market Grid RTH verify agent (~9:57 AM PT / 12:57 PM ET)
+
+**Session:** Autonomous **verify** mode per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` (Cloud Agent `cursor/0dte-grid-rth-agent-7e86`). Commands: `npm run validate:grid-rth` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e`.
+
+**Route note:** Classic `/grid` + 9 `/api/grid/*` panels deleted 2026-07-07. 0DTE Command lives on **`/nighthawk`** (`?view=0dte` default). `/grid` → **404** (confirmed). Night Hawk view toggles: **0DTE · Swings · LEAPS · Legacy** (replaces old Grid tab model).
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:grid-rth` | ✅ **14/14 PASS** (0 FAIL) — suite GREEN |
+| `npm run validate:zerodte-logic` | ✅ **17/17 PASS** — gates, plan exits, lifecycle, mergePlays, session heat, ledger PnL |
+| `npm run validate:grid-e2e` | ✅ **5/5 PASS** — board API, HELIX flows, Playwright `/nighthawk` load, zero console errors |
+| `ops:collect` (nested) | ✅ **0 action items** |
+
+### Live board (12:57 ET)
+
+| Probe | Result |
+|---|---|
+| Session heat | **RTH** · heat=100% |
+| Setups | 8–10 live · 2 eligible / 8 total · **0 gate violations** |
+| Ledger | 3 rows · PnL math ✅ · consistency ✅ |
+| Upstream | ✅ `upstream_ok` |
+| Cutoff constant | ✅ 15:30 ET hard exit |
+
+### 0DTE logic probes (unit + pure + live)
+
+| Area | Result |
+|---|---|
+| Gate funnel | SETUP_MIN_GROSS, aggression, dominance, ITM guard — **PASS** |
+| Plan exits | stop −50% · target +100% · time stop 15:30 ET — **PASS** |
+| Trade lifecycle | OPEN → TRIM → CLOSED · sticky trough stop — **PASS** |
+| Plan grading | stop wins when both touch same bar — **PASS** |
+| Session heat | RTH → POST_COMMIT → LATE_SESSION at 15:00 ET — **PASS** |
+| mergePlays UI | past cutoff / MOVED → **SKIP** not OPEN — **PASS** |
+
+### Cross-tool integration
+
+| Check | Result |
+|---|---|
+| SPX bootstrap spot vs GEX | ✅ spot ~7725 |
+| HELIX flows feed scanner | ✅ 20 prints |
+| Night Hawk dedupe | ✅ 5 tickers `covered_elsewhere` |
+| `data-correctness` | ✅ flags=0 mode=full-async |
+| `validate:rth-open` (nested) | ✅ GREEN |
+
+### Findings table
+
+| Severity | ID | Detail | Fix |
+|---|---|---|---|
+| — | — | **No P0/P1 product defects** | member 0DTE Command GREEN |
+| P2 | GRID-RTH-ZERODTE-WARM-504 | `cron:zerodte-warm` probe returned HTTP **504** during grid-rth (WARN, suite still GREEN). Route ships **202 Accepted** + `after()` background warm since 2026-07-30; board snapshot still fresh (`as_of` ~40s). Likely Cloudflare origin timeout on audit's bare GET without `?force=1` hitting a slow path, or edge lag — **monitor** next pass; not blocking member reads. |
+| P2 | GRID-CLASSIC-404 | `/grid` 404 by design post-deletion — onboarding/copy still references `/grid` in a few internal strings | Docs/copy cleanup backlog (non-blocking) |
+
+**Status: GREEN** — all three validation suites 0 FAIL; 0DTE gates, ledger, cross-tool, and Night Hawk UI load verified. No PR opened (verify-only pass).
+
+**Reports:** `audit-output/grid-rth-2026-08-04-verify-1785862887911.json`, `audit-output/zerodte-logic-1785862894675.json`, `audit-output/grid-e2e-1785862929604.json`
+
+---
 
 ## rth-open-2026-08-04-pass2 — RTH comprehensive test sweep (~12:31 PM ET)
 
