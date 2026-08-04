@@ -47,7 +47,11 @@ function run(cmd, label, opts = {}) {
     timeout: opts.timeoutMs ?? undefined,
   });
   if (r.status !== 0) {
-    rec(label, "FAIL", (r.stderr || r.stdout || "").trim().slice(0, 400));
+    const timedOut = r.error?.code === "ETIMEDOUT" || r.signal === "SIGTERM";
+    const detail = timedOut
+      ? `subprocess timed out after ${opts.timeoutMs ?? "default"}ms`
+      : (r.stderr || r.stdout || "").trim().slice(0, 400);
+    rec(label, "FAIL", detail);
     return { ok: false, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
   }
   rec(label, "PASS");
@@ -217,7 +221,8 @@ async function main() {
   else rec("env:CRON_SECRET", "PASS");
 
   if (force || inRthOpenWindow(now)) {
-    run("npm run validate:rth-open", "infra:validate:rth-open", { timeoutMs: 300_000 });
+    // socket-health can take 120s+ per probe; full rth-open-check often ~160s under load.
+    run("npm run validate:rth-open", "infra:validate:rth-open", { timeoutMs: 420_000 });
   }
 
   await auditZeroDteBoard();
