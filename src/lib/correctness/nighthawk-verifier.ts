@@ -8,7 +8,9 @@ import {
   rollUpMetricStatus,
   worstStatus,
 } from "@/lib/correctness/types";
-import { fetchLatestNighthawkEdition, fetchStagedDossiers } from "@/lib/db";
+import { fetchLatestNighthawkEdition, fetchNighthawkPulledPlays, fetchStagedDossiers } from "@/lib/db";
+import { applyNighthawkPullOverlay } from "@/features/nighthawk/lib/pull-overlay";
+import { rowToNightHawkEdition } from "@/features/nighthawk/lib/edition-builder";
 import type { PlaybookPlay } from "@/features/nighthawk/lib/types";
 import {
   parseOptionsContract,
@@ -180,8 +182,20 @@ export async function verifyNightHawk(_marketOpen: boolean): Promise<TickerScore
     return { ticker, status: "skipped", metrics: groupMetrics(ticker, [skip]) };
   }
 
-  const plays = edition.plays as PlaybookPlay[];
   const editionFor = edition.edition_for ?? "";
+  // Same pull overlay as /api/market/nighthawk/edition — latch lives on outcome rows,
+  // not the published edition JSON. Chain-confirm must not sample latched tickers.
+  let editionWithOverlay = rowToNightHawkEdition(edition);
+  if (editionFor && edition.plays.length > 0) {
+    try {
+      const pulledRows = await fetchNighthawkPulledPlays(editionFor);
+      editionWithOverlay = applyNighthawkPullOverlay(editionWithOverlay, pulledRows);
+    } catch {
+      /* fail-soft — same as edition route */
+    }
+  }
+
+  const plays = editionWithOverlay.plays as PlaybookPlay[];
 
   // Staged dossier snapshots for this edition.
   let dossiers: Array<{ ticker: string; dossier: Record<string, unknown>; scored: Record<string, unknown> | null }> = [];

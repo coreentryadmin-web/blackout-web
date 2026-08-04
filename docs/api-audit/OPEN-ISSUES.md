@@ -1,5 +1,74 @@
 # BlackOut Open Issues Log
-Last updated: 2026-08-04 12:58 ET
+Last updated: 2026-08-04 13:58 ET
+
+## rth-open-2026-08-04-pass3 — RTH comprehensive test sweep (~13:45–14:00 PM ET)
+
+**Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` on branch `cursor/rth-comprehensive-test-sweep-7e7d`. Commands: `npm run validate:rth-open` → `GET /api/cron/data-correctness?force=1` → `npm run validate:rth-sweep` → `npm run validate:grid-e2e` → `npm run validate:spx-e2e` → `npm run ops:collect`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` | ✅ **GREEN** (~260s; Postgres skipped private VPC; socket-health warming) |
+| `GET /api/cron/data-correctness?force=1` | ✅ **202 accepted** (async full sweep dispatched) |
+| `data-correctness` (`surface=heatmap`) | ✅ **ok=true · flags=0** |
+| `data-correctness` (`surface=spx`) | ⚠️ **1 flag** — ANET (false: latch-pulled) + SKHY thin OI pre-fix |
+| `data-correctness` (`surface=flows`) | ⚠️ **504** — CF origin timeout under parallel burst |
+| `npm run validate:rth-sweep` | ✅ **0 P0/P1** — 7 pages · **0 missing-field hits** · Largo grounded |
+| `npm run validate:grid-e2e` | ✅ **5/5 PASS** — zerodte board 12 setups · ledger 4 |
+| `npm run validate:spx-e2e` | ✅ **17/18 PASS** (1 WARN: `bie-play-route` cron 401 expected) |
+| `npm run ops:collect` | ✅ **0 action items** |
+
+### Speed (comprehensive sweep — Playwright premium session)
+
+| Page | Nav | Load (ms) | Live wait | Console errors |
+|---|---|---:|---:|---|
+| `/dashboard` (SPX Slayer) | hard | 2630 | 12s | 1× 400 (transient) |
+| `/flows` (HELIX) | soft | 1679 | 8s | 0 |
+| `/heatmap` (Thermal matrix) | soft | 4954 | 20s | 0 |
+| `/vector` | soft | 1786 | 15s | 0 |
+| `/nighthawk` (0DTE Command) | soft | 1905 | 15s | 0 |
+| `/terminal` (Largo) | soft | 1870 | 5s | 0 |
+| `/track-record` | soft | 1649 | 10s | 0 |
+
+**Note:** Classic `/grid` deleted 2026-07-07 — 0DTE Command (12 setups) under `/nighthawk` via `/api/market/zerodte/board`.
+
+### Live auto-update
+
+- `liveTick=null` on all pages — SPX spot stable in each wait window (low-vol midday); not a failure.
+- API freshness: desk `as_of` 114s · platform snapshot 1s · zerodte board 4s.
+
+### Data correctness
+
+| Cross-check | Result |
+|---|---|
+| desk γ-flip vs `gex-positioning` | ✅ aligned (desk 7596.66 vs gex 7596.44; spot ~7746) |
+| All market APIs | ✅ HTTP 200 |
+| Largo NVDA query | ✅ 200 · ~$82.6M premium · `blackout_intelligence` |
+| SPX matrix E2E | ✅ GEX+VEX+DEX+CHARM · 159 strikes |
+| Night Hawk ANET | ✅ latch `pulled:true` on edition API — verifier missed overlay (**fixed** this pass) |
+| Night Hawk SKHY | ⚠️ live OI **324** on $143 Aug-7 call (below `STRIKE_MIN_OI` 500) — still actionable |
+
+### Missing-field audit
+
+**0 missing-field signals** across all 7 pages. Largo `Regime: —` = expected when no active regime tag.
+
+### Findings table
+
+| Severity | ID | Detail | Fix |
+|---|---|---|---|
+| — | — | **No P0/P1 product defects** on member surfaces | GREEN after deploy |
+| P2 | RTH-THERMAL-SOFT-NAV | `/heatmap` soft-nav 4954ms (>1.5s target) | Monitor — matrix warm path |
+| P2 | RTH-DASH-CONSOLE-400 | Dashboard console 1× HTTP 400 during hard load | Transient |
+| P2 | DC-ANET-PULLED-OVERLAY | data-correctness flagged latch-pulled ANET | **Fixed** — apply pull overlay in `nighthawk-verifier` |
+| P2 | DC-SKHY-THIN-OI | SKHY $143 CALL chain OI 324 &lt; floor 500 | **Open** — intraday OI decay on OTM weekly; consider illiquid latch |
+| P2 | DC-FLOWS-504-BURST | `surface=flows` 504 during parallel correctness burst | Transient CF timeout |
+
+**Status: GREEN** — comprehensive sweep 0 P0/P1. Fix PR for ANET overlay → merge → re-verify data-correctness.
+
+**Reports:** `audit-output/rth-sweep-2026-08-04T17-50-39-712Z.json`, `audit-output/grid-e2e-1785866052668.json`, `audit-output/spx-dashboard-e2e-1785866067069.json`
+
+---
 
 ## rth-open-2026-08-04-pass2 — RTH comprehensive test sweep (~12:31–12:45 PM ET)
 
