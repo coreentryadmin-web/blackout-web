@@ -67,6 +67,8 @@
   html:not(.ios-native-shell) .nh-v2-page .nh-deck-right {
     min-height: 0;
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
   }
 
   /* Fixed chrome above the play queue must not shrink — only .nh-deck-rows scrolls. */
@@ -98,6 +100,37 @@
   }
 
   html:not(.ios-native-shell) .nh-v2-page .nh-deck-rows::-webkit-scrollbar-track {
+    background: rgba(8, 8, 14, 0.85);
+  }
+
+  /* Right detail panel — header/tabs/footer pinned; only .nh-deck-body scrolls.
+     Without this the viewport lock (shell-fill) clips thesis/management content that
+     previously scrolled via the page — left rail got .nh-deck-rows rules in #1596 but
+     the right mirror was missing. */
+  html:not(.ios-native-shell) .nh-v2-page .nh-deck-right > *:not(.nh-deck-body) {
+    flex-shrink: 0;
+  }
+
+  html:not(.ios-native-shell) .nh-v2-page .nh-deck-body {
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(50, 240, 138, 0.45) rgba(8, 8, 14, 0.85);
+  }
+
+  html:not(.ios-native-shell) .nh-v2-page .nh-deck-body::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  html:not(.ios-native-shell) .nh-v2-page .nh-deck-body::-webkit-scrollbar-thumb {
+    background: rgba(50, 240, 138, 0.45);
+    border-radius: 3px;
+  }
+
+  html:not(.ios-native-shell) .nh-v2-page .nh-deck-body::-webkit-scrollbar-track {
     background: rgba(8, 8, 14, 0.85);
   }
 }
