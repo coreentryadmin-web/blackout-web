@@ -17,16 +17,16 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 
 ---
 
-## 2026-08-04 — [P2, UX] Night Hawk right detail panel lost scroll after left-rail fix (#1596) — FIXED
+## 2026-08-04 — [P2, UX] Night Hawk right detail panel lost scroll after left-rail fix (#1596) — FIXED (flex-basis)
 
 | Field | Value |
 |-------|-------|
 | **Severity** | P2 UX — thesis/management content clipped on Swings + 0DTE when play detail exceeds viewport |
-| **Evidence** | Member screenshot: left `.nh-deck-rows` scrollbar visible; right CORZ thesis cut off with no page or panel scroll |
-| **Root cause** | #1596 capped shell at `100svh` + `overflow:hidden` and added flex scroll only for `.nh-deck-rows` (left). Right panel relied on page scroll before; `.nh-deck-body` had `overflow-y:auto` in globals but no flex-shrink chrome / min-height chain under the new viewport lock |
-| **Fix** | Mirror left rules on right: `nh-deck-right` flex column; pin header/tabs/footer; `.nh-deck-body` flex fill + visible scrollbar |
+| **Evidence** | Member screenshot (ANET/Swings): left `.nh-deck-rows` scrollbar visible; right thesis cut off with no panel scroll. Prod ECS on `e7828f6a` (#1600) still reproduced — CSS was live but ineffective. |
+| **Root cause** | #1600 mirrored left scroll rules but kept `flex: 1 1 auto` on `.nh-deck-body` and a `min-height: min(70vh, …)` floor on `.nh-deck-fill` that **overrode** `min-height: 0`. The deck outgrew the locked shell; `overflow:hidden` on ancestors clipped the right rail while the body sized to content (no scrollport). |
+| **Fix** | Flex chain uses `flex: 1 1 0%` + `min-height: 0` on shell → deck → panes → `.nh-deck-body` / `.nh-deck-rows`; drop the 70vh min-height floor on `.nh-deck-fill`. |
 | **Files** | `src/app/nighthawk-v2.css` |
-| **Status** | FIXED — PR `cursor/nighthawk-right-scroll-3d11` |
+| **Status** | FIXED — PR `cursor/nighthawk-right-scroll-3d11` (follow-up to #1600) |
 
 ---
 
