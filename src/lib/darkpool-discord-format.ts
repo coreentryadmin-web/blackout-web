@@ -9,7 +9,7 @@ import type { DiscordEmbed } from "@/lib/helix-discord-format";
 
 export { type DiscordEmbed };
 
-export const DARKPOOL_DISCORD_MIN_PREMIUM = 1_000_000;
+export const DARKPOOL_DISCORD_MIN_PREMIUM = 5_000_000;
 export const DARKPOOL_DISCORD_DIGEST_LIMIT = 5;
 
 export type DarkPoolDiscordPrint = {
