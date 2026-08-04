@@ -94,7 +94,6 @@ export function ZeroDteDeck({
         loading={isLoading && !data}
         allocation={data?.allocation ?? null}
         sessionHeat={sessionHeat}
-        commandCenter
         deckHorizon="ZERO_DTE"
         boardAsOf={typeof data?.as_of === "string" ? data.as_of : null}
         upstreamOk={data?.upstream_ok ?? null}
@@ -194,7 +193,6 @@ export function HorizonDeck({ horizon }: { horizon: "SWING" | "LEAPS" }) {
       degraded={degraded}
       loading={isLoading && !data}
       emptyHint={emptyHint}
-      commandCenter
       deckHorizon={horizon}
       boardAsOf={typeof data?.board?.asOf === "string" ? data.board.asOf : null}
       upstreamOk={data?.upstream_ok ?? null}
@@ -357,7 +355,6 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
         laneLabel="Legacy · Tonight's playbook"
         degraded={hasFetchError || isDegraded}
         loading={!edition && !error}
-        commandCenter
         deckHorizon="LEGACY"
         boardAsOf={edition?.published_at ?? null}
         emptyHint={

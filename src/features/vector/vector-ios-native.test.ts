@@ -20,9 +20,9 @@ test("Vector route — no DeskShell double offset", () => {
   assert.match(page, /VectorPageShell/);
 });
 
-test("NightHawkFeed hides view blurb on native shell", () => {
+test("NightHawkFeed — no per-view marketing blurb above the deck", () => {
   const src = readFileSync(join(root, "src/features/nighthawk/components/NightHawkFeed.tsx"), "utf8");
-  assert.match(src, /!nativeShell/);
+  assert.doesNotMatch(src, /NIGHTHAWK_VIEW_META\[view\]\.blurb/);
   assert.match(src, /variant=\{nativeShell \? "compact"/);
 });
 

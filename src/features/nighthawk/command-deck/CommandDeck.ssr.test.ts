@@ -129,6 +129,21 @@ test("legacy row uses lifecycle layout", async () => {
   assert.match(html, />LEGACY</);
 });
 
+test("CommandDeck member default renders filters only — no ops header", async () => {
+  const { CommandDeck } = await load();
+  const html = renderToStaticMarkup(
+    React.createElement(CommandDeck, {
+      plays: [play({ id: "0DTE:META", ticker: "META" })],
+      laneLabel: "0DTE · same-day",
+      deckHorizon: "ZERO_DTE",
+    }),
+  );
+  assert.match(html, /nh-deck-filtbtn/);
+  assert.doesNotMatch(html, /nh-deck-header-compact/);
+  assert.doesNotMatch(html, /nh-deck-cockpit/);
+  assert.doesNotMatch(html, /zerodte-market-state-strip/);
+});
+
 test("CommandDeck command center renders stat strip for 0DTE", async () => {
   const { CommandDeck } = await load();
   const html = renderToStaticMarkup(

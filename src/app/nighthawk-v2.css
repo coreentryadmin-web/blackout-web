@@ -79,7 +79,7 @@
   html:not(.ios-native-shell) .nh-v2-page .nh-deck-left > .nh-deck-cmd,
   html:not(.ios-native-shell) .nh-v2-page .nh-deck-left > .nh-deck-lh,
   html:not(.ios-native-shell) .nh-v2-page .nh-deck-left > .nh-deck-cockpit,
-  html:not(.ios-native-shell) .nh-v2-page .nh-deck-left > .nh-deck-chrome-row,
+  html:not(.ios-native-shell) .nh-v2-page .nh-deck-left > .nh-deck-chrome-row--solo,
   html:not(.ios-native-shell) .nh-v2-page .nh-deck-left > .nh-deck-context-strips {
     flex-shrink: 0;
   }

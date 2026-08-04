@@ -206,32 +206,13 @@ export function CommandDeck({
             playCounts={{ all: plays.length, open: counts.open, watch: counts.watch, closed: counts.closed }}
           />
         ) : (
-          <>
-            <div className="nh-deck-lh">
-              <span>{laneLabel}</span>
-              <span>
-                {degraded
-                  ? "data down"
-                  : statusFilter === "ALL"
-                    ? `${plays.length} plays`
-                    : `${filtered.length} of ${plays.length}`}
-              </span>
-            </div>
-            {deckHorizon === "ZERO_DTE" && !degraded && (marketState || discoveryFunnel?.summary) ? (
-              <div className="nh-deck-context-strips mb-2 space-y-2 px-0.5">
-                <MarketStateStrip ms={marketState} />
-                <DiscoveryFunnelStrip funnel={discoveryFunnel} />
-              </div>
-            ) : null}
-            <CockpitStrip risk={risk} tape={tape} />
-            <DeckChromeRow
-              statusFilter={statusFilter}
-              setStatusFilter={setStatusFilter}
-              sortMode={sortMode}
-              setSortMode={setSortMode}
-              playCounts={{ all: plays.length, open: counts.open, watch: counts.watch, closed: counts.closed }}
-            />
-          </>
+          <DeckChromeRow
+            statusFilter={statusFilter}
+            setStatusFilter={setStatusFilter}
+            sortMode={sortMode}
+            setSortMode={setSortMode}
+            playCounts={{ all: plays.length, open: counts.open, watch: counts.watch, closed: counts.closed }}
+          />
         )}
         <div className="nh-deck-rows">
           {degraded && (
@@ -284,7 +265,7 @@ function DeckChromeRow({
   playCounts: { all: number; open: number; watch: number; closed: number };
 }) {
   return (
-    <div className="nh-deck-chrome-row">
+    <div className="nh-deck-chrome-row nh-deck-chrome-row--solo">
       <div className="nh-deck-filterbar" role="group" aria-label="Filter plays by status">
         <button type="button" className={clsx("nh-deck-filtbtn", statusFilter === "ALL" && "on")} onClick={() => setStatusFilter("ALL")}>
           ALL <span className="cnt">{playCounts.all}</span>
