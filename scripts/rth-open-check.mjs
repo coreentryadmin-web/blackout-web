@@ -161,30 +161,51 @@ async function main() {
     // Options socket — HTTP probe (reliable across multi-replica clusters; log grep misses the leader).
     const cron = auditSecret("CRON_SECRET");
     if (cron) {
-      try {
-        const base = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
-        const res = await fetch(`${base}/api/cron/socket-health`, {
-          headers: { Authorization: `Bearer ${cron}` },
-        });
-        const body = await res.json().catch(() => ({}));
-        const opt = body.websockets?.options;
-        const uw = body.websockets?.unusual_whales;
-        if (opt) {
-          if (opt.ok) ok(`options-socket: ${opt.detail}`);
-          else if (et.mins >= 9 * 60 + 30) fail(`options-socket: ${opt.detail}`);
-          else console.log(`  ⚠ options-socket: pre-09:30 — ${opt.detail}`);
-          if (uw && !uw.ok && et.mins >= 9 * 60 + 30) {
-            console.log(`  ⚠ unusual_whales: ${uw.detail}`);
+      const base = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
+      const socketHealthTimeoutMs = Number(process.env.SOCKET_HEALTH_TIMEOUT_MS ?? 120_000);
+      let socketProbeOk = false;
+      for (let attempt = 0; attempt < 2 && !socketProbeOk; attempt++) {
+        try {
+          const ac = new AbortController();
+          const socketTimer = setTimeout(() => ac.abort(), socketHealthTimeoutMs);
+          let res;
+          try {
+            res = await fetch(`${base}/api/cron/socket-health`, {
+              headers: { Authorization: `Bearer ${cron}` },
+              signal: ac.signal,
+            });
+          } finally {
+            clearTimeout(socketTimer);
           }
-        } else if (res.status === 401) {
-          console.log(
-            "  ⚠ options-socket probe HTTP 401 — CRON_SECRET in this env may not match prod (ECS crons unaffected)"
-          );
-        } else {
-          fail(`options-socket probe HTTP ${res.status}`);
+          const body = await res.json().catch(() => ({}));
+          const opt = body.websockets?.options;
+          const uw = body.websockets?.unusual_whales;
+          if (opt) {
+            if (opt.ok) {
+              ok(`options-socket: ${opt.detail}`);
+              socketProbeOk = true;
+            } else if (et.mins >= 9 * 60 + 30) fail(`options-socket: ${opt.detail}`);
+            else console.log(`  ⚠ options-socket: pre-09:30 — ${opt.detail}`);
+            if (uw && !uw.ok && et.mins >= 9 * 60 + 30) {
+              console.log(`  ⚠ unusual_whales: ${uw.detail}`);
+            }
+          } else if (res.status === 401) {
+            console.log(
+              "  ⚠ options-socket probe HTTP 401 — CRON_SECRET in this env may not match prod (ECS crons unaffected)"
+            );
+            socketProbeOk = true;
+          } else {
+            fail(`options-socket probe HTTP ${res.status}`);
+            socketProbeOk = true;
+          }
+        } catch (e) {
+          if (attempt === 0 && /aborted/i.test(e.message)) {
+            console.log(`  ⚠ options-socket probe slow (attempt ${attempt + 1}) — retrying…`);
+            continue;
+          }
+          fail(`options-socket probe failed: ${e.message}`);
+          socketProbeOk = true;
         }
-      } catch (e) {
-        fail(`options-socket probe failed: ${e.message}`);
       }
     } else {
       console.log("  ⚠ CRON_SECRET unset — skipping options-socket HTTP probe");

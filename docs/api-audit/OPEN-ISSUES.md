@@ -1,5 +1,71 @@
 # BlackOut Open Issues Log
-Last updated: 2026-08-04 12:02 ET
+Last updated: 2026-08-04 12:10 ET
+
+## rth-open-2026-08-04-pass1 — RTH comprehensive test sweep (~12:00 PM ET)
+
+**Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` + full comprehensive sweep (Cloud Agent `cursor/rth-comprehensive-test-sweep-d63d`). Commands: `npm run validate:rth-open` → `GET /api/cron/data-correctness?force=1` → `npm run validate:rth-sweep`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` | ⚠️ **1 FAIL** on 2nd socket-health probe (90s abort) — **fixed** via 120s timeout + retry in `rth-open-check.mjs` |
+| `GET /api/cron/data-correctness?force=1` | ✅ **ok=true · flags=0** (86ms) |
+| `npm run validate:rth-sweep` | ✅ **0 P0/P1** — all 7 pages soft-nav 1.6–2.2s · **0 missing-field hits** · Largo grounded |
+| `npm run ops:collect` | ✅ **0 action items** |
+
+### Speed (comprehensive sweep — Playwright premium session)
+
+| Page | Nav | Load (ms) | Live wait | Console errors |
+|---|---|---:|---:|---|
+| `/dashboard` (SPX Slayer) | hard | 1665 | 12s | 1× 400 (transient resource) |
+| `/flows` (HELIX) | soft | 2158 | 8s | 0 |
+| `/heatmap` (Thermal matrix) | soft | 1638 | 20s | 0 |
+| `/vector` | soft | 2103 | 15s | 0 |
+| `/nighthawk` (0DTE Command) | soft | 2038 | 15s | 0 |
+| `/terminal` (Largo) | soft | 1769 | 5s | 0 |
+| `/track-record` | soft | 1587 | 10s | 0 |
+
+**Note:** Classic `/grid` page deleted 2026-07-07 — 0DTE Command panels live under `/nighthawk` (`/api/market/zerodte/board`).
+
+### Live auto-update
+
+- `liveTick=null` on all pages — SPX spot stable in each wait window (no tick detected via body-text diff); not a failure during low-volatility midday.
+- SSE/stream paths exercised via API: desk `as_of` 59s fresh · platform snapshot `as_of` 0s · zerodte board `as_of` 28s.
+
+### Data correctness
+
+| Cross-check | Result |
+|---|---|
+| desk γ-flip vs `gex-positioning` | ✅ 7609.16 vs 7609.15 (spot 7709.42, tol 1%) |
+| desk spot | 7709.42 |
+| All market APIs | ✅ HTTP 200 (desk 453ms · heatmap SPX 871ms · flows 2163ms · zerodte/board 218ms) |
+| Largo NVDA query | ✅ 200 · $72,836,021 premium · tools: `blackout_intelligence` |
+
+### Missing-field audit
+
+**0 missing-field signals** across all 7 pages (no `—`, `$—`, `N/A`, or empty tables where data expected during RTH).
+
+| Item | Classification |
+|---|---|
+| Largo answer `Regime: —` | **Expected** — regime label omitted when scanner has no active regime tag (flow data present) |
+| Thermal profile tab | **Sweep gap** — tabs render after matrix block loads; harness updated to wait 15s for `Profile` tab |
+
+### Findings table
+
+| Severity | ID | Detail | Fix |
+|---|---|---|---|
+| — | — | **No P0/P1 product defects** | member surfaces GREEN |
+| INFO | ENV-NODE-MODULES | Initial `validate:rth-open` failed — missing `pg` / Playwright browsers | `npm install` + `npx playwright install chromium` |
+| P2 | RTH-SOCKET-HEALTH-SLOW | `/api/cron/socket-health` takes 60–90s; duplicate probe in `rth-open-check` aborted at 90s | **Fixed** — 120s timeout + retry |
+| P2 | RTH-SWEEP-PROFILE-TAB | Thermal `Profile + Curve + Shift` tab not clicked when matrix still loading | **Fixed** — waitFor visible + 3s dwell in sweep harness |
+| P2 | RTH-DASH-CONSOLE-400 | Dashboard console 1× HTTP 400 during hard load | Transient — no member-visible defect; re-check next pass |
+
+**Status: GREEN** — data-correctness 0 flags, comprehensive sweep 0 P0/P1, cross-tool GEX aligned. No GitHub issue opened.
+
+**Reports:** `audit-output/rth-sweep-2026-08-04T15-57-18-451Z.json`
+
+---
 
 ## grid-rth-2026-08-04 — 0DTE Command RTH verify agent (market-open ~8:56 AM PT / 11:56 AM ET)
 

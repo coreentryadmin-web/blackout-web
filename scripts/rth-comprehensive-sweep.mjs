@@ -327,16 +327,27 @@ async function browserSweep(signInUrl) {
     const missing = scanMissing(textAfter, label);
     report.missing.push(...missing);
 
-    // Heatmap profile tab
+    // Thermal profile tab — "Gamma Profile + Curve + Shift" (desktop) or "Profile" (mobile).
     if (path === "/heatmap") {
       const profileTab = page.getByRole("tab", { name: /profile/i });
+      try {
+        await profileTab.first().waitFor({ state: "visible", timeout: 15000 });
+      } catch {
+        /* tabs hidden while matrix block is loading/empty — matrix-only pass still counts */
+      }
       if (await profileTab.count()) {
         const tabT0 = Date.now();
-        await profileTab.click();
-        await page.waitForTimeout(2000);
+        await profileTab.first().click();
+        await page.waitForTimeout(3000);
         const profileText = await page.locator("body").innerText().catch(() => "");
         report.missing.push(...scanMissing(profileText, "heatmap-profile"));
-        report.pages.push({ label: "heatmap-profile", navType: "tab", loadMs: Date.now() - tabT0, consoleErrors: [] });
+        report.pages.push({
+          label: "heatmap-profile",
+          navType: "tab",
+          loadMs: Date.now() - tabT0,
+          consoleErrors: consoleErrors.splice(0),
+          missingCount: scanMissing(profileText, "heatmap-profile").reduce((a, m) => a + m.count, 0),
+        });
       }
     }
 
