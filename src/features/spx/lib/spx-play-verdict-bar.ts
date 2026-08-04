@@ -1,5 +1,9 @@
 import type { SpxPlayPayload } from "@/features/spx/lib/spx-play-engine";
-import { formatSpxContractChipLabel } from "@/features/spx/lib/spx-play-contract-label";
+import {
+  pinPlayAlignmentHint,
+  resolveSpxPlayContractChip,
+} from "@/features/spx/lib/spx-play-contract-label";
+import type { SpxPinForecast } from "@/features/spx/lib/spx-pin";
 
 export type PlayVerdictMode = "loading" | "closed" | "open" | "watch" | "hunting";
 
@@ -18,26 +22,15 @@ export type PlayVerdictBarModel = {
   gateLine: string | null;
   trimHint: string | null;
   signalCommitted: boolean;
+  /** When pin magnet drift and structure play direction diverge. */
+  alignHint: string | null;
 };
 
 const fmt = (n: number | null | undefined, d = 0) =>
   n == null || !Number.isFinite(n) ? "—" : n.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
 
 function contractLabel(play: SpxPlayPayload): string | null {
-  const raw =
-    play.open_play?.option_label ??
-    play.option_ticket?.contract_label ??
-    null;
-  const strike = play.open_play?.entry_price ?? play.levels?.entry;
-  const premium =
-    play.open_play?.option_premium ??
-    play.option_ticket?.premium_range ??
-    null;
-  const label = formatSpxContractChipLabel(raw, {
-    strike: strike ?? 0,
-    direction: play.direction ?? play.open_play?.direction,
-  }, premium);
-  return label === "—" ? null : label;
+  return resolveSpxPlayContractChip(play);
 }
 
 function levelsLine(play: SpxPlayPayload): string | null {
@@ -92,9 +85,10 @@ function resolveMode(play: SpxPlayPayload | null, sessionActive: boolean, loadin
 /** Pure view-model for the compact SPX Play Verdict Bar under the EOD Pin Forecaster. */
 export function buildPlayVerdictBarModel(
   play: SpxPlayPayload | null,
-  opts: { sessionActive: boolean; loading: boolean }
+  opts: { sessionActive: boolean; loading: boolean; pin?: SpxPinForecast | null }
 ): PlayVerdictBarModel {
   const mode = resolveMode(play, opts.sessionActive, opts.loading);
+  const emptyAlign = { alignHint: null as string | null };
 
   if (mode === "loading") {
     return {
@@ -112,6 +106,7 @@ export function buildPlayVerdictBarModel(
       gateLine: null,
       trimHint: null,
       signalCommitted: false,
+      ...emptyAlign,
     };
   }
 
@@ -131,6 +126,7 @@ export function buildPlayVerdictBarModel(
       gateLine: null,
       trimHint: null,
       signalCommitted: false,
+      ...emptyAlign,
     };
   }
 
@@ -150,6 +146,7 @@ export function buildPlayVerdictBarModel(
       gateLine: null,
       trimHint: null,
       signalCommitted: false,
+      ...emptyAlign,
     };
   }
 
@@ -178,10 +175,13 @@ export function buildPlayVerdictBarModel(
         ? "Trim zone — scale partial"
         : null;
 
+  const playDirection = play.direction ?? play.open_play?.direction ?? null;
+  const alignHint = pinPlayAlignmentHint(playDirection, opts.pin?.magnet?.direction);
+
   return {
     mode,
     badge,
-    direction: play.direction ?? play.open_play?.direction ?? null,
+    direction: playDirection,
     contract,
     grade: play.grade || play.open_play?.grade || null,
     score: Number.isFinite(play.score) ? play.score : null,
@@ -193,5 +193,6 @@ export function buildPlayVerdictBarModel(
     gateLine,
     trimHint,
     signalCommitted: play.signal_committed,
+    alignHint,
   };
 }

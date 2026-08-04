@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import type { SpxPlayPayload } from "@/features/spx/lib/spx-play-engine";
 import { buildPlayVerdictBarModel } from "@/features/spx/lib/spx-play-verdict-bar";
+import { useSpxPinForecast } from "@/features/spx/hooks/useSpxPinForecast";
 
 const C = {
   bg: "#0f151f",
@@ -32,9 +33,10 @@ export function SpxPlayVerdictBar({
   compactDefaultCollapsed = false,
 }: Props) {
   const [expanded, setExpanded] = useState(!compactDefaultCollapsed);
+  const { pin } = useSpxPinForecast(sessionActive);
   const model = useMemo(
-    () => buildPlayVerdictBarModel(play, { sessionActive, loading: playLoading }),
-    [play, sessionActive, playLoading]
+    () => buildPlayVerdictBarModel(play, { sessionActive, loading: playLoading, pin }),
+    [play, sessionActive, playLoading, pin]
   );
 
   const dirColor =
@@ -270,6 +272,24 @@ export function SpxPlayVerdictBar({
               }}
             >
               Signal only — wait for committed OPEN before acting.
+            </div>
+          )}
+
+          {model.alignHint && (
+            <div
+              style={{
+                marginTop: 10,
+                padding: "6px 10px",
+                borderRadius: 8,
+                fontFamily: C.mono,
+                fontSize: 11,
+                color: C.muted,
+                background: "rgba(56,189,248,.06)",
+                border: "1px solid rgba(56,189,248,.25)",
+                lineHeight: 1.45,
+              }}
+            >
+              {model.alignHint}
             </div>
           )}
         </div>

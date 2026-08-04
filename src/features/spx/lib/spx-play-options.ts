@@ -212,7 +212,8 @@ export async function buildOptionTicket(
     const ticket: OptionTicket = {
       ...empty,
       strike,
-      contract_label: `${strike}${option_type === "call" ? "C" : "P"}`,
+      // No contract_label — index-plan fallback must not render as a liquid 0DTE ticket.
+      contract_label: "",
       blocked: true,
       block_reason: "No liquid chain match — index plan only",
     };

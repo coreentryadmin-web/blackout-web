@@ -1,7 +1,7 @@
 import type { SpxPlayPayload } from "@/features/spx/lib/spx-play-engine";
 import type { LottoPlayPayload } from "@/features/spx/lib/spx-lotto-engine";
 import type { PowerHourPlayPayload } from "@/features/spx/lib/spx-power-hour-engine";
-import { formatSpxContractChipLabel } from "@/features/spx/lib/spx-play-contract-label";
+import { formatSpxContractChipLabel, resolveSpxPlayContractChip } from "@/features/spx/lib/spx-play-contract-label";
 import { isStagingDeploy } from "@/lib/clerk-env";
 
 export type PlayKanbanKind = "structure" | "lotto" | "power";
@@ -24,21 +24,7 @@ function filterMatches(kind: PlayKanbanKind, filter: PlayKanbanFilter): boolean 
 }
 
 function structureStrikeChip(play: SpxPlayPayload): string | null {
-  const raw =
-    play.option_ticket?.contract_label ??
-    play.open_play?.option_label ??
-    null;
-  const strike = play.levels?.entry ?? play.open_play?.entry_price;
-  const premium =
-    play.open_play?.option_premium ??
-    play.option_ticket?.premium_range ??
-    null;
-  const formatted = formatSpxContractChipLabel(raw, {
-    strike: strike ?? 0,
-    direction: play.direction,
-  }, premium);
-  if (formatted === "—" && strike == null) return null;
-  return formatted;
+  return resolveSpxPlayContractChip(play);
 }
 
 function lottoChipLabel(lotto: LottoPlayPayload): string {
@@ -249,11 +235,8 @@ export function buildPlayKanbanChips(input: {
 
   if (play && filterMatches("structure", filter) && history.length > 1) {
     for (const row of history.slice(1, 8)) {
-      const label = formatSpxContractChipLabel(row.open_play?.option_label, {
-        strike: row.levels?.entry ?? row.open_play?.entry_price ?? 0,
-        direction: row.direction,
-      }, row.open_play?.option_premium);
-      const fallback = label !== "—" ? label : row.action.slice(0, 4);
+      const label = resolveSpxPlayContractChip(row);
+      const fallback = label ?? row.action.slice(0, 4);
       closed.push({
         id: row.id,
         column: "closed",
