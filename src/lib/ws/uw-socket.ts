@@ -2,7 +2,14 @@
  * Singleton UW WebSocket manager — multiplex socket per official UW examples.
  * @see https://github.com/unusual-whales/api-examples
  */
-import { persistAndPublishFlowAlert, alertId as computeFlowAlertId, MIN_PREMIUM as FLOW_MIN_PREMIUM } from "@/lib/flow-persist";
+import {
+  persistAndPublishFlowAlert,
+  alertId as computeFlowAlertId,
+  MIN_PREMIUM as FLOW_MIN_PREMIUM,
+  MIN_PREMIUM_FETCH_FLOOR as FLOW_MIN_PREMIUM_FETCH_FLOOR,
+  requiredMinPremium,
+  dteFromExpiry,
+} from "@/lib/flow-persist";
 import { makeFlowDedup } from "@/lib/flow-dedup";
 import { makeSourceHealth, requireHealthySourceEnabled } from "@/lib/ws/source-health";
 import { computeBackfillWindowStartMs, reconcileGap } from "@/lib/ws/flow-reconciliation";
@@ -1230,7 +1237,9 @@ async function runFlowSourceReconciliation(now = Date.now()): Promise<void> {
         const { fetchMarketFlowAlertRows } = await import("@/lib/providers/unusual-whales");
         const rows = await fetchMarketFlowAlertRows({
           limit: 200,
-          min_premium: FLOW_MIN_PREMIUM,
+          // Fetch at the lower (near-dated) floor — persistAndPublishFlowAlert applies the
+          // precise DTE-aware floor per-row (FINDINGS 2026-08-04).
+          min_premium: FLOW_MIN_PREMIUM_FETCH_FLOOR,
           newer_than: new Date(sinceMs).toISOString(),
         });
         return rows.map(({ raw, flow }) => ({
@@ -1308,11 +1317,12 @@ export function initUwSocket() {
         const flow = parseUwFlowAlert(rec);
         // WS-21: advance the confirmed provider cursor so the reconnect backfill window is precise.
         flowSourceHealth.recordConfirmedProviderTs(providerTsFromRaw(rec));
-        // Premium pre-filter BEFORE persist: identical threshold/comparison to
-        // persistAndPublishFlowAlert (flow.premium < MIN_PREMIUM => dropped there too),
-        // so this only skips work persist would also reject. A NaN premium yields
-        // false here (same as persist) and falls through to persist, the authority.
-        if (flow.premium < FLOW_MIN_PREMIUM) continue;
+        // Premium pre-filter BEFORE persist: identical DTE-aware threshold/comparison to
+        // persistAndPublishFlowAlert (dropped there too), so this only skips work persist
+        // would also reject (FINDINGS 2026-08-04: was a flat MIN_PREMIUM, missing 0-1DTE
+        // prints between the near-dated and standard floors). A NaN premium yields false
+        // here (same as persist) and falls through to persist, the authority.
+        if (flow.premium < requiredMinPremium(dteFromExpiry(flow.expiry))) continue;
         // Cheap in-process dedup keyed on the EXACT id used for DB ON-CONFLICT.
         // A hit here would be an ON-CONFLICT duplicate persist already suppresses,
         // so skipping it cannot drop a genuinely-distinct alert.
@@ -1477,7 +1487,10 @@ export function initUwSocket() {
     if (payload && typeof payload === "object" && "status" in (payload as Record<string, unknown>)) {
       return;
     }
-    const prints = normalizeOptionTradesWsPayload(payload).filter((p) => p.premium >= FLOW_MIN_PREMIUM);
+    // Broad pre-filter at the LOWER (near-dated) floor — no DTE known at this raw-print layer
+    // (FINDINGS 2026-08-04), so this stays permissive; the precise DTE-aware floor is applied
+    // per-row below, right before persist, once parseUwFlowAlert has resolved `expiry`.
+    const prints = normalizeOptionTradesWsPayload(payload).filter((p) => p.premium >= FLOW_MIN_PREMIUM_FETCH_FLOOR);
     if (!prints.length) return;
     recordUwDelivery("option_trades");
     const now = Date.now();
@@ -1485,6 +1498,7 @@ export function initUwSocket() {
     for (const print of prints) {
       const raw = optionTradePrintToFlowRaw(print);
       const flow = parseUwFlowAlert(raw);
+      if (flow.premium < requiredMinPremium(dteFromExpiry(flow.expiry))) continue;
       const id = computeFlowAlertId(raw, flow);
       if (optionTradeDedup.seen(id, now)) continue;
       void persistAndPublishFlowAlert(raw, flow);
