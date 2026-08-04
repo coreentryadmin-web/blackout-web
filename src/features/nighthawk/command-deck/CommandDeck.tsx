@@ -178,7 +178,7 @@ export function CommandDeck({
   );
 
   return (
-    <div className="nh-deck">
+    <div className="nh-deck nh-deck-fill">
       <div className="nh-deck-left">
         {commandCenter ? (
           <DeckCommandCenter

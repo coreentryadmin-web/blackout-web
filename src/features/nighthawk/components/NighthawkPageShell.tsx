@@ -15,10 +15,14 @@ export function NighthawkPageShell({ seed }: { seed?: NightHawkSeedProps | null 
   return (
     <PageShell
       fullBleed
-      contentClassName={clsx(nativeShell ? "nighthawk-page-content-native !py-0" : "!py-0")}
+      contentClassName={clsx(
+        nativeShell
+          ? "nighthawk-page-content-native !py-0"
+          : "nighthawk-page-content !py-0 flex min-h-0 flex-1 flex-col"
+      )}
       className={clsx(
         "ios-native-page ios-native-page-nighthawk nh-v2-page nighthawk-page-shell",
-        nativeShell && "nighthawk-page-shell-native"
+        nativeShell ? "nighthawk-page-shell-native" : "nighthawk-page-shell-fill"
       )}
     >
       {!nativeShell && <NighthawkRadarBackdrop />}
@@ -27,7 +31,7 @@ export function NighthawkPageShell({ seed }: { seed?: NightHawkSeedProps | null 
           "nighthawk-page-root flex max-w-none flex-col",
           nativeShell
             ? "nighthawk-page-inner-native min-h-[calc(100dvh-var(--ios-header-offset)-var(--ios-tab-offset))]"
-            : "min-h-[calc(100svh-var(--nav-offset)-var(--ios-tab-offset,0px))] px-2 pb-4 pt-4 md:px-3"
+            : "min-h-0 flex-1 px-2 pb-4 pt-4 md:px-3"
         )}
       >
         {!nativeShell && (
