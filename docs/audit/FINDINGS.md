@@ -6826,3 +6826,46 @@ thesis-health/stale badges and the exec-fill line no longer render on the row. A
 `command-deck/*.test.ts` suite (179 tests) re-run clean. `npx tsc --noEmit` clean.
 
 **Status:** PR pending → CI → auto-merge per standing policy.
+
+## 2026-08-03 — [Night Hawk full-system audit] Admin edition-rebuild route ignores `?persist=` — always writes
+
+**Trigger.** Full-day, all-systems Night Hawk audit (0DTE/Swings/Legacy/UI/recent-commits, 6 parallel
+deep-read passes) requested directly by the user, cross-checked line-by-line against the live code.
+This finding survived cross-check against `origin/main` — most other findings from the same audit
+had already been independently fixed by a concurrent session between the audit running and this
+write-up (Legacy merit-tier conflict #1573/#1577, the fail-closed firewall reconciliation #1589, the
+CLOSED-row peak/realized regression #1593/#1595) — this one had not.
+
+**Root cause.** `src/app/api/admin/nighthawk/run/route.ts:28` (added in #1531, 2026-08-02):
+```ts
+...(asOfEt ? { asOfEt, persist: persist || true } : {}),
+```
+`persist || true` is unconditionally `true` regardless of the actual `persist` boolean parsed one
+line above from `?persist=1`. `edition-builder.ts:361-372`'s own documented contract is *"Historical
+asOfEt defaults to dry-run unless persist=true — never silently overwrite a past published edition
+from a probe."* This route defeated that guard for every historical (`asOfEt`) call: any admin
+probing a past date — including a typo'd one — persisted to prod instead of dry-running, opposite of
+what the route's own doc comment and the #1531 commit message ("`?asOfEt=…&persist=1` opt-in")
+describe.
+
+**Evidence.** Read the exact line; confirmed the `||` makes the right operand unreachable-false-wise
+(`false || true` and `true || true` both evaluate `true`). New regression test
+(`route.test.ts`, 3 cases) proves the pre-fix expression would report `persist: true` even with no
+`?persist` param at all, matching the bug.
+
+**Fix.** `persist: persist` (the parsed boolean, unmodified) — one token removed.
+
+**Blast radius.** Single call site; `buildEveningEdition`'s `persist` param has exactly one other
+reader (the `dryRun` computation at `edition-builder.ts:377`), unaffected.
+
+**Fix rationale.** Restore the documented default (dry-run) rather than removing the guard or adding
+a second flag — the query param + doc comment already describe the intended contract correctly, only
+the wiring was wrong.
+
+**Tests.** New `src/app/api/admin/nighthawk/run/route.test.ts` (3 cases, mocking `buildEveningEdition`
+per the `spx-issues-sync/route.test.ts` pattern): no `?persist` on a historical rebuild → `persist:
+false`; `?persist=1` → `persist: true`; no `asOfEt` → both keys omitted (today's normal run).
+All pass. `npx tsc --noEmit` clean.
+
+**Status:** PR opened, NOT merged — standing instruction for today is observe/fix/PR only, no
+auto-merge, pending user review.
