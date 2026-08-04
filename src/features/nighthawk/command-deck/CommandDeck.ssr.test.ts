@@ -52,16 +52,19 @@ async function render(
   );
 }
 
-test("closed lifecycle row shows peak and realized returns", async () => {
+test("closed compact row shows symbol line, times, peak", async () => {
   const html = await render(play());
+  assert.match(html, /nh-deck-lc-strip/);
+  assert.match(html, />META 592\.5C 0DTE</);
+  assert.match(html, />09:42→12:06</);
   assert.match(html, />Peak</);
-  assert.match(html, />\+87%</);
-  assert.match(html, />Realized</);
-  assert.match(html, />\+42%</);
+  assert.match(html, />\+87%/);
   assert.match(html, />CLOSED</);
+  assert.match(html, /nh-deck-conf-inline/);
+  assert.match(html, />A\+</);
 });
 
-test("open lifecycle row shows freshness, current, and active status", async () => {
+test("open compact row shows active status and return", async () => {
   const html = await render(
     play({
       status: "OPEN",
@@ -71,18 +74,14 @@ test("open lifecycle row shows freshness, current, and active status", async () 
     }),
     { nowMs: Date.parse("2026-08-03T12:00:00-04:00") },
   );
-  assert.match(html, /nh-deck-age-decay/);
-  assert.match(html, />2m</);
-  assert.match(html, />Current</);
-  assert.match(html, />\+42%</);
+  assert.match(html, />META 592\.5C 0DTE</);
+  assert.match(html, />11:58</);
+  assert.match(html, />\+87%/);
   assert.match(html, />ACTIVE</);
   assert.match(html, /nh-deck-status-pill is-active/);
-  assert.match(html, /nh-deck-lc-ticker/);
-  assert.match(html, /★★★★★/);
-  assert.doesNotMatch(html, />Triggered</);
 });
 
-test("watch lifecycle row shows hierarchy, confidence, and compact age", async () => {
+test("watch compact row shows track and rank", async () => {
   const html = await render(
     play({
       status: "WATCH",
@@ -95,38 +94,28 @@ test("watch lifecycle row shows hierarchy, confidence, and compact age", async (
     }),
     { nowMs: Date.parse("2026-08-03T12:00:00-04:00"), rank: 2 },
   );
-  assert.match(html, /nh-deck-lc-ticker/);
-  assert.match(html, />META</);
-  assert.match(html, /★★★★★/);
-  assert.match(html, /nh-deck-lc-rank-corner/);
+  assert.match(html, />META 592\.5C 0DTE</);
   assert.match(html, />#2</);
   assert.match(html, />WATCH</);
-  assert.match(html, />Waiting for Trigger</);
-  assert.match(html, />Since flag</);
+  assert.match(html, />Track</);
   assert.match(html, />\+18%/);
-  assert.match(html, />Confidence</);
-  assert.match(html, />96</);
-  assert.match(html, />6m</);
-  assert.doesNotMatch(html, />Published</);
-  assert.match(html, /nh-deck-status-pill/);
-  assert.match(html, /nh-deck-conf-badge-list/);
+  assert.match(html, />11:54</);
 });
 
-test("selected 0DTE row renders hero lifecycle card with banner when rank 1", async () => {
+test("selected row stays compact — detail on right rail only", async () => {
   const html = await render(play({ status: "OPEN", pnlPct: 42 }), { selected: true, rank: 1 });
-  assert.match(html, /nh-deck-row-hero/);
-  assert.match(html, />BEST PLAY TODAY</);
-  assert.match(html, /nh-deck-conf-badge/);
-  assert.match(html, />Tap to inspect/);
+  assert.match(html, /nh-deck-row-lifecycle-compact/);
+  assert.doesNotMatch(html, /nh-deck-row-hero/);
+  assert.doesNotMatch(html, />BEST PLAY TODAY</);
 });
 
-test("legacy row uses lifecycle layout", async () => {
+test("legacy row uses compact strip", async () => {
   const html = await render(
     play({ horizon: "LEGACY", tierLabel: "A", stockPrice: 180, pnlPct: 5, detectedAt: "2026-08-03T17:30:00-04:00" }),
     { selected: false },
   );
-  assert.match(html, /nh-deck-lc/);
-  assert.match(html, />LEGACY</);
+  assert.match(html, /nh-deck-lc-strip/);
+  assert.match(html, />META 592\.5C 0DTE</);
 });
 
 test("CommandDeck command center renders stat strip for 0DTE", async () => {

@@ -14,6 +14,10 @@ import {
   playPrimaryEvent,
   playStatusLabel,
   playStatusDisplay,
+  playSymbolLine,
+  playTimeRangeCompact,
+  playListReturnPct,
+  playTriggeredAtMs,
 } from "./play-card-lifecycle.ts";
 import type { TerminalPlay } from "./types.ts";
 
@@ -180,6 +184,52 @@ describe("play-card-lifecycle", () => {
         base({ status: "CLOSED", closedReason: "stopped", peak: 87.3, pnlPct: -50 }),
       ),
       6.67,
+    );
+  });
+
+  it("playSymbolLine surfaces ticker + strike + DTE on the list rail", () => {
+    assert.equal(playSymbolLine(base({ ticker: "SPXW", contract: "7595C · 0DTE" })), "SPXW 7595C 0DTE");
+    assert.equal(playSymbolLine(base({ contract: "592.5C · 0DTE" })), "META 592.5C 0DTE");
+  });
+
+  it("playTimeRangeCompact shows triggered→closed for closed rows", () => {
+    assert.equal(
+      playTimeRangeCompact(
+        base({
+          status: "CLOSED",
+          firstFlaggedAt: "2026-08-03T13:03:00-04:00",
+          exitAt: "2026-08-03T13:28:00-04:00",
+        }),
+      ),
+      "13:03→13:28",
+    );
+  });
+
+  it("playListReturnPct prefers peak on closed rows", () => {
+    assert.equal(
+      playListReturnPct(base({ status: "CLOSED", peak: 6, exitPnlPct: 5, pnlPct: 5 })),
+      6,
+    );
+    assert.equal(
+      playListReturnPct(base({ status: "WATCH", trackPct: 18, pnlPct: null })),
+      18,
+    );
+  });
+
+  it("playTriggeredAtMs prefers watch detectedAt then open firstFlaggedAt", () => {
+    assert.equal(
+      playTriggeredAtMs(
+        base({
+          status: "WATCH",
+          detectedAt: "2026-08-03T11:54:00-04:00",
+          firstFlaggedAt: "2026-08-03T09:00:00-04:00",
+        }),
+      ),
+      Date.parse("2026-08-03T11:54:00-04:00"),
+    );
+    assert.equal(
+      playTriggeredAtMs(base({ status: "OPEN", firstFlaggedAt: "2026-08-03T13:03:00-04:00" })),
+      Date.parse("2026-08-03T13:03:00-04:00"),
     );
   });
 });
