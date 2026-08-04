@@ -19,7 +19,7 @@ import {
   type SpxPulseSnapshot,
   type SpxWall,
 } from "./spx-pulse";
-import { signalTier } from "@/features/vector/lib/vector-pulse";
+import { signalTier, filterFreshPulseSignals } from "@/features/vector/lib/vector-pulse";
 import type { SpxVoiceSnapshot } from "@/lib/bie/spx-live-voice";
 import type { MacroEvent } from "@/lib/providers/macro-events";
 import type { SpxFlowBrief } from "./spx-desk";
@@ -70,6 +70,50 @@ test("regime flip is SUPPRESSED inside the hysteresis band (anti flip-flop)", ()
   assert.ok(Math.abs(next.price! - next.gammaFlip!) < SPX_REGIME_HYSTERESIS_PTS);
   const sigs = detectSpxPulseSignals(prev, next);
   assert.equal(sigs.find((s) => s.kind === "regime-flip"), undefined);
+});
+
+// FINDINGS 2026-08-04: the regime-flip KEY must be direction-only, not level-anchored — γ-flip
+// is recomputed from live GEX every tick and drifts between polls, so a level-anchored key would
+// give a fresh key to every re-confirmation of the SAME side, defeating the cooldown. Tier-1
+// signals also bypass the global rate cap entirely, so an undefeated cooldown is the ONLY brake
+// on a choppy tape whipsawing across a drifting flip level.
+test("regime flip KEY is direction-only — re-confirming the same side at a DRIFTED flip level shares the SAME key", () => {
+  const a = snap({ at: 1000, price: 6000, aboveFlip: true, gammaFlip: 5990 });
+  const b = snap({ at: 2000, price: 5985, aboveFlip: false, gammaFlip: 5990 }); // confirms SHORT
+  const c = snap({ at: 3000, price: 6000, aboveFlip: true, gammaFlip: 5991 }); // back to LONG
+  const d = snap({ at: 4000, price: 5984, aboveFlip: false, gammaFlip: 5991 }); // SHORT again, flip drifted 5990→5991
+  const firstShort = detectSpxPulseSignals(a, b).find((s) => s.kind === "regime-flip")!;
+  const secondShort = detectSpxPulseSignals(c, d).find((s) => s.kind === "regime-flip")!;
+  assert.ok(firstShort && secondShort);
+  assert.equal(firstShort.key, secondShort.key, "same-direction re-confirmation must share one cooldown key even though the flip level drifted");
+  assert.equal(firstShort.key, "spx-regime:short");
+});
+
+test("regime flip flip-flop is suppressed end-to-end by the shared cooldown (drifting flip level can't defeat it)", () => {
+  const a = snap({ at: 1000, price: 6000, aboveFlip: true, gammaFlip: 5990 });
+  const b = snap({ at: 2000, price: 5985, aboveFlip: false, gammaFlip: 5990 });
+  const c = snap({ at: 3000, price: 6000, aboveFlip: true, gammaFlip: 5991 });
+  const d = snap({ at: 61_000, price: 5984, aboveFlip: false, gammaFlip: 5991 }); // 60s later, still inside the 4min cooldown
+  const firstFire = detectSpxPulseSignals(a, b).filter((s) => s.kind === "regime-flip");
+  let seen: Record<string, number> = {};
+  const step1 = filterFreshPulseSignals(firstFire, seen, 2000);
+  seen = step1.seen;
+  assert.equal(step1.fresh.length, 1, "first confirmed flip fires");
+  const secondFire = detectSpxPulseSignals(c, d).filter((s) => s.kind === "regime-flip");
+  const step2 = filterFreshPulseSignals(secondFire, seen, 61_000);
+  assert.equal(step2.fresh.length, 0, "re-confirming the SAME side within the cooldown window is suppressed despite the drifted flip level");
+});
+
+test("regime flip to the OTHER side still fires immediately (direction-only key never over-suppresses real news)", () => {
+  const a = snap({ at: 1000, price: 6000, aboveFlip: true, gammaFlip: 5990 });
+  const b = snap({ at: 2000, price: 5985, aboveFlip: false, gammaFlip: 5990 }); // confirms SHORT
+  const c = snap({ at: 3000, price: 5985, aboveFlip: false, gammaFlip: 5990 });
+  const d = snap({ at: 30_000, price: 6000, aboveFlip: true, gammaFlip: 5990 }); // flips back to LONG moments later
+  let seen: Record<string, number> = {};
+  const step1 = filterFreshPulseSignals(detectSpxPulseSignals(a, b).filter((s) => s.kind === "regime-flip"), seen, 2000);
+  seen = step1.seen;
+  const step2 = filterFreshPulseSignals(detectSpxPulseSignals(c, d).filter((s) => s.kind === "regime-flip"), seen, 30_000);
+  assert.equal(step2.fresh.length, 1, "a genuine flip to the opposite side is different information and must not be suppressed");
 });
 
 // ═══════════════════════════ WALL BREAK (Tier 1, held N bars) ════════════════
@@ -134,6 +178,25 @@ test("magnet shift fires when the centre of mass crosses spot even if small", ()
   assert.match(m!.line, /crossed spot/);
 });
 
+// FINDINGS 2026-08-04: the magnet-shift KEY is bucketed to the fire threshold, not the raw
+// centre-of-mass value — two shifts landing in the SAME zone within the cooldown window must
+// share a key (the centre of mass recomputes every tick and jitters a point or two even when
+// nothing structurally changed), while a shift to a genuinely different zone must still fire.
+test("magnet shift KEY is bucketed to the fire threshold — nearby re-confirmations share a key, a new zone does not", () => {
+  const prev1 = snap({ magnetStrike: 6000 });
+  const next1 = snap({ at: 2000, magnetStrike: 6000 + SPX_MAGNET_SHIFT_MIN_PTS }); // 6010
+  const prev2 = snap({ magnetStrike: 6000 });
+  const next2 = snap({ at: 3000, magnetStrike: 6000 + SPX_MAGNET_SHIFT_MIN_PTS + 1 }); // 6011, jitter of 1pt
+  const m1 = detectSpxPulseSignals(prev1, next1).find((s) => s.kind === "magnet-shift")!;
+  const m2 = detectSpxPulseSignals(prev2, next2).find((s) => s.kind === "magnet-shift")!;
+  assert.ok(m1 && m2);
+  assert.equal(m1.key, m2.key, "a 1pt jitter within the same zone must not mint a fresh cooldown key");
+
+  const farAway = snap({ at: 4000, magnetStrike: 6000 + SPX_MAGNET_SHIFT_MIN_PTS * 4 }); // a genuinely different zone
+  const m3 = detectSpxPulseSignals(prev1, farAway).find((s) => s.kind === "magnet-shift")!;
+  assert.notEqual(m1.key, m3.key, "a genuinely different zone must still get its own key so it isn't suppressed");
+});
+
 // ═══════════════════════════ PIN SHIFT (Tier 2) ══════════════════════════════
 test("pin shift fires on a ≥X pt step and carries old→new + confidence", () => {
   const prev = snap({ pin: { pin: 6000, pinPct: 0.5, pinBand: [5990, 6010] } });
@@ -149,6 +212,16 @@ test("pin shift is suppressed below the min step", () => {
   const prev = snap({ pin: { pin: 6000, pinPct: 0.5, pinBand: null } });
   const next = snap({ at: 2000, pin: { pin: 6002, pinPct: 0.5, pinBand: null } });
   assert.equal(detectSpxPulseSignals(prev, next).find((s) => s.kind === "pin-shift"), undefined);
+});
+
+test("pin shift KEY is bucketed to the fire threshold — nearby re-confirmations share a key", () => {
+  const prev = snap({ pin: { pin: 6000, pinPct: 0.5, pinBand: null } });
+  const next1 = snap({ at: 2000, pin: { pin: 6000 + SPX_PIN_SHIFT_MIN_PTS, pinPct: 0.5, pinBand: null } }); // 6005
+  const next2 = snap({ at: 3000, pin: { pin: 6000 + SPX_PIN_SHIFT_MIN_PTS + 1, pinPct: 0.5, pinBand: null } }); // 6006, jitter
+  const p1 = detectSpxPulseSignals(prev, next1).find((s) => s.kind === "pin-shift")!;
+  const p2 = detectSpxPulseSignals(prev, next2).find((s) => s.kind === "pin-shift")!;
+  assert.ok(p1 && p2);
+  assert.equal(p1.key, p2.key, "a 1pt jitter within the same pin zone must not mint a fresh cooldown key");
 });
 
 // ═══════════════════════════ WALL BUILD / DISSOLVE (Tier 2) ══════════════════

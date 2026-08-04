@@ -236,6 +236,20 @@ function mag(unit: PulseMagnitude["unit"], value: number, label: string): PulseM
   return { unit, value, label };
 }
 
+/**
+ * Bucket a moving level onto a coarse grid for cooldown-KEY purposes only (never for display —
+ * `line`/`level` still carry the exact value). FINDINGS 2026-08-04: the magnet/pin levels this
+ * feeds are recomputed from live data every tick and drift a point or two between polls, so a
+ * fine-grained (or unbucketed) key gives a DIFFERENT key to every re-confirmation of "the same
+ * zone" — defeating both the per-key cooldown and the (kind,level) dedup, which is what let a
+ * choppy tape spam near-duplicate magnet/pin-shift events. Bucketing to the signal's own fire
+ * threshold means two shifts landing in the same zone within the cooldown window are correctly
+ * recognized as "already told you"; a shift to a genuinely different zone still fires immediately.
+ */
+function bucketKey(value: number, grid: number): number {
+  return Math.round(value / grid) * grid;
+}
+
 // ---------------------------------------------------------------------------
 // Detector — diff two consecutive snapshots, emit only transitions.
 // Pure: same inputs → same events. Caller owns cooldown/rate-cap/dedup.
@@ -267,7 +281,17 @@ export function detectSpxPulseSignals(
     const down = !next.aboveFlip;
     out.push(
       sig({
-        key: `spx-regime:${down ? "short" : "long"}:${Math.round(next.gammaFlip)}`,
+        // KEY IS DIRECTION-ONLY, not level-anchored (FINDINGS 2026-08-04): γ-flip is recomputed
+        // from live GEX every tick and drifts a point or two between polls, so a level-anchored
+        // key (e.g. `...:${Math.round(next.gammaFlip)}`) gives a DIFFERENT key to every
+        // re-confirmation of the SAME side — defeating the cooldown entirely. Tier-1 signals also
+        // bypass the global rate cap by design (regime-defining events are never volume-capped),
+        // so a choppy tape whipsawing across the flip with the flip itself drifting could fire
+        // "LONG GAMMA"/"SHORT GAMMA" back-to-back with NO suppression at all. Keying on direction
+        // alone means re-confirming the same side within the cooldown window is correctly
+        // recognized as "already told you" — a flip to the OTHER side still fires immediately
+        // (different key), which is exactly the information a member needs right away.
+        key: `spx-regime:${down ? "short" : "long"}`,
         kind: "regime-flip",
         tier: 1,
         tone: down ? "bear" : "bull",
@@ -296,7 +320,7 @@ export function detectSpxPulseSignals(
       const aboveSpot = next.magnetStrike >= next.price;
       out.push(
         sig({
-          key: `spx-magnet:${Math.round(next.magnetStrike)}`,
+          key: `spx-magnet:${bucketKey(next.magnetStrike, SPX_MAGNET_SHIFT_MIN_PTS)}`,
           kind: "magnet-shift",
           tier: 2,
           tone: up ? "bull" : "bear",
@@ -327,7 +351,7 @@ export function detectSpxPulseSignals(
       next.pin.pinBand != null ? `${fmtLevel(next.pin.pinBand[0])}–${fmtLevel(next.pin.pinBand[1])}` : null;
     out.push(
       sig({
-        key: `spx-pin:${Math.round(next.pin.pin)}`,
+        key: `spx-pin:${bucketKey(next.pin.pin, SPX_PIN_SHIFT_MIN_PTS)}`,
         kind: "pin-shift",
         tier: 2,
         tone: up ? "bull" : "bear",
