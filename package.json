@@ -97,6 +97,7 @@
     "validate:zerodte-logic": "node scripts/zerodte-logic-audit.mjs",
     "validate:zerodte-integration": "node scripts/zerodte-integration-audit.mjs",
     "validate:zerodte-bie": "node scripts/audit/zerodte-bie-consistency-validator.mjs",
+    "validate:zerodte-market-opportunity": "node --import tsx scripts/audit/zerodte-market-opportunity-audit.mjs",
     "validate:api-auth": "node scripts/verify-api-auth-guards.mjs",
     "audit:deep-security": "node scripts/audit/deep-security-audit.mjs",
     "audit:deep-security:phase2": "node scripts/audit/deep-security-audit-phase2.mjs",

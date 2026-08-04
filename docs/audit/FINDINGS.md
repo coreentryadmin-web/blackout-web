@@ -13,9 +13,19 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Root cause** | `reconcileLedgerLivePnlPct` pinned every `closed_reason === "stopped"` row to −50% (D-1 hold-to-stop grade), ignoring trim-scale tranches already banked at +25%/+50% |
 | **Fix** | `trimScaleBlendedPnlAtStop()` in `marks-math.ts`; wire `peak_premium` into both `mapLedgerRow` sites; expose `peak_pnl_pct` on board payload; CLOSED `StatsCell` shows peak excursion; chip reads `peak +87%` when tranches armed; `closedRealizedPct` returns as-managed blend (~+8.33%) |
 | **Files** | `src/lib/zerodte/marks-math.ts`, `src/lib/platform/zerodte-service.ts`, `ZeroDteBoard.tsx`, `play-card-lifecycle.ts`, tests |
-| **Status** | FIXED (PR pending) |
+| **Status** | FIXED (PR #1580 merged) |
 
 ---
+
+## 2026-08-04 — [0DTE] Architecture V2 Phase 1: Market State Engine + discovery events + BREAKOUT floor 65 — IN PROGRESS
+
+**Severity.** HIGH — discovery architecture one-directional; Aug 3 committed ~2 OPEN despite rich tape.
+
+**Evidence.** Sim Aug 3: 307 flow tickers, 5 gradeable 0DTE (QQQ/MSFT/SPY/NVDA/AMD) @ 80% WR; prod CloudWatch ~8.1 candidates/cycle; BREAKOUT chain-walk ~94% `no_same_day_contract`; PIN 0 all session.
+
+**Fix (Phase 1).** `market-state-engine.ts` + scan re-rank; `zerodte_discovery_events` schema; BREAKOUT G-3 floor 70→65; `validate:zerodte-market-opportunity` audit script. Doc: `docs/audit/0DTE-ARCHITECTURE-V2.md`.
+
+**Status.** PR #1581 pending rebase after #1580.
 
 ## 2026-08-03 — [ops,nighthawk] Edition stuck at stage_synthesis checkpoint — FIXED (ops-auto-fix #1572)
 
