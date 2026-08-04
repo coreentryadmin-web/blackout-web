@@ -8,6 +8,9 @@ export type OpsConfigStatus = {
   discord_play_webhook: boolean;
   /** Thermal triple-desk PNG cron (`DISCORD_THERMAL_WEBHOOK_URL`). */
   discord_thermal_webhook: boolean;
+  /** HELIX community flow embeds (`DISCORD_HELIX_WEBHOOK_URL`). */
+  discord_helix_webhook: boolean;
+  helix_discord_alerts_enabled: boolean;
   pg_pool_max: number;
   database_via_pooler: boolean;
   pg_pooler_hint: string;
@@ -52,6 +55,10 @@ export function buildOpsConfigStatus(): OpsConfigStatus {
     discord_ops_webhook: Boolean(process.env.DISCORD_OPS_WEBHOOK_URL?.trim()),
     discord_play_webhook: Boolean(process.env.DISCORD_PLAY_WEBHOOK_URL?.trim()),
     discord_thermal_webhook: Boolean(process.env.DISCORD_THERMAL_WEBHOOK_URL?.trim()),
+    discord_helix_webhook: Boolean(process.env.DISCORD_HELIX_WEBHOOK_URL?.trim()),
+    helix_discord_alerts_enabled: Boolean(
+      ["1", "true", "yes"].includes(process.env.HELIX_DISCORD_ALERTS?.trim().toLowerCase() ?? "")
+    ),
     pg_pool_max: Number.isFinite(pgMax) && pgMax > 0 ? pgMax : 5,
     database_via_pooler: pool.viaPooler,
     pg_pooler_hint: pool.hint,

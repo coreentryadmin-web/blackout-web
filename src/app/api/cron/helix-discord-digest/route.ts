@@ -1,7 +1,7 @@
 /**
  * Cron: HELIX community Discord digests (top hits last 15m / 30m).
  *
- * Same channel as Thermal (`DISCORD_THERMAL_WEBHOOK_URL`). Opt-in via
+ * Posts to `DISCORD_HELIX_WEBHOOK_URL`. Opt-in via `HELIX_DISCORD_ALERTS=1`.
  * `HELIX_DISCORD_ALERTS=1`. Applies the three live filters (≥$500K · fill <$10 ·
  * ≤30 DTE), ranks like the HELIX desk rail (score≥5 then premium).
  *
@@ -98,7 +98,7 @@ export async function GET(req: NextRequest) {
     const payload = {
       ok: true,
       inert: true,
-      reason: "DISCORD_THERMAL_WEBHOOK_URL unset",
+      reason: "DISCORD_HELIX_WEBHOOK_URL unset",
     };
     await logCronRun("helix-discord-digest", started, payload);
     return NextResponse.json(payload);

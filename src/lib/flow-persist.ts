@@ -6,7 +6,6 @@ import { shouldFanOut } from "@/lib/flow-fanout";
 import { flowFallbackAlertId } from "@/lib/flow-alert-id";
 import { markFlowFrameDelivered } from "@/lib/flow-liveness";
 import { extractChainFieldsFromRaw } from "@/lib/flow-raw-fields";
-import { notifyHelixDiscordFlow } from "@/lib/helix-discord-notify";
 
 /**
  * SSE row shape published to the live tape. Extends FlowRow with the canonical
@@ -90,11 +89,12 @@ export function buildHelixAuditRow(alertIdValue: string, flow: MarketFlowAlert) 
 }
 
 /**
- * Community HELIX Discord (Thermal channel). Opt-in via HELIX_DISCORD_ALERTS=1;
+ * Community HELIX Discord (#blackout-helix). Opt-in via HELIX_DISCORD_ALERTS=1;
  * filters ≥$500K · fill <$10 · ≤30 DTE inside notifyHelixDiscordFlow. Fail-soft.
  */
 async function notifyDiscord(flow: FlowRow): Promise<void> {
   try {
+    const { notifyHelixDiscordFlow } = await import("@/lib/helix-discord-notify");
     await notifyHelixDiscordFlow({
       ticker: flow.ticker,
       premium: flow.premium,

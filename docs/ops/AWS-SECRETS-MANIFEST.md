@@ -59,8 +59,9 @@ Secrets Manager. **Never commit real values.**
 |-----|---------|
 | `DISCORD_OPS_WEBHOOK_URL` | Ops alerts |
 | `DISCORD_TRADE_WEBHOOK_URL` | Trade notifications |
-| `DISCORD_THERMAL_WEBHOOK_URL` | Thermal triple-desk PNG → designated Discord channel (`/api/cron/thermal-discord`, 15m); also HELIX community flow embeds + digests when `HELIX_DISCORD_ALERTS=1` |
-| `HELIX_DISCORD_ALERTS` | Opt-in `1`/`true` — live HELIX flow embeds (≥$500K · fill <$10 · ≤30 DTE) on persist + `/api/cron/helix-discord-digest` top-hits digests; uses `DISCORD_THERMAL_WEBHOOK_URL` |
+| `DISCORD_THERMAL_WEBHOOK_URL` | Thermal triple-desk PNG → designated Discord channel (`/api/cron/thermal-discord`, 15m RTH) |
+| `DISCORD_HELIX_WEBHOOK_URL` | HELIX community flow embeds + digests (`#blackout-helix`; live + `/api/cron/helix-discord-digest`) |
+| `HELIX_DISCORD_ALERTS` | Opt-in `1`/`true` — live HELIX flow embeds (≥$500K · fill <$10 · ≤30 DTE) on persist + 15m RTH digests; uses `DISCORD_HELIX_WEBHOOK_URL` |
 | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | Push notifications |
 | `VAPID_PRIVATE_KEY` | Push notifications |
 | `CF_ZONE_ID` | Cache purge on deploy |

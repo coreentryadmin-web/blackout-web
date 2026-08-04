@@ -297,14 +297,19 @@ export function buildHelixTopHitsDigestEmbed(input: {
   };
 }
 
-/** Opt-in: set HELIX_DISCORD_ALERTS=1 (uses DISCORD_THERMAL_WEBHOOK_URL). */
+/** Opt-in: set HELIX_DISCORD_ALERTS=1 (uses DISCORD_HELIX_WEBHOOK_URL). */
 export function helixDiscordAlertsEnabled(): boolean {
   const v = process.env.HELIX_DISCORD_ALERTS?.trim().toLowerCase();
   return v === "1" || v === "true" || v === "yes";
 }
 
+/** Dedicated #blackout-helix channel webhook — never piggyback Thermal desk PNGs. */
 export function helixDiscordWebhookUrl(): string | null {
-  return process.env.DISCORD_THERMAL_WEBHOOK_URL?.trim() || null;
+  return (
+    process.env.DISCORD_HELIX_WEBHOOK_URL?.trim() ||
+    process.env.DISCORD_FLOW_WEBHOOK_URL?.trim() ||
+    null
+  );
 }
 
 /** Discord digest list size (embed char budget; desk rail uses 12). */

@@ -1,6 +1,6 @@
 # Railway/EventBridge catalog: HELIX Discord top-hits digests (15m / 30m embeds).
 # Live fire requires EventBridge rule sync (TOML alone is not enough).
-# Inert unless HELIX_DISCORD_ALERTS=1 and DISCORD_THERMAL_WEBHOOK_URL is set.
+# Inert unless HELIX_DISCORD_ALERTS=1 and DISCORD_HELIX_WEBHOOK_URL is set.
 [build]
 builder = "nixpacks"
 buildCommand = "echo 'cron trigger service: no app build needed'"
