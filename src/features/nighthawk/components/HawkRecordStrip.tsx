@@ -112,7 +112,6 @@ export function HawkRecordStrip({ record, loading }: HawkRecordStripProps) {
       <span className="nighthawk-record-label">{record.window_days}d track record</span>
       <div className="nighthawk-record-metrics">
         <MetricPill label="Scoreable" value={String(cur ? cur.scoreable : record.total_resolved)} />
-        <MetricPill label="Target hit" value={`${record.win_rate_pct}%`} />
         <MetricPill label="Profitable" value={`${record.profitable_rate_pct}%`} />
         <MetricPill
           label="Avg return"

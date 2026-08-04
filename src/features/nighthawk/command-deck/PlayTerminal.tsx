@@ -5,11 +5,10 @@ import { clsx } from "clsx";
 import type { TerminalPlay } from "./types";
 import { timeStopClock } from "@/lib/zerodte/terminal-ladder";
 import { isZeroDteMarkStale, ZERODTE_MARK_STALE_MS, LEGACY_QUOTE_STALE_MS } from "@/lib/zerodte/marks-math";
-import { condorTent, condorWinRateLine } from "@/lib/zerodte/condor-render";
+import { condorTent } from "@/lib/zerodte/condor-render";
 import { etNowParts } from "@/features/nighthawk/lib/session";
 import { showsTimeStopClock, showsTrimScaleLadder } from "./terminal-guards";
 import { managementFor } from "./adapters";
-import { formatWinRateCi } from "@/lib/zerodte/terminal-edge";
 import type { DeckCondor } from "./types";
 import { markStreamKind } from "./deck-session-ui";
 import { ThesisHealthPanel } from "./ThesisHealthPanel";
@@ -45,6 +44,11 @@ function fmtGreek(k: string, v: number | null): string {
 
 const usd = (n: number | null | undefined): string => (n != null ? `$${n.toFixed(2)}` : "—");
 const signPct = (n: number | null | undefined): string => (n != null ? `${n > 0 ? "+" : ""}${Math.round(n)}%` : "—");
+
+function formatScorecardHint(s: { avg: number; n: number }): string {
+  const n = Number.isFinite(s.n) ? s.n : 0;
+  return `${signPct(s.avg)} avg · n=${n}`;
+}
 
 /** ET wall-clock (HH:MM) of an ISO instant, for the why-now ribbon (and the deck row's entry-time
  *  chip — CommandDeck.tsx imports this rather than duplicating the tz-safe parse). Formats in
@@ -356,7 +360,7 @@ export function PlayTerminal({
 
       <div className="nh-deck-foot">
         <span>EXIT · {play.exitModel === "SCALE_OUT" ? "TRIM-SCALE" : play.horizon === "LEGACY" ? "STOCK LEVELS" : play.exitModel}</span>
-        <span>{play.tierLabel ? `TIER ${play.tierLabel}` : play.scorecard ? formatWinRateCi(play.scorecard) : ""}</span>
+        <span>{play.tierLabel ? `TIER ${play.tierLabel}` : play.scorecard ? formatScorecardHint(play.scorecard) : ""}</span>
         {play.allocation && <span style={{ marginLeft: "auto" }}>{play.allocation.role} · {play.allocation.sizing}</span>}
       </div>
     </div>
@@ -393,10 +397,8 @@ function HeaderBadges({ play }: { play: TerminalPlay }) {
         <span key={o} className="nh-deck-badge orig">{o}</span>
       ))}
       {play.scorecard && (
-        // Win-rate is NEVER shown bare: formatWinRateCi pairs it with the Wilson 95% CI when the
-        // payload carries one (WS-07/WS-09), else an explicit "CI n/a" — never a fabricated interval.
-        <span className="nh-deck-badge sc" title="Calibrated strategy record (Wilson 95% CI)">
-          {formatWinRateCi(play.scorecard)} · {signPct(play.scorecard.avg)} avg
+        <span className="nh-deck-badge sc" title="Calibrated strategy average return (sample size)">
+          {formatScorecardHint(play.scorecard)}
         </span>
       )}
     </div>
@@ -759,7 +761,6 @@ function CondorPanel({ play }: { play: TerminalPlay }) {
     );
   }
   const tent = condorTent(tentGeomOf(c), c.spot);
-  const wr = condorWinRateLine({ est_win_rate: c.winRate, est_intraday_breach_pct: c.breachRatePct });
   const pts = (n: number | null): string => (n == null ? "—" : n.toFixed(0));
   return (
     <div className="nh-deck-condor">
@@ -812,21 +813,11 @@ function CondorPanel({ play }: { play: TerminalPlay }) {
         <div><span className="k">Range</span><span className="v">{tent.widthPts.toFixed(0)} pt</span></div>
       </div>
 
-      {/* WR is ALWAYS shown with the breach-rate companion — never a bare, flattering win-rate. */}
-      <div className={clsx("nh-deck-wrline", tent.breached && "brk")}>
-        {wr.winRate != null ? (
-          <>
-            <span className="wr">{Math.round(wr.winRate)}% close-settle WR</span>
-            {wr.breachRatePct != null ? (
-              <span className="br"> · {wr.breachRatePct.toFixed(0)}% intraday breach rate</span>
-            ) : (
-              <span className="br dim"> · intraday breach rate not measured for this geometry</span>
-            )}
-          </>
-        ) : (
-          <span className="dim">Calibrated WR not attached to this row.</span>
-        )}
-      </div>
+      {c.breachRatePct != null && (
+        <div className={clsx("nh-deck-wrline", tent.breached && "brk")}>
+          <span className="br">Intraday breach rate · {c.breachRatePct.toFixed(0)}%</span>
+        </div>
+      )}
       <div className="nh-deck-recnote">
         Negative skew: a small credit on most days, a DEFINED loss on a breakout. High WR is not edge on
         its own — the credit, the breach stop, and small size are. {tent.breached ? "Range BREACHED — the defended pin failed; the loss is capped at the wing." : "Range holding — decay is working for you."}

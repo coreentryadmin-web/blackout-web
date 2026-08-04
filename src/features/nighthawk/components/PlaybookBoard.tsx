@@ -171,13 +171,11 @@ function RecordChip({
   return (
     <span
       className="rounded-md border border-sky-300/25 bg-sky-300/[0.05] px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-sky-300"
-      title={`${record.window_days}d window · ${record.total_resolved} resolved · target hit ${Math.round(
-        record.win_rate_pct
-      )}% · profitable ${Math.round(record.profitable_rate_pct)}% · avg ${
+      title={`${record.window_days}d window · ${record.total_resolved} resolved · profitable ${Math.round(record.profitable_rate_pct)}% · avg ${
         record.avg_return_pct >= 0 ? "+" : ""
       }${Math.round(record.avg_return_pct)}%`}
     >
-      {record.total_resolved} resolved · {Math.round(record.win_rate_pct)}% WR
+      {record.total_resolved} resolved
     </span>
   );
 }
