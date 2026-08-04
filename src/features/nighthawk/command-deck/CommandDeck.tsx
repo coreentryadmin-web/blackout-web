@@ -33,6 +33,7 @@ import {
 } from "./play-card-display";
 import { isWatchTrackStatus } from "./play-card-lifecycle";
 import { PlayLifecycleCardBody } from "./PlayLifecycleCard";
+import { DeckPlayTableHeader } from "./DeckPlayTableHeader";
 import {
   buildDeckCommandCenterStats,
   convictionRankContext,
@@ -229,7 +230,7 @@ export function CommandDeck({
             />
           </>
         )}
-        <div className="nh-deck-rows">
+        <div className={clsx("nh-deck-rows", commandCenter && "nh-deck-play-table")}>
           {degraded && (
             <div className="nh-deck-degraded" role="alert">⚠ Board data unavailable — retrying</div>
           )}
@@ -250,6 +251,7 @@ export function CommandDeck({
           {!loading && plays.length > 0 && filtered.length === 0 && (
             <div className="nh-deck-empty">No {statusFilter.toLowerCase()} plays right now.</div>
           )}
+          {commandCenter && !loading && sorted.length > 0 && <DeckPlayTableHeader />}
           {sorted.map((p, i) => (
             <PlayCard key={p.id} play={p} rank={i + 1} selected={p.id === selId} onSelect={setSelId} nowMs={nowMs} />
           ))}
