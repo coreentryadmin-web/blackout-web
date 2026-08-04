@@ -6826,3 +6826,64 @@ thesis-health/stale badges and the exec-fill line no longer render on the row. A
 `command-deck/*.test.ts` suite (179 tests) re-run clean. `npx tsc --noEmit` clean.
 
 **Status:** PR pending → CI → auto-merge per standing policy.
+
+## 2026-08-03 — [Night Hawk full-system audit] Legacy per-tier debrief record silently empty; forced-contrarian hedge flag was a no-op
+
+**Trigger.** Same full-system Night Hawk audit as the admin-route persist fix above (PR #1603).
+Two more findings survived cross-check against `origin/main` at write-up time.
+
+### Finding A — `readPinnedTier` reads the wrong shape; `by_tier` has been empty since the tier engine shipped
+
+**Root cause.** `debrief-aggregate.ts:81-85` required `typeof publishContext.tier === "string"`.
+But `publish-context.ts:250-254` (PR-N7, the merit-tier engine) pins tier as an OBJECT —
+`tier: { tier: NighthawkTier, factors: [...] }` — never a bare string. So `readPinnedTier` returned
+`null` for every graded row, and `analyzeNighthawkDebriefs`'s `by_tier` array (the record that would
+let anyone measure whether tier-A picks actually outperform tier-B, the entire reason the tier engine
+exists) has been silently empty the whole time the tier engine has been live.
+
+**Evidence.** Read `publish-context.ts:250-254` directly — the pin is unambiguously an object. The
+existing test (`debrief-aggregate.test.ts:72-75`) asserted the OLD placeholder shape
+(`{tier: "a"}` → `"A"`) which predates the tier engine and was never updated once PR-N7 shipped —
+exactly the "stale test locks in stale behavior" pattern found elsewhere in this audit.
+
+**Fix.** `readPinnedTier` now unwraps the object (`publishContext.tier.tier`), falling back to
+`null` for a missing/malformed/legacy-shaped pin — never fabricates a letter.
+
+**Blast radius.** Single function, one call site (`debrief-aggregate.ts:192`). No schema change,
+no other reader of `readPinnedTier` found.
+
+**Tests.** `debrief-aggregate.test.ts`'s `readPinnedTier` test rewritten to the real object shape
+(5 cases: lowercase-uppercased, a second tier, no-tier, explicit-null-tier, and an explicit check
+that a bare string is correctly rejected as NOT the real shape). All pass.
+
+### Finding B — `forcedContrarianHedgeEnabled()` is imported and never checked — the env var has zero effect
+
+**Root cause.** `deterministic-edition.ts` imports `forcedContrarianHedgeEnabled` (line 50) but the
+Phase 2 forced-contrarian re-score block (the one that forces an opposite-direction re-score when no
+natural opposite exists in an all-one-direction book) only gated on `!diversitySwapped` — nested
+inside the OUTER `diversityHedgeEnabled()` guard. So `NH_LEGACY_FORCED_HEDGE=0` did nothing: Phase 2
+still fired as long as the outer diversity-hedge flag was on. The commit that introduced this env var
+(#1530, "Legacy picks global strongest plays from full universe") described it as one of several
+"weaken paths" now disabled by default — it wasn't; only Phase 1 (natural-opposite swap) and the
+outer flag ever mattered.
+
+**Evidence.** Read the full `if (diversityHedgeEnabled() && finalPlays.length >= 3)` block
+(`deterministic-edition.ts:698-770`) — `forcedContrarianHedgeEnabled` never appears in it before this
+fix. grep confirms it has exactly one call site in the whole repo (now two, post-fix).
+
+**Fix.** Added `&& forcedContrarianHedgeEnabled()` to the Phase 2 condition — Phase 1 (natural
+opposite) still runs under `diversityHedgeEnabled()` alone; Phase 2 (forced re-score) now
+additionally requires its own flag, matching what #1530's commit message already claimed shipped.
+
+**Blast radius.** Single conditional; the existing test file's `beforeEach` already sets
+`NH_LEGACY_FORCED_HEDGE=1` globally (line 109), so no existing test's behavior changes — they were
+already implicitly exercising the "flag on" path even before this fix could distinguish it from "flag
+off."
+
+**Tests.** New case in `deterministic-edition.test.ts` — same all-LONG-monoculture-with-a-bearish-
+dossier fixture as the existing Phase 2 test, but with `NH_LEGACY_FORCED_HEDGE=0`, asserting zero
+SHORT plays result (proving the flag now actually gates something). All 37 tests in the file pass;
+full `src/features/nighthawk/lib/*.test.ts` suite (659 tests) re-run clean. `npx tsc --noEmit` clean.
+
+**Status:** PR opened, NOT merged — standing instruction for today is observe/fix/PR only, no
+auto-merge, pending user review.
