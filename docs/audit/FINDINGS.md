@@ -4,6 +4,24 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-04 — [Grid/0DTE] Post-close fix agent — all validators GREEN (~1:05 PM PT / 5:17 PM ET)
+
+**Severity.** — (no additional product defects)
+
+**Session.** Scheduled post-close fix agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` Step 4 (~1:05 PM PT slot; executed ~5:17 PM ET / 21:17 UTC).
+
+**Evidence.**
+- `validate:grid-rth -- --phase=post-close` → **13/13 PASS** (0 FAIL; `zerodte-warm` cron accepted, data-correctness flags=0, ops:collect zero items)
+- `validate:zerodte-logic` → **17/17 PASS** — gates, plan exits (-50%/+100%/15:30 ET), lifecycle OPEN→TRIM→CLOSED, mergePlays SKIP past cutoff/MOVED, live board 10 setups / 6 ledger, cutoff 15:30 ET
+- `validate:grid-e2e` → **5/5 PASS** — board API 10/6, HELIX 20 prints, Playwright `/nighthawk` load, zero console errors
+- `validate:deploy` → **GREEN**
+
+**Root cause.** Initial cloud-agent run failed on missing `node_modules` (tsx/playwright/pg/react) — environment only. After `npm install` + `npx playwright install chromium`, all suites GREEN on re-run. No gate logic, play picking, trade management, mergePlays, cron bypass, or ledger PnL defects found.
+
+**Status.** FIXED — no code changes required; docs only on `fix/grid-post-close-aug4-green`.
+
+---
+
 ## 2026-08-04 — [P0, HELIX dark pool] Empty tape when WS fresh — snapshot cached under `dark_pool_recent` — FIXED
 
 | Field | Value |
