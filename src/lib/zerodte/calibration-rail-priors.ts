@@ -122,13 +122,37 @@ export function computeShadowRailPriorsFromOriginBands(
 }
 
 export function calibrationRailPriorsEnabled(): boolean {
+  return priorsModeFromEnvLocal() !== "off";
+}
+
+/** Resolve priors mode without circular import at module load. */
+function priorsModeFromEnvLocal(): "off" | "shadow" | "enforce" {
   const raw = process.env.ZERODTE_CALIBRATION_RAIL_PRIORS?.trim().toLowerCase();
-  return raw === "shadow" || raw === "1" || raw === "true" || raw === "on";
+  if (raw === "enforce") return "enforce";
+  if (raw === "shadow" || raw === "1" || raw === "true" || raw === "on") return "shadow";
+  return "off";
 }
 
 /** Blend factor for shadow priors vs regime priors (0 = off, 1 = full shadow). */
-export function calibrationPriorBlendFactor(): number {
-  if (!calibrationRailPriorsEnabled()) return 0;
+export async function calibrationPriorBlendFactor(): Promise<number> {
+  const mode = priorsModeFromEnvLocal();
+  if (mode === "off") return 0;
+
+  if (mode === "enforce") {
+    const { loadRailGraduation, railPriorsEnforceAllowed } = await import("./calibration-rail-graduation");
+    const graduation = await loadRailGraduation().catch(() => null);
+    if (!railPriorsEnforceAllowed(graduation)) {
+      // Fall back to shadow blend when enforce not yet earned
+      return 0.35;
+    }
+    const raw = process.env.ZERODTE_CALIBRATION_PRIOR_BLEND?.trim();
+    if (raw) {
+      const n = Number(raw);
+      if (Number.isFinite(n)) return Math.max(0, Math.min(1, n));
+    }
+    return 0.65;
+  }
+
   const raw = process.env.ZERODTE_CALIBRATION_PRIOR_BLEND?.trim();
   if (raw) {
     const n = Number(raw);

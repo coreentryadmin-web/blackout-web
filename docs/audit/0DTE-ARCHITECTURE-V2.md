@@ -1,6 +1,6 @@
 # 0DTE Architecture V2 — phased plan
 
-Status: **Phase 2c shipped** (2026-08-04)
+Status: **Phase 3 shipped** (2026-08-04)
 
 ## Problem statement
 
@@ -93,12 +93,21 @@ Kill-switches: `ZERODTE_CALIBRATION_RAIL_PRIORS=0` (no cal blend); `GOVERNOR_ENF
 
 ---
 
-## Phase 3 — learning loop
+## Phase 3 — shipped in this PR
 
-1. Post-close batch: origin × regime × outcome → `calibration.ts` graduation
-2. Shadow week: new priors in parallel, no commit behavior change
-3. Enforce when n≥30 and WR lift ≥ 5pp vs baseline
-4. Rollback via `strategy_config_hash` already pinned at commit
+| Item | File | Notes |
+|------|------|-------|
+| **Graduation batch** | `calibration-rail-graduation.ts` | Origin × reg_structure cohorts; per-rail n≥30 + 5pp WR lift verdict |
+| **Shadow week tracking** | Redis `shadow-week-started` | Days elapsed while `ZERODTE_CALIBRATION_RAIL_PRIORS=shadow` |
+| **Enforce gate** | `calibration-rail-priors.ts` | `ZERODTE_CALIBRATION_RAIL_PRIORS=enforce` only when graduation clears |
+| **Post-close cron** | `zerodte-grade` | `refreshRailGraduation()` after grading + shadow priors |
+| **Admin graduation panel** | `/api/admin/zerodte/graduation`, Admin BIE | Rail verdicts, shadow weights, origin×regime cells |
+
+Kill-switches: priors default **off**; shadow = parallel blend; enforce requires graduation + explicit env.
+
+---
+
+## Phase 3 — was "next"
 
 ---
 

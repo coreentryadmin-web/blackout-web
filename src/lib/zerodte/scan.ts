@@ -234,7 +234,7 @@ export async function scanZeroDteBoard(flags?: {
   const today = todayEt();
   const sessionCtx = await fetchZeroDteSessionContext().catch(() => null);
   const shadowPriors = await loadShadowRailPriors().catch(() => null);
-  const calBlend = calibrationPriorBlendFactor();
+  const calBlend = await calibrationPriorBlendFactor();
   const marketState: MarketStateSnapshot = buildMarketState({
     regime: sessionCtx?.regime ?? null,
     sessionDate: today,
