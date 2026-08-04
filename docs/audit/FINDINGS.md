@@ -4,6 +4,19 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-04 — [P2, UX/correctness disclosure] Thermal key levels looked "way off" vs matrix peaks / competitor tools — FIXED (scope labels)
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P2 UX — math correct; members compared near-term bar to all-expiry matrix cell peaks or third-party all-chain walls |
+| **Evidence** | `thermal-matrix-validator.mjs` 136/136 PASS on SPY, NVDA, TSLA, ASTS, PLTR, COIN, MSTR, SMCI (walls/flip/max_pain recompute match server). SPY screenshot (~759 spot): call 760 / put 750 / flip 765 / max pain 754 / net +$4.5B / king 760 — internally consistent with near-term `strike_totals`. |
+| **Root cause** | Key levels = **near-term-only** (~15 expiries in `strike_totals`); max pain = **front expiry OI only**; matrix gold/purple **cell** peaks = argmax signed GEX on any expiry column (often far monthly OpEx); King node = argmax \|near-term net\|, not call wall. Bar kicker said only "GEX structure" with no scope — easy to read as wrong when a far-dated cell dominates visually. RTH UW WS wall override (near-term scoped) can also diverge from Polygon-only competitors. |
+| **Fix** | KeyLevelBox kicker → `GEX · near-term (N)`; scope footnote under bar; METRIC_HELP + max-pain tooltip name front expiry; King node label `gexKingDualLabel("near-term")`. Helpers: `keyLevelsKicker` / `keyLevelsFootnote` in `thermal-desk-state.ts`. |
+| **Files** | `GexHeatmap.tsx`, `thermal-desk-state.ts`, `thermal-desk-state.test.ts` |
+| **Status** | FIXED — PR `cursor/thermal-key-levels-scope-3d11` |
+
+---
+
 ## 2026-08-04 — [0DTE] Closed stopped plays show peak (+87%) not mechanical −50% when trim tranches armed — FIXED
 
 | Field | Value |

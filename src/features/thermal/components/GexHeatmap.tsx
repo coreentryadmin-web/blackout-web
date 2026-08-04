@@ -22,6 +22,8 @@ import ThermalTripleDesk from "@/features/thermal/components/ThermalTripleDesk";
 import {
   buildThermalUrlSearch,
   honestLevelEmpty,
+  keyLevelsFootnote,
+  keyLevelsKicker,
   parseThermalTicker,
   parseThermalUrlState,
   shouldForceMatrixRefresh,
@@ -628,15 +630,15 @@ function InfoTip({ label, text }: { label: string; text: string }) {
 /** Plain-language per-metric explainers — the SpotGamma "legibility" layer (Rank 8). */
 const METRIC_HELP = {
   gammaFlip:
-    "The pivot strike where net dealer gamma flips sign. Above it dealers are long gamma (they dampen moves → range-bound); below it they're short gamma (they amplify moves → vol expansion).",
+    "Near-term aggregate: the pivot strike where net dealer gamma flips sign. Above it dealers are long gamma (they dampen moves → range-bound); below it they're short gamma (they amplify moves → vol expansion). Differs from 0DTE-only flip lines on other tools.",
   callWall:
-    "The strike with the most positive dealer gamma — an upside anchor that often acts as resistance / a pin as spot approaches.",
+    "Near-term aggregate: the strike with the most positive dealer gamma across the next ~2 weeks of expiries — an upside anchor that often acts as resistance. Excludes far monthly OpEx (those peaks show as gold matrix cells, not this bar).",
   putWall:
-    "The strike with the most negative dealer gamma — typically downside support where dealer hedging slows declines.",
+    "Near-term aggregate: the strike with the most negative dealer gamma across near-term expiries — typically downside support. Excludes far monthly OpEx (purple matrix cell peaks can land on a different strike).",
   maxPain:
-    "The strike where the most option open interest expires worthless — an OI-gravity level price tends to drift toward into expiration.",
+    "Front/nearest expiry only: the strike where the most option open interest expires worthless for that settlement date — OI-gravity for one expiry, not summed across the chain.",
   netGex:
-    "Total net dealer dollar-gamma. Positive = net long gamma (dealers fade moves, suppressing vol); negative = net short gamma (dealers chase moves, feeding vol).",
+    "Near-term aggregate: total net dealer dollar-gamma across the next ~2 weeks of expiries. Positive = net long gamma (dealers fade moves); negative = net short gamma (dealers chase moves).",
   vannaFlip:
     "The strike where net dealer vanna flips sign — the pivot for how dealer hedging reacts to changes in implied volatility.",
   posVannaWall: "The strike with the most positive dealer vanna — where vol-driven hedging adds to directional moves.",
@@ -2514,10 +2516,12 @@ function CompactLevel({ cell }: { cell: LevelCell }) {
 function KeyLevelBox({
   cells,
   kicker,
+  footnote,
   className,
 }: {
   cells: LevelCell[];
   kicker: string;
+  footnote?: string | null;
   className?: string;
 }) {
   return (
@@ -2542,6 +2546,9 @@ function KeyLevelBox({
           <CompactLevel key={cell.key} cell={cell} />
         ))}
       </div>
+      {footnote ? (
+        <p className="mt-2 font-mono text-[9px] leading-snug text-sky-300/60">{footnote}</p>
+      ) : null}
     </div>
   );
 }
@@ -3323,6 +3330,22 @@ export function GexHeatmap({
   }, [data?.shift]);
 
   // ── Consolidated key-level cells (Step 2) ────────────────────────────────────
+  const maxPainHelp = useMemo(() => {
+    if (zeroDteExpiry) {
+      return `${METRIC_HELP.maxPain} Scoped to ${fmtExpiry(zeroDteExpiry)}.`;
+    }
+    return METRIC_HELP.maxPain;
+  }, [zeroDteExpiry]);
+
+  const keyLevelsScopeKicker = useMemo(
+    () => keyLevelsKicker(lensUpper, stale ? null : data?.near_term_expiries),
+    [lensUpper, stale, data?.near_term_expiries]
+  );
+  const keyLevelsScopeFootnote = useMemo(
+    () => keyLevelsFootnote(zeroDteExpiry ? fmtExpiry(zeroDteExpiry) : null),
+    [zeroDteExpiry]
+  );
+
   // The old ~6 big cards (flip / call wall / put wall / max pain / net / anchor) collapse
   // into ONE compact box of small label-over-value cells. Per-lens cell sets mirror the
   // prior RegimeTile sets exactly (same values, tones, help, "vs prior close" deltas):
@@ -3365,7 +3388,7 @@ export function GexHeatmap({
           value: maxPain != null ? fmtStrike(maxPain) : "—",
           tone: "sky",
           active: maxPain != null,
-          help: METRIC_HELP.maxPain,
+          help: maxPainHelp,
         },
         {
           key: "netGex",
@@ -3381,7 +3404,7 @@ export function GexHeatmap({
       if (matrixAnchorStrike != null) {
         cellsOut.push({
           key: "anchor",
-          label: GEX_KING_DUAL_LABEL,
+          label: gexKingDualLabel("near-term"),
           value: fmtStrike(matrixAnchorStrike),
           tone: "wall",
           anchor: true,
@@ -3422,7 +3445,7 @@ export function GexHeatmap({
           value: maxPain != null ? fmtStrike(maxPain) : "—",
           tone: "sky",
           active: maxPain != null,
-          help: METRIC_HELP.maxPain,
+          help: maxPainHelp,
         },
         {
           key: "netVex",
@@ -3521,6 +3544,7 @@ export function GexHeatmap({
     dexPosture,
     charmPosture,
     gexShiftNet,
+    maxPainHelp,
   ]);
 
   // ── View panels (Step 3) ─────────────────────────────────────────────────────
@@ -4016,7 +4040,12 @@ export function GexHeatmap({
 
       {/* Key levels sit tight under the control row — matrix is the hero below. */}
       {showViewTabs && (
-        <KeyLevelBox cells={levelCells} kicker={`${lensUpper} structure`} className="mb-3 gex-key-levels" />
+        <KeyLevelBox
+          cells={levelCells}
+          kicker={keyLevelsScopeKicker}
+          footnote={keyLevelsScopeFootnote}
+          className="mb-3 gex-key-levels"
+        />
       )}
 
       {/* Night Hawk active-play badge — renders only when a NH edition from the last 24h

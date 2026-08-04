@@ -165,6 +165,29 @@ export function wallScopeLabel(nearTermExpiries: readonly string[] | null | unde
   };
 }
 
+/** Key-levels bar kicker — discloses near-term scope so members don't compare to all-expiry tools. */
+export function keyLevelsKicker(
+  lensUpper: string,
+  nearTermExpiries: readonly string[] | null | undefined
+): string {
+  const n = nearTermExpiries?.length ?? 0;
+  return n > 0 ? `${lensUpper} · near-term (${n})` : `${lensUpper} · near-term`;
+}
+
+/**
+ * Footnote under the key-levels box — explains why matrix cell peaks can disagree with the bar.
+ * `frontExpiryLabel` is optional human text for max-pain scope (e.g. "Aug 4").
+ */
+export function keyLevelsFootnote(frontExpiryLabel?: string | null): string {
+  const mp = frontExpiryLabel?.trim()
+    ? `Max pain is ${frontExpiryLabel.trim()} OI only.`
+    : "Max pain is front/nearest expiry OI only.";
+  return (
+    `Flip, walls, net GEX, and King node sum near-term expiries — far monthly OpEx is excluded. ` +
+    `Matrix gold/purple cell peaks can land on any expiry column. ${mp}`
+  );
+}
+
 /** Honest empty copy for missing key levels — never invent a number. */
 export function honestLevelEmpty(
   kind: "flip" | "cross_val" | "shift"

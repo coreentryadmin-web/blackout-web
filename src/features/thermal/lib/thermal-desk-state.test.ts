@@ -12,6 +12,8 @@ import {
   shouldForceMatrixRefresh,
   thermalLayerFreshness,
   wallScopeLabel,
+  keyLevelsKicker,
+  keyLevelsFootnote,
 } from "./thermal-desk-state.ts";
 
 test("THERMAL_COMPARE_TICKERS is SPY / SPX / QQQ", () => {
@@ -104,4 +106,12 @@ test("wallScopeLabel and honest empties never invent numbers", () => {
   assert.match(wallScopeLabel(["2026-07-28", "2026-07-29"]).short, /2 near-term/);
   assert.equal(honestLevelEmpty("flip").value, "—");
   assert.match(honestLevelEmpty("cross_val").help, /offline/i);
+});
+
+test("keyLevelsKicker and footnote disclose near-term scope", () => {
+  assert.equal(keyLevelsKicker("GEX", ["2026-07-28", "2026-07-29"]), "GEX · near-term (2)");
+  assert.equal(keyLevelsKicker("VEX", null), "VEX · near-term");
+  assert.match(keyLevelsFootnote("Aug 4"), /near-term expiries/i);
+  assert.match(keyLevelsFootnote("Aug 4"), /Aug 4 OI only/);
+  assert.match(keyLevelsFootnote(), /front\/nearest expiry/i);
 });
