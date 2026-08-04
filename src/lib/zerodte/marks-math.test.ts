@@ -299,10 +299,15 @@ test("closedStopReason: non-CLOSED, missing entry, or trough above the stop → 
   assert.equal(closedStopReason({ status: "CLOSED", entry_premium: 1.0, peak_premium: null, trough_premium: null }), null); // time-stop close
 });
 
-// ── ledgerDisplayPnlPct: stopped pins to the stop %, everything else marks live ────────
-test("ledgerDisplayPnlPct: a stopped row pins to PLAN_RULES.stop_pct regardless of the frozen mark", () => {
+// ── ledgerDisplayPnlPct: stopped uses trim-scale blend when peak armed tranches ────────
+test("ledgerDisplayPnlPct: a stopped row with no trim tranches armed pins to PLAN_RULES.stop_pct", () => {
   const row = { status: "CLOSED", entry_premium: 1.0, last_mark: 0.42, peak_premium: 1.1, trough_premium: 0.4 };
-  assert.equal(ledgerDisplayPnlPct(row), PLAN_RULES.stop_pct); // −50, not (0.42−1)/1 = −58
+  assert.equal(ledgerDisplayPnlPct(row), PLAN_RULES.stop_pct); // peak +10% — no tranche armed
+});
+
+test("ledgerDisplayPnlPct: META-class stopped runner with +87% peak returns trim-scale blend (~+8.33%)", () => {
+  const row = { status: "CLOSED", entry_premium: 3.15, last_mark: 1.57, peak_premium: 5.9, trough_premium: 1.57 };
+  assert.equal(ledgerDisplayPnlPct(row), 8.33);
 });
 
 test("ledgerDisplayPnlPct: a non-stopped row derives from the mark (target/time-stop/live)", () => {
@@ -425,9 +430,21 @@ test("reconcileLedgerLivePnlPct: winning condor POSITIVE, breached condor NEGATI
     reconcileLedgerLivePnlPct({ is_condor: false, closed_reason: null, entry_premium: 6.02, last_mark: 7.38 }),
     22.59
   );
-  // A directional STOPPED close still pins to the stop P&L (D-1) — condor never takes this branch.
+  // A directional STOPPED close with no trim tranches armed still pins to mechanical stop.
   assert.equal(
-    reconcileLedgerLivePnlPct({ is_condor: false, closed_reason: "stopped", entry_premium: 6.02, last_mark: 2.0 }),
+    reconcileLedgerLivePnlPct({ is_condor: false, closed_reason: "stopped", entry_premium: 6.02, last_mark: 2.0, peak_premium: 6.5, trough_premium: 2.0 }),
     PLAN_RULES.stop_pct
+  );
+  // META-class: peak +87% armed both trim tranches — as-managed blend, not −50%.
+  assert.equal(
+    reconcileLedgerLivePnlPct({
+      is_condor: false,
+      closed_reason: "stopped",
+      entry_premium: 3.15,
+      last_mark: 1.57,
+      peak_premium: 5.9,
+      trough_premium: 1.57,
+    }),
+    8.33
   );
 });

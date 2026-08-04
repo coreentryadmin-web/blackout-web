@@ -173,4 +173,13 @@ describe("play-card-lifecycle", () => {
   it("closedRealizedPct prefers exit stamp", () => {
     assert.equal(closedRealizedPct(base({ status: "CLOSED", exitPnlPct: 42, pnlPct: -50 })), 42);
   });
+
+  it("closedRealizedPct: trim-scale as-managed when peak armed tranches before runner stop", () => {
+    assert.equal(
+      closedRealizedPct(
+        base({ status: "CLOSED", closedReason: "stopped", peak: 87.3, pnlPct: -50 }),
+      ),
+      8.33,
+    );
+  });
 });

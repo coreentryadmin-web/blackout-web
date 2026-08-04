@@ -350,7 +350,7 @@ test("exit visibility: a target-trim exit is categorized 'target' — distinct f
   assert.equal(board.ledger[0]!.closed_reason, "target");
 });
 
-test("exit visibility: a stopped play still pins P&L and reads closed_reason 'stopped' (unchanged pin)", async () => {
+test("exit visibility: a stopped play with no trim tranches armed still pins P&L to −50", async () => {
   // entry 4.0, stop 2.0; trough 1.8 ≤ stop and the peak never tagged the +100% target.
   state.ledgerRead = {
     rows: [ledgerRow({ entry_premium: 4.0, last_mark: 1.9, peak_premium: 4.4, trough_premium: 1.8, status: "CLOSED" })],
@@ -360,7 +360,30 @@ test("exit visibility: a stopped play still pins P&L and reads closed_reason 'st
   const { buildZeroDteBoardPayload } = await import("./zerodte-service");
   const board = await buildZeroDteBoardPayload();
   assert.equal(board.ledger[0]!.closed_reason, "stopped");
-  assert.equal(board.ledger[0]!.live_pnl_pct, -50, "stopped still pins to the stop P&L");
+  assert.equal(board.ledger[0]!.live_pnl_pct, -50, "peak +10% never armed trim tranches");
+  assert.equal(board.ledger[0]!.peak_pnl_pct, 10);
+});
+
+test("exit visibility: META-class stopped runner with +87% peak returns trim-scale blend on live_pnl_pct", async () => {
+  state.ledgerRead = {
+    rows: [
+      ledgerRow({
+        ticker: "META",
+        entry_premium: 3.15,
+        last_mark: 1.57,
+        peak_premium: 5.9,
+        trough_premium: 1.57,
+        status: "CLOSED",
+      }),
+    ],
+    committed_known: true,
+  };
+  state.setups = [];
+  const { buildZeroDteBoardPayload } = await import("./zerodte-service");
+  const board = await buildZeroDteBoardPayload();
+  assert.equal(board.ledger[0]!.closed_reason, "stopped");
+  assert.equal(board.ledger[0]!.peak_pnl_pct, 87.3);
+  assert.equal(board.ledger[0]!.live_pnl_pct, 8.33, "⅓@+25 + ⅓@+50 + ⅓@(−50) runner");
 });
 
 test("exit visibility: a plain 15:30 close with no engine exit reads closed_reason 'time_stop'", async () => {

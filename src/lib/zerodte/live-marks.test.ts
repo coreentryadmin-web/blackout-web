@@ -72,9 +72,9 @@ test("closedStopReason: a doubled play (sticky TRIM) is never relabeled 'stopped
   );
 });
 
-test("ledgerDisplayPnlPct: stopped play pins to −50 (D-1 frozen-mark fix); others derive from mark", () => {
+test("ledgerDisplayPnlPct: stopped play with no trim tranches armed pins to −50 (D-1 frozen-mark fix); others derive from mark", () => {
   // The wrong-number class: row closed CLOSED with last_mark frozen at 2.6 (−38.1%)
-  // while the play actually stopped at −50 — the grader will stamp −50 next session.
+  // while the play actually stopped at −50 — peak never armed trim tranches (+4.76%).
   assert.equal(
     ledgerDisplayPnlPct({ status: "CLOSED", entry_premium: 4.2, last_mark: 2.6, peak_premium: 4.4, trough_premium: 2.0 }),
     -50

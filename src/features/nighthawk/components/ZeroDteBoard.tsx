@@ -14,7 +14,7 @@ import {
 import { resolveFreshFindStatus, type EnrichedZeroDteSetup, type SessionHeat } from "@/lib/zerodte/board";
 import { buildIntelNote, type IntelAction } from "@/lib/zerodte/intel";
 import { capConvictionDisplay } from "@/lib/zerodte/conviction";
-import { isZeroDteMarkStale, type ZeroDteMarkSource } from "@/lib/zerodte/marks-math";
+import { isZeroDteMarkStale, trimScaleTranchesArmed, type ZeroDteMarkSource } from "@/lib/zerodte/marks-math";
 import type { ZeroDteLiveMarkRow } from "@/lib/zerodte/live-marks";
 import { etMinutesOf } from "@/lib/zerodte/plan";
 import {
@@ -64,7 +64,9 @@ type LedgerRow = {
   status: string | null;
   last_mark: number | null;
   live_pnl_pct: number | null;
-  /** "stopped" pins live_pnl_pct to −50 server-side (frozen-mark fix); the other values
+  /** Latched peak excursion vs entry — shown on CLOSED rows instead of mechanical stop P&L. */
+  peak_pnl_pct?: number | null;
+  /** "stopped" uses trim-scale AS-MANAGED live_pnl_pct when peak armed tranches; else −50% pin.
    *  DISTINGUISH the engine exit type (ratchet/thesis/flat/target) or a plain time_stop
    *  close. Optional/back-compat: older payloads sent only "stopped"|null. */
   closed_reason?: "stopped" | "ratchet" | "thesis" | "flat" | "target" | "stop" | "time_stop" | null;
@@ -205,6 +207,7 @@ type PlayRow = {
   conviction: string | null;
   last_mark: number | null;
   live_pnl_pct: number | null;
+  peak_pnl_pct: number | null;
   closed_reason: "stopped" | "ratchet" | "thesis" | "flat" | "target" | "stop" | "time_stop" | null;
   /** Exit-engine visibility (additive): live ratchet floor %, coarse exit category, and
    *  the engine's one-sentence rationale. Null when not applicable / older payload. */
@@ -304,6 +307,7 @@ export function mergePlays(
     conviction: r.conviction,
     last_mark: r.last_mark,
     live_pnl_pct: r.live_pnl_pct,
+    peak_pnl_pct: r.peak_pnl_pct ?? null,
     closed_reason: r.closed_reason ?? null,
     floor_pnl_pct: r.floor_pnl_pct ?? null,
     exit_reason: r.exit_reason ?? null,
@@ -359,6 +363,7 @@ export function mergePlays(
       conviction: s.conviction,
       last_mark: s.plan?.mark ?? null,
       live_pnl_pct: null,
+      peak_pnl_pct: null,
       closed_reason: null,
       floor_pnl_pct: null,
       exit_reason: null,
@@ -639,8 +644,12 @@ function StatsCell({ row }: { row: PlayRow }) {
       </span>
     );
   }
-  if (row.live_pnl_pct != null) {
-    const up = row.live_pnl_pct >= 0;
+  // CLOSED rows: show the latched peak excursion (+87% for META-class runners), not the
+  // mechanical hold-to-stop pin — members banked tranches into that peak before the runner stopped.
+  const displayPct =
+    row.status === "CLOSED" && row.peak_pnl_pct != null ? row.peak_pnl_pct : row.live_pnl_pct;
+  if (displayPct != null) {
+    const up = displayPct >= 0;
     return (
       <span
         className={clsx(
@@ -650,10 +659,16 @@ function StatsCell({ row }: { row: PlayRow }) {
           // instead of impersonating a live quote.
           row.mark_stale && "opacity-70"
         )}
-        title={row.mark_stale ? "Quote is stale — waiting for a live tick" : undefined}
+        title={
+          row.mark_stale
+            ? "Quote is stale — waiting for a live tick"
+            : row.status === "CLOSED" && row.peak_pnl_pct != null && row.closed_reason === "stopped"
+              ? `Peak excursion — as-managed realized ${row.live_pnl_pct != null ? `${row.live_pnl_pct >= 0 ? "+" : ""}${row.live_pnl_pct.toFixed(1)}%` : "—"}`
+              : undefined
+        }
       >
         {up ? "+" : ""}
-        {row.live_pnl_pct.toFixed(1)}%
+        {displayPct.toFixed(1)}%
       </span>
     );
   }
@@ -1122,8 +1137,23 @@ function PlayCard({ row, nowMs }: { row: PlayRow; nowMs: number }) {
             </span>
           )}
           {row.closed_reason === "stopped" && (
-            <span className="rounded-md border border-bear/35 bg-bear/[0.08] px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-bear">
-              stopped −50%
+            <span
+              className={clsx(
+                "rounded-md border px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.12em]",
+                trimScaleTranchesArmed(row.peak_pnl_pct) > 0
+                  ? "border-cyan-400/35 bg-cyan-400/[0.08] text-cyan-300"
+                  : "border-bear/35 bg-bear/[0.08] text-bear",
+              )}
+              title={
+                trimScaleTranchesArmed(row.peak_pnl_pct) > 0
+                  ? row.exit_detail ??
+                    `Trim ladder banked into strength — peak +${row.peak_pnl_pct?.toFixed(0) ?? "?"}%, runner stopped at plan stop`
+                  : undefined
+              }
+            >
+              {trimScaleTranchesArmed(row.peak_pnl_pct) > 0
+                ? `peak +${row.peak_pnl_pct?.toFixed(0) ?? "?"}%`
+                : "stopped −50%"}
             </span>
           )}
           {/* A non-stop engine exit (ratchet/thesis/flat/target) or a plain 15:30 close —

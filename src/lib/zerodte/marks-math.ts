@@ -202,8 +202,75 @@ export function closedStopReason(row: {
   return null;
 }
 
-/** The displayed P&L for a board ledger row: a stopped play pins to the stop P&L
- *  (the number the grader will stamp), everything else derives from the mark. */
+/** Neutral trim-scale schedule (mirrors TRIM_SCALE_RULES.tranches_by_regime.neutral in exit-engine.ts).
+ *  Used to estimate the AS-MANAGED blended P&L when a stopped runner still banked earlier tranches. */
+const TRIM_SCALE_NEUTRAL_PCTS: readonly [number, number] = [25, 50];
+const TRIM_SCALE_TRANCHE_FRAC = 1 / 3;
+
+/**
+ * Estimate trim-scale AS-MANAGED blended P&L when the runner exits at `runnerPnlPct` (default −50%
+ * plan stop) but the latched peak had already armed one or both trim tranches. Returns null when
+ * peak never reached the first trim (+25%) — the mechanical stop pin is then honest.
+ *
+ * Example: peak +87%, runner stopped at −50% → ⅓@+25 + ⅓@+50 + ⅓@(−50) ≈ +8.33%.
+ */
+/** Count of neutral trim-scale tranches the latched peak had armed (+25% / +50%). */
+export function trimScaleTranchesArmed(peakPnlPct: number | null): number {
+  if (peakPnlPct == null || !Number.isFinite(peakPnlPct)) return 0;
+  let armed = 0;
+  for (const t of TRIM_SCALE_NEUTRAL_PCTS) if (peakPnlPct >= t) armed += 1;
+  return armed;
+}
+
+export function trimScaleBlendedPnlAtStop(
+  peakPnlPct: number | null,
+  runnerPnlPct: number = PLAN_RULES.stop_pct
+): number | null {
+  if (trimScaleTranchesArmed(peakPnlPct) === 0) return null;
+  let armed = trimScaleTranchesArmed(peakPnlPct);
+  let blended = 0;
+  let remaining = 1;
+  for (let i = 0; i < armed; i++) {
+    blended += TRIM_SCALE_TRANCHE_FRAC * TRIM_SCALE_NEUTRAL_PCTS[i]!;
+    remaining -= TRIM_SCALE_TRANCHE_FRAC;
+  }
+  blended += remaining * runnerPnlPct;
+  return Math.round(blended * 100) / 100;
+}
+
+/** Peak premium P/L % vs pinned entry — the excursion high-water mark for closed-card display. */
+export function peakPnlPct(entryPremium: number | null, peakPremium: number | null): number | null {
+  return pinnedLivePnlPct(entryPremium, peakPremium);
+}
+
+/** Directional closed-row P&L: trim-scale blend when peak armed tranches, else mechanical stop pin. */
+export function directionalClosedDisplayPnlPct(row: {
+  status?: string | null;
+  entry_premium: number | null;
+  peak_premium: number | null;
+  trough_premium: number | null;
+  last_mark: number | null;
+  /** Board path: closed_reason already classified this row as stopped. */
+  force_stopped?: boolean;
+}): number | null {
+  const isStopped =
+    row.force_stopped === true ||
+    closedStopReason({
+      status: row.status ?? "CLOSED",
+      entry_premium: row.entry_premium,
+      peak_premium: row.peak_premium,
+      trough_premium: row.trough_premium,
+    }) === "stopped";
+  if (!isStopped) {
+    return pinnedLivePnlPct(row.entry_premium, row.last_mark);
+  }
+  const peakPct = peakPnlPct(row.entry_premium, row.peak_premium);
+  const managed = trimScaleBlendedPnlAtStop(peakPct, PLAN_RULES.stop_pct);
+  return managed ?? PLAN_RULES.stop_pct;
+}
+
+/** The displayed P&L for a board ledger row: trim-scale AS-MANAGED when peak armed tranches on a
+ *  stopped close; else mechanical stop pin; else mark-derived. */
 export function ledgerDisplayPnlPct(row: {
   status: string | null;
   entry_premium: number | null;
@@ -211,6 +278,7 @@ export function ledgerDisplayPnlPct(row: {
   peak_premium: number | null;
   trough_premium: number | null;
 }): number | null {
+  if (row.status === "CLOSED") return directionalClosedDisplayPnlPct(row);
   if (closedStopReason(row) === "stopped") return PLAN_RULES.stop_pct;
   return pinnedLivePnlPct(row.entry_premium, row.last_mark);
 }
@@ -222,19 +290,31 @@ export function ledgerDisplayPnlPct(row: {
  *   - CONDOR (credit structure): seller-framed (entry − mark)/entry (condorSellerPnlPct). The
  *     directional −50% stop-pin does NOT apply — a condor is breach-graded, has no premium stop
  *     level, and its loss is the defined-risk cap, not a fixed −50%.
- *   - a directional STOPPED close: pinned to the stop P&L (the number the grader will stamp; D-1).
+ *   - a directional STOPPED close: trim-scale AS-MANAGED blend when peak armed tranches (shipped
+ *     default exit mode); else the mechanical stop P&L pin (D-1 hold-to-stop comparison grade).
  *   - every other directional row: long-framed (mark − entry)/entry (pinnedLivePnlPct).
  * Pure + null-safe. Directional output is byte-identical to the previous inline expression.
  */
 export function reconcileLedgerLivePnlPct(row: {
   is_condor: boolean;
-  /** "stopped" pins the directional stop P&L; any other value / null falls through. */
+  /** "stopped" triggers trim-scale blend when peak armed tranches; else mechanical stop pin. */
   closed_reason: string | null;
   entry_premium: number | null;
   last_mark: number | null;
+  peak_premium?: number | null;
+  trough_premium?: number | null;
+  status?: string | null;
 }): number | null {
   if (row.is_condor) return condorSellerPnlPct(row.entry_premium, row.last_mark);
-  if (row.closed_reason === "stopped") return PLAN_RULES.stop_pct;
+  if (row.closed_reason === "stopped") {
+    return directionalClosedDisplayPnlPct({
+      entry_premium: row.entry_premium,
+      peak_premium: row.peak_premium ?? null,
+      trough_premium: row.trough_premium ?? null,
+      last_mark: row.last_mark,
+      force_stopped: true,
+    });
+  }
   return pinnedLivePnlPct(row.entry_premium, row.last_mark);
 }
 
