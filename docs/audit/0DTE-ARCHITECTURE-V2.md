@@ -52,13 +52,25 @@ Kill-switch: `ZERODTE_MARKET_STATE_ENABLED=0` restores equal rail weights.
 
 ---
 
-## Phase 2 — next
+## Phase 2a — in progress (this PR)
 
-1. **Persist discovery events** from scan (detected + gate_blocked + commit)
-2. **Board payload `market_state`** block for UI provenance chip
+| Item | File | Notes |
+|------|------|-------|
+| **BREAKOUT 0DTE→1DTE fallback** | `breakout-source.ts`, `breakout-discovery.ts` | `pickBreakoutContractWithFallback()`; env `ZERODTE_BREAKOUT_ALLOW_1DTE=0` for strict 0DTE-only |
+| **Discovery event persist** | `discovery-events-persist.ts`, `scan.ts` | Cron writes `detected`, `gate_blocked`, `commit` to `zerodte_discovery_events` (throttled) |
+
+---
+
+## Phase 2b — next
+
+1. **Board payload `market_state`** block for UI provenance chip
+2. **Admin funnel view** — rejections by gate code from discovery events
 3. **Portfolio Governor** extensions: sector concentration, gamma budget, time-of-day sizing
-4. **BREAKOUT 1DTE fallback** when `no_same_day_contract` (env-gated, sim-graded first)
-5. **Calibration actuator** — read origin-band WR → update rail priors in shadow Redis key
+4. **Calibration actuator** — read origin-band WR → update rail priors in shadow Redis key
+
+---
+
+## Phase 2 — remaining (was "next")
 
 ---
 

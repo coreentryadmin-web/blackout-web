@@ -9,6 +9,8 @@ import {
   liquidityQualityScore,
   mergeDiscoveryOrigins,
   pickAtmZeroDteContract,
+  pickBreakoutContractWithFallback,
+  breakoutAllow1DteFallback,
   type BreakoutChainRow,
 } from "./breakout-source";
 import { evaluateZeroDteGates, type ZeroDteGateInput } from "./gates";
@@ -342,6 +344,29 @@ test("pickAtmZeroDteContract: ATM still dominates — liquidity quality never ov
   const pick = pickAtmZeroDteContract(rows, 100.4, TODAY);
   assert.ok(pick);
   assert.equal(pick!.strike, 100, "ATM proximity still wins over a distant, higher-quality strike");
+});
+
+test("pickBreakoutContractWithFallback: 0DTE first, 1DTE when env allows, weekly excluded", () => {
+  delete process.env.ZERODTE_BREAKOUT_ALLOW_1DTE;
+  const rows0: BreakoutChainRow[] = [
+    { expiry: TODAY, strike: 100, call_bid: 1.0, call_ask: 1.1, call_oi: 800 },
+  ];
+  const zero = pickBreakoutContractWithFallback(rows0, 100.4, TODAY);
+  assert.ok(zero);
+  assert.equal(zero!.used_1dte_fallback, false);
+
+  const oneDteOnly: BreakoutChainRow[] = [
+    { expiry: "2026-07-25", strike: 100, call_bid: 1.5, call_ask: 1.6, call_oi: 700 },
+  ];
+  const one = pickBreakoutContractWithFallback(oneDteOnly, 100.4, TODAY);
+  assert.ok(one);
+  assert.equal(one!.dte, 1);
+  assert.equal(one!.used_1dte_fallback, true);
+
+  process.env.ZERODTE_BREAKOUT_ALLOW_1DTE = "0";
+  assert.equal(breakoutAllow1DteFallback(), false);
+  assert.equal(pickBreakoutContractWithFallback(oneDteOnly, 100.4, TODAY), null);
+  delete process.env.ZERODTE_BREAKOUT_ALLOW_1DTE;
 });
 
 // ── Flags: ON by default, OFF only when explicitly set to "0" ──────────────────────

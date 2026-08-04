@@ -147,6 +147,7 @@ mock.module("../zerodte/scan", {
       nighthawk_covered: [],
       upstream_ok: true,
       rejections: [],
+      market_state: { confidence: 0, rail_weights: { FLOW: 1, BREAKOUT: 1, PIN: 1 }, regime_structure: null },
     }),
     gradeZeroDteLedger: async () => 0,
   },

@@ -97,6 +97,11 @@ import { evaluateLedgerRowExit, resolveExitModeForTier, readFrozenExitPolicy } f
 import { cortexEntryContextFor, cortexGateBlocks, evaluateCortexForCommit } from "./cortex-gate";
 import { persistZeroDteRejections } from "./rejections";
 import {
+  persistDiscoveryCommitEvents,
+  persistDiscoveryDetectedEvents,
+  persistDiscoveryGateBlockedEvents,
+} from "./discovery-events-persist";
+import {
   evaluateZeroDteGates,
   freshCommitBlockedByPlan,
   gateRejectionFor,
@@ -206,6 +211,8 @@ export type ZeroDteScanResult = {
    *  forwards it to persistZeroDteRejections, on the same cron cadence committed
    *  setups already persist on. */
   rejections: ZeroDteGateRejection[];
+  /** Market State Engine snapshot for this scan (Phase 1+) — used by discovery-event persist on cron. */
+  market_state: MarketStateSnapshot;
 };
 
 /**
@@ -457,7 +464,7 @@ export async function scanZeroDteBoard(flags?: {
   });
   recordScanDuration(gatesCompletedAt - scanStartedAt);
 
-  return { setups, nighthawk_covered: nighthawkCovered, upstream_ok: upstreamOk, rejections };
+  return { setups, nighthawk_covered: nighthawkCovered, upstream_ok: upstreamOk, rejections, market_state: marketState };
 }
 
 /** Cached (3-min) intraday read from a name's own minute bars. */
@@ -961,6 +968,9 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
     void persistZeroDteRejections(gateRejections).catch((err) => {
       console.warn("[zerodte-gates] failed to persist gate rejections:", err);
     });
+    void persistDiscoveryGateBlockedEvents(gateRejections).catch((err) => {
+      console.warn("[zerodte-discovery-events] gate_blocked persist failed:", err);
+    });
   }
 
   const eligible = [...committedFresh, ...refresh];
@@ -1269,6 +1279,11 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
   if (freshlyFlagged.size > 0) {
     const freshRows = eligible.filter((s) => freshlyFlagged.has(s.ticker.toUpperCase()));
     recordZeroDteAuditTrail(freshRows, today);
+    void persistDiscoveryCommitEvents(
+      committedFresh.filter((s) => freshlyFlagged.has(s.ticker.toUpperCase()))
+    ).catch((err) => {
+      console.warn("[zerodte-discovery-events] commit persist failed:", err);
+    });
     // WS-15 committed-row write counter + WS-14 per-origin end-to-end commit latency
     // (observability only, best-effort). Counts genuinely-fresh commits (not refresh ticks);
     // latency = freshest flow print (`last_seen`) → commit instant, bucketed by discovery origin.
@@ -1512,12 +1527,18 @@ export async function gradeZeroDteLedger(force = false): Promise<number> {
  * small summary object (grid-warm counts a non-null result as a successful warm).
  */
 export async function warmZeroDteBoard(): Promise<{ found: number; logged: number } | null> {
-  const { setups, rejections } = await scanZeroDteBoard();
+  const { setups, rejections, market_state } = await scanZeroDteBoard();
   const logged = await persistZeroDteScan(setups).catch(() => 0);
   // Near-miss log (task #147) — same cron cadence persistZeroDteScan uses above,
   // never the member-poll board route. Best-effort: a failure here must never
   // affect the real board setups above.
   void persistZeroDteRejections(rejections).catch(() => 0);
+  void persistDiscoveryDetectedEvents(setups, market_state).catch((err) => {
+    console.warn("[zerodte-discovery-events] detected persist failed:", err);
+  });
+  void persistDiscoveryGateBlockedEvents(rejections).catch((err) => {
+    console.warn("[zerodte-discovery-events] flow near-miss persist failed:", err);
+  });
   // Keep every live play's OPEN/HOLD/TRIM/CLOSED state fresh even when nobody is
   // watching — the guidance runs on the cron, not on page views.
   await readZeroDteLedger().then(syncLedgerLiveState).catch(() => {});

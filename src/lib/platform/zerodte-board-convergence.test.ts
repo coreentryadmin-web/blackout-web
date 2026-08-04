@@ -40,7 +40,13 @@ mock.module("../zerodte/scan", {
       if (sharedState.slowScanMs > 0) {
         await new Promise((r) => setTimeout(r, sharedState.slowScanMs));
       }
-      return { setups: [], nighthawk_covered: [], upstream_ok: true, rejections: [] };
+      return {
+        setups: [],
+        nighthawk_covered: [],
+        upstream_ok: true,
+        rejections: [],
+        market_state: { confidence: 0, rail_weights: { FLOW: 1, BREAKOUT: 1, PIN: 1 }, regime_structure: null },
+      };
     },
     gradeZeroDteLedger: async () => 0,
   },

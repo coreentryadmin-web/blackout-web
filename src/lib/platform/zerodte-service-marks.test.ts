@@ -87,7 +87,13 @@ test("board ledger: stopped play pins live_pnl_pct to −50; live row carries la
       // buildZeroDteBoardPayload reads through the checked lane (P0 commit latch).
       readZeroDteLedgerChecked: async () => ({ rows: mockLedgerRows, committed_known: true }),
       syncLedgerLiveState: async (rows: unknown[]) => rows,
-      scanZeroDteBoard: async () => ({ setups: [], nighthawk_covered: [], upstream_ok: true, rejections: [] }),
+      scanZeroDteBoard: async () => ({
+        setups: [],
+        nighthawk_covered: [],
+        upstream_ok: true,
+        rejections: [],
+        market_state: { confidence: 0, rail_weights: { FLOW: 1, BREAKOUT: 1, PIN: 1 }, regime_structure: null },
+      }),
       gradeZeroDteLedger: async () => 0,
     },
   });
