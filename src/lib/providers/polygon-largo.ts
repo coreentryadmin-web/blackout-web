@@ -475,6 +475,25 @@ export type TickerSearchResult = {
   currency_name: string;
 };
 
+/** True when the query looks like a ticker symbol (not a company-name fragment). */
+export function isTickerSymbolQuery(query: string): boolean {
+  return /^[A-Z0-9.\-]{1,8}$/i.test(query.trim());
+}
+
+function mapPolygonTickerRef(r: Record<string, unknown>): TickerSearchResult | null {
+  const ticker = String(r.ticker ?? "").trim();
+  if (!ticker) return null;
+  return {
+    ticker,
+    name: String(r.name ?? ""),
+    market: String(r.market ?? ""),
+    primary_exchange: String(r.primary_exchange ?? ""),
+    type: String(r.type ?? ""),
+    active: r.active !== false,
+    currency_name: String(r.currency_name ?? "usd"),
+  };
+}
+
 /**
  * Relevance rank for a ticker-search hit against the typed query — LOWER sorts first.
  * Polygon's `/v3/reference/tickers?search=` fuzzy-matches ticker AND name, but the only
@@ -507,24 +526,35 @@ export function rankTickerSearchResults(
 }
 
 export async function fetchPolygonTickerSearch(query: string, limit = 10): Promise<TickerSearchResult[]> {
+  const queryUpper = query.trim().toUpperCase();
   // Over-fetch upstream so the exact/prefix match has room to surface after re-ranking —
   // Polygon returns alphabetical-by-ticker, so the real match can sit outside a `limit`-sized
   // page of purely alphabetical results (see rankTickerSearchResults doc above).
   const upstreamLimit = Math.min(Math.max(limit * 5, 25), 50);
-  const data = await polygonGet<{ results?: Array<Record<string, unknown>> }>(
-    "/v3/reference/tickers",
-    { search: query, active: "true", limit: String(upstreamLimit), sort: "ticker", order: "asc" }
-  );
-  const mapped = (data?.results ?? []).map((r) => ({
-    ticker: String(r.ticker ?? ""),
-    name: String(r.name ?? ""),
-    market: String(r.market ?? ""),
-    primary_exchange: String(r.primary_exchange ?? ""),
-    type: String(r.type ?? ""),
-    active: r.active !== false,
-    currency_name: String(r.currency_name ?? "usd"),
-  }));
-  return rankTickerSearchResults(mapped, query).slice(0, limit);
+  const [data, directPayload] = await Promise.all([
+    polygonGet<{ results?: Array<Record<string, unknown>> }>(
+      "/v3/reference/tickers",
+      { search: query, active: "true", limit: String(upstreamLimit), sort: "ticker", order: "asc" }
+    ),
+    isTickerSymbolQuery(queryUpper)
+      ? fetchPolygonTickerDetails(queryUpper).catch(() => null)
+      : Promise.resolve(null),
+  ]);
+  const mapped = (data?.results ?? [])
+    .map((r) => mapPolygonTickerRef(r))
+    .filter((r): r is TickerSearchResult => r != null);
+
+  const directRow =
+    directPayload && typeof directPayload === "object"
+      ? mapPolygonTickerRef((directPayload as { results?: Record<string, unknown> }).results ?? {})
+      : null;
+  const directHit = directRow?.active === true ? directRow : null;
+  const merged =
+    directHit != null
+      ? [directHit, ...mapped.filter((r) => r.ticker.toUpperCase() !== directHit.ticker.toUpperCase())]
+      : mapped;
+
+  return rankTickerSearchResults(merged, query).slice(0, limit);
 }
 
 // ── Options OHLC bars ─────────────────────────────────────────────────────────
