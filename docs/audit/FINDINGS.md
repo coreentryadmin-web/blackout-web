@@ -22,6 +22,18 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 
 ---
 
+## 2026-08-04 — [spx] Post-close fix agent — all validators GREEN (~2:21 PM PT / 5:21 PM ET)
+
+**Severity:** — (no product defect)
+
+**Session:** SPX Slayer post-close fix agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` Step 6 (Cloud Agent `cursor/spx-post-close-findings-fde7`).
+
+**Evidence.** `npm run validate:spx-rth -- --phase=post-close` → 6 PASS / 1 WARN / 0 FAIL; `npm run validate:spx-e2e` → 0 FAIL / 18 checks; `npm run validate:deploy` → GREEN. Matrix oracle: 159 strikes GEX+VEX+DEX+CHARM finite; cross-endpoint spot merged=7736.52 hm=7736.52; play SCANNING with no stale confirmations; BIE `getSpxPlayState()` consistent; cross-tool integration (Thermal, HELIX, Largo, Grid, 0DTE, Night Hawk) all PASS.
+
+**Today's findings.** Reviewed all `spx-rth-2026-08-04` verify passes (open through pass5). No unresolved P0/P1 SPX defects. Harness-only initial FAIL (missing `node_modules`) resolved via `npm install` + Playwright chromium install.
+
+**Status.** `fix/spx-post-close-aug4-green` → PR #1661.
+
 ## 2026-08-04 — [P0, HELIX dark pool] Empty tape when WS fresh — snapshot cached under `dark_pool_recent` — FIXED
 
 | Field | Value |
