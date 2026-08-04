@@ -37,6 +37,14 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 
 **Status.** PR pending.
 
+---
+
+## 2026-08-04 — [0DTE] Architecture V2 Phase 2b: board market_state chip + admin funnel — IN PROGRESS
+
+**Fix.** `ZeroDteBoardPayload.market_state`; `MarketStateStrip` on Command deck; `GET /api/admin/zerodte/funnel`; Admin BIE discovery funnel DeckPanel.
+
+**Status.** PR pending.
+
 ## 2026-08-03 — [ops,nighthawk] Edition stuck at stage_synthesis checkpoint — FIXED (ops-auto-fix #1572)
 
 **Severity.** P0 — Night Hawk edition `2026-08-04` not published; `job_status=stage_scoring` / `current_stage=stage_synthesis`.

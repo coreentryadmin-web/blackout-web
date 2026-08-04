@@ -222,6 +222,8 @@ export type ZeroDteBoardPayload = {
    *  board, does not gate the engine or resize a real position (graduates on the portfolio backtest). One
    *  entry per display setup, keyed by ticker; empty when the committed set is unknowable this build. */
   allocation: AllocationDecision[];
+  /** Market State Engine snapshot for this scan — regime-adaptive rail weights (Phase 2b UI provenance). */
+  market_state: import("@/lib/zerodte/market-state-engine").MarketStateSnapshot | null;
 };
 
 // ── Shared, converged board snapshot (fix/zerodte-board-convergence) ──────────────
@@ -579,7 +581,7 @@ export async function buildZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
   const earningsFlags = matchEarnings(earningsSnap?.items ?? [], { today, nextDay });
   const newsFlags = matchHotNews(news, Date.now());
 
-  const { setups, nighthawk_covered, upstream_ok } = await scanZeroDteBoard({
+  const { setups, nighthawk_covered, upstream_ok, market_state } = await scanZeroDteBoard({
     earnings: earningsFlags,
     news: newsFlags,
   });
@@ -642,6 +644,7 @@ export async function buildZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
     covered_elsewhere: nighthawk_covered,
     governor,
     allocation,
+    market_state,
   }) as ZeroDteBoardPayload;
 
   // roundFloats() rounds entry_premium/last_mark independently; recompute PnL from the
@@ -830,6 +833,7 @@ function buildMinimalBoardFallback(): ZeroDteBoardPayload {
     covered_elsewhere: [],
     governor: null,
     allocation: [],
+    market_state: null,
   };
 }
 

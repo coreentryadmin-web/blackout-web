@@ -119,6 +119,17 @@ type BoardResponse = {
   ledger?: LedgerRow[];
   covered_elsewhere?: string[];
   governor?: BoardGovernor | null;
+  market_state?: BoardMarketState | null;
+};
+
+/** Market State Engine block (Phase 2b) — regime-adaptive rail weights at merge rank. */
+type BoardMarketState = {
+  session_date: string;
+  regime_structure: string | null;
+  regime_label: string | null;
+  confidence: number;
+  rail_weights: { FLOW: number; BREAKOUT: number; PIN: number };
+  summary: string;
 };
 
 /** Pure: derives a real freshness status from the scan's own success signal + response
@@ -539,6 +550,42 @@ function GovernorStrip({
   );
 }
 
+/** Regime-adaptive discovery weights — honest provenance chip (Phase 2b). */
+function MarketStateStrip({ ms }: { ms: BoardMarketState | null | undefined }) {
+  if (!ms) return null;
+  const w = ms.rail_weights;
+  const active = ms.confidence > 0.05;
+  return (
+    <div className="mt-3 space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <GovPill
+          label="Regime"
+          value={ms.regime_label ?? ms.regime_structure ?? "unknown"}
+          tone={active ? "bull" : "sky"}
+          title={ms.summary}
+        />
+        <GovPill label="FLOW" value={`×${w.FLOW}`} tone={w.FLOW > 1 ? "bull" : w.FLOW < 1 ? "gold" : "sky"} title="Merge rank weight" />
+        <GovPill
+          label="Breakout"
+          value={`×${w.BREAKOUT}`}
+          tone={w.BREAKOUT > 1 ? "bull" : w.BREAKOUT < 1 ? "gold" : "sky"}
+          title="Merge rank weight"
+        />
+        <GovPill label="PIN" value={`×${w.PIN}`} tone={w.PIN > 1 ? "bull" : w.PIN < 1 ? "gold" : "sky"} title="Merge rank weight" />
+        {active && (
+          <GovPill
+            label="Conf"
+            value={`${Math.round(ms.confidence * 100)}%`}
+            tone="sky"
+            title="Regime clarity — low confidence keeps weights near equal"
+          />
+        )}
+      </div>
+      <p className="font-mono text-[10px] uppercase tracking-widest text-cyan-400">{ms.summary}</p>
+    </div>
+  );
+}
+
 function PaneHeader({
   data,
   transport,
@@ -583,6 +630,7 @@ function PaneHeader({
         />
       </div>
       <GovernorStrip gov={data.governor} conflicts={conflicts} nowMs={nowMs} />
+      <MarketStateStrip ms={data.market_state} />
       <p className="mt-2 font-mono text-[10px] uppercase tracking-widest text-sky-200">
         0DTE discipline: no new plays after 3:00 ET · everything closes by 3:30 ET · nothing held overnight
       </p>

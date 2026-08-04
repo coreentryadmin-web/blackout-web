@@ -8,6 +8,7 @@ import {
   DataTable,
   DeckPanel,
   GlassPanel,
+  HorzBar,
   LivePill,
   MegaStat,
   MetricChip,
@@ -245,6 +246,29 @@ type ZeroDteHealthPayload = {
   errors: string[];
 };
 
+type ZeroDteFunnelPayload = {
+  generated_at: string;
+  session_date: string;
+  db_configured: boolean;
+  detected_tickers: number;
+  gate_blocked_events: number;
+  commit_events: number;
+  rejection_rows: number;
+  by_gate: Array<{ gate: string; label: string; n: number }>;
+  by_kind: Array<{ kind: string; n: number }>;
+  recent_events: Array<{
+    observed_at: string;
+    ticker: string;
+    kind: string;
+    gate_code: string | null;
+    score: number | null;
+    detail: string | null;
+  }>;
+  events_sample_capped: boolean;
+  rejections_sample_capped: boolean;
+  errors: string[];
+};
+
 // HELIX health panel (task #134) — payload shape of /api/admin/helix/health, the
 // HELIX flow-ingestion-pipeline analogue of the two panels above: cron liveness for
 // flow-ingest + market-regime-detector, a read-only cluster-wide live-tape heartbeat
@@ -439,6 +463,28 @@ export function AdminBieDashboard() {
     void loadZeroDteHealth();
   }, [loadZeroDteHealth]);
 
+  const [zeroDteFunnel, setZeroDteFunnel] = useState<ZeroDteFunnelPayload | null>(null);
+  const [zeroDteFunnelLoading, setZeroDteFunnelLoading] = useState(true);
+  const [zeroDteFunnelError, setZeroDteFunnelError] = useState<string | null>(null);
+
+  const loadZeroDteFunnel = useCallback(async () => {
+    setZeroDteFunnelLoading(true);
+    setZeroDteFunnelError(null);
+    try {
+      const res = await fetch("/api/admin/zerodte/funnel", { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setZeroDteFunnel((await res.json()) as ZeroDteFunnelPayload);
+    } catch (e) {
+      setZeroDteFunnelError(e instanceof Error ? e.message : "failed to load");
+    } finally {
+      setZeroDteFunnelLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadZeroDteFunnel();
+  }, [loadZeroDteFunnel]);
+
   // HELIX health panel (task #134) — same independence contract as every other
   // health fetch above: its own state/effect, so a failure here can never blank or
   // block the rest of this dashboard (or any other panel), and vice versa. Wired
@@ -578,6 +624,7 @@ export function AdminBieDashboard() {
               void loadSpxHealth();
               void loadGexHealth();
               void loadZeroDteHealth();
+              void loadZeroDteFunnel();
               void loadHelixHealth();
             }}
             disabled={loading}
@@ -1048,6 +1095,97 @@ export function AdminBieDashboard() {
           <p className="admin-warn">DATABASE_URL not set — candidates-scanned/rejection-rate will read as 0.</p>
         )}
       </GlassPanel>
+
+      <DeckPanel
+        title="0DTE discovery funnel"
+        accent="amber"
+        defaultOpen
+        storageKey="bie-zerodte-funnel"
+      >
+        <p className="admin-bie-coverage-note mb-3">
+          Phase 2b · today&apos;s zerodte_discovery_events + zerodte_scan_rejections (grid-warm cron)
+        </p>
+        {zeroDteFunnelError && (
+          <p className="admin-bie-error-text">Discovery funnel fetch failed: {zeroDteFunnelError}</p>
+        )}
+        <div className="admin-mega-grid admin-nh-stats-row">
+          <MegaStat
+            label="Detected tickers"
+            value={zeroDteFunnel ? String(zeroDteFunnel.detected_tickers) : "—"}
+            sub={zeroDteFunnel ? zeroDteFunnel.session_date : undefined}
+            tone="cyan"
+          />
+          <MegaStat
+            label="Gate blocked"
+            value={zeroDteFunnel ? String(zeroDteFunnel.gate_blocked_events) : "—"}
+            sub="Discovery events"
+            tone="amber"
+          />
+          <MegaStat
+            label="Committed"
+            value={zeroDteFunnel ? String(zeroDteFunnel.commit_events) : "—"}
+            sub="Discovery events"
+            tone="bull"
+          />
+          <MegaStat
+            label="Rejections logged"
+            value={zeroDteFunnel ? String(zeroDteFunnel.rejection_rows) : "—"}
+            sub="Scan rejections table"
+            tone="bear"
+          />
+        </div>
+        {zeroDteFunnelLoading && !zeroDteFunnel && (
+          <p className="admin-bie-coverage-note">Loading funnel…</p>
+        )}
+        {zeroDteFunnel && zeroDteFunnel.by_gate.length === 0 ? (
+          <p className="admin-bie-coverage-note">
+            No gate blocks logged yet today — funnel fills after grid-warm cron runs through RTH.
+          </p>
+        ) : (
+          zeroDteFunnel && (
+            <div className="admin-nh-buckets">
+              {zeroDteFunnel.by_gate.map((g) => (
+                <HorzBar
+                  key={g.gate}
+                  label={g.label}
+                  value={g.n}
+                  max={Math.max(1, ...zeroDteFunnel.by_gate.map((x) => x.n))}
+                  tone="bear"
+                  right={`${g.n}`}
+                />
+              ))}
+            </div>
+          )
+        )}
+        {zeroDteFunnel?.recent_events && zeroDteFunnel.recent_events.length > 0 && (
+          <DataTable>
+            <thead>
+              <tr>
+                <th>Time (ET)</th>
+                <th>Ticker</th>
+                <th>Kind</th>
+                <th>Gate / score</th>
+              </tr>
+            </thead>
+            <tbody>
+              {zeroDteFunnel.recent_events.slice(0, 12).map((ev, i) => (
+                <tr key={`${ev.ticker}-${ev.kind}-${i}`}>
+                  <td>{new Date(ev.observed_at).toLocaleTimeString("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit" })}</td>
+                  <td>{ev.ticker}</td>
+                  <td>{ev.kind}</td>
+                  <td>{ev.gate_code ?? (ev.score != null ? String(ev.score) : "—")}</td>
+                </tr>
+              ))}
+            </tbody>
+          </DataTable>
+        )}
+        {(zeroDteFunnel?.events_sample_capped || zeroDteFunnel?.rejections_sample_capped) && (
+          <p className="admin-bie-coverage-note">Sample may be truncated for high-volume sessions.</p>
+        )}
+        {zeroDteFunnel && !zeroDteFunnel.db_configured && (
+          <p className="admin-warn">DATABASE_URL not set — funnel reads empty.</p>
+        )}
+      </DeckPanel>
 
       {/* HELIX health (task #134) — read-only glance at HELIX's flow-ingestion
           pipeline: cron liveness for the two crons that make up the pipeline

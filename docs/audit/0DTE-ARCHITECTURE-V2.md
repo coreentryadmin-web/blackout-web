@@ -61,12 +61,26 @@ Kill-switch: `ZERODTE_MARKET_STATE_ENABLED=0` restores equal rail weights.
 
 ---
 
-## Phase 2b — next
+## Phase 2b — shipped in this PR
 
-1. **Board payload `market_state`** block for UI provenance chip
-2. **Admin funnel view** — rejections by gate code from discovery events
-3. **Portfolio Governor** extensions: sector concentration, gamma budget, time-of-day sizing
-4. **Calibration actuator** — read origin-band WR → update rail priors in shadow Redis key
+| Item | File | Notes |
+|------|------|-------|
+| **Board `market_state`** | `zerodte-service.ts`, `ZeroDteBoard.tsx` | Regime + rail weight pills + summary under session header |
+| **Discovery funnel read** | `admin-zerodte-funnel.ts`, `db.ts` | `fetchZeroDteDiscoveryEvents` + session-scoped rejections |
+| **Admin funnel API** | `/api/admin/zerodte/funnel` | Admin-gated, read-only |
+| **Admin funnel UI** | `AdminBieDashboard.tsx` | DeckPanel: detected / gate_blocked / commit + by-gate HorzBar |
+
+---
+
+## Phase 2c — next
+
+1. **Portfolio Governor** extensions: sector concentration, gamma budget, time-of-day sizing
+2. **Calibration actuator** — read origin-band WR → update rail priors in shadow Redis key
+3. **Member-facing funnel** — top rejection reason on session strip (optional)
+
+---
+
+## Phase 2b — was "next"
 
 ---
 

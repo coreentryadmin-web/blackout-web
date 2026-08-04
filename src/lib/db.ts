@@ -3637,7 +3637,11 @@ export async function insertZeroDteScanRejection(row: {
   );
 }
 
-export async function fetchZeroDteScanRejections(opts?: { ticker?: string; limit?: number }): Promise<
+export async function fetchZeroDteScanRejections(opts?: {
+  ticker?: string;
+  session_date?: string;
+  limit?: number;
+}): Promise<
   Array<{
     id: number;
     observed_at: string;
@@ -3659,18 +3663,32 @@ export async function fetchZeroDteScanRejections(opts?: { ticker?: string; limit
   await ensureSchema();
   const limit = opts?.limit ?? 50;
   const ticker = opts?.ticker?.toUpperCase();
+  const sessionDate = opts?.session_date;
   const cols = `id, observed_at, session_date, ticker, gate_failed, threshold,
            gross_premium, aggression, side_dominance, otm_pct, direction, prints,
            first_seen, last_seen, reason`;
-  const res = ticker
-    ? await (await getPool()).query(
-        `SELECT ${cols} FROM zerodte_scan_rejections WHERE ticker = $1 ORDER BY observed_at DESC LIMIT $2`,
-        [ticker, limit]
-      )
-    : await (await getPool()).query(
-        `SELECT ${cols} FROM zerodte_scan_rejections ORDER BY observed_at DESC LIMIT $1`,
-        [limit]
-      );
+  let res;
+  if (ticker && sessionDate) {
+    res = await (await getPool()).query(
+      `SELECT ${cols} FROM zerodte_scan_rejections WHERE ticker = $1 AND session_date = $2 ORDER BY observed_at DESC LIMIT $3`,
+      [ticker, sessionDate, limit]
+    );
+  } else if (ticker) {
+    res = await (await getPool()).query(
+      `SELECT ${cols} FROM zerodte_scan_rejections WHERE ticker = $1 ORDER BY observed_at DESC LIMIT $2`,
+      [ticker, limit]
+    );
+  } else if (sessionDate) {
+    res = await (await getPool()).query(
+      `SELECT ${cols} FROM zerodte_scan_rejections WHERE session_date = $1 ORDER BY observed_at DESC LIMIT $2`,
+      [sessionDate, limit]
+    );
+  } else {
+    res = await (await getPool()).query(
+      `SELECT ${cols} FROM zerodte_scan_rejections ORDER BY observed_at DESC LIMIT $1`,
+      [limit]
+    );
+  }
   return res.rows.map((r) => ({
     id: Number(r.id),
     observed_at: String(r.observed_at),
@@ -3687,6 +3705,67 @@ export async function fetchZeroDteScanRejections(opts?: { ticker?: string; limit
     first_seen: r.first_seen != null ? String(r.first_seen) : null,
     last_seen: r.last_seen != null ? String(r.last_seen) : null,
     reason: r.reason != null ? String(r.reason) : null,
+  })  );
+}
+
+export async function fetchZeroDteDiscoveryEvents(opts?: {
+  session_date?: string;
+  ticker?: string;
+  kind?: string;
+  limit?: number;
+}): Promise<
+  Array<{
+    id: number;
+    observed_at: string;
+    session_date: string;
+    ticker: string;
+    kind: string;
+    origins: string[] | null;
+    score: number | null;
+    weighted_score: number | null;
+    gate_code: string | null;
+    detail: string | null;
+    payload: Record<string, unknown> | null;
+  }>
+> {
+  await ensureSchema();
+  const limit = opts?.limit ?? 100;
+  const sessionDate = opts?.session_date;
+  const ticker = opts?.ticker?.toUpperCase();
+  const kind = opts?.kind;
+  const cols = `id, observed_at, session_date, ticker, kind, origins, score, weighted_score, gate_code, detail, payload`;
+  const clauses: string[] = [];
+  const params: unknown[] = [];
+  if (sessionDate) {
+    params.push(sessionDate);
+    clauses.push(`session_date = $${params.length}`);
+  }
+  if (ticker) {
+    params.push(ticker);
+    clauses.push(`ticker = $${params.length}`);
+  }
+  if (kind) {
+    params.push(kind);
+    clauses.push(`kind = $${params.length}`);
+  }
+  params.push(limit);
+  const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+  const res = await (await getPool()).query(
+    `SELECT ${cols} FROM zerodte_discovery_events ${where} ORDER BY observed_at DESC LIMIT $${params.length}`,
+    params
+  );
+  return res.rows.map((r) => ({
+    id: Number(r.id),
+    observed_at: String(r.observed_at),
+    session_date: String(r.session_date),
+    ticker: String(r.ticker),
+    kind: String(r.kind),
+    origins: r.origins != null ? (JSON.parse(JSON.stringify(r.origins)) as string[]) : null,
+    score: r.score != null ? Number(r.score) : null,
+    weighted_score: r.weighted_score != null ? Number(r.weighted_score) : null,
+    gate_code: r.gate_code != null ? String(r.gate_code) : null,
+    detail: r.detail != null ? String(r.detail) : null,
+    payload: r.payload != null ? (JSON.parse(JSON.stringify(r.payload)) as Record<string, unknown>) : null,
   }));
 }
 
