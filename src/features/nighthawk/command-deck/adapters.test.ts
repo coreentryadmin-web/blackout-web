@@ -850,6 +850,50 @@ test("0DTE adapter: setup.first_seen maps to detectedAt for WATCH published cloc
   assert.equal(p.detectedAt, "2026-08-03T10:47:00-04:00");
 });
 
+test("0DTE adapter: WATCH stamps trackPct from flow fill anchor, not pnlPct", () => {
+  const p = terminalPlayFromZeroDte({
+    ticker: "nvda",
+    status: "WATCH",
+    score: 70,
+    last_mark: 5.0,
+    setup: {
+      direction: "long",
+      dte: 0,
+      plan: { flow_avg_fill: 4.0, entry_max: 4.5, mark: 5.0 },
+    },
+  });
+  assert.equal(p.pnlPct, null);
+  assert.equal(p.trackReferencePremium, 4.0);
+  assert.equal(p.trackPct, 25);
+});
+
+test("horizon adapter: pre-entry COMMIT maps to WATCH; live OPEN maps to OPEN", () => {
+  const watch = terminalPlayFromHorizon({
+    ticker: "aapl",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 82,
+    status: "COMMIT",
+    contract: { strike: 200, right: "C", expiry: "2026-09-19", dte: 14, mid: 3.2 },
+    flagUnderlyingPx: 195,
+    liveSpot: 200,
+  });
+  assert.equal(watch.status, "WATCH");
+  assert.equal(watch.trackPct, 2.56); // (200-195)/195*100 rounded
+
+  const open = terminalPlayFromHorizon({
+    ticker: "aapl",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 82,
+    status: "COMMIT",
+    liveStatus: "OPEN",
+    contract: { strike: 200, right: "C", expiry: "2026-09-19", dte: 14, mid: 3.5 },
+  });
+  assert.equal(open.status, "OPEN");
+  assert.equal(open.trackPct, null);
+});
+
 test("0DTE adapter (Wave 3): absent why_now → whyNow null (ribbon omitted, no fabrication)", () => {
   const p = terminalPlayFromZeroDte({
     ticker: "coin", status: "HOLD", score: 60, entry_premium: 5.0, last_mark: 5.0, live_pnl_pct: 0,

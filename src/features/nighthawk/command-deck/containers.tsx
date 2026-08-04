@@ -13,6 +13,7 @@ import { fetchNightHawkHorizons } from "@/lib/api";
 import type { NightHawkEdition, NightHawkRecordResponse } from "@/features/nighthawk/lib/types";
 import type { TerminalPlay } from "./types";
 import { overlayLegacyQuotes, useLegacyStockQuotes } from "./use-legacy-quotes";
+import { overlayHorizonWatchTrack } from "./use-live-marks";
 import { useZeroDteLiveDeck } from "./use-zero-dte-live-deck";
 import { zeroDteSources, isBoardDegraded, type BoardResp } from "./zerodte-sources";
 import { EDITION_TARGET_PLAYS } from "@/features/nighthawk/lib/constants";
@@ -164,16 +165,27 @@ export function HorizonDeck({ horizon }: { horizon: "SWING" | "LEAPS" }) {
       firstSeenAt: p.firstSeenAt ?? null,
       committedAt: p.committedAt ?? null,
       signalKinds: p.signalKinds ?? null,
+      liveStatus: p.liveStatus ?? null,
+      flagUnderlyingPx: p.flagUnderlyingPx ?? null,
       thesisBreak:
         p.thesisLevel != null
           ? { level: p.thesisLevel, note: p.thesisNote ?? undefined }
           : undefined,
     }),
   );
+  const watchTickers = useMemo(
+    () => [...new Set(plays.filter((p) => p.status === "WATCH").map((p) => p.ticker))],
+    [plays],
+  );
+  const stockQuotes = useLegacyStockQuotes(watchTickers, watchTickers.length > 0, 5_000);
+  const playsWithTrack = useMemo(
+    () => overlayHorizonWatchTrack(plays, stockQuotes),
+    [plays, stockQuotes],
+  );
   const sessionHeat = data?.session?.heat?.state ?? null;
   return (
     <CommandDeck
-      plays={plays}
+      plays={playsWithTrack}
       laneLabel={horizon === "SWING" ? "Swings · 2–30 DTE" : "LEAPS · ≤90 DTE"}
       degraded={degraded}
       loading={isLoading && !data}

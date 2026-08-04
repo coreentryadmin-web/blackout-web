@@ -26,6 +26,7 @@ import type {
   TerminalPlay,
   ThesisLevel,
 } from "./types";
+import { watchReferencePremium, watchTrackPct, watchUnderlyingTrackPct } from "@/lib/zerodte/watch-track";
 
 const asDir = (d: unknown): DeckDirection =>
   String(d ?? "").toLowerCase().startsWith("s") || String(d ?? "") === "SHORT" ? "SHORT" : "LONG";
@@ -144,6 +145,8 @@ export interface ZeroDteDeckSource {
       ask?: number | null;
       stop_premium?: number | null;
       target_premium?: number | null;
+      flow_avg_fill?: number | null;
+      entry_max?: number | null;
     } | null;
     market_aligned?: boolean | null;
     /** Play STRUCTURE (Phase 4): "CONDOR" for a delta-neutral credit iron condor, else DIRECTIONAL. */
@@ -327,6 +330,11 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
   // keys the ~1s marks overlay even when setup.plan was never attached.
   const occ = (typeof src.occ === "string" && src.occ.length > 0 ? src.occ : null) ?? setup?.plan?.occ ?? null;
 
+  const trackReference =
+    status === "WATCH" ? watchReferencePremium(setup?.plan ?? null) : null;
+  const trackPct =
+    status === "WATCH" ? watchTrackPct(trackReference, markNum) : null;
+
   return {
     id: `0DTE:${src.ticker}`,
     ticker: src.ticker.toUpperCase(),
@@ -355,6 +363,8 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
     entry,
     mark: markNum,
     pnlPct: pnlDisplay,
+    trackPct,
+    trackReferencePremium: trackReference,
     peak: peakDisplay,
     trough: troughDisplay,
     // Executable fill (sell-into-the-BID) is a directional LONG framing — inverted for a credit
@@ -416,6 +426,12 @@ export interface HorizonDeckSource {
   committedAt?: string | null;
   /** Discovery provenance kinds. */
   signalKinds?: string[] | null;
+  /** Live-position status when this play is an OPEN swing (OPEN/HOLD/TRIM). */
+  liveStatus?: "OPEN" | "HOLD" | "TRIM" | null;
+  /** Underlying price when the thesis was first flagged — WATCH track anchor. */
+  flagUnderlyingPx?: number | null;
+  /** Optional live underlying for WATCH track (stock quote overlay). */
+  liveSpot?: number | null;
 }
 
 /**
@@ -438,9 +454,22 @@ function thesisBreakFromSetupState(
   return { level: "intact" }; // FORMING / TRIGGERED / EXTENDED — a live, un-broken thesis
 }
 
+/** Map horizon play status to deck lifecycle — live capital wears OPEN/HOLD/TRIM. */
+function horizonDeckStatus(src: HorizonDeckSource): DeckStatus {
+  if (src.liveStatus) return asStatus(src.liveStatus);
+  const raw = String(src.status ?? "").toUpperCase();
+  if (raw === "COMMIT") return "WATCH"; // pre-entry actionable, not committed capital
+  return asStatus(src.status ?? (src.score >= 60 ? "OPEN" : "WATCH"));
+}
+
 export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
-  const status = asStatus(src.status ?? (src.score >= 60 ? "OPEN" : "WATCH"));
+  const status = horizonDeckStatus(src);
   const mgmt = managementFor("SCALE_OUT", status, null);
+  const flagPx = fin(src.flagUnderlyingPx);
+  const trackPct =
+    status === "WATCH"
+      ? watchUnderlyingTrackPct(src.direction, flagPx, src.liveSpot ?? null)
+      : null;
   return {
     id: `${src.horizon}:${src.ticker}`,
     ticker: src.ticker.toUpperCase(),
@@ -462,6 +491,8 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     entry: null,
     mark: fin(src.contract.mid),
     pnlPct: null,
+    trackPct,
+    flagUnderlyingPx: flagPx,
     greeks: null,
     archetype: src.archetype ?? null,
     subLane: src.subLane ?? null,

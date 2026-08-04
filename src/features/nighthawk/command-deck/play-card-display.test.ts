@@ -3,6 +3,8 @@ import { describe, it } from "node:test";
 import {
   formatReturnPct,
   playQualityPct,
+  primaryReturnLabel,
+  primaryReturnPct,
   tierStarCount,
   tierStars,
   useHeroPlayCard,
@@ -52,5 +54,13 @@ describe("play-card-display", () => {
     assert.equal(useLifecyclePlayCard(base), true);
     assert.equal(useLifecyclePlayCard({ ...base, horizon: "SWING" }), true);
     assert.equal(useLifecyclePlayCard({ ...base, horizon: "LEGACY" }), true);
+  });
+
+  it("primaryReturnPct prefers trackPct on WATCH rows", () => {
+    assert.equal(
+      primaryReturnPct({ ...base, status: "WATCH", trackPct: 12, pnlPct: null }),
+      12,
+    );
+    assert.equal(primaryReturnLabel({ ...base, status: "WATCH", trackPct: 12 }), "Since flag");
   });
 });

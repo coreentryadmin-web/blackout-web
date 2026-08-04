@@ -15,6 +15,7 @@ import {
   playStatusDisplay,
   playTriggeredEvent,
   setupTypeLabel,
+  watchMetricsValues,
   watchWaitLabel,
 } from "./play-card-lifecycle";
 import { formatReturnPct, playGradeLabel, tierStars } from "./play-card-display";
@@ -84,6 +85,7 @@ export function PlayLifecycleCardBody({
   const horizonLabel = horizonDisplayLabel(play.horizon);
   const metricLabels = openMetricsLabels(play);
   const { currentPct, peakPct } = openMetricsValues(play);
+  const { trackPct } = watchMetricsValues(play);
   const grade = playGradeLabel(play);
   const stars = grade ? tierStars(grade) : "";
 
@@ -135,6 +137,17 @@ export function PlayLifecycleCardBody({
 
       {phase === "watch" && (
         <div className="nh-deck-lc-wait">{watchWaitLabel(play)}</div>
+      )}
+
+      {phase === "watch" && trackPct != null && (
+        <div className="nh-deck-lc-metrics">
+          <div className="nh-deck-lc-metric">
+            <span className="k">Since flag</span>
+            <span className={clsx("v", signClass(trackPct), markFlash && "neon")}>
+              {formatReturnPct(trackPct)}
+            </span>
+          </div>
+        </div>
       )}
 
       {phase !== "closed" && (

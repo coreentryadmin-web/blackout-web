@@ -97,6 +97,8 @@ export interface HorizonPlay {
   serving?: SwingServingSection;
   /** ISO instant the thesis was first observed (accumulation store). */
   firstSeenAt?: string;
+  /** Underlying price when the thesis was first flagged — WATCH track anchor (stock-level proxy). */
+  flagUnderlyingPx?: number | null;
   /** ISO instant capital was committed (live ledger). */
   committedAt?: string;
   /** Discovery provenance kinds (FLOW / STRUCTURE / CATALYST). */

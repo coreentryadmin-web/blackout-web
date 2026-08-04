@@ -89,6 +89,8 @@ test("watch lifecycle row shows hierarchy, confidence, and compact age", async (
       detectedAt: "2026-08-03T11:54:00-04:00",
       firstFlaggedAt: null,
       pnlPct: null,
+      trackPct: 18,
+      trackReferencePremium: 4.2,
       peak: null,
     }),
     { nowMs: Date.parse("2026-08-03T12:00:00-04:00"), rank: 2 },
@@ -100,6 +102,8 @@ test("watch lifecycle row shows hierarchy, confidence, and compact age", async (
   assert.match(html, />#2</);
   assert.match(html, />WATCH</);
   assert.match(html, />Waiting for Trigger</);
+  assert.match(html, />Since flag</);
+  assert.match(html, />\+18%/);
   assert.match(html, />Confidence</);
   assert.match(html, />96</);
   assert.match(html, />6m</);
