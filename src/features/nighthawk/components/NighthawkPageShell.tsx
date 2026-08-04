@@ -38,14 +38,13 @@ export function NighthawkPageShell({ seed }: { seed?: NightHawkSeedProps | null 
           <PageHeader
             kicker="Overnight playbook"
             title="Night Hawk"
-            subtitle="Tomorrow's ranked setups — published after the close, ready before the open."
             badge={
               <span className="flex items-center gap-2">
                 <ProductMark product="nighthawk" size={44} animated={false} />
                 <FreshnessChip status="live" label="Night Hawk" />
               </span>
             }
-            className="nh-v2-page-header mb-3 shrink-0 [&_p]:font-semibold [&_p]:text-sky-200 [&_.t-kicker]:font-bold [&_.t-kicker]:text-sky-300"
+            className="nh-v2-page-header mb-3 shrink-0 [&_.t-kicker]:font-bold [&_.t-kicker]:text-sky-300"
           />
         )}
         <NightHawkFeed seed={seed ?? null} />
