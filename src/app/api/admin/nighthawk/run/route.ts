@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
   try {
     const result = await buildEveningEdition({
       force: true,
-      ...(asOfEt ? { asOfEt, persist: persist || true } : {}),
+      ...(asOfEt ? { asOfEt, persist } : {}),
     });
     const status = result.ok ? 200 : result.job_status === "failed" ? 500 : 202;
     return NextResponse.json(

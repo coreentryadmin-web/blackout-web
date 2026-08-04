@@ -68,6 +68,11 @@ export function playLifecyclePhase(status: DeckStatus): PlayLifecyclePhase {
   return "open";
 }
 
+/** WATCH-tab rows that track hypothetical move since flag — includes gate-blocked SKIP (FAILED pill). */
+export function isWatchTrackStatus(status: DeckStatus): boolean {
+  return status === "WATCH" || status === "SKIP";
+}
+
 /** Human-readable relative age — "14m ago", "just now". Null when timestamp unknown. */
 export function formatRelativeAge(iso: string | null | undefined, nowMs: number): string | null {
   if (!iso || !(nowMs > 0)) return null;

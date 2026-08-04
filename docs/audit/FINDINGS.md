@@ -17,6 +17,19 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 
 ---
 
+## 2026-08-04 — [P2, UX] WATCH tab SKIP (FAILED) rows missing "Since flag" track % — FIXED
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P2 UX — gate-blocked 0DTE setups show confidence (55/43) but no hypothetical track % |
+| **Evidence** | Member screenshot 09:42 ET: SPXW + SPY under WATCH filter with FAILED pill, large "55"/"43" confidence scores, no `Since flag` % row |
+| **Root cause** | PR #1592 wired `trackPct` only when `status === "WATCH"`. Opening-window gate blocks map to `SKIP` (FAILED pill) but `filterByStatus(WATCH)` includes SKIP and `playLifecyclePhase(SKIP)` → `"watch"` — adapter left `trackPct` null so UI fell back to `ConfidenceBadge` |
+| **Fix** | `isWatchTrackStatus()` (WATCH \| SKIP) drives trackReference/trackPct in adapters, list row, live-mark overlay, and `primaryReturnPct`/`primaryReturnLabel` |
+| **Files** | `adapters.ts`, `play-card-display.ts`, `CommandDeck.tsx`, `use-live-marks.ts`, `play-card-lifecycle.ts` |
+| **Status** | FIXED — PR #1605 |
+
+---
+
 ## 2026-08-04 — [P2, data coverage] Thermal low-priced tickers (NIO) showed ~4–5 strikes — FIXED
 
 | Field | Value |
@@ -53,18 +66,6 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Fix** | KeyLevelBox kicker → `GEX · near-term (N)`; scope footnote under bar; METRIC_HELP + max-pain tooltip name front expiry; King node label `gexKingDualLabel("near-term")`. Helpers: `keyLevelsKicker` / `keyLevelsFootnote` in `thermal-desk-state.ts`. |
 | **Files** | `GexHeatmap.tsx`, `thermal-desk-state.ts`, `thermal-desk-state.test.ts` |
 | **Status** | FIXED — PR `cursor/thermal-key-levels-scope-3d11` |
-=======
-## 2026-08-04 — [P2, UX] Night Hawk right detail panel lost scroll after left-rail fix (#1596) — FIXED
-
-| Field | Value |
-|-------|-------|
-| **Severity** | P2 UX — thesis/management content clipped on Swings + 0DTE when play detail exceeds viewport |
-| **Evidence** | Member screenshot: left `.nh-deck-rows` scrollbar visible; right CORZ thesis cut off with no page or panel scroll |
-| **Root cause** | #1596 capped shell at `100svh` + `overflow:hidden` and added flex scroll only for `.nh-deck-rows` (left). Right panel relied on page scroll before; `.nh-deck-body` had `overflow-y:auto` in globals but no flex-shrink chrome / min-height chain under the new viewport lock |
-| **Fix** | Mirror left rules on right: `nh-deck-right` flex column; pin header/tabs/footer; `.nh-deck-body` flex fill + visible scrollbar |
-| **Files** | `src/app/nighthawk-v2.css` |
-| **Status** | FIXED — PR `cursor/nighthawk-right-scroll-3d11` |
->>>>>>> 9d248815 (docs: FINDINGS entry for nighthawk right panel scroll)
 
 ---
 
@@ -6839,3 +6840,46 @@ thesis-health/stale badges and the exec-fill line no longer render on the row. A
 `command-deck/*.test.ts` suite (179 tests) re-run clean. `npx tsc --noEmit` clean.
 
 **Status:** PR pending → CI → auto-merge per standing policy.
+
+## 2026-08-03 — [Night Hawk full-system audit] Admin edition-rebuild route ignores `?persist=` — always writes
+
+**Trigger.** Full-day, all-systems Night Hawk audit (0DTE/Swings/Legacy/UI/recent-commits, 6 parallel
+deep-read passes) requested directly by the user, cross-checked line-by-line against the live code.
+This finding survived cross-check against `origin/main` — most other findings from the same audit
+had already been independently fixed by a concurrent session between the audit running and this
+write-up (Legacy merit-tier conflict #1573/#1577, the fail-closed firewall reconciliation #1589, the
+CLOSED-row peak/realized regression #1593/#1595) — this one had not.
+
+**Root cause.** `src/app/api/admin/nighthawk/run/route.ts:28` (added in #1531, 2026-08-02):
+```ts
+...(asOfEt ? { asOfEt, persist: persist || true } : {}),
+```
+`persist || true` is unconditionally `true` regardless of the actual `persist` boolean parsed one
+line above from `?persist=1`. `edition-builder.ts:361-372`'s own documented contract is *"Historical
+asOfEt defaults to dry-run unless persist=true — never silently overwrite a past published edition
+from a probe."* This route defeated that guard for every historical (`asOfEt`) call: any admin
+probing a past date — including a typo'd one — persisted to prod instead of dry-running, opposite of
+what the route's own doc comment and the #1531 commit message ("`?asOfEt=…&persist=1` opt-in")
+describe.
+
+**Evidence.** Read the exact line; confirmed the `||` makes the right operand unreachable-false-wise
+(`false || true` and `true || true` both evaluate `true`). New regression test
+(`route.test.ts`, 3 cases) proves the pre-fix expression would report `persist: true` even with no
+`?persist` param at all, matching the bug.
+
+**Fix.** `persist: persist` (the parsed boolean, unmodified) — one token removed.
+
+**Blast radius.** Single call site; `buildEveningEdition`'s `persist` param has exactly one other
+reader (the `dryRun` computation at `edition-builder.ts:377`), unaffected.
+
+**Fix rationale.** Restore the documented default (dry-run) rather than removing the guard or adding
+a second flag — the query param + doc comment already describe the intended contract correctly, only
+the wiring was wrong.
+
+**Tests.** New `src/app/api/admin/nighthawk/run/route.test.ts` (3 cases, mocking `buildEveningEdition`
+per the `spx-issues-sync/route.test.ts` pattern): no `?persist` on a historical rebuild → `persist:
+false`; `?persist=1` → `persist: true`; no `asOfEt` → both keys omitted (today's normal run).
+All pass. `npx tsc --noEmit` clean.
+
+**Status:** PR opened, NOT merged — standing instruction for today is observe/fix/PR only, no
+auto-merge, pending user review.

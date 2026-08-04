@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { TerminalPlay } from "./types";
 import { refreshZeroDteManagement } from "./adapters";
+import { isWatchTrackStatus } from "./play-card-lifecycle";
 import { watchTrackPct, watchUnderlyingTrackPct } from "@/lib/zerodte/watch-track";
 
 /**
@@ -205,7 +206,7 @@ export function overlayLiveMarks(plays: TerminalPlay[], marks: Map<string, LiveM
     // (including plan.mark plumbed by zerodte-sources) and still advance the client peak/trough latch
     // from the board's current pnl so the PnL panel doesn't look frozen between polls.
     if (!row || row.stale) {
-      if (p.status === "WATCH" && p.horizon === "ZERO_DTE") {
+      if (isWatchTrackStatus(p.status) && p.horizon === "ZERO_DTE") {
         const mark = p.mark ?? null;
         const trackPct = watchTrackPct(p.trackReferencePremium ?? null, mark);
         const merged =
@@ -217,7 +218,7 @@ export function overlayLiveMarks(plays: TerminalPlay[], marks: Map<string, LiveM
       return refreshZeroDteManagement(merged);
     }
     const mark = row.mark ?? p.mark ?? null;
-    if (p.status === "WATCH" && p.horizon === "ZERO_DTE") {
+    if (isWatchTrackStatus(p.status) && p.horizon === "ZERO_DTE") {
       const trackPct = watchTrackPct(p.trackReferencePremium ?? null, mark);
       return refreshZeroDteManagement({
         ...p,
@@ -275,7 +276,7 @@ export function overlayHorizonWatchTrack(
 ): TerminalPlay[] {
   if (quotes.size === 0) return plays;
   return plays.map((p) => {
-    if (p.status !== "WATCH" || (p.horizon !== "SWING" && p.horizon !== "LEAPS")) return p;
+    if (!isWatchTrackStatus(p.status) || (p.horizon !== "SWING" && p.horizon !== "LEAPS")) return p;
     const q = quotes.get(p.ticker);
     if (!q || !(q.price > 0)) return p;
     const trackPct = watchUnderlyingTrackPct(p.direction, p.flagUnderlyingPx ?? null, q.price);
