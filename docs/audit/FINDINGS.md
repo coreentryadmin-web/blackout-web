@@ -6939,3 +6939,16 @@ genuinely dynamic, not a second hardcoded value. All 111 tests (2 new) in `gates
 `npx tsc --noEmit` clean.
 
 **Status:** FIXED — PR #1607
+
+## 2026-08-04 — [P3, SWING, dead-code hardening] `HorizonLaneBoard.tsx` would render an INVALIDATED
+pre-entry swing thesis as a green "committed" row — no live member exposure, fixed defensively
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P3 — confirmed live data contradiction exists in the raw API, but the one component that reads it unguarded is dead code (zero importers); no member has ever seen this |
+| **Root cause** | `horizon-plays.ts:168` stamps `status: "COMMIT"` purely from `score >= scoreFloor`, BEFORE `enrichPlay()` (serving-lane.ts) layers on the dossier-derived `setupState`/`entryStatus`/`thesisNote` — so a play can legitimately carry `status:"COMMIT"` + `setupState:"INVALIDATED"` simultaneously (score cleared the floor before the setup broke; nothing re-derives status afterward). The real member desk (`HorizonDeck` in `command-deck/containers.tsx`) is safe: it prefers the seven-section router (`serving.ts`'s `sectionForSwingPlay`), which explicitly routes `setupState === "INVALIDATED"` to RESEARCH regardless of `status` (serving.ts:139), and its own comment calls the flat `committed`/`watch` view "back-compat only" and "misleading." `HorizonLaneBoard.tsx` (a separate, generic Swing/LEAPS component) reads the flat `lane.committed` array directly with no section-router guard — but `grep -rn "components/HorizonLaneBoard"` across `src` confirms zero importers; it is not rendered anywhere. |
+| **Evidence** | Live pull of `/api/market/nighthawk/horizons?view=swings` (2026-08-04, RTH): `committed` array contained META with `status:"COMMIT"`, `score:68.2` (floor 60), simultaneously `setupState:"INVALIDATED"`, `entryStatus:"PRE_TRIGGER"`, `thesisLevel:"break"`, `thesisNote:"structure invalidated — thesis broke pre-entry"` — a genuinely broken pre-entry thesis sitting in the API's "committed" bucket. Confirmed via direct capture script, not inference. |
+| **Fix** | Defensive filter in `HorizonLaneBoard.tsx`: `committed = (lane?.committed ?? []).filter(p => p.setupState !== "INVALIDATED")`, with a comment pointing at this finding, so the dead component can never regress into showing this contradiction if it's ever wired up later. Did NOT touch `horizon-plays.ts`'s status derivation or `serving-board.ts`'s flat `committed`/`watch` derivation — those have real test coverage asserting `committed === status COMMIT` (`serving-board.test.ts`) and reshaping them risks the live `sections` router's own inputs (`observablesFromHorizonPlay` reads `play.status === "COMMIT"` as its `aboveFloor` gate) for no live benefit, since the real desk already routes correctly. |
+| **Blast radius** | One dead file. No other consumer of `lane.committed` for the SWING horizon exists in the live app (`fetchNightHawkHorizons` callers audited: only `containers.tsx`, which already guards via `sections`, and this file). |
+| **Tests** | None added — component has no render harness in this repo (no `.test.tsx` convention exists for `command-deck`/`components`), and the change is a one-line defensive filter in code with zero current callers. `npx tsc --noEmit` clean. |
+| **Status** | FIXED — PR #1608 |
