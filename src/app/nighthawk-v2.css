@@ -21,8 +21,12 @@
   html:not(.ios-native-shell) .nh-v2-page.nighthawk-page-shell-fill {
     display: flex;
     flex-direction: column;
-    min-height: 100svh;
+    /* box-sizing includes paddingTop: var(--nav-offset) — cap at one viewport so the
+       deck flex chain scrolls internally instead of growing the document. */
+    height: 100svh;
+    max-height: 100svh;
     box-sizing: border-box;
+    overflow: hidden;
   }
 
   html:not(.ios-native-shell) .nh-v2-page.nighthawk-page-shell-fill .nighthawk-page-content {
@@ -30,6 +34,7 @@
     min-height: 0;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
   }
 
   html:not(.ios-native-shell) .nh-v2-page .nighthawk-page-root {
@@ -37,6 +42,7 @@
     min-height: 0;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
   }
 
   html:not(.ios-native-shell) .nh-v2-page .nighthawk-content-canvas,
@@ -45,11 +51,14 @@
     min-height: 0;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
   }
 
   html:not(.ios-native-shell) .nh-v2-page .nh-deck.nh-deck-fill {
     flex: 1 1 auto;
     min-height: 0;
+    max-height: 100%;
+    overflow: hidden;
     /* Collapse guard — budget header + segment + blurb (~14rem) under fixed nav. */
     min-height: min(70vh, calc(100dvh - var(--nav-offset) - 14rem));
   }
@@ -60,12 +69,36 @@
     overflow: hidden;
   }
 
+  /* Fixed chrome above the play queue must not shrink — only .nh-deck-rows scrolls. */
+  html:not(.ios-native-shell) .nh-v2-page .nh-deck-left > .nh-deck-cmd,
+  html:not(.ios-native-shell) .nh-v2-page .nh-deck-left > .nh-deck-lh,
+  html:not(.ios-native-shell) .nh-v2-page .nh-deck-left > .nh-deck-cockpit,
+  html:not(.ios-native-shell) .nh-v2-page .nh-deck-left > .nh-deck-chrome-row,
+  html:not(.ios-native-shell) .nh-v2-page .nh-deck-left > .nh-deck-context-strips {
+    flex-shrink: 0;
+  }
+
   html:not(.ios-native-shell) .nh-v2-page .nh-deck-rows {
     min-height: 0;
     flex: 1 1 auto;
     overflow-y: auto;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(50, 240, 138, 0.45) rgba(8, 8, 14, 0.85);
+  }
+
+  html:not(.ios-native-shell) .nh-v2-page .nh-deck-rows::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  html:not(.ios-native-shell) .nh-v2-page .nh-deck-rows::-webkit-scrollbar-thumb {
+    background: rgba(50, 240, 138, 0.45);
+    border-radius: 3px;
+  }
+
+  html:not(.ios-native-shell) .nh-v2-page .nh-deck-rows::-webkit-scrollbar-track {
+    background: rgba(8, 8, 14, 0.85);
   }
 }
 
