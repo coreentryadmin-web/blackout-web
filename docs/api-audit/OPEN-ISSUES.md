@@ -1,5 +1,47 @@
 # BlackOut Open Issues Log
-Last updated: 2026-08-04 17:23 ET
+Last updated: 2026-08-04 17:50 ET
+
+## grid-rth-2026-08-04-post-close — 0DTE Command RTH verify agent (~2:49 PM PT / 5:49 PM ET)
+
+**Session:** Autonomous Grid RTH **verify** mode per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` (Cloud Agent `cursor/0dte-grid-rth-agent-f290`). Post-close pass with `--force`. Commands: `npm run validate:grid-rth -- --force` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e` → `data-validator.mjs` → Playwright Night Hawk segment tabs.
+
+**Note:** Classic `/grid` page + 9 `/api/grid/*` routes deleted 2026-07-07 — returns **404**. 0DTE Command lives on `/nighthawk` with four view tabs (0DTE / Swings / LEAPS / Legacy), not the deleted 9-panel Market Grid.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `validate:grid-rth --force` | ✅ **14/14 PASS** (0 FAIL) — RTH-open, upstream, session heat CLOSED, ledger PnL 6 rows, SPX spot 7736.52 vs GEX, HELIX 20 prints, Night Hawk dedupe 1 ticker, `zerodte-warm` cron accepted, logic + integration, data-correctness flags=0, E2E nested, ops:collect zero items |
+| `validate:zerodte-logic` | ✅ **17/17 PASS** — gates (SETUP_MIN_GROSS/aggression/dominance/ITM), plan exits (-50%/+100%/15:30 ET), lifecycle OPEN→TRIM→CLOSED, mergePlays SKIP past cutoff/MOVED, session heat RTH→POST_COMMIT→LATE_SESSION, live board 10 setups / 6 ledger (3 eligible / 0 gate violations), cutoff 15:30 ET |
+| `validate:grid-e2e` | ✅ **5/5 PASS** — board API 10/6, HELIX 20 prints, Playwright `/nighthawk` load, zero console errors |
+| `data-validator.mjs` | ⚠️ **33 PASS / 5 FAIL / 4 INFO** — SPX/SPY prev-close Δ ~1.8% (extended-hours ground truth); INTC/MU big-mover Δ >2.5% vs prev-close; 0DTE chain + ledger premium checks PASS |
+| Night Hawk UI segments | ✅ **0DTE / Swings / LEAPS / Legacy** — all tabs click + deck renders (Playwright `role=tab`) |
+| `/grid` routing | ✅ **404** — intentional (classic Market Grid removed) |
+
+**Live board (post-close):** 10 setups · 6 ledger · session heat CLOSED 0% · 3 eligible / 0 gate violations · upstream OK.
+
+**Cross-tool:** SPX bootstrap spot 7736.52 vs GEX ✅ · HELIX flows 20 prints ✅ · Night Hawk dedupe 1 ticker covered elsewhere ✅.
+
+**Verify status: GREEN** — zero FAIL on all Grid harnesses. No P0 fixes required.
+
+### Findings table (`grid-rth-2026-08-04`)
+
+| Severity | ID | Detail | Fix defer? |
+|---|---|---|---|
+| — | — | **No P0/P1 product defects** | all Grid suites GREEN |
+| INFO | GRID-RTH-ROUTING-01 | `/grid` returns 404 — classic Market Grid + 9 `/api/grid/*` routes deleted; 0DTE Command on `/nighthawk` | N/A — intentional |
+| INFO | GRID-RTH-ENV-NODE | Initial orchestrator FAIL on missing `node_modules` (pg/react/playwright) in cloud agent | Resolved via `npm install` + `npx playwright install chromium` |
+| P2 | GRID-RTH-DV-PREV-CLOSE | `data-validator` FAIL on SPX/SPY/INTC/MU vs Polygon **prev-close** during extended-hours (Δ 1.8–10.4%) | defer — ground truth mode=prev-close post-close; intraday minute-bar checks PASS for ledger rows |
+| P2 | GRID-RTH-SPOT-SPXW | SPXW underlying vs Polygon skipped (polygon=null for index in extended-hours) | defer — chain resolution + entry premium PASS |
+
+### Reports
+
+- `audit-output/grid-rth-2026-08-04-verify-1785880220898.json`
+- `audit-output/zerodte-logic-1785880226296.json`
+- `audit-output/grid-e2e-1785880232838.json`
+- `audit-output/validation-2026-08-04T21-50-41-761Z.md`
+
+---
 
 ## spx-rth-2026-08-04-post-close-fix — SPX Slayer post-close fix agent (~2:21 PM PT / 5:21 PM ET)
 
