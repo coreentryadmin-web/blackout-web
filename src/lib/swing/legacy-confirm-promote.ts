@@ -14,16 +14,17 @@ import { produceHorizonPlays, type HorizonPlay } from "../horizon-plays";
 import { buildSwingDossier, type SwingDossier } from "./dossier";
 import type { ZeroDteFlowAccumulation } from "../zerodte/flow-accumulation-context";
 import type { SwingReads } from "../swing-signals";
-import {
-  readSwingServingSnapshot,
-  persistSwingServingSnapshot,
-  type SwingServingSnapshot,
-} from "./serving-lane";
+import type { SwingServingSnapshot } from "./serving-lane";
+import { persistSwingServingSnapshot, readSwingServingSnapshot } from "./serving-lane";
 import { swingThesisKey, type SwingWatchCandidate } from "./accumulation-store";
 import { swingServingReadsFromPlan, swingServingMetaFromDossier } from "./serving-ingest";
 
 /** Discovery provenance stamped on promoted swing rows — renders as the desk origin badge. */
 export const LEGACY_SWING_SIGNAL_KIND = "NIGHT HAWK";
+
+export function isLegacyPromotedSignal(signalKinds: string[] | undefined | null): boolean {
+  return (signalKinds ?? []).includes(LEGACY_SWING_SIGNAL_KIND);
+}
 
 /** Cross-session persistence bar satisfied by morning thesis validation (not a lone print). */
 const LEGACY_PROMOTED_MIN_SESSIONS = 2;
@@ -232,6 +233,52 @@ export function mergeLegacyPromotedSnapshot(
     watch,
     spotsByTicker,
   };
+}
+
+/** Pull NIGHT HAWK thesis triples out of a persisted serving snapshot (morning-confirm handoff). */
+export function legacyPromotedTriplesFromSnapshot(
+  snap: SwingServingSnapshot,
+): Array<{ dossier: SwingDossier; play: HorizonPlay; watch: SwingWatchCandidate }> {
+  const triples: Array<{ dossier: SwingDossier; play: HorizonPlay; watch: SwingWatchCandidate }> = [];
+  for (const w of snap.watch ?? []) {
+    if (!isLegacyPromotedSignal(w.signalKinds)) continue;
+    const ticker = w.ticker.toUpperCase();
+    const play = (snap.plays ?? []).find(
+      (p) => p.ticker.toUpperCase() === ticker && p.direction === w.direction,
+    );
+    const dossier = (snap.dossiers ?? []).find((d) => d.ticker.toUpperCase() === ticker);
+    if (!play || !dossier) continue;
+    triples.push({ dossier, play, watch: w });
+  }
+  return triples;
+}
+
+function stripTickersFromSnapshot(snap: SwingServingSnapshot, tickers: Set<string>): SwingServingSnapshot {
+  const keep = (t: string) => !tickers.has(t.toUpperCase());
+  return {
+    ...snap,
+    dossiers: (snap.dossiers ?? []).filter((d) => keep(d.ticker)),
+    plays: (snap.plays ?? []).filter((p) => keep(p.ticker)),
+    watch: (snap.watch ?? []).filter((w) => keep(w.ticker)),
+    observed: (snap.observed ?? []).filter((o) => keep(o.ticker)),
+  };
+}
+
+/** Re-attach morning-confirm legacy promotions after a swing-discovery scan overwrites the snapshot. */
+export function carryLegacyPromotedIntoSnapshot(
+  fresh: SwingServingSnapshot,
+  prior: SwingServingSnapshot | null,
+): SwingServingSnapshot {
+  if (!prior) return fresh;
+  const triples = legacyPromotedTriplesFromSnapshot(prior);
+  if (triples.length === 0) return fresh;
+  const legacyTickers = new Set(triples.map((t) => t.watch.ticker.toUpperCase()));
+  const stripped = stripTickersFromSnapshot(fresh, legacyTickers);
+  return mergeLegacyPromotedSnapshot(stripped, triples, {
+    sessionDay: fresh.sessionDay,
+    asOf: fresh.asOf,
+    spotsByTicker: { ...(prior.spotsByTicker ?? {}), ...(fresh.spotsByTicker ?? {}) },
+  });
 }
 
 export async function promoteLegacyConfirmedToSwing(opts: {
