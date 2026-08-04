@@ -75,6 +75,28 @@ export function engineChecklist(play: TerminalPlay): ChecklistItem[] {
   ];
 }
 
+/** ONE merged pass/fail checklist — replaces the old separate Engine Checklist (5 rows) and
+ *  Confluence Grid (6 cells) render, which described the SAME underlying thesis-health pillars
+ *  under two different label vocabularies with real overlap (Flow/Breadth/Gamma appeared in
+ *  both). Kept `engineChecklist`/`confluenceChecklist` above unchanged (pure, still unit-tested,
+ *  still valid data shapes) — this is a presentation-layer dedup on top of them, not a rewrite
+ *  of the underlying pillar math. Picks confluence's vocabulary (Dealer/Flow/VWAP/Breadth/
+ *  Gamma/Vol — the clearer of the two) and adds Momentum, the one engine-checklist-only signal
+ *  with no confluence equivalent, so no distinct signal is lost. See docs/audit/FINDINGS.md
+ *  2026-08-04 (Night Hawk panel declutter). */
+export function unifiedChecklist(play: TerminalPlay): ChecklistItem[] {
+  const h = play.thesisHealth;
+  return [
+    { label: "Dealer", ok: pillarOk(findPillar(h, ["dealer"])) },
+    { label: "Flow", ok: pillarOk(findPillar(h, ["flow"])) },
+    { label: "VWAP", ok: pillarOk(findPillar(h, ["vwap"])) },
+    { label: "Breadth", ok: pillarOk(findPillar(h, ["market", "confluence"])) },
+    { label: "Gamma", ok: pillarOk(findPillar(h, ["structure", "dealer"])) },
+    { label: "Vol", ok: pillarOk(findPillar(h, ["volatility"])) },
+    { label: "Momentum", ok: pillarOk(findPillar(h, ["tape", "momentum"])) },
+  ];
+}
+
 export function convictionDisplay(play: TerminalPlay): ConvictionDisplay {
   const grade = play.tierLabel?.trim() || null;
   const q = playQualityPct(play);

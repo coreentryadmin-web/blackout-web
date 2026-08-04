@@ -112,19 +112,13 @@ export function ThesisHealthPanel({
         </div>
       ))}
 
-      {health.cortexSources && health.cortexSources.length > 0 && (
-        <div className="nh-deck-th-cortex">
-          <div className="nh-deck-lab">Cortex evidence (pinned at commit)</div>
-          <ul>
-            {health.cortexSources.map((c, i) => (
-              <li key={`${c.source}-${i}`} className={clsx("nh-deck-cortex-line", c.kind)}>
-                <span className="src">{c.source}</span>
-                <span className="det">{c.detail || c.kind}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      {/* Raw Cortex evidence dump (source/detail strings straight from the internal veto/support/
+          oppose engine — "cortex", "veto", "oppose" vocabulary) was removed here per the Night
+          Hawk panel declutter audit (docs/audit/FINDINGS.md, 2026-08-04): it leaked internal
+          engineering telemetry with no member-facing explanation, and the `advisory` line below
+          already gives the plain-English equivalent. `health.cortexSources` itself is untouched
+          (still populated by `extractCortexSources` in thesis-health.ts) — only this render was
+          cut, in case another consumer of the same commit-snapshot data needs it later. */}
 
       <div className="nh-deck-th-moves">
         <div className="nh-deck-lab">Why health moved</div>
