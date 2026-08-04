@@ -5,7 +5,6 @@
 import {
   persistAndPublishFlowAlert,
   alertId as computeFlowAlertId,
-  MIN_PREMIUM as FLOW_MIN_PREMIUM,
   MIN_PREMIUM_FETCH_FLOOR as FLOW_MIN_PREMIUM_FETCH_FLOOR,
   requiredMinPremium,
   dteFromExpiry,
