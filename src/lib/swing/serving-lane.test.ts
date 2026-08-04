@@ -12,7 +12,7 @@ import type { ZeroDteFlowAccumulation } from "../zerodte/flow-accumulation-conte
 import type { SwingServingReads } from "./serving-ingest.ts";
 import type { HorizonPlay } from "../horizon-plays.ts";
 import type { ChainContract } from "../horizon-fanout.ts";
-import type { SwingWatchCandidate } from "./accumulation-store.ts";
+import { swingThesisKey, type SwingWatchCandidate } from "./accumulation-store.ts";
 
 function accum(direction: "bull" | "bear", days: number): ZeroDteFlowAccumulation {
   return {
@@ -270,6 +270,29 @@ test("persist → discoverSwingFromPersisted round-trips and GATES to persistenc
   const rendered = Object.values(lane.sections).flat().map((p) => p.ticker);
   assert.ok(rendered.includes("NVDA"), "the persisted WATCH candidate renders on the member board");
   assert.ok(!rendered.includes("FRSH"), "a single-sighting name never reaches the member board (persistence gate)");
+});
+
+test("persisted flag anchors stamp first-flag underlying — enrichPlay does not overwrite with scan spot", async () => {
+  const d = buildSwingDossier(dossier("NVDA"));
+  const arch = d.archetype.archetype;
+  await persistSwingServingSnapshot({
+    asOf: "2026-07-24T20:00:00.000Z",
+    sessionDay: "2026-07-24",
+    dossiers: [d],
+    plays: [play({ ticker: "NVDA", direction: "LONG", status: "WATCH", archetype: arch })],
+    watch: [watchCand({ ticker: "NVDA", direction: "LONG", archetype: arch })],
+    flagAnchorsByThesisKey: { [swingThesisKey("NVDA", "LONG", arch)]: 180 },
+    spotsByTicker: { NVDA: 200 },
+  });
+
+  const lane = await getSwingServingLane({
+    discover: discoverSwingFromPersisted,
+    readsByTicker: new Map([
+      ["NVDA", { setup: { price: 200, triggerPx: 195, invalidationPx: 170, atr: 3 } }],
+    ]),
+  });
+  const nvda = Object.values(lane.sections).flat().find((p) => p.ticker === "NVDA");
+  assert.equal(nvda?.flagUnderlyingPx, 180, "anchor wins over live scan spot");
 });
 
 test("persisted scan with no cleared names → member-safe empty lane (empty is fine when there's no data)", async () => {

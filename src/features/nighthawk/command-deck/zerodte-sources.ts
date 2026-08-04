@@ -10,6 +10,7 @@
  */
 import type { ZeroDteDeckSource } from "./adapters";
 import type { ThesisHealthPayload } from "@/lib/zerodte/thesis-health";
+import { resolveFreshFindStatus, type SessionHeatState } from "@/lib/zerodte/board";
 
 import type { DiscoveryFunnelHint } from "@/lib/zerodte/discovery-funnel-hint";
 import type { MarketStateSnapshot } from "@/lib/zerodte/market-state-engine";
@@ -50,10 +51,20 @@ function sourceFrom(
   s: Record<string, unknown> | null,
   lg: Record<string, unknown> | null,
   allocation: { role: string; sizing: string; reasons?: string[] } | null,
+  heatState: SessionHeatState | undefined,
 ): ZeroDteDeckSource {
+  const setupPlanEarly = (s?.plan as Record<string, unknown> | null | undefined) ?? null;
   const gateVerdict = (s?.gate as { verdict?: string } | undefined)?.verdict;
-  // A committed play's ledger status wins; else the fresh find's gate verdict decides (BLOCKED → SKIP).
-  const status = (lg?.status as string) ?? (gateVerdict === "BLOCKED" ? "SKIP" : "WATCH");
+  // A committed play's ledger status wins; else mirror mergePlays / ZeroDteBoard (9-6a + session heat).
+  const status =
+    (lg?.status as string) ??
+    (gateVerdict === "BLOCKED"
+      ? "SKIP"
+      : resolveFreshFindStatus(
+          heatState,
+          setupPlanEarly?.entry_status === "MOVED",
+          Boolean(setupPlanEarly?.illiquid),
+        ));
   // Plan quote (WATCH setups): the board carries plan.mark/bid/ask/occ on every enriched find.
   // Without plumbing these, the right-rail mark/book stay "—" until a fresh SSE tick — and after
   // hours the marks lane is intentionally stale/null, so the three panels looked completely static.
@@ -110,7 +121,8 @@ function sourceFrom(
     strike: (s?.top_strike as number) ?? (lg?.top_strike as number) ?? null,
     status,
     score: (s?.score as number) ?? null,
-    live_pnl_pct: (lg?.live_pnl_pct as number) ?? null,
+    live_pnl_pct:
+      status === "WATCH" || status === "SKIP" ? null : ((lg?.live_pnl_pct as number) ?? null),
     entry_premium: (lg?.entry_premium as number) ?? null,
     last_mark: lastMark,
     peak_premium: (lg?.peak_premium as number) ?? null,
@@ -164,13 +176,18 @@ export function zeroDteSources(resp: BoardResp | null): ZeroDteDeckSource[] {
   const allocByTk = new Map<string, { role: string; sizing: string; reasons?: string[] }>();
   for (const a of resp.allocation ?? []) allocByTk.set(a.ticker.toUpperCase(), a);
 
+  const heatState = resp.session?.heat?.state as SessionHeatState | undefined;
+  const sessionClosed = heatState === "CLOSED" || heatState === undefined;
+
   const out: ZeroDteDeckSource[] = [];
   const seen = new Set<string>();
   for (const s of resp.setups ?? []) {
     const tk = String(s.ticker ?? "").toUpperCase();
     if (!tk) continue;
+    // After close (or unknown heat) fresh finds are NOT plays — mirror mergePlays (ZeroDteBoard.tsx).
+    if (sessionClosed && !ledgerByTk.has(tk)) continue;
     seen.add(tk);
-    out.push(sourceFrom(tk, s, ledgerByTk.get(tk) ?? null, allocByTk.get(tk) ?? null));
+    out.push(sourceFrom(tk, s, ledgerByTk.get(tk) ?? null, allocByTk.get(tk) ?? null, heatState));
   }
   // Union ALL ledger rows the scan didn't surface: WORKING positions (9-4) AND CLOSED plays so
   // they remain visible in the "Closed" filter instead of vanishing when the scanner drops them.
@@ -178,7 +195,7 @@ export function zeroDteSources(resp: BoardResp | null): ZeroDteDeckSource[] {
     if (seen.has(tk)) continue;
     const st = String(lg.status ?? "").toUpperCase();
     if (!WORKING_STATUSES.has(st) && st !== "CLOSED") continue;
-    out.push(sourceFrom(tk, null, lg, allocByTk.get(tk) ?? null));
+    out.push(sourceFrom(tk, null, lg, allocByTk.get(tk) ?? null, heatState));
   }
   return out;
 }

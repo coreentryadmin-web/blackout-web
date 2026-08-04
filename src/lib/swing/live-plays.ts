@@ -9,6 +9,7 @@
 
 import type { HorizonPlay } from "../horizon-plays";
 import type { ChainContract, PlayDirection } from "../horizon-fanout";
+import { calendarDte } from "../horizon-fanout";
 import type { SwingPositionRow } from "../db";
 import type { SwingArchetype, SwingSubLane } from "./taxonomy";
 import type { SwingLiveStatus, SwingThesisLevel } from "./serving";
@@ -24,23 +25,34 @@ function liveStatusOf(status: string): SwingLiveStatus | null {
   return null;
 }
 
+function etYmd(now = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(now);
+}
+
+function livePnlPct(entry: number | null, mark: number | null): number | null {
+  if (entry == null || mark == null || entry <= 0) return null;
+  return Math.round(((mark / entry - 1) * 100) * 10) / 10;
+}
+
 function contractFromRow(row: SwingPositionRow): ChainContract | null {
   const expiry = row.contract_expiry;
   const strike = row.contract_strike;
   if (!expiry || strike == null || !Number.isFinite(strike)) return null;
   const right = row.contract_type === "put" ? "P" : "C";
-  // DTE left unknown here — serve path doesn't need it for section routing; stamp 0 honestly absent of clock.
+  const dte = calendarDte(etYmd(), expiry.slice(0, 10));
+  const entry = row.entry_premium;
+  const mark = row.last_mark;
   return {
     ticker: row.ticker.toUpperCase(),
     right,
     expiry,
-    dte: 0,
+    dte,
     strike,
     delta: row.contract_delta,
     openInterest: 0,
     bid: null,
     ask: null,
-    mid: row.last_mark ?? row.entry_premium,
+    mid: mark ?? entry,
   };
 }
 
@@ -125,6 +137,9 @@ export function livePlayFromSwingPosition(
       ? (row.feature_vector.evidence_score as number)
       : 0;
 
+  const entry = row.entry_premium;
+  const mark = row.last_mark;
+
   return {
     ticker: row.ticker.toUpperCase(),
     direction,
@@ -141,6 +156,10 @@ export function livePlayFromSwingPosition(
     thesisLevel,
     firstSeenAt: row.first_seen_at ?? undefined,
     committedAt: row.committed_at ?? undefined,
+    entryPremium: entry,
+    livePnlPct: livePnlPct(entry, mark),
+    peakPremium: row.peak_premium,
+    troughPremium: row.trough_premium,
   };
 }
 

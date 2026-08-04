@@ -110,6 +110,8 @@ function actionProbability(
   recommendation: Recommendation,
   progress: number | null,
 ): number | null {
+  // WATCH/SKIP rows have no committed position — never paint score-as-confidence on candidates.
+  if (play.status === "WATCH" || play.status === "SKIP") return null;
   if (play.thesisHealth?.health != null && Number.isFinite(play.thesisHealth.health)) {
     if (recommendation === "SELL") {
       return Math.round(Math.max(0, Math.min(99, 100 - play.thesisHealth.health)));

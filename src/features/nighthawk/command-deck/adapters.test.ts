@@ -19,6 +19,18 @@ test("managementFor: RATCHET progress maps -50→0, +100→1; recommendations by
   assert.equal(managementFor("SCALE_OUT", "OPEN", 20).progress, null); // tranches, not a track
 });
 
+test("managementFor: WATCH/SKIP are candidate-only — no ratchet progress or position management", () => {
+  const watch = managementFor("RATCHET", "WATCH", 50);
+  assert.equal(watch.recommendation, "HOLD");
+  assert.equal(watch.progress, null);
+  assert.match(watch.recNote, /Candidate only/);
+
+  const skip = managementFor("RATCHET", "SKIP", -40);
+  assert.equal(skip.recommendation, "HOLD");
+  assert.equal(skip.progress, null);
+  assert.match(skip.recNote, /Gate blocked/);
+});
+
 test("0DTE adapter: rich factors from flow-quality, RATCHET model, allocation + pnl", () => {
   const play = terminalPlayFromZeroDte({
     ticker: "nvda",
@@ -892,6 +904,41 @@ test("horizon adapter: pre-entry COMMIT maps to WATCH; live OPEN maps to OPEN", 
   });
   assert.equal(open.status, "OPEN");
   assert.equal(open.trackPct, null);
+});
+
+test("horizon adapter: live OPEN row wires entry/mark/pnl from live book fields", () => {
+  const open = terminalPlayFromHorizon({
+    ticker: "nvda",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 82,
+    status: "COMMIT",
+    liveStatus: "OPEN",
+    contract: { strike: 180, right: "C", expiry: "2026-08-14", dte: 14, mid: 5.5 },
+    entryPremium: 5.0,
+    livePnlPct: 10,
+    peakPremium: 5.5,
+    troughPremium: 4.8,
+  });
+  assert.equal(open.status, "OPEN");
+  assert.equal(open.entry, 5.0);
+  assert.equal(open.mark, 5.5);
+  assert.equal(open.pnlPct, 10);
+  assert.equal(open.peak, 10);
+});
+
+test("legacy adapter: UNVERIFIED morning status → WATCH + unknown thesis", () => {
+  const p = terminalPlayFromEdition({
+    ticker: "NVDA",
+    direction: "long",
+    rank: 1,
+    score: 85,
+    morning_status: "UNVERIFIED",
+    morning_reason: "confirm cron has not run",
+  });
+  assert.equal(p.status, "WATCH");
+  assert.equal(p.thesisBreak?.level, "unknown");
+  assert.match(p.regime ?? "", /unverified/i);
 });
 
 test("0DTE adapter (Wave 3): absent why_now → whyNow null (ribbon omitted, no fabrication)", () => {

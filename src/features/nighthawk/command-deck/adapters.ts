@@ -77,6 +77,16 @@ export function managementFor(
   status: DeckStatus,
   pnlPct: number | null,
 ): { recommendation: Recommendation; recNote: string; progress: number | null } {
+  if (status === "WATCH" || status === "SKIP") {
+    return {
+      recommendation: "HOLD",
+      recNote:
+        status === "SKIP"
+          ? "Gate blocked — not a candidate. No position to manage."
+          : "Candidate only — not committed. Track the setup; no position management until entry.",
+      progress: null,
+    };
+  }
   const p = pnlPct ?? 0;
   let recommendation: Recommendation = "HOLD";
   if (status === "TRIM") recommendation = "TRIM";
@@ -362,7 +372,7 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
     progress: mgmtBase.progress,
     entry,
     mark: markNum,
-    pnlPct: pnlDisplay,
+    pnlPct: status === "WATCH" || status === "SKIP" ? null : pnlDisplay,
     trackPct,
     trackReferencePremium: trackReference,
     peak: peakDisplay,
@@ -432,6 +442,11 @@ export interface HorizonDeckSource {
   flagUnderlyingPx?: number | null;
   /** Optional live underlying for WATCH track (stock quote overlay). */
   liveSpot?: number | null;
+  /** Live swing book — option entry/mark/P&L when this row is an OPEN ledger position. */
+  entryPremium?: number | null;
+  livePnlPct?: number | null;
+  peakPremium?: number | null;
+  troughPremium?: number | null;
 }
 
 /**
@@ -464,11 +479,22 @@ function horizonDeckStatus(src: HorizonDeckSource): DeckStatus {
 
 export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
   const status = horizonDeckStatus(src);
-  const mgmt = managementFor("SCALE_OUT", status, null);
+  const entry = fin(src.entryPremium);
+  const markMid = fin(src.contract.mid);
+  const livePnl = fin(src.livePnlPct);
+  const mgmt = managementFor("SCALE_OUT", status, status === "WATCH" || status === "SKIP" ? null : livePnl);
   const flagPx = fin(src.flagUnderlyingPx);
   const trackPct =
     status === "WATCH"
       ? watchUnderlyingTrackPct(src.direction, flagPx, src.liveSpot ?? null)
+      : null;
+  const peakDisplay =
+    entry != null && fin(src.peakPremium)
+      ? Math.round(((src.peakPremium! / entry - 1) * 100) * 10) / 10
+      : null;
+  const troughDisplay =
+    entry != null && fin(src.troughPremium)
+      ? Math.round(((src.troughPremium! / entry - 1) * 100) * 10) / 10
       : null;
   return {
     id: `${src.horizon}:${src.ticker}`,
@@ -488,11 +514,13 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     thesisBreak: src.thesisBreak ?? thesisBreakFromSetupState(src.setupState, src.horizon),
     ...mgmt,
     recNote: src.reason || mgmt.recNote,
-    entry: null,
-    mark: fin(src.contract.mid),
-    pnlPct: null,
+    entry,
+    mark: markMid,
+    pnlPct: status === "WATCH" || status === "SKIP" ? null : livePnl,
     trackPct,
     flagUnderlyingPx: flagPx,
+    peak: peakDisplay,
+    trough: troughDisplay,
     greeks: null,
     archetype: src.archetype ?? null,
     subLane: src.subLane ?? null,
@@ -598,10 +626,15 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
   const ms = src.morning_status;
   const status: DeckStatus = pulled ? "CLOSED" : ms === "INVALIDATED" ? "SKIP" : ms === "CONFIRMED" ? "OPEN" : "WATCH";
   const regime = ms
-    ? ms === "CONFIRMED" ? "pre-market CONFIRMED"
-    : ms === "DEGRADED" ? "pre-market DEGRADED"
-    : ms === "INVALIDATED" ? "INVALIDATED — pulled"
-    : "pre-market pending"
+    ? ms === "CONFIRMED"
+      ? "pre-market CONFIRMED"
+      : ms === "DEGRADED"
+        ? "pre-market DEGRADED"
+        : ms === "INVALIDATED"
+          ? "INVALIDATED — pulled"
+          : ms === "UNVERIFIED"
+            ? "pre-market unverified"
+            : "pre-market pending"
     : "morning confirm pending";
 
   // Build contract label from real options_play data when available.
@@ -629,8 +662,10 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
     pulled ? { level: "break", note: src.pulled_reason ?? "play invalidated and pulled" }
     : ms === "INVALIDATED" ? { level: "break", note: src.morning_reason ?? "morning confirm invalidated thesis" }
     : ms === "DEGRADED" ? { level: "warn", note: src.morning_reason ?? (src.risk_note ?? "pre-market conditions degraded") }
+    : ms === "UNVERIFIED" ? { level: "unknown", note: src.morning_reason ?? "morning confirm has not run yet" }
     : ms === "CONFIRMED" ? { level: "intact" }
     : src.risk_note ? { level: "warn", note: src.risk_note }
+    : ms == null ? { level: "unknown", note: "morning confirm pending" }
     : { level: "intact" };
 
   // Build the recNote — key_signal enriches the thesis narrative.
