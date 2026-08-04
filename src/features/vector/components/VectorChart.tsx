@@ -233,6 +233,11 @@ function wantsSessionOverviewViewport(
   return viewport === "session" && !liveFollowEnabled && dteHorizon === "0dte";
 }
 
+/** True once the member pans/drags or scroll-zooms — blocks programmatic refits until live-follow. */
+function memberViewportLocked(chartUserPanned: boolean, wheelZoomAtMs: number): boolean {
+  return chartUserPanned || Date.now() - wheelZoomAtMs < 8_000;
+}
+
 type Props = {
   ticker: string;
   initialBars: VectorBar[];
@@ -1663,7 +1668,9 @@ export function VectorChart({
     beadStrikesRef.current = { call: call.strikes, put: put.strikes };
     // Respect a manual vertical zoom — only nudge autoscale when the member hasn't taken the
     // price axis over AND hasn't scrolled within the cooldown window.
-    if (Date.now() - wheelZoomCooldownRef.current >= 8_000) {
+    if (
+      !memberViewportLocked(chartUserPannedRef.current, wheelZoomCooldownRef.current)
+    ) {
       reassertPriceAutoScale(series.priceScale());
     }
     pinCandlesOnTop(series);
@@ -2433,6 +2440,8 @@ export function VectorChart({
 
     const fitSessionOverview = () => {
       if (liveFollowEnabledRef.current) return;
+      // Wall-history poll runs every 5s for 0DTE session overview — must not yank a manual zoom.
+      if (memberViewportLocked(chartUserPannedRef.current, wheelZoomCooldownRef.current)) return;
       const chart = chartRef.current;
       if (!chart) return;
       const display = displayBarsFromMinute(minuteBarsRef.current, timeframeRef.current);
@@ -2938,7 +2947,9 @@ export function VectorChart({
         // During a wheel-zoom cooldown, return the raw candle range WITHOUT extending
         // for walls/beads — this lets the member's scroll-zoom hold tight to the visible
         // candles instead of snapping back to the wide wall-inclusive band on every tick.
-        if (Date.now() - wheelZoomCooldownRef.current < 8_000) return res;
+        if (memberViewportLocked(chartUserPannedRef.current, wheelZoomCooldownRef.current)) {
+          return res;
+        }
         // Two composed widenings (each only ever WIDENS, never narrows the candle band):
         // 1) the current live ladder (rangeWallsRef) within the tight ±WALL_VIEW_MAX_PCT window;
         // 2) the strikes ACTUALLY drawn as beads (beadStrikesRef) within the wider BEAD_VIEW_MAX_PCT.
@@ -3071,6 +3082,7 @@ export function VectorChart({
     ) {
       // Trails/overlays paint after the first viewport pass — re-frame once markers exist.
       requestAnimationFrame(() => {
+        if (memberViewportLocked(chartUserPannedRef.current, wheelZoomCooldownRef.current)) return;
         const display = displayBarsFromMinute(minuteBarsRef.current, timeframeRef.current);
         applySessionOverviewViewport(chart, display);
         chart.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: false });
@@ -3085,6 +3097,7 @@ export function VectorChart({
     // the member can hold a manual vertical zoom (double-click restores it).
     const onWheel = (e: WheelEvent) => {
       wheelZoomCooldownRef.current = Date.now();
+      chartUserPannedRef.current = true;
       const rect = container.getBoundingClientRect();
       const xInChart = e.clientX - rect.left;
       const priceAxisZone = rect.width - 65;
@@ -3556,8 +3569,12 @@ export function VectorChart({
         liveFollowEnabledRef.current,
         dteHorizonRef.current
       );
+      const viewportLocked = memberViewportLocked(
+        chartUserPannedRef.current,
+        wheelZoomCooldownRef.current
+      );
       const prevRange =
-        timeScale && !timeframeChanged && !following && !sessionOverview
+        timeScale && !timeframeChanged && !following && (!sessionOverview || viewportLocked)
           ? timeScale.getVisibleLogicalRange()
           : null;
       applyDisplayBars(series, volumeSeriesRef.current, display);
@@ -3578,9 +3595,9 @@ export function VectorChart({
           chart?.timeScale().fitContent();
         }
         lastFittedTimeframeRef.current = timeframe;
-      } else if (sessionOverview && !following) {
-        // Never restore a stale logical range after setData — bar counts shift when callbacks re-run
-        // or when the mount effect used a different aggregation than the active timeframe.
+      } else if (sessionOverview && !following && !viewportLocked) {
+        // Session overview refit only while the member hasn't taken manual control — background
+        // effect re-runs (SSE/wall polls) must not reset a zoom/pan the member set.
         applySessionOverviewViewport(chart!, display);
         chart?.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: false });
       } else if (prevRange && timeScale) {
