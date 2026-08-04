@@ -1,5 +1,45 @@
 # BlackOut Open Issues Log
-Last updated: 2026-08-04 12:10 ET
+Last updated: 2026-08-04 12:48 ET
+
+## grid-rth-2026-08-04-pass2 — 0DTE Command RTH verify agent (~12:33 PM ET)
+
+**Session:** Autonomous Grid RTH **verify** mode per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` (scheduled 6:30 AM PT market-open pass — Cloud Agent `cursor/0dte-grid-rth-agent-f274`). Commands: `npm run validate:grid-rth` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e` (+ `nighthawk-prod-check.mjs`, Playwright `/nighthawk` tab clicks).
+
+**Note:** Classic `/grid` page + 9 `/api/grid/*` routes deleted 2026-07-07 — returns **404**. 0DTE Command lives on `/nighthawk` with four view tabs (0DTE / Swings / LEAPS / Legacy).
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `validate:grid-rth` | ⚠️ **13 PASS / 1 FAIL / 1 WARN** — orchestrator `infra:validate:rth-open` FAIL (spawn timeout flake under concurrent load; direct re-run **GREEN**); `cron:zerodte-warm` WARN HTTP 504 (transient edge; solo probe **202 in 5.4s**) |
+| `validate:zerodte-logic` | ✅ **17/17 PASS** — gates, plan exits (-50%/+100%/15:30 ET), lifecycle OPEN→TRIM→CLOSED, mergePlays SKIP past cutoff/MOVED, session heat RTH→POST_COMMIT→LATE_SESSION, live board 7 setups / 1 ledger, cutoff 15:30 ET |
+| `validate:grid-e2e` | ✅ **5/5 PASS** — board API 12 setups / 2 ledger, HELIX 20 prints, Playwright `/nighthawk` load, zero console errors |
+| `nighthawk-prod-check` | ✅ **9/9 PASS** — edition 5 plays, horizons zerodte/swings/leaps, toggle + command deck markup |
+| Night Hawk UI segments | ✅ **0DTE / Swings / LEAPS / Legacy** — all tabs click (Playwright `role=tab`), zero page errors |
+| `/grid` routing | ✅ **404** — intentional (classic Market Grid removed) |
+
+**Live board (RTH midday):** 12 setups · 3 ledger · session heat RTH 100% · 2 eligible / 7 total · 0 gate violations · upstream OK · ledger PnL 3 rows reconciled.
+
+**Cross-tool:** SPX bootstrap spot 7720.19 vs GEX ✅ · HELIX flows 20 prints ✅ · Night Hawk dedupe 5 tickers covered elsewhere ✅ · `data-correctness` flags=0 mode=full-async ✅ · ops:collect zero items ✅.
+
+**Verify status: GREEN** — zero P0/P1 product defects. Orchestrator FAIL/WARN are harness/edge flakes only.
+
+### Findings table (`grid-rth-2026-08-04-pass2`)
+
+| Severity | ID | Detail | Fix defer? |
+|---|---|---|---|
+| — | — | **No P0/P1 product defects** | all member surfaces GREEN |
+| INFO | GRID-RTH-ENV-NODE | Initial orchestrator FAIL on missing `node_modules` (pg/react/playwright) | Resolved via `npm install` + `npx playwright install chromium` |
+| P2 | GRID-RTH-RTH-OPEN-TIMEOUT | `infra:validate:rth-open` FAIL inside orchestrator (stderr SSL warning only in detail) — direct `validate:rth-open` **GREEN** (182s) | Yes — spawn 300s timeout under nested deploy+socket-health load |
+| P2 | GRID-RTH-ZERODTE-WARM-504 | `cron:zerodte-warm` WARN HTTP 504 during orchestrator; solo curl **202 accepted** in 5.4s | Yes — transient Cloudflare origin timeout under concurrent audit probes |
+
+### Reports
+
+- `audit-output/grid-rth-2026-08-04-verify-1785861662664.json`
+- `audit-output/zerodte-logic-1785861185337.json`
+- `audit-output/grid-e2e-1785861677714.json`
+
+---
 
 ## rth-open-2026-08-04-pass1 — RTH comprehensive test sweep (~12:00 PM ET)
 
