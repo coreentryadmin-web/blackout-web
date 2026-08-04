@@ -233,11 +233,13 @@ export type ZeroDteGateCalibration = {
 // raise the floor above the 55-64 band. Judged AFTER the intraday edge layer, so a
 // raw-evidence 70 that the tape/time-of-day layer marked down to 62 does NOT clear.
 export const ZERODTE_SCORE_FLOOR = 65;
-/** Origin-aware G-3 floors. 2026-07-29 precision restore: BREAKOUT/PIN share the same 65
- *  commit bar as FLOW. The 58 "unstarve" floor sat inside the measured near-flat 55–64 band
- *  (−3.6% avg / 36.8% WR) and admitted weak single-rail movers. Multi-rail +8 corroboration
- *  still helps real confluence clear 65; env overrides remain available. */
-export const ZERODTE_SCORE_FLOOR_BREAKOUT = envInt("ZERODTE_SCORE_FLOOR_BREAKOUT", 70);
+/** Origin-aware G-3 floors. BREAKOUT/PIN share FLOW's 65 bar (F-2: 65–74 = 50% WR / +21.1%;
+ * 55–64 = toxic 18.8% WR). The env default WAS 70 (2026-07-28 throughput tweak) but that
+ * desynced from breakout-source.ts's score map (8% strong-close → ~73, 6% → ~57) and blocked
+ * the entire 65–69 band on a rail that already loses ~94% of chain-walk attempts to
+ * no_same_day_contract (Aug-3 CloudWatch: 57k/61k). Restored default 65 — still above the
+ * measured-death 55–64 band; override via ZERODTE_SCORE_FLOOR_BREAKOUT=70 to tighten. */
+export const ZERODTE_SCORE_FLOOR_BREAKOUT = envInt("ZERODTE_SCORE_FLOOR_BREAKOUT", 65);
 export const ZERODTE_SCORE_FLOOR_PIN = envInt("ZERODTE_SCORE_FLOOR_PIN", 65);
 
 /** Resolve the G-3 score floor for a setup's discovery origin set. Pure. */

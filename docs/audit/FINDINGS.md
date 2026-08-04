@@ -4,7 +4,24 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
-## 2026-08-03 — [ops,nighthawk] Edition stuck at stage_synthesis checkpoint — FIXED (ops-auto-fix #1572)
+## 2026-08-04 — [0DTE-discovery] Aug-3 rail mix audit — 2 OPEN is discovery-starved, not WATCH-capped
+
+**Severity.** P1 — member expectation ("whole market was moving") vs **2 ledger commits** (AMD/META) and a **~8–11 candidate/cycle** discovery pool.
+
+**Evidence (CloudWatch `/ecs/blackout-production`, 2026-08-03 RTH).** `npm run validate:zerodte-rail-mix -- --date=2026-08-03 --score-band --json`:
+- **1,513** `[zerodte-scan] discovery rail mix` cycles; core 10:00–15:00 ET avg **8.6** candidates/cycle (max **11**).
+- Per-rail peaks: **FLOW 9**, **BREAKOUT 3**, **PIN 0**, multi-rail **2**.
+- **546** breakout chain-walk cycles: avg **1.4** setups built; **93.9%** of chain attempts fail **`no_same_day_contract`** (57,107/60,809) — the BREAKOUT rail screens ~12k movers but ~94% have no listable 0DTE/1DTE.
+- Score-band (grouped-daily): **40** qualifying breakouts; floor **70** passes **10**, floor **65** passes **14** (+4 names: IREN/AXTI/MRVL/DELL in 65–69 band).
+- Post-close board API: **3 WATCH** (SPXW/MU/QQQ), all gate-BLOCKED — not an ~8 WATCH cap; the pool is just small.
+- PIN: **1,251** cycles logged `no clean pin regime — SKIP`.
+
+**Root cause.** Not a missing WATCH cap. Discovery emits a **small merged pool** (FLOW whale-print rail + ~1–3 BREAKOUT survivors after chain-walk). Gates/Cortex then filter COMMITs; only **2** cleared all day. BREAKOUT's **70** G-3 floor (desynced from the 65 FLOW bar) blocked the 65–69 score band on top of the chain-walk starvation.
+
+**Fix (PR).** (1) `scripts/audit/zerodte-rail-mix-audit.mjs` + `npm run validate:zerodte-rail-mix`. (2) Restore `ZERODTE_SCORE_FLOOR_BREAKOUT` default **70→65** (still above F-2 toxic 55–64 band; env `=70` to tighten). Follow-up: chain-walk recall (94% no_same_day) needs a separate design — not a blind gate loosen.
+
+**Status.** OPEN — PR `cursor/zerodte-recall-rail-audit-3d11`.
+
 
 **Severity.** P0 — Night Hawk edition `2026-08-04` not published; `job_status=stage_scoring` / `current_stage=stage_synthesis`.
 

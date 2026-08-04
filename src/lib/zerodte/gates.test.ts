@@ -213,27 +213,27 @@ test("G-14: 14:59 is still BLOCKED (toxic late bucket fully closed)", () => {
 });
 
 
-test("scoreFloorForOrigins: FLOW 65; BREAKOUT 70; PIN 65; FLOW+BREAKOUT stays FLOW", () => {
+test("scoreFloorForOrigins: FLOW 65; BREAKOUT 65; PIN 65; FLOW+BREAKOUT stays FLOW", () => {
   assert.equal(scoreFloorForOrigins(["FLOW"]), ZERODTE_SCORE_FLOOR);
   assert.equal(scoreFloorForOrigins(["FLOW", "BREAKOUT"]), ZERODTE_SCORE_FLOOR);
   assert.equal(scoreFloorForOrigins(["BREAKOUT"]), ZERODTE_SCORE_FLOOR_BREAKOUT);
   assert.equal(scoreFloorForOrigins(["PIN"]), ZERODTE_SCORE_FLOOR_PIN);
-  assert.equal(ZERODTE_SCORE_FLOOR_BREAKOUT, 70);
-  assert.equal(ZERODTE_SCORE_FLOOR_PIN, ZERODTE_SCORE_FLOOR);
+  assert.equal(ZERODTE_SCORE_FLOOR_BREAKOUT, 65);
+  assert.equal(ZERODTE_SCORE_FLOOR_PIN, 65);
   assert.equal(scoreFloorForOrigins([]), ZERODTE_SCORE_FLOOR);
 });
 
-test("G-3: BREAKOUT at score 65 is BLOCKED at the 70 floor; FLOW still clears at 65", () => {
-  const brk = evaluateZeroDteGates(input({ score: 65, discovery_origin: ["BREAKOUT"] }));
-  assert.equal(brk.verdict, "BLOCKED");
-  assert.ok(brk.blocks.some((b) => b.code === "score_floor"));
+test("G-3: BREAKOUT and FLOW both clear at 65; sub-65 still blocked", () => {
+  const brkBlocked = evaluateZeroDteGates(input({ score: 64, discovery_origin: ["BREAKOUT"] }));
+  assert.equal(brkBlocked.verdict, "BLOCKED");
+  assert.ok(brkBlocked.blocks.some((b) => b.code === "score_floor"));
+  assert.equal(
+    evaluateZeroDteGates(input({ score: 65, discovery_origin: ["BREAKOUT"] })).verdict,
+    "COMMIT",
+  );
   const flow = evaluateZeroDteGates(input({ score: 60, discovery_origin: ["FLOW"] }));
   assert.equal(flow.verdict, "BLOCKED");
   assert.ok(flow.blocks.some((b) => b.code === "score_floor"));
-  assert.equal(
-    evaluateZeroDteGates(input({ score: 70, discovery_origin: ["BREAKOUT"] })).verdict,
-    "COMMIT",
-  );
   assert.equal(
     evaluateZeroDteGates(input({ score: 65, discovery_origin: ["FLOW"] })).verdict,
     "COMMIT",

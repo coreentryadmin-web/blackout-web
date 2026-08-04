@@ -95,6 +95,7 @@
     "probe:ios-ui": "node scripts/ios-ui-screenshot-probe.mjs",
     "test:ios-ui-e2e": "node scripts/ios-native-ui-e2e.mjs",
     "validate:zerodte-logic": "node scripts/zerodte-logic-audit.mjs",
+    "validate:zerodte-rail-mix": "node --import tsx scripts/audit/zerodte-rail-mix-audit.mjs",
     "validate:zerodte-integration": "node scripts/zerodte-integration-audit.mjs",
     "validate:zerodte-bie": "node scripts/audit/zerodte-bie-consistency-validator.mjs",
     "validate:api-auth": "node scripts/verify-api-auth-guards.mjs",
