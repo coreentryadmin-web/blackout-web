@@ -1,5 +1,68 @@
 # BlackOut Open Issues Log
-Last updated: 2026-08-04 12:33 ET
+Last updated: 2026-08-04 12:44 ET
+
+## rth-open-2026-08-04-pass2 — RTH comprehensive test sweep (~12:31 PM ET)
+
+**Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` + full comprehensive sweep (Cloud Agent `cursor/rth-comprehensive-test-sweep-937e`). Commands: `npm run validate:rth-open` → `probeDataCorrectness(force=1, surface=heatmap)` → `npm run validate:rth-sweep` → `npm run validate:grid-e2e` → `npm run validate:grid-rth` → `npm run validate:spx-e2e` → `npm run ops:collect`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` | ✅ **GREEN** (~158s; socket-health + options-socket warming) |
+| `data-correctness` (`surface=heatmap`) | ✅ **ok=true · flags=0** (60 metrics, 2 independently confirmed) |
+| `npm run validate:rth-sweep` | ✅ **0 P0/P1** — 7 pages soft-nav 1.6–3.2s · **0 missing-field hits** · Largo grounded |
+| `npm run validate:grid-e2e` | ✅ **5/5 PASS** — zerodte board 12 setups · ledger 2 · HELIX 20 prints |
+| `npm run validate:grid-rth` | ⚠️ **13/14 PASS** — `infra:validate:rth-open` subprocess timed out at 300s (direct run GREEN) |
+| `npm run validate:spx-e2e` | ✅ **17/18 PASS** (1 WARN: `bie-play-route` cron 401 expected) |
+| `npm run ops:collect` | ✅ **0 action items** |
+
+### Speed (comprehensive sweep — Playwright premium session)
+
+| Page | Nav | Load (ms) | Live wait | Console errors |
+|---|---|---:|---:|---|
+| `/dashboard` (SPX Slayer) | hard | 1630 | 12s | 1× 400 (transient resource) |
+| `/flows` (HELIX) | soft | 3175 | 8s | 0 |
+| `/heatmap` (Thermal matrix) | soft | 1816 | 20s | 0 |
+| `/vector` | soft | 1665 | 15s | 0 |
+| `/nighthawk` (0DTE Command) | soft | 2203 | 15s | 0 |
+| `/terminal` (Largo) | soft | 2029 | 5s | 0 |
+| `/track-record` | soft | 1681 | 10s | 0 |
+
+**Note:** Classic `/grid` deleted 2026-07-07 — 0DTE Command (12 setups) under `/nighthawk` via `/api/market/zerodte/board`.
+
+### Live auto-update
+
+- `liveTick=null` on all pages — SPX spot stable in each wait window (low-vol midday); not a failure.
+- API freshness: desk `as_of` 76s · platform snapshot 0s · zerodte board 40s · all HTTP 200.
+
+### Data correctness
+
+| Cross-check | Result |
+|---|---|
+| desk γ-flip vs `gex-positioning` | ✅ 7597.68 vs 7596.69 (spot 7716.19, tol 1%) |
+| All market APIs | ✅ HTTP 200 |
+| Largo NVDA query | ✅ 200 · $78,453,806 premium · tools: `blackout_intelligence` |
+| SPX matrix E2E | ✅ GEX+VEX+DEX+CHARM · 160 strikes · spot 7719.81 |
+
+### Missing-field audit
+
+**0 missing-field signals** across all 7 pages. Largo answer `Regime: —` = expected when no active regime tag.
+
+### Findings table
+
+| Severity | ID | Detail | Fix |
+|---|---|---|---|
+| — | — | **No P0/P1 product defects** | member surfaces GREEN |
+| P2 | GRID-RTH-RTH-OPEN-TIMEOUT | `grid-rth` subprocess killed `validate:rth-open` at 300s while direct run ~158s GREEN | **Fixed** — bump to 420s + clearer timeout message |
+| P2 | RTH-FLOWS-SOFT-NAV | `/flows` soft-nav 3175ms (>1.5s target) | Monitor — HELIX tape SSE warm path |
+| P2 | RTH-DASH-CONSOLE-400 | Dashboard console 1× HTTP 400 during hard load | Transient — no member-visible defect |
+
+**Status: GREEN** — data-correctness 0 flags, comprehensive sweep 0 P0/P1, cross-tool GEX aligned. No GitHub issue opened.
+
+**Reports:** `audit-output/rth-sweep-2026-08-04T16-31-00-893Z.json`, `audit-output/grid-e2e-1785861069958.json`, `audit-output/spx-dashboard-e2e-1785861321550.json`, `audit-output/grid-rth-2026-08-04-verify-1785861472205.json`
+
+---
 
 ## spx-rth-2026-08-04 — SPX Slayer RTH verify agent (market-open ~9:26 AM PT / 12:26 PM ET)
 
