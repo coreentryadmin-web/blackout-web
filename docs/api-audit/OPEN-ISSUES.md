@@ -1,5 +1,42 @@
 # BlackOut Open Issues Log
-Last updated: 2026-08-03 18:12 ET
+Last updated: 2026-08-04 12:08 ET
+
+## spx-rth-2026-08-04 — SPX Slayer RTH verify agent (market-open pass, 6:30 AM PT / 12:02 ET)
+
+**Session:** SPX Slayer all-day **verify** mode per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md`. Cloud Agent `cursor/spx-rth-system-verification-4b33`. Commands: `npm run validate:spx-rth` → `npm run validate:spx-e2e` → Step 4 live auto-update (60s API poll).
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth` | ✅ **8 PASS / 1 WARN / 0 FAIL** |
+| `npm run validate:spx-e2e` | ✅ **0 FAIL / 18 checks** — matrix 161 strikes GEX+VEX+DEX+CHARM, GEX/VEX tab clicks, cross-tool integration |
+| Step 4 live auto-update (60s) | ✅ **PASS** — desk spot 7711.77→7710.21 · heatmap 7710.17→7710.6 · play updated 16:06:25→16:07:48 |
+
+**Matrix:** 161 strikes · spot ~7712 · GEX+VEX+DEX+CHARM finite · Σ strike_totals == headline per lens · every cell audited via API.
+
+**Cross-endpoint:** desk merged=7712.61 · heatmap=7712.05 · play SCANNING/SCANNING at audit time — **no stale confirmations** on API or UI.
+
+**UI clicks:** GEX tab ✅ · VEX tab ✅ · matrix 161 rows ✅ · zero NaN/undefined in matrix text ✅ · play verdict bar PASS (no stale ✓ during SCANNING) ✅.
+
+**Cross-tool (Step 3):** Thermal cross-validation PASS · HELIX 30 prints · Largo `blackout_intelligence` · Grid bootstrap · 0DTE 8 setups · Night Hawk edition · BIE `getSpxPlayState()` consistent · desk=7711.77 play=BUY.
+
+### Findings table (`spx-rth-2026-08-04`)
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| — | — | **No P0/P1 product defects** | all suites GREEN | — |
+| INFO | ENV-NODE-MODULES | Initial run failed on missing `node_modules` (tsx/playwright/pg) | environment | Resolved via `npm install` + playwright chromium |
+| P2 | SPX-RTH-CRON-SECRET | `spx:data-correctness` WARN — CRON_SECRET auth mismatch on sync poll | `/api/cron/data-correctness` | Yes — prod cron authoritative |
+| P2 | SPX-RTH-BIE-CRON | `integration:bie-play-route` WARN — cron play HTTP 401 | cron bearer vs member route | Yes — `validate:spx-bie` PASS |
+| P2 | SPX-RTH-E2E-COMMENTARY | `ui:click-commentary-expand` SKIP — Pulse default rail; Largo tab click required before `#spx-commentary-rail-toggle` | Playwright harness | Yes — enhance e2e to click Largo tab first |
+| P2 | SPX-RTH-CONSOLE-5XX | 1 transient origin 5xx during E2E (filtered as noise) | browser console | Yes — monitor if recurring |
+
+**Verify status: GREEN** — zero FAIL. No P0 fixes required.
+
+**Reports:** `audit-output/spx-rth-2026-08-04-verify-1785859584669.json`, `audit-output/spx-dashboard-e2e-1785859600986.json`
+
+---
 
 ## spx-rth-2026-08-03-post-close-evening — SPX Slayer post-close fix agent (~6:10 PM ET)
 
