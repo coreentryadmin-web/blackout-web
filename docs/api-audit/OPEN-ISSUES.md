@@ -1,5 +1,66 @@
 # BlackOut Open Issues Log
-Last updated: 2026-08-04 12:10 ET
+Last updated: 2026-08-04 12:47 ET
+
+## spx-rth-2026-08-04 — SPX Slayer all-day RTH verify agent (market-open ~9:30 AM ET / 12:33 PM ET pass)
+
+**Session:** Autonomous SPX Slayer **verify** mode per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` (Cloud Agent `cursor/spx-rth-system-verification-e8e1`). Commands: `npm run validate:spx-rth` → `npm run validate:spx-e2e` → 60s live auto-update poll.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth` | ✅ **8 PASS / 1 WARN / 0 FAIL** — matrix deep audit, cross-endpoint spot Δ≤0.15, desk lanes, BIE consistency, dashboard E2E nested, ops:collect zero items |
+| `npm run validate:spx-e2e` | ✅ **0 FAIL / 18 checks** — every GEX+VEX+DEX+CHARM cell (161 strikes), GEX/VEX tab clicks, cross-tool integration |
+| 60s live auto-update | ✅ desk 7720.87→7724.54 (Δ3.67 pts) · matrix spot 7723.72→7724.55 (+8s) · play=WATCHING/long |
+
+**Live state (RTH midday):** SPX spot ~7724 · play **WATCHING / long** (was SELL/SCANNING on first probe — no stale ✓ confirmations) · 161 matrix strike rows · HELIX 30 prints · 0DTE board 9 setups.
+
+### Cross-tool integration (Step 3)
+
+| Tool | Endpoint | Result |
+|---|---|---|
+| **Thermal** | `gex-heatmap?ticker=SPX` | ✅ Same payload as dashboard matrix (161 strikes, GEX+VEX+DEX+CHARM) |
+| **Thermal SPY** | `cross_validation` | ✅ PASS |
+| **GEX positioning** | spot/flip/walls vs matrix header | ✅ PASS (cross-endpoint) |
+| **HELIX** | `/api/market/flows?limit=30` | ✅ 30 prints |
+| **Largo** | `POST /api/market/largo/query` | ✅ tools=blackout_intelligence |
+| **BIE** | `validate:spx-bie` | ✅ member play == `getSpxPlayState()` |
+| **Grid** | `/api/market/spx/bootstrap` | ✅ loaded |
+| **0DTE Command** | `/api/market/zerodte/board` | ✅ 9 setups |
+| **Night Hawk** | `/api/market/nighthawk/edition` | ✅ loads |
+
+### UI E2E (Step 2)
+
+| Control | Result |
+|---|---|
+| Sign-in `/dashboard` | ✅ PASS |
+| LIVE badge (RTH) | ✅ PASS — not OFFLINE |
+| GEX tab click | ✅ PASS |
+| VEX tab click | ✅ PASS |
+| Matrix rows (≥80) | ✅ 161 strike rows |
+| Matrix text sanity | ✅ no NaN/undefined/$— |
+| SCANNING confirmations | ✅ no stale ✓ during SCANNING/HUNTING |
+| Play verdict bar | ✅ SPX PLAY |
+| Console errors | ✅ zero hard errors |
+| Commentary expand | ⏭️ SKIP — no `#spx-commentary-expand` control in current shell |
+
+### Findings table (`spx-rth-2026-08-04`)
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| — | — | **No P0/P1 product defects** | all SPX suites GREEN | — |
+| INFO | SPX-RTH-ENV-NODE | Initial orchestrator FAIL on missing `node_modules` (pg/tsx/playwright) in cloud agent | harness stderr | Resolved via `npm install` + `npx playwright install chromium` |
+| WARN | SPX-RTH-CRON-AUTH | `spx:data-correctness` CRON_SECRET auth mismatch in agent env — full sweep runs on prod cron | `/api/cron/data-correctness` | N/A — prod cron unaffected |
+| WARN | SPX-RTH-BIE-CRON-401 | E2E `integration:bie-play-route` cron play HTTP 401 (agent CRON_SECRET scope) | cron bearer probe | N/A — member `validate:spx-bie` PASS |
+| P2 | SPX-RTH-COMMENTARY-EXPAND | Commentary rail expand button not found (`#spx-commentary-expand` / `#spx-commentary-rail-toggle`) | UI harness SKIP | post-close — verify if control removed or selector drift |
+
+**Verify status: GREEN** — zero FAIL on all SPX harnesses after env bootstrap. No P0 fixes required. No GitHub issue opened.
+
+**Reports:**
+- `audit-output/spx-rth-2026-08-04-verify-1785861608674.json`
+- `audit-output/spx-dashboard-e2e-1785861660307.json`
+
+---
 
 ## rth-open-2026-08-04-pass1 — RTH comprehensive test sweep (~12:00 PM ET)
 
