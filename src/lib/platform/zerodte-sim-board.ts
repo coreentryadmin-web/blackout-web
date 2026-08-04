@@ -94,6 +94,7 @@ export function emptySimBoardPayload(): ZeroDteBoardPayload {
     covered_elsewhere: [],
     governor: null,
     allocation: [],
+    market_state: null,
   };
 }
 
