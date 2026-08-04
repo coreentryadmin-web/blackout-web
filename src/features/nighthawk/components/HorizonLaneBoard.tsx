@@ -23,7 +23,13 @@ export function HorizonLaneBoard({ horizon }: { horizon: Extract<Horizon, "SWING
   );
 
   const lane: HorizonLaneData | null = data?.board?.lanes?.[horizon] ?? null;
-  const committed = lane?.committed ?? [];
+  // `lane.committed` is a back-compat, score-only view (status === "COMMIT") that predates the seven-
+  // section swing router (serving.ts) — it does NOT know a setup's thesis broke after the score cleared
+  // the floor. A SWING play whose setupState has since gone INVALIDATED must never render as "committed"
+  // here (see docs/audit/FINDINGS.md 2026-08-04: prod observed a COMMIT-status play with
+  // setupState: "INVALIDATED" — the real desk (HorizonDeck/containers.tsx) already guards this via
+  // `sections`; this generic lane predates that and had no equivalent guard).
+  const committed = (lane?.committed ?? []).filter((p) => p.setupState !== "INVALIDATED");
   const watch = lane?.watch ?? [];
 
   return (
