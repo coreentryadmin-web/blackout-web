@@ -22,6 +22,7 @@ import ThermalTripleDesk from "@/features/thermal/components/ThermalTripleDesk";
 import {
   buildThermalUrlSearch,
   honestLevelEmpty,
+  parseThermalTicker,
   parseThermalUrlState,
   shouldForceMatrixRefresh,
   type ThermalLens,
@@ -1571,10 +1572,16 @@ function TickerSwitcher({
   // alphabetically-earlier Polygon hits like ASTL/ASTR.
   const options = useMemo(() => {
     const seen = new Set(presetMatches);
-    const opts: { ticker: string; name?: string; preset: boolean }[] = presetMatches.map((t) => ({
-      ticker: t,
-      preset: true,
-    }));
+    const opts: { ticker: string; name?: string; preset: boolean; loadDirect?: boolean }[] =
+      presetMatches.map((t) => ({
+        ticker: t,
+        preset: true,
+      }));
+    const typedTicker = parseThermalTicker(q);
+    if (typedTicker && !seen.has(typedTicker)) {
+      seen.add(typedTicker);
+      opts.unshift({ ticker: typedTicker, name: "Load symbol", preset: false, loadDirect: true });
+    }
     const remote: typeof opts = [];
     for (const r of searchResults) {
       const sym = r.ticker.toUpperCase();
@@ -1670,8 +1677,11 @@ function TickerSwitcher({
   function onSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Enter") {
       e.preventDefault();
-      const opt = options[active] ?? options[0];
+      const typed = parseThermalTicker(query);
+      const exact = typed ? options.find((o) => o.ticker === typed) : undefined;
+      const opt = exact ?? options[active] ?? options[0];
       if (opt) pick(opt.ticker);
+      else if (typed) pick(typed);
       else if (query.trim()) pick(query);
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
@@ -1729,6 +1739,11 @@ function TickerSwitcher({
                   {o.preset && (
                     <span className="font-mono text-[8px] uppercase tracking-wider text-sky-300/50">
                       preset
+                    </span>
+                  )}
+                  {o.loadDirect && (
+                    <span className="font-mono text-[8px] uppercase tracking-wider text-cyan-400/70">
+                      load
                     </span>
                   )}
                 </span>

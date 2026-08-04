@@ -42,6 +42,19 @@ test("rankTickerSearchResults keeps prefix-match common stock ahead of derivativ
   assert.deepEqual(ranked.map((r) => r.ticker), ["AAPL", "AAA"]);
 });
 
+test("rankTickerSearchResults with prepended direct hit surfaces short symbols (BE/NIO class)", () => {
+  // Polygon fuzzy search for "BE" returns AABVF/AALBF/… — the real BE is ~131st alphabetically
+  // and never enters the 50-result upstream page. Direct lookup prepends the exact symbol.
+  const fuzzyNoise = [stub("AABVF"), stub("AALBF"), stub("AAPD")];
+  const direct = stub("BE", { name: "Bloom Energy Corporation" });
+  const ranked = rankTickerSearchResults([direct, ...fuzzyNoise], "BE");
+  assert.equal(ranked[0].ticker, "BE");
+
+  const nioDirect = stub("NIO", { name: "NIO Inc.", type: "ADRC" });
+  const nioRanked = rankTickerSearchResults([nioDirect, stub("ABXL"), stub("ADAMG")], "NIO");
+  assert.equal(nioRanked[0].ticker, "NIO");
+});
+
 test("rankTickerSearchResults is stable (preserves input order) within a tier", () => {
   const input = [stub("MSFT"), stub("META")];
   const ranked = rankTickerSearchResults(input, "M");
