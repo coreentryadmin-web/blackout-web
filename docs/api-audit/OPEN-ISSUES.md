@@ -1,11 +1,22 @@
 # BlackOut Open Issues Log
-Last updated: 2026-08-05 12:54 ET
+Last updated: 2026-08-05 13:26 ET
 
 ## spx-rth-2026-08-05 — SPX Slayer all-day RTH verify agent (market open ~6:30 AM PT / 9:30 AM ET)
 
-**Session:** Autonomous SPX Slayer **verify** mode per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` (Cloud Agent `cursor/spx-rth-system-verification-40dc`). First pass at market open. Commands: `npm run validate:spx-rth` → `npm run validate:spx-e2e` → 60s live auto-update (`spx-live-check.mjs` FRAMES=2 INTERVAL_MS=60000).
+**Session:** Autonomous SPX Slayer **verify** mode per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md`. Passes: (1) market-open ~9:30 ET agent `40dc`; (2) midday ~13:23 ET agent `4666`. Commands each pass: `npm run validate:spx-rth` → `npm run validate:spx-e2e` → `data-validator.mjs` → 60s live auto-update (`spx-live-check.mjs` FRAMES=2 INTERVAL_MS=60000).
 
-### Validation summary
+### Validation summary (pass 2 — ~13:23 ET)
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth` | ✅ **8 PASS · 1 WARN · 0 FAIL** (~31s) — RTH-open, matrix deep audit (GEX+VEX+DEX+CHARM · every cell finite · Σ strike_totals == headline), cross-endpoint spot merged=7735.08 hm=7735.48 play=SCANNING/SCANNING, desk lanes pulse+flow live, BIE consistency, dashboard E2E nested, ops:collect zero items |
+| `npm run validate:spx-e2e` | ✅ **0 FAIL / 18 checks** (1 WARN: `bie-play-route` cron 401 expected) — matrix every-cell-api 170 strikes, GEX+VEX tabs clicked, 170 UI rows, commentary expand, play verdict SCANNING (no stale ✓) |
+| `data-validator.mjs` | ✅ **36 PASS · 5 INFO · 0 FAIL** — SPX/SPY/VIX live vs Polygon, 0DTE chain + ledger SPXW/QQQ/MU premium cross-check PASS |
+| 60s live auto-update | ✅ **distinctRegime=2** (flip 7,621→7,625) · **distinctSpotFirst=2** · pin 7,736.2→7,736.5 — surfaces tick without manual refresh |
+
+**Live desk (RTH ~13:23 ET):** SPX spot ~7736 · play **SCANNING** · 170 API strikes / 170 UI rows · 9 0DTE setups · 30 HELIX prints · LIVE badge active.
+
+### Validation summary (pass 1 — ~12:14 ET)
 
 | Check | Result |
 |---|---|
@@ -15,19 +26,21 @@ Last updated: 2026-08-05 12:54 ET
 
 **Live desk (RTH ~12:14 ET):** SPX spot ~7731 · play **SCANNING** · 201 API strikes / 190 UI rows · 10 0DTE setups · 30 HELIX prints · LIVE badge active.
 
-### UI E2E (`/dashboard`)
+### UI E2E (`/dashboard`) — pass 2
 
 | Control | Result |
 |---|---|
 | Sign-in + shell | ✅ premium desk loads |
 | GEX tab (`#spx-matrix-tab-gex`) | ✅ clicked · matrix populates |
 | VEX tab (`#spx-matrix-tab-vex`) | ✅ clicked · VEX cells populate |
-| Matrix rows | ✅ **190** strike rows (≥80 RTH bar) |
+| Matrix rows | ✅ **170** strike rows (≥80 RTH bar) |
 | Matrix text sanity | ✅ no NaN / undefined / `$—` |
 | Commentary expand | ✅ toggles without error |
 | Play verdict bar | ✅ SPX PLAY · SCANNING — **no stale ✓ confirmations** |
-| Console errors | ✅ zero hard errors (1 transient 502 origin noise) |
+| Console errors | ✅ zero hard errors |
 | LIVE badge | ✅ active during RTH |
+
+### UI E2E (`/dashboard`) — pass 1
 
 ### Cross-tool integration (Step 3)
 
@@ -40,11 +53,11 @@ Last updated: 2026-08-05 12:54 ET
 | Largo | `largo/query` SPX play | ✅ `blackout_intelligence` grounded |
 | BIE | `validate:spx-bie` | ✅ `spx_full_state` == member play |
 | Grid bootstrap | `spx/bootstrap` | ✅ loaded |
-| 0DTE Command | `zerodte/board` | ✅ 10 setups |
+| 0DTE Command | `zerodte/board` | ✅ 9 setups |
 | Night Hawk | `nighthawk/edition` | ✅ loads |
-| Cross-tool spot/play | desk vs play | ✅ desk=7733.09 play=SCANNING |
+| Cross-tool spot/play | desk vs play | ✅ desk=7736.26 play=SCANNING |
 
-**Verify status: GREEN** — zero FAIL on all SPX harnesses. No P0 fixes required.
+**Verify status: GREEN** — zero FAIL on all SPX harnesses across both passes. No P0 fixes required.
 
 ### Findings table (`spx-rth-2026-08-05`)
 
@@ -56,7 +69,9 @@ Last updated: 2026-08-05 12:54 ET
 | P2 | SPX-BIE-CRON-401 | `bie-play-route` WARN — cron play HTTP 401 (expected without cron bearer) | BIE cron | defer |
 | INFO | SPX-LIVE-502 | Transient origin 502 during 60s live check (ECS rolling deploy / ALB drain) | edge | monitor |
 
-**Reports:** `audit-output/spx-rth-2026-08-05-verify-1785946726555.json`, `audit-output/spx-dashboard-e2e-1785946872925.json`, `/opt/cursor/artifacts/spx-rth-2026-08-05/report-verify-open.json`
+**Reports (pass 2):** `audit-output/spx-rth-2026-08-05-verify-1785950665539.json`, `audit-output/spx-dashboard-e2e-1785950679147.json`, `/opt/cursor/artifacts/spx-rth-2026-08-05/report-verify-1330et.json`
+
+**Reports (pass 1):** `audit-output/spx-rth-2026-08-05-verify-1785946726555.json`, `audit-output/spx-dashboard-e2e-1785946872925.json`, `/opt/cursor/artifacts/spx-rth-2026-08-05/report-verify-open.json`
 
 ---
 
