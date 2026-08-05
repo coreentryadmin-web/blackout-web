@@ -1011,10 +1011,17 @@ export function scoreCandidate(
   // Like the fundamental modifier, it layers on the base and never overrides flow direction.
   const catalyst = scoreCatalystAwareness(dossierExtras.catalysts, direction);
 
-  // Earnings proximity penalty: if earnings are today or tomorrow-premarket and the nearest
-  // flow expiry is tomorrow, apply −6 to the catalyst score (floor behavior) and flag earnings_risk.
+  // Earnings proximity flag: if earnings are today or tomorrow-premarket and the nearest
+  // flow expiry is tomorrow, flag earnings_risk. NH-R1: this used to ALSO subtract −6 from
+  // catalyst_score here, but nighthawk-tiers.ts (nhTierInputFromScored → assignNighthawkTier)
+  // independently reads this same earnings_risk boolean and applies its OWN penalty
+  // (W_NH_EARNINGS_RISK = −1 tier-point) plus an unconditional B-tier cap. That's a double
+  // penalty for one signal: once in the raw composite score, again at the tier layer. Per
+  // the established pattern for tier/gate-level effects (see NH-R9 compose.ts/types.ts and
+  // NH-R11), earnings risk is scored ONCE, at the tier layer — this stays flag-only so
+  // callers (and the tier engine) still see earnings_risk: true, but no points are removed
+  // from catalyst_score/score here.
   let earningsRisk = false;
-  let earningsPenalty = 0;
   const earningsDate = dossierExtras.earnings_date;
   const todayYmd = dossierExtras.today_ymd;
   const tomorrowYmd = dossierExtras.tomorrow_ymd;
@@ -1024,7 +1031,6 @@ export function scoreCandidate(
     const expiresNearEarnings = flowExpiries.some((exp) => exp === tomorrowYmd || exp === todayYmd);
     if (expiresNearEarnings) {
       earningsRisk = true;
-      earningsPenalty = -6;
     }
   }
 
@@ -1065,8 +1071,9 @@ export function scoreCandidate(
   }
 
   // IV penalty lives OUTSIDE the catalyst clamp — it's about options pricing, not catalyst awareness.
-  // Clamping FDA(-2) + earnings(-6) + IV(-6) together into [-5,+5] swallowed stacked risk signals.
-  const totalCatalystScore = Math.max(-CATALYST_CAP, Math.min(CATALYST_CAP, catalyst.score + earningsPenalty + ptNudge + fdaPenalty));
+  // NH-R1: earnings no longer contributes a raw-score penalty here (see earningsRisk above) —
+  // it's scored once, at the tier layer (nighthawk-tiers.ts W_NH_EARNINGS_RISK + B-cap).
+  const totalCatalystScore = Math.max(-CATALYST_CAP, Math.min(CATALYST_CAP, catalyst.score + ptNudge + fdaPenalty));
   const ivAdjustment = ivPenalty;
 
   // Flow-anomaly penalty: names flagged critical in the last hour get demoted unless flow is exceptional.
