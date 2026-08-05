@@ -5,10 +5,11 @@ import {
   fetchPolygonAtmChainAllExpiries,
   fetchPolygonOiByExpiry,
 } from "@/lib/providers/polygon-options-gex";
-import { fetchStockSnapshot } from "@/lib/providers/polygon";
+import { fetchStockSnapshot, fetchIndexSnapshot } from "@/lib/providers/polygon";
 import { getStockLiveCandle } from "@/lib/ws/stock-candle-store";
 import { fetchUwOptionChains } from "@/lib/providers/unusual-whales";
 import { fetchOptionsUnifiedSnapshot, type OptionSnapshot } from "@/lib/providers/options-snapshot";
+import { polygonSpotTicker } from "@/lib/zerodte/board";
 import type { PlaybookPlay } from "./types";
 
 // Widened from ±5% to ±12% — the ±5% band blocked OTM options that are cheaper (under
@@ -267,11 +268,36 @@ export function formatChainTableText(ticker: string, price: number, rows: ChainS
   return [`${ticker} chain (price $${price.toFixed(2)}, as of ${asOf}, after-hours last prints):`, header, ...lines].join("\n");
 }
 
-async function resolveSpot(ticker: string, dossier?: TickerDossier): Promise<number> {
+// Exported (additive) so the NH-R12 regression test can exercise index-root spot
+// resolution directly, mirroring the swing-cron export of resolveTickerChainRows above.
+export async function resolveSpot(ticker: string, dossier?: TickerDossier): Promise<number> {
   const fromDossier = dossier?.tech?.price;
   if (fromDossier != null && fromDossier > 0) return fromDossier;
-  const c = getStockLiveCandle(ticker);
+  // NH-R12: index option roots (SPXW, NDXP, RUTW, XSP, …) don't price under the
+  // stock namespace on Polygon at all — board.ts's polygonSpotTicker comment
+  // (live-verified 2026-07-13) documents that the STOCK aggs endpoint returns an
+  // empty result for these roots; the same is true of the STOCK snapshot endpoint
+  // `fetchStockSnapshot` hits (`/v2/snapshot/.../markets/stocks/tickers/{sym}` — a
+  // stocks-only path, 404/empty for `I:*`). board.ts already maps these roots to the
+  // `I:` index namespace before every grading/spot-bar aggs call; this discovery-side
+  // spot lookup (BREAKOUT/PIN) was the one path that never applied that mapping, so
+  // an index-root ticker here silently resolved to spot=0 (or fell through to a
+  // stale/absent dossier price) instead of a real index price.
+  //
+  // Fix mirrors the existing STOCK-vs-INDEX branch in
+  // src/app/api/market/quote/route.ts (`fetchIndexSnapshot` for `I:*` roots via the
+  // `/v3/snapshot/indices` endpoint, `fetchStockSnapshot` otherwise) — applied here for
+  // the SPOT lookup only. Option chains for these roots are still listed under the raw
+  // ticker (e.g. SPXW), so the chain-fetch calls below intentionally keep using the
+  // un-mapped `ticker`.
+  const spotTicker = polygonSpotTicker(ticker);
+  const isIndex = spotTicker.startsWith("I:");
+  const c = getStockLiveCandle(spotTicker);
   if (c.current && c.current.close > 0) return c.current.close;
+  if (isIndex) {
+    const snap = await fetchIndexSnapshot(spotTicker).catch(() => null);
+    return snap?.price ?? 0;
+  }
   const snap = await fetchStockSnapshot(ticker).catch(() => null);
   return snap?.price ?? 0;
 }

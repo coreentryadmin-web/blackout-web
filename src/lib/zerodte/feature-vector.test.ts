@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   buildSetupFeatureVector,
+  buildScoreAttribution,
   numericVector,
   NUMERIC_FEATURE_KEYS,
   CATEGORICAL_FEATURE_KEYS,
@@ -10,6 +11,7 @@ import {
 } from "./feature-vector.ts";
 import { computeFlowQuality, type FlowPrint } from "./flow-quality.ts";
 import { classifyRegime } from "./regime.ts";
+import type { ScoredCandidate } from "@/features/nighthawk/lib/scorer";
 
 const T0 = Date.parse("2026-07-23T14:00:00Z");
 function fp(over: Partial<FlowPrint>): FlowPrint {
@@ -114,4 +116,68 @@ test("every numeric key resolves to a number or null on a full vector", () => {
     const val = v[k];
     assert.ok(val === null || typeof val === "number", `${k} should be number|null, got ${typeof val}`);
   }
+});
+
+// ── NH-R2: structured score attribution ──
+
+function scoredCandidate(over: Partial<ScoredCandidate> = {}): ScoredCandidate {
+  return {
+    ticker: "SPY",
+    score: 82,
+    direction: "long",
+    flow_score: 30,
+    tech_score: 12,
+    pos_score: 0,
+    news_score: -4,
+    smart_money_score: 8,
+    conviction: "B",
+    ...over,
+  };
+}
+
+test("buildScoreAttribution: always emits the 5 required dimensions, even at 0, with correct direction", () => {
+  const entries = buildScoreAttribution(scoredCandidate());
+  const byFactor = Object.fromEntries(entries.map((e) => [e.factor, e]));
+  assert.deepEqual(byFactor.flow, { factor: "flow", points: 30, direction: "up" });
+  assert.deepEqual(byFactor.technicals, { factor: "technicals", points: 12, direction: "up" });
+  assert.deepEqual(byFactor.positioning, { factor: "positioning", points: 0, direction: "neutral" });
+  assert.deepEqual(byFactor.news, { factor: "news", points: -4, direction: "down" });
+  assert.deepEqual(byFactor.smart_money, { factor: "smart_money", points: 8, direction: "up" });
+});
+
+test("buildScoreAttribution: optional sub-scores are OMITTED when undefined (never a fabricated 0)", () => {
+  const entries = buildScoreAttribution(scoredCandidate());
+  const factors = new Set(entries.map((e) => e.factor));
+  for (const f of ["fundamental", "catalyst", "short_interest", "wall_proximity", "vex_alignment", "skew", "governor_penalty"]) {
+    assert.ok(!factors.has(f), `${f} should be omitted when its ScoredCandidate field is undefined`);
+  }
+  assert.equal(entries.length, 5); // exactly the 5 required dimensions
+});
+
+test("buildScoreAttribution: optional sub-scores are INCLUDED (marked neutral at 0) once actually computed", () => {
+  const entries = buildScoreAttribution(
+    scoredCandidate({ fundamental_score: 3, catalyst_score: 0, short_interest_score: -2 })
+  );
+  const byFactor = Object.fromEntries(entries.map((e) => [e.factor, e]));
+  assert.deepEqual(byFactor.fundamental, { factor: "fundamental", points: 3, direction: "up" });
+  assert.deepEqual(byFactor.catalyst, { factor: "catalyst", points: 0, direction: "neutral" });
+  assert.deepEqual(byFactor.short_interest, { factor: "short_interest", points: -2, direction: "down" });
+});
+
+test("buildScoreAttribution: governor penalty is sign-flipped (a positive penalty attributes as 'down')", () => {
+  const entries = buildScoreAttribution(scoredCandidate({ govPenalty: 5 }));
+  const gov = entries.find((e) => e.factor === "governor_penalty");
+  assert.deepEqual(gov, { factor: "governor_penalty", points: -5, direction: "down" });
+});
+
+test("buildSetupFeatureVector: attribution defaults to [] when no scored candidate is threaded", () => {
+  const v = buildSetupFeatureVector(inputs());
+  assert.deepEqual(v.attribution, []);
+});
+
+test("buildSetupFeatureVector: attribution field carries buildScoreAttribution's output when a scored candidate is threaded", () => {
+  const scored = scoredCandidate({ fundamental_score: 3 });
+  const v = buildSetupFeatureVector(inputs({ scored }));
+  assert.deepEqual(v.attribution, buildScoreAttribution(scored));
+  assert.ok(v.attribution.length > 0);
 });

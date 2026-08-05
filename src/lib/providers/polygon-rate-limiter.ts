@@ -28,6 +28,10 @@ import {
   ensureProviderBreakerSubscription,
   type BreakerSubscriptionState,
 } from "./provider-rate-limiter-shared";
+// NH-R3: additive REST upstream health tick recorder (evidence-only — see module header there).
+// Hooked in alongside notePolygon429/notePolygonOk below since those are already the ONE place every
+// Polygon REST call's success/failure is observed; this does not change any control flow or throw path.
+import { polygonUpstreamHealth, type PolygonUpstreamHealthSnapshot } from "./polygon-rest-health";
 
 export { computeDegradedLocalRps } from "./provider-rate-limiter-shared";
 
@@ -279,6 +283,9 @@ export function notePolygon429(_path?: string): void {
   const now = Date.now();
   consecutive429 += 1;
   rateLimitSummaryCount += 1;
+  // NH-R3: the upstream-health failure tick for a 429 is recorded once, at the call site in
+  // polygonTrackedFetch (which has the actual status in scope) — not here, so it is never double-
+  // counted if notePolygon429 ever gains a second caller in the future.
 
   if (consecutive429 >= CIRCUIT_429_THRESHOLD && now >= circuitOpenUntil) {
     circuitOpenUntil = now + CIRCUIT_PAUSE_MS;
@@ -303,6 +310,10 @@ export function notePolygon429(_path?: string): void {
 /** Record a non-429 response — resets the consecutive-429 counter (mirrors old `if (res.ok)`). */
 export function notePolygonOk(): void {
   consecutive429 = 0;
+  // NH-R3: note — this fires for ANY non-429 status (including a 4xx/5xx that isn't 429), mirroring
+  // the existing breaker's own scope exactly (byte-for-byte unchanged control flow). A 5xx is a real
+  // upstream failure though, so the health tick below is recorded separately in polygonTrackedFetch
+  // where the actual status is still in scope, not here.
 }
 
 // Test-only: clear breaker state between cases (module state persists across a test
@@ -354,7 +365,20 @@ export async function polygonTrackedFetch(
     } else {
       notePolygonOk();
     }
+    // NH-R3: upstream health tick keyed off the ACTUAL status here (not notePolygonOk's "any
+    // non-429" scope, which is deliberately left byte-for-byte unchanged above) — a 5xx counts as
+    // a failure tick for evidence purposes even though it doesn't affect the 429-only breaker.
+    if (res.status === 429 || res.status >= 500) {
+      polygonUpstreamHealth().recordFailure();
+    } else {
+      polygonUpstreamHealth().recordSuccess();
+    }
     return res;
+  } catch (err) {
+    // A thrown network error (connect timeout, DNS failure, etc. — never got a status) is also an
+    // upstream-health failure tick. Rethrow unchanged; this module never swallows an error.
+    polygonUpstreamHealth().recordFailure();
+    throw err;
   } finally {
     releaseSlot();
   }
@@ -374,6 +398,8 @@ export function polygonRateLimiterStats(): {
   circuitOpen: boolean;
   circuitOpenUntil: number | null;
   consecutive429: number;
+  /** NH-R3: the additive upstream health snapshot (evidence-only — see polygon-rest-health.ts). */
+  upstreamHealth: PolygonUpstreamHealthSnapshot;
 } {
   refillTokens();
   const now = Date.now();
@@ -394,5 +420,6 @@ export function polygonRateLimiterStats(): {
     circuitOpen: now < circuitOpenUntil,
     circuitOpenUntil: now < circuitOpenUntil ? circuitOpenUntil : null,
     consecutive429,
+    upstreamHealth: polygonUpstreamHealth().snapshot(),
   };
 }

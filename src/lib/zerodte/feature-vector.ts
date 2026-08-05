@@ -30,9 +30,86 @@
 import type { FlowQuality } from "./flow-quality";
 import type { MarketRegime } from "./regime";
 import { discoveryOriginLabel, type ContractHorizon, type DiscoveryOrigin } from "./board";
+import type { ScoredCandidate } from "@/features/nighthawk/lib/scorer";
 
 /** Bump when the vector's shape changes so old graded rows stay interpretable. */
 export const FEATURE_VECTOR_VERSION = 1;
+
+/**
+ * NH-R2 — STRUCTURED SCORE ATTRIBUTION (one entry per named scoring dimension, "which factor
+ * contributed how many points"). `ScoredCandidate` (nighthawk/scorer.ts) already carries these as
+ * individual named sub-score fields — this is a pure re-shape into a queryable list, not a new
+ * scoring computation. Mirrors the compose.ts narrative convention (a labeled, signed-weight list
+ * per source) but STRUCTURED instead of a human-readable string, so it can be joined/aggregated
+ * later without re-parsing prose.
+ */
+export interface AttributionEntry {
+  /** Stable factor label (snake_case), one per named ScoredCandidate sub-score. */
+  factor: string;
+  /** The sub-score's point contribution, verbatim (already signed where the source is signed). */
+  points: number;
+  /** Sign of `points` — "neutral" for exactly 0, never inferred beyond that. */
+  direction: "up" | "down" | "neutral";
+}
+
+function attributionDirection(points: number): "up" | "down" | "neutral" {
+  if (points > 0) return "up";
+  if (points < 0) return "down";
+  return "neutral";
+}
+
+/**
+ * Map a scored candidate's named sub-scores onto a structured, per-factor attribution list.
+ *
+ * Pure, deterministic, no IO. Order mirrors ScoredCandidate's field declaration order.
+ *
+ * Two disjoint rules (documented on purpose, mirrors the null-vs-zero discipline the rest of this
+ * module already follows):
+ *   - REQUIRED dimensions (flow/tech/pos/news/smart_money) are ALWAYS emitted, even at exactly 0 —
+ *     every candidate computes all five, so a real 0 is honest evidence ("nothing on this axis"),
+ *     not a missing read. Omitting them would make "no signal" indistinguishable from "not computed".
+ *   - OPTIONAL dimensions (fundamental/catalyst/short_interest/wall_proximity/vex_alignment/skew/
+ *     the governor penalty) are OMITTED when `undefined` (this candidate never ran that scorer leg —
+ *     an honest "no read" is silence, not a fabricated 0-point entry) and included, marked neutral,
+ *     when present as an actual 0.
+ */
+export function buildScoreAttribution(scored: ScoredCandidate): AttributionEntry[] {
+  const entries: AttributionEntry[] = [];
+
+  const required: Array<[string, number]> = [
+    ["flow", scored.flow_score],
+    ["technicals", scored.tech_score],
+    ["positioning", scored.pos_score],
+    ["news", scored.news_score],
+    ["smart_money", scored.smart_money_score],
+  ];
+  for (const [factor, points] of required) {
+    entries.push({ factor, points, direction: attributionDirection(points) });
+  }
+
+  const optional: Array<[string, number | undefined]> = [
+    ["fundamental", scored.fundamental_score],
+    ["catalyst", scored.catalyst_score],
+    ["short_interest", scored.short_interest_score],
+    ["wall_proximity", scored.wall_proximity_score],
+    ["vex_alignment", scored.vex_alignment_score],
+    ["skew", scored.skew_score],
+  ];
+  for (const [factor, points] of optional) {
+    if (points === undefined) continue; // that scorer leg never ran for this candidate — silence, not a 0
+    entries.push({ factor, points, direction: attributionDirection(points) });
+  }
+
+  // The cross-edition governor SUBTRACTS points (govPenalty is a positive magnitude removed from the
+  // total), so its attributed contribution is negative — flip the sign so "down" reads consistently
+  // with every other entry (points < 0 == this factor pulled the total down).
+  if (scored.govPenalty !== undefined) {
+    const points = -scored.govPenalty;
+    entries.push({ factor: "governor_penalty", points, direction: attributionDirection(points) });
+  }
+
+  return entries;
+}
 
 export interface SetupFeatureInputs {
   ticker: string;
@@ -93,6 +170,10 @@ export interface SetupFeatureInputs {
   /** WS-06: the merge/precedence version the origin maps were frozen under (MERGE_POLICY_VERSION).
    *  Absent → null. */
   mergePolicyVersion?: string | null;
+  /** NH-R2: the nighthawk-scorer candidate this setup came from, when the commit site has one — used
+   *  ONLY to derive `attribution` (buildScoreAttribution), never read for any other field on this row.
+   *  Absent → `attribution: []` (an honest "not threaded" empty list, never fabricated entries). */
+  scored?: ScoredCandidate | null;
 }
 
 /** The flat, versioned feature row. Numeric where possible; small categorical strings otherwise. */
@@ -154,6 +235,11 @@ export interface SetupFeatureVector {
   direction_owner: string | null;
   /** WS-06: merge/precedence version the origin maps were frozen under. null when not threaded. */
   merge_policy_version: string | null;
+  /** NH-R2: structured per-factor score breakdown (buildScoreAttribution), one entry per named
+   *  ScoredCandidate sub-score that ran for this setup. [] when no scored candidate was threaded to
+   *  this commit — never fabricated entries. Purely additive: nothing reads this field today (see
+   *  docs/audit/NIGHTHAWK-DATA-PROVENANCE.md §7-G), it rides the same unconsumed keystone row. */
+  attribution: AttributionEntry[];
 }
 
 const numOrNull = (n: number | null | undefined): number | null =>
@@ -222,6 +308,10 @@ export function buildSetupFeatureVector(input: SetupFeatureInputs): SetupFeature
     // flat slice-able keys). null (not fabricated) when not threaded.
     direction_owner: input.directionOwner ?? null,
     merge_policy_version: input.mergePolicyVersion ?? null,
+    // NH-R2: [] (not null) when no scored candidate was threaded — an empty list is the honest
+    // "nothing to attribute yet" read, consistent with how the sibling swing vector defaults its own
+    // capture-only array fields (`secondary: []`) rather than null.
+    attribution: input.scored ? buildScoreAttribution(input.scored) : [],
   };
 }
 
