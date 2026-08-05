@@ -16,6 +16,8 @@ export interface DiscordEmbedPayload {
   footer?: { text: string; icon_url?: string };
   fields?: Array<{ name: string; value: string; inline?: boolean }>;
   author?: { name: string; url?: string; icon_url?: string };
+  /** Inline attachment reference (e.g. attachment://thermal-desk.png). */
+  image?: { url: string };
 }
 
 /** Text and/or embeds — Discord accepts either (or both). */
