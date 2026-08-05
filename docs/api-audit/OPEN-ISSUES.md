@@ -1,8 +1,41 @@
 # BlackOut Open Issues Log
-<<<<<<< HEAD
-Last updated: 2026-08-05 13:26 ET
-=======
-Last updated: 2026-08-05 13:35 ET
+Last updated: 2026-08-05 14:05 ET
+
+## grid-rth-2026-08-05 — 0DTE Command all-day RTH verify agent (~11:00 AM PT / 2:00 PM ET)
+
+**Session:** Autonomous **verify** mode per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` on branch `cursor/0dte-grid-rth-agent-238c`. Commands: `npm run validate:grid-rth` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e` → extended Playwright tab clicks on `/nighthawk`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:grid-rth` | ✅ **14/14 PASS** (~116s) — RTH-open, zerodte board (9 setups · ledger 3), ledger PnL math, SPX bootstrap spot vs GEX (7741.55), HELIX flows (20 prints), Night Hawk dedupe, `zerodte-warm` cron accepted, logic audit nested, cross-tool integration, data-correctness flags=0, dashboard E2E nested, ops:collect zero items |
+| `npm run validate:zerodte-logic` | ✅ **17/17 PASS** — unit tests (3 files), gate funnel, plan exits (-50%/+100%), lifecycle OPEN/TRIM/CLOSED, session heat RTH→POST_COMMIT→LATE_SESSION, mergePlays past-cutoff/MOVED→SKIP, live board 2 eligible / 9 total · 0 gate violations, ledger consistency 3 rows · 0 issues, cutoff 15:30 ET |
+| `npm run validate:grid-e2e` | ✅ **5/5 PASS** — zerodte board API 9 setups · ledger 3, HELIX flows 11 prints, `/nighthawk` page load, zero console errors |
+| Playwright tab clicks (`/nighthawk`) | ✅ **0DTE · Swings · Bangers · Legacy** — all tabs clicked, zero page errors |
+| `/grid` legacy route | ℹ️ **404** (expected — classic Market Grid deleted 2026-07-07; 0DTE Command lives on `/nighthawk`) |
+
+### Live desk (RTH ~14:01 ET)
+
+- **Session heat:** RTH · heat=100%
+- **Board:** 9 setups · 3 ledger rows · upstream_ok
+- **Gates:** 2 eligible / 9 total · 0 gate violations
+- **Cross-tool:** SPX spot 7741.55 · HELIX 20 prints · 1 ticker Night Hawk dedupe covered elsewhere
+- **Crons:** `zerodte-warm` accepted (background board warm)
+
+### Findings table
+
+| Severity | ID | Detail | Fix |
+|---|---|---|---|
+| — | — | **No P0/P1 product defects** on 0DTE Command / Night Hawk surfaces | GREEN |
+| INFO | ENV-NODE-MODULES | Initial `validate:grid-rth` failed — missing `pg` / `react` / `playwright` in cold cloud env | Resolved via `npm install` + `npx playwright install chromium` (not a product defect) |
+| INFO | GRID-ROUTE-404 | `/grid` returns 404 — intentional since 2026-07-07 decommission | Documented in runbook; canonical surface is `/nighthawk` |
+
+**Status: GREEN** — all 0DTE gates, plan exits, lifecycle states, ledger PnL math, session heat cutoffs, mergePlays rules, cross-tool integration, and `zerodte-warm` cron verified live.
+
+**Reports:** `audit-output/grid-rth-2026-08-05-verify-1785953025971.json`, `audit-output/zerodte-logic-1785952880413.json`, `audit-output/grid-e2e-1785952906797.json`
+
+---
 
 ## rth-open-2026-08-05-pass7 — RTH comprehensive test sweep (~1:26–1:35 PM ET, midday)
 
@@ -72,7 +105,6 @@ Last updated: 2026-08-05 13:35 ET
 **Reports:** `audit-output/rth-sweep-2026-08-05T17-27-58-481Z.json`, `audit-output/grid-e2e-1785951093092.json`, `audit-output/spx-dashboard-e2e-1785951204102.json`
 
 ---
->>>>>>> ac08b687 (docs(audit): RTH comprehensive sweep pass7 findings (2026-08-05 ~1:35 PM ET))
 
 ## spx-rth-2026-08-05 — SPX Slayer all-day RTH verify agent (market open ~6:30 AM PT / 9:30 AM ET)
 
