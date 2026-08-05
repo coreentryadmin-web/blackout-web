@@ -41,3 +41,9 @@ export function shouldRunRthWarmLeader(): boolean {
   const role = processRole();
   return role === "web" || role === "ingest" || role === "all";
 }
+
+/** 5s Vector bead recorder — same processes as RTH warm leader; one Redis-elected writer. */
+export function shouldRunVectorBeadRecorder(): boolean {
+  if (process.env.VECTOR_BEAD_RECORDER?.trim() === "0") return false;
+  return shouldRunRthWarmLeader();
+}

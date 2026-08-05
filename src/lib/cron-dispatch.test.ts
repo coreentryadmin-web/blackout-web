@@ -13,6 +13,7 @@ const VECTOR_SELF_HEAL_CRONS = [
   "vector-universe-snapshot",
   "vector-full-state-snapshot",
   "vector-walls-warm",
+  "vector-bead-record",
   "vector-dark-pool-warm",
 ];
 
