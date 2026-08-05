@@ -88,6 +88,12 @@ export function VectorIndicatorMenu({ enabled, onToggle, onClear, barCount }: Pr
                       ? `${avail.missing.join("/")} n/a`
                       : null;
                 const blocked = avail?.status === "none" && !on;
+                // Static tooltip (2026-08-05 audit finding) — e.g. "Fib"/"Auto fib" use different
+                // retracement-direction conventions with no other on-chart explanation of why they
+                // can point opposite ways. Combined with the bar-count note when both are present.
+                const tooltip = [it.hint, note ? `${it.label} — ${note} at this timeframe` : null]
+                  .filter(Boolean)
+                  .join(" ");
                 return (
                   <button
                     key={it.id}
@@ -95,7 +101,7 @@ export function VectorIndicatorMenu({ enabled, onToggle, onClear, barCount }: Pr
                     role="menuitemcheckbox"
                     aria-checked={on}
                     disabled={blocked}
-                    title={note ? `${it.label} — ${note} at this timeframe` : undefined}
+                    title={tooltip || undefined}
                     className={clsx(
                       "vector-ind-item",
                       on && "vector-ind-item-on",

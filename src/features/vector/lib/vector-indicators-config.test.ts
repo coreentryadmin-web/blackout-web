@@ -74,6 +74,18 @@ test("VECTOR_LEVELS + isVectorLevelId: hex colours, unique ids, disjoint from fa
   for (const id of ids) assert.ok(!isVectorOverlayFamilyId(id), `${id} not also a family id`);
 });
 
+test("VECTOR_LEVELS: Fib and Auto-fib carry a tooltip explaining their different conventions (2026-08-05 audit fix)", () => {
+  const fib = VECTOR_LEVELS.find((l) => l.id === "fib")!;
+  const fibAuto = VECTOR_LEVELS.find((l) => l.id === "fib-auto")!;
+  assert.ok(fib.hint && fib.hint.length > 0);
+  assert.ok(fibAuto.hint && fibAuto.hint.length > 0);
+  assert.notEqual(fib.hint, fibAuto.hint);
+  // The tooltip carries through to the menu's flattened item list, not just the raw def.
+  const kl = VECTOR_INDICATOR_GROUPS.find((g) => g.title === "Key levels")!;
+  assert.equal(kl.items.find((i) => i.id === "fib")!.hint, fib.hint);
+  assert.equal(kl.items.find((i) => i.id === "fib-auto")!.hint, fibAuto.hint);
+});
+
 test("overlayFamilyAvailability: full / partial / none track the bar count vs member periods", () => {
   // VWAP is a family of one needing a single bar — computable the moment there's any bar.
   assert.deepEqual(overlayFamilyAvailability("vwap", 1), { status: "full", minBars: 1, missing: [] });
