@@ -1,5 +1,56 @@
 # BlackOut Open Issues Log
-Last updated: 2026-08-05 17:25 ET
+Last updated: 2026-08-05 17:47 ET
+
+## spx-rth-2026-08-05 — SPX Slayer verify pass (~5:46 PM ET, post-close)
+
+**Session:** Autonomous SPX Slayer **verify** mode per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` on branch `cursor/spx-rth-system-verification-85ab`. Commands: `npm run validate:spx-rth -- --force` → `npm run validate:spx-e2e` (×2 — first run transient chunk 404, retry GREEN).
+
+### Validation summary (verify, post-close)
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth -- --force` | ✅ **7 PASS · 1 WARN · 0 FAIL** — matrix 160 strikes GEX+VEX+DEX+CHARM, cross-endpoint spot merged=7723.55 hm=7723.55 play=SCANNING/SCANNING, BIE consistency, nested dashboard E2E PASS, ops:collect zero items |
+| `npm run validate:spx-e2e` (run 1) | ⚠️ **1 FAIL** — `ui:console-errors` stale chunk `1878-20f9b901955046d4.js` HTTP 404 (transient deploy/cache) |
+| `npm run validate:spx-e2e` (run 2) | ✅ **0 FAIL / 18 checks** — matrix every-cell-api 160 strikes, GEX+VEX tabs, commentary expand, play verdict SCANNING, zero console errors |
+
+### Cross-tool integration (Step 3)
+
+| Tool | Result |
+|---|---|
+| Thermal (`gex-heatmap?ticker=SPX`) | ✅ PASS — same payload as dashboard matrix |
+| HELIX (`/api/market/flows`) | ✅ PASS — 30 prints |
+| Largo (`get_spx_play` query) | ✅ PASS — `tools=blackout_intelligence` |
+| BIE (`validate:spx-bie`) | ✅ PASS — `spx_full_state` == member play |
+| Grid (`/api/market/spx/bootstrap`) | ✅ PASS — loaded |
+| 0DTE (`/api/market/zerodte/board`) | ✅ PASS — 9 setups |
+| Night Hawk (`/api/market/nighthawk/edition`) | ✅ PASS |
+
+### UI controls clicked (Step 2)
+
+| Control | Result |
+|---|---|
+| GEX tab (`#spx-matrix-tab-gex`) | ✅ PASS |
+| VEX tab (`#spx-matrix-tab-vex`) | ✅ PASS |
+| Commentary expand | ✅ PASS |
+| Matrix rows | ✅ 160 strike rows |
+| Matrix text sanity | ✅ PASS — no NaN/undefined |
+| Play verdict bar | ✅ PASS — SCANNING, no stale ✓ |
+| Live badge | SKIP — post-close OFFLINE expected |
+
+### Findings table
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| P2 | SPX-CHUNK-404-TRANSIENT | First E2E run: `_next/static/chunks/1878-*.js` 404 + MIME text/plain — chunk returns 200 on direct curl; retry GREEN | `ui:console-errors` | defer (deploy drain noise) |
+| P2 | SPX-DC-CRON-AUTH | `data-correctness` WARN — env `CRON_SECRET` stale vs AWS SM | cron probe | defer |
+| P2 | SPX-BIE-CRON-401 | `bie-play-route` WARN — cron play HTTP 401 without bearer | expected | defer |
+| P2 | SPX-DESK-LANES-OFF | Desk lanes SKIP — pulse/flow unavailable post-close | off-hours | defer |
+
+**Verify status: GREEN** — zero FAIL on final `validate:spx-rth` and `validate:spx-e2e`. Matrix 100% vs API (160 strikes, GEX+VEX+DEX+CHARM). No stale SCANNING confirmations. No P0 defects.
+
+**Reports:** `audit-output/spx-rth-2026-08-05-verify-1785966424583.json`, `audit-output/spx-dashboard-e2e-1785966471423.json`
+
+---
 
 ## spx-rth-2026-08-05 — SPX Slayer post-close fix agent (~1:05 PM PT / 4:05 PM ET)
 
