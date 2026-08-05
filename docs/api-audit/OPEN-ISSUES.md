@@ -1,5 +1,77 @@
 # BlackOut Open Issues Log
-Last updated: 2026-08-05 11:50 ET
+Last updated: 2026-08-05 12:29 ET
+
+## rth-open-2026-08-05-pass1 — RTH comprehensive test sweep (~12:17–12:29 PM ET)
+
+**Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` on branch `cursor/rth-comprehensive-test-sweep-04b8`. Commands: `npm run validate:rth-open` → `GET /api/cron/data-correctness?force=1` → `npm run validate:rth-sweep` → `npm run validate:grid-e2e` → `npm run validate:spx-e2e` → `npm run validate:grid-rth` → `npm run ops:collect`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` | ✅ **GREEN** — deploy smoke + options-socket ingest leader lock held; Postgres skipped (private VPC) |
+| `GET /api/cron/data-correctness?force=1` | ✅ **ok=true · flags=0** (HTTP 202 async, AWS SM `CRON_SECRET`) |
+| `npm run validate:rth-sweep` | ✅ **0 P0/P1** — 7 pages · **0 missing-field hits** · Largo grounded |
+| `npm run validate:grid-e2e` | ✅ **5/5 PASS** — board API 9 setups / 2 ledger · HELIX 20 prints · `/nighthawk` UI zero console errors |
+| `npm run validate:spx-e2e` | ✅ **0 FAIL / 18 checks** — matrix GEX+VEX+DEX+CHARM 186 strikes · cross-tool desk=7737.33 play=SCANNING |
+| `npm run validate:grid-rth` | ✅ **14/14 PASS** — session heat RTH · spot 7741.64 vs GEX · data-correctness flags=0 |
+| `npm run ops:collect` | ✅ **0 action items** |
+
+### Speed (comprehensive sweep — Playwright premium session)
+
+| Page | Nav | Load (ms) | Live tick | Missing | Console |
+|---|---|---:|---|---:|---:|
+| `/dashboard` | hard | 4431 | null | 0 | 1 (transient 504) |
+| `/flows` | soft | 3974 | null | 0 | 0 |
+| `/heatmap` (matrix) | soft | 1966 | null | 0 | 0 |
+| `/vector` | soft | 1966 | null | 0 | 0 |
+| `/nighthawk` | soft | 1827 | null | 0 | 0 |
+| `/terminal` (Largo) | soft | 2237 | null | 0 | 0 |
+| `/track-record` | soft | 3167 | null | 0 | 0 |
+
+Soft-nav all under ~4.5s usable. `liveTick=null` on all pages — SPX spot stable during 8–20s observation windows (expected midday chop, not a polling failure; SPX E2E `ui:live-badge-rth` PASS).
+
+### API verification (authenticated sample)
+
+| Endpoint | Status | Latency | Fresh |
+|---|---|---:|---|
+| `/api/market/spx/desk` | 200 | 86ms | ✅ age 44s |
+| `/api/market/spx/merged` | 200 | 80ms | — |
+| `/api/market/gex-positioning?ticker=SPX` | 200 | 54ms | — |
+| `/api/market/gex-heatmap?ticker=SPX` | 200 | 49944ms | cold build (first RTH read) |
+| `/api/market/gex-heatmap?ticker=SPY` | 200 | 96ms | warm |
+| `/api/market/flows?limit=20` | 200 | 2821ms | — |
+| `/api/market/nighthawk/edition` | 502→**200** | 33s→109ms | transient; recovered |
+| `/api/public/track-record` | 502→401 | 55ms | transient 502; 401 without member cookie (expected) |
+| `/api/market/zerodte/board` | 200 | 7480ms | ✅ age 77s |
+
+### Cross-tool correctness
+
+- SPX desk spot **7737.33** vs matrix oracle **7736.05** (Δ ≤ 1.3 pts) ✅
+- GEX positioning canonical cache shared across Thermal/Largo/SPX desk ✅
+- Night Hawk board **9 setups · 2 ledger** · session heat **RTH** ✅
+- HELIX flows **20–30 prints** live ✅
+- Largo NVDA query: **$131M premium · 50 prints** grounded via `blackout_intelligence` ✅; `Regime: —` = expected when no active regime tag
+
+### Missing-field audit
+
+**0 missing-field signals** across all 7 pages + Thermal profile tab probe. Largo `Regime: —` = expected when no active regime tag.
+
+### Findings table (`rth-open-2026-08-05-pass1`)
+
+| Severity | ID | Detail | Fix defer? |
+|---|---|---|---|
+| — | — | **No P0/P1 product defects** | all suites GREEN |
+| P2 | RTH-SWEEP-502-01 | Transient 502 on `nighthawk/edition` + `public/track-record` during parallel sweep load | recovered on re-check; monitor |
+| P2 | RTH-SWEEP-GEX-COLD-01 | SPX `gex-heatmap` first read **49.9s** (cold UW chain build) | expected cold-start; warm path 96ms SPY |
+| INFO | RTH-SWEEP-ENV-NODE | Cloud agent needed `npm install` + `npx playwright install chromium` before harnesses | resolved in-session |
+| INFO | RTH-SWEEP-LIVETICK-01 | `liveTick=null` all pages — spot stable during observation, not stale polling | N/A — E2E live-badge PASS |
+
+**Status: GREEN** — comprehensive sweep 0 P0/P1, data-correctness flags=0, cross-tool GEX aligned. No new GitHub issue (no P0/P1).
+
+**Reports:** `audit-output/rth-sweep-2026-08-05T16-19-26-668Z.json`, `audit-output/spx-dashboard-e2e-1785947126055.json`, `audit-output/grid-e2e-1785947078405.json`, `audit-output/grid-rth-2026-08-05-verify-1785947373984.json`
+
+---
 
 ## grid-rth-2026-08-05 — 0DTE Command RTH verify agent (market open ~6:30 AM PT / 9:30 AM ET)
 
