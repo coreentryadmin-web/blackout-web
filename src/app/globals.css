@@ -8484,20 +8484,18 @@ body::before {
   }
 
   /* ── Daily/Weekly historical price view (P2 #5, separate from the intraday VectorChart) ── */
+  /* h-[...] (not min-h) is load-bearing: .vector-daily-chart-canvas below is h-full, and a
+     percentage-height child only resolves through a flex column ancestor whose OWN height is
+     definite. A min-height on this container still gave the outer box a visible ~640px box (via
+     the height floor), but the inner flex-1 canvas wrapper had no definite height to resolve
+     against, so lightweight-charts' container div collapsed to its own tiny content height (~30px)
+     and every candle/SMA/volume series rendered squashed into a sliver at the top — silently, with
+     no error, since the data and series wiring were both correct (2026-08-05 live-UI audit). */
   .vector-daily-chart {
-    @apply flex min-h-[min(72vh,640px)] flex-col gap-2 rounded-xl border border-cyan-500/20 bg-black/40 p-3;
+    @apply flex h-[min(72vh,640px)] flex-col gap-2 rounded-xl border border-cyan-500/20 bg-black/40 p-3;
   }
   .vector-daily-chart-head {
     @apply flex flex-wrap items-center gap-3;
-  }
-  .vector-daily-chart-unit-toggle {
-    @apply flex gap-1 rounded-lg border border-cyan-400/30 bg-black/40 p-0.5;
-  }
-  .vector-daily-chart-unit-btn {
-    @apply rounded-md px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-cyan-300/70 transition-colors;
-  }
-  .vector-daily-chart-unit-btn.is-active {
-    @apply bg-cyan-400/20 text-cyan-200;
   }
   .vector-daily-chart-note {
     @apply text-[11px] text-white/40;
