@@ -103,6 +103,60 @@ export function gradeScaleOut(bars: ScaleOutBar[], entryPremium: number): number
  *  - EXIT_RUNNER: already scaled and the mark retraced to 50% of the peak → close the runner.
  *  - HOLD       : none of the above.
  */
+export type ScaleOutTriggerInfo = {
+  /** Short label for the next mechanical event this position is walking toward. */
+  next_trigger_label: string;
+  /** Premium level ($) at which that event fires, or null if there's no usable mark/entry. */
+  next_trigger_price: number | null;
+  /** Signed % move from the current mark to next_trigger_price (positive = mark must rise). */
+  pct_to_next_trigger: number | null;
+  /** Hard-stop premium level, shown as a floor reference; null once scaled (the hard stop no longer applies). */
+  hard_stop_price: number | null;
+};
+
+/**
+ * Live "how far to the next trigger" readout for the Bangers detail panel — turns the static
+ * scale_out_reason string into an actual price target a member can watch for. Pure function over
+ * the same inputs as deriveScaleOutAction (SCALE_OUT_RULES is the single source for both), so the
+ * detail panel can never drift from the state machine that actually manages the position.
+ *  - Pre-scale: next event is the 2× partial (upside) with the hard stop shown as the downside floor.
+ *  - Post-scale: the hard stop no longer applies (partial already locked); the next event is the
+ *    runner's trailing stop off its peak.
+ */
+export function computeScaleOutTriggerInfo(input: {
+  entryPremium: number;
+  peakPremium: number;
+  lastMark: number | null;
+  scaledAlready: boolean;
+}): ScaleOutTriggerInfo {
+  const { entryPremium, peakPremium, lastMark, scaledAlready } = input;
+  const { scale_at_mult, trail_from_peak, hard_stop_mult } = SCALE_OUT_RULES;
+  const noMark = !(entryPremium > 0) || lastMark == null || !Number.isFinite(lastMark);
+
+  if (!scaledAlready) {
+    const triggerPrice = entryPremium > 0 ? entryPremium * scale_at_mult : null;
+    const hardStop = entryPremium > 0 ? entryPremium * hard_stop_mult : null;
+    return {
+      next_trigger_label: `${scale_at_mult}× partial`,
+      next_trigger_price: triggerPrice,
+      pct_to_next_trigger:
+        noMark || triggerPrice == null || !(lastMark! > 0) ? null : ((triggerPrice - lastMark!) / lastMark!) * 100,
+      hard_stop_price: hardStop,
+    };
+  }
+
+  // Post-scale: the runner's trailing stop is the only thing left to watch; the hard stop no
+  // longer applies (the partial is already locked in).
+  const trailPrice = peakPremium > 0 ? peakPremium * trail_from_peak : null;
+  return {
+    next_trigger_label: "runner trailing stop",
+    next_trigger_price: trailPrice,
+    pct_to_next_trigger:
+      noMark || trailPrice == null || !(lastMark! > 0) ? null : ((trailPrice - lastMark!) / lastMark!) * 100,
+    hard_stop_price: null,
+  };
+}
+
 export function deriveScaleOutAction(input: {
   entryPremium: number;
   peakPremium: number;
