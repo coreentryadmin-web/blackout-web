@@ -14,6 +14,10 @@ import {
   overlayFamilyAvailability,
   VECTOR_DEFAULT_ENABLED_INDICATORS,
   defaultVectorIndicators,
+  VECTOR_OPENING_RANGE_PRESETS,
+  DEFAULT_OPENING_RANGE_MINUTES,
+  isVectorOpeningRangeMinutes,
+  openingRangeLabel,
 } from "./vector-indicators-config";
 
 test("VECTOR_OVERLAYS: unique ids, ema/sma carry a positive period, vwap does not need one", () => {
@@ -152,6 +156,25 @@ test("VECTOR_DEFAULT_ENABLED_INDICATORS: dealer gamma positioning on by default 
   assert.equal(defaultVectorIndicators().size, 1);
   // The new regime glow is opt-in — it must NOT be enabled on first paint.
   assert.ok(!defaultVectorIndicators().has("gamma-regime"));
+});
+
+test("opening-range preset config: 15m default, isVectorOpeningRangeMinutes gates the preset set, label reflects the window (2026-08-05 audit finding #7)", () => {
+  assert.deepEqual([...VECTOR_OPENING_RANGE_PRESETS], [5, 15, 30, 60]);
+  assert.equal(DEFAULT_OPENING_RANGE_MINUTES, 15);
+  assert.ok(VECTOR_OPENING_RANGE_PRESETS.includes(DEFAULT_OPENING_RANGE_MINUTES));
+
+  for (const m of VECTOR_OPENING_RANGE_PRESETS) assert.ok(isVectorOpeningRangeMinutes(m));
+  assert.ok(!isVectorOpeningRangeMinutes(45), "45 is not one of the presets");
+  assert.ok(!isVectorOpeningRangeMinutes("15"), "string, not a number");
+  assert.ok(!isVectorOpeningRangeMinutes(null));
+
+  assert.equal(openingRangeLabel(15), "Opening range (15m)");
+  assert.equal(openingRangeLabel(30), "Opening range (30m)");
+  assert.equal(openingRangeLabel(60), "Opening range (60m)");
+
+  // The static registry entry (used before any member picks a preset) matches the default window.
+  const orDef = VECTOR_LEVELS.find((l) => l.id === "opening-range")!;
+  assert.equal(orDef.label, openingRangeLabel(DEFAULT_OPENING_RANGE_MINUTES));
 });
 
 test("no two distinct indicator ids share a hex colour across the WHOLE toggle space (2026-08-05 audit finding #6)", () => {
