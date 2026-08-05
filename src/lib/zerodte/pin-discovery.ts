@@ -275,7 +275,7 @@ export async function discoverPinSetups(opts: {
         const contract = pickAtmPinContract(rows, chain.spot, today, side);
         if (!contract) return null; // no liquid same-day/weekly contract → shared plan gate would drop it
 
-        return buildPinSetup({ ticker, spot: chain.spot, regime, contract });
+        return buildPinSetup({ ticker, spot: chain.spot, regime, contract, todayYmd: today });
       } catch {
         return null; // best-effort per ticker — one bad read never sinks the batch
       }

@@ -28,6 +28,8 @@ import {
   isSameDayHorizon,
   gradingPolicyForHorizon,
   SAME_DAY_GRADING_POLICY,
+  calendarDteBetween,
+  tradingSessionGapDays,
 } from "./board";
 import { computeFibLevels, nearestFibNote } from "./fib";
 
@@ -128,6 +130,43 @@ test("gradingPolicyForHorizon: committed horizons carry the same-day 15:30 polic
   assert.equal(gradingPolicyForHorizon("ZERO_DTE"), SAME_DAY_GRADING_POLICY);
   assert.equal(gradingPolicyForHorizon("ONE_DTE"), SAME_DAY_GRADING_POLICY);
   assert.equal(gradingPolicyForHorizon("WEEKLY_FALLBACK"), "excluded_non_same_day");
+});
+
+// ── NH-R4: trading-session-aware DTE gap tracking (evidence-only) ─────────────────
+
+test("calendarDteBetween: shared helper (formerly duplicated in pin-source.ts/breakout-source.ts)", () => {
+  assert.equal(calendarDteBetween("2026-08-04", "2026-08-05"), 1); // Tue→Wed
+  assert.equal(calendarDteBetween("2026-07-10", "2026-07-13"), 3); // Fri→Mon, pure calendar days
+  assert.equal(calendarDteBetween("2026-08-05", "2026-08-05"), 0);
+  assert.ok(Number.isNaN(calendarDteBetween("not-a-date", "2026-08-05")));
+});
+
+test("tradingSessionGapDays: normal single overnight (Tue→Wed) has zero skipped non-trading days", () => {
+  assert.equal(tradingSessionGapDays("2026-08-04", "2026-08-05"), 0);
+});
+
+test("tradingSessionGapDays: plain weekend (Fri→Mon) skips exactly Sat+Sun", () => {
+  assert.equal(tradingSessionGapDays("2026-07-10", "2026-07-13"), 2);
+});
+
+test("tradingSessionGapDays: holiday-adjacent weekend (Thu before July 3 holiday → the following Monday) skips 3 days", () => {
+  // 2026-07-03 (Fri) is the observed July 4th holiday (US_MARKET_HOLIDAYS in session.ts) — July 4
+  // itself falls on a Saturday in 2026. Thu 2026-07-02 → Mon 2026-07-06 skips Fri(holiday)+Sat+Sun.
+  assert.equal(tradingSessionGapDays("2026-07-02", "2026-07-06"), 3);
+});
+
+test("tradingSessionGapDays: Thanksgiving-adjacent gap (Wed before → the following Monday) skips the Thu holiday + weekend", () => {
+  // 2026-11-26 (Thanksgiving, Thu) is in US_MARKET_HOLIDAYS. Wed 2026-11-25 → Mon 2026-11-30 skips
+  // Thu(holiday) + Fri(normal trading day, NOT skipped — markets are open, just an early close) is
+  // actually a trading day, so only Thu/Sat/Sun are skipped = 3.
+  assert.equal(tradingSessionGapDays("2026-11-25", "2026-11-30"), 3);
+});
+
+test("tradingSessionGapDays: same-day expiry (no overnight) and malformed inputs return null, never fabricated", () => {
+  assert.equal(tradingSessionGapDays("2026-08-05", "2026-08-05"), null); // 0DTE — nothing to measure
+  assert.equal(tradingSessionGapDays("2026-08-05", "2026-08-04"), null); // expiry before today
+  assert.equal(tradingSessionGapDays("not-a-date", "2026-08-05"), null);
+  assert.equal(tradingSessionGapDays("2026-08-05", "not-a-date"), null);
   assert.equal(SAME_DAY_GRADING_POLICY, "same_day_1530_close");
 });
 

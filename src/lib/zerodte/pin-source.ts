@@ -24,10 +24,12 @@
 // EXACTLY as today.
 
 import {
+  calendarDteBetween,
   deriveContractHorizon,
   enrichSetup,
   gradingPolicyForHorizon,
   mergeSameTickerDiscovery,
+  tradingSessionGapDays,
   type DiscoveryOrigin,
   type EnrichedZeroDteSetup,
   type ZeroDteSetup,
@@ -222,14 +224,6 @@ export type PickedPinContract = {
   side: "call" | "put";
 };
 
-/** Calendar days between two YYYY-MM-DD dates (UTC-noon anchored, DST-agnostic). */
-function calendarDteBetween(todayYmd: string, expiryYmd: string): number {
-  const a = Date.parse(`${todayYmd}T12:00:00Z`);
-  const b = Date.parse(`${expiryYmd.slice(0, 10)}T12:00:00Z`);
-  if (!Number.isFinite(a) || !Number.isFinite(b)) return Number.NaN;
-  return Math.round((b - a) / 86_400_000);
-}
-
 /** A row is tradeable enough to seed a plan when the CHOSEN side has a live quote (bid or ask) or real OI. */
 function sideHasLiquidity(row: PinChainRow, side: "call" | "put"): boolean {
   if (side === "call") {
@@ -286,8 +280,12 @@ export function buildPinSetup(input: {
   spot: number;
   regime: PinRegime;
   contract: PickedPinContract;
+  /** Today's ET session date (YYYY-MM-DD) — used ONLY to compute the evidence-only
+   *  `session_gap_days` field (NH-R4). Optional so existing callers/tests keep compiling;
+   *  omitted → session_gap_days is null (never fabricated). */
+  todayYmd?: string;
 }): EnrichedZeroDteSetup {
-  const { ticker, spot, regime, contract } = input;
+  const { ticker, spot, regime, contract, todayYmd } = input;
   const score = pinScore(regime);
   // Real moneyness of the picked strike on its side (positive = OTM), rounded at the data layer.
   const otmPct =
@@ -331,7 +329,10 @@ export function buildPinSetup(input: {
     last_seen: null,
     flow_quality: null,
   };
-  return enrichSetup(base, null);
+  // NH-R4 (evidence-only): trading-session-aware gap days for the selected contract's hold, when
+  // today's date is available. Null (never fabricated) when the caller omits it.
+  const sessionGapDays = todayYmd != null ? tradingSessionGapDays(todayYmd, contract.expiry) : null;
+  return { ...enrichSetup(base, null), session_gap_days: sessionGapDays };
 }
 
 // ── Merge (union by ticker, preserve origin as a SET) ─────────────────────────────────────────

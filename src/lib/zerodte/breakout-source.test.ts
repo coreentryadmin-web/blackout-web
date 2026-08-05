@@ -390,3 +390,26 @@ test("breakoutSourceEnabled is ON by default and disabled with '0'", () => {
   assert.equal(breakoutSourceEnabled(), false, "per-source=0 → disabled");
   delete process.env.ZERODTE_SRC_BREAKOUT;
 });
+
+// ── NH-R4: session_gap_days is evidence-only, never gates/scores ──────────────────
+test("buildBreakoutSetup: session_gap_days is null without todayYmd, and reflects the real weekend/holiday gap when supplied", () => {
+  const mover = { ticker: "asts", gain: 0.15, close_strength: 0.9, volume: 20_000_000, dollar: 900_000_000 };
+  // No todayYmd supplied (existing callers/tests) → honest null, never fabricated.
+  const noToday = buildBreakoutSetup({ mover, spot: 42.5, contract: { strike: 44, expiry: TODAY, dte: 0 }, dollarNorm: 1 });
+  assert.equal(noToday.session_gap_days, null);
+
+  // TODAY (2026-07-24) is a Friday. `contract.dte` is whatever the caller stamps (buildBreakoutSetup
+  // trusts it, exactly as it does for horizon/grading_policy above) — here we exercise the
+  // session_gap_days WIRING with a contract whose real expiry (Monday 2026-07-27) spans a plain
+  // weekend, regardless of what dte label is attached to it.
+  const weekendHold = buildBreakoutSetup({
+    mover,
+    spot: 42.5,
+    contract: { strike: 44, expiry: "2026-07-27", dte: 1 },
+    dollarNorm: 1,
+    todayYmd: TODAY,
+  });
+  assert.equal(weekendHold.session_gap_days, 2, "Sat+Sun skipped between Fri and Mon");
+  // Score/gate-relevant fields are untouched by the gap — evidence only, no penalty in this PR.
+  assert.equal(weekendHold.score, noToday.score);
+});

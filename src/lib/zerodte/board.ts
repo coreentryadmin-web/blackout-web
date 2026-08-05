@@ -8,6 +8,8 @@
 // Everything here is a pure function of its inputs (rows, clock) so it is unit-
 // testable without providers; the API route does the fetching.
 
+import { formatEtDate, isTradingDayEt } from "@/features/nighthawk/lib/session";
+
 export type SessionHeatState =
   | "PRE_MARKET" // before 9:30 ET — system warming: feeds, morning confirm, lotto scan
   | "OPENING_DRIVE" // 9:30-10:00 ET — heating up: ranges forming, engines arming
@@ -242,6 +244,51 @@ export function isSameDayHorizon(h: ContractHorizon): boolean {
  *  (which never commits — the marker only surfaces if such a setup is inspected pre-drop). Pure. */
 export function gradingPolicyForHorizon(h: ContractHorizon): string {
   return isSameDayHorizon(h) ? SAME_DAY_GRADING_POLICY : "excluded_non_same_day";
+}
+
+// ── NH-R4: trading-session-aware DTE gap tracking (evidence-only) ────────────────────────────
+// DTE above is pure CALENDAR days — a dte=1 (ONE_DTE) contract carries the SAME calendar-dte
+// label whether the overnight is a normal ~16h hold (e.g. Tue→Wed) or a weekend/holiday hold
+// (2-3 calendar days of unhedgeable gap risk). Nothing downstream (gates.ts's ONE_DTE handling,
+// the pin/breakout scorers) distinguished the two. `calendarDteBetween` was ALSO duplicated
+// identically in pin-source.ts and breakout-source.ts; both now import it from here.
+
+/** Calendar days between two YYYY-MM-DD dates (UTC-noon anchored, DST-agnostic). Shared by the
+ *  pin/breakout ATM contract pickers (previously duplicated verbatim in both files). */
+export function calendarDteBetween(todayYmd: string, expiryYmd: string): number {
+  const a = Date.parse(`${todayYmd}T12:00:00Z`);
+  const b = Date.parse(`${expiryYmd.slice(0, 10)}T12:00:00Z`);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return Number.NaN;
+  return Math.round((b - a) / 86_400_000);
+}
+
+/** Count of SKIPPED non-trading calendar days strictly between `todayYmd` (exclusive) and
+ *  `expiryYmd` (exclusive) — 0 for a normal single overnight (next calendar day is itself the
+ *  expiry and a trading day), 2 for a plain weekend (Sat+Sun skipped between a Friday and the
+ *  following Monday), 3+ for a holiday-adjacent weekend (the holiday plus the weekend). Reuses
+ *  `isTradingDayEt`/`formatEtDate` (features/nighthawk/lib/session.ts) — the SAME holiday
+ *  calendar `edition-funnel.ts` already relies on — rather than reinventing holiday logic. Pure.
+ *
+ * EVIDENCE ONLY (calibration-first, mirrors flow_accumulation/confluence above): this measures
+ * the gap, it does not gate or score anything — see `session_gap_days` on EnrichedZeroDteSetup.
+ *
+ * Returns null (never fabricates) when either date is malformed, or `expiryYmd` is not strictly
+ * after `todayYmd` (a same-day 0DTE expiry has no overnight to measure at all — that is "not
+ * applicable", not a zero-day gap). */
+export function tradingSessionGapDays(todayYmd: string, expiryYmd: string): number | null {
+  const expiry = expiryYmd.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(todayYmd) || !/^\d{4}-\d{2}-\d{2}$/.test(expiry)) return null;
+  const todayMs = Date.parse(`${todayYmd}T12:00:00Z`);
+  const expiryMs = Date.parse(`${expiry}T12:00:00Z`);
+  if (!Number.isFinite(todayMs) || !Number.isFinite(expiryMs) || expiryMs <= todayMs) return null;
+  let gap = 0;
+  let cursorMs = todayMs + 86_400_000;
+  // Bounded to ~30 days so a malformed far-future expiry can't spin an unbounded loop; the 0/1DTE
+  // pickers never select anything remotely that far out, so this never trims a real result.
+  for (let i = 0; i < 30 && cursorMs < expiryMs; i++, cursorMs += 86_400_000) {
+    if (!isTradingDayEt(formatEtDate(new Date(cursorMs)))) gap++;
+  }
+  return gap;
 }
 
 /** Canonical order for a stable, dedup-friendly origin set/label (FLOW < BREAKOUT < PIN). */
@@ -1321,6 +1368,14 @@ export type EnrichedZeroDteSetup = ZeroDteSetup & {
   origin_contributions?: Partial<Record<DiscoveryOrigin, OriginContribution>>;
   /** Regime Plane snapshot at gate time (Wave A) — pinned onto committed rows via entry_context. */
   regime_plane?: import("./regime-plane").RegimePlaneSnapshot | null;
+  /** NH-R4 (weekend/holiday gap risk): count of non-trading calendar days the selected contract's
+   *  hold spans between today and expiry (0 = normal overnight, 2 = plain weekend, 3+ = holiday
+   *  weekend) — see `tradingSessionGapDays` above. EVIDENCE ONLY (calibration-first, same role as
+   *  `flow_accumulation`/`confluence`): surfaced + persisted for the graded ledger so a future
+   *  calibration item can measure whether a weekend/holiday ONE_DTE hold underperforms a normal
+   *  overnight; it does NOT gate or score the board today. Null = not computed (e.g. same-day
+   *  0DTE with no overnight to measure, or malformed today/expiry inputs) — never fabricated. */
+  session_gap_days?: number | null;
 };
 
 // ── Stage 4 audit trail (alert_audit_log) ─────────────────────────────────────────
