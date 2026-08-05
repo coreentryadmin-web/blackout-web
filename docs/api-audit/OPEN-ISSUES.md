@@ -1,5 +1,69 @@
 # BlackOut Open Issues Log
-Last updated: 2026-08-05 11:50 ET
+Last updated: 2026-08-05 12:42 ET
+
+## spx-rth-2026-08-05 — SPX Slayer RTH verify agent (market open ~6:30 AM PT / 9:30 AM ET)
+
+**Session:** Autonomous SPX Slayer **verify** mode per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` (Cloud Agent `cursor/spx-rth-system-verification-7d1a`). First pass at market open. Commands: `npm run validate:spx-rth` → `npm run validate:spx-e2e` → 60s live auto-update → `data-validator.mjs`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth` | ⚠️ **7 PASS · 1 WARN · 1 FAIL** (~6.3 min) — orchestrator `infra:validate:rth-open` transient FAIL (stderr pg SSL warning); standalone `validate:rth-open` **GREEN** on re-run |
+| `npm run validate:spx-e2e` | ✅ **0 FAIL / 18 checks** (1 WARN: `bie-play-route` cron 401 expected) |
+| Matrix deep audit | ✅ GEX+VEX+DEX+CHARM · 177 strikes · every cell finite · Σ strike_totals == headline |
+| Cross-endpoint spot/GEX | ✅ merged=7736.56 hm=7736.78 play=SCANNING/SCANNING (Δ ≤ 0.15 pts) |
+| Desk cache lanes | ✅ spot=7736.56 pulse=true flow=true |
+| `validate:spx-bie` | ✅ member `/spx/play` == `getSpxPlayState()` |
+| `ops:collect` | ✅ zero items |
+| `data-validator.mjs` | ✅ **33 PASS / 5 INFO / 0 FAIL** — SPX/SPY/VIX live vs Polygon, walls, 0DTE chain + ledger premium cross-check |
+| 60s live auto-update | ✅ heatmap spot 7739.99→7741.75 · merged 7739.75→7740.4 · pulse 7739.85→7741.18 · play SCANNING static (expected) |
+
+**Live desk (RTH ~12:29 ET):** SPX spot ~7740 · play **SCANNING/SCANNING** · 177 matrix strike rows · no stale ✓ confirmations · LIVE badge active.
+
+### UI E2E (`/dashboard`)
+
+| Control | Result |
+|---|---|
+| Sign-in + shell | ✅ premium desk loads |
+| GEX tab (`#spx-matrix-tab-gex`) | ✅ clicked · matrix populates |
+| VEX tab (`#spx-matrix-tab-vex`) | ✅ clicked · VEX cells populate |
+| Matrix rows | ✅ **177** strike rows (≥80 RTH bar) |
+| Matrix text sanity | ✅ no NaN / undefined / `$—` |
+| Every cell vs API | ✅ GEX+VEX+DEX+CHARM validated against `gex-heatmap?ticker=SPX` |
+| Commentary expand | ✅ toggles without error |
+| Play verdict bar | ✅ SPX PLAY · SCANNING — **no stale ✓ confirmations** |
+| Console errors | ✅ zero |
+| LIVE badge | ✅ RTH live |
+
+### Cross-tool integration (Step 3)
+
+| Tool | Endpoint | Result |
+|---|---|---|
+| Thermal | `gex-heatmap?ticker=SPX` | ✅ same payload as dashboard matrix |
+| HELIX | `flows?limit=30` | ✅ 30 prints |
+| Largo | `largo/query` SPX play | ✅ `blackout_intelligence` grounded |
+| BIE | `validate:spx-bie` | ✅ `spx_full_state` == member play |
+| Grid bootstrap | `spx/bootstrap` | ✅ loaded |
+| 0DTE Command | `zerodte/board` | ✅ 9 setups |
+| Night Hawk | `nighthawk/edition` | ✅ loads |
+| Cross-tool spot/play | desk vs play | ✅ desk=7739.4 play=SCANNING |
+
+**Verify status: GREEN** — zero P0/P1 product defects. All matrix cells, desk/play cache lanes, trade confirmations, and cross-tool integration verified correct.
+
+### Findings table (`spx-rth-2026-08-05`)
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| — | — | **No P0/P1 SPX product defects** | — | GREEN |
+| INFO | SPX-RTH-ENV-NODE | Initial orchestrator FAIL on missing `node_modules` (pg/tsx/playwright) in cloud agent | — | Resolved via `npm install` + `npx playwright install chromium` |
+| P2 | SPX-ORCH-RTH-FLAKE | `infra:validate:rth-open` FAIL inside full `validate:spx-rth` orchestrator (pg SSL stderr); standalone `validate:rth-open` GREEN on re-run | rth-open-check | defer — transient harness flake |
+| P2 | SPX-DC-CRON-AUTH | `data-correctness` WARN — CRON_SECRET auth mismatch in agent env (prod cron runs async) | cron probe | defer |
+| P2 | SPX-BIE-CRON-401 | `bie-play-route` WARN — cron play HTTP 401 (expected without cron bearer) | BIE cron | defer |
+
+**Reports:** `audit-output/spx-rth-2026-08-05-verify-1785947733921.json`, `audit-output/spx-dashboard-e2e-1785947778943.json`, `audit-output/validation-2026-08-05T16-40-06-684Z.md`
+
+---
 
 ## grid-rth-2026-08-05 — 0DTE Command RTH verify agent (market open ~6:30 AM PT / 9:30 AM ET)
 
