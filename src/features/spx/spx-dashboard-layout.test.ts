@@ -83,3 +83,14 @@ test("SpxDashboard mounts triple desk: intel rail (Pulse default + Largo toggle)
   assert.match(embed, /defaultTimeframe=\{3\}/);
   assert.match(src, /spx-sniper-triple--desk-v3/);
 });
+
+test("SpxDashboard: play poll + verdict bar gate on sessionActive (not resolveDeskLive)", () => {
+  const src = readFileSync(join(process.cwd(), "src/features/spx/components/SpxDashboard.tsx"), "utf8");
+  assert.match(src, /useSpxPlay\(sessionActive\)/, "play SWR must not gate on brief live flicker");
+  assert.equal(src.includes("playSessionActive"), false, "removed live&&desk gate that caused CLOSED flicker");
+  assert.match(
+    src,
+    /SpxPlayVerdictBar[\s\S]*sessionActive=\{sessionActive\}/,
+    "verdict bar must use sessionActive, not playSessionActive"
+  );
+});

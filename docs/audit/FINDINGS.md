@@ -4,6 +4,7 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+<<<<<<< HEAD
 ## 2026-08-05 — [Grid/0DTE] Post-close fix agent — all validators GREEN (~2:18 PM PT / 5:18 PM ET)
 
 **Severity.** — (no additional product defects)
@@ -21,6 +22,19 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 **Status.** FIXED — no code changes required; docs only on `fix/grid-post-close-aug5-green`.
 
 ---
+=======
+## 2026-08-05 — [P1, SPX Slayer UX] Play verdict bar flashed CLOSED during RTH while play API stayed SCANNING — FIXED
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P1 — member-facing trust bug on `/dashboard`: the SPX Play Verdict Bar badge flipped to **CLOSED** for ~60s mid-RTH while `/api/market/spx/play` remained **SCANNING** (no stale ✓ confirmations, but the headline badge lied about session state). |
+| **Root cause** | `SpxDashboard.tsx` gated both `useSpxPlay` polling and `SpxPlayVerdictBar.sessionActive` on `playSessionActive = Boolean(live && desk?.available)` where `live` comes from `resolveDeskLive`. During desk-lane refresh, `resolveDeskLive` can briefly return false (merged desk momentarily lacks `market_open` / price while pulse/flow reconcile) even though `resolveDeskSessionActive` (ET clock + pulse) stays true. When `playSessionActive` dropped: `useSpxPlay` cleared play cache and returned `play=null`; `buildPlayVerdictBarModel` saw `sessionActive=false` → mode `closed` / badge `CLOSED`. |
+| **Evidence** | `spx-rth-2026-08-05` verify pass 3 (~15:04–15:19 ET): Playwright 60s verdict probe reported **HUNTING → CLOSED** flicker while play API stayed SCANNING. Post-close repro: `audit-output/spx-rth-2026-08-05-verify-1785957004394.json` + OPEN-ISSUES `SPX-VERDICT-CLOSED-FLICKER`. |
+| **Fix** | Removed `playSessionActive`; play polling and verdict bar now both gate on `sessionActive` from `useMergedDesk` (same gate as `SpxPinForecast` and the intel rail). Brief `live` drops during lane refresh no longer clear play cache or flash CLOSED. |
+| **Tests** | `spx-play-verdict-bar.test.ts` — SCANNING + `sessionActive:true` stays hunting; `spx-dashboard-layout.test.ts` — asserts `useSpxPlay(sessionActive)` and no `playSessionActive`. |
+| **Files** | `src/features/spx/components/SpxDashboard.tsx`, `src/features/spx/lib/spx-play-verdict-bar.test.ts`, `src/features/spx/spx-dashboard-layout.test.ts` |
+| **Status** | FIXED — branch `fix/spx-verdict-closed-flicker`, PR to `main`, auto-merge once CI green. |
+>>>>>>> efd64521 (fix(spx): stop verdict bar CLOSED flicker during desk lane refresh)
 
 ## 2026-08-05 — [ops-auto-fix #1705, P0 data-correctness] SPX 0DTE King 7,800 vs UW 7,650 (Δ 1.94% > 1.5% tol) — FIXED
 
