@@ -1821,8 +1821,14 @@ export function VectorChart({
           color: def.color,
           lineWidth: 2,
           priceLineVisible: false,
-          lastValueVisible: false,
-          crosshairMarkerVisible: false,
+          // Labeled + a live value on the axis (2026-08-05 audit finding): with up to 6 MA lines
+          // potentially on screen at once, the toggle menu's color dot was the ONLY way to tell
+          // which line was which — no on-chart identification at all. `title` puts the indicator's
+          // own name (e.g. "EMA 21") next to its live value tag, matching how every other charting
+          // platform labels overlapping moving averages.
+          lastValueVisible: true,
+          crosshairMarkerVisible: true,
+          title: def.label,
         });
         map.set(def.id, line);
       }
@@ -1990,17 +1996,21 @@ export function VectorChart({
       active.forEach((id, i) => {
         const pane = i + VOLUME_PANE_INDEX + 1;
         if (id === "rsi") {
-          const line = chart.addSeries(LineSeries, { color: "#c084fc", lineWidth: 2, priceLineVisible: false, lastValueVisible: true }, pane);
+          // `title` labels the pane's live value tag (2026-08-05 audit finding): an unlabeled
+          // number in an unlabeled sub-pane gave no clue it was RSI without opening the toggle menu.
+          const line = chart.addSeries(LineSeries, { color: "#c084fc", lineWidth: 2, priceLineVisible: false, lastValueVisible: true, title: "RSI (14)" }, pane);
           // 30/70 oversold/overbought guides + the 50 midline, drawn on the RSI series itself.
           for (const [lvl, style] of [[70, LineStyle.Dashed], [50, LineStyle.Dotted], [30, LineStyle.Dashed]] as const) {
             line.createPriceLine({ price: lvl, color: withAlpha("#c084fc", 0.4), lineWidth: 1, lineStyle: style, axisLabelVisible: true, title: String(lvl) });
           }
           oscMap.set("rsi", line);
         } else {
-          // MACD pane: histogram (behind) + macd line + signal line.
+          // MACD pane: histogram (behind) + macd line + signal line — both lines titled + valued
+          // (2026-08-05 audit finding fixed the macd/signal `lastValueVisible` inconsistency: the
+          // signal line previously showed no value at all while the macd line did).
           oscMap.set("macd-hist", chart.addSeries(HistogramSeries, { priceLineVisible: false, lastValueVisible: false }, pane));
-          oscMap.set("macd", chart.addSeries(LineSeries, { color: "#38bdf8", lineWidth: 2, priceLineVisible: false, lastValueVisible: true }, pane));
-          oscMap.set("macd-signal", chart.addSeries(LineSeries, { color: "#f59e0b", lineWidth: 1, priceLineVisible: false, lastValueVisible: false }, pane));
+          oscMap.set("macd", chart.addSeries(LineSeries, { color: "#38bdf8", lineWidth: 2, priceLineVisible: false, lastValueVisible: true, title: "MACD" }, pane));
+          oscMap.set("macd-signal", chart.addSeries(LineSeries, { color: "#f59e0b", lineWidth: 1, priceLineVisible: false, lastValueVisible: true, title: "Signal" }, pane));
         }
       });
       lastOscKeyRef.current = key;

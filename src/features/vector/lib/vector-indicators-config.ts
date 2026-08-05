@@ -122,13 +122,31 @@ export type VectorLevelDef = {
   /** True when the level needs the prior-day OHLC fetch (PDH/PDL/PDC, pivots) rather than just the
    *  current session bars. The chart lazily fetches that once when any such level is enabled. */
   needsPriorDay?: boolean;
+  /** Optional menu tooltip — used for "Fib"/"Auto fib" (2026-08-05 audit finding): the two use
+   *  DIFFERENT retracement-direction conventions (Fib is always measured HOD-down-to-LOD; Auto fib
+   *  follows whichever way the dominant swing actually ran), so a member toggling both can see them
+   *  point opposite ways with no explanation on the chart. A menu tooltip is the cheap fix — see
+   *  `vector-key-levels.ts`'s `fibLevels`/`vector-fib-swing.ts`'s `swingRetracement` for the code. */
+  hint?: string;
 };
 
 export const VECTOR_LEVELS: readonly VectorLevelDef[] = [
   { id: "hod-lod", label: "HOD / LOD", color: "#34d399", group: "Key levels" },
   { id: "opening-range", label: "Opening range (15m)", color: "#a78bfa", group: "Key levels" },
-  { id: "fib", label: "Fibonacci (HOD→LOD)", color: "#ffd60a", group: "Key levels" },
-  { id: "fib-auto", label: "Auto fib + golden pocket", color: "#fde047", group: "Key levels" },
+  {
+    id: "fib",
+    label: "Fibonacci (HOD→LOD)",
+    color: "#ffd60a",
+    group: "Key levels",
+    hint: "Fixed session convention: always measured from the high down to the low, regardless of which one printed first.",
+  },
+  {
+    id: "fib-auto",
+    label: "Auto fib + golden pocket",
+    color: "#fde047",
+    group: "Key levels",
+    hint: "Direction-aware: follows whichever way the dominant swing actually ran, so it can point the opposite way from the fixed \"Fib\" tool above.",
+  },
   { id: "pdh-pdl-pdc", label: "PDH / PDL / PDC", color: "#38bdf8", group: "Key levels", needsPriorDay: true },
   { id: "pivots", label: "Floor pivots (P/R/S)", color: "#fb923c", group: "Key levels", needsPriorDay: true },
 ] as const;
@@ -286,7 +304,7 @@ export type VectorIndicatorId =
 /** Menu structure — the toggle menu renders straight from this (title + its items). */
 export const VECTOR_INDICATOR_GROUPS: ReadonlyArray<{
   title: string;
-  items: ReadonlyArray<{ id: VectorIndicatorId; label: string; color: string }>;
+  items: ReadonlyArray<{ id: VectorIndicatorId; label: string; color: string; hint?: string }>;
 }> = [
   {
     title: "Moving averages",
@@ -294,7 +312,7 @@ export const VECTOR_INDICATOR_GROUPS: ReadonlyArray<{
   },
   {
     title: "Key levels",
-    items: VECTOR_LEVELS.map((l) => ({ id: l.id, label: l.label, color: l.color })),
+    items: VECTOR_LEVELS.map((l) => ({ id: l.id, label: l.label, color: l.color, hint: l.hint })),
   },
   {
     title: "Structure",
