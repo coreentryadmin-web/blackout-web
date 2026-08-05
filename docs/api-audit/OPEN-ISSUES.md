@@ -1,5 +1,78 @@
 # BlackOut Open Issues Log
+<<<<<<< HEAD
 Last updated: 2026-08-05 13:26 ET
+=======
+Last updated: 2026-08-05 13:35 ET
+
+## rth-open-2026-08-05-pass7 — RTH comprehensive test sweep (~1:26–1:35 PM ET, midday)
+
+**Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` on branch `cursor/rth-comprehensive-test-sweep-50e4`. Commands: `npm run validate:rth-open` → `GET /api/cron/data-correctness?force=1` → `surface=heatmap|zerodte|spx` sync → `npm run validate:rth-sweep` → `npm run validate:grid-e2e` → `npm run validate:spx-e2e` → `npm run ops:collect`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` | ✅ **GREEN** (~72s; Postgres skipped private VPC; options-socket warming) |
+| `GET /api/cron/data-correctness?force=1` | ✅ **202 accepted** (async full sweep dispatched) |
+| `data-correctness` (`surface=heatmap`) | ✅ **ok=true · flags=0** (60 metrics · 20.6s) |
+| `data-correctness` (`surface=zerodte`) | ⚠️ **flags=1** → **FIXED** (verifier stale $20 cap; AMD $25.82 is valid under shipped $35 cap) |
+| `data-correctness` (`surface=spx`) | ⚠️ same AMD premium false-positive (fixed in PR) |
+| `npm run validate:rth-sweep` | ✅ **0 P0/P1** — 7 pages · **0 missing-field hits** · Largo grounded |
+| `npm run validate:grid-e2e` | ✅ **5/5 PASS** — zerodte board 9 setups · ledger 3 |
+| `npm run validate:spx-e2e` | ✅ **17/18 PASS** (1 WARN: `bie-play-route` cron 401 expected) |
+| `npm run ops:collect` | ✅ **0 action items** |
+
+### Speed (comprehensive sweep — Playwright premium session)
+
+| Page | Nav | Load (ms) | Live wait | Console errors |
+|---|---|---:|---:|---|
+| `/dashboard` (SPX Slayer) | hard | 1681 | 12s | 1× HTTP 400 (transient) |
+| `/flows` (HELIX) | soft | 1611 | 8s | 0 |
+| `/heatmap` (Thermal matrix) | soft | 1635 | 20s | 0 |
+| `/vector` | soft | 3691 | 15s | 0 |
+| `/nighthawk` (0DTE Command) | soft | 1630 | 15s | 0 |
+| `/terminal` (Largo) | soft | 8523 | 5s | 0 |
+| `/track-record` | soft | 1597 | 10s | 0 |
+
+**Note:** Classic `/grid` deleted 2026-07-07 — 0DTE Command (12 panels) under `/nighthawk` via `/api/market/zerodte/board`. Thermal Profile tab not visible during this pass (matrix-only; tabs hidden while loading).
+
+### Live auto-update
+
+- `liveTick=null` on all pages — SPX spot stable over 8–20s observation windows (regex-based probe; APIs fresh).
+- API freshness: desk `as_of` 57s · platform snapshot 0s · zerodte board 97s.
+- Cross-GEX: desk γ-flip 7635.19 vs gex-positioning 7629.88 (within 1% spot tol).
+
+### Data correctness
+
+| Cross-check | Result |
+|---|---|
+| desk γ-flip vs `gex-positioning` | ✅ aligned (Δ < 1% spot) |
+| All market APIs | ✅ HTTP 200 |
+| Largo NVDA query | ✅ 200 · ~$130.9M premium · `blackout_intelligence` |
+| SPX matrix E2E | ✅ GEX+VEX+DEX+CHARM · 181 strikes |
+
+### Missing-field audit
+
+**0 missing-field signals** across all 7 pages. Largo `Regime: —` = expected when no active regime tag.
+
+### Findings table
+
+| Severity | ID | Detail | Fix |
+|---|---|---|---|
+| P1 | NH-PREMIUM-CAP-VERIFIER | `nighthawk-verifier.ts` hardcoded `PREMIUM_CAP=20` while shipped cap is `MAX_OPTION_PREMIUM_PER_SHARE=35` → false flag on AMD $25.82 `premium_cap_ok=true` | **FIXED** — import shared constant + unit test |
+| — | — | **No other P0/P1 product defects** on member surfaces | GREEN post-fix |
+| INFO | ENV-NODE-MODULES | Initial `validate:rth-open` failed — missing `pg` / Playwright browsers | Resolved via `npm install` + `npx playwright install chromium` |
+| P2 | RTH-VECTOR-SOFT-NAV | `/vector` soft-nav 3691ms (>1.5s target) | Monitor — Vector bootstrap |
+| P2 | RTH-TERMINAL-SOFT-NAV | `/terminal` soft-nav 8523ms (>1.5s target) | Monitor — Largo shell + chunk warm |
+| P2 | RTH-DASH-400 | Dashboard console 1× HTTP 400 during sweep | Transient — re-probe if recurring |
+| P2 | SPX-BIE-CRON-401 | `bie-play-route` WARN — cron play HTTP 401 (expected without cron bearer) | defer |
+
+**Status: GREEN post-fix** — comprehensive sweep 0 P0/P1, cross-tool GEX aligned, heatmap correctness flags=0, zerodte/spx correctness flags=0 after verifier cap sync.
+
+**Reports:** `audit-output/rth-sweep-2026-08-05T17-27-58-481Z.json`, `audit-output/grid-e2e-1785951093092.json`, `audit-output/spx-dashboard-e2e-1785951204102.json`
+
+---
+>>>>>>> ac08b687 (docs(audit): RTH comprehensive sweep pass7 findings (2026-08-05 ~1:35 PM ET))
 
 ## spx-rth-2026-08-05 — SPX Slayer all-day RTH verify agent (market open ~6:30 AM PT / 9:30 AM ET)
 
