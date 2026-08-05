@@ -118,6 +118,47 @@ export function effectiveMeritScore(scored: ScoredCandidate): number {
   return scored.score - (scored.govPenalty ?? 0);
 }
 
+/**
+ * How many candidates in a RANKED pool already clear the score+tier merit floor, evaluated on the
+ * SAME two checks `filterPlaysByMerit` applies downstream (2026-08-05, root-cause instrumentation
+ * for the 08-05-vs-08-04 thin-output investigation). Pure — no I/O, no side effects — so a build
+ * can log this pre-synthesis without any behavior change, and a future session can unit-test the
+ * count directly instead of reasoning about it from console output.
+ *
+ * NOT safe to use alone as a "nothing can possibly publish" short-circuit condition — see
+ * {@link anyRankedClearsScoreFloor} for why the rescue-safe guard is score-only, not score+tier.
+ */
+export function countRankedClearingMerit(ranked: ScoredCandidate[]): number {
+  const minScore = effectiveMinPublishScore();
+  const minTier = legacyMinPublishTier();
+  const minRank = nhConvictionRank(minTier);
+  let clearing = 0;
+  for (const r of ranked) {
+    if (effectiveMeritScore(r) < minScore) continue;
+    const tier = assignNighthawkTier(nhTierInputFromScored(r)).tier;
+    if (nhConvictionRank(tier) < minRank) continue;
+    clearing++;
+  }
+  return clearing;
+}
+
+/**
+ * True when AT LEAST ONE candidate in the ranked pool clears the SCORE floor alone (tier not
+ * required). This is the correct guard for a "skip synthesis, nothing can publish" short-circuit
+ * — deliberately looser than {@link countRankedClearingMerit}'s score+tier check, because
+ * `promoteTopBlocked` (publish-gates.ts's gate-promote rescue) admits a blocked play on
+ * `play.score >= gatePromoteMinScore()` ALONE, with NO tier check — it is the loosest merit bar
+ * anywhere in the downstream pipeline. `filterPlaysByMerit`/`rankedCandidateMeritEligible`
+ * (play-backfill.ts) both require score+tier, but gate-promote's score-only bar means a
+ * score-clears/tier-fails candidate is NOT guaranteed to fail every rescue path — only a
+ * score-fails candidate is. Short-circuiting on the stricter score+tier check would risk skipping
+ * synthesis on a night gate-promote could still have rescued something from.
+ */
+export function anyRankedClearsScoreFloor(ranked: ScoredCandidate[]): boolean {
+  const minScore = effectiveMinPublishScore();
+  return ranked.some((r) => effectiveMeritScore(r) >= minScore);
+}
+
 export function playMeritTier(
   play: PlaybookPlay,
   dossiers: Record<string, TickerDossier>
