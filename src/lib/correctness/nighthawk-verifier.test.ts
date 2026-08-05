@@ -82,6 +82,29 @@ function findMetric(score: { metrics: Array<{ metric: string }> }, metric: strin
   return score.metrics.find((m) => m.metric === metric);
 }
 
+test("premium: entry_premium between legacy $20 and shipped $35 cap with premium_cap_ok=true is consistency-only", async () => {
+  const { verifyNightHawk } = await mod();
+  resetState();
+  state.edition = {
+    edition_for: "2026-08-05",
+    plays: [
+      {
+        ...play({ rank: 1, ticker: "AMD" }),
+        entry_premium: 25.82,
+        entry_cost_per_contract: 2582,
+        premium_cap_ok: true,
+      },
+    ],
+  };
+
+  const score = await verifyNightHawk(false);
+
+  const premium = findMetric(score, "premium");
+  assert.ok(premium, "premium metric must be present");
+  assert.equal(premium!.status, "consistency-only", `expected consistency-only, got: ${JSON.stringify(premium!.checks)}`);
+  assert.equal(premium!.checks[0]!.actual, 0);
+});
+
 test("geometry: a clean published edition (LONG + SHORT, both geometrically sane) is consistency-only, never a flag", async () => {
   const { verifyNightHawk } = await mod();
   resetState();

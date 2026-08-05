@@ -22,6 +22,7 @@ import {
 } from "@/features/nighthawk/lib/option-chain-prompt";
 import { todayEt } from "@/lib/et-date";
 import { validatePlayGeometry } from "@/features/nighthawk/lib/play-constraints";
+import { MAX_OPTION_PREMIUM_PER_SHARE } from "@/features/nighthawk/lib/constants";
 
 // ---------------------------------------------------------------------------
 // NIGHT HAWK (evening plays scanner / published editions) data-correctness verifier — priority #4.
@@ -31,7 +32,7 @@ import { validatePlayGeometry } from "@/features/nighthawk/lib/play-constraints"
 //
 //   L2 invariant (grounding) — every published play's ticker MUST have a staged dossier snapshot for
 //      that edition (a play with no dossier was not grounded in any data); ranks are 1..N unique;
-//      premium-cap flag agrees with entry_premium ≤ $20; conviction/direction are in-vocabulary.
+//      premium-cap flag agrees with entry_premium ≤ MAX_OPTION_PREMIUM_PER_SHARE; conviction/direction are in-vocabulary.
 //   L2 invariant (geometry, task #146) — a published play's PERSISTED entry_range/target/stop must
 //      still satisfy the SAME direction-aware geometry rule validatePlayGeometry() enforces at the
 //      publish gate (LONG: target above / stop below the entry mid; SHORT: reversed; corrupt entry
@@ -65,7 +66,6 @@ import { validatePlayGeometry } from "@/features/nighthawk/lib/play-constraints"
 // ---------------------------------------------------------------------------
 
 const VALID_CONVICTION = new Set(["A", "B", "C", "A+", "B+", "C+"]);
-const PREMIUM_CAP = 20; // per-share
 
 function chainConfirmEnabled(): boolean {
   return process.env.CORRECTNESS_NIGHTHAWK_CHAIN !== "0";
@@ -257,7 +257,7 @@ export async function verifyNightHawk(_marketOpen: boolean): Promise<TickerScore
     const capDetail: string[] = [];
     for (const p of plays) {
       if (p.entry_premium != null && Number.isFinite(p.entry_premium)) {
-        const impliedOk = p.entry_premium <= PREMIUM_CAP;
+        const impliedOk = p.entry_premium <= MAX_OPTION_PREMIUM_PER_SHARE;
         if (p.premium_cap_ok != null && p.premium_cap_ok !== impliedOk) {
           capMismatch++;
           if (capDetail.length < 4) capDetail.push(`${p.ticker} prem $${p.entry_premium} cap_ok=${p.premium_cap_ok}`);
@@ -279,7 +279,7 @@ export async function verifyNightHawk(_marketOpen: boolean): Promise<TickerScore
         "premium",
         capMismatch === 0 ? "consistency-only" : "flag",
         capMismatch === 0
-          ? `premium_cap_ok flags + entry_cost_per_contract reconcile with entry_premium across all plays (cap $${PREMIUM_CAP}).`
+          ? `premium_cap_ok flags + entry_cost_per_contract reconcile with entry_premium across all plays (cap $${MAX_OPTION_PREMIUM_PER_SHARE}).`
           : `${capMismatch} premium inconsistency(ies): ${capDetail.join("; ")} — a cap flag or cost is wrong.`,
         { id: "premium-cap-consistent", expected: 0, actual: capMismatch }
       )
