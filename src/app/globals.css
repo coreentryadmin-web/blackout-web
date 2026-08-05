@@ -7611,6 +7611,37 @@ body::before {
     background: none;
   }
 
+  /* Opening-range window preset control (2026-08-05 audit finding #7) — a compact segmented row
+     under the "Opening range" item, only rendered once that level is enabled (no clutter for
+     members who don't use it). */
+  .vector-ind-or-presets {
+    display: flex;
+    gap: 0.3rem;
+    padding: 0.1rem 0.4rem 0.5rem 1.5rem;
+  }
+
+  .vector-ind-or-preset {
+    flex: 1 1 auto;
+    border-radius: 0.35rem;
+    border: 1px solid rgba(148, 163, 184, 0.3);
+    background: none;
+    color: rgba(226, 232, 240, 0.75);
+    font-size: 0.65rem;
+    font-variant-numeric: tabular-nums;
+    padding: 0.15rem 0;
+    cursor: pointer;
+  }
+
+  .vector-ind-or-preset:hover {
+    border-color: rgba(167, 139, 250, 0.6);
+  }
+
+  .vector-ind-or-preset-active {
+    border-color: rgb(167, 139, 250);
+    background: rgba(167, 139, 250, 0.15);
+    color: rgb(226, 232, 240);
+  }
+
   .vector-desk-terminal {
     @apply flex flex-col min-h-0 h-full min-w-0 overflow-hidden rounded-2xl border border-white/10 bg-[#050508] p-1.5;
     min-height: min(72vh, 640px);

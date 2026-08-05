@@ -199,7 +199,11 @@ export function floorPivots(pdh: number, pdl: number, pdc: number): FloorPivots 
 export function levelLinesFor(
   id: VectorLevelId,
   bars: LevelBar[],
-  priorDay?: PriorDayOhlc | null
+  priorDay?: PriorDayOhlc | null,
+  // Opening-range window in minutes — member-configurable (2026-08-05 audit finding #7: this was
+  // hardcoded to 15 with no way to change it). Defaults to 15 so any caller that doesn't pass this
+  // (including every pre-existing test) keeps the exact prior behavior.
+  openingRangeMinutes: number = 15
 ): LevelLine[] {
   if (id === "hod-lod") {
     const hl = sessionHodLod(bars);
@@ -210,11 +214,23 @@ export function levelLinesFor(
     ];
   }
   if (id === "opening-range") {
-    const or = openingRange(bars, 15);
+    const or = openingRange(bars, openingRangeMinutes);
     if (!or) return [];
     return [
-      { key: "or-high", price: or.high, label: "OR-H 15m", color: OR_COLOR, style: "dashed" },
-      { key: "or-low", price: or.low, label: "OR-L 15m", color: OR_COLOR, style: "dashed" },
+      {
+        key: "or-high",
+        price: or.high,
+        label: `OR-H ${openingRangeMinutes}m`,
+        color: OR_COLOR,
+        style: "dashed",
+      },
+      {
+        key: "or-low",
+        price: or.low,
+        label: `OR-L ${openingRangeMinutes}m`,
+        color: OR_COLOR,
+        style: "dashed",
+      },
     ];
   }
   if (id === "fib") {

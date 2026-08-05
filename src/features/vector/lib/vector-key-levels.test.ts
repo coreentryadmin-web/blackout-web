@@ -42,6 +42,25 @@ test("openingRange: first N minutes only, half-open at the boundary", () => {
   assert.equal(openingRange(bars, 0), null);
 });
 
+// 2026-08-05 audit finding #7: openingRange(bars, minutes) was already generic — the gap was the
+// hardcoded `15` at the ONE call site (levelLinesFor). Same fixture bars, different windows: a 30m
+// window should pick up the t0+20m bar the 15m window excludes, and a 60m window should pick up
+// EVERY bar in this fixture (all inside the first hour).
+test("openingRange: 30m and 60m windows widen which bars are included (finding #7)", () => {
+  const t0 = RTH_T0;
+  const bars = [
+    bar(t0, 101, 100),
+    bar(t0 + 60, 103, 99), // in the 15m window
+    bar(t0 + 14 * 60, 102, 98), // in the 15m window
+    bar(t0 + 15 * 60, 110, 90), // excluded from 15m (at the boundary); included in 30m/60m
+    bar(t0 + 20 * 60, 120, 80), // excluded from 15m; included in 30m/60m
+    bar(t0 + 45 * 60, 130, 70), // excluded from 15m/30m; included in 60m
+  ];
+  assert.deepEqual(openingRange(bars, 15), { high: 103, low: 98 });
+  assert.deepEqual(openingRange(bars, 30), { high: 120, low: 80 });
+  assert.deepEqual(openingRange(bars, 60), { high: 130, low: 70 });
+});
+
 test("sessionHodLod + openingRange: premarket/after-hours extremes are excluded (2026-08-05 audit fix)", () => {
   const premarket = RTH_T0 - 5.5 * 3600; // 04:00 ET same day — a fake premarket spike
   const afterHours = RTH_T0 + 6.5 * 3600 + 2 * 3600; // 18:00 ET same day
@@ -81,6 +100,17 @@ test("levelLinesFor: hod-lod / opening-range / fib produce labelled lines; empty
   // OR window = first 15m → bars at t0 and t0+60 (t0+20m excluded): high 110, low 98.
   assert.equal(or.find((l) => l.key === "or-high").price, 110);
   assert.equal(or.find((l) => l.key === "or-low").price, 98);
+  assert.equal(or.find((l) => l.key === "or-high").label, "OR-H 15m");
+  assert.equal(or.find((l) => l.key === "or-low").label, "OR-L 15m");
+
+  // 2026-08-05 audit finding #7: the opening-range WINDOW is now member-configurable — the 4th
+  // arg threads straight into openingRange(bars, minutes), and the LABEL reflects the actual
+  // selected window (not a hardcoded "15m").
+  const or30 = levelLinesFor("opening-range", bars, undefined, 30);
+  assert.equal(or30.find((l) => l.key === "or-high").price, 112); // now picks up the t0+20m bar too
+  assert.equal(or30.find((l) => l.key === "or-low").price, 95);
+  assert.equal(or30.find((l) => l.key === "or-high").label, "OR-H 30m");
+  assert.equal(or30.find((l) => l.key === "or-low").label, "OR-L 30m");
 
   const fib = levelLinesFor("fib", bars);
   assert.equal(fib.length, FIB_RATIOS.length);

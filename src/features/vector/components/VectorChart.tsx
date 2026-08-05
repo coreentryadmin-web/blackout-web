@@ -95,8 +95,10 @@ import {
   VECTOR_OVERLAYS,
   VECTOR_LEVELS,
   defaultVectorIndicators,
+  DEFAULT_OPENING_RANGE_MINUTES,
   type VectorOverlayId,
   type VectorIndicatorId,
+  type VectorOpeningRangeMinutes,
 } from "@/features/vector/lib/vector-indicators-config";
 import { GexHeatmapPrimitive } from "@/features/vector/lib/vector-gex-heatmap-primitive";
 import { PinConePrimitive, type PinConeStep } from "@/features/vector/lib/vector-pin-cone-primitive";
@@ -767,12 +769,15 @@ function applyLevelLines(
   map: Map<string, IPriceLine>,
   enabled: Set<VectorIndicatorId>,
   bars: VectorBar[],
-  priorDay: PriorDayOhlc | null
+  priorDay: PriorDayOhlc | null,
+  // Member-configurable opening-range window (2026-08-05 audit finding #7); defaults to the
+  // registry default so any caller that omits it keeps the prior 15m behavior.
+  openingRangeMinutes: VectorOpeningRangeMinutes = DEFAULT_OPENING_RANGE_MINUTES
 ): void {
   const desired = new Map<string, LevelLine>();
   for (const def of VECTOR_LEVELS) {
     if (!enabled.has(def.id)) continue;
-    for (const line of levelLinesFor(def.id, bars, priorDay))
+    for (const line of levelLinesFor(def.id, bars, priorDay, openingRangeMinutes))
       desired.set(`${def.id}:${line.key}`, line);
   }
   // Remove lines no longer wanted (toggled off, or a level that now yields fewer lines).
@@ -1329,6 +1334,10 @@ export function VectorChart({
   const priorDayRef = useRef<PriorDayOhlc | null>(null);
   const priorDayTickerRef = useRef<string | null>(null);
   const indicatorsRef = useRef<Set<VectorIndicatorId>>(initialIndicators);
+  // Opening-range window (2026-08-05 audit finding #7) — mirrors the indicators/indicatorsRef
+  // pattern above: `openingRangeMinutes` is the React state the toolbar's preset control drives,
+  // `openingRangeMinutesRef` is what the imperative paint path (applyLevelLines) reads.
+  const openingRangeMinutesRef = useRef<VectorOpeningRangeMinutes>(DEFAULT_OPENING_RANGE_MINUTES);
   const lastDisplayBarsRef = useRef<VectorBar[]>(initialBars);
   const callBeadsRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const putBeadsRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
@@ -1454,6 +1463,11 @@ export function VectorChart({
   const [chartReady, setChartReady] = useState(false);
   // Enabled indicators — dealer gamma positioning (`gex-heatmap`) defaults on.
   const [indicators, setIndicators] = useState<Set<VectorIndicatorId>>(() => new Set(initialIndicators));
+  // Opening-range window preset (5m/15m/30m/60m), default 15m — unchanged behavior for anyone who
+  // hasn't touched the new control (2026-08-05 audit finding #7).
+  const [openingRangeMinutes, setOpeningRangeMinutes] = useState<VectorOpeningRangeMinutes>(
+    DEFAULT_OPENING_RANGE_MINUTES
+  );
   // Count of bars currently shown (at the active timeframe). Drives the indicator menu's
   // "not enough bars" annotation so an MA family that can't compute at this timeframe is explained
   // rather than looking broken. Updated imperatively from paintOverlays; setState bails out when
@@ -1837,7 +1851,14 @@ export function VectorChart({
 
     // Draw the enabled "Key levels" horizontal lines from the SAME bars, on the candle series.
     if (seriesRef.current) {
-      applyLevelLines(seriesRef.current, levelLinesRef.current, enabled, bars, priorDayRef.current);
+      applyLevelLines(
+        seriesRef.current,
+        levelLinesRef.current,
+        enabled,
+        bars,
+        priorDayRef.current,
+        openingRangeMinutesRef.current
+      );
       // Market-structure markers (HH/HL labels + BOS/CHOCH flags) on their own markers instance —
       // separate from the two bead instances, so beads and structure never clobber each other.
       // Recomputed from the SAME displayed bars, so the structure re-detects per timeframe and, in
@@ -2052,6 +2073,13 @@ export function VectorChart({
     indicatorsRef.current = indicators;
     paintOverlays(lastDisplayBarsRef.current);
   }, [indicators, paintOverlays]);
+
+  // Same sync-then-repaint idiom for the opening-range window preset: picking a new window must
+  // redraw the OR lines immediately, without waiting for the next tick/timeframe change.
+  useEffect(() => {
+    openingRangeMinutesRef.current = openingRangeMinutes;
+    paintOverlays(lastDisplayBarsRef.current);
+  }, [openingRangeMinutes, paintOverlays]);
 
   // Lazy prior-day OHLC fetch: only when a prior-day/pivot level is enabled, and only once per
   // ticker. The PDH/PDL/PDC + floor-pivot lines need the prior session's high/low/close, which the
@@ -3844,6 +3872,8 @@ export function VectorChart({
         onToggleIndicator={toggleIndicator}
         onClearIndicators={clearIndicators}
         barCount={displayBarCount}
+        openingRangeMinutes={openingRangeMinutes}
+        onOpeningRangeMinutes={setOpeningRangeMinutes}
         leadSlot={leadSlot}
         replayLeadSlot={replayLeadSlot}
         trailSlot={trailSlot}

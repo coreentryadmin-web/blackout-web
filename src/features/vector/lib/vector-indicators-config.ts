@@ -130,9 +130,35 @@ export type VectorLevelDef = {
   hint?: string;
 };
 
+/**
+ * Opening-range window presets a member can pick (2026-08-05 audit finding #7 — previously
+ * hardcoded to 15 minutes with no UI to change it). 15m stays the default so anyone who hasn't
+ * touched the control sees the exact same behavior as before.
+ */
+export const VECTOR_OPENING_RANGE_PRESETS = [5, 15, 30, 60] as const;
+
+export type VectorOpeningRangeMinutes = (typeof VECTOR_OPENING_RANGE_PRESETS)[number];
+
+export const DEFAULT_OPENING_RANGE_MINUTES: VectorOpeningRangeMinutes = 15;
+
+export function isVectorOpeningRangeMinutes(v: unknown): v is VectorOpeningRangeMinutes {
+  return typeof v === "number" && (VECTOR_OPENING_RANGE_PRESETS as readonly number[]).includes(v);
+}
+
+/** The "Opening range" menu label with the ACTUAL selected window baked in (e.g. "(30m)"), so the
+ *  toggle menu never shows a stale "15m" once the member has picked a different preset. */
+export function openingRangeLabel(minutes: VectorOpeningRangeMinutes): string {
+  return `Opening range (${minutes}m)`;
+}
+
 export const VECTOR_LEVELS: readonly VectorLevelDef[] = [
   { id: "hod-lod", label: "HOD / LOD", color: "#34d399", group: "Key levels" },
-  { id: "opening-range", label: "Opening range (15m)", color: "#a78bfa", group: "Key levels" },
+  {
+    id: "opening-range",
+    label: openingRangeLabel(DEFAULT_OPENING_RANGE_MINUTES),
+    color: "#a78bfa",
+    group: "Key levels",
+  },
   {
     id: "fib",
     label: "Fibonacci (HOD→LOD)",
