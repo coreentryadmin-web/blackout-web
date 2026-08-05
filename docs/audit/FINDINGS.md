@@ -4,6 +4,17 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-05 — [ops] Past expiry column in stale GEX heatmap cache — FIXED (#1477)
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P0 data-correctness (ops-auto-fix #1477, fingerprint `ee994b4b2bf8`). |
+| **Symptoms** | `data-correctness` FLAG: `[sanity-bound/freshness] Invalid/past expiry column(s): 2026-08-04` after ET midnight on 2026-08-05. |
+| **Root cause** | `fetchGexHeatmap` SWR stale-serve path returned matrices cached before the ET date rollover. Fresh builds filter `expiry < today` at ingest, but a matrix built at 23:59 can live up to `GEX_HEATMAP_MAX_STALE_SEC` (90s) with yesterday's 0DTE column still on the axis. |
+| **Evidence** | ops-collect fingerprint `ee994b4b2bf8`; `heatmap-verifier.ts` `expiries-valid` check at L3. |
+| **Fix** | `prunePastExpiriesFromHeatmap` + `heatmapHasPastExpiries` in `polygon-options-gex.ts`: skip TTL-fast-path when past expiries present; prune + re-derive near-term levels on every serve via `rememberGoodHeatmap`. |
+| **Status** | `fix/heatmap-past-expiry-prune` → PR. |
+
 ## 2026-08-05 — [P3, Night Hawk UX, Legacy tab] Stop/target distance rendered 3x for the same play — collapsed to one place
 
 | Field | Value |
