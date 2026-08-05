@@ -50,7 +50,25 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Fix** | Removed `playSessionActive`; play polling and verdict bar now both gate on `sessionActive` from `useMergedDesk` (same gate as `SpxPinForecast` and the intel rail). Brief `live` drops during lane refresh no longer clear play cache or flash CLOSED. |
 | **Tests** | `spx-play-verdict-bar.test.ts` — SCANNING + `sessionActive:true` stays hunting; `spx-dashboard-layout.test.ts` — asserts `useSpxPlay(sessionActive)` and no `playSessionActive`. |
 | **Files** | `src/features/spx/components/SpxDashboard.tsx`, `src/features/spx/lib/spx-play-verdict-bar.test.ts`, `src/features/spx/spx-dashboard-layout.test.ts` |
-| **Status** | FIXED — merged via PR #1758. |
+| **Status** | FIXED — merged via PR #1758 (`fix/spx-verdict-closed-flicker`). |
+
+---
+
+## 2026-08-05 — [SPX Slayer] Post-close fix agent pass 2 — all validators GREEN (~3:13 PM PT / 6:13 PM ET)
+
+**Severity.** — (no additional product defects)
+
+**Session.** SPX Slayer post-close fix agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` § Step 6 (Cloud Agent `cursor/spx-post-close-findings-36ba`; executed ~3:13 PM PT / 6:13 PM ET / 22:13 UTC).
+
+**Evidence.**
+- `validate:spx-rth -- --phase=post-close` → **6 PASS · 1 WARN · 0 FAIL** — matrix 160 strikes GEX+VEX+DEX+CHARM, cross-endpoint spot merged=7723.55, BIE consistency, dashboard E2E nested, ops:collect zero items
+- `validate:spx-e2e` → **0 FAIL / 18 checks** — matrix every-cell-api 160 strikes, GEX+VEX tabs, commentary expand, play verdict SCANNING, zero console errors
+- Cross-tool integration: Thermal, HELIX (30 prints), Largo, Grid bootstrap, 0DTE (9 setups), Night Hawk — all PASS
+
+**Root cause.** Initial run failed on missing `node_modules` (tsx/playwright/pg) — environment only. After `npm install` + `npx playwright install chromium`, all suites GREEN. Reviewed all `spx-rth-2026-08-05` findings: P1 `SPX-VERDICT-CLOSED-FLICKER` already fixed (#1758), P0 SPX 0DTE King UW overlay already fixed (#1706). Remaining P2 items (cron auth mismatch, desk lanes off-hours) are expected post-close deferrals. Resolved accidental merge conflict markers in `docs/audit/FINDINGS.md`.
+
+**Status.** FIXED — docs only on `cursor/spx-post-close-findings-36ba`.
+
 
 ## 2026-08-05 — [ops-auto-fix #1705, P0 data-correctness] SPX 0DTE King 7,800 vs UW 7,650 (Δ 1.94% > 1.5% tol) — FIXED
 
