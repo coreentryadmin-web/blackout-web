@@ -1,3 +1,5 @@
+import "server-only";
+
 import { VECTOR_ORACLE_TICKERS, normalizeVectorTicker } from "./vector-ticker";
 import { hasLiveGexStrikeExpiry } from "@/lib/ws/uw-socket";
 import {
