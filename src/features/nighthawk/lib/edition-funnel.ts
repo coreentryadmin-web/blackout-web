@@ -41,11 +41,49 @@ export function publishGateBlockedRecapReason(
   return `Publish gates blocked all ${blocked.length} play(s) (${detail}) — zero honest plays beats an unfillable pick.`;
 }
 
-/** Pick the honest recap-only reason at the publish-gate exit. */
+/** Minimal shape this module needs from the Night Hawk 0DTE scan heartbeat
+ *  (see `loadZeroDteScanHeartbeat`/`getZeroDteScanHeartbeat` in
+ *  `@/lib/play-engine-heartbeat`) — kept structural rather than importing the
+ *  DB-backed module directly so this file stays pure/DB-free and unit-testable
+ *  with plain object literals. */
+export type ZeroDteScanHeartbeatLike = {
+  stale: boolean;
+  critical_stale: boolean;
+  age_ms: number | null;
+};
+
+/** NH-R10: recap reason when the board is empty AND the upstream 0DTE scan
+ *  cycle itself has gone stale/silent — distinct from "gates blocked everything"
+ *  (data reached the pipeline, judged unfillable) and "synthesis empty"
+ *  (data reached synthesis, produced nothing) because here the upstream feed
+ *  never handed synthesis fresh data to begin with. Ops needs to be able to
+ *  tell "genuinely quiet market" apart from "cold/broken upstream feed"
+ *  without cross-referencing a second dashboard. */
+export function engineStalledRecapReason(heartbeat: ZeroDteScanHeartbeatLike): string {
+  const ageSec = heartbeat.age_ms != null ? Math.round(heartbeat.age_ms / 1000) : null;
+  const ageText = ageSec != null ? `${ageSec}s` : "unknown";
+  const severity = heartbeat.critical_stale ? "CRITICAL" : "stale";
+  return (
+    `0DTE scan heartbeat is ${severity} (last tick ${ageText} ago) — recap-only reflects a ` +
+    `possibly-stalled upstream feed, not a confirmed quiet market. Check the scan cron.`
+  );
+}
+
+/** Pick the honest recap-only reason at the publish-gate exit.
+ *
+ *  `heartbeat` is optional so every existing non-heartbeat-aware caller keeps
+ *  working unchanged; when supplied and stale/critical_stale, it takes
+ *  precedence over both the gate-blocked and synthesis-empty wordings — an
+ *  empty board while the upstream scan itself is silent is a different failure
+ *  mode than either of those and must not be misreported as "quiet market". */
 export function recapReasonAtPublishExit(
   blocked: Array<{ ticker: string; result: { blocks: Array<{ code: string }> } }>,
-  funnel: Partial<EditionFunnelCounts>
+  funnel: Partial<EditionFunnelCounts>,
+  heartbeat?: ZeroDteScanHeartbeatLike | null
 ): string {
+  if (heartbeat && (heartbeat.stale || heartbeat.critical_stale)) {
+    return engineStalledRecapReason(heartbeat);
+  }
   if (blocked.length === 0) {
     return synthesisEmptyRecapReason(funnel);
   }

@@ -60,6 +60,7 @@ import {
   recapReasonAtPublishExit,
   type EditionFunnelCounts,
 } from "./edition-funnel";
+import { loadZeroDteScanHeartbeat } from "@/lib/play-engine-heartbeat";
 import { partitionPlaysByGeometry } from "./play-constraints";
 import { applyCrossEditionGovernor, GOV_LOOKBACK_EDITIONS } from "./cross-edition-governor";
 import type { RecentOutcomeRow } from "./cross-edition-governor";
@@ -1041,7 +1042,17 @@ export async function buildEveningEdition(opts?: {
             }
           }
           if (!finalPlays.length) {
-          const reason = recapReasonAtPublishExit(blocked, funnel);
+          // NH-R10: cross-reference the always-on 0DTE scan heartbeat before
+          // reporting recap-only as a plain "gates blocked"/"synthesis empty"
+          // outcome — a silently stalled upstream scan looks identical to a
+          // genuinely quiet market otherwise. Best-effort: never let a heartbeat
+          // read failure block edition publish (falls back to the pre-existing
+          // gate/synthesis wording, unchanged behavior).
+          const scanHeartbeat = await loadZeroDteScanHeartbeat().catch((err) => {
+            console.warn("[nighthawk/edition] 0DTE scan heartbeat read failed:", err);
+            return null;
+          });
+          const reason = recapReasonAtPublishExit(blocked, funnel, scanHeartbeat);
           console.warn(`[nighthawk/edition] publish gates zeroed, no plays to promote — recap-only: ${reason}`);
           funnel.published = 0;
           logFunnel(editionFor, funnel);
