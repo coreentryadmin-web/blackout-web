@@ -1,5 +1,53 @@
 # BlackOut Open Issues Log
-Last updated: 2026-08-05 18:03 ET
+Last updated: 2026-08-05 18:14 ET
+
+## spx-rth-2026-08-05 — SPX Slayer post-close fix agent pass 2 (~3:13 PM PT / 6:13 PM ET)
+
+**Session:** Autonomous SPX Slayer **fix** mode per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` § Step 6 on branch `cursor/spx-post-close-findings-36ba`. Commands: `npm run validate:spx-rth -- --phase=post-close` → `npm run validate:spx-e2e` → `npm run validate:deploy`.
+
+### Validation summary (post-close)
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth -- --phase=post-close` | ✅ **6 PASS · 1 WARN · 0 FAIL** — matrix 160 strikes GEX+VEX+DEX+CHARM, cross-endpoint spot merged=7723.55 hm=7723.55 play=SCANNING/SCANNING, BIE consistency, nested dashboard E2E PASS, ops:collect zero items |
+| `npm run validate:spx-e2e` | ✅ **0 FAIL / 18 checks** — matrix every-cell-api 160 strikes, GEX+VEX tabs, commentary expand, play verdict SCANNING, zero console errors |
+| `npm run validate:deploy` | ✅ **GREEN** |
+
+### Cross-tool integration (Step 3)
+
+| Tool | Result |
+|---|---|
+| Thermal (`gex-heatmap?ticker=SPX`) | ✅ PASS — same payload as dashboard matrix |
+| Thermal SPY cross_validation | ✅ PASS |
+| GEX positioning | ✅ PASS — spot/flip/walls agree with matrix header |
+| HELIX (`/api/market/flows`) | ✅ PASS — 30 prints |
+| Largo (`get_spx_play` query) | ✅ PASS — `tools=blackout_intelligence` |
+| BIE (`validate:spx-bie`) | ✅ PASS — `spx_full_state` == member play |
+| Grid (`/api/market/spx/bootstrap`) | ✅ PASS — loaded |
+| 0DTE (`/api/market/zerodte/board`) | ✅ PASS — 9 setups |
+| Night Hawk (`/api/market/nighthawk/edition`) | ✅ PASS |
+
+### Fixes reviewed (already merged today)
+
+| Severity | ID | Detail | Status |
+|---|---|---|---|
+| P1 | SPX-VERDICT-CLOSED-FLICKER | Verdict bar CLOSED flicker during desk lane refresh | **FIXED** PR #1758 |
+| P0 | SPX-0DTE-KING-UW | 0DTE King Polygon vs UW disagreement | **FIXED** PR #1706 |
+
+### Findings table (deferred P2 — no code change required)
+
+| Severity | ID | Detail | Fix defer? |
+|---|---|---|---|
+| P2 | SPX-DC-CRON-AUTH | `data-correctness` WARN — env `CRON_SECRET` stale vs AWS SM | defer |
+| P2 | SPX-BIE-CRON-401 | `bie-play-route` WARN — cron play HTTP 401 without bearer | defer (expected) |
+| P2 | SPX-DESK-LANES-OFF | Desk lanes SKIP — pulse/flow unavailable post-close | defer (off-hours) |
+| P2 | FINDINGS-MERGE-CONFLICT | Accidental `<<<<<<< HEAD` markers in `docs/audit/FINDINGS.md` | **FIXED** this PR |
+
+**Post-close status: GREEN** — zero FAIL on `validate:spx-rth` and `validate:spx-e2e`. All P0/P1 SPX defects from today already merged. Matrix 100% vs API (160 strikes, GEX+VEX+DEX+CHARM). Cross-tool integration (Thermal, HELIX, Largo, Grid, 0DTE, Night Hawk, BIE) all PASS.
+
+**Reports:** `audit-output/spx-rth-2026-08-05-post-close-1785968024086.json`, `audit-output/spx-dashboard-e2e-1785968041312.json`
+
+---
 
 ## spx-rth-2026-08-05 — SPX Slayer verify pass (~6:01 PM ET, post-close)
 
