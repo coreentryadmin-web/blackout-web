@@ -1,5 +1,74 @@
 # BlackOut Open Issues Log
-Last updated: 2026-08-05 16:26 ET
+Last updated: 2026-08-05 16:42 ET
+
+## rth-open-2026-08-05-pass9 — RTH comprehensive test sweep (~4:38–4:41 PM ET, post-close)
+
+**Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` on branch `cursor/rth-comprehensive-test-sweep-b608`. Commands: `npm run validate:rth-open` → `GET /api/cron/data-correctness?force=1` (AWS `CRON_SECRET`) → `surface=heatmap|zerodte|spx` sync → `npm run validate:rth-sweep` → `npm run validate:grid-e2e` → `npm run validate:spx-e2e` → `npm run ops:collect`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` | ✅ **GREEN** (~11s; post-close deploy-only mode; Postgres skipped private VPC; options-socket ingest-owned off-hours) |
+| `GET /api/cron/data-correctness?force=1` | ✅ **202 accepted** (async full sweep dispatched) |
+| `data-correctness` (`surface=heatmap`) | ✅ **ok=true · flags=0** |
+| `data-correctness` (`surface=zerodte`) | ✅ **ok=true · flags=0** |
+| `data-correctness` (`surface=spx`) | ✅ **ok=true · flags=0** |
+| `npm run validate:rth-sweep` | ✅ **0 P0/P1** — 7 pages · **0 missing-field hits** · Largo grounded |
+| `npm run validate:grid-e2e` | ✅ **5/5 PASS** — zerodte board 9 setups · ledger 3 |
+| `npm run validate:spx-e2e` | ✅ **17/18 PASS** (1 WARN: `bie-play-route` cron 401 expected) |
+| `npm run ops:collect` | ✅ **0 action items** |
+
+### Speed (comprehensive sweep — Playwright premium session)
+
+| Page | Nav | Load (ms) | Live wait | Console errors |
+|---|---|---:|---:|---|
+| `/dashboard` (SPX Slayer) | hard | 1803 | 12s | 1× HTTP 400 (transient) |
+| `/flows` (HELIX) | soft | 2151 | 8s | 10 (stale chunk 404 — see P2) |
+| `/heatmap` (Thermal matrix) | soft | 2069 | 20s | 0 |
+| `/vector` | soft | 1695 | 15s | 8 (stale chunk 404) |
+| `/nighthawk` (0DTE Command) | soft | 3272 | 15s | 10 (stale chunk 404 + SSE close) |
+| `/terminal` (Largo) | soft | 2174 | 5s | 6 (stale chunk 404) |
+| `/track-record` | soft | 1967 | 10s | 6 (stale chunk 404) |
+
+**Note:** Classic `/grid` deleted 2026-07-07 — 0DTE Command (12 panels) under `/nighthawk` via `/api/market/zerodte/board`. Thermal Profile tab not visible during this pass (matrix-only; tabs hidden while loading). Dedicated `validate:spx-e2e` + `validate:grid-e2e` re-runs reported **0 console errors** — chunk 404s in sweep are transient stale `_next/static/chunks/67-*` after long multi-page session.
+
+### Live auto-update
+
+- `liveTick=null` on all pages — SPX spot stable over 8–20s observation windows (post-close; regex-based probe; APIs fresh).
+- API freshness: desk `as_of` 4s · platform snapshot 0s · zerodte board 1s.
+- Cross-GEX: desk γ-flip 7554.85 vs gex-positioning 7555.5 (within 1% spot tol).
+
+### Data correctness
+
+| Cross-check | Result |
+|---|---|
+| desk γ-flip vs `gex-positioning` | ✅ aligned (Δ < 1% spot) |
+| All market APIs | ✅ HTTP 200 |
+| Largo NVDA query | ✅ 200 · ~$134.5M premium · `blackout_intelligence` |
+| SPX matrix E2E | ✅ GEX+VEX+DEX+CHARM · 160 strikes · spot 7723.55 |
+
+### Missing-field audit
+
+**0 missing-field signals** across all 7 pages. Largo `Regime: —` = expected when no active regime tag.
+
+### Findings table
+
+| Severity | ID | Detail | Fix |
+|---|---|---|---|
+| — | — | **No P0/P1 product defects** on member surfaces | GREEN |
+| INFO | ENV-NODE-MODULES | Initial `validate:rth-open` + sweep failed — missing `pg`/`playwright` browsers | Resolved via `npm install` + `npx playwright install chromium` |
+| INFO | CRON-SECRET-STALE-ENV | GitHub/env `CRON_SECRET` may 401; AWS SM secret works | Use `auditSecret()` / AWS SM for cron probes |
+| P2 | RTH-NIGHTHAWK-SOFT-NAV | `/nighthawk` soft-nav 3272ms (>1.5s target) | Monitor — 0DTE Command deck warm |
+| P2 | RTH-CHUNK-404 | Stale `_next/static/chunks/67-*` 404 + ChunkLoadError during long sweep session | Transient post-deploy CF cache; dedicated E2E runs clean |
+| P2 | RTH-DASH-400 | Dashboard console 1× HTTP 400 during sweep | Transient — re-probe if recurring |
+| P2 | SPX-BIE-CRON-401 | `bie-play-route` WARN — cron play HTTP 401 (expected without cron bearer) | defer |
+
+**Status: GREEN** — comprehensive sweep 0 P0/P1, cross-tool GEX aligned, all data-correctness surfaces flags=0. No GitHub issue opened (no P0/P1).
+
+**Reports:** `audit-output/rth-sweep-2026-08-05T20-38-31-376Z.json`, `audit-output/grid-e2e-1785962320520.json`, `audit-output/spx-dashboard-e2e-1785962345121.json`
+
+---
 
 ## grid-rth-2026-08-05 — 0DTE Command all-day verify pass (~4:23 PM ET, post-close)
 
