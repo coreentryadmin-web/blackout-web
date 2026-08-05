@@ -1,6 +1,14 @@
 /**
  * Admin 0DTE discovery funnel — aggregates zerodte_discovery_events + zerodte_scan_rejections
  * for AdminBieDashboard's funnel panel (Phase 2b). Read-only; no new instrumentation.
+ *
+ * `raw_events`/`raw_rejections` (added for the veto-flicker-rate probe, INTENTIONAL-DESIGN #2 —
+ * see docs/audit/FINDINGS.md 2026-08-05) are the same rows `recent_events`/`by_gate` already
+ * summarize, just unaggregated and uncapped-at-24 — the exact per-ticker, per-timestamp state
+ * transitions `scripts/audit/veto-flicker-rate.mjs` needs to reconstruct a session's Cortex
+ * veto series (gate_blocked cortex_veto* events = vetoed, detected/commit/other-gate events =
+ * not vetoed by Cortex that state). Purely additive to the existing response shape; no new
+ * instrumentation, no write path touched.
  */
 import { dbConfigured, fetchZeroDteDiscoveryEvents, fetchZeroDteScanRejections } from "@/lib/db";
 import { todayEt } from "@/features/nighthawk/lib/session";
@@ -23,6 +31,28 @@ export type ZeroDteFunnelRecentEvent = {
   detail: string | null;
 };
 
+/** One uncapped discovery-event row (see module doc) — direction is pulled out of
+ *  the JSONB `payload` where present (detected/gate_blocked/commit all stash it there). */
+export type ZeroDteFunnelRawEvent = {
+  observed_at: string;
+  ticker: string;
+  kind: string;
+  gate_code: string | null;
+  direction: string | null;
+  score: number | null;
+};
+
+/** One uncapped scan-rejection row (see module doc) — carries first_seen/last_seen,
+ *  the state-persistence window a throttled rejection row represents. */
+export type ZeroDteFunnelRawRejection = {
+  observed_at: string;
+  ticker: string;
+  gate_failed: string;
+  direction: string | null;
+  first_seen: string | null;
+  last_seen: string | null;
+};
+
 export type ZeroDteFunnelSnapshot = {
   generated_at: string;
   session_date: string;
@@ -42,6 +72,13 @@ export type ZeroDteFunnelSnapshot = {
   recent_events: ZeroDteFunnelRecentEvent[];
   events_sample_capped: boolean;
   rejections_sample_capped: boolean;
+  /** Uncapped-at-24 discovery events for this session (bounded only by
+   *  EVENTS_SAMPLE_LIMIT, same rows `by_gate`/`by_kind` were computed from) — see
+   *  module doc. */
+  raw_events: ZeroDteFunnelRawEvent[];
+  /** Uncapped scan-rejection rows for this session (bounded only by
+   *  REJECTIONS_SAMPLE_LIMIT) — see module doc. */
+  raw_rejections: ZeroDteFunnelRawRejection[];
   errors: string[];
 };
 
@@ -75,8 +112,18 @@ export function aggregateZeroDteFunnel(input: {
     gate_code: string | null;
     score: number | null;
     detail: string | null;
+    /** JSONB payload — detected/gate_blocked/commit all stash `direction` here.
+     *  Optional so existing call sites/tests that omit it keep compiling. */
+    payload?: Record<string, unknown> | null;
   }>;
-  rejections: ReadonlyArray<{ gate_failed: string }>;
+  rejections: ReadonlyArray<{
+    gate_failed: string;
+    observed_at?: string;
+    ticker?: string;
+    direction?: string | null;
+    first_seen?: string | null;
+    last_seen?: string | null;
+  }>;
   events_sample_capped: boolean;
   rejections_sample_capped: boolean;
 }): Omit<ZeroDteFunnelSnapshot, "generated_at" | "db_configured" | "errors"> {
@@ -120,6 +167,32 @@ export function aggregateZeroDteFunnel(input: {
     detail: e.detail,
   }));
 
+  // Uncapped-at-24 mirrors of the same two rows sets (see module doc) — ordered
+  // oldest-first (the fetch layer reads DESC for `recent_events`; a pass-series
+  // reconstruction wants chronological order), direction pulled out of `payload`.
+  const raw_events: ZeroDteFunnelRawEvent[] = [...input.events]
+    .reverse()
+    .map((e) => ({
+      observed_at: e.observed_at,
+      ticker: e.ticker,
+      kind: e.kind,
+      gate_code: e.gate_code,
+      direction:
+        e.payload && typeof e.payload.direction === "string" ? (e.payload.direction as string) : null,
+      score: e.score,
+    }));
+
+  const raw_rejections: ZeroDteFunnelRawRejection[] = [...input.rejections]
+    .reverse()
+    .map((r) => ({
+      observed_at: r.observed_at ?? "",
+      ticker: r.ticker ?? "",
+      gate_failed: r.gate_failed,
+      direction: r.direction ?? null,
+      first_seen: r.first_seen ?? null,
+      last_seen: r.last_seen ?? null,
+    }));
+
   return {
     session_date: input.session_date,
     detected_tickers: detectedTickers.size,
@@ -131,6 +204,8 @@ export function aggregateZeroDteFunnel(input: {
     recent_events,
     events_sample_capped: input.events_sample_capped,
     rejections_sample_capped: input.rejections_sample_capped,
+    raw_events,
+    raw_rejections,
   };
 }
 
@@ -150,6 +225,8 @@ export async function fetchZeroDteFunnelSnapshot(sessionDate = todayEt()): Promi
       recent_events: [],
       events_sample_capped: false,
       rejections_sample_capped: false,
+      raw_events: [],
+      raw_rejections: [],
       errors: ["DATABASE_URL not configured"],
     };
   }
