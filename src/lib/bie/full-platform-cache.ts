@@ -40,6 +40,12 @@ export type BieFullState = {
   gexRegimeEvents: unknown | null;
   /** 0DTE Command gate-rejection summary. */
   zerodteRejections: unknown | null;
+  /** Night Hawk Bangers (Engine B) board summary. */
+  banger: unknown | null;
+  /** Night Hawk Swings lane summary. */
+  swing: unknown | null;
+  /** HELIX signal follow-through summary. */
+  helixSignalOutcomes: unknown | null;
   /** Per-loader errors (name → message) for observability; empty when all succeeded. */
   errors: Record<string, string>;
 };
