@@ -7,6 +7,7 @@ import { isLiveOdteSession } from "./unusual-whales";
 import { fmtPremium } from "@/lib/fmt-money";
 import { persistGexRegimeEvents } from "./gex-regime-events";
 import { zeroGammaFlip as computeZeroGammaFlip, cumulativeGammaFlip } from "@/lib/providers/gex-cross-validation-core";
+import { applySpxOdteGexUwOverlay } from "@/lib/providers/spx-odte-gex-uw-overlay";
 export { zeroGammaFlip as computeZeroGammaFlip, cumulativeGammaFlip } from "@/lib/providers/gex-cross-validation-core";
 
 const BASE = (process.env.POLYGON_API_BASE ?? "https://api.massive.com").replace(/\/$/, "");
@@ -1361,6 +1362,16 @@ function rememberGoodHeatmap(cacheKey: string, data: GexHeatmap | null): GexHeat
   return pruned;
 }
 
+/** Prune + SPX 0DTE UW overlay so served King matches the cross-provider oracle. */
+async function finalizeHeatmapForServe(
+  cacheKey: string,
+  data: GexHeatmap | null
+): Promise<GexHeatmap | null> {
+  const pruned = rememberGoodHeatmap(cacheKey, data);
+  if (!pruned || pruned.underlying !== "SPX") return pruned;
+  return applySpxOdteGexUwOverlay(pruned);
+}
+
 // Bound the ticker dimension so an unusual spread of (garbage) tickers can't leak
 // memory. Insertion-order LRU + delete-oldest eviction, same pattern as
 // server-cache.ts:setStoreEntry / shared-cache.ts:setMemoryEntry. TTL/semantics
@@ -1496,7 +1507,7 @@ async function awaitHeatmapBuildWithBlockCap(
 ): Promise<GexHeatmap | null> {
   const blockMs = gexHeatmapMaxBlockMs();
   return Promise.race([
-    build.then((data) => rememberGoodHeatmap(cacheKey, data)),
+    build.then((data) => finalizeHeatmapForServe(cacheKey, data)),
     new Promise<GexHeatmap | null>((resolve) => {
       setTimeout(() => {
         void (async () => {
@@ -2385,7 +2396,7 @@ export async function fetchGexHeatmap(
       now - mem.at < ttlMs &&
       !heatmapHasPastExpiries(mem.data, today)
     ) {
-      return rememberGoodHeatmap(cacheKey, mem.data);
+      return finalizeHeatmapForServe(cacheKey, mem.data);
     }
 
     let redisHit: { at: number; data: GexHeatmap } | null = null;
@@ -2398,7 +2409,7 @@ export async function fetchGexHeatmap(
         !heatmapHasPastExpiries(redisHit.data, today)
       ) {
         setCachedHeatmap(cacheKey, redisHit);
-        return rememberGoodHeatmap(cacheKey, redisHit.data);
+        return finalizeHeatmapForServe(cacheKey, redisHit.data);
       }
     } catch {
       /* redis optional */
@@ -2417,7 +2428,7 @@ export async function fetchGexHeatmap(
       mem,
       redisHit
     );
-    if (stale) return rememberGoodHeatmap(cacheKey, stale);
+    if (stale) return finalizeHeatmapForServe(cacheKey, stale);
   }
 
   // ── Single-flight (#9): coalesce concurrent cache-miss builds for this ticker ──
@@ -3206,7 +3217,7 @@ export async function readGexHeatmapSnapshot(underlying = "SPX"): Promise<GexHea
   const ttlMs = fastMove ? Math.min(baseTtlMs, GEX_HEATMAP_FAST_MOVE_TTL_MS) : baseTtlMs;
 
   const mem = cachedHeatmaps.get(cacheKey);
-  if (mem && now - mem.at < ttlMs) return rememberGoodHeatmap(cacheKey, mem.data);
+  if (mem && now - mem.at < ttlMs) return finalizeHeatmapForServe(cacheKey, mem.data);
 
   let redisHit: { at: number; data: GexHeatmap } | null = null;
   try {
@@ -3217,7 +3228,7 @@ export async function readGexHeatmapSnapshot(underlying = "SPX"): Promise<GexHea
     ]);
     if (redisHit && now - redisHit.at < ttlMs) {
       setCachedHeatmap(cacheKey, redisHit);
-      return rememberGoodHeatmap(cacheKey, redisHit.data);
+      return finalizeHeatmapForServe(cacheKey, redisHit.data);
     }
   } catch {
     /* redis optional */
@@ -3233,7 +3244,7 @@ export async function readGexHeatmapSnapshot(underlying = "SPX"): Promise<GexHea
     mem,
     redisHit
   );
-  if (stale) return rememberGoodHeatmap(cacheKey, stale);
+  if (stale) return finalizeHeatmapForServe(cacheKey, stale);
 
   return pickStaleHeatmapForHandoff(mem, redisHit, now);
 }

@@ -4,6 +4,16 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-05 — [ops-auto-fix #1705, P0 data-correctness] SPX 0DTE King 7,800 vs UW 7,650 (Δ 1.94% > 1.5% tol) — FIXED
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P0 — `ops-collect` / `data-correctness` cross-provider FLAG; served SPX 0DTE King disagreed with UW `spot-exposures/expiry-strike (0DTE)` oracle by 150pts (~1.94% of spot > 1.5% tolerance). |
+| **Root cause** | `fetchGexHeatmap('SPX')` built the 0DTE matrix column from Polygon chain dollar-gamma while the correctness oracle (`heatmap-verifier.ts` `crossProviderChecks`) compares against UW's native 0DTE ladder (`fetchUwOdteGexLadder`). Polygon and UW can rank different strikes as argmax \|net\| — and Polygon-only strikes left in the 0DTE column (e.g. 7700) could outrank the true UW king (7650). Walls were already WS-overridden in `gex-heatmap/route.ts` / `gex-positioning.ts`, but the **0DTE column cells** were not. |
+| **Evidence** | Live `ops-collect` fingerprint `ee994b4b2bf8`: `[cross-provider/king] SPX 0DTE King 7,800 DISAGREES with UW … King 7,650 — Δ 1.94% of spot > tol.` UW REST ladder (272 strikes) had king 7650 at 835M \|net\|. |
+| **Fix** | New `src/lib/providers/spx-odte-gex-uw-overlay.ts`: on every `fetchGexHeatmap` / `readGexHeatmapSnapshot` serve path for SPX, replace today's expiry column with UW dealer gamma (WS `gex_strike_expiry` when fresh, else REST `fetchUwOdteGexLadder`, 60s cache), clear stale Polygon-only 0DTE cells, recompute near-term `strike_totals`/walls/flip. Unit tests: `spx-odte-gex-uw-overlay.test.ts` (3/3). |
+| **Status** | FIXED on `cursor/spx-0dte-king-discrepancy-20bd` → PR, auto-merge once CI green. |
+
 ## 2026-08-05 — [NH-R4, Night Hawk 0DTE] Weekend/holiday gap risk invisible — DTE is pure calendar days with zero trading-calendar awareness — evidence-only fix (fix/nh-r4-session-dte-gap)
 
 | Field | Value |
