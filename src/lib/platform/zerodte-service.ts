@@ -61,6 +61,16 @@ import {
   type ZeroDteGovernorSummary,
 } from "@/lib/zerodte/governor";
 import { fetchDiscoveryFunnelHint, type DiscoveryFunnelHint } from "@/lib/zerodte/discovery-funnel-hint";
+// Read-only SPX Slayer badge (feat/nh-spx-badge) — additive display field only, see
+// spx-slayer-badge.ts for the full scope note. NOT part of scoring/gates/governor above.
+// Lazy dynamic import below (not a static import): spx-slayer-badge.ts's module graph
+// reaches spx-play-options.ts, which calls polygonRestBase() at module-eval time. A
+// static import here pulls that eager call into every consumer of this file's module
+// graph — including zerodte-board-convergence.test.ts, whose mocked polygon module
+// doesn't stub that export, breaking 23 unrelated tests. Loading it only at the actual
+// call site keeps this file's static import graph — and every existing test's mocks —
+// unchanged for callers that never touch the SPX badge.
+import { unavailableSpxSlayerBadge, type SpxSlayerBadge } from "@/features/spx/lib/spx-slayer-badge-map";
 import { gradeZeroDteLedger, readZeroDteLedgerChecked, scanZeroDteBoard, syncLedgerLiveState } from "@/lib/zerodte/scan";
 import {
   readExitStampFromEntryContext,
@@ -238,6 +248,12 @@ export type ZeroDteBoardPayload = {
   market_state: import("@/lib/zerodte/market-state-engine").MarketStateSnapshot | null;
   /** Phase 2c — top session rejection reason for the discovery funnel strip. */
   discovery_funnel: DiscoveryFunnelHint | null;
+  /** feat/nh-spx-badge — SPX Slayer's own live play, read-only for board display ONLY. This is
+   *  NOT a Night Hawk discovery lane and does not feed candidate scoring/gates/governor/allocation
+   *  above — Night Hawk's only behavioral coupling to SPX Slayer remains the G-6 conflict veto in
+   *  src/lib/zerodte/gates.ts. Null only for a payload built before this field existed (old cached
+   *  snapshot); a live build always resolves to at least the unavailable badge, never undefined. */
+  spx_slayer_badge: SpxSlayerBadge | null;
 };
 
 // ── Shared, converged board snapshot (fix/zerodte-board-convergence) ──────────────
@@ -583,7 +599,7 @@ export async function buildZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
 
   const ledgerRows = await syncLedgerLiveState(rawLedger).catch(() => rawLedger);
   const nowEtMinutes = hour * 60 + minute;
-  const [nighthawkEcho, liveMarks, governor, discovery_funnel] = await Promise.all([
+  const [nighthawkEcho, liveMarks, governor, discovery_funnel, spx_slayer_badge] = await Promise.all([
     fetchNighthawkEchoForTickers(ledgerRows.map((r) => r.ticker)),
     attachLiveMarkMeta(ledgerRows),
     // PR-D governor strip: same ledger + recorded-stop snapshot the gate stack's
@@ -600,6 +616,13 @@ export async function buildZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
       )
       .catch((): ZeroDteGovernorSummary | null => null),
     fetchDiscoveryFunnelHint(today).catch((): DiscoveryFunnelHint | null => null),
+    // Read-only display badge — never throws (getSpxSlayerBadgeSnapshot already catches
+    // internally), but a belt-and-suspenders .catch keeps a hard failure here from ever
+    // taking down the rest of the board payload. Dynamic import: see the note by the
+    // top-of-file import for why this can't be a static import.
+    import("@/features/spx/lib/spx-slayer-badge")
+      .then((m) => m.getSpxSlayerBadgeSnapshot())
+      .catch((): SpxSlayerBadge => unavailableSpxSlayerBadge("SPX Slayer desk unavailable — retrying")),
   ]);
 
   const nextDay = nextTradingDayEt(today);
@@ -670,6 +693,7 @@ export async function buildZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
     allocation,
     market_state,
     discovery_funnel,
+    spx_slayer_badge,
   }) as ZeroDteBoardPayload;
 
   // roundFloats() rounds entry_premium/last_mark independently; recompute PnL from the
@@ -860,6 +884,7 @@ function buildMinimalBoardFallback(): ZeroDteBoardPayload {
     allocation: [],
     market_state: null,
     discovery_funnel: null,
+    spx_slayer_badge: null,
   };
 }
 

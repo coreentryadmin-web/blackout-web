@@ -96,6 +96,7 @@ export function emptySimBoardPayload(): ZeroDteBoardPayload {
     allocation: [],
     market_state: null,
     discovery_funnel: null,
+    spx_slayer_badge: null,
   };
 }
 

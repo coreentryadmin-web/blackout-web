@@ -3,6 +3,7 @@
 import { clsx } from "clsx";
 import type { DiscoveryFunnelHint } from "@/lib/zerodte/discovery-funnel-hint";
 import type { MarketStateSnapshot } from "@/lib/zerodte/market-state-engine";
+import type { SpxSlayerBadge } from "@/features/spx/lib/spx-slayer-badge-map";
 
 /** One mono stat pill — shared by governor / regime / calibration strips. */
 export function GovPill({
@@ -119,5 +120,54 @@ export function DiscoveryFunnelStrip({
     >
       {compact ? funnel.summary : `Funnel · ${funnel.summary}`}
     </p>
+  );
+}
+
+/** feat/nh-spx-badge — SPX Slayer's own live play, surfaced as a READ-ONLY 4th badge/tile on the
+ *  Night Hawk 0DTE board. Deliberately styled DIFFERENT from GovPill/MarketStateStrip above (violet
+ *  accent + "SPX SLAYER" subtitle + a ⚡ mark) so a member never mistakes this for a 4th Night Hawk
+ *  discovery lane (FLOW/BREAKOUT/PIN) — it is a different system's own read, wired in purely for
+ *  display. See src/features/spx/lib/spx-slayer-badge.ts for the read (`getSpxPlaySnapshot`) and
+ *  src/lib/zerodte/gates.ts G-6 for Night Hawk's only actual behavioral coupling to SPX Slayer
+ *  (a conflict veto) — this badge does not touch that gate or any scoring/commit path.
+ *
+ *  `badge === undefined` (a payload built before this field existed) renders nothing — never a
+ *  fabricated idle state for a payload that never carried this field at all. `badge === null` or
+ *  `available: false` renders the idle/unavailable state instead of crashing the board. */
+export function SpxSlayerBadgeStrip({
+  badge,
+  compact = false,
+}: {
+  badge: SpxSlayerBadge | null | undefined;
+  compact?: boolean;
+}) {
+  if (badge === undefined) return null;
+  const isLive = badge?.available === true;
+  const directionTone = badge?.direction === "long" ? "bull" : badge?.direction === "short" ? "bear" : "sky";
+  const actionLabel = isLive ? badge!.action : "IDLE";
+  const title = isLive
+    ? `${badge!.headline} · SPX Slayer's own live read — not a Night Hawk discovery lane`
+    : badge?.unavailable_reason ?? "SPX Slayer desk unavailable";
+
+  return (
+    <div
+      className={clsx("nh-deck-spx-badge", compact && "nh-deck-spx-badge--compact", !isLive && "is-idle")}
+      data-testid="spx-slayer-badge"
+      title={title}
+    >
+      <span className="nh-deck-spx-badge__mark" aria-hidden>
+        ⚡
+      </span>
+      <span className="nh-deck-spx-badge__body">
+        <span className="nh-deck-spx-badge__lab">SPX Slayer</span>
+        <span className={clsx("nh-deck-spx-badge__val", `tone-${isLive ? directionTone : "sky"}`)}>
+          {actionLabel}
+          {isLive && badge!.direction && <span className="nh-deck-spx-badge__dir">{badge!.direction === "long" ? "▲" : "▼"}</span>}
+          {isLive && (
+            <span className="nh-deck-spx-badge__grade">{badge!.grade}</span>
+          )}
+        </span>
+      </span>
+    </div>
   );
 }

@@ -100,6 +100,7 @@ export function ZeroDteDeck({
         upstreamOk={data?.upstream_ok ?? null}
         marketState={data?.market_state ?? null}
         discoveryFunnel={data?.discovery_funnel ?? null}
+        spxSlayerBadge={data?.spx_slayer_badge}
         emptyHint={
           degraded
             ? "Board data unavailable right now — retrying. Any open position is still live; this is a data outage, not a flat tape."

@@ -14,6 +14,7 @@ import { resolveFreshFindStatus, type SessionHeatState } from "@/lib/zerodte/boa
 
 import type { DiscoveryFunnelHint } from "@/lib/zerodte/discovery-funnel-hint";
 import type { MarketStateSnapshot } from "@/lib/zerodte/market-state-engine";
+import type { SpxSlayerBadge } from "@/features/spx/lib/spx-slayer-badge-map";
 
 export interface BoardResp {
   available?: boolean;
@@ -28,6 +29,9 @@ export interface BoardResp {
   market_state?: MarketStateSnapshot | null;
   /** Phase 2c — top session gate/rejection hint for the member strip. */
   discovery_funnel?: DiscoveryFunnelHint | null;
+  /** feat/nh-spx-badge — SPX Slayer's own live play, read-only display badge (4th tile). Not a
+   *  Night Hawk discovery lane; does not feed setups/ledger/allocation above. */
+  spx_slayer_badge?: SpxSlayerBadge | null;
 }
 
 /** Ledger statuses that represent a WORKING (member-held) position — always rendered (9-4). */
