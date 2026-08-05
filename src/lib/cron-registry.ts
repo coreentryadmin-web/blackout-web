@@ -216,6 +216,19 @@ export const CRON_JOBS: CronJobDefinition[] = [
     produces_member_alert: true,
   },
   {
+    key: "vector-alerts",
+    name: "Vector Alerts",
+    kind: "http",
+    path: "/api/cron/vector-alerts",
+    schedule_label: "~Every 1-2 min (market hours)",
+    stale_after_min: 10,
+    weekdays_only: true,
+    market_hours_only: true,
+    description:
+      "Server-side evaluation of members' persisted Vector wall-touch/flip-cross alert rules + sendWebPush delivery, so alerts reach a closed tab/phone (inert until VECTOR_ALERTS_PUSH + VAPID are set)",
+    produces_member_alert: true,
+  },
+  {
     key: "db-cleanup",
     name: "DB Cleanup",
     kind: "http",

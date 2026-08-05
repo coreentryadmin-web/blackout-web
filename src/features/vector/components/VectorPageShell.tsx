@@ -326,6 +326,17 @@ export function VectorPageShell({
     (next: AlertRule[]) => {
       setAlertRules(next);
       saveAlertRules(activeTicker, next);
+      // Best-effort SERVER mirror (task: server-side wall-touch/flip-cross delivery). localStorage
+      // above is still the source of truth for this tab's in-page experience — a failed/slow sync
+      // here must never block or break it, so it's fire-and-forget with the error swallowed. The
+      // mirrored copy is what `/api/cron/vector-alerts` reads to fire push alerts to a closed tab.
+      fetch("/api/vector/alerts/rules", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ticker: activeTicker, rules: next }),
+      }).catch(() => {
+        /* best-effort — local experience is unaffected */
+      });
     },
     [activeTicker]
   );
