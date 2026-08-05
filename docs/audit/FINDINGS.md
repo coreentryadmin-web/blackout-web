@@ -7620,3 +7620,75 @@ once CI's `verify` gate is green.
 | **What a follow-up PR would need** | (1) A real, ledger-derived `calibratedWinProb`/`avgWinPct`/`avgLossPct`/`sampleSize` feed — today's feature store tracks win/loss LABELS (`feature-store.ts`) but this module additionally needs the win/loss MAGNITUDE distribution (not just count), which isn't yet aggregated anywhere; (2) a decision on which cohort a size is calibrated PER (overall vs per-tier vs per-origin vs per-score-band — the calibration.ts bands already show these diverge, e.g. the F-5 tier inversion), since a single blended `p`/`W`/`L` would hide exactly the kind of Simpson's-paradox trap `calibration.ts`'s crossed-cohort work was built to catch; (3) an explicit go-ahead per this repo's CLAUDE.md policy before touching `plan.ts`/`scan.ts` or any commit path, since real-capital sizing is deploy-risky by definition; (4) a live-vs-backtest validation harness (in the spirit of `condor-wr.mjs`/`firewall-rth-replay.mjs`) proving the recommended size would have improved risk-adjusted realized P&L before it ever sizes a real play. |
 | **Evidence** | `src/lib/zerodte/position-sizing.test.ts` — 13 tests, all pass (`npx tsx --test src/lib/zerodte/position-sizing.test.ts`): reused-constant check (`POSITION_SIZING_MIN_SAMPLES === MIN_SAMPLES === 20`), `KELLY_FRACTION === 0.25`, two hand-computed textbook Kelly examples (0.55/1.00/0.50 → f*=0.65, quarter-Kelly=0.1625; 0.40/1.00/0.50 → f*=0.20, quarter-Kelly=0.05), below/at/above `MIN_SAMPLES` boundary behavior, `avgLossPct=0`/`avgWinPct=0` degenerate inputs, `winProb=0` (guaranteed loss → 0, not negative) and `winProb=1` (guaranteed win → full positive fractional size), negative-edge clamping to 0 (never negative), out-of-range `calibratedWinProb` (1.5, -0.1) rejected as invalid rather than silently clamped, and non-finite `sampleSize` never graduating. `npx tsc --noEmit -p .` clean. |
 | **Status** | SHIPPED (evidence-only, unwired) — branch `feat/nh-r13-position-sizing` → `main`, auto-merge enabled per standing policy once CI's `verify` gate is green. |
+
+## 2026-08-05 — NH-R7 "Morning revalidation stage + play lifecycle" — already substantially implemented, closing as DONE (no code change)
+
+**Context.** NH-R7 was flagged NEEDS CLARIFICATION by a prior research pass: the task doc
+(`docs/audit/NIGHTHAWK-OVERNIGHT-DECISION.md`, dated 2026-07-14) proposed a broad morning-revalidation
+build (PR-N4 `entry_context` pinning, PR-N6 binding morning re-veto/pull latch) *before* two hardening
+commits (`6fc099fa` 2026-07-21, `a2c65996` 2026-07-28) and several later PRs landed. This entry is a
+full re-verification: read the decision doc's PR-N1..N9 ladder in full, read the three named modules
+in full, walked `git log` on them, and cross-checked every proposed item against what's actually wired
+into the live cron path today (not just present as a standalone module).
+
+**Note on the task's file paths.** The task described the three modules as living under
+`src/lib/zerodte/*` — they don't; they live under `src/features/nighthawk/lib/*`
+(`morning-confirm-verdict.ts`, `morning-cortex-reveto.ts`, `morning-verdict-persist.ts`). This is the
+**Legacy overnight edition** system (`docs/audit/NIGHTHAWK-OVERNIGHT-DECISION.md`'s subject), not the
+intraday 0DTE "Night Hawk Command" board (`src/lib/zerodte/`) — two genuinely different products that
+share a brand name. Confirmed by reading both directories; no code under `src/lib/zerodte/` implements
+morning-confirm logic.
+
+**Line-for-line gap analysis — decision-doc proposal vs. shipped reality:**
+
+| Decision-doc item | Proposed (2026-07-14) | Shipped today | Where |
+|---|---|---|---|
+| PR-N1 (P0 grading) | Delete stale duplicate CHECK constraint re-issue; regrade stuck rows | Done — `db.ts` CHECK constraint fixed, `regradeStuckNighthawkOutcomes` wired into the `nighthawk-outcomes` cron (fail-soft) | `6fc099fa`; `src/lib/db.ts`, `src/features/nighthawk/lib/regrade-stuck.ts` |
+| PR-N2 (methodology blend) | Regrade all historical rows under current rules; stamp `grading_version` | Done (referenced live in FINDINGS 2026-07-2x entries; `unfilled` now a first-class writable outcome) | `src/features/nighthawk/lib/play-outcomes.ts` |
+| PR-N3 (detached bands) | Publish gate: reject/re-anchor band-top vs spot; ATR-scaled band | Done, then hardened further — `entryHalfWidth()` (0.4×ATR, floor 0.5%/cap 2.5%), G-N1 `band_detached`, G-N2 `target_unreachable`, **and** morning re-anchor (Phase 3.75, `a2c65996`): pre-market gap-through-entry in the thesis direction re-centers the band instead of degrading | `src/features/nighthawk/lib/play-levels.ts`, `publish-gates.ts`; `a2c65996` |
+| PR-N4 (`entry_context` pinning + persisted verdicts) | JSONB context at publish + a persisted verdict table (not just Redis) | Done — `publish_context` JSONB (publish-time pin) + `morning_verdict` JSONB (`nighthawk_play_outcomes`), written by `recordNighthawkMorningVerdict` | `src/lib/db.ts:566-587` (`ADD COLUMN IF NOT EXISTS publish_context/morning_verdict/pulled/pulled_reason/pulled_at`), `morning-verdict-persist.ts` |
+| PR-N5 (Cortex compose at publish + veto stage) | Attach Cortex verdict to each play card; earnings/binary veto | Cortex evidence composer (`src/lib/nighthawk/cortex/`) reused; morning side confirmed live (see PR-N6 row) — publish-side wiring not independently re-verified this pass (out of scope for NH-R7's morning-stage question) | — |
+| **PR-N6 (binding morning re-veto — NH-R7's actual subject)** | 9:15 re-compose; INVALIDATED/fresh-veto ⇒ one-way PULLED latch; persisted, not just Redis | **Fully shipped and wired into the live cron**, not just present as an unused module: `computePlayVerdict` (`CONFIRMED/DEGRADED/INVALIDATED/UNVERIFIED`, staleness via `MORNING_CONFIRM_STALE_MS`) → `applyCortexMorningReveto` (fresh 9:15 Cortex re-compose, upgrades to INVALIDATED on a fresh veto) → `persistNighthawkMorningVerdicts` → `recordNighthawkMorningVerdict` (SQL: `pulled = o.pulled OR $4` — genuine one-way OR-latch; `morning_verdict`/`pulled_reason`/`pulled_at` all `COALESCE`d — first-write-wins). `6fc099fa` additionally pulls severe/gap-away DEGRADED plays (`isDegradedSevere`, `DEGRADED_SEVERE_REASON_COUNT=2`), not just INVALIDATED. Verified both modules are `import`ed and called from `src/app/api/cron/nighthawk-morning-confirm/route.ts:40-41,408,455` — this is live cron code, not dead scaffolding. | `morning-confirm-verdict.ts`, `morning-cortex-reveto.ts`, `morning-verdict-persist.ts`, `src/lib/db.ts:8170-8204`, wired at `route.ts` |
+| PR-N7 (tier engine replaces mechanical conviction letters) | Named-factor tiers, A+ locked behind `minGraded/minWinRatePct` | Done — referenced live at `publish-context.ts:250-254` per the 2026-08-03 tier-shape FINDINGS entry | `src/features/nighthawk/lib/publish-context.ts` |
+| PR-N8 (cross-edition governor: repeat-ticker/sector-crowding) | Same-ticker ≤1/rolling-5-sessions; rolling sector cap | Done — `cross-edition-governor.ts`, wired into `edition-builder.ts` stage 4b (`applyCrossEditionGovernor`) with its own audit-trail rows | `src/features/nighthawk/lib/cross-edition-governor.ts`, `edition-builder.ts:64-65,688-703` |
+| PR-N9 (book-vs-tape alignment veto) | Publish-time veto when the play's direction contradicts the stock's own tape | **Also since shipped** (2026-08-03, this same FINDINGS file, "G-N4 book-vs-tape alignment veto — built") — `publish-gates.ts` new `book_tape_conflict` gate, non-promotable, using `TechnicalCard.trend` | `src/features/nighthawk/lib/publish-gates.ts` |
+
+**Residual gap: EMPTY for the morning-revalidation stage.** Every element of the decision doc's PR-N4/
+PR-N6 proposal — the actual subject of NH-R7 — is implemented, tested (41/41 passing across the three
+files' `*.test.ts` suites, re-run this pass), and wired into the live `nighthawk-morning-confirm` cron
+route, not merely present as orphaned library code. PR-N1/N2/N3/N7/N8/N9 (the surrounding ladder items
+the ambiguity note also questioned) are independently confirmed shipped via `git log`, `db.ts` schema,
+and prior FINDINGS entries dated 2026-07-21 through 2026-08-03. Nothing in the ladder is silently
+half-built or unwired.
+
+**On option (b) — "0DTE has no analogous morning-recheck stage":** confirmed true, and confirmed
+**intentional, not a gap**. 0DTE's `cortex-gate.ts` recomposes the Cortex verdict fresh on **every**
+scan pass all day (`docs/audit/INTENTIONAL-DESIGN.md` item 2, "stateless veto, no hysteresis/latching")
+— a strictly more current re-evaluation than a single 9:15 ET snapshot, because 0DTE commits
+continuously intraday rather than publishing once overnight and going stale for 6.5 hours. Building a
+"morning recheck" analogue for 0DTE would mean **adding** a coarser, staler check to a system that
+already re-checks every ~2s; that is not a missing capability, it is a different (already-documented,
+already-measured via `veto-flicker-rate.mjs`) risk model appropriate to a continuously-committing
+product. No narrowly-scoped, real-value gap exists here to implement.
+
+**On a unified typed lifecycle state machine across Legacy and 0DTE:** not warranted as new work. Legacy
+already has a real one-way-latching state machine per play (`CONFIRMED → {DEGRADED, INVALIDATED} →
+pulled` via a DB `OR`-latch + `COALESCE`d first-write, verified above) and 0DTE has its own
+continuously-recomputed decision union (`cortex-gate.ts`'s `ZeroDteCortexDecision`). The two products
+have genuinely different commit cadences (once overnight vs. continuously intraday) and genuinely
+different risk shapes; forcing them onto one shared enum would not remove any real duplicated logic
+(there is none — the state shapes differ because the products differ) and was not requested by any
+other open finding. Flagging as available-but-not-recommended, per the standing "do not force
+manufactured work" instruction.
+
+**Decision:** closing NH-R7 as **DONE — already implemented**. No code touched this entry.
+
+**Verification performed:** read `NIGHTHAWK-OVERNIGHT-DECISION.md` in full (410 lines); read
+`morning-confirm-verdict.ts`, `morning-cortex-reveto.ts`, `morning-verdict-persist.ts` in full (515
+lines combined); `git log --oneline` on all three (6 commits, `6fc099fa` → `a2c65996` → three more Legacy
+hardening batches); `git show 6fc099fa --stat`, `git show a2c65996 --stat`; grepped this FINDINGS.md for
+every PR-N cross-reference (all resolved to shipped, dated entries); confirmed both morning modules are
+actually `import`ed/called from the live cron route (not orphaned); re-ran the three modules'
+`*.test.ts` files (41/41 pass, `npx tsx --test`).
+
+**Status:** CLOSED — DONE, no code change. Docs-only PR → `main`, auto-merge per standing policy.
