@@ -32,6 +32,7 @@ export const CRON_SERVICE_NAMES = {
   "vector-full-state-snapshot": "Vector-Full-State-Snapshot",
   "vector-dark-pool-warm": "Vector-Dark-Pool-Warm",
   "vector-walls-warm": "Vector-Walls-Warm",
+  "vector-bead-record": "Vector-Bead-Record",
   "bie-full-state-snapshot": "BIE-Full-State-Snapshot",
   "coaching-alerts": "Coaching-Alerts",
   "platform-warm": "Platform-Warm",

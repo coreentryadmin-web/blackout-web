@@ -2,16 +2,22 @@
  * Vector walls cache pre-warming.
  * Called by /api/cron/vector-walls-warm to keep GEX/VEX walls hot so the SSE stream
  * (which ticks every 1s) sees cache hits instead of expensive re-computations.
+ *
+ * Wall-history bead recording is owned by vector-bead-recorder-leader (5s, full universe).
  */
 
-import { recordVectorWallSamplesFromWarm } from "./vector-snapshot";
+import { getVectorGexWalls, getVectorVexWalls, primeVectorWallScope } from "./vector-snapshot";
+import { joinGexStrikeExpiryTicker } from "@/lib/ws/uw-socket";
 import { getActiveVectorTickers } from "./vector-stream-hub";
 import { listDynamicUniverseTickers, mergeSharedUniverseTickers } from "./vector-dynamic-universe";
 
 export async function warmVectorWalls(ticker: string): Promise<void> {
-  // Prime scope, warm caches, and persist a wall-history sample so non-SPX tickers
-  // accumulate bead rails at the warm cadence (~15–30s) without a live viewer.
-  await recordVectorWallSamplesFromWarm(ticker).catch(() => false);
+  joinGexStrikeExpiryTicker(ticker);
+  await primeVectorWallScope(ticker);
+  await Promise.all([
+    Promise.resolve(getVectorGexWalls(ticker)),
+    Promise.resolve(getVectorVexWalls(ticker)),
+  ]);
 }
 
 /**

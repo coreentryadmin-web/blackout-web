@@ -117,7 +117,20 @@ export const CRON_JOBS: CronJobDefinition[] = [
     stale_after_min: 2,
     weekdays_only: true,
     market_hours_only: true,
-    description: "Pre-warm Vector GEX/VEX walls cache every 15-30s so SSE stream (1Hz ticks) sees cache hits instead of expensive re-computation; keeps wall updates feeling real-time instead of static",
+    description:
+      "Pre-warm Vector GEX/VEX walls cache every 15-30s so SSE stream (1Hz ticks) sees cache hits instead of expensive re-computation; bead recording is vector-bead-record (5s leader)",
+  },
+  {
+    key: "vector-bead-record",
+    name: "Vector Bead Record",
+    kind: "http",
+    path: "/api/cron/vector-bead-record",
+    schedule_label: "Every 1 min backup (market hours); in-app leader at 5s",
+    stale_after_min: 1,
+    weekdays_only: true,
+    market_hours_only: true,
+    description:
+      "Record wall-history bead samples every 5s for the full shared universe (~100 tickers: static ∪ dynamic), viewer-independent — primary writer is vector-bead-recorder-leader; this cron is backup + audit",
   },
   {
     key: "desk-warm",
