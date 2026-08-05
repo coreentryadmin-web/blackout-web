@@ -27,6 +27,8 @@ function fmtLevel(n: number | null | undefined): string {
   return Math.round(n as number).toLocaleString("en-US");
 }
 
+export { fmtLevel };
+
 export function pctFromSpot(spot: number | null | undefined, level: number | null | undefined): string | null {
   if (!Number.isFinite(spot as number) || !Number.isFinite(level as number) || spot === 0) return null;
   const pct = ((Number(level) - Number(spot)) / Number(spot)) * 100;
