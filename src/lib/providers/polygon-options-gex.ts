@@ -1221,11 +1221,144 @@ const heatmapInflight = new Map<string, Promise<GexHeatmap | null>>();
 /** Per-replica last usable matrix — handoff when Redis + inflight are both cold. */
 const lastGoodHeatmapLocal = new Map<string, GexHeatmap>();
 
-function rememberGoodHeatmap(cacheKey: string, data: GexHeatmap | null): GexHeatmap | null {
-  if (data && data.spot > 0 && data.strikes.length > 0) {
-    lastGoodHeatmapLocal.set(cacheKey, data);
+/** True when the matrix still carries an expiry column strictly before today's ET date. */
+export function heatmapHasPastExpiries(hm: GexHeatmap, todayYmd: string): boolean {
+  return (hm.expiries ?? []).some((e) => e < todayYmd);
+}
+
+/**
+ * Drop expired expiry columns from a served heatmap and re-derive near-term structural levels.
+ * Fresh builds already filter `expiry < today` at ingest; this guards the SWR stale path across
+ * the ET date rollover (a matrix built at 23:59 can still be cached up to GEX_HEATMAP_MAX_STALE_SEC).
+ * Returns null when no live expiries remain (caller should rebuild).
+ */
+export function prunePastExpiriesFromHeatmap(hm: GexHeatmap, todayYmd: string): GexHeatmap | null {
+  if (!heatmapHasPastExpiries(hm, todayYmd)) return hm;
+
+  const expiries = (hm.expiries ?? []).filter((e) => e >= todayYmd);
+  if (expiries.length === 0) return null;
+
+  const nearKeep = (hm.near_term_expiries ?? expiries).filter((e) => e >= todayYmd);
+  const nearTermKeep = new Set(nearKeep.length > 0 ? nearKeep : expiries);
+
+  function pruneMetricCells(cells: Record<string, Record<string, number>> | undefined): {
+    cells: Record<string, Record<string, number>>;
+    strikeTotals: Record<string, number>;
+    total: number;
+  } {
+    const outCells: Record<string, Record<string, number>> = {};
+    const strikeTotals: Record<string, number> = {};
+    let total = 0;
+    for (const [strike, row] of Object.entries(cells ?? {})) {
+      const prunedRow: Record<string, number> = {};
+      let nearSum = 0;
+      for (const [expiry, val] of Object.entries(row)) {
+        if (expiry < todayYmd) continue;
+        prunedRow[expiry] = val;
+        if (nearTermKeep.has(expiry)) nearSum += val;
+      }
+      if (Object.keys(prunedRow).length === 0) continue;
+      outCells[strike] = prunedRow;
+      if (nearSum !== 0) {
+        strikeTotals[strike] = nearSum;
+        total += nearSum;
+      }
+    }
+    return { cells: outCells, strikeTotals, total };
   }
-  return data;
+
+  const gexPruned = pruneMetricCells(hm.gex.cells);
+  const vexPruned = pruneMetricCells(hm.vex.cells);
+  const dexPruned = hm.dex ? pruneMetricCells(hm.dex.cells) : null;
+  const charmPruned = hm.charm ? pruneMetricCells(hm.charm.cells) : null;
+
+  const gexFlip = cumulativeGammaFlip(gexPruned.strikeTotals, hm.spot);
+  const { callWall, putWall, regime: gexRegime } = computeGexRegime(
+    gexPruned.strikeTotals,
+    hm.spot,
+    gexFlip,
+    hm.max_pain
+  );
+
+  const vexFlip = computeZeroGammaFlip(vexPruned.strikeTotals, hm.spot);
+  const { posWall, negWall, regime: vexRegime } = computeVexRegime(
+    vexPruned.strikeTotals,
+    vexPruned.total
+  );
+
+  const finalStrikes = Array.from(
+    new Set([
+      ...Object.keys(gexPruned.cells),
+      ...Object.keys(vexPruned.cells),
+      ...(dexPruned ? Object.keys(dexPruned.cells) : []),
+      ...(charmPruned ? Object.keys(charmPruned.cells) : []),
+    ])
+  )
+    .map(Number)
+    .filter(Number.isFinite)
+    .sort((a, b) => b - a);
+
+  return {
+    ...hm,
+    expiries,
+    near_term_expiries:
+      nearKeep.length > 0 ? nearKeep : expiries.slice(0, NEAR_TERM_EXPIRY_COUNT),
+    strikes: finalStrikes,
+    gex: {
+      ...hm.gex,
+      cells: gexPruned.cells,
+      strike_totals: gexPruned.strikeTotals,
+      total: gexPruned.total,
+      flip: gexFlip,
+      call_wall: callWall,
+      put_wall: putWall,
+      regime: gexRegime,
+    },
+    vex: {
+      ...hm.vex,
+      cells: vexPruned.cells,
+      strike_totals: vexPruned.strikeTotals,
+      total: vexPruned.total,
+      flip: vexFlip,
+      pos_wall: posWall,
+      neg_wall: negWall,
+      regime: vexRegime,
+    },
+    ...(dexPruned && hm.dex
+      ? {
+          dex: {
+            ...hm.dex,
+            cells: dexPruned.cells,
+            strike_totals: dexPruned.strikeTotals,
+            total: dexPruned.total,
+            zero_level: computeZeroGammaFlip(dexPruned.strikeTotals, hm.spot),
+            regime: computeDexRegime(dexPruned.total),
+          },
+        }
+      : {}),
+    ...(charmPruned && hm.charm
+      ? {
+          charm: {
+            ...hm.charm,
+            cells: charmPruned.cells,
+            strike_totals: charmPruned.strikeTotals,
+            total: charmPruned.total,
+            zero_level: computeZeroGammaFlip(charmPruned.strikeTotals, hm.spot),
+            regime: computeCharmRegime(charmPruned.total),
+          },
+        }
+      : {}),
+  };
+}
+
+function rememberGoodHeatmap(cacheKey: string, data: GexHeatmap | null): GexHeatmap | null {
+  if (!data) return null;
+  const pruned = prunePastExpiriesFromHeatmap(data, todayEtYmd());
+  if (!pruned) return null;
+  if (pruned.spot > 0 && pruned.strikes.length > 0) {
+    lastGoodHeatmapLocal.set(cacheKey, pruned);
+  }
+  return pruned;
 }
 
 // Bound the ticker dimension so an unusual spread of (garbage) tickers can't leak
@@ -2243,16 +2376,27 @@ export async function fetchGexHeatmap(
   // name can serve up to ~20s-stale GEX.)
   const fastMove = isHeatmapPreset(root) && isHeatmapFastMove(root);
   const ttlMs = fastMove ? Math.min(baseTtlMs, GEX_HEATMAP_FAST_MOVE_TTL_MS) : baseTtlMs;
+  const today = todayEtYmd();
 
   if (!forceRefresh) {
     const mem = cachedHeatmaps.get(cacheKey);
-    if (mem && now - mem.at < ttlMs) return rememberGoodHeatmap(cacheKey, mem.data);
+    if (
+      mem &&
+      now - mem.at < ttlMs &&
+      !heatmapHasPastExpiries(mem.data, today)
+    ) {
+      return rememberGoodHeatmap(cacheKey, mem.data);
+    }
 
     let redisHit: { at: number; data: GexHeatmap } | null = null;
     try {
       const { sharedCacheGet } = await import("../shared-cache");
       redisHit = await sharedCacheGet<{ at: number; data: GexHeatmap }>(cacheKey);
-      if (redisHit && now - redisHit.at < ttlMs) {
+      if (
+        redisHit &&
+        now - redisHit.at < ttlMs &&
+        !heatmapHasPastExpiries(redisHit.data, today)
+      ) {
         setCachedHeatmap(cacheKey, redisHit);
         return rememberGoodHeatmap(cacheKey, redisHit.data);
       }
