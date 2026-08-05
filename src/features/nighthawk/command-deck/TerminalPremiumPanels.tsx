@@ -463,9 +463,18 @@ export function ManagementActionCard({
   progress: number | null;
 }) {
   const action = managementActionDisplay(play, recommendation, progress);
+  // The 15:50-ET "Decision Window" countdown is a 0DTE-ONLY same-session discipline (flat by the
+  // hard exit THIS session) — a Swing position runs 2-30 days, so a same-day countdown would be
+  // flatly false. The verb/size/urgency banner + reason + confidence rows above are horizon-agnostic
+  // (extended to Swing 2026-08-05, docs/audit/FINDINGS.md) and render for both; only this clock
+  // section is conditional. No swing-side "days remaining" substitute is shown — a Swing play has
+  // no pinned hard-exit instant to count down to (unlike 0DTE's fixed 15:50 ET), so a fabricated
+  // countdown would be dishonest; the Thesis tab's swing-status line covers the "why hold" context.
+  const showsClock = play.horizon === "ZERO_DTE";
   const [minutesRemaining, setMinutesRemaining] = useState<number | null>(null);
 
   useEffect(() => {
+    if (!showsClock) return;
     const tick = () => {
       const { hour, minute } = etNowParts();
       const clock = timeStopClock(hour * 60 + minute);
@@ -474,7 +483,7 @@ export function ManagementActionCard({
     tick();
     const id = window.setInterval(tick, 1000);
     return () => window.clearInterval(id);
-  }, []);
+  }, [showsClock]);
 
   const windowLabel = useMemo(
     () => (minutesRemaining != null ? decisionWindowLabel(minutesRemaining) : null),
@@ -507,18 +516,20 @@ export function ManagementActionCard({
             `action.probabilityPct` itself is untouched (still computed, still unit-tested) in case
             a future consumer needs the SELL-complemented framing specifically. */}
       </div>
-      <div className="nh-deck-action-card__window">
-        <span className="nh-deck-action-card__window-label">Decision Window</span>
-        <span className="nh-deck-action-card__window-clock">
-          {windowLabel ? (
-            <>
-              {windowLabel.mins}m <span className="nh-deck-action-card__window-sep" /> {windowLabel.secs}s
-            </>
-          ) : (
-            "—"
-          )}
-        </span>
-      </div>
+      {showsClock && (
+        <div className="nh-deck-action-card__window">
+          <span className="nh-deck-action-card__window-label">Decision Window</span>
+          <span className="nh-deck-action-card__window-clock">
+            {windowLabel ? (
+              <>
+                {windowLabel.mins}m <span className="nh-deck-action-card__window-sep" /> {windowLabel.secs}s
+              </>
+            ) : (
+              "—"
+            )}
+          </span>
+        </div>
+      )}
     </section>
   );
 }

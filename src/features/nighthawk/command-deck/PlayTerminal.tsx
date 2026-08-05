@@ -14,7 +14,7 @@ import type { DeckCondor } from "./types";
 import { markStreamKind } from "./deck-session-ui";
 import { PlayTimelinePanel } from "./PlayTimelinePanel";
 import { useSecondTick, useFlash } from "./use-deck-live";
-import { isZeroDtePremiumTerminal } from "./terminal-display";
+import { isZeroDtePremiumTerminal, swingStatusLine } from "./terminal-display";
 import type { ConvictionRankContext } from "./deck-command-center";
 import {
   ManagementActionCard,
@@ -451,8 +451,18 @@ function ThesisPanel({ play, sessionClosed = false }: { play: TerminalPlay; sess
             ? "frozen at close — gates/factors are the last board read, not a live stream."
             : "tape alignment from the board poll; mark/P&L from the marks stream.";
 
+  // Swing-only: the pre-entry/live observables the serving router (serving.ts) already keys on to
+  // place this name in a section (COMMIT_NOW/WAITING_FOR_ENTRY/WATCH/…) — surfaced here as the
+  // honest "why is this still WATCH" a member asks when a high-scoring name isn't actionable yet.
+  const swingLine = swingStatusLine(play);
+
   const commitSnapshot = (
     <>
+      {swingLine && (
+        <div className="nh-deck-recnote" style={{ opacity: 0.8, marginBottom: 6 }} title="Pre-entry setup maturity, entry-execution stance, and the serving section this name resolved to">
+          {swingLine}
+        </div>
+      )}
       {play.whyNow && (
         <div className="nh-deck-whynow" title="The event-driven scan trigger that surfaced this play">
           <span className="ic" aria-hidden>⚡</span>
@@ -916,10 +926,10 @@ function PnlPanel({ play }: { play: TerminalPlay }) {
       <div className="nh-deck-grid">
         <div><span className="k">Entry</span><span className="v">{has ? usd(play.entry) : "—"}</span></div>
         <div><span className="k">Live mark</span><span className="v">{usd(play.mark)}</span></div>
-        {/* Peak/trough already shown once in the hero (0DTE) and again in the excursion-graphic
-            stats row above — a 3rd rendering here was redundant for premium (0DTE) plays. Kept
-            for non-premium (Swing/LEAPS) rows, which carry neither the hero nor this excursion
-            stats row, so this grid is their only Peak/Trough surface. */}
+        {/* Peak/trough already shown once in the hero (0DTE/Swing) and again in the excursion-graphic
+            stats row above — a 3rd rendering here was redundant for premium plays. Kept for
+            non-premium (LEAPS/Legacy) rows, which carry neither the hero nor this excursion stats
+            row, so this grid is their only Peak/Trough surface. */}
         {has && !premium && <div><span className="k">Peak</span><span className="v nh-deck-pos">{signPct(play.peak)}</span></div>}
         {has && !premium && <div><span className="k">Trough</span><span className="v nh-deck-neg">{signPct(play.trough)}</span></div>}
       </div>
