@@ -111,6 +111,7 @@ test("applyDecisionHysteresis: direction flip at the same rank (BUY long -> BUY 
   s = r.state;
 
   r = step(s, { action: "BUY", direction: "short" }, START + 4_000);
+  s = r.state;
   r = step(s, { action: "BUY", direction: "short" }, START + 6_000);
   assert.deepEqual(r.decision, { action: "BUY", direction: "long" }, "still not confirmed (3 polls)");
 });
