@@ -13,8 +13,12 @@ import { isEtCashRth } from "@/lib/et-market-hours";
 import { shouldRunVectorBeadRecorder } from "@/lib/process-role";
 import {
   recordSharedUniverseWallSamples,
+  recordActiveNonUniverseWallSamples,
 } from "@/features/vector/lib/vector-bead-recorder-core";
-import { VECTOR_BEAD_RECORD_TICK_MS } from "@/features/vector/lib/vector-bead-recorder-logic";
+import {
+  VECTOR_BEAD_RECORD_TICK_MS,
+  VECTOR_BEAD_RECORD_ACTIVE_TICK_MS,
+} from "@/features/vector/lib/vector-bead-recorder-logic";
 import {
   alertWsLeaderFailClosedOnce,
   clearWsLeaderFailClosedAlert,
@@ -33,8 +37,10 @@ type IoredisLockExtra = FencedRedis & {
 let started = false;
 let isLeader = false;
 let tickTimer: ReturnType<typeof setInterval> | null = null;
+let activeTickTimer: ReturnType<typeof setInterval> | null = null;
 let leaderRefreshTimer: ReturnType<typeof setInterval> | null = null;
 let recordInFlight = false;
+let activeRecordInFlight = false;
 
 async function getLockRedis(): Promise<IoredisLockExtra | null> {
   const url = process.env.REDIS_URL?.trim();
@@ -109,7 +115,7 @@ async function tick(): Promise<void> {
     isLeader = await tryAcquireLead();
     if (!isLeader) return;
     startLeaderRefresh();
-    console.log("[vector-bead-recorder] acquired cluster lead — 5s universe bead recording");
+    console.log("[vector-bead-recorder] acquired cluster lead — 5s universe + 15s active-viewer bead recording");
   }
 
   recordInFlight = true;
@@ -130,7 +136,29 @@ async function tick(): Promise<void> {
   }
 }
 
-/** Boot the 5s bead recorder (idempotent). Runs on web + ingest; Redis picks one leader. */
+async function activeTick(): Promise<void> {
+  if (!isEtCashRth()) return;
+  if (activeRecordInFlight || !isLeader) return;
+
+  activeRecordInFlight = true;
+  try {
+    const result = await recordActiveNonUniverseWallSamples();
+    if (result.total > 0 && result.recorded === 0) {
+      console.warn(
+        `[vector-bead-recorder] active non-universe: zero samples (${result.failed}/${result.total} failed, ${result.elapsedMs}ms)`
+      );
+    }
+  } catch (err) {
+    console.error(
+      "[vector-bead-recorder] active tick error:",
+      err instanceof Error ? err.message : err
+    );
+  } finally {
+    activeRecordInFlight = false;
+  }
+}
+
+/** Boot the 5s universe + 15s active-viewer bead recorders (idempotent). */
 export function ensureVectorBeadRecorder(): void {
   if (started) return;
   if (!shouldRunVectorBeadRecorder()) return;
@@ -148,6 +176,18 @@ export function ensureVectorBeadRecorder(): void {
   runTick();
   tickTimer = setInterval(runTick, VECTOR_BEAD_RECORD_TICK_MS);
   (tickTimer as unknown as { unref?: () => void }).unref?.();
+
+  const runActiveTick = () => {
+    void activeTick().catch((err) => {
+      console.error(
+        "[vector-bead-recorder] active tick error:",
+        err instanceof Error ? err.message : err
+      );
+    });
+  };
+  runActiveTick();
+  activeTickTimer = setInterval(runActiveTick, VECTOR_BEAD_RECORD_ACTIVE_TICK_MS);
+  (activeTickTimer as unknown as { unref?: () => void }).unref?.();
 
   if (typeof process !== "undefined" && typeof process.once === "function") {
     const onSignal = () => releaseLead();

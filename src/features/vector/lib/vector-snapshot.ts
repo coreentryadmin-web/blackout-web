@@ -28,11 +28,12 @@ import { spyVolumeForMinuteBar } from "./vector-spy-volume";
 import {
   normalizeVectorTicker,
   VECTOR_DEFAULT_TICKER,
+  VECTOR_ORACLE_TICKERS,
 } from "./vector-ticker";
 import { expiriesForHorizon, type VectorDteHorizon } from "./vector-dte-horizon";
 import { getPerExpiryGexWalls } from "./vector-dte-walls-server";
 import { VECTOR_WALL_NODES_PER_SIDE } from "./vector-bar-timeframes";
-import { VECTOR_WALL_SCOPE_REFRESH_MS } from "./vector-cadence";
+import { VECTOR_WALL_SCOPE_REFRESH_MS, VECTOR_NON_UNIVERSE_WALL_SCOPE_REFRESH_MS } from "./vector-cadence";
 const VEX_WALLS_CACHE_MS = 8_000;
 const WALLS_CACHE_MS = 900;
 const FLIP_CACHE_MS = 5_000;
@@ -137,10 +138,18 @@ function state(ticker: string): TickerState {
   return s;
 }
 
+function wallScopeRefreshMs(ticker: string): number {
+  const t = normalizeVectorTicker(ticker);
+  return VECTOR_ORACLE_TICKERS.has(t)
+    ? VECTOR_WALL_SCOPE_REFRESH_MS
+    : VECTOR_NON_UNIVERSE_WALL_SCOPE_REFRESH_MS;
+}
+
 function refreshWallScope(ticker: string): void {
   const s = state(ticker);
   const now = Date.now();
-  if (now - s.wallScope.fetchedAt < VECTOR_WALL_SCOPE_REFRESH_MS || s.wallScopeInFlight) return;
+  const refreshMs = wallScopeRefreshMs(ticker);
+  if (now - s.wallScope.fetchedAt < refreshMs || s.wallScopeInFlight) return;
   s.wallScopeInFlight = runWallScopeFetch(ticker);
 }
 
@@ -176,8 +185,9 @@ export async function primeVectorWallScope(ticker: string = VECTOR_DEFAULT_TICKE
   const t = normalizeVectorTicker(ticker);
   const s = state(t);
   const now = Date.now();
+  const refreshMs = wallScopeRefreshMs(t);
   if (
-    now - s.wallScope.fetchedAt < VECTOR_WALL_SCOPE_REFRESH_MS &&
+    now - s.wallScope.fetchedAt < refreshMs &&
     (s.fallbackStrikeTotals || s.fallbackVexStrikeTotals)
   ) {
     return;

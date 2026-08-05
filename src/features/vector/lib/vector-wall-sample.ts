@@ -4,11 +4,19 @@ import type { WallHistorySample } from "./vector-wall-history";
 import { VECTOR_ORACLE_TICKERS, normalizeVectorTicker } from "./vector-ticker";
 import { hasLiveGexStrikeExpiry } from "@/lib/ws/uw-socket";
 
-/** Reference product cadence — gamma wall bead trail samples (live levels still ~1s). */
-export const DEFAULT_WALL_TRAIL_SAMPLE_SEC = 5;
-
-/** Tickers with live UW WS GEX data sample at 5s (real-time, not interpolation). */
+/** Universe + oracle cadence — 5s beads (recorder + desk stream). */
 export const ORACLE_WALL_TRAIL_SAMPLE_SEC = 5;
+
+/** Shared-universe recorder cadence — always 5s regardless of oracle membership. */
+export const UNIVERSE_WALL_TRAIL_SAMPLE_SEC = 5;
+
+/** Any ticker outside the shared universe (or live SSE on a non-oracle name) — 15s, not 5-min. */
+export const NON_UNIVERSE_WALL_TRAIL_SAMPLE_SEC = 15;
+
+/** @deprecated Use {@link NON_UNIVERSE_WALL_TRAIL_SAMPLE_SEC} — kept for env fallback min bound. */
+export const DEFAULT_WALL_TRAIL_SAMPLE_SEC = NON_UNIVERSE_WALL_TRAIL_SAMPLE_SEC;
+
+export type WallTrailSampleScope = "universe" | "live";
 
 const EMPTY_WALLS: GexWalls = { callWalls: [], putWalls: [] };
 
@@ -53,19 +61,21 @@ export function wallTrailSampleSec(): number {
   const raw =
     process.env.NEXT_PUBLIC_VECTOR_WALL_TRAIL_SAMPLE_SEC ??
     process.env.VECTOR_WALL_TRAIL_SAMPLE_SEC ??
-    DEFAULT_WALL_TRAIL_SAMPLE_SEC;
+    String(NON_UNIVERSE_WALL_TRAIL_SAMPLE_SEC);
   const n = Number(raw);
-  return Number.isFinite(n) && n >= 5 ? Math.floor(n) : DEFAULT_WALL_TRAIL_SAMPLE_SEC;
+  return Number.isFinite(n) && n >= 5 ? Math.floor(n) : NON_UNIVERSE_WALL_TRAIL_SAMPLE_SEC;
 }
 
 /**
- * Ticker-aware bucket interval: tickers with a live UW WS gex_strike_expiry
- * subscription get 5s beads (real-time GEX, not interpolation). Tickers without
- * live WS still sample at 5s from the Polygon heatmap refresh path. The static
- * oracle set (SPX/SPY/QQQ) is kept as a floor guarantee — those always get 5s
- * even before the first WS frame lands. An env override wins for all tickers.
+ * Ticker-aware bucket interval:
+ *  - `universe` scope (shared-universe recorder): always 5s — viewer or not.
+ *  - `live` scope (SSE hub + active non-universe recorder): oracle / live WS → 5s; else 15s.
+ * Env override wins for all tickers/scopes.
  */
-export function wallTrailSampleSecForTicker(ticker?: string | null): number {
+export function wallTrailSampleSecForTicker(
+  ticker?: string | null,
+  scope: WallTrailSampleScope = "live"
+): number {
   const envOverride =
     process.env.NEXT_PUBLIC_VECTOR_WALL_TRAIL_SAMPLE_SEC ??
     process.env.VECTOR_WALL_TRAIL_SAMPLE_SEC;
@@ -73,16 +83,25 @@ export function wallTrailSampleSecForTicker(ticker?: string | null): number {
     const n = Number(envOverride);
     if (Number.isFinite(n) && n >= 5) return Math.floor(n);
   }
+  if (scope === "universe") return UNIVERSE_WALL_TRAIL_SAMPLE_SEC;
   if (ticker) {
     const t = normalizeVectorTicker(ticker);
     if (VECTOR_ORACLE_TICKERS.has(t) || hasLiveGexStrikeExpiry(t)) {
       return ORACLE_WALL_TRAIL_SAMPLE_SEC;
     }
   }
-  return DEFAULT_WALL_TRAIL_SAMPLE_SEC;
+  return NON_UNIVERSE_WALL_TRAIL_SAMPLE_SEC;
 }
 
-/** Snap an epoch-second timestamp to the wall-trail bucket (5s by default). */
+/** Client-safe trail cadence — no WS store; oracle names 5s, everything else 15s. */
+export function vectorWallTrailSecClient(ticker?: string | null): number {
+  if (!ticker) return NON_UNIVERSE_WALL_TRAIL_SAMPLE_SEC;
+  return VECTOR_ORACLE_TICKERS.has(normalizeVectorTicker(ticker))
+    ? ORACLE_WALL_TRAIL_SAMPLE_SEC
+    : NON_UNIVERSE_WALL_TRAIL_SAMPLE_SEC;
+}
+
+/** Snap an epoch-second timestamp to the wall-trail bucket (15s default for live non-oracle). */
 export function bucketWallSampleTime(
   epochSec: number,
   bucketSec: number = wallTrailSampleSec()

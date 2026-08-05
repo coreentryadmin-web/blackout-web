@@ -1,13 +1,21 @@
 /** Vector live-data cadence — single source of truth for client + server tuning. */
 
+import { VECTOR_ORACLE_TICKERS, normalizeVectorTicker } from "./vector-ticker";
+
 /** SSE hub tick — spot + forming candle for every ticker. */
 export const VECTOR_SPOT_TICK_MS = 1_000;
 
-/** Wall bead trail sample + display bucket (live RTH). */
+/** Wall bead trail sample — shared universe + oracle names (server + client). */
 export const VECTOR_WALL_TRAIL_SEC = 5;
 
-/** Scoped DTE walls + wall-history REST poll (client). */
+/** Wall bead trail sample — any non-oracle ticker outside the always-on universe recorder. */
+export const VECTOR_NON_UNIVERSE_WALL_TRAIL_SEC = 15;
+
+/** Scoped DTE walls + wall-history REST poll — oracle / universe names. */
 export const VECTOR_WALLS_SCOPE_POLL_MS = 5_000;
+
+/** Scoped DTE walls + wall-history REST poll — non-oracle on-demand tickers. */
+export const VECTOR_NON_UNIVERSE_WALLS_SCOPE_POLL_MS = 15_000;
 
 /** Reconstructed GEX heatmap client poll during live session. */
 export const VECTOR_GEX_HEATMAP_POLL_MS = 5_000;
@@ -18,5 +26,16 @@ export const VECTOR_GEX_HEATMAP_CACHE_SEC = 5;
 /** Refetch heatmap when spot moves more than this fraction vs last fetch. */
 export const VECTOR_GEX_HEATMAP_FAST_MOVE_PCT = 0.005;
 
-/** Server wall-scope / heatmap fallback refresh. */
+/** Server wall-scope / heatmap fallback refresh — oracle path. */
 export const VECTOR_WALL_SCOPE_REFRESH_MS = 5_000;
+
+/** Server wall-scope refresh for non-oracle on-demand tickers. */
+export const VECTOR_NON_UNIVERSE_WALL_SCOPE_REFRESH_MS = 15_000;
+
+/** Client poll cadence for scoped walls / horizon history. */
+export function vectorWallsScopePollMs(ticker?: string | null): number {
+  if (ticker && VECTOR_ORACLE_TICKERS.has(normalizeVectorTicker(ticker))) {
+    return VECTOR_WALLS_SCOPE_POLL_MS;
+  }
+  return VECTOR_NON_UNIVERSE_WALLS_SCOPE_POLL_MS;
+}

@@ -153,7 +153,9 @@ import {
   VECTOR_GEX_HEATMAP_POLL_MS,
   VECTOR_WALLS_SCOPE_POLL_MS,
   VECTOR_WALL_TRAIL_SEC,
+  vectorWallsScopePollMs,
 } from "@/features/vector/lib/vector-cadence";
+import { vectorWallTrailSecClient } from "@/features/vector/lib/vector-wall-sample";
 import { vectorHeatmapScopeLabel } from "@/lib/gex-scope-labels";
 import { applySessionOverviewViewport } from "@/features/vector/lib/vector-chart-viewport";
 
@@ -1006,11 +1008,12 @@ function applyWallBeadMarkers(
   maxStrikes = wallCountForTimeframe(intervalMinutes),
   /** Pin a ghost bead at the latest bar for live-edge zoom — off during session overview so the
    *  full recorded trail stretches across RTH without a fake right-edge column. */
-  pinLiveAnchorBeads = true
+  pinLiveAnchorBeads = true,
+  trailBucketSec = VECTOR_WALL_TRAIL_SEC
 ): { strikes: number[]; rendered: StrikeTrail[] } {
   if (!beadsPlugin) return { strikes: [], rendered: [] };
   const bucketed = bucketWallHistoryForInterval(history, intervalMinutes, {
-    minBucketSec: VECTOR_WALL_TRAIL_SEC,
+    minBucketSec: trailBucketSec,
     liveBeads,
   });
   // Lifecycle carries each strike's birth/last-seen/active flags so the marker layer can anchor
@@ -1639,6 +1642,7 @@ export function VectorChart({
         : wallHistoryRef.current);
     const liveBeads = liveSessionRef.current && !replayModeRef.current;
     const pinLiveAnchorBeads = liveFollowEnabledRef.current;
+    const trailBucketSec = vectorWallTrailSecClient(ticker);
     const call = applyWallBeadMarkers(
       callBeadsRef.current,
       history,
@@ -1649,7 +1653,8 @@ export function VectorChart({
       lastBarTime,
       liveBeads,
       beadRowCap,
-      pinLiveAnchorBeads
+      pinLiveAnchorBeads,
+      trailBucketSec
     );
     const put = applyWallBeadMarkers(
       putBeadsRef.current,
@@ -1661,7 +1666,8 @@ export function VectorChart({
       lastBarTime,
       liveBeads,
       beadRowCap,
-      pinLiveAnchorBeads
+      pinLiveAnchorBeads,
+      trailBucketSec
     );
     // Feed the ribbon rail the SAME composed call+put trails (both sides share one frame reference).
     feedWallRail(wallRailPrimitiveRef.current, call.rendered, put.rendered, v.callColor, v.putColor, true);
@@ -1676,7 +1682,7 @@ export function VectorChart({
       reassertPriceAutoScale(series.priceScale());
     }
     pinCandlesOnTop(series);
-  }, []);
+  }, [ticker]);
 
   const refreshOverlays = useCallback(
     (
@@ -2192,8 +2198,33 @@ export function VectorChart({
 
       const visibleHistory = sliceHistoryToTime(sourceHistory, cursorTime);
       const v = lensVisuals(activeLens);
-      const call = applyWallBeadMarkers(callBeadsRef.current, visibleHistory, "callWalls", v.callColor, activeLens, timeframeRef.current, cursorTime);
-      const put = applyWallBeadMarkers(putBeadsRef.current, visibleHistory, "putWalls", v.putColor, activeLens, timeframeRef.current, cursorTime);
+      const trailBucketSec = vectorWallTrailSecClient(ticker);
+      const call = applyWallBeadMarkers(
+        callBeadsRef.current,
+        visibleHistory,
+        "callWalls",
+        v.callColor,
+        activeLens,
+        timeframeRef.current,
+        cursorTime,
+        false,
+        wallCountForTimeframe(timeframeRef.current),
+        true,
+        trailBucketSec
+      );
+      const put = applyWallBeadMarkers(
+        putBeadsRef.current,
+        visibleHistory,
+        "putWalls",
+        v.putColor,
+        activeLens,
+        timeframeRef.current,
+        cursorTime,
+        false,
+        wallCountForTimeframe(timeframeRef.current),
+        true,
+        trailBucketSec
+      );
       // Feed the ribbon rail the point-in-time trails so replay scrubs the bands too, not just dots.
       feedWallRail(wallRailPrimitiveRef.current, call.rendered, put.rendered, v.callColor, v.putColor, true);
       // Same zoom-stability guarantee in replay: widen the axis for the beads this frame drew.
@@ -2652,9 +2683,10 @@ export function VectorChart({
 
     void fetchScoped();
     void fetchHistory();
+    const scopePollMs = vectorWallsScopePollMs(ticker);
     // Refresh both walls and wall history on the same cadence for coherent display.
-    const id = liveSession ? setInterval(fetchScoped, VECTOR_WALLS_SCOPE_POLL_MS) : null;
-    const histId = liveSession ? setInterval(fetchHistory, VECTOR_WALLS_SCOPE_POLL_MS) : null;
+    const id = liveSession ? setInterval(fetchScoped, scopePollMs) : null;
+    const histId = liveSession ? setInterval(fetchHistory, scopePollMs) : null;
     return () => {
       cancelled = true;
       if (id) clearInterval(id);
@@ -2685,16 +2717,16 @@ export function VectorChart({
     onDteHorizonChange,
   ]);
 
-  // Narrowed DTE horizons draw from horizonHistoryRef, which the REST poll refreshes every 5s.
-  // While viewing live, also stamp scoped walls into the in-memory rail each trail bucket so
-  // SPY/QQQ/NVDA match SPX bead density without waiting for the server-side recorder round-trip.
+  // Narrowed DTE horizons draw from horizonHistoryRef, polled at ticker-aware cadence (5s oracle / 15s on-demand).
+  // While viewing live, stamp scoped walls into the in-memory rail each trail bucket.
   useEffect(() => {
     if (!liveSession || dteHorizon === "all") return;
+    const trailSec = vectorWallTrailSecClient(ticker);
     const id = setInterval(() => {
       if (replayModeRef.current) return;
       const walls = horizonWallsRef.current;
       if (!walls || (!walls.callWalls.length && !walls.putWalls.length)) return;
-      const sampleTime = bucketWallSampleTime(Math.floor(Date.now() / 1000), VECTOR_WALL_TRAIL_SEC);
+      const sampleTime = bucketWallSampleTime(Math.floor(Date.now() / 1000), trailSec);
       const sample = buildWallHistorySample({
         time: sampleTime,
         gexWalls: walls,
@@ -2707,7 +2739,7 @@ export function VectorChart({
       if (next === horizonHistoryRef.current) return;
       horizonHistoryRef.current = next;
       refreshTrails(lensRef.current);
-    }, VECTOR_WALL_TRAIL_SEC * 1000);
+    }, trailSec * 1000);
     return () => clearInterval(id);
   }, [liveSession, dteHorizon, ticker, refreshTrails]);
 

@@ -1,5 +1,8 @@
-/** Wall bead trail sample cadence — every ticker in the shared universe, viewer or not. */
+/** Wall bead trail sample cadence — shared universe (~100 tickers), viewer or not. */
 export const VECTOR_BEAD_RECORD_TICK_MS = 5_000;
+
+/** Active non-universe tickers (live Vector SSE viewers) — 15s bead persistence. */
+export const VECTOR_BEAD_RECORD_ACTIVE_TICK_MS = 15_000;
 
 /** Parallel heatmap reads per tick (Polygon cache-first; tune via env on prod). */
 export function vectorBeadRecordConcurrency(): number {

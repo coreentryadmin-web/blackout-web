@@ -39,8 +39,8 @@ test("VectorChart: manual zoom/pan blocks programmatic session refits", () => {
   assert.match(src, /memberViewportLocked\(chartUserPannedRef\.current, wheelZoomCooldownRef\.current\)/);
   assert.match(src, /sessionOverview && !following && !viewportLocked/);
   assert.match(src, /Wall-history poll runs every 5s/);
-  assert.match(src, /horizonHistoryRef/);
-  assert.match(src, /VECTOR_WALL_TRAIL_SEC \* 1000/);
+  assert.match(src, /vectorWallsScopePollMs/);
+  assert.match(src, /vectorWallTrailSecClient/);
 });
 
 test("vector-chart-viewport: session time range uses lastSessionBars", () => {

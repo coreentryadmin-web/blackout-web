@@ -66,9 +66,20 @@ const TTL_SEC = 48 * 60 * 60;
  */
 async function buildVectorUniverseRow(
   raw: string,
-  opts: { recordWallHistory?: boolean; sessionYmd?: string; nowSec?: number } = {}
+  opts: {
+    recordWallHistory?: boolean;
+    sessionYmd?: string;
+    nowSec?: number;
+    /** Universe recorder uses 5s buckets; live/active paths use 15s for non-oracle. */
+    bucketScope?: import("./vector-wall-sample").WallTrailSampleScope;
+  } = {}
 ): Promise<VectorUniverseRow | null> {
-  const { recordWallHistory = false, sessionYmd, nowSec = Math.floor(Date.now() / 1000) } = opts;
+  const {
+    recordWallHistory = false,
+    sessionYmd,
+    nowSec = Math.floor(Date.now() / 1000),
+    bucketScope = "universe",
+  } = opts;
   const ticker = normalizeVectorTicker(raw);
   const hm = await fetchGexHeatmap(ticker);
   const spot = hm?.spot ?? null;
@@ -84,7 +95,7 @@ async function buildVectorUniverseRow(
     : { callWalls: [], putWalls: [] };
 
   if (recordWallHistory && sessionYmd) {
-    const sampleTime = bucketWallSampleTime(nowSec, wallTrailSampleSecForTicker(ticker));
+    const sampleTime = bucketWallSampleTime(nowSec, wallTrailSampleSecForTicker(ticker, bucketScope));
     const sample = buildWallHistorySample({
       time: sampleTime,
       gexWalls,
@@ -130,12 +141,17 @@ async function buildVectorUniverseRow(
  */
 export async function recordVectorUniverseWallSample(
   raw: string,
-  opts: { sessionYmd: string; nowSec?: number }
+  opts: {
+    sessionYmd: string;
+    nowSec?: number;
+    bucketScope?: import("./vector-wall-sample").WallTrailSampleScope;
+  }
 ): Promise<boolean> {
   const row = await buildVectorUniverseRow(raw, {
     recordWallHistory: true,
     sessionYmd: opts.sessionYmd,
     nowSec: opts.nowSec ?? Math.floor(Date.now() / 1000),
+    bucketScope: opts.bucketScope ?? "universe",
   });
   return row != null;
 }
