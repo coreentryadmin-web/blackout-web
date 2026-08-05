@@ -13,7 +13,7 @@ import {
   type WallScopeState,
 } from "@/lib/providers/gex-wall-levels";
 import { todayEtYmd } from "@/lib/providers/spx-session";
-import { persistWallSampleDebounced, loadSessionWallHistory } from "./vector-wall-persist";
+import { persistWallSampleDebounced, loadSessionWallHistory, appendSessionWallSample } from "./vector-wall-persist";
 import { bucketWallSampleTime, buildWallHistorySample, wallTrailSampleSecForTicker } from "./vector-wall-sample";
 import {
   RECORDED_WALL_HORIZONS,
@@ -470,6 +470,72 @@ export function getVectorWallHistory(ticker: string = VECTOR_DEFAULT_TICKER): Wa
   return state(ticker).wallHistory;
 }
 
+/** Max age of a wall cache read before we refuse to stamp it into history (live + warm paths). */
+const STALE_RECORD_MAX_MS = 120_000;
+
+/**
+ * Record blended + narrowed wall-history samples when wall reads are fresh.
+ * Used by vector-walls-warm (~15–30s) so SPY/QQQ/NVDA rails accumulate server-side
+ * without requiring a live Vector viewer — the gap behind SPX's always-on desk stream.
+ */
+export async function recordVectorWallSamplesFromWarm(ticker: string): Promise<boolean> {
+  const t = normalizeVectorTicker(ticker);
+  joinGexStrikeExpiryTicker(t);
+  await primeVectorWallScope(t);
+
+  const s = state(t);
+  try {
+    const pos = await getGexPositioning(t);
+    s.cachedFlip = pos?.flip ?? null;
+  } catch {
+    /* honest gap — flip stays whatever the cache had */
+  }
+  s.cachedFlipAt = Date.now();
+
+  const sessionYmd = todayEtYmd();
+  if (s.sessionYmd !== sessionYmd) {
+    s.wallHistory = [];
+    s.sessionYmd = sessionYmd;
+    s.lastNarrowedWallBucket = 0;
+  }
+
+  const walls = getVectorGexWalls(t);
+  const vexWalls = getVectorVexWalls(t);
+  const gammaFlip = s.cachedFlip;
+  const vexFlip = getVectorVexFlip(t);
+  const nowMs = Date.now();
+  const gexRecordable = walls != null && nowMs - s.cachedWallsAt <= STALE_RECORD_MAX_MS;
+  const vexRecordable = vexWalls != null && nowMs - s.cachedVexWallsAt <= STALE_RECORD_MAX_MS;
+  if (!gexRecordable && !vexRecordable) return false;
+
+  const tickerBucketSec = wallTrailSampleSecForTicker(t);
+  const sampleTime = bucketWallSampleTime(Math.floor(nowMs / 1000), tickerBucketSec);
+  const sample = buildWallHistorySample({
+    time: sampleTime,
+    gexWalls: gexRecordable ? walls : null,
+    gammaFlip: gexRecordable ? gammaFlip : null,
+    vexWalls: vexRecordable ? vexWalls : null,
+    vexFlip: vexRecordable ? vexFlip : null,
+  });
+  if (!sample) return false;
+
+  s.wallHistory = recordWallSample(s.wallHistory, sample);
+  await appendSessionWallSample(sessionYmd, sample, t);
+
+  if (gexRecordable) {
+    const rows = await buildNarrowedHorizonWallSamples(t, sampleTime, {
+      walls,
+      flip: gammaFlip,
+    });
+    for (const r of rows) {
+      if (r.sample) await appendSessionWallSample(sessionYmd, r.sample, t, r.horizon);
+    }
+    s.lastNarrowedWallBucket = sampleTime;
+  }
+
+  return true;
+}
+
 export async function buildVectorStreamPayload(
   ticker: string = VECTOR_DEFAULT_TICKER
 ): Promise<VectorStreamPayload> {
@@ -518,7 +584,6 @@ export async function buildVectorStreamPayload(
   // window into history: during a provider outage the fallback stops
   // refreshing, and re-recording the same stale walls under fresh bucket times
   // fabricates a flat trail that was never observed (and persists it).
-  const STALE_RECORD_MAX_MS = 120_000;
   const nowMs = Date.now();
   const gexRecordable = walls != null && nowMs - s.cachedWallsAt <= STALE_RECORD_MAX_MS;
   const vexRecordable = vexWalls != null && nowMs - s.cachedVexWallsAt <= STALE_RECORD_MAX_MS;

@@ -61,7 +61,7 @@ export function wallTrailSampleSec(): number {
 /**
  * Ticker-aware bucket interval: tickers with a live UW WS gex_strike_expiry
  * subscription get 5s beads (real-time GEX, not interpolation). Tickers without
- * live WS data stay at 15s (Polygon heatmap REST caches ~8-20s). The static
+ * live WS still sample at 5s from the Polygon heatmap refresh path. The static
  * oracle set (SPX/SPY/QQQ) is kept as a floor guarantee — those always get 5s
  * even before the first WS frame lands. An env override wins for all tickers.
  */
@@ -82,7 +82,7 @@ export function wallTrailSampleSecForTicker(ticker?: string | null): number {
   return DEFAULT_WALL_TRAIL_SAMPLE_SEC;
 }
 
-/** Snap an epoch-second timestamp to the wall-trail bucket (15s by default). */
+/** Snap an epoch-second timestamp to the wall-trail bucket (5s by default). */
 export function bucketWallSampleTime(
   epochSec: number,
   bucketSec: number = wallTrailSampleSec()
