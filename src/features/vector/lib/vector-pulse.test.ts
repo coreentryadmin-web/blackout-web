@@ -136,9 +136,16 @@ test("detectPulseSignals: regime flip to unknown is suppressed", () => {
   assert.deepEqual(detectPulseSignals(prev, next), []);
 });
 
-test("detectPulseSignals: new level entering proximity", () => {
+test("detectPulseSignals: new level entering proximity at 'near' is silent (2026-08-05 noise cut)", () => {
   const prev = snap({ proximity: null });
-  const next = snap();
+  const next = snap(); // BASE_PROXIMITY.nearness === "near"
+  const sigs = detectPulseSignals(prev, next);
+  assert.equal(sigs.filter((s) => s.kind === "proximity").length, 0);
+});
+
+test("detectPulseSignals: new level entering proximity at 'testing' emits", () => {
+  const prev = snap({ proximity: null });
+  const next = snap({ proximity: { ...BASE_PROXIMITY, nearness: "testing" } });
   const sigs = detectPulseSignals(prev, next);
   const prox = sigs.find((s) => s.kind === "proximity");
   assert.ok(prox, "proximity signal emitted");
@@ -165,13 +172,11 @@ test("detectPulseSignals: nearness de-escalation emits no signal", () => {
   assert.equal(sigs.filter((s) => s.kind === "proximity").length, 0);
 });
 
-test("detectPulseSignals: proximity cleared", () => {
+test("detectPulseSignals: proximity cleared emits nothing (2026-08-05 noise cut — no longer announces absence)", () => {
   const prev = snap();
   const next = snap({ proximity: null });
   const sigs = detectPulseSignals(prev, next);
-  const cleared = sigs.find((s) => s.kind === "proximity");
-  assert.ok(cleared);
-  assert.ok(cleared!.line.includes("open space"));
+  assert.equal(sigs.filter((s) => s.kind === "proximity").length, 0);
 });
 
 test("detectPulseSignals: magnet pull direction change", () => {
@@ -373,7 +378,7 @@ test("flowAlertToPulseSignal: large call buy → bull signal", () => {
 
 test("flowAlertToPulseSignal: put buy → bear signal", () => {
   const flow: FlowAlert = {
-    ticker: "SPX", premium: 800_000, option_type: "put", expiry: "2026-07-16",
+    ticker: "SPX", premium: 1_100_000, option_type: "put", expiry: "2026-07-16",
     strike: 5500, direction: "buy", score: 85, route: "BLOCK", alerted_at: "2026-07-16T14:05:00Z",
   };
   const sig = flowAlertToPulseSignal(flow, 7000);
@@ -382,10 +387,18 @@ test("flowAlertToPulseSignal: put buy → bear signal", () => {
   assert.ok(sig!.line.includes("5500P"));
 });
 
-test("flowAlertToPulseSignal: below threshold → null", () => {
+test("flowAlertToPulseSignal: below threshold → null (2026-08-05: floor raised to $1M, matching the app-wide WHALE_PREMIUM bar)", () => {
   const flow: FlowAlert = {
-    ticker: "AAPL", premium: 100_000, option_type: "call", expiry: "2026-07-16",
+    ticker: "AAPL", premium: 800_000, option_type: "call", expiry: "2026-07-16",
     strike: 200, direction: "buy", score: 70, route: "", alerted_at: "2026-07-16T14:10:00Z",
+  };
+  assert.equal(flowAlertToPulseSignal(flow, 8000), null);
+});
+
+test("flowAlertToPulseSignal: directionless print above threshold → null (2026-08-05 noise cut)", () => {
+  const flow: FlowAlert = {
+    ticker: "AAPL", premium: 1_500_000, option_type: "call", expiry: "2026-07-16",
+    strike: 200, direction: "unknown", score: 70, route: "", alerted_at: "2026-07-16T14:10:00Z",
   };
   assert.equal(flowAlertToPulseSignal(flow, 8000), null);
 });

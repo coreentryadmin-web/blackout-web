@@ -13,6 +13,8 @@ import {
   filterFreshPulseSignals,
   wallEventToPulseSignal,
   flowAlertToPulseSignal,
+  dedupeByKindLevel,
+  applyGlobalRateCap,
   PULSE_FEED_MAX,
   type PulseSnapshot,
   type PulseSignal,
@@ -114,6 +116,32 @@ export function VectorPulse({
   // ── Flow dedup ref ──
   const seenFlowIdsRef = useRef<Set<string>>(new Set());
 
+  // ── Feed curation ledgers (2026-08-05 signal-quality pass) ── shared across ALL three signal
+  // sources below (core Vector detection, SPX play state, Helix flow prints) so the (kind, level)
+  // dedup and the global rate cap see the whole feed, not just one source's slice of it. These
+  // primitives (dedupeByKindLevel, applyGlobalRateCap) already existed — built 2026-07-26 for the
+  // SPX engine's rail — but were never wired into Vector's own feed, so every fresh transition
+  // landed in the feed uncapped. curateAndEmit below is the missing wiring.
+  const kindLevelSeenRef = useRef<Record<string, number>>({});
+  const rateCapRecentRef = useRef<number[]>([]);
+
+  function curateAndEmit(raw: PulseSignal[], now: number) {
+    if (raw.length === 0) return;
+    const { fresh, seen } = filterFreshPulseSignals(raw, seenMapRef.current, now);
+    seenMapRef.current = seen;
+    if (fresh.length === 0) return;
+
+    const { kept, seen: seenKL } = dedupeByKindLevel(fresh, kindLevelSeenRef.current, now);
+    kindLevelSeenRef.current = seenKL;
+    if (kept.length === 0) return;
+
+    const { emitted, recent } = applyGlobalRateCap(kept, rateCapRecentRef.current, now);
+    rateCapRecentRef.current = recent;
+    if (emitted.length === 0) return;
+
+    setFeed((prev) => [...emitted, ...prev].slice(0, PULSE_FEED_MAX));
+  }
+
   // ── Ticker reset ──
   const prevTickerRef = useRef(normalized);
   useEffect(() => {
@@ -124,6 +152,8 @@ export function VectorPulse({
       processedWallEventsRef.current = 0;
       prevPlayRef.current = null;
       seenFlowIdsRef.current = new Set();
+      kindLevelSeenRef.current = {};
+      rateCapRecentRef.current = [];
       prevTickerRef.current = normalized;
     }
   }, [normalized]);
@@ -153,18 +183,7 @@ export function VectorPulse({
       processedWallEventsRef.current = wallEvents.length;
     }
 
-    if (rawSignals.length > 0) {
-      const { fresh, seen } = filterFreshPulseSignals(
-        rawSignals,
-        seenMapRef.current,
-        now
-      );
-      seenMapRef.current = seen;
-
-      if (fresh.length > 0) {
-        setFeed((prev) => [...fresh, ...prev].slice(0, PULSE_FEED_MAX));
-      }
-    }
+    curateAndEmit(rawSignals, now);
 
     prevSnapshotRef.current = current;
   }, [regime, proximity, magnet, wallIntegrity, wallEvents, streamUpdatedAt]);
@@ -198,18 +217,7 @@ export function VectorPulse({
     const playSignals = detectPlayStateSignals(prevPlayRef.current, current, now);
     prevPlayRef.current = current;
 
-    if (playSignals.length > 0) {
-      const { fresh, seen } = filterFreshPulseSignals(
-        playSignals,
-        seenMapRef.current,
-        now
-      );
-      seenMapRef.current = seen;
-
-      if (fresh.length > 0) {
-        setFeed((prev) => [...fresh, ...prev].slice(0, PULSE_FEED_MAX));
-      }
-    }
+    curateAndEmit(playSignals, now);
   }, [spxPlay, isSpx, liveSession]);
 
   const playbookLines: PlayTerminalLine[] | null = useMemo(() => {
@@ -217,10 +225,12 @@ export function VectorPulse({
     return buildPlaybookTerminalLines(spxPlay.playbook_shadow, liveSession).slice(1);
   }, [isSpx, spxPlay, liveSession]);
 
-  // ── Helix flow prints (large options flow for current ticker) ──
+  // ── Helix flow prints (large options flow for current ticker) ── fetch floor matches
+  // flowAlertToPulseSignal's own $1M floor (2026-08-05) so the fetch doesn't pull rows the pulse
+  // signal builder will just discard.
   const { data: flowData } = useSWR(
     liveSession ? `pulse-flows-${normalized}` : null,
-    () => fetchFlows({ ticker: normalized, limit: 20, min_premium: 500_000 }),
+    () => fetchFlows({ ticker: normalized, limit: 20, min_premium: 1_000_000 }),
     { refreshInterval: liveSession ? 10_000 : 0, revalidateOnFocus: false, revalidateOnReconnect: false }
   );
 
@@ -244,18 +254,7 @@ export function VectorPulse({
       seenFlowIdsRef.current = new Set(arr.slice(arr.length - 100));
     }
 
-    if (newSignals.length > 0) {
-      const { fresh, seen } = filterFreshPulseSignals(
-        newSignals,
-        seenMapRef.current,
-        now
-      );
-      seenMapRef.current = seen;
-
-      if (fresh.length > 0) {
-        setFeed((prev) => [...fresh, ...prev].slice(0, PULSE_FEED_MAX));
-      }
-    }
+    curateAndEmit(newSignals, now);
   }, [flowData, liveSession]);
 
   // ── Derived state ──

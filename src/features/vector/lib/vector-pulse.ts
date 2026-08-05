@@ -180,8 +180,17 @@ export function detectPulseSignals(
     });
   }
 
-  // 2) Proximity — new level entered, nearness escalated, or level cleared.
-  if (next.proximityNearness && next.proximityStrike != null) {
+  // 2) Proximity — new level entered or nearness escalated. "near" is deliberately silent (2026-08-05
+  //    signal-quality pass): it's the lowest-conviction tier and fires on every minor drift toward
+  //    ANY level, which was the single biggest source of feed noise members complained about. Only
+  //    "testing"/"at" — genuinely actionable proximity — reaches the feed. The old "spot moved to
+  //    open space" clear message is also gone: it announced an absence of information, never a fact
+  //    worth a member's attention, so it was pure filler.
+  if (
+    next.proximityNearness &&
+    next.proximityNearness !== "near" &&
+    next.proximityStrike != null
+  ) {
     const sideLabel =
       next.proximitySide === "flip"
         ? "gamma flip"
@@ -216,15 +225,6 @@ export function detectPulseSignals(
       });
     }
   }
-  if (prev.proximityNearness && !next.proximityNearness) {
-    signals.push({
-      key: "prox:clear",
-      kind: "proximity",
-      tone: "info",
-      at,
-      line: "↔ spot moved to open space — no level in proximity",
-    });
-  }
 
   // 3) Magnet pull direction change.
   if (
@@ -242,20 +242,19 @@ export function detectPulseSignals(
     });
   }
 
-  // 4) Wall integrity tier changes.
+  // 4) Wall integrity tier changes — only the DEGRADED direction is worth an alert (2026-08-05):
+  //    a wall "weakening" changes what a member should trust; a wall "strengthening" is an
+  //    affirmation of the status quo, not new information to act on, and was pure noise.
   for (const side of ["call", "put"] as const) {
     const prevTier = side === "call" ? prev.callIntegrityTier : prev.putIntegrityTier;
     const nextTier = side === "call" ? next.callIntegrityTier : next.putIntegrityTier;
-    if (prevTier && nextTier && prevTier !== nextTier) {
-      const degraded = tierRank(nextTier) < tierRank(prevTier);
+    if (prevTier && nextTier && prevTier !== nextTier && tierRank(nextTier) < tierRank(prevTier)) {
       signals.push({
         key: `integrity:${side}:${nextTier}`,
         kind: "integrity",
-        tone: degraded ? "warn" : side === "call" ? "bull" : "bear",
+        tone: "warn",
         at,
-        line: degraded
-          ? `⚠️ ${side} wall confidence ${prevTier} → ${nextTier} — weakening, don't over-trust`
-          : `✅ ${side} wall confidence ${prevTier} → ${nextTier} — strengthening`,
+        line: `⚠️ ${side} wall confidence ${prevTier} → ${nextTier} — weakening, don't over-trust`,
       });
     }
   }
@@ -375,7 +374,11 @@ export function detectPlayStateSignals(
 // Flow alert → PulseSignal (large options prints from Helix)
 // ---------------------------------------------------------------------------
 
-const FLOW_MIN_PREMIUM = 500_000;
+// Aligned to the app-wide WHALE_PREMIUM bar (Helix's TickerDrawer/HelixFlowTable use the same
+// $1M floor for "whale" prints) rather than a bespoke Pulse-only number (2026-08-05 signal-quality
+// pass) — the old $500K floor let through a volume of routine prints members didn't consider
+// noteworthy relative to what the rest of the app already calls "big".
+const FLOW_MIN_PREMIUM = 1_000_000;
 
 function fmtPremium(n: number): string {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
@@ -391,7 +394,11 @@ export function flowAlertToPulseSignal(flow: FlowAlert, at: number): PulseSignal
   const isBearish = (flow.option_type === "put" && dir.includes("buy")) ||
     (flow.option_type === "call" && dir.includes("sell"));
 
-  const tone: PulseSignalTone = isBullish ? "bull" : isBearish ? "bear" : "info";
+  // A print that's neither clearly bullish nor bearish (route/side ambiguous) can't be acted on —
+  // drop it rather than surface an "INFO" row a member has to parse and then discard themselves.
+  if (!isBullish && !isBearish) return null;
+
+  const tone: PulseSignalTone = isBullish ? "bull" : "bear";
 
   const route = flow.route ? ` [${flow.route}]` : "";
   const gex = flow.gex_proximity ? ` · ${flow.gex_proximity.replace(/_/g, " ")}` : "";
