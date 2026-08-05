@@ -1,5 +1,37 @@
 # BlackOut Open Issues Log
-Last updated: 2026-08-05 16:57 ET
+Last updated: 2026-08-05 17:25 ET
+
+## spx-rth-2026-08-05 — SPX Slayer post-close fix agent (~1:05 PM PT / 4:05 PM ET)
+
+**Session:** Autonomous SPX Slayer **fix** mode per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` § Step 6 on branch `fix/spx-verdict-closed-flicker`. Commands: `npm run validate:spx-rth -- --phase=post-close` → `npm run validate:spx-e2e` → fix P1 `SPX-VERDICT-CLOSED-FLICKER` → re-validate → `npm run validate:deploy`.
+
+### Validation summary (post-close)
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth -- --phase=post-close` | ✅ **6 PASS · 1 WARN · 0 FAIL** — matrix 160 strikes GEX+VEX+DEX+CHARM, cross-endpoint spot merged=7723.55, BIE consistency, dashboard E2E nested, ops:collect zero items |
+| `npm run validate:spx-e2e` | ✅ **0 FAIL / 18 checks** (1 WARN: `bie-play-route` cron 401 expected; 1 SKIP: live-badge off-hours) — matrix every-cell-api 160 strikes, GEX+VEX tabs, commentary expand, play verdict SCANNING |
+| `npm run validate:deploy` | ✅ **GREEN** |
+
+### Fix shipped
+
+| Severity | ID | Detail | Status |
+|---|---|---|---|
+| P1 | SPX-VERDICT-CLOSED-FLICKER | Verdict bar showed CLOSED during brief `resolveDeskLive` drop while play API stayed SCANNING — `playSessionActive` replaced with stable `sessionActive` | **FIXED** PR `fix/spx-verdict-closed-flicker` |
+
+### Findings table (today's deferred P2 — no code change required)
+
+| Severity | ID | Detail | Fix defer? |
+|---|---|---|---|
+| P2 | SPX-DC-CRON-AUTH | `data-correctness` WARN — env `CRON_SECRET` stale; prod cron runs on AWS SM | defer |
+| P2 | SPX-BIE-CRON-401 | `bie-play-route` WARN — cron play HTTP 401 without bearer | defer (expected) |
+| P2 | SPX-FLOW-LANE-OFF | Desk lanes `flow=false` during some passes — pulse=true | monitor |
+
+**Post-close status: GREEN** — zero FAIL on `validate:spx-rth` and `validate:spx-e2e`. One P1 product fix merged (verdict CLOSED flicker). Matrix 100% vs API. Cross-tool integration (Thermal, HELIX, Largo, Grid, 0DTE, Night Hawk, BIE) all PASS.
+
+**Reports:** `audit-output/spx-rth-2026-08-05-post-close-1785964906163.json`, `audit-output/spx-dashboard-e2e-1785964910462.json`
+
+---
 
 ## rth-open-2026-08-05-pass10 — RTH comprehensive test sweep (~4:54–4:57 PM ET, post-close)
 
@@ -491,7 +523,7 @@ Last updated: 2026-08-05 16:57 ET
 | Severity | ID | Detail | Backing API | Fix defer? |
 |---|---|---|---|---|
 | — | — | **No P0 SPX data/signal defects** — matrix cells 100% vs API, SCANNING has no stale ✓, cross-tool aligned | — | GREEN |
-| P1 | SPX-VERDICT-CLOSED-FLICKER | Play verdict bar showed **CLOSED** for ~60s during RTH while play API remained **SCANNING** — `playSessionActive` drops when `resolveDeskLive` briefly false during desk lane refresh | `/api/market/spx/play` vs UI | post-close |
+| P1 | SPX-VERDICT-CLOSED-FLICKER | Play verdict bar showed **CLOSED** for ~60s during RTH while play API remained **SCANNING** — `playSessionActive` drops when `resolveDeskLive` briefly false during desk lane refresh | `/api/market/spx/play` vs UI | **FIXED** post-close (`fix/spx-verdict-closed-flicker`) |
 | INFO | SPX-RTH-ENV-NODE | Pass 3 cloud agent required `npm install` + `npx playwright install chromium` before harnesses ran | — | Resolved |
 | P2 | SPX-DC-CRON-AUTH | `data-correctness` WARN — CRON_SECRET auth mismatch in agent env (prod cron runs async) | cron probe | defer |
 | P2 | SPX-BIE-CRON-401 | `bie-play-route` WARN — cron play HTTP 401 (expected without cron bearer) | BIE cron | defer |

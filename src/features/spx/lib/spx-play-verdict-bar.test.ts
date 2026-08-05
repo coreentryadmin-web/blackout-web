@@ -103,10 +103,27 @@ test("buildPlayVerdictBarModel: watch mode prefers watch reason", () => {
   assert.equal(model.statusLine, "Break above 7450 call wall");
 });
 
-test("buildPlayVerdictBarModel: closed when session inactive", () => {
-  const model = buildPlayVerdictBarModel(basePlay(), { sessionActive: false, loading: false });
-  assert.equal(model.mode, "closed");
-  assert.equal(model.badge, "CLOSED");
+test("buildPlayVerdictBarModel: session active with SCANNING play stays hunting (not CLOSED)", () => {
+  const model = buildPlayVerdictBarModel(
+    basePlay({ action: "SCANNING", phase: "SCANNING", session_phase: "cash" }),
+    { sessionActive: true, loading: false }
+  );
+  assert.notEqual(model.mode, "closed");
+  assert.equal(model.badge, "HUNTING");
+});
+
+test("buildPlayVerdictBarModel: closed only when session inactive or play session_phase closed", () => {
+  const activeScan = buildPlayVerdictBarModel(basePlay(), { sessionActive: true, loading: false });
+  assert.notEqual(activeScan.mode, "closed");
+
+  const inactive = buildPlayVerdictBarModel(basePlay(), { sessionActive: false, loading: false });
+  assert.equal(inactive.mode, "closed");
+
+  const sessionClosed = buildPlayVerdictBarModel(
+    basePlay({ session_phase: "closed" }),
+    { sessionActive: true, loading: false }
+  );
+  assert.equal(sessionClosed.mode, "closed");
 });
 
 test("buildPlayVerdictBarModel: missing levels does not throw (degraded play path)", () => {
