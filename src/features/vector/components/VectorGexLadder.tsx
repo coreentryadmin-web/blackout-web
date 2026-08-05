@@ -3,7 +3,7 @@
 import clsx from "clsx";
 import { memo, useEffect, useRef, useState } from "react";
 import { buildGexLadder, type GexLadder, type GexLadderRow } from "@/features/vector/lib/vector-gex-ladder";
-import { VECTOR_WALLS_SCOPE_POLL_MS } from "@/features/vector/lib/vector-cadence";
+import { vectorWallsScopePollMs } from "@/features/vector/lib/vector-cadence";
 import { vectorGexScopeLabel } from "@/lib/gex-scope-labels";
 import type { VectorDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
 
@@ -102,9 +102,10 @@ export function VectorGexLadder({
     void load();
     // Live: refresh ladder structure every 15s. Spot updates come from chart SSE every tick.
     // Off-hours: one fetch — the ladder is static. Pre-warm on ticker/horizon change for faster navigation.
+    const pollMs = vectorWallsScopePollMs(ticker);
     const id =
       liveSession && (Date.now() - lastFetchTimeRef.current > 10_000)
-        ? setInterval(load, VECTOR_WALLS_SCOPE_POLL_MS)
+        ? setInterval(load, pollMs)
         : null;
     return () => {
       cancelled = true;

@@ -6,6 +6,7 @@ import {
   VectorPageShell,
   loadVectorSeedProps,
   normalizeVectorTicker,
+  VECTOR_ORACLE_TICKERS,
 } from "@/features/vector";
 import { noindexPageMetadata } from "@/lib/page-metadata";
 
@@ -29,12 +30,14 @@ export default async function VectorPage({ searchParams }: PageProps) {
   // modeled-prefix backfill, empty-case seeding) lives in loadVectorSeedProps — one code path for
   // both routes, zero drift. Preload the 0DTE recorded rail so the first paint shows the full
   // intraday bead trail when the member opens 0DTE (SPX Slayer + /vector SPX).
-  const seed = await loadVectorSeedProps(ticker, { seedDteHorizon: "0dte" });
+  const seed = await loadVectorSeedProps(ticker, {
+    seedDteHorizon: VECTOR_ORACLE_TICKERS.has(ticker) ? "0dte" : undefined,
+  });
 
   return (
     <VectorPageShell
       {...seed}
-      defaultDteHorizon={ticker === "SPX" ? "0dte" : undefined}
+      defaultDteHorizon={VECTOR_ORACLE_TICKERS.has(ticker) ? "0dte" : undefined}
       defaultChartViewport="session"
     />
   );
