@@ -7440,6 +7440,12 @@ body::before {
     order: 3;
     min-width: 0;
   }
+  /* 4th "action" column (Play card + Technicals + Alerts, 2026-08-05): stacks last on mobile,
+     same as any other panel — nothing is ever hidden, only reordered/reflowed by width. */
+  .vector-action-rail {
+    order: 4;
+    min-width: 0;
+  }
 
   @media (min-width: 1280px) {
     /* Proportions per member spec: ~10% ladder · ~60% chart · ~30% terminal. The ladder holds only a
@@ -7467,6 +7473,30 @@ body::before {
     .vector-terminal-rail .vector-pulse {
       flex: 1 1 auto;
       min-height: 0;
+    }
+    /* Between 1280px and the wide 4-column breakpoint below, the action rail hasn't earned its
+       own column yet — span the full 3-col grid width as a row underneath so it's still visible
+       without scrolling to the page bottom, just not squeezed into a 4th narrow column too early. */
+    .vector-action-rail {
+      grid-column: 1 / -1;
+      order: 1;
+    }
+  }
+
+  @media (min-width: 1600px) {
+    /* Wide desktop: genuine 4th column. Narrow the ladder/chart/terminal slightly to make room
+       (10/53/25/12) rather than keeping the terminal's 30% and cramming the action rail in free
+       space that doesn't exist. */
+    .vector-chart-terminal-grid {
+      grid-template-columns: minmax(96px, 10%) minmax(0, 1fr) minmax(280px, 25%) minmax(260px, 12%);
+    }
+    .vector-action-rail {
+      grid-column: auto;
+      order: 0;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      overflow-y: auto;
     }
   }
 
