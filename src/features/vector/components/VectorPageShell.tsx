@@ -22,6 +22,7 @@ import { VectorPulse } from "@/features/vector/components/VectorPulse";
 import { VectorPlayCard } from "@/features/vector/components/VectorPlayCard";
 import type { VectorPlay } from "@/features/vector/lib/vector-play-engine";
 import { VectorGexLadder } from "@/features/vector/components/VectorGexLadder";
+import { VectorDailyChart } from "@/features/vector/components/VectorDailyChart";
 import { VectorRegimeBanner } from "@/features/vector/components/VectorRegimeBanner";
 import { VectorAlertsPanel } from "@/features/vector/components/VectorAlertsPanel";
 import type { AlertRule, AlertKind, FiredAlert } from "@/features/vector/lib/vector-alerts";
@@ -164,6 +165,10 @@ export function VectorPageShell({
   const [dteHorizon, setDteHorizon] = useState<VectorDteHorizon>(defaultDteHorizon ?? "weekly");
   const [scannerOpen, setScannerOpen] = useState(false);
   const activeTicker = ticker || VECTOR_DEFAULT_TICKER;
+  // Daily/Weekly historical view (CTO audit P2 #5) — a separate chart surface from the intraday
+  // VectorChart (see VectorDailyChart's header comment for why). Standalone-page-only; the
+  // chart-only embed (SPX Slayer) never renders this toggle and always stays intraday.
+  const [chartView, setChartView] = useState<"intraday" | "1D" | "1W">("intraday");
 
   useEffect(() => {
     if (!compactPanels) return;
@@ -591,7 +596,21 @@ export function VectorPageShell({
               compactPanels && nativeShell && iosPanel !== "chart" && "ios-native-panel-hidden"
             )}
           >
-            {chartBlock}
+            {!iosCompactChrome && (
+              <div className="vector-chart-view-toggle" role="group" aria-label="Chart view">
+                {(["intraday", "1D", "1W"] as const).map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setChartView(v)}
+                    className={clsx("vector-chart-view-btn", v === chartView && "is-active")}
+                  >
+                    {v === "intraday" ? "Intraday" : v}
+                  </button>
+                ))}
+              </div>
+            )}
+            {chartView === "intraday" ? chartBlock : <VectorDailyChart ticker={activeTicker} />}
           </div>
 
           <div

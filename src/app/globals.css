@@ -8472,6 +8472,46 @@ body::before {
     @apply font-mono text-[10px] uppercase tracking-wide text-white/40;
   }
 
+  /* ── Intraday/Daily/Weekly chart-view switcher above the chart (P2 #5) ── */
+  .vector-chart-view-toggle {
+    @apply mb-2 flex w-fit gap-1 rounded-lg border border-cyan-400/30 bg-black/40 p-0.5;
+  }
+  .vector-chart-view-btn {
+    @apply rounded-md px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-cyan-300/70 transition-colors;
+  }
+  .vector-chart-view-btn.is-active {
+    @apply bg-cyan-400/20 text-cyan-200;
+  }
+
+  /* ── Daily/Weekly historical price view (P2 #5, separate from the intraday VectorChart) ── */
+  .vector-daily-chart {
+    @apply flex min-h-[min(72vh,640px)] flex-col gap-2 rounded-xl border border-cyan-500/20 bg-black/40 p-3;
+  }
+  .vector-daily-chart-head {
+    @apply flex flex-wrap items-center gap-3;
+  }
+  .vector-daily-chart-unit-toggle {
+    @apply flex gap-1 rounded-lg border border-cyan-400/30 bg-black/40 p-0.5;
+  }
+  .vector-daily-chart-unit-btn {
+    @apply rounded-md px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-cyan-300/70 transition-colors;
+  }
+  .vector-daily-chart-unit-btn.is-active {
+    @apply bg-cyan-400/20 text-cyan-200;
+  }
+  .vector-daily-chart-note {
+    @apply text-[11px] text-white/40;
+  }
+  .vector-daily-chart-canvas-wrap {
+    @apply relative min-h-0 flex-1;
+  }
+  .vector-daily-chart-canvas {
+    @apply h-full w-full;
+  }
+  .vector-daily-chart-overlay {
+    @apply absolute inset-0 flex items-center justify-center bg-black/50 text-sm text-cyan-300;
+  }
+
   /* ── Universe scanner: collapsible secondary panel below the chart ── */
   .vector-scanner-panel {
     @apply rounded-2xl border border-white/10 bg-[#07070c] overflow-hidden;
