@@ -355,7 +355,7 @@ export async function discoverBreakoutSetups(opts: {
       const { used_1dte_fallback, ...contract } = picked;
       const dollarNorm = maxDollar > 0 ? mover.dollar / maxDollar : 0;
       return {
-        setup: buildSetup({ mover, spot: chain.spot, contract, dollarNorm, direction }),
+        setup: buildSetup({ mover, spot: chain.spot, contract, dollarNorm, direction, todayYmd: today }),
         miss: null,
         oneDteFallback: used_1dte_fallback,
       };
