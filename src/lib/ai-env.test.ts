@@ -12,40 +12,35 @@ describe("ai-env", () => {
     process.env = env;
   });
 
-  it("largoBieOnly is true when LARGO_BIE_ONLY=1", async () => {
+  it("largoBieOnly is always false (Largo is Claude-only)", async () => {
     process.env.LARGO_BIE_ONLY = "1";
-    delete process.env.NEXT_PUBLIC_SITE_URL;
     const { largoBieOnly } = await import("@/lib/ai-env");
-    assert.equal(largoBieOnly(), true);
-  });
-
-  it("largoBieOnly is false on prod without opt-in", async () => {
-    delete process.env.LARGO_BIE_ONLY;
-    process.env.NEXT_PUBLIC_SITE_URL = "https://blackouttrades.com";
-    const { largoBieOnly, isStagingBieMode } = await import("@/lib/ai-env");
-    assert.equal(isStagingBieMode(), false);
     assert.equal(largoBieOnly(), false);
   });
 
-  it("staging + STAGING_LARGO_CLAUDE skips BIE router and enables Largo Claude gate", async () => {
-    process.env.NEXT_PUBLIC_SITE_URL = "https://staging.blackouttrades.com";
-    process.env.STAGING_LARGO_CLAUDE = "1";
-    process.env.ANTHROPIC_API_KEY = "sk-test";
-    const { largoSkipBieRouter, largoBieOnly, largoClaudeEnabled, claudeEnabled } = await import(
-      "@/lib/ai-env"
-    );
-    assert.equal(claudeEnabled(), false, "global Claude stays off");
-    assert.equal(largoClaudeEnabled(), true);
-    assert.equal(largoSkipBieRouter(), true);
-    assert.equal(largoBieOnly(), false);
-  });
-
-  it("LARGO_BIE_FIRST keeps BIE router on staging Largo Claude", async () => {
-    process.env.NEXT_PUBLIC_SITE_URL = "https://staging.blackouttrades.com";
-    process.env.STAGING_LARGO_CLAUDE = "1";
+  it("largoSkipBieRouter is always true", async () => {
     process.env.LARGO_BIE_FIRST = "1";
-    process.env.ANTHROPIC_API_KEY = "sk-test";
     const { largoSkipBieRouter } = await import("@/lib/ai-env");
-    assert.equal(largoSkipBieRouter(), false);
+    assert.equal(largoSkipBieRouter(), true);
+  });
+
+  it("largoClaudeEnabled on prod when Anthropic key present", async () => {
+    process.env.NEXT_PUBLIC_SITE_URL = "https://blackouttrades.com";
+    process.env.ANTHROPIC_API_KEY = "sk-test";
+    const { largoClaudeEnabled, largoAvailable, isStagingBieMode } = await import("@/lib/ai-env");
+    assert.equal(isStagingBieMode(), false);
+    assert.equal(largoClaudeEnabled(), true);
+    assert.equal(largoAvailable(), true);
+  });
+
+  it("staging requires STAGING_LARGO_CLAUDE for Largo", async () => {
+    process.env.NEXT_PUBLIC_SITE_URL = "https://staging.blackouttrades.com";
+    process.env.ANTHROPIC_API_KEY = "sk-test";
+    const { largoClaudeEnabled, claudeEnabled } = await import("@/lib/ai-env");
+    assert.equal(claudeEnabled(), false);
+    assert.equal(largoClaudeEnabled(), false);
+    process.env.STAGING_LARGO_CLAUDE = "1";
+    const mod = await import("@/lib/ai-env");
+    assert.equal(mod.largoClaudeEnabled(), true);
   });
 });
