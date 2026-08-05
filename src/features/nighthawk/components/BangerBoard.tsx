@@ -4,9 +4,24 @@
 // ZeroDteBoard/HorizonLaneBoard) for the whole-market weekly-banger discovery + live scale-out engine.
 // Mounted 2026-08-04 as the "Bangers" tab in the Night Hawk toggle (replacing the inactive LEAPS slot —
 // see nighthawk-view.ts) — functional against /api/market/banger/board, polled every 30s.
+//
+// 2026-08-05: fixed two live bugs a member reported (mint-admin-session + live screenshot confirmed
+// both — see FINDINGS.md). (1) The desktop Night Hawk shell locks `.nighthawk-single-view` to
+// `height:100svh; overflow:hidden` (nighthawk-v2.css, ≥821px) so EVERY tab must provide its own
+// internal scrollport — 0DTE/Swings do via `.nh-deck-rows` (globals.css: `overflow-y:auto;flex:1`),
+// but this board rendered a plain non-scrolling flex column, so past the first ~9 of 60 open
+// positions were silently clipped with no scrollbar and no way to reach them. Reusing the SAME
+// `.nh-deck-rows` class (rather than inventing new CSS) fixes it and is free — that class already
+// has iOS-shell and mobile-breakpoint overrides wired up app-wide. (2) The board also looked
+// visually foreign next to 0DTE/Swings because it hand-rolled its own pill/strip classes instead of
+// the shared `@/components/ui` primitives (Panel/Badge/EmptyState/Skeleton) those boards use —
+// swapped in here for visual parity, without adopting the much heavier bespoke two-pane command-deck
+// terminal (PlayTerminal/CommandDeck) that 0DTE/Swings use, which is a different master-detail UX
+// this board's simple expand-in-place list doesn't need.
 
 import { useState } from "react";
 import useSWR from "swr";
+import { Badge, EmptyState, Panel, Skeleton } from "@/components/ui";
 import { computeScaleOutTriggerInfo } from "@/lib/zerodte/scale-out";
 
 type BangerPlay = {
@@ -56,6 +71,21 @@ function statusLabel(status: BangerPlay["status"]): string {
       return "Stopped";
     default:
       return status;
+  }
+}
+
+function statusTone(status: BangerPlay["status"]): "bull" | "bear" | "sky" | "accent" {
+  switch (status) {
+    case "OPEN":
+      return "bull";
+    case "PARTIAL":
+      return "accent";
+    case "CLOSED_RUNNER":
+      return "sky";
+    case "STOPPED":
+      return "bear";
+    default:
+      return "sky";
   }
 }
 
@@ -154,7 +184,7 @@ function ScaleOutState({ play }: { play: BangerPlay }) {
 
 function PlayDetail({ play }: { play: BangerPlay }) {
   return (
-    <div className="flex flex-col gap-3 border-t border-white/10 px-3 py-3">
+    <div className="flex flex-col gap-3 border-t border-white/10 px-4 py-3">
       <div className="flex flex-col gap-1">
         <span className="text-[11px] font-bold uppercase tracking-wide text-white/50">Contract</span>
         <span className="font-mono text-xs text-white/80">
@@ -184,36 +214,39 @@ function PlayRow({ play }: { play: BangerPlay }) {
   const [expanded, setExpanded] = useState(false);
   const mult = multOf(play);
   return (
-    <div className="nighthawk-metric-pill w-full rounded-md border border-white/10">
+    <div
+      className={
+        "rounded-xl border border-white/[0.08] bg-white/[0.02] transition-colors " +
+        (expanded ? "bg-white/[0.03]" : "hover:bg-white/[0.03]")
+      }
+    >
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
         aria-expanded={expanded}
-        className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left"
+        className="flex w-full flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-3 text-left"
       >
-        <div className="flex flex-col">
-          <span className="font-mono text-sm font-bold">{play.ticker}</span>
-          <span className="text-[11px] uppercase tracking-wide text-white/50">
-            {play.contract.strike}C {play.contract.expiry}
-          </span>
-        </div>
-        <div className="flex flex-col items-end">
-          <span className="font-mono text-sm">
+        <span className="font-mono text-sm font-bold text-white">{play.ticker}</span>
+        <Badge tone={play.status === "OPEN" ? "sky" : "neutral"} size="sm">
+          {play.contract.strike}C {play.contract.expiry}
+        </Badge>
+        <Badge tone={statusTone(play.status)} size="sm" dot={play.status === "OPEN"}>
+          {statusLabel(play.status)}
+        </Badge>
+        <span className="ml-auto flex items-center gap-3">
+          <span className="font-mono text-sm text-white/90">
             ${play.entry_premium.toFixed(2)} → {play.last_mark != null ? `$${play.last_mark.toFixed(2)}` : "—"}
             {mult != null ? ` (${mult.toFixed(2)}x)` : ""}
           </span>
-          <span className="text-[11px] text-white/60">{statusLabel(play.status)}</span>
-        </div>
-        {play.realized_pnl_pct != null && (
-          <span
-            className={`font-mono text-sm font-bold ${play.realized_pnl_pct >= 0 ? "text-emerald-400" : "text-rose-400"}`}
-          >
-            {play.realized_pnl_pct >= 0 ? "+" : ""}
-            {play.realized_pnl_pct.toFixed(0)}%
+          {play.realized_pnl_pct != null && (
+            <Badge tone={play.realized_pnl_pct >= 0 ? "bull" : "bear"} size="sm">
+              {play.realized_pnl_pct >= 0 ? "+" : ""}
+              {play.realized_pnl_pct.toFixed(0)}%
+            </Badge>
+          )}
+          <span className="text-[10px] text-white/40" aria-hidden="true">
+            {expanded ? "▲" : "▼"}
           </span>
-        )}
-        <span className="text-[10px] text-white/40" aria-hidden="true">
-          {expanded ? "▲" : "▼"}
         </span>
       </button>
       {expanded && <PlayDetail play={play} />}
@@ -228,9 +261,9 @@ export function BangerBoard() {
 
   if (isLoading) {
     return (
-      <div className="nighthawk-record-strip" role="status">
-        <span className="nighthawk-record-label">Banger board</span>
-        <span className="nighthawk-record-value">Loading…</span>
+      <div className="space-y-4">
+        <Skeleton className="h-20 w-full rounded-2xl" />
+        <Skeleton className="h-72 w-full rounded-2xl" />
       </div>
     );
   }
@@ -238,12 +271,11 @@ export function BangerBoard() {
   if (error || !data?.available) {
     const reason = data?.reason ?? (error instanceof Error ? error.message : "unavailable");
     return (
-      <div className="nighthawk-record-strip" role="status">
-        <span className="nighthawk-record-label">Banger board</span>
-        <span className="nighthawk-record-value">
-          {data && data.enabled === false ? "Engine paused" : "Unavailable"} — {reason}
-        </span>
-      </div>
+      <EmptyState
+        icon="◆"
+        title={data && data.enabled === false ? "Engine paused" : "Board temporarily unavailable"}
+        description={reason}
+      />
     );
   }
 
@@ -251,31 +283,40 @@ export function BangerBoard() {
   const closed = data.closed ?? [];
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="nighthawk-record-strip" role="status">
-        <span className="nighthawk-record-label">Banger board</span>
-        <span className="nighthawk-record-value">{data.exit_rule_note}</span>
-      </div>
-      <div className="flex flex-col gap-2">
-        <span className="text-xs font-bold uppercase tracking-wide text-white/60">
-          Open ({open.length})
-        </span>
-        {open.length === 0 ? (
-          <span className="text-sm text-white/50">No open banger positions.</span>
-        ) : (
-          open.map((p) => <PlayRow key={p.id} play={p} />)
+    <div className="flex h-full min-h-0 flex-1 flex-col gap-3">
+      <Panel accent="bull" bodyClassName="px-5 py-4 md:px-6 md:py-4 shrink-0">
+        <div className="flex flex-wrap items-center gap-3">
+          <Badge tone="bull" size="md" dot>
+            Banger board
+          </Badge>
+          <span className="text-sm text-sky-100">{data.exit_rule_note}</span>
+        </div>
+      </Panel>
+
+      {/* .nh-deck-rows: the SAME scrollport class 0DTE/Swings use (globals.css) — required
+          because the desktop Night Hawk shell locks this tab's outer container to
+          height:100svh/overflow:hidden (nighthawk-v2.css), so without an explicit internal
+          scrollport, rows past the fold are clipped and unreachable (see file header). */}
+      <div className="nh-deck-rows flex min-h-0 flex-1 flex-col gap-2 pr-1">
+        <div className="flex flex-col gap-2">
+          <span className="text-xs font-bold uppercase tracking-wide text-white/60">Open ({open.length})</span>
+          {open.length === 0 ? (
+            <span className="text-sm text-white/50">No open banger positions.</span>
+          ) : (
+            open.map((p) => <PlayRow key={p.id} play={p} />)
+          )}
+        </div>
+        {closed.length > 0 && (
+          <div className="flex flex-col gap-2">
+            <span className="text-xs font-bold uppercase tracking-wide text-white/60">
+              Recently closed ({closed.length})
+            </span>
+            {closed.map((p) => (
+              <PlayRow key={p.id} play={p} />
+            ))}
+          </div>
         )}
       </div>
-      {closed.length > 0 && (
-        <div className="flex flex-col gap-2">
-          <span className="text-xs font-bold uppercase tracking-wide text-white/60">
-            Recently closed ({closed.length})
-          </span>
-          {closed.map((p) => (
-            <PlayRow key={p.id} play={p} />
-          ))}
-        </div>
-      )}
     </div>
   );
 }
