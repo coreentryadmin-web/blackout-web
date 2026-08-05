@@ -115,7 +115,7 @@ import { levelLinesFor, type LevelLine, type PriorDayOhlc } from "@/features/vec
 import { buildStructureMarkers } from "@/features/vector/lib/vector-structure-markers";
 import { buildFlowMarkers, DEFAULT_FLOW_MAX_MARKERS, type FlowPrint } from "@/features/vector/lib/vector-flow-markers";
 import { confluenceZones, confluenceCallouts, topConfluenceBand, type ConfluenceLevel } from "@/features/vector/lib/vector-confluence";
-import { summarizeTechnicals, technicalsCallouts } from "@/features/vector/lib/vector-technicals";
+import { summarizeTechnicals, technicalsCalloutLines, type TechnicalsLine } from "@/features/vector/lib/vector-technicals";
 import { playTechnicalsFromSummary } from "@/features/vector/lib/vector-server-technicals-core";
 import { buildVectorPlay, type VectorPlay, type PlayTechnicals } from "@/features/vector/lib/vector-play-engine";
 import { expectedMoveCallouts, type ExpectedMove } from "@/features/vector/lib/vector-expected-move";
@@ -276,8 +276,10 @@ type Props = {
    *  ladder) can re-scope to the SAME expiries the chart's walls use. */
   onDteHorizonChange?: (horizon: VectorDteHorizon) => void;
   /** Pre-formatted always-on technicals lines (VWAP/EMA/RSI/MACD/pocket/structure) for the desk
-   *  terminal — computed from the shown bars REGARDLESS of which overlays are toggled. Empty = warming up. */
-  onTechnicalsChange?: (lines: string[]) => void;
+   *  terminal — computed from the shown bars REGARDLESS of which overlays are toggled. Empty = warming
+   *  up. Each line carries its own bull/bear/warn/muted `tone` (derived from the same typed
+   *  TechnicalsSummary fields, not re-parsed from the text) so callers can color-code the card. */
+  onTechnicalsChange?: (lines: TechnicalsLine[]) => void;
   /** Options-implied EXPECTED MOVE callout lines (±1σ/2σ range), horizon-scoped. Empty when the
    *  chain has no real ATM IV to price it. Narrated by the terminal (#15 cone, slice 3a). */
   onExpectedMoveChange?: (lines: string[]) => void;
@@ -1990,8 +1992,8 @@ export function VectorChart({
     technicalsForPlayRef.current = playTechnicalsFromSummary(summary);
     const techCb = onTechnicalsChangeRef.current;
     if (techCb) {
-      const lines = technicalsCallouts(summary);
-      const key = lines.join("|");
+      const lines = technicalsCalloutLines(summary);
+      const key = lines.map((l) => l.text).join("|");
       if (key !== lastTechnicalsRef.current) {
         lastTechnicalsRef.current = key;
         techCb(lines);
