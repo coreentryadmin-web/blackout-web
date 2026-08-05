@@ -4,18 +4,14 @@
  * (which ticks every 1s) sees cache hits instead of expensive re-computations.
  */
 
-import { getVectorGexWalls, getVectorVexWalls } from "./vector-snapshot";
+import { recordVectorWallSamplesFromWarm } from "./vector-snapshot";
 import { getActiveVectorTickers } from "./vector-stream-hub";
 import { listDynamicUniverseTickers, mergeSharedUniverseTickers } from "./vector-dynamic-universe";
 
 export async function warmVectorWalls(ticker: string): Promise<void> {
-  // Force walls computation by calling the read functions.
-  // These check the in-memory cache and re-compute if expired.
-  // By running this cron frequently, we keep the cache warm for the SSE stream.
-  await Promise.all([
-    Promise.resolve(getVectorGexWalls(ticker)),
-    Promise.resolve(getVectorVexWalls(ticker)),
-  ]);
+  // Prime scope, warm caches, and persist a wall-history sample so non-SPX tickers
+  // accumulate bead rails at the warm cadence (~15–30s) without a live viewer.
+  await recordVectorWallSamplesFromWarm(ticker).catch(() => false);
 }
 
 /**

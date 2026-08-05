@@ -81,12 +81,14 @@ import {
   narrowedHorizonTrail,
   pickActiveStrikes,
   pickReplayTrailSource,
+  recordWallSample,
   strikeTrailLifecycle,
   trimHistoryForLiveTrails,
   type StrikeTrail,
   type VectorWallLens,
   type WallHistorySample,
 } from "@/features/vector/lib/vector-wall-history";
+import { bucketWallSampleTime, buildWallHistorySample } from "@/features/vector/lib/vector-wall-sample";
 import { pickKingStrikes, kingAnchorTitle } from "@/features/vector/lib/vector-king-anchor";
 import { smaSeries, emaSeries, vwapSeries, rsiSeries, macdSeries } from "@/features/vector/lib/vector-indicators";
 import {
@@ -2682,6 +2684,32 @@ export function VectorChart({
     emitWallIntegrity,
     onDteHorizonChange,
   ]);
+
+  // Narrowed DTE horizons draw from horizonHistoryRef, which the REST poll refreshes every 5s.
+  // While viewing live, also stamp scoped walls into the in-memory rail each trail bucket so
+  // SPY/QQQ/NVDA match SPX bead density without waiting for the server-side recorder round-trip.
+  useEffect(() => {
+    if (!liveSession || dteHorizon === "all") return;
+    const id = setInterval(() => {
+      if (replayModeRef.current) return;
+      const walls = horizonWallsRef.current;
+      if (!walls || (!walls.callWalls.length && !walls.putWalls.length)) return;
+      const sampleTime = bucketWallSampleTime(Math.floor(Date.now() / 1000), VECTOR_WALL_TRAIL_SEC);
+      const sample = buildWallHistorySample({
+        time: sampleTime,
+        gexWalls: walls,
+        gammaFlip: horizonFlipRef.current ?? gammaFlipRef.current,
+        vexWalls: null,
+        vexFlip: null,
+      });
+      if (!sample) return;
+      const next = recordWallSample(horizonHistoryRef.current, sample);
+      if (next === horizonHistoryRef.current) return;
+      horizonHistoryRef.current = next;
+      refreshTrails(lensRef.current);
+    }, VECTOR_WALL_TRAIL_SEC * 1000);
+    return () => clearInterval(id);
+  }, [liveSession, dteHorizon, ticker, refreshTrails]);
 
   // Lens (GEX↔VEX) is a selection too: re-derive the terminal so the lens-gated wall-integrity line
   // (and the rest) reflect the new lens immediately, not on the next SSE frame — which never arrives
