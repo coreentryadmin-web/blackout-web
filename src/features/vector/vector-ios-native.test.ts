@@ -14,6 +14,25 @@ test("VectorPageShell — native panel switcher on iOS", () => {
   assert.match(src, /vector-page-shell-native/);
 });
 
+test("VectorTechnicalsPanel — honest-absence + reuses VectorPulse's intel-card markup", () => {
+  const src = readFileSync(join(root, "src/features/vector/components/VectorTechnicalsPanel.tsx"), "utf8");
+  assert.match(src, /if \(!technicals \|\| technicals\.length === 0\) return null;/);
+  assert.match(src, /vp-intel-card/);
+  assert.match(src, /renderEmphasis/);
+});
+
+test("VectorPageShell — desktop action rail (Play/Technicals/Alerts) excluded from iOS native shell", () => {
+  const src = readFileSync(join(root, "src/features/vector/components/VectorPageShell.tsx"), "utf8");
+  assert.match(src, /vector-action-rail/);
+  assert.match(src, /!\(compactPanels && nativeShell\)/);
+  assert.match(src, /VectorTechnicalsPanel/);
+  // The action rail must render VectorPlayCard/VectorAlertsPanel exactly once (moved, not duplicated)
+  // and VectorPulse must be told to suppress its own inline Technicals card.
+  assert.equal((src.match(/<VectorPlayCard/g) ?? []).length, 1);
+  assert.equal((src.match(/<VectorAlertsPanel/g) ?? []).length, 1);
+  assert.match(src, /showTechnicals=\{false\}/);
+});
+
 test("Vector route — no DeskShell double offset", () => {
   const page = readFileSync(join(root, "src/app/(site)/vector/page.tsx"), "utf8");
   assert.doesNotMatch(page, /DeskShell/);

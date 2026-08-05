@@ -45,6 +45,11 @@ type Props = {
   alerts?: string[];
   wallIntegrity?: { call: WallIntegrity | null; put: WallIntegrity | null };
   liveSpot?: number | null;
+  /** Whether this instance renders its own inline TECHNICALS card in the intel grid. Default true
+   *  (unchanged behavior). The desktop action-rail layout (2026-08-05) passes false and renders
+   *  `VectorTechnicalsPanel` separately instead, so the card can live in its own column rather than
+   *  buried at the bottom of this narrative feed — same data, same markup, different placement. */
+  showTechnicals?: boolean;
 };
 
 const TONE_LABELS: Record<PulseSignalTone, string> = {
@@ -93,6 +98,7 @@ export function VectorPulse({
   alerts,
   wallIntegrity,
   liveSpot,
+  showTechnicals = true,
 }: Props) {
   const normalized = normalizeVectorTicker(ticker);
   const isSpx = normalized === "SPX";
@@ -393,8 +399,10 @@ export function VectorPulse({
           </div>
         )}
 
-        {/* Technicals */}
-        {technicals && technicals.length > 0 && (
+        {/* Technicals — omitted here when the host renders VectorTechnicalsPanel separately (the
+            desktop action-rail layout); showTechnicals defaults true so every other caller keeps
+            its inline card exactly as before. */}
+        {showTechnicals && technicals && technicals.length > 0 && (
           <div className="vp-intel-card">
             <div className="vp-intel-card-head">
               <span className="vp-intel-card-icon">≡</span>

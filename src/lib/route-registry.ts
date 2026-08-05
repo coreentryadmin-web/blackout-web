@@ -71,6 +71,10 @@ export const ROUTES: RouteDefinition[] = [
   { path: "/api/market/ticker-search", methods: ["GET"], area: "market", class: "read", description: "Ticker/company search." },
   { path: "/api/market/lotto/today", methods: ["GET"], area: "market", class: "read", description: "Today's SPX lotto state." },
   { path: "/api/market/zerodte/board", methods: ["GET"], area: "market", class: "read", description: "0DTE Command scanner board." },
+  { path: "/api/market/zerodte/record", methods: ["GET"], area: "market", class: "read", description: "0DTE Command multi-day track record." },
+  { path: "/api/market/banger/board", methods: ["GET"], area: "market", class: "read", description: "Night Hawk Bangers (Engine B) board." },
+  { path: "/api/market/helix/signal-outcomes", methods: ["GET"], area: "market", class: "read", description: "HELIX velocity/split signal follow-through ledger." },
+  { path: "/api/market/gex-matrix-deltas", methods: ["GET"], area: "market", class: "read", description: "Thermal matrix delta SSE stream." },
 
   // ── Platform / health (read) ───────────────────────────────────────────
   { path: "/api/market/platform/snapshot", methods: ["GET"], area: "platform", class: "read", description: "Cross-product one-call snapshot (SPX desk + flow + Night Hawk)." },
@@ -79,6 +83,7 @@ export const ROUTES: RouteDefinition[] = [
   { path: "/api/market/health", methods: ["GET"], area: "health", class: "read", description: "Market data health." },
 
   // ── SPX desk (read) ────────────────────────────────────────────────────
+  { path: "/api/market/spx/pin", methods: ["GET"], area: "spx", class: "read", description: "SPX end-of-day pin forecaster." },
   { path: "/api/market/spx/desk", methods: ["GET"], area: "spx", class: "read", description: "Full live SPX Sniper desk snapshot." },
   { path: "/api/market/spx/play", methods: ["GET"], area: "spx", class: "read", description: "SPX Slayer play-engine state." },
   { path: "/api/market/spx/pulse", methods: ["GET"], area: "spx", class: "read", description: "SPX pulse read." },
@@ -107,6 +112,7 @@ export const ROUTES: RouteDefinition[] = [
 
   // ── Night Hawk (read) ──────────────────────────────────────────────────
   { path: "/api/market/nighthawk/edition", methods: ["GET"], area: "nighthawk", class: "read", description: "Published Night Hawk edition." },
+  { path: "/api/market/nighthawk/horizons", methods: ["GET"], area: "nighthawk", class: "read", description: "Night Hawk unified horizon board (0DTE + Swings)." },
   { path: "/api/market/nighthawk/record", methods: ["GET"], area: "nighthawk", class: "read", description: "Night Hawk scoring record/dossier (GET read)." },
 
   // ── Track record (read) ────────────────────────────────────────────────
