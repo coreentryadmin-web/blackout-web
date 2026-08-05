@@ -2,9 +2,14 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { summarizeTechnicals, technicalsCallouts, type TechnicalsBar } from "./vector-technicals";
 
-/** Build bars from a close path: high=c+0.5, low=c-0.5, volume=1000, 1m spacing. */
+// RTH-anchored base (09:30 ET) — vwapSeries (used by summarizeTechnicals) is RTH-only (2026-08-05
+// audit fix: it must not anchor on pre/post-market prints), so fixture bars need to fall inside
+// 09:30-16:00 ET rather than raw epoch-0-based offsets, which land in 1970 pre-market.
+const RTH_T0 = Math.floor(Date.parse("2026-07-13T09:30:00-04:00") / 1000);
+
+/** Build bars from a close path: high=c+0.5, low=c-0.5, volume=1000, 1m spacing from the RTH open. */
 const barsFrom = (closes: number[]): TechnicalsBar[] =>
-  closes.map((c, i) => ({ time: 60 * i, high: c + 0.5, low: c - 0.5, close: c, volume: 1000 }));
+  closes.map((c, i) => ({ time: RTH_T0 + 60 * i, high: c + 0.5, low: c - 0.5, close: c, volume: 1000 }));
 
 // Accelerating (convex) trends, not linear ramps: a linear ramp makes MACD ≈ signal exactly, whose
 // bull/bear tie resolves on floating-point noise. A real accelerating trend keeps macd clearly on
