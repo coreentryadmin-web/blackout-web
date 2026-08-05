@@ -1,5 +1,79 @@
 # BlackOut Open Issues Log
-Last updated: 2026-08-05 15:47 ET
+Last updated: 2026-08-05 16:26 ET
+
+## grid-rth-2026-08-05 — 0DTE Command all-day verify pass (~4:23 PM ET, post-close)
+
+**Session:** 0DTE Command + Market Grid all-day RTH verification agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` verify mode on branch `cursor/0dte-grid-rth-agent-0b4f`. Commands: `npm run validate:grid-rth -- --force` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e` → `validate:zerodte-integration` → `data-validator.mjs` → extended Playwright on `/nighthawk`.
+
+**Note:** Classic Market Grid (`/grid` + 9 `/api/grid/*` routes) deleted 2026-07-07. 0DTE Command lives on `/nighthawk` with four view segments (0DTE / Swings / Bangers / Legacy). `/grid` returns HTTP 404.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:grid-rth` | ✅ **GREEN** — 14/14 PASS (`--force` post-close) |
+| `npm run validate:zerodte-logic` | ✅ **GREEN** — 17/17 PASS (gates, plans, lifecycle, mergePlays, ledger) |
+| `npm run validate:grid-e2e` | ✅ **GREEN** — 5/5 PASS |
+| `validate:zerodte-integration` | ✅ **GREEN** — 9/9 PASS |
+| `data-validator.mjs` | ⚠️ 31 PASS · 2 FAIL · 4 INFO (extended-hours oracle) |
+| `ops:collect` | ✅ zero action items |
+
+### 0DTE logic audit (exhaustive)
+
+| Layer | Result |
+|---|---|
+| Gate funnel | ✅ SETUP_MIN_GROSS, aggression, dominance, ITM guard — 0 violations (2 eligible / 7 total) |
+| Plan exits | ✅ stop −50%, target +100%, time stop 15:30 ET |
+| Trade lifecycle | ✅ OPEN → TRIM → CLOSED (sticky trough stop) |
+| Plan grading | ✅ stop wins when both touch same bar |
+| Session heat | ✅ CLOSED heat=0% (post-close); RTH→POST_COMMIT→LATE_SESSION unit-tested |
+| mergePlays UI | ✅ past cutoff / MOVED → SKIP not OPEN |
+| Ledger PnL math | ✅ 3 rows reconcile via `ledgerPnlMatches()` |
+| Finite numbers | ✅ no NaN/Infinity on live board |
+| `zerodte-warm` cron | ✅ accepted (background warm) |
+| `data-correctness` (zerodte surface) | ✅ flags=0 |
+
+### Cross-tool integration
+
+| Tool | Endpoint | Result |
+|---|---|---|
+| SPX bootstrap vs GEX | `spx/bootstrap` + `gex-positioning` | ✅ spot 7723.55 |
+| HELIX flows feed | `flows?limit=30` | ✅ 30 prints |
+| Night Hawk dedupe | board vs edition | ✅ 1 ticker withheld from scanner |
+| BIE consistency | `validate:zerodte-bie` | ✅ PASS |
+| Ledger PnL | 3 committed rows | ✅ all reconcile |
+
+### UI E2E (Playwright — `/nighthawk`)
+
+| # | Action | Result |
+|---|---|---|
+| `/grid` route probe | ✅ HTTP 404 (classic Grid removed; expected) |
+| `/nighthawk` default 0DTE view | ✅ Command deck visible |
+| Click segment **0DTE** | ✅ |
+| Click segment **Swings** | ✅ |
+| Click segment **Bangers** | ✅ |
+| Click segment **Legacy** | ✅ |
+| Board API | ✅ 7 setups · ledger 3 |
+| HELIX flows API | ✅ 20 prints |
+| Console errors | ✅ zero |
+
+### Findings table
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| — | — | **No P0/P1 product defects** on 0DTE Command surfaces | — | GREEN |
+| INFO | GRID-ROUTE-404 | `/grid` returns 404 — classic Market Grid deleted 2026-07-07; use `/nighthawk` | route | by design |
+| INFO | ENV-NODE-MODULES | Initial run failed — missing `pg`/`playwright`/`react` in cloud sandbox | — | Resolved via `npm install` |
+| P2 | DV-EXT-HOURS-ORACLE | `data-validator` FAIL NVDA Δ3.8% + AMD Δ6.5% vs Polygon **prev-close** during extended hours; board carries last RTH live marks | `zerodte/board` setups | defer (oracle mode) |
+| P2 | DV-POSTURE-NEAR-FLIP | net_gex sign vs posture divergence near gamma flip — documented legitimate state | `gex-positioning` | monitor |
+
+**Status: GREEN** — 0DTE Command all-day verify pass 0 P0/P1. All gates, plan exits, lifecycle states, ledger PnL, session heat cutoffs, and mergePlays rules verified. Cross-tool HELIX/Night Hawk/SPX bootstrap checks pass. No GitHub issue opened (no P0/P1).
+
+**Reports:** `audit-output/grid-rth-2026-08-05-verify-1785961447962.json`, `audit-output/zerodte-logic-1785961455325.json`, `audit-output/grid-e2e-1785961461682.json`, `audit-output/zerodte-integration-1785961486896.json`, `audit-output/validation-2026-08-05T20-24-52-005Z.md`
+
+**Screenshots:** `/opt/cursor/artifacts/grid-rth-2026-08-05/`
+
+---
 
 ## spx-rth-2026-08-05 — SPX Slayer all-day verify pass (~3:43 PM ET, afternoon)
 
