@@ -7,6 +7,7 @@
 import { writeFileSync } from "node:fs";
 import { fetchGexHeatmap } from "../src/lib/providers/polygon-options-gex.ts";
 import * as card from "../src/lib/thermal-discord-card.ts";
+import { buildThermalDiscordEmbed } from "../src/lib/thermal-discord-embed.ts";
 import { postDiscordWebhookWithFiles, redactWebhook } from "../src/lib/discord-post.ts";
 
 const tickers = card.THERMAL_DISCORD_TICKERS ?? ["SPY", "SPX", "QQQ"];
@@ -39,13 +40,10 @@ const png = await card.renderThermalDiscordCardPng(columns);
 writeFileSync("/opt/cursor/artifacts/thermal-discord-live.png", png);
 console.log("png bytes", png.byteLength, "host", redactWebhook(webhook));
 
-const content =
-  card.thermalDiscordCaption(columns) +
-  "\n_Off-hours live cache snapshot (24/7 preview)_";
-
+const embed = buildThermalDiscordEmbed(columns, "full");
 const ok = await postDiscordWebhookWithFiles(
   webhook,
-  { content },
+  { embeds: [embed] },
   [{ filename: "thermal-desk.png", bytes: png, contentType: "image/png" }],
   "thermal-desk-live"
 );

@@ -681,7 +681,7 @@ export async function renderThermalDiscordCardPng(
     .toBuffer();
 }
 
-/** Discord message body — no provider/stack names. Avoid markdown-sensitive glyphs. */
+/** @deprecated Use `buildThermalDiscordEmbed` — legacy plain-text caption kept for reference. */
 export function thermalDiscordCaption(columns: ThermalCardColumn[]): string {
   const today = todayEtYmd();
   const deskExpiries = new Set<string>();
