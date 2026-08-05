@@ -38,3 +38,13 @@ test("AccountPageShell — native scroll wrapper", () => {
   assert.match(src, /ios-account-scroll/);
   assert.match(src, /useIosNativeShell/);
 });
+
+test("VectorPulse — feed curation (dedup + rate cap) wired into all three signal sources (2026-08-05)", () => {
+  const src = readFileSync(join(root, "src/features/vector/components/VectorPulse.tsx"), "utf8");
+  assert.match(src, /dedupeByKindLevel/);
+  assert.match(src, /applyGlobalRateCap/);
+  assert.match(src, /function curateAndEmit/);
+  // All three emission sites (core detection, SPX play state, Helix flow prints) call the shared
+  // curator rather than each duplicating its own ad hoc filterFreshPulseSignals + setFeed.
+  assert.equal((src.match(/curateAndEmit\(/g) ?? []).length, 4); // 1 definition + 3 call sites
+});
