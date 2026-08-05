@@ -7267,6 +7267,113 @@ clean.
 merge-precedence design question stays OPEN per INTENTIONAL-DESIGN.md item #1, now with a working
 measurement tool and a real (if thin) first data point.
 
+## 2026-08-05 — [AUDIT TOOLING, INTENTIONAL-DESIGN #2] First real `veto-flicker-rate.mjs` run — 100% flicker on real data, but the number is a measurement artifact, not evidence — Cortex `cortex-gate.ts` NOT touched
+
+**Severity.** None (measurement only). **NO production behavior changed** — this entry documents why a
+Cortex change is *not* warranted from what was gathered, per the standing "only ship hysteresis on
+strong evidence" instruction.
+
+**Trigger.** PR #1679 (same day) plumbed `?date=` + `raw_events`/`raw_rejections` into
+`GET /api/admin/zerodte/funnel` specifically so `veto-flicker-rate.mjs` (INTENTIONAL-DESIGN item #2 —
+"is the stateless Cortex veto whipsawing candidates?") could finally run on real data instead of
+staying permanently INSUFFICIENT DATA. That PR's own second commit added
+`scripts/audit/veto-flicker-capture.mjs`, which authenticates as one temp admin Clerk user (same
+mint-sign_in_token → FAPI ticket-exchange flow as `data-validator.mjs`, deleted in a `finally`), calls
+the new endpoint, and merges `raw_rejections` (`zerodte_scan_rejections`, verbatim) + `raw_events`
+(`zerodte_discovery_events`, `detected`/`commit` → the "cleared" signal, `gate_blocked` → a second
+veto sighting) into the exact `--rejections` shape `veto-flicker-rate.mjs`'s APPROXIMATE mode expects.
+
+**Deploy gotcha hit first (not a code bug — noted for the runbook).** The very first capture calls,
+run right after PR #1679 merged, returned HTTP 200 with `session_date` pinned to `2026-08-04`
+regardless of the `?date=` value passed (tried `2026-08-05/-04/-03/07-31/07-30`), and the response body
+was **missing `raw_events`/`raw_rejections` entirely** — confirmed by a raw curl probe (bypassing the
+capture script) that the deployed route's key list was still the pre-#1679 shape. `ecr-push-production`
+(triggered on merge to `main`) was still `in_progress`/got `cancelled` (superseded by a second PR,
+#1680, merging on top seconds later — GitHub cancels an in-flight run on the same ref when a newer
+commit lands) — the ECS service was simply serving the prior image. Waited for the superseding run
+(head `47a97215`, includes both #1679 and #1680) to go `completed`/`success`, re-ran the capture, and
+`raw_events`/`raw_rejections` appeared immediately with `?date=` honored correctly. **Lesson for future
+same-day "merge then immediately validate" runs: check `actions/runs` for the *latest* run on `main`,
+not just the run kicked off by your own merge — a fast-following merge can cancel and supersede it.**
+
+**Real data gathered.** 5 real sessions via the capture script: 2026-07-28, 07-29, 07-30, 07-31 (all
+pre-dating the `zerodte_discovery_events` table itself — that table's persistence code
+(`discovery-events-persist.ts`) only shipped 2026-08-03 per PR #1582, so these 4 days carry
+`raw_events=0` and the merged input is `zerodte_scan_rejections` rows alone) and 2026-08-04 (the first
+full session with both tables live, `raw_events=1048`, `raw_rejections=176`). `2026-08-03` itself came
+back with zero `cortex_veto*` rows (a clean, not broken, empty result — excluded from the tally below).
+
+| session | passes (distinct ts) | veto episodes | cleared ≤3 passes | tickers vetoed |
+|---|---|---|---|---|
+| 2026-07-28 | 43 | 1 | 1 | SPY |
+| 2026-07-29 | 73 | 8 | 8 | AMD(4), INTC(3), MU(1) |
+| 2026-07-30 | 69 | 3 | 3 | INTC, AMD, AAOI |
+| 2026-07-31 | 54 | 2 | 2 | RIVN, COIN |
+| 2026-08-04 | 130 | 24 | 24 | MSFT(15), INTC(6), QQQ(2), AVGO(1) |
+| **combined** | — | **38** | **38 (100%)** | — |
+
+`veto-flicker-rate.mjs --rejections=<capture> --within=3 --json` on every one of the 5 sessions
+independently: **flicker_rate = 1.0 (100%), median_passes_to_clear = 1**, `never_cleared = 0` — every
+single day, no exceptions.
+
+**Why this headline number is NOT strong evidence (investigated, not just reported).** A 100%/median-1
+result on every single session, including days with wildly different ticker counts and episode counts,
+was suspicious enough to dig into the source tables rather than take at face value. Both
+`zerodte_scan_rejections` (`rejections.ts` module doc, L13-26) and `zerodte_discovery_events`
+(`discovery-events-persist.ts` module doc, L1-6: *"Throttled like rejections.ts — one row per ticker
+per DISTINCT state transition, not one row per ~2min scan cycle"*) are **write-throttled**: a row is
+only persisted when a per-ticker cursor's `(gate_failed, direction)` (or `(kind, gate, direction)`)
+state KEY changes from its previous value — an unchanged rejection reason across many consecutive scan
+passes writes nothing after the first row. `veto-flicker-rate.mjs`'s own APPROXIMATE-mode doc already
+flags the general risk ("absence can also mean 'not a candidate'"), but the throttle makes it worse
+than that: for the 4 pre-2026-08-03 sessions (no `discovery_events` at all), **every vetoed ticker
+appears in the merged export EXACTLY ONCE for the whole session** (one throttled write, never
+re-written because the gate/direction never changed) — so the tool's absence-based "cleared" signal
+fires trivially at the very next distinct timestamp in the pass list, **mechanically guaranteeing a
+100%/median-1 reading regardless of the ticker's true underlying veto duration.** Those 4 days'
+14 episodes (2026-07-28/29/30/31) are not evidence of flicker; they are an artifact of a single
+throttled write being the only data point available.
+
+**The one session that isn't purely an artifact.** 2026-08-04 (post-#1582, both tables live) shows
+real repeated state-transitions: MSFT wrote a fresh `cortex_veto:gex-walls` row **15 separate times**
+and INTC **6 times** across the session's ~130 distinct timestamps — each new write requires the
+per-ticker cursor to have moved to a *different* key (e.g. a `detected` event, a different gate) and
+back, which the throttle would not do for a merely-unchanging veto. That is a genuine signal that
+MSFT/INTC's Cortex verdict was toggling during 2026-08-04 — but it still cannot fully separate "Cortex
+actually cleared the veto that pass" from "the ticker fell out of candidacy that pass and came back"
+(the same ambiguity the tool's own docs flag for APPROXIMATE mode), because only the EXACT `--passes`
+input (per-scan-pass `{ ticker, cortex_decision }` rosters) can draw that line, and nothing in the
+current pipeline persists a full per-pass roster — building that would mean re-instrumenting the live
+scanner, which `veto-flicker-capture.mjs`'s own doc already calls "too invasive for a measurement" and
+out of scope here.
+
+**Verdict — insufficient/confounded evidence, no Cortex change.** Per the standing instruction to only
+touch `cortex-gate.ts` on strong evidence: this is not strong evidence. The clean 100%/median-1 result
+across 4/5 sessions is a throttle artifact, not a measurement of real Cortex behavior, and the one
+session with genuine signal (2026-08-04, MSFT/INTC) is suggestive but not conclusive without exact
+per-pass data. **`cortex-gate.ts` is untouched — no dwell/hysteresis added.**
+
+**Recommendation (documented, not shipped).** Now that `discovery-events-persist.ts` is live going
+forward (shipped 2026-08-03), every session from 2026-08-04 onward will carry the richer dual-table
+signal `veto-flicker-rate.mjs` can partially use — re-run this capture across a wider forward-looking
+window (e.g. 10-15 sessions from 2026-08-04 onward) before drawing any conclusion, since the 4
+artifact-only days should simply be excluded from any future rollup rather than blended in. If the
+MSFT/INTC-style repeated-transition pattern recurs on more tickers/sessions once enough
+post-2026-08-03 data accumulates, that would be the first *real* evidence worth a calibrated
+dwell/hysteresis trial — but that bar has not been met yet. The durable fix for the ambiguity itself
+(not attempted here — out of scope, would touch the live scanner) would be to have the scanner persist
+one extra discovery-event kind, e.g. `cortex_cleared`, on the specific transition "ticker was vetoed
+last pass, is a candidate with a non-veto Cortex decision this pass" — that would turn the APPROXIMATE
+mode's biggest ambiguity into an EXACT signal without needing a full per-pass roster export.
+
+**Scope of what shipped.** Documentation only (this entry + the INTENTIONAL-DESIGN.md item #2 update
+below). No source file under `src/` touched; no test added (no code changed). The capture script and
+endpoint plumbing that made this run possible were already merged in PR #1679.
+
+**Status:** MEASURED, INSUFFICIENT/CONFOUNDED EVIDENCE — Cortex veto statelessness (INTENTIONAL-DESIGN
+item #2) stays as-is. Revisit with a forward-looking multi-session re-run once enough post-2026-08-03
+discovery-events data accumulates, per the recommendation above.
+
 ## 2026-08-05 — [0DTE #B/#E re-scope] Accumulation badge + scoring-unification investigation — badge fixed (pinned-blob passthrough gap), unification already substantially shipped
 
 ### Investigation — is the operator's original framing ("#B: badge not surfaced", "#E: scoring not unified") still accurate?

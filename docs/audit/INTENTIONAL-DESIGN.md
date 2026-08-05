@@ -73,6 +73,23 @@ responsiveness for little stability. The tool tallies flicker rate, median passe
 per-ticker churn from a per-pass decision export (exact) or the `zerodte_scan_rejections`
 `cortex_veto*` codes (approximate). Only a **high** flicker rate is evidence for adding a dwell.
 
+**First real run — 2026-08-05 (see FINDINGS.md same date).** Captured 5 real sessions
+(2026-07-28…07-31, 08-04) via `veto-flicker-capture.mjs` (built on PR #1679's `?date=` +
+`raw_events`/`raw_rejections` funnel-endpoint plumbing). Raw APPROXIMATE-mode result: **100% flicker,
+median 1 pass-to-clear, every single session, 38/38 episodes** — but investigating *why* found this
+is mostly a measurement artifact, not a real signal: both `zerodte_scan_rejections` and
+`zerodte_discovery_events` are write-throttled to one row per ticker per DISTINCT state transition
+(not one row per scan pass), so for the 4 sessions that predate `discovery_events`
+(`discovery-events-persist.ts` shipped 2026-08-03, PR #1582) every vetoed ticker has exactly ONE row
+for the whole session — which trivially reads as "cleared next pass" by construction, regardless of
+the ticker's true veto duration. Only 2026-08-04 (both tables live) showed a *real* signal: MSFT
+re-wrote a fresh veto row 15 times and INTC 6 times across one session, real repeated state
+transitions, but still not resolvable into an EXACT clear-vs-dropped-candidacy distinction without a
+`--passes` export. **Verdict: insufficient/confounded evidence — `cortex-gate.ts` NOT touched.**
+Re-run forward-looking (2026-08-04 onward only, excluding the 4 pre-#1582 artifact-only days) once
+more post-throttle-fix sessions accumulate; the durable fix for the ambiguity itself would be a new
+`cortex_cleared` discovery-event kind (not attempted — would touch the live scanner).
+
 ---
 
 ## 3. PIN "defended wall" is a single-snapshot structural test (no temporal stability requirement)
