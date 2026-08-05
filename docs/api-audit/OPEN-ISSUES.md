@@ -1,5 +1,76 @@
 # BlackOut Open Issues Log
-Last updated: 2026-08-05 15:19 ET
+Last updated: 2026-08-05 15:46 ET
+
+## grid-rth-2026-08-05 — 0DTE Command all-day RTH verify pass (~3:40–3:46 PM ET, afternoon)
+
+**Session:** Autonomous Grid RTH agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` (verify mode) on branch `cursor/0dte-grid-rth-agent-be0c`. Commands: `npm run validate:grid-rth` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e` → `data-validator.mjs` → Playwright `/nighthawk` segment click-through (0DTE / Swings / Bangers / Legacy).
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:grid-rth` | ✅ **GREEN** (14/14; ~66s after `npm install`) |
+| `npm run validate:zerodte-logic` | ✅ **GREEN** (17/17) |
+| `npm run validate:grid-e2e` | ✅ **GREEN** (5/5; Playwright page-load + console clean) |
+| `data-validator.mjs` | ✅ **36 PASS / 0 FAIL** (5 INFO) |
+| UI segment click-through | ✅ **4/4 segments** — 0 console errors |
+| `ops:collect` | ✅ **0 action items** |
+
+### Live board state (15:43 ET)
+
+| Metric | Value |
+|---|---|
+| Session heat | `POST_COMMIT` (70%) |
+| Setups | 8 total · **2 eligible** · 0 gate violations |
+| Ledger | 3 rows · PnL math consistent |
+| Upstream | `upstream_ok=true` |
+| Time-stop cutoff | 15:30 ET (constant verified) |
+
+### 0DTE logic probes (all PASS)
+
+- Gate funnel: SETUP_MIN_GROSS, aggression, dominance, ITM guard
+- Plan exits: stop −50%, target +100%, time stop 15:30 ET
+- Trade lifecycle: OPEN → TRIM → CLOSED (sticky trough stop)
+- Plan grading: stop-first when both touch same bar
+- Session heat: RTH → POST_COMMIT → LATE_SESSION alignment
+- `mergePlays`: past cutoff / MOVED → SKIP (not OPEN)
+- Ledger PnL: 3 rows checked, finite numbers
+
+### Cross-tool integration
+
+| Check | Result |
+|---|---|
+| SPX bootstrap spot vs GEX | ✅ spot 7739.03 |
+| HELIX flows feed scanner | ✅ 20 prints |
+| Night Hawk dedupe | ✅ 1 ticker covered elsewhere |
+| `zerodte-warm` cron | ✅ background warm accepted |
+| `data-correctness` (grid surface) | ✅ flags=0 |
+
+### UI validation (`/nighthawk` — classic `/grid` deleted 2026-07-07)
+
+| Segment | Click | Deck mount | Console |
+|---|---|---|---|
+| 0DTE (Command Deck) | ✅ | ✅ | 0 errors |
+| Swings | ✅ | ✅ | 0 errors |
+| Bangers | ✅ | ✅ | 0 errors |
+| Legacy | ✅ | ✅ | 0 errors |
+
+`/grid` returns **404** (expected — 0DTE Command absorbed into `/nighthawk`).
+
+### Findings table
+
+| Severity | ID | Detail | Fix |
+|---|---|---|---|
+| — | — | **No P0/P1 product defects** on 0DTE Command / Night Hawk surfaces | GREEN |
+| INFO | ENV-NODE-MODULES | Initial `validate:grid-rth` failed — missing `pg`/`react`/`playwright` (cold env) | Resolved via `npm install` + `npx playwright install chromium` |
+| INFO | GRID-ROUTE-404 | `/grid` returns 404 — classic Market Grid deleted; 0DTE Command on `/nighthawk` | By design (2026-07-07) |
+| INFO | CRON-SECRET-STALE-ENV | Pre-install cron probes returned 401; post-install GREEN via `auditSecret()` | Use AWS SM / `auditSecret()` for cron probes |
+
+**Status: GREEN** — full Grid RTH verify pass, 0 P0/P1, all logic gates/lifecycle/mergePlays/cross-tool checks passed. No GitHub issue opened (no P0/P1).
+
+**Reports:** `audit-output/grid-rth-2026-08-05-verify-1785959065598.json`, `audit-output/zerodte-logic-1785958962964.json`, `audit-output/grid-e2e-1785959078420.json`, `/opt/cursor/artifacts/grid-rth-ui/grid-rth-ui-report.json`
+
+---
 
 ## rth-open-2026-08-05-pass8 — RTH comprehensive test sweep (~2:13–2:21 PM ET, afternoon)
 
