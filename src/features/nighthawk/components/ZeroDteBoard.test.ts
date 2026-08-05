@@ -422,6 +422,123 @@ test("mergePlays: ledger row's PINNED entry_context.cortex blob wins over the se
   assert.equal(view.verdict.supports[0]!.detail, "commit-time read");
 });
 
+// ── AccumulationBadge data (mergePlays flow_accumulation mapping) ──────────────────
+// FINDINGS 2026-08-05: the card's badge previously read ONLY row.setup?.flow_accumulation
+// (the LIVE top-N scan match), so a committed play's badge silently went dark the
+// moment its ticker fell out of that snapshot — even though the entry-time evidence
+// that actually confirmed the direction never changed. These mirror the cortex/tier
+// pinned-blob tests above for the SAME passthrough discipline.
+
+test("mergePlays: committed row's PINNED entry_context.flow_accumulation survives even with NO live setup match", () => {
+  const rows = mergePlays(
+    [], // no live setup for NVDA at all — proves the read doesn't depend on it
+    [
+      {
+        ticker: "NVDA",
+        direction: "long",
+        score_max: 80,
+        spike: false,
+        first_flagged_at: new Date().toISOString(),
+        underlying_at_flag: 138,
+        top_strike: 140,
+        conviction: null,
+        entry_premium: 4.2,
+        flow_avg_fill: 4.2,
+        status: "HOLD",
+        last_mark: 4.5,
+        live_pnl_pct: 7.14,
+        move_pct: null,
+        direction_hit: null,
+        plan_outcome: null,
+        plan_pnl_pct: null,
+        graded: false,
+        nighthawk_echo: null,
+        flow_accumulation: {
+          direction: "bull",
+          strength: 82,
+          days: 3,
+          net_signed_premium: 900_000,
+          magnet_strike: 145,
+          magnet_side: "call",
+          aligned: true,
+        },
+      },
+    ],
+    "RTH"
+  );
+  const acc = rows[0]!.flow_accumulation;
+  assert.ok(acc, "pinned accumulation blob survives with no live setup present");
+  assert.equal(acc!.aligned, true);
+  assert.equal(acc!.days, 3);
+});
+
+test("mergePlays: a malformed/legacy entry_context.flow_accumulation falls back to the live setup's read, never fabricates one", () => {
+  const setup = fakeSetup("TSLA", null);
+  setup.flow_accumulation = { direction: "bear", strength: 55, days: 2, net_signed_premium: -400_000, magnet_strike: 250, magnet_side: "put", aligned: true };
+  const rows = mergePlays(
+    [setup],
+    [
+      {
+        ticker: "TSLA",
+        direction: "short",
+        score_max: 80,
+        spike: false,
+        first_flagged_at: new Date().toISOString(),
+        underlying_at_flag: 250,
+        top_strike: 250,
+        conviction: null,
+        entry_premium: 4.2,
+        flow_avg_fill: 4.2,
+        status: "HOLD",
+        last_mark: 4.5,
+        live_pnl_pct: 7.14,
+        move_pct: null,
+        direction_hit: null,
+        plan_outcome: null,
+        plan_pnl_pct: null,
+        graded: false,
+        nighthawk_echo: null,
+        flow_accumulation: "not-an-object", // malformed — must not crash or fabricate a read
+      },
+    ],
+    "RTH"
+  );
+  const acc = rows[0]!.flow_accumulation;
+  assert.ok(acc, "falls back to the live setup's read");
+  assert.equal(acc!.days, 2);
+});
+
+test("mergePlays: pre-wire-in ledger row with no flow_accumulation anywhere carries null (no badge, never a fabricated one)", () => {
+  const rows = mergePlays(
+    [],
+    [
+      {
+        ticker: "MU",
+        direction: "long",
+        score_max: 80,
+        spike: false,
+        first_flagged_at: new Date().toISOString(),
+        underlying_at_flag: 100,
+        top_strike: 100,
+        conviction: null,
+        entry_premium: 4.2,
+        flow_avg_fill: 4.2,
+        status: "HOLD",
+        last_mark: 4.5,
+        live_pnl_pct: 7.14,
+        move_pct: null,
+        direction_hit: null,
+        plan_outcome: null,
+        plan_pnl_pct: null,
+        graded: false,
+        nighthawk_echo: null,
+      },
+    ],
+    "RTH"
+  );
+  assert.equal(rows[0]!.flow_accumulation, null);
+});
+
 test("mergePlays: pre-wire-in ledger row with no cortex anywhere carries a null view (honest gates-only line)", () => {
   const rows = mergePlays(
     [],

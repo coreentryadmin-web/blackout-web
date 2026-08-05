@@ -163,6 +163,16 @@ export type ZeroDteBoardLedgerRow = {
    *  committed before the tier wiring shipped — the pane simply shows no chip,
    *  never a re-derived or fabricated grade. */
   tier: Record<string, unknown> | null;
+  /** Commit-time multi-day flow-accumulation read pinned on the row (entry_context.
+   *  flow_accumulation, scan.ts) — the SAME evidence blob the live scan attaches to
+   *  a fresh setup (flow-accumulation-context.ts), frozen at commit. Without this the
+   *  card's accumulation badge (ZeroDteBoard.tsx AccumulationBadge, #951) silently went
+   *  dark for every committed/tracked play the moment its ticker fell out of the live
+   *  top-N scan snapshot (byTicker match on `setup`) — even though the entry-time read
+   *  that actually confirmed the direction never changed. Same passthrough contract as
+   *  `cortex`/`tier` above: served opaque, validated structurally client-side; null on
+   *  rows committed before this wiring / with no multi-day signal at commit. */
+  flow_accumulation: Record<string, unknown> | null;
   /** Terminal v2 — the REAL resolved exit ladder the engine runs on this row (trim-scale
    *  ⅓/⅓ ladder or the single ratchet track), resolved from the row's FROZEN
    *  exit_policy_snapshot (entry_context) and priced/fired against entry + peak. The terminal
@@ -441,6 +451,10 @@ function mapLedgerRow(
     tier:
       r.entry_context && typeof r.entry_context.tier === "object"
         ? ((r.entry_context.tier as Record<string, unknown> | null) ?? null)
+        : null,
+    flow_accumulation:
+      r.entry_context && typeof r.entry_context.flow_accumulation === "object"
+        ? ((r.entry_context.flow_accumulation as Record<string, unknown> | null) ?? null)
         : null,
     // Terminal v2 additive block — all null-safe. The exit ladder is resolved from the
     // FROZEN policy (never current code); bid/ask/greeks + the executable P&L come from the
