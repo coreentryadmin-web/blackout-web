@@ -18,10 +18,14 @@ export const dynamic = "force-dynamic";
  * payload (like the walls route) so the shared per-ticker stream fan-out stays lean; the panel
  * polls this on its own cadence.
  *
- * Data source is the SAME near-term aggregate that feeds the chart's default ("all") walls —
- * `GexHeatmap.gex.strike_totals` (strike → signed net GEX). `buildGexLadder` bands it around spot
- * and returns display-ready rows. Rounded at the data layer (repo policy — `strike_totals` are raw
- * provider floats). Horizon-scoping the ladder to the chart's DTE toggle is a documented follow-up.
+ * Data source for the default ("all") horizon is `GexHeatmap.gex.strike_totals` (strike → signed
+ * net GEX), the SAME near-term aggregate that feeds the chart's default walls. `buildGexLadder`
+ * bands it around spot and returns display-ready rows. Rounded at the data layer (repo policy —
+ * `strike_totals` are raw provider floats).
+ *
+ * A narrowed DTE horizon (0DTE/weekly/monthly) is scoped via `getHorizonStrikeTotals`, which
+ * re-derives the ladder from the same per-expiry chain reconstruction the chart's DTE walls use —
+ * see the fallback branch below for the "all"/thin-chain degrade.
  */
 export async function GET(req: NextRequest) {
   const auth = await authorizeMarketDeskApi(req);

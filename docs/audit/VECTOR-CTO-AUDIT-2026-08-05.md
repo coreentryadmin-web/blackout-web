@@ -5,6 +5,21 @@ verified live 2026-08-05). Scope: `src/features/vector/**`, `src/app/(site)/vect
 `src/app/api/market/vector/**`, `src/app/api/cron/vector-*`. This is a strategic product review,
 not a bug report — no code changes accompany this doc.
 
+**Update (same day, post-review):** both P0 items below turned out to need less than the audit
+assumed. §4 P0 item 1 (GEX ladder DTE-horizon scoping) was **already fully implemented** as of
+PR #1197 — the audit's "gap" was a stale TODO comment (`VectorGexLadder.tsx`/the ladder route),
+not a real gap; the code (`getHorizonStrikeTotals`, `vector-dte-walls-server.ts`) already re-scopes
+the ladder to the chart's DTE toggle. That comment is now corrected. §4 P0 item 2
+(`vector-play-engine.ts` unconsumed) was half-right: the engine already feeds BIE/Largo's context
+(`vector-full-state.ts`), but nothing rendered its output as a visible chart-page card — that half
+is now built (see `docs/audit/FINDINGS.md`, 2026-08-05 "Vector Suggested Play card" entry): a new
+`VectorPlayCard` in the Pulse rail, fed by a new `onPlayChange` emission from `VectorChart.tsx` that
+assembles the same `VectorSnapshot` BIE already reads and calls the existing, already-tested
+`buildVectorPlay`. Lesson for future audits of this codebase: a "no consuming UI found" or
+stale-looking TODO comment is exactly the class of thing this repo has been bitten by before
+(see the pin-projection and oscillator-menu stale comments noted in §3) — verify against the route/
+lib code directly, not just the component tree, before calling something a gap.
+
 ## 1. What Vector is, in one paragraph
 
 Vector is the platform's live dealer-positioning chart: a candlestick chart with GEX/VEX wall

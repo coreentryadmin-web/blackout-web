@@ -112,6 +112,8 @@ import { buildStructureMarkers } from "@/features/vector/lib/vector-structure-ma
 import { buildFlowMarkers, DEFAULT_FLOW_MAX_MARKERS, type FlowPrint } from "@/features/vector/lib/vector-flow-markers";
 import { confluenceZones, confluenceCallouts, topConfluenceBand, type ConfluenceLevel } from "@/features/vector/lib/vector-confluence";
 import { summarizeTechnicals, technicalsCallouts } from "@/features/vector/lib/vector-technicals";
+import { playTechnicalsFromSummary } from "@/features/vector/lib/vector-server-technicals-core";
+import { buildVectorPlay, type VectorPlay, type PlayTechnicals } from "@/features/vector/lib/vector-play-engine";
 import { expectedMoveCallouts, type ExpectedMove } from "@/features/vector/lib/vector-expected-move";
 import { evaluateAlerts, type AlertRule, type AlertState, type FiredAlert } from "@/features/vector/lib/vector-alerts";
 import { sessionHodLod } from "@/features/vector/lib/vector-key-levels";
@@ -275,6 +277,11 @@ type Props = {
   /** Options-implied EXPECTED MOVE callout lines (±1σ/2σ range), horizon-scoped. Empty when the
    *  chain has no real ATM IV to price it. Narrated by the terminal (#15 cone, slice 3a). */
   onExpectedMoveChange?: (lines: string[]) => void;
+  /** The fused, single concrete trade idea (`buildVectorPlay`) — assembled from the SAME signals
+   *  already emitted above (regime/magnet/proximity/confluence/wall-integrity/technicals/expected
+   *  move/max-pain), re-derived on every selection change and live tick. Null when there isn't
+   *  enough structure yet (no spot) — never fabricated. */
+  onPlayChange?: (play: VectorPlay | null) => void;
   /** Member-defined alert rules for THIS ticker (wall-touch / flip-cross). Evaluated on each live tick. */
   alertRules?: AlertRule[];
   /** Fired alerts from the latest tick (already deduped/cooled-down by the engine) — for toast + terminal. */
@@ -1146,6 +1153,7 @@ export function VectorChart({
   onDteHorizonChange,
   onTechnicalsChange,
   onExpectedMoveChange,
+  onPlayChange,
   alertRules,
   onAlertsFired,
   leadSlot,
@@ -1189,6 +1197,16 @@ export function VectorChart({
   const lastExpectedMoveRef = useRef<string>("");
   useEffect(() => {
     onExpectedMoveChangeRef.current = onExpectedMoveChange;
+  });
+  // The fused play (buildVectorPlay) — technicalsForPlayRef caches the raw TechnicalsSummary the
+  // always-on terminal narration already computes (see paintOverlays), mapped once via
+  // playTechnicalsFromSummary so emitPlay never re-summarizes bars itself. onPlayChangeRef/
+  // lastPlayKeyRef follow the same latest-callback / dedupe pattern as every other emit* above.
+  const onPlayChangeRef = useRef(onPlayChange);
+  const technicalsForPlayRef = useRef<PlayTechnicals | null>(null);
+  const lastPlayKeyRef = useRef<string>("");
+  useEffect(() => {
+    onPlayChangeRef.current = onPlayChange;
   });
   // Alerts: the member's rules + the engine's per-rule state + the prior spot (for flip-cross), all
   // in refs so the []-dep tick handler reads the latest without re-subscribing the SSE stream.
@@ -1925,9 +1943,11 @@ export function VectorChart({
     // replay frame, toggle) from the SHOWN bars, INDEPENDENT of the enabled-overlay set, so the desk
     // terminal keeps reading VWAP/EMA/RSI/MACD/pocket/structure even when nothing is toggled on the
     // chart. Deduped so an unchanged read is not re-emitted.
+    const summary = summarizeTechnicals(bars, spotRef.current);
+    technicalsForPlayRef.current = playTechnicalsFromSummary(summary);
     const techCb = onTechnicalsChangeRef.current;
     if (techCb) {
-      const lines = technicalsCallouts(summarizeTechnicals(bars, spotRef.current));
+      const lines = technicalsCallouts(summary);
       const key = lines.join("|");
       if (key !== lastTechnicalsRef.current) {
         lastTechnicalsRef.current = key;
@@ -2411,6 +2431,52 @@ export function VectorChart({
     onWallIntegrityChange(integ);
   }, [onWallIntegrityChange, liveGexWalls]);
 
+  // Emit the fused Vector PLAY (buildVectorPlay) — the single concrete trade idea a member sees in
+  // the Pulse rail's "Suggested Play" card. Re-derives regime/magnet/proximity/confluence/wall-
+  // integrity from the SAME horizon-scoped walls/flip the other emit* callbacks above use (cheap,
+  // pure re-derivation rather than plumbing five extra refs), and reads maxPain/expectedMove/
+  // technicals off the refs those already-existing fetches/paints populate. Deduped by a coarse key
+  // (headline/conviction/grade/entry) so an unchanged read never re-renders the card.
+  const emitPlay = useCallback(() => {
+    const cb = onPlayChangeRef.current;
+    if (!cb) return;
+    const spot = spotRef.current;
+    const walls = liveGexWalls();
+    const flip = liveGammaFlip();
+    const regime = deriveVectorRegime({
+      spot,
+      gammaFlip: flip,
+      topCallWall: walls?.callWalls?.[0]?.strike ?? null,
+      topPutWall: walls?.putWalls?.[0]?.strike ?? null,
+    });
+    const magnet = deriveGammaMagnet({ spot, walls, posture: regime.posture });
+    const proximity = deriveWallProximity({ spot, walls, gammaFlip: flip });
+    const zones = spot && spot > 0 ? confluenceZones(gatherConfluenceLevels(spot), spot) : [];
+    const integrity = scoreTopWalls(walls, wallHistoryRef.current);
+    const play = buildVectorPlay({
+      ticker,
+      horizon: dteHorizonRef.current,
+      timeframeMin: timeframeRef.current,
+      spot,
+      regime: { posture: regime.posture },
+      gexWalls: walls,
+      gammaFlip: flip,
+      magnet,
+      proximity,
+      expectedMove: expectedMoveBandsRef.current,
+      maxPain: maxPainValueRef.current,
+      confluenceZones: zones,
+      wallIntegrity: integrity,
+      technicals: technicalsForPlayRef.current,
+    });
+    const key = play
+      ? `${play.headline}|${play.conviction}|${play.grade}|${play.entryZone ?? ""}`
+      : "none";
+    if (key === lastPlayKeyRef.current) return;
+    lastPlayKeyRef.current = key;
+    cb(play);
+  }, [ticker, liveGexWalls, liveGammaFlip, gatherConfluenceLevels]);
+
   // Evaluate the member's alert rules against the CURRENT live tick (spot + horizon-scoped walls +
   // flip). The pure engine does the dedupe/cooldown/hysteresis; we just persist its state + the prior
   // spot (for flip-cross) and forward any fired alerts. No-op when there are no rules or no callback.
@@ -2451,6 +2517,7 @@ export function VectorChart({
     lastProximityRef.current = "";
     lastMagnetRef.current = "";
     lastWallIntegrityRef.current = "";
+    lastPlayKeyRef.current = "";
 
     const repaintLive = () => {
       if (replayModeRef.current || !seriesRef.current) return;
@@ -2469,6 +2536,7 @@ export function VectorChart({
       emitConfluence();
       paintConfluenceBand();
       emitWallIntegrity();
+      emitPlay();
     };
 
     const fitSessionOverview = () => {
@@ -2523,6 +2591,7 @@ export function VectorChart({
         applyMaxPainLine(seriesRef.current, maxPainLineRef, null);
         emitConfluence(); // the max-pain level just landed — the zone stack may have changed
         paintConfluenceBand();
+        emitPlay();
       } catch {
         // Network throw: keep the last-drawn line rather than blank it on a transient blip.
       }
@@ -2556,6 +2625,7 @@ export function VectorChart({
         // actual draw on the "expected-move" toggle.
         expectedMoveBandsRef.current = em;
         paintOverlays(lastDisplayBarsRef.current);
+        emitPlay();
       } catch {
         // Network throw: keep the last-emitted lines rather than blank the section on a blip.
       }
@@ -2714,6 +2784,7 @@ export function VectorChart({
     emitMagnet, emitConfluence,
     paintConfluenceBand,
     emitWallIntegrity,
+    emitPlay,
     onDteHorizonChange,
   ]);
 
@@ -2754,13 +2825,15 @@ export function VectorChart({
     lastProximityRef.current = "";
     lastMagnetRef.current = "";
     lastWallIntegrityRef.current = "";
+    lastPlayKeyRef.current = "";
     emitRegime();
     emitProximity();
     emitMagnet();
     emitConfluence();
     paintConfluenceBand();
     emitWallIntegrity();
-  }, [lens, chartReady, emitRegime, emitProximity, emitMagnet, emitConfluence, paintConfluenceBand, emitWallIntegrity]);
+    emitPlay();
+  }, [lens, chartReady, emitRegime, emitProximity, emitMagnet, emitConfluence, paintConfluenceBand, emitWallIntegrity, emitPlay]);
 
   const connectLive = useCallback(() => {
     if (!liveSessionRef.current) return;
@@ -2951,10 +3024,11 @@ export function VectorChart({
         emitConfluence();
         paintConfluenceBand(); // live SSE tick moved the walls — re-fit the band to the new stack
         emitWallIntegrity();
+        emitPlay();
         evaluateAlertsNow(); // spot/walls/flip just advanced — check the member's alert rules
       }
     });
-  }, [sessionYmd, refreshTrails, refreshOverlays, onFreshness, ticker, liveGexWalls, liveGammaFlip, emitRegime, emitProximity, emitMagnet, emitConfluence, paintConfluenceBand, emitWallIntegrity, evaluateAlertsNow, paintOverlays]);
+  }, [sessionYmd, refreshTrails, refreshOverlays, onFreshness, ticker, liveGexWalls, liveGammaFlip, emitRegime, emitProximity, emitMagnet, emitConfluence, paintConfluenceBand, emitWallIntegrity, emitPlay, evaluateAlertsNow, paintOverlays]);
 
   useEffect(() => {
     const container = containerRef.current;

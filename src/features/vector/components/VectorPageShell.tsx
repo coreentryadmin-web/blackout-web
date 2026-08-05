@@ -19,6 +19,8 @@ import type { VectorTimeframeMinutes } from "@/features/vector/lib/vector-bar-ti
 import { VectorTickerSelect } from "@/features/vector/components/VectorTickerSelect";
 import { VectorScanner } from "@/features/vector/components/VectorScanner";
 import { VectorPulse } from "@/features/vector/components/VectorPulse";
+import { VectorPlayCard } from "@/features/vector/components/VectorPlayCard";
+import type { VectorPlay } from "@/features/vector/lib/vector-play-engine";
 import { VectorGexLadder } from "@/features/vector/components/VectorGexLadder";
 import { VectorRegimeBanner } from "@/features/vector/components/VectorRegimeBanner";
 import { VectorAlertsPanel } from "@/features/vector/components/VectorAlertsPanel";
@@ -202,6 +204,10 @@ export function VectorPageShell({
     })
   );
   const [confluence, setConfluence] = useState<string[] | null>(null);
+  // The fused, single concrete trade idea (buildVectorPlay) — null until the chart has emitted its
+  // first read (needs a live spot). Rendered above the Pulse rail's raw narration as the "so what do
+  // I do" synthesis; VectorPlayCard degrades to nothing when null rather than showing a placeholder.
+  const [play, setPlay] = useState<VectorPlay | null>(null);
   // Always-on technicals lines (VWAP/EMA/RSI/MACD/pocket/structure) — narrated by the terminal even
   // when the member hasn't toggled the overlays on the chart.
   const [technicals, setTechnicals] = useState<string[]>([]);
@@ -449,6 +455,7 @@ export function VectorPageShell({
         scopeLabel={`${vectorGexScopeLabel(dteHorizon)} matrix`}
         className="mb-2"
       />
+      <VectorPlayCard play={play} className="mb-2" />
       <VectorPulse
         ticker={activeTicker}
         lens={lens}
@@ -508,6 +515,7 @@ export function VectorPageShell({
       onDteHorizonChange={setDteHorizon}
       onTechnicalsChange={setTechnicals}
       onExpectedMoveChange={setExpectedMove}
+      onPlayChange={setPlay}
       alertRules={alertRules}
       onAlertsFired={handleAlertsFired}
       leadSlot={chartLead}
