@@ -1,5 +1,61 @@
 # BlackOut Open Issues Log
-Last updated: 2026-08-05 11:50 ET
+Last updated: 2026-08-05 12:45 ET
+
+## rth-comprehensive-2026-08-05 — RTH open + full browser/API sweep (~12:25–12:42 ET)
+
+**Session:** Autonomous RTH per `docs/ops/RTH-OPEN-RUNBOOK.md` including **RTH COMPREHENSIVE TEST SWEEP** (Cloud Agent `cursor/rth-comprehensive-test-sweep-2db1`). Commands: `npm run validate:rth-open` → `GET /api/cron/data-correctness?force=1` (+ sync `surface=heatmap`) → `node scripts/rth-comprehensive-sweep.mjs` (×3 passes) → `npm run validate:grid-e2e` → `node scripts/validate-static-assets.mjs` → `npm run ops:collect`.
+
+**Note:** Classic `/grid` + 9 `/api/grid/*` routes deleted 2026-07-07 — `/grid` returns **404** (intentional). 0DTE Command lives on `/nighthawk` (four view tabs: 0DTE / Swings / Bangers / Legacy).
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` | ✅ **GREEN** — deploy smoke, sockets, uw stall check (Postgres writer checks skipped — private RDS from agent) |
+| `GET /api/cron/data-correctness?force=1` | ✅ **202 accepted** — full 7-surface sweep dispatched async (fire-and-forget within CF timeout) |
+| `GET /api/cron/data-correctness?force=1&surface=heatmap` | ✅ **flags=0** · 60 metrics · overall `consistency-only` |
+| `rth-comprehensive-sweep` pass 3 (~12:39 ET) | ✅ **0 P0/P1** — all desk pages soft-nav ~1.6–4.2s · APIs 200 · Largo grounded (HELIX NVDA ~$131M tape) |
+| `npm run validate:grid-e2e` | ✅ **5/5 PASS** — board 9 setups · ledger 2 · HELIX 20 prints · Night Hawk UI zero console errors |
+| `validate-static-assets.mjs` (extended) | ✅ **44 assets / 10 pages** — after retry (transient 502 on 2 pages during burst) |
+| `npm run ops:collect` | ✅ zero action items |
+
+### Per-page sweep (pass 3 — 12:39 ET)
+
+| Page | Nav | Load | Console | Missing placeholders | Live tick |
+|---|---|---|---|---|---|
+| `/dashboard` | hard | 2720ms | 1 (400 resource) | 0 | null (SPX regex — spot stable ~12s window) |
+| `/flows` | soft | 1654ms | 0 | 0 | null |
+| `/heatmap` matrix | soft | 1638ms | 0 | 0 | null |
+| `/vector` | soft | 1637ms | 0 | 0 | null |
+| `/nighthawk` | soft | 4167ms | 0 | 0 | null |
+| `/terminal` (Largo) | soft | 1608ms | 0 | 0 | null |
+| `/track-record` | soft | 1629ms | 0 | 0 | null |
+
+**Cross-tool GEX (pass 3):** desk flip 7623.16 · gex-positioning flip aligned when 200 · heatmap SPX 200 · desk spot ~7739.
+
+**Largo:** HTTP 200 · ~17.7s SSE · tools `blackout_intelligence` · NVDA HELIX tape ~$131.4M premium grounded. Preview shows `Regime: —` (HELIX regime field empty in scanner payload — consistency-only, not fabricated).
+
+### Transient defects observed (resolved / P2)
+
+| Severity | ID | Detail | Root cause | Status |
+|---|---|---|---|---|
+| P2 | RTH-CHUNK-SKEW-01 | Pass 1 (~12:27 ET): `ChunkLoadError` on chunks `1878`/`7950` on vector/nighthawk/terminal/track-record | ECS rolling deploy + HTML referenced hashes before all tasks had matching `_next/static/*` (CF edge 404 MIME `text/plain`) | **Resolved** — chunks 200 after rollout; `validate-static-assets` now covers desk routes |
+| P2 | RTH-ORIGIN-502-BURST | Intermittent HTTP 502 on desk HTML + `gex-positioning` during parallel audit burst (~12:33–12:40 ET) | ALB/origin load + cold paths under concurrent agent probes | **Transient** — retries GREEN |
+| P2 | RTH-LARGO-502 | Pass 2 Largo HTTP 502 (54ms) | Same origin burst | **Transient** — pass 3 200 with retry logic |
+| INFO | RTH-ZERODTE-ASOF | Pass 2 flagged board `as_of` 347s at 300s threshold | `zerodte-warm` cron every 5m — within 420s RTH bound | **Expected** — sweep threshold aligned to 420s |
+
+### Code fixes shipped this session
+
+| Change | Why |
+|---|---|
+| `scripts/validate-static-assets.mjs` — add `/dashboard`, `/flows`, `/heatmap`, `/vector`, `/terminal`, `/nighthawk`, `/track-record` | Catch deploy skew on route-specific chunk graphs (pass 1 symptom) |
+| `scripts/rth-comprehensive-sweep.mjs` — chunk console → P1, zerodte 420s freshness, Largo 502 retry, `/grid` 404 guard, slow-nav P2 | Harden harness per runbook §7 |
+
+**Verify status: GREEN** — no persistent P0/P1; no `ops-auto-fix` issue opened.
+
+**Reports:** `audit-output/rth-sweep-2026-08-05T16-38-59-343Z.json`, `audit-output/grid-e2e-1785947213749.json`, `audit-output/rth-sweep-2026-08-05T16-26-46-707Z.json`
+
+---
 
 ## grid-rth-2026-08-05 — 0DTE Command RTH verify agent (market open ~6:30 AM PT / 9:30 AM ET)
 

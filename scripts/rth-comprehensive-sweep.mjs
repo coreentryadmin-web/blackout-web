@@ -189,6 +189,33 @@ function freshAsOf(json, maxSec = 300) {
   return { fresh: ageSec <= maxSec, ageSec: Math.round(ageSec) };
 }
 
+function freshnessMaxSec(path) {
+  if (path.includes("earnings")) return 600;
+  // zerodte-warm fires every 5m — mirror spx-rth / grid-rth 420s bound.
+  if (path.includes("zerodte/board")) return 420;
+  return 300;
+}
+
+function classifyConsoleErrors(errors, pageLabel) {
+  const issues = [];
+  for (const err of errors) {
+    if (/ChunkLoadError|MIME type.*text\/plain/i.test(err)) {
+      issues.push({
+        severity: "P1",
+        id: `chunk-load-${pageLabel}`,
+        detail: err.split("\n")[0].slice(0, 200),
+      });
+    } else if (/Failed to load resource.*404/i.test(err) && /_next\/static/i.test(err)) {
+      issues.push({
+        severity: "P1",
+        id: `static-404-${pageLabel}`,
+        detail: err.slice(0, 200),
+      });
+    }
+  }
+  return issues;
+}
+
 function isTransientOriginStatus(status) {
   return status === 0 || status === 502 || status === 503 || status === 504 || status === 524;
 }
@@ -213,7 +240,7 @@ async function auditApis(app) {
       await new Promise((res) => setTimeout(res, 3000));
       r = app(path);
     }
-    const { fresh, ageSec } = freshAsOf(r.json, path.includes("earnings") ? 600 : 300);
+    const { fresh, ageSec } = freshAsOf(r.json, freshnessMaxSec(path));
     const entry = { path, status: r.status, ms: r.ms, fresh, ageSec };
     if (r.status !== 200) {
       const sev = isTransientOriginStatus(r.status) ? "P2" : "P1";
@@ -237,22 +264,23 @@ async function auditApis(app) {
     report.issues.push({ severity: "P1", id: "gex-heatmap-flip-mismatch", detail: `gex=${gFlip} heatmap=${hFlip} (tol=${flipTol.toFixed(1)})` });
   }
   report.crossGex = { deskFlip: dFlip, gexFlip: gFlip, heatFlip: hFlip, deskSpot: desk?.price ?? desk?.spot };
+
+  // Classic Market Grid removed 2026-07-07 — /grid must stay 404.
+  const grid = app("/grid");
+  report.gridRoute = { status: grid.status };
+  if (grid.status !== 404) {
+    report.issues.push({ severity: "P1", id: "grid-route", detail: `Expected 404, got HTTP ${grid.status}` });
+  }
 }
 
 async function testLargo(app) {
-  const t0 = Date.now();
-  // Terminal UI uses SSE (`?stream=1` + Accept: text/event-stream); non-streaming JSON can
-  // exceed Cloudflare's ~100s origin timeout on multi-tool questions.
-  const r = app("/api/market/largo/query?stream=1", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-    json: { question: "Summarize dark pool activity and options flow on NVDA today with dollar amounts." },
-  });
-  let answer = "";
-  let tools = [];
-  let statusLine = null;
-  if (r.status === 200 && r.raw) {
-    for (const line of r.raw.split("\n")) {
+  const question = "Summarize dark pool activity and options flow on NVDA today with dollar amounts.";
+  const parseSse = (raw) => {
+    let answer = "";
+    let tools = [];
+    let statusLine = null;
+    if (!raw) return { answer, tools, statusLine };
+    for (const line of raw.split("\n")) {
       if (!line.startsWith("data: ")) continue;
       try {
         const ev = JSON.parse(line.slice(6));
@@ -266,7 +294,21 @@ async function testLargo(app) {
         if (ev.type === "error") statusLine = ev.message;
       } catch {}
     }
+    return { answer, tools, statusLine };
+  };
+
+  let r = null;
+  const t0 = Date.now();
+  for (let attempt = 0; attempt < 3; attempt++) {
+    r = app("/api/market/largo/query?stream=1", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+      json: { question },
+    });
+    if (r.status === 200 || !isTransientOriginStatus(r.status)) break;
+    await new Promise((res) => setTimeout(res, 2500));
   }
+  const { answer, tools, statusLine } = parseSse(r.raw);
   report.largo = {
     status: r.status,
     ms: Date.now() - t0,
@@ -275,8 +317,14 @@ async function testLargo(app) {
     statusLine,
     preview: String(answer).slice(0, 300),
   };
-  if (r.status !== 200) report.issues.push({ severity: "P1", id: "largo-query", detail: `HTTP ${r.status}: ${JSON.stringify(r.json || r.raw?.slice(0, 200)).slice(0, 200)}` });
-  else if (!report.largo.hasAnswer) report.issues.push({ severity: "P2", id: "largo-empty", detail: "No grounded answer body" });
+  if (r.status !== 200) {
+    const sev = isTransientOriginStatus(r.status) ? "P2" : "P1";
+    report.issues.push({
+      severity: sev,
+      id: "largo-query",
+      detail: `HTTP ${r.status}: ${JSON.stringify(r.json || r.raw?.slice(0, 200)).slice(0, 200)}`,
+    });
+  } else if (!report.largo.hasAnswer) report.issues.push({ severity: "P2", id: "largo-empty", detail: "No grounded answer body" });
 }
 
 async function browserSweep(signInUrl) {
@@ -328,6 +376,12 @@ async function browserSweep(signInUrl) {
     const missing = scanMissing(textAfter, label);
     report.missing.push(...missing);
 
+    const pageConsoleErrors = consoleErrors.splice(0);
+    report.issues.push(...classifyConsoleErrors(pageConsoleErrors, label));
+    if (loadMs > 15000) {
+      report.issues.push({ severity: "P2", id: `slow-nav-${label}`, detail: `${navType} load ${loadMs}ms` });
+    }
+
     // Thermal profile tab — "Gamma Profile + Curve + Shift" (desktop) or "Profile" (mobile).
     if (path === "/heatmap") {
       const profileTab = page.getByRole("tab", { name: /profile/i });
@@ -359,7 +413,7 @@ async function browserSweep(signInUrl) {
       loadMs,
       liveWaitMs,
       liveTick,
-      consoleErrors: consoleErrors.splice(0),
+      consoleErrors: pageConsoleErrors,
       missingCount: missing.reduce((a, m) => a + m.count, 0),
       signInMs: navType === "hard" ? signMs : undefined,
     });

@@ -10,7 +10,21 @@
  */
 
 const BASE = (process.env.BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
-const PAGES = ["/", "/sign-in", "/sign-up"];
+// Desk routes are server-rendered with route-specific chunk graphs — deploy skew on
+// /vector or /terminal broke RTH sweeps (ChunkLoadError on 1878/7950) while / and
+// /sign-in still passed. Include every high-traffic product surface.
+const PAGES = [
+  "/",
+  "/sign-in",
+  "/sign-up",
+  "/dashboard",
+  "/flows",
+  "/heatmap",
+  "/vector",
+  "/terminal",
+  "/nighthawk",
+  "/track-record",
+];
 
 const ASSET_RE = /\/_next\/static\/[^"']+\.(?:css|js|woff2)/g;
 
