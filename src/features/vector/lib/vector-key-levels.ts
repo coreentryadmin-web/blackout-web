@@ -13,6 +13,7 @@
 
 import type { VectorLevelId } from "./vector-indicators-config";
 import { dominantSwing, swingRetracement } from "./vector-fib-swing";
+import { filterRthBarsSec } from "./vector-session-hours";
 
 export type LevelBar = { time: number; high: number; low: number; close: number };
 
@@ -96,10 +97,12 @@ export function lastSessionBars<T extends { time: number }>(bars: readonly T[]):
   return bars.slice(start);
 }
 
-/** High/low of the LAST session in `bars` (newest ET day only — see lastSessionBars), or null
- *  when there are no bars. */
+/** High/low of the LAST session in `bars` (newest ET day only — see lastSessionBars), RTH-only
+ *  (09:30-16:00 ET — see vector-session-hours.ts; a pre/post-market print at a real equity's
+ *  extended-hours extreme must never masquerade as the regular-session HOD/LOD), or null when
+ *  there are no RTH bars in that session. */
 export function sessionHodLod(bars: LevelBar[]): { hod: number; lod: number } | null {
-  const session = lastSessionBars(bars);
+  const session = filterRthBarsSec(lastSessionBars(bars));
   if (!session.length) return null;
   let hod = -Infinity;
   let lod = Infinity;
@@ -113,17 +116,18 @@ export function sessionHodLod(bars: LevelBar[]): { hod: number; lod: number } | 
 
 /**
  * High/low of the opening range — the first `minutes` of the LAST session, measured from that
- * session's first bar's time (bars are epoch seconds; multi-session inputs are scoped via
- * lastSessionBars so the range can never anchor to an older seeded day's open). Bars exactly at
+ * session's first RTH bar's time (bars are epoch seconds; multi-session inputs are scoped via
+ * lastSessionBars so the range can never anchor to an older seeded day's open; RTH-filtered via
+ * vector-session-hours.ts so the anchor is the 09:30 open, not a premarket print). Bars exactly at
  * `firstTime + minutes*60` are excluded (the range is half-open), matching how the interval
- * buckets elsewhere. Null when no bar falls in it.
+ * buckets elsewhere. Null when no RTH bar falls in it.
  */
 export function openingRange(
   bars: LevelBar[],
   minutes: number
 ): { high: number; low: number } | null {
   if (minutes <= 0) return null;
-  const session = lastSessionBars(bars);
+  const session = filterRthBarsSec(lastSessionBars(bars));
   if (!session.length) return null;
   const start = session[0]!.time;
   const end = start + minutes * 60;

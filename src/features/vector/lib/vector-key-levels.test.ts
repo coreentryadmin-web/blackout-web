@@ -16,14 +16,20 @@ const bar = (time: number, high: number, low: number, close = (high + low) / 2) 
   close,
 });
 
+// RTH-anchored base (09:30 ET, 2026-07-09) — sessionHodLod/openingRange are RTH-only (2026-08-05
+// audit fix: they'd otherwise silently include pre/post-market prints), so every fixture bar in
+// this file must fall inside 09:30–16:00 ET. Small raw epoch offsets (e.g. `bar(0, ...)`) land in
+// 1970 pre-market and would be filtered out entirely — use RTH_T0 + offset instead.
+const RTH_T0 = Math.floor(Date.parse("2026-07-09T09:30:00-04:00") / 1000);
+
 test("sessionHodLod: session extremes; null when empty", () => {
-  const bars = [bar(0, 101, 99), bar(60, 104, 100), bar(120, 103, 97)];
+  const bars = [bar(RTH_T0, 101, 99), bar(RTH_T0 + 60, 104, 100), bar(RTH_T0 + 120, 103, 97)];
   assert.deepEqual(sessionHodLod(bars), { hod: 104, lod: 97 });
   assert.equal(sessionHodLod([]), null);
 });
 
 test("openingRange: first N minutes only, half-open at the boundary", () => {
-  const t0 = 1_000_000;
+  const t0 = RTH_T0;
   const bars = [
     bar(t0, 101, 100),
     bar(t0 + 60, 103, 99), // in the 15m window
@@ -34,6 +40,20 @@ test("openingRange: first N minutes only, half-open at the boundary", () => {
   assert.deepEqual(openingRange(bars, 15), { high: 103, low: 98 });
   assert.equal(openingRange([], 15), null);
   assert.equal(openingRange(bars, 0), null);
+});
+
+test("sessionHodLod + openingRange: premarket/after-hours extremes are excluded (2026-08-05 audit fix)", () => {
+  const premarket = RTH_T0 - 5.5 * 3600; // 04:00 ET same day — a fake premarket spike
+  const afterHours = RTH_T0 + 6.5 * 3600 + 2 * 3600; // 18:00 ET same day
+  const bars = [
+    bar(premarket, 500, 1), // would dominate HOD/LOD if not filtered
+    bar(RTH_T0, 101, 99), // 09:30 RTH open
+    bar(RTH_T0 + 60, 104, 100),
+    bar(RTH_T0 + 120, 103, 97),
+    bar(afterHours, 900, 0.5), // would dominate HOD/LOD if not filtered
+  ];
+  assert.deepEqual(sessionHodLod(bars), { hod: 104, lod: 97 });
+  assert.deepEqual(openingRange(bars, 15), { high: 104, low: 97 });
 });
 
 test("fibLevels: 0%=high, 100%=low, 50% midpoint, 61.8% golden; degenerate → []", () => {
@@ -49,7 +69,7 @@ test("fibLevels: 0%=high, 100%=low, 50% midpoint, 61.8% golden; degenerate → [
 });
 
 test("levelLinesFor: hod-lod / opening-range / fib produce labelled lines; empty bars → []", () => {
-  const t0 = 2_000_000;
+  const t0 = RTH_T0;
   const bars = [bar(t0, 105, 100), bar(t0 + 60, 110, 98), bar(t0 + 20 * 60, 112, 95)];
 
   const hl = levelLinesFor("hod-lod", bars);
