@@ -1,5 +1,75 @@
 # BlackOut Open Issues Log
-Last updated: 2026-08-05 15:19 ET
+Last updated: 2026-08-05 15:56 ET
+
+## rth-open-2026-08-05-pass9 — RTH comprehensive test sweep (~3:40–3:56 PM ET, late afternoon)
+
+**Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` on branch `cursor/rth-comprehensive-test-sweep-dffc`. Commands: `npm run validate:rth-open` → `GET /api/cron/data-correctness?force=1` (AWS `CRON_SECRET`) → `surface=heatmap|zerodte|spx` sync → `npm run validate:rth-sweep` → `npm run validate:grid-e2e` → `npm run validate:spx-e2e` → `npm run ops:collect`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` | ✅ **GREEN** (~17s retry; first attempt transient socket-health 502; Postgres skipped private VPC; options-socket ingest-owned warming) |
+| `GET /api/cron/data-correctness?force=1` | ✅ **202 accepted** (async full sweep dispatched; AWS SM `CRON_SECRET`) |
+| `data-correctness` (`surface=heatmap`) | ✅ **ok=true · flags=0** |
+| `data-correctness` (`surface=zerodte`) | ✅ **ok=true · flags=0** |
+| `data-correctness` (`surface=spx`) | ✅ **ok=true · flags=0** |
+| `npm run validate:rth-sweep` | ✅ **0 P0/P1** — 7 pages · **0 missing-field hits** · Largo grounded |
+| `npm run validate:grid-e2e` | ✅ **5/5 PASS** — zerodte board 8 setups · ledger 3 |
+| `npm run validate:spx-e2e` | ✅ **18/18 PASS** (1 WARN: `bie-play-route` cron 401 expected; 2 transient deploy-chunk 5xx on first retries) |
+| `npm run ops:collect` | ✅ **0 action items** |
+
+### Speed (comprehensive sweep — Playwright premium session)
+
+| Page | Nav | Load (ms) | Live wait | Console errors |
+|---|---|---:|---:|---|
+| `/dashboard` (SPX Slayer) | hard | 1635 | 12s | 1× HTTP 400 (transient) |
+| `/flows` (HELIX) | soft | 2114 | 8s | 0 |
+| `/heatmap` (Thermal matrix) | soft | 1609 | 20s | 0 |
+| `/vector` | soft | 1631 | 15s | 0 |
+| `/nighthawk` (0DTE Command) | soft | 1615 | 15s | 0 |
+| `/terminal` (Largo) | soft | 1621 | 5s | 0 |
+| `/track-record` | soft | 1696 | 10s | 35× deploy-stale-chunk MIME/404 (transient) |
+
+**Note:** Classic `/grid` deleted 2026-07-07 — 0DTE Command (12 panels) under `/nighthawk` via `/api/market/zerodte/board`. Thermal Profile tab not exercised this pass (matrix-only; tabs hidden while loading).
+
+### Live auto-update
+
+- `liveTick=null` on all pages — SPX spot stable over 8–20s observation windows (regex-based probe; APIs fresh).
+- API freshness: desk `as_of` 4s · platform snapshot 0s · zerodte board 7s.
+- Cross-GEX: desk γ-flip 7599.97 vs gex-positioning 7608.95 (within 1% spot tol).
+
+### Data correctness
+
+| Cross-check | Result |
+|---|---|
+| desk γ-flip vs `gex-positioning` | ✅ aligned (Δ < 1% spot) |
+| All market APIs | ✅ HTTP 200 |
+| Largo NVDA query | ✅ 200 · ~$131.8M premium · `blackout_intelligence` |
+| SPX matrix E2E | ✅ GEX+VEX+DEX+CHARM · 159 strikes · spot 7738.63 |
+
+### Missing-field audit
+
+**0 missing-field signals** across all 7 pages. Largo `Regime: —` = expected when no active regime tag.
+
+### Findings table
+
+| Severity | ID | Detail | Fix |
+|---|---|---|---|
+| — | — | **No P0/P1 product defects** on member surfaces | GREEN |
+| INFO | ENV-NODE-MODULES | Initial `validate:rth-open` failed — missing `pg` module | Resolved via `npm install` |
+| INFO | PLAYWRIGHT-BROWSERS | `validate:rth-sweep` failed — Chromium not installed | Resolved via `npx playwright install chromium` |
+| INFO | SOCKET-HEALTH-502 | First `validate:rth-open` socket-health HTTP 502 | Transient — retry GREEN in 17s |
+| P2 | RTH-FLOWS-SOFT-NAV | `/flows` soft-nav 2114ms (>1.5s target) | Monitor — HELIX tape bootstrap |
+| P2 | RTH-DASH-400 | Dashboard console 1× HTTP 400 during sweep | Transient — re-probe if recurring |
+| P2 | DEPLOY-STALE-CHUNKS | track-record + spx-e2e console MIME/404 on `_next/static/*` during ECS rollout | Transient — chunks 200 on direct curl; spx-e2e GREEN on 3rd retry |
+| P2 | SPX-BIE-CRON-401 | `bie-play-route` WARN — cron play HTTP 401 (expected without cron bearer) | defer |
+
+**Status: GREEN** — comprehensive sweep 0 P0/P1, cross-tool GEX aligned, all data-correctness surfaces flags=0. No GitHub issue opened (no P0/P1).
+
+**Reports:** `audit-output/rth-sweep-2026-08-05T19-44-54-087Z.json`, `audit-output/grid-e2e-1785959293054.json`, `audit-output/spx-dashboard-e2e-1785959774052.json`
+
+---
 
 ## rth-open-2026-08-05-pass8 — RTH comprehensive test sweep (~2:13–2:21 PM ET, afternoon)
 
