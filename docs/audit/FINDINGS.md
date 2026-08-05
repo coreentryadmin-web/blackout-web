@@ -4,7 +4,24 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
-<<<<<<< HEAD
+## 2026-08-05 — [Grid/0DTE] Post-close fix agent — all validators GREEN (~3:18 PM PT / 6:18 PM ET)
+
+**Severity.** — (no additional product defects)
+
+**Session.** Scheduled post-close fix agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` Step 4 (Cloud Agent `cursor/0dte-grid-post-close-agent-cd7c`; executed ~3:18 PM PT / 6:18 PM ET / 22:18 UTC).
+
+**Evidence.**
+- `validate:grid-rth -- --phase=post-close` → **12/12 PASS** (0 FAIL; `zerodte-warm` cron accepted, data-correctness flags=0, ops:collect zero items)
+- `validate:zerodte-logic` → **17/17 PASS** — gates, plan exits (-50%/+100%/15:30 ET), lifecycle OPEN→TRIM→CLOSED, mergePlays SKIP past cutoff/MOVED, live board 9 setups / 3 ledger, cutoff 15:30 ET
+- `validate:grid-e2e` → **5/5 PASS** — board API 9/3, HELIX 20 prints, Playwright `/nighthawk` load, zero console errors
+- `validate:deploy` → **GREEN**
+
+**Root cause.** Initial cloud-agent run failed on missing `node_modules` (tsx/playwright/pg/react) — environment only. After `npm install` + `npx playwright install chromium`, all suites GREEN on re-run. Also resolved committed merge-conflict markers (`<<<<<<< HEAD` / `=======` / `>>>>>>>`) in this file from PR #1757/#1758 squash. No unresolved gate logic, play picking, trade management, mergePlays, cron bypass, or ledger PnL defects.
+
+**Status.** FIXED — docs-only on `fix/findings-merge-conflict-aug5`.
+
+---
+
 ## 2026-08-05 — [Grid/0DTE] Post-close fix agent — all validators GREEN (~2:18 PM PT / 5:18 PM ET)
 
 **Severity.** — (no additional product defects)
@@ -22,7 +39,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 **Status.** FIXED — no code changes required; docs only on `fix/grid-post-close-aug5-green`.
 
 ---
-=======
+
 ## 2026-08-05 — [P1, SPX Slayer UX] Play verdict bar flashed CLOSED during RTH while play API stayed SCANNING — FIXED
 
 | Field | Value |
@@ -33,8 +50,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Fix** | Removed `playSessionActive`; play polling and verdict bar now both gate on `sessionActive` from `useMergedDesk` (same gate as `SpxPinForecast` and the intel rail). Brief `live` drops during lane refresh no longer clear play cache or flash CLOSED. |
 | **Tests** | `spx-play-verdict-bar.test.ts` — SCANNING + `sessionActive:true` stays hunting; `spx-dashboard-layout.test.ts` — asserts `useSpxPlay(sessionActive)` and no `playSessionActive`. |
 | **Files** | `src/features/spx/components/SpxDashboard.tsx`, `src/features/spx/lib/spx-play-verdict-bar.test.ts`, `src/features/spx/spx-dashboard-layout.test.ts` |
-| **Status** | FIXED — branch `fix/spx-verdict-closed-flicker`, PR to `main`, auto-merge once CI green. |
->>>>>>> efd64521 (fix(spx): stop verdict bar CLOSED flicker during desk lane refresh)
+| **Status** | FIXED — merged via PR #1758. |
 
 ## 2026-08-05 — [ops-auto-fix #1705, P0 data-correctness] SPX 0DTE King 7,800 vs UW 7,650 (Δ 1.94% > 1.5% tol) — FIXED
 
