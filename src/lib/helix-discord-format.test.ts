@@ -70,7 +70,7 @@ test("buildHelixDiscordEmbed is a short write-up not field soup", () => {
   assert.match(emb.title, /HELIX/);
   assert.match(emb.description, /printing near the call wall/);
   assert.doesNotMatch(emb.description, /\*\*Premium\*\*/);
-  assert.match(emb.description, /Open in HELIX/);
+  assert.match(emb.description, /Open this print in HELIX/);
 });
 
 test("digest embed lists ranked rows", () => {

@@ -64,7 +64,7 @@ test("buildDarkpoolDiscordEmbed includes ticker and ET copy", () => {
   assert.match(emb.title, /NVDA/);
   assert.match(emb.description, /\$4\.20M/);
   assert.match(emb.description, /BUY side/);
-  assert.match(emb.description, /Open in HELIX/);
+  assert.match(emb.description ?? "", /Open this block in HELIX/);
 });
 
 test("selectDarkpoolDigestPrints ranks in-window by premium", () => {

@@ -8,6 +8,8 @@ import { isEtCashRth } from "@/lib/et-market-hours";
 import { todayEt } from "@/lib/et-date";
 import { sharedCacheSetNx } from "@/lib/shared-cache";
 
+import { buildHelixFlowDeepLink, buildHelixDarkpoolDeepLink } from "@/lib/helix-flow-deep-link";
+
 const APP_BASE = (process.env.NEXT_PUBLIC_SITE_URL || "https://blackouttrades.com").replace(/\/$/, "");
 
 /** ~4:05 PM ET window — dark pool cron (2m) and HELIX digest (15m) both land here. */
@@ -104,19 +106,39 @@ export function buildHelixEodRecapEmbed(input: {
         f.fill_price != null && Number.isFinite(Number(f.fill_price))
           ? ` @ $${Number(f.fill_price) % 1 ? Number(f.fill_price).toFixed(2) : Number(f.fill_price)}`
           : "";
-      return `**${i + 1}. ${String(f.ticker).toUpperCase()}** ${f.strike}${side}${fill} · ${moneyShort(Number(f.premium))}`;
+      const label = `${String(f.ticker).toUpperCase()} ${f.strike}${side}${fill} · ${moneyShort(Number(f.premium))}`;
+      return `**${i + 1}.** [${label}](${buildHelixFlowDeepLink({
+        ticker: f.ticker,
+        alert_id: f.alert_id ?? null,
+        strike: f.strike,
+        expiry: f.expiry,
+        option_type: f.option_type,
+        at: f.event_at ?? f.alerted_at ?? null,
+        premium: f.premium,
+      })})`;
     })
     .join("\n");
+
+  const lead = ranked[0]!;
+  const leadUrl = buildHelixFlowDeepLink({
+    ticker: lead.ticker,
+    alert_id: lead.alert_id ?? null,
+    strike: lead.strike,
+    expiry: lead.expiry,
+    option_type: lead.option_type,
+    at: lead.event_at ?? lead.alerted_at ?? null,
+    premium: lead.premium,
+  });
 
   return {
     title: "📋 HELIX · Session recap",
     description:
       `**${session.length}** qualifying prints · **${moneyShort(totalPrem)}** total premium\n\n` +
-      `${body}\n\n[Open in HELIX](${APP_BASE}/flows)`,
+      `${body}\n\n[Open HELIX desk](${APP_BASE}/flows)`,
     color: 0x22d3ee,
     footer: { text: `BlackOut HELIX · ${et} ET · ${input.sessionDate}` },
     timestamp: now.toISOString(),
-    url: `${APP_BASE}/flows`,
+    url: leadUrl,
   };
 }
 
@@ -153,19 +175,30 @@ export function buildDarkpoolEodRecapEmbed(input: {
   const body = ranked
     .map((p, i) => {
       const side = p.side === "buy" ? "BUY" : p.side === "sell" ? "SELL" : "—";
-      return `**${i + 1}. ${p.ticker}** · ${moneyShort(p.premium)} · ${side}`;
+      const label = `${p.ticker} · ${moneyShort(p.premium)} · ${side}`;
+      return `**${i + 1}.** [${label}](${buildHelixDarkpoolDeepLink({
+        ticker: p.ticker,
+        executed_at: p.executed_at,
+        premium: p.premium,
+      })})`;
     })
     .join("\n");
+
+  const lead = ranked[0]!;
 
   return {
     title: "📋 Dark Pool · Session recap",
     description:
       `**${session.length}** blocks · **${moneyShort(total)}** notional · ${buys} buy / ${sells} sell\n\n` +
-      `${body}\n\n[Open in HELIX](${APP_BASE}/flows)`,
+      `${body}\n\n[Open HELIX desk](${APP_BASE}/flows)`,
     color: 0x6366f1,
     footer: { text: `BlackOut Dark Pool · ${et} ET · ${input.sessionDate}` },
     timestamp: now.toISOString(),
-    url: `${APP_BASE}/flows`,
+    url: buildHelixDarkpoolDeepLink({
+      ticker: lead.ticker,
+      executed_at: lead.executed_at,
+      premium: lead.premium,
+    }),
   };
 }
 

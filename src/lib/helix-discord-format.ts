@@ -17,6 +17,7 @@ import {
   type FlowStrikeStack,
 } from "@/lib/largo/flow-strike-stacks";
 import { HELIX_STRIKE_HITS_WINDOW_MIN } from "@/features/helix/lib/helix-strike-leaders";
+import { buildHelixFlowDeepLink, helixDiscordFlowToDeepLink } from "@/lib/helix-flow-deep-link";
 
 export const HELIX_DISCORD_MIN_PREMIUM = 500_000;
 export const HELIX_DISCORD_MAX_FILL = 10;
@@ -47,6 +48,8 @@ export type HelixDiscordFlowInput = {
   gex_context_line?: string | null;
   /** Stack milestone when posting 3rd/5th/10th repeat hit. */
   stack_milestone?: number | null;
+  /** Canonical persist id — powers deep links into HELIX. */
+  alert_id?: string | null;
 };
 
 export type HelixDiscordKind =
@@ -305,13 +308,15 @@ export function buildHelixDiscordEmbed(
   const resolvedKind =
     flow.stack_milestone != null && flow.stack_milestone > 0 ? "milestone" : kind;
 
+  const flowUrl = helixDiscordFlowToDeepLink(flow);
+
   return {
     title: titleFor(resolvedKind, flow),
-    description: `**${helixDiscordHeadline(flow, now)}**\n\n${helixDiscordWriteup(flow, now)}\n\n[Open in HELIX](${APP_BASE}/flows?ticker=${encodeURIComponent(ticker)})`,
+    description: `**${helixDiscordHeadline(flow, now)}**\n\n${helixDiscordWriteup(flow, now)}\n\n[Open this print in HELIX](${flowUrl})`,
     color: colorFor(flow, resolvedKind),
     footer: { text: `BlackOut HELIX · ${et} ET` },
     timestamp: new Date(when).toISOString(),
-    url: `${APP_BASE}/flows?ticker=${encodeURIComponent(ticker)}`,
+    url: flowUrl,
   };
 }
 
@@ -352,9 +357,10 @@ export function buildHelixTopHitsDigestEmbed(input: {
       const gex = gexPhrase(f.gex_proximity ?? null);
       const fillStr =
         fill != null && Number.isFinite(fill) ? ` @ $${fill % 1 ? fill.toFixed(2) : fill}` : "";
-      return `**${i + 1}.** ${String(f.ticker).toUpperCase()} ${fmtStrike(Number(f.strike))}${
+      const label = `${String(f.ticker).toUpperCase()} ${fmtStrike(Number(f.strike))}${
         String(f.option_type || "").toUpperCase().startsWith("C") ? "C" : "P"
       }${fillStr} · ${moneyShort(Number(f.premium))} · ${dteStr}${gex ? ` · ${gex}` : ""}`;
+      return `**${i + 1}.** [${label}](${helixDiscordFlowToDeepLink(f)})`;
     })
     .join("\n");
 
@@ -363,13 +369,15 @@ export function buildHelixTopHitsDigestEmbed(input: {
     gexPhrase(lead.gex_proximity ?? null) ? ` · ${gexPhrase(lead.gex_proximity ?? null)}` : ""
   } — ${lead.direction || "—"}.`;
 
+  const leadUrl = helixDiscordFlowToDeepLink(lead);
+
   return {
     title: `📊 HELIX · Top hits · last ${input.windowMin}m`,
-    description: `${head}\n${body}${blurb}\n\n[Open in HELIX](${APP_BASE}/flows)`,
+    description: `${head}\n${body}${blurb}\n\n[Open HELIX desk](${APP_BASE}/flows)`,
     color: input.sessionFallback ? 0x94a3b8 : 0x22d3ee,
     footer: { text: `BlackOut HELIX · ${et} ET · ${input.inWindowCount} in window` },
     timestamp: now.toISOString(),
-    url: `${APP_BASE}/flows`,
+    url: leadUrl,
   };
 }
 
@@ -422,7 +430,14 @@ export function buildHelixStackedHitsDigestEmbed(input: {
     .map((stack, i) => {
       const side = flowStackSideLabel(stack.option_type, stack.avg_ask_pct);
       const header =
-        `**${i + 1}. ${stackHeadline(stack, now)}** — ${stack.recent_hit_count} hits · ` +
+        `**${i + 1}. [${stackHeadline(stack, now)}](${buildHelixFlowDeepLink({
+          ticker: stack.ticker,
+          strike: stack.strike,
+          expiry: stack.expiry,
+          option_type: stack.option_type,
+          at: stack.recent_hits[stack.recent_hits.length - 1]?.at ?? null,
+          premium: stack.recent_premium,
+        })})** — ${stack.recent_hit_count} hits · ` +
         `${moneyShort(stack.recent_premium)} · ${stackKindLabel(stack.kind)} · ${side.lean}`;
       const timeline = formatHelixStackHitTimeline(stack.recent_hits, { maxLines: 5 });
       return timeline ? `${header}\n${timeline}` : header;
@@ -546,7 +561,8 @@ export function buildHelixBurstEmbed(input: {
       f.fill_price != null && Number.isFinite(Number(f.fill_price))
         ? ` @ $${Number(f.fill_price) % 1 ? Number(f.fill_price).toFixed(2) : Number(f.fill_price)}`
         : "";
-    return `• ${fmtStrike(Number(f.strike))}${side}${fill} · ${moneyShort(Number(f.premium))}`;
+    const label = `${fmtStrike(Number(f.strike))}${side}${fill} · ${moneyShort(Number(f.premium))}`;
+    return `• [${label}](${helixDiscordFlowToDeepLink(f)})`;
   });
 
   const more =
@@ -556,11 +572,11 @@ export function buildHelixBurstEmbed(input: {
     title: `📡 HELIX · ${ticker} burst (${input.flows.length} prints)`,
     description:
       `**${moneyShort(totalPrem)}** total in ~${input.windowMin}m on **${ticker}**\n\n` +
-      `${lines.join("\n")}${more}\n\n[Open in HELIX](${APP_BASE}/flows?ticker=${encodeURIComponent(ticker)})`,
+      `${lines.join("\n")}${more}\n\n[Open ${ticker} in HELIX](${buildHelixFlowDeepLink({ ticker })})`,
     color: 0x22d3ee,
     footer: { text: `BlackOut HELIX · ${et} ET` },
     timestamp: now.toISOString(),
-    url: `${APP_BASE}/flows?ticker=${encodeURIComponent(ticker)}`,
+    url: buildHelixFlowDeepLink({ ticker, at: input.flows[input.flows.length - 1]?.event_at ?? input.flows[input.flows.length - 1]?.alerted_at, premium: input.flows[input.flows.length - 1]?.premium }),
   };
 }
 

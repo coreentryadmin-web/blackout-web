@@ -128,10 +128,11 @@ export function buildHelixAuditRow(alertIdValue: string, flow: MarketFlowAlert) 
  * Community HELIX Discord (#blackout-helix). Opt-in via HELIX_DISCORD_ALERTS=1;
  * filters ≥$500K · fill <$10 · ≤30 DTE inside notifyHelixDiscordFlow. Fail-soft.
  */
-async function notifyDiscord(flow: FlowRow): Promise<void> {
+async function notifyDiscord(flow: PublishedFlowRow): Promise<void> {
   try {
     const { notifyHelixDiscordFlow } = await import("@/lib/helix-discord-notify");
     await notifyHelixDiscordFlow({
+      alert_id: flow.alert_id,
       ticker: flow.ticker,
       premium: flow.premium,
       option_type: flow.option_type,

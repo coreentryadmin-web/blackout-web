@@ -6,6 +6,7 @@
  */
 import { formatHelixHitTimestampEt, moneyShort } from "@/lib/helix-discord-format";
 import type { DiscordEmbed } from "@/lib/helix-discord-format";
+import { buildHelixDarkpoolDeepLink, darkpoolPrintToDeepLink } from "@/lib/helix-flow-deep-link";
 
 export { type DiscordEmbed };
 
@@ -128,13 +129,15 @@ export function buildDarkpoolDiscordEmbed(print: DarkPoolDiscordPrint): DiscordE
     .filter(Boolean)
     .join(" · ");
 
+  const printUrl = darkpoolPrintToDeepLink(print);
+
   return {
     title: `🌑 Dark Pool · ${print.ticker}`,
-    description: `${headline}\n\n${meta}\n\n[Open in HELIX](${APP_BASE}/flows?ticker=${encodeURIComponent(print.ticker)})`,
+    description: `${headline}\n\n${meta}\n\n[Open this block in HELIX](${printUrl})`,
     color: sideColor(print.side),
     footer: { text: "BlackOut Dark Pool" },
     timestamp: new Date(print.executed_at).toISOString(),
-    url: `${APP_BASE}/flows?ticker=${encodeURIComponent(print.ticker)}`,
+    url: printUrl,
   };
 }
 
@@ -167,17 +170,20 @@ export function buildDarkpoolTopBlocksDigestEmbed(input: {
   const body = input.rows
     .map((p, i) => {
       const ts = formatHelixHitTimestampEt(p.executed_at, { date: false });
-      return `**${i + 1}. ${p.ticker}** · ${moneyShort(p.premium)}${fmtPrice(p.price)} · ${sideLabel(p.side)} · ${ts} ET`;
+      const label = `${p.ticker} · ${moneyShort(p.premium)}${fmtPrice(p.price)} · ${sideLabel(p.side)} · ${ts} ET`;
+      return `**${i + 1}.** [${label}](${darkpoolPrintToDeepLink(p)})`;
     })
     .join("\n");
 
+  const leadUrl = input.rows[0] ? darkpoolPrintToDeepLink(input.rows[0]) : `${APP_BASE}/flows`;
+
   return {
     title: `🌑 Dark Pool · Top blocks · last ${input.windowMin}m`,
-    description: `${head}\n${body}\n\n[Open in HELIX](${APP_BASE}/flows)`,
+    description: `${head}\n${body}\n\n[Open HELIX desk](${APP_BASE}/flows)`,
     color: 0x6366f1,
     footer: { text: `BlackOut Dark Pool · ${et} ET · ${input.inWindowCount} in window` },
     timestamp: now.toISOString(),
-    url: `${APP_BASE}/flows`,
+    url: leadUrl,
   };
 }
 
@@ -231,7 +237,8 @@ export function buildDarkpoolBurstEmbed(input: {
 
   const lines = input.prints.slice(0, 6).map((p) => {
     const side = p.side === "buy" ? "BUY" : p.side === "sell" ? "SELL" : "—";
-    return `• ${moneyShort(p.premium)}${fmtPrice(p.price)} · ${side}`;
+    const label = `${moneyShort(p.premium)}${fmtPrice(p.price)} · ${side}`;
+    return `• [${label}](${darkpoolPrintToDeepLink(p)})`;
   });
   const more =
     input.prints.length > 6
@@ -242,10 +249,14 @@ export function buildDarkpoolBurstEmbed(input: {
     title: `🌑 Dark Pool · ${ticker} burst (${input.prints.length} blocks)`,
     description:
       `**${moneyShort(total)}** in ~${input.windowMin}m · ${buys} buy / ${sells} sell\n\n` +
-      `${lines.join("\n")}${more}\n\n[Open in HELIX](${APP_BASE}/flows?ticker=${encodeURIComponent(ticker)})`,
+      `${lines.join("\n")}${more}\n\n[Open ${ticker} dark pool in HELIX](${buildHelixDarkpoolDeepLink({
+        ticker,
+        executed_at: input.prints[input.prints.length - 1]?.executed_at ?? "",
+        premium: input.prints[input.prints.length - 1]?.premium ?? 0,
+      })})`,
     color: 0x6366f1,
     footer: { text: "BlackOut Dark Pool" },
     timestamp: now.toISOString(),
-    url: `${APP_BASE}/flows?ticker=${encodeURIComponent(ticker)}`,
+    url: darkpoolPrintToDeepLink(input.prints[input.prints.length - 1] ?? { ticker, premium: total, side: "neutral", executed_at: now.toISOString() }),
   };
 }

@@ -63,6 +63,7 @@ function rthOnly(): boolean {
 
 function toInput(row: FlowRow): HelixDiscordFlowInput {
   return {
+    alert_id: row.alert_id ?? null,
     ticker: row.ticker,
     premium: row.premium,
     option_type: row.option_type,

@@ -2272,6 +2272,8 @@ export type FlowRow = {
   open_interest?: number;
   implied_volatility?: number;
   otm_pct?: number;
+  /** Canonical UW alert id — enables HELIX deep links from Discord and REST tape. */
+  alert_id?: string;
 };
 
 export async function fetchRecentFlows(params: {
@@ -2347,7 +2349,8 @@ export async function fetchRecentFlows(params: {
 
   const res = await (await getPool()).query<QueryResultRow>(
     `
-    SELECT ticker,
+    SELECT alert_id,
+           ticker,
            COALESCE(total_premium, 0) AS premium,
            option_type,
            TO_CHAR(expiry, 'YYYY-MM-DD') AS expiry,
@@ -2453,6 +2456,7 @@ export async function fetchRecentFlows(params: {
       raw_payload: rawPayload,
     });
     return {
+    alert_id: row.alert_id ? String(row.alert_id) : undefined,
     ticker: String(row.ticker ?? ""),
     premium: Number(row.premium ?? 0),
     option_type: String(row.option_type ?? "").toUpperCase(),
