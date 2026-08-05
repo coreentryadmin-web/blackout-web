@@ -122,13 +122,31 @@ export type VectorLevelDef = {
   /** True when the level needs the prior-day OHLC fetch (PDH/PDL/PDC, pivots) rather than just the
    *  current session bars. The chart lazily fetches that once when any such level is enabled. */
   needsPriorDay?: boolean;
+  /** Optional menu tooltip — used for "Fib"/"Auto fib" (2026-08-05 audit finding): the two use
+   *  DIFFERENT retracement-direction conventions (Fib is always measured HOD-down-to-LOD; Auto fib
+   *  follows whichever way the dominant swing actually ran), so a member toggling both can see them
+   *  point opposite ways with no explanation on the chart. A menu tooltip is the cheap fix — see
+   *  `vector-key-levels.ts`'s `fibLevels`/`vector-fib-swing.ts`'s `swingRetracement` for the code. */
+  hint?: string;
 };
 
 export const VECTOR_LEVELS: readonly VectorLevelDef[] = [
   { id: "hod-lod", label: "HOD / LOD", color: "#34d399", group: "Key levels" },
   { id: "opening-range", label: "Opening range (15m)", color: "#a78bfa", group: "Key levels" },
-  { id: "fib", label: "Fibonacci (HOD→LOD)", color: "#ffd60a", group: "Key levels" },
-  { id: "fib-auto", label: "Auto fib + golden pocket", color: "#fde047", group: "Key levels" },
+  {
+    id: "fib",
+    label: "Fibonacci (HOD→LOD)",
+    color: "#ffd60a",
+    group: "Key levels",
+    hint: "Fixed session convention: always measured from the high down to the low, regardless of which one printed first.",
+  },
+  {
+    id: "fib-auto",
+    label: "Auto fib + golden pocket",
+    color: "#fde047",
+    group: "Key levels",
+    hint: "Direction-aware: follows whichever way the dominant swing actually ran, so it can point the opposite way from the fixed \"Fib\" tool above.",
+  },
   { id: "pdh-pdl-pdc", label: "PDH / PDL / PDC", color: "#38bdf8", group: "Key levels", needsPriorDay: true },
   { id: "pivots", label: "Floor pivots (P/R/S)", color: "#fb923c", group: "Key levels", needsPriorDay: true },
 ] as const;
@@ -251,6 +269,21 @@ export function isVectorGammaRegimeId(v: unknown): v is VectorGammaRegimeId {
 }
 
 /**
+ * "Volume profile" — the session's volume bucketed by PRICE (not time), drawn as horizontal bars
+ * anchored to the right edge of the chart, background-layer like the GEX heatmap/gamma-regime glow.
+ * Pairs with the GEX ladder's volume-at-STRIKE view: this is volume-at-PRICE for the underlying, so
+ * a member can see whether the heaviest-traded zone lines up with a dealer wall. Computed client-side
+ * from the SAME 1m session bars already seeded/streamed for the candles — no new data source. One
+ * toggle (default OFF, like every other opt-in overlay); real-data-only — no volume this session
+ * (off-hours, a brand-new ticker) draws nothing, never a fabricated profile.
+ */
+export type VectorVolumeProfileId = "volume-profile";
+
+export function isVectorVolumeProfileId(v: unknown): v is VectorVolumeProfileId {
+  return v === "volume-profile";
+}
+
+/**
  * Every toggleable indicator id — a moving-average FAMILY (not an individual line), a level, a
  * structure toggle, or an oscillator. This is what the enabled Set and the menu deal in; the chart
  * expands each to its lines/markers/panes at draw time.
@@ -265,12 +298,13 @@ export type VectorIndicatorId =
   | VectorExpectedMoveId
   | VectorExpectedMoveConeId
   | VectorGexHeatmapId
-  | VectorGammaRegimeId;
+  | VectorGammaRegimeId
+  | VectorVolumeProfileId;
 
 /** Menu structure — the toggle menu renders straight from this (title + its items). */
 export const VECTOR_INDICATOR_GROUPS: ReadonlyArray<{
   title: string;
-  items: ReadonlyArray<{ id: VectorIndicatorId; label: string; color: string }>;
+  items: ReadonlyArray<{ id: VectorIndicatorId; label: string; color: string; hint?: string }>;
 }> = [
   {
     title: "Moving averages",
@@ -278,7 +312,7 @@ export const VECTOR_INDICATOR_GROUPS: ReadonlyArray<{
   },
   {
     title: "Key levels",
-    items: VECTOR_LEVELS.map((l) => ({ id: l.id, label: l.label, color: l.color })),
+    items: VECTOR_LEVELS.map((l) => ({ id: l.id, label: l.label, color: l.color, hint: l.hint })),
   },
   {
     title: "Structure",
@@ -323,6 +357,13 @@ export const VECTOR_INDICATOR_GROUPS: ReadonlyArray<{
         label: "Gamma regime (long / short γ zones)",
         color: "#2dd4bf",
       },
+    ],
+  },
+  {
+    title: "Volume profile",
+    items: [
+      // Slate dot for the base bars; the POC/value-area colours (gold/cyan) show once enabled.
+      { id: "volume-profile", label: "Volume profile (session, by price)", color: "#94a3b8" },
     ],
   },
 ];

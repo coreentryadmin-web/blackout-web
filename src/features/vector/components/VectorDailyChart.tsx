@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import clsx from "clsx";
 import {
   createChart,
   CandlestickSeries,
@@ -15,7 +14,7 @@ import {
 } from "lightweight-charts";
 import { VECTOR_CHART_LOCALE } from "@/features/vector/lib/vector-chart-config";
 import { smaSeries } from "@/features/vector/lib/vector-indicators";
-import { VECTOR_DAILY_UNITS, type VectorDailyUnit } from "@/features/vector/lib/vector-daily-bars";
+import type { VectorDailyUnit } from "@/features/vector/lib/vector-daily-bars";
 import type { VectorOhlcBar } from "@/features/vector/lib/vector-bar-timeframes";
 
 const VOLUME_UP = "rgba(0, 230, 118, 0.55)";
@@ -25,6 +24,12 @@ const SMA200_COLOR = "#f472b6";
 
 type Props = {
   ticker: string;
+  /** Driven by the page shell's Intraday/1D/1W toggle — this component has no toggle of its own.
+   * It used to own a second, identically-labelled 1D/1W control that the outer toggle didn't
+   * drive, so switching the page to "1W" silently left the chart on daily candles (2026-08-05
+   * live-UI audit: reported directly by a user confused by the two stacked, disconnected
+   * toggles). One control now owns the unit; this component just renders it. */
+  unit: VectorDailyUnit;
 };
 
 type DailyBarsResponse = { ticker: string; unit: VectorDailyUnit; bars: VectorOhlcBar[] };
@@ -56,8 +61,7 @@ function lineData(bars: VectorOhlcBar[], values: (number | null)[]) {
  * move here — those are intraday dealer-positioning reads with nothing to show on daily bars, and
  * the honest thing is to say so, not to omit them silently or fake a daily equivalent.
  */
-export function VectorDailyChart({ ticker }: Props) {
-  const [unit, setUnit] = useState<VectorDailyUnit>("1D");
+export function VectorDailyChart({ ticker, unit }: Props) {
   const [bars, setBars] = useState<VectorOhlcBar[]>([]);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const containerRef = useRef<HTMLDivElement>(null);
@@ -159,20 +163,9 @@ export function VectorDailyChart({ ticker }: Props) {
   return (
     <div className="vector-daily-chart" data-testid="vector-daily-chart">
       <div className="vector-daily-chart-head">
-        <div className="vector-daily-chart-unit-toggle" role="group" aria-label="Daily/weekly interval">
-          {VECTOR_DAILY_UNITS.map((u) => (
-            <button
-              key={u}
-              type="button"
-              onClick={() => setUnit(u)}
-              className={clsx("vector-daily-chart-unit-btn", u === unit && "is-active")}
-            >
-              {unitLabel(u)}
-            </button>
-          ))}
-        </div>
         <span className="vector-daily-chart-note">
-          Historical price — GEX walls, beads, and replay are intraday-only and not shown here.
+          {unitLabel(unit)} historical price — GEX walls, beads, and replay are intraday-only and
+          not shown here.
         </span>
       </div>
       <div className="vector-daily-chart-canvas-wrap">

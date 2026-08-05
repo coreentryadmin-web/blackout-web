@@ -610,7 +610,11 @@ export function VectorPageShell({
                 ))}
               </div>
             )}
-            {chartView === "intraday" ? chartBlock : <VectorDailyChart ticker={activeTicker} />}
+            {chartView === "intraday" ? (
+              chartBlock
+            ) : (
+              <VectorDailyChart ticker={activeTicker} unit={chartView} />
+            )}
           </div>
 
           <div

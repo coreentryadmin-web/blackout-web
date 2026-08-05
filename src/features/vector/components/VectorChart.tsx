@@ -104,6 +104,8 @@ import { EmConePrimitive } from "@/features/vector/lib/vector-em-cone-primitive"
 import { emConeFromExpectedMove } from "@/features/vector/lib/vector-em-cone";
 import { etMinutesOfDay } from "@/lib/swing/scan-cadence";
 import { GammaRegimePrimitive } from "@/features/vector/lib/vector-gamma-regime-primitive";
+import { computeVolumeProfile } from "@/features/vector/lib/vector-volume-profile";
+import { VolumeProfilePrimitive } from "@/features/vector/lib/vector-volume-profile-primitive";
 import { WallRailPrimitive } from "@/features/vector/lib/vector-wall-rail-primitive";
 import { gexCellAtGridPoint, heatmapBucketSecForChartTimeframe } from "@/features/vector/lib/vector-gex-heatmap-paint";
 import type { GexHeatmapGrid } from "@/features/vector/lib/vector-gex-reconstruct";
@@ -1294,6 +1296,11 @@ export function VectorChart({
   // next live tick (mirrors how gexHeatmapGridRef feeds the heatmap on toggle).
   const gammaRegimePrimitiveRef = useRef<GammaRegimePrimitive | null>(null);
   const regimeFlipRef = useRef<number | null>(null);
+  // SESSION VOLUME PROFILE (default OFF, "volume-profile" toggle): computed from the raw 1m session
+  // bars (minuteBarsRef), not the display-timeframe-aggregated bars — a coarser candle timeframe
+  // (e.g. 60m) should not thin out the profile's price resolution. Recomputed in paintOverlays
+  // whenever bars/toggle change; draws nothing until enabled AND real volume exists this session.
+  const volumeProfilePrimitiveRef = useRef<VolumeProfilePrimitive | null>(null);
   const lastConfluenceRef = useRef<string>("");
   // Opt-in technical overlays (VWAP/EMA/SMA) — one lightweight-charts line series per enabled
   // indicator, created on demand and removed when toggled off. Default: none. `indicatorsRef`
@@ -1814,8 +1821,14 @@ export function VectorChart({
           color: def.color,
           lineWidth: 2,
           priceLineVisible: false,
-          lastValueVisible: false,
-          crosshairMarkerVisible: false,
+          // Labeled + a live value on the axis (2026-08-05 audit finding): with up to 6 MA lines
+          // potentially on screen at once, the toggle menu's color dot was the ONLY way to tell
+          // which line was which — no on-chart identification at all. `title` puts the indicator's
+          // own name (e.g. "EMA 21") next to its live value tag, matching how every other charting
+          // platform labels overlapping moving averages.
+          lastValueVisible: true,
+          crosshairMarkerVisible: true,
+          title: def.label,
         });
         map.set(def.id, line);
       }
@@ -1931,6 +1944,15 @@ export function VectorChart({
         spot: spotRef.current,
         enabled: enabled.has("gamma-regime"),
       });
+      // Session volume profile (P2 #4) — recompute from the raw 1m session bars (not the
+      // display-timeframe-aggregated `bars`, so a coarser candle interval doesn't thin the price
+      // resolution) whenever this paint runs (tick, timeframe switch, toggle). Cheap: a session's
+      // worth of 1m bars is at most ~390 rows.
+      const volumeProfileOn = enabled.has("volume-profile");
+      volumeProfilePrimitiveRef.current?.setData(
+        volumeProfileOn ? computeVolumeProfile(minuteBarsRef.current) : null,
+        volumeProfileOn
+      );
     }
 
     // Oscillator sub-panes (RSI / MACD) in their OWN panes below price. The pane LAYOUT is rebuilt
@@ -1974,17 +1996,21 @@ export function VectorChart({
       active.forEach((id, i) => {
         const pane = i + VOLUME_PANE_INDEX + 1;
         if (id === "rsi") {
-          const line = chart.addSeries(LineSeries, { color: "#c084fc", lineWidth: 2, priceLineVisible: false, lastValueVisible: true }, pane);
+          // `title` labels the pane's live value tag (2026-08-05 audit finding): an unlabeled
+          // number in an unlabeled sub-pane gave no clue it was RSI without opening the toggle menu.
+          const line = chart.addSeries(LineSeries, { color: "#c084fc", lineWidth: 2, priceLineVisible: false, lastValueVisible: true, title: "RSI (14)" }, pane);
           // 30/70 oversold/overbought guides + the 50 midline, drawn on the RSI series itself.
           for (const [lvl, style] of [[70, LineStyle.Dashed], [50, LineStyle.Dotted], [30, LineStyle.Dashed]] as const) {
             line.createPriceLine({ price: lvl, color: withAlpha("#c084fc", 0.4), lineWidth: 1, lineStyle: style, axisLabelVisible: true, title: String(lvl) });
           }
           oscMap.set("rsi", line);
         } else {
-          // MACD pane: histogram (behind) + macd line + signal line.
+          // MACD pane: histogram (behind) + macd line + signal line — both lines titled + valued
+          // (2026-08-05 audit finding fixed the macd/signal `lastValueVisible` inconsistency: the
+          // signal line previously showed no value at all while the macd line did).
           oscMap.set("macd-hist", chart.addSeries(HistogramSeries, { priceLineVisible: false, lastValueVisible: false }, pane));
-          oscMap.set("macd", chart.addSeries(LineSeries, { color: "#38bdf8", lineWidth: 2, priceLineVisible: false, lastValueVisible: true }, pane));
-          oscMap.set("macd-signal", chart.addSeries(LineSeries, { color: "#f59e0b", lineWidth: 1, priceLineVisible: false, lastValueVisible: false }, pane));
+          oscMap.set("macd", chart.addSeries(LineSeries, { color: "#38bdf8", lineWidth: 2, priceLineVisible: false, lastValueVisible: true, title: "MACD" }, pane));
+          oscMap.set("macd-signal", chart.addSeries(LineSeries, { color: "#f59e0b", lineWidth: 1, priceLineVisible: false, lastValueVisible: true, title: "Signal" }, pane));
         }
       });
       lastOscKeyRef.current = key;
@@ -3192,6 +3218,12 @@ export function VectorChart({
     const gammaRegime = new GammaRegimePrimitive();
     series.attachPrimitive(gammaRegime);
     gammaRegimePrimitiveRef.current = gammaRegime;
+    // Session volume profile (P2 #4): right-margin bars, background layer like the heatmap/regime
+    // glow above. Stays hidden until the member enables "volume-profile" AND real session volume
+    // exists.
+    const volumeProfile = new VolumeProfilePrimitive();
+    series.attachPrimitive(volumeProfile);
+    volumeProfilePrimitiveRef.current = volumeProfile;
     // EOD pin CONE (SPX desk only): attach the converging-cone primitive to the candle series. It
     // renders at zOrder "top" (a translucent gold funnel over the candles) and stays hidden until
     // paintOverlays pushes a real MC cone for SPX. The right-margin room it needs comes from
@@ -3434,6 +3466,8 @@ export function VectorChart({
       // remount re-attaches a fresh glow instead of touching a dead one.
       gammaRegimePrimitiveRef.current = null;
       regimeFlipRef.current = null;
+      // Same lifecycle — chart.remove() disposed the volume-profile primitive too.
+      volumeProfilePrimitiveRef.current = null;
       volumeSeriesRef.current = null;
       setChartReady(false);
     };
