@@ -1,8 +1,5 @@
 # BlackOut Open Issues Log
-<<<<<<< HEAD
-Last updated: 2026-08-05 13:26 ET
-=======
-Last updated: 2026-08-05 13:35 ET
+Last updated: 2026-08-05 13:57 ET
 
 ## rth-open-2026-08-05-pass7 — RTH comprehensive test sweep (~1:26–1:35 PM ET, midday)
 
@@ -72,7 +69,6 @@ Last updated: 2026-08-05 13:35 ET
 **Reports:** `audit-output/rth-sweep-2026-08-05T17-27-58-481Z.json`, `audit-output/grid-e2e-1785951093092.json`, `audit-output/spx-dashboard-e2e-1785951204102.json`
 
 ---
->>>>>>> ac08b687 (docs(audit): RTH comprehensive sweep pass7 findings (2026-08-05 ~1:35 PM ET))
 
 ## spx-rth-2026-08-05 — SPX Slayer all-day RTH verify agent (market open ~6:30 AM PT / 9:30 AM ET)
 
@@ -150,9 +146,28 @@ Last updated: 2026-08-05 13:35 ET
 
 ## grid-rth-2026-08-05 — 0DTE Command RTH verify agent (market open ~6:30 AM PT / 9:30 AM ET)
 
-**Session:** Autonomous Grid RTH **verify** mode per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` (Cloud Agent `cursor/0dte-grid-rth-agent-8680`). Passes: (1) market-open ~9:30 ET agent `8c7a`; (2) midday ~12:15 ET agent `ca67`; (3) midday ~12:46 ET agent `8680`. Commands each pass: `npm run validate:grid-rth` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e` → `data-validator.mjs` → `/grid` 404 routing check.
+**Session:** Autonomous Grid RTH **verify** mode per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` (Cloud Agent `cursor/0dte-grid-rth-agent-fd26`). Passes: (1) market-open ~9:30 ET agent `8c7a`; (2) midday ~12:15 ET agent `ca67`; (3) midday ~12:46 ET agent `8680`; (4) midday ~13:49 ET agent `fd26`. Commands each pass: `npm run validate:grid-rth` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e` → `data-validator.mjs` → `/grid` 404 routing check + Night Hawk tab clicks.
 
 **Note:** Classic `/grid` page + 9 `/api/grid/*` routes deleted 2026-07-07 — returns **404**. 0DTE Command lives on `/nighthawk` with four view tabs (**0DTE / Swings / Bangers / Legacy**); LEAPS removed from toggle 2026-08-04 (no live signal adapter).
+
+### Validation summary (pass 4 — ~13:49 ET)
+
+| Check | Result |
+|---|---|
+| `npm run validate:grid-rth` | ✅ **14/14 PASS** (0 FAIL · ~4.5 min) — RTH-open, upstream, session heat RTH, ledger PnL 3 rows, SPX spot 7742.62 vs GEX, HELIX 20 prints, Night Hawk dedupe 1 ticker, `zerodte-warm` cron accepted, logic + integration, data-correctness flags=0, E2E nested, ops:collect zero items |
+| `npm run validate:zerodte-logic` | ✅ **17/17 PASS** — gates, plan exits (-50%/+100%/15:30 ET), lifecycle OPEN→TRIM→CLOSED, mergePlays SKIP past cutoff/MOVED, session heat RTH→POST_COMMIT→LATE_SESSION, live board 9 setups / 3 ledger (2 eligible / 0 gate violations), cutoff 15:30 ET |
+| `npm run validate:grid-e2e` | ✅ **5/5 PASS** — board API 9/3, HELIX 20 prints, Playwright `/nighthawk` load, zero console errors |
+| `data-validator.mjs` | ✅ **36 PASS / 5 INFO / 0 FAIL** — SPX/SPY/VIX live vs Polygon, 0DTE chain + ledger SPXW/QQQ/MU premium cross-check PASS |
+| Night Hawk UI segments | ✅ **0DTE / Swings / Bangers / Legacy** — all tabs click (Playwright `.ios-native-segment-btn`), zero console errors |
+| `/grid` routing | ✅ **404** — intentional (classic Market Grid removed) |
+
+**Live board (RTH ~13:49 ET):** 9 setups · 3 ledger · session heat RTH 100% · 2 eligible / 0 gate violations · upstream OK · committed SPXW 7830c entry 8.38 + QQQ 720p entry 1.77 + MU 910c entry 16.02 grounded vs Polygon minute bars.
+
+**Cross-tool:** SPX bootstrap spot 7742.62 vs GEX ✅ · HELIX flows 20 prints ✅ · Night Hawk dedupe 1 ticker covered elsewhere ✅ · `zerodte-warm` cron accepted ✅.
+
+**Verify status: GREEN** — zero FAIL on all Grid harnesses. No P0 fixes required.
+
+**Reports (pass 4):** `audit-output/grid-rth-2026-08-05-verify-1785952453967.json`, `audit-output/zerodte-logic-1785952179457.json`, `audit-output/grid-e2e-1785952190948.json`, `audit-output/validation-2026-08-05T17-54-25-860Z.md`
 
 ### Validation summary (pass 3 — ~12:46 ET)
 
