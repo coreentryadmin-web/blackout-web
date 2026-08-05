@@ -160,8 +160,22 @@ export function TradeSummaryHero({
           </span>
         </div>
         <div className="nh-deck-trade-hero__metric">
-          <span className="k">Confidence</span>
-          <span className="v">{summary.confidence ?? "—"}</span>
+          {/* Canonical location for the thesis-strength/conviction number (Night Hawk panel
+              declutter, docs/audit/FINDINGS.md 2026-08-05): previously this tile showed
+              `convictionDisplay(play).score` (== `summary.confidence`, effectively `play.score`
+              since `play.confidence` is never populated by any adapter) — a STATIC entry-time
+              score that is ALSO rendered right above in `ConfidenceBadge` (grade + strength bar +
+              same score, headrow). Meanwhile the Thesis tab's `ThesisStrengthBlock` and the
+              Management tab's `ManagementActionCard` both rendered `thesisHealth.health` — a LIVE,
+              decaying number — under yet another label ("Conviction" / "Confidence") in yet
+              another tab. Consolidated to ONE canonical number in ONE canonical place: this tile
+              now shows the LIVE thesis-health strength (falling back to the static score only when
+              no thesisHealth is wired, e.g. Legacy/WATCH rows), labeled "Thesis Strength", and the
+              other two renders were removed (see ThesisStrengthBlock removal + ManagementActionCard
+              below). The static entry score keeps its own home in `ConfidenceBadge` — a genuinely
+              different, non-live measure, not touched. */}
+          <span className="k">Thesis Strength</span>
+          <span className="v">{thesisStrengthPct(play) ?? summary.confidence ?? "—"}</span>
         </div>
         <div className="nh-deck-trade-hero__metric">
           <span className="k">Rank</span>
@@ -369,20 +383,14 @@ export function ConvictionHero({ play }: { play: TerminalPlay }) {
   );
 }
 
-export function ThesisStrengthBlock({ play }: { play: TerminalPlay }) {
-  const pct = thesisStrengthPct(play);
-  return (
-    <section className="nh-deck-thesis-strength" aria-label="Conviction">
-      <div className="nh-deck-thesis-strength__head">
-        <span className="nh-deck-thesis-strength__label">Conviction</span>
-        <span className="nh-deck-thesis-strength__pct">
-          {pct != null ? `${pct}%` : "—"}
-        </span>
-      </div>
-      <StrengthBar pct={pct} />
-    </section>
-  );
-}
+// NOTE: `ThesisStrengthBlock` (Thesis-tab "Conviction" % — `thesisStrengthPct(play)`, i.e.
+// `thesisHealth.health`) was removed here (Night Hawk panel declutter, docs/audit/FINDINGS.md
+// 2026-08-05). It carried no content beyond that single %, and that % is now the hero's canonical
+// "Thesis Strength" tile (see `TradeSummaryHero` above) — always visible regardless of tab, so a
+// second identical rendering buried in the collapsible Thesis tab added nothing but confusion
+// ("which number do I trust — the one on top, or the one in the tab?"). `thesisStrengthPct` itself
+// is untouched (pure, still exported, still unit-tested in terminal-display.test.ts) — this was a
+// presentation-layer removal only, not a math change.
 
 /** ONE merged checklist — replaces the prior three separate renders that described
  *  overlapping/related gate-and-scoring state under three different label taxonomies
@@ -488,12 +496,16 @@ export function ManagementActionCard({
           <span className="nh-deck-action-card__key">Reason</span>
           <span className="nh-deck-action-card__val">{action.reason}</span>
         </div>
-        <div className="nh-deck-action-card__row">
-          <span className="nh-deck-action-card__key">Confidence</span>
-          <span className="nh-deck-action-card__val nh-deck-action-card__prob">
-            {action.probabilityPct != null ? `${action.probabilityPct}%` : "—"}
-          </span>
-        </div>
+        {/* `action.probabilityPct` (labeled "Confidence" here) was removed from this render
+            (Night Hawk panel declutter, docs/audit/FINDINGS.md 2026-08-05): for the common
+            HOLD/TRIM path it is `thesisHealth.health` verbatim (`actionProbability` in
+            terminal-display.ts returns it unchanged), and for SELL it is `100 - health` — still
+            the SAME underlying field, just complemented. That number is now the hero's canonical
+            "Thesis Strength" tile, always visible above every tab including this one — showing it
+            a 2nd time here (a 3rd rendering counting the old Thesis-tab block) added no new
+            information, only a risk that the two numbers drift/disagree in a future refactor.
+            `action.probabilityPct` itself is untouched (still computed, still unit-tested) in case
+            a future consumer needs the SELL-complemented framing specifically. */}
       </div>
       <div className="nh-deck-action-card__window">
         <span className="nh-deck-action-card__window-label">Decision Window</span>
