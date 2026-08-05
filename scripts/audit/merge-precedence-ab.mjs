@@ -64,9 +64,9 @@ const CLOSE_UTC_MIN = (16 - ET_OFFSET) * 60;
 const KEY = process.env.POLYGON_API_KEY;
 const BASE = process.env.POLYGON_API_BASE;
 
-/** Precedence order = canonical discovery-origin seating (FLOW < BREAKOUT < PIN). The shipped merge
- *  keeps the FIRST present rail's direction; buildOriginMaps stamps it as direction_owner. */
-const PRECEDENCE = ["FLOW", "BREAKOUT", "PIN"];
+// Pure precedence-arm helpers, factored into lib/merge-precedence-eval.mjs (unit-tested by
+// lib/merge-precedence-eval.test.mjs — see that file's header for the real bug it regression-tests).
+const { flowFirstDirection, evidenceWeightedDirection } = await import("./lib/merge-precedence-eval.mjs");
 
 function fail(msg, code = 2) {
   console.error(msg);
@@ -164,37 +164,11 @@ function gradeDirection(bars, direction) {
   return { win: false, maxRet };
 }
 
-/** FLOW-first choice: the highest-precedence rail present on the row (direction_owner). */
-function flowFirstDirection(maps) {
-  if (maps.direction_owner && maps.origin_direction_map?.[maps.direction_owner]) {
-    return { dir: maps.origin_direction_map[maps.direction_owner], owner: maps.direction_owner };
-  }
-  for (const o of PRECEDENCE) {
-    if (maps.origin_direction_map?.[o]) return { dir: maps.origin_direction_map[o], owner: o };
-  }
-  return null;
-}
-
-/** Evidence-weighted choice: the direction of the rail with the max frozen score. Ties → null (skip). */
-function evidenceWeightedDirection(maps) {
-  const entries = Object.entries(maps.origin_score_map ?? {});
-  if (entries.length === 0) return null;
-  let best = null;
-  let tie = false;
-  for (const [o, s] of entries) {
-    const score = Number(s);
-    if (!Number.isFinite(score)) continue;
-    if (!best || score > best.score) {
-      best = { owner: o, score };
-      tie = false;
-    } else if (score === best.score && o !== best.owner) {
-      tie = true;
-    }
-  }
-  if (!best || tie) return null;
-  const dir = maps.origin_direction_map?.[best.owner];
-  return dir ? { dir, owner: best.owner, score: best.score } : null;
-}
+// flowFirstDirection / evidenceWeightedDirection are imported above from
+// lib/merge-precedence-eval.mjs — see that file for the bug this harness shipped with (an
+// earlier inline version read the policy-versioned `direction_owner` field as if it were always
+// the v1 seating-order pick, which made the two arms silently collapse to the same value on
+// every real v2 ledger row) and lib/merge-precedence-eval.test.mjs for the regression test.
 
 // ── Walk the rows ─────────────────────────────────────────────────────────────────────
 const considered = [];
