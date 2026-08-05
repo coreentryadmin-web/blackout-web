@@ -4194,6 +4194,43 @@ export async function fetchTodaySpxSessionCounts(
   };
 }
 
+/**
+ * Real CONSECUTIVE-loss streak for today's session, derived from the ordered
+ * closed-outcome log in spx_play_outcomes (closed_at DESC — most recent first).
+ *
+ * Root cause this exists to fix: trade-governor.ts's "consecutive loss watch"
+ * was actually reading session_losses_today, a cumulative daily loss counter
+ * that never resets on a win. This walks the REAL chronological outcome
+ * sequence and counts only the trailing run of losses since the last
+ * non-loss, so a win correctly resets the streak to 0.
+ *
+ * 'superseded' rows (force-closed stale opens — bookkeeping only, not a real
+ * trade result) are skipped without breaking or extending the streak. 'open'
+ * rows are excluded entirely (not yet decided). Any 'win' or 'breakeven' ends
+ * the streak.
+ */
+export async function fetchTodaySpxConsecutiveLosses(sessionDate: string): Promise<number> {
+  await ensureSchema();
+  const res = await (await getPool()).query<{ outcome: string }>(
+    `
+    SELECT outcome FROM spx_play_outcomes
+    WHERE session_date = $1::date AND outcome <> 'open'
+    ORDER BY closed_at DESC NULLS LAST, id DESC
+    `,
+    [sessionDate]
+  );
+  let streak = 0;
+  for (const row of res.rows) {
+    if (row.outcome === "superseded") continue;
+    if (row.outcome === "loss") {
+      streak += 1;
+      continue;
+    }
+    break; // win or breakeven ends the trailing streak
+  }
+  return streak;
+}
+
 export async function insertOpenSpxPlay(
   row: {
     session_date: string;

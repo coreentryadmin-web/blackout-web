@@ -33,6 +33,14 @@ export type TradeGovernorInput = {
     last_stop_at: number | null;
     session_entries_today?: number;
     session_losses_today?: number;
+    /**
+     * Real CONSECUTIVE-loss streak (resets to 0 on any win/breakeven), derived
+     * from the ordered spx_play_outcomes log — see PlaySessionMeta in
+     * spx-play-store.ts. Distinct from session_losses_today, which is a
+     * cumulative daily loss counter that never resets and is used only for
+     * the separate hard "session loss cap" revenge-trading lockout below.
+     */
+    session_consecutive_losses_today?: number;
   };
   triggers_today_by_pb?: ReadonlyMap<string, number>;
   option?: {
@@ -85,6 +93,14 @@ export function evaluateTradeGovernor(input: TradeGovernorInput): TradeGovernorR
 
   const entriesToday = input.session.session_entries_today ?? 0;
   const lossesToday = input.session.session_losses_today ?? 0;
+  // BUG FIX (see FINDINGS.md): this used to read lossesToday (cumulative
+  // daily losses, never reset by a win) for the "consecutive loss watch" —
+  // a desk that opened 1-3, 1-3, 1-3 (winning every 3rd trade) would trip
+  // this after trade #3 and never clear it for the rest of the day, since
+  // lossesToday only ever counts up. session_consecutive_losses_today is the
+  // real trailing streak (resets to 0 on any win/breakeven) computed from
+  // the ordered spx_play_outcomes log — see spx-play-store.ts.
+  const consecutiveLossesToday = input.session.session_consecutive_losses_today ?? 0;
   const maxEntries = playSessionMaxEntries();
   const maxLosses = playSessionMaxLosses();
 
@@ -99,8 +115,10 @@ export function evaluateTradeGovernor(input: TradeGovernorInput): TradeGovernorR
     emergency_shutdown = true;
   }
 
-  if (lossesToday >= maxConsecutiveLosses()) {
-    warnings.push(`Consecutive loss watch (${lossesToday}/${maxConsecutiveLosses()})`);
+  if (consecutiveLossesToday >= maxConsecutiveLosses()) {
+    warnings.push(
+      `Consecutive loss watch (${consecutiveLossesToday}/${maxConsecutiveLosses()})`
+    );
     size_multiplier = Math.min(size_multiplier, 0.5);
     if (tier === "normal") tier = "reduced";
   }

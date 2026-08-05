@@ -129,6 +129,8 @@ export function evaluatePlayGates(
     last_stop_at: number | null;
     session_entries_today?: number;
     session_losses_today?: number;
+    /** Real consecutive-loss streak — forwarded to the trade governor. See trade-governor.ts. */
+    session_consecutive_losses_today?: number;
   },
   confirmations?: PlayConfirmationResult | null,
   opts?: {

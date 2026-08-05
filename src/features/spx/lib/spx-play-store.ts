@@ -1,5 +1,6 @@
 import {
   dbConfigured,
+  fetchTodaySpxConsecutiveLosses,
   fetchTodaySpxSessionCounts,
   getMeta,
   setMeta,
@@ -39,6 +40,14 @@ export type PlaySessionMeta = {
   last_stop_at: number | null;
   session_entries_today?: number;
   session_losses_today?: number;
+  /**
+   * Real CONSECUTIVE-loss streak (resets to 0 on any win/breakeven, +1 per
+   * loss) — NOT the same as session_losses_today, which is a cumulative
+   * daily loss counter that never resets. Derived from the ordered
+   * spx_play_outcomes closed-outcome log; see fetchTodaySpxConsecutiveLosses
+   * in @/lib/db and buildCloseMeta below.
+   */
+  session_consecutive_losses_today?: number;
   // C5: date boundary — prevents stale session data from bleeding across calendar days.
   session_date?: string;
   version?: number;
@@ -57,6 +66,7 @@ const MEMORY_SESSION: PlaySessionMeta = {
   last_stop_at: null,
   session_entries_today: 0,
   session_losses_today: 0,
+  session_consecutive_losses_today: 0,
 };
 
 async function setMetaWithRetry(key: string, value: string, attempts = 3): Promise<void> {
@@ -89,13 +99,21 @@ async function hydrateSessionCountersFromDb(meta: PlaySessionMeta): Promise<Play
 
   try {
     const today = todayEt();
-    const { entries, losses } = await fetchTodaySpxSessionCounts(today);
+    const [{ entries, losses }, consecutiveLosses] = await Promise.all([
+      fetchTodaySpxSessionCounts(today),
+      fetchTodaySpxConsecutiveLosses(today),
+    ]);
     const entriesToday = Math.max(meta.session_entries_today ?? 0, entries);
     const lossesToday = Math.max(meta.session_losses_today ?? 0, losses);
+    // NOT maxed like the cumulative counters above — a real streak can go
+    // DOWN (a win resets it to 0), so the DB-derived value is the source of
+    // truth here, not a floor.
+    const consecutiveLossesToday = consecutiveLosses;
 
     if (
       entriesToday === (meta.session_entries_today ?? 0) &&
-      lossesToday === (meta.session_losses_today ?? 0)
+      lossesToday === (meta.session_losses_today ?? 0) &&
+      consecutiveLossesToday === (meta.session_consecutive_losses_today ?? 0)
     ) {
       return stripVersion(meta);
     }
@@ -104,6 +122,7 @@ async function hydrateSessionCountersFromDb(meta: PlaySessionMeta): Promise<Play
       ...meta,
       session_entries_today: entriesToday,
       session_losses_today: lossesToday,
+      session_consecutive_losses_today: consecutiveLossesToday,
       session_date: today,
       version: (meta.version ?? 0) + 1,
     };
@@ -137,6 +156,7 @@ export async function loadPlaySessionMeta(): Promise<PlaySessionMeta> {
         last_stop_at: null,
         session_entries_today: 1,
         session_losses_today: 0,
+        session_consecutive_losses_today: 0,
         session_date: todayEt(),
         version: 1,
       };
@@ -153,7 +173,7 @@ export async function loadPlaySessionMeta(): Promise<PlaySessionMeta> {
       void _version;
       return memFields;
     }
-    return { last_buy_at: null, last_sell_at: null, last_sell_was_loss: false, last_direction: null, last_stop_at: null, session_entries_today: 0, session_losses_today: 0 };
+    return { last_buy_at: null, last_sell_at: null, last_sell_was_loss: false, last_direction: null, last_stop_at: null, session_entries_today: 0, session_losses_today: 0, session_consecutive_losses_today: 0 };
   }
   try {
     const p = JSON.parse(raw) as PlaySessionMeta;
@@ -165,6 +185,7 @@ export async function loadPlaySessionMeta(): Promise<PlaySessionMeta> {
       last_stop_at: p.last_stop_at ?? null,
       session_entries_today: p.session_entries_today ?? 0,
       session_losses_today: p.session_losses_today ?? 0,
+      session_consecutive_losses_today: p.session_consecutive_losses_today ?? 0,
       session_date: p.session_date,
       version: typeof p.version === "number" ? p.version : 0,
     };
@@ -180,6 +201,7 @@ export async function loadPlaySessionMeta(): Promise<PlaySessionMeta> {
       meta.last_stop_at = null;
       meta.session_entries_today = 0;
       meta.session_losses_today = 0;
+      meta.session_consecutive_losses_today = 0;
       meta.session_date = todayEt();
     }
 
@@ -219,6 +241,7 @@ export async function loadPlaySessionMeta(): Promise<PlaySessionMeta> {
       m.last_stop_at = null;
       m.session_entries_today = 0;
       m.session_losses_today = 0;
+      m.session_consecutive_losses_today = 0;
       m.session_date = todayEt();
     }
     return m;
@@ -249,6 +272,15 @@ function mergeSessionMeta(existing: PlaySessionMeta, incoming: PlaySessionMeta):
     session_losses_today: sameDay
       ? Math.max(existing.session_losses_today ?? 0, incoming.session_losses_today ?? 0)
       : incoming.session_losses_today ?? 0,
+    // NOT maxed like the cumulative counters above — a real streak can go
+    // DOWN (a win resets it to 0). Same "whoever closed the most recent
+    // trade owns the current value" rule as last_sell_was_loss, so a losing
+    // writer's stale higher streak can never clobber a later win's reset.
+    session_consecutive_losses_today: sameDay
+      ? incoming.last_sell_at != null && incoming.last_sell_at >= (existing.last_sell_at ?? 0)
+        ? incoming.session_consecutive_losses_today ?? 0
+        : existing.session_consecutive_losses_today ?? 0
+      : incoming.session_consecutive_losses_today ?? 0,
     session_date: today,
   };
 }
@@ -426,6 +458,12 @@ export async function closeOpenPlay(
     session_entries_today: meta.session_entries_today ?? 0,
     session_losses_today:
       (meta.session_losses_today ?? 0) + (outcome.was_loss ? 1 : 0),
+    // Real consecutive-loss streak: +1 on a loss, reset to 0 on any
+    // win/breakeven. This is what trade-governor.ts's "consecutive loss
+    // watch" should read (see the field's doc comment on PlaySessionMeta).
+    session_consecutive_losses_today: outcome.was_loss
+      ? (meta.session_consecutive_losses_today ?? 0) + 1
+      : 0,
     last_stop_at:
       exitAction === "STOP" ||
       (exitAction === "TRAIL" && (outcome.close?.pnl_pts ?? 0) < 0)
