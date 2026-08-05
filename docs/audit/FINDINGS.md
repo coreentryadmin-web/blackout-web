@@ -7266,3 +7266,102 @@ clean.
 **Status:** FIXED (harness bug) — PR opened, auto-merge enabled per standing policy. The underlying
 merge-precedence design question stays OPEN per INTENTIONAL-DESIGN.md item #1, now with a working
 measurement tool and a real (if thin) first data point.
+
+## 2026-08-05 — [0DTE #B/#E re-scope] Accumulation badge + scoring-unification investigation — badge fixed (pinned-blob passthrough gap), unification already substantially shipped
+
+### Investigation — is the operator's original framing ("#B: badge not surfaced", "#E: scoring not unified") still accurate?
+
+**No, mostly stale — re-verified against the current code, not the original scoping.**
+
+- **#B (accumulation badge on card).** The badge was ALREADY shipped weeks ago: PR #951
+  (2026-07-22, `c5539f6f`) added `AccumulationBadge` to `ZeroDteBoard.tsx` — a compact `"3d flow ✓"`
+  chip rendered right beside the tier/confluence badges on every play row (exactly the "small chip
+  near rank/confidence badges" scale the task asked for, not a new section). It shows only when
+  `flow_accumulation.aligned === true` (evidence-only — multi-day stacked positioning CONFIRMS
+  today's direction), so a misaligned/no-signal read stays silent and the card stays clean. The
+  follow-up this closes out (noted in the original 2026-07-22 accumulation-wiring entry above:
+  *"(1) render the badge on the 0DTE card (payload already carries it)"*) was done.
+- **#E (unify FLOW/BREAKOUT/PIN scoring).** Also substantially already shipped: (1) Market State
+  Engine v0 (`src/lib/zerodte/market-state-engine.ts`'s `weightedScoreForMerge`) already gives all
+  three discovery origins a regime-weighted, comparable score at merge-rank time (`scan.ts:407-423`);
+  (2) G-13 (`gates.ts:119-120,547-560`, shipped 2026-07-30) already hard-gates a setup whose direction
+  fights the multi-day accumulation read — accumulation isn't just a badge, it already affects commit
+  eligibility; (3) `calibration.ts`'s `accumulation_alignment` buckets (added with the same 2026-07-22
+  wiring, closing that entry's follow-up #2: *"extend calibration.ts to bucket graded outcomes by
+  alignment"*) already grade whether "aligned" outcomes actually win more, with a coded
+  `recommendSignal("accumulation_aligned", ...)` graduation verdict — the prove-then-graduate
+  discipline this codebase requires before a positive score bump would be justified. The ONE piece
+  genuinely not done is turning "aligned === true" into an actual +points score input (today it only
+  ever *blocks* on misalignment, never rewards alignment) — but that is a deliberate calibration-first
+  hold, not an oversight: `flow-accumulation-context.ts`'s own header says evidence must prove out on
+  the graded ledger before it graduates into scoring, the same way G-4/G-6 did. **Per the task's own
+  instruction not to invent a change to justify the story, this is called out here rather than shipped
+  as a speculative score-weighting PR** — it needs a graduation verdict (dataset large enough, Δ
+  measurably positive) before touching `scan.ts`'s scoring, which the calibration ladder doesn't yet
+  show. No code change for #E in this PR.
+
+### Fix — real, well-scoped gap found in the badge's own wiring: the "pinned commit-time evidence" discipline was inconsistently applied
+
+**Severity.** P2 — member-facing correctness/consistency bug in evidence display (never fabricates,
+but silently withholds real evidence for the majority of a committed play's lifetime), not a build gap.
+
+**Root cause.** `AccumulationBadge` (`ZeroDteBoard.tsx`) read its data from `row.setup?.flow_accumulation`
+— i.e. **only** the LIVE setup match (`byTicker.get(ticker)` against the CURRENT scan cycle's top-N
+snapshot, `mergePlays` line ~303). Every other piece of "what actually gated the money" evidence on a
+committed row — Cortex (`row.cortex`), merit tier (`row.tier`) — is instead read from the **PINNED**
+`entry_context` blob the ledger carries (`readCortexView(r.cortex)` / `readTierAssignment(r.tier)`,
+`zerodte-service.ts:437-444` flattens `entry_context.cortex`/`entry_context.tier` onto the served ledger
+row for exactly this reason — `thesis-health.ts:468` even already reads a pinned `entryContext.
+flow_accumulation` as `commitFlow` for its OWN evidence-drift comparison). `flow_accumulation` was the
+one evidence field that never got this same passthrough, even though `scan.ts:1075/1094` already writes
+it into `entry_context` at commit time — the data was there, nothing served it to the board API's ledger
+row. **Consequence:** the badge worked fine for the first minute or two after commit (while the ticker
+was still ranking in the live top-N scan), then silently went dark for the rest of the play's life the
+moment a fresher/bigger name bumped it out of the snapshot — even though the entry-time evidence that
+actually confirmed the direction never changed. A member watching a play all day would see the "3d flow
+✓" confirmation disappear from under them with no signal anything changed, for no reason connected to
+the play itself.
+
+**Evidence.** Traced the exact same passthrough pattern already used for `cortex`/`tier` in
+`zerodte-service.ts` (`mapLedgerRow`, ~line 437) and confirmed `flow_accumulation` was the one field
+missing it; confirmed `scan.ts` already writes `flow_accumulation` into `entry_context` at commit
+(`entry_context: { ..., flow_accumulation: s.flow_accumulation }`, lines 1075/1094) so the fix is pure
+passthrough wiring, no new computation. New tests reproduce the exact failure mode: a committed row with
+NO live setup present (simulating the ticker having fallen out of the scan snapshot) previously would
+have rendered no badge at all — now it renders the pinned read.
+
+**Fix.**
+1. `src/lib/platform/zerodte-service.ts` — added `flow_accumulation: Record<string, unknown> | null`
+   to `ZeroDteBoardLedgerRow`, populated by the same `typeof === "object"` passthrough as `cortex`/`tier`
+   (`r.entry_context.flow_accumulation`), served opaque and validated client-side (mirrors the existing
+   contract exactly).
+2. `src/lib/zerodte/pane.ts` — added `readPinnedFlowAccumulation(raw)`, a structural validator mirroring
+   `readTierAssignment`/`readCortexView` (fail-soft: malformed/legacy blobs → `null`, never fabricated).
+3. `src/features/nighthawk/components/ZeroDteBoard.tsx` — added `flow_accumulation` to `PlayRow`; the
+   committed-row builder now reads `readPinnedFlowAccumulation(r.flow_accumulation) ?? byTicker.get(r.
+   ticker)?.flow_accumulation ?? null` (pinned-first, live-fallback for rows committed before this
+   wiring — mirrors the `cortex` fallback rule, not `tier`'s no-fallback rule, since a stale-but-present
+   live read is still better evidence than none for a pre-wiring row); fresh WATCH rows keep the live
+   `s.flow_accumulation` (no ledger row exists yet). `AccumulationBadge`'s call site now reads
+   `row.flow_accumulation` instead of `row.setup?.flow_accumulation`.
+
+**Blast radius.** Three files, all part of the same evidence-passthrough chain (server shape → client
+structural reader → row builder → render). No other consumer of `EnrichedZeroDteSetup["flow_accumulation"]`
+touches the ledger row path (`why-now.ts`, `thesis-health.ts`, `calibration.ts` all read their own copies
+off `entry_context`/the live setup directly and are unaffected). `condor`/`why_now`/other Wave-2/3
+passthrough fields already on `ZeroDteBoardLedgerRow` are untouched.
+
+**Tests.** `src/lib/platform/zerodte-service.test.ts` — 2 new: pinned blob rides the board row verbatim
+with NO live setup present; a row with no multi-day signal at commit serves `null` (never fabricated).
+`src/features/nighthawk/components/ZeroDteBoard.test.ts` — 3 new: pinned survives with zero live setup
+match; a malformed/legacy `entry_context.flow_accumulation` falls back to the live setup's read instead
+of crashing or fabricating; a pre-wiring row with nothing anywhere serves `null`. `src/lib/zerodte/pane.test.ts`
+suite (41 tests incl. the new reader) — all pass. `npx tsc --noEmit` clean (ignoring the pre-existing
+stale `.next/types/app/(marketing)/learn/*` cache errors). `zerodte-service.test.ts`'s pre-existing tests
+5-8 (`livePnlPct` rounding parity, two `commit latch` cases, `tier passthrough`) fail identically on a
+**clean `origin/main` checkout run in isolation** (verified via a separate `git worktree`, no code changes)
+— confirmed pre-existing sandbox flakiness (10s+ per-test durations from blocked-egress `trackedFetch`
+retries racing a fixed wait budget), not caused by this change; not touched by this PR.
+
+**Status:** FIXED — PR opens on `feat/0dte-accumulation-badge`, auto-merge enabled per standing policy
+once CI's `verify` gate is green.

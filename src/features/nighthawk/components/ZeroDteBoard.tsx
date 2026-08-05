@@ -26,6 +26,7 @@ import {
   isCortexBlockCode,
   minutesUntilEtUnlock,
   readCortexView,
+  readPinnedFlowAccumulation,
   readTierAssignment,
   reentryLockRemainingMs,
   resolveZeroDteReadiness,
@@ -97,6 +98,11 @@ type LedgerRow = {
   /** Commit-time merit tier blob (entry_context.tier passthrough, PR-F) — opaque
    *  here; validated structurally by readTierAssignment. */
   tier?: unknown;
+  /** Commit-time multi-day flow-accumulation blob (entry_context.flow_accumulation
+   *  passthrough, zerodte-service.ts) — opaque here; validated structurally by
+   *  readPinnedFlowAccumulation. PINNED so the card's AccumulationBadge survives the
+   *  ticker dropping out of the live top-N scan snapshot (see mergePlays below). */
+  flow_accumulation?: unknown;
 };
 
 /** G-5 session risk summary (additive, PR-D — zerodte-service's governor block). */
@@ -233,6 +239,13 @@ type PlayRow = {
   spike: boolean;
   /** Full live find (evidence + plan) when this ticker is still in the top-10. */
   setup: EnrichedZeroDteSetup | null;
+  /** Multi-day flow-accumulation read for the AccumulationBadge. Committed rows
+   *  prefer the ledger's PINNED commit-time blob (the entry-time evidence that
+   *  actually confirmed the direction) over the live setup's re-derived read, so
+   *  the badge does not silently go dark once the ticker drops out of the live
+   *  top-N scan snapshot; fresh (uncommitted) finds carry only the live read.
+   *  Null = no multi-day signal at all. */
+  flow_accumulation: EnrichedZeroDteSetup["flow_accumulation"] | null;
   /** Normalized Cortex evidence for the card. Committed rows prefer the ledger's
    *  pinned commit-time blob (what actually gated the money) over the setup's
    *  live assessment; fresh finds carry the live assessment. Null = no verdict
@@ -330,6 +343,12 @@ export function mergePlays(
     score: r.score_max,
     spike: r.spike,
     setup: byTicker.get(r.ticker) ?? null,
+    // Pinned commit-time accumulation blob, falling back to the live setup's read
+    // only when the row predates this wiring (readPinnedFlowAccumulation(undefined)
+    // is null) — mirrors the cortex fallback below, not the tier no-fallback rule,
+    // since a stale-but-present live read is still better evidence than none.
+    flow_accumulation:
+      readPinnedFlowAccumulation(r.flow_accumulation) ?? byTicker.get(r.ticker)?.flow_accumulation ?? null,
     cortex: readCortexView(r.cortex) ?? readCortexView(byTicker.get(r.ticker)?.cortex),
     // Pinned commit-time tier ONLY — no fallback to a live re-derivation: the chip
     // grades the decision that printed, and a decision's grade doesn't move after.
@@ -386,6 +405,7 @@ export function mergePlays(
       score: s.score,
       spike: s.spike,
       setup: s,
+      flow_accumulation: s.flow_accumulation ?? null,
       cortex: readCortexView(s.cortex),
       // Refused finds get the F assignment (tierForSkip — the #325 wiring the SKIP
       // cards were promised); WATCH candidates get NO tier (not decisions yet).
@@ -1133,7 +1153,7 @@ function PlayCard({ row, nowMs }: { row: PlayRow; nowMs: number }) {
           {row.tier && <TierChip tier={row.tier} />}
           <ConvictionBadge raw={row.conviction} />
           {row.setup?.confluence && <ConfluenceBadge confluence={row.setup.confluence} />}
-          {row.setup?.flow_accumulation && <AccumulationBadge acc={row.setup.flow_accumulation} />}
+          {row.flow_accumulation && <AccumulationBadge acc={row.flow_accumulation} />}
           {live && <SizeChip view={view} />}
           {/* Exit-engine guidance, now VISIBLE (was computed server-side but never shown):
               a live play with an armed protective floor gets the "your stop is at

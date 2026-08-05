@@ -285,6 +285,47 @@ test("tier passthrough: a pre-wiring row (no entry_context.tier) serves tier:nul
   assert.equal(board.ledger[0]!.tier, null);
 });
 
+// ── flow_accumulation passthrough (mirror of the cortex/tier passthrough above) ────
+// FINDINGS 2026-08-05: the card's AccumulationBadge only ever read the LIVE setup
+// match (byTicker.get(ticker) from the current scan), so a committed play's badge
+// silently went dark the moment its ticker fell out of the live top-N snapshot —
+// even though the entry-time evidence that confirmed the direction never changed.
+// This asserts the SAME pinned-blob passthrough tier/cortex already get.
+
+test("flow_accumulation passthrough: entry_context.flow_accumulation rides the board ledger row verbatim, independent of the live setup snapshot", async () => {
+  const pinnedAcc = {
+    direction: "bull",
+    strength: 82,
+    days: 3,
+    net_signed_premium: 900_000,
+    magnet_strike: 450,
+    magnet_side: "call",
+    aligned: true,
+  };
+  state.ledgerRead = {
+    rows: [ledgerRow({ entry_context: { flow_accumulation: pinnedAcc, cortex: null } })],
+    committed_known: true,
+  };
+  // No live setup for this ticker — proves the read does NOT depend on the byTicker match.
+  state.setups = [];
+
+  const { buildZeroDteBoardPayload } = await import("./zerodte-service");
+  const board = await buildZeroDteBoardPayload();
+  assert.deepEqual(
+    board.ledger[0]!.flow_accumulation,
+    pinnedAcc,
+    "board row carries the pinned accumulation blob verbatim, with no live setup present"
+  );
+});
+
+test("flow_accumulation passthrough: a row with no multi-day signal at commit serves flow_accumulation:null — never a fabricated read", async () => {
+  state.ledgerRead = { rows: [ledgerRow({ entry_context: { cortex: null } })], committed_known: true };
+  state.setups = [];
+  const { buildZeroDteBoardPayload } = await import("./zerodte-service");
+  const board = await buildZeroDteBoardPayload();
+  assert.equal(board.ledger[0]!.flow_accumulation, null);
+});
+
 // ── Exit-engine visibility (feat/zerodte-exit-engine-visibility) ──────────────────
 // The engine's rich exit decision (floor / reason / detail) is now surfaced on the
 // ledger row — additive, no computation change. These assert the four new surfaces off
