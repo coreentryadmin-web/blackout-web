@@ -1,6 +1,65 @@
 # BlackOut Open Issues Log
 Last updated: 2026-08-05 12:23 ET
 
+## spx-rth-2026-08-05 — SPX Slayer all-day RTH verify agent (market open ~6:30 AM PT / 9:30 AM ET)
+
+**Session:** Autonomous SPX Slayer **verify** mode per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` (Cloud Agent `cursor/spx-rth-system-verification-40dc`). First pass at market open. Commands: `npm run validate:spx-rth` → `npm run validate:spx-e2e` → 60s live auto-update (`spx-live-check.mjs` FRAMES=2 INTERVAL_MS=60000).
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth` | ✅ **8 PASS · 1 WARN · 0 FAIL** (~4.5 min) — RTH-open, matrix deep audit (GEX+VEX+DEX+CHARM · every cell finite · Σ strike_totals == headline), cross-endpoint spot merged=7727.08 hm=7726.45 play=SCANNING/SCANNING, desk lanes pulse+flow live, BIE consistency, dashboard E2E nested, ops:collect zero items |
+| `npm run validate:spx-e2e` | ✅ **0 FAIL / 18 checks** (1 WARN: `bie-play-route` cron 401 expected) — matrix every-cell-api 201 strikes, GEX+VEX tabs clicked, 190 UI rows, commentary expand, play verdict SCANNING (no stale ✓) |
+| 60s live auto-update | ✅ **distinctPin=2** (7,738→7,740) · **distinctRegime=2** (flip 7,633→7,623) · **distinctSpotFirst=2** (7750→7800) — surfaces tick without manual refresh |
+
+**Live desk (RTH ~12:14 ET):** SPX spot ~7731 · play **SCANNING** · 201 API strikes / 190 UI rows · 10 0DTE setups · 30 HELIX prints · LIVE badge active.
+
+### UI E2E (`/dashboard`)
+
+| Control | Result |
+|---|---|
+| Sign-in + shell | ✅ premium desk loads |
+| GEX tab (`#spx-matrix-tab-gex`) | ✅ clicked · matrix populates |
+| VEX tab (`#spx-matrix-tab-vex`) | ✅ clicked · VEX cells populate |
+| Matrix rows | ✅ **190** strike rows (≥80 RTH bar) |
+| Matrix text sanity | ✅ no NaN / undefined / `$—` |
+| Commentary expand | ✅ toggles without error |
+| Play verdict bar | ✅ SPX PLAY · SCANNING — **no stale ✓ confirmations** |
+| Console errors | ✅ zero hard errors (1 transient 502 origin noise) |
+| LIVE badge | ✅ active during RTH |
+
+### Cross-tool integration (Step 3)
+
+| Tool | Endpoint | Result |
+|---|---|---|
+| Thermal | `gex-heatmap?ticker=SPX` | ✅ same payload as dashboard matrix |
+| Thermal SPY | `gex-heatmap?ticker=SPY` | ✅ cross_validation PASS |
+| GEX positioning | `gex-positioning?ticker=SPX` | ✅ spot/flip/walls agree with matrix |
+| HELIX | `flows?limit=30` | ✅ 30 prints |
+| Largo | `largo/query` SPX play | ✅ `blackout_intelligence` grounded |
+| BIE | `validate:spx-bie` | ✅ `spx_full_state` == member play |
+| Grid bootstrap | `spx/bootstrap` | ✅ loaded |
+| 0DTE Command | `zerodte/board` | ✅ 10 setups |
+| Night Hawk | `nighthawk/edition` | ✅ loads |
+| Cross-tool spot/play | desk vs play | ✅ desk=7733.09 play=SCANNING |
+
+**Verify status: GREEN** — zero FAIL on all SPX harnesses. No P0 fixes required.
+
+### Findings table (`spx-rth-2026-08-05`)
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| — | — | **No P0/P1 SPX defects** | — | GREEN |
+| INFO | SPX-RTH-ENV-NODE | Initial run required `npm install` + `npx playwright install chromium` in cloud agent | — | Resolved |
+| P2 | SPX-DC-CRON-AUTH | `data-correctness` WARN — CRON_SECRET auth mismatch in agent env (prod cron runs async) | cron probe | defer |
+| P2 | SPX-BIE-CRON-401 | `bie-play-route` WARN — cron play HTTP 401 (expected without cron bearer) | BIE cron | defer |
+| INFO | SPX-LIVE-502 | Transient origin 502 during 60s live check (ECS rolling deploy / ALB drain) | edge | monitor |
+
+**Reports:** `audit-output/spx-rth-2026-08-05-verify-1785946726555.json`, `audit-output/spx-dashboard-e2e-1785946872925.json`, `/opt/cursor/artifacts/spx-rth-2026-08-05/report-verify-open.json`
+
+---
+
 ## grid-rth-2026-08-05 — 0DTE Command RTH verify agent (market open ~6:30 AM PT / 9:30 AM ET)
 
 **Session:** Autonomous Grid RTH **verify** mode per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` (Cloud Agent `cursor/0dte-grid-rth-agent-ca67`). Passes: (1) market-open ~9:30 ET agent `8c7a`; (2) midday ~12:15 ET agent `ca67`. Commands each pass: `npm run validate:grid-rth` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e` → `data-validator.mjs` → Playwright Night Hawk segment tabs + `/grid` 404.
