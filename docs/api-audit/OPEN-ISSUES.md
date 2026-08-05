@@ -1,5 +1,5 @@
 # BlackOut Open Issues Log
-Last updated: 2026-08-05 14:21 ET
+Last updated: 2026-08-05 15:19 ET
 
 ## rth-open-2026-08-05-pass8 — RTH comprehensive test sweep (~2:13–2:21 PM ET, afternoon)
 
@@ -143,7 +143,18 @@ Last updated: 2026-08-05 14:21 ET
 
 ## spx-rth-2026-08-05 — SPX Slayer all-day RTH verify agent (market open ~6:30 AM PT / 9:30 AM ET)
 
-**Session:** Autonomous SPX Slayer **verify** mode per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md`. Passes: (1) market-open ~9:30 ET agent `40dc`; (2) midday ~13:23 ET agent `4666`. Commands each pass: `npm run validate:spx-rth` → `npm run validate:spx-e2e` → `data-validator.mjs` → 60s live auto-update (`spx-live-check.mjs` FRAMES=2 INTERVAL_MS=60000).
+**Session:** Autonomous SPX Slayer **verify** mode per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md`. Passes: (1) market-open ~9:30 ET agent `40dc`; (2) midday ~13:23 ET agent `4666`; (3) afternoon ~15:04–15:19 ET agent `5c15`. Commands each pass: `npm run validate:spx-rth` → `npm run validate:spx-e2e` → `data-validator.mjs` → 60s live auto-update (`spx-live-check.mjs` FRAMES=2 INTERVAL_MS=60000).
+
+### Validation summary (pass 3 — ~15:04–15:19 ET)
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth` | ⚠️ **7 PASS · 1 WARN · 1 FAIL** (~5 min) — matrix deep audit PASS (GEX+VEX+DEX+CHARM · every cell finite), cross-endpoint spot merged=7740.41 hm=7740.59 play=SCANNING/SCANNING, desk lanes pulse+flow live, BIE consistency PASS, dashboard E2E nested PASS, ops:collect zero items. **FAIL:** `infra:validate:rth-open` — transient origin **502** on `/api/ready` + `/sign-in` during `validate:deploy` (ECS/ALB drain); **re-run GREEN** at ~15:17 ET |
+| `npm run validate:spx-e2e` | ✅ **0 FAIL / 18 checks** (1 WARN: `bie-play-route` cron 401 expected) — matrix every-cell-api **158** strikes, GEX+VEX tabs clicked, **158** UI rows, commentary expand, play verdict SCANNING (no stale ✓) |
+| `spx-live-check.mjs` (60s) | ✅ **distinctPin=2** (7,742→7,743) · **distinctRegime=2** (flip 7,609→7,618) · **distinctSpotFirst=2** (6300→7700 ladder row) — pin/regime/spot tick without manual refresh |
+| 60s Playwright verdict probe | ⚠️ Verdict bar flickered **HUNTING → CLOSED** mid-RTH while `/api/market/spx/play` stayed **SCANNING** (`playSessionActive` gated on `live && desk.available` — brief `live=false` during desk lane refresh) |
+
+**Live desk (RTH ~15:15 ET):** SPX spot ~7741 · play **SCANNING** · 158 API strikes / 158 UI rows · 12 0DTE setups · 30 HELIX prints · LIVE badge active.
 
 ### Validation summary (pass 2 — ~13:23 ET)
 
@@ -197,17 +208,20 @@ Last updated: 2026-08-05 14:21 ET
 | Night Hawk | `nighthawk/edition` | ✅ loads |
 | Cross-tool spot/play | desk vs play | ✅ desk=7736.26 play=SCANNING |
 
-**Verify status: GREEN** — zero FAIL on all SPX harnesses across both passes. No P0 fixes required.
+**Verify status: GREEN** — zero FAIL on SPX product harnesses (matrix, E2E, cross-tool, BIE, ops). Infra flake on pass 3 rth-open (transient 502) cleared on re-probe. No P0 fixes required.
 
 ### Findings table (`spx-rth-2026-08-05`)
 
 | Severity | ID | Detail | Backing API | Fix defer? |
 |---|---|---|---|---|
-| — | — | **No P0/P1 SPX defects** | — | GREEN |
-| INFO | SPX-RTH-ENV-NODE | Initial run required `npm install` + `npx playwright install chromium` in cloud agent | — | Resolved |
+| — | — | **No P0 SPX data/signal defects** — matrix cells 100% vs API, SCANNING has no stale ✓, cross-tool aligned | — | GREEN |
+| P1 | SPX-VERDICT-CLOSED-FLICKER | Play verdict bar showed **CLOSED** for ~60s during RTH while play API remained **SCANNING** — `playSessionActive` drops when `resolveDeskLive` briefly false during desk lane refresh | `/api/market/spx/play` vs UI | post-close |
+| INFO | SPX-RTH-ENV-NODE | Pass 3 cloud agent required `npm install` + `npx playwright install chromium` before harnesses ran | — | Resolved |
 | P2 | SPX-DC-CRON-AUTH | `data-correctness` WARN — CRON_SECRET auth mismatch in agent env (prod cron runs async) | cron probe | defer |
 | P2 | SPX-BIE-CRON-401 | `bie-play-route` WARN — cron play HTTP 401 (expected without cron bearer) | BIE cron | defer |
-| INFO | SPX-LIVE-502 | Transient origin 502 during 60s live check (ECS rolling deploy / ALB drain) | edge | monitor |
+| INFO | SPX-LIVE-502 | Transient origin 502 during `validate:deploy` + prior 60s checks (ECS rolling deploy / ALB drain) | edge | monitor |
+
+**Reports (pass 3):** `audit-output/spx-rth-2026-08-05-verify-1785957004394.json`, `audit-output/spx-dashboard-e2e-1785957237351.json`, `spx-live-check` DELTAS pass 3 (~15:19 ET)
 
 **Reports (pass 2):** `audit-output/spx-rth-2026-08-05-verify-1785950665539.json`, `audit-output/spx-dashboard-e2e-1785950679147.json`, `/opt/cursor/artifacts/spx-rth-2026-08-05/report-verify-1330et.json`
 
