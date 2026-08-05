@@ -7193,3 +7193,76 @@ straightforward UI change, not a bug, per direct operator instruction
 | **Blast radius** | Swing plays are the only ones whose rendering path changes materially (now get the premium component stack). 0DTE is unaffected (same `true` branch as before). Legacy/LEAPS are unaffected (still route to the plain fallback, unchanged). Presentation-only — no scoring/gate/routing logic (`serving.ts`, `terminal-display.ts`'s score math) touched. |
 | **Tests** | Full command-deck suite (`src/features/nighthawk/command-deck/*.test.ts`) — 266/266 pass post-rebase (0 new failures). `npx tsc --noEmit` clean. Rebased cleanly on top of the concurrently-merged Legacy dedup PR #1675 (no conflicts — different section of `PlayTerminal.tsx`). |
 | **Status** | FIXED — PR opened, auto-merge enabled per standing policy. May need a further rebase if PR #1676 (Confidence/Conviction merge, same files) lands first. |
+
+## 2026-08-05 — [AUDIT TOOLING, INTENTIONAL-DESIGN #1] `merge-precedence-ab.mjs` run for the first time with a real ledger export — found and fixed a bug that made it silently unable to ever detect a disagreement on live v2 data
+
+**Trigger.** Standing task: get the merge-precedence A/B harness (`scripts/audit/merge-precedence-ab.mjs`,
+INTENTIONAL-DESIGN item #1) actually run against real data for the first time. It had never run —
+it needs a `--ledger=<path.json>` export of committed rows with `entry_context.origin_maps` intact,
+and raw Postgres is blocked from this sandbox.
+
+**Data-gathering approach (new, reusable).** Raw DB access was never required: `toPlay()` in
+`src/lib/zerodte/record.ts:477` copies each row's full `entry_context` verbatim onto
+`ZeroDteRecordPlay.plays[]`, and `GET /api/market/zerodte/record?days=N` (the existing member-facing
+0DTE Command track-record endpoint, gated by `authorizeCronOrTierApi(req, "premium")` +
+`requireToolApi("nighthawk")`, which `role:admin` bypasses) serves that record JSON unmodified except
+for `roundFloats()` (numeric rounding only — never strips fields). So the frozen `origin_maps` an
+admin/premium member can already fetch over HTTPS. Minted one temp admin+premium Clerk user via the
+existing `mintClerkPremiumSession()` helper (`scripts/audit/lib/prod-clerk-session.mjs`), called
+`/api/market/zerodte/record?days=90`, wrote `plays[]` to a JSON file, deleted the temp user. No new
+endpoint, no DB access, no code change needed to gather the export — this path is reusable for future
+runs of this or any other harness that needs committed-row `entry_context`.
+
+**Real export.** 90-day window (2026-05-06…2026-08-04, 22 sessions): 141 ledger rows, 30 carry
+`origin_maps`, 4 are multi-origin (≥2 rails present).
+
+**Bug found running the harness on that real export.** First pass reported **zero** disagreement rows
+across all 4 multi-origin rows ("multi-origin agree: 4") — a suspiciously total agreement given manual
+inspection showed two rows where FLOW and BREAKOUT plainly argued opposite directions (AMD 2026-08-03:
+FLOW=short/score 48, BREAKOUT=long/score 54; MU 2026-07-29: FLOW=long/score 58, BREAKOUT=short/score 79).
+Root cause: `flowFirstDirection()` read the frozen `maps.direction_owner` field FIRST and only fell back
+to the fixed FLOW>BREAKOUT>PIN seating order when it was absent. That was correct when the harness was
+written (PR #1097, `MERGE_POLICY_VERSION` was `"v1"` — v1's `direction_owner` was, by construction, always
+the seating-order incumbent). But `board.ts` bumped `MERGE_POLICY_VERSION` to `"v2"` in PR #1199
+(2026-07-28, `mergeSameTickerDiscovery`) **without updating this harness**: under v2, `direction_owner` is
+the evidence-weighted owner (highest-score agreeing rail), not the seating-order pick. So on every real
+v2 row `flowFirstDirection()` and `evidenceWeightedDirection()` were reading the exact same frozen field —
+the two "arms" of the A/B had silently degenerated into one arm compared against itself, and the harness
+could never report a disagreement on any post-v2 data (its own INSUFFICIENT-DATA fallback text — "this is
+a real (and reassuring) result" — was actually masking a code bug, not a genuine null result).
+
+**Fix.** `flowFirstDirection()` now always derives the FLOW-first arm from `origin_direction_map` + the
+fixed seating order alone, never from the policy-versioned `direction_owner` field. Extracted both
+precedence-arm functions (`flowFirstDirection`, `evidenceWeightedDirection`) into a new pure module,
+`scripts/audit/lib/merge-precedence-eval.mjs`, mirroring the existing `zerodte-healthcheck-eval.mjs`
+pattern in this repo, with a regression test (`merge-precedence-eval.test.mjs`) that pins the exact two
+real rows above as fixtures — asserting the fixed function returns the true seating-order pick (FLOW) on
+both, not the v2 evidence-weighted owner. 6/6 tests pass. `npx tsc --noEmit` clean.
+
+**Blast radius.** Confined to `merge-precedence-ab.mjs` itself — an offline, read-only audit script that
+touches no production code path (`board.ts`/`mergeSameTickerDiscovery`/live discovery are all
+untouched). No other script reads `direction_owner` this way (grepped every consumer of
+`origin_maps`/`direction_owner`: `zerodte-service.ts` reads it only to label which rail found a play for
+display, not to reconstruct a seating-order arm).
+
+**Re-run with the fix, real data.** 2 genuine disagreement rows surfaced (AMD 2026-08-03, MU 2026-07-29),
+both graded on real Polygon minute bars (favorable-first proxy, ±1.5%/∓0.8%, 10:00 ET entry):
+FLOW-first win-rate 0.0% (n=2), evidence-weighted win-rate 0.0% (n=2) — both rows lost under BOTH
+candidate directions, zero rows where the two arms' outcomes diverged. Verdict: **dead heat, n too small
+to mean anything** (2 disagreement rows in 90 days / 22 sessions — the v2 evidence-weighted merge,
+shipped 2026-07-28 per INTENTIONAL-DESIGN.md item #1, simply hasn't produced many multi-rail conflicts
+yet). This is an honest, inconclusive result on the *actual* merge-precedence question — **no change to
+`mergeSameTickerDiscovery`/the shipped v2 precedence is warranted from this sample.** Revisit once the
+ledger accumulates more multi-origin disagreement rows (INTENTIONAL-DESIGN.md item #1 already documents
+this as the standing follow-up measurement).
+
+**Scope of what shipped.** Only the harness bug fix + its new test (audit tooling, no production 0DTE
+code touched). The merge-precedence *decision itself* is NOT changed — that question remains open,
+correctly labeled INSUFFICIENT SAMPLE rather than forced into a finding either way.
+
+**Tests.** `npx tsx --test scripts/audit/lib/merge-precedence-eval.test.mjs` — 6/6 pass. `npx tsc --noEmit`
+clean.
+
+**Status:** FIXED (harness bug) — PR opened, auto-merge enabled per standing policy. The underlying
+merge-precedence design question stays OPEN per INTENTIONAL-DESIGN.md item #1, now with a working
+measurement tool and a real (if thin) first data point.

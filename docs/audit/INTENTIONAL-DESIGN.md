@@ -40,6 +40,15 @@ while letting a clearly stronger non-flow rail own the ticket.
 on real minute bars as the origin band fills with `merge_policy_version: "v2"` commits. If v2's
 chosen direction underperforms v1 on a meaningful sample, that is evidence to revisit again.
 
+**First real run — 2026-08-05 (see FINDINGS.md same date).** Fetched a 90-day ledger export via the
+existing `/api/market/zerodte/record?days=90` endpoint (an admin/premium session already sees
+`entry_context.origin_maps` verbatim — no DB access needed). Found and fixed a bug in the harness
+itself (`flowFirstDirection()` was reading the policy-versioned `direction_owner` field instead of
+the fixed seating order, so it could never detect a v2-era disagreement). After the fix: 2 genuine
+disagreement rows (AMD 2026-08-03, MU 2026-07-29), both a dead heat on real minute bars (0.0% win
+rate for both arms, n=2 — too small to be evidence either way). **No change to the shipped v2
+precedence from this sample** — revisit once more multi-origin disagreement rows accumulate.
+
 ---
 
 ## 2. Cortex veto has no hysteresis / latching (recomputed each pass)
