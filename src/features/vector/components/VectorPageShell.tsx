@@ -165,10 +165,11 @@ export function VectorPageShell({
   const [dteHorizon, setDteHorizon] = useState<VectorDteHorizon>(defaultDteHorizon ?? "weekly");
   const [scannerOpen, setScannerOpen] = useState(false);
   const activeTicker = ticker || VECTOR_DEFAULT_TICKER;
-  // Daily/Weekly historical view (CTO audit P2 #5) — a separate chart surface from the intraday
-  // VectorChart (see VectorDailyChart's header comment for why). Standalone-page-only; the
-  // chart-only embed (SPX Slayer) never renders this toggle and always stays intraday.
-  const [chartView, setChartView] = useState<"intraday" | "1D" | "1W">("intraday");
+  // Daily/Weekly/4H historical view (CTO audit P2 #5, and P2 "4h remains open" 2026-08-05) — a
+  // separate chart surface from the intraday VectorChart (see VectorDailyChart's header comment
+  // for why). Standalone-page-only; the chart-only embed (SPX Slayer) never renders this toggle
+  // and always stays intraday.
+  const [chartView, setChartView] = useState<"intraday" | "1D" | "1W" | "4H">("intraday");
 
   useEffect(() => {
     if (!compactPanels) return;
@@ -598,7 +599,7 @@ export function VectorPageShell({
           >
             {!iosCompactChrome && (
               <div className="vector-chart-view-toggle" role="group" aria-label="Chart view">
-                {(["intraday", "1D", "1W"] as const).map((v) => (
+                {(["intraday", "1D", "1W", "4H"] as const).map((v) => (
                   <button
                     key={v}
                     type="button"

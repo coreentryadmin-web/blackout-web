@@ -22,20 +22,37 @@ const VOLUME_DOWN = "rgba(255, 45, 85, 0.55)";
 const SMA50_COLOR = "#38bdf8";
 const SMA200_COLOR = "#f472b6";
 
+/** Historical (non-intraday-SSE) chart views this component can render: daily/weekly candles
+ *  (`VectorDailyUnit`, Polygon daily aggs) plus "4H" (CTO audit P2 — multi-day intraday minute
+ *  bars aggregated to 4h, see `vector-4h-bars.ts`). Widened from `VectorDailyUnit` alone so one
+ *  component serves both instead of a near-duplicate 4h-only component; the fetch endpoint is
+ *  the only thing that actually differs per view (see `endpointFor` below). */
+export type VectorHistoricalView = VectorDailyUnit | "4H";
+
 type Props = {
   ticker: string;
-  /** Driven by the page shell's Intraday/1D/1W toggle — this component has no toggle of its own.
-   * It used to own a second, identically-labelled 1D/1W control that the outer toggle didn't
-   * drive, so switching the page to "1W" silently left the chart on daily candles (2026-08-05
-   * live-UI audit: reported directly by a user confused by the two stacked, disconnected
-   * toggles). One control now owns the unit; this component just renders it. */
-  unit: VectorDailyUnit;
+  /** Driven by the page shell's Intraday/1D/1W/4H toggle — this component has no toggle of its
+   * own. It used to own a second, identically-labelled 1D/1W control that the outer toggle
+   * didn't drive, so switching the page to "1W" silently left the chart on daily candles
+   * (2026-08-05 live-UI audit: reported directly by a user confused by the two stacked,
+   * disconnected toggles). One control now owns the view; this component just renders it. */
+  unit: VectorHistoricalView;
 };
 
-type DailyBarsResponse = { ticker: string; unit: VectorDailyUnit; bars: VectorOhlcBar[] };
+type BarsResponse = { ticker: string; unit: string; bars: VectorOhlcBar[] };
 
-function unitLabel(u: VectorDailyUnit): string {
-  return u === "1D" ? "1D" : "1W";
+function unitLabel(u: VectorHistoricalView): string {
+  return u;
+}
+
+/** Endpoint for a given historical view. "4H" hits its own multi-day-intraday route
+ *  (`/api/market/vector/4h-bars`) rather than `daily-bars` — a materially different upstream
+ *  fetch (many days of 1m bars vs. Polygon daily aggs), not just a different `unit=` query
+ *  value on the same route. See `4h-bars/route.ts`'s header comment for why. */
+function endpointFor(ticker: string, unit: VectorHistoricalView): string {
+  const t = encodeURIComponent(ticker);
+  if (unit === "4H") return `/api/market/vector/4h-bars?ticker=${t}`;
+  return `/api/market/vector/daily-bars?ticker=${t}&unit=${unit}`;
 }
 
 function lineData(bars: VectorOhlcBar[], values: (number | null)[]) {
@@ -48,18 +65,21 @@ function lineData(bars: VectorOhlcBar[], values: (number | null)[]) {
 }
 
 /**
- * Daily/Weekly historical price view (CTO audit P2 #5) — a separate, deliberately simple chart
- * surface from `VectorChart.tsx` rather than a mode bolted onto it. `VectorChart` is already the
- * highest-risk file in the feature (per the CTO audit's own P3 recommendation to split it, not
- * grow it further); daily/weekly bars are also a genuinely different data source (Polygon daily
- * aggs, not the 1m intraday seed) with no live SSE, no wall-history/beads, and no replay — none of
- * which have any meaning on a multi-month daily candle. Keeping this as its own small component
- * avoids threading a second data mode through VectorChart's ~3800 lines of intraday-only state.
+ * Daily/Weekly/4H historical price view (CTO audit P2 #5, and P2 "4h remains open" 2026-08-05)
+ * — a separate, deliberately simple chart surface from `VectorChart.tsx` rather than a mode
+ * bolted onto it. `VectorChart` is already the highest-risk file in the feature (per the CTO
+ * audit's own P3 recommendation to split it, not grow it further); 1D/1W/4H bars are also a
+ * genuinely different data source (Polygon daily aggs for 1D/1W, multi-day aggregated intraday
+ * minute bars for 4H — see `vector-4h-bars.ts` — neither is the live 1m intraday seed) with no
+ * live SSE, no wall-history/beads, and no replay — none of which have any meaning on a
+ * multi-session or multi-month candle. Keeping this as its own small component avoids threading
+ * a second (now third) data mode through VectorChart's ~3800 lines of intraday-only state.
  *
  * Shows candles + volume + SMA50/SMA200 (indicators that generalize to any bar series, reusing the
- * exact same pure `smaSeries` VectorChart's intraday MAs use). No GEX walls/beads/max-pain/expected
- * move here — those are intraday dealer-positioning reads with nothing to show on daily bars, and
- * the honest thing is to say so, not to omit them silently or fake a daily equivalent.
+ * exact same pure `smaSeries` VectorChart's intraday MAs use) for all three views. No GEX
+ * walls/beads/max-pain/expected move here — those are intraday dealer-positioning reads with
+ * nothing to show on daily or 4h bars, and the honest thing is to say so, not to omit them
+ * silently or fake an equivalent.
  */
 export function VectorDailyChart({ ticker, unit }: Props) {
   const [bars, setBars] = useState<VectorOhlcBar[]>([]);
@@ -117,15 +137,13 @@ export function VectorDailyChart({ ticker, unit }: Props) {
     setState("loading");
     const load = async () => {
       try {
-        const res = await fetch(
-          `/api/market/vector/daily-bars?ticker=${encodeURIComponent(ticker)}&unit=${unit}`
-        );
+        const res = await fetch(endpointFor(ticker, unit));
         if (cancelled) return;
         if (!res.ok) {
           setState("error");
           return;
         }
-        const data = (await res.json()) as DailyBarsResponse;
+        const data = (await res.json()) as BarsResponse;
         if (cancelled) return;
         setBars(data.bars ?? []);
         setState((data.bars ?? []).length ? "ready" : "error");
