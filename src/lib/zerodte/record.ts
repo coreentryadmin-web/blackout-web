@@ -143,7 +143,7 @@ const round2 = (v: number): number => Math.round(v * 100) / 100;
  *  entry_context that may carry the executable lane. `entry_context` is optional so a bare
  *  `{ plan_pnl_pct }` fixture (and the reused swing rows, which never carry an executable
  *  key) still typecheck and simply fall back to the mid column. */
-type OfficialGradableRow = {
+export type OfficialGradableRow = {
   plan_outcome?: string | null;
   plan_pnl_pct: number | null;
   entry_context?: Record<string, unknown> | null;

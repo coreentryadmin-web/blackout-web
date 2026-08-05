@@ -17,35 +17,53 @@
  */
 
 import type { SetupFeatureVector } from "./feature-vector";
+import { isZeroDteWin, officialPlanPnlPct, type OfficialGradableRow } from "./record";
 
 /** The graded label the store learns from. `null` = not (yet) gradeable evidence. */
 export type GradeLabel = "win" | "loss";
 
 /**
- * Map a plan's grade (zerodte_setup_log.plan_outcome, graded vs the contract's own minute bars) to a
- * win/loss label.
+ * Map a plan's grade (zerodte_setup_log.plan_outcome / plan_pnl_pct, plus the row's optional
+ * entry_context) to a win/loss label.
  *
  * The OUTCOME gates evidence: only `doubled` / `stopped` / `time_stop` are real grades — mirrors
- * record.ts `isGradedZeroDteRow`. Anything else (`ungradeable`, an open row, an unknown string) is
- * NOT evidence → null.
+ * record.ts `isGradedZeroDteRow`. Anything else (`ungradeable`, an open row, an unknown string,
+ * or a condor row's disjoint `condor_win`/`condor_breach_loss` vocabulary) is NOT evidence → null.
  *
- * The WIN/LOSS itself is decided by realized plan P&L — `plan_pnl_pct > 0` — the EXACT predicate
- * record.ts `isZeroDteWin` and the calibration harness use, so the learning store can never disagree
- * with the member-facing record on what a win is. This matters for `time_stop`: a GREEN time_stop
- * (closed above entry before 15:30) is a WIN, not a loss. The prior `doubled`-only rule scored every
- * profitable-but-under-target trade as a loss — a systematic bias against the engine's real base rate.
+ * NH-R14 follow-up (docs/audit/OUTCOME-GRADING-SPEC.md §4, FINDINGS.md 2026-08-05): this used to
+ * decide WIN/LOSS off the raw MID `plan_pnl_pct` alone, with an in-code comment claiming that was
+ * "the EXACT predicate record.ts `isZeroDteWin` … uses, so the learning store can never disagree
+ * with the member-facing record" — a live 90-day audit found that FALSE for any row that had since
+ * been executable-graded (WS-10) or reconstructed (WS-11 trim-scale): record.ts prefers that
+ * official/executable/reconstructed lane over the mid columns, so a mid `stopped` (−50%) row could
+ * be an official WIN (partial-banking legs recovered it) and vice versa — 4/130 real rows disagreed
+ * (MU/SPXW/META 2026-07-29..08-03 mid-loss-but-official-win; OKLO 2026-07-30 the other direction).
+ *
+ * The FIX: call the SAME shared pure predicate record.ts exports (`isZeroDteWin`, over
+ * `OfficialGradableRow`) instead of re-deciding win/loss from the mid columns by hand — so this can
+ * no longer drift out of sync the way the "byte-identical" comment silently did. `entryContext` is
+ * optional so legacy call sites (and legacy/pre-WS10 rows, which have none) still resolve to the
+ * exact same mid-column answer as before; passing it is what lets a WS-10/WS-11-graded row resolve
+ * to the OFFICIAL label instead.
  */
 export function labelFromPlanOutcome(
   outcome: string | null | undefined,
-  planPnlPct?: number | null
+  planPnlPct?: number | null,
+  entryContext?: Record<string, unknown> | null
 ): GradeLabel | null {
   switch ((outcome ?? "").toLowerCase()) {
     case "doubled":
     case "stopped":
-    case "time_stop":
-      // Win = positive plan P&L (identical to record.ts isZeroDteWin). doubled always prints +100
-      // and stopped −50, so those are unchanged; only a green time_stop flips to a win.
-      return (planPnlPct ?? 0) > 0 ? "win" : "loss";
+    case "time_stop": {
+      const row: OfficialGradableRow = {
+        plan_outcome: outcome ?? null,
+        plan_pnl_pct: planPnlPct ?? null,
+        entry_context: entryContext ?? null,
+      };
+      // record.ts's own predicate: official (executable/reconstructed, WS-10/WS-11) lane
+      // preferred, mid fallback for legacy rows — the shared source of truth, not a hand copy.
+      return isZeroDteWin(row) ? "win" : "loss";
+    }
     default:
       return null; // ungradeable / open / unknown — not evidence
   }
@@ -71,6 +89,10 @@ export interface RawGradedRow {
   feature_vector?: unknown;
   plan_outcome?: unknown;
   plan_pnl_pct?: unknown;
+  /** WS-10/WS-11 executable / reconstructed-trim-scale blob, when the row carries one (NH-R14
+   *  follow-up widening — see labelFromPlanOutcome). Optional/loose like the rest of this row: a
+   *  fixture or a pre-widening caller that omits it still typechecks and falls back to mid. */
+  entry_context?: unknown;
 }
 
 /**
@@ -81,18 +103,26 @@ export function toGradedFeatureRows(raw: RawGradedRow[]): GradedFeatureRow[] {
   const out: GradedFeatureRow[] = [];
   for (const r of raw) {
     const pnl = typeof r.plan_pnl_pct === "number" && Number.isFinite(r.plan_pnl_pct) ? r.plan_pnl_pct : null;
-    // Win/loss is decided by realized P&L (pnl > 0), so the label must see it — a green time_stop
-    // is a win, matching record.ts isZeroDteWin. See labelFromPlanOutcome.
-    const label = labelFromPlanOutcome(typeof r.plan_outcome === "string" ? r.plan_outcome : null, pnl);
+    const outcome = typeof r.plan_outcome === "string" ? r.plan_outcome : null;
+    const entryContext =
+      r.entry_context && typeof r.entry_context === "object" ? (r.entry_context as Record<string, unknown>) : null;
+    // Win/loss is decided by the OFFICIAL (executable/reconstructed-preferred, mid-fallback) P&L —
+    // see labelFromPlanOutcome, which now shares record.ts's isZeroDteWin predicate instead of
+    // reading planPnlPct (mid) alone.
+    const label = labelFromPlanOutcome(outcome, pnl, entryContext);
     if (!label) continue; // not gradeable → not evidence
     const fv = r.feature_vector;
     if (!fv || typeof fv !== "object") continue; // no pinned vector → nothing to learn from
+    // The realized P&L the store reports alongside the label is the SAME official number the label
+    // was decided from (executable/reconstructed-preferred), not the raw mid column — so a mean-EV
+    // read over pnlPct can never disagree in sign with the win/loss label it's paired with.
+    const officialPnl = officialPlanPnlPct({ plan_outcome: outcome, plan_pnl_pct: pnl, entry_context: entryContext });
     out.push({
       ticker: typeof r.ticker === "string" ? r.ticker : "",
       sessionDate: typeof r.session_date === "string" ? r.session_date : "",
       features: fv as SetupFeatureVector,
       label,
-      pnlPct: pnl,
+      pnlPct: officialPnl,
     });
   }
   return out;
