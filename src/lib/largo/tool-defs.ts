@@ -1,10 +1,12 @@
 import type { AnthropicToolDef } from "@/lib/providers/anthropic";
 import {
+  BANGER_RE,
   CORTEX_READ_RE,
   FLOW_TOOLS_RE,
   FUNDAMENTAL_RE,
   GEX_POSITIONING_RE,
   HELIX_READ_RE,
+  HELIX_SIGNAL_RE,
   matchesIntent,
   NEWS_TOOLS_RE,
   NIGHTHAWK_RE,
@@ -13,6 +15,8 @@ import {
   RECORD_READ_RE,
   SCREENER_RE,
   SPX_DESK_TOOLS_RE,
+  SPX_PIN_RE,
+  SWING_RE,
   THERMAL_READ_RE,
   VECTOR_READ_RE,
   WALL_DYNAMICS_RE,
@@ -240,6 +244,51 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
     "get_zerodte_rejections",
     "0DTE Command's near-miss/gate-rejection log — answers 'why didn't ticker X make the Grid board' or 'what has the scanner been rejecting today', which get_zerodte_plays structurally CANNOT answer: that tool only ever shows candidates that already cleared every one of the scanner's 4 evidence gates (gross premium ≥ $750k, at-the-ask aggression share ≥ 30%, side dominance ≥ 65%, and not a deep-ITM stock-replacement strike) — a candidate that failed even ONE of those checks is invisible there and left no trace anywhere until this tool existed. Reads zerodte_scan_rejections: one row per ticker per DISTINCT rejection state (throttled to state transitions, not one row per scan cycle), naming exactly which `gate_failed` (min_gross/min_aggr_share/min_dominance/max_itm_pct/no_dominant_strike/no_underlying_price — the last means the tape never carried a usable underlying price for that ticker, so the deep-ITM stock-replacement check couldn't run and fails closed rather than passing the candidate through unchecked) stopped the candidate, the live `threshold` it was measured against, and whichever of gross_premium/aggression/side_dominance/otm_pct had actually been computed before the scan short-circuited past it — later-gate metrics are `null`, never guessed, when an earlier gate already rejected the ticker (e.g. a min_gross rejection never learns a direction or aggression share, because the live scan never computes those for it either). Pass `ticker` to scope to one name's rejection history, or omit for the most recent rejections across every candidate. IMPORTANT — this is 0DTE Command's OWN multi-ticker scanner (src/lib/zerodte/board.ts, the exact same engine get_zerodte_plays reads), a COMPLETELY DIFFERENT product from SPX Slayer: for SPX/SPXW's own single-instrument engine's rejected/scanning history, use get_spx_engine_snapshots instead — do not conflate the two just because both are 0DTE-flavored.",
     { ticker: { type: "string" }, limit: { type: "integer" } }
+  ),
+  t(
+    "get_zerodte_record",
+    "0DTE Command multi-day track record — graded win/loss stats from the scanner ledger (plan-outcome methodology, option-premium returns). Use for 'how is 0DTE Command doing this month', win rate, avg P&L — NOT SPX Slayer point results and NOT Night Hawk stock-move returns. `days` rolling window (default 30, max 90).",
+    { days: { type: "integer", default: 30 } }
+  ),
+  t(
+    "get_banger_board",
+    "Night Hawk Bangers lane (Engine B) — whole-market weekly breakout discovery with mechanical scale-out tracking. Returns open + recently closed banger_positions: ticker, contract, entry/last mark, live P&L, scale-out state, discovery stats. Distinct from 0DTE Command (intraday scanner) and Swings (2–30 DTE thesis lane).",
+    { limit: { type: "integer", default: 40 } }
+  ),
+  t(
+    "get_swing_horizon",
+    "Night Hawk Swings lane — 2–30 DTE multi-day discovery board with seven action sections (COMMIT_NOW, WAITING_FOR_ENTRY, WATCH, RESEARCH, MANAGING, SCALING_OUT, EXITING). Returns committed/watch counts, section counts, and sample plays with scores. Use for swing-specific questions — NOT the evening Legacy edition (get_nighthawk_edition) and NOT 0DTE Command (get_zerodte_plays).",
+    {}
+  ),
+  t(
+    "get_nighthawk_horizons",
+    "Night Hawk unified horizon board — compact 0DTE Command + Swings snapshot in one call. Use when the question spans both intraday scanner plays AND swing lane status without needing full play detail from each dedicated tool.",
+    {}
+  ),
+  t(
+    "get_horizon_outcomes",
+    "Cross-lane graded outcomes — unified win/loss read across ZERO_DTE and SWING horizons (each lane keeps its own grading methodology; this republishes, never blends). `days` rolling window (default 30). Use for cross-product performance questions that span 0DTE Command and Swings.",
+    { days: { type: "integer", default: 30 } }
+  ),
+  t(
+    "get_helix_signal_outcomes",
+    "HELIX velocity/split-flow signal follow-through tracker — graded vs pending signal outcomes from the helix_signal_outcomes ledger. Returns summary win rate (only when ≥10 graded samples) plus recent rows. Use for 'do HELIX velocity signals actually follow through'.",
+    { limit: { type: "integer", default: 50 } }
+  ),
+  t(
+    "get_spx_pin",
+    "SPX end-of-day pin forecaster — probabilistic close magnet strike from live GEX + flow context (the SPX Slayer pin rail). Distinct from max pain (options-writer payout min) and gamma magnet (dealer center of mass).",
+    {}
+  ),
+  t(
+    "get_spx_pulse",
+    "Fast SPX desk pulse — price, session change, internals, mega-cap snapshot (~2s lane). Lighter than get_spx_structure when only price/internals are needed.",
+    {}
+  ),
+  t(
+    "get_cortex_decision",
+    "Cortex commit/skip/exit evidence for a 0DTE-relevant ticker — pinned ledger truth when a play exists this session, otherwise live 'what would Cortex say now'. Pass `ticker` and optional `question` for direction hints. Use for 'why did we commit/skip X', Cortex veto, or gate evidence — NOT SPX Slayer play-engine gates (get_spx_play / get_spx_engine_snapshots).",
+    { ticker: { type: "string" }, question: { type: "string" } }
   ),
   t(
     "get_nighthawk_edition",
@@ -566,6 +615,8 @@ export const TOOL_GROUPS = {
     "get_spx_confluence",
     "get_lotto_live",
     "get_power_hour",
+    "get_spx_pin",
+    "get_spx_pulse",
   ],
   flow_analysis: [
     "get_options_flow",
@@ -583,6 +634,7 @@ export const TOOL_GROUPS = {
     "get_etf_flow",
     "get_market_stats",
     "get_option_contract",
+    "get_helix_signal_outcomes",
   ],
   stock_analysis: [
     "get_quote",
@@ -656,6 +708,11 @@ export const TOOL_GROUPS = {
     "get_platform_snapshot",
     "get_zerodte_plays",
     "get_zerodte_rejections",
+    "get_zerodte_record",
+    "get_banger_board",
+    "get_swing_horizon",
+    "get_nighthawk_horizons",
+    "get_horizon_outcomes",
     "get_nighthawk_edition",
     // cross-tool Night Hawk objects newly surfaced to Largo
     "get_nighthawk_outcomes",
@@ -1019,14 +1076,39 @@ export function getToolsForIntent(question: string): string[] {
     names.add("get_setup_stats");
     names.add("get_trade_history");
     names.add("get_nighthawk_outcomes");
+    names.add("get_zerodte_record");
+    names.add("get_horizon_outcomes");
     for (const n of TOOL_GROUPS.platform) names.add(n);
   }
 
   if (matchesIntent(lower, CORTEX_READ_RE)) {
+    names.add("get_cortex_decision");
     names.add("get_zerodte_plays");
     names.add("get_zerodte_rejections");
     names.add("get_ecosystem_context");
     for (const n of TOOL_GROUPS.platform) names.add(n);
+  }
+
+  if (matchesIntent(lower, BANGER_RE)) {
+    names.add("get_banger_board");
+    for (const n of TOOL_GROUPS.platform) names.add(n);
+  }
+
+  if (matchesIntent(lower, SWING_RE)) {
+    names.add("get_swing_horizon");
+    names.add("get_nighthawk_horizons");
+    names.add("get_horizon_outcomes");
+    for (const n of TOOL_GROUPS.platform) names.add(n);
+  }
+
+  if (matchesIntent(lower, HELIX_SIGNAL_RE)) {
+    names.add("get_helix_signal_outcomes");
+    for (const n of [...TOOL_GROUPS.flow_analysis, ...TOOL_GROUPS.platform]) names.add(n);
+  }
+
+  if (matchesIntent(lower, SPX_PIN_RE)) {
+    names.add("get_spx_pin");
+    for (const n of TOOL_GROUPS.spx_desk) names.add(n);
   }
 
   // 0DTE Command — "today's plays", the board, or anything zero-DTE flavored.

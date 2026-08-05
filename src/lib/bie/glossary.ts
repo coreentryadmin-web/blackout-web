@@ -396,17 +396,45 @@ export const BLACKOUT_GLOSSARY: GlossaryEntry[] = [
   },
   {
     term: "Night Hawk",
-    aliases: ["night hawk", "nighthawk", "the hawk", "evening edition"],
+    aliases: ["night hawk", "nighthawk", "the hawk", "evening edition", "command deck"],
     category: "product",
     definition:
-      "Night Hawk is the evening swing-pick product: after the close it scores candidates and publishes an edition of ranked multi-day plays (thesis, entry/target/stop, conviction, options play), then confirms them the next morning. Distinct from the intraday 0DTE engines.",
+      "Night Hawk (/nighthawk) is a multi-engine hub with four views: (1) 0DTE Command — whole-market intraday 0DTE scanner; (2) Swings — 2–30 DTE multi-day discovery + live position management; (3) Bangers (Engine B) — weekly breakout discovery with scale-out tracking; (4) Legacy — the evening edition playbook of ranked multi-day picks published after the close, confirmed next morning. Distinct from SPX Slayer (single-instrument SPX 0DTE engine on /dashboard).",
+  },
+  {
+    term: "0DTE Command",
+    aliases: ["0dte command", "command board", "command deck", "zerodte board", "grid", "blackout grid"],
+    category: "product",
+    definition:
+      "0DTE Command is Night Hawk's default tab — a whole-market intraday 0DTE scanner that hunts the broader tape all session for new setups across many tickers (SPY/QQQ/NDX and single names). It commits plays to a ledger with live P&L, trim/stop management, Cortex gating, and an iron-condor lane. COMPLETELY DIFFERENT from SPX Slayer, which is the single-instrument SPX/SPXW play engine on /dashboard.",
+  },
+  {
+    term: "Swings (Night Hawk lane)",
+    aliases: ["swings", "swing lane", "swing board", "multi-day swing", "2-30 dte swing"],
+    category: "product",
+    definition:
+      "The Swings lane inside Night Hawk — 2–30 DTE whole-market discovery with seven action sections (COMMIT_NOW through EXITING). Names accumulate cross-session evidence before promotion. Distinct from Night Hawk Legacy (evening edition picks) and from 0DTE Command (same-day expiry scanner).",
+  },
+  {
+    term: "Bangers (Engine B)",
+    aliases: ["banger", "bangers", "engine b", "weekly banger", "banger board"],
+    category: "product",
+    definition:
+      "Bangers is Night Hawk's Engine B — weekly breakout/momentum discovery across the whole market, committed to banger_positions with a mechanical scale-out exit rule (partial at 2× + trailing runner + hard stop). Distinct from 0DTE Command (intraday) and Swings (2–30 DTE thesis lane).",
+  },
+  {
+    term: "Iron condor (0DTE)",
+    aliases: ["iron condor", "condor", "0dte condor", "premium selling condor"],
+    category: "concept",
+    definition:
+      "On 0DTE Command, the iron-condor lane is a four-leg premium-selling geometry (short call + long call + short put + long put) opened when the scanner finds a suitable range-bound regime. Tracked on the same board as directional 0DTE plays with breach detection and time-stop grading — not the same product as SPX Slayer's directional SPX play.",
   },
   {
     term: "Largo",
     aliases: ["largo", "desk ai", "largo ai"],
     category: "product",
     definition:
-      "Largo is the desk AI assistant: it answers member questions by reading the same live source-of-truth data the dashboards use, via a deterministic router (BIE) that composes grounded answers with zero LLM cost when the question maps onto known data, and falls back to a reasoning model only when it doesn't.",
+      "Largo is the desk AI assistant (/terminal): answers member questions by reading the same live source-of-truth data every dashboard uses — via Claude tool calls grounded in Polygon, UW, Postgres, and Redis snapshots. Every number must trace to a tool result or the live feed; no fabricated levels or stacks.",
   },
   {
     term: "BIE (BlackOut Intelligence Engine)",

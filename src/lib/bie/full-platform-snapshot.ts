@@ -84,6 +84,9 @@ export async function buildBieFullState(): Promise<BieFullState> {
     helixNearMisses,
     gexRegimeEvents,
     zerodteRejections,
+    banger,
+    swing,
+    helixSignalOutcomes,
   ] = await Promise.all([
     // getPlatformSnapshot bundles the SPX desk + flow tape + Night Hawk edition in one call.
     safe("platform", errors, () => getPlatformSnapshot({ include: ["spx", "flows", "nighthawk"], fullEdition: true })),
@@ -105,6 +108,18 @@ export async function buildBieFullState(): Promise<BieFullState> {
     safe("helixNearMisses", errors, () => runLargoTool("get_flow_anomaly_near_misses", { limit: 10 })),
     safe("gexRegimeEvents", errors, () => runLargoTool("get_gex_regime_events", { ticker: "SPX", limit: 8 })),
     safe("zerodteRejections", errors, () => zeroDteRejectionsForLargo(undefined, 8)),
+    safe("banger", errors, async () => {
+      const { bangerBoardForLargo } = await import("@/lib/largo/product-reads");
+      return bangerBoardForLargo(20);
+    }),
+    safe("swing", errors, async () => {
+      const { swingHorizonForLargo } = await import("@/lib/largo/product-reads");
+      return swingHorizonForLargo();
+    }),
+    safe("helixSignalOutcomes", errors, async () => {
+      const { helixSignalOutcomesForLargo } = await import("@/lib/largo/product-reads");
+      return helixSignalOutcomesForLargo(25);
+    }),
   ]);
 
   const state: BieFullState = roundFloats<BieFullState>({
@@ -129,6 +144,9 @@ export async function buildBieFullState(): Promise<BieFullState> {
     helixNearMisses: helixNearMisses ?? null,
     gexRegimeEvents: gexRegimeEvents ?? null,
     zerodteRejections: zerodteRejections ?? null,
+    banger: banger ?? null,
+    swing: swing ?? null,
+    helixSignalOutcomes: helixSignalOutcomes ?? null,
     errors,
   });
 
