@@ -129,6 +129,7 @@ export function PlayTerminal({
   sessionClosed = false,
   nowMs: nowMsProp,
   convictionRank = null,
+  initialTab,
 }: {
   play: TerminalPlay | null;
   /** Board heat.state === CLOSED — right-rail must not claim LIVE/greeks after the session. */
@@ -141,9 +142,15 @@ export function PlayTerminal({
   nowMs?: number;
   /** Engine conviction rank on today's full board (0DTE command deck). */
   convictionRank?: ConvictionRankContext | null;
+  /** Test-only escape hatch: SSR renders whatever tab is selected at mount, and the real tab-switch
+   *  effect (0DTE OPEN/HOLD/TRIM → Management) never runs under renderToStaticMarkup — there's no
+   *  click simulation in that harness. Lets PlayTerminal.ssr.test.ts assert on Management/PnL tab
+   *  markup (e.g. the Legacy stop/target dedup) without a DOM. Omit in real usage — defaults to
+   *  the normal "thesis" first paint. */
+  initialTab?: Tab;
 }) {
   // Default to Management for working 0DTE rows (action first); Thesis otherwise.
-  const [tab, setTab] = useState<Tab>("thesis");
+  const [tab, setTab] = useState<Tab>(initialTab ?? "thesis");
   const [tabTouched, setTabTouched] = useState(false);
   useEffect(() => {
     if (tabTouched || !play) return;
@@ -505,9 +512,15 @@ function ThesisPanel({ play, sessionClosed = false }: { play: TerminalPlay; sess
         {play.tierLabel && <div><span className="k">Conviction</span><span className="v">{play.tierLabel}</span></div>}
         {play.allocation && <div><span className="k">Allocation</span><span className="v">{play.allocation.role}</span></div>}
         <div><span className="k">Exit model</span><span className="v">{play.exitModel === "SCALE_OUT" ? "trim-scale" : play.exitModel.toLowerCase()}</span></div>
-        {play.entryRange && <div><span className="k">Entry range</span><span className="v">{play.entryRange}</span></div>}
-        {play.targetLevel && <div><span className="k">Target</span><span className="v">{play.targetLevel}</span></div>}
-        {play.stopLevel && <div><span className="k">Stop</span><span className="v">{play.stopLevel}</span></div>}
+        {/* Entry range / target / stop are Legacy-only fields (terminalPlayFromEdition is the sole
+            adapter that populates them). For Legacy plays the Management tab's LegacyManageGeometry
+            renders these same three values PLUS live distance-to-level and an entry-zone track — the
+            richer treatment — so showing the bare levels here too was a straight duplicate. Kept
+            conditional (not deleted outright) in case a future non-Legacy horizon ever populates
+            these fields without its own geometry panel. */}
+        {play.horizon !== "LEGACY" && play.entryRange && <div><span className="k">Entry range</span><span className="v">{play.entryRange}</span></div>}
+        {play.horizon !== "LEGACY" && play.targetLevel && <div><span className="k">Target</span><span className="v">{play.targetLevel}</span></div>}
+        {play.horizon !== "LEGACY" && play.stopLevel && <div><span className="k">Stop</span><span className="v">{play.stopLevel}</span></div>}
       </div>
     </>
   );
@@ -1054,12 +1067,6 @@ function LegacyPnlPanel({ play }: { play: TerminalPlay }) {
   const chg = play.stockChangePct;
   const pnl = play.pnlPct;
   const spot = play.stockPrice;
-  const target = play.targetLevel ? parseFloat(play.targetLevel.replace(/[^0-9.]/g, "")) : null;
-  const stop = play.stopLevel ? parseFloat(play.stopLevel.replace(/[^0-9.]/g, "")) : null;
-  const distTarget = spot != null && target != null && Number.isFinite(target) && spot > 0
-    ? { dollars: target - spot, pct: ((target - spot) / spot * 100) } : null;
-  const distStop = spot != null && stop != null && Number.isFinite(stop) && spot > 0
-    ? { dollars: stop - spot, pct: ((stop - spot) / spot * 100) } : null;
   return (
     <>
       <div className="nh-deck-lab">Stock position</div>
@@ -1080,24 +1087,11 @@ function LegacyPnlPanel({ play }: { play: TerminalPlay }) {
         <div><span className="k">Stock</span><span className="v">{hasStock ? `$${spot!.toFixed(2)}` : "—"}</span></div>
         <div><span className="k">Stock entry</span><span className="v">{play.entry != null ? `$${play.entry.toFixed(2)}` : play.entryRange ?? "—"}</span></div>
         <div><span className="k">Entry premium</span><span className="v">{play.entryCostPerContract != null ? usd(play.entryCostPerContract) : "—"}</span></div>
-        {play.targetLevel && (
-          <div>
-            <span className="k">Target</span>
-            <span className="v nh-deck-pos">
-              {play.targetLevel}
-              {distTarget && <span className="nh-deck-dist"> ({distTarget.dollars >= 0 ? "+" : ""}{distTarget.dollars.toFixed(2)} / {distTarget.pct >= 0 ? "+" : ""}{distTarget.pct.toFixed(1)}%)</span>}
-            </span>
-          </div>
-        )}
-        {play.stopLevel && (
-          <div>
-            <span className="k">Stop</span>
-            <span className="v nh-deck-neg">
-              {play.stopLevel}
-              {distStop && <span className="nh-deck-dist"> ({distStop.dollars >= 0 ? "+" : ""}{distStop.dollars.toFixed(2)} / {distStop.pct >= 0 ? "+" : ""}{distStop.pct.toFixed(1)}%)</span>}
-            </span>
-          </div>
-        )}
+        {/* Target/Stop levels + live distance, and the STOP↔TARGET progress track below, are rendered
+            ONCE — in the Management tab's LegacyManageGeometry, which additionally draws the
+            entry-zone marker and a plain-language zone label. Repeating the bare distance grid and a
+            second (marker-less) track here was pure duplication of the same play.targetLevel /
+            play.stopLevel / play.progress values — see docs/audit/FINDINGS.md 2026-08-05. */}
         {play.ivRank != null && (
           <div>
             <span className="k">IV rank</span>
@@ -1114,14 +1108,6 @@ function LegacyPnlPanel({ play }: { play: TerminalPlay }) {
         )}
         {play.optionsPlay && <div><span className="k">Contract</span><span className="v">{play.optionsPlay}</span></div>}
       </div>
-      {play.progress != null && (
-        <div style={{ marginTop: 12 }}>
-          <div className="nh-deck-track">
-            <span className="lo">STOP</span><span className="hi">TARGET</span>
-            <span className="mk" style={{ left: `${Math.round(play.progress * 100)}%` }} />
-          </div>
-        </div>
-      )}
       {(play.peak != null || play.trough != null) && (
         <TradeExcursionGraphic play={play} markFlash={markFlash} />
       )}
