@@ -5964,6 +5964,11 @@ export type GradedFeatureVectorRow = {
   feature_vector: Record<string, unknown> | null;
   plan_outcome: string | null;
   plan_pnl_pct: number | null;
+  /** WS-10/WS-11 executable / reconstructed-trim-scale blob (NH-R14 follow-up widening) — carried
+   *  through so feature-store.ts's labelFromPlanOutcome can resolve the SAME official win/loss
+   *  record.ts's isZeroDteWin does, instead of reading the raw mid columns above straight. Null
+   *  for legacy (pre-WS10) rows, where mid IS official by construction anyway. */
+  entry_context: Record<string, unknown> | null;
 };
 
 /**
@@ -5971,11 +5976,18 @@ export type GradedFeatureVectorRow = {
  * Filtered in SQL to rows that (a) have a feature vector and (b) graded to a win/loss plan_outcome — an
  * ungradeable or still-open row is not evidence, so it never leaves the DB. Capped; the store is meant to
  * be summarized into base rates, not streamed unbounded.
+ *
+ * Selects entry_context alongside the mid columns (NH-R14 follow-up) so the caller can resolve the
+ * OFFICIAL (executable/reconstructed-preferred) win/loss the same way record.ts does — see
+ * feature-store.ts's labelFromPlanOutcome / docs/audit/OUTCOME-GRADING-SPEC.md §4. The WHERE clause
+ * still gates on the raw mid plan_outcome vocabulary (doubled/stopped/time_stop): every row that was
+ * ever executable/reconstructed-graded was first mechanically graded to one of these three, so this
+ * remains a superset "was this row graded at all" filter, not a source of the mid/official split.
  */
 export async function fetchGradedFeatureVectorRows(limit = 5000): Promise<GradedFeatureVectorRow[]> {
   await ensureSchema();
   const res = await (await getPool()).query<QueryResultRow>(
-    `SELECT ticker, session_date, feature_vector, plan_outcome, plan_pnl_pct
+    `SELECT ticker, session_date, feature_vector, plan_outcome, plan_pnl_pct, entry_context
        FROM zerodte_setup_log
       WHERE feature_vector IS NOT NULL
         AND plan_outcome IN ('doubled', 'stopped', 'time_stop')
@@ -5989,6 +6001,7 @@ export async function fetchGradedFeatureVectorRows(limit = 5000): Promise<Graded
     feature_vector: (r.feature_vector as Record<string, unknown> | null) ?? null,
     plan_outcome: r.plan_outcome != null ? String(r.plan_outcome) : null,
     plan_pnl_pct: r.plan_pnl_pct != null ? Number(r.plan_pnl_pct) : null,
+    entry_context: (r.entry_context as Record<string, unknown> | null) ?? null,
   }));
 }
 
