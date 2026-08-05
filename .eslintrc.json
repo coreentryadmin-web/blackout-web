@@ -22,5 +22,23 @@
     "jsx-a11y/no-noninteractive-element-interactions": "warn",
     "jsx-a11y/interactive-supports-focus": "warn",
     "jsx-a11y/tabindex-no-positive": "warn"
-  }
+  },
+  "overrides": [
+    {
+      "files": ["src/features/**/*.tsx", "src/components/**/*.tsx"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["**/*-server", "**/*-server.ts"],
+                "message": "Client components (\"use client\") must not import *-server modules directly. Server-only modules (guarded by `import \"server-only\";`) pull in Node-only/WS/DB machinery that breaks the client bundle if it leaks into a component tree — this is the exact regression class that broke the build in PR #1708. Fetch the data through an API route/server action instead, or import a shared non-server \"-core\" module if the logic is safe to run on the client."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
 }
