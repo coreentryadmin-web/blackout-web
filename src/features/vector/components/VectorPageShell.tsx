@@ -21,6 +21,7 @@ import { VectorScanner } from "@/features/vector/components/VectorScanner";
 import { VectorTickerComparisonStrip } from "@/features/vector/components/VectorTickerComparisonStrip";
 import { VectorPulse } from "@/features/vector/components/VectorPulse";
 import { VectorPlayCard } from "@/features/vector/components/VectorPlayCard";
+import { VectorTechnicalsPanel } from "@/features/vector/components/VectorTechnicalsPanel";
 import type { VectorPlay } from "@/features/vector/lib/vector-play-engine";
 import { VectorGexLadder } from "@/features/vector/components/VectorGexLadder";
 import { VectorDailyChart } from "@/features/vector/components/VectorDailyChart";
@@ -473,7 +474,6 @@ export function VectorPageShell({
         scopeLabel={`${vectorGexScopeLabel(dteHorizon)} matrix`}
         className="mb-2"
       />
-      <VectorPlayCard play={play} className="mb-2" />
       <VectorPulse
         ticker={activeTicker}
         lens={lens}
@@ -485,6 +485,7 @@ export function VectorPageShell({
         magnet={magnet}
         confluence={confluence}
         technicals={technicals}
+        showTechnicals={false}
         expectedMove={expectedMove}
         alerts={recentAlerts.slice(0, 5).map((f) => f.message)}
         wallIntegrity={wallIntegrity}
@@ -500,6 +501,19 @@ export function VectorPageShell({
         }
         className="mb-2"
       />
+    </>
+  );
+
+  // Desktop 4th "action" column (2026-08-05, member-directed): the things a member actually ACTS
+  // on — the fused trade idea, the technical read, and the alert-rule builder — pulled out of the
+  // long narrative feed (regime/signals/gamma-magnet/wall-integrity/confluence/expected-move) so
+  // they're visible without scrolling. Below the wide-desktop breakpoint this still renders (see
+  // .vector-action-rail in globals.css), just as a full-width row under the 3-column area rather
+  // than its own column — nothing is ever lost, only the wide-desktop layout changes.
+  const actionRail = (
+    <>
+      <VectorPlayCard play={play} className="mb-2" />
+      <VectorTechnicalsPanel technicals={technicals} className="mb-2" />
       <VectorAlertsPanel
         ticker={activeTicker}
         rules={alertRules}
@@ -648,6 +662,18 @@ export function VectorPageShell({
           >
             {pulseRail}
           </div>
+
+          {/*
+            Desktop 4th "action" column (member request, 2026-08-05): Play card + Technicals +
+            Alert builder, split out of the narrative pulse rail so they're visible without
+            scrolling. Skipped entirely inside the iOS native app shell — that shell's segment
+            switcher (VECTOR_IOS_PANELS) only knows ladder/chart/pulse/scanner, and mobile wasn't
+            in scope for this change; on ordinary responsive web (non-native, narrow viewport) the
+            CSS below still stacks it as a full-width row rather than hiding it.
+          */}
+          {!(compactPanels && nativeShell) && (
+            <div className="vector-action-rail">{actionRail}</div>
+          )}
         </div>
 
         {alertToast}
