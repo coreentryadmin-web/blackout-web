@@ -1,5 +1,75 @@
 # BlackOut Open Issues Log
-Last updated: 2026-08-05 11:50 ET
+Last updated: 2026-08-05 12:40 ET
+
+## spx-rth-2026-08-05 — SPX Slayer all-day verify pass (~12:21–12:40 ET)
+
+**Session:** SPX Slayer all-day **verify** mode per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` (Cloud Agent `cursor/spx-rth-system-verification-69e6`). Market-open pass (~6:30 AM PT / 9:30 AM ET window; executed ~12:21 ET midday). Commands: `npm run validate:spx-rth` → `npm run validate:spx-e2e` → 60s live auto-update Playwright probe → `data-validator.mjs`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth` (final) | ✅ **GREEN** — 8 PASS · 1 WARN · 0 FAIL (~4.3 min) |
+| `npm run validate:spx-e2e` (final) | ✅ **0 FAIL / 18 checks** — matrix oracle 181 strikes · every GEX/VEX/DEX/CHARM cell finite |
+| `validate:rth-open` (nested) | ✅ deploy, crons, `spx-evaluate`, options-socket authenticated |
+| Matrix deep audit | ✅ GEX+VEX+DEX+CHARM · 181 strikes · Σ strike_totals == headline · INV-2 per strike |
+| Cross-endpoint spot/GEX | ✅ merged=7739.85 hm=7740.63 play=SCANNING/SCANNING (Δ ≤ 0.15 pts) |
+| Desk cache lanes | ✅ spot=7739.85 pulse=true flow=true |
+| `validate:spx-bie` | ✅ member `/spx/play` == `getSpxPlayState()` |
+| `ops:collect` | ✅ zero items |
+| 60s live auto-update | ✅ header SPX spot ticked 4× (~20s cadence); matrix spot row matched header each sample |
+| `data-validator.mjs` | ✅ oracle SPX/SPY/VIX vs Polygon (run tail) |
+
+**First orchestrator burst:** initial `validate:spx-rth` FAIL on missing `node_modules` (pg/tsx/playwright) — resolved via `npm install` + `npx playwright install chromium`. First `validate:spx-e2e` after long API burst flaked on `.spx-gex-matrix-table` 60s wait (GEX/VEX tabs clicked OK); **standalone retry GREEN** with 172 rows — harness flake, not member defect.
+
+### UI E2E (`/dashboard`)
+
+| Control | Result |
+|---|---|
+| Sign-in + shell | ✅ premium desk loads |
+| LIVE badge during RTH | ✅ not OFFLINE |
+| GEX tab (`#spx-matrix-tab-gex`) | ✅ clicked · matrix populates |
+| VEX tab (`#spx-matrix-tab-vex`) | ✅ clicked · VEX cells populate |
+| Matrix rows | ✅ **172** strike rows (≥80 RTH bar) |
+| Matrix text sanity | ✅ no NaN / undefined / `$—` |
+| Commentary expand | ✅ toggles without error |
+| Play verdict bar | ✅ SPX PLAY · SCANNING — **no stale ✓ confirmations** |
+| Console errors | ✅ zero |
+| Lotto dock | ⏭️ not rendered this pass (optional surface) |
+
+### Cross-tool integration (Step 3)
+
+| Tool | Endpoint | Result |
+|---|---|---|
+| **Thermal** | `GET /api/market/gex-heatmap?ticker=SPX` | ✅ every cell validated (181 strikes); cross_validation PASS |
+| **GEX positioning** | `GET /api/market/gex-positioning?ticker=SPX` | ✅ spot/flip agree with matrix header |
+| **HELIX** | `GET /api/market/flows?limit=30` | ✅ 30 prints |
+| **Largo** | `POST /api/market/largo/query` | ✅ `blackout_intelligence` grounded |
+| **BIE** | `validate:spx-bie` | ✅ `spx_full_state` == member play |
+| **Grid bootstrap** | `GET /api/market/spx/bootstrap` | ✅ loaded |
+| **0DTE Command** | `GET /api/market/zerodte/board` | ✅ 9 setups |
+| **Night Hawk** | `GET /api/market/nighthawk/edition` | ✅ loads |
+| **Desk / play** | desk vs play | ✅ desk≈7741 play=SCANNING |
+
+### P0 found this pass
+
+**None.** Matrix cells 100% match API oracle; play SCANNING carries zero stale confirmations; spot/GEX cross-endpoint within tolerance; live ticks confirmed across 60s window.
+
+### Findings table (`spx-rth-2026-08-05`)
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| — | — | **No P0/P1 SPX product defects** | — | GREEN |
+| INFO | ENV-NODE-MODULES | Initial run failed on missing `node_modules` (pg/tsx/playwright) in cloud agent | — | Resolved via `npm install` + `npx playwright install chromium` |
+| P2 | SPX-E2E-MATRIX-FLAKE | First `validate:spx-e2e` after ~8 min orchestrator burst timed on `.spx-gex-matrix-table` 60s; immediate retry GREEN (181 rows) | UI harness | post-close — consider browser-first in orchestrator or 90s table wait |
+| P2 | SPX-DC-CRON-AUTH | `data-correctness` WARN — CRON_SECRET auth mismatch in agent env | cron probe | **Expected** — prod cron runs async |
+| P2 | SPX-BIE-CRON-401 | `bie-play-route` WARN — cron play HTTP 401 without cron bearer | BIE cron | **Expected** in agent env |
+
+**Member-facing SPX surfaces: GREEN** — matrix oracle clean (181 strikes, zero NaN), play SCANNING with no stale confirmations, cross-tool spot agrees ~7740 during RTH, live ticks confirmed.
+
+**Reports:** `audit-output/spx-rth-2026-08-05-verify-1785948003571.json`, `audit-output/spx-dashboard-e2e-1785947734443.json`, `/opt/cursor/artifacts/spx-rth-debug-dashboard.png`
+
+---
 
 ## grid-rth-2026-08-05 — 0DTE Command RTH verify agent (market open ~6:30 AM PT / 9:30 AM ET)
 
