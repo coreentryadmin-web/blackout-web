@@ -94,9 +94,13 @@ inventory sweep appended at the bottom of this doc.
 **P2 — extend the analytical surface**
 - Volume profile overlay (session + composite), positioned as a companion to the existing wall
   ladder — natural pairing, no new data source needed (bars are already seeded).
-- Daily/weekly bar seed to unlock 4h/1D/1W timeframes — the blocking dependency (a daily-bar feed)
-  should be scoped as its own small infra ticket; once available, timeframe picker and MA/key-level
-  logic already generalize.
+- ~~Daily/weekly bar seed to unlock 4h/1D/1W timeframes~~ — **1D/1W built** (see
+  `docs/audit/FINDINGS.md`, 2026-08-05 "Vector Daily/Weekly historical chart view"): a new
+  `VectorDailyChart` surface reusing the already-shipped `fetchStockDailyBars`/`fetchIndexDailyBars`
+  Polygon fetchers (no new data source needed, contrary to this audit's original framing that a
+  daily-bar feed didn't exist yet — it did, just not wired into Vector). **4h remains open** — it
+  needs a separate multi-day INTRADAY bar feed, a materially bigger lift than the daily-close data
+  1D/1W reused.
 - Cross-ticker wall-structure comparison view (e.g., a small multi-ticker mini-ladder strip — SPY
   vs sector ETF vs top 2-3 constituents) for relative-positioning reads, reusing the existing
   scanner's per-ticker regime/wall summary rather than a new data path.
