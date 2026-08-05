@@ -148,7 +148,9 @@ export const VECTOR_LEVELS: readonly VectorLevelDef[] = [
     hint: "Direction-aware: follows whichever way the dominant swing actually ran, so it can point the opposite way from the fixed \"Fib\" tool above.",
   },
   { id: "pdh-pdl-pdc", label: "PDH / PDL / PDC", color: "#38bdf8", group: "Key levels", needsPriorDay: true },
-  { id: "pivots", label: "Floor pivots (P/R/S)", color: "#fb923c", group: "Key levels", needsPriorDay: true },
+  // Lime, not orange (2026-08-05 audit finding #6): #fb923c collided with EMA 9's menu swatch —
+  // a member with both toggles on couldn't tell the two dots apart in the toggle menu.
+  { id: "pivots", label: "Floor pivots (P/R/S)", color: "#a3e635", group: "Key levels", needsPriorDay: true },
 ] as const;
 
 const LEVEL_IDS = new Set<string>(VECTOR_LEVELS.map((l) => l.id));
@@ -316,13 +318,19 @@ export const VECTOR_INDICATOR_GROUPS: ReadonlyArray<{
   },
   {
     title: "Structure",
-    items: [{ id: "market-structure", label: "Market structure (HH/HL · BOS/CHOCH)", color: "#22d3ee" }],
+    // Fuchsia, not cyan (2026-08-05 audit finding #6): #22d3ee collided with "Expected move"'s menu
+    // swatch. Expected move keeps cyan because its ACTUAL chart lines/cone are hardcoded to #22d3ee
+    // to match (see vector-em-cone-primitive.ts / VectorChart.tsx) — structure's markers don't share
+    // that constraint, so this toggle moved instead.
+    items: [{ id: "market-structure", label: "Market structure (HH/HL · BOS/CHOCH)", color: "#e879f9" }],
   },
   {
     title: "Oscillators",
     items: [
       { id: "rsi", label: "RSI (14)", color: "#c084fc" },
-      { id: "macd", label: "MACD (12/26/9)", color: "#38bdf8" },
+      // Indigo, not sky (2026-08-05 audit finding #6): #38bdf8 collided with the "PDH / PDL / PDC"
+      // key-level menu swatch.
+      { id: "macd", label: "MACD (12/26/9)", color: "#818cf8" },
     ],
   },
   {
@@ -331,8 +339,10 @@ export const VECTOR_INDICATOR_GROUPS: ReadonlyArray<{
   },
   {
     title: "Flow",
-    // Green matches the call-print marker colour (calls green ↑ / puts red ↓ on the chart).
-    items: [{ id: "flow-markers", label: "Options flow (large trades at strike)", color: "#34d399" }],
+    // Green-400, not emerald (2026-08-05 audit finding #6): #34d399 collided with the "HOD / LOD"
+    // key-level menu swatch. Still green (matches the call-print marker colour — calls green ↑ /
+    // puts red ↓ on the chart), just a distinct shade from HOD/LOD's emerald.
+    items: [{ id: "flow-markers", label: "Options flow (large trades at strike)", color: "#4ade80" }],
   },
   {
     title: "Expected move",
@@ -352,10 +362,13 @@ export const VECTOR_INDICATOR_GROUPS: ReadonlyArray<{
         color: "#10b981",
       },
       {
-        // Teal dot = the calm/long-γ side of the boundary glow (short-γ side is amber on the pane).
+        // Rose dot (2026-08-05 audit finding #6): was teal (#2dd4bf), which collided with "SMA 50"'s
+        // menu swatch AND real drawn line colour. The on-chart boundary glow itself is unaffected —
+        // it's still calm-teal/short-γ-amber, painted independently by
+        // vector-gamma-regime-primitive.ts — only this toggle's menu dot moved.
         id: "gamma-regime",
         label: "Gamma regime (long / short γ zones)",
-        color: "#2dd4bf",
+        color: "#fb7185",
       },
     ],
   },
