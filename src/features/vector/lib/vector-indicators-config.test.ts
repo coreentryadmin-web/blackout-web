@@ -154,6 +154,40 @@ test("VECTOR_DEFAULT_ENABLED_INDICATORS: dealer gamma positioning on by default 
   assert.ok(!defaultVectorIndicators().has("gamma-regime"));
 });
 
+test("no two distinct indicator ids share a hex colour across the WHOLE toggle space (2026-08-05 audit finding #6)", () => {
+  // Walk every colour the config exposes: VECTOR_OVERLAYS' concrete lines, VECTOR_LEVELS, and every
+  // literal colour inside VECTOR_INDICATOR_GROUPS (RSI/MACD/structure/flow/expected-move/volume-
+  // profile/etc). A member with two same-coloured indicators enabled can't tell which line/marker on
+  // the chart belongs to which toggle — this is the regression guard so a future addition can't
+  // silently reintroduce a collision. Overlay FAMILY dots (VECTOR_OVERLAY_FAMILIES) are deliberately
+  // excluded: a family dot is defined to reuse its first member overlay's colour (see
+  // `VECTOR_OVERLAY_FAMILIES`'s builder), so "ema" family legitimately shares a colour with "ema9" —
+  // that is not a distinct-indicator collision, it's the same colour representing the same line twice.
+  const byColor = new Map<string, string[]>();
+  const record = (id: string, color: string) => {
+    const list = byColor.get(color) ?? [];
+    list.push(id);
+    byColor.set(color, list);
+  };
+
+  for (const o of VECTOR_OVERLAYS) record(o.id, o.color);
+  for (const l of VECTOR_LEVELS) record(l.id, l.color);
+  for (const group of VECTOR_INDICATOR_GROUPS) {
+    for (const item of group.items) {
+      // Skip overlay-family items here — already covered above via VECTOR_OVERLAYS, and intentionally
+      // colour-sharing with their first member (see comment above).
+      if (isVectorOverlayFamilyId(item.id)) continue;
+      record(item.id, item.color);
+    }
+  }
+
+  const collisions = [...byColor.entries()]
+    .filter(([, ids]) => new Set(ids).size > 1)
+    .map(([color, ids]) => `${color}: ${[...new Set(ids)].join(", ")}`);
+
+  assert.deepEqual(collisions, [], `duplicate indicator colours found: ${collisions.join(" | ")}`);
+});
+
 test("isVectorGammaRegimeId: matches only the regime toggle id", () => {
   assert.ok(isVectorGammaRegimeId("gamma-regime"));
   assert.ok(!isVectorGammaRegimeId("gex-heatmap"));
