@@ -19,6 +19,8 @@ export type DarkPoolDiscordPrint = {
   executed_at: string;
   price?: number | null;
   share_size?: number | null;
+  /** Optional ADV context — never fabricated. */
+  adv_context_line?: string | null;
 };
 
 const APP_BASE = (process.env.NEXT_PUBLIC_SITE_URL || "https://blackouttrades.com").replace(/\/$/, "");
@@ -122,7 +124,9 @@ export function buildDarkpoolDiscordEmbed(print: DarkPoolDiscordPrint): DiscordE
   const et = formatHelixHitTimestampEt(print.executed_at);
   const shares = fmtShares(print.share_size);
   const headline = `**${moneyShort(print.premium)} block${fmtPrice(print.price)}** · ${sideLabel(print.side)}`;
-  const meta = [et ? `${et} ET` : null, shares].filter(Boolean).join(" · ");
+  const meta = [et ? `${et} ET` : null, shares, print.adv_context_line ?? null]
+    .filter(Boolean)
+    .join(" · ");
 
   return {
     title: `🌑 Dark Pool · ${print.ticker}`,
@@ -198,4 +202,50 @@ export function selectDarkpoolDigestPrints(
     .slice(0, limit);
 
   return { rows, inWindowCount: inWindow.length };
+}
+
+/** Live WS/cron pings — default ON (route cron has DARKPOOL_DISCORD_RTH_ONLY). */
+export function darkpoolDiscordLiveRthOnly(): boolean {
+  const v = process.env.DARKPOOL_DISCORD_LIVE_RTH_ONLY?.trim().toLowerCase();
+  if (v == null || v === "") return true;
+  return v === "1" || v === "true" || v === "yes";
+}
+
+export function buildDarkpoolBurstEmbed(input: {
+  ticker: string;
+  prints: readonly DarkPoolDiscordPrint[];
+  windowMin: number;
+  now?: Date;
+}): DiscordEmbed {
+  const now = input.now ?? new Date();
+  const ticker = input.ticker.toUpperCase();
+  const total = input.prints.reduce((s, p) => s + p.premium, 0);
+  const buys = input.prints.filter((p) => p.side === "buy").length;
+  const sells = input.prints.filter((p) => p.side === "sell").length;
+  const et = now.toLocaleString("en-US", {
+    timeZone: "America/New_York",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+
+  const lines = input.prints.slice(0, 6).map((p) => {
+    const side = p.side === "buy" ? "BUY" : p.side === "sell" ? "SELL" : "—";
+    return `• ${moneyShort(p.premium)}${fmtPrice(p.price)} · ${side}`;
+  });
+  const more =
+    input.prints.length > 6
+      ? `\n_…and ${input.prints.length - 6} more block${input.prints.length - 6 === 1 ? "" : "s"}_`
+      : "";
+
+  return {
+    title: `🌑 Dark Pool · ${ticker} burst (${input.prints.length} blocks)`,
+    description:
+      `**${moneyShort(total)}** in ~${input.windowMin}m · ${buys} buy / ${sells} sell\n\n` +
+      `${lines.join("\n")}${more}\n\n[Open in HELIX](${APP_BASE}/flows?ticker=${encodeURIComponent(ticker)})`,
+    color: 0x6366f1,
+    footer: { text: "BlackOut Dark Pool" },
+    timestamp: now.toISOString(),
+    url: `${APP_BASE}/flows?ticker=${encodeURIComponent(ticker)}`,
+  };
 }

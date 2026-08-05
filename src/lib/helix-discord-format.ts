@@ -43,9 +43,20 @@ export type HelixDiscordFlowInput = {
   gex_proximity?: GexProximityLabel | string | null;
   /** Same-contract hits inside the rolling window — enriches Repeat Hits embeds. */
   stack_hits?: Array<{ at: string; premium: number; fill_price?: number | null }>;
+  /** Optional distance-to-structure line (never fabricated). */
+  gex_context_line?: string | null;
+  /** Stack milestone when posting 3rd/5th/10th repeat hit. */
+  stack_milestone?: number | null;
 };
 
-export type HelixDiscordKind = "whale" | "structure" | "whale-structure" | "stack" | "near";
+export type HelixDiscordKind =
+  | "whale"
+  | "structure"
+  | "whale-structure"
+  | "stack"
+  | "near"
+  | "milestone"
+  | "burst";
 
 export type DiscordEmbed = {
   title: string;
@@ -184,7 +195,7 @@ export function classifyHelixDiscordKind(flow: HelixDiscordFlowInput, now = new 
   return "whale";
 }
 
-function titleFor(kind: HelixDiscordKind): string {
+function titleFor(kind: HelixDiscordKind, flow?: HelixDiscordFlowInput): string {
   switch (kind) {
     case "whale-structure":
       return "🐋🧱 HELIX · Whale @ Structure";
@@ -192,6 +203,10 @@ function titleFor(kind: HelixDiscordKind): string {
       return "🧱 HELIX · Flow @ Structure";
     case "stack":
       return "📚 HELIX · Repeat Hits";
+    case "milestone":
+      return `📚 HELIX · Stack milestone · ${flow?.stack_milestone ?? "?"} hits`;
+    case "burst":
+      return "📡 HELIX · Burst";
     case "near":
       return "⚡ HELIX · Near-dated Whale";
     default:
@@ -200,8 +215,9 @@ function titleFor(kind: HelixDiscordKind): string {
 }
 
 function colorFor(flow: HelixDiscordFlowInput, kind: HelixDiscordKind): number {
+  if (kind === "milestone" || kind === "stack") return 0xa3e635;
+  if (kind === "burst") return 0x22d3ee;
   if (kind === "structure" || kind === "whale-structure") return 0x38bdf8;
-  if (kind === "stack") return 0xa3e635;
   const side = String(flow.option_type || "").toUpperCase();
   if (side.startsWith("C")) return 0x00e676;
   if (side.startsWith("P")) return 0xff2d55;
@@ -240,6 +256,7 @@ export function helixDiscordWriteup(flow: HelixDiscordFlowInput, now = new Date(
   }
   if (gex) line1 += ` — printing ${gex}`;
   line1 += ".";
+  if (flow.gex_context_line) line1 += `\n_${flow.gex_context_line}_`;
 
   const bits: string[] = [];
   const aggr = aggressorPhrase(flow.ask_pct);
@@ -285,10 +302,13 @@ export function buildHelixDiscordEmbed(
     day: "numeric",
   });
 
+  const resolvedKind =
+    flow.stack_milestone != null && flow.stack_milestone > 0 ? "milestone" : kind;
+
   return {
-    title: titleFor(kind),
+    title: titleFor(resolvedKind, flow),
     description: `**${helixDiscordHeadline(flow, now)}**\n\n${helixDiscordWriteup(flow, now)}\n\n[Open in HELIX](${APP_BASE}/flows?ticker=${encodeURIComponent(ticker)})`,
-    color: colorFor(flow, kind),
+    color: colorFor(flow, resolvedKind),
     footer: { text: `BlackOut HELIX · ${et} ET` },
     timestamp: new Date(when).toISOString(),
     url: `${APP_BASE}/flows?ticker=${encodeURIComponent(ticker)}`,
@@ -494,6 +514,54 @@ export function contractStackHitsFromFlows(
   }
 
   return hits.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+}
+
+/** Live WS/persist pings — default ON (digest cron has its own HELIX_DISCORD_DIGEST_RTH_ONLY). */
+export function helixDiscordLiveRthOnly(): boolean {
+  const v = process.env.HELIX_DISCORD_LIVE_RTH_ONLY?.trim().toLowerCase();
+  if (v == null || v === "") return true;
+  return v === "1" || v === "true" || v === "yes";
+}
+
+/** Collapsed burst embed when multiple qualifying prints land on one ticker inside the window. */
+export function buildHelixBurstEmbed(input: {
+  ticker: string;
+  flows: readonly HelixDiscordFlowInput[];
+  windowMin: number;
+  now?: Date;
+}): DiscordEmbed {
+  const now = input.now ?? new Date();
+  const ticker = input.ticker.toUpperCase();
+  const totalPrem = input.flows.reduce((s, f) => s + Number(f.premium), 0);
+  const et = now.toLocaleString("en-US", {
+    timeZone: "America/New_York",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+
+  const lines = input.flows.slice(0, 6).map((f) => {
+    const side = String(f.option_type || "").toUpperCase().startsWith("C") ? "C" : "P";
+    const fill =
+      f.fill_price != null && Number.isFinite(Number(f.fill_price))
+        ? ` @ $${Number(f.fill_price) % 1 ? Number(f.fill_price).toFixed(2) : Number(f.fill_price)}`
+        : "";
+    return `• ${fmtStrike(Number(f.strike))}${side}${fill} · ${moneyShort(Number(f.premium))}`;
+  });
+
+  const more =
+    input.flows.length > 6 ? `\n_…and ${input.flows.length - 6} more print${input.flows.length - 6 === 1 ? "" : "s"}_` : "";
+
+  return {
+    title: `📡 HELIX · ${ticker} burst (${input.flows.length} prints)`,
+    description:
+      `**${moneyShort(totalPrem)}** total in ~${input.windowMin}m on **${ticker}**\n\n` +
+      `${lines.join("\n")}${more}\n\n[Open in HELIX](${APP_BASE}/flows?ticker=${encodeURIComponent(ticker)})`,
+    color: 0x22d3ee,
+    footer: { text: `BlackOut HELIX · ${et} ET` },
+    timestamp: now.toISOString(),
+    url: `${APP_BASE}/flows?ticker=${encodeURIComponent(ticker)}`,
+  };
 }
 
 /** Opt-in: set HELIX_DISCORD_ALERTS=1 (uses DISCORD_HELIX_WEBHOOK_URL). */

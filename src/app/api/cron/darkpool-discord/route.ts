@@ -24,7 +24,14 @@ import {
   selectDarkpoolDigestPrints,
   type DarkPoolDiscordPrint,
 } from "@/lib/darkpool-discord-format";
-import { scanDarkpoolDiscordFromCache } from "@/lib/darkpool-discord-notify";
+import { scanDarkpoolDiscordFromCache, deliverDarkpoolBurstItems } from "@/lib/darkpool-discord-notify";
+import { flushStaleDiscordBursts } from "@/lib/discord-burst-buffer";
+import {
+  buildDarkpoolEodRecapEmbed,
+  claimDiscordEodRecap,
+  currentSessionDateEt,
+  isDiscordEodRecapWindow,
+} from "@/lib/discord-eod-recap";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -81,6 +88,31 @@ export async function GET(req: NextRequest) {
   try {
     const postedLive = await scanDarkpoolDiscordFromCache(100);
 
+    const staleBursts = await flushStaleDiscordBursts<DarkPoolDiscordPrint>("darkpool", now);
+    let flushedBursts = 0;
+    for (const burst of staleBursts) {
+      if (await deliverDarkpoolBurstItems(burst.ticker, burst.items)) flushedBursts++;
+    }
+
+    let postedEod = false;
+    if (isDiscordEodRecapWindow(now)) {
+      const sessionDate = currentSessionDateEt(now);
+      const eodClaimed = await claimDiscordEodRecap("darkpool", sessionDate, bypassDedup);
+      if (eodClaimed) {
+        const { fetchUwDarkPoolRecent } = await import("@/lib/providers/unusual-whales");
+        const rawRows = await fetchUwDarkPoolRecent(200);
+        const sessionPrints: DarkPoolDiscordPrint[] = (Array.isArray(rawRows) ? rawRows : [])
+          .map(normalizeDarkPoolDiscordPrint)
+          .filter((p): p is DarkPoolDiscordPrint => p != null);
+        const eodEmbed = buildDarkpoolEodRecapEmbed({
+          prints: sessionPrints,
+          sessionDate,
+          now,
+        });
+        postedEod = await postDiscordWebhook(webhook, { embeds: [eodEmbed] }, "darkpool-eod-recap");
+      }
+    }
+
     let postedDigest = false;
     let digestSummary: { inWindowCount: number; rows: number } | null = null;
 
@@ -118,6 +150,8 @@ export async function GET(req: NextRequest) {
       host: redactWebhook(webhook),
       posted_live: postedLive,
       posted_digest: postedDigest,
+      posted_eod: postedEod,
+      flushed_bursts: flushedBursts,
       digest: digestSummary,
     };
     await logCronRun("darkpool-discord", started, payload);
