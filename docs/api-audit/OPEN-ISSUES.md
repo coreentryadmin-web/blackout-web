@@ -1,5 +1,5 @@
 # BlackOut Open Issues Log
-Last updated: 2026-08-05 12:23 ET
+Last updated: 2026-08-05 12:54 ET
 
 ## spx-rth-2026-08-05 — SPX Slayer all-day RTH verify agent (market open ~6:30 AM PT / 9:30 AM ET)
 
@@ -62,9 +62,27 @@ Last updated: 2026-08-05 12:23 ET
 
 ## grid-rth-2026-08-05 — 0DTE Command RTH verify agent (market open ~6:30 AM PT / 9:30 AM ET)
 
-**Session:** Autonomous Grid RTH **verify** mode per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` (Cloud Agent `cursor/0dte-grid-rth-agent-ca67`). Passes: (1) market-open ~9:30 ET agent `8c7a`; (2) midday ~12:15 ET agent `ca67`. Commands each pass: `npm run validate:grid-rth` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e` → `data-validator.mjs` → Playwright Night Hawk segment tabs + `/grid` 404.
+**Session:** Autonomous Grid RTH **verify** mode per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` (Cloud Agent `cursor/0dte-grid-rth-agent-8680`). Passes: (1) market-open ~9:30 ET agent `8c7a`; (2) midday ~12:15 ET agent `ca67`; (3) midday ~12:46 ET agent `8680`. Commands each pass: `npm run validate:grid-rth` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e` → `data-validator.mjs` → `/grid` 404 routing check.
 
 **Note:** Classic `/grid` page + 9 `/api/grid/*` routes deleted 2026-07-07 — returns **404**. 0DTE Command lives on `/nighthawk` with four view tabs (**0DTE / Swings / Bangers / Legacy**); LEAPS removed from toggle 2026-08-04 (no live signal adapter).
+
+### Validation summary (pass 3 — ~12:46 ET)
+
+| Check | Result |
+|---|---|
+| `npm run validate:grid-rth` | ✅ **14/14 PASS** (0 FAIL · ~6.5 min) — RTH-open, upstream, session heat RTH, ledger PnL 2 rows, SPX spot 7737.9 vs GEX, HELIX 20 prints, Night Hawk dedupe 1 ticker, `zerodte-warm` cron accepted, logic + integration, data-correctness flags=0, E2E nested, ops:collect zero items |
+| `npm run validate:zerodte-logic` | ✅ **17/17 PASS** — gates, plan exits (-50%/+100%/15:30 ET), lifecycle OPEN→TRIM→CLOSED, mergePlays SKIP past cutoff/MOVED, session heat RTH→POST_COMMIT→LATE_SESSION, live board 9 setups / 2 ledger (2 eligible / 0 gate violations), cutoff 15:30 ET |
+| `npm run validate:grid-e2e` | ✅ **5/5 PASS** — board API 9/2, HELIX 20 prints, Playwright `/nighthawk` load, zero console errors |
+| `data-validator.mjs` | ✅ **33 PASS / 5 INFO / 0 FAIL** — SPX/SPY/VIX live vs Polygon, 0DTE chain + ledger SPXW/QQQ/MU premium cross-check PASS |
+| `/grid` routing | ✅ **404** — intentional (classic Market Grid removed) |
+
+**Live board (RTH ~12:46 ET):** 9 setups · 2 ledger (board API) / 3 ledger (data-validator includes fresh MU 910c commit ~16:46 UTC) · session heat RTH 100% · 2 eligible / 0 gate violations · upstream OK · committed SPXW 7830c entry 8.38 + QQQ 720p entry 1.77 + MU 910c entry 16.02 grounded vs Polygon minute bars.
+
+**Cross-tool:** SPX bootstrap spot 7737.9 vs GEX ✅ · HELIX flows 20 prints ✅ · Night Hawk dedupe 1 ticker covered elsewhere ✅ · `zerodte-warm` cron accepted ✅.
+
+**Verify status: GREEN** — zero FAIL on all Grid harnesses. No P0 fixes required.
+
+**Reports (pass 3):** `audit-output/grid-rth-2026-08-05-verify-1785948800017.json`, `audit-output/zerodte-logic-1785948391401.json`, `audit-output/grid-e2e-1785948402758.json`, `audit-output/validation-2026-08-05T16-54-21-557Z.md`
 
 ### Validation summary (pass 2 — ~12:15 ET)
 
@@ -102,6 +120,10 @@ Last updated: 2026-08-05 12:23 ET
 | INFO | GRID-RTH-ENV-NODE | Cloud agent runs need `npm install` + `npx playwright install chromium` before harnesses | Resolved each session |
 | INFO | GRID-RTH-ELIGIBLE-01 | Live board 9 setups but only 1 eligible — remainder gated (expected RTH funnel behavior, 0 gate violations) | monitor |
 | INFO | GRID-RTH-LEDGER-GROWTH | Ledger grew 1→2 rows between passes (QQQ 720p added ~16:17 UTC) — expected intraday commit behavior | monitor |
+| INFO | GRID-RTH-LEDGER-GROWTH-2 | Ledger grew 2→3 rows pass 2→3 (MU 910c added ~16:46 UTC) — expected intraday commit behavior | monitor |
+| INFO | GRID-RTH-ELIGIBLE-02 | Live board 9 setups, 2 eligible (up from 1 at pass 2) — remainder gated, 0 gate violations | monitor |
+
+**Reports (pass 3):** `audit-output/grid-rth-2026-08-05-verify-1785948800017.json`, `audit-output/zerodte-logic-1785948391401.json`, `audit-output/grid-e2e-1785948402758.json`, `audit-output/validation-2026-08-05T16-54-21-557Z.md`
 
 **Reports (pass 2):** `audit-output/grid-rth-2026-08-05-verify-1785946959879.json`, `audit-output/zerodte-logic-1785946967042.json`, `audit-output/grid-e2e-1785946973759.json`, `audit-output/validation-2026-08-05T16-23-10-976Z.md`
 
