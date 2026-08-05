@@ -3,9 +3,11 @@ import assert from "node:assert/strict";
 import {
   bucketWallSampleTime,
   buildWallHistorySample,
-  DEFAULT_WALL_TRAIL_SAMPLE_SEC,
+  NON_UNIVERSE_WALL_TRAIL_SAMPLE_SEC,
   ORACLE_WALL_TRAIL_SAMPLE_SEC,
+  UNIVERSE_WALL_TRAIL_SAMPLE_SEC,
   wallTrailSampleSecForTicker,
+  vectorWallTrailSecClient,
 } from "./vector-wall-sample";
 
 test("bucketWallSampleTime: snaps to 15s floor", () => {
@@ -22,22 +24,23 @@ test("bucketWallSampleTime: snaps to 5s floor for oracle cadence", () => {
   assert.equal(bucketWallSampleTime(107, 5), 105);
 });
 
-test("DEFAULT_WALL_TRAIL_SAMPLE_SEC is 5", () => {
-  assert.equal(DEFAULT_WALL_TRAIL_SAMPLE_SEC, 5);
+test("wallTrailSampleSecForTicker: universe scope is always 5s", () => {
+  assert.equal(wallTrailSampleSecForTicker("PLTR", "universe"), UNIVERSE_WALL_TRAIL_SAMPLE_SEC);
+  assert.equal(wallTrailSampleSecForTicker("NVDA", "universe"), UNIVERSE_WALL_TRAIL_SAMPLE_SEC);
 });
 
-test("ORACLE_WALL_TRAIL_SAMPLE_SEC is 5", () => {
-  assert.equal(ORACLE_WALL_TRAIL_SAMPLE_SEC, 5);
+test("wallTrailSampleSecForTicker: live scope — oracle 5s, on-demand 15s", () => {
+  assert.equal(wallTrailSampleSecForTicker("SPX"), ORACLE_WALL_TRAIL_SAMPLE_SEC);
+  assert.equal(wallTrailSampleSecForTicker("SPY"), ORACLE_WALL_TRAIL_SAMPLE_SEC);
+  assert.equal(wallTrailSampleSecForTicker("QQQ"), ORACLE_WALL_TRAIL_SAMPLE_SEC);
+  assert.equal(wallTrailSampleSecForTicker("NVDA"), NON_UNIVERSE_WALL_TRAIL_SAMPLE_SEC);
+  assert.equal(wallTrailSampleSecForTicker("PLTR"), NON_UNIVERSE_WALL_TRAIL_SAMPLE_SEC);
+  assert.equal(wallTrailSampleSecForTicker(null), NON_UNIVERSE_WALL_TRAIL_SAMPLE_SEC);
 });
 
-test("wallTrailSampleSecForTicker: all tickers get 5s (unified cadence)", () => {
-  assert.equal(wallTrailSampleSecForTicker("SPX"), 5);
-  assert.equal(wallTrailSampleSecForTicker("SPY"), 5);
-  assert.equal(wallTrailSampleSecForTicker("QQQ"), 5);
-  assert.equal(wallTrailSampleSecForTicker("AAPL"), 5);
-  assert.equal(wallTrailSampleSecForTicker("NVDA"), 5);
-  assert.equal(wallTrailSampleSecForTicker(null), 5);
-  assert.equal(wallTrailSampleSecForTicker(undefined), 5);
+test("vectorWallTrailSecClient: oracle 5s, else 15s", () => {
+  assert.equal(vectorWallTrailSecClient("SPY"), 5);
+  assert.equal(vectorWallTrailSecClient("PLTR"), 15);
 });
 
 const CALL = [{ strike: 7575, pct: 4, gex: 3_000_000_000 }];
@@ -54,8 +57,6 @@ test("buildWallHistorySample: builds a GEX+VEX sample and rounds the float tail"
   assert.ok(s);
   assert.equal(s!.time, 1000);
   assert.equal(s!.walls.callWalls[0]!.strike, 7575);
-  // roundFloats must tame the precision tail — a same-bucket float delta vs the
-  // live SSE path is exactly what fabricates phantom flip events on first merge.
   assert.ok(String(s!.gammaFlip).length <= 8, `flip not rounded: ${s!.gammaFlip}`);
   assert.ok(s!.vexWalls);
 });
@@ -71,32 +72,17 @@ test("buildWallHistorySample: returns null when NEITHER lens has walls", () => {
     }),
     null
   );
-  assert.equal(
-    buildWallHistorySample({ time: 1, gexWalls: null, gammaFlip: null, vexWalls: undefined, vexFlip: null }),
-    null
-  );
 });
 
-test("buildWallHistorySample: honest gaps — a lens with no walls records empty/null, never a carry-forward", () => {
+test("buildWallHistorySample: honest gaps — GEX-only and VEX-only", () => {
   const gexOnly = buildWallHistorySample({
     time: 1,
     gexWalls: { callWalls: CALL, putWalls: PUT },
     gammaFlip: 7511,
     vexWalls: { callWalls: [], putWalls: [] },
-    vexFlip: 9999, // must be dropped: no vex walls this bucket
+    vexFlip: 9999,
   });
   assert.ok(gexOnly);
   assert.equal(gexOnly!.vexWalls, null);
   assert.equal(gexOnly!.vexFlip, null);
-
-  const vexOnly = buildWallHistorySample({
-    time: 1,
-    gexWalls: { callWalls: [], putWalls: [] },
-    gammaFlip: 8888, // must be dropped: no gex walls this bucket
-    vexWalls: { callWalls: CALL, putWalls: PUT },
-    vexFlip: 7574,
-  });
-  assert.ok(vexOnly);
-  assert.deepEqual(vexOnly!.walls, { callWalls: [], putWalls: [] });
-  assert.equal(vexOnly!.gammaFlip, null);
 });

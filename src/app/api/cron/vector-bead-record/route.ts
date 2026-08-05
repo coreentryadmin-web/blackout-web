@@ -6,7 +6,7 @@ import { NextRequest, NextResponse, after } from "next/server";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { isEtCashRth } from "@/lib/et-market-hours";
-import { recordSharedUniverseWallSamples } from "@/features/vector/lib/vector-bead-recorder-core";
+import { recordSharedUniverseWallSamples, recordActiveNonUniverseWallSamples } from "@/features/vector/lib/vector-bead-recorder-core";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,10 +27,14 @@ export async function GET(req: NextRequest) {
 
   const run = async () => {
     try {
-      const result = await recordSharedUniverseWallSamples();
+      const [universe, active] = await Promise.all([
+        recordSharedUniverseWallSamples(),
+        recordActiveNonUniverseWallSamples(),
+      ]);
       await logCronRun("vector-bead-record", started, {
-        ok: result.recorded > 0,
-        ...result,
+        ok: universe.recorded > 0 || active.recorded > 0,
+        universe,
+        active,
       });
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
