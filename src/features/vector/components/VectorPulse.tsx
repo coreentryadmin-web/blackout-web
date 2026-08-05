@@ -27,6 +27,7 @@ import type { GammaMagnet } from "@/features/vector/lib/vector-gamma-magnet";
 import type { WallIntegrity } from "@/features/vector/lib/vector-wall-integrity";
 import type { VectorWallEvent } from "@/features/vector/lib/vector-wall-events";
 import type { VectorWallLens } from "@/features/vector/lib/vector-wall-history";
+import type { TechnicalsLine } from "@/features/vector/lib/vector-technicals";
 import { normalizeVectorTicker } from "@/features/vector/lib/vector-ticker";
 import { renderEmphasis } from "@/features/spx/lib/spx-emphasis";
 
@@ -40,7 +41,7 @@ type Props = {
   proximity?: WallProximity | null;
   magnet?: GammaMagnet | null;
   confluence?: string[] | null;
-  technicals?: string[];
+  technicals?: TechnicalsLine[];
   expectedMove?: string[];
   alerts?: string[];
   wallIntegrity?: { call: WallIntegrity | null; put: WallIntegrity | null };
@@ -409,8 +410,8 @@ export function VectorPulse({
               <span className="vp-intel-card-title">TECHNICALS</span>
             </div>
             {technicals.map((t, i) => (
-              <div key={i} className="vp-intel-card-body vp-t-muted">
-                {renderEmphasis(t)}
+              <div key={i} className={`vp-intel-card-body vp-t-${t.tone}`}>
+                {renderEmphasis(t.text)}
               </div>
             ))}
           </div>
