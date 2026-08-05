@@ -8686,6 +8686,37 @@ body::before {
     @apply ml-2 font-mono text-[10px] tabular-nums text-white/35;
   }
 
+  /* ── Cross-ticker wall-structure comparison strip (P2, 2026-08-05 CTO audit) ──
+     Reuses the vs-regime-* / vs-regime-tag-* tokens above so a chip here reads exactly like the
+     matching scanner row. */
+  .vector-comparison-strip {
+    @apply mb-2 flex flex-wrap items-center gap-1.5;
+  }
+  .vector-comparison-chip {
+    @apply flex items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.03] px-2 py-1 transition-colors;
+  }
+  .vector-comparison-chip:not(:disabled):hover {
+    @apply border-cyan-400/30 bg-cyan-400/[0.06];
+  }
+  .vector-comparison-chip:disabled {
+    @apply cursor-default;
+  }
+  .vector-comparison-chip.is-active {
+    @apply border-cyan-400/50 bg-cyan-400/10;
+  }
+  .vector-comparison-chip-ticker {
+    @apply flex items-center gap-1.5 font-mono text-[11px] font-semibold text-white/90;
+  }
+  .vector-comparison-chip-regime {
+    @apply font-mono text-[11px] font-semibold;
+  }
+  .vector-comparison-chip-dist {
+    @apply font-mono text-[10px] tabular-nums text-white/45;
+  }
+  .vector-comparison-chip-strength {
+    @apply font-mono text-[10px] tabular-nums text-white/35;
+  }
+
   .vector-chart-closed-hint {
     @apply absolute left-1/2 top-4 z-10 flex items-center gap-2 rounded-full px-4 py-2;
     @apply font-mono text-[11px] uppercase tracking-wide text-white/70;

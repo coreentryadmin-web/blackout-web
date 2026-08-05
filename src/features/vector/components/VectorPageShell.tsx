@@ -18,6 +18,7 @@ import type { VectorPriceScaleMap } from "@/features/vector/lib/vector-price-sca
 import type { VectorTimeframeMinutes } from "@/features/vector/lib/vector-bar-timeframes";
 import { VectorTickerSelect } from "@/features/vector/components/VectorTickerSelect";
 import { VectorScanner } from "@/features/vector/components/VectorScanner";
+import { VectorTickerComparisonStrip } from "@/features/vector/components/VectorTickerComparisonStrip";
 import { VectorPulse } from "@/features/vector/components/VectorPulse";
 import { VectorPlayCard } from "@/features/vector/components/VectorPlayCard";
 import type { VectorPlay } from "@/features/vector/lib/vector-play-engine";
@@ -165,10 +166,11 @@ export function VectorPageShell({
   const [dteHorizon, setDteHorizon] = useState<VectorDteHorizon>(defaultDteHorizon ?? "weekly");
   const [scannerOpen, setScannerOpen] = useState(false);
   const activeTicker = ticker || VECTOR_DEFAULT_TICKER;
-  // Daily/Weekly historical view (CTO audit P2 #5) — a separate chart surface from the intraday
-  // VectorChart (see VectorDailyChart's header comment for why). Standalone-page-only; the
-  // chart-only embed (SPX Slayer) never renders this toggle and always stays intraday.
-  const [chartView, setChartView] = useState<"intraday" | "1D" | "1W">("intraday");
+  // Daily/Weekly/4H historical view (CTO audit P2 #5, and P2 "4h remains open" 2026-08-05) — a
+  // separate chart surface from the intraday VectorChart (see VectorDailyChart's header comment
+  // for why). Standalone-page-only; the chart-only embed (SPX Slayer) never renders this toggle
+  // and always stays intraday.
+  const [chartView, setChartView] = useState<"intraday" | "1D" | "1W" | "4H">("intraday");
 
   useEffect(() => {
     if (!compactPanels) return;
@@ -488,6 +490,16 @@ export function VectorPageShell({
         wallIntegrity={wallIntegrity}
         liveSpot={liveSpot}
       />
+      {/* Cross-ticker wall-structure comparison (P2, 2026-08-05 CTO audit) — additive, below the
+          Pulse rail. Renders nothing when the universe snapshot hasn't loaded or no comparison
+          ticker resolves a row, so it never displaces the panels above/below it. */}
+      <VectorTickerComparisonStrip
+        activeTicker={activeTicker}
+        onSelect={(t) =>
+          router.push(t === VECTOR_DEFAULT_TICKER ? "/vector" : `/vector?ticker=${encodeURIComponent(t)}`)
+        }
+        className="mb-2"
+      />
       <VectorAlertsPanel
         ticker={activeTicker}
         rules={alertRules}
@@ -609,7 +621,7 @@ export function VectorPageShell({
           >
             {!iosCompactChrome && (
               <div className="vector-chart-view-toggle" role="group" aria-label="Chart view">
-                {(["intraday", "1D", "1W"] as const).map((v) => (
+                {(["intraday", "1D", "1W", "4H"] as const).map((v) => (
                   <button
                     key={v}
                     type="button"
