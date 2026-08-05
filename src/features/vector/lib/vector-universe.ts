@@ -7,7 +7,8 @@ import {
 import { listSharedUniverseTickers, touchDynamicUniverse } from "./vector-dynamic-universe";
 import { isVectorTickerAllowed, normalizeVectorTicker } from "./vector-ticker";
 import { roundFloats } from "@/lib/round-floats";
-import { bucketWallSampleTime, buildWallHistorySample, wallTrailSampleSecForTicker } from "./vector-wall-sample";
+import { bucketWallSampleTime, buildWallHistorySample } from "./vector-wall-sample";
+import { wallTrailSampleSecForTicker } from "./vector-wall-sample-server";
 import { appendSessionWallSample } from "./vector-wall-persist";
 import { VECTOR_WALL_NODES_PER_SIDE } from "./vector-bar-timeframes";
 import { buildNarrowedHorizonWallSamples } from "./vector-snapshot";

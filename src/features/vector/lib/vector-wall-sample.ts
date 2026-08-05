@@ -2,7 +2,13 @@ import type { GexWalls } from "@/lib/providers/gex-wall-levels";
 import { roundFloats } from "@/lib/round-floats";
 import type { WallHistorySample } from "./vector-wall-history";
 import { VECTOR_ORACLE_TICKERS, normalizeVectorTicker } from "./vector-ticker";
-import { hasLiveGexStrikeExpiry } from "@/lib/ws/uw-socket";
+
+// NOTE: this file is imported by VectorChart.tsx ("use client") — it must stay free of
+// server-only imports (e.g. @/lib/ws/uw-socket). The ticker-aware server cadence function
+// that needs live WS state lives in vector-wall-sample-server.ts instead; importing it here
+// broke the production build (Next.js treats the whole graph reachable from a client
+// boundary as client code, and uw-socket.ts transitively reaches cron routes using
+// `after()`) — see docs/audit/FINDINGS.md 2026-08-05.
 
 /** Universe + oracle cadence — 5s beads (recorder + desk stream). */
 export const ORACLE_WALL_TRAIL_SAMPLE_SEC = 5;
@@ -64,33 +70,6 @@ export function wallTrailSampleSec(): number {
     String(NON_UNIVERSE_WALL_TRAIL_SAMPLE_SEC);
   const n = Number(raw);
   return Number.isFinite(n) && n >= 5 ? Math.floor(n) : NON_UNIVERSE_WALL_TRAIL_SAMPLE_SEC;
-}
-
-/**
- * Ticker-aware bucket interval:
- *  - `universe` scope (shared-universe recorder): always 5s — viewer or not.
- *  - `live` scope (SSE hub + active non-universe recorder): oracle / live WS → 5s; else 15s.
- * Env override wins for all tickers/scopes.
- */
-export function wallTrailSampleSecForTicker(
-  ticker?: string | null,
-  scope: WallTrailSampleScope = "live"
-): number {
-  const envOverride =
-    process.env.NEXT_PUBLIC_VECTOR_WALL_TRAIL_SAMPLE_SEC ??
-    process.env.VECTOR_WALL_TRAIL_SAMPLE_SEC;
-  if (envOverride != null) {
-    const n = Number(envOverride);
-    if (Number.isFinite(n) && n >= 5) return Math.floor(n);
-  }
-  if (scope === "universe") return UNIVERSE_WALL_TRAIL_SAMPLE_SEC;
-  if (ticker) {
-    const t = normalizeVectorTicker(ticker);
-    if (VECTOR_ORACLE_TICKERS.has(t) || hasLiveGexStrikeExpiry(t)) {
-      return ORACLE_WALL_TRAIL_SAMPLE_SEC;
-    }
-  }
-  return NON_UNIVERSE_WALL_TRAIL_SAMPLE_SEC;
 }
 
 /** Client-safe trail cadence — no WS store; oracle names 5s, everything else 15s. */

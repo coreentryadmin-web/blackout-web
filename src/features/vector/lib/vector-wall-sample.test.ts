@@ -3,10 +3,6 @@ import assert from "node:assert/strict";
 import {
   bucketWallSampleTime,
   buildWallHistorySample,
-  NON_UNIVERSE_WALL_TRAIL_SAMPLE_SEC,
-  ORACLE_WALL_TRAIL_SAMPLE_SEC,
-  UNIVERSE_WALL_TRAIL_SAMPLE_SEC,
-  wallTrailSampleSecForTicker,
   vectorWallTrailSecClient,
 } from "./vector-wall-sample";
 
@@ -22,20 +18,6 @@ test("bucketWallSampleTime: snaps to 5s floor for oracle cadence", () => {
   assert.equal(bucketWallSampleTime(103, 5), 100);
   assert.equal(bucketWallSampleTime(105, 5), 105);
   assert.equal(bucketWallSampleTime(107, 5), 105);
-});
-
-test("wallTrailSampleSecForTicker: universe scope is always 5s", () => {
-  assert.equal(wallTrailSampleSecForTicker("PLTR", "universe"), UNIVERSE_WALL_TRAIL_SAMPLE_SEC);
-  assert.equal(wallTrailSampleSecForTicker("NVDA", "universe"), UNIVERSE_WALL_TRAIL_SAMPLE_SEC);
-});
-
-test("wallTrailSampleSecForTicker: live scope — oracle 5s, on-demand 15s", () => {
-  assert.equal(wallTrailSampleSecForTicker("SPX"), ORACLE_WALL_TRAIL_SAMPLE_SEC);
-  assert.equal(wallTrailSampleSecForTicker("SPY"), ORACLE_WALL_TRAIL_SAMPLE_SEC);
-  assert.equal(wallTrailSampleSecForTicker("QQQ"), ORACLE_WALL_TRAIL_SAMPLE_SEC);
-  assert.equal(wallTrailSampleSecForTicker("NVDA"), NON_UNIVERSE_WALL_TRAIL_SAMPLE_SEC);
-  assert.equal(wallTrailSampleSecForTicker("PLTR"), NON_UNIVERSE_WALL_TRAIL_SAMPLE_SEC);
-  assert.equal(wallTrailSampleSecForTicker(null), NON_UNIVERSE_WALL_TRAIL_SAMPLE_SEC);
 });
 
 test("vectorWallTrailSecClient: oracle 5s, else 15s", () => {

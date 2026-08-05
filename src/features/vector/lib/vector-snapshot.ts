@@ -14,7 +14,8 @@ import {
 } from "@/lib/providers/gex-wall-levels";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import { persistWallSampleDebounced, loadSessionWallHistory, appendSessionWallSample } from "./vector-wall-persist";
-import { bucketWallSampleTime, buildWallHistorySample, wallTrailSampleSecForTicker } from "./vector-wall-sample";
+import { bucketWallSampleTime, buildWallHistorySample } from "./vector-wall-sample";
+import { wallTrailSampleSecForTicker } from "./vector-wall-sample-server";
 import {
   RECORDED_WALL_HORIZONS,
   pickNarrowedWallSample,
