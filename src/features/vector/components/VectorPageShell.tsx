@@ -18,6 +18,7 @@ import type { VectorPriceScaleMap } from "@/features/vector/lib/vector-price-sca
 import type { VectorTimeframeMinutes } from "@/features/vector/lib/vector-bar-timeframes";
 import { VectorTickerSelect } from "@/features/vector/components/VectorTickerSelect";
 import { VectorScanner } from "@/features/vector/components/VectorScanner";
+import { VectorTickerComparisonStrip } from "@/features/vector/components/VectorTickerComparisonStrip";
 import { VectorPulse } from "@/features/vector/components/VectorPulse";
 import { VectorPlayCard } from "@/features/vector/components/VectorPlayCard";
 import type { VectorPlay } from "@/features/vector/lib/vector-play-engine";
@@ -476,6 +477,16 @@ export function VectorPageShell({
         alerts={recentAlerts.slice(0, 5).map((f) => f.message)}
         wallIntegrity={wallIntegrity}
         liveSpot={liveSpot}
+      />
+      {/* Cross-ticker wall-structure comparison (P2, 2026-08-05 CTO audit) — additive, below the
+          Pulse rail. Renders nothing when the universe snapshot hasn't loaded or no comparison
+          ticker resolves a row, so it never displaces the panels above/below it. */}
+      <VectorTickerComparisonStrip
+        activeTicker={activeTicker}
+        onSelect={(t) =>
+          router.push(t === VECTOR_DEFAULT_TICKER ? "/vector" : `/vector?ticker=${encodeURIComponent(t)}`)
+        }
+        className="mb-2"
       />
       <VectorAlertsPanel
         ticker={activeTicker}
