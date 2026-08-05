@@ -63,7 +63,14 @@ import {
 import { fetchDiscoveryFunnelHint, type DiscoveryFunnelHint } from "@/lib/zerodte/discovery-funnel-hint";
 // Read-only SPX Slayer badge (feat/nh-spx-badge) — additive display field only, see
 // spx-slayer-badge.ts for the full scope note. NOT part of scoring/gates/governor above.
-import { getSpxSlayerBadgeSnapshot, unavailableSpxSlayerBadge, type SpxSlayerBadge } from "@/features/spx/lib/spx-slayer-badge";
+// Lazy dynamic import below (not a static import): spx-slayer-badge.ts's module graph
+// reaches spx-play-options.ts, which calls polygonRestBase() at module-eval time. A
+// static import here pulls that eager call into every consumer of this file's module
+// graph — including zerodte-board-convergence.test.ts, whose mocked polygon module
+// doesn't stub that export, breaking 23 unrelated tests. Loading it only at the actual
+// call site keeps this file's static import graph — and every existing test's mocks —
+// unchanged for callers that never touch the SPX badge.
+import { unavailableSpxSlayerBadge, type SpxSlayerBadge } from "@/features/spx/lib/spx-slayer-badge-map";
 import { gradeZeroDteLedger, readZeroDteLedgerChecked, scanZeroDteBoard, syncLedgerLiveState } from "@/lib/zerodte/scan";
 import {
   readExitStampFromEntryContext,
@@ -611,10 +618,11 @@ export async function buildZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
     fetchDiscoveryFunnelHint(today).catch((): DiscoveryFunnelHint | null => null),
     // Read-only display badge — never throws (getSpxSlayerBadgeSnapshot already catches
     // internally), but a belt-and-suspenders .catch keeps a hard failure here from ever
-    // taking down the rest of the board payload.
-    getSpxSlayerBadgeSnapshot().catch((): SpxSlayerBadge =>
-      unavailableSpxSlayerBadge("SPX Slayer desk unavailable — retrying")
-    ),
+    // taking down the rest of the board payload. Dynamic import: see the note by the
+    // top-of-file import for why this can't be a static import.
+    import("@/features/spx/lib/spx-slayer-badge")
+      .then((m) => m.getSpxSlayerBadgeSnapshot())
+      .catch((): SpxSlayerBadge => unavailableSpxSlayerBadge("SPX Slayer desk unavailable — retrying")),
   ]);
 
   const nextDay = nextTradingDayEt(today);
