@@ -128,6 +128,7 @@ import {
   effectivePromoteMinScore,
   loadAdaptivePlayGates,
 } from "@/features/spx/lib/spx-play-telemetry";
+import { applySpxPlayDisplayHysteresis } from "@/features/spx/lib/spx-play-hysteresis";
 
 export type { SpxPlayAction, SpxPlayDirection } from "@/features/spx/lib/spx-signals";
 // Payload type + leaf snapshot/payload builders live in spx-play-payload.ts (pure helpers,
@@ -211,7 +212,10 @@ export async function getSpxPlaySnapshot(
   desk: SpxDeskPayload,
   prefetchedTechnicals?: PlayTechnicals | null
 ): Promise<SpxPlayPayload> {
-  return evaluateSpxPlay(desk, prefetchedTechnicals, { mutate: false });
+  const payload = await evaluateSpxPlay(desk, prefetchedTechnicals, { mutate: false });
+  // Sticky display layer (see spx-play-hysteresis.ts) — the member-facing read path only.
+  // The mutate:true cron path (runSpxEvaluator) that actually commits trades is untouched.
+  return applySpxPlayDisplayHysteresis(payload, todayEt());
 }
 
 // SpxPlayPayload type and the leaf builders (pnlPts, currentSessionPhase, telemetrySummary,
