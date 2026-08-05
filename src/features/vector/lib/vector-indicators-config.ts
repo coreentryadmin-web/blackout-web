@@ -251,6 +251,21 @@ export function isVectorGammaRegimeId(v: unknown): v is VectorGammaRegimeId {
 }
 
 /**
+ * "Volume profile" — the session's volume bucketed by PRICE (not time), drawn as horizontal bars
+ * anchored to the right edge of the chart, background-layer like the GEX heatmap/gamma-regime glow.
+ * Pairs with the GEX ladder's volume-at-STRIKE view: this is volume-at-PRICE for the underlying, so
+ * a member can see whether the heaviest-traded zone lines up with a dealer wall. Computed client-side
+ * from the SAME 1m session bars already seeded/streamed for the candles — no new data source. One
+ * toggle (default OFF, like every other opt-in overlay); real-data-only — no volume this session
+ * (off-hours, a brand-new ticker) draws nothing, never a fabricated profile.
+ */
+export type VectorVolumeProfileId = "volume-profile";
+
+export function isVectorVolumeProfileId(v: unknown): v is VectorVolumeProfileId {
+  return v === "volume-profile";
+}
+
+/**
  * Every toggleable indicator id — a moving-average FAMILY (not an individual line), a level, a
  * structure toggle, or an oscillator. This is what the enabled Set and the menu deal in; the chart
  * expands each to its lines/markers/panes at draw time.
@@ -265,7 +280,8 @@ export type VectorIndicatorId =
   | VectorExpectedMoveId
   | VectorExpectedMoveConeId
   | VectorGexHeatmapId
-  | VectorGammaRegimeId;
+  | VectorGammaRegimeId
+  | VectorVolumeProfileId;
 
 /** Menu structure — the toggle menu renders straight from this (title + its items). */
 export const VECTOR_INDICATOR_GROUPS: ReadonlyArray<{
@@ -323,6 +339,13 @@ export const VECTOR_INDICATOR_GROUPS: ReadonlyArray<{
         label: "Gamma regime (long / short γ zones)",
         color: "#2dd4bf",
       },
+    ],
+  },
+  {
+    title: "Volume profile",
+    items: [
+      // Slate dot for the base bars; the POC/value-area colours (gold/cyan) show once enabled.
+      { id: "volume-profile", label: "Volume profile (session, by price)", color: "#94a3b8" },
     ],
   },
 ];

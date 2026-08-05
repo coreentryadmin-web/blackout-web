@@ -117,6 +117,7 @@ test("VECTOR_INDICATOR_GROUPS: covers every family + level + structure id exactl
     "expected-move-cone",
     "gex-heatmap",
     "gamma-regime",
+    "volume-profile",
   ];
   assert.deepEqual([...grouped].sort(), [...expected].sort());
 });
