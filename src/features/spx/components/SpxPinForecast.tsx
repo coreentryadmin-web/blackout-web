@@ -111,14 +111,21 @@ export function SpxPinForecast({ sessionActive = true }: { sessionActive?: boole
                 <div style={{ fontFamily: C.mono, fontSize: 12, color: C.muted, marginTop: 6 }}>
                   {pin.pinPctOfClose != null && <span style={{ color: pin.pinPctOfClose >= 0 ? C.call : C.put }}>{pin.pinPctOfClose >= 0 ? "▲ +" : "▼ "}{fmt(pin.pinPctOfClose, 2)}%</span>} · {fmt((view.projPx ?? pin.spot) - pin.spot, 1)} pts vs spot
                 </div>
-                {/* The strike it pins to — the discrete target the live projection rounds onto. */}
+                {/* The strike it pins to — the discrete target the live projection rounds onto.
+                    Headlines the STABILITY-CONFIRMED pin (agreed across PIN_STABILITY_WINDOW
+                    consecutive polls — see spx-pin-stability.ts), not the raw poll-fresh value, so
+                    a single noisy snapshot can't yank the number members are told to trust. Falls
+                    back to the raw value with a "confirming" tag before the first cluster forms. */}
                 {view.pinPx != null && (
                   <div style={{ fontFamily: C.mono, fontSize: 11.5, color: C.faint, marginTop: 7 }}>
                     pins to{" "}
                     <span style={{ color: C.ink }}>
-                      {fmt(magnet?.strike ?? view.pinPx)}
+                      {fmt(pin.pinConfirmed ?? magnet?.strike ?? view.pinPx)}
                     </span>
                     {magnet ? ` ${KIND_LABEL[magnet.kind] ?? ""}` : ""}
+                    {pin.pinConfirmed == null && !pin.pinStable && (
+                      <span style={{ color: C.warn, marginLeft: 6 }}>· confirming…</span>
+                    )}
                   </div>
                 )}
               </Card>

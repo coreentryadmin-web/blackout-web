@@ -12,6 +12,11 @@ import {
   type PinScenario,
 } from "@/features/spx/lib/spx-pin-forecast-core";
 import { resolvePinSpotInputs } from "@/features/spx/lib/spx-pin-spot";
+import {
+  isPinStable,
+  pushPinSample,
+  type PinStabilitySample,
+} from "@/features/spx/lib/spx-pin-stability";
 
 /** Monte-Carlo overlay summary — the truer (multi-humped) distribution beside the analytic base. */
 export type PinMonteCarlo = {
@@ -25,11 +30,42 @@ export type PinMonteCarlo = {
   paths: number;
 };
 
-/** The EOD Pin Forecaster payload the desk serves: analytic base + a Monte-Carlo overlay. */
-export type SpxPinForecast = PinForecast & { montecarlo: PinMonteCarlo | null };
+/** The EOD Pin Forecaster payload the desk serves: analytic base + a Monte-Carlo overlay, plus the
+ *  temporal-stability verdict (see spx-pin-stability.ts) so the UI can avoid flickering a pin that
+ *  hasn't agreed across consecutive polls yet. */
+export type SpxPinForecast = PinForecast & {
+  montecarlo: PinMonteCarlo | null;
+  /** True once the last PIN_STABILITY_WINDOW polls' snapped pin agreed within tolerance. */
+  pinStable: boolean;
+  /** The last pin value that WAS confirmed stable — held steady across noisy polls in between.
+   *  Null until the very first stable cluster forms for the session. This is the number the UI
+   *  should headline as "the" pin; `pin` remains the raw, poll-fresh snapped value for anyone who
+   *  wants it (drivers/scenarios/internal math are unaffected — this only gates what's SURFACED). */
+  pinConfirmed: number | null;
+};
 
 const RTH_CLOSE_ET_MIN = 16 * 60; // 16:00 ET
 const MC_PATHS = 400;
+
+// ── module-level rolling-window state (per-process; mirrors src/lib/server-cache.ts's in-memory
+// `store` pattern) — tracks the last PIN_STABILITY_WINDOW raw snapped pins for THIS session day, so
+// buildSpxPinForecast can require them to agree before trusting/surfacing a pin. Resets when the ET
+// session day rolls over (a new day's book has no bearing on yesterday's stability streak). ──
+let pinStabilityDay = "";
+let pinStabilitySamples: PinStabilitySample[] = [];
+let pinStabilityConfirmed: number | null = null;
+
+function trackPinStability(sessionYmd: string, rawPin: number | null): { stable: boolean; confirmed: number | null } {
+  if (sessionYmd !== pinStabilityDay) {
+    pinStabilityDay = sessionYmd;
+    pinStabilitySamples = [];
+    pinStabilityConfirmed = null;
+  }
+  pinStabilitySamples = pushPinSample(pinStabilitySamples, rawPin);
+  const stable = isPinStable(pinStabilitySamples);
+  if (stable) pinStabilityConfirmed = pinStabilitySamples[pinStabilitySamples.length - 1] as number;
+  return { stable, confirmed: pinStabilityConfirmed };
+}
 
 /**
  * Build the live EOD pin forecast for SPX 0DTE. Reuses the desk's warm spot/prior-close (pulse lane)
@@ -70,12 +106,19 @@ export async function buildSpxPinForecast(): Promise<SpxPinForecast> {
   const common = { spot, priorClose, contracts, sessionYmd, nowMs, closeMs };
 
   const base = forecastPin({ ...common, method: "analytic" });
-  if (!base.available) return { ...base, montecarlo: null };
+  if (!base.available) {
+    // Unavailable this poll (chain cold / market closed) — feed a null sample so the stability
+    // window resets (see trackPinStability / pushPinSample): a gap means we don't actually know
+    // the book agreed through it, so the streak restarts rather than silently skipping the gap.
+    const { stable, confirmed } = trackPinStability(sessionYmd, null);
+    return { ...base, montecarlo: null, pinStable: stable, pinConfirmed: confirmed };
+  }
 
   const mc = forecastPin({ ...common, method: "montecarlo", mcPaths: MC_PATHS, seed: Math.floor(nowMs / 5_000) });
   const montecarlo: PinMonteCarlo | null = mc.available
     ? { pin: mc.pin, projectedClose: mc.projectedClose, pinPct: mc.pinPct, pinBand: mc.pinBand, cone: mc.cone, scenarios: mc.scenarios, paths: MC_PATHS }
     : null;
 
-  return { ...base, montecarlo };
+  const { stable, confirmed } = trackPinStability(sessionYmd, base.pin);
+  return { ...base, montecarlo, pinStable: stable, pinConfirmed: confirmed };
 }
