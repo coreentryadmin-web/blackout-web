@@ -4,6 +4,24 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-05 — [Grid/0DTE] Post-close fix agent — all validators GREEN (~3:18 PM PT / 6:18 PM ET)
+
+**Severity.** — (no additional product defects)
+
+**Session.** Scheduled post-close fix agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` Step 4 (Cloud Agent `cursor/0dte-grid-post-close-agent-cd7c`; executed ~3:18 PM PT / 6:18 PM ET / 22:18 UTC).
+
+**Evidence.**
+- `validate:grid-rth -- --phase=post-close` → **12/12 PASS** (0 FAIL; `zerodte-warm` cron accepted, data-correctness flags=0, ops:collect zero items)
+- `validate:zerodte-logic` → **17/17 PASS** — gates, plan exits (-50%/+100%/15:30 ET), lifecycle OPEN→TRIM→CLOSED, mergePlays SKIP past cutoff/MOVED, live board 9 setups / 3 ledger, cutoff 15:30 ET
+- `validate:grid-e2e` → **5/5 PASS** — board API 9/3, HELIX 20 prints, Playwright `/nighthawk` load, zero console errors
+- `validate:deploy` → **GREEN**
+
+**Root cause.** Initial cloud-agent run failed on missing `node_modules` (tsx/playwright/pg/react) — environment only. After `npm install` + `npx playwright install chromium`, all suites GREEN on re-run. Also resolved committed merge-conflict markers (`<<<<<<< HEAD` / `=======` / `>>>>>>>`) in this file from PR #1757/#1758 squash. No unresolved gate logic, play picking, trade management, mergePlays, cron bypass, or ledger PnL defects.
+
+**Status.** FIXED — docs-only on `fix/findings-merge-conflict-aug5`.
+
+---
+
 ## 2026-08-05 — [Grid/0DTE] Post-close fix agent — all validators GREEN (~2:18 PM PT / 5:18 PM ET)
 
 **Severity.** — (no additional product defects)
@@ -50,6 +68,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 **Root cause.** Initial run failed on missing `node_modules` (tsx/playwright/pg) — environment only. After `npm install` + `npx playwright install chromium`, all suites GREEN. Reviewed all `spx-rth-2026-08-05` findings: P1 `SPX-VERDICT-CLOSED-FLICKER` already fixed (#1758), P0 SPX 0DTE King UW overlay already fixed (#1706). Remaining P2 items (cron auth mismatch, desk lanes off-hours) are expected post-close deferrals. Resolved accidental merge conflict markers in `docs/audit/FINDINGS.md`.
 
 **Status.** FIXED — docs only on `cursor/spx-post-close-findings-36ba`.
+
 
 ## 2026-08-05 — [ops-auto-fix #1705, P0 data-correctness] SPX 0DTE King 7,800 vs UW 7,650 (Δ 1.94% > 1.5% tol) — FIXED
 
