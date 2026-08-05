@@ -32,9 +32,18 @@ import {
   helixDiscordWebhookUrl,
   selectHelixDiscordDigest,
   selectHelixDiscordStacks,
+  passesHelixDiscordFilters,
   type HelixDiscordFlowInput,
 } from "@/lib/helix-discord-format";
 import { HELIX_STRIKE_HITS_WINDOW_MIN } from "@/features/helix/lib/helix-strike-leaders";
+import { flushStaleDiscordBursts } from "@/lib/discord-burst-buffer";
+import {
+  buildHelixEodRecapEmbed,
+  claimDiscordEodRecap,
+  currentSessionDateEt,
+  isDiscordEodRecapWindow,
+} from "@/lib/discord-eod-recap";
+import { deliverHelixBurstItems } from "@/lib/helix-discord-notify";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -54,6 +63,7 @@ function rthOnly(): boolean {
 
 function toInput(row: FlowRow): HelixDiscordFlowInput {
   return {
+    alert_id: row.alert_id ?? null,
     ticker: row.ticker,
     premium: row.premium,
     option_type: row.option_type,
@@ -151,6 +161,7 @@ export async function GET(req: NextRequest) {
   }
 
   let claim30Held = false;
+  let postedEod = false;
   try {
     // Pull enough recent whale-tier candidates; fill filter applied in selectHelixDiscordDigest.
     const rows = await fetchRecentFlows({
@@ -276,11 +287,33 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    const staleBursts = await flushStaleDiscordBursts<HelixDiscordFlowInput>("helix", now);
+    let flushedBursts = 0;
+    for (const burst of staleBursts) {
+      if (await deliverHelixBurstItems(burst.ticker, burst.items)) flushedBursts++;
+    }
+
+    if (isDiscordEodRecapWindow(now)) {
+      const sessionDate = currentSessionDateEt(now);
+      const eodClaimed = await claimDiscordEodRecap("helix", sessionDate, bypassDedup);
+      if (eodClaimed) {
+        const sessionFlows = inputs.filter((f) => passesHelixDiscordFilters(f, now));
+        const eodEmbed = buildHelixEodRecapEmbed({
+          flows: sessionFlows,
+          sessionDate,
+          now,
+        });
+        postedEod = await postDiscordWebhook(webhook, { embeds: [eodEmbed] }, "helix-eod-recap");
+      }
+    }
+
     const payload = {
       ok: true,
       host: redactWebhook(webhook),
       posted_15m: delivered15,
       posted_30m: delivered30,
+      posted_eod: postedEod,
+      flushed_bursts: flushedBursts,
       digest_15: {
         inWindowCount: digest15.inWindowCount,
         rows: digest15.rows.length,
