@@ -97,8 +97,10 @@ tolerance) vs **single-snapshot** transients, then grade each pin's fade on real
 stable-bracket pins grade **materially better** than single-snapshot ones, a temporal-stability
 requirement (e.g. "the bracket must hold for K snapshots before PIN emits") is warranted. If not, the
 single-snapshot test stands. (Intraday GEX snapshots are a server-side UW product not reachable
-offline; the tool reports INSUFFICIENT DATA absent a snapshot export, and a live intraday poller can
-gather one going forward.)
+offline; the tool reports INSUFFICIENT DATA absent a snapshot export. `scripts/audit/
+gex-wall-snapshot-poll.mjs` is that live intraday poller — built + smoke-tested against prod
+2026-08-05, but not yet run across a real RTH session; see FINDINGS.md 2026-08-05 for why
+[market was closed] and the exact follow-up command.)
 
 ---
 
