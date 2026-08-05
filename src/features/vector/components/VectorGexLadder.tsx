@@ -42,9 +42,10 @@ type LadderResponse = { spot: number | null; asOf: string | null; ladder: GexLad
  * chart (Skylit-Atlas parity). The chart collapses each strike to one bead; this shows the whole
  * near-spot gamma structure at once: every strike, its signed net GEX as a magnitude bar (gold
  * call / purple put), and the single dominant "king" per side. Polls /api/market/vector/gex-ladder
- * on its own cadence (off the per-second SSE payload). Horizon-scoping to the chart's DTE toggle is
- * a documented follow-up — this first slice shows the near-term ("all") aggregate the chart
- * defaults to.
+ * on its own cadence (off the per-second SSE payload), passing `dteHorizon` through so the ladder
+ * re-scopes to the SAME expiries as the chart's walls/flip/max-pain (see the route's
+ * `getHorizonStrikeTotals` scoped path; falls back to the near-term aggregate on "all" or when a
+ * narrow horizon yields no structure).
  */
 export function VectorGexLadder({
   ticker,

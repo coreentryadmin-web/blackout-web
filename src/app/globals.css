@@ -8385,6 +8385,63 @@ body::before {
     @apply text-white/70;
   }
 
+  /* ── Suggested Play card — buildVectorPlay's fused trade idea, above the Pulse narration ── */
+  .vector-play-card {
+    @apply rounded-xl border border-violet-400/25 bg-violet-400/[0.06] px-3 py-2.5;
+  }
+  .vector-play-card-head {
+    @apply flex flex-wrap items-center gap-2;
+  }
+  .vector-play-card-grade {
+    @apply flex h-5 w-5 items-center justify-center rounded font-mono text-[11px] font-bold;
+  }
+  .vector-play-grade-a {
+    @apply bg-emerald-400/20 text-emerald-300;
+  }
+  .vector-play-grade-b {
+    @apply bg-amber-400/20 text-amber-300;
+  }
+  .vector-play-grade-c {
+    @apply bg-white/10 text-white/60;
+  }
+  .vector-play-card-style {
+    @apply font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-violet-300/80;
+  }
+  .vector-play-card-bias {
+    @apply font-mono text-[10px] font-bold uppercase tracking-[0.1em];
+  }
+  .vector-play-bias-long {
+    @apply text-emerald-300;
+  }
+  .vector-play-bias-short {
+    @apply text-rose-300;
+  }
+  .vector-play-bias-range,
+  .vector-play-bias-neutral {
+    @apply text-cyan-300;
+  }
+  .vector-play-card-conviction {
+    @apply ml-auto font-mono text-[11px] font-bold text-white/50;
+  }
+  .vector-play-card-headline {
+    @apply mt-1.5 text-sm font-semibold text-white;
+  }
+  .vector-play-card-thesis {
+    @apply mt-0.5 text-[13px] leading-snug text-white/70;
+  }
+  .vector-play-card-levels {
+    @apply mt-2 flex flex-col gap-0.5 border-t border-white/10 pt-1.5;
+  }
+  .vector-play-card-level {
+    @apply flex items-baseline gap-1.5 text-[11px];
+  }
+  .vector-play-card-level dt {
+    @apply font-mono uppercase tracking-wide text-white/40;
+  }
+  .vector-play-card-level dd {
+    @apply font-mono font-semibold text-white/80;
+  }
+
   /* ── Ticker search combobox — type any optionable symbol ── */
   .vector-ticker-search {
     @apply relative flex items-center gap-1.5 rounded-md border border-cyan-500/30 bg-black/60 px-2 py-1;
