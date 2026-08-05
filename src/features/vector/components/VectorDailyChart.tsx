@@ -14,7 +14,7 @@ import {
   type Time,
 } from "lightweight-charts";
 import { VECTOR_CHART_LOCALE } from "@/features/vector/lib/vector-chart-config";
-import { smaSeries, emaSeries } from "@/features/vector/lib/vector-indicators";
+import { smaSeries } from "@/features/vector/lib/vector-indicators";
 import { VECTOR_DAILY_UNITS, type VectorDailyUnit } from "@/features/vector/lib/vector-daily-bars";
 import type { VectorOhlcBar } from "@/features/vector/lib/vector-bar-timeframes";
 
