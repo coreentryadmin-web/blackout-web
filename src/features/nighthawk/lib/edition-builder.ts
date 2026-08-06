@@ -57,6 +57,7 @@ import {
   applyNighthawkPublishGates,
   capGatePromotedConviction,
   promoteTopBlocked,
+  targetAtrMultipleFromGateResult,
   type NighthawkPublishGateResult,
 } from "./publish-gates";
 import {
@@ -1142,6 +1143,18 @@ export async function buildEveningEdition(opts?: {
     if (finalPlays.length > 1) {
       finalPlays.sort((a, b) => (b.score ?? -Infinity) - (a.score ?? -Infinity));
       finalPlays.forEach((p, i) => { p.rank = i + 1; });
+    }
+
+    // Stamp G-N2's ALREADY-COMPUTED target distance onto each published play so members and
+    // admin read the same number the gate judged. Read from `gateResults` (the in-memory
+    // objects this build gated on, also pinned into publish_context.gates below) — never
+    // recomputed here, so the payload cannot drift from the pin. publish_context is
+    // DB-only, which is why every audit pass so far had to reconstruct ATR14 from Polygon
+    // to answer "how far out are our targets"; this puts the pinned answer on the payload.
+    // Fail-soft by construction: a missing/blocked gate result leaves the field absent.
+    for (const play of finalPlays) {
+      const multiple = targetAtrMultipleFromGateResult(gateResults[play.ticker?.toUpperCase() ?? ""]);
+      if (multiple != null) play.target_atr_multiple = multiple;
     }
 
     // WRITE-SIDE INVARIANT (#77): never persist a "normal" edition with zero plays. The five funnel
