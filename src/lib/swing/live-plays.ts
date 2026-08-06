@@ -40,7 +40,6 @@ function contractFromRow(row: SwingPositionRow): ChainContract | null {
   if (!expiry || strike == null || !Number.isFinite(strike)) return null;
   const right = row.contract_type === "put" ? "P" : "C";
   const dte = calendarDte(etYmd(), expiry.slice(0, 10));
-  const entry = row.entry_premium;
   const mark = row.last_mark;
   return {
     ticker: row.ticker.toUpperCase(),
@@ -52,7 +51,14 @@ function contractFromRow(row: SwingPositionRow): ChainContract | null {
     openInterest: 0,
     bid: null,
     ask: null,
-    mid: mark ?? entry,
+    // FINDINGS 2026-08-06 (SEV-1): this was `mark ?? entry`, which LAUNDERED "no live mark yet" into
+    // "the mark is exactly the entry". Downstream that is indistinguishable from a real flat quote:
+    // adapters.ts terminalPlayFromHorizon puts it on TerminalPlay.mark, markDollarPnl computes
+    // mark - entry = 0, and the hero renders a confident "+$0.00" on a live-money position. Serving the
+    // honest null instead makes markDollarPnl return null and the EXISTING TerminalPremiumPanels fallback
+    // render "—" (unknown), which is what livePnlPct below has always (correctly) reported for a null mark.
+    // NEVER substitute entry for an absent mark — a fabricated mark is worse than a missing one.
+    mid: mark,
   };
 }
 

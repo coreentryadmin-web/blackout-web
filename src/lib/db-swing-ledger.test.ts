@@ -580,3 +580,149 @@ test("SEV-3: withSwingRollTx wraps child-insert + parent-grade in BEGIN/COMMIT a
   assert.match(gradeBody, /\): Promise<number> \{/, "gradeSwingPosition returns affected rowcount");
   assert.match(gradeBody, /return res\.rowCount \?\? 0/);
 });
+
+
+// ─── SEV-1 (FINDINGS 2026-08-06): the live-state UPDATE must actually PARSE ───────────────────
+//
+// `updateSwingLiveState` shipped with `CASE WHEN $4 IS NOT NULL ...` as $4's FIRST occurrence.
+// node-pg uses the extended protocol with UNTYPED parameters, so Postgres infers a param's type at
+// its first COERCION site; a bare NullTest coerces nothing, so parse analysis aborted with 42P08
+// ("could not determine data type of parameter $4") and the statement NEVER ran — for any swing
+// position, ever. Members saw "+$0.00" on live-money positions for 5.5h of RTH.
+//
+// Every pre-existing guard in this file asserts on the SQL SOURCE STRING with a regex, which is
+// exactly why an unparseable statement shipped: a statement that cannot be parsed still matches every
+// regex. These two tests close that hole from both ends — a structural invariant that always runs,
+// and a real extended-protocol EXECUTION against Postgres when one is available.
+
+/**
+ * Statement-scoped parameter-typing invariant: in every SQL template in db.ts, a `$n` whose FIRST
+ * occurrence is a bare `IS [NOT] NULL` is unparseable. It must either carry an explicit cast at that
+ * NullTest or appear earlier at a coercion site (e.g. `COALESCE($n, col)`).
+ *
+ * Scope note: a param's numbering scope is its statement = its template literal, so the enclosing
+ * statement is the region back to the nearest preceding backtick. Two details are load-bearing and
+ * were BOTH wrong in a first draft of this scanner (a scanner that quietly reports "all clear" is
+ * how this class of bug survives):
+ *   1. SQL `--` comments must be stripped before the earlier-occurrence lookup, and a NullTest that
+ *      sits inside one must be ignored. db.ts's own WHY comments quote `$4` — a mention in prose is
+ *      not a coercion site, and counting it makes the guard pass on the broken statement.
+ *   2. The lookup uses `\$n(?!\d)` so `$1` never falsely matches inside `$10`.
+ */
+test("SEV-1: no SQL param's FIRST occurrence is an untyped IS [NOT] NULL (42P08 guard)", () => {
+  const src = dbSource();
+  const stripSqlComments = (s: string) => s.replace(/--[^\n]*/g, "");
+  const nullTest = /\$(\d+)(::[a-zA-Z]+)?\s+IS\s+(?:NOT\s+)?NULL/g;
+  const offenders: string[] = [];
+  let seen = 0;
+  for (const m of src.matchAll(nullTest)) {
+    const at = m.index!;
+    const n = m[1]!;
+    const cast = m[2];
+    // A NullTest quoted inside a SQL comment is prose, not code.
+    if (src.slice(src.lastIndexOf("\n", at) + 1, at).includes("--")) continue;
+    // The enclosing statement: from the opening backtick of its template literal to the match.
+    const open = src.lastIndexOf("`", at);
+    const stmt = stripSqlComments(src.slice(open + 1, at));
+    if (!/\b(UPDATE|INSERT|SELECT|DELETE)\b/.test(stmt)) continue; // not inside a SQL template
+    seen += 1;
+    if (cast) continue; // explicitly typed at the NullTest — always safe
+    const earlier = new RegExp(`\\$${n}(?!\\d)`).test(stmt);
+    if (!earlier) offenders.push(`$${n} at index ${at}`);
+  }
+  // Guard against the scanner silently matching nothing (the way static tests rot into no-ops).
+  assert.ok(seen >= 4, `expected the scanner to reach the live-state CASE arms, saw ${seen}`);
+  assert.deepEqual(
+    offenders,
+    [],
+    `these params are first used in a bare IS [NOT] NULL and cannot be type-inferred (42P08) — add ::numeric or another explicit cast: ${offenders.join(", ")}`
+  );
+});
+
+/**
+ * The real thing: create swing_positions from db.ts's OWN DDL and execute db.ts's OWN
+ * updateSwingLiveState SQL through node-pg's EXTENDED protocol with the production parameter tuple.
+ * Both the DDL and the statement are extracted from source rather than transcribed, so this test can
+ * never drift from what ships. Skipped (not failed) when no throwaway Postgres is wired up; CI
+ * supplies one via the `postgres:16` service container, so the gate is real there.
+ *
+ * NOTE: a psql literal or an in-memory PG fake does NOT reproduce 42P08 — neither performs real
+ * extended-protocol parameter type inference. The parameterized round-trip is the whole point.
+ */
+test("SEV-1: updateSwingLiveState SQL executes against Postgres and latches mark/peak/trough/MFE", async (t) => {
+  const url = process.env.SWING_TEST_DATABASE_URL?.trim();
+  if (!url) {
+    t.skip("SWING_TEST_DATABASE_URL not set — no throwaway Postgres available");
+    return;
+  }
+  const src = dbSource();
+  const ddlStart = src.indexOf("CREATE TABLE IF NOT EXISTS swing_positions (");
+  const ddl = src.slice(ddlStart, src.indexOf("\n    );", ddlStart) + "\n    );".length);
+  assert.ok(ddl.includes("last_mark NUMERIC"), "extracted the real swing_positions DDL");
+
+  const fnStart = src.indexOf("export async function updateSwingLiveState");
+  const fnBody = src.slice(fnStart, src.indexOf("export async function gradeSwingPosition", fnStart));
+  const sqlOpen = fnBody.indexOf("`");
+  const sql = fnBody.slice(sqlOpen + 1, fnBody.indexOf("`", sqlOpen + 1));
+  assert.ok(sql.startsWith("UPDATE swing_positions SET"), "extracted the real UPDATE statement");
+
+  const { Client } = await import("pg");
+  const client = new Client({ connectionString: url });
+  await client.connect();
+  try {
+    await client.query("DROP TABLE IF EXISTS swing_positions");
+    await client.query(ddl);
+    const ins = await client.query(
+      `INSERT INTO swing_positions (commit_key, session_date, ticker, direction, sub_lane, entry_premium, status)
+       VALUES ('t:MSFT:STANDARD:long', CURRENT_DATE, 'MSFT', 'long', 'STANDARD', 14.4, 'OPEN') RETURNING id`
+    );
+    const id = Number(ins.rows[0].id);
+
+    const num = (v: unknown): number | null => (v == null ? null : Number(v));
+    const read = async () => {
+      const r = await client.query(
+        `SELECT status, last_mark, peak_premium, trough_premium, underlying_mfe, underlying_mae
+           FROM swing_positions WHERE id = $1`,
+        [id]
+      );
+      const row = r.rows[0];
+      return {
+        status: row.status as string,
+        mark: num(row.last_mark),
+        peak: num(row.peak_premium),
+        trough: num(row.trough_premium),
+        mfe: num(row.underlying_mfe),
+        mae: num(row.underlying_mae),
+      };
+    };
+
+    // Tick 1 — the exact production param tuple shape [id, status, mark, mfe, mae]. WITHOUT the
+    // ::numeric casts this THROWS 42P08 and nothing below ever runs.
+    await client.query(sql, [id, "OPEN", 20.1, 496.62, 496.62]);
+    assert.deepEqual(await read(), {
+      status: "OPEN", mark: 20.1, peak: 20.1, trough: 20.1, mfe: 496.62, mae: 496.62,
+    });
+
+    // Tick 2 — mark falls: peak RATCHETS UP ONLY, trough ratchets down; MFE/MAE likewise. The casts
+    // must not have changed the monotonic latch semantics.
+    await client.query(sql, [id, "HOLD", 18, 490, 490]);
+    assert.deepEqual(await read(), {
+      status: "HOLD", mark: 18, peak: 20.1, trough: 18, mfe: 496.62, mae: 490,
+    });
+
+    // Tick 3 — a NULL mark/MFE/MAE is a silent no-op on those columns (COALESCE + NULL-guarded CASE),
+    // never a write of NULL over a good latch.
+    await client.query(sql, [id, "HOLD", null, null, null]);
+    assert.deepEqual(await read(), {
+      status: "HOLD", mark: 18, peak: 20.1, trough: 18, mfe: 496.62, mae: 490,
+    });
+
+    // Tick 4 — the status ladder still refuses to regress to PENDING while the marks still land.
+    await client.query(sql, [id, "PENDING", 19, 495, 495]);
+    assert.deepEqual(await read(), {
+      status: "HOLD", mark: 19, peak: 20.1, trough: 18, mfe: 496.62, mae: 490,
+    });
+  } finally {
+    await client.end().catch(() => undefined);
+  }
+});

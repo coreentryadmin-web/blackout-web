@@ -297,6 +297,20 @@ async function runSwingActiveRefreshCron(started: number): Promise<void> {
       console.error("[cron/swing-active-refresh] beta warm failed (non-fatal)", err);
     }
 
+    // FINDINGS 2026-08-06 (SEV-1 observability): syncSwingManagement is fail-soft — it CAPTURES the
+    // per-position exception into ManageSyncOutcome.error (manage-sync.ts) and active-refresh.ts only
+    // increments a counter from it. Nothing ever read the message, so a real-money write that failed on
+    // 100% of positions for 5.5 hours of RTH surfaced as nothing but `errored=2` in the summary line
+    // below — un-root-causable without a local DB repro. Emit the discarded message per position (with
+    // the ticker, so a lane-wide vs row-specific failure is distinguishable at a glance).
+    for (const o of result.outcomes) {
+      if (!o.error) continue;
+      const ticker = openRows.find((r) => r.id === o.positionId)?.ticker ?? "?";
+      console.error(
+        `[cron/swing-active-refresh] position sync FAILED — id=${o.positionId} ticker=${ticker}: ${o.error}`
+      );
+    }
+
     console.info(
       `[cron/swing-active-refresh] background done — positions=${result.positions} refreshed=${result.refreshed} snapshots=${result.snapshotsAppended} skipped=${result.skipped} errored=${result.errored} rolled=${rolls.filter((o) => o.roll?.action === "ROLL" && o.roll?.childId != null).length} closed=${rolls.filter((o) => o.roll?.action === "CLOSE" && o.roll?.parentGraded).length} spotsRefreshed=${spotsRefreshed} betasResolved=${betasResolved} elapsed=${Date.now() - started}ms`
     );

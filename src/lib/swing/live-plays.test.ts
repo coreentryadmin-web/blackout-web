@@ -106,3 +106,31 @@ test("livePlaysFromOpenPositions skips CLOSED and contract-less rows", () => {
   assert.equal(plays.length, 1);
   assert.equal(plays[0]!.ticker, "NVDA");
 });
+
+
+// ─── SEV-1 (FINDINGS 2026-08-06): an absent mark must serve NULL, never the entry premium ──────
+
+test("SEV-1: a null last_mark serves contract.mid = null — NEVER laundered into the entry premium", () => {
+  // The 42P08 bug left last_mark NULL on two live-money positions for a whole RTH session. The read
+  // path used to emit `mid: mark ?? entry`, so the deck received a mark exactly equal to entry and
+  // rendered a confident "+$0.00" — a precise, wrong number on a position that was really +36%.
+  // "Unknown" must stay unknown all the way to the renderer, which already has a "—" branch for it.
+  // The exact shape of the two stuck production rows: entry known, every live latch still NULL.
+  const p = livePlayFromSwingPosition(
+    row({ last_mark: null, peak_premium: null, trough_premium: null, entry_premium: 14.4 })
+  );
+  assert.ok(p);
+  assert.equal(p!.contract!.mid, null, "no live mark → no fabricated mark");
+  assert.equal(p!.entryPremium, 14.4, "entry premium is still reported (it is genuinely known)");
+  assert.equal(p!.livePnlPct, null);
+  assert.equal(p!.peakPremium, null);
+  assert.equal(p!.troughPremium, null);
+});
+
+test("SEV-1: a real last_mark still lands on contract.mid unchanged", () => {
+  // The honesty fix must not cost the working case: a genuine mark is passed straight through.
+  const p = livePlayFromSwingPosition(row({ last_mark: 19.5, entry_premium: 14.4 }));
+  assert.ok(p);
+  assert.equal(p!.contract!.mid, 19.5);
+  assert.equal(p!.livePnlPct, 35.4); // (19.5/14.4 - 1) * 100, rounded to 0.1
+});
