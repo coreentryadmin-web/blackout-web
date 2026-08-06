@@ -144,6 +144,41 @@ describe("track-record-page", () => {
     assert.equal(pageSpxMatchesPublic(page, consistentPub), true, "63 is the correct re-round of 62.5");
   });
 
+  it("pageSpxMatchesPublic agrees when 1dp page win rate re-rounds to public 0dp (56.5% → 57%)", () => {
+    // Regression: float error from winRatePct/100 made formatPercent(56.5/100,0)=56 while public=57.
+    const pub: PublicTrackRecord = {
+      available: true,
+      generated_at: new Date().toISOString(),
+      total_closed: 46,
+      days_of_data: 5,
+      win_rate_pct: 57,
+      wins: 26,
+      losses: 20,
+      breakeven: 0,
+      paths: {
+        cold_buy: { count: 0, win_rate_pct: 0, avg_mfe_pts: 0 },
+        watch_promote: { count: 0, win_rate_pct: 0, avg_mfe_pts: 0 },
+      },
+      adaptive_active: false,
+      summary: "test",
+    };
+    const page = {
+      spxSlayer: { total: 46, wins: 26, losses: 20, winRatePct: 56.5 },
+      nightHawk: {
+        total: 0,
+        wins: 0,
+        losses: 0,
+        winRatePct: null,
+        avgWinnerPct: null,
+        avgLoserPct: null,
+        profitFactor: null,
+      },
+      methodology: "",
+      liveData: true,
+    };
+    assert.equal(pageSpxMatchesPublic(page, pub), true);
+  });
+
   it("nhFromRows excludes a corrupt entry range from winner stats instead of corrupting them", () => {
     // Corrupt row: entry_range_low=17 is a garbage placeholder against a stock
     // trading near $450 — the range width is wildly outside a plausible intraday

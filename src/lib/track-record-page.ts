@@ -298,10 +298,14 @@ export function pageSpxMatchesPublic(
   pub: Awaited<ReturnType<typeof buildPublicTrackRecord>>
 ): boolean {
   if (!pub.available) return page.spxSlayer.total === 0;
+  // Re-round the page's 1-decimal percent to the public 0-decimal display via Math.round on the
+  // stored value — NOT winRatePct/100 through formatPercent. Dividing 56.5 by 100 introduces
+  // float noise (0.564999…) that rounds to 56 instead of 57 and false-flags data-correctness
+  // when W/L/closed already match (live prod: 26/20/46 @ 56.5% vs 57%).
   const winRateAgrees =
     page.spxSlayer.winRatePct == null
       ? pub.win_rate_pct === 0
-      : formatPercent(page.spxSlayer.winRatePct / 100, 0) === pub.win_rate_pct;
+      : Math.round(page.spxSlayer.winRatePct) === pub.win_rate_pct;
   return (
     page.spxSlayer.total === pub.total_closed &&
     page.spxSlayer.wins === pub.wins &&
