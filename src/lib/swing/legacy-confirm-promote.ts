@@ -291,7 +291,6 @@ export async function promoteLegacyConfirmedToSwing(opts: {
   const errors: string[] = [];
   let promoted = 0;
   let skipped = 0;
-  const promotedTickers: string[] = [];
 
   const confirmedTickers = new Set(
     opts.confirmed.filter((ps) => ps.status === "CONFIRMED").map((ps) => ps.ticker.toUpperCase()),
