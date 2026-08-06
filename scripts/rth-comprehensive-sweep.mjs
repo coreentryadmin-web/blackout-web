@@ -11,6 +11,7 @@ import { chromium } from "playwright";
 import { isAuthFailureStatus } from "./audit/lib/auth-status.mjs";
 import { generateDefaultAuditPhone } from "./audit/lib/audit-phone.mjs";
 import { auditSecret } from "./audit/lib/prod-secrets.mjs";
+import { createOrAdoptAuditUserViaCurl } from "./audit/lib/clerk-audit-user.mjs";
 
 const baseArg = process.argv.find((a) => a.startsWith("--base="));
 const BASE = (baseArg ? baseArg.slice("--base=".length) : "https://blackouttrades.com").replace(/\/$/, "");
@@ -120,16 +121,11 @@ function scanMissing(text, page) {
 
 async function authSession() {
   if (!SECRET) throw new Error("CLERK_SECRET_KEY missing");
-  const create = backend("POST", "/users", {
-    email_address: [EMAIL],
-    phone_number: [PHONE],
-    public_metadata: { role: "admin", tier: "premium" },
-    skip_password_requirement: true,
-    skip_legal_checks: true,
-  });
-  let cj = J(create);
-  let userId = cj?.id;
-  if (!userId) throw new Error(`Clerk user create failed: ${create.b.slice(0, 200)}`);
+  // Shared create-or-adopt: e-mail collision → adopt the leftover user; PHONE collision →
+  // redraw a fresh +1415555XXXX and retry (this sweep had no recovery for either).
+  const auth = await createOrAdoptAuditUserViaCurl({ curl, api: API, secret: SECRET, email: EMAIL, phone: PHONE });
+  if (auth.error) throw new Error(`Clerk user create failed: ${auth.error.slice(0, 220)}`);
+  const userId = auth.userId;
   const ticket = J(backend("POST", "/sign_in_tokens", { user_id: userId }))?.token;
   if (!ticket) throw new Error("sign_in_token failed");
   const si = curl({

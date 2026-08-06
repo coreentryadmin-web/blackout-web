@@ -6,7 +6,7 @@
  *   npm run validate:clerk-config
  */
 import { mintClerkPremiumSession } from "./audit/lib/prod-clerk-session.mjs";
-import { generateDefaultAuditPhone } from "./audit/lib/audit-phone.mjs";
+import { createAuditClerkUser } from "./audit/lib/clerk-audit-user.mjs";
 
 const API = "https://api.clerk.com/v1";
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
@@ -105,20 +105,17 @@ async function main() {
     }
 
     const tag = Date.now();
-    const probeUser = await fetch(`${API}/users`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${secret}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        email_address: [`jwt-probe-${tag}@blackouttrades.com`],
-        phone_number: [generateDefaultAuditPhone()],
-        public_metadata: { tier: "premium", role: "admin", tier_managed_by: "admin" },
-        skip_password_requirement: true,
-        skip_password_checks: true,
-        skip_legal_checks: true,
-      }),
+    // Shared create: a collision on the random +1415555XXXX phone redraws instead of leaving
+    // probeId undefined (which silently skipped the JWT-claims probe). No adoptByEmail
+    // callback — the e-mail carries a per-run tag.
+    const created = await createAuditClerkUser({
+      secret,
+      email: `jwt-probe-${tag}@blackouttrades.com`,
+      publicMetadata: { tier: "premium", role: "admin", tier_managed_by: "admin" },
+      adopt: false,
+      extraBody: { skip_password_checks: true },
     });
-    const created = await probeUser.json();
-    const probeId = created?.id;
+    const probeId = created?.userId;
     if (probeId) {
       const tokRes = await fetch(`${API}/sign_in_tokens`, {
         method: "POST",

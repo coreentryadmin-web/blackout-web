@@ -5,6 +5,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { generateDefaultAuditPhone } from "./audit-phone.mjs";
+import { createOrAdoptAuditUser } from "./clerk-audit-user.mjs";
 
 const API = "https://api.clerk.com/v1";
 const CJS = "5.57.0";
@@ -136,33 +137,43 @@ export async function mintClerkSession({
     });
 
   async function createUserWithOptionalPhone() {
-    const withPhone = {
-      email_address: [email],
-      phone_number: [phone],
-      public_metadata: metadata,
-      skip_password_requirement: true,
-      skip_password_checks: true,
-      skip_legal_checks: true,
-    };
-    let createRes = await backend("POST", "/users", withPhone);
-    let created = await createRes.json().catch(() => null);
-    if (created?.id) return created;
+    // Two independent failure modes are layered here:
+    //  - phone DISABLED on the instance ("not a valid parameter") → retry WITHOUT a phone
+    //    (handled inline, since the number isn't the problem);
+    //  - phone COLLISION (some other user holds that random +1415555XXXX) → the shared
+    //    helper redraws and calls this back with a fresh number.
+    // No adoptByEmail callback: the e-mail carries a per-run timestamp, so it cannot collide.
+    const res = await createOrAdoptAuditUser({
+      phone,
+      createUser: async (p) => {
+        let createRes = await backend("POST", "/users", {
+          email_address: [email],
+          phone_number: [p],
+          public_metadata: metadata,
+          skip_password_requirement: true,
+          skip_password_checks: true,
+          skip_legal_checks: true,
+        });
+        let created = await createRes.json().catch(() => null);
+        if (created?.id) return created;
 
-    const phoneDisabled = /phone_number is not a valid parameter/i.test(
-      JSON.stringify(created?.errors ?? "")
-    );
-    if (phoneDisabled) {
-      createRes = await backend("POST", "/users", {
-        email_address: [email],
-        public_metadata: metadata,
-        skip_password_requirement: true,
-        skip_password_checks: true,
-        skip_legal_checks: true,
-      });
-      created = await createRes.json().catch(() => null);
-      if (created?.id) return created;
-    }
-    return created;
+        const phoneDisabled = /phone_number is not a valid parameter/i.test(
+          JSON.stringify(created?.errors ?? "")
+        );
+        if (phoneDisabled) {
+          createRes = await backend("POST", "/users", {
+            email_address: [email],
+            public_metadata: metadata,
+            skip_password_requirement: true,
+            skip_password_checks: true,
+            skip_legal_checks: true,
+          });
+          created = await createRes.json().catch(() => null);
+        }
+        return created;
+      },
+    });
+    return res.userId ? { id: res.userId } : { errors: res.error };
   }
 
   let userId = null;
@@ -306,25 +317,31 @@ export async function createClerkUser({
   const backend = await clerkBackend(secret);
   const email = `${emailPrefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}@example.com`;
   const phone = generateDefaultAuditPhone();
-  let createRes = await backend("POST", "/users", {
-    email_address: [email],
-    phone_number: [phone],
-    public_metadata: metadata,
-    skip_password_requirement: true,
-    skip_password_checks: true,
-    skip_legal_checks: true,
+  // Same two layers as createUserWithOptionalPhone above: phone-disabled instance → retry
+  // without a phone (inline); phone COLLISION → the shared helper redraws the number.
+  const res = await createOrAdoptAuditUser({
+    phone,
+    createUser: async (p) => {
+      let createRes = await backend("POST", "/users", {
+        email_address: [email],
+        phone_number: [p],
+        public_metadata: metadata,
+        skip_password_requirement: true,
+        skip_password_checks: true,
+        skip_legal_checks: true,
+      });
+      if (createRes.status >= 400 && /phone_number is not a valid parameter/i.test(JSON.stringify(createRes.json))) {
+        createRes = await backend("POST", "/users", {
+          email_address: [email],
+          public_metadata: metadata,
+          skip_password_requirement: true,
+          skip_password_checks: true,
+          skip_legal_checks: true,
+        });
+      }
+      return createRes.json;
+    },
   });
-  if (createRes.status >= 400 && /phone_number is not a valid parameter/i.test(JSON.stringify(createRes.json))) {
-    createRes = await backend("POST", "/users", {
-      email_address: [email],
-      public_metadata: metadata,
-      skip_password_requirement: true,
-      skip_password_checks: true,
-      skip_legal_checks: true,
-    });
-  }
-  if (createRes.status >= 400 || !createRes.json?.id) {
-    return { ok: false, reason: JSON.stringify(createRes.json)?.slice(0, 200) };
-  }
-  return { ok: true, userId: createRes.json.id, email, phone };
+  if (!res.userId) return { ok: false, reason: String(res.error).slice(0, 200) };
+  return { ok: true, userId: res.userId, email, phone: res.phone ?? phone };
 }

@@ -91,7 +91,13 @@ Both harnesses and their `npm run validate:vector-*` scripts were removed with i
    (`clerk.blackouttrades.com`, `_clerk_js_version=5.57.0`, curl `-c/-b` cookie jar) → mint a
    `__session` JWT → fetch ANY authenticated page with `Cookie: __session=<jwt>; __client_uat=<epoch>`.
    Reusable auth block: `scripts/audit/data-validator.mjs` (~lines 237-271); phone via
-   `scripts/audit/lib/audit-phone.mjs` `generateDefaultAuditPhone()` (E.164 `+1415555xxxx`). So
+   `scripts/audit/lib/audit-phone.mjs` `generateDefaultAuditPhone()` (E.164 `+1415555xxxx`).
+   **Temp-user creation goes through `scripts/audit/lib/clerk-audit-user.mjs` — never inline a
+   `POST /users` + recovery block again.** Clerk enforces uniqueness on the e-mail AND the
+   phone: `createOrAdoptAuditUserViaCurl` (spawnSync-curl harnesses) / `createAuditClerkUser`
+   (fetch harnesses) adopt the leftover user on an e-mail collision and REDRAW the phone on a
+   phone collision (bounded retries). The old e-mail-only recovery aborted whole unattended
+   runs on a phone clash — see FINDINGS 2026-08-06 [P3, tooling]. So
    **"log in and check every page" IS possible headlessly** — validates served HTML / DOM / component
    presence for the whole authenticated desk/app. Always DELETE the temp user after (cleanup).
 2. **Live UI / pixel validation — Playwright + Clerk admin (WORKS in Cloud Agent).** Mint temp

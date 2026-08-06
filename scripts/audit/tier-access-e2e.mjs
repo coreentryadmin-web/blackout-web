@@ -24,6 +24,8 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomInt } from "node:crypto";
 
+import { createOrAdoptAuditUserViaCurl } from "./lib/clerk-audit-user.mjs";
+
 const SECRET = process.env.CLERK_SECRET_KEY?.trim();
 if (!SECRET) { console.error("CLERK_SECRET_KEY is required"); process.exit(1); }
 
@@ -90,26 +92,26 @@ class TierUser {
     };
   }
 
-  create() {
-    const r = backend("POST", "/users", {
-      email_address: [this.email],
-      phone_number: [this.phone],
-      public_metadata: this.metadata(),
-      skip_password_requirement: true,
-      skip_legal_checks: true,
+  // async because the shared create-or-adopt helper is (it awaits the transport so the same
+  // implementation serves both the spawnSync-curl and fetch harnesses).
+  async create() {
+    // Shared create-or-adopt: e-mail collision → adopt the leftover user; PHONE collision →
+    // redraw a fresh +1415555XXXX and retry. This suite mints THREE users per run, so it is
+    // the harness most exposed to a phone clash inside a single pass.
+    const auth = await createOrAdoptAuditUserViaCurl({
+      curl,
+      api: API,
+      secret: SECRET,
+      email: this.email,
+      phone: this.phone,
+      publicMetadata: this.metadata(),
     });
-    const cj = J(r);
-    if (cj?.id) { this.userId = cj.id; return true; }
-    if (/form_identifier_exists/.test(JSON.stringify(cj?.errors || ""))) {
-      const u = (J(curl({ url: `${API}/users?email_address=${encodeURIComponent(this.email)}`, headers: { Authorization: `Bearer ${SECRET}` } })) || [])[0];
-      if (u?.id) {
-        this.userId = u.id;
-        backend("PATCH", `/users/${this.userId}`, { public_metadata: this.metadata() });
-        return true;
-      }
+    if (auth.error) {
+      console.error(`  [${this.tier}] Failed to create user:`, auth.error.slice(0, 220));
+      return false;
     }
-    console.error(`  [${this.tier}] Failed to create user:`, r.b.slice(0, 200));
-    return false;
+    this.userId = auth.userId;
+    return true;
   }
 
   repatch() {
@@ -225,7 +227,7 @@ async function main() {
     const u = new TierUser(tier, role);
     users.push(u);
     process.stdout.write(`    ${tier.padEnd(10)} create... `);
-    if (!u.create()) { console.log("FAIL"); anyFail = true; continue; }
+    if (!(await u.create())) { console.log("FAIL"); anyFail = true; continue; }
     console.log(`OK  (${u.userId})`);
   }
 

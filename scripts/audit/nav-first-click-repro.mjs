@@ -47,22 +47,31 @@ async function probeSignedInMismatch() {
   const secret = process.env.CLERK_SECRET_KEY?.trim();
   if (!secret) return { skipped: true };
 
-  const { generateDefaultAuditPhone } = await import("./lib/audit-phone.mjs");
-  const phone = generateDefaultAuditPhone();
+  const { createOrAdoptAuditUser } = await import("./lib/clerk-audit-user.mjs");
   const email = `nav-repro-${Date.now()}@example.com`;
   const headers = { Authorization: `Bearer ${secret}`, "Content-Type": "application/json" };
 
-  const userRes = await fetch("https://api.clerk.com/v1/users", {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      email_address: [email],
-      phone_numbers: [{ phone_number: phone }],
-      password: "AuditTestPass123!@#",
-      public_metadata: { tier: "premium" },
-    }),
+  // No adoptByEmail callback (per-run timestamped e-mail); the shared helper redraws the
+  // random +1415555XXXX phone if some other live temp user already holds it.
+  const created = await createOrAdoptAuditUser({
+    createUser: async (phone) =>
+      (
+        await fetch("https://api.clerk.com/v1/users", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            email_address: [email],
+            phone_numbers: [{ phone_number: phone }],
+            password: "AuditTestPass123!@#",
+            public_metadata: { tier: "premium" },
+          }),
+        })
+      )
+        .json()
+        .catch(() => null),
   });
-  const user = await userRes.json();
+  const user = { id: created.userId };
+  if (!user.id) return { skipped: true, reason: String(created.error).slice(0, 160) };
   const tokenRes = await fetch("https://api.clerk.com/v1/sign_in_tokens", {
     method: "POST",
     headers,

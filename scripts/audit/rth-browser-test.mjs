@@ -22,12 +22,14 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { generateDefaultAuditPhone } from './lib/audit-phone.mjs';
+import { createOrAdoptAuditUserViaCurl } from './lib/clerk-audit-user.mjs';
 
 const SECRET = req('CLERK_SECRET_KEY');
 const PUB = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || '';
 const APP = 'https://blackouttrades.com';
 const EMAIL = 'rth-test-' + Date.now() + '@blackouttrades.com';
-const PHONE = '+14155550' + String(Math.floor(Math.random() * 900) + 100);
+const PHONE = generateDefaultAuditPhone();
 const OUT = process.env.AUDIT_OUT || join(process.cwd(), 'audit-output');
 const API = 'https://api.clerk.com/v1';
 const CJS = '5.57.0';
@@ -149,37 +151,15 @@ function isAuthFailureStatus(status) {
   return status === 401 || status === 403;
 }
 
-function authApp() {
-  // Create temp user
-  const create = backend('POST', '/users', {
-    email_address: [EMAIL],
-    phone_number: [PHONE],
-    public_metadata: { role: 'admin', tier: 'premium' },
-    skip_password_requirement: true,
-    skip_legal_checks: true,
-  });
-  const cj = J(create);
-  if (cj?.id) userId = cj.id;
-  else if (/form_identifier_exists/.test(JSON.stringify(cj?.errors || ''))) {
-    const u = (
-      J(
-        curl({
-          url: `${API}/users?email_address=${encodeURIComponent(EMAIL)}`,
-          headers: { Authorization: `Bearer ${SECRET}` },
-        })
-      ) || []
-    )[0];
-    if (u?.id) {
-      userId = u.id;
-      backend('PATCH', `/users/${userId}`, {
-        public_metadata: { role: 'admin', tier: 'premium' },
-      });
-    }
-  }
-  if (!userId) {
-    rec('auth: create temp user', 'FAIL', create.b.slice(0, 160));
+async function authApp() {
+  // Shared create-or-adopt: e-mail collision → adopt the leftover user; PHONE collision →
+  // redraw a fresh +1415555XXXX and retry.
+  const auth = await createOrAdoptAuditUserViaCurl({ curl, api: API, secret: SECRET, email: EMAIL, phone: PHONE });
+  if (auth.error) {
+    rec('auth: create temp user', 'FAIL', auth.error.slice(0, 200));
     throw new Error('auth failed');
   }
+  userId = auth.userId;
 
   // Mint sign_in_token
   const ticket = J(backend('POST', '/sign_in_tokens', { user_id: userId }))?.token;
@@ -353,7 +333,7 @@ async function main() {
   console.log('RTH Browser Test Sweep (API-level)\n');
   rec('environment', 'INFO', `app=${APP} fapi=${FAPI}`);
 
-  authApp();
+  await authApp();
 
   // /dashboard → SPX Slayer (0DTE matrix + live spot)
   testPage('/dashboard (SPX Slayer)', '/api/market/gex-heatmap?ticker=SPX', (j, n) => {

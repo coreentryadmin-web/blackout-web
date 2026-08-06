@@ -58,6 +58,7 @@ import { readFileSync, writeFileSync, existsSync, mkdtempSync, rmSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { generateDefaultAuditPhone } from "./lib/audit-phone.mjs";
+import { createOrAdoptAuditUserViaCurl } from "./lib/clerk-audit-user.mjs";
 
 const SRC = new URL("../../src/", import.meta.url).pathname;
 
@@ -328,23 +329,12 @@ function runGatesInChild(envOverrides, input) {
 // ── Authed prod fetch (mint temp user → FAPI ticket → __session cookie) ───────────────
 let userId = null;
 async function authAndFetchBoard() {
-  const create = backend("POST", "/users", {
-    email_address: [EMAIL],
-    phone_number: [PHONE],
-    public_metadata: { role: "admin", tier: "premium" },
-    skip_password_requirement: true,
-    skip_legal_checks: true,
-  });
-  let cj = J(create);
-  if (cj?.id) userId = cj.id;
-  else if (/form_identifier_exists/.test(JSON.stringify(cj?.errors || ""))) {
-    const u = (J(curl({ url: `${CLERK_API}/users?email_address=${encodeURIComponent(EMAIL)}`, headers: { Authorization: `Bearer ${SECRET}` } })) || [])[0];
-    if (u?.id) {
-      userId = u.id;
-      backend("PATCH", `/users/${userId}`, { public_metadata: { role: "admin", tier: "premium" } });
-    }
-  }
-  if (!userId) return { error: `temp-user create failed: ${create.b.slice(0, 160)}` };
+  // Shared create-or-adopt: e-mail collision → adopt the leftover user; PHONE collision →
+  // redraw a fresh +1415555XXXX and retry (a clash on the random number is recoverable and
+  // must not abort the replay).
+  const auth = await createOrAdoptAuditUserViaCurl({ curl, api: CLERK_API, secret: SECRET, email: EMAIL, phone: PHONE });
+  if (auth.error) return { error: `temp-user create failed: ${auth.error.slice(0, 200)}` };
+  userId = auth.userId;
 
   let sid = null;
   let tok = null;

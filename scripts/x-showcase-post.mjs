@@ -17,6 +17,7 @@ import { join } from "node:path";
 import { chromium } from "playwright";
 import sharp from "sharp";
 import crypto from "node:crypto";
+import { createAuditClerkUser } from "./audit/lib/clerk-audit-user.mjs";
 
 const args = process.argv.slice(2);
 const flag = (k) => args.includes(`--${k}`);
@@ -262,7 +263,6 @@ async function mintClerkSession(secrets) {
   const secret = secrets.CLERK_SECRET_KEY;
   const tag = crypto.randomInt(1000, 9999);
   const email = `showcase.${tag}@gmail.com`;
-  const phone = `+1415555${String(crypto.randomInt(0, 10000)).padStart(4, "0")}`;
 
   const backend = (method, path, body) =>
     fetch(`${CLERK_API}${path}`, {
@@ -271,16 +271,11 @@ async function mintClerkSession(secrets) {
       body: body ? JSON.stringify(body) : undefined,
     });
 
-  const createRes = await backend("POST", "/users", {
-    email_address: [email],
-    phone_number: [phone],
-    public_metadata: { role: "admin", tier: "premium" },
-    skip_password_requirement: true,
-    skip_legal_checks: true,
-  });
-  const created = await createRes.json();
-  const userId = created?.id;
-  if (!userId) throw new Error("Clerk user create failed");
+  // Shared helper: e-mail collision → adopt the existing user; PHONE collision → redraw a
+  // fresh +1415555XXXX and retry (this script had NO recovery for either).
+  const created = await createAuditClerkUser({ secret, email });
+  const userId = created.userId;
+  if (!userId) throw new Error(`Clerk user create failed: ${String(created.error).slice(0, 200)}`);
 
   const ticket = (await (await backend("POST", "/sign_in_tokens", { user_id: userId })).json())?.token;
   if (!ticket) throw new Error("sign_in_token failed");

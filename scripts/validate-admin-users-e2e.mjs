@@ -11,6 +11,7 @@
  *   ADMIN_E2E_BASE=http://127.0.0.1:3000 node scripts/validate-admin-users-e2e.mjs
  */
 import { generateDefaultAuditPhone } from "./audit/lib/audit-phone.mjs";
+import { createOrAdoptAuditUser } from "./audit/lib/clerk-audit-user.mjs";
 import { clerkBackend } from "./audit/lib/keyless-clerk-session.mjs";
 import {
   mintAdminE2ESession,
@@ -153,18 +154,26 @@ async function main() {
     let subjectId = create.json?.id;
     if (create.status !== 201 && secret) {
       // Fallback: direct Clerk create when deployed route lacks skip-password flags
-      const direct = await (await clerkBackend(secret))("POST", "/users", {
-        email_address: [`e2e-subject-fb-${Date.now()}@blackouttrades.com`],
-        phone_number: [generateDefaultAuditPhone()],
-        first_name: "E2E",
-        last_name: "Subject",
-        public_metadata: { tier: "free" },
-        skip_password_requirement: true,
-        skip_password_checks: true,
-        skip_legal_checks: true,
+      // Shared create: a collision on the random +1415555XXXX phone redraws instead of losing
+      // the fallback path entirely. No adoptByEmail callback — the e-mail is per-run unique.
+      const backendFn = await clerkBackend(secret);
+      const direct = await createOrAdoptAuditUser({
+        createUser: async (phone) =>
+          (
+            await backendFn("POST", "/users", {
+              email_address: [`e2e-subject-fb-${Date.now()}@blackouttrades.com`],
+              phone_number: [phone],
+              first_name: "E2E",
+              last_name: "Subject",
+              public_metadata: { tier: "free" },
+              skip_password_requirement: true,
+              skip_password_checks: true,
+              skip_legal_checks: true,
+            })
+          ).json,
       });
-      if (direct.json?.id) {
-        subjectId = direct.json.id;
+      if (direct.userId) {
+        subjectId = direct.userId;
         rec("create user → 201", "WARN", "admin create failed — used Clerk backend fallback");
       }
     } else {

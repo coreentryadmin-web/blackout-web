@@ -9,7 +9,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
-import { generateDefaultAuditPhone } from "./audit/lib/audit-phone.mjs";
+import { createAuditClerkUser } from "./audit/lib/clerk-audit-user.mjs";
 
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
 const SECRET = process.env.CLERK_SECRET_KEY?.trim();
@@ -74,22 +74,21 @@ async function mintTicketUser({ emailPrefix, metadata }) {
   if (meta.tier === "premium" || meta.tier === "pro") {
     meta.tier_managed_by = "admin";
   }
-  const user = await clerk("/users", {
-    method: "POST",
-    body: JSON.stringify({
-      email_address: [`${emailPrefix}-${tag}@blackouttrades.com`],
-      phone_number: [generateDefaultAuditPhone()],
-      skip_password_requirement: true,
-      skip_password_checks: true,
-      skip_legal_checks: true,
-      public_metadata: meta,
-    }),
+  // Shared temp-user create: a collision on the random +1415555XXXX phone redraws instead of
+  // throwing (clerk() rejects on any non-2xx). adopt:false — the e-mail carries a per-run tag.
+  const created = await createAuditClerkUser({
+    secret: SECRET,
+    email: `${emailPrefix}-${tag}@blackouttrades.com`,
+    publicMetadata: meta,
+    adopt: false,
+    extraBody: { skip_password_checks: true },
   });
+  if (!created.userId) throw new Error(`Clerk /users create failed: ${String(created.error).slice(0, 200)}`);
   const token = await clerk("/sign_in_tokens", {
     method: "POST",
-    body: JSON.stringify({ user_id: user.id, expires_in_seconds: 600 }),
+    body: JSON.stringify({ user_id: created.userId, expires_in_seconds: 600 }),
   });
-  return { userId: user.id, ticket: token.token, tag };
+  return { userId: created.userId, ticket: token.token, tag };
 }
 
 async function browserWithTicket(ticket) {

@@ -7,7 +7,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { chromium } from "playwright";
-import { generateDefaultAuditPhone } from "./audit/lib/audit-phone.mjs";
+import { createOrAdoptAuditUser } from "./audit/lib/clerk-audit-user.mjs";
 
 const BASE = "https://blackouttrades.com";
 const SECRET = process.env.CLERK_SECRET_KEY;
@@ -52,15 +52,21 @@ async function main() {
 
   let userId;
   try {
-    const user = backend("POST", "/users", {
-      email_address: [email],
-      phone_number: [process.env.AUDIT_PHONE || generateDefaultAuditPhone()],
-      public_metadata: { role: "admin", tier: "premium" },
-      skip_password_requirement: true,
-      skip_legal_checks: true,
+    // Shared create-or-adopt so a collision on the random +1415555XXXX phone redraws rather
+    // than failing the smoke test. No adoptByEmail callback — the e-mail is per-run unique.
+    const created = await createOrAdoptAuditUser({
+      phone: process.env.AUDIT_PHONE || undefined,
+      createUser: (phone) =>
+        backend("POST", "/users", {
+          email_address: [email],
+          phone_number: [phone],
+          public_metadata: { role: "admin", tier: "premium" },
+          skip_password_requirement: true,
+          skip_legal_checks: true,
+        }),
     });
-    userId = user.id;
-    if (!userId) throw new Error(`user create failed: ${JSON.stringify(user).slice(0, 200)}`);
+    userId = created.userId;
+    if (!userId) throw new Error(`user create failed: ${String(created.error).slice(0, 200)}`);
     report.steps.push({ step: "create_user", ok: true, userId });
 
     const { token: ticket } = backend("POST", "/sign_in_tokens", {
