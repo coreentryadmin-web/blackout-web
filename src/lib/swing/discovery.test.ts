@@ -244,7 +244,7 @@ function nvdaChain(expiry = "2026-08-08") {
   ];
 }
 
-test("runSwingDiscoveryScan: LIVE seam OPENS a graduated WATCH candidate (all four gates cleared)", async () => {
+test("runSwingDiscoveryScan: LIVE seam OPENS a graduated WATCH candidate (real-time gates cleared)", async () => {
   const { accessors } = makeFakeAccum();
   await runSwingDiscoveryScan(makeDeps("2026-07-23", accessors)); // session 1
   const probe = await runSwingDiscoveryScan(makeDeps("2026-07-24", accessors)); // session 2 → NVDA WATCH
@@ -274,7 +274,7 @@ test("runSwingDiscoveryScan: LIVE seam OPENS a graduated WATCH candidate (all fo
   assert.equal((opened[0].gate_calibration_json as Record<string, unknown>).graduated, true);
 });
 
-test("runSwingDiscoveryScan: seam wired but history NOT graduated → commitEligibleCount 0, nothing opens", async () => {
+test("runSwingDiscoveryScan: seam wired but history NOT graduated → commitEligibleCount 0, but it STILL opens (evidence-only)", async () => {
   const { accessors } = makeFakeAccum();
   await runSwingDiscoveryScan(makeDeps("2026-07-23", accessors));
   await runSwingDiscoveryScan(makeDeps("2026-07-24", accessors)); // NVDA now WATCH
@@ -283,15 +283,16 @@ test("runSwingDiscoveryScan: seam wired but history NOT graduated → commitElig
   const deps: SwingDiscoveryDeps = {
     ...makeDeps("2026-07-25", accessors),
     fetchChainRows: async () => nvdaChain(),
-    fetchGradedHistory: async () => [], // NO graded history → nothing graduates (the cold-book hard rail)
+    fetchGradedHistory: async () => [], // NO graded history → nothing graduates, but that no longer blocks
     fetchOpenBook: async () => [],
     insertPosition: async (pos) => { opened.push(pos); return opened.length; },
     budget: PRODUCTION_PORTFOLIO_BUDGET,
   };
   const res = await runSwingDiscoveryScan(deps);
-  assert.equal(res.commitEligibleCount, 0, "no graduated bucket → 0 eligible");
-  assert.equal(opened.length, 0, "nothing opened on an ungraduated book");
-  assert.equal(res.commit?.committed.length, 0);
+  assert.equal(res.commitEligibleCount, 0, "no graduated bucket → the diagnostic count stays 0");
+  assert.equal(opened.length, 1, "but the real-time gates cleared, so it opens anyway (0DTE-style day-one trading)");
+  assert.equal(res.commit?.committed.filter((c) => c.positionId != null).length, 1);
+  assert.equal((opened[0].gate_calibration_json as Record<string, unknown>).graduated, false);
 });
 
 test("runSwingDiscoveryScan: idempotency — a name already OPEN on the book is not re-opened", async () => {

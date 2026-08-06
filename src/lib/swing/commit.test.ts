@@ -1,7 +1,9 @@
-// src/lib/swing/commit.test.ts — the LIVE commit gate (go-live 2026-07-24). Proves a WATCH candidate opens a
-// REAL position ONLY when ALL FOUR gates pass — graduation ∧ armed budget ∧ book-percent caps ∧ idempotency —
-// and that `commitEligibleCount` is the REAL graduated count, with every edge case (unknown risk / missing
-// contract / at-cap) safe. Pure decision core + the fail-soft executor, injected accessors (no live DB).
+// src/lib/swing/commit.test.ts — the LIVE commit gate (go-live 2026-07-24; graduation gate removed
+// 2026-08-06 — see commit.ts's file header). Proves a WATCH candidate opens a REAL position when the THREE
+// real-time gates pass — armed budget ∧ book-percent caps ∧ idempotency — REGARDLESS of calibration
+// graduation (evidence-only, pinned but never blocking), and that `commitEligibleCount` still tracks the
+// real graduated count as a diagnostic. Every edge case (unknown risk / missing contract / at-cap) safe.
+// Pure decision core + the fail-soft executor, injected accessors (no live DB).
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -66,17 +68,27 @@ test("graduation: a real 32-win/12-loss BREAKOUT×STANDARD record graduates BOTH
   assert.equal(isCommitGraduated(null, "BREAKOUT", "STANDARD").graduated, false);
 });
 
-test("a thin (n<30) record does NOT graduate → nothing commits (the cold-book hard rail)", () => {
+test("a thin (n<30) record does NOT graduate, but the candidate STILL commits — graduation is evidence-only", () => {
   const thin = analyzeSwingCalibration(gradedRows("BREAKOUT", "STANDARD", 8, 3)); // n=8 → RESEARCH tier
   const plan = computeSwingCommitPlan({ candidates: [candidate()], report: thin, book: [], budget: PRODUCTION_PORTFOLIO_BUDGET });
-  assert.equal(plan.commitEligibleCount, 0);
-  assert.equal(plan.committableCount, 0);
-  assert.deepEqual(plan.decisions[0].blockedBy, ["not_graduated"]);
+  assert.equal(plan.commitEligibleCount, 0, "not graduated — the diagnostic count stays 0");
+  assert.equal(plan.committableCount, 1, "but the real-time gates (contract/budget/caps/idempotency) clear, so it opens");
+  assert.equal(plan.decisions[0].graduated, false);
+  assert.equal(plan.decisions[0].committable, true);
+  assert.deepEqual(plan.decisions[0].blockedBy, []);
 });
 
-// ─── the happy path + the four-gate conjunction ────────────────────────────────
+test("a null calibration report (no graded history at all) still commits — matches 0DTE's day-one live trading", () => {
+  const plan = computeSwingCommitPlan({ candidates: [candidate()], report: null, book: [], budget: PRODUCTION_PORTFOLIO_BUDGET });
+  assert.equal(plan.commitEligibleCount, 0);
+  assert.equal(plan.committableCount, 1);
+  assert.equal(plan.decisions[0].graduated, false);
+  assert.equal(plan.decisions[0].committable, true);
+});
 
-test("commit FIRES only when graduated ∧ contract-present ∧ budget-cleared ∧ caps-cleared ∧ not-open", () => {
+// ─── the happy path + the three real-time gates ────────────────────────────────
+
+test("commit FIRES when contract-present ∧ budget-cleared ∧ caps-cleared ∧ not-open (graduation pinned, not required)", () => {
   const plan = computeSwingCommitPlan({ candidates: [candidate()], report: graduatedReport(), book: [], budget: PRODUCTION_PORTFOLIO_BUDGET });
   const d = plan.decisions[0];
   assert.equal(d.graduated, true);
@@ -147,10 +159,12 @@ test("commitEligibleCount = the REAL graduated count (graduated but budget-block
   assert.deepEqual(amd.blockedBy, ["budget:per_position_loss"]);
 });
 
-test("an UNGRADUATED candidate is neither eligible nor committable (and does not count)", () => {
+test("an UNGRADUATED candidate (different archetype than the report covers) still commits — not counted eligible, but not blocked either", () => {
   const plan = computeSwingCommitPlan({ candidates: [candidate({ archetype: "MEAN_REVERSION" })], report: graduatedReport(), book: [], budget: PRODUCTION_PORTFOLIO_BUDGET });
-  assert.equal(plan.commitEligibleCount, 0);
-  assert.deepEqual(plan.decisions[0].blockedBy, ["not_graduated"]);
+  assert.equal(plan.commitEligibleCount, 0, "MEAN_REVERSION has no graduated record in this report");
+  assert.equal(plan.decisions[0].graduated, false);
+  assert.equal(plan.decisions[0].committable, true);
+  assert.deepEqual(plan.decisions[0].blockedBy, []);
 });
 
 // ─── sizing ────────────────────────────────────────────────────────────────────
@@ -277,7 +291,7 @@ test("determinism: same inputs → identical plan (best-first, ticker tie-break)
 test("executeSwingCommits: opens every committable position + links it; skips the rest; fail-soft on error", async () => {
   const cands = [
     candidate({ ticker: "NVDA", score: 90 }),
-    candidate({ ticker: "AMD", score: 80, archetype: "MEAN_REVERSION" }), // ungraduated → skipped
+    candidate({ ticker: "AMD", score: 80, contract: null }), // no contract → genuinely blocked (real-time gate)
     candidate({ ticker: "BOOM", score: 70 }), // committable but the insert throws
   ];
   const plan = computeSwingCommitPlan({ candidates: cands, report: graduatedReport(), book: [], budget: PRODUCTION_PORTFOLIO_BUDGET });
@@ -299,7 +313,20 @@ test("executeSwingCommits: opens every committable position + links it; skips th
   assert.equal(res.errors, 1, "the throwing insert is caught + tallied (fail-soft)");
   assert.ok(res.committed.find((c) => c.ticker === "NVDA")!.positionId != null);
   assert.equal(res.committed.find((c) => c.ticker === "BOOM")!.positionId, null);
-  assert.ok(res.skipped.find((s) => s.ticker === "AMD"), "the ungraduated candidate is in the skipped list with its reason");
+  assert.ok(res.skipped.find((s) => s.ticker === "AMD"), "the contract-less candidate is in the skipped list with its reason");
+  assert.ok(res.skipped.find((s) => s.ticker === "AMD")!.blockedBy.includes("no_contract"));
+});
+
+test("executeSwingCommits: an UNGRADUATED candidate commits exactly like a graduated one (no calibration report at all)", async () => {
+  const plan = computeSwingCommitPlan({ candidates: [candidate({ ticker: "COLD" })], report: null, book: [], budget: PRODUCTION_PORTFOLIO_BUDGET });
+  const inserted: string[] = [];
+  const deps: SwingCommitDeps = {
+    insertPosition: async (pos) => { inserted.push(pos.ticker); return 1; },
+  };
+  const res = await executeSwingCommits(deps, plan);
+  assert.deepEqual(inserted, ["COLD"]);
+  assert.equal(res.committed[0]!.positionId, 1);
+  assert.equal(res.skipped.length, 0);
 });
 
 // ─── small helpers ────────────────────────────────────────────────────────────
