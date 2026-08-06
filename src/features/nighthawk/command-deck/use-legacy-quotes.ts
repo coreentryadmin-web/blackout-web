@@ -58,28 +58,41 @@ export function useLegacyStockQuotes(tickers: string[], enabled = true, pollMs =
     if (!enabled || tickers.length === 0) return;
 
     let cancelled = false;
+    // Re-entrancy guard (same pattern as use-live-marks.ts's REST fallback). `setInterval` fires
+    // regardless of whether the previous fan-out finished, so when the origin is slow every tick
+    // stacked ANOTHER N requests on top of the unfinished ones — positive feedback that turns a
+    // slowdown into a pile-up (2026-08-06 incident: ~110s TargetResponseTime, so ~110 overlapping
+    // fan-outs per client). Skipping a tick while one is in flight can only reduce concurrent
+    // requests; it never changes a quote value.
+    let inFlight = false;
 
     const poll = async () => {
-      const unique = [...new Set(tickers)];
-      const results = await Promise.allSettled(
-        unique.map(async (tk) => {
-          const r = await fetch(`/api/market/quote?ticker=${encodeURIComponent(tk)}`, {
-            cache: "no-store",
-            credentials: "same-origin",
-          });
-          if (!r.ok) return null;
-          const d = await r.json();
-          if (!d?.available || !(d.price > 0)) return null;
-          return { ticker: tk, price: d.price as number, changePct: d.change_pct as number, asof: d.asof as string };
-        }),
-      );
+      if (inFlight) return;
+      inFlight = true;
+      try {
+        const unique = [...new Set(tickers)];
+        const results = await Promise.allSettled(
+          unique.map(async (tk) => {
+            const r = await fetch(`/api/market/quote?ticker=${encodeURIComponent(tk)}`, {
+              cache: "no-store",
+              credentials: "same-origin",
+            });
+            if (!r.ok) return null;
+            const d = await r.json();
+            if (!d?.available || !(d.price > 0)) return null;
+            return { ticker: tk, price: d.price as number, changePct: d.change_pct as number, asof: d.asof as string };
+          }),
+        );
 
-      if (cancelled) return;
+        if (cancelled) return;
 
-      for (const r of results) {
-        if (r.status === "fulfilled" && r.value) {
-          applyObservedPrice(r.value.ticker, r.value.price, r.value.changePct, r.value.asof);
+        for (const r of results) {
+          if (r.status === "fulfilled" && r.value) {
+            applyObservedPrice(r.value.ticker, r.value.price, r.value.changePct, r.value.asof);
+          }
         }
+      } finally {
+        inFlight = false;
       }
     };
 
