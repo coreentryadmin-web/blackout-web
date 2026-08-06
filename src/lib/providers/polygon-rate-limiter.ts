@@ -9,7 +9,11 @@
  * latency to the hot desk/GEX/pulse loops.
  *
  * FAIL-OPEN: when REDIS_URL is unset or Redis is unavailable the global ceiling is skipped
- * and we fall back to local-only pacing (exactly like UW). acquirePolygonSlot() never throws.
+ * and we fall back to local-only pacing (exactly like UW). acquirePolygonSlot() never throws
+ * on a Redis fault -- but as of 2026-08-06 it DOES throw RateLimiterQueueTimeoutError once a
+ * caller has waited longer than the queue budget to be admitted. Fail-open refers to the
+ * global ceiling degrading gracefully, not to the queue being unbounded; an unbounded queue
+ * is what let requests sit until the ALB 504'd them (see ./queue-budget.ts).
  *
  * BREAKER RECONCILIATION: this module now OWNS the reactive Polygon breaker that previously
  * lived inline in providers/polygon.ts (5 consecutive 429s → 60s pause, cluster pub/sub via
@@ -32,10 +36,21 @@ import {
 // Hooked in alongside notePolygon429/notePolygonOk below since those are already the ONE place every
 // Polygon REST call's success/failure is observed; this does not change any control flow or throw path.
 import { polygonUpstreamHealth, type PolygonUpstreamHealthSnapshot } from "./polygon-rest-health";
+import { QueueBudget, resolveQueueBudgetMs } from "./queue-budget";
 
 export { computeDegradedLocalRps } from "./provider-rate-limiter-shared";
 
 const envNumber = rateLimiterEnvNumber;
+
+/**
+ * Ceiling on time spent WAITING to be admitted (see ./queue-budget.ts for why this
+ * is the unbounded wait that produced the ALB 504 tail). Read per call rather than
+ * captured at module load so the value can be changed by a task-definition env
+ * update without a code deploy.
+ */
+function queueBudgetMs(): number {
+  return resolveQueueBudgetMs(process.env.POLYGON_QUEUE_MAX_WAIT_MS);
+}
 
 /**
  * Per-process pacing — PERMISSIVE. Default 150 rps; Polygon/Massive Advanced is effectively
@@ -194,11 +209,16 @@ async function acquireGlobalRedisSlot(): Promise<boolean> {
   }
 }
 
-async function waitForCircuit(): Promise<void> {
+async function waitForCircuit(budget: QueueBudget): Promise<void> {
   for (;;) {
     const now = Date.now();
     if (now >= circuitOpenUntil) return;
-    await new Promise((r) => setTimeout(r, Math.min(500, circuitOpenUntil - now)));
+    // Bounded: the breaker pause is 60s, so an unbudgeted wait here alone could
+    // consume half the ALB's 120s before the 15s fetch timeout even starts.
+    budget.assertWithinBudget("circuit");
+    await new Promise((r) =>
+      setTimeout(r, budget.clampSleepMs(Math.min(500, circuitOpenUntil - now)))
+    );
   }
 }
 
@@ -210,8 +230,12 @@ async function waitMinSpacing(): Promise<void> {
   lastStartMs = Date.now();
 }
 
-async function acquireLocalSlot(): Promise<void> {
+async function acquireLocalSlot(budget: QueueBudget): Promise<void> {
   for (;;) {
+    // Checked BEFORE the admission test, never after reserving, so a caller that
+    // would have been admitted this iteration still is -- the budget only ever
+    // truncates waiting, never a successful acquisition.
+    budget.assertWithinBudget("local_slot");
     refillTokens();
     if (inFlight < MAX_CONCURRENCY && tokens >= 1) {
       // Reserve the slot synchronously BEFORE pacing so no concurrent acquirer can
@@ -229,7 +253,7 @@ async function acquireLocalSlot(): Promise<void> {
       return;
     }
     const delay = inFlight >= MAX_CONCURRENCY ? 50 : waitMsForToken();
-    await new Promise((r) => setTimeout(r, delay));
+    await new Promise((r) => setTimeout(r, budget.clampSleepMs(delay)));
   }
 }
 
@@ -240,20 +264,32 @@ async function acquireLocalSlot(): Promise<void> {
  * and acquirePolygonSlot blocks on the breaker via waitForCircuit() (mirroring the UW
  * limiter) so the breaker is honored even for callers that don't pre-check
  * isPolygonCircuitOpen(); polygonTrackedFetch still short-circuits via that helper too.
+ *
+ * BOUNDED (2026-08-06): admission is now capped by a single QueueBudget spanning the
+ * WHOLE sequence (breaker wait + global rps spin + local bucket spin). Previously every
+ * one of those was a `for (;;)` with no overall deadline, so under saturation a caller
+ * could park here indefinitely -- and since `AbortSignal.timeout` in trackedFetch only
+ * starts counting once fetch() is called, that wait was invisible to every other timeout
+ * in the stack. The ALB's 120s idle_timeout was what finally ended it, as a 504.
+ * On the uncontended path this adds one Date.now() and changes nothing.
+ *
+ * @throws {RateLimiterQueueTimeoutError} when the queue budget is exhausted.
  */
 export async function acquirePolygonSlot(_lane?: "default" | "nights-watch"): Promise<void> {
   ensureBreakerSubscription();
-  await waitForCircuit();
+  const budget = new QueueBudget("polygon", queueBudgetMs());
+  await waitForCircuit(budget);
   if (process.env.REDIS_URL?.trim()) {
     for (;;) {
       if (await acquireGlobalRedisSlot()) {
-        await acquireLocalSlot();
+        await acquireLocalSlot(budget);
         return;
       }
-      await new Promise((r) => setTimeout(r, 40));
+      budget.assertWithinBudget("global_rps");
+      await new Promise((r) => setTimeout(r, budget.clampSleepMs(40)));
     }
   }
-  await acquireLocalSlot();
+  await acquireLocalSlot(budget);
 }
 
 function releaseSlot(): void {
