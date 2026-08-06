@@ -17,6 +17,12 @@
 version: 0.2
 
 env:
+  # CodeBuild's DEFAULT shell on Linux is /bin/sh (dash), NOT bash. Every command block here starts
+  # with `set -euo pipefail`, and dash does not support `-o pipefail` — it aborts the whole phase
+  # with exit status 2 before running a single line, producing a failure with no output at all.
+  # Do not remove this.
+  shell: bash
+
   variables:
     AWS_DEFAULT_REGION: us-east-1
     ECR_REGISTRY: 177922194517.dkr.ecr.us-east-1.amazonaws.com
