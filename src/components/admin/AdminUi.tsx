@@ -15,13 +15,16 @@ export function WinRateRing({
   tone = "bull",
   size = 120,
 }: {
-  value: number;
+  /** null = there is no rate to show (no decided outcomes / below the low-n floor).
+   *  Renders "—" with an empty arc — a ring pinned at "0%" is a claim that every play
+   *  lost, which is a different and much stronger statement than "we don't know yet." */
+  value: number | null;
   label: string;
   sub?: string;
   tone?: "bull" | "bear" | "violet" | "cyan" | "amber";
   size?: number;
 }) {
-  const clamped = Math.max(0, Math.min(1, value));
+  const clamped = value == null ? 0 : Math.max(0, Math.min(1, value));
   const stroke = Math.round(size * 0.08);
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
@@ -54,7 +57,7 @@ export function WinRateRing({
         />
       </svg>
       <div className="admin-ring-center">
-        <span className="admin-ring-value">{pct(clamped)}</span>
+        <span className="admin-ring-value">{value == null ? "—" : pct(clamped)}</span>
         <span className="admin-ring-label">{label}</span>
         {sub && <span className="admin-ring-sub">{sub}</span>}
       </div>

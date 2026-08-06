@@ -9,6 +9,7 @@ import { fetchPlayOutcomeStatsForWindow } from "@/features/spx/lib/spx-play-outc
 // PR-N2: the one headline-scoreable predicate (methodology/pulled/unfilled quarantine)
 // shared by every surface that quotes a Night Hawk win rate.
 import { isNighthawkOutcomeScoreable } from "@/lib/track-record-page";
+import { LOW_N_THRESHOLD } from "@/lib/zerodte/record";
 import {
   fetchNighthawkOutcomeAnalytics,
   fetchNighthawkScoringHistory,
@@ -1484,6 +1485,8 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       const nighthawk_wins = nhRows.filter((r) => r.outcome === "target").length;
       const nighthawk_losses = nhRows.filter((r) => r.outcome === "stop").length;
       const nighthawk_decided = nighthawk_wins + nighthawk_losses;
+      // 0 when nothing is decided is safe HERE only because the formatter suppresses the
+      // whole comparison line under nighthawk_low_n — see record-read.ts.
       const nighthawk_win_rate = nighthawk_decided > 0 ? nighthawk_wins / nighthawk_decided : 0;
       const nighthawk_signal_count = nhRows.length;
 
@@ -1503,6 +1506,15 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
         nighthawk_losses,
         nighthawk_pending_count: nighthawkAnalytics.pending_count,
         nighthawk_signal_count,
+        // The rate above is computed over DECIDED outcomes, but nighthawk_signal_count is
+        // the scoreable row count — a larger population. Quoting them side by side rendered
+        // "0% win rate · 22 graded pick(s)" to members when the 0% was 0-for-2 (live
+        // 2026-08-06). Ship the decided n and the low-n flag so the formatter can never pair
+        // a rate with an n that did not produce it, and can suppress the rate entirely when
+        // the sample is too thin to read.
+        nighthawk_decided: nighthawk_decided,
+        nighthawk_opens: nhRows.filter((r) => r.outcome === "open").length,
+        nighthawk_low_n: nighthawk_decided < LOW_N_THRESHOLD,
         // Pre-computed once, in code — the whole point of this tool. Positive
         // win_rate_delta means SPX Slayer's window win rate is hotter than
         // Night Hawk's over the SAME window; negative means Night Hawk is hotter.

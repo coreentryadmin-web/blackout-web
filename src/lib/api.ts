@@ -417,7 +417,13 @@ export const fetchNightHawkRecord = (days = 30) =>
     window_days: days,
     total_resolved: 0,
     pending_count: 0,
-    win_rate_pct: 0,
+    // null, not 0: this branch is an OUTAGE. A 0 here renders as "every play lost" —
+    // a fetch failure must never publish a performance claim. (available:false should
+    // already suppress it; the field stays honest in case a consumer reads it anyway.)
+    win_rate_pct: null,
+    decided_count: 0,
+    opens_count: 0,
+    low_n: true,
     profitable_rate_pct: 0,
     avg_return_pct: 0,
     by_conviction: [],
