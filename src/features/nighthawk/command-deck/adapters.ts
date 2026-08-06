@@ -411,7 +411,22 @@ export interface HorizonDeckSource {
   score: number;
   status?: string;
   reason?: string;
-  contract: { strike: number; right: "C" | "P"; expiry: string; dte: number; mid?: number | null };
+  /** The play's contract. The greek fields are OPTIONAL and ADDITIVE (FINDINGS 2026-08-06): the SWING
+   *  payload's ChainContract has always carried `delta`, and now carries gamma/theta/vega/iv for live
+   *  positions, but this source type had no slot for any of them — so the deck could not have rendered
+   *  a greek even when one was present. Each is independently null-safe downstream. */
+  contract: {
+    strike: number;
+    right: "C" | "P";
+    expiry: string;
+    dte: number;
+    mid?: number | null;
+    delta?: number | null;
+    gamma?: number | null;
+    theta?: number | null;
+    vega?: number | null;
+    iv?: number | null;
+  };
 
   // ── PR-12 de-hardcode: REAL reads from the swing serving meta (serving-ingest.ts), all OPTIONAL and
   //    ADDITIVE. The adapter USED to hardcode factors:[] / regime:null / thesisBreak:{intact}; it now
@@ -476,6 +491,22 @@ function horizonDeckStatus(src: HorizonDeckSource): DeckStatus {
   return asStatus(src.status ?? (src.score >= 60 ? "OPEN" : "WATCH"));
 }
 
+/**
+ * Build the deck greek strip from a horizon play's contract. Returns null — a genuinely absent strip —
+ * when the contract carries NO greek at all, so "we have nothing" and "we have a delta but no gamma"
+ * stay distinguishable at the renderer. Never fabricates: a non-finite field becomes null.
+ */
+export function greeksFromContract(contract: HorizonDeckSource["contract"]): DeckGreeks | null {
+  const greeks: DeckGreeks = {
+    delta: fin(contract.delta),
+    gamma: fin(contract.gamma),
+    theta: fin(contract.theta),
+    vega: fin(contract.vega),
+    iv: fin(contract.iv),
+  };
+  return Object.values(greeks).some((v) => v != null) ? greeks : null;
+}
+
 export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
   const status = horizonDeckStatus(src);
   const entry = fin(src.entryPremium);
@@ -520,7 +551,13 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     flagUnderlyingPx: flagPx,
     peak: peakDisplay,
     trough: troughDisplay,
-    greeks: null,
+    // FINDINGS 2026-08-06 (SEV-3, greeks never reached the desk): this was a hardcoded `null`, so the
+    // SWING/LEAPS greek strip could never render anything — not even the `delta` the payload has always
+    // carried. Built from the contract now, each field independently null-safe, and null ONLY when the
+    // contract itself carries no greek at all so the strip stays honestly absent rather than all-"—".
+    // NOTE: PlayTerminal additionally blanks the strip when the row has no live mark (`greeksOff`), so a
+    // pre-entry candidate still shows nothing — this only lights up rows with a real live quote.
+    greeks: greeksFromContract(src.contract),
     archetype: src.archetype ?? null,
     subLane: src.subLane ?? null,
     setupState: src.setupState ?? null,

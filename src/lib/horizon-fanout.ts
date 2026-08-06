@@ -112,10 +112,14 @@ export function explodeChainRows(
     call_ask: number | null;
     call_delta: number | null;
     call_oi: number;
+    /** OPTIONAL (FINDINGS 2026-08-06): ChainStrikeRow has carried per-side IV all along and this
+     *  adapter silently dropped it. Optional here so every existing caller/fixture still type-checks. */
+    call_iv?: number | null;
     put_bid: number | null;
     put_ask: number | null;
     put_delta: number | null;
     put_oi: number;
+    put_iv?: number | null;
   }>,
   asOfYmd: string,
   direction: PlayDirection,
@@ -129,6 +133,7 @@ export function explodeChainRows(
     const bid = right === "C" ? r.call_bid : r.put_bid;
     const ask = right === "C" ? r.call_ask : r.put_ask;
     const rawDelta = right === "C" ? r.call_delta : r.put_delta;
+    const rawIv = right === "C" ? r.call_iv : r.put_iv;
     out.push({
       ticker: ticker.toUpperCase(),
       right,
@@ -140,6 +145,11 @@ export function explodeChainRows(
       bid,
       ask,
       mid: midOf(bid, ask),
+      // IV passthrough (FINDINGS 2026-08-06): the source rows carry `call_iv`/`put_iv` and this mapper
+      // discarded them, so every pre-entry SWING play reached the desk with delta as its ONLY greek.
+      // gamma/theta/vega are NOT recoverable here — ChainStrikeRow has no columns for them (see the
+      // follow-up note in FINDINGS); serving IV alone is strictly more truth than serving none.
+      iv: rawIv == null || !Number.isFinite(rawIv) ? null : rawIv,
     });
   }
   return out;
