@@ -18,10 +18,14 @@ export const dynamic = "force-dynamic";
  * payload (like the walls route) so the shared per-ticker stream fan-out stays lean; the panel
  * polls this on its own cadence.
  *
- * Data source is the SAME near-term aggregate that feeds the chart's default ("all") walls —
- * `GexHeatmap.gex.strike_totals` (strike → signed net GEX). `buildGexLadder` bands it around spot
- * and returns display-ready rows. Rounded at the data layer (repo policy — `strike_totals` are raw
- * provider floats). Horizon-scoping the ladder to the chart's DTE toggle is a documented follow-up.
+ * Data source for the default ("all") horizon is `GexHeatmap.gex.strike_totals` (strike → signed
+ * net GEX), the SAME near-term aggregate that feeds the chart's default walls. `buildGexLadder`
+ * bands it around spot and returns display-ready rows. Rounded at the data layer (repo policy —
+ * `strike_totals` are raw provider floats).
+ *
+ * A narrowed DTE horizon (0DTE/weekly/monthly) is scoped via `getHorizonStrikeTotals`, which
+ * re-derives the ladder from the same per-expiry chain reconstruction the chart's DTE walls use —
+ * see the fallback branch below for the "all"/thin-chain degrade.
  */
 export async function GET(req: NextRequest) {
   const auth = await authorizeMarketDeskApi(req);
@@ -58,7 +62,12 @@ export async function GET(req: NextRequest) {
 
   const hm = await fetchGexHeatmap(ticker).catch(() => null);
   const spot = hm?.spot ?? null;
-  const ladder = buildGexLadder(hm?.gex?.strike_totals ?? null, spot);
+  // Wall-migration arrows (2026-08-06): the "all" horizon reads the SAME heatmap payload the
+  // shift-leaders strip above the pulse rail already reads, so threading its `shift.delta_by_strike`
+  // through is free — no new fetch. Only wired when the shift computation actually has a baseline
+  // (`available`); the narrowed-horizon branch above never has one (see buildGexLadder's opts doc).
+  const shiftByStrike = hm?.shift?.available ? hm.shift.delta_by_strike : null;
+  const ladder = buildGexLadder(hm?.gex?.strike_totals ?? null, spot, { shiftByStrike });
 
   return NextResponse.json(
     roundFloats({ ticker, spot, asOf: hm?.asof ?? null, horizon, ladder }),

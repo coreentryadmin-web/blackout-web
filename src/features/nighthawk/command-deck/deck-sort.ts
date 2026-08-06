@@ -8,6 +8,8 @@
  */
 
 import type { DeckStatus, TerminalPlay } from "./types";
+import { playQualityPct } from "./play-card-display";
+import { playListReturnPct, playTriggeredAtMs } from "./play-card-lifecycle";
 
 /** Which visual band a status belongs to. Lower rank sorts higher (nearer the top). */
 function statusBand(status: DeckStatus): 0 | 1 | 2 {
@@ -54,7 +56,7 @@ export function sortPlaysForDeck(plays: TerminalPlay[]): TerminalPlay[] {
 // array is untouched. Every input degrades safely: a play carrying none of the three signals scores 0
 // and holds its incoming (score-ranked) position via the stable tie-break.
 
-export type DeckSortMode = "status" | "conviction";
+export type DeckSortMode = "status" | "rating" | "time" | "peak";
 
 /** Merit-tier letter → an ordinal (higher = better). A+ tops it; an unknown/absent tier is 0 (no
  *  conviction credit — never a fabricated grade). Case-insensitive; the "+" adds a half-step so A+
@@ -108,7 +110,51 @@ export function sortPlaysByConviction(plays: TerminalPlay[]): TerminalPlay[] {
     .map((x) => x.p);
 }
 
-/** Dispatch the active sort mode — the deck picks status (default) or conviction. */
+/** Card-visible rating — tier ordinal dominates, quality/score breaks ties. */
+export function ratingSortKey(play: TerminalPlay): number {
+  const tier = tierRank(play.tierLabel) * 1000;
+  const quality = playQualityPct(play) ?? (Number.isFinite(play.score) ? play.score : 0);
+  return tier + quality;
+}
+
+/** Highest grade/score first — matches the inline B 82 badge on list rows. */
+export function sortPlaysByRating(plays: TerminalPlay[]): TerminalPlay[] {
+  return plays
+    .map((p, i) => ({ p, i, r: ratingSortKey(p) }))
+    .sort((a, b) => b.r - a.r || b.p.score - a.p.score || a.i - b.i)
+    .map((x) => x.p);
+}
+
+/** Most recently triggered/discovered first — grounded timestamps only. */
+export function sortPlaysByTriggeredTime(plays: TerminalPlay[]): TerminalPlay[] {
+  return plays
+    .map((p, i) => ({ p, i, t: playTriggeredAtMs(p) }))
+    .sort((a, b) => b.t - a.t || a.i - b.i)
+    .map((x) => x.p);
+}
+
+/** Best peak/track/live return first — same read as the compact list column. */
+export function sortPlaysByPeak(plays: TerminalPlay[]): TerminalPlay[] {
+  return plays
+    .map((p, i) => ({ p, i, r: playListReturnPct(p) }))
+    .sort((a, b) => {
+      const ar = a.r ?? -Infinity;
+      const br = b.r ?? -Infinity;
+      return br - ar || a.i - b.i;
+    })
+    .map((x) => x.p);
+}
+
+/** Dispatch the active sort mode — status banding default; rating/time/peak are member lenses. */
 export function sortPlaysForDeckBy(plays: TerminalPlay[], mode: DeckSortMode): TerminalPlay[] {
-  return mode === "conviction" ? sortPlaysByConviction(plays) : sortPlaysForDeck(plays);
+  switch (mode) {
+    case "rating":
+      return sortPlaysByRating(plays);
+    case "time":
+      return sortPlaysByTriggeredTime(plays);
+    case "peak":
+      return sortPlaysByPeak(plays);
+    default:
+      return sortPlaysForDeck(plays);
+  }
 }

@@ -252,45 +252,38 @@ before(async () => {
     },
   });
 
-  // Imported dynamically, AFTER every mock above is registered — a static
-  // top-level import would be hoisted ahead of this before() hook and load the
-  // real modules first (same ordering requirement run-tool.test.ts documents).
+  mock.module("./largo/turn-pipeline", {
+    namedExports: {
+      prefetchLargoTurnCaches: async () => {},
+    },
+  });
+
+  // Imported dynamically, AFTER every mock above is registered
   ({ runLargoQuery, runLargoQueryStream, isRichBieEnvelope } = await import("./largo-terminal"));
 });
 
-test("runLargoQuery: a deterministic router turn persists intent_bucket = the real intent, tools_used = [blackout_intelligence]", async () => {
+test("runLargoQuery: every turn uses the Claude tool loop (no BIE router)", async () => {
   inserted = [];
   appended = [];
+  toolLoopToolNames = [];
   const result = await runLargoQuery("How are today's plays doing?", "", "user-1");
   await waitForInserts(1);
 
-  assert.equal(result.source, "blackout-intelligence");
+  assert.equal(result.source, "blackout-web+postgres");
   assert.equal(inserted.length, 1);
   const row = inserted[0]!;
-  assert.equal(row.answer_source, "bie-router");
-  assert.equal(row.intent, "zerodte_plays");
-  // The whole point of task #103: intent_bucket carries the real routed intent
-  // name (not null) whenever the router actually matched.
-  assert.equal(row.intent_bucket, "zerodte_plays");
-  assert.deepEqual(row.tools_used, ["blackout_intelligence"]);
+  assert.equal(row.answer_source, "claude");
+  assert.equal(row.intent, null);
+  assert.equal(row.intent_bucket, "claude_fallback");
+  assert.deepEqual(row.tools_used, ["live_feed_capture", "get_quote", "get_technicals"]);
+  assert.match(result.answer, /VWAP|NVDA|Bottom line/i);
 
-  // Task #166: the router-composed assistant turn must persist its composed
-  // context as tool_results — previously omitted entirely, which left this whole
-  // path invisible to largo-verifier.ts's nightly grounding audit
-  // (fetchRecentLargoAnswersWithResults filters WHERE tool_results IS NOT NULL).
-  assert.equal(appended.length, 2, "expected one user + one assistant appendLargoMessage call");
+  assert.equal(appended.length, 2);
   const assistantCall = appended.find((c) => c.role === "assistant")!;
-  assert.ok(assistantCall, "assistant turn was persisted");
-  assert.ok(
-    Array.isArray(assistantCall.toolResults) && assistantCall.toolResults.length > 0,
-    "router-composed assistant turn must persist a non-empty toolResults array"
-  );
-  // The mocked composeBieAnswer() for "zerodte_plays" returns context: { live_pnl_pct: 50 } —
-  // confirm it's exactly that payload (wrapped, not dropped or replaced) that gets persisted.
-  assert.deepEqual(assistantCall.toolResults, [{ live_pnl_pct: 50 }]);
+  assert.deepEqual(assistantCall.toolResults, [{ ok: true }, { ok: true }]);
 });
 
-test("runLargoQuery: a Claude-fallback turn persists intent_bucket = 'claude_fallback' and the real dispatched tool names", async () => {
+test("runLargoQuery: Claude turn persists intent_bucket = 'claude_fallback' and dispatched tool names", async () => {
   inserted = [];
   appended = [];
   toolLoopToolNames = [];
@@ -321,26 +314,25 @@ test("runLargoQuery: a Claude-fallback turn persists intent_bucket = 'claude_fal
   assert.deepEqual(assistantCall.toolResults, [{ ok: true }, { ok: true }]);
 });
 
-test("runLargoQueryStream: same persistence contract on the streaming path — router branch", async () => {
+test("runLargoQueryStream: streaming path uses Claude tool loop", async () => {
   inserted = [];
   appended = [];
+  toolLoopToolNames = [];
   const events: unknown[] = [];
   await runLargoQueryStream("What's the market doing?", "", "user-3", (e) => events.push(e));
   await waitForInserts(1);
 
   assert.equal(inserted.length, 1);
   const row = inserted[0]!;
-  assert.equal(row.answer_source, "bie-router");
-  assert.equal(row.intent_bucket, "market_context");
-  assert.deepEqual(row.tools_used, ["blackout_intelligence"]);
+  assert.equal(row.answer_source, "claude");
+  assert.equal(row.intent_bucket, "claude_fallback");
+  assert.deepEqual(row.tools_used, ["live_feed_capture", "get_quote", "get_technicals"]);
 
-  // Task #166 — same fix, streaming call site (runLargoQueryStream's own tryBieRoute
-  // branch, a separate call site from runLargoQuery's above).
   const assistantCall = appended.find((c) => c.role === "assistant")!;
-  assert.deepEqual(assistantCall.toolResults, [{ vix: 12.5 }]);
+  assert.deepEqual(assistantCall.toolResults, [{ ok: true }, { ok: true }]);
 });
 
-test("runLargoQueryStream: same persistence contract on the streaming path — Claude-fallback branch", async () => {
+test("runLargoQueryStream: Claude streaming persists tool names", async () => {
   inserted = [];
   toolLoopToolNames = [];
   const events: unknown[] = [];
@@ -425,87 +417,9 @@ test("runLargoQueryStream: a thrown tool-loop error still emits an 'error' SSE e
   }
 });
 
-// ── Envelope-through-API (task #64) ─────────────────────────────────────────
-// Thread the composed BieAnswerEnvelope through tryBieRoute → the query response as `envelope`, but
-// ONLY when it's a genuinely rich synthesis — a trivial string leg's shim envelope is dropped so the
-// client falls back to `answer` markdown. `answer`/source/tools_used stay unchanged (back-compat).
-
 test("isRichBieEnvelope: rich synthesis → true; string-leg shim → false; nullish → false", () => {
   assert.equal(isRichBieEnvelope(RICH_ENVELOPE), true);
   assert.equal(isRichBieEnvelope(SHIM_ENVELOPE), false);
   assert.equal(isRichBieEnvelope(null), false);
   assert.equal(isRichBieEnvelope(undefined), false);
-});
-
-test("runLargoQuery: a rich verdict synthesis attaches the structured envelope to the response", async () => {
-  inserted = [];
-  appended = [];
-  const result = await runLargoQuery("is SPX 7500 0DTE good today", "", "user-env-1");
-
-  assert.equal(result.source, "blackout-intelligence");
-  // The rich envelope is threaded through verbatim…
-  assert.ok(result.envelope, "a rich verdict answer must carry an envelope");
-  assert.equal(result.envelope?.headline, RICH_ENVELOPE.headline);
-  assert.equal(result.envelope?.sections.length, 2);
-  assert.equal(result.envelope?.scenarios?.length, 1);
-  // …while `answer` (markdown) is unchanged for back-compat.
-  assert.equal(result.answer, RICH_ENVELOPE.markdown);
-});
-
-test("runLargoQuery: a trivial string leg (shim envelope) does NOT attach an envelope — client uses markdown", async () => {
-  inserted = [];
-  appended = [];
-  const result = await runLargoQuery("How are today's plays doing?", "", "user-env-2");
-
-  assert.equal(result.source, "blackout-intelligence");
-  assert.equal(result.envelope, undefined, "a shim envelope must be gated out of the response");
-  // The string answer is still delivered as before.
-  assert.match(result.answer, /Command board/);
-});
-
-test("runLargoQueryStream: the done event carries the rich envelope on a verdict synthesis", async () => {
-  inserted = [];
-  appended = [];
-  const events: unknown[] = [];
-  await runLargoQueryStream("is SPX 7500 0DTE good today", "", "user-env-3", (e) => events.push(e));
-
-  const done = events.find((e) => (e as { type?: string }).type === "done") as
-    | { type: string; envelope?: { headline?: string; sections?: unknown[] } }
-    | undefined;
-  assert.ok(done, "expected a done event");
-  assert.ok(done?.envelope, "the streaming done event must carry the rich envelope");
-  assert.equal(done?.envelope?.headline, RICH_ENVELOPE.headline);
-});
-
-test("runLargoQueryStream: the done event omits the envelope for a trivial string leg", async () => {
-  inserted = [];
-  appended = [];
-  const events: unknown[] = [];
-  await runLargoQueryStream("What's the market doing?", "", "user-env-4", (e) => events.push(e));
-
-  const done = events.find((e) => (e as { type?: string }).type === "done") as
-    | { type: string; envelope?: unknown }
-    | undefined;
-  assert.ok(done, "expected a done event");
-  assert.equal(done?.envelope, undefined, "market_context has no envelope → done event omits it");
-});
-
-test("runLargoQuery: routed-but-null-composed returns honest fallback, never falls through to Claude (SPY/QQQ misroute regression)", async () => {
-  inserted = [];
-  appended = [];
-  // "Vector setup on SPY" routes to vector_read with ticker=SPY, but the mock
-  // composeBieAnswer returns null for vector_read (simulating the composer
-  // throwing internally). Before the fix, this would fall through to the Claude
-  // tool-loop which only has SPX context, silently answering SPY with SPX data.
-  const result = await runLargoQuery("Vector setup on SPY", "", "user-misroute-1");
-  await waitForInserts(1);
-
-  assert.equal(result.source, "blackout-intelligence", "must NOT fall through to Claude");
-  assert.match(result.answer, /vector read/i, "honest fallback mentions the matched intent");
-  assert.match(result.answer, /SPY/i, "honest fallback names the requested ticker");
-  assert.match(result.answer, /couldn't compose/i, "honest fallback explains the gap");
-
-  const row = inserted[0]!;
-  assert.equal(row.answer_source, "bie-router", "logged as router path, not claude");
-  assert.equal(row.intent, "vector_read");
 });

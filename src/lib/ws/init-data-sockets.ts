@@ -3,7 +3,7 @@ import { ensureUwClusterFreshnessPoller, initUwSocket, shutdownUwSocket } from "
 import { initOptionsSocket, shutdownOptionsSocket } from "@/lib/ws/options-socket";
 import { initStocksSocket, shutdownStocksSocket } from "@/lib/ws/stocks-socket";
 import { initFlowEventBridge } from "@/lib/flow-events";
-import { shouldBootDataSockets, shouldRunRthWarmLeader } from "@/lib/process-role";
+import { shouldBootDataSockets, shouldRunRthWarmLeader, shouldRunVectorBeadRecorder } from "@/lib/process-role";
 
 let initialized = false;
 let closed = false;
@@ -60,6 +60,14 @@ export function ensureDataSockets() {
     void import("@/lib/rth-warm-leader")
       .then(({ ensureRthWarmLeader }) => ensureRthWarmLeader())
       .catch((err) => console.warn("[init-data-sockets] RTH warm leader init failed (non-fatal):", err));
+  }
+
+  if (shouldRunVectorBeadRecorder()) {
+    void import("@/lib/vector-bead-recorder-leader")
+      .then(({ ensureVectorBeadRecorder }) => ensureVectorBeadRecorder())
+      .catch((err) =>
+        console.warn("[init-data-sockets] Vector bead recorder init failed (non-fatal):", err)
+      );
   }
 
   // Web tier (PROCESS_ROLE=web / DATA_SOCKETS_ENABLED=0) must NOT open upstream sockets —

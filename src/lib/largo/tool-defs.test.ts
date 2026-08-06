@@ -693,3 +693,28 @@ test("every turn includes baseline platform tools", () => {
   assert.ok(tools.includes("get_ecosystem_context"));
   assert.ok(tools.includes("get_hot_tickers"));
 });
+
+test("banger and swing product tools route on lane vocabulary", () => {
+  assert.ok(getToolsForIntent("any bangers running today").includes("get_banger_board"));
+  assert.ok(getToolsForIntent("show the swing board").includes("get_swing_horizon"));
+  assert.ok(getToolsForIntent("why did cortex skip NVDA").includes("get_cortex_decision"));
+  assert.ok(getToolsForIntent("helix signal outcomes").includes("get_helix_signal_outcomes"));
+  assert.ok(getToolsForIntent("0dte command track record").includes("get_zerodte_record"));
+});
+
+test("new product tools are registered in LARGO_TOOL_DEFS", () => {
+  const names = new Set(LARGO_TOOL_DEFS.map((t) => t.name));
+  for (const tool of [
+    "get_banger_board",
+    "get_swing_horizon",
+    "get_nighthawk_horizons",
+    "get_zerodte_record",
+    "get_horizon_outcomes",
+    "get_helix_signal_outcomes",
+    "get_spx_pin",
+    "get_spx_pulse",
+    "get_cortex_decision",
+  ]) {
+    assert.ok(names.has(tool), `${tool} missing from LARGO_TOOL_DEFS`);
+  }
+});

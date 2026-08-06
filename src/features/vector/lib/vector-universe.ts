@@ -7,7 +7,8 @@ import {
 import { listSharedUniverseTickers, touchDynamicUniverse } from "./vector-dynamic-universe";
 import { isVectorTickerAllowed, normalizeVectorTicker } from "./vector-ticker";
 import { roundFloats } from "@/lib/round-floats";
-import { bucketWallSampleTime, buildWallHistorySample, wallTrailSampleSecForTicker } from "./vector-wall-sample";
+import { bucketWallSampleTime, buildWallHistorySample } from "./vector-wall-sample";
+import { wallTrailSampleSecForTicker } from "./vector-wall-sample-server";
 import { appendSessionWallSample } from "./vector-wall-persist";
 import { VECTOR_WALL_NODES_PER_SIDE } from "./vector-bar-timeframes";
 import { buildNarrowedHorizonWallSamples } from "./vector-snapshot";
@@ -59,22 +60,27 @@ const TTL_SEC = 48 * 60 * 60;
  * heatmap fetch.
  *
  * Why here: the chart's bead rails ("strength per time" dots) are drawn from
- * `vector:wall-history:{ticker}:{ymd}`, but the ONLY writer of that key was the
- * live SSE hub (`buildVectorSnapshot`). So a rail existed only for a ticker a
- * member happened to be watching live during RTH — every other ticker, and the
- * whole session after close, collapsed to the single seeded bead. This build
- * already fetches the full GEX/VEX walls for every universe ticker every 5 min
- * and then throws all but the top strike away; recording a sample from that
- * same data (near-zero extra cost) makes the rails accumulate server-side,
- * independent of viewers, so they persist after-hours and exist for every
- * covered ticker. Kept out of the inline scanner-poll path (opts default off)
- * so off-hours polls can't append stale samples onto the session rail.
+ * `vector:wall-history:{ticker}:{ymd}`. The live SSE hub, the 5s in-process
+ * vector-bead-recorder-leader, and this 5-min cron all write samples; this build
+ * already fetches the full GEX/VEX walls for every universe ticker and records
+ * from that same heatmap read.
  */
 async function buildVectorUniverseRow(
   raw: string,
-  opts: { recordWallHistory?: boolean; sessionYmd?: string; nowSec?: number } = {}
+  opts: {
+    recordWallHistory?: boolean;
+    sessionYmd?: string;
+    nowSec?: number;
+    /** Universe recorder uses 5s buckets; live/active paths use 15s for non-oracle. */
+    bucketScope?: import("./vector-wall-sample").WallTrailSampleScope;
+  } = {}
 ): Promise<VectorUniverseRow | null> {
-  const { recordWallHistory = false, sessionYmd, nowSec = Math.floor(Date.now() / 1000) } = opts;
+  const {
+    recordWallHistory = false,
+    sessionYmd,
+    nowSec = Math.floor(Date.now() / 1000),
+    bucketScope = "universe",
+  } = opts;
   const ticker = normalizeVectorTicker(raw);
   const hm = await fetchGexHeatmap(ticker);
   const spot = hm?.spot ?? null;
@@ -90,7 +96,7 @@ async function buildVectorUniverseRow(
     : { callWalls: [], putWalls: [] };
 
   if (recordWallHistory && sessionYmd) {
-    const sampleTime = bucketWallSampleTime(nowSec, wallTrailSampleSecForTicker(ticker));
+    const sampleTime = bucketWallSampleTime(nowSec, wallTrailSampleSecForTicker(ticker, bucketScope));
     const sample = buildWallHistorySample({
       time: sampleTime,
       gexWalls,
@@ -128,6 +134,27 @@ async function buildVectorUniverseRow(
     topPutPct: gexWalls.putWalls[0]?.pct ?? null,
     asOf: Number.isFinite(asOfMs) ? asOfMs : null,
   };
+}
+
+/**
+ * Record one wall-history bucket (blended + narrowed horizons) for a single ticker.
+ * Shared by the 5s universe bead recorder and the 5-min universe snapshot cron.
+ */
+export async function recordVectorUniverseWallSample(
+  raw: string,
+  opts: {
+    sessionYmd: string;
+    nowSec?: number;
+    bucketScope?: import("./vector-wall-sample").WallTrailSampleScope;
+  }
+): Promise<boolean> {
+  const row = await buildVectorUniverseRow(raw, {
+    recordWallHistory: true,
+    sessionYmd: opts.sessionYmd,
+    nowSec: opts.nowSec ?? Math.floor(Date.now() / 1000),
+    bucketScope: opts.bucketScope ?? "universe",
+  });
+  return row != null;
 }
 
 export async function buildVectorUniverseSnapshot(

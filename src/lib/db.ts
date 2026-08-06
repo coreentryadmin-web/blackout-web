@@ -1794,6 +1794,59 @@ async function runMigrations(): Promise<void> {
     WHERE graded_at IS NOT NULL AND feature_vector IS NOT NULL;
   `);
 
+  // ── swing_shadow_positions (2026-08-06, member-authorized) — a DELIBERATELY SEPARATE table, never
+  // read by fetchOpenSwingPositions/active-refresh/the member board. A candidate that clears every
+  // open-ability check (direction/contract/premium/sub-lane) but is turned away by a REAL-TIME risk
+  // gate (armed budget or book-percent caps — never idempotency, since an already-open name is already
+  // being traded for real) gets a shadow row here instead: same commit-time snapshot shape, zero real
+  // capital, tracked so the calibration ladder can grade what the risk gates turned away without ever
+  // being confused for (or contaminating the math of) a real position. Intentionally simpler than
+  // swing_positions — no roll chain, no pinned-column upsert dance — since a shadow row is a one-shot
+  // snapshot of "would have opened here," not a managed live position.
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS swing_shadow_positions (
+      id BIGSERIAL PRIMARY KEY,
+      commit_key TEXT NOT NULL,
+      session_date DATE NOT NULL,
+      ticker TEXT NOT NULL,
+      direction TEXT NOT NULL,
+      sub_lane TEXT NOT NULL,
+      archetype TEXT,
+      contract_strike NUMERIC,
+      contract_expiry DATE,
+      contract_type TEXT,
+      contract_occ TEXT,
+      contract_delta NUMERIC,
+      entry_underlying_px NUMERIC,
+      thesis_invalidation_px NUMERIC,
+      target_underlying_px NUMERIC,
+      entry_premium NUMERIC,
+      last_mark NUMERIC,
+      peak_premium NUMERIC,
+      trough_premium NUMERIC,
+      realized_pnl_pct NUMERIC,
+      -- Why this candidate was blocked from a REAL open (e.g. "budget:per_position_loss",
+      -- "cap:max_same_week_expiry") — the whole reason this row exists instead of a real one.
+      blocked_by TEXT[] NOT NULL DEFAULT '{}',
+      entry_context JSONB,
+      gate_calibration_json JSONB,
+      feature_vector JSONB,
+      status TEXT NOT NULL DEFAULT 'OPEN',
+      first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      closed_at TIMESTAMPTZ,
+      graded_at TIMESTAMPTZ,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await p.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_swing_shadow_positions_commit_key ON swing_shadow_positions(commit_key)`);
+  await p.query(`
+    DO $$ BEGIN
+      ALTER TABLE swing_shadow_positions ADD CONSTRAINT swing_shadow_positions_status_ck
+        CHECK (status IN ('OPEN','CLOSED'));
+    EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+  `);
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_swing_shadow_positions_open ON swing_shadow_positions(status, session_date DESC) WHERE status = 'OPEN'`);
+
   // Append-only longitudinal series: one row per observation of a live position, never
   // upserted (each tick is evidence of the path, not a correction of the last). The
   // multi-truth grader + trajectory studies (PR-14) join this series to the outcome.
@@ -1897,6 +1950,55 @@ async function runMigrations(): Promise<void> {
     END
     $swing_accum_thesis_pk$;
   `);
+  // ENGINE B — banger_positions (009_banger_positions.sql), inlined for ECS standalone cold starts.
+  // Whole-market weekly banger discovery + live mechanical scale-out tracking — a SEPARATE horizon from
+  // swing_positions (multi-session underlying-terms thesis + roll chain). See that file's header for the
+  // why-not-reuse-swing_positions rationale. Modeled after swing_positions' idempotency (commit_key
+  // unique upsert) + monotonic status-ladder (schema CHECK as the last line of defense) patterns.
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS banger_positions (
+      id BIGSERIAL PRIMARY KEY,
+      commit_key TEXT NOT NULL,
+      session_date DATE NOT NULL,
+      ticker TEXT NOT NULL,
+      discovery_gain NUMERIC,
+      discovery_vol NUMERIC,
+      discovery_dollar_vol NUMERIC,
+      discovery_close_strength NUMERIC,
+      contract_strike NUMERIC NOT NULL,
+      contract_expiry DATE NOT NULL,
+      contract_occ TEXT NOT NULL,
+      entry_premium NUMERIC NOT NULL,
+      last_mark NUMERIC,
+      peak_premium NUMERIC,
+      scaled_already BOOLEAN NOT NULL DEFAULT FALSE,
+      scale_out_action TEXT,
+      scale_out_reason TEXT,
+      partial_realized_premium NUMERIC,
+      realized_pnl_pct NUMERIC,
+      realized_pnl_usd NUMERIC,
+      entry_context JSONB,
+      status TEXT NOT NULL DEFAULT 'OPEN',
+      first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      committed_at TIMESTAMPTZ,
+      closed_at TIMESTAMPTZ,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await p.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_banger_positions_commit_key ON banger_positions(commit_key)`);
+  await p.query(`
+    DO $$ BEGIN
+      ALTER TABLE banger_positions ADD CONSTRAINT banger_positions_status_ck
+        CHECK (status IN ('OPEN', 'PARTIAL', 'CLOSED_RUNNER', 'STOPPED'));
+    EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+  `);
+  await p.query(`
+    CREATE INDEX IF NOT EXISTS idx_banger_positions_open
+    ON banger_positions(status, session_date DESC)
+    WHERE status NOT IN ('CLOSED_RUNNER', 'STOPPED');
+  `);
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_banger_positions_session ON banger_positions(session_date DESC)`);
+
   } finally {
     // Release the advisory lock + return the dedicated connection to the pool.
     try { await lockClient.query(`SELECT pg_advisory_unlock($1)`, [MIGRATION_LOCK_ID]); } catch { /* ignore */ }
@@ -2223,6 +2325,8 @@ export type FlowRow = {
   open_interest?: number;
   implied_volatility?: number;
   otm_pct?: number;
+  /** Canonical UW alert id — enables HELIX deep links from Discord and REST tape. */
+  alert_id?: string;
 };
 
 export async function fetchRecentFlows(params: {
@@ -2298,7 +2402,8 @@ export async function fetchRecentFlows(params: {
 
   const res = await (await getPool()).query<QueryResultRow>(
     `
-    SELECT ticker,
+    SELECT alert_id,
+           ticker,
            COALESCE(total_premium, 0) AS premium,
            option_type,
            TO_CHAR(expiry, 'YYYY-MM-DD') AS expiry,
@@ -2404,6 +2509,7 @@ export async function fetchRecentFlows(params: {
       raw_payload: rawPayload,
     });
     return {
+    alert_id: row.alert_id ? String(row.alert_id) : undefined,
     ticker: String(row.ticker ?? ""),
     premium: Number(row.premium ?? 0),
     option_type: String(row.option_type ?? "").toUpperCase(),
@@ -4145,6 +4251,43 @@ export async function fetchTodaySpxSessionCounts(
   };
 }
 
+/**
+ * Real CONSECUTIVE-loss streak for today's session, derived from the ordered
+ * closed-outcome log in spx_play_outcomes (closed_at DESC — most recent first).
+ *
+ * Root cause this exists to fix: trade-governor.ts's "consecutive loss watch"
+ * was actually reading session_losses_today, a cumulative daily loss counter
+ * that never resets on a win. This walks the REAL chronological outcome
+ * sequence and counts only the trailing run of losses since the last
+ * non-loss, so a win correctly resets the streak to 0.
+ *
+ * 'superseded' rows (force-closed stale opens — bookkeeping only, not a real
+ * trade result) are skipped without breaking or extending the streak. 'open'
+ * rows are excluded entirely (not yet decided). Any 'win' or 'breakeven' ends
+ * the streak.
+ */
+export async function fetchTodaySpxConsecutiveLosses(sessionDate: string): Promise<number> {
+  await ensureSchema();
+  const res = await (await getPool()).query<{ outcome: string }>(
+    `
+    SELECT outcome FROM spx_play_outcomes
+    WHERE session_date = $1::date AND outcome <> 'open'
+    ORDER BY closed_at DESC NULLS LAST, id DESC
+    `,
+    [sessionDate]
+  );
+  let streak = 0;
+  for (const row of res.rows) {
+    if (row.outcome === "superseded") continue;
+    if (row.outcome === "loss") {
+      streak += 1;
+      continue;
+    }
+    break; // win or breakeven ends the trailing streak
+  }
+  return streak;
+}
+
 export async function insertOpenSpxPlay(
   row: {
     session_date: string;
@@ -5878,6 +6021,11 @@ export type GradedFeatureVectorRow = {
   feature_vector: Record<string, unknown> | null;
   plan_outcome: string | null;
   plan_pnl_pct: number | null;
+  /** WS-10/WS-11 executable / reconstructed-trim-scale blob (NH-R14 follow-up widening) — carried
+   *  through so feature-store.ts's labelFromPlanOutcome can resolve the SAME official win/loss
+   *  record.ts's isZeroDteWin does, instead of reading the raw mid columns above straight. Null
+   *  for legacy (pre-WS10) rows, where mid IS official by construction anyway. */
+  entry_context: Record<string, unknown> | null;
 };
 
 /**
@@ -5885,11 +6033,18 @@ export type GradedFeatureVectorRow = {
  * Filtered in SQL to rows that (a) have a feature vector and (b) graded to a win/loss plan_outcome — an
  * ungradeable or still-open row is not evidence, so it never leaves the DB. Capped; the store is meant to
  * be summarized into base rates, not streamed unbounded.
+ *
+ * Selects entry_context alongside the mid columns (NH-R14 follow-up) so the caller can resolve the
+ * OFFICIAL (executable/reconstructed-preferred) win/loss the same way record.ts does — see
+ * feature-store.ts's labelFromPlanOutcome / docs/audit/OUTCOME-GRADING-SPEC.md §4. The WHERE clause
+ * still gates on the raw mid plan_outcome vocabulary (doubled/stopped/time_stop): every row that was
+ * ever executable/reconstructed-graded was first mechanically graded to one of these three, so this
+ * remains a superset "was this row graded at all" filter, not a source of the mid/official split.
  */
 export async function fetchGradedFeatureVectorRows(limit = 5000): Promise<GradedFeatureVectorRow[]> {
   await ensureSchema();
   const res = await (await getPool()).query<QueryResultRow>(
-    `SELECT ticker, session_date, feature_vector, plan_outcome, plan_pnl_pct
+    `SELECT ticker, session_date, feature_vector, plan_outcome, plan_pnl_pct, entry_context
        FROM zerodte_setup_log
       WHERE feature_vector IS NOT NULL
         AND plan_outcome IN ('doubled', 'stopped', 'time_stop')
@@ -5903,6 +6058,7 @@ export async function fetchGradedFeatureVectorRows(limit = 5000): Promise<Graded
     feature_vector: (r.feature_vector as Record<string, unknown> | null) ?? null,
     plan_outcome: r.plan_outcome != null ? String(r.plan_outcome) : null,
     plan_pnl_pct: r.plan_pnl_pct != null ? Number(r.plan_pnl_pct) : null,
+    entry_context: (r.entry_context as Record<string, unknown> | null) ?? null,
   }));
 }
 
@@ -6624,6 +6780,133 @@ export async function fetchOpenSwingPositions(): Promise<SwingPositionRow[]> {
     `SELECT * FROM swing_positions WHERE status NOT IN ('CLOSED','ROLLED') ORDER BY session_date DESC, id DESC`
   );
   return res.rows.map(mapSwingPositionRow);
+}
+
+// ─── swing_shadow_positions accessors (2026-08-06) — DELIBERATELY SEPARATE from swing_positions above.
+// Never read by fetchOpenSwingPositions, active-refresh, budget/caps aggregation, or the member board —
+// see the table's own migration comment for why. ──────────────────────────────────────────────────────
+
+export type SwingShadowPositionInsert = {
+  commit_key: string;
+  session_date: string;
+  ticker: string;
+  direction: "long" | "short";
+  sub_lane: string;
+  archetype?: string | null;
+  contract_strike?: number | null;
+  contract_expiry?: string | null;
+  contract_type?: string | null;
+  contract_occ?: string | null;
+  contract_delta?: number | null;
+  entry_underlying_px?: number | null;
+  thesis_invalidation_px?: number | null;
+  target_underlying_px?: number | null;
+  entry_premium?: number | null;
+  /** Why this candidate was blocked from a REAL open (e.g. "budget:per_position_loss", "cap:..."). */
+  blocked_by: string[];
+  entry_context?: Record<string, unknown> | null;
+  gate_calibration_json?: Record<string, unknown> | null;
+  feature_vector?: Record<string, unknown> | null;
+};
+
+export type SwingShadowPositionRow = SwingShadowPositionInsert & {
+  id: number;
+  last_mark: number | null;
+  peak_premium: number | null;
+  trough_premium: number | null;
+  realized_pnl_pct: number | null;
+  status: "OPEN" | "CLOSED";
+  first_seen_at: string;
+  closed_at: string | null;
+  graded_at: string | null;
+  updated_at: string;
+};
+
+function mapSwingShadowPositionRow(row: QueryResultRow): SwingShadowPositionRow {
+  return {
+    id: Number(row.id),
+    commit_key: String(row.commit_key),
+    session_date: String(row.session_date),
+    ticker: String(row.ticker),
+    direction: row.direction as "long" | "short",
+    sub_lane: String(row.sub_lane),
+    archetype: row.archetype ?? null,
+    contract_strike: row.contract_strike != null ? Number(row.contract_strike) : null,
+    contract_expiry: row.contract_expiry ?? null,
+    contract_type: row.contract_type ?? null,
+    contract_occ: row.contract_occ ?? null,
+    contract_delta: row.contract_delta != null ? Number(row.contract_delta) : null,
+    entry_underlying_px: row.entry_underlying_px != null ? Number(row.entry_underlying_px) : null,
+    thesis_invalidation_px: row.thesis_invalidation_px != null ? Number(row.thesis_invalidation_px) : null,
+    target_underlying_px: row.target_underlying_px != null ? Number(row.target_underlying_px) : null,
+    entry_premium: row.entry_premium != null ? Number(row.entry_premium) : null,
+    last_mark: row.last_mark != null ? Number(row.last_mark) : null,
+    peak_premium: row.peak_premium != null ? Number(row.peak_premium) : null,
+    trough_premium: row.trough_premium != null ? Number(row.trough_premium) : null,
+    realized_pnl_pct: row.realized_pnl_pct != null ? Number(row.realized_pnl_pct) : null,
+    blocked_by: Array.isArray(row.blocked_by) ? row.blocked_by.map(String) : [],
+    entry_context: row.entry_context ?? null,
+    gate_calibration_json: row.gate_calibration_json ?? null,
+    feature_vector: row.feature_vector ?? null,
+    status: row.status as "OPEN" | "CLOSED",
+    first_seen_at: String(row.first_seen_at),
+    closed_at: row.closed_at ?? null,
+    graded_at: row.graded_at ?? null,
+    updated_at: String(row.updated_at),
+  };
+}
+
+/** Insert (or idempotently re-touch) a shadow position. Upserts on commit_key — a re-running scan
+ *  lands on the SAME row rather than duplicating. No real capital, no roll chain: a one-shot snapshot
+ *  of "this candidate would have opened here if the risk gates had allowed it." */
+export async function insertSwingShadowPosition(pos: SwingShadowPositionInsert): Promise<number> {
+  await ensureSchema();
+  const p = await getPool();
+  const res = await p.query<{ id: string }>(
+    `
+    INSERT INTO swing_shadow_positions (
+      commit_key, session_date, ticker, direction, sub_lane, archetype, contract_strike,
+      contract_expiry, contract_type, contract_occ, contract_delta, entry_underlying_px,
+      thesis_invalidation_px, target_underlying_px, entry_premium, blocked_by, entry_context,
+      gate_calibration_json, feature_vector, updated_at
+    ) VALUES (
+      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb,$18::jsonb,$19::jsonb,NOW()
+    )
+    ON CONFLICT (commit_key) DO UPDATE SET updated_at = NOW()
+    RETURNING id
+    `,
+    [
+      pos.commit_key,
+      pos.session_date,
+      pos.ticker.toUpperCase(),
+      pos.direction,
+      pos.sub_lane,
+      pos.archetype ?? null,
+      pos.contract_strike ?? null,
+      pos.contract_expiry ?? null,
+      pos.contract_type ?? null,
+      pos.contract_occ ?? null,
+      pos.contract_delta ?? null,
+      pos.entry_underlying_px ?? null,
+      pos.thesis_invalidation_px ?? null,
+      pos.target_underlying_px ?? null,
+      pos.entry_premium ?? null,
+      pos.blocked_by,
+      toJsonbParam(pos.entry_context ?? null),
+      toJsonbParam(pos.gate_calibration_json ?? null),
+      toJsonbParam(pos.feature_vector ?? null),
+    ]
+  );
+  return Number(res.rows[0]!.id);
+}
+
+/** OPEN shadow positions — read-only observability (admin debug), never fed into the real book/budget. */
+export async function fetchOpenSwingShadowPositions(): Promise<SwingShadowPositionRow[]> {
+  await ensureSchema();
+  const res = await (await getPool()).query<QueryResultRow>(
+    `SELECT * FROM swing_shadow_positions WHERE status = 'OPEN' ORDER BY session_date DESC, id DESC`
+  );
+  return res.rows.map(mapSwingShadowPositionRow);
 }
 
 /** Positions committed on/after a session date — the calibration harness's input. */

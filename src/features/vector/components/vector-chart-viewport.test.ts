@@ -14,10 +14,10 @@ test("SPX embed seeds 0DTE horizon history and opens on session viewport", () =>
   assert.match(shell, /initialHorizonWallHistory=\{initialHorizonWallHistory\}/);
 });
 
-test("/vector page preloads 0DTE rail and opens on session viewport for SPX", () => {
+test("/vector page preloads 0DTE rail and opens on session viewport for oracle tickers", () => {
   const page = read("src/app/(site)/vector/page.tsx");
-  assert.match(page, /seedDteHorizon: "0dte"/);
-  assert.match(page, /defaultDteHorizon=\{ticker === "SPX" \? "0dte" : undefined\}/);
+  assert.match(page, /VECTOR_ORACLE_TICKERS\.has\(ticker\)/);
+  assert.match(page, /defaultDteHorizon=\{VECTOR_ORACLE_TICKERS\.has\(ticker\) \? "0dte" : undefined\}/);
   assert.match(page, /defaultChartViewport="session"/);
 });
 
@@ -39,6 +39,8 @@ test("VectorChart: manual zoom/pan blocks programmatic session refits", () => {
   assert.match(src, /memberViewportLocked\(chartUserPannedRef\.current, wheelZoomCooldownRef\.current\)/);
   assert.match(src, /sessionOverview && !following && !viewportLocked/);
   assert.match(src, /Wall-history poll runs every 5s/);
+  assert.match(src, /vectorWallsScopePollMs/);
+  assert.match(src, /vectorWallTrailSecClient/);
 });
 
 test("vector-chart-viewport: session time range uses lastSessionBars", () => {

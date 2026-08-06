@@ -143,9 +143,11 @@ export type NighthawkRejectionCounterfactual = {
   /** Close vs published entry mid, direction-signed % (null when the band is corrupt —
    *  entryRangeMid's shared guard). */
   realized_return_pct: number | null;
-  /** Strict: a graded 'target', or an 'open' that closed profitably. 'unfilled' /
-   *  'stop' / 'ambiguous' / unknown are NOT wins — conservative against the
-   *  counterfactual, mirroring skip-grading.ts's tie rule. */
+  /** A graded 'target' — and NOTHING else. Byte-identical to the published record's win
+   *  predicate (analytics.ts `winRate`, `r.outcome === "target"`), because this cohort
+   *  exists only to be compared against that one. 'open' (however profitable the close),
+   *  'unfilled', 'stop', 'ambiguous' and unknown are all NOT wins. See the WHY at the
+   *  `would_have_won` assignment in gradeRejectedPlay. */
   would_have_won: boolean;
   reason: string | null;
   graded_at: string;
@@ -240,7 +242,26 @@ export function gradeRejectedPlay(input: {
     hit_stop: verdict.hit_stop,
     bar: input.bar,
     realized_return_pct: ret,
-    would_have_won: outcome === "target" || (outcome === "open" && ret != null && ret > 0),
+    // ONE WIN PREDICATE, SHARED WITH THE PUBLISHED RECORD (analytics.ts:218 `r.outcome === "target"`).
+    //
+    // WHY (measured 2026-08-06): this used to be `outcome === "target" || (outcome === "open" &&
+    // ret > 0)` — a blocked play that merely CLOSED GREEN without ever touching its target scored
+    // as a "win". The published record has never counted that; it counts target touches only. The
+    // two cohorts are the two halves of one comparison (`gate_validation.blocked_value` vs the
+    // published win rate), so scoring them under different predicates makes the comparison lie.
+    //
+    // What the mixed predicate was producing in prod: "target_unreachable blocked 20 plays, 31.3%
+    // would have won" printed next to "published win rate 0%" — which reads as "the gate is
+    // discarding winners" and feeds improvement_queue with direct pressure to LOOSEN the gate.
+    // Score BOTH cohorts with the generous predicate and the ranking inverts (published 15/22 =
+    // 68.2% vs blocked 5/16 = 31.3%): the gate was separating correctly the whole time. The
+    // apparent inversion was a measurement artifact, not a signal.
+    //
+    // The OUTCOME is still graded by the exact production grader above (resolveOutcome), so the
+    // physics were never in question — only this last boolean was. Realized return is still
+    // recorded (`realized_return_pct`) so the profitable-but-untouched class remains readable; it
+    // just no longer counts as a win on one side of a two-sided comparison.
+    would_have_won: outcome === "target",
     reason: outcome === "ungradeable" ? "grader returned pending on a complete bar (no close)" : null,
     graded_at: gradedAt,
   };

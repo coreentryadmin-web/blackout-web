@@ -555,6 +555,7 @@ export interface EditionDeckSource {
   exit_style?: string | null;
   iv_rank?: number | null;
   rr_ratio?: number | null;
+  target_atr_multiple?: number | null;
   flow_streak_days?: number | null;
   gate_promoted?: boolean | null;
   gate_warnings?: string[] | null;
@@ -571,6 +572,10 @@ export interface EditionDeckSource {
   // Morning confirmation overlay (merged by the container).
   morning_status?: "CONFIRMED" | "DEGRADED" | "INVALIDATED" | "UNVERIFIED" | null;
   morning_reason?: string | null;
+  /** True once this CONFIRMED ticker was actually promoted into the Swing serving snapshot
+   *  (per-ticker outcome of promoteLegacyConfirmedToSwing — promotion can fail per-name even
+   *  when the morning-confirm status is CONFIRMED, e.g. "no chain rows"). */
+  swing_promoted?: boolean | null;
   /** Edition publish instant — WATCH "Published" clock. */
   published_at?: string | null;
   /** Morning confirm snapshot instant — OPEN "Confirmed" clock when verified. */
@@ -646,9 +651,18 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
 
   // Thesis break from morning confirmation — risk_note enriches the warn/intact note.
   // CONFIRMED overrides risk_note — a morning confirmation means the thesis held.
+  // NOTE: ms === "INVALIDATED" is checked BEFORE the generic `pulled` branch — INVALIDATED always
+  // engages the one-way `pulled` latch (morning-verdict-persist.ts), so checking `pulled` first
+  // would shadow the INVALIDATED-specific copy with the generic pulled_reason fallback on every
+  // INVALIDATED play. A severe-DEGRADED pull (pulled=true, ms !== "INVALIDATED") is a different
+  // root cause and correctly keeps its own pulled_reason text via the branch below.
   const thesisBreak: { level: ThesisLevel; note?: string } =
-    pulled ? { level: "break", note: src.pulled_reason ?? "play invalidated and pulled" }
-    : ms === "INVALIDATED" ? { level: "break", note: src.morning_reason ?? "morning confirm invalidated thesis" }
+    ms === "INVALIDATED"
+      ? {
+          level: "break",
+          note: `The play has been invalidated at pre-market screening${src.morning_reason ? ` — ${src.morning_reason}` : ""}`,
+        }
+    : pulled ? { level: "break", note: src.pulled_reason ?? "play invalidated and pulled" }
     : ms === "DEGRADED" ? { level: "warn", note: src.morning_reason ?? (src.risk_note ?? "pre-market conditions degraded") }
     : ms === "UNVERIFIED" ? { level: "unknown", note: src.morning_reason ?? "morning confirm has not run yet" }
     : ms === "CONFIRMED" ? { level: "intact" }
@@ -658,14 +672,16 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
 
   // Build the recNote — key_signal enriches the thesis narrative.
   const keySignalLine = src.key_signal ? ` Key signal: ${src.key_signal}` : "";
-  const recNote = pulled
-    ? `PULLED — ${src.pulled_reason ?? "thesis invalidated pre-market"}`
-    : ms === "INVALIDATED"
-      ? `INVALIDATED — ${src.morning_reason ?? "pre-market thesis broke"}`
+  const recNote = ms === "INVALIDATED"
+    ? `The play has been invalidated at pre-market screening${src.morning_reason ? ` — ${src.morning_reason}` : ""}.`
+    : pulled
+      ? `PULLED — ${src.pulled_reason ?? "thesis invalidated pre-market"}`
       : ms === "DEGRADED"
         ? `DEGRADED — ${src.morning_reason ?? "conditions shifted; validate before entry"}`
         : ms === "CONFIRMED"
-          ? `Pre-market confirmed — thesis intact, entry levels hold.${keySignalLine}`
+          ? src.swing_promoted
+            ? `Pre-market confirmed — the play is still active and moved to Swings Open.${keySignalLine}`
+            : `Pre-market confirmed — thesis intact, entry levels hold.${keySignalLine}`
           : src.thesis
             ? `${src.thesis}${keySignalLine}`
             : `Evening edition — pre-market confirm posts before the open.${keySignalLine}`;
@@ -705,6 +721,7 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
     gates,
     regime,
     thesisBreak,
+    swingPromoted: src.swing_promoted === true,
     tierLabel: src.tier?.tier ?? src.conviction ?? null,
     tierFactors: src.tier?.factors ?? null,
     recommendation: pulled || ms === "INVALIDATED" ? "SELL" : ms === "CONFIRMED" ? "BUY" : "HOLD",
@@ -722,6 +739,7 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
     keySignal: src.key_signal ?? null,
     optionsPlay: src.options_play ?? null,
     rrRatio: fin(src.rr_ratio),
+    targetAtrMultiple: fin(src.target_atr_multiple),
     ivRank: fin(src.iv_rank),
     entryCostPerContract: fin(src.entry_premium) ?? fin(src.entry_cost_per_contract),
     premiumCapOk: src.premium_cap_ok ?? null,

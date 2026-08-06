@@ -130,6 +130,49 @@ test("buildGexLadder: omitting kingStrikes preserves the pure self-crowned behav
   assert.equal(l.rows.find((r) => r.strike === 90)!.isKing, true, "put king = max-|gex| (90)");
 });
 
+test("buildGexLadder: no shiftByStrike → every row's migration is null (honest absence)", () => {
+  const totals = { "100": 2_000, "95": -4_000 };
+  const l = buildGexLadder(totals, 100, { bandPct: 0.2 });
+  for (const r of l.rows) assert.equal(r.migration, null);
+});
+
+test("buildGexLadder: call wall builds when net GEX grows more positive", () => {
+  // Current +2000, delta +500 → baseline +1500. Magnitude grew (2000 > 1500) → built.
+  const totals = { "100": 2_000 };
+  const l = buildGexLadder(totals, 100, { bandPct: 0.2, shiftByStrike: { "100": 500 } });
+  const row = l.rows.find((r) => r.strike === 100)!;
+  assert.ok(row.migration != null);
+  assert.equal(row.migration!.built, true);
+  assert.ok(row.migration!.pct > 0);
+});
+
+test("buildGexLadder: put wall builds when net GEX goes MORE negative (side-aware, not raw-delta)", () => {
+  // Current -6000, delta -2000 → baseline -4000. |current| (6000) > |baseline| (4000) → built,
+  // even though the raw delta is negative — this is exactly why wallStrengthShift (not the raw
+  // signed delta) drives the row: a naive `delta > 0` convention would mislabel this as faded.
+  const totals = { "95": -6_000 };
+  const l = buildGexLadder(totals, 100, { bandPct: 0.2, shiftByStrike: { "95": -2_000 } });
+  const row = l.rows.find((r) => r.strike === 95)!;
+  assert.ok(row.migration != null);
+  assert.equal(row.migration!.built, true, "put wall growing heavier (more negative) still reads as built");
+});
+
+test("buildGexLadder: put wall fades when net GEX shrinks back toward zero", () => {
+  // Current -3000, delta +1000 → baseline -4000. |current| (3000) < |baseline| (4000) → faded.
+  const totals = { "95": -3_000 };
+  const l = buildGexLadder(totals, 100, { bandPct: 0.2, shiftByStrike: { "95": 1_000 } });
+  const row = l.rows.find((r) => r.strike === 95)!;
+  assert.ok(row.migration != null);
+  assert.equal(row.migration!.built, false);
+});
+
+test("buildGexLadder: a strike absent from shiftByStrike gets a null migration, not a fabricated one", () => {
+  const totals = { "100": 2_000, "95": -4_000 };
+  const l = buildGexLadder(totals, 100, { bandPct: 0.2, shiftByStrike: { "100": 500 } });
+  assert.ok(l.rows.find((r) => r.strike === 100)!.migration != null, "100 has a shift entry");
+  assert.equal(l.rows.find((r) => r.strike === 95)!.migration, null, "95 has none — never fabricated");
+});
+
 test("buildGexLadder: volume-adjusted ladder crowns the wall strike that OI-only would miss (NVDA RTH regression)", () => {
   // NVDA live bug: OI-only ladder had put king at 195 while the volume-adjusted walls put the
   // wall at 205. With getHorizonStrikeTotals now using volumeAdjusted: true, the ladder data

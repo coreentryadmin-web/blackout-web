@@ -4,6 +4,9 @@ import {
   sortPlaysForDeck,
   sortPlaysByConviction,
   sortPlaysForDeckBy,
+  sortPlaysByRating,
+  sortPlaysByTriggeredTime,
+  sortPlaysByPeak,
   convictionScore,
   tierRank,
   tapeAlignScore,
@@ -27,10 +30,24 @@ function play(id: string, status: DeckStatus): TerminalPlay {
   };
 }
 
-/** A conviction fixture — id + the three signals + a raw score for the tiebreak. */
+/** A conviction fixture — id + sort/rank fields + a raw score for tiebreaks. */
 function conv(
   id: string,
-  over: Partial<Pick<TerminalPlay, "tierLabel" | "confluence" | "thesisBreak" | "score" | "status">>,
+  over: Partial<
+    Pick<
+      TerminalPlay,
+      | "tierLabel"
+      | "confluence"
+      | "thesisBreak"
+      | "score"
+      | "status"
+      | "firstFlaggedAt"
+      | "detectedAt"
+      | "peak"
+      | "pnlPct"
+      | "trackPct"
+    >
+  >,
 ): TerminalPlay {
   return { ...play(id, over.status ?? "OPEN"), ...over };
 }
@@ -173,13 +190,38 @@ test("sortPlaysByConviction: does not mutate input", () => {
   assert.notEqual(out, input);
 });
 
-test("sortPlaysForDeckBy: dispatches status (default) vs conviction; status is unchanged banding", () => {
+test("sortPlaysForDeckBy: dispatches status (default) vs rating; status keeps open band on top", () => {
   const input = [
     conv("closedHi", { tierLabel: "A+", confluence: 2, thesisBreak: { level: "intact" }, status: "CLOSED", score: 90 }),
     conv("openLo", { tierLabel: "D", confluence: 0, thesisBreak: { level: "unknown" }, status: "OPEN", score: 30 }),
   ];
-  // Status: the working OPEN row floats over the CLOSED one regardless of conviction.
   assert.deepEqual(ids(sortPlaysForDeckBy(input, "status")), ["openLo", "closedHi"]);
-  // Conviction: the high-conviction CLOSED row leads even though it's closed.
-  assert.deepEqual(ids(sortPlaysForDeckBy(input, "conviction")), ["closedHi", "openLo"]);
+  assert.deepEqual(ids(sortPlaysForDeckBy(input, "rating")), ["closedHi", "openLo"]);
+});
+
+test("sortPlaysByRating: highest tier + score first", () => {
+  const input = [
+    conv("low", { tierLabel: "C", score: 40 }),
+    conv("high", { tierLabel: "A+", score: 88 }),
+    conv("mid", { tierLabel: "B", score: 82 }),
+  ];
+  assert.deepEqual(ids(sortPlaysByRating(input)), ["high", "mid", "low"]);
+});
+
+test("sortPlaysByTriggeredTime: newest trigger first", () => {
+  const input = [
+    conv("old", { firstFlaggedAt: "2026-08-03T09:00:00-04:00" }),
+    conv("new", { firstFlaggedAt: "2026-08-03T13:30:00-04:00" }),
+    conv("mid", { firstFlaggedAt: "2026-08-03T11:00:00-04:00" }),
+  ];
+  assert.deepEqual(ids(sortPlaysByTriggeredTime(input)), ["new", "mid", "old"]);
+});
+
+test("sortPlaysByPeak: highest return first", () => {
+  const input = [
+    conv("low", { status: "CLOSED", peak: 5 }),
+    conv("high", { status: "CLOSED", peak: 87 }),
+    conv("mid", { status: "OPEN", pnlPct: 42, peak: 42 }),
+  ];
+  assert.deepEqual(ids(sortPlaysByPeak(input)), ["high", "mid", "low"]);
 });

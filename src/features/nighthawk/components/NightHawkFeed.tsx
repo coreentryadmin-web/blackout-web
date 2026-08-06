@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { clsx } from "clsx";
 import { fetchNightHawkEdition } from "@/lib/api";
 import { ZeroDteDeck, HorizonDeck, LegacyDeck } from "@/features/nighthawk/command-deck/containers";
+import { BangerBoard } from "@/features/nighthawk/components/BangerBoard";
 import { IosNativeSegment } from "@/components/ios/IosNativeSegment";
 import { useIosNativeShell } from "@/hooks/useIosNativeShell";
 import {
@@ -16,20 +17,41 @@ import {
 } from "@/features/nighthawk/lib/nighthawk-view";
 import type { NightHawkSeedProps } from "@/features/nighthawk/lib/nighthawk-seed-props";
 import type { BoardResp } from "@/features/nighthawk/command-deck/zerodte-sources";
+import { NIGHTHAWK_GOTO_SWING_EVENT, type NightHawkGotoSwingDetail } from "@/features/nighthawk/lib/goto-swing";
 
 /**
- * Night Hawk — one surface, four views (0DTE / Swings / LEAPS / Legacy), single-select. Each view renders the
- * COMMAND DECK: a two-panel matrix terminal (plays left, live breakdown right). Selecting a view scopes the
- * ENTIRE desk to it and only that view's data is fetched. The choice persists in the URL (?view=).
+ * Night Hawk — one surface, four views (0DTE / Swings / Bangers / Legacy), single-select. ZERO_DTE/SWING/
+ * LEGACY render the COMMAND DECK (a two-panel matrix terminal: plays left, live breakdown right); BANGER
+ * renders BangerBoard — Engine B's standalone whole-market weekly-banger board (not part of the Command
+ * Deck / horizon-ledger shape, see BangerBoard.tsx). Selecting a view scopes the ENTIRE desk to it and only
+ * that view's data is fetched. The choice persists in the URL (?view=).
+ *
+ * LEAPS was removed from this toggle 2026-08-04 (no live signal adapter fed it, so it only ever rendered an
+ * empty lane) — see the header comment in `nighthawk-view.ts` for the full note and revival path.
  */
 export function NightHawkFeed({ seed }: { seed?: NightHawkSeedProps | null }) {
   const nativeShell = useIosNativeShell();
   // SSR may pass view from ?view=; client still re-reads URL on mount for soft-nav edge cases.
   const [view, setView] = useState<NightHawkView>(seed?.view ?? DEFAULT_NIGHTHAWK_VIEW);
+  // Set by a Legacy play's "moved to Swings Open" link (dispatchGotoSwing) — HorizonDeck uses it
+  // to auto-select that ticker's row once the SWING view mounts/refetches.
+  const [swingFocusTicker, setSwingFocusTicker] = useState<string | null>(null);
 
   useEffect(() => {
     const raw = new URLSearchParams(window.location.search).get("view");
     if (raw) setView(parseNightHawkView(raw));
+  }, []);
+
+  useEffect(() => {
+    function onGotoSwing(e: Event) {
+      const ticker = (e as CustomEvent<NightHawkGotoSwingDetail>).detail?.ticker;
+      if (!ticker) return;
+      setSwingFocusTicker(ticker.toUpperCase());
+      selectView("SWING");
+    }
+    window.addEventListener(NIGHTHAWK_GOTO_SWING_EVENT, onGotoSwing);
+    return () => window.removeEventListener(NIGHTHAWK_GOTO_SWING_EVENT, onGotoSwing);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function selectView(next: NightHawkView) {
@@ -69,8 +91,8 @@ export function NightHawkFeed({ seed }: { seed?: NightHawkSeedProps | null }) {
         {view === "ZERO_DTE" && (
           <ZeroDteDeck initialBoard={(seed?.board as BoardResp | null | undefined) ?? null} />
         )}
-        {view === "SWING" && <HorizonDeck horizon="SWING" />}
-        {view === "LEAPS" && <HorizonDeck horizon="LEAPS" />}
+        {view === "SWING" && <HorizonDeck horizon="SWING" focusTicker={swingFocusTicker} />}
+        {view === "BANGER" && <BangerBoard />}
         {isLegacy && <LegacyDeck edition={edition} error={editionError} />}
       </div>
     </div>

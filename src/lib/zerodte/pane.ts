@@ -11,6 +11,7 @@ import { CONVICTION_A_MIN_SCORE } from "@/lib/nighthawk/cortex/compose";
 // Type-only (erased): the tier shapes come from the engine so the reader below can
 // never drift from what assignZeroDteTier/tierForSkip actually emit.
 import type { TierFactor, ZeroDteTier, ZeroDteTierAssignment } from "./tiers";
+import type { ZeroDteFlowAccumulation } from "./flow-accumulation-context";
 
 // ── Cortex verdict (defensive structural read) ─────────────────────────────────────
 // The cortex wire-in (#318) ships the evidence in TWO shapes the pane must accept:
@@ -142,6 +143,45 @@ export function readTierAssignment(raw: unknown): ZeroDteTierAssignment | null {
   if (typeof t.tier !== "string" || !ASSIGNABLE_TIERS.has(t.tier)) return null;
   if (!isTierFactorArray(t.factors)) return null;
   return { tier: t.tier as ZeroDteTier, factors: t.factors };
+}
+
+// ── Multi-day flow-accumulation (defensive structural read) ────────────────────────
+// A committed row's accumulation read is the PINNED entry_context.flow_accumulation
+// blob (flow-accumulation-context.ts's toFlowAccumulationContext, attached at scan
+// time and frozen into entry_context at commit — scan.ts), served opaque by the board
+// payload exactly like cortex/tier above and crossing the same HTTP/JSON boundary —
+// so the pane reads it STRUCTURALLY. Anything malformed (pre-wiring rows, partial
+// blobs) reads as null: no badge, never a guessed alignment. This is what lets the
+// card's AccumulationBadge survive a ticker falling out of the live top-N scan
+// snapshot after commit — before this reader existed the badge could ONLY read the
+// live setup match, so it silently went dark for every such play (FINDINGS 2026-08-05).
+
+const FLOW_ACC_DIRECTIONS = new Set<string>(["bull", "bear", "neutral"]);
+
+/** Structurally validate a maybe-flow_accumulation payload field into the engine's
+ *  signal shape. Null = no (usable) accumulation read on record — the card renders
+ *  without a badge. */
+export function readPinnedFlowAccumulation(raw: unknown): ZeroDteFlowAccumulation | null {
+  if (raw == null || typeof raw !== "object") return null;
+  const a = raw as Record<string, unknown>;
+  if (typeof a.direction !== "string" || !FLOW_ACC_DIRECTIONS.has(a.direction)) return null;
+  const strength = typeof a.strength === "number" && Number.isFinite(a.strength) ? a.strength : 0;
+  const days = typeof a.days === "number" && Number.isFinite(a.days) ? a.days : 0;
+  const net_signed_premium =
+    typeof a.net_signed_premium === "number" && Number.isFinite(a.net_signed_premium) ? a.net_signed_premium : 0;
+  const magnet_strike =
+    typeof a.magnet_strike === "number" && Number.isFinite(a.magnet_strike) ? a.magnet_strike : null;
+  const magnet_side = a.magnet_side === "call" || a.magnet_side === "put" ? a.magnet_side : null;
+  const aligned = typeof a.aligned === "boolean" ? a.aligned : null;
+  return {
+    direction: a.direction as ZeroDteFlowAccumulation["direction"],
+    strength,
+    days,
+    net_signed_premium,
+    magnet_strike,
+    magnet_side,
+    aligned,
+  };
 }
 
 // ── B-4 suggested size (0.5× / 1× ONLY) ────────────────────────────────────────────

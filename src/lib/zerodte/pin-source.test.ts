@@ -359,3 +359,31 @@ test("a pin fade bypasses the FLOW evidence gates, clears the shared stack in a 
   assert.equal(weak.verdict, "BLOCKED");
   assert.ok(weak.blocks.some((b) => b.code === "score_floor"), "G-3 score floor must gate a pin candidate");
 });
+
+// ── NH-R4: session_gap_days is evidence-only, never gates/scores ──────────────────
+test("buildPinSetup: session_gap_days is null without todayYmd, and reflects the real weekend/holiday gap when supplied", () => {
+  const regime = evaluatePinRegime(pinNearPutWall())!;
+  // No todayYmd supplied (existing callers/tests) → honest null, never fabricated.
+  const noToday = buildPinSetup({
+    ticker: "SPY",
+    spot: 596,
+    regime,
+    contract: { strike: 597, expiry: TODAY, dte: 0, side: "call" },
+  });
+  assert.equal(noToday.session_gap_days, null);
+
+  // TODAY (2026-07-24) is a Friday. `contract.dte` is whatever the caller stamps (buildPinSetup
+  // trusts it, exactly as it does for horizon/grading_policy above) — here we exercise the
+  // session_gap_days WIRING with a contract whose real expiry (Monday 2026-07-27) spans a plain
+  // weekend, regardless of what dte label is attached to it.
+  const weekendHold = buildPinSetup({
+    ticker: "SPY",
+    spot: 596,
+    regime,
+    contract: { strike: 597, expiry: "2026-07-27", dte: 1, side: "call" },
+    todayYmd: TODAY,
+  });
+  assert.equal(weekendHold.session_gap_days, 2, "Sat+Sun skipped between Fri and Mon");
+  // Score/gate-relevant fields are untouched by the gap — evidence only, no penalty in this PR.
+  assert.equal(weekendHold.score, noToday.score);
+});

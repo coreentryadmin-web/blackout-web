@@ -5,10 +5,8 @@ import { clsx } from "clsx";
 import type { TerminalPlay } from "./types";
 import type { ConvictionRankContext } from "./deck-command-center";
 import {
-  confluenceChecklist,
   convictionDisplay,
   decisionWindowLabel,
-  engineChecklist,
   engineConfidencePct,
   expectedMovePct,
   managementActionDisplay,
@@ -20,6 +18,7 @@ import {
   tradeOutcomeDisplay,
   tradeSummaryDisplay,
   trimLadderVisual,
+  unifiedChecklist,
 } from "./terminal-display";
 import {
   playFreshnessDisplay,
@@ -30,7 +29,6 @@ import {
 import {
   entryCenteredExcursionLayout,
   formatExcursionPct,
-  tradeJourneyLayout,
 } from "./trade-excursion-graphic";
 import { signColorClass } from "@/lib/zerodte/terminal-edge";
 import { formatReturnPct } from "./play-card-display";
@@ -162,8 +160,22 @@ export function TradeSummaryHero({
           </span>
         </div>
         <div className="nh-deck-trade-hero__metric">
-          <span className="k">Confidence</span>
-          <span className="v">{summary.confidence ?? "—"}</span>
+          {/* Canonical location for the thesis-strength/conviction number (Night Hawk panel
+              declutter, docs/audit/FINDINGS.md 2026-08-05): previously this tile showed
+              `convictionDisplay(play).score` (== `summary.confidence`, effectively `play.score`
+              since `play.confidence` is never populated by any adapter) — a STATIC entry-time
+              score that is ALSO rendered right above in `ConfidenceBadge` (grade + strength bar +
+              same score, headrow). Meanwhile the Thesis tab's `ThesisStrengthBlock` and the
+              Management tab's `ManagementActionCard` both rendered `thesisHealth.health` — a LIVE,
+              decaying number — under yet another label ("Conviction" / "Confidence") in yet
+              another tab. Consolidated to ONE canonical number in ONE canonical place: this tile
+              now shows the LIVE thesis-health strength (falling back to the static score only when
+              no thesisHealth is wired, e.g. Legacy/WATCH rows), labeled "Thesis Strength", and the
+              other two renders were removed (see ThesisStrengthBlock removal + ManagementActionCard
+              below). The static entry score keeps its own home in `ConfidenceBadge` — a genuinely
+              different, non-live measure, not touched. */}
+          <span className="k">Thesis Strength</span>
+          <span className="v">{thesisStrengthPct(play) ?? summary.confidence ?? "—"}</span>
         </div>
         <div className="nh-deck-trade-hero__metric">
           <span className="k">Rank</span>
@@ -245,7 +257,6 @@ export function TradeExcursionGraphic({
   const closed = play.status === "CLOSED";
   const currentPct = closed ? (play.exitPnlPct ?? play.pnlPct) : play.pnlPct;
   const layout = entryCenteredExcursionLayout(play.trough, play.peak, currentPct, { closed });
-  const journey = tradeJourneyLayout(play.trough, play.peak, currentPct, { closed });
 
   if (!layout) return null;
 
@@ -306,25 +317,6 @@ export function TradeExcursionGraphic({
           </div>
         ))}
       </div>
-
-      {journey && journey.nodes.length >= 2 && (
-        <div className="nh-deck-excursion-graphic__journey" aria-hidden>
-          <svg className="nh-deck-excursion-graphic__journey-svg" viewBox="0 0 200 72">
-            <path className="nh-deck-excursion-graphic__journey-path" d={journey.pathD} fill="none" />
-            {journey.nodes.map((n) => (
-              <g key={n.key} transform={`translate(${n.x * 200}, ${n.y * 72})`}>
-                <circle className="nh-deck-excursion-graphic__journey-dot" r={4} />
-                <text className="nh-deck-excursion-graphic__journey-lab" x={0} y={-10} textAnchor="middle">
-                  {n.label}
-                </text>
-                <text className="nh-deck-excursion-graphic__journey-val" x={0} y={16} textAnchor="middle">
-                  {formatExcursionPct(n.pct)}
-                </text>
-              </g>
-            ))}
-          </svg>
-        </div>
-      )}
 
       <p className="nh-deck-excursion-graphic__note">
         Excursion from entry — latched best/worst marks, not tick-by-tick history.
@@ -391,71 +383,72 @@ export function ConvictionHero({ play }: { play: TerminalPlay }) {
   );
 }
 
-export function ThesisStrengthBlock({ play }: { play: TerminalPlay }) {
-  const pct = thesisStrengthPct(play);
-  return (
-    <section className="nh-deck-thesis-strength" aria-label="Conviction">
-      <div className="nh-deck-thesis-strength__head">
-        <span className="nh-deck-thesis-strength__label">Conviction</span>
-        <span className="nh-deck-thesis-strength__pct">
-          {pct != null ? `${pct}%` : "—"}
-        </span>
-      </div>
-      <StrengthBar pct={pct} />
-    </section>
-  );
-}
+// NOTE: `ThesisStrengthBlock` (Thesis-tab "Conviction" % — `thesisStrengthPct(play)`, i.e.
+// `thesisHealth.health`) was removed here (Night Hawk panel declutter, docs/audit/FINDINGS.md
+// 2026-08-05). It carried no content beyond that single %, and that % is now the hero's canonical
+// "Thesis Strength" tile (see `TradeSummaryHero` above) — always visible regardless of tab, so a
+// second identical rendering buried in the collapsible Thesis tab added nothing but confusion
+// ("which number do I trust — the one on top, or the one in the tab?"). `thesisStrengthPct` itself
+// is untouched (pure, still exported, still unit-tested in terminal-display.test.ts) — this was a
+// presentation-layer removal only, not a math change.
 
-export function ConfluenceGrid({ play }: { play: TerminalPlay }) {
-  const items = confluenceChecklist(play);
-  return (
-    <section className="nh-deck-confluence" aria-label="Confluence">
-      <h4 className="nh-deck-premium__heading">Confluence</h4>
-      <div className="nh-deck-confluence__grid">
-        {items.map((item) => (
-          <div
-            key={item.label}
-            className={clsx(
-              "nh-deck-confluence__cell",
-              item.ok === true && "is-pass",
-              item.ok === false && "is-fail",
-              item.ok == null && "is-na",
-            )}
-          >
-            <span className="nh-deck-confluence__mark">
-              {item.ok === true ? "✓" : item.ok === false ? "✕" : "—"}
-            </span>
-            <span className="nh-deck-confluence__name">{item.label}</span>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
+/** ONE merged checklist — replaces the prior three separate renders that described
+ *  overlapping/related gate-and-scoring state under three different label taxonomies
+ *  (`EngineChecklistPanel`'s 5-row list, `ConfluenceGrid`'s 6-cell grid, and the "Conviction
+ *  tier breakdown" list built from `play.tierFactors`). Section 1 (pillar checks) fires for
+ *  0DTE plays with thesis-health wired; Section 2 (tier factors) fires for Legacy plays with a
+ *  pinned tier blob — the two data sources are mutually exclusive per play today (see
+ *  docs/audit/FINDINGS.md 2026-08-04), so in practice a given play shows exactly one section,
+ *  but both live in this single component/taxonomy instead of three separate render sites.
+ *  Renders nothing when neither source has data (never an empty shell). */
+export function ThesisChecklistPanel({ play }: { play: TerminalPlay }) {
+  const pillarItems = unifiedChecklist(play);
+  const hasPillarSignal = pillarItems.some((item) => item.ok !== null);
+  const tierFactors = play.tierFactors ?? [];
 
-export function EngineChecklistPanel({ play }: { play: TerminalPlay }) {
-  const items = engineChecklist(play);
+  if (!hasPillarSignal && tierFactors.length === 0) return null;
+
   return (
     <section className="nh-deck-engine-check" aria-label="Engine checklist">
-      <h4 className="nh-deck-premium__heading">Engine Checks</h4>
-      <div className="nh-deck-engine-check__list">
-        {items.map((item) => (
-          <div
-            key={item.label}
-            className={clsx(
-              "nh-deck-engine-check__row",
-              item.ok === true && "is-pass",
-              item.ok === false && "is-fail",
-              item.ok == null && "is-na",
-            )}
-          >
-            <span className="nh-deck-engine-check__mark">
-              {item.ok === true ? "✓" : item.ok === false ? "✕" : "—"}
-            </span>
-            <span className="nh-deck-engine-check__name">{item.label}</span>
+      <h4 className="nh-deck-premium__heading">Engine Checklist</h4>
+      {hasPillarSignal && (
+        <div className="nh-deck-confluence__grid">
+          {pillarItems.map((item) => (
+            <div
+              key={item.label}
+              className={clsx(
+                "nh-deck-confluence__cell",
+                item.ok === true && "is-pass",
+                item.ok === false && "is-fail",
+                item.ok == null && "is-na",
+              )}
+            >
+              <span className="nh-deck-confluence__mark">
+                {item.ok === true ? "✓" : item.ok === false ? "✕" : "—"}
+              </span>
+              <span className="nh-deck-confluence__name">{item.label}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {tierFactors.length > 0 && (
+        <div className="nh-deck-tierfactors" style={hasPillarSignal ? { marginTop: 10 } : undefined}>
+          <div className="nh-deck-tierfactors-hd">
+            <span className="nh-deck-tierfactors-lb">Merit tier · graded at publish</span>
+            <span className="nh-deck-tierfactors-val">tier {play.tierLabel ?? "?"}</span>
           </div>
-        ))}
-      </div>
+          <ul className="nh-deck-tierfactors-list">
+            {tierFactors.map((f, i) => (
+              <li key={`${f.label}-${i}`} className="nh-deck-tierfactor">
+                <span className={`nh-deck-tierfactor-dir ${f.direction}`}>
+                  {f.direction === "up" ? "▲" : "▼"} {f.label}
+                </span>
+                <span className="nh-deck-tierfactor-detail">{f.detail}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </section>
   );
 }
@@ -470,9 +463,18 @@ export function ManagementActionCard({
   progress: number | null;
 }) {
   const action = managementActionDisplay(play, recommendation, progress);
+  // The 15:50-ET "Decision Window" countdown is a 0DTE-ONLY same-session discipline (flat by the
+  // hard exit THIS session) — a Swing position runs 2-30 days, so a same-day countdown would be
+  // flatly false. The verb/size/urgency banner + reason + confidence rows above are horizon-agnostic
+  // (extended to Swing 2026-08-05, docs/audit/FINDINGS.md) and render for both; only this clock
+  // section is conditional. No swing-side "days remaining" substitute is shown — a Swing play has
+  // no pinned hard-exit instant to count down to (unlike 0DTE's fixed 15:50 ET), so a fabricated
+  // countdown would be dishonest; the Thesis tab's swing-status line covers the "why hold" context.
+  const showsClock = play.horizon === "ZERO_DTE";
   const [minutesRemaining, setMinutesRemaining] = useState<number | null>(null);
 
   useEffect(() => {
+    if (!showsClock) return;
     const tick = () => {
       const { hour, minute } = etNowParts();
       const clock = timeStopClock(hour * 60 + minute);
@@ -481,7 +483,7 @@ export function ManagementActionCard({
     tick();
     const id = window.setInterval(tick, 1000);
     return () => window.clearInterval(id);
-  }, []);
+  }, [showsClock]);
 
   const windowLabel = useMemo(
     () => (minutesRemaining != null ? decisionWindowLabel(minutesRemaining) : null),
@@ -503,25 +505,31 @@ export function ManagementActionCard({
           <span className="nh-deck-action-card__key">Reason</span>
           <span className="nh-deck-action-card__val">{action.reason}</span>
         </div>
-        <div className="nh-deck-action-card__row">
-          <span className="nh-deck-action-card__key">Confidence</span>
-          <span className="nh-deck-action-card__val nh-deck-action-card__prob">
-            {action.probabilityPct != null ? `${action.probabilityPct}%` : "—"}
+        {/* `action.probabilityPct` (labeled "Confidence" here) was removed from this render
+            (Night Hawk panel declutter, docs/audit/FINDINGS.md 2026-08-05): for the common
+            HOLD/TRIM path it is `thesisHealth.health` verbatim (`actionProbability` in
+            terminal-display.ts returns it unchanged), and for SELL it is `100 - health` — still
+            the SAME underlying field, just complemented. That number is now the hero's canonical
+            "Thesis Strength" tile, always visible above every tab including this one — showing it
+            a 2nd time here (a 3rd rendering counting the old Thesis-tab block) added no new
+            information, only a risk that the two numbers drift/disagree in a future refactor.
+            `action.probabilityPct` itself is untouched (still computed, still unit-tested) in case
+            a future consumer needs the SELL-complemented framing specifically. */}
+      </div>
+      {showsClock && (
+        <div className="nh-deck-action-card__window">
+          <span className="nh-deck-action-card__window-label">Decision Window</span>
+          <span className="nh-deck-action-card__window-clock">
+            {windowLabel ? (
+              <>
+                {windowLabel.mins}m <span className="nh-deck-action-card__window-sep" /> {windowLabel.secs}s
+              </>
+            ) : (
+              "—"
+            )}
           </span>
         </div>
-      </div>
-      <div className="nh-deck-action-card__window">
-        <span className="nh-deck-action-card__window-label">Decision Window</span>
-        <span className="nh-deck-action-card__window-clock">
-          {windowLabel ? (
-            <>
-              {windowLabel.mins}m <span className="nh-deck-action-card__window-sep" /> {windowLabel.secs}s
-            </>
-          ) : (
-            "—"
-          )}
-        </span>
-      </div>
+      )}
     </section>
   );
 }

@@ -2,12 +2,15 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { NighthawkPlayOutcomeRow } from "@/lib/db";
 import {
+  entryFillEdge,
   entryMid,
   realizedReturnPct,
+  realizedReturnPctEdge,
   avgLoserReturn,
   buildNighthawkFunnel,
   winRate,
   profitableRate,
+  profitableRateEdge,
   groupWithReturn,
 } from "./analytics";
 import { REJECTION_TRIGGER_REASON } from "./play-outcomes";
@@ -40,6 +43,62 @@ const row = (overrides: Partial<NighthawkPlayOutcomeRow>): NighthawkPlayOutcomeR
   outcome: "target",
   created_at: "2026-06-30T09:00:00Z",
   ...overrides,
+});
+
+// ── Fill-edge return basis (2026-08-06) ──────────────────────────────────────────────
+
+test("entryFillEdge is the WORST band price — LONG top, SHORT bottom", () => {
+  assert.equal(entryFillEdge(row({})), 452); // LONG → band top
+  assert.equal(entryFillEdge(row({ direction: "SHORT" })), 448); // SHORT → band bottom
+  // The mid is strictly between them — the two bases are genuinely different prices.
+  assert.equal(entryMid(row({})), 450);
+});
+
+test("entryFillEdge inherits entryMid's fallback discipline exactly", () => {
+  // Corrupt band → null, no guess (same guard as entryMid).
+  assert.equal(entryFillEdge(row({ entry_range_low: 17, entry_range_high: 452 })), null);
+  assert.equal(entryMid(row({ entry_range_low: 17, entry_range_high: 452 })), null);
+  // A single-bound band is its own edge.
+  assert.equal(entryFillEdge(row({ entry_range_low: 448, entry_range_high: null })), 448);
+  assert.equal(entryFillEdge(row({ entry_range_low: null, entry_range_high: 452 })), 452);
+  // No band at all → session open, matching entryMid.
+  assert.equal(entryFillEdge(row({ entry_range_low: null, entry_range_high: null })), 450);
+});
+
+test("realizedReturnPctEdge is systematically WORSE than the mid basis — the +1.12pp gap", () => {
+  // LONG, band 448-452, close 455. mid 450 → +1.111%; edge 452 → +0.664%.
+  const long = row({ next_day_close: 455 });
+  const mid = realizedReturnPct(long)!;
+  const edge = realizedReturnPctEdge(long)!;
+  assert.ok(Math.abs(mid - 1.1111) < 0.001, `mid ${mid}`);
+  assert.ok(Math.abs(edge - 0.6637) < 0.001, `edge ${edge}`);
+  assert.ok(edge < mid, "the edge basis must never flatter the mid basis");
+
+  // SHORT is the mirror image — the edge is worse there too, so this is not a LONG-only fix.
+  const short = row({ direction: "SHORT", next_day_close: 445 });
+  assert.ok(realizedReturnPctEdge(short)! < realizedReturnPct(short)!);
+
+  // Corrupt band → null on BOTH bases, never a garbage number.
+  const corrupt = row({ entry_range_low: 17, entry_range_high: 452 });
+  assert.equal(realizedReturnPctEdge(corrupt), null);
+  assert.equal(realizedReturnPct(corrupt), null);
+});
+
+test("profitableRateEdge reclassifies the plays that were only profitable at the mid", () => {
+  // Close 451: above the 450 mid (counts profitable on the mid basis) but BELOW the 452
+  // fill edge (a real loss). This is the class inflating the reported profitable rate.
+  const marginal = [row({ next_day_close: 451 })];
+  assert.equal(profitableRate(marginal), 1);
+  assert.equal(profitableRateEdge(marginal), 0);
+
+  // A genuine winner clears both bases.
+  const real = [row({ next_day_close: 460 })];
+  assert.equal(profitableRate(real), 1);
+  assert.equal(profitableRateEdge(real), 1);
+
+  // Empty and unpriced samples stay null on both — never a fabricated 0%.
+  assert.equal(profitableRateEdge([]), null);
+  assert.equal(profitableRateEdge([row({ next_day_close: null })]), null);
 });
 
 test("entryMid rejects a corrupt entry range (stray low bound) with no fallback", () => {

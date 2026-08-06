@@ -1,6 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { gradeScaleOut, deriveScaleOutAction, SCALE_OUT_RULES, type ScaleOutBar } from "./scale-out";
+import {
+  gradeScaleOut,
+  deriveScaleOutAction,
+  computeScaleOutTriggerInfo,
+  SCALE_OUT_RULES,
+  type ScaleOutBar,
+} from "./scale-out";
 
 const bar = (t: number, h: number, l: number, c: number): ScaleOutBar => ({ t, h, l, c });
 
@@ -82,4 +88,30 @@ test("live: a stopped-out already-scaled position does NOT re-trigger STOP_OUT (
   // Once scaled, the hard stop no longer applies — the partial is locked; only the trail governs.
   const a = deriveScaleOutAction({ entryPremium: 1, peakPremium: 2.5, lastMark: 0.3, scaledAlready: true });
   assert.equal(a.action, "EXIT_RUNNER"); // 0.3 <= 0.5*peak(2.5)=1.25 → runner exits (not STOP_OUT)
+});
+
+// ── computeScaleOutTriggerInfo (detail-panel "distance to next trigger") ───────────────────────────
+test("trigger info: pre-scale shows the 2x partial as next trigger + the hard stop as the floor", () => {
+  const info = computeScaleOutTriggerInfo({ entryPremium: 2, peakPremium: 2.4, lastMark: 1.5, scaledAlready: false });
+  assert.equal(info.next_trigger_label, "2× partial");
+  assert.equal(info.next_trigger_price, 4); // 2 * 2.0
+  assert.equal(info.hard_stop_price, 0.8); // 2 * 0.4
+  // (4 - 1.5) / 1.5 * 100 = 166.66...
+  assert.ok(Math.abs(info.pct_to_next_trigger! - 166.6667) < 0.01);
+});
+
+test("trigger info: post-scale shows the runner trailing stop, hard stop no longer applies", () => {
+  const info = computeScaleOutTriggerInfo({ entryPremium: 2, peakPremium: 8, lastMark: 6, scaledAlready: true });
+  assert.equal(info.next_trigger_label, "runner trailing stop");
+  assert.equal(info.next_trigger_price, 4); // 8 * 0.5
+  assert.equal(info.hard_stop_price, null);
+  // (4 - 6) / 6 * 100 = -33.33 (mark must FALL to hit the trail stop)
+  assert.ok(Math.abs(info.pct_to_next_trigger! + 33.3333) < 0.01);
+});
+
+test("trigger info: no usable mark/entry → nulls, never a fabricated level", () => {
+  const info = computeScaleOutTriggerInfo({ entryPremium: 0, peakPremium: 0, lastMark: null, scaledAlready: false });
+  assert.equal(info.next_trigger_price, null);
+  assert.equal(info.hard_stop_price, null);
+  assert.equal(info.pct_to_next_trigger, null);
 });

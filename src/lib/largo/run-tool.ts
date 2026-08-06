@@ -929,6 +929,45 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
         input.ticker ? String(input.ticker) : undefined,
         Number(input.limit ?? 20)
       );
+    case "get_zerodte_record": {
+      const { zerodteRecordForLargo } = await import("@/lib/largo/product-reads");
+      return zerodteRecordForLargo(Number(input.days ?? 30));
+    }
+    case "get_banger_board": {
+      const { bangerBoardForLargo } = await import("@/lib/largo/product-reads");
+      return bangerBoardForLargo(Number(input.limit ?? 40));
+    }
+    case "get_swing_horizon": {
+      const { swingHorizonForLargo } = await import("@/lib/largo/product-reads");
+      return swingHorizonForLargo();
+    }
+    case "get_nighthawk_horizons": {
+      const { nighthawkHorizonsForLargo } = await import("@/lib/largo/product-reads");
+      return nighthawkHorizonsForLargo();
+    }
+    case "get_helix_signal_outcomes": {
+      const { helixSignalOutcomesForLargo } = await import("@/lib/largo/product-reads");
+      return helixSignalOutcomesForLargo(Number(input.limit ?? 50));
+    }
+    case "get_spx_pin": {
+      const { spxPinForLargo } = await import("@/lib/largo/product-reads");
+      return spxPinForLargo();
+    }
+    case "get_spx_pulse": {
+      const { spxPulseForLargo } = await import("@/lib/largo/product-reads");
+      return spxPulseForLargo();
+    }
+    case "get_cortex_decision": {
+      const { cortexDecisionForLargo } = await import("@/lib/largo/product-reads");
+      return cortexDecisionForLargo(
+        input.ticker ? String(input.ticker) : null,
+        input.question ? String(input.question) : ""
+      );
+    }
+    case "get_horizon_outcomes": {
+      const { horizonOutcomesForLargo } = await import("@/lib/largo/product-reads");
+      return horizonOutcomesForLargo(Number(input.days ?? 30));
+    }
     case "get_flow_anomaly_near_misses":
       return flowAnomalyNearMissesForLargo(
         input.ticker ? String(input.ticker) : undefined,

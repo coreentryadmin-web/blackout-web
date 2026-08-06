@@ -9,19 +9,21 @@ import {
   passesDarkpoolDiscordFilters,
   selectDarkpoolDigestPrints,
   DARKPOOL_DISCORD_MIN_PREMIUM,
+  buildDarkpoolBurstEmbed,
+  darkpoolDiscordLiveRthOnly,
 } from "./darkpool-discord-format.ts";
 
-test("passesDarkpoolDiscordFilters requires >= $1M default", () => {
+test("passesDarkpoolDiscordFilters requires >= $5M default", () => {
   const ok = {
     ticker: "NVDA",
-    premium: 1_500_000,
+    premium: 5_500_000,
     side: "buy" as const,
     executed_at: "2026-08-04T14:18:11.000Z",
   };
   assert.equal(passesDarkpoolDiscordFilters(ok), true);
-  assert.equal(passesDarkpoolDiscordFilters({ ...ok, premium: 999_999 }), false);
+  assert.equal(passesDarkpoolDiscordFilters({ ...ok, premium: 4_999_999 }), false);
   assert.equal(passesDarkpoolDiscordFilters({ ...ok, executed_at: "" }), false);
-  assert.equal(DARKPOOL_DISCORD_MIN_PREMIUM, 1_000_000);
+  assert.equal(DARKPOOL_DISCORD_MIN_PREMIUM, 5_000_000);
 });
 
 test("normalizeDarkPoolDiscordPrint drops rows without timestamp", () => {
@@ -62,7 +64,7 @@ test("buildDarkpoolDiscordEmbed includes ticker and ET copy", () => {
   assert.match(emb.title, /NVDA/);
   assert.match(emb.description, /\$4\.20M/);
   assert.match(emb.description, /BUY side/);
-  assert.match(emb.description, /Open in HELIX/);
+  assert.match(emb.description ?? "", /Open this block in HELIX/);
 });
 
 test("selectDarkpoolDigestPrints ranks in-window by premium", () => {
@@ -71,8 +73,8 @@ test("selectDarkpoolDigestPrints ranks in-window by premium", () => {
   const stale = "2026-08-04T13:00:00.000Z";
   const { rows, inWindowCount } = selectDarkpoolDigestPrints(
     [
-      { ticker: "AAPL", premium: 1_100_000, side: "buy", executed_at: recent },
-      { ticker: "NVDA", premium: 3_000_000, side: "buy", executed_at: recent },
+      { ticker: "AAPL", premium: 6_000_000, side: "buy", executed_at: recent },
+      { ticker: "NVDA", premium: 8_000_000, side: "buy", executed_at: recent },
       { ticker: "OLD", premium: 9_000_000, side: "sell", executed_at: stale },
     ],
     { now, limit: 2 }
@@ -84,7 +86,7 @@ test("selectDarkpoolDigestPrints ranks in-window by premium", () => {
 test("dedup key is stable for same print", () => {
   const p = {
     ticker: "SPY",
-    premium: 1_000_000,
+    premium: 5_000_000,
     side: "neutral" as const,
     executed_at: "2026-08-04T14:00:00.000Z",
     price: 628.5,
@@ -97,10 +99,38 @@ test("digest embed lists ranked blocks", () => {
     windowMin: 15,
     inWindowCount: 2,
     rows: [
-      { ticker: "NVDA", premium: 2_000_000, side: "buy", executed_at: "2026-08-04T14:20:00.000Z", price: 140 },
-      { ticker: "AAPL", premium: 1_500_000, side: "sell", executed_at: "2026-08-04T14:10:00.000Z", price: 220 },
+      { ticker: "NVDA", premium: 7_000_000, side: "buy", executed_at: "2026-08-04T14:20:00.000Z", price: 140 },
+      { ticker: "AAPL", premium: 5_500_000, side: "sell", executed_at: "2026-08-04T14:10:00.000Z", price: 220 },
     ],
   });
   assert.match(emb.title, /Top blocks/);
   assert.match(emb.description, /NVDA/);
+});
+
+test("buildDarkpoolBurstEmbed collapses multiple blocks", () => {
+  const emb = buildDarkpoolBurstEmbed({
+    ticker: "NVDA",
+    windowMin: 4,
+    prints: [
+      { ticker: "NVDA", premium: 6_000_000, side: "buy", executed_at: "2026-08-04T14:00:00.000Z" },
+      { ticker: "NVDA", premium: 7_000_000, side: "buy", executed_at: "2026-08-04T14:02:00.000Z" },
+    ],
+  });
+  assert.match(emb.title, /burst \(2 blocks\)/);
+  assert.match(emb.description ?? "", /\$13\.0M/);
+});
+
+test("darkpoolDiscordLiveRthOnly defaults true", () => {
+  assert.equal(darkpoolDiscordLiveRthOnly(), true);
+});
+
+test("buildDarkpoolDiscordEmbed weaves adv_context_line", () => {
+  const emb = buildDarkpoolDiscordEmbed({
+    ticker: "NVDA",
+    premium: 6_000_000,
+    side: "buy",
+    executed_at: "2026-08-04T14:18:11.000Z",
+    adv_context_line: "Size: 4.2% of 20D ~12M ADV",
+  });
+  assert.match(emb.description ?? "", /4\.2% of 20D/);
 });

@@ -8,23 +8,21 @@ import { zerodteTimeStopEtLabel } from "@/lib/zerodte/plan";
 import { isZeroDteMarkStale, ZERODTE_MARK_STALE_MS, LEGACY_QUOTE_STALE_MS } from "@/lib/zerodte/marks-math";
 import { condorTent } from "@/lib/zerodte/condor-render";
 import { etNowParts } from "@/features/nighthawk/lib/session";
+import { dispatchGotoSwing } from "@/features/nighthawk/lib/goto-swing";
 import { showsTimeStopClock, showsTrimScaleLadder } from "./terminal-guards";
 import { managementFor } from "./adapters";
 import type { DeckCondor } from "./types";
 import { markStreamKind } from "./deck-session-ui";
-import { ThesisHealthPanel } from "./ThesisHealthPanel";
 import { PlayTimelinePanel } from "./PlayTimelinePanel";
 import { useSecondTick, useFlash } from "./use-deck-live";
-import { isZeroDtePremiumTerminal } from "./terminal-display";
+import { isZeroDtePremiumTerminal, swingStatusLine } from "./terminal-display";
 import type { ConvictionRankContext } from "./deck-command-center";
 import {
-  ConfluenceGrid,
-  EngineChecklistPanel,
   ManagementActionCard,
   MarketContextRow,
   TradeExcursionGraphic,
+  ThesisChecklistPanel,
   ThesisExpectedMove,
-  ThesisStrengthBlock,
   TradeOutcomePanel,
   TradeSummaryHero,
   VisualTrimLadder,
@@ -130,6 +128,7 @@ export function PlayTerminal({
   sessionClosed = false,
   nowMs: nowMsProp,
   convictionRank = null,
+  initialTab,
 }: {
   play: TerminalPlay | null;
   /** Board heat.state === CLOSED — right-rail must not claim LIVE/greeks after the session. */
@@ -142,9 +141,15 @@ export function PlayTerminal({
   nowMs?: number;
   /** Engine conviction rank on today's full board (0DTE command deck). */
   convictionRank?: ConvictionRankContext | null;
+  /** Test-only escape hatch: SSR renders whatever tab is selected at mount, and the real tab-switch
+   *  effect (0DTE OPEN/HOLD/TRIM → Management) never runs under renderToStaticMarkup — there's no
+   *  click simulation in that harness. Lets PlayTerminal.ssr.test.ts assert on Management/PnL tab
+   *  markup (e.g. the Legacy stop/target dedup) without a DOM. Omit in real usage — defaults to
+   *  the normal "thesis" first paint. */
+  initialTab?: Tab;
 }) {
   // Default to Management for working 0DTE rows (action first); Thesis otherwise.
-  const [tab, setTab] = useState<Tab>("thesis");
+  const [tab, setTab] = useState<Tab>(initialTab ?? "thesis");
   const [tabTouched, setTabTouched] = useState(false);
   useEffect(() => {
     if (tabTouched || !play) return;
@@ -447,8 +452,18 @@ function ThesisPanel({ play, sessionClosed = false }: { play: TerminalPlay; sess
             ? "frozen at close — gates/factors are the last board read, not a live stream."
             : "tape alignment from the board poll; mark/P&L from the marks stream.";
 
+  // Swing-only: the pre-entry/live observables the serving router (serving.ts) already keys on to
+  // place this name in a section (COMMIT_NOW/WAITING_FOR_ENTRY/WATCH/…) — surfaced here as the
+  // honest "why is this still WATCH" a member asks when a high-scoring name isn't actionable yet.
+  const swingLine = swingStatusLine(play);
+
   const commitSnapshot = (
     <>
+      {swingLine && (
+        <div className="nh-deck-recnote" style={{ opacity: 0.8, marginBottom: 6 }} title="Pre-entry setup maturity, entry-execution stance, and the serving section this name resolved to">
+          {swingLine}
+        </div>
+      )}
       {play.whyNow && (
         <div className="nh-deck-whynow" title="The event-driven scan trigger that surfaced this play">
           <span className="ic" aria-hidden>⚡</span>
@@ -495,27 +510,6 @@ function ThesisPanel({ play, sessionClosed = false }: { play: TerminalPlay; sess
           </details>
         )}
       </details>
-      {play.tierFactors && play.tierFactors.length > 0 && (
-        <>
-          <div className="nh-deck-lab" style={{ marginTop: 16 }}>Conviction tier breakdown</div>
-          <div className="nh-deck-tierfactors">
-            <div className="nh-deck-tierfactors-hd">
-              <span className="nh-deck-tierfactors-lb">Merit tier · graded at publish</span>
-              <span className="nh-deck-tierfactors-val">tier {play.tierLabel ?? "?"}</span>
-            </div>
-            <ul className="nh-deck-tierfactors-list">
-              {play.tierFactors.map((f, i) => (
-                <li key={`${f.label}-${i}`} className="nh-deck-tierfactor">
-                  <span className={`nh-deck-tierfactor-dir ${f.direction}`}>
-                    {f.direction === "up" ? "▲" : "▼"} {f.label}
-                  </span>
-                  <span className="nh-deck-tierfactor-detail">{f.detail}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </>
-      )}
       {play.thesis && (
         <div className="nh-deck-recnote" style={{ marginTop: 8, fontStyle: "italic" }}>{play.thesis}</div>
       )}
@@ -527,26 +521,68 @@ function ThesisPanel({ play, sessionClosed = false }: { play: TerminalPlay; sess
         {play.tierLabel && <div><span className="k">Conviction</span><span className="v">{play.tierLabel}</span></div>}
         {play.allocation && <div><span className="k">Allocation</span><span className="v">{play.allocation.role}</span></div>}
         <div><span className="k">Exit model</span><span className="v">{play.exitModel === "SCALE_OUT" ? "trim-scale" : play.exitModel.toLowerCase()}</span></div>
-        {play.entryRange && <div><span className="k">Entry range</span><span className="v">{play.entryRange}</span></div>}
-        {play.targetLevel && <div><span className="k">Target</span><span className="v">{play.targetLevel}</span></div>}
-        {play.stopLevel && <div><span className="k">Stop</span><span className="v">{play.stopLevel}</span></div>}
+        {/* Entry range / target / stop are Legacy-only fields (terminalPlayFromEdition is the sole
+            adapter that populates them). For Legacy plays the Management tab's LegacyManageGeometry
+            renders these same three values PLUS live distance-to-level and an entry-zone track — the
+            richer treatment — so showing the bare levels here too was a straight duplicate. Kept
+            conditional (not deleted outright) in case a future non-Legacy horizon ever populates
+            these fields without its own geometry panel. */}
+        {play.horizon !== "LEGACY" && play.entryRange && <div><span className="k">Entry range</span><span className="v">{play.entryRange}</span></div>}
+        {play.horizon !== "LEGACY" && play.targetLevel && <div><span className="k">Target</span><span className="v">{play.targetLevel}</span></div>}
+        {play.horizon !== "LEGACY" && play.stopLevel && <div><span className="k">Stop</span><span className="v">{play.stopLevel}</span></div>}
+        {/* R:R + Underlying + Premium-cap folded in here from the Management tab's
+            ZeroDteEntryPlan/LegacyEntryPlan (Night Hawk panel declutter, docs/audit/FINDINGS.md
+            2026-08-05): those components' Contract/Current-mark/Entry-premium/Cost-per-contract
+            rows all duplicated the header/hero (0DTE: `play.contract` + OccCopy'd `play.occ` ==
+            `optionsPlay`, "mark" already streams in the hero strip) or the PnL tab (Legacy:
+            `LegacyPnlPanel` already shows Contract/Entry-premium/Stock-entry in its grid) — see
+            the PR write-up for the exact duplicate mapping. R:R (both horizons), Underlying
+            (0DTE only — Legacy's stock price already streams in the persistent header for
+            non-premium rows), and Premium-cap (Legacy only) were the genuinely NEW data those
+            components carried, so they move here instead of disappearing. */}
+        {play.rrRatio != null && (
+          <div>
+            <span className="k">Risk : Reward</span>
+            <span className={clsx("v", play.rrRatio >= 2 && "nh-deck-pos", play.rrRatio < 1 && "nh-deck-neg")}>
+              {play.rrRatio.toFixed(1)}:1
+            </span>
+          </div>
+        )}
+        {play.horizon === "ZERO_DTE" && play.stockPrice != null && (
+          <div><span className="k">Underlying</span><span className="v">${play.stockPrice.toFixed(2)}</span></div>
+        )}
+        {play.horizon === "LEGACY" && play.premiumCapOk != null && (
+          <div>
+            <span className="k">Premium cap</span>
+            <span className={clsx("v", play.premiumCapOk ? "nh-deck-pos" : "nh-deck-neg")}>
+              {play.premiumCapOk ? "✓ within cap" : "✗ above cap"}
+            </span>
+          </div>
+        )}
       </div>
     </>
   );
 
   return (
     <>
-      {premium && (
+      {premium ? (
         <div className="nh-deck-premium-stack">
-          <EngineChecklistPanel play={play} />
-          <ThesisStrengthBlock play={play} />
+          <ThesisChecklistPanel play={play} />
           <ThesisExpectedMove play={play} />
-          <ConfluenceGrid play={play} />
         </div>
+      ) : (
+        // Non-premium (e.g. Legacy) plays never carry thesisHealth pillars, but may carry a
+        // pinned tier-factor breakdown — ThesisChecklistPanel renders that section alone here
+        // (was previously a separate "Conviction tier breakdown" block further down this panel).
+        <ThesisChecklistPanel play={play} />
       )}
-      {hasThesisHealth && isWorking && !sessionClosed && !premium && (
-        <ThesisHealthPanel health={play.thesisHealth!} liveRec={liveRec} />
-      )}
+      {/* A dead branch (`hasThesisHealth` requires horizon===ZERO_DTE, which makes `premium`
+          always true, so `!premium` here was always false) rendered `ThesisHealthPanel` — the
+          THIRD surface of the same thesis-health number, never actually reachable in production.
+          Removed along with its now-unused import (Night Hawk panel declutter,
+          docs/audit/FINDINGS.md 2026-08-05); ThesisHealthPanel.tsx itself is left on disk
+          untouched in case its richer per-pillar entry→now breakdown is wired up deliberately
+          later, but it should never be reachable behind a `!premium` guard again. */}
       {hasThesisHealth ? (
         <details className="nh-deck-commit-snap" open={false}>
           <summary className="nh-deck-lab nh-deck-why-sum">Why we entered · commit snapshot (frozen)</summary>
@@ -574,6 +610,17 @@ function ThesisPanel({ play, sessionClosed = false }: { play: TerminalPlay; sess
             </div>
           ) : (
             <div><span className="ok">✓ thesis intact</span> — {monitorNote}</div>
+          )}
+          {play.swingPromoted && (
+            <button
+              type="button"
+              className="nh-deck-recnote nh-deck-swing-promoted-link"
+              style={{ display: "block", marginTop: 6, textAlign: "left", background: "none", border: "none", padding: 0, cursor: "pointer", textDecoration: "underline", color: "var(--dk-green)" }}
+              onClick={() => dispatchGotoSwing(play.ticker)}
+              title="Jump to this ticker's row on the Swing board"
+            >
+              The play is still active and moved to Swings Open →
+            </button>
           )}
         </div>
       </div>
@@ -661,8 +708,6 @@ function ManagePanel({ play, nowMs }: { play: TerminalPlay; nowMs: number }) {
 
       {isCondor && <CondorPanel play={play} />}
 
-      {play.horizon === "ZERO_DTE" && !isCondor && !isCandidate && <ZeroDteEntryPlan play={play} />}
-
       {!isCondor && !isCandidate && play.exitModel === "RATCHET" && mgmt.progress != null && (
         <>
           <div className="nh-deck-track">
@@ -677,9 +722,6 @@ function ManagePanel({ play, nowMs }: { play: TerminalPlay; nowMs: number }) {
           (banked) vs pending. Rendered only when the row's FROZEN policy is trim_scale (dormant under
           the prod ratchet default) AND it is not a condor. */}
       {isTrimScale && !premium && !isCandidate && <TrimScaleLadder play={play} />}
-
-      {/* Legacy entry plan — the recommended option contract + R:R ratio. */}
-      {play.horizon === "LEGACY" && <LegacyEntryPlan play={play} />}
 
       {/* Legacy entry geometry — structured levels + live stock-price progress track. */}
       {play.horizon === "LEGACY" && (play.entryRange || play.targetLevel || play.stopLevel || play.progress != null) && (
@@ -896,10 +938,14 @@ function PnlPanel({ play }: { play: TerminalPlay }) {
       <div className="nh-deck-grid">
         <div><span className="k">Entry</span><span className="v">{has ? usd(play.entry) : "—"}</span></div>
         <div><span className="k">Live mark</span><span className="v">{usd(play.mark)}</span></div>
-        {has && <div><span className="k">Peak</span><span className="v nh-deck-pos">{signPct(play.peak)}</span></div>}
-        {has && <div><span className="k">Trough</span><span className="v nh-deck-neg">{signPct(play.trough)}</span></div>}
+        {/* Peak/trough already shown once in the hero (0DTE/Swing) and again in the excursion-graphic
+            stats row above — a 3rd rendering here was redundant for premium plays. Kept for
+            non-premium (LEAPS/Legacy) rows, which carry neither the hero nor this excursion stats
+            row, so this grid is their only Peak/Trough surface. */}
+        {has && !premium && <div><span className="k">Peak</span><span className="v nh-deck-pos">{signPct(play.peak)}</span></div>}
+        {has && !premium && <div><span className="k">Trough</span><span className="v nh-deck-neg">{signPct(play.trough)}</span></div>}
       </div>
-      {has && <div className="nh-deck-recnote" style={{ marginTop: 16 }}>Peak/trough = the full excursion since entry — how much heat you took and gave back.</div>}
+      {has && !premium && <div className="nh-deck-recnote" style={{ marginTop: 16 }}>Peak/trough = the full excursion since entry — how much heat you took and gave back.</div>}
     </>
   );
 }
@@ -927,68 +973,23 @@ function ZeroDtePreEntryContext({ play }: { play: TerminalPlay }) {
   );
 }
 
-function LegacyEntryPlan({ play }: { play: TerminalPlay }) {
-  const hasContract = !!play.optionsPlay;
-  const rr = play.rrRatio;
-  const cost = play.entryCostPerContract;
-  if (!hasContract && rr == null) return null;
-  return (
-    <>
-      <div className="nh-deck-lab" style={{ marginTop: 12 }}>Entry plan</div>
-      {hasContract && (
-        <div className="nh-deck-meta">
-          <div><span className="k">Contract</span><span className="v">{play.optionsPlay}</span></div>
-          {play.entry != null && <div><span className="k">Entry premium</span><span className="v">{usd(play.entry)}</span></div>}
-          {cost != null && <div><span className="k">Cost / contract</span><span className="v">${cost.toFixed(0)}</span></div>}
-          {play.premiumCapOk != null && (
-            <div>
-              <span className="k">Premium cap</span>
-              <span className={clsx("v", play.premiumCapOk ? "nh-deck-pos" : "nh-deck-neg")}>
-                {play.premiumCapOk ? "✓ within cap" : "✗ above cap"}
-              </span>
-            </div>
-          )}
-        </div>
-      )}
-      {rr != null && (
-        <div className="nh-deck-meta" style={hasContract ? { marginTop: 4 } : undefined}>
-          <div>
-            <span className="k">Risk : Reward</span>
-            <span className={clsx("v", rr >= 2 && "nh-deck-pos", rr < 1 && "nh-deck-neg")}>
-              {rr.toFixed(1)}:1{rr >= 2 ? " (strong)" : rr >= 1 ? " (favorable)" : rr >= 0.5 ? " (acceptable)" : " (tight)"}
-            </span>
-          </div>
-        </div>
-      )}
-    </>
-  );
-}
-
-function ZeroDteEntryPlan({ play }: { play: TerminalPlay }) {
-  const hasContract = !!play.optionsPlay;
-  const rr = play.rrRatio;
-  if (!hasContract && rr == null) return null;
-  return (
-    <>
-      <div className="nh-deck-lab" style={{ marginTop: 12 }}>Entry plan</div>
-      <div className="nh-deck-meta">
-        {hasContract && (
-          <div><span className="k">Contract</span><span className="v" style={{ fontSize: "0.85em" }}>{play.optionsPlay}</span></div>
-        )}
-        {play.mark != null && <div><span className="k">Current mark</span><span className="v">{usd(play.mark)}</span></div>}
-        {play.stockPrice != null && <div><span className="k">Underlying</span><span className="v">${play.stockPrice.toFixed(2)}</span></div>}
-        {rr != null && (
-          <div>
-            <span className="k">Risk : Reward</span>
-            <span className={clsx("v", rr >= 2 && "nh-deck-pos", rr < 1 && "nh-deck-neg")}>
-              {rr.toFixed(1)}:1{rr >= 2 ? " (strong)" : rr >= 1 ? " (favorable)" : rr >= 0.5 ? " (acceptable)" : " (tight)"}
-            </span>
-          </div>
-        )}
-      </div>
-    </>
-  );
-}
+// NOTE: `LegacyEntryPlan` and `ZeroDteEntryPlan` (the Management tab's Contract/Current-mark/
+// Underlying/Entry-premium/Cost-per-contract/Premium-cap/R:R trio) were removed here (Night Hawk
+// panel declutter, docs/audit/FINDINGS.md 2026-08-05). Verified duplicate mapping per field:
+//  - Contract (`optionsPlay`) — for 0DTE this is LITERALLY `play.occ` (adapters.ts sets
+//    `optionsPlay: occ` verbatim), already shown via the `OccCopy` control in the hero stream
+//    strip; for Legacy it duplicated `LegacyPnlPanel`'s own "Contract" row (PnL tab, same field).
+//  - Current mark (0DTE) — already streams live in the hero's compact stream strip above the tabs.
+//  - Entry premium / Cost-per-contract (Legacy) — duplicated `LegacyPnlPanel`'s "Stock entry" /
+//    "Entry premium" rows (PnL tab) — same fields (`play.entry` / `play.entryCostPerContract`),
+//    just relabeled inconsistently between the two renders (worth noting: this Management copy
+//    mislabeled `play.entry` — the STOCK entry price — as "Entry premium", which the PnL tab
+//    correctly reserves for `entryCostPerContract`; removing this row also removes that mislabel).
+// R:R (both horizons), Underlying (0DTE only — Legacy's stock price already streams in the
+// persistent non-premium header), and Premium-cap (Legacy only) were the genuinely NEW fields
+// these components carried — they now live in the Thesis tab's meta grid (`ThesisPanel`'s
+// `commitSnapshot`, always reachable regardless of committed status) instead of disappearing.
+// `usd()` above stays in use elsewhere in this file (PnL/rails formatting).
 
 function LegacyManageGeometry({ play }: { play: TerminalPlay }) {
   const target = play.targetLevel ? parseFloat(play.targetLevel.replace(/[^0-9.]/g, "")) : null;
@@ -1068,12 +1069,6 @@ function LegacyPnlPanel({ play }: { play: TerminalPlay }) {
   const chg = play.stockChangePct;
   const pnl = play.pnlPct;
   const spot = play.stockPrice;
-  const target = play.targetLevel ? parseFloat(play.targetLevel.replace(/[^0-9.]/g, "")) : null;
-  const stop = play.stopLevel ? parseFloat(play.stopLevel.replace(/[^0-9.]/g, "")) : null;
-  const distTarget = spot != null && target != null && Number.isFinite(target) && spot > 0
-    ? { dollars: target - spot, pct: ((target - spot) / spot * 100) } : null;
-  const distStop = spot != null && stop != null && Number.isFinite(stop) && spot > 0
-    ? { dollars: stop - spot, pct: ((stop - spot) / spot * 100) } : null;
   return (
     <>
       <div className="nh-deck-lab">Stock position</div>
@@ -1094,24 +1089,11 @@ function LegacyPnlPanel({ play }: { play: TerminalPlay }) {
         <div><span className="k">Stock</span><span className="v">{hasStock ? `$${spot!.toFixed(2)}` : "—"}</span></div>
         <div><span className="k">Stock entry</span><span className="v">{play.entry != null ? `$${play.entry.toFixed(2)}` : play.entryRange ?? "—"}</span></div>
         <div><span className="k">Entry premium</span><span className="v">{play.entryCostPerContract != null ? usd(play.entryCostPerContract) : "—"}</span></div>
-        {play.targetLevel && (
-          <div>
-            <span className="k">Target</span>
-            <span className="v nh-deck-pos">
-              {play.targetLevel}
-              {distTarget && <span className="nh-deck-dist"> ({distTarget.dollars >= 0 ? "+" : ""}{distTarget.dollars.toFixed(2)} / {distTarget.pct >= 0 ? "+" : ""}{distTarget.pct.toFixed(1)}%)</span>}
-            </span>
-          </div>
-        )}
-        {play.stopLevel && (
-          <div>
-            <span className="k">Stop</span>
-            <span className="v nh-deck-neg">
-              {play.stopLevel}
-              {distStop && <span className="nh-deck-dist"> ({distStop.dollars >= 0 ? "+" : ""}{distStop.dollars.toFixed(2)} / {distStop.pct >= 0 ? "+" : ""}{distStop.pct.toFixed(1)}%)</span>}
-            </span>
-          </div>
-        )}
+        {/* Target/Stop levels + live distance, and the STOP↔TARGET progress track below, are rendered
+            ONCE — in the Management tab's LegacyManageGeometry, which additionally draws the
+            entry-zone marker and a plain-language zone label. Repeating the bare distance grid and a
+            second (marker-less) track here was pure duplication of the same play.targetLevel /
+            play.stopLevel / play.progress values — see docs/audit/FINDINGS.md 2026-08-05. */}
         {play.ivRank != null && (
           <div>
             <span className="k">IV rank</span>
@@ -1128,14 +1110,6 @@ function LegacyPnlPanel({ play }: { play: TerminalPlay }) {
         )}
         {play.optionsPlay && <div><span className="k">Contract</span><span className="v">{play.optionsPlay}</span></div>}
       </div>
-      {play.progress != null && (
-        <div style={{ marginTop: 12 }}>
-          <div className="nh-deck-track">
-            <span className="lo">STOP</span><span className="hi">TARGET</span>
-            <span className="mk" style={{ left: `${Math.round(play.progress * 100)}%` }} />
-          </div>
-        </div>
-      )}
       {(play.peak != null || play.trough != null) && (
         <TradeExcursionGraphic play={play} markFlash={markFlash} />
       )}

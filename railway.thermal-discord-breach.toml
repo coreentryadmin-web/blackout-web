@@ -1,0 +1,18 @@
+# Railway/EventBridge catalog: Thermal Discord breach poller (SPY|SPX|QQQ wall/flip crosses).
+# Hits the same route as scheduled posts with breach_only=1 — no 15m scheduled dedup.
+# Live fire requires EventBridge rule sync (TOML alone is not enough).
+[build]
+builder = "nixpacks"
+buildCommand = "echo 'cron trigger service: no app build needed'"
+watchPatterns = [
+  "scripts/hit-cron.mjs",
+  "railway.thermal-discord-breach.toml",
+  "nixpacks.toml",
+]
+
+[deploy]
+startCommand = "CRON_HTTP_TIMEOUT_MS=120000 node scripts/hit-cron.mjs /api/cron/thermal-discord?breach_only=1"
+# Every 5 minutes on weekdays during cash RTH UTC band (~9:30 AM–4:00 PM ET).
+cronSchedule = "*/5 13-20 * * 1-5"
+restartPolicyType = "never"
+numReplicas = 1

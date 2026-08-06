@@ -135,42 +135,79 @@ export function summarizeTechnicals(
 const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 2 });
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
+/** Tone taxonomy reused from the rest of the Vector Pulse rail (`vp-t-bull/bear/warn/muted` in
+ *  globals.css) so a colored technicals line looks like every other colored intel-card line. */
+export type TechnicalsTone = "bull" | "bear" | "warn" | "muted";
+
+export type TechnicalsLine = { text: string; tone: TechnicalsTone };
+
 /**
  * Terminal-ready lines for the always-on "Technicals" section. Formatted HERE (numbers known) so the
  * terminal just prints them. Only emits a line per study that actually computed — an empty array
  * means "not enough bars yet", which the terminal renders as a quiet warming-up note.
+ *
+ * Each line also carries a `tone` derived from the SAME typed fields on `TechnicalsSummary` used to
+ * build the text (never re-parsed from the formatted string) — bullish/bearish reads are green/red,
+ * an extended RSI zone (which cuts either way — it's a caution, not a directional call) is amber,
+ * and a study with no directional read (golden pocket is a price zone, EMA "mixed" is neither
+ * stacked direction) stays the same neutral gray as before this line existed.
  */
-export function technicalsCallouts(s: TechnicalsSummary): string[] {
-  const lines: string[] = [];
+export function technicalsCalloutLines(s: TechnicalsSummary): TechnicalsLine[] {
+  const lines: TechnicalsLine[] = [];
 
   if (s.vwap != null && s.vwapDeltaPct != null) {
-    const side = s.vwapDeltaPct >= 0 ? "above" : "below";
-    lines.push(`VWAP ${fmt(round2(s.vwap))} — price ${Math.abs(s.vwapDeltaPct).toFixed(2)}% ${side}`);
+    const above = s.vwapDeltaPct >= 0;
+    const side = above ? "above" : "below";
+    lines.push({
+      text: `VWAP ${fmt(round2(s.vwap))} — price ${Math.abs(s.vwapDeltaPct).toFixed(2)}% ${side}`,
+      tone: above ? "bull" : "bear",
+    });
   }
 
   if (s.emaStack != null && s.ema9 != null && s.ema21 != null && s.ema50 != null) {
     const word = s.emaStack === "bullish" ? "stacked bullish" : s.emaStack === "bearish" ? "stacked bearish" : "mixed";
     const rel = s.emaStack === "bullish" ? ">" : s.emaStack === "bearish" ? "<" : "·";
-    lines.push(`EMA 9/21/50 ${word} (${fmt(round2(s.ema9))} ${rel} ${fmt(round2(s.ema21))} ${rel} ${fmt(round2(s.ema50))})`);
+    lines.push({
+      text: `EMA 9/21/50 ${word} (${fmt(round2(s.ema9))} ${rel} ${fmt(round2(s.ema21))} ${rel} ${fmt(round2(s.ema50))})`,
+      tone: s.emaStack === "bullish" ? "bull" : s.emaStack === "bearish" ? "bear" : "muted",
+    });
   }
 
   if (s.rsi != null && s.rsiZone != null) {
-    lines.push(`RSI ${Math.round(s.rsi)} — ${s.rsiZone}`);
+    lines.push({
+      text: `RSI ${Math.round(s.rsi)} — ${s.rsiZone}`,
+      tone: s.rsiZone === "neutral" ? "muted" : "warn",
+    });
   }
 
   if (s.macd != null && s.macdState != null) {
     const rel = s.macdState === "bullish" ? "above" : "below";
     const hist = s.macdHist != null ? ` · hist ${s.macdHist >= 0 ? "+" : ""}${round2(s.macdHist)}` : "";
-    lines.push(`MACD ${s.macdState} — line ${rel} signal${hist}`);
+    lines.push({
+      text: `MACD ${s.macdState} — line ${rel} signal${hist}`,
+      tone: s.macdState === "bullish" ? "bull" : "bear",
+    });
   }
 
   if (s.goldenPocket != null) {
-    lines.push(`Golden pocket ${fmt(round2(s.goldenPocket.low))}–${fmt(round2(s.goldenPocket.high))}`);
+    lines.push({
+      text: `Golden pocket ${fmt(round2(s.goldenPocket.low))}–${fmt(round2(s.goldenPocket.high))}`,
+      tone: "muted",
+    });
   }
 
   if (s.structure != null) {
-    lines.push(`Structure ${s.structure.type} ${s.structure.direction} @ ${fmt(round2(s.structure.level))}`);
+    lines.push({
+      text: `Structure ${s.structure.type} ${s.structure.direction} @ ${fmt(round2(s.structure.level))}`,
+      tone: s.structure.direction === "up" ? "bull" : "bear",
+    });
   }
 
   return lines;
+}
+
+/** @deprecated Kept for any caller that only wants plain text — prefer `technicalsCalloutLines` so
+ *  tone travels with the line instead of being re-derived (or lost) downstream. */
+export function technicalsCallouts(s: TechnicalsSummary): string[] {
+  return technicalsCalloutLines(s).map((l) => l.text);
 }

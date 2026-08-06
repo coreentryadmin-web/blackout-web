@@ -75,6 +75,7 @@
   }
 
   /* Fixed chrome above the play queue must not shrink — only .nh-deck-rows scrolls. */
+  html:not(.ios-native-shell) .nh-v2-page .nh-deck-left > .nh-deck-header-compact,
   html:not(.ios-native-shell) .nh-v2-page .nh-deck-left > .nh-deck-cmd,
   html:not(.ios-native-shell) .nh-v2-page .nh-deck-left > .nh-deck-lh,
   html:not(.ios-native-shell) .nh-v2-page .nh-deck-left > .nh-deck-cockpit,
@@ -816,6 +817,16 @@
   margin: 0;
   font-size: 0.82rem;
   color: rgba(125, 211, 252, 0.95);
+}
+
+/* Target reachability disclosure — deliberately muted, not alarm-coloured. It is a base
+   rate stated next to the plan, not a warning badge; the gate caveat block below already
+   owns the loud presentation for plays that failed a gate. */
+.nh-v2-briefing-reach {
+  margin: 0.6rem 0 0;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: rgba(203, 213, 225, 0.72);
 }
 
 .nh-v2-briefing-cap {

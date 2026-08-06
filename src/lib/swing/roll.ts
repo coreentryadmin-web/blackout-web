@@ -136,6 +136,18 @@ export function decideRollAction(verdict: SwingManageVerdict): { action: RollAct
       reason: `gating rung '${verdict.rung}' — thesis broken, close not roll (${verdict.reason})`,
     };
   }
+  // premium_stop is the −60% capital-preservation BACKSTOP ("the last line, not the first" — manage.ts) —
+  // it must always close, never roll. Without this, a position whose premium has already cratered to the
+  // hard-stop floor but hasn't yet cleared the DTE-migration roll intent gets a fresh child position instead
+  // of being cut (FINDINGS 2026-08-06 P0: audit found `evaluateDteMigration` can compute rollIntent.roll=true
+  // for a premium_stop-rung position with dte<=migrationDte, letting it fall through to the generic ROLL
+  // branch below).
+  if (verdict.rung === "premium_stop") {
+    return {
+      action: "CLOSE",
+      reason: `gating rung 'premium_stop' — capital-preservation backstop hit, close not roll (${verdict.reason})`,
+    };
+  }
   if (!verdict.rollIntent.roll) {
     return {
       action: "CLOSE",

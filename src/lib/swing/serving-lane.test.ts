@@ -97,7 +97,7 @@ test("assembles a real sectioned lane: WATCH + RESEARCH populate; setupState sta
   assert.equal(lane.sections.COMMIT_NOW[0]!.serving, "COMMIT_NOW"); // stamped by the section router
 });
 
-test("ungraduated AT_TRIGGER stays WAITING_FOR_ENTRY — never COMMIT_NOW on cold book", async () => {
+test("ungraduated AT_TRIGGER still reaches COMMIT_NOW — graduation is evidence-only (2026-08-06)", async () => {
   const discover = async (): Promise<SwingDiscoveryLike> => ({
     dossiers: [buildSwingDossier(dossier("NVDA"))],
     plays: [play({ ticker: "NVDA", status: "COMMIT", bucketGraduated: false })],
@@ -106,8 +106,8 @@ test("ungraduated AT_TRIGGER stays WAITING_FOR_ENTRY — never COMMIT_NOW on col
     ["NVDA", { setup: { price: 100.5, triggerPx: 100, invalidationPx: 90, atr: 3 }, entry: { price: 100.5, triggerPx: 100, atr: 3, entryZoneFar: 98 }, contract }],
   ]);
   const lane = await getSwingServingLane({ discover, readsByTicker });
-  assert.equal(lane.sections.COMMIT_NOW.length, 0);
-  assert.equal(lane.sections.WAITING_FOR_ENTRY.map((p) => p.ticker).join(","), "NVDA");
+  assert.equal(lane.sections.COMMIT_NOW.map((p) => p.ticker).join(","), "NVDA");
+  assert.equal(lane.sections.WAITING_FOR_ENTRY.length, 0);
 });
 
 test("fetchOpenPositions populates MANAGING / SCALING_OUT / EXITING live sections", async () => {

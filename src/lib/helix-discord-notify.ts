@@ -1,21 +1,27 @@
 /**
  * Fire-and-forget HELIX Discord community alert for a freshly persisted flow.
- * Applies the 3 filters, best-effort GEX enrich, posts write-up embed.
+ * Applies filters, RTH gate, milestone gate, burst collapse, best-effort GEX enrich.
  */
 import { postDiscordWebhook } from "@/lib/discord-post";
 import {
+  buildHelixBurstEmbed,
   buildHelixDiscordEmbed,
   classifyHelixDiscordKind,
   contractStackHitsFromFlows,
   HELIX_DISCORD_MAX_DTE,
   HELIX_DISCORD_MIN_PREMIUM,
   helixDiscordAlertsEnabled,
+  helixDiscordLiveRthOnly,
   helixDiscordWebhookUrl,
   passesHelixDiscordFilters,
   type HelixDiscordFlowInput,
 } from "@/lib/helix-discord-format";
+import { discordBurstWindowSec, ingestDiscordBurst } from "@/lib/discord-burst-buffer";
+import { formatGexContextLine } from "@/lib/discord-context-enrichment";
 import { enrichFlowWithGex } from "@/lib/flow-gex-proximity";
 import { getGexLevelsForTicker } from "@/lib/flow-gex-enrichment";
+import { isHelixRepeatFlow, resolveHelixMilestoneGate } from "@/lib/helix-discord-milestone";
+import { isEtCashRth } from "@/lib/et-market-hours";
 import { dbConfigured, fetchRecentFlows } from "@/lib/db";
 
 function flowRowToDiscordInput(row: {
@@ -61,7 +67,7 @@ function flowRowToDiscordInput(row: {
 async function enrichStackHits(flow: HelixDiscordFlowInput): Promise<HelixDiscordFlowInput> {
   const kind = classifyHelixDiscordKind(flow);
   const isRepeat =
-    kind === "stack" || /repeat/i.test(String(flow.alert_rule || ""));
+    kind === "stack" || isHelixRepeatFlow(flow);
   if (!isRepeat || !dbConfigured()) return flow;
 
   try {
@@ -82,27 +88,73 @@ async function enrichStackHits(flow: HelixDiscordFlowInput): Promise<HelixDiscor
   return flow;
 }
 
+async function enrichGexContext(flow: HelixDiscordFlowInput): Promise<HelixDiscordFlowInput> {
+  let enriched = flow;
+  try {
+    if (flow.ticker && Number.isFinite(flow.strike)) {
+      const levels = await getGexLevelsForTicker(flow.ticker);
+      if (levels) {
+        enriched = enrichFlowWithGex(flow, levels);
+        const gex_context_line = formatGexContextLine(flow.strike, levels);
+        if (gex_context_line) enriched = { ...enriched, gex_context_line };
+      }
+    }
+  } catch {
+    // GEX is optional.
+  }
+  return enriched;
+}
+
+async function postHelixFlows(flows: HelixDiscordFlowInput[], ticker: string): Promise<boolean> {
+  const url = helixDiscordWebhookUrl();
+  if (!url || !flows.length) return false;
+  const windowMin = Math.round(discordBurstWindowSec() / 60);
+
+  if (flows.length === 1) {
+    const embed = buildHelixDiscordEmbed(flows[0]!);
+    return postDiscordWebhook(url, { embeds: [embed] }, "helix-flow");
+  }
+
+  const embed = buildHelixBurstEmbed({ ticker, flows, windowMin });
+  return postDiscordWebhook(url, { embeds: [embed] }, "helix-burst");
+}
+
+/** Flush a burst window to Discord (cron + rolled ingest). Exported for cron flush. */
+export async function deliverHelixBurstItems(
+  ticker: string,
+  flows: HelixDiscordFlowInput[]
+): Promise<boolean> {
+  if (!helixDiscordAlertsEnabled() || !helixDiscordWebhookUrl()) return false;
+  const enriched: HelixDiscordFlowInput[] = [];
+  for (const f of flows) {
+    if (!passesHelixDiscordFilters(f)) continue;
+    enriched.push(await enrichGexContext(f));
+  }
+  if (!enriched.length) return false;
+  return postHelixFlows(enriched, ticker);
+}
+
 export async function notifyHelixDiscordFlow(flow: HelixDiscordFlowInput): Promise<boolean> {
   if (!helixDiscordAlertsEnabled()) return false;
   const url = helixDiscordWebhookUrl();
   if (!url) return false;
+  if (helixDiscordLiveRthOnly() && !isEtCashRth()) return false;
   if (!passesHelixDiscordFilters(flow)) return false;
 
-  let enriched: HelixDiscordFlowInput = flow;
-  try {
-    if (flow.ticker && Number.isFinite(flow.strike)) {
-      const levels = await getGexLevelsForTicker(flow.ticker);
-      if (levels) enriched = enrichFlowWithGex(flow, levels);
-    }
-  } catch {
-    // GEX is optional — still post the write-up without walls.
-  }
-
+  let enriched = await enrichGexContext(flow);
   enriched = await enrichStackHits(enriched);
-
-  // Re-check after enrich (enrich doesn't change filter fields, but keep fail-closed).
   if (!passesHelixDiscordFilters(enriched)) return false;
 
-  const embed = buildHelixDiscordEmbed(enriched);
-  return postDiscordWebhook(url, { embeds: [embed] }, "helix-flow");
+  const hitCount = Math.max(enriched.stack_hits?.length ?? 0, 1);
+  const gate = await resolveHelixMilestoneGate(enriched, hitCount);
+  if (!gate.post) return false;
+  if (gate.milestone != null) {
+    enriched = { ...enriched, stack_milestone: gate.milestone };
+  }
+
+  const { flush } = await ingestDiscordBurst("helix", enriched.ticker, enriched);
+  if (flush?.length) {
+    await deliverHelixBurstItems(enriched.ticker, flush);
+  }
+  return true;
 }

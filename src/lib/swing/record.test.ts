@@ -64,8 +64,36 @@ test("all-winning chain composites to a win", () => {
   ]);
   assert.equal(rec.composite.allLegsWon, true);
   assert.equal(rec.composite.outcome, "win");
+  assert.equal(rec.composite.chainResolved, true);
   assert.equal(rec.composite.losses, 0);
   assert.equal(rec.composite.worstLegPnlPct, 30);
+});
+
+test("a WON parent with a still-OPEN child is NOT yet a 'win' — the chain hasn't resolved (FINDINGS 2026-08-06 P3)", () => {
+  // Repro: gradedLegs.length > 0 and allLegsWon (the only graded leg won), but the most recent leg (the
+  // child, roll_seq 1) is still OPEN — a "win" label here would be premature evidence: if that child later
+  // grades a loss, the chain was never actually a win. Must report "open" until the last leg is graded.
+  const root = 50;
+  const rec = buildSwingRecord([
+    leg({ id: root, roll_seq: 0, status: "ROLLED", realized_pnl_pct: 40 }),
+    leg({ id: 51, root_position_id: root, parent_position_id: root, roll_seq: 1, status: "OPEN", realized_pnl_pct: null, graded_at: null }),
+  ]);
+  const c = rec.composite;
+  assert.equal(c.gradedLegs, 1);
+  assert.equal(c.allLegsWon, true, "the one graded leg (the parent) did win");
+  assert.equal(c.chainResolved, false, "the most recent leg (the child) is still open");
+  assert.equal(c.outcome, "open", "NOT 'win' — the child could still lose");
+});
+
+test("a WON parent + a WON child (both graded) → the chain is fully resolved and reports 'win'", () => {
+  const root = 60;
+  const rec = buildSwingRecord([
+    leg({ id: root, roll_seq: 0, status: "ROLLED", realized_pnl_pct: 40 }),
+    leg({ id: 61, root_position_id: root, parent_position_id: root, roll_seq: 1, status: "GRADED", realized_pnl_pct: 20 }),
+  ]);
+  const c = rec.composite;
+  assert.equal(c.chainResolved, true);
+  assert.equal(c.outcome, "win");
 });
 
 test("ungraded legs are not counted; a fully-open chain is 'open'", () => {

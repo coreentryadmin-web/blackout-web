@@ -278,13 +278,20 @@ export async function extractCandidateTickers(
 // composite score become candidates. This replaces the flow-only path for the
 // edition pipeline while keeping the old function for hunt-builder.
 
-const LANE_MAX_FLOW = 40;
+// Rebalanced 2026-08-05 (discovery-architecture redesign): FLOW's ceiling cut from 40 to 28 —
+// at 40 vs a 103-point total, flow alone could singlehandedly out-rank every technical/catalyst
+// signal combined ("biggest premium today" dominating the pool per the operator's own read of the
+// architecture). BREAKOUT and CATALYST raised (10→18, 10→16) so real price-action/event signals
+// can out-rank a merely-large options print — flow is still the single largest lane (real,
+// current-day conviction deserves real weight) but no longer close to half the total ceiling.
+// New total ceiling: 28+15+12+16+8+8+18=105 (was 103) — comparable scale, redistributed weight.
+const LANE_MAX_FLOW = 28;
 const LANE_MAX_OI = 15;
 const LANE_MAX_UNUSUAL = 12;
-const LANE_MAX_CATALYST = 10;
+const LANE_MAX_CATALYST = 16;
 const LANE_MAX_PREDICTIONS = 8;
 const LANE_MAX_MOVERS = 8;
-const LANE_MAX_BREAKOUT = 10;
+const LANE_MAX_BREAKOUT = 18;
 
 type LaneEntry = { ticker: string; rawScore: number };
 
@@ -527,6 +534,84 @@ export type MultiSourceCandidateRow = {
 };
 
 /**
+ * Per-lane composition of a SELECTED candidate pool (2026-08-05, root-cause instrumentation): for
+ * each lane name, how many of the selected rows it touched (`tickers`) and what share of the
+ * pool's total composite score it contributed (`scorePct`, 0-100, rounded). Pure — operates only
+ * on the rows/lane names already computed by `extractMultiSourceCandidates`, no I/O — so a lane's
+ * real contribution to a given night's pool can be measured and unit-tested directly instead of
+ * inferring it from `LANE_MAX_FLOW`'s ceiling (a max-points cap on ONE lane's normalized score,
+ * not a measurement of that lane's actual share of the tickers that made the final cut).
+ */
+export function laneComposition(
+  rows: MultiSourceCandidateRow[],
+  laneNames: string[]
+): Record<string, { tickers: number; scorePct: number }> {
+  const tickerCounts: Record<string, number> = {};
+  const scoreSums: Record<string, number> = {};
+  for (const name of laneNames) {
+    tickerCounts[name] = 0;
+    scoreSums[name] = 0;
+  }
+  let totalScore = 0;
+  for (const row of rows) {
+    totalScore += row.composite_score;
+    for (const [name, pts] of Object.entries(row.lane_scores)) {
+      tickerCounts[name] = (tickerCounts[name] ?? 0) + 1;
+      scoreSums[name] = (scoreSums[name] ?? 0) + pts;
+    }
+  }
+  const out: Record<string, { tickers: number; scorePct: number }> = {};
+  for (const name of laneNames) {
+    out[name] = {
+      tickers: tickerCounts[name] ?? 0,
+      scorePct: totalScore > 0 ? Math.round(((scoreSums[name] ?? 0) / totalScore) * 100) : 0,
+    };
+  }
+  return out;
+}
+
+/** Compact one-line rendering of {@link laneComposition} for console/log output. */
+export function formatLaneComposition(comp: Record<string, { tickers: number; scorePct: number }>): string {
+  return Object.entries(comp)
+    .map(([name, c]) => `${name}=${c.tickers}t/${c.scorePct}%`)
+    .join(" ");
+}
+
+/** How many of the top-ranked names are admitted regardless of source_count (2026-08-05) — a
+ *  genuinely dominant single-lane signal (e.g. a massive, unmistakable options sweep) is real
+ *  evidence on its own and must not be discarded just because only one lane happened to see it
+ *  first; corroboration hasn't caught up yet doesn't mean the signal is wrong. Below this rank,
+ *  admission requires corroboration (see {@link applyConfluenceGate}). */
+export const CONFLUENCE_PROTECTED_TOP = 20;
+/** Minimum distinct lanes for a candidate ranked below {@link CONFLUENCE_PROTECTED_TOP} to enter
+ *  the pool — single-lane "OI change only" or "mover only" noise below the protected top no
+ *  longer gets a dossier just for showing up in exactly one lane. */
+export const CONFLUENCE_MIN_SOURCES = 2;
+
+/**
+ * Confluence admission gate (2026-08-05, discovery-architecture redesign — operator's read: "the
+ * selection has to be strong, not just OI/Flow"). `rows` must already be sorted by
+ * `composite_score` descending. The top `protectedTop` are admitted unconditionally (protects a
+ * genuinely dominant single-lane signal); every row after that must have `source_count >=
+ * minSources` to be admitted. Pure and order-preserving — never re-sorts, only filters — so a
+ * pre-sorted `rows` array in is a pre-sorted (possibly shorter) array out. Stops once `maxTickers`
+ * have been admitted so a long tail of single-lane names doesn't need to be fully scanned.
+ */
+export function applyConfluenceGate(
+  rows: MultiSourceCandidateRow[],
+  maxTickers: number,
+  protectedTop: number = CONFLUENCE_PROTECTED_TOP,
+  minSources: number = CONFLUENCE_MIN_SOURCES
+): MultiSourceCandidateRow[] {
+  const admitted: MultiSourceCandidateRow[] = [];
+  for (let i = 0; i < rows.length && admitted.length < maxTickers; i++) {
+    const row = rows[i]!;
+    if (i < protectedTop || row.source_count >= minSources) admitted.push(row);
+  }
+  return admitted;
+}
+
+/**
  * Multi-source candidate discovery — replaces the flow-only extractCandidateTickers
  * for the edition pipeline. Runs 6 independent scoring lanes over MarketWideContext,
  * applies corroboration bonuses for tickers seen in multiple lanes, enriches with DB
@@ -557,9 +642,14 @@ export async function extractMultiSourceCandidates(
     }
   }
 
-  // Corroboration bonus: multi-source tickers are more reliable signals.
+  // Corroboration ("stacked hits") bonus: a ticker multiple independent lanes agree on is a more
+  // reliable signal than any single lane's raw score, so it's boosted before ranking. Added a 4th
+  // tier (2026-08-05): a name every lane types considers notable (4+ distinct sources, or every
+  // lane in play) is a materially different, rarer signal than "merely 2 lanes agree" and now gets
+  // its own boost tier rather than capping at the same 1.3x a bare 3-source name gets.
   for (const [, entry] of composite) {
-    if (entry.sources.length >= 3) entry.score *= 1.3;
+    if (entry.sources.length >= 4) entry.score *= 1.45;
+    else if (entry.sources.length >= 3) entry.score *= 1.3;
     else if (entry.sources.length >= 2) entry.score *= 1.15;
   }
 
@@ -605,11 +695,26 @@ export async function extractMultiSourceCandidates(
 
   rows.sort((a, b) => b.composite_score - a.composite_score);
 
-  const selected = rows.slice(0, maxTickers).map((r) => r.ticker);
+  const selectedRows = applyConfluenceGate(rows, maxTickers);
+  const selected = selectedRows.map((r) => r.ticker);
   const multiSourceCount = rows.filter((r) => r.source_count >= 2).length;
+  const singleLaneSelected = selectedRows.filter((r) => r.source_count < CONFLUENCE_MIN_SOURCES).length;
   console.info(
     `[nighthawk/candidates] multi-source: ${composite.size} unique tickers from ${lanes.length} lanes, ` +
-    `${multiSourceCount} corroborated, selected top ${selected.length}`
+    `${multiSourceCount} corroborated, selected top ${selected.length} ` +
+    `(${singleLaneSelected} single-lane, all within the protected top ${CONFLUENCE_PROTECTED_TOP})`
+  );
+
+  // Per-lane composition of the SELECTED pool (2026-08-05, instrumentation only — no behavior
+  // change). Answers "is the pool really ~40% flow?" from real nightly data instead of reading
+  // LANE_MAX_FLOW's ceiling as a proxy for actual pool composition — a ceiling on a lane's max
+  // normalized score is not the same as that lane's share of the tickers that actually made the
+  // cut. Logged, never persisted — read from ECS/CloudWatch logs when diagnosing a thin-output
+  // night.
+  const laneNames = lanes.map(([name]) => name);
+  console.info(
+    `[nighthawk/candidates] lane composition of selected pool: ` +
+    formatLaneComposition(laneComposition(selectedRows, laneNames))
   );
 
   return selected;

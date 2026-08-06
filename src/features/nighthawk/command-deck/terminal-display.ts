@@ -6,6 +6,7 @@ import type { ThesisHealthPayload, ThesisPillarState } from "@/lib/zerodte/thesi
 import type { TerminalExitLadder } from "@/lib/zerodte/terminal-ladder";
 import type { DeckStatus, ExitModel, Recommendation, TerminalPlay } from "./types";
 import { playQualityPct } from "./play-card-display";
+import { ARCHETYPE_META, SWING_SUB_LANES, type SwingArchetype, type SwingSubLane } from "@/lib/swing/taxonomy";
 
 export type ChecklistItem = { label: string; ok: boolean | null };
 
@@ -72,6 +73,28 @@ export function engineChecklist(play: TerminalPlay): ChecklistItem[] {
     { label: "Structure", ok: h ? pillarOk(findPillar(h, ["structure"])) : null },
     { label: "Breadth", ok: h ? pillarOk(findPillar(h, ["market"])) : (tapeGate?.ok ?? null) },
     { label: "Momentum", ok: h ? pillarOk(findPillar(h, ["tape", "momentum"])) : null },
+  ];
+}
+
+/** ONE merged pass/fail checklist — replaces the old separate Engine Checklist (5 rows) and
+ *  Confluence Grid (6 cells) render, which described the SAME underlying thesis-health pillars
+ *  under two different label vocabularies with real overlap (Flow/Breadth/Gamma appeared in
+ *  both). Kept `engineChecklist`/`confluenceChecklist` above unchanged (pure, still unit-tested,
+ *  still valid data shapes) — this is a presentation-layer dedup on top of them, not a rewrite
+ *  of the underlying pillar math. Picks confluence's vocabulary (Dealer/Flow/VWAP/Breadth/
+ *  Gamma/Vol — the clearer of the two) and adds Momentum, the one engine-checklist-only signal
+ *  with no confluence equivalent, so no distinct signal is lost. See docs/audit/FINDINGS.md
+ *  2026-08-04 (Night Hawk panel declutter). */
+export function unifiedChecklist(play: TerminalPlay): ChecklistItem[] {
+  const h = play.thesisHealth;
+  return [
+    { label: "Dealer", ok: pillarOk(findPillar(h, ["dealer"])) },
+    { label: "Flow", ok: pillarOk(findPillar(h, ["flow"])) },
+    { label: "VWAP", ok: pillarOk(findPillar(h, ["vwap"])) },
+    { label: "Breadth", ok: pillarOk(findPillar(h, ["market", "confluence"])) },
+    { label: "Gamma", ok: pillarOk(findPillar(h, ["structure", "dealer"])) },
+    { label: "Vol", ok: pillarOk(findPillar(h, ["volatility"])) },
+    { label: "Momentum", ok: pillarOk(findPillar(h, ["tape", "momentum"])) },
   ];
 }
 
@@ -222,8 +245,24 @@ export function strengthBarSegmentFills(pct: number | null, width = 10): boolean
   return Array.from({ length: width }, (_, i) => i < filled);
 }
 
+/** Which horizons get the richer "Terminal v2" visual grammar (dense trade hero, unified checklist
+ *  stack, ManagementActionCard, TradeOutcomePanel, …) instead of the plain text/key-value fallback.
+ *
+ *  Was ZERO_DTE-only (`isZeroDtePremiumTerminal`, name kept for git-blame continuity — no other
+ *  module imports this beyond PlayTerminal.tsx, confirmed 2026-08-05). Extended to SWING: a Swing
+ *  play carries the SAME conceptual fields this grammar renders (ticker/direction/status, current +
+ *  peak, a recommended action + reason + confidence, an outcome verdict) — a member trading both
+ *  lanes was relearning the UI switching tabs for no data reason (docs/audit/FINDINGS.md 2026-08-05).
+ *  LEAPS/LEGACY are deliberately NOT included here — LEAPS wasn't audited in this pass (out of
+ *  scope; same shape as Swing so likely a clean follow-up) and LEGACY has its own dedicated
+ *  stock-position renderers.
+ *
+ *  Genuinely 0DTE-only SAME-SESSION mechanics (the 15:50 hard time-stop clock, the iron-condor tent,
+ *  the frozen trim-scale ladder) are NOT toggled by this flag — those stay gated on an explicit
+ *  `play.horizon === "ZERO_DTE"` (or the condor/trim-scale predicates in terminal-guards.ts) at each
+ *  call site, so extending this flag can never leak a same-day countdown onto a multi-week Swing. */
 export function isZeroDtePremiumTerminal(play: TerminalPlay): boolean {
-  return play.horizon === "ZERO_DTE";
+  return play.horizon === "ZERO_DTE" || play.horizon === "SWING";
 }
 
 /** Engine confidence 0–100 — same grounded stack as conviction display. */
@@ -329,6 +368,56 @@ export type TradeSummaryDisplay = {
   horizonLabel: string;
   dollarPnl: number | null;
 };
+
+/** Title-case a SCREAMING_SNAKE enum value into a human phrase — "AT_TRIGGER" → "At trigger". Used
+ *  ONLY for enum-shaped swing observables with no dedicated label map (setupState/entryStatus/
+ *  servingSection); archetype/subLane have their own ARCHETYPE_META/SWING_SUB_LANES labels below. */
+function humanizeEnum(v: string): string {
+  const s = v.toLowerCase().replace(/_/g, " ");
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+export type SwingStatusDisplay = {
+  setup: string | null;
+  entry: string | null;
+  archetype: string | null;
+  subLane: string | null;
+  section: string | null;
+};
+
+/** The pre-entry/live-position OBSERVABLES the swing serving router (serving.ts) keys on — routing
+ *  logic already reads these upstream; this is the FIRST time they're surfaced to the member, so a
+ *  Swing name sitting in WATCH/WAITING_FOR_ENTRY has an honest "why" instead of just a bare score.
+ *  Every field is independently optional — a play carrying only some of them (or none, e.g. a
+ *  degraded/legacy read) renders only what it has. Never fabricates a value the adapter didn't set. */
+export function swingStatusDisplay(play: TerminalPlay): SwingStatusDisplay | null {
+  if (play.horizon !== "SWING") return null;
+  const setup = play.setupState ? humanizeEnum(play.setupState) : null;
+  const entry = play.entryStatus ? humanizeEnum(play.entryStatus) : null;
+  const archetype = play.archetype
+    ? (ARCHETYPE_META[play.archetype as SwingArchetype]?.label ?? humanizeEnum(play.archetype))
+    : null;
+  const subLane = play.subLane
+    ? (SWING_SUB_LANES[play.subLane as SwingSubLane]?.label ?? humanizeEnum(play.subLane))
+    : null;
+  const section = play.servingSection ? humanizeEnum(play.servingSection) : null;
+  if (!setup && !entry && !archetype && !subLane && !section) return null;
+  return { setup, entry, archetype, subLane, section };
+}
+
+/** One clearly-labeled status line for the Thesis panel — the compact render of `swingStatusDisplay`.
+ *  Null when the play carries none of the observables (never an empty "Setup: —" line). */
+export function swingStatusLine(play: TerminalPlay): string | null {
+  const d = swingStatusDisplay(play);
+  if (!d) return null;
+  const parts: string[] = [];
+  if (d.setup) parts.push(`Setup ${d.setup}`);
+  if (d.entry) parts.push(`Entry ${d.entry}`);
+  if (d.archetype) parts.push(d.archetype);
+  if (d.subLane) parts.push(d.subLane);
+  if (d.section) parts.push(`→ ${d.section}`);
+  return parts.join(" · ");
+}
 
 export function tradeSummaryDisplay(play: TerminalPlay): TradeSummaryDisplay {
   const conviction = convictionDisplay(play);

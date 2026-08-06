@@ -1,10 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { summarizeTechnicals, technicalsCallouts, type TechnicalsBar } from "./vector-technicals";
+import { summarizeTechnicals, technicalsCallouts, technicalsCalloutLines, type TechnicalsBar } from "./vector-technicals";
 
-/** Build bars from a close path: high=c+0.5, low=c-0.5, volume=1000, 1m spacing. */
+// RTH-anchored base (09:30 ET) — vwapSeries (used by summarizeTechnicals) is RTH-only (2026-08-05
+// audit fix: it must not anchor on pre/post-market prints), so fixture bars need to fall inside
+// 09:30-16:00 ET rather than raw epoch-0-based offsets, which land in 1970 pre-market.
+const RTH_T0 = Math.floor(Date.parse("2026-07-13T09:30:00-04:00") / 1000);
+
+/** Build bars from a close path: high=c+0.5, low=c-0.5, volume=1000, 1m spacing from the RTH open. */
 const barsFrom = (closes: number[]): TechnicalsBar[] =>
-  closes.map((c, i) => ({ time: 60 * i, high: c + 0.5, low: c - 0.5, close: c, volume: 1000 }));
+  closes.map((c, i) => ({ time: RTH_T0 + 60 * i, high: c + 0.5, low: c - 0.5, close: c, volume: 1000 }));
 
 // Accelerating (convex) trends, not linear ramps: a linear ramp makes MACD ≈ signal exactly, whose
 // bull/bear tie resolves on floating-point noise. A real accelerating trend keeps macd clearly on
@@ -71,4 +76,78 @@ test("summarizeTechnicals: spot defaults to the last close when not provided", (
   const bars = barsFrom([100, 105, 110]);
   assert.equal(summarizeTechnicals(bars, null).spot, 110);
   assert.equal(summarizeTechnicals(bars, 0).spot, 110, "invalid spot also falls back to last close");
+});
+
+// ---------------------------------------------------------------------------
+// technicalsCalloutLines — tone-per-line (2026-08-05, colored 4th-column technicals)
+// ---------------------------------------------------------------------------
+
+test("technicalsCalloutLines: uptrend → every directional line tones bull, text matches technicalsCallouts", () => {
+  const bars = barsFrom(ACCEL_UP);
+  const s = summarizeTechnicals(bars, ACCEL_UP[ACCEL_UP.length - 1]!);
+  const lines = technicalsCalloutLines(s);
+
+  assert.deepEqual(lines.map((l) => l.text), technicalsCallouts(s), "text must match the legacy plain-string API exactly");
+
+  const vwap = lines.find((l) => l.text.startsWith("VWAP "));
+  assert.equal(vwap?.tone, "bull", "price above VWAP → bull");
+  const ema = lines.find((l) => l.text.includes("stacked bullish"));
+  assert.equal(ema?.tone, "bull");
+  const macd = lines.find((l) => l.text.startsWith("MACD bullish"));
+  assert.equal(macd?.tone, "bull");
+  const rsi = lines.find((l) => l.text.startsWith("RSI "));
+  assert.equal(rsi?.tone, "warn", "overbought is a caution, not a directional bull call");
+});
+
+test("technicalsCalloutLines: downtrend → every directional line tones bear", () => {
+  const s = summarizeTechnicals(barsFrom(ACCEL_DOWN), ACCEL_DOWN[ACCEL_DOWN.length - 1]!);
+  const lines = technicalsCalloutLines(s);
+
+  const vwap = lines.find((l) => l.text.startsWith("VWAP "));
+  assert.equal(vwap?.tone, "bear");
+  const ema = lines.find((l) => l.text.includes("stacked bearish"));
+  assert.equal(ema?.tone, "bear");
+  const macd = lines.find((l) => l.text.startsWith("MACD bearish"));
+  assert.equal(macd?.tone, "bear");
+  const rsi = lines.find((l) => l.text.startsWith("RSI "));
+  assert.equal(rsi?.tone, "warn", "oversold is a caution, not a directional bear call");
+});
+
+test("technicalsCalloutLines: mixed EMA stack and neutral RSI tone muted", () => {
+  // A short choppy path — not a clean accelerating trend in either direction.
+  const CHOP = [100, 102, 99, 103, 100, 104, 101, 105, 102, 106, 103, 107, 104, 108, 105, 109, 106, 110, 107, 111,
+    108, 112, 109, 113, 110, 114, 111, 115, 112, 116, 113, 117, 114, 118, 115, 119, 116, 120, 117, 121,
+    118, 122, 119, 123, 120, 124, 121, 125, 122, 126, 123, 127];
+  const s = summarizeTechnicals(barsFrom(CHOP), CHOP[CHOP.length - 1]!);
+  const lines = technicalsCalloutLines(s);
+  if (s.emaStack === "mixed") {
+    const ema = lines.find((l) => l.text.includes("EMA 9/21/50"));
+    assert.equal(ema?.tone, "muted");
+  }
+  if (s.rsiZone === "neutral") {
+    const rsi = lines.find((l) => l.text.startsWith("RSI "));
+    assert.equal(rsi?.tone, "muted");
+  }
+});
+
+test("technicalsCalloutLines: golden pocket always tones muted (a price zone, not a directional call)", () => {
+  const BIG_THEN_SMALL = [100, 98, 95, 100, 105, 108, 110, 107, 105, 104, 105, 106, 107, 106, 105];
+  const s = summarizeTechnicals(barsFrom(BIG_THEN_SMALL), 105);
+  const lines = technicalsCalloutLines(s);
+  const pocket = lines.find((l) => l.text.startsWith("Golden pocket"));
+  assert.equal(pocket?.tone, "muted");
+});
+
+test("technicalsCalloutLines: structure direction maps to bull/bear", () => {
+  const s = summarizeTechnicals(barsFrom(ACCEL_UP), ACCEL_UP[ACCEL_UP.length - 1]!);
+  if (s.structure) {
+    const lines = technicalsCalloutLines(s);
+    const structLine = lines.find((l) => l.text.startsWith("Structure"));
+    assert.equal(structLine?.tone, s.structure.direction === "up" ? "bull" : "bear");
+  }
+});
+
+test("technicalsCalloutLines: empty bars → empty array", () => {
+  const empty = summarizeTechnicals([], null);
+  assert.deepEqual(technicalsCalloutLines(empty), []);
 });

@@ -1,4 +1,4 @@
-import { isWebProcess, shouldRunRthWarmLeader } from "@/lib/process-role";
+import { isWebProcess, shouldRunRthWarmLeader, shouldRunVectorBeadRecorder } from "@/lib/process-role";
 import { seedGexHeatmapFromRedis } from "@/lib/providers/polygon-options-gex";
 import { heatmapPresetTickers } from "@/lib/heatmap-allowlist";
 import { getZeroDteBoardPayload } from "@/lib/platform/zerodte-service";
@@ -36,6 +36,14 @@ export function ensureWebBootWarm(): void {
     void import("@/lib/rth-warm-leader")
       .then(({ ensureRthWarmLeader }) => ensureRthWarmLeader())
       .catch((err) => console.warn("[web-boot-warm] RTH warm leader init failed (non-fatal):", err));
+  }
+
+  if (shouldRunVectorBeadRecorder()) {
+    void import("@/lib/vector-bead-recorder-leader")
+      .then(({ ensureVectorBeadRecorder }) => ensureVectorBeadRecorder())
+      .catch((err) =>
+        console.warn("[web-boot-warm] Vector bead recorder init failed (non-fatal):", err)
+      );
   }
 
   if (!bootWarmInflight) {

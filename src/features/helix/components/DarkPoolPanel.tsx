@@ -19,6 +19,7 @@ import {
   fetchDarkPoolPrints,
   type DarkPoolRow,
 } from "@/lib/api";
+import { darkpoolRowHighlighted, type HelixDarkpoolHighlight } from "@/features/helix/lib/use-helix-deep-link";
 import { Panel, Skeleton, EmptyState } from "@/components/ui";
 
 const POLL_MS     = 30_000;
@@ -71,7 +72,15 @@ function biasFromSide(prints: DarkPoolRow[]) {
 
 // ─── Shared print row ─────────────────────────────────────────────────────────
 
-function PrintRow({ p, showDate = false }: { p: DarkPoolRow; showDate?: boolean }) {
+function PrintRow({
+  p,
+  showDate = false,
+  highlighted = false,
+}: {
+  p: DarkPoolRow;
+  showDate?: boolean;
+  highlighted?: boolean;
+}) {
   const isBuy  = p.side === "buy";
   const isSell = p.side === "sell";
   return (
@@ -82,9 +91,13 @@ function PrintRow({ p, showDate = false }: { p: DarkPoolRow; showDate?: boolean 
       transition={{ duration: 0.18 }}
       className={clsx(
         "flex items-center gap-2 rounded-lg px-3 py-2.5 border transition-colors cursor-default",
-        isBuy  ? "border-bull/40 bg-bull/[0.08] hover:bg-bull/[0.14] hover:border-bull/60" :
-        isSell ? "border-bear/40 bg-bear/[0.08] hover:bg-bear/[0.14] hover:border-bear/60" :
-                 "border-white/10 bg-white/[0.03] hover:bg-white/[0.06]"
+        highlighted
+          ? "border-sky-300/80 bg-sky-400/10 ring-1 ring-sky-300/50"
+          : isBuy
+            ? "border-bull/40 bg-bull/[0.08] hover:bg-bull/[0.14] hover:border-bull/60"
+            : isSell
+              ? "border-bear/40 bg-bear/[0.08] hover:bg-bear/[0.14] hover:border-bear/60"
+              : "border-white/10 bg-white/[0.03] hover:bg-white/[0.06]"
       )}
       style={{
         boxShadow: isBuy  ? "inset 0 0 12px rgba(0,230,118,0.05)"
@@ -141,7 +154,13 @@ function PrintRow({ p, showDate = false }: { p: DarkPoolRow; showDate?: boolean 
 
 // ─── Root component — all data fetched here, filtered client-side ─────────────
 
-export function DarkPoolPanel({ tapeTicker = "" }: { tapeTicker?: string }) {
+export function DarkPoolPanel({
+  tapeTicker = "",
+  highlight = null,
+}: {
+  tapeTicker?: string;
+  highlight?: HelixDarkpoolHighlight;
+}) {
   const [allPrints, setAllPrints]   = useState<DarkPoolRow[]>([]);
   const [loading, setLoading]       = useState(true);
   const [errored, setErrored]       = useState(false);
@@ -367,6 +386,7 @@ export function DarkPoolPanel({ tapeTicker = "" }: { tapeTicker?: string }) {
                         key={`${p.ticker}-${p.executed_at}-${i}`}
                         p={p}
                         showDate={!!filterTicker}
+                        highlighted={darkpoolRowHighlighted(p, highlight)}
                       />
                     ))}
                   </div>

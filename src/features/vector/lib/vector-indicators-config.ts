@@ -122,15 +122,61 @@ export type VectorLevelDef = {
   /** True when the level needs the prior-day OHLC fetch (PDH/PDL/PDC, pivots) rather than just the
    *  current session bars. The chart lazily fetches that once when any such level is enabled. */
   needsPriorDay?: boolean;
+  /** Optional menu tooltip — used for "Fib"/"Auto fib" (2026-08-05 audit finding): the two use
+   *  DIFFERENT retracement-direction conventions (Fib is always measured HOD-down-to-LOD; Auto fib
+   *  follows whichever way the dominant swing actually ran), so a member toggling both can see them
+   *  point opposite ways with no explanation on the chart. A menu tooltip is the cheap fix — see
+   *  `vector-key-levels.ts`'s `fibLevels`/`vector-fib-swing.ts`'s `swingRetracement` for the code. */
+  hint?: string;
 };
+
+/**
+ * Opening-range window presets a member can pick (2026-08-05 audit finding #7 — previously
+ * hardcoded to 15 minutes with no UI to change it). 15m stays the default so anyone who hasn't
+ * touched the control sees the exact same behavior as before.
+ */
+export const VECTOR_OPENING_RANGE_PRESETS = [5, 15, 30, 60] as const;
+
+export type VectorOpeningRangeMinutes = (typeof VECTOR_OPENING_RANGE_PRESETS)[number];
+
+export const DEFAULT_OPENING_RANGE_MINUTES: VectorOpeningRangeMinutes = 15;
+
+export function isVectorOpeningRangeMinutes(v: unknown): v is VectorOpeningRangeMinutes {
+  return typeof v === "number" && (VECTOR_OPENING_RANGE_PRESETS as readonly number[]).includes(v);
+}
+
+/** The "Opening range" menu label with the ACTUAL selected window baked in (e.g. "(30m)"), so the
+ *  toggle menu never shows a stale "15m" once the member has picked a different preset. */
+export function openingRangeLabel(minutes: VectorOpeningRangeMinutes): string {
+  return `Opening range (${minutes}m)`;
+}
 
 export const VECTOR_LEVELS: readonly VectorLevelDef[] = [
   { id: "hod-lod", label: "HOD / LOD", color: "#34d399", group: "Key levels" },
-  { id: "opening-range", label: "Opening range (15m)", color: "#a78bfa", group: "Key levels" },
-  { id: "fib", label: "Fibonacci (HOD→LOD)", color: "#ffd60a", group: "Key levels" },
-  { id: "fib-auto", label: "Auto fib + golden pocket", color: "#fde047", group: "Key levels" },
+  {
+    id: "opening-range",
+    label: openingRangeLabel(DEFAULT_OPENING_RANGE_MINUTES),
+    color: "#a78bfa",
+    group: "Key levels",
+  },
+  {
+    id: "fib",
+    label: "Fibonacci (HOD→LOD)",
+    color: "#ffd60a",
+    group: "Key levels",
+    hint: "Fixed session convention: always measured from the high down to the low, regardless of which one printed first.",
+  },
+  {
+    id: "fib-auto",
+    label: "Auto fib + golden pocket",
+    color: "#fde047",
+    group: "Key levels",
+    hint: "Direction-aware: follows whichever way the dominant swing actually ran, so it can point the opposite way from the fixed \"Fib\" tool above.",
+  },
   { id: "pdh-pdl-pdc", label: "PDH / PDL / PDC", color: "#38bdf8", group: "Key levels", needsPriorDay: true },
-  { id: "pivots", label: "Floor pivots (P/R/S)", color: "#fb923c", group: "Key levels", needsPriorDay: true },
+  // Lime, not orange (2026-08-05 audit finding #6): #fb923c collided with EMA 9's menu swatch —
+  // a member with both toggles on couldn't tell the two dots apart in the toggle menu.
+  { id: "pivots", label: "Floor pivots (P/R/S)", color: "#a3e635", group: "Key levels", needsPriorDay: true },
 ] as const;
 
 const LEVEL_IDS = new Set<string>(VECTOR_LEVELS.map((l) => l.id));
@@ -251,6 +297,21 @@ export function isVectorGammaRegimeId(v: unknown): v is VectorGammaRegimeId {
 }
 
 /**
+ * "Volume profile" — the session's volume bucketed by PRICE (not time), drawn as horizontal bars
+ * anchored to the right edge of the chart, background-layer like the GEX heatmap/gamma-regime glow.
+ * Pairs with the GEX ladder's volume-at-STRIKE view: this is volume-at-PRICE for the underlying, so
+ * a member can see whether the heaviest-traded zone lines up with a dealer wall. Computed client-side
+ * from the SAME 1m session bars already seeded/streamed for the candles — no new data source. One
+ * toggle (default OFF, like every other opt-in overlay); real-data-only — no volume this session
+ * (off-hours, a brand-new ticker) draws nothing, never a fabricated profile.
+ */
+export type VectorVolumeProfileId = "volume-profile";
+
+export function isVectorVolumeProfileId(v: unknown): v is VectorVolumeProfileId {
+  return v === "volume-profile";
+}
+
+/**
  * Every toggleable indicator id — a moving-average FAMILY (not an individual line), a level, a
  * structure toggle, or an oscillator. This is what the enabled Set and the menu deal in; the chart
  * expands each to its lines/markers/panes at draw time.
@@ -265,12 +326,13 @@ export type VectorIndicatorId =
   | VectorExpectedMoveId
   | VectorExpectedMoveConeId
   | VectorGexHeatmapId
-  | VectorGammaRegimeId;
+  | VectorGammaRegimeId
+  | VectorVolumeProfileId;
 
 /** Menu structure — the toggle menu renders straight from this (title + its items). */
 export const VECTOR_INDICATOR_GROUPS: ReadonlyArray<{
   title: string;
-  items: ReadonlyArray<{ id: VectorIndicatorId; label: string; color: string }>;
+  items: ReadonlyArray<{ id: VectorIndicatorId; label: string; color: string; hint?: string }>;
 }> = [
   {
     title: "Moving averages",
@@ -278,17 +340,23 @@ export const VECTOR_INDICATOR_GROUPS: ReadonlyArray<{
   },
   {
     title: "Key levels",
-    items: VECTOR_LEVELS.map((l) => ({ id: l.id, label: l.label, color: l.color })),
+    items: VECTOR_LEVELS.map((l) => ({ id: l.id, label: l.label, color: l.color, hint: l.hint })),
   },
   {
     title: "Structure",
-    items: [{ id: "market-structure", label: "Market structure (HH/HL · BOS/CHOCH)", color: "#22d3ee" }],
+    // Fuchsia, not cyan (2026-08-05 audit finding #6): #22d3ee collided with "Expected move"'s menu
+    // swatch. Expected move keeps cyan because its ACTUAL chart lines/cone are hardcoded to #22d3ee
+    // to match (see vector-em-cone-primitive.ts / VectorChart.tsx) — structure's markers don't share
+    // that constraint, so this toggle moved instead.
+    items: [{ id: "market-structure", label: "Market structure (HH/HL · BOS/CHOCH)", color: "#e879f9" }],
   },
   {
     title: "Oscillators",
     items: [
       { id: "rsi", label: "RSI (14)", color: "#c084fc" },
-      { id: "macd", label: "MACD (12/26/9)", color: "#38bdf8" },
+      // Indigo, not sky (2026-08-05 audit finding #6): #38bdf8 collided with the "PDH / PDL / PDC"
+      // key-level menu swatch.
+      { id: "macd", label: "MACD (12/26/9)", color: "#818cf8" },
     ],
   },
   {
@@ -297,8 +365,10 @@ export const VECTOR_INDICATOR_GROUPS: ReadonlyArray<{
   },
   {
     title: "Flow",
-    // Green matches the call-print marker colour (calls green ↑ / puts red ↓ on the chart).
-    items: [{ id: "flow-markers", label: "Options flow (large trades at strike)", color: "#34d399" }],
+    // Green-400, not emerald (2026-08-05 audit finding #6): #34d399 collided with the "HOD / LOD"
+    // key-level menu swatch. Still green (matches the call-print marker colour — calls green ↑ /
+    // puts red ↓ on the chart), just a distinct shade from HOD/LOD's emerald.
+    items: [{ id: "flow-markers", label: "Options flow (large trades at strike)", color: "#4ade80" }],
   },
   {
     title: "Expected move",
@@ -318,11 +388,21 @@ export const VECTOR_INDICATOR_GROUPS: ReadonlyArray<{
         color: "#10b981",
       },
       {
-        // Teal dot = the calm/long-γ side of the boundary glow (short-γ side is amber on the pane).
+        // Rose dot (2026-08-05 audit finding #6): was teal (#2dd4bf), which collided with "SMA 50"'s
+        // menu swatch AND real drawn line colour. The on-chart boundary glow itself is unaffected —
+        // it's still calm-teal/short-γ-amber, painted independently by
+        // vector-gamma-regime-primitive.ts — only this toggle's menu dot moved.
         id: "gamma-regime",
         label: "Gamma regime (long / short γ zones)",
-        color: "#2dd4bf",
+        color: "#fb7185",
       },
+    ],
+  },
+  {
+    title: "Volume profile",
+    items: [
+      // Slate dot for the base bars; the POC/value-area colours (gold/cyan) show once enabled.
+      { id: "volume-profile", label: "Volume profile (session, by price)", color: "#94a3b8" },
     ],
   },
 ];

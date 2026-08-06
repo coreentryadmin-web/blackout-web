@@ -17,6 +17,7 @@ import { GET as spxSignalGet } from "@/app/api/cron/spx-signal-observe/route";
 import { GET as vectorUniverseSnapshotGet } from "@/app/api/cron/vector-universe-snapshot/route";
 import { GET as vectorFullStateSnapshotGet } from "@/app/api/cron/vector-full-state-snapshot/route";
 import { GET as vectorWallsWarmGet } from "@/app/api/cron/vector-walls-warm/route";
+import { GET as vectorBeadRecordGet } from "@/app/api/cron/vector-bead-record/route";
 import { GET as vectorDarkPoolWarmGet } from "@/app/api/cron/vector-dark-pool-warm/route";
 import { GET as coachingAlertsGet } from "@/app/api/cron/coaching-alerts/route";
 import { GET as bieFullStateSnapshotGet } from "@/app/api/cron/bie-full-state-snapshot/route";
@@ -51,6 +52,7 @@ export const CRON_DISPATCH: Record<string, { handler: CronHandler; force: boolea
   "vector-universe-snapshot": { handler: vectorUniverseSnapshotGet, force: false },
   "vector-full-state-snapshot": { handler: vectorFullStateSnapshotGet, force: false },
   "vector-walls-warm": { handler: vectorWallsWarmGet, force: false },
+  "vector-bead-record": { handler: vectorBeadRecordGet, force: false },
   "vector-dark-pool-warm": { handler: vectorDarkPoolWarmGet, force: true },
   // RTH alert/snapshot writers — append-only or idempotent Redis/PG writes (#1343).
   "coaching-alerts": { handler: coachingAlertsGet, force: true },
