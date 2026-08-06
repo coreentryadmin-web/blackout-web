@@ -9,6 +9,8 @@ import {
   trackRecordConsistent,
   exitLifecycleCoherent,
   commitRowComplete,
+  partitionMarkRows,
+  verdictForMark,
 } from "./zerodte-healthcheck-eval.mjs";
 
 test("rollupVerdict: worst-of ordering RED > AMBER > GREEN > SKIPPED", () => {
@@ -102,4 +104,38 @@ test("commitRowComplete: reports missing spine fields + snapshot presence", () =
   assert.equal(missing.ok, false);
   assert.ok(missing.missing.includes("entry_premium"));
   assert.equal(missing.hasSnapshot, false);
+});
+
+test("partitionMarkRows: splits entered positions from quote-only watch rows", () => {
+  // Mirrors the real /marks merge: entered ledger plays carry entry_premium; the board's
+  // watch-only setup contracts are stamped WATCH with entry_premium:null by construction.
+  const rows = [
+    { ticker: "NVDA", status: "OPEN", entry_premium: 6.1, mark: 7.2 },
+    { ticker: "SPY", status: "WATCH", entry_premium: null, mark: null },
+    { ticker: "AMD", status: "WATCH", entry_premium: null, mark: 1.4 },
+    { ticker: "META", status: "CLOSED", entry_premium: 3.3, mark: 0.5 },
+  ];
+  const p = partitionMarkRows(rows);
+  assert.deepEqual(p.entered.map((r) => r.ticker), ["NVDA"]);
+  assert.deepEqual(p.quoteOnly.map((r) => r.ticker), ["SPY", "AMD"]);
+  assert.deepEqual(p.closed.map((r) => r.ticker), ["META"]);
+});
+
+test("partitionMarkRows: tolerates a missing/garbage payload", () => {
+  assert.deepEqual(partitionMarkRows(undefined), { entered: [], quoteOnly: [], closed: [] });
+  assert.deepEqual(partitionMarkRows([null, 3, "x"]), { entered: [], quoteOnly: [], closed: [] });
+});
+
+test("verdictForMark: a null mark is RED in RTH but AMBER off-hours", () => {
+  // The bug this pins: stage D hard-coded RED for a null mark, so an off-hours run —
+  // when the mark lane idles BY DESIGN — reported the whole subsystem broken.
+  assert.equal(verdictForMark(null, null, 20_000, true), "RED");
+  assert.equal(verdictForMark(null, null, 20_000, false), "AMBER");
+});
+
+test("verdictForMark: a present mark defers to the staleness contract", () => {
+  assert.equal(verdictForMark(7.2, 1_000, 20_000, true), "GREEN");
+  assert.equal(verdictForMark(7.2, 99_000, 20_000, true), "RED");
+  assert.equal(verdictForMark(7.2, 99_000, 20_000, false), "AMBER");
+  assert.equal(verdictForMark(7.2, null, 20_000, true), "AMBER");
 });

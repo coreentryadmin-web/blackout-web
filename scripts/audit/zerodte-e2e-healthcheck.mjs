@@ -63,6 +63,8 @@ import {
   trackRecordConsistent,
   exitLifecycleCoherent,
   commitRowComplete,
+  partitionMarkRows,
+  verdictForMark,
 } from "./lib/zerodte-healthcheck-eval.mjs";
 
 // ── args ──────────────────────────────────────────────────────────────────────────
@@ -381,14 +383,28 @@ function stageD_marks() {
     return;
   }
   const rows = Array.isArray(marks.marks) ? marks.marks : [];
-  const open = rows.filter((r) => r.status !== "CLOSED");
+  // Only ENTERED plays (entry_premium != null) are the "LIVE MARKS + P&L" subsystem — the
+  // quote-only WATCH rows merged into the same payload carry no position and no P&L, so an
+  // unquoted one is a coverage observation, not a broken mark. See partitionMarkRows.
+  const { entered: open, quoteOnly } = partitionMarkRows(rows);
+  if (quoteOnly.length > 0) {
+    const quoted = quoteOnly.filter((r) => r.mark != null).length;
+    check(
+      "D",
+      // Off-hours the setup-quote poller idles by design → an unquoted watch roster is
+      // expected. During RTH a fully-unquoted roster means the poller isn't running.
+      quoted > 0 || !rth ? (quoted === quoteOnly.length ? "GREEN" : "AMBER") : "RED",
+      "setup quote coverage",
+      `${quoted}/${quoteOnly.length} watch-only setup contract(s) quoted (no position, no P&L)`
+    );
+  }
   if (open.length === 0) {
-    check("D", marks.idle ? "AMBER" : "AMBER", "open plays to mark", `live lane idle=${marks.idle} · ${rows.length} tracked contract(s) · no OPEN play to mark right now`);
+    check("D", "AMBER", "open plays to mark", `live lane idle=${marks.idle} · ${rows.length} tracked contract(s) · no ENTERED play to mark right now`);
     return;
   }
   for (const r of open) {
     const ageMs = num(r.mark_age_ms);
-    const freshV = r.mark == null ? "RED" : verdictForStaleness(ageMs, MARK_FRESH_BOUND_MS, rth);
+    const freshV = verdictForMark(r.mark, ageMs, MARK_FRESH_BOUND_MS, rth);
     check(
       "D",
       freshV,
