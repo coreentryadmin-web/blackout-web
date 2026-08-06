@@ -1,12 +1,10 @@
 # RTH autonomous open — all monitors + all tool agents + fix dispatch
-# Weekdays 09:30 AM ET: zero prompts, runs until cash close, auto-fixes via Cloud Agents.
+# SCHEDULE DISABLED 2026-08-06 — launch-fix-agents was spawning Cloud Agents that opened
+# docs-only PRs every RTH. Manual workflow_dispatch only until verify logging is off-repo.
 
 name: RTH autonomous open
 
 on:
-  schedule:
-    - cron: "30 13 * * 1-5"
-    - cron: "30 14 * * 1-5"
   workflow_dispatch:
 
 concurrency:
