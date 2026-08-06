@@ -4,6 +4,27 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-06 — [ops] vector-bead-record RTH-stale edge timeout (#1783)
+
+**Severity.** P0 — Vector bead backup cron flagged `market_hours_stale` during RTH.
+
+**Symptom.** ops-auto-fix #1783: `vector-bead-record` `market_hours_stale` during RTH.
+
+**Root cause.** Same class as `vector-full-state-snapshot` / `coaching-alerts` (#1355/#1343): the cron
+dispatched universe+active bead recording via `after()` but only called `logCronRun` after the
+~100-ticker sweep finished — combined wall-clock could exceed Cloudflare ~100s (or the 1-min
+`stale_after_min` watchdog window) before `cron_job_runs` got a fresh row. The in-process
+5s `vector-bead-recorder-leader` does not write `cron_job_runs`, so the HTTP backup cron is the
+only observability path.
+
+**Fix.** Immediate `logCronRun` handshake on HTTP 202; bead sweeps run fire-and-forget in `after()`
+with console-only completion logging. Regression test:
+`src/app/api/cron/vector-bead-record/route.test.ts`.
+
+**Status.** FIXED on `cursor/rth-stale-cron-3689`.
+
+---
+
 ## 2026-08-05 — [Grid/0DTE] Post-close fix agent — all validators GREEN (~3:18 PM PT / 6:18 PM ET)
 
 **Severity.** — (no additional product defects)
