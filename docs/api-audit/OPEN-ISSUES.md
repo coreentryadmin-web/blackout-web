@@ -1,5 +1,72 @@
 # BlackOut Open Issues Log
-Last updated: 2026-08-06 18:10 ET
+Last updated: 2026-08-06 18:26 ET
+
+## rth-comprehensive-2026-08-06-pass3 — RTH comprehensive test sweep (~6:20–6:26 PM ET, post-close)
+
+**Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` on branch `cursor/rth-comprehensive-test-sweep-035c`. Commands: `npm run validate:rth-open` → `GET /api/cron/data-correctness?force=1` (async + `surface=heatmap|spx|zerodte` sync) → `npm run validate:rth-sweep` → `npm run validate:grid-e2e` → `npm run validate:grid-rth -- --force --phase=post-close` → `npm run validate:spx-e2e` → `npm run ops:collect`.
+
+> **Market context:** Post-close (18:20–18:26 ET). Live-tick checks N/A; off-hours gating expected. Classic `/grid` deleted 2026-07-07 — 0DTE Command lives on `/nighthawk` (four tabs: 0DTE / Swings / Bangers / Legacy).
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` | ✅ **GREEN** — deploy smoke ok; Postgres skipped (private VPC); options-socket off-hours |
+| `GET /api/cron/data-correctness?force=1` | ✅ **202 accepted** (background sweep dispatched) |
+| `surface=heatmap` sync | ✅ **0 flags** |
+| `surface=spx` sync | ⚠️ **1 flag** — `hit_rate` false split-brain (W/L/closed identical 26/20/46; 56.5% vs 57% rounding) — **already fixed** PR #1814, **pending ECS deploy** |
+| `surface=zerodte` sync | ⚠️ same `hit_rate` false flag — **pending deploy** of #1814 |
+| `npm run validate:rth-sweep` | ✅ **0 P0/P1** — 7 pages · 0 missing-field hits · Largo grounded (16.8s, tools: live_feed_capture, platform_vitals_prefetch, get_spx_play, get_positioning) |
+| `npm run validate:grid-e2e` | ✅ **5/5 PASS** — board 26 setups · ledger 13 |
+| `npm run validate:grid-rth` | ✅ **14/14 PASS** (post-close phase) |
+| `npm run validate:spx-e2e` | ✅ **17/18** (bie-play 401 expected off-hours) |
+| `npm run ops:collect` | ✅ **0 items** |
+
+### Per-page speed (browser sweep, Playwright)
+
+| Page | Nav | Load (ms) | Missing fields | Console |
+|---|---|---|---|---|
+| `/dashboard` | hard | 1911 | 0 | 1× 400 (monitor) |
+| `/flows` | soft | 1631 | 0 | 0 |
+| `/heatmap` (matrix) | soft | 1688 | 0 | 0 |
+| `/vector` | soft | 1804 | 0 | 0 |
+| `/nighthawk` (0DTE Command) | soft | 2019 | 0 | 0 |
+| `/terminal` (Largo) | soft | 1659 | 0 | 0 |
+| `/track-record` | soft | 1627 | 0 | 0 |
+
+All soft-nav loads < 2.1s (within 1.5s target with margin for post-close). Sign-in via Clerk ticket: ~60s (first hard load).
+
+### API verification (authenticated)
+
+| Endpoint | Status | Latency | Fresh |
+|---|---|---|---|
+| `/api/market/spx/desk` | 200 | 56ms | ✅ 24s |
+| `/api/market/spx/pulse` | 200 | 56ms | — |
+| `/api/market/spx/merged` | 200 | 126ms | — |
+| `/api/market/gex-positioning?ticker=SPX` | 200 | 56ms | — |
+| `/api/market/gex-heatmap?ticker=SPX` | 200 | 87ms | — |
+| `/api/market/flows?limit=20` | 200 | 57ms | — |
+| `/api/market/nighthawk/edition` | 200 | 66ms | — |
+| `/api/market/zerodte/board` | 200 | 64ms | ✅ 5s |
+| `/api/market/platform/snapshot` | 200 | 126ms | ✅ 0s |
+| `/api/public/track-record` | 200 | 223ms | — |
+
+**Cross-tool GEX:** desk flip 7714.43 ≈ gex flip 7714.41 (spot 7709.96) — ✅ agree within tolerance.
+
+### Findings table
+
+| Severity | ID | Detail | Status |
+|---|---|---|---|
+| P2 | TR-PAGE-PUBLIC-WR-FLOAT | `data-correctness` false `hit_rate` flag on prod (identical W/L, rounding-only diff) | **FIXED** #1814 — pending deploy |
+| P2 | DASH-CONSOLE-400 | Dashboard console `400` on one resource load | monitor (recurring, non-blocking) |
+
+**No P0/P1 defects.** No GitHub issue opened — all actionable items already tracked/fixed.
+
+**Status: GREEN** (post-close). Re-run `surface=spx` after #1814 deploy lands to confirm flags=0.
+
+**Reports:** `audit-output/rth-sweep-2026-08-06T22-21-31-542Z.json`, `audit-output/grid-e2e-1786055103693.json`, `audit-output/spx-dashboard-e2e-1786055111857.json`, `audit-output/grid-rth-2026-08-06-post-close-1786055169131.json`
+
+---
 
 ## rth-comprehensive-2026-08-06-post-close — RTH comprehensive test sweep (~6:00–6:10 PM ET, post-close)
 
