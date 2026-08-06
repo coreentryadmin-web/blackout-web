@@ -278,6 +278,22 @@ export function assertDeploymentConfigSane(service) {
     );
   }
 
+  // A multi-task service with min < 100 is NOT a deadlock — ECS can always drain and replace —
+  // so this is a NOTE, never a failure. But it is not free either: the service runs degraded for
+  // the whole roll, at ceil(desired × min/100) of desired. That is exactly how prod web sat at
+  // 50/112 (drained to 3 of 5, a 40% capacity loss per deploy) while this guard stayed silent,
+  // because the arithmetic below only runs when min >= 100. Surfacing it means the number is in
+  // every deploy log instead of only being found by someone reading describe-services by hand.
+  if (min < 100) {
+    const floorTasks = Math.ceil((desired * min) / 100);
+    const lostPct = Math.round(((desired - floorTasks) / desired) * 100);
+    if (lostPct > 0) {
+      notes.push(
+        `${name}: minimumHealthyPercent=${min} lets the roll drain to ${floorTasks} of ${desired} task(s) — up to ${lostPct}% capacity loss while deploying. Not a deadlock; raise to 100 (with maximumPercent >= 100×(desired+1)/desired) for a zero-loss roll.`,
+      );
+    }
+  }
+
   if (min >= 100) {
     const ceiling = Math.floor((desired * max) / 100);
     if (ceiling < desired + 1) {

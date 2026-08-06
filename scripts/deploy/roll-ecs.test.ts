@@ -257,6 +257,36 @@ test("assertDeploymentConfigSane: the LIVE 2026-08-06 configs both pass", () => 
   assert.equal(worker.ok, true, JSON.stringify(worker.failures));
 });
 
+test("assertDeploymentConfigSane: min<100 on a multi-task service NOTES the capacity loss, never fails", () => {
+  // The exact config prod web drifted to on 2026-08-06 (written by the pre-84ca8e96 workflow):
+  // 50/112 at desired 5 drains to ceil(5 * 0.50) = 3, i.e. 40% capacity loss for the whole roll.
+  // It is NOT a deadlock, so it must stay ok:true — the old guard therefore said nothing at all,
+  // which is how it sat unnoticed on a service already emitting ~10k 504s/day.
+  const drifted = assertDeploymentConfigSane(
+    svc({ deploymentConfiguration: { deploymentCircuitBreaker: CB_OK, minimumHealthyPercent: 50, maximumPercent: 112 } }),
+  );
+  assert.equal(drifted.ok, true, "min<100 is degraded, not broken — must not fail the deploy");
+  assert.match(drifted.notes.join(" "), /drain to 3 of 5/);
+  assert.match(drifted.notes.join(" "), /40% capacity loss/);
+});
+
+test("assertDeploymentConfigSane: a single-task service at min=0 loses 100% but is still only a note", () => {
+  // desired 1 / min 0 is REQUIRED (min!=0 at desired 1 deadlocks, asserted elsewhere), so the
+  // note must not read as a problem to fix — it is the only legal config for a 1-task service.
+  const one = assertDeploymentConfigSane({
+    serviceName: "solo",
+    desiredCount: 1,
+    deploymentConfiguration: { deploymentCircuitBreaker: CB_OK, minimumHealthyPercent: 0, maximumPercent: 200 },
+  });
+  assert.equal(one.ok, true, JSON.stringify(one.failures));
+  assert.match(one.notes.join(" "), /drain to 0 of 1/);
+});
+
+test("assertDeploymentConfigSane: min=100 emits NO capacity-loss note (zero-loss roll)", () => {
+  const clean = assertDeploymentConfigSane(svc());
+  assert.equal(clean.notes.some((n: string) => /capacity loss/.test(n)), false);
+});
+
 test("assertDeploymentConfigSane: 100/112 is the known deadlock and must FAIL across 5..8", () => {
   // floor(5 * 1.12) = 5, floor(6 * 1.12) = 6, floor(7 * 1.12) = 7, floor(8 * 1.12) = 8 — zero
   // spare slots, so the roll can never start a replacement task. This is the exact arithmetic
