@@ -167,24 +167,71 @@ jobs:
           echo "Registered new task definition: ${NEW_ARN}"
 
           # Do NOT pass --desired-count here: auto-scaling manages the
-          # task count (min 8 / max 15). Overriding it resets the count
+          # task count (min 8 / max 12). Overriding it resets the count
           # on every deploy and fights the scaling target.
           #
-          # Rolling strategy: minHealthy=50 / max=112 → at most 9 tasks (one extra slot)
-          # on an 8-task service without blowing the ~30 vCPU Fargate quota. minHealthy=100
-          # can deadlock ECS when a prior deployment is still ACTIVE (cannot start/stop).
+          # ── Rolling strategy: minHealthy=100 / max=115. DO NOT "optimize" either number. ──
+          # Guarded by src/lib/ecs-deploy-config.test.ts, which re-derives the arithmetic below
+          # from THIS line and fails CI if it stops holding.
+          #
+          # WHY minHealthy=100 (was 50): this service takes live member traffic, and
+          # minimumHealthyPercent is the floor of healthy tasks ECS must hold DURING a deploy
+          # (% of desiredCount, rounded UP). At 50 a deploy was permitted to drain the fleet to
+          # HALF *before* any replacement was healthy — 4 of 8 tasks, or 6 of 12 — because ECS
+          # is allowed to satisfy a roll by removing capacity first. On 2026-08-06 the service
+          # was already capacity-constrained and a deploy on 50 deepened the incident (5xx
+          # ~4.5%). At 100 ECS must bring a replacement to healthy BEFORE it stops anything, so
+          # a deploy can only ever add capacity to a saturated fleet, never subtract it.
+          #
+          # WHY max had to move 112 → 115 (this is the subtle half): maximumPercent is the
+          # ceiling on RUNNING+PENDING tasks (% of desiredCount, rounded DOWN). With
+          # minHealthy=100 the roll can only progress if that ceiling grants a spare slot —
+          # floor(desired * max/100) >= desired + 1 — because ECS may no longer free a slot by
+          # stopping a task first. 112 does NOT clear that bar at the autoscaling FLOOR:
+          #   floor(8 * 1.12) = floor(8.96) = 8  → ceiling 8, minHealthy 8: ECS can neither
+          #   start a replacement nor stop an old task. The deployment makes ZERO progress and
+          #   hangs until the poller below times out. 100/112 would have bricked every deploy
+          #   that landed while the service sat at its 8-task floor (i.e. most off-hours ones).
+          # (The prior comment here claimed 112 gave "at most 9 tasks on an 8-task service".
+          # That arithmetic was wrong — floor(8*1.12) is 8, not 9 — and that error is exactly
+          # why 50 looked load-bearing: with no spare slot at desired=8, draining first was the
+          # only way ECS could move at all.)
+          #   115 clears it across the whole autoscaling range: floor(8*1.15)=9, floor(12*1.15)=13.
+          #
+          # WHY NOT HIGHER — the Fargate On-Demand vCPU quota (L-3032A538) is 30 in this
+          # account; the increase to 100 is CASE_OPENED, NOT granted. Web tasks are 2 vCPU,
+          # market-worker 1 task. Worst case is a deploy at the autoscaling max (desired=12):
+          #   ceiling floor(12*1.15) = 13 web tasks * 2 vCPU = 26, + worker 2 = 28 vCPU <= 30 ✓
+          # That transient peak is UNCHANGED from the old 112 (floor(12*1.12)=13 as well) —
+          # this change raises the deploy FLOOR from 6 healthy tasks to 12, it does not raise
+          # the ceiling by even one task. maximumPercent >= 117 WOULD raise it
+          # (floor(12*1.17)=14 → 28 + 2 = exactly 30 vCPU, zero headroom) and must not ship
+          # until the quota increase lands. Once it does, raising max lets the roll run in
+          # parallel waves again instead of one task at a time (see the poller budget below).
           aws ecs update-service \
             --cluster "${ECS_CLUSTER}" \
             --service "${ECS_SERVICE}" \
             --task-definition "${NEW_ARN}" \
-            --deployment-configuration "minimumHealthyPercent=50,maximumPercent=112,deploymentCircuitBreaker={enable=true,rollback=true}" \
+            --deployment-configuration "minimumHealthyPercent=100,maximumPercent=115,deploymentCircuitBreaker={enable=true,rollback=true}" \
             --force-new-deployment
 
           # Custom stability check: poll the PRIMARY deployment only.
           # The built-in `services-stable` waiter blocks on ALL deployments
           # including stale circuit-breaker leftovers that can never stabilize.
-          echo "Waiting for PRIMARY deployment to stabilize (up to 12 min)..."
-          for i in $(seq 1 48); do
+          #
+          # Budget raised 12 min → 36 min as a REQUIRED companion to minHealthy=100 above, not
+          # as an unrelated tweak. Under the old 50/112 ECS could free ~half the fleet at once
+          # and then start replacements in ~2 big waves. With minHealthy=100 the ceiling grants
+          # exactly ONE spare slot, so tasks are replaced STRICTLY ONE AT A TIME: each cycle is
+          # task start + image pull + Next boot + ALB health checks + the old task's 30s
+          # deregistration drain (~2 min), and at desired=12 that is ~24-30 min of legitimate
+          # rolling. Leaving the budget at 12 min would red-fail every healthy deploy on
+          # timeout AND abort the job before the Cloudflare purge / static-asset validation /
+          # worker roll steps below ever run. A genuinely broken rollout still fails FAST (the
+          # circuit breaker flips rolloutState=FAILED and the loop exits 1 on the next tick),
+          # and `concurrency: cancel-in-progress` means a newer merge cancels a slow older run.
+          echo "Waiting for PRIMARY deployment to stabilize (up to 36 min)..."
+          for i in $(seq 1 144); do
             sleep 15
             STATUS=$(aws ecs describe-services \
               --cluster "${ECS_CLUSTER}" \
@@ -194,7 +241,7 @@ jobs:
             P_RUNNING=$(echo "${STATUS}" | python3 -c "import json,sys; print(json.load(sys.stdin).get('runningCount',0))")
             P_DESIRED=$(echo "${STATUS}" | python3 -c "import json,sys; print(json.load(sys.stdin).get('desiredCount',0))")
             P_ROLLOUT=$(echo "${STATUS}" | python3 -c "import json,sys; print(json.load(sys.stdin).get('rolloutState','UNKNOWN'))")
-            echo "  [${i}/48] PRIMARY: running=${P_RUNNING}/${P_DESIRED}, rollout=${P_ROLLOUT}"
+            echo "  [${i}/144] PRIMARY: running=${P_RUNNING}/${P_DESIRED}, rollout=${P_ROLLOUT}"
             if [ "${P_ROLLOUT}" = "COMPLETED" ]; then
               echo "ECS rollout complete."
               break
@@ -207,7 +254,7 @@ jobs:
               echo "ECS rollout complete (running == desired)."
               break
             fi
-            if [ "$i" = "48" ]; then
+            if [ "$i" = "144" ]; then
               echo "Timed out waiting for PRIMARY deployment to stabilize."
               exit 1
             fi
@@ -357,12 +404,33 @@ jobs:
           # Do NOT pass --desired-count: the worker is a singleton (desiredCount=1)
           # configured on the service; overriding it on every deploy fights that config.
           #
-          # Rolling strategy for a SINGLETON: minHealthy=0 / max=200. Unlike the 8-task web
-          # service (minHealthy=50), a 1-task service with minHealthy>0 can DEADLOCK — ECS
+          # Rolling strategy for a SINGLETON: minHealthy=0 / max=200. Unlike the web
+          # service, a 1-task service with minHealthy>0 can DEADLOCK — ECS
           # will not stop the only running task to start the replacement. minHealthy=0 lets
           # ECS drain the old task and start the new one (a brief gap is fine for a headless
           # background worker); max=200 permits a one-task overlap slot. Circuit breaker with
           # rollback stays enabled so a bad task def auto-reverts instead of leaving 0 running.
+          #
+          # DELIBERATELY NOT CHANGED to minHealthy=100 when the WEB service was moved to 100
+          # (2026-08-06). The two services want OPPOSITE things and the asymmetry is the point:
+          #  * Web is a horizontally-scaled request tier — overlap is free, and dropping below
+          #    desired during a deploy is a member-facing outage. It wants 100.
+          #  * This worker is the SINGLE ingest leader (PROCESS_ROLE=ingest, desiredCount=1,
+          #    REPLICA_COUNT=1 in deploy/market-worker.mjs). It owns the upstream market-data
+          #    WebSockets, and BOTH upstreams permit exactly one live socket per API key:
+          #    src/lib/ws/uw-socket.ts (UW "streams to only ONE WebSocket per API key" — extra
+          #    contenders get silence, not an error, and the whole cluster goes dark) and
+          #    src/lib/ws/polygon-socket.ts (2nd+ connection rejected with code 1008). Nothing
+          #    downstream benefits from a second worker: a standby opens NOTHING by design.
+          # On a 1-task service minHealthy=100 + max=200 would not deadlock (ceiling 2), but it
+          # would FORCE a two-worker overlap window on every deploy, and that makes the ingest
+          # gap LONGER, not shorter: the new task boots while the old still holds the fenced
+          # Redis leader lock, loses the SETNX, opens nothing, and then waits out its own 15s
+          # UW_RECONCILE_INTERVAL_MS tick after the old task finally releases. With minHealthy=0
+          # the old task's SIGTERM releases the lock first (closeAllDataSockets →
+          # releaseFencedLock) and the incoming task's IMMEDIATE first reconcile wins it.
+          # Faster failover, one connection at a time, and 2 fewer vCPU held against the
+          # L-3032A538 quota. Leave this at 0/200.
           aws ecs update-service \
             --cluster "${ECS_CLUSTER}" \
             --service "${ECS_SERVICE}" \
