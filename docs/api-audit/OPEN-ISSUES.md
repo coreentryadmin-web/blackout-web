@@ -1,5 +1,27 @@
 # BlackOut Open Issues Log
-Last updated: 2026-08-06 11:59 ET
+Last updated: 2026-08-06 6:05 PM ET
+
+## rth-open-2026-08-06-pass2 — RTH comprehensive test sweep (~5:57–6:05 PM ET, post-close)
+
+**Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` on branch `cursor/rth-comprehensive-test-sweep-3410`. Commands: `npm run validate:rth-open -- --force` → `GET /api/cron/data-correctness?force=1` + `surface=heatmap|zerodte|spx` sync → `npm run validate:rth-sweep` → `npm run validate:grid-e2e` → `npm run validate:spx-e2e`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open -- --force` | ✅ **GREEN** — deploy smoke ok; Postgres skipped (private VPC); options-socket off-hours |
+| `GET /api/cron/data-correctness?force=1` | ✅ **202 accepted** (background sweep dispatched) |
+| `surface=heatmap` sync | ✅ **0 flags** (60 metrics, consistency-only) |
+| `surface=spx` sync (initial) | ⚠️ **1 flag** — `hit_rate` page-vs-public false split-brain (W/L/closed identical 26/20/46) — **FIXED** PR #1811 |
+| `surface=zerodte` sync (initial) | ⚠️ same `hit_rate` false flag — **FIXED** PR #1811 |
+| `npm run validate:rth-sweep` | ✅ **0 P0/P1** — 7 pages · 0 missing-field hits · Largo grounded |
+| `npm run validate:grid-e2e` | ✅ **5/5 PASS** |
+| `npm run validate:spx-e2e` | ✅ **18/18 PASS** |
+
+**Status: GREEN post-fix** (pending deploy + re-verify). Reports: `audit-output/rth-sweep-2026-08-06T21-58-12-047Z.json`
+
+---
+
 
 <!-- consolidated from PR #1791 (cursor/0dte-grid-rth-agent-9371) -->
 ## grid-rth-2026-08-06 — 0DTE Command verify pass (market open, ~8:43 AM PT / 11:43 AM ET)
