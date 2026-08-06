@@ -212,6 +212,51 @@ test("caps: the same-week-expiry cap (max 3) blocks the 4th same-week commit", (
   const fourth = plan.decisions.find((d) => d.ticker === "DDD")!;
   assert.equal(fourth.committable, false);
   assert.ok(fourth.blockedBy.includes("cap:max_same_week_expiry"), `4th blocked by the same-week cap (${fourth.blockedBy})`);
+  // The cap-blocked candidate is otherwise fully open-able → it gets a SHADOW row instead (2026-08-06).
+  assert.ok(fourth.shadowInsert, "cap-blocked-only candidate gets a shadow row");
+  assert.equal(fourth.shadowInsert!.ticker, "DDD");
+  assert.deepEqual(fourth.shadowInsert!.blocked_by, ["cap:max_same_week_expiry"]);
+});
+
+// ─── shadow positions (2026-08-06, member-authorized: "change the architecture to shadow trade") ──
+
+test("shadow: a budget-blocked-only candidate gets a shadow row, counted in shadowEligibleCount", () => {
+  const plan = computeSwingCommitPlan({ candidates: [candidate({ contract: contract({ mid: 22 }) })], report: graduatedReport(), book: [], budget: PRODUCTION_PORTFOLIO_BUDGET });
+  const d = plan.decisions[0]!;
+  assert.equal(d.committable, false);
+  assert.ok(d.shadowInsert, "budget-blocked-only → shadow row built");
+  assert.equal(plan.shadowEligibleCount, 1);
+  assert.deepEqual(d.shadowInsert!.blocked_by, ["budget:per_position_loss"]);
+  assert.equal(d.shadowInsert!.entry_premium, 22);
+  assert.equal((d.shadowInsert!.entry_context as Record<string, unknown>).commit_gate, "swing.commit.shadow.v1");
+});
+
+test("shadow: an idempotency-blocked (already_open) candidate does NOT get a shadow row — it's already trading for real", () => {
+  const existing = [book({ ticker: "NVDA", riskUsd: 510, commitKey: swingCommitKey("2026-07-24", "NVDA", "STANDARD", "long") })];
+  const plan = computeSwingCommitPlan({ candidates: [candidate()], report: graduatedReport(), book: existing, budget: PRODUCTION_PORTFOLIO_BUDGET });
+  const d = plan.decisions[0]!;
+  assert.ok(d.blockedBy.includes("already_open"));
+  assert.equal(d.shadowInsert, undefined, "already-open names are real positions already — shadow-tracking a duplicate is noise, not signal");
+  assert.equal(plan.shadowEligibleCount, 0);
+});
+
+test("shadow: no_contract/unknown_premium/no_direction blocks never get a shadow row (nothing to shadow-track)", () => {
+  for (const over of [{ contract: null }, { contract: contract({ mid: null }) }, { direction: null }] as const) {
+    const plan = computeSwingCommitPlan({ candidates: [candidate(over)], report: graduatedReport(), book: [], budget: PRODUCTION_PORTFOLIO_BUDGET });
+    assert.equal(plan.decisions[0]!.shadowInsert, undefined, `no shadow row for ${JSON.stringify(over)}`);
+  }
+});
+
+test("shadow: a candidate blocked by BOTH budget and cap still gets exactly one shadow row", () => {
+  // Rich enough to trip the per-trade budget cap AND share a week with 3 already-committed names.
+  const exp = "2026-08-14";
+  const cheap = ["AAA", "BBB", "CCC"].map((t, i) => candidate({ ticker: t, score: 95 - i, contract: contract({ ticker: t, expiry: exp, mid: 3 }) }));
+  const rich = candidate({ ticker: "ZZZ", score: 50, contract: contract({ ticker: "ZZZ", expiry: exp, mid: 22 }) });
+  const plan = computeSwingCommitPlan({ candidates: [...cheap, rich], report: graduatedReport(), book: [], budget: PRODUCTION_PORTFOLIO_BUDGET });
+  const zzz = plan.decisions.find((d) => d.ticker === "ZZZ")!;
+  assert.ok(zzz.blockedBy.some((b) => b.startsWith("budget:")));
+  assert.ok(zzz.blockedBy.some((b) => b.startsWith("cap:")));
+  assert.ok(zzz.shadowInsert, "blocked by multiple risk gates, still shadow-eligible (all reasons are budget/cap)");
 });
 
 // ─── idempotency ────────────────────────────────────────────────────────────────
@@ -327,6 +372,38 @@ test("executeSwingCommits: an UNGRADUATED candidate commits exactly like a gradu
   assert.deepEqual(inserted, ["COLD"]);
   assert.equal(res.committed[0]!.positionId, 1);
   assert.equal(res.skipped.length, 0);
+});
+
+test("executeSwingCommits: writes a shadow row for a budget-blocked candidate when insertShadowPosition is wired", async () => {
+  const plan = computeSwingCommitPlan({ candidates: [candidate({ ticker: "RICH", contract: contract({ ticker: "RICH", mid: 22 }) })], report: graduatedReport(), book: [], budget: PRODUCTION_PORTFOLIO_BUDGET });
+  const shadowed: string[] = [];
+  const deps: SwingCommitDeps = {
+    insertPosition: async () => { throw new Error("should never be called — RICH is budget-blocked, not committable"); },
+    insertShadowPosition: async (pos) => { shadowed.push(pos.ticker); return 1; },
+  };
+  const res = await executeSwingCommits(deps, plan);
+  assert.deepEqual(shadowed, ["RICH"]);
+  assert.equal(res.committed.length, 0);
+  assert.equal(res.shadowed[0]!.positionId, 1);
+});
+
+test("executeSwingCommits: insertShadowPosition ABSENT ⇒ no shadow tracking happens (fail-soft, mirrors insertPosition-absent)", async () => {
+  const plan = computeSwingCommitPlan({ candidates: [candidate({ contract: contract({ mid: 22 }) })], report: graduatedReport(), book: [], budget: PRODUCTION_PORTFOLIO_BUDGET });
+  const deps: SwingCommitDeps = { insertPosition: async () => 1 };
+  const res = await executeSwingCommits(deps, plan);
+  assert.equal(res.shadowed.length, 0);
+});
+
+test("executeSwingCommits: a throwing insertShadowPosition is fail-soft (caught + tallied)", async () => {
+  const plan = computeSwingCommitPlan({ candidates: [candidate({ contract: contract({ mid: 22 }) })], report: graduatedReport(), book: [], budget: PRODUCTION_PORTFOLIO_BUDGET });
+  const deps: SwingCommitDeps = {
+    insertPosition: async () => 1,
+    insertShadowPosition: async () => { throw new Error("shadow db down"); },
+  };
+  const res = await executeSwingCommits(deps, plan);
+  assert.equal(res.errors, 1);
+  assert.equal(res.shadowed[0]!.positionId, null);
+  assert.ok(res.shadowed[0]!.error);
 });
 
 // ─── small helpers ────────────────────────────────────────────────────────────

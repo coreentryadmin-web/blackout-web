@@ -40,7 +40,16 @@
 // PURE / OBSERVABLE: `computeSwingCommitPlan` is pure and deterministic — it walks candidates best-first,
 // grows a running book so the budget/caps aggregate correctly across the batch, and returns a decision per
 // candidate carrying `blockedBy` reasons (queryable). `executeSwingCommits` is the thin fail-soft IO shell
-// that writes the graduated+cleared rows through injected accessors (no live DB in tests).
+// that writes the cleared rows through injected accessors (no live DB in tests).
+//
+// SHADOW POSITIONS (2026-08-06, member-authorized): a candidate that clears every open-ability check
+// (direction/contract/premium/sub-lane) but is blocked ONLY by budget:*/cap:* — a real signal the RISK
+// CONTROLS turned away, never idempotency (an already-open name is already being traded for real, so
+// shadow-tracking a duplicate adds noise, not evidence) — gets a `shadowInsert` built alongside its
+// (blocked) real decision. `executeSwingCommits` writes these to the SEPARATE `swing_shadow_positions`
+// table (db.ts) when `insertShadowPosition` is wired: zero real capital, never read by the real book /
+// budget aggregation / active-refresh / member board, but graded on the same pipeline so the calibration
+// ladder gets a broader, faster-accumulating evidence base than real opens alone would produce.
 
 import type { PlayDirection, ChainContract } from "../horizon-fanout";
 import type { SwingArchetype, SwingSubLane } from "./taxonomy";
@@ -63,7 +72,7 @@ import {
   type SwingCaps,
   type ExistingSwingPosition,
 } from "./swing-allocation";
-import type { SwingPositionInsert } from "../db";
+import type { SwingPositionInsert, SwingShadowPositionInsert } from "../db";
 
 /** Shares per option contract — the standard US equity-option multiplier. */
 export const OPTION_CONTRACT_MULTIPLIER = 100;
@@ -183,6 +192,10 @@ export interface SwingCommitDecision {
   budget?: SwingCommitBudgetVerdict;
   /** The ledger row to write — present ONLY when committable. */
   insert?: SwingPositionInsert;
+  /** A real signal blocked ONLY by a budget: or cap: reason (never idempotency/no_contract/etc) gets a
+   *  shadow row built here — see the file header. Present only when `committable` is false and the ONLY
+   *  blocking reasons are risk-control gates on an otherwise fully open-able candidate. */
+  shadowInsert?: SwingShadowPositionInsert;
 }
 
 export interface SwingCommitPlan {
@@ -193,6 +206,8 @@ export interface SwingCommitPlan {
   /** How many candidates cleared budget + caps + idempotency + contract → actually open, REGARDLESS of
    *  graduation status. */
   committableCount: number;
+  /** How many candidates were blocked ONLY by a risk-control gate (budget/caps) and so got a shadow row. */
+  shadowEligibleCount: number;
   /** The armed budget the plan gated against (echoed for observability). */
   budget: PortfolioBudget;
 }
@@ -250,6 +265,7 @@ export function computeSwingCommitPlan(args: {
   const decisions: SwingCommitDecision[] = [];
   let commitEligibleCount = 0;
   let committableCount = 0;
+  let shadowEligibleCount = 0;
 
   for (const cand of ordered) {
     const ticker = cand.ticker.trim().toUpperCase();
@@ -323,18 +339,31 @@ export function computeSwingCommitPlan(args: {
       });
     }
 
+    // SHADOW: a candidate that's otherwise fully open-able (direction/contract/premium/sub-lane all clear)
+    // but blocked ONLY by a risk-control gate (budget/caps — never idempotency/no_contract/etc, see the file
+    // header for why) gets a shadow row instead of a real one. Zero real capital; graded on the same pipeline.
+    let shadowInsert: SwingShadowPositionInsert | undefined;
+    const isRiskGateOnly = blockedBy.length > 0 && blockedBy.every((b) => b.startsWith("budget:") || b.startsWith("cap:"));
+    if (!committable && isRiskGateOnly && cand.contract && dirLc && subLane && isFin(riskUsd)) {
+      shadowInsert = buildShadowInsert(cand, subLane, dirLc, commitKey, riskUsd, grad, blockedBy);
+      shadowEligibleCount += 1;
+    }
+
     decisions.push({
       ticker, direction: cand.direction, archetype: cand.archetype, subLane, commitKey,
       graduated: grad.graduated, committable, riskUsd, blockedBy,
       reason: committable
         ? `COMMIT: ${grad.graduated ? grad.reason : "not yet graduated — evidence-only, real-time gates cleared"}; risk $${(riskUsd as number).toFixed(0)} cleared budget + caps`
-        : `blocked by ${blockedBy.join(", ")}`,
+        : shadowInsert
+          ? `SHADOW: real signal, blocked by risk gate(s) ${blockedBy.join(", ")} — tracked without real capital`
+          : `blocked by ${blockedBy.join(", ")}`,
       budget: budgetVerdict,
       insert,
+      shadowInsert,
     });
   }
 
-  return { decisions, commitEligibleCount, committableCount, budget };
+  return { decisions, commitEligibleCount, committableCount, shadowEligibleCount, budget };
 }
 
 /** Build the ledger row for a committable candidate. Pins the commit-gate evidence into entry_context /
@@ -423,6 +452,75 @@ function buildCommitInsert(
   };
 }
 
+/** Build the shadow row for a real signal a risk gate (budget/caps) turned away — same commit-time
+ *  snapshot shape as `buildCommitInsert`, minus the real-position-only fields (top_flow_strike, status),
+ *  plus `blocked_by` recording exactly why this never became real capital. */
+function buildShadowInsert(
+  cand: SwingCommitCandidate,
+  subLane: SwingSubLane,
+  dirLc: "long" | "short",
+  commitKey: string,
+  riskUsd: number,
+  grad: { graduated: boolean; reason: string },
+  blockedBy: string[],
+): SwingShadowPositionInsert {
+  const c = cand.contract!;
+  return {
+    commit_key: commitKey,
+    session_date: cand.sessionDate,
+    ticker: cand.ticker.trim().toUpperCase(),
+    direction: dirLc,
+    sub_lane: subLane,
+    archetype: cand.archetype,
+    contract_strike: isFin(c.strike) ? c.strike : null,
+    contract_expiry: c.expiry ?? null,
+    contract_type: c.right === "C" ? "call" : "put",
+    contract_occ: occFromChainContract({ ticker: cand.ticker, expiry: c.expiry, right: c.right, strike: c.strike }),
+    contract_delta: isFin(c.delta) ? c.delta : null,
+    entry_underlying_px: cand.entryUnderlyingPx ?? null,
+    thesis_invalidation_px: cand.thesisInvalidationPx ?? null,
+    target_underlying_px: cand.targetUnderlyingPx ?? null,
+    entry_premium: isFin(c.mid) ? c.mid : null,
+    blocked_by: blockedBy,
+    entry_context: {
+      commit_gate: "swing.commit.shadow.v1",
+      graduated: grad.graduated,
+      graduation_reason: grad.reason,
+      score: cand.score,
+      risk_usd: riskUsd,
+      model_contracts: 1,
+      contract_multiplier: OPTION_CONTRACT_MULTIPLIER,
+      is_event: isEventArchetype(cand.archetype),
+      is_overnight: true,
+      blocked_by: blockedBy,
+    },
+    gate_calibration_json: {
+      methodology: "swing.commit.graduation.v1",
+      archetype: cand.archetype,
+      sub_lane: subLane,
+      graduated: grad.graduated,
+      reason: grad.reason,
+    },
+    feature_vector: buildSwingFeatureVector({
+      ticker: cand.ticker,
+      direction: dirLc,
+      archetype: cand.archetype,
+      subLane,
+      evidenceScore: cand.score,
+      presentPillars: cand.presentPillars ?? null,
+      dataQualityDegraded: cand.dataQualityDegraded ?? null,
+      pillars: cand.pillars ?? null,
+      archetypeSecondary: cand.archetypeSecondary ?? null,
+      archetypeScores: cand.archetypeScores ?? null,
+      classificationMargin: cand.classificationMargin ?? null,
+      ivRank: cand.ivRank ?? null,
+      snapshotKind: "commit",
+      snapshotSeq: 0,
+      sessionsElapsed: 0,
+    }) as unknown as Record<string, unknown>,
+  };
+}
+
 // ─── Executor (thin IO shell) ──────────────────────────────────────────────────────────────────────
 
 export interface SwingCommitDeps {
@@ -437,6 +535,9 @@ export interface SwingCommitDeps {
     positionId: number,
     archetype?: string | null,
   ) => Promise<void>;
+  /** Open a shadow row (db.insertSwingShadowPosition — SEPARATE table, zero real capital). Omitted → no
+   *  shadow tracking happens (fail-soft, matches the `insertPosition`-absent evidence-only convention). */
+  insertShadowPosition?: (pos: SwingShadowPositionInsert) => Promise<number>;
 }
 
 export interface SwingCommitExecEntry {
@@ -451,43 +552,62 @@ export interface SwingCommitResult {
   committed: SwingCommitExecEntry[];
   /** Non-committable decisions carried through for the cron log (ticker + why). */
   skipped: Array<{ ticker: string; commitKey: string; blockedBy: string[] }>;
+  /** Shadow rows opened this run (separate table, zero real capital) — empty when `insertShadowPosition`
+   *  is unwired, exactly like `committed` stays empty when `insertPosition` is unwired. */
+  shadowed: SwingCommitExecEntry[];
   errors: number;
 }
 
 /**
  * Execute the committable decisions: open each position, then link its accumulation candidate. FAIL-SOFT per
  * position — one insert error is caught + tallied, never aborts the batch. Idempotent: `insertSwingPosition`
- * upserts on commit_key, so a re-run lands on the same row (no double-open) even if this is retried.
+ * upserts on commit_key, so a re-run lands on the same row (no double-open) even if this is retried. Also
+ * opens any shadow rows the plan built, into the SEPARATE `insertShadowPosition` sink when wired.
  */
 export async function executeSwingCommits(deps: SwingCommitDeps, plan: SwingCommitPlan): Promise<SwingCommitResult> {
   const committed: SwingCommitExecEntry[] = [];
+  const shadowed: SwingCommitExecEntry[] = [];
   let errors = 0;
   const skipped = plan.decisions
     .filter((d) => !d.committable)
     .map((d) => ({ ticker: d.ticker, commitKey: d.commitKey, blockedBy: d.blockedBy }));
 
   for (const d of plan.decisions) {
-    if (!d.committable || !d.insert || !d.direction) continue;
-    try {
-      const positionId = await deps.insertPosition(d.insert);
-      if (deps.promote) {
-        try {
-          await deps.promote(d.ticker, d.direction, positionId, d.archetype);
-        } catch (err) {
-          // Linking is best-effort — the position is already open + durable; a failed link only risks the
-          // candidate re-surfacing (harmless: the commit_key upsert prevents a second open).
-          console.error(`[swing-commit] promote link failed for ${d.ticker} (position ${positionId})`, err);
+    if (d.committable && d.insert && d.direction) {
+      try {
+        const positionId = await deps.insertPosition(d.insert);
+        if (deps.promote) {
+          try {
+            await deps.promote(d.ticker, d.direction, positionId, d.archetype);
+          } catch (err) {
+            // Linking is best-effort — the position is already open + durable; a failed link only risks the
+            // candidate re-surfacing (harmless: the commit_key upsert prevents a second open).
+            console.error(`[swing-commit] promote link failed for ${d.ticker} (position ${positionId})`, err);
+          }
         }
+        committed.push({ ticker: d.ticker, direction: d.direction, commitKey: d.commitKey, positionId });
+      } catch (err) {
+        errors += 1;
+        committed.push({
+          ticker: d.ticker, direction: d.direction, commitKey: d.commitKey, positionId: null,
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
-      committed.push({ ticker: d.ticker, direction: d.direction, commitKey: d.commitKey, positionId });
-    } catch (err) {
-      errors += 1;
-      committed.push({
-        ticker: d.ticker, direction: d.direction, commitKey: d.commitKey, positionId: null,
-        error: err instanceof Error ? err.message : String(err),
-      });
+      continue;
+    }
+    if (d.shadowInsert && d.direction && deps.insertShadowPosition) {
+      try {
+        const positionId = await deps.insertShadowPosition(d.shadowInsert);
+        shadowed.push({ ticker: d.ticker, direction: d.direction, commitKey: d.commitKey, positionId });
+      } catch (err) {
+        errors += 1;
+        shadowed.push({
+          ticker: d.ticker, direction: d.direction, commitKey: d.commitKey, positionId: null,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
   }
 
-  return { committed, skipped, errors };
+  return { committed, skipped, shadowed, errors };
 }

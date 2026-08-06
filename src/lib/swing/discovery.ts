@@ -68,7 +68,7 @@ import {
 } from "./commit";
 import type { PortfolioBudget } from "./swing-portfolio-budget";
 import type { SwingCaps } from "./swing-allocation";
-import type { SwingPositionInsert } from "../db";
+import type { SwingPositionInsert, SwingShadowPositionInsert } from "../db";
 
 // ─── WHY RECALL MATTERS (operator critique #7) ──────────────────────────────────
 // A discovery funnel is easy to optimize for PRECISION (everything that surfaces is good) while
@@ -453,6 +453,9 @@ export interface SwingDiscoveryDeps {
     positionId: number,
     archetype?: string | null,
   ) => Promise<void>;
+  /** Open a shadow row (db.insertSwingShadowPosition — SEPARATE table, zero real capital, 2026-08-06).
+   *  Absent ⇒ no shadow tracking (fail-soft, mirrors `insertPosition`'s presence-gates-real-commits pattern). */
+  insertShadowPosition?: (pos: SwingShadowPositionInsert) => Promise<number>;
   /** The ARMED portfolio budget (resolveProductionPortfolioBudget). Absent ⇒ the disarmed default (no-op gate). */
   budget?: PortfolioBudget;
   /** The book-percent caps (defaults to DEFAULT_SWING_CAPS). */
@@ -761,10 +764,12 @@ export async function runSwingDiscoveryScan(
       const commitDeps: SwingCommitDeps = {
         insertPosition: deps.insertPosition,
         promote: deps.promoteCommit,
+        insertShadowPosition: deps.insertShadowPosition,
       };
       commit = await executeSwingCommits(commitDeps, plan);
       console.info(
-        `[swing-discovery] commit gate: ${commitEligibleCount} graduated-eligible / ${plan.committableCount} opened` +
+        `[swing-discovery] commit gate: ${commitEligibleCount} graduated-eligible / ${plan.committableCount} opened / ` +
+          `${plan.shadowEligibleCount} shadow-eligible / ${commit.shadowed.length} shadowed` +
           (commit.errors ? ` (${commit.errors} errors)` : ""),
       );
     } else {
