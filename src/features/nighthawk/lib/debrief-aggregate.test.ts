@@ -273,7 +273,7 @@ test("retroWouldBlock: uses the LIVE thresholds against the PINNED geometry; no 
   assert.equal(retroWouldBlock(row({ publish_context: { context_version: 2 } }), "target_unreachable"), null);
 });
 
-test("gatePublishedMirror: buckets scoreable current rows by retro verdict; unfilled/pulled excluded", () => {
+test("gatePublishedMirror: buckets resolved current rows by retro verdict; unfilled bucketed but out of the rate, pulled excluded", () => {
   const geoBlock = { context_version: 2, band_distance_pct: -10, atr14: 100 };
   const geoPass = { context_version: 2, band_distance_pct: -1, atr14: 100 };
   const rows = [
@@ -281,18 +281,107 @@ test("gatePublishedMirror: buckets scoreable current rows by retro verdict; unfi
     row({ outcome: "stop", publish_context: geoBlock }),
     row({ outcome: "target", publish_context: geoPass }),
     row({ outcome: "stop", publish_context: geoPass }),
-    row({ outcome: "unfilled", publish_context: geoBlock }), // excluded — not scoreable
+    row({ outcome: "unfilled", publish_context: geoBlock }), // BUCKETED — never in the rate
     row({ outcome: "target", pulled: true, publish_context: geoPass }), // excluded — pulled
     row({ outcome: "open", publish_context: null }), // no geometry
   ];
   const band = gatePublishedMirror(rows).find((l) => l.gate === "band_detached")!;
-  assert.equal(band.would_block.n, 2);
-  assert.equal(band.would_block.win_rate_pct, 0);
+  assert.equal(band.would_block.n, 3); // 2 stops + the unfilled row the gate exists for
+  assert.equal(band.would_block.decided, 2);
+  assert.equal(band.would_block.unfilled, 1);
+  assert.equal(band.would_block.win_rate_pct, 0); // 0/2 decided — the unfilled row is NOT a loss
+  assert.equal(band.would_block.unfilled_rate_pct, 33.3);
   assert.equal(band.would_pass.n, 2);
+  assert.equal(band.would_pass.decided, 2);
+  assert.equal(band.would_pass.unfilled, 0);
   assert.equal(band.would_pass.win_rate_pct, 50);
+  assert.equal(band.would_pass.unfilled_rate_pct, 0);
   assert.equal(band.delta_win_rate_pts, 50);
+  assert.equal(band.delta_unfilled_rate_pts, 33.3); // the read that was structurally invisible
   assert.equal(band.no_geometry_n, 1);
   assert.equal(band.would_block.low_n, true);
+});
+
+// ── The never-filled record defect (2026-08-06) ──────────────────────────────────────
+
+test("gatePublishedMirror: an all-unfilled would_block bucket is VISIBLE and carries no win rate", () => {
+  // THE REGRESSION THIS PINS. The mirror used to drop `unfilled` before retroWouldBlock,
+  // so the band_detached gate's would_block bucket came back n:0 on live prod even though
+  // the same window carried 19 unfilled plays. A gate that only ever blocks unenterable
+  // geometry must be MEASURABLE, and must never book those plays as losses.
+  const geoBlock = { context_version: 2, band_distance_pct: -10, atr14: 100 };
+  const geoPass = { context_version: 2, band_distance_pct: -1, atr14: 100 };
+  const rows = [
+    ...Array.from({ length: 6 }, () => row({ outcome: "unfilled", publish_context: geoBlock })),
+    ...Array.from({ length: 6 }, () => row({ outcome: "target", publish_context: geoPass })),
+  ];
+  const band = gatePublishedMirror(rows).find((l) => l.gate === "band_detached")!;
+  assert.equal(band.would_block.n, 6); // visible at all — this was 0 before the fix
+  assert.equal(band.would_block.decided, 0);
+  assert.equal(band.would_block.win_rate_pct, null); // never a fabricated 0%
+  assert.equal(band.would_block.losses, 0); // and never booked as losses
+  assert.equal(band.would_block.unfilled_rate_pct, 100);
+  assert.equal(band.would_pass.unfilled_rate_pct, 0);
+  assert.equal(band.delta_win_rate_pts, null); // no decided evidence either side of the split
+  assert.equal(band.delta_unfilled_rate_pts, 100); // but the fillability read is decisive
+  const queue = buildImprovementQueue({
+    summary: summarizeDebriefPins([]),
+    blockedValue: [],
+    mirror: gatePublishedMirror(rows),
+    byConviction: [],
+  });
+  const fill = queue.find((i) => i.signal === "publish_gate:band_detached:published_mirror_fillability")!;
+  assert.equal(fill.low_n, false);
+  assert.equal(fill.evidence.delta, 100);
+  assert.match(fill.suggestion!, /never have entered/);
+});
+
+test("NO unfillable or undecided row ever lands in a rate — mirror + per-conviction, one invariant", () => {
+  const geo = { context_version: 2, band_distance_pct: -1, atr14: 100 };
+  // A bucket of nothing but unfilled + no-touch plays: zero decided evidence.
+  const rows = [
+    ...Array.from({ length: 8 }, () => row({ conviction: "B", outcome: "unfilled", publish_context: geo })),
+    ...Array.from({ length: 7 }, () => row({ conviction: "B", outcome: "open", publish_context: geo })),
+  ];
+  const report = analyzeNighthawkDebriefs({ rows, rejections: [], window: WINDOW });
+  const b = report.by_conviction.find((c) => c.key === "B")!;
+  assert.equal(b.n, 15);
+  assert.equal(b.scoreable, 7); // opens are scoreable, unfilled are not
+  assert.equal(b.decided, 0);
+  assert.equal(b.undecided, 7);
+  assert.equal(b.unfilled, 8);
+  assert.equal(b.win_rate_pct, null); // was 0 — a 0% claim over zero decided plays
+  assert.equal(b.low_n, true); // was false — n=15 badged as sufficient evidence
+  const band = report.gate_validation.published_mirror.find((l) => l.gate === "band_detached")!;
+  assert.equal(band.would_pass.win_rate_pct, null);
+  assert.equal(band.would_pass.n, 15);
+  assert.equal(band.would_pass.decided, 0);
+  // No RATE-derived queue item can attach a suggestion on this evidence (the pinned
+  // failure-mode item is a count, not a rate, and is deliberately unaffected).
+  for (const item of report.improvement_queue) {
+    if (item.signal.startsWith("failure_mode:")) continue;
+    assert.equal(item.suggestion, null, item.signal);
+  }
+});
+
+test("groupRecord: win_rate_pct is wins/decided, never wins/scoreable", () => {
+  const rows = [
+    row({ conviction: "A", outcome: "target" }),
+    row({ conviction: "A", outcome: "stop" }),
+    row({ conviction: "A", outcome: "stop" }),
+    row({ conviction: "A", outcome: "stop" }),
+    row({ conviction: "A", outcome: "stop" }),
+    // Six no-touch plays: scoreable, but they decide nothing.
+    ...Array.from({ length: 6 }, () => row({ conviction: "A", outcome: "open" })),
+  ];
+  const a = analyzeNighthawkDebriefs({ rows, rejections: [], window: WINDOW }).by_conviction.find(
+    (c) => c.key === "A"
+  )!;
+  assert.equal(a.scoreable, 11);
+  assert.equal(a.decided, 5);
+  assert.equal(a.undecided, 6);
+  assert.equal(a.win_rate_pct, 20); // 1/5, not 1/11 (9.1%)
+  assert.equal(a.low_n, false); // decided=5 == LOW_N_THRESHOLD
 });
 
 // ── Improvement queue: shape + LOW-N never suggests ──────────────────────────────────
@@ -361,8 +450,8 @@ test("improvement queue: dominant failure mode signals with its share; convictio
     blockedValue: [],
     mirror: [],
     byConviction: [
-      { key: "A", n: 6, scoreable: 6, wins: 1, losses: 5, unfilled: 0, pulled: 0, win_rate_pct: 16.7, dominant_failure_mode: null, low_n: false },
-      { key: "B", n: 6, scoreable: 6, wins: 4, losses: 2, unfilled: 0, pulled: 0, win_rate_pct: 66.7, dominant_failure_mode: null, low_n: false },
+      { key: "A", n: 6, scoreable: 6, wins: 1, losses: 5, decided: 6, undecided: 0, unfilled: 0, pulled: 0, win_rate_pct: 16.7, dominant_failure_mode: null, low_n: false },
+      { key: "B", n: 6, scoreable: 6, wins: 4, losses: 2, decided: 6, undecided: 0, unfilled: 0, pulled: 0, win_rate_pct: 66.7, dominant_failure_mode: null, low_n: false },
     ],
   });
   const dom = queue.find((i) => i.signal === "failure_mode:gap_through_stop:dominant")!;
