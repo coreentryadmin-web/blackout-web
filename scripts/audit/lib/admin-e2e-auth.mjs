@@ -124,18 +124,26 @@ export async function mintMemberE2ESession({ appUrl, emailPrefix = "admin-e2e-me
     // Create without admin role — prod helper always sets admin; use keyless-style create instead
     const secret = process.env.CLERK_SECRET_KEY;
     const backend = await clerkBackend(secret);
-    const { generateDefaultAuditPhone } = await import("./audit-phone.mjs");
+    const { createOrAdoptAuditUser } = await import("./clerk-audit-user.mjs");
     const email = `${emailPrefix}-${Date.now()}@example.com`;
-    const createRes = await backend("POST", "/users", {
-      email_address: [email],
-      phone_number: [generateDefaultAuditPhone()],
-      public_metadata: { tier: "premium" },
-      skip_password_requirement: true,
-      skip_password_checks: true,
-      skip_legal_checks: true,
+    // No adoptByEmail callback (per-run timestamped e-mail can't collide); the shared helper
+    // is here for the PHONE collision retry — a clash on the random +1415555XXXX draw used
+    // to skip the whole 403-probe suite.
+    const created = await createOrAdoptAuditUser({
+      createUser: async (phone) =>
+        (
+          await backend("POST", "/users", {
+            email_address: [email],
+            phone_number: [phone],
+            public_metadata: { tier: "premium" },
+            skip_password_requirement: true,
+            skip_password_checks: true,
+            skip_legal_checks: true,
+          })
+        ).json,
     });
-    const userId = createRes.json?.id;
-    if (!userId) return { skip: true, reason: "member user create failed" };
+    const userId = created.userId;
+    if (!userId) return { skip: true, reason: `member user create failed: ${String(created.error).slice(0, 160)}` };
 
     const { mintSessionForUserId: mintExisting } = await import("./keyless-clerk-session.mjs");
     const session = await mintExisting({

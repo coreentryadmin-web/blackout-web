@@ -9,6 +9,8 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { readdirSync, statSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { tmpdir } from "node:os";
+import { generateDefaultAuditPhone } from "./audit/lib/audit-phone.mjs";
+import { createOrAdoptAuditUserViaCurl } from "./audit/lib/clerk-audit-user.mjs";
 
 const baseArg = process.argv.find((a) => a.startsWith("--base="));
 const BASE = (baseArg ? baseArg.slice("--base=".length) : "https://blackouttrades.com").replace(/\/$/, "");
@@ -166,7 +168,9 @@ const J = (r) => {
   }
 };
 
-function establishAdmin() {
+// async: the shared temp-user helper awaits its transport (one implementation serves both
+// the spawnSync-curl and fetch harnesses).
+async function establishAdmin() {
   if (!SECRET) {
     rec("auth: CLERK_SECRET_KEY", "WARN", "missing — premium pages/APIs will show 401 only");
     return false;
@@ -174,22 +178,19 @@ function establishAdmin() {
   const API = "https://api.clerk.com/v1";
   const FAPI = fapiHost(PUB);
   const EMAIL = "exhaustive-" + Date.now() + "@blackouttrades.com";
-  const PHONE = "+1415555" + String(1000 + (Date.now() % 9000));
+  const PHONE = generateDefaultAuditPhone();
   const backend = (method, path, json) =>
     J(curl({ method, url: API + path, headers: { Authorization: "Bearer " + SECRET }, json }));
 
-  const created = backend("POST", "/users", {
-    email_address: [EMAIL],
-    phone_number: [PHONE],
-    public_metadata: { role: "admin", tier: "premium" },
-    skip_password_requirement: true,
-    skip_legal_checks: true,
-  });
-  userId = created?.id;
-  if (!userId) {
-    rec("auth: create user", "FAIL", JSON.stringify(created).slice(0, 120));
+  // Shared create-or-adopt: e-mail collision → adopt the leftover user; PHONE collision →
+  // redraw a fresh +1415555XXXX and retry. The old local draw was `Date.now() % 9000`, which
+  // is *deterministic per millisecond* — two harnesses starting together drew the SAME number.
+  const auth = await createOrAdoptAuditUserViaCurl({ curl, api: API, secret: SECRET, email: EMAIL, phone: PHONE });
+  if (auth.error) {
+    rec("auth: create user", "FAIL", auth.error.slice(0, 160));
     return false;
   }
+  userId = auth.userId;
 
   const ticket = backend("POST", "/sign_in_tokens", { user_id: userId, expires_in_seconds: 600 })?.token;
   const si = curl({
@@ -529,7 +530,7 @@ async function main() {
   rec("route inventory", "INFO", `${ALL_API_ROUTES.length} route.ts files → ${API_PROBE_LIST.length} probe URLs`);
 
   await auditCodebase();
-  establishAdmin();
+  await establishAdmin();
   await auditPages(PUBLIC_PAGES, "anon", "public");
   await auditPages(PREMIUM_PAGES, sessionJwt ? "admin" : "anon", "premium/admin");
   await auditAllApis();

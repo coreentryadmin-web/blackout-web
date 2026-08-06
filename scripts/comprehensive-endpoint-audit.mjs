@@ -16,6 +16,7 @@ import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "n
 import { join, relative } from "node:path";
 import { tmpdir } from "node:os";
 import { generateDefaultAuditPhone } from "./audit/lib/audit-phone.mjs";
+import { createOrAdoptAuditUserViaCurl } from "./audit/lib/clerk-audit-user.mjs";
 
 const baseArg = process.argv.find((a) => a.startsWith("--base="));
 const BASE = (baseArg ? baseArg.slice("--base=".length) : process.env.AUDIT_APP_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
@@ -178,7 +179,9 @@ const J = (r) => {
   }
 };
 
-function establishAdmin() {
+// async: the shared temp-user helper awaits its transport (one implementation serves both
+// the spawnSync-curl and fetch harnesses).
+async function establishAdmin() {
   if (!SECRET) {
     rec("auth", "WARN", "CLERK_SECRET_KEY missing — premium probes skipped");
     return false;
@@ -190,18 +193,14 @@ function establishAdmin() {
   const backend = (method, path, json) =>
     J(curl({ method, url: API + path, headers: { Authorization: "Bearer " + SECRET }, json }));
 
-  const created = backend("POST", "/users", {
-    email_address: [EMAIL],
-    phone_number: [PHONE],
-    public_metadata: { role: "admin", tier: "premium" },
-    skip_password_requirement: true,
-    skip_legal_checks: true,
-  });
-  userId = created?.id;
-  if (!userId) {
-    rec("auth:create-user", "FAIL", JSON.stringify(created).slice(0, 120));
+  // Shared create-or-adopt: e-mail collision → adopt the leftover user; PHONE collision →
+  // redraw a fresh +1415555XXXX and retry, instead of skipping every premium probe.
+  const auth = await createOrAdoptAuditUserViaCurl({ curl, api: API, secret: SECRET, email: EMAIL, phone: PHONE });
+  if (auth.error) {
+    rec("auth:create-user", "FAIL", auth.error.slice(0, 160));
     return false;
   }
+  userId = auth.userId;
 
   const ticket = backend("POST", "/sign_in_tokens", { user_id: userId, expires_in_seconds: 600 })?.token;
   if (!ticket) {
@@ -540,7 +539,7 @@ async function main() {
   console.log(`Target: ${BASE}\n`);
 
   try {
-    establishAdmin();
+    await establishAdmin();
     await auditPublicRoutes();
     await auditCronRoutes();
     await auditProductProbes();

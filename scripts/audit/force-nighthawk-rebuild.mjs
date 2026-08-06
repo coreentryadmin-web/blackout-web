@@ -3,7 +3,7 @@
 import { execSync } from "node:child_process";
 import { unlinkSync } from "node:fs";
 import { setTimeout as sleepMs } from "node:timers/promises";
-import { generateDefaultAuditPhone } from "./lib/audit-phone.mjs";
+import { createOrAdoptAuditUser } from "./lib/clerk-audit-user.mjs";
 
 const APP = process.env.VALIDATE_BASE || "https://blackouttrades.com";
 const API = "https://api.clerk.com/v1";
@@ -26,20 +26,26 @@ function sh(cmd) {
 
 async function auth() {
   const EMAIL = `audit-nh-force-${Date.now()}@blackouttrades.com`;
-  const PHONE = generateDefaultAuditPhone();
-  const body = JSON.stringify({
-    email_address: [EMAIL],
-    phone_number: [PHONE],
-    public_metadata: { role: "admin", tier: "premium" },
-    skip_password_requirement: true,
-    skip_legal_checks: true,
+  // No adoptByEmail callback (the e-mail is per-run unique); the shared helper is here so a
+  // collision on the random +1415555XXXX phone redraws instead of aborting the rebuild.
+  const created = await createOrAdoptAuditUser({
+    createUser: (phone) =>
+      J(
+        sh(
+          `curl -sS -X POST -H "Authorization: Bearer ${SECRET}" -H "Content-Type: application/json" -d '${JSON.stringify(
+            {
+              email_address: [EMAIL],
+              phone_number: [phone],
+              public_metadata: { role: "admin", tier: "premium" },
+              skip_password_requirement: true,
+              skip_legal_checks: true,
+            }
+          )}' "${API}/users"`
+        )
+      ),
   });
-  const uid = J(
-    sh(
-      `curl -sS -X POST -H "Authorization: Bearer ${SECRET}" -H "Content-Type: application/json" -d '${body}' "${API}/users"`
-    )
-  )?.id;
-  if (!uid) throw new Error("user create failed");
+  const uid = created.userId;
+  if (!uid) throw new Error(`user create failed: ${String(created.error).slice(0, 200)}`);
   const ticket = J(
     sh(
       `curl -sS -X POST -H "Authorization: Bearer ${SECRET}" -H "Content-Type: application/json" -d '{"user_id":"${uid}"}' "${API}/sign_in_tokens"`

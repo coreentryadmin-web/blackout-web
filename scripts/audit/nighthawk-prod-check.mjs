@@ -15,6 +15,7 @@ import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { generateDefaultAuditPhone } from './lib/audit-phone.mjs';
+import { createOrAdoptAuditUserViaCurl } from './lib/clerk-audit-user.mjs';
 import { isAuthFailureStatus } from './lib/auth-status.mjs';
 
 const req = (n) => { const v = process.env[n]; if (!v || v.includes('${{')) { console.error(`FATAL: env ${n} missing`); process.exit(3); } return v; };
@@ -55,14 +56,11 @@ let userId = null;
 async function main() {
   console.log(`\nNight Hawk prod check → ${APP}  (FAPI ${FAPI})\n`);
   // --- mint temp admin+premium user ---
-  const create = backend('POST', '/users', { email_address: [EMAIL], phone_number: [PHONE], public_metadata: { role: 'admin', tier: 'premium' }, skip_password_requirement: true, skip_legal_checks: true });
-  let cj = J(create);
-  if (cj?.id) userId = cj.id;
-  else if (/form_identifier_exists/.test(JSON.stringify(cj?.errors || ''))) {
-    const u = (J(curl({ url: `${API}/users?email_address=${encodeURIComponent(EMAIL)}`, headers: { Authorization: `Bearer ${SECRET}` } })) || [])[0];
-    if (u?.id) { userId = u.id; backend('PATCH', `/users/${userId}`, { public_metadata: { role: 'admin', tier: 'premium' } }); }
-  }
-  if (!userId) { rec('auth: create temp user', 'FAIL', create.b.slice(0, 160)); return; }
+  // Shared create-or-adopt: e-mail collision → adopt the leftover user; PHONE collision →
+  // redraw a fresh +1415555XXXX and retry.
+  const auth = await createOrAdoptAuditUserViaCurl({ curl, api: API, secret: SECRET, email: EMAIL, phone: PHONE });
+  if (auth.error) { rec('auth: create temp user', 'FAIL', auth.error.slice(0, 200)); return; }
+  userId = auth.userId;
   rec('auth: temp admin+premium user', 'PASS', userId);
 
   // --- establish session (sign_in_token → ticket exchange → __session) ---

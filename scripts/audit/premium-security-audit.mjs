@@ -5,6 +5,8 @@
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { generateDefaultAuditPhone } from "./lib/audit-phone.mjs";
+import { createAuditClerkUser } from "./lib/clerk-audit-user.mjs";
 
 const APP = (process.env.AUDIT_APP_URL || "https://blackouttrades.com").replace(/\/$/, "");
 const SECRET = process.env.CLERK_SECRET_KEY;
@@ -38,7 +40,7 @@ function collectSetCookies(res) {
 async function mintSession(metadata, label) {
   if (!SECRET || !PUB) throw new Error("Clerk secrets missing");
   const email = `${label}-${Date.now()}@blackouttrades.com`;
-  const phone = "+1415555" + String(1000 + Math.floor(Math.random() * 9000));
+  const phone = generateDefaultAuditPhone();
   const fapi = fapiHost(PUB);
   const backend = async (method, path, body) => {
     const r = await fetch(`${API}${path}`, {
@@ -49,15 +51,11 @@ async function mintSession(metadata, label) {
     return r.json().catch(() => null);
   };
 
-  const created = await backend("POST", "/users", {
-    email_address: [email],
-    phone_number: [phone],
-    public_metadata: metadata,
-    skip_password_requirement: true,
-    skip_legal_checks: true,
-  });
-  const userId = created?.id;
-  if (!userId) throw new Error(`Clerk create failed (${label}): ${JSON.stringify(created).slice(0, 120)}`);
+  // adopt:false — the e-mail already carries a per-run timestamp, so only the random PHONE
+  // can collide; the shared helper redraws it instead of throwing the audit away.
+  const created = await createAuditClerkUser({ secret: SECRET, email, phone, publicMetadata: metadata, adopt: false });
+  const userId = created.userId;
+  if (!userId) throw new Error(`Clerk create failed (${label}): ${String(created.error).slice(0, 120)}`);
 
   const ticket = (await backend("POST", "/sign_in_tokens", { user_id: userId, expires_in_seconds: 600 }))?.token;
   if (!ticket) throw new Error(`sign_in_token failed (${label})`);

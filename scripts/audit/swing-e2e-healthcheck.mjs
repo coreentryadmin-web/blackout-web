@@ -49,6 +49,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { generateDefaultAuditPhone } from "./lib/audit-phone.mjs";
+import { createOrAdoptAuditUserViaCurl } from "./lib/clerk-audit-user.mjs";
 import { isAuthFailureStatus } from "./lib/auth-status.mjs";
 import { rollupVerdict, verdictForStaleness } from "./lib/zerodte-healthcheck-eval.mjs";
 
@@ -448,27 +449,16 @@ async function main() {
 
   // All stages need an authenticated prod session (no stage A infra-only path like 0DTE).
   // --- mint temp admin+premium user (self-heal a leftover) ---
-  const create = backend("POST", "/users", {
-    email_address: [EMAIL],
-    phone_number: [PHONE],
-    public_metadata: { role: "admin", tier: "premium" },
-    skip_password_requirement: true,
-    skip_legal_checks: true,
-  });
-  let cj = J(create);
-  if (cj?.id) userId = cj.id;
-  else if (/form_identifier_exists/.test(JSON.stringify(cj?.errors || ""))) {
-    const u = (J(curl({ url: `${API}/users?email_address=${encodeURIComponent(EMAIL)}`, headers: { Authorization: `Bearer ${SECRET}` } })) || [])[0];
-    if (u?.id) {
-      userId = u.id;
-      backend("PATCH", `/users/${userId}`, { public_metadata: { role: "admin", tier: "premium" } });
-    }
-  }
-  if (!userId) {
+  // Shared helper: e-mail collision → adopt the leftover user; PHONE collision → redraw a
+  // fresh +1415555XXXX and retry, instead of failing the whole healthcheck on a clash that
+  // a plain re-run would have cleared.
+  const auth = await createOrAdoptAuditUserViaCurl({ curl, api: API, secret: SECRET, email: EMAIL, phone: PHONE });
+  if (auth.error) {
     ensureStage("A", "CRON");
-    forceStage("A", "RED", `auth: could not create/adopt temp user — ${create.b.slice(0, 140)}`);
+    forceStage("A", "RED", `auth: could not create/adopt temp user — ${auth.error.slice(0, 180)}`);
     return;
   }
+  userId = auth.userId;
 
   // --- establish session (sign_in_token → ticket exchange → __session) ---
   let tok = null, sid = null, clientUat = 0;

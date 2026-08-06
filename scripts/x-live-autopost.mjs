@@ -27,6 +27,7 @@ import { tmpdir } from "node:os";
 import { chromium } from "playwright";
 import sharp from "sharp";
 import crypto from "node:crypto";
+import { createAuditClerkUser } from "./audit/lib/clerk-audit-user.mjs";
 
 // ---------------------------------------------------------------------------
 // CLI
@@ -194,9 +195,6 @@ async function mintClerkSession(secrets) {
   const ln = LAST_NAMES[crypto.randomInt(0, LAST_NAMES.length)];
   const tag = crypto.randomInt(10, 99);
   const email = `${fn}.${ln}${tag}@gmail.com`;
-  const suffix = String(crypto.randomInt(0, 10000)).padStart(4, "0");
-  const phone = `+1415555${suffix}`;
-
   const backend = (method, path, body) =>
     fetch(`${CLERK_API}${path}`, {
       method,
@@ -207,30 +205,12 @@ async function mintClerkSession(secrets) {
       body: body ? JSON.stringify(body) : undefined,
     });
 
-  // 1. Create temp user
-  const createRes = await backend("POST", "/users", {
-    email_address: [email],
-    phone_number: [phone],
-    public_metadata: { role: "admin", tier: "premium" },
-    skip_password_requirement: true,
-    skip_legal_checks: true,
-  });
-  const created = await createRes.json().catch(() => null);
-  let userId = created?.id;
-  if (!userId && /form_identifier_exists/.test(JSON.stringify(created?.errors))) {
-    const lookup = await fetch(
-      `${CLERK_API}/users?email_address=${encodeURIComponent(email)}`,
-      { headers: { Authorization: `Bearer ${secret}` } },
-    );
-    const existing = (await lookup.json().catch(() => []))?.[0];
-    if (existing?.id) {
-      userId = existing.id;
-      await backend("PATCH", `/users/${userId}`, {
-        public_metadata: { role: "admin", tier: "premium" },
-      });
-    }
-  }
-  if (!userId) throw new Error("Failed to create temp Clerk user");
+  // 1. Create temp user — shared helper handles BOTH Clerk identifier collisions: e-mail
+  // taken → adopt that user (kept from the old inline block); PHONE taken → redraw a fresh
+  // +1415555XXXX and retry, which the inline block could not do.
+  const created = await createAuditClerkUser({ secret, email });
+  const userId = created.userId;
+  if (!userId) throw new Error(`Failed to create temp Clerk user: ${String(created.error).slice(0, 200)}`);
 
   // 2. Mint sign-in token
   const tokenRes = await backend("POST", "/sign_in_tokens", { user_id: userId });

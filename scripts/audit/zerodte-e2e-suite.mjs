@@ -43,6 +43,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { generateDefaultAuditPhone } from "./lib/audit-phone.mjs";
+import { createOrAdoptAuditUserViaCurl } from "./lib/clerk-audit-user.mjs";
 import { isAuthFailureStatus } from "./lib/auth-status.mjs";
 import {
   checkMarketStatus,
@@ -348,30 +349,19 @@ function sectionInfra() {
 }
 
 // ── [DATA-PATH] Redis + Postgres THROUGH the authenticated app (no raw TCP) ──────────────
-function sectionDataPath() {
+async function sectionDataPath() {
   ensureSection("DATA-PATH", "REDIS+PG PATH");
   if (!SECRET) return forceSection("DATA-PATH", "SKIPPED", "CLERK_SECRET_KEY absent — cannot mint the temp session that reads board/record");
 
   const backend = (m, p, j) => curl({ method: m, url: `${CLERK_API}${p}`, headers: { Authorization: `Bearer ${SECRET}` }, json: j });
 
   // --- mint temp admin+premium user (self-heal a leftover) ---
-  const create = backend("POST", "/users", {
-    email_address: [EMAIL],
-    phone_number: [PHONE],
-    public_metadata: { role: "admin", tier: "premium" },
-    skip_password_requirement: true,
-    skip_legal_checks: true,
-  });
-  let cj = J(create);
-  if (cj?.id) dataPathUserId = cj.id;
-  else if (/form_identifier_exists/.test(JSON.stringify(cj?.errors || ""))) {
-    const u = (J(curl({ url: `${CLERK_API}/users?email_address=${encodeURIComponent(EMAIL)}`, headers: { Authorization: `Bearer ${SECRET}` } })) || [])[0];
-    if (u?.id) {
-      dataPathUserId = u.id;
-      backend("PATCH", `/users/${dataPathUserId}`, { public_metadata: { role: "admin", tier: "premium" } });
-    }
-  }
-  if (!dataPathUserId) return forceSection("DATA-PATH", "RED", `auth: could not create/adopt temp user — ${create.b.slice(0, 120)}`);
+  // The shared helper covers BOTH identifier collisions Clerk can raise: e-mail taken →
+  // adopt the leftover user; PHONE taken → redraw a fresh +1415555XXXX and retry. A phone
+  // clash used to abort here and report the whole DATA-PATH section RED.
+  const auth = await createOrAdoptAuditUserViaCurl({ curl, api: CLERK_API, secret: SECRET, email: EMAIL, phone: PHONE });
+  if (auth.error) return forceSection("DATA-PATH", "RED", `auth: could not create/adopt temp user — ${auth.error.slice(0, 160)}`);
+  dataPathUserId = auth.userId;
 
   // --- establish session (sign_in_token → FAPI ticket exchange → __session) ---
   let tok = null, sid = null, clientUat = 0;
@@ -451,7 +441,7 @@ async function main() {
   // INFRA + DATA-PATH are skipped when --provider filters to a single API provider.
   if (!PROVIDER) {
     sectionInfra();
-    sectionDataPath();
+    await sectionDataPath();
   }
 }
 

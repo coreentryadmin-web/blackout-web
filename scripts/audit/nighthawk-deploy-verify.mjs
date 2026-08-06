@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium } from "playwright";
 import { generateDefaultAuditPhone } from "./lib/audit-phone.mjs";
+import { createAuditClerkUser } from "./lib/clerk-audit-user.mjs";
 
 const BASE = "https://blackouttrades.com";
 const SECRET = process.env.CLERK_SECRET_KEY;
@@ -12,7 +13,7 @@ const PUB = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || "";
 const API = "https://api.clerk.com/v1";
 const CJS = "5.57.0";
 const EMAIL = `nh-deploy-${Date.now()}@blackouttrades.com`;
-const PHONE = `+1415555${String(Math.floor(Math.random() * 9000 + 1000))}`;
+const PHONE = generateDefaultAuditPhone();
 
 function fapiHost() {
   try {
@@ -74,16 +75,12 @@ if (!SECRET) {
   process.exit(1);
 }
 
-const user = await clerkBackend("POST", "/users", {
-  email_address: [EMAIL],
-  phone_number: [PHONE],
-  public_metadata: { role: "admin", tier: "premium" },
-  skip_password_requirement: true,
-  skip_legal_checks: true,
-});
-const userId = user?.id;
+// adopt:false — the e-mail is per-run unique, so only the random PHONE can collide; the
+// shared helper redraws it rather than aborting the deploy verification.
+const user = await createAuditClerkUser({ secret: SECRET, email: EMAIL, phone: PHONE, adopt: false });
+const userId = user.userId;
 if (!userId) {
-  console.error("user create failed", JSON.stringify(user)?.slice(0, 200));
+  console.error("user create failed", String(user.error).slice(0, 200));
   process.exit(1);
 }
 

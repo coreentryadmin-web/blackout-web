@@ -7,6 +7,7 @@ import { chromium } from "playwright";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { createAuditClerkUser } from "./audit/lib/clerk-audit-user.mjs";
 
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
 const SECRET = process.env.CLERK_SECRET_KEY?.trim();
@@ -70,17 +71,18 @@ try {
     check(`${route} ok`, r.ok, String(r.status));
   }
 
-  const user = await clerk("/users", {
-    method: "POST",
-    body: JSON.stringify({
-      email_address: [`agent-ui-${tag}@example.com`],
-      phone_number: [`+1202555${String(Math.floor(Math.random() * 1e4)).padStart(4, "0")}`],
-      password: `Bo-${tag}-Temp1!`,
-      skip_password_checks: true,
-      public_metadata: { role: "admin", tier: "premium" },
-    }),
+  // Shared temp-user create: a collision on the random fake phone number redraws instead of
+  // throwing (clerk() rejects on any non-2xx, so a phone clash used to abort the whole run).
+  // adopt:false — the e-mail carries a per-run tag and cannot collide.
+  const created = await createAuditClerkUser({
+    secret: SECRET,
+    email: `agent-ui-${tag}@example.com`,
+    publicMetadata: { role: "admin", tier: "premium" },
+    adopt: false,
+    extraBody: { password: `Bo-${tag}-Temp1!`, skip_password_checks: true },
   });
-  userId = user.id;
+  if (!created.userId) throw new Error(`Clerk /users create failed: ${String(created.error).slice(0, 200)}`);
+  userId = created.userId;
 
   const token = await clerk("/sign_in_tokens", {
     method: "POST",

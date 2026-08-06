@@ -18,6 +18,8 @@ import { chromium } from "playwright";
 import { inRthOpenWindow } from "./gha-et-window.mjs";
 import { isAuthFailureStatus } from "./audit/lib/auth-status.mjs";
 import { mintIosPlaywrightSession, onboardingInitScript } from "./audit/lib/ios-playwright-auth.mjs";
+import { generateDefaultAuditPhone } from "./audit/lib/audit-phone.mjs";
+import { createOrAdoptAuditUserViaCurl } from "./audit/lib/clerk-audit-user.mjs";
 
 const baseArg = process.argv.find((a) => a.startsWith("--base="));
 const BASE = (baseArg ? baseArg.slice("--base=".length) : "https://blackouttrades.com").replace(
@@ -27,7 +29,7 @@ const BASE = (baseArg ? baseArg.slice("--base=".length) : "https://blackouttrade
 const SECRET = process.env.CLERK_SECRET_KEY;
 const PUB = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || "";
 const EMAIL = process.env.AUDIT_EMAIL || `vector-e2e-${Date.now()}@blackouttrades.com`;
-const PHONE = process.env.AUDIT_PHONE || "+1415555" + String(Math.floor(Math.random() * 9000) + 1000);
+const PHONE = process.env.AUDIT_PHONE || generateDefaultAuditPhone();
 const API = "https://api.clerk.com/v1";
 const CJS = "5.57.0";
 const UA =
@@ -86,27 +88,11 @@ const backend = (m, p, j) =>
 
 async function authSession() {
   if (!SECRET) throw new Error("CLERK_SECRET_KEY missing");
-  const create = backend("POST", "/users", {
-    email_address: [EMAIL],
-    phone_number: [PHONE],
-    public_metadata: { role: "admin", tier: "premium" },
-    skip_password_requirement: true,
-    skip_legal_checks: true,
-  });
-  const cj = J(create);
-  let userId = cj?.id;
-  if (!userId && /form_identifier_exists/.test(JSON.stringify(cj?.errors || ""))) {
-    const lookup = curl({
-      method: "GET",
-      url: `${API}/users?email_address=${encodeURIComponent(EMAIL)}`,
-      headers: { Authorization: `Bearer ${SECRET}` },
-    });
-    userId = J(lookup)?.[0]?.id;
-    if (userId) {
-      backend("PATCH", `/users/${userId}`, { public_metadata: { role: "admin", tier: "premium" } });
-    }
-  }
-  if (!userId) throw new Error(`Clerk user create failed: ${create.b.slice(0, 200)}`);
+  // Shared create-or-adopt: e-mail collision → adopt the leftover user; PHONE collision →
+  // redraw a fresh +1415555XXXX and retry.
+  const auth = await createOrAdoptAuditUserViaCurl({ curl, api: API, secret: SECRET, email: EMAIL, phone: PHONE });
+  if (auth.error) throw new Error(`Clerk user create failed: ${auth.error.slice(0, 220)}`);
+  const userId = auth.userId;
   const ticket = J(backend("POST", "/sign_in_tokens", { user_id: userId }))?.token;
   if (!ticket) throw new Error("sign_in_token failed");
   const si = curl({

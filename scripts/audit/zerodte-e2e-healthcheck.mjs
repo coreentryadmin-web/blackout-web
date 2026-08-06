@@ -53,6 +53,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { generateDefaultAuditPhone } from "./lib/audit-phone.mjs";
+import { createOrAdoptAuditUserViaCurl } from "./lib/clerk-audit-user.mjs";
 import { isAuthFailureStatus } from "./lib/auth-status.mjs";
 import {
   rollupVerdict,
@@ -543,27 +544,16 @@ async function main() {
   const needsAuth = STAGES.some((s) => s !== "A");
   if (needsAuth) {
     // --- mint temp admin+premium user (self-heal a leftover) ---
-    const create = backend("POST", "/users", {
-      email_address: [EMAIL],
-      phone_number: [PHONE],
-      public_metadata: { role: "admin", tier: "premium" },
-      skip_password_requirement: true,
-      skip_legal_checks: true,
-    });
-    let cj = J(create);
-    if (cj?.id) userId = cj.id;
-    else if (/form_identifier_exists/.test(JSON.stringify(cj?.errors || ""))) {
-      const u = (J(curl({ url: `${API}/users?email_address=${encodeURIComponent(EMAIL)}`, headers: { Authorization: `Bearer ${SECRET}` } })) || [])[0];
-      if (u?.id) {
-        userId = u.id;
-        backend("PATCH", `/users/${userId}`, { public_metadata: { role: "admin", tier: "premium" } });
-      }
-    }
-    if (!userId) {
+    // Both Clerk identifier collisions are handled by the shared helper: e-mail taken →
+    // adopt the leftover user; PHONE taken → redraw a fresh +1415555XXXX and retry (a phone
+    // clash used to abort the run, reporting a recoverable clash as a RED gate).
+    const auth = await createOrAdoptAuditUserViaCurl({ curl, api: API, secret: SECRET, email: EMAIL, phone: PHONE });
+    if (auth.error) {
       ensureStage("B", "DISCOVERY ×3");
-      forceStage("B", "RED", `auth: could not create/adopt temp user — ${create.b.slice(0, 140)}`);
+      forceStage("B", "RED", `auth: could not create/adopt temp user — ${auth.error.slice(0, 180)}`);
       return;
     }
+    userId = auth.userId;
 
     // --- establish session (sign_in_token → ticket exchange → __session) ---
     let tok = null, sid = null, clientUat = 0;
