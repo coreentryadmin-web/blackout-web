@@ -175,6 +175,86 @@ test("gateBlockedValue: per-gate n / graded / would-have-won rate; unfilled coun
 
 // ── Published mirror (retro gates from the pinned margins) ───────────────────────────
 
+test("retroWouldBlock: PINNED per-gate threshold wins over the live constant", () => {
+  // The whole point: the mirror must be a FIXED historical fact. A play published under a
+  // 2.5× bar stays judged at 2.5× forever, even though the live constant is now 3.5×.
+  // |110 − 102| / 3 = 2.67× — over a PINNED 2.5×, under the LIVE 3.5×.
+  const pinnedAt25 = row({
+    publish_context: {
+      context_version: 2,
+      atr14: 3,
+      band_distance_pct: -1.2,
+      gates: {
+        verdict: "PUBLISH",
+        blocks: [],
+        checks: [
+          { code: "target_unreachable", passed: false, value: 2.6667, threshold: 2.5 },
+          { code: "band_detached", passed: true, value: -1.2, threshold: 2.5 },
+        ],
+      },
+    },
+  });
+  assert.equal(retroWouldBlock(pinnedAt25, "target_unreachable"), true); // pinned 2.5× → BLOCK
+  assert.equal(retroWouldBlock(pinnedAt25, "band_detached"), false); // |−1.2| ≤ pinned 2.5
+
+  // Same geometry, pinned at a LOOSER bar than the live constant → the pin still wins.
+  const pinnedAt5 = row({
+    publish_context: {
+      context_version: 2,
+      atr14: 2, // |110 − 102| / 2 = 4× — over the LIVE 3.5×, under a pinned 5×
+      gates: { checks: [{ code: "target_unreachable", passed: true, value: 4, threshold: 5 }] },
+    },
+  });
+  assert.equal(retroWouldBlock(pinnedAt5, "target_unreachable"), false);
+
+  // Band gate honours its own pin independently of the target gate's.
+  const bandPinned = row({
+    publish_context: {
+      context_version: 2,
+      band_distance_pct: -4.0,
+      gates: { checks: [{ code: "band_detached", passed: true, value: -4.0, threshold: 6 }] },
+    },
+  });
+  assert.equal(retroWouldBlock(bandPinned, "band_detached"), false); // over live 3.5, under pinned 6
+});
+
+test("retroWouldBlock: pin present but threshold non-finite → null, never a live-constant guess", () => {
+  // A corrupt/legacy checks[] entry must NOT silently fall through to the live constant —
+  // that is precisely the silent-rewrite behaviour this fix removes.
+  for (const bad of [null, "3.5", undefined, Number.NaN]) {
+    const corrupt = row({
+      publish_context: {
+        context_version: 2,
+        atr14: 2,
+        band_distance_pct: -1.2,
+        gates: { checks: [{ code: "target_unreachable", passed: true, value: 4, threshold: bad }] },
+      },
+    });
+    assert.equal(retroWouldBlock(corrupt, "target_unreachable"), null, `threshold=${String(bad)}`);
+    // The OTHER gate has no entry at all → still answerable from the live constant.
+    assert.equal(retroWouldBlock(corrupt, "band_detached"), false);
+  }
+});
+
+test("retroWouldBlock: pins that predate gate pinning fall back to the live constant", () => {
+  // Pre-PR-N3 pins carry geometry but no gates.checks[]. A null bucket for the whole
+  // pre-pin era would be worse than a stated approximation, so the live constant is used.
+  const noGates = row({ publish_context: { context_version: 2, atr14: 2, band_distance_pct: -45.5 } });
+  assert.equal(retroWouldBlock(noGates, "target_unreachable"), true); // 4× > live 3.5×
+  assert.equal(retroWouldBlock(noGates, "band_detached"), true); // 45.5% > live 3.5%
+  // A gates blob with no checks array, and one whose checks lack this gate, are both "absent".
+  const emptyGates = row({ publish_context: { context_version: 2, atr14: 2, gates: {} } });
+  assert.equal(retroWouldBlock(emptyGates, "target_unreachable"), true);
+  const otherGate = row({
+    publish_context: {
+      context_version: 2,
+      atr14: 2,
+      gates: { checks: [{ code: "stale_quote_basis", passed: true, value: null, threshold: null }] },
+    },
+  });
+  assert.equal(retroWouldBlock(otherGate, "target_unreachable"), true);
+});
+
 test("retroWouldBlock: uses the LIVE thresholds against the PINNED geometry; no pin → null", () => {
   const detached = row({ publish_context: { context_version: 2, band_distance_pct: -45.5 } });
   const healthy = row({ publish_context: { context_version: 2, band_distance_pct: -1.2, atr14: 2 } });

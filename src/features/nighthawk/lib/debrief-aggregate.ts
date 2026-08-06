@@ -32,8 +32,11 @@ export const NIGHTHAWK_DEBRIEF_METHODOLOGY =
   "each row's pinned debrief (first-write-wins, written by the outcomes cron after grading). " +
   "Publish-gate blocked value grades the gate-rejected plays counterfactually on the SAME " +
   "next-session daily bar the grader uses (underlying level-touch basis — option premium is " +
-  "never fabricated); the published mirror retro-applies each gate's live threshold to the " +
-  "pinned publish geometry of plays that DID publish. Buckets under n=" +
+  "never fabricated); the published mirror re-applies each gate to the publish geometry of " +
+  "plays that DID publish, using the threshold PINNED with that play (falling back to the live " +
+  "constant only for pins that predate gate pinning) so the mirror is a fixed historical " +
+  "baseline rather than a figure that silently rewrites itself when a constant moves. " +
+  "Buckets under n=" +
   `${LOW_N_THRESHOLD} are low_n and never produce a suggestion.`;
 
 const round1 = (v: number): number => Math.round(v * 10) / 10;
@@ -310,35 +313,119 @@ export type GateMirrorLine = {
   no_geometry_n: number;
 };
 
-type PinGeometry = { band_distance_pct: number | null; atr14: number | null };
+/** A gate's threshold as recovered from the pin. Three DISTINCT states, and the
+ *  distinction is the whole point (see pinnedThreshold):
+ *   - `{ kind: "pinned" }`  — publish_context.gates.checks[] carried a finite threshold
+ *                             for this gate: the number that actually judged this play.
+ *   - `{ kind: "absent" }`  — the pin predates gate pinning (or omits this gate) and has
+ *                             nothing to say: fall back to the live constant.
+ *   - `{ kind: "unusable" }`— the pin HAS an entry for this gate but its threshold is not
+ *                             a finite number (corrupt/legacy JSONB): refuse to answer. */
+type PinnedThreshold =
+  | { kind: "pinned"; value: number }
+  | { kind: "absent" }
+  | { kind: "unusable" };
+
+type PinGeometry = {
+  band_distance_pct: number | null;
+  atr14: number | null;
+  /** Per-gate threshold PINNED at publish time — publish-gates.ts:226/232 records
+   *  `{ code, passed, value, threshold }` into publish_context.gates.checks[] for EVERY
+   *  evaluated gate, PASSES included. */
+  thresholds: Record<"band_detached" | "target_unreachable", PinnedThreshold>;
+};
+
+const num = (v: unknown): number | null =>
+  typeof v === "number" && Number.isFinite(v) ? v : null;
+
+/** Recover ONE gate's pinned threshold out of publish_context.gates.checks[].
+ *  Structural and junk-tolerant — publish_context is JSONB and is never trusted. */
+function pinnedThreshold(
+  publishContext: Record<string, unknown>,
+  gate: "band_detached" | "target_unreachable"
+): PinnedThreshold {
+  const gates = publishContext.gates;
+  if (gates == null || typeof gates !== "object" || Array.isArray(gates)) return { kind: "absent" };
+  const checks = (gates as Record<string, unknown>).checks;
+  if (!Array.isArray(checks)) return { kind: "absent" };
+  for (const raw of checks) {
+    if (raw == null || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const check = raw as Record<string, unknown>;
+    if (check.code !== gate) continue;
+    // The entry EXISTS. From here we either use its threshold or refuse — we must never
+    // silently fall through to the live constant, because "this gate was evaluated" is
+    // exactly the case where the live constant may no longer be the number that judged it.
+    const t = num(check.threshold);
+    return t == null ? { kind: "unusable" } : { kind: "pinned", value: t };
+  }
+  return { kind: "absent" };
+}
 
 function pinGeometry(publishContext: unknown): PinGeometry {
   if (publishContext == null || typeof publishContext !== "object" || Array.isArray(publishContext)) {
-    return { band_distance_pct: null, atr14: null };
+    return {
+      band_distance_pct: null,
+      atr14: null,
+      thresholds: { band_detached: { kind: "absent" }, target_unreachable: { kind: "absent" } },
+    };
   }
   const p = publishContext as Record<string, unknown>;
-  const num = (v: unknown): number | null =>
-    typeof v === "number" && Number.isFinite(v) ? v : null;
-  return { band_distance_pct: num(p.band_distance_pct), atr14: num(p.atr14) };
+  return {
+    band_distance_pct: num(p.band_distance_pct),
+    atr14: num(p.atr14),
+    thresholds: {
+      band_detached: pinnedThreshold(p, "band_detached"),
+      target_unreachable: pinnedThreshold(p, "target_unreachable"),
+    },
+  };
 }
 
-/** Retro would-block verdict for one published row, using the LIVE gate thresholds
- *  (publish-gates.ts constants — the same numbers that block tonight) against the
- *  geometry PINNED at publish. Null = the pin can't answer for this gate.
- *  G-N3 (stale quote) is deliberately absent: its "acceptable sessions" input is a
- *  clock-relative fact that cannot be honestly reconstructed for history. */
+/**
+ * Retro would-block verdict for one published row: the geometry PINNED at publish,
+ * judged against the threshold that ACTUALLY judged it. Null = the pin can't answer.
+ *
+ * WHY THE PINNED THRESHOLD AND NOT THE LIVE CONSTANT (fixed 2026-08-06). This function
+ * used to compare pinned geometry against the LIVE `publish-gates.ts` constants. That
+ * makes `gate_validation.published_mirror` **rewrite its own history**: the instant
+ * anyone moves `GATE_TARGET_MAX_ATR_MULTIPLE` or `GATE_BAND_MAX_DISTANCE_PCT`, every
+ * already-graded row silently re-buckets between would_block and would_pass — so the
+ * mirror cannot serve as a before/after baseline for the very calibration it exists to
+ * inform. You could not tell "the new threshold separates better" from "the mirror was
+ * recomputed under the new threshold". Measured 2026-08-06: the live mirror reports
+ * `target_unreachable` would_block n=1 / would_pass n=21, delta 0 pts — a baseline that
+ * would have silently moved under any constant edit.
+ *
+ * The pin already carries the answer: publish-gates.ts:226 writes `threshold` alongside
+ * `value` into publish_context.gates.checks[] on EVERY play, passed or blocked. Reading
+ * it makes the mirror a fixed historical fact, which is what a baseline has to be.
+ *
+ * Fallback discipline: an OLD pin that predates gate pinning has no checks[] entry, and
+ * for those the live constant is the only available answer and is used (better a stated
+ * approximation than a null bucket for the whole pre-pin era). But a pin that HAS an
+ * entry with a non-finite threshold returns null — it is corrupt, and guessing with the
+ * live constant is exactly the silent rewrite this fix removes.
+ *
+ * G-N3 (stale quote) is deliberately absent: its "acceptable sessions" input is a
+ * clock-relative fact that cannot be honestly reconstructed for history.
+ */
 export function retroWouldBlock(
   row: Pick<DebriefAggregateRow, "publish_context" | "direction" | "entry_range_low" | "entry_range_high" | "target">,
   gate: "band_detached" | "target_unreachable"
 ): boolean | null {
   const geo = pinGeometry(row.publish_context ?? null);
+  const pinned = geo.thresholds[gate];
+  if (pinned.kind === "unusable") return null;
+  const liveThreshold =
+    gate === "band_detached" ? GATE_BAND_MAX_DISTANCE_PCT : GATE_TARGET_MAX_ATR_MULTIPLE;
+  const threshold = pinned.kind === "pinned" ? pinned.value : liveThreshold;
+
   if (gate === "band_detached") {
     if (geo.band_distance_pct == null) return null;
-    return Math.abs(geo.band_distance_pct) > GATE_BAND_MAX_DISTANCE_PCT;
+    return Math.abs(geo.band_distance_pct) > threshold;
   }
   const fillEdge = (row.direction === "SHORT" ? row.entry_range_low : row.entry_range_high) ?? null;
   if (geo.atr14 == null || geo.atr14 <= 0 || fillEdge == null || row.target == null) return null;
-  return Math.abs(row.target - fillEdge) / geo.atr14 > GATE_TARGET_MAX_ATR_MULTIPLE;
+  return Math.abs(row.target - fillEdge) / geo.atr14 > threshold;
 }
 
 function mirrorBucket(rows: DebriefAggregateRow[]): GateMirrorBucket {
