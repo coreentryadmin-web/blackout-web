@@ -5,11 +5,20 @@ import { TRACK_RECORD_MIN_SAMPLE } from "@/components/track-record/format";
 // Shared platform LOW-N threshold — amber-chip grammar for thin evidence samples.
 import { LOW_N_THRESHOLD } from "@/lib/zerodte/record";
 import { GRADE_METHODOLOGY_CURRENT } from "@/features/nighthawk/lib/grade-methodology";
+import {
+  TARGET_HIT_RATE_LABEL,
+  targetHitCompositionLabel,
+} from "@/features/nighthawk/lib/nighthawk-view";
 
 type HawkRecordStripProps = {
   record: NightHawkRecordResponse | undefined;
   loading?: boolean;
 };
+
+/** Signed percent, so a negative return never renders as a bare number that reads as a gain. */
+function fmtSignedPct(v: number): string {
+  return `${v >= 0 ? "+" : ""}${v}%`;
+}
 
 function MetricPill({ label, value }: { label: string; value: string }) {
   return (
@@ -112,10 +121,37 @@ export function HawkRecordStrip({ record, loading }: HawkRecordStripProps) {
       <span className="nighthawk-record-label">{record.window_days}d track record</span>
       <div className="nighthawk-record-metrics">
         <MetricPill label="Scoreable" value={String(cur ? cur.scoreable : record.total_resolved)} />
-        <MetricPill label="Profitable" value={`${record.profitable_rate_pct}%`} />
+        {/* NAME THE METRIC FOR WHAT IT IS (2026-08-06). This lane's "win" is strictly a
+            TARGET TOUCH inside the one-session grading horizon (play-outcomes.ts
+            resolveOutcome → analytics.ts winRate, `outcome === "target"`); a play that
+            closed green without trading to its target is an `open`, not a win. Calling
+            that a plain "win rate" invites the reading that everything else lost. Show
+            the composition beside it so the denominator is never a mystery. */}
+        {cur && (
+          <MetricPill
+            label={TARGET_HIT_RATE_LABEL}
+            value={`${record.win_rate_pct}% · ${targetHitCompositionLabel(cur)}`}
+          />
+        )}
+        {/* FILL-EDGE basis as primary — members fill at the band edge, not its midpoint,
+            and the gap is the ATR-scaled band half-width (~+1.12pp per play in the mid
+            figure's favour). Mid is retained in the same pill for one window so the
+            historical series stays comparable; falls back to mid alone on a stale cache. */}
+        <MetricPill
+          label="Profitable"
+          value={
+            record.profitable_rate_edge_pct != null
+              ? `${record.profitable_rate_edge_pct}% (mid ${record.profitable_rate_pct}%)`
+              : `${record.profitable_rate_pct}%`
+          }
+        />
         <MetricPill
           label="Avg return"
-          value={`${record.avg_return_pct >= 0 ? "+" : ""}${record.avg_return_pct}%`}
+          value={
+            record.avg_return_pct_edge != null
+              ? `${fmtSignedPct(record.avg_return_pct_edge)} (mid ${fmtSignedPct(record.avg_return_pct)})`
+              : fmtSignedPct(record.avg_return_pct)
+          }
         />
         {/* PR-N2 honest split: the exclusions that explain the denominator, and the
             quarantined legacy segment — visible, labeled, never inside the numbers above. */}
