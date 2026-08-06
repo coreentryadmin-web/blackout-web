@@ -272,3 +272,42 @@ test("runSwingActiveRefresh: an option mark from loadReads lands on the snapshot
   assert.equal(fv.option_mark, 6, "premium-based management now has a real mark to evaluate");
   assert.equal(fv.option_return_pct, 50);
 });
+
+
+// ─── SEV-2 (FINDINGS 2026-08-06): the snapshot carries the live quote to the cache-reader board ───
+
+test("planManageSync: event_json carries the live quote verbatim when the caller supplies one", () => {
+  const quote = {
+    bid: 5.4,
+    ask: 5.6,
+    openInterest: 1234,
+    delta: 0.58,
+    gamma: 0.021,
+    theta: -0.13,
+    vega: 0.19,
+    iv: 0.42,
+    asOf: "2026-08-06T18:30:00.000Z",
+  };
+  const plan = planManageSync(
+    positionRow(),
+    { underlyingPrice: 156, dte: 20, mark: 5.5, quote },
+    { snapshotKind: "eod" },
+  );
+  assert.deepEqual(plan.snapshot.event_json!.quote, quote);
+  // Carriage only: the quote must not perturb the verdict the manager reached from marks/levels.
+  const without = planManageSync(
+    positionRow(),
+    { underlyingPrice: 156, dte: 20, mark: 5.5 },
+    { snapshotKind: "eod" },
+  );
+  assert.deepEqual(plan.verdict, without.verdict);
+});
+
+test("planManageSync: NO quote read → NO `quote` key at all (absent ≠ present-but-empty)", () => {
+  const plan = planManageSync(
+    positionRow(),
+    { underlyingPrice: 156, dte: 20, mark: 5.5 },
+    { snapshotKind: "eod" },
+  );
+  assert.equal("quote" in (plan.snapshot.event_json ?? {}), false);
+});
