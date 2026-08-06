@@ -11,6 +11,7 @@ import { resolveTickerChainRows } from "@/features/nighthawk/lib/option-chain-pr
 import type { ChainStrikeRow } from "@/features/nighthawk/lib/option-chain-prompt";
 import type { PlayDirection } from "../horizon-fanout";
 import { produceHorizonPlays, type HorizonPlay } from "../horizon-plays";
+import { atrProxyFromCloses, deriveSwingPlanLevels } from "./structure-levels";
 import { buildSwingDossier, type SwingDossier } from "./dossier";
 import type { ZeroDteFlowAccumulation } from "../zerodte/flow-accumulation-context";
 import type { SwingReads } from "../swing-signals";
@@ -18,6 +19,30 @@ import type { SwingServingSnapshot } from "./serving-lane";
 import { persistSwingServingSnapshot, readSwingServingSnapshot } from "./serving-lane";
 import { swingThesisKey, type SwingWatchCandidate } from "./accumulation-store";
 import { swingServingReadsFromPlan, swingServingMetaFromDossier } from "./serving-ingest";
+import { fetchStockDailyBars } from "@/lib/providers/polygon";
+import { todayEt } from "@/lib/et-date";
+
+/** Same lookback organic Swing discovery fetches (swing-discovery/route.ts DAILY_BAR_LOOKBACK_DAYS) — enough
+ *  calendar days back to give atrProxyFromCloses its 14-session window on a typical trading calendar. */
+const LEGACY_PROMOTE_DAILY_BAR_LOOKBACK_DAYS = 200;
+
+function ymdDaysAgo(nowMs: number, days: number): string {
+  return new Date(nowMs - days * 86_400_000).toISOString().slice(0, 10);
+}
+
+/** Fail-soft daily-closes fetch for the ATR-based plan path (planFromCloses). A failure or empty result
+ *  yields null — buildLegacySwingArtifacts then falls back to planFromLegacyLevels, never throws. */
+async function fetchLegacyPromoteCloses(ticker: string, nowMs: number): Promise<number[] | null> {
+  try {
+    const to = todayEt(new Date(nowMs));
+    const from = ymdDaysAgo(nowMs, LEGACY_PROMOTE_DAILY_BAR_LOOKBACK_DAYS);
+    const bars = await fetchStockDailyBars(ticker, from, to);
+    const closes = bars.map((b) => b.c).filter((c) => Number.isFinite(c));
+    return closes.length > 0 ? closes : null;
+  } catch {
+    return null;
+  }
+}
 
 /** Discovery provenance stamped on promoted swing rows — renders as the desk origin badge. */
 export const LEGACY_SWING_SIGNAL_KIND = "NIGHT HAWK";
@@ -65,6 +90,15 @@ function swingReadsForLegacy(play: PlaybookPlay, direction: PlayDirection, spot:
   };
 }
 
+/**
+ * FALLBACK ONLY (FINDINGS 2026-08-06 P2 follow-up): Legacy's own published overnight-thesis entry/stop/
+ * target band, sized for a NEXT-DAY 0DTE-adjacent thesis, not a genuine multi-day swing hold. Live evidence:
+ * the 30-day grading record's top failure modes were `target_unreachable` (16/48) and
+ * `unfilled_never_traded_back` (9/48) — consistent with these next-day-sized levels being unrealistic over
+ * an actual 2-30 DTE hold. `planFromCloses` (below) is now the PRIMARY path whenever any daily closes are
+ * available at all; this is used only when the closes fetch itself comes back empty (no price history to
+ * ground an ATR proxy in), so a promoted play still gets SOME geometry rather than none.
+ */
 function planFromLegacyLevels(
   play: PlaybookPlay,
   spot: number,
@@ -86,7 +120,25 @@ function planFromLegacyLevels(
   };
 }
 
-/** Build one promoted swing artifact triple (dossier + play + watch) — pure when chain rows are supplied. */
+/**
+ * PRIMARY path (FINDINGS 2026-08-06 P2 follow-up, fix): the SAME `deriveSwingPlanLevels`/`atrProxyFromCloses`
+ * organic Swing discovery uses (`swing-ingest.ts`) — 1.5×ATR stop / 2.7×ATR target grounded in the
+ * underlying's own recent daily range, not Legacy's overnight-thesis band. Used whenever `nameCloses` has
+ * ANY data at all (even too thin for a real ATR proxy — `deriveSwingPlanLevels` itself falls back to a
+ * price-relative 1.5% ATR in that case, identical to what organic discovery does on a thin series, so a
+ * Legacy-promoted play's geometry degrades exactly the same way an organically-discovered one's would,
+ * never a Legacy-specific special case).
+ */
+function planFromCloses(
+  direction: PlayDirection,
+  spot: number,
+  nameCloses: readonly number[],
+): { entryUnderlyingPx: number; thesisInvalidationPx: number; targetUnderlyingPx: number; atr: number } | null {
+  return deriveSwingPlanLevels(direction, spot, atrProxyFromCloses(nameCloses));
+}
+
+/** Build one promoted swing artifact triple (dossier + play + watch) — pure when chain rows (+ optional
+ *  daily closes) are supplied. */
 export function buildLegacySwingArtifacts(params: {
   play: PlaybookPlay;
   checkedAt: string;
@@ -94,14 +146,21 @@ export function buildLegacySwingArtifacts(params: {
   spot: number | null;
   chainRows: ChainStrikeRow[];
   chainSpot: number;
+  /** Recent daily closes for the underlying (any length > 0) — when present, plan levels are grounded in
+   *  the underlying's own multi-day ATR (`planFromCloses`) instead of Legacy's overnight-thesis band
+   *  (FINDINGS 2026-08-06 P2 follow-up, fix). Absent/empty → falls back to `planFromLegacyLevels`. */
+  nameCloses?: readonly number[] | null;
 }): { dossier: SwingDossier; play: HorizonPlay; watch: SwingWatchCandidate } | null {
-  const { play, checkedAt, editionFor, spot, chainRows, chainSpot } = params;
+  const { play, checkedAt, editionFor, spot, chainRows, chainSpot, nameCloses } = params;
   const ticker = play.ticker.toUpperCase();
   const direction = legacyPlayDirection(play);
   const groundedSpot = spot != null && spot > 0 ? spot : chainSpot;
   if (!(groundedSpot > 0) || chainRows.length === 0) return null;
 
-  const plan = planFromLegacyLevels(play, groundedSpot);
+  const plan =
+    nameCloses != null && nameCloses.length > 0
+      ? (planFromCloses(direction, groundedSpot, nameCloses) ?? planFromLegacyLevels(play, groundedSpot))
+      : planFromLegacyLevels(play, groundedSpot);
   if (!plan) return null;
 
   const reads = swingReadsForLegacy(play, direction, groundedSpot);
@@ -332,6 +391,10 @@ export async function promoteLegacyConfirmedToSwing(opts: {
       continue;
     }
 
+    // ATR-grounded plan levels (FINDINGS 2026-08-06 P2 follow-up, fix) — fail-soft: a fetch failure or thin
+    // history just falls back to Legacy's own levels inside buildLegacySwingArtifacts, never blocks promotion.
+    const nameCloses = await fetchLegacyPromoteCloses(ticker, Date.parse(opts.checkedAt) || Date.now());
+
     const artifact = buildLegacySwingArtifacts({
       play,
       checkedAt: opts.checkedAt,
@@ -339,6 +402,7 @@ export async function promoteLegacyConfirmedToSwing(opts: {
       spot,
       chainRows,
       chainSpot,
+      nameCloses,
     });
     if (!artifact) {
       skipped++;
