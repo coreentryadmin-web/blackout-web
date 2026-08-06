@@ -32,7 +32,32 @@ jobs:
     if: ${{ !github.event.pull_request.draft && startsWith(github.head_ref, 'cursor/') }}
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Skip docs-only agent PRs (verify-pass spam)
+        id: gate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          files=$(gh pr diff "${{ github.event.pull_request.number }}" --repo "${{ github.repository }}" --name-only)
+          if [ -z "$files" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "No diff files — skipping auto-merge"
+            exit 0
+          fi
+          non_docs=$(echo "$files" | grep -v '^docs/' || true)
+          if [ -z "$non_docs" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Docs-only PR — skipping auto-merge (verify agents must not land docs-only PRs)"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Enable auto-merge (squash) — merges once `verify` passes
+        if: steps.gate.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

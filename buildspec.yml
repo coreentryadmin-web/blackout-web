@@ -1,0 +1,375 @@
+# AWS CodeBuild — build the production blackout-web image and push it to ECR.
+#
+# WHY THIS EXISTS: `.github/workflows/ecr-push-production.yml` is itself a GitHub Action, so a
+# GitHub Actions outage (major_outage 2026-08-06 15:22 UTC) freezes every production deploy with
+# no way to ship a fix. This buildspec moves the build+push off GitHub entirely — CodeBuild pulls
+# the source from S3 and reads build secrets from Secrets Manager, so the only dependency left is
+# AWS itself. GitHub Actions is retained as the PR test gate only.
+#
+# SCOPE — BUILD AND PUSH BY DEFAULT; DEPLOY ONLY WHEN EXPLICITLY ASKED.
+#
+# An ordinary build (no env overrides) still builds and pushes and NOTHING ELSE. The image sits in
+# ECR until someone deploys it. Passing `-e DEPLOY=1` to `start-build` — and nothing less — also
+# rolls ECS, purges Cloudflare and validates static assets, by shelling out to
+# `scripts/deploy/roll-ecs.mjs`. See the DEPLOY block in post_build.
+#
+# The default is OFF, and stays OFF, because a live members' trading desk runs on this cluster
+# during RTH: an unattended rollout must never be a side effect of "the image built". Someone has
+# to type DEPLOY=1.
+#
+# NO DEPLOY LOGIC LIVES IN THIS FILE. The rollout is `scripts/deploy/roll-ecs.mjs` (tested pure
+# helpers in `scripts/deploy/lib/taskdef-rewrite.mjs`, table tests in `scripts/deploy/roll-ecs.test.ts`).
+# The previous generation of this logic existed only as inline YAML inside a GitHub workflow, which
+# is precisely why a GitHub outage removed the ability to deploy at all. Do not reintroduce that:
+# if the rollout needs to change, change the script — this buildspec only ever invokes it.
+#
+# The project is configured with privileged-mode (docker) and a LOCAL docker-layer cache; those are
+# project-level settings, not buildspec settings — see the CLI/Terraform that creates the project.
+
+version: 0.2
+
+env:
+  # CodeBuild's DEFAULT shell on Linux is /bin/sh (dash), NOT bash. Every command block here starts
+  # with `set -euo pipefail`, and dash does not support `-o pipefail` — it aborts the whole phase
+  # with exit status 2 before running a single line, producing a failure with no output at all.
+  # Do not remove this.
+  shell: bash
+
+  variables:
+    AWS_DEFAULT_REGION: us-east-1
+    ECR_REGISTRY: 177922194517.dkr.ecr.us-east-1.amazonaws.com
+    ECR_REPOSITORY: blackout-web
+    # BuildKit gives us parallel multi-stage execution and much better layer reuse against the
+    # LOCAL_DOCKER_LAYER_CACHE than the legacy builder.
+    DOCKER_BUILDKIT: "1"
+
+    # ---- PHASE 2: the deploy gate ------------------------------------------------------------
+    # DEPLOY is the ONLY switch that can roll production from this pipeline, and it is OFF here.
+    # Override it per-build and never in the project:
+    #   aws codebuild start-build --project-name blackout-web-image-build \
+    #     --environment-variables-override name=DEPLOY,value=1,type=PLAINTEXT --region us-east-1
+    #
+    # Matching is EXACTLY "1". Not "true", not "yes", not "on". A loose match is the direction that
+    # turns a stray or inherited value into an unattended production rollout; a strict match can
+    # only fail the safe way, and the log says in one line exactly what it saw and what it did.
+    DEPLOY: "0"
+
+    # Knobs for the deploy, all inert while DEPLOY != 1. Each maps 1:1 onto a roll-ecs.mjs flag —
+    # this buildspec builds an argv, it does not make deploy decisions. There is deliberately NO
+    # free-form arg passthrough: an operator cannot smuggle in a flag (--force above all) that the
+    # log does not name on its own line.
+    DEPLOY_SERVICE: "all"   # web | worker | all   -> --service
+    DEPLOY_WAIT: "1"        #                      -> --wait
+    DEPLOY_PURGE: "1"       #                      -> --purge
+    DEPLOY_VALIDATE: "1"    #                      -> --validate
+    DEPLOY_FORCE: "0"       #                      -> --force   (break-glass; see roll-ecs.mjs)
+    DEPLOY_DRY_RUN: "0"     #                      -> --dry-run (read-only rehearsal)
+
+    # Must track the CodeBuild project's own timeout (terraform variable `build_timeout_minutes`,
+    # currently 60). Used ONLY to warn when the remaining build budget cannot cover the rollout —
+    # see the timeout arithmetic in the deploy block. Nothing reads it from the API because the
+    # build role has no `codebuild:BatchGetBuilds`, and adding that grant to widen a warning would
+    # be a bad trade.
+    BUILD_TIMEOUT_MIN: "60"
+
+  # NEXT_PUBLIC_* values are inlined into the CLIENT bundles by `next build`, so they must be
+  # present AT BUILD TIME — a missing one does not error, it silently ships a broken client
+  # (dead Clerk sign-in, dead Whop checkout buttons). They are mapped straight from the live
+  # production secret by ARN + JSON key; nothing is ever inlined into this file, and CodeBuild
+  # echoes buildspec commands UNEXPANDED, so no value reaches the log. Never add `set -x`.
+  secrets-manager:
+    NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: "arn:aws:secretsmanager:us-east-1:177922194517:secret:blackout-production/app/env-sjdvhV:NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY"
+    NEXT_PUBLIC_WHOP_CHECKOUT_MONTHLY: "arn:aws:secretsmanager:us-east-1:177922194517:secret:blackout-production/app/env-sjdvhV:NEXT_PUBLIC_WHOP_CHECKOUT_MONTHLY"
+    NEXT_PUBLIC_WHOP_CHECKOUT_YEARLY: "arn:aws:secretsmanager:us-east-1:177922194517:secret:blackout-production/app/env-sjdvhV:NEXT_PUBLIC_WHOP_CHECKOUT_YEARLY"
+    NEXT_PUBLIC_WHOP_CHECKOUT_COMMUNITY: "arn:aws:secretsmanager:us-east-1:177922194517:secret:blackout-production/app/env-sjdvhV:NEXT_PUBLIC_WHOP_CHECKOUT_COMMUNITY"
+    NEXT_PUBLIC_WHOP_STORE_URL: "arn:aws:secretsmanager:us-east-1:177922194517:secret:blackout-production/app/env-sjdvhV:NEXT_PUBLIC_WHOP_STORE_URL"
+
+phases:
+  pre_build:
+    commands:
+      - |
+        set -euo pipefail
+
+        # ---- Resolve the git commit this build represents -------------------------------------
+        # The image tag MUST be the git SHA: the ECS roll pins `:<sha>` (never `:latest`, which
+        # resolves stale after a failed deploy), and the app stamps GITHUB_SHA into
+        # CF_PURGE_DEPLOY_ID for cache-busting. With an S3 source there is no git metadata in the
+        # build container, and CODEBUILD_RESOLVED_SOURCE_VERSION is the S3 version id, NOT a SHA —
+        # so the packaging script writes the SHA into .codebuild-source-commit inside the zip.
+        # Precedence, most-explicit first, so this same buildspec keeps working unchanged if the
+        # source type is later switched to GitHub (where RESOLVED_SOURCE_VERSION *is* the SHA):
+        #   1. SOURCE_COMMIT env override (operator forces a tag at start-build time)
+        #   2. .codebuild-source-commit from the S3 zip
+        #   3. CODEBUILD_RESOLVED_SOURCE_VERSION, but only if it looks like a git SHA
+        if [ -n "${SOURCE_COMMIT:-}" ]; then
+          IMAGE_TAG="${SOURCE_COMMIT}"
+          TAG_SOURCE="SOURCE_COMMIT env override"
+        elif [ -f .codebuild-source-commit ]; then
+          IMAGE_TAG="$(tr -d '[:space:]' < .codebuild-source-commit)"
+          TAG_SOURCE=".codebuild-source-commit (S3 zip)"
+        elif printf '%s' "${CODEBUILD_RESOLVED_SOURCE_VERSION:-}" | grep -Eq '^[0-9a-f]{40}$'; then
+          IMAGE_TAG="${CODEBUILD_RESOLVED_SOURCE_VERSION}"
+          TAG_SOURCE="CODEBUILD_RESOLVED_SOURCE_VERSION"
+        else
+          echo "FATAL: cannot resolve a git commit SHA to tag this image with."
+          echo "       Pass -e SOURCE_COMMIT=<sha>, or package the source with scripts/codebuild/package-source.sh."
+          exit 1
+        fi
+
+        # Refuse to push a garbage tag. An S3 version id or a truncated SHA here would produce an
+        # image nobody can trace back to a commit, and the ECS roll would pin something unresolvable.
+        if ! printf '%s' "${IMAGE_TAG}" | grep -Eq '^[0-9a-f]{40}$'; then
+          echo "FATAL: resolved image tag is not a 40-char git SHA: '${IMAGE_TAG}' (from ${TAG_SOURCE})"
+          exit 1
+        fi
+        echo "Image tag: ${IMAGE_TAG} (resolved from ${TAG_SOURCE})"
+
+        # ---- Fail CLOSED on an empty build-time public var ------------------------------------
+        # The GitHub Actions path passed these through `${{ secrets.* }}`, which expands to an
+        # empty string when the secret is missing — the build still succeeded and shipped a client
+        # with a dead Clerk key. Here an empty value is a hard failure instead of a silent one.
+        # Values are NEVER printed; only presence is reported.
+        MISSING=""
+        for V in NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY \
+                 NEXT_PUBLIC_WHOP_CHECKOUT_MONTHLY \
+                 NEXT_PUBLIC_WHOP_CHECKOUT_YEARLY \
+                 NEXT_PUBLIC_WHOP_CHECKOUT_COMMUNITY \
+                 NEXT_PUBLIC_WHOP_STORE_URL; do
+          if [ -z "$(eval "printf '%s' \"\${${V}:-}\"")" ]; then
+            MISSING="${MISSING} ${V}"
+            echo "  ${V}: MISSING/EMPTY"
+          else
+            echo "  ${V}: present"
+          fi
+        done
+        if [ -n "${MISSING}" ]; then
+          echo "FATAL: build-time public vars resolved empty from Secrets Manager:${MISSING}"
+          echo "       These are inlined into client bundles; building without them ships a broken client."
+          exit 1
+        fi
+
+        # ---- ECR login -------------------------------------------------------------------------
+        aws ecr get-login-password --region "${AWS_DEFAULT_REGION}" \
+          | docker login --username AWS --password-stdin "${ECR_REGISTRY}"
+
+        # Hand the resolved tag to the build phase (each buildspec command runs in its own shell).
+        echo "${IMAGE_TAG}" > /tmp/image_tag
+
+  build:
+    commands:
+      - |
+        set -euo pipefail
+        IMAGE_TAG="$(cat /tmp/image_tag)"
+        IMAGE="${ECR_REGISTRY}/${ECR_REPOSITORY}"
+
+        # Build args replicate .github/workflows/ecr-push-production.yml EXACTLY.
+        #
+        # The literals below are deliberately literals and must NOT be "improved" into secret
+        # lookups: (a) deploy/Dockerfile's own ARG defaults still point at the DECOMMISSIONED
+        # staging.blackouttrades.com domain, so every one of these must be passed explicitly or the
+        # client is built against a dead host; (b) the secret's own NEXT_PUBLIC_SITE_URL is not
+        # guaranteed to track the production origin. The five secret-sourced args above are the
+        # only ones that legitimately come from Secrets Manager.
+        docker build -f deploy/Dockerfile \
+          --build-arg NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}" \
+          --build-arg NEXT_PUBLIC_SITE_URL="https://blackouttrades.com" \
+          --build-arg NEXT_PUBLIC_CLERK_IS_SATELLITE="false" \
+          --build-arg NEXT_PUBLIC_CLERK_PROXY_URL="" \
+          --build-arg NEXT_PUBLIC_CLERK_ALLOWED_REDIRECT_ORIGINS="https://blackouttrades.com" \
+          --build-arg NEXT_PUBLIC_CLERK_SIGN_IN_URL="/sign-in" \
+          --build-arg NEXT_PUBLIC_CLERK_SIGN_UP_URL="/sign-up" \
+          --build-arg NEXT_PUBLIC_WHOP_CHECKOUT_MONTHLY="${NEXT_PUBLIC_WHOP_CHECKOUT_MONTHLY}" \
+          --build-arg NEXT_PUBLIC_WHOP_CHECKOUT_YEARLY="${NEXT_PUBLIC_WHOP_CHECKOUT_YEARLY}" \
+          --build-arg NEXT_PUBLIC_WHOP_CHECKOUT_COMMUNITY="${NEXT_PUBLIC_WHOP_CHECKOUT_COMMUNITY}" \
+          --build-arg NEXT_PUBLIC_WHOP_STORE_URL="${NEXT_PUBLIC_WHOP_STORE_URL}" \
+          --build-arg GITHUB_SHA="${IMAGE_TAG}" \
+          -t "${IMAGE}:${IMAGE_TAG}" -t "${IMAGE}:latest" .
+
+  post_build:
+    commands:
+      - |
+        set -euo pipefail
+        IMAGE_TAG="$(cat /tmp/image_tag)"
+        IMAGE="${ECR_REGISTRY}/${ECR_REPOSITORY}"
+
+        # Push the immutable SHA tag FIRST. If the push is interrupted between the two, :latest
+        # still points at the previous good image rather than at a half-pushed manifest.
+        docker push "${IMAGE}:${IMAGE_TAG}"
+        docker push "${IMAGE}:latest"
+
+        DIGEST="$(aws ecr describe-images \
+          --repository-name "${ECR_REPOSITORY}" \
+          --image-ids imageTag="${IMAGE_TAG}" \
+          --region "${AWS_DEFAULT_REGION}" \
+          --query 'imageDetails[0].imageDigest' --output text)"
+
+        echo "Pushed ${IMAGE}:${IMAGE_TAG} and ${IMAGE}:latest"
+        echo "Digest: ${DIGEST}"
+
+      # ---------------------------------------------------------------------------------------
+      # PHASE 2 — OPT-IN ECS ROLLOUT. Skipped entirely unless DEPLOY == "1".
+      #
+      # This is a SEPARATE command block from the push above, on purpose. CodeBuild aborts the
+      # remaining commands of a phase as soon as one fails, so a failed `docker push` can never
+      # fall through into a deploy.
+      # ---------------------------------------------------------------------------------------
+      - |
+        set -euo pipefail
+
+        IMAGE_TAG="$(cat /tmp/image_tag)"
+        IMAGE="${ECR_REGISTRY}/${ECR_REPOSITORY}"
+
+        if [ "${DEPLOY:-0}" != "1" ]; then
+          echo ""
+          echo "NOT DEPLOYED (DEPLOY='${DEPLOY:-0}', deploy requires exactly '1')."
+          echo "This run built and pushed only. The image is in ECR and nothing in production changed."
+          echo ""
+          echo "To deploy this image later — no rebuild needed, from anywhere with credentials:"
+          echo "  node scripts/deploy/roll-ecs.mjs --tag ${IMAGE_TAG} --service all --wait --purge --validate"
+          echo "…or re-run this project with -e DEPLOY=1. See docs/ops/CODEBUILD-CUTOVER.md."
+          exit 0
+        fi
+
+        # GUARD: post_build runs even when the `build` phase FAILED — a documented CodeBuild
+        # behaviour and the classic way a broken build ships itself. The push above would fail
+        # first in that case, but a deploy gate must not depend on a second gate's ordering.
+        if [ "${CODEBUILD_BUILD_SUCCEEDING:-1}" != "1" ]; then
+          echo "FATAL: DEPLOY=1 but the build is already failing (CODEBUILD_BUILD_SUCCEEDING=${CODEBUILD_BUILD_SUCCEEDING:-unset})."
+          echo "       Refusing to roll production from a failed build. Nothing was changed."
+          exit 1
+        fi
+
+        echo ""
+        echo "=========================================================================="
+        echo " DEPLOY=1 — this build WILL roll production ECS."
+        echo " cluster=blackout-production-cluster  tag=${IMAGE_TAG}"
+        echo "=========================================================================="
+
+        # PRECONDITION: the deploy tool must be present in the source zip. `package-source.sh`
+        # ships `git archive` of a committed ref, so packaging a commit that predates
+        # scripts/deploy/ (it lands in a separate PR from this buildspec, and the two can merge in
+        # either order) would otherwise fail as an opaque "Cannot find module" AFTER the push.
+        if [ ! -f scripts/deploy/roll-ecs.mjs ]; then
+          echo "FATAL: scripts/deploy/roll-ecs.mjs is not in this source package."
+          echo "       DEPLOY=1 requires it. Re-package a ref that contains it:"
+          echo "         scripts/codebuild/package-source.sh origin/main"
+          echo "       The image was still built and pushed — deploy it separately with roll-ecs.mjs."
+          exit 1
+        fi
+
+        # Node check, deliberately TIERED — hard floor 18, soft floor 20.
+        #
+        # 18 is the real technical floor: roll-ecs.mjs and validate-static-assets.mjs use global
+        # `fetch` (Cloudflare purge, asset check) and import nothing but node builtins, so there is
+        # no `npm ci` here and the source zip needs no node_modules. Below 18 nothing can work.
+        #
+        # 20.9 is what package.json `engines` declares. This buildspec does NOT pin a runtime with
+        # an `install: runtime-versions:` block, because that would change the phase-1 build path
+        # that is already proven green — a regression risk taken blind, since starting a build to
+        # check is exactly what phase 2 is not allowed to do. So: fail below 18, warn between 18
+        # and 20.9, and let the FIRST DEPLOY=1 run report which Node the image actually gives.
+        # If it reports 18, pin `nodejs: 20` in an install phase then. See docs/ops/CODEBUILD-CUTOVER.md.
+        NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]')"
+        if [ "${NODE_MAJOR}" -lt 18 ]; then
+          echo "FATAL: node ${NODE_MAJOR} in this build image has no global fetch; roll-ecs.mjs needs >= 18."
+          exit 1
+        fi
+        if [ "${NODE_MAJOR}" -lt 20 ]; then
+          echo "  WARNING: node ${NODE_MAJOR} is below package.json engines (>=20.9.0). The deploy"
+          echo "  WARNING: scripts only need >=18 today, so this proceeds — but record it and"
+          echo "  WARNING: consider pinning 'runtime-versions: nodejs: 20' in an install phase."
+        fi
+        echo "node $(node -v), aws $(aws --version 2>&1 | head -1)"
+
+        # ---- assemble the argv (no deploy decisions here — flags only) ---------------------
+        # --tag is ALWAYS the SHA this build just pushed. Never :latest: it is mutable, it was
+        # repointed by hand on 2026-08-06, and it resolves stale after a failed deploy.
+        DEPLOY_ARGS=(--tag "${IMAGE_TAG}" --service "${DEPLOY_SERVICE:-all}")
+        [ "${DEPLOY_WAIT:-1}" = "1" ]     && DEPLOY_ARGS+=(--wait)
+        [ "${DEPLOY_PURGE:-1}" = "1" ]    && DEPLOY_ARGS+=(--purge)
+        [ "${DEPLOY_VALIDATE:-1}" = "1" ] && DEPLOY_ARGS+=(--validate)
+        [ "${DEPLOY_DRY_RUN:-0}" = "1" ]  && DEPLOY_ARGS+=(--dry-run)
+        if [ "${DEPLOY_FORCE:-0}" = "1" ]; then
+          echo ""
+          echo "  !!!! DEPLOY_FORCE=1 — the live deployment-configuration sanity assertion will be"
+          echo "  !!!! BYPASSED. This is the break-glass path. Watch the rollout."
+          DEPLOY_ARGS+=(--force)
+        fi
+        echo "roll-ecs argv: ${DEPLOY_ARGS[*]}"
+
+        # ---- timeout arithmetic: WARN, never block ----------------------------------------
+        # roll-ecs polls each waited service for up to 36 min (serial task replacement at
+        # minimumHealthyPercent=100/maximumPercent=120 — see its POLL_MAX_ATTEMPTS comment), plus
+        # ~3 min for the purge settle and the 10x15s asset-validation retry. `--service all --wait`
+        # therefore has a 75-minute WORST case against a 60-minute project timeout.
+        #
+        # Warn rather than refuse. A CodeBuild timeout does NOT stop the rollout — update-service
+        # has already been issued and ECS keeps rolling under its circuit breaker; what is lost is
+        # the watcher, and with `--service all` the worker roll that would have followed. Refusing
+        # here would instead block a legitimate deploy on the exact outage path this pipeline
+        # exists for. The durable fix is the project timeout, not a veto: raise the terraform
+        # variable `build_timeout_minutes` to 120 in blackout-infra.
+        if [ "${DEPLOY_WAIT:-1}" = "1" ] && [ "${DEPLOY_DRY_RUN:-0}" != "1" ]; then
+          case "${DEPLOY_SERVICE:-all}" in
+            all) WAITED_SERVICES=2 ;;
+            *)   WAITED_SERVICES=1 ;;
+          esac
+          NEED_MIN=$(( 36 * WAITED_SERVICES + 3 ))
+          if [ -n "${CODEBUILD_START_TIME:-}" ]; then
+            ELAPSED_MIN=$(( ( $(date +%s) - CODEBUILD_START_TIME / 1000 ) / 60 ))
+          else
+            ELAPSED_MIN=0
+          fi
+          REMAIN_MIN=$(( ${BUILD_TIMEOUT_MIN:-60} - ELAPSED_MIN ))
+          echo "budget: ${ELAPSED_MIN} min elapsed, ~${REMAIN_MIN} min left of a ${BUILD_TIMEOUT_MIN:-60} min project timeout; rollout worst case ~${NEED_MIN} min"
+          if [ "${REMAIN_MIN}" -lt "${NEED_MIN}" ]; then
+            echo ""
+            echo "  WARNING: the remaining build budget (~${REMAIN_MIN} min) is under the rollout's"
+            echo "  WARNING: worst case (~${NEED_MIN} min). A typical roll is far shorter (web ~10-15 min"
+            echo "  WARNING: at desiredCount 5-12, worker ~4 min), so this will usually finish fine."
+            echo "  WARNING: If CodeBuild DOES time out mid-roll: ECS keeps rolling and the circuit"
+            echo "  WARNING: breaker still governs — do NOT re-run blindly. Check the service first:"
+            echo "  WARNING:   aws ecs describe-services --cluster blackout-production-cluster \\"
+            echo "  WARNING:     --services blackout-production-web --region us-east-1 \\"
+            echo "  WARNING:     --query 'services[0].deployments'"
+            echo "  WARNING: With --service all, the market-worker roll would NOT have run; finish it"
+            echo "  WARNING: with: node scripts/deploy/roll-ecs.mjs --tag ${IMAGE_TAG} --service worker --wait"
+            echo "  WARNING: Durable fix: raise build_timeout_minutes to 120 (blackout-infra)."
+            echo ""
+          fi
+        fi
+
+        # ---- Cloudflare creds, fetched ONLY on a deploying run -----------------------------
+        # NOT in the top-level `secrets-manager:` block on purpose: that is static, so it would put
+        # a live Cloudflare API token into the environment of every ordinary build — including the
+        # `docker build` — for no benefit. Fetched here, used here.
+        #
+        # Assigned by command substitution so no value is ever a literal in this file, and never
+        # echoed. CodeBuild prints buildspec commands UNEXPANDED; that property is what keeps these
+        # out of the log, so do NOT add `set -x` anywhere in this block.
+        if [ "${DEPLOY_PURGE:-1}" = "1" ]; then
+          CF_SECRET_JSON="$(aws secretsmanager get-secret-value \
+            --secret-id arn:aws:secretsmanager:us-east-1:177922194517:secret:blackout-production/app/env-sjdvhV \
+            --region "${AWS_DEFAULT_REGION}" --query SecretString --output text)"
+          CF_ZONE_ID="$(printf '%s' "${CF_SECRET_JSON}" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("CF_ZONE_ID",""))')"
+          CF_API_TOKEN="$(printf '%s' "${CF_SECRET_JSON}" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("CF_API_TOKEN",""))')"
+          unset CF_SECRET_JSON
+          export CF_ZONE_ID CF_API_TOKEN
+          # Presence only — never the values. roll-ecs.mjs SKIPS the purge when these are empty,
+          # which on a deploy is a silent no-op that leaves the edge serving the old bundle.
+          if [ -z "${CF_ZONE_ID}" ] || [ -z "${CF_API_TOKEN}" ]; then
+            echo "  WARNING: CF_ZONE_ID/CF_API_TOKEN missing from the production secret — the edge"
+            echo "  WARNING: purge will be SKIPPED and --validate may false-fail on cached 404s."
+          else
+            echo "  Cloudflare purge credentials: present (values never printed)."
+          fi
+        fi
+
+        # ---- hand off. ALL rollout logic lives in the script, none here. -------------------
+        node scripts/deploy/roll-ecs.mjs "${DEPLOY_ARGS[@]}"
+
+        echo ""
+        echo "Deployed ${IMAGE}:${IMAGE_TAG}."
+        echo "ROLLBACK (needs no builder at all — the previous image is already in ECR):"
+        echo "  node scripts/deploy/roll-ecs.mjs --tag <previous-good-sha> --service all --wait --purge --validate"
+        echo "See docs/ops/CODEBUILD-CUTOVER.md for the full rollback procedure."

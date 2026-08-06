@@ -12,6 +12,7 @@ import { readFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { generateDefaultAuditPhone } from "./lib/audit-phone.mjs";
+import { createOrAdoptAuditUserViaCurl } from "./lib/clerk-audit-user.mjs";
 
 const APP = (process.env.AUDIT_APP_URL || process.env.VALIDATE_BASE || "https://blackouttrades.com").replace(/\/$/, "");
 const SECRET = process.env.CLERK_SECRET_KEY?.trim();
@@ -103,23 +104,14 @@ async function mintSession() {
     rec("auth", "SKIP", "CLERK keys missing");
     return null;
   }
-  const create = backend("POST", "/users", {
-    email_address: [EMAIL],
-    phone_number: [PHONE],
-    public_metadata: { role: "admin", tier: "premium" },
-    skip_password_requirement: true,
-    skip_legal_checks: true,
-  });
-  let userId = J(create)?.id;
-  if (!userId && /form_identifier_exists/.test(JSON.stringify(J(create)?.errors || ""))) {
-    const list = J(curl({ url: `${API}/users?email_address=${encodeURIComponent(EMAIL)}`, headers: { Authorization: `Bearer ${SECRET}` } }));
-    userId = list?.[0]?.id;
-    if (userId) backend("PATCH", `/users/${userId}`, { public_metadata: { role: "admin", tier: "premium" } });
-  }
-  if (!userId) {
-    rec("auth", "FAIL", create.b.slice(0, 120));
+  // Shared create-or-adopt: e-mail collision → adopt the leftover user; PHONE collision →
+  // redraw a fresh +1415555XXXX and retry.
+  const auth = await createOrAdoptAuditUserViaCurl({ curl, api: API, secret: SECRET, email: EMAIL, phone: PHONE });
+  if (auth.error) {
+    rec("auth", "FAIL", auth.error.slice(0, 160));
     return null;
   }
+  const userId = auth.userId;
 
   const ticket = J(backend("POST", "/sign_in_tokens", { user_id: userId }))?.token;
   if (!ticket) {

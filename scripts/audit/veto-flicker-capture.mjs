@@ -43,6 +43,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { generateDefaultAuditPhone } from './lib/audit-phone.mjs';
+import { createOrAdoptAuditUserViaCurl } from './lib/clerk-audit-user.mjs';
 
 function req(name) {
   const v = process.env[name];
@@ -116,20 +117,11 @@ const backend = (m, p, j) => curl({ method: m, url: `${API}${p}`, headers: { Aut
 let userId = null;
 
 async function main() {
-  const create = backend('POST', '/users', {
-    email_address: [EMAIL],
-    phone_number: [PHONE],
-    public_metadata: { role: 'admin', tier: 'premium' },
-    skip_password_requirement: true,
-    skip_legal_checks: true,
-  });
-  let cj = J(create);
-  if (cj?.id) userId = cj.id;
-  else if (/form_identifier_exists/.test(JSON.stringify(cj?.errors || ''))) {
-    const u = (J(curl({ url: `${API}/users?email_address=${encodeURIComponent(EMAIL)}`, headers: { Authorization: `Bearer ${SECRET}` } })) || [])[0];
-    if (u?.id) { userId = u.id; backend('PATCH', `/users/${userId}`, { public_metadata: { role: 'admin', tier: 'premium' } }); }
-  }
-  if (!userId) { console.error(`FAIL auth: create/adopt temp user — ${create.b.slice(0, 200)}`); process.exitCode = 1; return; }
+  // Shared create-or-adopt: e-mail collision → adopt the leftover user; PHONE collision →
+  // redraw a fresh +1415555XXXX and retry rather than aborting the capture.
+  const auth = await createOrAdoptAuditUserViaCurl({ curl, api: API, secret: SECRET, email: EMAIL, phone: PHONE });
+  if (auth.error) { console.error(`FAIL auth: create/adopt temp user — ${auth.error.slice(0, 220)}`); process.exitCode = 1; return; }
+  userId = auth.userId;
 
   const ticket = J(backend('POST', '/sign_in_tokens', { user_id: userId }))?.token;
   if (!ticket) { console.error('FAIL auth: could not mint sign_in_token'); process.exitCode = 1; return; }

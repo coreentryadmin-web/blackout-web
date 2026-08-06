@@ -6,6 +6,8 @@ import { existsSync, readFileSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { isAuthFailureStatus } from "./auth-status.mjs";
+import { generateDefaultAuditPhone } from "./audit-phone.mjs";
+import { createOrAdoptAuditUserViaCurl } from "./clerk-audit-user.mjs";
 
 const CJS = "5.57.0";
 const UA =
@@ -35,7 +37,9 @@ export async function mintVectorAuditSession({
   const FAPI = fapiHost(PUB);
   const API = "https://api.clerk.com/v1";
   const EMAIL = email || `${emailPrefix}-${Date.now()}@blackouttrades.com`;
-  const PHONE = phone || "+1415555" + String(Math.floor(Math.random() * 9000) + 1000);
+  // Shared generator (full +1415555{0000..9999} space) instead of a local narrower draw —
+  // one phone-number policy across every harness.
+  const PHONE = phone || generateDefaultAuditPhone();
   const TMP = join(tmpdir(), `vector-auth-${process.pid}`);
   mkdirSync(TMP, { recursive: true });
   const JAR = join(TMP, "cookies.txt");
@@ -69,27 +73,11 @@ export async function mintVectorAuditSession({
   const backend = (m, p, j) =>
     curl({ method: m, url: `${API}${p}`, headers: { Authorization: `Bearer ${SECRET}` }, json: j });
 
-  const create = backend("POST", "/users", {
-    email_address: [EMAIL],
-    phone_number: [PHONE],
-    public_metadata: { role: "admin", tier: "premium" },
-    skip_password_requirement: true,
-    skip_legal_checks: true,
-  });
-  const cj = J(create);
-  let userId = cj?.id;
-  if (!userId && /form_identifier_exists/.test(JSON.stringify(cj?.errors || ""))) {
-    const lookup = curl({
-      method: "GET",
-      url: `${API}/users?email_address=${encodeURIComponent(EMAIL)}`,
-      headers: { Authorization: `Bearer ${SECRET}` },
-    });
-    userId = J(lookup)?.[0]?.id;
-    if (userId) {
-      backend("PATCH", `/users/${userId}`, { public_metadata: { role: "admin", tier: "premium" } });
-    }
-  }
-  if (!userId) throw new Error(`Clerk user create failed: ${create.b.slice(0, 200)}`);
+  // Shared create-or-adopt: e-mail collision → adopt the leftover user; PHONE collision →
+  // redraw a fresh +1415555XXXX and retry.
+  const auth = await createOrAdoptAuditUserViaCurl({ curl, api: API, secret: SECRET, email: EMAIL, phone: PHONE });
+  if (auth.error) throw new Error(`Clerk user create failed: ${auth.error.slice(0, 220)}`);
+  const userId = auth.userId;
 
   const ticket = J(backend("POST", "/sign_in_tokens", { user_id: userId }))?.token;
   if (!ticket) throw new Error("sign_in_token failed");

@@ -85,7 +85,15 @@ function NightHawkStatsGrid({ stats }: { stats: NhStats }) {
   // previously Night Hawk showed raw percentages from ANY sample while SPX gated at
   // 30, so a 2-winner window rendered a confident-looking "Avg winner 44.3%" (audit
   // MEDIUM). Counts stay visible: they're honest at any N.
-  const earlyData = stats.total < TRACK_RECORD_MIN_SAMPLE;
+  //
+  // The ripeness gate counts DECIDED outcomes (wins + losses), not `total`. `total` is the
+  // scoreable population and includes `unresolved` — plays whose grading horizon expired
+  // without touching target or stop. Gating on `total` would have unlocked a confident
+  // "Win rate 0%" the moment 30 plays resolved, on a sample carrying only 2 real outcomes
+  // (live 2026-08-06: total 22, wins 0, losses 2, unresolved 20). Fall back to the old
+  // basis only for a stale payload that predates the `decided` field.
+  const decided = stats.decided ?? stats.total;
+  const earlyData = decided < TRACK_RECORD_MIN_SAMPLE;
   return (
     <>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -96,7 +104,8 @@ function NightHawkStatsGrid({ stats }: { stats: NhStats }) {
             </span>
             <span className="font-mono text-sm text-sky-300">Collecting data</span>
             <span className="font-mono text-[10px] text-sky-300/60">
-              {stats.total}/{TRACK_RECORD_MIN_SAMPLE} plays resolved
+              {decided}/{TRACK_RECORD_MIN_SAMPLE} plays decided
+              {stats.unresolved ? ` · ${stats.unresolved} never triggered` : ""}
             </span>
           </div>
         ) : (

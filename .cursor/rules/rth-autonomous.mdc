@@ -7,6 +7,13 @@ alwaysApply: true
 
 **User preference: never ask for permission — keep going until GREEN.**
 
+## No docs-only PRs (standing — 2026-08-06)
+
+**Do NOT open PRs that only touch `docs/`** (OPEN-ISSUES verify logs, FINDINGS pass notes, audit ledgers).
+Verify passes → report in the agent summary or a GitHub issue comment only. PRs are for **production code fixes** (`src/`, workflows, scripts that change behavior).
+
+Scheduled hourly verify Cloud Agents are **disabled** in GitHub Actions — do not re-enable without operator approval.
+
 ## On every Cloud Agent session (weekday)
 
 1. Read `docs/ops/RTH-OPEN-RUNBOOK.md`.

@@ -162,9 +162,9 @@ async function main() {
     const cron = auditSecret("CRON_SECRET");
     if (cron) {
       const base = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
-      const socketHealthTimeoutMs = Number(process.env.SOCKET_HEALTH_TIMEOUT_MS ?? 120_000);
+      const socketHealthTimeoutMs = Number(process.env.SOCKET_HEALTH_TIMEOUT_MS ?? 180_000);
       let socketProbeOk = false;
-      for (let attempt = 0; attempt < 2 && !socketProbeOk; attempt++) {
+      for (let attempt = 0; attempt < 3 && !socketProbeOk; attempt++) {
         try {
           const ac = new AbortController();
           const socketTimer = setTimeout(() => ac.abort(), socketHealthTimeoutMs);

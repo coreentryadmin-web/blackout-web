@@ -7,12 +7,18 @@ import {
   dteFitsHorizon,
   allHorizons,
   exitPrimitiveFor,
+  ZERODTE_MAX_DTE,
   type Horizon,
 } from "./horizons.ts";
 
-test("windows are contiguous and non-overlapping [0,1] [2,30] [31,90]", () => {
-  assert.deepEqual([HORIZONS.ZERO_DTE.dteMin, HORIZONS.ZERO_DTE.dteMax], [0, 1]);
-  assert.deepEqual([HORIZONS.SWING.dteMin, HORIZONS.SWING.dteMax], [2, 30]);
+test("ZERODTE_MAX_DTE is the single exported ceiling and matches HORIZONS.ZERO_DTE.dteMax", () => {
+  assert.equal(ZERODTE_MAX_DTE, 4);
+  assert.equal(ZERODTE_MAX_DTE, HORIZONS.ZERO_DTE.dteMax);
+});
+
+test("windows are contiguous and non-overlapping [0,4] [5,30] [31,90]", () => {
+  assert.deepEqual([HORIZONS.ZERO_DTE.dteMin, HORIZONS.ZERO_DTE.dteMax], [0, 4]);
+  assert.deepEqual([HORIZONS.SWING.dteMin, HORIZONS.SWING.dteMax], [5, 30]);
   assert.deepEqual([HORIZONS.LEAPS.dteMin, HORIZONS.LEAPS.dteMax], [31, 90]);
   // no gap between adjacent lanes
   assert.equal(HORIZONS.SWING.dteMin, HORIZONS.ZERO_DTE.dteMax + 1);
@@ -22,7 +28,10 @@ test("windows are contiguous and non-overlapping [0,1] [2,30] [31,90]", () => {
 test("horizonForDte routes every boundary correctly", () => {
   assert.equal(horizonForDte(0), "ZERO_DTE");
   assert.equal(horizonForDte(1), "ZERO_DTE");
-  assert.equal(horizonForDte(2), "SWING");
+  assert.equal(horizonForDte(2), "ZERO_DTE");
+  assert.equal(horizonForDte(3), "ZERO_DTE");
+  assert.equal(horizonForDte(4), "ZERO_DTE");
+  assert.equal(horizonForDte(5), "SWING");
   assert.equal(horizonForDte(30), "SWING");
   assert.equal(horizonForDte(31), "LEAPS");
   assert.equal(horizonForDte(90), "LEAPS");

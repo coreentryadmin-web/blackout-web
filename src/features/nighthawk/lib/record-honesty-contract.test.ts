@@ -144,6 +144,91 @@ test("track-record page predicate: every shared headline surface checks the meth
   );
 });
 
+// ── Denominator contract (2026-08-06): no surface divides a win count by `scoreable` ─────
+//
+// The live defect this pins: `win_rate = wins / scoreable` where `scoreable` still held 20
+// rows graded 'open' (the one-session horizon expired with neither published level touched).
+// It existed simultaneously in TWO independent aggregations — analytics.ts (segment AND the
+// duplicated headline block) and track-record-page.ts — so a value-level test on one file
+// could not have caught the other. These are source-level assertions on the shape of the
+// division itself, the same idiom as the SQL contracts above: the invariant was previously
+// only a comment ("total can legitimately exceed wins + losses"), never enforced.
+
+test("analytics.ts: the win rate divides by DECIDED outcomes, never by the scoreable set", () => {
+  const src = read("src/features/nighthawk/lib/analytics.ts");
+  assert.doesNotMatch(
+    src,
+    /wins\s*\/\s*scoreable\.length/,
+    "wins / scoreable.length counts every no-touch 'open' row as a non-win — the exact 0%-forever bug"
+  );
+  assert.doesNotMatch(
+    src,
+    /winners\.length\s*\/\s*scoreableTotal/,
+    "the duplicated headline block must not re-introduce the scoreable denominator either"
+  );
+  assert.match(
+    src,
+    /win_rate:\s*decided\s*>\s*0\s*\?\s*wins\s*\/\s*decided\s*:\s*null/,
+    "buildRecordSegment must divide by decided and serve null (never 0) on an empty sample"
+  );
+  assert.match(
+    src,
+    /win_rate:\s*decidedTotal\s*>\s*0\s*\?\s*winners\.length\s*\/\s*decidedTotal\s*:\s*null/,
+    "the headline block must use the same denominator as the segment"
+  );
+  assert.match(
+    src,
+    /low_n:\s*decided\s*<\s*LOW_N_THRESHOLD/,
+    "the thin-sample badge must count DECIDED outcomes, not the size of the polluted denominator"
+  );
+});
+
+test("track-record-page.ts: the second, independent aggregation uses the same denominator", () => {
+  const src = read("src/lib/track-record-page.ts");
+  assert.doesNotMatch(
+    src,
+    /formatPercent\(wins\s*\/\s*total,/,
+    "nhFromRows' `total` is the scoreable set and admits 'open'/'ambiguous' — it is not the rate's n"
+  );
+  assert.match(
+    src,
+    /const winRatePct = decided > 0 \? formatPercent\(wins \/ decided, 1\) : null/,
+    "keep this file and analytics.ts in lockstep — they aggregate the same rows two ways"
+  );
+});
+
+test("record route: Wilson n is the decided count, and a rate is never served as a fabricated 0", () => {
+  const src = read("src/app/api/market/nighthawk/record/route.ts");
+  assert.doesNotMatch(
+    src,
+    /wilson(Lower|Upper)Bound\(seg\.wins, seg\.scoreable\)/,
+    "0/22 gives a 95% upper bound of 14.9% — a falsely tight interval built on undecided rows"
+  );
+  assert.match(src, /wilsonUpperBound\(seg\.wins, seg\.decided\)/);
+  assert.match(
+    src,
+    /win_rate_pct: metrics\.win_rate != null \? pct\(metrics\.win_rate\) : null/,
+    "the headline must serve null, not 0, when nothing is decided"
+  );
+  assert.match(src, /decided_count: metrics\.decided_count/, "clients need the n that produced the rate");
+  assert.match(src, /opens_count: metrics\.opens_count/, "…and the count that explains the rest");
+});
+
+test("Largo's member-facing record sentence never pairs a rate with a mismatched sample size", () => {
+  const src = read("src/lib/bie/record-read.ts");
+  assert.doesNotMatch(
+    src,
+    /pctRate\(comparison\.nighthawk_win_rate\)[^\n]*nighthawk_signal_count\} graded pick/,
+    "'0% win rate · 22 graded pick(s)' quoted a decided-denominator rate against the scoreable count"
+  );
+  assert.match(src, /nighthawk_low_n/, "the sentence must be able to suppress the rate on a thin sample");
+  assert.match(
+    src,
+    /insufficient decided sample/,
+    "below the floor we state the raw counts and quote no rate at all"
+  );
+});
+
 test("the tags name the rule, not a date, and stay distinct", () => {
   assert.equal(GRADE_METHODOLOGY_LEGACY, "v1_level_touch");
   assert.equal(GRADE_METHODOLOGY_CURRENT, "v2_fillability");

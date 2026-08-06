@@ -256,11 +256,13 @@ test("mergeDiscoveryOrigins: same-direction co-discovery records NO conflict and
   assert.equal(merged[0]!.score, Math.min(100, before + 8), "same-direction corroboration gets +8");
 });
 
-// ── ATM 0DTE picker: 0DTE preferred, 1DTE allowed, weekly (dte≥2) EXCLUDED ───────────
-// HORIZON INTEGRITY (PR-1): the picker is clamped to dte ≤ 1. A 0DTE is preferred, a 1DTE is the
-// only fallback, and ANY dte≥2 weekly returns null (dropped from the 0DTE board — not graded with
-// the same-day 15:30 time-stop that would be structurally wrong for a multi-day weekly).
-test("pickAtmZeroDteContract prefers 0DTE, allows 1DTE, EXCLUDES the weekly (dte≥2) fallback", () => {
+// ── ATM 0DTE picker: 0DTE preferred, dte 1-4 allowed (widened 2026-08-06), dte≥5 EXCLUDED ─
+// HORIZON INTEGRITY (PR-1, widened per ZERODTE_MAX_DTE): the picker's default clamp is dte ≤
+// ZERODTE_MAX_DTE (4). 0DTE is always preferred (nearest-expiry-first sort), dte 1-4 is the
+// admissible fallback range, and ANY dte≥5 weekly returns null (dropped from the 0DTE board —
+// not graded with the same-day 15:30 time-stop that would be structurally wrong for a farther-out
+// weekly this window still doesn't cover).
+test("pickAtmZeroDteContract prefers 0DTE, allows dte 1-4, EXCLUDES dte≥5", () => {
   const rows0dteAndWeekly: BreakoutChainRow[] = [
     { expiry: TODAY, strike: 99, call_bid: 1.2, call_ask: 1.3, call_oi: 500 },
     { expiry: TODAY, strike: 100, call_bid: 1.0, call_ask: 1.1, call_oi: 800 },
@@ -273,7 +275,7 @@ test("pickAtmZeroDteContract prefers 0DTE, allows 1DTE, EXCLUDES the weekly (dte
   assert.equal(pick!.dte, 0);
   assert.equal(pick!.strike, 100, "ATM = strike closest to the 100.4 spot");
 
-  // No 0DTE listed but a 1DTE (dte 1) exists → the 1DTE (ONE_DTE) is the only allowed fallback.
+  // No 0DTE listed but a 1DTE (dte 1) exists → the 1DTE (ONE_DTE) is admitted.
   const oneDteOnly: BreakoutChainRow[] = [
     { expiry: "2026-07-25", strike: 100, call_bid: 1.5, call_ask: 1.6, call_oi: 700 },
   ];
@@ -282,18 +284,29 @@ test("pickAtmZeroDteContract prefers 0DTE, allows 1DTE, EXCLUDES the weekly (dte
   assert.equal(one!.expiry, "2026-07-25");
   assert.equal(one!.dte, 1);
 
-  // No 0DTE/1DTE listed, only a 7-DTE weekly → EXCLUDED (null): a dte≥2 weekly is dropped from the
-  // 0DTE board entirely (horizon integrity), not committed and not graded same-day.
+  // A dte-2 weekly (e.g. a Monday hitting a Friday-only listing) is now ALSO admitted — this is
+  // the exact widening: a single name with no Mon-Thu listing is no longer starved on non-Fri/Thu days.
+  const twoDteOnly: BreakoutChainRow[] = [
+    { expiry: "2026-07-26", strike: 100, call_bid: 2.0, call_ask: 2.2, call_oi: 900 },
+  ];
+  const two = pickAtmZeroDteContract(twoDteOnly, 100.4, TODAY);
+  assert.ok(two, "dte-2 weekly is now admitted under the widened window");
+  assert.equal(two!.dte, 2);
+
+  // A dte-4 weekly is the outer edge of the widened window — still admitted.
+  const fourDteOnly: BreakoutChainRow[] = [
+    { expiry: "2026-07-28", strike: 100, call_bid: 2.0, call_ask: 2.2, call_oi: 900 },
+  ];
+  const four = pickAtmZeroDteContract(fourDteOnly, 100.4, TODAY);
+  assert.ok(four, "dte-4 is the outer edge of ZERODTE_MAX_DTE — still admitted");
+  assert.equal(four!.dte, 4);
+
+  // No 0DTE/near-dated listed, only a 7-DTE weekly (dte≥5) → EXCLUDED (null): a dte≥5 weekly is
+  // dropped from the 0DTE board entirely (horizon integrity), not committed and not graded same-day.
   const weeklyOnly: BreakoutChainRow[] = [
     { expiry: "2026-07-31", strike: 100, call_bid: 2.0, call_ask: 2.2, call_oi: 900 },
   ];
   assert.equal(pickAtmZeroDteContract(weeklyOnly, 100.4, TODAY), null, "weekly (dte 7) is excluded");
-
-  // A dte-2 weekly is likewise excluded (the clamp is dte ≤ 1, so 2 is already out).
-  const twoDteOnly: BreakoutChainRow[] = [
-    { expiry: "2026-07-26", strike: 100, call_bid: 2.0, call_ask: 2.2, call_oi: 900 },
-  ];
-  assert.equal(pickAtmZeroDteContract(twoDteOnly, 100.4, TODAY), null, "dte-2 weekly is excluded");
 
   // Only an expiry beyond the window → no contract (→ shared plan gate drops the candidate).
   const farOnly: BreakoutChainRow[] = [
@@ -355,7 +368,7 @@ test("pickAtmZeroDteContract: ATM still dominates — liquidity quality never ov
   assert.equal(pick!.strike, 100, "ATM proximity still wins over a distant, higher-quality strike");
 });
 
-test("pickBreakoutContractWithFallback: 0DTE first, 1DTE when env allows, weekly excluded", () => {
+test("pickBreakoutContractWithFallback: 0DTE first, dte 1-4 when env allows, weekly (dte≥5) excluded", () => {
   delete process.env.ZERODTE_BREAKOUT_ALLOW_1DTE;
   const rows0: BreakoutChainRow[] = [
     { expiry: TODAY, strike: 100, call_bid: 1.0, call_ask: 1.1, call_oi: 800 },
@@ -372,9 +385,25 @@ test("pickBreakoutContractWithFallback: 0DTE first, 1DTE when env allows, weekly
   assert.equal(one!.dte, 1);
   assert.equal(one!.used_1dte_fallback, true);
 
+  // The widened window: a dte-4 weekly (2026-08-06 change) is likewise reached via the fallback.
+  const fourDteOnly: BreakoutChainRow[] = [
+    { expiry: "2026-07-28", strike: 100, call_bid: 1.5, call_ask: 1.6, call_oi: 700 },
+  ];
+  const four = pickBreakoutContractWithFallback(fourDteOnly, 100.4, TODAY);
+  assert.ok(four);
+  assert.equal(four!.dte, 4);
+  assert.equal(four!.used_1dte_fallback, true);
+
+  // A dte-7 weekly is still past ZERODTE_MAX_DTE — excluded regardless of the toggle.
+  const sevenDteOnly: BreakoutChainRow[] = [
+    { expiry: "2026-07-31", strike: 100, call_bid: 1.5, call_ask: 1.6, call_oi: 700 },
+  ];
+  assert.equal(pickBreakoutContractWithFallback(sevenDteOnly, 100.4, TODAY), null);
+
   process.env.ZERODTE_BREAKOUT_ALLOW_1DTE = "0";
   assert.equal(breakoutAllow1DteFallback(), false);
-  assert.equal(pickBreakoutContractWithFallback(oneDteOnly, 100.4, TODAY), null);
+  assert.equal(pickBreakoutContractWithFallback(oneDteOnly, 100.4, TODAY), null, "toggle OFF still forces strict 0DTE-only");
+  assert.equal(pickBreakoutContractWithFallback(fourDteOnly, 100.4, TODAY), null, "toggle OFF blocks the widened dte 1-4 range too");
   delete process.env.ZERODTE_BREAKOUT_ALLOW_1DTE;
 });
 

@@ -39,6 +39,12 @@ export type TrackRecordPagePayload = {
      * cached payload just means "not computed," not "zero" — do not assume 0 when absent.
      */
     unresolved?: number;
+    /**
+     * wins + losses — the denominator winRatePct is computed over, and the sample size the
+     * UI must gate its ratio stats on. `total` is NOT that number: it includes `unresolved`.
+     * Optional/additive like `unresolved` — undefined on an older cached payload.
+     */
+    decided?: number;
   };
   /**
    * 0DTE Command's multi-day record (P-3) — a THIRD, separately-labeled methodology:
@@ -156,7 +162,15 @@ export function nhFromRows(rows: NighthawkPlayOutcomeRow[]): TrackRecordPagePayl
   // explaining the difference, reading as a miscount (confirmed live: a 10/6/3 board with
   // no third bucket). Surface it explicitly rather than leaving admins to do the subtraction.
   const unresolved = total - wins - losses;
-  const winRatePct = total > 0 ? formatPercent(wins / total, 1) : null;
+  // WIN-RATE DENOMINATOR = decided (wins + losses), NOT `total`. `total` is the scoreable
+  // population and, per the comment directly above, legitimately contains 'open' and
+  // 'ambiguous' rows. Dividing by it counted a play that never touched target OR stop as a
+  // non-win, which is indistinguishable from a stop-out and pinned the rate at 0% (live
+  // 2026-08-06: 0/22 with unresolved=20). Kept in lockstep with getNighthawkMetrics'
+  // segments — this file and analytics.ts are two independent aggregations of the same rows
+  // and must never disagree.
+  const decided = wins + losses;
+  const winRatePct = decided > 0 ? formatPercent(wins / decided, 1) : null;
 
   const winnerReturns = winners.map(nhReturnPct).filter((v): v is number => v != null);
   const loserReturns = losers.map(nhReturnPct).filter((v): v is number => v != null);
@@ -187,6 +201,7 @@ export function nhFromRows(rows: NighthawkPlayOutcomeRow[]): TrackRecordPagePayl
     avgLoserPct,
     profitFactor,
     unresolved,
+    decided,
   };
 }
 
@@ -221,11 +236,15 @@ export function zerodteFromRows(
  * and SPX desk (spx_play_outcomes + nighthawk_play_outcomes + zerodte_setup_log).
  * Never throws.
  */
-export async function buildTrackRecordPagePayload(): Promise<TrackRecordPagePayload> {
+export async function buildTrackRecordPagePayload(
+  statsOverride?: PlayOutcomeStats | null
+): Promise<TrackRecordPagePayload> {
   try {
     const zdSince = formatEtDate(new Date(Date.now() - ZERODTE_WINDOW_DAYS * 24 * 60 * 60 * 1000));
     const [stats, nh, zdRows] = await Promise.all([
-      fetchPlayOutcomeStats().catch(() => null),
+      statsOverride !== undefined
+        ? Promise.resolve(statsOverride)
+        : fetchPlayOutcomeStats().catch(() => null),
       fetchNighthawkOutcomeAnalytics(NH_WINDOW_DAYS).catch(() => ({ rows: [], pending_count: 0 })),
       // Fail-open to an empty ledger (zerodte reads as 0-graded/unavailable) rather
       // than failing the whole page — same resilience as the other two legs.
@@ -257,6 +276,8 @@ export async function buildTrackRecordPagePayload(): Promise<TrackRecordPagePayl
         avgWinnerPct: null,
         avgLoserPct: null,
         profitFactor: null,
+        unresolved: 0,
+        decided: 0,
       },
       methodology: METHODOLOGY,
       liveData: false,

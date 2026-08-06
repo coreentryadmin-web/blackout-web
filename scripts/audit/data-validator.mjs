@@ -42,6 +42,7 @@ import { join } from 'node:path';
 import { isTradingDayEt, todayEtYmd } from '../gha-et-window.mjs';
 import { isAuthFailureStatus } from './lib/auth-status.mjs';
 import { generateDefaultAuditPhone } from './lib/audit-phone.mjs';
+import { createOrAdoptAuditUserViaCurl } from './lib/clerk-audit-user.mjs';
 
 const SECRET = req('CLERK_SECRET_KEY');
 const PUB = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || '';
@@ -52,7 +53,8 @@ const EMAIL = process.env.AUDIT_EMAIL || 'claude-audit-temp@blackouttrades.com';
 // See lib/audit-phone.mjs for why the default is generated per-run instead of a fixed
 // constant (task #175: a hardcoded default eventually collided with an existing Clerk
 // user and broke every subsequent unattended run). AUDIT_PHONE, when set, is still used
-// verbatim — this fallback only fires when the operator hasn't overridden it.
+// verbatim for the FIRST create attempt — if that number is itself already taken, the
+// shared helper redraws (2026-08-06: a random draw collided and killed the whole run).
 const PHONE = process.env.AUDIT_PHONE || generateDefaultAuditPhone();
 const OUT = process.env.AUDIT_OUT || join(process.cwd(), 'audit-output');
 const API = 'https://api.clerk.com/v1';
@@ -263,14 +265,14 @@ function withinHistRange(value, range, tolPct) {
 let userId = null;
 async function main() {
   // --- auth (once) ---
-  const create = backend('POST', '/users', { email_address: [EMAIL], phone_number: [PHONE], public_metadata: { role: 'admin', tier: 'premium' }, skip_password_requirement: true, skip_legal_checks: true });
-  let cj = J(create);
-  if (cj?.id) userId = cj.id;
-  else if (/form_identifier_exists/.test(JSON.stringify(cj?.errors || ''))) {
-    const u = (J(curl({ url: `${API}/users?email_address=${encodeURIComponent(EMAIL)}`, headers: { Authorization: `Bearer ${SECRET}` } })) || [])[0];
-    if (u?.id) { userId = u.id; backend('PATCH', `/users/${userId}`, { public_metadata: { role: 'admin', tier: 'premium' } }); }
-  }
-  if (!userId) { rec('auth: create/adopt temp user', 'FAIL', create.b.slice(0, 160)); return; }
+  // Create-or-adopt lives in lib/clerk-audit-user.mjs so BOTH identifier collisions Clerk
+  // can raise are handled in one place: e-mail taken → adopt the leftover user; PHONE taken
+  // → redraw a fresh +1415555XXXX and retry. The old inline block only knew the e-mail case,
+  // so a phone clash aborted the run outright (live FAIL 2026-08-06 17:33 UTC) even though a
+  // plain re-run succeeded — a false RED on an unattended market-open gate.
+  const auth = await createOrAdoptAuditUserViaCurl({ curl, api: API, secret: SECRET, email: EMAIL, phone: PHONE });
+  if (auth.error) { rec('auth: create/adopt temp user', 'FAIL', auth.error.slice(0, 200)); return; }
+  userId = auth.userId;
   // Session state is RE-ESTABLISHABLE. A long-running WATCH loop outlives a single Clerk
   // session: mint() (a cheap token refresh off an existing session) eventually returns null once
   // the session ages out / the FAPI /tokens endpoint stops honoring it — at which point the ONLY

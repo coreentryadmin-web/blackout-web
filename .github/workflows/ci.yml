@@ -14,6 +14,25 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    # Throwaway Postgres for the SQL-EXECUTION tests. FINDINGS 2026-08-06 (SEV-1): the swing
+    # live-state UPDATE shipped unparseable (42P08 — a param whose first occurrence was an untyped
+    # `IS NOT NULL`) and every existing guard passed, because they all regex-match the SQL SOURCE
+    # STRING and a statement that cannot be parsed still matches its own text. Only a real
+    # extended-protocol round-trip catches that class of defect. Tests that need it read
+    # SWING_TEST_DATABASE_URL and SKIP (never fail) when it is absent, so local runs are unaffected.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: verify
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -32,6 +51,7 @@ jobs:
         shell: bash
         env:
           PLAYBOOK_VERDICT_GUARD_ASSERT: "1"
+          SWING_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/verify
         run: |
           shopt -s globstar nullglob
           files=(src/**/*.test.ts)

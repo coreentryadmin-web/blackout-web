@@ -90,6 +90,34 @@ export function parsePlayLevels(play: PlaybookPlay): ParsedPlayLevels {
   };
 }
 
+/**
+ * Member-visible R:R — measured from the FILL EDGE, the price the member actually
+ * transacts at (LONG = band top, SHORT = band bottom).
+ *
+ * WHY THE EDGE AND NOT THE MID (fixed 2026-08-06). This used to measure from the entry
+ * band MIDPOINT, which is not a price anyone gets. Every other layer that judges this
+ * same geometry already uses the edge: the publish gate G-N2 thresholds
+ * `|target − fill_edge| / atr14` (publish-gates.ts:220), and the debrief grades from
+ * `fillEdgeOf` (debrief.ts:201-203, "the level the member would actually transact at").
+ * Only the number shown to the member was on the other basis.
+ *
+ * The gap is not cosmetic — it is the band half-width, which is ATR-scaled (0.4×ATR,
+ * entryHalfWidth above), so it is largest exactly where risk is largest. Measured over
+ * the 48 published Legacy plays in the 2026-07-06..08-06 window: the floor-push class
+ * displays rr_ratio 0.75 while its true fill-edge geometry is 0.46, and 20 of 48 plays
+ * have fill-edge R:R BELOW 1.0 — i.e. they risk more than they can make, which the mid
+ * basis concealed. Worked example (NVDA 2026-08-06, spot 219.22, ATR14 8.01, band
+ * $216.02-$222.42, target 231.24, stop 203.20): mid basis 12.02/16.02 = 0.75; edge basis
+ * 8.82/19.22 = 0.46.
+ *
+ * SCOPE — DISPLAY ONLY, deliberately. This feeds `rr_ratio` and the thesis "R:R X:1"
+ * sentence and nothing else. The hard publish DROP in play-constraints.ts:166-172
+ * computes `reward/risk` from the mid INLINE and does NOT call this function; it is left
+ * untouched on purpose. Switching that gate to the edge basis would push R:R under
+ * MIN_RR_RATIO = 0.75 and start dropping plays at synthesis — the exact 2026-07-27
+ * zero-play failure mode. Any change there is a geometry decision and needs its own
+ * measured evidence (see docs/audit/FINDINGS.md 2026-08-06 for the graduation gate).
+ */
 export function computeRiskReward(play: {
   direction?: string;
   entry_range?: string | null;
@@ -98,13 +126,14 @@ export function computeRiskReward(play: {
 }): number | null {
   const parsed = parsePlayLevels(play as PlaybookPlay);
   if (parsed.entry_range_low == null || parsed.target == null || parsed.stop == null) return null;
-  const mid = parsed.entry_range_high != null
-    ? (parsed.entry_range_low + parsed.entry_range_high) / 2
-    : parsed.entry_range_low;
-  if (mid <= 0) return null;
   const isLong = play.direction !== "SHORT";
-  const targetDist = isLong ? parsed.target - mid : mid - parsed.target;
-  const stopDist = isLong ? mid - parsed.stop : parsed.stop - mid;
+  // LONG fills at the band TOP, SHORT at the band BOTTOM — the WORST price in the band,
+  // matching fillEdgeOf (debrief.ts) and the G-N2 gate. A single-price band (no high
+  // parsed) collapses to that one price, which is its own edge.
+  const fillEdge = isLong ? (parsed.entry_range_high ?? parsed.entry_range_low) : parsed.entry_range_low;
+  if (fillEdge <= 0) return null;
+  const targetDist = isLong ? parsed.target - fillEdge : fillEdge - parsed.target;
+  const stopDist = isLong ? fillEdge - parsed.stop : parsed.stop - fillEdge;
   if (stopDist <= 0) return null;
   const rr = targetDist / stopDist;
   return Number.isFinite(rr) && rr > 0 ? Number(rr.toFixed(2)) : null;

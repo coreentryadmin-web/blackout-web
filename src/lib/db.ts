@@ -6617,8 +6617,19 @@ export async function updateSwingLiveState(
        last_mark = COALESCE($3, last_mark),
        peak_premium = CASE WHEN $3 IS NOT NULL THEN GREATEST(COALESCE(peak_premium, $3), $3) ELSE peak_premium END,
        trough_premium = CASE WHEN $3 IS NOT NULL THEN LEAST(COALESCE(trough_premium, $3), $3) ELSE trough_premium END,
-       underlying_mfe = CASE WHEN $4 IS NOT NULL THEN GREATEST(COALESCE(underlying_mfe, $4), $4) ELSE underlying_mfe END,
-       underlying_mae = CASE WHEN $5 IS NOT NULL THEN LEAST(COALESCE(underlying_mae, $5), $5) ELSE underlying_mae END,
+       -- FINDINGS 2026-08-06 (SEV-1, unparseable statement): the ::numeric casts below are LOAD-BEARING,
+       -- not cosmetic. node-pg uses the EXTENDED protocol with untyped parameters, so Postgres infers a
+       -- param's type from its FIRST occurrence — and that occurrence must be a COERCION site. $3 is
+       -- safe by accident: its first use is last_mark = COALESCE($3, last_mark) above, which types it
+       -- numeric. $4/$5 had NO earlier use — their first appearance was the bare WHEN $4 IS NOT NULL
+       -- NullTest, which coerces nothing, so parse analysis aborted with 42P08 "could not determine data
+       -- type of parameter $4". The whole statement failed to PARSE, so nothing landed — including the
+       -- correctly-typed last_mark/peak/trough columns above. The later COALESCE(underlying_mfe, $4) inside
+       -- the same CASE arm does NOT rescue it (verified empirically on PG16). Casting at the NullTest gives
+       -- the param an explicit type at first sight. RULE: a param's first occurrence in a statement must be
+       -- a coercion site or carry an explicit cast — never a bare IS [NOT] NULL.
+       underlying_mfe = CASE WHEN $4::numeric IS NOT NULL THEN GREATEST(COALESCE(underlying_mfe, $4), $4) ELSE underlying_mfe END,
+       underlying_mae = CASE WHEN $5::numeric IS NOT NULL THEN LEAST(COALESCE(underlying_mae, $5), $5) ELSE underlying_mae END,
        updated_at = NOW()
      WHERE id = $1`,
     [id, s.status, s.mark ?? null, s.underlyingMfe ?? null, s.underlyingMae ?? null]

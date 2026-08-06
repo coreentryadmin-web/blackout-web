@@ -8,6 +8,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { generateDefaultAuditPhone } from "./lib/audit-phone.mjs";
+import { createOrAdoptAuditUserViaCurl } from "./lib/clerk-audit-user.mjs";
 
 const SECRET = process.env.CLERK_SECRET_KEY?.trim();
 const PUB = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY?.trim() || "";
@@ -158,18 +159,15 @@ async function probeStreamGrowth(ticker, seconds = 12) {
 }
 
 async function main() {
-  const create = backend("POST", "/users", {
-    email_address: [EMAIL],
-    phone_number: [PHONE],
-    public_metadata: { role: "admin", tier: "premium" },
-    skip_password_requirement: true,
-    skip_legal_checks: true,
-  });
-  userId = J(create)?.id;
-  if (!userId) {
-    console.error("Failed to create user", create.b.slice(0, 200));
+  // adopt:false — this probe's e-mail already carries a per-run timestamp, so an e-mail
+  // collision is impossible; the shared helper is here for the PHONE collision retry (the
+  // random +1415555XXXX draw can clash with a concurrently-alive harness's temp user).
+  const auth = await createOrAdoptAuditUserViaCurl({ curl, api: API, secret: SECRET, email: EMAIL, phone: PHONE, adopt: false });
+  if (auth.error) {
+    console.error("Failed to create user", auth.error.slice(0, 220));
     process.exit(1);
   }
+  userId = auth.userId;
   if (!establishSession()) {
     console.error("Auth failed");
     process.exit(1);

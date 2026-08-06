@@ -173,8 +173,8 @@ test("buildPinSetup builds a scored ['PIN'] setup with honest flow nulls, real o
   assert.ok(shortSetup.otm_pct != null && shortSetup.otm_pct > 0 && shortSetup.otm_pct < 0.5);
 });
 
-// ── ATM picker: call for a long fade, put for a short fade; 0DTE preferred, weekly fallback ──
-test("pickAtmPinContract picks the fade side's ATM contract (0DTE preferred, 1DTE allowed, weekly dte≥2 EXCLUDED)", () => {
+// ── ATM picker: call for a long fade, put for a short fade; 0DTE preferred, dte 1-4 fallback ──
+test("pickAtmPinContract picks the fade side's ATM contract (0DTE preferred, dte 1-4 allowed, dte≥5 EXCLUDED — widened 2026-08-06)", () => {
   const rows: PinChainRow[] = [
     { expiry: TODAY, strike: 597, call_bid: 1.2, call_ask: 1.3, call_oi: 500, put_bid: 0.8, put_ask: 0.9, put_oi: 400 },
     { expiry: TODAY, strike: 598, call_bid: 1.0, call_ask: 1.1, call_oi: 800, put_bid: 1.0, put_ask: 1.1, put_oi: 700 },
@@ -191,7 +191,7 @@ test("pickAtmPinContract picks the fade side's ATM contract (0DTE preferred, 1DT
   assert.equal(put!.side, "put");
   assert.equal(put!.strike, 598);
 
-  // 1DTE (dte 1) is the only allowed fallback when no 0DTE is listed (ONE_DTE horizon).
+  // 1DTE (dte 1) is admitted when no 0DTE is listed (ONE_DTE horizon).
   const oneDteOnly: PinChainRow[] = [
     { expiry: "2026-07-25", strike: 598, call_bid: 1.5, call_ask: 1.6, call_oi: 700, put_bid: 1.5, put_ask: 1.6, put_oi: 700 },
   ];
@@ -199,9 +199,25 @@ test("pickAtmPinContract picks the fade side's ATM contract (0DTE preferred, 1DT
   assert.ok(one);
   assert.equal(one!.dte, 1);
 
-  // HORIZON INTEGRITY (PR-1): a dte≥2 weekly is EXCLUDED (null) — the picker is clamped to dte ≤ 1,
-  // so a weekly-only pin is dropped from the 0DTE board rather than graded with the same-day 15:30
-  // time-stop (structurally wrong for a multi-day weekly).
+  // Widened 2026-08-06: dte-2 and dte-4 are now ALSO admitted (a Friday-only-weekly name hit on a
+  // Monday-Wednesday).
+  const twoDteOnly: PinChainRow[] = [
+    { expiry: "2026-07-26", strike: 598, call_bid: 1.5, call_ask: 1.6, call_oi: 700, put_bid: 1.5, put_ask: 1.6, put_oi: 700 },
+  ];
+  const two = pickAtmPinContract(twoDteOnly, 598.2, TODAY, "put");
+  assert.ok(two, "dte-2 is now admitted");
+  assert.equal(two!.dte, 2);
+
+  const fourDteOnly: PinChainRow[] = [
+    { expiry: "2026-07-28", strike: 598, call_bid: 1.5, call_ask: 1.6, call_oi: 700, put_bid: 1.5, put_ask: 1.6, put_oi: 700 },
+  ];
+  const four = pickAtmPinContract(fourDteOnly, 598.2, TODAY, "put");
+  assert.ok(four, "dte-4 is the new outer edge — still admitted");
+  assert.equal(four!.dte, 4);
+
+  // HORIZON INTEGRITY (PR-1, widened): a dte≥5 weekly is EXCLUDED (null) — the picker is clamped to
+  // dte ≤ ZERODTE_MAX_DTE (4), so a farther-out weekly-only pin is dropped from the 0DTE board
+  // rather than graded with the same-day 15:30 time-stop (structurally wrong for a multi-day weekly).
   const weeklyOnly: PinChainRow[] = [
     { expiry: "2026-07-31", strike: 598, call_bid: 2, call_ask: 2.2, call_oi: 900, put_bid: 2, put_ask: 2.2, put_oi: 900 },
   ];

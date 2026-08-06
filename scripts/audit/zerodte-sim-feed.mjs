@@ -46,6 +46,7 @@ import { readFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { generateDefaultAuditPhone } from './lib/audit-phone.mjs';
+import { createOrAdoptAuditUserViaCurl } from './lib/clerk-audit-user.mjs';
 
 // ── args ────────────────────────────────────────────────────────────────────────────
 const argv = process.argv.slice(2);
@@ -630,14 +631,11 @@ async function main() {
   }
 
   // --- auth (once) — mint temp admin user → FAPI ticket → __session cookie ---
-  const create = backend('POST', '/users', { email_address: [EMAIL], phone_number: [PHONE], public_metadata: { role: 'admin', tier: 'premium' }, skip_password_requirement: true, skip_legal_checks: true });
-  let cj = J(create);
-  if (cj?.id) userId = cj.id;
-  else if (/form_identifier_exists/.test(JSON.stringify(cj?.errors || ''))) {
-    const u = (J(curl({ url: `${API}/users?email_address=${encodeURIComponent(EMAIL)}`, headers: { Authorization: `Bearer ${SECRET}` } })) || [])[0];
-    if (u?.id) { userId = u.id; backend('PATCH', `/users/${userId}`, { public_metadata: { role: 'admin', tier: 'premium' } }); }
-  }
-  if (!userId) { console.error('auth: could not create/adopt temp admin user:', create.b.slice(0, 200)); process.exit(1); }
+  // Shared create-or-adopt: e-mail collision → adopt the leftover user; PHONE collision →
+  // redraw a fresh +1415555XXXX and retry.
+  const auth = await createOrAdoptAuditUserViaCurl({ curl, api: API, secret: SECRET, email: EMAIL, phone: PHONE });
+  if (auth.error) { console.error('auth: could not create/adopt temp admin user:', auth.error.slice(0, 220)); process.exit(1); }
+  userId = auth.userId;
 
   let tok = null, sid = null, clientUat = 0;
   const mint = () => { tok = sid ? J(curl({ method: 'POST', url: `${FAPI}/v1/client/sessions/${sid}/tokens?_clerk_js_version=${CJS}`, headers: { Origin: BASE, Referer: `${BASE}/`, 'Content-Type': 'application/x-www-form-urlencoded' }, jar: true, saveJar: true }))?.jwt : null; return tok; };
