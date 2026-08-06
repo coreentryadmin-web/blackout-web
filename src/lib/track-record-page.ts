@@ -221,11 +221,15 @@ export function zerodteFromRows(
  * and SPX desk (spx_play_outcomes + nighthawk_play_outcomes + zerodte_setup_log).
  * Never throws.
  */
-export async function buildTrackRecordPagePayload(): Promise<TrackRecordPagePayload> {
+export async function buildTrackRecordPagePayload(
+  statsOverride?: PlayOutcomeStats | null
+): Promise<TrackRecordPagePayload> {
   try {
     const zdSince = formatEtDate(new Date(Date.now() - ZERODTE_WINDOW_DAYS * 24 * 60 * 60 * 1000));
     const [stats, nh, zdRows] = await Promise.all([
-      fetchPlayOutcomeStats().catch(() => null),
+      statsOverride !== undefined
+        ? Promise.resolve(statsOverride)
+        : fetchPlayOutcomeStats().catch(() => null),
       fetchNighthawkOutcomeAnalytics(NH_WINDOW_DAYS).catch(() => ({ rows: [], pending_count: 0 })),
       // Fail-open to an empty ledger (zerodte reads as 0-graded/unavailable) rather
       // than failing the whole page — same resilience as the other two legs.

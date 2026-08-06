@@ -1,4 +1,4 @@
-import { fetchPlayOutcomeStats } from "@/features/spx/lib/spx-play-outcomes";
+import { fetchPlayOutcomeStats, type PlayOutcomeStats } from "@/features/spx/lib/spx-play-outcomes";
 import { computeAdaptiveGates } from "@/features/spx/lib/spx-play-telemetry";
 
 /**
@@ -76,9 +76,12 @@ export function emptyTrackRecord(): PublicTrackRecord {
  * never disagree with the internal one. Read-only; never throws (returns the
  * empty payload on any failure).
  */
-export async function buildPublicTrackRecord(): Promise<PublicTrackRecord> {
+export async function buildPublicTrackRecord(
+  statsOverride?: PlayOutcomeStats | null
+): Promise<PublicTrackRecord> {
   try {
-    const stats = await fetchPlayOutcomeStats();
+    const stats =
+      statsOverride !== undefined ? statsOverride : await fetchPlayOutcomeStats();
     if (!stats || stats.total_closed <= 0) return emptyTrackRecord();
     const adaptive = computeAdaptiveGates(stats);
     return {
