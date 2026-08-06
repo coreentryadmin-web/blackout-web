@@ -62,7 +62,12 @@ export async function GET(req: NextRequest) {
 
   const hm = await fetchGexHeatmap(ticker).catch(() => null);
   const spot = hm?.spot ?? null;
-  const ladder = buildGexLadder(hm?.gex?.strike_totals ?? null, spot);
+  // Wall-migration arrows (2026-08-06): the "all" horizon reads the SAME heatmap payload the
+  // shift-leaders strip above the pulse rail already reads, so threading its `shift.delta_by_strike`
+  // through is free — no new fetch. Only wired when the shift computation actually has a baseline
+  // (`available`); the narrowed-horizon branch above never has one (see buildGexLadder's opts doc).
+  const shiftByStrike = hm?.shift?.available ? hm.shift.delta_by_strike : null;
+  const ladder = buildGexLadder(hm?.gex?.strike_totals ?? null, spot, { shiftByStrike });
 
   return NextResponse.json(
     roundFloats({ ticker, spot, asOf: hm?.asof ?? null, horizon, ladder }),
