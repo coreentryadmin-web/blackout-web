@@ -285,6 +285,9 @@ export function buildBreakoutSetup(input: {
    *  `session_gap_days` field (NH-R4). Optional so existing callers/tests keep compiling;
    *  omitted → session_gap_days is null (never fabricated). */
   todayYmd?: string;
+  /** ISO-8601 observation time of `spot`, when the caller knows it. Stamped onto
+   *  `underlying_price_as_of`; omitted → null = as-of UNKNOWN (never fabricated). */
+  spotAsOf?: string | null;
 }): EnrichedZeroDteSetup {
   const { mover, spot, contract, dollarNorm, todayYmd } = input;
   const direction = input.direction ?? "long";
@@ -320,6 +323,13 @@ export function buildBreakoutSetup(input: {
     sweep_pct: 0,
     side_dominance: 0.5, // neutral: no option-flow side to be dominant (flow gates are SKIPPED here)
     underlying_price: Math.round(spot * 100) / 100,
+    // Provenance for the mark. `spot` is the live chain/grouped-daily read from THIS discovery
+    // pass, so the source is chain_spot. The as-of is stamped only when the caller actually knows
+    // it — never fabricated from the build clock. Left null it degrades to MISSING, and the scan's
+    // attachContractPlans re-stamps it off the batched live option snapshot moments later anyway
+    // (a BREAKOUT is DIRECTIONAL, so it always goes through that pass).
+    underlying_price_as_of: input.spotAsOf ?? null,
+    underlying_price_source: "chain_spot",
     score,
     aggression: null, // honest null — there is no tape aggression for a bare breakout
     otm_pct: otmPct,
