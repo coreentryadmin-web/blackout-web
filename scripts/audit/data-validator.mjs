@@ -43,6 +43,7 @@ import { isTradingDayEt, todayEtYmd } from '../gha-et-window.mjs';
 import { isAuthFailureStatus } from './lib/auth-status.mjs';
 import { generateDefaultAuditPhone } from './lib/audit-phone.mjs';
 import { createOrAdoptAuditUserViaCurl } from './lib/clerk-audit-user.mjs';
+import { netGexSignVerdict, pickUwIntradayGamma } from './lib/uw-gex-comparand.mjs';
 
 const SECRET = req('CLERK_SECRET_KEY');
 const PUB = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || '';
@@ -360,7 +361,13 @@ async function main() {
   const gtVIXchg = rth ? num(gVIX?.session?.change_percent) : null;
   const gtSPXchg = rth ? num(gSPX?.session?.change_percent) : null;
   const uTide = uw('/api/market/market-tide'); const uTideRow = Array.isArray(uTide?.data) ? uTide.data.at(-1) : null;
-  const uGreekRow = (() => { const g = uw('/api/stock/SPY/greek-exposure'); return Array.isArray(g?.data) ? g.data.at(-1) : null; })();
+  // INTRADAY dealer $-gamma ground truth for the net_gex sign check below.
+  // This used to read `/api/stock/SPY/greek-exposure` — UW's DAILY historical series — and so
+  // compared a once-a-day aggregate against the app's intraday net_gex. See
+  // lib/uw-gex-comparand.mjs for the full root cause + the measurement that proved it.
+  // `/spot-exposures` is UW's "Spot GEX exposures per 1min" feed: same physical quantity, same
+  // unit as the app's `gamma × oi × 100 × spot² × 0.01`, so sign AND magnitude are comparable.
+  const uSpotGamma = pickUwIntradayGamma(uw('/api/stock/SPY/spot-exposures'));
   rec('market status', 'INFO', `Polygon market=${pStatus?.market} (RTH=${rth}); ground truth=${gtLabel}`);
 
   // --- price / index cross-validation (live-vs-live during RTH) ---
@@ -406,7 +413,12 @@ async function main() {
     if (dx != null) rec('dex posture matches net_dex sign', ((dx >= 0 && /long|pos/i.test(P.gex.dex_posture)) || (dx < 0 && /short|neg/i.test(P.gex.dex_posture))) ? 'PASS' : 'WARN', `net_dex=${dx} posture=${P.gex.dex_posture}`);
     if (vx != null) rec('vanna posture matches net_vex sign', ((vx >= 0 && /pos/i.test(P.gex.vanna_posture)) || (vx < 0 && /neg/i.test(P.gex.vanna_posture))) ? 'PASS' : 'WARN', `net_vex=${vx} posture=${P.gex.vanna_posture}`);
     if (P.gex.gex_cross_validation) rec('app self-reported gex_cross_validation', 'INFO', JSON.stringify(P.gex.gex_cross_validation).slice(0, 160));
-    if (uGreekRow && g != null) { const uwNet = num(uGreekRow.call_gamma) + num(uGreekRow.put_gamma); rec('net_gex SIGN app vs UW greek-exposure', (g >= 0) === (uwNet >= 0) ? 'PASS' : 'WARN', `app=${g} uw_call+put_gamma=${uwNet.toFixed(0)} (units differ; sign only)`); }
+    // Sign (+ magnitude ratio) cross-check against UW's INTRADAY per-1%-move dealer $-gamma.
+    // Verdict logic is pure and unit-tested — see lib/uw-gex-comparand.mjs + its .test.ts.
+    {
+      const v = netGexSignVerdict(g, uSpotGamma);
+      rec('net_gex SIGN app vs UW spot-exposures (intraday)', v.status, v.detail);
+    }
   }
 
   // --- 0DTE Command board cross-validation (task #148) ---
