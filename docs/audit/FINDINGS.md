@@ -4,6 +4,192 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-06 — [P2, data-correctness] `/marks` shipped option greeks as raw IEEE-754 doubles — FIXED (#1824)
+
+| Field | Value |
+|-------|-------|
+| **Root cause** | `/api/market/zerodte/marks` and its SSE sibling shipped provider greeks verbatim. `options-snapshot.ts:267-274` stores them raw **by design** ("stored verbatim so nothing is lost" — it is a model, not a wire type); `live-marks.ts` `markFromSnapshot` copies them into the mark store; `buildZeroDteLiveMarksPayloadFrom` copies them to the wire row; `getZeroDteLiveMarksFrame`'s `JSON.stringify` ships them raw to **both** lanes, which share that one build. |
+| **Why not caught** | The audit validator's malformed-number scan only flags a float when `Math.abs(obj) >= 1000` — it was written for GEX/VWAP dollar noise like `7499.360000000001`. **Every greek is `|x| < 2`, so the scan structurally cannot see this class of defect**, and `/marks` was never in the validator's payload set. |
+| **Evidence** | Real Polygon `/v3/snapshot` rows pushed through the **real production** `mapUnifiedSnapshotResult` → `markFromSnapshot` → `buildZeroDteLiveMarksPayloadFrom` and `JSON.stringify`d exactly as `live-marks.ts:701` does: **10 wire fields with ≥6 fraction digits** — `delta=0.9744760508898113` (16dp), `gamma=0.000800420684215033` (18dp), `theta=-2.1224383902348456`, `vega=0.019453369929098324`, `iv=1.7933050133786779`. |
+| **Fix — per-field precision is the whole difficulty** | `roundFloats` gains an optional per-KEY dp map. A single `dp` cannot serve this payload: **gamma needs 6dp** — live SPY 0DTE gamma is `0.000800`, which at the 2dp default is `0.00`, *the number is gone*, and at 4dp collapses to one significant figure. Prices need **4dp**, not 2, because `mid = (bid+ask)/2` legitimately lands on a half cent (live capture `128.905`) — **2dp would silently destroy real half-cent mids**. Applied in the shared builder, not the routes, so REST and SSE cannot drift — and since it is also what `zeroDteMarksContentKey` hashes, SSE dedupe now compares the values members actually see instead of re-pushing a frame because the 17th decimal of vega moved. |
+| **Safety of a 45-call-site change** | `round-floats.test.ts` keeps a **frozen copy of the pre-override implementation** and diffs the two across `dp ∈ {0,2,4,6}` over 13 fixtures — byte-identical default path *asserted*, not assumed. The override table is a **`Map`, not a plain object**: `overrides["constructor"]` on a plain object returns a function, `10 ** fn` is `NaN`, and a real number would silently become `NaN` (also a property-injection sink). Covered by a test. |
+| **Sweep** | 32 sibling `src/app/api/market` routes that do not call `roundFloats` were probed live: **14/15 clean**. `gex-matrix-deltas` timed out after hours and is reported **unverified**, not assumed fine. CLAUDE.md's "several endpoints serve unrounded floats" note is stale for these. |
+| **Verification** | `tsc --noEmit` exit 0; `round-floats.test.ts` 25/25; `live-marks.test.ts` 31/31; `npm run build` exit 0; lint clean. |
+| **Status** | FIXED — PR #1824 merged. |
+
+---
+
+## 2026-08-06 — [P1, Swing live board] Committed swing positions served NO live quote and NO greeks — FIXED (#1820)
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P1 — the rows carrying real capital were the only rows without a quote. |
+| **Scope correction** | It is **not** 15 committed plays. Only **5** are live capital (`liveStatus: HOLD`, section `MANAGING`: KRE, FHN, KKR, SPCX, MSFT). The other 10 sit in COMMIT_NOW / WAITING_FOR_ENTRY / WATCH / RESEARCH — their `status: "COMMIT"` is `produceHorizonPlays`' score-vs-floor stamp, **not** committed capital. Pre-entry plays legitimately have no entry premium. |
+| **Root cause** | `src/lib/swing/live-plays.ts:37` `contractFromRow` rebuilt the `ChainContract` from ledger columns only (`swing_positions` has no quote columns), hardcoding `openInterest: 0, bid: null, ask: null` and emitting no gamma/theta/vega/iv. It could not do better — the member horizons route is a cache-reader by policy. Meanwhile `src/app/api/cron/swing-active-refresh/route.ts:81` `loadOptionMark` **already** called `fetchOptionsUnifiedSnapshot`, which returns bid/ask/OI plus the full greek set (`providers/options-snapshot.ts:82-105`) — and kept only `.mark`, discarding the rest. |
+| **Evidence (live)** | Prod probe 2026-08-06 22:04 UTC: all 5 MANAGING rows `bid null / ask null / OI 0`, no greek key; all 10 pre-entry rows carried real bid/ask/OI from `explodeChainRows`. |
+| **Fix** | Cron returns the whole quote; `manage-sync.planManageSync` stamps it on `event_json.quote` (spread only when present); `live-plays.liveQuoteFromEvent` hydrates the contract. **Zero new IO, zero schema change** — it keeps data already being fetched and thrown away. Live delta now wins over the commit-pinned `contract_delta`. |
+| **Verification** | `tsc --noEmit` exit 0; live-plays + active-refresh + serving-lane **39/39** pass. |
+| **Status** | FIXED — PR #1820 merged. |
+
+---
+
+## 2026-08-06 — [P1, latent live risk] Swing premium watermarks were never seeded at entry — FIXED (#1822)
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P1 — a **display** bug at this instant, a **premature-runner-exit** bug the first time any row trims. |
+| **Root cause** | `insertSwingPosition` (`src/lib/db.ts`) left `peak_premium`/`trough_premium` NULL, so the ratchet's series began at the first *successful* `updateSwingLiveState` latch rather than at commit. Normally invisible (minutes); the 42P08 outage (#1792) stretched it to days, and the first latch landed after the 16:00 ET close — hence `peak === trough === last_mark` on 5/5 live rows. |
+| **Evidence — the decisive part is not the equality, it's two impossible values** | The ratchet SQL is correct (`GREATEST`/`LEAST`), so `peak === trough` alone only proves the series saw one mark. But: **SPCX** entry 16.68, peak **11.58** — a high-water mark *below* the purchase price. **MSFT** entry 14.40, trough **23.08** — a low-water mark *above* it. (FHN and KKR also carry peaks below entry — 4 of 5 rows.) Watermarks running since commit satisfy `peak >= entry >= trough` by construction; both violated ⇒ the series never contained the entry. |
+| **Risk, per column** | `trough_premium` is read by **no** swing management rung (`manage.ts` never references it) — display only. The −60% `premium_stop` compares `lastMark` to `entry_premium` **directly** (`scale-out.ts`, pre-scale branch), so the capital backstop is unaffected. `peak_premium` **is** load-bearing, but only post-scale: `lastMark <= peakPremium * trail_from_peak → EXIT_RUNNER`. An understated peak fires the runner trailing stop early. All 5 rows are `HOLD` (`scaledAlready === false`), so the peak is not consulted right now. |
+| **Fix** | Seed both from `entry_premium` at insert — a genuinely observed mark, not a fabrication — plus an idempotent `ensureSchema` backfill that only ever **widens** the bracket (GREATEST/LEAST) and converges to a no-op. Because the repaired peak is a lower bound on the true peak, the trailing stop can only become **more** conservative, never less. |
+| **Deliberately not done** | Intra-outage marks are unrecoverable (the snapshot series has the same gap) and were **not** reconstructed from bars. |
+| **Verification** | `tsc --noEmit` exit 0; `db-swing-ledger` 26/27 pass, 1 skipped (pre-existing). |
+| **Status** | FIXED — PR #1822 merged. |
+
+---
+
+## 2026-08-06 — [P2, display] No greek ever reached the Swing/LEAPS deck — including the delta that was always in the payload — FIXED (#1823)
+
+| Field | Value |
+|-------|-------|
+| **Root cause** | **Four sequential drops**, each independently sufficient — which is why the delta that travelled the whole way still rendered nothing. (1) `adapters.ts:terminalPlayFromHorizon` returned `greeks: null` as a **literal**; (2) `HorizonDeckSource.contract` had no greek slot; (3) `containers.tsx:168` projected only strike/right/expiry/dte/mid; (4) `horizon-fanout.ts:explodeChainRows` discarded the `call_iv`/`put_iv` its source rows carry. |
+| **Fix** | `greeksFromContract()` (null strip only when the contract has no greek at all), widened source type, container passthrough, IV passthrough in the fan-out. Delta logic untouched — it varies **0.53–0.68**, a real ~0.6 selection target, not a hardcoded constant. |
+| **Deliberately left** | gamma/theta/vega for **pre-entry** rows. Those contracts come from `ChainStrikeRow`, which has no columns for them. Those cells stay honestly "—"; live positions get the full set via #1820. |
+| **Verification** | `tsc --noEmit` exit 0; adapters 120/120, horizon-fanout 10/10, horizon-plays + PlayTerminal.ssr + terminal-display 46/46. |
+| **Status** | FIXED — PR #1823 merged. |
+
+---
+
+## 2026-08-06 — [P3, follow-up] `ChainStrikeRow` structurally cannot carry gamma/theta/vega — OPEN
+
+| Field | Value |
+|-------|-------|
+| **Detail** | `rowFromOptionSnapshot` (`features/nighthawk/lib/option-chain-prompt.ts:49`) maps `OptionSnapshot` → `ChainStrikeRow` keeping only bid/ask/delta/oi/iv; `pivotUwRows` has no greeks at all. So every **pre-entry** SWING contract (and the 0DTE fan-out) is limited to delta + IV by the type, not by the data source. |
+| **Why deferred** | Widening the type is a shared-path change on the 0DTE chain prompt, which other work was actively in. Cells render "—" honestly meanwhile. |
+| **Status** | **OPEN** — follow-up. |
+
+---
+
+## 2026-08-06 — [P2, 0DTE governor] G-5 re-entry lock silently FAIL-OPEN for any stop with no recorded timestamp — FIXED (#1810)
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P2 — a loss-control gate was OFF in production, invisible from the board UI. |
+| **Root cause** | `src/lib/zerodte/governor.ts:633` read `s.at_ms != null && nowMs - s.at_ms < GOVERNOR_REENTRY_LOCK_MS`. The `!= null` conjunct **short-circuits**, so a stop carrying no timestamp pushed *no block at all* — the ticker was immediately re-entrable after stopping out. Nulls arise because stop detection has two channels with asymmetric coverage: `deriveGovernorFromLedger`→`ledgerRowStopped` (`governor.ts:396-407`, fires on `plan_outcome === "stopped"` OR the latched trough) vs `recordGovernorStops` (`scan.ts:1712`, fires only when *that process* observes the CLOSED/stopped transition in a scan pass). Grader-stamped, trough-proven, closed-before-the-replica-came-up, or Redis-evicted stops therefore never get a timestamp; `mergeGovernorStops` can only upgrade null→timestamp when a twin exists, and `GovernorLedgerRow` is a `Pick<>` carrying no timestamp column. |
+| **Failure mode** | **Fail-OPEN**, not the "locks forever" alternative — the worse of the two. |
+| **Evidence (live)** | `GET /api/market/zerodte/board` (prod, authenticated, read-only) at 18:33, 19:33 and ~20:0x UTC 2026-08-06: `"stops":[{"ticker":"SPXW","direction":"short","at_ms":null}]`, `reentry_lock_ms: 1200000`, `realized_losers: 1`, `session_pnl_pct: -50`, `open_plans: []`, `halted: false`. Stable across >1h ⇒ no Redis twin ever appeared. |
+| **Why not caught** | `governor.test.ts` explicitly **asserted the fail-open behaviour** ("Untimed (ledger-only) stop can't drive the timed lock — never fabricate timing"). The no-fabrication instinct was right; implementing it by dropping the guard was the bug. |
+| **Fix** | G-5 restructured into explicit branches. An untimed stop now **fails closed** — holds that ticker+direction for the remainder of the session, `threshold: null`, reason states the time was never recorded, no fabricated countdown. Timed path byte-identical (`< lock` boundary intact). Bounded by `session_date` + the 24h Redis TTL; scoped to one ticker+direction; reachable only after a real stop. |
+| **Tests** | `governor.test.ts` 51/51 pass — two new tests at the null boundary + the bug-pinning assertion replaced. |
+| **Follow-up** | Close the *recording* gap so the hold degrades to a real 20-min timer: either a ledger stop-time column, or have the board read path stamp a first-observation timestamp into Redis (`loadRecordedGovernorStops` would pick it up with no `scan.ts` edit). |
+| **Status** | FIXED — PR #1810 merged. |
+
+---
+
+## 2026-08-06 — [P1, data-correctness] 0DTE `underlying_price` was never a live quote (frozen flow-print stamp, no as-of) — FIXED (#1818)
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P1 — silently misprices live member-facing positions. |
+| **Root cause** | `src/lib/zerodte/board.ts` (`deriveZeroDteSetups`) picks the freshest surviving print's underlying and stamps it once. `agg.underlyingSeen` — the mark's TRUE as-of — was computed **only to win that race and then discarded**; it never reached `ZeroDteSetup`. So a frozen mark was byte-indistinguishable from a live one. The tape it draws from is `fetchRecentFlows({ since_hours: 7, min_premium: 50_000, order: "premium", limit: 500, max_dte: 1 })` — the top 500 by premium of the last 7h — so a thinly-traded name with no new qualifying print keeps its last print's underlying indefinitely. **Compounding:** `scan.ts`'s `attachContractPlans` *already* fetched a batched unified option snapshot carrying a live `underlyingPrice` + `observedAtMs` per contract, then preferred the stale value anyway (`price: s.underlying_price ?? snap?.underlyingPrice`). `board.ts`'s own `no_underlying_price` comment named this missing feedback loop in prose and it was never wired. |
+| **Evidence (live)** | Prod board vs the actual RTH 16:00 ET close (after-hours confound removed), 2026-08-06: FSLR 250.54 vs 244.14 = **+2.621%** (flow print 2h18m old); MRVL 214.42 vs 210.54 = **+1.843%** (3h50m old); TWLO −1.537%; TTWO −1.067%; MSFT −0.816%; INTC +0.761%. **9/20 setups >0.5% off, 4 >1%.** Refresh source proven available at zero cost: the SAME single batched `GET /v3/snapshot?ticker.any_of=<25 OCCs>&limit=250` the scan already issues returned HTTP 200 with a live underlying for **25/25** contracts (TWLO −15.6%, NET −15.1%, FSLR −5.8% vs the board's stamp). |
+| **Fix** | (1) `ZeroDteSetup` gains `underlying_price_as_of` + `underlying_price_source` (`flow_print` / `chain_spot` / `live_option_snapshot`), populated at all four construction sites; pure `underlyingMarkAgeMs()` returns `null` — not `0` — for an unstamped mark. (2) `attachContractPlans` promotes the live snapshot underlying onto the setup and recomputes `otm_pct` with it (a gate input; the pass runs BEFORE `attachGateVerdicts`, so the moneyness gate now judges real moneyness). **Zero net new requests** — reuses the batch already in flight; explicitly not the N+1 shape fixed in #1789. Refuses to refresh without a usable price AND as-of (fails toward the *known* older stamp). |
+| **Verification** | `tsc --noEmit` clean; `src/lib/zerodte/**/*.test.ts` **1032/1032** pass (6 new); lint clean. |
+| **Status** | FIXED — PR #1818 merged (held for, and deployed in, the after-close window). |
+
+---
+
+## 2026-08-06 — [P1, 0DTE exits] Exit engine's operative stop used the `entry_max` basis, not the LEDGER basis — FIXED (#1819)
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P1 — real stop behaviour, live on the board that day. |
+| **Root cause** | `src/lib/zerodte/exit-sync.ts:252-259` took `planStop`/`planTarget` from `plan_json.stop_premium`/`target_premium`, derived at `plan.ts:271-272` from `entryMax` (= `flowAvgFill ?? mark`). But `entryPremium` — the basis every P&L, ratchet floor and trim tranche in `evaluateExitState` is denominated in — is `resolveLedgerEntryPremium` (`plan.ts:301-310`): `entryMax` floored UP to the flag-time mark. G-8/G-9 permit `markAtFlag > flow_avg_fill` up to `CHASE_PCT = 55`, so the operative stop could sit at **−67.58%** of the ledger basis. This was the **sole holdout**: `gradePlanFromBars` (`plan.ts:415`) and `derivePlayStatus` (`:692/718`) already used the ledger basis. |
+| **Reachable harm (narrower than first triaged)** | Both callers run the engine first with `deferPlanStop: true` and bypass the latch only on an engine EXIT (`scan.ts:1677-1686`). On `HOLD` the latch still caps at −50%. So the genuine harm is `thesis_break`/`flat_timeout` (which fire at any P&L) being reached at marks the protective rule should have owned — the only path by which a non-`plan_stop` reason could be stamped worse than the −50% hard stop. |
+| **Evidence (live)** | `GET /api/market/zerodte/board`, 2026-08-06: **8 of 24** comparable setups had `mark > entry_max` — AVGO (+35.26% vs flow) → operative stop **−62.92%**; NET −53.64%; AMZN −54.49%; TSLA −52.87%; GOOGL −52.50%; TWLO −52.32%; TTWO −51.24%; AMAT −50.06%. The other 16 sat at exactly −50.00%. Regression test flips pre/post-fix: `thesis_break:wall-trend` at −53.2% → `plan_stop`. |
+| **Fix** | Explicit `entryBasisDiverged` predicate (`entry > plan_json.entry_max`); pinned rails still win **byte-identically** when the bases agree (16 of 24 live rows), re-derived from the FROZEN percentages only on divergence (preserves WS-02). Target re-based too — same root cause, and fixing only the stop leaves a reward:risk neither basis intended. Member-facing printed plan untouched. |
+| **Also resolved** | The original triage concern (CELH −46%, TE −27% on `thesis` ⇒ stop bypassed) is **FALSE**, and is now a *tested* invariant in `exit-engine.test.ts`: plan stop is checked strictly before thesis break in BOTH modes, so a persisted `thesis_break:*` is structural proof `currentMark > planStop`. |
+| **Verification** | `tsc --noEmit` clean; `src/lib/zerodte/*.test.ts` **1033/1033** pass. Both new `exit-sync` tests confirmed to fail without the fix. |
+| **Status** | FIXED — PR #1819 merged. |
+
+---
+
+## 2026-08-06 — [P1, record-honesty] Never-filled + no-touch Night Hawk plays landed inside debrief win rates — FIXED (#1812)
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P1 (record honesty; no trading-behaviour impact). |
+| **Root cause** | Rate denominators in `src/features/nighthawk/lib/debrief-aggregate.ts` were not the DECIDED population — three surfaces, one cause. `gatePublishedMirror:359` filtered `outcome !== "unfilled"` **before** `retroWouldBlock`, so the `band_detached` (G-N1) gate's published mirror could never see the never-fillable plays it exists to prevent. `mirrorBucket:439` computed `wins / rows.length`, booking open/ambiguous no-touch plays as losses (the #1797 defect, unfixed in this sibling module). `groupRecord:179/181` divided by `scoreable` and badged `low_n` off that same inflated count. |
+| **Evidence (live)** | `GET /api/admin/nighthawk/analytics?days=90`, prod: `band_detached` → `would_block {n: 0}`, `delta_win_rate_pts: null`, while the **same response** carried 9 `unfilled_never_traded_back` + 5 `band_detached` debrief pins and 19 unfilled of 56 resolved. `by_conviction` B: `{n:29, scoreable:15, wins:0, losses:0, win_rate_pct: 0, low_n: false}` — **a stated 0% win rate over zero decided plays, badged as sufficient evidence for the improvement queue.** |
+| **Fix** | `decided` denominators throughout; `GateMirrorBucket` gains `decided`/`unfilled`/`unfilled_rate_pct`/`low_n_fillability`; `gatePublishedMirror` buckets unfilled rows (counted, never in a rate) and reports `delta_unfilled_rate_pts`; new `publish_gate:<gate>:published_mirror_fillability` queue signal — the only lane in which `band_detached` can be measured at all. |
+| **Blast radius** | `GET /api/admin/nighthawk/analytics` (`debrief_report`) only. No `.tsx` consumer; `summarizeDebriefPins` on the member record path unchanged. |
+| **Verification** | `tsc --noEmit` clean; `debrief-aggregate.test.ts` 24/24 (4 added). The 6 `analytics-decided-denominator.test.ts` failures are a **pre-existing** baseline (0/6 on clean `origin/main`, verified by stash). |
+| **Status** | FIXED — PR #1812 merged. |
+
+---
+
+## 2026-08-06 — [P1, performance] ALB 504 slow tail — no request-level deadline anywhere in the stack — FIXED (#1817, blackout-infra #45)
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P1 — thousands of member-facing 504s/hour, sustained 8+ days. |
+| **Root cause (structural)** | `next.config.mjs:80` sets `output: "standalone"`, so the **53** `export const maxDuration` declarations across `src/app/api/**/route.ts` are Vercel-only constructs and completely **INERT on ECS**. Verified empirically against pinned Next 15.5.19: `maxDuration` appears only in type declarations, sourcemaps, the TS language service and typegen — **zero references in any runtime server file**. Nothing in-process caps a handler, so the ALB's `idle_timeout = 120` is the only request deadline in the entire stack, and its expression is a 504. Declared distribution: 10s:1, 30s:4, 60s:13, 90s:1, 120s:23, 180s:3, 300s:6, 800s:2 — **eleven declare MORE than the ALB's 120s** and could never achieve their stated duration. |
+| **Mechanism (corrects the obvious theory)** | NOT missing socket timeouts — `api-tracked-fetch.ts:142` has always applied `AbortSignal.timeout(timeoutMs ?? 15_000)`. The unbounded wait is **before** the fetch: both cluster limiters admit callers by spinning with no overall budget (`uw-rate-limiter.ts:313` `acquireSlot()`, `:289` `acquireLocalSlot()`, `:273` `waitForCircuit()`, same shape in `polygon-rate-limiter.ts`). `AbortSignal.timeout` only starts counting once `fetch()` is called, so queue time was invisible to every other timeout in the stack. |
+| **Evidence (live CloudWatch)** | `HTTPCode_ELB_504_Count` daily Jul 28→Aug 6: **38 / 626 / 10,261 / 9,193 / 7,556 / 9,007 / 7,513 / 8,276 / 10,937**. Flat on the zero-crash days (Jul 31, Aug 3) ⇒ independent of the heap crash-loop, and older than it. `TargetResponseTime` hourly: avg 0.26–2.19s, p90 0.63–4.05s, p99 19.4–42.2s, **Maximum 119.61–119.99s hour after hour** — pinned at the 120s ceiling. `access_logs.s3.enabled = false` — no per-route attribution existed. |
+| **Fix** | blackout-infra #45: ALB access logs via terraform (S3 + SSE-S3 — a KMS CMK makes delivery fail *silently* — region-correct `aws_elb_service_account` delivery principal, 30-day expiry, TLS-only deny). Declared in TF not CLI, because `access_logs` is managed by `aws_lb` and a CLI-only change is reverted by the next apply. blackout-web #1817: `QueueBudget` spanning the **whole** admission sequence in both limiters (default 20s — the uncontended path is 0ms, so healthy requests never pay it), plus `withRequestDeadline` making a declared `maxDuration` real (clamp to 120s−5s, structured log, signal abort, diagnostic 504). |
+| **Incidental leak fixed** | UW `acquireSlot` set `redisConcurrencyHeld = true` **before** `acquireLocalSlot()`, but callers only `releaseSlot()` after `acquireSlot` *resolves* — a throw leaked the cluster concurrency slot permanently on every timeout. Added `releaseGlobalConcurrencyOnly()`. |
+| **Route attribution: STILL PENDING** | CloudWatch is per-load-balancer only. No claim about *which* route produces the most 504s is proven until #45's access logs are queried. The shipped fix bounds the shared chokepoint, which does not require that answer. |
+| **Deliberately unchanged** | SSE routes (`idle_timeout` is an *idle* timer, reset by the 15s/12s heartbeats — they are not in the 504 population; a wall-clock deadline would break working streams). The 11 routes >120s: all cron/admin, and the tightest ceiling is not the ALB but the **cron Lambda's 60s client budget** — `nighthawk-edition` (800s) is abandoned by the Lambda at 60s yet still publishes, because the server keeps running after the client hangs up, so a 115s cap would *stop that write*. |
+| **Verification** | `tsc --noEmit` exit 0; `next lint` clean; 27/27 new unit tests; 286/286 provider tests; `npm run build` exit 0. Infra: `terraform fmt -check` pass, `validate` success. No `terraform apply`. |
+| **Follow-ups opened** | (1) `nighthawk-edition/route.ts:18` documents a `BUILD_TIME_BUDGET_MS` guard that "ALWAYS checkpoints… so partial progress is never lost" — `grep -rn` across `src/` returns **only that comment**; the guard does not exist. (2) The long crons likely report **false failures** (Lambda aborts at 60s and throws while the handler succeeds minutes later) — check against `logCronRun` / `cron-staleness-watchdog`. |
+| **Status** | FIXED — #1817 + blackout-infra #45 merged. |
+
+---
+
+## 2026-08-06 — [P1 for evidence-validity, audit tooling] BREAKOUT recall/dynamic-N harnesses split cohorts by $-volume; production splits by momentum rank — FIXED (#1816)
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P1 for audit validity (offline research scripts, not member-facing). The invalid evidence was cited in `src/lib/zerodte/breakout-cap.ts`'s header as the justification for a **shipped production change**. |
+| **Root cause** | `discovery-recall-probe.mjs` and `breakout-dynamic-n-ab.mjs` split KEPT/DROPPED with `screenBreakoutMovers(results, N).slice(0, KEEP)`. `screenBreakoutMovers` returns `.sort(b.dollar - a.dollar)` order (`candidates.ts:479`) — a **$-volume cut**. Production re-ranks with `rankMoversForChainFetch` (momentum `gain × close_strength`) and applies the cap to *that* list (`breakout-discovery.ts:378-379`). Two further drifts: pool sized by an arbitrary `--scan-top` instead of production's `max(CEILING×4, BREAKOUT_SCREEN_POOL)` = 400/side; and `qualifyingMovers` computed from the long pool alone instead of long+short, under-sizing N. |
+| **Why not caught** | The probe's header claimed "EXACT production ranking, imported from src, not reimplemented" — true of the *screen*, false of the *ordering*, which had moved into a second function the harness never imported. |
+| **Impact** | Every BREAKOUT recall / dynamic-N number recorded **before 2026-08-06 is VOID** (the 2026-07-25 and 2026-08-04 entries, and the `breakout-cap.ts` header). They neither support nor refute the cap. |
+| **Fix** | New shared `scripts/audit/lib/breakout-cohort-split.mjs` mirroring production's ordering + pool sizing (ranker injected; 7 unit tests, one asserting the corrected split *differs* from `.slice(0, KEEP)`). Both harnesses now use it. |
+| **Corrected re-run — 13 sessions 2026-07-20…08-05** | A/B: STATIC-40 n=520 WR **43.1%**; DYNAMIC-N n=1287 WR **44.1%**; EXTRA(41…N) n=767 WR **44.9%**. Recall: KEPT n=1287 WR **44.1%**; DROPPED n=1485 WR **50.0%**; dropped ≥ kept on 7/13 sessions. |
+| **Conclusions** | (1) Dynamic-N is not refuted, but its *justification* was wrong — the extra slice grades the same as the static top-40, so its value is **more shots at an unchanged hit rate**, not better names. Formula retained. (2) **Win rate does NOT decay with momentum rank** (43.1 / 44.9 / 50.0) — `gain × close_strength` shows no discriminating power in this proxy. The open question moved from *cap size* to *ranking quality*; the last four cap raises were aimed at the wrong component. (3) N pins to the ceiling (100) on 10/13 sessions — the 30% term and the floor never bind. (4) The screen pool itself truncated at exactly 400 on 08-03/08-04, so the momentum ranker only saw the top-400 *by $-volume* on the widest days. |
+| **Decision** | **No engine change.** Evidence corrected; cap and ranking ship as-is. Stale `BREAKOUT_MAX_CANDIDATES=6` / "top-6 by $-volume" text corrected in `INTENTIONAL-DESIGN.md` §4, `MONDAY-RTH-READINESS.md:48` and `CLAUDE.md`; the invalid evidence block in `breakout-cap.ts` replaced (comment only — `breakout-cap.test.ts` passes unmodified as proof). |
+| **Status** | FIXED — PR #1816 merged. |
+
+---
+
+## 2026-08-06 — [P2, audit tooling] 0DTE healthcheck stage D reported OVERALL RED off-hours by judging quote-only WATCH rows as broken live marks — FIXED (#1821)
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P2 — no production impact, but the pre-open gate cried wolf: it exits non-zero on any RED, so the daily 13:32 UTC market-open trigger would have failed on a healthy system. |
+| **Root cause** | `/api/market/zerodte/marks` is a **merge of two lanes** (`live-marks.ts` `getZeroDteLiveMarksFrame`): entered ledger plays, and the board's watch-only setup contracts the poller quotes opportunistically so a card can show a premium. `buildZeroDteLiveMarksPayloadFrom` gives the latter `entry_premium: null` → `live_pnl_pct: null` **by construction**, and stamps them `status: "WATCH"` — never `CLOSED`. Stage D split with `rows.filter((r) => r.status !== "CLOSED")`, sweeping every WATCH row into the "open plays" set, then applied `r.mark == null ? "RED"` — which **bypasses `verdictForStaleness` entirely**, so the `rth` flag never reached it. That contradicts the contract stated 250 lines earlier in the same file: *"off-hours the lane idles by design, so staleness there is AMBER, never RED"*. |
+| **Evidence (live)** | `GET /api/market/zerodte/marks`, prod, 2026-08-06 22:15 UTC: `rows 23`, **all 23** `status:"WATCH"`, `entry_premium:null`, `source:"none"` — zero entered plays. Stage E confirmed independently in the same run: `OPEN 0 · HOLD 0 · TRIM 0 · CLOSED 13`. So stage D reported 23 broken live marks for a set containing no positions at all. |
+| **Fix** | Two pure helpers in `scripts/audit/lib/zerodte-healthcheck-eval.mjs`: `partitionMarkRows()` splits on `entry_premium` — the field that actually distinguishes a position from a quote — not on `status`; `verdictForMark()` makes a null mark **RED during RTH, AMBER off-hours**, for the same reason a stale mark is. |
+| **Strictly stronger, not looser** | Quote coverage is now its own check that goes **RED if the roster is fully unquoted during RTH** (the setup poller genuinely not running) — a real failure the old blanket RED buried, since it fired identically whether the system was healthy or dead. |
+| **Verification** | `npx tsx --test scripts/audit/lib/zerodte-healthcheck-eval.test.mjs` → **12/12 pass** (4 new, one pinning the exact regression). Live re-run: stage D AMBER, **OVERALL AMBER** instead of RED. |
+| **Status** | FIXED — PR #1821 merged. |
+
+---
+
+## 2026-08-06 — [P2, infra drift] Prod web ECS deployment configuration drifted to `minimumHealthyPercent=50 / maximumPercent=112` — OPEN
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P2 — not a deadlock and not an outage, but it costs ~40% of serving capacity during every deploy on a service already emitting ~10k 504s/day (see the ALB 504 entry above). |
+| **Symptom** | Live `describe-services` on `blackout-production-web` returned `minimumHealthyPercent: 50, maximumPercent: 112` at 22:2x UTC 2026-08-06, with `runningCount` observed at **3 of desired 5** mid-rollout. |
+| **Analysis** | At desired=5, `minHealthy=50` ⇒ ECS may drain to `ceil(5 × 0.5) = 3` tasks before starting replacements — a 40% capacity loss for the duration of the roll. The intended `100/120` rolls with **zero** capacity loss (`floor(5 × 1.2) = 6 ≥ desired+1`, and it holds across the whole autoscaling range min 5 … max 12). |
+| **Not the workflow, and not the deploy tool** | `.github/workflows/ecr-push-production.yml:228` already carries `minimumHealthyPercent=100,maximumPercent=120`. `scripts/deploy/roll-ecs.mjs` deliberately passes **no** `--deployment-configuration` at all and only reads/asserts it (`assertDeploymentConfigSane`) — precisely because a workflow hardcoding one is what silently reverted an out-of-band incident fix earlier the same day. So neither shipped deploy path is the writer; the source of the `50/112` write is **not yet identified**. |
+| **Why the guard did not catch it** | `assertDeploymentConfigSane` only applies its headroom/ceiling check when `min >= 100`. With `min = 50` no ceiling check runs, so `50/112` **passes** the assertion — correctly, since it is not a deadlock, but it means the guard is blind to the capacity-loss class of misconfiguration. |
+| **Follow-up** | (1) Identify the writer (CloudTrail `UpdateService` on the service, filtered to `deploymentConfiguration` changes). (2) Extend `assertDeploymentConfigSane` with a *note* (not a failure) whenever `min < 100` on a multi-task service, so a drift like this is visible in every deploy log instead of silent. (3) Codify the value in terraform so it is reconciled rather than hand-held. |
+| **Status** | **OPEN** — analysis complete, live value not yet re-set (a rollout was in progress at time of writing; changing deployment configuration mid-rollout is itself a risk). |
+
+---
+
 ## 2026-08-06 — [P1, MEMBER-VISIBLE FALSE NUMBER, Night Hawk record] "0% win rate" was `wins / scoreable` — undecided no-touch plays sat in the win-rate denominator and the low-n badge keyed off that same polluted count — FIXED (fix/nighthawk-winrate-denominator)
 
 | Field | Value |
