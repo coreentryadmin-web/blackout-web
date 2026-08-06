@@ -78,6 +78,42 @@ test("winRate computes a real ratio for a non-empty sample", () => {
   assert.equal(winRate([row({ outcome: "target" }), row({ outcome: "stop" })]), 0.5);
 });
 
+test("winRate divides by DECIDED outcomes — an 'open' play is not a loss", () => {
+  // 'open' = the grading horizon expired with neither the published target nor the stop
+  // touched. Counting it in the denominator made it indistinguishable from a stop-out and
+  // pinned the live headline at 0% (0 targets / 2 stops / 20 opens → 0/22).
+  const rows = [
+    row({ outcome: "target" }),
+    row({ outcome: "stop" }),
+    ...Array.from({ length: 8 }, () => row({ outcome: "open" })),
+  ];
+  assert.equal(winRate(rows), 0.5, "1 of 2 decided, not 1 of 10");
+});
+
+test("winRate is null when nothing is decided, however many rows the sample has", () => {
+  const rows = Array.from({ length: 20 }, () => row({ outcome: "open" }));
+  assert.equal(winRate(rows), null, "20 no-touch plays are 20 non-outcomes, not 20 losses");
+});
+
+test("winRate excludes 'ambiguous' too — both levels hit, order unrecoverable", () => {
+  assert.equal(
+    winRate([row({ outcome: "target" }), row({ outcome: "ambiguous" })]),
+    1,
+    "an unorderable row cannot be scored either way"
+  );
+});
+
+test("groupWithReturn ships decided/opens beside n, and badges low_n off decided", () => {
+  // The live conviction-A bucket: 12 scoreable rows, ZERO decided outcomes. Under the old
+  // `low_n: rows.length < 5` this badged as a readable record and painted "0%" on a play card.
+  const cut = groupWithReturn(Array.from({ length: 12 }, () => row({ outcome: "open" })));
+  assert.equal(cut.n, 12);
+  assert.equal(cut.decided, 0);
+  assert.equal(cut.opens, 12);
+  assert.equal(cut.win_rate, null);
+  assert.equal(cut.low_n, true);
+});
+
 test("profitableRate is null (not 0) for a zero-row sample", () => {
   assert.equal(profitableRate([]), null);
 });
@@ -89,7 +125,14 @@ test("profitableRate is null when no row has a computable return (corrupt ranges
 });
 
 test("groupWithReturn emits win_rate: null for an empty cut (matches calibration.ts null-on-empty)", () => {
-  assert.deepEqual(groupWithReturn([]), { n: 0, win_rate: null, avg_return_pct: 0, low_n: true });
+  assert.deepEqual(groupWithReturn([]), {
+    n: 0,
+    decided: 0,
+    opens: 0,
+    win_rate: null,
+    avg_return_pct: 0,
+    low_n: true,
+  });
 });
 
 // ── Task #145: funnel/rejection-rate stats (buildNighthawkFunnel) ────────────────────────

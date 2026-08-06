@@ -341,9 +341,13 @@ export function AdminNightHawkDashboard() {
         rings={
           <>
             <WinRateRing
-              value={data.win_rate}
+              // Suppress the rate below the decided-outcome floor rather than painting a
+              // confident "0%". The old sub-label multiplied the rate by total_resolved —
+              // pairing a 0/2 rate with an n of 52 — which read as 0-for-52. Show the raw
+              // counts instead: they are honest at any sample size.
+              value={data.low_n ? null : data.win_rate}
               label="Target-hit rate"
-              sub={`${Math.round(data.win_rate * data.total_resolved)} targets`}
+              sub={`${data.segments.current.wins}W / ${data.segments.current.losses}L decided · ${data.opens_count} no-touch · ${data.segments.current.scoreable} scoreable`}
               tone="bull"
               size={120}
             />
@@ -445,18 +449,25 @@ export function AdminNightHawkDashboard() {
       <section className="admin-mega-grid admin-nh-stats-row">
         <MegaStat
           label="Profitable rate"
+          // Explicitly NOT the target-hit rate: this is the share of graded plays that
+          // closed green vs entry on the graded session, over the scoreable population.
+          // Live it reads 68.2% next to a 0-of-2 target-hit rate — without this label the
+          // two look like contradictory versions of the same number.
           value={pct(data.profitable_rate)}
-          sub="Close better than entry"
+          sub="Closed green vs entry — not a target-hit rate"
           tone="bull"
         />
         <MegaStat label="Winners avg" value={fmtReturn(data.avg_winner_return_pct)} tone="bull" />
         <MegaStat label="Losers avg" value={fmtReturn(data.avg_loser_return_pct)} tone="bear" />
-        <MegaStat label="Loss rate" value={pct(data.loss_rate)} sub={`${Math.round(data.loss_rate * data.total_resolved)} stops`} tone="bear" />
-        <MegaStat label="Open rate" value={pct(data.open_rate)} sub="Neither target nor stop" tone="neutral" />
+        {/* loss/open/ambiguous rates are composition shares of the SCOREABLE set, so their
+            sub-labels quote the segment's real counts. They used to multiply the rate by
+            total_resolved (a different, larger population) and print a fabricated count. */}
+        <MegaStat label="Loss rate" value={pct(data.loss_rate)} sub={`${data.segments.current.losses} stops of ${data.segments.current.scoreable} scoreable`} tone="bear" />
+        <MegaStat label="Open rate" value={pct(data.open_rate)} sub={`${data.opens_count} never hit target or stop`} tone="neutral" />
         <MegaStat
           label="Ambiguous rate"
           value={pct(data.ambiguous_rate)}
-          sub={`${Math.round(data.ambiguous_rate * data.total_resolved)} both hit`}
+          sub={`${data.segments.current.ambiguous} both hit`}
           tone="amber"
         />
       </section>

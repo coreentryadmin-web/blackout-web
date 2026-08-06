@@ -20,6 +20,7 @@ import { EDITION_TARGET_PLAYS } from "@/features/nighthawk/lib/constants";
 import { isMorningConfirmStale, formatCheckedAtEt } from "@/features/nighthawk/lib/morning-confirm-verdict";
 import { NIGHTHAWK_COMPACT_LANE_LABEL } from "@/features/nighthawk/lib/nighthawk-view";
 import { etNowParts } from "@/features/nighthawk/lib/session";
+import { LOW_N_THRESHOLD } from "@/lib/zerodte/record";
 
 const json = (u: string) => fetch(u, { cache: "no-store", credentials: "same-origin" }).then((r) => (r.ok ? r.json() : null));
 
@@ -287,11 +288,18 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
   const convictionScorecard = new Map<string, { winRate: number; avg: number; n: number; ciLow?: number | null; ciHigh?: number | null }>();
   if (recordData?.by_conviction) {
     for (const c of recordData.by_conviction) {
-      if (c.conviction && c.n > 0 && c.win_rate_pct != null) {
+      // Gate on DECIDED outcomes, not bucket size. `c.n` counts scoreable rows, which
+      // include plays whose grading horizon expired without touching target or stop — so
+      // `c.n > 0` let a bucket with ZERO real outcomes paint a confident "0%" badge on the
+      // play a member is deciding whether to take (live 2026-08-06: A n=12 decided=0,
+      // B n=10 decided=0, both badged 0%). Below the shared low-n floor we show no rate.
+      const decided = c.decided ?? 0;
+      if (c.conviction && decided >= LOW_N_THRESHOLD && !c.low_n && c.win_rate_pct != null) {
         convictionScorecard.set(c.conviction.toUpperCase(), {
           winRate: c.win_rate_pct,
           avg: recordData.avg_return_pct ?? 0,
-          n: c.n,
+          // The n shown beside the rate must be the n that PRODUCED it.
+          n: decided,
           ciLow: c.win_rate_ci_low_pct ?? null,
           ciHigh: c.win_rate_ci_high_pct ?? null,
         });

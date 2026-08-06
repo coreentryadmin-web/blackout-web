@@ -139,14 +139,18 @@ export type NightHawkRecordSegmentWire = {
   unfilled: number;
   pulled: number;
   stop_data_unavailable: number;
-  /** null when nothing is scoreable — never a fake 0%. */
+  /** wins + losses — the win-rate denominator and the Wilson n. NOT `scoreable`, which also
+   *  carries 'open' (horizon expired, neither level touched) and 'ambiguous' rows. Optional
+   *  so a stale SWR cache of the pre-fix payload still type-checks. */
+  decided?: number;
+  /** null when nothing is DECIDED — never a fake 0%. */
   win_rate_pct: number | null;
-  /** Wilson 95% CI lower bound (percent units). null when nothing is scoreable. */
+  /** Wilson 95% CI lower bound (percent units) over `decided`. null when nothing is decided. */
   win_rate_ci_low_pct?: number | null;
-  /** Wilson 95% CI upper bound (percent units). null when nothing is scoreable. */
+  /** Wilson 95% CI upper bound (percent units) over `decided`. null when nothing is decided. */
   win_rate_ci_high_pct?: number | null;
   avg_return_pct: number | null;
-  /** scoreable < LOW_N_THRESHOLD — the UI must badge this segment's ratios. */
+  /** decided < LOW_N_THRESHOLD — the UI must badge this segment's ratios. */
   low_n: boolean;
 };
 
@@ -155,10 +159,18 @@ export type NightHawkRecordResponse = {
   window_days: number;
   total_resolved: number;
   pending_count: number;
-  /** PR-N2: headline ratios cover CURRENT-methodology scoreable rows only. */
-  win_rate_pct: number;
+  /** PR-N2: headline ratios cover CURRENT-methodology scoreable rows only.
+   *  null when the window produced no DECIDED outcome — clients must render "—", never 0%. */
+  win_rate_pct: number | null;
   win_rate_ci_low_pct?: number | null;
   win_rate_ci_high_pct?: number | null;
+  /** wins + losses — the n that produced win_rate_pct. Quote THIS beside the rate, never
+   *  total_resolved/scoreable. Optional: absent on a stale cached payload. */
+  decided_count?: number;
+  /** Scoreable rows whose horizon expired without touching target or stop. */
+  opens_count?: number;
+  /** decided_count < LOW_N_THRESHOLD — the rate must not be rendered as a track record. */
+  low_n?: boolean;
   profitable_rate_pct: number;
   avg_return_pct: number;
   /** PR-N2 additive fields — optional so a stale SWR cache of the old payload still
@@ -168,7 +180,10 @@ export type NightHawkRecordResponse = {
   pulled_count?: number;
   stop_data_unavailable_count?: number;
   segments?: { current: NightHawkRecordSegmentWire; legacy: NightHawkRecordSegmentWire };
-  by_conviction: Array<{ conviction: string; n: number; win_rate_pct: number; win_rate_ci_low_pct?: number | null; win_rate_ci_high_pct?: number | null; low_n?: boolean }>;
+  /** `n` is the scoreable bucket size (the avg-return population); `decided` is the
+   *  win-rate denominator. The route has always been able to emit a null win_rate_pct —
+   *  the old `number` here was a type lie the client only survived by null-checking. */
+  by_conviction: Array<{ conviction: string; n: number; decided?: number; opens?: number; win_rate_pct: number | null; win_rate_ci_low_pct?: number | null; win_rate_ci_high_pct?: number | null; low_n?: boolean }>;
 };
 
 export type AgentFilterValues = Record<string, string | number | boolean>;

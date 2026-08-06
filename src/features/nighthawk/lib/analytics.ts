@@ -107,7 +107,10 @@ export type NighthawkRecordSegment = {
   label: string;
   /** All resolved rows in this segment (including unfilled/pulled/stop-data-unavailable). */
   resolved: number;
-  /** Rows entering the WR denominator (excl. unfilled, pulled, stop-data-unavailable). */
+  /** Rows with a realized return worth averaging (excl. unfilled, pulled,
+   *  stop-data-unavailable). This is the avg_return/profitable_rate population — it is
+   *  deliberately NOT the win-rate denominator: it still contains 'open' and 'ambiguous'
+   *  rows, which are not decided outcomes. See `decided`. */
   scoreable: number;
   wins: number;
   losses: number;
@@ -116,18 +119,40 @@ export type NighthawkRecordSegment = {
   unfilled: number;
   pulled: number;
   stop_data_unavailable: number;
-  /** null (not a fake 0%) when nothing is scoreable. */
+  /** WIN-RATE DENOMINATOR = wins + losses. An 'open' grade means the one-session grading
+   *  horizon expired with NEITHER the published target nor the stop touched — the play was
+   *  never decided, so it is not a loss. Folding opens into the denominator pins the rate at
+   *  ~0 by construction (live 2026-08-06: 0 targets / 2 stops / 20 opens rendered a hard,
+   *  confident "0% win rate" on a sample with two decided outcomes). Keep this separate from
+   *  `scoreable`: exclusion accounting and return averages legitimately span both. */
+  decided: number;
+  /** null (not a fake 0%) when nothing is decided. */
   win_rate: number | null;
   avg_return_pct: number | null;
-  /** scoreable < LOW_N_THRESHOLD — UIs must badge this; the record must not be read. */
+  /** decided < LOW_N_THRESHOLD — UIs must badge this; the record must not be read.
+   *  Keyed off DECIDED outcomes, never off the size of `scoreable`: a 22-row scoreable set
+   *  holding 20 no-touch rows carries exactly 2 outcomes and must badge as thin. */
   low_n: boolean;
 };
 
 /** A grouped cut over CURRENT-methodology scoreable rows only (never blended), with the
  *  shared LOW-N flag so every surface badges thin evidence identically. `win_rate` is
- *  `null` (never a fabricated 0%) for an empty cut — a zero-row sample has no rate, and a
- *  rendered "0%" reads as "every play lost." Matches calibration.ts's null-on-empty rule. */
-export type NighthawkRecordCut = { n: number; win_rate: number | null; avg_return_pct: number; low_n: boolean };
+ *  `null` (never a fabricated 0%) for a cut with no DECIDED outcome — a zero-outcome sample
+ *  has no rate, and a rendered "0%" reads as "every play lost." Matches calibration.ts's
+ *  null-on-empty rule.
+ *
+ *  `n` is the scoreable row count (what the avg_return is computed over); `decided` is the
+ *  win-rate denominator and the low_n key. They are shipped side by side so `n` can never
+ *  again be quoted next to a rate it did not produce (the live Largo string read
+ *  "0% win rate · 22 graded pick(s)" when the 0% was 0-for-2). */
+export type NighthawkRecordCut = {
+  n: number;
+  decided: number;
+  opens: number;
+  win_rate: number | null;
+  avg_return_pct: number;
+  low_n: boolean;
+};
 
 export type NighthawkMetrics = {
   window_days: number;
@@ -136,8 +161,18 @@ export type NighthawkMetrics = {
   total_resolved: number;
   pending_count: number;
   /** PR-N2: headline = CURRENT-methodology scoreable rows ONLY. Legacy-graded rows are
-   *  quarantined in segments.legacy and can never move this number. */
-  win_rate: number;
+   *  quarantined in segments.legacy and can never move this number.
+   *  null (never a fabricated 0) when no play in the window reached a decided outcome —
+   *  see NighthawkRecordSegment.decided for why 'open' rows are not in the denominator. */
+  win_rate: number | null;
+  /** Win-rate denominator: wins + losses over the current-methodology scoreable set.
+   *  Every surface that prints the rate must print THIS as its n, not `scoreable`. */
+  decided_count: number;
+  /** Scoreable rows graded 'open' — the one-session horizon expired untouched. Surfaced so
+   *  the gap between `decided_count` and `scoreable` is explained rather than inferred. */
+  opens_count: number;
+  /** decided_count < LOW_N_THRESHOLD — the headline rate must not be rendered as a record. */
+  low_n: boolean;
   /** Close vs entry mid — positive P&L regardless of target/stop tags. */
   profitable_rate: number;
   loss_rate: number;
@@ -168,7 +203,14 @@ export type NighthawkMetrics = {
   by_conviction: Array<{ conviction: string } & NighthawkRecordCut>;
   by_direction: Array<{ direction: "LONG" | "SHORT" } & NighthawkRecordCut>;
   by_sector: Array<{ sector: string } & NighthawkRecordCut>;
-  by_score_bucket: Array<{ bucket: string; n: number; win_rate: number | null; low_n: boolean }>;
+  by_score_bucket: Array<{
+    bucket: string;
+    n: number;
+    decided: number;
+    opens: number;
+    win_rate: number | null;
+    low_n: boolean;
+  }>;
   by_edition: Array<{ edition_for: string } & NighthawkRecordCut>;
   /** Task #145: synthesis funnel — candidates considered vs. published vs. rejected (by stage),
    *  over the same window_days. Independent of total_resolved/pending_count above: those are
@@ -210,12 +252,29 @@ export function avgLoserReturn(losers: NighthawkPlayOutcomeRow[]): number {
   return Math.min(0, avgReturn(losers));
 }
 
-// null (not a fabricated 0%) for a zero-row sample: an empty cut has no win rate, and a
-// rendered "0%" reads as "every play lost." Consistent with calibration.ts (win_rate_pct:
-// rows.length > 0 ? … : null). Exported for unit tests. Consumers coalesce/badge with low_n.
+// The DECIDED population: plays whose published levels actually resolved the trade —
+// 'target' (win) or 'stop' (loss). Everything else in a scoreable set is undecided:
+// 'open' means the one-session grading horizon expired with neither level touched, and
+// 'ambiguous' means both traded with the order unrecoverable from close-only data.
+// Exported so every surface derives the win-rate denominator from ONE definition.
+export function decidedRows(rows: NighthawkPlayOutcomeRow[]): NighthawkPlayOutcomeRow[] {
+  return rows.filter((r) => r.outcome === "target" || r.outcome === "stop");
+}
+
+// null (not a fabricated 0%) when nothing is decided: a sample with no win and no loss has
+// no win rate, and a rendered "0%" reads as "every play lost."
+//
+// WHY the denominator is `decided` and not `rows.length`: an 'open' play never touched its
+// target OR its stop, so it is not evidence the play failed — it is evidence the play was
+// never resolved inside the grading horizon. Counting it as a non-win makes it arithmetically
+// indistinguishable from a stop-out and pins the rate near 0 forever (live 2026-08-06:
+// 0 targets / 2 stops / 20 opens served a hard "0% win rate", while 68.2% of those exact
+// plays closed green). Consistent with calibration.ts's null-on-empty rule. Consumers
+// coalesce/badge with low_n.
 export function winRate(rows: NighthawkPlayOutcomeRow[]): number | null {
-  if (rows.length === 0) return null;
-  return rows.filter((r) => r.outcome === "target").length / rows.length;
+  const decided = decidedRows(rows);
+  if (decided.length === 0) return null;
+  return decided.filter((r) => r.outcome === "target").length / decided.length;
 }
 
 export function profitableRate(rows: NighthawkPlayOutcomeRow[]): number | null {
@@ -235,13 +294,18 @@ function scoreBucket(score: number | null): string | null {
 }
 
 export function groupWithReturn(rows: NighthawkPlayOutcomeRow[]): NighthawkRecordCut {
+  const decided = decidedRows(rows).length;
   return {
     n: rows.length,
+    decided,
+    opens: rows.filter((r) => r.outcome === "open").length,
     win_rate: winRate(rows),
     avg_return_pct: avgReturn(rows),
     // Shared platform threshold (zerodte/record.ts): a cut below it must be badged by
-    // every consumer — its ratio is noise, not a record.
-    low_n: rows.length < LOW_N_THRESHOLD,
+    // every consumer — its ratio is noise, not a record. Measured against DECIDED
+    // outcomes, not row count: a 12-row conviction bucket holding 12 no-touch plays has
+    // produced zero evidence and must badge as thin (live A-tier: n=12, decided=0).
+    low_n: decided < LOW_N_THRESHOLD,
   };
 }
 
@@ -278,6 +342,10 @@ export function buildRecordSegment(
   const losses = scoreable.filter((r) => r.outcome === "stop").length;
   const opens = scoreable.filter((r) => r.outcome === "open").length;
   const ambiguous = scoreable.filter((r) => r.outcome === "ambiguous").length;
+  // The rate's denominator is the DECIDED subset, not the whole scoreable set: `scoreable`
+  // is the exclusion-accounting/return-averaging population and still carries opens +
+  // ambiguous. Both numbers ship so no consumer has to guess which one a rate came from.
+  const decided = wins + losses;
   return {
     methodology,
     label: gradeMethodologyLabel(methodology),
@@ -290,9 +358,10 @@ export function buildRecordSegment(
     unfilled: unfilled.length,
     pulled: pulled.length,
     stop_data_unavailable: stopDataUnavailable.length,
-    win_rate: scoreable.length > 0 ? wins / scoreable.length : null,
+    decided,
+    win_rate: decided > 0 ? wins / decided : null,
     avg_return_pct: scoreable.length > 0 ? avgReturn(scoreable) : null,
-    low_n: scoreable.length < LOW_N_THRESHOLD,
+    low_n: decided < LOW_N_THRESHOLD,
   };
 }
 
@@ -301,7 +370,12 @@ function emptyMetrics(windowDays: number): NighthawkMetrics {
     window_days: windowDays,
     total_resolved: 0,
     pending_count: 0,
-    win_rate: 0,
+    // null, never 0: an empty window has no win rate. A rendered "0%" is a claim that every
+    // play lost, which is a false statement about trading performance.
+    win_rate: null,
+    decided_count: 0,
+    opens_count: 0,
+    low_n: true,
     profitable_rate: 0,
     loss_rate: 0,
     open_rate: 0,
@@ -313,6 +387,8 @@ function emptyMetrics(windowDays: number): NighthawkMetrics {
     by_conviction: CONVICTION_ORDER.map((conviction) => ({
       conviction,
       n: 0,
+      decided: 0,
+      opens: 0,
       win_rate: null,
       avg_return_pct: 0,
       low_n: true,
@@ -320,12 +396,21 @@ function emptyMetrics(windowDays: number): NighthawkMetrics {
     by_direction: (["LONG", "SHORT"] as const).map((direction) => ({
       direction,
       n: 0,
+      decided: 0,
+      opens: 0,
       win_rate: null,
       avg_return_pct: 0,
       low_n: true,
     })),
     by_sector: [],
-    by_score_bucket: SCORE_BUCKETS.map((bucket) => ({ bucket, n: 0, win_rate: null, low_n: true })),
+    by_score_bucket: SCORE_BUCKETS.map((bucket) => ({
+      bucket,
+      n: 0,
+      decided: 0,
+      opens: 0,
+      win_rate: null,
+      low_n: true,
+    })),
     by_edition: [],
     stop_data_unavailable_count: 0,
     unfilled_count: 0,
@@ -413,7 +498,16 @@ export async function getNighthawkMetrics(windowDays = 30): Promise<NighthawkMet
 
   const by_score_bucket = SCORE_BUCKETS.map((bucket) => {
     const group = scoreable.filter((r) => scoreBucket(r.score) === bucket);
-    return { bucket, n: group.length, win_rate: winRate(group), low_n: group.length < LOW_N_THRESHOLD };
+    const decided = decidedRows(group).length;
+    return {
+      bucket,
+      n: group.length,
+      decided,
+      opens: group.filter((r) => r.outcome === "open").length,
+      win_rate: winRate(group),
+      // Same rule as groupWithReturn: thin evidence is measured in DECIDED outcomes.
+      low_n: decided < LOW_N_THRESHOLD,
+    };
   });
 
   const editionMap = new Map<string, NighthawkPlayOutcomeRow[]>();
@@ -427,6 +521,10 @@ export async function getNighthawkMetrics(windowDays = 30): Promise<NighthawkMet
     .sort((a, b) => a.edition_for.localeCompare(b.edition_for));
 
   const scoreableTotal = scoreable.length;
+  // Kept identical to buildRecordSegment's `decided` — this headline block duplicates the
+  // segment math (which is exactly how the open-in-denominator bug survived a segment-level
+  // review), so both are pinned by the same test fixture.
+  const decidedTotal = winners.length + losers.length;
   return {
     window_days: windowDays,
     total_resolved: total,
@@ -441,10 +539,22 @@ export async function getNighthawkMetrics(windowDays = 30): Promise<NighthawkMet
     // PR-N10: all resolved rows in — summarizeDebriefPins applies the same current-
     // methodology filter internally AND reports the legacy quarantine count honestly.
     debrief: summarizeDebriefPins(rows),
-    win_rate: scoreableTotal > 0 ? winners.length / scoreableTotal : 0,
-    // Headline stays a number: this line is reached only when rows.length > 0, and the
-    // headline (unlike a cut) has no low_n badge to carry a null. Empty-scoreable → 0,
-    // mirroring the sibling headline rates (win_rate/loss_rate) computed inline below.
+    // WIN RATE = wins / DECIDED (wins + losses), NOT wins / scoreable. `scoreable` still
+    // carries every 'open' row — a play whose one-session horizon expired without touching
+    // target or stop. Those plays were never decided, so counting them as non-wins made a
+    // no-touch row arithmetically identical to a stop-out and pinned the headline at 0%
+    // until literally every play terminated (live 2026-08-06: 0/22 with 20 opens → a hard
+    // "0% win rate" beside a 68.2% profitable rate on the SAME 22 plays). Null — never a
+    // fabricated 0 — when the window produced no decided outcome at all; the headline now
+    // carries low_n so surfaces can render "—" instead of inventing a rate.
+    win_rate: decidedTotal > 0 ? winners.length / decidedTotal : null,
+    decided_count: decidedTotal,
+    opens_count: opens.length,
+    low_n: decidedTotal < LOW_N_THRESHOLD,
+    // profitable_rate / loss_rate / open_rate / ambiguous_rate stay on `scoreable`: they are
+    // composition shares of the graded population (what fraction closed green, stopped, never
+    // triggered), not the target-hit rate. Re-basing them here would be denominator-shopping
+    // in the opposite direction. Their LABELS carry the distinction on the render side.
     profitable_rate: profitableRate(scoreable) ?? 0,
     loss_rate: scoreableTotal > 0 ? losers.length / scoreableTotal : 0,
     open_rate: scoreableTotal > 0 ? opens.length / scoreableTotal : 0,

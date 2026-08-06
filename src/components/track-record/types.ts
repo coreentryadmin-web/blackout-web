@@ -16,6 +16,10 @@ export interface NhStats {
   profitFactor: number | null;
   /** total - wins - losses: 'open'/'ambiguous' outcomes. Undefined on older payloads. */
   unresolved?: number;
+  /** wins + losses — the denominator winRatePct was computed over, and the ripeness gate
+   *  the card must use. `total` includes `unresolved` and is NOT the sample behind the rate.
+   *  Undefined on older payloads. */
+  decided?: number;
 }
 
 export interface TrackRecordPayload {

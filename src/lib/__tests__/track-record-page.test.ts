@@ -199,6 +199,46 @@ describe("track-record-page", () => {
       stats.wins + stats.losses + (stats.unresolved ?? 0),
       "total must always reconcile with wins + losses + unresolved"
     );
+    // …and the RATE is computed over the decided pair only, not over `total`.
+    assert.equal(stats.decided, 2);
+    assert.equal(stats.winRatePct, 50, "1 win of 2 decided — the 2 unresolved rows are not losses");
+  });
+
+  it("nhFromRows: the live 2026-08-06 shape — 0W/2L/20 open reads as an unreadable 0-of-2, not a 0-of-22", () => {
+    // Reproduces the exact production cohort behind the member question "why does swings
+    // show 0%?": current-methodology rows = 0 target + 2 stop + 20 open (+ 16 unfilled and
+    // 12 pulled, both already excluded by isNighthawkOutcomeScoreable). Dividing wins by
+    // `total` counted every no-touch play as a non-win and pinned the rate at a hard 0%.
+    const rows = [
+      ...Array.from({ length: 2 }, (_, i) => nhRow({ id: i + 1, outcome: "stop" })),
+      ...Array.from({ length: 20 }, (_, i) =>
+        nhRow({ id: 100 + i, outcome: "open", session_high: 100, session_low: 90 })
+      ),
+      ...Array.from({ length: 16 }, (_, i) => nhRow({ id: 200 + i, outcome: "unfilled" })),
+      ...Array.from({ length: 12 }, (_, i) => nhRow({ id: 300 + i, outcome: "open", pulled: true })),
+    ];
+
+    const stats = nhFromRows(rows);
+    assert.equal(stats.total, 22, "the scoreable population is unchanged — exclusions still hold");
+    assert.equal(stats.wins, 0);
+    assert.equal(stats.losses, 2);
+    assert.equal(stats.unresolved, 20);
+    assert.equal(stats.decided, 2, "the win-rate denominator is wins + losses");
+    assert.equal(stats.winRatePct, 0, "0 of 2 DECIDED — a real, readable 0/2, not 0/22");
+  });
+
+  it("nhFromRows: a cohort with no decided outcome has NO win rate (null), never a fabricated 0%", () => {
+    const rows = Array.from({ length: 10 }, (_, i) =>
+      nhRow({ id: i + 1, outcome: "open", session_high: 100, session_low: 90 })
+    );
+    const stats = nhFromRows(rows);
+    assert.equal(stats.total, 10);
+    assert.equal(stats.decided, 0);
+    assert.equal(
+      stats.winRatePct,
+      null,
+      "ten plays that never touched target or stop are ten non-outcomes, not ten losses"
+    );
   });
 
   it("nhFromRows quarantines legacy-methodology grades out of the public record (PR-N2 anti-blend)", () => {
