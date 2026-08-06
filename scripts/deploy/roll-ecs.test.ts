@@ -3,6 +3,7 @@
 // Run: npx tsx --test scripts/deploy/roll-ecs.test.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import {
   READ_ONLY_TASKDEF_FIELDS,
@@ -228,6 +229,79 @@ test("dropReadOnlyTaskDefFields: removes exactly the register-rejected fields, k
 });
 
 // ---------------------------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------------------------
+// The GitHub Actions workflow is a FOURTH declaration of the deployment window, independent of
+// terraform's three (tfvars + root variables.tf + module variables.tf). Nothing reconciles them:
+// the workflow stamps its literal onto the live service on every deploy, so whatever it says wins
+// regardless of what terraform declares. That is not hypothetical — the workflow carried
+// `minimumHealthyPercent=50,maximumPercent=112` from d8b8ea44 until 84ca8e96 (2026-08-06), and
+// CloudTrail shows it re-writing 50/112 onto prod web on every deploy that whole time while
+// terraform said 100/120. The guard below is the only thing that can catch that drift from inside
+// this repo, since terraform lives in blackout-infra and a test cannot read across repos.
+//
+// It deliberately reuses assertDeploymentConfigSane — the same evaluator that judges the LIVE
+// service — so the workflow's declared values are held to exactly the standard a live config is.
+// ---------------------------------------------------------------------------------------------
+
+const WORKFLOW = ".github/workflows/ecr-push-production.yml";
+
+/** Every `--deployment-configuration "..."` literal in the deploy workflow, parsed. */
+function workflowDeploymentConfigs(): { min: number; max: number; raw: string }[] {
+  const src = readFileSync(WORKFLOW, "utf8");
+  const out: { min: number; max: number; raw: string }[] = [];
+  for (const m of src.matchAll(/--deployment-configuration\s+"([^"]+)"/g)) {
+    const raw = m[1];
+    const min = Number(/minimumHealthyPercent=(\d+)/.exec(raw)?.[1]);
+    const max = Number(/maximumPercent=(\d+)/.exec(raw)?.[1]);
+    out.push({ min, max, raw });
+  }
+  return out;
+}
+
+test("deploy workflow declares a deployment window at all", () => {
+  const cfgs = workflowDeploymentConfigs();
+  assert.ok(cfgs.length >= 1, `no --deployment-configuration found in ${WORKFLOW}`);
+  for (const c of cfgs) {
+    assert.ok(Number.isFinite(c.min) && Number.isFinite(c.max), `unparseable window: ${c.raw}`);
+    assert.match(c.raw, /deploymentCircuitBreaker=\{enable=true,rollback=true\}/, `circuit breaker not armed: ${c.raw}`);
+  }
+});
+
+test("deploy workflow's WEB window survives assertDeploymentConfigSane across the autoscaling range", () => {
+  // blackout-production-web autoscales desired 5..12. The workflow's literal is applied to the
+  // live service, so it must be sane at EVERY desired count the autoscaler can reach — not just
+  // the count that happens to be live when someone edits it. 100/112 passes at no count in this
+  // range (floor(d * 1.12) == d for 5..8), which is precisely the deadlock that shipped before.
+  const web = workflowDeploymentConfigs().find((c) => c.min >= 100 || c.min === 50);
+  assert.ok(web, "no web-shaped deployment window found");
+  for (let desired = 5; desired <= 12; desired++) {
+    const r = assertDeploymentConfigSane({
+      serviceName: "blackout-production-web",
+      desiredCount: desired,
+      deploymentConfiguration: {
+        deploymentCircuitBreaker: CB_OK,
+        minimumHealthyPercent: web!.min,
+        maximumPercent: web!.max,
+      },
+    });
+    assert.equal(r.ok, true, `workflow window ${web!.min}/${web!.max} FAILS at desiredCount=${desired}: ${r.failures.join(" ")}`);
+  }
+});
+
+test("deploy workflow's WEB window is a zero-capacity-loss roll", () => {
+  // The regression that actually shipped was not a deadlock — 50/112 is "sane" by the headroom
+  // test — it was a 40% capacity drain on every deploy, silent for months. Pin min>=100 so a
+  // future edit back toward 50 fails here instead of on the live service.
+  const web = workflowDeploymentConfigs().find((c) => c.min >= 100 || c.min === 50);
+  assert.ok(web, "no web-shaped deployment window found");
+  assert.ok(
+    web!.min >= 100,
+    `workflow sets minimumHealthyPercent=${web!.min}: the roll drains capacity on every deploy. ` +
+      `100 keeps full capacity (see the 2026-08-06 50/112 drift entry in docs/audit/FINDINGS.md).`,
+  );
+});
+
 // assertDeploymentConfigSane — the read-print-assert-never-write guard
 // ---------------------------------------------------------------------------------------------
 
