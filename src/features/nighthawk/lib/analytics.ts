@@ -144,6 +144,17 @@ export type NighthawkMetrics = {
   open_rate: number;
   ambiguous_rate: number;
   avg_return_pct: number;
+  /**
+   * PRIMARY return figure: measured from the FILL EDGE (the price a member could actually
+   * transact at) rather than the band midpoint. `avg_return_pct` above is the same series
+   * on the MID basis, retained in parallel for ONE window so the historical record and
+   * every prior audit stay comparable — it is not a second opinion, it is the old basis.
+   * Measured gap over the published Legacy window: ~+1.12pp per play in the mid figure's
+   * favour. See realizedReturnPctEdge.
+   */
+  avg_return_pct_edge: number;
+  /** profitable_rate on the fill-edge basis. Same parallel-series rule as above. */
+  profitable_rate_edge: number;
   avg_winner_return_pct: number;
   avg_loser_return_pct: number;
   /**
@@ -195,10 +206,61 @@ export function realizedReturnPct(row: NighthawkPlayOutcomeRow): number | null {
   return raw * 100;
 }
 
-function avgReturn(rows: NighthawkPlayOutcomeRow[]): number {
-  const values = rows.map(realizedReturnPct).filter((v): v is number => v != null);
+/**
+ * The entry price a member could actually have transacted at: the band's FILL EDGE —
+ * LONG = band top, SHORT = band bottom, the WORST price in the band. Same convention as
+ * `fillEdgeOf` (debrief.ts:201-203) and the publish gate's `fill_edge` (publish-gates.ts).
+ *
+ * Falls back exactly like `entryMid`: a corrupt band (both bounds present but
+ * `entryRangeMid` rejects them) yields null with no guess; a single-bound band is its own
+ * edge; no band at all falls back to the session open.
+ */
+export function entryFillEdge(row: NighthawkPlayOutcomeRow): number | null {
+  const low = row.entry_range_low;
+  const high = row.entry_range_high;
+  if (low != null && high != null) {
+    if (entryRangeMid(low, high) == null) return null; // corrupt range, no fallback
+    return row.direction === "SHORT" ? low : high;
+  }
+  const single = low ?? high;
+  if (single != null) return single;
+  return row.next_day_open;
+}
+
+/**
+ * Realized return measured from the FILL EDGE rather than the band midpoint.
+ *
+ * WHY THIS EXISTS (2026-08-06). `realizedReturnPct` above measures from the band MID, but
+ * a member fills at the EDGE — and the gap is the band half-width, which is ATR-scaled
+ * (0.4 × ATR, play-levels.ts `entryHalfWidth`). Measured over the published Legacy window,
+ * that is a systematic **+1.12pp per play** in the reported figure, which is most of the
+ * "+0.61% avg return, 68.2% profitable" consolation number sitting beside a 0% win rate.
+ *
+ * The mid series is deliberately KEPT alongside this one rather than replaced: it is the
+ * series every historical audit and the live record were computed on, and silently
+ * rewriting it would destroy comparability across the exact window in which the geometry
+ * question is being settled. Edge is reported as primary; mid stays for one window.
+ */
+export function realizedReturnPctEdge(row: NighthawkPlayOutcomeRow): number | null {
+  const entry = entryFillEdge(row);
+  const close = row.next_day_close;
+  if (entry == null || close == null || entry === 0) return null;
+  const raw =
+    row.direction === "LONG" ? (close - entry) / entry : (entry - close) / entry;
+  return raw * 100;
+}
+
+function avgOf(values: number[]): number {
   if (values.length === 0) return 0;
   return values.reduce((sum, v) => sum + v, 0) / values.length;
+}
+
+function avgReturn(rows: NighthawkPlayOutcomeRow[]): number {
+  return avgOf(rows.map(realizedReturnPct).filter((v): v is number => v != null));
+}
+
+function avgReturnEdge(rows: NighthawkPlayOutcomeRow[]): number {
+  return avgOf(rows.map(realizedReturnPctEdge).filter((v): v is number => v != null));
 }
 
 // Stop-hit plays should always produce a non-positive realized return. A positive
@@ -223,6 +285,14 @@ export function profitableRate(rows: NighthawkPlayOutcomeRow[]): number | null {
   const withReturn = rows.filter((r) => realizedReturnPct(r) != null);
   if (withReturn.length === 0) return null; // no priced rows → no rate, not a 0%
   return withReturn.filter((r) => (realizedReturnPct(r) ?? 0) > 0).length / withReturn.length;
+}
+
+/** profitableRate on the FILL-EDGE basis — see realizedReturnPctEdge. */
+export function profitableRateEdge(rows: NighthawkPlayOutcomeRow[]): number | null {
+  if (rows.length === 0) return null;
+  const withReturn = rows.filter((r) => realizedReturnPctEdge(r) != null);
+  if (withReturn.length === 0) return null;
+  return withReturn.filter((r) => (realizedReturnPctEdge(r) ?? 0) > 0).length / withReturn.length;
 }
 
 function scoreBucket(score: number | null): string | null {
@@ -307,6 +377,8 @@ function emptyMetrics(windowDays: number): NighthawkMetrics {
     open_rate: 0,
     ambiguous_rate: 0,
     avg_return_pct: 0,
+    avg_return_pct_edge: 0,
+    profitable_rate_edge: 0,
     avg_winner_return_pct: 0,
     avg_loser_return_pct: 0,
     // Empty cuts carry win_rate: null (not 0%) — same honesty rule as groupWithReturn.
@@ -450,6 +522,9 @@ export async function getNighthawkMetrics(windowDays = 30): Promise<NighthawkMet
     open_rate: scoreableTotal > 0 ? opens.length / scoreableTotal : 0,
     ambiguous_rate: scoreableTotal > 0 ? ambiguous.length / scoreableTotal : 0,
     avg_return_pct: avgReturn(scoreable),
+    // The honest basis, over the SAME scoreable denominator — only the entry price differs.
+    avg_return_pct_edge: avgReturnEdge(scoreable),
+    profitable_rate_edge: profitableRateEdge(scoreable) ?? 0,
     avg_winner_return_pct: avgReturn(winners),
     avg_loser_return_pct: avgLoserReturn(losers),
     by_conviction,
