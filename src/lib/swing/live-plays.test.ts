@@ -1,6 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { livePlayFromSwingPosition, livePlaysFromOpenPositions, structuralBreakFromSpot } from "./live-plays.ts";
+import {
+  livePlayFromSwingPosition,
+  livePlaysFromOpenPositions,
+  liveQuoteFromEvent,
+  structuralBreakFromSpot,
+} from "./live-plays.ts";
 import type { SwingPositionRow } from "../db.ts";
 
 function row(over: Partial<SwingPositionRow> = {}): SwingPositionRow {
@@ -133,4 +138,76 @@ test("SEV-1: a real last_mark still lands on contract.mid unchanged", () => {
   assert.ok(p);
   assert.equal(p!.contract!.mid, 19.5);
   assert.equal(p!.livePnlPct, 35.4); // (19.5/14.4 - 1) * 100, rounded to 0.1
+});
+
+
+// ─── SEV-2 (FINDINGS 2026-08-06): a live position must carry a live QUOTE + greeks, not just a mark ──
+
+test("SEV-2: contract hydrates bid/ask/OI/greeks from the manage snapshot's event_json.quote", () => {
+  // The 15-min cron already fetched all of this (fetchOptionsUnifiedSnapshot) and used to keep only
+  // `.mark`; every committed swing therefore served bid null / ask null / OI 0 / no greeks, while
+  // pre-entry discovery plays (contract straight off a chain fetch) carried real quotes. Inverse split.
+  const p = livePlayFromSwingPosition(row({ last_mark: 5.5 }), 178, {
+    rung: "hold",
+    action: "HOLD",
+    quote: {
+      bid: 5.4,
+      ask: 5.6,
+      openInterest: 1234,
+      delta: 0.58,
+      gamma: 0.021,
+      theta: -0.13,
+      vega: 0.19,
+      iv: 0.42,
+      asOf: "2026-08-06T18:30:00.000Z",
+    },
+  });
+  assert.ok(p);
+  const c = p!.contract!;
+  assert.equal(c.bid, 5.4);
+  assert.equal(c.ask, 5.6);
+  assert.equal(c.openInterest, 1234);
+  assert.equal(c.gamma, 0.021);
+  assert.equal(c.theta, -0.13);
+  assert.equal(c.vega, 0.19);
+  assert.equal(c.iv, 0.42);
+  // LIVE delta wins over the commit-pinned row.contract_delta (0.6 in the fixture).
+  assert.equal(c.delta, 0.58);
+  // The mark stays the ledger's latched value — the quote never re-prices the position.
+  assert.equal(c.mid, 5.5);
+});
+
+test("SEV-2: no quote on the snapshot → honest nulls, and the commit-pinned delta is the fallback", () => {
+  const p = livePlayFromSwingPosition(row({ last_mark: 5.5 }), 178, { rung: "hold", action: "HOLD" });
+  assert.ok(p);
+  const c = p!.contract!;
+  assert.equal(c.bid, null);
+  assert.equal(c.ask, null);
+  assert.equal(c.gamma, null, "missing must look missing — never a fabricated greek");
+  assert.equal(c.theta, null);
+  assert.equal(c.vega, null);
+  assert.equal(c.iv, null);
+  assert.equal(c.delta, 0.6, "no live delta → the commit-pinned delta, which is genuinely known");
+  assert.equal(c.openInterest, 0);
+});
+
+test("liveQuoteFromEvent: malformed / empty / absent quote blobs all degrade to null", () => {
+  assert.equal(liveQuoteFromEvent(null), null);
+  assert.equal(liveQuoteFromEvent({}), null);
+  assert.equal(liveQuoteFromEvent({ quote: "nope" }), null);
+  // An object present but carrying nothing usable is the same as no quote (never "quoted with nulls").
+  assert.equal(liveQuoteFromEvent({ quote: { bid: null, ask: null, iv: "high" } }), null);
+  // Partial quotes survive: non-finite fields drop to null, the real ones come through.
+  const q = liveQuoteFromEvent({ quote: { bid: 1.2, ask: Number.NaN, gamma: 0.01 } });
+  assert.deepEqual(q, {
+    bid: 1.2,
+    ask: null,
+    openInterest: null,
+    delta: null,
+    gamma: 0.01,
+    theta: null,
+    vega: null,
+    iv: null,
+    asOf: null,
+  });
 });

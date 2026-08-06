@@ -20,6 +20,7 @@ import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { runSwingActiveRefresh } from "@/lib/swing/active-refresh";
 import type { ManageSyncReads } from "@/lib/swing/manage-sync";
+import type { SwingLiveQuote } from "@/lib/swing/live-plays";
 import { dteOf } from "@/lib/zerodte/scan-trigger";
 import {
   fetchOpenSwingPositions,
@@ -78,15 +79,41 @@ async function loadUnderlyingSpot(ticker: string): Promise<number | null> {
  * null when OCC is absent — fail-closed; premium rungs skip honestly (FINDINGS 2026-07-30 P0 #10).
  * rather than acting on a fabricated mark. `.mark` is the doc-priority mark (mid → last → day close).
  */
-async function loadOptionMark(row: SwingPositionRow): Promise<number | null> {
+/**
+ * FINDINGS 2026-08-06 (SEV-2): this used to return ONLY `.mark` and discard the rest of the snapshot —
+ * the very same response already carries bid/ask/open_interest and the full greek set. The member board
+ * is a cache-reader (no per-request provider fan-out), so that discarded data was the ONLY way a live
+ * position could ever show a quote, and every committed swing served bid/ask null, OI 0, no greeks.
+ * We now return the whole quote alongside the mark; manage-sync stamps it on the append-only snapshot
+ * and live-plays hydrates the contract from it. `mark` semantics are unchanged (same guard, same value).
+ */
+async function loadOptionQuote(
+  row: SwingPositionRow,
+): Promise<{ mark: number | null; quote: SwingLiveQuote | null }> {
+  const none = { mark: null, quote: null };
   const occ = occSymbolFromSwingRow(row);
-  if (!occ) return null;
+  if (!occ) return none;
   try {
     const snaps = await fetchOptionsUnifiedSnapshot([occ]);
-    const mark = snaps.get(occ)?.mark;
-    return typeof mark === "number" && Number.isFinite(mark) && mark > 0 ? mark : null;
+    const snap = snaps.get(occ);
+    if (!snap) return none;
+    const mark = typeof snap.mark === "number" && Number.isFinite(snap.mark) && snap.mark > 0 ? snap.mark : null;
+    // Every field passes through as-is — the provider mapper already normalised each to a finite
+    // number or null, so nothing here can invent a greek the provider did not send.
+    const quote: SwingLiveQuote = {
+      bid: snap.bid,
+      ask: snap.ask,
+      openInterest: snap.openInterest,
+      delta: snap.delta,
+      gamma: snap.gamma,
+      theta: snap.theta,
+      vega: snap.vega,
+      iv: snap.iv,
+      asOf: new Date().toISOString(),
+    };
+    return { mark, quote };
   } catch {
-    return null; // best-effort: a marks miss must never sink the refresh (underlying path still records)
+    return none; // best-effort: a marks miss must never sink the refresh (underlying path still records)
   }
 }
 
@@ -155,13 +182,14 @@ async function runSwingActiveRefreshCron(started: number): Promise<void> {
       // via null-honesty, but the underlying path + snapshot still record). The live mark ALSO lets the roll
       // executor freeze the parent grade at roll time (roll-plan.ts gradeParentFromMark).
       loadReads: async (row): Promise<ManageSyncReads | null> => {
-        const [spot, mark, ivRank] = await Promise.all([
+        const [spot, optionQuote, ivRank] = await Promise.all([
           loadUnderlyingSpot(row.ticker),
-          loadOptionMark(row),
+          loadOptionQuote(row),
           // EOD-cadence, Redis-cached — never a per-tick UW blast. Honest null on miss.
           fetchUwIvRank(row.ticker).catch(() => null),
         ]);
         if (spot == null) return null; // no usable underlying read → skip (fail-soft, no snapshot)
+        const mark = optionQuote.mark;
         const dte = row.contract_expiry ? dteOf(row.contract_expiry, nowMs) : null;
         const pinnedIv =
           row.feature_vector && typeof row.feature_vector.iv_rank === "number"
@@ -179,6 +207,9 @@ async function runSwingActiveRefreshCron(started: number): Promise<void> {
           // Live contract mark → drives the premium ratchet (peak/trough) + the profit-ladder / −60% backstop
           // premium rungs, and lands on the snapshot's option_mark + feature-vector option_return_pct.
           mark,
+          // The rest of the same snapshot (bid/ask/OI + greeks) — carried to the member board on the
+          // append-only manage snapshot. No rung reads it; it is evidence carriage only.
+          quote: optionQuote.quote,
           dte,
           // PRICE candidates for the ledger's underlying_mfe/underlying_mae high/low-water columns (ratcheted
           // via GREATEST/LEAST). The snapshot's running_mfe/running_mae is the SIGNED excursion % that

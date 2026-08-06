@@ -31,6 +31,7 @@
 // dossier the manager reads from those, rather than re-deriving a classification — honest, not fabricated.
 
 import type { SwingPositionRow, SwingSnapshotInsert } from "../db";
+import type { SwingLiveQuote } from "./live-plays";
 import type { PlayDirection } from "../horizon-fanout";
 import type { SwingArchetype, SwingSubLane } from "./taxonomy";
 import { SWING_ARCHETYPES } from "./taxonomy";
@@ -87,6 +88,12 @@ export function latchSwingLiveStatus(current: string, verdict: SwingManageVerdic
 export interface ManageSyncReads {
   /** Live option mark (drives the premium ratchet + scale-out mechanics). */
   mark?: number | null;
+  /** The FULL live quote (bid/ask/OI + greeks) for the held contract, from the same provider call the
+   *  caller made for `mark`. Stamped verbatim onto the snapshot's event_json so the member board — a
+   *  CACHE-READER that must not fan out to a provider per request — can hydrate a live position's
+   *  contract (live-plays.liveQuoteFromEvent). Absent ⇒ no `quote` key on the snapshot and the board
+   *  serves the honest null-quote contract. Read by NO management rung: evidence carriage only. */
+  quote?: SwingLiveQuote | null;
   peakPremium?: number | null;
   scaledAlready?: boolean;
   /** Live underlying price + its structural stop (the thesis-primary reads). */
@@ -363,6 +370,10 @@ export function planManageSync(
       reason: verdict.reason,
       dte_migration: verdict.dteMigration,
       roll_intent: verdict.rollIntent,
+      // Live quote/greeks carriage for the member board (see ManageSyncReads.quote). Spread ONLY when
+      // present so a snapshot taken without a quote has no `quote` key at all — an absent key and a
+      // null-valued key must not be made to look the same, and an empty {} would read as "quoted".
+      ...(reads.quote ? { quote: reads.quote } : {}),
     },
   };
 

@@ -34,7 +34,72 @@ function livePnlPct(entry: number | null, mark: number | null): number | null {
   return Math.round(((mark / entry - 1) * 100) * 10) / 10;
 }
 
-function contractFromRow(row: SwingPositionRow): ChainContract | null {
+/**
+ * The live quote + greeks the active-refresh cron already fetched for a held contract, carried on the
+ * latest manage snapshot's `event_json.quote` (stamped by manage-sync.planManageSync).
+ *
+ * WHY this exists (FINDINGS 2026-08-06, SEV-2): a committed swing row's contract was reconstructed from
+ * LEDGER COLUMNS ONLY (strike/expiry/type/delta) — the ledger has no quote columns — so every live
+ * position served `bid: null, ask: null, openInterest: 0` and no greek beyond the delta PINNED AT COMMIT,
+ * while pre-entry discovery plays (whose contract comes straight off a chain fetch) carried a real
+ * bid/ask/OI. That inverse split is what the desk saw. The member horizons route is a CACHE-READER (it
+ * must not fan out to a provider per request), so the quote has to be CARRIED to it: the 15-min cron
+ * already calls fetchOptionsUnifiedSnapshot for the mark and threw the rest of that snapshot away. It now
+ * stamps the whole quote onto the append-only manage snapshot the route ALREADY reads
+ * (fetchLatestSwingSnapshotEvents), so this mapper hydrates it with zero new IO and zero new schema.
+ */
+export interface SwingLiveQuote {
+  bid: number | null;
+  ask: number | null;
+  openInterest: number | null;
+  delta: number | null;
+  gamma: number | null;
+  theta: number | null;
+  vega: number | null;
+  iv: number | null;
+  /** ISO instant the quote was sampled — staleness evidence for the desk (never used to fabricate). */
+  asOf?: string | null;
+}
+
+const finOrNull = (v: unknown): number | null =>
+  typeof v === "number" && Number.isFinite(v) ? v : null;
+
+/**
+ * Parse `event_json.quote` off a manage snapshot. Absent/malformed ⇒ null, so a snapshot written before
+ * the cron stamped quotes degrades to the honest "no quote" shape instead of throwing or half-filling.
+ */
+export function liveQuoteFromEvent(
+  manageEvent: Record<string, unknown> | null | undefined,
+): SwingLiveQuote | null {
+  const raw = manageEvent && typeof manageEvent === "object" ? manageEvent.quote : null;
+  if (!raw || typeof raw !== "object") return null;
+  const q = raw as Record<string, unknown>;
+  const quote: SwingLiveQuote = {
+    bid: finOrNull(q.bid),
+    ask: finOrNull(q.ask),
+    openInterest: finOrNull(q.openInterest),
+    delta: finOrNull(q.delta),
+    gamma: finOrNull(q.gamma),
+    theta: finOrNull(q.theta),
+    vega: finOrNull(q.vega),
+    iv: finOrNull(q.iv),
+    asOf: typeof q.asOf === "string" ? q.asOf : null,
+  };
+  // A quote blob with nothing usable in it is the same as no quote — don't dress up an empty object.
+  const anyValue = [
+    quote.bid,
+    quote.ask,
+    quote.openInterest,
+    quote.delta,
+    quote.gamma,
+    quote.theta,
+    quote.vega,
+    quote.iv,
+  ].some((v) => v != null);
+  return anyValue ? quote : null;
+}
+
+function contractFromRow(row: SwingPositionRow, quote?: SwingLiveQuote | null): ChainContract | null {
   const expiry = row.contract_expiry;
   const strike = row.contract_strike;
   if (!expiry || strike == null || !Number.isFinite(strike)) return null;
@@ -47,10 +112,17 @@ function contractFromRow(row: SwingPositionRow): ChainContract | null {
     expiry,
     dte,
     strike,
-    delta: row.contract_delta,
-    openInterest: 0,
-    bid: null,
-    ask: null,
+    // LIVE delta wins over row.contract_delta: the latter is PINNED AT COMMIT (the delta the ranker
+    // selected on), so serving it as the position's delta today ages silently. Fall back to the pinned
+    // value only when there is no live quote at all — a commit-pinned delta beats no delta.
+    delta: quote?.delta ?? row.contract_delta,
+    // ChainContract types openInterest as a plain `number` (the 0DTE fan-out does arithmetic on it), so
+    // it cannot carry "unknown"; 0 is the floor that fan-out already reads as "no OI", and no swing
+    // surface renders OI, so an absent quote never displays a confident zero to a member. When the
+    // quote HAS open interest we serve the real number instead of the old hardcoded 0.
+    openInterest: quote?.openInterest ?? 0,
+    bid: quote?.bid ?? null,
+    ask: quote?.ask ?? null,
     // FINDINGS 2026-08-06 (SEV-1): this was `mark ?? entry`, which LAUNDERED "no live mark yet" into
     // "the mark is exactly the entry". Downstream that is indistinguishable from a real flat quote:
     // adapters.ts terminalPlayFromHorizon puts it on TerminalPlay.mark, markDollarPnl computes
@@ -59,6 +131,12 @@ function contractFromRow(row: SwingPositionRow): ChainContract | null {
     // render "—" (unknown), which is what livePnlPct below has always (correctly) reported for a null mark.
     // NEVER substitute entry for an absent mark — a fabricated mark is worse than a missing one.
     mid: mark,
+    // Greeks ride the live quote only. Explicit nulls (not omitted keys) so an absent quote reads as
+    // KNOWN-MISSING at every consumer — the deck's greek cells already render "—" for null.
+    gamma: quote?.gamma ?? null,
+    theta: quote?.theta ?? null,
+    vega: quote?.vega ?? null,
+    iv: quote?.iv ?? null,
   };
 }
 
@@ -125,7 +203,8 @@ export function livePlayFromSwingPosition(
   manageEvent?: Record<string, unknown> | null,
 ): HorizonPlay | null {
   if (!LIVE.has(row.status)) return null;
-  const contract = contractFromRow(row);
+  // The same manage snapshot that carries the manage observables also carries the tick's option quote.
+  const contract = contractFromRow(row, liveQuoteFromEvent(manageEvent));
   if (!contract) return null;
   const direction: PlayDirection = row.direction === "short" ? "SHORT" : "LONG";
   const liveStatus = liveStatusOf(row.status)!;
