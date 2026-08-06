@@ -15,6 +15,11 @@ export type PlayStatus = {
   direction: string;
   status: PlayConfirmStatus;
   reason: string;
+  /** True once this CONFIRMED ticker was actually promoted into the Swing serving snapshot —
+   *  stamped after promoteLegacyConfirmedToSwing runs (see nighthawk-morning-confirm/route.ts
+   *  Phase 3.8). Promotion can fail per-ticker (e.g. "no chain rows") even when status is
+   *  CONFIRMED, so this is a distinct, narrower signal than `status === "CONFIRMED"`. */
+  swingPromoted?: boolean;
 };
 
 // Overnight gap threshold: > this many SPX points (absolute) = significant gap.

@@ -287,19 +287,21 @@ export async function promoteLegacyConfirmedToSwing(opts: {
   confirmed: PlayStatus[];
   plays: PlaybookPlay[];
   stockPremarketByTicker: Record<string, number | null>;
-}): Promise<{ promoted: number; skipped: number; errors: string[] }> {
+}): Promise<{ promoted: number; skipped: number; errors: string[]; promotedTickers: string[] }> {
   const errors: string[] = [];
   let promoted = 0;
   let skipped = 0;
+  const promotedTickers: string[] = [];
 
   const confirmedTickers = new Set(
     opts.confirmed.filter((ps) => ps.status === "CONFIRMED").map((ps) => ps.ticker.toUpperCase()),
   );
   if (confirmedTickers.size === 0) {
-    return { promoted: 0, skipped: 0, errors };
+    return { promoted: 0, skipped: 0, errors, promotedTickers: [] };
   }
 
   const additions: Array<{ dossier: SwingDossier; play: HorizonPlay; watch: SwingWatchCandidate }> = [];
+  const additionTickers: string[] = [];
   const spotsByTicker: Record<string, number> = {};
 
   for (const play of opts.plays) {
@@ -345,11 +347,12 @@ export async function promoteLegacyConfirmedToSwing(opts: {
       continue;
     }
     additions.push(artifact);
+    additionTickers.push(ticker);
     promoted++;
   }
 
   if (additions.length === 0) {
-    return { promoted: 0, skipped, errors };
+    return { promoted: 0, skipped, errors, promotedTickers: [] };
   }
 
   const snap = await readSwingServingSnapshot();
@@ -361,8 +364,8 @@ export async function promoteLegacyConfirmedToSwing(opts: {
   const ok = await persistSwingServingSnapshot(merged);
   if (!ok) {
     errors.push("persistSwingServingSnapshot failed");
-    return { promoted: 0, skipped: skipped + additions.length, errors };
+    return { promoted: 0, skipped: skipped + additions.length, errors, promotedTickers: [] };
   }
 
-  return { promoted, skipped, errors };
+  return { promoted, skipped, errors, promotedTickers: additionTickers };
 }

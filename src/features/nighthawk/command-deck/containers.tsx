@@ -113,7 +113,15 @@ export function ZeroDteDeck({
 
 // ── Swings / LEAPS: the horizon lane ────────────────────────────────────────────────
 
-export function HorizonDeck({ horizon }: { horizon: "SWING" | "LEAPS" }) {
+export function HorizonDeck({
+  horizon,
+  focusTicker = null,
+}: {
+  horizon: "SWING" | "LEAPS";
+  /** Set by a Legacy play's "moved to Swings Open" link — CommandDeck auto-selects this ticker's
+   *  row once it appears in the fetched lane. */
+  focusTicker?: string | null;
+}) {
   const { data, isLoading } = useSWR(["deck-horizons", horizon], () => fetchNightHawkHorizons(horizon), {
     refreshInterval: 30_000,
   });
@@ -200,6 +208,7 @@ export function HorizonDeck({ horizon }: { horizon: "SWING" | "LEAPS" }) {
       boardAsOf={typeof data?.board?.asOf === "string" ? data.board.asOf : null}
       upstreamOk={data?.upstream_ok ?? null}
       sessionHeat={sessionHeat}
+      focusTicker={focusTicker}
     />
   );
 }
@@ -214,10 +223,14 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
     () => fetch(`/api/nighthawk/play-status?date=${editionFor}`, { cache: "no-store", credentials: "same-origin" }).then((r) => r.ok ? r.json() : null),
     { refreshInterval: 60_000 },
   );
-  const confirmByTicker = new Map<string, { status: string; reason: string }>();
+  const confirmByTicker = new Map<string, { status: string; reason: string; swingPromoted?: boolean }>();
   if (confirmData?.plays) {
     for (const ps of confirmData.plays) {
-      confirmByTicker.set(ps.ticker?.toUpperCase(), { status: ps.status, reason: ps.reason });
+      confirmByTicker.set(ps.ticker?.toUpperCase(), {
+        status: ps.status,
+        reason: ps.reason,
+        swingPromoted: ps.swingPromoted === true,
+      });
     }
   }
 
@@ -257,6 +270,7 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
       pulled_reason: p.pulled_reason ?? null,
       morning_status: confirm?.status as "CONFIRMED" | "DEGRADED" | "INVALIDATED" | "UNVERIFIED" | undefined ?? null,
       morning_reason: confirm?.reason ?? null,
+      swing_promoted: confirm?.swingPromoted ?? null,
       published_at: edition?.published_at ?? null,
       confirmed_at: confirmCheckedAt,
     });

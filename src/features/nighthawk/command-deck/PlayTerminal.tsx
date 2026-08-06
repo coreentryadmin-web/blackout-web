@@ -8,6 +8,7 @@ import { zerodteTimeStopEtLabel } from "@/lib/zerodte/plan";
 import { isZeroDteMarkStale, ZERODTE_MARK_STALE_MS, LEGACY_QUOTE_STALE_MS } from "@/lib/zerodte/marks-math";
 import { condorTent } from "@/lib/zerodte/condor-render";
 import { etNowParts } from "@/features/nighthawk/lib/session";
+import { dispatchGotoSwing } from "@/features/nighthawk/lib/goto-swing";
 import { showsTimeStopClock, showsTrimScaleLadder } from "./terminal-guards";
 import { managementFor } from "./adapters";
 import type { DeckCondor } from "./types";
@@ -609,6 +610,17 @@ function ThesisPanel({ play, sessionClosed = false }: { play: TerminalPlay; sess
             </div>
           ) : (
             <div><span className="ok">✓ thesis intact</span> — {monitorNote}</div>
+          )}
+          {play.swingPromoted && (
+            <button
+              type="button"
+              className="nh-deck-recnote nh-deck-swing-promoted-link"
+              style={{ display: "block", marginTop: 6, textAlign: "left", background: "none", border: "none", padding: 0, cursor: "pointer", textDecoration: "underline", color: "var(--dk-green)" }}
+              onClick={() => dispatchGotoSwing(play.ticker)}
+              title="Jump to this ticker's row on the Swing board"
+            >
+              The play is still active and moved to Swings Open →
+            </button>
           )}
         </div>
       </div>

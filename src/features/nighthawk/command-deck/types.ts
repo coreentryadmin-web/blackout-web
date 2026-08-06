@@ -84,6 +84,10 @@ export interface TerminalPlay {
   thesisBreak?: { level: ThesisLevel; note?: string } | null;
   /** Thesis Health — weighted Entry Truth vs Current Truth (OPEN/HOLD/TRIM only). */
   thesisHealth?: ThesisHealthPayload | null;
+  /** LEGACY only: true once morning-confirm's CONFIRMED promotion actually landed this ticker
+   *  in the Swing serving snapshot (not just confirmed — promotion can fail per-ticker, e.g.
+   *  "no chain rows"). Drives the "moved to Swings Open" clickable link in ThesisPanel. */
+  swingPromoted?: boolean;
 
   // ── management ──
   recommendation: Recommendation;
