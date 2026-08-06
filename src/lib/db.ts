@@ -1794,6 +1794,59 @@ async function runMigrations(): Promise<void> {
     WHERE graded_at IS NOT NULL AND feature_vector IS NOT NULL;
   `);
 
+  // ── swing_shadow_positions (2026-08-06, member-authorized) — a DELIBERATELY SEPARATE table, never
+  // read by fetchOpenSwingPositions/active-refresh/the member board. A candidate that clears every
+  // open-ability check (direction/contract/premium/sub-lane) but is turned away by a REAL-TIME risk
+  // gate (armed budget or book-percent caps — never idempotency, since an already-open name is already
+  // being traded for real) gets a shadow row here instead: same commit-time snapshot shape, zero real
+  // capital, tracked so the calibration ladder can grade what the risk gates turned away without ever
+  // being confused for (or contaminating the math of) a real position. Intentionally simpler than
+  // swing_positions — no roll chain, no pinned-column upsert dance — since a shadow row is a one-shot
+  // snapshot of "would have opened here," not a managed live position.
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS swing_shadow_positions (
+      id BIGSERIAL PRIMARY KEY,
+      commit_key TEXT NOT NULL,
+      session_date DATE NOT NULL,
+      ticker TEXT NOT NULL,
+      direction TEXT NOT NULL,
+      sub_lane TEXT NOT NULL,
+      archetype TEXT,
+      contract_strike NUMERIC,
+      contract_expiry DATE,
+      contract_type TEXT,
+      contract_occ TEXT,
+      contract_delta NUMERIC,
+      entry_underlying_px NUMERIC,
+      thesis_invalidation_px NUMERIC,
+      target_underlying_px NUMERIC,
+      entry_premium NUMERIC,
+      last_mark NUMERIC,
+      peak_premium NUMERIC,
+      trough_premium NUMERIC,
+      realized_pnl_pct NUMERIC,
+      -- Why this candidate was blocked from a REAL open (e.g. "budget:per_position_loss",
+      -- "cap:max_same_week_expiry") — the whole reason this row exists instead of a real one.
+      blocked_by TEXT[] NOT NULL DEFAULT '{}',
+      entry_context JSONB,
+      gate_calibration_json JSONB,
+      feature_vector JSONB,
+      status TEXT NOT NULL DEFAULT 'OPEN',
+      first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      closed_at TIMESTAMPTZ,
+      graded_at TIMESTAMPTZ,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await p.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_swing_shadow_positions_commit_key ON swing_shadow_positions(commit_key)`);
+  await p.query(`
+    DO $$ BEGIN
+      ALTER TABLE swing_shadow_positions ADD CONSTRAINT swing_shadow_positions_status_ck
+        CHECK (status IN ('OPEN','CLOSED'));
+    EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+  `);
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_swing_shadow_positions_open ON swing_shadow_positions(status, session_date DESC) WHERE status = 'OPEN'`);
+
   // Append-only longitudinal series: one row per observation of a live position, never
   // upserted (each tick is evidence of the path, not a correction of the last). The
   // multi-truth grader + trajectory studies (PR-14) join this series to the outcome.
@@ -6727,6 +6780,133 @@ export async function fetchOpenSwingPositions(): Promise<SwingPositionRow[]> {
     `SELECT * FROM swing_positions WHERE status NOT IN ('CLOSED','ROLLED') ORDER BY session_date DESC, id DESC`
   );
   return res.rows.map(mapSwingPositionRow);
+}
+
+// ─── swing_shadow_positions accessors (2026-08-06) — DELIBERATELY SEPARATE from swing_positions above.
+// Never read by fetchOpenSwingPositions, active-refresh, budget/caps aggregation, or the member board —
+// see the table's own migration comment for why. ──────────────────────────────────────────────────────
+
+export type SwingShadowPositionInsert = {
+  commit_key: string;
+  session_date: string;
+  ticker: string;
+  direction: "long" | "short";
+  sub_lane: string;
+  archetype?: string | null;
+  contract_strike?: number | null;
+  contract_expiry?: string | null;
+  contract_type?: string | null;
+  contract_occ?: string | null;
+  contract_delta?: number | null;
+  entry_underlying_px?: number | null;
+  thesis_invalidation_px?: number | null;
+  target_underlying_px?: number | null;
+  entry_premium?: number | null;
+  /** Why this candidate was blocked from a REAL open (e.g. "budget:per_position_loss", "cap:..."). */
+  blocked_by: string[];
+  entry_context?: Record<string, unknown> | null;
+  gate_calibration_json?: Record<string, unknown> | null;
+  feature_vector?: Record<string, unknown> | null;
+};
+
+export type SwingShadowPositionRow = SwingShadowPositionInsert & {
+  id: number;
+  last_mark: number | null;
+  peak_premium: number | null;
+  trough_premium: number | null;
+  realized_pnl_pct: number | null;
+  status: "OPEN" | "CLOSED";
+  first_seen_at: string;
+  closed_at: string | null;
+  graded_at: string | null;
+  updated_at: string;
+};
+
+function mapSwingShadowPositionRow(row: QueryResultRow): SwingShadowPositionRow {
+  return {
+    id: Number(row.id),
+    commit_key: String(row.commit_key),
+    session_date: String(row.session_date),
+    ticker: String(row.ticker),
+    direction: row.direction as "long" | "short",
+    sub_lane: String(row.sub_lane),
+    archetype: row.archetype ?? null,
+    contract_strike: row.contract_strike != null ? Number(row.contract_strike) : null,
+    contract_expiry: row.contract_expiry ?? null,
+    contract_type: row.contract_type ?? null,
+    contract_occ: row.contract_occ ?? null,
+    contract_delta: row.contract_delta != null ? Number(row.contract_delta) : null,
+    entry_underlying_px: row.entry_underlying_px != null ? Number(row.entry_underlying_px) : null,
+    thesis_invalidation_px: row.thesis_invalidation_px != null ? Number(row.thesis_invalidation_px) : null,
+    target_underlying_px: row.target_underlying_px != null ? Number(row.target_underlying_px) : null,
+    entry_premium: row.entry_premium != null ? Number(row.entry_premium) : null,
+    last_mark: row.last_mark != null ? Number(row.last_mark) : null,
+    peak_premium: row.peak_premium != null ? Number(row.peak_premium) : null,
+    trough_premium: row.trough_premium != null ? Number(row.trough_premium) : null,
+    realized_pnl_pct: row.realized_pnl_pct != null ? Number(row.realized_pnl_pct) : null,
+    blocked_by: Array.isArray(row.blocked_by) ? row.blocked_by.map(String) : [],
+    entry_context: row.entry_context ?? null,
+    gate_calibration_json: row.gate_calibration_json ?? null,
+    feature_vector: row.feature_vector ?? null,
+    status: row.status as "OPEN" | "CLOSED",
+    first_seen_at: String(row.first_seen_at),
+    closed_at: row.closed_at ?? null,
+    graded_at: row.graded_at ?? null,
+    updated_at: String(row.updated_at),
+  };
+}
+
+/** Insert (or idempotently re-touch) a shadow position. Upserts on commit_key — a re-running scan
+ *  lands on the SAME row rather than duplicating. No real capital, no roll chain: a one-shot snapshot
+ *  of "this candidate would have opened here if the risk gates had allowed it." */
+export async function insertSwingShadowPosition(pos: SwingShadowPositionInsert): Promise<number> {
+  await ensureSchema();
+  const p = await getPool();
+  const res = await p.query<{ id: string }>(
+    `
+    INSERT INTO swing_shadow_positions (
+      commit_key, session_date, ticker, direction, sub_lane, archetype, contract_strike,
+      contract_expiry, contract_type, contract_occ, contract_delta, entry_underlying_px,
+      thesis_invalidation_px, target_underlying_px, entry_premium, blocked_by, entry_context,
+      gate_calibration_json, feature_vector, updated_at
+    ) VALUES (
+      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb,$18::jsonb,$19::jsonb,NOW()
+    )
+    ON CONFLICT (commit_key) DO UPDATE SET updated_at = NOW()
+    RETURNING id
+    `,
+    [
+      pos.commit_key,
+      pos.session_date,
+      pos.ticker.toUpperCase(),
+      pos.direction,
+      pos.sub_lane,
+      pos.archetype ?? null,
+      pos.contract_strike ?? null,
+      pos.contract_expiry ?? null,
+      pos.contract_type ?? null,
+      pos.contract_occ ?? null,
+      pos.contract_delta ?? null,
+      pos.entry_underlying_px ?? null,
+      pos.thesis_invalidation_px ?? null,
+      pos.target_underlying_px ?? null,
+      pos.entry_premium ?? null,
+      pos.blocked_by,
+      toJsonbParam(pos.entry_context ?? null),
+      toJsonbParam(pos.gate_calibration_json ?? null),
+      toJsonbParam(pos.feature_vector ?? null),
+    ]
+  );
+  return Number(res.rows[0]!.id);
+}
+
+/** OPEN shadow positions — read-only observability (admin debug), never fed into the real book/budget. */
+export async function fetchOpenSwingShadowPositions(): Promise<SwingShadowPositionRow[]> {
+  await ensureSchema();
+  const res = await (await getPool()).query<QueryResultRow>(
+    `SELECT * FROM swing_shadow_positions WHERE status = 'OPEN' ORDER BY session_date DESC, id DESC`
+  );
+  return res.rows.map(mapSwingShadowPositionRow);
 }
 
 /** Positions committed on/after a session date — the calibration harness's input. */

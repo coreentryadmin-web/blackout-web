@@ -35,6 +35,7 @@ import {
 import { isWatchTrackStatus } from "./play-card-lifecycle";
 import { PlayLifecycleCardBody } from "./PlayLifecycleCard";
 import { DeckPlayTableHeader } from "./DeckPlayTableHeader";
+import { groupSwingSections } from "./swing-section-groups";
 import {
   buildDeckCommandCenterStats,
   convictionRankContext,
@@ -73,6 +74,7 @@ export function CommandDeck({
   marketState = null,
   discoveryFunnel = null,
   spxSlayerBadge,
+  focusTicker = null,
 }: {
   plays: TerminalPlay[];
   laneLabel: string;
@@ -104,6 +106,10 @@ export function CommandDeck({
    *  on lanes that don't pass it (Swings/LEAPS/Legacy) — the badge renders nothing, never idle
    *  chrome for a lane that was never meant to carry it. */
   spxSlayerBadge?: SpxSlayerBadge | null;
+  /** Set once by a cross-deck "go to this ticker" navigation (e.g. a Legacy play's "moved to
+   *  Swings Open" link) — forces the selection to that ticker's row as soon as it's present in
+   *  `plays`, overriding the normal preferred-selection logic for one focus event. */
+  focusTicker?: string | null;
 }) {
   // Counts per status group for the filter badges (and the session-aware default filter).
   const counts = useMemo(() => {
@@ -140,6 +146,18 @@ export function CommandDeck({
   // sort is unchanged; conviction is a second view over the SAME list (deck-sort.ts).
   const [sortMode, setSortMode] = useState<DeckSortMode>("status");
   const sorted = useMemo(() => sortPlaysForDeckBy(filtered, sortMode), [filtered, sortMode]);
+  // SWING only: split the flat sorted list into its seven serving.ts sections so the board renders them as
+  // visually distinct rails (FINDINGS 2026-08-06 P2) instead of one undifferentiated concatenated list —
+  // exactly the failure mode serving.ts's own header says it exists to prevent.
+  const swingGroups = useMemo(
+    () => (deckHorizon === "SWING" ? groupSwingSections(sorted) : null),
+    [deckHorizon, sorted],
+  );
+  const rankById = useMemo(() => {
+    const m = new Map<string, number>();
+    sorted.forEach((p, i) => m.set(p.id, i + 1));
+    return m;
+  }, [sorted]);
 
   // Cockpit figures — computed off the FULL board (not the display order), so they're identical under
   // either sort. Both auto-update on the SWR board refresh that replaces `plays`.
@@ -162,6 +180,20 @@ export function CommandDeck({
       setSelId(preferredPlayId(sorted) ?? sorted[0]!.id);
     }
   }, [sorted, selId]);
+
+  // Cross-deck focus: a Legacy play's "moved to Swings Open" link sets focusTicker once — select
+  // that ticker's row as soon as it's present (it may take a poll cycle for the freshly-promoted
+  // name to appear in this lane's fetched data). Re-fires on every focusTicker/sorted change but
+  // is a no-op once selId already matches, so it doesn't fight the member's own subsequent clicks.
+  useEffect(() => {
+    if (!focusTicker) return;
+    // The status filter can hide the freshly-promoted row (e.g. filter=OPEN, name lands in WATCH)
+    // — widen to ALL so a focus navigation is never silently invisible.
+    setStatusFilter("ALL");
+    const match = plays.find((p) => p.ticker.toUpperCase() === focusTicker.toUpperCase());
+    if (match && selId !== match.id) setSelId(match.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusTicker, plays, selId]);
 
   const selected = sorted.find((p) => p.id === selId) ?? null;
   const sessionClosed = String(sessionHeat ?? "").toUpperCase() === "CLOSED";
@@ -258,9 +290,23 @@ export function CommandDeck({
           {commandCenter && !loading && sorted.length > 0 && (
             <DeckPlayTableHeader sortMode={sortMode} setSortMode={setSortMode} />
           )}
-          {sorted.map((p, i) => (
-            <PlayCard key={p.id} play={p} rank={i + 1} selected={p.id === selId} onSelect={setSelId} nowMs={nowMs} />
-          ))}
+          {swingGroups ? (
+            swingGroups.map((g) => (
+              <div key={g.key} className="nh-deck-section-group" data-section={g.key}>
+                <div className="nh-deck-section-head" title={g.hint}>
+                  <span className="nh-deck-section-label">{g.label}</span>
+                  <span className="nh-deck-section-count">{g.plays.length}</span>
+                </div>
+                {g.plays.map((p) => (
+                  <PlayCard key={p.id} play={p} rank={rankById.get(p.id) ?? 1} selected={p.id === selId} onSelect={setSelId} nowMs={nowMs} />
+                ))}
+              </div>
+            ))
+          ) : (
+            sorted.map((p, i) => (
+              <PlayCard key={p.id} play={p} rank={i + 1} selected={p.id === selId} onSelect={setSelId} nowMs={nowMs} />
+            ))
+          )}
         </div>
       </div>
       <PlayTerminal

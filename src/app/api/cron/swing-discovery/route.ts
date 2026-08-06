@@ -39,6 +39,7 @@ import {
   fetchGradedSwingFeatureRows,
   fetchOpenSwingPositions,
   insertSwingPosition,
+  insertSwingShadowPosition,
 } from "@/lib/db";
 import { promoteSwingCandidate, type SwingAccumAccessors } from "@/lib/swing/accumulation-store";
 import { swingCalibrationRowFromLedger } from "@/lib/swing/calibration";
@@ -235,6 +236,7 @@ function buildDiscoveryDeps(nowMs: number, sessionDay: string, phase: SwingDisco
     insertPosition: insertSwingPosition,
     promoteCommit: (ticker, direction, positionId, archetype) =>
       promoteSwingCandidate(accum, ticker, direction, positionId, archetype),
+    insertShadowPosition: insertSwingShadowPosition,
     budget: resolveProductionPortfolioBudget(),
     nowMs,
     sessionDay,

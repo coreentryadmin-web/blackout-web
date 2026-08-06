@@ -1525,7 +1525,8 @@ async function awaitHeatmapBuildWithBlockCap(
             }
             handoff = pickStaleHeatmapForHandoff(mem2, redis2, Date.now());
           }
-          resolve(handoff ?? lastGoodHeatmapLocal.get(cacheKey) ?? null);
+          const served = handoff ?? lastGoodHeatmapLocal.get(cacheKey) ?? null;
+          resolve(await finalizeHeatmapForServe(cacheKey, served));
         })();
       }, blockMs);
     }),
@@ -2387,15 +2388,13 @@ export async function fetchGexHeatmap(
   // name can serve up to ~20s-stale GEX.)
   const fastMove = isHeatmapPreset(root) && isHeatmapFastMove(root);
   const ttlMs = fastMove ? Math.min(baseTtlMs, GEX_HEATMAP_FAST_MOVE_TTL_MS) : baseTtlMs;
-  const today = todayEtYmd();
 
   if (!forceRefresh) {
     const mem = cachedHeatmaps.get(cacheKey);
-    if (
-      mem &&
-      now - mem.at < ttlMs &&
-      !heatmapHasPastExpiries(mem.data, today)
-    ) {
+    // Serve within TTL even when the matrix was built before the ET date rollover — finalize
+    // prunes past expiry columns instead of forcing a cold rebuild (which can hand off unpruned
+    // stale data via awaitHeatmapBuildWithBlockCap and trip data-correctness at midnight).
+    if (mem && now - mem.at < ttlMs) {
       return finalizeHeatmapForServe(cacheKey, mem.data);
     }
 
@@ -2403,11 +2402,7 @@ export async function fetchGexHeatmap(
     try {
       const { sharedCacheGet } = await import("../shared-cache");
       redisHit = await sharedCacheGet<{ at: number; data: GexHeatmap }>(cacheKey);
-      if (
-        redisHit &&
-        now - redisHit.at < ttlMs &&
-        !heatmapHasPastExpiries(redisHit.data, today)
-      ) {
+      if (redisHit && now - redisHit.at < ttlMs) {
         setCachedHeatmap(cacheKey, redisHit);
         return finalizeHeatmapForServe(cacheKey, redisHit.data);
       }
@@ -3246,7 +3241,8 @@ export async function readGexHeatmapSnapshot(underlying = "SPX"): Promise<GexHea
   );
   if (stale) return finalizeHeatmapForServe(cacheKey, stale);
 
-  return pickStaleHeatmapForHandoff(mem, redisHit, now);
+  const handoff = pickStaleHeatmapForHandoff(mem, redisHit, now);
+  return finalizeHeatmapForServe(cacheKey, handoff);
 }
 
 /** One ticker's shared-cache freshness, as reported by peekGexHeatmapCache. */

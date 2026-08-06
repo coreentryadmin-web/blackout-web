@@ -346,6 +346,25 @@ export function applyNighthawkPublishGates(opts: {
   };
 }
 
+/**
+ * Read G-N2's measured target distance (|target − fill_edge| / ATR14) out of a gate result.
+ *
+ * This is the ONE place that value is extracted, so the member payload, the admin
+ * histogram and the pin can never drift apart: the gate computes it once (above), records
+ * it in `checks[]` for EVERY play — passed or blocked — and everything downstream reads it
+ * from here rather than recomputing from levels + a re-fetched ATR.
+ *
+ * Null when the play has no usable G-N2 check (geometry_unknown fail-closed, or a legacy
+ * result shape). Callers must render nothing on null — never a fabricated multiple.
+ */
+export function targetAtrMultipleFromGateResult(
+  result: NighthawkPublishGateResult | null | undefined
+): number | null {
+  const check = result?.checks?.find((c) => c.code === "target_unreachable");
+  const value = check?.value;
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
 /** @deprecated Prefer recapReasonAtPublishExit from edition-funnel.ts (distinguishes synthesis-empty vs gate-blocked). */
 export function publishGateRecapReason(blocked: NighthawkGateBlockedPlay[]): string {
   return publishGateBlockedRecapReason(blocked);

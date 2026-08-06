@@ -77,8 +77,17 @@ export interface SwingChainComposite {
    * winning child can NEVER net away a losing parent. False when there are 0 graded legs.
    */
   allLegsWon: boolean;
-  /** win / loss / open — derived from allLegsWon; a loss-containing chain is a loss even if the money is up. */
+  /**
+   * win / loss / open — "open" whenever the chain's MOST RECENT leg (by roll_seq) is not yet graded, even if
+   * every EARLIER leg already won (FINDINGS 2026-08-06 P3: computing this from `gradedLegs` alone let a
+   * WON parent + still-OPEN child report "win" before the chain actually closed — if that child later
+   * graded a loss, the label was never true evidence for the whole chain). Only once the last leg is graded
+   * does this become win/loss, derived from allLegsWon: a loss-containing chain is a loss even if money is up.
+   */
   outcome: "win" | "loss" | "open";
+  /** True once the chain's most recent leg (by roll_seq) is graded — i.e. the chain has actually closed
+   *  (CLOSED, no further roll) rather than still being open/rolled-and-continuing. */
+  chainResolved: boolean;
   /** The preserved-loss witness: the worst (min) realized leg P&L. Never averaged away. */
   worstLegPnlPct: number | null;
   /** Money view: simple sum of graded-leg realized P&L. Reported, never used to relabel the outcome. */
@@ -143,8 +152,19 @@ export function buildSwingRecord(chain: SwingLegRowLike[]): SwingRecord {
     ? round2((pnls.reduce((acc, p) => acc * (1 + p / 100), 1) - 1) * 100)
     : null;
 
+  // The chain has only actually CLOSED once its most recent leg (last by roll_seq — `ordered`/`legs` are
+  // sorted ascending) is graded. Note this is a stricter, additional condition than gradedLegs.length === 0:
+  // a chain with a graded parent AND a still-open child has gradedLegs.length > 0 but is NOT resolved.
+  const lastLeg = legs.length > 0 ? legs[legs.length - 1] : null;
+  const chainResolved = lastLeg != null && lastLeg.graded;
+
+  // A LOSS is reported the instant any graded leg loses — the preserved-loss invariant (file header) is
+  // unconditional, so a chain never has to "wait for resolution" to report a loss that already happened. The
+  // chain only needs to wait on WIN: with no loss yet, allLegsWon is true from the graded legs alone, but that
+  // is not evidence the CHAIN won until the most recent leg is actually graded — an early "win" report on a
+  // still-rolling chain could be contradicted by that leg later losing (FINDINGS 2026-08-06 P3).
   const outcome: SwingChainComposite["outcome"] =
-    gradedLegs.length === 0 ? "open" : allLegsWon ? "win" : "loss";
+    gradedLegs.length === 0 ? "open" : !allLegsWon ? "loss" : chainResolved ? "win" : "open";
 
   const composite: SwingChainComposite = {
     rootPositionId: rootIdOf(ordered),
@@ -154,6 +174,7 @@ export function buildSwingRecord(chain: SwingLegRowLike[]): SwingRecord {
     losses,
     allLegsWon,
     outcome,
+    chainResolved,
     worstLegPnlPct,
     sumPnlPct,
     compoundedReturnPct,

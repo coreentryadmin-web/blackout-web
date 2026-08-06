@@ -49,12 +49,23 @@ mock.module("../../../../../lib/providers/polygon-options-gex", {
       spot: 101,
       asof: HM_ASOF,
       gex: { strike_totals: { "101": 2.5 } },
+      // Wall-migration wiring (2026-08-06): a real `available` shift block so the "all" branch
+      // has something to thread through to buildGexLadder — see the capturing mock below.
+      shift: { available: true, delta_by_strike: { "101": 0.5 } },
     }),
   },
 });
-// Decouple from the ladder-banding math — this test is about headers + asOf, not row shaping.
+// Decouple from the ladder-banding math — this test is about headers + asOf, not row shaping —
+// but CAPTURE the opts buildGexLadder was called with so the migration-wiring test below can
+// assert the route actually threads shift.delta_by_strike through (not just that it compiles).
+let lastBuildOpts: unknown;
 mock.module("../../../../../features/vector/lib/vector-gex-ladder", {
-  namedExports: { buildGexLadder: () => [] },
+  namedExports: {
+    buildGexLadder: (_totals: unknown, _spot: unknown, opts: unknown) => {
+      lastBuildOpts = opts;
+      return [];
+    },
+  },
 });
 
 describe("/api/market/vector/gex-ladder no-store + asOf freshness", () => {
@@ -91,6 +102,15 @@ describe("/api/market/vector/gex-ladder no-store + asOf freshness", () => {
     const body = await res.json();
     assert.equal(body.horizon, "all");
     assert.equal(body.asOf, HM_ASOF);
+  });
+
+  test('"all" branch threads hm.shift.delta_by_strike through to buildGexLadder (wall-migration wiring)', async () => {
+    await GET(new NextRequest("http://localhost/api/market/vector/gex-ladder?ticker=SPX&dte=ALL"));
+    assert.deepEqual(
+      (lastBuildOpts as { shiftByStrike?: unknown }).shiftByStrike,
+      { "101": 0.5 },
+      "the same shift block the shift-leaders strip reads must reach the ladder builder"
+    );
   });
 
   test("junk ticker 400 is also no-store (never edge-cacheable)", async () => {

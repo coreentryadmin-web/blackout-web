@@ -42,9 +42,10 @@ type LadderResponse = { spot: number | null; asOf: string | null; ladder: GexLad
  * chart (Skylit-Atlas parity). The chart collapses each strike to one bead; this shows the whole
  * near-spot gamma structure at once: every strike, its signed net GEX as a magnitude bar (gold
  * call / purple put), and the single dominant "king" per side. Polls /api/market/vector/gex-ladder
- * on its own cadence (off the per-second SSE payload). Horizon-scoping to the chart's DTE toggle is
- * a documented follow-up — this first slice shows the near-term ("all") aggregate the chart
- * defaults to.
+ * on its own cadence (off the per-second SSE payload), passing `dteHorizon` through so the ladder
+ * re-scopes to the SAME expiries as the chart's walls/flip/max-pain (see the route's
+ * `getHorizonStrikeTotals` scoped path; falls back to the near-term aggregate on "all" or when a
+ * narrow horizon yields no structure).
  */
 export function VectorGexLadder({
   ticker,
@@ -221,6 +222,27 @@ const LadderRow = memo(function LadderRow({
             className="vector-gex-ladder-bar"
             style={{ width: `${Math.max(2, Math.round(row.magnitude * 100))}%`, backgroundColor: color }}
           />
+        </span>
+        {/* Always occupies its grid column (even when empty) so the strike/bar/value columns stay
+            aligned between rows that do and don't have a migration reading — a conditionally
+            omitted 4th grid item would shift the value column left on rows without one. Small
+            (<1%) or missing (no shift data yet, or a narrowed DTE horizon) migrations render
+            nothing inside, same column. */}
+        <span
+          className={clsx(
+            "vector-gex-ladder-migration",
+            row.migration != null &&
+              (row.migration.built ? "vector-gex-ladder-migration-up" : "vector-gex-ladder-migration-down")
+          )}
+          title={
+            row.migration != null
+              ? `Wall ${row.migration.built ? "built" : "faded"} ${Math.abs(Math.round(row.migration.pct))}% over the shift window`
+              : undefined
+          }
+        >
+          {row.migration != null && Math.abs(row.migration.pct) >= 1
+            ? `${row.migration.built ? "▲" : "▼"}${Math.abs(Math.round(row.migration.pct))}%`
+            : null}
         </span>
         <span className="vector-gex-ladder-val" style={{ color }}>
           {row.isKing ? <span className="vector-gex-ladder-crown" aria-hidden="true">♛</span> : null}

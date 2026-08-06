@@ -218,6 +218,45 @@ test("edition adapter: pulled play → status CLOSED, thesis break, recommendati
   assert.match(play.recNote!, /PULLED/);
 });
 
+test("edition adapter: INVALIDATED that also carries pulled=true (the real morning-verdict-persist latch) still shows the exact invalidated copy, not the generic pulled fallback", () => {
+  // morning-verdict-persist.ts's INVALIDATED verdict always engages the one-way `pulled` latch, so
+  // both fields are true together in production — checking `pulled` before `ms === "INVALIDATED"`
+  // would silently shadow this exact, member-requested copy with the generic pulled_reason text.
+  const play = terminalPlayFromEdition({
+    ticker: "AMD", direction: "long", rank: 2, score: 60,
+    pulled: true,
+    pulled_reason: "gate: INVALIDATED (morning confirm)",
+    morning_status: "INVALIDATED",
+    morning_reason: "gap down through stop level",
+  });
+  assert.equal(play.thesisBreak!.level, "break");
+  assert.match(play.thesisBreak!.note!, /^The play has been invalidated at pre-market screening/);
+  assert.match(play.thesisBreak!.note!, /gap down through stop level/);
+  assert.match(play.recNote!, /^The play has been invalidated at pre-market screening/);
+  assert.equal(play.recommendation, "SELL");
+});
+
+test("edition adapter: CONFIRMED + swing_promoted → swingPromoted true and recNote says 'moved to Swings Open'", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "CRWV", direction: "long", rank: 1, score: 80,
+    morning_status: "CONFIRMED",
+    swing_promoted: true,
+  });
+  assert.equal(play.swingPromoted, true);
+  assert.match(play.recNote!, /the play is still active and moved to Swings Open/);
+});
+
+test("edition adapter: CONFIRMED but NOT promoted (e.g. 'no chain rows') → swingPromoted false, generic confirmed recNote", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "SKHY", direction: "long", rank: 1, score: 80,
+    morning_status: "CONFIRMED",
+    swing_promoted: false,
+  });
+  assert.equal(play.swingPromoted, false);
+  assert.match(play.recNote!, /thesis intact, entry levels hold/);
+  assert.doesNotMatch(play.recNote!, /Swings Open/);
+});
+
 test("edition adapter: gate_promoted with gate_warnings → gates array with ok:false entries", () => {
   const play = terminalPlayFromEdition({
     ticker: "SHOP", direction: "long", rank: 1, score: 72,
@@ -1060,6 +1099,27 @@ test("Legacy adapter: surfaces iv_rank and rr_ratio as metadata, not scored fact
   assert.equal(play.rrRatio, 3.2);
   assert.ok(!play.factors.some((f) => f.label === "IV Rank"));
   assert.ok(!play.factors.some((f) => f.label === "R:R Ratio"));
+});
+
+test("Legacy adapter: surfaces the PINNED target-ATR multiple, and never fabricates one", () => {
+  // Legacy grades on ONE session, so this multiple is the target's reachability. It must
+  // reach the terminal payload unchanged (it is the gate's own measured value) and stay
+  // null when the pin is absent or unusable — a fabricated multiple would read as a
+  // measured probability on the play card.
+  const pinned = terminalPlayFromEdition({
+    ticker: "NVDA", direction: "long", rank: 1, score: 75, target_atr_multiple: 1.1,
+  });
+  assert.equal(pinned.targetAtrMultiple, 1.1);
+
+  const absent = terminalPlayFromEdition({ ticker: "NVDA", direction: "long", rank: 1, score: 75 });
+  assert.equal(absent.targetAtrMultiple, null);
+
+  for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, null]) {
+    const junk = terminalPlayFromEdition({
+      ticker: "NVDA", direction: "long", rank: 1, score: 75, target_atr_multiple: bad,
+    });
+    assert.equal(junk.targetAtrMultiple, null, `target_atr_multiple=${String(bad)}`);
+  }
 });
 
 test("Legacy adapter: key_signal enriches recNote", () => {

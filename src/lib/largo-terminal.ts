@@ -7,15 +7,14 @@ import {
   type AnthropicSystemBlock,
   type AnthropicToolLoopEvent,
 } from "@/lib/providers/anthropic";
-import { largoAvailable, largoBieOnly, largoClaudeEnabled } from "@/lib/ai-env";
+import { largoAvailable, largoClaudeEnabled } from "@/lib/ai-env";
 import { dbConfigured } from "@/lib/db";
 import { LARGO_SYSTEM_PROMPT } from "@/lib/largo/system-prompt";
 import { LARGO_TOOL_DEFS, getToolsForIntent } from "@/lib/largo/tool-defs";
 import { runLargoTool } from "@/lib/largo/run-tool";
-import { resolveLargoBieRoute } from "@/lib/largo/turn-pipeline";
+import { prefetchLargoTurnCaches } from "@/lib/largo/turn-pipeline";
 import {
   applyVerificationCaveat,
-  finalizeBieRoutedTurn,
   logClaudeTurn,
   persistClaudeTurn,
 } from "@/lib/largo/turn-outcome";
@@ -288,41 +287,15 @@ export async function runLargoQuery(
   tools_used: string[];
   followups: string[];
   verification: ClaimVerification;
-  // Structured answer for the rich member cards — present ONLY on a genuinely rich BIE synthesis
-  // (verdict/etc.); undefined for a trivial string answer or a Claude turn, so JSON serialization
-  // omits it and the client falls back to `answer` markdown (its own shim). See isRichBieEnvelope.
   envelope?: BieAnswerEnvelope;
 }> {
   const startedAt = Date.now();
-  const routed = await resolveLargoBieRoute({ question, userId });
-  if (routed) {
-    const result = await finalizeBieRoutedTurn({
-      sessionId,
-      userId,
-      question,
-      routed,
-      startedAt,
-    });
-    return {
-      answer: result.answer,
-      session_id: result.session_id,
-      source: result.source,
-      tools_used: result.tools_used,
-      followups: result.followups,
-      verification: result.verification,
-      envelope: result.envelope,
-    };
-  }
-
-  if (largoBieOnly()) {
-    throw new Error(
-      "Largo couldn't map that question to a platform read. Try SPX desk, market context, flow tape, track record, or a named ticker."
-    );
-  }
 
   if (!largoClaudeEnabled()) {
     throw new Error("Largo requires Anthropic — not configured in this environment.");
   }
+
+  await prefetchLargoTurnCaches();
 
   const { sid, history, system, filteredTools, toolsUsed, tickerHint } = await prepareLargoTurn(
     question,
@@ -403,42 +376,6 @@ export async function runLargoQueryStream(
     }
   };
 
-  const routed = await resolveLargoBieRoute({ question, userId, onStatus: emitStatus });
-  if (routed) {
-    const result = await finalizeBieRoutedTurn({
-      sessionId,
-      userId,
-      question,
-      routed,
-      startedAt,
-    });
-    try {
-      onEvent({ type: "token", text: result.answer } as LargoStreamEvent);
-      onEvent({
-        type: "done",
-        answer: result.answer,
-        session_id: result.session_id,
-        source: result.source,
-        tools_used: result.tools_used,
-        followups: result.followups,
-        verification: result.verification,
-        envelope: result.envelope,
-      } as LargoStreamEvent);
-    } catch {
-      // client disconnected — turn already persisted
-    }
-    return;
-  }
-
-  if (largoBieOnly()) {
-    onEvent({
-      type: "error",
-      message:
-        "Largo couldn't map that question to a platform read. Try SPX desk, market context, flow tape, track record, or a named ticker.",
-    });
-    return;
-  }
-
   if (!largoClaudeEnabled()) {
     onEvent({
       type: "error",
@@ -446,6 +383,8 @@ export async function runLargoQueryStream(
     });
     return;
   }
+
+  await prefetchLargoTurnCaches({ onStatus: emitStatus });
 
   const { sid, history, system, filteredTools, toolsUsed, tickerHint } = await prepareLargoTurn(
     question,

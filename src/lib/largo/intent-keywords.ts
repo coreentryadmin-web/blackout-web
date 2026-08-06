@@ -252,6 +252,22 @@ export const VECTOR_READ_RE =
 export const HELIX_READ_RE =
   /\b(helix|flow feed|strike stacks?|top prints|top strikes|net premium leader|flow anomaly)\b/i;
 
+/** HELIX velocity/split signal follow-through grading (helix-signal-outcomes ledger). */
+export const HELIX_SIGNAL_RE =
+  /\b(signal outcome|signal outcomes|velocity signal|split flow signal|helix signal|follow.?through tracker)\b/i;
+
+/** Night Hawk Bangers lane (Engine B weekly breakout board). */
+export const BANGER_RE =
+  /\b(banger|bangers|engine b|weekly breakout|scale.?out runner|banger board)\b/i;
+
+/** Night Hawk Swings lane (2–30 DTE multi-day discovery). */
+export const SWING_RE =
+  /\b(swing|swings|swing lane|swing board|multi.?day|2.?30 dte|swing horizon)\b/i;
+
+/** SPX EOD pin forecaster (distinct from gamma magnet / max pain). */
+export const SPX_PIN_RE =
+  /\b(pin forecast|eod pin|pin strike|where.*pin|close.*pin|spx pin)\b/i;
+
 /** Public track record / graded performance stats. */
 export const RECORD_READ_RE =
   /\b(track record|win rate|hit rate|graded trades|public record|spx vs nighthawk|performance stats|our record)\b/i;

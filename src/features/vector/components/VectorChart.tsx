@@ -95,8 +95,10 @@ import {
   VECTOR_OVERLAYS,
   VECTOR_LEVELS,
   defaultVectorIndicators,
+  DEFAULT_OPENING_RANGE_MINUTES,
   type VectorOverlayId,
   type VectorIndicatorId,
+  type VectorOpeningRangeMinutes,
 } from "@/features/vector/lib/vector-indicators-config";
 import { GexHeatmapPrimitive } from "@/features/vector/lib/vector-gex-heatmap-primitive";
 import { PinConePrimitive, type PinConeStep } from "@/features/vector/lib/vector-pin-cone-primitive";
@@ -104,6 +106,8 @@ import { EmConePrimitive } from "@/features/vector/lib/vector-em-cone-primitive"
 import { emConeFromExpectedMove } from "@/features/vector/lib/vector-em-cone";
 import { etMinutesOfDay } from "@/lib/swing/scan-cadence";
 import { GammaRegimePrimitive } from "@/features/vector/lib/vector-gamma-regime-primitive";
+import { computeVolumeProfile } from "@/features/vector/lib/vector-volume-profile";
+import { VolumeProfilePrimitive } from "@/features/vector/lib/vector-volume-profile-primitive";
 import { WallRailPrimitive } from "@/features/vector/lib/vector-wall-rail-primitive";
 import { gexCellAtGridPoint, heatmapBucketSecForChartTimeframe } from "@/features/vector/lib/vector-gex-heatmap-paint";
 import type { GexHeatmapGrid } from "@/features/vector/lib/vector-gex-reconstruct";
@@ -111,7 +115,9 @@ import { levelLinesFor, type LevelLine, type PriorDayOhlc } from "@/features/vec
 import { buildStructureMarkers } from "@/features/vector/lib/vector-structure-markers";
 import { buildFlowMarkers, DEFAULT_FLOW_MAX_MARKERS, type FlowPrint } from "@/features/vector/lib/vector-flow-markers";
 import { confluenceZones, confluenceCallouts, topConfluenceBand, type ConfluenceLevel } from "@/features/vector/lib/vector-confluence";
-import { summarizeTechnicals, technicalsCallouts } from "@/features/vector/lib/vector-technicals";
+import { summarizeTechnicals, technicalsCalloutLines, type TechnicalsLine } from "@/features/vector/lib/vector-technicals";
+import { playTechnicalsFromSummary } from "@/features/vector/lib/vector-server-technicals-core";
+import { buildVectorPlay, type VectorPlay, type PlayTechnicals } from "@/features/vector/lib/vector-play-engine";
 import { expectedMoveCallouts, type ExpectedMove } from "@/features/vector/lib/vector-expected-move";
 import { evaluateAlerts, type AlertRule, type AlertState, type FiredAlert } from "@/features/vector/lib/vector-alerts";
 import { sessionHodLod } from "@/features/vector/lib/vector-key-levels";
@@ -270,11 +276,18 @@ type Props = {
    *  ladder) can re-scope to the SAME expiries the chart's walls use. */
   onDteHorizonChange?: (horizon: VectorDteHorizon) => void;
   /** Pre-formatted always-on technicals lines (VWAP/EMA/RSI/MACD/pocket/structure) for the desk
-   *  terminal — computed from the shown bars REGARDLESS of which overlays are toggled. Empty = warming up. */
-  onTechnicalsChange?: (lines: string[]) => void;
+   *  terminal — computed from the shown bars REGARDLESS of which overlays are toggled. Empty = warming
+   *  up. Each line carries its own bull/bear/warn/muted `tone` (derived from the same typed
+   *  TechnicalsSummary fields, not re-parsed from the text) so callers can color-code the card. */
+  onTechnicalsChange?: (lines: TechnicalsLine[]) => void;
   /** Options-implied EXPECTED MOVE callout lines (±1σ/2σ range), horizon-scoped. Empty when the
    *  chain has no real ATM IV to price it. Narrated by the terminal (#15 cone, slice 3a). */
   onExpectedMoveChange?: (lines: string[]) => void;
+  /** The fused, single concrete trade idea (`buildVectorPlay`) — assembled from the SAME signals
+   *  already emitted above (regime/magnet/proximity/confluence/wall-integrity/technicals/expected
+   *  move/max-pain), re-derived on every selection change and live tick. Null when there isn't
+   *  enough structure yet (no spot) — never fabricated. */
+  onPlayChange?: (play: VectorPlay | null) => void;
   /** Member-defined alert rules for THIS ticker (wall-touch / flip-cross). Evaluated on each live tick. */
   alertRules?: AlertRule[];
   /** Fired alerts from the latest tick (already deduped/cooled-down by the engine) — for toast + terminal. */
@@ -758,12 +771,15 @@ function applyLevelLines(
   map: Map<string, IPriceLine>,
   enabled: Set<VectorIndicatorId>,
   bars: VectorBar[],
-  priorDay: PriorDayOhlc | null
+  priorDay: PriorDayOhlc | null,
+  // Member-configurable opening-range window (2026-08-05 audit finding #7); defaults to the
+  // registry default so any caller that omits it keeps the prior 15m behavior.
+  openingRangeMinutes: VectorOpeningRangeMinutes = DEFAULT_OPENING_RANGE_MINUTES
 ): void {
   const desired = new Map<string, LevelLine>();
   for (const def of VECTOR_LEVELS) {
     if (!enabled.has(def.id)) continue;
-    for (const line of levelLinesFor(def.id, bars, priorDay))
+    for (const line of levelLinesFor(def.id, bars, priorDay, openingRangeMinutes))
       desired.set(`${def.id}:${line.key}`, line);
   }
   // Remove lines no longer wanted (toggled off, or a level that now yields fewer lines).
@@ -1146,6 +1162,7 @@ export function VectorChart({
   onDteHorizonChange,
   onTechnicalsChange,
   onExpectedMoveChange,
+  onPlayChange,
   alertRules,
   onAlertsFired,
   leadSlot,
@@ -1189,6 +1206,16 @@ export function VectorChart({
   const lastExpectedMoveRef = useRef<string>("");
   useEffect(() => {
     onExpectedMoveChangeRef.current = onExpectedMoveChange;
+  });
+  // The fused play (buildVectorPlay) — technicalsForPlayRef caches the raw TechnicalsSummary the
+  // always-on terminal narration already computes (see paintOverlays), mapped once via
+  // playTechnicalsFromSummary so emitPlay never re-summarizes bars itself. onPlayChangeRef/
+  // lastPlayKeyRef follow the same latest-callback / dedupe pattern as every other emit* above.
+  const onPlayChangeRef = useRef(onPlayChange);
+  const technicalsForPlayRef = useRef<PlayTechnicals | null>(null);
+  const lastPlayKeyRef = useRef<string>("");
+  useEffect(() => {
+    onPlayChangeRef.current = onPlayChange;
   });
   // Alerts: the member's rules + the engine's per-rule state + the prior spot (for flip-cross), all
   // in refs so the []-dep tick handler reads the latest without re-subscribing the SSE stream.
@@ -1276,6 +1303,11 @@ export function VectorChart({
   // next live tick (mirrors how gexHeatmapGridRef feeds the heatmap on toggle).
   const gammaRegimePrimitiveRef = useRef<GammaRegimePrimitive | null>(null);
   const regimeFlipRef = useRef<number | null>(null);
+  // SESSION VOLUME PROFILE (default OFF, "volume-profile" toggle): computed from the raw 1m session
+  // bars (minuteBarsRef), not the display-timeframe-aggregated bars — a coarser candle timeframe
+  // (e.g. 60m) should not thin out the profile's price resolution. Recomputed in paintOverlays
+  // whenever bars/toggle change; draws nothing until enabled AND real volume exists this session.
+  const volumeProfilePrimitiveRef = useRef<VolumeProfilePrimitive | null>(null);
   const lastConfluenceRef = useRef<string>("");
   // Opt-in technical overlays (VWAP/EMA/SMA) — one lightweight-charts line series per enabled
   // indicator, created on demand and removed when toggled off. Default: none. `indicatorsRef`
@@ -1304,6 +1336,10 @@ export function VectorChart({
   const priorDayRef = useRef<PriorDayOhlc | null>(null);
   const priorDayTickerRef = useRef<string | null>(null);
   const indicatorsRef = useRef<Set<VectorIndicatorId>>(initialIndicators);
+  // Opening-range window (2026-08-05 audit finding #7) — mirrors the indicators/indicatorsRef
+  // pattern above: `openingRangeMinutes` is the React state the toolbar's preset control drives,
+  // `openingRangeMinutesRef` is what the imperative paint path (applyLevelLines) reads.
+  const openingRangeMinutesRef = useRef<VectorOpeningRangeMinutes>(DEFAULT_OPENING_RANGE_MINUTES);
   const lastDisplayBarsRef = useRef<VectorBar[]>(initialBars);
   const callBeadsRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const putBeadsRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
@@ -1429,6 +1465,11 @@ export function VectorChart({
   const [chartReady, setChartReady] = useState(false);
   // Enabled indicators — dealer gamma positioning (`gex-heatmap`) defaults on.
   const [indicators, setIndicators] = useState<Set<VectorIndicatorId>>(() => new Set(initialIndicators));
+  // Opening-range window preset (5m/15m/30m/60m), default 15m — unchanged behavior for anyone who
+  // hasn't touched the new control (2026-08-05 audit finding #7).
+  const [openingRangeMinutes, setOpeningRangeMinutes] = useState<VectorOpeningRangeMinutes>(
+    DEFAULT_OPENING_RANGE_MINUTES
+  );
   // Count of bars currently shown (at the active timeframe). Drives the indicator menu's
   // "not enough bars" annotation so an MA family that can't compute at this timeframe is explained
   // rather than looking broken. Updated imperatively from paintOverlays; setState bails out when
@@ -1796,8 +1837,14 @@ export function VectorChart({
           color: def.color,
           lineWidth: 2,
           priceLineVisible: false,
-          lastValueVisible: false,
-          crosshairMarkerVisible: false,
+          // Labeled + a live value on the axis (2026-08-05 audit finding): with up to 6 MA lines
+          // potentially on screen at once, the toggle menu's color dot was the ONLY way to tell
+          // which line was which — no on-chart identification at all. `title` puts the indicator's
+          // own name (e.g. "EMA 21") next to its live value tag, matching how every other charting
+          // platform labels overlapping moving averages.
+          lastValueVisible: true,
+          crosshairMarkerVisible: true,
+          title: def.label,
         });
         map.set(def.id, line);
       }
@@ -1806,7 +1853,14 @@ export function VectorChart({
 
     // Draw the enabled "Key levels" horizontal lines from the SAME bars, on the candle series.
     if (seriesRef.current) {
-      applyLevelLines(seriesRef.current, levelLinesRef.current, enabled, bars, priorDayRef.current);
+      applyLevelLines(
+        seriesRef.current,
+        levelLinesRef.current,
+        enabled,
+        bars,
+        priorDayRef.current,
+        openingRangeMinutesRef.current
+      );
       // Market-structure markers (HH/HL labels + BOS/CHOCH flags) on their own markers instance —
       // separate from the two bead instances, so beads and structure never clobber each other.
       // Recomputed from the SAME displayed bars, so the structure re-detects per timeframe and, in
@@ -1913,6 +1967,15 @@ export function VectorChart({
         spot: spotRef.current,
         enabled: enabled.has("gamma-regime"),
       });
+      // Session volume profile (P2 #4) — recompute from the raw 1m session bars (not the
+      // display-timeframe-aggregated `bars`, so a coarser candle interval doesn't thin the price
+      // resolution) whenever this paint runs (tick, timeframe switch, toggle). Cheap: a session's
+      // worth of 1m bars is at most ~390 rows.
+      const volumeProfileOn = enabled.has("volume-profile");
+      volumeProfilePrimitiveRef.current?.setData(
+        volumeProfileOn ? computeVolumeProfile(minuteBarsRef.current) : null,
+        volumeProfileOn
+      );
     }
 
     // Oscillator sub-panes (RSI / MACD) in their OWN panes below price. The pane LAYOUT is rebuilt
@@ -1925,10 +1988,12 @@ export function VectorChart({
     // replay frame, toggle) from the SHOWN bars, INDEPENDENT of the enabled-overlay set, so the desk
     // terminal keeps reading VWAP/EMA/RSI/MACD/pocket/structure even when nothing is toggled on the
     // chart. Deduped so an unchanged read is not re-emitted.
+    const summary = summarizeTechnicals(bars, spotRef.current);
+    technicalsForPlayRef.current = playTechnicalsFromSummary(summary);
     const techCb = onTechnicalsChangeRef.current;
     if (techCb) {
-      const lines = technicalsCallouts(summarizeTechnicals(bars, spotRef.current));
-      const key = lines.join("|");
+      const lines = technicalsCalloutLines(summary);
+      const key = lines.map((l) => l.text).join("|");
       if (key !== lastTechnicalsRef.current) {
         lastTechnicalsRef.current = key;
         techCb(lines);
@@ -1954,17 +2019,21 @@ export function VectorChart({
       active.forEach((id, i) => {
         const pane = i + VOLUME_PANE_INDEX + 1;
         if (id === "rsi") {
-          const line = chart.addSeries(LineSeries, { color: "#c084fc", lineWidth: 2, priceLineVisible: false, lastValueVisible: true }, pane);
+          // `title` labels the pane's live value tag (2026-08-05 audit finding): an unlabeled
+          // number in an unlabeled sub-pane gave no clue it was RSI without opening the toggle menu.
+          const line = chart.addSeries(LineSeries, { color: "#c084fc", lineWidth: 2, priceLineVisible: false, lastValueVisible: true, title: "RSI (14)" }, pane);
           // 30/70 oversold/overbought guides + the 50 midline, drawn on the RSI series itself.
           for (const [lvl, style] of [[70, LineStyle.Dashed], [50, LineStyle.Dotted], [30, LineStyle.Dashed]] as const) {
             line.createPriceLine({ price: lvl, color: withAlpha("#c084fc", 0.4), lineWidth: 1, lineStyle: style, axisLabelVisible: true, title: String(lvl) });
           }
           oscMap.set("rsi", line);
         } else {
-          // MACD pane: histogram (behind) + macd line + signal line.
+          // MACD pane: histogram (behind) + macd line + signal line — both lines titled + valued
+          // (2026-08-05 audit finding fixed the macd/signal `lastValueVisible` inconsistency: the
+          // signal line previously showed no value at all while the macd line did).
           oscMap.set("macd-hist", chart.addSeries(HistogramSeries, { priceLineVisible: false, lastValueVisible: false }, pane));
-          oscMap.set("macd", chart.addSeries(LineSeries, { color: "#38bdf8", lineWidth: 2, priceLineVisible: false, lastValueVisible: true }, pane));
-          oscMap.set("macd-signal", chart.addSeries(LineSeries, { color: "#f59e0b", lineWidth: 1, priceLineVisible: false, lastValueVisible: false }, pane));
+          oscMap.set("macd", chart.addSeries(LineSeries, { color: "#38bdf8", lineWidth: 2, priceLineVisible: false, lastValueVisible: true, title: "MACD" }, pane));
+          oscMap.set("macd-signal", chart.addSeries(LineSeries, { color: "#f59e0b", lineWidth: 1, priceLineVisible: false, lastValueVisible: true, title: "Signal" }, pane));
         }
       });
       lastOscKeyRef.current = key;
@@ -2006,6 +2075,13 @@ export function VectorChart({
     indicatorsRef.current = indicators;
     paintOverlays(lastDisplayBarsRef.current);
   }, [indicators, paintOverlays]);
+
+  // Same sync-then-repaint idiom for the opening-range window preset: picking a new window must
+  // redraw the OR lines immediately, without waiting for the next tick/timeframe change.
+  useEffect(() => {
+    openingRangeMinutesRef.current = openingRangeMinutes;
+    paintOverlays(lastDisplayBarsRef.current);
+  }, [openingRangeMinutes, paintOverlays]);
 
   // Lazy prior-day OHLC fetch: only when a prior-day/pivot level is enabled, and only once per
   // ticker. The PDH/PDL/PDC + floor-pivot lines need the prior session's high/low/close, which the
@@ -2411,6 +2487,52 @@ export function VectorChart({
     onWallIntegrityChange(integ);
   }, [onWallIntegrityChange, liveGexWalls]);
 
+  // Emit the fused Vector PLAY (buildVectorPlay) — the single concrete trade idea a member sees in
+  // the Pulse rail's "Suggested Play" card. Re-derives regime/magnet/proximity/confluence/wall-
+  // integrity from the SAME horizon-scoped walls/flip the other emit* callbacks above use (cheap,
+  // pure re-derivation rather than plumbing five extra refs), and reads maxPain/expectedMove/
+  // technicals off the refs those already-existing fetches/paints populate. Deduped by a coarse key
+  // (headline/conviction/grade/entry) so an unchanged read never re-renders the card.
+  const emitPlay = useCallback(() => {
+    const cb = onPlayChangeRef.current;
+    if (!cb) return;
+    const spot = spotRef.current;
+    const walls = liveGexWalls();
+    const flip = liveGammaFlip();
+    const regime = deriveVectorRegime({
+      spot,
+      gammaFlip: flip,
+      topCallWall: walls?.callWalls?.[0]?.strike ?? null,
+      topPutWall: walls?.putWalls?.[0]?.strike ?? null,
+    });
+    const magnet = deriveGammaMagnet({ spot, walls, posture: regime.posture });
+    const proximity = deriveWallProximity({ spot, walls, gammaFlip: flip });
+    const zones = spot && spot > 0 ? confluenceZones(gatherConfluenceLevels(spot), spot) : [];
+    const integrity = scoreTopWalls(walls, wallHistoryRef.current);
+    const play = buildVectorPlay({
+      ticker,
+      horizon: dteHorizonRef.current,
+      timeframeMin: timeframeRef.current,
+      spot,
+      regime: { posture: regime.posture },
+      gexWalls: walls,
+      gammaFlip: flip,
+      magnet,
+      proximity,
+      expectedMove: expectedMoveBandsRef.current,
+      maxPain: maxPainValueRef.current,
+      confluenceZones: zones,
+      wallIntegrity: integrity,
+      technicals: technicalsForPlayRef.current,
+    });
+    const key = play
+      ? `${play.headline}|${play.conviction}|${play.grade}|${play.entryZone ?? ""}`
+      : "none";
+    if (key === lastPlayKeyRef.current) return;
+    lastPlayKeyRef.current = key;
+    cb(play);
+  }, [ticker, liveGexWalls, liveGammaFlip, gatherConfluenceLevels]);
+
   // Evaluate the member's alert rules against the CURRENT live tick (spot + horizon-scoped walls +
   // flip). The pure engine does the dedupe/cooldown/hysteresis; we just persist its state + the prior
   // spot (for flip-cross) and forward any fired alerts. No-op when there are no rules or no callback.
@@ -2451,6 +2573,7 @@ export function VectorChart({
     lastProximityRef.current = "";
     lastMagnetRef.current = "";
     lastWallIntegrityRef.current = "";
+    lastPlayKeyRef.current = "";
 
     const repaintLive = () => {
       if (replayModeRef.current || !seriesRef.current) return;
@@ -2469,6 +2592,7 @@ export function VectorChart({
       emitConfluence();
       paintConfluenceBand();
       emitWallIntegrity();
+      emitPlay();
     };
 
     const fitSessionOverview = () => {
@@ -2523,6 +2647,7 @@ export function VectorChart({
         applyMaxPainLine(seriesRef.current, maxPainLineRef, null);
         emitConfluence(); // the max-pain level just landed — the zone stack may have changed
         paintConfluenceBand();
+        emitPlay();
       } catch {
         // Network throw: keep the last-drawn line rather than blank it on a transient blip.
       }
@@ -2556,6 +2681,7 @@ export function VectorChart({
         // actual draw on the "expected-move" toggle.
         expectedMoveBandsRef.current = em;
         paintOverlays(lastDisplayBarsRef.current);
+        emitPlay();
       } catch {
         // Network throw: keep the last-emitted lines rather than blank the section on a blip.
       }
@@ -2714,6 +2840,7 @@ export function VectorChart({
     emitMagnet, emitConfluence,
     paintConfluenceBand,
     emitWallIntegrity,
+    emitPlay,
     onDteHorizonChange,
   ]);
 
@@ -2754,13 +2881,15 @@ export function VectorChart({
     lastProximityRef.current = "";
     lastMagnetRef.current = "";
     lastWallIntegrityRef.current = "";
+    lastPlayKeyRef.current = "";
     emitRegime();
     emitProximity();
     emitMagnet();
     emitConfluence();
     paintConfluenceBand();
     emitWallIntegrity();
-  }, [lens, chartReady, emitRegime, emitProximity, emitMagnet, emitConfluence, paintConfluenceBand, emitWallIntegrity]);
+    emitPlay();
+  }, [lens, chartReady, emitRegime, emitProximity, emitMagnet, emitConfluence, paintConfluenceBand, emitWallIntegrity, emitPlay]);
 
   const connectLive = useCallback(() => {
     if (!liveSessionRef.current) return;
@@ -2951,10 +3080,11 @@ export function VectorChart({
         emitConfluence();
         paintConfluenceBand(); // live SSE tick moved the walls — re-fit the band to the new stack
         emitWallIntegrity();
+        emitPlay();
         evaluateAlertsNow(); // spot/walls/flip just advanced — check the member's alert rules
       }
     });
-  }, [sessionYmd, refreshTrails, refreshOverlays, onFreshness, ticker, liveGexWalls, liveGammaFlip, emitRegime, emitProximity, emitMagnet, emitConfluence, paintConfluenceBand, emitWallIntegrity, evaluateAlertsNow, paintOverlays]);
+  }, [sessionYmd, refreshTrails, refreshOverlays, onFreshness, ticker, liveGexWalls, liveGammaFlip, emitRegime, emitProximity, emitMagnet, emitConfluence, paintConfluenceBand, emitWallIntegrity, emitPlay, evaluateAlertsNow, paintOverlays]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -3118,6 +3248,12 @@ export function VectorChart({
     const gammaRegime = new GammaRegimePrimitive();
     series.attachPrimitive(gammaRegime);
     gammaRegimePrimitiveRef.current = gammaRegime;
+    // Session volume profile (P2 #4): right-margin bars, background layer like the heatmap/regime
+    // glow above. Stays hidden until the member enables "volume-profile" AND real session volume
+    // exists.
+    const volumeProfile = new VolumeProfilePrimitive();
+    series.attachPrimitive(volumeProfile);
+    volumeProfilePrimitiveRef.current = volumeProfile;
     // EOD pin CONE (SPX desk only): attach the converging-cone primitive to the candle series. It
     // renders at zOrder "top" (a translucent gold funnel over the candles) and stays hidden until
     // paintOverlays pushes a real MC cone for SPX. The right-margin room it needs comes from
@@ -3360,6 +3496,8 @@ export function VectorChart({
       // remount re-attaches a fresh glow instead of touching a dead one.
       gammaRegimePrimitiveRef.current = null;
       regimeFlipRef.current = null;
+      // Same lifecycle — chart.remove() disposed the volume-profile primitive too.
+      volumeProfilePrimitiveRef.current = null;
       volumeSeriesRef.current = null;
       setChartReady(false);
     };
@@ -3736,6 +3874,8 @@ export function VectorChart({
         onToggleIndicator={toggleIndicator}
         onClearIndicators={clearIndicators}
         barCount={displayBarCount}
+        openingRangeMinutes={openingRangeMinutes}
+        onOpeningRangeMinutes={setOpeningRangeMinutes}
         leadSlot={leadSlot}
         replayLeadSlot={replayLeadSlot}
         trailSlot={trailSlot}

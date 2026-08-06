@@ -7440,6 +7440,12 @@ body::before {
     order: 3;
     min-width: 0;
   }
+  /* 4th "action" column (Play card + Technicals + Alerts, 2026-08-05): stacks last on mobile,
+     same as any other panel — nothing is ever hidden, only reordered/reflowed by width. */
+  .vector-action-rail {
+    order: 4;
+    min-width: 0;
+  }
 
   @media (min-width: 1280px) {
     /* Proportions per member spec: ~10% ladder · ~60% chart · ~30% terminal. The ladder holds only a
@@ -7467,6 +7473,30 @@ body::before {
     .vector-terminal-rail .vector-pulse {
       flex: 1 1 auto;
       min-height: 0;
+    }
+    /* Between 1280px and the wide 4-column breakpoint below, the action rail hasn't earned its
+       own column yet — span the full 3-col grid width as a row underneath so it's still visible
+       without scrolling to the page bottom, just not squeezed into a 4th narrow column too early. */
+    .vector-action-rail {
+      grid-column: 1 / -1;
+      order: 1;
+    }
+  }
+
+  @media (min-width: 1600px) {
+    /* Wide desktop: genuine 4th column. Narrow the ladder/chart/terminal slightly to make room
+       (10/53/25/12) rather than keeping the terminal's 30% and cramming the action rail in free
+       space that doesn't exist. */
+    .vector-chart-terminal-grid {
+      grid-template-columns: minmax(96px, 10%) minmax(0, 1fr) minmax(280px, 25%) minmax(260px, 12%);
+    }
+    .vector-action-rail {
+      grid-column: auto;
+      order: 0;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      overflow-y: auto;
     }
   }
 
@@ -7611,6 +7641,37 @@ body::before {
     background: none;
   }
 
+  /* Opening-range window preset control (2026-08-05 audit finding #7) — a compact segmented row
+     under the "Opening range" item, only rendered once that level is enabled (no clutter for
+     members who don't use it). */
+  .vector-ind-or-presets {
+    display: flex;
+    gap: 0.3rem;
+    padding: 0.1rem 0.4rem 0.5rem 1.5rem;
+  }
+
+  .vector-ind-or-preset {
+    flex: 1 1 auto;
+    border-radius: 0.35rem;
+    border: 1px solid rgba(148, 163, 184, 0.3);
+    background: none;
+    color: rgba(226, 232, 240, 0.75);
+    font-size: 0.65rem;
+    font-variant-numeric: tabular-nums;
+    padding: 0.15rem 0;
+    cursor: pointer;
+  }
+
+  .vector-ind-or-preset:hover {
+    border-color: rgba(167, 139, 250, 0.6);
+  }
+
+  .vector-ind-or-preset-active {
+    border-color: rgb(167, 139, 250);
+    background: rgba(167, 139, 250, 0.15);
+    color: rgb(226, 232, 240);
+  }
+
   .vector-desk-terminal {
     @apply flex flex-col min-h-0 h-full min-w-0 overflow-hidden rounded-2xl border border-white/10 bg-[#050508] p-1.5;
     min-height: min(72vh, 640px);
@@ -7707,8 +7768,11 @@ body::before {
 
   .vector-gex-ladder-row {
     display: grid;
-    /* Thin left-rail: keep the strike + value tight so the magnitude bar still has room to read. */
-    grid-template-columns: 2.9rem minmax(0, 1fr) auto;
+    /* Thin left-rail: keep the strike + value tight so the magnitude bar still has room to read.
+       4th track (2026-08-06, wall-migration arrows) is a narrow fixed width so it doesn't steal
+       space from the bar on rows with no migration reading — see the component's comment on why
+       it's always rendered (empty) rather than conditionally added/removed from the grid. */
+    grid-template-columns: 2.9rem minmax(0, 1fr) 2.4rem auto;
     align-items: center;
     gap: 0.3rem;
     padding: 0.09rem 0.25rem;
@@ -7751,6 +7815,25 @@ body::before {
   .vector-gex-ladder-crown {
     margin-right: 0.2rem;
     font-size: 0.6rem;
+  }
+
+  /* Wall-migration arrow (2026-08-06): is this strike's wall building or fading over the shift
+     window? Muted grey (empty) by default so a row with no reading yet doesn't draw the eye;
+     only rows with an actual ≥1% move get a coloured tag. */
+  .vector-gex-ladder-migration {
+    font-size: 0.58rem;
+    text-align: right;
+    white-space: nowrap;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    color: rgba(148, 163, 184, 0.4);
+  }
+
+  .vector-gex-ladder-migration-up {
+    color: rgba(74, 222, 128, 0.9);
+  }
+
+  .vector-gex-ladder-migration-down {
+    color: rgba(248, 113, 113, 0.75);
   }
 
   .vector-gex-ladder-spot {
@@ -8385,6 +8468,63 @@ body::before {
     @apply text-white/70;
   }
 
+  /* ── Suggested Play card — buildVectorPlay's fused trade idea, above the Pulse narration ── */
+  .vector-play-card {
+    @apply rounded-xl border border-violet-400/25 bg-violet-400/[0.06] px-3 py-2.5;
+  }
+  .vector-play-card-head {
+    @apply flex flex-wrap items-center gap-2;
+  }
+  .vector-play-card-grade {
+    @apply flex h-5 w-5 items-center justify-center rounded font-mono text-[11px] font-bold;
+  }
+  .vector-play-grade-a {
+    @apply bg-emerald-400/20 text-emerald-300;
+  }
+  .vector-play-grade-b {
+    @apply bg-amber-400/20 text-amber-300;
+  }
+  .vector-play-grade-c {
+    @apply bg-white/10 text-white/60;
+  }
+  .vector-play-card-style {
+    @apply font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-violet-300/80;
+  }
+  .vector-play-card-bias {
+    @apply font-mono text-[10px] font-bold uppercase tracking-[0.1em];
+  }
+  .vector-play-bias-long {
+    @apply text-emerald-300;
+  }
+  .vector-play-bias-short {
+    @apply text-rose-300;
+  }
+  .vector-play-bias-range,
+  .vector-play-bias-neutral {
+    @apply text-cyan-300;
+  }
+  .vector-play-card-conviction {
+    @apply ml-auto font-mono text-[11px] font-bold text-white/50;
+  }
+  .vector-play-card-headline {
+    @apply mt-1.5 text-sm font-semibold text-white;
+  }
+  .vector-play-card-thesis {
+    @apply mt-0.5 text-[13px] leading-snug text-white/70;
+  }
+  .vector-play-card-levels {
+    @apply mt-2 flex flex-col gap-0.5 border-t border-white/10 pt-1.5;
+  }
+  .vector-play-card-level {
+    @apply flex items-baseline gap-1.5 text-[11px];
+  }
+  .vector-play-card-level dt {
+    @apply font-mono uppercase tracking-wide text-white/40;
+  }
+  .vector-play-card-level dd {
+    @apply font-mono font-semibold text-white/80;
+  }
+
   /* ── Ticker search combobox — type any optionable symbol ── */
   .vector-ticker-search {
     @apply relative flex items-center gap-1.5 rounded-md border border-cyan-500/30 bg-black/60 px-2 py-1;
@@ -8413,6 +8553,44 @@ body::before {
   }
   .vector-ticker-search-opt-hint {
     @apply font-mono text-[10px] uppercase tracking-wide text-white/40;
+  }
+
+  /* ── Intraday/Daily/Weekly chart-view switcher above the chart (P2 #5) ── */
+  .vector-chart-view-toggle {
+    @apply mb-2 flex w-fit gap-1 rounded-lg border border-cyan-400/30 bg-black/40 p-0.5;
+  }
+  .vector-chart-view-btn {
+    @apply rounded-md px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-cyan-300/70 transition-colors;
+  }
+  .vector-chart-view-btn.is-active {
+    @apply bg-cyan-400/20 text-cyan-200;
+  }
+
+  /* ── Daily/Weekly historical price view (P2 #5, separate from the intraday VectorChart) ── */
+  /* h-[...] (not min-h) is load-bearing: .vector-daily-chart-canvas below is h-full, and a
+     percentage-height child only resolves through a flex column ancestor whose OWN height is
+     definite. A min-height on this container still gave the outer box a visible ~640px box (via
+     the height floor), but the inner flex-1 canvas wrapper had no definite height to resolve
+     against, so lightweight-charts' container div collapsed to its own tiny content height (~30px)
+     and every candle/SMA/volume series rendered squashed into a sliver at the top — silently, with
+     no error, since the data and series wiring were both correct (2026-08-05 live-UI audit). */
+  .vector-daily-chart {
+    @apply flex h-[min(72vh,640px)] flex-col gap-2 rounded-xl border border-cyan-500/20 bg-black/40 p-3;
+  }
+  .vector-daily-chart-head {
+    @apply flex flex-wrap items-center gap-3;
+  }
+  .vector-daily-chart-note {
+    @apply text-[11px] text-white/40;
+  }
+  .vector-daily-chart-canvas-wrap {
+    @apply relative min-h-0 flex-1;
+  }
+  .vector-daily-chart-canvas {
+    @apply h-full w-full;
+  }
+  .vector-daily-chart-overlay {
+    @apply absolute inset-0 flex items-center justify-center bg-black/50 text-sm text-cyan-300;
   }
 
   /* ── Universe scanner: collapsible secondary panel below the chart ── */
@@ -8558,6 +8736,37 @@ body::before {
   }
   .vs-dist {
     @apply ml-2 font-mono text-[10px] tabular-nums text-white/35;
+  }
+
+  /* ── Cross-ticker wall-structure comparison strip (P2, 2026-08-05 CTO audit) ──
+     Reuses the vs-regime-* / vs-regime-tag-* tokens above so a chip here reads exactly like the
+     matching scanner row. */
+  .vector-comparison-strip {
+    @apply mb-2 flex flex-wrap items-center gap-1.5;
+  }
+  .vector-comparison-chip {
+    @apply flex items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.03] px-2 py-1 transition-colors;
+  }
+  .vector-comparison-chip:not(:disabled):hover {
+    @apply border-cyan-400/30 bg-cyan-400/[0.06];
+  }
+  .vector-comparison-chip:disabled {
+    @apply cursor-default;
+  }
+  .vector-comparison-chip.is-active {
+    @apply border-cyan-400/50 bg-cyan-400/10;
+  }
+  .vector-comparison-chip-ticker {
+    @apply flex items-center gap-1.5 font-mono text-[11px] font-semibold text-white/90;
+  }
+  .vector-comparison-chip-regime {
+    @apply font-mono text-[11px] font-semibold;
+  }
+  .vector-comparison-chip-dist {
+    @apply font-mono text-[10px] tabular-nums text-white/45;
+  }
+  .vector-comparison-chip-strength {
+    @apply font-mono text-[10px] tabular-nums text-white/35;
   }
 
   .vector-chart-closed-hint {
@@ -16163,6 +16372,17 @@ body::before {
 .nh-deck-header-compact .nh-deck-filtbtn,
 .nh-deck-header-compact .nh-deck-sortbtn{padding:4px 5px;font-size:8px;flex:0 0 auto;min-width:38px;letter-spacing:.06em}
 .nh-deck-rows{overflow-y:auto;flex:1}
+/* ── SWING serving-section groups (FINDINGS 2026-08-06 P2) ── */
+.nh-deck-section-group + .nh-deck-section-group{margin-top:6px}
+.nh-deck-section-head{display:flex;align-items:center;justify-content:space-between;gap:8px;
+  padding:7px 14px;position:sticky;top:0;z-index:1;background:rgba(7,13,10,.92);backdrop-filter:blur(2px);
+  border-top:1px solid rgba(53,255,158,.14);border-bottom:1px solid rgba(53,255,158,.14)}
+.nh-deck-section-label{color:var(--dk-green-dim);font-size:11px;letter-spacing:.14em;text-transform:uppercase;font-weight:800}
+.nh-deck-section-count{color:var(--dk-green-dim);font-size:11px;font-weight:700;background:rgba(53,255,158,.08);
+  border-radius:10px;padding:1px 8px;font-variant-numeric:tabular-nums}
+.nh-deck-section-group[data-section="COMMIT_NOW"] .nh-deck-section-head{border-color:rgba(53,255,158,.35)}
+.nh-deck-section-group[data-section="EXITING"] .nh-deck-section-head,
+.nh-deck-section-group[data-section="RESEARCH"] .nh-deck-section-head{border-color:rgba(255,90,90,.2)}
 .nh-deck-row{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:11px 14px;cursor:pointer;
   border-bottom:1px solid rgba(53,255,158,.06);border-left:2px solid transparent;background:none;width:100%;text-align:left;font-family:inherit;color:inherit}
 .nh-deck-row:hover{background:rgba(53,255,158,.04)}

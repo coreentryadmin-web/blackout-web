@@ -11,6 +11,8 @@
  * RSI = Wilder's smoothing; MACD = EMA(fast) − EMA(slow) with an EMA(signal) of that line.
  */
 
+import { isRthBarSec } from "./vector-session-hours";
+
 export type IndicatorBar = {
   /** Bar-start epoch SECONDS. Optional for MA math, but REQUIRED for a correct multi-session
    *  VWAP — without it vwapSeries cannot see session boundaries and accumulates across days. */
@@ -90,7 +92,13 @@ export function vwapSeries(bars: IndicatorBar[]): (number | null)[] {
       }
       day = d;
     }
-    const vol = b.volume != null && b.volume > 0 ? b.volume : 0;
+    // RTH-only accumulation (2026-08-05 audit finding): a real equity's pre/post-market prints
+    // must never anchor session VWAP — skip adding their typical*volume so VWAP stays null until
+    // the 09:30 open and flat-lines at its last RTH value after the 16:00 close, rather than
+    // starting to accumulate at the first premarket print. A bar with no `time` (can't gate) is
+    // treated as RTH — legacy callers that never pass time keep their prior behavior.
+    const rth = b.time == null || !Number.isFinite(b.time) || isRthBarSec(b.time);
+    const vol = rth && b.volume != null && b.volume > 0 ? b.volume : 0;
     if (vol > 0) {
       const typical = (b.high + b.low + b.close) / 3;
       cumTPV += typical * vol;

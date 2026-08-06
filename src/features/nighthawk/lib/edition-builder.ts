@@ -38,6 +38,8 @@ import {
   shouldRebuildStalePublishedEdition,
 } from "./edition-stale";
 import {
+  anyRankedClearsScoreFloor,
+  countRankedClearingMerit,
   criticRescueEnabled,
   effectiveMinPublishPlays,
   effectiveMinPublishScore,
@@ -45,6 +47,7 @@ import {
   effectiveTargetPlays,
   filterPlaysByMerit,
   gatePromoteEnabled,
+  legacyMinPublishTier,
   thinEditionBackfillEnabled,
 } from "./edition-quality";
 import { backfillThinEditionPlays } from "./play-backfill";
@@ -54,6 +57,7 @@ import {
   applyNighthawkPublishGates,
   capGatePromotedConviction,
   promoteTopBlocked,
+  targetAtrMultipleFromGateResult,
   type NighthawkPublishGateResult,
 } from "./publish-gates";
 import {
@@ -727,6 +731,59 @@ export async function buildEveningEdition(opts?: {
     }
     funnel.posture_applied = ranked.length;
 
+    // Pre-synthesis merit-floor check (2026-08-05, moved earlier — Lever 5 of the discovery-
+    // architecture redesign). This is a PURE OPTIMIZATION, not a new gate. The organic path
+    // (filterPlaysByMerit) and the strict rescue path (rankedCandidateMeritEligible in
+    // play-backfill.ts) both require score+tier — countRankedClearingMerit logs that number for
+    // diagnostics. But the LOOSEST downstream rescue, promoteTopBlocked's gate-promote
+    // (publish-gates.ts), admits on `score >= gatePromoteMinScore()` ALONE, no tier check — so the
+    // only condition under which NOTHING anywhere downstream could possibly publish is "no
+    // candidate clears the score floor at all" (anyRankedClearsScoreFloor). Nothing between here
+    // and there can raise a candidate's score (buildDeterministicEditionPlays/critiquePlays only
+    // narrow/format; Phase 3 removed the LLM synthesis stage entirely, per claude-edition.ts's own
+    // doc comment — this pipeline is fully deterministic), so that condition is stable once
+    // computed here. Short-circuiting here saves a real night's worth of API calls (chain
+    // prefetch, dossier re-fetch for index/flow-tape context) on a night that was always going to
+    // end in recap-only, without changing which nights publish plays.
+    console.info(
+      `[nighthawk/edition] pre-synthesis merit check: ${countRankedClearingMerit(ranked)}/${ranked.length} ` +
+      `ranked candidate(s) already clear score>=${effectiveMinPublishScore()} + tier>=${legacyMinPublishTier()} ` +
+      `before synthesis/critic/gates run`
+    );
+
+    if (ranked.length > 0 && !anyRankedClearsScoreFloor(ranked)) {
+      const reason =
+        `No ranked candidate clears even the score-only rescue floor pre-synthesis (${ranked.length} ` +
+        `ranked, 0 with score>=${effectiveMinPublishScore()}) — every downstream rescue/backfill/` +
+        `gate-promote path requires at least this score floor, so synthesis was skipped rather ` +
+        `than spending API calls on a guaranteed recap-only night.`;
+      console.warn(`[nighthawk/edition] stage_synthesis short-circuit — recap-only fallback: ${reason}`);
+      funnel.dossiers = 0;
+      funnel.synthesized = 0;
+      funnel.published = 0;
+      logFunnel(editionFor, funnel);
+      await alertRecapOnlyIfAnomalous(editionFor, funnel, reason);
+      await publishRecapOnlyEdition({
+        editionFor,
+        ctx,
+        reason,
+        candidates: candidates.length,
+        checkpointing,
+        force: Boolean(opts?.force),
+        funnel,
+      });
+      return {
+        ok: true,
+        edition_for: editionFor,
+        plays_count: 0,
+        candidates: candidates.length,
+        recap_only: true,
+        duration_ms: Date.now() - started,
+        job_status: "published",
+        current_stage: "published",
+      };
+    }
+
     const topDossiers = ranked.map((s) => dossiers[s.ticker]).filter(Boolean);
     const synthesisRanked = ranked.slice(0, effectiveSynthesisPool());
     const synthesisDossiers = synthesisRanked.map((s) => dossiers[s.ticker]).filter(Boolean);
@@ -1086,6 +1143,18 @@ export async function buildEveningEdition(opts?: {
     if (finalPlays.length > 1) {
       finalPlays.sort((a, b) => (b.score ?? -Infinity) - (a.score ?? -Infinity));
       finalPlays.forEach((p, i) => { p.rank = i + 1; });
+    }
+
+    // Stamp G-N2's ALREADY-COMPUTED target distance onto each published play so members and
+    // admin read the same number the gate judged. Read from `gateResults` (the in-memory
+    // objects this build gated on, also pinned into publish_context.gates below) — never
+    // recomputed here, so the payload cannot drift from the pin. publish_context is
+    // DB-only, which is why every audit pass so far had to reconstruct ATR14 from Polygon
+    // to answer "how far out are our targets"; this puts the pinned answer on the payload.
+    // Fail-soft by construction: a missing/blocked gate result leaves the field absent.
+    for (const play of finalPlays) {
+      const multiple = targetAtrMultipleFromGateResult(gateResults[play.ticker?.toUpperCase() ?? ""]);
+      if (multiple != null) play.target_atr_multiple = multiple;
     }
 
     // WRITE-SIDE INVARIANT (#77): never persist a "normal" edition with zero plays. The five funnel

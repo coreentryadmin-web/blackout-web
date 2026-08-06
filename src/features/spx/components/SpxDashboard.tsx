@@ -124,8 +124,11 @@ export function SpxDashboard({ vectorEnabled }: SpxDashboardProps) {
   // tape they're trading. Session gate matches the Pulse/commentary rails exactly (live desk AND a
   // real desk snapshot) so the play SWR only polls when the desk is actually live. The mapped input
   // is memoized on the play's identity so an unchanged play doesn't churn the chart's reconcile.
-  const playSessionActive = Boolean(live && desk?.available);
-  const { play, playLoading } = useSpxPlay(playSessionActive);
+  // Play polling + verdict bar use sessionActive (ET clock + pulse), NOT resolveDeskLive.
+  // Brief desk-lane refresh can drop `live` for a poll while RTH is still open — gating on
+  // `live && desk.available` cleared play cache and flashed CLOSED on the verdict bar while
+  // /api/market/spx/play stayed SCANNING (SPX-VERDICT-CLOSED-FLICKER, 2026-08-05).
+  const { play, playLoading } = useSpxPlay(sessionActive);
   const playLevels = useMemo(() => playPayloadToLevelsInput(play), [play]);
 
   // FOCUS MODE (2026-07-13): `F` toggles / `Esc` exits (ignored while typing), persisted
@@ -399,7 +402,7 @@ export function SpxDashboard({ vectorEnabled }: SpxDashboardProps) {
               <SpxPlayVerdictBar
                 play={play}
                 playLoading={playLoading}
-                sessionActive={playSessionActive}
+                sessionActive={sessionActive}
                 compactDefaultCollapsed={compactPanels}
               />
             </div>
@@ -445,7 +448,7 @@ export function SpxDashboard({ vectorEnabled }: SpxDashboardProps) {
                       <SpxPlayVerdictBar
                         play={play}
                         playLoading={playLoading}
-                        sessionActive={playSessionActive}
+                        sessionActive={sessionActive}
                         compactDefaultCollapsed={false}
                       />
                     </div>

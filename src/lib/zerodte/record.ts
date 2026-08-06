@@ -290,28 +290,63 @@ function mechanicalGradeView(row: ZeroDteSetupLogRow): GradeView {
   };
 }
 
+/** True when a WS-11 reconstruction actually banked a PARTIAL position before its final leg —
+ *  i.e. genuinely replays the trim-scale mechanism (real information a single-exit stamp can't
+ *  carry: the blended P&L across separate tranches). False for a DEGENERATE reconstruction — one
+ *  tranche, `fraction` ≈ 1 — meaning no trim ever armed in the bar-only replay and the whole
+ *  position rode straight to the reconstruction's own fixed stop/target/time-stop, exactly like
+ *  a plain mechanical grade. A degenerate reconstruction adds NOTHING a real recorded exit
+ *  doesn't already know, and — unlike the reconstruction — a real exit reflects live-only engine
+ *  logic the bar-only replay structurally cannot reproduce: the ratchet profit floor (armed by a
+ *  peak, not implemented in reconstructTrimScaleExecutableFromBars at all) and a thesis-break veto
+ *  (needs live GEX-wall/dealer-positioning state, unavailable from price bars). Confirmed live
+ *  2026-08-06: MU (peak +16.73%, real ratchet-floor exit +4.99%) and QQQ (real thesis-break exit
+ *  -12.43%) both reconstructed to a single degenerate stopped-at-~-50% tranche, silently replacing
+ *  a real, better outcome with a worse and later fictitious one on the AS-MANAGED headline. */
+function reconstructionShowsGenuinePartialBank(
+  entryContext: Record<string, unknown> | null | undefined
+): boolean {
+  const ex = entryContext?.executable;
+  if (!ex || typeof ex !== "object") return false;
+  const tranches = (ex as Record<string, unknown>).tranches;
+  if (!Array.isArray(tranches) || tranches.length === 0) return false;
+  if (tranches.length > 1) return true;
+  const only = tranches[0] as Record<string, unknown> | undefined;
+  const fraction = typeof only?.fraction === "number" && Number.isFinite(only.fraction) ? only.fraction : 1;
+  return fraction < 0.999;
+}
+
+function reconstructedGradeView(reco: { plan_outcome: string | null; plan_pnl_pct: number }): GradeView {
+  const pnl = round2(reco.plan_pnl_pct);
+  return {
+    graded: true,
+    // The reconstruction's own runner outcome (doubled/stopped/time_stop) is the honest
+    // as-managed label; the tranches carry the partial-banking detail behind the blend.
+    outcome: reco.plan_outcome,
+    pnl_pct: pnl,
+    win: pnl > 0,
+    breakeven: pnl === 0,
+    source: "reconstructed",
+  };
+}
+
 /** AS-MANAGED grade view — the exit the member was live-guided to take. Precedence:
- *  (1) WS-11 — a TRIM-SCALE row graded with a reconstructed partial path (executable blob
- *      carries `tranches`): the reconstruction replays the exact ⅓/⅓/⅓ scale-out the engine
- *      runs, priced executable-side, so it IS the canonical as-managed number AND the official
- *      calibration number (officialPlanPnlPct) — one and the same, so the headline and the
- *      grade agree by construction. It supersedes the live single-exit stamp for these rows.
- *  (2) the live engine's stamped single exit (entry_context.exit) — ratchet mode, thesis/flat.
- *  (3) no engine exit → the play rode to the plan's own stop/target/time-stop (mechanical). */
+ *  (1) WS-11 — a TRIM-SCALE row genuinely reconstructed with a PARTIAL scale-out path (2+
+ *      tranches, or one tranche with fraction < 1): the reconstruction replays the exact
+ *      ⅓/⅓/⅓ scale-out the engine runs, priced executable-side, so it IS the canonical
+ *      as-managed number AND the official calibration number (officialPlanPnlPct) — one and
+ *      the same, so the headline and the grade agree by construction. It supersedes the live
+ *      single-exit stamp for these rows (FINDINGS 2026-08-06: gated on GENUINE partial
+ *      banking — a degenerate single-tranche "reconstruction" is not preferred over a real
+ *      recorded exit; see reconstructionShowsGenuinePartialBank).
+ *  (2) the live engine's stamped single exit (entry_context.exit) — ratchet mode, thesis/flat,
+ *      OR a trim_scale row whose reconstruction never actually armed a trim.
+ *  (3) no engine exit → the reconstruction (even if degenerate) if present, else the play rode
+ *      to the plan's own stop/target/time-stop (mechanical) — never silently ungraded. */
 function managedGradeView(row: ZeroDteSetupLogRow): GradeView {
   const reco = readReconstructedTrimScale(row.entry_context);
-  if (reco) {
-    const pnl = round2(reco.plan_pnl_pct);
-    return {
-      graded: true,
-      // The reconstruction's own runner outcome (doubled/stopped/time_stop) is the honest
-      // as-managed label; the tranches carry the partial-banking detail behind the blend.
-      outcome: reco.plan_outcome,
-      pnl_pct: pnl,
-      win: pnl > 0,
-      breakeven: pnl === 0,
-      source: "reconstructed",
-    };
+  if (reco && reconstructionShowsGenuinePartialBank(row.entry_context)) {
+    return reconstructedGradeView(reco);
   }
   const exit = readManagedExit(row.entry_context);
   if (exit && exit.pnl_pct != null) {
@@ -325,6 +360,7 @@ function managedGradeView(row: ZeroDteSetupLogRow): GradeView {
       source: "engine",
     };
   }
+  if (reco) return reconstructedGradeView(reco);
   const mech = mechanicalGradeView(row);
   return { ...mech, source: mech.graded ? "plan" : null };
 }

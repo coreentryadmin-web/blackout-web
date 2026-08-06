@@ -68,6 +68,31 @@ function formatZerodte(z: unknown): string[] {
   return [`**0DTE Command:** ${board.plays.length} row(s) · ${open.length} active`, `- ${sample.join(" · ")}`];
 }
 
+function formatBanger(b: unknown): string[] {
+  const board = b as { available?: boolean; open_count?: number; open?: Array<{ ticker: string; status: string }> } | null;
+  if (!board?.available) return [];
+  const open = board.open ?? [];
+  if (!open.length && !(board.open_count ?? 0)) return ["**Bangers:** lane empty."];
+  const sample = open.slice(0, 4).map((p) => `${p.ticker} (${p.status})`);
+  return [`**Bangers (Engine B):** ${board.open_count ?? open.length} open`, `- ${sample.join(" · ")}`];
+}
+
+function formatSwing(s: unknown): string[] {
+  const lane = s as { available?: boolean; committed_count?: number; watch_count?: number } | null;
+  if (!lane?.available) return [];
+  return [
+    `**Swings lane:** ${lane.committed_count ?? 0} committed · ${lane.watch_count ?? 0} watch`,
+  ];
+}
+
+function formatHelixSignals(h: unknown): string[] {
+  const data = h as { available?: boolean; summary?: { gradedCount?: number; winRatePct?: number | null } | null } | null;
+  if (!data?.available || !data.summary) return [];
+  const s = data.summary;
+  const wr = s.winRatePct != null ? `${s.winRatePct}% WR` : "WR n/a (<10 graded)";
+  return [`**HELIX signal outcomes:** ${s.gradedCount ?? 0} graded · ${wr}`];
+}
+
 function formatVector(v: unknown): string[] {
   const s = v as {
     spot?: number;
@@ -124,6 +149,9 @@ export function formatBieFullStateAnswer(state: BieFullState): string {
   lines.push(...formatVector(state.vectorSpx));
   lines.push("");
   lines.push(...formatZerodte(state.zerodte));
+  lines.push(...formatBanger(state.banger));
+  lines.push(...formatSwing(state.swing));
+  lines.push(...formatHelixSignals(state.helixSignalOutcomes));
 
   const regime = state.regime as { regime_label?: string; risk_tone?: string; session_phase?: string } | null;
   if (regime) {
@@ -175,6 +203,9 @@ export function formatCompactBieFullStateBlock(state: BieFullState, maxChars = 3
     ...formatMatrix(state.thermalMatrix as ThermalMatrixSummary | null),
     ...formatVector(state.vectorSpx),
     ...formatZerodte(state.zerodte),
+    ...formatBanger(state.banger),
+    ...formatSwing(state.swing),
+    ...formatHelixSignals(state.helixSignalOutcomes),
   ];
 
   const regime = state.regime as { regime_label?: string; risk_tone?: string; session_phase?: string } | null;
