@@ -279,18 +279,52 @@ test("gradeRejectedPlay: a would-have-won block grades target with the realized 
   assert.equal(cf.graded_at, new Date(NOW).toISOString());
 });
 
-test("gradeRejectedPlay: an open close only wins when profitable (conservative economics)", () => {
+test("gradeRejectedPlay: an untouched target NEVER wins, however green the close (one predicate, shared with the published record)", () => {
   const base = {
     ticker: "T",
     edition_for: "2026-07-10",
     direction: "LONG" as const,
     input_snapshot: { entry_range_low: 100, entry_range_high: 102, target: 120, stop: 90, gate_blocks: [] },
   };
+  // The regression this locks: a profitable OPEN used to score would_have_won=true here while
+  // the published record (analytics.ts winRate, `outcome === "target"`) scored the identical
+  // shape as a non-win. That asymmetry is what produced "blocked 31.3% would have won" beside
+  // "published 0%" and pushed improvement_queue toward loosening the gate.
   const up = gradeRejectedPlay({ rejection: base, bar: { o: 101, h: 106, l: 100, c: 105 }, nowMs: NOW });
   assert.equal(up.outcome, "open");
-  assert.equal(up.would_have_won, true);
+  assert.equal(up.would_have_won, false);
+  // The economics are NOT lost — return is still recorded, it just isn't a "win".
+  assert.equal(up.realized_return_pct, 3.96);
+
   const flat = gradeRejectedPlay({ rejection: base, bar: { o: 101, h: 102, l: 100, c: 101 }, nowMs: NOW });
-  assert.equal(flat.would_have_won, false); // 101 close vs 101 mid = 0% — a tie is not a win
+  assert.equal(flat.would_have_won, false);
+
+  // A real target touch still wins — the predicate tightened, it did not break.
+  const hit = gradeRejectedPlay({ rejection: base, bar: { o: 101, h: 121, l: 100, c: 119 }, nowMs: NOW });
+  assert.equal(hit.outcome, "target");
+  assert.equal(hit.would_have_won, true);
+});
+
+test("gradeRejectedPlay: win predicate is byte-identical to the published record's (analytics winRate)", () => {
+  // Both cohorts of `gate_validation` must be scored by the SAME test. Assert it structurally
+  // rather than by eyeball: for every outcome the grader can emit, would_have_won must equal
+  // the published predicate `outcome === "target"`, regardless of realized return sign.
+  const base = {
+    ticker: "T",
+    edition_for: "2026-07-10",
+    direction: "LONG" as const,
+    input_snapshot: { entry_range_low: 100, entry_range_high: 102, target: 110, stop: 95, gate_blocks: [] },
+  };
+  const bars = [
+    { o: 101, h: 111, l: 100, c: 110.5 }, // target
+    { o: 101, h: 103, l: 94, c: 96 }, // stop
+    { o: 101, h: 106, l: 100, c: 105 }, // open, green
+    { o: 101, h: 102, l: 100, c: 100.5 }, // open, red
+  ];
+  for (const bar of bars) {
+    const cf = gradeRejectedPlay({ rejection: base, bar, nowMs: NOW });
+    assert.equal(cf.would_have_won, cf.outcome === "target", `bar ${JSON.stringify(bar)}`);
+  }
 });
 
 test("levelsFromRejectionSnapshot: structural read, junk-tolerant", () => {
