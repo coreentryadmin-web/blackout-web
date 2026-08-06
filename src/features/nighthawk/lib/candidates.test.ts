@@ -111,6 +111,12 @@ test("applyConfluenceGate: default params match the exported constants", () => {
   const admittedTickers = new Set(gated.map((r) => r.ticker));
   for (let i = 0; i < CONFLUENCE_PROTECTED_TOP; i++) assert.ok(admittedTickers.has(`T${i}`), `T${i} in protected top`);
   assert.ok(!admittedTickers.has(`T${CONFLUENCE_PROTECTED_TOP}`), "first single-lane name past the protected top is dropped");
+  // A single-lane row exactly one below CONFLUENCE_MIN_SOURCES is dropped; a row exactly at it
+  // is kept — pins the constant's actual value rather than just documenting it in a comment.
+  const atThreshold = row("AT_THRESHOLD", 1, Array(CONFLUENCE_MIN_SOURCES).fill("flow-lane"));
+  const belowThreshold = row("BELOW_THRESHOLD", 0.5, Array(CONFLUENCE_MIN_SOURCES - 1).fill("flow-lane"));
+  const thresholdGated = applyConfluenceGate([atThreshold, belowThreshold], 100, 0);
+  assert.deepEqual(thresholdGated.map((r) => r.ticker), ["AT_THRESHOLD"]);
 });
 
 test("applyConfluenceGate: empty input → empty output", () => {
