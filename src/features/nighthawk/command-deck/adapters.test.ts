@@ -1101,6 +1101,27 @@ test("Legacy adapter: surfaces iv_rank and rr_ratio as metadata, not scored fact
   assert.ok(!play.factors.some((f) => f.label === "R:R Ratio"));
 });
 
+test("Legacy adapter: surfaces the PINNED target-ATR multiple, and never fabricates one", () => {
+  // Legacy grades on ONE session, so this multiple is the target's reachability. It must
+  // reach the terminal payload unchanged (it is the gate's own measured value) and stay
+  // null when the pin is absent or unusable — a fabricated multiple would read as a
+  // measured probability on the play card.
+  const pinned = terminalPlayFromEdition({
+    ticker: "NVDA", direction: "long", rank: 1, score: 75, target_atr_multiple: 1.1,
+  });
+  assert.equal(pinned.targetAtrMultiple, 1.1);
+
+  const absent = terminalPlayFromEdition({ ticker: "NVDA", direction: "long", rank: 1, score: 75 });
+  assert.equal(absent.targetAtrMultiple, null);
+
+  for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, null]) {
+    const junk = terminalPlayFromEdition({
+      ticker: "NVDA", direction: "long", rank: 1, score: 75, target_atr_multiple: bad,
+    });
+    assert.equal(junk.targetAtrMultiple, null, `target_atr_multiple=${String(bad)}`);
+  }
+});
+
 test("Legacy adapter: key_signal enriches recNote", () => {
   const play = terminalPlayFromEdition({
     ticker: "META", direction: "long", rank: 1, score: 80,

@@ -555,6 +555,7 @@ export interface EditionDeckSource {
   exit_style?: string | null;
   iv_rank?: number | null;
   rr_ratio?: number | null;
+  target_atr_multiple?: number | null;
   flow_streak_days?: number | null;
   gate_promoted?: boolean | null;
   gate_warnings?: string[] | null;
@@ -738,6 +739,7 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
     keySignal: src.key_signal ?? null,
     optionsPlay: src.options_play ?? null,
     rrRatio: fin(src.rr_ratio),
+    targetAtrMultiple: fin(src.target_atr_multiple),
     ivRank: fin(src.iv_rank),
     entryCostPerContract: fin(src.entry_premium) ?? fin(src.entry_cost_per_contract),
     premiumCapOk: src.premium_cap_ok ?? null,
