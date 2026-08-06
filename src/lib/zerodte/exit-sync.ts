@@ -249,14 +249,50 @@ export async function evaluateLedgerRowExit(
     const frozenPolicy = readFrozenExitPolicy(row.entry_context as Record<string, unknown> | null);
     const stopPct = frozenPolicy?.hard_stop_pct ?? PLAN_RULES.stop_pct;
     const targetPct = frozenPolicy?.target_pct ?? PLAN_RULES.target_pct;
+    const pinnedStop =
+      typeof row.plan_json?.stop_premium === "number" ? (row.plan_json.stop_premium as number) : null;
+    const pinnedTarget =
+      typeof row.plan_json?.target_premium === "number" ? (row.plan_json.target_premium as number) : null;
+    // ENTRY-BASIS COHERENCE (fixed 2026-08-06). The pinned plan_json.stop_premium /
+    // target_premium are derived in plan.ts:271-272 from `entry_max` (= flow_avg_fill ?? mark) —
+    // the SMART MONEY's own fill. The LEDGER basis (`entry` here, and the basis every P&L,
+    // ratchet floor and trim tranche below is denominated in) is resolveLedgerEntryPremium's
+    // ACHIEVABILITY FLOOR: entry_max floored UP to the flag-time mark, because a member
+    // arriving at flag time pays ~the mark, never a fill that is already gone.
+    //
+    // When markAtFlag > flow_avg_fill those two bases DIVERGE, and G-8/G-9 permit that
+    // divergence all the way to CHASE_PCT (55%) before `MOVED` blocks the play (plan.ts:43,
+    // gates.ts). A pinned stop at entry_max×0.5 compared against a mark whose P&L is measured
+    // off the (higher) ledger basis is a stop at −50% of a number the member never paid: at
+    // the +54.99% boundary the operative stop lands at −67.7% of the ledger basis. That is the
+    // ONLY reachable path by which a thesis/flat/plan_stop exit can be stamped worse than the
+    // −50% hard stop, and it is REACHABLE — measured LIVE on the prod board 2026-08-06:
+    // 8 of 24 candidate setups had mark > entry_max (AVGO vs_flow_pct +35.26% → operative stop
+    // −62.92%; NET −53.64%; AMZN −54.49%).
+    //
+    // Every OTHER stop consumer in the system already uses the ledger basis:
+    // gradePlanFromBars (plan.ts:415, stop = entryPremium×(1+stopPct/100) with entryPremium =
+    // row.entry_premium) and derivePlayStatus (plan.ts:692/718, trough ≤ entryPremium×0.5).
+    // This call site was the sole holdout, and it is the AUTHORITATIVE one: both live callers
+    // pass `deferPlanStop: true` (live-marks.ts:535, scan.ts:1671) precisely so the engine
+    // gets the first say on the stop.
+    //
+    // The fix is deliberately SURGICAL: the pinned number still wins whenever the two bases
+    // AGREE (which is every row where the mark did not run past the flow fill — 16 of the 24
+    // live setups above), so behaviour is byte-identical there. Only on a genuine basis
+    // divergence are the rails re-expressed on the ledger basis using the FROZEN percentages,
+    // which preserves WS-02's rule that the row manages itself under its commit-time policy.
+    //
+    // The MEMBER-FACING printed plan (plan_json.entry_max / stop_premium / target_premium) is
+    // deliberately left untouched — same boundary resolveLedgerEntryPremium draws. Only the
+    // OPERATIVE rails move, and they move to agree with the basis the row is graded on.
+    const planEntryMax =
+      typeof row.plan_json?.entry_max === "number" ? (row.plan_json.entry_max as number) : null;
+    const entryBasisDiverged = planEntryMax != null && planEntryMax > 0 && entry > planEntryMax;
     const planStop =
-      typeof row.plan_json?.stop_premium === "number"
-        ? (row.plan_json.stop_premium as number)
-        : entry * (1 + stopPct / 100);
+      pinnedStop != null && !entryBasisDiverged ? pinnedStop : entry * (1 + stopPct / 100);
     const planTarget =
-      typeof row.plan_json?.target_premium === "number"
-        ? (row.plan_json.target_premium as number)
-        : entry * (1 + targetPct / 100);
+      pinnedTarget != null && !entryBasisDiverged ? pinnedTarget : entry * (1 + targetPct / 100);
 
     // Exit family (A/B, default ratchet). In trim_scale mode there is no persisted
     // trim-count column yet (that is the graduation follow-up — FINDINGS 2026-07-23), so
