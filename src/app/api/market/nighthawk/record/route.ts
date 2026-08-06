@@ -66,6 +66,13 @@ export async function GET(req: NextRequest) {
           : null,
         profitable_rate_pct: pct(metrics.profitable_rate),
         avg_return_pct: Math.round(metrics.avg_return_pct * 100) / 100,
+        // FILL-EDGE basis — the price a member could actually transact at (band edge, not
+        // midpoint). This is the honest series and UIs render it as primary; the mid-basis
+        // fields above are retained in parallel for one window because they are the basis
+        // the live record and every historical audit were computed on (analytics.ts
+        // realizedReturnPctEdge). Measured gap: ~+1.12pp per play in the mid figure's favour.
+        avg_return_pct_edge: Math.round(metrics.avg_return_pct_edge * 100) / 100,
+        profitable_rate_edge_pct: pct(metrics.profitable_rate_edge),
         methodology: metrics.methodology,
         unfilled_count: metrics.unfilled_count,
         pulled_count: metrics.pulled_count,

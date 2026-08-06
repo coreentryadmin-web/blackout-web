@@ -161,6 +161,13 @@ export type NightHawkRecordResponse = {
   win_rate_ci_high_pct?: number | null;
   profitable_rate_pct: number;
   avg_return_pct: number;
+  /** FILL-EDGE basis (band edge, the price a member could actually transact at) — the
+   *  PRIMARY figures. The mid-basis `avg_return_pct`/`profitable_rate_pct` above are kept
+   *  in parallel for one window because they are the basis the live record and every
+   *  historical audit were computed on. Optional so a stale SWR cache of the pre-edge
+   *  payload still type-checks; the strip falls back to the mid basis when absent. */
+  avg_return_pct_edge?: number;
+  profitable_rate_edge_pct?: number;
   /** PR-N2 additive fields — optional so a stale SWR cache of the old payload still
    *  type-checks; the strip falls back to the legacy rendering when absent. */
   methodology?: string;

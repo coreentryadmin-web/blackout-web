@@ -142,3 +142,40 @@ export const NIGHTHAWK_COMPACT_LANE_LABEL = {
 /** Longest length confirmed to render without overlap in `.nh-deck-cmd--inline` at the narrowest
  *  supported (430px iPhone) viewport — see {@link NIGHTHAWK_COMPACT_LANE_LABEL}'s header comment. */
 export const MAX_COMPACT_LANE_LABEL_LEN = 20;
+
+/**
+ * The Night Hawk record's headline metric, NAMED for what it actually measures.
+ *
+ * A "win" in this lane is strictly a TARGET TOUCH inside the one-session grading horizon
+ * (`play-outcomes.ts` `resolveOutcome` → `analytics.ts` `winRate`, `outcome === "target"`).
+ * A play that closed green without ever trading to its target grades `open` — a non-win
+ * that stays IN the denominator. Labelling that a plain "win rate" invites the reading
+ * that every non-win was a loss, which is false: over the live 30-day window it was
+ * 0 wins / 2 losses / 20 opens out of 22 scoreable.
+ */
+export const TARGET_HIT_RATE_LABEL = "Target-hit rate";
+
+/** The composition behind the rate. Rendered beside it everywhere the rate appears so its
+ *  denominator is never a mystery — the numbers that make it readable, not decoration. */
+export type TargetHitComposition = {
+  wins: number;
+  losses: number;
+  opens: number;
+  scoreable: number;
+};
+
+/**
+ * Compose the "NW / NL / N open · N scoreable" sub-label.
+ *
+ * WHY THIS IS A FUNCTION AND NOT AN INLINE TEMPLATE (2026-08-06). The admin ring used to
+ * derive its win COUNT as `Math.round(win_rate * total_resolved)` — a rate computed over
+ * `segments.current.scoreable` (22) multiplied by a count over ALL resolved rows including
+ * unfilled/pulled/legacy (52). That is a ~2.4× overstatement of a headline admin number,
+ * invisible today only because the rate is 0 (0 × 52 = 0); it would have started lying the
+ * moment one target landed. Deriving a count from a rate and the WRONG denominator is the
+ * bug class — so the count is now taken directly from the segment that produced the rate,
+ * in one shared place, and asserted in nighthawk-view.test.ts.
+ */
+export function targetHitCompositionLabel(c: TargetHitComposition): string {
+  return `${c.wins}W / ${c.losses}L / ${c.opens} open · ${c.scoreable} scoreable`;
+}
