@@ -16,6 +16,7 @@ import type { WallHistorySample, VectorWallLens } from "@/features/vector/lib/ve
 import type { VectorDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
 import type { VectorPriceScaleMap } from "@/features/vector/lib/vector-price-scale-map";
 import type { VectorTimeframeMinutes } from "@/features/vector/lib/vector-bar-timeframes";
+import type { TechnicalsLine } from "@/features/vector/lib/vector-technicals";
 import { VectorTickerSelect } from "@/features/vector/components/VectorTickerSelect";
 import { VectorScanner } from "@/features/vector/components/VectorScanner";
 import { VectorTickerComparisonStrip } from "@/features/vector/components/VectorTickerComparisonStrip";
@@ -218,7 +219,7 @@ export function VectorPageShell({
   const [play, setPlay] = useState<VectorPlay | null>(null);
   // Always-on technicals lines (VWAP/EMA/RSI/MACD/pocket/structure) — narrated by the terminal even
   // when the member hasn't toggled the overlays on the chart.
-  const [technicals, setTechnicals] = useState<string[]>([]);
+  const [technicals, setTechnicals] = useState<TechnicalsLine[]>([]);
   // Options-implied EXPECTED MOVE callouts (±1σ/2σ range) — narrated by the terminal, horizon-scoped
   // (#15 cone, slice 3a). Empty when the chain has no real ATM IV to price the move.
   const [expectedMove, setExpectedMove] = useState<string[]>([]);
