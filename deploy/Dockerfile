@@ -55,6 +55,38 @@ ENV GITHUB_SHA=$GITHUB_SHA
 ENV CF_PURGE_DEPLOY_ID=$GITHUB_SHA
 # Cognito staging: swap middleware entry so @clerk/nextjs never enters the edge bundle.
 RUN if [ "$AUTH_PROVIDER" = "cognito" ]; then cp src/middleware.entry.cognito.ts src/middleware.ts; fi
+# ---------------------------------------------------------------------------------------------
+# VERIFY GATE — runs BEFORE `npm run build`, inside the builder stage where node_modules and the
+# full source tree already exist. Placed here on purpose: a failing gate aborts the image build,
+# so no artifact is produced, so CodePipeline's Deploy stage has nothing to roll. That is what
+# makes "no manual approval" safe — the gate is the approval.
+#
+# This replaced a human approval stage in the `blackout-web-production` pipeline (2026-08-06).
+# Do NOT remove it without putting an equivalent gate somewhere earlier in the pipeline; without
+# it, a merge to main deploys straight to a live options-trading desk with nothing checked.
+#
+# These five are DETERMINISTIC — each verified clean against the 13-PR release batch on 2026-08-06.
+#
+# NOT INCLUDED, deliberately: the `src/**/*.test.ts` suite. Two measurements of it the same day
+# disagreed (one run reported ~101 failures, a re-run reported zero through ~22k TAP lines), so its
+# determinism is unresolved. A non-deterministic gate on the deploy path would block good deploys
+# at random, get bypassed as a matter of habit, and then protect nothing. Add it here once the
+# flakiness is settled — that is strictly better than gating on a coin flip.
+ARG SKIP_VERIFY_GATES=""
+RUN if [ -n "$SKIP_VERIFY_GATES" ]; then \
+      echo "############################################################"; \
+      echo "## VERIFY GATES SKIPPED via SKIP_VERIFY_GATES build-arg    ##"; \
+      echo "## This image is UNVERIFIED. Break-glass use only.         ##"; \
+      echo "############################################################"; \
+    else \
+      echo "--- verify gate: tsc --noEmit"            && npx tsc --noEmit && \
+      echo "--- verify gate: api auth guards"         && node scripts/verify-api-auth-guards.mjs && \
+      echo "--- verify gate: tailwind @apply opacity" && node scripts/check-tailwind-apply-opacity.mjs && \
+      echo "--- verify gate: lint:brand"              && npm run lint:brand && \
+      echo "--- verify gate: lint:vendor"             && npm run lint:vendor && \
+      echo "--- verify gate: ALL PASSED"; \
+    fi
+
 RUN npm run build
 
 FROM base AS runner
