@@ -7,7 +7,7 @@ standing **audit + issue-handling policy**. Keep it and `docs/audit/FINDINGS.md`
 As soon as an issue is spotted during any audit/validation:
 1. **Open a new branch off `main`**, named `fix/<slug>`. Do NOT push straight to `main`.
 2. **Fix it and add a test** (extend the nearest `*.test.ts`; run `npx tsx --test <file>`).
-3. **Log it in `docs/audit/FINDINGS.md`** (severity, root cause, file:line, evidence, fix, status).
+3. **Log it in `docs/audit/FINDINGS.md`** only when fixing a real bug in the same PR as the code fix — never open a docs-only PR for verify passes or GREEN audit logs.
 4. **Open a PR to `main`, verify CI is green, then auto-merge it.** Keep the PR small (one issue per branch/PR).
 Documentation/policy changes (this file, FINDINGS, runbook) merge the same way once verified.
 

@@ -344,7 +344,7 @@ async function main() {
     if (PHASE === "fix") {
       console.log("Post-close fix mode — agent MUST fix all failures before ending session.\n");
     } else {
-      console.log("Verify mode — log to OPEN-ISSUES.md; defer non-P0 fixes to post-close.\n");
+      console.log("Verify mode — report in agent summary only; do NOT commit docs/ OPEN-ISSUES logs.\n");
     }
     process.exit(1);
   }
