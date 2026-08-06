@@ -84,6 +84,60 @@ test("contracts missing delta can't satisfy the band", () => {
   assert.match(picks[0].reason, /delta/);
 });
 
+
+test("explodeChainRows: passes the full greek set through for each side", () => {
+  // The columns exist on ChainStrikeRow now (fed from the same OptionSnapshot that always carried
+  // them), so a pre-entry contract no longer reaches the desk with delta+IV as its only greeks.
+  const rows = [
+    {
+      expiry: "2026-08-06", strike: 100,
+      call_bid: 2.0, call_ask: 2.2, call_delta: 0.4, call_oi: 800,
+      call_iv: 0.31, call_gamma: 0.0412, call_theta: -0.18, call_vega: 0.077,
+      put_bid: 1.5, put_ask: 1.7, put_delta: -0.35, put_oi: 600,
+      put_iv: 0.29, put_gamma: 0.0388, put_theta: -0.15, put_vega: 0.071,
+    },
+  ];
+  const [long] = explodeChainRows("XYZ", rows, ASOF, "LONG");
+  assert.equal(long.iv, 0.31);
+  assert.equal(long.gamma, 0.0412);
+  assert.equal(long.theta, -0.18);
+  assert.equal(long.vega, 0.077);
+
+  // SHORT must read the PUT side's greeks, not the call's — the bug class this guards against.
+  const [short] = explodeChainRows("XYZ", rows, ASOF, "SHORT");
+  assert.equal(short.gamma, 0.0388);
+  assert.equal(short.theta, -0.15);
+  assert.equal(short.vega, 0.071);
+});
+
+test("explodeChainRows: a UW-sourced row (no greek columns) yields null, not 0", () => {
+  // pivotUwRows has no greeks in its payload at all. Omitted must read as "unknown" — serving 0
+  // would claim a real reading of zero gamma/theta/vega, which is a different and false statement.
+  const rows = [
+    { expiry: "2026-08-06", strike: 100, call_bid: 2.0, call_ask: 2.2, call_delta: 0.4, call_oi: 800, put_bid: 1.5, put_ask: 1.7, put_delta: -0.35, put_oi: 600 },
+  ];
+  const [c0] = explodeChainRows("XYZ", rows, ASOF, "LONG");
+  assert.equal(c0.gamma, null);
+  assert.equal(c0.theta, null);
+  assert.equal(c0.vega, null);
+  assert.equal(c0.delta, 0.4, "delta still flows — only the second-order greeks are absent");
+});
+
+test("explodeChainRows: non-finite greeks are normalised to null", () => {
+  const rows = [
+    {
+      expiry: "2026-08-06", strike: 100,
+      call_bid: 2.0, call_ask: 2.2, call_delta: 0.4, call_oi: 800,
+      call_gamma: Number.NaN, call_theta: Number.POSITIVE_INFINITY, call_vega: null,
+      put_bid: 1.5, put_ask: 1.7, put_delta: -0.35, put_oi: 600,
+    },
+  ];
+  const [c0] = explodeChainRows("XYZ", rows, ASOF, "LONG");
+  assert.equal(c0.gamma, null);
+  assert.equal(c0.theta, null);
+  assert.equal(c0.vega, null);
+});
+
 test("explodeChainRows: LONG takes calls, SHORT takes puts, computes dte + abs delta + mid", () => {
   const rows = [
     { expiry: "2026-08-06", strike: 100, call_bid: 2.0, call_ask: 2.2, call_delta: 0.4, call_oi: 800, put_bid: 1.5, put_ask: 1.7, put_delta: -0.35, put_oi: 600 },
