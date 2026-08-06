@@ -287,25 +287,25 @@ export async function buildTrackRecordPagePayload(
 }
 
 /** Compare page SPX block to the public ledger rollup (for verifiers + tests).
- *  Includes the win-rate field: both sides derive from the same shared
- *  `formatPercent()`, so re-rounding the page's 1-decimal value to the public
- *  side's 0-decimal precision with that same function must always agree —
- *  this is what actually catches a future re-divergence (e.g. one call site
- *  reverting to a hand-written rounding formula) rather than just checking
- *  the two sides happen to look similar. */
+ *  Win-rate agreement is checked by re-deriving BOTH precisions from the shared
+ *  W/L counts via `formatPercent()` — NOT by re-rounding the page's already-rounded
+ *  1dp value back to 0dp. That re-round path is lossy (e.g. 26/46 → page 56.5%,
+ *  pub 57%, but formatPercent(56.5/100,0)=56) and false-flagged healthy ledgers. */
 export function pageSpxMatchesPublic(
   page: TrackRecordPagePayload,
   pub: Awaited<ReturnType<typeof buildPublicTrackRecord>>
 ): boolean {
   if (!pub.available) return page.spxSlayer.total === 0;
-  const winRateAgrees =
-    page.spxSlayer.winRatePct == null
-      ? pub.win_rate_pct === 0
-      : formatPercent(page.spxSlayer.winRatePct / 100, 0) === pub.win_rate_pct;
-  return (
+  const countsMatch =
     page.spxSlayer.total === pub.total_closed &&
     page.spxSlayer.wins === pub.wins &&
-    page.spxSlayer.losses === pub.losses &&
-    winRateAgrees
-  );
+    page.spxSlayer.losses === pub.losses;
+  if (!countsMatch) return false;
+  if (page.spxSlayer.total === 0) {
+    return page.spxSlayer.winRatePct == null && pub.win_rate_pct === 0;
+  }
+  const rawRate = page.spxSlayer.wins / page.spxSlayer.total;
+  const pageWinOk = page.spxSlayer.winRatePct === formatPercent(rawRate, 1);
+  const pubWinOk = pub.win_rate_pct === formatPercent(rawRate, 0);
+  return pageWinOk && pubWinOk;
 }
