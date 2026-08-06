@@ -246,5 +246,27 @@ async function buildRollChild(
     },
     status: "OPEN",
   };
+
+  // Grow the CALLER's book in place — swap the closing parent for the new child — so a LATER position's
+  // roll-gate check in the SAME active-refresh pass sees this child's risk instead of a stale snapshot taken
+  // once at the top of the run (FINDINGS 2026-08-06 P1). Mirrors commit.ts's `runningBook` growth across a
+  // commit batch: without this, two same-pass rolls both gate against a book that reflects NEITHER addition,
+  // so their combined risk could clear each roll's individual budget/cap check while breaching it in
+  // aggregate. Swapping (not just pushing) keeps the running book precise — it matches exactly what
+  // `bookMinusParent` + child just evaluated above, rather than double-counting this ticker's now-closing
+  // parent leg alongside its child for the rest of the pass.
+  const parentIdx = deps.book.findIndex((p) => p.commitKey === row.commit_key);
+  if (parentIdx >= 0) deps.book.splice(parentIdx, 1);
+  deps.book.push({
+    ticker: childSpec.ticker,
+    direction,
+    archetype,
+    commitKey: childKey,
+    riskUsd,
+    isEvent: isEventArchetype(archetype),
+    isOvernight: true,
+    expiry: childSpec.contract_expiry,
+  });
+
   return { childSpec };
 }
