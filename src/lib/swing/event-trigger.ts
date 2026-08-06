@@ -18,6 +18,7 @@
 // the predicate boundaries and the never-commit routing are unit-testable without a live WS or DB.
 
 import type { PlayDirection } from "../horizon-fanout";
+import { HORIZONS } from "../horizons";
 import { dteOf } from "../zerodte/scan-trigger";
 import type { SwingAccumAccessors } from "./accumulation-store";
 import { observeSwingCandidate } from "./accumulation-store";
@@ -26,9 +27,11 @@ import { observeSwingCandidate } from "./accumulation-store";
  *  floor: one live print should be genuinely large to move the memory out-of-band; smaller flow still counts,
  *  it just waits for the scheduled scan's aggregated multi-day read. Provisional (not a graduated edge). */
 export const SWING_EVENT_MIN_PREMIUM = 750_000;
-/** The swing contract window is 2–30 DTE (taxonomy sub-lanes); a print outside it is a 0DTE lottery or a LEAP,
- *  not a swing thesis. Inclusive bounds. */
-export const SWING_EVENT_MIN_DTE = 2;
+/** The swing contract window is HORIZONS.SWING.dteMin–30 DTE (taxonomy sub-lanes); a print outside it is a
+ *  day-trade lottery (0DTE board's widened dte 0-4 window) or a LEAP, not a swing thesis. Inclusive bounds.
+ *  Derives from horizons.ts rather than a hardcoded copy — see taxonomy.ts's header note on the 2026-08-06
+ *  cross-engine dual-admission bug this independent-constant pattern caused. */
+export const SWING_EVENT_MIN_DTE = HORIZONS.SWING.dteMin;
 export const SWING_EVENT_MAX_DTE = 30;
 /** At most one advance per (ticker,direction) per this interval — well above the write cost, spam-proof. */
 export const SWING_EVENT_MIN_INTERVAL_MS = 60_000;

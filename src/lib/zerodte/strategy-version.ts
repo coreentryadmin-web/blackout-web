@@ -51,8 +51,11 @@ export const ENGINE_VERSION = "v1";
  *  when the discovery origins / top-N cuts / accumulation feed change materially.
  *  v3 (2026-07-28): merge v2 + momentum rank + NH no-exclude + wider caps/FLOW floors.
  *  v4 (2026-07-29): BREAKOUT price cap $400→$2500 + walk-until-built (stop FLOW-only
- *  starvation when momentum-top names lack same-day options). */
-export const DISCOVERY_VERSION = "v4";
+ *  starvation when momentum-top names lack same-day options).
+ *  v5 (2026-08-06): 0DTE→Day-Trade admission ceiling widened dte≤1→dte≤4 (ZERODTE_MAX_DTE,
+ *  horizons.ts) across FLOW/BREAKOUT/PIN + the real-time event trigger — partitions
+ *  pre/post-widening "ONE_DTE" rows into separate calibration cohorts. See FINDINGS.md. */
+export const DISCOVERY_VERSION = "v5";
 /** Score formula — the evidence score the gate stack judges. Bump on ANY change to the
  *  scoring math or its weights (the F-2 / F-5 forensic bands are read per this).
  *  v2 (2026-07-28): BREAKOUT/PIN rescaled so real movers clear G-3. */
@@ -73,8 +76,10 @@ export const CORTEX_VERSION = "v2";
  *  v2 (2026-07-29): concurrent open-play ceiling 6→100 (env ZERODTE_MAX_CONCURRENT). */
 export const GOVERNOR_VERSION = "v2";
 /** Contract selector (strike/expiry pick — pickChainContract & horizon clamp). Bump
- *  when the selected contract for the same signal would change (a different graded basis). */
-export const CONTRACT_SELECTOR_VERSION = "v1";
+ *  when the selected contract for the same signal would change (a different graded basis).
+ *  v2 (2026-08-06): horizon clamp widened dte≤1→dte≤4 (ZERODTE_MAX_DTE) — the SAME flow/
+ *  breakout/pin signal can now resolve to a farther, different contract than before. */
+export const CONTRACT_SELECTOR_VERSION = "v2";
 /** Default profit-management mode ("ratchet" | "trim_scale") — the exit engine's shipped
  *  default, used when a caller doesn't pass the ACTIVE mode. The live board passes the
  *  RESOLVED mode (resolveExitMode, design Q13) into buildStrategyManifest so the config

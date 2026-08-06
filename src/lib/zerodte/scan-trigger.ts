@@ -14,10 +14,17 @@
  * avoid needless work.
  */
 
+import { ZERODTE_MAX_DTE } from "@/lib/horizons";
+
 /** Only WHALE-size prints trigger an out-of-band scan — the board doesn't need to churn on small flow. */
 export const EVENT_MIN_PREMIUM = 1_000_000;
-/** Event triggers target the 0DTE board, so the print must be short-dated (0–1 DTE). */
-export const EVENT_MAX_DTE = 1;
+/** Event triggers target the 0DTE/Day-Trade board, so the print must fall in the board's admission
+ *  window. Sourced from horizons.ts's ZERODTE_MAX_DTE (widened 1→4, 2026-08-06) rather than a second
+ *  hardcoded copy — otherwise the real-time fast-path (this module) would silently keep reacting only
+ *  to dte 0-1 while the board itself now discovers dte 0-4, degrading reaction speed for exactly the
+ *  new target population (a Friday-only-weekly name hit on a Monday-Wednesday). See FINDINGS.md
+ *  2026-08-06. */
+export const EVENT_MAX_DTE = ZERODTE_MAX_DTE;
 /** At most one event-triggered scan per this interval — well above the scan's cost, spam-proof. */
 export const EVENT_MIN_INTERVAL_MS = 45_000;
 

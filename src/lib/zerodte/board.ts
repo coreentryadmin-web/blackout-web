@@ -9,6 +9,7 @@
 // testable without providers; the API route does the fetching.
 
 import { formatEtDate, isTradingDayEt } from "@/features/nighthawk/lib/session";
+import { ZERODTE_MAX_DTE } from "@/lib/horizons";
 
 export type SessionHeatState =
   | "PRE_MARKET" // before 9:30 ET — system warming: feeds, morning confirm, lotto scan
@@ -201,33 +202,43 @@ export type DiscoveryOrigin = "FLOW" | "BREAKOUT" | "PIN";
 // from discovery all the way to the graded ledger.
 export type PlayType = "DIRECTIONAL" | "CONDOR";
 
-// ── Contract horizon (0DTE hardening PR-1: HORIZON INTEGRITY) ───────────────────────
+// ── Contract horizon (0DTE hardening PR-1: HORIZON INTEGRITY; WIDENED 2026-08-06) ───
 // docs/audit/0DTE-DESIGN-DECISIONS.md Q2. A setup's HORIZON is derived from the REAL
 // dte of the contract that was actually selected — not from the intended board scope.
-// The 0DTE board grades every committed row with the same-day 15:30 time-stop (plan.ts /
-// condor.ts); applying that to a 2–7DTE weekly (different theta/gamma/overnight risk +
-// grading horizon) produces invalid outcomes and pollutes calibration. So the horizon
-// is stamped at every construction site and carried to the graded ledger:
-//   0  → ZERO_DTE          (same-day; graded 15:30 close)
-//   1  → ONE_DTE           (today+1; still the SETUP_MAX_DTE=1 same-day-discipline scope)
-//   ≥2 → WEEKLY_FALLBACK   (EXCLUDED from the 0DTE board — never committed, never graded)
-// Only ZERO_DTE/ONE_DTE ever commit; a WEEKLY_FALLBACK is dropped (the contract pickers no
-// longer reach past dte 1, and persist fails closed on any that somehow slips through). This
+// The 0DTE board grades every committed row on the SESSION CLOCK (same-day 15:30 entry
+// cutoff / 15:50 time-stop, plan.ts / condor.ts) — this is a DAY-TRADE discipline (exit by
+// close), not a same-day-EXPIRY requirement; the grading math never reads the contract's own
+// expiration date (see `src/lib/horizons.ts`'s DTE-windows note and the G-15-removal below).
+// So the horizon is stamped at every construction site and carried to the graded ledger:
+//   0     → ZERO_DTE          (same-day expiry; graded 15:30 close)
+//   1..SETUP_MAX_DTE → ONE_DTE (nearest-available-this-week; still same-day-EXIT discipline)
+//   >SETUP_MAX_DTE   → WEEKLY_FALLBACK (EXCLUDED — never committed, never graded)
+// SETUP_MAX_DTE was widened 1→4 (2026-08-06, `src/lib/horizons.ts`'s `ZERODTE_MAX_DTE`) so a
+// Friday-only-weekly single name (most single-name equities; no Mon-Thu listing) is admissible
+// from any weekday, not just Thu/Fri — see docs/audit/FINDINGS.md for the live evidence (a
+// Wednesday BREAKOUT scan rejecting 88/99 candidates as `no_same_day`) and G-15's removal note
+// (gates.ts) proving the same-day-EXIT grading already holds correctly for dte=1 in production.
+// Only ZERO_DTE/ONE_DTE ever commit; a WEEKLY_FALLBACK is dropped (the contract pickers don't
+// reach past `SETUP_MAX_DTE`, and persist fails closed on any that somehow slips through). This
 // keeps the 0DTE calibration/feature population structurally HOMOGENEOUS (same grading
-// horizon for every row) — the precondition the later per-horizon versioning (Q12) needs.
+// horizon for every row) — the precondition the later per-horizon versioning (Q12) needs, now
+// enforced via `strategy-version.ts`'s DISCOVERY_VERSION/CONTRACT_SELECTOR_VERSION bump so
+// pre-widening (dte=1 only) and post-widening (dte 1-4) "ONE_DTE" rows partition into separate
+// calibration cohorts automatically rather than silently blending two different populations.
 export type ContractHorizon = "ZERO_DTE" | "ONE_DTE" | "WEEKLY_FALLBACK";
 
 /** Grading policy for the two committed same-day horizons — the ONLY policy that ever reaches
  *  the ledger (a WEEKLY_FALLBACK is excluded before commit, so no other policy is persisted). */
 export const SAME_DAY_GRADING_POLICY = "same_day_1530_close";
 
-/** Derive the horizon from the SELECTED contract's real dte (0→ZERO_DTE, 1→ONE_DTE, ≥2→
- *  WEEKLY_FALLBACK). Fail-closed: a non-finite/negative dte is treated as WEEKLY_FALLBACK so an
- *  unknown horizon can never be mistaken for same-day and graded with the 15:30 time-stop. Pure. */
+/** Derive the horizon from the SELECTED contract's real dte (0→ZERO_DTE, 1..SETUP_MAX_DTE→
+ *  ONE_DTE, else→WEEKLY_FALLBACK). Fail-closed: a non-finite/negative dte is treated as
+ *  WEEKLY_FALLBACK so an unknown horizon can never be mistaken for same-day and graded with the
+ *  15:30 time-stop. Pure. */
 export function deriveContractHorizon(dte: number): ContractHorizon {
   if (Number.isFinite(dte)) {
     if (dte === 0) return "ZERO_DTE";
-    if (dte === 1) return "ONE_DTE";
+    if (dte >= 1 && dte <= SETUP_MAX_DTE) return "ONE_DTE";
   }
   return "WEEKLY_FALLBACK";
 }
@@ -609,7 +620,10 @@ export type ZeroDteSetup = {
 // live gate thresholds instead of a second, driftable copy of these numbers.
 export const SETUP_MIN_GROSS = 200_000; // lowered 750K→300K→200K — quiet tapes were starving FLOW; $200K still filters noise while catching mid-cap institutional prints
 export const SETUP_MIN_DOMINANCE = 0.55; // lowered from 0.65 — still requires directional lean but lets mixed-tape movers through
-const SETUP_MAX_DTE = 1; // 0DTE board: today + tomorrow expiries only
+// Day Trade board admission ceiling — re-exported under its historical name (SETUP_MAX_DTE) so
+// existing call sites (:828, :853 below) need no edit. Sourced from horizons.ts's ZERODTE_MAX_DTE,
+// the single cross-engine ceiling — see that file's header for the 2026-08-06 widening rationale.
+export const SETUP_MAX_DTE = ZERODTE_MAX_DTE;
 /** Aggressive (at-the-ask) share of the tape must be meaningful — a tape of SOLD
  *  premium (bid-side prints) is income harvesting, not directional conviction. */
 export const SETUP_MIN_AGGR_SHARE = 0.3;
@@ -1133,9 +1147,9 @@ export function deriveZeroDteSetups(
       expiry: topExpiry,
       dte: agg.minDte,
       // Flow candidates are ZERO_DTE/ONE_DTE BY CONSTRUCTION — deriveZeroDteSetups already gates
-      // every print to dte ≤ SETUP_MAX_DTE (=1), so agg.minDte is 0 or 1 and the horizon is
+      // every print to dte ≤ SETUP_MAX_DTE (=4), so agg.minDte is 0-4 and the horizon is
       // always same-day. Stamped from the real dte for uniformity with the breakout/pin/condor
-      // sites (deriveContractHorizon would return WEEKLY_FALLBACK only for an impossible dte≥2 here).
+      // sites (deriveContractHorizon would return WEEKLY_FALLBACK only for an impossible dte>4 here).
       contract_horizon: deriveContractHorizon(agg.minDte),
       actual_dte_at_commit: agg.minDte,
       grading_policy: gradingPolicyForHorizon(deriveContractHorizon(agg.minDte)),

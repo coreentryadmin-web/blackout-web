@@ -23,6 +23,7 @@
 // the breakout source) AND ZERODTE_SRC_PIN (per-source). When either is off, the board behaves
 // EXACTLY as today.
 
+import { ZERODTE_MAX_DTE } from "@/lib/horizons";
 import {
   calendarDteBetween,
   deriveContractHorizon,
@@ -233,21 +234,23 @@ function sideHasLiquidity(row: PinChainRow, side: "call" | "put"): boolean {
 }
 
 /**
- * Pick the ATM contract on `side` on the nearest usable expiry ≥ today, WITHIN the 0DTE horizon.
- * 0DTE (dte 0) is preferred, then dte 1 (ONE_DTE). HORIZON INTEGRITY (PR-1, design Q2): `maxDte` is
- * clamped to 1 — the picker DELIBERATELY no longer reaches a 2–7DTE weekly. A pin whose only liquid
- * contract on `side` is a weekly returns null here → the candidate is DROPPED (never committed to
- * the 0DTE ledger, never graded with the same-day 15:30 time-stop that would be structurally wrong
- * for a multi-day weekly). ATM = strike closest to spot among liquid rows on the chosen expiry
- * (nearest-expiry wins over ATM-ness, then closest-to-spot, then lower strike — deterministic).
- * Returns null when no liquid same-day/1DTE contract sits inside the window (→ dropped).
+ * Pick the ATM contract on `side` on the nearest usable expiry ≥ today, WITHIN the 0DTE/Day-Trade
+ * horizon. 0DTE (dte 0) is preferred, then dte 1-4 (ONE_DTE). HORIZON INTEGRITY (PR-1, design Q2;
+ * widened 2026-08-06 — design Q2 amendment): `maxDte` defaults to `ZERODTE_MAX_DTE` (4), sourced
+ * from horizons.ts rather than a hardcoded copy — the picker still deliberately never reaches a
+ * dte≥5 weekly. A pin whose only liquid contract on `side` is a farther-out weekly returns null
+ * here → the candidate is DROPPED (never committed to the 0DTE ledger, never graded with the
+ * same-day 15:30 time-stop that would be structurally wrong for a multi-day weekly). ATM = strike
+ * closest to spot among liquid rows on the chosen expiry (nearest-expiry wins over ATM-ness, then
+ * closest-to-spot, then lower strike — deterministic).
+ * Returns null when no liquid contract sits inside the window (→ dropped).
  */
 export function pickAtmPinContract(
   rows: PinChainRow[],
   spot: number,
   todayYmd: string,
   side: "call" | "put",
-  maxDte = 1
+  maxDte = ZERODTE_MAX_DTE
 ): PickedPinContract | null {
   if (!(spot > 0) || rows.length === 0) return null;
   type Cand = { strike: number; expiry: string; dte: number; dist: number };

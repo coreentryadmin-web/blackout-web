@@ -11,7 +11,7 @@
 // goes live once its own archetype×sub-lane graded bucket clears the existing graduation ladder
 // (calibration.ts: n≥10, delta≥15pt). See docs/audit/SWING-ENGINE.md.
 
-import type { ContractPreference, ExitPrimitive, GraderTimeframe } from "../horizons";
+import { HORIZONS, type ContractPreference, type ExitPrimitive, type GraderTimeframe } from "../horizons";
 import type { LiquidityGate } from "../horizon-fanout";
 
 export const SWING_TAXONOMY_VERSION = 1;
@@ -192,9 +192,19 @@ export function persistenceRuleFor(archetype: SwingArchetype | null): ArchetypeP
 }
 
 // ─── Sub-lane (FM#2 — 2–30 DTE is three contract classes, not one) ─────────────
-// Tactical (2–7): high gamma / fast theta / needs immediate timing → nearest-ITM, harshest theta penalty.
+// Tactical (5–7, floor derives from HORIZONS.SWING.dteMin — see below): high gamma / fast theta /
+// needs immediate timing → nearest-ITM, harshest theta penalty.
 // Standard (8–21): the balanced directional swing → the default lane.
 // Extended (22–30): slower structures / catalyst run-ups → more convexity, lenient theta, wider gate.
+//
+// TACTICAL.dteMin is NOT a second hardcoded copy of the 0DTE/Swing discovery boundary — it reads
+// HORIZONS.SWING.dteMin directly so this file can never drift out of sync with horizons.ts again.
+// This is the fix for the cross-engine dual-admission bug caught by adversarial review 2026-08-06:
+// horizons.ts only gates 0DTE-side DISCOVERY (board.ts/breakout-source.ts/pin-source.ts read it);
+// this file is the SEPARATE, real Swing COMMIT-TIME admission gate (gates.ts's `expiry_insufficient`
+// reads `SWING_SUB_LANES[subLane].dteMin` straight from here) — when horizons.ts's 0DTE ceiling
+// widened 1→4 (FINDINGS.md 2026-08-06) without this file moving in lockstep, dte 2-4 contracts
+// would have been simultaneously admissible to BOTH the 0DTE board AND Swing's TACTICAL lane.
 export type SwingSubLane = "TACTICAL" | "STANDARD" | "EXTENDED";
 
 export const SWING_SUB_LANES_ORDER: readonly SwingSubLane[] = ["TACTICAL", "STANDARD", "EXTENDED"] as const;
@@ -202,7 +212,7 @@ export const SWING_SUB_LANES_ORDER: readonly SwingSubLane[] = ["TACTICAL", "STAN
 export interface SwingSubLaneSpec {
   id: SwingSubLane;
   label: string;
-  /** Contiguous, non-overlapping within [2,30]. */
+  /** Contiguous, non-overlapping within [HORIZONS.SWING.dteMin,30]. */
   dteMin: number;
   dteMax: number;
   /** 0.50–0.75Δ directional stance (NOT the 0.35Δ banger) — the instrument tracks the underlying. */
@@ -225,10 +235,10 @@ export interface SwingSubLaneSpec {
 export const SWING_SUB_LANES: Record<SwingSubLane, SwingSubLaneSpec> = {
   TACTICAL: {
     id: "TACTICAL",
-    label: "Tactical (2–7d)",
-    dteMin: 2,
+    label: "Tactical (5–7d)",
+    dteMin: HORIZONS.SWING.dteMin, // = 5 (ZERODTE_MAX_DTE + 1) — see the header note above
     dteMax: 7,
-    contract: { targetDelta: 0.65, deltaBand: [0.55, 0.75], note: "near-ITM, tracks underlying over 2–7d" },
+    contract: { targetDelta: 0.65, deltaBand: [0.55, 0.75], note: "near-ITM, tracks underlying over 5–7d" },
     liquidity: { minOpenInterest: 400, maxSpreadPct: 0.18, maxPremiumPerShare: 35 },
     exit: "SCALE_OUT",
     grader: "minute",
@@ -267,7 +277,7 @@ export const SWING_SUB_LANES: Record<SwingSubLane, SwingSubLaneSpec> = {
   },
 };
 
-/** Which sub-lane owns a calendar DTE inside the SWING window, or null if outside [2,30]. */
+/** Which sub-lane owns a calendar DTE inside the SWING window, or null if outside [HORIZONS.SWING.dteMin,30]. */
 export function subLaneForDte(dte: number): SwingSubLane | null {
   if (!Number.isFinite(dte)) return null;
   for (const id of SWING_SUB_LANES_ORDER) {

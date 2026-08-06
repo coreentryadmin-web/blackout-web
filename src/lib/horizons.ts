@@ -7,12 +7,38 @@
  * is a 0DTE / Swing / LEAPS play," so the remodel never hard-codes a DTE cutoff or an exit rule in the
  * scan/plan/UI code again.
  *
- * DTE windows (operator-set 2026-07-23):
- *   0DTE  — same-day plays. Window [0,1] DTE: expiry today is the target; 1-DTE is folded into the
- *           shortest bucket so there is no coverage gap. A name only appears in this lane if it lists a
- *           contract in range (index/ETF daily expiries every day; every weekly-optionable name on its
- *           Friday) AND clears a hard liquidity gate.
- *   SWING — 2–30 DTE.
+ * DTE windows (operator-set 2026-07-23; 0DTE window WIDENED 2026-08-06 — see below):
+ *   0DTE  — DAY TRADES: opened and closed within the session, regardless of the selected contract's
+ *           own expiration date. Window **[0,4] DTE**: expiry today is still preferred (the picker
+ *           sorts nearest-dte-first), but the window is widened through dte=4 — not just dte=1 — so a
+ *           Friday-only-weekly single name (the large majority of optionable equities; most single
+ *           names carry no Mon/Tue/Wed/Thu listing) is admissible from ANY weekday, including Monday
+ *           (worst case: 4 calendar days to that week's Friday). `ZERODTE_MAX_DTE` (exported below) is
+ *           an outer SANITY BACKSTOP against genuinely-far-dated/illiquid contracts — it is not a
+ *           target width, and the picker's nearest-first sort means widening it only relaxes the
+ *           admission bar, never causes a farther contract to be preferred over a nearer one.
+ *           The RATCHET exit (fixed −50/+100, SESSION-CLOCK time-stop, unrelated to the option's own
+ *           expiration date) is deliberately extended to cover this whole window: exit correctness
+ *           here was never about the contract's remaining life, it is about same-day close — see
+ *           `src/lib/zerodte/gates.ts`'s G-15-removal note, which already proved this holds for dte=1
+ *           in production ("ONE_DTE is a same-day horizon... grading reports accurate same-day P&L").
+ *           **This is a deliberate, visible supersession of this file's own 2026-07-23 decision that
+ *           originally scoped RATCHET to dte<=1 "for 0DTE theta decay"** — see
+ *           docs/audit/FINDINGS.md (2026-08-06, "0DTE discovery-horizon widening") for the live
+ *           evidence (a Wednesday BREAKOUT scan rejecting 88/99 candidates as `no_same_day`) and the
+ *           phased rollout (shadow discovery → dte-bucketed backtest evidence → any stop/target
+ *           recalibration, which this change does NOT itself make — PLAN_RULES stays byte-identical
+ *           across the whole 0-4 window until real evidence says otherwise).
+ *   SWING — 5–30 DTE (was 2-30; the floor moved to stay the exact complement of the widened 0DTE
+ *           window — no dte value is left uncovered or double-covered BY THIS FILE's own record.
+ *           IMPORTANT: this file is the source of truth for the DISCOVERY-SIDE 0DTE/SWING boundary,
+ *           but Swing's own COMMIT-TIME sub-lane admission (`src/lib/swing/taxonomy.ts`
+ *           `SWING_SUB_LANES.TACTICAL`) and event-trigger window (`src/lib/swing/event-trigger.ts`
+ *           `SWING_EVENT_MIN_DTE`) are SEPARATE hardcoded values that do not read this file — both
+ *           were moved to derive their floor from `HORIZONS.SWING.dteMin` directly in the same PR
+ *           that widened this window, specifically so this boundary can never drift apart across the
+ *           two engines again (see FINDINGS.md 2026-08-06 for the cross-engine dual-admission bug
+ *           this would otherwise silently reopen, caught by adversarial review before ship).
  *   LEAPS — 31–90 DTE (90 max). NOTE: at ≤90 DTE this is a position / catalyst play, not a multi-year
  *           LEAPS — the contract stance is tuned for that (see `contract`). We keep the operator's name.
  *   Anything >90 DTE is out of scope and maps to no lane.
@@ -31,6 +57,11 @@
  */
 
 export type Horizon = "ZERO_DTE" | "SWING" | "LEAPS";
+
+/** THE single admission ceiling for the 0DTE discovery board (board.ts / breakout-source.ts /
+ *  pin-source.ts / scan-trigger.ts) — every consumer imports this rather than hardcoding its own
+ *  copy of the number. See the DTE-windows note above for why this is 4, not 1. */
+export const ZERODTE_MAX_DTE = 4;
 
 /** Which of the two proven exit primitives a horizon routes to. */
 export type ExitPrimitive = "RATCHET" | "SCALE_OUT";
@@ -85,7 +116,7 @@ export const HORIZONS: Record<Horizon, HorizonSpec> = {
     tag: "0DTE",
     holdLabel: "minutes–hours",
     dteMin: 0,
-    dteMax: 1,
+    dteMax: ZERODTE_MAX_DTE,
     exit: "RATCHET",
     scoreFloor: 65,
     scoreFloorGraduated: true, // evidence-backed: calibration.ts band record, sub-65 = net-negative EV
@@ -102,7 +133,7 @@ export const HORIZONS: Record<Horizon, HorizonSpec> = {
     label: "Swing",
     tag: "SWING",
     holdLabel: "days–weeks",
-    dteMin: 2,
+    dteMin: ZERODTE_MAX_DTE + 1,
     dteMax: 30,
     exit: "SCALE_OUT",
     scoreFloor: 60,

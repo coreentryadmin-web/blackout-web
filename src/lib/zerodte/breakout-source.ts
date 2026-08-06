@@ -17,6 +17,7 @@
 // ZERODTE_SRC_BREAKOUT (per-source). When either is off, the board is FLOW-only.
 
 import type { BreakoutMover } from "@/features/nighthawk/lib/candidates";
+import { ZERODTE_MAX_DTE } from "@/lib/horizons";
 import {
   calendarDteBetween,
   deriveContractHorizon,
@@ -191,7 +192,7 @@ export function pickAtmZeroDteContract(
   rows: BreakoutChainRow[],
   spot: number,
   todayYmd: string,
-  maxDte = 1,
+  maxDte = ZERODTE_MAX_DTE,
   side: "call" | "put" = "call"
 ): PickedBreakoutContract | null {
   if (!(spot > 0) || rows.length === 0) return null;
@@ -221,21 +222,29 @@ export function pickAtmZeroDteContract(
   return { strike: best.strike, expiry: best.expiry, dte: best.dte };
 }
 
-/** Phase 2a — env-gated 1DTE fallback when no listed 0DTE contract clears liquidity.
- *  Default ON (`ZERODTE_BREAKOUT_ALLOW_1DTE` unset or `1`); set `=0` for strict 0DTE-only BREAKOUT. */
+/** Phase 2a — env-gated near-dated fallback when no listed 0DTE contract clears liquidity.
+ *  Default ON (`ZERODTE_BREAKOUT_ALLOW_1DTE` unset or `1`); set `=0` for strict 0DTE-only BREAKOUT.
+ *  Name kept as `ALLOW_1DTE` (not renamed to `ALLOW_NEAR_DATED`) so this remains the exact same
+ *  live operator toggle post-2026-08-06 widening — flipping it to `0` still forces strict 0DTE-only,
+ *  it just now withholds the wider dte 1-4 window instead of only dte=1. */
 export function breakoutAllow1DteFallback(): boolean {
   return process.env.ZERODTE_BREAKOUT_ALLOW_1DTE !== "0";
 }
 
 export type PickedBreakoutContractWithFallback = PickedBreakoutContract & {
-  /** True when the picker fell back to dte=1 because no liquid 0DTE existed. */
+  /** True when the picker fell back past dte=0 because no liquid 0DTE existed (now dte 1-4, the
+   *  widened ONE_DTE window — see ZERODTE_MAX_DTE in horizons.ts). Field name kept for compat. */
   used_1dte_fallback: boolean;
 };
 
 /**
- * Explicit two-phase BREAKOUT contract pick: try 0DTE first, then (when env allows) 1DTE only.
- * Equivalent to `pickAtmZeroDteContract(..., maxDte=1)` when fallback is ON; when OFF, 0DTE-only.
- * Returns null when neither horizon has a liquid same-day contract (weekly-only names).
+ * Explicit two-phase BREAKOUT contract pick: try 0DTE first, then (when env allows) the widened
+ * dte 1-4 window. Equivalent to `pickAtmZeroDteContract(..., maxDte=ZERODTE_MAX_DTE)` when
+ * fallback is ON (nearest-expiry-first sort means this can never prefer a farther contract over a
+ * nearer one); when OFF, 0DTE-only — preserves the exact live `ZERODTE_BREAKOUT_ALLOW_1DTE=0`
+ * operator toggle semantics (2026-08-06 adversarial review: the original widening draft would have
+ * silently made this toggle a no-op by collapsing straight to an unconditional maxDte bump).
+ * Returns null when no horizon within the allowed window has a liquid same-day contract.
  */
 export function pickBreakoutContractWithFallback(
   rows: BreakoutChainRow[],
@@ -246,9 +255,10 @@ export function pickBreakoutContractWithFallback(
   const zero = pickAtmZeroDteContract(rows, spot, todayYmd, 0, side);
   if (zero) return { ...zero, used_1dte_fallback: false };
   if (!breakoutAllow1DteFallback()) return null;
-  const one = pickAtmZeroDteContract(rows, spot, todayYmd, 1, side);
-  if (!one || one.dte !== 1) return null;
-  return { ...one, used_1dte_fallback: true };
+  const maxDte = ZERODTE_MAX_DTE;
+  const widened = pickAtmZeroDteContract(rows, spot, todayYmd, maxDte, side);
+  if (!widened || widened.dte < 1 || widened.dte > maxDte) return null;
+  return { ...widened, used_1dte_fallback: true };
 }
 
 // ── Seed→setup bridge ───────────────────────────────────────────────────────────────
