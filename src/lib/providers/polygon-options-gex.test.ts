@@ -564,3 +564,25 @@ test("prunePastExpiriesFromHeatmap: no-op when all expiries are live", () => {
   const pruned = prunePastExpiriesFromHeatmap(hm, "2026-08-05");
   assert.equal(pruned, hm);
 });
+
+test("fetchGexHeatmap TTL fast path serves pruned cache at ET rollover (no rebuild gate)", () => {
+  const src = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "polygon-options-gex.ts"),
+    "utf8"
+  );
+  assert.doesNotMatch(
+    src,
+    /heatmapHasPastExpiries\(mem\.data, today\)/,
+    "TTL fast path must not skip serve when past expiries exist — finalize prunes instead"
+  );
+  assert.doesNotMatch(
+    src,
+    /heatmapHasPastExpiries\(redisHit\.data, today\)/,
+    "Redis TTL fast path must not skip serve when past expiries exist"
+  );
+  assert.match(
+    src,
+    /resolve\(await finalizeHeatmapForServe\(cacheKey, served\)\)/,
+    "block-cap handoff must prune before serve"
+  );
+});

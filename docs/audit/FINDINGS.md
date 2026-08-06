@@ -119,6 +119,17 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Status** | Shipped on `feat/nh-spx-badge` → PR to `main`, auto-merge per standing policy once CI's `verify` gate is green. |
 | **Follow-up fix (same PR, before merge)** | Real CI (`verify`) caught what the sandbox's own pre-existing test-environment limitations masked: the top-level `import { getSpxSlayerBadgeSnapshot } from "@/features/spx/lib/spx-slayer-badge"` in `zerodte-service.ts` pulled `spx-play-engine.ts` → `spx-play-options.ts` into `zerodte-service.ts`'s STATIC import graph. `spx-play-options.ts:9` calls `polygonRestBase()` at module-eval time (not lazily), and 3 pre-existing test files that import `zerodte-service.ts` — `zerodte-board-convergence.test.ts`, `zerodte-service-marks.test.ts`, `zerodte-service.test.ts` — mock the polygon module in a way that doesn't stub that export, so loading it broke 23 unrelated tests with `(0 , import_polygon.polygonRestBase) is not a function`. Same root cause the badge's own test file had already sidestepped by depending on the pure `spx-slayer-badge-map.ts` split instead of `spx-slayer-badge.ts` directly (see Tests row above) — just not yet applied to the production call site. Fix: `zerodte-service.ts` now statically imports only `unavailableSpxSlayerBadge`/`SpxSlayerBadge` from the pure `spx-slayer-badge-map.ts`, and loads `getSpxSlayerBadgeSnapshot` via a dynamic `import()` inside the `Promise.all` at the actual call site — so the static import graph of every existing consumer of `zerodte-service.ts` is unchanged. Verified: `npx tsc --noEmit -p .` clean; the specific `(0, ...) is not a function` crash no longer reproduces locally (remaining local-only failures in these 3 files are the sandbox's own pre-existing `POLYGON_API_BASE` placeholder-env and blocked-raw-Postgres limitations, unrelated to this diff — confirmed via `git stash` baseline comparison). |
 
+## 2026-08-06 — [ops] Past expiry column at ET rollover (regression) — FIXED (#1773)
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P0 data-correctness (ops-auto-fix #1773, fingerprint `ee994b4b2bf8`). |
+| **Symptoms** | `data-correctness` FLAG: `[sanity-bound/freshness] Invalid/past expiry column(s): 2026-08-05` after ET midnight on 2026-08-06 (SPX + SPY). |
+| **Root cause** | #1683 added `prunePastExpiriesFromHeatmap` but also gated the TTL fast path on `!heatmapHasPastExpiries`. Right after midnight, a still-fresh cache (age &lt; TTL) with yesterday's 0DTE column skipped the fast path, fell through to a cold rebuild, and `awaitHeatmapBuildWithBlockCap` could hand off the **unpruned** stale matrix on timeout — bypassing `finalizeHeatmapForServe`. |
+| **Evidence** | ops-collect fingerprint `ee994b4b2bf8` at 2026-08-06T04:14Z (~00:14 ET); `heatmap-verifier.ts` `expiries-valid` check. |
+| **Fix** | Serve within TTL via `finalizeHeatmapForServe` even when past expiries are present (prune on serve); prune block-cap handoff + `readGexHeatmapSnapshot` last-resort path. Regression source test in `polygon-options-gex.test.ts`. |
+| **Status** | `fix/heatmap-rollover-serve-prune` → PR. |
+
 ## 2026-08-05 — [ops] Past expiry column in stale GEX heatmap cache — FIXED (#1477)
 
 | Field | Value |
