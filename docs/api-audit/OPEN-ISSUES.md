@@ -1,5 +1,71 @@
 # BlackOut Open Issues Log
-Last updated: 2026-08-05 18:14 ET
+Last updated: 2026-08-06 12:25 ET
+
+## grid-rth-2026-08-06 — 0DTE Command verify pass (market open, 9:01 AM PT / 12:01 PM ET)
+
+**Session:** Autonomous **verify** mode per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` on branch `cursor/0dte-grid-rth-agent-bbe9`. Commands: `npm run validate:grid-rth` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e` → `data-validator.mjs` → Playwright tab clicks on `/nighthawk`.
+
+> **Route note:** Classic Market Grid (`/grid` + 9 `/api/grid/*` routes) was deleted 2026-07-07. `/grid` returns **404**. 0DTE Command lives on **`/nighthawk`** (default `ZERO_DTE` view). Night Hawk view toggles: **0DTE · Swings · Bangers · Legacy**.
+
+### Validation summary (verify, RTH)
+
+| Check | Result |
+|---|---|
+| `npm run validate:grid-rth` | ⚠ **13 PASS · 1 FAIL / 14** — see infra flake below; all 0DTE/board/cross-tool/cron/e2e/ops checks GREEN |
+| `npm run validate:zerodte-logic` | ✅ **17 PASS · 0 FAIL** — gates, plan exits (−50%/+100%/15:30 ET), lifecycle OPEN→TRIM→CLOSED, session heat, mergePlays past-cutoff/MOVED→SKIP, ledger PnL |
+| `npm run validate:grid-e2e` | ✅ **5 PASS · 0 FAIL** — board API 118 setups / ledger 11, HELIX 20 prints, `/nighthawk` page load, zero console errors |
+| `data-validator.mjs` | ✅ **40 PASS · 1 WARN · 0 FAIL** — SPY/SPX/VIX, 0DTE premiums vs Polygon, track-record math |
+| Playwright UI (extended) | ✅ **0DTE/Swings/Bangers/Legacy tabs clicked** on `/nighthawk`; segment control visible; zero page errors |
+
+### 0DTE logic audit (exhaustive)
+
+| Layer | Result |
+|---|---|
+| Gate funnel (SETUP_MIN_GROSS, aggression, dominance, ITM) | ✅ PASS — 0 gate violations on 116 live setups |
+| Plan exits | ✅ PASS — stop −50%, target +100%, time stop 15:30 ET |
+| Trade lifecycle | ✅ PASS — OPEN/TRIM/CLOSED sticky trough |
+| Plan grading | ✅ PASS — stop wins when both touch same bar |
+| Session heat | ✅ PASS — RTH heat=100% at 12:02 ET |
+| mergePlays UI | ✅ PASS — past cutoff → SKIP; MOVED → SKIP |
+| Ledger PnL math | ✅ PASS — 11 rows checked, 0 inconsistencies |
+| Live board upstream | ✅ PASS — `upstream_ok` |
+
+### Cross-tool integration
+
+| Tool | Result |
+|---|---|
+| SPX bootstrap spot vs GEX | ✅ PASS — spot 7706.26 |
+| HELIX flows → scanner feed | ✅ PASS — 20 prints |
+| Night Hawk dedupe | ✅ PASS — 5 tickers covered elsewhere |
+| `zerodte-warm` cron | ✅ PASS — accepted (background warm) |
+| `data-correctness` | ✅ PASS — flags=0 mode=full-async |
+| `ops:collect` | ✅ PASS — zero grid/0DTE action items |
+
+### UI controls clicked (Step 2)
+
+| Control | Result |
+|---|---|
+| `/grid` | ⚠ **404** — classic Market Grid removed; expected |
+| `/nighthawk` default 0DTE view | ✅ PASS — Command Deck loads |
+| View toggle: 0DTE | ✅ PASS |
+| View toggle: Swings | ✅ PASS |
+| View toggle: Bangers | ✅ PASS |
+| View toggle: Legacy | ✅ PASS |
+
+### Findings table
+
+| Severity | ID | Detail | Fix defer? |
+|---|---|---|---|
+| P2 | GRID-RTH-OPEN-FLAKE | `infra:validate:rth-open` FAIL in grid-rth orchestrator — transient `socket-health` HTTP 502 from sandbox + pg SSL deprecation warning in stderr; standalone `validate:rth-open` mostly GREEN with Postgres skipped (VPC). Not a 0DTE logic defect. | defer |
+| P2 | GRID-ROUTE-404 | `/grid` 404 — classic Market Grid deleted; 0DTE Command on `/nighthawk`. Stale `/grid` references remain in comments/BIE copy. | defer (docs cleanup) |
+| P2 | DC-NET-GEX-WARN | `data-validator` net_gex SIGN app vs UW — units differ; sign-only WARN (known) | defer |
+| — | — | **No P0/P1 0DTE logic, board, ledger, or UI defects found this pass** | — |
+
+**Verify status: GREEN for 0DTE Command** — exhaustive logic audit 17/17, board 118 setups / 11 ledger rows live, cross-tool integration PASS, UI E2E PASS. One orchestrator-level infra flake on nested `validate:rth-open` (environmental, not member-facing).
+
+**Reports:** `audit-output/grid-rth-2026-08-06-verify-1786032646954.json`, `audit-output/zerodte-logic-1786032656243.json`, `audit-output/grid-e2e-1786032914835.json`, `audit-output/validation-2026-08-06T16-15-32-842Z.md`, screenshots `/opt/cursor/artifacts/grid-rth-ui/tab-*.png`
+
+---
 
 ## spx-rth-2026-08-05 — SPX Slayer post-close fix agent pass 2 (~3:13 PM PT / 6:13 PM ET)
 
