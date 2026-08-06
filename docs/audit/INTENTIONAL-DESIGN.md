@@ -121,20 +121,88 @@ gex-wall-snapshot-poll.mjs` is that live intraday poller — built + smoke-teste
 
 ---
 
-## 4. Discovery caps — static N kept; ranking REVISITED 2026-07-28 (momentum before chain-fetch)
+## 4. Discovery caps — dynamic N + momentum ranking BOTH SHIPPED; the open question has moved
 
-**The choice (still).** The BREAKOUT rail screens the whole market but chain-fetches only
-**`BREAKOUT_MAX_CANDIDATES` (=15)** names per side. The cap remains a **static constant**.
+> **Correction (2026-08-06).** Everything this section said before today was stale, and the evidence
+> behind the shipped change was invalid. It described a **static `BREAKOUT_MAX_CANDIDATES = 15`
+> ranked by $-volume** with dynamic-N as a "parked follow-up". Both of those directions shipped
+> weeks ago. Worse, the recall/A/B numbers that justified them were produced by harnesses that split
+> their cohorts with `screenBreakoutMovers(...).slice(0, KEEP)` — **$-volume order** — while
+> production ranks by **momentum quality** before applying the cap. The harnesses measured a split
+> the board never makes. Both were corrected (shared split helper
+> `scripts/audit/lib/breakout-cohort-split.mjs`) and re-run; the numbers below are the corrected
+> ones. Every BREAKOUT recall/dynamic-N number recorded before 2026-08-06 should be disregarded.
 
-**What changed (2026-07-28).** Liquidity screening still uses $-volume
-(`screenBreakoutMovers` / `screenBreakdownMovers`, pool `BREAKOUT_SCREEN_POOL`=60), but the
-chain-fetch budget is now ordered by **`rankMoversForChainFetch`**: long = `gain × close_strength`,
-short = `gain × (1 − close_strength)`, $-volume breaks ties. This is the recall-probe follow-up
-(FINDINGS 2026-07-25): mega-cap $-volume was starving sharper mid-cap continuations.
+**What is actually shipped.**
 
-**Parked follow-up (dynamic-N).** Whether N itself should flex with breadth is still open — extend
-`discovery-recall-probe.mjs` with a candidate dynamic-N rule and grade across many sessions before
-changing the constant again.
+| | value | where |
+|---|---|---|
+| screen pool per side | `max(ceiling × 4, BREAKOUT_SCREEN_POOL)` = **400** | `breakout-discovery.ts:295` |
+| cap floor | `BREAKOUT_MAX_CANDIDATES` = **40** (a floor, not a ceiling) | `breakout-discovery.ts:69` |
+| cap ceiling | `BREAKOUT_MAX_CANDIDATES_CEILING` = **100** | `breakout-discovery.ts:74` |
+| cap formula | `clamp(ceil(qualifying × 0.30), 40, 100)`, `qualifying` = **long + short** pools | `breakout-cap.ts:41-56` |
+| ordering | `rankMoversForChainFetch` — long `gain × close_strength`, short `gain × (1 − close_strength)`, $-volume breaks ties | `breakout-discovery.ts:91-105`, applied `:378-379` |
+| chain-fetch budget | `min(max(cap × 4, 60), BREAKOUT_SCREEN_POOL)` | `breakout-discovery.ts:378` |
+
+**Corrected measurement — 13 sessions (2026-07-20 … 2026-08-05), long side, favorable-first
+underlying-continuation proxy (+1.5% before −0.8%, 10:00 ET entry, real Polygon minute bars).**
+
+`breakout-dynamic-n-ab.mjs` — static-40 vs dynamic-N, both cut from the *momentum* ordering:
+
+| cohort | n | win rate | avg maxRet |
+|---|---|---|---|
+| STATIC-40 (momentum ranks 1–40) | 520 | **43.1%** | 1.1% |
+| DYNAMIC-N (ranks 1–N) | 1287 | **44.1%** | 1.0% |
+| EXTRA only (ranks 41…N) — what dynamic-N adds | 767 | **44.9%** | 1.0% |
+
+`discovery-recall-probe.mjs` — kept vs everything below the cap:
+
+| cohort | n | win rate |
+|---|---|---|
+| KEPT (ranks 1…cap) | 1287 | **44.1%** |
+| DROPPED (ranks cap+1 … pool end) | 1485 | **50.0%** |
+
+The dropped tail won ≥ the kept cohort on **7 of 13** sessions.
+
+**What the corrected evidence actually says.**
+
+1. **Dynamic-N is NOT refuted — but its recorded justification was wrong.** The slice it adds
+   (ranks 41…N) grades 44.9% vs the static top-40's 43.1%: **indistinguishable**. Expanding N
+   neither dilutes quality (the original worry) nor upgrades it. Its real value is *more shots at
+   the same hit rate* — 2.5× the candidates at unchanged per-name EV — which is a weaker and more
+   honest claim than the "the dropped cohort beat the kept cohort" evidence quoted in
+   `breakout-cap.ts`'s header. **No engine change is proposed here; the shipped formula stands.**
+2. **The momentum ranking has no measurable discriminating power in this proxy.** Ranks 1–40
+   (43.1%), 41–100 (44.9%) and 101+ (50.0%) are flat-to-inverted. A ranking carrying signal would
+   decay monotonically with rank; this one does not. `gain × close_strength` by construction
+   promotes the *largest already-completed* moves, a plausible mechanism for why they continue no
+   better than moderate ones. **This is the question worth pursuing next** — a ranking-quality
+   problem, not a cap-size problem, and precisely where the invalid evidence pointed everyone wrong.
+3. **The "dynamic" cap is effectively static at the ceiling.** `N` resolved to **100 on 10 of 13
+   sessions** and 91–99 on the other 3 — the 30%-of-breadth term and the floor of 40 never bound in
+   practice (qualifying pools ran 302–554). Raising the *ceiling* is the only lever that would
+   change live behaviour; the formula in between is inert. Given (2), raising it buys more
+   candidates at a hit rate the ranking cannot order — volume, not edge.
+4. **The screen pool itself truncates on the widest days.** `longMovers` hit exactly 400 (the pool
+   cap) on 2026-08-03 and 2026-08-04, so on those sessions the momentum ranker only ever saw the
+   top-400 *by $-volume* — the very ordering the momentum re-rank exists to correct, reappearing one
+   layer upstream.
+
+**Decision: nothing changed in the engine on 2026-08-06.** The recorded evidence was corrected; the
+cap and ranking ship as they are. Operator call on whether to pursue (2).
+
+**Caveat on the proxy.** Grading is an *underlying*-continuation proxy applied identically to every
+cohort, not an option P&L path, and it models the best case for the cap (every kept name builds a
+same-day contract). It is sound for the RELATIVE kept-vs-dropped comparison; it is not an absolute
+expectancy.
+
+**Re-run the corrected measurement:**
+```
+env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY node --import tsx \
+  scripts/audit/discovery-recall-probe.mjs --dates=<comma-separated sessions>
+env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY node --import tsx \
+  scripts/audit/breakout-dynamic-n-ab.mjs --dates=<comma-separated sessions>
+```
 
 ---
 
