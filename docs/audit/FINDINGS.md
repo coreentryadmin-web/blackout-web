@@ -60,13 +60,16 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 
 ---
 
-## 2026-08-06 — [P3, follow-up] `ChainStrikeRow` structurally cannot carry gamma/theta/vega — OPEN
+## 2026-08-06 — [P3] `ChainStrikeRow` structurally could not carry gamma/theta/vega — FIXED (#1832)
 
 | Field | Value |
 |-------|-------|
-| **Detail** | `rowFromOptionSnapshot` (`features/nighthawk/lib/option-chain-prompt.ts:49`) maps `OptionSnapshot` → `ChainStrikeRow` keeping only bid/ask/delta/oi/iv; `pivotUwRows` has no greeks at all. So every **pre-entry** SWING contract (and the 0DTE fan-out) is limited to delta + IV by the type, not by the data source. |
-| **Why deferred** | Widening the type is a shared-path change on the 0DTE chain prompt, which other work was actively in. Cells render "—" honestly meanwhile. |
-| **Status** | **OPEN** — follow-up. |
+| **Detail** | `rowFromOptionSnapshot` (`features/nighthawk/lib/option-chain-prompt.ts`) mapped `OptionSnapshot` → `ChainStrikeRow` keeping only bid/ask/delta/oi/iv. The data was never missing: `OptionSnapshot` has carried `gamma`/`theta`/`vega` since `options-snapshot.ts:93-95`, populated at `:268-270`. The **type** dropped them, so every pre-entry SWING contract (and the 0DTE fan-out) was limited to delta + IV — and `horizon-fanout.ts` already declared `gamma`/`theta`/`vega` on its `ChainContract` with no source to fill them. |
+| **Fix** | Six optional columns on `ChainStrikeRow` (`call_/put_` × `gamma/theta/vega`), populated by the two builders that actually have the data — `rowFromOptionSnapshot` (unified snapshot) and `pivotPolygonContracts` (Polygon `greeks`) — and read through `explodeChainRows` into the `ChainContract` fields that were already waiting. **Optional, not required**, because `pivotUwRows` has no greeks in its payload at all: a UW-sourced row omits them rather than asserting a null it never looked for. |
+| **Two correctness details** | (1) The Polygon builder's `num()` helper returns **0** for a missing value, which for a greek is a real reading, not "absent" — so greeks are converted with an explicit `== null ? null : num(...)` to keep unknown distinct from zero. (2) `explodeChainRows` reads the **put** side's greeks for a SHORT and the call side's for a LONG; a test pins that, since silently serving call greeks on a short play is the obvious failure mode. |
+| **Deliberately unchanged** | The **LLM prompt text**. The chain prompt's serialized lines are untouched — adding greeks there would grow the prompt and change edition-synthesis input with no evidence it helps. This change is plumbing to the deck only. |
+| **Verification** | `tsc --noEmit` clean; `horizon-fanout` + all `features/nighthawk/lib` suites **750/750** (5 new tests: full greek passthrough per side, SHORT reads put greeks, UW-sourced row yields null not 0, and NaN/Infinity normalised to null); `next lint` on both touched files clean. |
+| **Status** | FIXED — PR #1832. |
 
 ---
 

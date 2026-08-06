@@ -28,11 +28,20 @@ export type ChainStrikeRow = {
   call_delta: number | null;
   call_oi: number;
   call_iv: number | null;
+  /** Second-order greeks. OPTIONAL because only the unified-snapshot and Polygon-contract
+   *  builders can supply them — `pivotUwRows` has no greeks in its payload at all, so a UW-sourced
+   *  row legitimately omits these rather than claiming a null it never looked for. */
+  call_gamma?: number | null;
+  call_theta?: number | null;
+  call_vega?: number | null;
   put_bid: number | null;
   put_ask: number | null;
   put_delta: number | null;
   put_oi: number;
   put_iv: number | null;
+  put_gamma?: number | null;
+  put_theta?: number | null;
+  put_vega?: number | null;
 };
 
 function buildOcc(ticker: string, expiryYmd: string, side: "call" | "put", strike: number): string | null {
@@ -68,12 +77,20 @@ function rowFromOptionSnapshot(snap: OptionSnapshot): ChainStrikeRow | null {
     base.call_delta = snap.delta;
     base.call_oi = Math.max(0, Math.round(snap.openInterest ?? 0));
     base.call_iv = snap.iv;
+    // OptionSnapshot has carried these since options-snapshot.ts:93-95; this mapper dropped them,
+    // which is why every pre-entry contract reached the desk with delta+IV as its only greeks.
+    base.call_gamma = snap.gamma;
+    base.call_theta = snap.theta;
+    base.call_vega = snap.vega;
   } else {
     base.put_bid = snap.bid;
     base.put_ask = snap.ask;
     base.put_delta = snap.delta;
     base.put_oi = Math.max(0, Math.round(snap.openInterest ?? 0));
     base.put_iv = snap.iv;
+    base.put_gamma = snap.gamma;
+    base.put_theta = snap.theta;
+    base.put_vega = snap.vega;
   }
   return base;
 }
@@ -158,9 +175,15 @@ function pivotPolygonContracts(
         if (bid <= 0) bid = fallback * 0.95;
       }
     }
-    const delta = num((c as { greeks?: { delta?: number } }).greeks?.delta) ?? null;
+    const greeks = (c as { greeks?: { delta?: number; gamma?: number; theta?: number; vega?: number } }).greeks;
+    const delta = num(greeks?.delta) ?? null;
     const oi = num(c.open_interest);
     const iv = num((c as { implied_volatility?: number }).implied_volatility) ?? null;
+    // `num()` returns 0 for a missing value, which for a greek is a real reading, not "absent".
+    // Preserve the distinction: undefined greek -> null (unknown), present -> the number.
+    const g = greeks?.gamma == null ? null : num(greeks.gamma);
+    const th = greeks?.theta == null ? null : num(greeks.theta);
+    const v = greeks?.vega == null ? null : num(greeks.vega);
 
     if (type === "call") {
       row.call_bid = bid;
@@ -168,12 +191,18 @@ function pivotPolygonContracts(
       row.call_delta = delta;
       row.call_oi = oi;
       row.call_iv = iv;
+      row.call_gamma = g;
+      row.call_theta = th;
+      row.call_vega = v;
     } else if (type === "put") {
       row.put_bid = bid;
       row.put_ask = ask;
       row.put_delta = delta;
       row.put_oi = oi;
       row.put_iv = iv;
+      row.put_gamma = g;
+      row.put_theta = th;
+      row.put_vega = v;
     }
     byKey.set(key, row);
   }

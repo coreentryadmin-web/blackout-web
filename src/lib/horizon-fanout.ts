@@ -115,11 +115,19 @@ export function explodeChainRows(
     /** OPTIONAL (FINDINGS 2026-08-06): ChainStrikeRow has carried per-side IV all along and this
      *  adapter silently dropped it. Optional here so every existing caller/fixture still type-checks. */
     call_iv?: number | null;
+    /** OPTIONAL: only the unified-snapshot and Polygon-contract builders supply second-order
+     *  greeks; a UW-sourced row has none in its payload and omits these. */
+    call_gamma?: number | null;
+    call_theta?: number | null;
+    call_vega?: number | null;
     put_bid: number | null;
     put_ask: number | null;
     put_delta: number | null;
     put_oi: number;
     put_iv?: number | null;
+    put_gamma?: number | null;
+    put_theta?: number | null;
+    put_vega?: number | null;
   }>,
   asOfYmd: string,
   direction: PlayDirection,
@@ -134,6 +142,11 @@ export function explodeChainRows(
     const ask = right === "C" ? r.call_ask : r.put_ask;
     const rawDelta = right === "C" ? r.call_delta : r.put_delta;
     const rawIv = right === "C" ? r.call_iv : r.put_iv;
+    const rawGamma = right === "C" ? r.call_gamma : r.put_gamma;
+    const rawTheta = right === "C" ? r.call_theta : r.put_theta;
+    const rawVega = right === "C" ? r.call_vega : r.put_vega;
+    /** Absent (undefined, UW-sourced) and non-finite both mean "not known" -> null. */
+    const finite = (n: number | null | undefined) => (n == null || !Number.isFinite(n) ? null : n);
     out.push({
       ticker: ticker.toUpperCase(),
       right,
@@ -145,11 +158,15 @@ export function explodeChainRows(
       bid,
       ask,
       mid: midOf(bid, ask),
-      // IV passthrough (FINDINGS 2026-08-06): the source rows carry `call_iv`/`put_iv` and this mapper
-      // discarded them, so every pre-entry SWING play reached the desk with delta as its ONLY greek.
-      // gamma/theta/vega are NOT recoverable here — ChainStrikeRow has no columns for them (see the
-      // follow-up note in FINDINGS); serving IV alone is strictly more truth than serving none.
-      iv: rawIv == null || !Number.isFinite(rawIv) ? null : rawIv,
+      // Greek passthrough (FINDINGS 2026-08-06). IV came first; gamma/theta/vega were blocked
+      // because ChainStrikeRow had no columns for them, so pre-entry contracts reached the desk
+      // with delta+IV only. The columns now exist and are populated from the SAME OptionSnapshot
+      // that always carried them, so the full set flows through. Still null for UW-sourced rows —
+      // that payload genuinely has no greeks, and null there is the honest answer, not a gap.
+      iv: finite(rawIv),
+      gamma: finite(rawGamma),
+      theta: finite(rawTheta),
+      vega: finite(rawVega),
     });
   }
   return out;
