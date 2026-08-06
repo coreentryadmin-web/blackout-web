@@ -548,6 +548,15 @@ export async function GET(req: NextRequest) {
       legacySwingPromoted = promote.promoted;
       legacySwingSkipped = promote.skipped;
       legacySwingErrors.push(...promote.errors);
+      // Stamp the per-ticker outcome onto the SAME finalStatuses array `result.plays` already
+      // references — result/Redis-write/markdown-render all happen below this point, so mutating
+      // in place (rather than rebuilding `result`) is enough to carry it through everywhere.
+      if (promote.promotedTickers.length > 0) {
+        const promotedSet = new Set(promote.promotedTickers.map((t) => t.toUpperCase()));
+        for (const ps of finalStatuses) {
+          if (promotedSet.has(ps.ticker.toUpperCase())) ps.swingPromoted = true;
+        }
+      }
       if (promote.promoted > 0) {
         console.info(
           `[nighthawk-morning-confirm] promoted ${promote.promoted} CONFIRMED legacy play(s) to Swings`,
