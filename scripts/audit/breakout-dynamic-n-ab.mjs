@@ -1,41 +1,54 @@
 /**
  * BREAKOUT dynamic-N A/B (INTENTIONAL-DESIGN item #4 follow-up — "dynamic-N rule").
  *
- * `discovery-recall-probe.mjs` (fixed 2026-08-04) proved the STATIC `BREAKOUT_MAX_CANDIDATES=40`
- * cap is leaky: whole-market qualifying pools run 100-390/day and the dropped (rank 41+) cohort
- * matched or beat the kept top-40 cohort's win rate on 3 of 5 sampled sessions. This script grades
- * the DYNAMIC-N replacement (`resolveBreakoutCandidateCap` in `src/lib/zerodte/breakout-cap.ts`:
- * `max(floor, min(ceiling, ceil(qualifying * 0.30)))`, floor=40/ceiling=100) against the SAME static-40
- * baseline, on the SAME 5 sessions already validated by the recall-probe fix, using the identical
- * favorable-first grading methodology (apples-to-apples with the existing probe).
+ * Grades the SHIPPED dynamic cap (`resolveBreakoutCandidateCap` in `src/lib/zerodte/breakout-cap.ts`:
+ * `max(floor, min(ceiling, ceil(qualifying * 0.30)))`, floor=40/ceiling=100) against the STATIC-40
+ * baseline it replaced, using the favorable-first grading methodology shared with
+ * `discovery-recall-probe.mjs` (apples-to-apples with that probe).
+ *
+ * CORRECTED 2026-08-06 — the cohort split was measuring an ordering production does not use.
+ * Previously both cohorts were `screenBreakoutMovers(results, SCAN_TOP).slice(0, N)` — top-N by
+ * **$-VOLUME**, the order `screenBreakoutMovers` happens to return. Production re-ranks the pool by
+ * MOMENTUM QUALITY (`rankMoversForChainFetch`, gain × close_strength) and only then applies the cap
+ * (`breakout-discovery.ts:378-379`), so the "EXTRA slice rank 41..N" this script reported was not
+ * the slice dynamic-N actually adds. It also sized `qualifyingMovers` from the LONG pool alone,
+ * whereas production sizes the cap from LONG + SHORT together (`breakout-discovery.ts:306`), which
+ * under-stated N_dynamic. **Every number this harness produced before 2026-08-06 is INVALID** —
+ * including the evidence quoted in `breakout-cap.ts`'s header. The split now lives in
+ * `lib/breakout-cohort-split.mjs`, shared with the recall probe so the two cannot drift again.
  *
  * For each session this reports:
- *   - qualifying pool size (breakout/long side only, matching the existing probe's scope)
+ *   - qualifying pool size, LONG and SHORT (both feed the cap; grading stays long-side only)
  *   - N_dynamic actually resolved by the shipped formula
- *   - STATIC-40 cohort: n / win-rate / avg maxRet
- *   - DYNAMIC-N cohort (superset of static): n / win-rate / avg maxRet
- *   - the EXTRA slice (rank 41..N_dynamic) that dynamic-N recovers over static: n / win-rate / avg maxRet
- * Then an aggregate rollup across all 5 sessions, plus a sanity check that N_dynamic never explodes
- * past the ceiling (bounded chain-fetch/API load).
+ *   - STATIC-40 cohort (momentum ranks 1-40):  n / win-rate / avg maxRet
+ *   - DYNAMIC-N cohort (momentum ranks 1-N):   n / win-rate / avg maxRet  (superset of static)
+ *   - the EXTRA slice (momentum ranks 41..N):  n / win-rate / avg maxRet  — what dynamic-N adds
+ * Then an aggregate rollup, plus a sanity check that N_dynamic never exceeds the ceiling.
  *
  * Read-only. Polygon only (grouped-daily + minute bars — no UW, no DB, no Clerk). Self-defaults
- * POLYGON_API_BASE. Imports the REAL production `screenBreakoutMovers` and
- * `resolveBreakoutCandidateCap` — this measures exactly what shipping the change would do. Run:
+ * POLYGON_API_BASE. Imports the REAL production screens, ranker and cap formula — this measures
+ * exactly what the shipped code does. Run:
  *   env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY node --import tsx scripts/audit/breakout-dynamic-n-ab.mjs \
- *     --dates=2026-07-20,2026-07-21,2026-07-24,2026-07-30,2026-07-31 [--scan-top=500] [--fav=0.015] [--entry=10:00] [--json]
+ *     --dates=2026-07-20,2026-07-21,... [--fav=0.015] [--entry=10:00] [--concurrency=12] [--json]
  */
 const rawBase = process.env.POLYGON_API_BASE;
 const RESOLVED_BASE = rawBase && /^https?:\/\//.test(rawBase) ? rawBase : "https://api.massive.com";
 process.env.POLYGON_API_BASE = RESOLVED_BASE;
 const SRC = new URL("../../src/", import.meta.url).pathname;
 
-// REAL production ranking + REAL production dynamic-cap formula — what we measure is exactly what
-// shipping the change would do to the live board's candidate count.
-const { screenBreakoutMovers } = await import(`${SRC}features/nighthawk/lib/candidates.ts`);
-const { BREAKOUT_MAX_CANDIDATES, BREAKOUT_MAX_CANDIDATES_CEILING } = await import(
-  `${SRC}lib/zerodte/breakout-discovery.ts`
+// REAL production screens + REAL production ranker + REAL production dynamic-cap formula — what we
+// measure is exactly what the shipped code does to the live board's candidate set.
+const { screenBreakoutMovers, screenBreakdownMovers } = await import(
+  `${SRC}features/nighthawk/lib/candidates.ts`
 );
+const {
+  rankMoversForChainFetch,
+  BREAKOUT_MAX_CANDIDATES,
+  BREAKOUT_MAX_CANDIDATES_CEILING,
+  BREAKOUT_SCREEN_POOL,
+} = await import(`${SRC}lib/zerodte/breakout-discovery.ts`);
 const { resolveBreakoutCandidateCap } = await import(`${SRC}lib/zerodte/breakout-cap.ts`);
+const { splitBreakoutCohorts, productionScreenPool } = await import("./lib/breakout-cohort-split.mjs");
 
 const argv = Object.fromEntries(
   process.argv.slice(2).map((a) => {
@@ -44,7 +57,14 @@ const argv = Object.fromEntries(
   })
 );
 const STATIC_KEEP = BREAKOUT_MAX_CANDIDATES;
-const SCAN_TOP = Math.max(BREAKOUT_MAX_CANDIDATES_CEILING + 1, Number(argv["scan-top"] ?? 500));
+// Production's own upstream screen pool (breakout-discovery.ts:295) — NOT an arbitrary --scan-top.
+// `--scan-top` may only WIDEN it (breadth exploration); it can never narrow the pool below what the
+// live scan screens, which is what makes the qualifying count (and therefore N_dynamic) real.
+const SCREEN_POOL = Math.max(
+  productionScreenPool(BREAKOUT_MAX_CANDIDATES_CEILING, BREAKOUT_SCREEN_POOL),
+  Number(argv["scan-top"] ?? 0) || 0
+);
+const CONCURRENCY = Math.max(1, Number(argv.concurrency ?? 12));
 const FAV = Number(argv.fav ?? 0.015);
 const ADV = FAV / 2;
 const [entH, entM] = String(argv.entry ?? "10:00").split(":").map(Number);
@@ -108,13 +128,23 @@ async function fetchMinuteBars(ticker, date) {
   return (j?.results ?? []).map((b) => ({ t: b.t, h: b.h, l: b.l, c: b.c }));
 }
 
+/** Bounded-concurrency grading — the production pool is up to 400 names/side, so a sequential walk
+ *  would make a multi-session run take tens of minutes. Result order is irrelevant (everything
+ *  downstream aggregates), so a simple worker pool suffices. */
 async function gradeCohort(movers, date) {
   const graded = [];
-  for (const m of movers) {
-    const bars = await fetchMinuteBars(m.ticker.toUpperCase(), date);
-    const g = gradeContinuation(bars);
-    if (g) graded.push({ ...m, ...g });
-  }
+  let next = 0;
+  const worker = async () => {
+    for (;;) {
+      const i = next++;
+      if (i >= movers.length) return;
+      const m = movers[i];
+      const bars = await fetchMinuteBars(m.ticker.toUpperCase(), date);
+      const g = gradeContinuation(bars);
+      if (g) graded.push({ ...m, ...g });
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, movers.length) }, worker));
   return graded;
 }
 
@@ -128,22 +158,34 @@ async function runSession(date) {
   if (results.length === 0) {
     return { date, error: "no grouped-daily data (weekend/holiday/provider miss)" };
   }
-  // EXACT production ranking, wide scan window so we see the true qualifying pool (not truncated
-  // by either cap) — this is what discovery-recall-probe.mjs's 2026-08-04 fix corrected.
-  const movers = screenBreakoutMovers(results, SCAN_TOP);
-  const qualifying = movers.length;
+  // PRODUCTION STEP 2 — both sides, at the production screen-pool size.
+  const longMovers = screenBreakoutMovers(results, SCREEN_POOL);
+  const shortMovers = screenBreakdownMovers(results, SCREEN_POOL);
 
-  // EXACT production dynamic-cap formula: what the shipped code would resolve for this day's
-  // breadth. Uses the SAME floor/ceiling constants the live board uses.
+  // PRODUCTION STEP 3-4 — the cap is sized from LONG + SHORT qualifying breadth TOGETHER
+  // (breakout-discovery.ts:306). Sizing it from the long pool alone under-states N_dynamic, which
+  // is one of the two defects corrected on 2026-08-06.
+  const qualifying = longMovers.length + shortMovers.length;
   const nDynamic = resolveBreakoutCandidateCap({
     qualifyingMovers: qualifying,
     floor: BREAKOUT_MAX_CANDIDATES,
     ceiling: BREAKOUT_MAX_CANDIDATES_CEILING,
   });
 
-  const staticCohort = movers.slice(0, STATIC_KEEP);
-  const dynamicCohort = movers.slice(0, nDynamic);
-  const extraCohort = movers.slice(STATIC_KEEP, nDynamic); // what dynamic-N recovers over static-40
+  // PRODUCTION STEP 5-7 — the cohorts are slices of the MOMENTUM ordering, not of the $-volume
+  // ordering `screenBreakoutMovers` returns. Both A and B are cut from the same ranked list, so the
+  // A/B stays apples-to-apples; only the cut point differs (static 40 vs dynamic N).
+  const ranked = splitBreakoutCohorts({
+    pool: longMovers,
+    cap: nDynamic,
+    screenPoolCap: BREAKOUT_SCREEN_POOL,
+    rank: rankMoversForChainFetch,
+    side: "long",
+  }).ranked;
+
+  const staticCohort = ranked.slice(0, STATIC_KEEP);
+  const dynamicCohort = ranked.slice(0, nDynamic);
+  const extraCohort = ranked.slice(STATIC_KEEP, nDynamic); // what dynamic-N recovers over static-40
 
   const [staticGraded, dynamicGraded, extraGraded] = await Promise.all([
     gradeCohort(staticCohort, date),
@@ -154,6 +196,8 @@ async function runSession(date) {
   return {
     date,
     qualifying,
+    qualifying_long: longMovers.length,
+    qualifying_short: shortMovers.length,
     n_dynamic: nDynamic,
     static: { n: staticGraded.length, win_rate: rate(staticGraded), avg_max_ret: avg(staticGraded, (x) => x.maxRet) },
     dynamic: { n: dynamicGraded.length, win_rate: rate(dynamicGraded), avg_max_ret: avg(dynamicGraded, (x) => x.maxRet) },
@@ -201,14 +245,19 @@ if (JSON_OUT) {
 }
 
 console.log(`\n=== BREAKOUT dynamic-N A/B — ${valid.length}/${DATES.length} sessions ===`);
-console.log(`static keep=${STATIC_KEEP} · dynamic floor=${BREAKOUT_MAX_CANDIDATES} ceiling=${BREAKOUT_MAX_CANDIDATES_CEILING} (30% of qualifying pool)\n`);
+console.log(
+  `static keep=${STATIC_KEEP} · dynamic floor=${BREAKOUT_MAX_CANDIDATES} ceiling=${BREAKOUT_MAX_CANDIDATES_CEILING} (30% of qualifying pool)`
+);
+console.log(
+  `split: PRODUCTION — screen pool ${SCREEN_POOL}/side, cohorts cut from the MOMENTUM ranking (rankMoversForChainFetch), qualifying = L+S\n`
+);
 for (const s of sessions) {
   if (s.error) {
     console.log(`${s.date}: ${s.error}`);
     continue;
   }
   console.log(
-    `${s.date}: qualifying=${s.qualifying}  N_dynamic=${s.n_dynamic}  ` +
+    `${s.date}: qualifying=${s.qualifying} (${s.qualifying_long}L+${s.qualifying_short}S)  N_dynamic=${s.n_dynamic}  ` +
       `STATIC-40 n=${s.static.n} WR=${pct(s.static.win_rate)} avgMaxRet=${pct(s.static.avg_max_ret)}  ` +
       `DYNAMIC-${s.n_dynamic} n=${s.dynamic.n} WR=${pct(s.dynamic.win_rate)} avgMaxRet=${pct(s.dynamic.avg_max_ret)}  ` +
       `EXTRA(rank${STATIC_KEEP + 1}-${s.n_dynamic}) n=${s.extra.n} WR=${pct(s.extra.win_rate)} winners=[${s.extra.winners.join(",")}]`
