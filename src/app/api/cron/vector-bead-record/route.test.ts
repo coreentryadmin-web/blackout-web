@@ -1,19 +1,34 @@
+// Regression: vector-bead-record must handshake via after() so Cloudflare never 504s
+// the cron before logCronRun fires (ops #1783 — same class as vector-full-state-snapshot #1355).
+
+import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import test from "node:test";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 
-test("vector-bead-record cron dispatches recorder in after()", () => {
-  const routeSrc = readFileSync("src/app/api/cron/vector-bead-record/route.ts", "utf8");
+const routeSrc = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), "route.ts"),
+  "utf8"
+);
+const leaderSrc = readFileSync("src/lib/vector-bead-recorder-leader.ts", "utf8");
+
+test("vector-bead-record dispatches recorder in after() and returns 202", () => {
   assert.match(routeSrc, /recordSharedUniverseWallSamples/);
   assert.match(routeSrc, /recordActiveNonUniverseWallSamples/);
-  assert.match(routeSrc, /after\(/);
-  assert.match(routeSrc, /logCronRun\("vector-bead-record"/);
+  assert.match(routeSrc, /after\(dispatchRecording\)/, "must use after() for fire-and-forget handshake");
+  assert.match(routeSrc, /status:\s*202/, "must return HTTP 202 accepted");
+  assert.match(routeSrc, /await logCronRun\("vector-bead-record"/, "must log cron handshake before response");
+  assert.doesNotMatch(
+    routeSrc,
+    /await logCronRun\("vector-bead-record"[\s\S]*await recordSharedUniverseWallSamples/,
+    "logCronRun must not await the heavy recording inline"
+  );
 });
 
 test("vector-bead-recorder-leader ticks every 5s during RTH", () => {
-  const src = readFileSync("src/lib/vector-bead-recorder-leader.ts", "utf8");
-  assert.match(src, /VECTOR_BEAD_RECORD_TICK_MS/);
-  assert.match(src, /VECTOR_BEAD_RECORD_ACTIVE_TICK_MS/);
-  assert.match(src, /recordActiveNonUniverseWallSamples/);
-  assert.match(src, /isEtCashRth/);
+  assert.match(leaderSrc, /VECTOR_BEAD_RECORD_TICK_MS/);
+  assert.match(leaderSrc, /VECTOR_BEAD_RECORD_ACTIVE_TICK_MS/);
+  assert.match(leaderSrc, /recordActiveNonUniverseWallSamples/);
+  assert.match(leaderSrc, /isEtCashRth/);
 });
