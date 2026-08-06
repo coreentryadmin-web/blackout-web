@@ -4,6 +4,25 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-06 — [ops] vector-bead-record RTH-stale missing EventBridge + no leader heartbeat (#1785)
+
+**Severity.** P0 — Vector bead backup cron flagged `market_hours_stale` during RTH (ops-auto-fix #1785).
+
+**Symptom.** Watchdog `rth_stale_keys: ["vector-bead-record"]` within ~70s of the last HTTP handshake even though the in-process 5s bead recorder leader is live (SPY/QQQ beads dense on prod).
+
+**Root cause.** Three-layer gap:
+1. EventBridge rule for `vector-bead-record` was never provisioned in `blackout-infra` (fast follow-up from #1708) — no 1/min HTTP cron fires.
+2. `rth-warm-leader` should backfill the HTTP handshake every ~10s but was not keeping `cron_job_runs` fresh on prod during this session.
+3. The in-process `vector-bead-recorder-leader` (primary 5s writer) never stamped `cron_job_runs`, so observability depended entirely on the missing HTTP path.
+
+**Fix.**
+- `vector-bead-recorder-leader.ts` — log a lightweight `cron_job_runs` heartbeat every 30s while cluster leader during RTH.
+- `cron-writer-target-fresh.ts` + `admin-cron-health.ts` — add `vector-bead-record` to the target-fresh override (SPY wall-history tail ≤30s) so handshake lag cannot false-page when beads are live.
+
+**Status.** FIXED on `cursor/rth-stale-cron-4002`.
+
+---
+
 ## 2026-08-06 — [ops] vector-bead-record RTH-stale edge timeout (#1783)
 
 **Severity.** P0 — Vector bead backup cron flagged `market_hours_stale` during RTH.

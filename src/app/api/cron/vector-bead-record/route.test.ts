@@ -32,3 +32,9 @@ test("vector-bead-recorder-leader ticks every 5s during RTH", () => {
   assert.match(leaderSrc, /recordActiveNonUniverseWallSamples/);
   assert.match(leaderSrc, /isEtCashRth/);
 });
+
+test("vector-bead-recorder-leader logs cron_job_runs heartbeat for observability", () => {
+  assert.match(leaderSrc, /logCronRun\("vector-bead-record"/);
+  assert.match(leaderSrc, /HEARTBEAT_INTERVAL_MS/);
+  assert.match(leaderSrc, /maybeLogLeaderHeartbeat/);
+});
