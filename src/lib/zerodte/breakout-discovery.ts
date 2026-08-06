@@ -21,6 +21,7 @@
 // candidates, never add any.
 
 import { fetchDailyMarketSummary, type DailyMarketBar } from "@/lib/providers/polygon";
+import { ZERODTE_MAX_DTE } from "@/lib/horizons";
 import { screenBreakoutMovers, screenBreakdownMovers } from "@/features/nighthawk/lib/candidates";
 import { resolveTickerChainRows } from "@/features/nighthawk/lib/option-chain-prompt";
 import {
@@ -345,9 +346,9 @@ export async function discoverBreakoutSetups(opts: {
       const picked = pickContract(rows, chain.spot, today, side);
       if (!picked) {
         const has0 = pickAtmZeroDteContract(rows, chain.spot, today, 0, side);
-        const has1 =
-          breakoutAllow1DteFallback() ? pickAtmZeroDteContract(rows, chain.spot, today, 1, side) : null;
-        if (!has0 && has1 && !breakoutAllow1DteFallback()) {
+        const hasWidened =
+          breakoutAllow1DteFallback() ? pickAtmZeroDteContract(rows, chain.spot, today, ZERODTE_MAX_DTE, side) : null;
+        if (!has0 && hasWidened && !breakoutAllow1DteFallback()) {
           return { setup: null, miss: "no_0dte_contract" as const };
         }
         return { setup: null, miss: "no_same_day_contract" as const };

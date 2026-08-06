@@ -65,9 +65,9 @@ test("critique #3: archetype-aware persistence policy — cross-session=2, event
   for (const a of SWING_ARCHETYPES) assert.ok(ARCHETYPE_PERSISTENCE[a], `persistence rule for ${a}`);
 });
 
-test("subLaneForDte: boundaries — outside [2,30] is null, each lane owns its inclusive range", () => {
-  assert.equal(subLaneForDte(1), null);
-  assert.equal(subLaneForDte(2), "TACTICAL");
+test("subLaneForDte: boundaries — outside [5,30] is null, each lane owns its inclusive range (floor widened 2026-08-06)", () => {
+  assert.equal(subLaneForDte(4), null); // now owned by the 0DTE board's widened dte 0-4 window
+  assert.equal(subLaneForDte(5), "TACTICAL");
   assert.equal(subLaneForDte(7), "TACTICAL");
   assert.equal(subLaneForDte(8), "STANDARD");
   assert.equal(subLaneForDte(21), "STANDARD");
@@ -78,19 +78,19 @@ test("subLaneForDte: boundaries — outside [2,30] is null, each lane owns its i
   assert.equal(subLaneForDte(NaN), null);
 });
 
-test("sub-lanes: ranges are contiguous, non-overlapping, cover exactly [2,30]", () => {
+test("sub-lanes: ranges are contiguous, non-overlapping, cover exactly [5,30] (HORIZONS.SWING.dteMin)", () => {
   const lanes = allSwingSubLanes();
   assert.equal(lanes.length, 3);
-  // contiguous + non-overlapping in fast→slow order, covering [2,30]
-  assert.equal(lanes[0]!.dteMin, 2);
+  // contiguous + non-overlapping in fast→slow order, covering [5,30]
+  assert.equal(lanes[0]!.dteMin, 5);
   assert.equal(lanes[lanes.length - 1]!.dteMax, 30);
   for (let i = 1; i < lanes.length; i++) {
     assert.equal(lanes[i]!.dteMin, lanes[i - 1]!.dteMax + 1, `lane ${i} starts right after prior`);
   }
-  // every DTE in [2,30] maps to exactly one lane; every DTE outside maps to none
+  // every DTE in [5,30] maps to exactly one lane; every DTE outside maps to none
   for (let dte = 0; dte <= 35; dte++) {
     const lane = subLaneForDte(dte);
-    const inWindow = dte >= 2 && dte <= 30;
+    const inWindow = dte >= 5 && dte <= 30;
     assert.equal(lane != null, inWindow, `dte ${dte} in-window=${inWindow}`);
   }
 });

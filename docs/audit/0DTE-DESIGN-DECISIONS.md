@@ -74,10 +74,19 @@ No scorer/gate/exit/feature version stamp on ledger rows (grep-confirmed). A for
 blends old + new graded plays in one calibration band. Needs a version stamp + bucket-by-version so a change
 can't corrupt its own evidence.
 
-**Q2 — Weekly fallback grading. [OPEN]**
-A weekly-fallback contract stays in the same 0DTE ledger with `dte` stamped, no separate horizon tag, and is
-graded with the 0DTE 15:30 same-day time-stop — wrong for a multi-day weekly. Needs its own grading horizon
-or exclusion. (Only BREAKOUT/PIN use weekly fallback; FLOW is 0–1DTE.)
+**Q2 — Weekly fallback grading. [AMENDED 2026-08-06 — ceiling widened, not a separate horizon]**
+Originally: a weekly-fallback contract stayed in the same 0DTE ledger with `dte` stamped, no separate
+horizon tag, graded with the 0DTE 15:30 same-day time-stop — wrong for a multi-day weekly. Live evidence
+(2026-08-06, FINDINGS.md) showed the REAL problem was the ceiling itself: `dte≤1` structurally starves
+single-name equities (most carry no Mon–Thu listing) on every day but Thu/Fri, and the underlying
+same-day EXIT discipline (session-clock, not expiry-clock) already holds correctly through dte=4 — G-15's
+removal note had already proven this for dte=1 in production. Fix: `horizons.ts`'s `ZERODTE_MAX_DTE`
+widened 1→4 — `ONE_DTE` now legitimately covers dte 1-4 (still graded same-day, still session-clock, still
+`same_day_1530_close`), and dte≥5 remains `WEEKLY_FALLBACK` (excluded, never committed) exactly as before.
+So this is NOT "give the weekly fallback its own grading horizon" — it's "the horizon it was already
+correctly using was drawn one dte too narrow." `strategy-version.ts`'s `DISCOVERY_VERSION`/
+`CONTRACT_SELECTOR_VERSION` bump (v4→v5, v1→v2) partitions pre/post-widening `ONE_DTE` rows into separate
+calibration cohorts so this remains evidence-honest.
 
 **Q7 — Condor executable P&L from 4 async legs. [OPEN]**
 The condor credit is modeled (shorts@bid − wings@ask, conservative), not reconstructed from four actual async
@@ -93,5 +102,5 @@ below the cut that would have won. Violates "no silent caps"; needs a recall pro
 1. Q8 condor assignment — **done** (cash-settled allowlist).
 2. Q9 same-direction concentration cap (governor).
 3. Q12 version-stamping (calibration population integrity).
-4. Q2 weekly grading horizon · Q7 condor fill model · Q10 recall probe.
+4. Q2 weekly grading horizon — **done 2026-08-06** (ceiling widened, not a separate horizon) · Q7 condor fill model · Q10 recall probe.
 Each ships flag-gated/additive where it touches live risk, and graduates on the ledger before it sizes.

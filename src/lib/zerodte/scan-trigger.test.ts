@@ -31,9 +31,11 @@ test("NOT material: small premium, no sweep, or too-far-dated", () => {
   assert.equal(isMaterialFlowAlert({ premium: 5_000_000, has_sweep: true, expiry: nextWeek }, NOW), false, "too far-dated (7 DTE)");
 });
 
-test("material: 1-DTE is in-window, 2-DTE is not", () => {
+test("material: dte 1-4 are in-window (widened 2026-08-06), dte 5 is not", () => {
   assert.equal(isMaterialFlowAlert({ premium: 2_000_000, has_sweep: true, expiry: tomorrow }, NOW), true);
-  assert.equal(isMaterialFlowAlert({ premium: 2_000_000, has_sweep: true, expiry: "2026-07-24" }, NOW), false);
+  assert.equal(isMaterialFlowAlert({ premium: 2_000_000, has_sweep: true, expiry: "2026-07-24" }, NOW), true, "2 DTE now in-window");
+  assert.equal(isMaterialFlowAlert({ premium: 2_000_000, has_sweep: true, expiry: "2026-07-26" }, NOW), true, "4 DTE is the new outer edge");
+  assert.equal(isMaterialFlowAlert({ premium: 2_000_000, has_sweep: true, expiry: "2026-07-27" }, NOW), false, "5 DTE is out of window");
 });
 
 test("canFire: first fire always allowed; then gated by the interval", () => {

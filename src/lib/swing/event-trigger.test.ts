@@ -30,11 +30,13 @@ test("swingDirectionOf: CALL→LONG, PUT→SHORT, UNKNOWN→null", () => {
   assert.equal(swingDirectionOf(""), null);
 });
 
-test("isMaterialSwingFlow boundaries: premium, direction, and the 2–30 DTE window", () => {
+test("isMaterialSwingFlow boundaries: premium, direction, and the 5–30 DTE window (floor widened 2026-08-06)", () => {
   assert.equal(isMaterialSwingFlow(flow(), NOW), true, "big directional 14 DTE call is material");
   assert.equal(isMaterialSwingFlow(flow({ premium: SWING_EVENT_MIN_PREMIUM - 1 }), NOW), false, "below premium floor");
   assert.equal(isMaterialSwingFlow(flow({ option_type: "UNKNOWN" }), NOW), false, "non-directional excluded");
   assert.equal(isMaterialSwingFlow(flow({ expiry: ymdDaysAhead(0) }), NOW), false, "0 DTE is a lottery, not a swing");
+  assert.equal(isMaterialSwingFlow(flow({ expiry: ymdDaysAhead(4) }), NOW), false, "4 DTE now belongs to the widened 0DTE board, not swing");
+  assert.equal(isMaterialSwingFlow(flow({ expiry: ymdDaysAhead(5) }), NOW), true, "5 DTE is the new inclusive lower edge");
   assert.equal(isMaterialSwingFlow(flow({ expiry: ymdDaysAhead(45) }), NOW), false, "45 DTE is a LEAP-ish, above the window");
   assert.equal(isMaterialSwingFlow(flow({ expiry: ymdDaysAhead(30) }), NOW), true, "30 DTE is the inclusive upper edge");
 });

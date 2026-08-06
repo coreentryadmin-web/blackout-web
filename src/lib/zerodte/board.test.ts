@@ -109,10 +109,12 @@ function row(overrides: Partial<FlowSetupInput>): FlowSetupInput {
 
 // ── contract horizon (PR-1 HORIZON INTEGRITY) ──────────────────────────────────────
 
-test("deriveContractHorizon maps the REAL dte: 0→ZERO_DTE, 1→ONE_DTE, ≥2→WEEKLY_FALLBACK", () => {
+test("deriveContractHorizon maps the REAL dte: 0→ZERO_DTE, 1-4→ONE_DTE, ≥5→WEEKLY_FALLBACK (widened 2026-08-06)", () => {
   assert.equal(deriveContractHorizon(0), "ZERO_DTE");
   assert.equal(deriveContractHorizon(1), "ONE_DTE");
-  assert.equal(deriveContractHorizon(2), "WEEKLY_FALLBACK");
+  assert.equal(deriveContractHorizon(2), "ONE_DTE");
+  assert.equal(deriveContractHorizon(3), "ONE_DTE");
+  assert.equal(deriveContractHorizon(4), "ONE_DTE");
   assert.equal(deriveContractHorizon(5), "WEEKLY_FALLBACK");
   assert.equal(deriveContractHorizon(7), "WEEKLY_FALLBACK");
   // Fail-closed: a non-finite/negative dte must NEVER read as same-day.
@@ -190,6 +192,23 @@ test("flow setups are ZERO_DTE/ONE_DTE by construction, stamping actual_dte_at_c
   assert.equal(one[0]!.contract_horizon, "ONE_DTE");
   assert.equal(one[0]!.actual_dte_at_commit, 1);
   assert.equal(one[0]!.grading_policy, SAME_DAY_GRADING_POLICY);
+
+  // A dte-4 flow tape (widened 2026-08-06: a Monday hitting a Friday-only weekly) → still ONE_DTE.
+  const four = deriveZeroDteSetups([
+    row({ premium: 900_000, strike: 190, dte: 4, expiry: "2026-07-10" }),
+    row({ premium: 700_000, strike: 190, dte: 4, expiry: "2026-07-10", alert_rule: "SweepsFollowedByFloor" }),
+  ], { todayYmd: "2026-07-06" });
+  assert.equal(four.length, 1);
+  assert.equal(four[0]!.contract_horizon, "ONE_DTE");
+  assert.equal(four[0]!.actual_dte_at_commit, 4);
+  assert.equal(four[0]!.grading_policy, SAME_DAY_GRADING_POLICY);
+
+  // A dte-5 flow tape is past SETUP_MAX_DTE — excluded entirely (never committed).
+  const five = deriveZeroDteSetups([
+    row({ premium: 900_000, strike: 190, dte: 5, expiry: "2026-07-11" }),
+    row({ premium: 700_000, strike: 190, dte: 5, expiry: "2026-07-11", alert_rule: "SweepsFollowedByFloor" }),
+  ], { todayYmd: "2026-07-06" });
+  assert.equal(five.length, 0);
 
   // The fields survive enrichment (spread through enrichSetup).
   const enriched = enrichSetup(zero[0]!, null);

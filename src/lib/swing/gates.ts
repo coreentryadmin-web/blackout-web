@@ -184,7 +184,7 @@ export function evaluateSwingGates(
 
   // expiry_insufficient — the intended DTE must land in a sub-lane, and the contract must carry its floor of days.
   if (dossier.subLane == null) {
-    blocks.push(skipBlock("expiry_insufficient", "No sub-lane for the intended DTE (outside the 2–30 SWING window)."));
+    blocks.push(skipBlock("expiry_insufficient", "No sub-lane for the intended DTE (outside the 5–30 SWING window)."));
   } else {
     const spec = SWING_SUB_LANES[dossier.subLane];
     if (contract.dte < spec.dteMin) {
