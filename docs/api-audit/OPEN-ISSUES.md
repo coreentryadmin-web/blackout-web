@@ -1,5 +1,59 @@
 # BlackOut Open Issues Log
-Last updated: 2026-08-05 18:14 ET
+Last updated: 2026-08-06 11:52 ET
+
+## spx-rth-2026-08-06 — SPX Slayer verify pass (market open ~6:30 AM PT / 9:30 AM ET)
+
+**Session:** Autonomous SPX Slayer **verify** mode per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` on branch `cursor/spx-rth-system-verification-2eb0`. Commands: `npm run validate:spx-rth` → `npm run validate:spx-e2e` → `data-validator.mjs` → 60s live auto-update probe.
+
+### Validation summary (verify, RTH open)
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth` | ✅ **8 PASS · 1 WARN · 0 FAIL** — matrix deep audit, cross-endpoint spot merged=7710.23 hm=7712.17 play=SCANNING/SCANNING, desk lanes pulse+flow live, BIE consistency, nested dashboard E2E PASS, ops:collect SPX scope clean |
+| `npm run validate:spx-e2e` | ✅ **0 FAIL / 18 checks** — matrix every-cell-api 207 strikes GEX+VEX+DEX+CHARM, GEX+VEX tabs, commentary expand, play verdict SCANNING, zero console errors |
+| `data-validator.mjs` | ✅ **43 PASS · 0 FAIL** — SPY/SPX/VIX vs Polygon, GEX walls/posture, 0DTE premiums, track-record math |
+| Live auto-update (60s) | ✅ **PASS** — desk spot + heatmap spot ticked within 60s without manual refresh |
+
+### Cross-tool integration (Step 3)
+
+| Tool | Result |
+|---|---|
+| Thermal (`gex-heatmap?ticker=SPX`) | ✅ PASS — same payload as dashboard matrix |
+| Thermal SPY cross_validation | ✅ PASS |
+| GEX positioning | ✅ PASS — spot/flip/walls agree with matrix header |
+| HELIX (`/api/market/flows`) | ✅ PASS — 30 prints |
+| Largo (`get_spx_play` query) | ✅ PASS — `tools=live_feed_capture,platform_vitals_prefetch` |
+| BIE (`validate:spx-bie`) | ✅ PASS — `spx_full_state` == member play |
+| Grid (`/api/market/spx/bootstrap`) | ✅ PASS — loaded |
+| 0DTE (`/api/market/zerodte/board`) | ✅ PASS — 111 setups |
+| Night Hawk (`/api/market/nighthawk/edition`) | ✅ PASS |
+
+### UI controls clicked (Step 2)
+
+| Control | Result |
+|---|---|
+| GEX tab (`#spx-matrix-tab-gex`) | ✅ PASS |
+| VEX tab (`#spx-matrix-tab-vex`) | ✅ PASS |
+| Commentary expand | ✅ PASS |
+| Matrix rows | ✅ 213 strike rows |
+| Matrix text sanity | ✅ PASS — no NaN/undefined |
+| Play verdict bar | ✅ PASS — SCANNING, no stale ✓ confirmations |
+| Live badge | ✅ PASS — LIVE during RTH |
+| Live auto-update (60s) | ✅ PASS — desk + heatmap ticked |
+
+### Findings table
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| P2 | SPX-DC-CRON-AUTH | `data-correctness` WARN — env `CRON_SECRET` stale vs AWS SM | cron probe | defer |
+| P2 | SPX-BIE-CRON-401 | `bie-play-route` WARN — cron play HTTP 401 without bearer | expected | defer |
+| P2 | VECTOR-WATCHDOG-STALE | ops:collect deferred non-SPX watchdog items (`vector-bead-record`, `vector-walls-warm`) | ops:collect | defer (non-SPX) |
+
+**Verify status: GREEN** — zero FAIL on `validate:spx-rth` and `validate:spx-e2e`. Matrix 100% vs API (207 strikes, GEX+VEX+DEX+CHARM). No stale SCANNING confirmations. No P0 defects.
+
+**Reports:** `audit-output/spx-rth-2026-08-06-verify-1786031283552.json`, `audit-output/spx-dashboard-e2e-1786031348168.json`, `audit-output/validation-2026-08-06T15-52-36-401Z.md`
+
+---
 
 ## spx-rth-2026-08-05 — SPX Slayer post-close fix agent pass 2 (~3:13 PM PT / 6:13 PM ET)
 
