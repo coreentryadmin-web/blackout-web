@@ -8,6 +8,8 @@ import {
   viewForHorizon,
   isNightHawkView,
   NIGHTHAWK_VIEW_META,
+  NIGHTHAWK_COMPACT_LANE_LABEL,
+  MAX_COMPACT_LANE_LABEL_LEN,
 } from "./nighthawk-view.ts";
 
 test("the toggle has exactly four views in fast→slow→banger→legacy order", () => {
@@ -57,4 +59,25 @@ test("every view has renderable meta (label/tag/blurb)", () => {
   }
   assert.equal(NIGHTHAWK_VIEW_META.LEGACY.label, "Legacy");
   assert.equal(NIGHTHAWK_VIEW_META.SWING.label, "Swings");
+});
+
+// Regression for the live overlap bug (2026-08-06): the compact command-center header
+// (`.nh-deck-cmd-lane`, CommandDeck's `laneLabel` prop) sits in a flex container that can shrink
+// narrower than its own non-wrapping content on a mobile viewport, and overflow:visible lets an
+// over-length label bleed its pixels over the adjacent stat pills instead of wrapping/clipping.
+// The old Legacy literal "Legacy · Tonight's playbook" (27 chars) was the only one of the four
+// lane labels long enough to trigger it. This is a length TRIPWIRE on the shared vocabulary, not
+// a re-test of the CSS itself — it fails loudly if a future edit lets any lane's label creep back
+// past the bound confirmed safe at the narrowest supported (430px) viewport.
+test("every compact lane label stays within the overlap-safe length bound", () => {
+  for (const [lane, label] of Object.entries(NIGHTHAWK_COMPACT_LANE_LABEL)) {
+    assert.ok(
+      label.length <= MAX_COMPACT_LANE_LABEL_LEN,
+      `${lane} label "${label}" is ${label.length} chars, over the ${MAX_COMPACT_LANE_LABEL_LEN}-char safe bound`,
+    );
+  }
+});
+
+test("the Legacy compact lane label is the shortened, non-overlapping string", () => {
+  assert.equal(NIGHTHAWK_COMPACT_LANE_LABEL.LEGACY, "Legacy · Playbook");
 });

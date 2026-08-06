@@ -18,6 +18,7 @@ import { useZeroDteLiveDeck } from "./use-zero-dte-live-deck";
 import { zeroDteSources, isBoardDegraded, type BoardResp } from "./zerodte-sources";
 import { EDITION_TARGET_PLAYS } from "@/features/nighthawk/lib/constants";
 import { isMorningConfirmStale, formatCheckedAtEt } from "@/features/nighthawk/lib/morning-confirm-verdict";
+import { NIGHTHAWK_COMPACT_LANE_LABEL } from "@/features/nighthawk/lib/nighthawk-view";
 import { etNowParts } from "@/features/nighthawk/lib/session";
 
 const json = (u: string) => fetch(u, { cache: "no-store", credentials: "same-origin" }).then((r) => (r.ok ? r.json() : null));
@@ -89,7 +90,7 @@ export function ZeroDteDeck({
       )}
       <CommandDeck
         plays={plays}
-        laneLabel={sim ? "0DTE · SIMULATION" : "0DTE · same-day"}
+        laneLabel={sim ? NIGHTHAWK_COMPACT_LANE_LABEL.ZERO_DTE_SIM : NIGHTHAWK_COMPACT_LANE_LABEL.ZERO_DTE}
         degraded={degraded}
         loading={isLoading && !data}
         allocation={data?.allocation ?? null}
@@ -199,7 +200,7 @@ export function HorizonDeck({
   return (
     <CommandDeck
       plays={playsWithTrack}
-      laneLabel={horizon === "SWING" ? "Swings · 2–30 DTE" : "LEAPS · ≤90 DTE"}
+      laneLabel={horizon === "SWING" ? NIGHTHAWK_COMPACT_LANE_LABEL.SWING : NIGHTHAWK_COMPACT_LANE_LABEL.LEAPS}
       degraded={degraded}
       loading={isLoading && !data}
       emptyHint={emptyHint}
@@ -369,7 +370,12 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
       )}
       <CommandDeck
         plays={plays}
-        laneLabel="Legacy · Tonight's playbook"
+        // Was the inline literal "Legacy · Tonight's playbook" (~27 chars) — long enough to
+        // overflow `.nh-deck-cmd-lane`'s shrunk flex box and visually bleed over the adjacent
+        // engine-status/Opps-Top-Edge stat pills on a narrow viewport. See the header comment on
+        // NIGHTHAWK_COMPACT_LANE_LABEL (nighthawk-view.ts) for the full root cause + why a shorter
+        // label (not a CSS change) is this fix's scope.
+        laneLabel={NIGHTHAWK_COMPACT_LANE_LABEL.LEGACY}
         degraded={hasFetchError || isDegraded}
         loading={!edition && !error}
         commandCenter
