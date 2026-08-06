@@ -382,3 +382,154 @@ test("resolveExitMode: trim_scale is the default; only exact 'trim_scale' env op
   assert.equal(resolveExitMode({ ZERODTE_EXIT_MODE: "TRIM_SCALE" } as NodeJS.ProcessEnv), "trim_scale", "exact match only — no casing tolerance");
   assert.equal(resolveExitMode({ ZERODTE_EXIT_MODE: "trim" } as NodeJS.ProcessEnv), "trim_scale");
 });
+
+// ── ENTRY-BASIS COHERENCE: the operative stop can never be looser than −50% of the
+//    LEDGER basis, no matter how far the mark ran past the flow fill before commit ───
+//
+// The pinned plan_json.stop_premium is entry_max×0.5 where entry_max = flow_avg_fill
+// (plan.ts:271); the ledger entry_premium is that value FLOORED UP to the flag-time mark
+// (resolveLedgerEntryPremium). G-8/G-9 permit mark up to +54.99% over the fill before
+// `MOVED` blocks (CHASE_PCT=55), so the pinned stop can sit far below −50% of the basis
+// the engine measures P&L against. Measured LIVE on the prod board 2026-08-06: 8 of 24
+// candidate setups had mark > entry_max; AVGO (+35.26% vs flow) implied a −62.92%
+// operative stop. This is the ONLY reachable path by which any exit reason can be
+// stamped worse than the −50% hard stop.
+
+test("entry-basis coherence: a ledger basis above entry_max re-bases the stop — worst case is −50%, not −67%", async () => {
+  const { lane, syncLedgerLiveState } = await mods();
+
+  // CHASE_PCT boundary: flow filled at 4.02, the mark had already run to 6.20 (+54.23%,
+  // still IN_RANGE — MOVED blocks at +55%). Ledger basis = 6.20; the pinned stop of 2.01
+  // is −67.58% of it. The ledger-basis stop is 6.20 × 0.5 = 3.10.
+  const entryMax = 4.02;
+  const ledgerEntry = 6.2;
+  const pinnedStop = 2.01; // = entryMax × 0.5 — the stale-basis rail
+
+  const cases: Array<{ mark: number; close: boolean; why: string }> = [
+    // −45% of the ledger basis and comfortably above the pinned stop: nothing fires.
+    { mark: 3.41, close: false, why: "-45% of the basis is inside the hard stop" },
+    // EXACTLY the −50% ledger stop. Pre-fix the operative stop was 2.01, so this tick
+    // was walked straight past and the row stayed open into a deeper loss.
+    { mark: 3.1, close: true, why: "-50% of the basis IS the hard stop" },
+    // −59.7%: still ABOVE the stale pinned stop of 2.01, so pre-fix this did not stop
+    // either — this is the reachable "stamped worse than −50%" tick.
+    { mark: 2.5, close: true, why: "-59.7% is past the hard stop but above the stale pinned stop" },
+  ];
+
+  for (const c of cases) {
+    resetState();
+    lane._resetZeroDteLiveMarksForTest();
+    state.ledgerRows = [
+      baseRow({
+        entry_premium: ledgerEntry,
+        flow_avg_fill: entryMax,
+        peak_premium: ledgerEntry, // never green — no ratchet floor can arm
+        trough_premium: ledgerEntry,
+        last_mark: ledgerEntry,
+        entry_context: { exit_policy_at_commit: "ratchet" },
+        plan_json: { occ: OCC, entry_max: entryMax, stop_premium: pinnedStop, target_premium: 8.0 },
+      }),
+    ];
+    state.snapMark = c.mark;
+
+    const rows = await syncLedgerLiveState(state.ledgerRows as never);
+
+    if (c.close) {
+      assert.equal(rows[0]!.status, "CLOSED", `mark ${c.mark}: ${c.why}`);
+      assert.equal((state.stampCalls[0]!.exit as { reason: string }).reason, "plan_stop", `mark ${c.mark}`);
+    } else {
+      assert.notEqual(rows[0]!.status, "CLOSED", `mark ${c.mark}: ${c.why}`);
+    }
+    lane._resetZeroDteLiveMarksForTest();
+  }
+
+  // And the headline bound: a tick AT the ledger-basis stop books exactly −50%, never −67.58%.
+  resetState();
+  lane._resetZeroDteLiveMarksForTest();
+  state.ledgerRows = [
+    baseRow({
+      entry_premium: ledgerEntry,
+      flow_avg_fill: entryMax,
+      peak_premium: ledgerEntry,
+      trough_premium: ledgerEntry,
+      last_mark: ledgerEntry,
+      entry_context: { exit_policy_at_commit: "ratchet" },
+      plan_json: { occ: OCC, entry_max: entryMax, stop_premium: pinnedStop, target_premium: 8.0 },
+    }),
+  ];
+  state.snapMark = ledgerEntry * 0.5;
+  await syncLedgerLiveState(state.ledgerRows as never);
+  assert.equal((state.stampCalls[0]!.exit as { pnl_pct: number }).pnl_pct, -50);
+  lane._resetZeroDteLiveMarksForTest();
+});
+
+test("entry-basis coherence: when the bases AGREE the pinned rails are used byte-identically", async () => {
+  const { lane, syncLedgerLiveState } = await mods();
+  resetState();
+  lane._resetZeroDteLiveMarksForTest();
+  // entry_premium === entry_max (the mark never ran past the flow fill) — the overwhelming
+  // majority of live rows. The pinned stop must still be the operative one, unchanged.
+  state.ledgerRows = [
+    baseRow({
+      entry_premium: 4.0,
+      peak_premium: 4.0,
+      entry_context: { exit_policy_at_commit: "ratchet" },
+      plan_json: { occ: OCC, entry_max: 4.0, stop_premium: 2.0, target_premium: 8.0 },
+    }),
+  ];
+  state.snapMark = 2.0; // exactly the pinned stop
+
+  const rows = await syncLedgerLiveState(state.ledgerRows as never);
+
+  assert.equal(rows[0]!.status, "CLOSED");
+  const exit = state.stampCalls[0]!.exit as { reason: string; pnl_pct: number };
+  assert.equal(exit.reason, "plan_stop");
+  assert.equal(exit.pnl_pct, -50);
+  lane._resetZeroDteLiveMarksForTest();
+});
+
+test("entry-basis coherence: below the −50% ledger stop the PROTECTIVE rule preempts thesis break", async () => {
+  // THE ACTUAL REACHABLE HARM. Both live callers run the engine FIRST with
+  // `deferPlanStop: true` (scan.ts:1664-1676, live-marks.ts:533-535) and, when the engine
+  // returns an EXIT, the derivePlayStatus latch is bypassed entirely. So a thesis_break /
+  // flat_timeout — both of which fire at ANY P&L — used to be reached at marks the
+  // protective rule should already have owned, because the protective check compared
+  // against a stop on the stale entry_max basis. That is the only path by which an exit
+  // reason other than plan_stop could be stamped worse than the −50% hard stop.
+  const { lane, syncLedgerLiveState } = await mods();
+  resetState();
+  lane._resetZeroDteLiveMarksForTest();
+  state.ledgerRows = [
+    baseRow({
+      entry_premium: 6.2, // ledger basis (mark at flag) — hard stop 3.10
+      flow_avg_fill: 4.02,
+      peak_premium: 6.2, // never green
+      trough_premium: 6.2,
+      last_mark: 6.2,
+      entry_context: { exit_policy_at_commit: "ratchet" },
+      plan_json: { occ: OCC, entry_max: 4.02, stop_premium: 2.01, target_premium: 8.04 },
+    }),
+  ];
+  state.snapMark = 2.9; // −53.2% of the basis: past the hard stop, above the stale 2.01 rail
+  state.verdictItems = [
+    {
+      source: "wall-trend",
+      stance: "veto",
+      weight: 2,
+      halfLifeSec: 600,
+      asOf: new Date().toISOString(),
+      detail: "opposing wall building through the strike",
+    },
+  ] as EvidenceItem[];
+
+  const rows = await syncLedgerLiveState(state.ledgerRows as never);
+
+  assert.equal(rows[0]!.status, "CLOSED");
+  const exit = state.stampCalls[0]!.exit as { reason: string };
+  assert.equal(
+    exit.reason,
+    "plan_stop",
+    "a mark past the −50% ledger stop must exit PROTECTIVE, not thesis_break — the stop owns this tick"
+  );
+  lane._resetZeroDteLiveMarksForTest();
+});

@@ -12,10 +12,21 @@ import {
   ensureProviderBreakerSubscription,
   type BreakerSubscriptionState,
 } from "./provider-rate-limiter-shared";
+import { QueueBudget, resolveQueueBudgetMs } from "./queue-budget";
 
 export { computeDegradedLocalRps, computeDegradedLocalConcurrency } from "./provider-rate-limiter-shared";
 
 const envNumber = rateLimiterEnvNumber;
+
+/**
+ * Ceiling on time spent WAITING to be admitted (see ./queue-budget.ts for why this
+ * is the unbounded wait that produced the ALB 504 tail). Read per call rather than
+ * captured at module load so the value can be changed by a task-definition env
+ * update without a code deploy.
+ */
+function queueBudgetMs(): number {
+  return resolveQueueBudgetMs(process.env.UW_QUEUE_MAX_WAIT_MS);
+}
 
 /** Per-process pacing; default 2 rps. Override via UW_MAX_RPS (e.g. lower on the worker
  *  than on web when no Redis-global ceiling is in play). */
@@ -270,11 +281,17 @@ async function acquireGlobalRedisSlot(): Promise<boolean> {
   }
 }
 
-async function waitForCircuit(): Promise<void> {
+async function waitForCircuit(budget: QueueBudget): Promise<void> {
   for (;;) {
     const now = Date.now();
     if (now >= circuitOpenUntil) return;
-    await new Promise((r) => setTimeout(r, Math.min(500, circuitOpenUntil - now)));
+    // Bounded: the breaker pause is measured in tens of seconds, so an unbudgeted
+    // wait here alone could burn most of the ALB's 120s before the fetch timeout
+    // in trackedFetch even begins to count.
+    budget.assertWithinBudget("circuit");
+    await new Promise((r) =>
+      setTimeout(r, budget.clampSleepMs(Math.min(500, circuitOpenUntil - now)))
+    );
   }
 }
 
@@ -286,9 +303,13 @@ async function waitMinSpacing(): Promise<void> {
   lastStartMs = Date.now();
 }
 
-async function acquireLocalSlot(): Promise<void> {
+async function acquireLocalSlot(budget: QueueBudget): Promise<void> {
   const concurrencyCap = effectiveMaxConcurrency();
   for (;;) {
+    // Checked BEFORE the admission test, never after reserving, so a caller that
+    // would have been admitted this iteration still is -- the budget only ever
+    // truncates waiting, never a successful acquisition.
+    budget.assertWithinBudget("local_slot");
     refillTokens();
     if (inFlight < concurrencyCap && tokens >= 1) {
       // Reserve the slot synchronously BEFORE pacing so no concurrent acquirer can
@@ -306,29 +327,74 @@ async function acquireLocalSlot(): Promise<void> {
       return;
     }
     const delay = inFlight >= concurrencyCap ? 50 : waitMsForToken();
-    await new Promise((r) => setTimeout(r, delay));
+    await new Promise((r) => setTimeout(r, budget.clampSleepMs(delay)));
   }
 }
 
+/**
+ * BOUNDED (2026-08-06): admission is capped by a single QueueBudget spanning the WHOLE
+ * sequence (breaker wait + global rps spin + global concurrency spin + local bucket spin),
+ * rather than per-stage -- a per-stage budget would let a caller starve for an unbounded
+ * total while each individual stage stayed "within budget".
+ *
+ * Previously every one of those stages was a `for (;;)` with no overall deadline. Because
+ * `AbortSignal.timeout` in trackedFetch only starts counting once fetch() is called, time
+ * parked here was invisible to every other timeout in the stack, and the ALB's 120s
+ * idle_timeout was what finally ended the request -- as a 504. See ./queue-budget.ts.
+ *
+ * On the uncontended path this adds one Date.now() and changes nothing.
+ *
+ * @throws {RateLimiterQueueTimeoutError} when the queue budget is exhausted.
+ */
 async function acquireSlot(): Promise<void> {
   ensureBreakerSubscription();
-  await waitForCircuit();
+  const budget = new QueueBudget("unusual_whales", queueBudgetMs());
+  await waitForCircuit(budget);
   if (process.env.REDIS_URL?.trim()) {
     for (;;) {
       if (!(await acquireGlobalRedisSlot())) {
-        await new Promise((r) => setTimeout(r, 40));
+        budget.assertWithinBudget("global_rps");
+        await new Promise((r) => setTimeout(r, budget.clampSleepMs(40)));
         continue;
       }
       if (!(await acquireGlobalRedisConcurrencySlot())) {
-        await new Promise((r) => setTimeout(r, 40));
+        budget.assertWithinBudget("global_concurrency");
+        await new Promise((r) => setTimeout(r, budget.clampSleepMs(40)));
         continue;
       }
       redisConcurrencyHeld = true;
-      await acquireLocalSlot();
+      try {
+        await acquireLocalSlot(budget);
+      } catch (err) {
+        // The cluster concurrency slot is already HELD at this point, but callers
+        // only run their `finally { releaseSlot() }` after acquireSlot RESOLVES --
+        // so a throw from here would leak the Redis slot permanently and shrink the
+        // cluster's effective concurrency by one on every timeout. Release just the
+        // Redis half (inFlight was never incremented, so releaseSlot's decrement
+        // would be wrong here).
+        releaseGlobalConcurrencyOnly();
+        throw err;
+      }
       return;
     }
   }
-  await acquireLocalSlot();
+  await acquireLocalSlot(budget);
+}
+
+/**
+ * Release ONLY the cluster concurrency slot, without touching the local `inFlight`
+ * counter. Used on the acquire-failure path, where the Redis slot was taken but the
+ * local slot never was.
+ */
+function releaseGlobalConcurrencyOnly(): void {
+  if (!redisConcurrencyHeld) return;
+  redisConcurrencyHeld = false;
+  void getSharedRedis()
+    .then((client) => {
+      if (!client) return;
+      return releaseRedisConcurrencySlot(client, UW_CONCURRENCY_REDIS_KEY);
+    })
+    .catch(() => {});
 }
 
 function releaseSlot(): void {

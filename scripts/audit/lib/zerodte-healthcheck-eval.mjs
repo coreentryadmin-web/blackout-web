@@ -42,6 +42,48 @@ export function verdictForStaleness(ageMs, boundMs, rth = true) {
 }
 
 /**
+ * Split a /marks payload's rows into the populations stage D must judge DIFFERENTLY.
+ *
+ * The payload (live-marks.ts `getZeroDteLiveMarksFrame`) is a MERGE of two lanes:
+ *   - ENTERED ledger plays — a real committed position. These carry `entry_premium` and
+ *     are what "LIVE MARKS + P&L" actually means: a missing mark here is a broken
+ *     subsystem, and live_pnl_pct is assertable.
+ *   - QUOTE-ONLY watch rows — board setup contracts the poller quotes opportunistically
+ *     so a card can show a premium. `buildZeroDteLiveMarksPayloadFrom` gives them
+ *     `entry_premium: null` → `live_pnl_pct: null` by construction, and they are stamped
+ *     `status: "WATCH"` (never CLOSED). A null mark on one of these means "the poller
+ *     hasn't quoted this setup", which is the NORMAL state whenever the setup lane is
+ *     idle — it is not a P&L failure, because there is no position and no P&L.
+ *
+ * Splitting on `status !== "CLOSED"` alone conflates the two, so an idle board full of
+ * WATCH rows reads as 20+ broken live marks. Split on `entry_premium` — the field that
+ * actually distinguishes a position from a quote — not on status.
+ */
+export function partitionMarkRows(rows) {
+  const all = Array.isArray(rows) ? rows.filter((r) => r && typeof r === "object") : [];
+  const open = all.filter((r) => r.status !== "CLOSED");
+  return {
+    entered: open.filter((r) => r.entry_premium != null),
+    quoteOnly: open.filter((r) => r.entry_premium == null),
+    closed: all.filter((r) => r.status === "CLOSED"),
+  };
+}
+
+/**
+ * Freshness verdict for an ENTERED play's live mark, including the missing-mark case.
+ *
+ * A null mark during RTH is RED — the lane is supposed to be quoting an open position.
+ * Off-hours it is AMBER, for the same reason a stale mark is AMBER off-hours: the lane
+ * idles by design once the session ends, so "no mark" is the expected state and must not
+ * gate a pre-open run. (Before this existed, stage D hard-coded RED for a null mark and
+ * bypassed the rth handling entirely, contradicting its own staleness contract.)
+ */
+export function verdictForMark(mark, ageMs, boundMs, rth = true) {
+  if (mark == null) return rth ? "RED" : "AMBER";
+  return verdictForStaleness(ageMs, boundMs, rth);
+}
+
+/**
  * Compare a displayed option mark against a Polygon ground-truth mark.
  * Returns { ok, deltaPct } or null when either side is missing/non-positive.
  * `ok` is |Δ| within tolPct of the Polygon value.

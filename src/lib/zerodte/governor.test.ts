@@ -172,7 +172,7 @@ test("governor/B-3: v1 groups are the index/ETF complex only — a single name d
   assert.deepEqual(evaluateZeroDteGovernor({ ticker: "NVDA", direction: "short" }, snap, NOW), []);
 });
 
-test("governor: 20-min same-direction re-entry lock — inside blocks, outside/opposite/untimed pass", () => {
+test("governor: 20-min same-direction re-entry lock — inside blocks, outside/opposite pass", () => {
   const stopAt = NOW - 10 * 60_000; // 10 minutes ago
   const snap = { open_plans: [], stops: [{ ticker: "META", direction: "short" as const, at_ms: stopAt }] };
 
@@ -192,9 +192,63 @@ test("governor: 20-min same-direction re-entry lock — inside blocks, outside/o
   // Opposite direction is a different trade — not locked.
   assert.deepEqual(evaluateZeroDteGovernor({ ticker: "META", direction: "long" }, snap, NOW), []);
 
-  // Untimed (ledger-only) stop can't drive the timed lock — never fabricate timing.
-  const untimed = { open_plans: [], stops: [{ ticker: "META", direction: "short" as const, at_ms: null }] };
-  assert.deepEqual(evaluateZeroDteGovernor({ ticker: "META", direction: "short" }, untimed, NOW), []);
+  // A stop on a DIFFERENT ticker never locks this candidate, timed or not.
+  assert.deepEqual(evaluateZeroDteGovernor({ ticker: "NVDA", direction: "short" }, snap, NOW), []);
+});
+
+// ── P2 (2026-08-06 audit): the at_ms === null boundary — FAIL CLOSED ─────────────────
+// Live prod capture, /api/market/zerodte/board at 18:33 AND 19:33 UTC 2026-08-06:
+//   "stops":[{"ticker":"SPXW","direction":"short","at_ms":null}], "reentry_lock_ms":1200000
+// Under the old `s.at_ms != null &&` guard that ticker was silently EXEMPT from G-5 —
+// loss control off for the one name carrying a stop. These pin the corrected semantics.
+test("governor/P2: an UNTIMED stop locks same-direction re-entry for the session (fail-closed)", () => {
+  const untimed = { open_plans: [], stops: [{ ticker: "SPXW", direction: "short" as const, at_ms: null }] };
+
+  const blocked = evaluateZeroDteGovernor({ ticker: "SPXW", direction: "short" }, untimed, NOW);
+  assert.deepEqual(blocked.map((b) => b.code), ["governor_reentry_lock"]);
+  assert.equal(
+    blocked[0]!.threshold,
+    null,
+    "threshold stays null — no timer backs an untimed lock (the tell that distinguishes it)"
+  );
+  assert.match(blocked[0]!.reason, /stop time was never recorded/);
+  assert.doesNotMatch(
+    blocked[0]!.reason,
+    /\d+ more minute/,
+    "never fabricate a countdown from a timestamp we do not have"
+  );
+
+  // Still locked an arbitrarily long time later — the session, not a 20-minute window,
+  // is the bound (this is the case the old code let through the moment 20 min elapsed).
+  assert.deepEqual(
+    evaluateZeroDteGovernor(
+      { ticker: "SPXW", direction: "short" },
+      untimed,
+      NOW + 6 * 60 * 60_000
+    ).map((b) => b.code),
+    ["governor_reentry_lock"],
+    "an untimed stop cannot expire — there is no timestamp to measure expiry from"
+  );
+
+  // Fail-closed is SCOPED: opposite direction and other tickers are untouched.
+  assert.deepEqual(evaluateZeroDteGovernor({ ticker: "SPXW", direction: "long" }, untimed, NOW), []);
+  assert.deepEqual(evaluateZeroDteGovernor({ ticker: "NVDA", direction: "short" }, untimed, NOW), []);
+});
+
+test("governor/P2: a recorded (timed) twin downgrades the session hold to the real 20-min timer", () => {
+  // mergeGovernorStops is the upgrade path — once the Redis lane supplies at_ms, the
+  // fail-closed session hold must give way to the ordinary expiring lock.
+  const merged = mergeGovernorStops(
+    [{ ticker: "SPXW", direction: "short", at_ms: null }],
+    [{ ticker: "SPXW", direction: "short", at_ms: NOW - GOVERNOR_REENTRY_LOCK_MS - 1 }]
+  );
+  assert.equal(merged.length, 1);
+  assert.notEqual(merged[0]!.at_ms, null, "the recorded twin wins — that is what carries the time");
+  assert.deepEqual(
+    evaluateZeroDteGovernor({ ticker: "SPXW", direction: "short" }, { open_plans: [], stops: merged }, NOW),
+    [],
+    "with a real timestamp older than the lock window the ticker is re-entrable again"
+  );
 });
 
 // ── AUDIT SEV-3: realized-loss day-halt (losing time-stops, not just −50% hard stops) ──
