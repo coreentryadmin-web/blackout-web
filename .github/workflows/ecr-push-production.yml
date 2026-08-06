@@ -166,25 +166,87 @@ jobs:
             --query 'taskDefinition.taskDefinitionArn' --output text)
           echo "Registered new task definition: ${NEW_ARN}"
 
-          # Do NOT pass --desired-count here: auto-scaling manages the
-          # task count (min 8 / max 15). Overriding it resets the count
-          # on every deploy and fights the scaling target.
+          # Do NOT pass --desired-count here: auto-scaling manages the task count. Overriding it
+          # resets the count on every deploy and fights the scaling target. The live scalable
+          # target is min 5 / max 12 (verified 2026-08-06 via
+          # `aws application-autoscaling describe-scalable-targets --resource-ids
+          #  service/blackout-production-cluster/blackout-production-web`). The FLOOR of 5 is
+          # load-bearing for the arithmetic below — re-check it before touching these numbers.
           #
-          # Rolling strategy: minHealthy=50 / max=112 → at most 9 tasks (one extra slot)
-          # on an 8-task service without blowing the ~30 vCPU Fargate quota. minHealthy=100
-          # can deadlock ECS when a prior deployment is still ACTIVE (cannot start/stop).
+          # ── Rolling strategy: minHealthy=100 / max=120. DO NOT "optimize" either number. ──
+          # Guarded by src/lib/ecs-deploy-config.test.ts, which re-derives the arithmetic below
+          # from THIS line across every task count in [5,12] and fails CI if it stops holding.
+          #
+          # WHY minHealthy=100 (was 50): this service takes live member traffic, and
+          # minimumHealthyPercent is the floor of healthy tasks ECS must hold DURING a deploy
+          # (% of desiredCount, rounded UP). At 50 a deploy was permitted to drain the fleet to
+          # HALF *before* any replacement was healthy — 6 of 12 tasks, or 3 of 5 — because ECS
+          # is allowed to satisfy a roll by removing capacity first. On 2026-08-06 the service
+          # was already capacity-constrained and a deploy on 50 deepened the incident (5xx
+          # ~4.5%). At 100 ECS must bring a replacement to healthy BEFORE it stops anything, so
+          # a deploy can only ever add capacity to a saturated fleet, never subtract it.
+          #
+          # WHY max had to move 112 → 120 (this is the subtle half): maximumPercent is the
+          # ceiling on RUNNING+PENDING tasks (% of desiredCount, rounded DOWN). With
+          # minHealthy=100 the roll can only progress if that ceiling grants a spare slot —
+          # floor(desired * max/100) >= desired + 1 — because ECS may no longer free a slot by
+          # stopping a task first. Scanning the REAL autoscaling range for deadlocks:
+          #   max=112 → deadlocks at desired = 5, 6, 7, 8   (floor(8*1.12) = 8, not 9)
+          #   max=115 → deadlocks at desired = 5, 6
+          #   max=117 → deadlocks at desired = 5
+          #   max=120 → deadlocks NOWHERE in [5,12]          ← why 120
+          # The binding case is the autoscaling FLOOR: floor(5 * 1.20) = 6, one spare slot. At
+          # anything below 120, floor(5 * M/100) = 5 → ceiling 5 with minHealthy 5, so ECS can
+          # neither start a replacement nor stop an old task: the deployment makes ZERO progress
+          # and hangs until the poller below times out. desired=5 is exactly where the service
+          # sits overnight and at weekends — i.e. where unattended deploys land.
+          # (The comment that used to live here claimed 112 gave "at most 9 tasks on an 8-task
+          # service". That arithmetic was wrong — floor(8*1.12) is 8, not 9 — and that error is
+          # why 50 looked load-bearing: with no spare slot, draining first was the only way ECS
+          # could move at all.)
+          #
+          # WHY NOT HIGHER — the Fargate On-Demand vCPU quota (L-3032A538) is 30 in this
+          # account; the increase to 100 is CASE_OPENED, NOT granted. Web tasks are 2 vCPU;
+          # blackout-production-market-worker is 2 tasks x 1 vCPU = 2 vCPU. At the autoscaling
+          # max (desired=12) there are two different peaks and only one of them must fit:
+          #   REQUIRED for the roll to progress: 13 tasks * 2 = 26, + worker 2 = 28 vCPU <= 30 ✓
+          #   PERMITTED by the ceiling: floor(12*1.20) = 14 tasks * 2 = 28, + 2 = 30 vCPU
+          # Landing the PERMITTED peak exactly on the quota is safe: the 14th task is optional
+          # headroom, so if the quota blocks its placement the roll still completes on 13. The
+          # real ceiling is max >= 125 → floor(12*1.25) = 15 tasks = 32 vCPU, which is OVER
+          # quota and must not ship. Usable window is therefore max ∈ [120, 124]; 120 is chosen
+          # as the smallest value that clears every deadlock.
+          #
+          # AND NOTE — the autoscaling floor cannot be lowered below 5 while the quota is 30:
+          # desired=4 would need max >= 125 to avoid deadlocking, and that same max permits 15
+          # tasks (32 vCPU) at desired=12. If the min capacity is ever reduced, this whole block
+          # must be re-solved (the test will fail loudly first).
           aws ecs update-service \
             --cluster "${ECS_CLUSTER}" \
             --service "${ECS_SERVICE}" \
             --task-definition "${NEW_ARN}" \
-            --deployment-configuration "minimumHealthyPercent=50,maximumPercent=112,deploymentCircuitBreaker={enable=true,rollback=true}" \
+            --deployment-configuration "minimumHealthyPercent=100,maximumPercent=120,deploymentCircuitBreaker={enable=true,rollback=true}" \
             --force-new-deployment
 
           # Custom stability check: poll the PRIMARY deployment only.
           # The built-in `services-stable` waiter blocks on ALL deployments
           # including stale circuit-breaker leftovers that can never stabilize.
-          echo "Waiting for PRIMARY deployment to stabilize (up to 12 min)..."
-          for i in $(seq 1 48); do
+          #
+          # Budget raised 12 min → 36 min as a REQUIRED companion to minHealthy=100 above, not
+          # as an unrelated tweak. Under the old 50/112 ECS could free ~half the fleet at once
+          # and then start replacements in ~2 big waves. With minHealthy=100 it can only work
+          # through the spare slots the ceiling grants — just ONE for most of the autoscaling
+          # range (desired 5-9), and at most two at the top — so tasks are replaced
+          # near-serially. Each cycle is task start + image pull + Next boot + ALB health checks
+          # + the old task's 30s deregistration drain (~2 min), so a 12-task roll is ~24-30 min
+          # of legitimate rolling. Budget the serial worst case: leaving it at 12 min would
+          # red-fail every healthy deploy on timeout AND abort the job before the Cloudflare
+          # purge / static-asset validation / worker roll steps below ever run. A genuinely
+          # broken rollout still fails FAST (the circuit breaker flips rolloutState=FAILED and
+          # the loop exits 1 on the next tick), and `concurrency: cancel-in-progress` means a
+          # newer merge cancels a slow older run.
+          echo "Waiting for PRIMARY deployment to stabilize (up to 36 min)..."
+          for i in $(seq 1 144); do
             sleep 15
             STATUS=$(aws ecs describe-services \
               --cluster "${ECS_CLUSTER}" \
@@ -194,7 +256,7 @@ jobs:
             P_RUNNING=$(echo "${STATUS}" | python3 -c "import json,sys; print(json.load(sys.stdin).get('runningCount',0))")
             P_DESIRED=$(echo "${STATUS}" | python3 -c "import json,sys; print(json.load(sys.stdin).get('desiredCount',0))")
             P_ROLLOUT=$(echo "${STATUS}" | python3 -c "import json,sys; print(json.load(sys.stdin).get('rolloutState','UNKNOWN'))")
-            echo "  [${i}/48] PRIMARY: running=${P_RUNNING}/${P_DESIRED}, rollout=${P_ROLLOUT}"
+            echo "  [${i}/144] PRIMARY: running=${P_RUNNING}/${P_DESIRED}, rollout=${P_ROLLOUT}"
             if [ "${P_ROLLOUT}" = "COMPLETED" ]; then
               echo "ECS rollout complete."
               break
@@ -207,7 +269,7 @@ jobs:
               echo "ECS rollout complete (running == desired)."
               break
             fi
-            if [ "$i" = "48" ]; then
+            if [ "$i" = "144" ]; then
               echo "Timed out waiting for PRIMARY deployment to stabilize."
               exit 1
             fi
@@ -357,12 +419,42 @@ jobs:
           # Do NOT pass --desired-count: the worker is a singleton (desiredCount=1)
           # configured on the service; overriding it on every deploy fights that config.
           #
-          # Rolling strategy for a SINGLETON: minHealthy=0 / max=200. Unlike the 8-task web
-          # service (minHealthy=50), a 1-task service with minHealthy>0 can DEADLOCK — ECS
-          # will not stop the only running task to start the replacement. minHealthy=0 lets
-          # ECS drain the old task and start the new one (a brief gap is fine for a headless
-          # background worker); max=200 permits a one-task overlap slot. Circuit breaker with
-          # rollback stays enabled so a bad task def auto-reverts instead of leaving 0 running.
+          # Rolling strategy: minHealthy=0 / max=200. Live shape (verified 2026-08-06):
+          # desiredCount=2, each task 1024 CPU units = 1 vCPU (2 vCPU for the tier).
+          #
+          # DELIBERATELY NOT CHANGED to minHealthy=100 when the WEB service was moved to 100
+          # (2026-08-06). The two services want OPPOSITE things, and the reason is LEADER
+          # ELECTION, not replica count:
+          #  * Web is a horizontally-scaled request tier. Every task serves traffic, so capacity
+          #    is additive and dropping below desiredCount during a deploy is a member-facing
+          #    outage. It wants 100.
+          #  * This worker's capacity is NOT additive. It runs PROCESS_ROLE=ingest, and exactly
+          #    ONE replica holds each upstream market-data WebSocket at a time, arbitrated by a
+          #    fenced Redis SETNX lock (src/lib/ws/leader-lock-fencing.ts). Non-leaders open
+          #    NOTHING by design — that is forced by the upstreams, which permit one live socket
+          #    per API key: src/lib/ws/uw-socket.ts:165 (UW "streams to only ONE WebSocket per
+          #    API key"; extra contenders get silence, not an error, and "the whole cluster goes
+          #    dark during RTH") and src/lib/ws/polygon-socket.ts:136 (Massive "allows at most 1
+          #    live WebSocket per API key", 2nd+ rejected with code 1008). The 2nd replica is a
+          #    warm standby for fast failover, not extra throughput.
+          # So minimumHealthyPercent buys this tier nothing: what must stay available is the
+          # LOCK HOLDER, and Redis arbitrates that, not the ECS task count. Worse, forcing
+          # overlap with minHealthy=100 makes the ingest gap LONGER: an incoming task boots
+          # while an old one still holds the lease, loses the SETNX, opens nothing, and then
+          # waits out its own 15s UW_RECONCILE_INTERVAL_MS tick after the old task finally
+          # releases. At minHealthy=0 the outgoing task's SIGTERM releases the lock first
+          # (closeAllDataSockets → releaseFencedLock) and the incoming task's IMMEDIATE first
+          # reconcile wins it. Circuit breaker + rollback stays enabled so a bad task def
+          # auto-reverts instead of leaving the tier at 0 running. Leave this at 0/200.
+          #
+          # OPEN QUESTION for the infra owner (surfaced 2026-08-06, deliberately NOT acted on
+          # here): now that desiredCount is 2 rather than 1, minHealthy=0 permits ECS to drain
+          # BOTH replicas before either replacement is healthy, which would leave the leader
+          # lock unheld for a full task-start cycle. minHealthy=50 would keep one leader-eligible
+          # replica alive at all times WITHOUT forcing the pathological overlap that 100 does.
+          # That is a real availability question, but it is a change to ingest failover
+          # behaviour and belongs in its own PR with its own verification — not bundled into a
+          # web-tier capacity fix.
           aws ecs update-service \
             --cluster "${ECS_CLUSTER}" \
             --service "${ECS_SERVICE}" \
