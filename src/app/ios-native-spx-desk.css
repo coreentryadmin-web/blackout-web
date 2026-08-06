@@ -79,6 +79,8 @@ html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-ios-top-rail {
   flex-shrink: 0;
   margin: 0 -0.65rem;
   padding: 0 0.65rem 0.15rem;
+  /* Clip chips/gradient so the rail never steals taps from the segment row below. */
+  overflow: hidden;
   background: linear-gradient(180deg, #040407 0%, #040407 92%, rgba(4, 4, 7, 0));
 }
 
@@ -89,7 +91,8 @@ html.ios-app.ios-native-shell[data-ios-route="dashboard"] .spx-ios-top-rail .spx
 html.ios-app.ios-native-shell[data-ios-route="dashboard"] .ios-native-desk-segment-spx {
   position: sticky;
   top: calc(var(--ios-header-offset) + var(--spx-ios-rail-height));
-  z-index: 25;
+  /* Above top-rail (z-30) so Matrix/Vector/Intel taps are never blocked by market chips. */
+  z-index: 35;
   flex-shrink: 0;
   margin: 0 0 0.35rem;
   backdrop-filter: blur(16px);
