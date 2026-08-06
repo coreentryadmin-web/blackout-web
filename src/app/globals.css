@@ -16342,7 +16342,16 @@ body::before {
 .nh-deck-header-compact .nh-deck-filterbar--prominent .nh-deck-filtbtn{flex:1 1 0;min-width:56px;padding:8px 10px;font-size:11px;font-weight:800;letter-spacing:.08em}
 .nh-deck-header-compact .nh-deck-filterbar--prominent .nh-deck-filtbtn .cnt{font-size:11px;margin-left:4px}
 .nh-deck-header-compact .nh-deck-hdr-row--filters .nh-deck-sortbar{flex:0 0 auto;gap:3px}
-.nh-deck-cmd--inline{display:flex;align-items:center;gap:8px;flex:1 1 auto;min-width:0;padding:0;border:0;background:transparent;margin:0}
+/* min-width:max-content, NOT 0: this is the shrinkable module on a nowrap row whose
+   siblings (engine status, SPX badge, cockpit) are all flex:0 0 auto. With min-width:0 it
+   collapses toward zero under space pressure, but its own children are white-space:nowrap
+   + flex:0 0 auto and there is no overflow:hidden here — so their text escaped the collapsed
+   box and painted ON TOP of the siblings (430px: "0DTE · SAME-DAY OPTIONS", "ENGINE Standby",
+   "UPDATED", "SPX SLAYER" and "RISK" all stacked on one line). The row already declares
+   overflow-x:auto, i.e. it is meant to SCROLL when the modules don't fit; min-width:0 defeated
+   that by shrinking a child instead of overflowing the row. max-content restores the intended
+   behaviour. flex-grow is kept so the module still fills spare width on wide viewports. */
+.nh-deck-cmd--inline{display:flex;align-items:center;gap:8px;flex:1 1 auto;min-width:max-content;padding:0;border:0;background:transparent;margin:0}
 .nh-deck-cmd--inline .nh-deck-cmd-lane{margin:0;white-space:nowrap;flex:0 0 auto;font-size:9px}
 .nh-deck-cmd-grid--inline{display:flex;flex-wrap:nowrap;gap:10px;grid-template-columns:unset;flex:1 1 auto;min-width:0}
 .nh-deck-cmd-grid--inline .nh-deck-cmd-stat{flex-direction:row;align-items:baseline;gap:4px;flex:0 0 auto}
