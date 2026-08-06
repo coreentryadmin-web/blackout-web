@@ -1367,3 +1367,48 @@ test("overlayLegacyQuotes: between stop and target → keeps original recommenda
   const [result] = overlayLegacyQuotes([play], quotes, originals);
   assert.equal(result.recommendation, "HOLD");
 });
+
+
+// ─── SEV-3 (FINDINGS 2026-08-06): the SWING/LEAPS greek strip was hardcoded to null ─────────────
+
+test("horizon adapter: greeks are built from the contract, not hardcoded null", () => {
+  const play = terminalPlayFromHorizon({
+    ticker: "nvda", direction: "LONG", horizon: "SWING", score: 77,
+    contract: {
+      strike: 180, right: "C", expiry: "2026-08-14", dte: 8, mid: 5.5,
+      delta: 0.58, gamma: 0.021, theta: -0.13, vega: 0.19, iv: 0.42,
+    },
+  });
+  assert.deepEqual(play.greeks, { delta: 0.58, gamma: 0.021, theta: -0.13, vega: 0.19, iv: 0.42 });
+});
+
+test("horizon adapter: a partial greek set keeps the present values and nulls the rest", () => {
+  // The pre-entry lane can only supply delta + iv (explodeChainRows' source rows have no
+  // gamma/theta/vega columns). Those two must still render rather than being suppressed.
+  const play = terminalPlayFromHorizon({
+    ticker: "nvda", direction: "LONG", horizon: "SWING", score: 77,
+    contract: { strike: 180, right: "C", expiry: "2026-08-14", dte: 8, mid: 5.5, delta: 0.58, iv: 0.42 },
+  });
+  assert.deepEqual(play.greeks, { delta: 0.58, gamma: null, theta: null, vega: null, iv: 0.42 });
+});
+
+test("horizon adapter: NO greek on the contract → a null strip (absent, not five em-dashes)", () => {
+  const play = terminalPlayFromHorizon({
+    ticker: "nvda", direction: "LONG", horizon: "SWING", score: 77,
+    contract: { strike: 180, right: "C", expiry: "2026-08-14", dte: 8, mid: 5.5 },
+  });
+  assert.equal(play.greeks, null);
+});
+
+test("horizon adapter: a non-finite greek is dropped to null, never passed through", () => {
+  const play = terminalPlayFromHorizon({
+    ticker: "nvda", direction: "LONG", horizon: "SWING", score: 77,
+    contract: {
+      strike: 180, right: "C", expiry: "2026-08-14", dte: 8, mid: 5.5,
+      delta: 0.58, gamma: Number.NaN, theta: Number.POSITIVE_INFINITY,
+    },
+  });
+  assert.equal(play.greeks!.delta, 0.58);
+  assert.equal(play.greeks!.gamma, null);
+  assert.equal(play.greeks!.theta, null);
+});

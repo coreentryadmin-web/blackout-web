@@ -165,7 +165,21 @@ export function HorizonDeck({
       score: p.score,
       status: p.status,
       reason: p.reason,
-      contract: { strike: p.contract.strike, right: p.contract.right, expiry: p.contract.expiry, dte: p.contract.dte, mid: p.contract.mid },
+      // Greeks ride through to the deck strip (FINDINGS 2026-08-06): this projection dropped every
+      // greek the payload carried — including `delta`, which has ALWAYS been present — so the strip
+      // had nothing to render no matter what the server sent. Each is null-safe downstream.
+      contract: {
+        strike: p.contract.strike,
+        right: p.contract.right,
+        expiry: p.contract.expiry,
+        dte: p.contract.dte,
+        mid: p.contract.mid,
+        delta: p.contract.delta,
+        gamma: p.contract.gamma,
+        theta: p.contract.theta,
+        vega: p.contract.vega,
+        iv: p.contract.iv,
+      },
       factors: p.factors,
       regime: p.regime ?? null,
       setupState: p.setupState ?? null,

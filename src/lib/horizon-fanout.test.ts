@@ -111,3 +111,31 @@ test("fanOutChain end-to-end: raw rows → three picks", () => {
   assert.equal(picks.find((p) => p.horizon === "SWING")!.contract?.expiry, "2026-08-06");
   assert.equal(picks.find((p) => p.horizon === "LEAPS")!.contract?.expiry, "2026-09-21");
 });
+
+
+// ─── SEV-3 (FINDINGS 2026-08-06): explodeChainRows dropped the IV its source rows carry ─────────
+
+test("explodeChainRows: passes the side's IV through (call for LONG, put for SHORT)", () => {
+  const rows = [
+    {
+      expiry: "2026-08-14",
+      strike: 180,
+      call_bid: 5.4, call_ask: 5.6, call_delta: 0.58, call_oi: 1200, call_iv: 0.42,
+      put_bid: 3.1, put_ask: 3.3, put_delta: -0.42, put_oi: 900, put_iv: 0.51,
+    },
+  ];
+  assert.equal(explodeChainRows("NVDA", rows, "2026-08-06", "LONG")[0]!.iv, 0.42);
+  assert.equal(explodeChainRows("NVDA", rows, "2026-08-06", "SHORT")[0]!.iv, 0.51);
+});
+
+test("explodeChainRows: absent / non-finite IV stays null — never fabricated, never NaN", () => {
+  const rows = [
+    {
+      expiry: "2026-08-14", strike: 180,
+      call_bid: 5.4, call_ask: 5.6, call_delta: 0.58, call_oi: 1200, call_iv: Number.NaN,
+      put_bid: 3.1, put_ask: 3.3, put_delta: -0.42, put_oi: 900,
+    },
+  ];
+  assert.equal(explodeChainRows("NVDA", rows, "2026-08-06", "LONG")[0]!.iv, null);
+  assert.equal(explodeChainRows("NVDA", rows, "2026-08-06", "SHORT")[0]!.iv, null);
+});
