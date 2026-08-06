@@ -1,5 +1,65 @@
 # BlackOut Open Issues Log
-Last updated: 2026-08-06 6:05 PM ET
+Last updated: 2026-08-06 6:22 PM ET
+
+## grid-rth-2026-08-06-pass2 — 0DTE Command verify pass (post-close, ~6:20 PM ET)
+
+**Session:** Autonomous 0DTE Command + Market Grid **verify** mode per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` on branch `cursor/0dte-grid-rth-agent-111e`. Commands: `npm run validate:grid-rth -- --force` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e` → `data-validator.mjs` → Playwright Night Hawk tab pass.
+
+> **Note:** Classic Market Grid (`/grid` + 9 `/api/grid/*` routes) was deleted 2026-07-07. 0DTE Command lives on **`/nighthawk`** with four view tabs (0DTE / Swings / Bangers / Legacy). `/grid` returns **404** — all live probes target `/nighthawk` + `/api/market/zerodte/board`.
+
+### Validation summary (verify, post-close)
+
+| Check | Result |
+|---|---|
+| `npm run validate:grid-rth -- --force` | ✅ **14 PASS · 0 WARN · 0 FAIL** — deploy/rth-open, board upstream, session heat=CLOSED, ledger PnL 13 rows, SPX bootstrap spot=7709.96, HELIX 20 prints, Night Hawk dedupe 1 ticker, zerodte-warm cron accepted, logic audit nested GREEN, cross-tool integration, data-correctness flags=0, dashboard E2E, ops:collect zero items |
+| `npm run validate:zerodte-logic` | ✅ **17 PASS · 0 FAIL** — unit tests (3 files), gate funnel, plan exits (-50%/+100%/15:30 ET), lifecycle OPEN→TRIM→CLOSED, stop-first grading, session heat RTH→POST_COMMIT→LATE_SESSION, mergePlays past-cutoff/MOVED→SKIP, live board 2 eligible / 26 total (0 gate violations), ledger 13 rows |
+| `npm run validate:grid-e2e` | ✅ **5 PASS · 0 FAIL** — board API 26 setups · ledger 13, HELIX 20 prints, Night Hawk page load, zero console errors |
+| `data-validator.mjs` | ✅ **38 PASS · 3 INFO · 0 FAIL** — SPY/SPX/VIX vs Polygon, GEX walls/posture, 5 live + 5 ledger 0DTE premiums vs Polygon chains/minute bars, track-record math |
+| Playwright Night Hawk tabs | ✅ **7 PASS · 0 FAIL** — 0DTE / Swings / Bangers / Legacy segments clicked, Command Deck present, `/grid` correctly 404 |
+
+### 0DTE logic coverage (Step 3)
+
+| Layer | Result |
+|---|---|
+| Gates (`deriveZeroDteSetups`) | ✅ 0 gate violations on 26 live setups (2 eligible) |
+| Plan exits (`buildContractPlan`) | ✅ stop -50%, target +100%, time stop 15:30 ET |
+| Trade lifecycle (`derivePlayStatus`) | ✅ OPEN/TRIM/CLOSED + sticky trough stop |
+| Session heat cutoffs | ✅ CLOSED heat=0% post-close |
+| mergePlays UI rules | ✅ past-cutoff → SKIP; MOVED → SKIP |
+| Ledger PnL math | ✅ 13 rows checked, 0 inconsistencies |
+| zerodte-warm cron | ✅ accepted (background `warmZeroDteBoard()`) |
+
+### Cross-tool integration
+
+| Tool | Result |
+|---|---|
+| SPX bootstrap spot vs GEX | ✅ PASS — spot 7709.96 |
+| HELIX flows → scanner feed | ✅ PASS — 20 prints |
+| Night Hawk dedupe | ✅ PASS — 1 ticker covered elsewhere |
+| data-correctness cron | ✅ PASS — flags=0 |
+
+### UI controls clicked (Step 2 — `/nighthawk`)
+
+| Control | Result |
+|---|---|
+| 0DTE tab (Command Deck) | ✅ PASS — session heat / board visible |
+| Swings tab | ✅ PASS |
+| Bangers tab | ✅ PASS |
+| Legacy tab | ✅ PASS |
+| `/grid` retired route | ✅ PASS — HTTP 404 (expected) |
+| Console errors | ✅ PASS — zero (grid-e2e harness) |
+
+### Findings table
+
+| Severity | ID | Detail | Status |
+|---|---|---|---|
+| — | — | No P0/P1/P2 defects found this pass | **GREEN** |
+
+**RTH verify status: GREEN** — zero FAIL across all probes. Board post-close with 26 setups, 13 ledger plays, session heat=CLOSED. No P0 fixes required.
+
+**Reports:** `audit-output/grid-rth-2026-08-06-verify-1786054878570.json`, `audit-output/zerodte-logic-1786054882449.json`, `audit-output/grid-e2e-1786054892036.json`, `audit-output/validation-2026-08-06T22-21-46-173Z.md`
+
+---
 
 ## rth-open-2026-08-06-pass2 — RTH comprehensive test sweep (~5:57–6:05 PM ET, post-close)
 
