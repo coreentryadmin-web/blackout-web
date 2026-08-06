@@ -37,6 +37,10 @@ export const NIGHTHAWK_DEBRIEF_METHODOLOGY =
   "plays that DID publish, using the threshold PINNED with that play (falling back to the live " +
   "constant only for pins that predate gate pinning) so the mirror is a fixed historical " +
   "baseline rather than a figure that silently rewrites itself when a constant moves. " +
+  "Every win rate here is taken over DECIDED rows (wins+losses) only: never-fillable " +
+  "('unfilled') and no-touch (open/ambiguous) plays are counted and reported but NEVER enter " +
+  "a rate — the mirror carries the unfilled share as its own separate read, which is the only " +
+  "lane in which the band_detached gate can be measured at all. " +
   "Buckets under n=" +
   `${LOW_N_THRESHOLD} are low_n and never produce a suggestion.`;
 
@@ -149,6 +153,11 @@ export type DebriefGroupRecord = {
   scoreable: number;
   wins: number;
   losses: number;
+  /** wins + losses — the ONLY honest win-rate denominator (see groupRecord). */
+  decided: number;
+  /** Scoreable rows that touched NEITHER level (open + ambiguous). Reported so the
+   *  gap between `scoreable` and `decided` is never something a reader has to infer. */
+  undecided: number;
   unfilled: number;
   pulled: number;
   win_rate_pct: number | null;
@@ -161,6 +170,15 @@ function groupRecord(key: string, rows: DebriefAggregateRow[]): DebriefGroupReco
   const scoreable = rows.filter((r) => r.outcome !== "unfilled" && r.pulled !== true);
   const wins = scoreable.filter((r) => r.outcome === "target").length;
   const losses = scoreable.filter((r) => r.outcome === "stop").length;
+  // DECIDED (wins+losses), not `scoreable`, is the win-rate denominator — the same rule
+  // analytics.ts's buildRecordSegment already enforces for the member-facing headline.
+  // `scoreable` only excludes unfilled + pulled; it still carries `open`/`ambiguous`
+  // rows (plays that touched NEITHER level), and dividing by it books every undecided
+  // play as a loss. Measured LIVE 2026-08-06 on prod /api/admin/nighthawk/analytics
+  // (days=90): conviction B came back `n:29, scoreable:15, wins:0, losses:0,
+  // win_rate_pct:0, low_n:false` — a stated 0% win rate over ZERO decided plays, badged
+  // as sufficient evidence. Same defect class PR #1797 fixed in analytics.ts.
+  const decided = wins + losses;
   const counts = new Map<DebriefFailureMode, number>();
   for (const r of rows) {
     const tag = readPinnedDebriefTag(r.debrief ?? null);
@@ -174,11 +192,15 @@ function groupRecord(key: string, rows: DebriefAggregateRow[]): DebriefGroupReco
     scoreable: scoreable.length,
     wins,
     losses,
+    decided,
+    undecided: scoreable.length - decided,
     unfilled: rows.filter((r) => r.outcome === "unfilled").length,
     pulled: rows.filter((r) => r.pulled === true).length,
-    win_rate_pct: scoreable.length > 0 ? round1((wins / scoreable.length) * 100) : null,
+    // null, never a fake 0%: "no play was decided" is not "every play lost".
+    win_rate_pct: decided > 0 ? round1((wins / decided) * 100) : null,
     dominant_failure_mode: dominant,
-    low_n: scoreable.length < LOW_N_THRESHOLD,
+    // low_n guards the RATE, so it counts the rate's own denominator.
+    low_n: decided < LOW_N_THRESHOLD,
   };
 }
 
@@ -296,11 +318,25 @@ export function gateBlockedValue(rejections: NighthawkGateRejectionInput[]): Gat
 // ── The published mirror: what would each gate have blocked, from the pinned margins ─
 
 export type GateMirrorBucket = {
+  /** ALL resolved non-pulled rows in this bucket — unfilled and undecided included.
+   *  This is the fillability population, NOT a rate denominator. */
   n: number;
   wins: number;
   losses: number;
+  /** wins + losses — the win-rate denominator. */
+  decided: number;
+  /** Rows that could never be entered at all (gap-away, resolveOutcome → 'unfilled').
+   *  These are the plays the band_detached gate exists to prevent; they are counted
+   *  here and NEVER in `decided`. */
+  unfilled: number;
   win_rate_pct: number | null;
+  /** unfilled / n — the fillability read. A gate that stops unenterable geometry earns
+   *  its number HERE, not in the win rate (an unfilled play has no win or loss). */
+  unfilled_rate_pct: number | null;
+  /** decided < LOW_N_THRESHOLD — guards `win_rate_pct`. */
   low_n: boolean;
+  /** n < LOW_N_THRESHOLD — guards `unfilled_rate_pct` (different denominator). */
+  low_n_fillability: boolean;
 };
 
 export type GateMirrorLine = {
@@ -310,6 +346,11 @@ export type GateMirrorLine = {
   /** would_pass WR minus would_block WR, pts — positive means the gate separates real
    *  losers from real winners on published history. Null until both buckets graded. */
   delta_win_rate_pts: number | null;
+  /** would_block unfilled-rate MINUS would_pass unfilled-rate, pts — positive means the
+   *  gate separates NEVER-FILLABLE geometry from fillable geometry. This is the read
+   *  band_detached is actually for, and it was structurally unobservable while the
+   *  mirror dropped unfilled rows before bucketing. Null until both buckets have rows. */
+  delta_unfilled_rate_pts: number | null;
   /** Graded rows whose pin lacks the geometry this gate thresholds on. */
   no_geometry_n: number;
 };
@@ -432,24 +473,55 @@ export function retroWouldBlock(
 function mirrorBucket(rows: DebriefAggregateRow[]): GateMirrorBucket {
   const wins = rows.filter((r) => r.outcome === "target").length;
   const losses = rows.filter((r) => r.outcome === "stop").length;
+  const unfilled = rows.filter((r) => r.outcome === "unfilled").length;
+  // Exactly gateBlockedValue's pattern (this file, ~L275-290): unfilled rows are COUNTED
+  // as their own population and the win rate is taken over DECIDED rows only. An unfilled
+  // play has no win and no loss — it never entered — so it can never sit in a rate, and
+  // an undecided (open/ambiguous) play must not be booked as a loss either.
+  const decided = wins + losses;
   return {
     n: rows.length,
     wins,
     losses,
-    win_rate_pct: rows.length > 0 ? round1((wins / rows.length) * 100) : null,
-    low_n: rows.length < LOW_N_THRESHOLD,
+    decided,
+    unfilled,
+    win_rate_pct: decided > 0 ? round1((wins / decided) * 100) : null,
+    unfilled_rate_pct: rows.length > 0 ? round1((unfilled / rows.length) * 100) : null,
+    low_n: decided < LOW_N_THRESHOLD,
+    low_n_fillability: rows.length < LOW_N_THRESHOLD,
   };
 }
 
-/** The mirror over PUBLISHED plays: bucket current-methodology SCOREABLE rows by each
- *  gate's retro would-block verdict (from the pinned PASS margins / geometry). */
+/**
+ * The mirror over PUBLISHED plays: bucket current-methodology RESOLVED, non-pulled rows
+ * by each gate's retro would-block verdict (from the pinned geometry + pinned threshold).
+ *
+ * WHY UNFILLED ROWS ARE BUCKETED HERE (fixed 2026-08-06). This filter used to drop
+ * `outcome === "unfilled"` BEFORE calling retroWouldBlock, i.e. before the gate ever got
+ * to judge the row. Those are precisely the plays whose published entry band the session
+ * never traded back into — the exact failure `band_detached` (G-N1) exists to prevent —
+ * so the gate's own published mirror was structurally blind to its only real effect.
+ * Measured LIVE on prod /api/admin/nighthawk/analytics?days=90 (2026-08-06):
+ *   band_detached → would_block {n:0}, would_pass {n:27}, delta_win_rate_pts: null
+ * while the SAME report's debrief summary carried 9 `unfilled_never_traded_back` +
+ * 5 `band_detached` pins and the record carried 19 unfilled of 70 resolved. The gate
+ * "blocked nothing" only because every row it could have blocked was deleted first.
+ *
+ * Unfilled rows are bucketed but kept OUT of the win rate (mirrorBucket's decided
+ * denominator) and reported as their own `unfilled` / `unfilled_rate_pct` read, so no
+ * unenterable play can land in a rate — the invariant this fix is protecting.
+ *
+ * PULLED rows stay excluded on purpose: a pulled play was withdrawn pre-open by the
+ * INVALIDATED morning latch, so its next-session outcome is a counterfactual, not a
+ * fact about the published geometry this mirror is judging.
+ */
 export function gatePublishedMirror(current: DebriefAggregateRow[]): GateMirrorLine[] {
-  const scoreable = current.filter((r) => r.outcome !== "unfilled" && r.pulled !== true && r.outcome !== "pending");
+  const resolved = current.filter((r) => r.pulled !== true && r.outcome !== "pending");
   return (["band_detached", "target_unreachable"] as const).map((gate) => {
     const block: DebriefAggregateRow[] = [];
     const pass: DebriefAggregateRow[] = [];
     let noGeo = 0;
-    for (const r of scoreable) {
+    for (const r of resolved) {
       const verdict = retroWouldBlock(r, gate);
       if (verdict == null) noGeo += 1;
       else (verdict ? block : pass).push(r);
@@ -460,7 +532,18 @@ export function gatePublishedMirror(current: DebriefAggregateRow[]): GateMirrorL
       wouldBlock.win_rate_pct != null && wouldPass.win_rate_pct != null
         ? round1(wouldPass.win_rate_pct - wouldBlock.win_rate_pct)
         : null;
-    return { gate, would_block: wouldBlock, would_pass: wouldPass, delta_win_rate_pts: delta, no_geometry_n: noGeo };
+    const deltaUnfilled =
+      wouldBlock.unfilled_rate_pct != null && wouldPass.unfilled_rate_pct != null
+        ? round1(wouldBlock.unfilled_rate_pct - wouldPass.unfilled_rate_pct)
+        : null;
+    return {
+      gate,
+      would_block: wouldBlock,
+      would_pass: wouldPass,
+      delta_win_rate_pts: delta,
+      delta_unfilled_rate_pts: deltaUnfilled,
+      no_geometry_n: noGeo,
+    };
   });
 }
 
@@ -557,12 +640,37 @@ export function buildImprovementQueue(input: {
     const strong = line.delta_win_rate_pts >= IMPROVEMENT_MIRROR_DELTA_PTS;
     items.push({
       signal: `publish_gate:${line.gate}:published_mirror`,
-      evidence: { n: line.would_block.n + line.would_pass.n, delta: line.delta_win_rate_pts },
+      evidence: {
+        n: line.would_block.decided + line.would_pass.decided,
+        delta: line.delta_win_rate_pts,
+      },
       suggestion: lowN
         ? null
         : strong
           ? `plays the ${line.gate} gate would have blocked ran ${line.delta_win_rate_pts} pts worse than passes on the published record — the threshold separates real losers; hold or tighten`
           : `retro-applying ${line.gate} does not separate winners from losers (${line.delta_win_rate_pts} pts) — do not tighten on this evidence`,
+      low_n: lowN,
+    });
+  }
+
+  // 3b) Published mirror, FILLABILITY read: does retro-applying the gate separate plays
+  //     that could never be entered from plays that could? This is the only lane in which
+  //     band_detached can earn or lose its threshold — an unfillable play is never a win
+  //     or a loss, so it is invisible to (3) by construction. Split out rather than folded
+  //     into (3) because the two reads have different denominators (n vs decided) and a
+  //     gate can be strong on one and silent on the other.
+  for (const line of input.mirror) {
+    if (line.delta_unfilled_rate_pts == null) continue;
+    const lowN = line.would_block.low_n_fillability || line.would_pass.low_n_fillability;
+    const strong = line.delta_unfilled_rate_pts >= IMPROVEMENT_MIRROR_DELTA_PTS;
+    items.push({
+      signal: `publish_gate:${line.gate}:published_mirror_fillability`,
+      evidence: { n: line.would_block.n + line.would_pass.n, delta: line.delta_unfilled_rate_pts },
+      suggestion: lowN
+        ? null
+        : strong
+          ? `plays the ${line.gate} gate would have blocked went UNFILLED ${line.delta_unfilled_rate_pts} pts more often than passes — the threshold is removing geometry a member could never have entered; hold or tighten`
+          : `retro-applying ${line.gate} does not separate fillable from unfillable geometry (${line.delta_unfilled_rate_pts} pts) — the never-filled rate is not this gate's to fix; look at the entry-band anchor, not the threshold`,
       low_n: lowN,
     });
   }
