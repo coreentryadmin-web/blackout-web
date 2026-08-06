@@ -274,6 +274,34 @@ test("runSwingDiscoveryScan: LIVE seam OPENS a graduated WATCH candidate (real-t
   assert.equal((opened[0].gate_calibration_json as Record<string, unknown>).graduated, true);
 });
 
+test("runSwingDiscoveryScan: a budget-blocked-only candidate opens a SHADOW row (2026-08-06) — zero real capital, tracked", async () => {
+  const { accessors } = makeFakeAccum();
+  await runSwingDiscoveryScan(makeDeps("2026-07-23", accessors));
+  await runSwingDiscoveryScan(makeDeps("2026-07-24", accessors)); // NVDA now WATCH
+
+  const opened: SwingPositionInsert[] = [];
+  const shadowed: Array<{ ticker: string; blocked_by: string[] }> = [];
+  const deps: SwingDiscoveryDeps = {
+    ...makeDeps("2026-07-25", accessors),
+    // A rich chain (mid=22 → $2.2k reference-lot risk) trips the 2% per-trade budget cap on the
+    // $100k reference account, but every OTHER gate (contract/premium/direction/idempotency) clears.
+    fetchChainRows: async () => [
+      { expiry: "2026-08-08", strike: 150, call_bid: 21.8, call_ask: 22.2, call_delta: 0.6, call_oi: 1200, put_bid: 4.6, put_ask: 4.9, put_delta: -0.4, put_oi: 900 },
+    ],
+    fetchGradedHistory: async () => [],
+    fetchOpenBook: async () => [],
+    insertPosition: async (pos) => { opened.push(pos); return opened.length; },
+    insertShadowPosition: async (pos) => { shadowed.push({ ticker: pos.ticker, blocked_by: pos.blocked_by }); return shadowed.length; },
+    budget: PRODUCTION_PORTFOLIO_BUDGET,
+  };
+  const res = await runSwingDiscoveryScan(deps);
+  assert.equal(opened.length, 0, "too rich for the per-trade cap — never a real open");
+  assert.equal(shadowed.length, 1, "but a real signal blocked ONLY by the risk gate gets a shadow row");
+  assert.equal(shadowed[0]!.ticker, "NVDA");
+  assert.deepEqual(shadowed[0]!.blocked_by, ["budget:per_position_loss"]);
+  assert.equal(res.commit?.shadowed.length, 1);
+});
+
 test("runSwingDiscoveryScan: seam wired but history NOT graduated → commitEligibleCount 0, but it STILL opens (evidence-only)", async () => {
   const { accessors } = makeFakeAccum();
   await runSwingDiscoveryScan(makeDeps("2026-07-23", accessors));
