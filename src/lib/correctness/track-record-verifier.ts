@@ -276,10 +276,13 @@ export async function verifyTrackRecord(_marketOpen: boolean): Promise<TickerSco
   // ── L5 CROSS-SURFACE: /track-record page API == public ledger (SPX block) ──
   {
     try {
-      const page = await buildTrackRecordPagePayload();
+      // Single stats snapshot — back-to-back fetchPlayOutcomeStats() calls can race a mid-RTH
+      // close and false-flag win_rate even when W/L/closed still match (split-brain #80 class).
+      const stats = await fetchPlayOutcomeStats().catch(() => null);
+      const page = await buildTrackRecordPagePayload(stats);
       let pub: Awaited<ReturnType<typeof buildPublicTrackRecord>> | null = null;
       try {
-        pub = await buildPublicTrackRecord();
+        pub = await buildPublicTrackRecord(stats);
       } catch {
         pub = null;
       }

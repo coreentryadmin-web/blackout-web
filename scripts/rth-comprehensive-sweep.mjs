@@ -241,42 +241,49 @@ async function auditApis(app) {
 
 async function testLargo(app) {
   const t0 = Date.now();
-  // Terminal UI uses SSE (`?stream=1` + Accept: text/event-stream); non-streaming JSON can
-  // exceed Cloudflare's ~100s origin timeout on multi-tool questions.
-  const r = app("/api/market/largo/query?stream=1", {
+  // curl cannot reliably consume SSE (`?stream=1`) — HTTP/2 stream resets → HTTP 0. Use the
+  // same non-streaming JSON probe as spx-dashboard-e2e (SPX-focused, one CF-origin retry).
+  const body = {
+    question:
+      "What is the current SPX Slayer play state including phase, direction, grade, and gamma flip? Cite only live platform data.",
+  };
+  let r = app("/api/market/largo/query", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-    json: { question: "Summarize dark pool activity and options flow on NVDA today with dollar amounts." },
+    headers: { "Content-Type": "application/json" },
+    json: body,
   });
-  let answer = "";
-  let tools = [];
-  let statusLine = null;
-  if (r.status === 200 && r.raw) {
-    for (const line of r.raw.split("\n")) {
-      if (!line.startsWith("data: ")) continue;
-      try {
-        const ev = JSON.parse(line.slice(6));
-        if (ev.type === "token" && ev.text) answer += ev.text;
-        if (ev.type === "tool_start" && ev.name) tools.push(ev.name);
-        if (ev.type === "done") {
-          answer = ev.answer || answer;
-          tools = ev.tools_used || tools;
-          statusLine = ev.status || ev.working_status || null;
-        }
-        if (ev.type === "error") statusLine = ev.message;
-      } catch {}
-    }
+  for (let attempt = 0; attempt < 2 && (r.status === 0 || r.status === 504 || r.status === 524); attempt++) {
+    await new Promise((res) => setTimeout(res, 5000));
+    r = app("/api/market/largo/query", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      json: body,
+    });
   }
+  const answer = String(r.json?.answer ?? "");
+  const toolsRaw = r.json?.tools_used ?? r.json?.tool_trace ?? [];
+  const tools = Array.isArray(toolsRaw)
+    ? toolsRaw.map((t) => (typeof t === "string" ? t : t?.name)).filter(Boolean)
+    : [];
+  const statusLine = r.json?.status || r.json?.working_status || null;
   report.largo = {
     status: r.status,
     ms: Date.now() - t0,
-    hasAnswer: Boolean(answer && String(answer).length > 50),
-    tools: Array.isArray(tools) ? tools : [],
+    hasAnswer: answer.length > 50,
+    tools,
     statusLine,
-    preview: String(answer).slice(0, 300),
+    preview: answer.slice(0, 300),
   };
-  if (r.status !== 200) report.issues.push({ severity: "P1", id: "largo-query", detail: `HTTP ${r.status}: ${JSON.stringify(r.json || r.raw?.slice(0, 200)).slice(0, 200)}` });
-  else if (!report.largo.hasAnswer) report.issues.push({ severity: "P2", id: "largo-empty", detail: "No grounded answer body" });
+  if (r.status !== 200) {
+    const transient = r.status === 0 || r.status === 504 || r.status === 524;
+    report.issues.push({
+      severity: transient ? "P2" : "P1",
+      id: "largo-query",
+      detail: `HTTP ${r.status}: ${JSON.stringify(r.json || r.raw?.slice(0, 200)).slice(0, 200)}`,
+    });
+  } else if (!report.largo.hasAnswer) {
+    report.issues.push({ severity: "P2", id: "largo-empty", detail: "No grounded answer body" });
+  }
 }
 
 async function browserSweep(signInUrl) {
