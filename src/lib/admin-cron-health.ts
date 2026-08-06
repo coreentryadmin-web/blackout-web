@@ -407,6 +407,7 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
     "desk-warm",
     "zerodte-warm",
     "uw-cache-refresh",
+    "vector-bead-record",
   ]);
   await Promise.all(
     jobs.map(async (health, index) => {

@@ -14,13 +14,16 @@ import {
   gatePublishedMirror,
   readPinnedDebriefTag,
   readPinnedTier,
+  pinnedTargetAtrMultiple,
   readRejectionCounterfactual,
   retroWouldBlock,
   summarizeDebriefPins,
+  targetAtrDistribution,
   type DebriefAggregateRow,
   type NighthawkGateRejectionInput,
 } from "./debrief-aggregate";
 import { GRADE_METHODOLOGY_CURRENT, GRADE_METHODOLOGY_LEGACY } from "./grade-methodology";
+import { GATE_TARGET_MAX_ATR_MULTIPLE } from "./publish-gates";
 import { LOW_N_THRESHOLD } from "@/lib/zerodte/record";
 
 const WINDOW = { since: "2026-06-14", through: "2026-07-14", days: 30 };
@@ -317,6 +320,90 @@ test("analyzeNighthawkDebriefs: report shape, per-conviction records, empty-tier
   assert.equal(b.pulled, 1);
   assert.deepEqual(report.by_tier, []); // no tier pinned anywhere yet — empty, not invented
   assert.equal(report.gate_validation.published_mirror.length, 2);
+});
+
+// ── Pinned target-ATR distribution ───────────────────────────────────────────────────
+
+function gatePin(multiple: number | string | null): Record<string, unknown> {
+  return {
+    context_version: 2,
+    gates: {
+      verdict: "PUBLISH",
+      blocks: [],
+      checks: [
+        { code: "band_detached", passed: true, value: -1.2, threshold: 3.5 },
+        { code: "target_unreachable", passed: true, value: multiple, threshold: 3.5 },
+      ],
+    },
+  };
+}
+
+test("pinnedTargetAtrMultiple: reads the pin structurally, refuses junk rather than coercing", () => {
+  assert.equal(pinnedTargetAtrMultiple(gatePin(2.05)), 2.05);
+  assert.equal(pinnedTargetAtrMultiple(gatePin(0)), 0);
+  assert.equal(pinnedTargetAtrMultiple(gatePin("2.05")), null, "a string multiple is not a number");
+  assert.equal(pinnedTargetAtrMultiple(gatePin(null)), null);
+  assert.equal(pinnedTargetAtrMultiple(gatePin(-1)), null, "a negative multiple is impossible");
+  // Pins that predate gate pinning, and every malformed shape, read as absent.
+  assert.equal(pinnedTargetAtrMultiple({ context_version: 2, atr14: 8 }), null);
+  assert.equal(pinnedTargetAtrMultiple({ context_version: 2, gates: {} }), null);
+  assert.equal(pinnedTargetAtrMultiple({ context_version: 2, gates: { checks: "x" } }), null);
+  assert.equal(pinnedTargetAtrMultiple({ gates: { checks: [null, 3, { code: "stale_quote_basis" }] } }), null);
+  assert.equal(pinnedTargetAtrMultiple(null), null);
+  assert.equal(pinnedTargetAtrMultiple([gatePin(2)]), null);
+});
+
+test("targetAtrDistribution: reads the PIN, never recomputes from levels", () => {
+  // A row whose LEVELS would imply one multiple but whose PIN says another must report
+  // the PIN — that is the whole point (production can take an hourly/prior-day ATR
+  // fallback, so a Polygon reconstruction is not byte-identical to the pinned denominator).
+  const rows = [
+    row({ publish_context: gatePin(1.1) }),
+    row({ publish_context: gatePin(1.49) }),
+    row({ publish_context: gatePin(2.05) }),
+    row({ publish_context: gatePin(3.65) }), // over the live 3.5 bar
+    row({ publish_context: gatePin(8.23) }), // over the live 3.5 bar
+    row({ publish_context: { context_version: 2, atr14: 8 } }), // pre-pin row — no multiple
+  ];
+  const dist = targetAtrDistribution(rows);
+  assert.equal(dist.rows_n, 6);
+  assert.equal(dist.pinned_n, 5);
+  assert.equal(dist.median, 2.05);
+  assert.equal(dist.over_gate_n, 2);
+  assert.equal(dist.over_gate_threshold, GATE_TARGET_MAX_ATR_MULTIPLE);
+  assert.equal(dist.low_n, false); // 5 === LOW_N_THRESHOLD
+  assert.equal(dist.histogram.reduce((a, b) => a + b.n, 0), 5, "only pinned rows are bucketed");
+});
+
+test("targetAtrDistribution: even-count median, and an all-unpinned window reports null (never 0)", () => {
+  const even = targetAtrDistribution([
+    row({ publish_context: gatePin(1.0) }),
+    row({ publish_context: gatePin(2.0) }),
+  ]);
+  assert.equal(even.median, 1.5);
+  assert.equal(even.low_n, true);
+
+  const none = targetAtrDistribution([row({ publish_context: null }), row({ publish_context: null })]);
+  assert.equal(none.pinned_n, 0);
+  assert.equal(none.median, null, "no pins → null median, never a fabricated 0");
+  assert.equal(none.over_gate_n, 0);
+  assert.equal(none.histogram.every((b) => b.pct === null), true);
+});
+
+test("analyzeNighthawkDebriefs: exposes the pinned target-ATR distribution over CURRENT rows only", () => {
+  const report = analyzeNighthawkDebriefs({
+    rows: [
+      row({ publish_context: gatePin(2.05) }),
+      // A LEGACY-methodology row can never enter any cut (#333 anti-blend).
+      row({ grade_methodology: GRADE_METHODOLOGY_LEGACY, publish_context: gatePin(9.9) }),
+    ],
+    rejections: [],
+    window: WINDOW,
+  });
+  assert.equal(report.target_atr_distribution.rows_n, 1);
+  assert.equal(report.target_atr_distribution.pinned_n, 1);
+  assert.equal(report.target_atr_distribution.median, 2.05);
+  assert.equal(report.target_atr_distribution.over_gate_n, 0, "the legacy 9.9× row must not leak in");
 });
 
 test("analyzeNighthawkDebriefs: empty input → available:false, stable shape", () => {

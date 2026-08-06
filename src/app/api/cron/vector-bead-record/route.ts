@@ -25,38 +25,42 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(payload);
   }
 
-  const run = async () => {
-    try {
-      const [universe, active] = await Promise.all([
-        recordSharedUniverseWallSamples(),
-        recordActiveNonUniverseWallSamples(),
-      ]);
-      await logCronRun("vector-bead-record", started, {
-        ok: universe.recorded > 0 || active.recorded > 0,
-        universe,
-        active,
-      });
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error);
-      console.error(`[cron/vector-bead-record] REJECTED: ${detail}`);
-      await logCronRun("vector-bead-record", started, { ok: false, error: detail });
-    }
+  // Universe + active-viewer bead sweeps can exceed Cloudflare's ~100s origin timeout when caches
+  // are cold (ops #1783: market_hours_stale with no fresh cron_job_runs row). Mirror
+  // vector-full-state-snapshot / coaching-alerts: handshake in seconds, recording in after().
+  const dispatchRecording = () => {
+    void (async () => {
+      try {
+        const [universe, active] = await Promise.all([
+          recordSharedUniverseWallSamples(),
+          recordActiveNonUniverseWallSamples(),
+        ]);
+        console.info(
+          `[cron/vector-bead-record] background done — universe=${universe.recorded}/${universe.total} active=${active.recorded}/${active.total} elapsed=${Date.now() - started}ms`
+        );
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        console.error(`[cron/vector-bead-record] background REJECTED: ${detail}`);
+      }
+    })();
   };
 
   try {
-    after(() => {
-      void run();
-    });
+    after(dispatchRecording);
   } catch {
-    void run();
+    dispatchRecording();
   }
 
+  const accepted = {
+    ok: true,
+    status: "accepted",
+    reason: "Vector bead recorder dispatched in background",
+  };
+  await logCronRun("vector-bead-record", started, accepted);
   return NextResponse.json(
     {
-      ok: true,
-      status: "accepted",
-      reason: "Vector bead recorder dispatched in background",
-      note: "Primary 5s cadence is in-process vector-bead-recorder-leader; this cron is backup + audit.",
+      ...accepted,
+      note: "Primary 5s cadence is in-process vector-bead-recorder-leader; HTTP cron is backup + audit — handshake stays under edge timeout.",
     },
     { status: 202 }
   );

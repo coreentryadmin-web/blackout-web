@@ -25,6 +25,7 @@ import {
   type DebriefFailureMode,
 } from "./debrief";
 import { GATE_BAND_MAX_DISTANCE_PCT, GATE_TARGET_MAX_ATR_MULTIPLE } from "./publish-gates";
+import { targetAtrHistogram, type TargetAtrHistogramBin } from "./target-reachability";
 
 export const NIGHTHAWK_DEBRIEF_METHODOLOGY =
   "Night Hawk session debrief over graded outcome rows (v2 fillability grades only — legacy-" +
@@ -521,9 +522,78 @@ export type NighthawkDebriefReport = {
     blocked_value: GateBlockedValueLine[];
     published_mirror: GateMirrorLine[];
   };
+  /** Distribution of the PINNED target-ATR multiple across published rows in the window —
+   *  see targetAtrDistribution. */
+  target_atr_distribution: TargetAtrDistribution;
   improvement_queue: DebriefImprovementItem[];
   available: boolean;
 };
+
+/** Structural read of the PINNED G-N2 multiple out of publish_context.gates.checks[].
+ *  JSONB is never trusted: every level is shape-checked and a non-finite/negative value
+ *  reads as absent rather than being coerced. Mirrors publish-gates.ts's
+ *  targetAtrMultipleFromGateResult, applied to the persisted (untyped) blob. */
+export function pinnedTargetAtrMultiple(publishContext: unknown): number | null {
+  if (publishContext == null || typeof publishContext !== "object" || Array.isArray(publishContext)) return null;
+  const gates = (publishContext as Record<string, unknown>).gates;
+  if (gates == null || typeof gates !== "object" || Array.isArray(gates)) return null;
+  const checks = (gates as Record<string, unknown>).checks;
+  if (!Array.isArray(checks)) return null;
+  for (const raw of checks) {
+    if (raw == null || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const check = raw as Record<string, unknown>;
+    if (check.code !== "target_unreachable") continue;
+    const v = check.value;
+    return typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null;
+  }
+  return null;
+}
+
+export type TargetAtrDistribution = {
+  /** Published rows in the window (the denominator for `pinned_n`). */
+  rows_n: number;
+  /** Rows carrying a usable pinned G-N2 multiple. */
+  pinned_n: number;
+  histogram: TargetAtrHistogramBin[];
+  median: number | null;
+  /** Rows whose pinned multiple exceeds the LIVE publish-gate bar. */
+  over_gate_n: number;
+  over_gate_threshold: number;
+  low_n: boolean;
+};
+
+/**
+ * How far the published targets actually sat, read from the PIN rather than reconstructed.
+ *
+ * WHY THIS EXISTS (2026-08-06): the publish gate measures |target − fill_edge| / ATR14 on
+ * every play and pins it (publish-gates.ts:226), but `publish_context` is a Postgres
+ * product and raw PG is unreachable from the audit sandbox — so every calibration pass so
+ * far had to RECONSTRUCT ATR14 from Polygon daily bars to answer "how far out are our
+ * targets", which cannot be byte-identical to the pin whenever production took an
+ * hourly/prior-day ATR fallback (polygon-largo.ts:346-352). This exposes the pinned
+ * distribution directly, so the next pass measures on the denominator the gate used.
+ *
+ * Reads ONLY the pin — never recomputes from levels — so it cannot drift from the gate.
+ */
+export function targetAtrDistribution(rows: DebriefAggregateRow[]): TargetAtrDistribution {
+  const multiples = rows.map((r) => pinnedTargetAtrMultiple(r.publish_context ?? null));
+  const usable = multiples.filter((m): m is number => m != null).sort((a, b) => a - b);
+  const median =
+    usable.length === 0
+      ? null
+      : usable.length % 2 === 1
+        ? round2(usable[(usable.length - 1) / 2]!)
+        : round2((usable[usable.length / 2 - 1]! + usable[usable.length / 2]!) / 2);
+  return {
+    rows_n: rows.length,
+    pinned_n: usable.length,
+    histogram: targetAtrHistogram(multiples),
+    median,
+    over_gate_n: usable.filter((m) => m > GATE_TARGET_MAX_ATR_MULTIPLE).length,
+    over_gate_threshold: GATE_TARGET_MAX_ATR_MULTIPLE,
+    low_n: usable.length < LOW_N_THRESHOLD,
+  };
+}
 
 /** The pure analyzer: graded rows + gate rejections in, report out. Deterministic —
  *  no clock, no IO. */
@@ -545,6 +615,8 @@ export function analyzeNighthawkDebriefs(input: {
     by_conviction: conviction,
     by_tier: byTier(current),
     gate_validation: { blocked_value: blockedValue, published_mirror: mirror },
+    // Over CURRENT-methodology rows only, same anti-blend rule as every other cut here.
+    target_atr_distribution: targetAtrDistribution(current),
     improvement_queue: buildImprovementQueue({ summary, blockedValue, mirror, byConviction: conviction }),
     available: summary.debriefed > 0 || blockedValue.length > 0,
   };

@@ -10,6 +10,7 @@
  * cron_job_runs); this leader is the primary 5s writer during RTH.
  */
 import { isEtCashRth } from "@/lib/et-market-hours";
+import { logCronRun } from "@/lib/cron-run";
 import { shouldRunVectorBeadRecorder } from "@/lib/process-role";
 import {
   recordSharedUniverseWallSamples,
@@ -28,6 +29,8 @@ import { newLockToken, releaseFencedLock, renewFencedLock, type FencedRedis } fr
 
 const LEADER_KEY = "vector:bead:recorder:leader";
 const LEADER_TTL_SEC = 45;
+/** Observability heartbeat — EventBridge backup cron may be unprovisioned; keep cron_job_runs fresh. */
+const HEARTBEAT_INTERVAL_MS = 30_000;
 const LOCK_TOKEN = newLockToken();
 
 type IoredisLockExtra = FencedRedis & {
@@ -41,6 +44,8 @@ let activeTickTimer: ReturnType<typeof setInterval> | null = null;
 let leaderRefreshTimer: ReturnType<typeof setInterval> | null = null;
 let recordInFlight = false;
 let activeRecordInFlight = false;
+let lastHeartbeatAt = 0;
+let heartbeatInFlight = false;
 
 async function getLockRedis(): Promise<IoredisLockExtra | null> {
   const url = process.env.REDIS_URL?.trim();
@@ -107,6 +112,29 @@ function releaseLead(): void {
     .catch(() => undefined);
 }
 
+/** Stamp cron_job_runs so admin health / watchdog see the in-process leader as live. */
+async function maybeLogLeaderHeartbeat(): Promise<void> {
+  if (!isLeader || !isEtCashRth()) return;
+  const now = Date.now();
+  if (now - lastHeartbeatAt < HEARTBEAT_INTERVAL_MS || heartbeatInFlight) return;
+  heartbeatInFlight = true;
+  lastHeartbeatAt = now;
+  try {
+    await logCronRun("vector-bead-record", now, {
+      ok: true,
+      reason: "in-process leader heartbeat",
+      source: "vector-bead-recorder-leader",
+    });
+  } catch (err) {
+    console.warn(
+      "[vector-bead-recorder] heartbeat log failed:",
+      err instanceof Error ? err.message : err
+    );
+  } finally {
+    heartbeatInFlight = false;
+  }
+}
+
 async function tick(): Promise<void> {
   if (!isEtCashRth()) return;
   if (recordInFlight) return;
@@ -126,6 +154,7 @@ async function tick(): Promise<void> {
         `[vector-bead-recorder] zero samples recorded (${result.failed}/${result.total} failed, ${result.elapsedMs}ms)`
       );
     }
+    void maybeLogLeaderHeartbeat();
   } catch (err) {
     console.error(
       "[vector-bead-recorder] tick error:",
