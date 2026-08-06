@@ -35,6 +35,7 @@
     "sim:feed": "node scripts/audit/zerodte-sim-feed.mjs",
     "sim:swing": "node --import tsx scripts/audit/swing-sim.mjs",
     "scan:bangers": "node --import tsx scripts/audit/market-banger-scan.mjs",
+    "probe:gate-smallcap": "node --import tsx scripts/audit/gate-smallcap-sensitivity.mjs",
     "scan:swing": "node --import tsx scripts/audit/swing-discovery-scan.mjs",
     "sim:swing-portfolio": "node --import tsx scripts/audit/swing-portfolio-sim.mjs",
     "wr:condor": "node --import tsx scripts/audit/condor-wr.mjs",
