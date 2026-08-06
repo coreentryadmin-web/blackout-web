@@ -11,13 +11,26 @@ import { notifyOpsDiscord } from "@/features/spx/lib/spx-play-notify";
 const CRON_KEY = "nighthawk-playbook";
 
 export const dynamic = "force-dynamic";
-// Raised to the platform max so a single invocation gets as much wall-clock as the host allows for
-// the Claude synthesis stage (live finding #77: the build exceeded the old 300s and was hard-killed,
-// so no edition published and the failure never reached /api/admin/errors). On the ECS worker
-// (`npm run nighthawk:run`) this is advisory — the worker is not function-timeout-bound — but on any
-// serverless/edge surface this lifts the ceiling. The internal BUILD_TIME_BUDGET_MS guard below
-// ALWAYS checkpoints + returns a resume status BEFORE the host can kill us, so partial progress is
-// never lost regardless of the host's true limit.
+// INERT on this deploy target, kept only as documentation of intent. `next.config.mjs` sets
+// `output: "standalone"` and we run on ECS, so `maxDuration` is a Vercel-only construct with zero
+// runtime references in the built server (verified against the pinned Next 15.5.19). Nothing
+// in-process caps this handler; the only real deadline is the ALB's `idle_timeout` (120s), and the
+// cron Lambda that invokes us gives up even sooner at ~60s. See the ALB 504 entry in
+// docs/audit/FINDINGS.md.
+//
+// There is NO `BUILD_TIME_BUDGET_MS` guard — an earlier version of this comment claimed one
+// "ALWAYS checkpoints … BEFORE the host can kill us, so partial progress is never lost". That
+// constant has never existed anywhere in the codebase, and the claim was load-bearing in the wrong
+// direction: it invited raising this number instead of relying on the mechanism that actually
+// protects the build.
+//
+// What DOES protect it is stage-level checkpointing in the builder, not a wall-clock timer:
+// `buildEveningEdition` persists `current_stage` to `nighthawk_jobs` as it advances
+// (`stage_context` → `stage_dossiers` → `published`), `fetchStagedDossierTickers` narrows
+// `remaining` on the way back in, and the next invocation (cron or `?force=1`) resumes from the
+// last committed stage. `failStaleNighthawkJobs()` reaps rows abandoned mid-flight. Crucially the
+// handler hands the build to `after()` and returns 202 in well under 60s, so the Lambda hanging up
+// does not abort it — the work continues server-side and publishes on its own.
 export const maxDuration = 800;
 
 function editionEnabled(): boolean {

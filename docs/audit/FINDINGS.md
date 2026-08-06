@@ -128,6 +128,22 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 
 ---
 
+## 2026-08-06 — [P2, false-safety-claim] `nighthawk-edition` documented a `BUILD_TIME_BUDGET_MS` guard that has never existed — FIXED (#1830)
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P2 — no runtime defect, but a **false safety claim** in a comment, which is worse than no claim: it invites raising `maxDuration` instead of relying on the mechanism that actually protects the build. Surfaced as a follow-up of the ALB 504 entry above. |
+| **Root cause** | `src/app/api/cron/nighthawk-edition/route.ts:18` asserted *"The internal BUILD_TIME_BUDGET_MS guard below ALWAYS checkpoints + returns a resume status BEFORE the host can kill us, so partial progress is never lost regardless of the host's true limit."* `grep -rn "BUILD_TIME_BUDGET_MS" src/` returns **exactly one hit — that comment**. The constant has never existed anywhere in the codebase. The same comment also justified `maxDuration = 800`, which is itself **inert** on this deploy target (`output: "standalone"` + ECS ⇒ Vercel-only construct, zero runtime references in the built server). |
+| **What actually protects the build (verified, not assumed)** | Stage-level checkpointing in the builder, not a wall-clock timer. `buildEveningEdition` persists `current_stage` to `nighthawk_jobs` as it advances (`stage_context` → `stage_dossiers` → `published`, `edition-builder.ts:418/447/329/352`), gated by a `checkpointing` flag (`dbConfigured() && !dryRun`); `fetchStagedDossierTickers` narrows `remaining` on the way back in; the next invocation (cron or `?force=1`) resumes from the last committed stage (`resumed` flag). `failStaleNighthawkJobs()` reaps rows abandoned mid-flight. The handler hands the build to `after()` and returns **202 in well under 60s**, so the invoking Lambda hanging up does not abort it. |
+| **Real deadlines (measured)** | Nothing in-process caps the handler. The ALB `idle_timeout` is 120s. The cron Lambda's **client fetch** budget is 60s — `TIMEOUT_BY_PATH[path] ?? 60_000` in `blackout-infra/terraform/modules/crons/lambda/index.js:35`, with `controller.abort()` on the timer — distinct from the Lambda **function** timeout of 300s (`crons/main.tf:68`). Both numbers verified in source rather than carried over from the triage note. |
+| **Live evidence the mechanism works** | `GET /api/cron/nighthawk-edition?status=1` (prod, authenticated, 2026-08-07 edition): `{"job_status":"published","current_stage":"published","error":null,"staged_candidates":20}`. The stage is tracked and the edition published cleanly. |
+| **Companion follow-up NOT confirmed** | The ALB-504 entry raised a concern that the long crons may report **false failures** (Lambda aborts at 60s and throws while the handler succeeds minutes later). For `nighthawk-edition` this does **not** reproduce: the route returns 202 fast via `after()`, so the 60s client budget is never reached, and the live job is `published` with `error: null`. Not disproven for other long crons — `/api/admin/cron-runs` and `/api/admin/crons` both 404, so the run-history lane could not be inspected from here. Left open, narrowed. |
+| **Fix** | Comment corrected to state (a) `maxDuration` is inert here and why, (b) that no `BUILD_TIME_BUDGET_MS` guard exists and the old claim was wrong, and (c) the real checkpoint/resume mechanism, naming the actual functions. **Comment-only — zero behaviour change.** Implementing a real wall-clock budget guard was deliberately NOT done: it would duplicate protection the stage checkpointing already provides, and would risk truncating a build that currently completes. |
+| **Verification** | `tsc --noEmit` clean; `next lint` on the touched file → no warnings or errors. |
+| **Status** | FIXED — PR #1830. |
+
+---
+
 ## 2026-08-06 — [P1, performance] ALB 504 slow tail — no request-level deadline anywhere in the stack — FIXED (#1817, blackout-infra #45)
 
 | Field | Value |
