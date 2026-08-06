@@ -1793,6 +1793,29 @@ async function runMigrations(): Promise<void> {
     ON swing_positions(session_date DESC)
     WHERE graded_at IS NOT NULL AND feature_vector IS NOT NULL;
   `);
+  // FINDINGS 2026-08-06 (SEV-2, unbracketed watermarks): peak_premium/trough_premium are the running
+  // high/low-water marks of the contract's premium SINCE COMMIT, but they were left NULL at insert and
+  // only started accumulating on the FIRST successful updateSwingLiveState latch. Normally that is
+  // seconds-to-minutes after commit and the gap is invisible — but the 42P08 outage (fixed in #1792)
+  // blocked EVERY latch for days, so the series on the live book began at a post-outage mark instead
+  // of at entry. Live proof from prod 2026-08-06 22:04 UTC: SPCX peak_premium 11.58 BELOW its
+  // entry_premium 16.68, and MSFT trough_premium 23.08 ABOVE its entry 14.40 — arithmetically
+  // impossible for watermarks that had been ratcheting since the position opened.
+  //
+  // The entry premium IS an observed mark of that contract (the one it was bought at), so bracketing
+  // the watermarks around it is a repair, not a fabrication. This converge-in-place backfill only ever
+  // WIDENS the bracket (GREATEST for peak, LEAST for trough) — it can never narrow a genuinely-ratcheted
+  // extreme, and its WHERE clause makes it a no-op once converged, so re-running it on every boot is free.
+  await p.query(`
+    UPDATE swing_positions
+       SET peak_premium = GREATEST(COALESCE(peak_premium, entry_premium), entry_premium),
+           trough_premium = LEAST(COALESCE(trough_premium, entry_premium), entry_premium)
+     WHERE entry_premium IS NOT NULL
+       AND (peak_premium IS NULL
+            OR trough_premium IS NULL
+            OR peak_premium < entry_premium
+            OR trough_premium > entry_premium);
+  `);
 
   // ── swing_shadow_positions (2026-08-06, member-authorized) — a DELIBERATELY SEPARATE table, never
   // read by fetchOpenSwingPositions/active-refresh/the member board. A candidate that clears every
@@ -6502,7 +6525,7 @@ export type SwingPositionInsert = {
 // silently re-thread the chain. They are therefore excluded from the DO UPDATE SET ENTIRELY — a column not
 // in the SET keeps its stored value unconditionally (NULL included). roll_seq stays pinned (it is set once
 // at insert and never legitimately changes on a re-touch; a non-null 0/N is safe under COALESCE).
-const SWING_POSITION_PINNED_COLUMNS = [
+export const SWING_POSITION_PINNED_COLUMNS = [
   "roll_seq",
   "direction",
   "sub_lane",
@@ -6540,10 +6563,18 @@ export async function insertSwingPosition(pos: SwingPositionInsert, db?: Db): Pr
       commit_key, root_position_id, parent_position_id, roll_seq, session_date, ticker,
       direction, sub_lane, archetype, top_flow_strike, contract_strike, contract_expiry,
       contract_type, contract_occ, contract_delta, entry_underlying_px, thesis_invalidation_px,
-      target_underlying_px, entry_premium, entry_context, gate_calibration_json, feature_vector,
-      plan_json, status, committed_at, updated_at
+      target_underlying_px, entry_premium, peak_premium, trough_premium, entry_context,
+      gate_calibration_json, feature_vector, plan_json, status, committed_at, updated_at
     ) VALUES (
       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,
+      -- SEED THE WATERMARKS AT ENTRY (FINDINGS 2026-08-06, SEV-2): peak/trough are the running
+      -- high/low-water marks of premium SINCE COMMIT, so the entry premium — a genuinely observed
+      -- mark of this contract — is their correct starting point. Left NULL (the old shape) the
+      -- series instead begins at whenever the first live latch happens to succeed, which during
+      -- the 42P08 outage was days later and produced peaks BELOW entry / troughs ABOVE it.
+      -- $19 is entry_premium, reused. NOT in SWING_POSITION_PINNED_COLUMNS and not in the DO UPDATE
+      -- SET below, so a re-touch of an existing commit_key leaves the ratcheted values untouched.
+      $19,$19,
       $20::jsonb,$21::jsonb,$22::jsonb,$23::jsonb,$24,NOW(),NOW()
     )
     ON CONFLICT (commit_key) DO UPDATE SET

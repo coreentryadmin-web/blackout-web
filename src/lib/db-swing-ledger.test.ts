@@ -8,6 +8,7 @@ import {
   mapSwingAccumRow,
   isMonotonicSwingStatusTransition,
   coalescePinnedColumns,
+  SWING_POSITION_PINNED_COLUMNS,
 } from "./db";
 
 // The swing ledger (PR-10) is schema-only and Postgres is NOT exercised in CI (same
@@ -725,4 +726,49 @@ test("SEV-1: updateSwingLiveState SQL executes against Postgres and latches mark
   } finally {
     await client.end().catch(() => undefined);
   }
+});
+
+
+// ─── SEV-2 (FINDINGS 2026-08-06): premium watermarks must be BRACKETED BY ENTRY ───────────────
+//
+// peak_premium/trough_premium are running high/low-water marks of the contract's premium SINCE
+// COMMIT. They were left NULL at insert and only began accumulating on the first successful
+// updateSwingLiveState latch — days late during the 42P08 outage, which produced the arithmetically
+// impossible live book measured on prod: SPCX peak 11.58 < entry 16.68, MSFT trough 23.08 > entry 14.40.
+
+test("insertSwingPosition: SEEDS peak_premium/trough_premium from entry_premium at commit", () => {
+  const src = dbSource();
+  const body = src.slice(
+    src.indexOf("export async function insertSwingPosition"),
+    src.indexOf("export async function updateSwingLiveState")
+  );
+  assert.match(body, /target_underlying_px, entry_premium, peak_premium, trough_premium/);
+  // Both seeded from $19 — the entry_premium parameter — not from a fresh param or a literal.
+  assert.match(body, /\$19,\$19,/);
+  // And NOT pinned/re-set on a re-touch: a re-running scan must never rewind a ratcheted extreme.
+  assert.equal(
+    SWING_POSITION_PINNED_COLUMNS.includes("peak_premium" as never),
+    false,
+    "peak_premium must not be COALESCE-pinned — the ratchet owns it after insert"
+  );
+  assert.equal(SWING_POSITION_PINNED_COLUMNS.includes("trough_premium" as never), false);
+});
+
+test("ensureSchema: the watermark backfill only ever WIDENS the bracket, and converges to a no-op", () => {
+  const src = dbSource();
+  const stmt = src.slice(
+    src.indexOf("UPDATE swing_positions\n       SET peak_premium"),
+    src.indexOf("swing_shadow_positions (2026-08-06")
+  );
+  assert.ok(stmt.length > 0, "the converge backfill must exist in ensureSchema");
+  // GREATEST on the peak / LEAST on the trough: a genuinely-ratcheted extreme can never be narrowed.
+  assert.match(stmt, /peak_premium = GREATEST\(COALESCE\(peak_premium, entry_premium\), entry_premium\)/);
+  assert.match(stmt, /trough_premium = LEAST\(COALESCE\(trough_premium, entry_premium\), entry_premium\)/);
+  // Guarded so a converged table matches zero rows — safe to re-run on every boot.
+  assert.match(stmt, /WHERE entry_premium IS NOT NULL/);
+  assert.match(stmt, /peak_premium < entry_premium/);
+  assert.match(stmt, /trough_premium > entry_premium/);
+  // NEVER fabricates: a row with no entry premium has no observed mark to bracket around, so it is
+  // left entirely alone rather than seeded from a mark it never traded at.
+  assert.doesNotMatch(stmt, /entry_premium IS NULL/);
 });
