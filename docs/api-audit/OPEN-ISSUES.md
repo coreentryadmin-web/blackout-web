@@ -1,5 +1,36 @@
 # BlackOut Open Issues Log
-Last updated: 2026-08-06 6:05 PM ET
+Last updated: 2026-08-06 18:10 ET
+
+## rth-comprehensive-2026-08-06-post-close — RTH comprehensive test sweep (~6:00–6:10 PM ET, post-close)
+
+**Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` on branch `cursor/rth-comprehensive-test-sweep-d341`. Commands: `npm run validate:rth-open -- --force` → `GET /api/cron/data-correctness?force=1` (async + per-surface sync) → `npm run validate:rth-sweep` → `npm run validate:grid-e2e` → `npm run validate:grid-rth -- --force --phase=post-close` → `npm run validate:spx-e2e` → `npm run ops:collect`.
+
+> **Market context:** Post-close (18:00 ET). Live-tick checks N/A; off-hours gating expected.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open -- --force` | ✅ **GREEN** |
+| `data-correctness` heatmap | ✅ flags=0 |
+| `data-correctness` zerodte/spx/flows | ⚠️ 1 false flag pre-fix (56.5% vs 57% float) → **fixed in PR** |
+| `npm run validate:rth-sweep` | ✅ 0 P0/P1 · 7 pages · Largo grounded |
+| `npm run validate:grid-e2e` | ✅ 5/5 PASS |
+| `npm run validate:grid-rth` | ✅ 14/14 PASS |
+| `npm run validate:spx-e2e` | ✅ 17/18 (bie-play 401 expected) |
+| `npm run ops:collect` | ✅ 0 items |
+
+### Findings
+
+| Severity | ID | Detail | Status |
+|---|---|---|---|
+| P1 | TR-PAGE-PUBLIC-WR-FLOAT | `pageSpxMatchesPublic` float false split-brain | **FIXED** |
+| P2 | DASH-CONSOLE-400 | Dashboard console 400 | monitor |
+| P2 | IOS-MATRIX-CHIP-OVERLAY | iOS E2E Matrix click blocked by chip overlay | monitor |
+
+**Reports:** `audit-output/rth-sweep-2026-08-06T22-01-12-464Z.json`, `audit-output/grid-rth-2026-08-06-post-close-1786053910558.json`
+
+---
 
 ## rth-open-2026-08-06-pass2 — RTH comprehensive test sweep (~5:57–6:05 PM ET, post-close)
 
