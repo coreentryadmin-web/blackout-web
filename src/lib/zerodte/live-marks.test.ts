@@ -794,3 +794,82 @@ test("poller tick: a setup-only OCC (no entered plays) is quoted but the ledger 
   assert.equal(lm.getZeroDteLiveMark(setupOcc)?.mark, 1.1);
   assert.equal(persisted.length, 0, "a setup-only tick makes ZERO ledger writes");
 });
+
+// ── wire precision (FINDINGS 2026-08-06: unrounded floats on /marks) ──────────────
+// The provider's greeks were stored VERBATIM (options-snapshot.ts:267-274, deliberately —
+// "nothing is lost"), copied unchanged into the mark store (markFromSnapshot) and then into
+// the wire row (`greeks: m?.greeks ?? null`), so JSON.stringify shipped full IEEE-754 doubles.
+// Captured live from Polygon /v3/snapshot on 2026-08-06 (O:SPY260807C00640000):
+//   delta 0.9744760508898113 (16dp), gamma 0.000800420684215033 (18dp),
+//   theta -2.1224383902348456 (16dp), vega 0.019453369929098324 (18dp),
+//   iv 1.7933050133786779 (16dp)
+// Rounding happens in buildZeroDteLiveMarksPayloadFrom — the ONE build both the SSE lane
+// and the REST fallback serialize — so the two lanes can never disagree.
+test("wire precision: greeks are rounded per-field, and gamma survives it", async () => {
+  const lm = await loadLane();
+  lm._resetZeroDteLiveMarksForTest();
+  const occ = "O:NVDA260714C00180000";
+  const now = Date.now();
+  lm.putZeroDteLiveMark({
+    occ,
+    // Real, unrounded provider values (see header) — the exact bug input.
+    bid: 4.300000000000001, ask: 4.5, mid: 4.4000000000000004, last: 4.35, mark: 4.4000000000000004,
+    source: "mid", asOf: now - 1_000, lane: "rest",
+    greeks: {
+      delta: 0.9744760508898113,
+      gamma: 0.000800420684215033,
+      theta: -2.1224383902348456,
+      vega: 0.019453369929098324,
+      iv: 1.7933050133786779,
+    },
+  });
+  const payload = lm.buildZeroDteLiveMarksPayloadFrom(lm.boundActivePlays([ledgerRow({})]), now, "2026-07-14");
+  const g = payload.marks[0]!.greeks!;
+  assert.equal(g.delta, 0.9745);
+  assert.equal(g.theta, -2.1224);
+  assert.equal(g.iv, 1.7933);
+  // The whole point of the per-key map: at the 2dp default gamma/vega would be 0.
+  assert.equal(g.gamma, 0.0008);
+  assert.equal(g.vega, 0.019453);
+  assert.notEqual(g.gamma, 0);
+  assert.notEqual(g.vega, 0);
+  // Premiums keep 4dp — half-cent mids are real ((bid+ask)/2), so 2dp would be lossy.
+  assert.equal(payload.marks[0]!.bid, 4.3);
+  assert.equal(payload.marks[0]!.mark, 4.4);
+  // Nothing on the wire carries float noise any more. 6dp is the widest precision this
+  // payload legitimately serves (gamma/vega), so anything longer is noise by definition —
+  // and >=6dp with |x|>=1000 is exactly what the audit validator's malformed-number scan flags.
+  const noisy: string[] = [];
+  const walk = (v: unknown, path: string): void => {
+    if (typeof v === "number") {
+      if (Number.isFinite(v) && (String(v).split(".")[1] ?? "").length > 6) noisy.push(`${path}=${v}`);
+      return;
+    }
+    if (Array.isArray(v)) { v.forEach((x, i) => walk(x, `${path}[${i}]`)); return; }
+    if (v !== null && typeof v === "object") {
+      for (const [k, val] of Object.entries(v as Record<string, unknown>)) walk(val, path ? `${path}.${k}` : k);
+    }
+  };
+  walk(JSON.parse(JSON.stringify(payload)), "");
+  assert.deepEqual(noisy, [], "no field may serialize with >=6 fraction digits");
+});
+
+test("wire precision: half-cent mids and integer fields are preserved exactly", async () => {
+  const lm = await loadLane();
+  lm._resetZeroDteLiveMarksForTest();
+  const occ = "O:NVDA260714C00180000";
+  const now = Date.now();
+  // Live-captured SPY 0DTE quote: bid 127.11 / ask 130.70 → mid 128.905 (a real half cent).
+  lm.putZeroDteLiveMark({
+    occ, bid: 127.11, ask: 130.7, mid: 128.905, last: 132.4, mark: 128.905,
+    source: "mid", asOf: now - 1_000, lane: "rest", greeks: null,
+  });
+  const payload = lm.buildZeroDteLiveMarksPayloadFrom(lm.boundActivePlays([ledgerRow({})]), now, "2026-07-14");
+  const row = payload.marks[0]!;
+  assert.equal(row.mid, 128.905, "half-cent mid must survive rounding (2dp would give 128.91)");
+  assert.equal(row.mark, 128.905);
+  assert.equal(row.mark_age_ms, 1_000, "integer age untouched");
+  assert.equal(row.strike, 180, "integer strike untouched");
+  assert.equal(typeof row.mark_as_of, "string", "ISO timestamps untouched");
+  assert.equal(row.stale, false, "booleans untouched");
+});

@@ -15,22 +15,56 @@
 // Integers pass through untouched (Number.isInteger short-circuits), so
 // epoch-millis timestamps, counts, and IDs are never touched — only genuine
 // float noise gets rounded.
-export function roundFloats<T>(value: T, dp = 2): T {
+//
+// PER-KEY OVERRIDES (`keyDp`)
+// ---------------------------
+// A single `dp` for a whole payload is right for money-math (everything is a
+// dollar amount at a similar magnitude) but WRONG the moment a payload mixes
+// scales. Option greeks are the motivating case: gamma is routinely 0.0008–0.05,
+// so the 2dp default would quantize it to 0.00 and DESTROY the number, while
+// delta/theta/IV are perfectly readable at 4dp. `keyDp` maps an object key →
+// the dp to use for numbers found under that key, so ONE call at the data layer
+// can serve a mixed-scale payload instead of pushing rounding out to each
+// renderer (which is how the same number ends up displayed three different ways
+// on three panels).
+//
+// Scoping: the override matches on the IMMEDIATE key a number sits under. Array
+// elements inherit their array's key (`{ pnl: [1.005, 2.005] }` → both elements
+// use `keyDp.pnl`), which is what a numeric series wants. Nested objects re-key
+// on their own property names, so `{ greeks: { gamma: … } }` matches `gamma`,
+// not `greeks`.
+//
+// Callers that pass no `keyDp` are BYTE-IDENTICAL to the pre-override behavior:
+// `overrides` is null and the walk takes exactly the old branch. That is not an
+// assumption — round-floats.test.ts diffs this function against a frozen copy of
+// the legacy implementation over the shapes the ~45 existing call sites serve.
+export type RoundFloatsKeyDp = Readonly<Record<string, number>>;
+
+export function roundFloats<T>(value: T, dp = 2, keyDp?: RoundFloatsKeyDp): T {
   const factor = 10 ** dp;
-  const walk = (v: unknown): unknown => {
+  // Build a Map rather than doing `overrides[key]` on a plain object: keys reaching this
+  // lookup come from arbitrary payload property names, and a bare object lookup would also
+  // resolve inherited Object.prototype members ("constructor", "toString", …) — both a real
+  // wrong-precision hazard and a property-injection sink to CodeQL. A Map has no prototype
+  // chain to fall through, so `undefined` unambiguously means "no override for this key".
+  const entries = keyDp ? Object.entries(keyDp).filter(([, d]) => Number.isInteger(d) && d >= 0) : [];
+  const overrides = entries.length ? new Map(entries) : null;
+  const walk = (v: unknown, key: string | null): unknown => {
     if (typeof v === "number") {
       if (!Number.isFinite(v) || Number.isInteger(v)) return v;
-      return Math.round(v * factor) / factor;
+      const override = overrides && key != null ? overrides.get(key) : undefined;
+      const f = override === undefined ? factor : 10 ** override;
+      return Math.round(v * f) / f;
     }
-    if (Array.isArray(v)) return v.map(walk);
+    if (Array.isArray(v)) return v.map((el) => walk(el, key));
     if (v !== null && typeof v === "object") {
       const out: Record<string, unknown> = {};
-      for (const [k, val] of Object.entries(v as Record<string, unknown>)) out[k] = walk(val);
+      for (const [k, val] of Object.entries(v as Record<string, unknown>)) out[k] = walk(val, k);
       return out;
     }
     return v;
   };
-  return walk(value) as T;
+  return walk(value, null) as T;
 }
 
 /**

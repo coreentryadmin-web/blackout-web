@@ -162,3 +162,124 @@ test("Vector data-layer: flip / walls / max pain / vexFlip / ladder round while 
   assert.equal(rounded.asOfMs, 1720000000000);
   assert.equal(rounded.strikeCount, 42);
 });
+
+// ── per-KEY decimal-place overrides (keyDp) ───────────────────────────────────────
+// Motivating defect: /api/market/zerodte/marks shipped provider option greeks verbatim
+// (delta 0.9744760508898113, gamma 0.000800420684215033 — 16-18 fraction digits, captured
+// live 2026-08-06). A flat 2dp would have DESTROYED gamma (→ 0.00), so rounding at the data
+// layer needed per-field precision. See docs/audit/FINDINGS.md.
+
+/**
+ * Frozen copy of the PRE-override implementation. The whole promise of adding `keyDp` is that
+ * the ~45 existing `roundFloats(x)` / `roundFloats(x, n)` call sites are byte-identical
+ * afterwards. Asserting that against a literal copy of the old code is the only way to prove
+ * it rather than assume it.
+ */
+function legacyRoundFloats<T>(value: T, dp = 2): T {
+  const factor = 10 ** dp;
+  const walk = (v: unknown): unknown => {
+    if (typeof v === "number") {
+      if (!Number.isFinite(v) || Number.isInteger(v)) return v;
+      return Math.round(v * factor) / factor;
+    }
+    if (Array.isArray(v)) return v.map(walk);
+    if (v !== null && typeof v === "object") {
+      const out: Record<string, unknown> = {};
+      for (const [k, val] of Object.entries(v as Record<string, unknown>)) out[k] = walk(val);
+      return out;
+    }
+    return v;
+  };
+  return walk(value) as T;
+}
+
+test("no keyDp → byte-identical to the pre-override implementation", () => {
+  // Shapes drawn from what the existing call sites actually serve: scalars, deep nesting,
+  // arrays of objects, arrays of bare numbers, integers, non-finites, null/undefined/strings,
+  // and keys that collide with Object.prototype members (the property-injection hazard).
+  const fixtures: unknown[] = [
+    7499.360000000001,
+    -12701691969.618551,
+    0,
+    NaN,
+    Infinity,
+    null,
+    "not a number",
+    [1.005, 2.005, 3, NaN],
+    { price: 7529.650000000001, meta: { vwap: 7514.418974358975, count: 12 } },
+    { rows: [{ entry: 7430.900000000001, id: 9007199254740 }, { entry: null }] },
+    { constructor: 1.23456789, toString: 2.3456789, hasOwnProperty: 3.456789, __proto__: null },
+    { cells: { "640": { "2026-08-06": 1234.5678901 } }, strike_totals: { "640": 1234.5678901 } },
+    { a: { b: { c: { d: [{ e: -0.000123456789 }] } } } },
+  ];
+  for (const dp of [0, 2, 4, 6]) {
+    for (const f of fixtures) {
+      assert.deepEqual(
+        roundFloats(structuredClone(f), dp),
+        legacyRoundFloats(structuredClone(f), dp),
+        `dp=${dp} diverged for ${JSON.stringify(f)}`
+      );
+    }
+  }
+  // And explicitly: passing an EMPTY override map is also the default path.
+  assert.deepEqual(roundFloats({ x: 1.23456789 }, 2, {}), legacyRoundFloats({ x: 1.23456789 }, 2));
+});
+
+test("keyDp overrides the default dp for the named key only", () => {
+  const out = roundFloats({ gamma: 0.000800420684215033, delta: 0.9744760508898113, pnl: 12.3456789 }, 2, {
+    gamma: 6,
+    delta: 4,
+  });
+  assert.equal(out.gamma, 0.0008);
+  assert.equal(out.delta, 0.9745);
+  assert.equal(out.pnl, 12.35); // no override → default dp
+});
+
+test("keyDp matches the IMMEDIATE key, so nested greeks resolve on their own names", () => {
+  const out = roundFloats(
+    { greeks: { gamma: 0.023206223912080434, vega: 0.03128651305306715, iv: 0.47277716608764614 } },
+    2,
+    { greeks: 0, gamma: 6, vega: 6, iv: 4 }
+  );
+  // `greeks: 0` must NOT leak down onto its children.
+  assert.deepEqual(out.greeks, { gamma: 0.023206, vega: 0.031287, iv: 0.4728 });
+});
+
+test("array elements inherit the key of the array they live in", () => {
+  const out = roundFloats({ series: [1.234567, 2.345678], other: [1.234567] }, 2, { series: 4 });
+  assert.deepEqual(out.series, [1.2346, 2.3457]);
+  assert.deepEqual(out.other, [1.23]);
+});
+
+test("keyDp lookup cannot resolve inherited Object.prototype members", () => {
+  // `constructor`/`toString` exist on every plain object; a naive `map[key]` lookup would
+  // return a function, `10 ** fn` → NaN, and silently NaN out a real number.
+  const out = roundFloats({ constructor: 1.23456789, toString: 2.3456789 }, 2, { unrelated: 6 });
+  assert.equal(out.constructor, 1.23);
+  assert.equal(out.toString, 2.35);
+});
+
+test("keyDp ignores non-integer / negative dp entries rather than emitting NaN", () => {
+  const out = roundFloats({ a: 1.23456789, b: 2.3456789, c: 3.456789 }, 2, {
+    a: -1,
+    b: 2.5,
+    c: 4,
+  } as unknown as Record<string, number>);
+  assert.equal(out.a, 1.23);
+  assert.equal(out.b, 2.35);
+  assert.equal(out.c, 3.4568);
+});
+
+test("keyDp still leaves integers and non-finites untouched", () => {
+  const out = roundFloats({ gamma: 5, delta: NaN, vega: Infinity }, 2, { gamma: 6, delta: 4, vega: 6 });
+  assert.equal(out.gamma, 5);
+  assert.equal(Number.isNaN(out.delta), true);
+  assert.equal(out.vega, Infinity);
+});
+
+test("a 2dp default would have destroyed live 0DTE gamma — the reason keyDp exists", () => {
+  // Captured live 2026-08-06 from Polygon /v3/snapshot O:SPY260807C00640000.
+  const liveGamma = 0.000800420684215033;
+  assert.equal(roundFloats({ gamma: liveGamma }).gamma, 0); // flat default: the number is GONE
+  assert.equal(roundFloats({ gamma: liveGamma }, 2, { gamma: 6 }).gamma, 0.0008); // preserved
+});

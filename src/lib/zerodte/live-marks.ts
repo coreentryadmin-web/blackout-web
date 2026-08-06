@@ -38,6 +38,7 @@ import { evaluateLedgerRowExit } from "./exit-sync";
 import { etNowParts, todayEt } from "@/features/nighthawk/lib/session";
 import { isEtCashRth } from "@/lib/et-market-hours";
 import { fetchOptionsUnifiedSnapshot, type OptionSnapshot } from "@/lib/providers/options-snapshot";
+import { roundFloats, type RoundFloatsKeyDp } from "@/lib/round-floats";
 import { getLiveOptionMark, subscribeContracts, unsubscribeContracts } from "@/lib/ws/options-socket";
 import {
   advancePlayLatch,
@@ -625,6 +626,54 @@ export function zeroDteMarksContentKey(payload: ZeroDteLiveMarksPayload): string
   });
 }
 
+/**
+ * Wire precision for the live-marks payload, per FIELD (see src/lib/round-floats.ts).
+ *
+ * WHY A MAP AND NOT ONE `dp`: this payload mixes three different scales, and a single
+ * decimal count is wrong for at least one of them. Rounding it here — at the data layer,
+ * on the ONE build both the SSE and the REST lane serialize — is the repo's standing rule;
+ * doing it per-renderer is how the same delta ends up shown as 0.97 on one panel and
+ * 0.9744760508898113 on another.
+ *
+ *  - PREMIUMS (bid/ask/mid/last/mark/entry_premium) → 4dp. The NBBO is penny-quoted, but
+ *    `mid` = (bid+ask)/2 legitimately lands on a HALF cent (observed live: 128.905), and
+ *    cheap 0DTE contracts trade sub-penny. 4dp is lossless for every value this pipeline
+ *    actually produces (`midOf`/`mark` are already `toFixed(4)` upstream) while still
+ *    capping IEEE noise. 2dp would silently destroy real half-cent mids.
+ *  - STRIKE → 4dp. Almost always an integer (untouched by roundFloats anyway), but 2.50/7.50
+ *    strikes exist and adjusted contracts can carry more; 4dp never truncates a real strike.
+ *  - PERCENTAGES (live_pnl_pct / live_pnl_pct_exec) → 2dp. `pinnedLivePnlPct` already rounds
+ *    to 2dp, so this is a no-op today; pinning it here means a future P&L formula can't
+ *    reintroduce the noise without tripping the test.
+ *  - GREEKS, split by magnitude — this is the part that makes a flat dp unusable:
+ *      · delta 4dp  (|Δ| ≤ 1; 4dp = 0.01 shares per contract of resolution)
+ *      · theta 4dp  ($/day, magnitudes ~0.01–5 — cents-of-a-cent is already past display)
+ *      · iv    4dp  (decimal vol; 4dp = 1 basis point of vol)
+ *      · gamma 6dp  ← the reason this override map exists. Live SPY 0DTE gamma is 0.000800;
+ *                     at 2dp that is 0.00 (the number is GONE) and at 4dp it collapses to
+ *                     one significant figure. 6dp keeps 3+ sig figs across the real range.
+ *      · vega  6dp  (same small-magnitude argument: 0.019–0.031 typical, far smaller OTM)
+ *
+ * `source`/`status`/`occ`/timestamps are strings, `mark_age_ms` is an integer — all pass
+ * through roundFloats untouched.
+ */
+export const ZERODTE_MARKS_WIRE_DP: RoundFloatsKeyDp = {
+  bid: 4,
+  ask: 4,
+  mid: 4,
+  last: 4,
+  mark: 4,
+  entry_premium: 4,
+  strike: 4,
+  live_pnl_pct: 2,
+  live_pnl_pct_exec: 2,
+  delta: 4,
+  theta: 4,
+  iv: 4,
+  gamma: 6,
+  vega: 6,
+};
+
 /** Build the live-marks payload from the active set + the mark store. Pure given
  *  injected inputs (tests); production callers use the cached active set. */
 export function buildZeroDteLiveMarksPayloadFrom(
@@ -662,14 +711,23 @@ export function buildZeroDteLiveMarksPayloadFrom(
       greeks: m?.greeks ?? null,
     };
   });
-  return {
-    available: true,
-    as_of: new Date(nowMs).toISOString(),
-    session_date: sessionDate,
-    idle: marks.length === 0,
-    cap: ZERODTE_LIVE_CONTRACT_CAP,
-    marks,
-  };
+  // Round HERE, not in the routes: this is the single build that BOTH the SSE lane
+  // (getZeroDteLiveMarksFrame → /marks/stream) and the REST fallback (/marks) serialize,
+  // and it is also what `zeroDteMarksContentKey` hashes — so the SSE dedupe now compares
+  // the values members actually see instead of re-pushing a frame because the 17th decimal
+  // of vega moved.
+  return roundFloats(
+    {
+      available: true,
+      as_of: new Date(nowMs).toISOString(),
+      session_date: sessionDate,
+      idle: marks.length === 0,
+      cap: ZERODTE_LIVE_CONTRACT_CAP,
+      marks,
+    },
+    2,
+    ZERODTE_MARKS_WIRE_DP
+  );
 }
 
 /** Serialized payload + its time-independent content key for the SSE/REST routes —
