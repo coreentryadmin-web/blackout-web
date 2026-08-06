@@ -9,6 +9,11 @@ import {
   restFallbackShouldPoll,
   type LiveMarkRow,
 } from "./use-live-marks.ts";
+import {
+  capQuoteTickers,
+  ZERODTE_QUOTE_MAX_TICKERS,
+  ZERODTE_QUOTE_POLL_MS,
+} from "./use-zero-dte-live-deck.ts";
 import type { TerminalPlay } from "./types.ts";
 import type { TerminalExitLadder } from "@/lib/zerodte/terminal-ladder.ts";
 
@@ -253,4 +258,54 @@ test("overlayHorizonWatchTrack: WATCH swing stamps underlying track from live qu
   );
   assert.equal(out!.trackPct, 8);
   assert.equal(out!.stockPrice, 108);
+});
+
+// ---------------------------------------------------------------------------
+// 0DTE underlying-quote fan-out bound (2026-08-06 prod saturation incident).
+// The 0DTE deck drives useLegacyStockQuotes, which issues ONE
+// /api/market/quote?ticker=X request PER TICKER PER TICK. Demanded request rate
+// is therefore rowCount/pollMs, so BOTH the cap and the cadence are load-bearing
+// and are asserted here as regression bounds.
+// ---------------------------------------------------------------------------
+
+test("capQuoteTickers: caps the 0DTE quote fan-out at the bulk-SSE ticker limit", () => {
+  // A ~106-row board (what prod actually served during the incident) must not
+  // produce a 106-wide per-tick fan-out.
+  const plays = Array.from({ length: 106 }, (_, i) => ({ ticker: `T${i}`, status: "WATCH" }));
+  const out = capQuoteTickers(plays, ZERODTE_QUOTE_MAX_TICKERS);
+  assert.equal(out.length, 60);
+  assert.equal(ZERODTE_QUOTE_MAX_TICKERS, 60, "must match the server's MAX_TICKERS_PER_STREAM");
+});
+
+test("capQuoteTickers: working rows (live capital) are never dropped by the cap", () => {
+  // Ledger-only working rows carry NO underlying_price in the board payload, so
+  // they have no board-cadence fallback price — they must win the cap.
+  const plays = [
+    ...Array.from({ length: 100 }, (_, i) => ({ ticker: `W${i}`, status: "WATCH" })),
+    { ticker: "HELD", status: "HOLD" },
+    { ticker: "OPENED", status: "OPEN" },
+    { ticker: "TRIMMED", status: "TRIM" },
+  ];
+  const out = capQuoteTickers(plays, ZERODTE_QUOTE_MAX_TICKERS);
+  assert.equal(out.length, 60);
+  assert.deepEqual(out.slice(0, 3), ["HELD", "OPENED", "TRIMMED"]);
+});
+
+test("capQuoteTickers: dedupes and preserves board order under the cap", () => {
+  const out = capQuoteTickers(
+    [{ ticker: "AMD" }, { ticker: "NVDA" }, { ticker: "AMD" }, { ticker: "" }],
+    60,
+  );
+  assert.deepEqual(out, ["AMD", "NVDA"]);
+});
+
+test("0DTE quote poll cadence keeps demanded request rate bounded", () => {
+  // Regression bound on the incident arithmetic: 106 tickers @ 1s = ~106 req/s
+  // per open tab against an uncacheable Clerk-authed route. Cap + cadence must
+  // hold the worst case to single digits per second.
+  const worstCaseReqPerSec = ZERODTE_QUOTE_MAX_TICKERS / (ZERODTE_QUOTE_POLL_MS / 1_000);
+  assert.ok(
+    worstCaseReqPerSec <= 10,
+    `0DTE quote fan-out is ${worstCaseReqPerSec} req/s per tab — must stay <= 10`,
+  );
 });

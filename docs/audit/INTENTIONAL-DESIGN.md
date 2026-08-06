@@ -40,6 +40,15 @@ while letting a clearly stronger non-flow rail own the ticket.
 on real minute bars as the origin band fills with `merge_policy_version: "v2"` commits. If v2's
 chosen direction underperforms v1 on a meaningful sample, that is evidence to revisit again.
 
+**First real run — 2026-08-05 (see FINDINGS.md same date).** Fetched a 90-day ledger export via the
+existing `/api/market/zerodte/record?days=90` endpoint (an admin/premium session already sees
+`entry_context.origin_maps` verbatim — no DB access needed). Found and fixed a bug in the harness
+itself (`flowFirstDirection()` was reading the policy-versioned `direction_owner` field instead of
+the fixed seating order, so it could never detect a v2-era disagreement). After the fix: 2 genuine
+disagreement rows (AMD 2026-08-03, MU 2026-07-29), both a dead heat on real minute bars (0.0% win
+rate for both arms, n=2 — too small to be evidence either way). **No change to the shipped v2
+precedence from this sample** — revisit once more multi-origin disagreement rows accumulate.
+
 ---
 
 ## 2. Cortex veto has no hysteresis / latching (recomputed each pass)
@@ -63,6 +72,23 @@ dwell/hysteresis would buy down); a low rate means statelessness is cheap and hy
 responsiveness for little stability. The tool tallies flicker rate, median passes-to-clear, and
 per-ticker churn from a per-pass decision export (exact) or the `zerodte_scan_rejections`
 `cortex_veto*` codes (approximate). Only a **high** flicker rate is evidence for adding a dwell.
+
+**First real run — 2026-08-05 (see FINDINGS.md same date).** Captured 5 real sessions
+(2026-07-28…07-31, 08-04) via `veto-flicker-capture.mjs` (built on PR #1679's `?date=` +
+`raw_events`/`raw_rejections` funnel-endpoint plumbing). Raw APPROXIMATE-mode result: **100% flicker,
+median 1 pass-to-clear, every single session, 38/38 episodes** — but investigating *why* found this
+is mostly a measurement artifact, not a real signal: both `zerodte_scan_rejections` and
+`zerodte_discovery_events` are write-throttled to one row per ticker per DISTINCT state transition
+(not one row per scan pass), so for the 4 sessions that predate `discovery_events`
+(`discovery-events-persist.ts` shipped 2026-08-03, PR #1582) every vetoed ticker has exactly ONE row
+for the whole session — which trivially reads as "cleared next pass" by construction, regardless of
+the ticker's true veto duration. Only 2026-08-04 (both tables live) showed a *real* signal: MSFT
+re-wrote a fresh veto row 15 times and INTC 6 times across one session, real repeated state
+transitions, but still not resolvable into an EXACT clear-vs-dropped-candidacy distinction without a
+`--passes` export. **Verdict: insufficient/confounded evidence — `cortex-gate.ts` NOT touched.**
+Re-run forward-looking (2026-08-04 onward only, excluding the 4 pre-#1582 artifact-only days) once
+more post-throttle-fix sessions accumulate; the durable fix for the ambiguity itself would be a new
+`cortex_cleared` discovery-event kind (not attempted — would touch the live scanner).
 
 ---
 
@@ -88,8 +114,10 @@ tolerance) vs **single-snapshot** transients, then grade each pin's fade on real
 stable-bracket pins grade **materially better** than single-snapshot ones, a temporal-stability
 requirement (e.g. "the bracket must hold for K snapshots before PIN emits") is warranted. If not, the
 single-snapshot test stands. (Intraday GEX snapshots are a server-side UW product not reachable
-offline; the tool reports INSUFFICIENT DATA absent a snapshot export, and a live intraday poller can
-gather one going forward.)
+offline; the tool reports INSUFFICIENT DATA absent a snapshot export. `scripts/audit/
+gex-wall-snapshot-poll.mjs` is that live intraday poller — built + smoke-tested against prod
+2026-08-05, but not yet run across a real RTH session; see FINDINGS.md 2026-08-05 for why
+[market was closed] and the exact follow-up command.)
 
 ---
 

@@ -65,6 +65,25 @@ test("vwapSeries: same-ET-day bars do NOT reset (intraday accumulation preserved
   approx(vwapSeries(bars)[1], 17.5);
 });
 
+test("vwapSeries: premarket/after-hours bars do NOT anchor session VWAP (2026-08-05 audit fix)", () => {
+  const t0 = 1783949400; // 2026-07-13 09:30 ET (RTH open)
+  const premarket = t0 - 5.5 * 3600; // 04:00 ET same day
+  const afterHours = t0 + 6.5 * 3600 + 2 * 3600; // 18:00 ET same day
+  const bars = [
+    { time: premarket, high: 1000, low: 1000, close: 1000, volume: 99999 }, // must be ignored
+    { time: t0, high: 10, low: 10, close: 10, volume: 100 }, // 09:30 RTH open
+    { time: t0 + 60, high: 20, low: 20, close: 20, volume: 300 },
+    { time: afterHours, high: 5000, low: 5000, close: 5000, volume: 99999 }, // must be ignored
+  ];
+  const out = vwapSeries(bars);
+  // The premarket bar's huge volume/price must not enter the accumulation at all.
+  assert.equal(out[0], null, "premarket bar contributes no volume, so VWAP is still undefined");
+  approx(out[1], 10); // RTH open anchors VWAP fresh, at its own typical price
+  approx(out[2], (10 * 100 + 20 * 300) / 400); // 17.5 — same as the plain RTH-only case
+  // After-hours: VWAP flat-lines at the last RTH value rather than being dragged toward 5000.
+  approx(out[3], 17.5);
+});
+
 test("vwapSeries: bars without time keep legacy continuous accumulation", () => {
   const bars = [
     { high: 10, low: 10, close: 10, volume: 100 },

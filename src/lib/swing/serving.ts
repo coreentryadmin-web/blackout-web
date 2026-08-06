@@ -8,16 +8,16 @@
 //
 // THE LOAD-BEARING RULE (SEV-6, and the whole reason this is its own module): the router keys ONLY on
 // OBSERVABLE state — the setup maturity (setupState), the entry-execution stance (entryStatus), a live
-// position's status/management action, the thesis-health level, and whether the play's archetype×sub-lane
-// bucket has GRADUATED. It NEVER routes on an ungraduated STATISTIC (a probability, an EV, a raw conviction
-// score). A 91-point name that has run past its trigger is WAITING_FOR_ENTRY, not COMMIT_NOW — the score is
-// high but the OBSERVABLE fact is "no clean entry left", and that fact, not the number, decides the section.
+// position's status/management action, and the thesis-health level. It NEVER routes on an ungraduated
+// STATISTIC (a probability, an EV, a raw conviction score). A 91-point name that has run past its trigger
+// is WAITING_FOR_ENTRY, not COMMIT_NOW — the score is high but the OBSERVABLE fact is "no clean entry
+// left", and that fact, not the number, decides the section.
 //
-// COMMIT_NOW ≠ "score cleared a provisional floor." FINDINGS 2026-07-30: COMMIT_NOW is reserved for setups
-// whose entry geometry is clean AND whose archetype×sub-lane bucket has graduated the same Wilson-LB ladder
-// the model ledger requires before opening. An ungraduated cold-book name that is triggered + at-trigger
-// routes to WAITING_FOR_ENTRY — never "Act now" for a setup the model itself is prohibited from opening.
-// Budget/caps stay model-book-only (members are not on the reference book); graduation is the shared bar.
+// COMMIT_NOW ≠ "score cleared a provisional floor." COMMIT_NOW is reserved for setups whose entry geometry
+// is clean — triggered + at-trigger. Archetype×sub-lane calibration (graduation) is EVIDENCE-ONLY (2026-08-06,
+// matches commit.ts's real-time-gates model — see its file header): it no longer withholds COMMIT_NOW, since
+// the backend now opens a real position on the real-time gates (contract/budget/caps/idempotency) regardless
+// of graduation status. Budget/caps stay model-book-only (members are not on the reference book).
 // The one score-derived input we DO consume is the COMMIT/WATCH floor gate (aboveFloor) — a mechanical GATE
 // RESULT (did the score clear the lane floor: yes/no), not the raw statistic itself.
 //
@@ -34,8 +34,8 @@ import type { HorizonPlay } from "../horizon-plays";
  */
 export type SwingServingSection =
   // ── pre-entry ──
-  | "COMMIT_NOW" //         triggered + at trigger + floor cleared + bucket GRADUATED → member may act
-  | "WAITING_FOR_ENTRY" //  live thesis, but no clean fill yet — OR clean fill on an UNGRADUATED bucket
+  | "COMMIT_NOW" //         triggered + at trigger + floor cleared → member may act (graduation is evidence-only)
+  | "WAITING_FOR_ENTRY" //  live thesis, but no clean fill yet
   | "WATCH" //              forming, or a real contract still under the commit floor → not actionable yet
   | "RESEARCH" //           unclassified, invalidated, or degraded → needs work before it can be served
   // ── live position ──
@@ -85,9 +85,9 @@ export interface SwingServingObservables {
    *  yes/no gate, NOT the raw score — the only score-derived input the router is allowed to consume. */
   aboveFloor?: boolean | null;
   /**
-   * Whether this play's archetype×sub-lane bucket has cleared the staged Wilson-LB graduation ladder
-   * (the same bar the model ledger requires before OPEN). Absent/false → never COMMIT_NOW (cold-book
-   * honesty). Budget/caps are NOT required here — those are reference-book controls, not member gates.
+   * Whether this play's archetype×sub-lane bucket has cleared the staged Wilson-LB graduation ladder.
+   * DIAGNOSTIC ONLY (2026-08-06) — does not gate COMMIT_NOW; the model ledger itself opens on real-time
+   * gates (contract/budget/caps/idempotency) regardless of graduation, see commit.ts's file header.
    */
   bucketGraduated?: boolean | null;
   /** When true, the play is visible in RESEARCH — seen but below the persistence bar. */
@@ -108,12 +108,11 @@ export interface SwingServingObservables {
  *     • FORMING (thesis still building) ....................... WATCH
  *     • real contract under the commit floor .................. WATCH
  *     • EXTENDED (moved too far past trigger — no clean fill) . WAITING_FOR_ENTRY
- *     • TRIGGERED + AT_TRIGGER + bucket GRADUATED ............. COMMIT_NOW
- *     • TRIGGERED + AT_TRIGGER + bucket NOT graduated ......... WAITING_FOR_ENTRY
+ *     • TRIGGERED + AT_TRIGGER ................................ COMMIT_NOW
  *     • TRIGGERED + any other entry stance (pre/pullback/chase) WAITING_FOR_ENTRY
  *
  * NEVER branches on a probability/EV/raw score — only the observable states above (aboveFloor is the
- * mechanical floor-gate result, not the statistic). COMMIT_NOW additionally requires bucketGraduated.
+ * mechanical floor-gate result, not the statistic).
  */
 export function sectionForSwingPlay(o: SwingServingObservables): SwingServingSection {
   // ── LIVE POSITION → management sections ──────────────────────────────────────────────────────
@@ -148,10 +147,12 @@ export function sectionForSwingPlay(o: SwingServingObservables): SwingServingSec
   // The move already ran past the trigger — the thesis is live but there's no clean entry, so it waits.
   if (setup === "EXTENDED") return "WAITING_FOR_ENTRY";
 
-  // Triggered + at trigger → COMMIT_NOW ONLY when the bucket has graduated (same bar the model needs to
-  // open). Ungraduated cold-book setups stay WAITING_FOR_ENTRY — never "Act now" on a prohibited open.
+  // Triggered + at trigger → COMMIT_NOW. Graduation status is evidence-only (2026-08-06, matches the
+  // commit gate in commit.ts — see its file header): a real position now opens on the real-time gates
+  // (contract/budget/caps/idempotency) regardless of the calibration ladder, so the display no longer
+  // withholds "Act now" from an ungraduated setup that the backend will, in fact, open.
   if (setup === "TRIGGERED") {
-    if (o.entryStatus === "AT_TRIGGER" && o.bucketGraduated === true) return "COMMIT_NOW";
+    if (o.entryStatus === "AT_TRIGGER") return "COMMIT_NOW";
     return "WAITING_FOR_ENTRY";
   }
 
@@ -170,7 +171,8 @@ export function observablesFromHorizonPlay(play: HorizonPlay): SwingServingObser
     setupState: play.setupState ?? null,
     entryStatus: play.entryStatus ?? null,
     aboveFloor: play.status === "COMMIT",
-    // Absent/false → COMMIT_NOW never fires (cold-book default). Discovery stamps true when graduated.
+    // Diagnostic only (2026-08-06) — no longer gates COMMIT_NOW; kept so the calibration ladder's
+    // progress stays observable on the play/board without influencing what section it serves in.
     bucketGraduated: play.bucketGraduated === true,
     persistenceObserved: play.persistenceObserved === true,
     // Live-position observables — stamped by live-plays.ts from the open ledger.

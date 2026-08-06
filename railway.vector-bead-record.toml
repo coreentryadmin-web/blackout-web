@@ -1,0 +1,16 @@
+# Railway config for Vector-Bead-Record cron (backup + audit for the in-app 5s leader).
+[build]
+builder = "nixpacks"
+buildCommand = "echo 'cron trigger service: no app build needed'"
+watchPatterns = [
+  "scripts/hit-cron.mjs",
+  "railway.vector-bead-record.toml",
+  "nixpacks.toml",
+]
+
+[deploy]
+startCommand = "CRON_HTTP_TIMEOUT_MS=180000 node scripts/hit-cron.mjs /api/cron/vector-bead-record"
+# Every minute during RTH UTC band — primary 5s cadence is vector-bead-recorder-leader in-process.
+cronSchedule = "* 11-21 * * 1-5"
+restartPolicyType = "ON_FAILURE"
+numReplicas = 1

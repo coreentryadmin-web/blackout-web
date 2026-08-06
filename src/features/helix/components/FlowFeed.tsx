@@ -35,6 +35,10 @@ import {
   showMarketWideAnalyticsPanels,
 } from "@/features/helix/lib/helix-analytics-scope";
 import {
+  useHelixDeepLink,
+  type HelixDarkpoolHighlight,
+} from "@/features/helix/lib/use-helix-deep-link";
+import {
   HELIX_FLOW_DEFAULT_SINCE_HOURS,
   HELIX_FLOW_PAGE_SIZE,
 } from "@/features/helix/lib/helix-flow-limits";
@@ -218,6 +222,7 @@ export function FlowFeed() {
   const watchlist = useWatchlist();
   const [watchlistOnly, setWatchlistOnly] = useState(false);
   const [showMorePanels, setShowMorePanels] = useState(false);
+  const [darkpoolHighlight, setDarkpoolHighlight] = useState<HelixDarkpoolHighlight>(null);
   const [replayMode, setReplayMode]         = useState(false);
   const [replayAlerts, setReplayAlerts]     = useState<FlowAlert[]>([]);
   // Bug 12: replay speed control
@@ -334,6 +339,14 @@ export function FlowFeed() {
   }, [countSource]);
 
   const tapeBuffer = replayMode ? replayAlerts : alerts;
+
+  useHelixDeepLink({
+    alerts: tapeBuffer,
+    setTickerFilter,
+    setSelectedContract,
+    setShowMorePanels,
+    setDarkpoolHighlight,
+  });
 
   const filteredTapeBuffer = useMemo(
     () => applyTapeFilters(tapeBuffer),
@@ -828,7 +841,7 @@ export function FlowFeed() {
       <div className="helix-analytics-wide">
         <StrikeStackDetector alerts={displayAlerts} onSelectTicker={setSelectedTicker} />
       </div>
-      <DarkPoolPanel tapeTicker={tickerFilter} />
+      <DarkPoolPanel tapeTicker={tickerFilter} highlight={darkpoolHighlight} />
     </>
   );
 

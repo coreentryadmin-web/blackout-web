@@ -12,6 +12,8 @@ import {
   selectHelixDiscordDigest,
   selectHelixDiscordStacks,
   HELIX_DISCORD_MIN_PREMIUM,
+  buildHelixBurstEmbed,
+  helixDiscordLiveRthOnly,
 } from "./helix-discord-format.ts";
 
 const base = {
@@ -68,7 +70,7 @@ test("buildHelixDiscordEmbed is a short write-up not field soup", () => {
   assert.match(emb.title, /HELIX/);
   assert.match(emb.description, /printing near the call wall/);
   assert.doesNotMatch(emb.description, /\*\*Premium\*\*/);
-  assert.match(emb.description, /Open in HELIX/);
+  assert.match(emb.description, /Open this print in HELIX/);
 });
 
 test("digest embed lists ranked rows", () => {
@@ -219,4 +221,29 @@ test("selectHelixDiscordDigest prefers in-window score then premium", () => {
   assert.equal(picked.sessionFallback, false);
   assert.equal(picked.inWindowCount, 1);
   assert.equal(picked.rows[0]?.ticker, "HOT");
+});
+
+test("buildHelixBurstEmbed collapses multiple prints on one ticker", () => {
+  const emb = buildHelixBurstEmbed({
+    ticker: "NVDA",
+    windowMin: 4,
+    flows: [
+      base,
+      { ...base, premium: 1_100_000, strike: 141 },
+    ],
+  });
+  assert.match(emb.title, /burst \(2 prints\)/);
+  assert.match(emb.description ?? "", /\$2\.00M.*total/);
+});
+
+test("helixDiscordLiveRthOnly defaults true", () => {
+  assert.equal(helixDiscordLiveRthOnly(), true);
+});
+
+test("writeup includes gex_context_line when supplied", () => {
+  const text = helixDiscordWriteup({
+    ...base,
+    gex_context_line: "Structure: strike 735 is 1.2% below call wall (742)",
+  });
+  assert.match(text, /Structure: strike 735/);
 });

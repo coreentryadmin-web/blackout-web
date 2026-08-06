@@ -52,6 +52,7 @@ import { buildOcc } from "@/lib/ws/options-socket";
 import { requireHealthySourceEnabled } from "@/lib/ws/source-health";
 import { getFlowSourceHealthState } from "@/lib/ws/uw-socket";
 import { withServerCache } from "@/lib/server-cache";
+import { recordZeroDteScanTick } from "@/lib/play-engine-heartbeat";
 import {
   buildZeroDteAuditRow,
   computeLedgerGrade,
@@ -1543,6 +1544,15 @@ export async function gradeZeroDteLedger(force = false): Promise<number> {
  */
 export async function warmZeroDteBoard(): Promise<{ found: number; logged: number } | null> {
   const { setups, rejections, market_state } = await scanZeroDteBoard();
+  // NH-R10: record this scan cycle's tick as soon as scanZeroDteBoard() has actually
+  // returned — this is the always-on cron cadence tick (distinct from the member-poll
+  // board route), so a silent stall here is the same class of blind spot the SPX play
+  // engine heartbeat was built to catch. Heartbeat persistence must never break the
+  // real board pipeline, so failures are swallowed exactly like the other best-effort
+  // side-tasks in this function (near-miss log, discovery events, ledger sync below).
+  void recordZeroDteScanTick("cron").catch((err) => {
+    console.warn("[zerodte-scan-heartbeat] tick record failed:", err);
+  });
   const logged = await persistZeroDteScan(setups).catch(() => 0);
   // Near-miss log (task #147) — same cron cadence persistZeroDteScan uses above,
   // never the member-poll board route. Best-effort: a failure here must never

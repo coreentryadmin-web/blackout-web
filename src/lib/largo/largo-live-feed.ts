@@ -39,7 +39,9 @@ type FeedKey =
   | "spx_confluence"
   | "lotto_live"
   | "power_hour"
-  | "zerodte_plays";
+  | "zerodte_plays"
+  | "banger_board"
+  | "swing_horizon";
 
 export type LargoLiveFeed = Partial<Record<FeedKey, unknown>>;
 
@@ -80,6 +82,18 @@ export async function captureLargoLiveFeed(
       key: "zerodte_plays",
       promise: import("@/lib/zerodte/scan")
         .then((m) => m.zeroDtePlaysFeed())
+        .catch((e) => ({ error: e instanceof Error ? e.message : "failed" })),
+    },
+    {
+      key: "banger_board",
+      promise: import("@/lib/largo/product-reads")
+        .then((m) => m.bangerBoardForLargo(12))
+        .catch((e) => ({ error: e instanceof Error ? e.message : "failed" })),
+    },
+    {
+      key: "swing_horizon",
+      promise: import("@/lib/largo/product-reads")
+        .then((m) => m.swingHorizonForLargo())
         .catch((e) => ({ error: e instanceof Error ? e.message : "failed" })),
     },
   ];
@@ -229,6 +243,10 @@ function asArr(v: unknown): unknown[] {
   return Array.isArray(v) ? v : [];
 }
 
+function fmtPct(n: unknown): string {
+  return typeof n === "number" && Number.isFinite(n) ? `${n >= 0 ? "+" : ""}${n.toFixed(1)}%` : "—";
+}
+
 function headline(item: unknown): string {
   const o = asObj(item);
   if (!o) return sanitizeFeedText(item);
@@ -325,6 +343,41 @@ export function formatLargoLiveFeed(rawFeed: LargoLiveFeed, ticker: string): str
         );
       }
       lines.push("If the user asks about any of these names, anchor on OUR play state first (get_zerodte_plays for full detail).");
+      lines.push("");
+    }
+  }
+
+  const banger = asObj(feed.banger_board);
+  if (banger?.available === true) {
+    const open = asArr(banger.open);
+    if (open.length > 0) {
+      lines.push("### Bangers (Engine B — OUR live board)");
+      for (const pRaw of open.slice(0, 6)) {
+        const o = asObj(pRaw);
+        if (!o) continue;
+        lines.push(
+          `- ${o.ticker} ${o.strike ?? "?"} — ${o.status}` +
+            (o.live_pnl_pct != null ? ` (${fmtPct(o.live_pnl_pct)})` : "")
+        );
+      }
+      lines.push("Use get_banger_board for full Bangers lane detail.");
+      lines.push("");
+    }
+  }
+
+  const swing = asObj(feed.swing_horizon);
+  if (swing?.available === true) {
+    const committed = typeof swing.committed_count === "number" ? swing.committed_count : 0;
+    const watch = typeof swing.watch_count === "number" ? swing.watch_count : 0;
+    if (committed + watch > 0) {
+      lines.push(`### Swings lane — ${committed} committed · ${watch} watch`);
+      const sample = asArr(swing.sample_plays);
+      for (const pRaw of sample.slice(0, 5)) {
+        const o = asObj(pRaw);
+        if (!o) continue;
+        lines.push(`- ${o.ticker} ${o.direction} (${o.status}) score ${o.score ?? "—"}`);
+      }
+      lines.push("Use get_swing_horizon for full section breakdown.");
       lines.push("");
     }
   }

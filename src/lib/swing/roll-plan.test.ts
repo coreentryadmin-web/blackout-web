@@ -129,6 +129,44 @@ test("DEFER: budget removes the CLOSING parent — a roll that fits after freein
   assert.ok(plan?.childSpec, "the roll opens because the closing parent's risk is netted out of the budget");
 });
 
+// ─── same-pass book growth (FINDINGS 2026-08-06 P1) ────────────────────────────────
+
+test("book growth: a successful ROLL swaps the closing parent for the new child IN PLACE on the caller's shared book array", async () => {
+  const book: CommitBookPosition[] = [{ ticker: "NVDA", direction: "LONG", commitKey: "2026-07-01:NVDA:STANDARD:long", riskUsd: 500, isOvernight: true }];
+  const plan = await buildSwingRollPlan(parentRow(), verdict(), reads(), deps({ book }));
+  assert.ok(plan?.childSpec);
+  assert.equal(book.some((p) => p.commitKey === "2026-07-01:NVDA:STANDARD:long"), false, "the closing parent is removed from the shared book");
+  const childKey = swingRollCommitKey("2026-07-25", "NVDA", "STANDARD", "long", 1);
+  assert.ok(book.some((p) => p.commitKey === childKey), "the new child is added to the shared book");
+});
+
+test("book growth: a SECOND same-pass roll sees the FIRST roll's child risk (not a stale top-of-run snapshot) and gets blocked by the aggregate overnight cap", async () => {
+  // A pre-existing, untouched-by-either-roll book position (2000 overnight risk) plus two ~1900-risk rolls
+  // (each individually well under the 2000 per-position cap) sums past the 4000 (4%) overnight cap ONLY in
+  // aggregate. The active-refresh cron's `rollBook` used to be a single snapshot fetched once at the top of
+  // the run and reused unmutated for every position's roll-gate check that pass — so a second same-pass roll
+  // would evaluate against a book that reflected NEITHER roll's addition, letting both clear a check that
+  // should have rejected the second. Passing the SAME `book` array into both calls (as the cron now does)
+  // reproduces the fix: the second call must see the first roll's child already counted.
+  const book: CommitBookPosition[] = [{ ticker: "AAPL", direction: "LONG", commitKey: "existing:AAPL:standing", riskUsd: 2000, isOvernight: true }];
+  const richChain = () => [{ expiry: "2026-08-08", strike: 150, call_bid: 18.8, call_ask: 19.2, call_delta: 0.6, call_oi: 1500, put_bid: 1, put_ask: 1.2, put_delta: -0.4, put_oi: 100 }];
+
+  const first = await buildSwingRollPlan(parentRow(), verdict(), reads(), deps({ book, fetchChainRows: async () => richChain() }));
+  assert.ok(first?.childSpec, "first roll (NVDA) opens: 2000 (AAPL) + 1900 (NVDA child) = 3900, under the 4000 overnight cap");
+
+  const second = await buildSwingRollPlan(
+    parentRow({ id: 99, commit_key: "2026-07-01:TSLA:STANDARD:long", ticker: "TSLA" }),
+    verdict(),
+    reads(),
+    deps({ book, fetchChainRows: async () => richChain() }),
+  );
+  assert.equal(
+    second,
+    null,
+    "second roll (TSLA) is blocked: 2000 (AAPL) + 1900 (NVDA child, now IN the shared book) + 1900 (TSLA candidate) breaches the 4000 overnight cap",
+  );
+});
+
 test("DEFER: idempotency — a child already open under this roll generation is not re-rolled", async () => {
   const childKey = swingRollCommitKey("2026-07-25", "NVDA", "STANDARD", "long", 1);
   const book: CommitBookPosition[] = [{ ticker: "NVDA", direction: "LONG", commitKey: childKey, riskUsd: 600, isOvernight: true }];

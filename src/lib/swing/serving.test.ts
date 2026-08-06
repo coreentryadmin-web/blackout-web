@@ -25,7 +25,7 @@ test("82-pt AT_TRIGGER, floor cleared, bucket GRADUATED → COMMIT_NOW", () => {
   );
 });
 
-test("AT_TRIGGER + floor cleared but bucket NOT graduated → WAITING_FOR_ENTRY (never Act now on cold book)", () => {
+test("AT_TRIGGER + floor cleared, bucket NOT graduated → STILL COMMIT_NOW (graduation is evidence-only, 2026-08-06)", () => {
   assert.equal(
     sectionForSwingPlay({
       setupState: "TRIGGERED",
@@ -33,12 +33,12 @@ test("AT_TRIGGER + floor cleared but bucket NOT graduated → WAITING_FOR_ENTRY 
       aboveFloor: true,
       bucketGraduated: false,
     }),
-    "WAITING_FOR_ENTRY",
+    "COMMIT_NOW",
   );
   assert.equal(
     sectionForSwingPlay({ setupState: "TRIGGERED", entryStatus: "AT_TRIGGER", aboveFloor: true }),
-    "WAITING_FOR_ENTRY",
-    "absent bucketGraduated defaults to not-COMMIT_NOW",
+    "COMMIT_NOW",
+    "absent bucketGraduated no longer withholds COMMIT_NOW — the real-time gates in commit.ts decide, not calibration",
   );
 });
 

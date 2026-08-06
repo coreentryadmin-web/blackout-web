@@ -93,12 +93,20 @@ export function detectStructureEvents(
       else activeLow = p;
     }
     const close = bars[j]!.close;
+    // Captured BEFORE either branch below can mutate `trend` — a single bar CAN break both an
+    // active high (formed while price sat below it) and an active low (formed while price sat
+    // above it) when the two unbroken pivots have crossed (the more recent one printed on the
+    // "wrong" side of the older one, e.g. a still-unbroken swing high at 110 and a later swing
+    // low at 115). Without this capture, the up-break's `trend = "up"` mutation would leak into
+    // the down-break's classification on the SAME bar, misreading it as a CHOCH against a trend
+    // that only became "up" one line earlier in this very iteration (2026-08-05 audit finding).
+    const trendAtBarStart = trend;
     if (activeHigh && close > activeHigh.price) {
       events.push({
         index: j,
         time: bars[j]!.time,
         level: activeHigh.price,
-        type: trend === "down" ? "CHOCH" : "BOS",
+        type: trendAtBarStart === "down" ? "CHOCH" : "BOS",
         direction: "up",
       });
       trend = "up";
@@ -109,7 +117,7 @@ export function detectStructureEvents(
         index: j,
         time: bars[j]!.time,
         level: activeLow.price,
-        type: trend === "up" ? "CHOCH" : "BOS",
+        type: trendAtBarStart === "up" ? "CHOCH" : "BOS",
         direction: "down",
       });
       trend = "down";

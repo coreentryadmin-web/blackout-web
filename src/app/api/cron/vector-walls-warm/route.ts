@@ -12,7 +12,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
-import { vectorUniverseTickers } from "@/lib/heatmap-allowlist";
+import { listSharedUniverseTickers } from "@/features/vector/lib/vector-dynamic-universe";
 import { warmVectorWalls, getTickersToWarmAsync } from "@/features/vector/lib/vector-walls-warm";
 import { isEtCashRth } from "@/lib/et-market-hours";
 
@@ -33,9 +33,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(payload);
   }
 
-  const allowlist = vectorUniverseTickers();
-  // Shared sticky universe (static ∪ dynamic ≤100/14d) + currently connected SSE viewers.
-  const tickers = await getTickersToWarmAsync(allowlist);
+  const tickers = await getTickersToWarmAsync(await listSharedUniverseTickers());
 
   // Warm all walls in parallel; settle all so one failing underlying can't abort the rest.
   const results = await Promise.allSettled(
@@ -54,16 +52,12 @@ export async function GET(req: NextRequest) {
     ok: warmed > 0,
     warmed,
     failed,
-    allowlistCount: allowlist.length,
-    dynamicCount: Math.max(0, tickers.length - allowlist.length),
     total: tickers.length,
   });
 
   return NextResponse.json({
     ok: true,
     warmed,
-    allowlistCount: allowlist.length,
-    dynamicCount: Math.max(0, tickers.length - allowlist.length),
     total: tickers.length,
   });
 }

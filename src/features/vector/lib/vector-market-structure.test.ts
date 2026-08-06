@@ -73,3 +73,35 @@ test("labelPivots/detectStructureEvents: quiet on empty/structureless input", ()
   assert.deepEqual(labelPivots([], 2), []);
   assert.deepEqual(detectStructureEvents(barsFrom([1, 2, 3, 4, 5, 6]), 2), []);
 });
+
+test("detectStructureEvents: a bar that breaks BOTH an active high and an active low classifies each against the trend as it stood BEFORE this bar (2026-08-05 audit fix)", () => {
+  // Two unbroken pivots can cross (a later-formed low pivot printing ABOVE an earlier, still-
+  // unbroken high pivot) — e.g. an active high at 100 and an active low at 110. A single close in
+  // (100, 110) then breaks both simultaneously. Establishes trend=down first (via an earlier,
+  // independent break) so the up/down breaks in that one bar have a real trend to classify
+  // against: the up-break (against the down trend) is a CHOCH; the down-break (continuing the
+  // down trend) must STILL read BOS — the bug being fixed here mutated `trend` to "up" when the
+  // up-break fired, so the down-break (checked immediately after, same bar) misread that as its
+  // own prevailing trend and reported CHOCH instead of BOS.
+  const LO = -1000; // sentinel "high" for buffer bars / a candidate's non-pivot field
+  const HI = 1000; // sentinel "low" for buffer bars / a candidate's non-pivot field
+  const bars = [
+    { time: 0, high: LO, low: HI, close: 500 }, // buffer
+    { time: 1, high: LO, low: 60, close: 65 }, // LOW-only pivot candidate (price 60)
+    { time: 2, high: LO, low: HI, close: 63 }, // buffer; low(60) confirms here
+    { time: 3, high: LO, low: HI, close: 55 }, // BOS down (55 < 60) — establishes trend=down
+    { time: 4, high: 100, low: HI, close: 95 }, // HIGH-only pivot candidate (price 100)
+    { time: 5, high: LO, low: HI, close: 98 }, // buffer; high(100) confirms here
+    { time: 6, high: LO, low: 110, close: 99 }, // LOW-only pivot candidate (price 110), crossed above 100
+    { time: 7, high: LO, low: HI, close: 105 }, // low(110) confirms HERE — 105 breaks BOTH at once
+  ];
+  const events = detectStructureEvents(bars, 1);
+  assert.deepEqual(
+    events.map((e) => [e.index, e.type, e.direction]),
+    [
+      [3, "BOS", "down"],
+      [7, "CHOCH", "up"], // against the down trend — correct either way
+      [7, "BOS", "down"], // continuing the down trend — THE regression: bug reports CHOCH here
+    ]
+  );
+});

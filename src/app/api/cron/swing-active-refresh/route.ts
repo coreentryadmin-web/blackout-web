@@ -103,8 +103,10 @@ async function runSwingActiveRefreshCron(started: number): Promise<void> {
   const nowMs = started;
   try {
     // Fetch the open book ONCE — reused as the refresh working set AND as the roll gate's book snapshot (budget
-    // + caps + idempotency). A roll is near risk-neutral, so a snapshot that doesn't reflect an intra-pass child
-    // is conservative, not unsafe.
+    // + caps + idempotency). `rollBook` is then GROWN in place as each roll executes this pass: buildSwingRollPlan
+    // (roll-plan.ts) swaps a closing parent for its new child directly on this array, so a SECOND same-pass roll's
+    // gate check sees the first roll's child risk instead of a stale top-of-run snapshot (FINDINGS 2026-08-06 P1 —
+    // mirrors commit.ts's `runningBook` growth across a commit batch).
     const openRows = await fetchOpenSwingPositions().catch(() => []);
     const rollBook: CommitBookPosition[] = openRows.map((r) => {
       const pinned = r.entry_context?.risk_usd;

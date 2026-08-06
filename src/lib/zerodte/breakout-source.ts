@@ -18,10 +18,12 @@
 
 import type { BreakoutMover } from "@/features/nighthawk/lib/candidates";
 import {
+  calendarDteBetween,
   deriveContractHorizon,
   enrichSetup,
   gradingPolicyForHorizon,
   mergeSameTickerDiscovery,
+  tradingSessionGapDays,
   type EnrichedZeroDteSetup,
   type ZeroDteSetup,
 } from "./board";
@@ -123,14 +125,6 @@ export type PickedBreakoutContract = {
   /** Calendar DTE from `today` (0 = same-day 0DTE). */
   dte: number;
 };
-
-/** Calendar days between two YYYY-MM-DD dates (UTC-noon anchored, DST-agnostic). */
-function calendarDteBetween(todayYmd: string, expiryYmd: string): number {
-  const a = Date.parse(`${todayYmd}T12:00:00Z`);
-  const b = Date.parse(`${expiryYmd.slice(0, 10)}T12:00:00Z`);
-  if (!Number.isFinite(a) || !Number.isFinite(b)) return Number.NaN;
-  return Math.round((b - a) / 86_400_000);
-}
 
 /** A row's chosen side is tradeable enough to seed a plan when it has a live quote (bid or ask) or real OI. */
 function sideHasLiquidity(row: BreakoutChainRow, side: "call" | "put"): boolean {
@@ -277,8 +271,12 @@ export function buildBreakoutSetup(input: {
   /** Direction for this candidate: "long" for breakouts (up-moves), "short" for breakdowns
    *  (gap-down movers). Defaults to "long" for backward compatibility. */
   direction?: "long" | "short";
+  /** Today's ET session date (YYYY-MM-DD) — used ONLY to compute the evidence-only
+   *  `session_gap_days` field (NH-R4). Optional so existing callers/tests keep compiling;
+   *  omitted → session_gap_days is null (never fabricated). */
+  todayYmd?: string;
 }): EnrichedZeroDteSetup {
-  const { mover, spot, contract, dollarNorm } = input;
+  const { mover, spot, contract, dollarNorm, todayYmd } = input;
   const direction = input.direction ?? "long";
   const score = breakoutScore(mover, dollarNorm, direction);
   // Real moneyness of the picked strike (positive = OTM), rounded at the data layer.
@@ -324,7 +322,10 @@ export function buildBreakoutSetup(input: {
   };
   // enrichSetup with a null dossier fills the enriched fields (condor from spot, technicals null,
   // gate/cortex/plan null) exactly as it does for an un-enriched flow setup — one code path.
-  return enrichSetup(base, null);
+  // NH-R4 (evidence-only): trading-session-aware gap days for the selected contract's hold, when
+  // today's date is available. Null (never fabricated) when the caller omits it.
+  const sessionGapDays = todayYmd != null ? tradingSessionGapDays(todayYmd, contract.expiry) : null;
+  return { ...enrichSetup(base, null), session_gap_days: sessionGapDays };
 }
 
 // ── Merge + dedup (union by ticker, preserve origin as a SET) ─────────────────────────

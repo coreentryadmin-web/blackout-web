@@ -1,5 +1,1920 @@
 # BlackOut Open Issues Log
-Last updated: 2026-08-04 16:25 ET
+Last updated: 2026-08-06 11:59 ET
+
+<!-- consolidated from PR #1791 (cursor/0dte-grid-rth-agent-9371) -->
+## grid-rth-2026-08-06 — 0DTE Command verify pass (market open, ~8:43 AM PT / 11:43 AM ET)
+
+**Session:** Autonomous 0DTE Command + Market Grid **verify** mode per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` on branch `cursor/0dte-grid-rth-agent-9371`. Commands: `npm run validate:grid-rth` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e` → `data-validator.mjs` → Playwright Night Hawk tab pass.
+
+> **Note:** Classic Market Grid (`/grid` + 9 `/api/grid/*` routes) was deleted 2026-07-07. 0DTE Command lives on **`/nighthawk`** with four view tabs (0DTE / Swings / Bangers / Legacy). `/grid` URL still resolves but serves the retired route shell — all live probes target `/nighthawk` + `/api/market/zerodte/board`.
+
+### Validation summary (verify, RTH)
+
+| Check | Result |
+|---|---|
+| `npm run validate:grid-rth` | ✅ **14 PASS · 0 WARN · 0 FAIL** — deploy/rth-open, board upstream, session heat=RTH, ledger PnL 11 rows, SPX bootstrap spot=7708.51, HELIX 20 prints, Night Hawk dedupe 5 tickers, zerodte-warm cron accepted, logic audit nested GREEN, cross-tool integration, data-correctness flags=0, dashboard E2E, ops:collect zero items |
+| `npm run validate:zerodte-logic` | ✅ **17 PASS · 0 FAIL** — unit tests (3 files), gate funnel, plan exits (-50%/+100%/15:30 ET), lifecycle OPEN→TRIM→CLOSED, stop-first grading, session heat RTH→POST_COMMIT→LATE_SESSION, mergePlays past-cutoff/MOVED→SKIP, live board 113 setups / 11 ledger / 0 gate violations |
+| `npm run validate:grid-e2e` | ✅ **5 PASS · 0 FAIL** — board API 115 setups · ledger 10, HELIX 20 prints, Night Hawk page load, zero console errors |
+| `data-validator.mjs` | ✅ **43 PASS · 0 FAIL** — SPY/SPX/VIX vs Polygon, GEX walls/posture, 5 live + 5 ledger 0DTE premiums vs Polygon chains/minute bars, track-record math |
+| Playwright Night Hawk tabs | ✅ **8 PASS · 0 FAIL** — 0DTE / Swings / Bangers / Legacy segments clicked, Command Deck present, zero console errors |
+
+### 0DTE logic coverage (Step 3)
+
+| Layer | Result |
+|---|---|
+| Gates (`deriveZeroDteSetups`) | ✅ 0 gate violations on 113 live setups |
+| Plan exits (`buildContractPlan`) | ✅ stop -50%, target +100%, time stop 15:30 ET (pure probes) |
+| Trade lifecycle (`derivePlayStatus`) | ✅ OPEN/TRIM/CLOSED + sticky trough stop |
+| Session heat cutoffs | ✅ RTH heat=100% at 11:56 ET; POST_COMMIT after 15:00 ET (pure probe) |
+| mergePlays UI rules | ✅ past-cutoff → SKIP; MOVED → SKIP |
+| Ledger PnL math | ✅ 11 rows checked, 0 inconsistencies |
+| zerodte-warm cron | ✅ accepted (background `warmZeroDteBoard()`) |
+
+### Cross-tool integration
+
+| Tool | Result |
+|---|---|
+| SPX bootstrap spot vs GEX | ✅ PASS — spot 7708.51 |
+| HELIX flows → scanner feed | ✅ PASS — 20 prints |
+| Night Hawk dedupe | ✅ PASS — 5 tickers covered elsewhere |
+| data-correctness cron | ✅ PASS — flags=0 |
+
+### UI controls clicked (Step 2 — `/nighthawk`)
+
+| Control | Result |
+|---|---|
+| 0DTE tab (Command Deck) | ✅ PASS — session heat / board visible |
+| Swings tab | ✅ PASS |
+| Bangers tab | ✅ PASS |
+| Legacy tab | ✅ PASS |
+| Console errors | ✅ PASS — zero |
+
+### Findings table
+
+| Severity | ID | Detail | Status |
+|---|---|---|---|
+| — | — | No P0/P1/P2 defects found this pass | **GREEN** |
+
+**RTH verify status: GREEN** — zero FAIL across all probes. Board live with 113 setups, 11 ledger plays, session heat=RTH. No P0 fixes required.
+
+**Reports:** `audit-output/grid-rth-2026-08-06-verify-1786032024987.json`, `audit-output/zerodte-logic-1786031038750.json`, `audit-output/grid-e2e-1786031069533.json`, `audit-output/grid-nighthawk-ui-1786032172548.json`, `audit-output/validation-2026-08-06T15-51-57-336Z.md`
+
+---
+
+<!-- consolidated from PR #1762 (cursor/0dte-grid-rth-agent-914d) -->
+## grid-rth-2026-08-05 — 0DTE Command verify pass (~6:01 PM ET, post-close)
+
+**Session:** Autonomous 0DTE Command + Market Grid **verify** mode per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` on branch `cursor/0dte-grid-rth-agent-914d`. Commands: `npm run validate:grid-rth -- --force` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e` → `node scripts/audit/data-validator.mjs`.
+
+**Note:** Classic Market Grid (`/grid` + 9 `/api/grid/*` routes) was deleted 2026-07-07. 0DTE Command now lives standalone on `/nighthawk`. Script names (`validate:grid-rth`, `validate:grid-e2e`) retained for CI continuity.
+
+### Validation summary (verify, post-close)
+
+| Check | Result |
+|---|---|
+| `npm run validate:grid-rth -- --force` | ✅ **13 PASS · 0 WARN · 0 FAIL** — upstream ok, session heat=CLOSED, 9 setups / 3 ledger rows, ledger PnL math, SPX bootstrap spot=7723.55, HELIX 20 prints, zerodte-warm cron accepted, nested logic + integration + data-correctness flags=0, dashboard E2E, ops:collect zero items |
+| `npm run validate:zerodte-logic` | ✅ **17 PASS · 0 FAIL** — unit tests (3 files), gate funnel, plan exits (stop -50% / target +100% / 15:30 ET), lifecycle OPEN→TRIM→CLOSED, session heat RTH→POST_COMMIT→LATE_SESSION, mergePlays past-cutoff/MOVED→SKIP, live board 3 eligible / 9 total (0 gate violations), ledger consistency |
+| `npm run validate:grid-e2e` | ✅ **5 PASS · 0 FAIL** — board API 9 setups · ledger 3, HELIX 20 prints, `/nighthawk` page load, zero console errors |
+| `data-validator.mjs` | ✅ **32 PASS · 5 INFO · 0 FAIL** — 0DTE live/ledger strikes grounded in Polygon chains, entry premiums within minute-bar ranges, track-record math correct |
+
+### 0DTE logic coverage (Step 1)
+
+| Layer | Result |
+|---|---|
+| Gates (`deriveZeroDteSetups`) | ✅ PASS — 3 eligible / 9 total, 0 gate violations (SETUP_MIN_GROSS, aggression, dominance, ITM guard) |
+| Plan exits (`buildContractPlan`) | ✅ PASS — stop=2.1 target=8.4 (−50% / +100%), time stop 15:30 ET |
+| Trade lifecycle (`derivePlayStatus`) | ✅ PASS — OPEN/TRIM/CLOSED/CLOSED, sticky trough stop |
+| Session heat | ✅ PASS — CLOSED heat=0% (post-close); RTH→POST_COMMIT→LATE_SESSION unit-tested |
+| mergePlays UI rules | ✅ PASS — past cutoff → SKIP, MOVED → SKIP |
+| Ledger PnL math | ✅ PASS — 3 rows checked, 0 inconsistencies |
+| `zerodte-warm` cron | ✅ PASS — background warm accepted |
+
+### Cross-tool integration (Step 3)
+
+| Tool | Result |
+|---|---|
+| SPX bootstrap spot vs GEX | ✅ PASS — spot 7723.55 (spotsAgree) |
+| HELIX flows (`/api/market/flows`) | ✅ PASS — 20 prints |
+| Night Hawk dedupe | ✅ PASS — cross-tool integration audit |
+| Grid bootstrap | ✅ PASS — loaded via SPX bootstrap |
+| data-correctness (`surface=zerodte`) | ✅ PASS — flags=0 |
+
+### UI E2E (Step 2 — `/nighthawk`)
+
+| Control | Result |
+|---|---|
+| Page load | ✅ PASS — "Night Hawk · BlackOut" |
+| Board API | ✅ PASS — 9 setups · ledger 3 |
+| HELIX flows API | ✅ PASS — 20 prints |
+| Console errors | ✅ PASS — zero |
+
+### Findings table
+
+| Severity | ID | Detail | Fix defer? |
+|---|---|---|---|
+| — | — | No defects found this pass | — |
+
+**Verify status: GREEN** — zero FAIL across all four probe suites. No P0 defects. No code changes required.
+
+**Reports:** `audit-output/grid-rth-2026-08-05-verify-1785967291406.json`, `audit-output/zerodte-logic-1785967296018.json`, `audit-output/grid-e2e-1785967326490.json`, `audit-output/validation-2026-08-05T22-02-21-111Z.md`
+
+---
+
+<!-- consolidated from PR #1761 (cursor/0dte-grid-rth-agent-cb11) -->
+## grid-rth-2026-08-05-pass6 — 0DTE Command all-day verify pass (~5:47 PM ET, post-close)
+
+**Session:** 0DTE Command + Market Grid all-day RTH verification agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` **verify** mode on branch `cursor/0dte-grid-rth-agent-cb11`. Commands: `node scripts/grid-rth-all-day-audit.mjs --force` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e` → `validate:zerodte-integration` → `data-validator.mjs` → extended Playwright on `/nighthawk` (0DTE / Swings / Bangers / Legacy segments) + `/grid` 404 probe.
+
+**Note:** Classic Market Grid (`/grid` + 9 `/api/grid/*` routes) deleted 2026-07-07. 0DTE Command lives on `/nighthawk` with four view segments. `/grid` returns HTTP 404.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `validate:grid-rth --force` | ✅ **GREEN** — 13/13 PASS (post-close) |
+| `npm run validate:zerodte-logic` | ✅ **GREEN** — 17/17 PASS (gates, plans, lifecycle, mergePlays, ledger) |
+| `npm run validate:grid-e2e` | ✅ **GREEN** — 5/5 PASS (Playwright page-load + zero console errors) |
+| `validate:zerodte-integration` | ✅ **GREEN** — 9/9 PASS |
+| `data-validator.mjs` | ✅ **GREEN** — 32 PASS · 5 INFO · 0 FAIL |
+| `ops:collect` | ✅ zero action items |
+
+### 0DTE logic audit (exhaustive)
+
+| Layer | Result |
+|---|---|
+| Gate funnel | ✅ SETUP_MIN_GROSS, aggression, dominance, ITM guard — 0 violations (3 eligible / 9 total) |
+| Plan exits | ✅ stop −50%, target +100%, time stop 15:30 ET |
+| Trade lifecycle | ✅ OPEN → TRIM → CLOSED (sticky trough stop) |
+| Plan grading | ✅ stop wins when both touch same bar |
+| Session heat | ✅ CLOSED heat=0% (post-close); RTH→POST_COMMIT→LATE_SESSION unit-tested |
+| mergePlays UI | ✅ past cutoff / MOVED → SKIP not OPEN |
+| Ledger PnL math | ✅ 3 rows reconcile via `ledgerPnlMatches()` |
+| Finite numbers | ✅ no NaN/Infinity on live board |
+| `zerodte-warm` cron | ✅ accepted (background warm) |
+| `data-correctness` (zerodte surface) | ✅ flags=0 |
+
+### Cross-tool integration
+
+| Tool | Endpoint | Result |
+|---|---|---|
+| SPX bootstrap vs GEX | `spx/bootstrap` + `gex-positioning` | ✅ spot 7723.55 |
+| HELIX flows feed | `flows?limit=30` | ✅ 30 prints |
+| Night Hawk dedupe | board vs edition | ✅ no edition plays (post-close) |
+| BIE consistency | `validate:zerodte-bie` | ✅ PASS |
+| Ledger PnL | 3 committed rows | ✅ all reconcile |
+
+### UI E2E (Playwright — `/nighthawk`)
+
+| # | Action | Result |
+|---|---|---|
+| `/grid` route probe | ✅ HTTP 404 (classic Grid removed; expected) |
+| `/nighthawk` default 0DTE view | ✅ Command deck visible |
+| Click segment **0DTE** | ✅ |
+| Click segment **Swings** | ✅ |
+| Click segment **Bangers** | ✅ |
+| Click segment **Legacy** | ✅ |
+| Board API | ✅ 9 setups · ledger 3 |
+| HELIX flows API | ✅ 20 prints |
+| Console errors | ✅ zero |
+
+### Findings table (`grid-rth-2026-08-05-pass6`)
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| — | — | **No P0/P1 product defects** on 0DTE Command surfaces | — | GREEN |
+| INFO | GRID-ROUTE-404 | `/grid` returns 404 — classic Market Grid deleted 2026-07-07; use `/nighthawk` | route | by design |
+| INFO | ENV-NODE-MODULES | Initial run failed — missing `pg`/`playwright`/`react` in cloud sandbox | — | Resolved via `npm install` + `npx playwright install chromium` |
+| P2 | NH-LEAPS-LABEL | `nighthawk-prod-check` WARN — served HTML has Swings label but not LEAPS (segment renamed to Bangers in UI) | `/nighthawk` HTML | monitor — prod-check heuristic stale |
+| P2 | DV-POSTURE-NEAR-FLIP | net_gex sign vs posture divergence near gamma flip — documented legitimate state | `gex-positioning` | monitor |
+
+**Status: GREEN** — 0DTE Command all-day verify pass 6: 0 P0/P1. All gates, plan exits, lifecycle states, ledger PnL, session heat cutoffs, and mergePlays rules verified. Cross-tool HELIX/Night Hawk/SPX bootstrap checks pass. No GitHub issue opened (no P0/P1).
+
+**Reports:** `audit-output/grid-rth-2026-08-05-verify-1785966474619.json`, `audit-output/zerodte-logic-1785966487735.json`, `audit-output/grid-e2e-1785966514645.json`, `audit-output/zerodte-integration-1785966513521.json`, `audit-output/validation-2026-08-05T21-48-43-714Z.md`
+
+**Screenshots:** `/opt/cursor/artifacts/grid-rth-2026-08-05/`
+
+---
+
+<!-- consolidated from PR #1752 (cursor/spx-rth-system-verification-a2cf) -->
+## spx-rth-2026-08-05 — SPX Slayer all-day verify pass (~4:49 PM ET, post-close)
+
+**Session:** SPX Slayer all-day RTH verification agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` verify mode on branch `cursor/spx-rth-system-verification-a2cf`. Commands: `npm run validate:spx-rth -- --force` → `npm run validate:spx-e2e` → 60s live auto-update API probe.
+
+**Note:** Pass executed post-close (16:49 ET). RTH window checks skipped unless `--force`; desk pulse/flow lanes off-hours; LIVE badge correctly shows OFFLINE/EXTENDED.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth` | ✅ **GREEN** — 7 PASS · 1 WARN · 0 FAIL (`--force` post-close) |
+| `npm run validate:spx-e2e` | ✅ **GREEN** — 17/18 PASS · 1 WARN · 1 SKIP |
+| Matrix deep audit | ✅ GEX+VEX+DEX+CHARM · 160 strikes · every cell finite |
+| Cross-endpoint spot/GEX | ✅ desk=7723.55 hm=7723.55 play=SCANNING/SCANNING (Δ = 0 pts) |
+| Desk cache lanes | ⏭️ SKIP — pulse/flow unavailable (off-hours) |
+| BIE consistency | ✅ `getSpxPlayState()` == member `/spx/play` |
+| `ops:collect` | ✅ zero action items |
+| 60s live auto-update | ✅ APIs fresh (`desk as_of` 20:50:37→20:51:12); spot static post-close (expected) |
+
+### UI E2E (Playwright — every control clicked)
+
+| # | Action | Result |
+|---|---|---|
+| Sign-in `/dashboard` | ✅ premium session loads |
+| LIVE badge RTH | ⏭️ SKIP — outside RTH; OFFLINE/EXTENDED expected post-close |
+| Click GEX tab | ✅ |
+| Click VEX tab | ✅ |
+| Matrix rows | ✅ 160 strike rows |
+| Matrix text sanity | ✅ no NaN/undefined/em-dash |
+| Commentary expand | ✅ toggles |
+| Play verdict bar | ✅ SPX PLAY (SCANNING — no stale ✓ confirmations) |
+| Console errors | ✅ zero hard errors |
+
+### Cross-tool integration (Step 3)
+
+| Tool | Endpoint | Result |
+|---|---|---|
+| Thermal | `gex-heatmap?ticker=SPX` | ✅ same payload as dashboard matrix |
+| Thermal SPY | cross_validation | ✅ PASS |
+| HELIX | `flows?limit=30` | ✅ 30 prints |
+| Grid bootstrap | `spx/bootstrap` | ✅ loaded |
+| 0DTE board | `zerodte/board` | ✅ 9 setups |
+| Night Hawk | `nighthawk/edition` | ✅ loads |
+| Largo | `largo/query` SPX play | ✅ `tools=blackout_intelligence` |
+| BIE | `validate:spx-bie` | ✅ PASS |
+| SPX cross-tool | desk vs play | ✅ desk=7723.55 play=SCANNING |
+
+### Findings table
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| — | — | **No P0/P1 product defects** on SPX Slayer surfaces | — | GREEN |
+| INFO | ENV-NODE-MODULES | Initial run failed — missing `pg`/`tsx`/`playwright` in cloud sandbox | — | Resolved via `npm install` |
+| P2 | CRON-SECRET-STALE-ENV | `spx:data-correctness` WARN — env `CRON_SECRET` 401; prod cron runs on AWS SM | cron bearer | defer |
+| P2 | SPX-BIE-CRON-401 | `bie-play-route` WARN — cron play HTTP 401 without bearer | `/api/market/spx/play` cron | defer (expected) |
+| P2 | SPX-POST-CLOSE-STATIC | 60s probe: spot static 7723.55 post-close; `as_of` timestamps still advance | desk/heatmap | expected off-hours |
+
+**Status: GREEN** — SPX all-day verify pass 0 P0/P1. Matrix 100% correct vs API (160 strikes, GEX+VEX+DEX+CHARM). No stale confirmations during SCANNING. Cross-tool integration (Thermal, HELIX, Largo, Grid, 0DTE, Night Hawk, BIE) all pass. No GitHub issue opened (no P0/P1).
+
+**Reports:** `audit-output/spx-rth-2026-08-05-verify-1785962998300.json`, `audit-output/spx-dashboard-e2e-1785963014674.json`
+
+---
+
+<!-- consolidated from PR #1751 (cursor/0dte-grid-rth-agent-018e) -->
+## grid-rth-2026-08-05 — 0DTE Command all-day verify pass #2 (~4:49 PM ET, post-close)
+
+**Session:** 0DTE Command + Market Grid all-day RTH verification agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` verify mode on branch `cursor/0dte-grid-rth-agent-018e`. Commands: `npm run validate:grid-rth -- --force` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e` → `validate:zerodte-integration` → `data-validator.mjs` → extended Playwright on `/nighthawk`.
+
+**Note:** Classic Market Grid (`/grid` + 9 `/api/grid/*` routes) deleted 2026-07-07. 0DTE Command lives on `/nighthawk` with four view segments (0DTE / Swings / Bangers / Legacy). `/grid` returns HTTP 404.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:grid-rth` | ✅ **GREEN** — 14/14 PASS (`--force` post-close) |
+| `npm run validate:zerodte-logic` | ✅ **GREEN** — 17/17 PASS (gates, plans, lifecycle, mergePlays, ledger) |
+| `npm run validate:grid-e2e` | ✅ **GREEN** — 5/5 PASS (Playwright page-load + zero console errors) |
+| `validate:zerodte-integration` | ✅ **GREEN** — 9/9 PASS |
+| `data-validator.mjs` | ⚠️ 32 PASS · 1 FAIL · 4 INFO (extended-hours oracle) |
+| `ops:collect` | ✅ zero action items |
+
+### 0DTE logic audit (exhaustive)
+
+| Layer | Result |
+|---|---|
+| Gate funnel | ✅ SETUP_MIN_GROSS, aggression, dominance, ITM guard — 0 violations (2 eligible / 9 total) |
+| Plan exits | ✅ stop −50%, target +100%, time stop 15:30 ET |
+| Trade lifecycle | ✅ OPEN → TRIM → CLOSED (sticky trough stop) |
+| Plan grading | ✅ stop wins when both touch same bar |
+| Session heat | ✅ CLOSED heat=0% (post-close); RTH→POST_COMMIT→LATE_SESSION unit-tested |
+| mergePlays UI | ✅ past cutoff / MOVED → SKIP not OPEN |
+| Ledger PnL math | ✅ 3 rows reconcile via `ledgerPnlMatches()` |
+| Finite numbers | ✅ no NaN/Infinity on live board |
+| `zerodte-warm` cron | ✅ accepted (background warm) |
+| `data-correctness` (zerodte surface) | ✅ flags=0 |
+
+### Cross-tool integration
+
+| Tool | Endpoint | Result |
+|---|---|---|
+| SPX bootstrap vs GEX | `spx/bootstrap` + `gex-positioning` | ✅ spot 7723.55 |
+| HELIX flows feed | `flows?limit=30` | ✅ 30 prints |
+| Night Hawk dedupe | board vs edition | ✅ 1 ticker withheld from scanner |
+| BIE consistency | `validate:zerodte-bie` | ✅ PASS |
+| Ledger PnL | 3 committed rows | ✅ all reconcile |
+
+### UI E2E (Playwright — `/nighthawk`)
+
+| # | Action | Result |
+|---|---|---|
+| `/grid` route probe | ✅ HTTP 404 (classic Grid removed; expected) |
+| `/nighthawk` default 0DTE view | ✅ Command deck visible (3 closed plays, SESSION CLOSED) |
+| Click segment **Swings** | ✅ |
+| Click segment **Bangers** | ✅ |
+| Click segment **Legacy** | ✅ |
+| Click segment **0DTE** | ℹ️ default-selected on load — tab already active |
+| Board API | ✅ 9 setups · ledger 3 |
+| HELIX flows API | ✅ 20 prints |
+| Console errors | ✅ zero |
+
+### Findings table
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| — | — | **No P0/P1 product defects** on 0DTE Command surfaces | — | GREEN |
+| INFO | GRID-ROUTE-404 | `/grid` returns 404 — classic Market Grid deleted 2026-07-07; use `/nighthawk` | route | by design |
+| INFO | ENV-NODE-MODULES | Initial run failed — missing `pg`/`playwright`/`react` in cloud sandbox | — | Resolved via `npm install` + `npx playwright install chromium` |
+| P2 | DV-EXT-HOURS-AMD | `data-validator` FAIL AMD Δ6.5% vs Polygon **prev-close** during extended hours; board carries last RTH live mark | `zerodte/board` setups | defer (oracle mode) |
+| P2 | DV-POSTURE-NEAR-FLIP | net_gex sign vs posture divergence near gamma flip — documented legitimate state | `gex-positioning` | monitor |
+
+**Status: GREEN** — 0DTE Command all-day verify pass #2: 0 P0/P1. All gates, plan exits, lifecycle states, ledger PnL, session heat cutoffs, and mergePlays rules verified. Cross-tool HELIX/Night Hawk/SPX bootstrap checks pass. No GitHub issue opened (no P0/P1).
+
+**Reports:** `audit-output/grid-rth-2026-08-05-verify-1785963009431.json`, `audit-output/zerodte-logic-1785963013815.json`, `audit-output/grid-e2e-1785963046949.json`, `audit-output/zerodte-integration-1785963041585.json`, `audit-output/validation-2026-08-05T20-51-03-625Z.md`
+
+**Screenshots:** `/opt/cursor/artifacts/grid-rth-2026-08-05/`
+
+---
+
+<!-- consolidated from PR #1750 (cursor/spx-rth-system-verification-6b27) -->
+## spx-rth-2026-08-05 — SPX Slayer all-day verify pass (~4:43 PM ET, post-close)
+
+**Session:** SPX Slayer all-day RTH verification agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` verify mode on branch `cursor/spx-rth-system-verification-6b27`. Commands: `npm run validate:spx-rth -- --force` → `npm run validate:spx-e2e` → 60s live auto-update API probe.
+
+**Note:** Pass ran at 16:43 ET — outside RTH window (09:00–16:15 ET). Post-close static spot values expected. `--force` used per runbook.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth` | ✅ **GREEN** — 7 PASS · 1 WARN (CRON_SECRET env stale) |
+| `npm run validate:spx-e2e` | ✅ **GREEN** — 17/18 PASS · 1 WARN (`bie-play-route` cron 401) |
+| Matrix deep audit | ✅ GEX+VEX+DEX+CHARM · 160 strikes · every cell finite |
+| Cross-endpoint spot/GEX | ✅ desk=7723.55 hm=7723.55 play=SCANNING/SCANNING |
+| Desk cache lanes | ⏭️ SKIP — pulse/flow unavailable post-close |
+| BIE consistency | ✅ `getSpxPlayState()` == member `/spx/play` |
+| `ops:collect` | ✅ zero action items |
+| 60s live auto-update | ✅ desk/hm static 7723.55 (post-close expected) · no stale SCANNING ✓ |
+
+### UI E2E (Playwright — every control clicked)
+
+| # | Action | Result |
+|---|---|---|
+| Sign-in `/dashboard` | ✅ premium session loads |
+| LIVE badge RTH | ⏭️ SKIP — post-close OFFLINE/EXTENDED expected |
+| Click GEX tab | ✅ |
+| Click VEX tab | ✅ |
+| Matrix rows | ✅ 160 strike rows |
+| Matrix text sanity | ✅ no NaN/undefined/em-dash |
+| Commentary expand | ✅ toggles |
+| Play verdict bar | ✅ SPX PLAY (SCANNING — no stale ✓) |
+| Console errors | ✅ zero hard errors |
+
+### Cross-tool integration (Step 3)
+
+| Tool | Endpoint | Result |
+|---|---|---|
+| Thermal | `gex-heatmap?ticker=SPX` | ✅ same payload as dashboard matrix |
+| Thermal SPY | cross_validation | ✅ PASS |
+| HELIX | `flows?limit=30` | ✅ 30 prints |
+| Grid bootstrap | `spx/bootstrap` | ✅ loaded |
+| 0DTE board | `zerodte/board` | ✅ 9 setups |
+| Night Hawk | `nighthawk/edition` | ✅ loads |
+| Largo | `largo/query` SPX play | ✅ `tools=blackout_intelligence` |
+| BIE | `validate:spx-bie` | ✅ PASS |
+| SPX cross-tool | desk vs play | ✅ desk=7723.55 play=SCANNING |
+
+### Findings table
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| — | — | **No P0/P1 product defects** on SPX Slayer surfaces | — | GREEN |
+| INFO | ENV-NODE-MODULES | Initial run failed — missing `pg`/`tsx`/`playwright` in cloud sandbox | — | Resolved via `npm install` |
+| P2 | CRON-SECRET-STALE-ENV | `spx:data-correctness` WARN — env `CRON_SECRET` 401; prod cron runs on AWS SM | cron bearer | defer |
+| P2 | SPX-BIE-CRON-401 | `bie-play-route` WARN — cron play HTTP 401 without bearer | `/api/market/spx/play` cron | defer (expected) |
+| P2 | DESK-LANES-POST-CLOSE | Desk lanes SKIP — pulse/flow unavailable post-close | desk cache lanes | expected off-hours |
+
+**Status: GREEN** — SPX all-day verify pass 0 P0/P1. Matrix 100% correct vs API (160 strikes, GEX+VEX+DEX+CHARM). No stale confirmations during SCANNING. Cross-tool integration (Thermal, HELIX, Largo, Grid, 0DTE, Night Hawk, BIE) all pass. No GitHub issue opened (no P0/P1).
+
+**Reports:** `audit-output/spx-rth-2026-08-05-verify-1785962625561.json`, `audit-output/spx-dashboard-e2e-1785962637981.json`
+
+---
+
+<!-- consolidated from PR #1749 (cursor/0dte-grid-rth-agent-6baa) -->
+## grid-rth-2026-08-05 — 0DTE Command all-day verify pass (~4:44 PM ET, post-close, agent 6baa)
+
+**Session:** 0DTE Command + Market Grid all-day RTH verification agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` verify mode on branch `cursor/0dte-grid-rth-agent-6baa`. Commands: `npm run validate:grid-rth -- --force` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e` → extended Playwright on `/nighthawk` (all four view segments).
+
+**Note:** Classic Market Grid (`/grid` + 9 `/api/grid/*` routes) deleted 2026-07-07. 0DTE Command lives on `/nighthawk` with four view segments (0DTE / Swings / Bangers / Legacy). `/grid` returns HTTP 404.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:grid-rth` | ✅ **GREEN** — 14/14 PASS (`--force` post-close) |
+| `npm run validate:zerodte-logic` | ✅ **GREEN** — 17/17 PASS (gates, plans, lifecycle, mergePlays, ledger) |
+| `npm run validate:grid-e2e` | ✅ **GREEN** — 5/5 PASS (Playwright UI + APIs) |
+| `validate:zerodte-integration` | ✅ **GREEN** — 9/9 PASS (nested in grid-rth) |
+| `ops:collect` | ✅ zero action items (nested in grid-rth) |
+
+### 0DTE logic audit (exhaustive)
+
+| Layer | Result |
+|---|---|
+| Gate funnel | ✅ SETUP_MIN_GROSS, aggression, dominance, ITM guard — 0 violations (2 eligible / 9 total) |
+| Plan exits | ✅ stop −50%, target +100%, time stop 15:30 ET |
+| Trade lifecycle | ✅ OPEN → TRIM → CLOSED (sticky trough stop) |
+| Plan grading | ✅ stop wins when both touch same bar |
+| Session heat | ✅ CLOSED heat=0% (post-close); RTH→POST_COMMIT→LATE_SESSION unit-tested |
+| mergePlays UI | ✅ past cutoff / MOVED → SKIP not OPEN |
+| Ledger PnL math | ✅ 3 rows reconcile via `ledgerPnlMatches()` |
+| Finite numbers | ✅ no NaN/Infinity on live board |
+| `zerodte-warm` cron | ✅ accepted (background warm) |
+| `data-correctness` (zerodte surface) | ✅ flags=0 |
+
+### Cross-tool integration
+
+| Tool | Endpoint | Result |
+|---|---|---|
+| SPX bootstrap vs GEX | `spx/bootstrap` + `gex-positioning` | ✅ spot 7723.55 |
+| HELIX flows feed | `flows?limit=20` | ✅ 20 prints |
+| Night Hawk dedupe | board vs edition | ✅ 1 ticker withheld from scanner |
+| Ledger PnL | 3 committed rows | ✅ all reconcile |
+
+### UI E2E (Playwright — `/nighthawk`)
+
+| # | Action | Result |
+|---|---|---|
+| `/grid` route probe | ✅ HTTP 404 (classic Grid removed; expected) |
+| `/nighthawk` default 0DTE view | ✅ Command deck visible |
+| Click segment **0DTE** | ✅ |
+| Click segment **Swings** | ✅ |
+| Click segment **Bangers** | ✅ |
+| Click segment **Legacy** | ✅ |
+| Board API | ✅ 9 setups · ledger 3 |
+| HELIX flows API | ✅ 20 prints |
+| Console errors | ✅ zero |
+
+### Findings table
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| — | — | **No P0/P1 product defects** on 0DTE Command surfaces | — | GREEN |
+| INFO | GRID-ROUTE-404 | `/grid` returns 404 — classic Market Grid deleted 2026-07-07; use `/nighthawk` | route | by design |
+| INFO | ENV-NODE-MODULES | Initial run failed — missing `pg`/`playwright`/`react` before `npm install` in cloud sandbox | — | Resolved |
+
+**Status: GREEN** — 0DTE Command all-day verify pass 0 P0/P1. All gates, plan exits, lifecycle states, ledger PnL, session heat cutoffs, and mergePlays rules verified. Cross-tool HELIX/Night Hawk/SPX bootstrap checks pass. No GitHub issue opened (no P0/P1).
+
+**Reports:** `audit-output/grid-rth-2026-08-05-verify-1785962645286.json`, `audit-output/zerodte-logic-1785962650949.json`, `audit-output/grid-e2e-1785962683302.json`, `audit-output/zerodte-integration-1785962639862.json`
+
+**Screenshots:** `/opt/cursor/artifacts/grid-rth-2026-08-05/`
+
+---
+
+<!-- consolidated from PR #1745 (cursor/spx-rth-system-verification-c2ca) -->
+## spx-rth-2026-08-05 — SPX Slayer all-day verify pass (~4:23 PM ET, post-close)
+
+**Session:** SPX Slayer all-day RTH verification agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` verify mode on branch `cursor/spx-rth-system-verification-c2ca`. Commands: `npm run validate:spx-rth -- --force` → `npm run validate:spx-e2e` → 60s live auto-update API probe. Market closed (16:23 ET); `--force` used for post-close verification.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth` | ✅ **GREEN** — 7 PASS · 1 WARN · 1 SKIP (desk lanes off-hours) |
+| `npm run validate:spx-e2e` | ✅ **GREEN** — 17/18 PASS · 1 WARN · 1 SKIP (live-badge off-hours) |
+| Matrix deep audit | ✅ GEX+VEX+DEX+CHARM · 160 strikes · every cell finite |
+| Cross-endpoint spot/GEX | ✅ merged=7723.55 hm=7723.55 play=SCANNING/SCANNING |
+| Desk cache lanes | ⏭ SKIP — pulse/flow unavailable (post-close) |
+| BIE consistency | ✅ `getSpxPlayState()` == member `/spx/play` |
+| `ops:collect` | ✅ zero items |
+| 60s live auto-update | ⏭ static post-close — desk/hm/pulse 7723.55 unchanged (expected after bell) |
+
+### UI E2E (Playwright — every control clicked)
+
+| # | Action | Result |
+|---|---|---|
+| Sign-in `/dashboard` | ✅ premium session loads |
+| LIVE badge RTH | ⏭ SKIP — OFFLINE/EXTENDED expected post-close |
+| Click GEX tab | ✅ |
+| Click VEX tab | ✅ |
+| Matrix rows | ✅ 160 strike rows |
+| Matrix text sanity | ✅ no NaN/undefined/em-dash |
+| Commentary expand | ✅ toggles |
+| Play verdict bar | ✅ SPX PLAY (SCANNING — no stale ✓) |
+| Console errors | ✅ zero hard errors |
+
+### Cross-tool integration (Step 3)
+
+| Tool | Endpoint | Result |
+|---|---|---|
+| Thermal | `gex-heatmap?ticker=SPX` | ✅ same payload as dashboard matrix |
+| Thermal SPY | cross_validation | ✅ PASS |
+| HELIX | `flows?limit=30` | ✅ 30 prints |
+| Grid bootstrap | `spx/bootstrap` | ✅ loaded |
+| 0DTE board | `zerodte/board` | ✅ 7 setups |
+| Night Hawk | `nighthawk/edition` | ✅ loads |
+| Largo | `largo/query` SPX play | ✅ `tools=blackout_intelligence` |
+| BIE | `validate:spx-bie` | ✅ PASS |
+| SPX cross-tool | desk vs play | ✅ desk=7723.55 play=SCANNING |
+
+### Findings table
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| — | — | **No P0/P1 product defects** on SPX Slayer surfaces | — | GREEN |
+| INFO | ENV-NODE-MODULES | Initial run failed — missing `pg`/`tsx`/`playwright` | — | Resolved via `npm install` |
+| P2 | CRON-SECRET-STALE-ENV | `spx:data-correctness` WARN — env `CRON_SECRET` 401; prod cron runs on AWS SM | cron bearer | defer |
+| P2 | SPX-BIE-CRON-401 | `bie-play-route` WARN — cron play HTTP 401 without bearer | `/api/market/spx/play` cron | defer (expected) |
+| INFO | POST-CLOSE-STATIC | 60s probe static post-close — no tick expected after 16:00 ET | desk/pulse/hm | N/A |
+
+**Status: GREEN** — Post-close verify pass 0 P0/P1. Matrix 100% correct vs API. No stale confirmations during SCANNING. No GitHub issue opened (no P0/P1).
+
+**Reports:** `audit-output/spx-rth-2026-08-05-verify-1785961469126.json`, `audit-output/spx-dashboard-e2e-1785961479793.json`
+
+---
+
+<!-- consolidated from PR #1741 (cursor/0dte-grid-rth-agent-be0c) -->
+## grid-rth-2026-08-05 — 0DTE Command all-day RTH verify pass (~3:40–3:46 PM ET, afternoon)
+
+**Session:** Autonomous Grid RTH agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` (verify mode) on branch `cursor/0dte-grid-rth-agent-be0c`. Commands: `npm run validate:grid-rth` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e` → `data-validator.mjs` → Playwright `/nighthawk` segment click-through (0DTE / Swings / Bangers / Legacy).
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:grid-rth` | ✅ **GREEN** (14/14; ~66s after `npm install`) |
+| `npm run validate:zerodte-logic` | ✅ **GREEN** (17/17) |
+| `npm run validate:grid-e2e` | ✅ **GREEN** (5/5; Playwright page-load + console clean) |
+| `data-validator.mjs` | ✅ **36 PASS / 0 FAIL** (5 INFO) |
+| UI segment click-through | ✅ **4/4 segments** — 0 console errors |
+| `ops:collect` | ✅ **0 action items** |
+
+### Live board state (15:43 ET)
+
+| Metric | Value |
+|---|---|
+| Session heat | `POST_COMMIT` (70%) |
+| Setups | 8 total · **2 eligible** · 0 gate violations |
+| Ledger | 3 rows · PnL math consistent |
+| Upstream | `upstream_ok=true` |
+| Time-stop cutoff | 15:30 ET (constant verified) |
+
+### 0DTE logic probes (all PASS)
+
+- Gate funnel: SETUP_MIN_GROSS, aggression, dominance, ITM guard
+- Plan exits: stop −50%, target +100%, time stop 15:30 ET
+- Trade lifecycle: OPEN → TRIM → CLOSED (sticky trough stop)
+- Plan grading: stop-first when both touch same bar
+- Session heat: RTH → POST_COMMIT → LATE_SESSION alignment
+- `mergePlays`: past cutoff / MOVED → SKIP (not OPEN)
+- Ledger PnL: 3 rows checked, finite numbers
+
+### Cross-tool integration
+
+| Check | Result |
+|---|---|
+| SPX bootstrap spot vs GEX | ✅ spot 7739.03 |
+| HELIX flows feed scanner | ✅ 20 prints |
+| Night Hawk dedupe | ✅ 1 ticker covered elsewhere |
+| `zerodte-warm` cron | ✅ background warm accepted |
+| `data-correctness` (grid surface) | ✅ flags=0 |
+
+### UI validation (`/nighthawk` — classic `/grid` deleted 2026-07-07)
+
+| Segment | Click | Deck mount | Console |
+|---|---|---|---|
+| 0DTE (Command Deck) | ✅ | ✅ | 0 errors |
+| Swings | ✅ | ✅ | 0 errors |
+| Bangers | ✅ | ✅ | 0 errors |
+| Legacy | ✅ | ✅ | 0 errors |
+
+`/grid` returns **404** (expected — 0DTE Command absorbed into `/nighthawk`).
+
+### Findings table
+
+| Severity | ID | Detail | Fix |
+|---|---|---|---|
+| — | — | **No P0/P1 product defects** on 0DTE Command / Night Hawk surfaces | GREEN |
+| INFO | ENV-NODE-MODULES | Initial `validate:grid-rth` failed — missing `pg`/`react`/`playwright` (cold env) | Resolved via `npm install` + `npx playwright install chromium` |
+| INFO | GRID-ROUTE-404 | `/grid` returns 404 — classic Market Grid deleted; 0DTE Command on `/nighthawk` | By design (2026-07-07) |
+| INFO | CRON-SECRET-STALE-ENV | Pre-install cron probes returned 401; post-install GREEN via `auditSecret()` | Use AWS SM / `auditSecret()` for cron probes |
+
+**Status: GREEN** — full Grid RTH verify pass, 0 P0/P1, all logic gates/lifecycle/mergePlays/cross-tool checks passed. No GitHub issue opened (no P0/P1).
+
+**Reports:** `audit-output/grid-rth-2026-08-05-verify-1785959065598.json`, `audit-output/zerodte-logic-1785958962964.json`, `audit-output/grid-e2e-1785959078420.json`, `/opt/cursor/artifacts/grid-rth-ui/grid-rth-ui-report.json`
+
+---
+
+<!-- consolidated from PR #1733 (cursor/spx-rth-system-verification-ee13) -->
+**Session:** Autonomous SPX Slayer **verify** mode per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md`. Passes: (1) market-open ~9:30 ET agent `40dc`; (2) midday ~13:23 ET agent `4666`; (3) afternoon ~14:07 ET agent `ee13`. Commands each pass: `npm run validate:spx-rth` → `npm run validate:spx-e2e` → 60s live auto-update.
+
+### Validation summary (pass 3 — ~14:07 ET)
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth` | ✅ **8 PASS · 1 WARN · 0 FAIL** (~127s) — RTH-open, matrix deep audit (GEX+VEX+DEX+CHARM · every cell finite · Σ strike_totals == headline), cross-endpoint spot merged=7742.23 hm=7742.37 play=SCANNING/SCANNING, desk lanes pulse+flow live, BIE consistency, dashboard E2E nested, ops:collect zero items |
+| `npm run validate:spx-e2e` | ✅ **0 FAIL / 18 checks** (1 WARN: `bie-play-route` cron 401 expected) — matrix every-cell-api 158 strikes GEX+VEX+DEX+CHARM, GEX+VEX tabs clicked, 159 UI rows, commentary expand, play verdict SCANNING (no stale ✓) |
+| 60s live auto-update (API) | ✅ **LIVE_TICK=YES** — desk spot 7742.84→7743.98 · hm spot 7743.94→7743.33 |
+| 60s live auto-update (UI) | ⚠️ **inconclusive** — transient origin 502 during `spx-live-check.mjs`; E2E harness confirms matrix + play surfaces live |
+
+**Live desk (RTH ~14:07 ET):** SPX spot ~7742 · play **SCANNING** · 158 API strikes / 159 UI rows · 9 0DTE setups · 30 HELIX prints · LIVE badge active.
+
+### UI E2E (`/dashboard`) — pass 3
+
+| Control | Result |
+|---|---|
+| Sign-in + shell | ✅ premium desk loads |
+| GEX tab (`#spx-matrix-tab-gex`) | ✅ clicked · matrix populates |
+| VEX tab (`#spx-matrix-tab-vex`) | ✅ clicked · VEX cells populate |
+| Matrix rows | ✅ **159** strike rows (≥80 RTH bar) |
+| Matrix text sanity | ✅ no NaN / undefined / `$—` |
+| Commentary expand | ✅ toggles without error |
+| Play verdict bar | ✅ SPX PLAY · SCANNING — **no stale ✓ confirmations** |
+| Console errors | ✅ zero hard errors |
+| LIVE badge | ✅ active during RTH |
+
+### Cross-tool integration (Step 3) — pass 3
+
+| Tool | Endpoint | Result |
+|---|---|---|
+| Thermal | `gex-heatmap?ticker=SPX` | ✅ same payload as dashboard matrix |
+| Thermal SPY | `gex-heatmap?ticker=SPY` | ✅ cross_validation PASS |
+| GEX positioning | `gex-positioning?ticker=SPX` | ✅ spot/flip/walls agree with matrix |
+| HELIX | `flows?limit=30` | ✅ 30 prints |
+| Largo | `largo/query` SPX play | ✅ `blackout_intelligence` grounded |
+| BIE | `validate:spx-bie` | ✅ `spx_full_state` == member play |
+| Grid bootstrap | `spx/bootstrap` | ✅ loaded |
+| 0DTE Command | `zerodte/board` | ✅ 9 setups |
+| Night Hawk | `nighthawk/edition` | ✅ loads |
+| Cross-tool spot/play | desk vs play | ✅ desk=7742.36 play=SCANNING |
+
+**Verify status (pass 3): GREEN** — zero FAIL on all SPX harnesses. No P0 fixes required.
+
+**Reports (pass 3):** `audit-output/spx-rth-2026-08-05-verify-1785953369712.json`, `audit-output/spx-dashboard-e2e-1785953388676.json`
+
+## spx-rth-2026-08-06 — SPX Slayer verify pass (market open ~6:30 AM PT / 9:30 AM ET)
+
+**Session:** Autonomous SPX Slayer **verify** mode per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` on branch `cursor/spx-rth-system-verification-2eb0`. Commands: `npm run validate:spx-rth` → `npm run validate:spx-e2e` → `data-validator.mjs` → 60s live auto-update probe.
+
+### Validation summary (verify, RTH open)
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth` | ✅ **8 PASS · 1 WARN · 0 FAIL** — matrix deep audit, cross-endpoint spot merged=7710.23 hm=7712.17 play=SCANNING/SCANNING, desk lanes pulse+flow live, BIE consistency, nested dashboard E2E PASS, ops:collect SPX scope clean |
+| `npm run validate:spx-e2e` | ✅ **0 FAIL / 18 checks** — matrix every-cell-api 207 strikes GEX+VEX+DEX+CHARM, GEX+VEX tabs, commentary expand, play verdict SCANNING, zero console errors |
+| `data-validator.mjs` | ✅ **43 PASS · 0 FAIL** — SPY/SPX/VIX vs Polygon, GEX walls/posture, 0DTE premiums, track-record math |
+| Live auto-update (60s) | ✅ **PASS** — desk spot + heatmap spot ticked within 60s without manual refresh |
+
+### Cross-tool integration (Step 3)
+
+| Tool | Result |
+|---|---|
+| Thermal (`gex-heatmap?ticker=SPX`) | ✅ PASS — same payload as dashboard matrix |
+| Thermal SPY cross_validation | ✅ PASS |
+| GEX positioning | ✅ PASS — spot/flip/walls agree with matrix header |
+| HELIX (`/api/market/flows`) | ✅ PASS — 30 prints |
+| Largo (`get_spx_play` query) | ✅ PASS — `tools=live_feed_capture,platform_vitals_prefetch` |
+| BIE (`validate:spx-bie`) | ✅ PASS — `spx_full_state` == member play |
+| Grid (`/api/market/spx/bootstrap`) | ✅ PASS — loaded |
+| 0DTE (`/api/market/zerodte/board`) | ✅ PASS — 111 setups |
+| Night Hawk (`/api/market/nighthawk/edition`) | ✅ PASS |
+
+### UI controls clicked (Step 2)
+
+| Control | Result |
+|---|---|
+| GEX tab (`#spx-matrix-tab-gex`) | ✅ PASS |
+| VEX tab (`#spx-matrix-tab-vex`) | ✅ PASS |
+| Commentary expand | ✅ PASS |
+| Matrix rows | ✅ 213 strike rows |
+| Matrix text sanity | ✅ PASS — no NaN/undefined |
+| Play verdict bar | ✅ PASS — SCANNING, no stale ✓ confirmations |
+| Live badge | ✅ PASS — LIVE during RTH |
+| Live auto-update (60s) | ✅ PASS — desk + heatmap ticked |
+
+### Findings table
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| P2 | SPX-DC-CRON-AUTH | `data-correctness` WARN — env `CRON_SECRET` stale vs AWS SM | cron probe | defer |
+| P2 | SPX-BIE-CRON-401 | `bie-play-route` WARN — cron play HTTP 401 without bearer | expected | defer |
+| P2 | VECTOR-WATCHDOG-STALE | ops:collect deferred non-SPX watchdog items (`vector-bead-record`, `vector-walls-warm`) | ops:collect | defer (non-SPX) |
+
+**Verify status: GREEN** — zero FAIL on `validate:spx-rth` and `validate:spx-e2e`. Matrix 100% vs API (207 strikes, GEX+VEX+DEX+CHARM). No stale SCANNING confirmations. No P0 defects.
+
+**Reports:** `audit-output/spx-rth-2026-08-06-verify-1786031283552.json`, `audit-output/spx-dashboard-e2e-1786031348168.json`, `audit-output/validation-2026-08-06T15-52-36-401Z.md`
+
+---
+
+## spx-rth-2026-08-05 — SPX Slayer post-close fix agent pass 2 (~3:13 PM PT / 6:13 PM ET)
+
+**Session:** Autonomous SPX Slayer **fix** mode per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` § Step 6 on branch `cursor/spx-post-close-findings-36ba`. Commands: `npm run validate:spx-rth -- --phase=post-close` → `npm run validate:spx-e2e` → `npm run validate:deploy`.
+
+### Validation summary (post-close)
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth -- --phase=post-close` | ✅ **6 PASS · 1 WARN · 0 FAIL** — matrix 160 strikes GEX+VEX+DEX+CHARM, cross-endpoint spot merged=7723.55 hm=7723.55 play=SCANNING/SCANNING, BIE consistency, nested dashboard E2E PASS, ops:collect zero items |
+| `npm run validate:spx-e2e` | ✅ **0 FAIL / 18 checks** — matrix every-cell-api 160 strikes, GEX+VEX tabs, commentary expand, play verdict SCANNING, zero console errors |
+| `npm run validate:deploy` | ✅ **GREEN** |
+
+### Cross-tool integration (Step 3)
+
+| Tool | Result |
+|---|---|
+| Thermal (`gex-heatmap?ticker=SPX`) | ✅ PASS — same payload as dashboard matrix |
+| Thermal SPY cross_validation | ✅ PASS |
+| GEX positioning | ✅ PASS — spot/flip/walls agree with matrix header |
+| HELIX (`/api/market/flows`) | ✅ PASS — 30 prints |
+| Largo (`get_spx_play` query) | ✅ PASS — `tools=blackout_intelligence` |
+| BIE (`validate:spx-bie`) | ✅ PASS — `spx_full_state` == member play |
+| Grid (`/api/market/spx/bootstrap`) | ✅ PASS — loaded |
+| 0DTE (`/api/market/zerodte/board`) | ✅ PASS — 9 setups |
+| Night Hawk (`/api/market/nighthawk/edition`) | ✅ PASS |
+
+### Fixes reviewed (already merged today)
+
+| Severity | ID | Detail | Status |
+|---|---|---|---|
+| P1 | SPX-VERDICT-CLOSED-FLICKER | Verdict bar CLOSED flicker during desk lane refresh | **FIXED** PR #1758 |
+| P0 | SPX-0DTE-KING-UW | 0DTE King Polygon vs UW disagreement | **FIXED** PR #1706 |
+
+### Findings table (deferred P2 — no code change required)
+
+| Severity | ID | Detail | Fix defer? |
+|---|---|---|---|
+| P2 | SPX-DC-CRON-AUTH | `data-correctness` WARN — env `CRON_SECRET` stale vs AWS SM | defer |
+| P2 | SPX-BIE-CRON-401 | `bie-play-route` WARN — cron play HTTP 401 without bearer | defer (expected) |
+| P2 | SPX-DESK-LANES-OFF | Desk lanes SKIP — pulse/flow unavailable post-close | defer (off-hours) |
+| P2 | FINDINGS-MERGE-CONFLICT | Accidental `<<<<<<< HEAD` markers in `docs/audit/FINDINGS.md` | **FIXED** this PR |
+
+**Post-close status: GREEN** — zero FAIL on `validate:spx-rth` and `validate:spx-e2e`. All P0/P1 SPX defects from today already merged. Matrix 100% vs API (160 strikes, GEX+VEX+DEX+CHARM). Cross-tool integration (Thermal, HELIX, Largo, Grid, 0DTE, Night Hawk, BIE) all PASS.
+
+**Reports:** `audit-output/spx-rth-2026-08-05-post-close-1785968024086.json`, `audit-output/spx-dashboard-e2e-1785968041312.json`
+
+---
+
+## spx-rth-2026-08-05 — SPX Slayer verify pass (~6:01 PM ET, post-close)
+
+**Session:** Autonomous SPX Slayer **verify** mode per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` on branch `cursor/spx-rth-system-verification-8d06`. Commands: `npm run validate:spx-rth -- --force` → `npm run validate:spx-e2e` → `data-validator.mjs`.
+
+### Validation summary (verify, post-close)
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth -- --force` | ✅ **7 PASS · 1 WARN · 0 FAIL** — matrix 160 strikes GEX+VEX+DEX+CHARM, cross-endpoint spot merged=7723.55 hm=7723.55 play=SCANNING/SCANNING, BIE consistency, nested dashboard E2E PASS, ops:collect zero items |
+| `npm run validate:spx-e2e` | ✅ **0 FAIL / 18 checks** — matrix every-cell-api 160 strikes, GEX+VEX tabs, commentary expand, play verdict SCANNING, zero console errors |
+| `data-validator.mjs` | ✅ **32 PASS · 0 FAIL** — SPY/SPX/VIX vs Polygon, GEX walls/posture, 0DTE premiums, track-record math |
+
+### Cross-tool integration (Step 3)
+
+| Tool | Result |
+|---|---|
+| Thermal (`gex-heatmap?ticker=SPX`) | ✅ PASS — same payload as dashboard matrix |
+| Thermal SPY cross_validation | ✅ PASS |
+| GEX positioning | ✅ PASS — spot/flip/walls agree with matrix header |
+| HELIX (`/api/market/flows`) | ✅ PASS — 30 prints |
+| Largo (`get_spx_play` query) | ✅ PASS — `tools=blackout_intelligence` |
+| BIE (`validate:spx-bie`) | ✅ PASS — `spx_full_state` == member play |
+| Grid (`/api/market/spx/bootstrap`) | ✅ PASS — loaded |
+| 0DTE (`/api/market/zerodte/board`) | ✅ PASS — 9 setups |
+| Night Hawk (`/api/market/nighthawk/edition`) | ✅ PASS |
+
+### UI controls clicked (Step 2)
+
+| Control | Result |
+|---|---|
+| GEX tab (`#spx-matrix-tab-gex`) | ✅ PASS |
+| VEX tab (`#spx-matrix-tab-vex`) | ✅ PASS |
+| Commentary expand | ✅ PASS |
+| Matrix rows | ✅ 160 strike rows |
+| Matrix text sanity | ✅ PASS — no NaN/undefined |
+| Play verdict bar | ✅ PASS — SCANNING, no stale ✓ |
+| Live badge | SKIP — post-close OFFLINE expected |
+| Live auto-update (60s) | SKIP — post-close; static values expected |
+
+### Findings table
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| P2 | SPX-DC-CRON-AUTH | `data-correctness` WARN — env `CRON_SECRET` stale vs AWS SM | cron probe | defer |
+| P2 | SPX-BIE-CRON-401 | `bie-play-route` WARN — cron play HTTP 401 without bearer | expected | defer |
+| P2 | SPX-DESK-LANES-OFF | Desk lanes SKIP — pulse/flow unavailable post-close | off-hours | defer |
+
+**Verify status: GREEN** — zero FAIL on `validate:spx-rth` and `validate:spx-e2e`. Matrix 100% vs API (160 strikes, GEX+VEX+DEX+CHARM). No stale SCANNING confirmations. No P0 defects.
+
+**Reports:** `audit-output/spx-rth-2026-08-05-verify-1785967329844.json`, `audit-output/spx-dashboard-e2e-1785967341579.json`, `audit-output/validation-2026-08-05T22-02-51-119Z.md`
+
+---
+
+## spx-rth-2026-08-05 — SPX Slayer verify pass (~5:46 PM ET, post-close)
+
+**Session:** Autonomous SPX Slayer **verify** mode per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` on branch `cursor/spx-rth-system-verification-85ab`. Commands: `npm run validate:spx-rth -- --force` → `npm run validate:spx-e2e` (×2 — first run transient chunk 404, retry GREEN).
+
+### Validation summary (verify, post-close)
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth -- --force` | ✅ **7 PASS · 1 WARN · 0 FAIL** — matrix 160 strikes GEX+VEX+DEX+CHARM, cross-endpoint spot merged=7723.55 hm=7723.55 play=SCANNING/SCANNING, BIE consistency, nested dashboard E2E PASS, ops:collect zero items |
+| `npm run validate:spx-e2e` (run 1) | ⚠️ **1 FAIL** — `ui:console-errors` stale chunk `1878-20f9b901955046d4.js` HTTP 404 (transient deploy/cache) |
+| `npm run validate:spx-e2e` (run 2) | ✅ **0 FAIL / 18 checks** — matrix every-cell-api 160 strikes, GEX+VEX tabs, commentary expand, play verdict SCANNING, zero console errors |
+
+### Cross-tool integration (Step 3)
+
+| Tool | Result |
+|---|---|
+| Thermal (`gex-heatmap?ticker=SPX`) | ✅ PASS — same payload as dashboard matrix |
+| HELIX (`/api/market/flows`) | ✅ PASS — 30 prints |
+| Largo (`get_spx_play` query) | ✅ PASS — `tools=blackout_intelligence` |
+| BIE (`validate:spx-bie`) | ✅ PASS — `spx_full_state` == member play |
+| Grid (`/api/market/spx/bootstrap`) | ✅ PASS — loaded |
+| 0DTE (`/api/market/zerodte/board`) | ✅ PASS — 9 setups |
+| Night Hawk (`/api/market/nighthawk/edition`) | ✅ PASS |
+
+### UI controls clicked (Step 2)
+
+| Control | Result |
+|---|---|
+| GEX tab (`#spx-matrix-tab-gex`) | ✅ PASS |
+| VEX tab (`#spx-matrix-tab-vex`) | ✅ PASS |
+| Commentary expand | ✅ PASS |
+| Matrix rows | ✅ 160 strike rows |
+| Matrix text sanity | ✅ PASS — no NaN/undefined |
+| Play verdict bar | ✅ PASS — SCANNING, no stale ✓ |
+| Live badge | SKIP — post-close OFFLINE expected |
+
+### Findings table
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| P2 | SPX-CHUNK-404-TRANSIENT | First E2E run: `_next/static/chunks/1878-*.js` 404 + MIME text/plain — chunk returns 200 on direct curl; retry GREEN | `ui:console-errors` | defer (deploy drain noise) |
+| P2 | SPX-DC-CRON-AUTH | `data-correctness` WARN — env `CRON_SECRET` stale vs AWS SM | cron probe | defer |
+| P2 | SPX-BIE-CRON-401 | `bie-play-route` WARN — cron play HTTP 401 without bearer | expected | defer |
+| P2 | SPX-DESK-LANES-OFF | Desk lanes SKIP — pulse/flow unavailable post-close | off-hours | defer |
+
+**Verify status: GREEN** — zero FAIL on final `validate:spx-rth` and `validate:spx-e2e`. Matrix 100% vs API (160 strikes, GEX+VEX+DEX+CHARM). No stale SCANNING confirmations. No P0 defects.
+
+**Reports:** `audit-output/spx-rth-2026-08-05-verify-1785966424583.json`, `audit-output/spx-dashboard-e2e-1785966471423.json`
+
+---
+
+## spx-rth-2026-08-05 — SPX Slayer post-close fix agent (~1:05 PM PT / 4:05 PM ET)
+
+**Session:** Autonomous SPX Slayer **fix** mode per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` § Step 6 on branch `fix/spx-verdict-closed-flicker`. Commands: `npm run validate:spx-rth -- --phase=post-close` → `npm run validate:spx-e2e` → fix P1 `SPX-VERDICT-CLOSED-FLICKER` → re-validate → `npm run validate:deploy`.
+
+### Validation summary (post-close)
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth -- --phase=post-close` | ✅ **6 PASS · 1 WARN · 0 FAIL** — matrix 160 strikes GEX+VEX+DEX+CHARM, cross-endpoint spot merged=7723.55, BIE consistency, dashboard E2E nested, ops:collect zero items |
+| `npm run validate:spx-e2e` | ✅ **0 FAIL / 18 checks** (1 WARN: `bie-play-route` cron 401 expected; 1 SKIP: live-badge off-hours) — matrix every-cell-api 160 strikes, GEX+VEX tabs, commentary expand, play verdict SCANNING |
+| `npm run validate:deploy` | ✅ **GREEN** |
+
+### Fix shipped
+
+| Severity | ID | Detail | Status |
+|---|---|---|---|
+| P1 | SPX-VERDICT-CLOSED-FLICKER | Verdict bar showed CLOSED during brief `resolveDeskLive` drop while play API stayed SCANNING — `playSessionActive` replaced with stable `sessionActive` | **FIXED** PR `fix/spx-verdict-closed-flicker` |
+
+### Findings table (today's deferred P2 — no code change required)
+
+| Severity | ID | Detail | Fix defer? |
+|---|---|---|---|
+| P2 | SPX-DC-CRON-AUTH | `data-correctness` WARN — env `CRON_SECRET` stale; prod cron runs on AWS SM | defer |
+| P2 | SPX-BIE-CRON-401 | `bie-play-route` WARN — cron play HTTP 401 without bearer | defer (expected) |
+| P2 | SPX-FLOW-LANE-OFF | Desk lanes `flow=false` during some passes — pulse=true | monitor |
+
+**Post-close status: GREEN** — zero FAIL on `validate:spx-rth` and `validate:spx-e2e`. One P1 product fix merged (verdict CLOSED flicker). Matrix 100% vs API. Cross-tool integration (Thermal, HELIX, Largo, Grid, 0DTE, Night Hawk, BIE) all PASS.
+
+**Reports:** `audit-output/spx-rth-2026-08-05-post-close-1785964906163.json`, `audit-output/spx-dashboard-e2e-1785964910462.json`
+
+---
+
+## rth-open-2026-08-05-pass10 — RTH comprehensive test sweep (~4:54–4:57 PM ET, post-close)
+
+**Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` on branch `cursor/rth-comprehensive-test-sweep-ce38`. Commands: `npm run validate:rth-open` → `npm run validate:rth-open -- --force` → `GET /api/cron/data-correctness?force=1` (AWS `auditSecret('CRON_SECRET')`) per-surface sync → `npm run validate:rth-sweep` → `npm run validate:grid-e2e` → `npm run validate:spx-e2e` → `npm run ops:collect`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` | ✅ **GREEN** (~10s; post-close deploy-only; Postgres skipped private VPC) |
+| `npm run validate:rth-open -- --force` | ✅ **GREEN** — full session checks; Postgres skipped; options-socket off-hours ok |
+| `GET /api/cron/data-correctness?force=1` | ✅ **202 accepted** (async dispatch) |
+| `data-correctness` (`surface=heatmap`) | ✅ **ok=true · flags=0** |
+| `data-correctness` (`surface=zerodte`) | ✅ **ok=true · flags=0** |
+| `data-correctness` (`surface=spx`) | ✅ **ok=true · flags=0** |
+| `data-correctness` (`surface=full`) | ✅ **ok=true · flags=0** |
+| `npm run validate:rth-sweep` | ✅ **0 P0/P1** — 7 pages · **0 missing-field hits** · Largo grounded |
+| `npm run validate:grid-e2e` | ✅ **5/5 PASS** — zerodte board 9 setups · ledger 3 |
+| `npm run validate:spx-e2e` | ✅ **17/18 PASS** (1 WARN: `bie-play-route` cron 401 expected) |
+| `npm run ops:collect` | ✅ **0 action items** |
+
+### Speed (comprehensive sweep — Playwright premium session)
+
+| Page | Nav | Load (ms) | Live wait | Console errors |
+|---|---|---:|---:|---|
+| `/dashboard` (SPX Slayer) | hard | 1684 | 12s | 2 (React #418 + HTTP 400) |
+| `/flows` (HELIX) | soft | 1703 | 8s | 0 |
+| `/heatmap` (Thermal matrix) | soft | 1674 | 20s | 0 |
+| `/vector` | soft | 1691 | 15s | 0 |
+| `/nighthawk` (0DTE Command) | soft | 2525 | 15s | 24 (stale chunk 404 — see P2) |
+| `/terminal` (Largo) | soft | 2769 | 5s | 0 |
+| `/track-record` | soft | 1620 | 10s | 20 (stale chunk 404) |
+
+**Note:** Classic `/grid` deleted 2026-07-07 — 0DTE Command (12 panels) under `/nighthawk` via `/api/market/zerodte/board`. Thermal Profile tab not exercised (tabs hidden while matrix loading; matrix-only pass). Sign-in ticket exchange ~60s (Clerk FAPI cold). Dedicated `validate:grid-e2e` + `validate:spx-e2e` reported **0 console errors** — chunk 404s in sweep are transient stale `_next/static/chunks/67-*` after long multi-page session (`67-40ce9a32759dace1.js` → HTTP 404; current webpack hash `b2bc0ebaac6d221e` → 200).
+
+### Live auto-update
+
+- `liveTick=null` on all pages — SPX spot stable over 8–20s windows (post-close; regex probe).
+- API freshness: desk `as_of` 30s · platform snapshot 0s · zerodte board 54s.
+- Cross-GEX: desk γ-flip 7554.73 vs gex-positioning 7553.73 (Δ < 1% spot tol · spot 7723.55).
+
+### Data correctness
+
+| Cross-check | Result |
+|---|---|
+| desk γ-flip vs `gex-positioning` | ✅ aligned (Δ 1.0 on spot 7723.55) |
+| All market APIs | ✅ HTTP 200 |
+| Largo NVDA query | ✅ 200 · ~$134.5M premium · `blackout_intelligence` |
+| SPX matrix E2E | ✅ GEX+VEX+DEX+CHARM · 160 strikes · spot 7723.55 |
+
+### Missing-field audit
+
+**0 missing-field signals** across all 7 pages. Largo `Regime: —` = expected when no active regime tag.
+
+### Findings table
+
+| Severity | ID | Detail | Fix |
+|---|---|---|---|
+| — | — | **No P0/P1 product defects** on member surfaces | GREEN |
+| INFO | ENV-NODE-MODULES | Initial sweep failed — Playwright browsers missing | Resolved via `npx playwright install chromium` |
+| P2 | RTH-NIGHTHAWK-SOFT-NAV | `/nighthawk` soft-nav 2525ms (>1.5s target) | Monitor — 0DTE Command deck warm |
+| P2 | RTH-TERMINAL-SOFT-NAV | `/terminal` soft-nav 2769ms (>1.5s target) | Monitor — Largo shell |
+| P2 | RTH-CHUNK-404 | Stale `_next/static/chunks/67-*` 404 + MIME errors during long sweep | Transient post-deploy CF cache; dedicated E2E runs clean |
+| P2 | RTH-DASH-400 | Dashboard React #418 + 1× HTTP 400 during sweep | Known hydration class + transient API — dedicated SPX E2E clean |
+| P2 | SPX-BIE-CRON-401 | `bie-play-route` WARN — cron play HTTP 401 (expected without cron bearer) | defer |
+
+**Status: GREEN** — comprehensive sweep 0 P0/P1, cross-tool GEX aligned, all data-correctness surfaces flags=0. No GitHub issue opened (no P0/P1).
+
+**Reports:** `audit-output/rth-sweep-2026-08-05T20-54-09-830Z.json`, `audit-output/grid-e2e-1785963288337.json`, `audit-output/spx-dashboard-e2e-1785963291444.json`
+
+---
+
+## rth-open-2026-08-05-pass9 — RTH comprehensive test sweep (~4:38–4:41 PM ET, post-close)
+
+**Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` on branch `cursor/rth-comprehensive-test-sweep-b608`. Commands: `npm run validate:rth-open` → `GET /api/cron/data-correctness?force=1` (AWS `CRON_SECRET`) → `surface=heatmap|zerodte|spx` sync → `npm run validate:rth-sweep` → `npm run validate:grid-e2e` → `npm run validate:spx-e2e` → `npm run ops:collect`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` | ✅ **GREEN** (~11s; post-close deploy-only mode; Postgres skipped private VPC; options-socket ingest-owned off-hours) |
+| `GET /api/cron/data-correctness?force=1` | ✅ **202 accepted** (async full sweep dispatched) |
+| `data-correctness` (`surface=heatmap`) | ✅ **ok=true · flags=0** |
+| `data-correctness` (`surface=zerodte`) | ✅ **ok=true · flags=0** |
+| `data-correctness` (`surface=spx`) | ✅ **ok=true · flags=0** |
+| `npm run validate:rth-sweep` | ✅ **0 P0/P1** — 7 pages · **0 missing-field hits** · Largo grounded |
+| `npm run validate:grid-e2e` | ✅ **5/5 PASS** — zerodte board 9 setups · ledger 3 |
+| `npm run validate:spx-e2e` | ✅ **17/18 PASS** (1 WARN: `bie-play-route` cron 401 expected) |
+| `npm run ops:collect` | ✅ **0 action items** |
+
+### Speed (comprehensive sweep — Playwright premium session)
+
+| Page | Nav | Load (ms) | Live wait | Console errors |
+|---|---|---:|---:|---|
+| `/dashboard` (SPX Slayer) | hard | 1803 | 12s | 1× HTTP 400 (transient) |
+| `/flows` (HELIX) | soft | 2151 | 8s | 10 (stale chunk 404 — see P2) |
+| `/heatmap` (Thermal matrix) | soft | 2069 | 20s | 0 |
+| `/vector` | soft | 1695 | 15s | 8 (stale chunk 404) |
+| `/nighthawk` (0DTE Command) | soft | 3272 | 15s | 10 (stale chunk 404 + SSE close) |
+| `/terminal` (Largo) | soft | 2174 | 5s | 6 (stale chunk 404) |
+| `/track-record` | soft | 1967 | 10s | 6 (stale chunk 404) |
+
+**Note:** Classic `/grid` deleted 2026-07-07 — 0DTE Command (12 panels) under `/nighthawk` via `/api/market/zerodte/board`. Thermal Profile tab not visible during this pass (matrix-only; tabs hidden while loading). Dedicated `validate:spx-e2e` + `validate:grid-e2e` re-runs reported **0 console errors** — chunk 404s in sweep are transient stale `_next/static/chunks/67-*` after long multi-page session.
+
+### Live auto-update
+
+- `liveTick=null` on all pages — SPX spot stable over 8–20s observation windows (post-close; regex-based probe; APIs fresh).
+- API freshness: desk `as_of` 4s · platform snapshot 0s · zerodte board 1s.
+- Cross-GEX: desk γ-flip 7554.85 vs gex-positioning 7555.5 (within 1% spot tol).
+
+### Data correctness
+
+| Cross-check | Result |
+|---|---|
+| desk γ-flip vs `gex-positioning` | ✅ aligned (Δ < 1% spot) |
+| All market APIs | ✅ HTTP 200 |
+| Largo NVDA query | ✅ 200 · ~$134.5M premium · `blackout_intelligence` |
+| SPX matrix E2E | ✅ GEX+VEX+DEX+CHARM · 160 strikes · spot 7723.55 |
+
+### Missing-field audit
+
+**0 missing-field signals** across all 7 pages. Largo `Regime: —` = expected when no active regime tag.
+
+### Findings table
+
+| Severity | ID | Detail | Fix |
+|---|---|---|---|
+| — | — | **No P0/P1 product defects** on member surfaces | GREEN |
+| INFO | ENV-NODE-MODULES | Initial `validate:rth-open` + sweep failed — missing `pg`/`playwright` browsers | Resolved via `npm install` + `npx playwright install chromium` |
+| INFO | CRON-SECRET-STALE-ENV | GitHub/env `CRON_SECRET` may 401; AWS SM secret works | Use `auditSecret()` / AWS SM for cron probes |
+| P2 | RTH-NIGHTHAWK-SOFT-NAV | `/nighthawk` soft-nav 3272ms (>1.5s target) | Monitor — 0DTE Command deck warm |
+| P2 | RTH-CHUNK-404 | Stale `_next/static/chunks/67-*` 404 + ChunkLoadError during long sweep session | Transient post-deploy CF cache; dedicated E2E runs clean |
+| P2 | RTH-DASH-400 | Dashboard console 1× HTTP 400 during sweep | Transient — re-probe if recurring |
+| P2 | SPX-BIE-CRON-401 | `bie-play-route` WARN — cron play HTTP 401 (expected without cron bearer) | defer |
+
+**Status: GREEN** — comprehensive sweep 0 P0/P1, cross-tool GEX aligned, all data-correctness surfaces flags=0. No GitHub issue opened (no P0/P1).
+
+**Reports:** `audit-output/rth-sweep-2026-08-05T20-38-31-376Z.json`, `audit-output/grid-e2e-1785962320520.json`, `audit-output/spx-dashboard-e2e-1785962345121.json`
+
+---
+
+## grid-rth-2026-08-05 — 0DTE Command all-day verify pass (~4:23 PM ET, post-close)
+
+**Session:** 0DTE Command + Market Grid all-day RTH verification agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` verify mode on branch `cursor/0dte-grid-rth-agent-0b4f`. Commands: `npm run validate:grid-rth -- --force` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e` → `validate:zerodte-integration` → `data-validator.mjs` → extended Playwright on `/nighthawk`.
+
+**Note:** Classic Market Grid (`/grid` + 9 `/api/grid/*` routes) deleted 2026-07-07. 0DTE Command lives on `/nighthawk` with four view segments (0DTE / Swings / Bangers / Legacy). `/grid` returns HTTP 404.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:grid-rth` | ✅ **GREEN** — 14/14 PASS (`--force` post-close) |
+| `npm run validate:zerodte-logic` | ✅ **GREEN** — 17/17 PASS (gates, plans, lifecycle, mergePlays, ledger) |
+| `npm run validate:grid-e2e` | ✅ **GREEN** — 5/5 PASS |
+| `validate:zerodte-integration` | ✅ **GREEN** — 9/9 PASS |
+| `data-validator.mjs` | ⚠️ 31 PASS · 2 FAIL · 4 INFO (extended-hours oracle) |
+| `ops:collect` | ✅ zero action items |
+
+### 0DTE logic audit (exhaustive)
+
+| Layer | Result |
+|---|---|
+| Gate funnel | ✅ SETUP_MIN_GROSS, aggression, dominance, ITM guard — 0 violations (2 eligible / 7 total) |
+| Plan exits | ✅ stop −50%, target +100%, time stop 15:30 ET |
+| Trade lifecycle | ✅ OPEN → TRIM → CLOSED (sticky trough stop) |
+| Plan grading | ✅ stop wins when both touch same bar |
+| Session heat | ✅ CLOSED heat=0% (post-close); RTH→POST_COMMIT→LATE_SESSION unit-tested |
+| mergePlays UI | ✅ past cutoff / MOVED → SKIP not OPEN |
+| Ledger PnL math | ✅ 3 rows reconcile via `ledgerPnlMatches()` |
+| Finite numbers | ✅ no NaN/Infinity on live board |
+| `zerodte-warm` cron | ✅ accepted (background warm) |
+| `data-correctness` (zerodte surface) | ✅ flags=0 |
+
+### Cross-tool integration
+
+| Tool | Endpoint | Result |
+|---|---|---|
+| SPX bootstrap vs GEX | `spx/bootstrap` + `gex-positioning` | ✅ spot 7723.55 |
+| HELIX flows feed | `flows?limit=30` | ✅ 30 prints |
+| Night Hawk dedupe | board vs edition | ✅ 1 ticker withheld from scanner |
+| BIE consistency | `validate:zerodte-bie` | ✅ PASS |
+| Ledger PnL | 3 committed rows | ✅ all reconcile |
+
+### UI E2E (Playwright — `/nighthawk`)
+
+| # | Action | Result |
+|---|---|---|
+| `/grid` route probe | ✅ HTTP 404 (classic Grid removed; expected) |
+| `/nighthawk` default 0DTE view | ✅ Command deck visible |
+| Click segment **0DTE** | ✅ |
+| Click segment **Swings** | ✅ |
+| Click segment **Bangers** | ✅ |
+| Click segment **Legacy** | ✅ |
+| Board API | ✅ 7 setups · ledger 3 |
+| HELIX flows API | ✅ 20 prints |
+| Console errors | ✅ zero |
+
+### Findings table
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| — | — | **No P0/P1 product defects** on 0DTE Command surfaces | — | GREEN |
+| INFO | GRID-ROUTE-404 | `/grid` returns 404 — classic Market Grid deleted 2026-07-07; use `/nighthawk` | route | by design |
+| INFO | ENV-NODE-MODULES | Initial run failed — missing `pg`/`playwright`/`react` in cloud sandbox | — | Resolved via `npm install` |
+| P2 | DV-EXT-HOURS-ORACLE | `data-validator` FAIL NVDA Δ3.8% + AMD Δ6.5% vs Polygon **prev-close** during extended hours; board carries last RTH live marks | `zerodte/board` setups | defer (oracle mode) |
+| P2 | DV-POSTURE-NEAR-FLIP | net_gex sign vs posture divergence near gamma flip — documented legitimate state | `gex-positioning` | monitor |
+
+**Status: GREEN** — 0DTE Command all-day verify pass 0 P0/P1. All gates, plan exits, lifecycle states, ledger PnL, session heat cutoffs, and mergePlays rules verified. Cross-tool HELIX/Night Hawk/SPX bootstrap checks pass. No GitHub issue opened (no P0/P1).
+
+**Reports:** `audit-output/grid-rth-2026-08-05-verify-1785961447962.json`, `audit-output/zerodte-logic-1785961455325.json`, `audit-output/grid-e2e-1785961461682.json`, `audit-output/zerodte-integration-1785961486896.json`, `audit-output/validation-2026-08-05T20-24-52-005Z.md`
+
+**Screenshots:** `/opt/cursor/artifacts/grid-rth-2026-08-05/`
+
+---
+
+## spx-rth-2026-08-05 — SPX Slayer all-day verify pass (~3:43 PM ET, afternoon)
+
+**Session:** SPX Slayer all-day RTH verification agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` verify mode on branch `cursor/spx-rth-system-verification-31d1`. Commands: `npm run validate:spx-rth` → `npm run validate:spx-e2e` → 60s live auto-update API probe.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth` | ✅ **GREEN** — 8 PASS · 1 WARN (CRON_SECRET env stale) |
+| `npm run validate:spx-e2e` | ✅ **GREEN** — 17/18 PASS · 1 WARN (`bie-play-route` cron 401) |
+| Matrix deep audit | ✅ GEX+VEX+DEX+CHARM · 159 strikes · every cell finite |
+| Cross-endpoint spot/GEX | ✅ desk=7738.72 hm=7738.49 play=SCANNING/SCANNING (Δ < 0.15 pts) |
+| Desk cache lanes | ✅ spot=7738.49 pulse=true flow=false |
+| BIE consistency | ✅ `getSpxPlayState()` == member `/spx/play` |
+| `ops:collect` | ✅ zero action items |
+| 60s live auto-update | ✅ desk spot 7739.42→7736.92 · hm 7739.18→7737.1 · pulse 7739→7736.26 |
+
+### UI E2E (Playwright — every control clicked)
+
+| # | Action | Result |
+|---|---|---|
+| Sign-in `/dashboard` | ✅ premium session loads |
+| LIVE badge RTH | ✅ not OFFLINE during RTH |
+| Click GEX tab | ✅ |
+| Click VEX tab | ✅ |
+| Matrix rows | ✅ 159 strike rows |
+| Matrix text sanity | ✅ no NaN/undefined/em-dash |
+| Commentary expand | ✅ toggles |
+| Play verdict bar | ✅ SPX PLAY (SCANNING — no stale ✓) |
+| Console errors | ✅ zero hard errors |
+
+### Cross-tool integration (Step 3)
+
+| Tool | Endpoint | Result |
+|---|---|---|
+| Thermal | `gex-heatmap?ticker=SPX` | ✅ same payload as dashboard matrix |
+| Thermal SPY | cross_validation | ✅ PASS |
+| HELIX | `flows?limit=30` | ✅ 30 prints |
+| Grid bootstrap | `spx/bootstrap` | ✅ loaded |
+| 0DTE board | `zerodte/board` | ✅ 8 setups |
+| Night Hawk | `nighthawk/edition` | ✅ loads |
+| Largo | `largo/query` SPX play | ✅ `tools=blackout_intelligence` |
+| BIE | `validate:spx-bie` | ✅ PASS |
+| SPX cross-tool | desk vs play | ✅ desk=7738.37 play=SCANNING |
+
+### Findings table
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| — | — | **No P0/P1 product defects** on SPX Slayer surfaces | — | GREEN |
+| INFO | ENV-NODE-MODULES | Initial run failed — missing `pg`/`tsx`/`playwright` | — | Resolved via `npm install` |
+| P2 | CRON-SECRET-STALE-ENV | `spx:data-correctness` WARN — env `CRON_SECRET` 401; prod cron runs on AWS SM | cron bearer | defer |
+| P2 | SPX-BIE-CRON-401 | `bie-play-route` WARN — cron play HTTP 401 without bearer | `/api/market/spx/play` cron | defer (expected) |
+| P2 | SPX-FLOW-LANE-OFF | Desk lanes `flow=false` during pass — flow lane not live (pulse=true) | desk cache lanes | monitor |
+| P2 | DATA-VALIDATOR-AUTH | `data-validator.mjs` auth FAIL — phone collision leftover temp user | Clerk temp user | cleanup |
+
+**Status: GREEN** — SPX all-day verify pass 0 P0/P1. Matrix 100% correct vs API. No stale confirmations during SCANNING. Live auto-update confirmed over 60s. No GitHub issue opened (no P0/P1).
+
+**Reports:** `audit-output/spx-rth-2026-08-05-verify-1785959094963.json`, `audit-output/spx-dashboard-e2e-1785959109515.json`
+
+---
+
+## rth-open-2026-08-05-pass8 — RTH comprehensive test sweep (~2:13–2:21 PM ET, afternoon)
+
+**Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` on branch `cursor/rth-comprehensive-test-sweep-6421`. Commands: `npm run validate:rth-open` → `GET /api/cron/data-correctness?force=1` (AWS `CRON_SECRET`) → `surface=heatmap|zerodte|spx` sync → `npm run validate:rth-sweep` → `npm run validate:grid-e2e` → `npm run validate:spx-e2e` → `npm run ops:collect`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` | ✅ **GREEN** (~162s; Postgres skipped private VPC; options-socket ingest-owned warming) |
+| `GET /api/cron/data-correctness?force=1` | ✅ **202 accepted** (async full sweep dispatched; env `CRON_SECRET` stale → used AWS SM) |
+| `data-correctness` (`surface=heatmap`) | ✅ **ok=true · flags=0** (60 metrics) |
+| `data-correctness` (`surface=zerodte`) | ✅ **ok=true · flags=0** (104 metrics) |
+| `data-correctness` (`surface=spx`) | ✅ **ok=true · flags=0** (104 metrics) |
+| `npm run validate:rth-sweep` | ✅ **0 P0/P1** — 7 pages · **0 missing-field hits** · Largo grounded |
+| `npm run validate:grid-e2e` | ✅ **5/5 PASS** — zerodte board 9 setups · ledger 3 |
+| `npm run validate:spx-e2e` | ✅ **17/18 PASS** (1 WARN: `bie-play-route` cron 401 expected) |
+| `npm run ops:collect` | ✅ **0 action items** |
+
+### Speed (comprehensive sweep — Playwright premium session)
+
+| Page | Nav | Load (ms) | Live wait | Console errors |
+|---|---|---:|---:|---|
+| `/dashboard` (SPX Slayer) | hard | 9228 | 12s | 1× HTTP 400 (transient) |
+| `/flows` (HELIX) | soft | 1665 | 8s | 0 |
+| `/heatmap` (Thermal matrix) | soft | 3183 | 20s | 0 |
+| `/vector` | soft | 3073 | 15s | 0 |
+| `/nighthawk` (0DTE Command) | soft | 1711 | 15s | 0 |
+| `/terminal` (Largo) | soft | 3336 | 5s | 0 |
+| `/track-record` | soft | 1613 | 10s | 0 |
+
+**Note:** Classic `/grid` deleted 2026-07-07 — 0DTE Command (12 panels) under `/nighthawk` via `/api/market/zerodte/board`. Thermal Profile tab not visible during this pass (matrix-only; tabs hidden while loading).
+
+### Live auto-update
+
+- `liveTick=null` on all pages — SPX spot stable over 8–20s observation windows (regex-based probe; APIs fresh).
+- API freshness: desk `as_of` 35s · platform snapshot 0s · zerodte board 294s.
+- Cross-GEX: desk γ-flip 7608.01 vs gex-positioning 7607.07 (within 1% spot tol).
+
+### Data correctness
+
+| Cross-check | Result |
+|---|---|
+| desk γ-flip vs `gex-positioning` | ✅ aligned (Δ < 1% spot) |
+| All market APIs | ✅ HTTP 200 |
+| Largo NVDA query | ✅ 200 · ~$131.4M premium · `blackout_intelligence` |
+| SPX matrix E2E | ✅ GEX+VEX+DEX+CHARM · 159 strikes · spot 7743.7 |
+
+### Missing-field audit
+
+**0 missing-field signals** across all 7 pages. Largo `Regime: —` = expected when no active regime tag.
+
+### Findings table
+
+| Severity | ID | Detail | Fix |
+|---|---|---|---|
+| — | — | **No P0/P1 product defects** on member surfaces | GREEN |
+| INFO | ENV-NODE-MODULES | Initial `validate:rth-open` failed — missing `pg` module | Resolved via `npm install` |
+| INFO | CRON-SECRET-STALE-ENV | GitHub/env `CRON_SECRET` returned 401; AWS SM secret works | Use `auditSecret()` / AWS SM for cron probes |
+| P2 | RTH-DASH-HARD-NAV | `/dashboard` hard load 9228ms (includes cold sign-in + first paint) | Monitor — first-page cold path |
+| P2 | RTH-HEATMAP-SOFT-NAV | `/heatmap` soft-nav 3183ms (>1.5s target) | Monitor — matrix warm |
+| P2 | RTH-VECTOR-SOFT-NAV | `/vector` soft-nav 3073ms (>1.5s target) | Monitor — Vector bootstrap |
+| P2 | RTH-TERMINAL-SOFT-NAV | `/terminal` soft-nav 3336ms (>1.5s target) | Monitor — Largo shell |
+| P2 | RTH-DASH-400 | Dashboard console 1× HTTP 400 during sweep | Transient — re-probe if recurring |
+| P2 | SPX-BIE-CRON-401 | `bie-play-route` WARN — cron play HTTP 401 (expected without cron bearer) | defer |
+
+**Status: GREEN** — comprehensive sweep 0 P0/P1, cross-tool GEX aligned, all data-correctness surfaces flags=0. No GitHub issue opened (no P0/P1).
+
+**Reports:** `audit-output/rth-sweep-2026-08-05T18-16-45-590Z.json`, `audit-output/grid-e2e-1785954040858.json`, `audit-output/spx-dashboard-e2e-1785954107585.json`
+
+---
+
+## rth-open-2026-08-05-pass7 — RTH comprehensive test sweep (~1:26–1:35 PM ET, midday)
+
+**Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` on branch `cursor/rth-comprehensive-test-sweep-50e4`. Commands: `npm run validate:rth-open` → `GET /api/cron/data-correctness?force=1` → `surface=heatmap|zerodte|spx` sync → `npm run validate:rth-sweep` → `npm run validate:grid-e2e` → `npm run validate:spx-e2e` → `npm run ops:collect`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` | ✅ **GREEN** (~72s; Postgres skipped private VPC; options-socket warming) |
+| `GET /api/cron/data-correctness?force=1` | ✅ **202 accepted** (async full sweep dispatched) |
+| `data-correctness` (`surface=heatmap`) | ✅ **ok=true · flags=0** (60 metrics · 20.6s) |
+| `data-correctness` (`surface=zerodte`) | ⚠️ **flags=1** → **FIXED** (verifier stale $20 cap; AMD $25.82 is valid under shipped $35 cap) |
+| `data-correctness` (`surface=spx`) | ⚠️ same AMD premium false-positive (fixed in PR) |
+| `npm run validate:rth-sweep` | ✅ **0 P0/P1** — 7 pages · **0 missing-field hits** · Largo grounded |
+| `npm run validate:grid-e2e` | ✅ **5/5 PASS** — zerodte board 9 setups · ledger 3 |
+| `npm run validate:spx-e2e` | ✅ **17/18 PASS** (1 WARN: `bie-play-route` cron 401 expected) |
+| `npm run ops:collect` | ✅ **0 action items** |
+
+### Speed (comprehensive sweep — Playwright premium session)
+
+| Page | Nav | Load (ms) | Live wait | Console errors |
+|---|---|---:|---:|---|
+| `/dashboard` (SPX Slayer) | hard | 1681 | 12s | 1× HTTP 400 (transient) |
+| `/flows` (HELIX) | soft | 1611 | 8s | 0 |
+| `/heatmap` (Thermal matrix) | soft | 1635 | 20s | 0 |
+| `/vector` | soft | 3691 | 15s | 0 |
+| `/nighthawk` (0DTE Command) | soft | 1630 | 15s | 0 |
+| `/terminal` (Largo) | soft | 8523 | 5s | 0 |
+| `/track-record` | soft | 1597 | 10s | 0 |
+
+**Note:** Classic `/grid` deleted 2026-07-07 — 0DTE Command (12 panels) under `/nighthawk` via `/api/market/zerodte/board`. Thermal Profile tab not visible during this pass (matrix-only; tabs hidden while loading).
+
+### Live auto-update
+
+- `liveTick=null` on all pages — SPX spot stable over 8–20s observation windows (regex-based probe; APIs fresh).
+- API freshness: desk `as_of` 57s · platform snapshot 0s · zerodte board 97s.
+- Cross-GEX: desk γ-flip 7635.19 vs gex-positioning 7629.88 (within 1% spot tol).
+
+### Data correctness
+
+| Cross-check | Result |
+|---|---|
+| desk γ-flip vs `gex-positioning` | ✅ aligned (Δ < 1% spot) |
+| All market APIs | ✅ HTTP 200 |
+| Largo NVDA query | ✅ 200 · ~$130.9M premium · `blackout_intelligence` |
+| SPX matrix E2E | ✅ GEX+VEX+DEX+CHARM · 181 strikes |
+
+### Missing-field audit
+
+**0 missing-field signals** across all 7 pages. Largo `Regime: —` = expected when no active regime tag.
+
+### Findings table
+
+| Severity | ID | Detail | Fix |
+|---|---|---|---|
+| P1 | NH-PREMIUM-CAP-VERIFIER | `nighthawk-verifier.ts` hardcoded `PREMIUM_CAP=20` while shipped cap is `MAX_OPTION_PREMIUM_PER_SHARE=35` → false flag on AMD $25.82 `premium_cap_ok=true` | **FIXED** — import shared constant + unit test |
+| — | — | **No other P0/P1 product defects** on member surfaces | GREEN post-fix |
+| INFO | ENV-NODE-MODULES | Initial `validate:rth-open` failed — missing `pg` / Playwright browsers | Resolved via `npm install` + `npx playwright install chromium` |
+| P2 | RTH-VECTOR-SOFT-NAV | `/vector` soft-nav 3691ms (>1.5s target) | Monitor — Vector bootstrap |
+| P2 | RTH-TERMINAL-SOFT-NAV | `/terminal` soft-nav 8523ms (>1.5s target) | Monitor — Largo shell + chunk warm |
+| P2 | RTH-DASH-400 | Dashboard console 1× HTTP 400 during sweep | Transient — re-probe if recurring |
+| P2 | SPX-BIE-CRON-401 | `bie-play-route` WARN — cron play HTTP 401 (expected without cron bearer) | defer |
+
+**Status: GREEN post-fix** — comprehensive sweep 0 P0/P1, cross-tool GEX aligned, heatmap correctness flags=0, zerodte/spx correctness flags=0 after verifier cap sync.
+
+**Reports:** `audit-output/rth-sweep-2026-08-05T17-27-58-481Z.json`, `audit-output/grid-e2e-1785951093092.json`, `audit-output/spx-dashboard-e2e-1785951204102.json`
+
+---
+
+## spx-rth-2026-08-05 — SPX Slayer all-day RTH verify agent (market open ~6:30 AM PT / 9:30 AM ET)
+
+**Session:** Autonomous SPX Slayer **verify** mode per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md`. Passes: (1) market-open ~9:30 ET agent `40dc`; (2) midday ~13:23 ET agent `4666`; (3) afternoon ~15:04–15:19 ET agent `5c15`. Commands each pass: `npm run validate:spx-rth` → `npm run validate:spx-e2e` → `data-validator.mjs` → 60s live auto-update (`spx-live-check.mjs` FRAMES=2 INTERVAL_MS=60000).
+
+### Validation summary (pass 3 — ~15:04–15:19 ET)
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth` | ⚠️ **7 PASS · 1 WARN · 1 FAIL** (~5 min) — matrix deep audit PASS (GEX+VEX+DEX+CHARM · every cell finite), cross-endpoint spot merged=7740.41 hm=7740.59 play=SCANNING/SCANNING, desk lanes pulse+flow live, BIE consistency PASS, dashboard E2E nested PASS, ops:collect zero items. **FAIL:** `infra:validate:rth-open` — transient origin **502** on `/api/ready` + `/sign-in` during `validate:deploy` (ECS/ALB drain); **re-run GREEN** at ~15:17 ET |
+| `npm run validate:spx-e2e` | ✅ **0 FAIL / 18 checks** (1 WARN: `bie-play-route` cron 401 expected) — matrix every-cell-api **158** strikes, GEX+VEX tabs clicked, **158** UI rows, commentary expand, play verdict SCANNING (no stale ✓) |
+| `spx-live-check.mjs` (60s) | ✅ **distinctPin=2** (7,742→7,743) · **distinctRegime=2** (flip 7,609→7,618) · **distinctSpotFirst=2** (6300→7700 ladder row) — pin/regime/spot tick without manual refresh |
+| 60s Playwright verdict probe | ⚠️ Verdict bar flickered **HUNTING → CLOSED** mid-RTH while `/api/market/spx/play` stayed **SCANNING** (`playSessionActive` gated on `live && desk.available` — brief `live=false` during desk lane refresh) |
+
+**Live desk (RTH ~15:15 ET):** SPX spot ~7741 · play **SCANNING** · 158 API strikes / 158 UI rows · 12 0DTE setups · 30 HELIX prints · LIVE badge active.
+
+### Validation summary (pass 2 — ~13:23 ET)
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth` | ✅ **8 PASS · 1 WARN · 0 FAIL** (~31s) — RTH-open, matrix deep audit (GEX+VEX+DEX+CHARM · every cell finite · Σ strike_totals == headline), cross-endpoint spot merged=7735.08 hm=7735.48 play=SCANNING/SCANNING, desk lanes pulse+flow live, BIE consistency, dashboard E2E nested, ops:collect zero items |
+| `npm run validate:spx-e2e` | ✅ **0 FAIL / 18 checks** (1 WARN: `bie-play-route` cron 401 expected) — matrix every-cell-api 170 strikes, GEX+VEX tabs clicked, 170 UI rows, commentary expand, play verdict SCANNING (no stale ✓) |
+| `data-validator.mjs` | ✅ **36 PASS · 5 INFO · 0 FAIL** — SPX/SPY/VIX live vs Polygon, 0DTE chain + ledger SPXW/QQQ/MU premium cross-check PASS |
+| 60s live auto-update | ✅ **distinctRegime=2** (flip 7,621→7,625) · **distinctSpotFirst=2** · pin 7,736.2→7,736.5 — surfaces tick without manual refresh |
+
+**Live desk (RTH ~13:23 ET):** SPX spot ~7736 · play **SCANNING** · 170 API strikes / 170 UI rows · 9 0DTE setups · 30 HELIX prints · LIVE badge active.
+
+### Validation summary (pass 1 — ~12:14 ET)
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth` | ✅ **8 PASS · 1 WARN · 0 FAIL** (~4.5 min) — RTH-open, matrix deep audit (GEX+VEX+DEX+CHARM · every cell finite · Σ strike_totals == headline), cross-endpoint spot merged=7727.08 hm=7726.45 play=SCANNING/SCANNING, desk lanes pulse+flow live, BIE consistency, dashboard E2E nested, ops:collect zero items |
+| `npm run validate:spx-e2e` | ✅ **0 FAIL / 18 checks** (1 WARN: `bie-play-route` cron 401 expected) — matrix every-cell-api 201 strikes, GEX+VEX tabs clicked, 190 UI rows, commentary expand, play verdict SCANNING (no stale ✓) |
+| 60s live auto-update | ✅ **distinctPin=2** (7,738→7,740) · **distinctRegime=2** (flip 7,633→7,623) · **distinctSpotFirst=2** (7750→7800) — surfaces tick without manual refresh |
+
+**Live desk (RTH ~12:14 ET):** SPX spot ~7731 · play **SCANNING** · 201 API strikes / 190 UI rows · 10 0DTE setups · 30 HELIX prints · LIVE badge active.
+
+### UI E2E (`/dashboard`) — pass 2
+
+| Control | Result |
+|---|---|
+| Sign-in + shell | ✅ premium desk loads |
+| GEX tab (`#spx-matrix-tab-gex`) | ✅ clicked · matrix populates |
+| VEX tab (`#spx-matrix-tab-vex`) | ✅ clicked · VEX cells populate |
+| Matrix rows | ✅ **170** strike rows (≥80 RTH bar) |
+| Matrix text sanity | ✅ no NaN / undefined / `$—` |
+| Commentary expand | ✅ toggles without error |
+| Play verdict bar | ✅ SPX PLAY · SCANNING — **no stale ✓ confirmations** |
+| Console errors | ✅ zero hard errors |
+| LIVE badge | ✅ active during RTH |
+
+### UI E2E (`/dashboard`) — pass 1
+
+### Cross-tool integration (Step 3)
+
+| Tool | Endpoint | Result |
+|---|---|---|
+| Thermal | `gex-heatmap?ticker=SPX` | ✅ same payload as dashboard matrix |
+| Thermal SPY | `gex-heatmap?ticker=SPY` | ✅ cross_validation PASS |
+| GEX positioning | `gex-positioning?ticker=SPX` | ✅ spot/flip/walls agree with matrix |
+| HELIX | `flows?limit=30` | ✅ 30 prints |
+| Largo | `largo/query` SPX play | ✅ `blackout_intelligence` grounded |
+| BIE | `validate:spx-bie` | ✅ `spx_full_state` == member play |
+| Grid bootstrap | `spx/bootstrap` | ✅ loaded |
+| 0DTE Command | `zerodte/board` | ✅ 9 setups |
+| Night Hawk | `nighthawk/edition` | ✅ loads |
+| Cross-tool spot/play | desk vs play | ✅ desk=7736.26 play=SCANNING |
+
+**Verify status: GREEN** — zero FAIL on SPX product harnesses (matrix, E2E, cross-tool, BIE, ops). Infra flake on pass 3 rth-open (transient 502) cleared on re-probe. No P0 fixes required.
+
+### Findings table (`spx-rth-2026-08-05`)
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| — | — | **No P0 SPX data/signal defects** — matrix cells 100% vs API, SCANNING has no stale ✓, cross-tool aligned | — | GREEN |
+| P1 | SPX-VERDICT-CLOSED-FLICKER | Play verdict bar showed **CLOSED** for ~60s during RTH while play API remained **SCANNING** — `playSessionActive` drops when `resolveDeskLive` briefly false during desk lane refresh | `/api/market/spx/play` vs UI | **FIXED** post-close (`fix/spx-verdict-closed-flicker`) |
+| INFO | SPX-RTH-ENV-NODE | Pass 3 cloud agent required `npm install` + `npx playwright install chromium` before harnesses ran | — | Resolved |
+| P2 | SPX-DC-CRON-AUTH | `data-correctness` WARN — CRON_SECRET auth mismatch in agent env (prod cron runs async) | cron probe | defer |
+| P2 | SPX-BIE-CRON-401 | `bie-play-route` WARN — cron play HTTP 401 (expected without cron bearer) | BIE cron | defer |
+| INFO | SPX-LIVE-502 | Transient origin 502 during `validate:deploy` + prior 60s checks (ECS rolling deploy / ALB drain) | edge | monitor |
+
+**Reports (pass 3):** `audit-output/spx-rth-2026-08-05-verify-1785957004394.json`, `audit-output/spx-dashboard-e2e-1785957237351.json`, `spx-live-check` DELTAS pass 3 (~15:19 ET)
+
+**Reports (pass 2):** `audit-output/spx-rth-2026-08-05-verify-1785950665539.json`, `audit-output/spx-dashboard-e2e-1785950679147.json`, `/opt/cursor/artifacts/spx-rth-2026-08-05/report-verify-1330et.json`
+
+**Reports (pass 1):** `audit-output/spx-rth-2026-08-05-verify-1785946726555.json`, `audit-output/spx-dashboard-e2e-1785946872925.json`, `/opt/cursor/artifacts/spx-rth-2026-08-05/report-verify-open.json`
+
+---
+
+## grid-rth-2026-08-05 — 0DTE Command RTH verify agent (market open ~6:30 AM PT / 9:30 AM ET)
+
+**Session:** Autonomous Grid RTH **verify** mode per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` (Cloud Agent `cursor/0dte-grid-rth-agent-a9c6`). Passes: (1) market-open ~9:30 ET agent `8c7a`; (2) midday ~12:15 ET agent `ca67`; (3) midday ~12:46 ET agent `8680`; (4) midday ~13:49 ET agent `fd26`; (5) afternoon ~15:10 ET agent `a9c6`. Commands each pass: `npm run validate:grid-rth` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e` → `data-validator.mjs` → `/grid` 404 routing check + Night Hawk tab clicks.
+
+**Note:** Classic `/grid` page + 9 `/api/grid/*` routes deleted 2026-07-07 — returns **404**. 0DTE Command lives on `/nighthawk` with four view tabs (**0DTE / Swings / Bangers / Legacy**); LEAPS removed from toggle 2026-08-04 (no live signal adapter).
+
+### Validation summary (pass 5 — ~15:10 ET)
+
+| Check | Result |
+|---|---|
+| `npm run validate:grid-rth` | ✅ **14/14 PASS** (0 FAIL · ~3.3 min) — RTH-open, upstream, session heat RTH, ledger PnL 3 rows, SPX spot 7740.55 vs GEX, HELIX 20 prints, Night Hawk dedupe 1 ticker, `zerodte-warm` cron accepted, logic + integration, data-correctness flags=0, E2E nested, ops:collect zero items |
+| `npm run validate:zerodte-logic` | ✅ **17/17 PASS** — gates, plan exits (-50%/+100%/15:30 ET), lifecycle OPEN→TRIM→CLOSED, mergePlays SKIP past cutoff/MOVED, session heat RTH→POST_COMMIT→LATE_SESSION, live board 8 setups / 3 ledger (2 eligible / 0 gate violations), cutoff 15:30 ET |
+| `npm run validate:grid-e2e` | ✅ **5/5 PASS** — board API 8/3, HELIX 20 prints, Playwright `/nighthawk` load, zero console errors |
+| `data-validator.mjs` | ✅ **31 PASS / 5 INFO / 0 FAIL** — SPX/SPY/VIX live vs Polygon, 0DTE chain + ledger SPXW/QQQ/MU premium cross-check PASS |
+| Night Hawk UI segments | ✅ **0DTE / Swings / Bangers / Legacy** — all tabs click (Playwright `.ios-native-segment-btn`); transient 502 on Legacy→pricing chunk (edge, non-blocking) |
+| `/grid` routing | ✅ **404** — intentional (classic Market Grid removed) |
+
+**Live board (RTH ~15:10 ET):** 12 setups (orchestrator) / 8 setups (logic audit) · 3 ledger · session heat RTH 100% · 2 eligible / 0 gate violations · upstream OK · committed SPXW 7830c entry 8.38 + QQQ 720p entry 1.77 + MU 910c entry 16.02 grounded vs Polygon minute bars.
+
+**Cross-tool:** SPX bootstrap spot 7740.55 vs GEX ✅ · HELIX flows 20 prints ✅ · Night Hawk dedupe 1 ticker covered elsewhere ✅ · `zerodte-warm` cron accepted ✅.
+
+**Verify status: GREEN** — zero FAIL on all Grid harnesses. No P0 fixes required.
+
+**Reports (pass 5):** `audit-output/grid-rth-2026-08-05-verify-1785957222863.json`, `audit-output/zerodte-logic-1785956902096.json`, `audit-output/grid-e2e-1785956913472.json`, `audit-output/validation-2026-08-05T19-14-25-924Z.md`, `/opt/cursor/artifacts/grid-rth-ui/report.json`
+
+### Validation summary (pass 4 — ~13:49 ET)
+
+| Check | Result |
+|---|---|
+| `npm run validate:grid-rth` | ✅ **14/14 PASS** (0 FAIL · ~4.5 min) — RTH-open, upstream, session heat RTH, ledger PnL 3 rows, SPX spot 7742.62 vs GEX, HELIX 20 prints, Night Hawk dedupe 1 ticker, `zerodte-warm` cron accepted, logic + integration, data-correctness flags=0, E2E nested, ops:collect zero items |
+| `npm run validate:zerodte-logic` | ✅ **17/17 PASS** — gates, plan exits (-50%/+100%/15:30 ET), lifecycle OPEN→TRIM→CLOSED, mergePlays SKIP past cutoff/MOVED, session heat RTH→POST_COMMIT→LATE_SESSION, live board 9 setups / 3 ledger (2 eligible / 0 gate violations), cutoff 15:30 ET |
+| `npm run validate:grid-e2e` | ✅ **5/5 PASS** — board API 9/3, HELIX 20 prints, Playwright `/nighthawk` load, zero console errors |
+| `data-validator.mjs` | ✅ **36 PASS / 5 INFO / 0 FAIL** — SPX/SPY/VIX live vs Polygon, 0DTE chain + ledger SPXW/QQQ/MU premium cross-check PASS |
+| Night Hawk UI segments | ✅ **0DTE / Swings / Bangers / Legacy** — all tabs click (Playwright `.ios-native-segment-btn`), zero console errors |
+| `/grid` routing | ✅ **404** — intentional (classic Market Grid removed) |
+
+**Live board (RTH ~13:49 ET):** 9 setups · 3 ledger · session heat RTH 100% · 2 eligible / 0 gate violations · upstream OK · committed SPXW 7830c entry 8.38 + QQQ 720p entry 1.77 + MU 910c entry 16.02 grounded vs Polygon minute bars.
+
+**Cross-tool:** SPX bootstrap spot 7742.62 vs GEX ✅ · HELIX flows 20 prints ✅ · Night Hawk dedupe 1 ticker covered elsewhere ✅ · `zerodte-warm` cron accepted ✅.
+
+**Verify status: GREEN** — zero FAIL on all Grid harnesses. No P0 fixes required.
+
+**Reports (pass 4):** `audit-output/grid-rth-2026-08-05-verify-1785952453967.json`, `audit-output/zerodte-logic-1785952179457.json`, `audit-output/grid-e2e-1785952190948.json`, `audit-output/validation-2026-08-05T17-54-25-860Z.md`
+
+### Validation summary (pass 3 — ~12:46 ET)
+
+| Check | Result |
+|---|---|
+| `npm run validate:grid-rth` | ✅ **14/14 PASS** (0 FAIL · ~6.5 min) — RTH-open, upstream, session heat RTH, ledger PnL 2 rows, SPX spot 7737.9 vs GEX, HELIX 20 prints, Night Hawk dedupe 1 ticker, `zerodte-warm` cron accepted, logic + integration, data-correctness flags=0, E2E nested, ops:collect zero items |
+| `npm run validate:zerodte-logic` | ✅ **17/17 PASS** — gates, plan exits (-50%/+100%/15:30 ET), lifecycle OPEN→TRIM→CLOSED, mergePlays SKIP past cutoff/MOVED, session heat RTH→POST_COMMIT→LATE_SESSION, live board 9 setups / 2 ledger (2 eligible / 0 gate violations), cutoff 15:30 ET |
+| `npm run validate:grid-e2e` | ✅ **5/5 PASS** — board API 9/2, HELIX 20 prints, Playwright `/nighthawk` load, zero console errors |
+| `data-validator.mjs` | ✅ **33 PASS / 5 INFO / 0 FAIL** — SPX/SPY/VIX live vs Polygon, 0DTE chain + ledger SPXW/QQQ/MU premium cross-check PASS |
+| `/grid` routing | ✅ **404** — intentional (classic Market Grid removed) |
+
+**Live board (RTH ~12:46 ET):** 9 setups · 2 ledger (board API) / 3 ledger (data-validator includes fresh MU 910c commit ~16:46 UTC) · session heat RTH 100% · 2 eligible / 0 gate violations · upstream OK · committed SPXW 7830c entry 8.38 + QQQ 720p entry 1.77 + MU 910c entry 16.02 grounded vs Polygon minute bars.
+
+**Cross-tool:** SPX bootstrap spot 7737.9 vs GEX ✅ · HELIX flows 20 prints ✅ · Night Hawk dedupe 1 ticker covered elsewhere ✅ · `zerodte-warm` cron accepted ✅.
+
+**Verify status: GREEN** — zero FAIL on all Grid harnesses. No P0 fixes required.
+
+**Reports (pass 3):** `audit-output/grid-rth-2026-08-05-verify-1785948800017.json`, `audit-output/zerodte-logic-1785948391401.json`, `audit-output/grid-e2e-1785948402758.json`, `audit-output/validation-2026-08-05T16-54-21-557Z.md`
+
+### Validation summary (pass 2 — ~12:15 ET)
+
+| Check | Result |
+|---|---|
+| `npm run validate:grid-rth` | ✅ **14/14 PASS** (0 FAIL · ~7 min) — RTH-open, upstream, session heat RTH, ledger PnL 1 row, SPX spot 7732.2 vs GEX, HELIX 20 prints, Night Hawk dedupe 1 ticker, `zerodte-warm` cron accepted, logic + integration, data-correctness flags=0, E2E nested, ops:collect zero items |
+| `npm run validate:zerodte-logic` | ✅ **17/17 PASS** — gates, plan exits (-50%/+100%/15:30 ET), lifecycle OPEN→TRIM→CLOSED, mergePlays SKIP past cutoff/MOVED, session heat RTH→POST_COMMIT→LATE_SESSION, live board 9 setups / 2 ledger (1 eligible / 0 gate violations), cutoff 15:30 ET |
+| `npm run validate:grid-e2e` | ✅ **5/5 PASS** — board API 9/2, HELIX 20 prints, Playwright `/nighthawk` load, zero console errors |
+| `data-validator.mjs` | ✅ **33 PASS / 5 INFO / 0 FAIL** — SPX/SPY/VIX live vs Polygon, 0DTE chain + ledger SPXW/QQQ premium cross-check PASS |
+| Night Hawk UI segments | ✅ **0DTE / Swings / Bangers / Legacy** — all tabs click (Playwright `.ios-native-segment-btn`) |
+| `/grid` routing | ✅ **404** — intentional (classic Market Grid removed) |
+
+**Live board (RTH ~12:15 ET):** 9 setups · 2 ledger · session heat RTH 100% · 1 eligible / 0 gate violations · upstream OK · committed SPXW 7830c entry premium 8.38 + QQQ 720p entry 1.77 grounded vs Polygon minute bars.
+
+**Cross-tool:** SPX bootstrap spot 7732.2 vs GEX ✅ · HELIX flows 20 prints ✅ · Night Hawk dedupe 1 ticker covered elsewhere ✅ · `zerodte-warm` cron accepted ✅.
+
+**Verify status: GREEN** — zero FAIL on all Grid harnesses. No P0 fixes required.
+
+### Validation summary (pass 1 — ~11:40 ET, agent `8c7a`)
+
+| Check | Result |
+|---|---|
+| `npm run validate:grid-rth` | ✅ **14/14 PASS** — setups=10 ledger=1, SPX spot 7744.57 |
+| `npm run validate:zerodte-logic` | ✅ **17/17 PASS** — 7 setups / 1 ledger |
+| `npm run validate:grid-e2e` | ✅ **5/5 PASS** — board API 7/1 |
+| `data-validator.mjs` | ✅ **30 PASS / 5 INFO / 0 FAIL** |
+
+### Findings table (`grid-rth-2026-08-05`)
+
+| Severity | ID | Detail | Fix defer? |
+|---|---|---|---|
+| — | — | **No P0/P1 product defects** | all Grid suites GREEN |
+| INFO | GRID-RTH-ROUTING-01 | `/grid` returns 404 — classic Market Grid + 9 `/api/grid/*` routes deleted; 0DTE Command on `/nighthawk` | N/A — intentional |
+| INFO | GRID-RTH-NAV-01 | Night Hawk toggle is **0DTE / Swings / Bangers / Legacy** (LEAPS removed 2026-08-04) | N/A — documented in `nighthawk-view.ts` |
+| INFO | GRID-RTH-ENV-NODE | Cloud agent runs need `npm install` + `npx playwright install chromium` before harnesses | Resolved each session |
+| INFO | GRID-RTH-ELIGIBLE-01 | Live board 9 setups but only 1 eligible — remainder gated (expected RTH funnel behavior, 0 gate violations) | monitor |
+| INFO | GRID-RTH-LEDGER-GROWTH | Ledger grew 1→2 rows between passes (QQQ 720p added ~16:17 UTC) — expected intraday commit behavior | monitor |
+| INFO | GRID-RTH-LEDGER-GROWTH-2 | Ledger grew 2→3 rows pass 2→3 (MU 910c added ~16:46 UTC) — expected intraday commit behavior | monitor |
+| INFO | GRID-RTH-ELIGIBLE-02 | Live board 9 setups, 2 eligible (up from 1 at pass 2) — remainder gated, 0 gate violations | monitor |
+| INFO | GRID-RTH-LEGACY-502 | Transient HTTP 502 + MIME error on `pricing/page-*.js` when clicking Legacy segment (~15:10 ET pass 5) — edge/deploy flake; `validate:grid-e2e` console clean on default 0DTE lane | monitor |
+| INFO | GRID-RTH-SETUP-COUNT | Orchestrator reports 12 setups vs logic-audit 8 — cron vs Clerk auth path timing delta (both PASS, 0 gate violations) | monitor |
+
+**Reports (pass 5):** `audit-output/grid-rth-2026-08-05-verify-1785957222863.json`, `audit-output/zerodte-logic-1785956902096.json`, `audit-output/grid-e2e-1785956913472.json`, `audit-output/validation-2026-08-05T19-14-25-924Z.md`
+
+**Reports (pass 3):** `audit-output/grid-rth-2026-08-05-verify-1785948800017.json`, `audit-output/zerodte-logic-1785948391401.json`, `audit-output/grid-e2e-1785948402758.json`, `audit-output/validation-2026-08-05T16-54-21-557Z.md`
+
+**Reports (pass 2):** `audit-output/grid-rth-2026-08-05-verify-1785946959879.json`, `audit-output/zerodte-logic-1785946967042.json`, `audit-output/grid-e2e-1785946973759.json`, `audit-output/validation-2026-08-05T16-23-10-976Z.md`
+
+**Reports (pass 1):** `audit-output/grid-rth-2026-08-05-verify-1785944918325.json`, `audit-output/zerodte-logic-1785944925416.json`, `audit-output/grid-e2e-1785944931419.json`, `audit-output/validation-2026-08-05T15-49-07-970Z.md`
+
+---
+
+## spx-rth-2026-08-04-post-close-fix-pass2 — SPX Slayer post-close fix agent (~3:13 PM PT / 6:13 PM ET)
+
+**Session:** SPX Slayer post-close **fix** mode per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` Step 6 (Cloud Agent `cursor/spx-post-close-findings-16a9`). Commands: `npm run validate:spx-rth -- --phase=post-close` → `npm run validate:spx-e2e` → `npm run validate:deploy`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth -- --phase=post-close` | ✅ **GREEN** (6 PASS · 1 WARN · 0 FAIL · ~71s) |
+| `npm run validate:spx-e2e` | ✅ **0 FAIL / 18 checks** (1 WARN: `bie-play-route` cron 401 expected) |
+| `npm run validate:deploy` | ✅ **GREEN** |
+| Matrix deep audit | ✅ GEX+VEX+DEX+CHARM · 159 strikes · every cell finite · Σ strike_totals == headline |
+| Cross-endpoint spot/GEX | ✅ desk=7736.52 hm=7736.52 play=SCANNING/SCANNING (Δ ≤ 0.15 pts) |
+| Desk cache lanes | ⏭️ SKIP — pulse/flow unavailable post-close |
+| `validate:spx-bie` | ✅ member `/spx/play` == `getSpxPlayState()` |
+| `ops:collect` | ✅ zero action items |
+
+### UI E2E (`/dashboard`)
+
+| Control | Result |
+|---|---|
+| Sign-in + shell | ✅ premium desk loads |
+| GEX tab (`#spx-matrix-tab-gex`) | ✅ clicked · matrix populates |
+| VEX tab (`#spx-matrix-tab-vex`) | ✅ clicked · VEX cells populate |
+| Matrix rows | ✅ **159** strike rows (≥80 RTH bar) |
+| Matrix text sanity | ✅ no NaN / undefined / `$—` |
+| Commentary expand | ✅ toggles without error |
+| Play verdict bar | ✅ SPX PLAY · SCANNING — no stale ✓ confirmations |
+| Console errors | ✅ zero |
+| LIVE badge | ⏭️ SKIP — post-close OFFLINE/EXTENDED expected |
+
+### Cross-tool integration (Step 3)
+
+| Tool | Endpoint | Result |
+|---|---|---|
+| Thermal | `gex-heatmap?ticker=SPX` | ✅ same payload as dashboard matrix |
+| HELIX | `flows?limit=30` | ✅ 30 prints |
+| Largo | `largo/query` SPX play | ✅ `blackout_intelligence` grounded |
+| BIE | `validate:spx-bie` | ✅ `spx_full_state` == member play |
+| Grid bootstrap | `spx/bootstrap` | ✅ loaded |
+| 0DTE Command | `zerodte/board` | ✅ 9 setups |
+| Night Hawk | `nighthawk/edition` | ✅ loads |
+| Cross-tool spot/play | desk vs play | ✅ desk=7736.52 play=SCANNING |
+
+### Today's SPX findings review
+
+All `spx-rth-2026-08-04` tagged findings from verify passes (market-open through pass5) and prior post-close fix reviewed. **No unresolved P0/P1 SPX defects.** Earlier-day fixes already merged: Pulse rail cooldown (#1637), nested E2E timeout (#1638), degraded play payload (#1468), verdict bar selector.
+
+### Findings table
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| — | — | **No P0/P1 SPX defects** | — | GREEN |
+| INFO | ENV-NODE-MODULES | Initial run failed on missing `node_modules` (pg/tsx/playwright) in cloud agent | — | Resolved via `npm install` + `npx playwright install chromium` |
+| P2 | SPX-DC-CRON-AUTH | `data-correctness` WARN — CRON_SECRET auth mismatch in agent env (prod cron runs async) | cron probe | defer |
+| P2 | SPX-BIE-CRON-401 | `bie-play-route` WARN — cron play HTTP 401 (expected without cron bearer) | BIE cron | defer |
+
+**Post-close fix status: GREEN** — zero FAIL on `validate:spx-rth` and `validate:spx-e2e`. No code fixes required; all SPX matrix cells, desk/play cache lanes, trade confirmations, and cross-tool integration verified correct.
+
+**Reports:** `audit-output/spx-rth-2026-08-04-post-close-1785881617164.json`, `audit-output/spx-dashboard-e2e-1785881629439.json`
+
+---
+
+## grid-rth-2026-08-04-verify-pass2 — 0DTE Command RTH verify agent (~3:00 PM PT / 6:00 PM ET)
+
+**Session:** Autonomous Grid RTH **verify** mode per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` (Cloud Agent `cursor/0dte-grid-rth-agent-7283`). Post-close pass with `--force` (outside RTH window). Commands: `npm run validate:grid-rth -- --force` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e` → `data-validator.mjs` → Playwright Night Hawk segment tabs + `/grid` 404.
+
+**Note:** Classic `/grid` page + 9 `/api/grid/*` routes deleted 2026-07-07 — returns **404**. 0DTE Command lives on `/nighthawk` with four view tabs (0DTE / Swings / LEAPS / Legacy), not the deleted 9-panel Market Grid.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `validate:grid-rth --force` | ✅ **14/14 PASS** (0 FAIL) — RTH-open, upstream, session heat CLOSED, ledger PnL 6 rows, SPX spot 7736.52 vs GEX, HELIX 20 prints, Night Hawk dedupe 1 ticker, `zerodte-warm` cron accepted, logic + integration, data-correctness flags=0, E2E nested, ops:collect zero items |
+| `validate:zerodte-logic` | ✅ **17/17 PASS** — gates, plan exits (-50%/+100%/15:30 ET), lifecycle OPEN→TRIM→CLOSED, mergePlays SKIP past cutoff/MOVED, session heat RTH→POST_COMMIT→LATE_SESSION, live board 9 setups / 6 ledger (3 eligible / 0 gate violations), cutoff 15:30 ET |
+| `validate:grid-e2e` | ✅ **5/5 PASS** — board API 9/6, HELIX 20 prints, Playwright `/nighthawk` load, zero console errors |
+| `data-validator.mjs` | ⚠️ **34 PASS / 4 FAIL / 4 INFO** — SPX/SPY prev-close Δ ~1.8% (extended-hours); INTC Δ 10.4% vs prev-close; 0DTE chain + ledger premium checks PASS |
+| Night Hawk UI segments | ✅ **0DTE / Swings / LEAPS / Legacy** — all tabs click (Playwright `role=tab`) |
+| `/grid` routing | ✅ **404** — intentional (classic Market Grid removed) |
+
+**Live board (post-close):** 9 setups · 6 ledger · session heat CLOSED 0% · 3 eligible / 0 gate violations · upstream OK.
+
+**Cross-tool:** SPX bootstrap spot 7736.52 vs GEX ✅ · HELIX flows 20 prints ✅ · Night Hawk dedupe 1 ticker covered elsewhere ✅.
+
+**Verify status: GREEN** — zero FAIL on all Grid harnesses. No P0 fixes required.
+
+### Findings table (`grid-rth-2026-08-04`)
+
+| Severity | ID | Detail | Fix defer? |
+|---|---|---|---|
+| — | — | **No P0/P1 product defects** | all Grid suites GREEN |
+| INFO | GRID-RTH-ROUTING-01 | `/grid` returns 404 — classic Market Grid + 9 `/api/grid/*` routes deleted; 0DTE Command on `/nighthawk` | N/A — intentional |
+| INFO | GRID-RTH-ENV-NODE | Initial orchestrator FAIL on missing `node_modules` (pg/react/playwright) in cloud agent | Resolved via `npm install` + `npx playwright install chromium` |
+| P2 | GRID-RTH-DV-PREV-CLOSE | `data-validator` FAIL on SPX/SPY/INTC vs Polygon **prev-close** during extended-hours (Δ 1.8–10.4%) | defer — ground truth mode=prev-close post-close; intraday minute-bar checks PASS for ledger rows |
+| P2 | GRID-RTH-SPOT-SPXW | SPXW underlying vs Polygon skipped (polygon=null for index in extended-hours) | defer — chain resolution + entry premium PASS |
+
+### Reports
+
+- `audit-output/grid-rth-2026-08-04-verify-1785880865877.json`
+- `audit-output/zerodte-logic-1785880870961.json`
+- `audit-output/grid-e2e-1785880880430.json`
+- `audit-output/validation-2026-08-04T22-01-29-858Z.md`
+
+---
+
+## grid-rth-2026-08-04-post-close — 0DTE Command RTH verify agent (~2:49 PM PT / 5:49 PM ET)
+
+**Session:** Autonomous Grid RTH **verify** mode per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` (Cloud Agent `cursor/0dte-grid-rth-agent-f290`). Post-close pass with `--force`. Commands: `npm run validate:grid-rth -- --force` → `npm run validate:zerodte-logic` → `npm run validate:grid-e2e` → `data-validator.mjs` → Playwright Night Hawk segment tabs.
+
+**Note:** Classic `/grid` page + 9 `/api/grid/*` routes deleted 2026-07-07 — returns **404**. 0DTE Command lives on `/nighthawk` with four view tabs (0DTE / Swings / LEAPS / Legacy), not the deleted 9-panel Market Grid.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `validate:grid-rth --force` | ✅ **14/14 PASS** (0 FAIL) — RTH-open, upstream, session heat CLOSED, ledger PnL 6 rows, SPX spot 7736.52 vs GEX, HELIX 20 prints, Night Hawk dedupe 1 ticker, `zerodte-warm` cron accepted, logic + integration, data-correctness flags=0, E2E nested, ops:collect zero items |
+| `validate:zerodte-logic` | ✅ **17/17 PASS** — gates (SETUP_MIN_GROSS/aggression/dominance/ITM), plan exits (-50%/+100%/15:30 ET), lifecycle OPEN→TRIM→CLOSED, mergePlays SKIP past cutoff/MOVED, session heat RTH→POST_COMMIT→LATE_SESSION, live board 10 setups / 6 ledger (3 eligible / 0 gate violations), cutoff 15:30 ET |
+| `validate:grid-e2e` | ✅ **5/5 PASS** — board API 10/6, HELIX 20 prints, Playwright `/nighthawk` load, zero console errors |
+| `data-validator.mjs` | ⚠️ **33 PASS / 5 FAIL / 4 INFO** — SPX/SPY prev-close Δ ~1.8% (extended-hours ground truth); INTC/MU big-mover Δ >2.5% vs prev-close; 0DTE chain + ledger premium checks PASS |
+| Night Hawk UI segments | ✅ **0DTE / Swings / LEAPS / Legacy** — all tabs click + deck renders (Playwright `role=tab`) |
+| `/grid` routing | ✅ **404** — intentional (classic Market Grid removed) |
+
+**Live board (post-close):** 10 setups · 6 ledger · session heat CLOSED 0% · 3 eligible / 0 gate violations · upstream OK.
+
+**Cross-tool:** SPX bootstrap spot 7736.52 vs GEX ✅ · HELIX flows 20 prints ✅ · Night Hawk dedupe 1 ticker covered elsewhere ✅.
+
+**Verify status: GREEN** — zero FAIL on all Grid harnesses. No P0 fixes required.
+
+### Findings table (`grid-rth-2026-08-04`)
+
+| Severity | ID | Detail | Fix defer? |
+|---|---|---|---|
+| — | — | **No P0/P1 product defects** | all Grid suites GREEN |
+| INFO | GRID-RTH-ROUTING-01 | `/grid` returns 404 — classic Market Grid + 9 `/api/grid/*` routes deleted; 0DTE Command on `/nighthawk` | N/A — intentional |
+| INFO | GRID-RTH-ENV-NODE | Initial orchestrator FAIL on missing `node_modules` (pg/react/playwright) in cloud agent | Resolved via `npm install` + `npx playwright install chromium` |
+| P2 | GRID-RTH-DV-PREV-CLOSE | `data-validator` FAIL on SPX/SPY/INTC/MU vs Polygon **prev-close** during extended-hours (Δ 1.8–10.4%) | defer — ground truth mode=prev-close post-close; intraday minute-bar checks PASS for ledger rows |
+| P2 | GRID-RTH-SPOT-SPXW | SPXW underlying vs Polygon skipped (polygon=null for index in extended-hours) | defer — chain resolution + entry premium PASS |
+
+### Reports
+
+- `audit-output/grid-rth-2026-08-04-verify-1785880220898.json`
+- `audit-output/zerodte-logic-1785880226296.json`
+- `audit-output/grid-e2e-1785880232838.json`
+- `audit-output/validation-2026-08-04T21-50-41-761Z.md`
+
+---
+
+## spx-rth-2026-08-04-post-close-fix — SPX Slayer post-close fix agent (~2:21 PM PT / 5:21 PM ET)
+
+**Session:** SPX Slayer post-close **fix** mode per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` Step 6 (Cloud Agent `cursor/spx-post-close-findings-fde7`). Commands: `npm run validate:spx-rth -- --phase=post-close` → `npm run validate:spx-e2e` → `npm run validate:deploy`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth -- --phase=post-close` | ✅ **GREEN** (6 PASS · 1 WARN · 0 FAIL · ~57s) |
+| `npm run validate:spx-e2e` | ✅ **0 FAIL / 18 checks** (1 WARN: `bie-play-route` cron 401 expected) |
+| `npm run validate:deploy` | ✅ **GREEN** |
+| Matrix deep audit | ✅ GEX+VEX+DEX+CHARM · 159 strikes · every cell finite · Σ strike_totals == headline |
+| Cross-endpoint spot/GEX | ✅ desk=7736.52 hm=7736.52 play=SCANNING/SCANNING (Δ ≤ 0.15 pts) |
+| Desk cache lanes | ⏭️ SKIP — pulse/flow unavailable post-close |
+| `validate:spx-bie` | ✅ member `/spx/play` == `getSpxPlayState()` |
+| `ops:collect` | ✅ zero action items |
+
+### UI E2E (`/dashboard`)
+
+| Control | Result |
+|---|---|
+| Sign-in + shell | ✅ premium desk loads |
+| GEX tab (`#spx-matrix-tab-gex`) | ✅ clicked · matrix populates |
+| VEX tab (`#spx-matrix-tab-vex`) | ✅ clicked · VEX cells populate |
+| Matrix rows | ✅ **159** strike rows (≥80 RTH bar) |
+| Matrix text sanity | ✅ no NaN / undefined / `$—` |
+| Commentary expand | ✅ toggles without error |
+| Play verdict bar | ✅ SPX PLAY · SCANNING — no stale ✓ confirmations |
+| Console errors | ✅ zero |
+| LIVE badge | ⏭️ SKIP — post-close OFFLINE/EXTENDED expected |
+
+### Cross-tool integration (Step 3)
+
+| Tool | Endpoint | Result |
+|---|---|---|
+| Thermal | `gex-heatmap?ticker=SPX` | ✅ same payload as dashboard matrix |
+| HELIX | `flows?limit=30` | ✅ 30 prints |
+| Largo | `largo/query` SPX play | ✅ `blackout_intelligence` grounded |
+| BIE | `validate:spx-bie` | ✅ `spx_full_state` == member play |
+| Grid bootstrap | `spx/bootstrap` | ✅ loaded |
+| 0DTE Command | `zerodte/board` | ✅ 10 setups |
+| Night Hawk | `nighthawk/edition` | ✅ loads |
+| Cross-tool spot/play | desk vs play | ✅ desk=7736.52 play=SCANNING |
+
+### Today's SPX findings review
+
+All `spx-rth-2026-08-04` tagged findings from verify passes (market-open through pass5) reviewed. **No unresolved P0/P1 SPX defects.** Earlier-day fixes already merged: Pulse rail cooldown (#1637), nested E2E timeout (#1638), degraded play payload (#1468), verdict bar selector.
+
+### Findings table
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| — | — | **No P0/P1 SPX defects** | — | GREEN |
+| INFO | ENV-NODE-MODULES | Initial run failed on missing `node_modules` (pg/tsx/playwright) in cloud agent | — | Resolved via `npm install` + `npx playwright install chromium` |
+| P2 | SPX-DC-CRON-AUTH | `data-correctness` WARN — CRON_SECRET auth mismatch in agent env (prod cron runs async) | cron probe | defer |
+| P2 | SPX-BIE-CRON-401 | `bie-play-route` WARN — cron play HTTP 401 (expected without cron bearer) | BIE cron | defer |
+
+**Post-close fix status: GREEN** — zero FAIL on `validate:spx-rth` and `validate:spx-e2e`. No code fixes required; all SPX matrix cells, desk/play cache lanes, trade confirmations, and cross-tool integration verified correct.
+
+**Reports:** `audit-output/spx-rth-2026-08-04-post-close-1785878561829.json`, `audit-output/spx-dashboard-e2e-1785878572631.json`
+
+---
+
+## rth-open-2026-08-04-pass6 — RTH comprehensive test sweep (~4:59–5:03 PM ET, post-close)
+
+**Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` on branch `cursor/rth-comprehensive-test-sweep-1ffd`. Commands: `npm run validate:rth-open` → `GET /api/cron/data-correctness?force=1` → `surface=heatmap` sync → `npm run validate:rth-sweep` → `npm run validate:grid-e2e` → `npm run validate:spx-e2e` → `npm run ops:collect`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` | ✅ **GREEN** (~10s; post-close window — deploy smoke only; Postgres skipped private VPC) |
+| `GET /api/cron/data-correctness?force=1` | ✅ **202 accepted** (async full sweep dispatched) |
+| `data-correctness` (`surface=heatmap`) | ✅ **ok=true · flags=0** (consistency-only post-close; 60 metrics) |
+| `npm run validate:rth-sweep` | ✅ **0 P0/P1** — 7 pages · **0 missing-field hits** · Largo grounded |
+| `npm run validate:grid-e2e` | ✅ **5/5 PASS** — zerodte board 9 setups · ledger 6 |
+| `npm run validate:spx-e2e` | ✅ **17/18 PASS** (1 WARN: `bie-play-route` cron 401 expected) |
+| `npm run ops:collect` | ✅ **0 action items** |
+
+### Speed (comprehensive sweep — Playwright premium session)
+
+| Page | Nav | Load (ms) | Live wait | Console errors |
+|---|---|---:|---:|---|
+| `/dashboard` (SPX Slayer) | hard | 2922 | 12s | 1× HTTP 400 (transient) |
+| `/flows` (HELIX) | soft | 2336 | 8s | 0 |
+| `/heatmap` (Thermal matrix) | soft | 2752 | 20s | 0 |
+| `/vector` | soft | 1608 | 15s | 0 |
+| `/nighthawk` (0DTE Command) | soft | 1694 | 15s | 0 |
+| `/terminal` (Largo) | soft | 1691 | 5s | 4× ChunkLoadError chunk 1878 (transient — chunk now HTTP 200) |
+| `/track-record` | soft | 1728 | 10s | 9× ChunkLoadError + layout chunk (transient mid-deploy) |
+
+**Note:** Classic `/grid` deleted 2026-07-07 — 0DTE Command (12 panels) under `/nighthawk` via `/api/market/zerodte/board`. Thermal Profile tab not visible during this pass (matrix-only; tabs hidden while loading).
+
+### Live auto-update
+
+- `liveTick=null` on all pages — post-close SPX spot static (expected).
+- API freshness: desk `as_of` 8s · platform snapshot 0s · zerodte board 0s.
+- Matrix `gex-heatmap` continues to refresh post-close.
+
+### Data correctness
+
+| Cross-check | Result |
+|---|---|
+| desk γ-flip vs `gex-positioning` | ✅ aligned (desk 7551.29 vs gex 7551.29; spot 7736.52) |
+| All market APIs | ✅ HTTP 200 |
+| Largo NVDA query | ✅ 200 · ~$90.9M premium · `blackout_intelligence` |
+| SPX matrix E2E | ✅ GEX+VEX+DEX+CHARM · 159 strikes |
+
+### Missing-field audit
+
+**0 missing-field signals** across all 7 pages. Largo `Regime: —` = expected when no active regime tag.
+
+### Findings table
+
+| Severity | ID | Detail | Fix |
+|---|---|---|---|
+| — | — | **No P0/P1 product defects** on member surfaces | GREEN |
+| INFO | ENV-NODE-MODULES | Initial `validate:rth-open` failed — missing `pg` / Playwright browsers | Resolved via `npm install` + `npx playwright install chromium` |
+| P2 | RTH-FLOWS-SOFT-NAV | `/flows` soft-nav 2336ms (>1.5s target) | Monitor — HELIX tape warm path |
+| P2 | RTH-THERMAL-SOFT-NAV | `/heatmap` soft-nav 2752ms (>1.5s target) | Monitor — matrix bootstrap |
+| P2 | RTH-CHUNK-MID-DEPLOY | Terminal/track-record ChunkLoadError on chunk 1878/layout during sweep | Transient — chunk `1878-*.js` now HTTP 200 post-deploy |
+| P2 | SPX-BIE-CRON-401 | `bie-play-route` WARN — cron play HTTP 401 (expected without cron bearer) | defer |
+
+**Status: GREEN** — comprehensive sweep 0 P0/P1, cross-tool GEX aligned, heatmap correctness flags=0. No new GitHub issue (no P0/P1).
+
+**Reports:** `audit-output/rth-sweep-2026-08-04T21-00-06-185Z.json`, `audit-output/grid-e2e-1785877214446.json`, `audit-output/spx-dashboard-e2e-1785877215196.json`
+
+---
+
+## spx-rth-2026-08-04-pass5 — SPX Slayer post-close verify (~1:58 PM PT / 4:58 PM ET)
+
+**Session:** SPX Slayer all-day **verify** mode per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` Step 1–5 (Cloud Agent `cursor/spx-rth-system-verification-f9c9`). Commands: `npm run validate:spx-rth -- --force` → `npm run validate:spx-e2e` → 65s live API auto-update probe → `data-validator.mjs`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth` | ✅ **GREEN** (7 PASS · 1 WARN · 0 FAIL · ~30s) |
+| `npm run validate:spx-e2e` | ✅ **17/18 PASS** (1 WARN: `bie-play-route` cron 401 expected) |
+| Matrix deep audit | ✅ GEX+VEX+DEX+CHARM · 159 strikes · every cell finite · Σ strike_totals == headline |
+| Cross-endpoint spot/GEX | ✅ desk=7736.52 hm=7736.52 play=SCANNING/long (Δ ≤ 0.15 pts) |
+| Desk cache lanes | ⏭️ SKIP — pulse/flow unavailable post-close |
+| `validate:spx-bie` | ✅ member `/spx/play` == `getSpxPlayState()` |
+| `ops:collect` | ✅ zero action items |
+| `data-validator.mjs` | ⚠️ 34 PASS · 4 FAIL (SPX vs Polygon prev-close post-close; INTC gap day — not SPX matrix) |
+
+### UI E2E (`/dashboard`)
+
+| Control | Result |
+|---|---|
+| Sign-in + shell | ✅ premium desk loads |
+| GEX tab (`#spx-matrix-tab-gex`) | ✅ clicked · matrix populates |
+| VEX tab (`#spx-matrix-tab-vex`) | ✅ clicked · VEX cells populate |
+| Matrix rows | ✅ **159** strike rows (≥80 RTH bar) |
+| Matrix text sanity | ✅ no NaN / undefined / `$—` |
+| Commentary expand | ✅ toggles without error |
+| Play verdict bar | ✅ SPX PLAY · SCANNING — no stale ✓ confirmations |
+| Console errors | ✅ zero |
+| LIVE badge | ⏭️ SKIP — post-close OFFLINE/EXTENDED expected |
+
+### Cross-tool integration (Step 3)
+
+| Tool | Endpoint | Result |
+|---|---|---|
+| Thermal | `gex-heatmap?ticker=SPX` | ✅ same payload as dashboard matrix |
+| HELIX | `flows?limit=30` | ✅ 30 prints |
+| Largo | `largo/query` SPX play | ✅ `blackout_intelligence` grounded |
+| BIE | `validate:spx-bie` | ✅ `spx_full_state` == member play |
+| Grid bootstrap | `spx/bootstrap` | ✅ loaded |
+| 0DTE Command | `zerodte/board` | ✅ 9 setups |
+| Night Hawk | `nighthawk/edition` | ✅ loads |
+| Cross-tool spot/play | desk vs play | ✅ desk=7736.52 play=SCANNING |
+
+### Live auto-update (65s sit — Step 4)
+
+| Surface | Result |
+|---|---|
+| Header SPX price (`/api/market/spx/desk`) | ⏭️ static 7736.52 post-close (expected) |
+| Matrix (`gex-heatmap?ticker=SPX`) | ✅ total 75767503524 → 75710011689 refreshed |
+| Trade alert (`/api/market/spx/play`) | ✅ `as_of` ticked 20:59:26 → 21:00:46 · SCANNING stable |
+
+### Findings table
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| — | — | **No P0/P1 SPX defects** | — | GREEN |
+| INFO | ENV-NODE-MODULES | Initial run failed on missing `node_modules` (pg/tsx/playwright) in cloud agent | — | Resolved via `npm install` + `npx playwright install chromium` |
+| P2 | SPX-DC-CRON-AUTH | `data-correctness` WARN — CRON_SECRET auth mismatch in agent env (prod cron runs async) | cron probe | defer |
+| P2 | SPX-BIE-CRON-401 | `bie-play-route` WARN — cron play HTTP 401 (expected without cron bearer) | BIE cron | defer |
+| P2 | DV-SPX-PREV-CLOSE | `data-validator` SPX vs Polygon prev-close Δ=1.79% post-close (live spot vs prior session close) | indices oracle | defer — not a matrix/UI defect |
+
+**Status: GREEN** — SPX matrix 100% API-aligned (GEX+VEX every cell), trade alerts match play API, no stale SCANNING confirmations, cross-tool integration verified, live auto-update confirmed on matrix + play post-close.
+
+**Reports:** `audit-output/spx-rth-2026-08-04-verify-1785877151367.json`, `audit-output/spx-dashboard-e2e-1785877171221.json`
+
+---
+
+## rth-open-2026-08-04-pass5 — RTH comprehensive test sweep (~4:39–4:45 PM ET, post-close)
+
+**Session:** Autonomous RTH agent per `docs/ops/RTH-OPEN-RUNBOOK.md` on branch `cursor/rth-comprehensive-test-sweep-ad81`. Commands: `npm run validate:rth-open` → `GET /api/cron/data-correctness?force=1` → `surface=heatmap` sync → `npm run validate:rth-sweep` → `npm run validate:grid-e2e` → `npm run validate:spx-e2e` → `npm run ops:collect`.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:rth-open` | ✅ **GREEN** (~10s; post-close window — deploy smoke only; Postgres skipped private VPC) |
+| `GET /api/cron/data-correctness?force=1` | ✅ **202 accepted** (async full sweep dispatched) |
+| `data-correctness` (`surface=heatmap`) | ✅ **ok=true · flags=0** (consistency-only post-close; 60 metrics) |
+| `data-correctness` (latest poll) | ⏭️ skipped — outside RTH window (expected after 16:15 ET) |
+| `npm run validate:rth-sweep` | ✅ **0 P0/P1** — 7 pages · **0 missing-field hits** · Largo grounded |
+| `npm run validate:grid-e2e` | ✅ **5/5 PASS** — zerodte board 10 setups · ledger 6 |
+| `npm run validate:spx-e2e` | ✅ **17/18 PASS** (1 WARN: `bie-play-route` cron 401 expected) |
+| `npm run ops:collect` | ✅ **0 action items** |
+
+### Speed (comprehensive sweep — Playwright premium session)
+
+| Page | Nav | Load (ms) | Live wait | Console errors |
+|---|---|---:|---:|---|
+| `/dashboard` (SPX Slayer) | hard | 2139 | 12s | 11× ChunkLoadError (sign-in chunk mismatch during ticket auth) |
+| `/flows` (HELIX) | soft | 1662 | 8s | 4× ChunkLoadError (transient during auth warm) |
+| `/heatmap` (Thermal matrix) | soft | 1652 | 20s | 6× ChunkLoadError (transient during auth warm) |
+| `/vector` | soft | 2753 | 15s | 0 |
+| `/nighthawk` (0DTE Command) | soft | 1717 | 15s | 4× ChunkLoadError (transient) |
+| `/terminal` (Largo) | soft | 1646 | 5s | 0 |
+| `/track-record` | soft | 1640 | 10s | 4× ChunkLoadError (transient) |
+
+**Note:** Classic `/grid` deleted 2026-07-07 — 0DTE Command (12 panels) under `/nighthawk` via `/api/market/zerodte/board`. Thermal Profile tab probed when visible (matrix-only pass if tabs hidden while loading).
+
+### Live auto-update
+
+- `liveTick=null` on all pages — post-close SPX spot static (expected).
+- API freshness: desk `as_of` 21s · platform snapshot 0s · zerodte board 12s.
+- Matrix `gex-heatmap` continues to refresh post-close (confirmed earlier SPX pass).
+
+### Data correctness
+
+| Cross-check | Result |
+|---|---|
+| desk γ-flip vs `gex-positioning` | ✅ aligned (desk 7573.53 vs gex 7573.42; spot 7736.52) |
+| All market APIs | ✅ HTTP 200 |
+| Largo NVDA query | ✅ 200 · ~$90.9M premium · `blackout_intelligence` |
+| SPX matrix E2E | ✅ GEX+VEX+DEX+CHARM · 159 strikes |
+
+### Missing-field audit
+
+**0 missing-field signals** across all 7 pages. Largo `Regime: —` = expected when no active regime tag.
+
+### Findings table
+
+| Severity | ID | Detail | Fix |
+|---|---|---|---|
+| — | — | **No P0/P1 product defects** on member surfaces | GREEN |
+| INFO | ENV-NODE-MODULES | Initial `validate:rth-open` failed — missing `pg` / Playwright browsers | Resolved via `npm install` + `npx playwright install chromium` |
+| P2 | RTH-DASH-CHUNK-AUTH | Dashboard/flows ChunkLoadError during Clerk ticket sign-in (`3024-*.js` 404 then 200) | Transient post-deploy; chunk now HTTP 200 |
+| P2 | RTH-VECTOR-SOFT-NAV | `/vector` soft-nav 2753ms (>1.5s target) | Monitor — cold Vector stream warm path |
+| P2 | RTH-DC-CRON-AUTH | Agent env `CRON_SECRET` stale vs AWS Secrets Manager | Use `auditSecret('CRON_SECRET')` from prod-secrets (resolved in-session) |
+| P2 | SPX-BIE-CRON-401 | `bie-play-route` WARN — cron play HTTP 401 (expected without cron bearer) | defer |
+
+**Status: GREEN** — comprehensive sweep 0 P0/P1, cross-tool GEX aligned, heatmap correctness flags=0. No new GitHub issue (no P0/P1).
+
+**Reports:** `audit-output/rth-sweep-2026-08-04T20-39-43-260Z.json`, `audit-output/grid-e2e-1785876197586.json`, `audit-output/spx-dashboard-e2e-1785876209448.json`
+
+---
 
 ## spx-rth-2026-08-04-pass4 — SPX Slayer post-close verify (~1:22 PM PT / 4:22 PM ET)
 

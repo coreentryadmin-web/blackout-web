@@ -84,6 +84,10 @@ export interface TerminalPlay {
   thesisBreak?: { level: ThesisLevel; note?: string } | null;
   /** Thesis Health — weighted Entry Truth vs Current Truth (OPEN/HOLD/TRIM only). */
   thesisHealth?: ThesisHealthPayload | null;
+  /** LEGACY only: true once morning-confirm's CONFIRMED promotion actually landed this ticker
+   *  in the Swing serving snapshot (not just confirmed — promotion can fail per-ticker, e.g.
+   *  "no chain rows"). Drives the "moved to Swings Open" clickable link in ThesisPanel. */
+  swingPromoted?: boolean;
 
   // ── management ──
   recommendation: Recommendation;
@@ -183,6 +187,10 @@ export interface TerminalPlay {
   keySignal?: string | null;
   optionsPlay?: string | null;
   rrRatio?: number | null;
+  /** G-N2's PINNED |target − fill_edge| / ATR14 for this play (publish-gates.ts:226).
+   *  Legacy grades on ONE session, so this multiple is the target's reachability —
+   *  see target-reachability.ts. Null when the gate could not compute geometry. */
+  targetAtrMultiple?: number | null;
   /** Implied-vol rank at publish (0–100), when the edition carried it — metadata, not a scored factor. */
   ivRank?: number | null;
   entryCostPerContract?: number | null;

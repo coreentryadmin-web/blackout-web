@@ -9,6 +9,8 @@ import {
   passesDarkpoolDiscordFilters,
   selectDarkpoolDigestPrints,
   DARKPOOL_DISCORD_MIN_PREMIUM,
+  buildDarkpoolBurstEmbed,
+  darkpoolDiscordLiveRthOnly,
 } from "./darkpool-discord-format.ts";
 
 test("passesDarkpoolDiscordFilters requires >= $5M default", () => {
@@ -62,7 +64,7 @@ test("buildDarkpoolDiscordEmbed includes ticker and ET copy", () => {
   assert.match(emb.title, /NVDA/);
   assert.match(emb.description, /\$4\.20M/);
   assert.match(emb.description, /BUY side/);
-  assert.match(emb.description, /Open in HELIX/);
+  assert.match(emb.description ?? "", /Open this block in HELIX/);
 });
 
 test("selectDarkpoolDigestPrints ranks in-window by premium", () => {
@@ -103,4 +105,32 @@ test("digest embed lists ranked blocks", () => {
   });
   assert.match(emb.title, /Top blocks/);
   assert.match(emb.description, /NVDA/);
+});
+
+test("buildDarkpoolBurstEmbed collapses multiple blocks", () => {
+  const emb = buildDarkpoolBurstEmbed({
+    ticker: "NVDA",
+    windowMin: 4,
+    prints: [
+      { ticker: "NVDA", premium: 6_000_000, side: "buy", executed_at: "2026-08-04T14:00:00.000Z" },
+      { ticker: "NVDA", premium: 7_000_000, side: "buy", executed_at: "2026-08-04T14:02:00.000Z" },
+    ],
+  });
+  assert.match(emb.title, /burst \(2 blocks\)/);
+  assert.match(emb.description ?? "", /\$13\.0M/);
+});
+
+test("darkpoolDiscordLiveRthOnly defaults true", () => {
+  assert.equal(darkpoolDiscordLiveRthOnly(), true);
+});
+
+test("buildDarkpoolDiscordEmbed weaves adv_context_line", () => {
+  const emb = buildDarkpoolDiscordEmbed({
+    ticker: "NVDA",
+    premium: 6_000_000,
+    side: "buy",
+    executed_at: "2026-08-04T14:18:11.000Z",
+    adv_context_line: "Size: 4.2% of 20D ~12M ADV",
+  });
+  assert.match(emb.description ?? "", /4\.2% of 20D/);
 });

@@ -15,8 +15,11 @@ import {
   heatmapMinHalfWidthUsd,
   computeZeroGammaFlip,
   computeCharmRegime,
+  heatmapHasPastExpiries,
+  prunePastExpiriesFromHeatmap,
   type GexHistorySnapshot,
   type ChainContract,
+  type GexHeatmap,
 } from "./polygon-options-gex";
 
 function contract(
@@ -494,23 +497,92 @@ test("resolveHeatmapStrikeBounds: SPX stays on tight ±6% band", () => {
   assert.equal(heatmapMinHalfWidthUsd(6000), 0);
 });
 
-test("resolveHeatmapStrikeBounds: low-priced NIO gets $ floor (not tiny ±20% window)", () => {
-  const b = resolveHeatmapStrikeBounds(4.81, "NIO");
-  assert.equal(b.lo, 0);
-  assert.equal(b.hi, 13);
-  assert.equal(b.halfWidthUsd, 7.5);
-  assert.ok(b.hi - b.lo >= 10, "NIO window spans enough strikes for a $0.50 grid");
+function sampleHeatmap(expiries: string[]): GexHeatmap {
+  return {
+    underlying: "SPX",
+    spot: 6300,
+    change_pct: 0.1,
+    asof: "2026-08-04T23:59:00.000Z",
+    expiries,
+    near_term_expiries: expiries.slice(0, 1),
+    strikes: [6300, 6295],
+    max_pain: 6300,
+    gex: {
+      cells: {
+        "6300": { [expiries[0]]: 1_000_000, ...(expiries[1] ? { [expiries[1]]: 500_000 } : {}) },
+        "6295": { [expiries[0]]: -800_000, ...(expiries[1] ? { [expiries[1]]: -200_000 } : {}) },
+      },
+      strike_totals: { "6300": 1_500_000, "6295": -1_000_000 },
+      call_wall: 6300,
+      put_wall: 6295,
+      total: 500_000,
+      flip: 6298,
+      regime: { flip: 6298, posture: "long", read: "test" },
+    },
+    vex: {
+      cells: {
+        "6300": { [expiries[0]]: 10_000, ...(expiries[1] ? { [expiries[1]]: 5_000 } : {}) },
+      },
+      strike_totals: { "6300": 15_000 },
+      pos_wall: 6300,
+      neg_wall: null,
+      total: 15_000,
+      flip: null,
+      regime: { posture: "positive", read: "test" },
+    },
+    shift: { available: false, status: "collecting" },
+    source: "polygon",
+    data_delay: "real-time",
+  };
+}
+
+test("heatmapHasPastExpiries: true when any column is before today", () => {
+  const hm = sampleHeatmap(["2026-08-04", "2026-08-05"]);
+  assert.equal(heatmapHasPastExpiries(hm, "2026-08-05"), true);
+  assert.equal(heatmapHasPastExpiries(hm, "2026-08-04"), false);
 });
 
-test("resolveHeatmapStrikeBounds: SPY keeps %-based ±20% band", () => {
-  const b = resolveHeatmapStrikeBounds(757.67, "SPY");
-  assert.equal(b.halfWidthUsd, 757.67 * 0.2);
-  assert.equal(b.lo, Math.floor(757.67 - b.halfWidthUsd));
-  assert.equal(b.hi, Math.ceil(757.67 + b.halfWidthUsd));
+test("prunePastExpiriesFromHeatmap: drops past columns and re-sums near-term totals", () => {
+  const hm = sampleHeatmap(["2026-08-04", "2026-08-05"]);
+  const pruned = prunePastExpiriesFromHeatmap(hm, "2026-08-05");
+  assert.ok(pruned);
+  assert.deepEqual(pruned.expiries, ["2026-08-05"]);
+  assert.deepEqual(pruned.near_term_expiries, ["2026-08-05"]);
+  assert.equal(pruned.gex.cells["6300"]["2026-08-04"], undefined);
+  assert.equal(pruned.gex.cells["6300"]["2026-08-05"], 500_000);
+  assert.equal(pruned.gex.strike_totals["6300"], 500_000);
+  assert.equal(pruned.gex.total, 300_000);
 });
 
-test("resolveHeatmapStrikeBounds: SPX stays on tight ±6% band", () => {
-  const b = resolveHeatmapStrikeBounds(6000, "SPX");
-  assert.equal(b.halfWidthUsd, 6000 * 0.06);
-  assert.equal(heatmapMinHalfWidthUsd(6000), 0);
+test("prunePastExpiriesFromHeatmap: returns null when every column expired", () => {
+  const hm = sampleHeatmap(["2026-08-04"]);
+  assert.equal(prunePastExpiriesFromHeatmap(hm, "2026-08-05"), null);
+});
+
+test("prunePastExpiriesFromHeatmap: no-op when all expiries are live", () => {
+  const hm = sampleHeatmap(["2026-08-05", "2026-08-08"]);
+  const pruned = prunePastExpiriesFromHeatmap(hm, "2026-08-05");
+  assert.equal(pruned, hm);
+});
+
+test("fetchGexHeatmap TTL fast path serves pruned cache at ET rollover (no rebuild gate)", () => {
+  const src = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "polygon-options-gex.ts"),
+    "utf8"
+  );
+  assert.doesNotMatch(
+    src,
+    /heatmapHasPastExpiries\(mem\.data, today\)/,
+    "TTL fast path must not skip serve when past expiries exist — finalize prunes instead"
+  );
+  assert.doesNotMatch(
+    src,
+    /heatmapHasPastExpiries\(redisHit\.data, today\)/,
+    "Redis TTL fast path must not skip serve when past expiries exist"
+  );
+  assert.match(
+    src,
+    /resolve\(await finalizeHeatmapForServe\(cacheKey, served\)\)/,
+    "block-cap handoff must prune before serve"
+  );
 });

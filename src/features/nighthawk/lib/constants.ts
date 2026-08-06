@@ -40,10 +40,16 @@ export const SECTOR_WATCH = [
   { key: "consumer", label: "Consumer" },
 ] as const;
 
-// Raised back to 60 — multi-source candidate discovery needs room for corroboration across
-// flow, OI change, unusual trades, catalysts, and predictions. Dossier-stage UW fan-out is
+// Raised 60→90 (2026-08-05, discovery-architecture redesign): paired with the new confluence
+// admission requirement in extractMultiSourceCandidates (single-lane names beyond a protected
+// top slice now need source_count>=2 to enter the pool) — a wider net BEFORE the stricter filter,
+// so raising the cap alone never dilutes the pool; it only gives the stricter filter more real
+// candidates to choose from. Live evidence motivating this (docs/audit/FINDINGS.md 2026-08-05):
+// a night with a similar-sized raw candidate count (54 vs 60) collapsed from 5 published plays to
+// 1 — the funnel was selectivity-starved, not candidate-starved, so the fix pairs MORE raw
+// candidates with SMARTER admission, not a bigger pool alone. Dossier-stage UW fan-out is still
 // paced by the rate limiter (uw-rate-limiter.ts), so the cap belongs there, not here.
-export const MAX_CANDIDATES = 60;
+export const MAX_CANDIDATES = 90;
 /** Candidate pool: weighted-premium leaders + unusual-flow movers. */
 export const CANDIDATE_PREMIUM_SLOTS = 28;
 export const CANDIDATE_UNUSUAL_SLOTS = 12;

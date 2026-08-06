@@ -1,0 +1,38 @@
+/**
+ * Regular-trading-hours (09:30–16:00 ET) gate for Vector's session-ANCHORED studies (session VWAP,
+ * HOD/LOD, Opening Range, and "Fib (HOD→LOD)" which is derived from HOD/LOD). Vector's chart seeds/
+ * streams a ticker's WHOLE trading day (`vector-seed-bars.ts` → `fetchStockMinuteBars`/
+ * `fetchIndexMinuteBars` in `src/lib/providers/polygon.ts`), which Polygon returns INCLUDING pre-
+ * market/after-hours prints for equities. `vector-ticker.ts` allows any optionable symbol — not
+ * just the index set (SPX/NDX/RUT/DJI/VIX), which has no real extended session — so for any real
+ * equity ticker with genuine extended-hours volume, a session study with no time-of-day gate can
+ * silently include those prints: an Opening Range measured from ~04:00 ET instead of 09:30, or a
+ * VWAP anchored to the first premarket print instead of the 09:30 open (2026-08-05 audit finding).
+ *
+ * Mirrors `src/lib/providers/spx-session.ts`'s `filterRthBars` (same 09:30–16:00 window, same
+ * Intl-based ET hour/minute extraction) but works on Vector's bar shape — epoch-SECONDS `time`,
+ * not Polygon's raw ms `t` field — so it's a separate small pure module rather than a reuse of that
+ * function directly.
+ */
+
+const ET_HOUR_MINUTE = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/New_York",
+  hour: "numeric",
+  minute: "numeric",
+  hour12: false,
+});
+
+/** True when an epoch-SECONDS bar time falls within 09:30 (inclusive) – 16:00 (exclusive) ET. */
+export function isRthBarSec(sec: number): boolean {
+  if (!Number.isFinite(sec)) return false;
+  const parts = ET_HOUR_MINUTE.formatToParts(new Date(sec * 1000));
+  const hour = Number(parts.find((p) => p.type === "hour")?.value ?? 0);
+  const minute = Number(parts.find((p) => p.type === "minute")?.value ?? 0);
+  const mins = hour * 60 + minute;
+  return mins >= 9 * 60 + 30 && mins < 16 * 60;
+}
+
+/** Filter bars to RTH only, by their epoch-SECONDS `time`. Order-preserving. */
+export function filterRthBarsSec<T extends { time: number }>(bars: readonly T[]): T[] {
+  return bars.filter((b) => isRthBarSec(b.time));
+}

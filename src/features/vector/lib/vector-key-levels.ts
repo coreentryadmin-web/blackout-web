@@ -13,6 +13,7 @@
 
 import type { VectorLevelId } from "./vector-indicators-config";
 import { dominantSwing, swingRetracement } from "./vector-fib-swing";
+import { filterRthBarsSec } from "./vector-session-hours";
 
 export type LevelBar = { time: number; high: number; low: number; close: number };
 
@@ -96,10 +97,12 @@ export function lastSessionBars<T extends { time: number }>(bars: readonly T[]):
   return bars.slice(start);
 }
 
-/** High/low of the LAST session in `bars` (newest ET day only — see lastSessionBars), or null
- *  when there are no bars. */
+/** High/low of the LAST session in `bars` (newest ET day only — see lastSessionBars), RTH-only
+ *  (09:30-16:00 ET — see vector-session-hours.ts; a pre/post-market print at a real equity's
+ *  extended-hours extreme must never masquerade as the regular-session HOD/LOD), or null when
+ *  there are no RTH bars in that session. */
 export function sessionHodLod(bars: LevelBar[]): { hod: number; lod: number } | null {
-  const session = lastSessionBars(bars);
+  const session = filterRthBarsSec(lastSessionBars(bars));
   if (!session.length) return null;
   let hod = -Infinity;
   let lod = Infinity;
@@ -113,17 +116,18 @@ export function sessionHodLod(bars: LevelBar[]): { hod: number; lod: number } | 
 
 /**
  * High/low of the opening range — the first `minutes` of the LAST session, measured from that
- * session's first bar's time (bars are epoch seconds; multi-session inputs are scoped via
- * lastSessionBars so the range can never anchor to an older seeded day's open). Bars exactly at
+ * session's first RTH bar's time (bars are epoch seconds; multi-session inputs are scoped via
+ * lastSessionBars so the range can never anchor to an older seeded day's open; RTH-filtered via
+ * vector-session-hours.ts so the anchor is the 09:30 open, not a premarket print). Bars exactly at
  * `firstTime + minutes*60` are excluded (the range is half-open), matching how the interval
- * buckets elsewhere. Null when no bar falls in it.
+ * buckets elsewhere. Null when no RTH bar falls in it.
  */
 export function openingRange(
   bars: LevelBar[],
   minutes: number
 ): { high: number; low: number } | null {
   if (minutes <= 0) return null;
-  const session = lastSessionBars(bars);
+  const session = filterRthBarsSec(lastSessionBars(bars));
   if (!session.length) return null;
   const start = session[0]!.time;
   const end = start + minutes * 60;
@@ -195,7 +199,11 @@ export function floorPivots(pdh: number, pdl: number, pdc: number): FloorPivots 
 export function levelLinesFor(
   id: VectorLevelId,
   bars: LevelBar[],
-  priorDay?: PriorDayOhlc | null
+  priorDay?: PriorDayOhlc | null,
+  // Opening-range window in minutes — member-configurable (2026-08-05 audit finding #7: this was
+  // hardcoded to 15 with no way to change it). Defaults to 15 so any caller that doesn't pass this
+  // (including every pre-existing test) keeps the exact prior behavior.
+  openingRangeMinutes: number = 15
 ): LevelLine[] {
   if (id === "hod-lod") {
     const hl = sessionHodLod(bars);
@@ -206,11 +214,23 @@ export function levelLinesFor(
     ];
   }
   if (id === "opening-range") {
-    const or = openingRange(bars, 15);
+    const or = openingRange(bars, openingRangeMinutes);
     if (!or) return [];
     return [
-      { key: "or-high", price: or.high, label: "OR-H 15m", color: OR_COLOR, style: "dashed" },
-      { key: "or-low", price: or.low, label: "OR-L 15m", color: OR_COLOR, style: "dashed" },
+      {
+        key: "or-high",
+        price: or.high,
+        label: `OR-H ${openingRangeMinutes}m`,
+        color: OR_COLOR,
+        style: "dashed",
+      },
+      {
+        key: "or-low",
+        price: or.low,
+        label: `OR-L ${openingRangeMinutes}m`,
+        color: OR_COLOR,
+        style: "dashed",
+      },
     ];
   }
   if (id === "fib") {

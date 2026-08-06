@@ -16,10 +16,16 @@ import type { WallHistorySample, VectorWallLens } from "@/features/vector/lib/ve
 import type { VectorDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
 import type { VectorPriceScaleMap } from "@/features/vector/lib/vector-price-scale-map";
 import type { VectorTimeframeMinutes } from "@/features/vector/lib/vector-bar-timeframes";
+import type { TechnicalsLine } from "@/features/vector/lib/vector-technicals";
 import { VectorTickerSelect } from "@/features/vector/components/VectorTickerSelect";
 import { VectorScanner } from "@/features/vector/components/VectorScanner";
+import { VectorTickerComparisonStrip } from "@/features/vector/components/VectorTickerComparisonStrip";
 import { VectorPulse } from "@/features/vector/components/VectorPulse";
+import { VectorPlayCard } from "@/features/vector/components/VectorPlayCard";
+import { VectorTechnicalsPanel } from "@/features/vector/components/VectorTechnicalsPanel";
+import type { VectorPlay } from "@/features/vector/lib/vector-play-engine";
 import { VectorGexLadder } from "@/features/vector/components/VectorGexLadder";
+import { VectorDailyChart } from "@/features/vector/components/VectorDailyChart";
 import { VectorRegimeBanner } from "@/features/vector/components/VectorRegimeBanner";
 import { VectorAlertsPanel } from "@/features/vector/components/VectorAlertsPanel";
 import type { AlertRule, AlertKind, FiredAlert } from "@/features/vector/lib/vector-alerts";
@@ -162,6 +168,11 @@ export function VectorPageShell({
   const [dteHorizon, setDteHorizon] = useState<VectorDteHorizon>(defaultDteHorizon ?? "weekly");
   const [scannerOpen, setScannerOpen] = useState(false);
   const activeTicker = ticker || VECTOR_DEFAULT_TICKER;
+  // Daily/Weekly/4H historical view (CTO audit P2 #5, and P2 "4h remains open" 2026-08-05) — a
+  // separate chart surface from the intraday VectorChart (see VectorDailyChart's header comment
+  // for why). Standalone-page-only; the chart-only embed (SPX Slayer) never renders this toggle
+  // and always stays intraday.
+  const [chartView, setChartView] = useState<"intraday" | "1D" | "1W" | "4H">("intraday");
 
   useEffect(() => {
     if (!compactPanels) return;
@@ -202,9 +213,13 @@ export function VectorPageShell({
     })
   );
   const [confluence, setConfluence] = useState<string[] | null>(null);
+  // The fused, single concrete trade idea (buildVectorPlay) — null until the chart has emitted its
+  // first read (needs a live spot). Rendered above the Pulse rail's raw narration as the "so what do
+  // I do" synthesis; VectorPlayCard degrades to nothing when null rather than showing a placeholder.
+  const [play, setPlay] = useState<VectorPlay | null>(null);
   // Always-on technicals lines (VWAP/EMA/RSI/MACD/pocket/structure) — narrated by the terminal even
   // when the member hasn't toggled the overlays on the chart.
-  const [technicals, setTechnicals] = useState<string[]>([]);
+  const [technicals, setTechnicals] = useState<TechnicalsLine[]>([]);
   // Options-implied EXPECTED MOVE callouts (±1σ/2σ range) — narrated by the terminal, horizon-scoped
   // (#15 cone, slice 3a). Empty when the chain has no real ATM IV to price the move.
   const [expectedMove, setExpectedMove] = useState<string[]>([]);
@@ -315,6 +330,17 @@ export function VectorPageShell({
     (next: AlertRule[]) => {
       setAlertRules(next);
       saveAlertRules(activeTicker, next);
+      // Best-effort SERVER mirror (task: server-side wall-touch/flip-cross delivery). localStorage
+      // above is still the source of truth for this tab's in-page experience — a failed/slow sync
+      // here must never block or break it, so it's fire-and-forget with the error swallowed. The
+      // mirrored copy is what `/api/cron/vector-alerts` reads to fire push alerts to a closed tab.
+      fetch("/api/vector/alerts/rules", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ticker: activeTicker, rules: next }),
+      }).catch(() => {
+        /* best-effort — local experience is unaffected */
+      });
     },
     [activeTicker]
   );
@@ -460,11 +486,35 @@ export function VectorPageShell({
         magnet={magnet}
         confluence={confluence}
         technicals={technicals}
+        showTechnicals={false}
         expectedMove={expectedMove}
         alerts={recentAlerts.slice(0, 5).map((f) => f.message)}
         wallIntegrity={wallIntegrity}
         liveSpot={liveSpot}
       />
+      {/* Cross-ticker wall-structure comparison (P2, 2026-08-05 CTO audit) — additive, below the
+          Pulse rail. Renders nothing when the universe snapshot hasn't loaded or no comparison
+          ticker resolves a row, so it never displaces the panels above/below it. */}
+      <VectorTickerComparisonStrip
+        activeTicker={activeTicker}
+        onSelect={(t) =>
+          router.push(t === VECTOR_DEFAULT_TICKER ? "/vector" : `/vector?ticker=${encodeURIComponent(t)}`)
+        }
+        className="mb-2"
+      />
+    </>
+  );
+
+  // Desktop 4th "action" column (2026-08-05, member-directed): the things a member actually ACTS
+  // on — the fused trade idea, the technical read, and the alert-rule builder — pulled out of the
+  // long narrative feed (regime/signals/gamma-magnet/wall-integrity/confluence/expected-move) so
+  // they're visible without scrolling. Below the wide-desktop breakpoint this still renders (see
+  // .vector-action-rail in globals.css), just as a full-width row under the 3-column area rather
+  // than its own column — nothing is ever lost, only the wide-desktop layout changes.
+  const actionRail = (
+    <>
+      <VectorPlayCard play={play} className="mb-2" />
+      <VectorTechnicalsPanel technicals={technicals} className="mb-2" />
       <VectorAlertsPanel
         ticker={activeTicker}
         rules={alertRules}
@@ -508,6 +558,7 @@ export function VectorPageShell({
       onDteHorizonChange={setDteHorizon}
       onTechnicalsChange={setTechnicals}
       onExpectedMoveChange={setExpectedMove}
+      onPlayChange={setPlay}
       alertRules={alertRules}
       onAlertsFired={handleAlertsFired}
       leadSlot={chartLead}
@@ -583,7 +634,25 @@ export function VectorPageShell({
               compactPanels && nativeShell && iosPanel !== "chart" && "ios-native-panel-hidden"
             )}
           >
-            {chartBlock}
+            {!iosCompactChrome && (
+              <div className="vector-chart-view-toggle" role="group" aria-label="Chart view">
+                {(["intraday", "1D", "1W", "4H"] as const).map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setChartView(v)}
+                    className={clsx("vector-chart-view-btn", v === chartView && "is-active")}
+                  >
+                    {v === "intraday" ? "Intraday" : v}
+                  </button>
+                ))}
+              </div>
+            )}
+            {chartView === "intraday" ? (
+              chartBlock
+            ) : (
+              <VectorDailyChart ticker={activeTicker} unit={chartView} />
+            )}
           </div>
 
           <div
@@ -594,6 +663,18 @@ export function VectorPageShell({
           >
             {pulseRail}
           </div>
+
+          {/*
+            Desktop 4th "action" column (member request, 2026-08-05): Play card + Technicals +
+            Alert builder, split out of the narrative pulse rail so they're visible without
+            scrolling. Skipped entirely inside the iOS native app shell — that shell's segment
+            switcher (VECTOR_IOS_PANELS) only knows ladder/chart/pulse/scanner, and mobile wasn't
+            in scope for this change; on ordinary responsive web (non-native, narrow viewport) the
+            CSS below still stacks it as a full-width row rather than hiding it.
+          */}
+          {!(compactPanels && nativeShell) && (
+            <div className="vector-action-rail">{actionRail}</div>
+          )}
         </div>
 
         {alertToast}

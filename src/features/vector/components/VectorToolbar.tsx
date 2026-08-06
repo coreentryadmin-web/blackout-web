@@ -9,7 +9,7 @@ import { VectorIndicatorMenu } from "@/features/vector/components/VectorIndicato
 import type { VectorWallLens } from "@/features/vector/lib/vector-wall-history";
 import type { VectorTimeframeMinutes } from "@/features/vector/lib/vector-bar-timeframes";
 import type { VectorDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
-import type { VectorIndicatorId } from "@/features/vector/lib/vector-indicators-config";
+import type { VectorIndicatorId, VectorOpeningRangeMinutes } from "@/features/vector/lib/vector-indicators-config";
 
 type Props = {
   interval: VectorTimeframeMinutes;
@@ -45,6 +45,10 @@ type Props = {
   onClearIndicators: () => void;
   /** Bars currently shown (at the active timeframe) — drives the MA "not enough bars" annotation. */
   barCount: number;
+  /** Selected opening-range window (5m/15m/30m/60m) and its setter — drives the indicator menu's
+   *  "Opening range (Nm)" label + preset control (2026-08-05 audit finding #7). */
+  openingRangeMinutes: VectorOpeningRangeMinutes;
+  onOpeningRangeMinutes: (minutes: VectorOpeningRangeMinutes) => void;
   /** Compact page title/ticker cluster, rendered at the far LEFT of the toolbar row (so the header
    *  and the timeframe/indicator controls share one line instead of a tall separate header block). */
   leadSlot?: React.ReactNode;
@@ -89,6 +93,8 @@ export function VectorToolbar(props: Props) {
     onToggleIndicator,
     onClearIndicators,
     barCount,
+    openingRangeMinutes,
+    onOpeningRangeMinutes,
     leadSlot,
     trailSlot,
     replayLeadSlot,
@@ -108,6 +114,8 @@ export function VectorToolbar(props: Props) {
           onToggle={onToggleIndicator}
           onClear={onClearIndicators}
           barCount={barCount}
+          openingRangeMinutes={openingRangeMinutes}
+          onOpeningRangeMinutes={onOpeningRangeMinutes}
         />
         {replayLeadSlot}
         <VectorReplayControls
@@ -162,6 +170,8 @@ export function VectorToolbar(props: Props) {
             onToggle={onToggleIndicator}
             onClear={onClearIndicators}
             barCount={barCount}
+            openingRangeMinutes={openingRangeMinutes}
+            onOpeningRangeMinutes={onOpeningRangeMinutes}
           />
         </div>
         <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">

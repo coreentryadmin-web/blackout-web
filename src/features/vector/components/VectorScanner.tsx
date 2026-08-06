@@ -1,20 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import useSWR from "swr";
-import type { VectorUniverseSnapshot, VectorUniverseRow } from "@/features/vector";
 import { fmtPrice } from "@/lib/api";
 import {
   screenUniverse,
   screenerRegimeOf,
   type ScreenerPreset,
 } from "@/features/vector/lib/vector-screener";
-
-async function fetchUniverse(): Promise<VectorUniverseSnapshot> {
-  const res = await fetch("/api/market/vector/universe", { cache: "no-store" });
-  if (!res.ok) throw new Error("universe fetch failed");
-  return res.json();
-}
+import { useVectorUniverseSnapshot } from "@/features/vector/lib/vector-universe-client";
 
 type Props = {
   activeTicker: string;
@@ -41,10 +34,7 @@ const PRESETS: Array<{ key: ScreenerPreset; label: string; hint: string }> = [
 ];
 
 export function VectorScanner({ activeTicker, onSelect }: Props) {
-  const { data, error, isLoading } = useSWR("vector-universe", fetchUniverse, {
-    refreshInterval: 5_000,
-    revalidateOnFocus: true,
-  });
+  const { data, error, isLoading } = useVectorUniverseSnapshot();
   const [preset, setPreset] = useState<ScreenerPreset>("all");
 
   if (isLoading && !data) {

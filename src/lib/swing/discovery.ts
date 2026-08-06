@@ -68,7 +68,7 @@ import {
 } from "./commit";
 import type { PortfolioBudget } from "./swing-portfolio-budget";
 import type { SwingCaps } from "./swing-allocation";
-import type { SwingPositionInsert } from "../db";
+import type { SwingPositionInsert, SwingShadowPositionInsert } from "../db";
 
 // ─── WHY RECALL MATTERS (operator critique #7) ──────────────────────────────────
 // A discovery funnel is easy to optimize for PRECISION (everything that surfaces is good) while
@@ -453,6 +453,9 @@ export interface SwingDiscoveryDeps {
     positionId: number,
     archetype?: string | null,
   ) => Promise<void>;
+  /** Open a shadow row (db.insertSwingShadowPosition — SEPARATE table, zero real capital, 2026-08-06).
+   *  Absent ⇒ no shadow tracking (fail-soft, mirrors `insertPosition`'s presence-gates-real-commits pattern). */
+  insertShadowPosition?: (pos: SwingShadowPositionInsert) => Promise<number>;
   /** The ARMED portfolio budget (resolveProductionPortfolioBudget). Absent ⇒ the disarmed default (no-op gate). */
   budget?: PortfolioBudget;
   /** The book-percent caps (defaults to DEFAULT_SWING_CAPS). */
@@ -652,10 +655,9 @@ export async function runSwingDiscoveryScan(
     playSet = produceHorizonPlays(horizonCands);
   }
 
-  // ── GRADUATION STAMP (serving honesty) — always when graded history is injectable. ──
-  // COMMIT_NOW on the member desk requires bucketGraduated === true. Stamp each SWING play from the
-  // same Wilson-LB ladder the ledger open uses. Absent history / cold book → flag stays false/absent
-  // → section router keeps clean geometry in WAITING_FOR_ENTRY (never "Act now" on a prohibited open).
+  // ── GRADUATION STAMP (diagnostic, 2026-08-06 — no longer gates COMMIT_NOW or the commit itself; see
+  // commit.ts's file header). Stamp each SWING play from the same Wilson-LB ladder the ledger tracks, so
+  // the calibration progress stays observable on the board even though it no longer withholds an open. ──
   let report: SwingCalibrationReport | null = null;
   if (deps.fetchGradedHistory) {
     try {
@@ -686,12 +688,13 @@ export async function runSwingDiscoveryScan(
     };
   }
 
-  // ── LIVE COMMIT (go-live 2026-07-24) — WIRED ONLY when the authorized cron injects `insertPosition`. ──
-  // A WATCH candidate opens a REAL position ONLY when its archetype×sub-lane bucket has GRADUATED through the
-  // staged Wilson-LB ladder AND it clears the armed budget + book-percent caps + idempotency (commit.ts). When
-  // the seam is absent (every unit test / evidence-only caller) this whole block is skipped: `commitEligibleCount`
-  // stays 0 and nothing is opened — the exact PR-11 behavior. `commitEligibleCount` is now DERIVED (the real
-  // graduated count), never a hardcoded literal.
+  // ── LIVE COMMIT (go-live 2026-07-24; graduation gate removed 2026-08-06) — WIRED ONLY when the authorized
+  // cron injects `insertPosition`. A WATCH candidate opens a REAL position when it clears the armed budget +
+  // book-percent caps + idempotency (commit.ts) — graduation is evidence-only and no longer required (see
+  // commit.ts's file header for why: it was a cold-start deadlock, and 0DTE never gates its core signal
+  // engine on calibration either). When the seam is absent (every unit test / evidence-only caller) this
+  // whole block is skipped: nothing opens — the exact PR-11 behavior. `commitEligibleCount` is DERIVED (the
+  // real graduated count, now a diagnostic only), never a hardcoded literal.
   let commitEligibleCount = 0;
   let commit: SwingCommitResult | undefined;
   if (deps.insertPosition) {
@@ -755,16 +758,18 @@ export async function runSwingDiscoveryScan(
     const plan = computeSwingCommitPlan({ candidates: commitCandidates, report, book, budget: deps.budget, caps: deps.caps });
     commitEligibleCount = plan.commitEligibleCount;
 
-    // Execute the graduated + cleared opens ONLY when the book read succeeded (fail-closed above). Link each
-    // promotion through the accumulation store (best-effort).
+    // Execute the cleared opens ONLY when the book read succeeded (fail-closed above) — graduation is
+    // evidence-only and no longer required. Link each promotion through the accumulation store (best-effort).
     if (bookReadOk) {
       const commitDeps: SwingCommitDeps = {
         insertPosition: deps.insertPosition,
         promote: deps.promoteCommit,
+        insertShadowPosition: deps.insertShadowPosition,
       };
       commit = await executeSwingCommits(commitDeps, plan);
       console.info(
-        `[swing-discovery] commit gate: ${commitEligibleCount} graduated-eligible / ${plan.committableCount} opened` +
+        `[swing-discovery] commit gate: ${commitEligibleCount} graduated-eligible / ${plan.committableCount} opened / ` +
+          `${plan.shadowEligibleCount} shadow-eligible / ${commit.shadowed.length} shadowed` +
           (commit.errors ? ` (${commit.errors} errors)` : ""),
       );
     } else {
@@ -788,8 +793,9 @@ export async function runSwingDiscoveryScan(
     observedCandidates,
     observedCount: observedCandidates.length,
     playSet,
-    // DERIVED (not a literal): the count of WATCH candidates whose archetype×sub-lane bucket graduated. 0 when
-    // the commit seam is unwired OR nothing has graduated yet (the cold-book hard rail).
+    // DERIVED (not a literal): the count of WATCH candidates whose archetype×sub-lane bucket graduated —
+    // a diagnostic only (evidence-only, 2026-08-06), not a gate on `commit.committableCount` below. 0 when
+    // the commit seam is unwired or nothing has graduated yet.
     commitEligibleCount,
     commit,
     recall,

@@ -382,6 +382,91 @@ test("WS-11 #4: back-compat — a row with no executable blob / no tranches keep
   assert.equal(officialPlanPnlPct(malformed), -55);
 });
 
+// ── FINDINGS 2026-08-06: a DEGENERATE trim_scale reconstruction must NOT bury a real, better
+// (or differently bad) live exit the bar-only reconstruction structurally cannot replay ──────
+
+test("FINDINGS 2026-08-06: a degenerate (single, fraction=1) trim_scale reconstruction defers to the real ratchet-floor exit (MU repro)", () => {
+  // Live repro 2026-08-05: MU peaked +16.73%, the ratchet profit floor closed it green at
+  // +4.99% ("the protective floor exits so the green trade cannot finish red") — but the
+  // bar-only trim_scale reconstruction (which has NO ratchet-floor logic at all) walked the
+  // whole session and found a plain -52.02% stop, as ONE full-fraction tranche (no trim ever
+  // armed in the replay). Before this fix, that degenerate reconstruction won precedence and
+  // silently erased the real green exit from the AS-MANAGED headline.
+  const r = row({
+    ticker: "MU",
+    plan_outcome: "stopped",
+    plan_pnl_pct: -52.02,
+    entry_context: {
+      exit: { reason: "ratchet_early_profit_floor", pnl_pct: 4.99, peak_pnl_pct: 16.73 },
+      executable: {
+        lane: "conservative",
+        exit_policy: "trim_scale",
+        plan_outcome: "stopped",
+        plan_pnl_pct: -52.02,
+        tranches: [{ tranche: 1, fraction: 1, exit_reason: "stopped", exit_pnl_pct: -52.02, at_et: "15:46" }],
+      },
+    },
+  });
+  assert.equal(asManagedPnlPct(r), 4.99, "the real ratchet-floor exit wins, not the degenerate reconstruction");
+  const rec = buildZeroDteRecord([r], WINDOW);
+  assert.equal(rec.plays[0]!.managed_source, "engine");
+  assert.equal(rec.plays[0]!.managed_pnl_pct, 4.99);
+  assert.equal(rec.wins, 1, "the AS-MANAGED headline books this as a win, matching what actually happened live");
+});
+
+test("FINDINGS 2026-08-06: a degenerate trim_scale reconstruction defers to a real thesis-break exit (QQQ repro)", () => {
+  // Live repro 2026-08-05: QQQ's thesis broke (a GEX-wall veto) and the engine cut the loss at
+  // -12.43% — but the reconstruction (blind to live GEX-wall state) rode the bars to a plain
+  // -50.29% stop.
+  const r = row({
+    ticker: "QQQ",
+    plan_outcome: "stopped",
+    plan_pnl_pct: -50.29,
+    entry_context: {
+      exit: { reason: "thesis_break:gex-walls", pnl_pct: -12.43, peak_pnl_pct: 3.39 },
+      executable: {
+        lane: "conservative",
+        exit_policy: "trim_scale",
+        plan_outcome: "stopped",
+        plan_pnl_pct: -50.29,
+        tranches: [{ tranche: 1, fraction: 1, exit_reason: "stopped", exit_pnl_pct: -50.29, at_et: "12:30" }],
+      },
+    },
+  });
+  assert.equal(asManagedPnlPct(r), -12.43, "the real, smaller thesis-break loss wins, not the degenerate reconstruction's full stop");
+  const rec = buildZeroDteRecord([r], WINDOW);
+  assert.equal(rec.plays[0]!.managed_source, "engine");
+  assert.equal(rec.plays[0]!.managed_outcome, "thesis_break");
+});
+
+test("FINDINGS 2026-08-06: a GENUINE partial-bank reconstruction (2+ tranches) still takes precedence over a real exit stamp (unchanged)", () => {
+  // Guards against over-correcting: a real multi-tranche reconstruction carries information
+  // (the blended partial-banking P&L) a single exit stamp cannot — it must still win.
+  const r = row({
+    ticker: "NVDA",
+    plan_outcome: "time_stop",
+    plan_pnl_pct: 40,
+    entry_context: {
+      // A stray/stale single-exit stamp from an earlier tick, superseded by genuine banking.
+      exit: { reason: "flat_theta_bleed", pnl_pct: 1 },
+      executable: {
+        lane: "conservative",
+        exit_policy: "trim_scale",
+        plan_outcome: "time_stop",
+        plan_pnl_pct: 25.61,
+        tranches: [
+          { tranche: 1, fraction: 1 / 3, exit_pnl_pct: 13.64, exit_reason: "trim_scale_first", at_et: "10:00" },
+          { tranche: 2, fraction: 1 / 3, exit_pnl_pct: 36.36, exit_reason: "trim_scale_second", at_et: "10:05" },
+          { tranche: 3, fraction: 1 / 3, exit_pnl_pct: 26.82, exit_reason: "time_stop", at_et: "10:10" },
+        ],
+      },
+    },
+  });
+  assert.equal(asManagedPnlPct(r), 25.61);
+  const rec = buildZeroDteRecord([r], WINDOW);
+  assert.equal(rec.plays[0]!.managed_source, "reconstructed");
+});
+
 // ── Fix 4a: pnl exactly 0 is a BREAKEVEN — neither win nor loss (SPX 3-way parity) ─────
 test("Fix 4a: an exactly-breakeven managed exit is NOT booked as a loss", () => {
   const scratch = withExit(

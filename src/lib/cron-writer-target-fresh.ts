@@ -137,6 +137,25 @@ export async function probeWriterTargetFresh(jobKey: string): Promise<WriterTarg
         detail: fresh ? `uw_cache:${key} ttl ${ttl}s remaining` : `uw_cache:${key} expired/missing`,
       };
     }
+    case "vector-bead-record": {
+      const { formatEtDate } = await import("@/features/nighthawk/lib/session");
+      const { loadSessionWallHistory } = await import("@/features/vector/lib/vector-wall-persist");
+      const sessionYmd = formatEtDate(new Date());
+      const history = await loadSessionWallHistory(sessionYmd, "SPY", "all");
+      if (!history.length) {
+        return { fresh: false, detail: "SPY wall-history rail empty today" };
+      }
+      const tail = history[history.length - 1];
+      const ageSec =
+        tail?.time != null && Number.isFinite(tail.time)
+          ? Date.now() / 1000 - tail.time
+          : null;
+      const fresh = ageSec != null && ageSec <= 30;
+      return {
+        fresh,
+        detail: `SPY wall-history tail ${ageSec != null ? `${Math.round(ageSec)}s` : "?"} ago (${history.length} samples)`,
+      };
+    }
   }
   return null;
 }
