@@ -81,8 +81,10 @@ export type GovernorStopEvent = {
   ticker: string;
   direction: "long" | "short";
   /** Epoch-ms the stop was observed (Redis-recorded). Null for stops derived from
-   *  the ledger alone (Postgres stores no stop time) — those still count toward the
-   *  session halt but cannot drive the timed re-entry lock. Never fabricated. */
+   *  the ledger alone (Postgres stores no stop time) — never fabricated. Such a stop
+   *  still counts toward the session halt AND still locks same-direction re-entry, but
+   *  fail-closed for the whole session instead of on a 20-minute timer it has no basis
+   *  to measure (see the G-5 loop in evaluateZeroDteGovernor). */
   at_ms: number | null;
 };
 
@@ -627,13 +629,45 @@ export function evaluateZeroDteGovernor(
   }
 
   for (const s of snap.stops) {
-    if (
-      s.ticker === ticker &&
-      s.direction === candidate.direction &&
-      s.at_ms != null &&
-      nowMs - s.at_ms < GOVERNOR_REENTRY_LOCK_MS
-    ) {
-      const minsLeft = Math.ceil((GOVERNOR_REENTRY_LOCK_MS - (nowMs - s.at_ms)) / 60_000);
+    if (s.ticker !== ticker || s.direction !== candidate.direction) continue;
+
+    // UNTIMED STOP — fail CLOSED (2026-08-06 audit, P2).
+    //
+    // WHY: `at_ms` is null for every stop the Redis lane never witnessed live.
+    // `deriveGovernorFromLedger` recognises a stop from `plan_outcome === "stopped"` OR the
+    // latched trough (`ledgerRowStopped`), while `recordGovernorStops` is only called by
+    // scan.ts when THIS process observes the CLOSED/stopped transition in a scan pass. A stop
+    // that closed before the replica came up, was stamped later by the lazy grader, or whose
+    // Redis twin was lost/evicted therefore stays timeless for the whole session
+    // (`mergeGovernorStops` can only upgrade null→timestamp when a twin exists, and
+    // `GovernorLedgerRow` deliberately carries no timestamp column to fall back on).
+    //
+    // The previous `s.at_ms != null &&` guard made that case fail OPEN: the ticker was
+    // silently exempt from the re-entry lock — i.e. the governor's loss control was OFF for
+    // exactly the stops it had the least information about. Wrong fail direction for a risk
+    // device. We still never FABRICATE a timestamp (no invented "stopped N minutes ago"); we
+    // state what is actually known — it stopped today, the time is unknown — and hold that
+    // ticker+direction for the rest of the session. Bounded by the session (stops are keyed
+    // per session_date; the Redis record carries a 24h TTL), scoped to one ticker+direction,
+    // and only reachable after a REAL stop, so it cannot strand the board. Reuses the
+    // `governor_reentry_lock` code so board/pane labels are unchanged; `threshold: null` is
+    // the tell that no timer backs this one.
+    if (s.at_ms == null) {
+      blocks.push({
+        code: "governor_reentry_lock",
+        reason:
+          `Session governor: ${ticker} ${candidate.direction} stopped out earlier this session ` +
+          "but the stop time was never recorded — same-direction re-entry is held for the rest " +
+          "of the session (fail-closed: an untimed stop cannot prove the 20-minute lock elapsed).",
+        threshold: null,
+        unlock_et: null,
+      });
+      break;
+    }
+
+    const elapsedMs = nowMs - s.at_ms;
+    if (elapsedMs < GOVERNOR_REENTRY_LOCK_MS) {
+      const minsLeft = Math.ceil((GOVERNOR_REENTRY_LOCK_MS - elapsedMs) / 60_000);
       blocks.push({
         code: "governor_reentry_lock",
         reason:
@@ -665,7 +699,10 @@ export type ZeroDteGovernorSummary = {
    *  >= max_session_stops) OR the AUDIT SEV-3 realized-loss halt (would_halt != null). */
   halted: boolean;
   /** Same-direction re-entry lock length (ms) — the client counts down from each
-   *  stop's at_ms + this; a stop with at_ms null gets no timer (never fabricated). */
+   *  stop's at_ms + this. A stop with at_ms null gets NO countdown (a time is never
+   *  fabricated) but is NOT unlocked either: G-5 fails closed and holds that
+   *  ticker+direction for the rest of the session, so render it as "locked (session)"
+   *  rather than as an expired/absent lock. */
   reentry_lock_ms: number;
   // ── AUDIT SEV-3 realized-loss halt surface (calibration-first) ──────────────────
   /** Realized losers this session (any exit reason). */
