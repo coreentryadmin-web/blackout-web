@@ -108,6 +108,17 @@ test("decideRollAction: expiry_risk + structural_stop rung always CLOSE even if 
   assert.equal(d.action, "CLOSE");
 });
 
+test("decideRollAction: premium_stop rung ALWAYS closes, even with a valid-thesis roll intent (FINDINGS 2026-08-06 P0)", () => {
+  // Repro: evaluateDteMigration can compute rollIntent.roll=true for a premium_stop-rung position
+  // at low DTE with little thesis progress — decideRollAction must still force CLOSE, never ROLL,
+  // since premium_stop is the −60% capital-preservation backstop, not a theta/expiry problem.
+  const d = decideRollAction(verdict({
+    rung: "premium_stop",
+    rollIntent: { roll: true, reason: "low dte, still-valid thesis" },
+  }));
+  assert.equal(d.action, "CLOSE");
+});
+
 test("decideRollAction: edge rung → SKIP (gating-only; evidence-only rungs never write terminal)", () => {
   for (const rung of ["flow_decay", "profit_ladder", "hold", "insufficient_data"] as const) {
     const d = decideRollAction(verdict({ rung, rollIntent: { roll: false, reason: "n/a" } }));
