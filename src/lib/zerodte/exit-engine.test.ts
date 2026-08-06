@@ -662,3 +662,71 @@ test("buildExitContext: a null entry premium yields null pnl/peak fields (never 
   assert.equal(ctx.mark, 3.9);
   assert.equal(ctx.reason, "no_entry_premium");
 });
+
+// ── INVARIANT: the plan stop is evaluated STRICTLY BEFORE thesis break, BOTH modes ────
+//
+// WHY THIS EXISTS (2026-08-06). Two live losers (CELH −46%, TE −27%) both persisted a
+// `thesis_break:*` exit reason, which read as "the thesis rule is bypassing the stop".
+// It is not: `evaluateExitState` checks the plan stop first in BOTH families — ratchet
+// path L480 → protective return at L482, thesis only reachable at L505-506; trim_scale
+// path L321 → `plan_stop` at L329, thesis at L346-348. That ordering is what makes a
+// persisted `thesis_break` reason STRUCTURAL PROOF that `currentMark > planStop` on the
+// tick it fired, i.e. that the loss was INSIDE the stop, not beyond it. That inference is
+// the whole basis on which those two rows were cleared, so the ordering it rests on must
+// be a tested invariant and not a comment. The thesis rule truncated 19-58pp of loss on 7
+// rows in the last 90 days — this test protects it from being "fixed" away, and protects
+// the audit reasoning that reads its reason string.
+
+const EXIT_MODES = ["ratchet", "trim_scale"] as const;
+
+for (const mode of EXIT_MODES) {
+  test(`stop-before-thesis [${mode}]: at/below the plan stop, a screaming thesis veto still exits 'plan_stop'`, () => {
+    const veto = evidence([{ stance: "veto", source: "wall-trend", detail: "opposing wall building" }]);
+    // Mark AT the stop and BELOW it: both must label the exit with the protective rule.
+    for (const mark of [2.0, 1.2]) {
+      const d = evaluateExitState(
+        input({ exitMode: mode, currentMark: mark, peakPremium: 4.0, cortexEvidence: veto })
+      );
+      assert.equal(d.action, "EXIT", `${mode} @ ${mark}`);
+      assert.equal(d.reason, "plan_stop", `${mode} @ ${mark} — thesis must NOT preempt the stop`);
+    }
+  });
+
+  test(`stop-before-thesis [${mode}]: a persisted thesis_break reason PROVES mark > planStop`, () => {
+    const veto = evidence([{ stance: "veto", source: "wall-trend", detail: "opposing wall building" }]);
+    // Sweep the whole loss range under a permanently-broken thesis. Every tick that comes
+    // back `thesis_break:*` must sit STRICTLY ABOVE the stop; every tick at/below it must
+    // come back protective. There is no mark at which thesis can outrank the stop.
+    let thesisTicks = 0;
+    let protectiveTicks = 0;
+    for (let mark = 4.0; mark >= 0.4; mark -= 0.1) {
+      const m = Math.round(mark * 100) / 100;
+      const d = evaluateExitState(
+        input({ exitMode: mode, currentMark: m, peakPremium: 4.0, cortexEvidence: veto })
+      );
+      if (typeof d.reason === "string" && d.reason.startsWith("thesis_break")) {
+        thesisTicks += 1;
+        assert.ok(m > 2.0, `${mode}: thesis_break at mark ${m} — that is at/below the planStop 2.0`);
+      } else {
+        protectiveTicks += 1;
+        assert.equal(d.action, "EXIT", `${mode} @ ${m}`);
+        assert.ok(m <= 2.0, `${mode}: non-thesis protective exit at mark ${m} above the stop`);
+      }
+    }
+    // Non-vacuity: the sweep must actually have exercised BOTH branches, or the
+    // invariant above would pass on an engine that never reaches either rule.
+    assert.ok(thesisTicks > 0, `${mode}: sweep never produced a thesis_break — test is vacuous`);
+    assert.ok(protectiveTicks > 0, `${mode}: sweep never produced a protective exit — test is vacuous`);
+  });
+
+  test(`stop-before-thesis [${mode}]: with NO plan stop the thesis rule still owns the losing tail`, () => {
+    // The ordering must not be an accident of the stop always being present — with
+    // planStop null the thesis break is exactly what caps the loss.
+    const veto = evidence([{ stance: "veto", source: "wall-trend", detail: "opposing wall building" }]);
+    const d = evaluateExitState(
+      input({ exitMode: mode, planStop: null, currentMark: 1.2, peakPremium: 4.0, cortexEvidence: veto })
+    );
+    assert.equal(d.action, "EXIT");
+    assert.match(String(d.reason), /^thesis_break:/);
+  });
+}
