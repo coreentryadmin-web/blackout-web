@@ -29,12 +29,28 @@ const workflow = readFileSync(WORKFLOW, "utf8");
 
 /** Account Fargate On-Demand vCPU quota (L-3032A538). Raise ONLY when AWS grants the increase. */
 const VCPU_QUOTA = 30;
-/** blackout-production-web task size. */
+/** blackout-production-web task size (2048 CPU units). */
 const WEB_TASK_VCPU = 2;
-/** blackout-production-market-worker: singleton, counts against the same quota. */
-const WORKER_VCPU = 2;
-/** Application Auto Scaling bounds on the web service. */
-const WEB_MIN_TASKS = 8;
+/**
+ * blackout-production-market-worker, which competes for the same account quota: desiredCount=2 at
+ * 1024 CPU units (1 vCPU) each. Verified live 2026-08-06 — do NOT assume a singleton, that premise
+ * was wrong once already.
+ */
+const WORKER_TASKS = 2;
+const WORKER_TASK_VCPU = 1;
+const WORKER_VCPU = WORKER_TASKS * WORKER_TASK_VCPU;
+/**
+ * Application Auto Scaling bounds on the web service, verified live 2026-08-06:
+ *   aws application-autoscaling describe-scalable-targets \
+ *     --resource-ids service/blackout-production-cluster/blackout-production-web
+ *   → { MinCapacity: 5, MaxCapacity: 12 }
+ *
+ * The FLOOR is the binding constraint on maximumPercent and is easy to get wrong: an earlier
+ * revision of this file assumed 8 and picked a maximumPercent (115) that deadlocks at 5 and 6.
+ * desired=5 is where the service sits overnight and at weekends — exactly where unattended deploys
+ * land. Keep these in sync with the scalable target.
+ */
+const WEB_MIN_TASKS = 5;
 const WEB_MAX_TASKS = 12;
 
 type DeployConfig = { minimumHealthyPercent: number; maximumPercent: number; circuitBreaker: boolean };
@@ -86,65 +102,98 @@ test("web service never drains below desiredCount during a deploy (minimumHealth
   );
 });
 
-test("web rolling deploy can actually make progress at every autoscaling task count", () => {
+// THE assertion that matters: sweep EVERY task count the autoscaler can hold, not a spot check.
+// A config can be perfectly valid at the counts you happen to think of and still deadlock at the
+// floor — maximumPercent=115 clears desired=8 and desired=12 but hangs at 5 and 6.
+test("web rolling deploy can make progress at EVERY task count in the autoscaling range", () => {
   const [web] = deployConfigs();
+  const deadlocked: number[] = [];
+  const noSpareSlot: number[] = [];
+
   for (let desired = WEB_MIN_TASKS; desired <= WEB_MAX_TASKS; desired++) {
     const ceiling = ceilingTasks(desired, web.maximumPercent);
     const floor = healthyFloorTasks(desired, web.minimumHealthyPercent);
     const canAdd = ceiling > desired;
     const canRemove = floor < desired;
-    assert.ok(
-      canAdd || canRemove,
-      `DEADLOCK at desiredCount=${desired}: ceiling=${ceiling} (floor(${desired}*` +
-        `${web.maximumPercent}/100)) and minimum healthy=${floor} — ECS could neither start a ` +
-        `replacement nor stop an old task, so the deploy would hang until the poller times out. ` +
-        `This is exactly what minimumHealthyPercent=100 with the old maximumPercent=112 did at ` +
-        `desiredCount=8: floor(8*1.12)=8, not 9.`,
-    );
-    // With minHealthy=100 the ONLY legal way forward is the spare slot, so require it explicitly.
-    if (web.minimumHealthyPercent >= 100) {
-      assert.ok(
-        canAdd,
-        `at desiredCount=${desired}, maximumPercent=${web.maximumPercent} grants no spare slot ` +
-          `(ceiling ${ceiling}); minimumHealthyPercent=100 needs floor(desired*max/100) >= desired+1`,
-      );
-    }
+    if (!canAdd && !canRemove) deadlocked.push(desired);
+    // Under minHealthy=100 the spare slot is the ONLY legal way forward — ECS may not free one by
+    // stopping a task first — so require it at every count, not merely "some way to progress".
+    if (web.minimumHealthyPercent >= 100 && !canAdd) noSpareSlot.push(desired);
   }
+
+  assert.deepEqual(
+    deadlocked,
+    [],
+    `DEADLOCK at desiredCount=${JSON.stringify(deadlocked)} with ` +
+      `minimumHealthyPercent=${web.minimumHealthyPercent}/maximumPercent=${web.maximumPercent}: ` +
+      `ceiling equals desiredCount and minimum healthy equals desiredCount, so ECS can neither ` +
+      `start a replacement nor stop an old task and the deploy hangs until the poller times out. ` +
+      `Solve floor(d * max/100) >= d + 1 across d in [${WEB_MIN_TASKS},${WEB_MAX_TASKS}] — the ` +
+      `FLOOR binds: floor(5*1.15)=5 deadlocks, floor(5*1.20)=6 does not.`,
+  );
+  assert.deepEqual(
+    noSpareSlot,
+    [],
+    `maximumPercent=${web.maximumPercent} grants no spare task slot at ` +
+      `desiredCount=${JSON.stringify(noSpareSlot)}; with minimumHealthyPercent=100 the roll needs ` +
+      `floor(desired * max/100) >= desired + 1 at every count in the autoscaling range`,
+  );
 });
 
-test("web deploy peak fits under the Fargate vCPU quota at the autoscaling maximum", () => {
+// There are TWO different peaks at the autoscaling maximum and they have different obligations.
+//
+//  * REQUIRED peak — desiredCount + 1 tasks. This is the minimum concurrency the roll needs to make
+//    progress under minHealthy=100, so it MUST fit under the quota with room to spare. If it does
+//    not, the deploy cannot schedule its own replacement.
+//  * PERMITTED peak — the full maximumPercent ceiling. Landing this exactly ON the quota is
+//    acceptable: the slots above desiredCount+1 are optional headroom, so if the quota blocks their
+//    placement the roll still completes at the required peak. Exceeding the quota is not, since the
+//    scheduler would then be fighting a limit it can never satisfy.
+test("the web roll's REQUIRED concurrency fits under the vCPU quota with headroom", () => {
+  const requiredTasks = WEB_MAX_TASKS + 1;
+  const requiredVcpu = requiredTasks * WEB_TASK_VCPU + WORKER_VCPU;
+  assert.ok(
+    requiredVcpu <= VCPU_QUOTA,
+    `a roll at desiredCount=${WEB_MAX_TASKS} needs ${requiredTasks} concurrent web tasks ` +
+      `(${requiredTasks * WEB_TASK_VCPU} vCPU) + worker ${WORKER_VCPU} vCPU = ${requiredVcpu} vCPU, ` +
+      `over the ${VCPU_QUOTA} vCPU quota (L-3032A538) — the deploy could never schedule its own ` +
+      `replacement task`,
+  );
+  assert.ok(
+    VCPU_QUOTA - requiredVcpu >= WEB_TASK_VCPU,
+    `required roll concurrency ${requiredVcpu} vCPU leaves under one task of headroom beneath the ` +
+      `${VCPU_QUOTA} vCPU quota — too tight to absorb any other Fargate task in the account`,
+  );
+});
+
+test("the web maximumPercent ceiling never demands more vCPU than the quota allows", () => {
   const [web] = deployConfigs();
   const peakTasks = ceilingTasks(WEB_MAX_TASKS, web.maximumPercent);
   const peakVcpu = peakTasks * WEB_TASK_VCPU + WORKER_VCPU;
   assert.ok(
     peakVcpu <= VCPU_QUOTA,
-    `transient deploy peak at desiredCount=${WEB_MAX_TASKS} is ${peakTasks} web tasks ` +
-      `(${peakTasks * WEB_TASK_VCPU} vCPU) + worker ${WORKER_VCPU} vCPU = ${peakVcpu} vCPU, over ` +
-      `the ${VCPU_QUOTA} vCPU quota (L-3032A538). ECS would be unable to schedule its own ` +
-      `replacement tasks. Lower maximumPercent, or raise VCPU_QUOTA once AWS grants the increase.`,
-  );
-  // Keep a real slot of headroom rather than landing exactly on the quota: at maximumPercent>=117
-  // the ceiling becomes 14 tasks = exactly 30 vCPU, leaving nothing for any other Fargate task.
-  assert.ok(
-    VCPU_QUOTA - peakVcpu >= WEB_TASK_VCPU,
-    `deploy peak ${peakVcpu} vCPU leaves less than one task of headroom under the ${VCPU_QUOTA} ` +
-      `vCPU quota — too tight to absorb any other Fargate task in the account`,
+    `maximumPercent=${web.maximumPercent} permits ${peakTasks} web tasks at ` +
+      `desiredCount=${WEB_MAX_TASKS} (${peakTasks * WEB_TASK_VCPU} vCPU) + worker ${WORKER_VCPU} ` +
+      `vCPU = ${peakVcpu} vCPU, over the ${VCPU_QUOTA} vCPU quota (L-3032A538). Lower ` +
+      `maximumPercent, or raise VCPU_QUOTA once AWS grants the increase.`,
   );
 });
 
-test("market-worker keeps singleton deploy semantics (minimumHealthyPercent=0)", () => {
+test("market-worker keeps leader-election deploy semantics (minimumHealthyPercent=0)", () => {
   const [, worker] = deployConfigs();
   assert.equal(
     worker.minimumHealthyPercent,
     0,
-    "blackout-production-market-worker is the SINGLE ingest leader and both upstreams allow one " +
-      "live WebSocket per API key (see uw-socket.ts / polygon-socket.ts). Forcing an overlap " +
-      "window makes failover slower, not safer — the incoming task loses the Redis leader SETNX " +
-      "and idles a full reconcile tick. It is deliberately NOT symmetric with the web service.",
+    "blackout-production-market-worker's capacity is NOT additive: exactly one replica holds each " +
+      "upstream WebSocket at a time via a fenced Redis SETNX lock, because both upstreams allow " +
+      "one live socket per API key (uw-socket.ts / polygon-socket.ts). minimumHealthyPercent " +
+      "therefore buys this tier nothing — Redis arbitrates the leader, not the ECS task count — " +
+      "while forcing overlap makes failover SLOWER: the incoming task loses the SETNX and idles a " +
+      "full 15s reconcile tick. Deliberately NOT symmetric with the web service.",
   );
   assert.ok(
     worker.maximumPercent >= 100,
-    "worker maximumPercent must allow at least the one replacement task",
+    "worker maximumPercent must allow at least one replacement task",
   );
 });
 
