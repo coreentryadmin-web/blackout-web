@@ -223,6 +223,27 @@ const LadderRow = memo(function LadderRow({
             style={{ width: `${Math.max(2, Math.round(row.magnitude * 100))}%`, backgroundColor: color }}
           />
         </span>
+        {/* Always occupies its grid column (even when empty) so the strike/bar/value columns stay
+            aligned between rows that do and don't have a migration reading — a conditionally
+            omitted 4th grid item would shift the value column left on rows without one. Small
+            (<1%) or missing (no shift data yet, or a narrowed DTE horizon) migrations render
+            nothing inside, same column. */}
+        <span
+          className={clsx(
+            "vector-gex-ladder-migration",
+            row.migration != null &&
+              (row.migration.built ? "vector-gex-ladder-migration-up" : "vector-gex-ladder-migration-down")
+          )}
+          title={
+            row.migration != null
+              ? `Wall ${row.migration.built ? "built" : "faded"} ${Math.abs(Math.round(row.migration.pct))}% over the shift window`
+              : undefined
+          }
+        >
+          {row.migration != null && Math.abs(row.migration.pct) >= 1
+            ? `${row.migration.built ? "▲" : "▼"}${Math.abs(Math.round(row.migration.pct))}%`
+            : null}
+        </span>
         <span className="vector-gex-ladder-val" style={{ color }}>
           {row.isKing ? <span className="vector-gex-ladder-crown" aria-hidden="true">♛</span> : null}
           {fmtGex(row.gex)}

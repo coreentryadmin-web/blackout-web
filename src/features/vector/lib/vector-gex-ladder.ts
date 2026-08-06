@@ -7,11 +7,13 @@
  * reads the whole gamma structure at a glance — where the fat walls sit, where the thin ones are,
  * and which strike is the single dominant "king" per side.
  *
- * Pure and dependency-free: it takes the raw `strike_totals` record (strike → signed net GEX, the
- * exact map `GexHeatmap.gex.strike_totals` / the per-expiry chain ladder already produce) and the
- * spot, and returns display-ready rows. Sign convention matches `computeGexWalls`: net GEX > 0 is a
- * call/positive-gamma strike (resistance), < 0 is a put/negative-gamma strike (support).
+ * Pure (one shared math import, `wallStrengthShift`, no I/O): it takes the raw `strike_totals`
+ * record (strike → signed net GEX, the exact map `GexHeatmap.gex.strike_totals` / the per-expiry
+ * chain ladder already produce) and the spot, and returns display-ready rows. Sign convention
+ * matches `computeGexWalls`: net GEX > 0 is a call/positive-gamma strike (resistance), < 0 is a
+ * put/negative-gamma strike (support).
  */
+import { wallStrengthShift } from "@/features/thermal/lib/gex-heatmap/shift-math";
 
 export type GexLadderSide = "call" | "put";
 
@@ -24,6 +26,14 @@ export type GexLadderRow = {
   magnitude: number;
   /** Strongest strike on its own side (the call king / put king). */
   isKing: boolean;
+  /**
+   * Intraday wall migration at this strike (2026-08-06, "is this wall building or fading" feature)
+   * — null when no shift data was supplied (narrowed DTE horizons don't carry one, see the route's
+   * comment) or this strike had no shift recorded. `built` is side-aware (a put wall "builds" as its
+   * net GEX goes MORE negative) via `wallStrengthShift`, so the arrow always means "heavier" /
+   * "lighter" regardless of which side the row is on.
+   */
+  migration: { pct: number; built: boolean } | null;
 };
 
 export type GexLadder = {
@@ -84,6 +94,14 @@ export type BuildGexLadderOpts = {
    * king per side. Omit (the BIE full-state + client seed do) to keep the pure self-crowned behavior.
    */
   kingStrikes?: { call?: number | null; put?: number | null };
+  /**
+   * Per-strike signed $-delta over the shift window (`GexShift.delta_by_strike`, the SAME map the
+   * shift-leaders strip above the pulse rail already reads) — wired in ONLY on the default "all"
+   * horizon (see the gex-ladder route), since a narrowed DTE horizon's ladder is reconstructed
+   * fresh from the chain each poll and carries no shift history. Omitted → every row's `migration`
+   * is null (honest absence, never fabricated).
+   */
+  shiftByStrike?: Record<string, number> | null;
 };
 
 /** Default strongest-walls-per-side kept through the band (king + 2 runners-up each side). */
@@ -106,7 +124,7 @@ export function buildGexLadder(
   opts: BuildGexLadderOpts = {}
 ): GexLadder {
   if (!strikeTotals) return { ...EMPTY, spot };
-  const { maxRows = 200, bandPct = 0.5, keepPerSide = DEFAULT_KEEP_PER_SIDE, kingStrikes } = opts;
+  const { maxRows = 200, bandPct = 0.5, keepPerSide = DEFAULT_KEEP_PER_SIDE, kingStrikes, shiftByStrike } = opts;
 
   let entries: Array<{ strike: number; gex: number }> = [];
   for (const [key, value] of Object.entries(strikeTotals)) {
@@ -232,6 +250,7 @@ export function buildGexLadder(
       // crowned strike is the canonical wall when the caller supplied one, else the ladder's own
       // strongest strike — see `crownCallStrike`/`crownPutStrike` above.
       isKing: (e.gex > 0 && e.strike === crownCallStrike) || (e.gex < 0 && e.strike === crownPutStrike),
+      migration: wallStrengthShift(e.gex, shiftByStrike?.[String(e.strike)]),
     }))
     .sort((a, b) => b.strike - a.strike);
 

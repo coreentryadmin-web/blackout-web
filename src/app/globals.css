@@ -7768,8 +7768,11 @@ body::before {
 
   .vector-gex-ladder-row {
     display: grid;
-    /* Thin left-rail: keep the strike + value tight so the magnitude bar still has room to read. */
-    grid-template-columns: 2.9rem minmax(0, 1fr) auto;
+    /* Thin left-rail: keep the strike + value tight so the magnitude bar still has room to read.
+       4th track (2026-08-06, wall-migration arrows) is a narrow fixed width so it doesn't steal
+       space from the bar on rows with no migration reading — see the component's comment on why
+       it's always rendered (empty) rather than conditionally added/removed from the grid. */
+    grid-template-columns: 2.9rem minmax(0, 1fr) 2.4rem auto;
     align-items: center;
     gap: 0.3rem;
     padding: 0.09rem 0.25rem;
@@ -7812,6 +7815,25 @@ body::before {
   .vector-gex-ladder-crown {
     margin-right: 0.2rem;
     font-size: 0.6rem;
+  }
+
+  /* Wall-migration arrow (2026-08-06): is this strike's wall building or fading over the shift
+     window? Muted grey (empty) by default so a row with no reading yet doesn't draw the eye;
+     only rows with an actual ≥1% move get a coloured tag. */
+  .vector-gex-ladder-migration {
+    font-size: 0.58rem;
+    text-align: right;
+    white-space: nowrap;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    color: rgba(148, 163, 184, 0.4);
+  }
+
+  .vector-gex-ladder-migration-up {
+    color: rgba(74, 222, 128, 0.9);
+  }
+
+  .vector-gex-ladder-migration-down {
+    color: rgba(248, 113, 113, 0.75);
   }
 
   .vector-gex-ladder-spot {
