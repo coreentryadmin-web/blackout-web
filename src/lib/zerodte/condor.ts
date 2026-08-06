@@ -473,6 +473,9 @@ export function buildCondorSetup(input: {
   regime: PinRegime;
   plan: CondorPlan;
   score: number;
+  /** ISO-8601 observation time of `spot`, when the caller knows it. Stamped onto
+   *  `underlying_price_as_of`; omitted → null = as-of UNKNOWN (never fabricated). */
+  spotAsOf?: string | null;
 }): EnrichedZeroDteSetup {
   const { ticker, spot, regime, plan, score } = input;
   const origin: DiscoveryOrigin[] = ["PIN"];
@@ -498,6 +501,12 @@ export function buildCondorSetup(input: {
     sweep_pct: 0,
     side_dominance: 0.5, // neutral — no directional flow side
     underlying_price: Math.round(spot * 100) / 100,
+    // Provenance for the mark: the live chain spot the condor legs were priced against. NOTE a
+    // CONDOR is the ONE structure attachContractPlans skips (it has no single directional OCC), so
+    // this stamp is never refreshed downstream — it stays chain_spot for the life of the setup and
+    // is the honest label for it.
+    underlying_price_as_of: input.spotAsOf ?? null,
+    underlying_price_source: "chain_spot",
     score,
     aggression: null,
     otm_pct: null, // a neutral 4-leg structure has no single moneyness

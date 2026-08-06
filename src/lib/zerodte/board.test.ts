@@ -15,6 +15,8 @@ import {
   matchEarnings,
   matchHotNews,
   polygonSpotTicker,
+  refreshUnderlyingFromLiveSpot,
+  underlyingMarkAgeMs,
   SETUP_MIN_GROSS,
   SETUP_MIN_AGGR_SHARE,
   SETUP_MIN_DOMINANCE,
@@ -337,6 +339,104 @@ test("setups: underlying price comes from the FRESHEST print, not the last row p
     row({ premium: 300_000, underlying_price: 181.0, alerted_at: "2026-07-06T09:35:00Z" }),
   ];
   assert.equal(deriveZeroDteSetups(rows)[0]!.underlying_price, 188.0);
+});
+
+// ── underlying-mark provenance + refresh (frozen-underlying fix) ────────────────────
+
+test("setups: the underlying mark carries its TRUE as-of + source, not just the number", () => {
+  const rows = [
+    row({ premium: 900_000, underlying_price: 188.0, alerted_at: "2026-07-06T14:55:00Z" }),
+    row({ premium: 300_000, underlying_price: 181.0, alerted_at: "2026-07-06T09:35:00Z" }),
+  ];
+  const s = deriveZeroDteSetups(rows)[0]!;
+  // The as-of belongs to the print that WON the freshness race — previously computed and discarded.
+  assert.equal(s.underlying_price, 188.0);
+  assert.equal(s.underlying_price_as_of, "2026-07-06T14:55:00Z");
+  assert.equal(s.underlying_price_source, "flow_print");
+});
+
+test("underlyingMarkAgeMs: real age when stamped; null (MISSING, not fresh) when it is not", () => {
+  const at = "2026-07-06T14:55:00Z";
+  const now = Date.parse("2026-07-06T17:13:00Z"); // 2h18m later — the live FSLR case
+  assert.equal(
+    underlyingMarkAgeMs({ underlying_price: 188, underlying_price_as_of: at }, now),
+    2 * 3_600_000 + 18 * 60_000
+  );
+  // Unstamped mark must NOT read as age 0 — an unknown age is MISSING, never confident-and-wrong.
+  assert.equal(underlyingMarkAgeMs({ underlying_price: 188, underlying_price_as_of: null }, now), null);
+  assert.equal(underlyingMarkAgeMs({ underlying_price: null, underlying_price_as_of: at }, now), null);
+  assert.equal(
+    underlyingMarkAgeMs({ underlying_price: 188, underlying_price_as_of: "not-a-date" }, now),
+    null
+  );
+  // Provider clock ahead of ours floors to 0 — skew must never manufacture staleness.
+  assert.equal(
+    underlyingMarkAgeMs({ underlying_price: 188, underlying_price_as_of: at }, Date.parse(at) - 60_000),
+    0
+  );
+});
+
+test("refreshUnderlyingFromLiveSpot: re-stamps price + as-of + source and RECOMPUTES otm_pct", () => {
+  const observed = Date.parse("2026-08-06T19:59:00Z");
+  // The live FSLR shape: a 2h18m-old flow print said 250.54; the session's real mark was 244.14.
+  const patch = refreshUnderlyingFromLiveSpot({
+    livePrice: 244.14,
+    liveObservedAtMs: observed,
+    direction: "long",
+    topStrike: 250,
+    hasSingleStrikeMoneyness: true,
+  })!;
+  assert.equal(patch.underlying_price, 244.14);
+  assert.equal(patch.underlying_price_as_of, new Date(observed).toISOString());
+  assert.equal(patch.underlying_price_source, "live_option_snapshot");
+  // Moneyness must move WITH the mark or the setup is internally inconsistent by exactly the
+  // staleness we just removed: strike 250 was 0.22% ITM against 250.54, it is 2.4% OTM against 244.14.
+  assert.equal(patch.otm_pct, 2.4);
+});
+
+test("refreshUnderlyingFromLiveSpot: short side flips the moneyness sign; a condor has none", () => {
+  const observed = Date.parse("2026-08-06T19:59:00Z");
+  const short = refreshUnderlyingFromLiveSpot({
+    livePrice: 100,
+    liveObservedAtMs: observed,
+    direction: "short",
+    topStrike: 95, // a put 5% BELOW spot is OTM ⇒ positive
+    hasSingleStrikeMoneyness: true,
+  })!;
+  assert.equal(short.otm_pct, 5);
+  const condor = refreshUnderlyingFromLiveSpot({
+    livePrice: 100,
+    liveObservedAtMs: observed,
+    direction: "short",
+    topStrike: 95,
+    hasSingleStrikeMoneyness: false, // 4 legs — no single moneyness to state
+  })!;
+  assert.equal(condor.otm_pct, null);
+  assert.equal(condor.underlying_price, 100);
+});
+
+test("refreshUnderlyingFromLiveSpot: refuses to refresh without a usable price OR a usable as-of", () => {
+  const base = { direction: "long" as const, topStrike: 250, hasSingleStrikeMoneyness: true };
+  const observed = Date.now();
+  // No live price → keep whatever honest stamp the setup already has.
+  assert.equal(refreshUnderlyingFromLiveSpot({ ...base, livePrice: null, liveObservedAtMs: observed }), null);
+  assert.equal(refreshUnderlyingFromLiveSpot({ ...base, livePrice: 0, liveObservedAtMs: observed }), null);
+  assert.equal(refreshUnderlyingFromLiveSpot({ ...base, livePrice: NaN, liveObservedAtMs: observed }), null);
+  // A fresher NUMBER with an unknown AGE is worse than an older number with a known age — fail
+  // toward the KNOWN rather than swap in an unattributable mark.
+  assert.equal(refreshUnderlyingFromLiveSpot({ ...base, livePrice: 244.14, liveObservedAtMs: null }), null);
+  assert.equal(refreshUnderlyingFromLiveSpot({ ...base, livePrice: 244.14, liveObservedAtMs: 0 }), null);
+});
+
+test("refreshUnderlyingFromLiveSpot: rounds the live mark at the data layer", () => {
+  const patch = refreshUnderlyingFromLiveSpot({
+    livePrice: 7499.360000000001,
+    liveObservedAtMs: Date.parse("2026-08-06T19:59:00Z"),
+    direction: "long",
+    topStrike: 7500,
+    hasSingleStrikeMoneyness: true,
+  })!;
+  assert.equal(patch.underlying_price, 7499.36);
 });
 
 // ── ledger grading ───────────────────────────────────────────────────────────────

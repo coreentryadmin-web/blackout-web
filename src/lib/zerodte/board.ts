@@ -554,6 +554,72 @@ export function discoveryOriginLabel(origins: readonly DiscoveryOrigin[] | null 
   return ordered.length ? ordered.join("+") : "no_origin";
 }
 
+// ── Underlying-mark provenance (frozen-underlying fix) ──────────────────────────────
+// A setup's `underlying_price` drives the entry/target/stop geometry AND the P&L a member reads
+// off the card, so "how old is this mark" must travel WITH the mark. See the field docs on
+// ZeroDteSetup.underlying_price_as_of / _source below for the failure this closes.
+export type UnderlyingPriceSource = "flow_print" | "chain_spot" | "live_option_snapshot";
+
+/**
+ * Age of a setup's underlying mark in ms, or null when the age is UNKNOWABLE (no as-of stamped,
+ * or no mark at all). null is deliberately NOT 0: an unstamped mark must degrade to MISSING, the
+ * repo's standing "missing looks missing, never confident-and-wrong" rule (PR #1792) — never be
+ * silently rendered as fresh. A negative age (provider clock ahead of ours) floors to 0, mirroring
+ * computeQuoteAgeMs in scan.ts so clock skew can never manufacture staleness.
+ */
+export function underlyingMarkAgeMs(
+  setup: Pick<ZeroDteSetup, "underlying_price" | "underlying_price_as_of">,
+  nowMs: number
+): number | null {
+  if (setup.underlying_price == null) return null;
+  if (!setup.underlying_price_as_of) return null;
+  const t = Date.parse(setup.underlying_price_as_of);
+  if (!Number.isFinite(t)) return null;
+  const age = nowMs - t;
+  return age > 0 ? age : 0;
+}
+
+/**
+ * Pure re-stamp of a setup's underlying mark from a FRESHER observation, returning the patch to
+ * apply (or null when there is nothing fresher — the caller then leaves the setup untouched).
+ *
+ * `otm_pct` is recomputed here on purpose. It is derived from the underlying with the SAME formula
+ * the flow/breakout/pin construction sites use (positive = OTM on either side), so refreshing the
+ * mark while leaving the old moneyness behind would leave the setup internally inconsistent by
+ * exactly the staleness we just removed — and `otm_pct` is a gate input (SETUP_MAX_ITM_PCT /
+ * SETUP_MAX_OTM_PCT). The refresh runs BEFORE attachGateVerdicts, so the moneyness gate now judges
+ * the REAL moneyness. This is precisely the feedback the no_underlying_price comment below
+ * ("a live underlying price is available moments later in scan.ts's attachContractPlans ... but
+ * was never fed back") flagged as missing.
+ */
+export function refreshUnderlyingFromLiveSpot(input: {
+  livePrice: number | null | undefined;
+  liveObservedAtMs: number | null | undefined;
+  /** Side the setup's top strike sits on — long ⇒ call, short ⇒ put (every construction site). */
+  direction: "long" | "short";
+  topStrike: number;
+  /** CONDOR has no single moneyness (4 legs) — otm_pct stays null for it. */
+  hasSingleStrikeMoneyness: boolean;
+}): Pick<ZeroDteSetup, "underlying_price" | "underlying_price_as_of" | "underlying_price_source" | "otm_pct"> | null {
+  const price = Number(input.livePrice);
+  if (!Number.isFinite(price) || price <= 0) return null; // no live mark → keep the stamped one
+  // An as-of we cannot read is worse than the mark we already have a real as-of for: refusing to
+  // refresh here keeps the honest older stamp instead of swapping in a fresher number with an
+  // unknown age. Fail toward the KNOWN.
+  const observed = Number(input.liveObservedAtMs);
+  if (!Number.isFinite(observed) || observed <= 0) return null;
+  const underlying = Math.round(price * 100) / 100; // round at the data layer (repo-wide rule)
+  const raw = ((input.topStrike - underlying) / underlying) * 100;
+  return {
+    underlying_price: underlying,
+    underlying_price_as_of: new Date(observed).toISOString(),
+    underlying_price_source: "live_option_snapshot",
+    otm_pct: input.hasSingleStrikeMoneyness
+      ? Math.round((input.direction === "long" ? raw : -raw) * 100) / 100
+      : null,
+  };
+}
+
 export type ZeroDteSetup = {
   ticker: string;
   direction: "long" | "short";
@@ -591,6 +657,27 @@ export type ZeroDteSetup = {
   /** Premium-weighted dominance of the winning side (0.5-1). */
   side_dominance: number;
   underlying_price: number | null;
+  /**
+   * PROVENANCE of `underlying_price` — WHEN that mark was observed (ISO-8601 UTC), so a consumer
+   * can tell a live spot from a hours-old stamp. Historically the flow lane picked the freshest
+   * SURVIVING print's `underlying_price` and THREW THE AS-OF AWAY (see deriveZeroDteSetups), which
+   * made a frozen mark indistinguishable from a live one: a thinly-traded name with no new
+   * qualifying print kept its last print's underlying indefinitely and nothing downstream could
+   * tell. Measured live 2026-08-06 against the RTH close: 9/20 board setups >0.5% off, 4 >1%,
+   * worst FSLR +2.62% on a 2h18m-old print (docs/audit/FINDINGS.md).
+   * null = as-of genuinely UNKNOWN — treat as MISSING, never as fresh.
+   */
+  underlying_price_as_of: string | null;
+  /**
+   * WHICH observation produced `underlying_price`:
+   *   "flow_print"           — carried by a historical UW flow alert (as-of = that alert's time).
+   *   "chain_spot"           — the live chain/GEX spot read by the BREAKOUT/PIN/CONDOR discovery pass.
+   *   "live_option_snapshot" — refreshed off the batched unified option snapshot the scan already
+   *                            fetches for contract pricing (scan.ts attachContractPlans) — the
+   *                            freshest mark available, at ZERO extra request cost.
+   * null only when `underlying_price` itself is null (missing looks missing).
+   */
+  underlying_price_source: UnderlyingPriceSource | null;
   /** 0-100 deterministic evidence score (premium tiers + sweeps + dominance + breadth). */
   score: number;
   /** Premium-weighted avg per-contract fill on the top strike — what flow PAID. */
@@ -1161,6 +1248,12 @@ export function deriveZeroDteSetups(
       // Round the raw UW underlying at the data layer (repo-wide "round at the data layer" rule) so a
       // 178.36000000001-style float can't reach the member/ledger or the otm math (9-misc float honesty).
       underlying_price: agg.underlying == null ? agg.underlying : Math.round(agg.underlying * 100) / 100,
+      // The mark's TRUE as-of — the `alerted_at` of the freshest surviving print above. This used
+      // to be computed into agg.underlyingSeen purely to win the last-write-wins race and then
+      // DISCARDED, so a mark that could be hours old left the function looking exactly like a live
+      // one. Carried through now so scan.ts can refresh it and any consumer can degrade honestly.
+      underlying_price_as_of: agg.underlying == null ? null : agg.underlyingSeen,
+      underlying_price_source: agg.underlying == null ? null : "flow_print",
       score: Math.max(0, Math.min(100, score)),
       aggression: Math.round(aggression * 100) / 100,
       otm_pct: otmPct,

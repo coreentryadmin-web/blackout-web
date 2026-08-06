@@ -62,6 +62,7 @@ import {
   isSameDayHorizon,
   matchEarnings,
   polygonSpotTicker,
+  refreshUnderlyingFromLiveSpot,
   buildOriginMaps,
   MERGE_POLICY_VERSION,
   summarizeDiscoveryRailMix,
@@ -869,11 +870,44 @@ async function attachContractPlans(setups: EnrichedZeroDteSetup[]): Promise<void
     const occ = occOf.get(s.ticker);
     if (!occ) continue;
     const snap = snaps.get(occ) ?? null;
+    // ── FROZEN-UNDERLYING FIX ────────────────────────────────────────────────────────
+    // The batch we just fetched carries a LIVE underlying (`underlyingPrice`, observed at
+    // `observedAtMs`) for every one of these contracts. The FLOW lane's `underlying_price`, by
+    // contrast, is whatever underlying one historical UW flow alert carried — the freshest
+    // SURVIVING print of a 7h tape — so a name with no new qualifying print kept an hours-old
+    // mark forever. Measured live 2026-08-06 against the RTH close: 9/20 board setups >0.5% off,
+    // 4 >1%, worst FSLR +2.62% on a 2h18m-old print.
+    //
+    // Refresh it HERE and nowhere else, because here it is FREE: this is the same single batched
+    // unified-snapshot request (≤250 OCCs per call) the scan already makes for contract pricing,
+    // so the request volume is UNCHANGED — no per-setup quote fan-out, none of the N+1 shape that
+    // was a P0 earlier today (#1789). The refresh also runs BEFORE the `continue` below: a
+    // snapshot can carry a live underlying without a usable option mark, and the mark is worth
+    // having even when no plan can be built.
+    //
+    // This closes the exact hole board.ts's no_underlying_price comment flagged — "a live
+    // underlying price is available moments later in scan.ts's attachContractPlans
+    // (snap?.underlyingPrice) but was never fed back to re-check this gate". attachGateVerdicts
+    // runs after this pass, so the moneyness gate now judges the REFRESHED otm_pct.
+    //
+    // When the snapshot has no usable underlying/as-of we do NOT touch the setup: it keeps its
+    // older mark WITH its honest `flow_print`/`chain_spot` stamp, so a consumer can still see the
+    // age (underlyingMarkAgeMs) and degrade. Never a fresher number with an unknown age.
+    const refreshed = refreshUnderlyingFromLiveSpot({
+      livePrice: snap?.underlyingPrice,
+      liveObservedAtMs: snap?.observedAtMs ?? nowMs,
+      direction: s.direction,
+      topStrike: s.top_strike,
+      hasSingleStrikeMoneyness: s.play_type !== "CONDOR",
+    });
+    if (refreshed) Object.assign(s, refreshed);
     // No live quote AND no real fill → no plan (evidence only) — never a guess.
     if (!snap?.mark && s.top_strike_avg_fill == null) continue;
     s.plan = buildContractPlan({
       occ,
       direction: s.direction,
+      // s.underlying_price is now the REFRESHED live mark when the batch carried one (see above),
+      // so the plan geometry is priced off the freshest underlying rather than the flow print's.
       price: s.underlying_price ?? snap?.underlyingPrice ?? null,
       flowAvgFill: s.top_strike_avg_fill,
       bid: snap?.bid ?? null,

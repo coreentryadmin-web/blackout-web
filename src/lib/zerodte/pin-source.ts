@@ -287,6 +287,9 @@ export function buildPinSetup(input: {
    *  `session_gap_days` field (NH-R4). Optional so existing callers/tests keep compiling;
    *  omitted → session_gap_days is null (never fabricated). */
   todayYmd?: string;
+  /** ISO-8601 observation time of `spot`, when the caller knows it. Stamped onto
+   *  `underlying_price_as_of`; omitted → null = as-of UNKNOWN (never fabricated). */
+  spotAsOf?: string | null;
 }): EnrichedZeroDteSetup {
   const { ticker, spot, regime, contract, todayYmd } = input;
   const score = pinScore(regime);
@@ -322,6 +325,11 @@ export function buildPinSetup(input: {
     sweep_pct: 0,
     side_dominance: 0.5, // neutral: no option-flow side to be dominant (flow gates are SKIPPED here)
     underlying_price: Math.round(spot * 100) / 100,
+    // Provenance for the mark: the live GEX/chain spot this discovery pass just read. As-of only
+    // when the caller knows it — never fabricated. A directional PIN fade also flows through
+    // attachContractPlans, which re-stamps this off the batched live option snapshot.
+    underlying_price_as_of: input.spotAsOf ?? null,
+    underlying_price_source: "chain_spot",
     score,
     aggression: null, // honest null — there is no tape aggression for a bare pin
     otm_pct: otmPct,
