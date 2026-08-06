@@ -1,5 +1,66 @@
 # BlackOut Open Issues Log
-Last updated: 2026-08-06 6:05 PM ET
+Last updated: 2026-08-06 6:20 PM ET
+
+## spx-rth-2026-08-06 — SPX Slayer all-day verify pass (~6:18 PM ET, post-close)
+
+**Session:** Autonomous SPX Slayer **verify** mode per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` on branch `cursor/spx-rth-system-verification-8190`. Commands: `npm run validate:spx-rth -- --force` → `npm run validate:spx-e2e` → `node scripts/audit/data-validator.mjs`.
+
+> **Note:** Pass ran **post-close** (6:18 PM ET). RTH-only checks (desk pulse/flow lanes, LIVE badge, 60s auto-update cadence) correctly **SKIP** off-hours. `--force` used per runbook verify mode.
+
+### Validation summary
+
+| Check | Result |
+|---|---|
+| `npm run validate:spx-rth -- --force` | ✅ **7 PASS · 1 WARN · 0 FAIL** — matrix deep audit (177 strikes, GEX/VEX/DEX/CHARM), cross-endpoint spot=7709.96, BIE consistency, dashboard E2E nested GREEN, ops:collect zero items |
+| `npm run validate:spx-e2e` | ✅ **16 PASS · 1 WARN · 0 FAIL · 1 SKIP** — every matrix cell vs API, GEX/VEX tab clicks, commentary expand, SCANNING verdict (no stale ✓), 179 strike rows, zero console errors |
+| `node scripts/audit/data-validator.mjs` | ✅ **38 PASS · 3 INFO · 0 FAIL** — SPX/SPY/VIX vs Polygon, GEX walls/posture, 0DTE premiums grounded, track-record math |
+
+### Step 2 — UI controls clicked (`/dashboard`)
+
+| Control | Result |
+|---|---|
+| GEX tab (`#spx-matrix-tab-gex`) | ✅ PASS |
+| VEX tab (`#spx-matrix-tab-vex`) | ✅ PASS |
+| Commentary expand (`#spx-commentary-expand`) | ✅ PASS |
+| Matrix text sanity (no NaN/undefined/$—) | ✅ PASS |
+| Play verdict bar (SCANNING — no stale ✓) | ✅ PASS |
+| Console errors | ✅ PASS — zero |
+
+### Step 3 — Cross-tool integration
+
+| Tool | Endpoint | Result |
+|---|---|---|
+| **Thermal** | `GET /api/market/gex-heatmap?ticker=SPX` | ✅ PASS — same payload as dashboard matrix |
+| **GEX positioning** | `GET /api/market/gex-positioning?ticker=SPX` | ✅ PASS — spot/flip/walls agree |
+| **HELIX** | `GET /api/market/flows?limit=30` | ✅ PASS — 30 prints |
+| **Largo** | `POST /api/market/largo/query` | ✅ PASS — grounded SPX play query |
+| **BIE** | `validate:spx-bie` | ✅ PASS — `spx_full_state` == member play |
+| **Grid** | `GET /api/market/spx/bootstrap` | ✅ PASS — loaded |
+| **0DTE Command** | `GET /api/market/zerodte/board` | ✅ PASS — 26 setups |
+| **Night Hawk** | `GET /api/market/nighthawk/edition` | ✅ PASS |
+
+### Step 4 — Live auto-update (60s)
+
+| Surface | Result |
+|---|---|
+| Header SPX price (~1.5–3s) | ⏭️ **SKIP** — post-close; static expected |
+| Matrix spot row (~8s) | ⏭️ **SKIP** — post-close |
+| Trade alert hero (~3s) | ⏭️ **SKIP** — post-close |
+
+### Findings table (`spx-rth-2026-08-06`)
+
+| Severity | ID | Detail | Backing API | Fix defer? |
+|---|---|---|---|---|
+| — | — | No P0/P1/P2 SPX defects found this pass | — | — |
+| INFO | spx-rth-dc-warn | `spx:data-correctness` WARN — CRON_SECRET auth mismatch in agent env; full sweep runs on prod EventBridge cron | `/api/cron/data-correctness` | Yes — env limitation, not prod defect |
+| INFO | spx-rth-bie-warn | `integration:bie-play-route` WARN — cron play HTTP 401 (same CRON_SECRET env mismatch) | `/api/market/spx/play` Bearer | Yes — env limitation |
+| SKIP | spx-rth-desk-lanes | pulse/flow desk lanes unavailable off-hours | `/api/market/spx/pulse`, `/flow` | N/A — expected post-close |
+
+**RTH verify status: GREEN** — zero FAIL across all SPX probes. Matrix 177 strikes · GEX+VEX+DEX+CHARM every cell finite and API-consistent. Play state SCANNING with no stale confirmations. No P0 fixes required.
+
+**Reports:** `audit-output/spx-rth-2026-08-06-verify-1786054765194.json`, `audit-output/spx-dashboard-e2e-1786054796262.json`, `audit-output/validation-2026-08-06T22-20-19-977Z.md`
+
+---
 
 ## rth-open-2026-08-06-pass2 — RTH comprehensive test sweep (~5:57–6:05 PM ET, post-close)
 
