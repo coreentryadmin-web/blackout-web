@@ -100,13 +100,24 @@ Both harnesses and their `npm run validate:vector-*` scripts were removed with i
    runs on a phone clash — see FINDINGS 2026-08-06 [P3, tooling]. So
    **"log in and check every page" IS possible headlessly** — validates served HTML / DOM / component
    presence for the whole authenticated desk/app. Always DELETE the temp user after (cleanup).
-2. **Live UI / pixel validation — Playwright + Clerk admin (WORKS in Cloud Agent).** Mint temp
-   admin+premium via Backend API (`mintIosPlaywrightSession` / `mintClerkPremiumSession`), launch
-   Playwright Chromium (`headless: true`, `--no-sandbox`), sign in, click tabs/segments like a member,
-   screenshot to `/opt/cursor/artifacts/`. Harnesses: `npm run test:ios-ui-e2e`, `spx-dashboard-e2e-audit`,
-   `validate-prod-ui-full`, `validate:prod-admin-ui`. Playwright MCP for ad-hoc flows. **Never** tell
-   the operator UI/pixel validation is impossible — run Playwright first. Standing rule:
-   `.cursor/rules/live-ui-validation.mdc`.
+2. **Live UI / pixel validation — WORKS, but ONLY via `proxy-browser.cjs`. Read
+   `docs/audit/LIVE-UI-CONNECTION.md` FIRST.** Chromium in this sandbox cannot reach the network
+   at all — direct, `proxy:{server}`, and `--proxy-server` all fail identically with
+   `ERR_CONNECTION_RESET`, and the agent proxy's `recentRelayFailures` stays EMPTY (its traffic
+   never even arrives), while `curl`/`fetch` to the same URL through the same proxy return 200.
+   The fix is to take the network away from Chromium: `context.route('**/*')` intercepts every
+   request and Node fulfills it over a manual `CONNECT` + `tls.connect()` tunnel. That is
+   `proxy-browser.cjs` (repo root, committed since #1188):
+   `node proxy-browser.cjs <url> out.png --cookie "$CK" --viewport 430x932 --wait 9000` — run
+   from the REPO ROOT, cookie from `mintClerkPremiumSession`, and look for `Routed: N ok, 0 fail`.
+   Because of this, the direct-`page.goto()` harnesses (`validate-prod-ui-full`,
+   `validate:prod-admin-ui`, `test:ios-ui-e2e`, `spx-dashboard-e2e-audit`) fail at the first
+   navigation here — they predate the restriction and are not themselves broken.
+   **Never** tell the operator UI/pixel validation is impossible — and never conclude it from a
+   plain-Playwright failure, which proves nothing but the egress block. Standing rule:
+   `.cursor/rules/live-ui-validation.mdc`. Real desk paths are `/nighthawk`, `/terminal`,
+   `/vector`, `/flows`, `/heatmap` — there is no `/night-hawk` and no `/swings`; an unstyled
+   Times render is the 404 page, not a CSS failure.
 3. **AWS — the operator supplies valid creds; the sandbox defaults are INVALID.** Default
    `AWS_ACCESS_KEY_ID/SECRET` env vars are placeholders (`InvalidClientTokenId`). When the operator
    pastes valid creds (in-session env vars), the `aws` CLI works through the proxy — pass `--region
