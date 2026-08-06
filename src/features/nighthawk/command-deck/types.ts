@@ -187,6 +187,10 @@ export interface TerminalPlay {
   keySignal?: string | null;
   optionsPlay?: string | null;
   rrRatio?: number | null;
+  /** G-N2's PINNED |target − fill_edge| / ATR14 for this play (publish-gates.ts:226).
+   *  Legacy grades on ONE session, so this multiple is the target's reachability —
+   *  see target-reachability.ts. Null when the gate could not compute geometry. */
+  targetAtrMultiple?: number | null;
   /** Implied-vol rank at publish (0–100), when the edition carried it — metadata, not a scored factor. */
   ivRank?: number | null;
   entryCostPerContract?: number | null;

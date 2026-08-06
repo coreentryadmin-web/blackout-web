@@ -4,6 +4,7 @@ import { convictionFillPct } from "@/features/nighthawk/lib/play-briefing-utils"
 import { formatPremiumCapLabel } from "@/features/nighthawk/lib/play-constraints";
 import { MAX_OPTION_PREMIUM_PER_SHARE } from "@/features/nighthawk/lib/constants";
 import { fmtIvRank, fmtScore, morningBadgeLabel } from "@/features/nighthawk/components/PlaybookPlayRow";
+import { targetReachabilityNote } from "@/features/nighthawk/lib/target-reachability";
 import { BriefingSection } from "./BriefingSection";
 import { BriefingScoreBar } from "./BriefingScoreBar";
 
@@ -17,6 +18,11 @@ type Props = {
 export function PlaybookBriefingPanel({ play, mode, morningConfirm }: Props) {
   const showKeySignal = Boolean(play.key_signal?.trim()) && play.key_signal !== play.thesis;
   const score = play.score != null && Number.isFinite(play.score) ? Math.round(play.score) : null;
+  // Reachability disclosure: the publish gate already measured how far this target sits in
+  // ATR14 units and the lane grades on ONE session, so that multiple IS the odds. Shown, not
+  // gated. Null (absent pin / unusable multiple) renders nothing — never a fabricated figure.
+  const reachability =
+    play.target_atr_multiple != null ? targetReachabilityNote(play.target_atr_multiple) : null;
 
   if (mode === "overview") {
     return (
@@ -46,6 +52,7 @@ export function PlaybookBriefingPanel({ play, mode, morningConfirm }: Props) {
               <strong className="t-num">{play.stop}</strong>
             </div>
           </div>
+          {reachability && <p className="nh-v2-briefing-reach">{reachability}</p>}
           <p className="nh-v2-briefing-contract t-num mt-3">
             {play.options_play}
             <span className="nh-v2-briefing-cap">

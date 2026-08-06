@@ -10,6 +10,7 @@ import {
   publishGateRecapReason,
   isPromotableBlockedPlay,
   capGatePromotedConviction,
+  targetAtrMultipleFromGateResult,
 } from "./publish-gates";
 import {
   buildNighthawkStageRejectedAuditRow,
@@ -631,4 +632,58 @@ test("promoteTopBlocked rejects score-below-floor filler (AI@26 / SNDQ@20 class)
     },
   ];
   assert.deepEqual(promoteTopBlocked(blocked, 5), []);
+});
+
+// ── The pinned target-ATR multiple (the reachability number, surfaced) ────────────────
+
+test("targetAtrMultipleFromGateResult: reads G-N2's own measured value, for PASSES too", () => {
+  // The gate records checks[] on every play, passed or blocked (the calibration
+  // substrate) — so the multiple is available for the plays members actually see.
+  const passing = evaluateNighthawkPublishGates({
+    play: play(),
+    dossier: dossier(),
+    quoteSessions: [SESSION],
+  });
+  assert.equal(passing.verdict, "PUBLISH");
+  const check = passing.checks.find((c) => c.code === "target_unreachable")!;
+  const multiple = targetAtrMultipleFromGateResult(passing);
+  assert.equal(multiple, check.value, "must be the gate's OWN pinned value, not a recomputation");
+  // $110.00 target vs $107.50 fill edge (LONG = band top) over ATR14 4.2 → 0.5952.
+  assert.ok(Math.abs(multiple! - 0.5952) < 0.001, `expected ~0.5952, got ${multiple}`);
+});
+
+test("targetAtrMultipleFromGateResult: also reads a BLOCKED play's multiple, and refuses junk", () => {
+  // A far target still records its measured distance — that is what makes the blocked
+  // cohort comparable to the published one.
+  const blocked = evaluateNighthawkPublishGates({
+    play: play({ target: "$130.00" }),
+    dossier: dossier(),
+    quoteSessions: [SESSION],
+  });
+  assert.equal(blocked.verdict, "BLOCK");
+  const far = targetAtrMultipleFromGateResult(blocked)!;
+  assert.ok(far > GATE_TARGET_MAX_ATR_MULTIPLE, `expected over the ${GATE_TARGET_MAX_ATR_MULTIPLE}× bar, got ${far}`);
+
+  // Fail-closed geometry has no G-N2 check at all → null, never a fabricated 0.
+  const unknown = evaluateNighthawkPublishGates({
+    play: play(),
+    dossier: dossier({ tech: null }),
+    quoteSessions: [SESSION],
+  });
+  assert.equal(targetAtrMultipleFromGateResult(unknown), null);
+  assert.equal(targetAtrMultipleFromGateResult(null), null);
+  assert.equal(targetAtrMultipleFromGateResult(undefined), null);
+  assert.equal(
+    targetAtrMultipleFromGateResult({ verdict: "PUBLISH", blocks: [], checks: [] }),
+    null
+  );
+  assert.equal(
+    targetAtrMultipleFromGateResult({
+      verdict: "PUBLISH",
+      blocks: [],
+      checks: [{ code: "target_unreachable", passed: true, value: "2.0", threshold: 3.5 }],
+    }),
+    null,
+    "a string value is not a multiple"
+  );
 });

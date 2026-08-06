@@ -4,6 +4,154 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-06 — [P1, Night Hawk LEGACY] The 0% win rate is REAL, the 3.5× gate is NOT its cause, and the measurement layer is what is actually broken — PRESENTATION-ONLY recalibration (5 PRs, geometry PARKED)
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P1 — member-facing track-record honesty + calibration integrity. **No trading logic, gate admission, published level, edition volume or grading outcome is changed by any PR in this campaign.** The underlying defect (targets that are unreachable inside the grading horizon) is REAL and remains OPEN; this campaign fixes the instruments, not the geometry. |
+| **Session** | Live RTH audit, 2026-08-06 ~15:30–17:00 UTC, market OPEN. Four independent measurement passes (geometry-and-horizon, mfe-backtest, ev-surface, win-rate-coupling) against live prod (`GET /api/market/nighthawk/{edition,record}`, `GET /api/admin/nighthawk/analytics`, read-only via `scripts/audit/lib/audit-auth-fetch.mjs`, temp Clerk user released) plus real Polygon daily/minute bars. Harnesses were scratch-only (`/tmp`), never committed. |
+| **Symptom** | `GET /api/market/nighthawk/record?days=30`: `win_rate_pct 0`, `total_resolved 52`, `profitable_rate_pct 68.2`, `avg_return_pct +0.61`. `segments.current`: resolved 48, scoreable 22, **wins 0**, losses 2, opens 20, unfilled 16, pulled 12. `debrief.failure_modes`: `target_unreachable` 16, `unfilled_never_traded_back` 9, `wrong_direction` 9, `pulled_wrongly` 6, `band_detached` 5. |
+| **Hypothesis under test** | That `GATE_TARGET_MAX_ATR_MULTIPLE = 3.5` (`publish-gates.ts:69`), widened from 2.5× to fix the Jul-27 zero-play edition and made PROMOTABLE, admits targets requiring a ~3.5-normal-day move inside a ONE-SESSION grading window — i.e. that the gate was loosened for publish volume and paid for it in win rate. |
+
+### Structural facts — CONFIRMED in code, all four passes independently
+
+1. **The grading horizon is exactly ONE daily bar, and it is terminal.** `play-outcomes.ts:553-555` `outcomeSessionDate(row) { return row.edition_for; }`; `play-outcomes.ts:666` `fetchStockDailyBars(row.ticker, sessionDate, sessionDate, "1")`. A play is graded on ONE session's O/H/L/C. It is never re-graded on later sessions — `db.ts:8191` guards the write `WHERE id = $1 AND outcome = 'pending'` and `fetchPendingNighthawkOutcomes` (`db.ts:8102`) selects only `outcome = 'pending'`. `regrade-stuck.ts` / `regrade-legacy.ts` re-run the SAME `resolveOutcome` over the SAME already-persisted single bar.
+2. **`target_unreachable` is the flat/positive no-touch branch.** `debrief.ts:604-623`: after target/stop/ambiguous, `ret < 0` → `wrong_direction`; otherwise → `target_unreachable`.
+3. **3.5×, widened from 2.5×, promotable.** `publish-gates.ts:69`; `NON_PROMOTABLE_GATE_CODES` (`:103-107`) contains only `band_detached`, `geometry_unknown`, `book_tape_conflict` — `target_unreachable` is deliberately excluded, so a 4× target publishes with a warning via `promoteTopBlocked` (`edition-builder.ts:1053-1074`).
+4. **NEW — the target is usually NOT an S/R level.** `deterministic-edition.ts:343-355`: `minTargetDist = atr * 1.5`; whenever real resistance is nearer than 1.5×ATR the structural level is DISCARDED for a synthetic 1.5×ATR level. Verified live on NVDA 2026-08-06: spot 219.22, ATR14 8.01, published target 231.24 = 219.22 + 1.5×8.01, to the cent.
+5. **NEW — target and stop are COUPLED, one-way.** `play-levels.ts:154-156` / `:169-171`: `if (finalTargetDist < stopDist * MIN_RR_RATIO) stopDist = finalTargetDist / MIN_RR_RATIO` (`MIN_RR_RATIO = 0.75`). Shrinking the target mechanically TIGHTENS the stop by the same factor — they cannot be tuned independently. NVDA 2026-08-06: targetDist 12.02 → stopDist 16.03 → stop 203.19 vs published 203.20.
+
+### Measurement — the hypothesis is HALF RIGHT: the disease is real, the named organ is inert
+
+**TABLE 1 — one-session MFE from the published fill edge, in ATR14 units.** "FILLED" = production's own test (`play-outcomes.ts`): session `[low,high]` intersects `[entry_low, entry_high]`.
+
+| MFE ≥ K×ATR14 | ALL published (n=64) | FILLED only (n=30) |
+|---|---|---|
+| 0.5× | 36 (56.25%) | 12 (40.00%) |
+| 1.0× | 25 (39.06%) | 2 (6.67%) |
+| 1.5× | 13 (20.31%) | **0 (0.00%)** |
+| 2.0× | 10 (15.63%) | 0 (0.00%) |
+| 2.5× | 9 (14.06%) | 0 (0.00%) |
+| 3.0× | 5 (7.81%) | 0 (0.00%) |
+| 3.5× | 4 (6.25%) | 0 (0.00%) |
+
+quantiles ALL: p10 −0.52, p25 0.07, **median 0.60**, p75 1.36, p90 2.62, max 6.94.
+quantiles FILLED: p10 −0.07, p25 0.10, **median 0.32**, p75 0.66, p90 0.84, **max 1.49**.
+The ALL column is inflated by 4 UNFILLED gap-away plays with stale bands (worst: DELL 2026-07-08, band edge $227.27 against a ~$470 session = 6.94× "MFE", never fillable). FILLED is the honest, tradable column. **No filled play in 15–19 sessions reached even 1.5× ATR.**
+
+**TABLE 2 — where the published targets actually sit** (`|target − fill_edge| / ATR14`, the exact metric `publish-gates.ts:220` thresholds on, n=64):
+
+| bucket | n | % |
+|---|---|---|
+| 0.0–1.0× | 10 | 15.63% |
+| 1.0–1.5× | 22 | 34.38% |
+| 1.5–2.0× | 7 | 10.94% |
+| 2.0–2.5× | 13 | 20.31% |
+| 2.5–3.0× | 4 | 6.25% |
+| 3.0–3.5× | 1 | 1.56% |
+| 3.5–5.0× | 4 | 6.25% ← over the gate bar |
+| ≥ 5.0× | 3 | 4.69% ← over the gate bar |
+
+quantiles: p10 0.65, p25 1.16, **median 1.49**, p75 2.30, p90 3.21, max 8.23. **Over the 3.5× bar: 7/64 = 10.9%.** A second, cohort-differing reconstruction over the 48 genuinely-published plays gives median 2.05× and 7/48 over the bar; a third gives median 1.55×. All three agree the median sits FAR below 3.5×.
+
+**TABLE 3 — the physical ceiling.** Session FULL range (high−low) / ATR14 over the same 64 plays: p10 0.49, p25 0.64, median 0.85, p75 1.04, p90 1.22, max 2.25. **Sessions whose ENTIRE high-to-low range reached 3.5× ATR14: 0 / 64.** Even buying the exact low and selling the exact high, a 3.5× target was unreachable in 100% of the sample. The gate comment's premise ("catalyst/momentum names routinely move 3–4× ATR in a single session") is false for this population.
+
+**TABLE 4 — independent population baseline, n=4,136 ticker-sessions across the 44 tickers Night Hawk actually published, Mar–Aug 2026.** Not a small sample.
+
+| metric / ATR14 | p50 | p75 | p90 | p99 | max | ≥1.5× | ≥2.5× | ≥3.5× |
+|---|---|---|---|---|---|---|---|---|
+| full session range (H−L) | 0.85 | 1.12 | 1.45 | 2.34 | 8.70 | 8.41% | 0.77% | 0.17% |
+| LONG excursion from open (H−O) | 0.38 | 0.68 | 1.03 | 1.98 | 5.96 | 3.02% | 0.36% | 0.15% |
+| SHORT excursion from open (O−L) | 0.36 | 0.64 | 0.97 | 1.73 | 2.77 | 2.10% | 0.07% | 0.00% |
+| best-direction (hindsight) | 0.66 | 0.91 | 1.24 | 2.09 | 5.96 | 5.10% | 0.41% | 0.15% |
+
+**TABLE 5 — one-session hit rate for a target at K × ATR14 (the calibration anchor).** Two independent estimators agreeing to a couple of points at every K ≤ 1.0:
+
+| K | population LONG-from-open (n=4,136) | population best-dir | FILLED plays (n=30) |
+|---|---|---|---|
+| 0.25× | 65.1% | 98.4% | 60.0% |
+| 0.50× | 38.2% | 71.0% | 40.0% |
+| 0.75× | 21.0% | 38.6% | 20.0% |
+| 1.00× | 10.8% | 19.8% | 6.7% |
+| 1.25× | 5.5% | 9.8% | 3.3% |
+| 1.50× | **3.0%** | 5.1% | **0.0%** |
+| 2.00× | 0.9% | 1.3% | 0.0% |
+| 2.50× | 0.4% | 0.4% | 0.0% |
+| 3.50× | **0.1%** | 0.1% | 0.0% |
+
+**TABLE 6 — the 0% win rate reproduced from geometry alone.** Over 48 genuinely-published plays: `hit_target` (high ≥ target, ignoring fill) 4/48; `fillable` (session range overlaps entry band, mirroring `resolveOutcome` `play-outcomes.ts:589-596`) 28/48; **`hit_target AND fillable` = 0/48.** All four target touches (CSX@07-06, RNG@07-27, MHK@08-03, AMZN@08-03) were on UNFILLABLE plays. An independent minute-bar harness replaying published geometry gives scoreable 27 / wins 0 / losses 2 / opens 25 against the live record's scoreable 22 / wins 0 / losses 2 / opens 20 — **wins and losses match exactly.**
+
+**TABLE 7 — EV surface, CLEAN cohort n=27 plays / 13 sessions, real 1-minute RTH bars, published stop HELD FIXED:**
+
+| K | hit% | stop% | none% | EV% | target / stop / close contribution |
+|---|---|---|---|---|---|
+| 0.25 | 74.1 | 3.7 | 22.2 | 0.248 | +0.995 / −0.040 / −0.707 |
+| 0.50 | 44.4 | 3.7 | 51.9 | **0.760** | +1.164 / −0.040 / −0.364 |
+| 0.75 | 22.2 | 7.4 | 70.4 | 0.414 | +0.770 / −0.355 / −0.002 |
+| 1.00 | 3.7 | 7.4 | 88.9 | 0.187 | +0.085 / −0.355 / +0.456 |
+| 1.50 | 0.0 | 7.4 | 92.6 | 0.214 | 0.000 / −0.355 / +0.569 |
+| 2.50 | 0.0 | 7.4 | 92.6 | 0.214 | 0.000 / −0.355 / +0.569 |
+| 3.50 | 0.0 | 7.4 | 92.6 | **0.214** | 0.000 / −0.355 / +0.569 ← SHIPPED CAP |
+
+Rows K ≥ 1.5 are **byte-identical, not merely similar** — no play ever touches a target that far, so the outcome vector is unchanged. **The gate's entire operating range 1.5×–3.5× is dead space.** Cluster bootstrap (4,000 resamples over SESSIONS): EV(0.5)−EV(3.5) = +0.544pp, 95% CI **[−0.135, +1.646]**, P(Δ>0) = 90% — short of significance. Argmax stability: K=0.5 in 70% of resamples, K=0.75 in 28%; leave-one-session-out picks K=0.5 in 12/13 folds. **The LOCATION is robust; the MAGNITUDE is not.**
+
+**TABLE 8 — the COUPLED sweep (the only one that prices the change that would actually ship).** `play-levels.ts:154-156` makes the stop a function of the target, so a K sweep with the stop held fixed measures a change that cannot be shipped. Re-running with the stop coupled (n=23):
+
+| basis | Kf=0.25 | Kf=0.5 | Kf=0.75 | Kf=1.5 (STATUS QUO) |
+|---|---|---|---|---|
+| mid-basis EV (ATR/play) | −0.055 | +0.117 | +0.155 | **+0.172 ← argmax** |
+| fill-edge basis EV | — | — | −0.034 @ Kf=0.6 (argmax) | −0.073 |
+
+**Mid-basis EV — the basis production actually reports — is MAXIMIZED AT THE CURRENT 1.5× FLOOR** (8/9 leave-one-session-out folds vote status quo). On the honest fill-edge basis every multiple is negative and the best is inside noise at n=23. **The existing evidence points AWAY from shrinking the target.**
+
+**TABLE 9 — horizon extension is also measured, and also fails.** H=1 → 0 wins / 1 stop; H=3 → 4 wins / 5 stops; H=5 → 5/8; H=10 → 7/10. Win rate climbs to ~30% but W:L falls to 0.63–0.80 — it converts a fake 0% into an honest LOSING ledger. 39% of the contracts do not survive to H=5 anyway (median 4 sessions to expiry).
+
+### Root cause — three findings, in order of how load-bearing they are
+
+**(A) The 3.5× gate is measurably INERT and is NOT the cause.** Only 7/64 (10.9%) of published plays exceed it. Production's OWN retro-mirror agrees independently: `gate_validation.published_mirror` for `target_unreachable` reports `would_block n=1` vs `would_pass n=21`, `delta_win_rate_pts 0`. Moving 3.5 → 2.5 changes **literally zero outcomes** (Table 7: the rows are identical). There is no measured basis for touching it in either direction.
+
+**(B) The 1.5×ATR target FLOOR is the real binding constraint — and lowering it is NOT supported.** The floor push (`deterministic-edition.ts:347`) sets the typical target at or ABOVE the exact multiple where the measured one-session hit rate reaches zero (Table 5: K=1.5 → 3.0% population, 0.0% filled). But the only sweep that prices the actual shippable change — with the stop coupled per `play-levels.ts:154-156` — puts the mid-basis EV argmax at the CURRENT geometry (Table 8). Cutting the floor would move the headline win rate from 0% to ~26–35% while measured expectancy stays flat-to-worse and negative: **it flatters the track record without improving member outcomes.** That is an explicit disqualifier under this repo's calibration-first rule.
+
+**(C) What IS broken at high confidence is the MEASUREMENT AND DISCLOSURE LAYER** — five defects, all verified in code, all zero live-money risk:
+
+1. **Predicate asymmetry (the worst).** `debrief-persist.ts:243` scored blocked plays with `outcome === "target" || (outcome === "open" && ret > 0)` while the published record (`analytics.ts:218`) counts `outcome === "target"` only. Prod therefore printed "`target_unreachable` blocked 20 plays, **31.3% would have won**" beside "published win rate **0%**" — reading as "the gate is discarding winners" and feeding `improvement_queue` with direct pressure to LOOSEN the gate further. **Under ONE predicate the ranking INVERTS: published 15/22 = 68.2% vs blocked 5/16 = 31.3%.** The gate was separating correctly all along.
+2. **The retro-mirror rewrites itself.** `debrief-aggregate.ts:325-342` `retroWouldBlock` compares PINNED geometry against the **LIVE** constant, even though `publish-gates.ts:226` already pins the publish-time `threshold` per play. So `published_mirror` cannot serve as a stable before/after baseline for any calibration.
+3. **`rr_ratio` is measured on the wrong basis.** `computeRiskReward` (`play-levels.ts:93-110`) uses the entry-band MID; the gate (`publish-gates.ts:220`) and grading both use the FILL EDGE (`debrief.ts:201-203` `fillEdgeOf`). The floor-push class displays **0.75** where the member's real fill-edge geometry is **0.46**. 20 of 48 published plays have fill-edge R:R below 1.0 — they risk more than they can make.
+4. **Realized return is mid-basis while fills are at the edge** (`debrief.ts:207-212`, `analytics.ts`) — a systematic **+1.12pp per play**, which is most of the "+0.61% avg, 68.2% profitable" consolation number.
+5. **Admin ring arithmetic.** `AdminNightHawkDashboard.tsx:346` renders `Math.round(data.win_rate * data.total_resolved)` — a rate over `scoreable` (22) multiplied by a count over ALL rows (52). Masked today by 0×52=0; at a 30% win rate it would display 16 targets where the true count is ~7.
+6. **The system already computes the reachability number and hides it.** `publish-gates.ts:226` pins `{code:"target_unreachable", value: targetAtrMultiple, threshold}` on EVERY play, passed or blocked. A target the system has internally measured as ~1%-likely is printed to members as a plain dollar level with no caveat.
+
+### Decision — PRESENTATION_ONLY. Five PRs. NO geometry change, NO gate change, NO horizon change.
+
+Deliberately **NOT** touched: `GATE_TARGET_MAX_ATR_MULTIPLE` (`publish-gates.ts:69`), its promotability, the 1.5×ATR floor push (`deterministic-edition.ts:343-355`), `MIN_RR_RATIO`, `outcomeSessionDate` / `resolvePendingNighthawkOutcomes`, and the `scoreable` denominator (`analytics.ts:382-384` — owned by a separate workstream; removing `open` rows today yields n=2, below `LOW_N_THRESHOLD = 5`).
+
+| PR | branch | what |
+|---|---|---|
+| 1 | `fix/nh-blocked-predicate-asymmetry` | One win predicate for both cohorts of `gate_validation` (`debrief-persist.ts:243` → `outcome === "target"`). |
+| 2 | `fix/nh-retro-mirror-uses-pinned-threshold` | `retroWouldBlock` uses the PINNED per-gate threshold, falling back to the live constant only when absent. |
+| 3 | `fix/nh-rr-ratio-fill-edge-basis` | `computeRiskReward` measures from the FILL EDGE, matching the gate and the grader. Display-only. |
+| 4 | `fix/nh-surface-target-atr-multiple` | Surface the pinned `target_atr_multiple` + its measured one-session touch rate (Table 5) on the play card; expose the pinned distribution as a histogram on the admin analytics route. |
+| 5 | `fix/nh-metric-labels-and-admin-ring` | Fix the admin ring arithmetic; relabel "win rate" → "target-hit rate" with its composition; ADD an edge-basis return series alongside the mid-basis one. |
+
+**Expected effect — every surface number gets WORSE-looking and truer.** Displayed `rr_ratio` on the floor-push class 0.75 → ~0.46. Reported average return, edge basis: ~+0.61%/play → ~−0.52%/play; `profitable_rate` ~68.2% → ~52.2%. `blocked_value.would_have_won` for `target_unreachable` falls from 31.3% toward ~0%, removing the false "the gate is discarding winners" signal from `improvement_queue`. **Headline win rate stays 0%** — that is the correct outcome; the lane's problem is real and nothing here pretends otherwise.
+
+### Graduation gate — what must be measured before ANY geometry change is reconsidered
+
+In priority order: **(i)** re-run the K sweep on MINUTE bars with the STOP COUPLED, on both mid and fill-edge bases, n ≥ 60 fillable plays spanning at least one LOW-volatility regime (current sample is 23–30 plays in a single ~7%-ATR window). **(ii)** Read the PINNED ATR14 distribution (delivered by PR 4d) rather than a Polygon reconstruction. **(iii)** Measure on an OPTION basis — these publish as options and theta/IV/leverage do not map linearly to underlying percent. **(iv)** Root-cause the **43–53% never-fillable rate** (fillable cohort median MFE 0.32× ATR vs unfillable 1.29× ATR; ALL FOUR target touches were on unfillable plays). This is K-INDEPENDENT and a LARGER lever than target distance — it is the next investigation, not this one.
+
+### Explicitly UNVERIFIED
+
+ATR14 throughout is a **reconstruction** (exact replica of `polygon-largo.ts:329-338`, cross-validated to ±$0.01 against the entry-band algebra on three uncapped bands), not the pinned value — `publish_context` is a Postgres product and raw PG is blocked from this sandbox. Production can fall back to hourly bars or prior-day range (`polygon-largo.ts:346-352`), both of which yield a SMALLER ATR and therefore a LARGER true multiple, so Table 2 UNDERSTATES how far out the targets sit. MFE from a daily bar cannot resolve intrabar path, so filled-play MFE is an UPPER bound (conservative in the right direction). The 12 `pulled` plays cannot be separated from the edition API. The sample is effectively LONG-ONLY (2 SHORTs / 48). `GET /api/market/nighthawk/edition?date=<past>` silently serves a stale `lastGoodEdition` fallback for dates with no stored edition — a naive 69-date harvest returned 275 "plays" that deduped to 70; **any analysis trusting that endpoint's row count without deduping on (edition_for, ticker) is inflated ~4×.**
+
+### Rollback
+
+Each PR is an independent revert, no data migration, no geometry dependency. PR 1 affects only NEW counterfactual writes (pins are first-write-wins, `debrief-persist.ts:104-112`), so a revert restores prior behaviour going forward; already-written rows are unaffected either way. PR 3 is a pure display revert (`computeRiskReward` feeds only `rr_ratio`; `play-constraints.ts:166-172` computes `reward/risk` from the mid INLINE and is untouched, so no publish behaviour can regress). PR 5c retains the mid-basis return series alongside the edge-basis one precisely so a revert needs no recomputation. **Before merging PR 2**, snapshot `GET /api/admin/nighthawk/analytics?window=90` (`gate_validation.published_mirror` + `blocked_value`) — PRs 1 and 2 both intentionally change how those buckets are computed. **Tripwires** (both impossible by design; if either fires, revert immediately): any edition publishing fewer plays than the previous 5-session average; any change in wins/losses/opens on already-graded rows.
+
+### Ship timing
+
+`ship_now = FALSE`. Nothing here changes what publishes or how anything grades, so there is no mechanical urgency, and PRs 3/4/5 are member-visible. All five PRs open as **DRAFT with auto-merge deliberately NOT enabled** — deploy after the 20:00 UTC close, well ahead of the ~03:20 UTC edition build.
+
+---
 ## 2026-08-06 — [P0, LIVE INCIDENT, 0DTE Night Hawk] Client-side N+1 quote fan-out saturated the prod web tier during RTH — 3.7× ALB traffic, 3.6% 5XX, 98% CPU — FIXED (fix/zerodte-quote-fanout-n1)
 
 | Field | Value |

@@ -31,6 +31,17 @@ export type PlaybookPlay = {
   flow_streak_days?: number;
   iv_rank?: number;
   rr_ratio?: number;
+  /** How far the target sits from the entry FILL EDGE, in ATR14 units — |target − fill_edge|
+   *  / atr14. NOT recomputed here: this is the value the publish gate G-N2 already measured
+   *  and pinned (publish-gates.ts:226, `checks[code="target_unreachable"].value`), stamped
+   *  onto the play at build time so the member and the admin surfaces read the SAME number
+   *  the gate judged. Absent when the gate could not compute geometry for the play.
+   *
+   *  WHY SURFACE IT (2026-08-06): the Legacy lane grades on ONE daily bar, so target
+   *  distance IS reachability — and the measured one-session touch rate falls off a cliff
+   *  (1.5× → 3%, 2.0× → 0.9%, 3.5× → 0.1%; see target-reachability.ts). The system computed
+   *  this number on every play and showed members a plain dollar level instead. */
+  target_atr_multiple?: number;
   /** Per-component scoring breakdown persisted at publish time so the terminal can show
    *  real factor bars (flow, tech, positioning, etc.) instead of only iv_rank/rr_ratio. */
   factor_breakdown?: Record<string, number>;
@@ -161,6 +172,13 @@ export type NightHawkRecordResponse = {
   win_rate_ci_high_pct?: number | null;
   profitable_rate_pct: number;
   avg_return_pct: number;
+  /** FILL-EDGE basis (band edge, the price a member could actually transact at) — the
+   *  PRIMARY figures. The mid-basis `avg_return_pct`/`profitable_rate_pct` above are kept
+   *  in parallel for one window because they are the basis the live record and every
+   *  historical audit were computed on. Optional so a stale SWR cache of the pre-edge
+   *  payload still type-checks; the strip falls back to the mid basis when absent. */
+  avg_return_pct_edge?: number;
+  profitable_rate_edge_pct?: number;
   /** PR-N2 additive fields — optional so a stale SWR cache of the old payload still
    *  type-checks; the strip falls back to the legacy rendering when absent. */
   methodology?: string;

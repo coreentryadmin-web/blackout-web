@@ -6,6 +6,10 @@ import type { NighthawkMetrics } from "@/features/nighthawk/lib/analytics";
 import type { NighthawkPublishPreview } from "@/features/nighthawk/lib/publish-preview";
 import type { NightHawkEdition } from "@/features/nighthawk/lib/types";
 import {
+  TARGET_HIT_RATE_LABEL,
+  targetHitCompositionLabel,
+} from "@/features/nighthawk/lib/nighthawk-view";
+import {
   ActionButton,
   DataTable,
   DeckPanel,
@@ -342,21 +346,33 @@ export function AdminNightHawkDashboard() {
           <>
             <WinRateRing
               value={data.win_rate}
-              label="Target-hit rate"
-              sub={`${Math.round(data.win_rate * data.total_resolved)} targets`}
+              // COUNT FIX (2026-08-06): this read `Math.round(data.win_rate * data.total_resolved)`,
+              // multiplying a rate computed over `segments.current.scoreable` (22) by a count over
+              // ALL resolved rows including unfilled/pulled/legacy (52) — a ~2.4× overstatement of
+              // a headline admin number. It was invisible only because the rate is currently 0
+              // (0 × 52 = 0) and would have started lying the moment a single target landed. The
+              // true win count is already on the payload; use it, and show the composition beside
+              // it so the denominator is never a mystery again.
+              label={TARGET_HIT_RATE_LABEL}
+              sub={targetHitCompositionLabel(data.segments.current)}
               tone="bull"
               size={120}
             />
             <WinRateRing
               value={(() => {
                 // Dynamic ±range so the ring never pins at 0 or 1 for extreme values.
-                // Use whichever is larger: |avg_return_pct| or 5, capped at 20.
-                const range = Math.min(20, Math.max(5, Math.abs(data.avg_return_pct) * 1.5));
-                return Math.max(0, Math.min(1, (data.avg_return_pct + range) / (range * 2)));
+                // Use whichever is larger: |avg_return_pct_edge| or 5, capped at 20.
+                const range = Math.min(20, Math.max(5, Math.abs(data.avg_return_pct_edge) * 1.5));
+                return Math.max(0, Math.min(1, (data.avg_return_pct_edge + range) / (range * 2)));
               })()}
-              label="Avg return"
-              sub={fmtReturn(data.avg_return_pct)}
-              tone={data.avg_return_pct >= 0 ? "bull" : "bear"}
+              // PRIMARY = the FILL-EDGE basis: members transact at the band edge, not its
+              // midpoint, and the gap is the ATR-scaled band half-width (~+1.12pp per play in
+              // the mid figure's favour over the published window). The MID figure is kept in
+              // the sub-label for one window — it is the basis every historical audit and the
+              // live record were computed on, so dropping it silently would break comparability.
+              label="Avg return (edge)"
+              sub={`${fmtReturn(data.avg_return_pct_edge)} · mid ${fmtReturn(data.avg_return_pct)}`}
+              tone={data.avg_return_pct_edge >= 0 ? "bull" : "bear"}
               size={120}
             />
             <WinRateRing
