@@ -89,3 +89,66 @@ export async function mapInChunks<T, R>(
   }
   return out;
 }
+
+/**
+ * Consecutive failed passes before a ticker is declared DARK.
+ *
+ * 3 passes at {@link VECTOR_BEAD_RECORD_TICK_MS} (5s) ≈ 15s of missing beads — long enough that a
+ * single flaky upstream fetch does not page, short enough that a real outage is named while it is
+ * still happening rather than discovered in a post-mortem.
+ */
+export const TICKER_DARK_THRESHOLD = 3;
+
+export type DarkTickerEvent = {
+  ticker: string;
+  kind: "dark" | "recovered";
+  /** Consecutive failures at the moment the event fired (for "recovered", the streak it ended). */
+  consecutive: number;
+};
+
+/**
+ * Track per-ticker consecutive failures across sweeps and emit EDGE events only.
+ *
+ * WHY THIS EXISTS: the leader only warned when `recorded === 0` — a whole-pass failure. One ticker
+ * failing while the other ~121 succeed produced `recorded=121, failed=1` and logged NOTHING. Live
+ * 2026-08-07, ASTS lost ~10 minutes of rail across the opening range and CloudWatch held zero
+ * `append failed` / `zero samples recorded` lines for the entire nine-hour session. The outage was
+ * real, member-visible as a hole in the bead rail, and completely untraceable after the fact.
+ *
+ * WHY EDGES AND NOT EVERY FAILURE: this runs every 5s over ~122 tickers. Logging each failure would
+ * emit ~120 lines for a single 10-minute outage and make CloudWatch unusable during the exact
+ * incident it is meant to illuminate. Emitting only the DARK transition and the RECOVERED
+ * transition bounds a 10-minute outage to **two** lines while still capturing when it started, how
+ * long it ran, and that it ended.
+ *
+ * `state` is mutated in place — the caller owns it across ticks (a module-level Map in the leader).
+ * Tickers that succeed are removed, so the map stays bounded by the number of CURRENTLY failing
+ * names, not by universe size.
+ */
+export function trackTickerFailures(
+  state: Map<string, number>,
+  attempted: readonly string[],
+  failed: readonly string[],
+  threshold = TICKER_DARK_THRESHOLD
+): DarkTickerEvent[] {
+  const events: DarkTickerEvent[] = [];
+  const failedSet = new Set(failed);
+
+  for (const ticker of failed) {
+    const next = (state.get(ticker) ?? 0) + 1;
+    state.set(ticker, next);
+    // Fire ONCE, exactly at the crossing — not on every pass beyond it.
+    if (next === threshold) events.push({ ticker, kind: "dark", consecutive: next });
+  }
+
+  for (const ticker of attempted) {
+    if (failedSet.has(ticker)) continue;
+    const prior = state.get(ticker);
+    if (prior === undefined) continue;
+    // Only announce recovery for a ticker we actually announced as dark.
+    if (prior >= threshold) events.push({ ticker, kind: "recovered", consecutive: prior });
+    state.delete(ticker);
+  }
+
+  return events;
+}

@@ -13,6 +13,20 @@ export type VectorBeadRecordResult = {
   total: number;
   recorded: number;
   failed: number;
+  /**
+   * WHICH tickers failed this pass — not just how many.
+   *
+   * A per-ticker failure is invisible in `failed` alone: the leader only warns when
+   * `recorded === 0` (a whole-pass failure), so one name going dark while 121 others succeed
+   * produced `recorded=121, failed=1` and logged NOTHING. Live 2026-08-07: ASTS lost ~10 minutes
+   * of rail across the opening range and CloudWatch carried zero `append failed` /
+   * `zero samples recorded` lines for the entire session — the outage left no trace at all.
+   * Naming the failures is what makes a single dark ticker detectable.
+   */
+  failedTickers: string[];
+  /** Every ticker this pass tried. Needed to detect RECOVERY: a ticker that was failing and is now
+   *  absent from `failedTickers` only counts as recovered if it was actually attempted. */
+  attempted: string[];
   elapsedMs: number;
 };
 
@@ -28,7 +42,7 @@ export async function recordSharedUniverseWallSamples(opts?: {
   const sessionYmd = opts?.sessionYmd ?? todayEtYmd();
   const started = Date.now();
   if (!sessionYmd) {
-    return { sessionYmd: "", total: 0, recorded: 0, failed: 0, elapsedMs: 0 };
+    return { sessionYmd: "", total: 0, recorded: 0, failed: 0, failedTickers: [], attempted: [], elapsedMs: 0 };
   }
 
   const tickers = await listSharedUniverseTickers();
@@ -45,9 +59,17 @@ export async function recordSharedUniverseWallSamples(opts?: {
 
   let recorded = 0;
   let failed = 0;
-  for (const r of results) {
+  const failedTickers: string[] = [];
+  // mapInPool guarantees results stay INDEX-ALIGNED with `tickers` despite out-of-order
+  // completion, which is what makes this attribution correct rather than arbitrary.
+  for (let i = 0; i < results.length; i++) {
+    const r = results[i]!;
     if (r.status === "fulfilled" && r.value) recorded += 1;
-    else failed += 1;
+    else {
+      failed += 1;
+      const t = tickers[i];
+      if (t) failedTickers.push(t);
+    }
   }
 
   return {
@@ -55,6 +77,8 @@ export async function recordSharedUniverseWallSamples(opts?: {
     total: tickers.length,
     recorded,
     failed,
+    failedTickers,
+    attempted: tickers,
     elapsedMs: Date.now() - started,
   };
 }
@@ -70,14 +94,14 @@ export async function recordActiveNonUniverseWallSamples(opts?: {
   const sessionYmd = opts?.sessionYmd ?? todayEtYmd();
   const started = Date.now();
   if (!sessionYmd) {
-    return { sessionYmd: "", total: 0, recorded: 0, failed: 0, elapsedMs: 0 };
+    return { sessionYmd: "", total: 0, recorded: 0, failed: 0, failedTickers: [], attempted: [], elapsedMs: 0 };
   }
 
   const universe = new Set(await listSharedUniverseTickers());
   const { getActiveVectorTickers } = await import("./vector-stream-hub");
   const tickers = getActiveVectorTickers().filter((t) => !universe.has(t));
   if (!tickers.length) {
-    return { sessionYmd, total: 0, recorded: 0, failed: 0, elapsedMs: Date.now() - started };
+    return { sessionYmd, total: 0, recorded: 0, failed: 0, failedTickers: [], attempted: [], elapsedMs: Date.now() - started };
   }
 
   const nowSec = Math.floor(Date.now() / 1000);
@@ -89,9 +113,17 @@ export async function recordActiveNonUniverseWallSamples(opts?: {
 
   let recorded = 0;
   let failed = 0;
-  for (const r of results) {
+  const failedTickers: string[] = [];
+  // mapInPool guarantees results stay INDEX-ALIGNED with `tickers` despite out-of-order
+  // completion, which is what makes this attribution correct rather than arbitrary.
+  for (let i = 0; i < results.length; i++) {
+    const r = results[i]!;
     if (r.status === "fulfilled" && r.value) recorded += 1;
-    else failed += 1;
+    else {
+      failed += 1;
+      const t = tickers[i];
+      if (t) failedTickers.push(t);
+    }
   }
 
   return {
@@ -99,6 +131,8 @@ export async function recordActiveNonUniverseWallSamples(opts?: {
     total: tickers.length,
     recorded,
     failed,
+    failedTickers,
+    attempted: tickers,
     elapsedMs: Date.now() - started,
   };
 }
