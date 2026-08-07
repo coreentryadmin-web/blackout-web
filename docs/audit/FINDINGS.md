@@ -4,6 +4,17 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-07 - [NEGATIVE RESULT #2] React #418: locale/timezone formatting RULED OUT - probe committed
+
+| Field | Value |
+|-------|-------|
+| **The signature** | Still the largest live frontend error: **135 events** across `/dashboard` (69 + 47), `/admin` (12) and `/flows` (7), most recent `08-07T03:11`. React 18 reports a hydration mismatch in production as a bare `Minified React error #418` with a minified stack and NO component identity, so the error log cannot say which text diverged. |
+| **What was tested** | The strongest remaining hypothesis: locale/time formatting reaching SSR output **without an explicit `timeZone`**. The server renders in UTC and the browser in the member's zone, so any such value mismatches for every non-UTC member — and **31 of the repo's 32 `toLocale*` call sites pass no `timeZone`**. |
+| **Method** | New `scripts/audit/probes/hydration-418.js`, run through `live-ui-audit.cjs --init-js` (also new) so it installs **before any page script** — the only point at which hydration can be observed, since `--inject-css` and `page.evaluate()` both land after React has reconciled. The probe wraps `Date.prototype.toLocale{Time,Date,}String`, `Intl.DateTimeFormat` and `Date.now`, records each call with a stack, and marks the hydration boundary with a double-rAF past `load`. Wraps, never blocks — the page behaves normally. |
+| **Result on `/flows` (a route that reproduces #418 on demand)** | `counts: { "Date.now": 213 }` and **ZERO** `toLocale*` / `Intl.DateTimeFormat` calls without a `timeZone`, before or after hydration. The hypothesis is **dead** for this route. The 60 captured pre-hydration frames are all `Date.now`, and every one originates in Cloudflare's beacon, gtag, or Next's own vendor chunk `1255-*` — not application render code. |
+| **Ruled out so far** | (1) invalid DOM nesting - a browser-parser re-parse of all six desk routes' SSR HTML matched tag-for-tag; (2) `Nav.tsx`'s `__client_uat` cookie self-heal - unreachable there, since `(site)/layout.tsx` seeds `initialSignedIn` from `auth()` AND falls back to `signedInFromRequestCookies()`; (3) locale/timezone formatting, above. |
+| **Still open** | The actual divergence. Next candidates, in order: `Modal.tsx:77`'s render-time `window.matchMedia` read; any `useState` initializer reading browser-only state on a route that SSRs it; and a third-party script mutating the DOM before hydration (the beacon/gtag frames make this worth eliminating). Localising it properly needs a **development-build repro** - prod React will never name the component. |
+| **Why the probe is committed** | It is reusable, it costs one run, and it converts "we think it might be timezones" into a measured answer. The next pass starts from the narrowed list rather than re-testing what is already eliminated. |
 ## 2026-08-07 - [P1, MEMBER-FACING] SPX Slayer dashboard: the blended bead rail was structurally always empty - FIXED (#1846)
 
 | Field | Value |
