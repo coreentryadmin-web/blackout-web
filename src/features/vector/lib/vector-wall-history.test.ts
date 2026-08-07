@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   backfillRailPrefix,
+  compactHistoryToCap,
   backfillRailGaps,
   railCoverageGaps,
   railUncoveredSec,
@@ -51,14 +52,24 @@ test("recordWallSample: replaces the last entry when the bar is still forming (s
   assert.equal(h2[0].walls.callWalls[0].strike, 6805);
 });
 
-test("recordWallSample: trims from the front once the history exceeds the cap (5760)", () => {
+test("recordWallSample: over the cap it THINS the old end — it must not amputate it", () => {
+  // Rewritten 2026-08-07. This used to assert `length === 5760` and `history[0].time === 240*5`,
+  // i.e. that the oldest 240 samples were dropped outright. That behaviour is the bug: at the
+  // oracle 5s cadence the cap is 8 hours of wall clock, so post-close recording deleted SPX's
+  // entire trading session (measured live: rail 15:54..23:59 against bars 09:30..16:05).
   let history: WallHistorySample[] = [];
   for (let i = 0; i < 6000; i++) {
     history = recordWallSample(history, { time: i * 5, walls: walls([6800], [6700]) });
   }
-  assert.equal(history.length, 5760);
-  assert.equal(history[0].time, 240 * 5);
-  assert.equal(history[history.length - 1].time, 5999 * 5);
+  assert.ok(history.length <= 5760, `cap must hold, got ${history.length}`);
+  assert.equal(history[0].time, 0, "the oldest sample must SURVIVE, thinned rather than dropped");
+  assert.equal(history[history.length - 1].time, 5999 * 5, "the newest is always kept");
+  // And the live window keeps full recorder resolution.
+  const newest = 5999 * 5;
+  const live = history.filter((h) => h.time >= newest - 30 * 60);
+  for (let i = 1; i < live.length; i++) {
+    assert.equal(live[i]!.time - live[i - 1]!.time, 5, "the newest 30 min must stay at 5s");
+  }
 });
 
 test("trailForRank: projects one rank's strike/pct across the history, in order", () => {
@@ -374,15 +385,16 @@ test("mergeModeledUnderlay: result is sorted by time regardless of input orderin
   assert.deepEqual(merged.map((s) => s.time), [100, 160, 220]);
 });
 
-test("mergeModeledUnderlay: caps to MAX_HISTORY by keeping the newest tail", () => {
-  // 6000 modeled buckets (> the 5760 cap) → tail-sliced to the most recent 5760.
+test("mergeModeledUnderlay: over the cap it thins the old end, keeping full span", () => {
+  // Rewritten 2026-08-07 alongside recordWallSample — same cap, same reason. Was:
+  // `length === 5760` and `merged[0].time === (6000-5760)*5`, i.e. the oldest 240 dropped.
   const modeled: WallHistorySample[] = Array.from({ length: 6000 }, (_, i) => ({
     time: i * 5,
     walls: walls([6800], [6700]),
   }));
   const merged = mergeModeledUnderlay([], modeled);
-  assert.equal(merged.length, 5760);
-  assert.equal(merged[0].time, (6000 - 5760) * 5);
+  assert.ok(merged.length <= 5760, `cap must hold, got ${merged.length}`);
+  assert.equal(merged[0].time, 0, "full span preserved — the old end is thinned, not cut");
   assert.equal(merged[merged.length - 1].time, 5999 * 5);
 });
 
@@ -747,4 +759,91 @@ test("railUncoveredSec: sums the holes — this is what decides whether to recon
   // 5h30m pre-open + 30m mid + 3h59m post-close.
   assert.equal(uncovered, H(5, 30) + H(0, 30) + H(3, 59));
   assert.ok(uncovered > 20 * 60, "well past the reconstruct threshold");
+});
+
+// ---------------------------------------------------------------------------------------------
+// FINDINGS 2026-08-07 — SPX's whole RTH session was evicted overnight. MAX_HISTORY was a flat
+// count cap applied as slice(-N); at the oracle 5s cadence that is 8 hours of wall clock, so
+// post-close recording deleted the trading day. Measured live: rail 15:54..23:59 against bars
+// 09:30..16:05, 97% of the session gone.
+// ---------------------------------------------------------------------------------------------
+
+/** SPX's real shape: 5s samples from 09:30 to 23:59 — 1.8x the 5,760 budget. */
+function spxShapedRail(): WallHistorySample[] {
+  const out: WallHistorySample[] = [];
+  for (let t = H(9, 30); t <= H(23, 59); t += 5) out.push(sample(t));
+  return out;
+}
+
+test("compactHistoryToCap: keeps the SESSION instead of the last 8 hours", () => {
+  const rail = spxShapedRail();
+  assert.ok(rail.length > 5760, `precondition: ${rail.length} samples must exceed the budget`);
+
+  const oldBehaviour = rail.slice(rail.length - 5760);
+  assert.ok(
+    oldBehaviour[0]!.time > H(15, 30),
+    "the old slice(-N) really did start mid-afternoon — this is the bug being fixed"
+  );
+
+  const out = compactHistoryToCap(rail, 5760);
+  assert.ok(out.length <= 5760, `must respect the cap, got ${out.length}`);
+  assert.equal(out[0]!.time, H(9, 30), "the session open must survive");
+  assert.equal(out[out.length - 1]!.time, H(23, 59), "so must the newest sample");
+});
+
+test("compactHistoryToCap: the newest 30 minutes stay at full recorder resolution", () => {
+  const rail = spxShapedRail();
+  const out = compactHistoryToCap(rail, 5760);
+  const newest = rail[rail.length - 1]!.time;
+  const live = rail.filter((s) => s.time >= newest - 30 * 60);
+  assert.deepEqual(
+    out.filter((s) => s.time >= newest - 30 * 60),
+    live,
+    "what is happening right now must not be thinned"
+  );
+});
+
+test("compactHistoryToCap: the old end is thinned, not amputated", () => {
+  const rail = spxShapedRail();
+  const out = compactHistoryToCap(rail, 5760);
+  // Every hour of the session keeps representation — that is the whole point.
+  for (let h = 10; h <= 23; h++) {
+    assert.ok(
+      out.some((s) => s.time >= H(h) && s.time < H(h + 1)),
+      `hour ${h}:00 lost all coverage`
+    );
+  }
+});
+
+test("compactHistoryToCap: under the cap is a no-op — normal operation is untouched", () => {
+  const small: WallHistorySample[] = [];
+  for (let t = H(9, 30); t <= H(10, 30); t += 5) small.push(sample(t));
+  assert.ok(small.length < 5760);
+  assert.equal(compactHistoryToCap(small, 5760), small, "same reference — nothing copied or changed");
+});
+
+test("compactHistoryToCap: the cap remains an absolute bound", () => {
+  // A pathological burst that even a thinned tail cannot fit still gets clamped.
+  const dense: WallHistorySample[] = [];
+  for (let t = 0; t < 4000; t += 1) dense.push(sample(t)); // 1s cadence, all inside the live window
+  const out = compactHistoryToCap(dense, 500);
+  assert.ok(out.length <= 500, `cap must hold even when compaction cannot help, got ${out.length}`);
+  assert.equal(out[out.length - 1]!.time, dense[dense.length - 1]!.time, "newest always survives");
+});
+
+test("compactHistoryToCap: strictly better than the old behaviour — never loses MORE coverage", () => {
+  const rail = spxShapedRail();
+  const out = compactHistoryToCap(rail, 5760);
+  const old = rail.slice(rail.length - 5760);
+  assert.ok(
+    out[0]!.time < old[0]!.time,
+    "the compacted rail must reach further back than the amputated one"
+  );
+  const span = (a: WallHistorySample[]) => a[a.length - 1]!.time - a[0]!.time;
+  // SPX's real numbers: the compacted rail spans the full 14.5h session, the amputated one only
+  // the 8h the cap allows at 5s. That is the entire bug, expressed as a ratio.
+  assert.ok(
+    span(out) > span(old) * 1.5,
+    `compacted span ${(span(out) / 3600).toFixed(2)}h vs amputated ${(span(old) / 3600).toFixed(2)}h`
+  );
 });

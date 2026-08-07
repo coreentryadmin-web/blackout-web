@@ -4,6 +4,23 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-07 - [P1, DATA LOSS] SPX's whole trading session evicted from the wall rail overnight by a COUNT cap - FIXED (#PR)
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P1, member-visible, and the direct cause of the "why are the beads missing on SPX?" report. A member opening SPX Vector in the morning saw an empty rail for the entire previous session - the bars were there, the beads were not. |
+| **Measured live (02:03 ET, prod SPX)** | `bars 08/06 09:30..16:05 (395)` / `rail 08/06 15:54..23:59 (2169)` / `in-session 45 - before 0 - after 2124` / `uncovered 6.40h of a 6.58h session`. The rail's observed span was **8.08h** - matching `MAX_HISTORY` at the 5s cadence to the minute, which is what identified the cap as the mechanism rather than a recorder outage. |
+| **Root cause** | `MAX_HISTORY = 5760` was applied as a flat `slice(-MAX_HISTORY)` at three sites. Its comment justified the number as "~one RTH session at 5s cadence plus headroom" - arithmetic that assumed recording STOPS at the close. The universe recorder is not RTH-gated, so an oracle ticker keeps writing every 5s all evening; 5,760 samples is **8 hours of wall clock**, so every post-close sample evicted an RTH one until the session was gone. |
+| **Why only SPX/oracle names** | A COUNT cap means different durations on different lanes. Non-oracle tickers record at 15s and never reach 5,760 in a day, so they were never truncated. The same constant means "a full day" on one lane and "8 hours" on the other - which is why the bug looked ticker-specific and hid behind a plausible comment for so long. |
+| **Fix - compact, do not amputate** | New `compactHistoryToCap`: when the rail is over budget, keep the newest 30 min at full recorder resolution and bucket everything older to 15s (the cadence non-oracle tickers already ship all day, so the thinned tail is a resolution production is known to render). Full-day COVERAGE survives; only old-end density is traded away. SPX's real shape (09:30..23:59 at 5s = 10,440) compacts to ~3,720 - under budget with the session intact. |
+| **Why this is strictly safer than what it replaces** | It runs only when the rail is ALREADY over budget - i.e. only where samples were previously being discarded outright. Under the cap, behaviour is byte-identical. If one pass somehow does not suffice it still falls back to the old tail slice, so the cap remains an absolute bound. |
+| **Blast radius** | All three eviction sites: `recordWallSample`, `mergeWallHistory`, `mergeModeledUnderlay`. All three carried the same `slice(-MAX_HISTORY)` and all three are now routed through the compactor. |
+| **Tests** | 6 new cases (thins rather than truncates; preserves span; live window untouched; first sample anchored; no-op under the cap; absolute bound still honoured). **Two pre-existing tests were rewritten** because they asserted the amputation as intended behaviour - the old names ("trims from the front", "caps by keeping the newest tail") are the bug written down as a spec. 64/64 pass; `tsc --noEmit` clean. |
+| **Lesson worth keeping** | A retention cap expressed in COUNT silently encodes a duration that depends on cadence. When two lanes write at different rates, one count is two different retention policies. |
+| **Status** | FIXED - PR #PR. |
+
+---
+
 ## 2026-08-07 - [P1, MOBILE UX / A11Y] Helix + Thermal touch targets, and the measurement that could not see the fix - FIXED (#PR)
 
 | Field | Value |

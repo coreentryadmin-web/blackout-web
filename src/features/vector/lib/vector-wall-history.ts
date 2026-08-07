@@ -52,9 +52,76 @@ export type StrikeTrailPoint = {
   notional?: number;
 };
 
-// ~one RTH session at 5s trail cadence for oracle tickers (390 min × 12 = 4680) plus headroom.
-// Non-oracle tickers at 15s produce ~1560 samples — well within this cap.
+// Sample budget for one ticker's session rail.
+//
+// This used to read "~one RTH session at 5s trail cadence for oracle tickers (390 min × 12 = 4680)
+// plus headroom" — arithmetic that quietly assumed recording STOPS at the close. It does not: the
+// universe recorder is not RTH-gated, so an oracle ticker keeps writing every 5s all evening. At
+// that cadence 5,760 samples is **8 hours of wall clock**, and the old flat `slice(-MAX_HISTORY)`
+// meant every post-close sample evicted an RTH one. Measured live 2026-08-07: SPX's rail ran
+// 15:54→23:59 against bars 09:30→16:05 — 2,124 of 2,169 samples sat past the last bar and **97% of
+// the trading session had no rail at all**. A member opening SPX in the morning saw no beads for
+// the previous day. Non-oracle tickers escaped it only by recording at 15s and never reaching the
+// cap, which is exactly why a COUNT cap is the wrong instrument: the same number means "a full day"
+// on one lane and "8 hours" on the other.
+//
+// The budget itself is unchanged — see compactHistoryToCap for what now happens when it is reached.
 const MAX_HISTORY = 5760;
+
+/** Newest slice of an over-budget rail kept at full recorder resolution. */
+const COMPACT_FULL_RES_SEC = 30 * 60;
+/** Bucket width applied to everything older, when the rail is over budget. */
+const COMPACT_TAIL_BUCKET_SEC = 15;
+
+/**
+ * Bring an over-budget rail back under `cap` by THINNING the old end instead of amputating it.
+ *
+ * The previous behaviour was `slice(-MAX_HISTORY)` — drop the oldest samples outright. That is
+ * what deleted SPX's whole trading session overnight (see MAX_HISTORY above). Here the newest
+ * {@link COMPACT_FULL_RES_SEC} stays at full recorder resolution and everything older is bucketed
+ * to {@link COMPACT_TAIL_BUCKET_SEC} — the cadence non-oracle tickers already ship all day, so the
+ * thinned tail is a resolution production is known to render. Full-day COVERAGE survives; only
+ * old-end density is traded away.
+ *
+ * SPX's real shape: 09:30→23:59 at 5s is 10,440 samples, ~1.8x the budget. After compaction it is
+ * 360 (newest 30 min at 5s) + ~3,360 (14h at 15s) = ~3,720 — comfortably under, with the session
+ * intact instead of erased.
+ *
+ * STRICTLY SAFER THAN THE OLD BEHAVIOUR: this runs only when the rail is already over budget, i.e.
+ * only where samples were previously being thrown away entirely. Under the cap nothing changes.
+ * If one pass is not enough (a pathological burst), it falls back to the old tail slice so the cap
+ * is still an absolute bound.
+ */
+export function compactHistoryToCap(
+  history: WallHistorySample[],
+  cap: number = MAX_HISTORY,
+  fullResSec: number = COMPACT_FULL_RES_SEC,
+  tailBucketSec: number = COMPACT_TAIL_BUCKET_SEC
+): WallHistorySample[] {
+  if (history.length <= cap) return history;
+  const newest = history[history.length - 1]!.time;
+  const liveFrom = newest - fullResSec;
+
+  const out: WallHistorySample[] = [];
+  let lastBucket: number | null = null;
+  for (let i = 0; i < history.length; i++) {
+    const sample = history[i]!;
+    // The live window and the very first sample (the session's anchor) are never thinned.
+    if (sample.time >= liveFrom || i === 0) {
+      out.push(sample);
+      lastBucket = null;
+      continue;
+    }
+    const bucket = Math.floor(sample.time / tailBucketSec) * tailBucketSec;
+    if (bucket === lastBucket) {
+      out[out.length - 1] = sample; // keep the bucket's LAST reading, as the display bucketer does
+      continue;
+    }
+    lastBucket = bucket;
+    out.push(sample);
+  }
+  return out.length > cap ? out.slice(out.length - cap) : out;
+}
 
 /** Max simultaneous strike-keyed bead rows per side on the chart (reference shows ~4–6). */
 export const MAX_STRIKE_TRAILS_PER_SIDE = 8;
@@ -95,7 +162,7 @@ export const LIVE_TRAIL_LOOKBACK_SEC = 45 * 60;
 export function recordWallSample(history: WallHistorySample[], sample: WallHistorySample): WallHistorySample[] {
   const last = history[history.length - 1];
   const next = last && last.time === sample.time ? [...history.slice(0, -1), sample] : [...history, sample];
-  return next.length > MAX_HISTORY ? next.slice(next.length - MAX_HISTORY) : next;
+  return compactHistoryToCap(next);
 }
 
 /**
@@ -412,7 +479,7 @@ export function mergeWallHistory(
   for (const sample of local) byTime.set(sample.time, sample);
   for (const sample of remote) byTime.set(sample.time, sample);
   const merged = [...byTime.values()].sort((a, b) => a.time - b.time);
-  return merged.length > MAX_HISTORY ? merged.slice(merged.length - MAX_HISTORY) : merged;
+  return compactHistoryToCap(merged);
 }
 
 /**
@@ -640,7 +707,7 @@ export function mergeModeledUnderlay(
   // Observed inserted second → overwrites the modeled entry sharing its bucket time.
   for (const sample of observed ?? []) byTime.set(sample.time, { ...sample, modeled: false });
   const merged = [...byTime.values()].sort((a, b) => a.time - b.time);
-  return merged.length > MAX_HISTORY ? merged.slice(merged.length - MAX_HISTORY) : merged;
+  return compactHistoryToCap(merged);
 }
 
 /** Flip bead trail for the active lens (gamma flip or zero-vanna flip). */
