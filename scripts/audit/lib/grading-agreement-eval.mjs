@@ -75,14 +75,35 @@ export function officialWinLabel(play) {
  */
 export function evaluatePlayAgreement(play, labelFromPlanOutcome) {
   const mid = reconstructMidGrade(play);
-  const fsLabel = labelFromPlanOutcome(mid.outcome, mid.pnlPct);
+  // CALL IT THE WAY PRODUCTION DOES — three arguments, entry_context included.
+  //
+  // This audit previously called `labelFromPlanOutcome(outcome, pnlPct)` with only two. That was
+  // faithful to the code when the check was written (NH-R14, 2026-08-05), when the function really
+  // did decide win/loss from the mid columns alone. NH-R14's fix then changed it to delegate to
+  // record.ts's `isZeroDteWin` over an OfficialGradableRow — and `feature-store.ts:112` passes
+  // `entryContext` — but this harness kept the old two-arg call.
+  //
+  // The consequence was a FALSE ALARM that survived the fix: omitting the third argument forces the
+  // mid-only fallback, so every WS-10 executable-graded row was guaranteed to "disagree" by
+  // construction, and the audit kept reporting the pre-fix result (4 rows) against post-fix code.
+  // An audit must exercise the call site production actually uses, or it measures a path nobody runs.
+  const fsLabel = labelFromPlanOutcome(mid.outcome, mid.pnlPct, play?.entry_context ?? null);
+  // The old two-arg answer is still computed, but as EVIDENCE not a verdict: it shows what the
+  // learning store WOULD have labelled if a future refactor dropped the entry_context argument at
+  // the call site. That is the regression this audit now actually guards against.
+  const midOnlyLabel = labelFromPlanOutcome(mid.outcome, mid.pnlPct);
   const officialGraded = isOfficialGraded(play);
   const recordLabel = officialGraded ? officialWinLabel(play) : null;
 
   const bothGraded = fsLabel != null && recordLabel != null;
   const agree = bothGraded ? fsLabel === recordLabel : null;
+  // A row where dropping entry_context would flip the label — i.e. one that only agrees BECAUSE the
+  // call site is correct. These are the rows the invariant is load-bearing for.
+  const midOnlyWouldDiffer = bothGraded && midOnlyLabel != null && midOnlyLabel !== fsLabel;
 
   return {
+    mid_only_label: midOnlyLabel,
+    mid_only_would_differ: midOnlyWouldDiffer,
     ticker: play?.ticker ?? null,
     session_date: play?.session_date ?? null,
     mid_source: mid.source,

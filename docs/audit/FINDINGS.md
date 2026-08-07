@@ -4,6 +4,21 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-07 — [P2, audit tooling] Outcome-grading cross-check called production with the PRE-FIX signature, so it kept reporting 4 disagreements that no longer exist — FIXED (#1837)
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P2 — no production defect. The opposite: the audit was reporting a member-facing integrity problem (the learning store and the member record disagreeing about whether the same trade won) that had **already been fixed**, and would have kept reporting it indefinitely. |
+| **Root cause** | `scripts/audit/lib/grading-agreement-eval.mjs:78` called `labelFromPlanOutcome(mid.outcome, mid.pnlPct)` — **two** arguments. That was faithful when NH-R14 wrote the check on 2026-08-05: the function then decided win/loss from the mid columns alone. NH-R14's own fix changed it to delegate to `record.ts`'s `isZeroDteWin` over an `OfficialGradableRow`, and `feature-store.ts:112` passes `entryContext` as a **third** argument — but this harness kept the two-arg call. Omitting it forces the mid-only fallback, so every WS-10 executable-graded row was guaranteed to "disagree" **by construction**. |
+| **Why it survived the fix** | The audit measured a call path production stopped using. The fix landed in the function; the harness kept exercising the old signature, so its verdict never moved. Same class as the healthcheck stage-D false RED (#1821): a check that judges a code path nobody runs will keep failing on healthy code. |
+| **Evidence — before / after, same live 90-day window** | Before: `plays scanned 157 · both graded 133 · AGREEMENT 129/133 (97.0%) · DISAGREEMENTS 4` (META 08-03, OKLO 07-30, MU 07-29, SPXW 07-29) — the exact rows FINDINGS 2026-08-05 recorded. After passing `entry_context`: **`AGREEMENT 133/133 (100.0%) · DISAGREEMENTS 0`**. The four "real disagreements" logged on 2026-08-05 were real *then*; they have not existed since NH-R14 shipped. |
+| **Verified end-to-end before concluding** | Not taken from the docstring — the `BUILD_TIME_BUDGET_MS` phantom-guard lesson applies. Checked the whole chain: `feature-store.ts:57-65` builds an `OfficialGradableRow` and returns `isZeroDteWin(row)`; `feature-store.ts:112` passes `entryContext`; `db.ts:6070` selects `entry_context` in `fetchGradedFeatureVectorRows`. All three had to be true for the fix to be live, and all three are. |
+| **Fix** | Call it the way production does. The two-arg answer is still computed, but as **evidence rather than a verdict**: `mid_only_label` + `mid_only_would_differ` flag the rows that agree ONLY because the call site passes `entry_context` — i.e. the rows the invariant is load-bearing for. That converts a check that had gone stale into one that guards the actual regression (a refactor dropping the third argument). |
+| **Test that pinned the bug, replaced** | `grading-agreement-eval.test.mjs`'s "THE DISAGREEMENT CASE" asserted `agree: false` on the WS-10 shape — correct pre-NH-R14, wrong after. Now asserts `agree: true` **and** `mid_only_would_differ: true`, so the fixed behaviour and the reason it holds are both pinned. A companion test asserts a legacy (pre-WS10) row is NOT flagged load-bearing, since mid IS official there and flagging it would drown the signal. 8/8 pass. |
+| **Status** | FIXED — PR #1837. The 2026-08-05 entry's "4 real disagreements" is superseded: accurate when written, resolved by NH-R14, and only appeared to persist because of this harness bug. |
+
+---
+
 ## 2026-08-07 — [P1, EDGE] Production's BREAKOUT ranker is measurably WORSE than random; `gain/range` replicates as real signal — MEASURED, engine unchanged pending decision
 
 | Field | Value |
