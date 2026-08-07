@@ -4,6 +4,25 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-07 — [P2, LIVE ERROR] Telemetry sequence bootstrap rewound the PK sequence on every boot — 24 dropped `api_telemetry_events` rows in 8 days — FIXED (#1839)
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P2 — silent, bounded data loss on an observability table. No member-facing symptom, but the lost rows are exactly the upstream-failure records `provider-health-reconcile` rolls up into admin incidents, so the loss lands on the alerting path. |
+| **Found by** | Mining the live error log (`GET /api/admin/errors?limit=500`) for recurring signatures, same method that surfaced #1838. 24 events, all identical, `2026-07-29T18:33Z … 2026-08-06T18:39Z`, a few per day at arbitrary hours. |
+| **The error** | `db_query` · `duplicate key value violates unique constraint "api_telemetry_events_pkey"` on `INSERT INTO api_telemetry_events (...)`. |
+| **Root cause** | `src/lib/db.ts` bootstrapped `api_telemetry_events_seq_id_seq` with an **unconditional** `SELECT setval(seq, GREATEST(1, COALESCE(MAX(seq_id),0)+1), false)`. That statement exists to retire legacy app-assigned `seq_id`s, but it re-ran on **every** boot. Boots happen while other ECS tasks are inserting telemetry: task B calls `nextval()` and holds 5001 uncommitted, so the booting task's `MAX(seq_id)` still reads 5000 and the setval rewinds the sequence to hand 5001 out a second time. The `runMigrations` advisory lock serialises migrations against each other — it does nothing about ordinary inserts from already-running tasks, which is where the collision comes from. |
+| **Why the row is LOST, not deduped** | `api-telemetry-persist.ts:18` ends `ON CONFLICT (event_id) DO NOTHING`. `event_id` is a **UNIQUE** index; the PRIMARY KEY is `seq_id`. `ON CONFLICT` targets one arbiter, so a `seq_id` collision is not caught by it — the INSERT throws, `persistApiTelemetryEvent`'s `catch` downgrades it to a `console.warn`, and the event never lands. The dedupe clause was doing its job; it was just guarding the other constraint. |
+| **Why it was invisible for so long** | Two layers of fail-soft stacked. The insert is best-effort by design (telemetry must never break a request), and the diffuse ~3/day rate reads as background noise rather than a pattern until the signatures are aggregated. Nothing downstream notices a missing telemetry row. |
+| **Fix** | Make the bootstrap **forward-only**: read the sequence's next value (`CASE WHEN is_called THEN last_value + 1 ELSE last_value END`) and setval only when it is `<=` the table max. Once the sequence owns the column the statement is a permanent no-op, so the race window closes entirely; legacy rows still migrate on the first boot that sees them. |
+| **Deliberately unchanged** | The `ON CONFLICT (event_id)` clause and the `catch`/`console.warn` around the insert. Both are correct for what they guard, and widening the conflict target would paper over a rewinding sequence rather than fix it. |
+| **Blast radius** | Checked every `setval` in the repo — this is the only one (`grep -n setval src/lib/db.ts` → one hit). No other table bootstraps a sequence this way. |
+| **Test** | `src/lib/db.test.ts`, two source-level assertions (same rationale as #1838 — the invariant is structural and raw Postgres is unreachable from this sandbox): the bootstrap block must contain exactly one `PERFORM setval(`, no bare `SELECT setval(`, an `IF next_val <= max_id THEN` guard, and an `is_called`-aware `next_val`; plus a guard that the telemetry INSERT never supplies `seq_id` itself. |
+| **Verification** | `npx tsx --test src/lib/db.test.ts` **11/11** (was 9/9 on clean main — two added, zero regressions); `tsc --noEmit` clean. Post-deploy confirmation is the absence of new `api_telemetry_events_pkey` events in `/api/admin/errors`. |
+| **Status** | FIXED — PR #1839. |
+
+---
+
 ## 2026-08-07 — [P1, LIVE ERROR] `fetchGradedSkips` read `counterfactual_json` without the column migration — grading cron erroring every 15 min, calibration evidence silently empty — FIXED (#1838)
 
 | Field | Value |

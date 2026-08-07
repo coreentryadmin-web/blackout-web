@@ -195,3 +195,53 @@ test("ensureSchema: nighthawk play-outcome CHECK issued exactly once, allowed se
     "the re-issue must follow the table DDL it upgrades"
   );
 });
+
+test("ensureSchema: the api_telemetry seq bootstrap is forward-only, never an unconditional rewind", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+
+  // REGRESSION GUARD (live: 24 dropped telemetry rows, 2026-07-29..08-06). The bootstrap must
+  // never rewind api_telemetry_events_seq_id_seq: an unconditional setval to MAX(seq_id)+1 races
+  // every OTHER running task's uncommitted nextval and re-issues a seq_id that is already taken,
+  // which violates api_telemetry_events_pkey. The INSERT's ON CONFLICT covers only the event_id
+  // UNIQUE index, so the losing row is lost, not deduped.
+  const bootstrap = src.slice(
+    src.indexOf("CREATE SEQUENCE IF NOT EXISTS api_telemetry_events_seq_id_seq"),
+    src.indexOf("CREATE TABLE IF NOT EXISTS admin_audit_log")
+  );
+  assert.ok(bootstrap.length > 0, "api_telemetry seq bootstrap block not found");
+
+  assert.equal(
+    (bootstrap.match(/PERFORM setval\(/g) ?? []).length,
+    1,
+    "exactly one setval on the telemetry sequence"
+  );
+  assert.ok(
+    !/SELECT\s+setval\(/.test(bootstrap),
+    "a bare top-level `SELECT setval(...)` is the unguarded form this test exists to keep out"
+  );
+  assert.match(
+    bootstrap,
+    /IF\s+next_val\s*<=\s*max_id\s+THEN/,
+    "the setval must be guarded by 'sequence is behind the table' — an unguarded setval is the bug"
+  );
+  // The guard is only sound if next_val accounts for is_called: a freshly-consumed sequence has
+  // last_value == the value already handed out, so the NEXT value is last_value + 1.
+  assert.match(
+    bootstrap,
+    /CASE\s+WHEN\s+is_called\s+THEN\s+last_value\s*\+\s*1\s+ELSE\s+last_value\s+END/,
+    "next_val must be derived from last_value/is_called, not last_value alone"
+  );
+});
+
+test("persistApiTelemetryEvent: never supplies seq_id — the PRIMARY KEY is the sequence's to assign", () => {
+  const src = readFileSync(
+    fileURLToPath(new URL("./api-telemetry-persist.ts", import.meta.url)),
+    "utf8"
+  );
+  const insert = src.slice(src.indexOf("INSERT INTO api_telemetry_events"), src.indexOf("ON CONFLICT"));
+  assert.ok(insert.length > 0, "telemetry INSERT not found");
+  assert.ok(
+    !/\bseq_id\b/.test(insert),
+    "an app-assigned seq_id would reintroduce the legacy collision this migration exists to retire"
+  );
+});
