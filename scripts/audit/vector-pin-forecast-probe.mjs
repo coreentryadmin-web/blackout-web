@@ -38,7 +38,16 @@ async function main() {
         rows.push({ ticker, target, error: error instanceof Error ? error.message : String(error) });
         continue;
       }
-      const f = res?.forecast ?? null;
+      // fetchAuditJson returns an ENVELOPE — {ok, status, json, via} — not the payload. Reading
+      // res.forecast directly yields undefined for every ticker, which renders as a full column of
+      // "honest refusals" and looks exactly like a correctly-degrading endpoint. Unwrap explicitly,
+      // and surface a non-2xx as an ERROR so a broken call can never masquerade as a refusal.
+      if (res && res.ok === false) {
+        rows.push({ ticker, target, error: `HTTP ${res.status}` });
+        continue;
+      }
+      const body = res && typeof res === "object" && "json" in res ? res.json : res;
+      const f = body?.forecast ?? null;
       rows.push({
         ticker,
         target,
