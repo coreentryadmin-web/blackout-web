@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
+import clsx from "clsx";
 import { CommandDeck } from "./CommandDeck";
 import {
   terminalPlayFromZeroDte,
@@ -18,6 +19,14 @@ import { useZeroDteLiveDeck } from "./use-zero-dte-live-deck";
 import { zeroDteSources, isBoardDegraded, type BoardResp } from "./zerodte-sources";
 import { EDITION_TARGET_PLAYS } from "@/features/nighthawk/lib/constants";
 import { isMorningConfirmStale, formatCheckedAtEt } from "@/features/nighthawk/lib/morning-confirm-verdict";
+import { SWING_SERVING_SECTIONS } from "@/lib/swing/serving";
+import {
+  rowsForSwingSection,
+  swingSectionCounts,
+  emptySwingSectionHint,
+  SWING_SECTION_LABEL,
+  type SwingSectionFilter,
+} from "./swing-section-filter";
 import { NIGHTHAWK_COMPACT_LANE_LABEL } from "@/features/nighthawk/lib/nighthawk-view";
 import { etNowParts } from "@/features/nighthawk/lib/session";
 import { LOW_N_THRESHOLD } from "@/lib/zerodte/record";
@@ -133,26 +142,27 @@ export function HorizonDeck({
   // that arrived with board:null is an outage, not "scanning, nothing yet".
   const degraded = data != null && data.board == null;
   const lane = data?.board?.lanes?.[horizon];
+  const [sectionFilter, setSectionFilter] = useState<SwingSectionFilter>("ALL");
   // Prefer the seven serving sections when present (SWING) — flat committed/watch is back-compat only and
   // collapses COMMIT_NOW + WAITING_FOR_ENTRY into one misleading "committed" rail.
-  const sectionRows =
-    horizon === "SWING" && lane?.sections
-      ? [
-          ...(lane.sections.COMMIT_NOW ?? []),
-          ...(lane.sections.WAITING_FOR_ENTRY ?? []),
-          ...(lane.sections.WATCH ?? []),
-          ...(lane.sections.RESEARCH ?? []),
-          ...(lane.sections.MANAGING ?? []),
-          ...(lane.sections.SCALING_OUT ?? []),
-          ...(lane.sections.EXITING ?? []),
-        ]
-      : null;
+  // Seven sections, selectable (FINDINGS 2026-08-06 swing audit P2): these used to be concatenated
+  // into one flat list, so `serving.ts`'s whole reason to exist — telling a member what is
+  // ACTIONABLE vs merely forming — survived only as a small per-card badge. ALL keeps the previous
+  // behaviour as the default view, so nobody's board changes until they choose a section.
+  const hasSections = horizon === "SWING" && lane?.sections != null;
+  const sectionCounts = useMemo(() => swingSectionCounts(lane?.sections), [lane?.sections]);
+  const sectionRows = hasSections ? rowsForSwingSection(lane!.sections, sectionFilter) : null;
   const rows = sectionRows ?? [...(lane?.committed ?? []), ...(lane?.watch ?? [])];
   const researchCount = horizon === "SWING" ? (lane?.sections?.RESEARCH?.length ?? 0) : 0;
   const watchCount = horizon === "SWING" ? (lane?.sections?.WATCH?.length ?? 0) : 0;
+  // A filtered-empty section is NOT an empty lane — saying "scanning the whole market" while 40
+  // names sit one tab over would be actively misleading.
+  const sectionEmptyHint = hasSections ? emptySwingSectionHint(sectionFilter, sectionCounts) : null;
   const emptyHint = degraded
     ? "Lane data unavailable right now — retrying. This is a data outage, not an empty board."
-    : horizon === "SWING" && rows.length === 0
+    : sectionEmptyHint
+      ? sectionEmptyHint
+      : horizon === "SWING" && rows.length === 0
       ? researchCount > 0 || watchCount > 0
         ? "Swing scan active — names building persistence appear in Research once enriched."
         : "Whole-market swing discovery runs on a phase cadence — first sightings need ≥2 sessions (or corroboration for event setups) before WATCH."
@@ -213,7 +223,23 @@ export function HorizonDeck({
   );
   const sessionHeat = data?.session?.heat?.state ?? null;
   return (
-    <CommandDeck
+    <>
+      {hasSections && (
+        <div className="nh-deck-filterbar nh-deck-filterbar--prominent" role="group" aria-label="Filter swing plays by serving section">
+          {(["ALL", ...SWING_SERVING_SECTIONS] as SwingSectionFilter[]).map((sec) => (
+            <button
+              key={sec}
+              type="button"
+              className={clsx("nh-deck-filtbtn", sectionFilter === sec && "on")}
+              aria-pressed={sectionFilter === sec}
+              onClick={() => setSectionFilter(sec)}
+            >
+              {SWING_SECTION_LABEL[sec]} <span className="cnt">{sectionCounts[sec]}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      <CommandDeck
       plays={playsWithTrack}
       laneLabel={horizon === "SWING" ? NIGHTHAWK_COMPACT_LANE_LABEL.SWING : NIGHTHAWK_COMPACT_LANE_LABEL.LEAPS}
       degraded={degraded}
@@ -225,7 +251,8 @@ export function HorizonDeck({
       upstreamOk={data?.upstream_ok ?? null}
       sessionHeat={sessionHeat}
       focusTicker={focusTicker}
-    />
+      />
+    </>
   );
 }
 
