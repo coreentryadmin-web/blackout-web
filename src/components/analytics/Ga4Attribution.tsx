@@ -17,6 +17,12 @@ import {
 } from "@/lib/analytics/ga4-events";
 import { trackXEvent } from "@/lib/analytics/x-pixel";
 import { captureAttributionFromSearch } from "@/lib/analytics/utm";
+import {
+  captureReferralFromSearch,
+  markReferralAttributionSent,
+  readStoredReferrer,
+  referralAttributionAlreadySent,
+} from "@/lib/analytics/referral-client";
 
 function Ga4AttributionInner() {
   const pathname = usePathname() ?? "/";
@@ -26,6 +32,7 @@ function Ga4AttributionInner() {
 
   useEffect(() => {
     captureAttributionFromSearch(search, pathname);
+    captureReferralFromSearch(search);
   }, [pathname, search]);
 
   useEffect(() => {
@@ -51,6 +58,16 @@ function Ga4AttributionInner() {
     ) {
       trackGa4Event(GA4_EVENTS.signUp, { page_path: pathname });
       trackXEvent("tw-re1j3-sign_up");
+
+      const referrerUserId = readStoredReferrer();
+      if (referrerUserId && !referralAttributionAlreadySent()) {
+        markReferralAttributionSent();
+        fetch("/api/referrals/attribute", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ referrerUserId }),
+        }).catch(() => undefined);
+      }
     }
 
     const articleSlug = learnArticleSlugFromPath(pathname);

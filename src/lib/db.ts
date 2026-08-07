@@ -2043,6 +2043,30 @@ async function runMigrations(): Promise<void> {
   `);
   await p.query(`CREATE INDEX IF NOT EXISTS idx_banger_positions_session ON banger_positions(session_date DESC)`);
 
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS referrals (
+      id BIGSERIAL PRIMARY KEY,
+      referrer_user_id TEXT NOT NULL,
+      referred_user_id TEXT NOT NULL,
+      referred_email TEXT,
+      status TEXT NOT NULL DEFAULT 'signed_up',
+      reward_code TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      converted_at TIMESTAMPTZ,
+      rewarded_at TIMESTAMPTZ
+    );
+  `);
+  // One referral credit per referred user — the first ?ref= link that leads to a
+  // signup wins; later attribution attempts for the same user are no-ops.
+  await p.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_referrals_referred_user ON referrals(referred_user_id)`);
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_referrals_referrer ON referrals(referrer_user_id, created_at DESC)`);
+  await p.query(`
+    DO $$ BEGIN
+      ALTER TABLE referrals ADD CONSTRAINT referrals_status_ck
+        CHECK (status IN ('signed_up', 'converted', 'rewarded'));
+    EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+  `);
+
   } finally {
     // Release the advisory lock + return the dedicated connection to the pool.
     try { await lockClient.query(`SELECT pg_advisory_unlock($1)`, [MIGRATION_LOCK_ID]); } catch { /* ignore */ }
