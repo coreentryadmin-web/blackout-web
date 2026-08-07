@@ -2,7 +2,7 @@ import { todayEtYmd } from "@/lib/providers/spx-session";
 import { listSharedUniverseTickers } from "./vector-dynamic-universe";
 import { recordVectorUniverseWallSample } from "./vector-universe";
 import {
-  mapInChunks,
+  mapInPool,
   vectorBeadRecordConcurrency,
 } from "./vector-bead-recorder-logic";
 
@@ -35,7 +35,11 @@ export async function recordSharedUniverseWallSamples(opts?: {
   const nowSec = Math.floor(Date.now() / 1000);
   const concurrency = opts?.concurrency ?? vectorBeadRecordConcurrency();
 
-  const results = await mapInChunks(tickers, concurrency, (ticker) =>
+  // Rolling pool, not fixed chunks: this sweep has a 5s deadline (the leader drops any tick that
+  // overlaps a running sweep), and a per-chunk barrier made the cost the SUM of each chunk's
+  // slowest ticker. See mapInPool + vectorBeadRecordConcurrency for the measured 10s-instead-of-5s
+  // regression this fixes.
+  const results = await mapInPool(tickers, concurrency, (ticker) =>
     recordVectorUniverseWallSample(ticker, { sessionYmd, nowSec, bucketScope: "universe" })
   );
 
