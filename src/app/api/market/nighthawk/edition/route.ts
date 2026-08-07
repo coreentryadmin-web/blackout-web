@@ -34,6 +34,43 @@ export const maxDuration = 60;
 
 const ENGINE_BASE = process.env.BLACKOUT_INTEL_URL?.replace(/\/$/, "") ?? "";
 
+/**
+ * Is `?date=` a real calendar date in `YYYY-MM-DD` form?
+ *
+ * The raw query string used to flow straight into `fetchNighthawkEditionByDate` AND into the
+ * server-cache key. Two consequences, both measured live 2026-08-07:
+ *   • `?date=not-a-date` returned **200** with today's edition flagged `stale: true` — a member
+ *     following a bad link saw a "stale" banner over data that was current.
+ *   • Every distinct garbage string minted its own cache entry
+ *     (`nighthawk:edition:v1:${editionFor}:…`), an unbounded key space from an unvalidated input.
+ *
+ * The shape check alone is not enough: "2026-13-45" matches the regex and is not a date. Round-trip
+ * through Date and compare so only real calendar days pass.
+ */
+function isValidEditionDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const d = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return false;
+  return d.toISOString().slice(0, 10) === value; // rejects 2026-02-30 style overflow
+}
+
+/**
+ * Flag a PUBLISHED edition that carries zero plays.
+ *
+ * `available` stays TRUE: the edition really was published and the recap is real content the member
+ * is entitled to — flipping it to false would show "publishes after the close" over a session that
+ * has already published, which is a worse lie than the one being fixed. `no_plays` is the honest
+ * third state so the UI can say "no plays cleared the bar" instead of rendering the
+ * playbook-is-here framing around an empty list.
+ *
+ * Server-side half only. The member-facing copy is a follow-up — the API could not previously
+ * EXPRESS this state, which is the part that had to change first.
+ */
+function markNoPlays(edition: NightHawkEdition): NightHawkEdition {
+  if (edition.available && edition.plays.length === 0) return { ...edition, no_plays: true };
+  return edition;
+}
+
 function emptyEdition(editionFor: string): NightHawkEdition {
   return {
     available: false,
@@ -152,12 +189,12 @@ async function resolveNighthawkEdition(
 
   const exact = await fetchNighthawkEditionByDate(editionFor);
   if (exact) {
-    return await withPullOverlay(rowToNightHawkEdition(exact));
+    return await withPullOverlay(markNoPlays(rowToNightHawkEdition(exact)));
   }
 
   const latest = await fetchLatestNighthawkEdition();
   if (latest) {
-    const edition = rowToNightHawkEdition(latest);
+    const edition = markNoPlays(rowToNightHawkEdition(latest));
 
     const MAX_EDITION_AGE_DAYS = 4;
     if (edition.edition_for) {
@@ -165,7 +202,11 @@ async function resolveNighthawkEdition(
         (new Date(editionFor + "T00:00:00").getTime() - new Date(edition.edition_for + "T00:00:00").getTime())
           / 86_400_000
       );
-      if (edAge > MAX_EDITION_AGE_DAYS) {
+      // Fail CLOSED on a non-finite age. `edAge > MAX` is false for NaN, so an unparseable
+      // `editionFor` used to sail past this guard and serve the latest edition as merely "stale".
+      // The date is validated at the handler now, but this guard must not depend on that: it is the
+      // last thing standing between a bad clock and serving a 3-week-old playbook as current.
+      if (!Number.isFinite(edAge) || edAge > MAX_EDITION_AGE_DAYS) {
         return emptyEdition(editionFor);
       }
     }
@@ -195,6 +236,12 @@ export async function GET(req: NextRequest) {
   if (dbDenied) return dbDenied;
 
   const explicitDate = req.nextUrl.searchParams.get("date");
+  if (explicitDate != null && !isValidEditionDate(explicitDate)) {
+    return NextResponse.json(
+      { error: "date must be YYYY-MM-DD" },
+      { status: 400, headers: NO_STORE_HEADERS }
+    );
+  }
   const editionFor = explicitDate ?? nextTradingDayEt(todayEt());
   const cacheKey = `nighthawk:edition:v1:${editionFor}:${explicitDate ?? "_live"}`;
 
