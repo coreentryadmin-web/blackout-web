@@ -4,7 +4,7 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
-## 2026-08-07 - [P1, MOBILE UX / A11Y] Every primary control on the Night Hawk command deck was under the 44px touch minimum - FIXED (#PR)
+## 2026-08-07 - [P1, MOBILE UX / A11Y] Every primary control on the Night Hawk command deck was under the 44px touch minimum - FIXED (#1842)
 
 | Field | Value |
 |-------|-------|
@@ -18,7 +18,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Two harness bugs fixed before they became false findings** | (1) `proxy-browser.cjs` sets every cookie `httpOnly:true`, including `__client_uat`, which is deliberately JS-READABLE in production because `Nav.tsx`'s `readClientSignedIn` self-heal depends on it. With it hidden, every capture rendered **signed-out nav chrome ("Get access ->") over a live gated board** - a convincing member-facing auth bug that does not exist. (2) The context set `isMobile` but not `hasTouch`, so `@media (pointer: coarse)` never matched and the entire fix would have measured as a no-op. |
 | **A third, separate blocker this uncovered** | A stale `__session` (Clerk JWT lifetime is ~60s) makes the origin return a **307 whose `Location` is the same URL**. A browser follows it, gets another 307, and the navigation dies as `ERR_CONNECTION_RESET` - indistinguishable from the sandbox egress block, and it sent me chasing the transport. The harness now mints its session in-process (JWT seconds old at first byte) and reports any self-redirect by name so the next person is not misled. This is the concrete mechanism behind `LIVE-UI-CONNECTION.md`'s warning; recorded here because "Routed: 2 ok, 0 fail" reads like success. |
 | **Verification** | `tsc --noEmit` clean; `next lint` clean (one pre-existing unrelated warning). CSS-only runtime change plus a new audit script - no TS behaviour touched. |
-| **Status** | FIXED - PR #PR. |
+| **Status** | FIXED - PR #1842. |
 
 ---
 
