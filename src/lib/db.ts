@@ -3842,7 +3842,15 @@ export async function fetchZeroDteScanRejections(opts?: {
   return res.rows.map((r) => ({
     id: Number(r.id),
     observed_at: String(r.observed_at),
-    session_date: String(r.session_date),
+    // `session_date` is a pg DATE, which node-postgres hands back as a JS Date (no setTypeParser
+    // override in this repo). `String(aDate)` yields "Fri Aug 07 2026 00:00:00 GMT+0000", so the
+    // declared `session_date: string` was TRUE as a type and FALSE as a contract — and that false
+    // contract is what let `r.session_date === "2026-08-07"` typecheck in admin-zerodte-health.ts,
+    // where it can never be true. Live 2026-08-07: /funnel (which filters in SQL) saw 146 rejection
+    // rows while /health (which filtered in JS) reported 0 with `errors: []` — reading as an honest
+    // "nothing scanned yet" rather than a dead metric. isoDateString is the repo's documented
+    // funnel for exactly this ("Any raw-query consumer of a DATE column must funnel through here").
+    session_date: isoDateString(r.session_date),
     ticker: String(r.ticker),
     gate_failed: String(r.gate_failed),
     threshold: r.threshold != null ? Number(r.threshold) : null,
