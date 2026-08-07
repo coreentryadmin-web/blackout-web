@@ -2043,6 +2043,22 @@ async function runMigrations(): Promise<void> {
   `);
   await p.query(`CREATE INDEX IF NOT EXISTS idx_banger_positions_session ON banger_positions(session_date DESC)`);
 
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS email_captures (
+      id BIGSERIAL PRIMARY KEY,
+      email TEXT NOT NULL,
+      source_path TEXT,
+      utm_source TEXT,
+      utm_campaign TEXT,
+      captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      lead_magnet_sent_at TIMESTAMPTZ
+    );
+  `);
+  // One row per email — a repeat capture (same visitor, different session) is a no-op,
+  // not a duplicate lead-magnet send.
+  await p.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_email_captures_email ON email_captures(LOWER(email))`);
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_email_captures_captured_at ON email_captures(captured_at DESC)`);
+
   } finally {
     // Release the advisory lock + return the dedicated connection to the pool.
     try { await lockClient.query(`SELECT pg_advisory_unlock($1)`, [MIGRATION_LOCK_ID]); } catch { /* ignore */ }
