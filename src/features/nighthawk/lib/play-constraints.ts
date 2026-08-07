@@ -163,6 +163,33 @@ export function validatePlayGeometry(play: PlaybookPlay): PlayGeometryVerdict {
       if (target <= mid) drops.push(`LONG target ${target} is not above entry mid ${mid.toFixed(2)}`);
       if (stop >= mid) drops.push(`LONG stop ${stop} is not below entry mid ${mid.toFixed(2)}`);
     }
+    // BAND CONTAINMENT — the stop must sit OUTSIDE the entry band, not merely past its midpoint.
+    //
+    // The midpoint checks above are necessary but not sufficient, and the gap is not academic:
+    // RDDT published 2026-08-04 with entry $150.84–$158.58 and stop **152.65** — INSIDE its own
+    // band. A member filling anywhere in the bottom $150.84–$152.65 (the lowest ~23% of the
+    // published range) is stopped out the instant he is filled. The card advertised "R:R 17.8:1
+    // (strong)", a ratio achievable at NO price in the band.
+    //
+    // Worse, the two gates are PERVERSELY COUPLED. Risk is measured from the midpoint, so the
+    // further the stop creeps INTO the band, the smaller `risk` gets and the LARGER the R:R the
+    // gate sees — the broken geometry is exactly the geometry the R:R gate rewards. RDDT:
+    // risk = |152.65 − 154.71| = 2.06, reward = 36.58 → 17.76, a ~9x outlier against every other
+    // published card that session (0.75–1.96). The outlier ratio was the symptom of the defect,
+    // not evidence of a good trade.
+    //
+    // This check is deliberately UNCONDITIONAL and independent of the R:R basis debate: it asks
+    // only "can the member actually be stopped out at a price he was told to enter at", which has
+    // one answer regardless of how risk is measured.
+    if (lo != null && hi != null) {
+      if (isShort) {
+        if (stop <= hi) {
+          drops.push(`SHORT stop ${stop} is inside the entry band ${lo}-${hi} — a fill at or above ${stop} is stopped out on entry`);
+        }
+      } else if (stop >= lo) {
+        drops.push(`LONG stop ${stop} is inside the entry band ${lo}-${hi} — a fill at or below ${stop} is stopped out on entry`);
+      }
+    }
     // R:R minimum: reward must be at least MIN_RR_RATIO × the risk. A play with worse R:R is
     // untradeable — the stop is too wide or the target too tight to justify the entry.
     const reward = Math.abs(target - mid);
