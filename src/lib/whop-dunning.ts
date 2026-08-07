@@ -13,6 +13,13 @@ function dunningGraceSec(): number {
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : DEFAULT_GRACE_SEC;
 }
 
+/** Grace window in whole days, for customer-facing copy (the payment-failed
+ *  email) — exported so the number shown to a member always matches the
+ *  actual enforcement window instead of a copy-pasted guess. */
+export function dunningGraceDays(): number {
+  return Math.max(1, Math.round(dunningGraceSec() / 86_400));
+}
+
 /** Start or refresh billing-retry grace for a membership (payment.failed / invoice.past_due). */
 export async function markMembershipDunningGrace(membershipId: string): Promise<void> {
   if (!membershipId) return;
