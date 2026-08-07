@@ -51,6 +51,7 @@ const GUARD_PATTERNS = [
   /getAdminApiActor\s*\(/,
   /isCronAuthorized\s*\(/,
   /authorizeMarketDeskApi\s*\(/,
+  /authorizePremiumDeskApi\s*\(/,
   /authorizeCronOrTierApi\s*\(/,
   /requireToolApi\s*\(/,
   /webhooks\.unwrap\s*\(/,
