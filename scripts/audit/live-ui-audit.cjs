@@ -256,12 +256,34 @@ async function main() {
     out.a11y.h1Count = hs.filter((n) => n === 1).length;
 
     // --- a11y: tap targets under the 44x44 iOS minimum ---
+    //
+    // Measured by HIT TEST, not border box. The standard way to enlarge a dense glyph control is a
+    // transparent absolutely-positioned ::after — it takes the touch but contributes nothing to the
+    // element's own rect, so a box-only check reports the fix as a no-op and would argue for
+    // wrecking the layout instead. What a fingertip actually experiences is what
+    // document.elementFromPoint returns, so that is what this asks: probe the four corners of the
+    // 44x44 box centred on the control and require every one to land on the control or a descendant
+    // (a child <span aria-hidden> glyph counts — the click still reaches the button).
+    const hitsControl = (el, dx, dy) => {
+      const r = el.getBoundingClientRect();
+      const x = r.left + r.width / 2 + dx;
+      const y = r.top + r.height / 2 + dy;
+      if (x < 0 || y < 0 || x > document.documentElement.clientWidth || y > window.innerHeight) return true;
+      const hit = document.elementFromPoint(x, y);
+      return !!hit && (hit === el || el.contains(hit));
+    };
+    const PROBE = 21; // just inside the 44px half-extent, so a rounding hair does not fail it
     out.a11y.tinyTapTargets = controls.filter(vis).filter((el) => {
       // A visually-hidden skip link is 1x1 BY DESIGN and only becomes a real target on focus.
       // Reporting it on every run trains the reader to skim past the whole list.
       if (el.className && /\bsr-only\b/.test(el.className.toString())) return false;
       const r = el.getBoundingClientRect();
-      return r.width > 0 && r.height > 0 && (r.width < 44 || r.height < 44);
+      if (r.width === 0 || r.height === 0) return false;
+      if (r.width >= 44 && r.height >= 44) return false; // box alone is already big enough
+      return !(
+        hitsControl(el, -PROBE, -PROBE) && hitsControl(el, PROBE, -PROBE) &&
+        hitsControl(el, -PROBE, PROBE) && hitsControl(el, PROBE, PROBE)
+      );
     }).slice(0, 20).map((el) => {
       const r = el.getBoundingClientRect();
       return `${el.tagName.toLowerCase()}"${label(el).slice(0, 18)}" ${Math.round(r.width)}x${Math.round(r.height)}`;

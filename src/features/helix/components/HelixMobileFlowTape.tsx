@@ -197,7 +197,7 @@ export function HelixMobileFlowTape({
                           title={isStarred ? `Remove ${flow.ticker} from watchlist` : `Add ${flow.ticker} to watchlist`}
                           aria-pressed={isStarred}
                           className={clsx(
-                            "leading-none text-[14px] transition-colors",
+                            "tap44 leading-none text-[14px] transition-colors",
                             isStarred ? "text-gold" : "text-cyan-400 hover:text-gold"
                           )}
                         >

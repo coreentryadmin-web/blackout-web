@@ -131,7 +131,7 @@ function renderCell(
           {onToggleStar && (
             <button
               type="button"
-              className={clsx("helix-tape-star", isStarred && "helix-tape-star--on")}
+              className={clsx("helix-tape-star tap44", isStarred && "helix-tape-star--on")}
               onClick={(e) => {
                 e.stopPropagation();
                 onToggleStar(flow.ticker);
