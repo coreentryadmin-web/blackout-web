@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  DOMINANT_WALLS_PER_BUCKET,
+  trailsByStrike,
   backfillRailPrefix,
   compactHistoryToCap,
   backfillRailGaps,
@@ -846,4 +848,44 @@ test("compactHistoryToCap: strictly better than the old behaviour — never lose
     span(out) > span(old) * 1.5,
     `compacted span ${(span(out) / 3600).toFixed(2)}h vs amputated ${(span(old) / 3600).toFixed(2)}h`
   );
+});
+
+// ── DOMINANT_WALLS_PER_BUCKET: 3 -> 5 (2026-08-07 product call) ──────────────────────────────
+
+/** A bucket whose call ladder has 8 strikes at strictly descending |pct|, so rank is unambiguous. */
+function ladderSample(time: number) {
+  return {
+    time,
+    walls: {
+      callWalls: [8, 7, 6, 5, 4, 3, 2, 1].map((p, i) => ({ strike: 100 + i * 5, pct: p })),
+      putWalls: [],
+    },
+  } as never;
+}
+
+test("DOMINANT_WALLS_PER_BUCKET is 5 — widened coverage, measured trade recorded in the docblock", () => {
+  // Not a tautology-with-extra-steps: this constant has moved twice (6 -> 3 on member feedback,
+  // 3 -> 5 on the 2026-08-07 measurement). Pinning it means the next change is deliberate and
+  // arrives with its own evidence rather than drifting.
+  assert.equal(DOMINANT_WALLS_PER_BUCKET, 5);
+});
+
+test("trailsByStrike keeps exactly the top-N by |pct| — the selection the whole rail depends on", () => {
+  const history = [ladderSample(1000), ladderSample(1005)];
+  const rows = trailsByStrike(history, "callWalls", "gex", 5);
+  // Strongest 5 are pct 8..4 -> strikes 100,105,110,115,120.
+  assert.deepEqual([...rows.keys()].sort((a, b) => a - b), [100, 105, 110, 115, 120]);
+  // The weaker three earn NO bead at all — that is what keeps the rail sparse.
+  for (const absent of [125, 130, 135]) assert.equal(rows.has(absent), false, `${absent} must not draw`);
+});
+
+test("raising N is strictly additive — it can never REMOVE a row that N=3 drew", () => {
+  // The property that makes this change safe to revert in either direction: every strike visible at
+  // 3 is still visible at 5, so nobody loses a level they were watching. Only the tail grows.
+  const history = [ladderSample(1000), ladderSample(1005), ladderSample(1010)];
+  const at3 = new Set(trailsByStrike(history, "callWalls", "gex", 3).keys());
+  const at5 = new Set(trailsByStrike(history, "callWalls", "gex", 5).keys());
+  for (const strike of at3) assert.ok(at5.has(strike), `strike ${strike} vanished when N rose`);
+  assert.equal(at3.size, 3);
+  assert.equal(at5.size, 5);
 });

@@ -143,13 +143,37 @@ export const MAX_STRIKE_TRAILS_PER_SIDE = 8;
  * Keeping only each bucket's top-N by |gamma| share restores that: a level that is always among the
  * strongest stays full-width (correctly — it WAS a wall all day), while one that only spikes into
  * the dominant set at 2pm gets a trail born at 2pm. Tracks spot naturally, since gamma concentrates
- * near the money, so walls form where price actually is. 3 matches the reference product's default
- * (NODES=3 in the Skylit SPY ref, 2026-07-13): sparse rails where a strike must be among the TOP
- * THREE to earn a bead — which is what makes births/deaths visible even on names whose wider
- * ladder barely rotates (member: TSLA looked static at top-6; the top-3 set genuinely churns).
- * Presence windows + gaps are the product, not noise.
+ * near the money, so walls form where price actually is. Presence windows + gaps are the product,
+ * not noise.
+ *
+ * ── WHY 5, AND WHAT IT COSTS (2026-08-07) ────────────────────────────────────────────────────
+ * This was 3 (matching NODES=3 in the Skylit SPY ref, 2026-07-13) after 6 was rolled back on member
+ * feedback that TSLA "looked static at top-6". Raised to 5 as a deliberate product call to widen
+ * coverage: at 3, a persistently 4th-strongest wall is invisible for an ENTIRE session, which is
+ * real structure a member never sees.
+ *
+ * It is a genuine trade, measured on the 2026-08-07 session by replaying eight tickers' recorded
+ * ladders through this exact selection at N=3 vs N=5 (both sides, 16 ticker/side pairs):
+ *
+ *     rows            109 -> 149   (+37%)   distinct strikes that earn a bead
+ *     full-width rows   29 ->  51   (+76%)   present in >=90% of buckets — the "looks static" rows
+ *     births            61 ->  69   (+13%)   trails starting inside the window — the formation cue
+ *
+ * The rows gained skew STATIC: full-width count grows ~6x faster than births, and the static share
+ * of the rail goes 27% -> 34%. Per name it split 9 worse / 6 better / 1 unchanged. SPX, SPY, QQQ,
+ * META and AMD call-side all improved (SPX call births 1 -> 4). NVDA call (50% -> 71% full-width)
+ * and ASTS call (20% -> 57%) got materially more static, and TSLA regressed on BOTH sides
+ * (call 14% -> 33%, put 14% -> 40%) — i.e. the same name and the same mechanism behind the original
+ * top-6 rollback. If the "static rail" complaint returns, TSLA is where it will show first and this
+ * constant is the first thing to put back to 3.
+ *
+ * NOT env-tunable on purpose: this module is consumed by VectorChart.tsx, a "use client" component,
+ * so a server env var is undefined in the browser and a NEXT_PUBLIC_ one is inlined at BUILD time.
+ * Either way changing it costs a full rebuild + deploy — exactly what editing this line costs — so
+ * the indirection would buy no operational flexibility while hiding the value from this docblock.
+ * The durable fix for "members disagree about density" is a chart-level control, not a constant.
  */
-export const DOMINANT_WALLS_PER_BUCKET = 3;
+export const DOMINANT_WALLS_PER_BUCKET = 5;
 
 /** Live session: only render wall beads within this many seconds of the chart's leading edge. */
 export const LIVE_TRAIL_LOOKBACK_SEC = 45 * 60;
