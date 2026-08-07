@@ -15,7 +15,8 @@ import {
   primeVectorWallScope,
 } from "@/features/vector/lib/vector-snapshot";
 import {
-  backfillRailPrefix,
+  backfillRailGaps,
+  railUncoveredSec,
   mergeWallHistory,
   seedWallHistoryForDisplay,
   decimateSeedHistory,
@@ -99,20 +100,26 @@ export async function loadVectorSeedProps(
   // solid observed ones, and the model never overwrites or extends past a real sample — a member
   // can always tell recorded structure from reconstructed context. Redis-cached per ticker+session;
   // best-effort (a reconstruction failure just leaves the honest gap).
-  const firstObserved = combined[0]?.time ?? Number.POSITIVE_INFINITY;
-  // First bar of the LATEST session, not bars[0]: the seed now carries ~3 sessions, so bars[0]
-  // is the OLDEST session's open. Comparing today's first observed rail sample against a
-  // two-days-ago open made the "rail starts late" gap check trivially true on every load,
-  // firing the reconstruction fetch even when the observed rail already covered the session
-  // from its open. The rail, the reconstruction (sessionYmd-scoped), and this gap check must
-  // all describe the SAME (displayed/latest) session.
-  const firstBar = lastSessionBars(bars)[0]?.time;
-  const needsPrefix =
-    bars.length > 0 && firstBar != null && firstObserved - firstBar > 20 * 60;
-  const modeledRail = needsPrefix
-    ? await reconstructSessionRail({ ticker, sessionYmd }).catch(() => [] as WallHistorySample[])
-    : ([] as WallHistorySample[]);
-  const backfilled = backfillRailPrefix(combined, modeledRail, firstBar);
+  // Bars of the LATEST session, not bars[0..]: the seed carries ~3 sessions, so bars[0] is the
+  // OLDEST session's open. Measuring coverage against a two-days-ago open would report the whole
+  // window as a gap on every load. The rail, the reconstruction (sessionYmd-scoped), and this
+  // coverage check must all describe the SAME (displayed/latest) session.
+  const sessionBars = lastSessionBars(bars);
+  const firstBar = sessionBars[0]?.time;
+  const lastBar = sessionBars[sessionBars.length - 1]?.time;
+  // FULL-DAY RAIL (FINDINGS 2026-08-07): reconstruct whenever the observed rail leaves ANY material
+  // hole in the session, not only a leading one. The recorder is viewer-driven for tickers outside
+  // the shared universe (`recordActiveNonUniverseWallSamples` samples `getActiveVectorTickers()`),
+  // so gaps appear wherever nobody had the chart open — mid-session and, every single day, from the
+  // 16:00 close to the last extended-hours bar. The old `firstObserved - firstBar > 20min` test only
+  // ever saw the front, so those blank blocks shipped to members untouched.
+  // `reconstructSessionRail` is Redis-cached per ticker+session, so asking more often is cheap.
+  const uncoveredSec = railUncoveredSec(combined, firstBar, lastBar);
+  const modeledRail =
+    bars.length > 0 && uncoveredSec > 20 * 60
+      ? await reconstructSessionRail({ ticker, sessionYmd }).catch(() => [] as WallHistorySample[])
+      : ([] as WallHistorySample[]);
+  const backfilled = backfillRailGaps(combined, modeledRail, firstBar, lastBar);
 
   // SSR-payload size guard (2026-08-01): `combined`/`backfilled` can carry up to MAX_HISTORY
   // (24h of 15s buckets, ~3-4 sessions) for recorder resilience across restarts, but this page
