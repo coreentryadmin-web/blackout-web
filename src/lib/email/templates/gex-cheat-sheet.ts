@@ -1,47 +1,57 @@
 import { SITE } from "@/lib/site";
-import { emailLayout } from "@/lib/email/layout";
+import { emailLayout, emailCta, emailHighlight, emailScreenshot, ENGINE_ACCENT, EMAIL_BRAND } from "@/lib/email/layout";
+import { thermalKeyLevelsAsset } from "@/lib/email/inline-assets";
+import type { EmailAttachment } from "@/lib/email/resend-client";
 
 /**
  * The exit-intent capture's promised lead magnet — a self-contained cheat
  * sheet, not a PDF attachment (no asset pipeline for that exists, and inline
- * HTML renders everywhere without an attachment being flagged/blocked).
+ * HTML renders everywhere without an attachment being flagged/blocked). The
+ * capture flow only collects an email (no name field on the modal), so this
+ * is the one email in the set that stays un-personalized.
  */
-export function gexCheatSheetEmail(): { subject: string; html: string } {
-  const subject = "Your GEX cheat sheet — gamma flip, call wall, put wall";
+export function gexCheatSheetEmail(): { subject: string; html: string; attachments: EmailAttachment[] } {
+  const subject = "What the dealers know before you ever click buy";
+  const thermalShot = thermalKeyLevelsAsset();
 
   const body = `
-    <h1 style="font-size:21px;font-weight:800;margin:0 0 16px;color:#0f172a;">Your GEX Cheat Sheet</h1>
-    <p style="margin:0 0 22px;color:#334155;">Three terms, one framework — this is the read professional desks use to know where price is likely to pin or accelerate.</p>
+    <h1 style="font-size:22px;font-weight:800;margin:0 0 16px;color:${EMAIL_BRAND.ink};line-height:1.3;">Your Cursor Was Already Moving For The X.</h1>
+    <p style="margin:0 0 24px;color:${EMAIL_BRAND.body};">One more tab closing. One more trader gone before they ever saw the real board. That's how it usually goes — but you paused, half a second, right before the exit. That's the instinct that keeps traders alive on this tape. So here's your payoff, paid in full: the exact three-term framework dealers work inside every single session, the one most retail traders never even hear named. Learn it once and you stop watching the chart — you start reading it.</p>
+
+    ${emailScreenshot(thermalShot, "Live BlackOut Thermal key levels — gamma flip, call wall, put wall")}
 
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 22px;">
-      <tr><td style="padding:14px 16px;border-left:3px solid #0891b2;background:#f8fafc;border-radius:0 8px 8px 0;">
-        <p style="margin:0 0 4px;font-weight:700;color:#0f172a;">Gamma Flip</p>
-        <p style="margin:0;color:#475569;font-size:14px;">The price where dealers switch from long to short gamma. Above it, hedging dampens moves. Below it, hedging amplifies them — the single most important level to know before you trade.</p>
-      </td></tr>
-      <tr><td style="height:10px;"></td></tr>
-      <tr><td style="padding:14px 16px;border-left:3px solid #16a34a;background:#f8fafc;border-radius:0 8px 8px 0;">
-        <p style="margin:0 0 4px;font-weight:700;color:#0f172a;">Call Wall</p>
-        <p style="margin:0;color:#475569;font-size:14px;">The strike with the largest positive dealer gamma — mechanical resistance, not a chart pattern.</p>
-      </td></tr>
-      <tr><td style="height:10px;"></td></tr>
-      <tr><td style="padding:14px 16px;border-left:3px solid #dc2626;background:#f8fafc;border-radius:0 8px 8px 0;">
-        <p style="margin:0 0 4px;font-weight:700;color:#0f172a;">Put Wall</p>
-        <p style="margin:0;color:#475569;font-size:14px;">The mirror image — largest negative dealer gamma, acting as mechanical support.</p>
-      </td></tr>
+      ${emailHighlight(
+        "Gamma Flip",
+        "The line in the sand for the entire session. Above it, dealers sit long gamma and lean against every move — spikes get sold, dips get bought, price gets pinned. Below it, they flip short gamma and start piling ON the move instead of fighting it — things get loose, fast. One number. Know which side of it you're standing on before you touch a single contract today.",
+        ENGINE_ACCENT.blue
+      )}
+      ${emailHighlight(
+        "Call Wall",
+        "The strike holding the fattest positive dealer gamma on the board. Not a trendline someone eyeballed at 2am. Not vibes — dealers are mechanically forced to sell into strength the closer price grinds toward it. Ceiling until it isn't.",
+        ENGINE_ACCENT.green
+      )}
+      ${emailHighlight(
+        "Put Wall",
+        "The mirror image of the call wall. Biggest negative dealer gamma on the board, forcing dealers to buy dips as price nears it — same cold mechanical math, opposite direction. That's your floor.",
+        ENGINE_ACCENT.red
+      )}
     </table>
 
-    <p style="margin:0 0 20px;color:#334155;">Want to see these levels live for SPX/SPY/QQQ — free, no account needed?</p>
+    <p style="margin:0 0 20px;color:${EMAIL_BRAND.body};">Cheat sheet's locked in. But a cheat sheet can't tell you where these three lines are sitting right now, this session, on SPX, SPY, or QQQ — that's the version that actually matters.</p>
 
-    <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 28px;"><tr><td style="border-radius:8px;background:#0891b2;">
-      <a href="${SITE.url}/tools/gamma-snapshot" style="display:inline-block;padding:13px 26px;font-weight:700;color:#ffffff;text-decoration:none;font-size:14px;">See the live snapshot →</a>
-    </td></tr></table>
+    ${emailCta(`${SITE.url}/tools/gamma-snapshot`, "Pull Up Today's Live Levels — Free")}
 
-    <p style="margin:0 0 8px;color:#64748b;font-size:14px;">Full explainers, with real SPX examples:</p>
+    <p style="margin:0 0 8px;color:${EMAIL_BRAND.muted};font-size:14px;">No login. No card. Just the tape, straight up. Full explainers, with real SPX examples:</p>
     <p style="margin:0;font-size:14px;">
-      <a href="${SITE.url}/learn/gamma-flip-explained" style="color:#0891b2;text-decoration:none;">Gamma Flip Explained</a><br />
-      <a href="${SITE.url}/learn/call-wall-put-wall-explained" style="color:#0891b2;text-decoration:none;">Call Wall &amp; Put Wall Explained</a>
+      <a href="${SITE.url}/learn/gamma-flip-explained" style="color:${EMAIL_BRAND.limeText};text-decoration:none;font-weight:600;">Gamma Flip Explained</a><br />
+      <a href="${SITE.url}/learn/call-wall-put-wall-explained" style="color:${EMAIL_BRAND.limeText};text-decoration:none;font-weight:600;">Call Wall &amp; Put Wall Explained</a>
     </p>
   `;
 
-  return { subject, html: emailLayout({ preheader: "Gamma flip, call wall, put wall — the 3-term framework.", bodyHtml: body }) };
+  const layout = emailLayout({
+    preheader: "Gamma flip, call wall, put wall — the three-term framework that reads the tape before it moves. Free, live, no account needed.",
+    bodyHtml: body,
+  });
+  return { subject, html: layout.html, attachments: [...layout.attachments, thermalShot] };
 }

@@ -43,8 +43,8 @@ export async function startWelcomeSequence(
     );
     if ((res.rowCount ?? 0) === 0) return; // already started for this user — no-op
 
-    const { subject, html } = firstStep.build({ firstName: input.firstName });
-    const result = await deps.sendEmail({ to: input.email, subject, html });
+    const { subject, html, attachments } = firstStep.build({ firstName: input.firstName });
+    const result = await deps.sendEmail({ to: input.email, subject, html, attachments });
 
     const nextStep = WELCOME_SEQUENCE[1];
     await deps.dbQuery(
@@ -107,8 +107,8 @@ export async function processDueWelcomeSequenceSteps(
         continue;
       }
 
-      const { subject, html } = step.build({ firstName: row.first_name });
-      const sendResult = await deps.sendEmail({ to: row.email, subject, html });
+      const { subject, html, attachments } = step.build({ firstName: row.first_name });
+      const sendResult = await deps.sendEmail({ to: row.email, subject, html, attachments });
 
       if (!sendResult.ok) {
         result.failed++;

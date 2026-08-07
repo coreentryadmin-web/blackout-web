@@ -1,10 +1,11 @@
 import { SITE } from "@/lib/site";
+import { chromeAssets, cidSrc, discordBadgeAsset, logoAsset, xBadgeAsset, type InlineAsset } from "@/lib/email/inline-assets";
 
 /**
  * Shared HTML email chrome — header, footer with real Website/Discord/X links,
- * and consistent typography. Every template (gex-cheat-sheet, welcome-sequence)
- * renders its own body content through this so every email looks like it came
- * from the same product, not a one-off inline snippet per template.
+ * and consistent typography. Every template (gex-cheat-sheet, welcome-sequence,
+ * billing-lifecycle) renders its own body content through this so every email
+ * looks like it came from the same product, not a one-off inline snippet.
  *
  * Header/footer intentionally mirror the real site chrome (Nav.tsx / marketing
  * footer): near-black bar, the actual PWA icon as the logo mark, and the same
@@ -17,6 +18,12 @@ import { SITE } from "@/lib/site";
  * body (borders, buttons-with-dark-text) but never as small body text on
  * white — they fail contrast there, so body text links use a darkened
  * lime (#4d7c0f) instead.
+ *
+ * All images (logo, Discord/X badges, product screenshots) are embedded as
+ * real inline (CID) attachments via lib/email/inline-assets.ts, not hosted
+ * URLs — see that file's comment for why. emailLayout() returns the
+ * attachments its own chrome needs; a template merges those with any of its
+ * own (e.g. emailScreenshot's asset) into the final sendEmail() call.
  */
 export const EMAIL_BRAND = {
   bg: "#f4f5f7",
@@ -34,9 +41,12 @@ export function emailLayout(input: {
   /** Hidden preview text shown next to the subject line in most inbox lists. */
   preheader: string;
   bodyHtml: string;
-}): string {
+}): { html: string; attachments: InlineAsset[] } {
   const { preheader, bodyHtml } = input;
-  return `
+  const logo = logoAsset();
+  const discord = discordBadgeAsset();
+  const x = xBadgeAsset();
+  const html = `
 <!doctype html>
 <html lang="en">
 <head>
@@ -53,7 +63,7 @@ export function emailLayout(input: {
 <tr><td style="padding:22px 32px;background:${EMAIL_BRAND.chrome};">
   <table role="presentation" cellpadding="0" cellspacing="0"><tr>
     <td style="width:38px;vertical-align:middle;">
-      <img src="${SITE.url}/icon-192.png" width="34" height="34" alt="BlackOut" style="display:block;border-radius:8px;" />
+      <img src="${cidSrc(logo)}" width="34" height="34" alt="BlackOut" style="display:block;border-radius:8px;" />
     </td>
     <td style="vertical-align:middle;padding-left:11px;">
       <table role="presentation" cellpadding="0" cellspacing="0"><tr>
@@ -74,7 +84,7 @@ ${bodyHtml}
     <td style="padding-right:20px;">
       <a href="${SITE.url}" style="text-decoration:none;">
         <table role="presentation" cellpadding="0" cellspacing="0"><tr>
-          <td><img src="${SITE.url}/icon-192.png" width="18" height="18" alt="" style="display:block;border-radius:5px;" /></td>
+          <td><img src="${cidSrc(logo)}" width="18" height="18" alt="" style="display:block;border-radius:5px;" /></td>
           <td style="padding-left:6px;font-size:12.5px;font-weight:700;color:${EMAIL_BRAND.ink};">blackouttrades.com</td>
         </tr></table>
       </a>
@@ -82,7 +92,7 @@ ${bodyHtml}
     <td style="padding-right:20px;">
       <a href="${SITE.social.discord.url}" style="text-decoration:none;">
         <table role="presentation" cellpadding="0" cellspacing="0"><tr>
-          <td><img src="${SITE.url}/images/email/discord-badge.png" width="18" height="18" alt="" style="display:block;border-radius:50%;" /></td>
+          <td><img src="${cidSrc(discord)}" width="18" height="18" alt="" style="display:block;border-radius:50%;" /></td>
           <td style="padding-left:6px;font-size:12.5px;font-weight:700;color:${EMAIL_BRAND.ink};">Discord</td>
         </tr></table>
       </a>
@@ -90,7 +100,7 @@ ${bodyHtml}
     <td>
       <a href="${SITE.social.x.url}" style="text-decoration:none;">
         <table role="presentation" cellpadding="0" cellspacing="0"><tr>
-          <td><img src="${SITE.url}/images/email/x-badge.png" width="18" height="18" alt="" style="display:block;border-radius:50%;" /></td>
+          <td><img src="${cidSrc(x)}" width="18" height="18" alt="" style="display:block;border-radius:50%;" /></td>
           <td style="padding-left:6px;font-size:12.5px;font-weight:700;color:${EMAIL_BRAND.ink};">X</td>
         </tr></table>
       </a>
@@ -107,6 +117,7 @@ ${bodyHtml}
 </table>
 </body>
 </html>`.trim();
+  return { html, attachments: chromeAssets() };
 }
 
 /** Same 6-hue accent system Nav.tsx assigns per engine (nav-accent-*) — reused
@@ -144,9 +155,18 @@ export function emailHighlight(label: string, description: string, accent: strin
 }
 
 /** A real product-screenshot block — rounded, thin dark border so it reads as
- *  a genuine app window rather than a random pasted image. */
-export function emailScreenshot(src: string, alt: string): string {
+ *  a genuine app window rather than a random pasted image. Pass one of the
+ *  InlineAsset getters from lib/email/inline-assets.ts; the caller must add
+ *  the SAME asset to the attachments list handed to sendEmail(). */
+export function emailScreenshot(asset: InlineAsset, alt: string): string {
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 22px;"><tr><td style="border-radius:10px;overflow:hidden;border:1px solid #1c2333;line-height:0;">
-    <img src="${src}" width="496" alt="${alt}" style="display:block;width:100%;max-width:496px;height:auto;" />
+    <img src="${cidSrc(asset)}" width="496" alt="${alt}" style="display:block;width:100%;max-width:496px;height:auto;" />
   </td></tr></table>`;
+}
+
+/** Simple {{token}} substitution shared by the billing-lifecycle templates
+ *  (firstName, accessUntil, graceDays, ...) — same idea as welcome-sequence's
+ *  local personalize(), pulled out here so new templates don't each redefine it. */
+export function substituteTokens(text: string, tokens: Record<string, string>): string {
+  return Object.entries(tokens).reduce((acc, [key, value]) => acc.split(`{{${key}}}`).join(value), text);
 }
