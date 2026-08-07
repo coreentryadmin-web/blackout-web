@@ -42,6 +42,14 @@ const PUBLIC_ROUTE_ALLOWLIST = new Set([
   // audience allow-list pinned in env (`NATIVE_OAUTH_{GOOGLE,APPLE}_CLIENT_IDS`);
   // any token from a different client-id is rejected as `verify_failed`.
   "src/app/api/auth/native-oauth/complete/route.ts",
+  // Deliberately public social-proof endpoint (see docs/marketing/SEO-GROWTH.md
+  // finding #2). Serves ONLY buildPublicTrackRecord()'s output, a projection
+  // explicitly documented (src/lib/track-record-public.ts) as the sole shape
+  // safe to leave the server unauthenticated — aggregate win-rate/counts only,
+  // never per-trade rows, prices, dates, or PII. Protected by an IP rate limit
+  // (30 req/60s), not an auth guard, since anonymous visitors are the intended
+  // audience — powers /track-record and the /embed/track-record widget.
+  "src/app/api/public/track-record/route.ts",
 ]);
 
 const GUARD_PATTERNS = [
