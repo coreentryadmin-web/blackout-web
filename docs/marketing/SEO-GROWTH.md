@@ -16,7 +16,7 @@ Legend: 🔴 Not started · 🟡 In progress · 🟢 PR open · ✅ Merged · �
 | # | Finding | Status | PR | Notes |
 |---|---|---|---|---|
 | 1 | `/account` has no cancel/billing control despite FAQ claiming it does | 🟢 | [#1886](https://github.com/coreentryadmin-web/blackout-web/pull/1886) | Added `AccountMembershipPanel` (real Manage Subscription → Whop portal link) + fixed FAQ copy in all 3 places it was duplicated (found a 3rd copy — the JSON-LD `home-faq.ts` — beyond the 2 the audit flagged) |
-| 2 | Public track record was pulled behind admin auth; it's real, sanitized data | 🟢 | [#1889](https://github.com/coreentryadmin-web/blackout-web/pull/1889) | ⚠️ Reverses a previously *deliberate* lockdown (git history is squashed, couldn't find the original reason) — flagged prominently in the PR, please confirm no compliance/legal concern before merging |
+| 2 | Public track record was pulled behind admin auth; it's real, sanitized data | ⛔ Won't do | [#1889](https://github.com/coreentryadmin-web/blackout-web/pull/1889) (closed) | Confirmed with the product owner (2026-08-07): track record stays admin-only, intentionally. The lockdown this PR would have reversed was correct as-is — closed without merging |
 | 3 | No referral/affiliate program exists at all | 🟢 | [#1891](https://github.com/coreentryadmin-web/blackout-web/pull/1891) | Full tracking/attribution/conversion shipped. Reward is manual-for-now (Discord ops ping) — Whop's promo-code API turned out to be checkout-time/new-users-only, doesn't cleanly credit an existing subscriber's renewal; see PR body |
 | 4 | `/pricing` has no guarantee, FAQ, or comparison table (only `/upgrade` does) | 🟢 | [#1888](https://github.com/coreentryadmin-web/blackout-web/pull/1888) | Added accurate per-tier trust lines (7-day guarantee on yearly, cancel-anytime on monthly, sourced from the real refund policy), `FeatureComparison`, and a 4-item FAQ |
 | 5 | No free ungated tool/lead magnet exists | 🔴 | — | `computeGexWalls()` reusable; needs new public no-auth rate-limited route (first of its kind) |
@@ -30,7 +30,7 @@ Legend: 🔴 Not started · 🟡 In progress · 🟢 PR open · ✅ Merged · �
 
 | Finding | Status | PR | Notes |
 |---|---|---|---|
-| Competitor comparison pages (e.g. `/vs/spotgamma`) don't exist | 🔴 | — | Homepage already has a "them vs us" table to source from |
+| Competitor comparison pages don't exist | 🟢 | [#1892](https://github.com/coreentryadmin-web/blackout-web/pull/1892) | `/vs/others` — kept generic (no named competitor) per explicit steer; reuses the homepage's existing "them vs us" positioning content rather than naming a specific company |
 | No `llms.txt` / AI-answer-structured content | ⛔ | — | Lower priority, deferred |
 | `programmatic-seo` — 42 hand-written articles, no template-scale generation | ✅ N/A | — | Fine at current content volume; revisit only if scaling to hundreds of pages |
 
