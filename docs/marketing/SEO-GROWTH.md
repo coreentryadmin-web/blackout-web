@@ -5,24 +5,30 @@ Living tracker for every finding from the [Marketing Skills Audit](https://claud
 source of truth, not the artifact (which is a point-in-time snapshot).
 
 **Workflow:** each codeable finding gets its own `fix/<slug>` branch + PR to `main`,
-per the standing issue-handling policy in `CLAUDE.md`. **PRs are NOT auto-merged for
-this batch** — user reviews and merges manually (explicit override of the standing
-auto-merge authorization, requested 2026-08-07).
+per the standing issue-handling policy in `CLAUDE.md`. **The manual-review override on
+this batch has been lifted** (2026-08-07, later the same day): the owner restored the
+standing auto-merge authorization — "run it automatically and autonomously", plus an
+explicit instruction to watch for new PRs on this repo and merge them once CI is green
+and the change is judged correct. So `verify`-green PRs in this batch merge without
+waiting for a human. Two exceptions still hold, and they are about *judgment*, not
+about verification: hold anything that is a **business/pricing decision** rather than a
+bug fix (e.g. what to publish for free — #1889, #1893), and hold anything with a real
+defect regardless of a green pipeline (#1896).
 
-Legend: 🔴 Not started · 🟡 In progress · 🟢 PR open · ✅ Merged · ⛔ Blocked (needs human input/decision)
+Legend: 🔴 Not started · 🟡 In progress · 🟢 PR open · ✅ Merged · ⏸ Held (PR green, awaiting a decision or a fix) · ⛔ Blocked/won't do
 
 ## Top 10 (ranked by impact × cost)
 
 | # | Finding | Status | PR | Notes |
 |---|---|---|---|---|
-| 1 | `/account` has no cancel/billing control despite FAQ claiming it does | 🟢 | [#1886](https://github.com/coreentryadmin-web/blackout-web/pull/1886) | Added `AccountMembershipPanel` (real Manage Subscription → Whop portal link) + fixed FAQ copy in all 3 places it was duplicated (found a 3rd copy — the JSON-LD `home-faq.ts` — beyond the 2 the audit flagged) |
+| 1 | `/account` has no cancel/billing control despite FAQ claiming it does | ✅ | [#1886](https://github.com/coreentryadmin-web/blackout-web/pull/1886) | Added `AccountMembershipPanel` (real Manage Subscription → Whop portal link) + fixed FAQ copy in all 3 places it was duplicated (found a 3rd copy — the JSON-LD `home-faq.ts` — beyond the 2 the audit flagged) |
 | 2 | Public track record was pulled behind admin auth; it's real, sanitized data | ⛔ Won't do | [#1889](https://github.com/coreentryadmin-web/blackout-web/pull/1889) (closed) | Confirmed with the product owner (2026-08-07): track record stays admin-only, intentionally. The lockdown this PR would have reversed was correct as-is — closed without merging |
-| 3 | No referral/affiliate program exists at all | 🟢 | [#1891](https://github.com/coreentryadmin-web/blackout-web/pull/1891) | Full tracking/attribution/conversion shipped. Reward is manual-for-now (Discord ops ping) — Whop's promo-code API turned out to be checkout-time/new-users-only, doesn't cleanly credit an existing subscriber's renewal; see PR body |
-| 4 | `/pricing` has no guarantee, FAQ, or comparison table (only `/upgrade` does) | 🟢 | [#1888](https://github.com/coreentryadmin-web/blackout-web/pull/1888) | Added accurate per-tier trust lines (7-day guarantee on yearly, cancel-anytime on monthly, sourced from the real refund policy), `FeatureComparison`, and a 4-item FAQ |
-| 5 | No free ungated tool/lead magnet exists | 🔴 | — | `computeGexWalls()` reusable; needs new public no-auth rate-limited route (first of its kind) |
-| 6 | No downgrade/pause offer or cancellation-reason capture | 🟡 | [#1895](https://github.com/coreentryadmin-web/blackout-web/pull/1895) | Reason capture is DONE — Whop's own cancel flow already collects `cancel_option`/`cancellation_reason`, we just weren't reading it off the webhook payload. Discord ops notification on every cancellation now. Pre-cancel save/downgrade offer remains ⛔ blocked (cancel button lives on Whop's portal, no in-app interception point) |
-| 7 | No exit-intent/email capture anywhere | ⛔ | — | Capture UI + DB storage is codeable now; **actually emailing captured leads needs a new ESP (no email-sending infra exists at all — zero email deps in the repo)** — needs your call on provider (Resend recommended) before the send-side can ship |
-| 8 | No A/B testing infrastructure | 🟢 | [#1894](https://github.com/coreentryadmin-web/blackout-web/pull/1894) | Deterministic FNV-1a bucketing + GA4 exposure event, ready to use — deliberately not forced onto a live experiment in this PR (that's a separate decision) |
+| 3 | No referral/affiliate program exists at all | ⛔ **DROPPED** | ~~#1891~~ (closed) | **Not building this. Whop already runs one — see "Referral / affiliate: dropped" below.** Owner decision 2026-08-07 |
+| 4 | `/pricing` has no guarantee, FAQ, or comparison table (only `/upgrade` does) | ✅ | [#1888](https://github.com/coreentryadmin-web/blackout-web/pull/1888) | Added accurate per-tier trust lines (7-day guarantee on yearly, cancel-anytime on monthly, sourced from the real refund policy), `FeatureComparison`, and a 4-item FAQ |
+| 5 | No free ungated tool/lead magnet exists | ⏸ HELD | [#1893](https://github.com/coreentryadmin-web/blackout-web/pull/1893) | Built and `verify`-green — `/tools/gamma-snapshot` + a public 3-ticker-allowlisted, IP-rate-limited, 5-min-cached route. **Held deliberately, not for any defect:** publishing gamma flip + call/put walls for free is a pricing/positioning call (what stays behind the paywall), the same category as #2 — that's the owner's decision, not a bug fix an agent should make unilaterally. The projection is already thin by design (spot/walls/flip/posture only, no strike-expiry matrix), so the question is purely "do we give this away", not "is this safe to serve" |
+| 6 | No downgrade/pause offer or cancellation-reason capture | ✅ (half) | [#1895](https://github.com/coreentryadmin-web/blackout-web/pull/1895) | Reason capture is DONE — Whop's own cancel flow already collects `cancel_option`/`cancellation_reason`, we just weren't reading it off the webhook payload. Discord ops notification on every cancellation now. Pre-cancel save/downgrade offer remains ⛔ blocked (cancel button lives on Whop's portal, no in-app interception point) |
+| 7 | No exit-intent/email capture anywhere | ⏸ HELD (changes requested) | [#1896](https://github.com/coreentryadmin-web/blackout-web/pull/1896) | ESP decision made (Resend, domain verified) so the send-side is no longer blocked. **Held on two real defects, both detailed on the PR:** (a) the public capture route sends a real email to an *attacker-chosen* recipient on every submission with only a per-IP rate limit — that caps the caller, not the victim's inbox, making it an email-bomb amplifier that would burn a brand-new sending domain's reputation; needs a per-recipient cooldown (`lead_magnet_sent_at` already exists for it). (b) `RESEND_API_KEY` is in Secrets Manager but not referenced by the ECS task definition, so `sendEmail()` returns `not_configured` while the modal still renders "Check your inbox" — the visitor is told it sent and gets nothing |
+| 8 | No A/B testing infrastructure | ✅ | [#1894](https://github.com/coreentryadmin-web/blackout-web/pull/1894) | Deterministic FNV-1a bucketing + GA4 exposure event, ready to use — deliberately not forced onto a live experiment in this PR (that's a separate decision) |
 | 9 | No product analytics beyond GA4/X pixel (session replay, heatmaps, cohorts) | ⛔ | — | Not a code fix — vendor decision (PostHog etc.) deferred per audit, not urgent at current ad spend |
 | 10 | Homepage FAQ / `/faq` / pricing copy have drifted into 3 inconsistent sources | 🟡 | [#1886](https://github.com/coreentryadmin-web/blackout-web/pull/1886), [#1888](https://github.com/coreentryadmin-web/blackout-web/pull/1888) | The factually-wrong cancel-flow answer is now fixed identically everywhere it appeared (#1886), and `/pricing` gained its own (now-correct) FAQ (#1888). Full source-of-truth unification across all 4 surfaces (home accordion / `/faq` / `/pricing` / JSON-LD) is a larger refactor — deliberately not done, each is a different curated length by design — ⛔ deferred |
 
@@ -30,7 +36,7 @@ Legend: 🔴 Not started · 🟡 In progress · 🟢 PR open · ✅ Merged · �
 
 | Finding | Status | PR | Notes |
 |---|---|---|---|
-| Competitor comparison pages don't exist | 🟢 | [#1892](https://github.com/coreentryadmin-web/blackout-web/pull/1892) | `/vs/others` — kept generic (no named competitor) per explicit steer; reuses the homepage's existing "them vs us" positioning content rather than naming a specific company |
+| Competitor comparison pages don't exist | ✅ | [#1892](https://github.com/coreentryadmin-web/blackout-web/pull/1892) | `/vs/others` — kept generic (no named competitor) per explicit steer; reuses the homepage's existing "them vs us" positioning content rather than naming a specific company |
 | No `llms.txt` / AI-answer-structured content | ⛔ | — | Lower priority, deferred |
 | `programmatic-seo` — 42 hand-written articles, no template-scale generation | ✅ N/A | — | Fine at current content volume; revisit only if scaling to hundreds of pages |
 
@@ -38,8 +44,8 @@ Legend: 🔴 Not started · 🟡 In progress · 🟢 PR open · ✅ Merged · �
 
 | Finding | Status | PR | Notes |
 |---|---|---|---|
-| Community-marketing / ambassador program | ⛔ | — | Deferred until referral program (#3) ships — natural follow-on |
-| Co-marketing with trading-education creators | ⛔ | — | Manual outreach, not a code task — deferred until referral program exists to offer as the partnership mechanic |
+| Community-marketing / ambassador program | ⛔ | — | Was gated on the referral program, which is now dropped. If revisited, the mechanic to offer is Whop's own affiliate program, not a first-party build |
+| Co-marketing with trading-education creators | ⛔ | — | Manual outreach, not a code task. The partnership mechanic already exists — Whop affiliate enrolment — so this is no longer blocked on any build |
 
 ## Content & Copy
 
@@ -59,9 +65,47 @@ Legend: 🔴 Not started · 🟡 In progress · 🟢 PR open · ✅ Merged · �
 ### Infra notes (from pre-implementation research, 2026-08-07)
 
 - **Email sending: not integrated anywhere in the repo** — zero email deps (`resend`/`sendgrid`/`postmark`/`nodemailer`/`ses`). Clerk sends its own auth emails only. Any feature that needs to *send* an email (welcome sequence, cancellation win-back, lead-magnet delivery) is blocked on picking an ESP.
-- **Whop API**: `@whop/sdk` is wired (`src/lib/whop.ts`, `getWhopClient()`), currently only used for membership/tier resolution. `client.promoCodes.create(...)` is available and unused — this unblocks referral rewards without new infra.
+- **Whop API**: `@whop/sdk` is wired (`src/lib/whop.ts`, `getWhopClient()`), currently only used for membership/tier resolution. NOTE: an earlier draft of this doc claimed `client.promoCodes.create(...)` "unblocks referral rewards" — it does **not**. Whop promo codes are checkout-time and `new_users_only`, so they discount a *new buyer* and cannot credit an existing subscriber. Rewarding a referrer is Whop's **affiliate** program, not promo codes (see below).
 - **DB**: raw `pg` (no ORM). New tables go in `runMigrations()` in `src/lib/db.ts` (the authoritative copy — auto-runs on cold start), optionally mirrored as a numbered doc file in `src/lib/migrations/`.
 - **Public GEX data**: `computeGexWalls()` (`src/lib/providers/gex-wall-levels.ts`) is a reusable pure function, but **no unauthenticated public market-data route exists today** — a public lead-magnet endpoint would be the first of its kind. Follow the rate-limit pattern in `src/lib/ip-rate-limit.ts`.
 - **Discord webhook helper**: `src/lib/discord-post.ts` (`postDiscordWebhook`) is generic and reusable for ops notifications (e.g. cancellation-reason alerts) with zero new infra.
 - **Track record data is real**: `buildPublicTrackRecord()` (`src/lib/track-record-public.ts`) reuses the exact same aggregation as the internal premium desk and is already PII/headline-sanitized. It used to be served publicly at `src/app/api/public/track-record/route.ts`; that route is now admin-only. Restoring public access is an auth/rate-limit decision, not a data-integrity one.
 - **No A/B/feature-flag rollout pattern exists** — closest precedent is `tool-access.ts`'s binary launch-gate CSV, not a percentage bucketer.
+
+
+## Referral / affiliate: dropped (2026-08-07)
+
+**Decision: we are not building a first-party referral program.** PR #1891 was closed and its code
+deleted. This section exists so the question is not re-opened from scratch.
+
+**Why:** Whop already runs a full affiliate program on this company, and it owns the parts that are
+genuinely hard — attribution at its own checkout, commission calculation, holding the funds, fraud,
+and the payout. Verified live against production (`biz_wvKo8ZdB4n1GA5`) with the existing
+`WHOP_API_KEY`:
+
+| Fact | Evidence |
+|---|---|
+| Affiliate program is live and already has affiliates | `GET https://api.whop.com/v1/affiliates?company_id=…` → 200, 3 records |
+| Whop's own marketplace is a real acquisition channel | `@whop` affiliate: **5 referrals, 3 active members, $525.98 revenue, $75 MRR, 100% retention at 30d and 90d** |
+| Program is on by default at 30%; members self-enrol via Whop's hosted UI | Whop seller docs |
+| Whop computes commission, holds funds, and pays out (30-day hold) | Whop seller docs |
+| No commission overrides configured | every affiliate: `total_overrides_count: 0` |
+| Program is unconfigured | `affiliate_instructions: null`, `featured_affiliate_product: null` |
+
+**Two traps worth recording, both of which cost real time:**
+
+1. **The affiliate API is on `/v1`, not `/v2`.** `https://api.whop.com/api/v2/*` answers *every*
+   unrouted path with a blanket `401 "The API Key supplied does not have permission to access this
+   route."` — an invented endpoint (`/api/v2/banana_pancakes`) returns the identical message. That
+   reads exactly like a missing scope and led to two wrong conclusions ("needs scope widening", then
+   "Whop has no affiliate API"). `/v1` returns honest `404`s. Always control-test a fake path before
+   concluding anything from a Whop v2 error.
+2. **Promo codes are not a referral reward.** The ~20 person-named codes (`evandude20`, `jworx20`,
+   `leaf20`, `ndxslayer`, …) discount the *buyer* by 20% and pay the sharer nothing, which is the
+   likely reason almost all sit at 0 uses. A code and an affiliate are different objects in Whop.
+
+**If this is revisited,** the work is configuration, not code: set `affiliate_instructions` and
+`featured_affiliate_product`, confirm the commission rate, and enrol the promo-code people as
+affiliates (`POST /v1/affiliates` with their email — create-or-find). A thin in-app panel reading
+`GET /v1/affiliates` is the only code worth writing, and only after the program is actually
+configured and recruiting.
