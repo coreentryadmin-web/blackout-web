@@ -19,7 +19,7 @@
  * one vocabulary. No IO, no React.
  */
 
-import type { Horizon } from "@/lib/horizons";
+import { dteRangeLabel, type Horizon } from "@/lib/horizons";
 
 export type NightHawkView = "ZERO_DTE" | "SWING" | "BANGER" | "LEGACY";
 
@@ -45,13 +45,13 @@ export const NIGHTHAWK_VIEW_META: Record<NightHawkView, NightHawkViewMeta> = {
   ZERO_DTE: {
     label: "0DTE",
     tag: "0DTE",
-    blurb: "Same-day expiries across the whole market — hot flow, minutes-to-hours.",
+    blurb: "Same-day trades across the whole market — hot flow, minutes-to-hours.",
     horizon: "ZERO_DTE",
   },
   SWING: {
     label: "Swings",
     tag: "SWING",
-    blurb: "2–30 day setups building across sessions — momentum + accumulation.",
+    blurb: `${dteRangeLabel("SWING")} setups building across sessions \u2014 momentum + accumulation.`,
     horizon: "SWING",
   },
   BANGER: {
@@ -134,7 +134,7 @@ export function viewForHorizon(horizon: Horizon): NightHawkView | null {
 export const NIGHTHAWK_COMPACT_LANE_LABEL = {
   ZERO_DTE: "0DTE · same-day",
   ZERO_DTE_SIM: "0DTE · SIMULATION",
-  SWING: "Swings · 2–30 DTE",
+  SWING: `Swings \u00b7 ${dteRangeLabel("SWING")}`,
   LEAPS: "LEAPS · ≤90 DTE",
   LEGACY: "Legacy · Playbook",
 } as const;

@@ -1,3 +1,7 @@
+import { dteRangeLabel } from "@/lib/horizons";
+
+const SWING_DTE_RANGE = dteRangeLabel("SWING");
+
 export const LARGO_SYSTEM_PROMPT = `You are Largo — the AI desk lead on BlackOut Trading. Sharp, direct, institutionally literate. Members pay for accuracy first — personality second.
 
 ## Scope and limitations
@@ -99,7 +103,7 @@ Night Hawk is ONE product with four engines — do not conflate them:
 
 1. **0DTE Command** (default tab) — whole-market intraday 0DTE scanner (multi-ticker, NOT SPX Slayer)
    - Tools: get_zerodte_plays, get_zerodte_rejections, get_zerodte_record, get_cortex_decision
-2. **Swings** — 2–30 DTE multi-day discovery + live position sections
+2. **Swings** — ${SWING_DTE_RANGE} multi-day discovery + live position sections
    - Tools: get_swing_horizon, get_nighthawk_horizons, get_horizon_outcomes
 3. **Bangers** (Engine B) — weekly breakout discovery + scale-out tracking
    - Tools: get_banger_board
@@ -123,7 +127,7 @@ Night Hawk is ONE product with four engines — do not conflate them:
 | Why Cortex committed/skipped a 0DTE name | get_cortex_decision | get_spx_play |
 | Dealer gamma matrix / walls | get_positioning, get_gex_heatmap | get_gex (SPX desk only) |
 | Evening swing edition picks | get_nighthawk_edition | get_swing_horizon |
-| Intraday swing lane (2–30 DTE) | get_swing_horizon | get_nighthawk_edition |
+| Intraday swing lane (${SWING_DTE_RANGE}) | get_swing_horizon | get_nighthawk_edition |
 | Weekly banger breakouts | get_banger_board | get_zerodte_plays |
 | EOD pin forecast | get_spx_pin | max pain / gamma magnet |
 | HELIX signal follow-through | get_helix_signal_outcomes | get_flow_tape alone |

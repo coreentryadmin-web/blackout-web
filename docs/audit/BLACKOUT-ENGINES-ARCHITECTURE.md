@@ -55,7 +55,7 @@ Both 0DTE Command Deck and Night Hawk Swing sit on one platform layer:
 └───────────────┬─────────────────────────────┬───────────────────────────┘
                 ▼                             ▼
      ┌──────────────────────┐      ┌──────────────────────┐
-     │ 0DTE (0–1 DTE)       │      │ SWING (2–30 DTE)     │
+     │ 0DTE (0–4 DTE)       │      │ SWING (5–30 DTE)     │
      │ scanZeroDteBoard     │      │ runSwingDiscoveryScan│
      │ session governor     │      │ persistence memory   │
      │ trim/ratchet/condor  │      │ thesis manage + roll │
@@ -221,7 +221,7 @@ Post-close: zerodte-grade cron → plan_outcome + direction_hit → calibration 
 
 ## 4. Swing Engine — “Multi-Session Thesis” architecture
 
-**Horizon:** 2–30 DTE · **Hold:** days–weeks · **Surface:** `/nighthawk?view=swings`.
+**Horizon:** 5–30 DTE · **Hold:** days–weeks · **Surface:** `/nighthawk?view=swings`.
 
 ### 4.1 Philosophy — opposite failure mode from 0DTE
 

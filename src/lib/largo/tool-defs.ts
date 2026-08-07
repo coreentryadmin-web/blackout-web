@@ -25,6 +25,10 @@ import {
 } from "@/lib/largo/intent-keywords";
 import { KNOWN_TICKERS } from "@/lib/largo/question-intent";
 
+import { dteRangeLabel } from "@/lib/horizons";
+
+const SWING_DTE_RANGE = dteRangeLabel("SWING");
+
 
 
 function t(
@@ -252,12 +256,12 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
   ),
   t(
     "get_banger_board",
-    "Night Hawk Bangers lane (Engine B) — whole-market weekly breakout discovery with mechanical scale-out tracking. Returns open + recently closed banger_positions: ticker, contract, entry/last mark, live P&L, scale-out state, discovery stats. Distinct from 0DTE Command (intraday scanner) and Swings (2–30 DTE thesis lane).",
+    `Night Hawk Bangers lane (Engine B) — whole-market weekly breakout discovery with mechanical scale-out tracking. Returns open + recently closed banger_positions: ticker, contract, entry/last mark, live P&L, scale-out state, discovery stats. Distinct from 0DTE Command (intraday scanner) and Swings (${SWING_DTE_RANGE} thesis lane).`,
     { limit: { type: "integer", default: 40 } }
   ),
   t(
     "get_swing_horizon",
-    "Night Hawk Swings lane — 2–30 DTE multi-day discovery board with seven action sections (COMMIT_NOW, WAITING_FOR_ENTRY, WATCH, RESEARCH, MANAGING, SCALING_OUT, EXITING). Returns committed/watch counts, section counts, and sample plays with scores. Use for swing-specific questions — NOT the evening Legacy edition (get_nighthawk_edition) and NOT 0DTE Command (get_zerodte_plays).",
+    `Night Hawk Swings lane — ${SWING_DTE_RANGE} multi-day discovery board with seven action sections (COMMIT_NOW, WAITING_FOR_ENTRY, WATCH, RESEARCH, MANAGING, SCALING_OUT, EXITING). Returns committed/watch counts, section counts, and sample plays with scores. Use for swing-specific questions — NOT the evening Legacy edition (get_nighthawk_edition) and NOT 0DTE Command (get_zerodte_plays).`,
     {}
   ),
   t(

@@ -171,6 +171,22 @@ export const HORIZONS: Record<Horizon, HorizonSpec> = {
   },
 };
 
+/**
+ * The member-facing DTE range for a lane, DERIVED from the window below rather than hand-written.
+ *
+ * WHY (FINDINGS 2026-08-07): the 2026-08-06 widening moved 0DTE to [0,4] and Swing's floor to
+ * `ZERODTE_MAX_DTE + 1`, but every label describing those windows was a literal — the Night Hawk
+ * toggle chip, the compact lane header, the swing-discovery cron description and four Largo strings
+ * all still said "2-30 DTE" against an engine that would not admit a 2-, 3- or 4-DTE swing. A member
+ * who reads the label and finds no such names concludes the board is broken. Every consumer now
+ * derives, so the next window change updates the copy for free.
+ */
+export function dteRangeLabel(horizon: Horizon): string {
+  const h = HORIZONS[horizon];
+  return `${h.dteMin}\u2013${h.dteMax} DTE`;
+}
+
+
 /** Display / iteration order for the three lanes (fast → slow). */
 export const HORIZON_ORDER: Horizon[] = ["ZERO_DTE", "SWING", "LEAPS"];
 
