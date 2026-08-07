@@ -60,6 +60,17 @@ export type PinForecast = {
    *  real-IV one. Distinct from `degraded` (which flags an unreliable REGIME, not a
    *  guessed input). */
   ivFallback: boolean;
+  /**
+   * Provenance: TRUE when the magnet sits further from spot than the name's own remaining implied
+   * move, so the pull target was bounded to {@link MAGNET_MAX_SIGMA}σ (see `boundMagnetTarget`).
+   *
+   * `magnet.strike` still reports the REAL magnet — this flag says the forecast declined to project
+   * all the way there because the option market does not price price getting that far by the target.
+   * Same spirit as `ivFallback`: the numbers are honest, and the UI gets to mark WHY they are what
+   * they are. A member seeing a magnet far below spot but a projection that barely moves is looking
+   * at a coherent forecast, not a broken one, and this is the field that says so.
+   */
+  magnetClamped: boolean;
   /** Human-readable "why" — powers the click-to-explain detail. Ordered strongest-first. */
   drivers: PinDriver[];
 };
@@ -127,6 +138,52 @@ const CONE_RESIDUAL_FRAC = 0.12;
  *  never collapses to ~0 (which over-tightened the MC cone and over-stated confidence). ~0.35 keeps
  *  honest settlement noise into the bell while the drift still pulls paths onto the pin. */
 const MC_BRIDGE_NOISE_FLOOR = 0.35;
+/**
+ * Hard bound on how far the magnet may displace the forecast from spot, in units of the name's OWN
+ * remaining 1σ options-implied move (`spot · atmIv · √(tMin/YEAR)` — the same quantity
+ * `computeExpectedMove` serves on the expected-move route, from the same chain and the same spot).
+ *
+ * WHY A BOUND AT ALL. The magnet pull is a DRIFT inside a diffusion; the diffusion's own scale is the
+ * only physical yardstick the model has for "how far can this name travel by the target". Without a
+ * bound the pull is free to place the modal close anywhere the OI ladder points, which is how the
+ * forecast came to assert a NVDA close 4.10% below spot — outside NVDA's own **2σ** band — on
+ * 2026-08-07. Two surfaces of the same product, built from the same chain at the same second, flatly
+ * contradicted each other.
+ *
+ * WHY 2σ. This is the criterion the live evidence actually produced: the NVDA forecast's projected
+ * close sat outside the name's own **2σ** band, which is what made the two surfaces contradict each
+ * other. 2σ (~95% of the implied distribution) is the edge of what the option market treats as the
+ * plausible range at all — a modal forecast beyond it is calling a tail as its base case.
+ *
+ * A tighter 1σ bound was tried first and REJECTED on evidence, not taste: it also clamps the shipped
+ * SPX fixture, whose call wall sits ~78 pts from spot against a ~40 pt session σ. SPX/SPY/QQQ/AMD/
+ * META all pinned correctly on 2026-08-07, so a bound that fires on them is not separating the
+ * pathology from healthy pinning — it is just a smaller number. Pinning to a wall beyond 1σ is a
+ * real, observed phenomenon; pinning beyond 2σ is not.
+ *
+ * This does NOT relocate the magnet: `magnet.strike` still reports the true, independently-verified
+ * OI/max-pain level (NVDA's 207.5 was corroborated exactly against Polygon). It bounds only how far
+ * the projection is allowed to be dragged toward it, and sets `magnetClamped` so the UI can say so.
+ */
+const MAGNET_MAX_SIGMA = 2.0;
+/**
+ * Ceiling on `pinPct` as a multiple of the options-implied probability of the SAME band.
+ *
+ * `pinPct` is `inBand / paths` (MC) or the normal mass over the band (analytic) — in both cases a
+ * measurement of the MODEL'S OWN path bundle, which the mean-reversion drift deliberately squeezes.
+ * That makes it a measure of the model's internal tightness, not of how reliable the forecast is,
+ * and it saturated its 0.98 clamp on 2 of 7 names on the endpoint's first live day. NVDA sat at
+ * exactly 98% across three samples spanning 18 minutes while its own pin moved 2.5 points — a number
+ * that certain about a close should not be able to relocate that close without flinching.
+ *
+ * Anchoring the ceiling to the implied distribution makes the forecast's confidence commensurable
+ * with the expected-move surface it sits next to. The 2× headroom is the pin effect's allowance:
+ * pinning genuinely does concentrate settlement onto strikes, so the forecast is allowed to claim up
+ * to twice the probability pure diffusion assigns that range — but no more. That multiplier is an
+ * honest BOUND, not a calibration: nothing here has yet been measured against realized closes, and
+ * it should be replaced by a fitted value once the forecast has an outcome record to fit against.
+ */
+const PIN_CONF_IMPLIED_MULT = 2;
 
 const clamp = (x: number, lo: number, hi: number) => (x < lo ? lo : x > hi ? hi : x);
 const fin = (x: number) => Number.isFinite(x);
@@ -404,6 +461,56 @@ export function magnetPullScale(strengthPct: number): number {
   return clamp(0.12 + Math.max(0, strengthPct) * 5.5, 0.12, 1);
 }
 
+/**
+ * The name's own remaining 1σ options-implied move, in price points: `spot · σ · √t`.
+ *
+ * This is BYTE-FOR-BYTE the quantity `computeExpectedMove` serves on `/api/market/vector/expected-move`
+ * (`vector-expected-move.ts:69`) — same lognormal-diffusion displacement, same calendar annualization
+ * — just expressed in minutes because that is the clock this model carries. Sharing the definition is
+ * the point: it is what makes the two Vector surfaces commensurable instead of contradictory.
+ */
+export function remainingSigma(spot: number, atmIv: number, tMin: number): number {
+  if (!(spot > 0) || !(atmIv > 0)) return 0;
+  return spot * atmIv * Math.sqrt(Math.max(tMin, 0) / YEAR_MIN);
+}
+
+/**
+ * Bound a magnet target to {@link MAGNET_MAX_SIGMA} of the remaining implied move from spot.
+ *
+ * Returns the ORIGINAL target untouched whenever it already sits inside the cone — which is the
+ * common case, and why this changes nothing for the names that were behaving (SPX/SPY/QQQ/AMD/META
+ * all pinned within a few points of spot on 2026-08-07). It bites only on the pathology it exists
+ * for: a correctly-identified magnet that happens to sit further away than the name can plausibly
+ * travel by the target.
+ *
+ * `sigma <= 0` (no vol, no time) returns the target unchanged rather than collapsing it to spot —
+ * with no implied distribution there is no bound to apply, and silently pinning every path to spot
+ * would be a fabricated forecast rather than an absent one.
+ */
+export function boundMagnetTarget(
+  spot: number,
+  target: number,
+  sigma: number,
+  maxSigma = MAGNET_MAX_SIGMA
+): { target: number; clamped: boolean } {
+  if (!fin(spot) || !fin(target) || !(sigma > 0)) return { target, clamped: false };
+  const maxDisp = maxSigma * sigma;
+  const disp = target - spot;
+  if (Math.abs(disp) <= maxDisp) return { target, clamped: false };
+  return { target: spot + Math.sign(disp) * maxDisp, clamped: true };
+}
+
+/**
+ * Probability the options-implied distribution assigns to `band` — the reference `pinPct` is capped
+ * against (see {@link PIN_CONF_IMPLIED_MULT}). Normal about spot with σ = the remaining implied move;
+ * the same symmetric convention `computeExpectedMove` uses for its quoted bands, so a member
+ * comparing the two numbers on one chart is comparing like with like.
+ */
+export function impliedBandProbability(spot: number, band: readonly [number, number], sigma: number): number {
+  if (!(sigma > 0)) return 1; // no distribution to test against → impose no ceiling
+  return clamp(normCdf((band[1] - spot) / sigma) - normCdf((band[0] - spot) / sigma), 0, 1);
+}
+
 /** Charm-weighted pull fraction: how much of the spot→magnet gap closes by the bell. Grows into close. */
 function pullFraction(
   tFrac: number,
@@ -451,9 +558,22 @@ function buildDrivers(p: Prep, input: PinForecastInput, medianClose: number): Pi
 }
 
 /** Median drift path from now → close, and the diffusion σ remaining at each step (drives the pinch). */
-function medianPath(input: PinForecastInput, p: Prep, steps: number): { times: number[]; median: number[]; sigmaRemain: number[] } {
+function medianPath(
+  input: PinForecastInput,
+  p: Prep,
+  steps: number
+): { times: number[]; median: number[]; sigmaRemain: number[]; magnetClamped: boolean } {
   const times: number[] = [], median: number[] = [], sigmaRemain: number[] = [];
-  const target = p.magnetStrike ?? input.spot;
+  // Bound the pull target to the name's own implied cone (MAGNET_MAX_SIGMA). Computed ONCE, against
+  // the session's spot and the FULL remaining time — not per step against the drifting price, which
+  // would let the projection ratchet its way to an arbitrarily distant magnet one bounded hop at a
+  // time and reintroduce exactly the bug this bound exists to stop.
+  const bounded = boundMagnetTarget(
+    input.spot,
+    p.magnetStrike ?? input.spot,
+    remainingSigma(input.spot, p.atmIv, p.tMin)
+  );
+  const target = bounded.target;
   // Honest residual: never let the cone pinch to a zero-width point at 16:00 (see CONE_RESIDUAL_FRAC).
   const sigFloor = input.spot * p.atmIv * Math.sqrt(Math.max(p.tMin, 1) / YEAR_MIN) * CONE_RESIDUAL_FRAC;
   for (let i = 0; i <= steps; i++) {
@@ -467,7 +587,7 @@ function medianPath(input: PinForecastInput, p: Prep, steps: number): { times: n
     const sig = Math.max(input.spot * p.atmIv * Math.sqrt(tYearsRemain), sigFloor);
     times.push(tMinAt); median.push(med); sigmaRemain.push(sig);
   }
-  return { times, median, sigmaRemain };
+  return { times, median, sigmaRemain, magnetClamped: bounded.clamped };
 }
 
 function coneFromPath(times: number[], median: number[], sigmaRemain: number[]): PinConeStep[] {
@@ -486,7 +606,7 @@ function snapBand(pin: number, spacing: number, tFrac: number): [number, number]
 
 function analytic(input: PinForecastInput, p: Prep): PinForecast {
   const steps = 26;
-  const { times, median, sigmaRemain } = medianPath(input, p, steps);
+  const { times, median, sigmaRemain, magnetClamped } = medianPath(input, p, steps);
   const medianClose = median[median.length - 1]!;
   const sigmaClose = Math.max(sigmaRemain[Math.floor(steps * 0.15)]!, input.spot * p.atmIv * Math.sqrt(Math.max(p.tMin, 1) / YEAR_MIN) * 0.15);
   // Snap the pin to the magnet if the drift lands within a band of it (real pins sit ON a strike).
@@ -494,9 +614,29 @@ function analytic(input: PinForecastInput, p: Prep): PinForecast {
   if (p.magnetStrike != null && Math.abs(medianClose - p.magnetStrike) <= p.strikeSpacing) pin = p.magnetStrike;
   const band = snapBand(pin, p.strikeSpacing, p.tFrac);
   const s = Math.max(sigmaClose, 1e-6);
-  const conf = clamp(normCdf((band[1] - medianClose) / s) - normCdf((band[0] - medianClose) / s), 0.02, 0.98);
+  const raw = normCdf((band[1] - medianClose) / s) - normCdf((band[0] - medianClose) / s);
+  const conf = calibrateConfidence(raw, input.spot, band, remainingSigma(input.spot, p.atmIv, p.tMin));
   const scenarios = buildScenarios(input, p, pin, conf);
-  return assemble(input, p, "analytic", pin, conf, band, coneFromPath(times, median, sigmaRemain), scenarios, medianClose);
+  return assemble(input, p, "analytic", pin, conf, band, coneFromPath(times, median, sigmaRemain), scenarios, medianClose, magnetClamped);
+}
+
+/**
+ * Cap a raw model confidence at {@link PIN_CONF_IMPLIED_MULT}× the options-implied probability of the
+ * SAME band, then apply the existing 0.02/0.98 clamp.
+ *
+ * The raw figure measures the model's own path bundle, whose dispersion the mean-reversion drift
+ * deliberately squeezes — so it rises as the drift assumption gets more aggressive, which is exactly
+ * backwards. Anchoring it to the implied distribution means an over-tight bundle can no longer
+ * manufacture certainty: to claim a high probability the band must also be somewhere the option
+ * market thinks price can actually finish.
+ *
+ * Live 2026-08-07 09:58:30 ET, NVDA — band 211.43..218.57, spot 222.03, 1σ 2.71:
+ * implied P(close in band) = 10.1%, served pinPct = 98%. A 9.7× overstatement from two surfaces of
+ * one product at one second. Under this cap that band cannot exceed 20.2%.
+ */
+function calibrateConfidence(raw: number, spot: number, band: readonly [number, number], sigma: number): number {
+  const ceiling = PIN_CONF_IMPLIED_MULT * impliedBandProbability(spot, band, sigma);
+  return clamp(Math.min(raw, ceiling), 0.02, 0.98);
 }
 
 function buildScenarios(input: PinForecastInput, p: Prep, pin: number, conf: number): PinScenario[] {
@@ -511,6 +651,15 @@ function montecarlo(input: PinForecastInput, p: Prep): PinForecast {
   const steps = clamp(input.mcSteps ?? 26, 6, 120);
   const rng = mulberry32((input.seed ?? 1) >>> 0);
   const dtMin = p.tMin / steps;
+  // The implied cone this whole simulation is bounded by — one value for the run, measured from the
+  // session spot over the full remaining time (see boundMagnetTarget for why it is not per-step).
+  const sigmaFull = remainingSigma(input.spot, p.atmIv, p.tMin);
+  // `magnetClamped` reports the HEADLINE magnet — the one the desk reads off `magnet.strike` — not
+  // "did any of the paths×steps per-step wall targets get bounded". The per-step targets are
+  // path-dependent (recomputed at each path's drifted price), so over 400×26 evaluations at least
+  // one is essentially always beyond the bound and a flag raised off that would be permanently true
+  // and tell a member nothing. This is the same one-shot test the analytic branch reports.
+  const headlineClamped = boundMagnetTarget(input.spot, p.magnetStrike ?? input.spot, sigmaFull).clamped;
   const closes: number[] = [];
   // per-step samples for the empirical cone
   const stepPrices: number[][] = Array.from({ length: steps + 1 }, () => []);
@@ -528,13 +677,29 @@ function montecarlo(input: PinForecastInput, p: Prep): PinForecast {
       const sp = Math.max(p.strikeSpacing, 1);
       const cwScore = w.callWall ? w.callWall.oi / (1 + Math.abs(w.callWall.strike - price) / sp) : 0;
       const pwScore = w.putWall ? w.putWall.oi / (1 + Math.abs(w.putWall.strike - price) / sp) : 0;
-      let target = p.maxPain ?? price;
-      let wallOi = 0;
+      let rawTarget = p.maxPain ?? price;
+      // `wallOi = null` means "this step is NOT pulling toward an OI wall" — i.e. the target is max
+      // pain, whose strength the prep layer already measured as `p.magnetStrengthPct`. The previous
+      // `let wallOi = 0` conflated that with "the wall has zero open interest": `wallOi` was only ever
+      // ASSIGNED inside the short_gamma branch, so on any long-gamma name `strengthPct` came out
+      // `0 / totalOi = 0`, and the intended fallback to the real prep-computed strength was reachable
+      // only on a chain with zero total OI — i.e. never. Every long-gamma name therefore ran the whole
+      // simulation at magnetPullScale's 0.12 floor regardless of how strong its magnet actually was.
+      // Verified live 2026-08-07: NVDA's response carried magnet.strengthPct 0.23 while the MC that
+      // moved price used 0, reproducible offline to the cent (projectedClose 212.76).
+      let wallOi: number | null = null;
       if (reg === "short_gamma") {
-        if (cwScore >= pwScore && w.callWall) { target = w.callWall.strike; wallOi = w.callWall.oi; }
-        else if (w.putWall) { target = w.putWall.strike; wallOi = w.putWall.oi; }
+        if (cwScore >= pwScore && w.callWall) { rawTarget = w.callWall.strike; wallOi = w.callWall.oi; }
+        else if (w.putWall) { rawTarget = w.putWall.strike; wallOi = w.putWall.oi; }
       }
-      const strengthPct = w.totalOi > 0 ? wallOi / w.totalOi : p.magnetStrengthPct;
+      // Bound each step's pull target to the implied cone measured from the SESSION spot (not the
+      // path's current price) — see boundMagnetTarget. Anchoring to the path price would let a path
+      // walk to a distant magnet in bounded hops, which is the unbounded behaviour in disguise.
+      const target = boundMagnetTarget(input.spot, rawTarget, sigmaFull).target;
+      // Strength that belongs to the magnet ACTUALLY being targeted: the wall's own OI share when
+      // pulling to a wall, else the prep layer's max-pain strength.
+      const strengthPct =
+        wallOi != null ? (w.totalOi > 0 ? wallOi / w.totalOi : p.magnetStrengthPct) : p.magnetStrengthPct;
       // Mean-reversion toward the magnet whose strength RAMPS UP into the close (kappa → ~0.6 near
       // expiry) — the pin gets stickier as gamma concentrates. Paired with diffusion that shrinks with
       // remaining time, this is a Brownian-bridge-style pin: paths bulge mid-session, then the
@@ -563,19 +728,20 @@ function montecarlo(input: PinForecastInput, p: Prep): PinForecast {
   const pin = ranked[0]![0];
   const band = snapBand(pin, p.strikeSpacing, p.tFrac);
   const inBand = closes.filter((c) => c >= band[0] && c <= band[1]).length;
-  const conf = clamp(inBand / paths, 0.02, 0.98);
+  const conf = calibrateConfidence(inBand / paths, input.spot, band, sigmaFull);
   const cone: PinConeStep[] = stepPrices.map((arr, i) => {
     const a = [...arr].sort((x, y) => x - y);
     const q = (f: number) => a[clamp(Math.floor(f * (a.length - 1)), 0, a.length - 1)]!;
     return { tMin: Number((p.tMin - dtMin * i).toFixed(1)), p10: Number(q(0.1).toFixed(2)), p50: Number(q(0.5).toFixed(2)), p90: Number(q(0.9).toFixed(2)) };
   });
   const scenarios: PinScenario[] = ranked.slice(0, 4).map(([close, n], i) => ({ close, p: Number((n / paths).toFixed(2)), kind: i === 0 ? p.magnetKind : "path" }));
-  return assemble(input, p, "montecarlo", pin, conf, band, cone, scenarios, cone[cone.length - 1]?.p50 ?? pin);
+  return assemble(input, p, "montecarlo", pin, conf, band, cone, scenarios, cone[cone.length - 1]?.p50 ?? pin, headlineClamped);
 }
 
 function assemble(
   input: PinForecastInput, p: Prep, method: "analytic" | "montecarlo",
-  pin: number, conf: number, band: [number, number], cone: PinConeStep[], scenarios: PinScenario[], medianClose: number
+  pin: number, conf: number, band: [number, number], cone: PinConeStep[], scenarios: PinScenario[], medianClose: number,
+  magnetClamped = false
 ): PinForecast {
   return {
     available: true, method,
@@ -589,6 +755,7 @@ function assemble(
     cone, scenarios,
     degraded: p.degraded, degradeReason: p.degradeReason,
     ivFallback: p.ivFallback,
+    magnetClamped,
     drivers: buildDrivers(p, input, medianClose),
   };
 }
@@ -597,7 +764,7 @@ const EMPTY = (input: PinForecastInput, reason: string, ivFallback = false): Pin
   available: false, method: input.method ?? "analytic", spot: input.spot, priorClose: input.priorClose,
   timeToCloseMin: Math.max(0, (input.closeMs - input.nowMs) / 60000), pin: null, projectedClose: null, pinPct: null, pinBand: null,
   pinPctOfClose: null, regime: "unknown", flip: null, magnet: null, charmState: "early", cone: [], scenarios: [],
-  degraded: false, degradeReason: null, ivFallback,
+  degraded: false, degradeReason: null, ivFallback, magnetClamped: false,
   drivers: [{ label: reason === "closed" ? "Market closed" : "Collecting", detail: reason === "closed" ? "The 0DTE pin forecast runs during RTH." : "Waiting for a live 0DTE chain and session bars.", weight: 1 }],
 });
 
