@@ -4,7 +4,7 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
-## 2026-08-07 — [P2, LIVE ERROR] Telemetry sequence bootstrap rewound the PK sequence on every boot — 24 dropped `api_telemetry_events` rows in 8 days — FIXED (#PR)
+## 2026-08-07 — [P2, LIVE ERROR] Telemetry sequence bootstrap rewound the PK sequence on every boot — 24 dropped `api_telemetry_events` rows in 8 days — FIXED (#1839)
 
 | Field | Value |
 |-------|-------|
@@ -19,7 +19,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Blast radius** | Checked every `setval` in the repo — this is the only one (`grep -n setval src/lib/db.ts` → one hit). No other table bootstraps a sequence this way. |
 | **Test** | `src/lib/db.test.ts`, two source-level assertions (same rationale as #1838 — the invariant is structural and raw Postgres is unreachable from this sandbox): the bootstrap block must contain exactly one `PERFORM setval(`, no bare `SELECT setval(`, an `IF next_val <= max_id THEN` guard, and an `is_called`-aware `next_val`; plus a guard that the telemetry INSERT never supplies `seq_id` itself. |
 | **Verification** | `npx tsx --test src/lib/db.test.ts` **11/11** (was 9/9 on clean main — two added, zero regressions); `tsc --noEmit` clean. Post-deploy confirmation is the absence of new `api_telemetry_events_pkey` events in `/api/admin/errors`. |
-| **Status** | FIXED — PR #PR. |
+| **Status** | FIXED — PR #1839. |
 
 ---
 
