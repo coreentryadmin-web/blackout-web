@@ -6,6 +6,7 @@ import { upsertAdminUserRow } from '@/lib/admin-users';
 import { primaryEmailFromClerkWebhook } from '@/lib/clerk-webhook-email';
 import { syncWhopMembershipForEmail } from '@/lib/membership';
 import { publishTierChanged } from '@/lib/tier-cache';
+import { startWelcomeSequence } from '@/lib/welcome-sequence';
 import { parseTier } from '@/lib/tiers';
 import type { BillingKind } from '@/lib/whop';
 
@@ -135,6 +136,9 @@ export async function POST(req: Request) {
           ]
         );
         console.log(`[clerk-webhook] Provisioned user: ${userId} (${email})`);
+        // Self-guards internally (never throws) — a welcome-email hiccup must not
+        // fail user provisioning or trigger a Clerk retry of the whole webhook.
+        if (email) void startWelcomeSequence({ userId, email, firstName });
       } else {
         await dbQuery(
           `UPDATE users
