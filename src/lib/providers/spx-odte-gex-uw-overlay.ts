@@ -1,46 +1,13 @@
 import type { GexHeatmap } from "@/lib/providers/polygon-options-gex";
 import { wallsFromStrikeTotals, cumulativeGammaFlip } from "@/lib/providers/gex-cross-validation-core";
-import { fetchUwOdteGexLadder } from "@/lib/providers/unusual-whales";
 import { todayEtYmd } from "@/lib/providers/spx-session";
-import { hasLiveGexStrikeExpiry, getGexStrikeExpiryLadder } from "@/lib/ws/uw-socket";
+import {
+  getSpxOdteScopedUwLadderMap,
+  resetSpxOdteScopedUwLadderCacheForTests,
+} from "@/lib/providers/spx-odte-uw-ladder";
 
-/** In-process 60s cache — one UW 0DTE ladder fetch serves every heatmap read in the window. */
-let cachedOdteLadder: { at: number; ladder: Map<number, number> } | null = null;
-const ODTE_LADDER_CACHE_MS = 60_000;
-
-async function getSpxOdteUwLadder(): Promise<Map<number, number> | null> {
-  const now = Date.now();
-  if (cachedOdteLadder && now - cachedOdteLadder.at < ODTE_LADDER_CACHE_MS) {
-    return cachedOdteLadder.ladder;
-  }
-
-  const today = todayEtYmd();
-  if (hasLiveGexStrikeExpiry("SPX")) {
-    const ws = getGexStrikeExpiryLadder("SPX", [today]);
-    if (ws && ws.ladder.size > 0) {
-      cachedOdteLadder = { at: now, ladder: ws.ladder };
-      return ws.ladder;
-    }
-  }
-
-  try {
-    const { rows } = await fetchUwOdteGexLadder("SPX");
-    if (!rows.length) return null;
-    const ladder = new Map<number, number>();
-    for (const r of rows) {
-      const strike = Number(r.strike);
-      const net = Number(r.call_gamma_oi ?? 0) + Number(r.put_gamma_oi ?? 0);
-      if (Number.isFinite(strike) && strike > 0 && Number.isFinite(net) && net !== 0) {
-        ladder.set(strike, net);
-      }
-    }
-    if (ladder.size === 0) return null;
-    cachedOdteLadder = { at: now, ladder };
-    return ladder;
-  } catch {
-    return null;
-  }
-}
+/** Re-export for tests that reset overlay + scoped ladder caches together. */
+export { resetSpxOdteScopedUwLadderCacheForTests as resetSpxOdteUwLadderCacheForTests };
 
 /** Re-sum near-term strike_totals after a 0DTE column overlay. */
 export function recomputeNearTermGexStrikeTotals(hm: GexHeatmap): void {
@@ -108,9 +75,9 @@ export function applySpxOdteGexUwOverlayWithLadder(
 }
 
 /**
- * SPX 0DTE column: replace Polygon-derived cells with UW dealer gamma (WS-first, REST fallback).
+ * SPX 0DTE column: replace Polygon-derived cells with UW dealer gamma (WS-first, REST 0DTE).
  * Polygon chain GEX and UW spot-exposures can disagree on the King strike by >1.5% of spot during
- * RTH — the data-correctness oracle uses UW, so members must see the same 0DTE King.
+ * RTH — the data-correctness oracle uses the same 0DTE-scoped ladder, so members must see the same King.
  */
 export async function applySpxOdteGexUwOverlay(hm: GexHeatmap): Promise<GexHeatmap> {
   if (hm.underlying !== "SPX" || !(hm.spot > 0) || hm.strikes.length === 0) return hm;
@@ -118,13 +85,8 @@ export async function applySpxOdteGexUwOverlay(hm: GexHeatmap): Promise<GexHeatm
   const today = todayEtYmd();
   if (!hm.expiries.includes(today)) return hm;
 
-  const ladder = await getSpxOdteUwLadder();
+  const ladder = await getSpxOdteScopedUwLadderMap();
   if (!ladder || ladder.size === 0) return hm;
 
   return applySpxOdteGexUwOverlayWithLadder(hm, ladder, today);
-}
-
-/** Test hook — reset the in-process UW 0DTE ladder cache. */
-export function resetSpxOdteUwLadderCacheForTests(): void {
-  cachedOdteLadder = null;
 }
