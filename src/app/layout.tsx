@@ -127,6 +127,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Script id="ga4-init" strategy="afterInteractive">
           {`window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-YLN4K37KYF');`}
         </Script>
+        <Script id="x-pixel" strategy="afterInteractive">
+          {`!function(e,t,n,s,u,a){e.twq||(s=e.twq=function(){s.exe?s.exe.apply(s,arguments):s.queue.push(arguments);},s.version='1.1',s.queue=[],u=t.createElement(n),u.async=!0,u.src='https://static.ads-twitter.com/uwt.js',a=t.getElementsByTagName(n)[0],a.parentNode.insertBefore(u,a))}(window,document,'script');twq('config','re1j3');`}
+        </Script>
         <Ga4Attribution />
         <OrganizationJsonLd />
         <WebSiteJsonLd />

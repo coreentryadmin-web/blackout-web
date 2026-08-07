@@ -15,6 +15,7 @@ import {
   isDeskPath,
   learnArticleSlugFromPath,
 } from "@/lib/analytics/ga4-events";
+import { trackXEvent } from "@/lib/analytics/x-pixel";
 import { captureAttributionFromSearch } from "@/lib/analytics/utm";
 
 function Ga4AttributionInner() {
@@ -49,6 +50,7 @@ function Ga4AttributionInner() {
       consumePendingSignUp()
     ) {
       trackGa4Event(GA4_EVENTS.signUp, { page_path: pathname });
+      trackXEvent("tw-re1j3-sign_up");
     }
 
     const articleSlug = learnArticleSlugFromPath(pathname);
