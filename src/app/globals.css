@@ -16938,6 +16938,48 @@ body::before {
   display:inline-flex;
   align-items:center;
 }
+/* ── Touch targets (FINDINGS 2026-08-07) ──────────────────────────────────────────────────
+   Measured on the LIVE rendered board at the 430px iPhone viewport with
+   scripts/audit/live-ui-audit.cjs: the command deck's primary controls sit well under the
+   44x44 CSS-px minimum (Apple HIG; WCAG 2.5.5). Column sort buttons rendered 80x15, 120x15,
+   96x20 and 72x15 — a third of a fingertip tall — the status chips 97x35, and the "Why this
+   play" disclosure 376x17. Members trade from phones, and these are the controls for sorting,
+   filtering and expanding the reasoning on every play.
+
+   Scoped to `pointer: coarse` on purpose: the deck is deliberately dense for a mouse, and
+   growing these on desktop would cost rows of visible board for no benefit. Nothing here
+   changes type size, colour or copy — only the height a finger has to hit. */
+@media (pointer: coarse) {
+  /* The button now supplies the row height, so drop the head's own vertical padding and the
+     header grows ~11px total rather than ~29px. */
+  .nh-deck-play-table-head { padding-top: 0; padding-bottom: 0 }
+  .nh-deck-play-th--sort { min-height: 44px; display: inline-flex; align-items: center }
+  .nh-deck-play-cell--pnl .nh-deck-play-th--sort { justify-content: flex-end }
+
+  .nh-deck-filtbtn { min-height: 44px }
+
+  /* "⧉ OCC" copies the option symbol a member pastes into their broker — 44x17, and a mis-tap
+     costs them the ticket. */
+  .nh-deck-occcopy { min-height: 44px; display: inline-flex; align-items: center }
+
+  /* The nav's auth CTA ("Open desk" / "Get access") measured 133x36 — the single most-tapped
+     control on the site and 8px under the minimum. */
+  .nav-join, .nav-signin { min-height: 44px; display: inline-flex; align-items: center }
+
+  /* padding-block, not min-height + centering: <summary> aligns its label and its 9px count on
+     the BASELINE, and switching to center would visibly de-align them. Padding grows the hit
+     box while leaving the text exactly where it is. */
+  .nh-deck-why-sum { padding-block: 14px }
+  .nh-deck-why-more > summary { padding-block: 14px }
+}
+
+/* NOTE (merge of #1842 + #1843): #1842 added an `overflow-x:auto` + `flex:0 0 auto` override on
+   `--prominent` to stop the swing section bar's eight buttons compressing to ~33px. #1843 then
+   moved that bar onto its own `--sections` modifier, so the override no longer has a case to
+   serve — and `--prominent` is still live on the FOUR-button status bar (CommandDeck.tsx), where
+   `flex:0 0 auto` would stop those buttons filling the row. Removed rather than left in place:
+   dead CSS that still changes behaviour is worse than no CSS. The 33px problem is now solved by
+   `.nh-deck-filterbar--sections` below. */
 /* Sort toggle — STATUS / CONVICTION lenses. */
 .nh-deck-sortbar{display:flex;gap:4px;padding:6px 10px;border-bottom:1px solid var(--dk-line);background:#050c08}
 .nh-deck-sortbtn{flex:1;background:rgba(53,255,158,.05);border:1px solid rgba(53,255,158,.12);border-radius:3px;
