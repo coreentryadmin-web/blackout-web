@@ -1,6 +1,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { forecastPin, pinFlip, pinLadderAtSpot, type PinContract, type PinForecastInput } from "./spx-pin-forecast-core";
+import { readFileSync } from "node:fs";
+import {
+  forecastPin,
+  pinFlip,
+  pinLadderAtSpot,
+  remainingSigma,
+  boundMagnetTarget,
+  impliedBandProbability,
+  type PinContract,
+  type PinForecastInput,
+} from "./spx-pin-forecast-core";
 
 // Synthetic 0DTE SPX chain: net-long book, heavy call OI above → gamma flip just over spot (short
 // gamma below it), a dominant call wall ~7585, lighter puts below. Mirrors the mockup structure.
@@ -276,5 +286,150 @@ test("degenerate horizonMin/structYears fall back to the session defaults rather
     const got = forecastPin(base(now, { horizonMin: bad, structYears: bad }));
     assert.deepEqual(got, expected, `horizonMin/structYears=${bad} must fall back to the defaults`);
     assert.ok(got.cone.every((s) => Number.isFinite(s.p10) && Number.isFinite(s.p50) && Number.isFinite(s.p90)));
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Implied-move bound on the magnet pull, and the confidence ceiling that goes
+// with it. Live regression: 2026-08-07, NVDA on the Vector pin-forecast route.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** NVDA as it actually stood at 09:58:30 ET on 2026-08-07. */
+const NVDA = { spot: 222.03, atmIv: 0.46, tMin: 362, priorClose: 218.99 };
+
+/**
+ * Long-gamma shape with a DISTANT max-pain magnet — the exact configuration that produced the live
+ * defect. Call OI concentrated below spot puts the gamma flip under spot (⇒ long gamma), and the low
+ * put mass drags max pain ~22 points below spot, far outside the name's own implied move.
+ */
+function longGammaDistantMagnet(iv = NVDA.atmIv): PinContract[] {
+  const out: PinContract[] = [];
+  for (let k = 190; k <= 250; k += 2.5) {
+    out.push({ strike: k, type: "call", openInterest: k >= 200 && k <= 218 ? 40000 : 1500, dayVolume: 0, iv });
+    out.push({ strike: k, type: "put", openInterest: k >= 195 && k <= 207.5 ? 9000 : 400, dayVolume: 0, iv });
+  }
+  return out;
+}
+
+function nvdaInput(method: "analytic" | "montecarlo", contracts = longGammaDistantMagnet()): PinForecastInput {
+  const nowMs = Date.UTC(2026, 7, 7, 13, 58, 0);
+  return {
+    spot: NVDA.spot, priorClose: NVDA.priorClose, contracts, sessionYmd: "2026-08-07",
+    nowMs, closeMs: nowMs + NVDA.tMin * 60_000, atmIv: NVDA.atmIv, method, seed: 7,
+  };
+}
+
+test("remainingSigma reproduces the expected-move route's own 1σ for the live NVDA inputs", () => {
+  // The two Vector surfaces must share one definition of "how far can this name travel" or they
+  // cannot help contradicting each other. The live /expected-move read served ±2.71 pts.
+  const sig = remainingSigma(NVDA.spot, NVDA.atmIv, NVDA.tMin);
+  assert.ok(Math.abs(sig - 2.71) < 0.05, `expected ~2.71 pts, got ${sig.toFixed(3)}`);
+});
+
+test("impliedBandProbability reproduces the 10.1% the audit computed independently", () => {
+  // The headline contradiction: the forecast claimed 98% for this band; the option market prices it
+  // at ~10%. Anything materially off this number means the ceiling is anchored to the wrong scale.
+  const p = impliedBandProbability(NVDA.spot, [211.43, 218.57], remainingSigma(NVDA.spot, NVDA.atmIv, NVDA.tMin));
+  assert.ok(Math.abs(p - 0.101) < 0.02, `expected ~10.1%, got ${(p * 100).toFixed(1)}%`);
+});
+
+test("boundMagnetTarget leaves a near magnet ALONE and only bites on a distant one", () => {
+  const sig = remainingSigma(NVDA.spot, NVDA.atmIv, NVDA.tMin); // 2.68
+  const near = boundMagnetTarget(NVDA.spot, 223.5, sig);
+  assert.equal(near.target, 223.5, "a magnet inside the cone must pass through untouched");
+  assert.equal(near.clamped, false);
+
+  const far = boundMagnetTarget(NVDA.spot, 207.5, sig); // the real, correctly-located NVDA max pain
+  assert.equal(far.clamped, true);
+  assert.ok(Math.abs(far.target - (NVDA.spot - 2 * sig)) < 1e-9, "clamped to exactly 2σ below spot");
+});
+
+test("no implied distribution (σ=0) leaves the target alone rather than collapsing it to spot", () => {
+  // Absent a distribution there is no bound to apply. Snapping to spot would be a FABRICATED
+  // forecast dressed as a conservative one.
+  const r = boundMagnetTarget(100, 130, 0);
+  assert.equal(r.target, 130);
+  assert.equal(r.clamped, false);
+});
+
+test("LIVE REGRESSION: projectedClose can no longer sit outside the name's own implied move", () => {
+  // Before the fix this chain projected 212.55 (analytic) / 209.83 (MC) — 3.54σ and 4.55σ from spot,
+  // i.e. outside even the 2σ band /api/market/vector/expected-move served for the same name at the
+  // same second. Two surfaces of one product contradicting each other on one chart.
+  const sig = remainingSigma(NVDA.spot, NVDA.atmIv, NVDA.tMin);
+  for (const method of ["analytic", "montecarlo"] as const) {
+    const f = forecastPin(nvdaInput(method));
+    assert.equal(f.regime, "long_gamma", `${method}: precondition — this must exercise the long-gamma branch`);
+    assert.ok(f.magnet != null && f.magnet.strike < NVDA.spot - 5 * sig, `${method}: precondition — the magnet must be genuinely distant`);
+    assert.equal(f.magnetClamped, true, `${method}: a magnet this far out must be reported as clamped`);
+
+    // The audit's own criterion: the projection must lie inside the 2σ band /expected-move serves
+    // for the same name. The bound applies to the DRIFT TARGET (asserted exactly, above); the MC's
+    // realized median can diffuse a hair past it, which is honest — it is a bundle, not a point.
+    const disp = Math.abs(f.projectedClose! - NVDA.spot) / sig;
+    assert.ok(disp <= 2.0, `${method}: projectedClose ${f.projectedClose} is ${disp.toFixed(2)}σ from spot — outside the 2σ implied band`);
+    assert.ok(disp < 3.5, `${method}: must be materially better than the 3.54σ/4.55σ this chain produced pre-fix`);
+  }
+});
+
+test("the magnet STRIKE is still reported truthfully — only the pull is bounded", () => {
+  // NVDA's max pain at 207.5 was corroborated exactly against independent Polygon data. Bounding the
+  // projection must not relocate, hide, or soften the magnet the desk is actually reading.
+  const f = forecastPin(nvdaInput("analytic"));
+  assert.equal(f.magnet?.kind, "max_pain");
+  assert.ok(f.magnet!.strike < NVDA.spot, "the real, distant magnet must still be served");
+});
+
+test("pinPct can never exceed 2x the implied probability of its OWN band", () => {
+  // The invariant that makes the confidence commensurable with the expected-move surface. Asserted
+  // across BOTH methods and BOTH chain shapes so it holds generally, not just on the regression case.
+  for (const method of ["analytic", "montecarlo"] as const) {
+    for (const [label, input] of [
+      ["distant-magnet", nvdaInput(method)],
+      ["shipped SPX fixture", base("2026-07-21T15:00:00Z", { method, seed: 7 })],
+    ] as const) {
+      const f = forecastPin(input);
+      if (f.pinPct == null || f.pinBand == null) continue;
+      const sig = remainingSigma(f.spot, f.ivFallback ? 0.12 : (input.atmIv ?? 0.12), f.timeToCloseMin);
+      const ceiling = 2 * impliedBandProbability(f.spot, f.pinBand, sig);
+      // 0.02 is the model's own confidence FLOOR — it may sit above the ceiling on a band the market
+      // says is near-impossible, and refusing to report below 2% is deliberate, not a violation.
+      assert.ok(
+        f.pinPct <= Math.max(ceiling, 0.02) + 1e-3, // toFixed(3) rounding on the served value
+        `${method}/${label}: pinPct ${f.pinPct} exceeds 2x implied ${ceiling.toFixed(3)} for band ${JSON.stringify(f.pinBand)}`
+      );
+    }
+  }
+});
+
+test("REGRESSION: the MC no longer hard-zeroes magnet strength on long-gamma names", () => {
+  // `wallOi` used to be initialised to 0 and assigned ONLY inside the short_gamma branch, so on any
+  // long-gamma name `strengthPct` came out 0/totalOi = 0, and the intended fallback to the
+  // prep-computed strength was reachable only on a chain with ZERO total OI — i.e. never. Every
+  // long-gamma name ran the whole simulation at magnetPullScale's 0.12 floor. Verified live
+  // 2026-08-07: NVDA served magnet.strengthPct 0.23 while the MC that moved price used 0.
+  //
+  // Pinned at SOURCE rather than through a fixture, and that is a DELIBERATE limitation worth
+  // stating: `pullFraction` saturates at both ends, so end-to-end the projection is insensitive to
+  // strength on exactly the chains where this branch runs — a wide cone converges fully onto the
+  // magnet at any strength, and a narrow one is bounded before strength matters. A behavioural test
+  // here would pass on the broken code too. The repo already pins non-type-checkable contracts this
+  // way (see api/market/vector/pin-forecast/route.test.ts).
+  const src = readFileSync("src/features/spx/lib/spx-pin-forecast-core.ts", "utf8");
+  assert.doesNotMatch(src, /let wallOi = 0;/, "the 0-initialiser IS the bug — null means 'not a wall', 0 means 'an empty wall'");
+  assert.match(src, /let wallOi: number \| null = null;/);
+  assert.match(
+    src,
+    /wallOi != null \? \(w\.totalOi > 0 \? wallOi \/ w\.totalOi : p\.magnetStrengthPct\) : p\.magnetStrengthPct/,
+    "a max-pain target must carry the prep-computed max-pain strength, not a wall's absent OI"
+  );
+});
+
+test("bounding does NOT disturb the names that were behaving — SPX fixture is byte-identical", () => {
+  // SPX/SPY/QQQ/AMD/META all pinned within a few points of spot on 2026-08-07 and were correct. The
+  // bound must be inert there or it is not a fix, it is a behaviour change.
+  for (const method of ["analytic", "montecarlo"] as const) {
+    const f = forecastPin(base("2026-07-21T15:00:00Z", { method, seed: 7 }));
+    assert.equal(f.magnetClamped, false, `${method}: a near magnet must not be clamped`);
   }
 });
