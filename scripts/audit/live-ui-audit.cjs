@@ -32,6 +32,14 @@ const PROXY_URL = process.env.HTTPS_PROXY || 'http://127.0.0.1:42795';
 const CA_PATH = '/root/.ccr/ca-bundle.crt';
 const ca = fs.existsSync(CA_PATH) ? fs.readFileSync(CA_PATH) : undefined;
 
+/** Strip CR/LF (and truncate) before anything reaches a log line.
+ *  A page can request a URL it chose, so an unsanitised interpolation lets that page forge extra
+ *  log records — CodeQL js/log-injection. Cheap to satisfy, and it keeps the audit output honest
+ *  when a route really does carry odd characters. */
+function safeLog(value, max = 110) {
+  return String(value).replace(/[\r\n\t]+/g, ' ').slice(0, max);
+}
+
 function parseArgs() {
   const a = process.argv.slice(2), opts = { vp: '430x932', wait: 5000, ck: '', full: false }, pos = [];
   for (let i = 0; i < a.length; i++) {
@@ -131,7 +139,7 @@ async function main() {
     if (s.skip) { console.error(`mint skipped: ${s.reason}`); process.exit(1); }
     o.ck = s.cookieHeader;
     cleanupSession = s.cleanup;
-    console.log(`minted temp session ${s.userId}`);
+    console.log(`minted temp session ${safeLog(s.userId, 60)}`);
   }
 
   if (o.ck) {
@@ -161,12 +169,12 @@ async function main() {
       ok++;
       const loc = r.headers['location'] || r.headers['Location'];
       if (r.status >= 300 && r.status < 400 && loc && new URL(loc, url).href === new URL(url).href) {
-        selfRedirects.push(`${r.status} ${url}`);
+        selfRedirects.push(`${r.status} ${safeLog(url, 160)}`);
       }
       await route.fulfill({ status: r.status, headers: r.headers, body: r.body });
     } catch (e) {
       fail++;
-      console.error(`  FAIL [${req.method()}] ${url.slice(0,80)}: ${e.message}`);
+      console.error(`  FAIL [${safeLog(req.method(), 8)}] ${safeLog(url, 80)}: ${safeLog(e.message, 120)}`);
       await route.abort('connectionfailed');
     }
   });
@@ -179,7 +187,7 @@ async function main() {
   page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text().slice(0, 300)); });
   page.on('pageerror', (e) => pageErrors.push(String(e.message).slice(0, 300)));
 
-  console.log(`→ ${o.url}`);
+  console.log(`→ ${safeLog(o.url, 200)}`);
   try {
     await page.goto(o.url, { waitUntil: 'domcontentloaded', timeout: 45000 });
   } catch (e) {
@@ -194,7 +202,7 @@ async function main() {
   if (o.css) {
     await page.addStyleTag({ content: require('fs').readFileSync(o.css, 'utf8') });
     await page.waitForTimeout(500);
-    console.log(`injected CSS: ${o.css}`);
+    console.log(`injected CSS: ${safeLog(o.css, 200)}`);
   }
 
   const report = await page.evaluate(() => {
@@ -273,7 +281,7 @@ async function main() {
     console.error(`\nSELF-REDIRECT LOOP (${selfRedirects.length}) — the origin 3xx'd a URL back to itself.`);
     console.error(`This is almost always an EXPIRED __session JWT hitting Clerk's handshake, not a`);
     console.error(`transport problem. Re-run without --cookie so the harness mints a fresh one.`);
-    for (const l of selfRedirects.slice(0, 5)) console.error(`  ${l}`);
+    for (const l of selfRedirects.slice(0, 5)) console.error(`  ${safeLog(l, 180)}`);
   }
   console.log(JSON.stringify({ url: o.url, report, consoleErrors, pageErrors, selfRedirects: selfRedirects.length }, null, 2));
   if (o.out && o.out !== 'screenshot.png') await page.screenshot({ path: o.out, fullPage: o.full, timeout: 15000 });
