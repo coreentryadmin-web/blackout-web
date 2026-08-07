@@ -90,3 +90,33 @@ test("no caller reintroduces a horizon condition on the session viewport", () =>
     }
   }
 });
+
+// ---------------------------------------------------------------------------------------------
+// FINDINGS 2026-08-07 — the SPX Slayer dashboard drew no recorded beads outside the 0DTE horizon.
+// Four layers each assumed the blended "all" rail is SSR-seeded; the dashboard embed deliberately
+// passes initialWallHistory={[]} (a cold Polygon reconstruct can block the HTML for 30–90s), so
+// the blended rail was structurally always empty there. These pin the seed-less path open.
+// ---------------------------------------------------------------------------------------------
+
+test("wall-history route serves the blended 'all' rail instead of short-circuiting it away", () => {
+  const route = read("src/app/api/market/vector/wall-history/route.ts");
+  assert.doesNotMatch(
+    route,
+    /if \(horizon === "all" \|\| !session\)/,
+    'the "all" short-circuit is the bug — a caller with no SSR seed could never obtain the rail'
+  );
+  // "all" reads the bare-ticker rail; a narrowed horizon reads its own composite-keyed one.
+  assert.match(route, /horizon === "all"\s*\?\s*loadSessionWallHistory\(session, ticker\)/);
+  assert.match(route, /loadSessionWallHistory\(session, ticker, horizon\)/);
+  // A missing session still cannot resolve to a rail — that guard must survive.
+  assert.match(route, /if \(!session\)/);
+});
+
+test("VectorChart fetches and uses the blended rail when it was given no seed", () => {
+  const src = read("src/features/vector/components/VectorChart.tsx");
+  assert.match(src, /const seedRailEmpty = initialWallHistory\.length === 0/);
+  // The "all" horizon must not skip its fetch when there is no seed to fall back on...
+  assert.match(src, /dteHorizon === "all" && !seedRailEmptyRef\.current/);
+  // ...and the fetched rail must be allowed through as a recorded trail source.
+  assert.match(src, /horizon !== "all" \|\| seedRailEmptyRef\.current/);
+});
