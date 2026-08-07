@@ -1383,6 +1383,16 @@ export function VectorChart({
       ? initialHorizonWallHistory
       : []
   );
+  /**
+   * True when this mount got NO server-rendered blended rail, so the "all" horizon has to fetch its
+   * own. `/vector` always seeds it; the SPX Slayer embed deliberately passes `initialWallHistory={[]}`
+   * because a cold Polygon reconstruct can block the HTML for 30-90s. Every layer below used to
+   * assume the seed existed, so on the dashboard the blended rail was structurally always empty.
+   * FINDINGS 2026-08-07.
+   */
+  const seedRailEmpty = initialWallHistory.length === 0;
+  const seedRailEmptyRef = useRef(seedRailEmpty);
+  seedRailEmptyRef.current = seedRailEmpty;
   const dteHorizonRef = useRef<VectorDteHorizon>(openingDteHorizon);
   /** Session overview on load (full RTH + bead trail) until the member pans to the live edge. */
   const liveFollowEnabledRef = useRef(defaultChartViewport === "live");
@@ -1667,7 +1677,9 @@ export function VectorChart({
     );
     // Gate the recorded trail on horizon+lens here; composeHorizonTrail owns the merge precedence.
     const recordedTrail =
-      horizon !== "all" && activeLens === "gex" ? horizonHistoryRef.current : null;
+      (horizon !== "all" || seedRailEmptyRef.current) && activeLens === "gex"
+        ? horizonHistoryRef.current
+        : null;
     const history: WallHistorySample[] =
       composeHorizonTrail(recordedTrail, currentColumn) ??
       (liveSessionRef.current && !replayModeRef.current
@@ -2746,7 +2758,9 @@ export function VectorChart({
       requestAnimationFrame(() => fitSessionOverview());
     }
 
-    if (dteHorizon === "all") {
+    // "all" normally needs no fetch — /vector SSR-seeds the blended rail. With no seed (the SPX
+    // Slayer embed) it must fetch, or the dashboard draws no recorded beads at all.
+    if (dteHorizon === "all" && !seedRailEmptyRef.current) {
       repaint();
       return () => {
         cancelled = true;

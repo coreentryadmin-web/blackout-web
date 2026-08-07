@@ -41,17 +41,26 @@ export async function GET(req: NextRequest) {
   const horizon = resolveDteHorizonParam(req.nextUrl.searchParams);
   const session = req.nextUrl.searchParams.get("session") ?? "";
 
-  // "all" is already SSR-seeded from the bare-ticker rail; only narrowed horizons need this read.
   // A missing session can't be resolved to a rail here (the chart owns the displayed session date),
   // so return an empty trail and let the client fall back to the current-structure column.
-  if (horizon === "all" || !session) {
+  if (!session) {
     return NextResponse.json(
       { ticker, horizon, sessionYmd: session, history: [] },
       { headers: NO_STORE_HEADERS }
     );
   }
 
-  const history = await loadSessionWallHistory(session, ticker, horizon).catch(() => []);
+  // "all" USED to short-circuit to an empty trail here, on the premise that the blended rail is
+  // "already SSR-seeded". That is true for /vector — and false for the SPX Slayer dashboard, whose
+  // embed passes `initialWallHistory={[]}` on purpose (a cold Polygon reconstruct can block the
+  // HTML for 30-90s, see (site)/dashboard/page.tsx). With the seed empty AND this read refusing to
+  // serve it, the dashboard's blended rail was structurally always empty — no beads at all outside
+  // the 0DTE horizon. Serving it costs one Redis read and lets any caller without a seed ask.
+  // FINDINGS 2026-08-07.
+  const history = await (horizon === "all"
+    ? loadSessionWallHistory(session, ticker)
+    : loadSessionWallHistory(session, ticker, horizon)
+  ).catch(() => []);
   return NextResponse.json(
     { ticker, horizon, sessionYmd: session, history },
     { headers: NO_STORE_HEADERS }
