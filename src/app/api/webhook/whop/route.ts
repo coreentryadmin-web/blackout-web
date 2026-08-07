@@ -10,7 +10,6 @@ import { notifyOpsDiscord } from "@/features/spx/lib/spx-play-notify";
 import { recordApiCall } from "@/lib/api-telemetry";
 import { makeRedis } from "@/lib/make-redis";
 import { publishTierChanged } from "@/lib/tier-cache";
-import { markReferralConverted } from "@/lib/referrals";
 
 /**
  * Idempotency CLAIM: atomically mark a Whop event as "being processed" (Redis SET NX,
@@ -336,15 +335,7 @@ export async function POST(req: NextRequest) {
     } else if (event.type === "invoice.paid" || event.type === "payment.succeeded") {
       const { membershipId, email } = extractMembershipAndEmail(event.data);
       if (membershipId) await clearMembershipDunningGrace(membershipId);
-      const updatedUserIds = await syncEmailTier(email);
-      // Referral conversion check — no-op for the ~99% of payments that aren't a
-      // referred user's first payment (markReferralConverted only matches rows in
-      // 'signed_up' status, so this is safe to call on every renewal too).
-      for (const uid of updatedUserIds) {
-        await markReferralConverted(uid).catch((err) =>
-          console.warn("[whop webhook] markReferralConverted failed", err)
-        );
-      }
+      await syncEmailTier(email);
     }
   } catch (error) {
     console.error("[whop webhook]", event.type, error);
