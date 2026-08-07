@@ -12,7 +12,7 @@ import { WHOP_CHECKOUT } from "@/lib/whop-checkout";
 const PRICING_FAQ: { q: string; a: string }[] = [
   {
     q: "Can I cancel anytime?",
-    a: "Yes. Head to Account → Membership & Billing and click “Manage subscription” — that opens your secure Whop billing portal, where you can update your card, switch plans, or cancel.",
+    a: "Yes. Head to Account → Membership & Billing and click “Manage subscription” — that opens your secure billing portal, where you can update your card, switch plans, or cancel.",
   },
   {
     q: "Is there a refund if it's not for me?",
