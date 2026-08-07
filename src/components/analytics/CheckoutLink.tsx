@@ -48,6 +48,7 @@ function onCheckoutClick(plan: CheckoutPlan) {
   rememberCheckoutPlan(plan);
   trackGa4Event(GA4_EVENTS.beginCheckout, {
     plan,
+    value: CHECKOUT_PLAN_VALUE_USD[plan],
     currency: "USD",
   });
   trackXEvent("tw-re1j3-begin_checkout", {

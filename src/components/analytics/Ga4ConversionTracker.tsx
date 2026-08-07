@@ -49,6 +49,8 @@ export function Ga4ConversionTracker() {
     trackGa4Event(GA4_EVENTS.purchase, {
       tier: current,
       transaction_id: userId,
+      value: purchaseValue,
+      currency: "USD",
     });
     trackXEvent("tw-re1j3-purchase", {
       value: purchaseValue,
