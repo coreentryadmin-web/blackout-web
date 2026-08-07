@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { useAppAuth } from "@/lib/auth-client";
 import { trackGa4Event } from "@/lib/analytics/ga4-client";
 import { GA4_EVENTS } from "@/lib/analytics/ga4-events";
+import { trackXEvent } from "@/lib/analytics/x-pixel";
 import { tierAtLeast, parseTier } from "@/lib/tiers";
 
 const PURCHASE_FLAG_PREFIX = "bo_ga4_purchase_fired:";
@@ -36,6 +37,10 @@ export function Ga4ConversionTracker() {
     trackGa4Event(GA4_EVENTS.purchase, {
       tier: current,
       transaction_id: userId,
+    });
+    trackXEvent("tw-re1j3-purchase", {
+      value: current === "premium" ? 199 : 49,
+      currency: "USD",
     });
   }, [isLoaded, isSignedIn, userId, tier]);
 

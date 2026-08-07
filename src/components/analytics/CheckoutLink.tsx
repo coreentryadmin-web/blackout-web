@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { trackGa4Event } from "@/lib/analytics/ga4-client";
 import { GA4_EVENTS } from "@/lib/analytics/ga4-events";
+import { trackXEvent } from "@/lib/analytics/x-pixel";
 import {
   appendAttributionToUrl,
   internalCampaignParams,
@@ -40,6 +41,10 @@ function attributedCheckoutHref(
 function onCheckoutClick(plan: CheckoutPlan) {
   trackGa4Event(GA4_EVENTS.beginCheckout, {
     plan,
+    currency: "USD",
+  });
+  trackXEvent("tw-re1j3-begin_checkout", {
+    value: plan === "yearly" ? 1999 : plan === "monthly" ? 199 : 49,
     currency: "USD",
   });
 }
