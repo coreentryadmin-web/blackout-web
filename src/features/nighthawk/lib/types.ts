@@ -109,6 +109,16 @@ export type NightHawkEdition = {
   served_for?: string | null;
   /** True when prior generated plays are intentionally kept visible until their session closes. */
   carry_until_close?: boolean;
+  /**
+   * True when a REAL, published edition carries zero plays — a distinct state from both
+   * `available: false` (nothing published yet) and a normal edition.
+   *
+   * Live 2026-08-07, `?date=2026-07-31` returned `available: true` with a full recap headline and
+   * `plays: []`. The member got the "your playbook is here" framing with nothing in it. The API had
+   * no way to say "we published, and nothing cleared the bar" — `available: false` would have been
+   * wrong too, since it hides the recap the member IS entitled to.
+   */
+  no_plays?: boolean;
 };
 
 export type PlayConfirmStatus = "CONFIRMED" | "DEGRADED" | "INVALIDATED" | "UNVERIFIED";
