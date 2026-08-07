@@ -2,6 +2,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   backfillRailPrefix,
+  backfillRailGaps,
+  railCoverageGaps,
+  railUncoveredSec,
   decimateSeedHistory,
   bucketWallHistoryForInterval,
   composeHorizonTrail,
@@ -645,4 +648,103 @@ test("decimateSeedHistory: short or degenerate inputs pass through untouched", (
   assert.deepEqual(decimateSeedHistory(one), one);
   const h = session5s(100);
   assert.deepEqual(decimateSeedHistory(h, { tailBucketSec: 0 }), h, "a zero bucket must not divide by zero");
+});
+
+// ---------------------------------------------------------------------------------------------
+// FULL-DAY RAIL (FINDINGS 2026-08-07). The bead recorder is viewer-driven for tickers outside the
+// shared universe, so the rail has holes wherever nobody had the chart open. Reproduced from the
+// REAL AMD 2026-08-06 shape: samples 09:30–16:00, a 30-minute hole at 14:45–15:15, and nothing
+// from 16:00 to the 19:59 last bar.
+// ---------------------------------------------------------------------------------------------
+
+const H = (h: number, m = 0) => h * 3600 + m * 60;
+const sample = (time: number, strike = 500): WallHistorySample => ({
+  time,
+  walls: { callWalls: [{ strike, pct: 1 }], putWalls: [] },
+});
+
+/** Observed rail with AMD's real holes; bars run 04:00 → 19:59. */
+function amdShapedRail(): WallHistorySample[] {
+  const out: WallHistorySample[] = [];
+  for (let t = H(9, 30); t <= H(16); t += 60) {
+    if (t > H(14, 45) && t < H(15, 15)) continue; // the real 30-minute viewing hole
+    out.push(sample(t));
+  }
+  return out;
+}
+
+test("railCoverageGaps: finds the leading, mid-session AND trailing holes", () => {
+  const gaps = railCoverageGaps(amdShapedRail(), H(4), H(19, 59));
+  const mins = gaps.map((g) => [Math.round(g.from / 60), Math.round(g.to / 60)]);
+  assert.equal(gaps.length, 3, `expected 3 gaps, got ${JSON.stringify(mins)}`);
+  assert.deepEqual(mins[0], [H(4) / 60, H(9, 30) / 60], "pre-open prefix");
+  assert.deepEqual(mins[1], [H(14, 45) / 60, H(15, 15) / 60], "the 30-minute viewing hole");
+  assert.deepEqual(mins[2], [H(16) / 60, H(19, 59) / 60], "the post-close block — the one members saw");
+});
+
+test("railCoverageGaps: a rail covering the session end-to-end has no gaps", () => {
+  const dense: WallHistorySample[] = [];
+  for (let t = H(4); t <= H(19, 59); t += 60) dense.push(sample(t));
+  assert.deepEqual(railCoverageGaps(dense, H(4), H(19, 59)), []);
+});
+
+test("railCoverageGaps: cadence slack — a sample just before a bucket still covers it", () => {
+  // The recorder writes on a tick, so a 4-minute spacing is coverage, not a hole.
+  const rail = [sample(H(10)), sample(H(10, 4)), sample(H(10, 8))];
+  assert.deepEqual(railCoverageGaps(rail, H(10), H(10, 8)), []);
+  assert.equal(railCoverageGaps(rail, H(10), H(10, 30)).length, 1, "but a 22-minute tail is");
+});
+
+test("backfillRailGaps: fills every hole, and NEVER displaces an observed sample", () => {
+  const observed = amdShapedRail();
+  const modeled: WallHistorySample[] = [];
+  for (let t = H(4); t <= H(19, 59); t += 600) modeled.push(sample(t, 495));
+  const merged = backfillRailGaps(observed, modeled, H(4), H(19, 59));
+
+  const byTime = new Map(merged.map((s) => [s.time, s]));
+  for (const o of observed) {
+    assert.equal(byTime.get(o.time)?.modeled, false, `observed ${o.time} must stay solid`);
+  }
+  // The post-close block is now covered.
+  assert.ok(
+    merged.some((s) => s.time > H(16) && s.time < H(19, 59) && s.modeled),
+    "the 16:00→19:59 block must carry ghost beads"
+  );
+  // As must the mid-session hole.
+  assert.ok(
+    merged.some((s) => s.time > H(14, 45) && s.time < H(15, 15) && s.modeled),
+    "the 14:45→15:15 hole must carry ghost beads"
+  );
+  assert.ok(merged.every((s, i) => i === 0 || s.time > merged[i - 1]!.time), "strictly ordered");
+});
+
+test("backfillRailGaps: no modeled sample lands where the rail already has coverage", () => {
+  const observed = amdShapedRail();
+  const modeled: WallHistorySample[] = [];
+  for (let t = H(4); t <= H(19, 59); t += 600) modeled.push(sample(t, 495));
+  const merged = backfillRailGaps(observed, modeled, H(4), H(19, 59));
+  const gaps = railCoverageGaps(observed, H(4), H(19, 59));
+  for (const s of merged.filter((m) => m.modeled)) {
+    assert.ok(
+      gaps.some((g) => s.time >= g.from && s.time <= g.to),
+      `modeled bead at ${s.time} sits inside covered territory`
+    );
+  }
+});
+
+test("backfillRailGaps: degrades to the observed rail rather than inventing structure", () => {
+  const observed = amdShapedRail();
+  assert.equal(backfillRailGaps(observed, [], H(4), H(19, 59)), observed, "no model → untouched");
+  assert.equal(
+    backfillRailGaps(observed, [sample(H(12))], undefined, undefined),
+    observed,
+    "no bar range → untouched (cannot know what a gap even is)"
+  );
+});
+
+test("railUncoveredSec: sums the holes — this is what decides whether to reconstruct", () => {
+  const uncovered = railUncoveredSec(amdShapedRail(), H(4), H(19, 59));
+  // 5h30m pre-open + 30m mid + 3h59m post-close.
+  assert.equal(uncovered, H(5, 30) + H(0, 30) + H(3, 59));
+  assert.ok(uncovered > 20 * 60, "well past the reconstruct threshold");
 });
