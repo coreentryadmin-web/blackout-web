@@ -16911,6 +16911,33 @@ body::before {
 .nh-deck-filtbtn.on{color:var(--dk-green-hi);border-color:var(--dk-line);background:rgba(53,255,158,.14);text-shadow:var(--dk-glow)}
 .nh-deck-filtbtn:focus-visible{outline:none;border-color:var(--dk-green);box-shadow:0 0 0 1px var(--dk-green)}
 .nh-deck-filtbtn .cnt{opacity:.85;font-weight:700;margin-left:2px}
+
+/* Swing serving-section bar (the ALL + seven-section row above the Swings deck).
+ *
+ * It must NOT reuse `--prominent`. That modifier was written for the COMPACT HEADER, a flex ROW,
+ * where `flex:1 1 auto` correctly means "take the leftover WIDTH". Rendered here — as a sibling of
+ * <CommandDeck> in a flex COLUMN — the same declaration means "take the leftover HEIGHT", so the
+ * bar grew to fill the whole deck area; and because `.nh-deck-filterbar` never sets `align-items`,
+ * the default `stretch` then made all eight buttons as tall as that bar. Result: eight ~400px
+ * panels covering the board. (FINDINGS 2026-08-07 — regression from #1836, reported from the live
+ * desk.) Both halves of the bug are pinned below: never grow, never stretch.
+ */
+.nh-deck-filterbar--sections{
+  flex:0 0 auto;
+  align-items:center;
+  gap:6px;
+  overflow-x:auto;
+  scrollbar-width:none;
+}
+.nh-deck-filterbar--sections::-webkit-scrollbar{display:none}
+.nh-deck-filterbar--sections .nh-deck-filtbtn{
+  flex:0 0 auto;
+  height:26px;
+  padding:0 10px;
+  white-space:nowrap;
+  display:inline-flex;
+  align-items:center;
+}
 /* Sort toggle — STATUS / CONVICTION lenses. */
 .nh-deck-sortbar{display:flex;gap:4px;padding:6px 10px;border-bottom:1px solid var(--dk-line);background:#050c08}
 .nh-deck-sortbtn{flex:1;background:rgba(53,255,158,.05);border:1px solid rgba(53,255,158,.12);border-radius:3px;

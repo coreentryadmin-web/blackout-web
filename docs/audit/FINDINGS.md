@@ -4,6 +4,22 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-07 - [P1, LIVE VISUAL REGRESSION] Swing section bar rendered as eight full-height panels covering the board - FIXED (#PR)
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P1, live, and mine. The Swings lane - one of the three Night Hawk boards - opened to eight ~400px-tall empty panels filling the viewport, with the actual play table pushed below the fold. Reported from the desk with a screenshot. |
+| **Introduced by** | #1836 (this session), which added the ALL + seven-section filter bar and reused the existing `nh-deck-filterbar--prominent` modifier for it. |
+| **Root cause - two CSS facts, neither visible in markup** | (1) `--prominent` is `flex:1 1 auto`. It was written for the **compact header**, a flex ROW, where that correctly means "take the leftover WIDTH". The section bar renders as a sibling of `<CommandDeck>` in a flex COLUMN, where the identical declaration means "take the leftover HEIGHT" - so the bar grew to fill the entire deck area. (2) `.nh-deck-filterbar` sets no `align-items`, so the default `stretch` then made all eight buttons as tall as that now-enormous bar. Either alone would have been survivable; together they produced the eight panels. |
+| **Why the #1836 tests did not catch it** | They are pure unit tests over `rowsForSwingSection`/`swingSectionCounts` - correct, and completely blind to this. The defect only exists once the bar is laid out inside a flex column, which no unit test renders. A markup-level component test would have missed it too. |
+| **Fix** | Its own modifier, `nh-deck-filterbar--sections`: `flex:0 0 auto` (never grow into the column's spare height) + `align-items:center` (never stretch the buttons) + a fixed 26px button height, nowrap, and horizontal scroll so eight buttons stay readable on a narrow viewport instead of compressing. `--prominent` is left exactly as-is for the compact header that legitimately needs it. |
+| **Verified against the LIVE desk before shipping** | Captured `/nighthawk?view=SWING` at 1900x1000 through `scripts/audit/live-ui-audit.cjs --inject-css`, before and after. After: one compact row - `ALL 14 · COMMIT 2 · WAITING 4 · WATCH 1 · RESEARCH 2 · MANAGING 5 · SCALING 0 · EXITING 0` - with the play table immediately below it. |
+| **Tests** | Two source-level regressions in `swing-section-filter.test.ts`, because the failure is invisible to any test that only renders markup: the section bar must carry `--sections` and must NOT carry `--prominent`; and the `--sections` rule must pin BOTH `flex:0 0 auto` and `align-items:center`. Each assertion carries the reason, so a future edit that drops one gets the explanation rather than a bare failure. 11/11 pass. |
+| **Lesson worth keeping** | A layout modifier is only correct for the flex DIRECTION it was written for. `flex:1 1 auto` is not a neutral "fill" - reusing a row modifier in a column silently converts a width rule into a height rule. |
+| **Status** | FIXED - PR #PR. |
+
+---
+
 ## 2026-08-07 — [P1, LIVE PERF] `/vector` served a **22.8 MB HTML document** — 22.6 MB of it wall-history beads at 5s resolution — FIXED (#1840)
 
 | Field | Value |
