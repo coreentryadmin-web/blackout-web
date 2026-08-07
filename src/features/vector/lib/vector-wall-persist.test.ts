@@ -85,3 +85,67 @@ test("wallRailStorageId: 'all' is the bare ticker; narrowed horizons get a compo
   assert.equal(wallRailStorageId("NVDA", "weekly"), "NVDA::weekly");
   assert.equal(wallRailStorageId("SPX", "0dte"), "SPX::0dte");
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// P1 2026-08-07: META's rail ran BACKWARDS — 127 samples → 92, leading edge
+// regressed 09:46:05 → 09:40:05. Root cause traced to the DB-fallback re-warm
+// blind-overwriting Redis with the deliberately-lagging Postgres mirror.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** A rail of `n` samples on the live 5s bucket cadence, starting at META's real session start. */
+function rail(n: number, startSec = 1786109400 /* 09:30:00 ET 2026-08-07 */) {
+  return Array.from({ length: n }, (_, i) => ({
+    time: startSec + i * 5,
+    walls: walls(600 + i, 585 - i),
+  }));
+}
+
+test("REGRESSION: a union re-warm can never SHORTEN a rail — the META rollback shape", async () => {
+  const { mergeWallHistory } = await import("./vector-wall-history");
+  // Exactly the live numbers: Redis holds the good 127-sample rail, the Postgres mirror is behind
+  // at 92 (its write-through is non-blocking, so it lags by design).
+  const hot = rail(127);
+  const laggingMirror = rail(92);
+
+  // What the OLD code did — take the mirror verbatim. This is the bug, pinned.
+  assert.equal(laggingMirror.length, 92);
+  assert.equal(laggingMirror[laggingMirror.length - 1]!.time, 1786109400 + 91 * 5);
+
+  // What the fix does.
+  const warmed = mergeWallHistory(hot, laggingMirror);
+  assert.equal(warmed.length, 127, "union must keep every sample Redis already had");
+  assert.equal(warmed[0]!.time, hot[0]!.time, "session start is unmoved");
+  assert.ok(
+    warmed[warmed.length - 1]!.time >= hot[hot.length - 1]!.time,
+    "the LEADING EDGE must never move into the past — that is the member-visible symptom"
+  );
+});
+
+test("a genuinely cold Redis still gets the durable rail — the fix is not a no-op", async () => {
+  const { mergeWallHistory } = await import("./vector-wall-history");
+  const durable = rail(92);
+  // Redis truly empty (cold replica / restart): the union degenerates to the mirror, i.e. exactly
+  // the pre-fix behaviour for the case the fallback actually exists to serve.
+  const warmed = mergeWallHistory([], durable);
+  assert.deepEqual(warmed, durable);
+});
+
+test("the mirror can still ADD buckets Redis is missing — union, not 'Redis always wins'", async () => {
+  const { mergeWallHistory } = await import("./vector-wall-history");
+  // Redis missing a mid-session stretch; the durable mirror has it. Union must fill the hole.
+  const hot = [...rail(10), ...rail(10, 1786109400 + 200 * 5)];
+  const durable = rail(300);
+  const warmed = mergeWallHistory(hot, durable);
+  assert.ok(warmed.length >= 300, `expected the union to fill the gap, got ${warmed.length}`);
+  const times = warmed.map((s) => s.time);
+  assert.deepEqual([...times].sort((a, b) => a - b), times, "output stays time-ordered");
+});
+
+test("the re-warm re-reads and unions instead of blind-writing the mirror", async () => {
+  const { readFileSync } = await import("node:fs");
+  const src = readFileSync("src/features/vector/lib/vector-wall-persist.ts", "utf8");
+  assert.match(src, /const warmed = mergeWallHistory\(fresh \?\? \[\], durable\)/);
+  assert.match(src, /sharedCacheSet\(redisKey\(st, sessionYmd\), warmed, TTL_SEC\)/);
+  // The overwrite form must be gone — it is the defect.
+  assert.doesNotMatch(src, /sharedCacheSet\(redisKey\(st, sessionYmd\), durable, TTL_SEC\)/);
+});
