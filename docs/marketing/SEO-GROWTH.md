@@ -52,13 +52,13 @@ Legend: 🔴 Not started · 🟡 In progress · 🟢 PR open · ✅ Merged · �
 
 | Email | Trigger | Status | PR | Notes |
 |---|---|---|---|---|
-| Welcome to SPX Slayer | `membership.activated`, free→community | 🟢 | [#1899](https://github.com/coreentryadmin-web/blackout-web/pull/1899) | |
-| Welcome to Premium | `membership.activated`, →premium (dual-opener: fresh vs upgraded-from-SPX-Slayer; annual flourish when billing interval resolves to yearly) | 🟢 | [#1899](https://github.com/coreentryadmin-web/blackout-web/pull/1899) | Billing interval isn't tracked anywhere (no DB column, not on the webhook payload) — resolved via a live `whop.plans.retrieve(planId)` call, cached in-memory per plan id |
-| Downgrade confirmed | `membership.activated`, premium→community | 🟢 | [#1899](https://github.com/coreentryadmin-web/blackout-web/pull/1899) | |
-| Access ended | `membership.deactivated`, any paid tier→free | 🟢 | [#1899](https://github.com/coreentryadmin-web/blackout-web/pull/1899) | The real "exit" email — deliberately zero guilt-trip / zero dark-pattern retention pressure, per explicit brand direction |
-| Cancellation scheduled | `membership.cancel_at_period_end_changed`, cancel_at_period_end=true | 🟢 | [#1899](https://github.com/coreentryadmin-web/blackout-web/pull/1899) | Not a tier change (access continues until period end) — handled directly off the webhook payload boolean, not the tier-diff path |
-| Cancellation reversed | `membership.cancel_at_period_end_changed`, cancel_at_period_end=false | 🟢 | [#1899](https://github.com/coreentryadmin-web/blackout-web/pull/1899) | |
-| Payment failed (dunning) | `payment.failed` / `invoice.past_due` | 🟢 | [#1899](https://github.com/coreentryadmin-web/blackout-web/pull/1899) | Gated on `!wasAlreadyInGrace` (checked via the existing dunning-grace cache before marking it) so a retry within the same grace window doesn't re-send |
+| Welcome to SPX Slayer | `membership.activated`, free→community | 🟢 | [#1901](https://github.com/coreentryadmin-web/blackout-web/pull/1901) | |
+| Welcome to Premium | `membership.activated`, →premium (dual-opener: fresh vs upgraded-from-SPX-Slayer; annual flourish when billing interval resolves to yearly) | 🟢 | [#1901](https://github.com/coreentryadmin-web/blackout-web/pull/1901) | Billing interval isn't tracked anywhere (no DB column, not on the webhook payload) — resolved via a live `whop.plans.retrieve(planId)` call, cached in-memory per plan id |
+| Downgrade confirmed | `membership.activated`, premium→community | 🟢 | [#1901](https://github.com/coreentryadmin-web/blackout-web/pull/1901) | |
+| Access ended | `membership.deactivated`, any paid tier→free | 🟢 | [#1901](https://github.com/coreentryadmin-web/blackout-web/pull/1901) | The real "exit" email — deliberately zero guilt-trip / zero dark-pattern retention pressure, per explicit brand direction |
+| Cancellation scheduled | `membership.cancel_at_period_end_changed`, cancel_at_period_end=true | 🟢 | [#1901](https://github.com/coreentryadmin-web/blackout-web/pull/1901) | Not a tier change (access continues until period end) — handled directly off the webhook payload boolean, not the tier-diff path |
+| Cancellation reversed | `membership.cancel_at_period_end_changed`, cancel_at_period_end=false | 🟢 | [#1901](https://github.com/coreentryadmin-web/blackout-web/pull/1901) | |
+| Payment failed (dunning) | `payment.failed` / `invoice.past_due` | 🟢 | [#1901](https://github.com/coreentryadmin-web/blackout-web/pull/1901) | Gated on `!wasAlreadyInGrace` (checked via the existing dunning-grace cache before marking it) so a retry within the same grace window doesn't re-send |
 
 Tier-transition detection (`lib/billing-lifecycle-email.ts`) diffs the `users` table's tier immediately before each sync against the tier the sync resolves — no new DB table needed, and it self-dedups across webhook retries *and* the hourly reconcile cron for free. Deliberately wired into the real-time webhook path only, **not** `reconcileAllMemberships` — a first-run reconcile correcting a backlog of stale rows would otherwise fire a flood of misleading "you just upgraded!" emails.
 
