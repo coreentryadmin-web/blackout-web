@@ -4,7 +4,7 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
-## 2026-08-07 - [P0, MEMBER-FACING] Bead rail is VIEWER-DRIVEN, so 62% of a session had no beads - FIXED (#PR)
+## 2026-08-07 - [P0, MEMBER-FACING] Bead rail is VIEWER-DRIVEN, so 62% of a session had no beads - FIXED (#1845)
 
 | Field | Value |
 |-------|-------|
@@ -18,7 +18,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Clamped to the last bar** | The recorder keeps writing after the close - AMD's rail runs to 23:40 against a 19:59 last bar - so an unclamped gap would stretch to samples the chart has no candle for and ask the reconstruction to fill hours that can never render. |
 | **Tests** | Eight, built on a replay of AMD's REAL shape (dense 09:30-16:00, the 14:45-15:15 hole, nothing to 19:59): the detector finds the leading, mid-session AND trailing holes; a fully-covered rail yields none; cadence slack means a 4-minute spacing is coverage, not a hole; the backfill never displaces an observed sample (every observed time stays `modeled: false`); no modeled bead lands inside covered territory; degrades to the observed rail when the model is empty or the bar range is unknown. 58/58 in the file. |
 | **Verification** | `tsc --noEmit` clean; `next lint` clean; vector suite **596 pass / 3 fail** vs **589 / 3** on clean main (seven added, zero regressions). The gap detector was run against the actual captured AMD payload and reproduced both blocks to the second. |
-| **Status** | FIXED - PR #PR. Stacks on #1844 (viewport), which is a separate cause of the same complaint. |
+| **Status** | FIXED - PR #1845. Stacks on #1844 (viewport), which is a separate cause of the same complaint. |
 
 ---
 
