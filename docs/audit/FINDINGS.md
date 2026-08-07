@@ -4,6 +4,21 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-07 - [P0, MEMBER-FACING] SPX's whole RTH bead trail is EVICTED overnight by the MAX_HISTORY tail cap - DIAGNOSED, fix NOT shipped
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P0 for the flagship desk. A member opening SPX in the morning sees **no beads for the previous trading session at all** - only overnight ones. This is the direct answer to "why are the beads missing on SPX?? like old beads for the day". |
+| **Measured live, 2026-08-07 02:03 ET** | ``` bars   08/06 09:30 .. 08/06 16:05  (395) rail   08/06 15:54 .. 08/06 23:59  (2169) in-session 45 · before 0 · after 2124 uncovered 6.40h of 6.58h ``` **97% of the RTH session has no rail.** 2,124 of 2,169 samples sit AFTER the last bar, where no candle exists to draw them against. The rail begins at **15:54 - eleven minutes before the close**. |
+| **Root cause** | `MAX_HISTORY = 5760` in `vector-wall-history.ts`, applied as a flat tail slice in `recordWallSample`, `mergeWallHistory` and `mergeModeledUnderlay`. Its comment reads *"~one RTH session at 5s trail cadence for oracle tickers (390 min x 12 = 4680) plus headroom"* - **arithmetic that silently assumes recording STOPS at the close.** It does not: the universe recorder is not RTH-gated and SPX's rail runs to 23:59. At 5s, 5,760 samples is **8 hours of wall clock**, so every post-close sample evicts an RTH one. The observed rail span is 8.08h - 5,760 x 5s to the minute. |
+| **Why AMD/META look fine and SPX does not** | Cadence. Non-oracle tickers record viewer-driven at 15s and sparsely (AMD: 1,175 samples across the whole day), so they never reach the cap. SPX is an oracle ticker at 5s and hits it in 8 hours. The cap is a *count*, and the two lanes have different cadences - so the same constant means "a full day" for one and "8 hours" for the other. |
+| **Why #1845's gap-fill did not rescue it** | It correctly detected the hole (one gap, 09:30 -> 15:54, `railUncoveredSec` 6.40h, well past the 20-minute reconstruct threshold) but `modeled` came back **0** - `reconstructSessionRail` returned nothing for SPX on this run. Worth its own look; the retention bug is upstream of it either way, and filling 6.4h with a 10-minute-resolution reconstruction is a poor substitute for the 5s recording that was thrown away. |
+| **Fix NOT shipped - deliberate** | This is a **retention change on a live recorder**, three hours before the open, on the night I already caused one outage by stacking deploys (see the ChunkLoadError entry). Every merge to `main` triggers an ECS roll. The disciplined move is to hand over the diagnosis and ship it in a quiet window, not to change what production persists at 06:20 ET on a hunch about the right cap. |
+| **Options, in preference order** | (1) **Prune by session, not count** - at record time, drop samples older than the current ET session's open; the count cap then only backstops. Correct, but must not discard the overnight rail other consumers may read. (2) **Stop the display-trail recorder at the close** - the chart has no candles past 16:05, so those 2,124 samples can never render; not recording them is free and fixes it outright. (3) **Size the cap to the cadence** - `MAX_HISTORY` derived from the recorder tick so "one day" means one day on both lanes. Cheapest, but 5s x 24h = 17,280 samples/ticker is ~3x the Redis footprint. |
+| **Status** | DIAGNOSED, not fixed. Branch `finding/spx-rail-evicted-by-max-history`, draft PR - no deploy triggered. |
+
+---
+
 ## 2026-08-07 - [P1, MOBILE UX / A11Y] Helix + Thermal touch targets, and the measurement that could not see the fix - FIXED (#PR)
 
 | Field | Value |
