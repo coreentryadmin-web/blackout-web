@@ -16912,7 +16912,6 @@ body::before {
 .nh-deck-filtbtn:focus-visible{outline:none;border-color:var(--dk-green);box-shadow:0 0 0 1px var(--dk-green)}
 .nh-deck-filtbtn .cnt{opacity:.85;font-weight:700;margin-left:2px}
 
-<<<<<<< HEAD
 
 /* Helix touch targets (FINDINGS 2026-08-07, measured live at 430px by HIT TEST).
    The flow tape's column-sort headers render 15px tall (`Time` 43x15, `Sym` 24x15, `Expiry`/`Strike`
@@ -16947,7 +16946,6 @@ body::before {
   }
 }
 
-=======
 /* Swing serving-section bar (the ALL + seven-section row above the Swings deck).
  *
  * It must NOT reuse `--prominent`. That modifier was written for the COMPACT HEADER, a flex ROW,
@@ -16974,7 +16972,6 @@ body::before {
   display:inline-flex;
   align-items:center;
 }
->>>>>>> origin/main
 /* ── Touch targets (FINDINGS 2026-08-07) ──────────────────────────────────────────────────
    Measured on the LIVE rendered board at the 430px iPhone viewport with
    scripts/audit/live-ui-audit.cjs: the command deck's primary controls sit well under the
