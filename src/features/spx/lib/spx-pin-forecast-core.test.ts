@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   forecastPin,
+  pinMaxPain,
   pinFlip,
   pinLadderAtSpot,
   remainingSigma,
@@ -432,4 +433,56 @@ test("bounding does NOT disturb the names that were behaving — SPX fixture is 
     const f = forecastPin(base("2026-07-21T15:00:00Z", { method, seed: 7 }));
     assert.equal(f.magnetClamped, false, `${method}: a near magnet must not be clamped`);
   }
+});
+
+// ── Max-pain LABEL disambiguation (P1/P2, 2026-08-07) ───────────────────────
+//
+// Two correct metrics wore one member-facing label. Live: header MAX PAIN 7630 (OI-only) vs the
+// pin panel's "7700 max pain is the dominant magnet" (OI+volume), 70pts apart, same instant.
+// Independently verified against the full Polygon SPXW chain — BOTH reproduce exactly.
+
+test("pinMaxPain is OI+VOLUME weighted, which is WHY it differs from the OI-only header tile", () => {
+  // Same chain, volume concentrated at a strike away from the OI peak. This is the mechanism that
+  // produced the 7630-vs-7700 split; asserting it keeps the two definitions from silently merging.
+  const base: PinContract[] = [];
+  for (let k = 7600; k <= 7800; k += 50) {
+    base.push({ strike: k, type: "call", openInterest: k === 7650 ? 40000 : 1000, dayVolume: 0, iv: 0.12 });
+    base.push({ strike: k, type: "put", openInterest: k === 7650 ? 40000 : 1000, dayVolume: 0, iv: 0.12 });
+  }
+  const oiOnly = pinMaxPain(base);
+  // Now add heavy intraday VOLUME at a different strike — OI unchanged.
+  const withVolume = base.map((c) =>
+    c.strike === 7750 ? { ...c, dayVolume: 80000 } : c
+  );
+  const oiPlusVolume = pinMaxPain(withVolume);
+  assert.notEqual(
+    oiPlusVolume, oiOnly,
+    "volume must move pinMaxPain — if it does not, the two surfaces would agree and the label split is moot"
+  );
+});
+
+test("the magnet driver says 'effective max pain', never bare 'max pain'", () => {
+  const now = "2026-07-21T15:00:00Z";
+  const f = forecastPin(base(now, { method: "analytic", seed: 7 }));
+  const maxPainDrivers = f.drivers.filter((d) => /max pain/i.test(d.label));
+  for (const d of maxPainDrivers) {
+    assert.match(
+      d.label, /effective max pain/i,
+      `a bare "max pain" label collides with the header's OI-only tile: ${d.label}`
+    );
+  }
+});
+
+test("the secondary driver explains WHY it can differ from the header", () => {
+  const src = readFileSync("src/features/spx/lib/spx-pin-forecast-core.ts", "utf8");
+  assert.match(src, /open interest PLUS today's traded volume/);
+  assert.match(src, /open-interest-only MAX PAIN/);
+});
+
+test("the arithmetic is deliberately UNCHANGED — only the label moved", () => {
+  // The audit's Polygon cross-check confirmed the forecast's magnet location to the strike, and the
+  // volume-weighted figure is the better intraday pin estimator. Removing the dayVolume term would
+  // be the wrong fix.
+  const src = readFileSync("src/features/spx/lib/spx-pin-forecast-core.ts", "utf8");
+  assert.match(src, /const oi = c\.openInterest \+ Math\.max\(0, c\.dayVolume \?\? 0\)/);
 });
