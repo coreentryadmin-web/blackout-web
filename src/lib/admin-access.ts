@@ -2,7 +2,6 @@ import { redirect } from "next/navigation";
 import { requireAuth } from "@/lib/auth-access";
 import { isAdminEmail } from "@/lib/admin-emails";
 import { auth, getSession } from "@/lib/auth-server";
-import { isCognitoAuth } from "@/lib/auth-provider";
 import { roleFromSessionClaims } from "@/lib/clerk-session-claims";
 import { adminFromJwtRole } from "@/lib/admin-from-jwt";
 import { getClerkUserCached } from "@/lib/clerk-user-cache";
@@ -25,8 +24,6 @@ export async function isAdminUser(
   userId: string,
   sessionClaims?: Record<string, unknown> | null
 ): Promise<boolean> {
-  if (isCognitoAuth()) return isUserAdmin(userId);
-
   let claims = sessionClaims;
   if (claims === undefined) {
     const session = await auth();

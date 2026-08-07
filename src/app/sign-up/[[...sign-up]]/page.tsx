@@ -8,7 +8,6 @@ import { AuthSignedInRedirect } from "@/components/auth/AuthSignedInRedirect";
 import { clerkSatelliteAuthRedirect } from "@/lib/clerk-env";
 import { clerkPostAuthReturnPath } from "@/lib/clerk-redirect-url";
 import { activeClerkUserIdFromRequestCookies } from "@/lib/clerk-session-cookies";
-import { isCognitoAuth } from "@/lib/auth-provider";
 
 import { noindexPageMetadata } from "@/lib/page-metadata";
 
@@ -23,13 +22,6 @@ type Props = {
 export default async function SignUpPage({ searchParams }: Props) {
   const sp = await searchParams;
   const returnPath = clerkPostAuthReturnPath(sp.redirect_url);
-
-  if (isCognitoAuth()) {
-    const login = new URL("/api/auth/cognito/login", process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000");
-    login.searchParams.set("redirect_url", returnPath);
-    login.searchParams.set("mode", "signup");
-    redirect(login.toString());
-  }
 
   const satelliteRedirect = clerkSatelliteAuthRedirect("sign-up", returnPath);
   if (satelliteRedirect) {

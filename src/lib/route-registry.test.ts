@@ -43,7 +43,7 @@ describe("route-registry — governance model", () => {
     for (const p of [
       "/api/admin/spx/dashboard",
       "/api/cron/spx-evaluate",
-      "/api/auth/cognito/login",
+      "/api/auth/me",
       "/api/webhook/whop",
       "/api/webhooks/clerk",
       "/api/push/send",
