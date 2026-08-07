@@ -4,6 +4,22 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-07 — [P1, LIVE ERROR] `fetchGradedSkips` read `counterfactual_json` without the column migration — grading cron erroring every 15 min, calibration evidence silently empty — FIXED (#1838)
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P1 — a **currently-firing** production error, and the failure shape is the bad one: it fails *silently*. |
+| **Found by** | Reading the live error log (`GET /api/admin/errors`) rather than the code. Two identical `db_query` events, `id 2400` and `2401`, at **22:30:40 and 22:45:40 UTC 2026-08-06** — a 15-minute cadence, i.e. every grading-cron pass. |
+| **The error** | `column "counterfactual_json" does not exist`, on `SELECT gate_failed, counterfactual_json FROM zerodte_scan_rejections`. Stack: `cron/zerodte-grade` → `admin/zerodte/graduation` → `market/zerodte/calibration`. |
+| **Root cause** | `src/lib/zerodte/skip-grading.ts` owns a lazy, memoized `ensureCounterfactualColumn()` (`ALTER TABLE … ADD COLUMN IF NOT EXISTS counterfactual_json JSONB`). `runSkipGrading` awaits it at `:276`. **`fetchGradedSkips` (`:360`) did not.** The two have opposite reachability: `runSkipGrading` is `POST ?grade_skips=1` — admin-triggered and rare — while `fetchGradedSkips` is called by `buildZeroDteCalibrationReport`, which the grade cron and the graduation endpoint hit on **every pass**. On prod the writer had evidently never run, so the column never existed and the reader threw on every read. |
+| **Why it was invisible** | `fetchGradedSkips` ends in `catch { return []; }`. Fail-soft is right in principle, but here it converted a schema error into **"there are no graded skips"** — so the calibration report's blocked-value lines (the evidence half of *"did the gates block winners?"*) silently read as EMPTY instead of erroring. Wrong, quietly. The only outward symptom was a log line every 15 minutes, which also risks masking unrelated errors in that feed. |
+| **Fix** | `await ensureCounterfactualColumn()` in `fetchGradedSkips`, exactly as `runSkipGrading` does. The memo makes repeat calls free, so guarding the reader costs nothing. One line + comment. |
+| **Test — and why it asserts SOURCE, not behaviour** | The invariant is "guard precedes query". A behavioural test cannot pin it reliably: `ensureCounterfactualColumn` memoizes at **module** scope, so only the first caller in a whole *process* issues the ALTER, making any such assertion a function of sibling-test order. Two attempts proved it — forcing this test to run first broke the writer test's own ALTER assertion, and a cache-busted import resolved a real `../db` (bypassing module mocks) and perturbed `scan.test.ts`'s mock registration, taking the suite from 1043/1043 to a failure. The shipped test reads the source and asserts the guard's index precedes the SELECT's: deterministic, order-free, and exactly the regression that matters. The writer test's now-order-dependent ALTER assertion was replaced with a comment explaining the memo. |
+| **Verification** | `tsc --noEmit` clean; `src/lib/zerodte/*.test.ts` **1044/1044** (was 1043/1043 on clean main — one added, zero regressions); `next lint` clean. |
+| **Status** | FIXED — PR #1838. |
+
+---
+
 ## 2026-08-07 — [P2, audit tooling] Outcome-grading cross-check called production with the PRE-FIX signature, so it kept reporting 4 disagreements that no longer exist — FIXED (#1837)
 
 | Field | Value |
