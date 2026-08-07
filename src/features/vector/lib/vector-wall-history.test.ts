@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   backfillRailPrefix,
+  decimateSeedHistory,
   bucketWallHistoryForInterval,
   composeHorizonTrail,
   liveTrailAnchorSec,
@@ -569,4 +570,79 @@ test("composeHorizonTrail: recorded per-horizon trail preferred, current column 
   // Neither → null so the caller draws the blended "All" rail (beads never blank on a toggle).
   assert.equal(composeHorizonTrail([], []), null);
   assert.equal(composeHorizonTrail(null, null), null);
+});
+
+// ---------------------------------------------------------------------------------------------
+// SSR seed decimation (FINDINGS 2026-08-07): /vector shipped a 22.8MB HTML document, 22.6MB of it
+// wall history at the recorder's 5s cadence. These pin the invariants the fix must never break.
+// ---------------------------------------------------------------------------------------------
+
+const seedSample = (time: number, strike: number): WallHistorySample => ({
+  time,
+  walls: { callWalls: [{ strike, pct: 1 }], putWalls: [] },
+});
+
+/** A full session at the oracle 5s cadence, exactly the shape prod serves. */
+function session5s(count: number, startAt = 1_000_000): WallHistorySample[] {
+  return Array.from({ length: count }, (_, i) => seedSample(startAt + i * 5, 7000 + i));
+}
+
+test("decimateSeedHistory: the newest full-resolution window is returned sample-for-sample", () => {
+  const history = session5s(1200); // 100 minutes at 5s
+  const out = decimateSeedHistory(history, { fullResolutionSec: 30 * 60, tailBucketSec: 15 });
+  const newest = history[history.length - 1]!.time;
+  const live = history.filter((s) => s.time >= newest - 30 * 60);
+  const outLive = out.filter((s) => s.time >= newest - 30 * 60);
+  assert.deepEqual(outLive, live, "the live window must not be touched at all");
+});
+
+test("decimateSeedHistory: the old tail collapses to one sample per bucket, keeping the LAST reading", () => {
+  const history = session5s(1200);
+  const out = decimateSeedHistory(history, { fullResolutionSec: 30 * 60, tailBucketSec: 15 });
+  const newest = history[history.length - 1]!.time;
+  const tail = out.filter((s) => s.time < newest - 30 * 60);
+  const buckets = new Set(tail.map((s) => Math.floor(s.time / 15) * 15));
+  assert.equal(tail.length, buckets.size, "one sample per 15s bucket in the tail");
+  // "Last wins" mirrors bucketWallHistoryForInterval, so the bead a bucket shows is its freshest
+  // reading — not a stale one from the top of the bucket.
+  const byBucket = new Map<number, WallHistorySample>();
+  for (const s of history) {
+    if (s.time >= newest - 30 * 60) continue;
+    byBucket.set(Math.floor(s.time / 15) * 15, s);
+  }
+  for (const s of tail.slice(1)) {
+    assert.deepEqual(s, byBucket.get(Math.floor(s.time / 15) * 15), "bucket must keep its last reading");
+  }
+});
+
+test("decimateSeedHistory: the first sample always survives (session-open bead / modeled prefix boundary)", () => {
+  const history = session5s(1200);
+  const out = decimateSeedHistory(history, { fullResolutionSec: 60, tailBucketSec: 600 });
+  assert.deepEqual(out[0], history[0], "backfillRailPrefix's prefix boundary must never be decimated away");
+});
+
+test("decimateSeedHistory: output is an ordered SUBSET — real samples, original times, never re-keyed", () => {
+  const history = session5s(1200);
+  const out = decimateSeedHistory(history, { fullResolutionSec: 30 * 60, tailBucketSec: 15 });
+  const times = new Set(history.map((s) => s.time));
+  for (const s of out) assert.ok(times.has(s.time), `synthesised time ${s.time} — seeds must stay real samples`);
+  for (let i = 1; i < out.length; i++) assert.ok(out[i]!.time > out[i - 1]!.time, "strictly increasing");
+  assert.ok(out.length < history.length, "a full session at 5s must actually shrink");
+});
+
+test("decimateSeedHistory: a real session's payload shrinks ~3x, which is the point", () => {
+  // 8.4h at 5s = the live SPX shape measured in prod (5,760 samples, 14.76MB).
+  const history = session5s(5760);
+  const out = decimateSeedHistory(history);
+  // 30 min live at 5s (360) + ~7.9h tail at 15s (~1,896).
+  assert.ok(out.length < history.length / 2.5, `expected >2.5x reduction, got ${history.length} -> ${out.length}`);
+  assert.ok(out.length > 2000, `over-decimated: ${out.length}`);
+});
+
+test("decimateSeedHistory: short or degenerate inputs pass through untouched", () => {
+  assert.deepEqual(decimateSeedHistory([]), []);
+  const one = [seedSample(1, 7000)];
+  assert.deepEqual(decimateSeedHistory(one), one);
+  const h = session5s(100);
+  assert.deepEqual(decimateSeedHistory(h, { tailBucketSec: 0 }), h, "a zero bucket must not divide by zero");
 });

@@ -18,6 +18,7 @@ import {
   backfillRailPrefix,
   mergeWallHistory,
   seedWallHistoryForDisplay,
+  decimateSeedHistory,
   trimHistoryToSession,
   type WallHistorySample,
 } from "@/features/vector/lib/vector-wall-history";
@@ -119,7 +120,15 @@ export async function loadVectorSeedProps(
   // along into every SSR payload as dead weight the client never draws — measured 28-50MB HTML /
   // 10-12s downloads on /vector and the SPX Slayer embed before this trim. Never clips the
   // backfilled prefix (always >= firstBar) or the current session's observed rail.
-  const sessionScopedHistory = trimHistoryToSession(backfilled, firstBar);
+  // …but ONE session at the oracle recorder's 5s cadence is still 5,760 samples x ~2.5KB of wall
+  // ladder. Measured live on /vector?ticker=SPX (2026-08-07): initialWallHistory 14.76MB +
+  // initialHorizonWallHistory 7.82MB = 22.6MB of a 22.8MB HTML document, next to 143KB of actual
+  // price bars. That is over-RESOLUTION, not just size — 5,760 bead columns on a ~1,600px chart is
+  // ~3.6 columns per pixel. decimateSeedHistory keeps the newest 30 minutes at full recorder
+  // fidelity and buckets the older tail to 15s (the cadence non-oracle tickers already ship), which
+  // the chart can actually resolve. The live SSE/poll path still appends at full cadence, so a
+  // member watching the session sees exactly what they see today.
+  const sessionScopedHistory = decimateSeedHistory(trimHistoryToSession(backfilled, firstBar));
 
   // Empty-case fallback: a single as-of-close snapshot at the last bar when there is genuinely
   // nothing recorded OR reconstructable for this session. No-ops whenever the rail already has
@@ -136,11 +145,13 @@ export async function loadVectorSeedProps(
   const seedHorizon = opts.seedDteHorizon;
   const initialHorizonWallHistory =
     seedHorizon && seedHorizon !== "all"
-      ? trimHistoryToSession(
-          await loadSessionWallHistory(sessionYmd, ticker, seedHorizon).catch(
-            () => [] as WallHistorySample[]
-          ),
-          firstBar
+      ? decimateSeedHistory(
+          trimHistoryToSession(
+            await loadSessionWallHistory(sessionYmd, ticker, seedHorizon).catch(
+              () => [] as WallHistorySample[]
+            ),
+            firstBar
+          )
         )
       : [];
 
