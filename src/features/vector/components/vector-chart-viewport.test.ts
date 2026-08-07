@@ -49,3 +49,44 @@ test("vector-chart-viewport: session time range uses lastSessionBars", () => {
   assert.match(lib, /setVisibleRange/);
   assert.match(lib, /setVisibleLogicalRange/);
 });
+
+// ---------------------------------------------------------------------------------------------
+// FINDINGS 2026-08-07 — "no beads on most of the chart", reported on AMD, META and every other
+// single name. The rail was healthy (AMD: 1,111 samples, 04:00 → 23:40 ET, full session); the
+// chart simply framed THREE sessions of bars (2,645, Aug 4 04:00 → Aug 6 19:59) against a rail
+// trimmed to ONE, so beads could only ever cover the newest ~25% of the x-axis.
+// ---------------------------------------------------------------------------------------------
+
+test("wantsSessionOverviewViewport: session viewport frames the session for EVERY ticker/lens", async () => {
+  const { wantsSessionOverviewViewport } = await import(
+    "@/features/vector/lib/vector-chart-viewport"
+  );
+  // The predicate takes exactly two inputs. A third (the DTE horizon) is what scoped #868's fix to
+  // SPX/SPY/QQQ and left every single name broken for two and a half weeks.
+  assert.equal(wantsSessionOverviewViewport.length, 2, "must not take a horizon argument");
+  assert.equal(wantsSessionOverviewViewport("session", false), true);
+  assert.equal(wantsSessionOverviewViewport("live", false), false, "live viewport follows the tape");
+  assert.equal(
+    wantsSessionOverviewViewport("session", true),
+    false,
+    "once the member opts into live-follow, stop refitting under them"
+  );
+});
+
+test("no caller reintroduces a horizon condition on the session viewport", () => {
+  const src = read("src/features/vector/components/VectorChart.tsx");
+  const lib = read("src/features/vector/lib/vector-chart-viewport.ts");
+  // A third argument at any call site means the horizon (or some other lens) is gating the fit
+  // again — the exact shape of the original bug.
+  for (const [name, text] of [["VectorChart.tsx", src], ["vector-chart-viewport.ts", lib]] as const) {
+    for (const call of text.match(/wantsSessionOverviewViewport\([^)]*\)/gs) ?? []) {
+      const args = call.slice(call.indexOf("(") + 1, call.lastIndexOf(")"));
+      const arity = args.trim() ? args.split(",").filter((a) => a.trim()).length : 0;
+      assert.ok(arity <= 2, `${name}: ${call.replace(/\s+/g, " ")} passes ${arity} args`);
+      assert.ok(
+        !/dteHorizon|DteHorizon/.test(args),
+        `${name}: the session fit must not depend on the DTE horizon — ${call.replace(/\s+/g, " ")}`
+      );
+    }
+  }
+});

@@ -163,7 +163,10 @@ import {
 } from "@/features/vector/lib/vector-cadence";
 import { vectorWallTrailSecClient } from "@/features/vector/lib/vector-wall-sample";
 import { vectorHeatmapScopeLabel } from "@/lib/gex-scope-labels";
-import { applySessionOverviewViewport } from "@/features/vector/lib/vector-chart-viewport";
+import {
+  applySessionOverviewViewport,
+  wantsSessionOverviewViewport,
+} from "@/features/vector/lib/vector-chart-viewport";
 
 export type VectorBar = {
   time: UTCTimestamp;
@@ -235,13 +238,6 @@ function maybeScrollToLive(chart: IChartApi | null, liveFollowEnabled: boolean):
   chart.timeScale().scrollToRealTime();
 }
 
-function wantsSessionOverviewViewport(
-  viewport: "session" | "live",
-  liveFollowEnabled: boolean,
-  dteHorizon: VectorDteHorizon
-): boolean {
-  return viewport === "session" && !liveFollowEnabled && dteHorizon === "0dte";
-}
 
 /** True once the member pans/drags or scroll-zooms — blocks programmatic refits until live-follow. */
 function memberViewportLocked(chartUserPanned: boolean, wheelZoomAtMs: number): boolean {
@@ -3196,7 +3192,7 @@ export function VectorChart({
     // follow fits the full seed. Background re-seeds route through applyDisplayBarsPreservingView.
     if (initialBars.length) {
       if (
-        wantsSessionOverviewViewport(defaultChartViewport, liveFollowEnabledRef.current, openingDteHorizon)
+        wantsSessionOverviewViewport(defaultChartViewport, liveFollowEnabledRef.current)
       ) {
         applySessionOverviewViewport(chart, initialDisplay);
         chart.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: false });
@@ -3274,7 +3270,7 @@ export function VectorChart({
     pinCandlesOnTop(series);
 
     if (
-      wantsSessionOverviewViewport(defaultChartViewport, liveFollowEnabledRef.current, openingDteHorizon)
+      wantsSessionOverviewViewport(defaultChartViewport, liveFollowEnabledRef.current)
     ) {
       // Trails/overlays paint after the first viewport pass — re-frame once markers exist.
       requestAnimationFrame(() => {
@@ -3764,8 +3760,7 @@ export function VectorChart({
       const following = chart ? chartIsFollowingLive(chart) : false;
       const sessionOverview = wantsSessionOverviewViewport(
         defaultChartViewportRef.current,
-        liveFollowEnabledRef.current,
-        dteHorizonRef.current
+        liveFollowEnabledRef.current
       );
       const viewportLocked = memberViewportLocked(
         chartUserPannedRef.current,
