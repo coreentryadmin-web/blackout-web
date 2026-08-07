@@ -4,6 +4,24 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-07 - [P1, MOBILE UX / A11Y] Every primary control on the Night Hawk command deck was under the 44px touch minimum - FIXED (#1842)
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P1 for a product members trade from a phone. These are the controls for sorting the board, filtering by status, switching swing section, expanding "why this play", and copying the OCC symbol into a broker ticket. |
+| **Found by** | `scripts/audit/live-ui-audit.cjs` (new, this PR) - the first harness in the repo that measures the **hydrated** DOM of the live desk rather than SSR HTML. Rendered `/nighthawk` at a real 430px iPhone viewport and read every interactive element's `getBoundingClientRect()`. |
+| **Measured, live, before** | 0DTE view **13** controls under 44x44; SWING view **12**. Worst offenders: column sort buttons `80x15`, `120x15`, `96x20`, `72x15` (a third of a fingertip tall); status chips `97x35`; "Why this play was..." disclosure `376x17`; "Copy OCC symbol" `44x17`; nav auth CTA `133x36`. |
+| **Also found** | The swing serving-section bar (8 buttons, shipped in #1836) had `flex:1` with no floor **outside** the `.nh-deck-header-compact` scope that supplies `min-width:56px`, so at 430px the buttons divided down to **33px wide** - too narrow to read the label, let alone hit. My own regression from #1836. |
+| **Root cause** | `.nh-deck-play-th--sort` is `padding:0` on a 10px font, so its box is exactly the line height. The deck was designed dense for a mouse and nothing ever re-measured it under touch. |
+| **Fix** | One CSS block, scoped to `@media (pointer: coarse)`, so the dense desktop layout is untouched and no type size, colour or copy changes - only the height a finger must hit. Sort buttons/status chips/OCC copy/nav CTA get `min-height:44px`; the two `<summary>` disclosures get `padding-block:14px` **instead of** `min-height` + centering, because `<summary>` baseline-aligns its label against a 9px count and centering would visibly de-align them. The sticky header drops its own vertical padding so the row grows ~11px, not ~29px. The section bar scrolls horizontally (matching `.nh-deck-hdr-row`) rather than compressing. |
+| **Verified against the LIVE DOM, pre-deploy** | Production cannot show the "after" of a branch, and re-measuring post-deploy is too late to catch a fix that does nothing - so the harness grew `--inject-css`, which applies the not-yet-shipped stylesheet to the real rendered page. Result: 0DTE **13 -> 1** (the survivor is `44x44`, sub-pixel short), SWING **12 -> 2 -> 0** across iterations. `horizontalOverflowPx` stayed **0**, so the scrolling bar introduced no layout regression. |
+| **Two harness bugs fixed before they became false findings** | (1) `proxy-browser.cjs` sets every cookie `httpOnly:true`, including `__client_uat`, which is deliberately JS-READABLE in production because `Nav.tsx`'s `readClientSignedIn` self-heal depends on it. With it hidden, every capture rendered **signed-out nav chrome ("Get access ->") over a live gated board** - a convincing member-facing auth bug that does not exist. (2) The context set `isMobile` but not `hasTouch`, so `@media (pointer: coarse)` never matched and the entire fix would have measured as a no-op. |
+| **A third, separate blocker this uncovered** | A stale `__session` (Clerk JWT lifetime is ~60s) makes the origin return a **307 whose `Location` is the same URL**. A browser follows it, gets another 307, and the navigation dies as `ERR_CONNECTION_RESET` - indistinguishable from the sandbox egress block, and it sent me chasing the transport. The harness now mints its session in-process (JWT seconds old at first byte) and reports any self-redirect by name so the next person is not misled. This is the concrete mechanism behind `LIVE-UI-CONNECTION.md`'s warning; recorded here because "Routed: 2 ok, 0 fail" reads like success. |
+| **Verification** | `tsc --noEmit` clean; `next lint` clean (one pre-existing unrelated warning). CSS-only runtime change plus a new audit script - no TS behaviour touched. |
+| **Status** | FIXED - PR #1842. |
+
+---
+
 ## 2026-08-07 — [P1, LIVE PERF] `/vector` served a **22.8 MB HTML document** — 22.6 MB of it wall-history beads at 5s resolution — FIXED (#1840)
 
 | Field | Value |
