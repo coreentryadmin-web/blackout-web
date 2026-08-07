@@ -48,6 +48,7 @@ function parseArgs() {
     if (a[i]==='--cookie') opts.ck=a[++i]; else if (a[i]==='--viewport') opts.vp=a[++i];
     else if (a[i]==='--wait') opts.wait=+a[++i]; else if (a[i]==='--full') opts.full=true;
     else if (a[i]==='--inject-css') opts.css=a[++i];
+    else if (a[i]==='--init-js') opts.initJs=a[++i];
     else pos.push(a[i]);
   }
   return { ...opts, url: pos[0], out: pos[1]||'screenshot.png' };
@@ -181,6 +182,13 @@ async function main() {
     }
   });
 
+  // Runs BEFORE any page script — the only place a probe can observe hydration, since React has
+  // already reconciled by the time --inject-css or an evaluate() lands.
+  if (o.initJs) {
+    await ctx.addInitScript({ path: o.initJs });
+    console.log(`init script: ${safeLog(o.initJs, 200)}`);
+  }
+
   const page = await ctx.newPage();
 
   // Everything the page complains about, captured from the first byte.
@@ -307,7 +315,8 @@ async function main() {
     console.error(`transport problem. Re-run without --cookie so the harness mints a fresh one.`);
     for (const l of selfRedirects.slice(0, 5)) console.error(`  ${safeLog(l, 180)}`);
   }
-  console.log(JSON.stringify({ url: o.url, report, consoleErrors, pageErrors, selfRedirects: selfRedirects.length }, null, 2));
+  const probe = await page.evaluate(() => (window.__probe ?? null)).catch(() => null);
+  console.log(JSON.stringify({ url: o.url, report, consoleErrors, pageErrors, selfRedirects: selfRedirects.length, probe }, null, 2));
   if (o.out && o.out !== 'screenshot.png') await page.screenshot({ path: o.out, fullPage: o.full, timeout: 15000 });
   await browser.close();
   if (cleanupSession) await cleanupSession();

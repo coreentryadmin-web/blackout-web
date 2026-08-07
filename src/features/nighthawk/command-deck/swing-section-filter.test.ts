@@ -83,3 +83,43 @@ test("SWING_SECTION_LABEL covers ALL plus every section", () => {
     assert.ok(SWING_SECTION_LABEL[s].length <= 9, `${s} label too wide for the mobile filter row`);
   }
 });
+
+// Live regression from #1836, reported off the desk 2026-08-07: the section bar rendered as eight
+// ~400px-tall panels covering the board. Two CSS facts caused it, and both are pinned here because
+// the failure is invisible to any test that only renders markup.
+test("the section bar does NOT reuse the compact-header --prominent modifier", async () => {
+  const { readFileSync } = await import("node:fs");
+  const { fileURLToPath } = await import("node:url");
+  const src = readFileSync(fileURLToPath(new URL("./containers.tsx", import.meta.url)), "utf8");
+  const bar = src.slice(
+    src.indexOf('aria-label="Filter swing plays by serving section"') - 400,
+    src.indexOf('aria-label="Filter swing plays by serving section"') + 60
+  );
+  assert.ok(
+    bar.includes("nh-deck-filterbar--sections"),
+    "the section bar must use its own --sections modifier"
+  );
+  assert.ok(
+    !bar.includes("nh-deck-filterbar--prominent"),
+    "--prominent is `flex:1 1 auto` for a flex ROW (the compact header); in this flex COLUMN that " +
+      "reads as 'take the leftover HEIGHT' and the bar swallows the whole deck"
+  );
+});
+
+test("--sections pins both halves of the bug: never grow, never stretch", async () => {
+  const { readFileSync } = await import("node:fs");
+  const { fileURLToPath } = await import("node:url");
+  const css = readFileSync(
+    fileURLToPath(new URL("../../../app/globals.css", import.meta.url)),
+    "utf8"
+  );
+  const rule = css.slice(
+    css.indexOf(".nh-deck-filterbar--sections{"),
+    css.indexOf(".nh-deck-filterbar--sections::-webkit-scrollbar")
+  );
+  assert.ok(rule.length > 0, ".nh-deck-filterbar--sections rule not found");
+  assert.match(rule, /flex:0 0 auto/, "must not grow into the column's spare height");
+  // `.nh-deck-filterbar` sets no align-items, so the default `stretch` is what made every button
+  // as tall as the bar. The modifier has to override it explicitly.
+  assert.match(rule, /align-items:center/, "must not let buttons stretch to the bar's height");
+});

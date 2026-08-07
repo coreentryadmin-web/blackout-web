@@ -18,6 +18,30 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 
 ---
 
+## 2026-08-07 - [P1, LIVE VISUAL REGRESSION] Swing section bar rendered as eight full-height panels covering the board - FIXED (#1843)
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P1, live, and mine. The Swings lane - one of the three Night Hawk boards - opened to eight ~400px-tall empty panels filling the viewport, with the actual play table pushed below the fold. Reported from the desk with a screenshot. |
+| **Introduced by** | #1836 (this session), which added the ALL + seven-section filter bar and reused the existing `nh-deck-filterbar--prominent` modifier for it. |
+| **Root cause - two CSS facts, neither visible in markup** | (1) `--prominent` is `flex:1 1 auto`. It was written for the **compact header**, a flex ROW, where that correctly means "take the leftover WIDTH". The section bar renders as a sibling of `<CommandDeck>` in a flex COLUMN, where the identical declaration means "take the leftover HEIGHT" - so the bar grew to fill the entire deck area. (2) `.nh-deck-filterbar` sets no `align-items`, so the default `stretch` then made all eight buttons as tall as that now-enormous bar. Either alone would have been survivable; together they produced the eight panels. |
+| **Why the #1836 tests did not catch it** | They are pure unit tests over `rowsForSwingSection`/`swingSectionCounts` - correct, and completely blind to this. The defect only exists once the bar is laid out inside a flex column, which no unit test renders. A markup-level component test would have missed it too. |
+| **Fix** | Its own modifier, `nh-deck-filterbar--sections`: `flex:0 0 auto` (never grow into the column's spare height) + `align-items:center` (never stretch the buttons) + a fixed 26px button height, nowrap, and horizontal scroll so eight buttons stay readable on a narrow viewport instead of compressing. `--prominent` is left exactly as-is for the compact header that legitimately needs it. |
+| **Verified against the LIVE desk before shipping** | Captured `/nighthawk?view=SWING` at 1900x1000 through `scripts/audit/live-ui-audit.cjs --inject-css`, before and after. After: one compact row - `ALL 14 · COMMIT 2 · WAITING 4 · WATCH 1 · RESEARCH 2 · MANAGING 5 · SCALING 0 · EXITING 0` - with the play table immediately below it. |
+| **Tests** | Two source-level regressions in `swing-section-filter.test.ts`, because the failure is invisible to any test that only renders markup: the section bar must carry `--sections` and must NOT carry `--prominent`; and the `--sections` rule must pin BOTH `flex:0 0 auto` and `align-items:center`. Each assertion carries the reason, so a future edit that drops one gets the explanation rather than a bare failure. 11/11 pass. |
+| **Lesson worth keeping** | A layout modifier is only correct for the flex DIRECTION it was written for. `flex:1 1 auto` is not a neutral "fill" - reusing a row modifier in a column silently converts a width rule into a height rule. |
+| **Status** | FIXED - PR #1843. |
+## 2026-08-07 - [NEGATIVE RESULT #2] React #418: locale/timezone formatting RULED OUT - probe committed
+
+| Field | Value |
+|-------|-------|
+| **The signature** | Still the largest live frontend error: **135 events** across `/dashboard` (69 + 47), `/admin` (12) and `/flows` (7), most recent `08-07T03:11`. React 18 reports a hydration mismatch in production as a bare `Minified React error #418` with a minified stack and NO component identity, so the error log cannot say which text diverged. |
+| **What was tested** | The strongest remaining hypothesis: locale/time formatting reaching SSR output **without an explicit `timeZone`**. The server renders in UTC and the browser in the member's zone, so any such value mismatches for every non-UTC member — and **31 of the repo's 32 `toLocale*` call sites pass no `timeZone`**. |
+| **Method** | New `scripts/audit/probes/hydration-418.js`, run through `live-ui-audit.cjs --init-js` (also new) so it installs **before any page script** — the only point at which hydration can be observed, since `--inject-css` and `page.evaluate()` both land after React has reconciled. The probe wraps `Date.prototype.toLocale{Time,Date,}String`, `Intl.DateTimeFormat` and `Date.now`, records each call with a stack, and marks the hydration boundary with a double-rAF past `load`. Wraps, never blocks — the page behaves normally. |
+| **Result on `/flows` (a route that reproduces #418 on demand)** | `counts: { "Date.now": 213 }` and **ZERO** `toLocale*` / `Intl.DateTimeFormat` calls without a `timeZone`, before or after hydration. The hypothesis is **dead** for this route. The 60 captured pre-hydration frames are all `Date.now`, and every one originates in Cloudflare's beacon, gtag, or Next's own vendor chunk `1255-*` — not application render code. |
+| **Ruled out so far** | (1) invalid DOM nesting - a browser-parser re-parse of all six desk routes' SSR HTML matched tag-for-tag; (2) `Nav.tsx`'s `__client_uat` cookie self-heal - unreachable there, since `(site)/layout.tsx` seeds `initialSignedIn` from `auth()` AND falls back to `signedInFromRequestCookies()`; (3) locale/timezone formatting, above. |
+| **Still open** | The actual divergence. Next candidates, in order: `Modal.tsx:77`'s render-time `window.matchMedia` read; any `useState` initializer reading browser-only state on a route that SSRs it; and a third-party script mutating the DOM before hydration (the beacon/gtag frames make this worth eliminating). Localising it properly needs a **development-build repro** - prod React will never name the component. |
+| **Why the probe is committed** | It is reusable, it costs one run, and it converts "we think it might be timezones" into a measured answer. The next pass starts from the narrowed list rather than re-testing what is already eliminated. |
 ## 2026-08-07 - [P1, MEMBER-FACING] SPX Slayer dashboard: the blended bead rail was structurally always empty - FIXED (#1846)
 
 | Field | Value |

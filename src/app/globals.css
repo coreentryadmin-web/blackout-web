@@ -16912,6 +16912,7 @@ body::before {
 .nh-deck-filtbtn:focus-visible{outline:none;border-color:var(--dk-green);box-shadow:0 0 0 1px var(--dk-green)}
 .nh-deck-filtbtn .cnt{opacity:.85;font-weight:700;margin-left:2px}
 
+<<<<<<< HEAD
 
 /* Helix touch targets (FINDINGS 2026-08-07, measured live at 430px by HIT TEST).
    The flow tape's column-sort headers render 15px tall (`Time` 43x15, `Sym` 24x15, `Expiry`/`Strike`
@@ -16946,6 +16947,34 @@ body::before {
   }
 }
 
+=======
+/* Swing serving-section bar (the ALL + seven-section row above the Swings deck).
+ *
+ * It must NOT reuse `--prominent`. That modifier was written for the COMPACT HEADER, a flex ROW,
+ * where `flex:1 1 auto` correctly means "take the leftover WIDTH". Rendered here — as a sibling of
+ * <CommandDeck> in a flex COLUMN — the same declaration means "take the leftover HEIGHT", so the
+ * bar grew to fill the whole deck area; and because `.nh-deck-filterbar` never sets `align-items`,
+ * the default `stretch` then made all eight buttons as tall as that bar. Result: eight ~400px
+ * panels covering the board. (FINDINGS 2026-08-07 — regression from #1836, reported from the live
+ * desk.) Both halves of the bug are pinned below: never grow, never stretch.
+ */
+.nh-deck-filterbar--sections{
+  flex:0 0 auto;
+  align-items:center;
+  gap:6px;
+  overflow-x:auto;
+  scrollbar-width:none;
+}
+.nh-deck-filterbar--sections::-webkit-scrollbar{display:none}
+.nh-deck-filterbar--sections .nh-deck-filtbtn{
+  flex:0 0 auto;
+  height:26px;
+  padding:0 10px;
+  white-space:nowrap;
+  display:inline-flex;
+  align-items:center;
+}
+>>>>>>> origin/main
 /* ── Touch targets (FINDINGS 2026-08-07) ──────────────────────────────────────────────────
    Measured on the LIVE rendered board at the 430px iPhone viewport with
    scripts/audit/live-ui-audit.cjs: the command deck's primary controls sit well under the
@@ -16981,13 +17010,13 @@ body::before {
   .nh-deck-why-more > summary { padding-block: 14px }
 }
 
-/* The swing serving-section bar carries EIGHT buttons (ALL + the seven sections). At 430px
-   `flex:1` divided them down to ~33px each — narrower than a fingertip and too narrow to read
-   the label. Let them keep their natural width and scroll the bar instead, which is what
-   `.nh-deck-hdr-row` (overflow-x:auto) already does for its other modules. */
-.nh-deck-filterbar--prominent { overflow-x: auto; scrollbar-width: none }
-.nh-deck-filterbar--prominent::-webkit-scrollbar { display: none }
-.nh-deck-filterbar--prominent .nh-deck-filtbtn { flex: 0 0 auto; min-width: 56px }
+/* NOTE (merge of #1842 + #1843): #1842 added an `overflow-x:auto` + `flex:0 0 auto` override on
+   `--prominent` to stop the swing section bar's eight buttons compressing to ~33px. #1843 then
+   moved that bar onto its own `--sections` modifier, so the override no longer has a case to
+   serve — and `--prominent` is still live on the FOUR-button status bar (CommandDeck.tsx), where
+   `flex:0 0 auto` would stop those buttons filling the row. Removed rather than left in place:
+   dead CSS that still changes behaviour is worse than no CSS. The 33px problem is now solved by
+   `.nh-deck-filterbar--sections` below. */
 /* Sort toggle — STATUS / CONVICTION lenses. */
 .nh-deck-sortbar{display:flex;gap:4px;padding:6px 10px;border-bottom:1px solid var(--dk-line);background:#050c08}
 .nh-deck-sortbtn{flex:1;background:rgba(53,255,158,.05);border:1px solid rgba(53,255,158,.12);border-radius:3px;
