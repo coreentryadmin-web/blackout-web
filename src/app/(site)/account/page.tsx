@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { PersonalAlertsSettings } from "@/components/account/PersonalAlertsSettings";
 import { AccountProfilePanel } from "@/components/account/AccountProfilePanel";
+import { AccountMembershipPanel } from "@/components/account/AccountMembershipPanel";
 import { AccountPageShell } from "@/components/account/AccountPageShell";
 // Contrast hardening for the Clerk <UserProfile> widget (fields were dark-on-dark).
 import "../../account.css";
@@ -23,6 +24,8 @@ export default function AccountPage() {
         </p>
       </div>
       <AccountProfilePanel />
+
+      <AccountMembershipPanel />
 
       <div className="account-page-alerts-block mt-8 rounded-xl border border-white/10 bg-white/[0.02] p-5">
         <h2 className="font-syne text-lg font-bold text-white">Personal Play Alerts</h2>

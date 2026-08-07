@@ -3,7 +3,7 @@ export const HOME_FAQ_ITEMS = [
   {
     question: "Can I cancel anytime?",
     answer:
-      "Yes. Billing is handled through our secure checkout partner, and you can manage or cancel your membership anytime from your account.",
+      "Yes. Head to Account → Membership & Billing and click \"Manage subscription\" — that opens your secure Whop billing portal, where you can update your card, switch plans, or cancel.",
   },
   {
     question: "Do I need to connect a broker?",

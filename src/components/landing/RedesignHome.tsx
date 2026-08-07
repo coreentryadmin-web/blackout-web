@@ -498,7 +498,7 @@ export function RedesignHome() {
           <div className="faq-list">
             <details className="faq-item">
               <summary>Can I cancel anytime?</summary>
-              <p>Yes. Billing is handled through our secure checkout partner, and you can manage or cancel your membership anytime from your account.</p>
+              <p>Yes. Head to Account &rarr; Membership &amp; Billing and click &quot;Manage subscription&quot; &mdash; that opens your secure Whop billing portal, where you can update your card, switch plans, or cancel.</p>
             </details>
             <details className="faq-item">
               <summary>Do I need to connect a broker?</summary>
