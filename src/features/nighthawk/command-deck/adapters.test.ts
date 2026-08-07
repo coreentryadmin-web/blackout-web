@@ -6,6 +6,7 @@ import {
   terminalPlayFromEdition,
   managementFor,
   parseLevelNum,
+  firstSeenIso,
 } from "./adapters.ts";
 import { overlayLegacyQuotes } from "./use-legacy-quotes.ts";
 
@@ -1411,4 +1412,33 @@ test("horizon adapter: a non-finite greek is dropped to null, never passed throu
   assert.equal(play.greeks!.delta, 0.58);
   assert.equal(play.greeks!.gamma, null);
   assert.equal(play.greeks!.theta, null);
+});
+
+
+// ── TIME COLUMN: read first_seen from BOTH source shapes (2026-08-07) ────────────────────────
+// The board serves a LEDGER row (live setup nested under `setup`) and a BARE board setup (fields at
+// the top level) through one adapter. Only the nested shape was read, so bare rows lost their
+// detection time and the deck's TIME column rendered "—". Measured live: 10/10 board setups carried
+// a top-level `first_seen` and 0/10 had a nested `setup`; the deck showed a clock on 1 row of 56.
+
+test("firstSeenIso: reads the NESTED setup timestamp (ledger row shape)", () => {
+  assert.equal(firstSeenIso({}, { first_seen: "2026-08-07T13:37:00Z" }), "2026-08-07T13:37:00Z");
+});
+
+test("firstSeenIso: falls back to the TOP-LEVEL timestamp (bare board setup) — the live regression", () => {
+  assert.equal(firstSeenIso({ first_seen: "2026-08-07T13:37:00Z" }, null), "2026-08-07T13:37:00Z");
+});
+
+test("firstSeenIso: prefers nested over top-level when a row carries both", () => {
+  assert.equal(
+    firstSeenIso({ first_seen: "2026-08-07T10:00:00Z" }, { first_seen: "2026-08-07T13:37:00Z" }),
+    "2026-08-07T13:37:00Z"
+  );
+});
+
+test("firstSeenIso: returns null — never a fabricated time — when neither shape has one", () => {
+  // The deck SORTS and AGES rows off this value, so inventing one would silently reorder the board.
+  assert.equal(firstSeenIso(null, null), null);
+  assert.equal(firstSeenIso({}, {}), null);
+  assert.equal(firstSeenIso({ first_seen: "" }, { first_seen: "" }), null);
 });

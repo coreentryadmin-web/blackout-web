@@ -164,6 +164,16 @@ export interface ZeroDteDeckSource {
     /** First time the scanner surfaced this setup (board aggregation). */
     first_seen?: string | null;
   } | null;
+  /**
+   * First time the scanner surfaced this row, at the TOP level.
+   *
+   * The board serves two shapes through this one adapter: a LEDGER row, which nests the live setup
+   * under `setup`, and a BARE board setup, which IS the setup with its fields at the top level. Only
+   * the nested shape was read, so every bare row lost its detection time and the deck's TIME column
+   * rendered "—". Measured live 2026-08-07: 10/10 board setups carried `first_seen` at the top level
+   * and 0/10 had a nested `setup` object.
+   */
+  first_seen?: string | null;
   allocation?: { role: string; sizing: string; reasons?: string[] } | null;
   /** True when this row is a CREDIT iron condor (from the ledger row / entry_context.play_type or the
    *  sim frame). A condor must NEVER draw the directional long-premium trim ladder (it's inverted —
@@ -219,6 +229,22 @@ const FB_LABELS: Record<string, string> = {
   fundamental: "Fundamental", catalyst: "Catalyst", short_interest: "Short Interest",
   wall_proximity: "GEX Wall", vex: "VEX", skew: "Skew",
 };
+
+/**
+ * Detection instant for a deck row, tolerant of BOTH source shapes (nested ledger setup and bare
+ * board setup). Null only when neither carries one — an honest "no time", never a fabricated one,
+ * since the deck both sorts and ages rows off this value.
+ */
+export function firstSeenIso(
+  src: { first_seen?: string | null } | null | undefined,
+  setup: { first_seen?: string | null } | null | undefined
+): string | null {
+  const nested = setup?.first_seen;
+  if (typeof nested === "string" && nested.length > 0) return nested;
+  const top = src?.first_seen;
+  if (typeof top === "string" && top.length > 0) return top;
+  return null;
+}
 
 export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
   const setup = src.setup ?? null;
@@ -391,8 +417,10 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
     // row with neither renders no ribbon (honest absence), never a fabricated reason.
     whyNow: src.why_now ?? null,
     firstFlaggedAt: src.first_flagged_at ?? null,
-    detectedAt:
-      typeof setup?.first_seen === "string" && setup.first_seen.length > 0 ? setup.first_seen : null,
+    // Nested (ledger row) first, then the TOP-LEVEL field a bare board setup carries. Reading only
+    // the nested one blanked TIME for every WATCH row — the timestamp was in the payload all along,
+    // one level up from where this looked.
+    detectedAt: firstSeenIso(src, setup),
     closedReason: src.closed_reason ?? null,
     exitReason: src.exit_reason ?? null,
     exitDetail: src.exit_detail ?? null,
