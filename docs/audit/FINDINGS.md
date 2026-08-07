@@ -4,7 +4,7 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
-## 2026-08-07 — [P1, LIVE PERF] `/vector` served a **22.8 MB HTML document** — 22.6 MB of it wall-history beads at 5s resolution — FIXED (#PR)
+## 2026-08-07 — [P1, LIVE PERF] `/vector` served a **22.8 MB HTML document** — 22.6 MB of it wall-history beads at 5s resolution — FIXED (#1840)
 
 | Field | Value |
 |-------|-------|
@@ -19,7 +19,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Invariants pinned by test** | Live window returned sample-for-sample; tail keeps one sample per bucket and it is the bucket's LAST reading (same "last wins" rule `bucketWallHistoryForInterval` uses); the first sample always survives (session-open bead / `backfillRailPrefix` boundary); output is an ordered SUBSET with original times - never re-keyed, never synthesised, so `modeled` flags and `trailsByStrike`'s "still in the latest bucket" logic keep operating on real recorded samples. |
 | **Deliberately conservative** | 15s, not 30s. A 30s tail would take the document to ~7 MB, but 15s is the largest bucket already proven in production. If 10.7 MB is still too heavy, widening `SEED_TAIL_BUCKET_SEC` is a one-constant follow-up. |
 | **Verification** | `npx tsx --test src/features/vector/lib/*.test.ts` -> **584 pass / 3 fail**, against **578 pass / 3 fail** on clean main: six added, zero regressions (the 3 failures are pre-existing and network-dependent, identical before and after). `tsc --noEmit` clean. |
-| **Status** | FIXED - PR #PR. |
+| **Status** | FIXED - PR #1840. |
 
 ---
 
