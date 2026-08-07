@@ -892,12 +892,33 @@ async function runMigrations(): Promise<void> {
   await p.query(`
     ALTER SEQUENCE api_telemetry_events_seq_id_seq OWNED BY api_telemetry_events.seq_id;
   `);
+  /* Bootstrap the sequence to clear the legacy app-assigned seq_ids — but ONLY when it is
+   * actually behind the table, and NEVER by rewinding it.
+   *
+   * This used to be an unconditional `setval(seq, MAX(seq_id)+1, false)`. Every boot re-ran it,
+   * and boots happen while OTHER ECS tasks are inserting telemetry: task B calls nextval() and
+   * gets 5001 but has not committed yet, so this task's `MAX(seq_id)` still reads 5000 and the
+   * setval hands 5001 out a second time -> `duplicate key value violates unique constraint
+   * "api_telemetry_events_pkey"`, and the losing row is DROPPED (the INSERT's `ON CONFLICT
+   * (event_id) DO NOTHING` only covers the event_id UNIQUE index, not the seq_id PRIMARY KEY).
+   * Live evidence: 24 such drops in prod between 2026-07-29 and 2026-08-06, a few per day,
+   * tracking task starts rather than any one deploy.
+   *
+   * The guard compares the sequence's NEXT value (last_value, +1 when is_called) against the
+   * table max, so once the sequence owns the column this is a permanent no-op and the race
+   * window closes. Legacy rows still migrate on the first boot that sees them.
+   */
   await p.query(`
-    SELECT setval(
-      'api_telemetry_events_seq_id_seq',
-      GREATEST(1, COALESCE((SELECT MAX(seq_id) FROM api_telemetry_events), 0) + 1),
-      false
-    );
+    DO $$
+    DECLARE next_val BIGINT; max_id BIGINT;
+    BEGIN
+      SELECT CASE WHEN is_called THEN last_value + 1 ELSE last_value END
+        INTO next_val FROM api_telemetry_events_seq_id_seq;
+      SELECT COALESCE(MAX(seq_id), 0) INTO max_id FROM api_telemetry_events;
+      IF next_val <= max_id THEN
+        PERFORM setval('api_telemetry_events_seq_id_seq', max_id + 1, false);
+      END IF;
+    END $$;
   `);
   await p.query(`
     CREATE TABLE IF NOT EXISTS admin_audit_log (
