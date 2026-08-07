@@ -5,6 +5,7 @@ import { normalizeVectorTicker, isVectorTickerAllowed } from "@/features/vector/
 import { getVectorExpectedMove } from "@/features/vector/lib/vector-expected-move-server";
 import { resolveDteHorizonParam } from "@/features/vector/lib/vector-dte-horizon";
 import { roundFloats } from "@/lib/round-floats";
+import { VECTOR_FRACTION_DP } from "@/features/vector/lib/vector-response-rounding";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const runtime = "nodejs";
@@ -18,7 +19,10 @@ export const dynamic = "force-dynamic";
  *
  * Same gate as the sibling reads (authorizeMarketDeskApi + requireToolApi("vector") + ticker
  * allowlist). `expectedMove: null` when there's no honest band to draw (no chain / horizon / real
- * ATM IV) — the client omits the cone. Floats rounded at the data layer per repo policy.
+ * ATM IV) — the client omits the cone. Floats rounded at the data layer per repo policy, with a
+ * per-key precision override for the two FRACTIONAL fields (`movePct`, `atmIv`) — see
+ * {@link VECTOR_FRACTION_DP}. The blanket 2dp default quantized SPX's `movePct` (0.004) to a literal
+ * 0, so the route served "±31 pts (0.00%)".
  */
 export async function GET(req: NextRequest) {
   const auth = await authorizeMarketDeskApi(req);
@@ -40,7 +44,7 @@ export async function GET(req: NextRequest) {
       ticker,
       horizon,
       expectedMove: em, // { atmIv, dteDays, spot, movePct, bands:[{sigma,low,high,movePts}], expiry } | null
-    }),
+    }, 2, VECTOR_FRACTION_DP),
     { headers: NO_STORE_HEADERS }
   );
 }

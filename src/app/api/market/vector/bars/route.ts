@@ -3,6 +3,7 @@ import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
 import { requireToolApi } from "@/lib/tool-access-server";
 import { normalizeVectorTicker, isVectorTickerAllowed } from "@/features/vector/lib/vector-ticker";
 import { fetchVectorSeedBars } from "@/features/vector/lib/vector-seed-bars";
+import { roundFloats } from "@/lib/round-floats";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const runtime = "nodejs";
@@ -15,6 +16,12 @@ export const dynamic = "force-dynamic";
  * boundary, replay window, tab sleep) was previously a permanent hole in the
  * session for the rest of the day, silently corrupting higher-timeframe
  * aggregates. Clients re-seed from here on every (re)connect.
+ *
+ * Floats are rounded at the response boundary like every sibling Vector read. This route was the
+ * last one missing it: measured live 2026-08-07, `bars?ticker=SPX` served `high` values such as
+ * `7788.650000000001` (8 hits in the first 60 elements). No `keyDp` override — every fractional
+ * field here is an OHLC price, for which the 2dp default is correct, and `roundFloats` already
+ * short-circuits on integers so epoch timestamps and share volumes pass through untouched.
  */
 export async function GET(req: NextRequest) {
   const auth = await authorizeMarketDeskApi(req);
@@ -31,7 +38,7 @@ export async function GET(req: NextRequest) {
 
   const { bars, sessionYmd } = await fetchVectorSeedBars(ticker);
   return NextResponse.json(
-    { ticker, sessionYmd, bars, available: bars.length > 0 },
+    roundFloats({ ticker, sessionYmd, bars, available: bars.length > 0 }),
     { headers: NO_STORE_HEADERS }
   );
 }
