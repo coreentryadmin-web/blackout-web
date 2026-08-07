@@ -1,9 +1,11 @@
 import { Resend } from "resend";
 
-// Strip newlines/control characters before interpolating caller-supplied strings
-// (email subject/recipient) into a log line — otherwise a crafted value could
-// inject fake log entries (CodeQL: log injection). Truncated too, so a very
-// long subject can't blow out log lines.
+// Strip newlines/control characters from caller-supplied strings (email
+// subject/recipient) before they ever reach a log call — otherwise a crafted
+// value could inject fake log entries (CodeQL: log injection). Truncated too,
+// so a very long subject can't blow out log lines. Sanitized values are also
+// passed as a separate structured arg rather than interpolated into the
+// message string, so nothing tainted ever flows into the log format itself.
 function sanitizeForLog(value: string, maxLen = 200): string {
   return value.replace(/[\r\n\t\x00-\x1f\x7f]/g, " ").slice(0, maxLen);
 }
@@ -39,9 +41,10 @@ export async function sendEmail(input: {
 }): Promise<SendEmailResult> {
   const resend = getResendClient();
   if (!resend) {
-    console.warn(
-      `[resend] RESEND_API_KEY not configured — email not sent: "${sanitizeForLog(input.subject)}" -> ${sanitizeForLog(input.to)}`
-    );
+    console.warn("[resend] RESEND_API_KEY not configured — email not sent", {
+      subject: sanitizeForLog(input.subject),
+      to: sanitizeForLog(input.to),
+    });
     return { ok: false, error: "not_configured" };
   }
   try {
