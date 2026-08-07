@@ -26,7 +26,7 @@ const HM_ASOF = "2026-07-24T15:31:00.000Z";
 
 mock.module("../../../../../lib/market-api-auth", {
   namedExports: {
-    authorizeMarketDeskApi: async () => ({ userId: "user_1", via: "user" as const }),
+    authorizePremiumDeskApi: async () => ({ userId: "user_1", via: "user" as const }),
   },
 });
 mock.module("../../../../../lib/tool-access-server", {

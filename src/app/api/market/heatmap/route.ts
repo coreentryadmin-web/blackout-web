@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
+import { authorizePremiumDeskApi } from "@/lib/market-api-auth";
 import { fetchMarketMovers, fetchSectorPerformance } from "@/lib/providers/polygon";
 import { polygonConfigured } from "@/lib/providers/config";
 import { serverCache, TTL } from "@/lib/server-cache";
@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function GET(req: NextRequest) {
-  const auth = await authorizeMarketDeskApi(req);
+  const auth = await authorizePremiumDeskApi(req);
   if (auth instanceof Response) return auth;
 
   // Launch gate — locked to non-admins until this tool ships.

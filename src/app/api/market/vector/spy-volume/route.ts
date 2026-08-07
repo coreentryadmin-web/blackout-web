@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
+import { authorizePremiumDeskApi } from "@/lib/market-api-auth";
 import { requireToolApiForDeskCaller } from "@/lib/tool-access-server";
 import { fetchSpyVolumeRows } from "@/features/vector";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 /** SPY 1m volume rows for Vector chart backfill when SSR seed missed the merge. */
 export async function GET(req: NextRequest) {
-  const auth = await authorizeMarketDeskApi(req);
+  const auth = await authorizePremiumDeskApi(req);
   if (auth instanceof Response) return auth;
 
   // CRON_SECRET callers have no browser session, so the launch gate 403'd

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
+import { authorizePremiumDeskApi } from "@/lib/market-api-auth";
 import { requireToolApi } from "@/lib/tool-access-server";
 import { normalizeVectorTicker, isVectorTickerAllowed } from "@/features/vector/lib/vector-ticker";
 import { getVectorGexHeatmap, normalizeHeatmapBucketSec } from "@/features/vector/lib/vector-gex-heatmap-server";
@@ -17,7 +17,7 @@ export const dynamic = "force-dynamic";
  * walls / max-pain / expected-move routes) so the shared per-ticker stream stays lean; the client
  * fetches this once per ticker/DTE toggle and hands the grid to the chart's background primitive.
  *
- * Same gate as the sibling Vector reads (authorizeMarketDeskApi + requireToolApi("vector") + ticker
+ * Same gate as the sibling Vector reads (authorizePremiumDeskApi + requireToolApi("vector") + ticker
  * allowlist + resolveDteHorizonParam). `session` is the ET session date the chart is displaying (its
  * bars provide the x/time axis); absent/invalid falls back to today so a live "all" view still draws.
  *
@@ -26,7 +26,7 @@ export const dynamic = "force-dynamic";
  * the client then renders nothing rather than a fabricated surface.
  */
 export async function GET(req: NextRequest) {
-  const auth = await authorizeMarketDeskApi(req);
+  const auth = await authorizePremiumDeskApi(req);
   if (auth instanceof Response) return auth;
 
   const locked = await requireToolApi("vector");

@@ -119,7 +119,7 @@ mock.module("../../../../lib/db", {
 });
 mock.module("../../../../lib/market-api-auth", {
   namedExports: {
-    authorizeMarketDeskApi: async () => ({ userId: "user_1", via: "user" as const }),
+    authorizePremiumDeskApi: async () => ({ userId: "user_1", via: "user" as const }),
   },
 });
 mock.module("../../../../lib/providers/spx-session", {
