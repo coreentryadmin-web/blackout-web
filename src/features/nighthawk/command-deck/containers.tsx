@@ -225,7 +225,7 @@ export function HorizonDeck({
   return (
     <>
       {hasSections && (
-        <div className="nh-deck-filterbar nh-deck-filterbar--prominent" role="group" aria-label="Filter swing plays by serving section">
+        <div className="nh-deck-filterbar nh-deck-filterbar--sections" role="group" aria-label="Filter swing plays by serving section">
           {(["ALL", ...SWING_SERVING_SECTIONS] as SwingSectionFilter[]).map((sec) => (
             <button
               key={sec}
