@@ -4,7 +4,7 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
-## 2026-08-07 - [P1, MEMBER-FACING] SPX Slayer dashboard: the blended bead rail was structurally always empty - FIXED (#PR)
+## 2026-08-07 - [P1, MEMBER-FACING] SPX Slayer dashboard: the blended bead rail was structurally always empty - FIXED (#1846)
 
 | Field | Value |
 |-------|-------|
@@ -16,7 +16,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Deliberately unchanged** | The empty SSR seed itself. Re-adding it would reintroduce the 30-90s cold-reconstruct block on the dashboard's HTML, which is exactly what that decision was trading away. The right fix is to let the client fetch what the server chose not to inline, not to undo the choice. |
 | **Tests** | Five source-level assertions - the failure is a missing network call and a boolean gate, invisible to any pure test. The route must no longer contain the `horizon === "all" || !session` short-circuit, must branch `"all"` to the bare-ticker rail and narrowed horizons to the composite one, and must keep the `!session` guard; the chart must define `seedRailEmpty`, must not skip the `"all"` fetch when it is set, and must admit the fetched rail. |
 | **Verification** | `tsc --noEmit` clean; `next lint` clean; vector + spx suites **610 pass / 3 fail** vs **608 / 3** on clean main (two added, zero regressions). |
-| **Status** | FIXED - PR #PR. |
+| **Status** | FIXED - PR #1846. |
 
 ---
 
