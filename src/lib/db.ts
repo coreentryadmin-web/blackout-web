@@ -2765,6 +2765,43 @@ export function isoDateString(value: unknown): string {
 }
 
 /**
+ * The TIMESTAMPTZ twin of {@link isoDateString} — normalize an outbound instant column to ISO 8601.
+ *
+ * node-postgres hands TIMESTAMPTZ back as a JS `Date` for the same reason it does DATE (no
+ * `setTypeParser` override in this repo), so `String(r.observed_at)` runs `Date.prototype.toString()`
+ * and serializes the wire as:
+ *
+ *   "Fri Aug 07 2026 17:31:36 GMT+0000 (Coordinated Universal Time)"
+ *
+ * — captured live on 2026-08-07 from `GET /api/admin/zerodte/funnel`, on every one of the 500
+ * `raw_rejections` rows. The declared `observed_at: string` is TRUE as a type and FALSE as a
+ * contract, exactly like the `session_date` case this file already documents above. Four concrete
+ * consequences, none of which a type-check can see:
+ *
+ *  1. SECOND RESOLUTION. `Date.prototype.toString()` has no sub-second field, so the millisecond
+ *     component is silently dropped. The 0DTE scanner writes on a ~5s cadence (1287 gate_blocked
+ *     events on 2026-08-07 alone); once two rows share a second, their true order is unrecoverable
+ *     at the API boundary even though the DB stored it.
+ *  2. NOT A ROUND-TRIP GUARANTEE. This format is implementation-defined by ECMA-262 (§21.4.4.41.4) —
+ *     V8 happens to re-parse it, but no other consumer is required to. Any non-JS reader of these
+ *     admin/debug endpoints (a notebook, jq, a Python probe) gets an unparseable string.
+ *  3. LOCAL TIME. `toString()` renders in the *process* timezone, so the same row serializes
+ *     differently depending on the container's TZ. ISO with an explicit offset does not.
+ *  4. LEXICOGRAPHIC SORT IS GARBAGE. Sorting a field typed `string` is the obvious client-side move,
+ *     and on this format it orders by weekday name — "Fri" < "Mon" < "Sat" — silently scrambling a
+ *     chronology. ISO 8601 is designed so lexicographic order IS chronological order.
+ *
+ * Returns `null` for a null/undefined/unparseable input rather than the string "null", so a genuinely
+ * absent timestamp stays absent instead of becoming a truthy value downstream.
+ */
+export function isoTimestampString(value: unknown): string | null {
+  if (value == null) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value.toISOString();
+  const d = new Date(String(value));
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+/**
  * Normalize an UNTRUSTED inbound date string to a clean ISO `YYYY-MM-DD`, or null if it is not a safe
  * date (#77 Bug 1, inbound twin). Use this on any value bound for a `$n::date` parameter: a non-ISO
  * string (e.g. the legacy year-stripped `String(Date).slice(0,10)` label "Mon Jun 29") makes Postgres
@@ -2984,8 +3021,8 @@ export async function fetchRecentSpxEngineSnapshots(limit = 50): Promise<
   );
   return res.rows.map((r) => ({
     id: Number(r.id),
-    observed_at: String(r.observed_at),
-    session_date: String(r.session_date),
+    observed_at: isoTimestampString(r.observed_at) ?? "",
+    session_date: isoDateString(r.session_date),
     phase: String(r.phase),
     action: String(r.action),
     direction: r.direction != null ? String(r.direction) : null,
@@ -2993,7 +3030,7 @@ export async function fetchRecentSpxEngineSnapshots(limit = 50): Promise<
     gates_passed: Boolean(r.gates_passed),
     gates_blocks: r.gates_blocks,
     thesis: String(r.thesis),
-    as_of: r.as_of != null ? String(r.as_of) : null,
+    as_of: isoTimestampString(r.as_of),
   }));
 }
 
@@ -3424,7 +3461,7 @@ export async function loadTriggeredPlaybookInstances(sessionDate: string): Promi
     counterfactual_mfe_pts: Number(r.counterfactual_mfe_pts ?? 0),
     counterfactual_mae_pts: Number(r.counterfactual_mae_pts ?? 0),
     counterfactual_eval: r.counterfactual_eval ?? null,
-    opened_at: r.opened_at != null ? String(r.opened_at) : null,
+    opened_at: isoTimestampString(r.opened_at),
   }));
 }
 
@@ -3566,14 +3603,14 @@ export async function fetchPlaybookEvidenceRows(opts?: {
   );
   return res.rows.map((r) => ({
     instance_id: String(r.instance_id),
-    session_date: String(r.session_date),
+    session_date: isoDateString(r.session_date),
     playbook_id: String(r.playbook_id),
     direction: r.direction != null ? String(r.direction) : null,
     state: String(r.state),
-    armed_at: r.armed_at != null ? String(r.armed_at) : null,
-    triggered_at: r.triggered_at != null ? String(r.triggered_at) : null,
-    invalidated_at: r.invalidated_at != null ? String(r.invalidated_at) : null,
-    opened_at: r.opened_at != null ? String(r.opened_at) : null,
+    armed_at: isoTimestampString(r.armed_at),
+    triggered_at: isoTimestampString(r.triggered_at),
+    invalidated_at: isoTimestampString(r.invalidated_at),
+    opened_at: isoTimestampString(r.opened_at),
     executable: r.executable != null ? Boolean(r.executable) : null,
     reason_blocked: r.reason_blocked != null ? String(r.reason_blocked) : null,
     trigger_price: r.trigger_price != null ? Number(r.trigger_price) : null,
@@ -3677,11 +3714,11 @@ export async function fetchPlaybookPromotionEvidenceRows(opts?: {
         : null;
     return {
       instance_id: String(r.instance_id),
-      session_date: String(r.session_date),
+      session_date: isoDateString(r.session_date),
       playbook_id: String(r.playbook_id),
-      armed_at: r.armed_at != null ? String(r.armed_at) : null,
-      triggered_at: r.triggered_at != null ? String(r.triggered_at) : null,
-      opened_at: r.opened_at != null ? String(r.opened_at) : null,
+      armed_at: isoTimestampString(r.armed_at),
+      triggered_at: isoTimestampString(r.triggered_at),
+      opened_at: isoTimestampString(r.opened_at),
       reason_blocked: r.reason_blocked != null ? String(r.reason_blocked) : null,
       counterfactual_mfe_pts:
         r.counterfactual_mfe_pts != null ? Number(r.counterfactual_mfe_pts) : null,
@@ -3841,7 +3878,7 @@ export async function fetchZeroDteScanRejections(opts?: {
   }
   return res.rows.map((r) => ({
     id: Number(r.id),
-    observed_at: String(r.observed_at),
+    observed_at: isoTimestampString(r.observed_at) ?? "",
     // `session_date` is a pg DATE, which node-postgres hands back as a JS Date (no setTypeParser
     // override in this repo). `String(aDate)` yields "Fri Aug 07 2026 00:00:00 GMT+0000", so the
     // declared `session_date: string` was TRUE as a type and FALSE as a contract — and that false
@@ -3860,8 +3897,8 @@ export async function fetchZeroDteScanRejections(opts?: {
     otm_pct: r.otm_pct != null ? Number(r.otm_pct) : null,
     direction: r.direction != null ? String(r.direction) : null,
     prints: r.prints != null ? Number(r.prints) : null,
-    first_seen: r.first_seen != null ? String(r.first_seen) : null,
-    last_seen: r.last_seen != null ? String(r.last_seen) : null,
+    first_seen: isoTimestampString(r.first_seen),
+    last_seen: isoTimestampString(r.last_seen),
     reason: r.reason != null ? String(r.reason) : null,
   })  );
 }
@@ -3914,8 +3951,8 @@ export async function fetchZeroDteDiscoveryEvents(opts?: {
   );
   return res.rows.map((r) => ({
     id: Number(r.id),
-    observed_at: String(r.observed_at),
-    session_date: String(r.session_date),
+    observed_at: isoTimestampString(r.observed_at) ?? "",
+    session_date: isoDateString(r.session_date),
     ticker: String(r.ticker),
     kind: String(r.kind),
     origins: r.origins != null ? (JSON.parse(JSON.stringify(r.origins)) as string[]) : null,
@@ -4033,8 +4070,8 @@ export async function fetchGexRegimeEventRows(opts?: { ticker?: string; limit?: 
       );
   return res.rows.map((r) => ({
     id: Number(r.id),
-    observed_at: String(r.observed_at),
-    session_date: String(r.session_date),
+    observed_at: isoTimestampString(r.observed_at) ?? "",
+    session_date: isoDateString(r.session_date),
     ticker: String(r.ticker),
     event_type: String(r.event_type),
     severity: String(r.severity),
@@ -4043,7 +4080,7 @@ export async function fetchGexRegimeEventRows(opts?: { ticker?: string; limit?: 
     direction: r.direction != null ? String(r.direction) : null,
     from_value: r.from_value != null ? Number(r.from_value) : null,
     to_value: r.to_value != null ? Number(r.to_value) : null,
-    detected_at: r.detected_at != null ? String(r.detected_at) : null,
+    detected_at: isoTimestampString(r.detected_at),
   }));
 }
 
@@ -4120,7 +4157,7 @@ export async function fetchFlowAnomalyNearMisses(opts?: { ticker?: string; limit
       );
   return res.rows.map((r) => ({
     id: Number(r.id),
-    observed_at: String(r.observed_at),
+    observed_at: isoTimestampString(r.observed_at) ?? "",
     anomaly_type: String(r.anomaly_type),
     ticker: r.ticker != null ? String(r.ticker) : null,
     reason: String(r.reason),
@@ -4168,7 +4205,7 @@ export async function fetchFlowAnomalies(opts?: { limit?: number }): Promise<Flo
   );
   return res.rows.map((r) => ({
     id: Number(r.id),
-    detected_at: String(r.detected_at),
+    detected_at: isoTimestampString(r.detected_at) ?? "",
     anomaly_type: String(r.anomaly_type),
     ticker: r.ticker != null ? String(r.ticker) : null,
     detail: String(r.detail),
