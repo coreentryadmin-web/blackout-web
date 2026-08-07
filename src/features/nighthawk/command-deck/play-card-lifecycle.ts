@@ -396,7 +396,17 @@ export function playTimeRangeCompact(play: TerminalPlay): string | null {
   return triggered;
 }
 
-/** Primary return % for the compact list column (peak when closed, else best live read). */
+/**
+ * Primary return % for the compact list column — the value under the "PNL" header.
+ *
+ * OPEN rows show the CURRENT read (see below). CLOSED rows deliberately keep peak-first: an existing
+ * test states that intent, and the live evidence behind this fix was entirely open rows. Whether a
+ * closed row should headline realized instead is a real product question, logged for the after-close
+ * pass rather than changed here on inference.
+ *
+ * WATCH rows keep `trackPct` — the hypothetical move since the flag. Those rows hold no position, so
+ * there is no P&L to show.
+ */
 export function playListReturnPct(play: TerminalPlay): number | null {
   const phase = playLifecyclePhase(play.status);
   if (phase === "watch") return watchMetricsValues(play).trackPct;
@@ -405,6 +415,12 @@ export function playListReturnPct(play: TerminalPlay): number | null {
     return peak ?? closedRealizedPct(play);
   }
   const { currentPct, peakPct } = openMetricsValues(play);
-  const ret = peakPct ?? currentPct ?? play.pnlPct;
-  return ret ?? null;
+  // CURRENT first. This used to prefer `peakPct`, so the column showed the best the trade ever
+  // looked rather than where it stands: measured live 2026-08-07, KRE rendered +73% while it was
+  // actually -34.1%, SPCX 0% at -51%, FHN +6% at -38.3%. This component is shared with the 0DTE
+  // deck, so both boards showed it. Peak is still a real number — it is just not what "PNL" means,
+  // and it keeps its own field on the detail panel.
+  // Peak survives only as a last resort when there is no live mark at all; in that case it is the
+  // only number available, not a preferred one.
+  return currentPct ?? play.pnlPct ?? peakPct ?? null;
 }

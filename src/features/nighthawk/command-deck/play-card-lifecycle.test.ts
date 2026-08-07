@@ -233,3 +233,33 @@ describe("play-card-lifecycle", () => {
     );
   });
 });
+
+
+// ── LIST "PNL" COLUMN: CURRENT, NOT PEAK (2026-08-07) ────────────────────────────────────────
+// Live: KRE rendered +73% in the list while the position was -34.1%; SPCX 0% at -51%; FHN +6% at
+// -38.3%. The column preferred peakPct, so it showed the best the trade ever looked. Shared with
+// the 0DTE deck, so both boards were affected.
+describe("list PNL column — current, not peak", () => {
+  const lcPlay = (over: Partial<TerminalPlay>): TerminalPlay =>
+    ({ status: "OPEN", ticker: "KRE", contract: "60C", ...over }) as TerminalPlay;
+
+  it("open row shows CURRENT return, never the peak high-water mark", () => {
+    const shown = playListReturnPct(lcPlay({ status: "OPEN", pnlPct: -34.1, peak: 73 }));
+    assert.equal(shown, -34.1, "a position down 34% must not render as +73%");
+    assert.ok(shown != null && shown < 0, "sign must match reality — this is what members read");
+  });
+
+  it("open row falls back to peak ONLY when there is no live mark at all", () => {
+    assert.equal(playListReturnPct(lcPlay({ status: "OPEN", pnlPct: null, peak: 42 })), 42);
+  });
+
+  it("closed row keeps peak-first — deliberately UNCHANGED by this fix", () => {
+    // Boundary of this change: the live evidence was OPEN rows only, and an existing test states
+    // closed-row peak preference as intent. Revisiting it is a product decision, not an inference.
+    assert.equal(playListReturnPct(lcPlay({ status: "CLOSED", exitPnlPct: -50, peak: 88 })), 88);
+  });
+
+  it("WATCH rows keep trackPct — they hold no position, so there is no P&L", () => {
+    assert.equal(playListReturnPct(lcPlay({ status: "WATCH", trackPct: 56, pnlPct: null, peak: null })), 56);
+  });
+});

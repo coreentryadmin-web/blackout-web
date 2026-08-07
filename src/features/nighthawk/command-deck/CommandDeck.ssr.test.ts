@@ -65,7 +65,12 @@ test("closed compact row shows symbol line, times, peak", async () => {
   assert.match(html, />96</);
 });
 
-test("open compact row shows active status and return", async () => {
+// UPDATED 2026-08-07: this asserted the PEAK (+87%) on a row whose CURRENT read is +42% — the
+// fixture had both, and the assertion picked the wrong one. That is the live regression this test
+// silently ratified: KRE rendered +73% while the position was -34.1%. An open row must render where
+// it stands, not its high-water mark. (The closed-row test above still asserts peak deliberately —
+// closed-row semantics were left unchanged; see playListReturnPct.)
+test("open compact row shows active status and the CURRENT return, not the peak", async () => {
   const html = await render(
     play({
       status: "OPEN",
@@ -77,7 +82,8 @@ test("open compact row shows active status and return", async () => {
   );
   assert.match(html, />META 592\.5C 0DTE</);
   assert.match(html, />11:58</);
-  assert.match(html, />\+87%/);
+  assert.match(html, />\+42%/);
+  assert.doesNotMatch(html, />\+87%/, "the peak must not be rendered as the row's PNL");
   assert.match(html, />ACTIVE</);
   assert.match(html, /nh-deck-status-pill is-active/);
 });
