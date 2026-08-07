@@ -404,14 +404,14 @@ async function crossProviderChecks(
   }
   let uw: { rows: Record<string, unknown>[]; source: string } = { rows: [], source: "none" };
   try {
-    const { fetchUwOdteGexLadder } = await import("@/lib/providers/unusual-whales");
-    uw = await fetchUwOdteGexLadder("SPX");
+    const { fetchSpxOdteScopedUwLadder } = await import("@/lib/providers/spx-odte-uw-ladder");
+    uw = await fetchSpxOdteScopedUwLadder("SPX");
   } catch {
     uw = { rows: [], source: "none" };
   }
   if (!uw.rows.length) {
     out.push(
-      mk(ctx, "cross-provider", "king", "consistency-only", "UW GEX ladder unavailable this run — desk King/net-sign consistency-only.", {
+      mk(ctx, "cross-provider", "king", "consistency-only", "UW 0DTE GEX ladder unavailable this run — desk King/net-sign consistency-only.", {
         id: "desk-oracle-king",
       })
     );

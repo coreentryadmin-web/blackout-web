@@ -1158,11 +1158,13 @@ async function crossProviderChecks(ctx: Ctx, hm: GexHeatmap): Promise<CheckResul
     return out;
   }
 
-  // Pull the UW native GEX ladder for SPX through the rate-limited uwGetSafe funnel (2 RPS).
+  // Pull the SAME 0DTE-scoped UW ladder the SPX overlay uses (WS → spot-exposures REST).
+  // Do NOT use fetchUwOdteGexLadder's cumulative greek-exposure/strike fallback — that sums ALL
+  // expiries and false-flags against the served 0DTE King (ops-auto-fix #1865).
   let uw: { rows: Record<string, unknown>[]; source: string } = { rows: [], source: "none" };
   try {
-    const { fetchUwOdteGexLadder } = await import("@/lib/providers/unusual-whales");
-    uw = await fetchUwOdteGexLadder("SPX");
+    const { fetchSpxOdteScopedUwLadder } = await import("@/lib/providers/spx-odte-uw-ladder");
+    uw = await fetchSpxOdteScopedUwLadder("SPX");
   } catch {
     uw = { rows: [], source: "none" };
   }
@@ -1173,7 +1175,7 @@ async function crossProviderChecks(ctx: Ctx, hm: GexHeatmap): Promise<CheckResul
         "cross-provider",
         "king",
         "consistency-only",
-        "UW GEX ladder unavailable this run (503/empty) — SPX King consistency-only (oracle exists but did not answer).",
+        "UW 0DTE GEX ladder unavailable this run (503/empty) — SPX King consistency-only (oracle exists but did not answer).",
         { id: "oracle-king" }
       )
     );
