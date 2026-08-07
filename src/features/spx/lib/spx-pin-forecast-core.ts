@@ -531,12 +531,25 @@ function buildDrivers(p: Prep, input: PinForecastInput, medianClose: number): Pi
       label: p.regime === "short_gamma" ? "Short gamma below flip" : "Long gamma above flip",
       detail: p.regime === "short_gamma"
         ? `Spot ${input.spot.toFixed(0)} is below the ${p.flip.toFixed(0)} gamma flip — dealer hedging AMPLIFIES moves, so price drifts to the nearest heavy magnet.`
-        : `Spot ${input.spot.toFixed(0)} is above the ${p.flip.toFixed(0)} gamma flip — dealer hedging DAMPENS moves, so price pins toward max pain.`,
+        : `Spot ${input.spot.toFixed(0)} is above the ${p.flip.toFixed(0)} gamma flip — dealer hedging DAMPENS moves, so price pins toward effective max pain (open interest + today's volume).`,
       weight: 0.9,
     });
   }
   if (p.magnetStrike != null) {
-    const kindLabel = p.magnetKind === "call_wall" ? "call wall" : p.magnetKind === "put_wall" ? "put wall" : "max pain";
+    // "effective max pain", not "max pain" — the two are DIFFERENT METRICS and both are correct.
+    //
+    // pinMaxPain (:200) weights by `openInterest + max(0, dayVolume)`, i.e. it folds TODAY'S traded
+    // volume into the pin estimate. The desk header's MAX PAIN tile reports classic OI-ONLY max
+    // pain. Live 2026-08-07 they read 7700 and 7630 — 70 points apart, same instant, both
+    // member-facing, both labelled "max pain". Independently verified against the full Polygon SPXW
+    // chain (336 contracts, spot 7739.37 at 13:48:13Z): OI-only = 7630 (matches the header EXACTLY),
+    // OI+volume = 7680, drifting to 7700 as volume accrued. Neither is wrong; the shared LABEL was.
+    //
+    // Renaming here rather than changing the arithmetic is deliberate — the volume-weighted figure
+    // is the better INTRADAY pin estimator (it is what the magnet actually tracked all session),
+    // and the audit's Polygon cross-check confirmed the forecast's magnet location to the strike.
+    const kindLabel =
+      p.magnetKind === "call_wall" ? "call wall" : p.magnetKind === "put_wall" ? "put wall" : "effective max pain";
     d.push({
       label: `${p.magnetStrike.toFixed(0)} ${kindLabel} is the dominant magnet`,
       detail: `Heaviest ${p.magnetKind === "put_wall" ? "negative" : "positive"}-gamma level ${p.direction === "up" ? "above" : p.direction === "down" ? "below" : "at"} spot (${(p.magnetStrengthPct * 100).toFixed(0)}% of |gamma|). Hedging drags price ${p.direction} into the close.`,
@@ -549,7 +562,12 @@ function buildDrivers(p: Prep, input: PinForecastInput, medianClose: number): Pi
     weight: p.charmState === "accelerating" ? 0.7 : p.charmState === "moderate" ? 0.45 : 0.25,
   });
   if (p.maxPain != null && p.magnetKind !== "max_pain") {
-    d.push({ label: `Max pain ${p.maxPain.toFixed(0)} (secondary)`, detail: `Where the most option value expires worthless — a competing pull if spot loses the magnet.`, weight: 0.35 });
+    d.push({
+      label: `Effective max pain ${p.maxPain.toFixed(0)} (secondary)`,
+      // Says WHICH max pain, so a member comparing this to the header tile knows why they differ.
+      detail: `Where the most option value expires worthless, weighted by open interest PLUS today's traded volume — so it can sit away from the header's open-interest-only MAX PAIN. A competing pull if spot loses the magnet.`,
+      weight: 0.35,
+    });
   }
   if (p.degraded) {
     d.push({ label: "Confidence downgraded", detail: p.degradeReason === "macro_event" ? "A macro event today can overwhelm dealer pinning — treat the pin as low-conviction." : "Realized volatility is running well above implied — the tape is trending, not pinning.", weight: 0.6 });
