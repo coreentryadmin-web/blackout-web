@@ -116,9 +116,28 @@ export type NighthawkRecordSegment = {
   losses: number;
   opens: number;
   ambiguous: number;
+  /** Rows whose outcome is "unfilled". OVERLAPS `pulled` — see `excluded_total`. */
   unfilled: number;
+  /** Rows flagged pulled. OVERLAPS `unfilled` — see `excluded_total`. */
   pulled: number;
   stop_data_unavailable: number;
+  /**
+   * Size of the UNION of every excluded set (unfilled ∪ pulled ∪ stop-data-unavailable).
+   *
+   * `unfilled` and `pulled` are computed independently and genuinely overlap — a play pulled
+   * pre-open that ALSO gapped away is in both. (Live: the AMZN 2026-08-03 card's `pulled_reason`
+   * opens with the gap-away sentence, so the two co-occur by design, not by accident.) `scoreable`
+   * already excludes such a row exactly once, so no RATE was ever double-counted — but the
+   * published breakdown could not be reconciled: live 2026-08-07 `days=30` gave
+   * `scoreable 27 + unfilled 13 + pulled 12 = 52` against `resolved 50`, an overshoot of 2.
+   *
+   * This field is the disjoint complement of `scoreable`, so `scoreable + excluded_total ===
+   * resolved` ALWAYS holds and a reader can reconcile without guessing at the overlap.
+   */
+  excluded_total: number;
+  /** `unfilled` MINUS the rows that were also pulled — the disjoint slice, for a partition that
+   *  sums cleanly alongside `pulled`. */
+  unfilled_not_pulled: number;
   /** WIN-RATE DENOMINATOR = wins + losses. An 'open' grade means the one-session grading
    *  horizon expired with NEITHER the published target nor the stop touched — the play was
    *  never decided, so it is not a loss. Folding opens into the denominator pins the rate at
@@ -428,6 +447,8 @@ export function buildRecordSegment(
     unfilled: unfilled.length,
     pulled: pulled.length,
     stop_data_unavailable: stopDataUnavailable.length,
+    excluded_total: rows.length - scoreable.length,
+    unfilled_not_pulled: unfilled.filter((r) => r.pulled !== true).length,
     decided,
     win_rate: decided > 0 ? wins / decided : null,
     avg_return_pct: scoreable.length > 0 ? avgReturn(scoreable) : null,
