@@ -19,13 +19,18 @@ test("REGRESSION: a pg DATE session_date must reach consumers as ISO, not as a D
   // The old boundary conversion — String() on a Date — and why the JS filter could never match.
   assert.equal(String(pgDate).slice(0, 15), "Fri Aug 07 2026", "precondition: this is the garbage that was served");
   assert.notEqual(String(pgDate), "2026-08-07");
-  // `Date === string` is always false, which is the bug in one line. Routed through an `unknown`
-  // binding rather than comparing the Date literal directly: CodeQL's "comparison between
-  // inconvertible types" rule fires on the direct form, and it is RIGHT to — that is exactly the
-  // defect being demonstrated. Widening first states the same fact without leaving a standing
-  // alert that looks like a real one in the security tab.
-  const asServed: unknown = pgDate;
-  assert.equal(asServed === "2026-08-07", false, "a Date can never equal an ISO string");
+  // THE BUG IN ONE LINE, stated rather than executed: admin-zerodte-health.ts ran
+  //     rejections.filter((r) => r.session_date === sessionDate)
+  // where `r.session_date` was this Date and `sessionDate` was "2026-08-07". A Date is never ===
+  // a string, so the filter was unconditionally empty and `rejected_count` was always 0.
+  //
+  // Deliberately NOT asserted as a live comparison. CodeQL's "comparison between inconvertible
+  // types" rule fires on that expression and is RIGHT to — it is the exact defect. Widening the
+  // Date through an `unknown` binding does not help either; the flow analysis sees through it
+  // (alerts 569 and 570 on this file). Executing it would add no coverage the assertions above and
+  // below do not already give, so paying for it with a permanent alert that looks like a real
+  // finding in the security tab is a bad trade. The string-vs-string checks around it prove the
+  // same thing and the isoDateString assertions below are what actually fail if the fix regresses.
 
   // The boundary now funnels through the repo's documented helper, so the filter is meaningful.
   assert.equal(isoDateString(pgDate), "2026-08-07");
