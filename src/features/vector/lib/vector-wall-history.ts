@@ -459,8 +459,8 @@ export function backfillRailPrefix(
 
 /**
  * Drop wall-history samples that predate the CURRENT session's first bar before an SSR seed ships
- * to the client. `combined`/`mergeWallHistory` retain up to MAX_HISTORY (24h of 15s buckets, ~3-4
- * sessions) for recorder resilience across restarts/replays, but a single-session Vector page (one
+ * to the client. `combined`/`mergeWallHistory` retain up to MAX_HISTORY (~one RTH session at the oracle
+ * 5s cadence; see the constant) for recorder resilience across restarts/replays, but a single-session Vector page (one
  * `sessionYmd`, one visible bar range) never renders a prior session's beads — every consumer
  * (`trailsByStrike`, `trailForFlipLevel`) only ever sees `barTimes` for the CURRENT session. Prior
  * sessions' full 20-strike-per-side ladders were riding along in the SSR payload as pure dead
@@ -476,6 +476,83 @@ export function trimHistoryToSession(
   const firstIdx = history.findIndex((s) => s.time >= firstBarTime);
   if (firstIdx <= 0) return history;
   return history.slice(firstIdx);
+}
+
+/**
+ * How much of the trail's NEWEST end an SSR seed ships at full recorder resolution.
+ *
+ * "What is happening right now" is the part a member reads bead-by-bead, so it stays untouched.
+ */
+export const SEED_FULL_RESOLUTION_SEC = 30 * 60;
+
+/**
+ * Bucket width applied to everything OLDER than {@link SEED_FULL_RESOLUTION_SEC}.
+ *
+ * 15s is not arbitrary: it is `VECTOR_BEAD_RECORD_ACTIVE_TICK_MS`, the cadence the recorder itself
+ * already uses for non-oracle tickers, so the decimated tail is exactly the trail a non-oracle
+ * ticker ships today — a resolution the chart is already known to render correctly.
+ */
+export const SEED_TAIL_BUCKET_SEC = 15;
+
+/**
+ * Decimate the OLD end of a session's wall history before it is serialised into SSR HTML.
+ *
+ * WHY (FINDINGS 2026-08-07): `trimHistoryToSession` cut the seed to one session, which was the
+ * right fix for the prior-session dead weight it was written for — but one session at the oracle
+ * recorder's 5s cadence is still 5,760 samples, and each sample carries a full 20-per-side wall
+ * ladder (~2.5 KB). Measured live on `/vector?ticker=SPX`: `initialWallHistory` 14.76 MB +
+ * `initialHorizonWallHistory` 7.82 MB = **22.6 MB of a 22.8 MB HTML document** (`initialBars`, the
+ * actual price data, is 143 KB). Every member paid that on every load.
+ *
+ * The seed is over-resolved, not merely large. 5,760 bead columns on a chart that is ~1,600 CSS px
+ * wide is ~3.6 columns per pixel — the renderer physically cannot show them apart. So the tail is
+ * bucketed to a width the chart can actually resolve while the live end keeps full fidelity.
+ *
+ * Invariants, all pinned by tests:
+ *  - the newest {@link SEED_FULL_RESOLUTION_SEC} is returned untouched — sample-for-sample;
+ *  - the FIRST sample always survives, so the session-open bead and `backfillRailPrefix`'s modeled
+ *    prefix boundary can never be decimated away;
+ *  - kept samples retain their ORIGINAL `time` (never re-keyed to the bucket start) — the client
+ *    re-buckets for display anyway, and rewriting times would move real beads;
+ *  - order is preserved and the output is a subset of the input, so `modeled` flags, dominance
+ *    filtering and `trailsByStrike`'s "still in the latest bucket" logic all keep working on real
+ *    recorded samples rather than synthesised ones.
+ *
+ * This trims the SEED only. The live SSE/poll path keeps appending at the recorder's full cadence,
+ * so a member watching the session sees exactly what they see today.
+ */
+export function decimateSeedHistory(
+  history: WallHistorySample[],
+  opts?: { fullResolutionSec?: number; tailBucketSec?: number }
+): WallHistorySample[] {
+  const fullSec = opts?.fullResolutionSec ?? SEED_FULL_RESOLUTION_SEC;
+  const bucketSec = opts?.tailBucketSec ?? SEED_TAIL_BUCKET_SEC;
+  if (history.length < 2 || !(bucketSec > 0) || !(fullSec >= 0)) return history;
+
+  const newest = history[history.length - 1]!.time;
+  const liveFrom = newest - fullSec;
+
+  const out: WallHistorySample[] = [];
+  let lastBucket: number | null = null;
+  for (let i = 0; i < history.length; i++) {
+    const sample = history[i]!;
+    // Live window and the very first sample are never decimated.
+    if (sample.time >= liveFrom || i === 0) {
+      out.push(sample);
+      lastBucket = null; // leaving the tail — reset so a later out-of-order sample can't be eaten
+      continue;
+    }
+    const bucket = Math.floor(sample.time / bucketSec) * bucketSec;
+    if (bucket === lastBucket) {
+      // Same bucket as the sample already kept: replace it, so the bucket keeps its LAST reading —
+      // the same "last wins" rule bucketWallHistoryForInterval uses for display.
+      out[out.length - 1] = sample;
+      continue;
+    }
+    lastBucket = bucket;
+    out.push(sample);
+  }
+  return out;
 }
 
 export function mergeModeledUnderlay(
