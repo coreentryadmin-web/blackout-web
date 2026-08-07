@@ -15,7 +15,7 @@ Legend: 🔴 Not started · 🟡 In progress · 🟢 PR open · ✅ Merged · �
 
 | # | Finding | Status | PR | Notes |
 |---|---|---|---|---|
-| 1 | `/account` has no cancel/billing control despite FAQ claiming it does | 🔴 | — | Add real "Manage subscription" → Whop customer portal link; fix FAQ copy |
+| 1 | `/account` has no cancel/billing control despite FAQ claiming it does | 🟢 | [#1886](https://github.com/coreentryadmin-web/blackout-web/pull/1886) | Added `AccountMembershipPanel` (real Manage Subscription → Whop portal link) + fixed FAQ copy in all 3 places it was duplicated (found a 3rd copy — the JSON-LD `home-faq.ts` — beyond the 2 the audit flagged) |
 | 2 | Public track record was pulled behind admin auth; it's real, sanitized data | 🔴 | — | `buildPublicTrackRecord()` already exists and is honest — restore public route + page |
 | 3 | No referral/affiliate program exists at all | 🔴 | — | Whop `promoCodes.create()` API confirmed available; UTM attribution layer reusable for `?ref=` capture |
 | 4 | `/pricing` has no guarantee, FAQ, or comparison table (only `/upgrade` does) | 🔴 | — | Pull `FeatureComparison` + guarantee line onto `/pricing` |
@@ -24,7 +24,7 @@ Legend: 🔴 Not started · 🟡 In progress · 🟢 PR open · ✅ Merged · �
 | 7 | No exit-intent/email capture anywhere | ⛔ | — | Capture UI + DB storage is codeable now; **actually emailing captured leads needs a new ESP (no email-sending infra exists at all — zero email deps in the repo)** — needs your call on provider (Resend recommended) before the send-side can ship |
 | 8 | No A/B testing infrastructure | 🔴 | — | No existing rollout/bucketing pattern found — building minimal cookie-hash layer from scratch |
 | 9 | No product analytics beyond GA4/X pixel (session replay, heatmaps, cohorts) | ⛔ | — | Not a code fix — vendor decision (PostHog etc.) deferred per audit, not urgent at current ad spend |
-| 10 | Homepage FAQ / `/faq` / pricing copy have drifted into 3 inconsistent sources | 🔴 | — | Bundled into the `/pricing` PR (#4) since same files |
+| 10 | Homepage FAQ / `/faq` / pricing copy have drifted into 3 inconsistent sources | 🟡 | [#1886](https://github.com/coreentryadmin-web/blackout-web/pull/1886) | The one factually-wrong drifted answer (cancel flow) is now fixed identically in all 3 places (PR #1886). Full source-of-truth unification (home accordion / `/faq` / JSON-LD are 3 deliberately-different-length curated lists) is a larger separate refactor, not done — remaining scope now folded into the `/pricing` PR (#4) |
 
 ## SEO & Discovery
 
