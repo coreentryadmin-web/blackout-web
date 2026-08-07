@@ -50,3 +50,25 @@ export function applySessionOverviewViewport(
   chart.timeScale().setVisibleLogicalRange(range);
   return true;
 }
+
+/**
+ * Frame the chart on the newest session rather than fitContent()-ing the whole multi-day seed.
+ *
+ * NOT gated on the DTE horizon (was `&& dteHorizon === "0dte"` until 2026-08-07). That condition
+ * made the fix apply to SPX/SPY/QQQ only, because `/vector/page.tsx` sets `defaultDteHorizon` to
+ * "0dte" for `VECTOR_ORACLE_TICKERS` and leaves it undefined for everything else — so every single
+ * name (AMD, META, …) kept the broken behaviour #868 was written to fix, and its own docstring
+ * describes the symptom exactly: "fitContent() on the full array compresses today's RTH into a left
+ * sliver — beads look like one or two columns."
+ *
+ * The horizon was never the right predicate. The invariant is about DOMAIN, not lens: the seed
+ * carries ~3 sessions of bars while `trimHistoryToSession` cuts the wall rail to ONE, so on any
+ * horizon a full-seed fit leaves ~75% of the x-axis with no bead data by construction. Framing the
+ * newest session is what makes the two domains agree, and it is correct for every ticker and lens.
+ */
+export function wantsSessionOverviewViewport(
+  viewport: "session" | "live",
+  liveFollowEnabled: boolean
+): boolean {
+  return viewport === "session" && !liveFollowEnabled;
+}

@@ -20,7 +20,7 @@ test("Vector seed pipeline: /vector SSR-loads; dashboard client-embeds without i
     "fetchVectorSeedBars",
     "primeVectorWallScope",
     "mergeWallHistory",
-    "backfillRailPrefix",
+    "backfillRailGaps",
     "reconstructSessionRail",
     "seedWallHistoryForDisplay",
     "loadSessionWallHistory",
