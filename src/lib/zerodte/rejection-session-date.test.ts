@@ -19,8 +19,13 @@ test("REGRESSION: a pg DATE session_date must reach consumers as ISO, not as a D
   // The old boundary conversion — String() on a Date — and why the JS filter could never match.
   assert.equal(String(pgDate).slice(0, 15), "Fri Aug 07 2026", "precondition: this is the garbage that was served");
   assert.notEqual(String(pgDate), "2026-08-07");
-  // `Date === string` is always false, which is the bug in one line.
-  assert.equal((pgDate as unknown) === "2026-08-07", false);
+  // `Date === string` is always false, which is the bug in one line. Routed through an `unknown`
+  // binding rather than comparing the Date literal directly: CodeQL's "comparison between
+  // inconvertible types" rule fires on the direct form, and it is RIGHT to — that is exactly the
+  // defect being demonstrated. Widening first states the same fact without leaving a standing
+  // alert that looks like a real one in the security tab.
+  const asServed: unknown = pgDate;
+  assert.equal(asServed === "2026-08-07", false, "a Date can never equal an ISO string");
 
   // The boundary now funnels through the repo's documented helper, so the filter is meaningful.
   assert.equal(isoDateString(pgDate), "2026-08-07");
