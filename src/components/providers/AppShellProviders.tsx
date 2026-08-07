@@ -13,8 +13,7 @@ import {
   clerkAllowedRedirectOrigins,
   clerkSatelliteProviderProps,
 } from "@/lib/clerk-env";
-import { isClientCognitoAuth } from "@/lib/auth-provider";
-import { CognitoAuthProvider, ClerkAuthBridge } from "@/lib/auth-client";
+import { ClerkAuthBridge } from "@/lib/auth-client";
 import { Ga4ConversionTracker } from "@/components/analytics/Ga4ConversionTracker";
 
 function DeskShell({ children }: { children: React.ReactNode }) {
@@ -35,14 +34,6 @@ function DeskShell({ children }: { children: React.ReactNode }) {
 
 /** Clerk + motion + desk client shell — NOT loaded on the public marketing homepage. */
 export function AppShellProviders({ children }: { children: React.ReactNode }) {
-  if (isClientCognitoAuth()) {
-    return (
-      <CognitoAuthProvider>
-        <DeskShell>{children}</DeskShell>
-      </CognitoAuthProvider>
-    );
-  }
-
   const allowedRedirectOrigins = clerkAllowedRedirectOrigins();
   const satellite = clerkSatelliteProviderProps();
   return (

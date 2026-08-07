@@ -1,6 +1,4 @@
 import type { NextRequest } from "next/server";
-import { isCognitoAuth } from "@/lib/auth-provider";
-import cognitoMiddleware from "@/middleware-cognito";
 import {
   clerkStaleCookieRecoveryResponse,
   requestHasClerkSessionCookie,
@@ -28,22 +26,21 @@ export const config = {
 type MiddlewareFn = (req: NextRequest, event?: unknown) => Response | Promise<Response>;
 
 function loadClerkMiddleware(): MiddlewareFn {
-  // Lazy require — omitted from Cognito production bundles when AUTH_PROVIDER is inlined at build.
+  // Lazy require so a load-time failure in the Clerk middleware still lets the stale-cookie
+  // recovery path below run instead of taking down every request.
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   return require("@/middleware-clerk").default as MiddlewareFn;
 }
 
-const handler: MiddlewareFn = isCognitoAuth()
-  ? cognitoMiddleware
-  : async (req: NextRequest, event?: unknown) => {
-      try {
-        return await loadClerkMiddleware()(req, event);
-      } catch {
-        if (requestHasClerkSessionCookie(req)) {
-          return clerkStaleCookieRecoveryResponse(req);
-        }
-        throw new Error("Clerk middleware failed without session cookies");
-      }
-    };
+const handler: MiddlewareFn = async (req: NextRequest, event?: unknown) => {
+  try {
+    return await loadClerkMiddleware()(req, event);
+  } catch {
+    if (requestHasClerkSessionCookie(req)) {
+      return clerkStaleCookieRecoveryResponse(req);
+    }
+    throw new Error("Clerk middleware failed without session cookies");
+  }
+};
 
 export default handler;

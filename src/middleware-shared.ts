@@ -48,8 +48,11 @@ export function isWebhookPath(pathname: string): boolean {
   return WEBHOOK_PREFIXES.some((p) => pathname.startsWith(p));
 }
 
-export function isAuthExemptPath(pathname: string): boolean {
-  return pathname.startsWith("/api/auth/cognito/");
+export function isAuthExemptPath(_pathname: string): boolean {
+  // The Cognito OAuth callback/login/logout endpoints were the only auth-exempt paths; they were
+  // removed when Cognito was decommissioned (production auth is Clerk-only). Kept as a stable
+  // predicate — currently nothing is exempt — so callers don't need to change.
+  return false;
 }
 
 export function hasBearerToken(req: NextRequest): boolean {

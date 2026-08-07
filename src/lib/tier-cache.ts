@@ -1,6 +1,5 @@
 import { tierFromSessionClaims } from "@/lib/clerk-session-claims";
 import { parseTier, type Tier } from "@/lib/tiers";
-import { isCognitoAuth } from "@/lib/auth-provider";
 import { getUserProfile } from "@/lib/user-directory";
 import { getClerkUserCached } from "@/lib/clerk-user-cache";
 
@@ -133,12 +132,6 @@ export async function resolveUserTier(
     return cached.tier;
   }
   try {
-    if (isCognitoAuth()) {
-      const profile = await getUserProfile(userId);
-      const tier = profile?.tier ?? "free";
-      setTierCache(userId, tier);
-      return tier;
-    }
     const fromClaims = tierFromSessionClaims(sessionClaims);
     // Trust premium/community from JWT (fast path). When JWT says free, verify with
     // Backend — misconfigured session claims or pre-refresh sessions must not lock out

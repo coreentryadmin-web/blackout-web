@@ -1,6 +1,4 @@
 import { auth as clerkAuth } from "@clerk/nextjs/server";
-import { isCognitoAuth } from "@/lib/auth-provider";
-import { getCognitoSession } from "@/lib/cognito-session";
 
 export type AppSession = {
   userId: string | null;
@@ -8,17 +6,8 @@ export type AppSession = {
   sessionClaims: Record<string, unknown> | null;
 };
 
-/** Unified server session — Clerk or Cognito depending on AUTH_PROVIDER. */
+/** Server session (Clerk). */
 export async function getSession(): Promise<AppSession> {
-  if (isCognitoAuth()) {
-    const session = await getCognitoSession();
-    if (!session) return { userId: null, email: null, sessionClaims: null };
-    return {
-      userId: session.userId,
-      email: typeof session.claims.email === "string" ? session.claims.email : null,
-      sessionClaims: null,
-    };
-  }
   try {
     const { userId, sessionClaims } = await clerkAuth();
     return {

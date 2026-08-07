@@ -1,7 +1,13 @@
 import { cookies } from "next/headers";
 import { NextResponse, type NextRequest } from "next/server";
 import { activeClerkUserIdFromRequestCookies } from "@/lib/clerk-session-cookies";
-import { publicSiteUrl } from "@/lib/cognito-config";
+
+/** Absolute app URL from the configured public site origin — never from the request Host, which on
+ *  ECS is often the container bind address (0.0.0.0) that ASWebAuthenticationSession/Safari reject. */
+function publicSiteUrl(path: string): URL {
+  const base = process.env.NEXT_PUBLIC_SITE_URL || "https://blackouttrades.com";
+  return new URL(path.startsWith("/") ? path : `/${path}`, base);
+}
 
 /**
  * Native iOS sign-in bridge.

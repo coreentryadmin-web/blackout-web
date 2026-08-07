@@ -9,7 +9,7 @@ describe("callInternalApiRead — governance gate (no network on a denial)", () 
     for (const p of [
       "/api/admin/spx/dashboard",
       "/api/cron/spx-evaluate",
-      "/api/auth/cognito/login",
+      "/api/auth/me",
       "/api/webhook/whop",
       "/api/push/send",
       "/api/membership/sync",
