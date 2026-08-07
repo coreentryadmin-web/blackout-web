@@ -163,7 +163,10 @@ import {
 } from "@/features/vector/lib/vector-cadence";
 import { vectorWallTrailSecClient } from "@/features/vector/lib/vector-wall-sample";
 import { vectorHeatmapScopeLabel } from "@/lib/gex-scope-labels";
-import { applySessionOverviewViewport } from "@/features/vector/lib/vector-chart-viewport";
+import {
+  applySessionOverviewViewport,
+  wantsSessionOverviewViewport,
+} from "@/features/vector/lib/vector-chart-viewport";
 
 export type VectorBar = {
   time: UTCTimestamp;
@@ -235,13 +238,6 @@ function maybeScrollToLive(chart: IChartApi | null, liveFollowEnabled: boolean):
   chart.timeScale().scrollToRealTime();
 }
 
-function wantsSessionOverviewViewport(
-  viewport: "session" | "live",
-  liveFollowEnabled: boolean,
-  dteHorizon: VectorDteHorizon
-): boolean {
-  return viewport === "session" && !liveFollowEnabled && dteHorizon === "0dte";
-}
 
 /** True once the member pans/drags or scroll-zooms — blocks programmatic refits until live-follow. */
 function memberViewportLocked(chartUserPanned: boolean, wheelZoomAtMs: number): boolean {
@@ -1387,6 +1383,16 @@ export function VectorChart({
       ? initialHorizonWallHistory
       : []
   );
+  /**
+   * True when this mount got NO server-rendered blended rail, so the "all" horizon has to fetch its
+   * own. `/vector` always seeds it; the SPX Slayer embed deliberately passes `initialWallHistory={[]}`
+   * because a cold Polygon reconstruct can block the HTML for 30-90s. Every layer below used to
+   * assume the seed existed, so on the dashboard the blended rail was structurally always empty.
+   * FINDINGS 2026-08-07.
+   */
+  const seedRailEmpty = initialWallHistory.length === 0;
+  const seedRailEmptyRef = useRef(seedRailEmpty);
+  seedRailEmptyRef.current = seedRailEmpty;
   const dteHorizonRef = useRef<VectorDteHorizon>(openingDteHorizon);
   /** Session overview on load (full RTH + bead trail) until the member pans to the live edge. */
   const liveFollowEnabledRef = useRef(defaultChartViewport === "live");
@@ -1671,7 +1677,9 @@ export function VectorChart({
     );
     // Gate the recorded trail on horizon+lens here; composeHorizonTrail owns the merge precedence.
     const recordedTrail =
-      horizon !== "all" && activeLens === "gex" ? horizonHistoryRef.current : null;
+      (horizon !== "all" || seedRailEmptyRef.current) && activeLens === "gex"
+        ? horizonHistoryRef.current
+        : null;
     const history: WallHistorySample[] =
       composeHorizonTrail(recordedTrail, currentColumn) ??
       (liveSessionRef.current && !replayModeRef.current
@@ -2750,7 +2758,9 @@ export function VectorChart({
       requestAnimationFrame(() => fitSessionOverview());
     }
 
-    if (dteHorizon === "all") {
+    // "all" normally needs no fetch — /vector SSR-seeds the blended rail. With no seed (the SPX
+    // Slayer embed) it must fetch, or the dashboard draws no recorded beads at all.
+    if (dteHorizon === "all" && !seedRailEmptyRef.current) {
       repaint();
       return () => {
         cancelled = true;
@@ -3196,7 +3206,7 @@ export function VectorChart({
     // follow fits the full seed. Background re-seeds route through applyDisplayBarsPreservingView.
     if (initialBars.length) {
       if (
-        wantsSessionOverviewViewport(defaultChartViewport, liveFollowEnabledRef.current, openingDteHorizon)
+        wantsSessionOverviewViewport(defaultChartViewport, liveFollowEnabledRef.current)
       ) {
         applySessionOverviewViewport(chart, initialDisplay);
         chart.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: false });
@@ -3274,7 +3284,7 @@ export function VectorChart({
     pinCandlesOnTop(series);
 
     if (
-      wantsSessionOverviewViewport(defaultChartViewport, liveFollowEnabledRef.current, openingDteHorizon)
+      wantsSessionOverviewViewport(defaultChartViewport, liveFollowEnabledRef.current)
     ) {
       // Trails/overlays paint after the first viewport pass — re-frame once markers exist.
       requestAnimationFrame(() => {
@@ -3764,8 +3774,7 @@ export function VectorChart({
       const following = chart ? chartIsFollowingLive(chart) : false;
       const sessionOverview = wantsSessionOverviewViewport(
         defaultChartViewportRef.current,
-        liveFollowEnabledRef.current,
-        dteHorizonRef.current
+        liveFollowEnabledRef.current
       );
       const viewportLocked = memberViewportLocked(
         chartUserPannedRef.current,

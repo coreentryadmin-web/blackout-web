@@ -458,6 +458,82 @@ export function backfillRailPrefix(
 }
 
 /**
+ * Every stretch of the session the observed rail does NOT cover, as [from,to) second ranges.
+ *
+ * "Covered" means an observed sample sits within `minGapSec` — the recorder writes on a cadence, so
+ * a bucket is legitimately represented by the sample just before it. Pure; used both to decide
+ * whether a reconstruction is worth fetching and (via {@link backfillRailGaps}) to fill it.
+ */
+export function railCoverageGaps(
+  observed: WallHistorySample[],
+  firstBarTime: number | undefined,
+  lastBarTime: number | undefined,
+  minGapSec: number = 5 * 60
+): Array<{ from: number; to: number }> {
+  if (firstBarTime == null || lastBarTime == null) return [];
+  if (!Number.isFinite(firstBarTime) || !Number.isFinite(lastBarTime)) return [];
+  if (lastBarTime <= firstBarTime) return [];
+  const times = observed.map((s) => s.time).filter((t) => Number.isFinite(t)).sort((a, b) => a - b);
+  const gaps: Array<{ from: number; to: number }> = [];
+  let cursor = firstBarTime;
+  for (const t of times) {
+    // Clamp to the last bar. The recorder keeps writing after the close (AMD's rail runs to 23:40
+    // against a 19:59 last bar), so an unclamped gap would stretch to a sample the chart has no
+    // candle for — asking the reconstruction to fill hours that can never render.
+    const end = Math.min(t, lastBarTime);
+    if (end - cursor > minGapSec) gaps.push({ from: cursor, to: end });
+    if (t > cursor) cursor = t;
+    if (cursor >= lastBarTime) return gaps;
+  }
+  if (lastBarTime - cursor > minGapSec) gaps.push({ from: cursor, to: lastBarTime });
+  return gaps;
+}
+
+/** Total seconds of the session the observed rail leaves uncovered. */
+export function railUncoveredSec(
+  observed: WallHistorySample[],
+  firstBarTime: number | undefined,
+  lastBarTime: number | undefined,
+  minGapSec: number = 5 * 60
+): number {
+  let total = 0;
+  for (const g of railCoverageGaps(observed, firstBarTime, lastBarTime, minGapSec)) total += g.to - g.from;
+  return total;
+}
+
+/**
+ * FULL-DAY RAIL (FINDINGS 2026-08-07): fill EVERY gap in the session with the honest
+ * reconstruction — not only the pre-view prefix.
+ *
+ * {@link backfillRailPrefix} filled the leading gap only, which was the right fix for the case it
+ * was written for ("member opens PLTR at 2pm and the rail starts at 2pm"). But for any ticker
+ * outside the shared universe the recorder is VIEWER-DRIVEN — `recordActiveNonUniverseWallSamples`
+ * samples only `getActiveVectorTickers()` — so the rail has a hole wherever nobody had the chart
+ * open, not just at the front. Live evidence (AMD, 2026-08-06): dense beads 09:30-16:00 while
+ * members watched, a 30-minute hole at 14:45-15:15 when the last viewer left, and NOTHING from
+ * 16:00 to the 19:59 last bar — a three-hour blank block on a chart still printing candles.
+ *
+ * A modeled sample is kept only where the observed rail leaves a real gap, so observed structure is
+ * never displaced and never extended. Modeled beads carry `modeled: true` and render dim/ghosted,
+ * so a member can always tell recorded structure from reconstructed context.
+ */
+export function backfillRailGaps(
+  observed: WallHistorySample[],
+  modeled: WallHistorySample[],
+  firstBarTime: number | undefined,
+  lastBarTime: number | undefined,
+  minGapSec: number = 5 * 60
+): WallHistorySample[] {
+  if (!modeled?.length) return observed;
+  const gaps = railCoverageGaps(observed, firstBarTime, lastBarTime, minGapSec);
+  if (!gaps.length) return observed;
+  const inGap = (t: number) => gaps.some((g) => t >= g.from && t <= g.to);
+  const fill = modeled.filter((s) => Number.isFinite(s.time) && inGap(s.time));
+  if (!fill.length) return observed;
+  return mergeModeledUnderlay(observed, fill);
+}
+
+/**
  * Drop wall-history samples that predate the CURRENT session's first bar before an SSR seed ships
  * to the client. `combined`/`mergeWallHistory` retain up to MAX_HISTORY (~one RTH session at the oracle
  * 5s cadence; see the constant) for recorder resilience across restarts/replays, but a single-session Vector page (one
