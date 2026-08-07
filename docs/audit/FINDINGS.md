@@ -4,6 +4,20 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-07 - [P1, MOBILE UX / A11Y] Helix + Thermal touch targets, and the measurement that could not see the fix - FIXED (#PR)
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P1 on mobile. Helix's watchlist star renders **13x14** and there are TWENTY on one screenful of the mobile flow tape; Thermal's six "what this means" info dots render **14x14**; the flow tape's column-sort headers are **15px tall**. A fingertip is ~44px. Members trade these from phones. |
+| **Fix - and why it is different from #1842's** | The command deck's controls could take `min-height:44px` because they sit in their own rows. These are bare glyphs in dense flex rows, where growing the box shoves their neighbours. `.tap44` instead centres a transparent, absolutely-positioned `::after` on the glyph: it is a pseudo-element OF THE BUTTON, so a touch anywhere in the 44x44 box activates it, and because it is absolutely positioned it contributes nothing to layout - the row looks identical. Coarse-pointer only; on a mouse a 13px star is a fine target and a 44px invisible box would steal hovers from its neighbours. |
+| **The measurement bug this exposed - the important part** | The audit measured `getBoundingClientRect()`. An absolutely-positioned `::after` does not change that rect, so **the fix read as a complete no-op to the very harness that justified it**. Had I trusted the number, I would have concluded the standard technique was broken and gone on to wreck the layout with padding instead. The harness now measures the **effective hit area**: `document.elementFromPoint` probes at the four corners of the 44x44 box, each required to land on the control or a descendant (a child `<span aria-hidden>` glyph counts - the click still reaches the button). Probes outside the viewport pass; an element at the screen edge cannot be given room that does not exist. |
+| **Measured on the live `/flows` DOM** | Border-box measurement, before: **20** sub-44 controls, dominated by 20x `Add <TICKER> to watchlist` at 13x14. Hit-test measurement with the fix injected: **20 -> 6 -> 2**. The stars vanish from the list at the first step - the `::after` genuinely takes the tap - and the remaining 6 (`Time` 43x15, `Sym` 24x15, `Expiry`/`Strike` 49x15, the mobile filter trigger 396x38, `More panels` 91x29) are fixed by the second block. The final 2 are `Try again` / `Go home` - error-boundary buttons, not desk chrome. `horizontalOverflowPx` stayed **0** throughout. |
+| **Blast radius** | Helix mobile tape star, Helix flow-table star, Helix ticker-drawer star, Thermal `InfoTip` (one component, six dots), Helix column-sort headers, the mobile filter trigger, and the More-panels toggle. |
+| **Verification** | `tsc --noEmit` clean; `next lint` clean; Helix suite 63/63. Before/after measured against the live rendered DOM, not a model. |
+| **Status** | FIXED - PR #PR. |
+
+---
+
 ## 2026-08-07 - [P1, MEMBER-FACING] SPX Slayer dashboard: the blended bead rail was structurally always empty - FIXED (#1846)
 
 | Field | Value |

@@ -16913,6 +16913,17 @@ body::before {
 .nh-deck-filtbtn .cnt{opacity:.85;font-weight:700;margin-left:2px}
 
 
+/* Helix touch targets (FINDINGS 2026-08-07, measured live at 430px by HIT TEST).
+   The flow tape's column-sort headers render 15px tall (`Time` 43x15, `Sym` 24x15, `Expiry`/`Strike`
+   49x15) — the same shape as the command deck's sort buttons, and the same fix. The mobile filter
+   trigger (396x38) and the "More panels" toggle (91x29) are each a few pixels short.
+   Coarse-pointer only: the tape is deliberately dense for a mouse. */
+@media (pointer: coarse) {
+  .helix-tape-col-th--sortable { min-height: 44px; display: inline-flex; align-items: center }
+  .helix-tape-mobile-trigger { min-height: 44px }
+  .helix-pro-tool-btn { min-height: 44px }
+}
+
 /* ── .tap44 — expand a control's TOUCH target without moving a single pixel of layout ──────
    FINDINGS 2026-08-07, measured live at 430px with scripts/audit/live-ui-audit.cjs: Helix's
    watchlist stars render 13x14 (twenty of them on one screenful of the mobile tape) and Thermal's
