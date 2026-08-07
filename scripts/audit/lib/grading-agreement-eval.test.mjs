@@ -46,11 +46,17 @@ test("evaluatePlayAgreement: legacy row — the two graders can never disagree (
   assert.equal(v.agree, true);
 });
 
-test("evaluatePlayAgreement: THE DISAGREEMENT CASE — WS-10 row where mid is a green time_stop but the executable grade stopped out", () => {
-  // Real shape: gradePlanFromBars (mid) rode a time_stop at +12.5%; gradePlanExecutableFromBars
-  // (executable) latched the stop earlier on the bid-side walk (WS-10 doc: "every executable
-  // return is <= its mid twin") and booked -50%. feature-store.ts labels off the mid (a win);
-  // record.ts labels off the official/executable (a loss) — the comment-only invariant breaks.
+test("evaluatePlayAgreement: the once-divergent WS-10 shape now AGREES — and the third argument is why", () => {
+  // This case used to assert a DISAGREEMENT, and that assertion was correct when written: pre-NH-R14,
+  // feature-store.ts decided win/loss from the mid columns alone, so a row whose mid rode a green
+  // time_stop (+12.5%) while the executable walk stopped out (-50%) genuinely split the two graders.
+  //
+  // NH-R14 fixed it — labelFromPlanOutcome now delegates to record.ts's isZeroDteWin over an
+  // OfficialGradableRow, and feature-store.ts:112 passes entryContext. But THIS HARNESS kept calling
+  // it with two arguments, so it forced the mid-only fallback and kept reporting the pre-fix result
+  // against post-fix code: a live 90-day run still showed "4 disagreements" that no longer existed.
+  //
+  // The test now pins the fixed behaviour AND the reason it holds.
   const play = {
     ticker: "TSLA",
     session_date: "2026-07-30",
@@ -66,10 +72,24 @@ test("evaluatePlayAgreement: THE DISAGREEMENT CASE — WS-10 row where mid is a 
     },
   };
   const v = evaluatePlayAgreement(play, labelFromPlanOutcome);
-  assert.equal(v.feature_store_label, "win");
+  assert.equal(v.feature_store_label, "loss", "production call resolves the OFFICIAL lane");
   assert.equal(v.record_label, "loss");
   assert.equal(v.both_graded, true);
-  assert.equal(v.agree, false);
+  assert.equal(v.agree, true, "the invariant holds once the call site is faithful");
+
+  // Load-bearing: this row agrees ONLY because entry_context is passed. If a refactor drops that
+  // argument the label flips back to the mid answer — which is exactly the regression to catch.
+  assert.equal(v.mid_only_label, "win", "the mid-only answer is still a win — the divergence is real, just no longer reached");
+  assert.equal(v.mid_only_would_differ, true, "flags the rows where the third argument decides the label");
+});
+
+test("evaluatePlayAgreement: a legacy row is NOT flagged load-bearing — mid IS official there", () => {
+  // Pre-WS10 rows have no executable blob, so mid and official are the same number and dropping
+  // entry_context changes nothing. Flagging these would drown the real signal.
+  const play = { ticker: "SPY", session_date: "2026-07-10", plan_outcome: "doubled", plan_pnl_pct: 100, entry_context: null };
+  const v = evaluatePlayAgreement(play, labelFromPlanOutcome);
+  assert.equal(v.agree, true);
+  assert.equal(v.mid_only_would_differ, false);
 });
 
 test("evaluatePlayAgreement: ungradeable official row — record has no label, feature-store's own SQL filter would have excluded it anyway (not evidence either side)", () => {
