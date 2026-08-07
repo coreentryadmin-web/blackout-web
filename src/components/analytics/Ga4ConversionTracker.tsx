@@ -52,7 +52,7 @@ export function Ga4ConversionTracker() {
       value: purchaseValue,
       currency: "USD",
     });
-    trackXEvent("tw-re1j3-purchase", {
+    trackXEvent("tw-re1j3-re9zc", {
       value: purchaseValue,
       currency: "USD",
     });

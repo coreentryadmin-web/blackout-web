@@ -50,7 +50,7 @@ function Ga4AttributionInner() {
       consumePendingSignUp()
     ) {
       trackGa4Event(GA4_EVENTS.signUp, { page_path: pathname });
-      trackXEvent("tw-re1j3-sign_up");
+      trackXEvent("tw-re1j3-re9z9");
     }
 
     const articleSlug = learnArticleSlugFromPath(pathname);

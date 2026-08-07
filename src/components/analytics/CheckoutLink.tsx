@@ -51,7 +51,7 @@ function onCheckoutClick(plan: CheckoutPlan) {
     value: CHECKOUT_PLAN_VALUE_USD[plan],
     currency: "USD",
   });
-  trackXEvent("tw-re1j3-begin_checkout", {
+  trackXEvent("tw-re1j3-re9zb", {
     value: CHECKOUT_PLAN_VALUE_USD[plan],
     currency: "USD",
   });
