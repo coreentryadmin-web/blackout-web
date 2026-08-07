@@ -1209,7 +1209,12 @@ test("overlayLegacyQuotes: populates stockPrice and stockChangePct", () => {
   assert.equal(result.stockChangePct, 2.3);
 });
 
-test("overlayLegacyQuotes: computes stock-level pnlPct from entry (LONG)", () => {
+// REWRITTEN 2026-08-07. These asserted that the STOCK's move lands in `pnlPct` — the field the deck
+// renders under a "PNL" header for an OPTION position. The old names said "stock-level pnlPct" out
+// loud, so the mismatch was known and encoded anyway. Live: MU $880C showed -2% (the stock's move
+// off the band midpoint) on a position Polygon priced at -52.3%. The stock move is still computed
+// and still asserted — it now lands on `stockMovePct`, where it means what it says.
+test("overlayLegacyQuotes: stock move lands on stockMovePct, NOT pnlPct (LONG)", () => {
   const play = terminalPlayFromEdition({
     ticker: "NVDA", direction: "long", rank: 1, score: 85,
     entry_range: "$180 – $185", target: "$200", stop: "$170",
@@ -1217,12 +1222,19 @@ test("overlayLegacyQuotes: computes stock-level pnlPct from entry (LONG)", () =>
   const quotes = new Map([["NVDA", { price: 192.50, changePct: 2.3, asof: "2026-07-28T15:00:00Z" }]]);
   const originals = [{ ticker: "NVDA", target: "$200", stop: "$170", entry_range: "$180 – $185" }];
   const [result] = overlayLegacyQuotes([play], quotes, originals);
-  // entry mid = (180+185)/2 = 182.5, stock = 192.50, pnl = (192.50-182.5)/182.5 = +5.48%
-  assert.ok(result.pnlPct != null, "pnlPct should be computed");
-  assert.ok(result.pnlPct! > 5.0 && result.pnlPct! < 6.0, `expected ~5.48%, got ${result.pnlPct}`);
+  // entry mid = (180+185)/2 = 182.5, stock = 192.50, stock move = (192.50-182.5)/182.5 = +5.48%
+  assert.ok(result.stockMovePct != null, "the stock move should still be computed");
+  assert.ok(
+    result.stockMovePct! > 5.0 && result.stockMovePct! < 6.0,
+    `expected ~5.48%, got ${result.stockMovePct}`,
+  );
+  // The position P&L fields must stay EMPTY without a live option mark — "—" beats a wrong number.
+  assert.equal(result.pnlPct, null, "an underlying move must never be published as the option's P&L");
+  assert.equal(result.peak, null);
+  assert.equal(result.trough, null);
 });
 
-test("overlayLegacyQuotes: computes stock-level pnlPct from entry (SHORT)", () => {
+test("overlayLegacyQuotes: stock move lands on stockMovePct, NOT pnlPct (SHORT)", () => {
   const play = terminalPlayFromEdition({
     ticker: "TSLA", direction: "short", rank: 1, score: 80,
     entry_range: "$250 – $255", target: "$230", stop: "$265",
@@ -1230,9 +1242,13 @@ test("overlayLegacyQuotes: computes stock-level pnlPct from entry (SHORT)", () =
   const quotes = new Map([["TSLA", { price: 240, changePct: -3, asof: "2026-07-28T15:00:00Z" }]]);
   const originals = [{ ticker: "TSLA", target: "$230", stop: "$265", entry_range: "$250 – $255" }];
   const [result] = overlayLegacyQuotes([play], quotes, originals);
-  // entry mid = (250+255)/2 = 252.5, stock = 240, short pnl = (252.5-240)/252.5 = +4.95%
-  assert.ok(result.pnlPct != null, "pnlPct should be computed");
-  assert.ok(result.pnlPct! > 4.5 && result.pnlPct! < 5.5, `expected ~4.95%, got ${result.pnlPct}`);
+  // entry mid = (250+255)/2 = 252.5, stock = 240, short stock move = (252.5-240)/252.5 = +4.95%
+  assert.ok(result.stockMovePct != null, "the stock move should still be computed");
+  assert.ok(
+    result.stockMovePct! > 4.5 && result.stockMovePct! < 5.5,
+    `expected ~4.95%, got ${result.stockMovePct}`,
+  );
+  assert.equal(result.pnlPct, null, "an underlying move must never be published as the option's P&L");
 });
 
 test("Legacy adapter: confirming_signals → confluence badge, not a factor", () => {
