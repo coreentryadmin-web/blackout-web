@@ -142,11 +142,19 @@ export async function fetchZeroDteHealthSnapshot(): Promise<ZeroDteHealthSnapsho
 
   let rejections: ZeroDteRejectionRow[] = [];
   try {
-    rejections = await fetchZeroDteRejections({ limit: REJECTIONS_SAMPLE_LIMIT });
+    // Filter in SQL, the way admin-zerodte-funnel.ts already does. Two reasons: (1) `limit` applies
+    // BEFORE a client-side filter, so an unfiltered window can be dominated by other sessions, and
+    // (2) it removes the JS-side date comparison entirely — the comparison that was silently always
+    // false and reported 0 rejections against the funnel's 146 on the same table in the same second.
+    rejections = await fetchZeroDteRejections({ session_date: sessionDate, limit: REJECTIONS_SAMPLE_LIMIT });
   } catch (e) {
     errors.push(`rejections: ${e instanceof Error ? e.message : "failed"}`);
   }
 
+  // Belt-and-braces: the SQL query above already scopes to `sessionDate`, and `session_date` is now
+  // normalized to ISO at the db boundary (db.ts, isoDateString) so this comparison is meaningful
+  // rather than always-false. Kept so a future caller passing an unscoped row set cannot silently
+  // reintroduce cross-session counting.
   const todaysRejections = rejections.filter((r) => r.session_date === sessionDate);
   const committedTickers = new Set(committed.map((r) => r.ticker.toUpperCase()));
   // A ticker that failed a gate earlier today but later cleared every gate and made

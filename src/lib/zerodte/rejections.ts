@@ -145,6 +145,10 @@ export type ZeroDteRejectionRow = {
  *  today." Empty array (not a throw) when the DB isn't configured. */
 export async function fetchZeroDteRejections(opts?: {
   ticker?: string;
+  /** Filter to one session IN SQL. Prefer this over fetching a global window and filtering in JS:
+   *  the `limit` applies BEFORE any client-side filter, so an unfiltered fetch of the most recent N
+   *  rows can be dominated by other sessions and silently under-report today's. */
+  session_date?: string;
   limit?: number;
 }): Promise<ZeroDteRejectionRow[]> {
   if (!dbConfigured()) return [];
