@@ -173,6 +173,11 @@ export type NightHawkRecordSegmentWire = {
   avg_return_pct: number | null;
   /** decided < LOW_N_THRESHOLD — the UI must badge this segment's ratios. */
   low_n: boolean;
+  /** Complement of `scoreable`: `scoreable + excluded_total === resolved` ALWAYS. Use this to
+   *  reconcile the breakdown — `unfilled` and `pulled` OVERLAP and cannot be summed. */
+  excluded_total: number;
+  /** `unfilled` minus the also-pulled rows — the disjoint slice that sums with `pulled`. */
+  unfilled_not_pulled: number;
 };
 
 export type NightHawkRecordResponse = {

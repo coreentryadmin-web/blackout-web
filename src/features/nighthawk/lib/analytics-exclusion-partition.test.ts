@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import type { NighthawkPlayOutcomeRow } from "@/lib/db";
 import { buildRecordSegment } from "./analytics";
 
@@ -77,4 +78,31 @@ test("an empty segment stays coherent rather than producing NaN", () => {
   assert.equal(seg.excluded_total, 0);
   assert.equal(seg.unfilled_not_pulled, 0);
   assert.equal(seg.win_rate, null);
+});
+
+// ── The WIRE projection (found live 2026-08-07 19:19Z, after #1878 deployed) ────────────────
+//
+// #1878 added excluded_total/unfilled_not_pulled to buildRecordSegment and I asserted the
+// breakdown "now reconciles". It did not — on the MEMBER surface. A live pull of
+// /api/market/nighthawk/record?days=30 on rev 610 returned segment keys with NEITHER field:
+//   methodology,label,resolved,scoreable,wins,losses,opens,ambiguous,unfilled,pulled,
+//   stop_data_unavailable,decided,win_rate_pct,...
+// `segmentWire()` is an EXPLICIT projection (note it renames win_rate -> win_rate_pct), so a field
+// added to the lib does not reach the API unless it is named there too.
+
+test("REGRESSION: segmentWire must PROJECT the exclusion fields, not silently drop them", () => {
+  const src = readFileSync("src/app/api/market/nighthawk/record/route.ts", "utf8");
+  const i = src.indexOf("function segmentWire");
+  assert.ok(i > 0, "precondition: segmentWire must exist");
+  const body = src.slice(i, src.indexOf("\n}", i));
+  assert.match(body, /excluded_total: seg\.excluded_total/);
+  assert.match(body, /unfilled_not_pulled: seg\.unfilled_not_pulled/);
+});
+
+test("every field buildRecordSegment computes for the breakdown reaches the wire", () => {
+  // The general guard: an explicit projection is a place where lib work goes to die silently.
+  const wire = readFileSync("src/app/api/market/nighthawk/record/route.ts", "utf8");
+  for (const field of ["resolved", "scoreable", "unfilled", "pulled", "stop_data_unavailable", "excluded_total", "unfilled_not_pulled"]) {
+    assert.match(wire, new RegExp(`${field}: seg\\.${field}`), `segmentWire drops ${field}`);
+  }
 });

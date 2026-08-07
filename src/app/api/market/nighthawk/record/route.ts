@@ -26,6 +26,14 @@ function segmentWire(seg: NighthawkRecordSegment): NightHawkRecordSegmentWire {
     unfilled: seg.unfilled,
     pulled: seg.pulled,
     stop_data_unavailable: seg.stop_data_unavailable,
+    // `unfilled` and `pulled` OVERLAP (a play pulled pre-open that also gapped away is in both),
+    // so `scoreable + unfilled + pulled` overshoots `resolved` — live 2026-08-07 days=30 gave
+    // 27+13+12 = 52 against resolved 50. `excluded_total` is the complement of `scoreable`, so
+    // `scoreable + excluded_total === resolved` holds by construction; `unfilled_not_pulled` gives
+    // the disjoint slice. Both MUST be projected here — this wire mapping is explicit, so a field
+    // added to buildRecordSegment does not reach the member surface unless it is named.
+    excluded_total: seg.excluded_total,
+    unfilled_not_pulled: seg.unfilled_not_pulled,
     decided: seg.decided,
     win_rate_pct: seg.win_rate != null ? pct(seg.win_rate) : null,
     // Wilson n = DECIDED, not scoreable. Feeding it `scoreable` made the interval as
