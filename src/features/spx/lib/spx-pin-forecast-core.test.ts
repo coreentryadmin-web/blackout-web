@@ -225,3 +225,56 @@ test("oiWalls prefers nearer denser put over far raw-max OI", async () => {
   const w = oiWalls(contracts, 7420, 5);
   assert.equal(w.putWall?.strike, 7400, `put wall should be nearer 7400, got ${w.putWall?.strike}`);
 });
+
+// ── HORIZON PARAMETERIZATION ─────────────────────────────────────────────────────────────────
+// The model used to hardcode a 390-minute RTH session as BOTH the charm clock (tFrac) and the
+// gamma ladder's tenor (structYears). That is correct only when the target is today's close.
+// These cover the two inputs that let the same engine target a further-out expiry — and, first,
+// that an SPX caller who passes neither still gets exactly the old numbers.
+
+test("horizonMin/structYears omitted → byte-identical to the hardcoded session defaults", () => {
+  // The regression guard for every existing SPX caller: defaulting must reproduce the constants
+  // it replaced, not merely "something close".
+  const now = "2026-07-21T15:00:00Z";
+  const implicit = forecastPin(base(now));
+  const explicit = forecastPin(base(now, { horizonMin: 390, structYears: 390 / (365 * 24 * 60) }));
+  assert.deepEqual(implicit, explicit, "omitting the new inputs must equal passing the old constants");
+});
+
+test("horizonMin scales the CHARM CLOCK — the bug a multi-day target used to hit", () => {
+  // 1,950 minutes to target (five sessions out). Against the old hardcoded 390 the ratio is 5.0,
+  // which clamps to 1.0 — so the forecast reports "early, nothing pinning yet" even though the
+  // window is half elapsed. Given the real window length it correctly reads as mid-run.
+  const nowMs = Date.parse("2026-07-21T15:00:00Z");
+  const closeMs = nowMs + 1950 * 60_000;
+  const stale = forecastPin(base("2026-07-21T15:00:00Z", { closeMs }));
+  const scaled = forecastPin(base("2026-07-21T15:00:00Z", { closeMs, horizonMin: 3900 }));
+  assert.equal(stale.charmState, "early", "clamped tFrac pins the old behaviour at 'early'");
+  assert.equal(scaled.charmState, "moderate", "half a 3,900-min window elapsed → moderate charm");
+});
+
+test("structYears widens the gamma ladder: a further expiry has flatter, less concentrated walls", () => {
+  // BSM gamma goes as 1/√T, so pricing a multi-day book at a one-session tenor manufactures walls
+  // sharper than the book has. Peak ladder magnitude must fall as the tenor grows.
+  const session = 390 / (365 * 24 * 60);
+  const peak = (tYears: number) => {
+    let max = 0;
+    for (const g of pinLadderAtSpot(chain(), 7507.6, tYears).values()) max = Math.max(max, Math.abs(g));
+    return max;
+  };
+  const near = peak(session);
+  const far = peak(session * 5);
+  assert.ok(far < near, `5x tenor must flatten the ladder (near ${near.toFixed(0)} vs far ${far.toFixed(0)})`);
+});
+
+test("degenerate horizonMin/structYears fall back to the session defaults rather than dividing by zero", () => {
+  // Fail-safe, not fail-weird: a caller passing 0/negative/NaN must land on the documented default,
+  // never produce Infinity/NaN in a member-facing cone.
+  const now = "2026-07-21T15:00:00Z";
+  const expected = forecastPin(base(now));
+  for (const bad of [0, -390, Number.NaN]) {
+    const got = forecastPin(base(now, { horizonMin: bad, structYears: bad }));
+    assert.deepEqual(got, expected, `horizonMin/structYears=${bad} must fall back to the defaults`);
+    assert.ok(got.cone.every((s) => Number.isFinite(s.p10) && Number.isFinite(s.p50) && Number.isFinite(s.p90)));
+  }
+});

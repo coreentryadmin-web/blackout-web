@@ -79,6 +79,30 @@ export type PinForecastInput = {
   recentReturns?: number[];
   /** Caller can force degrade (e.g. a scheduled macro event today). */
   macroEvent?: boolean;
+  /**
+   * Length of the FORECAST WINDOW in minutes — the span the cone's progress fraction is measured
+   * against, i.e. "how long is the run-up to this target". Defaults to `RTH_MIN` (one 390-min RTH
+   * session), which is the only horizon the SPX 0DTE desk ever asks for.
+   *
+   * Why this is an input and not the constant it used to be: `tFrac = tMin / RTH_MIN` is the
+   * model's charm clock — it drives `charmState`, the magnet pull ramp, and the MC bridge's noise
+   * decay. Hardcoding 390 is correct ONLY when the target is today's close. Point the same model at
+   * a Friday expiry three days out and `tMin ≈ 4,000`, so `tFrac` clamps to 1.0 for two and a half
+   * days: the forecast would report "early, no pinning yet" right up until the final session, then
+   * lurch. Passing the real window length makes the charm ramp span the actual run-up to expiry.
+   */
+  horizonMin?: number;
+  /**
+   * Structural tenor (YEARS) for the gamma ladder — see {@link Prep.structYears} for why the ladder
+   * uses a stable tenor rather than shrinking time-to-close. Defaults to one session
+   * (`RTH_MIN / YEAR_MIN`).
+   *
+   * This must track the TARGET EXPIRY, not the clock: BSM gamma goes as 1/√T, so pricing a
+   * 3-day-out book at a 390-minute tenor overstates gamma concentration by ~√(3·390/390) ≈ 1.7x and
+   * manufactures walls sharper than the book actually has. A caller forecasting to a non-0DTE
+   * expiry MUST pass the real years-to-expiry.
+   */
+  structYears?: number;
   method?: "analytic" | "montecarlo";
   mcPaths?: number;
   mcSteps?: number;
@@ -250,6 +274,9 @@ type Prep = {
   reason: string | null;
   tMin: number;
   tFrac: number;
+  /** Resolved forecast-window length (minutes) — `input.horizonMin` or the RTH_MIN default. The
+   *  cone builders measure their per-step progress against THIS, never the bare constant. */
+  horizonMin: number;
   /** Stable session-length tenor (years) used for the STRUCTURAL gamma ladder — flip + magnets.
    *  The OI walls are a structural feature that doesn't decay just because the clock ticks; using the
    *  shrinking time-to-close here would zero out every non-ATM strike at 0DTE and collapse the magnet
@@ -275,12 +302,17 @@ type Prep = {
 /** Shared setup: build the ladder, flip, regime, dominant magnet, vol, charm state, degrade flags. */
 function prepare(input: PinForecastInput): Prep {
   const tMin = Math.max(0, (input.closeMs - input.nowMs) / 60000);
-  const tFrac = clamp(tMin / RTH_MIN, 0, 1);
-  // Structural tenor for the gamma ladder = a full session, held stable all day (see Prep.structYears).
-  const structYears = RTH_MIN / YEAR_MIN;
+  // Forecast window + structural tenor. Both default to ONE RTH SESSION, which is what the SPX 0DTE
+  // desk has always asked for, so an SPX caller that passes neither gets byte-identical numbers to
+  // before these became inputs. A caller targeting a further-out expiry must pass both (see
+  // PinForecastInput.horizonMin / .structYears for what goes wrong if it doesn't).
+  const horizonMin = input.horizonMin != null && input.horizonMin > 0 ? input.horizonMin : RTH_MIN;
+  const tFrac = clamp(tMin / horizonMin, 0, 1);
+  const structYears =
+    input.structYears != null && input.structYears > 0 ? input.structYears : RTH_MIN / YEAR_MIN;
   const ladder = pinLadderAtSpot(input.contracts, input.spot, structYears);
   if (ladder.size < 2) {
-    return { ok: false, reason: "chain_cold", tMin, tFrac, structYears, ladder, flip: null, regime: "unknown", maxPain: null, magnetStrike: null, magnetKind: "max_pain", magnetStrengthPct: 0, direction: "flat", atmIv: input.atmIv ?? 0.12, strikeSpacing: 5, charmState: "early", degraded: false, degradeReason: null, ivFallback: !(input.atmIv != null && input.atmIv > 0) };
+    return { ok: false, reason: "chain_cold", tMin, tFrac, horizonMin, structYears, ladder, flip: null, regime: "unknown", maxPain: null, magnetStrike: null, magnetKind: "max_pain", magnetStrengthPct: 0, direction: "flat", atmIv: input.atmIv ?? 0.12, strikeSpacing: 5, charmState: "early", degraded: false, degradeReason: null, ivFallback: !(input.atmIv != null && input.atmIv > 0) };
   }
   // Regime from the gamma flip; when the book never turns net-long (no crossing), fall back to the
   // net-gamma sign — an honest "short everywhere" reads short, not "unknown".
@@ -347,7 +379,7 @@ function prepare(input: PinForecastInput): Prep {
     const rv = realizedVolAnnualized(input.recentReturns);
     if (atmIv > 0 && rv > atmIv * 1.8) { degraded = true; degradeReason = "realized_gt_implied"; }
   }
-  return { ok: true, reason: null, tMin, tFrac, structYears, ladder, flip, regime, maxPain, magnetStrike, magnetKind, magnetStrengthPct, direction, atmIv, strikeSpacing, charmState, degraded, degradeReason, ivFallback };
+  return { ok: true, reason: null, tMin, tFrac, horizonMin, structYears, ladder, flip, regime, maxPain, magnetStrike, magnetKind, magnetStrengthPct, direction, atmIv, strikeSpacing, charmState, degraded, degradeReason, ivFallback };
 }
 
 function inferSpacing(contracts: readonly PinContract[]): number {
@@ -427,7 +459,7 @@ function medianPath(input: PinForecastInput, p: Prep, steps: number): { times: n
   for (let i = 0; i <= steps; i++) {
     const frac = i / steps; // 0 now → 1 close
     const tMinAt = p.tMin * (1 - frac);
-    const tFracAt = clamp(tMinAt / RTH_MIN, 0, 1);
+    const tFracAt = clamp(tMinAt / p.horizonMin, 0, 1);
     // Strength-scaled: thin magnets leave most of the path with spot so the projection MOVES live.
     const pf = pullFraction(tFracAt, p.regime, p.degraded, p.magnetStrengthPct) * frac;
     const med = input.spot + (target - input.spot) * pf;
@@ -487,7 +519,7 @@ function montecarlo(input: PinForecastInput, p: Prep): PinForecast {
     stepPrices[0]!.push(price);
     for (let s = 1; s <= steps; s++) {
       const tMinAt = p.tMin - dtMin * s;
-      const tFracAt = clamp(tMinAt / RTH_MIN, 0, 1);
+      const tFracAt = clamp(tMinAt / p.horizonMin, 0, 1);
       // path-dependent magnet: recompute the dominant pull at THIS price, stable structural tenor
       const ladder = pinLadderAtSpot(input.contracts, price, p.structYears);
       const fl = pinFlip(ladder, price);
