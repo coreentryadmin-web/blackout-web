@@ -119,7 +119,7 @@ export function TickerDrawer({
           title={isStarred ? `Remove ${ticker} from watchlist` : `Add ${ticker} to watchlist`}
           aria-pressed={!!isStarred}
           className={clsx(
-            "leading-none text-[22px] transition-colors",
+            "tap44 leading-none text-[22px] transition-colors",
             isStarred ? "text-gold" : "text-cyan-400 hover:text-gold"
           )}
         >

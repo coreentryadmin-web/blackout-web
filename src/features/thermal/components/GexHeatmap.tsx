@@ -600,7 +600,7 @@ function InfoTip({ label, text }: { label: string; text: string }) {
           if (e.key === "Escape") setOpen(false);
         }}
         className={clsx(
-          "inline-flex h-3.5 w-3.5 items-center justify-center rounded-full border text-[8px] font-bold leading-none outline-none transition-colors",
+          "tap44 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full border text-[8px] font-bold leading-none outline-none transition-colors",
           "border-sky-400/40 text-sky-300 hover:border-sky-400/80 hover:text-white",
           "focus-visible:ring-2 focus-visible:ring-sky-400"
         )}
