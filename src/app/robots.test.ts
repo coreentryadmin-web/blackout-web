@@ -16,7 +16,9 @@ describe("robots.ts", () => {
     const disallowed = wildcard?.disallow ?? [];
     assert.ok(disallowed.includes("/api/"));
     assert.ok(disallowed.includes("/admin/"));
-    assert.ok(disallowed.includes("/track-record/"));
+    // /track-record is a public social-proof page (sanitized aggregate data
+    // only) — must stay crawlable. See docs/marketing/SEO-GROWTH.md finding #2.
+    assert.ok(!disallowed.includes("/track-record/"));
     assert.ok(!disallowed.includes("/learn/"));
     assert.ok(!disallowed.includes("/pricing"));
   });

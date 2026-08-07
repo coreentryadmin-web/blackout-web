@@ -22,7 +22,6 @@ const DISALLOWED_PATHS = [
   "/native-signin/",
   "/embed/",
   "/offline/",
-  "/track-record/",
   "/_next/",
 ];
 

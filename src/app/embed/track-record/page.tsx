@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import { TrackRecordEmbed } from "@/components/embeds/TrackRecordEmbed";
-import { requireAdmin } from "@/lib/admin-access";
 import { buildPublicTrackRecord } from "@/lib/track-record-public";
 
-// Admin-only embed preview (formerly public social-proof iframe).
+// Public social-proof iframe — sanitized aggregate-only data (see
+// buildPublicTrackRecord / PublicTrackRecord docs). Re-published 2026-08;
+// see docs/marketing/SEO-GROWTH.md finding #2.
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
@@ -13,7 +14,6 @@ export const metadata: Metadata = {
 };
 
 export default async function EmbedTrackRecordPage() {
-  await requireAdmin();
   const record = await buildPublicTrackRecord();
   return (
     <div
