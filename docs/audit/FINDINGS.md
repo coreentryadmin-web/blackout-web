@@ -4,7 +4,7 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
-## 2026-08-07 - [P1, DATA LOSS] SPX's whole trading session evicted from the wall rail overnight by a COUNT cap - FIXED (#PR)
+## 2026-08-07 - [P1, DATA LOSS] SPX's whole trading session evicted from the wall rail overnight by a COUNT cap - FIXED (#1850)
 
 | Field | Value |
 |-------|-------|
@@ -17,7 +17,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Blast radius** | All three eviction sites: `recordWallSample`, `mergeWallHistory`, `mergeModeledUnderlay`. All three carried the same `slice(-MAX_HISTORY)` and all three are now routed through the compactor. |
 | **Tests** | 6 new cases (thins rather than truncates; preserves span; live window untouched; first sample anchored; no-op under the cap; absolute bound still honoured). **Two pre-existing tests were rewritten** because they asserted the amputation as intended behaviour - the old names ("trims from the front", "caps by keeping the newest tail") are the bug written down as a spec. 64/64 pass; `tsc --noEmit` clean. |
 | **Lesson worth keeping** | A retention cap expressed in COUNT silently encodes a duration that depends on cadence. When two lanes write at different rates, one count is two different retention policies. |
-| **Status** | FIXED - PR #PR. |
+| **Status** | FIXED - PR #1850. |
 
 ---
 
