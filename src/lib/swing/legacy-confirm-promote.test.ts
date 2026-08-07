@@ -5,6 +5,8 @@ import {
   LEGACY_SWING_SIGNAL_KIND,
   buildLegacySwingArtifacts,
   carryLegacyPromotedIntoSnapshot,
+  isCarriedContractLive,
+  carriedContractExpiry,
   legacyPlayDirection,
   mergeLegacyPromotedSnapshot,
 } from "./legacy-confirm-promote.ts";
@@ -234,4 +236,76 @@ test("persisted legacy promotion surfaces through discoverSwingFromPersisted gat
   assert.ok(discovered);
   assert.equal(discovered!.plays.some((p) => p.ticker === "META"), true);
   assert.equal(discovered!.plays.find((p) => p.ticker === "META")?.signalKinds?.[0], LEGACY_SWING_SIGNAL_KIND);
+});
+
+
+// ── EXPIRED CARRIED CONTRACTS ARE DROPPED (2026-08-07) ───────────────────────────────────────
+// Carried rows re-attach the prior snapshot's play verbatim, contract blob included. Live on
+// 2026-08-07 the board served CRWV 84C / SKHY 148C / RDDT 152.5C all labelled "3DTE" with expiry
+// 2026-08-07 — zero DTE, expiring that session — at flag-day prices: SKHY mid 6.44 vs a live 0.22
+// (-96.5%), AEM 9.38 vs 21.30 (BELOW intrinsic). Fail-closed: drop, never serve.
+
+const carriedPlay = (expiry: string | undefined) =>
+  ({
+    ticker: "SKHY",
+    direction: "LONG" as const,
+    horizon: "SWING" as const,
+    score: 70,
+    contract: { strike: 148, right: "C" as const, expiry, dte: 3, mid: 6.44 },
+    reason: "carried",
+  }) as unknown as Parameters<typeof isCarriedContractLive>[0];
+
+test("isCarriedContractLive: an EXPIRED frozen contract is not live", () => {
+  assert.equal(isCarriedContractLive(carriedPlay("2026-08-06"), "2026-08-07"), false);
+});
+
+test("isCarriedContractLive: expiry ON the session day still trades that day", () => {
+  assert.equal(isCarriedContractLive(carriedPlay("2026-08-07"), "2026-08-07"), true);
+});
+
+test("isCarriedContractLive: a future expiry is live", () => {
+  assert.equal(isCarriedContractLive(carriedPlay("2026-08-14"), "2026-08-07"), true);
+});
+
+test("isCarriedContractLive: an UNDATEABLE contract is dropped, not trusted", () => {
+  // A carried row we cannot date is exactly the row we cannot vouch for.
+  assert.equal(isCarriedContractLive(carriedPlay(undefined), "2026-08-07"), false);
+  assert.equal(carriedContractExpiry(carriedPlay(undefined)), null);
+  assert.equal(isCarriedContractLive(carriedPlay("2026-08-14"), ""), false);
+});
+
+test("carryLegacyPromotedIntoSnapshot DROPS an expired carry and keeps the fresh scan row", () => {
+  // The strip step removes carried tickers from the fresh scan, so carrying a DEAD row would also
+  // suppress any live row the scan just produced for that name. Dropping it must leave the fresh
+  // board intact.
+  const artifact = buildLegacySwingArtifacts({
+    play: legacyPlay({ ticker: "SKHY" }),
+    checkedAt: "2026-08-04T13:20:00.000Z",
+    editionFor: "2026-08-04",
+    spot: 150.55,
+    chainRows: [{ ...chainRows[0]!, strike: 150 }],
+    chainSpot: 150.55,
+  })!;
+  const prior = mergeLegacyPromotedSnapshot(null, [artifact], {
+    sessionDay: "2026-08-04",
+    asOf: "2026-08-04T13:20:00.000Z",
+    spotsByTicker: { SKHY: 150.55 },
+  });
+  // Same snapshot, read on a LATER session — the frozen contract has since expired.
+  const laterSession = {
+    asOf: "2026-09-01T14:00:00.000Z",
+    sessionDay: "2026-09-01",
+    dossiers: [],
+    plays: [],
+    watch: [],
+    observed: [],
+    spotsByTicker: {},
+  };
+  const carried = carryLegacyPromotedIntoSnapshot(laterSession, prior);
+  assert.equal(
+    carried.plays.some((p) => p.ticker === "SKHY"),
+    false,
+    "an expired carried contract must not be served",
+  );
+  assert.equal(carried.watch.some((w) => w.ticker === "SKHY"), false);
 });

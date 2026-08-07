@@ -323,13 +323,51 @@ function stripTickersFromSnapshot(snap: SwingServingSnapshot, tickers: Set<strin
   };
 }
 
+/**
+ * Expiry (YYYY-MM-DD) of a carried play's frozen contract, or null when the blob has none.
+ *
+ * A null expiry is treated as UNVERIFIABLE, not as fine: `isCarriedContractLive` drops it. A carried
+ * row we cannot date is exactly the row we cannot vouch for.
+ */
+export function carriedContractExpiry(play: HorizonPlay): string | null {
+  const exp = play?.contract?.expiry;
+  return typeof exp === "string" && exp.length > 0 ? exp : null;
+}
+
+/**
+ * True when a legacy-carried play's FROZEN contract is still tradeable on `sessionDay`.
+ *
+ * Carried rows re-attach the prior snapshot's play verbatim — contract blob, quote and greeks
+ * included — so a contract that has since expired keeps being served with its flag-day numbers.
+ * Measured live 2026-08-07: the board showed CRWV 84C, SKHY 148C and RDDT 152.5C all labelled
+ * "3DTE" with expiry 2026-08-07, i.e. ZERO DTE and expiring that session, at flag-day prices —
+ * SKHY served mid 6.44 against a live 0.22 (−96.5%), and AEM's served 9.38 vs 21.30 was BELOW
+ * intrinsic. Deltas were equally frozen (SKHY served Δ0.600 vs live Δ0.086).
+ *
+ * Fail-closed by design: an expired or undateable contract is DROPPED rather than served. Showing
+ * no row is a small loss; showing a real ticker at a price 29× its market is a member sizing a
+ * position off a number that has not existed for days.
+ */
+export function isCarriedContractLive(play: HorizonPlay, sessionDay: string): boolean {
+  const expiry = carriedContractExpiry(play);
+  if (!expiry || !sessionDay) return false;
+  // Expiry ON the session day still trades that day, so `>=` — this guard is about contracts that
+  // have already expired, not about the lane's DTE floor (a separate, deliberate policy question).
+  return expiry >= sessionDay;
+}
+
 /** Re-attach morning-confirm legacy promotions after a swing-discovery scan overwrites the snapshot. */
 export function carryLegacyPromotedIntoSnapshot(
   fresh: SwingServingSnapshot,
   prior: SwingServingSnapshot | null,
 ): SwingServingSnapshot {
   if (!prior) return fresh;
-  const triples = legacyPromotedTriplesFromSnapshot(prior);
+  // Drop carried rows whose frozen contract has expired BEFORE anything else keys off them — the
+  // strip below removes these tickers from the fresh scan, so carrying a dead row would also
+  // suppress the live one the scan just produced. See isCarriedContractLive for the live evidence.
+  const triples = legacyPromotedTriplesFromSnapshot(prior).filter((t) =>
+    isCarriedContractLive(t.play, fresh.sessionDay),
+  );
   if (triples.length === 0) return fresh;
   const legacyTickers = new Set(triples.map((t) => t.watch.ticker.toUpperCase()));
   const stripped = stripTickersFromSnapshot(fresh, legacyTickers);
