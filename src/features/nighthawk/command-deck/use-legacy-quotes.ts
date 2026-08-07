@@ -170,8 +170,16 @@ export function overlayLegacyQuotes(
       ? `${p.recNote} — ${stockNote}`
       : stockNote;
 
-    // Stock-level P&L: how far the stock moved from entry mid in the play's direction.
-    const stockPnlPct = entryMid > 0
+    // STOCK-level move: how far the UNDERLYING travelled from the entry BAND MIDPOINT, in the
+    // play's direction. This is NOT the position's P&L — a Legacy play is an OPTION, and an
+    // option's return is nothing like its underlying's.
+    //
+    // Measured live 2026-08-07: MU $880C, entry premium $25.27. Polygon had the contract at mid
+    // 12.05 → the position was -52.3%. The card showed **-2%**, because that is what the STOCK did
+    // ((860.93 - 881.47) / 881.47) against the band midpoint. It also printed "entry prem $881.47"
+    // — the stock band midpoint — two lines below its own "$25.27". The card's risk note cites a
+    // -60% PREMIUM stop, a rule in a unit the deck never displayed.
+    const stockMovePct = entryMid > 0
       ? isLong
         ? ((q.price - entryMid) / entryMid) * 100
         : ((entryMid - q.price) / entryMid) * 100
@@ -193,7 +201,9 @@ export function overlayLegacyQuotes(
       }
     }
 
-    // Session excursion: convert session high/low to P&L% from entry for ExcursionViz.
+    // Session excursion of the UNDERLYING, on the same band-midpoint basis as stockMovePct — and
+    // therefore just as wrong to render as premium excursion. Kept for the stock context panel,
+    // deliberately NOT fed to the position P&L fields below.
     let peak: number | null = null;
     let trough: number | null = null;
     if (entryMid > 0) {
@@ -206,12 +216,28 @@ export function overlayLegacyQuotes(
       }
     }
 
+    const round2 = (n: number | null) => (n != null && Number.isFinite(n) ? Number(n.toFixed(2)) : null);
+
     return {
       ...p,
       progress,
-      pnlPct: stockPnlPct != null && Number.isFinite(stockPnlPct) ? Number(stockPnlPct.toFixed(2)) : null,
-      peak: peak != null && Number.isFinite(peak) ? Number(peak.toFixed(2)) : null,
-      trough: trough != null && Number.isFinite(trough) ? Number(trough.toFixed(2)) : null,
+      // FAIL CLOSED. `pnlPct` / `peak` / `trough` are the POSITION's premium fields — the deck
+      // renders pnlPct under a "PNL" header and feeds peak/trough to the excursion view. Every
+      // value available here is stock-derived, so publishing them into these fields reports the
+      // underlying's move as the option's return. Without a live option mark there is no honest
+      // P&L to show, and "—" is strictly better than "-2%" on a position that is -52%.
+      //
+      // The stock context is NOT lost: it stays on `stockPrice` / `stockChangePct` (below) and in
+      // the stock note already appended to `recNote`, where it reads as what it actually is.
+      // Sourcing a real option mark for Legacy rows is the follow-up — see the after-close backlog.
+      pnlPct: null,
+      peak: null,
+      trough: null,
+      /** UNDERLYING move from the entry band midpoint — stock-level, never the position's return. */
+      stockMovePct: round2(stockMovePct),
+      /** Session excursion of the UNDERLYING on the same basis. */
+      stockPeakPct: round2(peak),
+      stockTroughPct: round2(trough),
       recommendation,
       recNote,
       markAsOf: q.asof,
