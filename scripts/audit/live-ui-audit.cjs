@@ -37,7 +37,9 @@ const ca = fs.existsSync(CA_PATH) ? fs.readFileSync(CA_PATH) : undefined;
  *  log records — CodeQL js/log-injection. Cheap to satisfy, and it keeps the audit output honest
  *  when a route really does carry odd characters. */
 function safeLog(value, max = 110) {
-  return String(value).replace(/[\r\n\t]+/g, ' ').slice(0, max);
+  // Sequential single-character replaces, not one character class: this is the shape CodeQL's
+  // js/log-injection sanitizer model recognises, and a combined class left the alert open.
+  return String(value).replace(/\n/g, '').replace(/\r/g, '').replace(/\t/g, ' ').slice(0, max);
 }
 
 function parseArgs() {
