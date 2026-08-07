@@ -543,6 +543,8 @@ async function fetchPulseLaneSnapshots(): Promise<IndexSnapMap> {
   const symbols = [SPX, VIX, VIX9D, VIX3M, TICK, TRIN, ADD] as const;
   const base: IndexSnapMap = Object.fromEntries(symbols.map((s) => [s, null])) as IndexSnapMap;
   const now = Date.now();
+  /** Symbols whose pulse-lane change% could not be trusted — they must reach the REST lane. */
+  const unresolvedChange = new Set<string>();
 
   try {
     const { getUwCacheRedis } = await import("@/lib/providers/uw-shared-cache");
@@ -556,7 +558,7 @@ async function fetchPulseLaneSnapshots(): Promise<IndexSnapMap> {
     if (raw) {
       const snap = JSON.parse(raw) as Record<
         string,
-        { price?: number; change_pct?: number; updatedAt?: number }
+        { price?: number; change_pct?: number; updatedAt?: number; open_source?: string }
       >;
       for (const sym of symbols) {
         const e = snap[sym];
@@ -566,11 +568,30 @@ async function fetchPulseLaneSnapshots(): Promise<IndexSnapMap> {
           now - e.updatedAt < INDEX_STORE_STALE_MS &&
           (breadthIndex || (e.price ?? 0) > 0)
         ) {
+          // FIX-A applies HERE TOO, and this is where it was being defeated.
+          //
+          // mergeWsIndexSnapshots (above) only trusts a WS change% when `open_source === "rest"`,
+          // because a "ws-bar" anchor measures from the price AT BOOT rather than the prior close.
+          // This lane wrote its change_pct straight into `base`, which merge then treats as "the
+          // authoritative REST snapshot" — so the guard did not skip, it preserved a value that was
+          // never REST-sourced. Measured live 2026-08-07: the header tile read 7,734.13 **-0.01%
+          // in RED** while SPX was **+0.31%**, and /api/market/spx/pulse returned -0.04 / +0.30 /
+          // -0.01 across 39 seconds while /desk sat correctly at +0.27. Over 8 paired polls the
+          // pulse value matched (price - open)/open on 7 — i.e. anchored to the SESSION OPEN, not
+          // the prior close. VIX is affected identically.
+          //
+          // Fail closed: take the PRICE (genuinely sub-second fresh and correct) but leave
+          // change_pct UNRESOLVED unless this entry declares a REST-seeded anchor. An unresolved
+          // change falls through to the REST lane below, which is authoritative.
+          const anchorAuthoritative = e.open_source === "rest";
+          const pulseChange =
+            anchorAuthoritative && Number.isFinite(e.change_pct) ? Number(e.change_pct) : null;
           base[sym] = {
             symbol: sym,
             price: e.price!,
-            change_pct: Number.isFinite(e.change_pct) ? Number(e.change_pct) : 0,
+            change_pct: pulseChange ?? 0,
           };
+          if (pulseChange == null) unresolvedChange.add(sym);
         }
       }
     }
@@ -579,7 +600,21 @@ async function fetchPulseLaneSnapshots(): Promise<IndexSnapMap> {
   }
 
   let merged = mergeWsIndexSnapshots(base);
-  if ((merged[SPX]?.price ?? 0) > 0) return merged;
+  // A price alone is no longer enough to short-circuit: returning here with an unresolved SPX
+  // change% is exactly how a session-open-anchored number reached the header tile. The WS merge may
+  // have supplied an authoritative change (open_source === "rest"), in which case SPX is resolved
+  // and the fast path still applies.
+  // ...and the WS store counts as a resolver: mergeWsIndexSnapshots substitutes a REST-anchored WS
+  // change% when it has one, so an unresolved pulse entry is rescued rather than forced to REST.
+  // Without this the fast path would be given up on every poll, trading one wrong number for a
+  // needless round-trip on the desk's hot lane.
+  const wsSpx = indexStore[SPX];
+  const wsResolvedSpx =
+    !!wsSpx?.updatedAt &&
+    now - wsSpx.updatedAt < INDEX_STORE_STALE_MS &&
+    wsSpx.price > 0 &&
+    wsSpx.open_source === "rest";
+  if ((merged[SPX]?.price ?? 0) > 0 && (!unresolvedChange.has(SPX) || wsResolvedSpx)) return merged;
 
   const raceMs = deskPulseStructureRaceMs();
   const rest = await Promise.race([
