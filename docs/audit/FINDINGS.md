@@ -23,7 +23,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 
 ---
 
-## 2026-08-07 - [P2, MEMBER-FACING ACCURACY] Every Night Hawk lane label still advertised the PRE-widening DTE windows - FIXED (#PR)
+## 2026-08-07 - [P2, MEMBER-FACING ACCURACY] Every Night Hawk lane label still advertised the PRE-widening DTE windows - FIXED (#1841)
 
 | Field | Value |
 |-------|-------|
@@ -37,7 +37,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Tests** | Three in `nighthawk-view.test.ts`, pinning the DERIVATION rather than today's numbers (the numbers are expected to change again): `dteRangeLabel` matches `HORIZONS[h].dteMin/dteMax` for all three lanes; both member-facing Swing surfaces contain the live range whatever it is; and a source-level guard that `nighthawk-view.ts` contains **no** bare `N-M DTE` literal - the exact shape that drifted. Plus one asserting the 0DTE blurb never re-promises same-day expiries. |
 | **Verification** | `src/features/nighthawk/lib/*.test.ts` + `src/lib/largo/*.test.ts`: **799 pass / 31 fail**, against **796 / 31** on clean main (three added, zero regressions; the 31 are pre-existing and network-dependent). `tsc --noEmit` clean. |
 | **OPEN, deliberately not fixed here** | `hunt-mode.ts`'s agent surface has **no DTE floor at all** - only `maxDte` (day 1, swing 30, leap 90). So the swing-mode agent hunt admits a 0-DTE contract, which is the same cross-engine dual-admission drift `horizons.ts` warns about, in a third engine the 2026-08-06 sweep did not cover; and `day` mode's ceiling of 1 reintroduces exactly the single-name expiry starvation the widening to 4 was measured to fix. Both are engine-behaviour changes needing their own evidence and their own PR - filed rather than bundled into a copy fix. |
-| **Status** | FIXED - PR #PR. |
+| **Status** | FIXED - PR #1841. |
 
 ---
 
