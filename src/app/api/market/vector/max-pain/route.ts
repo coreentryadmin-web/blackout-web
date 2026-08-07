@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
+import { authorizePremiumDeskApi } from "@/lib/market-api-auth";
 import { requireToolApi } from "@/lib/tool-access-server";
 import { normalizeVectorTicker, isVectorTickerAllowed } from "@/features/vector/lib/vector-ticker";
 import { getVectorMaxPainForHorizon } from "@/features/vector/lib/vector-max-pain-server";
@@ -15,13 +15,13 @@ export const dynamic = "force-dynamic";
  * Kept off the per-second SSE payload (like the walls / ladder routes) so the shared per-ticker
  * stream fan-out stays lean; the client fetches this once per ticker/DTE toggle and draws the line.
  *
- * Same gate as the sibling reads (authorizeMarketDeskApi + requireToolApi("vector") + ticker
+ * Same gate as the sibling reads (authorizePremiumDeskApi + requireToolApi("vector") + ticker
  * allowlist). `maxPain` is a listed strike (already clean), `spot` is rounded at the data layer per
  * repo policy. `maxPain: null` when there's no honest level to draw (no chain / horizon / OI) — the
  * client simply omits the line.
  */
 export async function GET(req: NextRequest) {
-  const auth = await authorizeMarketDeskApi(req);
+  const auth = await authorizePremiumDeskApi(req);
   if (auth instanceof Response) return auth;
 
   const locked = await requireToolApi("vector");

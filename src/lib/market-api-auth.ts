@@ -70,10 +70,29 @@ export async function authorizeCronOrTierApi(
   return { userId: result.userId, via: "user" };
 }
 
-/** Desk market data — cron OR signed-in community+ user. Page-level gates on
- *  non-SPX routes still require premium; this only gates the data API layer. */
+/** SPX Slayer desk market data — cron OR signed-in COMMUNITY+ user. This is the correct gate ONLY
+ *  for the community-tier SPX dashboard's data (spx/*, indices, quote, gex-*, dark-pool, news,
+ *  earnings). It must NOT be used for premium-exclusive products — see {@link authorizePremiumDeskApi}.
+ *
+ *  History: this helper's old doc claimed "page-level gates on non-SPX routes still require premium;
+ *  this only gates the data API layer" — but the API layer IS the sole enforcement point (middleware
+ *  matches only page paths, not /api/market/*), so that comment described the vulnerability, not a
+ *  mitigation. Twenty premium routes (HELIX flows, Thermal heatmap, all of Vector, the premium
+ *  briefs) were wired to this community gate, letting a $49 community member pull $199 premium data
+ *  by hitting the API directly (CWE-863). Those routes now use authorizePremiumDeskApi. */
 export async function authorizeMarketDeskApi(
   req: NextRequest
 ): Promise<{ userId: string | null; via: "cron" | "user" } | Response> {
   return authorizeCronOrTierApi(req, "community");
+}
+
+/** Premium-exclusive desk market data — cron OR signed-in PREMIUM user. The data-API gate for every
+ *  product whose page calls requireTier("premium"): HELIX flows (/flows), BlackOut Thermal
+ *  (/heatmap), the whole Vector suite (/vector/*), and the premium briefs (brief/premarket,
+ *  platform/intel). The API is the only enforcement point for these — the page redirect is not a
+ *  security control, it is just UX — so the tier MUST be re-checked here at premium. */
+export async function authorizePremiumDeskApi(
+  req: NextRequest
+): Promise<{ userId: string | null; via: "cron" | "user" } | Response> {
+  return authorizeCronOrTierApi(req, "premium");
 }

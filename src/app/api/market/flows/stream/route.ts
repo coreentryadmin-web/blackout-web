@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
+import { authorizePremiumDeskApi } from "@/lib/market-api-auth";
 import { initFlowEventBridge, subscribeFlowEvents } from "@/lib/flow-events";
 import { enrichFlowWithGex, getGexLevelsForTicker } from "@/lib/flow-gex-enrichment";
 import { sseBackpressureExceeded } from "@/lib/sse-backpressure";
@@ -18,7 +18,7 @@ let activeStreams = 0;
 const MAX_STREAMS = Number(process.env.SSE_MAX_STREAMS ?? 500);
 
 export async function GET(req: NextRequest) {
-  const auth = await authorizeMarketDeskApi(req);
+  const auth = await authorizePremiumDeskApi(req);
   if (auth instanceof Response) return auth;
 
   const limited = await enforceFlowsSseRateLimit(auth.userId);

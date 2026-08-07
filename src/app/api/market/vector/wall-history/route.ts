@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
+import { authorizePremiumDeskApi } from "@/lib/market-api-auth";
 import { requireToolApi } from "@/lib/tool-access-server";
 import { normalizeVectorTicker, isVectorTickerAllowed } from "@/features/vector/lib/vector-ticker";
 import { loadSessionWallHistory } from "@/features/vector/lib/vector-wall-persist";
@@ -27,7 +27,7 @@ export const dynamic = "force-dynamic";
  * separate composite rail to read for it.
  */
 export async function GET(req: NextRequest) {
-  const auth = await authorizeMarketDeskApi(req);
+  const auth = await authorizePremiumDeskApi(req);
   if (auth instanceof Response) return auth;
 
   const locked = await requireToolApi("vector");

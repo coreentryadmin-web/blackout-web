@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { dbQuery } from "@/lib/db";
-import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
+import { authorizePremiumDeskApi } from "@/lib/market-api-auth";
 import { isPremarketBriefFresh, todayEtYmd } from "@/lib/providers/spx-session";
 import { formatEtDate, mostRecentTradingDayEt } from "@/features/nighthawk/lib/session";
 import {
@@ -45,7 +45,7 @@ const EMPTY_SIGNAL_ACCURACY: SignalAccuracyBySource = {
 export async function GET(req: NextRequest) {
   // Premium session OR cron secret — this snapshot aggregates paid SPX content (brief levels,
   // coaching, win-rate stats). Must not be world-readable. Cron callers pass Bearer CRON_SECRET.
-  const auth = await authorizeMarketDeskApi(req);
+  const auth = await authorizePremiumDeskApi(req);
   if (auth instanceof Response) return auth;
   try {
     const [regime, anomalies, coaching, brief, signalAcc] = await Promise.allSettled([

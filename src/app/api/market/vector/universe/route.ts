@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authorizeMarketDeskApi, isCronAuthorized } from "@/lib/market-api-auth";
+import { authorizePremiumDeskApi, isCronAuthorized } from "@/lib/market-api-auth";
 import { requireToolApi } from "@/lib/tool-access-server";
 import { loadVectorUniverseSnapshot, refreshVectorUniverseSnapshot } from "@/features/vector";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 /** Compact GEX wall summary for warmed universe tickers — pure cache-reader for Vector scanner. */
 export async function GET(req: NextRequest) {
-  const auth = await authorizeMarketDeskApi(req);
+  const auth = await authorizePremiumDeskApi(req);
   if (auth instanceof Response) return auth;
 
   const locked = await requireToolApi("vector");

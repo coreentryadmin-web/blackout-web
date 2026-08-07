@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
+import { authorizePremiumDeskApi } from "@/lib/market-api-auth";
 import { requireToolApi } from "@/lib/tool-access-server";
 import {
   normalizeVectorTicker,
@@ -32,7 +32,7 @@ export const dynamic = "force-dynamic";
  * Absent/malformed anchor falls back to today (legacy callers keep working).
  */
 export async function GET(req: NextRequest) {
-  const auth = await authorizeMarketDeskApi(req);
+  const auth = await authorizePremiumDeskApi(req);
   if (auth instanceof Response) return auth;
 
   const locked = await requireToolApi("vector");

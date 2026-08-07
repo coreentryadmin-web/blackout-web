@@ -15,7 +15,7 @@ const serverSrc = readFileSync("src/features/vector/lib/vector-pin-forecast-serv
 const siblingSrc = readFileSync("src/app/api/market/vector/expected-move/route.ts", "utf8");
 
 test("route carries the SAME three gates as the sibling expected-move read", () => {
-  for (const gate of ["authorizeMarketDeskApi", 'requireToolApi("vector")', "isVectorTickerAllowed"]) {
+  for (const gate of ["authorizePremiumDeskApi", 'requireToolApi("vector")', "isVectorTickerAllowed"]) {
     assert.ok(siblingSrc.includes(gate), `precondition: sibling should gate on ${gate}`);
     assert.ok(routeSrc.includes(gate), `pin-forecast must gate on ${gate} — it is a paid Vector overlay`);
   }

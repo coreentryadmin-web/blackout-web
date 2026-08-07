@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { dbQuery } from "@/lib/db";
-import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
+import { authorizePremiumDeskApi } from "@/lib/market-api-auth";
 import { isPremarketBriefFresh, todayEtYmd } from "@/lib/providers/spx-session";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   // Premium premarket brief (SPX levels, kingStrike, netGex, gexBias) — premium session or cron only.
-  const auth = await authorizeMarketDeskApi(req);
+  const auth = await authorizePremiumDeskApi(req);
   if (auth instanceof Response) return auth;
   try {
     const result = await dbQuery(

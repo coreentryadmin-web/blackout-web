@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
+import { authorizePremiumDeskApi } from "@/lib/market-api-auth";
 import { requireToolApi } from "@/lib/tool-access-server";
 import { normalizeVectorTicker, isVectorTickerAllowed } from "@/features/vector/lib/vector-ticker";
 import { getVectorPinForecast } from "@/features/vector/lib/vector-pin-forecast-server";
@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 /**
  * Pin/magnet forecast for ANY Vector ticker — the SPX desk's EOD cone, generalized.
  *
- * Same gate as the sibling reads (authorizeMarketDeskApi + requireToolApi("vector") + ticker
+ * Same gate as the sibling reads (authorizePremiumDeskApi + requireToolApi("vector") + ticker
  * allowlist), and kept OFF the per-second SSE payload like the walls / ladder / expected-move reads
  * so the shared per-ticker stream stays lean: the client fetches once per ticker/target toggle.
  *
@@ -30,7 +30,7 @@ export const dynamic = "force-dynamic";
  * digit away and floored a sub-1% `scenarios[].p` to zero.
  */
 export async function GET(req: NextRequest) {
-  const auth = await authorizeMarketDeskApi(req);
+  const auth = await authorizePremiumDeskApi(req);
   if (auth instanceof Response) return auth;
 
   const locked = await requireToolApi("vector");
