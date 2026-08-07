@@ -52,6 +52,24 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 
 ---
 
+## 2026-08-07 - [P2, MEMBER-FACING ACCURACY] Every Night Hawk lane label still advertised the PRE-widening DTE windows - FIXED (#1841)
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P2 - no engine defect, but the product told members the wrong thing about what each of the three lanes trades, on the toggle chip, the board header, and through Largo. A member who reads "Swings - 2-30 DTE", looks for a 3-DTE name and finds none has been given a reason to distrust the board. |
+| **Found by** | Auditing the three Night Hawk lanes end-to-end (Day Trades / Swings / Next Session) and diffing every member-facing description against `HORIZONS`. |
+| **Root cause** | The 2026-08-06 widening moved `ZERO_DTE` to `[0, ZERODTE_MAX_DTE=4]` and `SWING.dteMin` to `ZERODTE_MAX_DTE + 1` (=5). That PR was careful to make the ENGINE constants derive - `SWING_SUB_LANES.TACTICAL` and `SWING_EVENT_MIN_DTE` were both repointed at `HORIZONS.SWING.dteMin` precisely so the boundary could not drift again - but **every human-readable string was left as a literal**, and literals do not derive. Seven of them still said "2-30 DTE". |
+| **Blast radius (all seven)** | `nighthawk-view.ts` toggle-chip blurb + `NIGHTHAWK_COMPACT_LANE_LABEL.SWING` (the board header a member reads on every visit); `cron-registry.ts` swing-discovery description (admin); `largo/system-prompt.ts` x2 and `largo/tool-defs.ts` x2 - **Largo repeats these to members verbatim** when asked what the Swings lane is; plus `intent-keywords.ts`'s `SWING_RE`, which matched only `2.?30 dte`, so a member asking about "the 5-30 DTE lane" would not have routed to the swing tools at all. Docs: `BLACKOUT-ENGINES-ARCHITECTURE.md`, `SWING-SYSTEM.md`. |
+| **Second, separate inaccuracy** | The 0DTE blurb read "Same-day **expiries** across the whole market". `horizons.ts` is explicit that a 0DTE play is "opened and closed within the session, **regardless of the selected contract's own expiration date**" - the window admits 0-4 DTE contracts on purpose, because most single names carry no daily listing. A member seeing a Friday-expiry contract on a board promising same-day expiries reports it as a bug. Now "Same-day **trades**". |
+| **Fix** | `dteRangeLabel(horizon)` in `src/lib/horizons.ts` - next to the windows it describes, so a consumer cannot read one without the other. Every one of the seven sites now derives. `SWING_RE` accepts `[25].?30 dte` so both the old and current phrasings route. |
+| **Why in horizons.ts and not the view module** | `lib/largo` and `lib/cron-registry` are below the feature layer; importing `features/nighthawk` from them would invert the dependency. The label belongs with the source of truth, and `nighthawk-view.ts` now re-uses it rather than keeping a second copy. |
+| **Tests** | Three in `nighthawk-view.test.ts`, pinning the DERIVATION rather than today's numbers (the numbers are expected to change again): `dteRangeLabel` matches `HORIZONS[h].dteMin/dteMax` for all three lanes; both member-facing Swing surfaces contain the live range whatever it is; and a source-level guard that `nighthawk-view.ts` contains **no** bare `N-M DTE` literal - the exact shape that drifted. Plus one asserting the 0DTE blurb never re-promises same-day expiries. |
+| **Verification** | `src/features/nighthawk/lib/*.test.ts` + `src/lib/largo/*.test.ts`: **799 pass / 31 fail**, against **796 / 31** on clean main (three added, zero regressions; the 31 are pre-existing and network-dependent). `tsc --noEmit` clean. |
+| **OPEN, deliberately not fixed here** | `hunt-mode.ts`'s agent surface has **no DTE floor at all** - only `maxDte` (day 1, swing 30, leap 90). So the swing-mode agent hunt admits a 0-DTE contract, which is the same cross-engine dual-admission drift `horizons.ts` warns about, in a third engine the 2026-08-06 sweep did not cover; and `day` mode's ceiling of 1 reintroduces exactly the single-name expiry starvation the widening to 4 was measured to fix. Both are engine-behaviour changes needing their own evidence and their own PR - filed rather than bundled into a copy fix. |
+| **Status** | FIXED - PR #1841. |
+
+---
+
 ## 2026-08-07 — [P1, LIVE ERROR] `fetchGradedSkips` read `counterfactual_json` without the column migration — grading cron erroring every 15 min, calibration evidence silently empty — FIXED (#1838)
 
 | Field | Value |

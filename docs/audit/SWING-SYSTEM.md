@@ -14,7 +14,7 @@
 
 ### What it is
 
-**Night Hawk Swing** is BlackOut’s multi-session options thesis engine for **2–30 DTE** equity/index options. It:
+**Night Hawk Swing** is BlackOut’s multi-session options thesis engine for **5–30 DTE** equity/index options. It:
 
 1. Screens the **whole market** (not a fixed watchlist) for directional setups  
 2. Scores each name with a **7-pillar, archetype-weighted** evidence model  

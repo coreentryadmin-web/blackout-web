@@ -260,9 +260,11 @@ export const HELIX_SIGNAL_RE =
 export const BANGER_RE =
   /\b(banger|bangers|engine b|weekly breakout|scale.?out runner|banger board)\b/i;
 
-/** Night Hawk Swings lane (2–30 DTE multi-day discovery). */
+/** Night Hawk Swings lane (multi-day discovery). The DTE alternation keeps the OLD 2-30 phrasing
+ *  matching alongside the current 5-30 window — members and saved queries still say "2-30 DTE", and a
+ *  window change must never silently stop routing a question to this lane. */
 export const SWING_RE =
-  /\b(swing|swings|swing lane|swing board|multi.?day|2.?30 dte|swing horizon)\b/i;
+  /\b(swing|swings|swing lane|swing board|multi.?day|[25].?30 dte|swing horizon)\b/i;
 
 /** SPX EOD pin forecaster (distinct from gamma magnet / max pain). */
 export const SPX_PIN_RE =

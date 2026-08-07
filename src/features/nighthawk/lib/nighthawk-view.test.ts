@@ -116,3 +116,42 @@ test("targetHitCompositionLabel reports the REAL win count, not rate × the wron
   // The composition must always add up to the denominator it is shown against.
   assert.equal(seg.wins + seg.losses + seg.opens, seg.scoreable);
 });
+
+// FINDINGS 2026-08-07: every DTE-range string in the product was a hand-written literal, so the
+// 2026-08-06 window widening (0DTE -> [0,4], Swing floor -> ZERODTE_MAX_DTE+1) left the toggle
+// chip, the compact lane header, the cron description and four Largo strings all telling members
+// "2-30 DTE" against an engine that would not admit a 2-, 3- or 4-DTE swing. These pin the
+// derivation, not the current numbers — the whole point is that the numbers may change again.
+test("lane labels DERIVE their DTE range from HORIZONS, never a literal", async () => {
+  const { HORIZONS, dteRangeLabel } = await import("@/lib/horizons");
+  for (const horizon of ["ZERO_DTE", "SWING", "LEAPS"] as const) {
+    const h = HORIZONS[horizon];
+    assert.equal(dteRangeLabel(horizon), `${h.dteMin}–${h.dteMax} DTE`);
+  }
+  // The two member-facing Swing surfaces must agree with the engine window, whatever it is.
+  const range = dteRangeLabel("SWING");
+  assert.ok(
+    NIGHTHAWK_COMPACT_LANE_LABEL.SWING.includes(range),
+    `compact lane label "${NIGHTHAWK_COMPACT_LANE_LABEL.SWING}" does not carry the live window ${range}`
+  );
+  assert.ok(
+    NIGHTHAWK_VIEW_META.SWING.blurb.includes(range),
+    `toggle blurb "${NIGHTHAWK_VIEW_META.SWING.blurb}" does not carry the live window ${range}`
+  );
+});
+
+test("no lane label hardcodes a stale DTE window", async () => {
+  const { readFileSync } = await import("node:fs");
+  const { fileURLToPath } = await import("node:url");
+  const src = readFileSync(fileURLToPath(new URL("./nighthawk-view.ts", import.meta.url)), "utf8");
+  // A bare "N–M DTE" literal is exactly what drifted. Ranges must come through dteRangeLabel().
+  const literals = src.match(/\d+–\d+ DTE/g) ?? [];
+  assert.deepEqual(literals, [], `hardcoded DTE ranges found: ${literals.join(", ")}`);
+});
+
+test("the 0DTE blurb does not promise same-day EXPIRIES — the window admits 0-4 DTE contracts", () => {
+  // horizons.ts: a 0DTE play is "opened and closed within the session, REGARDLESS of the selected
+  // contract's own expiration date". A member seeing a Friday-expiry contract on a board that says
+  // "same-day expiries" reasonably reports it as a bug.
+  assert.ok(!/same-day expir/i.test(NIGHTHAWK_VIEW_META.ZERO_DTE.blurb), NIGHTHAWK_VIEW_META.ZERO_DTE.blurb);
+});
