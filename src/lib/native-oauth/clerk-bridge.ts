@@ -56,85 +56,171 @@ export type BridgedSession = {
 };
 
 /**
- * Ensure a Clerk user exists for this email; return their id.
- * Creates with `skip_password_requirement` so the OAuth user has no password.
+ * The verified native-OAuth identity plus the untrusted first-touch email, as the account resolver
+ * needs to see it. `tokenEmail` is the email from the SIGNATURE-VERIFIED provider token (may be "");
+ * `fallbackEmail` is the UNVERIFIED value the client relays on Apple's email-bearing first-touch.
+ * Keeping them separate is the whole point — collapsing them is what allowed the takeover.
  */
-async function ensureClerkUser(
-  secret: string,
-  { email, name, provider, sub }: { email: string; name: string | null; provider: "google" | "apple"; sub: string }
-): Promise<{ id: string; created: boolean }> {
-  // Look up first — cheaper and avoids race with form_identifier_exists.
-  const lookup = await fetch(`${CLERK_API}/users?email_address=${encodeURIComponent(email)}&limit=1`, {
-    headers: { Authorization: `Bearer ${secret}` },
-  });
-  const existing = (await lookup.json().catch(() => [])) as Array<{ id?: string }>;
-  if (Array.isArray(existing) && existing[0]?.id) {
-    return { id: existing[0].id, created: false };
-  }
+export type NativeIdentity = {
+  provider: "google" | "apple";
+  sub: string;
+  name: string | null;
+  tokenEmail: string;
+  tokenEmailVerified: boolean;
+  fallbackEmail: string;
+};
 
-  // Not found — create. Split "First Last" naming best-effort; Clerk requires
-  // BOTH first_name + last_name empty OR both provided (or accepts individual).
-  const parts = (name ?? "").trim().split(/\s+/);
-  const firstName = parts[0] || undefined;
-  const lastName = parts.slice(1).join(" ") || undefined;
+/** The Clerk Backend operations the resolver needs, abstracted so its decision tree is unit-testable
+ *  without a live Clerk (or a live Apple-signed token). The real adapter is {@link clerkUsersApi}. */
+export interface ClerkUsersApi {
+  findByExternalId(externalId: string): Promise<{ id: string } | null>;
+  findByEmail(email: string): Promise<{ id: string } | null>;
+  create(input: {
+    email: string;
+    externalId: string;
+    name: string | null;
+    provider: "google" | "apple";
+    sub: string;
+  }): Promise<{ id: string } | null>;
+  bindExternalId(userId: string, externalId: string): Promise<void>;
+}
 
-  const createRes = await fetch(`${CLERK_API}/users`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${secret}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      email_address: [email],
-      first_name: firstName,
-      last_name: lastName,
-      skip_password_requirement: true,
-      // Note the native-OAuth path so downstream reporting can tell the
-      // source. Kept in `unsafe_metadata` (client-visible per Clerk docs) so
-      // future client-side flows (Whop link, admin dashboards) can read it.
-      unsafe_metadata: { native_oauth: { provider, sub, attached_at: new Date().toISOString() } },
-    }),
-  });
-  const created = (await createRes.json().catch(() => null)) as { id?: string; errors?: unknown } | null;
-  if (created?.id) return { id: created.id, created: true };
-
-  // Race — someone else made the account since our lookup. Re-query.
-  const secondLookup = await fetch(`${CLERK_API}/users?email_address=${encodeURIComponent(email)}&limit=1`, {
-    headers: { Authorization: `Bearer ${secret}` },
-  });
-  const later = (await secondLookup.json().catch(() => [])) as Array<{ id?: string }>;
-  if (Array.isArray(later) && later[0]?.id) return { id: later[0].id, created: false };
-
-  throw new Error(
-    `clerk user creation failed for ${email}: ${JSON.stringify(created?.errors ?? "no response body")}`
-  );
+/** The stable per-provider identity key. Clerk `external_id` is the join column the resolver trusts. */
+export function externalIdFor(provider: "google" | "apple", sub: string): string {
+  return `${provider}:${sub}`;
 }
 
 /**
- * Full bridge: verify caller has already validated `verified.email/sub`.
- * Returns the `Cookie:` header value the API endpoint should set on the
- * client response (Set-Cookie splitting is handled at the route level).
+ * Resolve (or create) the Clerk user for a verified native-OAuth identity — the account-takeover fix.
+ *
+ * THE RULE: an EXISTING account may be selected only when it is provably bound to the verified
+ * provider identity (`provider:sub`, via Clerk `external_id`). An unverified, client-supplied
+ * `fallbackEmail` may seed a BRAND-NEW account but must never select or link an existing one.
+ *
+ * The pre-fix bridge looked accounts up by email — and the route fed it `verified.email ||
+ * fallbackEmail`, so a signed Apple token with no email claim (Apple's documented "subsequent
+ * authorization" behaviour) let an attacker pass a victim's email as `fallbackEmail` and be minted
+ * the victim's session (CWE-639, account takeover). The docblocks claimed a `sub`-based match that
+ * never existed. This restores that intent for real.
+ *
+ * Pure w.r.t. its `api` collaborator so the decision tree is exercised directly in tests.
+ */
+export async function resolveNativeOAuthUser(
+  api: ClerkUsersApi,
+  ident: NativeIdentity
+): Promise<{ id: string; created: boolean }> {
+  const externalId = externalIdFor(ident.provider, ident.sub);
+
+  // (1) Provably the same identity — the ONLY trustworthy way to select an existing account. This is
+  //     also the normal path for every returning user (the sub is stable across logins).
+  const bound = await api.findByExternalId(externalId);
+  if (bound) return { id: bound.id, created: false };
+
+  // (2) First contact from this identity. A VERIFIED token email is a trustworthy join key, so we
+  //     may adopt a pre-existing account under it (e.g. a web signup linking iOS Apple) and bind it.
+  const verifiedEmail = ident.tokenEmail && ident.tokenEmailVerified ? ident.tokenEmail : "";
+  if (verifiedEmail) {
+    const existing = await api.findByEmail(verifiedEmail);
+    if (existing) {
+      await api.bindExternalId(existing.id, externalId); // future logins match by sub, not email
+      return { id: existing.id, created: false };
+    }
+    const created = await api.create({ email: verifiedEmail, externalId, name: ident.name, provider: ident.provider, sub: ident.sub });
+    if (created) return { id: created.id, created: true };
+    const later = await api.findByEmail(verifiedEmail);
+    if (later) {
+      await api.bindExternalId(later.id, externalId);
+      return { id: later.id, created: false };
+    }
+    throw new Error("native-oauth: clerk user creation failed (verified email)");
+  }
+
+  // (3) No verified email — only an UNVERIFIED fallbackEmail (Apple relay first-touch). We may create
+  //     a NEW account seeded with it, but MUST NOT select or link an existing account — that is the
+  //     takeover. Any collision fails closed.
+  const seed = ident.fallbackEmail.trim().toLowerCase();
+  if (!seed) {
+    throw new Error("native-oauth: unbound identity with no verified email — refusing to sign in");
+  }
+  const collision = await api.findByEmail(seed);
+  if (collision) {
+    throw new Error("native-oauth: refusing to bind an unverified email to an existing account");
+  }
+  const created = await api.create({ email: seed, externalId, name: ident.name, provider: ident.provider, sub: ident.sub });
+  if (created) return { id: created.id, created: true };
+  // Creation failed with no collision on our read. Do NOT fall back to a by-email match (that would
+  // reopen the hole). Only accept a concurrent create of the SAME identity.
+  const raced = await api.findByExternalId(externalId);
+  if (raced) return { id: raced.id, created: false };
+  throw new Error("native-oauth: clerk user creation failed (fallback email)");
+}
+
+/** Real Clerk Backend adapter for {@link resolveNativeOAuthUser}. */
+function clerkUsersApi(secret: string): ClerkUsersApi {
+  const auth = { Authorization: `Bearer ${secret}` };
+  const firstId = async (res: Response): Promise<{ id: string } | null> => {
+    const rows = (await res.json().catch(() => [])) as Array<{ id?: string }>;
+    return Array.isArray(rows) && rows[0]?.id ? { id: rows[0].id } : null;
+  };
+  return {
+    async findByExternalId(externalId) {
+      const res = await fetch(`${CLERK_API}/users?external_id=${encodeURIComponent(externalId)}&limit=1`, { headers: auth });
+      return firstId(res);
+    },
+    async findByEmail(email) {
+      const res = await fetch(`${CLERK_API}/users?email_address=${encodeURIComponent(email)}&limit=1`, { headers: auth });
+      return firstId(res);
+    },
+    async create({ email, externalId, name, provider, sub }) {
+      // Split "First Last" best-effort; Clerk accepts individual name fields.
+      const parts = (name ?? "").trim().split(/\s+/);
+      const firstName = parts[0] || undefined;
+      const lastName = parts.slice(1).join(" ") || undefined;
+      const res = await fetch(`${CLERK_API}/users`, {
+        method: "POST",
+        headers: { ...auth, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email_address: [email],
+          external_id: externalId, // the identity binding future logins match on
+          first_name: firstName,
+          last_name: lastName,
+          skip_password_requirement: true,
+          unsafe_metadata: { native_oauth: { provider, sub, attached_at: new Date().toISOString() } },
+        }),
+      });
+      const created = (await res.json().catch(() => null)) as { id?: string } | null;
+      return created?.id ? { id: created.id } : null;
+    },
+    async bindExternalId(userId, externalId) {
+      await fetch(`${CLERK_API}/users/${encodeURIComponent(userId)}`, {
+        method: "PATCH",
+        headers: { ...auth, "Content-Type": "application/json" },
+        body: JSON.stringify({ external_id: externalId }),
+      });
+    },
+  };
+}
+
+/**
+ * Full bridge for a native-OAuth identity the caller has already signature-verified. Resolves the
+ * Clerk user via {@link resolveNativeOAuthUser} (identity-bound, takeover-safe), mints a session, and
+ * returns the `Cookie:` header value the route should set (Set-Cookie splitting is at the route).
+ *
+ * Takes the FULL identity — the verified token email and the untrusted fallbackEmail kept apart — so
+ * the resolver can enforce that only a verified email (or the bound `sub`) selects an existing
+ * account. Do NOT pre-collapse them into one `email` before calling; that collapse was the bug.
  */
 export async function mintClerkSessionFromNativeOAuth(
-  verified: { provider: "google" | "apple"; email: string; sub: string; name: string | null },
+  ident: NativeIdentity,
   { appUrl }: { appUrl: string }
 ): Promise<BridgedSession> {
   const secret = process.env.CLERK_SECRET_KEY;
   const publishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
   if (!secret) throw new Error("CLERK_SECRET_KEY not configured");
   if (!publishableKey) throw new Error("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY not configured");
-  if (!verified.email) {
-    // Apple relay email — sub-only sign-in is possible via oauth_accounts on
-    // Clerk, but for the first-touch bridge we require an email. The client
-    // component sends the Apple `email` field from the first-touch OAuth
-    // callback; subsequent logins reuse the same user by sub.
-    throw new Error("native-oauth verify returned empty email — cannot bridge yet");
-  }
 
   const fapi = fapiHost(publishableKey);
-  const { id: userId, created } = await ensureClerkUser(secret, {
-    email: verified.email,
-    name: verified.name,
-    provider: verified.provider,
-    sub: verified.sub,
-  });
+  const { id: userId, created } = await resolveNativeOAuthUser(clerkUsersApi(secret), ident);
 
   const tokenRes = await fetch(`${CLERK_API}/sign_in_tokens`, {
     method: "POST",

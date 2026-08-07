@@ -82,16 +82,22 @@ export async function POST(req: Request) {
         ? await verifyGoogleIdToken(body.idToken, { rawNonce: body.rawNonce })
         : await verifyAppleIdToken(body.idToken, { rawNonce: body.rawNonce });
 
-    // Apple's first-touch behavior: token has email; subsequent tokens omit
-    // it. On first-touch the CLIENT should include `fallbackEmail` (from
-    // Apple's authorization response, not the token) so we can create a
-    // Clerk user. Once created, later logins skip this because the user
-    // already exists and we look up by the same `sub` via oauth_accounts.
-    const email = verified.email || body.fallbackEmail?.toLowerCase() || "";
-    const name = verified.name ?? body.fallbackName ?? null;
-
+    // Pass the VERIFIED token email and the UNTRUSTED client-relayed fallbackEmail through
+    // SEPARATELY — never pre-collapse them into one `email`. The bridge binds account selection to
+    // the verified provider identity (`provider:sub`) and only lets a VERIFIED email (or the bound
+    // sub) select an existing account; an unverified fallbackEmail may seed a new account but never
+    // sign into an existing one. Collapsing them here (`verified.email || fallbackEmail`) was the
+    // account-takeover: a signed Apple token with no email claim let a caller pass a victim's email
+    // as fallbackEmail and be minted the victim's session.
     const session = await mintClerkSessionFromNativeOAuth(
-      { provider: verified.provider, email, sub: verified.sub, name },
+      {
+        provider: verified.provider,
+        sub: verified.sub,
+        name: verified.name ?? body.fallbackName ?? null,
+        tokenEmail: verified.email,
+        tokenEmailVerified: verified.emailVerified,
+        fallbackEmail: body.fallbackEmail ?? "",
+      },
       { appUrl: appUrl() }
     );
 
