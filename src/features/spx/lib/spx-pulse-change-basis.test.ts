@@ -24,10 +24,30 @@ test("an untrusted pulse change is marked unresolved rather than published", () 
 test("the fast path is NOT taken on an unresolved SPX change", () => {
   // A price alone used to short-circuit here — that is precisely how a session-open-anchored
   // number reached the header tile.
-  assert.match(src, /!unresolvedChange\.has\(SPX\) \|\| wsResolvedSpx/);
+  assert.match(src, /const changeResolved = \(sym: string\) => !unresolvedChange\.has\(sym\) \|\| wsResolved\(sym\)/);
+  assert.match(src, /changeResolved\(SPX\)/);
+});
+
+test("VIX is gated alongside SPX, not left behind it", () => {
+  // An unresolved entry is written `change_pct: pulseChange ?? 0` — a FABRICATED FLAT ZERO. While
+  // the gate named only SPX, a poll where SPX resolved and VIX did not returned early and served
+  // `vix_change_pct: 0`, i.e. the desk asserting VIX is unchanged on the day when it is not. The
+  // 2026-08-07 measurement found VIX affected identically to SPX (pulse -1.51 / -0.79 / -1.64
+  // against a true -0.20..-0.59 band).
+  assert.match(src, /changeResolved\(SPX\) && changeResolved\(VIX\)/);
 });
 
 test("a REST-anchored WS store still rescues the fast path", () => {
   // Otherwise the fix trades one wrong number for a needless REST round-trip on the desk hot lane.
-  assert.match(src, /wsSpx\.open_source === "rest"/);
+  // Now applied per-symbol via wsResolved(sym) so BOTH gated symbols get the same rescue.
+  assert.match(src, /ws\.open_source === "rest"/);
+  assert.match(src, /const wsResolved = \(sym: string\): boolean =>/);
+});
+
+test("the header day-change is DERIVED from prior close, not transported", () => {
+  // The durable half of the same P0: change% crosses Redis and a WS store without ever carrying its
+  // anchor, so session-open-anchored and prior-close-anchored values are indistinguishable. The tile
+  // already shows price and prior_close, so computing the third number from those two makes the
+  // header self-consistent by construction. See spx-change-anchor.test.ts for the arithmetic.
+  assert.match(src, /pulseChangePctFromPriorClose\(price, prior\.pdc, spxSnap\.change_pct\)/);
 });

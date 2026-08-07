@@ -3,6 +3,7 @@ import { describe, it, beforeEach } from "node:test";
 import { mergeFlowIntoDesk, mergePulseIntoDesk, resetSpxDeskMergeCache } from "./spx-desk-merge";
 import type { SpxDeskFlow, SpxDeskPayload, SpxDeskPulse } from "@/features/spx/lib/spx-desk";
 
+
 function deskStub(overrides: Partial<SpxDeskPayload> = {}): SpxDeskPayload {
   return {
     available: true,

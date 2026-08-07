@@ -7,6 +7,7 @@ import {
   deskFlowRaceMs,
   deskPulseMaxBlockMs,
 } from "@/lib/providers/config";
+import { pulseChangePctFromPriorClose } from "./spx-change-anchor";
 import { serverCache } from "@/lib/server-cache";
 // Pure numeric helpers (round + GEX staleness + pulse rounding) live in a server-only-free module
 // so they can be unit-tested in isolation. See spx-desk-numerics.ts.
@@ -608,13 +609,32 @@ async function fetchPulseLaneSnapshots(): Promise<IndexSnapMap> {
   // change% when it has one, so an unresolved pulse entry is rescued rather than forced to REST.
   // Without this the fast path would be given up on every poll, trading one wrong number for a
   // needless round-trip on the desk's hot lane.
-  const wsSpx = indexStore[SPX];
-  const wsResolvedSpx =
-    !!wsSpx?.updatedAt &&
-    now - wsSpx.updatedAt < INDEX_STORE_STALE_MS &&
-    wsSpx.price > 0 &&
-    wsSpx.open_source === "rest";
-  if ((merged[SPX]?.price ?? 0) > 0 && (!unresolvedChange.has(SPX) || wsResolvedSpx)) return merged;
+  const wsResolved = (sym: string): boolean => {
+    const ws = indexStore[sym];
+    return (
+      !!ws?.updatedAt &&
+      now - ws.updatedAt < INDEX_STORE_STALE_MS &&
+      ws.price > 0 &&
+      ws.open_source === "rest"
+    );
+  };
+  // VIX is gated alongside SPX, not left behind it.
+  //
+  // An unresolved entry is written as `change_pct: pulseChange ?? 0` above — a FABRICATED FLAT ZERO,
+  // not an absent value. That was survivable while the gate covered every symbol a member sees; it
+  // is not survivable when the gate names only SPX, because a poll where SPX resolves and VIX does
+  // not returns early and serves `vix_change_pct: 0` — the desk asserting VIX is unchanged on the
+  // day when it is not. The 2026-08-07 measurement found VIX affected identically to SPX
+  // (pulse −1.51 / −0.79 / −1.64 against a true −0.20…−0.59 band), so it is the same defect, and
+  // the fix that landed for SPX addressed only half of it.
+  //
+  // Unlike SPX, VIX cannot be derived at the payload boundary: the pulse payload carries SPX's
+  // prior close (`prior.pdc`) and no VIX prior close, so there is nothing to derive from. Gating is
+  // the available correct answer. Cost is bounded: the REST fallthrough below fetches ALL symbols in
+  // one call, so this adds no extra round trip — it only declines the fast path on the polls where
+  // the anchor is genuinely untrustworthy.
+  const changeResolved = (sym: string) => !unresolvedChange.has(sym) || wsResolved(sym);
+  if ((merged[SPX]?.price ?? 0) > 0 && changeResolved(SPX) && changeResolved(VIX)) return merged;
 
   const raceMs = deskPulseStructureRaceMs();
   const rest = await Promise.race([
@@ -1598,7 +1618,8 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
     as_of: asOf,
     source: intel?.available ? "merged" : uwConfigured() ? "polygon+uw-flow" : "polygon",
     price: roundDeskNum(price)!,
-    spx_change_pct: spxSnap.change_pct,
+    // Derived from prior_close (served two lines below as `pdc`) — see pulseChangePctFromPriorClose.
+    spx_change_pct: pulseChangePctFromPriorClose(price, prior.pdc, spxSnap.change_pct),
     vix: roundDeskNum(vixSnap?.price ?? intel?.vix ?? null),
     vix_change_pct: vixSnap?.change_pct ?? intel?.vix_change_pct ?? null,
     above_vwap: vwap != null ? price >= vwap : false,
@@ -1934,7 +1955,9 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
     available: true,
     polled_at: polledAt,
     price,
-    spx_change_pct: spxSnap.change_pct,
+    // Derived from prior_close (served below) — see pulseChangePctFromPriorClose. This is the tile
+    // the 2026-08-07 P0 was measured on.
+    spx_change_pct: pulseChangePctFromPriorClose(price, prior.pdc, spxSnap.change_pct),
     vix: vixSnap?.price ?? null,
     vix_change_pct: vixSnap?.change_pct ?? null,
     above_vwap: vwap != null ? price >= vwap : false,
