@@ -327,15 +327,62 @@ export function strikeTrailWeight(points: StrikeTrailPoint[]): number {
   return max * 0.6 + mean * 0.4;
 }
 
-/** Pick the top-N strike rows to render (by cumulative |gamma| share across the session). */
+/**
+ * How far from spot a strike can sit and still count as "near" for row selection. Expressed as a
+ * fraction of spot so it scales across instruments (±2% is 155 SPX points, 12 META points).
+ *
+ * Chosen to comfortably contain an intraday session's price action plus the walls actually pinning
+ * it, while excluding the far-OTM band. Not a hard filter — see pickActiveStrikes.
+ */
+export const NEAR_SPOT_ROW_BAND_PCT = 0.02;
+
+/**
+ * Pick the top-N strike rows to render, preferring strikes NEAR SPOT.
+ *
+ * Strength alone is the wrong sort key once an instrument's biggest walls live far from price.
+ * Index put-wall open interest concentrates in far-OTM crash protection at round strikes, so on
+ * SPX the strongest put rows are 3-5% below spot and simply are not on screen — while near-spot
+ * walls that a trader is actually leaning on get crowded out of the 8 slots. A single stock does
+ * not show this: META's walls sit on top of price, so strength and proximity agree and the old
+ * ordering looked correct.
+ *
+ * Measured on prod 2026-08-07 by replaying this exact ranking over the live rails. SPX spot
+ * 7757.64 — put rows came back 8000, 7500, 7600, 7715, 7730, 7705, 7450, 7400: only 3 of 8 within
+ * ±1% of spot, the rest 250-350 points away. META spot 592.2 — rows 590, 550, 580, 560, 500, with
+ * the leaders sitting right on price. Same code, same cap, opposite outcome.
+ *
+ * The fix PARTITIONS rather than filters: near-spot rows are ranked by strength and fill the slots
+ * first, then any remaining slots are backfilled with the strongest out-of-band rows. A genuine
+ * far-OTM wall is therefore still drawn when there is room for it — this never silently drops a
+ * wall that would previously have rendered UNLESS a nearer, on-screen wall wanted the slot. With
+ * `spot` absent (null/0/NaN — the caller cannot always resolve it) behaviour is byte-identical to
+ * the previous pure-strength ordering.
+ */
 export function pickActiveStrikes(
   trails: Map<number, StrikeTrailPoint[]>,
-  maxStrikes: number = MAX_STRIKE_TRAILS_PER_SIDE
+  maxStrikes: number = MAX_STRIKE_TRAILS_PER_SIDE,
+  opts: { spot?: number | null; bandPct?: number } = {}
 ): number[] {
-  return [...trails.entries()]
-    .sort((a, b) => strikeTrailWeight(b[1]) - strikeTrailWeight(a[1]))
-    .slice(0, maxStrikes)
-    .map(([strike]) => strike);
+  const byStrength = [...trails.entries()].sort(
+    (a, b) => strikeTrailWeight(b[1]) - strikeTrailWeight(a[1])
+  );
+
+  const spot = opts.spot;
+  // No usable spot → keep the historical ordering exactly. Guarding on `> 0` also covers NaN.
+  if (!(typeof spot === "number" && Number.isFinite(spot) && spot > 0)) {
+    return byStrength.slice(0, maxStrikes).map(([strike]) => strike);
+  }
+
+  const band = opts.bandPct ?? NEAR_SPOT_ROW_BAND_PCT;
+  const near: typeof byStrength = [];
+  const far: typeof byStrength = [];
+  for (const entry of byStrength) {
+    (Math.abs(entry[0] - spot) / spot <= band ? near : far).push(entry);
+  }
+
+  // Both halves are already strength-ordered (they were partitioned out of a sorted list), so
+  // concatenating preserves strength ranking WITHIN each half while promoting the near half.
+  return [...near, ...far].slice(0, maxStrikes).map(([strike]) => strike);
 }
 
 /** Anchor live trail trimming to the latest candle or wall sample — not wall-clock alone. */
