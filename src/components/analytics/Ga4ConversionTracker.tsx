@@ -5,6 +5,11 @@ import { useAppAuth } from "@/lib/auth-client";
 import { trackGa4Event } from "@/lib/analytics/ga4-client";
 import { GA4_EVENTS } from "@/lib/analytics/ga4-events";
 import { trackXEvent } from "@/lib/analytics/x-pixel";
+import {
+  clearRememberedPlan,
+  purchaseValueUsd,
+  readRememberedPlan,
+} from "@/lib/analytics/checkout-plans";
 import { tierAtLeast, parseTier } from "@/lib/tiers";
 
 const PURCHASE_FLAG_PREFIX = "bo_ga4_purchase_fired:";
@@ -34,12 +39,19 @@ export function Ga4ConversionTracker() {
       /* private mode — still fire once this session */
     }
 
+    // Value the purchase from the plan the member actually clicked (recovered across the Whop
+    // round-trip) so a yearly buyer is booked at $1999, not the $199 a tier-only lookup would give
+    // — begin_checkout and purchase now reconcile. Falls back to the tier estimate when no fresh
+    // plan is stored. Clear it afterward so a later re-fire can't reuse a stale plan.
+    const purchaseValue = purchaseValueUsd(current, readRememberedPlan());
+    clearRememberedPlan();
+
     trackGa4Event(GA4_EVENTS.purchase, {
       tier: current,
       transaction_id: userId,
     });
     trackXEvent("tw-re1j3-purchase", {
-      value: current === "premium" ? 199 : 49,
+      value: purchaseValue,
       currency: "USD",
     });
   }, [isLoaded, isSignedIn, userId, tier]);

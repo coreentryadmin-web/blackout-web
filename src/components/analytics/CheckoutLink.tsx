@@ -6,11 +6,14 @@ import { trackGa4Event } from "@/lib/analytics/ga4-client";
 import { GA4_EVENTS } from "@/lib/analytics/ga4-events";
 import { trackXEvent } from "@/lib/analytics/x-pixel";
 import {
+  CHECKOUT_PLAN_VALUE_USD,
+  rememberCheckoutPlan,
+  type CheckoutPlan,
+} from "@/lib/analytics/checkout-plans";
+import {
   appendAttributionToUrl,
   internalCampaignParams,
 } from "@/lib/analytics/utm";
-
-type CheckoutPlan = "community" | "monthly" | "yearly";
 
 type Props = {
   href: string;
@@ -39,12 +42,16 @@ function attributedCheckoutHref(
 }
 
 function onCheckoutClick(plan: CheckoutPlan) {
+  // Remember which plan was clicked so the eventual `purchase` event (fired from
+  // Ga4ConversionTracker after the Whop round-trip, where only the resulting TIER is known and
+  // monthly/yearly both collapse to `premium`) can value the sale from the same price map.
+  rememberCheckoutPlan(plan);
   trackGa4Event(GA4_EVENTS.beginCheckout, {
     plan,
     currency: "USD",
   });
   trackXEvent("tw-re1j3-begin_checkout", {
-    value: plan === "yearly" ? 1999 : plan === "monthly" ? 199 : 49,
+    value: CHECKOUT_PLAN_VALUE_USD[plan],
     currency: "USD",
   });
 }
