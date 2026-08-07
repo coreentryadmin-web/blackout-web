@@ -4,7 +4,7 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
-## 2026-08-07 - [P0, MEMBER-FACING] Vector beads covered only a fraction of the chart on EVERY non-oracle ticker - FIXED (#PR)
+## 2026-08-07 - [P0, MEMBER-FACING] Vector beads covered only a fraction of the chart on EVERY non-oracle ticker - FIXED (#1844)
 
 | Field | Value |
 |-------|-------|
@@ -19,7 +19,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Second, SEPARATE cause on the SPX Slayer dashboard** | `SpxVectorEmbed.tsx:100` passes `initialWallHistory={[]}` and `initialHorizonWallHistory={[]}` - the dashboard chart ships with **no SSR rail at all** (deliberate: `/dashboard/page.tsx` notes a cold Polygon reconstruct can block HTML for 30-90s) and depends entirely on the client fetch. That is why the SPX screenshot shows beads clustered only at the right edge. Same symptom, different cause, filed for its own PR. |
 | **Genuine recorder gap, unrelated to the above** | AMD's rail has one real hole - **30.2 minutes, 14:45:00 -> 15:15:10 ET** - plus three ~4-minute gaps (10:40, 14:05, 14:35). Consistent with a task restart mid-session. Small, real, and NOT what the reported blank regions were. |
 | **Verification** | `tsc --noEmit` clean; `next lint` clean; vector suite **591 pass / 3 fail** vs **589 / 3** on clean main (two added, zero regressions; the 3 are pre-existing and network-dependent). Visual confirmation is post-deploy - a viewport change cannot be verified by injecting CSS the way the earlier UI fixes were. |
-| **Status** | FIXED - PR #PR. |
+| **Status** | FIXED - PR #1844. |
 
 ---
 
