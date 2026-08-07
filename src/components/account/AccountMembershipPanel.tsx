@@ -5,9 +5,10 @@ import { parseTier, TIER_LABELS } from "@/lib/tiers";
 import { WHOP_CHECKOUT } from "@/lib/whop-checkout";
 
 /**
- * Billing lives entirely on Whop — there is no in-app cancel/downgrade control.
- * This panel is the one place `/account` tells members the truth about that and
- * links them straight to Whop's own billing portal instead of a dead end.
+ * Billing lives entirely with our checkout partner — there is no in-app
+ * cancel/downgrade control. This panel is the one place `/account` tells
+ * members the truth about that and links them straight to the billing
+ * portal instead of a dead end.
  */
 export function AccountMembershipPanel() {
   const { tier: rawTier, isLoaded } = useAppAuth();
@@ -49,8 +50,8 @@ export function AccountMembershipPanel() {
 
       {tier !== "free" && (
         <p className="font-mono text-[11px] text-sky-300/60 mt-3 leading-relaxed">
-          Billing is handled by Whop, our checkout partner. &quot;Manage subscription&quot;
-          opens your secure Whop billing portal — update your card, switch plans, or
+          Billing is handled by our secure checkout partner. &quot;Manage subscription&quot;
+          opens your billing portal — update your card, switch plans, or
           cancel there. Questions about a charge? Email{" "}
           <a href="mailto:billing@blackouttrades.com" className="text-sky-300 hover:text-white">
             billing@blackouttrades.com

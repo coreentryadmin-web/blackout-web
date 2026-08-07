@@ -133,7 +133,7 @@ const RAW: Record<FaqCatKey, { q: string; a: string }[]> = {
     },
     {
       q: "Can I cancel anytime?",
-      a: "Yes. Go to Account → Membership & Billing and click \"Manage subscription\" — that opens your secure Whop billing portal, where you can update your card, switch plans, or cancel. Questions about a charge, an invoice, or your plan? Email billing@blackouttrades.com and we'll sort it out personally.",
+      a: "Yes. Go to Account → Membership & Billing and click \"Manage subscription\" — that opens your secure billing portal, where you can update your card, switch plans, or cancel. Questions about a charge, an invoice, or your plan? Email billing@blackouttrades.com and we'll sort it out personally.",
     },
   ],
   start: [

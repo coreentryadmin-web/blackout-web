@@ -3,7 +3,7 @@ export const HOME_FAQ_ITEMS = [
   {
     question: "Can I cancel anytime?",
     answer:
-      "Yes. Head to Account → Membership & Billing and click \"Manage subscription\" — that opens your secure Whop billing portal, where you can update your card, switch plans, or cancel.",
+      "Yes. Head to Account → Membership & Billing and click \"Manage subscription\" — that opens your secure billing portal, where you can update your card, switch plans, or cancel.",
   },
   {
     question: "Do I need to connect a broker?",
