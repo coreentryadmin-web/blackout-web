@@ -151,6 +151,22 @@ jobs:
               if removed:
                   print(f"Stripped stale secret refs: {removed}")
               c["secrets"] = filtered
+              # KEEP_ALIVE_TIMEOUT (ms) is ENFORCED here, on every deploy, and must EXCEED the ALB
+              # idle timeout (120s). Node's default is 5s, so the target closes sockets the ALB
+              # still considers reusable -> the ALB sends a request into a half-closed connection
+              # and answers 502 ITSELF. Measured 2026-08-07: HTTPCode_ELB_5XX 11-26/min while
+              # HTTPCode_Target_5XX was 1 in 35 min, TargetConnectionErrorCount 0 and all targets
+              # healthy -- the app never saw those requests, so nothing in its logs or its
+              # healthcheck could ever reveal them.
+              #
+              # This lives in the WORKFLOW, not in a hand-applied task-def revision, because the
+              # rewrite below re-derives the task def from whatever the service currently points
+              # at. A revision patched by hand is silently dropped by the next merge -- which is
+              # exactly what happened: rev 602 carried the fix, CI shipped 603 without it minutes
+              # later, and the 502s never stopped.
+              env = [e for e in c.get("environment", []) if e["name"] != "KEEP_ALIVE_TIMEOUT"]
+              env.append({"name": "KEEP_ALIVE_TIMEOUT", "value": "125000"})
+              c["environment"] = env
           for k in ["taskDefinitionArn", "revision", "status",
                      "requiresAttributes", "compatibilities",
                      "registeredAt", "registeredBy", "deregisteredAt"]:
