@@ -50,9 +50,29 @@ export async function loadSessionWallHistory(
     const { loadSessionWallHistoryFromDb } = await import("./vector-wall-db");
     const durable = await loadSessionWallHistoryFromDb(sessionYmd, st);
     if (durable.length) {
-      // Re-warm the hot cache so subsequent reads skip Postgres. Best-effort.
-      await sharedCacheSet(redisKey(st, sessionYmd), durable, TTL_SEC).catch(() => {});
-      return durable;
+      // Re-warm the hot cache — by UNION, never by overwrite.
+      //
+      // This path is reached on ANY empty Redis read, which is NOT only eviction: a transient
+      // read failure or timeout returns null here too. The Postgres mirror is deliberately BEHIND
+      // Redis (appendSessionWallSample's write-through is a non-blocking `void (async () => …)`),
+      // so a blind `sharedCacheSet(durable)` stamps a SHORTER rail over a longer, correct one —
+      // and every subsequent read then serves the short rail until the recorder catches up.
+      //
+      // Live 2026-08-07: META's rail regressed 127 samples → 92 and its leading edge moved BACK
+      // from 09:46:05 to 09:40:05 — same session start, fewer samples, internally consistent, i.e.
+      // rolled back to an earlier state rather than corrupted. CloudWatch showed **zero
+      // ElastiCache evictions** on both nodes across the window (memory 15–20%), which REFUTES the
+      // eviction theory and leaves the transient-miss path as the mechanism — it needs no memory
+      // pressure at all.
+      //
+      // Re-reading and unioning makes the re-warm monotonic: if Redis actually still holds a
+      // longer rail (the read merely blipped), `mergeWallHistory` keys by bucket time and keeps
+      // it; if Redis is genuinely cold, the union degenerates to the durable rail and behaves
+      // exactly as before. A rail can therefore never get SHORTER as a result of a read.
+      const fresh = await sharedCacheGet<WallHistorySample[]>(redisKey(st, sessionYmd)).catch(() => null);
+      const warmed = mergeWallHistory(fresh ?? [], durable);
+      await sharedCacheSet(redisKey(st, sessionYmd), warmed, TTL_SEC).catch(() => {});
+      return warmed;
     }
   } catch (err) {
     console.warn(`[vector-wall-persist] db fallback failed ${st}:${sessionYmd}:`, err);
