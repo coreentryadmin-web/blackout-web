@@ -17,7 +17,7 @@ Exit code is **non-zero if any check FAILs** (usable as a CI/trigger gate). Repo
 
 ## What it does NOT cover (environment limits)
 - **WebSocket feeds** — agent/CI proxies block WS upgrades. Members receive WS data via the REST endpoints above, which *are* validated. True WS-stream validation must run server-side (inside ECS).
-- **Rendered UI / visual / client console errors** — needs a real browser reaching the network (blocked in sandboxed/proxied envs).
+- **Rendered UI / visual / client console errors** — NOT covered by this validator, but **NOT impossible either**: use `proxy-browser.cjs` per [`LIVE-UI-CONNECTION.md`](./LIVE-UI-CONNECTION.md). Plain Playwright fails here (Chromium egress is blocked; `--proxy-server` does not help), which is why this line used to read "blocked in sandboxed/proxied envs" — that was wrong and cost a session's worth of wrong conclusions on 2026-08-06.
 - UW-sourced numbers are only cross-checked where an independent Polygon equivalent exists; pure-UW figures are checked for internal consistency + UW self-agreement.
 
 ## Run manually
@@ -115,3 +115,56 @@ Flags: `--json` (full matrix + per-check evidence), `--quiet` (drop the per-chec
 never printed. Pure verdict/coherence logic lives in
 [`scripts/audit/lib/zerodte-healthcheck-eval.mjs`](../../scripts/audit/lib/zerodte-healthcheck-eval.mjs)
 (unit-tested: `node --test scripts/audit/lib/zerodte-healthcheck-eval.test.mjs`).
+
+---
+
+## WATCH LIST — first session on 2026-08-07 (read this before the routine pass)
+
+The 2026-08-06 batch merged **21 PRs with NO CI** — GitHub Actions was in `major_outage` for
+most of that day, so every change was verified locally only. Three of them changed behaviour that
+only a live tape can exercise. Run the standard pass below, but these are the priorities:
+
+### 1. The two merges that change trading behaviour — highest priority
+- **#1819 — exit engine's operative stop moved to the LEDGER entry basis.** Pre-fix, live evidence
+  showed **8 of 24** setups carrying an operative stop worse than −50%, one at **−62.9%**. Watch that
+  stops fire at the intended −50% of the ledger basis and that no `thesis_break`/`flat_timeout`
+  is stamped at a mark the protective rule should have owned.
+- **#1818 — `underlying_price` now refreshes from the live option snapshot** and recomputes
+  `otm_pct`, which is a **gate input**. Watch that setups price sanely against spot and that the
+  moneyness gate isn't newly admitting/rejecting differently than expected.
+
+### 2. Heap-fix validation — needs a deploy-quiet hour
+`--max-old-space-size=2560` (NODE_OPTIONS on the web task def) has **never been validated**: every
+deploy on 2026-08-06 replaced the tasks before the ~46-min historical crash cycle elapsed. Best
+evidence so far is tasks reaching 39/45/52 min with **zero exit 139**. Check:
+`aws ecs describe-tasks ... --query 'tasks[].[containers[0].exitCode]'` on STOPPED tasks. **139 is
+the Node self-abort signature** — the kernel never OOM-kills it, so CloudWatch `MemoryUtilization`
+caps around 62% and *structurally cannot* show this. If a task exceeds ~60 min with no 139, say so
+plainly; if a deploy reset the clock again, say that instead of claiming validation.
+
+### 3. GEX snapshot capture — ONLY possible during RTH
+`wall-temporal-stability.mjs` (INTENTIONAL-DESIGN item #3) has **never produced a measurement** —
+it returns INSUFFICIENT DATA without an intraday snapshot series, and that series can only be
+captured while the market is open. Start `scripts/audit/gex-wall-snapshot-poll.mjs` early in the
+session; it is the only one of the three parked design questions that is time-boxed to RTH.
+(The other two — `veto-flicker-rate`, `merge-precedence-ab` — need exports, not market hours.)
+
+### 4. Confirm the deck-header overlap fix on the real page
+#1828 was proven in an isolated harness (13 overlapping text pairs → 0) but **never rendered on the
+live board**. One shot settles it:
+`node proxy-browser.cjs "https://blackouttrades.com/nighthawk" out.png --cookie "$CK" --viewport 430x932 --wait 24000`
+Expect the status strip on one scrollable line, no overlap, `RISK` reachable by horizontal scroll.
+Also worth a `--viewport 1440x900` pass to confirm desktop is unchanged.
+
+### Known-good baselines to diff against
+- healthcheck stage D should read **AMBER off-hours** (not RED) — that was #1821; a RED there again
+  means a real regression, not the old false alarm.
+- prod web deployment configuration should be **`minimumHealthyPercent=100 / maximumPercent=120`**.
+  If it reads `50/112`, the deploy workflow regressed — see the drift entry in FINDINGS.md.
+
+### Deliberately NOT done, in case it comes up
+The **governor stop-time recording gap** (#1810 follow-up). An untimed stop currently fails closed
+for the whole session where the design intent is a 20-minute lock. It was left alone on purpose: it
+LOOSENS a fail-closed guard on a live risk device, and that deserves a deliberate decision rather
+than an end-of-session patch.
+
