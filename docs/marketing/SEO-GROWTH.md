@@ -30,7 +30,7 @@ Legend: 🔴 Not started · 🟡 In progress · 🟢 PR open · ✅ Merged · �
 
 | Finding | Status | PR | Notes |
 |---|---|---|---|
-| Competitor comparison pages (e.g. `/vs/spotgamma`) don't exist | 🔴 | — | Homepage already has a "them vs us" table to source from |
+| Competitor comparison pages (e.g. `/vs/spotgamma`) don't exist | 🟢 | [#1892](https://github.com/coreentryadmin-web/blackout-web/pull/1892) | Grounded in real data fetched live from spotgamma.com/pricing rather than guessed — see PR body |
 | No `llms.txt` / AI-answer-structured content | ⛔ | — | Lower priority, deferred |
 | `programmatic-seo` — 42 hand-written articles, no template-scale generation | ✅ N/A | — | Fine at current content volume; revisit only if scaling to hundreds of pages |
 
