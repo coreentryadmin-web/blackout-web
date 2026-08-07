@@ -365,6 +365,14 @@ export async function fetchGradedSkips(opts: {
   try {
     const db = await import("../db");
     if (!db.dbConfigured()) return [];
+    // Same migration guard runSkipGrading uses (:276). Without it this SELECT is the ONLY reader of
+    // counterfactual_json that can run before the column exists — and it is the one the live path
+    // actually reaches: runSkipGrading is POST ?grade_skips=1 (admin-triggered, rare), while this is
+    // called by buildZeroDteCalibrationReport, which cron/zerodte-grade and admin/zerodte/graduation
+    // hit on every pass. On prod the writer had never run, so this threw `column "counterfactual_json"
+    // does not exist` every 15 minutes (error_events 2400/2401, 2026-08-06 22:30/22:45 UTC).
+    // The memo makes repeat calls free, so guarding the reader costs nothing.
+    await ensureCounterfactualColumn();
     const res = await db.dbQuery(
       `SELECT gate_failed, counterfactual_json
          FROM zerodte_scan_rejections

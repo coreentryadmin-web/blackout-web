@@ -5,6 +5,7 @@
 // mocks here register against the same resolved URLs.
 import { test, mock } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 // ── Data-layer mocks (registered BEFORE any import of the module under test) ─────
 const dbState = {
@@ -49,6 +50,32 @@ type Bar = { t: number; h: number; l: number; c: number };
 const bar = (tEt: string, c: number, h = c, l = c): Bar => ({ t: et(tEt), h, l, c });
 
 // ── Premium basis (OCC path reconstructable) ─────────────────────────────────────
+
+test("fetchGradedSkips migrates BEFORE it selects — the reader cannot outrun the column", () => {
+  // LIVE BUG (2026-08-06, prod error_events 2400/2401, firing every 15 min): this reader selected
+  // counterfactual_json without the ALTER-IF-NOT-EXISTS guard runSkipGrading has. runSkipGrading is
+  // POST ?grade_skips=1 — admin-triggered and rare — while fetchGradedSkips is reached by
+  // buildZeroDteCalibrationReport on every cron/zerodte-grade and admin/zerodte/graduation pass. On
+  // prod the writer had never run, so the column did not exist and every read threw. Its
+  // `catch { return [] }` then swallowed it, so the calibration report's blocked-value evidence
+  // silently read as EMPTY rather than erroring — wrong, quietly, which is the worst failure shape.
+  //
+  // ASSERTED ON SOURCE, not behaviour, and deliberately so. ensureCounterfactualColumn memoizes at
+  // module scope, so only the first caller in a whole PROCESS issues the ALTER — a behavioural test
+  // would pass or fail on which sibling test ran first. Two attempts confirmed that: forcing this
+  // test to run first broke the writer test's ALTER assertion, and a cache-busted import resolved a
+  // real `../db` (bypassing the module mocks) and also perturbed scan.test.ts's mock registration.
+  // The invariant that actually matters is textual and order-free: the guard precedes the query.
+  const src = readFileSync(new URL("./skip-grading.ts", import.meta.url), "utf8");
+  const fnStart = src.indexOf("export async function fetchGradedSkips");
+  assert.ok(fnStart > 0, "fetchGradedSkips must exist");
+  const body = src.slice(fnStart, fnStart + 2000);
+  const guardAt = body.indexOf("await ensureCounterfactualColumn()");
+  const selectAt = body.indexOf("SELECT gate_failed, counterfactual_json");
+  assert.ok(guardAt > 0, "fetchGradedSkips must await the idempotent column migration");
+  assert.ok(selectAt > 0, "fetchGradedSkips must still issue its SELECT");
+  assert.ok(guardAt < selectAt, "the migration must be ordered BEFORE the SELECT, not after");
+});
 
 test("premium basis: entry = first bar close after the block, +100% target → would_have_won", async () => {
   const { gradeSkippedPlay } = await mod();
@@ -264,8 +291,10 @@ test("runSkipGrading: idempotent column ALTER, finished-sessions-only SELECT, ve
   assert.equal(summary.ungradeable, 1);
   assert.equal(summary.errors, 0);
 
-  // Migration: the same ALTER-IF-NOT-EXISTS idiom db.ts uses for entry_context.
-  assert.ok(dbState.queries.some((q) => /ADD COLUMN IF NOT EXISTS counterfactual_json JSONB/.test(q.text)));
+  // Migration coverage lives in the FIRST test in this file, not here. ensureCounterfactualColumn
+  // memoizes at module scope, so only the first caller in a process issues the ALTER — that is the
+  // intended production behaviour, and it means "runSkipGrading emitted an ALTER" is an artifact of
+  // which test ran first, not an invariant. Asserting it here made the suite order-dependent.
   // Selection: only NULL counterfactuals, only FINISHED sessions (session_date < today ET).
   const select = dbState.queries.find((q) => /^\s*SELECT/i.test(q.text))!;
   assert.match(select.text, /counterfactual_json IS NULL/);
