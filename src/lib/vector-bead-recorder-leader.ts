@@ -10,6 +10,7 @@
  * cron_job_runs); this leader is the primary 5s writer during RTH.
  */
 import { isEtCashRth } from "@/lib/et-market-hours";
+import { trackTickerFailures } from "@/features/vector/lib/vector-bead-recorder-logic";
 import { logCronRun } from "@/lib/cron-run";
 import { shouldRunVectorBeadRecorder } from "@/lib/process-role";
 import {
@@ -43,6 +44,9 @@ let tickTimer: ReturnType<typeof setInterval> | null = null;
 let activeTickTimer: ReturnType<typeof setInterval> | null = null;
 let leaderRefreshTimer: ReturnType<typeof setInterval> | null = null;
 let recordInFlight = false;
+/** Per-ticker consecutive-failure streaks across sweeps. Bounded by the number of CURRENTLY
+ *  failing tickers (successes are deleted), not by universe size. */
+const tickerFailureStreaks = new Map<string, number>();
 let activeRecordInFlight = false;
 let lastHeartbeatAt = 0;
 let heartbeatInFlight = false;
@@ -153,6 +157,21 @@ async function tick(): Promise<void> {
       console.warn(
         `[vector-bead-recorder] zero samples recorded (${result.failed}/${result.total} failed, ${result.elapsedMs}ms)`
       );
+    }
+    // PER-TICKER visibility. The whole-pass warning above only fires when EVERY ticker fails, so a
+    // single name going dark while ~121 others succeed logged nothing at all — which is why ASTS's
+    // ~10-minute hole on 2026-08-07 left no trace anywhere in CloudWatch. Edge-triggered so a long
+    // outage costs two lines, not one per 5s tick; see trackTickerFailures.
+    for (const ev of trackTickerFailures(tickerFailureStreaks, result.attempted, result.failedTickers)) {
+      if (ev.kind === "dark") {
+        console.warn(
+          `[vector-bead-recorder] ticker DARK: ${ev.ticker} — ${ev.consecutive} consecutive failed passes (~${ev.consecutive * 5}s of missing beads)`
+        );
+      } else {
+        console.log(
+          `[vector-bead-recorder] ticker RECOVERED: ${ev.ticker} — after ${ev.consecutive} consecutive failed passes (~${ev.consecutive * 5}s dark)`
+        );
+      }
     }
     void maybeLogLeaderHeartbeat();
   } catch (err) {
