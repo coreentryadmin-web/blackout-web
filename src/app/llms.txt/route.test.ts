@@ -12,7 +12,17 @@ test("llms.txt includes the shared SITE description, not a hand-typed duplicate"
 
 test("llms.txt links every canonical top-level marketing page", async () => {
   const body = await GET().text();
-  for (const path of ["/", "/pricing", "/faq", "/why-blackout", "/about", "/contact", "/learn"]) {
+  for (const path of [
+    "/",
+    "/pricing",
+    "/faq",
+    "/why-blackout",
+    "/vs/others",
+    "/tools/gamma-snapshot",
+    "/about",
+    "/contact",
+    "/learn",
+  ]) {
     assert.ok(body.includes(`(${SITE.url}${path === "/" ? "/" : path})`), `missing link to ${path}`);
   }
 });
