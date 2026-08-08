@@ -6,6 +6,25 @@ import { syncResendContact } from "@/lib/resend-contacts";
 const STEP_GAP_DAYS = 2;
 const TOTAL_STEPS = WELCOME_SEQUENCE.length;
 
+/**
+ * How far past due a step may be and still be worth sending.
+ *
+ * The drip is a WELCOME sequence — every step is written for someone in their first ~8 days
+ * ("eight days of watching is enough", "get your bearings, fast"). Sent a month late to someone
+ * who has been using the desk since, it reads as broken software, and the reader is right.
+ *
+ * This matters because the cron can be unscheduled for a long stretch: it was never wired into
+ * production at all until 2026-08-08, so on first run every existing row was due at once. Without
+ * a cutoff, turning the cron on flushes that whole backlog as real mail — a burst of stale,
+ * contextless emails to the existing member base, which is a spam-complaint event, and complaint
+ * rate is the one metric Gmail/Yahoo suspend bulk senders over.
+ *
+ * Stale rows are marked COMPLETE, not deleted and not retried: the member simply exits the drip
+ * where they are. 7 days ≈ 3 step gaps, so a normal blip (a few missed hourly runs, a short
+ * outage) still delivers, while a genuinely abandoned schedule doesn't dump on anyone.
+ */
+const MAX_STEP_LATENESS_DAYS = 7;
+
 // Injectable deps (default to the real modules) — same pattern as referrals.ts's
 // Deps type: lets tests pass fakes directly instead of fighting ESM module mocking.
 type Deps = {
@@ -95,6 +114,23 @@ export async function processDueWelcomeSequenceSteps(
   if (!deps.dbConfigured()) return result;
 
   try {
+    // Retire anything too far past due BEFORE selecting work, so a long-unscheduled cron cannot
+    // flush a backlog of stale welcome mail on its first run. Unbounded by design: this is a
+    // cheap indexed UPDATE, and leaving stale rows behind would just re-surface them next run.
+    const retired = await deps.dbQuery(
+      `UPDATE welcome_sequence_state
+       SET completed_at = NOW(), next_send_at = NULL
+       WHERE completed_at IS NULL
+         AND next_send_at IS NOT NULL
+         AND next_send_at < NOW() - ($1 || ' days')::interval`,
+      [String(MAX_STEP_LATENESS_DAYS)]
+    );
+    if ((retired.rowCount ?? 0) > 0) {
+      console.warn(
+        `[welcome-sequence] retired ${retired.rowCount} row(s) more than ${MAX_STEP_LATENESS_DAYS} days past due — not sending stale welcome mail`
+      );
+    }
+
     const due = await deps.dbQuery<{
       user_id: string;
       email: string;

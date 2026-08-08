@@ -41,7 +41,7 @@ test("startWelcomeSequence sends step 1 and schedules step 2 on a fresh signup",
   assert.equal(sent[0].to, "trader@example.com");
   assert.equal(sent[0].subject, WELCOME_SEQUENCE[0].build({ email: "trader@example.com", firstName: "Sam" }).subject);
 
-  const update = queries.find((q) => q.sql.includes("UPDATE welcome_sequence_state"));
+  const update = queries.find((q) => q.sql.includes("UPDATE welcome_sequence_state") && q.sql.includes("SET steps_sent"));
   assert.ok(update, "expected an UPDATE after the send");
   assert.equal(update?.params[1], 1, "steps_sent should advance to 1");
   assert.notEqual(update?.params[2], null, "next_send_at should be set (step 2 exists)");
@@ -53,7 +53,7 @@ test("startWelcomeSequence is idempotent — a duplicate webhook delivery sends 
   await startWelcomeSequence({ userId: "user_1", email: "trader@example.com" }, deps);
 
   assert.equal(sent.length, 0, "must not send when the row already existed");
-  const update = queries.find((q) => q.sql.includes("UPDATE welcome_sequence_state"));
+  const update = queries.find((q) => q.sql.includes("UPDATE welcome_sequence_state") && q.sql.includes("SET steps_sent"));
   assert.equal(update, undefined, "must not update when the insert was a no-op");
 });
 
@@ -62,7 +62,7 @@ test("startWelcomeSequence does not advance steps_sent when the send fails", asy
   await startWelcomeSequence({ userId: "user_1", email: "trader@example.com" }, deps);
 
   assert.equal(sent.length, 1, "still attempts the send");
-  const update = queries.find((q) => q.sql.includes("UPDATE welcome_sequence_state"));
+  const update = queries.find((q) => q.sql.includes("UPDATE welcome_sequence_state") && q.sql.includes("SET steps_sent"));
   assert.equal(update?.params[1], 0, "steps_sent stays 0 so the cron retries step 1");
 });
 
@@ -84,7 +84,7 @@ test("processDueWelcomeSequenceSteps sends the next step and advances state", as
   assert.deepEqual(result, { processed: 1, sent: 1, failed: 0 });
   assert.equal(sent[0].subject, WELCOME_SEQUENCE[1].build({ email: "trader@example.com", firstName: "Sam" }).subject, "sends step 2 for steps_sent=1");
 
-  const update = queries.find((q) => q.sql.includes("UPDATE welcome_sequence_state"));
+  const update = queries.find((q) => q.sql.includes("UPDATE welcome_sequence_state") && q.sql.includes("SET steps_sent"));
   assert.equal(update?.params[1], 2, "steps_sent advances to 2");
 });
 
@@ -96,7 +96,7 @@ test("processDueWelcomeSequenceSteps marks the row complete after the final step
   });
   await processDueWelcomeSequenceSteps(200, deps);
 
-  const update = queries.find((q) => q.sql.includes("UPDATE welcome_sequence_state"));
+  const update = queries.find((q) => q.sql.includes("UPDATE welcome_sequence_state") && q.sql.includes("SET steps_sent"));
   assert.equal(update?.params[1], lastIndex + 1, "steps_sent reaches the full count");
   assert.equal(update?.params[2], null, "next_send_at is null — nothing left to schedule");
   assert.notEqual(update?.params[3], null, "completed_at is set");
@@ -110,7 +110,7 @@ test("processDueWelcomeSequenceSteps leaves state untouched on a send failure (s
   const result = await processDueWelcomeSequenceSteps(200, deps);
 
   assert.deepEqual(result, { processed: 1, sent: 0, failed: 1 });
-  const update = queries.find((q) => q.sql.includes("UPDATE welcome_sequence_state"));
+  const update = queries.find((q) => q.sql.includes("UPDATE welcome_sequence_state") && q.sql.includes("SET steps_sent"));
   assert.equal(update, undefined, "no state update on a failed send — must retry, not skip or corrupt state");
 });
 
@@ -118,4 +118,47 @@ test("processDueWelcomeSequenceSteps returns zeros when nothing is due", async (
   const { deps } = fakeDeps({ selectRows: [] });
   const result = await processDueWelcomeSequenceSteps(200, deps);
   assert.deepEqual(result, { processed: 0, sent: 0, failed: 0 });
+});
+
+// ── Staleness cutoff ────────────────────────────────────────────────────────────────────────
+// The cron was never scheduled in production until 2026-08-08, so on its first real run every
+// existing row was due at once. Without a cutoff that flushes the entire backlog as live mail:
+// stale, out-of-context welcome emails to the existing member base, which is exactly the kind of
+// burst that drives spam complaints — the one metric Gmail/Yahoo suspend bulk senders over.
+
+test("retires rows more than the lateness window past due, before selecting work", async () => {
+  const { deps, queries } = fakeDeps({ selectRows: [] });
+  await processDueWelcomeSequenceSteps(200, deps);
+
+  const retire = queries.find((q) => q.sql.includes("UPDATE welcome_sequence_state") && q.sql.includes("interval"));
+  assert.ok(retire, "a retirement UPDATE must run");
+  assert.match(retire!.sql, /completed_at = NOW\(\)/, "stale rows are completed, not left pending");
+  assert.match(retire!.sql, /next_send_at = NULL/, "and unscheduled so they cannot resurface");
+  assert.match(retire!.sql, /next_send_at < NOW\(\) - /, "only rows PAST the window are retired");
+  assert.match(retire!.sql, /completed_at IS NULL/, "already-finished rows are left alone");
+  assert.deepEqual(retire!.params, ["7"], "7-day window ≈ 3 step gaps");
+
+  const select = queries.findIndex((q) => q.sql.includes("SELECT user_id, email, first_name, steps_sent"));
+  const retireIdx = queries.indexOf(retire!);
+  assert.ok(retireIdx < select, "retirement must run BEFORE the due-work select, or stale rows still send");
+});
+
+test("retiring stale rows never sends mail", async () => {
+  // The whole point: a row past the window exits the drip silently.
+  const { deps, sent } = fakeDeps({ selectRows: [] });
+  const res = await processDueWelcomeSequenceSteps(200, deps);
+  assert.equal(sent.length, 0);
+  assert.equal(res.sent, 0);
+});
+
+test("rows inside the window still send normally", async () => {
+  // Guard against the cutoff being over-broad — a few missed hourly runs must still deliver.
+  const { deps, sent } = fakeDeps({
+    selectRows: [{ user_id: "user_1", email: "trader@example.com", first_name: "Sam", steps_sent: 1 }],
+    sendOk: true,
+  });
+  const res = await processDueWelcomeSequenceSteps(200, deps);
+  assert.equal(res.sent, 1, "a due row inside the window is still delivered");
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].subject, WELCOME_SEQUENCE[1].build({ email: "trader@example.com", firstName: "Sam" }).subject);
 });
