@@ -42,6 +42,12 @@ const PUBLIC_ROUTE_ALLOWLIST = new Set([
   // audience allow-list pinned in env (`NATIVE_OAUTH_{GOOGLE,APPLE}_CLIENT_IDS`);
   // any token from a different client-id is rejected as `verify_failed`.
   "src/app/api/auth/native-oauth/complete/route.ts",
+  // Deliberately public write endpoint (see docs/marketing/SEO-GROWTH.md
+  // finding #7) — a logged-out visitor closing the tab is exactly who this
+  // exists for, so it can't require a signed-in guard. Secured by an IP rate
+  // limit (5 req/60s) + a hard body-field-length cap, matching the same
+  // reasoning as the telemetry public routes above.
+  "src/app/api/public/email-capture/route.ts",
   // Deliberately public lead-magnet endpoint (see docs/marketing/SEO-GROWTH.md
   // finding #5). Serves ONLY a thin, several-minutes-delayed projection
   // (spot/call-put wall/flip/regime for a 3-ticker allowlist) via
