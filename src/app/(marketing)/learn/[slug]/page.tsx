@@ -5,7 +5,7 @@ import { LearnGuideView } from "@/components/learn/LearnGuideView";
 import { LearnGlossaryPage } from "@/components/learn/LearnGlossaryPage";
 import { ArticleJsonLd, FAQPageJsonLd } from "@/components/seo/JsonLd";
 import { Breadcrumbs } from "@/components/seo/Breadcrumbs";
-import { publicPageMetadata } from "@/lib/page-metadata";
+import { publicPageMetadata, buildOgImageUrl } from "@/lib/page-metadata";
 import { LEARN_ARTICLES, getArticle } from "@/lib/learn/articles";
 import { getLearnGuide } from "@/lib/learn/guides";
 import { GUIDE_SEO, isLearnGuideSlug } from "@/lib/learn/guide-seo";
@@ -56,6 +56,9 @@ export default async function LearnSlugPage({ params }: Props) {
           title={seo.metaTitle}
           description={seo.metaDescription}
           path={`/learn/${slug}`}
+          image={buildOgImageUrl(seo.metaTitle, seo.metaDescription, {
+            kicker: "BlackOut Academy",
+          })}
           datePublished={seo.datePublished}
           dateModified={seo.dateModified}
         />
@@ -81,6 +84,9 @@ export default async function LearnSlugPage({ params }: Props) {
         title={article.metaTitle}
         description={article.metaDescription}
         path={article.path}
+        image={buildOgImageUrl(article.metaTitle, article.metaDescription, {
+          articleType: article.type,
+        })}
         datePublished={ARTICLE_DATE_PUBLISHED}
         dateModified={ARTICLE_DATE_MODIFIED}
       />
