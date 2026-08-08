@@ -37,29 +37,6 @@ export const EMAIL_BRAND = {
   muted: "#64748b",
 } as const;
 
-/**
- * Physical mailing address, rendered in every email footer.
- *
- * CAN-SPAM (15 U.S.C. 7704(a)(5)) requires a valid physical postal address in EVERY commercial
- * message — it is not satisfied by an unsubscribe link, and it applies to the welcome drip and the
- * lead magnet. Penalties are assessed per-email, so a missing address is a per-send liability, not
- * a one-off.
- *
- * Deliberately env-driven with NO fallback string: a placeholder or invented address is worse than
- * an absent one (it is an inaccurate representation in its own right). When unset the line is
- * omitted and `marketingFooterReady()` reports false so callers can warn rather than silently ship
- * non-compliant mail.
- */
-export function postalAddress(): string | null {
-  return process.env.EMAIL_POSTAL_ADDRESS?.trim() || null;
-}
-
-/** False when a MARKETING send would go out without the CAN-SPAM postal address. Transactional
- *  mail (billing, payment failure, access ended) is exempt and does not consult this. */
-export function marketingFooterReady(): boolean {
-  return postalAddress() !== null;
-}
-
 export function emailLayout(input: {
   /** Hidden preview text shown next to the subject line in most inbox lists. */
   preheader: string;
@@ -136,7 +113,6 @@ ${bodyHtml}
   </tr></table>
   <p style="font-size:11.5px;color:#94a3b8;margin:16px 0 0;line-height:1.6;">
     BlackOut Trades — educational and informational only, not financial advice.<br />
-    ${postalAddress() ? `${postalAddress()}<br />` : ""}
     ${
       unsubscribeUrl
         ? `Didn't ask for this? <a href="${unsubscribeUrl}" style="color:#94a3b8;">Unsubscribe</a> or contact <a href="mailto:support@blackouttrades.com" style="color:#94a3b8;">support@blackouttrades.com</a>.`

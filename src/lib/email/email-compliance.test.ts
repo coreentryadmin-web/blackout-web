@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { readdirSync } from "node:fs";
-import { emailLayout, postalAddress, marketingFooterReady } from "./layout.ts";
+import { emailLayout } from "./layout.ts";
 import { MEMBERSHIP_PRICING } from "@/lib/pricing";
 
 /**
@@ -32,41 +32,6 @@ test("no template hardcodes a price — every figure comes from MEMBERSHIP_PRICI
         `${file} hardcodes $${price} — import it from @/lib/pricing instead so emails can't drift from /pricing`
       );
     }
-  }
-});
-
-test("postalAddress() never invents an address", () => {
-  // A placeholder address is its own CAN-SPAM problem — an inaccurate representation. Absent is
-  // strictly better than fabricated, so there is deliberately no fallback string.
-  const before = process.env.EMAIL_POSTAL_ADDRESS;
-  try {
-    delete process.env.EMAIL_POSTAL_ADDRESS;
-    assert.equal(postalAddress(), null);
-    assert.equal(marketingFooterReady(), false, "an unset address must report the footer as NOT ready");
-    process.env.EMAIL_POSTAL_ADDRESS = "   ";
-    assert.equal(postalAddress(), null, "whitespace is not an address");
-    process.env.EMAIL_POSTAL_ADDRESS = "1 Example St, Suite 2, Austin, TX 78701";
-    assert.equal(marketingFooterReady(), true);
-  } finally {
-    if (before === undefined) delete process.env.EMAIL_POSTAL_ADDRESS;
-    else process.env.EMAIL_POSTAL_ADDRESS = before;
-  }
-});
-
-test("the footer renders the postal address when one is configured", () => {
-  const before = process.env.EMAIL_POSTAL_ADDRESS;
-  try {
-    process.env.EMAIL_POSTAL_ADDRESS = "1 Example St, Suite 2, Austin, TX 78701";
-    const { html } = emailLayout({ preheader: "x", bodyHtml: "<p>body</p>" });
-    assert.ok(html.includes("1 Example St, Suite 2, Austin, TX 78701"), "address must reach the footer");
-
-    delete process.env.EMAIL_POSTAL_ADDRESS;
-    const { html: bare } = emailLayout({ preheader: "x", bodyHtml: "<p>body</p>" });
-    assert.ok(!bare.includes("Example St"), "no stale address when unset");
-    assert.ok(bare.includes("not financial advice"), "the rest of the footer still renders");
-  } finally {
-    if (before === undefined) delete process.env.EMAIL_POSTAL_ADDRESS;
-    else process.env.EMAIL_POSTAL_ADDRESS = before;
   }
 });
 
