@@ -115,7 +115,7 @@ export function RedesignHome() {
                       <div className="gal-track">
                         {MARKETING_MODULE_GALLERY[m.id].map((img, j) => (
                           <div key={j} className={`gal-slide${j === 0 ? " gal-active" : ""}`}>
-                            <Image className="cmd-img" src={img} alt={`${m.label} screenshot ${j + 1}`} fill sizes="(max-width: 768px) 100vw, 600px" loading="lazy" />
+                            <Image className="cmd-img" src={img} alt={`${m.label} screenshot ${j + 1}`} fill sizes="(max-width: 480px) 300px, (max-width: 768px) 360px, 520px" loading="lazy" />
                           </div>
                         ))}
                       </div>
@@ -128,7 +128,7 @@ export function RedesignHome() {
                       </div>
                     </div>
                   ) : (
-                    <Image className="cmd-img" src={MARKETING_MODULE_GALLERY[m.id][0]} alt={`${m.label} screenshot`} fill sizes="(max-width: 768px) 100vw, 600px" loading="lazy" />
+                    <Image className="cmd-img" src={MARKETING_MODULE_GALLERY[m.id][0]} alt={`${m.label} screenshot`} fill sizes="(max-width: 480px) 300px, (max-width: 768px) 360px, 520px" loading="lazy" />
                   )}
                   <div className="cmd-scan" aria-hidden="true" />
                 </div>

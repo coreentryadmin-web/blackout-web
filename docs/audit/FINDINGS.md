@@ -4,6 +4,20 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-08 - [P3, PERFORMANCE] Homepage module gallery images over-fetched by ~2-3x — `sizes` claimed 100vw for a fixed-width carousel card — FIXED
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P3, real measured bandwidth/LCP cost on a page that gets organic + paid traffic. First live PageSpeed Insights run for this repo (mobile, homepage): Performance 73/100, LCP 5.3s (Google's "poor" threshold is >4s). Google's own PageSpeed Insights API was quota-exhausted for anonymous requests (0/day) — the operator supplied a real API key to get real numbers instead of guessing. |
+| **Root cause** | `RedesignHome.tsx`'s module deep-dive gallery (`<Image fill sizes="(max-width: 768px) 100vw, 600px">`, used for every `MARKETING_MODULE_GALLERY` slide — HELIX, Thermal, Vector, Largo screenshots) told Next.js's image optimizer the image could render at full viewport width on mobile. The actual container, `.cmd-card` (`src/app/marketing-redesign.css`), is a **fixed-width flex item in a horizontal-scroll carousel** — `520px` desktop, `360px` at ≤768px, `300px` at ≤480px — never anywhere close to 100vw. Confirmed against PSI's own live DOM measurement: the flagged `HELIX screenshot 2` node's `boundingRect` was `318×339px` (a carousel slide peeking in from a ~412px test viewport), not full-width. Next.js, told the image needed to cover 100vw, picked far larger srcset breakpoints than the image would ever actually render at — PSI's `image-delivery-insight` flagged 72.5KB wasted on the single biggest offender (a different image, the hero logo, left unfixed — see below) and 12-18KB per gallery slide across multiple screenshots. |
+| **Fix** | Both `<Image>` call sites sharing this container (`.cmd-visual .cmd-img`, single-image and gallery-carousel variants) now use `sizes="(max-width: 480px) 300px, (max-width: 768px) 360px, 520px"` — the exact `.cmd-card` breakpoint widths from the CSS, not a vw estimate. |
+| **Not fixed here — different shape, higher risk** | The hero logo image (`#logo-img`, biggest single item at 72.5KB wasted) sits inside a 3-way CSS `clamp(240px, 65vw, 340px)` fluid width (`.hero-reactor` → `.r-core` at 78%). Traced the exact CSS chain and confirmed the math against PSI's measured 209×209 rendered size, but didn't change its `sizes` attribute: precisely expressing a `clamp()` range in the HTML `sizes` attribute risks falling back to the browser's 100vw default on older/unsupported engines, which would be *worse* than the current (already fairly close) `250px` estimate. Left as a flagged follow-up rather than a blind edit on a purely fluid layout I can't visually re-verify without a live deploy. |
+| **Blast radius** | Every module gallery screenshot across the homepage's module deep-dive section — one shared `sizes` string, so the fix applies uniformly (HELIX ×4, Thermal ×4, Vector ×4, Largo ×2, plus the single-image SPX Slayer/Night Hawk cards). |
+| **Verification** | `npx tsc --noEmit` clean; `npm run lint:vendor` clean. Real before/after PSI re-measurement needs this to actually deploy first — flagged as a follow-up once live. |
+| **Status** | FIXED (gallery). Hero logo left as a documented, deliberately-not-attempted follow-up. |
+
+---
+
 ## 2026-08-08 - [P3, SEO] 6 of 7 `/learn/[slug]` guide pages have real FAQ content never exposed as FAQPage schema — FIXED
 
 | Field | Value |
