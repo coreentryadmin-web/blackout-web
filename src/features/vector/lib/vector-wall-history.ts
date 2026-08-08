@@ -92,6 +92,42 @@ const COMPACT_TAIL_BUCKET_SEC = 15;
  * If one pass is not enough (a pathological burst), it falls back to the old tail slice so the cap
  * is still an absolute bound.
  */
+/**
+ * Snap a thinned tail sample onto its bucket boundary.
+ *
+ * Both tail thinners below (compactHistoryToCap, decimateSeedHistory) used to keep the bucket's
+ * last reading at its ORIGINAL timestamp. That is invisible for a 15s recorder cadence — the
+ * bucket width equals the cadence, so times already sit on 15s boundaries — and fatal for the 5s
+ * ORACLE cadence: the last sample in [15k, 15k+15) is at 15k+10, so the whole thinned tail lands
+ * on `time % 15 === 10`.
+ *
+ * That is unrenderable, not merely imprecise. WallRailPrimitive projects each bead with
+ * `ts.timeToCoordinate(p.time)`, which lightweight-charts implements as `timeToIndex(time,
+ * findNearest = false)` — it returns null for ANY time that is not exactly a bar time, and the
+ * primitive then does `if (x == null) continue`. Bar times are multiples of the candle interval
+ * (180s on a 3-min chart) and therefore ≡ 0 (mod 15); `15k+10` never is. So every phase-shifted
+ * bead was computed and silently discarded at draw time, leaving only the untouched
+ * newest-30-minutes window — the right-edge band reported on the SPX desk.
+ *
+ * Snapping to `bucket` (a multiple of 15, which divides 180) puts the tail back on a grid that CAN
+ * coincide with bars. This deliberately overrides the older "kept samples retain their ORIGINAL
+ * time — rewriting times would move real beads" invariant: the move is at most one bucket width
+ * (≤14s) on a chart whose smallest candle is 60s, and the alternative is not a slightly-misplaced
+ * bead but no bead at all.
+ *
+ * Never moves a sample BACKWARDS past one already kept — `Math.floor` can round below the retained
+ * anchor sample when both fall inside the first bucket, and wall history must stay ascending for
+ * trailsByStrike's same-bucket coalescing and every downstream slice.
+ */
+function snapTailSampleToBucket(
+  sample: WallHistorySample,
+  bucket: number,
+  lastKeptTime: number | null
+): WallHistorySample {
+  if (lastKeptTime != null && bucket <= lastKeptTime) return sample;
+  return sample.time === bucket ? sample : { ...sample, time: bucket };
+}
+
 export function compactHistoryToCap(
   history: WallHistorySample[],
   cap: number = MAX_HISTORY,
@@ -114,11 +150,13 @@ export function compactHistoryToCap(
     }
     const bucket = Math.floor(sample.time / tailBucketSec) * tailBucketSec;
     if (bucket === lastBucket) {
-      out[out.length - 1] = sample; // keep the bucket's LAST reading, as the display bucketer does
+      // Keep the bucket's LAST reading, as the display bucketer does — snapped to the bucket
+      // boundary so it stays on a grid the time scale can resolve (see snapTailSampleToBucket).
+      out[out.length - 1] = snapTailSampleToBucket(sample, bucket, out.length > 1 ? out[out.length - 2]!.time : null);
       continue;
     }
     lastBucket = bucket;
-    out.push(sample);
+    out.push(snapTailSampleToBucket(sample, bucket, out.length ? out[out.length - 1]!.time : null));
   }
   return out.length > cap ? out.slice(out.length - cap) : out;
 }
@@ -327,15 +365,62 @@ export function strikeTrailWeight(points: StrikeTrailPoint[]): number {
   return max * 0.6 + mean * 0.4;
 }
 
-/** Pick the top-N strike rows to render (by cumulative |gamma| share across the session). */
+/**
+ * How far from spot a strike can sit and still count as "near" for row selection. Expressed as a
+ * fraction of spot so it scales across instruments (±2% is 155 SPX points, 12 META points).
+ *
+ * Chosen to comfortably contain an intraday session's price action plus the walls actually pinning
+ * it, while excluding the far-OTM band. Not a hard filter — see pickActiveStrikes.
+ */
+export const NEAR_SPOT_ROW_BAND_PCT = 0.02;
+
+/**
+ * Pick the top-N strike rows to render, preferring strikes NEAR SPOT.
+ *
+ * Strength alone is the wrong sort key once an instrument's biggest walls live far from price.
+ * Index put-wall open interest concentrates in far-OTM crash protection at round strikes, so on
+ * SPX the strongest put rows are 3-5% below spot and simply are not on screen — while near-spot
+ * walls that a trader is actually leaning on get crowded out of the 8 slots. A single stock does
+ * not show this: META's walls sit on top of price, so strength and proximity agree and the old
+ * ordering looked correct.
+ *
+ * Measured on prod 2026-08-07 by replaying this exact ranking over the live rails. SPX spot
+ * 7757.64 — put rows came back 8000, 7500, 7600, 7715, 7730, 7705, 7450, 7400: only 3 of 8 within
+ * ±1% of spot, the rest 250-350 points away. META spot 592.2 — rows 590, 550, 580, 560, 500, with
+ * the leaders sitting right on price. Same code, same cap, opposite outcome.
+ *
+ * The fix PARTITIONS rather than filters: near-spot rows are ranked by strength and fill the slots
+ * first, then any remaining slots are backfilled with the strongest out-of-band rows. A genuine
+ * far-OTM wall is therefore still drawn when there is room for it — this never silently drops a
+ * wall that would previously have rendered UNLESS a nearer, on-screen wall wanted the slot. With
+ * `spot` absent (null/0/NaN — the caller cannot always resolve it) behaviour is byte-identical to
+ * the previous pure-strength ordering.
+ */
 export function pickActiveStrikes(
   trails: Map<number, StrikeTrailPoint[]>,
-  maxStrikes: number = MAX_STRIKE_TRAILS_PER_SIDE
+  maxStrikes: number = MAX_STRIKE_TRAILS_PER_SIDE,
+  opts: { spot?: number | null; bandPct?: number } = {}
 ): number[] {
-  return [...trails.entries()]
-    .sort((a, b) => strikeTrailWeight(b[1]) - strikeTrailWeight(a[1]))
-    .slice(0, maxStrikes)
-    .map(([strike]) => strike);
+  const byStrength = [...trails.entries()].sort(
+    (a, b) => strikeTrailWeight(b[1]) - strikeTrailWeight(a[1])
+  );
+
+  const spot = opts.spot;
+  // No usable spot → keep the historical ordering exactly. Guarding on `> 0` also covers NaN.
+  if (!(typeof spot === "number" && Number.isFinite(spot) && spot > 0)) {
+    return byStrength.slice(0, maxStrikes).map(([strike]) => strike);
+  }
+
+  const band = opts.bandPct ?? NEAR_SPOT_ROW_BAND_PCT;
+  const near: typeof byStrength = [];
+  const far: typeof byStrength = [];
+  for (const entry of byStrength) {
+    (Math.abs(entry[0] - spot) / spot <= band ? near : far).push(entry);
+  }
+
+  // Both halves are already strength-ordered (they were partitioned out of a sorted list), so
+  // concatenating preserves strength ranking WITHIN each half while promoting the near half.
+  return [...near, ...far].slice(0, maxStrikes).map(([strike]) => strike);
 }
 
 /** Anchor live trail trimming to the latest candle or wall sample — not wall-clock alone. */
@@ -679,8 +764,10 @@ export const SEED_TAIL_BUCKET_SEC = 15;
  *  - the newest {@link SEED_FULL_RESOLUTION_SEC} is returned untouched — sample-for-sample;
  *  - the FIRST sample always survives, so the session-open bead and `backfillRailPrefix`'s modeled
  *    prefix boundary can never be decimated away;
- *  - kept samples retain their ORIGINAL `time` (never re-keyed to the bucket start) — the client
- *    re-buckets for display anyway, and rewriting times would move real beads;
+ *  - kept samples in the DECIMATED TAIL are snapped to their bucket start; samples in the
+ *    untouched newest window keep their original `time`. The old invariant ("never re-keyed")
+ *    made the 5s oracle tail land on `t % 15 === 10`, which the time scale cannot resolve to a
+ *    bar and the rail primitive therefore dropped entirely — see snapTailSampleToBucket;
  *  - order is preserved and the output is a subset of the input, so `modeled` flags, dominance
  *    filtering and `trailsByStrike`'s "still in the latest bucket" logic all keep working on real
  *    recorded samples rather than synthesised ones.
@@ -712,12 +799,13 @@ export function decimateSeedHistory(
     const bucket = Math.floor(sample.time / bucketSec) * bucketSec;
     if (bucket === lastBucket) {
       // Same bucket as the sample already kept: replace it, so the bucket keeps its LAST reading —
-      // the same "last wins" rule bucketWallHistoryForInterval uses for display.
-      out[out.length - 1] = sample;
+      // the same "last wins" rule bucketWallHistoryForInterval uses for display. Snapped to the
+      // bucket boundary so the thinned tail stays renderable (see snapTailSampleToBucket).
+      out[out.length - 1] = snapTailSampleToBucket(sample, bucket, out.length > 1 ? out[out.length - 2]!.time : null);
       continue;
     }
     lastBucket = bucket;
-    out.push(sample);
+    out.push(snapTailSampleToBucket(sample, bucket, out.length ? out[out.length - 1]!.time : null));
   }
   return out;
 }

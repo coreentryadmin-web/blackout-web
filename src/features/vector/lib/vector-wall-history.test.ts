@@ -628,7 +628,18 @@ test("decimateSeedHistory: the old tail collapses to one sample per bucket, keep
     byBucket.set(Math.floor(s.time / 15) * 15, s);
   }
   for (const s of tail.slice(1)) {
-    assert.deepEqual(s, byBucket.get(Math.floor(s.time / 15) * 15), "bucket must keep its last reading");
+    const bucket = Math.floor(s.time / 15) * 15;
+    const src = byBucket.get(bucket)!;
+    // The bucket still keeps its LAST reading — but the emitted sample's `time` is now SNAPPED to
+    // the bucket start rather than carrying the source sample's own timestamp. On a 5s rail the
+    // source would be bucket+10, which the chart's time scale cannot resolve to a bar, so the bead
+    // was dropped at draw time (see snapTailSampleToBucket in vector-wall-history.ts).
+    assert.equal(s.time, bucket, "tail sample time is snapped to its bucket start");
+    assert.deepEqual(
+      { ...s, time: 0 },
+      { ...src, time: 0 },
+      "bucket must keep its last reading (payload identical, only `time` re-keyed)"
+    );
   }
 });
 
@@ -638,11 +649,26 @@ test("decimateSeedHistory: the first sample always survives (session-open bead /
   assert.deepEqual(out[0], history[0], "backfillRailPrefix's prefix boundary must never be decimated away");
 });
 
-test("decimateSeedHistory: output is an ordered SUBSET — real samples, original times, never re-keyed", () => {
+test("decimateSeedHistory: ordered, real RECORDED readings — tail times re-keyed to bucket starts", () => {
+  // Renamed from "...original times, never re-keyed". That invariant was deliberately dropped: a
+  // 5s tail kept at its original time lands on t%15===10, which is never a bar time, so the rail
+  // primitive discarded those beads entirely. Payloads are still real recorded readings — only the
+  // timestamp moves, by at most one bucket width (<=14s) on a >=60s candle.
   const history = session5s(1200);
   const out = decimateSeedHistory(history, { fullResolutionSec: 30 * 60, tailBucketSec: 15 });
+  const newest = history[history.length - 1]!.time;
+  const payloads = new Set(history.map((s) => JSON.stringify({ ...s, time: 0 })));
+  for (const s of out) {
+    assert.ok(
+      payloads.has(JSON.stringify({ ...s, time: 0 })),
+      "every emitted sample must be a real recorded reading, never synthesised"
+    );
+  }
+  // The untouched live window still carries its exact original timestamps.
   const times = new Set(history.map((s) => s.time));
-  for (const s of out) assert.ok(times.has(s.time), `synthesised time ${s.time} — seeds must stay real samples`);
+  for (const s of out.filter((x) => x.time >= newest - 30 * 60)) {
+    assert.ok(times.has(s.time), `live-window sample ${s.time} must keep its original time`);
+  }
   for (let i = 1; i < out.length; i++) assert.ok(out[i]!.time > out[i - 1]!.time, "strictly increasing");
   assert.ok(out.length < history.length, "a full session at 5s must actually shrink");
 });

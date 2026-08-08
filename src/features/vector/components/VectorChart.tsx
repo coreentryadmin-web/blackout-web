@@ -1021,7 +1021,10 @@ function applyWallBeadMarkers(
   /** Pin a ghost bead at the latest bar for live-edge zoom — off during session overview so the
    *  full recorded trail stretches across RTH without a fake right-edge column. */
   pinLiveAnchorBeads = true,
-  trailBucketSec = VECTOR_WALL_TRAIL_SEC
+  trailBucketSec = VECTOR_WALL_TRAIL_SEC,
+  /** Live spot, used to prefer near-spot bead rows over far-OTM ones (see pickActiveStrikes).
+   *  null is a supported state — the row ordering then falls back to pure strength. */
+  spot: number | null = null
 ): { strikes: number[]; rendered: StrikeTrail[] } {
   if (!beadsPlugin) return { strikes: [], rendered: [] };
   const bucketed = bucketWallHistoryForInterval(history, intervalMinutes, {
@@ -1035,7 +1038,7 @@ function applyWallBeadMarkers(
   const trailMap = new Map(lifecycle.map((t) => [t.strike, t.points]));
   // Bead strike-rows scale with the timeframe the same way the wall guides do — few near-spot
   // rows on 1m, more (further-out) rows on higher timeframes.
-  const active = pickActiveStrikes(trailMap, maxStrikes);
+  const active = pickActiveStrikes(trailMap, maxStrikes, { spot });
   const activeSet = new Set(active);
   const rendered = lifecycle.filter((t) => activeSet.has(t.strike));
   // Per-wall integrity → bead rings. Scored only on the GEX lens: persistence is measured against
@@ -1703,7 +1706,8 @@ export function VectorChart({
       liveBeads,
       beadRowCap,
       pinLiveAnchorBeads,
-      trailBucketSec
+      trailBucketSec,
+      spotRef.current
     );
     const put = applyWallBeadMarkers(
       putBeadsRef.current,
@@ -1716,7 +1720,8 @@ export function VectorChart({
       liveBeads,
       beadRowCap,
       pinLiveAnchorBeads,
-      trailBucketSec
+      trailBucketSec,
+      spotRef.current
     );
     // Feed the ribbon rail the SAME composed call+put trails (both sides share one frame reference).
     feedWallRail(wallRailPrimitiveRef.current, call.rendered, put.rendered, v.callColor, v.putColor, true);
@@ -2294,7 +2299,8 @@ export function VectorChart({
         false,
         wallCountForTimeframe(timeframeRef.current),
         true,
-        trailBucketSec
+        trailBucketSec,
+        spotRef.current
       );
       const put = applyWallBeadMarkers(
         putBeadsRef.current,
@@ -2307,7 +2313,8 @@ export function VectorChart({
         false,
         wallCountForTimeframe(timeframeRef.current),
         true,
-        trailBucketSec
+        trailBucketSec,
+        spotRef.current
       );
       // Feed the ribbon rail the point-in-time trails so replay scrubs the bands too, not just dots.
       feedWallRail(wallRailPrimitiveRef.current, call.rendered, put.rendered, v.callColor, v.putColor, true);

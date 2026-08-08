@@ -13,6 +13,8 @@ export function publicSitemapEntries(): SitemapEntry[] {
   const marketing: SitemapEntry[] = [
     { path: "/", changeFrequency: "weekly", priority: 1.0 },
     { path: "/pricing", changeFrequency: "weekly", priority: 0.9 },
+    { path: "/vs/others", changeFrequency: "monthly", priority: 0.7 },
+    { path: "/tools/gamma-snapshot", changeFrequency: "daily", priority: 0.8 },
     { path: "/faq", changeFrequency: "monthly", priority: 0.7 },
     { path: "/why-blackout", changeFrequency: "monthly", priority: 0.8 },
     { path: "/about", changeFrequency: "monthly", priority: 0.7 },
