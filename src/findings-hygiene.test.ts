@@ -65,13 +65,14 @@ test("the UNRECONCILED backlog is not silently growing", () => {
   // is just a high-water mark. It has moved twice, both times downward and for a stated reason:
   //   273 -> 240  the reconciler read the outcome only from a `| **Status** |` row, missing the 34
   //               entries that record it in the heading (`## ... — FIXED`). A miscount, not work.
-  //   240 -> 210  the 50 mid-flight "PR pending → CI → auto-merge" statuses were resolved against
-  //               the tree by scripts/audit/findings-verify-stale.mjs. Real work, real evidence.
+  //   240 -> 194  the 50 mid-flight "PR pending → CI → auto-merge" statuses were resolved against
+  //               the tree by scripts/audit/findings-verify-stale.mjs, and the 10 batched SEO
+  //               entries all shipped with a real outcome. Real work, real evidence.
   // Raising it to accommodate a new unreconciled entry is not one of the options.
   const n = (readFileSync(FINDINGS, "utf8").match(/`UNRECONCILED`/g) ?? []).length;
   assert.ok(
-    n <= 210,
-    `UNRECONCILED count rose to ${n} (ceiling 210) — new entries must carry a real status, not UNRECONCILED`
+    n <= 194,
+    `UNRECONCILED count rose to ${n} (ceiling 194) — new entries must carry a real status, not UNRECONCILED`
   );
 });
 

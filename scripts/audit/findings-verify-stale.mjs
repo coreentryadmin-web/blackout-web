@@ -22,14 +22,31 @@
  *   node scripts/audit/findings-verify-stale.mjs            # dry run — report only
  *   node scripts/audit/findings-verify-stale.mjs --apply     # rewrite verified statuses
  */
-import { readFileSync, writeFileSync, accessSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 
 const FINDINGS = process.env.FINDINGS_RECONCILE_FINDINGS ?? "docs/audit/FINDINGS.md";
 const APPLY = process.argv.includes("--apply");
 
-/** Same pattern findings-reconcile.mjs flags as stale — kept in sync deliberately. */
-const STALE = /PR pending|auto-merge (?:enabled|per standing)|→ CI →|PR opens on|→ PR\.?$/i;
+/**
+ * Same pattern findings-reconcile.mjs flags as stale — kept in sync deliberately.
+ *
+ * Built by joining an array rather than written as one flat literal so the precedence is visible:
+ * `$` binds only to its own alternative, so ONLY the "→ PR" case is end-anchored. Written flat it
+ * reads as though the anchor applied to every branch (CodeQL "missing regular expression anchor").
+ * The behaviour was already right; the expression lied about it, exactly as it did in
+ * findings-reconcile.mjs — this file copied the flat form from there before that was fixed.
+ */
+const STALE = new RegExp(
+  [
+    "PR pending",
+    "auto-merge (?:enabled|per standing)",
+    "→ CI →",
+    "PR opens on",
+    "→ PR\\.?$", // anchored ON PURPOSE: a status ENDING "→ PR" is a hand-off note, not an outcome
+  ].join("|"),
+  "i"
+);
 
 /** Words that appear in backticks but are not identifiers a fix would have introduced. */
 const NOT_A_SYMBOL = /^(the|and|src|test|tests|true|false|null|undefined|string|number|boolean|main|origin)$/i;
