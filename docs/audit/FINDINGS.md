@@ -4,6 +4,14 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-08 - [P3, hardening] `/api/og`'s `title` query param had no length bound, unlike `description` — FIXED
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P3. `src/app/api/og/route.tsx` reads `title` straight from the query string with no length cap or truncation, while `description` is explicitly clamped at 140 chars with an ellipsis. `title` only gets 3 font-size tiers based on length, with no `line-clamp`/overflow guard. Every current call site (`publicPageMetadata` callers) keeps titles ≤64 chars so this wasn't firing in practice — but the route is a public, directly-fetchable endpoint (`/api/og?title=...`) with no server-side validation, so a very long or unbroken-string title could overflow the 1200×630 canvas past the bottom branding bar, or risk a slow/pathological render for pathological inputs. No test coverage existed for this route at all. |
+| **Fix** | Extracted a pure `truncateOgTitle(title)` helper into a new `src/lib/seo/og-title.ts` (100-char cap with ellipsis, same style as the existing `description` truncation) and wired it into the route. Extracted to a separate lib file rather than exporting it from `route.tsx` directly — Next.js App Router route handler modules are only supposed to export the well-known route-segment-config keys (`GET`, `runtime`, `dynamic`, etc.), so an arbitrary extra named export risked route-export validation issues; a separate importable file is both safer and testable without needing to exercise the edge-runtime image renderer. |
+| **Verification** | Added `src/lib/seo/og-title.test.ts`: short titles pass through unchanged, a title exactly at the cap is unchanged, an over-length title truncates to exactly the cap length with a trailing ellipsis, and a 5000-char unbroken pathological string (no whitespace to break on) is handled safely. `npx tsx --test src/lib/seo/og-title.test.ts` — 4/4 pass. `npx tsc --noEmit` / `npx eslint` — clean. Real `npm run build` run to confirm the edge route still compiles with the new import. |
+
 ## 2026-08-08 - [P1, SEO] `robots.ts` trailing-slash disallow rules never actually blocked the bare private routes (`/admin`, `/dashboard`, `/offline`, etc.) — FIXED
 
 | Field | Value |
