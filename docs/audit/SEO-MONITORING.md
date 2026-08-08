@@ -51,11 +51,17 @@ Two parts, both **read-only** (`webmasters.readonly` scope):
 
 Exits non-zero if any canonical URL is not indexed.
 
-First live run (2026-08-08) found 6 pages the sweep's own new/renamed content had left
-un-indexed (`/about`, `/learn/glossary`, `/learn/implied-volatility-explained`,
-`/learn/spx-slayer-dashboard-guide`, `/learn/thermal-heatmap-reading-guide`,
-`/learn/largo-ai-market-analysis-tips`) — resubmitted via the Google Indexing API immediately
-(all 6 accepted, `200`). Also surfaced `staging.blackouttrades.com/terminal` still carrying
+First live runs (2026-08-08) found 8 pages un-indexed across two passes. An initial partial
+check (before this script existed, `--skip-inspect`-equivalent by hand) covered 64 of 66
+canonical URLs and found 6 un-indexed (`/about`, `/learn/glossary`,
+`/learn/implied-volatility-explained`, `/learn/spx-slayer-dashboard-guide`,
+`/learn/thermal-heatmap-reading-guide`, `/learn/largo-ai-market-analysis-tips`) — resubmitted via
+the Google Indexing API, all 6 accepted (`200`). The full 66-URL sweep this script actually runs
+caught 2 more the partial check had never reached: `/vs/others` and `/tools/gamma-snapshot` —
+also resubmitted, both accepted (`200`). A re-check after the first batch confirmed `/about` had
+already flipped to indexed, evidence the resubmission path works, not just that it returned
+`200`. The other 7 will take Google's own recrawl schedule to reflect — re-run this script in a
+few days to confirm. Also surfaced `staging.blackouttrades.com/terminal` still carrying
 impressions/clicks in the 28-day window — verified `staging.blackouttrades.com` returns `HTTP
 530` (Cloudflare origin-DNS error), confirming CLAUDE.md's note that staging was fully
 decommissioned 2026-07-25; this is residual GSC history within the lookback window, not a live
