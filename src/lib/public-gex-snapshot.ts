@@ -39,6 +39,28 @@ export function publicGexTickers(): readonly PublicGexTicker[] {
 const CACHE_TTL_SEC = 300;
 const EMPTY_CACHE_TTL_SEC = 30; // short-lived so a transient upstream miss self-heals fast
 
+/**
+ * Strip vendor/infra provenance from the regime narration before it leaves the server.
+ *
+ * `read` is the ONLY unbounded string in this projection — every other field is a number or a
+ * two-value enum. Its normal producer is harmless (it restates spot/flip/walls, all of which are
+ * already in the payload), but the UW-FALLBACK producer appends
+ * "(UW all-expiry dealer gamma — Polygon chain unavailable; levels are live UW OI, not the
+ * canonical near-term Polygon matrix.)" — see polygon-options-gex.ts. On an authenticated desk
+ * that is useful honesty; on an UNAUTHENTICATED endpoint it tells anyone who polls which market-
+ * data vendors we buy and broadcasts, in real time, whenever our primary chain provider is
+ * degraded. Neither belongs in a marketing lead magnet.
+ *
+ * Drops any parenthetical naming a data provider and leaves the trader-facing sentence intact, so
+ * a future producer that adds a new provenance note is stripped too rather than silently leaking.
+ */
+export function sanitizePublicRead(read: string): string {
+  return read
+    .replace(/\s*\([^()]*\b(?:UW|Unusual\s*Whales|Polygon|Massive)\b[^()]*\)/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 function emptySnapshot(ticker: string): PublicGexSnapshot {
   return {
     available: false,
@@ -80,7 +102,7 @@ export async function buildPublicGexSnapshot(ticker: PublicGexTicker): Promise<P
       put_wall: heatmap.gex.put_wall,
       flip: heatmap.gex.flip,
       posture: heatmap.gex.regime.posture,
-      read: heatmap.gex.regime.read,
+      read: sanitizePublicRead(heatmap.gex.regime.read),
     };
     await sharedCacheSet(cacheKey, snapshot, CACHE_TTL_SEC).catch(() => undefined);
     return snapshot;
