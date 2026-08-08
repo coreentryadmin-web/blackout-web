@@ -50,10 +50,19 @@ const stripAnnotations = (b) => b.replace(/^> \*\*(kind|status):\*\*.*$/gm, "");
  */
 function prState(n, cache) {
   if (cache.has(n)) return cache.get(n);
+  // `n` originates in FINDINGS.md, which is a file agents append to — so it is untrusted input
+  // flowing into a URL (CodeQL 586, "outbound network request depends on file data"). The capture
+  // group upstream is digits-only, so today it cannot inject anything, but that is a property of a
+  // regex someone could loosen later without noticing this call site. Re-assert it here, where the
+  // URL is actually built, and fail loudly rather than fetching something unintended.
+  if (!/^\d{3,5}$/.test(String(n))) {
+    throw new Error(`refusing to fetch a non-numeric PR reference from ${FINDINGS}: ${JSON.stringify(n)}`);
+  }
+  const ref = encodeURIComponent(String(n));
   const args = [
     "-sS", "--fail-with-body", "-H", `Authorization: Bearer ${TOKEN}`,
     "-H", "Accept: application/vnd.github+json",
-    `https://api.github.com/repos/${REPO}/pulls/${n}`,
+    `https://api.github.com/repos/${REPO}/pulls/${ref}`,
   ];
   let out;
   try {
