@@ -6,25 +6,31 @@ import { SITE } from "@/lib/site";
  * Marketing pages (/pricing, /upgrade, /learn/*, /why-blackout, etc.) are
  * intentionally ABSENT — they must remain crawlable for SEO.
  */
-const DISALLOWED_PATHS = [
-  "/api/",
-  "/admin/",
-  "/dashboard/",
-  "/terminal/",
-  "/vector/",
-  "/nighthawk/",
-  "/flows/",
-  "/heatmap/",
-  "/grid/",
-  "/account/",
-  "/sign-in/",
-  "/sign-up/",
-  "/native-signin/",
-  "/embed/",
-  "/offline/",
-  "/track-record/",
-  "/_next/",
+// Trailing-slash rules only match sub-paths, not the bare route (per the robots.txt
+// spec: `Disallow: /fish/` does NOT match `/fish`). Next.js serves every one of these
+// routes without a trailing slash (no `trailingSlash` override in next.config.mjs), so
+// each bare path needs its own explicit entry alongside the sub-path form.
+const DISALLOWED_ROOTS = [
+  "/api",
+  "/admin",
+  "/dashboard",
+  "/terminal",
+  "/vector",
+  "/nighthawk",
+  "/flows",
+  "/heatmap",
+  "/grid",
+  "/account",
+  "/sign-in",
+  "/sign-up",
+  "/native-signin",
+  "/embed",
+  "/offline",
+  "/track-record",
+  "/_next",
 ];
+
+const DISALLOWED_PATHS = DISALLOWED_ROOTS.flatMap((root) => [root, `${root}/`]);
 
 /**
  * AI crawlers to explicitly welcome. A separate rule per bot (with allow "/")
