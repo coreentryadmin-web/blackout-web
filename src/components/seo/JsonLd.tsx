@@ -1,4 +1,5 @@
 import { SITE } from "@/lib/site";
+import { MEMBERSHIP_PRICING } from "@/lib/pricing";
 
 type JsonLdProps = { data: Record<string, unknown> };
 
@@ -108,14 +109,14 @@ export function SoftwareApplicationJsonLd() {
           {
             "@type": "Offer",
             name: "SPX Slayer",
-            price: "49",
+            price: String(MEMBERSHIP_PRICING.community),
             priceCurrency: "USD",
             url: `${SITE.url}/pricing`,
           },
           {
             "@type": "Offer",
             name: "Premium",
-            price: "199",
+            price: String(MEMBERSHIP_PRICING.monthly),
             priceCurrency: "USD",
             url: `${SITE.url}/pricing`,
           },
