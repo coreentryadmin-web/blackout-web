@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { MarketingPageShell } from "@/components/landing/MarketingPageShell";
 import { RedesignPricing } from "@/components/landing/RedesignPricing";
-import { SoftwareApplicationJsonLd, WebPageJsonLd, BreadcrumbJsonLd, FAQPageJsonLd } from "@/components/seo/JsonLd";
+import { SoftwareApplicationJsonLd, WebPageJsonLd, FAQPageJsonLd } from "@/components/seo/JsonLd";
+import { Breadcrumbs } from "@/components/seo/Breadcrumbs";
 import { PRICING_FAQ_IDS, selectFaqItems } from "@/lib/faq/content";
 import { publicPageMetadata } from "@/lib/page-metadata";
 
@@ -21,7 +22,7 @@ export default function PricingPage() {
         description="Get BlackOut's SPX 0DTE desk from $49/mo, or all six trading modules plus Discord from $199/mo. No contracts, cancel anytime. See plans and get access."
         path="/pricing"
       />
-      <BreadcrumbJsonLd items={[
+      <Breadcrumbs items={[
         { name: "Home", href: "/" },
         { name: "Pricing", href: "/pricing" },
       ]} />

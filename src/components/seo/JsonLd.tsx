@@ -112,6 +112,7 @@ export function SoftwareApplicationJsonLd() {
             price: String(MEMBERSHIP_PRICING.community),
             priceCurrency: "USD",
             url: `${SITE.url}/pricing`,
+            availability: "https://schema.org/InStock",
           },
           {
             "@type": "Offer",
@@ -119,8 +120,48 @@ export function SoftwareApplicationJsonLd() {
             price: String(MEMBERSHIP_PRICING.monthly),
             priceCurrency: "USD",
             url: `${SITE.url}/pricing`,
+            availability: "https://schema.org/InStock",
           },
         ],
+        provider: {
+          "@type": "Organization",
+          name: SITE.name,
+          url: SITE.url,
+        },
+      }}
+    />
+  );
+}
+
+/**
+ * Distinct from SoftwareApplicationJsonLd (the paid membership product on /pricing) — this
+ * describes a single free, no-account browser tool (e.g. /tools/gamma-snapshot) as its own
+ * WebApplication entity, separate from the site-wide paid product schema.
+ */
+export function WebApplicationJsonLd({
+  name,
+  description,
+  path,
+}: {
+  name: string;
+  description: string;
+  path: string;
+}) {
+  return (
+    <JsonLdScript
+      data={{
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        name,
+        description,
+        url: `${SITE.url}${path}`,
+        applicationCategory: "FinanceApplication",
+        operatingSystem: "Web",
+        offers: {
+          "@type": "Offer",
+          price: "0",
+          priceCurrency: "USD",
+        },
         provider: {
           "@type": "Organization",
           name: SITE.name,

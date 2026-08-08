@@ -12,7 +12,7 @@ import { GUIDE_SEO, isLearnGuideSlug } from "@/lib/learn/guide-seo";
 import { guideFaqs } from "@/lib/learn/types";
 import { LEARN_NAV } from "@/lib/learn/nav";
 import { getArticleFaqs } from "@/lib/learn/article-faqs";
-import { ARTICLE_DATE_MODIFIED, ARTICLE_DATE_PUBLISHED } from "@/lib/seo/sitemap-dates";
+import { getArticleDates } from "@/lib/seo/sitemap-dates";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -77,6 +77,7 @@ export default async function LearnSlugPage({ params }: Props) {
 
   const article = getArticle(slug);
   if (!article) notFound();
+  const articleDates = getArticleDates(article.slug);
 
   return (
     <>
@@ -87,8 +88,8 @@ export default async function LearnSlugPage({ params }: Props) {
         image={buildOgImageUrl(article.metaTitle, article.metaDescription, {
           articleType: article.type,
         })}
-        datePublished={ARTICLE_DATE_PUBLISHED}
-        dateModified={ARTICLE_DATE_MODIFIED}
+        datePublished={articleDates.datePublished}
+        dateModified={articleDates.dateModified}
       />
       <FAQPageJsonLd items={getArticleFaqs(article.slug)} />
       <Breadcrumbs

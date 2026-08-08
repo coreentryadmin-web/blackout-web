@@ -461,11 +461,11 @@ BlackOut [Thermal](/learn/heat-maps) maps dealer gamma positioning in real time,
     slug: "options-trading-glossary",
     path: "/learn/options-trading-glossary",
     metaTitle: "Options Trading Glossary: Key Terms | BlackOut",
-    metaDescription: "A plain-English glossary of options trading terms — dealer gamma, 0DTE, GEX, gamma flip, call wall, put wall, order flow and more, explained simply.",
+    metaDescription: "A plain-English glossary of general options trading terms: 0DTE, GEX, gamma flip, call wall, put wall, order flow, implied volatility, and more.",
     targetKeyword: "options trading glossary",
     type: "glossary",
     title: "Options Trading Glossary",
-    description: "A plain-English glossary of options trading terms — dealer gamma, 0DTE, GEX, gamma flip, call wall, put wall, order flow and more, explained simply.",
+    description: "A plain-English glossary of general options trading terms: 0DTE, GEX, gamma flip, call wall, put wall, order flow, implied volatility, and more.",
     body: `Plain-English definitions of the terms you'll see across BlackOut and the Learn hub. Each links to a deeper guide where one exists.
 
 **0DTE (Zero Days to Expiration)** — An option that expires the same trading day. Carries large, fast-decaying gamma, making intraday dealer positioning critical. See [0DTE SPX Options Strategy](/learn/0dte-spx-options-strategy).
@@ -2611,7 +2611,7 @@ BlackOut [Thermal](/learn/heat-maps) and [SPX Slayer](/learn/spx-slayer) surface
     path: "/learn/best-0dte-trading-strategies",
     metaTitle: "Best 0DTE Trading Strategies (Structured, Not Random) | BlackOut",
     metaDescription:
-      "The best 0DTE trading strategies start with dealer gamma: fade walls in positive GEX, ride momentum below the flip, sell condors in range regimes, and size for SPX notional.",
+      "The best 0DTE strategies start with dealer gamma: fade walls in positive GEX, ride momentum below the flip, sell condors in range regimes, and size properly.",
     targetKeyword: "best 0dte trading strategies",
     type: "article",
     title: "Best 0DTE Trading Strategies (Structured, Not Random)",

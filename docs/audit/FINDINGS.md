@@ -4,7 +4,87 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## How to read this file
+
+Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
+
+| kind | meaning |
+|---|---|
+| `FINDING` | a real issue. The default — anything the classifier could not confidently place stays here, because losing a finding is worse than keeping noise. |
+| `NEGATIVE-RESULT` | a cause that was **ruled out**. Keep it: its value is stopping someone re-investigating. |
+| `OPS-NOTE` | infra/ops housekeeping, not a product finding. |
+
+An entry's outcome may be recorded in EITHER a `| **Status** | ... |` table row OR the heading
+itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the heading form and nothing
+else, and they are among the best-documented in the file — each was written by the PR that shipped
+its own fix.
+
+`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown because no outcome was
+ever recorded in either place. **210 entries carry it**: 164 FINDINGs plus OPS-NOTE /
+NEGATIVE-RESULT entries that never got a status. Each needs checking against the code and
+restamping as `FIXED (<sha>)` / `OPEN` / `SUPERSEDED BY <entry>`. That is the outstanding work on
+this file, and `src/findings-hygiene.test.ts` pins the count so it can only go down.
+
+The other flavour of UNRECONCILED — a status written mid-flight ("PR pending → CI → auto-merge")
+and never revisited — is **gone: 50 entries, now 0**. All 50 were resolved against the tree by
+`scripts/audit/findings-verify-stale.mjs`, which looks for the identifiers each entry's own **Fix**
+field claims to have introduced. Do not reintroduce that shape: a status describing what you are
+about to do is not a status, and it cost this repo a phantom backlog item (see
+`BACKLOG-2026-08-08.md` §1.2).
+
+Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
+
+## 2026-08-08 — [NEGATIVE RESULT, nav error investigation] SSE stream drops RULED OUT as the cause of "We couldn't load this page"
+> **kind:** `NEGATIVE-RESULT`
+
+| Field | Value |
+|-------|-------|
+| **Status** | RULED OUT by source inspection on 2026-08-08. No code change. The intermittent navigation error remains UNEXPLAINED — this closes the leading hypothesis, it does not close the bug. |
+| **The hypothesis** | `docs/audit/BACKLOG-2026-08-08.md` §2.1 named SSE as the live lead: `/api/market/spx/pulse/stream` and `/api/market/flows/stream` are EventSource endpoints that genuinely drop on every ECS task recycle (8+ deploys on 08-08), Cloudflare idle timeout, or network blip. The proposed mechanism was "a dropped stream propagates into render rather than degrading", which would explain the symptom being intermittent, navigation-adjacent, and correlated with deploy activity. |
+| **Why it does not hold** | Read every EventSource consumer. All of them degrade; none can reach an error boundary. `src/lib/api.ts:758` (`createFlowEventSource`) and `:794` (`createPulseEventSource`) both wrap `JSON.parse` in `try/catch`, so a malformed or truncated frame is swallowed rather than stored. `src/features/nighthawk/command-deck/use-live-marks.ts:123` handles `onerror` explicitly: it holds the last marks while the browser auto-reconnects (`readyState === CONNECTING`) and clears them only on terminal `CLOSED`, with a REST poll at `:135` that takes over whenever the SSE lane is not `OPEN` and stands down when it reopens. `useLiveSpxTape` and `useLiveQuoteStream` consume through those same guarded `lib/api` helpers and contain no parsing of their own. |
+| **The structural argument** | Even without the guards, this hypothesis was weak: `onmessage`/`onerror` fire outside React's render phase, so a throw inside either one does not trigger an error boundary — it becomes an unhandled rejection. For SSE to produce this error page it would have to poison component state with a shape that then throws during render, and every consumer either validates (`marksMapFromPayload` returns null on a bad shape) or swallows before reaching `setState`. |
+| **What this leaves** | The 2026-08-08 browser soak recorded 2 SSE transport timeouts and **0 error boundaries, 0 uncaught page errors** across 14 real client-side transitions — consistent with this reading: the streams do drop, and dropping is handled. Server render (1013 authenticated requests), RSC payloads (120/120), and cross-build chunk fetches were already ruled out. **Next lead should not be another SSE run.** Worth checking instead: client-side navigation into a route whose server component throws (which DOES hit the boundary), and whether the error page correlates with a specific route rather than with deploys. |
+
+## 2026-08-08 - [P3, SEO] `llms.txt` omitted 2 real, crawlable "Product" pages (`/tools/gamma-snapshot`, `/vs/others`) — FIXED
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P3. `src/app/llms.txt/route.ts`'s "Product" section listed Home/Pricing/FAQ/Why BlackOut/About/Contact but omitted `/tools/gamma-snapshot` (a real, allowed, dynamically-updated free tool — `changeFrequency: "daily"` in `sitemap-urls.ts:17`) and `/vs/others` (`sitemap-urls.ts:16`). Nothing *disallowed* was incorrectly listed — cross-checked against `robots.ts` and found no misalignment there — so this wasn't a correctness bug, just an incompleteness gap. Still worth closing since `llms.txt` is meant to be the AI-crawler-friendly index of everything crawlable, and these are two real product pages a crawler summarizing the site would otherwise miss. |
+| **Fix** | Added both links to the "Product" section, matching the existing bare-link format (no trailing description, consistent with every other entry in that section). |
+| **Verification** | Extended the existing `route.test.ts`'s "links every canonical top-level marketing page" test to assert both new paths. `npx tsx --test src/app/llms.txt/route.test.ts` — 4/4 pass. `npx tsc --noEmit` / `npx eslint` — clean. |
+
+## 2026-08-08 - [P3, cleanup] Orphaned `track-record/opengraph-image.tsx` still executed a live data fetch on direct hit, behind a page that always redirects — REMOVED
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P3, not a live SEO bug (the route is already `robots.ts`-disallowed), but real dead weight. `src/app/(site)/track-record/page.tsx` unconditionally calls `redirect("/admin?tab=track-record")` — it never renders HTML or serves metadata to a real visitor. `src/app/track-record/opengraph-image.tsx` (a sibling directory outside the `(site)` route group, mapping to the same `/track-record` URL segment for Next.js's special-file resolution) still existed, calling `buildPublicTrackRecord()` — a real data fetch — to render a 1200×630 PNG on every hit. |
+| **Investigation before deleting** | Checked git history: both files were introduced in the same commit (`62864d9a`, 2026-07-30) — this was never a working feature that regressed, it shipped already-orphaned. Checked `src/app/embed/track-record/page.tsx` (the other track-record-adjacent route): its own comment confirms the reclassification — `"Admin-only embed preview (formerly public social-proof iframe)"`, `requireAdmin()`-gated, `noindex`. The whole public track-record sharing feature was walked back to admin-only; this OG image generator is a leftover from when `/track-record` was still public. Grepped the entire `src/` tree for any reference to the file (imports, route generation, tests) — zero hits. |
+| **Fix** | Deleted `src/app/track-record/opengraph-image.tsx`. Since `(site)/track-record/page.tsx` already redirects before any metadata is served, and `robots.ts` already disallows `/track-record/`, removing the unreachable image generator has no SEO downside — it only removes a route that still executed a real DB-backed data fetch if hit directly (e.g. a stale cached link, or a bot resolving the synthesized image URL literally), with zero benefit to any real visitor. |
+| **Verification** | `npx tsc --noEmit` — clean. Real `npm run build` run to confirm no build-time regression from the removed route. |
+
+## 2026-08-08 - [P3, hardening] `/api/og`'s `title` query param had no length bound, unlike `description` — FIXED
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P3. `src/app/api/og/route.tsx` reads `title` straight from the query string with no length cap or truncation, while `description` is explicitly clamped at 140 chars with an ellipsis. `title` only gets 3 font-size tiers based on length, with no `line-clamp`/overflow guard. Every current call site (`publicPageMetadata` callers) keeps titles ≤64 chars so this wasn't firing in practice — but the route is a public, directly-fetchable endpoint (`/api/og?title=...`) with no server-side validation, so a very long or unbroken-string title could overflow the 1200×630 canvas past the bottom branding bar, or risk a slow/pathological render for pathological inputs. No test coverage existed for this route at all. |
+| **Fix** | Extracted a pure `truncateOgTitle(title)` helper into a new `src/lib/seo/og-title.ts` (100-char cap with ellipsis, same style as the existing `description` truncation) and wired it into the route. Extracted to a separate lib file rather than exporting it from `route.tsx` directly — Next.js App Router route handler modules are only supposed to export the well-known route-segment-config keys (`GET`, `runtime`, `dynamic`, etc.), so an arbitrary extra named export risked route-export validation issues; a separate importable file is both safer and testable without needing to exercise the edge-runtime image renderer. |
+| **Verification** | Added `src/lib/seo/og-title.test.ts`: short titles pass through unchanged, a title exactly at the cap is unchanged, an over-length title truncates to exactly the cap length with a trailing ellipsis, and a 5000-char unbroken pathological string (no whitespace to break on) is handled safely. `npx tsx --test src/lib/seo/og-title.test.ts` — 4/4 pass. `npx tsc --noEmit` / `npx eslint` — clean. Real `npm run build` run to confirm the edge route still compiles with the new import. |
+
+## 2026-08-08 - [P2, SEO] `/tools/gamma-snapshot` (real free lead-magnet tool) had no application-specific structured data — FIXED
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P2. `src/app/(marketing)/tools/gamma-snapshot/page.tsx` — a real, valuable free lead-magnet page (per its own code comment referencing `docs/marketing/SEO-GROWTH.md` finding #5) — only emitted generic `WebPageJsonLd`. `SoftwareApplicationJsonLd` exists in `src/components/seo/JsonLd.tsx` but is scoped to the paid membership product and used solely on `/pricing`; nothing described the free tool itself as an application/entity, and the client widget (`GammaSnapshotWidget.tsx`) emits no JSON-LD either. Missing eligibility for tool-oriented rich results and clearer entity understanding by AI answer engines. |
+| **Fix** | Added a new `WebApplicationJsonLd` component to `JsonLd.tsx` — deliberately separate from `SoftwareApplicationJsonLd` (the paid product) rather than overloading it, since this describes a distinct, free, no-account entity with its own `Offer` (`price: "0"`). Wired it into `/tools/gamma-snapshot` alongside the existing `WebPageJsonLd`, using the page's own real title/description (no new copy invented). |
+| **Verification** | Added `src/components/seo/WebApplicationJsonLd.ssr.test.ts` (SSR via `renderToStaticMarkup`) asserting the `@type`, `name`, `url`, and the `$0` `Offer`. `npx tsx --test` — pass. `npx tsc --noEmit` / `npx eslint` — clean. Real `npm run build` succeeded, route table confirms `/tools/gamma-snapshot` still compiles as dynamic (`ƒ`, matching its `force-dynamic` export — the page fetches live GEX data per-request, so there's no static HTML to grep the way the `/learn` pages allowed; build success + route-table presence + the passing unit test for the exact JSON-LD shape is the available verification here). |
+
 ## 2026-08-08 - [P1, SEO] `robots.ts` trailing-slash disallow rules never actually blocked the bare private routes (`/admin`, `/dashboard`, `/offline`, etc.) — FIXED
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -13,7 +93,9 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Fix** | Renamed the source list to `DISALLOWED_ROOTS` (bare paths only) and derive `DISALLOWED_PATHS` as `DISALLOWED_ROOTS.flatMap(root => [root, `${root}/`])`, so both the bare route and its sub-paths are disallowed for every entry, for both the `*` rule and every AI-crawler rule (same list is reused for both). Added explicit `robots: { index: false, follow: false }` to `/offline` (thin single-purpose fallback screen, never indexable) and to `/admin` (via the existing `noindexPageMetadata()` helper, matching every other authenticated `(site)` route) as defense-in-depth so page-level protection no longer depends solely on robots.txt being correct. |
 | **Fix rationale** | Kept the existing per-route auth redirects and `noindex` metadata untouched — those are the primary protection layer and were already correct; robots.txt is a courtesy signal to well-behaved crawlers, not a security boundary, so the fix scope is exactly "make the courtesy signal match what it claims to do" plus closing the one real gap (`/offline`) that had no other layer. |
 | **Verification** | Added 2 new tests to `robots.test.ts`: one asserting both the bare route and `${root}/` form are present in `DISALLOWED_PATHS` for all 16 roots, one asserting the AI-crawler rules (`GPTBot`) get the same bare+sub-path treatment. `npx tsx --test src/app/robots.test.ts src/lib/page-metadata.test.ts` — 10/10 pass. `npx tsc --noEmit` — clean. |
+
 ## 2026-08-08 - [P1, SEO] `SoftwareApplicationJsonLd` Offer prices were hand-typed string literals, not sourced from `MEMBERSHIP_PRICING` — FIXED
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -21,7 +103,9 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Root cause** | `docs/marketing/SEO-GROWTH.md` (#1886, #1904) records that this exact bug class — a hand-typed price copy silently drifting from `MEMBERSHIP_PRICING` — was already found and fixed in the FAQ content and the pricing page itself. The JSON-LD `Offer` block on `/pricing` was missed in that sweep; it currently matches by coincidence, not by construction, so the next pricing change would silently desync Google's cached rich-result data from what members actually see and pay. |
 | **Fix** | Import `MEMBERSHIP_PRICING` and read `String(MEMBERSHIP_PRICING.community)` / `String(MEMBERSHIP_PRICING.monthly)` for the SPX Slayer and Premium offers respectively, matching the exact pattern already used by `src/lib/faq/content.ts` and `RedesignPricing.tsx`. |
 | **Verification** | Added `src/components/seo/JsonLd.ssr.test.ts` (SSR-rendering the component via `renderToStaticMarkup`, following the existing `.ssr.test.ts` pattern used elsewhere in the repo) — parses the emitted `<script type="application/ld+json">` and asserts both offer prices equal `MEMBERSHIP_PRICING.community`/`.monthly` exactly, so a future price change that forgets this file will fail the test instead of shipping silently. `npx tsx --test src/components/seo/JsonLd.ssr.test.ts` — pass. `npx tsc --noEmit` — clean. |
+
 ## 2026-08-08 - [P1, SEO] `ArticleJsonLd` had no `image` field — structurally impossible to set on any of the 53 `/learn/[slug]` pages — FIXED
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -31,7 +115,75 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Blast radius** | All 53 `/learn/[slug]` pages (7 guides + 46 articles) via the two `ArticleJsonLd` call sites. No other `ArticleJsonLd` usage exists in the codebase (checked). `publicPageMetadata`'s own output is unchanged (`buildOgImageUrl` is a pure extraction, verified by the existing `page-metadata.test.ts` suite still passing unmodified). |
 | **Verification** | Added `src/components/seo/ArticleJsonLd.ssr.test.ts` (SSR-rendered via `renderToStaticMarkup`) asserting both the passed-in image is emitted and the default fallback applies when omitted. `npx tsx --test src/lib/page-metadata.test.ts src/components/seo/ArticleJsonLd.ssr.test.ts` — 8/8 pass. `npx tsc --noEmit` — clean. Real `npm run build` run to confirm no build-time regression. |
 
+## 2026-08-08 - [P2, SEO] 8 marketing pages emitted `BreadcrumbJsonLd` structured data with no matching visible breadcrumb nav — FIXED
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P2. `terms`, `privacy`, `disclaimer`, `refund-policy`, `cookie-policy`, `contact`, `pricing`, and `faq` (`src/app/(marketing)/{route}/page.tsx`) all imported `BreadcrumbJsonLd` directly from `src/components/seo/JsonLd.tsx` and rendered only the structured-data `<script>` tag — no visible breadcrumb nav on the page. Google's structured-data guidance is that markup should reflect visible page content; a breadcrumb that exists only in JSON-LD with nothing a user can see or click is a mismatch search engines can down-weight, and it's also a missed internal-linking/UX opportunity. |
+| **Root cause** | Every *other* marketing page (`about`, `why-blackout`, `vs/others`, `tools/gamma-snapshot`, `learn`, `learn/[slug]`) already uses the shared `<Breadcrumbs>` component (`src/components/seo/Breadcrumbs.tsx`), which renders the identical `BreadcrumbJsonLd` structured data *and* a visible `<nav aria-label="Breadcrumb">` together in one component — so the correct pattern already existed in the codebase, it just wasn't applied consistently. The 8 affected pages were written against the lower-level `BreadcrumbJsonLd` primitive directly instead. |
+| **Blast radius** | Audited every `BreadcrumbJsonLd` import across `src/app` (8 matches, all in `(marketing)`) — all 8 had the same bare-JSON-LD-only shape. Fixed all 8, not just the 6 legal pages originally flagged (`pricing` and `faq` had the identical bug and were caught in the same sweep). |
+| **Fix** | Swapped `BreadcrumbJsonLd` for the shared `<Breadcrumbs>` component on all 8 pages — same `items` array, same import path change (`@/components/seo/Breadcrumbs` instead of `@/components/seo/JsonLd`), mechanical and near-zero-risk since `<Breadcrumbs>` already wraps `BreadcrumbJsonLd` internally with byte-identical JSON-LD output. |
+| **Verification** | `npx tsc --noEmit` — clean. `npx eslint` on all 8 touched files — clean. Real `npm run build` succeeded; grepped the prerendered `.next/server/app/{route}.html` for all 8 routes directly and confirmed each now has both `aria-label="Breadcrumb"` (the visible nav) and `"@type":"BreadcrumbList"` (the unchanged JSON-LD) present. |
+
+## 2026-08-08 - [P2, SEO] `SoftwareApplicationJsonLd` Offers were missing `availability` — FIXED (`priceValidUntil` deliberately NOT added)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P2. `src/components/seo/JsonLd.tsx`'s `SoftwareApplicationJsonLd` `Offer` entries had `name`/`price`/`priceCurrency`/`url` but no `availability`, which Google's Offer/Merchant structured-data guidance expects for full price/rich-result eligibility. Not a hard requirement for `SoftwareApplication`+`Offer` the way it is for `Product`, but still a real gap. |
+| **Fix** | Added `availability: "https://schema.org/InStock"` to both offers (SPX Slayer, Premium). A membership offer has no physical stock concept and is always purchasable, so this value is evergreen — safe to hardcode with no future maintenance burden. |
+| **Deliberately left unchanged** | The original audit also flagged the missing `priceValidUntil`. Did **not** add it: `priceValidUntil` needs a real expiration date, and this offer has no natural one (it's an ongoing subscription, not a time-boxed promotion). Hardcoding a date would either need ongoing upkeep or would itself become exactly the class of stale-structured-data bug already found and fixed twice this session (the hardcoded-price bug in this same file, and the uniform-article-dates gap) — trading one drift bug for another isn't a fix. Leaving it unset is the more correct state per schema.org's own spec (`priceValidUntil` is optional and its absence just means "no known expiration," which is true here). |
+| **Verification** | Added `src/components/seo/SoftwareApplicationJsonLd.ssr.test.ts` (SSR-rendered via `renderToStaticMarkup`) asserting both offers declare `https://schema.org/InStock`. `npx tsx --test` — pass. `npx tsc --noEmit` — clean. |
+
+## 2026-08-08 - [P2, SEO] All 45 `/learn/[slug]` articles shared one hand-set `datePublished`/`dateModified` pair — FIXED with real per-article dates derived from git history (guide dateModified deliberately left alone)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P2. `src/lib/seo/sitemap-dates.ts` had `ARTICLE_DATE_PUBLISHED = "2026-07-31"` / `ARTICLE_DATE_MODIFIED = "2026-08-03"` as a single fallback used for **all 45** non-guide learn articles — feeding `sitemap.xml`'s `lastmod`, the RSS feed's `pubDate`, and every article's `ArticleJsonLd` `datePublished`/`dateModified`. A block of 45 pages all "modified" on the exact same two calendar dates reads as a batch content dump rather than organically maintained content — a weak freshness/trust signal for a category (options trading education) where recency matters. |
+| **Investigation** | Checked whether the 45 articles actually had differentiated history to draw on rather than fabricating dates (fabricating distinct dates would be worse than the uniform value — dishonest structured data instead of merely unoptimized). `git log --follow -- src/lib/learn/articles.ts` showed 8 real commits spanning 2026-07-31 to 2026-08-03, each adding a different batch of articles — genuine per-article signal existed, it just wasn't being read. |
+| **Fix** | New `scripts/seo/generate-article-dates.mjs`: walks the real commit history to find, per article slug, the earliest commit that introduced it (`datePublished`) and the most recent `git blame` date across its full object-literal line range (`dateModified`) — both sourced from actual git history, not invented. Output committed as `src/lib/learn/article-dates.ts` (`ARTICLE_DATES: Record<slug, {datePublished, dateModified}>`), regenerated whenever `articles.ts` changes. Wired via a new `getArticleDates(slug)` helper in `sitemap-dates.ts`, replacing the flat constant in `sitemapLastModified()`, `feedPubDateForArticle()`, and the `ArticleJsonLd` call in `learn/[slug]/page.tsx`'s article branch. Result: articles now span 4 real distinct date pairs instead of 1 uniform pair — e.g. the first 10-article batch (2026-07-31) vs. the final 3-article batch (2026-08-03) — reflecting when each article was actually shipped and last touched. |
+| **Deliberately left unchanged** | The 7 curriculum guides (`src/lib/learn/guide-seo.ts`) also share one `dateModified: "2026-08-01"`. Checked `git log --follow -- src/lib/learn/guide-seo.ts`: the file has exactly **one** commit in its entire history, so there is no real per-guide signal to derive — differentiating these dates would mean fabricating them, which is the same integrity problem this fix exists to avoid. Left as-is; each guide's `datePublished` was already hand-differentiated by real launch date (Jan 15 / Mar 1 / Apr 1 2026) and remains untouched. |
+| **Verification** | Added `src/lib/learn/article-dates.test.ts`: asserts `ARTICLE_DATES` has exactly one entry per `LEARN_ARTICLES` slug (no stale/missing entries), every date is well-formed with `datePublished <= dateModified`, and dates are NOT all identical (proves real differentiation, not a refactor that kept the same uniform value). `npx tsx --test src/lib/learn/article-dates.test.ts src/lib/seo/sitemap-dates.test.ts` — 6/6 pass (existing `sitemap-dates.test.ts` passes unmodified — its `what-is-gex` expectation of `2026-08-03` happens to match the real derived date). `npx tsc --noEmit` / `npx eslint` — clean. Real `npm run build` run to confirm no regression. |
+
+## 2026-08-08 - [P2, SEO] `not-found.tsx` had no explicit `noindex` — relied solely on HTTP 404 status — FIXED
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P2. `src/app/not-found.tsx` only set a `title` in its `Metadata` export, with no `robots: { index: false, follow: false }`. Every other codebase pattern for a page that must never be indexed (`noindexPageMetadata()` in `src/lib/page-metadata.ts`, used across `(site)` auth-gated routes) sets this explicitly rather than relying solely on runtime behavior. |
+| **Why this matters here specifically** | Not a hypothetical: `next.config.mjs` (lines 65-69, 153-166) documents a real prior incident where a Cloudflare edge-cache rule served a cached response with the wrong auth state to the wrong users. Given that history, relying purely on the automatic HTTP 404 status code — with no defense-in-depth meta tag — for a page a misconfigured cache rule could theoretically serve out of context is a concrete gap, not paranoia. |
+| **Fix** | Added `robots: { index: false, follow: false }` to `not-found.tsx`'s `metadata` export. |
+| **Verification** | Added `src/app/not-found.test.ts` asserting the exported metadata carries the noindex directive. `npx tsx --test src/app/not-found.test.ts` — pass. `npx tsc --noEmit` — clean. |
+
+## 2026-08-08 - [P2, SEO] `best-0dte-trading-strategies` meta description was 173 chars — truncates mid-sentence in SERPs — FIXED + regression guard added for all articles/guides
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P2. `src/lib/learn/articles.ts:2613-2614` — the `best-0dte-trading-strategies` article's `metaDescription` was 173 characters. Google's SERP snippet truncates around ~155-160 characters, so this one would get cut off mid-sentence in search results. All other 44 articles range 141-158 chars — this was the one outlier. |
+| **Fix** | Rewrote the description to keep the same substantive content (gamma-wall fades, momentum below the flip, condors in range regimes, sizing) in 157 characters — verified with a length check before committing, not just eyeballed. |
+| **Blast radius** | Checked every other article (`LEARN_ARTICLES`) and all 7 curriculum guides (`GUIDE_SEO`) for the same overflow — confirmed this was the only current violation in either set. |
+| **Regression guard** | Added a test to the existing `articles.test.ts` (which already enforces link-graph health for this exact file) asserting no article's `metaDescription` exceeds 160 chars, and a new `guide-seo.test.ts` with the equivalent check for the 7 guides — so a future article/guide can't silently regress past the SERP truncation point the way this one did. |
+| **Verification** | `npx tsx --test src/lib/learn/articles.test.ts src/lib/learn/guide-seo.test.ts` — 7/7 pass. `npx tsc --noEmit` / `npx eslint` — clean. |
+
+## 2026-08-08 - [P2, SEO] `/learn/glossary` (guide) and `/learn/options-trading-glossary` (article) shared a near-identical meta description — keyword-cannibalization risk — FIXED
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P2. Two distinct, both-indexable, both-real pages: `src/lib/learn/guide-seo.ts`'s `glossary` entry (`/learn/glossary`) and `src/lib/learn/articles.ts`'s `options-trading-glossary` entry (`/learn/options-trading-glossary`) had `metaDescription` values differing only in punctuation (em-dash vs. colon, comma placement) — effectively duplicate SERP snippets for two URLs both targeting "options glossary" intent. Body content is genuinely differentiated (confirmed by reading both) but the identical meta descriptions invited Google to auto-rewrite one and blurred the ranking signal between the two pages. |
+| **What actually differentiates the two pages** | Read `src/lib/learn/guides/glossary.ts`: `/learn/glossary` is the deeper, BlackOut-platform-specific reference — categories "Dealer Greeks" (CHARM, DEX, VEX beyond basic GEX), "Structural levels" (King node), and "Platform" (Evening Edition, SCANNING, RTH — actual product terms). `/learn/options-trading-glossary` is the general, platform-independent options-trading vocabulary (its own body opens with "Plain-English definitions of the terms you'll see across BlackOut and the Learn hub"). These are legitimately different audiences/intents, just described with copy-pasted-feeling text. |
+| **Fix** | Rewrote both `metaDescription`s to reflect what each page actually is: the guide's now leads with "BlackOut platform glossary" and names CHARM/DEX/VEX/King node/Night Hawk/SPX Slayer; the article's now leads with "general options trading terms" and stays vendor-neutral. Also updated `articles.ts`'s `description` field for `options-trading-glossary` (a separate on-page-visible field, not just the meta tag — rendered on the `/learn` hub card, the article subtitle, and related-article snippets) to match, since it had the identical duplicate text and is real user-facing copy, not just an SEO tag. |
+| **Regression guard** | Added 2 new tests to `articles.test.ts`: no two articles share an identical `metaDescription`, and no article's `metaDescription` matches any curriculum guide's — covering the exact cross-file duplicate that caused this bug, not just within-file duplicates. |
+| **Verification** | `npx tsx --test src/lib/learn/articles.test.ts` — 7/7 pass. `npx tsc --noEmit` / `npx eslint` — clean. |
+
 ## 2026-08-08 - [P3, PERFORMANCE] Next.js's default image breakpoint ladder has a 384→640 gap — the hero logo (and any similarly-sized `fill` image) got rounded up to 640 when 480/576 would do — FIXED
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -42,7 +194,9 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Verification — checked the actual rendered output, not just reasoning about it** | Ran a real `npm run build` (succeeded, no errors) and read the pre-rendered `.next/server/app/index.html` directly: the hero logo's `srcSet` now includes `.../w=480&q=75 480w, .../w=576&q=75 576w` between the existing `384w` and `640w` entries — confirmed the browser now has intermediate options to pick from instead of jumping straight from 384 to 640. |
 | **Also tried and reverted (documented so it isn't retried blind)** | Added an explicit `browserslist` field to `package.json` to see if it would shrink a 12KB legacy-polyfill chunk PSI flagged (`Array.prototype.at/flat/flatMap`, `Object.fromEntries`, `Object.hasOwn`, `String.prototype.trimStart/trimEnd`). Rebuilt clean (`rm -rf .next`) and compared: every chunk hash and size was byte-identical before and after — proof the polyfills come from a pre-built third-party dependency Next doesn't re-transpile, not from this app's own compilation target. Reverted rather than ship a config change with zero measured effect. |
 | **Status** | FIXED (image breakpoint gap). Legacy-JS polyfill chunk (12KB) remains unaddressed — would need identifying and replacing/patching the specific dependency, not a config-level fix. |
+
 ## 2026-08-08 - [P3, ACCESSIBILITY] "Them vs Us" comparison column fails WCAG AA contrast on all 7 of its text nodes — same root cause, one shared color token — FIXED
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -53,6 +207,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Verification** | `npm run lint:vendor` clean. `npm run lint:css` shows 4 pre-existing failures in unrelated files/lines (none touched by this change — confirmed via `git diff` scoped to exactly these 2 lines). |
 
 ## 2026-08-08 - [P3, PERFORMANCE] Homepage eagerly loaded a 110KB framer-motion chunk, 90% unused, for an exit-intent modal almost nobody triggers — FIXED
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -66,6 +221,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 ---
 
 ## 2026-08-08 - [P1, LIVE PRODUCTION, infra] Cloudflare stale security-headers Transform Rule — CSP fix now confirmed LIVE after operator action; HSTS still stale
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -76,6 +232,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 ---
 
 ## 2026-08-08 - [P3, PERFORMANCE] Homepage module gallery images over-fetched by ~2-3x — `sizes` claimed 100vw for a fixed-width carousel card — FIXED
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -90,6 +247,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 ---
 
 ## 2026-08-08 - [P3, SEO] 6 of 7 `/learn/[slug]` guide pages have real FAQ content never exposed as FAQPage schema — FIXED
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -104,6 +262,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 ---
 
 ## 2026-08-08 - [P2, tooling] `node_modules` committed to `main` as a self-referential symlink — every fresh clone ELOOPs — FIXED
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -119,6 +278,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 ---
 
 ## 2026-08-08 - [P3, SEO] `/about` was a true orphan page — zero internal inlinks anywhere in the app — FIXED
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -134,6 +294,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 ---
 
 ## 2026-08-07 - [P1, DATA LOSS] SPX's whole trading session evicted from the wall rail overnight by a COUNT cap - FIXED (#1850)
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -151,6 +312,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 ---
 
 ## 2026-08-07 - [P1, MOBILE UX / A11Y] Helix + Thermal touch targets, and the measurement that could not see the fix - FIXED (#PR)
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -165,6 +327,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 ---
 
 ## 2026-08-07 - [P1, LIVE VISUAL REGRESSION] Swing section bar rendered as eight full-height panels covering the board - FIXED (#1843)
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -177,7 +340,10 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Tests** | Two source-level regressions in `swing-section-filter.test.ts`, because the failure is invisible to any test that only renders markup: the section bar must carry `--sections` and must NOT carry `--prominent`; and the `--sections` rule must pin BOTH `flex:0 0 auto` and `align-items:center`. Each assertion carries the reason, so a future edit that drops one gets the explanation rather than a bare failure. 11/11 pass. |
 | **Lesson worth keeping** | A layout modifier is only correct for the flex DIRECTION it was written for. `flex:1 1 auto` is not a neutral "fill" - reusing a row modifier in a column silently converts a width rule into a height rule. |
 | **Status** | FIXED - PR #1843. |
+
 ## 2026-08-07 - [NEGATIVE RESULT #2] React #418: locale/timezone formatting RULED OUT - probe committed
+> **kind:** `NEGATIVE-RESULT`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 | Field | Value |
 |-------|-------|
@@ -188,7 +354,9 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Ruled out so far** | (1) invalid DOM nesting - a browser-parser re-parse of all six desk routes' SSR HTML matched tag-for-tag; (2) `Nav.tsx`'s `__client_uat` cookie self-heal - unreachable there, since `(site)/layout.tsx` seeds `initialSignedIn` from `auth()` AND falls back to `signedInFromRequestCookies()`; (3) locale/timezone formatting, above. |
 | **Still open** | The actual divergence. Next candidates, in order: `Modal.tsx:77`'s render-time `window.matchMedia` read; any `useState` initializer reading browser-only state on a route that SSRs it; and a third-party script mutating the DOM before hydration (the beacon/gtag frames make this worth eliminating). Localising it properly needs a **development-build repro** - prod React will never name the component. |
 | **Why the probe is committed** | It is reusable, it costs one run, and it converts "we think it might be timezones" into a measured answer. The next pass starts from the narrowed list rather than re-testing what is already eliminated. |
+
 ## 2026-08-07 - [P1, MEMBER-FACING] SPX Slayer dashboard: the blended bead rail was structurally always empty - FIXED (#1846)
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -205,6 +373,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 ---
 
 ## 2026-08-07 - [P0, MEMBER-FACING] Bead rail is VIEWER-DRIVEN, so 62% of a session had no beads - FIXED (#1845)
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -219,7 +388,9 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Tests** | Eight, built on a replay of AMD's REAL shape (dense 09:30-16:00, the 14:45-15:15 hole, nothing to 19:59): the detector finds the leading, mid-session AND trailing holes; a fully-covered rail yields none; cadence slack means a 4-minute spacing is coverage, not a hole; the backfill never displaces an observed sample (every observed time stays `modeled: false`); no modeled bead lands inside covered territory; degrades to the observed rail when the model is empty or the bar range is unknown. 58/58 in the file. |
 | **Verification** | `tsc --noEmit` clean; `next lint` clean; vector suite **596 pass / 3 fail** vs **589 / 3** on clean main (seven added, zero regressions). The gap detector was run against the actual captured AMD payload and reproduced both blocks to the second. |
 | **Status** | FIXED - PR #1845. Stacks on #1844 (viewport), which is a separate cause of the same complaint. |
+
 ## 2026-08-07 - [P0, MEMBER-FACING] Vector beads covered only a fraction of the chart on EVERY non-oracle ticker - FIXED (#1844)
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -239,6 +410,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 ---
 
 ## 2026-08-07 - [P1, MOBILE UX / A11Y] Every primary control on the Night Hawk command deck was under the 44px touch minimum - FIXED (#1842)
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -257,6 +429,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 ---
 
 ## 2026-08-07 — [P1, LIVE PERF] `/vector` served a **22.8 MB HTML document** — 22.6 MB of it wall-history beads at 5s resolution — FIXED (#1840)
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -276,6 +449,8 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 ---
 
 ## 2026-08-07 - [NEGATIVE RESULT] React #418 hydration errors: invalid DOM nesting RULED OUT on all six desk routes
+> **kind:** `NEGATIVE-RESULT`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 | Field | Value |
 |-------|-------|
@@ -285,7 +460,9 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Also ruled out** | `Nav.tsx:120`'s `useState(() => readClientSignedIn())` looked like the obvious deliberate mismatch (server returns `null`, client's first render returns the cookie value). It is not reachable on these routes: `(site)/layout.tsx` seeds `initialSignedIn` from `auth()` **and** falls back to `signedInFromRequestCookies()`, so server and client first render agree for any member who is actually signed in. `NavAuthLinks`/`MarketingAuthCta`, which use the same pattern by design, render only under `StaticMarketingNav` (marketing routes), not the desk. |
 | **Still open** | The actual mismatch. Remaining candidates in priority order: a `toLocaleTimeString`/`toLocaleDateString` without `timeZone` reaching SSR output (32 such call sites repo-wide, only 1 passes `timeZone`; server is UTC, client is the member's zone, so any that renders during SSR mismatches for every non-UTC user), and render-time `window.matchMedia` reads (`Modal.tsx:77`). Localising it needs a dev-build repro - prod React 18 reports #418 with no component identity. |
 | **Why record a negative** | So the next pass does not re-run this probe. The nesting harness is worth rebuilding if a route's markup changes materially; it took one authenticated capture plus an offline parse. |
+
 ## 2026-08-07 — [P2, LIVE ERROR] Telemetry sequence bootstrap rewound the PK sequence on every boot — 24 dropped `api_telemetry_events` rows in 8 days — FIXED (#1839)
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -305,6 +482,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 ---
 
 ## 2026-08-07 - [P2, MEMBER-FACING ACCURACY] Every Night Hawk lane label still advertised the PRE-widening DTE windows - FIXED (#1841)
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -323,6 +501,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 ---
 
 ## 2026-08-07 — [P1, LIVE ERROR] `fetchGradedSkips` read `counterfactual_json` without the column migration — grading cron erroring every 15 min, calibration evidence silently empty — FIXED (#1838)
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -339,6 +518,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 ---
 
 ## 2026-08-07 — [P2, audit tooling] Outcome-grading cross-check called production with the PRE-FIX signature, so it kept reporting 4 disagreements that no longer exist — FIXED (#1837)
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -354,6 +534,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 ---
 
 ## 2026-08-07 — [P1, EDGE] Production's BREAKOUT ranker is measurably WORSE than random; `gain/range` replicates as real signal — MEASURED, engine unchanged pending decision
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -373,6 +554,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 ---
 
 ## 2026-08-06 — [P2, data-correctness] `/marks` shipped option greeks as raw IEEE-754 doubles — FIXED (#1824)
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -388,6 +570,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 ---
 
 ## 2026-08-06 — [P1, Swing live board] Committed swing positions served NO live quote and NO greeks — FIXED (#1820)
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -402,6 +585,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 ---
 
 ## 2026-08-06 — [P1, latent live risk] Swing premium watermarks were never seeded at entry — FIXED (#1822)
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -417,6 +601,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 ---
 
 ## 2026-08-06 — [P2, display] No greek ever reached the Swing/LEAPS deck — including the delta that was always in the payload — FIXED (#1823)
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -429,6 +614,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 ---
 
 ## 2026-08-06 — [P3] `ChainStrikeRow` structurally could not carry gamma/theta/vega — FIXED (#1832)
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -442,6 +628,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 ---
 
 ## 2026-08-06 — [P2, 0DTE governor] G-5 re-entry lock silently FAIL-OPEN for any stop with no recorded timestamp — FIXED (#1810)
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -458,6 +645,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 ---
 
 ## 2026-08-06 — [P1, data-correctness] 0DTE `underlying_price` was never a live quote (frozen flow-print stamp, no as-of) — FIXED (#1818)
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -471,6 +659,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 ---
 
 ## 2026-08-06 — [P1, 0DTE exits] Exit engine's operative stop used the `entry_max` basis, not the LEDGER basis — FIXED (#1819)
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -486,6 +675,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 ---
 
 ## 2026-08-06 — [P1, record-honesty] Never-filled + no-touch Night Hawk plays landed inside debrief win rates — FIXED (#1812)
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -500,6 +690,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 ---
 
 ## 2026-08-06 — [P2, false-safety-claim] `nighthawk-edition` documented a `BUILD_TIME_BUDGET_MS` guard that has never existed — FIXED (#1830)
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -516,6 +707,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 ---
 
 ## 2026-08-06 — [P1, performance] ALB 504 slow tail — no request-level deadline anywhere in the stack — FIXED (#1817, blackout-infra #45)
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -534,6 +726,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 ---
 
 ## 2026-08-06 — [P1 for evidence-validity, audit tooling] BREAKOUT recall/dynamic-N harnesses split cohorts by $-volume; production splits by momentum rank — FIXED (#1816)
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -550,6 +743,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 ---
 
 ## 2026-08-06 — [P2, audit tooling] 0DTE healthcheck stage D reported OVERALL RED off-hours by judging quote-only WATCH rows as broken live marks — FIXED (#1821)
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -564,6 +758,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 ---
 
 ## 2026-08-06 — [P2, infra drift] Prod web ECS deployment configuration drifted to `minimumHealthyPercent=50 / maximumPercent=112` — RESOLVED (writer identified; self-healing)
+> **kind:** `OPS-NOTE`
 
 | Field | Value |
 |-------|-------|
@@ -582,6 +777,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 ---
 
 ## 2026-08-06 — [P1, MEMBER-VISIBLE FALSE NUMBER, Night Hawk record] "0% win rate" was `wins / scoreable` — undecided no-touch plays sat in the win-rate denominator and the low-n badge keyed off that same polluted count — FIXED (fix/nighthawk-winrate-denominator)
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -598,11 +794,12 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Deliberately NOT changed** | The `scoreable` exclusion set itself (unfilled/pulled/stop-data-unavailable stay excluded exactly as before — this adds a narrower `decided` denominator for the RATE, it does not re-litigate the exclusions); `profitable_rate`/`avg_return` denominators (labeling tightened only — silently re-basing them would be denominator-shopping in the opposite direction); all grading/resolution code (`play-outcomes.ts`, `regrade-stuck.ts`, `db.ts:8174-8203/8118/8330-8348`); publish gates; the dead `HawkRecordStrip`/`PlaybookBoard` components (they already implement the honest render — mounting a new member component mid-session is unnecessary scope); SPX Slayer / 0DTE / swing-ledger records. |
 | **Follow-up — LIFECYCLE DEFECT (B), for AFTER CLOSE, not shipped today** | The metric bug above is why the numbers were WRONG; this is why they are ugly. `'open'` is a permanent grade produced by a **one-session horizon on a multi-day product**: the resolver reads exactly one daily bar, the edition date itself (`play-outcomes.ts:553-555, :666`), defaults to `'open'` when neither level trades (`:616, :641-645`), and the only outcome UPDATE is `WHERE outcome = 'pending'` (`db.ts:8191`) — with the only feeder (`db.ts:8118`) and the only stuck-row repair (`regrade-stuck.ts:76`) also pending-only, so the repair built for this class of problem cannot see these rows. Meanwhile the published instrument is a **≥5-DTE swing contract** (`deterministic-edition.ts:240, :288-292`) and the median published target sits **~11.8% from entry mid (max 23.6%)**, because the publish gate designed to stop this (`GATE_TARGET_MAX_ATR_MULTIPLE = 3.5`, `publish-gates.ts:69`, whose block reason literally reads "not achievable in the one-session grading horizon") was deliberately made PROMOTABLE on 2026-07-27 (`:100-107`) to avoid empty editions — and `target_unreachable` is now the dominant debrief failure mode (16 of 48). **Forward-bar check on real Polygon daily bars: 12 of the 20 permanently-`'open'` rows DID reach a real level on a later session while the contract was still alive — 5 targets (GOOG, SKHY, INTC, AAPL, MA) and 7 stops (RDDT, GS×2, HUT, LQDA, STX, SLV) — 5 wins and 7 losses the record structurally can never show.** Fixing this requires making `'open'` a non-terminal interim state and relaxing the `WHERE outcome = 'pending'` write guard, which by design REWRITES the recorded outcome of real plays; it must land after close with a dry-run counterfactual diff and a product decision on the horizon (contract expiry vs a lane time-stop). Second follow-up: revisit `target_unreachable` being promotable now that it is the dominant failure mode — that changes which plays publish and is a product decision, not a bug fix. |
 | **Open item (does not block)** | The UI investigator could NOT reproduce a literal "0%" on the member Swings tab itself under live Playwright capture (`HorizonDeck` fetches only `/nighthawk/horizons`, and the Legacy deck maps `by_conviction[].win_rate_pct` into the scorecard object but `PlayTerminal.tsx:47-51` renders only avg-return and n). The confirmed bare-0% renders are the admin ring and the Largo terminal string; Legacy plays are promoted onto the Swings tab (`lib/swing/legacy-confirm-promote.ts`) and the record is fetched under the SWR key `"legacy-record"` (`containers.tsx:282-306`). Worth asking the member which screen they were on — the fix corrects every surface that can render it, including the two where a bare 0% IS confirmed. |
-| **Status** | FIXED on `fix/nighthawk-winrate-denominator` → PR to `main`, auto-merge per standing policy once CI's `verify` gate is green. |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `buildRecordSegment`, `decided`, `win_rate`). Restamped from a mid-flight status that was never revisited. |
 
 ---
 
 ## 2026-08-06 — [P0, LIVE INCIDENT, 0DTE Night Hawk] Client-side N+1 quote fan-out saturated the prod web tier during RTH — 3.7× ALB traffic, 3.6% 5XX, 98% CPU — FIXED (fix/zerodte-quote-fanout-n1)
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -618,11 +815,12 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Blast radius** | Contained to the 0DTE deck. The 0DTE consumer `overlayZeroDteStockQuotes` (`use-live-marks.ts:254-270`) reads exactly one field — `q.price` — and writes only `stockPrice` plus `condor.spot`; `refreshZeroDteManagement` (`adapters.ts:113-126`) derives recommendation/progress from `exitModel`/`status`/`pnlPct` and never reads `stockPrice`, so on the 0DTE lane this value is **DISPLAY-ONLY** (header price line, Thesis meta row, condor tent marker). The header LIVE/STALE dot is driven by `streamKind` (option-mark provenance), not this quote. The shared hook's other two call sites are untouched by the cadence/cap change (`LegacyDeck` `containers.tsx:311`, 5 rows / 5s; `HorizonDeck` `containers.tsx:194`, WATCH rows / 5s) — the only shared-hook edit is a strictly-additive in-flight guard that can only reduce concurrent requests, never increase them or change a value. **No server, API, route, schema or infra change**; no new endpoint; no rate limiter that could 429 legitimate members mid-session. Fully revertible by restoring two constants. |
 | **Rejected alternatives** | **(a)** Delete the 0DTE per-ticker fetches entirely — rejected: disabling the hook also zeroes `uniqueTickers` and kills the SSE lane, leaving the live-money board with NO live underlying, and the shared board snapshot was itself measured 51–230s stale during this incident. Keep as the escalation step. **(b)** Raise `MAX_TICKERS_PER_STREAM` above 60 — rejected: a SERVER change shipped into CPU-saturated tasks; `buildSpotFrame` (`hub.ts:55`) has no fallback tier, reads only `stock-candle-store`, silently omits tickers without a live candle, and has no index (`I:*`) support, so SPXW/SPX rows would lose price. **(b2)** New bulk REST quote route backed by the existing unused `fetchStockSnapshots` (`polygon.ts:146`, one Polygon call for N tickers) — the correct DURABLE fix, collapses N requests into 1; rejected for today (new authenticated route + client wiring + fallback-tier port is not a market-open change). **Filed as the follow-up PR.** **(c)** Cross-component coalescing / migrate to SWR — rejected: refactors a hook shared by three decks during live trading, and a single tab's 106 tickers are already distinct so there is nothing to dedupe. **(d)** Cadence change alone (no cap) — acceptable fallback (~90% cut) but leaves the bulk SSE 400-ing forever and re-breaks on the next high-breadth day. **(e)** More server-side caching on `/api/market/quote` — already done (L1 1.5s + Redis 3s + coalescing + 3s negative cache) and not the bottleneck; the 106×/s cost is the route handler + Clerk `auth()`, which no data cache avoids. **(f)** Apply the existing per-user limiter (`market-user-rate-limit.ts`, currently wired only to the two flows routes) to `/api/market/quote` — rejected for today (429s would blank prices for legitimate members and mask the client bug); **worth doing as a follow-up defense-in-depth PR.** |
 | **Follow-ups** | (i) Bulk REST quote route on `fetchStockSnapshots` + repoint the hook (collapses N→1, removes the cap's product cost). (ii) Per-user rate limit on `/api/market/quote` as a server-side backstop. (iii) Determine whether today's ~106-row board was breadth or a code change (needs today-vs-yesterday discovery funnel counts). (iv) Investigate why the shared board snapshot ran 51–230s stale against its `BOARD_SNAPSHOT_REFRESH_MS = 5_000`. |
-| **Status** | FIXED on `fix/zerodte-quote-fanout-n1` → PR to `main`, auto-merge per standing policy once CI's `verify` gate is green. |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `ZERODTE_QUOTE_POLL_MS`, `useLegacyStockQuotes`, `getStockLiveCandle`). Restamped from a mid-flight status that was never revisited. |
 
 ---
 
 ## 2026-08-06 — [P3, Night Hawk UX, Legacy tab] Compact header text overlap — Legacy's lane label overflowed into the engine-status/Opps-Top-Edge stat pills on mobile — FIXED (fix/legacy-lane-label-overlap)
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -633,9 +831,11 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Fix** | Shortened the Legacy compact-header label from "Legacy · Tonight's playbook" to "Legacy · Playbook" (17 chars — now in line with the other three lanes) in `containers.tsx`. Centralized ALL FOUR compact lane labels (previously scattered inline literals across three `CommandDeck` call sites in `containers.tsx`) into one exported `NIGHTHAWK_COMPACT_LANE_LABEL` map + a `MAX_COMPACT_LANE_LABEL_LEN` (20 chars) tripwire constant in `nighthawk-view.ts` (the existing pure, no-React, no-IO module for Night Hawk's view vocabulary) — a SEPARATE map from the existing `NIGHTHAWK_VIEW_META` (that one is the toggle-chip label/blurb, a different, longer-form vocabulary that was never involved in this bug). Deliberately did NOT touch the shared `.nh-deck-cmd--inline`/`.nh-deck-cmd-lane` CSS in `globals.css` — every other lane already renders correctly with it; the bug was this one string's length, not the layout rule, so a CSS change would have been a larger, less-targeted blast radius for the same fix. |
 | **Tests** | `nighthawk-view.test.ts` (+2 tests): `every compact lane label stays within the overlap-safe length bound` (iterates all four labels against `MAX_COMPACT_LANE_LABEL_LEN` — a tripwire so a future label edit that creeps back past the safe bound fails loudly instead of shipping a silent overlap); `the Legacy compact lane label is the shortened, non-overlapping string` (locks the exact new value). `npx tsx --test src/features/nighthawk/lib/nighthawk-view.test.ts` → 8/8 pass. `npx tsc --noEmit -p .` clean. `npx eslint` on the three touched files: 0 new errors (the pre-existing 2 `containers.tsx` `react-hooks/exhaustive-deps` warnings, already noted in the 2026-08-05 swing-promoted-link finding above, are unrelated and untouched by this diff). |
 | **Blast radius** | `nighthawk-view.ts` (new exported map + constant, additive only — no existing export changed), `nighthawk-view.test.ts` (+2 tests), `containers.tsx` (3 `laneLabel` call sites now read from the shared map instead of inline literals — 0DTE's SIMULATION/live and Swing/LEAPS's two labels are byte-identical to their prior inline values, only Legacy's value changed). Zero changes to `CommandDeck.tsx`, the shared compact-header CSS, any 0DTE/Swing/LEAPS/Banger rendering path, or any discovery/gating/grading logic. |
-| **Status** | FIXED on `fix/legacy-lane-label-overlap` → PR to `main`, auto-merge per standing policy once CI's `verify` gate is green. |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `CommandDeck`, `NIGHTHAWK_COMPACT_LANE_LABEL`, `MAX_COMPACT_LANE_LABEL_LEN`). Restamped from a mid-flight status that was never revisited. |
 
 ## 2026-08-06 — [ops] vector-bead-record RTH-stale missing EventBridge + no leader heartbeat (#1785)
+> **kind:** `OPS-NOTE`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 — Vector bead backup cron flagged `market_hours_stale` during RTH (ops-auto-fix #1785).
 
@@ -655,6 +855,8 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 ---
 
 ## 2026-08-06 — [ops] vector-bead-record RTH-stale edge timeout (#1783)
+> **kind:** `OPS-NOTE`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 — Vector bead backup cron flagged `market_hours_stale` during RTH.
 
@@ -675,43 +877,8 @@ with console-only completion logging. Regression test:
 
 ---
 
-## 2026-08-05 — [Grid/0DTE] Post-close fix agent — all validators GREEN (~3:18 PM PT / 6:18 PM ET)
-
-**Severity.** — (no additional product defects)
-
-**Session.** Scheduled post-close fix agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` Step 4 (Cloud Agent `cursor/0dte-grid-post-close-agent-cd7c`; executed ~3:18 PM PT / 6:18 PM ET / 22:18 UTC).
-
-**Evidence.**
-- `validate:grid-rth -- --phase=post-close` → **12/12 PASS** (0 FAIL; `zerodte-warm` cron accepted, data-correctness flags=0, ops:collect zero items)
-- `validate:zerodte-logic` → **17/17 PASS** — gates, plan exits (-50%/+100%/15:30 ET), lifecycle OPEN→TRIM→CLOSED, mergePlays SKIP past cutoff/MOVED, live board 9 setups / 3 ledger, cutoff 15:30 ET
-- `validate:grid-e2e` → **5/5 PASS** — board API 9/3, HELIX 20 prints, Playwright `/nighthawk` load, zero console errors
-- `validate:deploy` → **GREEN**
-
-**Root cause.** Initial cloud-agent run failed on missing `node_modules` (tsx/playwright/pg/react) — environment only. After `npm install` + `npx playwright install chromium`, all suites GREEN on re-run. Also resolved committed merge-conflict markers (`<<<<<<< HEAD` / `=======` / `>>>>>>>`) in this file from PR #1757/#1758 squash. No unresolved gate logic, play picking, trade management, mergePlays, cron bypass, or ledger PnL defects.
-
-**Status.** FIXED — docs-only on `fix/findings-merge-conflict-aug5`.
-
----
-
-## 2026-08-05 — [Grid/0DTE] Post-close fix agent — all validators GREEN (~2:18 PM PT / 5:18 PM ET)
-
-**Severity.** — (no additional product defects)
-
-**Session.** Scheduled post-close fix agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` Step 4 (Cloud Agent `cursor/0dte-grid-post-close-agent-9cf0`; executed ~2:18 PM PT / 5:18 PM ET / 21:18 UTC).
-
-**Evidence.**
-- `validate:grid-rth -- --phase=post-close` → **13/13 PASS** (0 FAIL; `zerodte-warm` cron accepted, data-correctness flags=0, ops:collect zero items)
-- `validate:zerodte-logic` → **17/17 PASS** — gates, plan exits (-50%/+100%/15:30 ET), lifecycle OPEN→TRIM→CLOSED, mergePlays SKIP past cutoff/MOVED, live board 9 setups / 3 ledger, cutoff 15:30 ET
-- `validate:grid-e2e` → **5/5 PASS** — board API 9/3, HELIX 20 prints, Playwright `/nighthawk` load, zero console errors
-- `validate:deploy` → **GREEN**
-
-**Root cause.** Initial cloud-agent run failed on missing `node_modules` (tsx/playwright/pg/react) — environment only. After `npm install` + `npx playwright install chromium`, all suites GREEN on re-run. Reviewed today's merged fixes (SPX 0DTE King UW overlay #1706, Bangers scroll parity #1704, NH-R4 session-gap evidence, outcome-grading audit); no unresolved gate logic, play picking, trade management, mergePlays, cron bypass, or ledger PnL defects.
-
-**Status.** FIXED — no code changes required; docs only on `fix/grid-post-close-aug5-green`.
-
----
-
 ## 2026-08-05 — [P1, SPX Slayer UX] Play verdict bar flashed CLOSED during RTH while play API stayed SCANNING — FIXED
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -725,22 +892,8 @@ with console-only completion logging. Regression test:
 
 ---
 
-## 2026-08-05 — [SPX Slayer] Post-close fix agent pass 2 — all validators GREEN (~3:13 PM PT / 6:13 PM ET)
-
-**Severity.** — (no additional product defects)
-
-**Session.** SPX Slayer post-close fix agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` § Step 6 (Cloud Agent `cursor/spx-post-close-findings-36ba`; executed ~3:13 PM PT / 6:13 PM ET / 22:13 UTC).
-
-**Evidence.**
-- `validate:spx-rth -- --phase=post-close` → **6 PASS · 1 WARN · 0 FAIL** — matrix 160 strikes GEX+VEX+DEX+CHARM, cross-endpoint spot merged=7723.55, BIE consistency, dashboard E2E nested, ops:collect zero items
-- `validate:spx-e2e` → **0 FAIL / 18 checks** — matrix every-cell-api 160 strikes, GEX+VEX tabs, commentary expand, play verdict SCANNING, zero console errors
-- Cross-tool integration: Thermal, HELIX (30 prints), Largo, Grid bootstrap, 0DTE (9 setups), Night Hawk — all PASS
-
-**Root cause.** Initial run failed on missing `node_modules` (tsx/playwright/pg) — environment only. After `npm install` + `npx playwright install chromium`, all suites GREEN. Reviewed all `spx-rth-2026-08-05` findings: P1 `SPX-VERDICT-CLOSED-FLICKER` already fixed (#1758), P0 SPX 0DTE King UW overlay already fixed (#1706). Remaining P2 items (cron auth mismatch, desk lanes off-hours) are expected post-close deferrals. Resolved accidental merge conflict markers in `docs/audit/FINDINGS.md`.
-
-**Status.** FIXED — docs only on `cursor/spx-post-close-findings-36ba`.
-
 ## 2026-08-05 — [ops-auto-fix #1705, P0 data-correctness] SPX 0DTE King 7,800 vs UW 7,650 (Δ 1.94% > 1.5% tol) — FIXED
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -751,6 +904,7 @@ with console-only completion logging. Regression test:
 | **Status** | FIXED on `cursor/spx-0dte-king-discrepancy-20bd` → PR, auto-merge once CI green. |
 
 ## 2026-08-05 — [NH-R4, Night Hawk 0DTE] Weekend/holiday gap risk invisible — DTE is pure calendar days with zero trading-calendar awareness — evidence-only fix (fix/nh-r4-session-dte-gap)
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -759,9 +913,10 @@ with console-only completion logging. Regression test:
 | **Blast radius** | Both `pin-source.ts` and `breakout-source.ts`'s `calendarDteBetween` (verbatim duplicates) — both call sites of `buildPinSetup`/`buildBreakoutSetup` (`pin-discovery.ts:278`, `breakout-discovery.ts:358`) needed the new optional `todayYmd` threaded through. `gates.ts`'s `ONE_DTE` handling (G-15, ~lines 363-366) and `breakout-source.ts`'s scorer (~lines 185-200) were READ (per the task) to confirm neither currently branches on anything but the horizon label — confirmed, and deliberately left untouched (see Fix rationale). |
 | **Fix** | Added two pure helpers to `board.ts` (the one file both sources already import from — kills the duplication without adding a new shared-util file): (1) `calendarDteBetween` — the exact same calendar-day-diff logic, now defined once and imported by both `pin-source.ts` and `breakout-source.ts` (their local copies deleted); (2) `tradingSessionGapDays(todayYmd, expiryYmd): number \| null` — walks day-by-day from `today` (exclusive) to `expiry` (exclusive) via the EXISTING `isTradingDayEt` (`src/features/nighthawk/lib/session.ts` — reused, not reinvented) and counts the skipped non-trading days: 0 for a normal single overnight, 2 for a plain weekend, 3+ for a holiday-adjacent weekend. Returns `null` (never fabricates) on malformed dates or when `expiry` isn't strictly after `today` (0DTE same-day expiry has no overnight to measure). Threaded a new **optional, nullable** `session_gap_days?: number \| null` field onto `EnrichedZeroDteSetup` (`board.ts`), computed in `buildPinSetup`/`buildBreakoutSetup` from a new optional `todayYmd` input param and merged onto the object returned by `enrichSetup(...)` — mirrors the exact "evidence-only, does not gate/score" pattern already established for `flow_accumulation`/`confluence`/`origin_direction_conflict` on the same type. `todayYmd` is optional on both builders (backward compatible — every pre-existing call site/test that omits it still compiles and gets `session_gap_days: null`); the two production call sites (`pin-discovery.ts`, `breakout-discovery.ts`) now pass their already-in-scope `today` local. **Deliberately did NOT** add any gate block or score penalty for this field in this PR — pending a future calibration item (mirrors NH-R6's role for other provisional signals) once the graded ledger has enough weekend/holiday-hold rows to measure against. |
 | **Evidence** | New tests in `board.test.ts`: `calendarDteBetween` (Tue→Wed=1, Fri→Mon=3, same-day=0, malformed→NaN); `tradingSessionGapDays` — normal overnight (2026-08-04 Tue → 2026-08-05 Wed) = 0; plain weekend (2026-07-10 Fri → 2026-07-13 Mon) = 2; July-4th-observed holiday weekend (2026-07-02 Thu → 2026-07-06 Mon, 2026-07-03 Fri is in `US_MARKET_HOLIDAYS`) = 3; Thanksgiving-adjacent (2026-11-25 Wed → 2026-11-30 Mon, 2026-11-26 Thu holiday) = 3; same-day/malformed → `null`. New tests in `pin-source.test.ts`/`breakout-source.test.ts` confirm `buildPinSetup`/`buildBreakoutSetup` wire `session_gap_days` through correctly (null without `todayYmd`; 2 for a Fri-anchored weekend-spanning contract) and that `score`/gate-relevant fields are byte-identical with vs without the field present (proving zero behavior change). `npx tsx --test src/lib/zerodte/board.test.ts src/lib/zerodte/pin-source.test.ts src/lib/zerodte/breakout-source.test.ts src/lib/zerodte/pin-discovery.test.ts src/lib/zerodte/breakout-discovery.test.ts` → 145/145 PASS. `npx tsc --noEmit -p .` clean. (Ran the full `src/lib/zerodte/*.test.ts` glob too: 897/905 pass; the 8 failures are a pre-existing sandbox Node-version limitation — `TypeError: import_node_test.mock.module is not a function` in `entry-context.test.ts`/`scan.test.ts`/etc. — unrelated to this diff, confirmed present on `main` before this change.) |
-| **Status** | FIXED (evidence-only) on `fix/nh-r4-session-dte-gap` → PR to `main`, auto-merge per standing policy once CI's `verify` gate is green. |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `calendarDteBetween`). Restamped from a mid-flight status that was never revisited. |
 
 ## 2026-08-05 — [P2, calibration honesty, NH-R14] `feature-store.ts`'s comment-only "never disagree with record.ts" invariant is measurably FALSE on WS-10/WS-11 executable-graded rows — new spec doc + live cross-check audit (docs-only, no production code touched)
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -772,9 +927,10 @@ with console-only completion logging. Regression test:
 | **Blast radius** | Confined to the ONE invariant checked — no other consumer claims byte-identical agreement with another (Swing's 5-truth grader and the Banger scale-out grader are documented as deliberately DIFFERENT methodologies, not supposed-to-agree pairs; see the new spec doc §6-7). The Iron Condor grader (`condor.ts`) is structurally excluded from `feature-store.ts`'s label switch (its `condor_win`/`condor_breach_loss` outcome strings never match the `doubled`/`stopped`/`time_stop` case list) — confirmed as a deliberate exclusion, not a silent miss. No other DB read function or API route was found exposing the raw mid columns for cross-checking, so this is the full reachable blast radius from this sandbox. |
 | **Fix rationale — why a spec doc + audit script, not a code change** | The task scope (NH-R14) was explicitly to SPECIFY and AUDIT, not to unilaterally pick a resolution: whether feature-store.ts *should* train on the mid/mechanical signal (a cleaner, execution-noise-free read of "did the SETUP work," arguably more useful for early-stage-signal base rates) or switch to the official/executable lane (matching the member record exactly) is a real design decision with tradeoffs either way, and picking one without operator sign-off would be scope creep beyond "build a spec + audit." What THIS PR fixes is the more fundamental problem: an untested claim in a comment. Now there is (1) `docs/audit/OUTCOME-GRADING-SPEC.md`, a durable inventory of every grader + which pairs are intentionally different vs supposed-to-agree, and (2) `scripts/audit/outcome-grading-audit.mjs`, a repeatable live measurement that will catch drift (or confirm reconciliation) whenever it's re-run — turning "we assert this in a comment" into "we can prove or disprove this on demand." |
 | **Files** | `docs/audit/OUTCOME-GRADING-SPEC.md` (new), `scripts/audit/outcome-grading-audit.mjs` (new), `scripts/audit/lib/grading-agreement-eval.mjs` (new, pure), `scripts/audit/lib/grading-agreement-eval.test.mjs` (new, 7 tests), `CLAUDE.md` (audit toolkit entries). No `src/**` production code touched. |
-| **Status** | Docs + audit tooling only, no behavior change. PR opens on `feat/nh-r14-grading-spec` (this task's assigned branch/worktree), auto-merge enabled per standing policy once CI's `verify` gate is green. **Follow-up (not in this PR's scope):** an operator decision on whether `feature-store.ts` should be repointed at the official/executable lane, or the comment corrected to describe an intentional mid-only design — either way, re-run `outcome-grading-audit.mjs` after to confirm. |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `gradePlanFromBars`, `gradePlanExecutableFromBars`, `reconstructTrimScaleExecutableFromBars`). Restamped from a mid-flight status that was never revisited. |
 
 ## 2026-08-05 — [feature, Night Hawk UX] SPX Slayer live-play badge on the 0DTE board — read-only, display-only 4th tile (feat/nh-spx-badge)
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -787,10 +943,11 @@ with console-only completion logging. Regression test:
 | **Graceful degradation** | `SpxSlayerBadgeStrip` (`zerodte-board-strips.tsx`) has three states: `badge === undefined` → renders nothing (an older cached board payload that predates this field must never show fabricated idle chrome); `badge === null` or `available: false` → renders the `.is-idle` state with a human `unavailable_reason` in the tooltip (e.g. "SPX Slayer desk unavailable — retrying"); a live badge renders action/direction/grade. `getSpxSlayerBadgeSnapshot()`'s own try/catch degrades ANY failure (desk load, technicals build, engine eval) to `unavailableSpxSlayerBadge()` rather than throwing — a hard failure here can never take down the rest of the board response (belt-and-suspenders `.catch` at the `Promise.all` call site too). |
 | **Inherits the hysteresis fix** | Because this badge is (as of this change) the ONLY production caller of `getSpxPlaySnapshot()` — the existing member SPX card route (`/api/market/spx/play` → `spx-service.ts`'s `evaluateSpxPlayState` → `readSpxPlaySnapshot`) calls the engine directly WITHOUT the hysteresis wrapper — the badge gets the sticky SCANNING/WATCHING/BUY display layer for free and will not flip on a single noisy poll, same guarantee #1686 gives the member SPX card. (Noted for a future finding: the member SPX card itself still bypasses hysteresis via `readSpxPlaySnapshot`; out of scope for this PR, which only had to inherit the fix, not wire it into the pre-existing route.) |
 | **Tests** | `spx-slayer-badge.test.ts` (6 cases) — pure `mapSpxPlayToBadge`/`unavailableSpxSlayerBadge` mapping across SCANNING/WATCHING/OPEN(TRIM)/unavailable states; deliberately imports from the type-only `spx-slayer-badge-map.ts` split (not `spx-slayer-badge.ts`) so the suite runs without pulling in `spx-play-engine.ts`'s heavy `server-only`-guarded dependency graph. `zerodte-board-strips.test.ts` (+4 cases) — SSR render of `SpxSlayerBadgeStrip` for undefined/idle/live-BUY/degraded-reason states. `npx tsc --noEmit -p .` clean; `next lint` clean on touched files. |
-| **Status** | Shipped on `feat/nh-spx-badge` → PR to `main`, auto-merge per standing policy once CI's `verify` gate is green. |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `applySpxPlayDisplayHysteresis`, `evaluateSpxPlayState`, `getSpxPlaySnapshot`). Restamped from a mid-flight status that was never revisited. |
 | **Follow-up fix (same PR, before merge)** | Real CI (`verify`) caught what the sandbox's own pre-existing test-environment limitations masked: the top-level `import { getSpxSlayerBadgeSnapshot } from "@/features/spx/lib/spx-slayer-badge"` in `zerodte-service.ts` pulled `spx-play-engine.ts` → `spx-play-options.ts` into `zerodte-service.ts`'s STATIC import graph. `spx-play-options.ts:9` calls `polygonRestBase()` at module-eval time (not lazily), and 3 pre-existing test files that import `zerodte-service.ts` — `zerodte-board-convergence.test.ts`, `zerodte-service-marks.test.ts`, `zerodte-service.test.ts` — mock the polygon module in a way that doesn't stub that export, so loading it broke 23 unrelated tests with `(0 , import_polygon.polygonRestBase) is not a function`. Same root cause the badge's own test file had already sidestepped by depending on the pure `spx-slayer-badge-map.ts` split instead of `spx-slayer-badge.ts` directly (see Tests row above) — just not yet applied to the production call site. Fix: `zerodte-service.ts` now statically imports only `unavailableSpxSlayerBadge`/`SpxSlayerBadge` from the pure `spx-slayer-badge-map.ts`, and loads `getSpxSlayerBadgeSnapshot` via a dynamic `import()` inside the `Promise.all` at the actual call site — so the static import graph of every existing consumer of `zerodte-service.ts` is unchanged. Verified: `npx tsc --noEmit -p .` clean; the specific `(0, ...) is not a function` crash no longer reproduces locally (remaining local-only failures in these 3 files are the sandbox's own pre-existing `POLYGON_API_BASE` placeholder-env and blocked-raw-Postgres limitations, unrelated to this diff — confirmed via `git stash` baseline comparison). |
 
 ## 2026-08-06 — [ops] Past expiry column at ET rollover (regression) — FIXED (#1773)
+> **kind:** `OPS-NOTE`
 
 | Field | Value |
 |-------|-------|
@@ -799,9 +956,10 @@ with console-only completion logging. Regression test:
 | **Root cause** | #1683 added `prunePastExpiriesFromHeatmap` but also gated the TTL fast path on `!heatmapHasPastExpiries`. Right after midnight, a still-fresh cache (age &lt; TTL) with yesterday's 0DTE column skipped the fast path, fell through to a cold rebuild, and `awaitHeatmapBuildWithBlockCap` could hand off the **unpruned** stale matrix on timeout — bypassing `finalizeHeatmapForServe`. |
 | **Evidence** | ops-collect fingerprint `ee994b4b2bf8` at 2026-08-06T04:14Z (~00:14 ET); `heatmap-verifier.ts` `expiries-valid` check. |
 | **Fix** | Serve within TTL via `finalizeHeatmapForServe` even when past expiries are present (prune on serve); prune block-cap handoff + `readGexHeatmapSnapshot` last-resort path. Regression source test in `polygon-options-gex.test.ts`. |
-| **Status** | `fix/heatmap-rollover-serve-prune` → PR. |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `finalizeHeatmapForServe`, `readGexHeatmapSnapshot`). Restamped from a mid-flight status that was never revisited. |
 
 ## 2026-08-05 — [ops] Past expiry column in stale GEX heatmap cache — FIXED (#1477)
+> **kind:** `OPS-NOTE`
 
 | Field | Value |
 |-------|-------|
@@ -810,9 +968,10 @@ with console-only completion logging. Regression test:
 | **Root cause** | `fetchGexHeatmap` SWR stale-serve path returned matrices cached before the ET date rollover. Fresh builds filter `expiry < today` at ingest, but a matrix built at 23:59 can live up to `GEX_HEATMAP_MAX_STALE_SEC` (90s) with yesterday's 0DTE column still on the axis. |
 | **Evidence** | ops-collect fingerprint `ee994b4b2bf8`; `heatmap-verifier.ts` `expiries-valid` check at L3. |
 | **Fix** | `prunePastExpiriesFromHeatmap` + `heatmapHasPastExpiries` in `polygon-options-gex.ts`: skip TTL-fast-path when past expiries present; prune + re-derive near-term levels on every serve via `rememberGoodHeatmap`. |
-| **Status** | `fix/heatmap-past-expiry-prune` → PR. |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `prunePastExpiriesFromHeatmap`, `heatmapHasPastExpiries`, `rememberGoodHeatmap`). Restamped from a mid-flight status that was never revisited. |
 
 ## 2026-08-05 — [P3, Night Hawk UX, Legacy tab] Stop/target distance rendered 3x for the same play — collapsed to one place
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -824,69 +983,8 @@ with console-only completion logging. Regression test:
 | **Blast radius** | Single file (`PlayTerminal.tsx`) + its SSR test. `LegacyManageGeometry`/`LegacyPnlPanel`/the Thesis meta grid are not imported or reused by any other tab, horizon, or component (`TerminalPremiumPanels.tsx`'s premium 0DTE panels are entirely separate functions) — confirmed by grep, no other call sites. |
 | **Status** | FIXED on `wt/legacy-stop-target-dedup` → `fix/legacy-stop-target-dedup`. Tests: `PlayTerminal.ssr.test.ts` 15/15 pass (12 pre-existing + 3 new, plus 1 test updated in place for the new `initialTab` prop's default-preserving behavior — actually no pre-existing test needed changes, all 12 passed unmodified). `npx tsc --noEmit` clean (ignoring the pre-existing stale `.next/types/app/(marketing)/learn/*` cache errors). Full `npm test` before/after diffed via `git stash` — zero new failures vs baseline (pre-existing quote-cache + shared-board-snapshot failures unchanged in count). |
 
-## 2026-08-04 — [Grid/0DTE] Post-close fix agent pass3 — all validators GREEN (~3:21 PM PT / 6:21 PM ET)
-
-**Severity.** — (no additional product defects)
-
-**Session.** Scheduled post-close fix agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` Step 4 (Cloud Agent `cursor/0dte-grid-post-close-agent-b871`; executed ~3:21 PM PT / 6:21 PM ET / 22:21 UTC).
-
-**Evidence.**
-- `validate:grid-rth -- --phase=post-close` → **13/13 PASS** (0 FAIL; `zerodte-warm` cron accepted, data-correctness flags=0, ops:collect zero items)
-- `validate:zerodte-logic` → **17/17 PASS** — gates, plan exits (-50%/+100%/15:30 ET), lifecycle OPEN→TRIM→CLOSED, mergePlays SKIP past cutoff/MOVED, live board 9 setups / 6 ledger, cutoff 15:30 ET
-- `validate:grid-e2e` → **5/5 PASS** — board API 9/6, HELIX 20 prints, Playwright `/nighthawk` load, zero console errors
-- `validate:deploy` → **GREEN**
-
-**Root cause.** Initial cloud-agent run failed on missing `node_modules` (tsx/playwright/pg/react) — environment only. After `npm install` + `npx playwright install chromium`, all suites GREEN on re-run. Reviewed today's earlier verify passes (#1664, #1666); no gate logic, play picking, trade management, mergePlays, cron bypass, or ledger PnL defects found.
-
-**Status.** FIXED — no code changes required; docs only on `fix/grid-post-close-aug4-pass3`.
-
----
-
-## 2026-08-04 — [Grid/0DTE] Post-close fix agent — all validators GREEN (~1:05 PM PT / 5:17 PM ET)
-
-**Severity.** — (no additional product defects)
-
-**Session.** Scheduled post-close fix agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` Step 4 (~1:05 PM PT slot; executed ~5:17 PM ET / 21:17 UTC).
-
-**Evidence.**
-- `validate:grid-rth -- --phase=post-close` → **13/13 PASS** (0 FAIL; `zerodte-warm` cron accepted, data-correctness flags=0, ops:collect zero items)
-- `validate:zerodte-logic` → **17/17 PASS** — gates, plan exits (-50%/+100%/15:30 ET), lifecycle OPEN→TRIM→CLOSED, mergePlays SKIP past cutoff/MOVED, live board 10 setups / 6 ledger, cutoff 15:30 ET
-- `validate:grid-e2e` → **5/5 PASS** — board API 10/6, HELIX 20 prints, Playwright `/nighthawk` load, zero console errors
-- `validate:deploy` → **GREEN**
-
-**Root cause.** Initial cloud-agent run failed on missing `node_modules` (tsx/playwright/pg/react) — environment only. After `npm install` + `npx playwright install chromium`, all suites GREEN on re-run. No gate logic, play picking, trade management, mergePlays, cron bypass, or ledger PnL defects found.
-
-**Status.** FIXED — no code changes required; docs only on `fix/grid-post-close-aug4-green`.
-
----
-
-## 2026-08-04 — [spx] Post-close fix agent pass2 — all validators GREEN (~3:13 PM PT / 6:13 PM ET)
-
-**Severity:** — (no product defect)
-
-**Session:** SPX Slayer post-close fix agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` Step 6 (Cloud Agent `cursor/spx-post-close-findings-16a9`).
-
-**Evidence.** `npm run validate:spx-rth -- --phase=post-close` → 6 PASS / 1 WARN / 0 FAIL; `npm run validate:spx-e2e` → 0 FAIL / 18 checks; `npm run validate:deploy` → GREEN. Matrix oracle: 159 strikes GEX+VEX+DEX+CHARM finite; cross-endpoint spot merged=7736.52 hm=7736.52; play SCANNING with no stale confirmations; BIE `getSpxPlayState()` consistent; cross-tool integration (Thermal, HELIX, Largo, Grid, 0DTE, Night Hawk) all PASS.
-
-**Today's findings.** Reviewed all `spx-rth-2026-08-04` verify passes (open through pass5) and prior post-close fix. No unresolved P0/P1 SPX defects. Harness-only initial FAIL (missing `node_modules`) resolved via `npm install` + Playwright chromium install.
-
-**Status.** `cursor/spx-post-close-findings-16a9` → docs-only PR.
-
----
-
-## 2026-08-04 — [spx] Post-close fix agent — all validators GREEN (~2:21 PM PT / 5:21 PM ET)
-
-**Severity:** — (no product defect)
-
-**Session:** SPX Slayer post-close fix agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` Step 6 (Cloud Agent `cursor/spx-post-close-findings-fde7`).
-
-**Evidence.** `npm run validate:spx-rth -- --phase=post-close` → 6 PASS / 1 WARN / 0 FAIL; `npm run validate:spx-e2e` → 0 FAIL / 18 checks; `npm run validate:deploy` → GREEN. Matrix oracle: 159 strikes GEX+VEX+DEX+CHARM finite; cross-endpoint spot merged=7736.52 hm=7736.52; play SCANNING with no stale confirmations; BIE `getSpxPlayState()` consistent; cross-tool integration (Thermal, HELIX, Largo, Grid, 0DTE, Night Hawk) all PASS.
-
-**Today's findings.** Reviewed all `spx-rth-2026-08-04` verify passes (open through pass5). No unresolved P0/P1 SPX defects. Harness-only initial FAIL (missing `node_modules`) resolved via `npm install` + Playwright chromium install.
-
-**Status.** `fix/spx-post-close-aug4-green` → PR #1661.
-
 ## 2026-08-04 — [P0, HELIX dark pool] Empty tape when WS fresh — snapshot cached under `dark_pool_recent` — FIXED
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -899,6 +997,7 @@ with console-only completion logging. Regression test:
 ---
 
 ## 2026-08-04 — [P1, Dark pool Discord] #blackout-darkpool channel alerts — FIXED
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -912,6 +1011,7 @@ with console-only completion logging. Regression test:
 ---
 
 ## 2026-08-04 — [P0, 0DTE exits] Profit-protection floor armed too late + honored mark gap-through — FIXED
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -925,6 +1025,7 @@ with console-only completion logging. Regression test:
 ---
 
 ## 2026-08-04 — [P1, data path] CONFIRMED Legacy plays wiped from Swings by swing-discovery overwrite — FIXED
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -938,6 +1039,7 @@ with console-only completion logging. Regression test:
 ---
 
 ## 2026-08-04 — [P2, UX] WATCH tab SKIP (FAILED) rows missing "Since flag" track % — FIXED
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -951,6 +1053,7 @@ with console-only completion logging. Regression test:
 ---
 
 ## 2026-08-04 — [P2, data coverage] Thermal low-priced tickers (NIO) showed ~4–5 strikes — FIXED
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -964,6 +1067,7 @@ with console-only completion logging. Regression test:
 ---
 
 ## 2026-08-04 — [P2, UX] Night Hawk right detail panel lost scroll after left-rail fix (#1596) — FIXED (flex-basis)
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -977,6 +1081,7 @@ with console-only completion logging. Regression test:
 ---
 
 ## 2026-08-04 — [P2, UX/correctness disclosure] Thermal key levels looked "way off" vs matrix peaks / competitor tools — FIXED (scope labels)
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -990,10 +1095,13 @@ with console-only completion logging. Regression test:
 ---
 
 ## 2026-08-04 — [P2, UX] Night Hawk right detail panel lost scroll after left-rail fix (#1596) — FIXED (flex-basis)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ---
 
 ## 2026-08-04 — [0DTE] Closed stopped plays show peak (+87%) not mechanical −50% when trim tranches armed — FIXED
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -1007,6 +1115,8 @@ with console-only completion logging. Regression test:
 ---
 
 ## 2026-08-04 — [0DTE] Architecture V2 Phase 1: Market State Engine + discovery events + BREAKOUT floor 65 — IN PROGRESS
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** HIGH — discovery architecture one-directional; Aug 3 committed ~2 OPEN despite rich tape.
 
@@ -1019,6 +1129,8 @@ with console-only completion logging. Regression test:
 ---
 
 ## 2026-08-04 — [0DTE] Architecture V2 Phase 2a: discovery event persist + BREAKOUT 1DTE fallback — IN PROGRESS
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** MEDIUM — closes the event-sourcing loop started in Phase 1; improves BREAKOUT chain-walk observability.
 
@@ -1029,12 +1141,16 @@ with console-only completion logging. Regression test:
 ---
 
 ## 2026-08-04 — [0DTE] Architecture V2 Phase 2b: board market_state chip + admin funnel — IN PROGRESS
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Fix.** `ZeroDteBoardPayload.market_state`; `MarketStateStrip` on Command deck; `GET /api/admin/zerodte/funnel`; Admin BIE discovery funnel DeckPanel.
 
 **Status.** PR pending.
 
 ## 2026-08-03 — [ops,nighthawk] Edition stuck at stage_synthesis checkpoint — FIXED (ops-auto-fix #1572)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 — Night Hawk edition `2026-08-04` not published; `job_status=stage_scoring` / `current_stage=stage_synthesis`.
 
@@ -1046,39 +1162,9 @@ with console-only completion logging. Regression test:
 
 **Status.** FIXED on `cursor/autonomous-ops-fixes-88e1`.
 
-## 2026-08-03 — [Grid/0DTE] Post-close fix agent (cloud session) — all validators GREEN (~3:14 PM PT / 6:14 PM ET)
-
-**Severity.** — (no additional product defects)
-
-**Session.** Cloud Agent post-close fix per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` Step 4 (executed ~3:14 PM PT / 6:14 PM ET / 22:14 UTC).
-
-**Evidence.**
-- `validate:grid-rth -- --phase=post-close` → **12/12 PASS** (0 FAIL; `zerodte-warm` cron WARN HTTP 502 transient; data-correctness flags=0; ops:collect zero items)
-- `validate:zerodte-logic` → **17/17 PASS** — gates, plan exits (-50%/+100%/15:30 ET), lifecycle OPEN→TRIM→CLOSED, mergePlays SKIP past cutoff/MOVED, live board 7 setups / 2 ledger, cutoff 14:00 ET
-- `validate:grid-e2e` → **5/5 PASS** — board API 7/2, HELIX 20 prints, Playwright `/nighthawk` load, zero console errors
-- `validate:deploy` → **GREEN**
-
-**Root cause.** First run in fresh cloud env failed on missing `node_modules` (tsx/playwright/pg/react) — environment only. After `npm install` + `npx playwright install chromium`, all suites GREEN on re-run. No gate logic, play picking, trade management, mergePlays, cron bypass, or ledger PnL defects found.
-
-**Status.** FIXED — no code changes required; docs only on `fix/grid-post-close-aug3-agent-evening`.
-
-## 2026-08-03 — [Grid/0DTE] Post-close fix agent — all validators GREEN (~1:05 PM PT / 5:10 PM ET)
-
-**Severity.** — (no additional product defects)
-
-**Session.** Scheduled post-close fix agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` Step 4 (~1:05 PM PT slot; executed ~5:10 PM ET / 21:10 UTC).
-
-**Evidence.**
-- `validate:grid-rth -- --phase=post-close` → **12/12 PASS** (0 FAIL; `zerodte-warm` cron accepted, data-correctness flags=0, ops:collect zero items)
-- `validate:zerodte-logic` → **17/17 PASS** — gates, plan exits (-50%/+100%/15:30 ET), lifecycle OPEN→TRIM→CLOSED, mergePlays SKIP past cutoff/MOVED, live board 6 setups / 2 ledger, cutoff 14:00 ET
-- `validate:grid-e2e` → **5/5 PASS** — board API 6/2, HELIX 20 prints, Playwright `/nighthawk` load, zero console errors
-- `validate:deploy` → **GREEN**
-
-**Root cause.** Initial cloud-agent run failed on missing `node_modules` (tsx/playwright/pg) — environment only. After `npm install` + `npx playwright install chromium`, all suites GREEN. RTH verify pass earlier today (`grid-rth-2026-08-03`, PR #1554) already confirmed zero P0/P1 Grid/0DTE defects; no gate logic, play picking, trade management, mergePlays, cron bypass, or ledger PnL fixes required.
-
-**Status.** FIXED — no new code changes required; docs only on `fix/grid-post-close-aug3-green`.
-
 ## 2026-08-03 — [ops] spx-signal-weight-optimize off-window stale false positive (#1550)
+> **kind:** `OPS-NOTE`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 ops false positive — not a prod outage.
 
@@ -1096,6 +1182,8 @@ was >36h old by Monday pre-fire.
 **Status.** FIXED — PR merge + deploy clears recurring pre-fire watchdog noise.
 
 ## 2026-08-03 — [SEO] Internal cross-link audit: 27 links added across 42 learn articles
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity:** Low (SEO / discoverability improvement, no runtime behavior change).
 
@@ -1130,6 +1218,8 @@ outgoing (3), no orphans, no broken links, and total link count >= 300.
 ---
 
 ## 2026-08-01 — [CTO perf audit] Multi-agent audit (8 domains, adversarially verified) — Vector/Nighthawk 1Hz full-tree re-renders fixed; 15 more findings ranked
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Context.** User-requested exhaustive performance audit ("the entire website feels slow... I just
 need it faster"). Ran an 8-domain parallel audit (SSR payload, rendering, network/caching, bundle,
@@ -1207,6 +1297,8 @@ actually used, not silently ignored), and the no-prop fallback path still render
 **Status.** `fix/vector-nighthawk-1hz-rerender` → PR.
 
 ## 2026-08-01 — [Vector/SPX Slayer] SSR payload embedded up to 24h of prior-session wall history — 28-50MB HTML, 10-12s downloads
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 — perf/UX. Member-reported "the entire website feels slow"; traced to the highest-traffic
 authenticated surface (Vector standalone page + the SPX Slayer flagship dashboard embed).
@@ -1261,23 +1353,9 @@ input; no-op when the whole rail already belongs to the session). Full suite gre
 
 **Status.** `fix/vector-ssr-session-scope-payload` → PR.
 
-## 2026-07-31 — [Grid/0DTE] Post-close fix agent pass 6 — all validators GREEN (~3:17 PM PT / 6:17 PM ET)
-
-**Severity.** — (no additional product defects)
-
-**Session.** Scheduled post-close fix agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` Step 4 (~1:05 PM PT slot; executed ~3:17 PM PT / 6:17 PM ET).
-
-**Evidence.**
-- `validate:grid-rth -- --phase=post-close` → **12/12 PASS** (0 FAIL; transient `zerodte:upstream` + `integration:helix-flows` WARN off-hours)
-- `validate:zerodte-logic` → **17/17 PASS**
-- `validate:grid-e2e` → **4/4 PASS** (Playwright WARN only — chromium not installed in sandbox; API probes authoritative)
-- `validate:deploy` → **GREEN**
-
-**Root cause.** Initial cloud-agent run failed on missing `node_modules` (tsx/playwright/pg) — environment only. After `npm install`, all suites GREEN. Prior pass-4 fix (`buildMinimalBoardFallback` live ET session heat, PR #1457) holds.
-
-**Status.** FIXED — no new code changes required; docs only on `fix/grid-post-close-pass6-green`.
-
 ## 2026-07-31 — [Grid/0DTE] Minimal board fallback hardcoded noon RTH heat post-close
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 — degraded `/api/market/zerodte/board` polls returned `heat=RTH` with empty setups/ledger after the bell while the real board (via Clerk/cron) showed `CLOSED` with 7 setups / 2 ledger rows.
 
@@ -1291,22 +1369,9 @@ input; no-op when the whole rail already belongs to the session). Full suite gre
 
 **Status.** `fix/grid-minimal-fallback-session-heat` → PR.
 
-## 2026-07-31 — [Grid/0DTE] Post-close fix agent pass 4 — all validators GREEN (~5:39 PM ET)
-
-**Severity.** — (no additional product defects after fix above)
-
-**Session.** Scheduled post-close fix agent per `docs/ops/GRID-RTH-ALL-DAY-AGENT.md` Step 4 (~1:39 PM PT / 5:39 PM ET).
-
-**Evidence.**
-- `validate:grid-rth -- --phase=post-close` → **12/12 PASS** (0 FAIL; upstream WARN transient)
-- `validate:zerodte-logic` → **17/17 PASS**
-- `validate:grid-e2e` → **5/5 PASS** (Playwright `/nighthawk`, zero console errors)
-
-**Root cause.** Initial cloud-agent run failed on missing `node_modules` (tsx/playwright/pg) — environment only. One product defect: minimal fallback session heat (above).
-
-**Status.** FIXED on `fix/grid-minimal-fallback-session-heat`.
-
 ## 2026-07-31 — [ops] socket-health false-fail when ingest WS heartbeat absent but REST live
+> **kind:** `OPS-NOTE`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 — `validate:rth-open` failed `options-socket` on every probe (~14:14–14:23 ET)
 while all member APIs GREEN (sweep 0 P0/P1, data-correctness flags=0, SPX matrix 169 strikes).
@@ -1325,6 +1390,8 @@ Unit tests in `socket-cluster-health.test.ts`.
 **Status.** `cursor/rth-comprehensive-test-sweep-47c8` → PR.
 
 ## 2026-07-31 — [ops] ops-auto-fix #703 — transient watchdog HTTP 502 surfaced as P0
+> **kind:** `OPS-NOTE`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 — `ops-auto-fix` GHA collector reported P0 `watchdog:http` during a healthy
 prod session; blocked autonomous close loop on issue #703.
@@ -1347,6 +1414,8 @@ now includes 503.
 **Status.** `cursor/autonomous-ops-maintenance-be56` → PR.
 
 ## 2026-07-31 — [spx] Degraded play payload missing `levels` crashes dashboard (P1)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 — `/dashboard` console `TypeError: Cannot read properties of undefined (reading 'entry')` when `/api/market/spx/play` returns degraded SCANNING without `levels`.
 
@@ -1360,31 +1429,9 @@ now includes 503.
 
 **Status.** **Merged** PR #1468.
 
-## 2026-08-03 — [spx] Post-close fix agent — all validators GREEN (~6:10 PM ET)
-
-**Severity:** — (no product defect)
-
-**Session:** SPX Slayer post-close fix agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` Step 6 (Cloud Agent `cursor/spx-post-close-findings-1080`).
-
-**Evidence.** `npm run validate:spx-rth -- --phase=post-close` → 6 PASS / 1 WARN / 0 FAIL; `npm run validate:spx-e2e` → 0 FAIL / 17 checks; `npm run validate:deploy` → GREEN. Matrix oracle: 167 strikes GEX+VEX+DEX+CHARM finite; cross-endpoint spot merged=7600.5 hm=7600.5; play SCANNING with no stale confirmations; BIE `getSpxPlayState()` consistent; cross-tool integration (Thermal, HELIX, Largo, Grid, 0DTE, Night Hawk) all PASS.
-
-**Harness fix.** P2 `SPX-RTH-E2E-HERO`: E2E still probed removed `.spx-trade-alert-hero` — updated to `.spx-play-verdict-bar` (`SpxPlayVerdictBar`) with SCANNING/HUNTING stale-confirmation guard.
-
-**Status.** `fix/spx-e2e-verdict-bar-selector` → PR.
-
-## 2026-08-03 — [spx] Post-close fix agent — all validators GREEN (~1:14 PM PT / 4:14 PM ET)
-
-**Severity:** — (no product defect)
-
-**Session:** SPX Slayer post-close fix agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` Step 6 (Cloud Agent `cursor/spx-post-close-findings-21ec`).
-
-**Evidence.** `npm run validate:spx-rth -- --phase=post-close` → 6 PASS / 1 WARN / 0 FAIL; `npm run validate:spx-e2e` → 0 FAIL / 17 checks; `npm run validate:deploy` → GREEN. Matrix oracle: 167 strikes GEX+VEX+DEX+CHARM finite; cross-endpoint spot merged=7600.5 hm=7600.5; play SCANNING with no stale confirmations; BIE `getSpxPlayState()` consistent; cross-tool integration (Thermal, HELIX, Largo, Grid, 0DTE, Night Hawk) all PASS.
-
-**Environment flake.** First cloud-agent pass failed on missing `node_modules` (tsx/playwright/pg) — resolved with `npm install` + Playwright Chromium install. No product code changes required.
-
-**Status.** GREEN — no additional fix branch required.
-
 ## 2026-07-31 — [spx] E2E cross-tool desk spot 0 while matrix live (P2 harness)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P2 — `validate:spx-e2e` FAIL `integration:spx-cross-tool` on transient `desk spot 0` while heatmap held 7489.72 (cold desk cache edge, same class as SPX-RTH-XEP-01).
 
@@ -1392,35 +1439,9 @@ now includes 503.
 
 **Status.** `fix/spx-e2e-desk-spot-retry` → PR.
 
-## 2026-07-31 — [spx] Post-close fix agent final — all validators GREEN (~3:10 PM PT / 6:10 PM ET)
-
-**Severity:** — (no product defect)
-
-**Session:** SPX Slayer post-close fix agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` Step 6 (Cloud Agent `cursor/spx-post-close-findings-9fd0`).
-
-**Evidence.** `npm run validate:spx-rth -- --phase=post-close` → 6 PASS / 1 WARN / 0 FAIL; `npm run validate:spx-e2e` → 0 FAIL / 17 checks; `npm run validate:deploy` → GREEN. Matrix oracle: 170 strikes GEX+VEX+DEX+CHARM finite; cross-endpoint spot merged=7489.72 hm=7489.72; play SCANNING with no stale confirmations; BIE `getSpxPlayState()` consistent; cross-tool integration (Thermal, HELIX, Largo, Grid, 0DTE, Night Hawk) all PASS.
-
-**Environment flake.** First cloud-agent pass failed on missing `node_modules` (tsx/playwright/pg) — resolved with `npm install` + Playwright Chromium install. Transient `merged spot 0` on first cross-endpoint probe resolved on retry (harness retry already merged #1456).
-
-**Product fixes already on main.** P0 matrix unavailable (#1428), heatmap enrichment timeout, socket-health REST fallback, SPX E2E Clerk mint hardening (#1454), merged-spot retry + 502 filter (#1456).
-
-**Status.** GREEN — no additional fix branch required.
-
-## 2026-07-31 — [spx] Post-close fix agent — all validators GREEN (~1:05 PM PT)
-
-**Severity:** — (no product defect)
-
-**Session:** SPX Slayer post-close fix agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` Step 6.
-
-**Evidence.** `npm run validate:spx-rth -- --phase=post-close` → 6 PASS / 1 WARN / 0 FAIL; `npm run validate:spx-e2e` → 0 FAIL / 17 checks; `npm run validate:deploy` → GREEN. Matrix oracle: 170 strikes GEX+VEX+DEX+CHARM finite; cross-endpoint spot merged=7489.72 hm=7489.72; play SCANNING with no stale confirmations; BIE `getSpxPlayState()` consistent; cross-tool integration (Thermal, HELIX, Largo, Grid, 0DTE, Night Hawk) all PASS.
-
-**Harness flake.** First post-close orchestrator pass failed `spx:cross-endpoint` on transient `merged spot 0` while heatmap held 7489.72 — cold merged cache edge (same class as 2026-07-30). Retry passed; harness now retries merged fetch when heatmap spot is live but merged price is 0.
-
-**Product fixes already on main.** P0 matrix unavailable (#1428), heatmap enrichment timeout, socket-health REST fallback, SPX E2E Clerk mint hardening (#1454).
-
-**Status.** GREEN — harness retry in `fix/spx-cross-endpoint-merged-retry`.
-
 ## 2026-07-31 — [spx] Matrix UI "unavailable" while API valid — client 10s fetch abort (P0)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 — members saw "Matrix unavailable — retrying…" on `/dashboard` during RTH while `/api/market/gex-heatmap?ticker=SPX` held 170–175 valid strikes.
 
@@ -1434,21 +1455,9 @@ now includes 503.
 
 **Status.** **Merged** PR #1428.
 
-## 2026-07-30 — [spx] Post-close fix agent — all validators GREEN (~3:09 PM PT)
-
-**Severity:** — (no product defect)
-
-**Session:** SPX Slayer post-close fix agent per `docs/ops/SPX-RTH-ALL-DAY-AGENT.md` Step 6.
-
-**Evidence.** `npm run validate:spx-rth -- --phase=post-close` → 6 PASS / 1 WARN / 0 FAIL; `npm run validate:spx-e2e` → 0 FAIL / 17 checks; `npm run validate:deploy` → GREEN. Matrix oracle: 172 strikes GEX+VEX+DEX+CHARM finite; cross-endpoint spot merged=7437.63 hm=7437.63; play SCANNING with no stale confirmations; BIE `getSpxPlayState()` consistent; cross-tool integration (Thermal, HELIX, Largo, Grid, 0DTE, Night Hawk) all PASS.
-
-**Root cause.** No new product defects. Initial cloud-agent run failed on missing `node_modules` (tsx/playwright/pg) and Playwright browser binary — environment setup, not member-facing. Transient `merged spot 0` on first probe resolved on retry (cold merged cache edge).
-
-**Status.** GREEN — no fix branch required. Prior fixes already on main: cross-replica play cache (#1382), E2E harness hardening (#1383).
-
-evidence / fix / status per the CLAUDE.md policy.)
-
 ## 2026-07-30 — [Grid/0DTE] grid-e2e Clerk phone collision on stale audit users
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 — `validate:grid-e2e` FAIL `e2e:auth` blocked post-close orchestrator when nested in `validate:grid-rth`.
 
@@ -1462,25 +1471,9 @@ evidence / fix / status per the CLAUDE.md policy.)
 
 **Status.** FIXED on `fix/grid-e2e-clerk-phone-retry`.
 
-## 2026-07-30 — [Grid/0DTE] Post-close fix agent — all validators GREEN
-
-**Severity.** P2 doc only — no product defects.
-
-**Symptom.** Scheduled post-close fix pass (~1:17 PM PT / 5:17 PM ET) per `GRID-RTH-ALL-DAY-AGENT.md` Step 4.
-
-**Evidence.** After `npm install` on current `main` (`68fa6983`):
-- `validate:grid-rth -- --phase=post-close` — **13/13 PASS** (board 13 setups / 15 ledger, ledger PnL coherent, zerodte-warm 202, data-correctness flags=0, ops:collect zero items)
-- `validate:zerodte-logic` — **17/17 PASS** (gates, plans, lifecycle OPEN→TRIM→CLOSED, mergePlays past-cutoff→SKIP, live board)
-- `validate:grid-e2e` — **4/4 PASS** (board API + HELIX flows; Playwright WARN only — chromium not installed in sandbox)
-- `validate:deploy` — GREEN
-
-First orchestrator attempt failed on missing `node_modules` (tsx/playwright/pg/react) — env-only, not prod.
-
-**Fix.** Runbook `GRID-RTH-ALL-DAY-AGENT.md` updated: classic `/grid` deleted 2026-07-07; Step 2 now `/nighthawk`; coverage list matches `grid-rth-all-day-audit.mjs` (zerodte-warm, not grid-warm).
-
-**Status.** FIXED on `fix/grid-runbook-nighthawk-20260730`.
-
 ## 2026-07-30 — [0dte,swing] Wave A/B strongest-engines hardening (regime plane, exits, RESEARCH rail)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0/P1 session forensics — 14/15 0DTE losers (BREAKOUT cluster + exit engine dumping winners on degraded GEX); swing desk looked dead (0 WATCH) while discovery enriched 24 names but persistence gate blocked all commits.
 
@@ -1495,6 +1488,8 @@ First orchestrator attempt failed on missing `node_modules` (tsx/playwright/pg/r
 **Status.** FIXED on `cursor/engines-strongest-wave-ab-3d11` (PR #1389 pending).
 
 ## 2026-07-30 — [0dte,swing] Wave C discovery completeness (intraday breadth, dynamic cap, admin debug)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 — grouped-daily mid-RTH breadth + static cap starved recall; swing STRUCTURE used stale bars on MIDDAY phases; no admin visibility into persistence funnel.
 
@@ -1503,6 +1498,8 @@ First orchestrator attempt failed on missing `node_modules` (tsx/playwright/pg/r
 **Status.** FIXED on `cursor/engines-strongest-wave-ab-3d11` (PR #1389 pending).
 
 ## 2026-07-30 — [0dte] Wave C2 PIN temporal stability gate (flag-gated)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P2 — single-snapshot PIN qualification admits transient gamma blips; INTENTIONAL-DESIGN #3 measurement path exists but no production gate.
 
@@ -1511,6 +1508,8 @@ First orchestrator attempt failed on missing `node_modules` (tsx/playwright/pg/r
 **Status.** FIXED on `cursor/engines-strongest-wave-ab-3d11` (PR #1389 pending).
 
 ## 2026-07-30 — [spx] Cross-replica play-state divergence on parallel `/api/market/spx/play`
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 — members on different ECS replicas could see different grade/score/direction in the same second.
 
@@ -1523,6 +1522,8 @@ First orchestrator attempt failed on missing `node_modules` (tsx/playwright/pg/r
 **Status.** FIXED on `fix/spx-play-cross-replica-cache`.
 
 ## 2026-07-30 — [spx] E2E harness flakes on matrix tab hydration + Largo 504 + orchestrator timeout
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 — false FAILs in `validate:spx-e2e` / `validate:spx-rth` afternoon passes; member surfaces were GREEN (matrix oracle 172 strikes, play SCANNING).
 
@@ -1535,6 +1536,8 @@ First orchestrator attempt failed on missing `node_modules` (tsx/playwright/pg/r
 **Status.** FIXED on `fix/spx-e2e-harness-hardening`.
 
 ## 2026-07-30 — [spx] REST pulse cold path blocked 12s+ (single-flight + prior-day fetch)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 — SPX spot felt frozen when SSE dropped; REST fallback timed out at 12–60s.
 
@@ -1552,6 +1555,8 @@ SSE `/pulse/stream` GREEN @ 250ms. Bootstrap ~6.5s.
 **Status.** FIXED on `cursor/pulse-never-block-3d11`.
 
 ## 2026-07-30 — [0dte,gex] Board + heatmap still blocked past 3s cap under cold/inflight load
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 — 0DTE board 20–43s; SPX `/gex-heatmap` up to 57s; matrix UI empty/loading 45s+.
 
@@ -1567,6 +1572,8 @@ UI: `AbortSignal.timeout(10s)` + show cached matrix while `isLoading && !hasData
 **Status.** FIXED on main (`68fa6983` — `buildMinimalBoardFallback` + `gexHeatmapMaxBlockMs` present).
 
 ## 2026-07-30 — [vector,ops] Stream 400 without ticker + cold-deploy empty handoff
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P2 — Vector SSE probe 400; GEX lens E2E flake; first post-deploy polls empty ≤3s.
 
@@ -1583,6 +1590,8 @@ GEX re-reads mem/Redis at timeout. Audits: `?ticker=SPX` + `data-testid=vector-l
 **Status.** FIXED on `cursor/vector-cold-start-fixes-3d11`.
 
 ## 2026-07-30 — [ops] swing-active-refresh RTH-stale edge timeout (#1364)
+> **kind:** `OPS-NOTE`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 — Swing mark-and-review loop silent during RTH; `vector-universe-snapshot` also
 flagged in the same ops-auto-fix batch (already fixed by #1362 deploy).
@@ -1608,6 +1617,8 @@ handshake (mirrors `vector-universe-snapshot` / `coaching-alerts`). Regression t
 **Status.** FIXED on `fix/ops-1364-swing-active-refresh-edge-timeout`.
 
 ## 2026-07-30 — [ops] vector-full-state-snapshot RTH-stale edge timeout (#1355)
+> **kind:** `OPS-NOTE`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 — Vector full-state cache warmer silent during RTH.
 
@@ -1629,6 +1640,8 @@ stalling watchdog self-heal — applied the same `after()` handshake in
 **Status.** FIXED on `fix/ops-1355-vector-full-state-edge-timeout` + follow-up universe snapshot.
 
 ## 2026-07-30 — [ops] RTH cron edge timeouts → silent staleness (#1343)
+> **kind:** `OPS-NOTE`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 `coaching-alerts` + `uw-cache-refresh` RTH-stale; P1 `socket-health` failed/stale.
 
@@ -1653,6 +1666,8 @@ completion, `sockets_healthy` in meta. (3) `coaching-alerts` + `bie-full-state-s
 **Status.** FIXED on `fix/ops-1343-cron-edge-timeout`.
 
 ## 2026-07-30 — [ops] zerodte-warm CF 504 on blocking board rebuild
+> **kind:** `OPS-NOTE`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 — cron handshake 504 every RTH probe; watchdog may mis-report failure.
 
@@ -1670,6 +1685,8 @@ timeouts bumped to 120s for zerodte/board + gex-heatmap cold paths.
 **Status.** FIXED on `fix/zerodte-warm-edge-timeout`.
 
 ## 2026-07-30 — [ops] Polygon REST 403 → UW spot/GEX fallback (#1337)
+> **kind:** `OPS-NOTE`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 `redis_gex` cold SPX + P1 `socket-health` failed during RTH after #1336 deploy.
 
@@ -1691,6 +1708,8 @@ seeded → socket-health polygon cluster false-negative.
 **Status.** FIXED on `fix/ops-1337-polygon-uw-fallback`.
 
 ## 2026-07-30 — [ops] web tier WS contention → cold SPX GEX + socket-health false P1 (#1335)
+> **kind:** `OPS-NOTE`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 data-correctness (`redis_gex` cold SPX) + P1 cron (`socket-health` failed/stale).
 
@@ -1716,6 +1735,8 @@ true` on a web replica with `cluster_spx_updated_at: null`.
 **Status.** FIXED on `fix/ops-1335-socket-gex-cluster` + follow-up `fix/ops-1335-spot-prev-fallback` (#1338 prev-bar fallback when Polygon snapshots 403). Validated GREEN 2026-07-30 ~11:31 ET.
 
 ## 2026-07-30 — [ops] vector-universe-snapshot RTH-stale self-heal gap (#1333)
+> **kind:** `OPS-NOTE`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 ops — Vector scanner rail stops updating when the recorder cron goes stale during RTH.
 
@@ -1734,6 +1755,8 @@ cleared the P0; ops-collect went 0 items without a code deploy.
 **Status.** FIXED on `fix/vector-universe-snapshot-self-heal`.
 
 ## 2026-07-30 — [Engine] zerodte-grade + swing-active-refresh schedule catalog gaps
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 — post-close 0DTE grading piggybacked on warm's 10-minute throttle; swing TACTICAL
 positions sampled hourly (premium_stop / structural_stop could miss intrahour moves).
@@ -1754,6 +1777,8 @@ permissions for `zerodte-grade` and update `swing-active-refresh` schedule (same
 swing cron repair).
 
 ## 2026-07-30 — [ops] zerodte-grade off-window stale false positive (#1331)
+> **kind:** `OPS-NOTE`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 ops false positive — not a prod outage.
 
@@ -1771,6 +1796,8 @@ as the x-replies off-window false positive (FINDINGS 2026-07-30). Last night's 2
 **Status.** FIXED — PR merge + deploy clears recurring morning watchdog noise.
 
 ## 2026-07-30 — [0DTE] Draft PR #1199 items — superseded on main
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0/P1 stack from `cursor/zerodte-multi-rail-discovery-3d11` (draft #1199).
 
@@ -1785,6 +1812,8 @@ latchLiveExcursion, BREAKOUT_MAX=40, etc.).
 **Status.** FIXED on main — draft #1199 closed/superseded; no merge needed.
 
 ## 2026-07-30 — [Swing] P0 remediation batch — corroboration, thesis open-root, roll/OCC/serving
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 — false WATCH eligibility, duplicate thesis opens, broken-thesis rolls, bad option marks,
 stale live sections.
@@ -1804,6 +1833,8 @@ stale live sections.
 **Status.** FIXED — merged #1322.
 
 ## 2026-07-30 — [Swing] EventBridge schedule catalog missing swing crons
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 — swing-discovery / swing-active-refresh never provisioned in EventBridge despite live
 routes (38/38 FailedInvocations 2026-07-29); empty SWING board.
@@ -1817,6 +1848,8 @@ blackout-infra sync-cron-schedules.mjs uses that map to create EventBridge rules
 **Status.** FIXED on `cursor/swing-cron-registry-3d11`. Infra must run cron sync after merge.
 
 ## 2026-07-30 — [Swing] Hourly manage is mark-and-review (not tactical live mgmt) + grader honesty labels
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 documentation / product-claim — overstated management precision + grader "truth".
 
@@ -1839,6 +1872,8 @@ minute), and financial is marked scale-out P&L. The pure grader already fail-sof
 **Status.** Honesty FIXED on `cursor/swing-followups-3d11`. Faster tactical cadence = open follow-up.
 
 ## 2026-07-30 — [Swing] COMMIT_NOW required graduation (cold-book "Act now" defect)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 product / risk-control — member "Act now" on setups the model will not open.
 
@@ -1854,6 +1889,8 @@ renames — desk vocabulary stays institutional; the gate is the honesty fix.
 **Status.** FIXED on `cursor/swing-followups-3d11`.
 
 ## 2026-07-30 — [Swing] Persistence keyed only by (ticker, direction) — false WATCH eligibility
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 / release-blocking — thesis flip inherited another archetype's session count.
 
@@ -1876,6 +1913,8 @@ applied at *read* time via `archetypeOf` on `fetchWatchEligible`.
 **Status.** FIXED on `cursor/swing-followups-3d11`.
 
 ## 2026-07-30 — [Swing] CTO follow-ups — feature vector, graduated rungs, serve reads, beta/IV, cron catalog
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 — management/serve/calibration seams left dormant after the 2026-07-29 CTO audit.
 
@@ -1898,6 +1937,8 @@ applied at *read* time via `archetypeOf` on `fetchWatchEligible`.
 **Status.** FIXED on `cursor/swing-followups-3d11`. Infra sync still required for EventBridge rule create/update.
 
 ## 2026-07-29 — [Grid/0DTE] grid-e2e board HTTP 504 under orchestrator burst
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 — flaky `validate:grid-rth --phase=post-close` on `grid:dashboard-e2e` when nested
 `validate:grid-e2e` hits HTTP **504** on `/api/market/zerodte/board` after long orchestrator run.
@@ -1911,6 +1952,8 @@ in `auth-status.mjs` (also dedupes `audit-auth-fetch.mjs`).
 **Status.** `fix/grid-e2e-board-retry` → PR.
 
 ## 2026-07-29 — [Grid/0DTE] grid-rth orchestrator syntax error (broken merge #1305)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 — `validate:grid-rth` could not run at all (`SyntaxError: Illegal return statement`).
 
@@ -1923,6 +1966,8 @@ in `auth-status.mjs` (also dedupes `audit-auth-fetch.mjs`).
 **Status.** Merged PR #1307.
 
 ## 2026-07-29 — [SPX] Post-close audit flake: ops:collect stderr mask + transient 502 on desk lanes
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 — blocked `validate:spx-rth --phase=post-close` despite member SPX surfaces GREEN.
 
@@ -1943,6 +1988,8 @@ in `auth-status.mjs` (also dedupes `audit-auth-fetch.mjs`).
 **Status.** `cursor/spx-post-close-findings-2224` → PR.
 
 ## 2026-07-29 — [Swing] CTO audit — management gates null-wired + desk ignored sections
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 capital-path / P1 member UX — Swing engine looked “built” but premium_stop,
 structural_stop, time_stop, and mark-frozen rolls could never fire; desk flattened the 7-section triage.
@@ -1965,6 +2012,8 @@ archetype intended-DTE realign. Branch `cursor/swing-cto-audit-3d11`.
 **Status.** Merged into follow-ups branch; PR #1310.
 
 ## 2026-07-29 — [Grid/0DTE] zerodte board HTTP 504 on aged snapshot cold-build
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 
 **Severity.** P0 member path (Night Hawk `/api/market/zerodte/board`).
@@ -1988,6 +2037,8 @@ use `fetchAuditJson`. Test: `zerodte-board-convergence.test.ts` 35s-aged snapsho
 **Status.** `fix/zerodte-board-swr-504` → PR.
 
 ## 2026-07-29 — [ops] SPY flow cross-check false FLAG — bounded Massive oracle (#1299)
+> **kind:** `OPS-NOTE`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 data-correctness (ops-auto-fix #1299, fingerprint `ee994b4b2bf8`).
 
@@ -2009,6 +2060,8 @@ pages-truncated; flag subset only on complete oracle.
 **Status.** `fix/ops-1299-flow-xcheck-bounded-oracle` → PR #1301.
 
 ## 2026-07-29 — [Grid/0DTE] Post-close agent: contract-capped Massive oracle false FLAG + ops:collect stderr mask
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 — blocked `validate:grid-rth --phase=post-close` (13/13 → 13/14 FAIL on `ops:collect`).
 
@@ -2036,6 +2089,8 @@ probes (gates, ledger PnL, mergePlays, session heat) GREEN.
 Also unblocks `validate:spx-rth --phase=post-close` (matrix/desk/play/E2E were already GREEN).
 
 ## 2026-07-29 — [ops] x-autopost cron STALE + SPY flow cross-check false FLAG (#1287)
+> **kind:** `OPS-NOTE`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 ops + P0 data-correctness (ops-auto-fix #1287, fingerprint `5ed63c855361`).
 
@@ -2058,6 +2113,8 @@ violation only (same direction + valid subset → independently confirmed).
 **Status.** `fix/ops-1287-autopost-flow-xcheck` → PR.
 
 ## 2026-07-29 — [Thermal+Vector] Shared sticky universe (≤100 / 14d)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P2 product gap — Vector already sticky-recorded member-viewed names (cap 100,
 14d) while Thermal `heatmap-warm` only warmed the static ~21 allowlist. Opening NVDA on
@@ -2075,6 +2132,8 @@ overlays stay on the static allowlist (2 RPS). CORE SPY/SPX/QQQ still force-refr
 **Status.** `cursor/thermal-share-dynamic-universe-3d11` → PR.
 
 ## 2026-07-29 — [Thermal] Triple desk SPY/QQQ not refreshing every 5–10s
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 
 **Severity.** P1 UX — compare desk felt stuck; SPX stayed ~5s while SPY/QQQ asof climbed
@@ -2091,6 +2150,8 @@ overlays stay on the static allowlist (2 RPS). CORE SPY/SPX/QQQ still force-refr
 **Status.** `cursor/thermal-matrix-cadence-3d11` → PR.
 
 ## 2026-07-29 — [Thermal] Triple desk opens scrolled to top of strike band (not spot)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P2 — on `/heatmap` compare desk, SPY|SPX|QQQ ladders painted with spot
 highlighted (`is-spot`) but `scrollTop` stayed at 0, so traders had to manually scroll
@@ -2106,6 +2167,8 @@ centers suppress cross-panel scroll-sync so each ladder maps to its own spot.
 **Status.** `cursor/thermal-spot-recenter-3d11` → PR.
 
 ## 2026-07-29 — [ops] x-replies cron STALE (EventBridge DISABLED)
+> **kind:** `OPS-NOTE`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 ops (ops-auto-fix #1277).
 
@@ -2129,6 +2192,8 @@ page STALE; added X crons to `railway-cron-services.mjs` ops registry.
 **Status.** `fix/x-replies-cron-stale` → PR.
 
 ## 2026-07-30 — [ops] x-replies/x-growth cron STALE off-schedule (false positive)
+> **kind:** `OPS-NOTE`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 ops (ops-auto-fix #1312, fingerprint `b60c447e4c03`).
 
@@ -2152,6 +2217,8 @@ at 00:14 UTC; manual `GET /api/cron/x-replies?manual=1` cleared it; `x-growth` b
 **Status.** `fix/x-replies-off-schedule-stale` → PR (schedule-window helper; superseded by operator OFF policy below).
 
 ## 2026-07-30 — [ops] X marketing OFF — operator standing order (#1312)
+> **kind:** `OPS-NOTE`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 ops false positive — **not** a prod outage.
 
@@ -2168,6 +2235,8 @@ forced ECS redeploy for pause env; documented standing OFF policy in `docs/ops/X
 **Status.** CLOSED — do not re-enable without explicit operator request.
 
 ## 2026-07-29 — [SPX] EOD Pin Forecaster glued ~120pts below spot (weak far wall)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 — SPX Slayer EOD Pin panel + Vector "Pin" axis tag looked frozen all afternoon;
 traders saw projected close ~7313 while spot ~7420–7430 (−110 to −120pts) with only 15% confidence.
@@ -2192,6 +2261,8 @@ strike. Tests cover the live regression.
 **Status.** MERGED via `cursor/spx-pin-weak-magnet-3d11`.
 
 ## 2026-07-29 — [Thermal] Matrix asof 25–60s while SPX Slayer stays ~5s; SPY blanks
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 — Thermal compare desk (`/heatmap?compare=1`) showed `MATRIX · 25s` /
 `45s` on SPY/QQQ while SPX column + Slayer rail stayed ~4–5s; SPY sometimes flashed
@@ -2209,6 +2280,8 @@ first; rth-warm-leader ~20s; refuse to display spot≤0; reject WS/REST spot≤0
 **Status.** `cursor/thermal-matrix-fresh-3d11` → PR.
 
 ## 2026-07-29 — [ops] ops-auto-fix #1247 — stale GitHub secrets + false cron failures
+> **kind:** `OPS-NOTE`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 — `ops-collect` reported `postgres:query-failed` (user `postgres`) and
 `watchdog:http` 401; blocked autonomous ops loop.
@@ -2227,6 +2300,8 @@ on successful sweep; options cluster health treats ingest leader lock as live.
 **Status.** PR `fix/ops-auto-fix-secrets-1247` → `main`.
 
 ## 2026-07-29 — [Swing] Discovery cron 100% FailedInvocations — board permanently empty
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 — Night Hawk Swing lane showed 0 watch / 0 commits all session. EventBridge
 fired the rule; nothing ever landed a serving snapshot with plays.
@@ -2262,6 +2337,8 @@ fix only restores the WATCH/serving write path.
 **Status.** This PR + live Lambda/ALB patch.
 
 ## 2026-07-29 — [ops] ops-auto-fix #1270 — data-integrity SQL merge conflict → error spike
+> **kind:** `OPS-NOTE`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 — `watchdog:error-spike` (109 errors / 15m).
 
@@ -2275,6 +2352,8 @@ rows flooded `error_events`.
 **Status.** PR `fix/ops-auto-fix-1270` → `main`.
 
 ## 2026-07-29 — [ops] ops-auto-fix #1261 — SWR background refresh + private RDS false P1
+> **kind:** `OPS-NOTE`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 — `ops-collect` reported `postgres:query-failed` (empty detail) and
 `watchdog:error-spike` (38–54 `unhandled_rejection` TimeoutErrors / 15m).
@@ -2290,6 +2369,8 @@ swallows errors on fire-and-forget SWR refreshes.
 **Status.** PR `fix/ops-auto-fix-1261` → `main`.
 
 ## 2026-07-29 — [Ops] Cloud-agent audit CRON_SECRET stale + NH `unfilled` verifier gap
+> **kind:** `OPS-NOTE`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 — RTH crons (`data-correctness`, `socket-health`, `zerodte-warm`) returned
 401/503 in cloud-agent sweeps; `data-correctness` flagged 15 bogus `pg_nh_outcomes` rows.
@@ -2310,6 +2391,8 @@ chars, `validate:rth-open` GREEN, options-socket authenticated.
 **Status.** PR #1250.
 
 ## 2026-07-29 — [0DTE] G-9 `plan_quote_stale` false-positive on live REST books
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 — AAPL/MU/GOOGL cleared score/confluence but stayed BLOCKED on
 `plan_quote_stale` while marks SSE showed fresh mids (1–3s). Starved OPEN commits.
@@ -2324,6 +2407,8 @@ REST response just returned a live two-sided NBBO — so age ≫ 60s and G-9 fir
 **Status.** Same PR as open-play uncap (`cursor/zerodte-uncap-open-plays-3d11`).
 
 ## 2026-07-29 — [0DTE] Open-play concurrent cap was starving the desk (6 → 100)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 product — operator never wanted an artificial limit on OPEN 0DTE plays;
 the desk should commit every setup that clears quality + risk gates.
@@ -2347,6 +2432,8 @@ the real capital brakes are already the per-play −50% stop, 3-stop session hal
 **Status.** PR `cursor/zerodte-uncap-open-plays-3d11`.
 
 ## 2026-07-29 — [0DTE] BREAKOUT live but built 0 — board looked FLOW-only after multi-rail merge
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 — multi-rail (#1199 MERGE v2 + flags ON) was deployed, yet every RTH scan
 logged `BREAKOUT=0 PIN=0` and the desk showed only FLOW WATCH cards (0 OPEN).
@@ -2370,6 +2457,8 @@ rank until same-day setups fill (log `no_chain` / `no_same_day`); `DISCOVERY_VER
 **Status.** PR `cursor/zerodte-breakout-price-cap-3d11`.
 
 ## 2026-07-29 — [Security] Medium hygiene: cron redact + Largo budget + flows rate limit
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** MEDIUM (cron info leak / budget race / desk abuse) + infra notes.
 
@@ -2392,6 +2481,8 @@ rank until same-day setups fill (log `no_chain` / `no_same_day`); `DISCOVERY_VER
 **Status.** Code fixes on `cursor/security-medium-hygiene-3d11`. CSP deferred; SSL env ops.
 
 ## 2026-07-29 — [Security] Open redirect in Clerk middleware + SW push URL
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** HIGH (open redirect) / MEDIUM (push notification phishing).
 
@@ -2412,6 +2503,8 @@ redirect_url sites (incl. staging satellite); SW relative-path gate; tests.
 **Status.** Merged #1227 (supersedes #1226 security slice).
 
 ## 2026-07-29 — [Latency] Auth-gate Clerk storm + desk/marketing TTFB/LCP wins
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 TTFB (auth) + P1 first-paint / LCP — verified real against `main`.
 
@@ -2440,6 +2533,8 @@ eager on homepage; ~9MB orphan `public/images/*` assets.
 **Status.** PR #1225 (branch `cursor/latency-audit-perf-3d11`).
 
 ## 2026-07-29 — [Cache] Members hit stale desk / wrong auth chrome — CF + origin gaps
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 UX / Truth — members reported massively stale pages; `/sign-up` error class
 overlaps ChunkLoadError (#1220); live probe showed `/upgrade` CF HIT without CDN no-store and
@@ -2467,6 +2562,8 @@ auth-gated JSON. Signed-in HTML bypasses via `__session`.
 **Status.** Open — this PR (after #1221).
 
 ## 2026-07-29 — [Night Hawk Legacy] Replay harness + polarity measure + recap reason
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 tooling / honesty — could not counterfactual score floors or quantify
 flow-polarity misreads; members saw recap-only with no funnel reason.
@@ -2486,6 +2583,8 @@ flow-polarity misreads; members saw recap-only with no funnel reason.
 **Status.** Open — this PR.
 
 ## 2026-07-29 — [Night Hawk Legacy] Soft hedge/rescue floors shipped score-20 filler
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 product — Legacy overnight digest published noise next to one real name.
 
@@ -2521,6 +2620,8 @@ no gate_promoted, no sub-35 filler). Evening window will rebuild again on post-c
 **Status.** Merged #1219.
 
 ## 2026-07-29 — [0DTE] Precision harden — stop opening measured-losing commits
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 product — graded book **35.6% WR (36W/65L, n=101)** sits on the −50/+100
 breakeven line (~33%). Funnel remodel (#1199) shipped multi-rail discovery; edge did not.
@@ -2548,6 +2649,8 @@ under provider stress — do not leave it there.
 **Status.** Merged #1217.
 
 ## 2026-07-29 — [Thermal] Near-Term Triple Desk extreme cells look “broken”
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 UX — yellow/purple call/put-wall cells misalign, overflow neighbors, and
 pulse out of the grid on the SPY|SPX|QQQ compare desk.
@@ -2569,6 +2672,8 @@ min-width raised to ~4.85rem so `+$261.0M`-class labels fit.
 **Status.** Merged #1216.
 
 ## 2026-08-03 — [Night Hawk Legacy] Stale-edition skip + dossier stall + publish bar (evening cron)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 — tonight's 7:00/7:15 PM cron must publish a real post-close playbook, not
 resume a pre-window `published` row or hang on dossier 6/60.
@@ -2594,6 +2699,8 @@ Default min tier **B**, critic rescue **ON**. Dossier: `runUwPooled(2)`, batch s
 ---
 
 ## 2026-07-29 — [Night Hawk Legacy] Stale edition: cron never rebuilds after market close
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 — Legacy tab shows pre-market plays night after night; the whole purpose of
 Night Hawk Legacy is fresh post-close plays for members.
@@ -2631,6 +2738,8 @@ its undraft never cleared). The identical fix was re-pushed as **PR #1215**, whi
 (MIN_DTE 5→2, stale-edition auto-rebuild) are on `main` today; no action pending on this entry.
 
 ## 2026-07-29 — [Thermal] Discord card still unreadable on mobile (nodes/drift)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 UX.
 
@@ -2647,6 +2756,8 @@ badges on wall rows; Discord-safe legend in a code span; taller strike band (hal
 **Status.** PR `cursor/thermal-discord-card-fix-3d11`.
 
 ## 2026-07-29 — [Thermal] Discord cron “boxes” — ECS has no fonts for Sharp SVG text
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 UX (cron PNG unreadable; manual local posts looked fine).
 
@@ -2667,6 +2778,8 @@ laptop.
 **Status.** PR `cursor/thermal-discord-embed-font-3d11`.
 
 ## 2026-07-29 — [Thermal] Discord “No numbers” — settled empty 0DTE after close
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 UX (blank Discord grids).
 
@@ -2687,6 +2800,8 @@ cols, strike half=14); `resolveDiscordNearExpiries` skips empty settled today-0D
 **Status.** PR `cursor/thermal-discord-card-fix-3d11`.
 
 ## 2026-07-28 — [Thermal] Discord card missing yellow/purple nodes + % drift
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 UX (desk card readability / parity with major matrix).
 
@@ -2703,6 +2818,8 @@ legend line.
 **Status.** PR `cursor/thermal-discord-nodes-drift-3d11`.
 
 ## 2026-07-28 — [Thermal] Discord #admin-talk spam (no post dedupe)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 ops / UX (channel flood).
 
@@ -2724,6 +2841,8 @@ EventBridge stays DISABLED until this ships, then re-enable.
 **Status.** PR `cursor/thermal-discord-dedupe-3d11`.
 
 ## 2026-07-28 — [Thermal] Compare triple desk unreadable (7.5px / 1.85rem cells)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 UX.
 
@@ -2742,6 +2861,8 @@ tall scroll; synced crosshair + scroll across SPY|SPX|QQQ.
 **Status.** PR `cursor/thermal-compare-matrix-size-3d11`.
 
 ## 2026-07-28 — [Thermal] Discord desk card → 4K + clearer UI chrome
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P2 UX.
 
@@ -2754,6 +2875,8 @@ Caption uses Call wall / Put wall / Flip wording. (5120 ultra pass reverted — 
 **Status.** PR `cursor/thermal-discord-4k-card-3d11`.
 
 ## 2026-07-28 — [Thermal] Triple desk SPY|SPX|QQQ (dense matrices)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 product enhancement (desk density + compare UX).
 
@@ -2771,6 +2894,8 @@ Caption uses Call wall / Put wall / Flip wording. (5120 ultra pass reverted — 
 **Status.** PR #1200 (merging).
 
 ## 2026-07-28 — [Thermal] SPY/SPX/QQQ compare + per-layer freshness + deep-links
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 product enhancement (honesty + desk speed).
 
@@ -2786,6 +2911,8 @@ Caption uses Call wall / Put wall / Flip wording. (5120 ultra pass reverted — 
 **Status.** PR #1200 (merging).
 
 ## 2026-07-28 — [Thermal] Deep audit: WS wall override still unscoped + stale 20s freshness copy
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 correctness (RTH) + P2 UX honesty.
 
@@ -2811,6 +2938,8 @@ gate working). Page `/heatmap` 200, no Sign-In chrome for authed admin.
 **Status.** Fixed on `cursor/thermal-deep-audit-3d11`.
 
 ## 2026-07-28 — [Thermal] Discord triple-desk PNG cron (15m RTH)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P2 product enhancement.
 
@@ -2825,6 +2954,8 @@ Optional `THERMAL_DISCORD_RTH_ONLY=1` to skip outside cash RTH.
 (never committed). EventBridge rule must exist after sync.
 
 ## 2026-07-28 — [0DTE-funnel] CTO pass-3: still had bugs on the branch (1DTE commit + PIN rank)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 honesty / P1 recall — user challenge: line was **not** clean after pass-2.
 
@@ -2842,6 +2973,8 @@ Optional `THERMAL_DISCORD_RTH_ONLY=1` to skip outside cash RTH.
 **Status.** Fixed on draft PR #1199.
 
 ## 2026-07-28 — [0DTE-funnel] CTO audit pass-2: heat/CONDOR/ToD still broken after cutoff align
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 — second deep read after pass-1 cutoff align found **four more commit/path bugs**
 on the same branch that would have kept multi-rail / CONDOR starved even after deploy.
@@ -2873,6 +3006,8 @@ blocks: `late_afternoon@900`, `score_floor`, `vix_elevated`, `confluence_floor`,
 **Status.** Fixed on draft PR #1199 (pass-2 commit); awaiting merge.
 
 ## 2026-07-28 — [0DTE-funnel] CTO deep audit: why only 1 play today (prod still on old engine)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 product — 2026-07-28 RTH produced **1 OPEN** (SPY FLOW @ 11:01 ET, +12% thesis_break).
 Post-close board: **8 setups, 100% FLOW**, 7× BLOCKED, record **35.6% WR / n=101**.
@@ -2909,6 +3044,8 @@ same PR after this audit.
 **Status.** OPEN draft PR #1199. **Superseded 2026-07-30** — fixes on main; see FINDINGS entry above.
 
 ## 2026-07-28 — [0DTE-UI] Command Deck UX honesty (session strip, hard gate, nav, defaults)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 — live admin Chrome pass on prod `/nighthawk` (2026-07-28 ~17:50 ET) showed:
 authed desk + **"Sign In"** nav; CLOSED SPY with **✗ Hard gate**; greeks `—` under SYNC with no
@@ -2931,6 +3068,8 @@ monitor copy.
 **Status.** FIXED on main (superseded draft #1199, 2026-07-30).
 
 ## 2026-07-28 — [0DTE-UI] Right-rail Thesis/Management/PnL panels looked static
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 (member-facing) — the three Command Deck right-rail tabs on `/nighthawk` (0DTE)
 showed frozen "—" marks / non-updating peak-trough / non-advancing underlying after hours and for
@@ -2963,6 +3102,8 @@ payload keys.
 **Status.** FIXED on main (superseded draft #1199, 2026-07-30).
 
 ## 2026-07-28 — [product] 0DTE engine starved to 1 OPEN/day (score map + caps + NH exclude)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 — whole-market 0DTE product produced **1 committed play** on 2026-07-28
 (SPY FLOW long @ 11:01 ET, +12% thesis_break) despite scanning ~12k grouped-daily names. Board
@@ -2992,6 +3133,8 @@ setups post-close were **8× FLOW-only**; BREAKOUT/PIN never committed. Record r
 **Status.** FIXED on main (superseded draft #1199, 2026-07-30).
 
 ## 2026-07-28 — [product] 0DTE board was FLOW-only in practice (merge v1 + $-volume chain-fetch)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 — Night Hawk / 0DTE Command supposed to mix FLOW + BREAKOUT + PIN (+ CONDOR), but
 live board ownership and outcomes behaved like a single-rail flow-momentum buyer.
@@ -3017,6 +3160,8 @@ chain-fetch budget by momentum quality over a wider liquidity pool. Scan logs
 **Status.** OPEN PR for review (do not auto-merge) — branch `cursor/zerodte-multi-rail-discovery-3d11`.
 
 ## 2026-07-28 — [data-honesty] Vector max-pain `?horizon=` silently defaulted to ALL (7410 vs desk 7440)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P2 — cross-tool mismatch risk on `/dashboard` confluence + audit/API consumers.
 
@@ -3034,6 +3179,8 @@ desk/matrix) so Vector confluence cannot diverge from the header when positionin
 **Status.** Same draft PR `cursor/spx-desk-truth-fixes-3d11` (#1197).
 
 ## 2026-07-28 — [data-honesty] SPX desk sticky gamma flip + pin spot=0 after hours
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 — member-facing false levels / dishonest empty states on the SPX Slayer desk.
 
@@ -3061,6 +3208,8 @@ oracle aligned to cumulative definition (still independently re-derived). Docs p
 **Status.** OPEN PR for review (do not auto-merge) — branch `cursor/spx-desk-truth-fixes-3d11`.
 
 ## 2026-07-28 — [gate-calibration] Late-afternoon 0DTE entries (14:00-15:30) run 14.3% WR / −19% avg
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 — the late-afternoon window is the second-worst time bucket in the 90-day record
 (after the opening drive, already blocked by G-2). Responsible for ~7 losing plays that should
@@ -3083,6 +3232,8 @@ Condor-exempt: iron condors BENEFIT from late-session theta crush (credit seller
 Tests: 3 new tests in `gates.test.ts` (boundary, condor exemption). **Status: MERGED.**
 
 ## 2026-07-28 — [data-honesty] Legacy 0% WR caused by unfillable entry bands (PR #1186)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 — the single biggest quality gap in the Legacy engine. 15 of 31 resolved plays
 graded "unfilled" because the published entry band never overlapped the next session's trading range.
@@ -3119,6 +3270,8 @@ compiles clean.
 **Status.** PR #1186 — merging.
 
 ## 2026-07-28 — [correctness] fundamental_signals omitted from rescoreDossier + rescue play sector missing (PR #1176)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 (fundamental_signals) / P3 (rescue sector).
 
@@ -3154,6 +3307,8 @@ already sets `sector`.
 **Status.** FIXED — PR #1176.
 
 ## 2026-07-28 — [correctness] Four additional Legacy scorer/UI bugs (PR #1176, batch 2)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P2 (contrarian hedge stale signals + deprecated conviction) / P3 (ask-side double-count, positioning floor, confluence denominator).
 
@@ -3204,6 +3359,8 @@ through the Legacy pipeline. The confluence badge fix only affects the UI displa
 **Status.** FIXED — PR #1176.
 
 ## 2026-07-28 — [data-loss + honesty] Sector dropped in LegacyDeck + fabricated discovery badges (PR #1176, batch 3)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P3.
 
@@ -3234,6 +3391,8 @@ pos, news, smart, fundamental, shortInterest, wall, vex).
 **Status.** FIXED — PR #1176.
 
 ## 2026-07-28 — [correctness] Soft wall drift not direction-gated + cross-edition sector cap doesn't count tonight (PR #1176, batch 4)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P3.
 
@@ -3262,6 +3421,8 @@ pass (97+21=118 total). tsc clean.
 **Status.** FIXED — PR #1176.
 
 ## 2026-07-28 — [correctness] Governor demotion undone by builder merge-sort + no R:R minimum gate (branch `fix/governor-sort-override`)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** Medium (edition quality — governor-demoted plays could re-promote to the top 5; plays with terrible R:R could publish).
 
@@ -3282,6 +3443,8 @@ The cross-edition governor (`cross-edition-governor.ts`) re-sorts candidates by 
 **Status.** FIXED — PR pending.
 
 ## 2026-07-26 — [correctness] Iron-condor `live_pnl_pct` inverted AT THE SERVER SOURCE — fixed at source + removed the redundant Wave-2 render flip (branch `fix/condor-graded-pnl-sign`)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** Medium (member-facing data correctness; condor rows only — active when `ZERODTE_CONDOR=1`).
 
@@ -3332,6 +3495,8 @@ only way to keep the member-visible number correct with no window of double-inve
 **Status.** DRAFT PR (member-facing data correctness — operator reviews + verifies before merge).
 
 ## 2026-07-25 — [correctness] Night Hawk deck: iron-condor P&L was DIRECTIONALLY INVERTED (a winning condor read NEGATIVE) — FIXED (Wave 2 branch `feat/nighthawk-wave2-leftpanel`)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** Medium (member-facing correctness; condor rows only — dormant unless `ZERODTE_CONDOR=1`,
 so no live member saw it yet, but it would have shipped inverted the moment condors go live).
@@ -3361,6 +3526,8 @@ is at the render adapter, the one place that knows a row is a credit structure).
 **Status.** Fixed on the Wave-2 branch (DRAFT PR, member-facing — operator reviews before merge).
 
 ## 2026-07-25 — [tooling] NEW: 0DTE E2E validation suite (`zerodte-e2e-suite.mjs`, `npm run validate:e2e`) + Monday-RTH readiness trace — ADDED
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** N/A — additive read-only tooling + docs (no app/behavior change). Safe to merge on green.
 
@@ -3410,6 +3577,8 @@ fail-OPEN case (a board that PRINTS while halt/earnings feeds are cold), not an 
 **Status.** MERGED via `feat/api-endpoint-validator` (additive; verified green).
 
 ## 2026-07-25 — [tooling] NEW: 0DTE Night Hawk end-to-end LIVE health check (`zerodte-e2e-healthcheck.mjs`) — ADDED
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** N/A — additive read-only tooling (no app/behavior change). Safe to merge on green.
 
@@ -3457,6 +3626,8 @@ executed from the sandbox (no creds needed to build it).
 open" gate (documented in `docs/audit/MARKET-OPEN-VALIDATION.md`).
 
 ## 2026-07-25 — [SIM-VIEW] Admin-only 0DTE simulation view of the Night Hawk board — NEW FEATURE (member board untouched)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** Feature (deploy-affecting, safety-critical isolation). Not a bug fix — an additive
 admin capability. The #1 requirement was that members can NEVER see sim data and the member board
@@ -3494,6 +3665,7 @@ TTL, and route-source assertions (member call intact, ingest admin-gated + write
 unchanged).
 
 ## 2026-07-25 — [WS-11] Mechanical grader single-walked a TRIM-SCALE strategy — calibration graded a DIFFERENT strategy than the engine runs; now reconstructs the ⅓/⅓/⅓ partial path executable-side as ONE official as-managed number — FIXED
+> **kind:** `FINDING`
 
 **Severity.** High (calibration integrity / member-record honesty, TRADES). Ref: NightHawk Remediation
 Directive §WS-11. **[TRADES] — DEPLOY-RISKY, HOLD for operator go; STACKED on #1107 (WS-10)** (changes the
@@ -3548,6 +3720,7 @@ bid-to-close vs ask-to-open). **Status: OPEN PR (base `fix/ws-10-executable-pnl`
 operator go (DEPLOY-RISKY); WS-10+WS-11 presented together as one go/no-go.**
 
 ## 2026-07-25 — [WS-10] Official 0DTE P&L graded on the MIDPOINT — understated the execution tax; calibration/record now grade the CONSERVATIVE EXECUTABLE lane (entry=ask, exit=bid) — FIXED
+> **kind:** `FINDING`
 
 **Severity.** High (correctness / calibration integrity, TRADES). Ref: NightHawk Remediation Directive
 §WS-10. **[TRADES] — DEPLOY-RISKY, HOLD for explicit operator go before prod merge** (changes the official
@@ -3591,6 +3764,8 @@ of scope (separate 4-leg grader). AS-MANAGED/engine-exit partials stay on mid �
 partial reconstruction), which depends on this lane. **Status: OPEN PR, holding for operator go (DEPLOY-RISKY).**
 
 ## 2026-07-25 — [D1] Earnings gate (G-11) failed OPEN — a failed/timed-out earnings feed read looked identical to "no earnings" and let a name reporting today commit a fresh 0DTE — FIXED (fail-closed `earningsUnavailable` firewall)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** High (correctness / TRADES). DANGER item **D1** from `docs/audit/NIGHTHAWK-DATA-PROVENANCE.md`
 (market-open danger list). On a cold earnings snapshot or a busy-open read timeout, the desk could open a
@@ -3650,6 +3825,8 @@ explicitly preserved as a COMMIT (test 48) so a quiet earnings day never empties
 prod merge** ([TRADES] deploy-risky per CLAUDE.md — changes what commits).
 
 ## 2026-07-25 — [D2] Halt/LULD gate (G-11) failed OPEN on a cold halt feed — a dark/dead halt socket left the store empty and a HALTED underlying could commit a fresh 0DTE — FIXED (fail-closed `haltFeedStale` firewall)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** High (correctness / TRADES). DANGER item **D2** from `docs/audit/NIGHTHAWK-DATA-PROVENANCE.md`
 (market-open danger list). Post-deploy (halt socket not yet connected) or on a mid-session socket death, the
@@ -3723,6 +3900,8 @@ NO `couldBlock` narrowing. No other call site was changed.
 **HOLD for explicit operator go before prod merge** ([TRADES] deploy-risky per CLAUDE.md — changes what commits).
 
 ## 2026-07-25 — [D3] Option-quote staleness never checked — `OptionSnapshot` dropped `last_quote.last_updated`, so the WS-04 `stale` predicate was DEAD CODE in prod and a minutes-old but structurally-valid quote entered/graded as fresh — FIXED (plumb the timestamp ns→ms → `quoteAgeMs`)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** High (correctness / TRADES). DANGER item **D3** from `docs/audit/NIGHTHAWK-DATA-PROVENANCE.md`
 (market-open danger list). WS-04 built a fail-closed `stale` branch (`plan.ts` `evaluateQuoteValidity`,
@@ -3805,6 +3984,8 @@ changed — only a real age is now fed into the already-shipped WS-04 `stale` br
 **HOLD for explicit operator go before prod merge** ([TRADES] deploy-risky per CLAUDE.md — changes what commits).
 
 ## 2026-07-25 — [WS-04] Malformed-quote books passed the liquidity gate as "liquid" — percent-spread check failed OPEN on zero/null-bid, crossed, and locked markets — FIXED (fail-closed quote-validity predicate)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** High (correctness / TRADES). A structurally malformed option quote could be treated as a
 tradeable 0DTE contract and committed to the ledger, entering/grading off a phantom price. **[TRADES] —
@@ -3872,6 +4053,8 @@ persist defense `freshCommitBlockedByPlan` / `planQualityGateBlocks` in `persist
 **Draft PR — HOLD for explicit go before merge (TRADES).**
 
 ## 2026-07-25 — [WS-01] Governor commit was a TOCTOU race — two overlapping scans could each commit past GOVERNOR_MAX_CONCURRENT_PLANS — FIXED (atomic xact-lock recount)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** High (portfolio risk / over-exposure). This is the exact 7/13-class failure the session
 governor exists to prevent — concurrently-open plans breaching the 3-play cap.
@@ -3930,6 +4113,8 @@ uncontended, honest when a recount drops a racer.
 +2 WS-01), `governor.test.ts` 32/32, `rejections.test.ts` 12/12 green. Draft PR opened.
 
 ## 2026-07-25 — [WS-19] BREAKOUT trusted a successful grouped-daily response regardless of bar freshness — FIXED (fail closed)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** Medium (data-correctness / fail-open). Live-board discovery input; no crash, but a stale
 snapshot could silently drive the whole-market BREAKOUT origin and — worse — read as a *genuine* "no
@@ -3968,6 +4153,8 @@ can REMOVE stale-driven candidates, never ADD any; the flow board is untouched o
 `scan.test.ts` 15/15 still green. Draft PR opened.
 
 ## 2026-07-25 — [Hardening WS-20] Record intentional-design items + add offline A/B measurement — DOCS + TOOLS
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** None (additive documentation + read-only measurement). **NO production behavior changed.**
 
@@ -4009,6 +4196,8 @@ Registered the tools + INTENTIONAL-DESIGN.md in CLAUDE.md's audit-toolkit list.
 ---
 
 ## 2026-07-25 — [Hardening WS-14/15] 0DTE end-to-end latency telemetry + input-age manifest — ADDITIVE observability
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** SEV-5 (observability; no behavior change). **Status.** Shipped.
 
@@ -4041,6 +4230,8 @@ null for the rest) → 6/6 + 15/15 pass; `entry-context.test.ts` 8/8, `admin-zer
 unaffected.
 
 ## 2026-07-25 — [WS-21/22] WS reconciliation + recovery health states + amended-print handling (FLAG-OFF)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** SEV-4 (hardening / capability; ZERO live behavior change until graduated).
 
@@ -4084,6 +4275,8 @@ route live amended prints through the ledger at the aggregation read sites (blas
 out of scope here).
 
 ## 2026-07-25 — [Q10] Discovery recall probe: the BREAKOUT top-6 $-volume cap is LEAKY — NEW TOOL
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **What.** "No silent caps" (design Q10). The BREAKOUT origin screens the whole market (~12k grouped-daily
 names) but `discoverBreakoutSetups` keeps only the top `BREAKOUT_MAX_CANDIDATES` (=6) by $-volume
@@ -4117,6 +4310,8 @@ exact option P&L) — the probe is the honest bound, not a verdict on one sessio
 gain-weighted rank and/or a wider cap for the breakout lane, graduated on the origin band.
 
 ## 2026-07-25 — [Phase 4] Iron-CONDOR as a live SELL-side 0DTE play-type (flag-gated `ZERODTE_CONDOR`, default OFF) — LANDED
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **What.** The board committed DIRECTIONAL single-contract plays only. Phase 4 adds the non-directional
 iron-condor SELL structure, fed by the PIN discovery origin (deep long-gamma dealer-defended ranges).
@@ -4156,6 +4351,8 @@ unchanged (flags off). **Status:** committed to `fix/zerodte-condor-playtype`, p
 PR/merge per instruction).
 
 ## 2026-07-24 — [firewall RTH replay] Phase-0 fail-closed firewall would have HELD both of today's committed 0DTE plays — both losers (−54.9% avoided) — VALIDATED
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Harness.** `scripts/audit/firewall-rth-replay.mjs` — replays a session's live 0DTE board OLD (guards off)
 vs NEW (Phase-0 firewall on, PR #1078) and diffs. Read-only vs prod (one temp Clerk user, deleted). Flow via
@@ -4182,6 +4379,7 @@ row so this replay — and per-guard calibration — is exact. Aligns with the d
 the skips" recommendation (`0DTE-UNIFICATION-DESIGN.md`). Status: OPEN (tracked; low priority).
 
 ## 2026-07-24 — [SEV-3, member-facing display] 0DTE board setup SCORES flip-flopped between two values across a member's poll (board assembled per-replica, no shared snapshot) — FIXED
+> **kind:** `FINDING`
 
 **Symptom (live evidence).** A 4-round authenticated poll of `/api/market/zerodte/board` ~12s apart
 (17:18 UTC 2026-07-24) showed the board `as_of` ADVANCING every round (fresh builds) while the setup
@@ -4237,6 +4435,7 @@ not the scan/scoring/gates or what commits; fail-soft to the old local build on 
 NON-DRAFT PR; no auto-merge (lead reviews — touches the core board).
 
 ## 2026-07-24 — [SEV-3, member-facing display] 0DTE Command Deck showed Δ Γ Θ V IV + mark "—" for every WATCH-only setup (live greeks never sourced for non-entered contracts) — FIXED
+> **kind:** `FINDING`
 
 **Symptom (live screenshot).** Selecting a WATCH-only setup (not entered — below the score floor /
 SKIP / BLOCKED) on the 0DTE Command Deck (`PlayTerminal.tsx`) rendered **Δ Γ Θ V IV all "—"**,
@@ -4277,6 +4476,8 @@ watch setup gets a QUOTE ONLY, never a ledger row/status/persist/exit, so nothin
 commit changes. NON-DRAFT PR; no auto-merge (per launch instruction).
 
 ## 2026-07-24 — [GO-LIVE, REAL MONEY] SWING engine taken LIVE — commit + roll now open REAL member positions (operator-authorized "everything live")
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Status: NON-DRAFT PR, HELD for lead review of the commit gate before deploy (no auto-merge).** Branch
 `feat/swing-commit-roll-live`. The operator EXPLICITLY authorized the swing lane live ("GO — everything
@@ -4355,6 +4556,7 @@ child; unknown-risk / missing-contract / at-cap edges are safe.
   latched `last_mark`). No mark ⇒ the roll DEFERS (null-honest), never a fabricated grade.
 
 ## 2026-07-24 — [SEV-2/SEV-3, swing pre-live] Discovery reduced the 8-archetype × 7-pillar swing engine to a 3-pillar momentum screen; archetype fast-track + corroboration were dead — FIXED
+> **kind:** `FINDING`
 
 **Context / risk.** The swing lane is pre-live (WATCH-only, `commitEligibleCount` is a literal 0;
 nothing sizes risk), so live blast radius is nil — but the sophistication the engine advertises was
@@ -4432,6 +4634,7 @@ for a cross-session name); `db-swing-ledger.test.ts` (`signal_kinds` DDL + dedup
 close; NO auto-merge (non-draft PR to `main`, held for review per the task).
 
 ## 2026-07-24 — [SEV-3 ×4, pre-live] SWING serving + feature-vector wiring dead-ends — FIXED
+> **kind:** `FINDING`
 
 Four WIRING dead-ends (not the deliberate commit/roll holds) left the swing engine dark even as a
 research scaffold. All swing-surface / pre-live, so low live risk; member-facing serving is involved
@@ -4484,6 +4687,8 @@ from loadReads lands on the snapshot + feature vector. Calibration/graduation lo
 **Status:** DONE (PR open, deploy-after-close, no auto-merge).
 
 ## 2026-07-24 — [feat + SAFE] 0DTE trade management: trim-scale exit A/B (default-OFF) + exit-engine visibility + condor breach guard
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 Branch `feat/zerodte-exit-engine-visibility`. Three changes, deploy after close, NO auto-merge —
 one STRATEGY change (operator sign-off) + two SAFE.
@@ -4530,6 +4735,8 @@ breach number. Walls don't count as a deviation (same selection, pushed out).
   deploy after close, operator sign-off on the STRATEGY flip; no auto-merge).**
 
 ## 2026-07-24 — [HIGH, infra] production deploy pipeline never rolled the market-worker → task-def ROT — FIXED (draft PR, HOLD)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity HIGH (silent worker outage).** `.github/workflows/ecr-push-production.yml` built+pushed the
 image then rolled ONLY the `blackout-production-web` ECS service. It NEVER touched the separate
@@ -4571,6 +4778,7 @@ diff` is purely additive (149 insertions, 0 deletions — web step untouched).
 infra; operator reviews before merge (do NOT auto-merge).
 
 ## 2026-07-24 — [SEV-3 + SEV-4] 0DTE command-deck live-marks: missing REST fallback + no sync-mark age flag — FIXED
+> **kind:** `FINDING`
 
 **SEV-3 — command-deck live-marks hook was SSE-only despite the documented REST fallback.**
 `src/features/nighthawk/command-deck/use-live-marks.ts` subscribed to the ~1s SSE lane and, on a
@@ -4614,6 +4822,7 @@ live-marks suites pass.
 **Status:** DONE. Branch `fix/zerodte-marks-rest-fallback`.
 
 ## 2026-07-24 — [HIGH, correctness] 0DTE aggression signal DEAD — `ask_pct` read a field UW never sends — FIXED
+> **kind:** `FINDING`
 
 **Severity HIGH (the engine's core "at-the-ask conviction" edge was silently inert in production).**
 The 0DTE board weights each print's directional premium by aggressor side via `aggressionWeight`
@@ -4665,6 +4874,7 @@ determination — so NOT auto-merged). Unblocks #1028 (its `SETUP_MIN_KNOWN_AGGR
 until `ask_pct` actually populates).
 
 ## 2026-07-24 — [HIGH, safety-inert] 0DTE realized-loss session halt was WIRED but INERT — FIXED
+> **kind:** `FINDING`
 
 **Severity HIGH (a shipped capital-protection halt could never fire).** PR #1056 added the AUDIT
 SEV-3 realized-loss day-halt to `governor.ts`: `governorLossHaltReason` stands the desk down when
@@ -4710,6 +4920,7 @@ pass; `check-brand.mjs` clean. Files: `src/lib/zerodte/scan.ts`, `src/lib/zerodt
 Status: FIXED, branch `fix/zerodte-loss-halt-wire` (PR to main).
 
 ## 2026-07-24 — [MED+LOW×2] 0DTE live-marks lane: stale-mark engine exit + store leak + dead SSE dedupe — FIXED
+> **kind:** `FINDING`
 
 Three defects in the ~1s live-marks lane (branch `fix/live-marks-robustness`), one PR.
 
@@ -4751,6 +4962,7 @@ active one; two identical-market ticks share a content key while raw JSON differ
 branch (not merged — no PR opened per request).
 
 ## 2026-07-24 — [LOW×3, honesty] null-honesty cleanups: a null is honest, a fabricated zero is a lie — FIXED
+> **kind:** `FINDING`
 
 **Severity LOW ×3 (non-member-critical, but the platform's honesty discipline).** Three sites
 manufactured a numeric value where the honest answer was "no value":
@@ -4785,6 +4997,7 @@ mapFlowSlice carries null; expiry-truncation → ungradeable), `analytics-method
 8/8, intel route 9/9; `check-brand.mjs` clean. Branch `fix/null-honesty-cleanups`.
 
 ## 2026-07-24 — [HIGH, honesty] iron-condor surfaced a literal "100%" WR with no breach companion — FIXED
+> **kind:** `FINDING`
 
 **Severity HIGH (member-facing honesty on a real-money product).** `selectIronCondor` returned
 `est_win_rate` straight off `CONDOR_WINRATE_BY_WIDTH`, whose top buckets read `0.010→96` and
@@ -4814,6 +5027,7 @@ est_win_rate ≤ cap across the width sweep, never 100; top-bucket clamps + flag
 skew present/finite on a normal pick); `check-brand.mjs` clean.
 
 ## 2026-07-23 — [HIGH, self-inflicted] `--watch` gave FALSE "all clean" after ~10min (silent auth decay) — FIXED
+> **kind:** `FINDING`
 
 **Severity HIGH** because it's the failure the whole audit layer exists to prevent: a validator that
 reports green while validating nothing. Caught by the 12:22 ET act-on-findings pass reading the live
@@ -4842,6 +5056,8 @@ now records a `FAIL`, not silence. (c) Coverage-collapse backstop: a pass whose 
 unchanged. Lesson: a "clean" signal must be able to distinguish *checked-and-passed* from *never-checked*.
 
 ## 2026-07-23 — [TOOLING] data-validator `--watch` = per-minute continuous validation (one auth)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **What:** added a `WATCH_SECONDS` loop to `scripts/audit/data-validator.mjs` so the full authed check
 battery (prices/indices, GEX/greeks, 0DTE live+ledger contract/underlying/entry-premium, track-record
@@ -4858,6 +5074,8 @@ a killed watch still deletes the temp Clerk user (the unbounded loop bypasses `m
 [0.99, 3.95]). Retired `validation-loop.sh` (superseded). Status: SHIPPED.
 
 ## 2026-07-23 — [LOW] Live-open validation findings (RTH acid test of the shipped system)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 Ran the full live-validation sequence at the 9:33 ET open (data-validator + both engines) against LIVE
 RTH data. **The system is correct on live data** — 22→26 PASS, VIX matched Polygon live to Δ0.000%
@@ -4891,6 +5109,8 @@ correctly reported no-weekly for optionless micro-cap movers. Two findings:
   product call, not unilaterally changed.
 
 ## 2026-07-23 — [MILESTONE] Banger scale-out flagship WIRED LIVE end-to-end (rearchitecture 6b complete)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 - **What shipped:** the whole-market banger scale-out — the +26%/+20%-net-OOS positive-skew flagship — is
   no longer backtest-only. It now grades on the live overnight cron and graduates on the live ledger:
@@ -4914,6 +5134,8 @@ correctly reported no-weekly for optionless micro-cap movers. Two findings:
   scale-out is advisory and accrues real evidence — calibration-first to the end. **Status: 6b COMPLETE.**
 
 ## 2026-07-23 — [HIGH] Offline ratchet grader was EV-optimistic (mark-faithfulness) — FIXED + iron-condor guard
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 - **Severity:** HIGH for evidence-fidelity (the grader that measures the ratchet exit / would gate the
   banger scale-out was optimistically biased); **LOW blast radius** — every defect lived in the audit
@@ -4945,6 +5167,8 @@ correctly reported no-weekly for optionless micro-cap movers. Two findings:
   evidence). No production behavior changed; the corrected grader is what the ratchet-finding numbers now cite.
 
 ## 2026-07-23 — [MEDIUM] Index 0DTE ratchet exit costs EV vs hold — CONFIRMED finding, live change DEFERRED
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 - **Severity:** MEDIUM (an EV leak on the live index exit; not a crash/data bug). **Status: CONFIRMED
   FINDING; exit change DEFERRED — larger-sample sweep run with the honest grader still cannot identify an
@@ -4994,6 +5218,8 @@ correctly reported no-weekly for optionless micro-cap movers. Two findings:
   the live exit off the backtest alone.**
 
 ## 2026-07-23 — 0DTE entry-timing correction: unlock 9:45 → 10:00 + timeOfDayFactor recalibration (USER-AUTHORIZED)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 - **Root cause:** the G-2 opening-window unlock sat at **9:45 ET** (2026-07-13 directive) and
   `timeOfDayFactor` (`intraday.ts`) **rewarded** the 9:50–11:00 window (+5) while **penalizing** 11:00
@@ -5016,6 +5242,8 @@ correctly reported no-weekly for optionless micro-cap movers. Two findings:
 - **Status:** SHIPPED (PR next).
 
 ## 2026-07-23 — Whole-market banger research + scanner tool (research + tooling)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### Research (docs/audit/0DTE-RESEARCH.md) — evidence-driven map for a top-tier system
 - **0DTE grinder:** multi-day vs single-day discovery is a WASH (32% vs 36% WR, n≈30); entry timing is
@@ -5039,6 +5267,8 @@ correctly reported no-weekly for optionless micro-cap movers. Two findings:
   tier → P2 banger scanner→discovery → P3 exit-engine study → P4 regime → P5 timing → P6 learning loop.
 
 ## 2026-07-22 — Multi-day flow accumulation wired into the LIVE 0DTE loop (feat, calibration-first)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### feat — the always-on scanner now has multi-day memory
 - **Root problem (the user's red flag, confirmed):** `scanZeroDteBoard()` discovered setups from a
@@ -5070,6 +5300,8 @@ correctly reported no-weekly for optionless micro-cap movers. Two findings:
 - **Status:** MERGED-pending (PR opens next). This is breakthrough #1 of the 0DTE loop plan.
 
 ## 2026-07-22 — 0DTE play SIMULATOR shipped + first structural findings (tooling + P2)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### Tooling — `scripts/audit/zerodte-sim.mjs` (`npm run sim:0dte`)
 - **What:** a per-change 0DTE simulator that runs the REAL pipeline functions (imported from
@@ -5122,6 +5354,8 @@ correctly reported no-weekly for optionless micro-cap movers. Two findings:
 - **Status:** OPEN (tuning) — measure candidate changes with the sim before shipping.
 
 ## 2026-07-22 — Auth nav stuck on "Sign in" after login (P1, FIXED live)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### P1 — Cloudflare edge-cached the homepage HTML, so signed-in users saw the anonymous nav
 - **Symptom (member-reported):** sign in successfully, but the marketing nav keeps showing
@@ -5160,6 +5394,8 @@ correctly reported no-weekly for optionless micro-cap movers. Two findings:
   Cloudflare, not code).
 
 ## 2026-07-21 — Enhancement: Wall Integrity Rings (second visual channel on beads)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### FEATURE — Bead halo now encodes wall confidence (firm/moderate/thin), not just magnitude
 - **Gap, not a bug:** a bead's SIZE encodes magnitude (dealer gamma parked at the strike), but a
@@ -5182,6 +5418,8 @@ correctly reported no-weekly for optionless micro-cap movers. Two findings:
   Vector E2E screenshot gate after staging deploy.
 
 ## 2026-07-13 — Vector bead-rail / DTE-coherence audit (member-driven, RTH live)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### P0 — Bead trails ran full-width from the open; "no new walls all day" (FIXED, live-verified)
 - **Root cause:** the recorder stores the full 20-deep-per-side ladder every 15s bucket, and
@@ -5260,6 +5498,8 @@ correctly reported no-weekly for optionless micro-cap movers. Two findings:
 - AAPL missing-put-side producer lead (above).
 
 ## 2026-07-13 evening — wall-engine overhaul (member-driven)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### P0 — Mid-session wall births were MATHEMATICALLY IMPOSSIBLE (FIXED — verify at 07-14 open)
 - **Root cause (the deepest one):** wall strength = OI × gamma, and OI is published once pre-market
@@ -5290,6 +5530,8 @@ correctly reported no-weekly for optionless micro-cap movers. Two findings:
   any UI run as evidence.
 
 ## 2026-07-14 — Vector data refresh rate optimization (member-reported, real-time responsiveness)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### P2 — Slow Vector data updates (spot every 3s, GEX ladder every 60s, flow/history every 30-60s) (FIXED, pending deploy verify)
 - **Root cause:** SWR refresh intervals set conservatively for minimal server load; member reported Vector felt "static" and laggy, not responsive to market moves. Multiple Vector surfaces refreshing at different rates (3s/30s/60s).
@@ -5307,6 +5549,8 @@ correctly reported no-weekly for optionless micro-cap movers. Two findings:
 - **Status:** Fixed (commit 78cdf74), staged on `claude/three-repos-review-36t217`, awaiting staging deployment verification. Full UI validation requires Cognito authentication (https://staging.blackouttrades.com/vector)
 
 ## 2026-07-14 — Vector GEX ladder asymmetry (discovered during wall-birth validation)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### P1 — Scoped DTE ladder strikes mismatched chart walls (FIXED)
 - **Root cause:** The GEX ladder panel (gex-ladder API endpoint) computed the ladder for narrowed horizons (0DTE/WEEKLY/MONTHLY) using OI-only GEX values, while the chart walls used volumeAdjusted GEX (OI + today's per-strike traded volume). This created an asymmetry: ladder UI showed different strike sets and values than the chart's beads, breaking cross-surface truth.
@@ -5319,6 +5563,8 @@ correctly reported no-weekly for optionless micro-cap movers. Two findings:
 - **Status:** Fixed (commit 107c450). Pending staging E2E re-validation (ladder strike count, banner/king alignment, cross-surface agreement).
 
 ## 2026-07-14 — Vector wall death visibility (user-observed)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### P2 — Dead walls not visually distinguished from live walls (FIXED)
 - **Observation:** Old walls that dropped below the dominant set (top-3 by strength) were still visible on the chart at the same brightness as active walls, making it unclear which walls were live vs stale/dead.
@@ -5332,6 +5578,8 @@ correctly reported no-weekly for optionless micro-cap movers. Two findings:
 - **Status:** Fixed (commit 70df3ea). Visual distinction should now be clear on staging — dead walls fade to a faint historical artifact level instead of remaining visually prominent.
 
 ## 2026-07-15 — Night Hawk publish gates too strict off-hours/staging
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### P1 — Staging/off-hours Night Hawk editions published zero plays after G-N3 gate merged (FIXED, CI green, deployable)
 - **Root cause:** PR-N3 (commit 9c9c122) added publish-gate G-N3 (stale-quote basis check). Price from Polygon fallback to hourly bars (no daily bar) yields `price_session=null`. The gate failed-closed: null=unknown=indistinguishable from stale → BLOCK. All plays blocked on staging (off-hours, no daily bars). Real issue: the gate couldn't distinguish "no daily bar" (legitimate, current data) from "stale quote" (wrong trading day).
@@ -5341,6 +5589,8 @@ correctly reported no-weekly for optionless micro-cap movers. Two findings:
 - **Status:** Fixed (commit 53e1f67), deployable; Night Hawk on staging should now publish with plays. Trigger with `?force=1` post-deploy and verify 5 plays generate for tomorrow.
 
 ## 2026-07-15 — 0DTE desk bundle cache stampede (architecture audit)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### P3 — No single-flight coalescing on `fetchPolygonOdteDeskBundle` (FIXED)
 - **Severity:** P3 (minor — wastes API quota, not data correctness)
@@ -5351,6 +5601,8 @@ correctly reported no-weekly for optionless micro-cap movers. Two findings:
 - **Status:** Fixed (this PR).
 
 ## 2026-07-16 — Night Hawk overnight edition deep audit (play quality + gate bias)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### P0 — Entry levels anchored at support, not spot — all 5 plays unfillable (FIXED)
 - **Severity:** P0 (every published play was unfillable — members cannot trade at the suggested entries)
@@ -5380,6 +5632,8 @@ correctly reported no-weekly for optionless micro-cap movers. Two findings:
 - **Status:** By design. No member-facing explanation of the inversion exists (future UX item).
 
 ## 2026-07-18 — Production auth redirect validation
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### P1 — Authenticated users see sign-in page instead of being redirected (FIXING)
 - **Severity:** P1 (UX disruption — authenticated users landing on /sign-in see the form instead of being redirected to /)
@@ -5390,6 +5644,8 @@ correctly reported no-weekly for optionless micro-cap movers. Two findings:
 - **Status:** Fix shipped (PR #790, hardened #792). Prod validated 2026-07-18.
 
 ## 2026-07-18 — 0DTE Command deep system audit (docs-only PR)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### P0 — Persist path ignores MOVED / illiquid / NO_QUOTE (FIXING — PR #788)
 - **Severity:** P0 (commit discipline — UI shows SKIP via `resolveFreshFindStatus` but `persistZeroDteScan` only checks `gate.verdict === "COMMIT"`, `scan.ts` ~463–465)
@@ -5415,6 +5671,8 @@ correctly reported no-weekly for optionless micro-cap movers. Two findings:
 - **Implementation track:** PR #786 Night Hawk UI + 1s live lane; PR #788 precision gates.
 
 ## 2026-07-21 — Wall / bead / matrix-drift end-to-end validation (live prod, RTH)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### Live validation result: walls + beads + matrix % drift are numerically correct (PASS)
 - **Method:** minted one temp prod Clerk admin/premium user (deleted after), swept SPX/SPY/NVDA/ASTS ×
@@ -5471,6 +5729,8 @@ correctly reported no-weekly for optionless micro-cap movers. Two findings:
   long→short crossing / terminal zero-touch). Tests updated + net-short→null case added; gamma-desk suite 15/15.
 
 ## 2026-07-21 — SPX Slayer live CTO audit (99 samples, RTH) — fixes batch 1
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 Deep live audit of the SPX Slayer desk (poll every 15s, 18:54–19:35 UTC, cross-checked vs Polygon).
 No P0: 0 correctness violations across 99 samples (above_flip, flip/maxpain band, SPX≈10×SPY 10.032–10.035,
@@ -5508,6 +5768,8 @@ price-vs-matrix ≤1.61pt). Cadence healthy (desk/matrix as_of advance ~every po
   stale (says 8s/20s; actual 5s).
 
 ## 2026-07-21 — SPX Slayer audit fixes batch 2
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### P2 — gap_pct was the live change, not a gap, during RTH (FIXED, tested)
 - **Root cause:** `gap-proxy.ts:resolveDeskGap` RTH branch used `gapFromPrice(spx_price, prior_close)`
@@ -5543,6 +5805,8 @@ price-vs-matrix ≤1.61pt). Cadence healthy (desk/matrix as_of advance ~every po
   which should precede any UI. Left estimated-and-gated, as designed.
 
 ## 2026-07-22 — SPX Slayer bead rail: "too light" + thin semantics (P2, FIXED — full SPX audit)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### P2 — Wall/bead rail rendered too faint and encoded only ONE dimension three times
 - **Symptom (member-reported):** beads "too light on rendering"; the rail "just paints" instead
@@ -5574,6 +5838,8 @@ price-vs-matrix ≤1.61pt). Cadence healthy (desk/matrix as_of advance ~every po
 - **Status:** FIXED (branch `claude/wall-beads-data-validation-4re5wo`).
 
 ## 2026-07-22 — GEX matrix "built/melted" verb inverted on the put side (P2, FIXED)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### P2 — Shift leaders labeled build/decay by raw delta sign → building put walls read "melted"
 - **Symptom:** in the Dealer Gamma Map shift strip + cell badges, a put wall that is actively
@@ -5601,6 +5867,8 @@ price-vs-matrix ≤1.61pt). Cadence healthy (desk/matrix as_of advance ~every po
 - **Status:** FIXED (branch `claude/wall-beads-data-validation-4re5wo`).
 
 ## 2026-07-22 — SPX 0DTE gamma flip fragmented across panels (P1, FIXED — data unification)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### P1 — Four independent gamma-flip engines; pin used a volume-poisoned SIGNED ladder
 - **Symptom (member-reported, screenshot):** the gamma flip showed FOUR different values on one
@@ -5633,6 +5901,8 @@ price-vs-matrix ≤1.61pt). Cadence healthy (desk/matrix as_of advance ~every po
 - **Status:** FIXED (branch `claude/wall-beads-data-validation-4re5wo`).
 
 ## 2026-07-22 — Full GEX/VEX matrix table (feature — SPX desk)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### Dealer Gamma Map was truncated to 6 expiry columns; user wants the full table
 - **Request:** show the complete GEX/VEX matrix (every expiry as a column), not the shortened rail.
@@ -5657,6 +5927,8 @@ price-vs-matrix ≤1.61pt). Cadence healthy (desk/matrix as_of advance ~every po
 - **Status:** DONE (branch `claude/wall-beads-data-validation-4re5wo`).
 
 ## 2026-07-22 — Header label collisions + VWAP tone/value split (P2, FIXED — consistency)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### P2 — "Regime" meant two things; max-pain horizon undisclosed; VWAP tone could contradict value
 - **Symptom:** the desk "said different things" for the same label. (1) Header "Regime" pill = TREND
@@ -5677,6 +5949,8 @@ price-vs-matrix ≤1.61pt). Cadence healthy (desk/matrix as_of advance ~every po
 - **Status:** FIXED (branch `claude/wall-beads-data-validation-4re5wo`).
 
 ## 2026-07-22 — EOD pin cone painted ZERO uncertainty at the bell (P2, FIXED — accuracy)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### P2 — Analytic confidence cone collapsed to a point (p10=p50=p90) at 16:00
 - **Symptom:** the EOD pin forecaster's confidence cone pinched to a single point at the close,
@@ -5696,6 +5970,8 @@ price-vs-matrix ≤1.61pt). Cadence healthy (desk/matrix as_of advance ~every po
 - **Status:** FIXED (branch `claude/wall-beads-data-validation-4re5wo`).
 
 ## 2026-07-22 — Commentary rail never announced a pin/max-pain migration (P2, FIXED — signal gap)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### P2 — 0DTE pin (max-pain magnet) drift was silent in the live commentary
 - **Symptom (from the left-pane audit):** `detectSpxVoiceEvents` fired on γ-flip crosses, king-wall
@@ -5713,6 +5989,8 @@ price-vs-matrix ≤1.61pt). Cadence healthy (desk/matrix as_of advance ~every po
 - **Status:** FIXED (branch `claude/wall-beads-data-validation-4re5wo`).
 
 ## 2026-07-22 — EOD pin projected close + band drawn ON the price chart (feature)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### Move the EOD pin onto the chart (user chose "on-chart cone + slim panel")
 - **What:** the SPX Vector chart now draws the EOD pin's **projected 0DTE close** as a solid gold
@@ -5735,6 +6013,8 @@ price-vs-matrix ≤1.61pt). Cadence healthy (desk/matrix as_of advance ~every po
 - **Status:** DONE (levels); cone + panel-slim = follow-ups. Branch `claude/wall-beads-data-validation-4re5wo`.
 
 ## 2026-07-22 — Pinned bias prose named stale walls after a king migration (P3, FIXED)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### P3 — Bias card kept citing an old king wall for up to 5 min after it stepped
 - **Symptom (left-pane audit item A):** the pinned bias narrative bakes specific wall/pin numbers
@@ -5750,6 +6030,8 @@ price-vs-matrix ≤1.61pt). Cadence healthy (desk/matrix as_of advance ~every po
 - **Status:** FIXED (branch `claude/wall-beads-data-validation-4re5wo`).
 
 ## 2026-07-22 — SPX desk: 4-panel layout (EOD pin own rail) + drop chart max-pain line (member-directed)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### Layout — EOD pin split into its own 4th panel so the matrix gets full height
 - **Request:** "4 panels with EOD pin forecaster as the new panel so we can get full view of the
@@ -5769,6 +6051,8 @@ price-vs-matrix ≤1.61pt). Cadence healthy (desk/matrix as_of advance ~every po
 - **Status:** DONE (branch `claude/wall-beads-data-validation-4re5wo`).
 
 ## 2026-07-22 — On-chart pin → Monte-Carlo source + relax over-tight MC diffusion (member-directed)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### The on-chart pin now uses the Monte-Carlo projection; MC late-session cone widened to be honest
 - **Request:** "do the monte carlo EOD pin so it looks like a curve on chart instead of the analytic
@@ -5789,6 +6073,7 @@ price-vs-matrix ≤1.61pt). Cadence healthy (desk/matrix as_of advance ~every po
 - **Status:** DONE (levels + width). Branch `claude/wall-beads-data-validation-4re5wo`.
 
 ## 2026-07-24 — [HIGH] index-option underlying spot dropped in batched snapshot mapper — FIXED
+> **kind:** `FINDING`
 
 **Severity HIGH** (real-money valuation surface): `OptionSnapshot.underlyingPrice` was `null` for
 EVERY index-option OCC (SPX/SPXW/NDX/RUT/VIX) valued through the batched `/v3/snapshot` path.
@@ -5819,6 +6104,8 @@ the IV guard cases. `npx tsx --test` 15/15 pass; `tsc --noEmit` clean; `check-br
 ---
 
 ## 2026-07-24 — Night Hawk SWING (2–30 DTE) engine BUILT end-to-end (16 PRs)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity:** N/A (feature build, not a defect). **Status:** DONE.
 
@@ -5845,6 +6132,7 @@ verified `tsc --noEmit` + full swing/horizon suite + `check-brand.mjs` before me
 (aggression floor) and #1031 (governor-txn) remain parked as drafts (operator validates).
 
 ## 2026-07-24 — [MED, correctness] gex-positioning WS wall override summed ALL expiries (far-OpEx walls next to near-term flip) — FIXED
+> **kind:** `FINDING`
 
 **Severity MED (RTH-only wrong key levels on the desk-terminal/positioning surface; no capital path).**
 `getGexPositioning` publishes the canonical call/put wall consumed by the desk terminal, Largo and
@@ -5890,6 +6178,8 @@ on the fix (`6050`). `tsc --noEmit` clean; all 77 `src/lib/providers/gex*.test.t
 `fix/gex-positioning-walls-nearterm-scope` (PR to main).
 
 ## 2026-07-24 — [SEV-3, swing pre-live] SECTOR_ROTATION mislabeled on coarse name-vs-SPY RS; wired a real INDUSTRY-GROUP RS feed — FIXED (WIRED, not skipped)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Context / risk.** Swing lane is pre-live (WATCH-only, `commitEligibleCount` ≡ 0 — nothing sizes
 risk), so live blast radius is nil. Operator directive: *"Industry-group RS data feed → so
@@ -5971,6 +6261,8 @@ grounds ONLY on `sectorLeadership01`, never SPY RS). Updated fixtures/symmetry +
 (NON-DRAFT PR to main, no auto-merge per operator directive).
 
 ## 2026-07-24 — [7-fix cluster] 0DTE grading + track-record HONESTY — FIXED (deploys AFTER close)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 The reported 0DTE record must reflect the exit the member actually trades, and every number
 must be internally consistent. Seven root causes, one branch (`fix/zerodte-grading-record-honesty`).
@@ -6038,6 +6330,8 @@ are a RETRYABLE non-grade (leave ungraded, mirror the throw path); equities unch
 **Status:** DONE — PR to main, **HOLD for after-market-close deploy** (changes reported numbers), NO auto-merge.
 
 ## 2026-07-24 — [SEV-2, real-money gate] 0DTE firewall: five safety protections FAILED OPEN under provider stress — FIXED (Phase 0, `fix/zerodte-firewall-fail-closed`)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Class.** The live 0DTE commit stack (scan → board evidence gates → G-1..G-11 → Cortex) had several
 protections that silently degraded to a PASS exactly when their input was unavailable — i.e. on the
@@ -6145,6 +6439,8 @@ unchanged (still checks `condorFlagEnabled()`).
 ---
 
 ## 2026-07-27 — G-4 VIX elevated gate treats flat tape as non-aligned (zero-commit sessions)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity:** CRITICAL — the most common market regime (VIX 17-20, flat/choppy tape) produced
 ZERO committed plays across entire RTH sessions. The system was live but completely inert on
@@ -6186,6 +6482,8 @@ No other files reference `tapeAligned`. Tests updated in `gates.test.ts` (5 test
 ---
 
 ## 2026-07-27 — Condor VIX gate blocks at elevated (17) instead of extreme (20)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity:** CRITICAL — iron condors (the ONE structure designed for flat/range-bound markets)
 were hard-blocked on any day with VIX >= 17. Since VIX sits between 17-20 for ~40% of trading
@@ -6225,6 +6523,8 @@ elevated threshold.
 ---
 
 ## 2026-07-27 — Flat tape market_aligned=null blocks early-window confluence gate (G-12)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity:** HIGH — during the early entry window [10:00, 10:45) ET, G-12 requires >= 2
 confirmations (VWAP-side + market-aligned). But flat tape set `market_aligned = null` (unknown),
@@ -6289,6 +6589,8 @@ updated from VETO_BLIND→ABSTAIN expectations), `scan.ts` (comment only). `boar
 **Status:** MERGED (PR #1155)
 
 ## 2026-07-27 — G-12 early-window confluence floor (2→1), G-10 intraday_conflict demotion, fail-closed stale fallback
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** High (cumulative — the three issues combined produced zero-play sessions on full trading days).
 
@@ -6340,6 +6642,8 @@ plays where flow led a reversal) + Cortex veto_blind (fixed in PR #1155) = nothi
 **Status:** PR (pending)
 
 ## 2026-07-27 — [CTO AUDIT] Night Hawk 0DTE full-system hardening (27 findings, 4 workstreams)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** Mixed (4× HIGH, 8× MEDIUM, 15× LOW/additive). Full CTO-level audit of the entire Night
 Hawk 0DTE system — architecture, gates, discovery, exit engine, governor, data resilience, telemetry.
@@ -6438,6 +6742,8 @@ and per-play frozen exit policy (existing plays unaffected).
 **Status:** PR (pending)
 
 ## 2026-07-28 — [UI/UX] Batch 5: keyboard shortcut conflict + stock-price flash + confirm polling + backfill score floor (PR #1176)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P3 (keyboard) / P3 (flash) / P2 (confirm polling) / P2 (backfill floor).
 
@@ -6471,6 +6777,8 @@ File: `play-backfill.ts:87`.
 **Status:** COMMITTED (PR #1176, batch 5)
 
 ## 2026-07-28 — [correctness] "no dominant pattern" sentinel leaks into thesis text + compounding option-coherence push inflates R:R (P1×2)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 (sentinel leak) / P1 (R:R inflation).
 
@@ -6523,6 +6831,8 @@ same goal (bound the total push) without a signature change.
 **Status:** FIXED (branch `fix/nighthawk-sentinel-and-rr-inflation`, PR pending).
 
 ## 2026-07-28 — [correctness] "ambiguous" both-hit outcome deflates Night Hawk win rate (PR #1181)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P2 — systemic understatement of the public win rate, not a wrong-direction grade.
 
@@ -6559,6 +6869,8 @@ changes needed since `"ambiguous"` stays a valid (just less frequent) union memb
 **Status:** MERGED (PR #1181).
 
 ## 2026-07-28 — [quality] Tier A threshold too lenient + forced contrarian floor too soft (P2×2)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P2 (tier inflation) / P2 (low-confluence contrarian).
 
@@ -6604,6 +6916,8 @@ is unchanged.
 **Status:** PR #1184 open (branch `fix/nighthawk-tier-and-contrarian`).
 
 ## 2026-07-28 — [0DTE-UI] CLOSED plays vanishing from Command Deck (PR #1188)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 — closed plays silently vanished from the only surface that manages them.
 
@@ -6636,6 +6950,8 @@ band 2 (sorted last).
 **Status:** PR #1188 merged (squash, `ff17eefd`).
 
 ## 2026-07-28 — [correctness] ManagePanel frozen at 5s board poll cadence (PR #1189)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 — the Management tab (the "action" panel users watch most) only updated every 5s
 while the P&L tab updated every 1s from SSE marks, making it look "static".
@@ -6651,6 +6967,8 @@ time, recomputing from the SSE-overlaid pnlPct on every render.
 **Status:** PR #1189 merged (squash, `b4a46eb4`).
 
 ## 2026-07-28 — [regression] Legacy ManagePanel shows generic "HOLD" after PR #1189 (PR #1190)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 — Legacy plays always showed "HOLD" with generic text even when the stock hit
 stop/target levels, because `managementFor("PLAN", ...)` doesn't know about stop/target geometry.
@@ -6670,6 +6988,7 @@ showing values like `+64.29%` vs Legacy's clean `+64.3%`. Now consistently `.toF
 **Status:** PR #1190 — CI running.
 
 ## 2026-08-01 — [security/correctness] no-store CDN-cache guard coverage gaps (admin/nighthawk/webhook/engine) — FIXED
+> **kind:** `FINDING`
 
 **Severity.** P1 — the guard test (`no-store-headers.guard.test.ts`) exists specifically to catch API
 routes that can be edge-cached by a Cloudflare `override_origin` cache rule despite the origin
@@ -6718,6 +7037,7 @@ touched files — 0 errors/warnings. `npm run build` — clean production build.
 **Status:** PR #1496 — merged.
 
 ## 2026-08-01 — [efficiency] VectorPulse double-polled /spx/play via a second SWR key — FIXED
+> **kind:** `FINDING`
 
 **Severity.** P2 — findings #16+#20 from the 20-item audit list, fixed together (same root cause).
 
@@ -6747,6 +7067,7 @@ clean. `node --import tsx --experimental-test-module-mocks --test src/features/s
 **Status:** PR #1497 — merged.
 
 ## 2026-08-01 — [efficiency] VectorGexLadder full-list re-render on every spot tick — FIXED
+> **kind:** `FINDING`
 
 **Severity.** P2 — finding #19 from the 20-item audit list.
 
@@ -6775,6 +7096,7 @@ test file for this component (confirmed via `find`).
 **Status:** PR pending.
 
 ## 2026-08-01 — [Helix Tier 0] GEX-enrichment cap, no-op score gate, dead component + stale docs, mislabeled chart — FIXED
+> **kind:** `FINDING`
 
 **Context.** Findings from a deep CTO-level audit of Helix (options-flow tape at `/flows`), driven
 via a temp admin+premium Clerk session (minted, verified, deleted) plus a full code read of
@@ -6864,6 +7186,7 @@ file). `node --import tsx --experimental-test-module-mocks --test` on both touch
 part of the Helix Tier 1 batch; see PR #1501 for the visual-hierarchy/glow fix's own writeup.
 
 ## 2026-08-02 — [Helix Tier 1] Filters collapse into a mobile bottom sheet — FIXED
+> **kind:** `FINDING`
 
 **Root cause.** `HelixCommandBar` (the desktop filter bar shown to any non-native-shell client,
 including mobile web Safari/Chrome — the native iOS app has its own separate toolbar branch in
@@ -6903,6 +7226,7 @@ a desktop convenience).
 **Status:** PR pending.
 
 ## 2026-08-02 — [Helix Tier 1] Visual hierarchy pass + cut decorative glow ~40% — FIXED
+> **kind:** `FINDING`
 
 **Root cause (visual hierarchy).** A live-authenticated screenshot of `/flows` (temp Clerk
 admin+premium session via `mintClerkPremiumSession`, `proxy-browser.cjs`'s TLS-tunnel technique)
@@ -6949,6 +7273,7 @@ changes — purely presentational. `npx tsc --noEmit` clean; `npx eslint` on the
 `FlowAlertStream` as the real mobile layout) tracked as separate PRs.
 
 ## 2026-08-02 — [Helix Tier 1] Mobile web + native shell get a real card tape, not the desktop grid — FIXED
+> **kind:** `FINDING`
 
 **Root cause.** Both mobile web (Safari/Chrome on a phone) AND the native iOS shell rendered
 `HelixFlowTable` — the SAME CSS-grid "table" built for a wide desk viewport, with a hard
@@ -6991,6 +7316,7 @@ confirmed pre-existing on `HelixFlowTable`'s structurally identical row, not new
 **Status:** PR #1503, merged.
 
 ## 2026-08-02 — [Helix Tier 2] Persist signal firings + grade outcomes (item #9) — FIXED
+> **kind:** `FINDING`
 
 **Root cause.** Helix's velocity-spike and split-flow signals were computed live in the browser
 (`FlowFeed.tsx`'s own `useMemo` blocks) and thrown away — no record anywhere of "did a velocity
@@ -7063,6 +7389,7 @@ Tier 3 (which needs weeks of this ledger's real data before showing a grounded c
 — see the original audit's sequencing-risk section) are separate, later PRs.
 
 ## 2026-08-02 — [Helix Tier 2] Follow-through tracker UI (item #10) — FIXED
+> **kind:** `FINDING`
 
 **Context.** Item #9 (previous entry) built the ledger; this is the read side ChatGPT's critique
 called the "second biggest missing feature" — a member-visible record of what Helix's own
@@ -7104,6 +7431,7 @@ graded data — building it sooner would mean either fabricating numbers or ship
 scaffolding with nothing behind it, exactly the risk the original audit flagged.
 
 ## 2026-08-02 — [Helix] "More panels" stacked into the narrow rail, forcing a full-page scroll to see any of them — FIXED
+> **kind:** `FINDING`
 
 **Root cause.** `analyticsRail` in `FlowFeed.tsx` rendered the 5 always-on panels AND, when
 `showMorePanels` was true, appended 7 more (VelocityRadar, NightHawkFlowPanel, SplitFlowRadar,
@@ -7153,6 +7481,7 @@ the overlay (comparing to SPX Slayer's convention of never silently collapsing a
 some vanish when their underlying dataset happens to be empty.
 
 ## 2026-08-02 — [Helix] Fullscreen overlay silently drops panels with zero entries — FIXED
+> **kind:** `FINDING`
 
 **Root cause.** `VelocityRadar.tsx:24` and `SplitFlowRadar.tsx:27` `return null` whenever
 `entries.length === 0`; `NightHawkFlowPanel.tsx:45` `return null` whenever `plays.length === 0 &&
@@ -7192,6 +7521,8 @@ no new test file.
 **Status:** PR pending → CI → auto-merge per standing policy, then live screenshot re-verification.
 
 ## 2026-08-02 — [Thermal] Deep matrix data-correctness audit (all values) + new validator tool
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Context.** User asked for the same top-down deep dive done for Helix, applied to Thermal
 (`/heatmap`, "BlackOut Thermal" — the full GEX/VEX/DEX/CHARM dealer-positioning matrix, distinct
@@ -7272,6 +7603,7 @@ plain-object accumulator with a `Map` + a single `Object.fromEntries()` call at 
 dynamic-key assignment expression at all, so there's no such sink to flag) — see next entry.
 
 ## 2026-08-02 — [Thermal] CodeQL remote-property-injection follow-up on reconcileCellStrikeTotals — FIXED
+> **kind:** `FINDING`
 
 **Root cause.** The previous entry's fix built `strike_totals` via direct bracket assignment
 (`strikeTotals[strike] = value`) into a plain object. CodeQL's "remote property injection" query
@@ -7302,6 +7634,7 @@ every "cells → strike_totals integrity" check now shows `Δ=0.0000` exactly on
 fix). Thermal matrix data-correctness audit closed.
 
 ## 2026-08-02 — [Thermal] Ticker search silently inert while the Triple Desk is showing — FIXED
+> **kind:** `FINDING`
 
 **Context.** User reported: "Users are having hard time to look at triple grid and search for
 individual stocks for thermal maps" — proposed making the triple grid an explicit toggle so
@@ -7369,6 +7702,8 @@ consistently: the toggle button (`GexHeatmap.tsx`), its tooltip, the methodology
 behavior touched. Re-verified `tsc`/`eslint`/`next build` clean after the rename.
 
 ## 2026-08-03 — [Night Hawk re-verification] Live healthcheck + Legacy win-rate re-check, PR #1211 lineage confirmed
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Context.** User asked to "re verify everything" after a research-only synthesis of the 0DTE/
 Swing/LEAPS/Legacy systems. Three concrete items were re-checked live against prod (with valid AWS
@@ -7413,6 +7748,7 @@ here per standing policy; next step is user-directed (build the direction veto, 
 `stale_quote_basis`, and/or wait for more of the 13 open Legacy plays to resolve before acting).
 
 ## 2026-08-03 — [Night Hawk scorer] NH-R8: flow-streak bonus rewarded length monotonically, no exhaustion — FIXED
+> **kind:** `FINDING`
 
 **Context.** Same independent Cortex-audit table as the NH-R11/NH-R9 entry above; user selected
 all four confirmed gaps. This is the third (NH-R5 liquidity ranking remains).
@@ -7446,6 +7782,7 @@ existing test used a `streak_days` value above 3, so none exercised the new fade
 **Status:** PR pending → CI → auto-merge per standing policy.
 
 ## 2026-08-03 — [Night Hawk Cortex] NH-R11 (source-family stacking) + NH-R9 (silent internal disagreement) — FIXED
+> **kind:** `FINDING`
 
 **Context.** An independent Cortex-audit table (user-supplied, cross-checked against `main`)
 confirmed four real, previously-unactioned gaps in the Night Hawk Cortex evidence composer
@@ -7516,6 +7853,7 @@ set). `npx tsc --noEmit` clean. `npx eslint` clean on every touched file.
 **Status:** PR pending → CI → auto-merge per standing policy.
 
 ## 2026-08-03 — [Night Hawk breakout picker] NH-R5: binary liquidity gate replaced with a quality rank — FIXED
+> **kind:** `FINDING`
 
 **Context.** Last of the four confirmed gaps from the independent Cortex-audit table (NH-R11/NH-R9
 in one earlier PR, NH-R8 in another). NH-R5: "Breakout picker: `sideHasLiquidity` + sort by
@@ -7554,6 +7892,8 @@ clean. `npx eslint` clean.
 user selected from the independent audit table (NH-R11, NH-R9, NH-R8, NH-R5).
 
 ## 2026-08-03 — [Night Hawk] HorizonDeck missing degraded/loading props + stale PR #1211 note corrected
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Context.** A second independent verification pass (user-supplied) cross-checked the earlier
 synthesis against `main` and confirmed two small, previously-unactioned items.
@@ -7588,6 +7928,8 @@ up to itself.
 **Status:** PR pending → CI → auto-merge per standing policy.
 
 ## 2026-08-03 — [Legacy edition] G-N4 book-vs-tape alignment veto — built (closes the `wrong_direction` gap)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Context.** User explicitly requested this after the 2026-08-03 Legacy debrief re-verification
 found `wrong_direction` as the dominant unresolved failure mode (conviction-A plays: 26 total, 12
@@ -7642,6 +7984,7 @@ whether `wrong_direction` actually declines in the debrief report, not to assume
 alone.
 
 ## 2026-08-03 — [Thermal] Ticker search buries the real ticker behind derivative/name matches — fixed
+> **kind:** `FINDING`
 
 **Trigger.** User asked directly: "why is PLTR not on thermal?? Is this a bug?" — verified live
 before answering rather than assuming Thermal's known preset-chip/dynamic-universe architecture
@@ -7690,6 +8033,8 @@ staleness errors are present on `main` too, unrelated to this change).
 **Status:** PR pending → CI → auto-merge per standing policy.
 
 ## 2026-08-03 — [Night Hawk] Closed play row hid the real peak excursion + entry time — added
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Trigger.** User flagged a UX issue with a screenshot: a CLOSED play (META 592.5C, entered $3.15,
 stopped out at $1.57/-50%) reads as a pure loser on the left-side play list row, which shows only
@@ -7735,6 +8080,8 @@ deliberately NOT included — logged here as a known follow-up gated on either e
 in prod or building tier-hit tracking under `ratchet`, whichever the team decides.
 
 ## 2026-08-03 — [Night Hawk] Row simplified further — peak/pnl% is now the PRIMARY number, badge clutter moved to the right pane
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Trigger.** Direct follow-up to the same-day peak%/timestamp change (previous entry). User reviewed
 the shipped result live and asked for two more things: (1) for a CLOSED row, don't just add a small
@@ -7774,6 +8121,8 @@ thesis-health/stale badges and the exec-fill line no longer render on the row. A
 **Status:** FIXED — PR #1604
 
 ## 2026-08-03 — [Night Hawk full-system audit] Legacy per-tier debrief record silently empty; forced-contrarian hedge flag was a no-op
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Trigger.** Same full-system Night Hawk audit as the admin-route persist fix above (PR #1603).
 Two more findings survived cross-check against `origin/main` at write-up time.
@@ -7834,6 +8183,8 @@ full `src/features/nighthawk/lib/*.test.ts` suite (659 tests) re-run clean. `npx
 **Status:** FIXED — PR #1604
 
 ## 2026-08-04 — [0DTE, live] G-13 flow-accumulation-conflict reason hardcodes an example ticker on every block
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Trigger.** Full-day live deep-scan monitoring of Night Hawk (0DTE/Swings/Legacy), requested
 directly by the user, market-open 2026-08-04. Pulled the live `/api/market/zerodte/board` response
@@ -7869,6 +8220,7 @@ genuinely dynamic, not a second hardcoded value. All 111 tests (2 new) in `gates
 **Status:** FIXED — PR #1607
 
 ## 2026-08-04 — [P3, SWING, dead-code hardening] `HorizonLaneBoard.tsx` would render an INVALIDATED
+> **kind:** `FINDING`
 pre-entry swing thesis as a green "committed" row — no live member exposure, fixed defensively
 
 | Field | Value |
@@ -7882,6 +8234,7 @@ pre-entry swing thesis as a green "committed" row — no live member exposure, f
 | **Status** | FIXED — PR #1608 |
 
 ## 2026-08-04 — [P2, SPX Slayer, UX] ⚡ Pulse rail: regime-flip/magnet-shift/pin-shift cooldown
+> **kind:** `FINDING`
 keys embed a MOVING value, so drift near a threshold can defeat suppression — "fires, but feels
 bugged" reported live by the operator
 
@@ -7896,6 +8249,7 @@ bugged" reported live by the operator
 | **Status** | FIXED — PR opened at the operator's explicit request (not the standing PR-only rule — they asked for the fix live, so it was built and tested immediately rather than deferred to post-close). |
 
 ## 2026-08-04 — [P1, AUDIT TOOLING] `discovery-recall-probe.mjs` silently measured 0 drops on
+> **kind:** `FINDING`
 every single day of the first 10-session multi-day run — the probe itself, not the production cap,
 was broken
 
@@ -7912,6 +8266,7 @@ was broken
 | **Status** | FIXED — the audit tooling bug itself will PR/merge per the standing auto-merge policy (a script fix, not a live product change). The underlying discovery-cap question this tool measures is now considered **evidenced** (not just suspected) and is a recommended follow-up, not yet actioned. |
 
 ## 2026-08-04 — [P1, 0DTE, live] BREAKOUT discovery moves from a static top-40 chain-fetch cap to a
+> **kind:** `FINDING`
 dynamic-N sized to the day's qualifying breadth — recovers real winners the static cap was cutting
 
 | Field | Value |
@@ -7924,9 +8279,10 @@ dynamic-N sized to the day's qualifying breadth — recovers real winners the st
 | **Blast radius** | `discoverBreakoutSetups` (`breakout-discovery.ts`) — the only production caller of `resolveBreakoutCandidateCap` — is the live BREAKOUT origin feeding the Night Hawk 0DTE board; this changes how many BREAKOUT/BREAKDOWN setups the board can discover on a wide-breadth day (up to 100 per side instead of 40, only when the day's qualifying pool actually supports it). `scripts/audit/zerodte-market-opportunity-audit.mjs` imports `BREAKOUT_MAX_CANDIDATES`/`BREAKOUT_SCREEN_POOL` directly — both still exported with the same names, values just larger; audit-only, no behavior contract broken. `discovery-recall-probe.mjs` imports `BREAKOUT_MAX_CANDIDATES` for its own static-cap baseline — unaffected (still 40, now documented as "the floor"). No other caller of `resolveBreakoutCandidateCap` or the two discovery constants exists in `src/`. |
 | **Tests** | `breakout-cap.test.ts` — full rewrite: floor clamp on a thin pool, exact mid-breadth scaling (using the live-evidenced 294/390 qualifying counts), ceiling clamp on a huge pool, an extreme-pool sanity check, default floor/ceiling when omitted, and the kill-switch (`disabled: true`) reverting to the static floor regardless of pool size. `breakout-discovery.test.ts` — two new end-to-end cases exercising the real `discoverBreakoutSetups` path with `opts.maxCandidates` deliberately omitted (matching how the live board calls it): a 300-qualifying-mover day fills to 90 (past the old static floor, bounded by the ceiling), and a 50-qualifying-mover day still fills to exactly 40 (no regression on a thin day). All 18 tests across both files pass (`PLAYBOOK_VERDICT_GUARD_ASSERT=1 node --import tsx --experimental-test-module-mocks --test src/lib/zerodte/breakout-cap.test.ts src/lib/zerodte/breakout-discovery.test.ts`). `npx tsc --noEmit` clean (pre-existing unrelated stale `.next/types/app/(marketing)/learn/*` cache errors excluded). |
 | **Tooling added** | `scripts/audit/breakout-dynamic-n-ab.mjs` — new sibling to `discovery-recall-probe.mjs`; grades STATIC-40 vs the shipped `resolveBreakoutCandidateCap` DYNAMIC-N (and the EXTRA slice dynamic-N recovers over static) across a configurable session list using the real production ranking + real production cap formula + real Polygon minute bars. Committed regardless of outcome per the standing instruction; this run's outcome supported shipping. |
-| **Status** | FIXED/SHIPPED — PR to follow this entry, auto-merge per standing policy once local checks are green. |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `resolveBreakoutCandidateCap`, `BREAKOUT_DYNAMIC_CAP_DISABLED`, `BREAKOUT_SCREEN_POOL`). Restamped from a mid-flight status that was never revisited. |
 
 ## 2026-08-04 — [NEW SURFACE, ENGINE B] Whole-market weekly-banger discovery + live scale-out
+> **kind:** `FINDING`
 tracking — built per direct operator instruction, ZERO position/capital/daily-commit caps, landed as
 an OPEN PR (not auto-merged) — first-launch exception to the standing auto-merge policy
 
@@ -7943,6 +8299,7 @@ an OPEN PR (not auto-merged) — first-launch exception to the standing auto-mer
 | **Status** | BUILT, tests green, tsc clean — landed as an OPEN PULL REQUEST, auto-merge deliberately NOT enabled. This is the standing auto-merge policy's documented exception: draft/failing-CI/deploy-risky changes are held per that policy, and while the zero-caps question itself was the operator's own explicit call (not in question here), shipping the FIRST LIVE VERSION of a brand-new signal-generation surface still gets a human's own merge click before it starts committing real tracked calls members see — the operator's own choice for this specific launch, not a deviation from anything they asked for. |
 
 ## 2026-08-04 — [Night Hawk nav] LEAPS removed from the visible toggle, replaced by "Bangers" (Engine B) —
+> **kind:** `FINDING`
 straightforward UI change, not a bug, per direct operator instruction
 
 | Field | Value |
@@ -7953,9 +8310,10 @@ straightforward UI change, not a bug, per direct operator instruction
 | **Type-shape decision** | Kept the existing flat shape (`NightHawkView` union + `NIGHTHAWK_VIEW_META: Record<NightHawkView, …>`) rather than introducing a discriminated union — `BANGER`'s meta entry just carries `horizon: null`, the same pattern `LEGACY` already used for a view with no horizon-ledger backing. `viewForHorizon(horizon: Horizon): NightHawkView` was changed to `NightHawkView | null` (its only two production-shape callers are absent — the function has no call site outside its own test — so this is a safe, non-breaking widening) since the `LEAPS` horizon id no longer maps to any view. `parseNightHawkView` drops the `"leaps"/"leap"` aliases; a stale/shared `?view=leaps` link now falls back to `DEFAULT_NIGHTHAWK_VIEW` (0DTE) rather than erroring — consistent with the function's existing "tolerant, never throws" contract for unrecognized values. |
 | **Files changed** | `src/features/nighthawk/lib/nighthawk-view.ts` (type/array/meta/parse/viewForHorizon + header comment), `src/features/nighthawk/lib/nighthawk-view.test.ts` (updated + new cases for BANGER and the LEAPS-alias fallback), `src/features/nighthawk/components/NightHawkFeed.tsx` (import + render switch + header comment), `src/features/nighthawk/components/BangerBoard.tsx` (header comment only — now mounted, no longer "not yet wired in"). |
 | **Verification** | `PLAYBOOK_VERDICT_GUARD_ASSERT=1 node --import tsx --experimental-test-module-mocks --test src/features/nighthawk/lib/nighthawk-view.test.ts src/features/nighthawk/command-deck/adapters.test.ts src/features/nighthawk/command-deck/terminal-guards.test.ts src/app/api/market/nighthawk/horizons/route.test.ts` → 125/125 pass. Full repo `npm test` → same 12 pre-existing failures as on `main` pre-change (quote-cache + shared-board-snapshot convergence tests, unrelated to this change — confirmed via `git stash` A/B), zero new failures. `npx tsc --noEmit` clean (only the pre-existing stale `.next/types/app/(marketing)/learn/*` cache errors, present on `main` too). `npm run build` succeeds; `/nighthawk` route compiles. No live Playwright screenshot of the new tab was taken — the change isn't deployed yet (auto-merge → prod deploy happens after this PR merges), so a pre-merge prod screenshot couldn't show the new tab regardless; build + the full test/tsc pass are the verification for this PR. |
-| **Status** | SHIPPED — small, single-purpose nav change; PR opened, auto-merge enabled per the standing policy (local tsc/tests/build all green, not deploy-risky, not flagged by the operator to hold). |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `BangerBoard`, `Horizon`, `HorizonDeck`). Restamped from a mid-flight status that was never revisited. |
 
 ## 2026-08-04 — [Night Hawk, UX, member-facing] Right-side detail panel (PlayTerminal) declutter — 3 fixes from the prior deep-dive audit
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -7969,9 +8327,10 @@ straightforward UI change, not a bug, per direct operator instruction
 | **Blast radius** | 0DTE Thesis/PnL tabs are the primary surface (`ThesisChecklistPanel`'s pillar section, the PnL-grid Peak/Trough gating). Legacy plays are affected only by Fix 1 (their tier-factor breakdown now renders via the shared `ThesisChecklistPanel` instead of an inline block in `commitSnapshot` — same content, same CSS classes, moved slightly earlier in the panel's visual order) — confirmed via the adapter trace above that Legacy is `tierFactors`' only producer. Swing/LEAPS plays are unaffected by Fix 1 (no thesisHealth, no tierFactors from their adapter) and explicitly preserved by Fix 3's `!premium` gate on the PnL-grid Peak/Trough cells (they'd otherwise have lost their only Peak/Trough surface). `TradeExcursionGraphic`'s stats-row path is shared by 0DTE, Swing/LEAPS (via `PnlPanel`), and Legacy (via `LegacyPnlPanel`) — the SVG journey removal applies uniformly to all three since it was one code path, none of which needed data preserved elsewhere. |
 | **Fix rationale** | Presentation-layer merge/cut only — `terminal-display.ts`'s actual scoring (`convictionDisplay`, `thesisStrengthPct`, `tradeOutcomeDisplay`, etc.), `thesis-health.ts`'s actual health/pillar computation, and `TerminalPremiumPanels.tsx`'s actual P&L math (`entryCenteredExcursionLayout`) are byte-for-byte unchanged — only what's rendered and how. Deliberately kept `engineChecklist`/`confluenceChecklist` (the old pure functions) rather than deleting them, since they're still directly unit-tested and are valid data shapes that cost nothing to keep; only their render call-sites (`EngineChecklistPanel`, `ConfluenceGrid` components) were removed in favor of the new merged component. Deliberately kept `tradeJourneyLayout()` (the pure SVG-path math) rather than deleting it, unhooking only its render call-site, in case a future compact sparkline wants it. Deliberately left "Gates at commit" (the separate frozen-at-commit `<details>` section) completely untouched, per the audit's own scope note — it's conceptually distinct (frozen historical gate state vs. live current pillar/tier state), not part of this merge. |
 | **Files changed** | `src/features/nighthawk/command-deck/terminal-display.ts` (new `unifiedChecklist()`), `src/features/nighthawk/command-deck/TerminalPremiumPanels.tsx` (new `ThesisChecklistPanel`, removed `EngineChecklistPanel`/`ConfluenceGrid`, removed the SVG journey block + `tradeJourneyLayout` import/call from `TradeExcursionGraphic`), `src/features/nighthawk/command-deck/PlayTerminal.tsx` (Thesis-tab render swapped to `ThesisChecklistPanel`, old inline tier-factors block removed, PnL-grid Peak/Trough gated `!premium`), `src/features/nighthawk/command-deck/ThesisHealthPanel.tsx` (Cortex-evidence render block deleted), `src/features/nighthawk/command-deck/TerminalPremiumPanels.ssr.test.ts` (journey-chart test updated to assert absence; 3 new `ThesisChecklistPanel` tests added). |
-| **Status** | SHIPPED — small, presentation-only, single-PR per the standing "one issue per branch" guidance (all 3 fixes ship together since the operator explicitly scoped and approved exactly these 3 as one unit); PR opened, auto-merge enabled per the standing policy (local tsc/tests/build all green, zero new test failures, not deploy-risky, not flagged by the operator to hold). |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `EngineChecklistPanel`, `engineChecklist`, `ConfluenceGrid`). Restamped from a mid-flight status that was never revisited. |
 
 ## 2026-08-05 — [Night Hawk, UX, member-facing] Bangers tab had NO detail panel at all — added a minimal click-to-expand row detail
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -7982,9 +8341,10 @@ straightforward UI change, not a bug, per direct operator instruction
 | **Evidence** | Read `BangerBoard.tsx`, `src/app/api/market/banger/board/route.ts`, `src/lib/banger/positions-db.ts`, and `src/lib/zerodte/scale-out.ts` in full before writing any code, confirming every field used in the new detail panel (`discovery.*`, `committed_at`, `closed_at`, `contract.occ`, `scale_out_action`/`_reason`) is already present in `BangerPositionRow`/`toBoardPlay` — no schema or API change needed. Added 3 new unit tests to `src/lib/zerodte/scale-out.test.ts` covering `computeScaleOutTriggerInfo`: pre-scale (2× target $4 from entry $2, hard stop $0.80, +166.7% distance from a $1.50 mark), post-scale (runner trail-stop $4 from peak $8, hard stop null, −33.3% distance from a $6 mark — the mark must FALL to hit it), and the no-usable-mark/entry case (all nulls, never a fabricated level). `npx tsx --test src/lib/zerodte/scale-out.test.ts` → 16/16 pass (13 pre-existing + 3 new). Full repo test run (`node --import tsx --experimental-test-module-mocks --test "src/**/*.test.ts"`) → **1962/1962 pass, 0 fail** (this repo's full suite was clean going in — no pre-existing failures to diff against, unlike the two entries above). `npx tsc --noEmit` clean (no output at all, not even the usual stale `.next/types/app/(marketing)/learn/*` cache noise). No live Playwright screenshot was captured — the change isn't deployed yet (ships to prod on merge via `ecr-push-production.yml`), so a pre-merge prod screenshot would only show the OLD list-only board regardless of what this branch contains; unit tests + tsc are the real gate here per the task's own allowance. |
 | **Blast radius** | Two files only: `src/lib/zerodte/scale-out.ts` (one new exported pure function + its type, additive — `SCALE_OUT_RULES`/`gradeScaleOut`/`deriveScaleOutAction`/`bangerScaleOutNote` all byte-for-byte unchanged) and `src/features/nighthawk/components/BangerBoard.tsx` (the row became expandable; the collapsed row's markup/classes are unchanged so nothing about the collapsed board's current appearance regresses). No shared `PlayTerminal`/command-deck code touched, no API route or DB accessor changed, no other consumer of `scale-out.ts` (`banger-scale-out-grade.ts`, `market-banger-scan.mjs`, the live sync cron) is affected since only a new function was added. |
 | **Fix rationale** | A lightweight expand-in-place row (plain `<button>`/conditional-render, no new dependency, no drawer/modal library) matches the board's existing plain-list styling and needed zero new CSS beyond reusing existing utility classes already in the file. Computing the next-trigger level from `SCALE_OUT_RULES` directly (rather than having the API pre-compute and ship it) keeps the single source of truth for the exit math in one place (`scale-out.ts`) and avoids a payload/schema change; the panel is a pure function of data the client already has. |
-| **Status** | SHIPPED — new, additive, single-purpose; PR opened, auto-merge enabled per the standing policy (local tsc/tests all green, not deploy-risky, not flagged by the operator to hold). |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `scale_out_reason`, `discovery`, `committed_at`). Restamped from a mid-flight status that was never revisited. |
 
 ## 2026-08-05 — [Night Hawk UX, cross-tab] Confidence/Conviction/Thesis-Strength consolidated to one canonical number; Management-tab entry-plan trio deduped
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -7995,9 +8355,10 @@ straightforward UI change, not a bug, per direct operator instruction
 | **Issue B — fix** | Removed both `ZeroDteEntryPlan` and `LegacyEntryPlan` from the Management tab. The genuinely NEW fields they carried — R:R ratio (both horizons), Underlying price (0DTE only — Legacy's stock price already streams in the persistent non-premium header), and Premium-cap status (Legacy only) — were folded into the Thesis tab's existing commit-snapshot meta grid instead of being lost, alongside the pre-existing (and, per the concurrently-merged Legacy dedup PR #1675, now Legacy-gated) Entry-range/Target/Stop rows. |
 | **Blast radius** | 0DTE, Swings, and Legacy plays all pass through `PlayTerminal`'s shared render paths touched here. `thesisStrengthPct()` and `action.probabilityPct` themselves are untouched, pure, still unit-tested — this is presentation-only. Rebased on top of the concurrently-merged `#1675` (Legacy stop/target dedup, same file) — merged both changes' logic in the Thesis-tab meta grid (Legacy's `horizon !== "LEGACY"` gate on the bare Entry-range/Target/Stop rows + this PR's new R:R/Underlying/Premium-cap block) rather than picking one side. |
 | **Tests** | 4 new `PlayTerminal.ssr.test.ts` cases (hero shows "Thesis Strength" + the live value when `thesisHealth` is wired; falls back to the static score when it isn't; Management tab no longer shows the Contract/Current-mark trio; R:R now appears in the Thesis-tab meta grid). All 19 tests in the file pass post-rebase (15 pre-existing incl. 4 from the concurrently-merged Legacy PR + 4 new). `npx tsc --noEmit` clean. |
-| **Status** | FIXED — PR opened, auto-merge enabled per standing policy. |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `PlayTerminal`, `ThesisStrengthBlock`, `ManagementActionCard`). Restamped from a mid-flight status that was never revisited. |
 
 ## 2026-08-05 — [Night Hawk UX, Swings tab] Extended premium visual grammar to Swings; wired 5 dead swing-only status fields
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -8008,9 +8369,11 @@ straightforward UI change, not a bug, per direct operator instruction
 | **Fix — dead fields** | New `swingStatusDisplay()`/`swingStatusLine()` in `terminal-display.ts`: reads all 5 fields, maps `archetype`/`subLane` through the real `ARCHETYPE_META`/`SWING_SUB_LANES` label tables (not fabricated strings), title-cases the other 3 enum fields, and renders ONLY the fields actually present on a given play (never a fabricated "—" placeholder for a missing one). Surfaced as one compact status line in the Thesis tab — not a new tab/section, matching the audit's "don't add clutter while fixing clutter" spirit. |
 | **Blast radius** | Swing plays are the only ones whose rendering path changes materially (now get the premium component stack). 0DTE is unaffected (same `true` branch as before). Legacy/LEAPS are unaffected (still route to the plain fallback, unchanged). Presentation-only — no scoring/gate/routing logic (`serving.ts`, `terminal-display.ts`'s score math) touched. |
 | **Tests** | Full command-deck suite (`src/features/nighthawk/command-deck/*.test.ts`) — 266/266 pass post-rebase (0 new failures). `npx tsc --noEmit` clean. Rebased cleanly on top of the concurrently-merged Legacy dedup PR #1675 (no conflicts — different section of `PlayTerminal.tsx`). |
-| **Status** | FIXED — PR opened, auto-merge enabled per standing policy. May need a further rebase if PR #1676 (Confidence/Conviction merge, same files) lands first. |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `PlayTerminal`, `ManagementActionCard`, `TradeOutcomePanel`). Restamped from a mid-flight status that was never revisited. |
 
 ## 2026-08-05 — [AUDIT TOOLING, INTENTIONAL-DESIGN #1] `merge-precedence-ab.mjs` run for the first time with a real ledger export — found and fixed a bug that made it silently unable to ever detect a disagreement on live v2 data
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Trigger.** Standing task: get the merge-precedence A/B harness (`scripts/audit/merge-precedence-ab.mjs`,
 INTENTIONAL-DESIGN item #1) actually run against real data for the first time. It had never run —
@@ -8084,6 +8447,8 @@ merge-precedence design question stays OPEN per INTENTIONAL-DESIGN.md item #1, n
 measurement tool and a real (if thin) first data point.
 
 ## 2026-08-05 — [AUDIT TOOLING, INTENTIONAL-DESIGN #2] First real `veto-flicker-rate.mjs` run — 100% flicker on real data, but the number is a measurement artifact, not evidence — Cortex `cortex-gate.ts` NOT touched
+> **kind:** `NEGATIVE-RESULT`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** None (measurement only). **NO production behavior changed** — this entry documents why a
 Cortex change is *not* warranted from what was gathered, per the standing "only ship hysteresis on
@@ -8191,6 +8556,8 @@ item #2) stays as-is. Revisit with a forward-looking multi-session re-run once e
 discovery-events data accumulates, per the recommendation above.
 
 ## 2026-08-05 — [0DTE #B/#E re-scope] Accumulation badge + scoring-unification investigation — badge fixed (pinned-blob passthrough gap), unification already substantially shipped
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### Investigation — is the operator's original framing ("#B: badge not surfaced", "#E: scoring not unified") still accurate?
 
@@ -8290,6 +8657,7 @@ retries racing a fixed wait budget), not caused by this change; not touched by t
 once CI's `verify` gate is green.
 
 ## 2026-08-05 — [P3, audit tooling, INSUFFICIENT DATA] PIN wall temporal-stability measurement (INTENTIONAL-DESIGN item #3) — live capture tool built + verified end-to-end; measurement itself blocked on RTH being closed
+> **kind:** `NEGATIVE-RESULT`
 
 | Field | Value |
 |-------|-------|
@@ -8303,6 +8671,7 @@ once CI's `verify` gate is green.
 | **Status** | INSUFFICIENT DATA (honest, as instructed) — capture tool built, committed, and verified live; the actual stability measurement remains to be run in a session that spans real RTH minutes. |
 
 ## 2026-08-05 — [P2, SPX Slayer, display-integrity] EOD Pin Forecaster re-solves a brand-new pin every poll with no cross-poll agreement check — fixed
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -8313,9 +8682,10 @@ once CI's `verify` gate is green.
 | **Fix rationale / what was deliberately left unchanged** | Chose "confirm-then-hold" (require N=3 agreeing polls, then hold the confirmed value across subsequent noise) over a simpler moving-average or debounce-delay, because a real pin should be able to move promptly once the book genuinely re-stabilizes at a new level — averaging would smear a genuine regime shift, and a flat time-delay doesn't verify agreement, just waits. N=3 and a 5pt tolerance (~1 strike) were picked to match the model's own strike-snapping granularity, not arbitrarily. Deliberately did NOT touch: `pin`/`projectedClose`/`magnet`/`drivers`/scenarios (the raw analytic/MC math, cone, and "why" panel) — those still update every poll by design (the cone and unsnapped projected close are meant to visibly breathe intraday; only the discrete "pins to" headline needed the stability gate). Deliberately did NOT touch `spx-pulse.ts`'s pin-shift signal or `spx-play-verdict-bar.ts`'s alignment hint (see blast radius) — both are real candidates for the same fix but are separate call sites with their own existing debounce logic (min-step gate, alignment-only read), and bundling them would violate the "one issue per branch/PR" policy; noted here as the honest follow-up rather than silently left inconsistent. |
 | **Evidence** | 11 new unit tests in `spx-pin-stability.test.ts` (`npx tsx --test`), all passing, covering: too-few-samples never stable; agreeing/disagreeing trailing windows; stale-sample aging-out; null-breaks-the-streak; custom tolerance/window; append+bound; null/NaN reset; and an end-to-end simulated poll sequence (`7600,7601,7599,7650,7648,7651` → stable at polls 3 and 6, unstable in between) matching the exact "3 agreeing polls confirm, one wild poll un-confirms, re-agreement re-confirms" behavior the fix is meant to produce. `npx tsc --noEmit -p .` — clean, no type errors from the new fields on `SpxPinForecast`. No live-data validation was run against prod for this PR (this is a computation/display-logic fix, not a data-correctness bug — the existing `spx-pin-forecast-core.test.ts`/`spx-pin-spot.test.ts` suites, unaffected, still pass: 29/29 across all three files). |
 | **Files** | `src/features/spx/lib/spx-pin-stability.ts` (new), `src/features/spx/lib/spx-pin-stability.test.ts` (new), `src/features/spx/lib/spx-pin.ts` (wiring), `src/features/spx/components/SpxPinForecast.tsx` (display). |
-| **Status** | FIXED — branch `fix/spx-pin-wall-stability`, PR pending. |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `tolerancePts`, `trackPinStability`, `SpxPinForecast`). Restamped from a mid-flight status that was never revisited. |
 
 ## 2026-08-05 — [P1, SPX trade governor, risk sizing] "Consecutive loss watch" actually read a cumulative daily-loss counter that never resets on a win
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -8327,9 +8697,10 @@ once CI's `verify` gate is green.
 | **Blast radius** | `evaluateTradeGovernor` is called from exactly one call site, `src/features/spx/lib/spx-play-gates.ts:179` (`evaluatePlayGates`), which forwards its own `session` parameter object straight through — that parameter's inline type was extended with the same optional `session_consecutive_losses_today` field for type-level clarity (the value already flowed through structurally at runtime since `evaluatePlayGates`'s only production caller, `spx-play-engine.ts`, passes the full `PlaySessionMeta` object loaded from `loadPlaySessionMeta()`, not a narrowed literal). Two other read sites of `session_losses_today` were checked and deliberately left untouched because they read the cumulative field for cumulative purposes, not consecutive ones: `spx-play-context.ts:81` (`lossesUsed`, a cumulative "losses used of session cap" display counter) and `spx-play-gates.ts:324` (`lossesToday`, declared but not read further — dead local, unrelated to the governor's own internal check). |
 | **Fix rationale** | A cosmetic rename (e.g. `maxConsecutiveLosses()` → `maxCumulativeLosses()`) was rejected because a real ordered outcome log already existed and the code comments/warning text explicitly promise consecutive-streak semantics that govern real position sizing — renaming would have silently shipped a permanent weakening of a documented risk control instead of fixing it. Deriving the streak from the DB (rather than e.g. adding a second cumulative-but-differently-scoped counter) was chosen because `spx_play_outcomes` is already the authoritative, already-queried source for per-play outcomes, so no new write path or new failure mode was introduced — only a new read query plus the necessary non-monotonic-merge handling in the in-memory/session-meta layer that mirrors the existing `last_sell_was_loss`/`last_direction` "most recent writer wins" pattern already used for the same optimistic-concurrency reasons. |
 | **Tests** | `src/features/spx/lib/trade-governor.test.ts` — 3 new tests: (1) cumulative losses at 2 (below the separate hard cap) with the streak reset to 0 by a win does NOT trip the consecutive-loss watch (`tier` stays `normal`, `size_multiplier` stays `1`) — this is the exact scenario the pre-fix code got wrong; (2) a real streak of 3 (with cumulative losses independently at 2, proving the check no longer reads the cumulative field) DOES trip the watch at the `(3/3)` threshold, `size_multiplier` → `0.5`, `tier` → `reduced`; (3) an absent `session_consecutive_losses_today` defaults to 0 (no false trip on old/incomplete session objects). All 8 tests in the file pass (`npx tsx --test src/features/spx/lib/trade-governor.test.ts`); full related-suite run (`spx-play-gates.test.ts`, `spx-play-context.test.ts`, `spx-play-gates-playbook-allowlist.test.ts`, `trade-governor.test.ts` together, with the project's `--experimental-test-module-mocks` flag) — 37/37 pass. `npx tsc --noEmit` — clean, no errors. |
-| **Status** | FIXED — branch `fix/spx-governor-consecutive-losses`, PR to `main`, auto-merge enabled per standing policy once CI's `verify` gate is green. |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `spx_play_outcomes`, `superseded`, `breakeven`). Restamped from a mid-flight status that was never revisited. |
 
 ## 2026-08-05 — [P1, member-facing UX/trust bug] SPX Slayer play card flickers/swaps between a play and a different play every ~2s — root cause: stateless re-evaluation on every poll, no dwell/hysteresis anywhere in the chain
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -8341,9 +8712,10 @@ once CI's `verify` gate is green.
 | **Fix rationale — what was deliberately left unchanged** | (1) **The mutate:true cron path is untouched.** `runSpxEvaluator`/`evaluateSpxPlay({mutate:true})` (`spx-evaluator.ts`, hit by `/api/cron/spx-evaluate`) is the ONLY path that actually opens/closes `spx_play` rows and fires Discord — real capital timing. The hysteresis wrapper is applied exclusively inside `getSpxPlaySnapshot`, which is always called with `mutate:false`. This means the fix is scoped to "what members SEE on the card," not "when a trade actually commits," which is the lower-blast-radius choice for a system governing live entries — a wrong dwell decision here can only cause the display to lag behind reality for up to ~8s, never cause a bad or missed real fill. (2) **`getNhConfluenceBonus`'s in-place score mutation was NOT changed.** It's a small, scoped, in-place mutation (`confluence.score += nhBonus.bonus`) that contributes to score wobble, but rewriting it to return a new object is a separate, independently-reviewable change with its own blast radius (anything downstream reading `confluence.score` by reference); bundling it into this PR would muddy a single-issue diff. Flagging as a good, low-risk follow-up, not fixing it here. (3) **The two-clock race (cron mutate:true vs. read-only mutate:false independently recomputing from the same inputs) was evaluated and deliberately deferred, not fixed.** The audit brief suggested "have the read path consult the last evaluator-committed state as an anchor/tiebreaker rather than only the DB record for OPEN plays" as a possible lightweight fix. On inspection this is NOT actually lightweight: `evaluateSpxPlayCore` already consults `loadOpenPlay()` (the DB record) as its anchor for any ALREADY-open position (both mutate:true and mutate:false calls hit the identical `evaluateOpenPlay` branch off the same DB row — there is no divergence for open plays today). The remaining divergence is confined to the FLAT (no open position) path, where cron and reads currently do intentionally re-derive independently (adaptive gates, playbook resolution, watch/promote state are all already shared through DB-backed `loadAdaptivePlayGates`/`loadWatchRecord`/`resolveGuardedPlaybookMatch` reads). Making the read path anchor harder to a specific cron tick's transient in-flight decision (rather than the persisted watch/adaptive state it already shares) risks a **new** kind of staleness — a member could see a "confirmed" flat-path decision that the very next cron tick immediately supersedes, which is a worse failure mode than the current flicker for a real-money product. This needs careful design, not a rushed change under this ticket's scope; documented here as an explicit follow-up rather than attempted. |
 | **Tests** | `src/features/spx/lib/spx-play-hysteresis.test.ts` — 12 new tests (`npx tsx --test src/features/spx/lib/spx-play-hysteresis.test.ts`, all pass): first-observation acceptance, zero-lag upgrades, single-noisy-poll suppression, 20-poll rapid oscillation never confirming, streak-floor confirmation, dwell-time-floor confirmation, same-rank direction-flip dwelling, no-op repeat clearing pending state, payload-level headline/score/action coherence, open-position pass-through, eventual confirmation of a genuine downgrade, and session-date reset. `npx tsc --noEmit` clean (no errors touching `spx-play-hysteresis.ts` or `spx-play-engine.ts`). Ran the existing adjacent suites (`spx-play-payload.test.ts`, `useSpxPlay.test.ts`) — all pass unaffected; `spx-play-engine.test.ts`/`spx-play-gates.test.ts` fail identically BEFORE this change too, on `mock.module is not a function` — a pre-existing Node-version/environment limitation in this sandbox unrelated to this diff (verified: the failure is in test-harness setup code, not in any assertion touching the changed files). |
 | **Known limitation (documented, not fixed here)** | `applySpxPlayDisplayHysteresis`'s dwell state is process-local (in-memory), matching the existing precedent of `spx-play-watch.ts`'s `memoryWatch` fast-path cache but WITHOUT that file's DB (`getMeta`/`setMeta`) backstop. If `blackout-production-web` ever runs more than one ECS task without ALB session affinity, two members could poll different tasks and have their individual dwell windows resolve independently of each other (each still flicker-free on its own device, but two members could momentarily disagree with each other for up to one ~8s dwell window). Promoting the store to the same Redis/DB-backed `getMeta`/`setMeta` pattern `spx-play-watch.ts` already uses is the natural follow-up if that turns out to matter; deliberately not done here to keep this a small, single-issue, in-process change. |
-| **Status** | FIXED — PR `fix/spx-play-hysteresis` → `main`, auto-merge enabled per standing policy once CI's `verify` gate is green. |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `HYSTERESIS_DWELL_MS`, `HYSTERESIS_MIN_STREAK`, `getSpxPlaySnapshot`). Restamped from a mid-flight status that was never revisited. |
 
 ## 2026-08-05 — [Night Hawk, NH-R1] Legacy overnight scorer double-penalized earnings risk (raw score AND tier layer)
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -8355,9 +8727,10 @@ once CI's `verify` gate is green.
 | **Fix** | `scorer.ts`: removed the `earningsPenalty` variable and its `-6` assignment entirely; the earnings-proximity check now only sets `earningsRisk = true` (flag-only signal), and `totalCatalystScore`'s formula dropped the `+ earningsPenalty` term. `earnings_risk: earningsRisk` on the returned `ScoredCandidate` is unchanged, so every downstream flag/display consumer above needed no changes. `nighthawk-tiers.ts` was NOT touched — its `-1` tier-point + B-cap remains the single channel that actually penalizes earnings risk, per the ticket's explicit instruction to fix the double-count by removing the redundant raw-score channel, not the tier-level one. |
 | **Fix rationale** | Removing the raw-score `-6` (rather than removing the tier-level penalty, or halving one of the two) was chosen because the tier engine is the more appropriate layer for a binary-event risk flag: it's evaluated once per candidate at build time against the measured overnight track record (the same file's documented score-band/signal-breadth logic), it already produces a human-readable factor (`"Earnings risk"`, direction `"down"`) that surfaces in the UI's tier explanation, and its B-cap is a deliberate, named, precedent-following pattern (mirrors NH-R9/NH-R11). Leaving `earningsRisk` as a flag-only signal in `scorer.ts` (instead of deleting the earnings check altogether) preserves `earnings_risk: true` for every other consumer that legitimately wants the flag for display purposes (debrief copy, backfill, command-deck adapters) without any of them re-deriving the earnings-proximity condition themselves. |
 | **Tests** | `src/features/nighthawk/lib/scorer-earnings.test.ts` — 2 new tests (score-parity across earnings-risk/clear fixtures; tier-level cap still applies) — both pass (`npx tsx --test src/features/nighthawk/lib/scorer-earnings.test.ts`). Full related-suite regression run (`scorer-direction.test.ts`, `nighthawk-tiers.test.ts`, `catalyst-awareness.test.ts`, `scorer-streak.test.ts`, 102 tests total) — all pass, no other assertion depended on the removed `-6`. `npx tsc --noEmit -p .` clean. |
-| **Status** | FIXED — branch `fix/nh-r1-earnings-dedup`, PR to `main`, auto-merge enabled per standing policy once CI's `verify` gate is green. |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `earningsPenalty`, `totalCatalystScore`, `ScoredCandidate`). Restamped from a mid-flight status that was never revisited. |
 
 ## 2026-08-05 — [Night Hawk, NH-R14 follow-up] feature-store.ts's `labelFromPlanOutcome` actually disagreed with record.ts's `isZeroDteWin` on WS-10/WS-11 rows — comment claimed "byte-identical," code wasn't
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -8370,9 +8743,10 @@ once CI's `verify` gate is green.
 | **Blast radius** | Every consumer of `feature-store.ts`'s graded labels/pnl now gets corrected ground truth once wired up: NH-R6's calibration table builder, NH-R13's position-sizing framework, and any future base-rate/probability layer reading `summarizeFeatureStore`'s output. `record.ts` itself, the live board, and the member-facing `/api/market/zerodte/record` route are UNCHANGED (they already read the correct official lane — this fix brings feature-store.ts up to match them, not the other way around). Condor rows remain excluded from the feature store (unchanged, deliberate — confirmed by the outcome-vocabulary gate). |
 | **Tests** | `src/lib/zerodte/feature-store.test.ts`: extended the `labelFromPlanOutcome` test with (a) the normal mid-only case (no `entry_context` — must behave identically to before) and (b) a new test reproducing the exact NH-R14 disagreement shape both directions — MU-shaped (mid `stopped` −50% → official `win` +6.25%) and OKLO-shaped (mid `time_stop` +6.4% → official `loss` −0.97%), plus a WS-11 trim-scale-tranches fixture, plus explicit `null`/`undefined` `entryContext` back-compat checks, all cross-asserted against `record.ts`'s own `isZeroDteWin` for the identical row shape. Added a new `toGradedFeatureRows` end-to-end test proving the full pipeline (raw DB-row shape → label + reported pnl) resolves on the OFFICIAL lane for both MU- and OKLO-shaped rows. `npx tsx --test src/lib/zerodte/feature-store.test.ts src/lib/zerodte/record.test.ts` — **28/28 pass** (10 feature-store + 18 record, run individually and combined). `npx tsc --noEmit -p .` — clean. |
 | **Verification note (live re-run blocked, not skipped)** | Step 4 of this fix's ticket calls for re-running `scripts/audit/outcome-grading-audit.mjs` live against prod to confirm the disagreement count drops to 0. That script + `docs/audit/OUTCOME-GRADING-SPEC.md` ship in PR #1697 (NH-R14), which is **still open/unmerged** as of this fix — `git log --oneline -- docs/audit/OUTCOME-GRADING-SPEC.md scripts/audit/outcome-grading-audit.mjs` on `main` returns nothing, so a rebase can't pick it up yet. A live fetch of `/api/market/zerodte/record` via this sandbox's `CRON_SECRET` bearer also returned `401 Unauthorized` (confirmed with `curl`) — that secret is not one of the sandbox's working literals per this file's "Environment realities" note, so a live re-run isn't reachable from here either way right now. In its place: the unit tests above reconstruct the 4 real disagreeing rows from PR #1697's exact published numbers (MU/SPXW-shaped and OKLO-shaped fixtures, both directions) and assert 0 disagreements post-fix — the honest available substitute per this repo's "never fabricate a result" discipline. Once PR #1697 merges, re-run `env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY node --import tsx scripts/audit/outcome-grading-audit.mjs --days=90` against prod to get the live 0-disagreement confirmation and update this row. |
-| **Status** | FIXED (code + tests) — branch `fix/nh-grading-store-agreement`, PR to `main`, auto-merge enabled per standing policy once CI's `verify` gate is green. Live audit re-confirmation pending PR #1697 merge (tracked above, not blocking this fix). |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `OfficialGradableRow`, `isZeroDteWin`, `officialPlanPnlPct`). Restamped from a mid-flight status that was never revisited. |
 
 ## 2026-08-05 — [P3, greenfield build, evidence-only] NH-R13 — fractional-Kelly position-sizing framework — new standalone module, deliberately NOT wired into any commit/gate/allocation path
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -8384,9 +8758,11 @@ once CI's `verify` gate is green.
 | **NOT wired in — explicit confirmation** | `position-sizing.ts` is imported by nothing except its own test file. No field was added to `plan.ts`/`scan.ts` (no `contracts`/`quantity`/`numContracts`), no commit/gate/allocation path calls this function, and no UI surfaces it. This is the exact same posture as `scripts/audit/condor-wr.mjs` — a reproducible evidence tool — just an importable lib function instead of a CLI script. Zero live behavior change; this PR changes what can be COMPUTED offline/in tests, not what the product does. |
 | **What a follow-up PR would need** | (1) A real, ledger-derived `calibratedWinProb`/`avgWinPct`/`avgLossPct`/`sampleSize` feed — today's feature store tracks win/loss LABELS (`feature-store.ts`) but this module additionally needs the win/loss MAGNITUDE distribution (not just count), which isn't yet aggregated anywhere; (2) a decision on which cohort a size is calibrated PER (overall vs per-tier vs per-origin vs per-score-band — the calibration.ts bands already show these diverge, e.g. the F-5 tier inversion), since a single blended `p`/`W`/`L` would hide exactly the kind of Simpson's-paradox trap `calibration.ts`'s crossed-cohort work was built to catch; (3) an explicit go-ahead per this repo's CLAUDE.md policy before touching `plan.ts`/`scan.ts` or any commit path, since real-capital sizing is deploy-risky by definition; (4) a live-vs-backtest validation harness (in the spirit of `condor-wr.mjs`/`firewall-rth-replay.mjs`) proving the recommended size would have improved risk-adjusted realized P&L before it ever sizes a real play. |
 | **Evidence** | `src/lib/zerodte/position-sizing.test.ts` — 13 tests, all pass (`npx tsx --test src/lib/zerodte/position-sizing.test.ts`): reused-constant check (`POSITION_SIZING_MIN_SAMPLES === MIN_SAMPLES === 20`), `KELLY_FRACTION === 0.25`, two hand-computed textbook Kelly examples (0.55/1.00/0.50 → f*=0.65, quarter-Kelly=0.1625; 0.40/1.00/0.50 → f*=0.20, quarter-Kelly=0.05), below/at/above `MIN_SAMPLES` boundary behavior, `avgLossPct=0`/`avgWinPct=0` degenerate inputs, `winProb=0` (guaranteed loss → 0, not negative) and `winProb=1` (guaranteed win → full positive fractional size), negative-edge clamping to 0 (never negative), out-of-range `calibratedWinProb` (1.5, -0.1) rejected as invalid rather than silently clamped, and non-finite `sampleSize` never graduating. `npx tsc --noEmit -p .` clean. |
-| **Status** | SHIPPED (evidence-only, unwired) — branch `feat/nh-r13-position-sizing` → `main`, auto-merge enabled per standing policy once CI's `verify` gate is green. |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `contracts`, `quantity`, `numContracts`). Restamped from a mid-flight status that was never revisited. |
 
 ## 2026-08-05 — NH-R7 "Morning revalidation stage + play lifecycle" — already substantially implemented, closing as DONE (no code change)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Context.** NH-R7 was flagged NEEDS CLARIFICATION by a prior research pass: the task doc
 (`docs/audit/NIGHTHAWK-OVERNIGHT-DECISION.md`, dated 2026-07-14) proposed a broad morning-revalidation
@@ -8459,6 +8835,7 @@ actually `import`ed/called from the live cron route (not orphaned); re-ran the t
 **Status:** CLOSED — DONE, no code change. Docs-only PR → `main`, auto-merge per standing policy.
 
 ## 2026-08-05 — [NH-R2, 0DTE intelligence layer, additive-only] Structured score attribution added to the unconsumed feature-vector keystone row
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -8470,9 +8847,10 @@ actually `import`ed/called from the live cron route (not orphaned); re-ran the t
 | **Blast radius — confirmed ZERO live behavior change** | (1) `scan.ts:1173`, the only production call site of `buildSetupFeatureVector`, does NOT pass `scored` (it has no `ScoredCandidate` in scope — it commits from `EnrichedZeroDteSetup`, a different shape entirely from the nighthawk swing-picks pipeline). So in production today `input.scored` is always `undefined`, and `attribution` always persists as `[]` — an honest "not threaded yet" empty list, exactly matching this module's own established null/absent convention (mirrors `SwingFeatureVector.secondary: []` in the sibling `src/lib/swing/feature-vector.ts` for the same "capture-only, not-yet-wired" state). (2) `feature-store.ts` (the read side) does not reference `attribution` anywhere — confirmed by grep; `summarizeFeatureStore` only reads `fq_score`/`reg_structure`/`evidence_score`. (3) No other consumer of `SetupFeatureVector` exists (grepped every reference across `src/` — `feature-vector.test.ts`, `strategy-version.test.ts`, `feature-store.test.ts`, `engine-health.test.ts`, all test-only). Net result: this PR changes the TYPE and the pure-function surface, but not one byte written to prod today, because the one write site never threads the new optional input. |
 | **Fix rationale — why this shape over alternatives** | Considered (a) a brand-new table for attribution rows — rejected: the task's own framing (and NIGHTHAWK-DATA-PROVENANCE.md §7-G's "keystone for future calibration" framing) already designates `feature_vector` as the one JSONB row a future probability/kNN/Kelly layer joins against; splitting attribution into a second store before that layer exists would be new unconsumed surface area for no evidentiary gain. (b) Wiring `buildSetupFeatureVector`'s existing scalar inputs (`evidenceScore`, `dossierScore`, etc.) into ad-hoc attribution entries — rejected: those are already-blended composite scores, not the raw named sub-score ingredients the task specifically called out `ScoredCandidate` for; attributing from a re-derived approximation would misrepresent "which factor contributed how many points" as a fact when it's actually a guess. (c) Threading `scored` through `scan.ts`'s commit call today — deliberately NOT done: `zerodte/scan.ts`'s commit path has no `ScoredCandidate` in scope (it's the nighthawk swing-picks type, a different pipeline), so fabricating one at the 0DTE commit site would misattribute nighthawk-pipeline scores onto 0DTE setup rows. The optional-field, defaults-to-`[]` shape lets this ship now as pure/additive/unconsumed groundwork — exactly the same posture the row itself already has — without needing to solve the separate, larger question of unifying or threading the nighthawk scorer into the 0DTE commit path (out of scope for NH-R2). |
 | **Tests** | `src/lib/zerodte/feature-vector.test.ts` — 8 new tests (`npx tsx --test src/lib/zerodte/feature-vector.test.ts`, 15/15 pass total): the 5 required dimensions always emit including at exactly 0 with correct up/down/neutral direction; optional sub-scores omitted when `undefined`; optional sub-scores included (marked neutral) once actually computed at 0; governor-penalty sign flip; `attribution` defaults to `[]` on `buildSetupFeatureVector` when no scored candidate is threaded; `attribution` carries `buildScoreAttribution`'s exact output when one is. Also re-ran the three other suites that construct `SetupFeatureVector`/`buildSetupFeatureVector` fixtures (`strategy-version.test.ts`, `feature-store.test.ts`, `engine-health.test.ts` — 27/27 pass, unaffected by the new required `attribution` field since none of them assert an exact-shape equality against the full vector). `npx tsc --noEmit -p .` clean. |
-| **Status** | SHIPPED — PR `fix/nh-r2-feature-attribution` → `main`, auto-merge enabled per standing policy once CI's `verify` gate is green. Sets up NH-R6/future calibration work to reason about per-factor contribution once the nighthawk scorer and 0DTE commit path are threaded together (a separate, larger follow-up, not attempted here). |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `feature_vector`, `buildSetupFeatureVector`, `ScoredCandidate`). Restamped from a mid-flight status that was never revisited. |
 
 ## 2026-08-05 — [P1, Night Hawk BREAKOUT/PIN discovery, silent zero-spot] NH-R12 — index-root spot resolution never applied board.ts's I:-namespace mapping in the discovery chain-resolution path
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -8483,9 +8861,10 @@ actually `import`ed/called from the live cron route (not orphaned); re-ran the t
 | **Fix rationale** | Rejected "just reuse polygonSpotTicker exactly like board.ts does" because board.ts only ever feeds the mapped ticker into `fetchAggBars`, a different endpoint that tolerates the `I:` prefix — copying that pattern verbatim into a snapshot call would have shipped a fix that still returned null/0 for index roots, just for a different underlying reason (wrong REST path instead of no mapping at all), which would not have shown up in a naive "does resolveSpot() return a mocked nonzero number" test unless the test also modeled the endpoint split. Deliberately did NOT touch the WS live-candle store itself (e.g. adding a real index WS source) — `indexStore` (`polygon-socket.ts`) already exists as the correct index WS store for SPX/VIX and is a separate, larger piece of wiring; out of scope for this single-issue PR, and the REST `fetchIndexSnapshot` fallback is a correct, working path regardless. |
 | **Evidence** | New test `src/features/nighthawk/lib/option-chain-prompt-resolve-spot.test.ts` (4 tests, `mock.module`-based per the `route.test.ts` convention, run with `--experimental-test-module-mocks`): (1) `SPXW` maps to `I:SPX` and resolves via `fetchIndexSnapshot`, never calling `fetchStockSnapshot`; (2) `NDXP` maps to `I:NDX`; (3) a real equity (`NVDA`) is unaffected, still resolves via `fetchStockSnapshot` with the ticker unmapped; (4) a dossier price still short-circuits before any lookup (unchanged pre-existing behavior). All 4 pass. Full regression run: `option-chain-prompt.test.ts` (existing suite, unaffected) + the new file + `board.test.ts` (115 tests) all pass; `breakout-discovery.test.ts` (11 tests) unaffected. `npx tsc --noEmit -p .` clean. |
 | **Files** | `src/features/nighthawk/lib/option-chain-prompt.ts` (fix), `src/features/nighthawk/lib/option-chain-prompt-resolve-spot.test.ts` (new). |
-| **Status** | FIXED — branch `fix/nh-r12-canonical-ticker`, PR to `main`, auto-merge enabled per standing policy once CI's `verify` gate is green. |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `polygonSpotTicker`, `resolveSpot`, `fetchStockSnapshot`). Restamped from a mid-flight status that was never revisited. |
 
 ## 2026-08-05 — [feature, NH-R3] Polygon REST upstream health tracking + live data-completeness scoring (evidence-only, no new gates)
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -8499,9 +8878,10 @@ actually `import`ed/called from the live cron route (not orphaned); re-ran the t
 | **Blast radius** | `src/lib/providers/polygon-rate-limiter.ts` — added one import, one field on the existing `polygonRateLimiterStats()` return type (additive), and success/failure recording inside `polygonTrackedFetch`'s existing try/catch (the catch clause itself is NEW — the function previously had no catch, letting thrown errors propagate through only the `finally`; behavior is unchanged, the catch now records-then-rethrows). No other call site of `polygonTrackedFetch`/`polygonGet`/`polygonRateLimiterStats` needed changes — grepped for all three; none exist yet outside this file and `polygon.ts`. `src/lib/zerodte/feature-vector.ts` was read but NOT modified. |
 | **Tests** | `src/lib/providers/polygon-rest-health.test.ts` (6 cases): initial UNKNOWN state, 3-success recovery streak to HEALTHY, failure escalation DEGRADED→DOWN at the documented thresholds, DOWN→DEGRADED→HEALTHY step-down recovery (no single-success shortcut), interleaved-failure streak reset, process-wide singleton + test reset helper. `src/lib/zerodte/data-completeness.test.ts` (7 cases): all-fields-present→COMPLETE/score 1, all-optional-absent→BLIND/score 0, mixed (flow_quality+regime null, rest present)→PARTIAL with per-group breakdown, single-field-missing dents only its own group, real `0` values (e.g. `reg_opex: 0`) count as present (not fabricated-missing), and `COMPLETENESS_TRACKED_FIELDS` excludes the always-present core identity fields. |
 | **Follow-ups noted, not attempted here** | (a) A live per-field freshness/basis (TRACKED/BLIND, official/PROXY) signal to fully retire §7 as a static doc — needs `asOf`/provenance-tag threading through `buildSetupFeatureVector`'s call site, a materially larger change. (b) Wiring `computeDataCompletenessScore` into an actual commit-site log/telemetry line (this PR ships the pure function, ready for that, but doesn't add the call site itself, to keep the diff single-issue and zero-behavior-risk). (c) A Polygon-equivalent of `commitAuthorizedBySourceHealth` (an opt-in commit gate keyed off `polygon-rest-health.ts`'s state) — intentionally NOT added; the task scoped this PR to evidence-only. |
-| **Status** | FIXED (feature shipped) — PR `fix/nh-r3-provider-completeness` → `main`, auto-merge enabled per standing policy once CI's `verify` gate is green. |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `requireHealthySourceEnabled`, `polygonTrackedFetch`, `polygonGet`). Restamped from a mid-flight status that was never revisited. |
 
 ## 2026-08-05 — [AUDIT TOOLING, NH-R6] Calibration table builder for the four provisional NH-R5/R8/R9/R11 constants — built, run live, two rows measurable now, two honestly INSUFFICIENT_DATA
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -8513,9 +8893,10 @@ actually `import`ed/called from the live cron route (not orphaned); re-ran the t
 | **Tests** | `npx tsx --test scripts/audit/lib/nighthawk-calibration-table-eval.test.mjs` — 10/10 pass (verdict-label mapping, the contested-gate ladder at every boundary including an exact-15pt float-dust case, dealer-family-sum reading incl. abstained/no-supports/mixed-family cases, and the saturated/unsaturated/no_read bucket cut). Re-ran the existing `src/lib/zerodte/calibration.test.ts` (56 tests, untouched, all pass) since the new script reads that module's exports — confirms no regression to the machinery being reused. `npx tsc --noEmit -p .` clean. `npx eslint` clean on all three new files. |
 | **Blast radius** | New files only: `scripts/audit/nighthawk-calibration-table.mjs`, `scripts/audit/lib/nighthawk-calibration-table-eval.mjs` + `.test.mjs`, one `package.json` script entry (`calibration:nighthawk`). `src/lib/zerodte/calibration.ts` and everything it exports is read-only from this script's perspective — nothing in `src/` changed. |
 | **Fix rationale — what was deliberately left undone** | Did not attempt to backfill `streak_days` into `entry_context` or add a tie-break-triggered boolean to `breakout-source.ts`'s persisted contract — that's real production instrumentation (a schema-adjacent change to what gets pinned at commit) with its own blast radius and review, out of scope for "build the table builder." Flagging as the concrete follow-up: pin `streak_days` (or better, a pre/post-fade bonus pair) onto `ZeroDteEntryContext`, and pin `tie_break_applied`/the top-two candidates' `effectiveDist` delta onto BREAKOUT-origin entry_context, then re-run this script — both rows go from INSUFFICIENT_DATA to measurable with zero further code change to the table builder itself. |
-| **Status** | BUILT AND VERIFIED END-TO-END; two of four rows genuinely measurable (currently `n=0` pending real ledger access), two honestly INSUFFICIENT_DATA pending the commit-time instrumentation named above. PR pending → CI → auto-merge per standing policy. |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `STREAK_FADE_START_DAYS`, `STREAK_EXHAUSTION_FLOOR_MULTIPLIER`, `LIQUIDITY_TIE_BREAK_DOLLARS_PER_POINT`). Restamped from a mid-flight status that was never revisited. |
 
 ## 2026-08-05 — [feature, Night Hawk ops observability] NH-R10 — 0DTE scan heartbeat + engine-stalled recap classification (fix/nh-r10-scan-heartbeat)
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -8526,9 +8907,10 @@ actually `import`ed/called from the live cron route (not orphaned); re-ran the t
 | **Fix — recap classification** | `src/features/nighthawk/lib/edition-funnel.ts`: added `ZeroDteScanHeartbeatLike` (a minimal structural type, not an import of the DB-backed heartbeat module, so this file stays pure/DB-free and unit-testable with plain object literals) and `engineStalledRecapReason(heartbeat)`. `recapReasonAtPublishExit(blocked, funnel, heartbeat?)` gained a third, **optional** parameter — every existing caller that omits it is unaffected (verified by a dedicated test) — that takes precedence over both the synthesis-empty and gate-blocked wordings whenever `heartbeat.stale \|\| heartbeat.critical_stale` is true, since an empty board while the upstream scan is silent is neither "quiet market" nor "gates working as designed." `src/features/nighthawk/lib/edition-builder.ts`: the one production call site (recap-only exit inside the publish-gate-zeroed branch) now loads `loadZeroDteScanHeartbeat()` (best-effort, `.catch(() => null)` — a heartbeat read failure falls back to the pre-existing wording, never blocks edition publish) and passes it through. |
 | **Blast radius** | `recapReasonAtPublishExit` has exactly one production call site (`edition-builder.ts`, confirmed via repo-wide grep); it was updated. `publishGateBlockedRecapReason`/`synthesisEmptyRecapReason` are unchanged and still independently exported/used by the `@deprecated` note in `publish-gates.ts`. No gating/scoring/trade-commit logic touched — zero changes to `gates.ts`, `governor.ts`, the ledger commit path, or SPX Slayer. |
 | **Evidence / tests** | New `src/lib/play-engine-heartbeat.test.ts` (3 cases, DB-free via `dbConfigured()===false` with no `DATABASE_URL` set): 0DTE tracker advances independently of SPX's (proves no shared mutable state), SPX's `recordPlayEngineTick`/`getPlayEngineHeartbeat` behave identically to before, never-ticked snapshot invariants. Extended `src/features/nighthawk/lib/edition-funnel.test.ts` (+8 cases): `engineStalledRecapReason` wording/severity escalation; `recapReasonAtPublishExit` prefers `engine_stalled` over both synthesis-empty (stale + empty board) and gate-blocked (critical_stale + blocked plays) reasons; does NOT trigger when heartbeat is fresh + board legitimately empty; unchanged when heartbeat is omitted or null (read failure). `npx tsx --test` (both files): 15/15 pass. Full-suite regression check with the project's real test flags (`PLAYBOOK_VERDICT_GUARD_ASSERT=1 node --import tsx --experimental-test-module-mocks --test`) on the touched heartbeat/funnel/scan suites: 37/37 pass — `src/lib/zerodte/scan.test.ts` (22 cases, exercises the now-tick-recording `warmZeroDteBoard`) passes clean. (A first pass without `--experimental-test-module-mocks` showed 22 unrelated pre-existing failures across the repo — `mock.module is not a function` — confirmed as a missing-flag artifact, not a regression, by re-running with the flag.) `npx tsc --noEmit -p .` clean. |
-| **Status** | FIXED — PR `fix/nh-r10-scan-heartbeat` → `main`, auto-merge enabled per standing policy once CI's `verify` gate is green. |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `warmZeroDteBoard`, `scanZeroDteBoard`, `spx_play_engine_heartbeat`). Restamped from a mid-flight status that was never revisited. |
 
 ## 2026-08-05 — [feature, backlog #29] Unified cross-lane horizon outcomes read layer (0DTE + Swing, LEAPS placeholder) — feat/unified-horizon-outcomes
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -8542,9 +8924,10 @@ actually `import`ed/called from the live cron route (not orphaned); re-ran the t
 | **Evidence — live script run** | `env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY node --import tsx scripts/audit/horizon-outcomes-report.mjs --days=10`: ran end-to-end, exit 0. Sandbox `DATABASE_URL` IS configured but raw Postgres TCP is blocked here (`getaddrinfo ENOTFOUND postgres.railway.internal` / connection timeout on the public fallback) — the documented sandbox reality (CLAUDE.md: "Direct Postgres (raw TCP) is blocked... not possible from this sandbox"), not a script bug; `db_error` surfaces honestly in the output (both table and `--json` forms) rather than being swallowed. All three lanes print `n_total=0` for that reason; the LEAPS row additionally prints its placeholder note unconditionally. The script is DB-shape-correct (reuses the same `db.ts` fetchers the app's own `/api/market/zerodte/record` route uses) and will populate real numbers wherever raw Postgres TCP is reachable (production ECS, or a debug endpoint through the app). |
 | **This does NOT migrate or write any new data** | Confirmed by construction: `horizon-outcomes.ts` calls only the two existing SELECT-only fetchers (`fetchZeroDteSetupLogRange`, `fetchSwingPositionsRange`); the admin route is a `GET` with no body/write path; the script never imports any `INSERT`/`UPDATE`/`gradeSwingPosition`(db.ts write function)/`upsert*` symbol. Purely additive read layer over data both lanes already persist and grade today. |
 | **Blast radius** | New files only: `src/lib/horizon-outcomes.ts`, `src/lib/horizon-outcomes.test.ts`, `src/app/api/admin/nighthawk/horizon-outcomes/route.ts`, `scripts/audit/horizon-outcomes-report.mjs`. Zero edits to `zerodte/record.ts`, `swing/record.ts`, `swing/grade.ts`, `db.ts`, or `horizon-board.ts` — every symbol they export is read-only from this module's perspective. |
-| **Status** | BUILT AND VERIFIED (13/13 unit tests, tsc/eslint clean, live script smoke-run against the sandbox's real (blocked) DB path). PR pending → CI → auto-merge per standing policy. |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `ZERODTE_RECORD_METHODOLOGY`, `fetchZeroDteSetupLogRange`, `isZeroDteWin`). Restamped from a mid-flight status that was never revisited. |
 
 ## 2026-08-05 — [bug, live member-reported] Bangers tab: unreachable positions (no internal scrollport) + visual inconsistency vs 0DTE/Swings — fix/banger-board-scroll-and-ui-parity
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -8557,9 +8940,11 @@ actually `import`ed/called from the live cron route (not orphaned); re-ran the t
 | **Fix rationale — what was deliberately left unchanged** | Did NOT rebuild `BangerBoard` on the full two-pane `CommandDeck`/`PlayTerminal` terminal (the actual bespoke, deeply stateful `.nh-deck` grid system 0DTE/Swings run on — click-to-select left rail feeding a separate detail pane, its own `--dk-*` theme tokens, hover/selection CSS). That's a different, heavier master-detail interaction pattern this board's simple expand-in-place list doesn't need, and forcing it in would be a large, high-risk rewrite of a component whose own header comment already documents it as an intentionally standalone, minimal surface — out of scope for "fix the broken UI," and against the standing small-PR/single-issue discipline. Reusing the shared primitives + the existing `.nh-deck-rows` scrollport class gets both real complaints (broken scroll, visual inconsistency) fixed with zero new CSS and zero architecture change. |
 | **Evidence** | Live screenshots (this session, admin session + `proxy-browser.cjs`): `bangers-desktop.png` (1600×1000, BEFORE fix) shows the clipped list with `OPEN (60)` header and no scrollbar; `0dte-mobile.png`/mobile bangers render fine (confirms mobile-only-unaffected). `npx tsc --noEmit -p .` clean, `npx eslint src/features/nighthawk/components/BangerBoard.tsx` clean, `npx next build` verified. No existing test file covers `BangerBoard.tsx` (no component-test regression risk); `computeScaleOutTriggerInfo` and all other reused logic/imports are untouched. |
 | **Blast radius** | Single file: `src/features/nighthawk/components/BangerBoard.tsx`. No API/DB/type changes — `BangerPlay`/`BangerBoardResponse` shapes untouched, `/api/market/banger/board` untouched. `.nh-deck-rows` is an existing, already-shared CSS class (0DTE/Swings depend on it today) — adding a third consumer does not change its rules. |
-| **Status** | FIXED — PR `fix/banger-board-scroll-and-ui-parity` → `main`, auto-merge enabled per standing policy once CI's `verify` gate is green. |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `ZeroDteBoard`, `EmptyState`, `Skeleton`). Restamped from a mid-flight status that was never revisited. |
 
 ## 2026-08-05 — [bug, live member-reported] Vector bead rails sparse/absent for the shared universe (SPY/QQQ/NVDA/~100 names) vs SPX — fix/vector-bead-density-universe
+> **kind:** `NEGATIVE-RESULT`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 | Field | Value |
 |-------|-------|
@@ -8574,6 +8959,7 @@ actually `import`ed/called from the live cron route (not orphaned); re-ran the t
 | **Blast radius** | New files: `src/lib/vector-bead-recorder-leader.ts`, `src/features/vector/lib/vector-bead-recorder-core.ts` (+test), `vector-bead-recorder-logic.ts`, `src/app/api/cron/vector-bead-record/route.ts` (+test), `scripts/audit/vector-bead-probe.mjs`, `railway.vector-bead-record.toml`. Modified: `vector-universe.ts` (extracted `recordVectorUniverseWallSample` as a shared single-ticker recorder used by both the 5s leader and the existing 5-min cron), `vector-walls-warm.ts` (bead-recording removed, cache-priming only), `vector-snapshot.ts` (client-side narrowed-horizon accumulator), `vector-cadence.ts` (ticker-aware polling constants), `vector-wall-sample.ts`, `VectorChart.tsx`/`VectorGexLadder.tsx`, `(site)/vector/page.tsx` (SPY/QQQ default-0DTE), `process-role.ts`/`web-boot-warm.ts`/`init-data-sockets.ts` (boot wiring, mirrors `rth-warm-leader` exactly), `cron-registry.ts`/`cron-dispatch.ts` (new cron entry). No changes to 0DTE/Swing/Banger grading, ledger, or commit logic — Vector-only. |
 
 ## 2026-08-05 — [enhancement, CTO audit P2] Vector Daily/Weekly historical chart view
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -8585,10 +8971,11 @@ actually `import`ed/called from the live cron route (not orphaned); re-ran the t
 | **What was built** | `vector-daily-bars.ts` (pure): `aggregateDailyToWeekly` — Monday-anchored weekly bucketing of ascending daily bars (first session's open, last session's close, max high, min low, summed volume; a holiday-shortened week still keys to the same Monday-anchored bucket). `src/app/api/market/vector/daily-bars/route.ts`: reuses `fetchStockDailyBars`/`fetchIndexDailyBars` (same index/stock ticker dispatch pattern as the existing `prior-day/route.ts`), ~760 calendar days back, converts Polygon's `AggBar{t,o,h,l,c,v}` (ms epoch) to `VectorOhlcBar{time,...}` (seconds), aggregates to weekly server-side when `unit=1W`. `VectorDailyChart.tsx`: own lightweight-charts instance, 1D/1W toggle, loading/error states. `VectorPageShell.tsx`: new `chartView` state (`"intraday" | "1D" | "1W"`) with a small Intraday/1D/1W switcher above the chart pane, swapping between the existing intraday `chartBlock` and the new `VectorDailyChart` — standalone `/vector` page only; the chart-only embed (SPX Slayer) is untouched and stays intraday-only, same precedent as the P0 PR. |
 | **Evidence** | `npx tsc --noEmit -p .` clean. `node --import tsx --test src/features/vector/lib/vector-daily-bars.test.ts`: 6/6 pass (empty input, full Mon-Fri week, holiday-shortened week, two-week ordering, volume-preservation-without-fabrication, unit-type guard). `npx eslint` on all four touched/new files: 0 errors. `rm -rf .next && npx next build`: clean production build; `/api/market/vector/daily-bars` route builds; local `next start` smoke-check returns the expected 401 (auth-gated, same as every other Vector market route) rather than a 500/crash. |
 | **Blast radius** | New files: `vector-daily-bars.ts` (+test), `VectorDailyChart.tsx`, `daily-bars/route.ts`. Modified: `VectorPageShell.tsx` (new toggle + state, standalone page only), `globals.css` (new `.vector-daily-chart*`/`.vector-chart-view-*` rules). Zero changes to `VectorChart.tsx`, `vector-bar-timeframes.ts`, or any intraday/live/replay/wall-history code path. |
-| **Status** | BUILT AND VERIFIED. PR pending → CI → auto-merge per standing policy. 4h timeframe remains an open follow-up (needs a separate multi-day intraday bar feed). |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `fetchStockDailyBars`, `fetchIndexDailyBars`, `smaSeries`). Restamped from a mid-flight status that was never revisited. |
 | **Status** | BUILT, VERIFIED (twice — original + Cursor's mid-review follow-up), PR #1708 → `main`, CI green, merged 2026-08-05 16:02:48 UTC. Deploy (`ecr-push-production.yml`) completed successfully for the merge commit (`31b67d35`) at 16:02:51 UTC. **Post-deploy live verification (16:37 UTC, ~35min after deploy) via `scripts/audit/vector-bead-probe.mjs` against prod**: SPX 5760 samples/medianGapSec 5 (unchanged, was always fine); **SPY 743 samples (up from the pre-fix ~515) medianGapSec 5; QQQ 307 (up from ~53) medianGapSec 5; NVDA 157 (up from ~50) medianGapSec 10** (on-demand tier, still ~30-90x denser than the pre-fix 5-15min gaps). All four tickers' most-recent gap sequences are tight and consistent — the large `maxGapSec` values reported are the historical pre-deploy gap baked into the same-session average, not a current issue. Fix confirmed working live. Original mixed draft PR #1707 left untouched/unmerged (its Thermal Discord content needed its own separate PR — see the next FINDINGS entry). |
 
 ## 2026-08-05 — [enhancement, CTO audit P0] Vector Suggested Play card + GEX ladder stale-TODO correction
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -8601,9 +8988,10 @@ actually `import`ed/called from the live cron route (not orphaned); re-ran the t
 | **Fix rationale — what was deliberately left unchanged** | Did not add a new API route or duplicate the play computation server-side — the engine's own design intent was client-side re-derivation from signals the chart already has, and `emitPlay` follows that exactly, reusing existing refs (`maxPainValueRef`, `expectedMoveBandsRef`, `wallHistoryRef`) rather than introducing new ones. Did not touch the embed/chart-only path (no Pulse rail there today). Did not build the daily/weekly-timeframe or volume-profile P2 items — out of scope for this "P0 both items" request. |
 | **Evidence** | `npx tsc --noEmit -p .` clean. `node --import tsx --test src/features/vector/lib/vector-play-engine.test.ts`: 25/25 pass (existing engine tests, untouched). `node --import tsx --experimental-test-module-mocks --test src/app/api/market/vector/gex-ladder/route.test.ts`: 15/15 pass. `npx eslint` on all five touched files: 0 errors (4 pre-existing `react-hooks/exhaustive-deps` warnings on `VectorChart.tsx`, none new, none referencing `emitPlay`). `rm -rf .next && npx next build`: succeeds clean, `/vector` route builds — the same client/server-boundary regression class caught earlier this session (PR #1708) was checked for directly (`vector-server-technicals-core.ts` deliberately has no `"server-only"` import, verified pure/client-safe before importing it into `VectorChart.tsx`). |
 | **Blast radius** | Modified: `VectorChart.tsx` (new `emitPlay` + prop + emission call sites), `VectorPageShell.tsx` (new `play` state + prop wiring), `VectorGexLadder.tsx`/`gex-ladder/route.ts` (comment-only), `globals.css` (new `.vector-play-card*` rules). New: `VectorPlayCard.tsx`. No changes to `vector-play-engine.ts`, `vector-server-technicals-core.ts`, `vector-dte-walls-server.ts`, or any BIE consumer — all reused verbatim. |
-| **Status** | BUILT AND VERIFIED. PR pending → CI → auto-merge per standing policy. |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `dteHorizon`, `buildVectorPlay`, `VectorSnapshot`). Restamped from a mid-flight status that was never revisited. |
 
 ## 2026-08-05 — [bug fix, from indicator audit] Vector session VWAP / HOD-LOD / Opening Range / "Fib (HOD→LOD)" included pre/post-market bars
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -8614,9 +9002,10 @@ actually `import`ed/called from the live cron route (not orphaned); re-ran the t
 | **Fix rationale — what was deliberately left unchanged** | Did NOT modify `lastSessionBars` itself — it's used more broadly (chart viewport-fitting, seed-props) where extended-hours bars legitimately should still count (the chart should still SHOW premarket candles; they just shouldn't feed the RTH-anchored studies). The RTH filter is applied only at the specific call sites that need it (`sessionHodLod`, `openingRange`, `vwapSeries`), not baked into the shared session-slicing primitive. Did not touch `dominantSwing`/`goldenPocket` (fib-auto) — the audit confirmed that tool is deliberately window-scoped, not session-clipped, by design. |
 | **Evidence** | `npx tsc --noEmit -p .` clean. `node --import tsx --test` on the four touched test files: 42/42 pass — new `vector-session-hours.test.ts` (10/10: RTH boundary edges at 09:29/09:30/15:59/16:00, premarket/after-hours exclusion, non-finite input, order preservation), a new premarket-exclusion regression in `vector-key-levels.test.ts` (a fake 500/1-and-900/0.5 premarket/after-hours spike correctly excluded from HOD/LOD and Opening Range), a new premarket/after-hours regression in `vector-indicators.test.ts` (VWAP ignores a 99999-volume premarket bar entirely, then anchors fresh at the RTH open, then flat-lines through an after-hours bar rather than being dragged toward it). Three PRE-EXISTING test fixtures needed updating (not silent regressions — each used raw epoch-offset bar times like `bar(0, ...)`/`time: 60*i` that don't correspond to any real RTH clock time, which is now correctly rejected by the fix): `vector-key-levels.test.ts` (3 tests), `vector-technicals.test.ts` (2 tests, shared `barsFrom` helper) — all now anchored to a real 09:30 ET base time, preserving their original relative-offset assertions. Full sweep: `node --import tsx --experimental-test-module-mocks --test "src/features/vector/**/*.test.ts"`: 556/556 pass. `npx eslint` on all touched files: 0 errors. `rm -rf .next && npx next build`: clean production build. |
 | **Blast radius** | New: `vector-session-hours.ts` (+test). Modified: `vector-indicators.ts` (`vwapSeries` RTH gate), `vector-key-levels.ts` (`sessionHodLod`/`openingRange` RTH filter), `vector-indicators.test.ts`/`vector-key-levels.test.ts`/`vector-technicals.test.ts` (new regression tests + 5 pre-existing fixture time updates). Zero changes to `lastSessionBars`, `dominantSwing`/`vector-fib-swing.ts`, PDH/PDL/PDC/floor-pivot code, or any component/route — pure logic-layer fix. |
-| **Status** | FIXED AND VERIFIED. PR pending → CI → auto-merge per standing policy. |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `filterRthBars`, `sessionHodLod`, `openingRange`). Restamped from a mid-flight status that was never revisited. |
 
 ## 2026-08-05 — [enhancement, CTO audit P2] Vector session Volume Profile overlay
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -8627,9 +9016,10 @@ actually `import`ed/called from the live cron route (not orphaned); re-ran the t
 | **Why it pairs with the GEX ladder (the audit's rationale, verified)** | The GEX ladder already shows volume-at-STRIKE for options positioning; this shows volume-at-PRICE for the underlying. A member can now see directly whether the session's heaviest-traded price zone lines up with a dealer wall — the confluence read the audit called out — without the two ever needing to share code, since they read from entirely independent data (options OI/GEX vs. underlying OHLCV). |
 | **Evidence** | `npx tsc --noEmit -p .` clean. `node --import tsx --test src/features/vector/lib/vector-volume-profile.test.ts`: 9/9 pass (empty input, zero/undefined-volume bars dropped not fabricated, degenerate flat-range collapse, POC correctness, value-area contiguity + ~70% coverage, single-tick-bar handling, non-positive bucket count guard, volume conservation). Updated `vector-indicators-config.test.ts`'s exhaustive toggle-id test to include the new `volume-profile` id (1 pre-existing test needed updating, not a regression — it hard-codes the full id list by design so a forgotten menu wiring can't ship silently). `npx eslint` on all six touched/new files: 0 errors (same 4 pre-existing `react-hooks/exhaustive-deps` warnings on `VectorChart.tsx`, none new). `rm -rf .next && npx next build`: clean production build, `/vector` route builds. |
 | **Blast radius** | New files: `vector-volume-profile.ts` (+test), `vector-volume-profile-primitive.ts`. Modified: `vector-indicators-config.ts` (+test) for the new toggle id/group, `VectorChart.tsx` (primitive attach/detach/setData, following the exact gamma-regime-primitive pattern). Zero changes to `VectorIndicatorMenu.tsx` (renders straight from the registry), the GEX ladder, or any dealer-positioning code path. |
-| **Status** | BUILT AND VERIFIED. PR pending → CI → auto-merge per standing policy. Composite (multi-session) variant remains an open follow-up. |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `PinConePrimitive`, `minuteBarsRef`, `paintOverlays`). Restamped from a mid-flight status that was never revisited. |
 
 ## 2026-08-05 — [audit] Deep correctness + UX review of Vector's classic TA indicators (SMA/EMA/VWAP/RSI/MACD/key levels/structure)
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -8641,6 +9031,7 @@ actually `import`ed/called from the live cron route (not orphaned); re-ran the t
 | **Status** | AUDIT COMPLETE, logged here per repo policy. Findings #1 (RTH filter) and #4 (structure double-break edge case) are real, actionable bugs — tracked as follow-up fix items, not yet fixed. #2/#3 (MA/oscillator on-chart labeling) are the natural next UX pass after this audit. |
 
 ## 2026-08-05 — [bug fix, from indicator audit] Market structure: same-bar double break misclassified the second event's trend
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -8650,9 +9041,10 @@ actually `import`ed/called from the live cron route (not orphaned); re-ran the t
 | **Fix** | Capture `trend` into `trendAtBarStart` once per bar, before either break-check runs, and classify BOTH the up-break and the down-break against that captured value instead of the live (possibly-just-mutated) `trend`. `trend` itself is still updated after each push, so a genuinely later bar's break still sees the correct, up-to-date trend — only the SAME-bar double-break scenario changes behavior. |
 | **Evidence** | New regression test in `vector-market-structure.test.ts`: hand-constructed bars (via sentinel high/low values so exactly the intended 3 pivots form, no spurious ones) that establish a down trend, then cross an unbroken high(100)/low(110) pair and break both with one close(105). Verified the OLD code on the SAME fixture (via `git stash`) actually produces the wrong result (`CHOCH down` for the continuation break) and the fixed code produces the correct one (`BOS down`) — a true empirically-verified regression test, not just an assertion of the intended behavior. Full suite: `node --import tsx --experimental-test-module-mocks --test "src/features/vector/**/*.test.ts"`: 536/536 pass. `npx tsc --noEmit -p .` clean. `npx eslint` on the touched file: 0 errors. |
 | **Blast radius** | `vector-market-structure.ts` (+test) only. No changes to `vector-fib-swing.ts`'s pivot detection, `vector-structure-markers.ts`'s chart-marker mapping, or any consumer — the fix is entirely inside the trend-classification step of `detectStructureEvents`. |
-| **Status** | FIXED AND VERIFIED. PR pending → CI → auto-merge per standing policy. |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `trendAtBarStart`). Restamped from a mid-flight status that was never revisited. |
 
 ## 2026-08-05 — [UX, from indicator audit] On-chart indicator labels (MA lines, RSI/MACD panes) + Fib/Auto-fib convention tooltip
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -8665,9 +9057,10 @@ actually `import`ed/called from the live cron route (not orphaned); re-ran the t
 | **Fix #5** | Added an optional `hint` field to `VectorLevelDef`, populated for `fib`/`fib-auto` with a one-line explanation of each convention, threaded through `VECTOR_INDICATOR_GROUPS` into the toggle menu as a native tooltip (merged with the existing bar-count-availability note, same `title` attribute the menu already used). |
 | **Evidence** | `npx tsc --noEmit -p .` clean. New test in `vector-indicators-config.test.ts` asserts both fib tooltips exist, differ, and carry through to the flattened menu item list. Full suite: `node --import tsx --experimental-test-module-mocks --test "src/features/vector/**/*.test.ts"`: 535/535 pass. `npx eslint`: 0 errors (same 4 pre-existing warnings on `VectorChart.tsx`, none new). `rm -rf .next && npx next build`: clean production build. |
 | **Blast radius** | Modified: `VectorChart.tsx` (MA/RSI/MACD series options only — no logic changes), `vector-indicators-config.ts` (+test, new optional `hint` field), `VectorIndicatorMenu.tsx` (tooltip rendering). Zero changes to any indicator's underlying math (`vector-indicators.ts`, `vector-key-levels.ts`, `vector-fib-swing.ts`) — purely presentational. |
-| **Status** | BUILT AND VERIFIED. PR pending → CI → auto-merge per standing policy. Findings #1 (RTH filter) and #4 (structure double-break) already fixed in separate PRs; #6 (color reuse) and #7 (Opening Range configurability) remain open, lower-priority follow-ups. |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `priceLineVisible`, `VectorLevelDef`, `VECTOR_INDICATOR_GROUPS`). Restamped from a mid-flight status that was never revisited. |
 
 ## 2026-08-05 — [P1, live member-reported] Vector Daily/Weekly chart: candles/volume/SMA rendered squashed to a ~30px sliver, and the 1W toggle silently did nothing
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -8682,6 +9075,7 @@ actually `import`ed/called from the live cron route (not orphaned); re-ran the t
 | **Status** | FOUND AND FIXED during a deep live-UI validation pass across the consolidated Vector branch (Volume Profile + structure fix + indicator labels), bundled into the same PR since it was caught by the same validation effort. |
 
 ## 2026-08-05 — [enhancement, from indicator audit finding #7] Opening Range window is now member-configurable (5m/15m/30m/60m), no longer hardcoded to 15m
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -8691,9 +9085,10 @@ actually `import`ed/called from the live cron route (not orphaned); re-ran the t
 | **Evidence** | New test `vector-key-levels.test.ts`: "openingRange: 30m and 60m windows widen which bars are included" — same-fixture-bars parametrization proving 15m/30m/60m produce different, correctly-widening high/low windows (a bar at t0+15m is excluded from the 15m window but included in 30m/60m; a bar at t0+45m is excluded from 30m but included in 60m). Extended the existing `levelLinesFor: hod-lod / opening-range / fib` test to assert the label is `"OR-H 15m"`/`"OR-L 15m"` by default and `"OR-H 30m"`/`"OR-L 30m"` when the 4th arg is `30`, with the price also correctly widening (98→95 low, 110→112 high) once the 30m window picks up the bar the 15m window excluded. New test in `vector-indicators-config.test.ts`: preset list, default, `isVectorOpeningRangeMinutes` accept/reject, and `openingRangeLabel` output for all three presets, plus that the static registry entry matches the default label. No component-level render test existed for `VectorIndicatorMenu`/`VectorChart` to extend (checked first, per the task's instruction) — the label/preset logic is pure-function-tested instead, at the same layer the rest of this file's menu logic (`overlayFamilyAvailability`, the fib-hint test) is tested. `npx tsc --noEmit -p tsconfig.json`: clean. Full suite `node --import tsx --experimental-test-module-mocks --test "src/features/vector/**/*.test.ts" src/app/api/market/vector/**/*.test.ts`: 575/575 pass. `npx eslint` on every touched file: 0 new errors (same 4 pre-existing `react-hooks/exhaustive-deps` warnings on `VectorChart.tsx`, none new, none touched). `rm -rf .next && npx next build`: clean production build. |
 | **Blast radius** | `vector-key-levels.ts` (+test) — new optional 4th parameter, default-preserving. `vector-indicators-config.ts` (+test) — new exported preset constants/helpers; the registry's static `opening-range` label entry now derived from `openingRangeLabel()` instead of a separate literal string. `VectorChart.tsx` — new state/ref/effect + `applyLevelLines`'s new optional 6th parameter (default-preserving) + one call-site update; no changes to any other overlay's draw/diff logic, and no changes to the overlay draw/diff internals beyond this one call site, per scope. `VectorToolbar.tsx` — two new pass-through props, both `VectorIndicatorMenu` render sites updated identically (the two are the mobile-compact and desktop-wrap layouts of the SAME toolbar, not two independent features). `VectorIndicatorMenu.tsx` — new props, dynamic label for one item, new inline preset control. `globals.css` — 3 new small rule blocks. No other page/route imports `VectorToolbar`/`VectorIndicatorMenu` directly (verified by grep), so no other call site needed updating. |
 | **Fix rationale** | Reused every existing convention rather than inventing new ones: default-preserving optional parameters (not a breaking signature change) at both the pure-function and imperative-paint layers so every untouched caller/test keeps working; the same state+ref+sync-effect idiom `indicators`/`indicatorsRef` already established for per-chart UI toggles; the same "compute a short string next to the label" pattern the menu's bar-count `note` already used, rather than inventing new tooltip/label chrome; and a control that only appears once the level is enabled, rather than a new always-visible toolbar element, per the task's "don't add a whole new toolbar" guidance. Left the underlying `openingRange()` math and the `filterRthBarsSec`/`lastSessionBars` session-scoping entirely untouched — this was purely a "make an existing parameter reachable from the UI" change, not a behavior-of-the-math change. |
-| **Status** | BUILT AND VERIFIED. PR pending → CI → auto-merge per standing policy. Closes finding #7 from the 2026-08-05 deep TA-indicator audit; finding #6 (indicator color reuse) is tracked/fixed separately. |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `openingRangeMinutes`, `indicators`, `openingRangeMinutesRef`). Restamped from a mid-flight status that was never revisited. |
 
 ## 2026-08-05 — [fix, finding #6 from indicator audit] Vector indicator menu: five distinct indicators shared exact hex colours
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -8704,9 +9099,10 @@ actually `import`ed/called from the live cron route (not orphaned); re-ran the t
 | **Evidence** | Built the full colour→ids map by grepping every `color:` occurrence in the file (`grep -n "color:" vector-indicators-config.ts`) before and after the fix — before: 5 collisions across 22 colour assignments; after: `grep -oE "#[0-9a-fA-F]{6}" ... \| sort \| uniq -c` shows every remaining repeat is either the fixed unique value or the intentional overlay-family-dot reuse (a family dot is defined to equal its first member overlay's colour, e.g. "EMA" family dot = `ema9`'s colour — same colour representing the same line twice, not a distinct-indicator collision). New test `vector-indicators-config.test.ts` — "no two distinct indicator ids share a hex colour across the WHOLE toggle space" — walks `VECTOR_OVERLAYS` + `VECTOR_LEVELS` + every `VECTOR_INDICATOR_GROUPS` item (explicitly excluding overlay-family dots, with a comment explaining why), builds the same colour→ids map, and asserts zero collisions; ran it against the pre-fix file via `git stash` to confirm it actually fails on the real duplicates (not a vacuously-true assertion), then confirmed it passes clean post-fix. Full suite: `node --import tsx --experimental-test-module-mocks --test "src/features/vector/**/*.test.ts" src/app/api/market/vector/**/*.test.ts`: 574/574 pass. `npx tsc --noEmit -p tsconfig.json` clean. `npx eslint` on both touched files: 0 errors. `rm -rf .next && npx next build`: clean production build, `/vector` route builds. |
 | **Blast radius** | `src/features/vector/lib/vector-indicators-config.ts` (5 colour literals + comments) and `vector-indicators-config.test.ts` (+1 new test) only. Zero changes to `VectorChart.tsx`, `vector-key-levels.ts`, `vector-structure-markers.ts`, `vector-flow-markers.ts`, `vector-gamma-regime-primitive.ts`, or `vector-em-cone-primitive.ts` — confirmed (see root-cause note above) that none of the 5 changed indicators' actual on-chart pixels are driven by this config's `color` field, so no rendered chart element changes appearance; only the corresponding toggle-menu dots do. |
 | **Fix rationale** | Reassigning the menu-only side of each pair (rather than the side with a real chart-pixel tie, where one existed) means this PR changes zero rendered chart pixels — purely a menu-legend fix, the safest possible resolution for a papercut-severity finding. Deliberately did NOT touch the separately-hardcoded per-file colour constants that back the real chart draws (`vector-key-levels.ts`'s `PD_COLOR`/`HOD_COLOR`, `vector-structure-markers.ts`'s `BOS_COLOR`/`UP_COLOR`, `vector-flow-markers.ts`'s `FLOW_CALL_COLOR`, etc.) — those already show awareness of avoiding collisions in their own comments (e.g. `PD_COLOR`'s "deliberately NOT #fb923c ... two different indicators sharing a colour" note) and are out of this fix's scope; if any of THOSE ever collide it would need its own dedicated audit pass across those render files, not a config-only change. |
-| **Status** | FIXED AND VERIFIED. PR pending → CI → auto-merge per standing policy. Finding #7 (Opening Range configurability) remains the last open, lower-priority item from the original indicator audit. |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by direct inspection (`vector-indicators-config.ts`: pivots `#a3e635`, market-structure `#e879f9`, macd `#818cf8`, flow-markers `#4ade80`, gamma-regime `#fb7185` — all five new hexes live, none of the five old ones remain on those keys). Restamped from a mid-flight status that was never revisited. |
 
 ## 2026-08-05 — [enhancement, P2 from CTO audit] Cross-ticker wall-structure comparison strip
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -8717,9 +9113,10 @@ actually `import`ed/called from the live cron route (not orphaned); re-ran the t
 | **Evidence** | New `vector-ticker-comparison.test.ts` (11 tests): selection logic for mega-cap-tech/index-ETF/fallback tickers, SPY-leads-unless-SPY-is-active, max-cap respected, determinism, row-resolution skipping absent tickers (never fabricating a synthesized entry for e.g. NVDA when it has no row), and — the fidelity check the task called for — every rendered `regime`/`flipDistancePct`/`wallStrength` value asserted equal to calling `screenerRegimeOf`/`flipDistancePct`/`wallStrength` directly on the same fixture row. `npx tsc --noEmit -p tsconfig.json`: clean. Full suite `node --import tsx --experimental-test-module-mocks --test "src/features/vector/**/*.test.ts" src/app/api/market/vector/**/*.test.ts`: 586/586 pass (was 569 before this change — 10 new comparison tests less the ones already counted, plus the untouched pre-existing suite). `npx eslint` on every touched/new file: 0 errors. `rm -rf .next && npx next build`: clean production build, `/vector` route builds (221 B page size, unchanged shape). |
 | **Blast radius** | New: `vector-ticker-comparison.ts` (+test), `vector-universe-client.ts`, `VectorTickerComparisonStrip.tsx`. Modified: `VectorScanner.tsx` (fetcher/useSWR call replaced by the shared hook — behavior unchanged, same key/interval/revalidate options), `VectorPageShell.tsx` (one new additive render in the Pulse rail + one new import), `globals.css` (new `.vector-comparison-*` rule block only). No changes to `vector-screener.ts`'s math, `vector-universe.ts`'s build/fetch path, or any other panel in `VectorPageShell.tsx`. |
 | **Fix rationale** | Extracted the shared SWR hook rather than leaving two independent `useSWR("vector-universe", ...)` call sites, per the task's explicit instruction and to guarantee the endpoint is genuinely polled once regardless of how many components read the snapshot. Kept the peer map static/heuristic (not a "correct" sector taxonomy) since the task asked for "a reasonable static default set," and biased every default entry toward tickers Vector already warms (`HEATMAP_PRESET_TICKERS`/`HEATMAP_EXTRA_LIQUID_TICKERS`) so the strip usually resolves real rows rather than silently rendering nothing. Deliberately did not add a settings/customization UI for the comparison set — out of scope for a P2 read-only positioning aid. |
-| **Status** | BUILT AND VERIFIED. PR pending → CI → auto-merge per standing policy. |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `flipDistancePct`, `wallStrength`, `screenerRegimeOf`). Restamped from a mid-flight status that was never revisited. |
 
 ## 2026-08-05 — [P3, CTO audit "architecture hardening"] ESLint guard against client components importing `*-server` modules directly
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -8729,9 +9126,10 @@ actually `import`ed/called from the live cron route (not orphaned); re-ran the t
 | **Evidence** | Live-tested the new rule: wrote a throwaway `"use client"` fixture at `src/features/vector/components/__lint-fixture-client-server-import.tsx` importing `vector-wall-sample-server` both as a relative path (`../lib/vector-wall-sample-server`) and via the `@/` alias (`@/features/vector/lib/vector-wall-sample-server`); `npx eslint` on the fixture flagged BOTH import lines with the `no-restricted-imports` error and the custom message; deleted the fixture immediately after (not left in the tree). Adding the `server-only` guard to `vector-wall-sample-server.ts` broke its own existing unit test (`vector-wall-sample-server.test.ts`) under plain `tsx --test` (`server-only` unconditionally throws outside a `react-server` module-resolution condition) — fixed by adopting the same `mock.module("server-only", { namedExports: {} })` + lazy `() => import(...)` pattern already used by `src/features/spx/lib/*-server.test.ts` (e.g. `playbook-match-resolver.test.ts`), rather than stripping the guard back out. Full verification: `npx tsc --noEmit -p tsconfig.json` clean; `node --import tsx --experimental-test-module-mocks --test "src/features/vector/**/*.test.ts" src/app/api/market/vector/**/*.test.ts`: 574/574 pass (was 573/573 failing at 1 before the test fix, now includes the repaired `vector-wall-sample-server.test.ts`); `npx eslint` on both touched `.ts` files: 0 errors; `rm -rf .next && npx next build`: clean production build, `/vector` route builds. |
 | **Blast radius** | `.eslintrc.json` (new `overrides` block only — no existing rule changed), `src/features/vector/lib/vector-wall-sample-server.ts` (+1 import line), `src/features/vector/lib/vector-wall-sample-server.test.ts` (updated to stub `server-only` and lazy-import the module under test, same pattern used elsewhere in the repo — no assertions changed). No other `*-server.ts` file needed the guard (all six siblings already had it). No client `.tsx` file in the repo currently imports a `*-server` module (confirmed via grep before making the change), so the new lint rule introduces zero new lint errors anywhere in the existing tree — it is purely a forward-looking guard. |
 | **Fix rationale** | Used ESLint's built-in `no-restricted-imports` with a path-glob `patterns` group rather than writing a custom ESLint plugin/rule (out of scope per the audit item's own framing — "a good-faith path-glob-based ... override" is the acceptable bar) — it directly matches the repo's existing `*-server.ts` naming convention with no new infrastructure, and the `overrides.files` glob targets the actual directories where `"use client"` components live rather than trying to parse each file's own `"use client"` directive (ESLint's built-in rules can't condition on file *content*, only file *path*, so a directory-scoped override is the correct mechanism here, not a limitation worth working around with a custom rule). Left the `server-only` guard itself untouched everywhere it already existed; only added it where it was missing relative to the file's own stated intent. |
-| **Status** | BUILT AND VERIFIED. PR pending → CI → auto-merge per standing policy. |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `overrides`, `patterns`, `message`). Restamped from a mid-flight status that was never revisited. |
 
 ## 2026-08-05 — [P1, CTO audit] Server-side (closed-tab) delivery for Vector wall-touch/flip-cross alerts
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -8741,9 +9139,10 @@ actually `import`ed/called from the live cron route (not orphaned); re-ran the t
 | **Evidence** | `npx tsc --noEmit -p tsconfig.json`: clean. `node --import tsx --experimental-test-module-mocks --test "src/features/vector/**/*.test.ts" src/app/api/market/vector/**/*.test.ts src/app/api/cron/vector-alerts/**/*.test.ts`: 585/585 pass (added `vector-alert-rules-db.test.ts` — row↔rule mapping + input sanitization edge cases — and `cron/vector-alerts/lib.test.ts` — the `distinctTickers`/cache-key pure helpers; `evaluateAlerts()`'s own firing semantics are NOT re-tested here, per the task's explicit instruction not to duplicate `vector-alerts.test.ts`'s coverage). `npx eslint` on every touched/added file: 0 errors. `rm -rf .next && npx next build`: clean production build, `/api/vector/alerts/rules` and `/api/cron/vector-alerts` both compile as dynamic routes. |
 | **Blast radius** | New: `src/features/vector/lib/vector-alert-rules-core.ts`, `vector-alert-rules-db.ts` (+ `.test.ts`), `src/app/api/vector/alerts/rules/route.ts`, `src/app/api/cron/vector-alerts/route.ts` + `lib.ts` (+ `.test.ts`). Modified: `src/features/vector/components/VectorPageShell.tsx` (`persistRules` — added the best-effort server-sync `fetch`, no other logic touched), `src/lib/cron-registry.ts` (+1 metadata entry). Explicitly NOT modified: `vector-alerts.ts` (the pure engine — reused exactly as-is per the task's instruction), `vector-alerts-store.ts` (localStorage stays the client source of truth), `vector-notify.ts` (payload builder reused as-is), `push/subscribe/route.ts` / `send-web-push.ts` (reused as-is), `cron-registry.ts`'s existing entries. |
 | **Fix rationale** | The task flagged a risk up front — "if the existing wall-computation server function isn't cleanly reusable outside its request/response cycle, factor out the minimal core rather than duplicating fetch logic." In practice `getVectorGexWallsForHorizon`/`getVectorGammaFlipForHorizon` (the exact functions `GET /api/market/vector/walls` calls) turned out to be directly callable from the cron with NO request/response coupling — they take a plain `ticker`/`horizon` and return data, with their own internal fallbacks (WS ladder → per-expiry chain → blended aggregate) already handling a cold/serverless-style invocation, so no extraction was needed; the cron calls them exactly as the route does, at the `"all"` horizon (matching `AlertRule`'s ticker-only, non-horizon-scoped shape). Chose to key the persisted per-cron-tick `AlertState` by `(userId, ticker)` rather than `(userId, ruleId)` as the task's own example suggested — `AlertState` is already a `Record<ruleId, RuleState>`, so one Redis entry per user+ticker holds every rule on that ticker in one read/write instead of N, with no semantic difference (ruleId already embeds the ticker). Also chose a ticker-scoped (not per-user) "prior spot" cache key for flip-cross's sign-change detection — it's the same market tape for every user watching a ticker, so fetching/storing it once per ticker per tick avoids N redundant Redis round-trips for members sharing a popular ticker like SPY. Deliberately left the whole-ticker-replace PUT un-transactional (delete-then-insert as two `dbQuery` calls, not wrapped in an explicit DB transaction) — this table is a best-effort mirror of `localStorage` (never the source of truth), matching the simplicity of every other single-call `dbQuery` site in the repo (`push/subscribe/route.ts` has no transaction either) rather than adding new transaction-handling infrastructure for a low-stakes, single-user-scoped row set. |
-| **Status** | BUILT AND VERIFIED. PR pending → CI → auto-merge per standing policy. |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `AlertRule`, `dbQuery`, `persistRules`). Restamped from a mid-flight status that was never revisited. |
 
 ## 2026-08-05 — [enhancement, CTO audit P2] Vector 4H historical chart view — the follow-up the Daily/Weekly PR left open
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -8753,9 +9152,10 @@ actually `import`ed/called from the live cron route (not orphaned); re-ran the t
 | **Fix rationale — what was deliberately left unchanged** | Chose to generalize `VectorDailyChart.tsx` (widen the prop + one endpoint-selection helper) over writing a second `Vector4hChart.tsx` component, per the task's own stated preference for "less duplication" — the only genuine difference between the three views is which URL to fetch from; the chart-rendering, SMA overlay, loading/error states, and "GEX/beads/replay not shown here" messaging are identical across all three and would otherwise be copy-pasted. The 1D/1W code path is untouched behaviorally: `endpointFor` returns byte-identical URLs to what the inline template literal produced before, and the response-shape type (`BarsResponse`) is a strict widening (`unit: string` instead of `unit: VectorDailyUnit`) with no narrowing anywhere that would change 1D/1W runtime behavior — confirmed by the pre-existing `vector-daily-bars.test.ts` (6/6) and the full Vector suite passing unchanged. Did not touch `VectorChart.tsx`'s intraday internals, `vector-bar-timeframes.ts`'s presets, `vector-seed-bars.ts`, or the live SSE/wall-history/replay paths — 4h is additive, following the exact same "separate small surface, not a mode bolted onto the intraday chart" precedent 1D/1W set. Did not add GEX walls/beads/max-pain/replay to the 4h view for the same reason 1D/1W doesn't have them: those are intraday dealer-positioning reads with no honest multi-day equivalent. |
 | **Evidence** | `npx tsc --noEmit -p tsconfig.json`: clean. `node --import tsx --experimental-test-module-mocks --test "src/features/vector/**/*.test.ts" src/app/api/market/vector/**/*.test.ts`: 586/586 pass, including new `vector-4h-bars.test.ts` (6/6: empty input, same-bucket collapse at the real ET boundary with volume summed, a bar just past a boundary starting a fresh bucket, the same wall-clock window on two different days bucketing separately, volume-preservation-without-fabrication, and an EDT/DST-period case confirming the per-instant offset read still lands on the correct UTC bucket start) and new `4h-bars/route.test.ts` (4/4: no-store headers, index-ticker fetch+aggregation end-to-end against a mocked multi-bar fixture that spans two real 4h buckets, stock-ticker fetch dispatch, junk-ticker 400). `npx eslint` on all six touched/new files: 0 new errors. `rm -rf .next && npx next build`: clean production build (exit 0); `/vector` route and the new `/api/market/vector/4h-bars` route both build. |
 | **Blast radius** | New files: `vector-4h-bars.ts` (+test), `4h-bars/route.ts` (+test). Modified: `VectorDailyChart.tsx` (widened `unit` prop type + new `endpointFor` helper + response type rename, 1D/1W behavior unchanged), `VectorPageShell.tsx` (toggle/state widened to include `"4H"`, standalone page only). Zero changes to `VectorChart.tsx`, `vector-bar-timeframes.ts`, `vector-seed-bars.ts`, `vector-daily-bars.ts`, `daily-bars/route.ts`, or any intraday/live/replay/wall-history code path. |
-| **Status** | BUILT AND VERIFIED. PR pending → CI → auto-merge per standing policy. |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `VECTOR_PRESET_TIMEFRAMES`, `fetchVectorSeedBars`, `fetchStockDailyBars`). Restamped from a mid-flight status that was never revisited. |
 
 ## 2026-08-05 — [P2, member feedback] Vector Pulse signal feed: cut low-value noise, wire unused curation infra
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -8765,9 +9165,10 @@ actually `import`ed/called from the live cron route (not orphaned); re-ran the t
 | **Evidence** | `node --import tsx --test src/features/vector/lib/vector-pulse.test.ts`: 37/37 pass — updated 4 pre-existing tests to the new intentional behavior (near-tier entry is now silent, proximity-clear emits nothing, integrity-degradation-only, flow floor raised to $1M) and added 2 new ones (near-tier-silent, directionless-print-dropped). Full Vector suite (`node --import tsx --experimental-test-module-mocks --test "src/features/vector/**/*.test.ts" src/app/api/market/vector/**/*.test.ts src/app/api/cron/vector-alerts/**/*.test.ts`): 607/607 pass (was 605 before this change on the action-rail branch baseline — +2 net here: 6 pulse-test deltas plus 1 new source-assertion test in `vector-ios-native.test.ts` confirming `curateAndEmit`/`dedupeByKindLevel`/`applyGlobalRateCap` are actually wired into all three emission sites). `npx tsc --noEmit -p tsconfig.json`: clean. `npx eslint` on all touched files: 0 errors. `rm -rf .next && npx next build`: clean production build. |
 | **Blast radius** | `src/features/vector/lib/vector-pulse.ts` (proximity/integrity/flow-print logic + `FLOW_MIN_PREMIUM`), `src/features/vector/lib/vector-pulse.test.ts` (updated + new assertions), `src/features/vector/components/VectorPulse.tsx` (new `curateAndEmit` + two new refs, three call sites simplified), `src/features/vector/vector-ios-native.test.ts` (+1 source-assertion test). `wallEventToPulseSignal`, `detectPlayStateSignals`'s own emission rules, the regime-flip/magnet-shift detectors, and the SPX engine's own Pulse rail (which already applied this curation layer directly) are all untouched. Also fixed, as a drive-by while editing this file: `docs/audit/FINDINGS.md` itself had **literal unresolved `<<<<<<<`/`=======`/`>>>>>>>` merge-conflict markers committed to `main`** (from an earlier same-session PR's conflict resolution) straddling the "Grid/0DTE post-close" and "SPX Slayer verdict-bar flicker" entries — both entries' content was legitimate and kept, only the three marker lines were removed. |
 | **Fix rationale** | Chose to delete the noisy branches outright rather than gate them behind a new user-facing verbosity setting — the task was to strengthen the DEFAULT feed, not add another control members would have to discover and configure; "near" proximity, integrity "strengthening", and the open-space clear message are non-actionable by construction (they don't tell a member to do anything differently), so there's no verbosity tier where they'd earn a place. Raised the flow floor to the existing $1M `WHALE_PREMIUM` convention instead of picking a new number, so "big enough to alert on" means the same thing across Helix and Vector. Wired the curation layer via a single shared helper + shared ledgers (not three separate rate-cap ledgers per source) so the ≤6/min cap is a genuine whole-feed budget — three sources each independently capped at 6/min could still add up to 18/min, defeating the point. Left `MAX_SIGNALS_PER_TICK=6` in `detectPulseSignals` and the existing 4-minute per-key cooldown untouched — both are still useful first-line bounds; the new pipeline stages compose with them rather than replacing them. |
-| **Status** | BUILT AND VERIFIED. PR pending → CI → auto-merge per standing policy. |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `tierRank`, `FLOW_MIN_PREMIUM`, `WHALE_PREMIUM`). Restamped from a mid-flight status that was never revisited. |
 
 ## 2026-08-05 — [P1, member-directed redesign] Night Hawk Legacy discovery architecture — confluence gate, lane rebalance, wider pool, pre-synthesis short-circuit
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -8777,9 +9178,10 @@ actually `import`ed/called from the live cron route (not orphaned); re-ran the t
 | **Evidence** | Verified the pre-synthesis short-circuit is provably safe (not just an optimization that happens to look safe) by tracing every downstream rescue path: `filterPlaysByMerit` and `rankedCandidateMeritEligible` (play-backfill.ts) both require score+tier; `promoteTopBlocked`'s gate-promote (publish-gates.ts) requires **score only, no tier** — the single loosest admission bar anywhere downstream — so the correct "nothing can possibly publish" guard is score-only (`anyRankedClearsScoreFloor`), NOT score+tier (`countRankedClearingMerit`, kept only as a diagnostic count since it's stricter and would have been unsafe to short-circuit on). The diversity-hedge/forced-contrarian paths (`deterministic-edition.ts`, floor=35) were confirmed irrelevant to this safety analysis — both only fire once `finalPlays.length >= 3` already, i.e. after organic synthesis already succeeded, never as a from-nothing rescue. `npx tsc --noEmit -p tsconfig.json`: clean. `node --import tsx --experimental-test-module-mocks --test "src/features/nighthawk/**/*.test.ts"`: 1022/1022 pass (19 new: 9 in `edition-quality.test.ts` covering `countRankedClearingMerit`/`anyRankedClearsScoreFloor` including the explicit test proving the two functions' looseness ordering, 10 new in `candidates.test.ts` — a new file — covering `laneComposition`/`formatLaneComposition`/`applyConfluenceGate`). `npx eslint` on all six touched/new files: 0 errors. `rm -rf .next && npx next build`: clean production build. |
 | **Blast radius** | Modified: `src/features/nighthawk/lib/constants.ts` (`MAX_CANDIDATES` only), `candidates.ts` (lane caps + corroboration tiers + new confluence-gate/lane-composition functions, `extractMultiSourceCandidates`'s selection call site), `edition-quality.ts` (+`countRankedClearingMerit`, +`anyRankedClearsScoreFloor`), `edition-quality.test.ts` (+9 tests), `edition-builder.ts` (pre-synthesis check + short-circuit, new imports). New: `candidates.test.ts`. Zero changes to: `scorer.ts`'s scoring dimensions (already rich — flow/tech/pos/news/smart_money/fundamental/catalyst/short_interest/wall_proximity/vex_alignment/skew — the gap was in discovery, not scoring), `MIN_PUBLISH_SCORE`/tier thresholds, `filterPlaysByMerit`, any rescue/backfill/gate-promote logic, or the deterministic play-construction/critic pipeline itself. The existing admin "▶ Run now" force-run button (`AdminNightHawkDashboard.tsx` → `POST /api/admin/nighthawk/run`) already exists and needed no changes — it calls the same `buildEveningEdition` this fix modifies, so it's the natural manual-test surface for this change. |
 | **Fix rationale — what was deliberately left for a follow-up, not rushed** | A GEX/PIN-wall discovery lane (aligning with the 0DTE board's FLOW+BREAKOUT+PIN rails) was investigated but NOT added this pass: `MarketWideContext` (`market-wide.ts`) carries zero wall/GEX data today, so a real PIN lane needs a new async data-fetch integration into the discovery context — a materially bigger, riskier change to a live financial pipeline than the same-night verification budget allowed for. Documented here as the next concrete step: add wall/GEX-snapshot fetching to `MarketWideContext`, then an 8th `lanePinWall()` lane mirroring `laneBreakout()`'s shape. Similarly, unifying Legacy's `laneFlow()` with the 0DTE board's flow-accumulation implementation (currently two independent implementations of a similar idea) was scoped but deferred — a behavior-changing refactor to a scoring-critical lane deserves its own dedicated verification pass, not a rider on this PR. |
-| **Status** | BUILT AND VERIFIED. PR pending → CI → auto-merge per standing policy. |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `MAX_CANDIDATES`, `LANE_MAX_FLOW`, `LANE_MAX_BREAKOUT`). Restamped from a mid-flight status that was never revisited. |
 
 ## 2026-08-05 — [enhancement, member request] Vector 4th-column TECHNICALS card — colored by tone
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -8789,9 +9191,10 @@ actually `import`ed/called from the live cron route (not orphaned); re-ran the t
 | **Evidence** | `node --import tsx --test src/features/vector/lib/vector-technicals.test.ts`: 11/11 pass (5 pre-existing unchanged + 6 new: uptrend→all-bull with text matching the legacy plain-string API exactly, downtrend→all-bear, mixed-EMA/neutral-RSI→muted, golden-pocket-always-muted, structure-direction-maps-to-tone, empty-bars→empty-array). Full Vector suite: 616/616 pass. `npx tsc --noEmit`: clean. `npx eslint` on all six touched files: 0 errors (4 pre-existing unrelated warnings in `VectorChart.tsx`, nowhere near the touched lines). `rm -rf .next && npx next build`: clean production build. |
 | **Blast radius** | New: none (no new files). Modified: `vector-technicals.ts` (+`TechnicalsTone`/`TechnicalsLine` types, +`technicalsCalloutLines`, `technicalsCallouts` now a wrapper), `vector-technicals.test.ts` (+6 tests), `VectorChart.tsx` (`onTechnicalsChange` prop type + one call site), `VectorPageShell.tsx` (`technicals` state type), `VectorPulse.tsx` (prop type + inline card render), `VectorTechnicalsPanel.tsx` (prop type + render). Zero changes to `summarizeTechnicals`'s numerics, any other Vector Pulse intel card (Gamma Magnet, Wall Integrity, Confluence, Expected Move, Alerts, SPX Playbook), or the SPX engine's separate technicals rendering (SPX uses its own `spx-play-terminal-lines.ts`, untouched). |
 | **Fix rationale** | Derived tone from the existing typed `TechnicalsSummary` fields rather than regex-matching the formatted display text, so tone can never drift out of sync with the numbers the text itself reports, and so a future wording change to the text can't silently break the coloring. Colored RSI's overbought/oversold as `warn` (amber) rather than bull/bear — unlike EMA-stack/MACD/structure (which are genuinely directional reads), an extended RSI is a caution about either direction, not itself a trade call, so coloring it bull or bear would overstate what the indicator actually says. Kept the plain-string `technicalsCallouts` export rather than deleting it, even though nothing in this repo still calls it directly after this change, in case an external caller (e.g. a future BIE/Largo text summary) wants text without tone. |
-| **Status** | BUILT AND VERIFIED. PR pending → CI → auto-merge per standing policy. |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `technicalsCallouts`). Restamped from a mid-flight status that was never revisited. |
 
 ## 2026-08-06 — [enhancement, member request] Vector GEX ladder — wall-migration arrows
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -8801,9 +9204,10 @@ actually `import`ed/called from the live cron route (not orphaned); re-ran the t
 | **Evidence** | `node --import tsx --experimental-test-module-mocks --test src/features/vector/lib/vector-gex-ladder.test.ts`: 17/17 pass (11 pre-existing unchanged + 6 new: no-shiftByStrike → all-null, call-wall-builds, put-wall-builds-on-more-negative-delta [the side-aware regression the naive raw-delta convention would get backwards], put-wall-fades, absent-strike → null not fabricated). `route.test.ts`: 16/16 pass (1 new: asserts the route actually threads `hm.shift.delta_by_strike` into `buildGexLadder`'s opts via a capturing mock, not just that it compiles). Full Vector suite: 599/599 pass. `npx tsc --noEmit -p .`: clean (caught and fixed one fallout — `vector-full-state-fixture.ts`'s hand-written `GexLadderRow` literals needed the new required field). `npx eslint` on all touched files: 0 errors. `rm -rf .next && npm run build`: clean production build. |
 | **Blast radius** | Modified: `vector-gex-ladder.ts` (+`migration` field, +`shiftByStrike` opt, +`wallStrengthShift` import), `vector-gex-ladder.test.ts` (+6 tests), `gex-ladder/route.ts` (thread `hm.shift.delta_by_strike` on the "all" branch), `route.test.ts` (+1 test, mock upgraded to capture `buildGexLadder`'s call opts), `VectorGexLadder.tsx` (render the badge, always-present empty slot), `globals.css` (+4th grid column, +migration badge classes), `vector-full-state-fixture.ts` (added `migration: null` to the four hand-written fixture rows — compile-time fallout of the new required field, not a behavior change). Zero changes to the ladder's existing band/cap/king-crowning logic, the shift-leaders strip, or any other Vector panel. |
 | **Fix rationale** | Reused the exact same `wallStrengthShift` helper the shift-leaders strip already depends on (via `gex-shift-leaders.ts`) rather than re-deriving migration math for the ladder — one shared, already-tested definition of "built vs faded" across both surfaces, so they can never quietly disagree on what "building" means. Only wired the "all" horizon (the default view): the narrowed-DTE horizons reconstruct their ladder fresh from the option chain each poll and have no snapshot history to diff against, so fabricating a migration reading there would be worse than omitting one. Set a 1% noise floor on the badge display (row still carries the raw `migration` value) so the panel doesn't clutter every strike with a flickering ±0.1% arrow from float noise. |
-| **Status** | BUILT AND VERIFIED. PR pending → CI → auto-merge per standing policy. |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by direct inspection (`vector-gex-ladder.ts:36` carries `migration: { pct: number; built: boolean } | null`). Restamped from a mid-flight status that was never revisited. |
 
 ## 2026-08-06 — [P0, member-authorized] Swing engine: graduation gate removed from the commit path (evidence-only, matches 0DTE)
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -8813,9 +9217,10 @@ actually `import`ed/called from the live cron route (not orphaned); re-ran the t
 | **Evidence** | `node --import tsx --experimental-test-module-mocks --test "src/lib/swing/**/*.test.ts"`: 416/416 pass (rewrote 2 tests in `commit.test.ts` that asserted the old cold-book block to instead prove the candidate now commits; added a null-report test proving day-one trading with zero graded history; fixed the `executeSwingCommits` test whose "ungraduated → skipped" AMD fixture now genuinely commits, replaced with a real no-contract block to keep the skip-path meaningful, plus a new dedicated test proving an ungraduated name opens via the executor; flipped 1 test each in `serving.test.ts`, `serving-lane.test.ts`, `discovery.test.ts` that asserted `bucketGraduated: false` → WAITING_FOR_ENTRY/no-open). Broader sweep (swing + horizon + swing cron/admin routes): 482/482 pass. `npx tsc --noEmit -p .`: clean. `npx eslint` on all seven touched files: 0 errors. `rm -rf .next && npm run build`: clean production build. |
 | **Blast radius** | Modified: `commit.ts` (gate removal + doc rewrite + `graduated` now real in the persisted ledger row, not hardcoded), `commit.test.ts` (+2 new tests, 3 flipped), `serving.ts` (COMMIT_NOW routing + doc rewrite), `serving.test.ts` (1 flipped), `serving-lane.test.ts` (1 flipped), `discovery.ts` (comments only — no behavior change beyond what commit.ts/serving.ts already carry), `discovery.test.ts` (1 flipped, renamed 1). Zero changes to: the calibration ladder's own math (`calibration.ts`, `analyzeSwingCalibration`, `isCommitGraduated` — still fully intact and still computed on every scan), the armed-budget/book-cap/idempotency gates (`swing-portfolio-budget.ts`, `swing-allocation.ts` — completely unweakened), discovery/scoring/serving upstream of the commit gate, or any other product (0DTE, LEAPS, Legacy). |
 | **Fix rationale — this was NOT a unilateral engineering call** | This gate removal was explicitly requested and confirmed by the member after being shown the exact tradeoff twice: first choosing to keep the gate ("Keep the gate as-is (Recommended)"), then — after seeing that choice meant no opens tomorrow regardless of any other bug fix — explicitly reversing that decision ("Remove the fucking graduation bucket or watch thing .. if we have the logic and everything right why do we need to do shadow trades" / "Make swings work .. we need open plays tomorrow" / "Just make it work how the 0dte plays work .. like having open plays"). The member was told plainly, before this change, that the existing tiny graded sample reads 0 wins / 2 losses and that this removes a real-money safety mechanism, not just a display bug — they chose to proceed anyway, explicitly modeling the fix on 0DTE's own evidence-only calibration precedent already shipped in this codebase. The three real-time risk gates (budget/caps/idempotency) were deliberately left fully intact — the member's ask and this fix's scope was "stop requiring the engine to prove itself before it can trade," not "remove risk controls," and those three continue to bound per-trade, per-theme, and total portfolio exposure exactly as before. |
-| **Status** | BUILT AND VERIFIED. PR pending → CI → auto-merge per standing policy. Monitor closely: the next `swing-discovery` cron fire (post-close today / pre-open tomorrow) should open the currently-visible WATCH/COMMIT candidates (CRWV, SKHY, GOOGL, RDDT and any new ones) as real positions for the first time. |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `isCommitGraduated`, `analyzeSwingCalibration`, `sectionForSwingPlay`). Restamped from a mid-flight status that was never revisited. |
 
 ## 2026-08-06 — [P2, follow-up] Legacy→Swing handoff plan levels reuse overnight thesis geometry — likely driving target_unreachable/unfilled failure modes
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -8828,6 +9233,7 @@ actually `import`ed/called from the live cron route (not orphaned); re-ran the t
 | **Status** | BUILT AND VERIFIED. |
 
 ## 2026-08-06 — [enhancement, member-authorized] Swing engine: shadow-position tracking for risk-gate-blocked candidates
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -8841,6 +9247,7 @@ actually `import`ed/called from the live cron route (not orphaned); re-ran the t
 | **Status** | BUILT AND VERIFIED (insertion + admin visibility). Follow-up scoped, not yet built: active-refresh grading loop for shadow rows + member-facing shadow section. |
 
 ## 2026-08-06 — [P0, real-money-wrong] Swing roll executor could ROLL a position past the −60% capital-preservation backstop instead of closing it
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -8850,9 +9257,10 @@ actually `import`ed/called from the live cron route (not orphaned); re-ran the t
 | **Evidence** | `npx tsx --test src/lib/swing/roll.test.ts`: 17/17 pass (1 new: `premium_stop` rung with `rollIntent.roll: true` now asserts CLOSE, proving the repro is fixed). `npx tsc --noEmit -p .`: clean. |
 | **Blast radius** | Modified: `roll.ts` (`decideRollAction`, +1 branch), `roll.test.ts` (+1 test). Zero changes to `manage.ts`'s rung/rollIntent computation, the transactional roll executor's all-or-nothing guarantees, or the `expiry_risk`/edge-rung paths. |
 | **Fix rationale** | Extending the existing thesis-break special-case pattern (rather than inverting the whole function to a default-CLOSE with an allowlist of roll-eligible rungs) keeps the change minimal and mirrors the file's own stated design language ("a gating rung with NO valid-thesis roll maps to CLOSE... a gating rung WITH a valid-thesis roll maps to ROLL") — `premium_stop` is simply added as a rung where a roll is never appropriate regardless of thesis validity, since it is a capital-preservation floor, not a thesis-timing judgment. |
-| **Status** | BUILT AND VERIFIED. PR pending → CI → auto-merge per standing policy. |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `decideRollAction`, `expiry_risk`). Restamped from a mid-flight status that was never revisited. |
 
 ## 2026-08-06 — Swing engine A-to-Z audit: remaining findings (P1/P2/P3, not yet fixed)
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -8864,6 +9272,7 @@ actually `import`ed/called from the live cron route (not orphaned); re-ran the t
 | **Status** | P1/P2/P3 DOCUMENTED, NOT YET BUILT — triaged and prioritized as follow-ups behind the P0 fix above. |
 
 ## 2026-08-06 — [enhancement, member request] Legacy play card: exact invalidated copy + clickable "moved to Swings Open" link
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -8874,9 +9283,10 @@ actually `import`ed/called from the live cron route (not orphaned); re-ran the t
 | **Evidence** | `adapters.test.ts`: 115/115 pass (4 new: INVALIDATED+pulled=true together still shows the exact required copy not the generic pulled fallback [the exact repro of gap #1]; CONFIRMED+swing_promoted → `swingPromoted:true` and the required recNote text; CONFIRMED without promotion → `swingPromoted:false` and the generic confirmed text, proving CONFIRMED alone doesn't imply promoted). Full nighthawk+swing+cron sweep: 1450/1450 pass. `npx tsc --noEmit -p .`: clean. `npx eslint` on all ten touched/new files: 0 new errors (2 pre-existing unrelated warnings in `containers.tsx`). |
 | **Blast radius** | New: `goto-swing.ts`. Modified: `adapters.ts` (branch reorder + `swing_promoted` field + `swingPromoted` on the returned play), `adapters.test.ts` (+4 tests), `types.ts` (+`swingPromoted` on `TerminalPlay`), `legacy-confirm-promote.ts` (+`promotedTickers` on the return type, 3 return sites updated), `morning-confirm-verdict.ts` (+`swingPromoted` on `PlayStatus`), `nighthawk-morning-confirm/route.ts` (in-place stamp after the promotion call), `containers.tsx` (`confirmByTicker` value type + one new field threaded through), `PlayTerminal.tsx` (+clickable link + import), `CommandDeck.tsx` (+`focusTicker` prop + selection effect), `NightHawkFeed.tsx` (+event listener + `swingFocusTicker` state). Zero changes to any 0DTE/LEAPS/Banger rendering path, the morning-confirm verdict computation itself, or `promoteLegacyConfirmedToSwing`'s actual promotion logic (only its return shape gained a field). |
 | **Fix rationale** | Used a DOM CustomEvent for the cross-deck navigation rather than lifting `view`/`focusTicker` state into a shared context or prop-drilling a callback through 3 intermediate components (CommandDeck, PlayTerminal, ThesisPanel) that have no other reason to know about view-switching — the event is a narrow, one-directional signal ("go here") that doesn't need to flow back up. Chose to derive promotion success from a real per-ticker return value (`promotedTickers`) rather than inferring it client-side by checking the Swing serving snapshot for `signalKinds: ["NIGHT HAWK"]` membership — the server already computes the true per-ticker outcome once; re-deriving it from a second data source client-side would be a duplicate (and potentially divergent) source of truth for the same fact. Kept the severe-DEGRADED-pull case's own `pulled_reason` text unchanged — that's a genuinely different root cause (conditions shifted, not "screening invalidated the thesis") and conflating the two copy strings would misinform a member about why their play was pulled. |
-| **Status** | BUILT AND VERIFIED. PR pending → CI → auto-merge per standing policy. |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `thesisBreak`, `recNote`, `promoteLegacyConfirmedToSwing`). Restamped from a mid-flight status that was never revisited. |
 
 ## 2026-08-06 — Swing engine A-to-Z audit follow-through: P1/P2/P3 fixed (all findings now resolved)
+> **kind:** `FINDING`
 
 Continuation of the 2026-08-06 A-to-Z audit ("Keep going fix all"). All three remaining findings
 (P1 roll-book staleness, P2 undifferentiated serving-section UI, P3 chain-composite premature-win
@@ -8916,6 +9326,7 @@ timing) are now fixed, tested, and verified — nothing from that audit is still
 | **Status** | BUILT AND VERIFIED. |
 
 ## 2026-08-06 — [P0/P1, real-money-adjacent] 0DTE AS-MANAGED grading: a degenerate trim_scale reconstruction silently buried real, better/differently-bad live exits
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -8929,9 +9340,10 @@ timing) are now fixed, tested, and verified — nothing from that audit is still
 | **Blast radius** | Modified: `record.ts` (`managedGradeView` restructured, +`reconstructionShowsGenuinePartialBank`, +`reconstructedGradeView` helper), `record.test.ts` (+3 tests). Zero changes to `plan.ts`'s reconstruction math itself, `scan.ts`'s grading pipeline (the WS-10/WS-11 reconciliation telemetry there will now correctly report a non-zero `grade_vs_asmanaged_delta` for affected rows going forward — that's the metric doing its job, not a regression), or any calibration/graduation gate. |
 | **Not fixed in this pass — separate, larger question** | Whether `reconstructTrimScaleExecutableFromBars` should ALSO implement the shared ratchet profit floor (deterministic from price bars alone — unlike the thesis-break veto, which needs live-only data) so the reconstruction itself is more accurate, independent of whether a live exit stamp exists. Scoped out: a change to the reconstruction's core math is higher blast-radius (touches the WS-10/WS-11 grading pipeline broadly, used across every trim_scale row) than this precedence fix, which fully resolves the observed member-facing symptom without touching that math. |
 | **"Why fewer plays" — UNRESOLVED** | Investigated separately; could not determine from this sandbox whether 2026-08-05's low commit count (3, vs 6–15 on adjacent sessions) was a legitimately quiet discovery day or a gate/governor issue — the discovery funnel/gate-rejection trace for a PAST session isn't retrievable after the fact from here (no queryable historical rejection log). Would need either a persisted funnel snapshot or live observation during a future session. |
-| **Status** | BUILT AND VERIFIED. PR pending → CI → auto-merge per standing policy. |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `tranches`, `managedGradeView`). Restamped from a mid-flight status that was never revisited. |
 
 ## 2026-08-06 — [P0, real-money-adjacent] 0DTE→Day-Trade discovery-ceiling widening (dte≤1→dte≤4) + mandatory Swing dual-admission fix
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -8947,9 +9359,10 @@ timing) are now fixed, tested, and verified — nothing from that audit is still
 | **Evidence (tests)** | `horizons.test.ts`: 9/9 pass. `board.test.ts`: 109/109 pass (2 tests updated for the dte 0-4/5+ boundary, 1 new dte-4/dte-5 flow-tape case added). `taxonomy.test.ts`: 6/6 pass (boundary tests updated for the [5,30] Swing window). `event-trigger.test.ts`: 6/6 pass (dte 4/5 boundary cases added). `gates.test.ts`: 16/16 pass (unaffected — its dynamic `spec.dteMin` read required no logic change). `breakout-source.test.ts`: 16/16 pass (dte 2/4/5/7 boundary cases added to both the raw picker and fallback-wrapper tests). `breakout-discovery.test.ts`: 11/11 pass (no changes needed — walk-until-built behavior unaffected). `scan-trigger.test.ts`: 6/6 pass (dte 2-4/5 boundary cases added). `pin-source.test.ts`: 9/9 pass (dte 2/4/5 boundary cases added). `strategy-version.test.ts`: 11/11 pass (no literal-version assertions existed to update). `dual-lane-overlap.test.ts` (new): 2/2 pass — the direct cross-engine regression proof. |
 | **Blast radius** | New: `dual-lane-overlap.test.ts`. Modified: `horizons.ts` + `.test.ts`, `board.ts` + `.test.ts`, `breakout-source.ts` + `.test.ts`, `breakout-discovery.ts`, `pin-source.ts` + `.test.ts`, `scan-trigger.ts` + `.test.ts`, `swing/taxonomy.ts` + `.test.ts`, `swing/event-trigger.ts` + `.test.ts`, `swing/gates.ts` (comment only), `strategy-version.ts`, `docs/audit/0DTE-DESIGN-DECISIONS.md` (Q2 marked resolved). Explicitly verified NOT to need changes: `flow-persist.ts` (dte≤1 discount floor stays scoped to genuine 0DTE only), `swing/gates.ts`'s actual gating logic (already dynamic), `pin-discovery.ts` (calls `pickAtmPinContract` with no explicit `maxDte`, so it picks up the new default automatically). |
 | **Fix rationale** | Sourced the ceiling from ONE file (`horizons.ts`) with every consumer importing it, rather than bumping five independent hardcoded `1`s to `4`s in place — this is the direct structural fix for the exact failure class that caused this bug (independent copies of the same boundary silently drifting apart). Chose the fallback-preserving ternary over collapsing `breakout-source.ts`'s two-phase pick, specifically to avoid silently disabling a live operator toggle. Chose to widen `scan-trigger.ts` in lockstep rather than leaving it for a later PR, since shipping the wider discovery ceiling without the matching fast-path would have left the exact target population (Mon–Wed weekly-only names) reacting slower than the population already covered. Used a multi-agent design→judge→synthesize→adversarial-review workflow (rather than a single linear design pass) specifically because the stakes warranted it — the adversarial review step demonstrably earned its cost, independently catching a real, severe, would-have-shipped bug (Swing dual-admission) that both the original synthesized design AND a manual second read had missed. |
-| **Status** | BUILT AND VERIFIED (Phase 1 of 4; Phases 2–4 are evidence-gated follow-ups, not yet started). PR pending → CI → auto-merge per standing policy. |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `SETUP_MAX_DTE`, `pickAtmZeroDteContract`, `pickBreakoutContractWithFallback`). Restamped from a mid-flight status that was never revisited. |
 
 ## 2026-08-06 — [P1, NOT FIXED — flagged, architecturally significant] Legacy→Swing promotion path admits dte<5 contracts, reopening the dual-admission gap for a SECOND code path
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -8962,6 +9375,7 @@ timing) are now fixed, tested, and verified — nothing from that audit is still
 | **Status** | FLAGGED, NOT FIXED. Live bug, confirmed via direct API pull + code read; reported to operator. |
 
 ## 2026-08-06 — [P2, SUSPECTED — insufficient DB access to confirm root cause] Two live OPEN swing positions show `last_mark`/peak/trough stuck null ~4.5h into RTH despite Polygon confirming a live quote on the exact held contract
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -8978,6 +9392,8 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
 ## 2026-08-06 — [P1, Night Hawk LEGACY] The 0% win rate is REAL, the 3.5× gate is NOT its cause, and the measurement layer is what is actually broken — PRESENTATION-ONLY recalibration (5 PRs, geometry PARKED)
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 | Field | Value |
 |-------|-------|
@@ -9127,6 +9543,7 @@ Each PR is an independent revert, no data migration, no geometry dependency. PR 
 ---
 
 ## 2026-08-04 — [P2, 0DTE, RESEARCH] G-8 anti-chase / G-9 illiquidity small-cap-conditioning probe
+> **kind:** `FINDING`
 — real evidence does NOT support loosening either gate for small-caps; NO gate change shipped
 
 | Field | Value |
@@ -9146,6 +9563,7 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
 ## 2026-08-06 — [P0, real-money-adjacent] 0DTE→Day-Trade discovery-ceiling widening (dte≤1→dte≤4) + mandatory Swing dual-admission fix
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -9161,7 +9579,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Evidence (tests)** | `horizons.test.ts`: 9/9 pass. `board.test.ts`: 109/109 pass (2 tests updated for the dte 0-4/5+ boundary, 1 new dte-4/dte-5 flow-tape case added). `taxonomy.test.ts`: 6/6 pass (boundary tests updated for the [5,30] Swing window). `event-trigger.test.ts`: 6/6 pass (dte 4/5 boundary cases added). `gates.test.ts`: 16/16 pass (unaffected — its dynamic `spec.dteMin` read required no logic change). `breakout-source.test.ts`: 16/16 pass (dte 2/4/5/7 boundary cases added to both the raw picker and fallback-wrapper tests). `breakout-discovery.test.ts`: 11/11 pass (no changes needed — walk-until-built behavior unaffected). `scan-trigger.test.ts`: 6/6 pass (dte 2-4/5 boundary cases added). `pin-source.test.ts`: 9/9 pass (dte 2/4/5 boundary cases added). `strategy-version.test.ts`: 11/11 pass (no literal-version assertions existed to update). `dual-lane-overlap.test.ts` (new): 2/2 pass — the direct cross-engine regression proof. |
 | **Blast radius** | New: `dual-lane-overlap.test.ts`. Modified: `horizons.ts` + `.test.ts`, `board.ts` + `.test.ts`, `breakout-source.ts` + `.test.ts`, `breakout-discovery.ts`, `pin-source.ts` + `.test.ts`, `scan-trigger.ts` + `.test.ts`, `swing/taxonomy.ts` + `.test.ts`, `swing/event-trigger.ts` + `.test.ts`, `swing/gates.ts` (comment only), `strategy-version.ts`, `docs/audit/0DTE-DESIGN-DECISIONS.md` (Q2 marked resolved). Explicitly verified NOT to need changes: `flow-persist.ts` (dte≤1 discount floor stays scoped to genuine 0DTE only), `swing/gates.ts`'s actual gating logic (already dynamic), `pin-discovery.ts` (calls `pickAtmPinContract` with no explicit `maxDte`, so it picks up the new default automatically). |
 | **Fix rationale** | Sourced the ceiling from ONE file (`horizons.ts`) with every consumer importing it, rather than bumping five independent hardcoded `1`s to `4`s in place — this is the direct structural fix for the exact failure class that caused this bug (independent copies of the same boundary silently drifting apart). Chose the fallback-preserving ternary over collapsing `breakout-source.ts`'s two-phase pick, specifically to avoid silently disabling a live operator toggle. Chose to widen `scan-trigger.ts` in lockstep rather than leaving it for a later PR, since shipping the wider discovery ceiling without the matching fast-path would have left the exact target population (Mon–Wed weekly-only names) reacting slower than the population already covered. Used a multi-agent design→judge→synthesize→adversarial-review workflow (rather than a single linear design pass) specifically because the stakes warranted it — the adversarial review step demonstrably earned its cost, independently catching a real, severe, would-have-shipped bug (Swing dual-admission) that both the original synthesized design AND a manual second read had missed. |
-| **Status** | BUILT AND VERIFIED (Phase 1 of 4; Phases 2–4 are evidence-gated follow-ups, not yet started). PR pending → CI → auto-merge per standing policy. |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `SETUP_MAX_DTE`, `pickAtmZeroDteContract`, `pickBreakoutContractWithFallback`). Restamped from a mid-flight status that was never revisited. |
 # FINDINGS — living issue log
 
 (Rebuilt 2026-07-13: the prior log was clobbered to an empty file by a squash-merge
@@ -9169,6 +9587,7 @@ conflict-resolution mishap. Historical entries live in git history — `git log 
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
 ## 2026-08-06 — [P3, tooling, audit harness auth] Temp Clerk user creation aborted the whole run on a PHONE-number collision (only e-mail collisions had a recovery path) — FIXED (fix/audit-temp-user-phone-collision)
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -9187,6 +9606,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 ---
 
 ## 2026-08-06 — [P0, ROOT CAUSE CONFIRMED + FIXED] `updateSwingLiveState` has ALWAYS thrown Postgres 42P08 — the swing live-state UPDATE never parsed, so `last_mark`/peak/trough were never written for ANY swing position (members saw "CURRENT +$0.00" on live-money positions)
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -9202,4 +9622,4 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Why safe to ship during RTH** | The manager does not read the columns this UPDATE writes — `manage-sync.ts:279` passes `lastMark: numOrNull(reads.mark)`, the FRESH quote — so the per-tick verdict is identical before and after. `peak_premium` is read only at `scale-out.ts:181` inside the `scaledAlready === true` branch (dead input while false). The four rungs that can close/roll (`roll.ts:128` GATING_RUNGS) run off `reads`, not the row. The single coupling is status → TRIM → `scaledAlready`, and TRIM can only latch when the profit ladder fires TAKE_PARTIAL at mark ≥ 2.0× entry — neither open position is near that, so status can only move OPEN → HOLD today. Known cost: peak/trough/MFE/MAE seed from the CURRENT mid-session mark rather than the true session peak, so today's two rows carry a truncated excursion window into the multi-truth grader — strictly better than all-NULL, but not a clean session. |
 | **Tests (both FAIL without the fix — verified by reverting)** | `src/lib/db-swing-ledger.test.ts`: (a) a **Postgres-backed EXECUTION test** that builds `swing_positions` from db.ts's own DDL, extracts db.ts's own UPDATE text, and runs it through node-pg's extended protocol with the production tuple, asserting the marks land AND that the ratchets/status ladder are unchanged — reverting the cast reproduces `code: '42P08'`. It reads `SWING_TEST_DATABASE_URL` and SKIPS (never fails) when absent; `ci.yml` now runs a `postgres:16` service container so the gate is real in CI. A psql literal or an in-memory PG fake would NOT reproduce this — neither performs real extended-protocol param type inference. (b) a **structural invariant** test scanning every SQL template in db.ts for a param whose first occurrence is an untyped `IS [NOT] NULL`. NOTE: the first draft of that scanner passed on the BROKEN source — it counted db.ts's own prose mention of `$4` inside a SQL `--` comment as a coercion site. It now strips SQL comments and ignores NullTests quoted inside them, and asserts a minimum match count so it can't rot into a no-op. A purely static check here is exactly the trap that let this bug ship. `src/lib/swing/live-plays.test.ts`: a null `last_mark` must serve `contract.mid === null` (not entry), and a real mark must still pass through. |
 | **Post-deploy verification** | On the first tick after deploy expect `refreshed=2 errored=0` in `/ecs/blackout-production` and non-null `livePnlPct`/`peakPremium` on `GET /api/market/nighthawk/horizons?view=swings`. If `errored` is still non-zero, the new per-position `console.error` now carries the actual pg message. |
-| **Status** | **FIXED** — branch `fix/swing-live-state-42p08`, PR to `main`, auto-merge enabled per the standing merge authorization. |
+| **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by direct inspection (`src/lib/swing/live-plays.ts:133` reads `mid: mark`, not the pre-fix `mid: mark ?? entry`). Restamped from a mid-flight status that was never revisited. |

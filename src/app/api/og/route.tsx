@@ -3,6 +3,8 @@ import type { NextRequest } from "next/server";
 
 export const runtime = "edge";
 
+import { truncateOgTitle } from "@/lib/seo/og-title";
+
 /** Map article type slugs to human-readable category labels. */
 const TYPE_LABELS: Record<string, string> = {
   article: "Learn Academy",
@@ -13,7 +15,12 @@ const TYPE_LABELS: Record<string, string> = {
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
 
-  const title = searchParams.get("title") ?? "BlackOut Trades";
+  // `/api/og` is a public, directly-fetchable endpoint (?title=...) with no server-side
+  // validation elsewhere — every current caller (publicPageMetadata) keeps titles short, but the
+  // route itself must not trust that. An unbounded title has no truncation/overflow guard (unlike
+  // `description` below), so a very long or unbroken-string value can overflow the 1200x630
+  // canvas past the bottom branding bar, or risk a slow/pathological Satori render.
+  const title = truncateOgTitle(searchParams.get("title") ?? "BlackOut Trades");
   // Support both "description" (new) and "subtitle" (legacy) params.
   const description =
     searchParams.get("description") ??
