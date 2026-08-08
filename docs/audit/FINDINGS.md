@@ -64,6 +64,15 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Why this matters here specifically** | Not a hypothetical: `next.config.mjs` (lines 65-69, 153-166) documents a real prior incident where a Cloudflare edge-cache rule served a cached response with the wrong auth state to the wrong users. Given that history, relying purely on the automatic HTTP 404 status code — with no defense-in-depth meta tag — for a page a misconfigured cache rule could theoretically serve out of context is a concrete gap, not paranoia. |
 | **Fix** | Added `robots: { index: false, follow: false }` to `not-found.tsx`'s `metadata` export. |
 | **Verification** | Added `src/app/not-found.test.ts` asserting the exported metadata carries the noindex directive. `npx tsx --test src/app/not-found.test.ts` — pass. `npx tsc --noEmit` — clean. |
+## 2026-08-08 - [P2, SEO] `best-0dte-trading-strategies` meta description was 173 chars — truncates mid-sentence in SERPs — FIXED + regression guard added for all articles/guides
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P2. `src/lib/learn/articles.ts:2613-2614` — the `best-0dte-trading-strategies` article's `metaDescription` was 173 characters. Google's SERP snippet truncates around ~155-160 characters, so this one would get cut off mid-sentence in search results. All other 44 articles range 141-158 chars — this was the one outlier. |
+| **Fix** | Rewrote the description to keep the same substantive content (gamma-wall fades, momentum below the flip, condors in range regimes, sizing) in 157 characters — verified with a length check before committing, not just eyeballed. |
+| **Blast radius** | Checked every other article (`LEARN_ARTICLES`) and all 7 curriculum guides (`GUIDE_SEO`) for the same overflow — confirmed this was the only current violation in either set. |
+| **Regression guard** | Added a test to the existing `articles.test.ts` (which already enforces link-graph health for this exact file) asserting no article's `metaDescription` exceeds 160 chars, and a new `guide-seo.test.ts` with the equivalent check for the 7 guides — so a future article/guide can't silently regress past the SERP truncation point the way this one did. |
+| **Verification** | `npx tsx --test src/lib/learn/articles.test.ts src/lib/learn/guide-seo.test.ts` — 7/7 pass. `npx tsc --noEmit` / `npx eslint` — clean. |
 
 ## 2026-08-08 - [P3, PERFORMANCE] Next.js's default image breakpoint ladder has a 384→640 gap — the hero logo (and any similarly-sized `fill` image) got rounded up to 640 when 480/576 would do — FIXED
 

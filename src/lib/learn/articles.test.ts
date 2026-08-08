@@ -137,3 +137,19 @@ describe("learn articles — internal link graph", () => {
     );
   });
 });
+
+describe("learn articles — meta description length", () => {
+  // Google truncates SERP snippets around ~155-160 chars. 2026-08-08 audit found
+  // best-0dte-trading-strategies at 173 chars (would cut off mid-sentence); this guards
+  // against any future article regressing the same way.
+  it("no article metaDescription exceeds 160 characters", () => {
+    const violations = LEARN_ARTICLES.filter((a) => a.metaDescription.length > 160).map(
+      (a) => `${a.slug}: ${a.metaDescription.length} chars`
+    );
+    assert.equal(
+      violations.length,
+      0,
+      `Articles with metaDescription over 160 chars (will truncate in SERPs):\n  ${violations.join("\n  ")}`
+    );
+  });
+});
