@@ -80,11 +80,18 @@ test("the UNRECONCILED backlog is not silently growing", () => {
   //               `RULED OUT on all six desk routes` — read as no outcome at all. 14 entries. The
   //               15th, `— FIXED (draft PR, HOLD)`, is deliberately NOT auto-read (see
   //               HEADING_NOT_AN_OUTCOME) and was stamped by hand against the tree.
+  //    43 -> 32   the last mechanically-resolvable group, done BY HAND because each entry needed a
+  //               judgement no regex should make: 9 entries cite PRs that findings-resolve-prs.mjs
+  //               deliberately will not match (its PR_CONTEXT exists so `React #418` can never be
+  //               read as a pull request), and 2 cron entries turned out to be working as intended
+  //               under an operator standing order already recorded further down this same file.
+  //               Every citation was checked against the GitHub API individually — including the
+  //               full 16-PR SWING chain, and #1287/#1277, which return 404 and are not PRs at all.
   // Raising it to accommodate a new unreconciled entry is not one of the options.
   const n = (readFileSync(FINDINGS, "utf8").match(/`UNRECONCILED`/g) ?? []).length;
   assert.ok(
-    n <= 43,
-    `UNRECONCILED count rose to ${n} (ceiling 43) — new entries must carry a real status, not UNRECONCILED`
+    n <= 32,
+    `UNRECONCILED count rose to ${n} (ceiling 32) — new entries must carry a real status, not UNRECONCILED`
   );
 });
 
