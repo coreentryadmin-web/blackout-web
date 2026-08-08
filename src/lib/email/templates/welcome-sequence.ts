@@ -189,7 +189,12 @@ export const WELCOME_SEQUENCE: WelcomeEmailStep[] = [
         p(
           `Then we let the trade breathe. Win. Loss. Breakeven — doesn't matter. It goes in the log right next to the grade it was born with, not the grade we'd wish for after the fact. A setup that stops out sits in the exact same record as one that rips clean. Nothing gets buried. Nothing gets scrubbed. Nothing gets quietly rebranded as "a lesson."`
         ) +
-        emailScreenshot(nightHawkShot, "Live Night Hawk plays — graded, wins and losses both, on the record") +
+        // Alt text must describe what the image ACTUALLY contains. It previously read "wins and
+        // losses both" while the asset showed two red rows and no winner — wrong in both
+        // directions at once. The asset is now four real closed/held winners, so the alt says so.
+        // The loss-transparency claim lives in the copy and on the record page, which is where a
+        // reader can actually verify it; it is not something a single board screenshot can prove.
+        emailScreenshot(nightHawkShot, "Live Night Hawk 0DTE board — real graded plays with their entry, exit logic and result") +
         p("That's not a tagline — that's the whole build. No revision history, no highlight reel, no do-overs. Go pull up the receipts and see how that holds up against the way everyone else keeps score.") +
         emailCta(`${SITE.url}/vs/others`, "See How We Stack Up") +
         closing("Trade the grade, not the narrative. — The BlackOut Trades Desk");
