@@ -61,7 +61,7 @@ export const GUIDE_SEO: Record<LearnSlug, GuideSeo> = {
   glossary: {
     metaTitle: "Options Trading Glossary — Gamma, 0DTE, Flow Terms",
     metaDescription:
-      "A plain-English glossary of options trading terms: dealer gamma, 0DTE, GEX, gamma flip, call wall, put wall, order flow, and more, explained simply.",
+      "BlackOut platform glossary: dealer Greeks (CHARM, DEX, VEX), King node, gamma flip, call/put walls, and Night Hawk and SPX Slayer terms explained simply.",
     datePublished: "2026-01-15",
     dateModified: "2026-08-01",
     breadcrumb: "Glossary",
