@@ -19,12 +19,18 @@ itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the headin
 else, and they are among the best-documented in the file — each was written by the PR that shipped
 its own fix.
 
-`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown — either no outcome was
-ever recorded in either place, or one was written mid-flight ("PR pending", "auto-merge enabled")
-and never revisited. **240 entries carry it**: 164 with no status at all, 48 with a stale one, and
-the remainder OPS-NOTE / NEGATIVE-RESULT entries that never got one. Each needs checking against
-git history and restamping as `FIXED (<sha>)` / `OPEN` / `SUPERSEDED BY <entry>`. That is the
-outstanding work on this file.
+`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown because no outcome was
+ever recorded in either place. **210 entries carry it**: 164 FINDINGs plus OPS-NOTE /
+NEGATIVE-RESULT entries that never got a status. Each needs checking against the code and
+restamping as `FIXED (<sha>)` / `OPEN` / `SUPERSEDED BY <entry>`. That is the outstanding work on
+this file, and `src/findings-hygiene.test.ts` pins the count so it can only go down.
+
+The other flavour of UNRECONCILED — a status written mid-flight ("PR pending → CI → auto-merge")
+and never revisited — is **gone: 50 entries, now 0**. All 50 were resolved against the tree by
+`scripts/audit/findings-verify-stale.mjs`, which looks for the identifiers each entry's own **Fix**
+field claims to have introduced. Do not reintroduce that shape: a status describing what you are
+about to do is not a status, and it cost this repo a phantom backlog item (see
+`BACKLOG-2026-08-08.md` §1.2).
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
