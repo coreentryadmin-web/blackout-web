@@ -19,23 +19,27 @@ itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the headin
 else, and they are among the best-documented in the file — each was written by the PR that shipped
 its own fix.
 
-`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown because no outcome was
-ever recorded in either place. **210 entries carry it**: 164 FINDINGs plus OPS-NOTE /
-NEGATIVE-RESULT entries that never got a status. Each needs checking against the code and
-restamping as `FIXED (<sha>)` / `OPEN` / `SUPERSEDED BY <entry>`. That is the outstanding work on
-this file, and `src/findings-hygiene.test.ts` pins the count so it can only go down.
+`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown. **71 entries carry
+it** — down from 351 at the start, worked off with evidence, never by relabelling:
 
-The other flavour of UNRECONCILED — a status written mid-flight ("PR pending → CI → auto-merge")
-and never revisited — is **gone: 50 entries, now 0**. All 50 were resolved against the tree by
-`scripts/audit/findings-verify-stale.mjs`, which looks for the identifiers each entry's own **Fix**
-field claims to have introduced. Do not reintroduce that shape: a status describing what you are
-about to do is not a status, and it cost this repo a phantom backlog item (see
-`BACKLOG-2026-08-08.md` §1.2).
+| step | how |
+|---|---|
+| 351 → 273 | pass logs moved to `RUN-LOG.md`; every entry tagged with a `kind` |
+| 273 → 240 | 34 entries record the outcome in the HEADING (`## … — FIXED`), which the reader was missing |
+| 240 → 194 | 50 mid-flight "PR pending → CI →" statuses resolved against the tree (`findings-verify-stale.mjs`) |
+| 194 → 129 | 65 entries cite a PR the GitHub API confirms MERGED (`findings-resolve-prs.mjs`) |
+| 129 → 71  | 76 entries record the outcome as PROSE (`**Status.** FIXED on …`) — a third format the reader was missing |
+
+Three of those five steps were reader bugs, not backlog: the file recorded an outcome in a shape
+the tool did not read. **If a large batch looks unreconciled, suspect the reader before the data.**
+
+Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so ~14 entries whose
+PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
 ## 2026-08-08 — [OPS-NOTE, SEO] 6 new `/learn` articles added, closing real content gaps identified by taxonomy analysis (not GSC query data — too thin at this site age) — ADDED
-> **kind:** `OPS-NOTE`
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
@@ -858,7 +862,6 @@ Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
 ## 2026-08-06 — [ops] vector-bead-record RTH-stale missing EventBridge + no leader heartbeat (#1785)
 > **kind:** `OPS-NOTE`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 — Vector bead backup cron flagged `market_hours_stale` during RTH (ops-auto-fix #1785).
 
@@ -879,7 +882,6 @@ Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
 ## 2026-08-06 — [ops] vector-bead-record RTH-stale edge timeout (#1783)
 > **kind:** `OPS-NOTE`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 — Vector bead backup cron flagged `market_hours_stale` during RTH.
 
@@ -1155,7 +1157,7 @@ with console-only completion logging. Regression test:
 
 ## 2026-08-04 — [0DTE] Architecture V2 Phase 2a: discovery event persist + BREAKOUT 1DTE fallback — IN PROGRESS
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
+> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
 
 **Severity.** MEDIUM — closes the event-sourcing loop started in Phase 1; improves BREAKOUT chain-walk observability.
 
@@ -1167,7 +1169,7 @@ with console-only completion logging. Regression test:
 
 ## 2026-08-04 — [0DTE] Architecture V2 Phase 2b: board market_state chip + admin funnel — IN PROGRESS
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
+> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
 
 **Fix.** `ZeroDteBoardPayload.market_state`; `MarketStateStrip` on Command deck; `GET /api/admin/zerodte/funnel`; Admin BIE discovery funnel DeckPanel.
 
@@ -1175,7 +1177,6 @@ with console-only completion logging. Regression test:
 
 ## 2026-08-03 — [ops,nighthawk] Edition stuck at stage_synthesis checkpoint — FIXED (ops-auto-fix #1572)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 — Night Hawk edition `2026-08-04` not published; `job_status=stage_scoring` / `current_stage=stage_synthesis`.
 
@@ -1189,7 +1190,6 @@ with console-only completion logging. Regression test:
 
 ## 2026-08-03 — [ops] spx-signal-weight-optimize off-window stale false positive (#1550)
 > **kind:** `OPS-NOTE`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 ops false positive — not a prod outage.
 
@@ -1244,7 +1244,7 @@ outgoing (3), no orphans, no broken links, and total link count >= 300.
 
 ## 2026-08-01 — [CTO perf audit] Multi-agent audit (8 domains, adversarially verified) — Vector/Nighthawk 1Hz full-tree re-renders fixed; 15 more findings ranked
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
+> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
 
 **Context.** User-requested exhaustive performance audit ("the entire website feels slow... I just
 need it faster"). Ran an 8-domain parallel audit (SSR payload, rendering, network/caching, bundle,
@@ -1323,7 +1323,7 @@ actually used, not silently ignored), and the no-prop fallback path still render
 
 ## 2026-08-01 — [Vector/SPX Slayer] SSR payload embedded up to 24h of prior-session wall history — 28-50MB HTML, 10-12s downloads
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
+> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
 
 **Severity.** P1 — perf/UX. Member-reported "the entire website feels slow"; traced to the highest-traffic
 authenticated surface (Vector standalone page + the SPX Slayer flagship dashboard embed).
@@ -1380,7 +1380,7 @@ input; no-op when the whole rail already belongs to the session). Full suite gre
 
 ## 2026-07-31 — [Grid/0DTE] Minimal board fallback hardcoded noon RTH heat post-close
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
+> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
 
 **Severity.** P1 — degraded `/api/market/zerodte/board` polls returned `heat=RTH` with empty setups/ledger after the bell while the real board (via Clerk/cron) showed `CLOSED` with 7 setups / 2 ledger rows.
 
@@ -1396,7 +1396,7 @@ input; no-op when the whole rail already belongs to the session). Full suite gre
 
 ## 2026-07-31 — [ops] socket-health false-fail when ingest WS heartbeat absent but REST live
 > **kind:** `OPS-NOTE`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
+> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
 
 **Severity.** P1 — `validate:rth-open` failed `options-socket` on every probe (~14:14–14:23 ET)
 while all member APIs GREEN (sweep 0 P0/P1, data-correctness flags=0, SPX matrix 169 strikes).
@@ -1416,7 +1416,7 @@ Unit tests in `socket-cluster-health.test.ts`.
 
 ## 2026-07-31 — [ops] ops-auto-fix #703 — transient watchdog HTTP 502 surfaced as P0
 > **kind:** `OPS-NOTE`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
+> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
 
 **Severity.** P1 — `ops-auto-fix` GHA collector reported P0 `watchdog:http` during a healthy
 prod session; blocked autonomous close loop on issue #703.
@@ -1457,7 +1457,7 @@ now includes 503.
 
 ## 2026-07-31 — [spx] E2E cross-tool desk spot 0 while matrix live (P2 harness)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
+> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
 
 **Severity.** P2 — `validate:spx-e2e` FAIL `integration:spx-cross-tool` on transient `desk spot 0` while heatmap held 7489.72 (cold desk cache edge, same class as SPX-RTH-XEP-01).
 
@@ -1484,7 +1484,6 @@ now includes 503.
 
 ## 2026-07-30 — [Grid/0DTE] grid-e2e Clerk phone collision on stale audit users
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 — `validate:grid-e2e` FAIL `e2e:auth` blocked post-close orchestrator when nested in `validate:grid-rth`.
 
@@ -1539,7 +1538,6 @@ now includes 503.
 
 ## 2026-07-30 — [spx] Cross-replica play-state divergence on parallel `/api/market/spx/play`
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 — members on different ECS replicas could see different grade/score/direction in the same second.
 
@@ -1553,7 +1551,6 @@ now includes 503.
 
 ## 2026-07-30 — [spx] E2E harness flakes on matrix tab hydration + Largo 504 + orchestrator timeout
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 — false FAILs in `validate:spx-e2e` / `validate:spx-rth` afternoon passes; member surfaces were GREEN (matrix oracle 172 strikes, play SCANNING).
 
@@ -1567,7 +1564,6 @@ now includes 503.
 
 ## 2026-07-30 — [spx] REST pulse cold path blocked 12s+ (single-flight + prior-day fetch)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 — SPX spot felt frozen when SSE dropped; REST fallback timed out at 12–60s.
 
@@ -1586,7 +1582,6 @@ SSE `/pulse/stream` GREEN @ 250ms. Bootstrap ~6.5s.
 
 ## 2026-07-30 — [0dte,gex] Board + heatmap still blocked past 3s cap under cold/inflight load
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 — 0DTE board 20–43s; SPX `/gex-heatmap` up to 57s; matrix UI empty/loading 45s+.
 
@@ -1603,7 +1598,6 @@ UI: `AbortSignal.timeout(10s)` + show cached matrix while `isLoading && !hasData
 
 ## 2026-07-30 — [vector,ops] Stream 400 without ticker + cold-deploy empty handoff
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P2 — Vector SSE probe 400; GEX lens E2E flake; first post-deploy polls empty ≤3s.
 
@@ -1649,7 +1643,6 @@ handshake (mirrors `vector-universe-snapshot` / `coaching-alerts`). Regression t
 
 ## 2026-07-30 — [ops] vector-full-state-snapshot RTH-stale edge timeout (#1355)
 > **kind:** `OPS-NOTE`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 — Vector full-state cache warmer silent during RTH.
 
@@ -1672,7 +1665,6 @@ stalling watchdog self-heal — applied the same `after()` handshake in
 
 ## 2026-07-30 — [ops] RTH cron edge timeouts → silent staleness (#1343)
 > **kind:** `OPS-NOTE`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 `coaching-alerts` + `uw-cache-refresh` RTH-stale; P1 `socket-health` failed/stale.
 
@@ -1698,7 +1690,6 @@ completion, `sockets_healthy` in meta. (3) `coaching-alerts` + `bie-full-state-s
 
 ## 2026-07-30 — [ops] zerodte-warm CF 504 on blocking board rebuild
 > **kind:** `OPS-NOTE`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 — cron handshake 504 every RTH probe; watchdog may mis-report failure.
 
@@ -1717,7 +1708,6 @@ timeouts bumped to 120s for zerodte/board + gex-heatmap cold paths.
 
 ## 2026-07-30 — [ops] Polygon REST 403 → UW spot/GEX fallback (#1337)
 > **kind:** `OPS-NOTE`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 `redis_gex` cold SPX + P1 `socket-health` failed during RTH after #1336 deploy.
 
@@ -1768,7 +1758,6 @@ true` on a web replica with `cluster_spx_updated_at: null`.
 
 ## 2026-07-30 — [ops] vector-universe-snapshot RTH-stale self-heal gap (#1333)
 > **kind:** `OPS-NOTE`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 ops — Vector scanner rail stops updating when the recorder cron goes stale during RTH.
 
@@ -1788,7 +1777,6 @@ cleared the P0; ops-collect went 0 items without a code deploy.
 
 ## 2026-07-30 — [Engine] zerodte-grade + swing-active-refresh schedule catalog gaps
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 — post-close 0DTE grading piggybacked on warm's 10-minute throttle; swing TACTICAL
 positions sampled hourly (premium_stop / structural_stop could miss intrahour moves).
@@ -1810,7 +1798,6 @@ swing cron repair).
 
 ## 2026-07-30 — [ops] zerodte-grade off-window stale false positive (#1331)
 > **kind:** `OPS-NOTE`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 ops false positive — not a prod outage.
 
@@ -1868,7 +1855,6 @@ stale live sections.
 
 ## 2026-07-30 — [Swing] EventBridge schedule catalog missing swing crons
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 — swing-discovery / swing-active-refresh never provisioned in EventBridge despite live
 routes (38/38 FailedInvocations 2026-07-29); empty SWING board.
@@ -1883,7 +1869,6 @@ blackout-infra sync-cron-schedules.mjs uses that map to create EventBridge rules
 
 ## 2026-07-30 — [Swing] Hourly manage is mark-and-review (not tactical live mgmt) + grader honesty labels
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 documentation / product-claim — overstated management precision + grader "truth".
 
@@ -1907,7 +1892,6 @@ minute), and financial is marked scale-out P&L. The pure grader already fail-sof
 
 ## 2026-07-30 — [Swing] COMMIT_NOW required graduation (cold-book "Act now" defect)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 product / risk-control — member "Act now" on setups the model will not open.
 
@@ -1924,7 +1908,6 @@ renames — desk vocabulary stays institutional; the gate is the honesty fix.
 
 ## 2026-07-30 — [Swing] Persistence keyed only by (ticker, direction) — false WATCH eligibility
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 / release-blocking — thesis flip inherited another archetype's session count.
 
@@ -1948,7 +1931,6 @@ applied at *read* time via `archetypeOf` on `fetchWatchEligible`.
 
 ## 2026-07-30 — [Swing] CTO follow-ups — feature vector, graduated rungs, serve reads, beta/IV, cron catalog
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 — management/serve/calibration seams left dormant after the 2026-07-29 CTO audit.
 
@@ -1972,7 +1954,7 @@ applied at *read* time via `archetypeOf` on `fetchWatchEligible`.
 
 ## 2026-07-29 — [Grid/0DTE] grid-e2e board HTTP 504 under orchestrator burst
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
+> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
 
 **Severity.** P1 — flaky `validate:grid-rth --phase=post-close` on `grid:dashboard-e2e` when nested
 `validate:grid-e2e` hits HTTP **504** on `/api/market/zerodte/board` after long orchestrator run.
@@ -2002,7 +1984,7 @@ in `auth-status.mjs` (also dedupes `audit-auth-fetch.mjs`).
 
 ## 2026-07-29 — [SPX] Post-close audit flake: ops:collect stderr mask + transient 502 on desk lanes
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
+> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
 
 **Severity.** P1 — blocked `validate:spx-rth --phase=post-close` despite member SPX surfaces GREEN.
 
@@ -2024,7 +2006,6 @@ in `auth-status.mjs` (also dedupes `audit-auth-fetch.mjs`).
 
 ## 2026-07-29 — [Swing] CTO audit — management gates null-wired + desk ignored sections
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 capital-path / P1 member UX — Swing engine looked “built” but premium_stop,
 structural_stop, time_stop, and mark-frozen rolls could never fire; desk flattened the 7-section triage.
@@ -2048,7 +2029,7 @@ archetype intended-DTE realign. Branch `cursor/swing-cto-audit-3d11`.
 
 ## 2026-07-29 — [Grid/0DTE] zerodte board HTTP 504 on aged snapshot cold-build
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
+> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
 
 
 **Severity.** P0 member path (Night Hawk `/api/market/zerodte/board`).
@@ -2097,7 +2078,6 @@ pages-truncated; flag subset only on complete oracle.
 
 ## 2026-07-29 — [Grid/0DTE] Post-close agent: contract-capped Massive oracle false FLAG + ops:collect stderr mask
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 — blocked `validate:grid-rth --phase=post-close` (13/13 → 13/14 FAIL on `ops:collect`).
 
@@ -2126,7 +2106,7 @@ Also unblocks `validate:spx-rth --phase=post-close` (matrix/desk/play/E2E were a
 
 ## 2026-07-29 — [ops] x-autopost cron STALE + SPY flow cross-check false FLAG (#1287)
 > **kind:** `OPS-NOTE`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
+> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
 
 **Severity.** P1 ops + P0 data-correctness (ops-auto-fix #1287, fingerprint `5ed63c855361`).
 
@@ -2150,7 +2130,7 @@ violation only (same direction + valid subset → independently confirmed).
 
 ## 2026-07-29 — [Thermal+Vector] Shared sticky universe (≤100 / 14d)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
+> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
 
 **Severity.** P2 product gap — Vector already sticky-recorded member-viewed names (cap 100,
 14d) while Thermal `heatmap-warm` only warmed the static ~21 allowlist. Opening NVDA on
@@ -2169,7 +2149,7 @@ overlays stay on the static allowlist (2 RPS). CORE SPY/SPX/QQQ still force-refr
 
 ## 2026-07-29 — [Thermal] Triple desk SPY/QQQ not refreshing every 5–10s
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
+> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
 
 
 **Severity.** P1 UX — compare desk felt stuck; SPX stayed ~5s while SPY/QQQ asof climbed
@@ -2187,7 +2167,7 @@ overlays stay on the static allowlist (2 RPS). CORE SPY/SPX/QQQ still force-refr
 
 ## 2026-07-29 — [Thermal] Triple desk opens scrolled to top of strike band (not spot)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
+> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
 
 **Severity.** P2 — on `/heatmap` compare desk, SPY|SPX|QQQ ladders painted with spot
 highlighted (`is-spot`) but `scrollTop` stayed at 0, so traders had to manually scroll
@@ -2204,7 +2184,7 @@ centers suppress cross-panel scroll-sync so each ladder maps to its own spot.
 
 ## 2026-07-29 — [ops] x-replies cron STALE (EventBridge DISABLED)
 > **kind:** `OPS-NOTE`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
+> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
 
 **Severity.** P1 ops (ops-auto-fix #1277).
 
@@ -2229,7 +2209,6 @@ page STALE; added X crons to `railway-cron-services.mjs` ops registry.
 
 ## 2026-07-30 — [ops] x-replies/x-growth cron STALE off-schedule (false positive)
 > **kind:** `OPS-NOTE`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 ops (ops-auto-fix #1312, fingerprint `b60c447e4c03`).
 
@@ -2254,7 +2233,6 @@ at 00:14 UTC; manual `GET /api/cron/x-replies?manual=1` cleared it; `x-growth` b
 
 ## 2026-07-30 — [ops] X marketing OFF — operator standing order (#1312)
 > **kind:** `OPS-NOTE`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 ops false positive — **not** a prod outage.
 
@@ -2272,7 +2250,6 @@ forced ECS redeploy for pause env; documented standing OFF policy in `docs/ops/X
 
 ## 2026-07-29 — [SPX] EOD Pin Forecaster glued ~120pts below spot (weak far wall)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 — SPX Slayer EOD Pin panel + Vector "Pin" axis tag looked frozen all afternoon;
 traders saw projected close ~7313 while spot ~7420–7430 (−110 to −120pts) with only 15% confidence.
@@ -2298,7 +2275,7 @@ strike. Tests cover the live regression.
 
 ## 2026-07-29 — [Thermal] Matrix asof 25–60s while SPX Slayer stays ~5s; SPY blanks
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
+> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
 
 **Severity.** P1 — Thermal compare desk (`/heatmap?compare=1`) showed `MATRIX · 25s` /
 `45s` on SPY/QQQ while SPX column + Slayer rail stayed ~4–5s; SPY sometimes flashed
@@ -2317,7 +2294,6 @@ first; rth-warm-leader ~20s; refuse to display spot≤0; reject WS/REST spot≤0
 
 ## 2026-07-29 — [ops] ops-auto-fix #1247 — stale GitHub secrets + false cron failures
 > **kind:** `OPS-NOTE`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 — `ops-collect` reported `postgres:query-failed` (user `postgres`) and
 `watchdog:http` 401; blocked autonomous ops loop.
@@ -2337,7 +2313,6 @@ on successful sweep; options cluster health treats ingest leader lock as live.
 
 ## 2026-07-29 — [Swing] Discovery cron 100% FailedInvocations — board permanently empty
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 — Night Hawk Swing lane showed 0 watch / 0 commits all session. EventBridge
 fired the rule; nothing ever landed a serving snapshot with plays.
@@ -2374,7 +2349,6 @@ fix only restores the WATCH/serving write path.
 
 ## 2026-07-29 — [ops] ops-auto-fix #1270 — data-integrity SQL merge conflict → error spike
 > **kind:** `OPS-NOTE`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 — `watchdog:error-spike` (109 errors / 15m).
 
@@ -2389,7 +2363,6 @@ rows flooded `error_events`.
 
 ## 2026-07-29 — [ops] ops-auto-fix #1261 — SWR background refresh + private RDS false P1
 > **kind:** `OPS-NOTE`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 — `ops-collect` reported `postgres:query-failed` (empty detail) and
 `watchdog:error-spike` (38–54 `unhandled_rejection` TimeoutErrors / 15m).
@@ -2429,7 +2402,6 @@ chars, `validate:rth-open` GREEN, options-socket authenticated.
 
 ## 2026-07-29 — [0DTE] G-9 `plan_quote_stale` false-positive on live REST books
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 — AAPL/MU/GOOGL cleared score/confluence but stayed BLOCKED on
 `plan_quote_stale` while marks SSE showed fresh mids (1–3s). Starved OPEN commits.
@@ -2445,7 +2417,6 @@ REST response just returned a live two-sided NBBO — so age ≫ 60s and G-9 fir
 
 ## 2026-07-29 — [0DTE] Open-play concurrent cap was starving the desk (6 → 100)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 product — operator never wanted an artificial limit on OPEN 0DTE plays;
 the desk should commit every setup that clears quality + risk gates.
@@ -2496,7 +2467,6 @@ rank until same-day setups fill (log `no_chain` / `no_same_day`); `DISCOVERY_VER
 
 ## 2026-07-29 — [Security] Medium hygiene: cron redact + Largo budget + flows rate limit
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** MEDIUM (cron info leak / budget race / desk abuse) + infra notes.
 
@@ -2604,7 +2574,6 @@ auth-gated JSON. Signed-in HTML bypasses via `__session`.
 
 ## 2026-07-29 — [Night Hawk Legacy] Replay harness + polarity measure + recap reason
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 tooling / honesty — could not counterfactual score floors or quantify
 flow-polarity misreads; members saw recap-only with no funnel reason.
@@ -2717,7 +2686,6 @@ min-width raised to ~4.85rem so `+$261.0M`-class labels fit.
 
 ## 2026-08-03 — [Night Hawk Legacy] Stale-edition skip + dossier stall + publish bar (evening cron)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 — tonight's 7:00/7:15 PM cron must publish a real post-close playbook, not
 resume a pre-window `published` row or hang on dossier 6/60.
@@ -2784,7 +2752,6 @@ its undraft never cleared). The identical fix was re-pushed as **PR #1215**, whi
 
 ## 2026-07-29 — [Thermal] Discord card still unreadable on mobile (nodes/drift)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 UX.
 
@@ -2825,7 +2792,6 @@ laptop.
 
 ## 2026-07-29 — [Thermal] Discord “No numbers” — settled empty 0DTE after close
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 UX (blank Discord grids).
 
@@ -2847,7 +2813,6 @@ cols, strike half=14); `resolveDiscordNearExpiries` skips empty settled today-0D
 
 ## 2026-07-28 — [Thermal] Discord card missing yellow/purple nodes + % drift
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 UX (desk card readability / parity with major matrix).
 
@@ -2865,7 +2830,6 @@ legend line.
 
 ## 2026-07-28 — [Thermal] Discord #admin-talk spam (no post dedupe)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 ops / UX (channel flood).
 
@@ -2888,7 +2852,6 @@ EventBridge stays DISABLED until this ships, then re-enable.
 
 ## 2026-07-28 — [Thermal] Compare triple desk unreadable (7.5px / 1.85rem cells)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 UX.
 
@@ -2908,7 +2871,6 @@ tall scroll; synced crosshair + scroll across SPY|SPX|QQQ.
 
 ## 2026-07-28 — [Thermal] Discord desk card → 4K + clearer UI chrome
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P2 UX.
 
@@ -2960,7 +2922,6 @@ Caption uses Call wall / Put wall / Flip wording. (5120 ultra pass reverted — 
 
 ## 2026-07-28 — [Thermal] Deep audit: WS wall override still unscoped + stale 20s freshness copy
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 correctness (RTH) + P2 UX honesty.
 
@@ -2987,7 +2948,6 @@ gate working). Page `/heatmap` 200, no Sign-In chrome for authed admin.
 
 ## 2026-07-28 — [Thermal] Discord triple-desk PNG cron (15m RTH)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P2 product enhancement.
 
@@ -3155,7 +3115,6 @@ payload keys.
 
 ## 2026-07-28 — [product] 0DTE engine starved to 1 OPEN/day (score map + caps + NH exclude)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P0 — whole-market 0DTE product produced **1 committed play** on 2026-07-28
 (SPY FLOW long @ 11:01 ET, +12% thesis_break) despite scanning ~12k grouped-daily names. Board
@@ -3186,7 +3145,6 @@ setups post-close were **8× FLOW-only**; BREAKOUT/PIN never committed. Record r
 
 ## 2026-07-28 — [product] 0DTE board was FLOW-only in practice (merge v1 + $-volume chain-fetch)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 — Night Hawk / 0DTE Command supposed to mix FLOW + BREAKOUT + PIN (+ CONDOR), but
 live board ownership and outcomes behaved like a single-rail flow-momentum buyer.
@@ -3233,7 +3191,6 @@ desk/matrix) so Vector confluence cannot diverge from the header when positionin
 
 ## 2026-07-28 — [data-honesty] SPX desk sticky gamma flip + pin spot=0 after hours
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 — member-facing false levels / dishonest empty states on the SPX Slayer desk.
 
@@ -3480,7 +3437,7 @@ pass (97+21=118 total). tsc clean.
 
 ## 2026-07-28 — [correctness] Governor demotion undone by builder merge-sort + no R:R minimum gate (branch `fix/governor-sort-override`)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
+> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
 
 **Severity.** Medium (edition quality — governor-demoted plays could re-promote to the top 5; plays with terrible R:R could publish).
 
@@ -3555,7 +3512,6 @@ only way to keep the member-visible number correct with no window of double-inve
 
 ## 2026-07-25 — [correctness] Night Hawk deck: iron-condor P&L was DIRECTIONALLY INVERTED (a winning condor read NEGATIVE) — FIXED (Wave 2 branch `feat/nighthawk-wave2-leftpanel`)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** Medium (member-facing correctness; condor rows only — dormant unless `ZERODTE_CONDOR=1`,
 so no live member saw it yet, but it would have shipped inverted the moment condors go live).
@@ -3586,7 +3542,6 @@ is at the render adapter, the one place that knows a row is a credit structure).
 
 ## 2026-07-25 — [tooling] NEW: 0DTE E2E validation suite (`zerodte-e2e-suite.mjs`, `npm run validate:e2e`) + Monday-RTH readiness trace — ADDED
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** N/A — additive read-only tooling + docs (no app/behavior change). Safe to merge on green.
 
@@ -3637,7 +3592,6 @@ fail-OPEN case (a board that PRINTS while halt/earnings feeds are cold), not an 
 
 ## 2026-07-25 — [tooling] NEW: 0DTE Night Hawk end-to-end LIVE health check (`zerodte-e2e-healthcheck.mjs`) — ADDED
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** N/A — additive read-only tooling (no app/behavior change). Safe to merge on green.
 
@@ -3686,7 +3640,6 @@ open" gate (documented in `docs/audit/MARKET-OPEN-VALIDATION.md`).
 
 ## 2026-07-25 — [SIM-VIEW] Admin-only 0DTE simulation view of the Night Hawk board — NEW FEATURE (member board untouched)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** Feature (deploy-affecting, safety-critical isolation). Not a bug fix — an additive
 admin capability. The #1 requirement was that members can NEVER see sim data and the member board
@@ -3824,7 +3777,6 @@ partial reconstruction), which depends on this lane. **Status: OPEN PR, holding 
 
 ## 2026-07-25 — [D1] Earnings gate (G-11) failed OPEN — a failed/timed-out earnings feed read looked identical to "no earnings" and let a name reporting today commit a fresh 0DTE — FIXED (fail-closed `earningsUnavailable` firewall)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** High (correctness / TRADES). DANGER item **D1** from `docs/audit/NIGHTHAWK-DATA-PROVENANCE.md`
 (market-open danger list). On a cold earnings snapshot or a busy-open read timeout, the desk could open a
@@ -4046,7 +3998,6 @@ changed — only a real age is now fed into the already-shipped WS-04 `stale` br
 
 ## 2026-07-25 — [WS-04] Malformed-quote books passed the liquidity gate as "liquid" — percent-spread check failed OPEN on zero/null-bid, crossed, and locked markets — FIXED (fail-closed quote-validity predicate)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** High (correctness / TRADES). A structurally malformed option quote could be treated as a
 tradeable 0DTE contract and committed to the ledger, entering/grading off a phantom price. **[TRADES] —
@@ -4115,7 +4066,6 @@ persist defense `freshCommitBlockedByPlan` / `planQualityGateBlocks` in `persist
 
 ## 2026-07-25 — [WS-01] Governor commit was a TOCTOU race — two overlapping scans could each commit past GOVERNOR_MAX_CONCURRENT_PLANS — FIXED (atomic xact-lock recount)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** High (portfolio risk / over-exposure). This is the exact 7/13-class failure the session
 governor exists to prevent — concurrently-open plans breaching the 3-play cap.
@@ -4175,7 +4125,6 @@ uncontended, honest when a recount drops a racer.
 
 ## 2026-07-25 — [WS-19] BREAKOUT trusted a successful grouped-daily response regardless of bar freshness — FIXED (fail closed)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** Medium (data-correctness / fail-open). Live-board discovery input; no crash, but a stale
 snapshot could silently drive the whole-market BREAKOUT origin and — worse — read as a *genuine* "no
@@ -4215,7 +4164,6 @@ can REMOVE stale-driven candidates, never ADD any; the flow board is untouched o
 
 ## 2026-07-25 — [Hardening WS-20] Record intentional-design items + add offline A/B measurement — DOCS + TOOLS
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** None (additive documentation + read-only measurement). **NO production behavior changed.**
 
@@ -4292,7 +4240,6 @@ unaffected.
 
 ## 2026-07-25 — [WS-21/22] WS reconciliation + recovery health states + amended-print handling (FLAG-OFF)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** SEV-4 (hardening / capability; ZERO live behavior change until graduated).
 
@@ -4337,7 +4284,6 @@ out of scope here).
 
 ## 2026-07-25 — [Q10] Discovery recall probe: the BREAKOUT top-6 $-volume cap is LEAKY — NEW TOOL
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **What.** "No silent caps" (design Q10). The BREAKOUT origin screens the whole market (~12k grouped-daily
 names) but `discoverBreakoutSetups` keeps only the top `BREAKOUT_MAX_CANDIDATES` (=6) by $-volume
