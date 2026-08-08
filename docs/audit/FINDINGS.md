@@ -4,6 +4,16 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-08 - [P2, SEO] `best-0dte-trading-strategies` meta description was 173 chars — truncates mid-sentence in SERPs — FIXED + regression guard added for all articles/guides
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P2. `src/lib/learn/articles.ts:2613-2614` — the `best-0dte-trading-strategies` article's `metaDescription` was 173 characters. Google's SERP snippet truncates around ~155-160 characters, so this one would get cut off mid-sentence in search results. All other 44 articles range 141-158 chars — this was the one outlier. |
+| **Fix** | Rewrote the description to keep the same substantive content (gamma-wall fades, momentum below the flip, condors in range regimes, sizing) in 157 characters — verified with a length check before committing, not just eyeballed. |
+| **Blast radius** | Checked every other article (`LEARN_ARTICLES`) and all 7 curriculum guides (`GUIDE_SEO`) for the same overflow — confirmed this was the only current violation in either set. |
+| **Regression guard** | Added a test to the existing `articles.test.ts` (which already enforces link-graph health for this exact file) asserting no article's `metaDescription` exceeds 160 chars, and a new `guide-seo.test.ts` with the equivalent check for the 7 guides — so a future article/guide can't silently regress past the SERP truncation point the way this one did. |
+| **Verification** | `npx tsx --test src/lib/learn/articles.test.ts src/lib/learn/guide-seo.test.ts` — 7/7 pass. `npx tsc --noEmit` / `npx eslint` — clean. |
+
 ## 2026-08-08 - [P3, PERFORMANCE] Next.js's default image breakpoint ladder has a 384→640 gap — the hero logo (and any similarly-sized `fill` image) got rounded up to 640 when 480/576 would do — FIXED
 
 | Field | Value |
