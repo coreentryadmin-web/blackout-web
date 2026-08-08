@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { MarketingPageShell } from "@/components/landing/MarketingPageShell";
 import { LegalPageLayout } from "@/components/landing/LegalPageLayout";
-import { BreadcrumbJsonLd, WebPageJsonLd } from "@/components/seo/JsonLd";
+import { WebPageJsonLd } from "@/components/seo/JsonLd";
+import { Breadcrumbs } from "@/components/seo/Breadcrumbs";
 import { publicPageMetadata } from "@/lib/page-metadata";
 import { SITE } from "@/lib/site";
 
@@ -20,7 +21,7 @@ export default function ContactPage() {
         description="Get in touch with the BlackOut team for support, billing, or questions about the platform."
         path="/contact"
       />
-      <BreadcrumbJsonLd items={[
+      <Breadcrumbs items={[
         { name: "Home", href: "/" },
         { name: "Contact", href: "/contact" },
       ]} />
