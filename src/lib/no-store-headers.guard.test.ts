@@ -27,6 +27,7 @@ const ALLOWLIST = new Set([
   "src/app/api/webhook/whop/route.ts",
   "src/app/api/webhook/clerk/route.ts",
   "src/app/api/webhooks/clerk/route.ts",
+  "src/app/api/webhook/resend/route.ts",
 ]);
 
 /** Prefixes that MUST use the shared no-store constant. */
