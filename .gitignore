@@ -5,7 +5,10 @@
 production.env
 staging.env
 railway-*.env
-node_modules/
+# No trailing slash — "node_modules/" matches a DIRECTORY only, so a symlink named
+# node_modules slips past it and gets committed (that is exactly how a self-referential
+# node_modules -> node_modules landed on main in #1906, ELOOP-ing every fresh clone).
+node_modules
 .next/
 out/
 build/
@@ -21,7 +24,7 @@ tsconfig.tsbuildinfo
 audit-output/
 
 # iOS Capacitor (generated / local)
-apps/blackout-ios/node_modules/
+apps/blackout-ios/node_modules
 apps/blackout-ios/ios/
 # Stale clone of deprecated standalone repo (root only — not apps/blackout-ios/)
 /blackout-ios/

@@ -4,6 +4,21 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-08 - [P2, tooling] `node_modules` committed to `main` as a self-referential symlink — every fresh clone ELOOPs — FIXED
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P2. Not member-facing and not a production risk (see blast radius), but it silently breaks the local toolchain of anyone who clones or resets the repo, and it fails in the least diagnosable way possible: a bare non-zero exit with **no stdout, no stderr, no error**. |
+| **How it surfaced** | While preparing the all-templates email send, `npx tsx` began exiting `216` with completely empty output. `node --import tsx` gave the real message — `Cannot find package 'tsx'` — and `ls node_modules` reported `Too many levels of symbolic links`. `ls -la` showed `node_modules -> /home/user/blackout-web/node_modules`: a symlink pointing at itself. Nothing had touched `node_modules`; the trigger was a routine `git reset --hard origin/main` earlier in the session, which faithfully restored a **tracked** symlink over the real install directory. |
+| **Root cause** | Two independent defects had to line up. (1) `.gitignore` line 8 read `node_modules/` **with a trailing slash**. In gitignore syntax a trailing slash restricts the pattern to directories, so a *symlink* named `node_modules` is not a directory and was never ignored — `git add -A` picked it up without complaint. (2) The symlink itself was created and committed in #1906 (`54654b19`), the email-stack recovery PR, where a `git add` from a worktree swept in a path that resolved to itself. `git ls-files -s node_modules` → `120000 b5d58f78` (mode 120000 = symlink). |
+| **Why nothing caught it** | Every downstream gate is blind to it by construction. `.dockerignore` line 2 excludes `node_modules` from the build context, so **production images kept building correctly and every deploy since #1906 is unaffected**. `npm ci` unlinks whatever sits at `node_modules` before installing, so **CI stayed green** — the `verify` job never observes the broken state. `tsc`/`eslint`/`next build` all run *after* install, i.e. after the symlink is already gone. The failure is only reachable by a human (or agent) who clones fresh, or who runs `git checkout`/`git reset` *between* installing and working — exactly the sequence that hit this session. |
+| **Blast radius** | Repo-local only. Production: unaffected (verified — `.dockerignore` excludes it; the live image `049ba37` built and deployed normally). CI: unaffected. Impact is confined to developer/agent working copies, where it costs an `npm ci` (~30s) plus however long the empty-output failure takes to diagnose. |
+| **Fix** | `git rm --cached node_modules` (removes the tracked symlink; the real directory is untouched), and both `.gitignore` rules retightened to `node_modules` / `apps/blackout-ios/node_modules` **without** trailing slashes so the pattern matches a path of any type — file, directory, or symlink — and this can never be re-added. |
+| **Tests** | New `src/repo-hygiene.test.ts`, two tests: (1) no tracked path has a `node_modules`/`.next`/`out`/`build` segment, walking real `git ls-files` output; (2) no `node_modules` rule in `.gitignore` ends in `/`. Both were verified to actually fail against the pre-fix state — test 1 fails on `origin/main` (`git ls-tree -r origin/main` still lists `node_modules`), test 2 fails when `.gitignore` is checked out from `origin/main`. A test that has not been seen to fail is not a regression guard. |
+| **Status** | FIXED. |
+
+---
+
 ## 2026-08-08 - [P3, SEO] `/about` was a true orphan page — zero internal inlinks anywhere in the app — FIXED
 
 | Field | Value |
