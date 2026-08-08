@@ -3,7 +3,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-export const metadata: Metadata = { title: "Page not found — BlackOut" };
+// Explicit noindex as defense-in-depth alongside the automatic HTTP 404 status —
+// see next.config.mjs for the documented Cloudflare edge-cache incident where a
+// cached response served the wrong state to the wrong users. Don't rely on status
+// code alone for a page a misconfigured cache rule could serve out of context.
+export const metadata: Metadata = {
+  title: "Page not found — BlackOut",
+  robots: { index: false, follow: false },
+};
 
 export default function NotFound() {
   return (
