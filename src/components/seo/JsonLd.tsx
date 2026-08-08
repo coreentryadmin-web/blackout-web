@@ -205,6 +205,7 @@ export function ArticleJsonLd({
   title,
   description,
   path,
+  image,
   datePublished,
   dateModified,
   authorName = "BlackOut Trades",
@@ -212,6 +213,8 @@ export function ArticleJsonLd({
   title: string;
   description: string;
   path: string;
+  /** Falls back to the site's default OG image — Google's Article guidelines require one. */
+  image?: string;
   datePublished?: string;
   dateModified?: string;
   authorName?: string;
@@ -224,6 +227,7 @@ export function ArticleJsonLd({
         headline: title,
         description,
         url: `${SITE.url}${path}`,
+        image: image ?? `${SITE.url}/og-image.png`,
         ...(datePublished && { datePublished }),
         ...(dateModified && { dateModified }),
         author: {
