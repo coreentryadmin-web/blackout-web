@@ -1,7 +1,7 @@
 import { MEMBERSHIP_PRICING, usd } from "@/lib/pricing";
 import { SITE } from "@/lib/site";
 import { emailLayout, emailCta, emailHighlight, emailScreenshot, ENGINE_ACCENT, EMAIL_BRAND } from "@/lib/email/layout";
-import { spxDeskHeroAsset, thermalKeyLevelsAsset, vectorChartAsset, nighthawkPlaysAsset } from "@/lib/email/inline-assets";
+import { spxDeskHeroAsset, thermalKeyLevelsAsset, vectorChartAsset } from "@/lib/email/inline-assets";
 import { marketingUnsubscribe } from "@/lib/email/unsubscribe-token";
 import type { EmailAttachment } from "@/lib/email/resend-client";
 
@@ -178,7 +178,6 @@ export const WELCOME_SEQUENCE: WelcomeEmailStep[] = [
     delayDays: 6,
     build: (ctx) => {
       const subject = "Graded blind. Logged forever.";
-      const nightHawkShot = nighthawkPlaysAsset();
       const { url: unsubUrl, headers: unsubHeaders } = marketingUnsubscribe(ctx.email);
       const body =
         h1("We Grade It Before We Know How It Ends.") +
@@ -189,7 +188,6 @@ export const WELCOME_SEQUENCE: WelcomeEmailStep[] = [
         p(
           `Then we let the trade breathe. Win. Loss. Breakeven — doesn't matter. It goes in the log right next to the grade it was born with, not the grade we'd wish for after the fact. A setup that stops out sits in the exact same record as one that rips clean. Nothing gets buried. Nothing gets scrubbed. Nothing gets quietly rebranded as "a lesson."`
         ) +
-        emailScreenshot(nightHawkShot, "Live Night Hawk plays — graded, wins and losses both, on the record") +
         p("That's not a tagline — that's the whole build. No revision history, no highlight reel, no do-overs. Go pull up the receipts and see how that holds up against the way everyone else keeps score.") +
         emailCta(`${SITE.url}/vs/others`, "See How We Stack Up") +
         closing("Trade the grade, not the narrative. — The BlackOut Trades Desk");
@@ -198,7 +196,7 @@ export const WELCOME_SEQUENCE: WelcomeEmailStep[] = [
         bodyHtml: personalize(body, ctx),
         unsubscribeUrl: unsubUrl,
       });
-      return { subject: personalize(subject, ctx), html: layout.html, attachments: [...layout.attachments, nightHawkShot], headers: unsubHeaders };
+      return { subject: personalize(subject, ctx), html: layout.html, attachments: layout.attachments, headers: unsubHeaders };
     },
   },
   // Day 8 — direct upgrade CTA.

@@ -48,9 +48,6 @@ export function spxDeskHeroAsset(): InlineAsset {
 export function vectorChartAsset(): InlineAsset {
   return loadAsset("images/email/vector-chart.jpg", "vector-chart", "image/jpeg");
 }
-export function nighthawkPlaysAsset(): InlineAsset {
-  return loadAsset("images/email/nighthawk-plays.jpg", "nighthawk-plays", "image/jpeg");
-}
 
 /** The chrome (header logo + footer Discord/X badges) every email uses. */
 export function chromeAssets(): InlineAsset[] {
