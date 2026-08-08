@@ -4,7 +4,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-export const metadata: Metadata = { title: "Offline — BlackOut" };
+// Thin PWA fallback screen with no unique content — never indexable.
+export const metadata: Metadata = {
+  title: "Offline — BlackOut",
+  robots: { index: false, follow: false },
+};
 
 export default function OfflinePage() {
   return (

@@ -1,9 +1,12 @@
 import { Suspense } from "react";
+import type { Metadata } from "next";
 import { requireAdmin } from "@/lib/admin-access";
 import { AdminAnalyticsDashboard } from "@/components/admin/AdminAnalyticsDashboard";
+import { noindexPageMetadata } from "@/lib/page-metadata";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+export const metadata: Metadata = noindexPageMetadata("Admin · BlackOut");
 
 export default async function AdminPage() {
   await requireAdmin();
