@@ -560,7 +560,7 @@ On SPX, condors get opened same-day against the day's expected range: collect th
 
 ## Gamma, GEX, and condor strike selection
 
-This is where dealer positioning should actually drive your strikes, not round numbers. Placing your short strikes at or just past the [call wall and put wall](/learn/call-wall-put-wall-explained) gives you a mechanical reason to expect price to struggle past them — those levels concentrate the dealer hedging flow that tends to cap moves. Check the session's [GEX](/learn/what-is-gex) too: strongly positive GEX supports a tight range and favors condors with tighter wings; a market trading near or below the [gamma flip](/learn/gamma-flip-explained) argues for wider wings, smaller size, or skipping the trade. [Max pain](/learn/max-pain-options-explained) is worth a glance as a secondary reference, though the walls and flip are the more mechanically grounded read.
+This is where dealer positioning should actually drive your strikes, not round numbers. Placing your short strikes at or just past the [call wall and put wall](/learn/call-wall-put-wall-explained) gives you a mechanical reason to expect price to struggle past them — those levels concentrate the dealer hedging flow that tends to cap moves. Check the session's [GEX](/learn/what-is-gex) too: strongly positive GEX supports a tight range and favors condors with tighter wings; a market trading near or below the [gamma flip](/learn/gamma-flip-explained) argues for wider wings, smaller size, or skipping the trade. [Max pain](/learn/max-pain-options-explained) is worth a glance as a secondary reference, though the walls and flip are the more mechanically grounded read. For a narrower, higher-conviction bet on a single strike rather than a range, see the [butterfly spread](/learn/butterfly-spread-strategy-guide) — the same premium-selling instinct, aimed tighter.
 
 ## Put it to work
 
@@ -677,7 +677,7 @@ IV is a direct input to every option's price through vega — see [Options Greek
 
 ## IV crush
 
-IV crush is what happens when implied volatility collapses immediately after an event it was pricing in — most commonly earnings. A stock heading into an earnings print might carry 90% IV because the market is pricing a big move; the instant the print hits and uncertainty resolves, IV can fall to 35% within minutes, regardless of which way the stock moved. An option holder can be right on direction and still lose money if the IV crush outweighs the delta gain. This is the single most common way retail traders get burned buying options right before a catalyst.
+IV crush is what happens when implied volatility collapses immediately after an event it was pricing in — most commonly earnings. A stock heading into an earnings print might carry 90% IV because the market is pricing a big move; the instant the print hits and uncertainty resolves, IV can fall to 35% within minutes, regardless of which way the stock moved. An option holder can be right on direction and still lose money if the IV crush outweighs the delta gain. This is the single most common way retail traders get burned buying options right before a catalyst — and it's the primary risk on a [long straddle or strangle](/learn/straddles-strangles-options-explained), the structures most directly exposed to IV moving against you regardless of which way price goes.
 
 ## IV and VIX
 
@@ -764,7 +764,7 @@ This is the more useful comparison. The [call wall and put wall](/learn/call-wal
 
 ## Where max pain still adds value
 
-Use it as a secondary reference, not a primary signal. On [expiration day](/learn/options-expiration-explained) specifically, especially with low realized volatility and no scheduled catalysts, max pain can be a reasonable tiebreaker for where a range-bound session settles — useful context for sizing an [iron condor's](/learn/iron-condor-strategy-guide) strikes or deciding whether to hold a position into the close. It's also worth checking relative to the [gamma flip](/learn/gamma-flip-explained): if max pain sits on the same side of the flip as current price, that's mild confirmation; if it sits on the opposite side, the gamma regime is the read to trust.
+Use it as a secondary reference, not a primary signal. On [expiration day](/learn/options-expiration-explained) specifically, especially with low realized volatility and no scheduled catalysts, max pain can be a reasonable tiebreaker for where a range-bound session settles — useful context for sizing an [iron condor's](/learn/iron-condor-strategy-guide) strikes or deciding whether to hold a position into the close. A [butterfly spread](/learn/butterfly-spread-strategy-guide), which needs price to land at one specific strike rather than a range, leans on max pain even more directly as a candidate for where to center the body. It's also worth checking relative to the [gamma flip](/learn/gamma-flip-explained): if max pain sits on the same side of the flip as current price, that's mild confirmation; if it sits on the opposite side, the gamma regime is the read to trust.
 
 ## Reading it correctly
 
@@ -2166,7 +2166,7 @@ This speed creates opportunity on both sides. Premium sellers can collect meanin
 
 ## Selling theta vs. buying theta
 
-**Selling theta** (short options, [credit spreads](/learn/credit-spreads-strategy-guide), iron condors) means time is your ally. You collect premium and hope the underlying stays in a range. The risk is a large move that overwhelms the credit collected. This works best in positive [GEX](/learn/what-is-gex) regimes where dealer hedging suppresses volatility and the range holds.
+**Selling theta** (short options, [credit spreads](/learn/credit-spreads-strategy-guide), iron condors, or the single-name [wheel strategy](/learn/wheel-strategy-cash-secured-puts)) means time is your ally. You collect premium and hope the underlying stays in a range. The risk is a large move that overwhelms the credit collected. This works best in positive [GEX](/learn/what-is-gex) regimes where dealer hedging suppresses volatility and the range holds.
 
 **Buying theta** (long options, directional 0DTE) means time is your enemy. You pay premium and need a move large enough and fast enough to overcome the decay. This works best in negative GEX regimes where momentum feeds on itself and directional moves are large.
 
@@ -2366,7 +2366,7 @@ The traditional approach to strike selection — "sell the 20-delta" or "sell 2 
 
 ## The relationship to iron condors
 
-An [iron condor](/learn/iron-condor-strategy-guide) is simply a bull put spread and a bear call spread opened simultaneously. You sell premium on both sides — collecting the put-side credit and the call-side credit — and define a range where you profit. If you are comfortable with credit spreads, iron condors are the natural next step: same mechanics, double the theta collection, and the gamma-wall logic applies to both legs.
+An [iron condor](/learn/iron-condor-strategy-guide) is simply a bull put spread and a bear call spread opened simultaneously. You sell premium on both sides — collecting the put-side credit and the call-side credit — and define a range where you profit. If you are comfortable with credit spreads, iron condors are the natural next step: same mechanics, double the theta collection, and the gamma-wall logic applies to both legs. A bull put spread's undefined-risk single-leg cousin — selling a naked cash-secured put — is also the entry point into [the wheel strategy](/learn/wheel-strategy-cash-secured-puts), the same premium-selling instinct applied to single-name stocks you're willing to own.
 
 ## Managing the trade
 
@@ -2551,7 +2551,7 @@ Above the flip in positive GEX, fade extremes toward the walls. Below the flip i
 
 ## Step 4: Size and risk — SPX is not SPY
 
-One SPX point ≈ ten SPY points in notional. A "small" 0DTE position can move hundreds of dollars per handle. Rules that work on SPY break on SPX:
+One SPX point ≈ ten SPY points in notional. A "small" 0DTE position can move hundreds of dollars per handle. Rules that work on SPY break on SPX — see [SPX vs SPY Options](/learn/spx-vs-spy-options-explained) for the full list of structural differences, including the [favorable 60/40 tax treatment](/learn/options-tax-treatment-1256) SPX carries that SPY does not.
 
 - **Defined risk only** — spreads, not naked short options, until you have a track record.
 - **Hard stops** — especially on negative-GEX days ([gamma squeeze](/learn/gamma-squeeze-explained) territory).
@@ -2650,6 +2650,262 @@ The first 30 minutes of 0DTE carry peak gamma. Traders with a clear [opening pos
 ## Tools that enforce structure
 
 [Night Hawk 0DTE Command](/learn/night-hawk-0dte-command-guide) scans intraday setups against live positioning. [SPX Slayer](/learn/spx-slayer) grades plays A–F so you see which structures passed the desk's gates today.
+
+> *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options trading involves substantial risk and is not suitable for every investor.*`,
+  },
+  {
+    slug: "spx-vs-spy-options-explained",
+    path: "/learn/spx-vs-spy-options-explained",
+    metaTitle: "SPX vs SPY Options: Settlement, Assignment, Tax Differences | BlackOut",
+    metaDescription: "SPX vs SPY options compared: cash vs physical settlement, European vs American style, assignment risk, contract size, and why traders pick one over the other.",
+    targetKeyword: "SPX vs SPY options",
+    type: "article",
+    title: "SPX vs SPY Options: What Actually Differs",
+    description: "SPX vs SPY options compared: cash vs physical settlement, European vs American style, assignment risk, contract size, and why traders pick one over the other.",
+    body: `SPX and SPY both track the S&P 500, and a fresh options trader could be forgiven for treating them as interchangeable. They aren't. The differences aren't cosmetic — they change how the position settles, whether you can be assigned early, how big a single contract actually is, and even how the resulting gains get taxed.
+
+## Same index, two different products
+
+SPY is an ETF that holds the S&P 500's constituent stocks and trades like a share of stock — you can buy shares of it directly, and options on it are options on that ETF. SPX is not a fund at all; it's an index, and SPX options are options directly on the index value itself. That single structural difference is where every other difference in this guide comes from.
+
+## Cash-settled vs physically settled
+
+SPX options are **cash-settled**: at expiration, if your option is in the money, you receive (or pay) the cash difference — no shares change hands, ever. SPY options are **physically settled**: an in-the-money option at expiration results in actual shares of SPY being bought or sold to your account. That matters for anyone running spreads into expiration, since a physically-settled leg means real share delivery and real overnight exposure if you don't close it, while a cash-settled SPX leg simply resolves to cash.
+
+## European vs American style — the assignment difference
+
+SPX options are **European-style**: they can only be exercised at expiration, never before. SPY options are **American-style**: they can be exercised at any time before expiration, which means an SPY position can be assigned early if it goes deep in the money. See [Options Assignment & Exercise Explained](/learn/options-assignment-exercise-explained) for the full mechanics of what early assignment actually looks like and why it matters for anyone short an American-style option. This is the reason [iron condors](/learn/iron-condor-strategy-guide) on SPX carry no early-assignment risk to babysit intraday, while the equivalent SPY structure theoretically can.
+
+## Contract size and notional exposure
+
+SPX trades at roughly 10x the price of SPY (SPX ~5,500 vs SPY ~$550 is a normal ratio, since SPY is designed to track 1/10th of the index). One SPX contract therefore carries roughly 10x the notional exposure of one SPY contract — meaning 10 SPY contracts are needed to approximate the notional size of a single SPX contract. That has real consequences for position sizing, margin, and how many discrete strikes you need to leg into to build an equivalent trade.
+
+## Tax treatment — the difference nobody mentions until it costs them
+
+SPX is a broad-based index option and generally qualifies for **Section 1256 contract** tax treatment: gains and losses get the 60/40 split (60% long-term, 40% short-term capital gains rates) regardless of how long the position was held, plus mark-to-market treatment at year-end. SPY options, as options on an ETF rather than a broad-based index, do not get this treatment — they're taxed under standard short-term/long-term capital gains rules based on actual holding period. For an active 0DTE trader closing same-day, that difference in tax rate on realized gains can be substantial. Full breakdown: [How Options Are Taxed: Section 1256 & the 60/40 Rule](/learn/options-tax-treatment-1256).
+
+## AM vs PM settlement
+
+Standard monthly SPX options settle against a **special opening quotation (SOQ)** calculated the morning of the third Friday — meaning the settlement price is set before the regular session even opens, and can differ meaningfully from the prior close. SPX Weeklys and 0DTE contracts, by contrast, settle at the **regular 4:00 PM close**, same as SPY. Know which SPX product you're trading — AM-settled vs PM-settled changes what the last hour of trading before expiration actually means for your position.
+
+## Which one should you trade?
+
+Neither is universally "better" — they suit different situations. SPX's cash settlement and European style make it the cleaner instrument for defined-risk, multi-leg 0DTE structures like [iron condors](/learn/iron-condor-strategy-guide) and [credit spreads](/learn/credit-spreads-strategy-guide) where you don't want early-assignment risk on any leg. SPY's smaller contract size makes it more accessible for smaller accounts and finer position sizing. Full walkthrough of trading SPX specifically: [How to Trade SPX Options](/learn/how-to-trade-spx-options).
+
+## Put it to work
+
+BlackOut's whole 0DTE stack — [SPX Slayer](/learn/spx-slayer), [Thermal](/learn/heat-maps), [Night Hawk](/learn/night-hawk) — is built around SPX specifically, for the settlement and assignment reasons above. New to the terminology? Start with the [Options Trading Glossary](/learn/options-trading-glossary). [Get access →](/pricing)
+
+> *BlackOut provides educational tools and market analysis only and does not provide investment advice. Nothing here is tax advice — consult a qualified tax professional about your own situation. Options trading involves substantial risk and is not suitable for every investor.*`,
+  },
+  {
+    slug: "options-tax-treatment-1256",
+    path: "/learn/options-tax-treatment-1256",
+    metaTitle: "How Options Are Taxed: Section 1256 & the 60/40 Rule | BlackOut",
+    metaDescription: "How options are taxed in the US: Section 1256 contracts, the 60/40 capital gains split, mark-to-market rules, and why SPX gets different treatment than SPY.",
+    targetKeyword: "options tax treatment Section 1256",
+    type: "article",
+    title: "How Options Are Taxed: Section 1256 & the 60/40 Rule",
+    description: "How options are taxed in the US: Section 1256 contracts, the 60/40 capital gains split, mark-to-market rules, and why SPX gets different treatment than SPY.",
+    body: `Two traders can run the identical strategy, close identical gains, and owe meaningfully different tax bills — purely because one traded SPX and the other traded SPY. This is one of the least-discussed edges in options trading, and it's entirely a function of which instrument you choose, not how you trade it.
+
+**This article is educational only and is not tax advice.** Tax rules are fact-specific and change; talk to a qualified CPA or tax professional about your own situation before making decisions based on tax treatment.
+
+## The general rule: options are usually taxed like any other capital asset
+
+Most equity and ETF options — including SPY — follow standard capital gains rules. Close a position you've held under a year and the gain is short-term, taxed at your ordinary income rate. Hold over a year (rare for anyone trading 0DTE or short-dated options) and it's long-term, taxed at the lower capital gains rate. Straightforward, and exactly what most traders expect.
+
+## Section 1256 contracts: a different rulebook
+
+**Section 1256 of the Internal Revenue Code** applies to certain regulated instruments — including options on **broad-based stock indices** like SPX, NDX, and RUT — and gives them two distinct advantages over standard capital-asset tax treatment:
+
+**The 60/40 split.** Regardless of how long you actually held the position — even if it was opened and closed same-day, as every 0DTE trade is — 60% of the gain or loss is treated as long-term capital gain and 40% as short-term. For most traders, the long-term rate is meaningfully lower than the short-term (ordinary income) rate, so this blended treatment lowers the effective tax rate on gains compared to an equivalent SPY trade closed in the same session.
+
+**Mark-to-market at year-end.** Section 1256 contracts still open on December 31 are treated as if sold at fair market value that day, with any gain or loss recognized for that tax year even though the position is still open. This simplifies year-end accounting but means you can owe tax on an unrealized gain if you're still holding a position into the new year.
+
+## Why SPX qualifies and SPY doesn't
+
+The determining factor is whether the underlying is a **broad-based index** or a single security/ETF. SPX options are options on the S&P 500 index itself — a broad-based index — so they qualify for Section 1256 treatment. SPY options are options on an ETF (a security that happens to track the index), not the index directly, so they don't. See [SPX vs SPY Options: What Actually Differs](/learn/spx-vs-spy-options-explained) for the full list of mechanical differences this distinction creates, settlement and assignment included, not just tax.
+
+## What this means in practice for an active trader
+
+For someone running the [0DTE SPX strategy](/learn/0dte-spx-options-strategy) or any structure that closes same-day — [iron condors](/learn/iron-condor-strategy-guide), [credit spreads](/learn/credit-spreads-strategy-guide), directional plays — every single trade gets the 60/40 treatment automatically, with no holding-period requirement to qualify. That's a structural tax advantage of choosing SPX as the underlying that has nothing to do with strategy or skill; it's a function of the instrument itself. It's one more reason SPX has become the default underlying for structured 0DTE trading rather than SPY, alongside the cash-settlement and no-early-assignment advantages covered in the SPX vs SPY comparison above.
+
+## What this article does not cover
+
+Wash-sale rules, straddle rules under Section 1092, state tax treatment (which varies and often does not follow federal Section 1256 rules), and how this interacts with trader tax status or mark-to-market elections under Section 475 are all real, relevant topics for an active trader and all outside the scope of an educational overview. This is the starting map, not the whole territory — bring the specifics of your own trading activity to a tax professional.
+
+## Put it to work
+
+BlackOut's SPX-focused tools — [SPX Slayer](/learn/spx-slayer), [Thermal](/learn/heat-maps), [Night Hawk](/learn/night-hawk) — are all built around the instrument that carries this tax treatment. [Get access →](/pricing)
+
+> *BlackOut provides educational tools and market analysis only and does not provide investment or tax advice. This article is not tax advice — consult a qualified tax professional about your own situation. Options trading involves substantial risk and is not suitable for every investor.*`,
+  },
+  {
+    slug: "wheel-strategy-cash-secured-puts",
+    path: "/learn/wheel-strategy-cash-secured-puts",
+    metaTitle: "The Wheel Strategy Explained: Cash-Secured Puts & Covered Calls | BlackOut",
+    metaDescription: "The wheel options strategy explained: selling cash-secured puts, taking assignment, then selling covered calls — the mechanics, the math, and the real risks.",
+    targetKeyword: "wheel strategy cash secured puts",
+    type: "article",
+    title: "The Wheel Strategy: Cash-Secured Puts & Covered Calls",
+    description: "The wheel options strategy explained: selling cash-secured puts, taking assignment, then selling covered calls — the mechanics, the math, and the real risks.",
+    body: `The wheel is the strategy that convinced a lot of stock investors to start selling options: a repeatable, mechanical income loop built entirely from two of the simplest structures in the options market — cash-secured puts and covered calls — that only requires being willing to actually own the stock.
+
+## The two positions that make up the wheel
+
+**A cash-secured put** means selling a put option while holding enough cash to buy the shares if you're assigned. You collect the premium up front. If the stock stays above your strike through expiration, the put expires worthless and you keep the premium — full profit, no shares. If the stock falls below your strike, you get assigned: you're obligated to buy 100 shares per contract at the strike price, using the cash you set aside.
+
+**A covered call** means owning at least 100 shares of a stock and selling a call against them. You collect the premium up front again. If the stock stays below your strike, the call expires worthless and you keep both the premium and the shares. If the stock rises above your strike, you get assigned: your shares are called away — sold at the strike price.
+
+## How the wheel connects them
+
+The wheel runs these two positions in sequence, forming a loop:
+
+1. Sell a cash-secured put on a stock you'd genuinely be willing to own, at a strike you'd be happy to buy at.
+2. If it expires worthless, repeat step 1 — collect premium indefinitely with no shares.
+3. If you're assigned, you now own 100 shares per contract. Sell a covered call against them, at a strike you'd be happy to sell at.
+4. If the call expires worthless, keep the shares and the premium, and repeat step 3.
+5. If the call gets assigned, your shares are called away at the strike, you're back to cash, and the wheel turns back to step 1.
+
+At every stage you're collecting premium — that's the entire engine. See [Options Assignment & Exercise Explained](/learn/options-assignment-exercise-explained) for the full mechanics of what actually happens when a put or call you sold gets assigned, since understanding assignment is not optional if you're running this strategy — it's the mechanism the whole loop depends on.
+
+## The math: why this works (and where it doesn't)
+
+Every leg of the wheel is short premium, which means [theta](/learn/theta-decay-options-explained) is working for you continuously — time decay erodes the value of the option you sold, and you profit as it approaches zero. The tradeoff, as with any premium-selling structure, is that your upside is capped at the premium collected while your downside on the put leg is substantial: if the stock drops well below your strike, you're assigned shares at a price now well above the market, and you own the decline. The wheel is not a hedge against a real drawdown — it's a way to get paid while you wait to own a stock at a discount, or to get paid while you wait to sell one at a premium. It works best on stocks you have genuine long-term conviction in, not on names you're only interested in for the premium.
+
+## Strike selection
+
+Most wheel traders sell puts and calls around 15-30 delta — meaning roughly a 70-85% statistical probability of expiring worthless — trading a smaller premium for a higher win rate. See [Options Greeks Explained](/learn/options-greeks-explained) for what delta actually measures and how it maps to that probability. Tighter strikes (higher delta) collect more premium but get assigned more often; wider strikes (lower delta) collect less but let the position run longer before assignment forces a decision.
+
+## The wheel vs. a straight credit spread
+
+The wheel requires being willing to actually hold 100 shares per contract — real capital, real single-stock risk, no defined max loss on the put leg the way a [credit spread](/learn/credit-spreads-strategy-guide) has. That's the core tradeoff versus a defined-risk structure: more capital required, undefined downside on paper (though bounded by the stock going to zero), in exchange for genuinely owning the underlying rather than just holding a spread. It's a stock-selection strategy wearing an options-income wrapper, not a pure options strategy.
+
+## Put it to work
+
+The wheel is a single-name, longer-horizon strategy — a different timeframe than BlackOut's 0DTE desk, but the same underlying skill: reading premium, [IV](/learn/implied-volatility-explained), and probability correctly before you sell. [Largo AI](/learn/largo-ai) can walk through strike/delta tradeoffs conversationally if you're sizing a wheel position. New to the terminology? Start with the [Options Trading Glossary](/learn/options-trading-glossary). [Get access →](/pricing)
+
+> *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options trading involves substantial risk and is not suitable for every investor.*`,
+  },
+  {
+    slug: "straddles-strangles-options-explained",
+    path: "/learn/straddles-strangles-options-explained",
+    metaTitle: "Straddles & Strangles Explained: Trading Volatility | BlackOut",
+    metaDescription: "Straddles and strangles explained: how long and short volatility plays work, the breakeven math, IV crush risk, and when each structure actually makes sense.",
+    targetKeyword: "straddles and strangles explained",
+    type: "article",
+    title: "Straddles & Strangles: Trading Volatility, Not Direction",
+    description: "Straddles and strangles explained: how long and short volatility plays work, the breakeven math, IV crush risk, and when each structure actually makes sense.",
+    body: `Most options strategies bet on where price goes. Straddles and strangles bet on *how much* it moves — or how little — without committing to a direction at all. That makes them the cleanest way to express a pure volatility view, and one of the easiest structures to get badly wrong if you don't respect what's actually driving their price.
+
+## Long straddle: betting on a big move, either direction
+
+A long straddle means buying a call and a put at the **same strike** and **same expiration**, typically at-the-money. You profit if the underlying makes a large move in either direction — the losing leg expires worthless, but the winning leg's gain can outpace the combined cost of both premiums. You lose if the underlying sits still: both legs bleed [theta](/learn/theta-decay-options-explained) toward zero with nothing to show for it. Breakeven is the strike plus the total premium paid (upside) and the strike minus the total premium paid (downside) — price has to clear one of those two levels by expiration just to break even, before any profit starts.
+
+## Long strangle: the cheaper, wider version
+
+A long strangle is the same idea with **different strikes** — an out-of-the-money call above price and an out-of-the-money put below it. It costs less than a straddle since both legs start further from the money, but it needs a bigger move to reach either breakeven, since the strikes are wider apart. It's a straddle with the premium and the required move both dialed down together.
+
+## Short straddle and short strangle: selling volatility instead
+
+Selling either structure instead of buying it flips the bet: you collect premium up front and profit if the underlying stays inside a range, losing if it makes a big move in either direction. A short straddle collects more premium (same-strike legs) but has a narrower profitable range; a short strangle collects less but has a wider one. Both carry theoretically unlimited risk on the naked side unless the position is later converted into a defined-risk structure like an [iron condor](/learn/iron-condor-strategy-guide) — which is, structurally, a short strangle with the risk capped by adding long wings.
+
+## The variable that actually drives these trades: implied volatility
+
+Straddles and strangles are the most IV-sensitive structures in options trading, because you're long or short vega on both legs simultaneously — see [Implied Volatility Explained](/learn/implied-volatility-explained) for what IV level means and how it's priced into every option's premium. Buying a straddle when IV is already elevated means paying a rich price for both legs, and even a correct directional move can lose money if IV collapses faster than price moves — a phenomenon known as **IV crush**, most famous around earnings announcements, when IV spikes into the print and collapses the moment the news is out regardless of which way the stock actually moved. The [VIX](/learn/vix-trading-guide) is the market-wide version of this same signal for SPX: elevated VIX means straddles/strangles on SPX are pricing in a bigger expected move, and richer premium for anyone selling them.
+
+## When each side of the trade makes sense
+
+Buy volatility (long straddle/strangle) when you expect a genuinely large move but are uncertain of direction — a binary catalyst, a macro event, a session where [GEX](/learn/what-is-gex) is deeply negative and the market sits below the [gamma flip](/learn/gamma-flip-explained), since that's the regime where dealer hedging amplifies moves rather than dampens them. Sell volatility (short straddle/strangle, or the defined-risk condor version) when IV is elevated relative to what you actually expect to play out and you expect the underlying to stay range-bound — positive GEX, price above the flip, dealer hedging working to suppress the move rather than accelerate it.
+
+## Put it to work
+
+BlackOut Thermal shows GEX and the gamma flip live, so you can read whether the regime favors buying or selling volatility before choosing a side of this trade — [see Thermal live →](/learn/heat-maps). New to the terminology? Start with the [Options Trading Glossary](/learn/options-trading-glossary). [Get access →](/pricing)
+
+> *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options trading involves substantial risk and is not suitable for every investor.*`,
+  },
+  {
+    slug: "options-assignment-exercise-explained",
+    path: "/learn/options-assignment-exercise-explained",
+    metaTitle: "Options Assignment & Exercise Explained | BlackOut",
+    metaDescription: "How options assignment and exercise actually work: early assignment risk, auto-exercise at expiration, and why SPX's cash settlement avoids it entirely.",
+    targetKeyword: "options assignment and exercise explained",
+    type: "article",
+    title: "Options Assignment & Exercise Explained",
+    description: "How options assignment and exercise actually work: early assignment risk, auto-exercise at expiration, and why SPX's cash settlement avoids it entirely.",
+    body: `Every option contract has two sides, and only one of them chooses when it ends. If you're long an option, you decide whether to exercise it. If you're short one, you have no say at all — you just find out you've been assigned, sometimes before you expected the position to resolve.
+
+## Exercise: the buyer's decision
+
+**Exercising** an option means the holder (the buyer) chooses to invoke their right under the contract — for a call, buying the underlying at the strike price; for a put, selling it at the strike. The buyer of an option always has the choice to exercise, let it expire worthless, or simply sell the contract itself before expiration to realize the value without ever exercising.
+
+## Assignment: the seller's obligation
+
+**Assignment** is what happens to the option seller when the buyer on the other side of the trade exercises. The seller of a call is obligated to deliver (sell) shares at the strike; the seller of a put is obligated to buy shares at the strike. Assignment isn't something you request or predict on any individual contract — it's handled by the Options Clearing Corporation (OCC), which randomly assigns exercise notices to broker accounts holding the short side.
+
+## American-style vs European-style: when assignment can happen
+
+This is the single most important distinction for anyone managing assignment risk. **American-style** options (most single stocks and ETFs, including SPY) can be exercised **at any time** before expiration — meaning a short position can be assigned early, days or weeks before expiration, if the option goes deep enough in the money. **European-style** options (SPX and most cash-settled index options) can only be exercised **at expiration** — there is no early-assignment risk at all, by design. See [SPX vs SPY Options](/learn/spx-vs-spy-options-explained) for the full comparison; this single difference is a major reason traders running multi-leg, defined-risk structures like [iron condors](/learn/iron-condor-strategy-guide) prefer SPX — you never have to worry about one leg getting assigned away mid-trade.
+
+## Why early assignment happens at all
+
+Early exercise is rarely optimal for the option holder — exercising forfeits any remaining time value in the option, which is usually worth more than the intrinsic value gained by exercising early. It happens anyway in two common situations: a deep in-the-money call being exercised just before the underlying stock goes ex-dividend (to capture the dividend, which the option holder otherwise wouldn't receive), or a holder who needs the shares/cash immediately for reasons unrelated to the option's remaining value. Because it's rare but not impossible, anyone short an American-style option that's gone meaningfully in the money should treat early assignment as a real, if low-probability, scenario — not something that can't happen to them.
+
+## Auto-exercise at expiration
+
+Under OCC rules, any option that's in the money by $0.01 or more at expiration is **automatically exercised** unless the holder specifically instructs their broker otherwise. This is why a position left open into expiration — intentionally or by oversight — can result in a real assignment even without the holder actively choosing to exercise. It's also the mechanism behind [pin risk](/learn/pin-risk-options-explained): when the underlying settles extremely close to a strike, small last-minute price moves can determine whether a position gets auto-exercised at all, creating uncertain overnight exposure for anyone who didn't close before the close.
+
+## What this means for SPX 0DTE trading specifically
+
+SPX's cash settlement and European style mean assignment, in the traditional physical-delivery sense, never happens on SPX — an in-the-money SPX option at expiration settles as a cash credit or debit, no shares involved, no early-exercise risk on any leg beforehand. That's a genuine structural simplification for 0DTE traders: you can build a multi-leg SPX position and know that until expiration, none of the individual legs can be pulled out from under you by an early assignment the way an equivalent single-stock or SPY structure theoretically could.
+
+## Put it to work
+
+BlackOut's SPX-focused tools — [SPX Slayer](/learn/spx-slayer), [Thermal](/learn/heat-maps) — are built around an instrument that structurally avoids the assignment risk covered here. New to the terminology? Start with the [Options Trading Glossary](/learn/options-trading-glossary). [Get access →](/pricing)
+
+> *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options trading involves substantial risk and is not suitable for every investor.*`,
+  },
+  {
+    slug: "butterfly-spread-strategy-guide",
+    path: "/learn/butterfly-spread-strategy-guide",
+    metaTitle: "Butterfly Spread Strategy Guide: Pinning a Single Strike | BlackOut",
+    metaDescription: "The butterfly spread explained: the three-strike structure, max profit at the body, and how it compares to an iron condor for pinning price at expiration.",
+    targetKeyword: "butterfly spread strategy",
+    type: "article",
+    title: "Butterfly Spread Strategy: Pinning a Single Strike",
+    description: "The butterfly spread explained: the three-strike structure, max profit at the body, and how it compares to an iron condor for pinning price at expiration.",
+    body: `An iron condor bets price stays inside a range. A butterfly makes a sharper bet: that price lands at, or very near, one exact strike by expiration. It's a lower-probability, higher-reward version of the same premium-selling instinct — trading a wide safe zone for a much better payout if you're right about where price actually pins.
+
+## The three-strike structure
+
+A long call butterfly uses three strikes, equally spaced, all with the same expiration:
+
+- **Buy one call** at a lower strike
+- **Sell two calls** at a middle strike (the "body")
+- **Buy one call** at a higher strike
+
+The same structure works with puts instead of calls (a put butterfly), and the payoff is identical either way — the choice is usually just a matter of which side has cheaper pricing. Say SPX is trading at 5,500 and you expect it to pin right there by the close: buy the 5,480 call, sell two 5,500 calls, buy the 5,520 call. That's a butterfly centered on 5,500.
+
+## Max profit, max loss, and where they happen
+
+Max profit occurs if price settles exactly at the body (middle) strike at expiration — in the example above, exactly 5,500. Max loss is capped at the net debit paid to open the trade (or, for a credit butterfly, the width minus the credit) and occurs if price finishes at or beyond either wing. The profit zone is narrow — a butterfly only makes its full potential profit in a tight band around the body strike — but the reward relative to risk in that zone is meaningfully better than a condor's, precisely because the bet is more specific.
+
+## Butterfly vs iron condor: the real tradeoff
+
+Both are defined-risk, non-directional structures built from the same underlying instinct — that price won't move much — but they express it differently. An [iron condor](/learn/iron-condor-strategy-guide) has a wide safe zone between its two short strikes and a moderate max profit anywhere inside it. A butterfly has a narrow safe zone around a single strike and a larger max profit if price lands there precisely, but drops off faster outside that zone. Choose a condor when you have a range in mind; choose a butterfly when you have a specific level in mind and are willing to trade probability of profit for a better payout if you're right.
+
+## Where "the level you have in mind" should come from
+
+The single best anchor for centering a butterfly is [max pain](/learn/max-pain-options-explained) — the strike where the total value of all outstanding options (calls and puts combined) is lowest, and therefore the level option sellers as a group benefit most from price settling at. It's not a guarantee, but it's a real, mechanically-grounded candidate for where a session pins, especially on high-open-interest expirations. The [call wall and put wall](/learn/call-wall-put-wall-explained) are worth checking too — a butterfly centered between two strong walls has a structural reason for price to stay contained there, the same dealer-hedging logic that makes those levels act as resistance and support in the first place.
+
+## Iron butterfly: the credit version
+
+An **iron butterfly** builds the same payoff shape using a short straddle (sell a call and a put at the same body strike) with long wings on both sides for protection — collecting a net credit up front rather than paying a debit, with the same max-profit-at-the-body, capped-loss-at-the-wings structure. It's mechanically a [short straddle](/learn/straddles-strangles-options-explained) with the tail risk capped, the same way an iron condor is a short strangle with the tail risk capped.
+
+## Put it to work
+
+BlackOut Thermal plots max pain, the call wall, and put wall for SPX live, so a butterfly can be centered on real structure instead of a round number — [see Thermal live →](/learn/heat-maps). Pair it with [SPX Slayer](/learn/spx-slayer) for the live 0DTE read on the session. New to the terminology? Start with the [Options Trading Glossary](/learn/options-trading-glossary). [Get access →](/pricing)
 
 > *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options trading involves substantial risk and is not suitable for every investor.*`,
   },

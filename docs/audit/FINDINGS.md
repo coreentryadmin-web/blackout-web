@@ -34,6 +34,17 @@ about to do is not a status, and it cost this repo a phantom backlog item (see
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-08-08 — [OPS-NOTE, SEO] 6 new `/learn` articles added, closing real content gaps identified by taxonomy analysis (not GSC query data — too thin at this site age) — ADDED
+> **kind:** `OPS-NOTE`
+
+| Field | Value |
+|-------|-------|
+| **Status** | ADDED. `spx-vs-spy-options-explained`, `options-tax-treatment-1256`, `wheel-strategy-cash-secured-puts`, `straddles-strangles-options-explained`, `options-assignment-exercise-explained`, `butterfly-spread-strategy-guide` — all in `src/lib/learn/articles.ts`. |
+| **Why** | The site's existing 45 articles comprehensively cover the dealer-gamma/GEX ecosystem, Greeks, and every platform tool (checked against real GSC query data — see the search-console-monitor entry above). That data is too thin at ~2 weeks of site age to drive gap analysis from search performance yet (most tracked queries sit at position 40-85 with 1-3 impressions). Compared against general options-education taxonomy instead: 6 real gaps, all on-brand for an SPX-focused site (SPX vs SPY mechanics/tax, the wheel, straddles/strangles, assignment mechanics, butterflies) — not previously covered anywhere on the site. |
+| **Link-graph integration** | Each new article cross-links to 4-5 existing articles and 1-2 of the other 5 new ones. To satisfy the existing link-graph health tests (`articles.test.ts`, ≥2 incoming / ≥3 outgoing per article, from the 2026-08-03 audit that brought the prior 42 above these minimums), added natural inbound links from 8 existing articles (`how-to-trade-spx-options`, `credit-spreads-strategy-guide`, `theta-decay-options-explained`, `implied-volatility-explained`, `iron-condor-strategy-guide`, `max-pain-options-explained`, plus 2 more) at points where the connection was already substantively true — not link-count padding. |
+| **Dates** | `src/lib/learn/article-dates.ts` regenerated via `scripts/seo/generate-article-dates.mjs` after committing the content, so dates are derived from real git history (today for the 6 new slugs; today's `dateModified` also correctly bumped on the 8 existing articles whose bodies were genuinely edited to add the new inbound links) — not fabricated, per the same discipline as the original per-article-dates fix earlier this session. |
+| **Verification** | `npx tsx --test src/lib/learn/articles.test.ts src/lib/learn/article-dates.test.ts src/lib/seo/sitemap-dates.test.ts` — 14/14 pass (incoming/outgoing minimums, no orphans, no broken links, metaDescription length/uniqueness, real per-article date differentiation). `npx tsc --noEmit` / `npx eslint` — clean. Real `npm run build` run to confirm all 6 new static paths generate correctly. |
+
 ## 2026-08-08 — [OPS-NOTE, SEO] Ongoing Core Web Vitals + Search Console monitoring — no committed tooling existed for this before — ADDED
 > **kind:** `OPS-NOTE`
 
