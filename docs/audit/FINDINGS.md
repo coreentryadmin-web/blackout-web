@@ -4,6 +4,15 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-08 - [P3, cleanup] Orphaned `track-record/opengraph-image.tsx` still executed a live data fetch on direct hit, behind a page that always redirects — REMOVED
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P3, not a live SEO bug (the route is already `robots.ts`-disallowed), but real dead weight. `src/app/(site)/track-record/page.tsx` unconditionally calls `redirect("/admin?tab=track-record")` — it never renders HTML or serves metadata to a real visitor. `src/app/track-record/opengraph-image.tsx` (a sibling directory outside the `(site)` route group, mapping to the same `/track-record` URL segment for Next.js's special-file resolution) still existed, calling `buildPublicTrackRecord()` — a real data fetch — to render a 1200×630 PNG on every hit. |
+| **Investigation before deleting** | Checked git history: both files were introduced in the same commit (`62864d9a`, 2026-07-30) — this was never a working feature that regressed, it shipped already-orphaned. Checked `src/app/embed/track-record/page.tsx` (the other track-record-adjacent route): its own comment confirms the reclassification — `"Admin-only embed preview (formerly public social-proof iframe)"`, `requireAdmin()`-gated, `noindex`. The whole public track-record sharing feature was walked back to admin-only; this OG image generator is a leftover from when `/track-record` was still public. Grepped the entire `src/` tree for any reference to the file (imports, route generation, tests) — zero hits. |
+| **Fix** | Deleted `src/app/track-record/opengraph-image.tsx`. Since `(site)/track-record/page.tsx` already redirects before any metadata is served, and `robots.ts` already disallows `/track-record/`, removing the unreachable image generator has no SEO downside — it only removes a route that still executed a real DB-backed data fetch if hit directly (e.g. a stale cached link, or a bot resolving the synthesized image URL literally), with zero benefit to any real visitor. |
+| **Verification** | `npx tsc --noEmit` — clean. Real `npm run build` run to confirm no build-time regression from the removed route. |
+
 ## 2026-08-08 - [P1, SEO] `robots.ts` trailing-slash disallow rules never actually blocked the bare private routes (`/admin`, `/dashboard`, `/offline`, etc.) — FIXED
 
 | Field | Value |
