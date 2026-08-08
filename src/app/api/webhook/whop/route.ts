@@ -20,6 +20,12 @@ import {
   notifyCancellationReversed,
   notifyPaymentFailed,
 } from "@/lib/billing-lifecycle-email";
+// #1895's OPS-facing Discord notification is a different consumer of the same event than
+// #1901's MEMBER-facing email — both stay.
+import {
+  buildCancellationNotificationBody,
+  shouldNotifyCancellation,
+} from "@/lib/whop-cancellation-notify";
 
 /**
  * Idempotency CLAIM: atomically mark a Whop event as "being processed" (Redis SET NX,
@@ -300,6 +306,23 @@ export async function POST(req: NextRequest) {
             (event.data.user?.id ?? "unknown") +
             ". Grant member:email:read on the Whop app.",
           severity: "warning",
+        }).catch(() => undefined);
+      }
+
+      // Cancellation-reason capture (docs/marketing/SEO-GROWTH.md finding #6). Whop's
+      // OWN cancel flow already asks for a reason (cancel_option enum + optional free-text
+      // cancellation_reason) and this event fires the moment cancel_at_period_end flips —
+      // we just weren't reading it.
+      if (shouldNotifyCancellation(event.type, event.data.cancel_at_period_end)) {
+        void notifyOpsDiscord({
+          title: "Membership cancellation started",
+          body: buildCancellationNotificationBody({
+            email,
+            whopUserId: event.data.user?.id,
+            cancelOption: event.data.cancel_option,
+            cancellationReason: event.data.cancellation_reason,
+          }),
+          severity: "info",
         }).catch(() => undefined);
       }
     } else if (

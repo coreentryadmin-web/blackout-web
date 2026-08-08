@@ -6,7 +6,8 @@ import { dbConfigured, dbQuery } from "@/lib/db";
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function isValidEmail(value: string): boolean {
-  return EMAIL_PATTERN.test(value.trim()) && value.length <= 254;
+  const trimmed = value.trim();
+  return EMAIL_PATTERN.test(trimmed) && trimmed.length <= 254;
 }
 
 export async function recordEmailCapture(input: {

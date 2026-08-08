@@ -13,6 +13,7 @@ import {
   type WallScopeState,
 } from "@/lib/providers/gex-wall-levels";
 import { todayEtYmd } from "@/lib/providers/spx-session";
+import { isEtCashRth } from "@/lib/et-market-hours";
 import { persistWallSampleDebounced, loadSessionWallHistory, appendSessionWallSample } from "./vector-wall-persist";
 import { bucketWallSampleTime, buildWallHistorySample } from "./vector-wall-sample";
 import { wallTrailSampleSecForTicker } from "./vector-wall-sample-server";
@@ -485,6 +486,30 @@ export function getVectorWallHistory(ticker: string = VECTOR_DEFAULT_TICKER): Wa
 const STALE_RECORD_MAX_MS = 120_000;
 
 /**
+ * Session-rail writes are RTH-only — the freshness check above is NOT a substitute.
+ *
+ * `STALE_RECORD_MAX_MS` asks "is the cached wall read recent?", not "is the market open?". For an
+ * ORACLE ticker (SPX/SPY/QQQ, see VECTOR_ORACLE_TICKERS) the UW `gex_strike_expiry` subscription is
+ * always-on, so `cachedWallsAt` keeps refreshing overnight against a chain nobody is trading. The
+ * freshness gate therefore passes around the clock and every writer below it stamps the session
+ * rail — which is exactly the failure `vector-universe.ts` warns about ("the inline scanner-poll
+ * rebuild must not [record], or it would stamp off-hours/weekend samples onto the session rail").
+ *
+ * Measured on prod 2026-08-07 (session rail, `dte=all`): SPX carried 5,429 samples spanning
+ * 00:00:00-19:22 ET with only 1,520 (28%) inside cash RTH, while META — non-oracle, so its cache
+ * goes stale after the close and the freshness gate does the job by accident — carried 1,445
+ * samples starting cleanly at 09:30:00 with 1,375 (95%) in-session. ~3,900 junk samples per SPX
+ * horizon per session, on four horizons.
+ *
+ * The 5s in-process recorder (`vector-bead-recorder-leader.ts`) and the backup cron already gate on
+ * `isEtCashRth()`. This is the same gate for the two writers that were missing it, so all four
+ * paths agree on what belongs on a session rail.
+ */
+function wallRailRecordingOpen(): boolean {
+  return isEtCashRth();
+}
+
+/**
  * Record blended + narrowed wall-history samples when wall reads are fresh.
  * Used by vector-walls-warm (~15–30s) so SPY/QQQ/NVDA rails accumulate server-side
  * without requiring a live Vector viewer — the gap behind SPX's always-on desk stream.
@@ -515,6 +540,8 @@ export async function recordVectorWallSamplesFromWarm(ticker: string): Promise<b
   const gammaFlip = s.cachedFlip;
   const vexFlip = getVectorVexFlip(t);
   const nowMs = Date.now();
+  // RTH gate BEFORE freshness: an always-on oracle subscription keeps the cache fresh overnight.
+  if (!wallRailRecordingOpen()) return false;
   const gexRecordable = walls != null && nowMs - s.cachedWallsAt <= STALE_RECORD_MAX_MS;
   const vexRecordable = vexWalls != null && nowMs - s.cachedVexWallsAt <= STALE_RECORD_MAX_MS;
   if (!gexRecordable && !vexRecordable) return false;
@@ -599,7 +626,11 @@ export async function buildVectorStreamPayload(
   const gexRecordable = walls != null && nowMs - s.cachedWallsAt <= STALE_RECORD_MAX_MS;
   const vexRecordable = vexWalls != null && nowMs - s.cachedVexWallsAt <= STALE_RECORD_MAX_MS;
 
-  if (gexRecordable || vexRecordable) {
+  // RTH gate BEFORE freshness — see wallRailRecordingOpen. This is the writer that produced the
+  // 00:00-09:30 ET segment of SPX's rail: the SPX desk stream is always-on, so every poll of it
+  // outside RTH stamped another bucket onto the session rail. The live payload below is unaffected
+  // — after hours the desk still shows CURRENT wall structure, it just stops appending to history.
+  if (wallRailRecordingOpen() && (gexRecordable || vexRecordable)) {
     // Same sample builder the server-side universe recorder uses, so the two
     // writers of vector:wall-history produce byte-identical rows (rounding +
     // honest-gap semantics documented on buildWallHistorySample). Freshness
