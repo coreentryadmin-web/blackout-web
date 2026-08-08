@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { MarketingPageShell } from "@/components/landing/MarketingPageShell";
 import { RedesignHome } from "@/components/landing/RedesignHome";
 import { FAQPageJsonLd, WebPageJsonLd } from "@/components/seo/JsonLd";
-import { HOME_FAQ_ITEMS } from "@/lib/seo/home-faq";
+import { HOME_FAQ_IDS, selectFaqItems } from "@/lib/faq/content";
 import { publicPageMetadata } from "@/lib/page-metadata";
 
 export const revalidate = 3600;
@@ -26,7 +26,7 @@ const LANDING_REDIRECT_SCRIPT =
 export default function LandingPage() {
   return (
     <MarketingPageShell showChart={false}>
-      <FAQPageJsonLd items={[...HOME_FAQ_ITEMS]} />
+      <FAQPageJsonLd items={selectFaqItems(HOME_FAQ_IDS).map((i) => ({ question: i.q, answer: i.a }))} />
       <WebPageJsonLd
         title="BlackOut — Live Dealer Gamma & 0DTE SPX Options Flow"
         description="BlackOut gives options traders live dealer gamma, 0DTE flow, and A–F graded SPX setups. See what the desks see and trade before the crowd moves."

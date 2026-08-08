@@ -5,28 +5,9 @@ import { BorderBeam } from "@/components/ui/motion/BorderBeam";
 import { RetroGrid } from "@/components/ui/motion/RetroGrid";
 import { CheckoutLink } from "@/components/analytics/CheckoutLink";
 import { FeatureComparison } from "@/components/upgrade/FeatureComparison";
+import { PRICING_FAQ_IDS, selectFaqItems } from "@/lib/faq/content";
 import { MEMBERSHIP_PRICING, usd } from "@/lib/pricing";
 import { WHOP_CHECKOUT } from "@/lib/whop-checkout";
-
-/** Objection-handling FAQ for cold ad traffic landing directly on /pricing. */
-const PRICING_FAQ: { q: string; a: string }[] = [
-  {
-    q: "Can I cancel anytime?",
-    a: "Yes. Head to Account → Membership & Billing and click “Manage subscription” — that opens your secure billing portal, where you can update your card, switch plans, or cancel.",
-  },
-  {
-    q: "Is there a refund if it's not for me?",
-    a: "Annual plans: full refund within the first 7 days, no questions asked. Monthly plans are billed cycle-to-cycle with no long-term contract — cancel anytime and you won't be charged again, though the current cycle isn't refunded.",
-  },
-  {
-    q: "What's the difference between SPX Slayer and Premium?",
-    a: "SPX Slayer ($49/mo) is the 0DTE desk — live SPX regime, GEX, and graded plays. Premium ($199/mo or $1,999/yr) unlocks all six modules: HELIX flow, Largo analyst, dark pool, Night Hawk, heatmaps, and the full graded play log.",
-  },
-  {
-    q: "Is any of this financial advice?",
-    a: "No. BlackOut provides market data, analytics, and pattern-recognition tools for educational and informational purposes only. Every trade is your own decision.",
-  },
-];
 
 /** Full-desk perks — every module, one membership. */
 const DESK_PERKS = [
@@ -132,8 +113,8 @@ export function RedesignPricing() {
 
           <section className="rl-pricing-faq" aria-label="Pricing FAQ">
             <h2>Questions?</h2>
-            {PRICING_FAQ.map((item) => (
-              <details className="faq-item" key={item.q}>
+            {selectFaqItems(PRICING_FAQ_IDS).map((item) => (
+              <details className="faq-item" key={item.id}>
                 <summary>{item.q}</summary>
                 <p>{item.a}</p>
               </details>
