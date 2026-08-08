@@ -4,7 +4,12 @@
 // if the send fails (email infra being down shouldn't lose the lead) — the
 // send failure is logged, not surfaced to the caller as an error.
 import { NextRequest, NextResponse } from "next/server";
-import { isValidEmail, markLeadMagnetSent, recordEmailCapture } from "@/lib/email-captures";
+import {
+  isValidEmail,
+  markLeadMagnetSent,
+  recordEmailCapture,
+  wasLeadMagnetSentRecently,
+} from "@/lib/email-captures";
 import { sendEmail } from "@/lib/email/resend-client";
 import { gexCheatSheetEmail } from "@/lib/email/templates/gex-cheat-sheet";
 import { getClientIp, checkIpRateLimit, rateLimitHeaders } from "@/lib/ip-rate-limit";
@@ -49,9 +54,22 @@ export async function POST(req: NextRequest) {
 
   const { isNew } = await recordEmailCapture({ email, sourcePath, utmSource, utmCampaign });
 
-  // Send on every submission (not just isNew) — a returning visitor re-submitting
-  // clearly still wants the resource, and re-sending the same static email is
-  // harmless (unlike re-crediting a referral or re-charging a payment).
+  // PER-RECIPIENT cooldown. The IP rate limit above bounds the CALLER; this bounds the
+  // RECIPIENT, which is the half that matters on an unauthenticated endpoint where the
+  // address is attacker-supplied. Without it, naming a victim's address mails them on every
+  // request (~7,200/day from one IP, linearly more with rotation) — a mail-bomb amplifier
+  // whose cost lands on our sending domain's reputation, and thus on transactional mail.
+  //
+  // The capture is still RECORDED either way; only the send is suppressed. A genuine repeat
+  // visitor inside the window already has the cheat sheet in their inbox.
+  const recentlySent = await wasLeadMagnetSentRecently(email);
+  if (recentlySent) {
+    return NextResponse.json(
+      { ok: true, isNew, emailSent: false, alreadySent: true },
+      { headers: { ...NO_STORE_HEADERS, ...rlHeaders } }
+    );
+  }
+
   const { subject, html, attachments, headers } = gexCheatSheetEmail(email);
   const result = await sendEmail({
     to: email,

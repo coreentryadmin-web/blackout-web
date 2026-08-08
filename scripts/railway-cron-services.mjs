@@ -18,6 +18,7 @@ export const CRON_SERVICE_NAMES = {
   "largo-cleanup": "Largo-Chat-CleanUp",
   "market-regime-detector": "Market-Regime-Detector",
   "membership-reconcile": "Membership-Reconcile",
+  "welcome-sequence": "Welcome-Sequence",
   "nighthawk-morning-confirm": "NightHawk-Morning-Confirm",
   "nighthawk-outcomes": "NightHawk-Outcomes-Cron",
   "nighthawk-playbook": "NightHawk-Playbook",

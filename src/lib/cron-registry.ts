@@ -251,6 +251,20 @@ export const CRON_JOBS: CronJobDefinition[] = [
     description: "Resync Whop membership → Clerk tier; self-heals dropped webhooks (lockouts + revenue leaks)",
   },
   {
+    key: "welcome-sequence",
+    name: "Welcome Sequence",
+    kind: "http",
+    path: "/api/cron/welcome-sequence",
+    schedule_label: "Hourly",
+    // Steps are 2 DAYS apart, so hourly granularity is far finer than the drip needs — the
+    // margin exists so a few missed firings never delay a step by a whole day. Stale after 3h
+    // (3 missed runs) rather than ~1h: this is the watchdog's ONLY visibility into the drip,
+    // and without a registry entry an unscheduled cron is structurally un-alertable (see
+    // admin-cron-health.ts, which maps over CRON_JOBS).
+    stale_after_min: 3 * 60,
+    description: "Send the next due step of the 5-email member welcome drip (steps 2-5; step 1 fires inline from the Clerk user.created webhook)",
+  },
+  {
     key: "data-integrity",
     name: "Data Integrity",
     kind: "http",
