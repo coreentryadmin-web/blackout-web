@@ -4,6 +4,14 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-08 - [P3, SEO] `llms.txt` omitted 2 real, crawlable "Product" pages (`/tools/gamma-snapshot`, `/vs/others`) — FIXED
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P3. `src/app/llms.txt/route.ts`'s "Product" section listed Home/Pricing/FAQ/Why BlackOut/About/Contact but omitted `/tools/gamma-snapshot` (a real, allowed, dynamically-updated free tool — `changeFrequency: "daily"` in `sitemap-urls.ts:17`) and `/vs/others` (`sitemap-urls.ts:16`). Nothing *disallowed* was incorrectly listed — cross-checked against `robots.ts` and found no misalignment there — so this wasn't a correctness bug, just an incompleteness gap. Still worth closing since `llms.txt` is meant to be the AI-crawler-friendly index of everything crawlable, and these are two real product pages a crawler summarizing the site would otherwise miss. |
+| **Fix** | Added both links to the "Product" section, matching the existing bare-link format (no trailing description, consistent with every other entry in that section). |
+| **Verification** | Extended the existing `route.test.ts`'s "links every canonical top-level marketing page" test to assert both new paths. `npx tsx --test src/app/llms.txt/route.test.ts` — 4/4 pass. `npx tsc --noEmit` / `npx eslint` — clean. |
+
 ## 2026-08-08 - [P1, SEO] `robots.ts` trailing-slash disallow rules never actually blocked the bare private routes (`/admin`, `/dashboard`, `/offline`, etc.) — FIXED
 
 | Field | Value |

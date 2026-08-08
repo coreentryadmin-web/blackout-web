@@ -12,6 +12,8 @@ export function GET() {
     `- [Pricing](${SITE.url}/pricing)`,
     `- [FAQ](${SITE.url}/faq)`,
     `- [Why BlackOut](${SITE.url}/why-blackout)`,
+    `- [BlackOut vs Others](${SITE.url}/vs/others)`,
+    `- [Free Gamma Snapshot](${SITE.url}/tools/gamma-snapshot)`,
     `- [About](${SITE.url}/about)`,
     `- [Contact](${SITE.url}/contact)`,
     "",
