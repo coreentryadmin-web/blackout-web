@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, globSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 
 /**
  * Breadcrumbs must render INSIDE a page's content container, never as a bare sibling of
@@ -17,7 +18,23 @@ import { readFileSync, globSync } from "node:fs";
  * structural rule that the screenshot revealed.
  */
 
-const PAGES = globSync("src/app/**/page.tsx");
+/**
+ * Hand-rolled walk rather than `fs.globSync`. `globSync` landed in Node 22, and CI pins Node 20
+ * (`.github/workflows/ci.yml` → `node-version: 20`) while this sandbox runs 22 — so the glob
+ * version passed locally and threw `TypeError: globSync is not a function` in CI. `readdirSync`
+ * with `withFileTypes` is available everywhere the repo supports.
+ */
+function pageFiles(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...pageFiles(full));
+    else if (entry.name === "page.tsx") out.push(full);
+  }
+  return out;
+}
+
+const PAGES = pageFiles("src/app");
 
 function stripped(src: string): string {
   // Drop the breadcrumb's own `items={[...]}` payload so nested JSX inside it can't be mistaken
