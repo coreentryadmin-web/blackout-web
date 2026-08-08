@@ -7,6 +7,8 @@ import {
   isMembershipInDunningGrace,
   markMembershipDunningGrace,
   dunningGraceDays,
+  wasCancelAtPeriodEndAlreadyNotified,
+  markCancelAtPeriodEndNotified,
 } from "@/lib/whop-dunning";
 import { notifyOpsDiscord } from "@/features/spx/lib/spx-play-notify";
 import { recordApiCall } from "@/lib/api-telemetry";
@@ -85,10 +87,15 @@ function extractMembershipAndEmail(data: unknown): {
     payment?: { membership?: { id?: string } | string; member?: { email?: string | null } };
     user?: { email?: string | null };
     member?: { email?: string | null };
+    // `Shared.Invoice` payloads (invoice.past_due, invoice.marked_uncollectible,
+    // invoice.voided, invoice.paid) carry the recipient at top-level `email_address`
+    // and have no `membership`/`user`/`member` field at all — every other branch
+    // above falls through to null on an invoice event without this.
+    email_address?: string | null;
   };
   const mRaw = d?.membership ?? d?.payment?.membership;
   const membershipId = typeof mRaw === "string" ? mRaw : (mRaw?.id ?? null);
-  const email = d?.user?.email ?? d?.member?.email ?? d?.payment?.member?.email ?? null;
+  const email = d?.user?.email ?? d?.member?.email ?? d?.payment?.member?.email ?? d?.email_address ?? null;
   return { membershipId, email };
 }
 
@@ -250,15 +257,24 @@ export async function POST(req: NextRequest) {
           await clearMembershipDunningGrace(event.data.id);
         }
         if (event.type === "membership.cancel_at_period_end_changed") {
-          if (event.data.cancel_at_period_end) {
-            const accessUntil = event.data.renewal_period_end ? new Date(event.data.renewal_period_end) : null;
-            void notifyScheduledCancellation({ email, accessUntil }).catch((err) =>
-              console.warn("[whop webhook] notifyScheduledCancellation failed", err)
-            );
-          } else {
-            void notifyCancellationReversed({ email }).catch((err) =>
-              console.warn("[whop webhook] notifyCancellationReversed failed", err)
-            );
+          const cancelAtPeriodEnd = Boolean(event.data.cancel_at_period_end);
+          // State-based dedup, same reasoning as the payment-failed grace snapshot above:
+          // the top-of-route idempotency claim is fail-open, so on a Redis outage plus a
+          // Whop redelivery this is the only thing standing between a member and a
+          // duplicate "your cancellation is scheduled/reversed" email.
+          const alreadyNotified = await wasCancelAtPeriodEndAlreadyNotified(event.data.id, cancelAtPeriodEnd);
+          if (!alreadyNotified) {
+            if (cancelAtPeriodEnd) {
+              const accessUntil = event.data.renewal_period_end ? new Date(event.data.renewal_period_end) : null;
+              void notifyScheduledCancellation({ email, accessUntil }).catch((err) =>
+                console.warn("[whop webhook] notifyScheduledCancellation failed", err)
+              );
+            } else {
+              void notifyCancellationReversed({ email }).catch((err) =>
+                console.warn("[whop webhook] notifyCancellationReversed failed", err)
+              );
+            }
+            await markCancelAtPeriodEndNotified(event.data.id, cancelAtPeriodEnd);
           }
         }
       } else {
