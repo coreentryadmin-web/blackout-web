@@ -55,12 +55,28 @@ function statusOf(block) {
 
 /** A status written mid-flight that was never revisited. These are the ones that make a merged
  *  change look like outstanding work. */
-const STALE_STATUS = /PR pending|auto-merge (enabled|per standing)|→ CI →|PR opens on|→ PR\.?$/i;
+// Precedence made explicit: `$` binds only to its own alternative, so the anchored "→ PR." case is
+// grouped separately from the unanchored phrases. Written flat it read as though the anchor applied
+// to all of them (CodeQL alert 582) — the behaviour was right, the expression lied about it.
+const STALE_STATUS = new RegExp(
+  [
+    "PR pending",
+    "auto-merge (?:enabled|per standing)",
+    "→ CI →",
+    "PR opens on",
+    "→ PR\\.?$", // anchored ON PURPOSE: a status that ENDS "→ PR" is a hand-off note, not an outcome
+  ].join("|"),
+  "i"
+);
 
 const src = readFileSync(FINDINGS, "utf8");
 const parts = src.split(/\n(?=## )/);
 const preamble = parts[0].startsWith("## ") ? "" : parts.shift();
-const blocks = parts.filter((b) => b.startsWith("## "));
+// Skip the file's own legend. It quotes the pass-log phrasing while explaining that pass logs
+// belong elsewhere, so a naive pass would classify the documentation as the thing it documents and
+// move it to RUN-LOG.md. Caught by re-running the script on its own output — idempotency is the
+// property that makes this safe to run again, so it is worth protecting explicitly.
+const blocks = parts.filter((b) => b.startsWith("## ") && !/^## How to read this file/.test(b));
 
 const counts = {};
 const rows = blocks.map((b) => {
@@ -123,6 +139,19 @@ already forbids opening docs-only PRs for GREEN audit logs.
 ---
 
 `;
-writeFileSync(RUNLOG, runlogHeader + moved.map((r) => r.block).join("\n"));
+// APPEND, never overwrite. A second --apply finds few or no new pass logs (the first run already
+// moved them), and a blind write would silently destroy the ones already relocated — turning a
+// re-run into data loss. Read what's there, keep it, add only what's new.
+let existing = "";
+try {
+  existing = readFileSync(RUNLOG, "utf8");
+} catch {
+  existing = runlogHeader;
+}
+const alreadyLogged = new Set(
+  existing.split(/\n(?=## )/).filter((b) => b.startsWith("## ")).map((b) => b.split("\n")[0])
+);
+const fresh = moved.filter((r) => !alreadyLogged.has(r.head));
+writeFileSync(RUNLOG, existing.replace(/\s+$/, "") + (fresh.length ? "\n\n" + fresh.map((r) => r.block).join("\n") : "") + "\n");
 
-console.log(`\nAPPLIED: ${keep.length} entries retained + tagged, ${moved.length} pass logs moved to ${RUNLOG}`);
+console.log(`\nAPPLIED: ${keep.length} entries retained + tagged, ${fresh.length} new pass log(s) appended to ${RUNLOG} (${moved.length} matched, ${moved.length - fresh.length} already there)`);
