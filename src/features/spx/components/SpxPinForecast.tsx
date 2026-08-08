@@ -12,7 +12,10 @@ const C = {
 };
 const fmt = (n: number | null | undefined, d = 0) =>
   n == null || !Number.isFinite(n) ? "—" : n.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
-const KIND_LABEL: Record<string, string> = { call_wall: "call wall", put_wall: "put wall", max_pain: "max pain", flip: "gamma flip", path: "path cluster" };
+// "effective max pain" mirrors buildDrivers(): pinMaxPain weights OI + today's volume, while the
+// desk header's MAX PAIN tile is classic OI-only. Same word for two metrics is what made the panel
+// look self-contradictory, so the panel names the one it is actually showing.
+const KIND_LABEL: Record<string, string> = { pin: "projected close", call_wall: "call wall", put_wall: "put wall", max_pain: "effective max pain", flip: "gamma flip", path: "path cluster" };
 
 export function SpxPinForecast({ sessionActive = true }: { sessionActive?: boolean }) {
   const { pin, pinLoading } = useSpxPinForecast(sessionActive);

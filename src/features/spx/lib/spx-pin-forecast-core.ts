@@ -23,7 +23,13 @@ export type PinContract = {
 };
 
 export type PinConeStep = { tMin: number; p10: number; p50: number; p90: number };
-export type PinScenario = { close: number; p: number; kind: PinMagnetKind | "path" };
+/** `kind` describes WHAT a scenario's price is, not merely which magnet is nearby.
+ *  "pin" is the forecast itself — the model's projected close. It is deliberately NOT labelled
+ *  with the magnet's kind: the pin is a blended, clamped estimate that usually sits AWAY from the
+ *  magnet strike, so borrowing the magnet's name printed the forecast under a name it does not
+ *  hold (e.g. a 7751 pin rendered as "max pain" beside the real effective max pain of 7720 —
+ *  two different numbers, same label, on one panel). */
+export type PinScenario = { close: number; p: number; kind: PinMagnetKind | "path" | "pin" };
 export type PinMagnetKind = "call_wall" | "put_wall" | "max_pain" | "flip";
 export type PinDriver = { label: string; detail: string; weight: number };
 
@@ -658,7 +664,11 @@ function calibrateConfidence(raw: number, spot: number, band: readonly [number, 
 }
 
 function buildScenarios(input: PinForecastInput, p: Prep, pin: number, conf: number): PinScenario[] {
-  const out: PinScenario[] = [{ close: Number(pin.toFixed(0)), p: Number(conf.toFixed(2)), kind: p.magnetKind }];
+  // The head scenario is the FORECAST, so it is labelled "pin" — not p.magnetKind. Under long
+  // gamma the magnet is effective max pain, so tagging the pin with the magnet's kind printed
+  // "<pin> max pain" directly above "<effective max pain> max pain": two prices, one label,
+  // neither equal to the header's OI-only MAX PAIN tile. Three "max pain" numbers on one screen.
+  const out: PinScenario[] = [{ close: Number(pin.toFixed(0)), p: Number(conf.toFixed(2)), kind: "pin" }];
   if (p.maxPain != null && Math.abs(p.maxPain - pin) > p.strikeSpacing) out.push({ close: p.maxPain, p: Number((0.5 * (1 - conf)).toFixed(2)), kind: "max_pain" });
   if (p.flip != null && Math.abs(p.flip - pin) > p.strikeSpacing) out.push({ close: Number(p.flip.toFixed(0)), p: Number((0.3 * (1 - conf)).toFixed(2)), kind: "flip" });
   return out.slice(0, 4);
@@ -752,7 +762,10 @@ function montecarlo(input: PinForecastInput, p: Prep): PinForecast {
     const q = (f: number) => a[clamp(Math.floor(f * (a.length - 1)), 0, a.length - 1)]!;
     return { tMin: Number((p.tMin - dtMin * i).toFixed(1)), p10: Number(q(0.1).toFixed(2)), p50: Number(q(0.5).toFixed(2)), p90: Number(q(0.9).toFixed(2)) };
   });
-  const scenarios: PinScenario[] = ranked.slice(0, 4).map(([close, n], i) => ({ close, p: Number((n / paths).toFixed(2)), kind: i === 0 ? p.magnetKind : "path" }));
+  // Same correction as the analytic path: the top-ranked Monte-Carlo cluster is where the paths
+  // actually landed, which is a forecast, not the magnet. Labelling it p.magnetKind claimed a
+  // path cluster WAS max pain / the call wall.
+  const scenarios: PinScenario[] = ranked.slice(0, 4).map(([close, n], i) => ({ close, p: Number((n / paths).toFixed(2)), kind: i === 0 ? "pin" : "path" }));
   return assemble(input, p, "montecarlo", pin, conf, band, cone, scenarios, cone[cone.length - 1]?.p50 ?? pin, headlineClamped);
 }
 
