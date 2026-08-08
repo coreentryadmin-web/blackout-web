@@ -512,6 +512,21 @@ function thesisBreakFromSetupState(
 }
 
 /** Map horizon play status to deck lifecycle — live capital wears OPEN/HOLD/TRIM. */
+/**
+ * Drop a leading ticker from a contract label, so a deck row that already renders the symbol in
+ * its own element doesn't print it twice.
+ *
+ * Only strips a whole-word match at the very start, and only when something is left afterwards —
+ * a label that is nothing but the ticker (the "no options data available" shape) keeps its symbol
+ * rather than collapsing to an empty string.
+ */
+export function stripLeadingTicker(label: string, ticker: string | null | undefined): string {
+  const sym = ticker?.trim();
+  if (!sym) return label;
+  const stripped = label.replace(new RegExp(`^${sym.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b[\\s]*`, "i"), "").trim();
+  return stripped.length > 0 ? stripped : label;
+}
+
 function horizonDeckStatus(src: HorizonDeckSource): DeckStatus {
   if (src.liveStatus) return asStatus(src.liveStatus);
   const raw = String(src.status ?? "").toUpperCase();
@@ -696,8 +711,18 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
     : "morning confirm pending";
 
   // Build contract label from real options_play data when available.
+  //
+  // options_play is built by formatOptionsPlay() (deterministic-edition.ts) and deliberately LEADS
+  // WITH THE TICKER — "MSFT $500 CALL @ $3.33 — Aug 10" — because it is also used standalone in the
+  // briefing panel, the AI format contract and gex-heatmap, where the symbol has to be present.
+  // Every deck surface, though, renders `ticker` in its own element right beside this label
+  // (CommandDeck's .nh-deck-tk + .nh-deck-sub, PlayTerminal's header), so passing it through
+  // verbatim printed the symbol twice: "MSFT MSFT $500 CALL @ $3.33 — Aug 10".
+  //
+  // Stripped here rather than in formatOptionsPlay() because the duplication is a property of the
+  // deck's two-element layout, not of the string — the other consumers still need the prefix.
   const contractLabel = src.options_play
-    ? `${src.options_play}`.replace(/\s+/g, " ").trim()
+    ? stripLeadingTicker(`${src.options_play}`.replace(/\s+/g, " ").trim(), src.ticker)
     : `Rank ${src.rank ?? "?"} · next session`;
 
   // Gate warnings surface as gates (red/amber chips) in the terminal.
