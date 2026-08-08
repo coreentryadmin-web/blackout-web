@@ -4,12 +4,24 @@ import { syncWhopMembershipForEmail } from "@/lib/membership";
 import { markMembershipRevoked } from "@/lib/whop-revocation";
 import {
   clearMembershipDunningGrace,
+  isMembershipInDunningGrace,
   markMembershipDunningGrace,
+  dunningGraceDays,
+  wasCancelAtPeriodEndAlreadyNotified,
+  markCancelAtPeriodEndNotified,
 } from "@/lib/whop-dunning";
 import { notifyOpsDiscord } from "@/features/spx/lib/spx-play-notify";
 import { recordApiCall } from "@/lib/api-telemetry";
 import { makeRedis } from "@/lib/make-redis";
 import { publishTierChanged } from "@/lib/tier-cache";
+import {
+  syncWhopMembershipAndNotify,
+  notifyScheduledCancellation,
+  notifyCancellationReversed,
+  notifyPaymentFailed,
+} from "@/lib/billing-lifecycle-email";
+// #1895's OPS-facing Discord notification is a different consumer of the same event than
+// #1901's MEMBER-facing email — both stay.
 import {
   buildCancellationNotificationBody,
   shouldNotifyCancellation,
@@ -81,10 +93,15 @@ function extractMembershipAndEmail(data: unknown): {
     payment?: { membership?: { id?: string } | string; member?: { email?: string | null } };
     user?: { email?: string | null };
     member?: { email?: string | null };
+    // `Shared.Invoice` payloads (invoice.past_due, invoice.marked_uncollectible,
+    // invoice.voided, invoice.paid) carry the recipient at top-level `email_address`
+    // and have no `membership`/`user`/`member` field at all — every other branch
+    // above falls through to null on an invoice event without this.
+    email_address?: string | null;
   };
   const mRaw = d?.membership ?? d?.payment?.membership;
   const membershipId = typeof mRaw === "string" ? mRaw : (mRaw?.id ?? null);
-  const email = d?.user?.email ?? d?.member?.email ?? d?.payment?.member?.email ?? null;
+  const email = d?.user?.email ?? d?.member?.email ?? d?.payment?.member?.email ?? d?.email_address ?? null;
   return { membershipId, email };
 }
 
@@ -229,12 +246,42 @@ export async function POST(req: NextRequest) {
     ) {
       const email = event.data.user?.email;
       if (email) {
-        const { updatedUserIds } = await syncWhopMembershipForEmail(email);
+        // activated/deactivated go through the tier-diff wrapper so the right
+        // welcome/upgrade/downgrade/access-ended email fires exactly when the
+        // user's tier actually changed (see billing-lifecycle-email.ts for why
+        // this is self-dedupING and why it's scoped to this real-time path only).
+        // cancel_at_period_end_changed does NOT change tier — plain re-sync,
+        // handled by its own boolean-driven email dispatch below.
+        const { updatedUserIds } =
+          event.type === "membership.cancel_at_period_end_changed"
+            ? await syncWhopMembershipForEmail(email)
+            : await syncWhopMembershipAndNotify(email);
         // Evict tier cache on all replicas immediately so premium/downgrade is visible
         // within the next request rather than waiting up to 60s for TTL expiry.
         for (const uid of updatedUserIds) publishTierChanged(uid);
         if (event.type === "membership.deactivated" && event.data.id) {
           await clearMembershipDunningGrace(event.data.id);
+        }
+        if (event.type === "membership.cancel_at_period_end_changed") {
+          const cancelAtPeriodEnd = Boolean(event.data.cancel_at_period_end);
+          // State-based dedup, same reasoning as the payment-failed grace snapshot above:
+          // the top-of-route idempotency claim is fail-open, so on a Redis outage plus a
+          // Whop redelivery this is the only thing standing between a member and a
+          // duplicate "your cancellation is scheduled/reversed" email.
+          const alreadyNotified = await wasCancelAtPeriodEndAlreadyNotified(event.data.id, cancelAtPeriodEnd);
+          if (!alreadyNotified) {
+            if (cancelAtPeriodEnd) {
+              const accessUntil = event.data.renewal_period_end ? new Date(event.data.renewal_period_end) : null;
+              void notifyScheduledCancellation({ email, accessUntil }).catch((err) =>
+                console.warn("[whop webhook] notifyScheduledCancellation failed", err)
+              );
+            } else {
+              void notifyCancellationReversed({ email }).catch((err) =>
+                console.warn("[whop webhook] notifyCancellationReversed failed", err)
+              );
+            }
+            await markCancelAtPeriodEndNotified(event.data.id, cancelAtPeriodEnd);
+          }
         }
       } else {
         // Whop returns user.email === null when this app lacks the `member:email:read`
@@ -318,8 +365,18 @@ export async function POST(req: NextRequest) {
       event.type === "invoice.past_due"
     ) {
       const { membershipId, email } = extractMembershipAndEmail(event.data);
+      // Snapshot BEFORE marking grace so the customer-facing email only fires once per
+      // grace window, not on every retry attempt Whop makes within it (each retry is a
+      // distinct event with its own id, so the top-of-route idempotency claim doesn't
+      // catch this — it only dedupes literal re-delivery of the SAME event).
+      const wasAlreadyInGrace = membershipId ? await isMembershipInDunningGrace(membershipId) : false;
       if (membershipId) await markMembershipDunningGrace(membershipId);
       await syncEmailTier(email);
+      if (email && !wasAlreadyInGrace) {
+        void notifyPaymentFailed({ email, graceDays: dunningGraceDays() }).catch((err) =>
+          console.warn("[whop webhook] notifyPaymentFailed failed", err)
+        );
+      }
       void notifyOpsDiscord({
         title: "Whop payment failed — dunning grace started",
         body:
