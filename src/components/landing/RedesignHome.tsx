@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import type { CSSProperties } from "react";
+import { HOME_FAQ_IDS, selectFaqItems } from "@/lib/faq/content";
 import { MARKETING_PRODUCTS } from "@/lib/marketing/products";
 import { IMAGES, MARKETING_MODULE_GALLERY } from "@/lib/images";
 import { MEMBERSHIP_PRICING, usd } from "@/lib/pricing";
@@ -496,26 +497,12 @@ export function RedesignHome() {
             <h2>Questions?<br /><span className="gt">Answered.</span></h2>
           </div>
           <div className="faq-list">
-            <details className="faq-item">
-              <summary>Can I cancel anytime?</summary>
-              <p>Yes. Head to Account &rarr; Membership &amp; Billing and click &quot;Manage subscription&quot; &mdash; that opens your secure billing portal, where you can update your card, switch plans, or cancel.</p>
-            </details>
-            <details className="faq-item">
-              <summary>Do I need to connect a broker?</summary>
-              <p>No. BlackOut is a pure intelligence layer &mdash; you execute on your own broker. We surface the data, structure, and setups; you pull the trigger wherever you already trade.</p>
-            </details>
-            <details className="faq-item">
-              <summary>What&apos;s the difference between SPX Slayer and Premium?</summary>
-              <p>SPX Slayer ({usd(MEMBERSHIP_PRICING.community)}/mo) gives you the 0DTE desk &mdash; live SPX regime, GEX, and graded plays. Premium ({usd(MEMBERSHIP_PRICING.monthly)}/mo or {usd(MEMBERSHIP_PRICING.yearly)}/yr) unlocks all six modules: HELIX flow, Largo analyst, dark pool, Night Hawk, heatmaps, and the full graded play log.</p>
-            </details>
-            <details className="faq-item">
-              <summary>Is any of this financial advice?</summary>
-              <p>No. BlackOut provides market data, analytics, and pattern-recognition tools for educational and informational purposes only. Every trade is your own decision.</p>
-            </details>
-            <details className="faq-item">
-              <summary>How do I get started?</summary>
-              <p>Create your account, pick a plan, and the live desk is there immediately. Inside your first session you&apos;ll have the full read in front of you.</p>
-            </details>
+            {selectFaqItems(HOME_FAQ_IDS).map((item) => (
+              <details className="faq-item" key={item.id}>
+                <summary>{item.q}</summary>
+                <p>{item.a}</p>
+              </details>
+            ))}
           </div>
         </div>
       </section>

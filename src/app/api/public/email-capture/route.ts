@@ -4,12 +4,7 @@
 // if the send fails (email infra being down shouldn't lose the lead) — the
 // send failure is logged, not surfaced to the caller as an error.
 import { NextRequest, NextResponse } from "next/server";
-import {
-  isValidEmail,
-  markLeadMagnetSent,
-  recordEmailCapture,
-  wasLeadMagnetSentRecently,
-} from "@/lib/email-captures";
+import { isValidEmail, markLeadMagnetSent, recordEmailCapture } from "@/lib/email-captures";
 import { sendEmail } from "@/lib/email/resend-client";
 import { gexCheatSheetEmail } from "@/lib/email/templates/gex-cheat-sheet";
 import { getClientIp, checkIpRateLimit, rateLimitHeaders } from "@/lib/ip-rate-limit";
@@ -54,36 +49,42 @@ export async function POST(req: NextRequest) {
 
   const { isNew } = await recordEmailCapture({ email, sourcePath, utmSource, utmCampaign });
 
-  // PER-RECIPIENT cooldown. The IP rate limit above bounds the CALLER; this bounds the
-  // RECIPIENT, which is the half that matters on an unauthenticated endpoint where the
-  // address is attacker-supplied. Without it, naming a victim's address mails them on every
-  // request (~7,200/day from one IP, linearly more with rotation) — a mail-bomb amplifier
-  // whose cost lands on our sending domain's reputation, and thus on transactional mail.
+  // PER-RECIPIENT send cooldown. The IP rate limit above bounds the CALLER's request rate; this
+  // bounds the VICTIM's inbox, which is the half that matters on an unauthenticated endpoint where
+  // the recipient address is attacker-supplied. Without it one IP sustains thousands of sends/day
+  // to a single chosen address and rotating IPs scales that linearly — a mail-bomb amplifier whose
+  // cost lands on our sending domain's reputation, and therefore on transactional mail too.
   //
-  // The capture is still RECORDED either way; only the send is suppressed. A genuine repeat
-  // visitor inside the window already has the cheat sheet in their inbox.
-  const recentlySent = await wasLeadMagnetSentRecently(email);
-  if (recentlySent) {
-    return NextResponse.json(
-      { ok: true, isNew, emailSent: false, alreadySent: true },
-      { headers: { ...NO_STORE_HEADERS, ...rlHeaders } }
-    );
+  // Uses the Redis limiter rather than a DB read on `lead_magnet_sent_at`: it is atomic (two
+  // concurrent requests cannot both pass) and it keeps working when Postgres is degraded. "ip" is
+  // just an identity string here, same as market-user-rate-limit.ts does.
+  //
+  // Deliberately NOT gated on `isNew`: recordEmailCapture returns isNew:false both for a genuine
+  // repeat AND when the DB is unavailable, so gating on it would silently stop every send during a
+  // DB blip. The capture is still RECORDED when suppressed — only the send is skipped.
+  const recipientRl = await checkIpRateLimit(email.toLowerCase(), "public:email-capture:recipient", 1, 86_400);
+
+  let emailSent = false;
+  if (recipientRl.ok) {
+    // Full #1903 send: `headers` carries List-Unsubscribe/List-Unsubscribe-Post (one-click, which
+    // Gmail/Yahoo require of bulk senders) and `topicId` lets Resend suppress opted-out recipients
+    // server-side. Dropping either would silently un-do the unsubscribe work.
+    const { subject, html, attachments, headers } = gexCheatSheetEmail(email);
+    const result = await sendEmail({
+      to: email,
+      subject,
+      html,
+      attachments,
+      headers,
+      tag: "cheat-sheet",
+      topicId: process.env.RESEND_TOPIC_MARKETING_ID,
+    });
+    emailSent = result.ok;
+    if (result.ok) await markLeadMagnetSent(email);
   }
 
-  const { subject, html, attachments, headers } = gexCheatSheetEmail(email);
-  const result = await sendEmail({
-    to: email,
-    subject,
-    html,
-    attachments,
-    headers,
-    tag: "cheat-sheet",
-    topicId: process.env.RESEND_TOPIC_MARKETING_ID,
-  });
-  if (result.ok) await markLeadMagnetSent(email);
-
   return NextResponse.json(
-    { ok: true, isNew, emailSent: result.ok },
+    { ok: true, isNew, emailSent },
     { headers: { ...NO_STORE_HEADERS, ...rlHeaders } }
   );
 }

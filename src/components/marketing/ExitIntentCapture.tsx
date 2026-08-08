@@ -27,7 +27,7 @@ function markShown(): void {
   }
 }
 
-type FormState = "idle" | "submitting" | "success" | "error";
+type FormState = "idle" | "submitting" | "success" | "degraded" | "error";
 
 /**
  * Site-wide exit-intent lead capture (docs/marketing/SEO-GROWTH.md finding #7).
@@ -95,7 +95,13 @@ export function ExitIntentCapture() {
         setState("error");
         return;
       }
-      setState("success");
+      // The route can return ok:true with emailSent:false — capture succeeded but
+      // the send didn't (misconfigured provider, or the per-recipient cooldown on
+      // a repeat submission). Telling the visitor "check your inbox" in that case
+      // would be a lie, so this branches on the real signal instead of assuming
+      // a 200 means an email went out.
+      const data = (await res.json().catch(() => null)) as { emailSent?: boolean } | null;
+      setState(data?.emailSent ? "success" : "degraded");
     } catch {
       setError("Network error — try again.");
       setState("error");
@@ -109,6 +115,14 @@ export function ExitIntentCapture() {
           <p className="text-white font-semibold mb-2">Check your inbox.</p>
           <p className="text-sm text-sky-300/70">
             Your GEX cheat sheet is on its way — gamma flip, call wall, and put wall, explained.
+          </p>
+        </div>
+      ) : state === "degraded" ? (
+        <div className="text-center py-2">
+          <p className="text-white font-semibold mb-2">Got it.</p>
+          <p className="text-sm text-sky-300/70">
+            You&apos;re on the list — if the cheat sheet isn&apos;t in your inbox shortly, check spam or try
+            again later.
           </p>
         </div>
       ) : (

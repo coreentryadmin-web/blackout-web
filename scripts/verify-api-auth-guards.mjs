@@ -58,6 +58,14 @@ const PUBLIC_ROUTE_ALLOWLIST = new Set([
   // an invalid/forged token is a silent no-op, never an error that leaks
   // whether an address exists.
   "src/app/api/public/email-unsubscribe/route.ts",
+  // Deliberately public lead-magnet endpoint (see docs/marketing/SEO-GROWTH.md
+  // finding #5). Serves ONLY a thin, several-minutes-delayed projection
+  // (spot/call-put wall/flip/regime for a 3-ticker allowlist) via
+  // buildPublicGexSnapshot — never the live matrix members get. Protected by
+  // an IP rate limit (20 req/60s) + a shared-cache TTL that bounds upstream
+  // Polygon calls to at most once per ticker per TTL regardless of traffic —
+  // powers /tools/gamma-snapshot.
+  "src/app/api/public/gex-snapshot/route.ts",
 ]);
 
 const GUARD_PATTERNS = [

@@ -1,3 +1,5 @@
+import { MEMBERSHIP_PRICING, usd } from "@/lib/pricing";
+
 export const FAQ_SUPPORT_EMAIL = "support@blackouttrades.com";
 
 export type FaqCatKey = "platform" | "arsenal" | "signals" | "member" | "start";
@@ -42,6 +44,19 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
     wide: true,
   },
 ];
+
+/** Token substitutions for FAQ answers that quote a live membership price — keeps
+ *  the shared FAQ source in sync with MEMBERSHIP_PRICING automatically instead of
+ *  hardcoding a price string per-surface that can silently drift out of date. */
+const FAQ_PRICE_TOKENS: Record<string, string> = {
+  communityPrice: `${usd(MEMBERSHIP_PRICING.community)}/mo`,
+  premiumMonthly: `${usd(MEMBERSHIP_PRICING.monthly)}/mo`,
+  premiumYearly: `${usd(MEMBERSHIP_PRICING.yearly)}/yr`,
+};
+
+function resolvePriceTokens(text: string): string {
+  return text.replace(/\{\{(\w+)\}\}/g, (match, key: string) => FAQ_PRICE_TOKENS[key] ?? match);
+}
 
 const RAW: Record<FaqCatKey, { q: string; a: string }[]> = {
   platform: [
@@ -135,6 +150,14 @@ const RAW: Record<FaqCatKey, { q: string; a: string }[]> = {
       q: "Can I cancel anytime?",
       a: "Yes. Go to Account → Membership & Billing and click \"Manage subscription\" — that opens your secure billing portal, where you can update your card, switch plans, or cancel. Questions about a charge, an invoice, or your plan? Email billing@blackouttrades.com and we'll sort it out personally.",
     },
+    {
+      q: "What's the difference between SPX Slayer and Premium?",
+      a: "SPX Slayer ({{communityPrice}}) gives you the 0DTE desk — live SPX regime, GEX, and graded plays. Premium ({{premiumMonthly}} or {{premiumYearly}}) unlocks all six modules: HELIX flow, Largo analyst, dark pool, Night Hawk, heatmaps, and the full graded play log.",
+    },
+    {
+      q: "Is there a refund if it's not for me?",
+      a: "Annual plans: full refund within the first 7 days, no questions asked. Monthly plans are billed cycle-to-cycle with no long-term contract — cancel anytime and you won't be charged again, though the current cycle isn't refunded.",
+    },
   ],
   start: [
     {
@@ -154,6 +177,29 @@ export const FAQ_ITEMS: FaqItem[] = FAQ_CATEGORIES.flatMap((c) =>
     catKey: c.key,
     cat: c.label,
     q: it.q,
-    a: it.a,
+    a: resolvePriceTokens(it.a),
   }))
 );
+
+/** Look up a curated, ordered subset of FAQ_ITEMS by id — the mechanism every
+ *  surface below uses instead of hand-retyping a copy of the question/answer
+ *  that can silently drift from the canonical wording. Throws on an unknown
+ *  id so a typo or a RAW renumber fails at build time, not by silently
+ *  dropping a question from a live page. */
+export function selectFaqItems(ids: readonly string[]): FaqItem[] {
+  return ids.map((id) => {
+    const item = FAQ_ITEMS.find((it) => it.id === id);
+    if (!item) throw new Error(`selectFaqItems: unknown FAQ id "${id}"`);
+    return item;
+  });
+}
+
+/** Homepage inline accordion (RedesignHome.tsx) + its FAQPage JSON-LD
+ *  ((marketing)/page.tsx) — both render selectFaqItems(HOME_FAQ_IDS) directly,
+ *  so the schema.org markup Google indexes can never say something different
+ *  from what a visitor actually sees (previously true — see FINDINGS #10). */
+export const HOME_FAQ_IDS = ["member-5", "platform-4", "member-6", "platform-5", "start-1"] as const;
+
+/** /pricing's objection-handling FAQ block (RedesignPricing.tsx) + its
+ *  FAQPage JSON-LD (pricing/page.tsx). */
+export const PRICING_FAQ_IDS = ["member-5", "member-7", "member-6", "platform-5"] as const;
