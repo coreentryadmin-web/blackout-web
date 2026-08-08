@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { StaticLandingBackdrop } from "./StaticLandingBackdrop";
 import { StaticMarketingNav } from "./StaticMarketingNav";
 import { StaticLandingFooter } from "./StaticLandingFooter";
-import { ExitIntentCapture } from "@/components/marketing/ExitIntentCapture";
+import { LazyExitIntentCapture } from "@/components/marketing/LazyExitIntentCapture";
 
 type Props = {
   children: ReactNode;
@@ -22,7 +22,7 @@ export function MarketingPageShell({ children, showChart = true, footer = true }
         {children}
       </main>
       {footer ? <StaticLandingFooter /> : null}
-      <ExitIntentCapture />
+      <LazyExitIntentCapture />
     </div>
   );
 }
