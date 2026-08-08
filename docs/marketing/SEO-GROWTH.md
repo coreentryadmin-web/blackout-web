@@ -45,7 +45,8 @@ Legend: 🔴 Not started · 🟡 In progress · 🟢 PR open · ✅ Merged · �
 | Finding | Status | PR | Notes |
 |---|---|---|---|
 | Community-marketing / ambassador program | ⛔ | — | Was gated on the referral program, which is now dropped. If revisited, the mechanic to offer is Whop's own affiliate program, not a first-party build |
-| Co-marketing with trading-education creators | ⛔ | — | Manual outreach, not a code task. The partnership mechanic already exists — Whop affiliate enrolment — so this is no longer blocked on any build |
+| Co-marketing with trading-education creators | ⛔ | — | Manual outreach, not a code task. The partnership mechanic already exists — Whop affiliate enrolment — so this is no longer blocked on any build. Full strategy + outreach pitch template: `docs/marketing/OFF-PAGE-SEO-STRATEGY.md` (2026-08-08) |
+| Off-page SEO / backlinks (no code found any of this) | ⛔ Manual | — | Not a codeable finding — no script can acquire a backlink. `docs/marketing/OFF-PAGE-SEO-STRATEGY.md` (2026-08-08): honest inventory of BlackOut's real linkable assets (`/tools/gamma-snapshot` is the only genuine one right now), target categories for a human to research/vet (not a verified contact list), and an outreach pitch template |
 
 ## Content & Copy
 

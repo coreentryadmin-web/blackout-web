@@ -81,10 +81,11 @@ than acting on noise.
 | `PAGESPEED_API_KEY` | PageSpeed Insights v5 quota | Google Cloud API key, PageSpeed Insights API enabled |
 | `GSC_SERVICE_ACCOUNT_JSON` | Search Console auth | the **full service-account JSON** as a literal string (not a file path) — the service account must be added as a user in Search Console → Settings → Users and permissions for the `blackouttrades.com` domain property |
 
-## Scheduled trigger (weekly, Monday)
+## Scheduled trigger (weekly, Monday) — LIVE since 2026-08-08
 
-Configure a **Claude Code scheduled trigger** on this repo, weekly Monday ~14:00 UTC (after the
-weekend's crawl activity has settled). Use this prompt:
+A Claude Code scheduled trigger ("SEO weekly monitor — blackout-web") is configured, firing a
+fresh session Mondays at 14:00 UTC (after the weekend's crawl activity has settled). It runs the
+same runbook this doc describes:
 
 > Run the weekly SEO monitoring pass for blackouttrades.com.
 > 1. Confirm env has literal `PAGESPEED_API_KEY` and `GSC_SERVICE_ACCOUNT_JSON` (full service-account JSON, not a `${{...}}` placeholder or file path). If either is missing/unresolved, stop and report it.
@@ -92,7 +93,19 @@ weekend's crawl activity has settled). Use this prompt:
 > 3. For any Core Web Vitals regression, read the page/component that changed since the last baseline and identify root cause before touching the baseline — do not `--write-baseline` to silence a real regression.
 > 4. For any un-indexed canonical URL, resubmit via the Google Indexing API (same auth, `indexing` scope) and note it.
 > 5. Read `docs/audit/FINDINGS.md`'s `## How to read this file` section for the current entry format (every entry needs a `> **kind:** \`FINDING\`` tag) before logging anything new.
-> 6. Reply with a concise pass/fail summary — what regressed, what got resubmitted, what's still fine.
+> 6. Commit any changes to a fresh branch, open a draft PR, and do not merge without explicit instruction.
+> 7. Reply with a concise pass/fail summary — what regressed, what got resubmitted, what's still fine.
+
+**Blocker until fixed**: `PAGESPEED_API_KEY` and `GSC_SERVICE_ACCOUNT_JSON` are **not yet
+persisted as environment-level secrets** on the environment the trigger fires into — both values
+were only ever supplied inside one interactive session's scratchpad, which does not carry over to
+a fresh triggered session. Until the operator adds them as real environment env vars, every fire
+will correctly stop at step 1 and report the missing credentials (safe, not a broken run — that's
+the runbook working as designed) rather than silently skip the checks. Also note: the trigger's
+fired sessions run **without MCP connector tools** (e.g. the GitHub MCP tools used to open the
+PRs referenced throughout this file) — step 6 may need to fall back to plain `git push` plus
+whatever PR-creation path is available without MCP (e.g. `gh` CLI if present in that environment),
+or simply push the branch and let a human open the PR.
 
 ### Operational caveats
 - **Rate limits**: URL Inspection is ~1 req/sec; the full 66-URL sweep takes ~75s. Search
