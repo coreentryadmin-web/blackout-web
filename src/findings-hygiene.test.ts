@@ -75,12 +75,47 @@ test("the UNRECONCILED backlog is not silently growing", () => {
   //    71 -> 59   findings-verify-stale.mjs learned that same prose format, exposing 18 more
   //               mid-flight statuses; 12 named a fix symbol that is present in the tree today and
   //               were restamped with it. The other 6 name no symbol and were left alone.
+  //    59 -> 43   the heading reader was END-ANCHORED (`— FIXED$`), so a heading that QUALIFIES its
+  //               outcome — `— FIXED (deploys AFTER close)`, `(P2, FIXED — full SPX audit)`,
+  //               `RULED OUT on all six desk routes` — read as no outcome at all. 14 entries. The
+  //               15th, `— FIXED (draft PR, HOLD)`, is deliberately NOT auto-read (see
+  //               HEADING_NOT_AN_OUTCOME) and was stamped by hand against the tree.
   // Raising it to accommodate a new unreconciled entry is not one of the options.
   const n = (readFileSync(FINDINGS, "utf8").match(/`UNRECONCILED`/g) ?? []).length;
   assert.ok(
-    n <= 59,
-    `UNRECONCILED count rose to ${n} (ceiling 59) — new entries must carry a real status, not UNRECONCILED`
+    n <= 43,
+    `UNRECONCILED count rose to ${n} (ceiling 43) — new entries must carry a real status, not UNRECONCILED`
   );
+});
+
+test("a qualified heading outcome is read, a NEGATED one is not", () => {
+  // The heading reader used to be end-anchored, which read `— FIXED` but not `— FIXED (why)`. The
+  // anchor was also, by accident, the only thing keeping `[P1, NOT FIXED …]` from reading as FIXED.
+  // Dropping it without HEADING_NOT_AN_OUTCOME would stamp a live P1 as resolved — the one failure
+  // mode of this whole file that actually costs something. Pinned here so it cannot be re-broken.
+  const cases: [string, boolean][] = [
+    ["2026-01-01 — [P2] plain outcome — FIXED", false],
+    ["2026-01-02 — [P2] parenthesised qualifier — FIXED (`x` deliberately NOT added)", false],
+    ["2026-01-03 — [P2] inline tag form (P2, FIXED — full audit)", false],
+    ["2026-01-04 — [P2] trailing prose RULED OUT on all six desk routes", false],
+    ["2026-01-05 — [P1, NOT FIXED — flagged, architecturally significant] still open", true],
+    ["2026-01-06 — [HIGH] shipped behind a hold — FIXED (draft PR, HOLD)", true],
+    ["2026-01-07 — [P2] no outcome word at all", true],
+  ];
+
+  const dir = mkdtempSync(join(tmpdir(), "findings-heading-"));
+  const f = join(dir, "FINDINGS.md");
+  writeFileSync(f, cases.map(([h]) => `## ${h}\n\nSome body text describing the issue.\n`).join("\n"));
+  execFileSync("node", ["scripts/audit/findings-reconcile.mjs", "--apply"], {
+    env: { ...process.env, FINDINGS_RECONCILE_FINDINGS: f, FINDINGS_RECONCILE_RUNLOG: join(dir, "RUN-LOG.md") },
+    encoding: "utf8",
+  });
+  const out = readFileSync(f, "utf8");
+  rmSync(dir, { recursive: true, force: true });
+
+  const blocks = out.split(/\n(?=## )/).filter((b) => b.startsWith("## ") && !/^## How to read/.test(b));
+  const got = blocks.map((b) => [b.split("\n")[0].slice(3), /`UNRECONCILED`/.test(b)] as [string, boolean]);
+  assert.deepEqual(got, cases, "a heading's outcome was read (or missed) differently than intended");
 });
 
 test("the reconciler is idempotent — a second --apply is a no-op", () => {
