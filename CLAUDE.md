@@ -136,7 +136,18 @@ Both harnesses and their `npm run validate:vector-*` scripts were removed with i
    cache rulesets** (`GET/PATCH .../zones/$CF_ZONE_ID/rulesets[/{id}/rules/{ruleId}]`, phase
    `http_request_cache_settings`) — it does NOT have legacy Page Rules scope (9109). These cache
    rules are hand-made in the CF dashboard, **not** in `blackout-infra` terraform, so API edits
-   persist.
+   persist. It also does **NOT** have `http_response_headers_transform` scope — confirmed
+   2026-08-08 via `GET .../rulesets/{id}` and `.../rulesets/phases/http_response_headers_transform/
+   entrypoint`, both `"request is not authorized"`. That phase holds a real, live bug (FINDINGS
+   2026-08-08): a hand-maintained `"Security response headers"` Transform Rule silently
+   **overwrites** the origin's `next.config.mjs`-set security headers at the edge with a stale
+   copy (last touched 2026-08-03) — confirmed by comparing headers straight off the ALB (bypasses
+   Cloudflare entirely) vs through `blackouttrades.com`: CSP is missing the X-pixel domains (the
+   pixel has never fired live despite #1882 shipping and deploying correctly), HSTS is downgraded
+   1yr vs the origin's 2yr, and `permissions-policy` is missing `payment=()`. The origin has been
+   correct this whole time; a purge does nothing because this isn't a caching issue. Needs either
+   a broader-scoped token or direct dashboard access to fix — out of reach from this sandbox as of
+   this note.
 5. **Cloudflare edge-caches some HTML pages — auth-dependent chrome gotcha (fixed 2026-07-22).**
    A cache rule (rule `f261edb0…`) force-caches `/`, `/upgrade`, `/learn*` HTML at the edge
    (`edge_ttl 7200`, `override_origin`), *ignoring* the origin's `Cache-Control: no-store`. Because

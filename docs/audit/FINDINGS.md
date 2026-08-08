@@ -4,6 +4,20 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-08 - [P1, LIVE PRODUCTION, infra] Cloudflare silently overwrites the origin's security headers with a stale hand-set copy — X pixel CSP-blocked, HSTS/Permissions-Policy weakened — NOT YET FIXED (needs dashboard/broader-token access)
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P1, live, and invisible to code review or CI. Every deploy that changes `next.config.mjs`'s `securityHeaders` has been silently overridden at the edge — the origin has been correct and complete this whole time, users never see it. |
+| **How it was found** | Investigating why the X pixel's `static.ads-twitter.com`/`analytics.twitter.com` CSP fix (#1882, merged 2026-08-07) never showed up live — `curl -I https://blackouttrades.com/` was missing both domains from `content-security-policy` no matter how the response was fetched (fresh, `cf-cache-status: DYNAMIC` cache-bypass, 10x unique-cookie requests, straight after a manual Cloudflare purge). Ruled out, with direct evidence at each step: (1) the deploy — `git show <deployed-sha>:next.config.mjs` confirmed the fix was in every recently-deployed commit; (2) ECS — `aws ecs describe-services` showed the fleet running task-def revisions built from those commits; (3) caching — a manual `purge_cache` (`purge_everything:true`) plus repeated cache-bypassed requests still showed the stale header. |
+| **Root cause — confirmed by hitting the ALB directly** | `curl -H "Host: blackouttrades.com" https://<alb-dns>/` (bypasses Cloudflare's DNS/proxy layer entirely, straight to the real origin) returned the **correct, complete** CSP. So the app and ECS were never the problem. Cloudflare zone has a `"Security response headers"` **Transform Rule** (ruleset id `2f92b7412d1e40c0897ccd6d082810bc`, phase `http_response_headers_transform`, last touched 2026-08-03) that hand-duplicates the app's security headers at the edge — a stale, manually-maintained copy that unconditionally overwrites whatever the origin sends, regardless of cache state. |
+| **Scope — not just CSP** | Diffed every security header, origin vs edge, directly: `content-security-policy` (missing the X-pixel domains — the pixel has never fired live), `strict-transport-security` (edge serves `max-age=31536000`/1yr vs the origin's `max-age=63072000`/2yr — a real HSTS downgrade), `permissions-policy` (edge is missing `payment=()` entirely). `x-frame-options`/`x-content-type-options`/`referrer-policy` happened to still match. This is a structural gap, not a one-off: any future `next.config.mjs` security-header change will keep silently not reaching users until this rule is fixed or removed. |
+| **Why this couldn't be fixed in this session** | `CF_API_TOKEN` (the same token used for cache purges elsewhere in this repo's audit tooling) returned `"request is not authorized"` on both `GET .../rulesets/{id}` and `GET .../rulesets/phases/http_response_headers_transform/entrypoint` — confirms the token is scoped to the `http_request_cache_settings` phase only (as CLAUDE.md's Access-reality notes already documented), not response-header transform rules. Fixing this needs either a token with that ruleset's permission or direct Cloudflare dashboard access. |
+| **Recommended fix (not applied)** | Delete or update the stale Transform Rule so it stops overriding origin headers — the origin (`next.config.mjs`'s `securityHeaders`) is already correct and complete, so Cloudflare doesn't need to duplicate any of this; the duplication is exactly what let it drift out of sync. |
+| **Status** | ROOT CAUSE CONFIRMED, NOT FIXED — blocked on Cloudflare dashboard/token access outside this session's scope. |
+
+---
+
 ## 2026-08-08 - [P3, SEO] 6 of 7 `/learn/[slug]` guide pages have real FAQ content never exposed as FAQPage schema — FIXED
 
 | Field | Value |
