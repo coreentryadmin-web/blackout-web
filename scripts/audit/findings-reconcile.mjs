@@ -77,12 +77,28 @@ function classify(block) {
 const HEADING_OUTCOME =
   /[—–-]\s*(FIXED|RESOLVED|SHIPPED|MERGED|SUPERSEDED|WONTFIX|NO ACTION|RULED OUT|NEGATIVE RESULT)\s*$/i;
 
+/**
+ * A prose status line: `**Status.** FIXED on \`cursor/rth-stale-cron-4002\`.`
+ *
+ * The THIRD place this file records an outcome, after the `| **Status** |` table row and the
+ * heading suffix. 76 of the entries still flagged UNRECONCILED use it — they are not missing a
+ * status, the reader was missing a format. Same shape of bug as the heading case (worth 34), found
+ * the same way: by opening an entry the tool called unreconciled and seeing a status in it.
+ *
+ * Anchored to the line start so a "**Status.**" mentioned mid-sentence elsewhere cannot match.
+ */
+const PROSE_STATUS = /^\*\*Status\.?\*\*[:\s]*(.+)$/m;
+
 function statusOf(block) {
   const m = block.match(/\*\*Status\*\*\s*\|([^|]*)\|/);
   if (m) return m[1].trim();
   const head = block.split("\n")[0].trim();
   const h = head.match(HEADING_OUTCOME);
-  return h ? h[1].toUpperCase() : null;
+  if (h) return h[1].toUpperCase();
+  // Ignore this script's own `> **status:**` annotation — it is regenerated metadata, and reading
+  // it back as the entry's status would make every already-annotated entry look reconciled.
+  const p = stripAnnotations(block).match(PROSE_STATUS);
+  return p ? p[1].trim() : null;
 }
 
 /** A status written mid-flight that was never revisited. These are the ones that make a merged

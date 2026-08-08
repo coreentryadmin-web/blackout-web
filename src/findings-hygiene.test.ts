@@ -70,13 +70,15 @@ test("the UNRECONCILED backlog is not silently growing", () => {
   //               entries all shipped with a real outcome. Real work, real evidence.
   //   194 -> 129  65 entries cited a PR the GitHub API confirms is MERGED, resolved by
   //               scripts/audit/findings-resolve-prs.mjs. Each stamp names the PR and merge SHA.
+  //   129 -> 71   76 entries record their outcome as PROSE (`**Status.** FIXED on …`), a third
+  //               format statusOf() did not read. A reader bug, not a backlog.
   //   194 -> 129  65 entries cited a PR that the GitHub API confirms is MERGED, resolved by
   //               scripts/audit/findings-resolve-prs.mjs. Each stamp names the PR and merge SHA.
   // Raising it to accommodate a new unreconciled entry is not one of the options.
   const n = (readFileSync(FINDINGS, "utf8").match(/`UNRECONCILED`/g) ?? []).length;
   assert.ok(
-    n <= 129,
-    `UNRECONCILED count rose to ${n} (ceiling 129) — new entries must carry a real status, not UNRECONCILED`
+    n <= 71,
+    `UNRECONCILED count rose to ${n} (ceiling 71) — new entries must carry a real status, not UNRECONCILED`
   );
 });
 
