@@ -16,6 +16,23 @@ import { getArticleDates } from "@/lib/seo/sitemap-dates";
 
 type Props = { params: Promise<{ slug: string }> };
 
+/**
+ * Every learn slug is known at build time, so an unknown one must 404 at the routing layer.
+ *
+ * The `(marketing)` layout sets `revalidate = 3600`, which puts this route on ISR. With the default
+ * `dynamicParams: true`, a slug outside generateStaticParams took the on-demand render path and
+ * came back **HTTP 200 with an empty page** instead of a 404 — a soft-404 on an indexable path
+ * pattern, which invites Google to treat the URL as a thin page rather than drop it. Measured on
+ * production: `/learn/totally-fake-slug-xyz` -> 200 (`cf-cache-status: MISS`, so origin, not edge),
+ * while a non-learn unknown path -> 404 correctly.
+ *
+ * `dynamicParams = false` makes any param not in generateStaticParams a hard 404 before the
+ * component runs. Nothing is lost: LEARN_NAV + LEARN_ARTICLES cover all 52 reachable slugs
+ * (verified, GUIDE_SEO is a subset), and learn content lives in source, so a new article already
+ * requires a deploy to exist.
+ */
+export const dynamicParams = false;
+
 export async function generateStaticParams() {
   const guideSlugs = LEARN_NAV.map((item) => ({ slug: item.slug }));
   const articleSlugs = LEARN_ARTICLES.map((a) => ({ slug: a.slug }));
