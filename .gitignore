@@ -5,7 +5,12 @@
 production.env
 staging.env
 railway-*.env
-node_modules/
+# No trailing slash (unlike a plain "node_modules/" directory-only pattern):
+# this repo has shipped a committed node_modules SYMLINK before (2026-08-08,
+# self-referential -> broke every fresh checkout with ELOOP) precisely because
+# a directory-only ignore pattern does not match a symlink, so a broad
+# `git add -A` staged it anyway. Matching files/symlinks too closes that hole.
+node_modules
 .next/
 out/
 build/
@@ -21,7 +26,7 @@ tsconfig.tsbuildinfo
 audit-output/
 
 # iOS Capacitor (generated / local)
-apps/blackout-ios/node_modules/
+apps/blackout-ios/node_modules
 apps/blackout-ios/ios/
 # Stale clone of deprecated standalone repo (root only — not apps/blackout-ios/)
 /blackout-ios/

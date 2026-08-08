@@ -4,6 +4,20 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-08 - [P1, DEV ENVIRONMENT] `node_modules` committed to `main` as a self-referential symlink — broke `npm install` for every fresh checkout — FIXED
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P1 for anyone checking out `main` fresh (new clone, new sandbox, CI runner that doesn't already have a warm `node_modules`): `npm install`/`npm ci`, `tsc`, `npm test`, and every script under `scripts/` all fail identically with `ELOOP: too many levels of symbolic links`, because `node_modules` itself — not something inside it — cannot be stat'd. Discovered while running tests for an unrelated fix (#1908) in a fresh checkout of `main`. |
+| **Root cause** | `git ls-tree HEAD -- node_modules` on `main` (commit `54654b1`, #1906, 2026-08-07 22:19) showed a tracked `120000` (symlink) blob whose content is the literal string `/home/user/blackout-web/node_modules` — an absolute path that resolves to itself. Some earlier session hit the identical self-referential-symlink corruption in its own sandbox (root cause of *that* unknown — a container/mount artifact, not this repo's code), then a broad `git add -A`/`git add .` staged the broken symlink and it was pushed straight to `main`. |
+| **Why `.gitignore` didn't stop it** | `.gitignore` had `node_modules/` — the trailing slash makes it a directory-only pattern. The tracked entry was a **symlink**, not a directory, so `git`'s ignore matcher does not consider the pattern satisfied and happily lets `git add -A` stage it. This is a real gap in the ignore rule, not a one-off fluke — the same broad-add-into-a-corrupted-sandbox sequence can recur on any future session. |
+| **Blast radius** | Every fresh `main` checkout since `54654b1` landed (2026-08-07 22:19 through this fix). Warm sandboxes with a pre-existing real `node_modules` directory on disk before pulling were unaffected because git doesn't overwrite an untracked-but-present directory with a tracked symlink of the same name without an explicit checkout/reset — the failure only manifests on a genuinely fresh clone/checkout, which is exactly why CI's `verify` job (which does start from a clean checkout) should be checked once this lands, in case it was silently masked there by an `actions/checkout` + cache-restore ordering that never hit the bare symlink path. |
+| **Fix** | (1) `git rm --cached node_modules` — untrack it. (2) `.gitignore`: dropped the trailing slash on both `node_modules/` entries (root and `apps/blackout-ios/`) so the pattern matches files/symlinks too, not just real directories — closes the exact hole that let this through. (3) New `src/lib/__tests__/repo-hygiene.test.ts`, run on every `npm test`: asserts `git ls-files` never contains a `node_modules` or build-output (`.next`/`out`/`build`) path. Verified this guard actually catches the class of bug it's meant to — its filter matches the literal tracked path confirmed via `git ls-tree -r origin/main --name-only \| grep -x node_modules` before the fix. |
+| **Tests** | `repo-hygiene.test.ts` — 2/2 pass on the fixed tree; confirmed the underlying `git ls-files` match exists on unfixed `origin/main` (so the guard is not vacuous). `tsc --noEmit` clean; `lint:vendor` clean. |
+| **Status** | FIXED. |
+
+---
+
 ## 2026-08-07 - [P1, DATA LOSS] SPX's whole trading session evicted from the wall rail overnight by a COUNT cap - FIXED (#1850)
 
 | Field | Value |
