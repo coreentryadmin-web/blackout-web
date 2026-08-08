@@ -4,6 +4,20 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-08 - [P3, SEO] 6 of 7 `/learn/[slug]` guide pages have real FAQ content never exposed as FAQPage schema — FIXED
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P3, no user-facing breakage — pure missed SEO surface. Full-site technical SEO sweep (title/description length+uniqueness, canonical, OG/twitter, H1, JSON-LD coverage, image alt text, viewport, robots meta) across all 64 live sitemap URLs, cross-checked against real Search Console data. Nearly everything came back clean (no duplicate titles/descriptions, no missing canonical/OG/H1, no orphan images) — this was the one real gap found. |
+| **Root cause** | `src/app/(marketing)/learn/[slug]/page.tsx` has two branches: the 52 `articles.ts`-sourced pages render `<ArticleJsonLd>` **and** `<FAQPageJsonLd items={getArticleFaqs(...)}>`; the 7 curriculum-guide pages (`getLearnGuide(slug)`) render only `<ArticleJsonLd>` — the FAQPage branch was never added when guides got their own JSON-LD. |
+| **The content already existed** | `defineToolGuide()` (`src/lib/learn/guides/shared.ts`) takes a **required** `faq: LearnFaqItem[]` param and unconditionally appends a `{ type: "faq" }` section — every guide built through it (`spx-slayer`, `helix-flows`, `largo-ai`, `night-hawk`, `heat-maps`) carries real FAQ content, visibly rendered on the page. `getting-started.ts` has its own inline `faq` section (3 real Q&A pairs). Only `glossary` genuinely has none. So 6 of 7 guide pages were rendering real FAQ content to users while telling Google nothing about it — a real rich-snippet opportunity sitting unused on already-written content, not a content gap. |
+| **Fix** | New `guideFaqs(sections)` in `src/lib/learn/types.ts` — finds `{ type: "faq" }` sections and maps `{q,a}` to `FAQPageJsonLd`'s `{question,answer}` shape (mirrors the existing `sectionLinks()` helper's pattern). Wired into the guide branch of `[slug]/page.tsx`: `{faqs.length > 0 && <FAQPageJsonLd items={faqs} />}` — gated on non-empty so `glossary` (which has no faq section) doesn't emit an empty/invalid FAQPage block. |
+| **Blast radius** | Single new helper (pure function, no existing callers to break) + one page branch. The 52 article pages' existing `FAQPageJsonLd` usage is untouched. |
+| **Tests** | New `src/lib/learn/guide-faqs.test.ts`: asserts every `LEARN_NAV` guide except `glossary` yields ≥1 real, non-empty FAQ item through the actual `getLearnGuide()` data (not a fixture — catches a future guide shipping with an empty/missing faq array), plus unit coverage for the q/a→question/answer mapping and the empty-sections case. 3/3 pass. |
+| **Status** | FIXED. |
+
+---
+
 ## 2026-08-08 - [P2, tooling] `node_modules` committed to `main` as a self-referential symlink — every fresh clone ELOOPs — FIXED
 
 | Field | Value |
