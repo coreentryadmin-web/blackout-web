@@ -31,6 +31,11 @@ function p(text: string): string {
   return `<p style="margin:0 0 18px;color:${EMAIL_BRAND.body};">${text}</p>`;
 }
 
+/** Small muted line directly under a screenshot — context for the image, not body copy. */
+function caption(html: string): string {
+  return `<p style="margin:-10px 0 20px;color:${EMAIL_BRAND.muted};font-size:12px;line-height:1.5;">${html}</p>`;
+}
+
 function closing(text: string): string {
   return `<p style="margin:0;color:${EMAIL_BRAND.muted};font-size:14px;">${text}</p>`;
 }
@@ -195,6 +200,13 @@ export const WELCOME_SEQUENCE: WelcomeEmailStep[] = [
         // The loss-transparency claim lives in the copy and on the record page, which is where a
         // reader can actually verify it; it is not something a single board screenshot can prove.
         emailScreenshot(nightHawkShot, "Live Night Hawk 0DTE board — real graded plays with their entry, exit logic and result") +
+        // The board above shows a winning session. Three paragraphs of this email promise that
+        // losses are published too, so the image needs a pointer to the place that proves it —
+        // otherwise the strongest claim in the sequence rests on a screenshot that happens to be
+        // all green, which is precisely the "highlight reel" the copy is arguing against.
+        caption(
+          `Recent closed plays. The <a href="${SITE.url}/track-record" style="color:${EMAIL_BRAND.muted};">full record</a> — every win and every loss, with the grade each play was given before the outcome — is public.`
+        ) +
         p("That's not a tagline — that's the whole build. No revision history, no highlight reel, no do-overs. Go pull up the receipts and see how that holds up against the way everyone else keeps score.") +
         emailCta(`${SITE.url}/vs/others`, "See How We Stack Up") +
         closing("Trade the grade, not the narrative. — The BlackOut Trades Desk");
