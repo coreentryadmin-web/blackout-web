@@ -39,3 +39,33 @@ export async function isMembershipInDunningGrace(
   if (!membershipId) return false;
   return (await sharedCacheGet<number>(DUNNING_PREFIX + membershipId)) === 1;
 }
+
+// cancel_at_period_end_changed dedup: unlike activated/deactivated (deduped by diffing
+// the tier already stored in `users`) and payment.failed (deduped by the dunning-grace
+// key above), this event has no other state snapshot to diff against — only the
+// top-of-route Redis idempotency claim, which is documented as fail-open. On a Redis
+// outage plus a Whop redelivery, a member would get "your cancellation is scheduled"
+// twice. Track the last-notified boolean per membership so a redelivery of the same
+// state is a no-op even if the idempotency claim didn't catch it.
+const CANCEL_STATE_PREFIX = "whop:cancel-at-period-end:";
+const CANCEL_STATE_TTL_SEC = 90 * 24 * 60 * 60; // 90 days — well past any real cancel/reverse cadence
+
+/** True when this membership's cancel_at_period_end was already last-notified as `value`. */
+export async function wasCancelAtPeriodEndAlreadyNotified(
+  membershipId: string | null | undefined,
+  value: boolean
+): Promise<boolean> {
+  if (!membershipId) return false;
+  const stored = await sharedCacheGet<0 | 1>(CANCEL_STATE_PREFIX + membershipId);
+  if (stored === undefined || stored === null) return false;
+  return (stored === 1) === value;
+}
+
+/** Record the cancel_at_period_end value just notified for this membership. */
+export async function markCancelAtPeriodEndNotified(
+  membershipId: string | null | undefined,
+  value: boolean
+): Promise<void> {
+  if (!membershipId) return;
+  await sharedCacheSet(CANCEL_STATE_PREFIX + membershipId, value ? 1 : 0, CANCEL_STATE_TTL_SEC);
+}
