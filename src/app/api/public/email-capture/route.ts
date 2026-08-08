@@ -49,15 +49,29 @@ export async function POST(req: NextRequest) {
 
   const { isNew } = await recordEmailCapture({ email, sourcePath, utmSource, utmCampaign });
 
-  // Send on every submission (not just isNew) — a returning visitor re-submitting
-  // clearly still wants the resource, and re-sending the same static email is
-  // harmless (unlike re-crediting a referral or re-charging a payment).
-  const { subject, html } = gexCheatSheetEmail();
-  const result = await sendEmail({ to: email, subject, html });
-  if (result.ok) await markLeadMagnetSent(email);
+  // Per-recipient send cooldown — the IP rate limit above caps the CALLER's
+  // request rate, not the VICTIM's inbox: one IP can still sustain thousands of
+  // sends/day to a single attacker-chosen address, and rotating IPs scales that
+  // linearly (an email-bomb amplifier). `isNew` can't gate this either —
+  // recordEmailCapture() returns isNew:false both for a genuine repeat AND for a
+  // DB blip, so gating the send on it would silently stop all sends during a DB
+  // hiccup. Reuses the same Redis-backed limiter as the IP check (same pattern
+  // as market-user-rate-limit.ts's checkUserMarketRateLimit — "ip" is really
+  // just an identity string, not a literal IP), keyed by the normalized
+  // recipient instead, so the send rate to any one inbox is capped independent
+  // of how many distinct IPs or how fast a caller rotates them.
+  const recipientRl = await checkIpRateLimit(email.toLowerCase(), "public:email-capture:recipient", 1, 86_400);
+
+  let emailSent = false;
+  if (recipientRl.ok) {
+    const { subject, html } = gexCheatSheetEmail();
+    const result = await sendEmail({ to: email, subject, html });
+    emailSent = result.ok;
+    if (result.ok) await markLeadMagnetSent(email);
+  }
 
   return NextResponse.json(
-    { ok: true, isNew, emailSent: result.ok },
+    { ok: true, isNew, emailSent },
     { headers: { ...NO_STORE_HEADERS, ...rlHeaders } }
   );
 }
