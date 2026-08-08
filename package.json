@@ -21,6 +21,8 @@
     "deploy:ecs": "node scripts/deploy/roll-ecs.mjs",
     "validate:ga4": "node scripts/audit/ga4-live-probe.mjs",
     "validate:seo": "node --import tsx scripts/audit/seo-visibility-audit.mjs",
+    "validate:seo-cwv": "node scripts/audit/seo-cwv-monitor.mjs",
+    "validate:seo-search-console": "node --import tsx scripts/audit/seo-search-console-monitor.mjs",
     "seo:indexnow": "node --import tsx scripts/seo/indexnow-ping.mjs",
     "seo:compress-og": "node scripts/seo/compress-og-image.mjs",
     "validate:prod-ui-full": "node scripts/validate-prod-ui-full.mjs",
