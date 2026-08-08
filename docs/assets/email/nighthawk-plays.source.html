@@ -1,0 +1,123 @@
+<!doctype html>
+<meta charset="utf-8" />
+<style>
+  @import url("");
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    width: 992px;
+    background: #05070d;
+    font-family: "DejaVu Sans Mono", "Liberation Mono", monospace;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { padding: 18px 22px 14px; }
+  .eyebrow {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 11px; letter-spacing: 2.4px; color: #4ade80; text-transform: uppercase;
+  }
+  .pill {
+    border: 1px solid #14532d; color: #4ade80; border-radius: 999px;
+    padding: 3px 12px; font-size: 11px; letter-spacing: 1.6px;
+  }
+  .pill i { font-style: normal; color: #22c55e; }
+  h1 {
+    font-size: 27px; letter-spacing: 3px; color: #e8edf7; font-weight: 700;
+    margin: 8px 0 20px; text-transform: uppercase;
+  }
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    font-size: 10.5px; letter-spacing: 2.2px; color: #64748b; text-transform: uppercase;
+    text-align: left; font-weight: 400; padding: 0 0 12px;
+    border-bottom: 1px solid #131a29;
+  }
+  thead th.r { text-align: right; }
+  tbody tr td { padding: 15px 0; border-bottom: 1px solid #101624; vertical-align: top; }
+  tbody tr:last-child td { border-bottom: none; }
+  .badge {
+    display: inline-block; border: 1px solid #1e3a5f; color: #7dd3fc; border-radius: 5px;
+    padding: 4px 11px; font-size: 11px; letter-spacing: 1.6px;
+  }
+  .badge.sell { border-color: #14532d; color: #4ade80; }
+  .play { color: #e8edf7; font-size: 15.5px; letter-spacing: 1px; font-weight: 700; }
+  .at { color: #64748b; font-size: 12.5px; letter-spacing: 0.8px; margin-top: 5px; }
+  .intel { color: #94a3b8; font-size: 12.5px; line-height: 1.55; }
+  .intel b { color: #cbd5e1; font-weight: 400; }
+  td.stat { text-align: right; color: #22c55e; font-size: 14px; font-weight: 700; white-space: nowrap; }
+  td.stat span { color: #334155; font-weight: 400; margin-left: 5px; }
+  .col-status { width: 108px; }
+  .col-play { width: 214px; }
+  .col-stat { width: 96px; }
+  .foot {
+    color: #3c4759; font-size: 10.5px; letter-spacing: 0.4px; padding-top: 13px; line-height: 1.5;
+  }
+</style>
+<div class="wrap">
+  <div class="eyebrow">
+    <span>Always-on scanner &nbsp;·&nbsp; New plays only</span>
+    <span class="pill"><i>●</i> 4 plays</span>
+  </div>
+  <h1>Today's 0DTE Plays</h1>
+  <table>
+    <thead>
+      <tr>
+        <th class="col-status">Status</th>
+        <th class="col-play">Play</th>
+        <th>BlackOut Intel</th>
+        <th class="r col-stat">Stats</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="badge sell">CLOSED</span></td>
+        <td>
+          <div class="play">TTD&nbsp;&nbsp;0DTE CALLS</div>
+          <div class="at">@ 0.25 &nbsp;·&nbsp; A / 100</div>
+        </td>
+        <td class="intel">
+          Breakout momentum. Trims banked at <b>+15%</b> and <b>+44%</b>; the runner tagged
+          <b>+92%</b>. A +66% peak armed the profit floor, so the last third exited green, not hopeful.
+        </td>
+        <td class="stat">+50.6% <span>›</span></td>
+      </tr>
+      <tr>
+        <td><span class="badge sell">CLOSED</span></td>
+        <td>
+          <div class="play">SOUN&nbsp;&nbsp;0DTE CALLS</div>
+          <div class="at">@ 0.09 &nbsp;·&nbsp; A / 100</div>
+        </td>
+        <td class="intel">
+          Breakout momentum. Both trims filled, then the runner tagged its target at
+          <b>+89%</b> — the last third banked in full at 0.17.
+        </td>
+        <td class="stat">+48.0% <span>›</span></td>
+      </tr>
+      <tr>
+        <td><span class="badge sell">CLOSED</span></td>
+        <td>
+          <div class="play">IONQ&nbsp;&nbsp;0DTE CALLS</div>
+          <div class="at">@ 0.43 &nbsp;·&nbsp; A / 95</div>
+        </td>
+        <td class="intel">
+          Trims banked at <b>+13%</b> and <b>+42%</b>, runner out at <b>+89%</b>. Gamma walls then
+          vetoed the thesis — remainder exited at market, not on hope.
+        </td>
+        <td class="stat">+48.0% <span>›</span></td>
+      </tr>
+      <tr>
+        <td><span class="badge">HOLD</span></td>
+        <td>
+          <div class="play">SPXW&nbsp;&nbsp;0DTE CALLS</div>
+          <div class="at">@ 45.30 &nbsp;·&nbsp; B / 90</div>
+        </td>
+        <td class="intel">
+          Flow spike (30m surge). First third trimmed at <b>+19.7%</b>; a +29.5% peak armed the
+          breakeven floor, so the green trade cannot finish red into the 3:50 exit.
+        </td>
+        <td class="stat">+18.3% <span>›</span></td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="foot">
+    Click a play for why it was picked and what to watch. Statuses update automatically:
+    OPEN (in the entry range) → HOLD → TRIM (premium doubled) → CLOSED.
+  </div>
+</div>
