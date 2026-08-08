@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { MarketingPageShell } from "@/components/landing/MarketingPageShell";
 import { RedesignPricing } from "@/components/landing/RedesignPricing";
-import { SoftwareApplicationJsonLd, WebPageJsonLd, BreadcrumbJsonLd } from "@/components/seo/JsonLd";
+import { SoftwareApplicationJsonLd, WebPageJsonLd, BreadcrumbJsonLd, FAQPageJsonLd } from "@/components/seo/JsonLd";
+import { PRICING_FAQ_IDS, selectFaqItems } from "@/lib/faq/content";
 import { publicPageMetadata } from "@/lib/page-metadata";
 
 export const metadata: Metadata = publicPageMetadata(
@@ -14,6 +15,7 @@ export default function PricingPage() {
   return (
     <MarketingPageShell showChart={false}>
       <SoftwareApplicationJsonLd />
+      <FAQPageJsonLd items={selectFaqItems(PRICING_FAQ_IDS).map((i) => ({ question: i.q, answer: i.a }))} />
       <WebPageJsonLd
         title="BlackOut Pricing — Plans From $49/mo, Cancel Anytime"
         description="Get BlackOut's SPX 0DTE desk from $49/mo, or all six trading modules plus Discord from $199/mo. No contracts, cancel anytime. See plans and get access."
