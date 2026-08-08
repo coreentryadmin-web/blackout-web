@@ -15,6 +15,15 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Verification — checked the actual rendered output, not just reasoning about it** | Ran a real `npm run build` (succeeded, no errors) and read the pre-rendered `.next/server/app/index.html` directly: the hero logo's `srcSet` now includes `.../w=480&q=75 480w, .../w=576&q=75 576w` between the existing `384w` and `640w` entries — confirmed the browser now has intermediate options to pick from instead of jumping straight from 384 to 640. |
 | **Also tried and reverted (documented so it isn't retried blind)** | Added an explicit `browserslist` field to `package.json` to see if it would shrink a 12KB legacy-polyfill chunk PSI flagged (`Array.prototype.at/flat/flatMap`, `Object.fromEntries`, `Object.hasOwn`, `String.prototype.trimStart/trimEnd`). Rebuilt clean (`rm -rf .next`) and compared: every chunk hash and size was byte-identical before and after — proof the polyfills come from a pre-built third-party dependency Next doesn't re-transpile, not from this app's own compilation target. Reverted rather than ship a config change with zero measured effect. |
 | **Status** | FIXED (image breakpoint gap). Legacy-JS polyfill chunk (12KB) remains unaddressed — would need identifying and replacing/patching the specific dependency, not a config-level fix. |
+## 2026-08-08 - [P3, ACCESSIBILITY] "Them vs Us" comparison column fails WCAG AA contrast on all 7 of its text nodes — same root cause, one shared color token — FIXED
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P3, real WCAG 2 AA failure, live. Surfaced by re-running PageSpeed Insights against production after the gallery-images fix (#1917) deployed — that fix alone took Performance 73→92 and Best Practices 92→**100**; this was the next real thing the re-run exposed. |
+| **Root cause, verified with the actual formula, not eyeballed** | `.vs-them .vs-label` and `.vs-them .vs-list li` (the "Everywhere else" competitor column in the homepage's comparison grid, `RedesignHome.tsx`) both set `color:var(--faint)` (`#4a5868`) against the section's effective background (`#0a0c0f`). Ran the real WCAG relative-luminance contrast formula on both colors by hand: **2.69:1** — matches PSI's own reported ratio exactly (confirms the section's true rendered background, accounting for the layered `rgba(255,255,255,.02)` overlay, not just a guess). WCAG AA requires 4.5:1 for text this size/weight (10.4px bold doesn't qualify for the 3:1 "large text" exception). |
+| **Blast radius — all 7 flagged nodes, one shared cause** | PSI's `color-contrast` audit flagged exactly 7 text nodes on the homepage, and all 7 are inside `.vs-them`: the "EVERYWHERE ELSE" label plus its 6 comparison list items ("Delayed snapshots, manual refresh", "Cherry-picked alerts, no receipts", etc.) — every one of them inherits from one of the two `color:var(--faint)` rules fixed here. No other page section uses `--faint` against this particular background. |
+| **Fix** | Both selectors now use `var(--dim)` (`#6e7f94`) instead of `var(--faint)` — the next tier up in the same existing 3-level text hierarchy (`--ink` > `--dim` > `--faint`) already defined in `marketing-redesign.css`, not a new ad-hoc color. Computed contrast: **~4.78:1** — clears the 4.5:1 minimum with real margin, while staying visually more muted than `--ink`/`--g` (the "us" column), preserving the deliberate de-emphasis design intent. |
+| **Verification** | `npm run lint:vendor` clean. `npm run lint:css` shows 4 pre-existing failures in unrelated files/lines (none touched by this change — confirmed via `git diff` scoped to exactly these 2 lines). |
 
 ## 2026-08-08 - [P3, PERFORMANCE] Homepage eagerly loaded a 110KB framer-motion chunk, 90% unused, for an exit-intent modal almost nobody triggers — FIXED
 
@@ -26,6 +35,16 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Verification — not just "should work," actually checked the build output** | Ran a real `npm run build` (first attempt caught a genuine Next.js constraint — `ssr:false` isn't allowed outside a Client Component — before it ever reached prod, exactly what local verification is for). Confirmed via `.next/app-build-manifest.json`'s `/(marketing)/page` entry that the framer-motion chunk (`chunks/5651-37333a59125285a2.js` — same hash PSI flagged live) is **absent** from the homepage's eager file list; `grep`'d every chunk actually listed there for framer-motion's signature APIs (`whileHover`, `AnimatePresence`) — zero hits. Confirmed the code still exists and works: `Before you go` / `Send me the cheat sheet` (the modal's own text) landed in a separate chunk (`5698.*.js`) that the manifest does NOT list as an eager dependency of the homepage — i.e., genuinely deferred, not deleted. |
 | **Blast radius** | Every marketing page via `MarketingPageShell` (home, pricing, learn hub/articles, legal pages, etc.) — one shared shell, one shared fix. `Modal.tsx` itself is unchanged; other consumers (admin/desk components) are unaffected since only `ExitIntentCapture`'s import site changed. |
 | **Status** | FIXED. |
+
+---
+
+## 2026-08-08 - [P1, LIVE PRODUCTION, infra] Cloudflare stale security-headers Transform Rule — CSP fix now confirmed LIVE after operator action; HSTS still stale
+
+| Field | Value |
+|-------|-------|
+| **Update to the entry below (same date)** | Re-ran PSI against production after #1917 deployed and found `errors-in-console` had gone from 1 CSP violation to a clean **0** — checked directly with `curl -I`: the live edge now serves `content-security-policy` including `static.ads-twitter.com`/`analytics.twitter.com`, and `permissions-policy` now includes `payment=()`. Both were confirmed broken in the original entry below; both are now fixed at the edge (outside this session — likely the Cloudflare dashboard fix this entry recommended). |
+| **Still stale** | `strict-transport-security` on the live edge is still `max-age=31536000` (1yr) vs the origin's `max-age=63072000` (2yr) — the Transform Rule got partially updated, not fully. Worth a final pass whenever someone's back in the Cloudflare dashboard. |
+| **Status** | PARTIALLY FIXED (CSP + Permissions-Policy live; HSTS max-age still stale). |
 
 ---
 
