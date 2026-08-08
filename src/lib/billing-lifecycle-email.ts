@@ -3,6 +3,7 @@ import { findClerkUsersByEmail, syncWhopMembershipForEmail } from "@/lib/members
 import { getWhopClient } from "@/lib/whop";
 import { TIER_RANK, parseTier, type Tier } from "@/lib/tiers";
 import { sendEmail } from "@/lib/email/resend-client";
+import { syncResendContact } from "@/lib/resend-contacts";
 import { welcomeCommunityEmail } from "@/lib/email/templates/welcome-community";
 import { welcomePremiumEmail } from "@/lib/email/templates/welcome-premium";
 import { downgradeEmail } from "@/lib/email/templates/downgrade";
@@ -37,9 +38,9 @@ export async function resolveBillingInterval(planId: string | undefined | null):
   }
 }
 
-type Transition = "upgrade" | "downgrade";
+export type Transition = "upgrade" | "downgrade";
 
-function classifyTransition(prev: Tier, next: Tier): Transition | null {
+export function classifyTransition(prev: Tier, next: Tier): Transition | null {
   const prevRank = TIER_RANK[prev];
   const nextRank = TIER_RANK[next];
   if (nextRank > prevRank) return "upgrade";
@@ -103,6 +104,11 @@ export async function syncWhopMembershipAndNotify(
   for (const uid of result.updatedUserIds) {
     const prev = before.get(uid);
     if (!prev) continue; // no snapshot (brand-new row, or DB unavailable) — nothing to diff, next event catches up
+
+    // Keep the Resend contact/segment reflecting the CURRENT tier regardless of
+    // whether this pass is a real transition — unconditional, not gated below.
+    void syncResendContact({ email: prev.email, firstName: prev.first_name, tier: result.tier }).catch(() => undefined);
+
     const previousTier = parseTier(prev.tier);
     const transition = classifyTransition(previousTier, result.tier);
     if (!transition) continue;
@@ -132,13 +138,13 @@ async function dispatchTransitionEmail(input: {
   if (transition === "upgrade") {
     if (newTier === "community") {
       const { subject, html, attachments } = welcomeCommunityEmail({ firstName });
-      await sendEmail({ to: email, subject, html, attachments });
+      await sendEmail({ to: email, subject, html, attachments, tag: "welcome-community" });
       return;
     }
     if (newTier === "premium") {
       const billingInterval = await resolveBillingInterval(planId);
       const { subject, html, attachments } = welcomePremiumEmail({ firstName, previousTier, billingInterval });
-      await sendEmail({ to: email, subject, html, attachments });
+      await sendEmail({ to: email, subject, html, attachments, tag: "welcome-premium" });
     }
     return;
   }
@@ -147,13 +153,13 @@ async function dispatchTransitionEmail(input: {
   if (newTier === "community") {
     // premium -> community: still paying, lost the other five engines.
     const { subject, html, attachments } = downgradeEmail({ firstName });
-    await sendEmail({ to: email, subject, html, attachments });
+    await sendEmail({ to: email, subject, html, attachments, tag: "downgrade" });
     return;
   }
   if (newTier === "free") {
     // any paid tier -> free: full cancellation, access has ended now.
     const { subject, html, attachments } = accessEndedEmail({ firstName, previousTier });
-    await sendEmail({ to: email, subject, html, attachments });
+    await sendEmail({ to: email, subject, html, attachments, tag: "access-ended" });
   }
 }
 
@@ -168,7 +174,7 @@ export async function notifyScheduledCancellation(input: {
 }): Promise<void> {
   const user = await lookupUserByEmail(input.email);
   const { subject, html, attachments } = scheduledCancelEmail({ firstName: user?.firstName ?? null, accessUntil: input.accessUntil });
-  const result = await sendEmail({ to: input.email, subject, html, attachments });
+  const result = await sendEmail({ to: input.email, subject, html, attachments, tag: "scheduled-cancel" });
   if (!result.ok) console.warn("[billing-lifecycle-email] scheduled-cancel send failed", result.error);
 }
 
@@ -177,7 +183,7 @@ export async function notifyScheduledCancellation(input: {
 export async function notifyCancellationReversed(input: { email: string }): Promise<void> {
   const user = await lookupUserByEmail(input.email);
   const { subject, html, attachments } = cancelReversedEmail({ firstName: user?.firstName ?? null });
-  const result = await sendEmail({ to: input.email, subject, html, attachments });
+  const result = await sendEmail({ to: input.email, subject, html, attachments, tag: "cancel-reversed" });
   if (!result.ok) console.warn("[billing-lifecycle-email] cancel-reversed send failed", result.error);
 }
 
@@ -187,6 +193,6 @@ export async function notifyCancellationReversed(input: { email: string }): Prom
 export async function notifyPaymentFailed(input: { email: string; graceDays: number }): Promise<void> {
   const user = await lookupUserByEmail(input.email);
   const { subject, html, attachments } = paymentFailedEmail({ firstName: user?.firstName ?? null, graceDays: input.graceDays });
-  const result = await sendEmail({ to: input.email, subject, html, attachments });
+  const result = await sendEmail({ to: input.email, subject, html, attachments, tag: "payment-failed" });
   if (!result.ok) console.warn("[billing-lifecycle-email] payment-failed send failed", result.error);
 }

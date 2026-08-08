@@ -28,6 +28,7 @@ function fakeDeps(overrides: {
       sent.push({ to: input.to, subject: input.subject });
       return overrides.sendOk === false ? { ok: false, error: "send_failed" } : { ok: true, id: "email_1" };
     }) as never,
+    syncResendContact: (async () => undefined) as never,
   };
   return { deps, queries, sent };
 }
@@ -38,7 +39,7 @@ test("startWelcomeSequence sends step 1 and schedules step 2 on a fresh signup",
 
   assert.equal(sent.length, 1);
   assert.equal(sent[0].to, "trader@example.com");
-  assert.equal(sent[0].subject, WELCOME_SEQUENCE[0].build({ firstName: "Sam" }).subject);
+  assert.equal(sent[0].subject, WELCOME_SEQUENCE[0].build({ email: "trader@example.com", firstName: "Sam" }).subject);
 
   const update = queries.find((q) => q.sql.includes("UPDATE welcome_sequence_state"));
   assert.ok(update, "expected an UPDATE after the send");
@@ -81,7 +82,7 @@ test("processDueWelcomeSequenceSteps sends the next step and advances state", as
   const result = await processDueWelcomeSequenceSteps(200, deps);
 
   assert.deepEqual(result, { processed: 1, sent: 1, failed: 0 });
-  assert.equal(sent[0].subject, WELCOME_SEQUENCE[1].build({ firstName: "Sam" }).subject, "sends step 2 for steps_sent=1");
+  assert.equal(sent[0].subject, WELCOME_SEQUENCE[1].build({ email: "trader@example.com", firstName: "Sam" }).subject, "sends step 2 for steps_sent=1");
 
   const update = queries.find((q) => q.sql.includes("UPDATE welcome_sequence_state"));
   assert.equal(update?.params[1], 2, "steps_sent advances to 2");

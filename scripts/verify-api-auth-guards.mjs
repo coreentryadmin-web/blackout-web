@@ -23,6 +23,10 @@ const PUBLIC_ROUTE_ALLOWLIST = new Set([
   "src/app/api/webhook/whop/route.ts",
   "src/app/api/webhooks/clerk/route.ts",
   "src/app/api/webhook/clerk/route.ts",
+  // Resend's own delivery/engagement webhook (email.sent/delivered/opened/...) —
+  // verified via the Resend SDK's built-in resend.webhooks.verify() (Svix-based),
+  // same pattern as the Whop/Clerk webhooks above.
+  "src/app/api/webhook/resend/route.ts",
   "src/app/api/market/regime/route.ts",
   // Deliberately public write endpoint — browsers can't carry admin auth, and
   // a logged-out visitor's JS erroring is exactly the coverage it exists for.
@@ -48,6 +52,12 @@ const PUBLIC_ROUTE_ALLOWLIST = new Set([
   // limit (5 req/60s) + a hard body-field-length cap, matching the same
   // reasoning as the telemetry public routes above.
   "src/app/api/public/email-capture/route.ts",
+  // Deliberately public — a recipient clicking "unsubscribe" in their inbox
+  // isn't signed in and shouldn't need to be. Secured by an HMAC-signed
+  // per-email token (lib/email/unsubscribe-token.ts), not a guard helper —
+  // an invalid/forged token is a silent no-op, never an error that leaks
+  // whether an address exists.
+  "src/app/api/public/email-unsubscribe/route.ts",
   // Deliberately public lead-magnet endpoint (see docs/marketing/SEO-GROWTH.md
   // finding #5). Serves ONLY a thin, several-minutes-delayed projection
   // (spot/call-put wall/flip/regime for a 3-ticker allowlist) via

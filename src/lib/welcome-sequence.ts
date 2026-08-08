@@ -1,6 +1,7 @@
 import { dbConfigured, dbQuery } from "@/lib/db";
 import { sendEmail } from "@/lib/email/resend-client";
 import { WELCOME_SEQUENCE } from "@/lib/email/templates/welcome-sequence";
+import { syncResendContact } from "@/lib/resend-contacts";
 
 const STEP_GAP_DAYS = 2;
 const TOTAL_STEPS = WELCOME_SEQUENCE.length;
@@ -11,8 +12,9 @@ type Deps = {
   dbConfigured: typeof dbConfigured;
   dbQuery: typeof dbQuery;
   sendEmail: typeof sendEmail;
+  syncResendContact: typeof syncResendContact;
 };
-const defaultDeps: Deps = { dbConfigured, dbQuery, sendEmail };
+const defaultDeps: Deps = { dbConfigured, dbQuery, sendEmail, syncResendContact };
 
 function daysFromNow(days: number): Date {
   return new Date(Date.now() + days * 24 * 60 * 60 * 1000);
@@ -43,8 +45,22 @@ export async function startWelcomeSequence(
     );
     if ((res.rowCount ?? 0) === 0) return; // already started for this user — no-op
 
-    const { subject, html, attachments } = firstStep.build({ firstName: input.firstName });
-    const result = await deps.sendEmail({ to: input.email, subject, html, attachments });
+    // Fire-and-forget — a contact-sync hiccup must never block or fail the welcome
+    // send. Tier is "free" here: this fires straight off Clerk's user.created,
+    // before any billing has happened. billing-lifecycle-email.ts's transition
+    // wrapper re-syncs to the correct tier/segment the moment that changes.
+    void deps.syncResendContact({ email: input.email, firstName: input.firstName, tier: "free" }).catch(() => undefined);
+
+    const { subject, html, attachments, headers } = firstStep.build({ email: input.email, firstName: input.firstName });
+    const result = await deps.sendEmail({
+      to: input.email,
+      subject,
+      html,
+      attachments,
+      headers,
+      tag: `welcome-step-${firstStep.step}`,
+      topicId: process.env.RESEND_TOPIC_MARKETING_ID,
+    });
 
     const nextStep = WELCOME_SEQUENCE[1];
     await deps.dbQuery(
@@ -107,8 +123,16 @@ export async function processDueWelcomeSequenceSteps(
         continue;
       }
 
-      const { subject, html, attachments } = step.build({ firstName: row.first_name });
-      const sendResult = await deps.sendEmail({ to: row.email, subject, html, attachments });
+      const { subject, html, attachments, headers } = step.build({ email: row.email, firstName: row.first_name });
+      const sendResult = await deps.sendEmail({
+        to: row.email,
+        subject,
+        html,
+        attachments,
+        headers,
+        tag: `welcome-step-${step.step}`,
+        topicId: process.env.RESEND_TOPIC_MARKETING_ID,
+      });
 
       if (!sendResult.ok) {
         result.failed++;
