@@ -57,19 +57,21 @@ test("routine pass logs do not live in FINDINGS.md", () => {
 });
 
 test("the UNRECONCILED backlog is not silently growing", () => {
-  // 240 entries were left UNRECONCILED by the 2026-08-08 pass — each needs checking against git
-  // history and restamping. This pins the ceiling so the number can only go DOWN as they're
-  // worked off. A new entry should ship with a real status, never as UNRECONCILED.
+  // Entries left UNRECONCILED by the 2026-08-08 pass each need checking against the code and
+  // restamping. This pins the ceiling so the number can only go DOWN as they are worked off. A new
+  // entry should ship with a real status, never as UNRECONCILED.
   //
-  // The ceiling was briefly 273. It came down to 240 not by working entries off but by fixing the
-  // reconciler: it read the outcome only from a `| **Status** |` row, while 34 entries record it
-  // in the heading instead (`## ... — FIXED`) and are among the best-documented in the file. Those
-  // 34 were never open work. Raising a ratchet to accommodate a miscount defeats it — the number
-  // moves when the file does, or when the measurement is shown to be wrong.
+  // Tighten this number whenever entries are genuinely resolved — a ratchet that is never lowered
+  // is just a high-water mark. It has moved twice, both times downward and for a stated reason:
+  //   273 -> 240  the reconciler read the outcome only from a `| **Status** |` row, missing the 34
+  //               entries that record it in the heading (`## ... — FIXED`). A miscount, not work.
+  //   240 -> 210  the 50 mid-flight "PR pending → CI → auto-merge" statuses were resolved against
+  //               the tree by scripts/audit/findings-verify-stale.mjs. Real work, real evidence.
+  // Raising it to accommodate a new unreconciled entry is not one of the options.
   const n = (readFileSync(FINDINGS, "utf8").match(/`UNRECONCILED`/g) ?? []).length;
   assert.ok(
-    n <= 240,
-    `UNRECONCILED count rose to ${n} (ceiling 240) — new entries must carry a real status, not UNRECONCILED`
+    n <= 210,
+    `UNRECONCILED count rose to ${n} (ceiling 210) — new entries must carry a real status, not UNRECONCILED`
   );
 });
 
