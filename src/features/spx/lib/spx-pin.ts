@@ -91,21 +91,49 @@ export async function buildSpxPinForecast(): Promise<SpxPinForecast> {
   const closeMs = nowMs + (RTH_CLOSE_ET_MIN - etMin) * 60_000;
   const sessionYmd = todayEtYmd();
 
-  // 0DTE chain: today's expiry; fall back to the nearest listed expiry when today isn't an expiry.
+  // 0DTE chain: TODAY'S expiry only.
+  //
+  // This used to fall back to the nearest listed expiry when today wasn't an expiry, which turned
+  // the panel into a confident forecast of something that could not happen. On a weekend or
+  // holiday `closeMs` still resolves to "16:00 ET today" — so the panel rendered a live countdown
+  // ("781 min to close") and a full drift cone toward a close that was never going to occur, built
+  // from a chain expiring DAYS later. Reported live 2026-08-08 ~03:00 ET, with the GEX matrix on
+  // the same screen already saying "No 0DTE column today — levels use front expiry 2026-08-10".
+  //
+  // A gamma pin is an expiry-day phenomenon: the hedging that drags price to a strike only exists
+  // because that strike's options expire at the bell. A ladder from a future expiry has no such
+  // force acting today, so a pin computed from it is not a weaker forecast — it is a different
+  // quantity wearing this one's label. Better to say "no 0DTE today" than to answer confidently.
   let contracts: PinContract[] = [];
   if (spot > 0) {
     const chain = (await loadCurrentChainContracts("SPX", spot).catch(() => [])) as PinContract[];
-    const todayContracts = chain.filter((c) => c.expiry === sessionYmd);
-    if (todayContracts.length) contracts = todayContracts;
-    else if (chain.length) {
-      const nearest = chain.map((c) => c.expiry).sort()[0];
-      contracts = chain.filter((c) => c.expiry === nearest);
-    }
+    contracts = chain.filter((c) => c.expiry === sessionYmd);
   }
 
   const common = { spot, priorClose, contracts, sessionYmd, nowMs, closeMs };
 
   const base = forecastPin({ ...common, method: "analytic" });
+
+  // Distinguish "there is no 0DTE expiry today" from the core's generic cold-chain state. Both are
+  // unavailable, but only one of them resolves by waiting — the core's default copy says
+  // "Collecting… waiting for a live 0DTE chain", which on a Saturday is a promise the desk cannot
+  // keep. Say the true thing instead.
+  const noZeroDteToday = spot > 0 && contracts.length === 0;
+  if (!base.available && noZeroDteToday) {
+    const { stable, confirmed } = trackPinStability(sessionYmd, null);
+    return {
+      ...base,
+      drivers: [{
+        label: "No 0DTE expiry today",
+        detail: "The EOD pin is an expiry-day effect — dealer hedging only drags price to a strike because that strike expires at the bell. With no SPX contracts expiring today there is no such force to forecast, so the desk reports nothing rather than projecting a close from a later expiry.",
+        weight: 1,
+      }],
+      montecarlo: null,
+      pinStable: stable,
+      pinConfirmed: confirmed,
+    };
+  }
+
   if (!base.available) {
     // Unavailable this poll (chain cold / market closed) — feed a null sample so the stability
     // window resets (see trackPinStability / pushPinSample): a gap means we don't actually know
