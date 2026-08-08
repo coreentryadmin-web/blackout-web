@@ -49,6 +49,17 @@ export async function sendEmail(input: {
   html: string;
   from?: string;
   attachments?: EmailAttachment[];
+  /** Custom headers — used for List-Unsubscribe / List-Unsubscribe-Post (RFC 8058) on
+   *  marketing-category sends; see lib/email/unsubscribe-token.ts. */
+  headers?: Record<string, string>;
+  /** Echoed back on every Resend webhook event for this send (email_events.template_tag),
+   *  so delivery/open/click stats can be broken down by which template sent it. */
+  tag?: string;
+  /** Marketing-category sends only — when set, Resend checks the recipient
+   *  contact's subscription to this topic before sending (skips silently if
+   *  they've opted out via the unsubscribe link). Omit entirely for billing/
+   *  lifecycle emails, which aren't optional. */
+  topicId?: string | null;
 }): Promise<SendEmailResult> {
   const resend = getResendClient();
   if (!resend) {
@@ -65,6 +76,9 @@ export async function sendEmail(input: {
       subject: input.subject,
       html: input.html,
       attachments: input.attachments,
+      headers: input.headers,
+      tags: input.tag ? [{ name: "template", value: input.tag }] : undefined,
+      topicId: input.topicId ?? undefined,
     });
     if (result.error) {
       console.warn("[resend] send failed", result.error);

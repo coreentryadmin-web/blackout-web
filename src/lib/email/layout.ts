@@ -41,8 +41,13 @@ export function emailLayout(input: {
   /** Hidden preview text shown next to the subject line in most inbox lists. */
   preheader: string;
   bodyHtml: string;
+  /** Set ONLY for marketing-category sends (welcome sequence, cheat sheet) —
+   *  renders a real one-click unsubscribe link in the footer instead of the
+   *  generic "reply to opt out" line. Billing/lifecycle emails must NOT set
+   *  this — see lib/email/unsubscribe-token.ts's header comment for why. */
+  unsubscribeUrl?: string | null;
 }): { html: string; attachments: InlineAsset[] } {
-  const { preheader, bodyHtml } = input;
+  const { preheader, bodyHtml, unsubscribeUrl } = input;
   const logo = logoAsset();
   const discord = discordBadgeAsset();
   const x = xBadgeAsset();
@@ -108,7 +113,11 @@ ${bodyHtml}
   </tr></table>
   <p style="font-size:11.5px;color:#94a3b8;margin:16px 0 0;line-height:1.6;">
     BlackOut Trades — educational and informational only, not financial advice.<br />
-    Didn't ask for this? Reply to this email or contact <a href="mailto:support@blackouttrades.com" style="color:#94a3b8;">support@blackouttrades.com</a> and we'll take you off the list.
+    ${
+      unsubscribeUrl
+        ? `Didn't ask for this? <a href="${unsubscribeUrl}" style="color:#94a3b8;">Unsubscribe</a> or contact <a href="mailto:support@blackouttrades.com" style="color:#94a3b8;">support@blackouttrades.com</a>.`
+        : `Didn't ask for this? Reply to this email or contact <a href="mailto:support@blackouttrades.com" style="color:#94a3b8;">support@blackouttrades.com</a> and we'll take you off the list.`
+    }
   </p>
 </td></tr>
 

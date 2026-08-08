@@ -1,6 +1,7 @@
 import { SITE } from "@/lib/site";
 import { emailLayout, emailCta, emailHighlight, emailScreenshot, ENGINE_ACCENT, EMAIL_BRAND } from "@/lib/email/layout";
 import { thermalKeyLevelsAsset } from "@/lib/email/inline-assets";
+import { marketingUnsubscribe } from "@/lib/email/unsubscribe-token";
 import type { EmailAttachment } from "@/lib/email/resend-client";
 
 /**
@@ -8,11 +9,19 @@ import type { EmailAttachment } from "@/lib/email/resend-client";
  * sheet, not a PDF attachment (no asset pipeline for that exists, and inline
  * HTML renders everywhere without an attachment being flagged/blocked). The
  * capture flow only collects an email (no name field on the modal), so this
- * is the one email in the set that stays un-personalized.
+ * is the one email in the set that stays un-personalized. Marketing-category
+ * send — takes the recipient so it can embed a real one-click unsubscribe
+ * link (see lib/email/unsubscribe-token.ts).
  */
-export function gexCheatSheetEmail(): { subject: string; html: string; attachments: EmailAttachment[] } {
+export function gexCheatSheetEmail(recipientEmail: string): {
+  subject: string;
+  html: string;
+  attachments: EmailAttachment[];
+  headers: Record<string, string>;
+} {
   const subject = "What the dealers know before you ever click buy";
   const thermalShot = thermalKeyLevelsAsset();
+  const { url: unsubUrl, headers: unsubHeaders } = marketingUnsubscribe(recipientEmail);
 
   const body = `
     <h1 style="font-size:22px;font-weight:800;margin:0 0 16px;color:${EMAIL_BRAND.ink};line-height:1.3;">Your Cursor Was Already Moving For The X.</h1>
@@ -52,6 +61,7 @@ export function gexCheatSheetEmail(): { subject: string; html: string; attachmen
   const layout = emailLayout({
     preheader: "Gamma flip, call wall, put wall — the three-term framework that reads the tape before it moves. Free, live, no account needed.",
     bodyHtml: body,
+    unsubscribeUrl: unsubUrl,
   });
-  return { subject, html: layout.html, attachments: [...layout.attachments, thermalShot] };
+  return { subject, html: layout.html, attachments: [...layout.attachments, thermalShot], headers: unsubHeaders };
 }

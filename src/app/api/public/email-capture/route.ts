@@ -52,8 +52,16 @@ export async function POST(req: NextRequest) {
   // Send on every submission (not just isNew) — a returning visitor re-submitting
   // clearly still wants the resource, and re-sending the same static email is
   // harmless (unlike re-crediting a referral or re-charging a payment).
-  const { subject, html, attachments } = gexCheatSheetEmail();
-  const result = await sendEmail({ to: email, subject, html, attachments });
+  const { subject, html, attachments, headers } = gexCheatSheetEmail(email);
+  const result = await sendEmail({
+    to: email,
+    subject,
+    html,
+    attachments,
+    headers,
+    tag: "cheat-sheet",
+    topicId: process.env.RESEND_TOPIC_MARKETING_ID,
+  });
   if (result.ok) await markLeadMagnetSent(email);
 
   return NextResponse.json(

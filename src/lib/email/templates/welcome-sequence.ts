@@ -1,14 +1,17 @@
 import { SITE } from "@/lib/site";
 import { emailLayout, emailCta, emailHighlight, emailScreenshot, ENGINE_ACCENT, EMAIL_BRAND } from "@/lib/email/layout";
 import { spxDeskHeroAsset, thermalKeyLevelsAsset, vectorChartAsset, nighthawkPlaysAsset } from "@/lib/email/inline-assets";
+import { marketingUnsubscribe } from "@/lib/email/unsubscribe-token";
 import type { EmailAttachment } from "@/lib/email/resend-client";
 
-export type WelcomeEmailContext = { firstName?: string | null };
+/** email is required — every step is a marketing-category send and needs it
+ *  to build a real one-click unsubscribe link (lib/email/unsubscribe-token.ts). */
+export type WelcomeEmailContext = { email: string; firstName?: string | null };
 export type WelcomeEmailStep = {
   step: number;
   /** Days after signup this step should send. Step 1 is 0 — sent immediately. */
   delayDays: number;
-  build: (ctx: WelcomeEmailContext) => { subject: string; html: string; attachments: EmailAttachment[] };
+  build: (ctx: WelcomeEmailContext) => { subject: string; html: string; attachments: EmailAttachment[]; headers: Record<string, string> };
 };
 
 /** Substitutes the {{firstName}} token used throughout this file's copy.
@@ -39,6 +42,7 @@ export const WELCOME_SEQUENCE: WelcomeEmailStep[] = [
     build: (ctx) => {
       const subject = "{{firstName}}, you're in. The desk is live.";
       const heroShot = spxDeskHeroAsset();
+      const { url: unsubUrl, headers: unsubHeaders } = marketingUnsubscribe(ctx.email);
       const body =
         h1("Right now, somewhere in this market, a dealer is hedging a bet they never wanted to make.") +
         p(
@@ -59,8 +63,9 @@ export const WELCOME_SEQUENCE: WelcomeEmailStep[] = [
       const layout = emailLayout({
         preheader: "Dealer gamma. Institutional flow. Dark pool. One screen, no guessing.",
         bodyHtml: personalize(body, ctx),
+        unsubscribeUrl: unsubUrl,
       });
-      return { subject: personalize(subject, ctx), html: layout.html, attachments: [...layout.attachments, heroShot] };
+      return { subject: personalize(subject, ctx), html: layout.html, attachments: [...layout.attachments, heroShot], headers: unsubHeaders };
     },
   },
   // Day 2 — GEX education, tie to the free tool.
@@ -70,6 +75,7 @@ export const WELCOME_SEQUENCE: WelcomeEmailStep[] = [
     build: (ctx) => {
       const subject = "Three numbers. That's the whole board.";
       const thermalShot = thermalKeyLevelsAsset();
+      const { url: unsubUrl, headers: unsubHeaders } = marketingUnsubscribe(ctx.email);
       const body =
         h1("You're not staring at a chart, {{firstName}}. You're staring at a dealer's hedging map.") +
         p(
@@ -99,8 +105,9 @@ export const WELCOME_SEQUENCE: WelcomeEmailStep[] = [
       const layout = emailLayout({
         preheader: "Gamma Flip, Call Wall, Put Wall — learn these and the chart stops lying to you.",
         bodyHtml: personalize(body, ctx),
+        unsubscribeUrl: unsubUrl,
       });
-      return { subject: personalize(subject, ctx), html: layout.html, attachments: [...layout.attachments, thermalShot] };
+      return { subject: personalize(subject, ctx), html: layout.html, attachments: [...layout.attachments, thermalShot], headers: unsubHeaders };
     },
   },
   // Day 4 — tool tour.
@@ -143,6 +150,7 @@ export const WELCOME_SEQUENCE: WelcomeEmailStep[] = [
       ];
       const items = engines.map(([name, desc, accent]) => emailHighlight(name, desc, accent)).join("");
       const vectorShot = vectorChartAsset();
+      const { url: unsubUrl, headers: unsubHeaders } = marketingUnsubscribe(ctx.email);
       const body =
         h1("Every light on the board is live, {{firstName}}.") +
         p(
@@ -156,8 +164,9 @@ export const WELCOME_SEQUENCE: WelcomeEmailStep[] = [
       const layout = emailLayout({
         preheader: "Six engines. One login. Here's every weapon on the floor.",
         bodyHtml: personalize(body, ctx),
+        unsubscribeUrl: unsubUrl,
       });
-      return { subject: personalize(subject, ctx), html: layout.html, attachments: [...layout.attachments, vectorShot] };
+      return { subject: personalize(subject, ctx), html: layout.html, attachments: [...layout.attachments, vectorShot], headers: unsubHeaders };
     },
   },
   // Day 6 — trust/honesty angle (track record itself is member/admin-only, not public — see
@@ -169,6 +178,7 @@ export const WELCOME_SEQUENCE: WelcomeEmailStep[] = [
     build: (ctx) => {
       const subject = "Graded blind. Logged forever.";
       const nightHawkShot = nighthawkPlaysAsset();
+      const { url: unsubUrl, headers: unsubHeaders } = marketingUnsubscribe(ctx.email);
       const body =
         h1("We Grade It Before We Know How It Ends.") +
         p("{{firstName}}, real talk. Every trading account online is a highlight reel. Winners get posted. Losers get quietly deleted. Everybody's a genius by Friday.") +
@@ -185,8 +195,9 @@ export const WELCOME_SEQUENCE: WelcomeEmailStep[] = [
       const layout = emailLayout({
         preheader: "No hindsight edits. No deleted losers. Every SPX Slayer call is on the tape — win or lose, go check it yourself.",
         bodyHtml: personalize(body, ctx),
+        unsubscribeUrl: unsubUrl,
       });
-      return { subject: personalize(subject, ctx), html: layout.html, attachments: [...layout.attachments, nightHawkShot] };
+      return { subject: personalize(subject, ctx), html: layout.html, attachments: [...layout.attachments, nightHawkShot], headers: unsubHeaders };
     },
   },
   // Day 8 — direct upgrade CTA.
@@ -195,6 +206,7 @@ export const WELCOME_SEQUENCE: WelcomeEmailStep[] = [
     delayDays: 8,
     build: (ctx) => {
       const subject = "{{firstName}}, eight days of watching is enough.";
+      const { url: unsubUrl, headers: unsubHeaders } = marketingUnsubscribe(ctx.email);
       const body =
         h1("The Bell Hasn't Rung. The Story Already Has.") +
         p(
@@ -213,8 +225,9 @@ export const WELCOME_SEQUENCE: WelcomeEmailStep[] = [
       const layout = emailLayout({
         preheader: "Every grade posted before the outcome. Every loss still on the tape. The desk is open.",
         bodyHtml: personalize(body, ctx),
+        unsubscribeUrl: unsubUrl,
       });
-      return { subject: personalize(subject, ctx), html: layout.html, attachments: layout.attachments };
+      return { subject: personalize(subject, ctx), html: layout.html, attachments: layout.attachments, headers: unsubHeaders };
     },
   },
 ];
