@@ -1,6 +1,6 @@
 export type Tier = "free" | "community" | "premium";
 
-const TIER_RANK: Record<Tier, number> = {
+export const TIER_RANK: Record<Tier, number> = {
   free: 0,
   community: 1,
   premium: 2,

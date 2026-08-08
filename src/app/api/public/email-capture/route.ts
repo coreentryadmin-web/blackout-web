@@ -49,23 +49,36 @@ export async function POST(req: NextRequest) {
 
   const { isNew } = await recordEmailCapture({ email, sourcePath, utmSource, utmCampaign });
 
-  // Per-recipient send cooldown — the IP rate limit above caps the CALLER's
-  // request rate, not the VICTIM's inbox: one IP can still sustain thousands of
-  // sends/day to a single attacker-chosen address, and rotating IPs scales that
-  // linearly (an email-bomb amplifier). `isNew` can't gate this either —
-  // recordEmailCapture() returns isNew:false both for a genuine repeat AND for a
-  // DB blip, so gating the send on it would silently stop all sends during a DB
-  // hiccup. Reuses the same Redis-backed limiter as the IP check (same pattern
-  // as market-user-rate-limit.ts's checkUserMarketRateLimit — "ip" is really
-  // just an identity string, not a literal IP), keyed by the normalized
-  // recipient instead, so the send rate to any one inbox is capped independent
-  // of how many distinct IPs or how fast a caller rotates them.
+  // PER-RECIPIENT send cooldown. The IP rate limit above bounds the CALLER's request rate; this
+  // bounds the VICTIM's inbox, which is the half that matters on an unauthenticated endpoint where
+  // the recipient address is attacker-supplied. Without it one IP sustains thousands of sends/day
+  // to a single chosen address and rotating IPs scales that linearly — a mail-bomb amplifier whose
+  // cost lands on our sending domain's reputation, and therefore on transactional mail too.
+  //
+  // Uses the Redis limiter rather than a DB read on `lead_magnet_sent_at`: it is atomic (two
+  // concurrent requests cannot both pass) and it keeps working when Postgres is degraded. "ip" is
+  // just an identity string here, same as market-user-rate-limit.ts does.
+  //
+  // Deliberately NOT gated on `isNew`: recordEmailCapture returns isNew:false both for a genuine
+  // repeat AND when the DB is unavailable, so gating on it would silently stop every send during a
+  // DB blip. The capture is still RECORDED when suppressed — only the send is skipped.
   const recipientRl = await checkIpRateLimit(email.toLowerCase(), "public:email-capture:recipient", 1, 86_400);
 
   let emailSent = false;
   if (recipientRl.ok) {
-    const { subject, html } = gexCheatSheetEmail();
-    const result = await sendEmail({ to: email, subject, html });
+    // Full #1903 send: `headers` carries List-Unsubscribe/List-Unsubscribe-Post (one-click, which
+    // Gmail/Yahoo require of bulk senders) and `topicId` lets Resend suppress opted-out recipients
+    // server-side. Dropping either would silently un-do the unsubscribe work.
+    const { subject, html, attachments, headers } = gexCheatSheetEmail(email);
+    const result = await sendEmail({
+      to: email,
+      subject,
+      html,
+      attachments,
+      headers,
+      tag: "cheat-sheet",
+      topicId: process.env.RESEND_TOPIC_MARKETING_ID,
+    });
     emailSent = result.ok;
     if (result.ok) await markLeadMagnetSent(email);
   }

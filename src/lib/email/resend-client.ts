@@ -27,6 +27,16 @@ const DEFAULT_FROM = process.env.RESEND_FROM_EMAIL?.trim() || "BlackOut Trades <
 
 export type SendEmailResult = { ok: boolean; id?: string; error?: string };
 
+/** Real inline (CID) attachment — see lib/email/inline-assets.ts for how these
+ *  are built from the static images shipped in public/. */
+export type EmailAttachment = {
+  filename: string;
+  content: Buffer;
+  contentType?: string;
+  /** When set, sent as an inline attachment referenceable in the HTML via `cid:<contentId>`. */
+  contentId?: string;
+};
+
 /**
  * Send one email via Resend. Never throws — a missing/misconfigured key or a
  * provider error returns { ok: false } instead, so a marketing email failure
@@ -38,6 +48,18 @@ export async function sendEmail(input: {
   subject: string;
   html: string;
   from?: string;
+  attachments?: EmailAttachment[];
+  /** Custom headers — used for List-Unsubscribe / List-Unsubscribe-Post (RFC 8058) on
+   *  marketing-category sends; see lib/email/unsubscribe-token.ts. */
+  headers?: Record<string, string>;
+  /** Echoed back on every Resend webhook event for this send (email_events.template_tag),
+   *  so delivery/open/click stats can be broken down by which template sent it. */
+  tag?: string;
+  /** Marketing-category sends only — when set, Resend checks the recipient
+   *  contact's subscription to this topic before sending (skips silently if
+   *  they've opted out via the unsubscribe link). Omit entirely for billing/
+   *  lifecycle emails, which aren't optional. */
+  topicId?: string | null;
 }): Promise<SendEmailResult> {
   const resend = getResendClient();
   if (!resend) {
@@ -53,6 +75,10 @@ export async function sendEmail(input: {
       to: input.to,
       subject: input.subject,
       html: input.html,
+      attachments: input.attachments,
+      headers: input.headers,
+      tags: input.tag ? [{ name: "template", value: input.tag }] : undefined,
+      topicId: input.topicId ?? undefined,
     });
     if (result.error) {
       console.warn("[resend] send failed", result.error);

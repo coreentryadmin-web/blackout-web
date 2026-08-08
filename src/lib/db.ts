@@ -2059,6 +2059,49 @@ async function runMigrations(): Promise<void> {
   await p.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_email_captures_email ON email_captures(LOWER(email))`);
   await p.query(`CREATE INDEX IF NOT EXISTS idx_email_captures_captured_at ON email_captures(captured_at DESC)`);
 
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS welcome_sequence_state (
+      id BIGSERIAL PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      email TEXT NOT NULL,
+      first_name TEXT,
+      steps_sent INT NOT NULL DEFAULT 0,
+      next_send_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      completed_at TIMESTAMPTZ
+    );
+  `);
+  await p.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_welcome_sequence_user ON welcome_sequence_state(user_id)`);
+  // Partial index — the cron only ever queries incomplete rows whose next step is due, so
+  // the index excludes completed rows entirely rather than carrying dead weight forever.
+  await p.query(`
+    CREATE INDEX IF NOT EXISTS idx_welcome_sequence_due
+    ON welcome_sequence_state(next_send_at)
+    WHERE completed_at IS NULL;
+  `);
+
+  // Resend delivery/engagement webhook log (email.sent/delivered/opened/clicked/bounced/
+  // complained/failed/suppressed + contact.*) — see app/api/webhook/resend/route.ts.
+  // metadata carries the full event payload; recipient/subject/template_tag are pulled out
+  // for cheap filtering without a JSONB query on every read.
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS email_events (
+      id BIGSERIAL PRIMARY KEY,
+      resend_email_id TEXT,
+      event_type TEXT NOT NULL,
+      recipient TEXT,
+      subject TEXT,
+      template_tag TEXT,
+      occurred_at TIMESTAMPTZ NOT NULL,
+      metadata JSONB,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_email_events_resend_id ON email_events(resend_email_id)`);
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_email_events_type_time ON email_events(event_type, occurred_at DESC)`);
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_email_events_recipient ON email_events(LOWER(recipient))`);
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_email_events_template_tag ON email_events(template_tag, occurred_at DESC)`);
+
   } finally {
     // Release the advisory lock + return the dedicated connection to the pool.
     try { await lockClient.query(`SELECT pg_advisory_unlock($1)`, [MIGRATION_LOCK_ID]); } catch { /* ignore */ }

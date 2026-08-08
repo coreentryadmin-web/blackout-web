@@ -143,6 +143,11 @@ export async function syncWhopMembershipForEmail(
   tier: Tier;
   billingKind: BillingKind;
   updatedUserIds: string[];
+  /** Plan id backing the resolved tier, when there is one — same precedence as bestTier/
+   *  bestBillingKind below. Additive field for billing-lifecycle-email.ts's interval lookup
+   *  (monthly vs annual); existing callers destructuring {tier, billingKind, updatedUserIds}
+   *  are unaffected. */
+  activeMembershipPlanId?: string;
 }> {
   const companyId = process.env.WHOP_COMPANY_ID?.trim();
   if (!companyId) {
@@ -166,6 +171,7 @@ export async function syncWhopMembershipForEmail(
   // whole sync (caller keeps prior tiers) rather than writing 'free'.
   let bestTier: Tier = "free";
   let bestBillingKind: BillingKind = "free";
+  let bestActiveMembershipPlanId: string | undefined;
   const updatedUserIds: string[] = [];
   for (const user of clerkUsers) {
     const existingMeta = (user.publicMetadata ?? {}) as Record<string, unknown>;
@@ -224,15 +230,20 @@ export async function syncWhopMembershipForEmail(
       whopUserId: activeMembership?.user?.id ?? null,
     });
     updatedUserIds.push(user.id);
-    if (userTier === "premium") bestTier = "premium";
-    else if (userTier === "community" && bestTier !== "premium") bestTier = "community";
+    if (userTier === "premium") {
+      bestTier = "premium";
+      bestActiveMembershipPlanId = activeMembership?.plan?.id ?? bestActiveMembershipPlanId;
+    } else if (userTier === "community" && bestTier !== "premium") {
+      bestTier = "community";
+      bestActiveMembershipPlanId = activeMembership?.plan?.id ?? bestActiveMembershipPlanId;
+    }
     if (userBillingKind === "premium") bestBillingKind = "premium";
     else if (userBillingKind === "community" && bestBillingKind !== "premium") {
       bestBillingKind = "community";
     }
   }
 
-  return { tier: bestTier, billingKind: bestBillingKind, updatedUserIds };
+  return { tier: bestTier, billingKind: bestBillingKind, updatedUserIds, activeMembershipPlanId: bestActiveMembershipPlanId };
 }
 
 /**
