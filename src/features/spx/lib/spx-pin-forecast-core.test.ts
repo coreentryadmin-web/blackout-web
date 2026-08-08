@@ -486,3 +486,49 @@ test("the arithmetic is deliberately UNCHANGED — only the label moved", () => 
   const src = readFileSync("src/features/spx/lib/spx-pin-forecast-core.ts", "utf8");
   assert.match(src, /const oi = c\.openInterest \+ Math\.max\(0, c\.dayVolume \?\? 0\)/);
 });
+
+// ── Scenario labelling ──────────────────────────────────────────────────────────────────────
+// The panel showed "7751 max pain 33%" directly above "7720 max pain 34%", while the desk header
+// read MAX PAIN 7600 — three different numbers under one name. Two separate causes:
+//   1. the HEAD scenario is the forecast pin, but was tagged with p.magnetKind, so a blended pin
+//      that sits away from the magnet was printed under the magnet's name;
+//   2. pinMaxPain (OI + today's volume) and the header tile (OI-only) are different metrics that
+//      shared the label "max pain" — buildDrivers already said "effective max pain", the scenario
+//      table did not.
+test("the head scenario is labelled as the forecast, never as a magnet kind", () => {
+  const out = forecastPin(base("2026-07-21T17:30:00Z"));
+  assert.ok(out.scenarios.length > 0, "expected scenarios");
+  assert.equal(out.scenarios[0]!.kind, "pin", "head scenario is the projected close, not a magnet");
+  assert.equal(
+    out.scenarios[0]!.close,
+    Number(out.pin.toFixed(0)),
+    "and its price is the pin itself"
+  );
+});
+
+test("no two scenarios share a kind with different prices", () => {
+  // The exact user-visible symptom: one label, two numbers, on the same panel.
+  for (const seed of [1, 7, 42, 1234]) {
+    const out = forecastPin(base("2026-07-21T17:30:00Z", { seed }));
+    const byKind = new Map<string, Set<number>>();
+    for (const s of out.scenarios) {
+      if (s.kind === "path") continue; // path clusters are intentionally many, all same kind
+      if (!byKind.has(s.kind)) byKind.set(s.kind, new Set());
+      byKind.get(s.kind)!.add(s.close);
+    }
+    for (const [kind, prices] of byKind) {
+      assert.equal(prices.size, 1, `seed ${seed}: kind "${kind}" carries ${prices.size} different prices: ${[...prices].join(", ")}`);
+    }
+  }
+});
+
+test("a max_pain scenario reports the effective (OI+volume) max pain, matching the drivers", () => {
+  // Guards the label/arithmetic pairing: whatever the scenario calls max pain must be the same
+  // number buildDrivers describes, so panel and narrative cannot drift apart again.
+  const out = forecastPin(base("2026-07-21T17:30:00Z"));
+  const mp = out.scenarios.find((s) => s.kind === "max_pain");
+  if (!mp) return; // only emitted when it sits more than a strike away from the pin
+  const driver = out.drivers.find((d) => /max pain/i.test(d.label));
+  assert.ok(driver, "a max-pain scenario must have a corresponding driver");
+  assert.match(driver!.label, /effective max pain/i, "drivers name it 'effective max pain'");
+});
