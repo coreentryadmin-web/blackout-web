@@ -1,0 +1,92 @@
+{
+  "/": {
+    "name": "Homepage",
+    "mobile": {
+      "scores": {
+        "performance": 0.72,
+        "accessibility": 1,
+        "best-practices": 1,
+        "seo": 1
+      },
+      "metrics": {
+        "lcpMs": 5807.492135052443,
+        "clsScore": 0,
+        "tbtMs": 21,
+        "fcpMs": 2934.0051255920193,
+        "speedIndexMs": 3818.495197647855
+      }
+    }
+  },
+  "/pricing": {
+    "name": "Pricing",
+    "mobile": {
+      "scores": {
+        "performance": 0.76,
+        "accessibility": 1,
+        "best-practices": 1,
+        "seo": 1
+      },
+      "metrics": {
+        "lcpMs": 4999.556464451106,
+        "clsScore": 0,
+        "tbtMs": 115,
+        "fcpMs": 2838.0134876667366,
+        "speedIndexMs": 3122.5212150949974
+      }
+    }
+  },
+  "/learn": {
+    "name": "Learn hub",
+    "mobile": {
+      "scores": {
+        "performance": 0.69,
+        "accessibility": 1,
+        "best-practices": 1,
+        "seo": 1
+      },
+      "metrics": {
+        "lcpMs": 6753.077681392108,
+        "clsScore": 0,
+        "tbtMs": 25,
+        "fcpMs": 3396.00722617601,
+        "speedIndexMs": 3534.5591804789483
+      }
+    }
+  },
+  "/learn/dealer-gamma-options-flow-guide": {
+    "name": "Learn guide (sample)",
+    "mobile": {
+      "scores": {
+        "performance": 0.6,
+        "accessibility": 1,
+        "best-practices": 1,
+        "seo": 1
+      },
+      "metrics": {
+        "lcpMs": 6451.620525308331,
+        "clsScore": 0,
+        "tbtMs": 293.50000000000045,
+        "fcpMs": 3624.5117585666667,
+        "speedIndexMs": 5382.992523392069
+      }
+    }
+  },
+  "/tools/gamma-snapshot": {
+    "name": "Free tool: Gamma Snapshot",
+    "mobile": {
+      "scores": {
+        "performance": 0.49,
+        "accessibility": 1,
+        "best-practices": 1,
+        "seo": 0.91
+      },
+      "metrics": {
+        "lcpMs": 5138.31908809499,
+        "clsScore": 0,
+        "tbtMs": 2602.9946818650837,
+        "fcpMs": 1788.016932527196,
+        "speedIndexMs": 3944.631954310961
+      }
+    }
+  }
+}
