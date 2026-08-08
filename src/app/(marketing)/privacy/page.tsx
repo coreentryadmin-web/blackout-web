@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { MarketingPageShell } from "@/components/landing/MarketingPageShell";
 import { LegalPageLayout } from "@/components/landing/LegalPageLayout";
-import { BreadcrumbJsonLd, WebPageJsonLd } from "@/components/seo/JsonLd";
+import { WebPageJsonLd } from "@/components/seo/JsonLd";
+import { Breadcrumbs } from "@/components/seo/Breadcrumbs";
 import { publicPageMetadata } from "@/lib/page-metadata";
 
 export const metadata: Metadata = publicPageMetadata(
@@ -18,7 +19,7 @@ export default function PrivacyPage() {
         description="How BlackOut Trades collects, uses, and protects your personal information."
         path="/privacy"
       />
-      <BreadcrumbJsonLd items={[
+      <Breadcrumbs items={[
         { name: "Home", href: "/" },
         { name: "Privacy Policy", href: "/privacy" },
       ]} />

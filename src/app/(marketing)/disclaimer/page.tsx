@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { MarketingPageShell } from "@/components/landing/MarketingPageShell";
 import { LegalPageLayout } from "@/components/landing/LegalPageLayout";
-import { BreadcrumbJsonLd, WebPageJsonLd } from "@/components/seo/JsonLd";
+import { WebPageJsonLd } from "@/components/seo/JsonLd";
+import { Breadcrumbs } from "@/components/seo/Breadcrumbs";
 import { publicPageMetadata } from "@/lib/page-metadata";
 
 export const metadata: Metadata = publicPageMetadata(
@@ -18,7 +19,7 @@ export default function DisclaimerPage() {
         description="Important risk disclosures for BlackOut educational market analysis tools."
         path="/disclaimer"
       />
-      <BreadcrumbJsonLd items={[
+      <Breadcrumbs items={[
         { name: "Home", href: "/" },
         { name: "Risk Disclaimer", href: "/disclaimer" },
       ]} />

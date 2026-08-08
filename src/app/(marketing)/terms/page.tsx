@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { MarketingPageShell } from "@/components/landing/MarketingPageShell";
 import { LegalPageLayout } from "@/components/landing/LegalPageLayout";
-import { BreadcrumbJsonLd, WebPageJsonLd } from "@/components/seo/JsonLd";
+import { WebPageJsonLd } from "@/components/seo/JsonLd";
+import { Breadcrumbs } from "@/components/seo/Breadcrumbs";
 import { publicPageMetadata } from "@/lib/page-metadata";
 
 export const metadata: Metadata = publicPageMetadata(
@@ -18,7 +19,7 @@ export default function TermsPage() {
         description="The terms and conditions governing your use of the BlackOut platform, subscriptions, and services."
         path="/terms"
       />
-      <BreadcrumbJsonLd items={[
+      <Breadcrumbs items={[
         { name: "Home", href: "/" },
         { name: "Terms of Service", href: "/terms" },
       ]} />
