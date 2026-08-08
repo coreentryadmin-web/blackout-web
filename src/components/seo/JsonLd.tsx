@@ -112,6 +112,7 @@ export function SoftwareApplicationJsonLd() {
             price: String(MEMBERSHIP_PRICING.community),
             priceCurrency: "USD",
             url: `${SITE.url}/pricing`,
+            availability: "https://schema.org/InStock",
           },
           {
             "@type": "Offer",
@@ -119,6 +120,7 @@ export function SoftwareApplicationJsonLd() {
             price: String(MEMBERSHIP_PRICING.monthly),
             priceCurrency: "USD",
             url: `${SITE.url}/pricing`,
+            availability: "https://schema.org/InStock",
           },
         ],
         provider: {
