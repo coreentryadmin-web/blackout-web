@@ -31,7 +31,7 @@ export function scheduledCancelEmail(ctx: ScheduledCancelContext): {
   const body = `
     <h1 style="font-size:22px;font-weight:800;margin:0 0 16px;color:${EMAIL_BRAND.ink};line-height:1.3;">The Bell Hasn't Rung Yet.</h1>
     ${paragraphs}
-    ${emailCta(`${SITE.url}/account/billing`, "Manage billing")}
+    ${emailCta(`${SITE.url}/account`, "Manage billing")}
     <p style="margin:0;color:${EMAIL_BRAND.muted};font-size:14px;">Your call, no hard feelings — the desk's still open when you're ready. Trade well.</p>
   `;
 
