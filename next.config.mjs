@@ -173,6 +173,16 @@ const nextConfig = {
   images: {
     remotePatterns,
     minimumCacheTTL: 86400,
+    // Next's default imageSizes ([16,32,48,64,96,128,256,384]) jumps straight to
+    // deviceSizes' 640 next — nothing in between. Any `fill` image whose real
+    // rendered width (accounting for DPR) lands in that 384-640 gap gets rounded
+    // all the way up to 640, even when 480/576 would cover it. Measured live via
+    // PageSpeed Insights: the homepage hero logo renders at 209x209 CSS px but
+    // was served the 640 breakpoint, wasting 71KB of its 72.5KB total. Adding two
+    // values into the gap is purely additive — Next always picks the SMALLEST
+    // breakpoint that satisfies the request, so more granularity can only reduce
+    // over-fetching, never increase it (no existing `sizes` prop needs to change).
+    imageSizes: [16, 32, 48, 64, 96, 128, 256, 384, 480, 576],
   },
   // spx-desk-merge.ts is isomorphic (used by client hooks) and lazily pulls
   // shared-cache -> ioredis for cross-instance Redis sticky state. ioredis is only

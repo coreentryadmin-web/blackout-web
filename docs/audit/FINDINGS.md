@@ -4,6 +4,18 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-08 - [P3, PERFORMANCE] Next.js's default image breakpoint ladder has a 384→640 gap — the hero logo (and any similarly-sized `fill` image) got rounded up to 640 when 480/576 would do — FIXED
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P3. PSI's `image-delivery-insight` flagged the homepage hero logo (`#logo-img`) as the single biggest image waste on the page: 72.5KB of its total download, on an image whose live-measured `boundingRect` was 209×209 CSS px. |
+| **Root cause** | Next.js's default `imageSizes` array is `[16,32,48,64,96,128,256,384]`, and `deviceSizes` starts at `640`. There is nothing between 384 and 640. Any `<Image fill sizes="...">` whose real target width (CSS width × device pixel ratio) lands in that gap — e.g. a 250px-wide logo at DPR ~2 needing ~500px — gets rounded all the way up to the 640 breakpoint, because Next always serves the smallest available breakpoint that's `>=` the computed target. |
+| **Why not just fix the `sizes` attribute instead** | Traced in the prior gallery-images fix (same date, this file) that the hero logo's container is a genuinely fluid `clamp(240px, 65vw, 340px)` width, not a fixed breakpoint — precisely expressing that in the HTML `sizes` attribute risks the browser falling back to 100vw on unsupported engines, which would be worse than today. Closing the breakpoint-ladder gap instead fixes the actual mechanism (Next rounding too far up) without touching any fragile per-component `sizes` string, and helps every image site-wide that falls in this range, not just the one PSI happened to flag. |
+| **Fix** | `next.config.mjs`'s `images.imageSizes` gained two values inside the gap: `480` and `576`. Purely additive — Next always picks the smallest sufficient breakpoint, so adding finer-grained options can only reduce over-fetching, never increase it; no existing `sizes` prop needed to change. |
+| **Verification — checked the actual rendered output, not just reasoning about it** | Ran a real `npm run build` (succeeded, no errors) and read the pre-rendered `.next/server/app/index.html` directly: the hero logo's `srcSet` now includes `.../w=480&q=75 480w, .../w=576&q=75 576w` between the existing `384w` and `640w` entries — confirmed the browser now has intermediate options to pick from instead of jumping straight from 384 to 640. |
+| **Also tried and reverted (documented so it isn't retried blind)** | Added an explicit `browserslist` field to `package.json` to see if it would shrink a 12KB legacy-polyfill chunk PSI flagged (`Array.prototype.at/flat/flatMap`, `Object.fromEntries`, `Object.hasOwn`, `String.prototype.trimStart/trimEnd`). Rebuilt clean (`rm -rf .next`) and compared: every chunk hash and size was byte-identical before and after — proof the polyfills come from a pre-built third-party dependency Next doesn't re-transpile, not from this app's own compilation target. Reverted rather than ship a config change with zero measured effect. |
+| **Status** | FIXED (image breakpoint gap). Legacy-JS polyfill chunk (12KB) remains unaddressed — would need identifying and replacing/patching the specific dependency, not a config-level fix. |
+
 ## 2026-08-08 - [P3, PERFORMANCE] Homepage eagerly loaded a 110KB framer-motion chunk, 90% unused, for an exit-intent modal almost nobody triggers — FIXED
 
 | Field | Value |
