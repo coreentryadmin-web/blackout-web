@@ -1,3 +1,4 @@
+import { MEMBERSHIP_PRICING, usd } from "@/lib/pricing";
 import { SITE } from "@/lib/site";
 import { emailLayout, emailCta, EMAIL_BRAND, substituteTokens } from "@/lib/email/layout";
 import type { EmailAttachment } from "@/lib/email/resend-client";
@@ -38,7 +39,7 @@ export function welcomePremiumEmail(ctx: WelcomePremiumContext): {
 
   const annualLine =
     ctx.billingInterval === "yearly"
-      ? `<p style="margin:0 0 18px;color:${EMAIL_BRAND.body};">You're locked in at $1,999 for the full year — the 7-day guarantee's already come and gone, satisfied. Nothing left to decide. The desk's open. Go trade.</p>`
+      ? `<p style="margin:0 0 18px;color:${EMAIL_BRAND.body};">You're locked in at ${usd(MEMBERSHIP_PRICING.yearly)} for the full year — the 7-day guarantee's already come and gone, satisfied. Nothing left to decide. The desk's open. Go trade.</p>`
       : "";
 
   const body = `

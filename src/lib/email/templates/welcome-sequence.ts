@@ -1,3 +1,4 @@
+import { MEMBERSHIP_PRICING, usd } from "@/lib/pricing";
 import { SITE } from "@/lib/site";
 import { emailLayout, emailCta, emailHighlight, emailScreenshot, ENGINE_ACCENT, EMAIL_BRAND } from "@/lib/email/layout";
 import { spxDeskHeroAsset, thermalKeyLevelsAsset, vectorChartAsset, nighthawkPlaysAsset } from "@/lib/email/inline-assets";
@@ -213,7 +214,7 @@ export const WELCOME_SEQUENCE: WelcomeEmailStep[] = [
           "Eight days ago you walked onto the floor, {{firstName}}. Since then you've watched us call a regime and grade a setup A through F before a single candle confirms anything — then show you exactly how it landed. Win or lose. Losses sit right next to wins, untouched, un-hidden. No quiet deletes, no highlight reel dressed up as a track record. That's not marketing. That's the whole book, open, every single day."
         ) +
         p(
-          "Here's the structure, plain: SPX Slayer — the 0DTE desk, live SPX regime read, GEX, every setup graded before anyone knows if it wins — starts at $49/mo. Want the full terminal? Premium unlocks all six engines: SPX Slayer, Thermal's GEX/VEX/DEX/CHARM heatmaps, HELIX flagging sweeps and dark-pool prints, Night Hawk's pre-bell playbook, Largo AI riding the live data, Vector hunting the next squeeze before it runs. $199/mo, or $1,999/yr if you're all-in — annual carries a 7-day money-back guarantee. Monthly cancels anytime. No contract, no hooks in you."
+          "Here's the structure, plain: SPX Slayer — the 0DTE desk, live SPX regime read, GEX, every setup graded before anyone knows if it wins — starts at ${usd(MEMBERSHIP_PRICING.community)}/mo. Want the full terminal? Premium unlocks all six engines: SPX Slayer, Thermal's GEX/VEX/DEX/CHARM heatmaps, HELIX flagging sweeps and dark-pool prints, Night Hawk's pre-bell playbook, Largo AI riding the live data, Vector hunting the next squeeze before it runs. ${usd(MEMBERSHIP_PRICING.monthly)}/mo, or ${usd(MEMBERSHIP_PRICING.yearly)}/yr if you're all-in — annual carries a 7-day money-back guarantee. Monthly cancels anytime. No contract, no hooks in you."
         ) +
         p(
           "We're not asking you to trust a highlight reel. Every grade we issue gets marked to market — wins post, losses post, same ticker, same grade, logged before the candle closes and never touched after. That's the edge. The desk doesn't wait around for you to catch up."

@@ -1,3 +1,4 @@
+import { MEMBERSHIP_PRICING, usd } from "@/lib/pricing";
 import { SITE } from "@/lib/site";
 import { emailLayout, emailCta, EMAIL_BRAND, substituteTokens } from "@/lib/email/layout";
 import type { EmailAttachment } from "@/lib/email/resend-client";
@@ -13,7 +14,7 @@ export function downgradeEmail(ctx: DowngradeContext): { subject: string; html: 
 
   const subject = "Downgrade confirmed. SPX Slayer's still loaded.";
   const paragraphs = [
-    "{{firstName}}, done deal. Premium's off, SPX Slayer's on — $49/mo, same card, effective this billing cycle. No proration drama, no fine print. That's the whole transaction.",
+    `{{firstName}}, done deal. Premium's off, SPX Slayer's on — ${usd(MEMBERSHIP_PRICING.community)}/mo, same card, effective this billing cycle. No proration drama, no fine print. That's the whole transaction.`,
     "Here's what stays: the full SPX Slayer desk. Live SPX regime reads, real-time GEX, every 0DTE setup graded A-F before the outcome's known. The grading ledger doesn't reset, soften, or get edited retroactively because your tier changed — wins and losses still log against the original grade, same as always.",
     "Here's what's gone dark: Thermal (GEX/VEX/DEX/CHARM heatmaps), HELIX (sweep/block/dark-pool flow scanner), Night Hawk (the overnight playbook plus its intraday 0DTE scanner), Largo AI (the data-grounded chat layer), and Vector (cross-ticker gamma scanning). Five engines, off your account as of now. If you leaned on the flow scanner or the overnight book, you'll notice tomorrow morning.",
     "No guilt trip here — one click puts Premium back on whenever you want it, same account, same login, no re-onboarding. If SPX Slayer covers what you actually trade, there's nothing left to do. Your desk, your call.",
