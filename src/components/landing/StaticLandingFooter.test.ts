@@ -69,3 +69,17 @@ test("StaticLandingFooter: no placeholder href=\"#\" links", () => {
     assert.doesNotMatch(source, /href:\s*"#"/, `${footerPath} must not have placeholder href="#" links`);
   }
 });
+
+// Regression: /about had zero internal inbound links anywhere in the app (no footer,
+// no nav — only its own self-referencing breadcrumb), so it sat "URL is unknown to
+// Google" in Search Console for 6+ days despite being live and sitemap-submitted.
+// Crawlers prioritize pages by following links, not by reading sitemap.xml alone —
+// an unlinked page gets minimal crawl budget. Pin the footer link so a future
+// refactor can't silently drop it back into orphan status.
+test("StaticLandingFooter: DESK links to /about (was an orphan page with zero internal inlinks)", () => {
+  for (const footerPath of FOOTER_PATHS) {
+    const source = readFileSync(footerPath, "utf8");
+    const hrefs = extractHrefs(source, "DESK");
+    assert.ok(hrefs.includes("/about"), `${footerPath} DESK must link to /about`);
+  }
+});
