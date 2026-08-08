@@ -91,3 +91,13 @@ export function sectionLinks(sections: LearnSection[]): LearnSectionLink[] {
     .filter((s): s is LearnSection & { title: string } => "title" in s && Boolean(s.title))
     .map((s) => ({ id: s.id, label: s.title }));
 }
+
+/** FAQ items from a guide's `faq`-type section(s), in FAQPageJsonLd's { question, answer }
+ *  shape. Every `defineToolGuide`-built guide carries a real faq section (required opt), so
+ *  this exposes the same Q&A already rendered on the page as FAQPage structured data instead
+ *  of leaving it invisible to search engines. Empty when a guide (e.g. glossary) has none. */
+export function guideFaqs(sections: LearnSection[]): { question: string; answer: string }[] {
+  return sections
+    .filter((s): s is LearnSection & { type: "faq" } => s.type === "faq")
+    .flatMap((s) => s.items.map((item) => ({ question: item.q, answer: item.a })));
+}

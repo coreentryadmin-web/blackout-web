@@ -9,6 +9,7 @@ import { publicPageMetadata } from "@/lib/page-metadata";
 import { LEARN_ARTICLES, getArticle } from "@/lib/learn/articles";
 import { getLearnGuide } from "@/lib/learn/guides";
 import { GUIDE_SEO, isLearnGuideSlug } from "@/lib/learn/guide-seo";
+import { guideFaqs } from "@/lib/learn/types";
 import { LEARN_NAV } from "@/lib/learn/nav";
 import { getArticleFaqs } from "@/lib/learn/article-faqs";
 import { ARTICLE_DATE_MODIFIED, ARTICLE_DATE_PUBLISHED } from "@/lib/seo/sitemap-dates";
@@ -47,6 +48,7 @@ export default async function LearnSlugPage({ params }: Props) {
   if (isLearnGuideSlug(slug)) {
     const seo = GUIDE_SEO[slug];
     const guide = getLearnGuide(slug);
+    const faqs = guideFaqs(guide.sections);
 
     return (
       <>
@@ -57,6 +59,7 @@ export default async function LearnSlugPage({ params }: Props) {
           datePublished={seo.datePublished}
           dateModified={seo.dateModified}
         />
+        {faqs.length > 0 && <FAQPageJsonLd items={faqs} />}
         <Breadcrumbs
           items={[
             { name: "Home", href: "/" },
