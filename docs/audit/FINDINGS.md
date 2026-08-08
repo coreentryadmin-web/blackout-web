@@ -1157,23 +1157,21 @@ with console-only completion logging. Regression test:
 
 ## 2026-08-04 — [0DTE] Architecture V2 Phase 2a: discovery event persist + BREAKOUT 1DTE fallback — IN PROGRESS
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
 
 **Severity.** MEDIUM — closes the event-sourcing loop started in Phase 1; improves BREAKOUT chain-walk observability.
 
 **Fix.** `pickBreakoutContractWithFallback()` (explicit 0DTE then env-gated 1DTE); `discovery-events-persist.ts` wires `detected`/`gate_blocked`/`commit` on cron; breakout logs `1dte_fallback=` count.
 
-**Status.** PR pending.
+**Status.** FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `gate_blocked`). Restamped from a mid-flight status that was never revisited.
 
 ---
 
 ## 2026-08-04 — [0DTE] Architecture V2 Phase 2b: board market_state chip + admin funnel — IN PROGRESS
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
 
 **Fix.** `ZeroDteBoardPayload.market_state`; `MarketStateStrip` on Command deck; `GET /api/admin/zerodte/funnel`; Admin BIE discovery funnel DeckPanel.
 
-**Status.** PR pending.
+**Status.** FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `MarketStateStrip`). Restamped from a mid-flight status that was never revisited.
 
 ## 2026-08-03 — [ops,nighthawk] Edition stuck at stage_synthesis checkpoint — FIXED (ops-auto-fix #1572)
 > **kind:** `FINDING`
@@ -1244,7 +1242,6 @@ outgoing (3), no orphans, no broken links, and total link count >= 300.
 
 ## 2026-08-01 — [CTO perf audit] Multi-agent audit (8 domains, adversarially verified) — Vector/Nighthawk 1Hz full-tree re-renders fixed; 15 more findings ranked
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
 
 **Context.** User-requested exhaustive performance audit ("the entire website feels slow... I just
 need it faster"). Ran an 8-domain parallel audit (SSR payload, rendering, network/caching, bundle,
@@ -1319,7 +1316,7 @@ actually used, not silently ignored), and the no-prop fallback path still render
 - P3: missing partial index on `zerodte_setup_log.graded_at`, Redis/ECS-web sizing (informational,
   no incident evidence), a duplicate-fetch trap (`fetchSpxPlay` under two disjoint SWR keys).
 
-**Status.** `fix/vector-nighthawk-1hz-rerender` → PR.
+**Status.** FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `VectorAlertsPanel`, `GexShiftLeadersStrip`). Restamped from a mid-flight status that was never revisited.
 
 ## 2026-08-01 — [Vector/SPX Slayer] SSR payload embedded up to 24h of prior-session wall history — 28-50MB HTML, 10-12s downloads
 > **kind:** `FINDING`
@@ -1380,7 +1377,6 @@ input; no-op when the whole rail already belongs to the session). Full suite gre
 
 ## 2026-07-31 — [Grid/0DTE] Minimal board fallback hardcoded noon RTH heat post-close
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
 
 **Severity.** P1 — degraded `/api/market/zerodte/board` polls returned `heat=RTH` with empty setups/ledger after the bell while the real board (via Clerk/cron) showed `CLOSED` with 7 setups / 2 ledger rows.
 
@@ -1392,11 +1388,10 @@ input; no-op when the whole rail already belongs to the session). Full suite gre
 
 **Files.** `src/lib/platform/zerodte-service.ts`, `src/lib/platform/zerodte-board-convergence.test.ts`.
 
-**Status.** `fix/grid-minimal-fallback-session-heat` → PR.
+**Status.** FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `tradingDay`, `buildZeroDteBoardPayload`). Restamped from a mid-flight status that was never revisited.
 
 ## 2026-07-31 — [ops] socket-health false-fail when ingest WS heartbeat absent but REST live
 > **kind:** `OPS-NOTE`
-> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
 
 **Severity.** P1 — `validate:rth-open` failed `options-socket` on every probe (~14:14–14:23 ET)
 while all member APIs GREEN (sweep 0 P0/P1, data-correctness flags=0, SPX matrix 169 strikes).
@@ -1412,11 +1407,10 @@ Unit tests in `socket-cluster-health.test.ts`.
 
 **Files.** `src/lib/ws/socket-cluster-health.ts`, `src/lib/ws/socket-cluster-health.test.ts`.
 
-**Status.** `cursor/rth-comprehensive-test-sweep-47c8` → PR.
+**Status.** FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `readUwClusterHealth`, `UW_REST_LAST_OK_KEY`). Restamped from a mid-flight status that was never revisited.
 
 ## 2026-07-31 — [ops] ops-auto-fix #703 — transient watchdog HTTP 502 surfaced as P0
 > **kind:** `OPS-NOTE`
-> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
 
 **Severity.** P1 — `ops-auto-fix` GHA collector reported P0 `watchdog:http` during a healthy
 prod session; blocked autonomous close loop on issue #703.
@@ -1436,7 +1430,7 @@ now includes 503.
 **Files.** `scripts/ops-collect-action-items.mjs`, `scripts/audit/lib/ops-collect-scope.mjs`,
 `scripts/audit/lib/auth-status.mjs`.
 
-**Status.** `cursor/autonomous-ops-maintenance-be56` → PR.
+**Status.** FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `shouldRetryWatchdogFetch`, `watchdogHttpPriority`). Restamped from a mid-flight status that was never revisited.
 
 ## 2026-07-31 — [spx] Degraded play payload missing `levels` crashes dashboard (P1)
 > **kind:** `FINDING`
@@ -1954,7 +1948,6 @@ applied at *read* time via `archetypeOf` on `fetchWatchEligible`.
 
 ## 2026-07-29 — [Grid/0DTE] grid-e2e board HTTP 504 under orchestrator burst
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
 
 **Severity.** P1 — flaky `validate:grid-rth --phase=post-close` on `grid:dashboard-e2e` when nested
 `validate:grid-e2e` hits HTTP **504** on `/api/market/zerodte/board` after long orchestrator run.
@@ -1965,7 +1958,7 @@ applied at *read* time via `archetypeOf` on `fetchWatchEligible`.
 **Fix.** `auditGridApis`: 4× retry with backoff on transient board status. Shared `isTransientOriginError`
 in `auth-status.mjs` (also dedupes `audit-auth-fetch.mjs`).
 
-**Status.** `fix/grid-e2e-board-retry` → PR.
+**Status.** FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `auditGridApis`, `isTransientOriginError`). Restamped from a mid-flight status that was never revisited.
 
 ## 2026-07-29 — [Grid/0DTE] grid-rth orchestrator syntax error (broken merge #1305)
 > **kind:** `FINDING`
@@ -1984,7 +1977,6 @@ in `auth-status.mjs` (also dedupes `audit-auth-fetch.mjs`).
 
 ## 2026-07-29 — [SPX] Post-close audit flake: ops:collect stderr mask + transient 502 on desk lanes
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
 
 **Severity.** P1 — blocked `validate:spx-rth --phase=post-close` despite member SPX surfaces GREEN.
 
@@ -2002,7 +1994,7 @@ in `auth-status.mjs` (also dedupes `audit-auth-fetch.mjs`).
 
 **Fix.** Shared `ops-collect-scope.mjs` + `auditOpsCollect()` in SPX runbook; `softFetchJson` for pulse/flow lanes; `fetchAuditJson` 3× retry on 502/504/524; E2E matrix `app()` 5xx retry.
 
-**Status.** `cursor/spx-post-close-findings-2224` → PR.
+**Status.** FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `softFetchJson`, `fetchAuditJson`). Restamped from a mid-flight status that was never revisited.
 
 ## 2026-07-29 — [Swing] CTO audit — management gates null-wired + desk ignored sections
 > **kind:** `FINDING`
@@ -2029,7 +2021,6 @@ archetype intended-DTE realign. Branch `cursor/swing-cto-audit-3d11`.
 
 ## 2026-07-29 — [Grid/0DTE] zerodte board HTTP 504 on aged snapshot cold-build
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
 
 
 **Severity.** P0 member path (Night Hawk `/api/market/zerodte/board`).
@@ -2050,7 +2041,7 @@ probe succeeded; `audit-output/grid-rth-*-verify-*.json`.
 blocks. `audit-auth-fetch.mjs`: fall through to Clerk on 502/504/524. `zerodte-logic-audit.mjs`:
 use `fetchAuditJson`. Test: `zerodte-board-convergence.test.ts` 35s-aged snapshot case.
 
-**Status.** `fix/zerodte-board-swr-504` → PR.
+**Status.** FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `BOARD_SNAPSHOT_TTL_SEC`). Restamped from a mid-flight status that was never revisited.
 
 ## 2026-07-29 — [ops] SPY flow cross-check false FLAG — bounded Massive oracle (#1299)
 > **kind:** `OPS-NOTE`
@@ -2130,7 +2121,6 @@ violation only (same direction + valid subset → independently confirmed).
 
 ## 2026-07-29 — [Thermal+Vector] Shared sticky universe (≤100 / 14d)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
 
 **Severity.** P2 product gap — Vector already sticky-recorded member-viewed names (cap 100,
 14d) while Thermal `heatmap-warm` only warmed the static ~21 allowlist. Opening NVDA on
@@ -2145,11 +2135,10 @@ already called `listDynamicUniverseTickers` — not Thermal matrix warm.
 `heatmap-warm`, `vector-walls-warm`, and `buildVectorUniverseSnapshot` all consume it. UW
 overlays stay on the static allowlist (2 RPS). CORE SPY/SPX/QQQ still force-refresh first.
 
-**Status.** `cursor/thermal-share-dynamic-universe-3d11` → PR.
+**Status.** FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `mergeSharedUniverseTickers`, `listSharedUniverseTickers`). Restamped from a mid-flight status that was never revisited.
 
 ## 2026-07-29 — [Thermal] Triple desk SPY/QQQ not refreshing every 5–10s
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
 
 
 **Severity.** P1 UX — compare desk felt stuck; SPX stayed ~5s while SPY/QQQ asof climbed
@@ -2163,7 +2152,7 @@ overlays stay on the static allowlist (2 RPS). CORE SPY/SPX/QQQ still force-refr
 **Fix.** Monotonic force nonce + `forceActive` flag (unique SWR keys); force age/throttle
 5s client+server. Triple desk ticks every 1s and waits for in-flight force to settle.
 
-**Status.** `cursor/thermal-matrix-cadence-3d11` → PR.
+**Status.** FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `forceActive`). Restamped from a mid-flight status that was never revisited.
 
 ## 2026-07-29 — [Thermal] Triple desk opens scrolled to top of strike band (not spot)
 > **kind:** `FINDING`
@@ -3437,7 +3426,6 @@ pass (97+21=118 total). tsc clean.
 
 ## 2026-07-28 — [correctness] Governor demotion undone by builder merge-sort + no R:R minimum gate (branch `fix/governor-sort-override`)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
 
 **Severity.** Medium (edition quality — governor-demoted plays could re-promote to the top 5; plays with terrible R:R could publish).
 
@@ -3455,7 +3443,7 @@ The cross-edition governor (`cross-edition-governor.ts`) re-sorts candidates by 
 
 **Evidence.** All 65 tests pass (governor 25, constraints 12, deterministic-edition 28). New tests cover both fixes. `npx tsc --noEmit` clean.
 
-**Status.** FIXED — PR pending.
+**Status.** FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `ScoredCandidate`). Restamped from a mid-flight status that was never revisited.
 
 ## 2026-07-26 — [correctness] Iron-condor `live_pnl_pct` inverted AT THE SERVER SOURCE — fixed at source + removed the redundant Wave-2 render flip (branch `fix/condor-graded-pnl-sign`)
 > **kind:** `FINDING`
