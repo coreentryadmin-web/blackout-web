@@ -68,11 +68,15 @@ test("the UNRECONCILED backlog is not silently growing", () => {
   //   240 -> 194  the 50 mid-flight "PR pending → CI → auto-merge" statuses were resolved against
   //               the tree by scripts/audit/findings-verify-stale.mjs, and the 10 batched SEO
   //               entries all shipped with a real outcome. Real work, real evidence.
+  //   194 -> 129  65 entries cited a PR the GitHub API confirms is MERGED, resolved by
+  //               scripts/audit/findings-resolve-prs.mjs. Each stamp names the PR and merge SHA.
+  //   194 -> 129  65 entries cited a PR that the GitHub API confirms is MERGED, resolved by
+  //               scripts/audit/findings-resolve-prs.mjs. Each stamp names the PR and merge SHA.
   // Raising it to accommodate a new unreconciled entry is not one of the options.
   const n = (readFileSync(FINDINGS, "utf8").match(/`UNRECONCILED`/g) ?? []).length;
   assert.ok(
-    n <= 194,
-    `UNRECONCILED count rose to ${n} (ceiling 194) — new entries must carry a real status, not UNRECONCILED`
+    n <= 129,
+    `UNRECONCILED count rose to ${n} (ceiling 129) — new entries must carry a real status, not UNRECONCILED`
   );
 });
 
