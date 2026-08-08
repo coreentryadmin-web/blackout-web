@@ -24,6 +24,7 @@ const DESK = [
   { label: "Pricing", href: "/pricing" },
   { label: "Learn", href: "/learn" },
   { label: "FAQ", href: "/faq" },
+  { label: "About", href: "/about" },
   { label: "Contact", href: "/contact" },
 ];
 

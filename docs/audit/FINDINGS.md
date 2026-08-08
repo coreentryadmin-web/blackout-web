@@ -4,6 +4,21 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-08 - [P3, SEO] `/about` was a true orphan page — zero internal inlinks anywhere in the app — FIXED
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P3, not member-facing, but a real indexing gap: Google Search Console's "Page indexing" report (screenshotted by the operator) listed 5xx/redirect/404/canonical-mismatch categories that read as alarming out of context. |
+| **How it was investigated** | The operator supplied a GCP service-account key (`claude-seo@blackout-trades.iam.gserviceaccount.com`, already granted `siteOwner` on `sc-domain:blackouttrades.com` in Search Console) to check against real GSC data rather than guessing from the screenshot alone. Used read-only (`webmasters.readonly` scope): `sitemaps.list`, `searchAnalytics.query`, and `urlInspection.index:inspect` batched across all 64 live sitemap URLs, cross-checked against a direct HTTP status probe of every URL. **The key was exposed in plaintext in the session transcript by the upload — operator was told to rotate/regenerate it in GCP IAM regardless of this finding.** |
+| **Headline result — the scary categories were stale, not live** | Zero of the 64 sitemap URLs actually return 5xx, a redirect, or a 404 today; zero canonical mismatches. `sitemaps.list` showed a stale "0 indexed" count (last GSC sitemap fetch: Aug 2), but live `urlInspection` showed **58/64 (90.6%) "Submitted and indexed."** The GSC UI's category buckets are cumulative history, not current state — they were carrying forward crawl attempts from before this repo's Jul 30–Aug 2 SEO push (#1451/#1512/#1515, 33 new `/learn/*` articles) landed. No code issue behind that part of the report. |
+| **Root cause of the one real gap** | Of the 6 "URL is unknown to Google" pages, 5 are brand-new content from that Aug 2 burst — normal crawl-budget lag for a lower-authority domain, self-resolving over 1–4 weeks, not a bug. The 6th, `/about`, is 6 days old (added 2026-08-02, #1451-era) and had **zero internal inbound links anywhere in the app** — not the footer, not any nav, not a single in-content `[text](/about)` reference in `articles.ts`. The only place `/about` appeared was its own self-referencing breadcrumb and the sitemap entry itself. Google discovers and prioritizes pages primarily by following links, not by reading `sitemap.xml` alone; an unlinked page gets minimal crawl priority regardless of how long it's been submitted. `StaticLandingFooter.tsx`'s `DESK` column links Why BlackOut/Pricing/Learn/FAQ/Contact but had silently never included the peer "About" page. |
+| **Not fixed — different root cause, lower confidence** | `/learn/glossary` is also unindexed despite being well-linked (it's a top-level `LEARN_NAV` chapter, so every `/learn/*` page links to it) — this doesn't fit the orphan-page pattern. Likely just short/thin content (64-line platform-jargon reference) losing crawl priority to the meatier articles, not something a code fix addresses. Left as an open observation, not logged as a separate fix. |
+| **Fix** | `src/components/landing/StaticLandingFooter.tsx`: added `{ label: "About", href: "/about" }` to the `DESK` array, between FAQ and Contact. |
+| **Tests** | New regression test in `StaticLandingFooter.test.ts` pinning `/about` in `DESK` (the existing "DESK links all resolve to real routes" test would have caught a typo'd href, but nothing would have caught the *absence* of the link before this). |
+| **Status** | FIXED. |
+
+---
+
 ## 2026-08-07 - [P1, DATA LOSS] SPX's whole trading session evicted from the wall rail overnight by a COUNT cap - FIXED (#1850)
 
 | Field | Value |
