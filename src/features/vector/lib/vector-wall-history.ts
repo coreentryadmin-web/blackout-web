@@ -92,6 +92,42 @@ const COMPACT_TAIL_BUCKET_SEC = 15;
  * If one pass is not enough (a pathological burst), it falls back to the old tail slice so the cap
  * is still an absolute bound.
  */
+/**
+ * Snap a thinned tail sample onto its bucket boundary.
+ *
+ * Both tail thinners below (compactHistoryToCap, decimateSeedHistory) used to keep the bucket's
+ * last reading at its ORIGINAL timestamp. That is invisible for a 15s recorder cadence — the
+ * bucket width equals the cadence, so times already sit on 15s boundaries — and fatal for the 5s
+ * ORACLE cadence: the last sample in [15k, 15k+15) is at 15k+10, so the whole thinned tail lands
+ * on `time % 15 === 10`.
+ *
+ * That is unrenderable, not merely imprecise. WallRailPrimitive projects each bead with
+ * `ts.timeToCoordinate(p.time)`, which lightweight-charts implements as `timeToIndex(time,
+ * findNearest = false)` — it returns null for ANY time that is not exactly a bar time, and the
+ * primitive then does `if (x == null) continue`. Bar times are multiples of the candle interval
+ * (180s on a 3-min chart) and therefore ≡ 0 (mod 15); `15k+10` never is. So every phase-shifted
+ * bead was computed and silently discarded at draw time, leaving only the untouched
+ * newest-30-minutes window — the right-edge band reported on the SPX desk.
+ *
+ * Snapping to `bucket` (a multiple of 15, which divides 180) puts the tail back on a grid that CAN
+ * coincide with bars. This deliberately overrides the older "kept samples retain their ORIGINAL
+ * time — rewriting times would move real beads" invariant: the move is at most one bucket width
+ * (≤14s) on a chart whose smallest candle is 60s, and the alternative is not a slightly-misplaced
+ * bead but no bead at all.
+ *
+ * Never moves a sample BACKWARDS past one already kept — `Math.floor` can round below the retained
+ * anchor sample when both fall inside the first bucket, and wall history must stay ascending for
+ * trailsByStrike's same-bucket coalescing and every downstream slice.
+ */
+function snapTailSampleToBucket(
+  sample: WallHistorySample,
+  bucket: number,
+  lastKeptTime: number | null
+): WallHistorySample {
+  if (lastKeptTime != null && bucket <= lastKeptTime) return sample;
+  return sample.time === bucket ? sample : { ...sample, time: bucket };
+}
+
 export function compactHistoryToCap(
   history: WallHistorySample[],
   cap: number = MAX_HISTORY,
@@ -114,11 +150,13 @@ export function compactHistoryToCap(
     }
     const bucket = Math.floor(sample.time / tailBucketSec) * tailBucketSec;
     if (bucket === lastBucket) {
-      out[out.length - 1] = sample; // keep the bucket's LAST reading, as the display bucketer does
+      // Keep the bucket's LAST reading, as the display bucketer does — snapped to the bucket
+      // boundary so it stays on a grid the time scale can resolve (see snapTailSampleToBucket).
+      out[out.length - 1] = snapTailSampleToBucket(sample, bucket, out.length > 1 ? out[out.length - 2]!.time : null);
       continue;
     }
     lastBucket = bucket;
-    out.push(sample);
+    out.push(snapTailSampleToBucket(sample, bucket, out.length ? out[out.length - 1]!.time : null));
   }
   return out.length > cap ? out.slice(out.length - cap) : out;
 }
@@ -726,8 +764,10 @@ export const SEED_TAIL_BUCKET_SEC = 15;
  *  - the newest {@link SEED_FULL_RESOLUTION_SEC} is returned untouched — sample-for-sample;
  *  - the FIRST sample always survives, so the session-open bead and `backfillRailPrefix`'s modeled
  *    prefix boundary can never be decimated away;
- *  - kept samples retain their ORIGINAL `time` (never re-keyed to the bucket start) — the client
- *    re-buckets for display anyway, and rewriting times would move real beads;
+ *  - kept samples in the DECIMATED TAIL are snapped to their bucket start; samples in the
+ *    untouched newest window keep their original `time`. The old invariant ("never re-keyed")
+ *    made the 5s oracle tail land on `t % 15 === 10`, which the time scale cannot resolve to a
+ *    bar and the rail primitive therefore dropped entirely — see snapTailSampleToBucket;
  *  - order is preserved and the output is a subset of the input, so `modeled` flags, dominance
  *    filtering and `trailsByStrike`'s "still in the latest bucket" logic all keep working on real
  *    recorded samples rather than synthesised ones.
@@ -759,12 +799,13 @@ export function decimateSeedHistory(
     const bucket = Math.floor(sample.time / bucketSec) * bucketSec;
     if (bucket === lastBucket) {
       // Same bucket as the sample already kept: replace it, so the bucket keeps its LAST reading —
-      // the same "last wins" rule bucketWallHistoryForInterval uses for display.
-      out[out.length - 1] = sample;
+      // the same "last wins" rule bucketWallHistoryForInterval uses for display. Snapped to the
+      // bucket boundary so the thinned tail stays renderable (see snapTailSampleToBucket).
+      out[out.length - 1] = snapTailSampleToBucket(sample, bucket, out.length > 1 ? out[out.length - 2]!.time : null);
       continue;
     }
     lastBucket = bucket;
-    out.push(sample);
+    out.push(snapTailSampleToBucket(sample, bucket, out.length ? out[out.length - 1]!.time : null));
   }
   return out;
 }
