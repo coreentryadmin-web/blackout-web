@@ -8,6 +8,7 @@ export const GA4_EVENTS = {
   deskOpened: "desk_opened",
   beginCheckout: "begin_checkout",
   purchase: "purchase",
+  experimentExposure: "experiment_exposure",
 } as const;
 
 export type Ga4EventName = (typeof GA4_EVENTS)[keyof typeof GA4_EVENTS];
