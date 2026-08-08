@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { LEARN_ARTICLES } from "./articles";
+import { GUIDE_SEO } from "./guide-seo";
 
 /**
  * Internal-link-graph health checks for learn articles.
@@ -135,5 +136,34 @@ describe("learn articles — internal link graph", () => {
       total >= 300,
       `Total inter-article links: ${total} (expected >= 300)`
     );
+  });
+});
+
+describe("learn articles — meta description uniqueness", () => {
+  // 2026-08-08 audit found /learn/options-trading-glossary (article) and /learn/glossary (guide)
+  // shared a near-identical metaDescription — two distinct, both-indexable pages competing for
+  // the same SERP snippet text. Guards against any future article/guide pair regressing the
+  // same way, across BOTH sets (not just within articles), since that's exactly what happened.
+  it("no two articles share an identical metaDescription", () => {
+    const seen = new Map<string, string>();
+    const dupes: string[] = [];
+    for (const a of LEARN_ARTICLES) {
+      const prior = seen.get(a.metaDescription);
+      if (prior) dupes.push(`${a.slug} duplicates ${prior}`);
+      else seen.set(a.metaDescription, a.slug);
+    }
+    assert.equal(dupes.length, 0, `Duplicate article metaDescriptions:\n  ${dupes.join("\n  ")}`);
+  });
+
+  it("no article's metaDescription is identical to any curriculum guide's", () => {
+    const guideDescriptions = new Map(
+      Object.entries(GUIDE_SEO).map(([slug, g]) => [g.metaDescription, slug])
+    );
+    const dupes: string[] = [];
+    for (const a of LEARN_ARTICLES) {
+      const guideSlug = guideDescriptions.get(a.metaDescription);
+      if (guideSlug) dupes.push(`article ${a.slug} duplicates guide ${guideSlug}`);
+    }
+    assert.equal(dupes.length, 0, `Article/guide metaDescription duplicates:\n  ${dupes.join("\n  ")}`);
   });
 });
