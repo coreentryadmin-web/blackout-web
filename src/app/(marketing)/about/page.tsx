@@ -56,12 +56,12 @@ export default function AboutPage() {
         description="Options analytics platform mapping dealer gamma exposure, options flow, and dark pool activity."
         path="/about"
       />
-      <Breadcrumbs items={[
+
+      <section className="mx-auto max-w-3xl px-4 py-20 sm:px-6 lg:px-8">
+        <Breadcrumbs items={[
         { name: "Home", href: "/" },
         { name: "About", href: "/about" },
       ]} />
-
-      <section className="mx-auto max-w-3xl px-4 py-20 sm:px-6 lg:px-8">
         <p className="mb-3 font-mono text-[10px] font-semibold uppercase tracking-[0.25em] text-cyan-300">
           About
         </p>

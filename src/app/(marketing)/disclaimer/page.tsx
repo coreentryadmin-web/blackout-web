@@ -19,11 +19,11 @@ export default function DisclaimerPage() {
         description="Important risk disclosures for BlackOut educational market analysis tools."
         path="/disclaimer"
       />
-      <Breadcrumbs items={[
+      <LegalPageLayout
+        breadcrumbs={<Breadcrumbs items={[
         { name: "Home", href: "/" },
         { name: "Risk Disclaimer", href: "/disclaimer" },
-      ]} />
-      <LegalPageLayout kicker="Legal" title="Risk Disclaimer" updated="July 27, 2026">
+      ]} />} kicker="Legal" title="Risk Disclaimer" updated="July 27, 2026">
         <h2>Educational Purpose Only</h2>
         <p>
           BlackOut Trades (&ldquo;BlackOut&rdquo;) is an educational market-analysis platform. All

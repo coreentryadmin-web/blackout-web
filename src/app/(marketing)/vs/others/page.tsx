@@ -35,12 +35,12 @@ export default function VsOthersPage() {
         description="How BlackOut compares to typical options-analytics platforms for traders."
         path="/vs/others"
       />
-      <Breadcrumbs items={[
+
+      <section className="mx-auto max-w-3xl px-4 py-20 sm:px-6 lg:px-8">
+        <Breadcrumbs items={[
         { name: "Home", href: "/" },
         { name: "BlackOut vs Others", href: "/vs/others" },
       ]} />
-
-      <section className="mx-auto max-w-3xl px-4 py-20 sm:px-6 lg:px-8">
         <p className="mb-3 font-mono text-[10px] font-semibold uppercase tracking-[0.25em] text-cyan-300">
           Comparison
         </p>

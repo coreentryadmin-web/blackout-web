@@ -19,11 +19,11 @@ export default function PrivacyPage() {
         description="How BlackOut Trades collects, uses, and protects your personal information."
         path="/privacy"
       />
-      <Breadcrumbs items={[
+      <LegalPageLayout
+        breadcrumbs={<Breadcrumbs items={[
         { name: "Home", href: "/" },
         { name: "Privacy Policy", href: "/privacy" },
-      ]} />
-      <LegalPageLayout kicker="Legal" title="Privacy Policy" updated="July 27, 2026">
+      ]} />} kicker="Legal" title="Privacy Policy" updated="July 27, 2026">
         <h2>1. Information We Collect</h2>
 
         <h3>Account Information</h3>

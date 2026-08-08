@@ -19,11 +19,10 @@ export default function WhyBlackoutPage() {
         description="Why traders choose BlackOut: live dealer gamma, A–F graded 0DTE setups, and every trade logged publicly."
         path="/why-blackout"
       />
-      <Breadcrumbs items={[
+      <WhyBlackoutContent breadcrumbs={<Breadcrumbs items={[
         { name: "Home", href: "/" },
         { name: "Why BlackOut?", href: "/why-blackout" },
-      ]} />
-      <WhyBlackoutContent />
+      ]} />} />
     </MarketingPageShell>
   );
 }

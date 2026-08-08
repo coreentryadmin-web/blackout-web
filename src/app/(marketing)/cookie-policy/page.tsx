@@ -19,11 +19,11 @@ export default function CookiePolicyPage() {
         description="How BlackOut uses cookies and similar technologies."
         path="/cookie-policy"
       />
-      <Breadcrumbs items={[
+      <LegalPageLayout
+        breadcrumbs={<Breadcrumbs items={[
         { name: "Home", href: "/" },
         { name: "Cookie Policy", href: "/cookie-policy" },
-      ]} />
-      <LegalPageLayout kicker="Legal" title="Cookie Policy" updated="July 27, 2026">
+      ]} />} kicker="Legal" title="Cookie Policy" updated="July 27, 2026">
         <h2>What Are Cookies</h2>
         <p>
           Cookies are small text files stored on your device when you visit a website. They help
