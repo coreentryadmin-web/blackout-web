@@ -42,6 +42,7 @@
     "calibration:nighthawk": "node --import tsx scripts/audit/nighthawk-calibration-table.mjs",
     "capture:veto-flicker": "node --import tsx scripts/audit/veto-flicker-capture.mjs",
     "healthcheck:0dte": "node --import tsx scripts/audit/zerodte-e2e-healthcheck.mjs",
+    "send:emails": "node --import tsx scripts/audit/email-template-send.mjs",
     "healthcheck:swing": "node --import tsx scripts/audit/swing-e2e-healthcheck.mjs",
     "capture:marketing-modules": "node scripts/capture-marketing-module-shots.mjs",
     "x-marketing:run": "node scripts/x-marketing-run.mjs",
