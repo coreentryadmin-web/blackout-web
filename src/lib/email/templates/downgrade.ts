@@ -25,7 +25,7 @@ export function downgradeEmail(ctx: DowngradeContext): { subject: string; html: 
   const body = `
     <h1 style="font-size:22px;font-weight:800;margin:0 0 16px;color:${EMAIL_BRAND.ink};line-height:1.3;">Scope changed. Standard didn't.</h1>
     ${paragraphs}
-    ${emailCta(`${SITE.url}/account/billing`, "Manage Your Plan")}
+    ${emailCta(`${SITE.url}/account`, "Manage Your Plan")}
     <p style="margin:0;color:${EMAIL_BRAND.muted};font-size:14px;">Either way, the grading stands — that was never the part up for negotiation. Trade sharp.</p>
   `;
 

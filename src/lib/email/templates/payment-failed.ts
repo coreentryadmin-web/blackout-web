@@ -24,7 +24,7 @@ export function paymentFailedEmail(ctx: PaymentFailedContext): { subject: string
   const body = `
     <h1 style="font-size:22px;font-weight:800;margin:0 0 16px;color:${EMAIL_BRAND.ink};line-height:1.3;">Your last charge got rejected. Here's the read.</h1>
     ${paragraphs}
-    ${emailCta(`${SITE.url}/account/billing`, "Update Payment Method")}
+    ${emailCta(`${SITE.url}/account`, "Update Payment Method")}
     <p style="margin:0;color:${EMAIL_BRAND.muted};font-size:14px;">The tape doesn't pause. Let's make sure your access doesn't either.</p>
   `;
 
