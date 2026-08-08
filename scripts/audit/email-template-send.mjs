@@ -33,7 +33,6 @@ import { paymentFailedEmail } from "@/lib/email/templates/payment-failed";
 import { scheduledCancelEmail } from "@/lib/email/templates/scheduled-cancel";
 import { cancelReversedEmail } from "@/lib/email/templates/cancel-reversed";
 import { accessEndedEmail } from "@/lib/email/templates/access-ended";
-import { marketingUnsubscribe } from "@/lib/email/unsubscribe-token";
 
 const TO = process.argv.find((a) => a.startsWith("--to="))?.slice(5);
 const DRY = process.argv.includes("--dry-run");
@@ -45,9 +44,10 @@ if (!TO) {
 const NAME = "Vinay";
 const TOPIC = process.env.RESEND_TOPIC_MARKETING_ID;
 
-/** Marketing sends carry the RFC 8058 headers + topic; lifecycle sends deliberately do not. */
-const mkt = marketingUnsubscribe(TO);
-
+// Marketing sends carry the RFC 8058 headers + topic; lifecycle sends deliberately do not. The
+// headers are NOT built here — each marketing template calls marketingUnsubscribe() itself and
+// returns them, so this harness just forwards whatever the template produced. Signing them here
+// too would mean the harness could show a valid unsubscribe link the real send path never sets.
 const sends = [];
 
 // --- Lead magnet (the exit-intent capture reply) -----------------------------
