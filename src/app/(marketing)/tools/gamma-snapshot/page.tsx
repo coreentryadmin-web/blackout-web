@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { MarketingPageShell } from "@/components/landing/MarketingPageShell";
-import { WebPageJsonLd } from "@/components/seo/JsonLd";
+import { WebPageJsonLd, WebApplicationJsonLd } from "@/components/seo/JsonLd";
 import { Breadcrumbs } from "@/components/seo/Breadcrumbs";
 import { publicPageMetadata } from "@/lib/page-metadata";
 import { buildPublicGexSnapshot } from "@/lib/public-gex-snapshot";
@@ -24,6 +24,11 @@ export default async function GammaSnapshotPage() {
       <WebPageJsonLd
         title="Free Gamma Flip & Wall Levels"
         description="Free dealer gamma snapshot for SPX, SPY, and QQQ."
+        path="/tools/gamma-snapshot"
+      />
+      <WebApplicationJsonLd
+        name="Gamma Flip & Wall Levels"
+        description="Free dealer gamma snapshot for SPX, SPY, and QQQ: the gamma flip level, call wall, put wall, and the long/short-gamma regime, updated every few minutes."
         path="/tools/gamma-snapshot"
       />
       <Breadcrumbs items={[
