@@ -4,6 +4,19 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-08 - [P3, PERFORMANCE] Homepage eagerly loaded a 110KB framer-motion chunk, 90% unused, for an exit-intent modal almost nobody triggers — FIXED
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P3, real measured cost on every marketing-page visit. PageSpeed Insights' `unused-javascript` audit flagged `chunks/5651-*.js` at 89.8% unused (32KB wasted of 35.9KB transferred) on the homepage — the single largest unused-JS item after Google's own `gtag.js`. |
+| **Root cause** | `MarketingPageShell.tsx` (wraps every marketing page, including the homepage) statically imported `ExitIntentCapture`, which statically imports `Modal` (`src/components/ui/Modal.tsx`), which imports `framer-motion` for its open/close animation. Static imports are bundled into the page's initial JS regardless of runtime state — so framer-motion's full ~110KB (36KB transferred) shipped on every page load even though `ExitIntentCapture` renders a closed (invisible) `<Modal open={false}>` until a 4-second-delayed mouse-exit gesture fires, which most visits never trigger. |
+| **Fix** | New `src/components/marketing/LazyExitIntentCapture.tsx` (a small `"use client"` file, required because `next/dynamic`'s `ssr:false` is only valid inside a Client Component boundary — `MarketingPageShell` itself is a Server Component and can't call it directly) wraps `ExitIntentCapture` in `dynamic(..., { ssr: false })`. `MarketingPageShell` now renders `<LazyExitIntentCapture />` instead of a static import. |
+| **Verification — not just "should work," actually checked the build output** | Ran a real `npm run build` (first attempt caught a genuine Next.js constraint — `ssr:false` isn't allowed outside a Client Component — before it ever reached prod, exactly what local verification is for). Confirmed via `.next/app-build-manifest.json`'s `/(marketing)/page` entry that the framer-motion chunk (`chunks/5651-37333a59125285a2.js` — same hash PSI flagged live) is **absent** from the homepage's eager file list; `grep`'d every chunk actually listed there for framer-motion's signature APIs (`whileHover`, `AnimatePresence`) — zero hits. Confirmed the code still exists and works: `Before you go` / `Send me the cheat sheet` (the modal's own text) landed in a separate chunk (`5698.*.js`) that the manifest does NOT list as an eager dependency of the homepage — i.e., genuinely deferred, not deleted. |
+| **Blast radius** | Every marketing page via `MarketingPageShell` (home, pricing, learn hub/articles, legal pages, etc.) — one shared shell, one shared fix. `Modal.tsx` itself is unchanged; other consumers (admin/desk components) are unaffected since only `ExitIntentCapture`'s import site changed. |
+| **Status** | FIXED. |
+
+---
+
 ## 2026-08-08 - [P3, PERFORMANCE] Homepage module gallery images over-fetched by ~2-3x — `sizes` claimed 100vw for a fixed-width carousel card — FIXED
 
 | Field | Value |
