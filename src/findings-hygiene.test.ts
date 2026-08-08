@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 /**
  * Keeps FINDINGS.md answerable.
@@ -54,12 +57,73 @@ test("routine pass logs do not live in FINDINGS.md", () => {
 });
 
 test("the UNRECONCILED backlog is not silently growing", () => {
-  // 273 entries were left UNRECONCILED by the 2026-08-08 pass — each needs checking against git
+  // 240 entries were left UNRECONCILED by the 2026-08-08 pass — each needs checking against git
   // history and restamping. This pins the ceiling so the number can only go DOWN as they're
   // worked off. A new entry should ship with a real status, never as UNRECONCILED.
+  //
+  // The ceiling was briefly 273. It came down to 240 not by working entries off but by fixing the
+  // reconciler: it read the outcome only from a `| **Status** |` row, while 34 entries record it
+  // in the heading instead (`## ... — FIXED`) and are among the best-documented in the file. Those
+  // 34 were never open work. Raising a ratchet to accommodate a miscount defeats it — the number
+  // moves when the file does, or when the measurement is shown to be wrong.
   const n = (readFileSync(FINDINGS, "utf8").match(/`UNRECONCILED`/g) ?? []).length;
   assert.ok(
-    n <= 273,
-    `UNRECONCILED count rose to ${n} (ceiling 273) — new entries must carry a real status, not UNRECONCILED`
+    n <= 240,
+    `UNRECONCILED count rose to ${n} (ceiling 240) — new entries must carry a real status, not UNRECONCILED`
+  );
+});
+
+test("the reconciler is idempotent — a second --apply is a no-op", () => {
+  // Not cosmetic. Two separate bugs made a second --apply corrupt the file: the injected tag lines
+  // pushed content out of the classifier's 1500-char window (silently reclassifying entries it had
+  // already tagged), and a .filter(Boolean) ate each block's trailing blank line, so every run
+  // erased one separator until adjacent entries welded into a single line.
+  //
+  // Run against an UNTAGGED fixture, not the live file. The live FINDINGS.md is already tagged, so
+  // the "already tagged" early return short-circuits the tagging path entirely and the test passes
+  // even with the corruption restored — verified by reintroducing the bug.
+  // Synthesize an untagged input from the REAL file by stripping the annotations this script adds.
+  // A small hand-written fixture is not enough: the original corruption only reproduced at the real
+  // file's scale and content (1500-char classifier window, the legend block, 335 entries). Mutation
+  // -testing a toy fixture showed it passing against every one of the bugs this test exists to
+  // catch — so the input has to be the real thing.
+  const dir = mkdtempSync(join(tmpdir(), "findings-reconcile-"));
+  const f = join(dir, "FINDINGS.md");
+  const r = join(dir, "RUN-LOG.md");
+  const untagged = readFileSync(FINDINGS, "utf8").replace(/^> \*\*(kind|status):\*\*.*\n/gm, "");
+  writeFileSync(f, untagged);
+  const env = { ...process.env, FINDINGS_RECONCILE_FINDINGS: f, FINDINGS_RECONCILE_RUNLOG: r };
+  const run = () => execFileSync("node", ["scripts/audit/findings-reconcile.mjs", "--apply"], { env, encoding: "utf8" });
+
+  const report1 = run();
+  const pass1 = readFileSync(f, "utf8");
+  const report2 = run();
+  const pass2 = readFileSync(f, "utf8");
+  rmSync(dir, { recursive: true, force: true });
+
+  // Guard against a vacuous pass: the input must really have been untagged and really got tagged.
+  assert.ok(!/> \*\*kind:\*\*/.test(untagged), "stripping failed — the fixture was already tagged, so nothing was exercised");
+  assert.match(pass1, /> \*\*kind:\*\* `FINDING`/, "the reconciler did not tag the fixture");
+  assert.match(pass1, /## How to read this file/, "the legend was dropped from the output");
+  // Regenerating from scratch must reproduce the committed file's count. This is what covers the
+  // heading-outcome rule: drop it and 34 entries whose fix is cited in their own body get flagged
+  // as open work again, and this number jumps to 274.
+  assert.equal(
+    (pass1.match(/`UNRECONCILED`/g) ?? []).length,
+    (readFileSync(FINDINGS, "utf8").match(/`UNRECONCILED`/g) ?? []).length,
+    "regenerating FINDINGS.md from scratch produces a different UNRECONCILED count than the committed file"
+  );
+  assert.equal(pass2, pass1, "findings-reconcile.mjs --apply is not a fixed point — a re-run rewrote the file");
+
+  // The REPORT must be stable too, not just the file. The classifier reads a 1500-char window, and
+  // the tag lines it injects push real content out of that window — so a re-run reclassified
+  // already-tagged entries (one NEGATIVE-RESULT became a FINDING). The file hid it, because tagged
+  // blocks are passed through untouched; only the printed distribution moved. An audit tool that
+  // reports a different answer each time it is run on the same data is worse than no tool.
+  const distribution = (out: string) => out.slice(0, out.indexOf("APPLIED")).trim();
+  assert.equal(
+    distribution(report2),
+    distribution(report1),
+    "the reported classification changed between two runs over identical data"
   );
 });

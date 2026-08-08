@@ -18,8 +18,12 @@
  */
 import { readFileSync, writeFileSync } from "node:fs";
 
-const FINDINGS = "docs/audit/FINDINGS.md";
-const RUNLOG = "docs/audit/RUN-LOG.md";
+// Overridable so the idempotency test can drive the real script over a throwaway UNTAGGED fixture.
+// Pointing it at the live FINDINGS.md instead would prove nothing: that file is already tagged, so
+// the tagging branch short-circuits and the test passes even with the corruption bug restored —
+// which is exactly what happened on the first attempt at this test.
+const FINDINGS = process.env.FINDINGS_RECONCILE_FINDINGS ?? "docs/audit/FINDINGS.md";
+const RUNLOG = process.env.FINDINGS_RECONCILE_RUNLOG ?? "docs/audit/RUN-LOG.md";
 const APPLY = process.argv.includes("--apply");
 
 /** A pass log records that a scheduled validation ran and was green. Valuable as history, noise in
@@ -38,19 +42,47 @@ const NEGATIVE = [/RULED OUT/i, /NEGATIVE RESULT/i, /INSUFFICIENT DATA/i, /no ev
 /** Infra/ops housekeeping — real, but not a product finding. */
 const OPS = [/^##.*\[ops\]/i, /^##.*\[infra drift\]/i, /^##.*\[P\d, infra/i];
 
+/** Strip the annotation lines this script itself injects, so classification reads the ORIGINAL
+ *  entry. Without this the tags shift real content out of the 1500-char window below and a re-run
+ *  reclassifies entries it already tagged (observed: one NEGATIVE-RESULT silently became a
+ *  FINDING on the second --apply). The written file was unaffected — tagged blocks are returned
+ *  untouched — but the printed distribution lied, which is worse than useless in an audit tool. */
+function stripAnnotations(block) {
+  return block.replace(/^> \*\*(kind|status):\*\*.*$/gm, "");
+}
+
 function classify(block) {
-  const head = block.split("\n")[0];
-  const hay = `${head}\n${block.slice(0, 1500)}`;
+  const body = stripAnnotations(block);
+  const head = body.split("\n")[0];
+  const hay = `${head}\n${body.slice(0, 1500)}`;
   if (PASS_LOG.some((r) => r.test(hay))) return "PASS-LOG";
   if (NEGATIVE.some((r) => r.test(hay))) return "NEGATIVE-RESULT";
   if (OPS.some((r) => r.test(head))) return "OPS-NOTE";
   return "FINDING"; // conservative default
 }
 
+/**
+ * An entry's recorded outcome, from EITHER of the two places this file has used for it.
+ *
+ * Most entries carry a `| **Status** | ... |` row. But 34 of them declare the outcome in the
+ * heading instead — `## 2026-08-08 - [P1, SEO] ... — FIXED` — and then spend the table on
+ * Severity/Blast radius/Fix/Verification. Those are the MOST thoroughly reconciled entries in the
+ * file, not the least: they were written by the same PR that shipped the fix.
+ *
+ * Reading only the Status row therefore mislabelled every one of them `UNRECONCILED`, i.e. it told
+ * the next session to go verify 34 findings whose fix commit is cited in their own body. Found
+ * when #1928's entry pushed the ratchet over its ceiling — the honest fix was to stop miscounting,
+ * not to raise the ceiling.
+ */
+const HEADING_OUTCOME =
+  /[—–-]\s*(FIXED|RESOLVED|SHIPPED|MERGED|SUPERSEDED|WONTFIX|NO ACTION|RULED OUT|NEGATIVE RESULT)\s*$/i;
+
 function statusOf(block) {
   const m = block.match(/\*\*Status\*\*\s*\|([^|]*)\|/);
-  if (!m) return null;
-  return m[1].trim();
+  if (m) return m[1].trim();
+  const head = block.split("\n")[0].trim();
+  const h = head.match(HEADING_OUTCOME);
+  return h ? h[1].toUpperCase() : null;
 }
 
 /** A status written mid-flight that was never revisited. These are the ones that make a merged
@@ -76,7 +108,9 @@ const preamble = parts[0].startsWith("## ") ? "" : parts.shift();
 // belong elsewhere, so a naive pass would classify the documentation as the thing it documents and
 // move it to RUN-LOG.md. Caught by re-running the script on its own output — idempotency is the
 // property that makes this safe to run again, so it is worth protecting explicitly.
-const blocks = parts.filter((b) => b.startsWith("## ") && !/^## How to read this file/.test(b));
+const LEGEND = /^## How to read this file/;
+const legend = parts.filter((b) => LEGEND.test(b)); // preserved verbatim, re-emitted below
+const blocks = parts.filter((b) => b.startsWith("## ") && !LEGEND.test(b));
 
 const counts = {};
 const rows = blocks.map((b) => {
@@ -114,18 +148,32 @@ const keep = rows.filter((r) => r.kind !== "PASS-LOG");
 const moved = rows.filter((r) => r.kind === "PASS-LOG");
 
 const tagged = keep.map((r) => {
-  if (/\n> \*\*kind:\*\*/.test(r.block)) return r.block; // idempotent
+  if (/\n> \*\*kind:\*\*/.test(r.block)) return r.block.replace(/\s+$/, ""); // already tagged
   const lines = r.block.split("\n");
   const needsStatus = r.status == null;
   const note = needsStatus
-    ? "\n> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.\n"
+    ? "> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED."
     : r.stale
-      ? "\n> **status:** `UNRECONCILED` — recorded mid-flight (\"PR pending\"/\"auto-merge\") and never revisited. Confirm the merge and restamp.\n"
-      : "";
-  return [lines[0], KIND_LINE(r.kind).trimEnd(), note.trimEnd(), ...lines.slice(1)].filter(Boolean).join("\n");
+      ? "> **status:** `UNRECONCILED` — recorded mid-flight (\"PR pending\"/\"auto-merge\") and never revisited. Confirm the merge and restamp."
+      : null;
+  // Only the OPTIONAL annotations may be dropped. The body lines are passed through as-is: an
+  // earlier version ran .filter(Boolean) over the whole array, which also ate the trailing empty
+  // line every block carries — so each --apply erased one blank separator and, after enough runs,
+  // welded adjacent entries into a single line. Idempotency here is not a nicety: this script is
+  // meant to be re-run as FINDINGS.md grows.
+  const head = [lines[0], KIND_LINE(r.kind).trim(), note].filter((x) => x != null && x !== "");
+  return [...head, ...lines.slice(1)].join("\n").replace(/\s+$/, "");
 });
 
-writeFileSync(FINDINGS, preamble + tagged.join("\n"));
+// Re-emit the legend. It is excluded from classification (it QUOTES the pass-log phrasing while
+// explaining that pass logs live elsewhere, so a naive pass moves the documentation to RUN-LOG.md)
+// — but excluding it from the OUTPUT too would delete it on every run.
+// Canonical spacing: exactly one blank line between entries, every run. Each block above already
+// had its trailing whitespace stripped, so joining with "\n\n" is a fixed point.
+writeFileSync(
+  FINDINGS,
+  preamble.replace(/\s+$/, "") + "\n\n" + [...legend.map((l) => l.replace(/\s+$/, "")), ...tagged].join("\n\n") + "\n"
+);
 
 const runlogHeader = `# RUN LOG — routine validation passes
 
