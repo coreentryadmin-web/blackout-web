@@ -19,11 +19,11 @@ export default function RefundPolicyPage() {
         description="BlackOut subscription refund and cancellation policy."
         path="/refund-policy"
       />
-      <Breadcrumbs items={[
+      <LegalPageLayout
+        breadcrumbs={<Breadcrumbs items={[
         { name: "Home", href: "/" },
         { name: "Refund Policy", href: "/refund-policy" },
-      ]} />
-      <LegalPageLayout kicker="Legal" title="Refund Policy" updated="July 27, 2026">
+      ]} />} kicker="Legal" title="Refund Policy" updated="July 27, 2026">
         <h2>Monthly Subscriptions</h2>
         <p>
           Monthly subscriptions are non-refundable once access has been granted. When you subscribe,

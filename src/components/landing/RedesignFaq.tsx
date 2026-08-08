@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { FAQ_CATEGORIES, FAQ_ITEMS } from "@/lib/faq/content";
 import { RetroGrid } from "@/components/ui/motion/RetroGrid";
 
@@ -6,10 +7,11 @@ import { RetroGrid } from "@/components/ui/motion/RetroGrid";
  * "lights on" language. Content is unchanged (FAQ_ITEMS / FAQ_CATEGORIES); only the
  * presentation moves to the .rl system so it matches the homepage + pricing.
  */
-export function RedesignFaq() {
+export function RedesignFaq({ breadcrumbs }: { breadcrumbs?: ReactNode }) {
   return (
     <div className="rl">
       <section className="rl-faq-page">
+        {breadcrumbs}
         {/* Perspective phosphor floor behind the briefing — matches pricing/CTA. */}
         <RetroGrid lineColor="rgba(191,95,255,0.14)" opacity={0.4} />
         <div className="rl-wrap">

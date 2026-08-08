@@ -21,11 +21,10 @@ export default function FaqPage() {
         description="Answers to common BlackOut questions: how the tools work, what data you get, whether it's investment advice, pricing, and how it compares to other platforms."
         path="/faq"
       />
-      <Breadcrumbs items={[
+      <RedesignFaq breadcrumbs={<Breadcrumbs items={[
         { name: "Home", href: "/" },
         { name: "FAQ", href: "/faq" },
-      ]} />
-      <RedesignFaq />
+      ]} />} />
     </MarketingPageShell>
   );
 }

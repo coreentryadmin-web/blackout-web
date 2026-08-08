@@ -21,11 +21,11 @@ export default function ContactPage() {
         description="Get in touch with the BlackOut team for support, billing, or questions about the platform."
         path="/contact"
       />
-      <Breadcrumbs items={[
+      <LegalPageLayout
+        breadcrumbs={<Breadcrumbs items={[
         { name: "Home", href: "/" },
         { name: "Contact", href: "/contact" },
-      ]} />
-      <LegalPageLayout kicker="Support" title="Contact Us" updated="July 27, 2026">
+      ]} />} kicker="Support" title="Contact Us" updated="July 27, 2026">
         <div className="legal-contact-cta">
           <h2>Send Us a Message</h2>
           <p>

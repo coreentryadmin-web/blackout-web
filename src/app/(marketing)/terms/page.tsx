@@ -19,11 +19,11 @@ export default function TermsPage() {
         description="The terms and conditions governing your use of the BlackOut platform, subscriptions, and services."
         path="/terms"
       />
-      <Breadcrumbs items={[
+      <LegalPageLayout
+        breadcrumbs={<Breadcrumbs items={[
         { name: "Home", href: "/" },
         { name: "Terms of Service", href: "/terms" },
-      ]} />
-      <LegalPageLayout kicker="Legal" title="Terms of Service" updated="July 27, 2026">
+      ]} />} kicker="Legal" title="Terms of Service" updated="July 27, 2026">
         <h2>1. Agreement to Terms</h2>
         <p>
           By accessing or using BlackOut Trades (&ldquo;BlackOut,&rdquo; &ldquo;we,&rdquo;

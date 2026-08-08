@@ -31,12 +31,12 @@ export default async function GammaSnapshotPage() {
         description="Free dealer gamma snapshot for SPX, SPY, and QQQ: the gamma flip level, call wall, put wall, and the long/short-gamma regime, updated every few minutes."
         path="/tools/gamma-snapshot"
       />
-      <Breadcrumbs items={[
+
+      <section className="mx-auto max-w-3xl px-4 py-20 sm:px-6 lg:px-8">
+        <Breadcrumbs items={[
         { name: "Home", href: "/" },
         { name: "Gamma Snapshot", href: "/tools/gamma-snapshot" },
       ]} />
-
-      <section className="mx-auto max-w-3xl px-4 py-20 sm:px-6 lg:px-8">
         <p className="mb-3 font-mono text-[10px] font-semibold uppercase tracking-[0.25em] text-cyan-300">
           Free Tool
         </p>

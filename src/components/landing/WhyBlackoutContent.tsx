@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 "use client";
 
 import Link from "next/link";
@@ -39,9 +40,10 @@ The 0DTE desk starts at **$49/month**, or get all six modules plus the community
 
 > *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options and equities trading involve substantial risk and are not suitable for every investor.*`;
 
-export function WhyBlackoutContent() {
+export function WhyBlackoutContent({ breadcrumbs }: { breadcrumbs?: ReactNode }) {
   return (
     <section className="mx-auto max-w-3xl px-4 py-20 sm:px-6 lg:px-8">
+      {breadcrumbs}
       <p className="mb-3 font-mono text-[10px] font-semibold uppercase tracking-[0.25em] text-cyan-300">
         Why BlackOut
       </p>

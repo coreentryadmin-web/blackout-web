@@ -22,14 +22,14 @@ export default function PricingPage() {
         description="Get BlackOut's SPX 0DTE desk from $49/mo, or all six trading modules plus Discord from $199/mo. No contracts, cancel anytime. See plans and get access."
         path="/pricing"
       />
-      <Breadcrumbs items={[
-        { name: "Home", href: "/" },
-        { name: "Pricing", href: "/pricing" },
-      ]} />
       <div className="hide-in-ios-app">
         <RedesignPricing />
       </div>
       <div className="show-in-ios-app px-6 py-32 text-center">
+        <Breadcrumbs items={[
+        { name: "Home", href: "/" },
+        { name: "Pricing", href: "/pricing" },
+      ]} />
         <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-bull">Membership</p>
         <p className="mx-auto mt-4 max-w-md text-sm leading-relaxed text-sky-300">
           Your membership is managed on the web. Once active, sign in here to access the full desk.
