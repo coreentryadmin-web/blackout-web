@@ -4,6 +4,14 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-08 - [P2, SEO] `/tools/gamma-snapshot` (real free lead-magnet tool) had no application-specific structured data — FIXED
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P2. `src/app/(marketing)/tools/gamma-snapshot/page.tsx` — a real, valuable free lead-magnet page (per its own code comment referencing `docs/marketing/SEO-GROWTH.md` finding #5) — only emitted generic `WebPageJsonLd`. `SoftwareApplicationJsonLd` exists in `src/components/seo/JsonLd.tsx` but is scoped to the paid membership product and used solely on `/pricing`; nothing described the free tool itself as an application/entity, and the client widget (`GammaSnapshotWidget.tsx`) emits no JSON-LD either. Missing eligibility for tool-oriented rich results and clearer entity understanding by AI answer engines. |
+| **Fix** | Added a new `WebApplicationJsonLd` component to `JsonLd.tsx` — deliberately separate from `SoftwareApplicationJsonLd` (the paid product) rather than overloading it, since this describes a distinct, free, no-account entity with its own `Offer` (`price: "0"`). Wired it into `/tools/gamma-snapshot` alongside the existing `WebPageJsonLd`, using the page's own real title/description (no new copy invented). |
+| **Verification** | Added `src/components/seo/WebApplicationJsonLd.ssr.test.ts` (SSR via `renderToStaticMarkup`) asserting the `@type`, `name`, `url`, and the `$0` `Offer`. `npx tsx --test` — pass. `npx tsc --noEmit` / `npx eslint` — clean. Real `npm run build` succeeded, route table confirms `/tools/gamma-snapshot` still compiles as dynamic (`ƒ`, matching its `force-dynamic` export — the page fetches live GEX data per-request, so there's no static HTML to grep the way the `/learn` pages allowed; build success + route-table presence + the passing unit test for the exact JSON-LD shape is the available verification here). |
+
 ## 2026-08-08 - [P1, SEO] `robots.ts` trailing-slash disallow rules never actually blocked the bare private routes (`/admin`, `/dashboard`, `/offline`, etc.) — FIXED
 
 | Field | Value |
