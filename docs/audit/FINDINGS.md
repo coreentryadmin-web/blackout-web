@@ -4,6 +4,15 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-08 - [P2, SEO] `not-found.tsx` had no explicit `noindex` — relied solely on HTTP 404 status — FIXED
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P2. `src/app/not-found.tsx` only set a `title` in its `Metadata` export, with no `robots: { index: false, follow: false }`. Every other codebase pattern for a page that must never be indexed (`noindexPageMetadata()` in `src/lib/page-metadata.ts`, used across `(site)` auth-gated routes) sets this explicitly rather than relying solely on runtime behavior. |
+| **Why this matters here specifically** | Not a hypothetical: `next.config.mjs` (lines 65-69, 153-166) documents a real prior incident where a Cloudflare edge-cache rule served a cached response with the wrong auth state to the wrong users. Given that history, relying purely on the automatic HTTP 404 status code — with no defense-in-depth meta tag — for a page a misconfigured cache rule could theoretically serve out of context is a concrete gap, not paranoia. |
+| **Fix** | Added `robots: { index: false, follow: false }` to `not-found.tsx`'s `metadata` export. |
+| **Verification** | Added `src/app/not-found.test.ts` asserting the exported metadata carries the noindex directive. `npx tsx --test src/app/not-found.test.ts` — pass. `npx tsc --noEmit` — clean. |
+
 ## 2026-08-08 - [P3, PERFORMANCE] Next.js's default image breakpoint ladder has a 384→640 gap — the hero logo (and any similarly-sized `fill` image) got rounded up to 640 when 480/576 would do — FIXED
 
 | Field | Value |
