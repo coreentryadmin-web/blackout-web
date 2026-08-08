@@ -2092,7 +2092,6 @@ Also unblocks `validate:spx-rth --phase=post-close` (matrix/desk/play/E2E were a
 
 ## 2026-07-29 — [ops] x-autopost cron STALE + SPY flow cross-check false FLAG (#1287)
 > **kind:** `OPS-NOTE`
-> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
 
 **Severity.** P1 ops + P0 data-correctness (ops-auto-fix #1287, fingerprint `5ed63c855361`).
 
@@ -2112,7 +2111,14 @@ watchdog; `data-correctness?force=1` reproduced FLAG pre-fix.
 **Fix.** Re-enabled EventBridge; `railway.x-autopost.toml`; cross-check flags opposite skew or subset
 violation only (same direction + valid subset → independently confirmed).
 
-**Status.** `fix/ops-1287-autopost-flow-xcheck` → PR.
+**Status.** NO ACTION — the "STALE" half is working as intended. `x-autopost` is DISABLED in
+production on purpose, along with the rest of the X automation suite (`x-analytics`, `x-growth`,
+`x-replies`), under the operator standing order recorded below at *2026-07-30 — [ops] X marketing
+OFF (#1312)*. Re-verified against the live EventBridge rules on 2026-08-08. The observation was
+correct; the inference that a disabled cron meant a broken cron was not. Note `#1287` and `#1277`
+are NOT pull requests — the GitHub API returns 404 for both — so neither is evidence either way.
+The intent is being moved out of the AWS console and into `cron-jobs.json` (`"enabled": false`) by
+blackout-infra#47, so that a future `terraform apply` cannot silently switch X posting back on.
 
 ## 2026-07-29 — [Thermal+Vector] Shared sticky universe (≤100 / 14d)
 > **kind:** `FINDING`
@@ -2168,7 +2174,6 @@ centers suppress cross-panel scroll-sync so each ladder maps to its own spot.
 
 ## 2026-07-29 — [ops] x-replies cron STALE (EventBridge DISABLED)
 > **kind:** `OPS-NOTE`
-> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
 
 **Severity.** P1 ops (ops-auto-fix #1277).
 
@@ -2189,7 +2194,10 @@ one run. `ops-collect` fingerprint `b60c447e4c03`.
 `xMarketingCronPaused()` + admin cron-health override so intentionally paused X marketing does not
 page STALE; added X crons to `railway-cron-services.mjs` ops registry.
 
-**Status.** `fix/x-replies-cron-stale` → PR.
+**Status.** NO ACTION — working as intended, same root as the `x-autopost` entry above. The whole X
+automation suite is deliberately DISABLED in production under the operator standing order recorded
+below at *2026-07-30 — [ops] X marketing OFF (#1312)*. Re-verified against the live EventBridge
+rules on 2026-08-08. Intent codified in `cron-jobs.json` by blackout-infra#47.
 
 ## 2026-07-30 — [ops] x-replies/x-growth cron STALE off-schedule (false positive)
 > **kind:** `OPS-NOTE`
@@ -3661,7 +3669,6 @@ unchanged).
 
 ## 2026-07-25 — [WS-11] Mechanical grader single-walked a TRIM-SCALE strategy — calibration graded a DIFFERENT strategy than the engine runs; now reconstructs the ⅓/⅓/⅓ partial path executable-side as ONE official as-managed number — FIXED
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** High (calibration integrity / member-record honesty, TRADES). Ref: NightHawk Remediation
 Directive §WS-11. **[TRADES] — DEPLOY-RISKY, HOLD for operator go; STACKED on #1107 (WS-10)** (changes the
@@ -3714,6 +3721,8 @@ CONDOR stays on `gradeCondorFromBars` (out of scope, confirmed). Ratchet mode st
 test #3). The executable-lane official number from WS-10 IS the per-tranche pricing basis (each leg priced
 bid-to-close vs ask-to-open). **Status: OPEN PR (base `fix/ws-10-executable-pnl`, stacked), holding for
 operator go (DEPLOY-RISKY); WS-10+WS-11 presented together as one go/no-go.**
+
+**Status.** FIXED. PR #1107 confirmed MERGED via the GitHub API on 2026-08-08 (merge SHA `997ac5b3`).
 
 ## 2026-07-25 — [WS-10] Official 0DTE P&L graded on the MIDPOINT — understated the execution tax; calibration/record now grade the CONSERVATIVE EXECUTABLE lane (entry=ask, exit=bid) — FIXED
 > **kind:** `FINDING`
@@ -4469,7 +4478,6 @@ commit changes. NON-DRAFT PR; no auto-merge (per launch instruction).
 
 ## 2026-07-24 — [GO-LIVE, REAL MONEY] SWING engine taken LIVE — commit + roll now open REAL member positions (operator-authorized "everything live")
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Status: NON-DRAFT PR, HELD for lead review of the commit gate before deploy (no auto-merge).** Branch
 `feat/swing-commit-roll-live`. The operator EXPLICITLY authorized the swing lane live ("GO — everything
@@ -4546,6 +4554,8 @@ child; unknown-risk / missing-contract / at-cap edges are safe.
 - *Roll needs an option mark, which the active-refresh reads supply.* PR-#1066 (now merged) wires the live
   option mark into the active-refresh reads; the roll's `gradeParentFromMark` uses it (falling back to the
   latched `last_mark`). No mark ⇒ the roll DEFERS (null-honest), never a fabricated grade.
+
+**Status.** SHIPPED. PR #1066 confirmed MERGED via the GitHub API on 2026-08-08 (merge SHA `86b6a538`).
 
 ## 2026-07-24 — [SEV-2/SEV-3, swing pre-live] Discovery reduced the 8-archetype × 7-pillar swing engine to a 3-pillar momentum screen; archetype fast-track + corroboration were dead — FIXED
 > **kind:** `FINDING`
@@ -5108,7 +5118,6 @@ correctly reported no-weekly for optionless micro-cap movers. Two findings:
 
 ## 2026-07-23 — [MILESTONE] Banger scale-out flagship WIRED LIVE end-to-end (rearchitecture 6b complete)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 - **What shipped:** the whole-market banger scale-out — the +26%/+20%-net-OOS positive-skew flagship — is
   no longer backtest-only. It now grades on the live overnight cron and graduates on the live ledger:
@@ -5130,6 +5139,8 @@ correctly reported no-weekly for optionless micro-cap movers. Two findings:
 - **Remaining (6d, gated on evidence, NOT build work):** flip the live managed exit when the live ledger's
   `recommendScaleOut` reads `enforce` (n ≥ 10 gradeable bangers clearing the +0.15×/$1 bar). Until then the
   scale-out is advisory and accrues real evidence — calibration-first to the end. **Status: 6b COMPLETE.**
+
+**Status.** SHIPPED. PRs #973 / #974 / #975 all confirmed MERGED via the GitHub API on 2026-08-08 (merge SHAs `fa536a0f`, `633cdcd3`, `8040dfc3`).
 
 ## 2026-07-23 — [HIGH] Offline ratchet grader was EV-optimistic (mark-faithfulness) — FIXED + iron-condor guard
 > **kind:** `FINDING`
@@ -5268,7 +5279,6 @@ correctly reported no-weekly for optionless micro-cap movers. Two findings:
 
 ## 2026-07-22 — Multi-day flow accumulation wired into the LIVE 0DTE loop (feat, calibration-first)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### feat — the always-on scanner now has multi-day memory
 - **Root problem (the user's red flag, confirmed):** `scanZeroDteBoard()` discovered setups from a
@@ -5298,6 +5308,8 @@ correctly reported no-weekly for optionless micro-cap movers. Two findings:
   `entry_context` and extend `calibration.ts` to bucket graded outcomes by alignment → graduate to a
   real scoring boost.
 - **Status:** MERGED-pending (PR opens next). This is breakthrough #1 of the 0DTE loop plan.
+
+**Status.** SHIPPED. PR #943 confirmed MERGED via the GitHub API on 2026-08-08 (merge SHA `a5d0cfc6`).
 
 ## 2026-07-22 — 0DTE play SIMULATOR shipped + first structural findings (tooling + P2)
 > **kind:** `FINDING`
@@ -5393,7 +5405,6 @@ correctly reported no-weekly for optionless micro-cap movers. Two findings:
 
 ## 2026-07-21 — Enhancement: Wall Integrity Rings (second visual channel on beads)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### FEATURE — Bead halo now encodes wall confidence (firm/moderate/thin), not just magnitude
 - **Gap, not a bug:** a bead's SIZE encodes magnitude (dealer gamma parked at the strike), but a
@@ -5414,6 +5425,8 @@ correctly reported no-weekly for optionless micro-cap movers. Two findings:
   ref + empty-safety; `haloRingForTier` neutral default + firm>moderate>thin ordering). tsc clean.
 - **Status:** OPEN PR (fresh branch off main after #876 merged). Live visual validation via the
   Vector E2E screenshot gate after staging deploy.
+
+**Status.** SHIPPED. PR #876 confirmed MERGED via the GitHub API on 2026-08-08 (merge SHA `2c3f06e3`).
 
 ## 2026-07-13 — Vector bead-rail / DTE-coherence audit (member-driven, RTH live)
 > **kind:** `FINDING`
@@ -5498,7 +5511,6 @@ correctly reported no-weekly for optionless micro-cap movers. Two findings:
 
 ## 2026-07-13 evening — wall-engine overhaul (member-driven)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### P0 — Mid-session wall births were MATHEMATICALLY IMPOSSIBLE (FIXED — verify at 07-14 open)
 - **Root cause (the deepest one):** wall strength = OI × gamma, and OI is published once pre-market
@@ -5527,6 +5539,8 @@ correctly reported no-weekly for optionless micro-cap movers. Two findings:
   serve old+new builds for several minutes; per-navigation results flip). Rule going forward:
   after a trunk push, wait ≥6 min AND confirm a marker (e.g. the toggle testids) before treating
   any UI run as evidence.
+
+**Status.** SHIPPED. PR #301 confirmed MERGED via the GitHub API on 2026-08-08 (merge SHA `6a83e951`).
 
 ## 2026-07-14 — Vector data refresh rate optimization (member-reported, real-time responsiveness)
 > **kind:** `FINDING`
@@ -5633,7 +5647,6 @@ correctly reported no-weekly for optionless micro-cap movers. Two findings:
 
 ## 2026-07-18 — Production auth redirect validation
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### P1 — Authenticated users see sign-in page instead of being redirected (FIXING)
 - **Severity:** P1 (UX disruption — authenticated users landing on /sign-in see the form instead of being redirected to /)
@@ -5642,6 +5655,8 @@ correctly reported no-weekly for optionless micro-cap movers. Two findings:
 - **Fix (attempt 2, failed):** `auth.protect()` try-catch (PR #785). Deployed but still broken — `auth.protect()` also throws on `/sign-in` pages (Clerk's `authenticateRequest` produces a different `requestState` for auth pages vs protected pages with the same cookies).
 - **Fix (attempt 3):** Bypass Clerk's auth resolution entirely. Decode the `__session` JWT payload directly in middleware (`atob` base64url decode), check `sub` (userId) and `exp` (expiry). The JWT is already cryptographically verified by Clerk's `authenticateRequest` before our handler runs. See issue #789.
 - **Status:** Fix shipped (PR #790, hardened #792). Prod validated 2026-07-18.
+
+**Status.** RESOLVED. PRs #785 / #790 / #792 all confirmed MERGED via the GitHub API on 2026-08-08 (merge SHAs `e5929aab`, `22a764c2`, `941d0734`).
 
 ## 2026-07-18 — 0DTE Command deep system audit (docs-only PR)
 > **kind:** `FINDING`
@@ -6099,7 +6114,6 @@ the IV guard cases. `npx tsx --test` 15/15 pass; `tsc --noEmit` clean; `check-br
 
 ## 2026-07-24 — Night Hawk SWING (2–30 DTE) engine BUILT end-to-end (16 PRs)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity:** N/A (feature build, not a defect). **Status:** DONE.
 
@@ -6124,6 +6138,8 @@ position commits). PR-4 shipped a fixture regression (10 horizon tests encoded t
 caught in CI and fixed; two CodeQL nits (self-assignment, unused import) caught + fixed in-flight. Every PR
 verified `tsc --noEmit` + full swing/horizon suite + `check-brand.mjs` before merge. The 0DTE HOLDs #1028
 (aggression floor) and #1031 (governor-txn) remain parked as drafts (operator validates).
+
+**Status.** SHIPPED. All 16 PRs of the chain (#1032 through #1048) individually confirmed MERGED via the GitHub API on 2026-08-08. The entry also references #1028 and #1031, which are closed WITHOUT merge — they are superseded predecessors, not part of the 16, and are noted here so a later reader does not re-derive that.
 
 ## 2026-07-24 — [MED, correctness] gex-positioning WS wall override summed ALL expiries (far-OpEx walls next to near-term flip) — FIXED
 > **kind:** `FINDING`
@@ -7899,7 +7915,6 @@ user selected from the independent audit table (NH-R11, NH-R9, NH-R8, NH-R5).
 
 ## 2026-08-03 — [Night Hawk] HorizonDeck missing degraded/loading props + stale PR #1211 note corrected
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Context.** A second independent verification pass (user-supplied) cross-checked the earlier
 synthesis against `main` and confirmed two small, previously-unactioned items.
@@ -7932,6 +7947,8 @@ up to itself.
 `FINDINGS.md` doc correction only, no code.
 
 **Status:** PR pending → CI → auto-merge per standing policy.
+
+**Status.** FIXED by PR #1215 (MERGED, merge SHA `09a93460`). PR #1211, which this entry's own title flags as a stale note, is closed WITHOUT merge — both checked against the GitHub API on 2026-08-08.
 
 ## 2026-08-03 — [Legacy edition] G-N4 book-vs-tape alignment veto — built (closes the `wrong_direction` gap)
 > **kind:** `FINDING`
