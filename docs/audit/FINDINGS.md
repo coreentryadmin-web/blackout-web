@@ -34,6 +34,17 @@ about to do is not a status, and it cost this repo a phantom backlog item (see
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-08-08 — [NEGATIVE RESULT, nav error investigation] SSE stream drops RULED OUT as the cause of "We couldn't load this page"
+> **kind:** `NEGATIVE-RESULT`
+
+| Field | Value |
+|-------|-------|
+| **Status** | RULED OUT by source inspection on 2026-08-08. No code change. The intermittent navigation error remains UNEXPLAINED — this closes the leading hypothesis, it does not close the bug. |
+| **The hypothesis** | `docs/audit/BACKLOG-2026-08-08.md` §2.1 named SSE as the live lead: `/api/market/spx/pulse/stream` and `/api/market/flows/stream` are EventSource endpoints that genuinely drop on every ECS task recycle (8+ deploys on 08-08), Cloudflare idle timeout, or network blip. The proposed mechanism was "a dropped stream propagates into render rather than degrading", which would explain the symptom being intermittent, navigation-adjacent, and correlated with deploy activity. |
+| **Why it does not hold** | Read every EventSource consumer. All of them degrade; none can reach an error boundary. `src/lib/api.ts:758` (`createFlowEventSource`) and `:794` (`createPulseEventSource`) both wrap `JSON.parse` in `try/catch`, so a malformed or truncated frame is swallowed rather than stored. `src/features/nighthawk/command-deck/use-live-marks.ts:123` handles `onerror` explicitly: it holds the last marks while the browser auto-reconnects (`readyState === CONNECTING`) and clears them only on terminal `CLOSED`, with a REST poll at `:135` that takes over whenever the SSE lane is not `OPEN` and stands down when it reopens. `useLiveSpxTape` and `useLiveQuoteStream` consume through those same guarded `lib/api` helpers and contain no parsing of their own. |
+| **The structural argument** | Even without the guards, this hypothesis was weak: `onmessage`/`onerror` fire outside React's render phase, so a throw inside either one does not trigger an error boundary — it becomes an unhandled rejection. For SSE to produce this error page it would have to poison component state with a shape that then throws during render, and every consumer either validates (`marksMapFromPayload` returns null on a bad shape) or swallows before reaching `setState`. |
+| **What this leaves** | The 2026-08-08 browser soak recorded 2 SSE transport timeouts and **0 error boundaries, 0 uncaught page errors** across 14 real client-side transitions — consistent with this reading: the streams do drop, and dropping is handled. Server render (1013 authenticated requests), RSC payloads (120/120), and cross-build chunk fetches were already ruled out. **Next lead should not be another SSE run.** Worth checking instead: client-side navigation into a route whose server component throws (which DOES hit the boundary), and whether the error page correlates with a specific route rather than with deploys. |
+
 ## 2026-08-08 - [P1, SEO] `robots.ts` trailing-slash disallow rules never actually blocked the bare private routes (`/admin`, `/dashboard`, `/offline`, etc.) — FIXED
 > **kind:** `FINDING`
 
