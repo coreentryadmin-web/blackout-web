@@ -64,8 +64,8 @@ export async function POST(req: NextRequest) {
 
   let emailSent = false;
   if (recipientRl.ok) {
-    const { subject, html } = gexCheatSheetEmail();
-    const result = await sendEmail({ to: email, subject, html });
+    const { subject, html, attachments } = gexCheatSheetEmail();
+    const result = await sendEmail({ to: email, subject, html, attachments });
     emailSent = result.ok;
     if (result.ok) await markLeadMagnetSent(email);
   }

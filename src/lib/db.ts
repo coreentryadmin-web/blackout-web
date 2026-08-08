@@ -2059,6 +2059,27 @@ async function runMigrations(): Promise<void> {
   await p.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_email_captures_email ON email_captures(LOWER(email))`);
   await p.query(`CREATE INDEX IF NOT EXISTS idx_email_captures_captured_at ON email_captures(captured_at DESC)`);
 
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS welcome_sequence_state (
+      id BIGSERIAL PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      email TEXT NOT NULL,
+      first_name TEXT,
+      steps_sent INT NOT NULL DEFAULT 0,
+      next_send_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      completed_at TIMESTAMPTZ
+    );
+  `);
+  await p.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_welcome_sequence_user ON welcome_sequence_state(user_id)`);
+  // Partial index — the cron only ever queries incomplete rows whose next step is due, so
+  // the index excludes completed rows entirely rather than carrying dead weight forever.
+  await p.query(`
+    CREATE INDEX IF NOT EXISTS idx_welcome_sequence_due
+    ON welcome_sequence_state(next_send_at)
+    WHERE completed_at IS NULL;
+  `);
+
   } finally {
     // Release the advisory lock + return the dedicated connection to the pool.
     try { await lockClient.query(`SELECT pg_advisory_unlock($1)`, [MIGRATION_LOCK_ID]); } catch { /* ignore */ }

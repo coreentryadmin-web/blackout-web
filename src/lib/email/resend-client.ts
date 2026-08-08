@@ -27,6 +27,16 @@ const DEFAULT_FROM = process.env.RESEND_FROM_EMAIL?.trim() || "BlackOut Trades <
 
 export type SendEmailResult = { ok: boolean; id?: string; error?: string };
 
+/** Real inline (CID) attachment — see lib/email/inline-assets.ts for how these
+ *  are built from the static images shipped in public/. */
+export type EmailAttachment = {
+  filename: string;
+  content: Buffer;
+  contentType?: string;
+  /** When set, sent as an inline attachment referenceable in the HTML via `cid:<contentId>`. */
+  contentId?: string;
+};
+
 /**
  * Send one email via Resend. Never throws — a missing/misconfigured key or a
  * provider error returns { ok: false } instead, so a marketing email failure
@@ -38,6 +48,7 @@ export async function sendEmail(input: {
   subject: string;
   html: string;
   from?: string;
+  attachments?: EmailAttachment[];
 }): Promise<SendEmailResult> {
   const resend = getResendClient();
   if (!resend) {
@@ -53,6 +64,7 @@ export async function sendEmail(input: {
       to: input.to,
       subject: input.subject,
       html: input.html,
+      attachments: input.attachments,
     });
     if (result.error) {
       console.warn("[resend] send failed", result.error);
