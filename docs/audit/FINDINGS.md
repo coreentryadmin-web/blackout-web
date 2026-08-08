@@ -155,7 +155,6 @@ Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
 ## 2026-08-08 - [P2, SEO] `SoftwareApplicationJsonLd` Offers were missing `availability` — FIXED (`priceValidUntil` deliberately NOT added)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 | Field | Value |
 |-------|-------|
@@ -166,7 +165,6 @@ Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
 ## 2026-08-08 - [P2, SEO] All 45 `/learn/[slug]` articles shared one hand-set `datePublished`/`dateModified` pair — FIXED with real per-article dates derived from git history (guide dateModified deliberately left alone)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 | Field | Value |
 |-------|-------|
@@ -188,7 +186,6 @@ Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
 ## 2026-08-08 - [P2, SEO] `best-0dte-trading-strategies` meta description was 173 chars — truncates mid-sentence in SERPs — FIXED + regression guard added for all articles/guides
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 | Field | Value |
 |-------|-------|
@@ -370,7 +367,6 @@ Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
 ## 2026-08-07 - [NEGATIVE RESULT #2] React #418: locale/timezone formatting RULED OUT - probe committed
 > **kind:** `NEGATIVE-RESULT`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 | Field | Value |
 |-------|-------|
@@ -477,7 +473,6 @@ Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
 ## 2026-08-07 - [NEGATIVE RESULT] React #418 hydration errors: invalid DOM nesting RULED OUT on all six desk routes
 > **kind:** `NEGATIVE-RESULT`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 | Field | Value |
 |-------|-------|
@@ -3666,6 +3661,7 @@ unchanged).
 
 ## 2026-07-25 — [WS-11] Mechanical grader single-walked a TRIM-SCALE strategy — calibration graded a DIFFERENT strategy than the engine runs; now reconstructs the ⅓/⅓/⅓ partial path executable-side as ONE official as-managed number — FIXED
 > **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** High (calibration integrity / member-record honesty, TRADES). Ref: NightHawk Remediation
 Directive §WS-11. **[TRADES] — DEPLOY-RISKY, HOLD for operator go; STACKED on #1107 (WS-10)** (changes the
@@ -4732,7 +4728,6 @@ breach number. Walls don't count as a deviation (same selection, pushed out).
 
 ## 2026-07-24 — [HIGH, infra] production deploy pipeline never rolled the market-worker → task-def ROT — FIXED (draft PR, HOLD)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity HIGH (silent worker outage).** `.github/workflows/ecr-push-production.yml` built+pushed the
 image then rolled ONLY the `blackout-production-web` ECS service. It NEVER touched the separate
@@ -4769,6 +4764,14 @@ step is deliberately left **byte-for-byte unchanged** (critical path); the chang
 **Verify.** `yaml.safe_load` parses (8 steps); all 6 embedded python snippets `py_compile`-clean;
 de-indent simulation confirms the heredoc terminator lands at col0 in the executed shell script; `git
 diff` is purely additive (149 insertions, 0 deletions — web step untouched).
+
+**Status.** FIXED and SHIPPED. The heading's `(draft PR, HOLD)` qualifier records the moment the
+entry was written and was never revisited — the step is on `main` today:
+`.github/workflows/ecr-push-production.yml:348` → `- name: Roll ECS production market-worker`
+targeting `ECS_SERVICE: blackout-production-market-worker`. Stamped by hand rather than by
+`findings-reconcile.mjs`, whose heading reader deliberately treats `HOLD` as "not an outcome" — a
+heading that says the fix was held is not evidence the fix landed, so this one needed the tree
+checked.
 
 **Status:** FIXED on branch `fix/market-worker-deploy-pipeline`. **DRAFT PR, HOLD** — deploy-pipeline
 infra; operator reviews before merge (do NOT auto-merge).
@@ -5071,7 +5074,6 @@ a killed watch still deletes the temp Clerk user (the unbounded loop bypasses `m
 
 ## 2026-07-23 — [LOW] Live-open validation findings (RTH acid test of the shipped system)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 Ran the full live-validation sequence at the 9:33 ET open (data-validator + both engines) against LIVE
 RTH data. **The system is correct on live data** — 22→26 PASS, VIX matched Polygon live to Δ0.000%
@@ -5299,7 +5301,6 @@ correctly reported no-weekly for optionless micro-cap movers. Two findings:
 
 ## 2026-07-22 — 0DTE play SIMULATOR shipped + first structural findings (tooling + P2)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### Tooling — `scripts/audit/zerodte-sim.mjs` (`npm run sim:0dte`)
 - **What:** a per-change 0DTE simulator that runs the REAL pipeline functions (imported from
@@ -5353,7 +5354,6 @@ correctly reported no-weekly for optionless micro-cap movers. Two findings:
 
 ## 2026-07-22 — Auth nav stuck on "Sign in" after login (P1, FIXED live)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### P1 — Cloudflare edge-cached the homepage HTML, so signed-in users saw the anonymous nav
 - **Symptom (member-reported):** sign in successfully, but the marketing nav keeps showing
@@ -5807,7 +5807,6 @@ price-vs-matrix ≤1.61pt). Cadence healthy (desk/matrix as_of advance ~every po
 
 ## 2026-07-22 — SPX Slayer bead rail: "too light" + thin semantics (P2, FIXED — full SPX audit)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### P2 — Wall/bead rail rendered too faint and encoded only ONE dimension three times
 - **Symptom (member-reported):** beads "too light on rendering"; the rail "just paints" instead
@@ -5840,7 +5839,6 @@ price-vs-matrix ≤1.61pt). Cadence healthy (desk/matrix as_of advance ~every po
 
 ## 2026-07-22 — GEX matrix "built/melted" verb inverted on the put side (P2, FIXED)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### P2 — Shift leaders labeled build/decay by raw delta sign → building put walls read "melted"
 - **Symptom:** in the Dealer Gamma Map shift strip + cell badges, a put wall that is actively
@@ -5869,7 +5867,6 @@ price-vs-matrix ≤1.61pt). Cadence healthy (desk/matrix as_of advance ~every po
 
 ## 2026-07-22 — SPX 0DTE gamma flip fragmented across panels (P1, FIXED — data unification)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### P1 — Four independent gamma-flip engines; pin used a volume-poisoned SIGNED ladder
 - **Symptom (member-reported, screenshot):** the gamma flip showed FOUR different values on one
@@ -5929,7 +5926,6 @@ price-vs-matrix ≤1.61pt). Cadence healthy (desk/matrix as_of advance ~every po
 
 ## 2026-07-22 — Header label collisions + VWAP tone/value split (P2, FIXED — consistency)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### P2 — "Regime" meant two things; max-pain horizon undisclosed; VWAP tone could contradict value
 - **Symptom:** the desk "said different things" for the same label. (1) Header "Regime" pill = TREND
@@ -5951,7 +5947,6 @@ price-vs-matrix ≤1.61pt). Cadence healthy (desk/matrix as_of advance ~every po
 
 ## 2026-07-22 — EOD pin cone painted ZERO uncertainty at the bell (P2, FIXED — accuracy)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### P2 — Analytic confidence cone collapsed to a point (p10=p50=p90) at 16:00
 - **Symptom:** the EOD pin forecaster's confidence cone pinched to a single point at the close,
@@ -5972,7 +5967,6 @@ price-vs-matrix ≤1.61pt). Cadence healthy (desk/matrix as_of advance ~every po
 
 ## 2026-07-22 — Commentary rail never announced a pin/max-pain migration (P2, FIXED — signal gap)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### P2 — 0DTE pin (max-pain magnet) drift was silent in the live commentary
 - **Symptom (from the left-pane audit):** `detectSpxVoiceEvents` fired on γ-flip crosses, king-wall
@@ -6015,7 +6009,6 @@ price-vs-matrix ≤1.61pt). Cadence healthy (desk/matrix as_of advance ~every po
 
 ## 2026-07-22 — Pinned bias prose named stale walls after a king migration (P3, FIXED)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### P3 — Bias card kept citing an old king wall for up to 5 min after it stepped
 - **Symptom (left-pane audit item A):** the pinned bias narrative bakes specific wall/pin numbers
@@ -6264,7 +6257,6 @@ grounds ONLY on `sectorLeadership01`, never SPY RS). Updated fixtures/symmetry +
 
 ## 2026-07-24 — [7-fix cluster] 0DTE grading + track-record HONESTY — FIXED (deploys AFTER close)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 The reported 0DTE record must reflect the exit the member actually trades, and every number
 must be internally consistent. Seven root causes, one branch (`fix/zerodte-grading-record-honesty`).
