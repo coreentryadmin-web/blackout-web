@@ -32,6 +32,33 @@ const isPublicTelemetryRoute = createRouteMatcher([
   "/api/telemetry/auth-failure",
 ]);
 
+/**
+ * Public endpoints that are legitimately POSTed by a LOGGED-OUT visitor.
+ *
+ * The mutation guard below rejects any POST/PUT/PATCH/DELETE to /api/* without a Bearer token or
+ * Clerk cookie. That is the right default, but it is enforced in MIDDLEWARE — before the route
+ * runs — so a route being "public" in its own handler (and allowlisted in
+ * scripts/verify-api-auth-guards.mjs, which is a static source scan with no knowledge of
+ * middleware) is not enough. A public POST route that is not listed here returns 401 to exactly
+ * the audience it exists for, and nothing in CI catches it: the guard scan passes, tsc passes,
+ * unit tests pass, and only a real request from a signed-out client reveals it.
+ *
+ * Found live 2026-08-08: /api/public/email-capture — the exit-intent lead capture — had never
+ * worked in production for the anonymous visitors it was built for.
+ *
+ * Adding a route here removes its blanket auth requirement, so each one must carry its own abuse
+ * controls. email-capture does: IP rate limit (5/60s), a 1/24h per-RECIPIENT cooldown so the
+ * address cannot be mail-bombed, hard body-field length caps, and address validation.
+ */
+const isPublicMutationRoute = createRouteMatcher([
+  "/api/public/email-capture",
+  // RFC 8058 one-click unsubscribe is a POST — that is what the List-Unsubscribe-Post header we
+  // set advertises, and what Gmail/Yahoo actually send. The GET (a human clicking the link)
+  // already passed the guard, so the link LOOKED functional while the mechanism the bulk-sender
+  // rules require was returning 401. Both verbs must be exempt.
+  "/api/public/email-unsubscribe",
+]);
+
 export default clerkMiddleware(
   async (auth, req) => {
     if (requestHasClerkSessionCookie(req)) {
@@ -107,7 +134,8 @@ export default clerkMiddleware(
       MUTATION_METHODS.has(req.method) &&
       req.nextUrl.pathname.startsWith("/api/") &&
       !isWebhookRoute(req) &&
-      !isPublicTelemetryRoute(req)
+      !isPublicTelemetryRoute(req) &&
+      !isPublicMutationRoute(req)
     ) {
       const bearer = req.headers.get("authorization") ?? "";
       const hasBearerToken = bearer.startsWith("Bearer ") && bearer.length > 27;
