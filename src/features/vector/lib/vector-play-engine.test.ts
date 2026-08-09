@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildVectorPlay, type VectorSnapshot } from "./vector-play-engine";
+import { buildVectorPlay, type VectorSnapshot , rangeMeanReference } from "./vector-play-engine";
 import type { GexWalls } from "@/lib/providers/gex-wall-levels";
 import type { GammaMagnet } from "./vector-gamma-magnet";
 import type { WallProximity } from "./vector-wall-proximity";
@@ -386,4 +386,43 @@ test("invalidation reference tracks the chart timeframe", () => {
 test("dataAge is passed through from input", () => {
   const play = buildVectorPlay(base({ dataAgeMs: 1234, proximity: proximity("call", 7600, "at") }))!;
   assert.equal(play.dataAge, 1234);
+});
+
+// ── Range mean reference (live NVDA contradiction, 2026-08-09) ────────────────
+test("a magnet OUTSIDE the rails is not used as the range mean", () => {
+  // Observed live: NVDA put wall 220, call wall 225, magnet 226.08. The play read
+  // "sell rips 225 ... mean-revert to 226.08 magnet" — sell at 225, target above it.
+  const r = rangeMeanReference(226.08, null, 220, 225);
+  assert.notEqual(r.label, "magnet", "the magnet sits above the call wall — it is not the mean");
+  assert.ok(r.price! >= 220 && r.price! <= 225, `mean ${r.price} must sit inside the rails`);
+});
+
+test("max pain is preferred over the midpoint when it is inside the rails", () => {
+  const r = rangeMeanReference(300, 223, 220, 225);
+  assert.equal(r.label, "max pain");
+  assert.equal(r.price, 223);
+});
+
+test("with no candidate inside, the rail midpoint IS the mean", () => {
+  const r = rangeMeanReference(300, 400, 220, 225);
+  assert.equal(r.label, "range mid");
+  assert.equal(r.price, 222.5);
+});
+
+test("a magnet inside the rails is still used, unchanged", () => {
+  // The common case must not regress: this fix only fires when the magnet drifts outside.
+  const r = rangeMeanReference(223, 999, 220, 225);
+  assert.equal(r.label, "magnet");
+  assert.equal(r.price, 223);
+  // Boundary: exactly ON a rail counts as inside.
+  assert.equal(rangeMeanReference(225, null, 220, 225).label, "magnet");
+  assert.equal(rangeMeanReference(220, null, 220, 225).label, "magnet");
+});
+
+test("with no rails there is nothing to be inside of — the magnet stands", () => {
+  assert.deepEqual(rangeMeanReference(226.08, null, null, null), { price: 226.08, label: "magnet" });
+  assert.deepEqual(rangeMeanReference(null, 300, null, null), { price: 300, label: "max pain" });
+  assert.equal(rangeMeanReference(null, null, null, null).price, null);
+  // One rail only still constrains on that side.
+  assert.notEqual(rangeMeanReference(226.08, null, null, 225).label, "magnet");
 });
