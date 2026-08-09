@@ -9,7 +9,6 @@ import {
 } from "@/lib/admin-users";
 import { isAdminEmail } from "@/lib/admin-emails";
 import { classifyAdminUserAccess } from "@/lib/admin-user-access";
-import { isCognitoAuth } from "@/lib/auth-provider";
 import type { BillingKind } from "@/lib/whop";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
@@ -62,13 +61,6 @@ function mapClerkUser(user: ClerkUser) {
 export async function GET(req: NextRequest) {
   const { actor, denied } = await resolveAdminApi();
   if (denied) return denied;
-
-  if (isCognitoAuth()) {
-    return NextResponse.json(
-      { error: "User management requires Clerk auth (production)." },
-      { status: 501 }
-    );
-  }
 
   void logAdminAction({
     actorUserId: actor?.userId,

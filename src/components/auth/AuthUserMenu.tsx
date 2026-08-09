@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { UserButton, useAuth } from "@clerk/nextjs";
 import { useAppAuth } from "@/lib/auth-client";
-import { isClientCognitoAuth } from "@/lib/auth-provider";
 
 const CLERK_APPEARANCE = {
   variables: {
@@ -45,23 +44,6 @@ export function AuthUserMenu() {
       <Link href="/sign-in" className="nav-cta">
         Sign in
       </Link>
-    );
-  }
-
-  if (isClientCognitoAuth()) {
-    return (
-      <div className="flex items-center gap-2">
-        <Link href="/account" className="text-sm text-sky-200 hover:text-white truncate max-w-[140px]">
-          {email ?? "Account"}
-        </Link>
-        <button
-          type="button"
-          onClick={signOut}
-          className="text-xs text-sky-300/80 hover:text-white px-2 py-1 rounded-md border border-white/10"
-        >
-          Sign out
-        </button>
-      </div>
     );
   }
 

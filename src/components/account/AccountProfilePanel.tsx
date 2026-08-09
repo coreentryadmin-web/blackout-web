@@ -2,7 +2,6 @@
 
 import { UserProfile } from "@clerk/nextjs";
 import { useAppAuth } from "@/lib/auth-client";
-import { isClientCognitoAuth } from "@/lib/auth-provider";
 
 const CLERK_APPEARANCE = {
   variables: {
@@ -54,31 +53,6 @@ const CLERK_APPEARANCE = {
 
 export function AccountProfilePanel() {
   const { email, tier, signOut, isLoaded } = useAppAuth();
-
-  if (isClientCognitoAuth()) {
-    return (
-      <div className="rounded-xl border border-white/10 bg-white/[0.02] p-6 space-y-4">
-        <div>
-          <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-sky-300/60">Email</p>
-          <p className="text-white mt-1">{isLoaded ? email ?? "—" : "Loading…"}</p>
-        </div>
-        <div>
-          <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-sky-300/60">Membership</p>
-          <p className="text-white mt-1 capitalize">{tier ?? "free"}</p>
-        </div>
-        <p className="font-mono text-xs text-sky-300/70">
-          Password and profile changes are managed in the Cognito sign-in portal.
-        </p>
-        <button
-          type="button"
-          onClick={signOut}
-          className="btn-outline-bull"
-        >
-          Sign out
-        </button>
-      </div>
-    );
-  }
 
   return <UserProfile appearance={CLERK_APPEARANCE} />;
 }
