@@ -41,6 +41,13 @@ const arg = (name, dflt) => {
 const TICKER = arg("ticker", "NVDA");
 const OUT = arg("out", process.env.SHOT_OUT || ".");
 const AS_JSON = argv.includes("--json");
+/**
+ * Mobile runs the iOS shell, which is a DIFFERENT layout: the desk collapses to a segmented
+ * Chart/Pulse/Ladder/Scanner switcher instead of showing every rail at once. Every capture in this
+ * audit until now was --desktop at 1680x1050, so the shell most members on a phone actually see
+ * had zero coverage.
+ */
+const MOBILE = argv.includes("--mobile");
 
 /**
  * The walkthrough. `sel` is clicked (skipped when absent — the step then reports `skipped`, which
@@ -257,6 +264,16 @@ async function inspect(page, { daily }) {
       canvasCount: canvases.length,
       biggestCanvas: canvases.reduce((a, c) => Math.max(a, c.w * c.h), 0),
       chartPresent: Boolean(chart),
+      // Side rails. Absence is only a fault on desktop: the iOS shell shows one panel at a time
+      // behind a segmented control, so a hidden Scanner there is the layout working as designed.
+      panels: {
+        play: Boolean(document.querySelector("[data-testid=vector-play-card]")),
+        regime: Boolean(document.querySelector("[data-testid=vector-regime-banner]")),
+        ladder: Boolean(document.querySelector(".vector-gex-ladder")),
+        technicals: Boolean(document.querySelector(".vector-technicals-panel, .vector-technicals")),
+        alerts: Boolean(document.querySelector(".vector-alerts-panel, .vector-alert-rules")),
+        pulse: Boolean(document.querySelector(".vector-pulse")),
+      },
       ladderRows,
       // The card's first line is the grade badge ("B"), which is present even when the engine
       // produced nothing useful. Take the longest line instead — that is the headline, and its
@@ -273,7 +290,14 @@ async function inspect(page, { daily }) {
   }, daily);
 }
 
-function assertState(snap, { daily }) {
+/**
+ * `replay` exempts the side-panel checks. Scrubbing starts the cursor at session open, where there
+ * are too few bars to compute VWAP/EMA/RSI — so `summarizeTechnicals` returns nothing and
+ * VectorTechnicalsPanel renders null, which its own header documents as intended ("renders nothing
+ * when there's nothing to show"). The ladder thinning to a couple of rows in that state has the
+ * same cause. Asserting panel presence there would flag replay honesty as a fault.
+ */
+function assertState(snap, { daily, mobile, replay }) {
   const fails = [];
   const m = BROKEN_TEXT.exec(snap.bodyText);
   if (m) fails.push(`error text on page: "${m[0]}"`);
@@ -284,19 +308,53 @@ function assertState(snap, { daily }) {
   // Blank play card = buildVectorPlay threw. Exactly the #1958 failure mode.
   if (!daily && !snap.playHeadline) fails.push("play card is empty (engine threw, or never rendered)");
   if (snap.nav === "signed-out") fails.push("nav rendered signed-out on an authenticated desk page");
+  // Desktop shows every rail simultaneously, so a missing one is a real regression. On the iOS
+  // shell only the selected segment is mounted, so the same check there would fail by design.
+  if (!daily && !mobile && !replay) {
+    for (const [name, present] of Object.entries(snap.panels ?? {})) {
+      if (!present) fails.push(`side panel missing: ${name}`);
+    }
+  }
   return fails;
 }
 
-async function run(cookieHeader) {
+async function run(session) {
+  const cookieHeader = session.cookieHeader;
   const url = `${BASE}/vector?ticker=${encodeURIComponent(TICKER)}`;
   const { browser, ctx, counts } = await createTunneledContext({
     url,
     cookie: cookieHeader,
-    viewport: "1680x1050",
-    desktop: true,
+    viewport: MOBILE ? "430x932" : "1680x1050",
+    desktop: !MOBILE,
   });
   const page = await ctx.newPage();
   const results = [];
+
+  /**
+   * Keep the browser's Clerk cookie alive for the length of the run.
+   *
+   * The minted __session JWT dies ~72s after issue (measured; continuous traffic does not extend
+   * it). This walkthrough waits for the desk to settle between steps and runs several minutes, so
+   * without this every late step is unauthenticated — and a 401 surfaces as an empty panel, which
+   * reads as a PRODUCT fault. That is exactly what happened: the SPX "GEX ladder unavailable" and
+   * the whole mobile run past step 06 were expiry, not bugs.
+   *
+   * Re-mints via the same endpoint the real Clerk client polls, then writes the new cookie into the
+   * context so the PAGE's own fetches carry it too — refreshing only the Node-side header would fix
+   * the harness's requests and leave the desk's own still failing, which is the half-fix that would
+   * have kept the false failures coming.
+   */
+  const dom = new URL(url).hostname;
+  let lastRefresh = Date.now();
+  const keepSessionAlive = async () => {
+    if (Date.now() - lastRefresh < 40_000) return;
+    const next = await session.refresh?.().catch(() => null);
+    if (!next) return;
+    lastRefresh = Date.now();
+    await ctx.addCookies([
+      { name: "__session", value: next.jwt, domain: dom, path: "/", httpOnly: true, secure: true, sameSite: "Lax" },
+    ]);
+  };
   // /vector opens on WEEKLY (VectorChart's default); every DTE step below updates this.
   let horizon = "weekly";
   /**
@@ -333,6 +391,17 @@ async function run(cookieHeader) {
 
     for (const step of all) {
       let acted = "none";
+      // Dismiss the indicator dropdown left open by the previous step BEFORE acting here. It stays
+      // open until dismissed, and on the 430px iOS shell it overlaps the replay control — so this
+      // step clicked the menu's backdrop instead of the toggle and reported "replay had no effect"
+      // on a control that works (verified in isolation: replayActive=true and the play button
+      // present, on BOTH viewports). Desktop had room and never showed it — exactly the kind of
+      // viewport-only sequencing artifact that reads as a mobile bug.
+      //
+      // Deliberately here and not at the end of the previous step: doing it there closed the menu
+      // before that step's own aria-expanded assertion could see it, turning one false failure into
+      // a different one.
+      if (step.id === "11-replay") await page.keyboard.press("Escape").catch(() => {});
       try {
         if (step.select) {
           const [sel, value] = step.select;
@@ -363,8 +432,9 @@ async function run(cookieHeader) {
         acted = `error: ${String(e.message).split("\n")[0].slice(0, 120)}`;
       }
 
+      await keepSessionAlive();
       await page.waitForTimeout(step.settle);
-      const shot = path.join(OUT, `vector-ui-${TICKER}-${step.id}.png`);
+      const shot = path.join(OUT, `vector-ui-${MOBILE ? "m-" : ""}${TICKER}-${step.id}.png`);
       try {
         await page.screenshot({ path: shot, timeout: 15000 });
       } catch {
@@ -372,7 +442,7 @@ async function run(cookieHeader) {
       }
 
       const snap = await inspect(page, { daily: step.daily });
-      const fails = acted === "missing" ? [] : assertState(snap, { daily: step.daily });
+      const fails = acted === "missing" ? [] : assertState(snap, { daily: step.daily, mobile: MOBILE, replay: step.id === "11-replay" });
       if (acted !== "missing" && step.effect) {
         const effectFail = await verifyEffect(page, step.effect);
         if (effectFail) fails.push(`no effect: ${effectFail}`);
@@ -418,7 +488,7 @@ async function run(cookieHeader) {
 
   let out;
   try {
-    out = await run(session.cookieHeader);
+    out = await run(session);
   } finally {
     await session.cleanup();
     console.error("temp Clerk user deleted");
@@ -428,7 +498,7 @@ async function run(cookieHeader) {
   if (AS_JSON) {
     console.log(JSON.stringify({ ticker: TICKER, counts, results }, null, 2));
   } else {
-    console.log(`\n=== VECTOR UI WALKTHROUGH — ${TICKER} @ ${BASE}`);
+    console.log(`\n=== VECTOR UI WALKTHROUGH — ${TICKER} @ ${BASE} (${MOBILE ? "MOBILE 430x932 iOS shell" : "DESKTOP 1680x1050"})`);
     console.log(`routed: ${counts.ok} ok, ${counts.fail} fail, ${counts.streamsAborted} streams aborted (SWR fallback)\n`);
     for (const r of results) {
       const tag = r.skipped ? "skip" : r.fails.length ? "FAIL" : "ok  ";
