@@ -29,7 +29,6 @@ import {
   reconnectDelayAfterClose,
   shouldResetBackoffOnAuth,
 } from "./ws-connection-cap";
-import { authOnOpen } from "./ws-auth-on-open";
 import { isEtCashRth } from "@/lib/et-market-hours";
 import { getUwCacheRedis } from "@/lib/providers/uw-shared-cache";
 import {
@@ -359,8 +358,6 @@ class OptionsShard {
   private consecutiveFailures = 0;
   /** Set when THIS shard's connection was refused for account capacity; reset per connect(). */
   private cappedThisConnection = false;
-  /** Disarms the pending auth retry so it can never fire against a replaced socket. */
-  private cancelAuthRetry: (() => void) | null = null;
   /** Symbols this shard is responsible for (the desired set). */
   readonly symbols = new Set<string>();
   /** Symbols the server has acked a subscription for on the current socket. */
@@ -495,17 +492,10 @@ class OptionsShard {
         console.log(`[options-socket] shard ${this.id} connected (${this.symbols.size} contracts)`);
         // Auth immediately on open — do not wait for a status frame. During rolling deploys the
         // server can drop a slow socket with 1006 before the first message arrives; early auth
-        // reduces the window where we look "connected" but unauthenticated. This shard has done
-        // this in production all along; ws-auth-on-open.ts generalises it to the other two sockets
-        // and adds the ack-checked retry that let their frame-gated sends be deleted.
-        this.cancelAuthRetry?.();
-        this.cancelAuthRetry = authOnOpen({
-          send: () => {
-            if (POLYGON_API_KEY) ws.send(JSON.stringify({ action: "auth", params: POLYGON_API_KEY }));
-          },
-          isAuthenticated: () => this.authenticated,
-          isCurrentAndOpen: () => this.ws === ws && ws.readyState === WebSocket.OPEN,
-        });
+        // reduces the window where we look "connected" but unauthenticated.
+        if (POLYGON_API_KEY && this.ws?.readyState === WebSocket.OPEN) {
+          this.ws.send(JSON.stringify({ action: "auth", params: POLYGON_API_KEY }));
+        }
       };
 
       ws.onmessage = (event) => {
@@ -520,8 +510,6 @@ class OptionsShard {
       ws.onclose = (event) => {
         this.ws = null;
         this.authenticated = false;
-        this.cancelAuthRetry?.();
-        this.cancelAuthRetry = null;
         this.subscribed.clear();
         const authFailure =
           event.code === 1008 || event.code === 4401 || event.code === 4403;
@@ -560,9 +548,7 @@ class OptionsShard {
       const status = msg.status as string | undefined;
 
       if (ev === "connected" || (ev === "status" && status === "connected")) {
-        // No-op: auth already went out in onopen, and has for as long as this shard has existed —
-        // this branch was a redundant SECOND send that also let a remote frame gate a credential
-        // send (CodeQL js/user-controlled-bypass). Deleting it changes nothing observable.
+        this.ws?.send(JSON.stringify({ action: "auth", params: POLYGON_API_KEY }));
       } else if (ev === "auth_success" || (ev === "status" && status === "auth_success")) {
         this.authenticated = true;
         this.authFailed = false;
