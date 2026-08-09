@@ -4,6 +4,7 @@ import {
   defaultVisibleBars,
   initialLogicalRange,
   isIndexTicker,
+  nearestStrike,
   readPersisted,
   writePersisted,
   zoomPresetBars,
@@ -112,4 +113,20 @@ test("storage failures never throw into the render path", () => {
   } finally {
     g.localStorage = prev;
   }
+});
+
+test("crosshair maps to the nearest strike, or to nothing", () => {
+  const strikes = [7800, 7775, 7750, 7725, 7700];
+  assert.equal(nearestStrike(7752, strikes), 7750);
+  assert.equal(nearestStrike(7787, strikes), 7775, "ties toward the first-seen on equal distance");
+  // Tolerance is a FRACTION of price so it works at SPX ~7,700 and on a $3 stock alike.
+  // 7900 is 100 away from 7800 = 1.3% > 0.4% default → no highlight.
+  assert.equal(nearestStrike(7900, strikes), null, "too far — highlight nothing rather than snap");
+  assert.equal(nearestStrike(3.01, [3, 3.5, 4]), 3, "cheap underlyings still resolve");
+  // Degenerate inputs must not highlight a strike.
+  assert.equal(nearestStrike(null, strikes), null);
+  assert.equal(nearestStrike(NaN, strikes), null);
+  assert.equal(nearestStrike(0, strikes), null);
+  assert.equal(nearestStrike(7750, []), null);
+  assert.equal(nearestStrike(7750, [NaN, Infinity] as number[]), null, "non-finite strikes ignored");
 });

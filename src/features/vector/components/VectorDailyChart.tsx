@@ -53,6 +53,9 @@ type Props = {
    * (2026-08-05 live-UI audit: reported directly by a user confused by the two stacked,
    * disconnected toggles). One control now owns the view; this component just renders it. */
   unit: VectorHistoricalView;
+  /** Emits the price under the crosshair (null when the cursor leaves the plot), so the GEX
+   *  ladder beside this chart can highlight the strike at that level. */
+  onHoverPrice?: (price: number | null) => void;
 };
 
 type BarsResponse = { ticker: string; unit: string; bars: VectorOhlcBar[] };
@@ -125,7 +128,7 @@ function applyZoom(
  * nothing to show on daily or 4h bars, and the honest thing is to say so, not to omit them
  * silently or fake an equivalent.
  */
-export function VectorDailyChart({ ticker, unit }: Props) {
+export function VectorDailyChart({ ticker, unit, onHoverPrice }: Props) {
   const [bars, setBars] = useState<VectorOhlcBar[]>([]);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   // Lazy initialiser: localStorage is unavailable during SSR, and reading it in a plain
@@ -137,6 +140,11 @@ export function VectorDailyChart({ ticker, unit }: Props) {
   const [hover, setHover] = useState<
     { open: number; high: number; low: number; close: number; changePct: number } | null
   >(null);
+  // Held in a ref so the chart-creation effect keeps its empty dependency list. Taking
+  // onHoverPrice as a direct dependency would tear down and rebuild the entire chart every time
+  // the parent re-rendered with a new function identity — which it does on every hover.
+  const onHoverPriceRef = useRef(onHoverPrice);
+  onHoverPriceRef.current = onHoverPrice;
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -187,8 +195,15 @@ export function VectorDailyChart({ ticker, unit }: Props) {
         | undefined;
       if (!param.time || !d) {
         setHover(null);
+        onHoverPriceRef.current?.(null);
         return;
       }
+      // Price under the CURSOR, not the bar close — the ladder should highlight the level the
+      // member is pointing at, which is the whole point of linking the two panels.
+      const y = param.point?.y;
+      onHoverPriceRef.current?.(
+        y == null ? null : (candleSeries.coordinateToPrice(y) as number | null)
+      );
       setHover({
         ...d,
         changePct: d.open ? ((d.close - d.open) / d.open) * 100 : 0,

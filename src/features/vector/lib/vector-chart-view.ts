@@ -105,3 +105,34 @@ export function writePersisted(key: string, value: string): void {
     /* storage unavailable — a lost preference is not worth an exception */
   }
 }
+
+/**
+ * The strike nearest `price`, or null when the cursor is not meaningfully near one.
+ *
+ * Used to link the chart crosshair to the GEX ladder: hovering a price highlights the strike a
+ * member would actually be reading at that level. Returns null past `tolerance` (a FRACTION of
+ * price, so it scales across SPX at ~7,700 and a $3 stock) rather than snapping to the closest
+ * strike no matter how far — a highlight that is always on tells the eye nothing, and on a wide
+ * zoom the nearest strike can be hundreds of points away.
+ *
+ * Strikes are not assumed sorted; the ladder renders descending and other callers may not.
+ */
+export function nearestStrike(
+  price: number | null | undefined,
+  strikes: readonly number[],
+  tolerance = 0.004
+): number | null {
+  if (price == null || !Number.isFinite(price) || price <= 0 || !strikes.length) return null;
+  let best: number | null = null;
+  let bestDist = Infinity;
+  for (const s of strikes) {
+    if (!Number.isFinite(s)) continue;
+    const d = Math.abs(s - price);
+    if (d < bestDist) {
+      bestDist = d;
+      best = s;
+    }
+  }
+  if (best == null) return null;
+  return bestDist / price <= tolerance ? best : null;
+}
