@@ -4,6 +4,7 @@
  * request and fulfills it via Node's tls.connect() through the CONNECT tunnel.
  *
  * Usage: node proxy-browser.cjs <url> [output.png] [--cookie "k=v"] [--viewport WxH] [--wait ms] [--full]
+ *        [--desktop] [--seed-storage '{"key":"value"}']
  */
 const { chromium } = require('playwright');
 const http = require('http');
@@ -16,10 +17,11 @@ const CA_PATH = '/root/.ccr/ca-bundle.crt';
 const ca = fs.existsSync(CA_PATH) ? fs.readFileSync(CA_PATH) : undefined;
 
 function parseArgs() {
-  const a = process.argv.slice(2), opts = { vp: '430x932', wait: 5000, ck: '', full: false }, pos = [];
+  const a = process.argv.slice(2), opts = { vp: '430x932', wait: 5000, ck: '', full: false, seed: '', desktop: false }, pos = [];
   for (let i = 0; i < a.length; i++) {
     if (a[i]==='--cookie') opts.ck=a[++i]; else if (a[i]==='--viewport') opts.vp=a[++i];
     else if (a[i]==='--wait') opts.wait=+a[++i]; else if (a[i]==='--full') opts.full=true;
+    else if (a[i]==='--seed-storage') opts.seed=a[++i]; else if (a[i]==='--desktop') opts.desktop=true;
     else pos.push(a[i]);
   }
   return { ...opts, url: pos[0], out: pos[1]||'screenshot.png' };
@@ -93,15 +95,40 @@ async function main() {
 
   const ctx = await browser.newContext({
     viewport: { width: vw, height: vh },
-    userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1 BlackOutiOSApp/1.0',
-    deviceScaleFactor: 3, isMobile: true,
+    userAgent: o.desktop
+      ? 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36'
+      : 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1 BlackOutiOSApp/1.0',
+    deviceScaleFactor: o.desktop ? 1 : 3,
+    isMobile: !o.desktop,
   });
+
+  // Seed localStorage BEFORE any navigation. Preferences the app persists (chart timeframe, wall
+  // density) are read during first render, so setting them after goto() would capture the default
+  // state and then a re-render — or nothing at all, for values only read once on mount.
+  if (o.seed) {
+    try {
+      const entries = Object.entries(JSON.parse(o.seed));
+      await ctx.addInitScript((kv) => {
+        for (const [k, v] of kv) {
+          try { window.localStorage.setItem(k, String(v)); } catch { /* storage blocked */ }
+        }
+      }, entries);
+    } catch (e) {
+      console.error(`--seed-storage ignored (not valid JSON): ${e.message}`);
+    }
+  }
 
   if (o.ck) {
     const dom = new URL(o.url).hostname;
     await ctx.addCookies(o.ck.split(';').map(s=>s.trim()).filter(Boolean).map(p => {
       const [n,...r] = p.split('=');
-      return { name:n.trim(), value:r.join('=').trim(), domain:dom, path:'/', httpOnly:true, secure:true, sameSite:'Lax' };
+      const name = n.trim();
+      // httpOnly ONLY for __session. Clerk deliberately leaves __client_uat readable by JS — the
+      // nav's cookie self-heal (Nav.tsx readClientSignedIn) reads it to decide signed-in state
+      // before Clerk's client finishes loading. Marking it httpOnly here hid it from document.cookie
+      // and made EVERY authenticated capture render "Sign In / Get access →" over live premium
+      // content. That was a harness artifact reported as a site bug more than once; it is not one.
+      return { name, value:r.join('=').trim(), domain:dom, path:'/', httpOnly:name === '__session', secure:true, sameSite:'Lax' };
     }));
   }
 
