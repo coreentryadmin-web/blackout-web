@@ -6,6 +6,7 @@ import { buildGexLadder, type GexLadder, type GexLadderRow } from "@/features/ve
 import { vectorWallsScopePollMs } from "@/features/vector/lib/vector-cadence";
 import { vectorGexScopeLabel } from "@/lib/gex-scope-labels";
 import type { VectorDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
+import { nearestStrike } from "@/features/vector/lib/vector-chart-view";
 
 // Match the chart's bead colours exactly (VectorChart CALL_WALL_COLOR / PUT_WALL_COLOR) so the
 // ladder and the beads read as the same object: gold = call/resistance, purple = put/support.
@@ -33,6 +34,9 @@ type Props = {
   /** DTE horizon from the chart's toggle — the ladder re-scopes to the SAME expiries so it matches
    *  the walls on the chart. "all" = near-term aggregate (default). */
   dteHorizon?: VectorDteHorizon;
+  /** Price under the chart crosshair, so the ladder can highlight the strike a member is reading
+   *  at that level. The two panels sit side by side and were otherwise unlinked. */
+  hoverPrice?: number | null;
 };
 
 type LadderResponse = { spot: number | null; asOf: string | null; ladder: GexLadder };
@@ -48,6 +52,7 @@ type LadderResponse = { spot: number | null; asOf: string | null; ladder: GexLad
  * narrow horizon yields no structure).
  */
 export function VectorGexLadder({
+  hoverPrice = null,
   ticker,
   liveSession,
   initialSpot = null,
@@ -120,6 +125,10 @@ export function VectorGexLadder({
   const spotIdx =
     spot != null ? rows.findIndex((r) => r.strike <= spot) : -1;
 
+  // Resolve the crosshair to at most ONE strike here rather than per row, so the comparison runs
+  // once per hover instead of once per row per hover (the ladder renders ~40 rows).
+  const highlightStrike = nearestStrike(hoverPrice, rows.map((r) => r.strike));
+
   // Auto-centre the ladder on spot once per ticker: the rows are strike-descending, so without this
   // the panel opens scrolled to the highest strikes (all calls) and a member has to scroll down to
   // see spot and the puts below it. Centre the spot marker in the viewport on the first ready load
@@ -174,6 +183,10 @@ export function VectorGexLadder({
                 // stable `null` so its props never change between spot ticks (see LadderRow's
                 // memo comment below for why this matters).
                 spot={showSpotAbove ? spot : null}
+                // Only the matching row gets `true`; every other row keeps a stable `false` so
+                // its props do not change on hover. Same reason the spot price is passed to a
+                // single row — otherwise every crosshair move re-renders all ~40 rows.
+                highlighted={highlightStrike != null && r.strike === highlightStrike}
               />
             );
           })}
@@ -194,10 +207,12 @@ const LadderRow = memo(function LadderRow({
   row,
   showSpotAbove,
   spot,
+  highlighted,
 }: {
   row: GexLadderRow;
   showSpotAbove: boolean;
   spot: number | null;
+  highlighted: boolean;
 }) {
   const color = row.side === "call" ? CALL_COLOR : PUT_COLOR;
   return (
@@ -213,7 +228,8 @@ const LadderRow = memo(function LadderRow({
         className={clsx(
           "vector-gex-ladder-row",
           `vector-gex-ladder-${row.side}`,
-          row.isKing && "vector-gex-ladder-king"
+          row.isKing && "vector-gex-ladder-king",
+          highlighted && "vector-gex-ladder-hover"
         )}
       >
         <span className="vector-gex-ladder-strike">{row.strike.toLocaleString("en-US")}</span>

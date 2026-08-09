@@ -49,7 +49,7 @@ const VectorChart = dynamic(
     ssr: false,
     loading: () => (
       <div
-        className="flex min-h-[min(72vh,640px)] items-center justify-center rounded-xl border border-cyan-500/20 bg-black/40 text-sm text-cyan-300"
+        className="flex min-h-[clamp(560px,80vh,980px)] items-center justify-center rounded-xl border border-cyan-500/20 bg-black/40 text-sm text-cyan-300"
         role="status"
         aria-live="polite"
       >
@@ -166,6 +166,10 @@ export function VectorPageShell({
   // defaulted to weekly, the ladder's first paint showed the near-term aggregate against a
   // weekly-scoped chart until hydration converged them.
   const [dteHorizon, setDteHorizon] = useState<VectorDteHorizon>(defaultDteHorizon ?? "weekly");
+  // Price under the historical chart's crosshair, lifted here so the GEX ladder — a sibling, not
+  // a child, of the chart — can highlight the matching strike. Null whenever the cursor is off
+  // the plot.
+  const [hoverPrice, setHoverPrice] = useState<number | null>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
   const activeTicker = ticker || VECTOR_DEFAULT_TICKER;
   // Daily/Weekly/4H historical view (CTO audit P2 #5, and P2 "4h remains open" 2026-08-05) — a
@@ -620,6 +624,7 @@ export function VectorPageShell({
             )}
           >
             <VectorGexLadder
+              hoverPrice={hoverPrice}
               ticker={activeTicker}
               liveSession={liveSession}
               initialSpot={initialBars.length ? initialBars[initialBars.length - 1]!.close : null}
@@ -651,7 +656,11 @@ export function VectorPageShell({
             {chartView === "intraday" ? (
               chartBlock
             ) : (
-              <VectorDailyChart ticker={activeTicker} unit={chartView} />
+              <VectorDailyChart
+                ticker={activeTicker}
+                unit={chartView}
+                onHoverPrice={setHoverPrice}
+              />
             )}
           </div>
 
