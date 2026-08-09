@@ -13,9 +13,19 @@ import { relStrengthT, beadRadiusForNotional, pctToNotionalProxy } from "./vecto
  * vector-wall-visual.ts and is already covered there; this file composes it, it does not restate it.
  */
 
-/** Bead half-height (radius) bounds in px. */
-export const HALF_PX_MIN = 2.4;
-export const HALF_PX_MAX = 9;
+/**
+ * Bead half-height (radius) bounds in px.
+ *
+ * Trimmed 2026-08-09 (member: "it literally paints the candles fully"). The king bead is the ceiling
+ * times the KING_RADIUS_BOOST multiplier, so 9 x 1.3 rendered a ~23px-diameter dot — wide enough to
+ * cover the candles it is supposed to annotate. Ceiling 9 -> 7.5 and the floor 2.4 -> 2.2, which
+ * takes the king to ~18px while keeping the dynamic range (fat king vs thin straggler) at ~3.4x,
+ * essentially unchanged from the previous 3.75x. A deliberately small trim: the rail's whole job is
+ * that a dominant wall READS as dominant, so shrinking it toward uniformity would trade one
+ * complaint for a worse one.
+ */
+export const HALF_PX_MIN = 2.2;
+export const HALF_PX_MAX = 7.5;
 
 /** Bead fill opacity bounds. */
 export const FILL_ALPHA_MIN = 0.6;
@@ -88,7 +98,46 @@ export function beadKey(side: "c" | "p", strike: number, time: number): string {
   return `${side}:${strike}:${time}`;
 }
 
-/** Per-strike king-emphasis key (side + strike, no time — the king persists across buckets). */
+/** Per-strike king-emphasis key (side + strike, no time). Used ONLY for the LIVE bucket's eased
+ *  crossfade — historical buckets carry their own frozen kingship, see kingStrikeByTime. */
 export function kingKey(side: "c" | "p", strike: number): string {
   return `${side}:${strike}`;
+}
+
+/**
+ * Which strike was the dominant node AT EACH BUCKET — the king as a function of time.
+ *
+ * THE BUG THIS EXISTS FOR (member-reported, measured 2026-08-09). King emphasis used to be a single
+ * scalar per strike: the primitive picked the strike whose LATEST bucket held the highest share and
+ * emphasised that strike's ENTIRE trail. So the crown was painted retroactively across the whole
+ * session onto whoever held it at that instant, and stripped retroactively from whoever had lost it.
+ * There was no moment on the chart where a king was seen losing it or a challenger taking it — the
+ * rail is a historical record, but kingship was rendered as a present-tense property.
+ *
+ * It is not a cosmetic loss. Measured across the recorded rails for one session (2026-08-07,
+ * weekly): every name handed the crown over repeatedly — TSLA 16 handovers, NVDA 57, SPY 64, QQQ 48
+ * — and the king's own share swung enormously within the day (TSLA 21%→62%, AAPL 25%→79%). On TSLA
+ * the eventual king spent part of the morning near 10% share and still rendered crowned there.
+ *
+ * The data needed to fix it was already present: every bucket carries each strike's `pct`, so the
+ * king at time T is simply the highest-pct strike among the trails at T. No new plumbing.
+ *
+ * Ties keep the FIRST strike encountered rather than flickering between equals — a tie means two
+ * walls are equally dominant, and picking deterministically is better than alternating each repaint.
+ */
+export function kingStrikeByTime(
+  trails: ReadonlyArray<{ strike: number; points: ReadonlyArray<{ time: number; pct: number }> }>
+): Map<number, number> {
+  const best = new Map<number, { strike: number; pct: number }>();
+  for (const trail of trails) {
+    if (!Number.isFinite(trail.strike)) continue;
+    for (const p of trail.points) {
+      if (!Number.isFinite(p.time) || !Number.isFinite(p.pct)) continue;
+      const cur = best.get(p.time);
+      if (cur == null || p.pct > cur.pct) best.set(p.time, { strike: trail.strike, pct: p.pct });
+    }
+  }
+  const out = new Map<number, number>();
+  for (const [time, v] of best) out.set(time, v.strike);
+  return out;
 }

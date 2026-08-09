@@ -15,6 +15,7 @@ import {
   fillAlpha,
   beadKey,
   kingKey,
+  kingStrikeByTime,
 } from "./vector-wall-rail-core";
 import {
   relStrengthT,
@@ -101,17 +102,21 @@ const EMPH_EPS = 0.01;
 const SETTLE_EPS = 0.02;
 /** King emphasis → extra radius (×) and rim/glow lift, so the dominant node stands proud and its
  *  prominence slides vertically to a new strike as the king migrates. */
-const KING_RADIUS_BOOST = 0.3;
+// Trimmed 0.3 -> 0.22 alongside HALF_PX_MAX (member: king beads paint over the candles). Combined
+// with the ceiling change the king bead goes ~23px -> ~18px diameter; the boost stays large enough
+// that the crowned bucket is still unmistakably the biggest dot on its row.
+const KING_RADIUS_BOOST = 0.22;
 
-type BandPt = { x: number; yTop: number; yBot: number; a: number };
+type BandPt = { x: number; yTop: number; yBot: number; a: number; emph: number };
 /** One run of adjacent buckets for a wall (no time gap). Rendered as a ROW OF BEADS — one round dot
  *  per bucket, each sized by its yTop/yBot half-height (magnitude) and brightened by its own alpha
  *  (growth/fade). A dead-stretch gap splits the run so beads don't bridge time the wall was absent.
- *  `emph` is the eased king-emphasis [0,1] for this trail's strike (0 = not the dominant node). */
+ *  King emphasis lives on each POINT, not on the band: a strike is king only in the buckets where it
+ *  actually held the highest share, so the crown appears and disappears at the moment it changed
+ *  hands (see kingStrikeByTime). */
 type Band = {
   pts: BandPt[];
   color: string;
-  emph: number;
   birth: { x: number; y: number; half: number } | null;
   death: { x: number; y: number; half: number } | null;
 };
@@ -126,11 +131,10 @@ class WallRailRenderer implements IPrimitivePaneRenderer {
       ctx.globalAlpha = RAIL_TRANSLUCENCY;
       for (const b of this._bands) {
         const pts = b.pts;
-        // King emphasis (eased): the dominant node's row gets a slightly fatter bead + brighter rim
-        // and a soft glow, and because `emph` EASES from the old king strike (→0) to the new one
-        // (→1) the prominence visibly slides vertically as the king migrates rather than jumping.
-        const emph = b.emph;
-        const rMul = 1 + emph * KING_RADIUS_BOOST;
+        // King emphasis is PER BUCKET: the fatter bead, brighter rim and halo appear only in the
+        // buckets where this strike actually held the highest share, so a handover shows up as the
+        // crown leaving one row and appearing on another AT THAT MOMENT — not repainted across the
+        // whole session onto whoever happens to lead right now.
         // BEADS (member-preferred): one round bead per bucket rather than a single filled ribbon.
         // Each point still carries the full channel set the ribbon exposed — the beads just render it
         // as discrete dots (which read as a rail of "beads" the way members like) instead of a solid
@@ -140,6 +144,8 @@ class WallRailRenderer implements IPrimitivePaneRenderer {
         // a thin crisp rim keeps every bead readable over the bright GEX heatmap. A dense run of
         // buckets reads as a near-continuous beaded rail; a sparse/fading run reads as scattered dots.
         for (const p of pts) {
+          const emph = p.emph;
+          const rMul = 1 + emph * KING_RADIUS_BOOST;
           const cy = (p.yTop + p.yBot) / 2;
           const r = Math.max(1.6, ((p.yBot - p.yTop) / 2) * rMul); // half-height → bead radius
           ctx.fillStyle = withA(b.color, p.a);
@@ -357,37 +363,30 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
       if (t0 != null && t0 < earliest) earliest = t0;
     }
 
-    // King strike per side = the strike whose LATEST bucket carries the highest share. This is the
-    // dominant node whose emphasis eases toward it (and away from the previous king) as it migrates.
-    const kingStrikeForSide = (trails: StrikeTrail[]): number | null => {
-      let bestStrike: number | null = null;
-      let best = -Infinity;
-      for (const t of trails) {
-        const last = t.points[t.points.length - 1];
-        if (last && last.pct > best) {
-          best = last.pct;
-          bestStrike = t.strike;
-        }
-      }
-      return bestStrike;
-    };
-    const callKing = kingStrikeForSide(callTrails);
-    const putKing = kingStrikeForSide(putTrails);
+    // Kingship PER BUCKET, not one scalar per strike — the crown belongs to whichever strike held
+    // the highest share at that moment, so a handover is visible where it happened.
+    const callKingAt = kingStrikeByTime(callTrails);
+    const putKingAt = kingStrikeByTime(putTrails);
 
-    const addTrail = (trail: StrikeTrail, color: string, side: "c" | "p", kingStrike: number | null) => {
+    // The newest bucket on screen. Only THIS bucket's emphasis eases (a smooth crossfade as the
+    // crown changes hands live); every earlier bucket renders its frozen truth. Easing history too
+    // would re-animate the past on every pan — a different kind of lie about what happened when.
+    let liveTime = -Infinity;
+    for (const t of [...callTrails, ...putTrails]) {
+      const last = t.points[t.points.length - 1];
+      if (last && last.time > liveTime) liveTime = last.time;
+    }
+
+    const addTrail = (trail: StrikeTrail, color: string, side: "c" | "p", kingAt: Map<number, number>) => {
       const y = series.priceToCoordinate(trail.strike);
       if (y == null) return;
       const pts = trail.points;
       if (pts.length === 0) return;
-      // King emphasis target for this strike: 1 if it's the current dominant node, else 0. The loop
-      // eases the displayed value, so a king change slides emphasis from the old row to the new.
+      // Live-bucket easing target for this strike (history is exact, so only the live edge eases).
       const kKey = kingKey(side, trail.strike);
-      this._kingTargetEmph.set(kKey, trail.strike === kingStrike ? 1 : 0);
-      const emph = this._reduceMotion
-        ? trail.strike === kingStrike
-          ? 1
-          : 0
-        : this._kingEmph.get(kKey) ?? 0;
+      const isLiveKing = kingAt.get(liveTime) === trail.strike;
+      this._kingTargetEmph.set(kKey, isLiveKing ? 1 : 0);
+      const liveEmph = this._reduceMotion ? (isLiveKing ? 1 : 0) : this._kingEmph.get(kKey) ?? 0;
 
       // Median bucket step → gap threshold. A jump beyond GAP_SPLIT_FACTOR× the median means the wall
       // genuinely dropped out of the dominant set (a dead stretch), so we break the band there rather
@@ -409,7 +408,6 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
         bands.push({
           pts: run,
           color,
-          emph,
           birth: startsInWindow ? { x: first.x, y, half: (first.yBot - first.yTop) / 2 } : null,
           death: isDeath ? { x: last.x, y, half: (last.yBot - last.yTop) / 2 } : null,
         });
@@ -450,13 +448,16 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
           }
         }
         const a = Math.min(1, fillAlpha(p.pct, maxPct) * mod.alphaMul * (0.75 + 0.25 * Math.min(1.6, glow)));
-        run.push({ x, yTop: y - half, yBot: y + half, a });
+        // Frozen truth for history; eased value only on the live edge.
+        const wasKing = kingAt.get(p.time) === trail.strike;
+        const pEmph = p.time === liveTime ? liveEmph : wasKing ? 1 : 0;
+        run.push({ x, yTop: y - half, yBot: y + half, a, emph: pEmph });
       }
       flush(pts.length - 1);
     };
 
-    for (const t of callTrails) addTrail(t, callColor, "c", callKing);
-    for (const t of putTrails) addTrail(t, putColor, "p", putKing);
+    for (const t of callTrails) addTrail(t, callColor, "c", callKingAt);
+    for (const t of putTrails) addTrail(t, putColor, "p", putKingAt);
     if (bands.length === 0) return null;
     return bands;
   }
