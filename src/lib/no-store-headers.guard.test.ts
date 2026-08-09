@@ -7,7 +7,7 @@
  */
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { NO_STORE_HEADERS, NO_STORE_STREAM_HEADERS } from "./no-store-headers";
 
@@ -30,29 +30,36 @@ const ALLOWLIST = new Set([
   "src/app/api/webhook/resend/route.ts",
 ]);
 
-/** Prefixes that MUST use the shared no-store constant. */
-const REQUIRED_PREFIXES = [
-  "src/app/api/market/",
-  "src/app/api/auth/me",
-  "src/app/api/account/",
-  "src/app/api/membership/",
-  "src/app/api/mobile/",
-  "src/app/api/track-record/",
-  "src/app/api/public/track-record/",
-  "src/app/api/signals/",
-  "src/app/api/brief/",
-  "src/app/api/coaching/",
-  "src/app/api/platform/",
-  // 2026-08-01 audit: these four prefixes were never covered, so nothing caught
-  // admin/errors, admin/health, admin/signal-analytics, and a dozen other
-  // admin-dashboard routes serving sensitive JSON with zero cache headers, or the
-  // /api/engine proxy route serving premium-tier-gated heatmap/nighthawk data.
-  "src/app/api/admin/",
-  "src/app/api/nighthawk/",
-  "src/app/api/webhook/",
-  "src/app/api/webhooks/",
-  "src/app/api/engine/",
-];
+/**
+ * Routes exempt from the shared no-store constant, each with the reason it is safe.
+ *
+ * WHY THIS IS A DENY-LIST. This guard used to be an ALLOW-list of path prefixes: a route was only
+ * checked if it lived under one of ~11 listed trees. That design fails OPEN — a whole new API tree
+ * is unguarded until someone remembers to list it. Not hypothetical: that is exactly how `admin/`,
+ * `nighthawk/`, `webhook/` and `engine/` went uncovered until the 2026-08-01 audit found admin
+ * routes serving sensitive JSON with no cache headers, and those four prefixes were then added
+ * reactively. The next new tree would have repeated it.
+ *
+ * Inverted 2026-08-09: EVERY src/app/api route must import the shared constant unless listed here
+ * with a reason. Adding a route tree can no longer skip the check by omission.
+ *
+ * ON SEVERITY, so this guard is not mistaken for the last line of defence: next.config.mjs's
+ * catch-all header rule (source: "/((?!embed/|_next/).*)") already applies no-store + Vary: Cookie
+ * to every API path in production. The per-route constant is defence-in-depth and an explicitness
+ * convention — this test protects the convention.
+ */
+const EXEMPT = new Map<string, string>([
+  // Infra probes. ALB/ECS health checks poll these; a cached 200 would mask a dead task, which is
+  // the opposite of what the endpoint is for. Carry no user data.
+  ["src/app/api/health/route.ts", "infra probe, no user data"],
+  ["src/app/api/ready/route.ts", "infra probe, no user data"],
+  ["src/app/api/worker/health/route.ts", "infra probe, no user data"],
+  ["src/app/api/worker/ready/route.ts", "infra probe, no user data"],
+  ["src/app/api/worker/boot/route.ts", "infra probe, no user data"],
+  // POST-only client sinks — never a browser GET, so no edge-caching surface.
+  ["src/app/api/telemetry/auth-failure/route.ts", "POST-only sink"],
+  ["src/app/api/telemetry/client-error/route.ts", "POST-only sink"],
+]);
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
@@ -70,16 +77,14 @@ test("NO_STORE_HEADERS includes CDN + Cloudflare CDN no-store", () => {
   assert.equal(NO_STORE_STREAM_HEADERS["CDN-Cache-Control"], "no-store");
 });
 
-test("required API route prefixes import shared no-store headers", () => {
+test("EVERY api route imports shared no-store headers unless explicitly exempt", () => {
   const routes = walk(API_ROOT);
   const offenders: string[] = [];
   for (const abs of routes) {
     const rel = abs.replace(process.cwd() + "/", "");
     if (ALLOWLIST.has(rel)) continue;
-    if (!REQUIRED_PREFIXES.some((p) => rel.startsWith(p) || rel === p + "route.ts" || rel.startsWith(p))) {
-      // auth/me special-case
-      if (!rel.startsWith("src/app/api/auth/me")) continue;
-    }
+    if (EXEMPT.has(rel)) continue;
+    // Cron routes are bearer-authorised server-to-server calls, never browser-cached.
     if (rel.includes("/cron/")) continue;
     const src = readFileSync(abs, "utf8");
     const ok =
@@ -87,5 +92,16 @@ test("required API route prefixes import shared no-store headers", () => {
       src.includes("from '@/lib/no-store-headers'");
     if (!ok) offenders.push(rel);
   }
-  assert.deepEqual(offenders, [], `routes missing no-store-headers import:\n${offenders.join("\n")}`);
+  assert.deepEqual(
+    offenders,
+    [],
+    `API routes missing the shared no-store import.\n` +
+      `Import NO_STORE_HEADERS, or add the route to EXEMPT with the reason it is safe:\n` +
+      offenders.join("\n")
+  );
+});
+
+test("every EXEMPT entry still exists — stale exemptions cannot silently accumulate", () => {
+  const stale = [...EXEMPT.keys()].filter((rel) => !existsSync(rel));
+  assert.deepEqual(stale, [], `EXEMPT lists routes that no longer exist:\n${stale.join("\n")}`);
 });

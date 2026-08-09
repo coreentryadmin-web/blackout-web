@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
 import { verifyUnsubscribeToken } from "@/lib/email/unsubscribe-token";
 import { dbConfigured, dbQuery } from "@/lib/db";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 function getClient(): Resend | null {
   const apiKey = process.env.RESEND_API_KEY;
@@ -77,7 +78,9 @@ export async function GET(req: NextRequest) {
   const email = req.nextUrl.searchParams.get("email") ?? "";
   const token = req.nextUrl.searchParams.get("token") ?? "";
   const ok = email && token ? await unsubscribe(email, token) : false;
-  return new NextResponse(confirmationHtml(ok), { headers: { "Content-Type": "text/html; charset=utf-8" } });
+  return new NextResponse(confirmationHtml(ok), {
+    headers: { ...NO_STORE_HEADERS, "Content-Type": "text/html; charset=utf-8" },
+  });
 }
 
 /** RFC 8058 one-click: compliant mail clients POST here directly with no page
@@ -86,5 +89,5 @@ export async function POST(req: NextRequest) {
   const email = req.nextUrl.searchParams.get("email") ?? "";
   const token = req.nextUrl.searchParams.get("token") ?? "";
   if (email && token) await unsubscribe(email, token);
-  return new NextResponse(null, { status: 200 });
+  return new NextResponse(null, { status: 200, headers: NO_STORE_HEADERS });
 }

@@ -1,6 +1,7 @@
 import { readFile } from "fs/promises";
 import path from "path";
 import { requireTierApi } from "@/lib/market-api-auth";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +22,7 @@ export async function GET() {
     return new Response(buffer, {
       status: 200,
       headers: {
+        ...NO_STORE_HEADERS,
         "Content-Type":
           "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "Content-Disposition": 'attachment; filename="SPX-Sniper-Playbook.docx"',
@@ -31,7 +33,7 @@ export async function GET() {
   } catch {
     return new Response(JSON.stringify({ error: "Playbook not available" }), {
       status: 404,
-      headers: { "Content-Type": "application/json" },
+      headers: { ...NO_STORE_HEADERS, "Content-Type": "application/json" },
     });
   }
 }

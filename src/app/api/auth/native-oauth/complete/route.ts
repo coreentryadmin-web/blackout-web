@@ -21,6 +21,7 @@
 import { NextResponse } from "next/server";
 import { verifyGoogleIdToken, verifyAppleIdToken } from "@/lib/native-oauth/verify-id-token";
 import { mintClerkSessionFromNativeOAuth } from "@/lib/native-oauth/clerk-bridge";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const runtime = "nodejs";
 // Bridge writes cookies + hits Clerk Backend — never cache.
@@ -105,7 +106,7 @@ export async function POST(req: Request) {
       ok: true,
       wasNewUser: session.wasNewUser,
       redirectTo: "/dashboard",
-    });
+    }, { headers: NO_STORE_HEADERS });
     for (const cookie of splitCookieHeader(session.cookieHeader)) {
       res.headers.append("Set-Cookie", cookie);
     }
