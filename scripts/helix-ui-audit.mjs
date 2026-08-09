@@ -94,7 +94,7 @@ async function auditViewport(browser, session, { width, height, label }) {
   await page.waitForTimeout(3500);
 
   const url = page.url();
-  if (/sign-in|amazoncognito/i.test(url)) {
+  if (/sign-in/i.test(url)) {
     rec(`${label}:auth`, "FAIL", url.slice(0, 80));
     await ctx.close();
     return;
@@ -139,9 +139,6 @@ async function main() {
   console.log(`\n=== HELIX UI audit ===\nTarget: ${BASE}\nArtifacts: ${OUT}\n`);
 
   const secret = loadSecret();
-  if (secret.COGNITO_AUDIT_PASSWORD) {
-    process.env.COGNITO_AUDIT_PASSWORD = secret.COGNITO_AUDIT_PASSWORD;
-  }
 
   const session = await mintAppSession({ appUrl: BASE });
   if (session.skip) {

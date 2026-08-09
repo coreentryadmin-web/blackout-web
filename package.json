@@ -64,7 +64,6 @@
     "validate:largo-stress-4": "LARGO_STRESS_BANK=4 node --import tsx scripts/largo-stress-run.mjs",
     "validate:largo-stress-live-all": "LARGO_STRESS_LIVE=1 LARGO_STRESS_BANK=all node --import tsx scripts/largo-stress-run.mjs",
     "validate:largo-stress-shape": "node --import tsx scripts/largo-stress-shape.mjs",
-    "eval:bie": "node scripts/bie-eval/run.mjs",
     "eval:bie:score-test": "node --test scripts/bie-eval/lib/scoring.test.mjs",
     "playbook:evidence-report": "node --import tsx scripts/playbook-evidence-report.mjs",
     "playbook:param-sweep": "node scripts/playbook-param-sweep.mjs",

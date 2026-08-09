@@ -17,11 +17,6 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 # Build does not need live Postgres/Redis — schema is created at runtime on first dbQuery().
 # NEXT_PUBLIC_* must be present at build time (inlined into client bundles).
-ARG AUTH_PROVIDER="clerk"
-ARG NEXT_PUBLIC_AUTH_PROVIDER="clerk"
-ARG NEXT_PUBLIC_COGNITO_USER_POOL_ID=""
-ARG NEXT_PUBLIC_COGNITO_CLIENT_ID=""
-ARG NEXT_PUBLIC_COGNITO_DOMAIN=""
 ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=""
 ARG NEXT_PUBLIC_SITE_URL="https://staging.blackouttrades.com"
 ARG NEXT_PUBLIC_CLERK_ALLOWED_REDIRECT_ORIGINS="https://staging.blackouttrades.com"
@@ -35,11 +30,6 @@ ARG NEXT_PUBLIC_WHOP_CHECKOUT_COMMUNITY=""
 ARG NEXT_PUBLIC_WHOP_STORE_URL=""
 ARG GITHUB_SHA=""
 ENV NODE_ENV=production
-ENV AUTH_PROVIDER=$AUTH_PROVIDER
-ENV NEXT_PUBLIC_AUTH_PROVIDER=$NEXT_PUBLIC_AUTH_PROVIDER
-ENV NEXT_PUBLIC_COGNITO_USER_POOL_ID=$NEXT_PUBLIC_COGNITO_USER_POOL_ID
-ENV NEXT_PUBLIC_COGNITO_CLIENT_ID=$NEXT_PUBLIC_COGNITO_CLIENT_ID
-ENV NEXT_PUBLIC_COGNITO_DOMAIN=$NEXT_PUBLIC_COGNITO_DOMAIN
 ENV NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
 ENV NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL
 ENV NEXT_PUBLIC_CLERK_ALLOWED_REDIRECT_ORIGINS=$NEXT_PUBLIC_CLERK_ALLOWED_REDIRECT_ORIGINS
@@ -53,8 +43,6 @@ ENV NEXT_PUBLIC_WHOP_CHECKOUT_COMMUNITY=$NEXT_PUBLIC_WHOP_CHECKOUT_COMMUNITY
 ENV NEXT_PUBLIC_WHOP_STORE_URL=$NEXT_PUBLIC_WHOP_STORE_URL
 ENV GITHUB_SHA=$GITHUB_SHA
 ENV CF_PURGE_DEPLOY_ID=$GITHUB_SHA
-# Cognito staging: swap middleware entry so @clerk/nextjs never enters the edge bundle.
-RUN if [ "$AUTH_PROVIDER" = "cognito" ]; then cp src/middleware.entry.cognito.ts src/middleware.ts; fi
 # ---------------------------------------------------------------------------------------------
 # VERIFY GATE — runs BEFORE `npm run build`, inside the builder stage where node_modules and the
 # full source tree already exist. Placed here on purpose: a failing gate aborts the image build,

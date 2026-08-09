@@ -96,7 +96,7 @@ async function main() {
     if (session.skip) report.auth = { skip: true, reason: session.reason };
     else {
       memberH = { Cookie: session.cookieHeader };
-      report.auth = { via: session.via ?? "cognito", provisioned: session.provisioned ?? false };
+      report.auth = { via: session.via ?? session.provider ?? "clerk", provisioned: session.provisioned ?? false };
       if (session.cleanup) await session.cleanup();
     }
   } catch (e) {

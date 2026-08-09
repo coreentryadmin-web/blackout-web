@@ -31,7 +31,7 @@ file every run; refining this file refines what the agent checks. Companion to
    trigger prompt — new things to look out for, tickers that misbehave, thresholds to tighten.
 
 **Guardrails:** honesty over green — never fabricate a PASS; a check you couldn't run is `SKIPPED`
-with the reason, never `PASS`. One temp Cognito user per run, always deleted. Never push to `main`
+with the reason, never `PASS`. One temp Clerk user per run, always deleted. Never push to `main`
 or any branch other than a fresh `fix/vector-live-*` / `docs/vector-live-*` branch off
 `origin/blackout-web-sandbox`. Keep PRs small + single-concern.
 
@@ -44,7 +44,7 @@ or any branch other than a fresh `fix/vector-live-*` / `docs/vector-live-*` bran
       running task image tag to the head SHA).
 - [ ] Recorder cron `blackout-staging-vector-universe-snapshot` EventBridge rule ENABLED
       (`cron(*/5 11-21 ? * MON-FRI *)` unless we tightened it).
-- [ ] `CRON_SECRET` present in `blackout-staging/app/env`; `POLYGON_API_KEY`, `CLERK/COGNITO` keys set.
+- [ ] `CRON_SECRET`, `POLYGON_API_KEY` and the Clerk keys present in the production app env.
 - [ ] Redis (`blackout-staging-redis`) healthy: evictions ~0, memory < 70%.
 - [ ] `vector_wall_history` table reachable (row count baseline captured for the diff below).
 
@@ -148,8 +148,9 @@ IREN, ALAB, HOOD, etc.):
 - **Per run:**
   1. `git fetch origin blackout-web-sandbox && git checkout` a fresh `*/vector-live-*` branch off it.
   2. Read THIS file + the last few `docs/audit/FINDINGS.md` entries + the live-validation log tail.
-  3. Sign into staging (temp Cognito, `env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY`, pattern
-     from `scratchpad` shot scripts / `scripts/staging-cognito-e2e.mjs`). `POLYGON_API_BASE=https://api.massive.com`.
+  3. Sign into PRODUCTION with a temp Clerk user (`scripts/audit/lib/prod-clerk-session.mjs`
+     `mintClerkPremiumSession`, released in a `finally`). `POLYGON_API_BASE=https://api.massive.com`.
+     (Staging and its Cognito flow were decommissioned 2026-07-25 — there is no pre-prod target.)
   4. Run §2–§7 for the rotation set; capture screenshots + structured JSON; run the Polygon
      ground-truth cross-check (§3).
   5. Diff `vector_wall_history` row counts vs the run's own pre-check baseline (proves accrual).
@@ -168,7 +169,7 @@ IREN, ALAB, HOOD, etc.):
 - Bead rail bucket = **15s** (`DEFAULT_WALL_TRAIL_SAMPLE_SEC`). Recorder cron baseline = 5 min
   (universe only, zero-viewer). SSE while-viewed = 15s for ANY ticker.
 - Oracle tickers = SPX/SPY/QQQ (UW per-expiry ladder). Everyone else = Polygon-chain BSM.
-- Clerk/Cognito rate-limits rapid sign-in cycles — authenticate ONCE per run.
+- Clerk rate-limits rapid sign-in cycles — authenticate ONCE per run.
 
 ## 11. Regression watch-list (fixes that must keep holding)
 
