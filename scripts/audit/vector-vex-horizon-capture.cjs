@@ -47,10 +47,20 @@ async function visibleByText(page, text) {
 }
 
 async function clickControl(page, label) {
-  const el = await visibleByText(page, label);
-  if (!el) return `control "${label}" not found (no visible copy)`;
-  await el.click({ timeout: 5000 }).catch((e) => `click failed: ${e.message}`);
-  await page.waitForTimeout(2500);
+  // getByRole name-matching missed "0DTE" while matching "WEEKLY", so resolve by trimmed
+  // textContent and click the copy that has a real box. A control that cannot be found is reported,
+  // never skipped silently — a state we did not reach must not be labelled as if we had.
+  const clicked = await page.evaluate((want) => {
+    const btns = Array.from(document.querySelectorAll("button"));
+    for (const b of btns) {
+      if ((b.textContent || "").trim().toUpperCase() !== want.toUpperCase()) continue;
+      const r = b.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) { b.click(); return true; }
+    }
+    return false;
+  }, label);
+  if (!clicked) return `control "${label}" not found (no visible copy)`;
+  await page.waitForTimeout(3000);
   return null;
 }
 
@@ -83,10 +93,12 @@ async function clickControl(page, label) {
     // rail can render, so an empty VEX rail can be attributed to the missing vanna data rather
     // than to a broken toggle.
     const states = [
-      { name: "gex-intraday", steps: [] },
+      { name: "gex-0dte", steps: ["GEX", "0DTE"] },
       { name: "gex-weekly", steps: ["WEEKLY"] },
-      { name: "vex-weekly", steps: ["VEX"] },
-      { name: "vex-intraday", steps: ["0DTE"] },
+      { name: "gex-monthly", steps: ["MONTHLY"] },
+      { name: "vex-0dte", steps: ["VEX", "0DTE"] },
+      { name: "vex-weekly", steps: ["WEEKLY"] },
+      { name: "vex-monthly", steps: ["MONTHLY"] },
     ];
 
     for (const st of states) {

@@ -146,8 +146,13 @@ export function VectorToolbar(props: Props) {
           vexAsOf={vexAsOf}
           liveSession={liveSession}
         />
-        {lens === "gex" && (
+        {/* Rendered under BOTH lenses. It was gex-only, which stranded the member: the GEX LADDER
+            fetches with `dte=${dteHorizon}` and keeps rendering at the last-picked horizon, so
+            switching to VEX hid the only control that could re-scope it while the ladder went on
+            claiming "Monthly". `ladderOnly` keeps it honest about what it still governs. */}
+        {(
           <VectorDteToggle
+            ladderOnly={lens === "vex"}
             horizon={dteHorizon}
             onHorizon={onDteHorizon}
             available={dteAvailable}
@@ -204,8 +209,9 @@ export function VectorToolbar(props: Props) {
           />
           {/* DTE horizon toggle: 0DTE / Weekly / Monthly. The "All" option was removed
               (user-directed, 2026-07-13) — see VectorDteToggle for the rationale. */}
-          {lens === "gex" && (
+          {(
             <VectorDteToggle
+              ladderOnly={lens === "vex"}
               horizon={dteHorizon}
               onHorizon={onDteHorizon}
               available={dteAvailable}

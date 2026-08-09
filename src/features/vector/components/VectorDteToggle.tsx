@@ -16,6 +16,10 @@ type Props = {
    *  so a future per-ticker availability rule has a seam. */
   available: boolean;
   disabled?: boolean;
+  /** Rendered under the VEX lens, where the CHART's vanna rail is not per-expiry (no vanna is
+   *  recorded on the narrowed rails — see vector-narrowed-wall-core.ts). The toggle still governs the
+   *  GEX ladder, so it must stay reachable; this only changes what it says it is doing. */
+  ladderOnly?: boolean;
 };
 
 /** Compact DTE horizon selector — 0DTE / Weekly / Monthly.
@@ -23,10 +27,22 @@ type Props = {
  *  was the one whose definition drifted across surfaces/tasks (DTE grind findings) and it added no
  *  decision value over the narrowed horizons. The "all" horizon still exists in the type + APIs
  *  (SPX Slayer/BIE consume it); only the member-facing option is gone. */
-export function VectorDteToggle({ horizon, onHorizon, available, disabled = false }: Props) {
+export function VectorDteToggle({
+  horizon,
+  onHorizon,
+  available,
+  disabled = false,
+  ladderOnly = false,
+}: Props) {
   if (!available) return null;
+  const groupLabel = ladderOnly ? "Expiry horizon (GEX ladder)" : "Expiry horizon";
+  // Under VEX the toggle no longer scopes the chart, so say so rather than letting the member infer
+  // that the vanna rail they are looking at is per-expiry.
+  const hint = ladderOnly
+    ? "Scopes the GEX ladder. The VEX chart rail covers all expiries — per-expiry vanna is not recorded."
+    : undefined;
   return (
-    <div className="flex items-center gap-1" role="group" aria-label="Expiry horizon">
+    <div className="flex items-center gap-1" role="group" aria-label={groupLabel} title={hint}>
       {VECTOR_DTE_HORIZONS.filter((k) => k !== "all").map((key) => {
         const active = horizon === key;
         return (
