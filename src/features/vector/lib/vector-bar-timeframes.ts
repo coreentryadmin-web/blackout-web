@@ -159,3 +159,38 @@ export function mergeBarsByTime<T extends VectorOhlcBar & { volume?: number }>(
   }
   return [...byTime.values()].sort((a, b) => a.time - b.time);
 }
+
+/**
+ * Member-selectable wall-row count per side: an explicit cap over the timeframe curve.
+ *
+ * WHY A CAP AND NOT A FIXED VALUE. wallCountForTimeframe deliberately scales 6→20 with the candle
+ * interval, because a wider price band needs further-out walls (a 60m/4h chart starved at 12 left
+ * the top and bottom of the visible band bare — see that function's header). A toggle that REPLACED
+ * the curve would re-break that: pinning 12 on a 4h chart drops the walls it was widened to show,
+ * and pinning 12 on a 1m chart draws rows that sit outside the visible band entirely.
+ *
+ * Capping only ever REDUCES, which is exactly what the control is for — the report was that 12
+ * rows per side reads as "painted". `auto` keeps today's behaviour unchanged and stays the default,
+ * so nobody's chart moves until they ask for it.
+ *
+ * WHY 4 AND 6 ARE IN THE LIST. With only 8/10/12 the control is INERT on the views whose curve is
+ * already at or below 8: 1m (curve 6) and 3m outside the 0DTE horizon (curve 8). A member flipping
+ * from 0DTE (where 12 -> 8 visibly works) to WEEKLY on the same 3m chart would find the buttons
+ * suddenly do nothing, which reads as broken rather than as a cap. 4 and 6 make the control bite on
+ * every timeframe, and they are closer to the density originally asked for.
+ */
+export const VECTOR_WALL_COUNT_CHOICES = ["auto", 4, 6, 8, 10, 12] as const;
+export type VectorWallCountChoice = (typeof VECTOR_WALL_COUNT_CHOICES)[number];
+
+export function resolveWallCount(curveCount: number, choice: VectorWallCountChoice): number {
+  const base = Math.max(1, Math.min(VECTOR_WALL_NODES_PER_SIDE, Math.trunc(curveCount) || 1));
+  if (choice === "auto") return base;
+  const cap = Math.trunc(choice);
+  if (!Number.isFinite(cap) || cap < 1) return base;
+  // Never MORE than the curve: the curve is what the visible price band can actually show.
+  return Math.max(1, Math.min(base, cap));
+}
+
+export function isVectorWallCountChoice(v: unknown): v is VectorWallCountChoice {
+  return (VECTOR_WALL_COUNT_CHOICES as readonly unknown[]).includes(v === "auto" ? v : Number(v));
+}
