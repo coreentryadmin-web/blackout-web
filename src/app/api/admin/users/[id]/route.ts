@@ -7,7 +7,6 @@ import {
   parseAdminUserRole,
   upsertAdminUserRow,
 } from "@/lib/admin-users";
-import { isCognitoAuth } from "@/lib/auth-provider";
 import { deleteUserDataForClerkId } from "@/lib/db";
 import { updateClerkMembershipMetadata } from "@/lib/membership";
 import { parseTier } from "@/lib/tiers";
@@ -28,10 +27,6 @@ export async function GET(
 ) {
   const { denied } = await resolveAdminApi();
   if (denied) return denied;
-
-  if (isCognitoAuth()) {
-    return NextResponse.json({ error: "User management requires Clerk auth." }, { status: 501 });
-  }
 
   const { id } = await params;
   const client = await clerkClient();
@@ -97,10 +92,6 @@ export async function PATCH(
 ) {
   const { actor, denied } = await resolveAdminApi();
   if (denied) return denied;
-
-  if (isCognitoAuth()) {
-    return NextResponse.json({ error: "User management requires Clerk auth." }, { status: 501 });
-  }
 
   const { id } = await params;
   const body = await req.json();
@@ -234,10 +225,6 @@ export async function DELETE(
 ) {
   const { actor, denied } = await resolveAdminApi();
   if (denied) return denied;
-
-  if (isCognitoAuth()) {
-    return NextResponse.json({ error: "User management requires Clerk auth." }, { status: 501 });
-  }
 
   const { id } = await params;
   const selfErr = assertAdminSelfGuard(actor!.userId, id, "delete");

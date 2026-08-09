@@ -90,7 +90,7 @@ export default clerkMiddleware(
       );
     }
 
-    if (IS_STAGING && process.env.AUTH_PROVIDER !== "cognito") {
+    if (IS_STAGING) {
       if (path === "/sign-in" || path.startsWith("/sign-in/")) {
         const returnPath = clerkPostAuthReturnPath(req.nextUrl.searchParams.get("redirect_url"));
         const primary = clerkSatelliteAuthRedirect("sign-in", returnPath);

@@ -3,7 +3,6 @@ import { clerkClient } from "@clerk/nextjs/server";
 import { resolveAdminApi } from "@/lib/admin-access";
 import { logAdminAction } from "@/lib/admin-audit";
 import { parseAdminUserRole, upsertAdminUserRow } from "@/lib/admin-users";
-import { isCognitoAuth } from "@/lib/auth-provider";
 import { syncWhopMembershipForEmail } from "@/lib/membership";
 import { parseTier } from "@/lib/tiers";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
@@ -13,13 +12,6 @@ export const dynamic = "force-dynamic";
 export async function POST(req: NextRequest) {
   const { actor, denied } = await resolveAdminApi();
   if (denied) return denied;
-
-  if (isCognitoAuth()) {
-    return NextResponse.json(
-      { error: "User management requires Clerk auth." },
-      { status: 501, headers: NO_STORE_HEADERS },
-    );
-  }
 
   const body = await req.json();
   const { email, firstName, lastName, tier, role, phone, syncWhop } = body;

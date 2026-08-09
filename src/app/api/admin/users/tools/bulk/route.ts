@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { clerkClient } from "@clerk/nextjs/server";
 import { resolveAdminApi } from "@/lib/admin-access";
 import { logAdminAction } from "@/lib/admin-audit";
-import { isCognitoAuth } from "@/lib/auth-provider";
 import { parseTier } from "@/lib/tiers";
 import {
   mergeToolAccessMap,
@@ -29,13 +28,6 @@ type BulkBody = {
 export async function POST(req: NextRequest) {
   const { actor, denied } = await resolveAdminApi();
   if (denied) return denied;
-
-  if (isCognitoAuth()) {
-    return NextResponse.json(
-      { error: "Tool bulk updates require Clerk auth." },
-      { status: 501, headers: NO_STORE_HEADERS },
-    );
-  }
 
   const body = (await req.json()) as BulkBody;
   const tier = parseTier(body.tier);

@@ -96,7 +96,7 @@ function renderRedirectHtml(callback: string): string {
 export async function GET(_req: NextRequest) {
   // Never build redirect URLs from `_req.url` — on ECS the Host is often the
   // container bind address (0.0.0.0), which ASWebAuthenticationSession / Safari
-  // refuse ("restricted network port"). Same rule as cognito OAuth redirects.
+  // refuse ("restricted network port"). Same rule as OAuth redirects.
   const signInBridge = publicSiteUrl("/sign-in?redirect_url=/native-signin");
 
   const userId = await activeClerkUserIdFromRequestCookies();
