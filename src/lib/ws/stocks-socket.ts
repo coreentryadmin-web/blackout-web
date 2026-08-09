@@ -12,6 +12,7 @@ import {
   reconnectDelayAfterClose,
   shouldResetBackoffOnAuth,
 } from "./ws-connection-cap";
+import { authOnOpen } from "./ws-auth-on-open";
 import { normalizeLuldWsMessages } from "@/lib/providers/polygon-luld";
 import { getUwCacheRedis } from "@/lib/providers/uw-shared-cache";
 import { inOptionsMarketHours } from "@/lib/ws/options-socket";
@@ -119,6 +120,8 @@ let stocksShuttingDown = false;
 let stocksWatchdog: ReturnType<typeof setInterval> | null = null;
 /** Set when THIS connection was refused for account capacity; reset per attempt in connectStocks. */
 let stocksCappedThisConnection = false;
+/** Disarms the pending auth retry so it can never fire against a replaced socket. */
+let cancelStocksAuthRetry: (() => void) | null = null;
 
 const STOCKS_STALL_MS = (() => {
   const raw = process.env.STOCKS_WS_STALL_SEC?.trim();
@@ -194,6 +197,14 @@ async function connectStocks() {
     stocksWs.onopen = () => {
       console.log("[stocks-socket] connected");
       stocksAuthenticated = false;
+      // Auth is driven by OUR open, not by the server's `connected` frame — see ws-auth-on-open.ts.
+      const ws = stocksWs;
+      cancelStocksAuthRetry?.();
+      cancelStocksAuthRetry = authOnOpen({
+        send: () => ws?.send(JSON.stringify({ action: "auth", params: POLYGON_API_KEY })),
+        isAuthenticated: () => stocksAuthenticated,
+        isCurrentAndOpen: () => stocksWs === ws && ws?.readyState === WebSocket.OPEN,
+      });
     };
     stocksWs.onmessage = (event) => {
       try {
@@ -201,7 +212,8 @@ async function connectStocks() {
         for (const msg of msgs) {
           const ev = String(msg.ev ?? "");
           if (ev === "connected" || (ev === "status" && msg.status === "connected")) {
-            stocksWs?.send(JSON.stringify({ action: "auth", params: POLYGON_API_KEY }));
+            // No-op: auth already went out in onopen. This branch used to send the API key, which
+            // let a remote frame gate a credential send (CodeQL js/user-controlled-bypass).
           } else if (isConnectionCapFrame(msg)) {
             // Account-level: the handshake AND auth both succeed, so this is invisible without an
             // explicit branch. No retry rate fixes it; a fast one competes for the scarce slots.
@@ -242,6 +254,8 @@ async function connectStocks() {
     stocksWs.onclose = () => {
       stocksWs = null;
       stocksAuthenticated = false;
+      cancelStocksAuthRetry?.();
+      cancelStocksAuthRetry = null;
       if (!stocksShuttingDown && shouldMaintainSocket()) {
         scheduleStocksReconnect("closed");
       }

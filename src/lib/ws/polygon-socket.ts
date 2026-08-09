@@ -7,6 +7,7 @@ import {
   reconnectDelayAfterClose,
   shouldResetBackoffOnAuth,
 } from "./ws-connection-cap";
+import { authOnOpen } from "./ws-auth-on-open";
 import { etMinutes, etClock } from "@/features/spx/lib/spx-play-session-time";
 import { recordStockTick } from "@/lib/ws/stock-candle-store";
 import { isEtCashRth } from "@/lib/et-market-hours";
@@ -229,6 +230,10 @@ function polygonErrorMessage(err: unknown): string {
  *  connect attempt in connectIndices. */
 let indicesCappedThisConnection = false;
 
+/** Disarms the pending auth retry — called on the next open and on teardown so a retry can never
+ *  fire against a socket that has since been replaced. */
+let cancelIndicesAuthRetry: (() => void) | null = null;
+
 function scheduleIndicesReconnect(reason: string) {
   if (indicesShuttingDown) return; // shutting down — do not resurrect the socket
   if (indicesReconnectTimer) return;
@@ -370,6 +375,14 @@ async function connectIndices() {
       indicesConnectionStartedAt = 0; // connection opened, no longer pending
       console.log("[polygon-socket] indices connected");
       indicesAuthenticated = false;
+      // Auth is driven by OUR open, not by the server's `connected` frame — see ws-auth-on-open.ts.
+      const ws = indicesWs;
+      cancelIndicesAuthRetry?.();
+      cancelIndicesAuthRetry = authOnOpen({
+        send: () => ws?.send(JSON.stringify({ action: "auth", params: POLYGON_API_KEY })),
+        isAuthenticated: () => indicesAuthenticated,
+        isCurrentAndOpen: () => indicesWs === ws && ws?.readyState === WebSocket.OPEN,
+      });
     };
 
     indicesWs.onmessage = (event) => {
@@ -380,7 +393,8 @@ async function connectIndices() {
           const ev = msg.ev as string;
 
           if (ev === "connected" || (ev === "status" && msg.status === "connected")) {
-            indicesWs?.send(JSON.stringify({ action: "auth", params: POLYGON_API_KEY }));
+            // No-op: auth already went out in onopen. This branch used to send the API key, which
+            // let a remote frame gate a credential send (CodeQL js/user-controlled-bypass).
           } else if (ev === "auth_success" || (ev === "status" && msg.status === "auth_success")) {
             indicesAuthenticated = true;
             // A CAPPED connection also reaches auth_success — that is precisely why resetting the
@@ -522,6 +536,8 @@ async function connectIndices() {
       indicesWs = null;
       indicesConnectionStartedAt = 0;
       indicesAuthenticated = false;
+      cancelIndicesAuthRetry?.();
+      cancelIndicesAuthRetry = null;
       console.warn("[polygon-socket] indices disconnected — bar gap will occur until reconnection completes");
       scheduleIndicesReconnect(`code=${event.code}`);
     };
