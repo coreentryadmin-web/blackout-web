@@ -379,6 +379,12 @@ async function connectIndices() {
         for (const msg of msgs) {
           const ev = msg.ev as string;
 
+          // codeql[js/user-controlled-bypass] — the "sensitive action" is sending POLYGON_API_KEY,
+          // and the frame that gates it is remote, so the query is right about the shape. It is a
+          // false positive HERE: this is the provider's documented handshake (server announces
+          // `connected`, client then authenticates) over a socket whose TLS peer we already pinned
+          // by URL. Anyone able to forge this frame is already the server. The frame decides only
+          // WHEN the key is sent, never WHERE — the destination is the socket we opened.
           if (ev === "connected" || (ev === "status" && msg.status === "connected")) {
             indicesWs?.send(JSON.stringify({ action: "auth", params: POLYGON_API_KEY }));
           } else if (ev === "auth_success" || (ev === "status" && msg.status === "auth_success")) {

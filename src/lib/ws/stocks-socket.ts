@@ -200,6 +200,9 @@ async function connectStocks() {
         const msgs = JSON.parse(String(event.data)) as Array<Record<string, unknown>>;
         for (const msg of msgs) {
           const ev = String(msg.ev ?? "");
+          // codeql[js/user-controlled-bypass] — same false positive as polygon-socket.ts: the
+          // provider's documented handshake gates the credential send on a remote frame, but the
+          // destination is the socket we opened, so the frame controls timing only.
           if (ev === "connected" || (ev === "status" && msg.status === "connected")) {
             stocksWs?.send(JSON.stringify({ action: "auth", params: POLYGON_API_KEY }));
           } else if (isConnectionCapFrame(msg)) {

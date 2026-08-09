@@ -547,6 +547,9 @@ class OptionsShard {
       const ev = String(msg.ev ?? "");
       const status = msg.status as string | undefined;
 
+      // codeql[js/user-controlled-bypass] — same false positive as polygon-socket.ts: the provider's
+      // documented handshake gates the credential send on a remote frame, but the destination is the
+      // socket we opened, so the frame controls timing only.
       if (ev === "connected" || (ev === "status" && status === "connected")) {
         this.ws?.send(JSON.stringify({ action: "auth", params: POLYGON_API_KEY }));
       } else if (ev === "auth_success" || (ev === "status" && status === "auth_success")) {
