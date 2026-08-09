@@ -102,7 +102,10 @@ const EMPH_EPS = 0.01;
 const SETTLE_EPS = 0.02;
 /** King emphasis → extra radius (×) and rim/glow lift, so the dominant node stands proud and its
  *  prominence slides vertically to a new strike as the king migrates. */
-const KING_RADIUS_BOOST = 0.3;
+// Trimmed 0.3 -> 0.22 alongside HALF_PX_MAX (member: king beads paint over the candles). Combined
+// with the ceiling change the king bead goes ~23px -> ~18px diameter; the boost stays large enough
+// that the crowned bucket is still unmistakably the biggest dot on its row.
+const KING_RADIUS_BOOST = 0.22;
 
 type BandPt = { x: number; yTop: number; yBot: number; a: number; emph: number };
 /** One run of adjacent buckets for a wall (no time gap). Rendered as a ROW OF BEADS — one round dot

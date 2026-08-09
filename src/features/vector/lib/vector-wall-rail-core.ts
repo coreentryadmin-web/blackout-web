@@ -13,9 +13,19 @@ import { relStrengthT, beadRadiusForNotional, pctToNotionalProxy } from "./vecto
  * vector-wall-visual.ts and is already covered there; this file composes it, it does not restate it.
  */
 
-/** Bead half-height (radius) bounds in px. */
-export const HALF_PX_MIN = 2.4;
-export const HALF_PX_MAX = 9;
+/**
+ * Bead half-height (radius) bounds in px.
+ *
+ * Trimmed 2026-08-09 (member: "it literally paints the candles fully"). The king bead is the ceiling
+ * times the KING_RADIUS_BOOST multiplier, so 9 x 1.3 rendered a ~23px-diameter dot — wide enough to
+ * cover the candles it is supposed to annotate. Ceiling 9 -> 7.5 and the floor 2.4 -> 2.2, which
+ * takes the king to ~18px while keeping the dynamic range (fat king vs thin straggler) at ~3.4x,
+ * essentially unchanged from the previous 3.75x. A deliberately small trim: the rail's whole job is
+ * that a dominant wall READS as dominant, so shrinking it toward uniformity would trade one
+ * complaint for a worse one.
+ */
+export const HALF_PX_MIN = 2.2;
+export const HALF_PX_MAX = 7.5;
 
 /** Bead fill opacity bounds. */
 export const FILL_ALPHA_MIN = 0.6;
