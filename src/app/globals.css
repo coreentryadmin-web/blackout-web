@@ -8575,7 +8575,7 @@ body::before {
      and every candle/SMA/volume series rendered squashed into a sliver at the top — silently, with
      no error, since the data and series wiring were both correct (2026-08-05 live-UI audit). */
   .vector-daily-chart {
-    @apply flex h-[min(72vh,640px)] flex-col gap-2 rounded-xl border border-cyan-500/20 bg-black/40 p-3;
+    @apply flex h-[clamp(560px,80vh,980px)] flex-col gap-2 rounded-xl border border-cyan-500/20 bg-black/40 p-3;
   }
   .vector-daily-chart-head {
     @apply flex flex-wrap items-center gap-3;

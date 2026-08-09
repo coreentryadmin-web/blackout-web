@@ -49,7 +49,7 @@ const VectorChart = dynamic(
     ssr: false,
     loading: () => (
       <div
-        className="flex min-h-[min(72vh,640px)] items-center justify-center rounded-xl border border-cyan-500/20 bg-black/40 text-sm text-cyan-300"
+        className="flex min-h-[clamp(560px,80vh,980px)] items-center justify-center rounded-xl border border-cyan-500/20 bg-black/40 text-sm text-cyan-300"
         role="status"
         aria-live="polite"
       >

@@ -15,6 +15,7 @@ import {
 import { VECTOR_CHART_LOCALE } from "@/features/vector/lib/vector-chart-config";
 import { smaSeries } from "@/features/vector/lib/vector-indicators";
 import type { VectorDailyUnit } from "@/features/vector/lib/vector-daily-bars";
+import { initialLogicalRange } from "@/features/vector/lib/vector-chart-view";
 import type { VectorOhlcBar } from "@/features/vector/lib/vector-bar-timeframes";
 
 const VOLUME_UP = "rgba(0, 230, 118, 0.55)";
@@ -175,8 +176,16 @@ export function VectorDailyChart({ ticker, unit }: Props) {
     const closes = bars.map((b) => b.close);
     sma50SeriesRef.current?.setData(lineData(bars, smaSeries(closes, 50)));
     sma200SeriesRef.current?.setData(lineData(bars, smaSeries(closes, 200)));
-    chartRef.current?.timeScale().fitContent();
-  }, [bars]);
+
+    // Frame the most RECENT window rather than every loaded bar. fitContent() squeezed the full
+    // ~2-year history (which the 200-SMA requires us to FETCH) into the canvas at ~1.8px per
+    // candle — legible as a trend line, useless as candles. The history is still loaded and one
+    // scroll away; only the initial viewport changed. Falls back to fitContent when the history
+    // is shorter than the window, where pinning would leave dead space.
+    const range = initialLogicalRange(bars.length, unit);
+    if (range) chartRef.current?.timeScale().setVisibleLogicalRange(range);
+    else chartRef.current?.timeScale().fitContent();
+  }, [bars, unit]);
 
   return (
     <div className="vector-daily-chart" data-testid="vector-daily-chart">
