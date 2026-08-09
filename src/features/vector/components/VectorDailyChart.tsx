@@ -10,6 +10,7 @@ import {
   type HistogramData,
   type IChartApi,
   type ISeriesApi,
+  createSeriesMarkers,
   type Time,
 } from "lightweight-charts";
 import { VECTOR_CHART_LOCALE } from "@/features/vector/lib/vector-chart-config";
@@ -26,11 +27,16 @@ import {
   type VectorZoomPreset,
 } from "@/features/vector/lib/vector-chart-view";
 import type { VectorOhlcBar } from "@/features/vector/lib/vector-bar-timeframes";
+import { isQuarterlyOpex, opexDatesInRange } from "@/features/vector/lib/vector-opex";
 
 const VOLUME_UP = "rgba(0, 230, 118, 0.55)";
 const VOLUME_DOWN = "rgba(255, 45, 85, 0.55)";
 const SMA50_COLOR = "#38bdf8";
 const SMA200_COLOR = "#f472b6";
+/* Brand tokens (see scripts/check-brand.mjs): gold for the monthly, cyan for the heavier
+   quarterly, so OPEX never reads as a bull/bear signal — it is a calendar fact, not a direction. */
+const OPEX_MONTHLY = "#ffd23f";
+const OPEX_QUARTERLY = "#22d3ee";
 
 /** Historical (non-intraday-SSE) chart views this component can render: daily/weekly candles
  *  (`VectorDailyUnit`, Polygon daily aggs) plus "4H" (CTO audit P2 — multi-day intraday minute
@@ -127,6 +133,7 @@ export function VectorDailyChart({ ticker, unit }: Props) {
   const [zoom, setZoom] = useState<VectorZoomPreset>(() =>
     readPersisted(VECTOR_ZOOM_STORAGE_KEY, VECTOR_ZOOM_PRESETS, "ALL")
   );
+  const [showOpex, setShowOpex] = useState(true);
   const [hover, setHover] = useState<
     { open: number; high: number; low: number; close: number; changePct: number } | null
   >(null);
@@ -243,8 +250,33 @@ export function VectorDailyChart({ ticker, unit }: Props) {
     // candle — legible as a trend line, useless as candles. The history is still loaded and one
     // scroll away; only the initial viewport changed. Falls back to fitContent when the history
     // is shorter than the window, where pinning would leave dead space.
+    // OPEX verticals. Standard monthlies expire on the third Friday; on that date the open
+    // interest — and the dealer gamma hedging it — stops existing, so the surrounding days behave
+    // differently. On a dealer-positioning chart an unmarked OPEX is a missing explanatory
+    // variable. Quarterlies (triple witching) get a heavier mark because the unwind is larger.
+    //
+    // Rendered as series markers rather than a custom overlay so they pan and zoom with the data
+    // for free, and are automatically clipped to the visible range by the library.
+    if (showOpex && bars.length) {
+      const firstMs = Number(bars[0]!.time) * 1000;
+      const lastMs = Number(bars[bars.length - 1]!.time) * 1000;
+      const marks = opexDatesInRange(firstMs, lastMs).map((d) => {
+        const quarterly = isQuarterlyOpex(d);
+        return {
+          time: (Date.parse(`${d}T00:00:00Z`) / 1000) as Time,
+          position: "belowBar" as const,
+          color: quarterly ? OPEX_QUARTERLY : OPEX_MONTHLY,
+          shape: "arrowUp" as const,
+          text: quarterly ? "OPEX·Q" : "OPEX",
+        };
+      });
+      createSeriesMarkers(candleSeries, marks);
+    } else {
+      createSeriesMarkers(candleSeries, []);
+    }
+
     applyZoom(chartRef.current, bars.length, unit, zoom);
-  }, [bars, unit, zoom]);
+  }, [bars, unit, zoom, showOpex]);
 
   return (
     <div className="vector-daily-chart" data-testid="vector-daily-chart">
@@ -256,7 +288,16 @@ export function VectorDailyChart({ ticker, unit }: Props) {
               leaving a blank band that reads as a data failure — it was reported as one. */}
           {isIndexTicker(ticker) ? " Volume is not published for index tickers." : ""}
         </span>
-        <div className="vector-daily-chart-zoom" role="group" aria-label="Zoom range">
+        <div className="vector-daily-chart-zoom" role="group" aria-label="Chart options">
+          <button
+            type="button"
+            className={`vector-daily-chart-zoom-btn${showOpex ? " is-active" : ""}`}
+            aria-pressed={showOpex}
+            title="Monthly options expiration (third Friday). Q = quarterly triple witching."
+            onClick={() => setShowOpex((v) => !v)}
+          >
+            OPEX
+          </button>
           {VECTOR_ZOOM_PRESETS.map((p) => (
             <button
               key={p}
