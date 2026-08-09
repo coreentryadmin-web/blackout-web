@@ -172,8 +172,14 @@ export function mergeBarsByTime<T extends VectorOhlcBar & { volume?: number }>(
  * Capping only ever REDUCES, which is exactly what the control is for — the report was that 12
  * rows per side reads as "painted". `auto` keeps today's behaviour unchanged and stays the default,
  * so nobody's chart moves until they ask for it.
+ *
+ * WHY 4 AND 6 ARE IN THE LIST. With only 8/10/12 the control is INERT on the views whose curve is
+ * already at or below 8: 1m (curve 6) and 3m outside the 0DTE horizon (curve 8). A member flipping
+ * from 0DTE (where 12 -> 8 visibly works) to WEEKLY on the same 3m chart would find the buttons
+ * suddenly do nothing, which reads as broken rather than as a cap. 4 and 6 make the control bite on
+ * every timeframe, and they are closer to the density originally asked for.
  */
-export const VECTOR_WALL_COUNT_CHOICES = ["auto", 8, 10, 12] as const;
+export const VECTOR_WALL_COUNT_CHOICES = ["auto", 4, 6, 8, 10, 12] as const;
 export type VectorWallCountChoice = (typeof VECTOR_WALL_COUNT_CHOICES)[number];
 
 export function resolveWallCount(curveCount: number, choice: VectorWallCountChoice): number {
