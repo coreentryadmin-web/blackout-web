@@ -740,11 +740,26 @@ export const SEED_FULL_RESOLUTION_SEC = 30 * 60;
 /**
  * Bucket width applied to everything OLDER than {@link SEED_FULL_RESOLUTION_SEC}.
  *
- * 15s is not arbitrary: it is `VECTOR_BEAD_RECORD_ACTIVE_TICK_MS`, the cadence the recorder itself
- * already uses for non-oracle tickers, so the decimated tail is exactly the trail a non-oracle
- * ticker ships today — a resolution the chart is already known to render correctly.
+ * WAS 15s, matched to `VECTOR_BEAD_RECORD_ACTIVE_TICK_MS` — the cadence the recorder already uses
+ * for non-oracle tickers, so the decimated tail was exactly the trail a non-oracle ticker ships.
+ * Sound reasoning, but it anchored on what the RECORDER produces rather than on what the seed
+ * costs, and the tail is not one RTH session long: the recorder is not RTH-gated, so it spans
+ * ~10 hours of wall clock (see the MAX_HISTORY note above). 10h at 15s is ~2,400 tail samples per
+ * rail, each carrying a full 20-per-side ladder — and /vector ships TWO rails for an oracle ticker.
+ *
+ * Measured live 2026-08-09, `/vector?ticker=SPX`: a 10.44 MB generated document (0.50 MB on the
+ * wire after zstd — the wire was never the problem) against 40-170 KB for every other desk page.
+ * TTFB was healthy at 143-353 ms across all of them, so the cost is not upstream latency: it is
+ * generating, serialising and compressing ~5,400 samples per request on a `force-dynamic`,
+ * `no-store` route — paid by every member on every load.
+ *
+ * 60s buckets cut the tail ~4x. The trail's older end is CONTEXT, read as shape rather than
+ * bead-by-bead: ~600 columns over a 10h tail is still finer than the pixels that region of the
+ * chart gets. The newest {@link SEED_FULL_RESOLUTION_SEC} — the part actually read bead-by-bead —
+ * is untouched at full recorder fidelity, and the live SSE/poll path still appends at full cadence,
+ * so a member watching the session sees exactly what they see today.
  */
-export const SEED_TAIL_BUCKET_SEC = 15;
+export const SEED_TAIL_BUCKET_SEC = 60;
 
 /**
  * Decimate the OLD end of a session's wall history before it is serialised into SSR HTML.
