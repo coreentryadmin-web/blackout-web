@@ -160,3 +160,52 @@ export function persistWallSampleDebounced(
 export function _resetWallPersistDebounceForTest(): void {
   lastPersistByTicker.clear();
 }
+
+/**
+ * Load only the newest `limit` samples of a session's rail.
+ *
+ * FOR CALLERS THAT WANT A SESSION'S LAST READING, NOT ITS SESSION. `daily-regime` keeps one sample
+ * per session across ~15 sessions; loading each rail in full to do that measured 30.2s for a 1.3 KB
+ * response on SPX (oracle cadence: ~5,760 samples, each a 20-per-side ladder).
+ *
+ * ORDERING IS DELIBERATELY INVERTED vs `loadSessionWallHistory`, and only for SETTLED sessions.
+ * The normal path is Redis-first because Redis is the hot, authoritative-because-freshest copy —
+ * the Postgres mirror is written through non-blocking and therefore lags. Redis stores a rail as
+ * ONE JSON blob, so "give me the last sample" still costs a full fetch-and-parse there, while
+ * Postgres answers it with a single index seek on `(ticker, session_ymd, bucket_time)`.
+ *
+ * That trade is only safe once a session can no longer change:
+ *  - `sessionYmd` in the PAST → the mirror has long since caught up, so DB-tail first, Redis as
+ *    fallback when the DB is unconfigured or has no rows for it.
+ *  - `sessionYmd` TODAY (or anything not strictly earlier than `todayYmd`) → fall straight through
+ *    to the full Redis-first read. Today's rail is still being written, and the mirror's lag would
+ *    show up as a stale "last reading" — which is precisely the value this function exists to
+ *    return. Correctness first; today is one session out of fifteen.
+ *
+ * `todayYmd` is passed in rather than computed so this stays pure w.r.t. the clock and testable.
+ */
+export async function loadSessionWallTail(
+  sessionYmd: string,
+  ticker = "SPX",
+  horizon: VectorDteHorizon = "all",
+  limit = 1,
+  todayYmd?: string
+): Promise<WallHistorySample[]> {
+  if (!sessionYmd) return [];
+  const st = wallRailStorageId(ticker, horizon);
+  const settled = todayYmd != null && sessionYmd < todayYmd;
+
+  if (settled) {
+    try {
+      const { loadSessionWallTailFromDb } = await import("./vector-wall-db");
+      const tail = await loadSessionWallTailFromDb(sessionYmd, st, limit);
+      if (tail.length) return tail;
+    } catch (err) {
+      console.warn(`[vector-wall-persist] tail read failed ${st}:${sessionYmd}:`, err);
+    }
+  }
+
+  // Not settled, DB unconfigured, or no durable rows: the full read is always correct, just dearer.
+  const full = await loadSessionWallHistory(sessionYmd, ticker, horizon);
+  return limit >= full.length ? full : full.slice(-limit);
+}

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
-import { loadSessionWallHistory } from "@/features/vector/lib/vector-wall-persist";
+import { loadSessionWallTail } from "@/features/vector/lib/vector-wall-persist";
 import { reduceSessionToDaily, coverage, type DailyRegimeRow } from "@/features/vector/lib/vector-daily-regime";
 import { normalizeVectorTicker } from "@/features/vector/lib/vector-ticker";
 import { roundFloats } from "@/lib/round-floats";
@@ -58,6 +58,8 @@ export async function GET(req: NextRequest) {
   // first chunk or two. The +10 slack still exists — it just isn't paid up front every time.
   const CHUNK = 5;
   const today = new Date();
+  // Passed into every tail read so "is this session settled?" is decided once, from one clock.
+  const todayYmd = today.toISOString().slice(0, 10);
   const rows: DailyRegimeRow[] = [];
   for (let start = 0; start < days + 10 && rows.length < days; start += CHUNK) {
     const batch: string[] = [];
@@ -68,7 +70,12 @@ export async function GET(req: NextRequest) {
     const settled = await Promise.all(
       batch.map(async (ymd) => {
         try {
-          const samples = await loadSessionWallHistory(ymd, ticker, "all");
+          // TAIL, not the whole rail. `reduceSessionToDaily` keeps the session's LAST reading, so
+          // one sample is all this needs — and for a settled session `loadSessionWallTail` answers
+          // it with a single indexed row instead of loading ~5,760 samples to throw all but one
+          // away. Today's session still takes the full read (the mirror lags the live recorder);
+          // see loadSessionWallTail for why that exception is required rather than tidy.
+          const samples = await loadSessionWallTail(ymd, ticker, "all", 1, todayYmd);
           return reduceSessionToDaily(ymd, samples);
         } catch {
           // One unreadable session must not blank the whole overlay — the rest is still true.
