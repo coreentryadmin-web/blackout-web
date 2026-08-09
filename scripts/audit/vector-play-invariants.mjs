@@ -17,6 +17,11 @@
  */
 import { mintClerkPremiumSession } from "./lib/prod-clerk-session.mjs";
 import { buildVectorPlay } from "../../src/features/vector/lib/vector-play-engine.ts";
+// The chart derives regime/magnet/proximity from walls+flip before calling the engine. The harness
+// must do the same, with the SAME functions — see the "the audit was vacuous" note below.
+import { deriveVectorRegime } from "../../src/features/vector/lib/vector-regime.ts";
+import { deriveGammaMagnet } from "../../src/features/vector/lib/vector-gamma-magnet.ts";
+import { deriveWallProximity } from "../../src/features/vector/lib/vector-wall-proximity.ts";
 
 const BASE = (process.env.VALIDATE_BASE || "https://blackouttrades.com").replace(/\/$/, "");
 const TICKERS = (process.env.AUDIT_TICKERS || "SPX,SPY,QQQ,NVDA,TSLA,AAPL,AMD,META").split(",");
@@ -51,6 +56,20 @@ const INVARIANTS = [
       if (lvl == null) return null;
       if (c != null && lvl > c) return `range mean ${lvl} is ABOVE call wall ${c} (headline: ${play.headline})`;
       if (p != null && lvl < p) return `range mean ${lvl} is BELOW put wall ${p} (headline: ${play.headline})`;
+      return null;
+    },
+  },
+  {
+    name: "target-is-not-an-entry",
+    check: (_s, play) => {
+      // "Sell rips 225" over "TARGETS call wall 225" — the second form of the NVDA contradiction.
+      // A level you were just told to enter at cannot also be where you take profit.
+      const prices = (txt) => new Set((String(txt ?? "").match(/[\d,]+\.?\d*/g) ?? []).map((n) => n.replace(/,/g, "")));
+      const entries = prices(play?.entryZone);
+      if (!entries.size) return null;
+      for (const t of play?.targets ?? []) {
+        for (const p of prices(t)) if (entries.has(p)) return `target "${t}" repeats entry level ${p} (entry: ${play.entryZone})`;
+      }
       return null;
     },
   },
@@ -105,16 +124,34 @@ async function snapshotFor(cookie, ticker, horizon, timeframeMin) {
   ]);
   const spot = num(ladder?.spot ?? walls?.spot);
   if (spot == null) return null;
+
+  // THE HARNESS WAS VACUOUS UNTIL 2026-08-09. It read `walls.gammaFlip` / `walls.regime` /
+  // `walls.magnet` / `walls.proximity`, none of which the /walls route returns — its payload is
+  // `{ticker, horizon, walls, flip}`. Every field came back undefined, so the engine saw no flip
+  // and no regime and returned bias="neutral" for all 24 combinations. The run was green because
+  // it never reached the range/fade branches, which is exactly where the contradictions live.
+  //
+  // A green audit that cannot fail is worse than no audit. VectorChart derives these three from
+  // walls+flip before calling the engine, so the harness now calls the SAME production functions —
+  // same rule as buildVectorPlay: import the real thing, never reimplement it.
+  const gexWalls = walls?.walls ?? walls?.gexWalls ?? null;
+  const gammaFlip = num(walls?.flip ?? walls?.gammaFlip);
+  const regime = deriveVectorRegime({
+    spot,
+    gammaFlip,
+    topCallWall: num(gexWalls?.callWalls?.[0]?.strike),
+    topPutWall: num(gexWalls?.putWalls?.[0]?.strike),
+  });
   return {
     ticker,
     horizon,
     timeframeMin,
     spot,
-    regime: walls?.regime ?? null,
-    gexWalls: walls?.walls ?? walls?.gexWalls ?? null,
-    gammaFlip: num(walls?.gammaFlip),
-    magnet: walls?.magnet ?? null,
-    proximity: walls?.proximity ?? null,
+    regime,
+    gexWalls,
+    gammaFlip,
+    magnet: deriveGammaMagnet({ spot, walls: gexWalls, posture: regime?.posture }),
+    proximity: deriveWallProximity({ spot, walls: gexWalls, gammaFlip }),
     // Only pass expectedMove when it actually carries bands — the endpoint's envelope differs from
     // the engine's ExpectedMove shape, and handing the engine a mismatched object tests the
     // harness, not production.

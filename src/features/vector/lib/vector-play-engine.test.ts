@@ -437,3 +437,79 @@ test("a malformed expectedMove degrades the play instead of killing it", () => {
     assert.ok(play.headline, "and it must still carry a headline");
   }
 });
+
+// ── A fade play must not target its own entry ───────────────────────────────
+test("a range play's targets never repeat a rail it just told you to enter at", () => {
+  // The live NVDA 2026-08-09 geometry that produced "sell rips 225" over "TARGETS call wall 225".
+  const play = buildVectorPlay(
+    base({
+      spot: 7555,
+      proximity: null,
+      magnet: magnet(7555, "long", "at"),
+      gexWalls: { callWalls: [{ strike: 7600, pct: 8 }], putWalls: [{ strike: 7500, pct: 7 }] },
+    })
+  )!;
+  assert.equal(play.bias, "range");
+  // Both rails appear as ENTRIES...
+  assert.match(play.entryZone!, /buy dips 7,500/);
+  assert.match(play.entryZone!, /sell rips 7,600/);
+  // ...so neither may also appear as a TARGET.
+  for (const t of play.targets) {
+    assert.doesNotMatch(t, /7,500|7,600/, `target "${t}" repeats a rail that is an entry`);
+  }
+  assert.equal(play.targets.length, 1, "a fade has ONE destination: the mean");
+});
+
+test("with only one rail there is no opposing entry, so that rail stays a target", () => {
+  const play = buildVectorPlay(
+    base({
+      spot: 7555,
+      proximity: null,
+      maxPain: null,
+      magnet: null,
+      gexWalls: { callWalls: [{ strike: 7600, pct: 8 }], putWalls: [] },
+    })
+  )!;
+  if (play.bias === "range") {
+    assert.deepEqual(play.targets, ["call wall 7,600"]);
+  }
+});
+
+test("a breakout targets levels BEYOND the trigger, never the trigger itself", () => {
+  // Live QQQ monthly 2026-08-09: "long on 15m close > 725" over "TARGETS call wall 725".
+  const play = buildVectorPlay(
+    base({
+      spot: 7590,
+      regime: { posture: "short" },
+      gammaFlip: 7500,
+      proximity: proximity("call", 7600, "testing"),
+      technicals: { emaStack: "up", macd: "bull" },
+      gexWalls: {
+        callWalls: [
+          { strike: 7600, pct: 8 },
+          { strike: 7650, pct: 4 },
+        ],
+        putWalls: [{ strike: 7500, pct: 7 }],
+      },
+    })
+  )!;
+  assert.match(play.entryZone!, /close > 7,600/);
+  for (const t of play.targets) {
+    assert.doesNotMatch(t, /7,600/, `target "${t}" is the break level itself`);
+  }
+});
+
+test("a range mean sitting ON a rail falls back to the rail midpoint", () => {
+  // Live AAPL weekly 2026-08-09: put wall and max pain both 307.5 → "buy dips 307.5, target 307.5".
+  const play = buildVectorPlay(
+    base({
+      spot: 7550,
+      proximity: null,
+      magnet: null,
+      maxPain: 7500, // equal to the put wall below
+      gexWalls: { callWalls: [{ strike: 7600, pct: 8 }], putWalls: [{ strike: 7500, pct: 7 }] },
+    })
+  )!;
+  assert.equal(play.bias, "range");
+  assert.deepEqual(play.targets, ["range mid 7,550"]);
+});
