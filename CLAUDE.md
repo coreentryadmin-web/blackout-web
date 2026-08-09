@@ -85,7 +85,17 @@ Both harnesses and their `npm run validate:vector-*` scripts were removed with i
 
 ## Environment realities (this cloud sandbox)
 - **All infrastructure runs on AWS ECS only** — there is no Railway. Docker images are built and pushed to ECR, ECS services are force-deployed, Cloudflare cache is purged. **Production is now the ONLY environment** (`blackout-production-cluster` / `blackout-production-web` at `blackouttrades.com`) — the entire `blackout-staging-*` stack was decommissioned 2026-07-25 (see the Vector-validation note above). The `blackout-web` ECR repo is shared and still in use by production; it was deliberately NOT deleted.
-- **WebSockets are blocked** by the agent proxy (WS upgrades unsupported). UW/Polygon WS run **server-side** (AWS ECS); the browser gets data via **SSE + SWR polling**, so validate WS-sourced numbers through the REST/SSE endpoints that surface them.
+- **WebSockets WORK from this sandbox — inside a CONNECT tunnel (corrected 2026-08-09).** The old
+  note here said "WS upgrades unsupported"; that is true only of asking the proxy to proxy an
+  upgrade on its HTTP path. A `CONNECT` tunnel is an opaque byte relay, so doing the upgrade
+  *inside* one succeeds — the same trick `proxy-browser.cjs` uses for Chromium. Verified live:
+  Polygon `socket.polygon.io/stocks`, `socket.massive.com/{stocks,options,indices}` all reach
+  `auth_success` and accept a subscribe; UW `wss://api.unusualwhales.com/socket?token=...` reaches
+  `join -> status:ok`. Recipe: `http.request({method:"CONNECT", path:"host:443"})` ->
+  `tls.connect({socket})` -> `new WebSocket(url, {createConnection: () => tlsSocket})` (the `ws`
+  package is already a dependency). Reusable prober: `scripts/audit/upstream-ws-probe.cjs`.
+  Server-side UW/Polygon WS still run on ECS and the browser still gets SSE + SWR polling — that
+  part is unchanged — but an audit no longer has to validate WS-sourced numbers *only* through REST.
 - **Playwright mobile UI E2E works** — `npm run test:ios-ui-e2e` drives prod (or `VALIDATE_BASE`) with iPhone viewport + `BlackOutiOSApp` UA, Clerk cookie auth, tab/segment clicks, and screenshots under `/opt/cursor/artifacts/ios-ui-e2e/`. Full `ios-native-shell` CSS requires PR #557 merged/deployed; until then the suite still clicks the tab bar and primary controls on the live `ios-app` shell.
 - **Direct Postgres (raw TCP) is blocked**, same as WebSockets — only HTTP(S) egress through the agent proxy works. So `pg_stat_activity`/lock/row-count probes against prod are **not possible from this sandbox** — root-causing a live DB-side issue (lock contention, slow query, table bloat) needs either an AWS ECS exec session or a temporary HTTP-exposed debug endpoint in the app itself. Don't spend time retrying a raw `pg.Client` connection here.
 - **`${{shared.*}}` env refs do NOT resolve here** — set literals: `UW_API_KEY` (UUID), `DATABASE_URL`, `REDIS_URL`, `POLYGON_API_BASE`. Working: `POLYGON_API_KEY`, `CLERK_SECRET_KEY`, Clerk publishable key. **Benzinga rides the Polygon key** — the Benzinga news/catalysts feed is served under the same Polygon subscription at `{POLYGON_API_BASE}/benzinga/v2/news?...&apiKey={POLYGON_API_KEY}` (re-verified live 2026-07-13: 200 for `channels=fda|guidance|m&a` and `ticker=NVDA&channels=earnings`). There is **no separate `BENZINGA_API_KEY`**; news fetches live via the Polygon key. (Earlier note claiming the key was missing was stale.)
