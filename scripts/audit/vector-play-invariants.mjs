@@ -61,10 +61,22 @@ const INVARIANTS = [
   },
   {
     name: "target-is-not-an-entry",
-    check: (_s, play) => {
+    check: (s, play) => {
       // "Sell rips 225" over "TARGETS call wall 225" — the second form of the NVDA contradiction.
       // A level you were just told to enter at cannot also be where you take profit.
-      const prices = (txt) => new Set((String(txt ?? "").match(/[\d,]+\.?\d*/g) ?? []).map((n) => n.replace(/,/g, "")));
+      //
+      // Only numbers PLAUSIBLY a price count. These strings carry non-price digits — "1σ 778.07",
+      // "long on 1H close > 775" — and a naive tokenizer matched the sigma prefix against the
+      // timeframe label and reported three phantom failures. Anchoring to spot is the honest
+      // filter: an entry or target is a level on this instrument, not a label.
+      const spot = num(s?.spot);
+      const isPrice = (n) => spot == null || (n > spot * 0.5 && n < spot * 2);
+      const prices = (txt) =>
+        new Set(
+          (String(txt ?? "").match(/[\d,]+\.?\d*/g) ?? [])
+            .map((n) => n.replace(/,/g, ""))
+            .filter((n) => isPrice(Number(n)))
+        );
       const entries = prices(play?.entryZone);
       if (!entries.size) return null;
       for (const t of play?.targets ?? []) {
@@ -152,10 +164,13 @@ async function snapshotFor(cookie, ticker, horizon, timeframeMin) {
     gammaFlip,
     magnet: deriveGammaMagnet({ spot, walls: gexWalls, posture: regime?.posture }),
     proximity: deriveWallProximity({ spot, walls: gexWalls, gammaFlip }),
-    // Only pass expectedMove when it actually carries bands — the endpoint's envelope differs from
-    // the engine's ExpectedMove shape, and handing the engine a mismatched object tests the
-    // harness, not production.
-    expectedMove: Array.isArray(em?.bands) ? em : null,
+    // The route's envelope is `{ticker, horizon, expectedMove}` — the ExpectedMove (with `bands`)
+    // is NESTED, not the response body. Reading `em.bands` off the envelope meant this was `null`
+    // on every single row, so the audit never exercised any expectedMove-dependent path. That is
+    // the same field whose unguarded access crashed the panel (#1958) — found by accident, not by
+    // this harness. Unwrap, then still require the array: a mismatched object would test the
+    // harness rather than production.
+    expectedMove: Array.isArray(em?.expectedMove?.bands) ? em.expectedMove : null,
     maxPain: num(maxPain?.maxPain ?? maxPain?.strike),
     confluenceZones: null,
     wallIntegrity: null,
