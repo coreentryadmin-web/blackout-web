@@ -25,7 +25,7 @@ staging live → logs to `docs/audit/SPX-PLAYBOOK-LIVE-VALIDATION-LOG.md` → op
 FAIL/regression (append to `docs/audit/FINDINGS.md`) → notifies the user. Findings feed back into
 this checklist. **Do not fix engine code in the validation run** unless trivial + obviously correct;
 the run finds + documents, a focused PR fixes. Honesty over green: an un-runnable check is `SKIPPED`
-with the reason, never `PASS`. One temp Cognito admin/user per run, always deleted. Only fresh
+with the reason, never `PASS`. One temp Clerk admin/user per run, always deleted. Only fresh
 `docs/spx-live-*` / `fix/spx-live-*` branches off `origin/blackout-web-sandbox`.
 
 ## 1. Pre-open sanity (once, ~09:00–09:25 ET)
@@ -117,7 +117,7 @@ Drive `GET /api/market/spx/play` (premium/cron auth) AND the member `/dashboard`
 - [ ] `spx-issues-sync` — no unexpected `admin_incidents` spikes for the SPX engine.
 - [ ] `alert-outcome-sync` last-run recent; grading progressing.
 - [ ] `spx-signal-observe` snapshotting weights (30-min outcome backfill).
-- [ ] Admin surfaces reachable (Cognito): `GET /api/admin/playbook/fsm-today`,
+- [ ] Admin surfaces reachable (Clerk admin): `GET /api/admin/playbook/fsm-today`,
       `/api/admin/playbook/promotion-report`, `/api/admin/spx/health` — FSM shows today's plays,
       promotion report sane.
 
@@ -144,11 +144,11 @@ Drive `GET /api/market/spx/play` (premium/cron auth) AND the member `/dashboard`
   admin HTTP routes (`fsm-today`, `promotion-report`, `spx/health`, `/outcomes`) or the cron
   read-backs, never a raw `pg` socket. Mark a DB check SKIPPED if genuinely unreachable.
 - Data arrives via **SSE + SWR** (WS proxied off). `npm run test:ios-ui-e2e` is the working Playwright
-  harness (iPhone UA + Clerk/Cognito cookie auth). `validate:staging-rth` / `staging-live-check.mjs`
+  harness (iPhone UA + Clerk cookie auth). `validate:staging-rth` / `staging-live-check.mjs`
   are the scripted RTH validators.
 - **Edge honesty:** the architecture is sophisticated but the **edge is unproven**. Never report a
   win-rate as validated edge; report it as accruing OOS data with n and the ungraded (#27) share.
-- Authenticate ONCE per run (Clerk/Cognito rate-limit rapid cycles). Keep each run < ~15 min.
+- Authenticate ONCE per run (Clerk rate-limits rapid cycles). Keep each run < ~15 min.
 
 ## 11. Backlog / things to surface as findings warrant
 

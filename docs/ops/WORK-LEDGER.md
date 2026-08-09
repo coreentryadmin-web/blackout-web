@@ -18,7 +18,7 @@
 
 1. Monday weekday, ET ≥ 09:00 → **`docs/ops/STAGING-F4-MONDAY.md`** + `npm run validate:staging-rth`
 2. After 09:35 ET → confirm `spx-evaluate` cron + options-socket `authenticated` (ECS logs / socket-health)
-3. Cognito admin via AWS (no user): `GET /api/admin/playbook/fsm-today`, `GET /api/admin/playbook/promotion-report`
+3. Admin routes (Clerk admin session): `GET /api/admin/playbook/fsm-today`, `GET /api/admin/playbook/promotion-report`
 4. On failure → reproduce → focused fix PR → auto-merge → re-validate until GREEN
 5. Seventh-pass Claude validation prompt after F4 GREEN
 
@@ -96,7 +96,7 @@ npm run analyze:track-record-staging  # 25 plays, counterfactual NO
 
 ## Unresolved blockers
 
-1. **F4** — weekday RTH + Cognito admin routes (AWS available in cloud agents)
+1. **F4** — weekday RTH + admin routes (Clerk admin session)
 2. **Playbook OOS evidence** — 0 instance-linked historical rows; blocked on live FSM→open→close sessions
 3. **Browser E2E** — Playwright desk paint optional post-F4
 

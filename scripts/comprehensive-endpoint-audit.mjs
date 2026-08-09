@@ -366,7 +366,8 @@ async function auditRouteDiscovery() {
     "/api/webhooks/clerk",
     "/api/webhook/whop",
   ]);
-  const skipOAuth = new Set(["/api/auth/cognito/callback", "/api/auth/cognito/login"]);
+  // The Cognito OAuth endpoints this used to skip were deleted with staging; nothing to skip now.
+  const skipOAuth = new Set();
 
   let pass = 0;
   let fail = 0;

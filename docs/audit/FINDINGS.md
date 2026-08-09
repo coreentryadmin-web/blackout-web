@@ -5576,7 +5576,7 @@ correctly reported no-weekly for optionless micro-cap movers. Two findings:
     - VectorScanner.tsx:45: Universe scanner refresh `30_000` → `15_000` (every 15s)
 - **Impact:** All Vector surfaces now refresh on same 15s cadence; spot prices update every 1s from playbook/SSE stream; gamma Greeks (GEX/VEX/DEX/charm) refresh 4x per minute instead of every 1-2 minutes.
 - **Evidence expected:** Post-deploy, GEX/flow/history all update 4 times per minute; consistent refresh across all tickers and horizons; member experience no longer "static".
-- **Status:** Fixed (commit 78cdf74), staged on `claude/three-repos-review-36t217`, awaiting staging deployment verification. Full UI validation requires Cognito authentication (https://staging.blackouttrades.com/vector)
+- **Status:** Fixed (commit 78cdf74), staged on `claude/three-repos-review-36t217`, awaiting deployment verification. (Staging + its Cognito auth were decommissioned 2026-07-25; validate on production with a temp Clerk user instead.)
 
 ## 2026-07-14 — Vector GEX ladder asymmetry (discovered during wall-birth validation)
 > **kind:** `FINDING`

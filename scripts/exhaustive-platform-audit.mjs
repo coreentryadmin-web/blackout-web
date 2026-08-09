@@ -309,7 +309,6 @@ function classifyRoute(path) {
   if (path === "/api/signals/open") return "cron";
   if (path.startsWith("/api/admin/")) return "admin";
   if (path.startsWith("/api/webhook") || path.startsWith("/api/webhooks/")) return "webhook";
-  if (path.startsWith("/api/auth/cognito/")) return "oauth";
   if (
     path.startsWith("/api/market/") ||
     path.startsWith("/api/account/") ||

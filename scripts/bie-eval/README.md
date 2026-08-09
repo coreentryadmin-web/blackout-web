@@ -1,3 +1,14 @@
+> **RUNNER REMOVED 2026-08-09.** `run.mjs` and `lib/staging-auth.mjs` drove this eval against
+> **staging** with a temp **Cognito** admin user. Staging was decommissioned 2026-07-25 and its
+> Cognito pool deleted, so the runner could not execute — it loaded a secret that no longer exists
+> to reach a host that no longer resolves.
+>
+> What survives is the provider-agnostic part, because it is still worth something:
+> `question-bank.mjs` (the questions) and `lib/scoring.mjs` + `lib/scoring.test.mjs` (the scorer,
+> still runnable via `npm run eval:bie:score-test`). Rebuilding the runner means pointing it at
+> PRODUCTION with `scripts/audit/lib/prod-clerk-session.mjs` — deliberately not done blind, since
+> an eval that writes or grades against prod deserves its own decision rather than a rename.
+
 # BIE Evaluation Harness
 
 A committed, repeatable regression gate for **BIE answer quality** — the formalized successor to the
