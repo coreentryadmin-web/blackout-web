@@ -122,7 +122,13 @@ async function main() {
     const dom = new URL(o.url).hostname;
     await ctx.addCookies(o.ck.split(';').map(s=>s.trim()).filter(Boolean).map(p => {
       const [n,...r] = p.split('=');
-      return { name:n.trim(), value:r.join('=').trim(), domain:dom, path:'/', httpOnly:true, secure:true, sameSite:'Lax' };
+      const name = n.trim();
+      // httpOnly ONLY for __session. Clerk deliberately leaves __client_uat readable by JS — the
+      // nav's cookie self-heal (Nav.tsx readClientSignedIn) reads it to decide signed-in state
+      // before Clerk's client finishes loading. Marking it httpOnly here hid it from document.cookie
+      // and made EVERY authenticated capture render "Sign In / Get access →" over live premium
+      // content. That was a harness artifact reported as a site bug more than once; it is not one.
+      return { name, value:r.join('=').trim(), domain:dom, path:'/', httpOnly:name === '__session', secure:true, sameSite:'Lax' };
     }));
   }
 

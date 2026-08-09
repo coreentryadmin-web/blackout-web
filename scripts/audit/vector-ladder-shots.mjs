@@ -14,11 +14,21 @@ import { execFileSync } from "node:child_process";
 
 const BASE = process.env.VALIDATE_BASE || "https://blackouttrades.com";
 const OUT = process.env.SHOT_OUT || ".";
-const TICKER = process.env.SHOT_TICKER || "NVDA";
 
+/**
+ * One shot per ticker at the page's default horizon.
+ *
+ * No preference is seeded: the wall-count toggle was removed (#1956 — "remove all the toggles and
+ * shit"), so the count is now a fixed function of timeframe with a 10-wall floor at 0DTE.
+ *
+ * And no `?dte=` either — /vector's page.tsx reads ONLY `ticker` from searchParams, so a `?dte=`
+ * in the URL is silently ignored. An earlier version of this script passed one and captured two
+ * identical "different horizon" shots. Changing the horizon needs a real click on the ODTE/WEEKLY/
+ * MONTHLY toolbar buttons, which this capture-only harness does not do.
+ */
 const SHOTS = [
-  ["auto", { "blackout.vector.wallCount.v1": "auto" }],
-  ["cap4", { "blackout.vector.wallCount.v1": "4" }],
+  ["nvda", "NVDA"],
+  ["spx", "SPX"],
 ];
 
 const session = await mintClerkPremiumSession({ appUrl: BASE });
@@ -28,19 +38,18 @@ if (session.skip) {
 }
 
 try {
-  for (const [label, seed] of SHOTS) {
-    const out = `${OUT}/vector-${TICKER}-${label}.png`;
+  for (const [label, ticker] of SHOTS) {
+    const out = `${OUT}/vector-${label}.png`;
     try {
       const log = execFileSync(
         "node",
         [
           "proxy-browser.cjs",
-          `${BASE}/vector?ticker=${encodeURIComponent(TICKER)}`,
+          `${BASE}/vector?ticker=${encodeURIComponent(ticker)}`,
           out,
           "--cookie", session.cookieHeader,
           "--viewport", "1680x1050",
           "--desktop",
-          "--seed-storage", JSON.stringify(seed),
           "--wait", "16000",
         ],
         { encoding: "utf8", timeout: 300000 }
