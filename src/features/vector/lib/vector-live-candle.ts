@@ -8,7 +8,6 @@ import {
   isVectorIndexTicker,
 } from "./vector-ticker";
 import {
-  REST_REFRESH_MS,
   REST_MAX_AGE_MS,
   isRestEntryUsable,
   restCacheEvictions,

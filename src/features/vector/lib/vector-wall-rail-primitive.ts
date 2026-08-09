@@ -10,8 +10,6 @@ import type {
   SeriesAttachedParameter,
 } from "lightweight-charts";
 import {
-  HALF_PX_MIN,
-  HALF_PX_MAX,
   withA,
   targetHalfPx,
   fillAlpha,
