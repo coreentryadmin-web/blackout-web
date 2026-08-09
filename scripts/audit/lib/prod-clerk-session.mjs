@@ -96,9 +96,42 @@ export async function mintClerkPremiumSession({ appUrl }) {
     const jwt = (await mintRes.json().catch(() => null))?.jwt;
     if (!jwt) return { skip: true, reason: "session token mint failed" };
 
+    /**
+     * Re-mint the session JWT. This is the SAME call the browser's Clerk client makes on a timer.
+     *
+     * MEASURED 2026-08-09: the minted `__session` JWT is dead ~72s after issue, and continuous
+     * requests do NOT extend it — 200 at t+61s, 401 at t+72s, still 401 at t+194s under load. A
+     * fixed lifetime, not an idle timeout. Every long-running audit was therefore unauthenticated
+     * for its remainder, and because a 401 surfaces as an empty panel it looked like a PRODUCT
+     * fault: the "GEX ladder unavailable" state chased in #1961 was this, not a bug.
+     *
+     * Not FAPI-rate-limit relevant in the way sign-in is: this re-uses the EXISTING session's
+     * cookies rather than performing a fresh ticket exchange, so it is not the "authenticate once
+     * per run" path CLAUDE.md warns about. Still, call it on a timer measured in tens of seconds,
+     * not per request.
+     *
+     * `__client_uat` stays PINNED at its original value — see the comment above; recomputing it
+     * per call intermittently 401s every request after the first.
+     */
+    const refresh = async () => {
+      const r = await fetch(`${fapi}/v1/client/sessions/${sessionId}/tokens?_clerk_js_version=${CJS}`, {
+        method: "POST",
+        headers: {
+          Origin: appUrl,
+          Referer: `${appUrl}/`,
+          "Content-Type": "application/x-www-form-urlencoded",
+          Cookie: signInCookies.join("; "),
+        },
+      });
+      const next = (await r.json().catch(() => null))?.jwt;
+      if (!next) return null;
+      return { jwt: next, cookieHeader: `__session=${next}; __client_uat=${clientUat}` };
+    };
+
     return {
       skip: false,
       userId,
+      refresh,
       cookieHeader: `__session=${jwt}; __client_uat=${clientUat}`,
       signInUrl: `${appUrl}/sign-in?__clerk_ticket=${ticket}`,
       cleanup: async () => {

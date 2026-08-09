@@ -15,9 +15,12 @@ export type VectorPresetTimeframe = (typeof VECTOR_PRESET_TIMEFRAMES)[number];
 /** Default candle interval on first paint (SPX Slayer embed + standalone /vector). */
 export const VECTOR_DEFAULT_TIMEFRAME: VectorPresetTimeframe = 3;
 
-/** Bead rows per side when a narrowed 0DTE horizon is active — wider than the 3m default (8)
- *  so the desk opens on the full intraday rail Skylit shows, not a tight spot cluster. */
-export const VECTOR_0DTE_WALL_COUNT = 12;
+/** Bead rows per side when a narrowed 0DTE horizon is active — wider than the 3m default (8) so the
+ *  desk opens on more of the intraday rail than a tight spot cluster.
+ *
+ *  Was 12. Reduced to 10 (member-directed, 2026-08-09): 12 rows per side read as "painted" on a 3m
+ *  0DTE chart, and 8 was felt to be too tight when it was the old value. 10 is the settled middle. */
+export const VECTOR_0DTE_WALL_COUNT = 10;
 
 /** Any whole-minute interval (presets + custom). */
 export type VectorTimeframeMinutes = number;
@@ -159,3 +162,5 @@ export function mergeBarsByTime<T extends VectorOhlcBar & { volume?: number }>(
   }
   return [...byTime.values()].sort((a, b) => a.time - b.time);
 }
+
+

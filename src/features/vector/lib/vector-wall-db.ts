@@ -65,6 +65,44 @@ export async function persistWallSampleToDb(
  * Load the durable per-bar rail for a session, ascending by bucket. Returns [] (never throws)
  * on any guard miss or DB error — the caller treats an empty rail as "nothing durable, use Redis".
  */
+/**
+ * Load only the NEWEST `limit` samples of a session's rail, ascending.
+ *
+ * Some callers need one sample per session, not the session. `daily-regime` is the clear case: it
+ * keeps the last reading of each of ~15 sessions to draw an end-of-session regime overlay, and was
+ * loading every rail in full to do it. For the SPX oracle ticker that is ~5,760 samples carrying a
+ * 20-per-side ladder each, per session, to produce one row — measured at 30.2s for a 1.3 KB
+ * response before this existed.
+ *
+ * `vector_wall_history_lookup_idx` is `(ticker, session_ymd, bucket_time)`, so DESC + LIMIT is a
+ * single index seek rather than a scan-then-sort. Re-sorted ascending on the way out so the return
+ * shape matches `loadSessionWallHistoryFromDb` exactly and callers cannot tell the two apart.
+ */
+export async function loadSessionWallTailFromDb(
+  sessionYmd: string,
+  ticker = "SPX",
+  limit = 1
+): Promise<WallHistorySample[]> {
+  if (!sessionYmd || !dbConfigured()) return [];
+  const capped = Math.max(1, Math.min(500, Math.trunc(limit)));
+  try {
+    const res = await dbQuery<WallRow>(
+      `
+      SELECT bucket_time, walls, gamma_flip, vex_walls, vex_flip
+      FROM vector_wall_history
+      WHERE ticker = $1 AND session_ymd = $2
+      ORDER BY bucket_time DESC
+      LIMIT $3
+      `,
+      [ticker, sessionYmd, capped]
+    );
+    return res.rows.map(rowToWallSample).reverse();
+  } catch (err) {
+    console.warn(`[vector-wall-db] tail load failed ${ticker}:${sessionYmd}:`, err);
+    return [];
+  }
+}
+
 export async function loadSessionWallHistoryFromDb(
   sessionYmd: string,
   ticker = "SPX"

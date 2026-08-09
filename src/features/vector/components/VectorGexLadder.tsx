@@ -1,11 +1,13 @@
 "use client";
 
 import clsx from "clsx";
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { buildGexLadder, type GexLadder, type GexLadderRow } from "@/features/vector/lib/vector-gex-ladder";
 import { vectorWallsScopePollMs } from "@/features/vector/lib/vector-cadence";
 import { vectorGexScopeLabel } from "@/lib/gex-scope-labels";
 import type { VectorDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
+import { nearestStrike } from "@/features/vector/lib/vector-chart-view";
+import { rowsInBand, scrollOffsetForSpot } from "@/features/vector/lib/vector-ladder-align";
 
 // Match the chart's bead colours exactly (VectorChart CALL_WALL_COLOR / PUT_WALL_COLOR) so the
 // ladder and the beads read as the same object: gold = call/resistance, purple = put/support.
@@ -33,6 +35,12 @@ type Props = {
   /** DTE horizon from the chart's toggle — the ladder re-scopes to the SAME expiries so it matches
    *  the walls on the chart. "all" = near-term aggregate (default). */
   dteHorizon?: VectorDteHorizon;
+  /** Price under the chart crosshair, so the ladder can highlight the strike a member is reading
+   *  at that level. The two panels sit side by side and were otherwise unlinked. */
+  hoverPrice?: number | null;
+  /** The chart's visible price range. Scopes the rail to what the chart is actually showing so the
+   *  two panels read as one instrument — see vector-ladder-align.ts for the measured mismatch. */
+  priceBand?: { min: number; max: number } | null;
 };
 
 type LadderResponse = { spot: number | null; asOf: string | null; ladder: GexLadder };
@@ -47,7 +55,19 @@ type LadderResponse = { spot: number | null; asOf: string | null; ladder: GexLad
  * `getHorizonStrikeTotals` scoped path; falls back to the near-term aggregate on "all" or when a
  * narrow horizon yields no structure).
  */
+/** Scroll `list` so `target` sits in the upper third rather than dead centre — see
+ *  scrollOffsetForSpot for why the bias exists. Reads offsets off the elements; all the arithmetic
+ *  (and its clamping) lives in the pure helper so it is unit-tested. */
+function scrollSpotIntoView(list: HTMLElement, target: HTMLElement): void {
+  const t = target.getBoundingClientRect();
+  const l = list.getBoundingClientRect();
+  const targetTop = t.top - l.top + list.scrollTop;
+  list.scrollTop = scrollOffsetForSpot(targetTop, t.height, list.clientHeight, list.scrollHeight);
+}
+
 export function VectorGexLadder({
+  hoverPrice = null,
+  priceBand = null,
   ticker,
   liveSession,
   initialSpot = null,
@@ -63,6 +83,8 @@ export function VectorGexLadder({
   const tickerRef = useRef(ticker);
   // Track last successful ladder fetch to avoid re-fetching on every spot tick.
   const lastFetchTimeRef = useRef<number>(0);
+  // Pending retry timers, cleared on teardown so a ticker/horizon switch cannot land a stale retry.
+  const retryTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   // Live spot from chart SSE updates the display without re-fetching the ladder.
   useEffect(() => {
@@ -75,14 +97,41 @@ export function VectorGexLadder({
     tickerRef.current = ticker;
     let cancelled = false;
 
-    const load = async () => {
+    /**
+     * A failed fetch used to be terminal.
+     *
+     * `setState("error")` renders "GEX ladder unavailable" and nothing re-ran: the only retry path
+     * is the interval below, which is created ONLY when `liveSession` is true. Outside a session —
+     * evenings, weekends, every pre-market — one transient failure left that message on screen
+     * permanently, until the member happened to change ticker or DTE horizon. Reproduced live on
+     * SPX (2026-08-09, market closed) by the UI walkthrough: the endpoint answered 200 with 200
+     * rows for every ticker/horizon when probed directly, so the rail was empty purely because a
+     * single client fetch had failed and nothing asked again.
+     *
+     * Bounded backoff, independent of `liveSession`. Deliberately NOT unlimited: a genuinely dead
+     * endpoint should end at the honest error message rather than hammer it forever.
+     */
+    const RETRY_DELAYS_MS = [1000, 3000, 8000];
+    const failed = (attempt: number) => {
+      if (cancelled || tickerRef.current !== ticker) return;
+      setState("error");
+      const delay = RETRY_DELAYS_MS[attempt];
+      if (delay == null) return;
+      retryTimers.current.push(
+        setTimeout(() => {
+          if (!cancelled && tickerRef.current === ticker) void load(attempt + 1);
+        }, delay)
+      );
+    };
+
+    const load = async (attempt = 0) => {
       try {
         const res = await fetch(
           `/api/market/vector/gex-ladder?ticker=${encodeURIComponent(ticker)}&dte=${encodeURIComponent(dteHorizon)}`
         );
         if (cancelled || tickerRef.current !== ticker) return;
         if (!res.ok) {
-          setState("error");
+          failed(attempt);
           return;
         }
         const data = (await res.json()) as LadderResponse;
@@ -96,7 +145,7 @@ export function VectorGexLadder({
         setState("ready");
         lastFetchTimeRef.current = Date.now();
       } catch {
-        if (!cancelled && tickerRef.current === ticker) setState("error");
+        failed(attempt);
       }
     };
 
@@ -111,14 +160,30 @@ export function VectorGexLadder({
     return () => {
       cancelled = true;
       if (id) clearInterval(id);
+      for (const t of retryTimers.current) clearTimeout(t);
+      retryTimers.current = [];
     };
   }, [ticker, liveSession, dteHorizon, liveSpot]);
 
-  const rows = ladder.rows;
+  // Scope to the chart's visible band. Falls through to the full rail when no band is known or the
+  // band excludes everything — a narrower rail is an improvement, a blank one is a regression.
+  // Memoised on the band's VALUES, not its object identity: the chart re-emits a fresh
+  // `{min,max}` object on every price-scale change, and the auto-centre effect below lists `rows`
+  // in its deps — an unstable array would re-run it on every pan tick.
+  const bandMin = priceBand?.min ?? null;
+  const bandMax = priceBand?.max ?? null;
+  const rows = useMemo(
+    () => rowsInBand(ladder.rows, bandMin != null && bandMax != null ? { min: bandMin, max: bandMax } : null),
+    [ladder.rows, bandMin, bandMax]
+  );
   // Index of the first row at/below spot — the spot marker slots ABOVE it (rows are strike-desc, so
   // this is the boundary between strikes above spot and strikes at/below it).
   const spotIdx =
     spot != null ? rows.findIndex((r) => r.strike <= spot) : -1;
+
+  // Resolve the crosshair to at most ONE strike here rather than per row, so the comparison runs
+  // once per hover instead of once per row per hover (the ladder renders ~40 rows).
+  const highlightStrike = nearestStrike(hoverPrice, rows.map((r) => r.strike));
 
   // Auto-centre the ladder on spot once per ticker: the rows are strike-descending, so without this
   // the panel opens scrolled to the highest strikes (all calls) and a member has to scroll down to
@@ -139,11 +204,20 @@ export function VectorGexLadder({
       list.querySelector<HTMLElement>(".vector-gex-ladder-spot") ??
       list.querySelector<HTMLElement>(".vector-gex-ladder-row");
     if (!target) return;
-    const t = target.getBoundingClientRect();
-    const l = list.getBoundingClientRect();
-    list.scrollTop += t.top - l.top - list.clientHeight / 2 + t.height / 2;
+    scrollSpotIntoView(list, target);
     centeredTickerRef.current = centerKey;
   }, [state, spot, rows, centerKey]);
+
+  /** Re-anchor on spot. Bound to the header button so a member who has scrolled away — or whose
+   *  live spot has since moved off-screen — has a one-click way back, matching the SPX desk. */
+  const resetToSpot = useCallback(() => {
+    const list = listRef.current;
+    if (!list) return;
+    const target =
+      list.querySelector<HTMLElement>(".vector-gex-ladder-spot") ??
+      list.querySelector<HTMLElement>(".vector-gex-ladder-row");
+    if (target) scrollSpotIntoView(list, target);
+  }, []);
 
   return (
     <section className="vector-gex-ladder" aria-label={`${ticker} GEX strike ladder`}>
@@ -153,6 +227,16 @@ export function VectorGexLadder({
           {spot != null ? `spot ${spot.toLocaleString("en-US", { maximumFractionDigits: 2 })}` : "—"}
           <span className="vector-gex-ladder-scope"> · {vectorGexScopeLabel(dteHorizon)}</span>
         </span>
+        <button
+          type="button"
+          className="vector-gex-ladder-reset"
+          onClick={resetToSpot}
+          title="Scroll the ladder back to spot"
+          aria-label="Reset ladder to spot"
+          data-testid="vector-gex-ladder-reset"
+        >
+          ⟳ spot
+        </button>
       </header>
 
       {state === "error" ? (
@@ -174,6 +258,10 @@ export function VectorGexLadder({
                 // stable `null` so its props never change between spot ticks (see LadderRow's
                 // memo comment below for why this matters).
                 spot={showSpotAbove ? spot : null}
+                // Only the matching row gets `true`; every other row keeps a stable `false` so
+                // its props do not change on hover. Same reason the spot price is passed to a
+                // single row — otherwise every crosshair move re-renders all ~40 rows.
+                highlighted={highlightStrike != null && r.strike === highlightStrike}
               />
             );
           })}
@@ -194,10 +282,12 @@ const LadderRow = memo(function LadderRow({
   row,
   showSpotAbove,
   spot,
+  highlighted,
 }: {
   row: GexLadderRow;
   showSpotAbove: boolean;
   spot: number | null;
+  highlighted: boolean;
 }) {
   const color = row.side === "call" ? CALL_COLOR : PUT_COLOR;
   return (
@@ -213,7 +303,8 @@ const LadderRow = memo(function LadderRow({
         className={clsx(
           "vector-gex-ladder-row",
           `vector-gex-ladder-${row.side}`,
-          row.isKing && "vector-gex-ladder-king"
+          row.isKing && "vector-gex-ladder-king",
+          highlighted && "vector-gex-ladder-hover"
         )}
       >
         <span className="vector-gex-ladder-strike">{row.strike.toLocaleString("en-US")}</span>

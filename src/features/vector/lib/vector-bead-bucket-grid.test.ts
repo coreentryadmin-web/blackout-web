@@ -79,14 +79,34 @@ test("compactHistoryToCap gets the same treatment — it is the live-desk entry 
   );
 });
 
-test("15s cadence is untouched — this is why single stocks never showed the bug", () => {
-  // bucket width == cadence, so the thinner is already an identity op on times.
-  const raw = rail(15, 1500);
+test("a rail recorded at exactly the bucket width passes through untouched", () => {
+  // bucket width == cadence, so the thinner is already an identity op on times. Written against
+  // the CONSTANT, not a literal: this invariant is about the relationship, and hardcoding 15 here
+  // is what made the test fail when SEED_TAIL_BUCKET_SEC moved to 60 for payload reasons.
+  const raw = rail(SEED_TAIL_BUCKET_SEC, 1500);
   assert.deepEqual(
     decimateSeedHistory(raw).map((s) => s.time),
     raw.map((s) => s.time),
-    "a 15s rail must pass through with identical timestamps"
+    "a rail at the bucket cadence must pass through with identical timestamps"
   );
+});
+
+test("a 15s (non-oracle) rail IS now thinned — intended, not a regression", () => {
+  // This used to be the pass-through case, and its old title ("this is why single stocks never
+  // showed the bug") recorded a real insight: at a 15s bucket, non-oracle tickers were exempt.
+  // At 60s they are not, which is deliberate — the same over-resolution argument applies to a
+  // 2.9MB NVDA seed as to a 10.4MB SPX one. Pinned so the change stays a decision, not a surprise.
+  const raw = rail(15, 1500);
+  const out = decimateSeedHistory(raw);
+  assert.ok(out.length < raw.length, "a 15s rail must now shrink");
+  const newest = out[out.length - 1]!.time;
+  // Same single allowed exception the 5s test above documents: the first tail sample shares the
+  // retained session anchor's bucket, and the ordering guard declines to snap it backwards.
+  const offGrid = out
+    .slice(1)
+    .filter((x) => x.time < newest - 30 * 60)
+    .filter((x) => x.time % SEED_TAIL_BUCKET_SEC !== 0);
+  assert.ok(offGrid.length <= 1, `at most the anchor-bucket sample may be off-grid, got ${offGrid.length}`);
 });
 
 test("timestamps stay strictly ascending — snapping never moves a sample backwards", () => {

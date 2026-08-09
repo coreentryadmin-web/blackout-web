@@ -9,6 +9,8 @@ import {
   railCoverageGaps,
   railUncoveredSec,
   decimateSeedHistory,
+  SEED_FULL_RESOLUTION_SEC,
+  SEED_TAIL_BUCKET_SEC,
   bucketWallHistoryForInterval,
   composeHorizonTrail,
   liveTrailAnchorSec,
@@ -673,13 +675,23 @@ test("decimateSeedHistory: ordered, real RECORDED readings — tail times re-key
   assert.ok(out.length < history.length, "a full session at 5s must actually shrink");
 });
 
-test("decimateSeedHistory: a real session's payload shrinks ~3x, which is the point", () => {
+test("decimateSeedHistory: a real session's payload shrinks ~7x, which is the point", () => {
   // 8.4h at 5s = the live SPX shape measured in prod (5,760 samples, 14.76MB).
   const history = session5s(5760);
   const out = decimateSeedHistory(history);
-  // 30 min live at 5s (360) + ~7.9h tail at 15s (~1,896).
-  assert.ok(out.length < history.length / 2.5, `expected >2.5x reduction, got ${history.length} -> ${out.length}`);
-  assert.ok(out.length > 2000, `over-decimated: ${out.length}`);
+  // 30 min live at 5s (360, untouched) + ~7.9h tail at SEED_TAIL_BUCKET_SEC=60 (~474).
+  // Bounds are expressed against the constant so this stays a statement about the RATIO rather
+  // than about one particular bucket width — the previous version pinned "> 2000", which was the
+  // 15s answer and would have had to be edited by hand again on the next tuning pass.
+  const liveSamples = SEED_FULL_RESOLUTION_SEC / 5;
+  const tailSamples = (5760 * 5 - SEED_FULL_RESOLUTION_SEC) / SEED_TAIL_BUCKET_SEC;
+  assert.ok(out.length < history.length / 5, `expected >5x reduction, got ${history.length} -> ${out.length}`);
+  // Within 10% of the arithmetic ceiling — catches BOTH over-decimation and a thinner that
+  // silently stopped thinning, which a one-sided bound would miss.
+  assert.ok(
+    out.length > (liveSamples + tailSamples) * 0.9,
+    `over-decimated: ${out.length} vs expected ~${Math.round(liveSamples + tailSamples)}`
+  );
 });
 
 test("decimateSeedHistory: short or degenerate inputs pass through untouched", () => {

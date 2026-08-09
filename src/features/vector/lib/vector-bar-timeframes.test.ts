@@ -8,6 +8,7 @@ import {
   VECTOR_PRESET_TIMEFRAMES,
   VECTOR_DEFAULT_TIMEFRAME,
   isPresetTimeframe,
+  VECTOR_WALL_NODES_PER_SIDE,
 } from "./vector-bar-timeframes";
 
 const m1 = (
@@ -178,3 +179,7 @@ test("wallCountForHorizon: 0DTE shows more bead rows than the base 3m cap", asyn
   assert.equal(wallCountForHorizon(3, "0dte"), VECTOR_0DTE_WALL_COUNT);
   assert.equal(wallCountForHorizon(3, "weekly"), 8);
 });
+
+
+
+

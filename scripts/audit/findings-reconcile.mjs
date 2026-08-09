@@ -75,14 +75,51 @@ function classify(block) {
  * not to raise the ceiling.
  */
 const HEADING_OUTCOME =
-  /[—–-]\s*(FIXED|RESOLVED|SHIPPED|MERGED|SUPERSEDED|WONTFIX|NO ACTION|RULED OUT|NEGATIVE RESULT)\s*$/i;
+  /(?:^|[\s—–\-(,])(FIXED|RESOLVED|SHIPPED|MERGED|SUPERSEDED|WONTFIX|NO ACTION|RULED OUT|NEGATIVE RESULT)\b/i;
+
+/**
+ * Headings where an outcome word appears but does NOT declare one.
+ *
+ * HEADING_OUTCOME was originally end-anchored, so it only saw an outcome that was the last thing on
+ * the line. The file routinely qualifies it instead — `— FIXED (\`priceValidUntil\` deliberately NOT
+ * added)`, `(P2, FIXED — full SPX audit)`, `RULED OUT on all six desk routes` — and 14 such entries
+ * were being reported as unreconciled work. Dropping the anchor reads them, but the anchor was also
+ * doing real work: it accidentally excluded the headings that NEGATE the outcome word.
+ *
+ * So the negation is now explicit rather than a side effect of the anchor. Across all 351 headings
+ * this matches exactly three, and they are exactly the three that must not be swept up:
+ *   - `[P1, NOT FIXED — flagged, architecturally significant] Legacy→Swing promotion path ...`
+ *   - `... task-def ROT — FIXED (draft PR, HOLD)`   (the fix later shipped; stamped by hand, with
+ *     evidence, rather than inferred from a heading that says it was held)
+ *   - `[WS-11] Mechanical grader single-walked a TRIM-SCALE strategy ... graded a DIFFERENT ...`
+ * Erring toward flagging is the safe direction here: a false UNRECONCILED costs one read, a false
+ * FIXED buries a live bug.
+ */
+const HEADING_NOT_AN_OUTCOME =
+  /\b(?:NOT|never|un)\s*(?:FIXED|RESOLVED|SHIPPED|MERGED)\b|\b(?:HOLD|pending|draft|partially|partial)\b/i;
+
+/**
+ * A prose status line: `**Status.** FIXED on \`cursor/rth-stale-cron-4002\`.`
+ *
+ * The THIRD place this file records an outcome, after the `| **Status** |` table row and the
+ * heading suffix. 76 of the entries still flagged UNRECONCILED use it — they are not missing a
+ * status, the reader was missing a format. Same shape of bug as the heading case (worth 34), found
+ * the same way: by opening an entry the tool called unreconciled and seeing a status in it.
+ *
+ * Anchored to the line start so a "**Status.**" mentioned mid-sentence elsewhere cannot match.
+ */
+const PROSE_STATUS = /^\*\*Status\.?\*\*[:\s]*(.+)$/m;
 
 function statusOf(block) {
   const m = block.match(/\*\*Status\*\*\s*\|([^|]*)\|/);
   if (m) return m[1].trim();
   const head = block.split("\n")[0].trim();
-  const h = head.match(HEADING_OUTCOME);
-  return h ? h[1].toUpperCase() : null;
+  const h = HEADING_NOT_AN_OUTCOME.test(head) ? null : head.match(HEADING_OUTCOME);
+  if (h) return h[1].toUpperCase();
+  // Ignore this script's own `> **status:**` annotation — it is regenerated metadata, and reading
+  // it back as the entry's status would make every already-annotated entry look reconciled.
+  const p = stripAnnotations(block).match(PROSE_STATUS);
+  return p ? p[1].trim() : null;
 }
 
 /** A status written mid-flight that was never revisited. These are the ones that make a merged

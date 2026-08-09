@@ -3,6 +3,23 @@ import { strikeTotalsFromLadder } from "@/lib/providers/gex-cross-validation-cor
 /** One gamma-wall level for the Vector chart overlay: the strike plus its share of concentration. */
 export type GexWallLevel = { strike: number; pct: number };
 
+/**
+ * NAMING, and why VEX reuses this (audited 2026-08-09 — do not "fix" the ordering).
+ *
+ * `callWalls`/`putWalls` are SIGN BUCKETS, not option types: positive net exposure and negative net
+ * exposure. For the GAMMA lens the two coincide with a directional story (positive net gamma above
+ * spot = dealers long = resistance), which is where the names come from.
+ *
+ * The Vector VEX lens runs vanna exposure through this same function, and that is deliberate —
+ * "bucket strikes by sign, rank by share of total |exposure|" is lens-agnostic. But vanna has NO
+ * inherent above/below-spot geometry (positive net vanna means dealer delta rises as IV rises), so
+ * on some names — TSLA and AMD at the time of writing — the positive bucket's top strike sits BELOW
+ * the negative bucket's. That is the honest data, not an inversion to be corrected.
+ *
+ * It never reaches a member as "call wall below put wall": VectorChart's `lensVisuals()` and
+ * VectorCrosshairLegend relabel the VEX lens to "Vanna +" / "Vanna −" / "Vanna flip", with their own
+ * colours. The confusing names are developer-facing only, which is what this comment is for.
+ */
 export type GexWalls = {
   /** Positive net-gamma strikes (resistance), ranked strongest-first. [0], when present, is the
    *  same strike gex-positioning.ts's call_wall would pick (largest-positive net-gamma strike) —

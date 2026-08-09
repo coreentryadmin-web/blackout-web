@@ -10,6 +10,14 @@ import type {
   SeriesAttachedParameter,
 } from "lightweight-charts";
 import {
+  withA,
+  targetHalfPx,
+  fillAlpha,
+  beadKey,
+  kingKey,
+  kingStrikeByTime,
+} from "./vector-wall-rail-core";
+import {
   relStrengthT,
   growthModulation,
   magnitudeGlowBoost,
@@ -70,13 +78,9 @@ type AttachedSeries = ISeriesApi<SeriesType, Time>;
  *  (unmistakably fat); a straggler → a ~MIN px hairline. MIN kept solid so even a weak wall is a
  *  readable dot, not a pinpoint. Shared by BOTH the absolute $-ladder and the relative fallback so
  *  the two sizing paths stay on one pixel scale. */
-const HALF_PX_MIN = 2.4;
-const HALF_PX_MAX = 9;
 /** Fill opacity floor/ceiling. Raised HARD (0.26→0.6, 0.82→0.98) after a member report that the
  *  bands were "too light, barely visible" — especially over the bright GEX heatmap background. The
  *  rail must read as SOLID coloured beads, not a faint wash. */
-const FILL_ALPHA_MIN = 0.6;
-const FILL_ALPHA_MAX = 0.98;
 /** Full opacity — the per-vertex alpha above already governs translucency; no global dimming (was
  *  0.9, which compounded with the low fill alpha to wash the rail out over the heatmap). */
 const RAIL_TRANSLUCENCY = 1;
@@ -98,17 +102,21 @@ const EMPH_EPS = 0.01;
 const SETTLE_EPS = 0.02;
 /** King emphasis → extra radius (×) and rim/glow lift, so the dominant node stands proud and its
  *  prominence slides vertically to a new strike as the king migrates. */
-const KING_RADIUS_BOOST = 0.3;
+// Trimmed 0.3 -> 0.22 alongside HALF_PX_MAX (member: king beads paint over the candles). Combined
+// with the ceiling change the king bead goes ~23px -> ~18px diameter; the boost stays large enough
+// that the crowned bucket is still unmistakably the biggest dot on its row.
+const KING_RADIUS_BOOST = 0.22;
 
-type BandPt = { x: number; yTop: number; yBot: number; a: number };
+type BandPt = { x: number; yTop: number; yBot: number; a: number; emph: number };
 /** One run of adjacent buckets for a wall (no time gap). Rendered as a ROW OF BEADS — one round dot
  *  per bucket, each sized by its yTop/yBot half-height (magnitude) and brightened by its own alpha
  *  (growth/fade). A dead-stretch gap splits the run so beads don't bridge time the wall was absent.
- *  `emph` is the eased king-emphasis [0,1] for this trail's strike (0 = not the dominant node). */
+ *  King emphasis lives on each POINT, not on the band: a strike is king only in the buckets where it
+ *  actually held the highest share, so the crown appears and disappears at the moment it changed
+ *  hands (see kingStrikeByTime). */
 type Band = {
   pts: BandPt[];
   color: string;
-  emph: number;
   birth: { x: number; y: number; half: number } | null;
   death: { x: number; y: number; half: number } | null;
 };
@@ -123,11 +131,10 @@ class WallRailRenderer implements IPrimitivePaneRenderer {
       ctx.globalAlpha = RAIL_TRANSLUCENCY;
       for (const b of this._bands) {
         const pts = b.pts;
-        // King emphasis (eased): the dominant node's row gets a slightly fatter bead + brighter rim
-        // and a soft glow, and because `emph` EASES from the old king strike (→0) to the new one
-        // (→1) the prominence visibly slides vertically as the king migrates rather than jumping.
-        const emph = b.emph;
-        const rMul = 1 + emph * KING_RADIUS_BOOST;
+        // King emphasis is PER BUCKET: the fatter bead, brighter rim and halo appear only in the
+        // buckets where this strike actually held the highest share, so a handover shows up as the
+        // crown leaving one row and appearing on another AT THAT MOMENT — not repainted across the
+        // whole session onto whoever happens to lead right now.
         // BEADS (member-preferred): one round bead per bucket rather than a single filled ribbon.
         // Each point still carries the full channel set the ribbon exposed — the beads just render it
         // as discrete dots (which read as a rail of "beads" the way members like) instead of a solid
@@ -137,6 +144,8 @@ class WallRailRenderer implements IPrimitivePaneRenderer {
         // a thin crisp rim keeps every bead readable over the bright GEX heatmap. A dense run of
         // buckets reads as a near-continuous beaded rail; a sparse/fading run reads as scattered dots.
         for (const p of pts) {
+          const emph = p.emph;
+          const rMul = 1 + emph * KING_RADIUS_BOOST;
           const cy = (p.yTop + p.yBot) / 2;
           const r = Math.max(1.6, ((p.yBot - p.yTop) / 2) * rMul); // half-height → bead radius
           ctx.fillStyle = withA(b.color, p.a);
@@ -191,61 +200,6 @@ class WallRailPaneView implements IPrimitivePaneView {
     if (!bands || bands.length === 0) return null;
     return new WallRailRenderer(bands);
   }
-}
-
-/** Parse "#rrggbb" (or an already-rgba string) into an rgba() at alpha `a`. */
-function withA(color: string, a: number): string {
-  const alpha = Math.max(0, Math.min(1, a));
-  if (color.startsWith("#") && (color.length === 7 || color.length === 4)) {
-    let r: number, g: number, b: number;
-    if (color.length === 7) {
-      r = parseInt(color.slice(1, 3), 16);
-      g = parseInt(color.slice(3, 5), 16);
-      b = parseInt(color.slice(5, 7), 16);
-    } else {
-      r = parseInt(color[1]! + color[1]!, 16);
-      g = parseInt(color[2]! + color[2]!, 16);
-      b = parseInt(color[3]! + color[3]!, 16);
-    }
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-  }
-  // Fallback: assume a solid CSS color; wrap via a canvas-friendly rgba is not possible, so return
-  // the color and let globalAlpha carry translucency.
-  return color;
-}
-
-/**
- * TARGET bead half-height (radius) in px for a point — ABSOLUTE-magnitude first, frame-relative
- * fallback. Scale-independent (pure function of the point's magnitude), so the rAF loop can ease it
- * without touching the chart's time/price scales.
- *
- * Absolute path: a resolvable $ notional — a REAL StrikeTrailPoint.notional if one is ever threaded,
- * else the documented proxy from pct (share × a nominal book) — sizes the bead on the perceptual $
- * ladder, so a genuinely bigger wall reads bigger regardless of what else is in frame. Fallback:
- * when there is no usable magnitude at all (pct ≤ 0 / non-finite), drop to the old frame-relative
- * half-height so off-hours / degraded data still renders a rail instead of collapsing to the floor.
- */
-function targetHalfPx(pct: number, notional: number | undefined, maxPct: number): number {
-  const usd = Number.isFinite(notional) && (notional as number) > 0 ? (notional as number) : pctToNotionalProxy(pct);
-  if (usd > 0) return beadRadiusForNotional(usd, { floorPx: HALF_PX_MIN, ceilPx: HALF_PX_MAX });
-  // No magnitude to read absolutely — keep the frame-relative behaviour rather than blanking.
-  return HALF_PX_MIN + relStrengthT(pct, maxPct) * (HALF_PX_MAX - HALF_PX_MIN);
-}
-
-function fillAlpha(pct: number, maxPct: number): number {
-  const t = relStrengthT(pct, maxPct);
-  return FILL_ALPHA_MIN + t * (FILL_ALPHA_MAX - FILL_ALPHA_MIN);
-}
-
-/** Stable per-bead key for the easing maps: side + strike + bucket time. The leading bucket keeps a
- *  stable key across refreshes while its pct updates, so ITS bead eases (grows/shrinks) while settled
- *  historical beads (unchanged key + unchanged target) never move. */
-function beadKey(side: "c" | "p", strike: number, time: number): string {
-  return `${side}:${strike}:${time}`;
-}
-/** Per-strike king-emphasis key (side + strike). */
-function kingKey(side: "c" | "p", strike: number): string {
-  return `${side}:${strike}`;
 }
 
 export class WallRailPrimitive implements ISeriesPrimitive<Time> {
@@ -409,37 +363,30 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
       if (t0 != null && t0 < earliest) earliest = t0;
     }
 
-    // King strike per side = the strike whose LATEST bucket carries the highest share. This is the
-    // dominant node whose emphasis eases toward it (and away from the previous king) as it migrates.
-    const kingStrikeForSide = (trails: StrikeTrail[]): number | null => {
-      let bestStrike: number | null = null;
-      let best = -Infinity;
-      for (const t of trails) {
-        const last = t.points[t.points.length - 1];
-        if (last && last.pct > best) {
-          best = last.pct;
-          bestStrike = t.strike;
-        }
-      }
-      return bestStrike;
-    };
-    const callKing = kingStrikeForSide(callTrails);
-    const putKing = kingStrikeForSide(putTrails);
+    // Kingship PER BUCKET, not one scalar per strike — the crown belongs to whichever strike held
+    // the highest share at that moment, so a handover is visible where it happened.
+    const callKingAt = kingStrikeByTime(callTrails);
+    const putKingAt = kingStrikeByTime(putTrails);
 
-    const addTrail = (trail: StrikeTrail, color: string, side: "c" | "p", kingStrike: number | null) => {
+    // The newest bucket on screen. Only THIS bucket's emphasis eases (a smooth crossfade as the
+    // crown changes hands live); every earlier bucket renders its frozen truth. Easing history too
+    // would re-animate the past on every pan — a different kind of lie about what happened when.
+    let liveTime = -Infinity;
+    for (const t of [...callTrails, ...putTrails]) {
+      const last = t.points[t.points.length - 1];
+      if (last && last.time > liveTime) liveTime = last.time;
+    }
+
+    const addTrail = (trail: StrikeTrail, color: string, side: "c" | "p", kingAt: Map<number, number>) => {
       const y = series.priceToCoordinate(trail.strike);
       if (y == null) return;
       const pts = trail.points;
       if (pts.length === 0) return;
-      // King emphasis target for this strike: 1 if it's the current dominant node, else 0. The loop
-      // eases the displayed value, so a king change slides emphasis from the old row to the new.
+      // Live-bucket easing target for this strike (history is exact, so only the live edge eases).
       const kKey = kingKey(side, trail.strike);
-      this._kingTargetEmph.set(kKey, trail.strike === kingStrike ? 1 : 0);
-      const emph = this._reduceMotion
-        ? trail.strike === kingStrike
-          ? 1
-          : 0
-        : this._kingEmph.get(kKey) ?? 0;
+      const isLiveKing = kingAt.get(liveTime) === trail.strike;
+      this._kingTargetEmph.set(kKey, isLiveKing ? 1 : 0);
+      const liveEmph = this._reduceMotion ? (isLiveKing ? 1 : 0) : this._kingEmph.get(kKey) ?? 0;
 
       // Median bucket step → gap threshold. A jump beyond GAP_SPLIT_FACTOR× the median means the wall
       // genuinely dropped out of the dominant set (a dead stretch), so we break the band there rather
@@ -461,7 +408,6 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
         bands.push({
           pts: run,
           color,
-          emph,
           birth: startsInWindow ? { x: first.x, y, half: (first.yBot - first.yTop) / 2 } : null,
           death: isDeath ? { x: last.x, y, half: (last.yBot - last.yTop) / 2 } : null,
         });
@@ -502,13 +448,16 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
           }
         }
         const a = Math.min(1, fillAlpha(p.pct, maxPct) * mod.alphaMul * (0.75 + 0.25 * Math.min(1.6, glow)));
-        run.push({ x, yTop: y - half, yBot: y + half, a });
+        // Frozen truth for history; eased value only on the live edge.
+        const wasKing = kingAt.get(p.time) === trail.strike;
+        const pEmph = p.time === liveTime ? liveEmph : wasKing ? 1 : 0;
+        run.push({ x, yTop: y - half, yBot: y + half, a, emph: pEmph });
       }
       flush(pts.length - 1);
     };
 
-    for (const t of callTrails) addTrail(t, callColor, "c", callKing);
-    for (const t of putTrails) addTrail(t, putColor, "p", putKing);
+    for (const t of callTrails) addTrail(t, callColor, "c", callKingAt);
+    for (const t of putTrails) addTrail(t, putColor, "p", putKingAt);
     if (bands.length === 0) return null;
     return bands;
   }

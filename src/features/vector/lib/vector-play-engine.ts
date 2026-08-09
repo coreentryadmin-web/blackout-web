@@ -173,7 +173,11 @@ function collectLevels(input: VectorPlayInput): LevelCand[] {
   push("call wall", input.gexWalls?.callWalls?.[1]?.strike);
   push("put wall", input.gexWalls?.putWalls?.[0]?.strike);
   push("put wall", input.gexWalls?.putWalls?.[1]?.strike);
-  if (input.expectedMove) {
+  // Guard the shape, not just the presence. A truthy expectedMove whose `bands` is absent or not
+  // an array threw here and took the ENTIRE play down — the member sees a blank panel, not a
+  // degraded one. Every other input on this snapshot is optional and degrades gracefully; this one
+  // was the exception because it was the only field iterated without a check.
+  if (Array.isArray(input.expectedMove?.bands)) {
     for (const b of input.expectedMove.bands) {
       push(`${b.sigma}σ`, b.low);
       push(`${b.sigma}σ`, b.high);
@@ -183,13 +187,67 @@ function collectLevels(input: VectorPlayInput): LevelCand[] {
 }
 
 /**
+ * The level a RANGE play should mean-revert to: something inside the rails.
+ *
+ * Exported for tests — the failure it prevents (a "sell rips at the call wall" play whose target is
+ * above that wall) is a narrative contradiction that only shows up when the magnet drifts outside
+ * the nearest pair, so it needs pinning directly rather than through the whole engine.
+ */
+export function rangeMeanReference(
+  magnet: number | null,
+  maxPain: number | null,
+  putWall: number | null,
+  callWall: number | null
+): { price: number | null; label: string } {
+  const inside = (p: number | null): boolean => {
+    if (p == null) return false;
+    if (putWall != null && p < putWall) return false;
+    if (callWall != null && p > callWall) return false;
+    return true;
+  };
+  if (inside(magnet)) return { price: magnet, label: "magnet" };
+  if (inside(maxPain)) return { price: maxPain, label: "max pain" };
+  // Both rails known but neither candidate sits between them — the midpoint IS the mean of the range.
+  if (putWall != null && callWall != null) {
+    return { price: (putWall + callWall) / 2, label: "range mid" };
+  }
+  // Exactly ONE rail known. The earlier version returned the raw magnet here, which reintroduced
+  // the very contradiction this function exists to prevent: a magnet above a known call wall would
+  // still be quoted as the mean-revert target while the entry says to sell at that wall. Clamp to
+  // the known boundary instead — a range cannot mean-revert past its own edge.
+  const cand = magnet ?? maxPain;
+  if (cand != null) {
+    if (callWall != null && cand > callWall) return { price: callWall, label: "call wall" };
+    if (putWall != null && cand < putWall) return { price: putWall, label: "put wall" };
+  }
+  // No rails at all: nothing to be inside of, so the magnet stands (unchanged from before).
+  return { price: cand, label: magnet != null ? "magnet" : "max pain" };
+}
+
+/**
  * Ordered, deduped target strings on one side of spot. Nearest first (T1→T3). Levels within a
  * tight band merge their labels ("VWAP/magnet 7,562") rather than printing two near-identical
  * lines, which is how a desk actually quotes a confluence target.
  */
-function pickTargets(cands: LevelCand[], dir: "up" | "down", spot: number, max = 3): string[] {
+function pickTargets(
+  cands: LevelCand[],
+  dir: "up" | "down",
+  spot: number,
+  max = 3,
+  /**
+   * A breakout play's TRIGGER level. Targets must lie strictly BEYOND it, not just beyond spot.
+   *
+   * A momentum entry fires on a close through a wall, so while price is still approaching that
+   * wall it is above spot and pickTargets happily returned it — producing "long on 15m close > 725"
+   * over "TARGETS call wall 725". Enter at 725, take profit at 725. Observed live on QQQ monthly,
+   * 2026-08-09, both the 15m and 1H views. Undefined for non-breakout plays, where spot alone is
+   * the correct reference.
+   */
+  beyond?: number | null
+): string[] {
+  const floorPx = dir === "up" ? Math.max(spot, beyond ?? -Infinity) : Math.min(spot, beyond ?? Infinity);
   const side = cands.filter((c) =>
-    dir === "up" ? c.price > spot * 1.0001 : c.price < spot * 0.9999
+    dir === "up" ? c.price > floorPx * 1.0001 : c.price < floorPx * 0.9999
   );
   side.sort((a, b) => (dir === "up" ? a.price - b.price : b.price - a.price));
   const tol = spot * 0.0006;
@@ -208,7 +266,10 @@ function pickTargets(cands: LevelCand[], dir: "up" | "down", spot: number, max =
 
 /** True when `price` sits inside the k·σ expected-move band (a higher-probability target). */
 function withinSigma(em: ExpectedMove | null | undefined, price: number | null, k: number): boolean {
-  if (!em || price == null) return false;
+  // Same shape guard as collectLevels: presence of `em` does not guarantee an array of bands, and
+  // an unguarded .find() here threw from a DIFFERENT call path than the one first found. Both are
+  // fixed together — a member does not care which of the two crashed their panel.
+  if (!Array.isArray(em?.bands) || price == null) return false;
   const b = em.bands.find((x) => x.sigma === k);
   return !!b && price >= b.low && price <= b.high;
 }
@@ -438,7 +499,9 @@ export function buildVectorPlay(input: VectorPlayInput): VectorPlay | null {
     case "fade-call": {
       const wall = atWall ? atWall.strike : callWall!;
       refLevel = wall;
-      targets = pickTargets(cands, "down", spot);
+      // Beyond the faded wall, not merely beyond spot: the entry is "short into <wall>", so a level
+      // between spot and the wall would be both the entry and the first target.
+      targets = pickTargets(cands, "down", spot, 3, wall);
       const tgt = targets[0] ?? (magnetStrike != null ? `magnet ${fmt(magnetStrike)}` : "VWAP");
       headline = `${label} · fade the ${fmt(wall)} call wall — short back toward ${tgt}`;
       thesis = `Long gamma (spot ${fmt(spot)}${flip != null ? ` > flip ${fmt(flip)}` : ""}): dealers sell strength, so the ${fmt(wall)} call wall caps. Fade the test for a mean-revert lower.`;
@@ -449,7 +512,8 @@ export function buildVectorPlay(input: VectorPlayInput): VectorPlay | null {
     case "fade-put": {
       const wall = atWall ? atWall.strike : putWall!;
       refLevel = wall;
-      targets = pickTargets(cands, "up", spot);
+      // Beyond the faded wall — same reason as fade-call above.
+      targets = pickTargets(cands, "up", spot, 3, wall);
       const tgt = targets[0] ?? (magnetStrike != null ? `magnet ${fmt(magnetStrike)}` : "VWAP");
       headline = `${label} · fade the ${fmt(wall)} put wall — long back toward ${tgt}`;
       thesis = `Long gamma (spot ${fmt(spot)}${flip != null ? ` > flip ${fmt(flip)}` : ""}): dealers buy weakness, so the ${fmt(wall)} put wall floors. Fade the test for a bounce higher.`;
@@ -458,27 +522,71 @@ export function buildVectorPlay(input: VectorPlayInput): VectorPlay | null {
       break;
     }
     case "range": {
-      refLevel = magnetStrike ?? num(input.maxPain);
-      const magnetTxt = magnetStrike != null ? `${fmt(magnetStrike)} magnet` : "the gamma center of mass";
+      // The mean-revert reference must sit INSIDE the range it is supposed to be the mean of.
+      //
+      // The gamma magnet is a strength-weighted centre of mass of ALL walls, so it can land outside
+      // the nearest put/call pair — observed live on NVDA 2026-08-09: put wall 220, call wall 225,
+      // magnet 226.08. The play then read "sell rips 225 ... mean-revert to 226.08 magnet", i.e.
+      // sell at 225 and target a level above it. Self-contradictory, and it shipped to the panel.
+      //
+      // When the magnet is outside the rails it is not the mean of this range. Prefer max pain if
+      // that IS inside, else the rail midpoint. Only fall back to the raw magnet when there are no
+      // rails to be inside of.
+      let meanRef = rangeMeanReference(magnetStrike, num(input.maxPain), putWall, callWall);
+      // A mean that IS a rail is a third form of the same contradiction. rangeMeanReference treats
+      // the rails as inclusive bounds (deliberately — a magnet sitting exactly on a rail is still
+      // inside the range), but a fade ENTERS at the rails, so a mean equal to one of them says
+      // "buy dips 307.5, target 307.5". Live AAPL weekly 2026-08-09: put wall and max pain both
+      // 307.5. With both rails known the midpoint is the honest mean; with one rail there is no
+      // opposing entry to collide with, so it stands.
+      if (
+        meanRef.price != null &&
+        putWall != null &&
+        callWall != null &&
+        (meanRef.price === putWall || meanRef.price === callWall)
+      ) {
+        meanRef = { price: (putWall + callWall) / 2, label: "range mid" };
+      }
+      refLevel = meanRef.price ?? magnetStrike ?? num(input.maxPain);
+      const magnetTxt = meanRef.price != null ? `${fmt(meanRef.price)} ${meanRef.label}` : "the gamma center of mass";
       headline = `${label} · range — fade extremes toward ${magnetTxt}`;
       thesis = `Long gamma (spot ${fmt(spot)}${flip != null ? ` > flip ${fmt(flip)}` : ""}): price is pinned. Buy dips toward the put wall, sell rips toward the call wall — mean-revert to ${magnetTxt}.`;
       const parts: string[] = [];
       if (putWall != null) parts.push(`buy dips ${fmt(putWall)}`);
       if (callWall != null) parts.push(`sell rips ${fmt(callWall)}`);
       entryZone = parts.length ? parts.join(" · ") : (magnetStrike != null ? `mean-revert to ${fmt(magnetStrike)}` : undefined);
-      // Range targets = the mean and both rails.
-      const t: string[] = [];
-      if (magnetStrike != null) t.push(`magnet ${fmt(magnetStrike)}`);
-      if (callWall != null) t.push(`call wall ${fmt(callWall)}`);
-      if (putWall != null) t.push(`put wall ${fmt(putWall)}`);
-      targets = t.slice(0, 3);
+      // A fade play's target is the MEAN — not the rails, which are its entries.
+      //
+      // Listing both rails alongside the mean re-created the same self-contradiction the mean
+      // reference was fixed for, one line lower down. Live NVDA 2026-08-09: put wall 220, call wall
+      // 225, spot 223.8 → "ENTRY buy dips 220 · sell rips 225" over "TARGETS call wall 225 → range
+      // mid 222.5 → put wall 220". Nearest-first ordering put 225 first precisely BECAUSE spot had
+      // rallied toward the sell entry, so the panel's first target was the level it had just told
+      // you to sell at. Sell 225, target 225.
+      //
+      // The rails do belong to the play — as the OTHER leg's entry, which the entry line and the
+      // thesis both already say. A flat T1→T2→T3 list cannot express "225 is a target for the long
+      // leg and an entry for the short leg", so it should not try: the one level both legs actually
+      // travel toward is the mean.
+      //
+      // Rails-only fallback (no magnet, no max pain, one rail): keep the far rail rather than emit
+      // no target at all — with a single rail there is no entry on the opposite side to collide with.
+      const t: LevelCand[] = [];
+      if (meanRef.price != null) {
+        t.push({ label: meanRef.label, price: meanRef.price });
+      } else if (callWall != null || putWall != null) {
+        const only = callWall ?? putWall!;
+        t.push({ label: callWall != null ? "call wall" : "put wall", price: only });
+      }
+      targets = t.map((c) => `${c.label} ${fmt(c.price)}`);
       invalidation = flip != null ? `${tf} close < ${fmt(flip)} flips to short gamma (regime change)` : undefined;
       break;
     }
     case "momentum-long": {
       const brokeWall = atWall && atWall.side === "call" ? atWall.strike : null;
       refLevel = brokeWall ?? callWall;
-      targets = pickTargets(cands, "up", spot);
+      // Beyond the break level, not merely beyond spot — see pickTargets' `beyond` parameter.
+      targets = pickTargets(cands, "up", spot, 3, brokeWall);
       const tgt = targets[0] ?? (callWall != null ? `call wall ${fmt(callWall)}` : "the next level");
       const trigger = brokeWall != null ? `a break of ${fmt(brokeWall)}` : `continuation`;
       headline = `${label} · momentum long on ${trigger} → target ${tgt}`;
@@ -490,7 +598,8 @@ export function buildVectorPlay(input: VectorPlayInput): VectorPlay | null {
     case "momentum-short": {
       const brokeWall = atWall && atWall.side === "put" ? atWall.strike : null;
       refLevel = brokeWall ?? putWall;
-      targets = pickTargets(cands, "down", spot);
+      // Beyond the break level, not merely beyond spot — see pickTargets' `beyond` parameter.
+      targets = pickTargets(cands, "down", spot, 3, brokeWall);
       const tgt = targets[0] ?? (putWall != null ? `put wall ${fmt(putWall)}` : "the next level");
       const trigger = brokeWall != null ? `a break of ${fmt(brokeWall)}` : `continuation`;
       headline = `${label} · momentum short on ${trigger} → target ${tgt}`;

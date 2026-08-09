@@ -149,3 +149,55 @@ test("the re-warm re-reads and unions instead of blind-writing the mirror", asyn
   // The overwrite form must be gone — it is the defect.
   assert.doesNotMatch(src, /sharedCacheSet\(redisKey\(st, sessionYmd\), durable, TTL_SEC\)/);
 });
+
+// ── loadSessionWallTail ──────────────────────────────────────────────────────
+// The DB is not configured in this environment, so every case here exercises the Redis/memory
+// fallback path. That is deliberate and is the path that must stay correct: the DB tail is an
+// OPTIMISATION, and a caller must get the same answer whether or not Postgres is reachable.
+
+test("loadSessionWallTail: returns only the newest sample, and it is the newest one", async () => {
+  const session = "2099-03-01";
+  await appendSessionWallSample(session, { time: 100, walls: walls(500, 400) }, "TAIL", "all");
+  await appendSessionWallSample(session, { time: 200, walls: walls(510, 400) }, "TAIL", "all");
+  await appendSessionWallSample(session, { time: 300, walls: walls(520, 400) }, "TAIL", "all");
+
+  const { loadSessionWallTail } = await import("./vector-wall-persist");
+  const tail = await loadSessionWallTail(session, "TAIL", "all", 1);
+  assert.equal(tail.length, 1);
+  assert.equal(tail[0].time, 300, "must be the LAST reading — that is the whole contract");
+  assert.equal(tail[0].walls.callWalls[0].strike, 520);
+});
+
+test("loadSessionWallTail: a limit at or above the rail length returns the whole rail", async () => {
+  const session = "2099-03-02";
+  await appendSessionWallSample(session, { time: 10, walls: walls(1, 1) }, "TAIL2", "all");
+  await appendSessionWallSample(session, { time: 20, walls: walls(2, 2) }, "TAIL2", "all");
+
+  const { loadSessionWallTail } = await import("./vector-wall-persist");
+  assert.equal((await loadSessionWallTail(session, "TAIL2", "all", 2)).length, 2);
+  assert.equal((await loadSessionWallTail(session, "TAIL2", "all", 99)).length, 2, "never over-slices");
+});
+
+test("loadSessionWallTail: TODAY's session is never served from the lagging mirror", async () => {
+  // The mirror is written through non-blocking, so for a session still being recorded it can be
+  // behind — and "the last reading" is exactly the value that lag would corrupt. Sessions strictly
+  // BEFORE todayYmd may take the DB shortcut; today and anything later must not.
+  const session = "2099-03-03";
+  await appendSessionWallSample(session, { time: 1, walls: walls(7, 7) }, "TAIL3", "all");
+
+  const { loadSessionWallTail } = await import("./vector-wall-persist");
+  // Same answer either way here (no DB in this env); the point is that both paths are exercised
+  // and neither throws or returns a different shape.
+  const asToday = await loadSessionWallTail(session, "TAIL3", "all", 1, session);
+  const asPast = await loadSessionWallTail(session, "TAIL3", "all", 1, "2099-03-04");
+  const noClock = await loadSessionWallTail(session, "TAIL3", "all", 1);
+  assert.deepEqual(asToday, asPast);
+  assert.deepEqual(asToday, noClock, "omitting todayYmd must behave as 'not settled', never as settled");
+  assert.equal(asToday.length, 1);
+});
+
+test("loadSessionWallTail: empty session id and unrecorded rails return [] rather than throwing", async () => {
+  const { loadSessionWallTail } = await import("./vector-wall-persist");
+  assert.deepEqual(await loadSessionWallTail("", "TAIL4"), []);
+  assert.deepEqual(await loadSessionWallTail("2099-03-09", "NEVER-RECORDED"), []);
+});

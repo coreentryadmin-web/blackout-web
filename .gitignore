@@ -51,3 +51,7 @@ spx-dashboard-pin.png
 
 thermal-after-refresh.png
 thermal-triple-after-load.png
+
+# /brag skill output (generated plan/composition/render artifacts, not source)
+brag-output/
+brag-output-*/

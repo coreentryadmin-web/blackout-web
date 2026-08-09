@@ -49,7 +49,7 @@ const VectorChart = dynamic(
     ssr: false,
     loading: () => (
       <div
-        className="flex min-h-[min(72vh,640px)] items-center justify-center rounded-xl border border-cyan-500/20 bg-black/40 text-sm text-cyan-300"
+        className="flex min-h-[clamp(560px,80vh,980px)] items-center justify-center rounded-xl border border-cyan-500/20 bg-black/40 text-sm text-cyan-300"
         role="status"
         aria-live="polite"
       >
@@ -166,6 +166,10 @@ export function VectorPageShell({
   // defaulted to weekly, the ladder's first paint showed the near-term aggregate against a
   // weekly-scoped chart until hydration converged them.
   const [dteHorizon, setDteHorizon] = useState<VectorDteHorizon>(defaultDteHorizon ?? "weekly");
+  // Price under the historical chart's crosshair, lifted here so the GEX ladder — a sibling, not
+  // a child, of the chart — can highlight the matching strike. Null whenever the cursor is off
+  // the plot.
+  const [hoverPrice, setHoverPrice] = useState<number | null>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
   const activeTicker = ticker || VECTOR_DEFAULT_TICKER;
   // Daily/Weekly/4H historical view (CTO audit P2 #5, and P2 "4h remains open" 2026-08-05) — a
@@ -255,6 +259,27 @@ export function VectorPageShell({
   const [liveSpot, setLiveSpot] = useState<number | null>(
     initialBars.length ? initialBars[initialBars.length - 1]!.close : null
   );
+
+  // LADDER↔CHART BAND (2026-08-09). The measured bug: on NVDA the ladder spanned 162.5→300 while
+  // the chart's price axis spanned ~197.5→247.5. Same instrument, two unrelated scales, so finding
+  // a level meant scrolling a rail that had nothing to do with what the chart was showing.
+  //
+  // The fix reuses the SHARED PRICE AXIS seam built for the SPX desk rather than adding a second
+  // one: `onPriceScaleRender` already reports the chart's live visible price range, already
+  // throttled (~250ms leading+trailing) and already change-gated, so this costs one extra setState
+  // per meaningful zoom/pan and nothing at all while the tape is quiet. VectorChart is untouched.
+  const [chartPriceBand, setChartPriceBand] = useState<{ min: number; max: number } | null>(null);
+  const handlePriceScaleRender = useCallback((map: VectorPriceScaleMap) => {
+    setChartPriceBand((prev) =>
+      prev && prev.min === map.rangeMin && prev.max === map.rangeMax
+        ? prev // identity-stable so the ladder doesn't re-render on pane resize/scroll alone
+        : { min: map.rangeMin, max: map.rangeMax }
+    );
+  }, []);
+  // Only the intraday surface emits a band. The 1D/1W/4H views are a DIFFERENT chart component
+  // (VectorDailyChart) spanning months of price, and scoping the rail to a multi-month range would
+  // hide nothing while implying the two are linked — so those views get the full rail, as before.
+  const priceBand = chartView === "intraday" ? chartPriceBand : null;
 
   // Load the member's saved alert rules whenever the ticker changes (and clear the recent history so
   // one ticker's fires don't bleed into another). Persisted per ticker in localStorage.
@@ -559,6 +584,11 @@ export function VectorPageShell({
       onTechnicalsChange={setTechnicals}
       onExpectedMoveChange={setExpectedMove}
       onPlayChange={setPlay}
+      // The chart-only embed returns earlier with its own VectorChart, so in practice only the
+      // standalone page reaches here and `onPriceScaleRender` is undefined. The `??` keeps a host's
+      // callback authoritative anyway rather than silently stealing the seam — the two consumers
+      // are mutually exclusive (an embed has no ladder rail), so there is nothing to merge.
+      onPriceScaleRender={onPriceScaleRender ?? handlePriceScaleRender}
       alertRules={alertRules}
       onAlertsFired={handleAlertsFired}
       leadSlot={chartLead}
@@ -620,11 +650,13 @@ export function VectorPageShell({
             )}
           >
             <VectorGexLadder
+              hoverPrice={hoverPrice}
               ticker={activeTicker}
               liveSession={liveSession}
               initialSpot={initialBars.length ? initialBars[initialBars.length - 1]!.close : null}
               liveSpot={liveSpot}
               dteHorizon={dteHorizon}
+              priceBand={priceBand}
             />
           </div>
 
@@ -651,7 +683,11 @@ export function VectorPageShell({
             {chartView === "intraday" ? (
               chartBlock
             ) : (
-              <VectorDailyChart ticker={activeTicker} unit={chartView} />
+              <VectorDailyChart
+                ticker={activeTicker}
+                unit={chartView}
+                onHoverPrice={setHoverPrice}
+              />
             )}
           </div>
 
