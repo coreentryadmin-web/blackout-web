@@ -426,3 +426,14 @@ test("with no rails there is nothing to be inside of — the magnet stands", () 
   // One rail only still constrains on that side.
   assert.notEqual(rangeMeanReference(226.08, null, null, 225).label, "magnet");
 });
+
+test("a malformed expectedMove degrades the play instead of killing it", () => {
+  // Found by the invariant audit (2026-08-09): `for (const b of input.expectedMove.bands)` had no
+  // shape check, so a truthy expectedMove without an array `bands` threw and blanked the whole
+  // panel. Every other snapshot field is optional and degrades; this one was the exception.
+  for (const bad of [{}, { bands: null }, { bands: undefined }, { bands: 5 }, { bands: "x" }]) {
+    const play = buildVectorPlay(base({ expectedMove: bad as never }));
+    assert.ok(play, `expectedMove=${JSON.stringify(bad)} must still produce a play`);
+    assert.ok(play.headline, "and it must still carry a headline");
+  }
+});
