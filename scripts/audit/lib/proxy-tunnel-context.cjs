@@ -144,7 +144,22 @@ function isStreamingRequest(req) {
  * just as effectively) and truncates, so one enormous URL cannot bury the surrounding output.
  */
 function logSafe(value, max = 200) {
+  // The two newline replaces are FIRST and SEPARATE on purpose, and they are NOT redundant with
+  // the range that follows.
+  //
+  // CodeQL's log-injection query recognises a sanitizer by SHAPE: a global replace of the line
+  // terminators themselves. The single range-based class below was here first and is strictly
+  // STRONGER (it removes \n and \r *and* every other control character) — and CodeQL re-flagged
+  // the line anyway, because the model matches the pattern rather than reasoning about which
+  // characters a range covers.
+  //
+  // So state the recognised form explicitly, and keep the range for what it misses: \x1b and \b
+  // rewrite a terminal line just as effectively as \n does. Writing only the weaker check to
+  // satisfy the analyzer, and dropping the stronger one, would be the wrong trade. Both, cheap
+  // first.
   return String(value ?? "")
+    .replace(/\n/g, " ")
+    .replace(/\r/g, " ")
     .replace(/[\u0000-\u001F\u007F-\u009F]/g, " ")
     .slice(0, max);
 }
