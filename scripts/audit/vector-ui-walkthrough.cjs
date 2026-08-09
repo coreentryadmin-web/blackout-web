@@ -52,9 +52,9 @@ const STEPS = [
   { id: "01-tf-1m", label: "timeframe 1m", select: ["[data-testid=vector-tf-select]", "1"], settle: 6000, effect: { kind: "selectValue", sel: "[data-testid=vector-tf-select]", value: "1" } },
   { id: "02-tf-15m", label: "timeframe 15m", select: ["[data-testid=vector-tf-select]", "15"], settle: 6000, effect: { kind: "selectValue", sel: "[data-testid=vector-tf-select]", value: "15" } },
   { id: "03-tf-60m", label: "timeframe 60m", select: ["[data-testid=vector-tf-select]", "60"], settle: 6000, effect: { kind: "selectValue", sel: "[data-testid=vector-tf-select]", value: "60" } },
-  { id: "04-dte-0dte", label: "DTE 0DTE", sel: "[data-testid=vector-dte-0dte]", settle: 8000, effect: { kind: "active", sel: "[data-testid=vector-dte-0dte]" } },
-  { id: "05-dte-monthly", label: "DTE monthly", sel: "[data-testid=vector-dte-monthly]", settle: 8000, effect: { kind: "active", sel: "[data-testid=vector-dte-monthly]" } },
-  { id: "06-dte-weekly", label: "DTE weekly", sel: "[data-testid=vector-dte-weekly]", settle: 8000, effect: { kind: "active", sel: "[data-testid=vector-dte-weekly]" } },
+  { id: "04-dte-0dte", label: "DTE 0DTE", sel: "[data-testid=vector-dte-0dte]", settle: 8000, horizon: "0dte", effect: { kind: "active", sel: "[data-testid=vector-dte-0dte]" } },
+  { id: "05-dte-monthly", label: "DTE monthly", sel: "[data-testid=vector-dte-monthly]", settle: 8000, horizon: "monthly", effect: { kind: "active", sel: "[data-testid=vector-dte-monthly]" } },
+  { id: "06-dte-weekly", label: "DTE weekly", sel: "[data-testid=vector-dte-weekly]", settle: 8000, horizon: "weekly", effect: { kind: "active", sel: "[data-testid=vector-dte-weekly]" } },
   { id: "07-lens-vex", label: "lens VEX", sel: "[data-testid=vector-lens-vex]", settle: 6000, effect: { kind: "active", sel: "[data-testid=vector-lens-vex]" } },
   { id: "08-lens-gex", label: "lens GEX", sel: "[data-testid=vector-lens-gex]", settle: 6000, effect: { kind: "active", sel: "[data-testid=vector-lens-gex]" } },
   { id: "09-ladder-reset", label: "ladder reset-to-spot", sel: "[data-testid=vector-gex-ladder-reset]", settle: 2500, effect: { kind: "spotInLadderView" } },
@@ -163,6 +163,83 @@ async function verifyEffect(page, effect) {
   }, effect);
 }
 
+/**
+ * DOES THE SCREEN AGREE WITH THE DATA?
+ *
+ * Everything else in this file checks that things are PRESENT. That is not the same as correct,
+ * and the distinction is not academic here: the bug that started this whole audit was a play panel
+ * whose every individual number was right and whose sentence was self-contradictory. It was found
+ * by a human reading a screenshot, and nothing automated would have caught it.
+ *
+ * This is the automatable half of that gap — cross-check the values the DESK RENDERED against the
+ * values the API SERVED for the same ticker and horizon. It catches the class where the transport,
+ * the formatter or a stale render silently disagrees with the source: a spot that stopped updating,
+ * a ladder showing another ticker's strikes, a wall label that lost a digit.
+ *
+ * It deliberately does NOT try to judge whether the underlying numbers are the RIGHT numbers.
+ * That is the invariant harness's job (relationships between values) and, past that, a human's.
+ */
+async function captureApiBaseline(page, ticker, horizons) {
+  const out = {};
+  for (const h of horizons) {
+    out[h] = await page.evaluate(
+      async (q) => {
+        const r = await fetch(`/api/market/vector/gex-ladder?ticker=${encodeURIComponent(q.t)}&dte=${encodeURIComponent(q.h)}`);
+        if (!r.ok) return { error: `HTTP ${r.status}` };
+        const j = await r.json();
+        return { spot: j?.spot ?? null, strikes: (j?.ladder?.rows ?? []).map((x) => Number(x.strike)) };
+      },
+      { t: ticker, h }
+    );
+  }
+  return out;
+}
+
+function crossCheckAgainstBaseline(shown, base, { liveSession }) {
+  const fails = [];
+  if (!base || base.error) return [`no API baseline to compare against (${base?.error ?? "missing"})`];
+
+  if (shown.spot == null) {
+    fails.push("ladder header shows no spot");
+  } else if (base.spot != null) {
+    // Off-hours the tape is frozen, so this should match closely. During RTH the baseline was taken
+    // at run start and the header tracks live spot, so real drift is expected and not a defect —
+    // the tolerance widens rather than the check being dropped, so a spot that stops updating
+    // entirely (or shows another instrument) is still caught.
+    const tol = liveSession ? 0.05 : 0.01;
+    const drift = Math.abs(shown.spot - base.spot) / base.spot;
+    if (drift > tol) {
+      fails.push(`rendered spot ${shown.spot} vs API ${base.spot} — ${(drift * 100).toFixed(2)}% apart (tolerance ${(tol * 100).toFixed(0)}%)`);
+    }
+  }
+
+  // Every rendered strike must EXIST in the API ladder. The converse is NOT required: the rail is
+  // deliberately scoped to the chart's visible price band (#1957), so a subset is correct.
+  if (shown.strikes.length && base.strikes?.length) {
+    const known = new Set(base.strikes);
+    const alien = shown.strikes.filter((x) => !known.has(x));
+    if (alien.length) {
+      fails.push(`${alien.length} rendered strike(s) absent from the API ladder, e.g. ${alien.slice(0, 3).join(", ")}`);
+    }
+  }
+  return fails;
+}
+
+async function readRenderedLadder(page) {
+  return page.evaluate(() => {
+    const pick = (sel) => {
+      const all = [...document.querySelectorAll(sel)];
+      return all.find((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; }) ?? null;
+    };
+    const head = pick(".vector-gex-ladder-sub");
+    const spotTxt = head ? (head.textContent || "").match(/[\d,]+\.?\d*/) : null;
+    const strikes = [...document.querySelectorAll(".vector-gex-ladder-rows > *")]
+      .map((el) => Number(String(el.textContent || "").trim().split(/\s+/)[0].replace(/,/g, "")))
+      .filter((n) => Number.isFinite(n));
+    return { spot: spotTxt ? Number(spotTxt[0].replace(/,/g, "")) : null, strikes };
+  });
+}
+
 /** Assertions run inside the page. Kept as one evaluate so a state is measured at one instant. */
 async function inspect(page, { daily }) {
   return page.evaluate((isDaily) => {
@@ -220,9 +297,35 @@ async function run(cookieHeader) {
   });
   const page = await ctx.newPage();
   const results = [];
+  // /vector opens on WEEKLY (VectorChart's default); every DTE step below updates this.
+  let horizon = "weekly";
+  /**
+   * API baselines, captured ONCE at the very start.
+   *
+   * The minted Clerk __session JWT is dead ~72s after issue and cannot be extended by activity
+   * (measured 2026-08-09: 200 at t+61s, 401 at t+72s, still 401 at t+194s under continuous load).
+   * This walkthrough deliberately waits for the desk to settle between steps and runs well past
+   * that, so any authenticated fetch issued mid-run returns 401 — an earlier version of the
+   * cross-check did exactly that and reported eight failures that were purely its own expiry.
+   *
+   * Capturing up front means every later comparison is against data fetched while authenticated,
+   * and the harness stops needing credentials it no longer has.
+   *
+   * This is also the explanation for the SPX "GEX ladder unavailable" state this harness first
+   * surfaced: returning to Intraday remounts the chart, which emits a new spot, which re-runs the
+   * ladder's fetch effect — past the 72s window, so it 401'd and latched the error state. A real
+   * member's browser refreshes its Clerk token continuously and does not hit that path.
+   */
+  let baseline = {};
+  let liveSession = false;
 
   try {
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
+    // Inside the auth window: baselines first, before any settle time is spent.
+    baseline = await captureApiBaseline(page, TICKER, ["0dte", "weekly", "monthly"]);
+    liveSession = await page
+      .evaluate(() => !document.body.innerText.includes("CLOSE"))
+      .catch(() => false);
 
     // Each step's own `daily` wins. Blanket-stamping `daily: true` across DAILY_STEPS is what made
     // "return to Intraday" assert for the daily container and report the desk broken.
@@ -273,6 +376,18 @@ async function run(cookieHeader) {
       if (acted !== "missing" && step.effect) {
         const effectFail = await verifyEffect(page, step.effect);
         if (effectFail) fails.push(`no effect: ${effectFail}`);
+      }
+      // A step that changes the DTE toggle changes which ladder scope the desk should be showing;
+      // carry it forward so the cross-check asks the API for the scope actually on screen.
+      if (step.horizon) horizon = step.horizon;
+      // Replay deliberately re-renders the rail at a PAST cursor time, so the rendered strikes are
+      // legitimately a different set from the live ladder — cross-checking there would flag the
+      // feature working as designed. Skipped, and reported as skipped rather than silently passed.
+      if (!step.skipCrossCheck && acted !== "missing" && step.id !== "11-replay") {
+        const shown = await readRenderedLadder(page);
+        for (const f of crossCheckAgainstBaseline(shown, baseline[horizon], { liveSession })) {
+          fails.push(`screen vs API: ${f}`);
+        }
       }
       results.push({
         id: step.id,

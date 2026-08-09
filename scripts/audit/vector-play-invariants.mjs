@@ -117,11 +117,40 @@ const INVARIANTS = [
   },
 ];
 
+/**
+ * AUTH EXPIRY MUST NOT LOOK LIKE "NO DATA".
+ *
+ * This used to be `return r.ok ? await r.json() : null`, and `snapshotFor` turns a null into a
+ * "no snapshot" row, which the report explicitly does NOT count as a failure. So a run whose Clerk
+ * token expired half way through printed a wall of harmless-looking skips and exited 0.
+ *
+ * That is not hypothetical. Measured 2026-08-09: the `__session` JWT this harness mints is dead
+ * between t+61s and t+72s, and continuous requests do not extend it — a fixed lifetime, not an
+ * idle timeout. Any sweep that runs longer than about a minute is losing its authentication
+ * partway, and the previous shape could not tell that apart from a genuinely empty ticker.
+ *
+ * 401/403 are therefore recorded and escalated to a RUN failure by the caller. A real HTTP error
+ * (500, timeout) is still tolerated per-combination — that is legitimately "this one had no data".
+ */
+const httpStats = { ok: 0, unauthorized: 0, otherError: 0, firstUnauthorizedAtMs: null };
+const RUN_STARTED_AT = Date.now();
+
 async function json(cookie, path) {
   try {
     const r = await fetch(`${BASE}${path}`, { headers: { Cookie: cookie } });
-    return r.ok ? await r.json() : null;
+    if (r.status === 401 || r.status === 403) {
+      httpStats.unauthorized++;
+      if (httpStats.firstUnauthorizedAtMs == null) httpStats.firstUnauthorizedAtMs = Date.now() - RUN_STARTED_AT;
+      return null;
+    }
+    if (!r.ok) {
+      httpStats.otherError++;
+      return null;
+    }
+    httpStats.ok++;
+    return await r.json();
   } catch {
+    httpStats.otherError++;
     return null;
   }
 }
@@ -240,4 +269,20 @@ for (const r of results) {
 }
 console.log(`\ninvariant failures: ${failures}`);
 console.log(`combinations with no snapshot: ${noData}${noData ? " (off-hours or unsupported horizon — NOT counted as a failure)" : ""}`);
+console.log(`http: ${httpStats.ok} ok · ${httpStats.unauthorized} unauthorized · ${httpStats.otherError} other-error`);
+
+// A run that lost its session is not a clean run, whatever the invariant tally says: every request
+// after the token died returned nothing, and "nothing" is indistinguishable from "this ticker has
+// no structure" once it reaches the invariant checks. Fail loudly instead of reporting a green
+// sweep over an unknown number of blanks.
+if (httpStats.unauthorized > 0) {
+  const at = (httpStats.firstUnauthorizedAtMs / 1000).toFixed(0);
+  console.log(
+    `\nRUN INVALID: ${httpStats.unauthorized} request(s) came back 401/403, first at t+${at}s.\n` +
+      `The minted Clerk __session JWT expires ~72s after issue and cannot be extended by activity,\n` +
+      `so any sweep longer than that is unauthenticated for its remainder. Narrow the ticker set\n` +
+      `(AUDIT_TICKERS=...) or split the run so each stays inside the window.`
+  );
+  process.exit(2);
+}
 process.exit(failures > 0 ? 1 : 0);
