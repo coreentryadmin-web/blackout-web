@@ -10,6 +10,13 @@ import type {
   SeriesAttachedParameter,
 } from "lightweight-charts";
 import {
+  withA,
+  targetHalfPx,
+  fillAlpha,
+  beadKey,
+  kingKey,
+} from "./vector-wall-rail-core";
+import {
   relStrengthT,
   growthModulation,
   magnitudeGlowBoost,
@@ -70,13 +77,9 @@ type AttachedSeries = ISeriesApi<SeriesType, Time>;
  *  (unmistakably fat); a straggler → a ~MIN px hairline. MIN kept solid so even a weak wall is a
  *  readable dot, not a pinpoint. Shared by BOTH the absolute $-ladder and the relative fallback so
  *  the two sizing paths stay on one pixel scale. */
-const HALF_PX_MIN = 2.4;
-const HALF_PX_MAX = 9;
 /** Fill opacity floor/ceiling. Raised HARD (0.26→0.6, 0.82→0.98) after a member report that the
  *  bands were "too light, barely visible" — especially over the bright GEX heatmap background. The
  *  rail must read as SOLID coloured beads, not a faint wash. */
-const FILL_ALPHA_MIN = 0.6;
-const FILL_ALPHA_MAX = 0.98;
 /** Full opacity — the per-vertex alpha above already governs translucency; no global dimming (was
  *  0.9, which compounded with the low fill alpha to wash the rail out over the heatmap). */
 const RAIL_TRANSLUCENCY = 1;
@@ -191,61 +194,6 @@ class WallRailPaneView implements IPrimitivePaneView {
     if (!bands || bands.length === 0) return null;
     return new WallRailRenderer(bands);
   }
-}
-
-/** Parse "#rrggbb" (or an already-rgba string) into an rgba() at alpha `a`. */
-function withA(color: string, a: number): string {
-  const alpha = Math.max(0, Math.min(1, a));
-  if (color.startsWith("#") && (color.length === 7 || color.length === 4)) {
-    let r: number, g: number, b: number;
-    if (color.length === 7) {
-      r = parseInt(color.slice(1, 3), 16);
-      g = parseInt(color.slice(3, 5), 16);
-      b = parseInt(color.slice(5, 7), 16);
-    } else {
-      r = parseInt(color[1]! + color[1]!, 16);
-      g = parseInt(color[2]! + color[2]!, 16);
-      b = parseInt(color[3]! + color[3]!, 16);
-    }
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-  }
-  // Fallback: assume a solid CSS color; wrap via a canvas-friendly rgba is not possible, so return
-  // the color and let globalAlpha carry translucency.
-  return color;
-}
-
-/**
- * TARGET bead half-height (radius) in px for a point — ABSOLUTE-magnitude first, frame-relative
- * fallback. Scale-independent (pure function of the point's magnitude), so the rAF loop can ease it
- * without touching the chart's time/price scales.
- *
- * Absolute path: a resolvable $ notional — a REAL StrikeTrailPoint.notional if one is ever threaded,
- * else the documented proxy from pct (share × a nominal book) — sizes the bead on the perceptual $
- * ladder, so a genuinely bigger wall reads bigger regardless of what else is in frame. Fallback:
- * when there is no usable magnitude at all (pct ≤ 0 / non-finite), drop to the old frame-relative
- * half-height so off-hours / degraded data still renders a rail instead of collapsing to the floor.
- */
-function targetHalfPx(pct: number, notional: number | undefined, maxPct: number): number {
-  const usd = Number.isFinite(notional) && (notional as number) > 0 ? (notional as number) : pctToNotionalProxy(pct);
-  if (usd > 0) return beadRadiusForNotional(usd, { floorPx: HALF_PX_MIN, ceilPx: HALF_PX_MAX });
-  // No magnitude to read absolutely — keep the frame-relative behaviour rather than blanking.
-  return HALF_PX_MIN + relStrengthT(pct, maxPct) * (HALF_PX_MAX - HALF_PX_MIN);
-}
-
-function fillAlpha(pct: number, maxPct: number): number {
-  const t = relStrengthT(pct, maxPct);
-  return FILL_ALPHA_MIN + t * (FILL_ALPHA_MAX - FILL_ALPHA_MIN);
-}
-
-/** Stable per-bead key for the easing maps: side + strike + bucket time. The leading bucket keeps a
- *  stable key across refreshes while its pct updates, so ITS bead eases (grows/shrinks) while settled
- *  historical beads (unchanged key + unchanged target) never move. */
-function beadKey(side: "c" | "p", strike: number, time: number): string {
-  return `${side}:${strike}:${time}`;
-}
-/** Per-strike king-emphasis key (side + strike). */
-function kingKey(side: "c" | "p", strike: number): string {
-  return `${side}:${strike}`;
 }
 
 export class WallRailPrimitive implements ISeriesPrimitive<Time> {

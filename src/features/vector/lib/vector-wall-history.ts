@@ -758,6 +758,18 @@ export const SEED_FULL_RESOLUTION_SEC = 30 * 60;
  * chart gets. The newest {@link SEED_FULL_RESOLUTION_SEC} — the part actually read bead-by-bead —
  * is untouched at full recorder fidelity, and the live SSE/poll path still appends at full cadence,
  * so a member watching the session sees exactly what they see today.
+ *
+ * MEASURED AFTER DEPLOY (2026-08-09), because the estimate was wrong and the real number belongs
+ * here rather than the guess: the generated document fell 10.44 -> 3.82 MB on SPX, 3.94 -> 1.67 QQQ,
+ * 2.92 -> 1.29 NVDA, 2.15 -> 1.02 AAPL. That is **~2.1-2.7x overall**, not the ~7x the shipping PR
+ * (#1960) claimed in its title.
+ *
+ * Why the estimate missed: it treated the payload as tail-dominated, so a 4x cut to the tail looked
+ * like a ~7x cut to the whole. In a real rail the untouched newest-30-minutes window plus the fixed
+ * per-page overhead are a much larger share than that model assumed. Note the unit test asserting
+ * ">5x reduction" still passes — it feeds a synthetic 8.4h rail at a flat 5s cadence, which IS
+ * tail-dominated. The test validates the FUNCTION; it was never evidence about production, and
+ * reading it as such is how the 7x claim survived to the PR title.
  */
 export const SEED_TAIL_BUCKET_SEC = 60;
 

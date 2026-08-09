@@ -83,6 +83,8 @@ export function VectorGexLadder({
   const tickerRef = useRef(ticker);
   // Track last successful ladder fetch to avoid re-fetching on every spot tick.
   const lastFetchTimeRef = useRef<number>(0);
+  // Pending retry timers, cleared on teardown so a ticker/horizon switch cannot land a stale retry.
+  const retryTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   // Live spot from chart SSE updates the display without re-fetching the ladder.
   useEffect(() => {
@@ -95,14 +97,41 @@ export function VectorGexLadder({
     tickerRef.current = ticker;
     let cancelled = false;
 
-    const load = async () => {
+    /**
+     * A failed fetch used to be terminal.
+     *
+     * `setState("error")` renders "GEX ladder unavailable" and nothing re-ran: the only retry path
+     * is the interval below, which is created ONLY when `liveSession` is true. Outside a session —
+     * evenings, weekends, every pre-market — one transient failure left that message on screen
+     * permanently, until the member happened to change ticker or DTE horizon. Reproduced live on
+     * SPX (2026-08-09, market closed) by the UI walkthrough: the endpoint answered 200 with 200
+     * rows for every ticker/horizon when probed directly, so the rail was empty purely because a
+     * single client fetch had failed and nothing asked again.
+     *
+     * Bounded backoff, independent of `liveSession`. Deliberately NOT unlimited: a genuinely dead
+     * endpoint should end at the honest error message rather than hammer it forever.
+     */
+    const RETRY_DELAYS_MS = [1000, 3000, 8000];
+    const failed = (attempt: number) => {
+      if (cancelled || tickerRef.current !== ticker) return;
+      setState("error");
+      const delay = RETRY_DELAYS_MS[attempt];
+      if (delay == null) return;
+      retryTimers.current.push(
+        setTimeout(() => {
+          if (!cancelled && tickerRef.current === ticker) void load(attempt + 1);
+        }, delay)
+      );
+    };
+
+    const load = async (attempt = 0) => {
       try {
         const res = await fetch(
           `/api/market/vector/gex-ladder?ticker=${encodeURIComponent(ticker)}&dte=${encodeURIComponent(dteHorizon)}`
         );
         if (cancelled || tickerRef.current !== ticker) return;
         if (!res.ok) {
-          setState("error");
+          failed(attempt);
           return;
         }
         const data = (await res.json()) as LadderResponse;
@@ -116,7 +145,7 @@ export function VectorGexLadder({
         setState("ready");
         lastFetchTimeRef.current = Date.now();
       } catch {
-        if (!cancelled && tickerRef.current === ticker) setState("error");
+        failed(attempt);
       }
     };
 
@@ -131,6 +160,8 @@ export function VectorGexLadder({
     return () => {
       cancelled = true;
       if (id) clearInterval(id);
+      for (const t of retryTimers.current) clearTimeout(t);
+      retryTimers.current = [];
     };
   }, [ticker, liveSession, dteHorizon, liveSpot]);
 
