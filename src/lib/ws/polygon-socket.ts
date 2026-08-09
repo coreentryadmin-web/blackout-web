@@ -2,6 +2,11 @@
  * Polygon/Massive WebSocket client for real-time index aggregates.
  */
 import { getUwCacheRedis } from "@/lib/providers/uw-shared-cache";
+import {
+  isConnectionCapFrame,
+  reconnectDelayAfterClose,
+  shouldResetBackoffOnAuth,
+} from "./ws-connection-cap";
 import { etMinutes, etClock } from "@/features/spx/lib/spx-play-session-time";
 import { recordStockTick } from "@/lib/ws/stock-candle-store";
 import { isEtCashRth } from "@/lib/et-market-hours";
@@ -220,13 +225,21 @@ function polygonErrorMessage(err: unknown): string {
   return String(err);
 }
 
+/** Set when THIS connection was told the account is out of connection slots. Reset on each new
+ *  connect attempt in connectIndices. */
+let indicesCappedThisConnection = false;
+
 function scheduleIndicesReconnect(reason: string) {
   if (indicesShuttingDown) return; // shutting down — do not resurrect the socket
   if (indicesReconnectTimer) return;
   indicesConsecutiveFailures += 1;
   const base = Math.min(indicesReconnectDelay, 60_000);
   const jitter = Math.floor(Math.random() * 400);
-  const delay = indicesConsecutiveFailures >= 8 ? 60_000 : base + jitter;
+  const normal = indicesConsecutiveFailures >= 8 ? 60_000 : base + jitter;
+  // A capacity refusal ignores the curve entirely — see ws-connection-cap.ts. The curve rides out
+  // transient faults; an account cap is not transient, and retrying it fast occupies the very slots
+  // that are scarce.
+  const delay = reconnectDelayAfterClose(normal, indicesCappedThisConnection);
   console.warn(
     `[polygon-socket] indices reconnect in ${delay}ms (${reason}, failures=${indicesConsecutiveFailures})`
   );
@@ -323,6 +336,9 @@ function startIndicesWatchdog() {
 
 async function connectIndices() {
   if (indicesShuttingDown) return; // shutting down — do not open a new socket
+  // Per-ATTEMPT, not sticky: the cap can clear at any moment (a deploy draining, a sibling task
+  // exiting), and a latched flag would keep this socket in the 60s cooldown long after slots freed.
+  indicesCappedThisConnection = false;
   if (!POLYGON_API_KEY) {
     console.warn("[polygon-socket] POLYGON_API_KEY not set — WebSocket disabled");
     return;
@@ -367,8 +383,12 @@ async function connectIndices() {
             indicesWs?.send(JSON.stringify({ action: "auth", params: POLYGON_API_KEY }));
           } else if (ev === "auth_success" || (ev === "status" && msg.status === "auth_success")) {
             indicesAuthenticated = true;
-            indicesReconnectDelay = 1000;
-            indicesConsecutiveFailures = 0;
+            // A CAPPED connection also reaches auth_success — that is precisely why resetting the
+            // backoff here turned a refusal into a ~1/sec reconnect loop that could never escalate.
+            if (shouldResetBackoffOnAuth(indicesCappedThisConnection)) {
+              indicesReconnectDelay = 1000;
+              indicesConsecutiveFailures = 0;
+            }
             console.log("[polygon-socket] indices authenticated — subscribing");
             indicesWs?.send(
               JSON.stringify({
@@ -389,6 +409,14 @@ async function connectIndices() {
             if (etMinutesNow() >= etClock(9, 31)) {
               void seedSessionOpenFromRest();
             }
+          } else if (isConnectionCapFrame(msg)) {
+            // Account-level: no retry rate fixes it, and a fast one makes it worse. Logged loudly
+            // because it is invisible otherwise — the handshake and auth both SUCCEED.
+            indicesCappedThisConnection = true;
+            console.error(
+              "[polygon-socket] indices REFUSED — Polygon account is at its WebSocket connection " +
+                "limit. Backing off; check for orphaned connections or raise the plan limit."
+            );
           } else if (
             ev === "auth_failed" ||
             (ev === "status" && (msg.status === "auth_failed" || msg.status === "unauthorized"))
