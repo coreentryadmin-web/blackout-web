@@ -8607,6 +8607,9 @@ body::before {
   /* Crosshair-linked strike in the GEX ladder. Deliberately a subtle wash + left rule rather
      than a colour change: the row's call/put colour already carries meaning, and overriding it
      on hover would make the ladder briefly lie about which side the strike is. */
+  .vector-daily-chart-coverage {
+    @apply font-semibold text-gold;
+  }
   .vector-gex-ladder-row.vector-gex-ladder-hover {
     @apply bg-cyan-400/10;
     box-shadow: inset 2px 0 0 0 rgb(34 211 238 / 0.75);

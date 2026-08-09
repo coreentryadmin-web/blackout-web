@@ -28,6 +28,7 @@ import {
 } from "@/features/vector/lib/vector-chart-view";
 import type { VectorOhlcBar } from "@/features/vector/lib/vector-bar-timeframes";
 import { isQuarterlyOpex, opexDatesInRange } from "@/features/vector/lib/vector-opex";
+import { regimeAt, type DailyRegimeRow } from "@/features/vector/lib/vector-daily-regime";
 
 const VOLUME_UP = "rgba(0, 230, 118, 0.55)";
 const VOLUME_DOWN = "rgba(255, 45, 85, 0.55)";
@@ -37,6 +38,11 @@ const SMA200_COLOR = "#f472b6";
    quarterly, so OPEX never reads as a bull/bear signal — it is a calendar fact, not a direction. */
 const OPEX_MONTHLY = "#ffd23f";
 const OPEX_QUARTERLY = "#22d3ee";
+/* Dealer-regime overlay. Flip in gold (a level, not a direction); walls in the same call/put
+   colours the ladder uses so a wall reads identically in both panels. */
+const FLIP_COLOR = "#ffd23f";
+const CALL_WALL_COLOR = "#00e676";
+const PUT_WALL_COLOR = "#ff2d55";
 
 /** Historical (non-intraday-SSE) chart views this component can render: daily/weekly candles
  *  (`VectorDailyUnit`, Polygon daily aggs) plus "4H" (CTO audit P2 — multi-day intraday minute
@@ -137,6 +143,8 @@ export function VectorDailyChart({ ticker, unit, onHoverPrice }: Props) {
     readPersisted(VECTOR_ZOOM_STORAGE_KEY, VECTOR_ZOOM_PRESETS, "ALL")
   );
   const [showOpex, setShowOpex] = useState(true);
+  const [showRegime, setShowRegime] = useState(true);
+  const [regime, setRegime] = useState<{ rows: DailyRegimeRow[]; coverage: { from: string; to: string; sessions: number } | null } | null>(null);
   const [hover, setHover] = useState<
     { open: number; high: number; low: number; close: number; changePct: number } | null
   >(null);
@@ -151,6 +159,9 @@ export function VectorDailyChart({ ticker, unit, onHoverPrice }: Props) {
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const sma50SeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const sma200SeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const flipSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const callWallSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const putWallSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -180,6 +191,22 @@ export function VectorDailyChart({ ticker, unit, onHoverPrice }: Props) {
     chart.priceScale("vector-daily-volume").applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
     const sma50 = chart.addSeries(LineSeries, { color: SMA50_COLOR, lineWidth: 1, priceLineVisible: false });
     const sma200 = chart.addSeries(LineSeries, { color: SMA200_COLOR, lineWidth: 1, priceLineVisible: false });
+
+    // Stepped lines: a wall or flip is a level that holds for a whole session and then jumps, not
+    // a quantity that interpolates between days. A smooth line would draw prices that were never
+    // the flip on any day.
+    const flip = chart.addSeries(LineSeries, {
+      color: FLIP_COLOR, lineWidth: 2, lineStyle: 2, priceLineVisible: false, lastValueVisible: false,
+    });
+    const callWall = chart.addSeries(LineSeries, {
+      color: CALL_WALL_COLOR, lineWidth: 1, lineStyle: 1, priceLineVisible: false, lastValueVisible: false,
+    });
+    const putWall = chart.addSeries(LineSeries, {
+      color: PUT_WALL_COLOR, lineWidth: 1, lineStyle: 1, priceLineVisible: false, lastValueVisible: false,
+    });
+    flipSeriesRef.current = flip;
+    callWallSeriesRef.current = callWall;
+    putWallSeriesRef.current = putWall;
 
     chartRef.current = chart;
     candleSeriesRef.current = candleSeries;
@@ -242,6 +269,22 @@ export function VectorDailyChart({ ticker, unit, onHoverPrice }: Props) {
   }, [ticker, unit]);
 
   useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/market/vector/daily-regime?ticker=${encodeURIComponent(ticker)}&days=15`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!cancelled && d) setRegime({ rows: d.rows ?? [], coverage: d.coverage ?? null });
+      })
+      .catch(() => {
+        // The overlay is additive — a failed fetch leaves the price chart fully usable.
+        if (!cancelled) setRegime(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [ticker]);
+
+  useEffect(() => {
     const candleSeries = candleSeriesRef.current;
     const volumeSeries = volumeSeriesRef.current;
     if (!candleSeries || !volumeSeries) return;
@@ -290,8 +333,20 @@ export function VectorDailyChart({ ticker, unit, onHoverPrice }: Props) {
       createSeriesMarkers(candleSeries, []);
     }
 
+    // Dealer-regime overlay, drawn ONLY across sessions that were actually recorded (~15 days).
+    // Deliberately not forward/back-filled: extending the last known flip across a 2-year axis
+    // would assert dealer positioning for ~485 sessions that were never observed.
+    const rows = showRegime ? (regime?.rows ?? []) : [];
+    const pt = (v: (r: DailyRegimeRow) => number | null) =>
+      rows
+        .map((r) => ({ time: (Date.parse(`${r.date}T00:00:00Z`) / 1000) as Time, value: v(r) }))
+        .filter((d): d is { time: Time; value: number } => d.value != null);
+    flipSeriesRef.current?.setData(pt((r) => r.gammaFlip));
+    callWallSeriesRef.current?.setData(pt((r) => r.callWall));
+    putWallSeriesRef.current?.setData(pt((r) => r.putWall));
+
     applyZoom(chartRef.current, bars.length, unit, zoom);
-  }, [bars, unit, zoom, showOpex]);
+  }, [bars, unit, zoom, showOpex, showRegime, regime]);
 
   return (
     <div className="vector-daily-chart" data-testid="vector-daily-chart">
@@ -302,6 +357,20 @@ export function VectorDailyChart({ ticker, unit, onHoverPrice }: Props) {
           {/* An index has no shares, so the volume strip is legitimately empty. Saying so beats
               leaving a blank band that reads as a data failure — it was reported as one. */}
           {isIndexTicker(ticker) ? " Volume is not published for index tickers." : ""}
+          {showRegime && regime?.coverage ? (
+            <>
+              {" "}
+              <b className="vector-daily-chart-coverage">
+                Dealer regime: {regime.coverage.sessions} session
+                {regime.coverage.sessions === 1 ? "" : "s"} ({regime.coverage.from} → {regime.coverage.to})
+              </b>
+              {" — recorded per session, ~15 days retained; not drawn outside that window."}
+            </>
+          ) : showRegime ? (
+            " No dealer-regime history recorded for this ticker yet."
+          ) : (
+            ""
+          )}
         </span>
         <div className="vector-daily-chart-zoom" role="group" aria-label="Chart options">
           <button
@@ -312,6 +381,15 @@ export function VectorDailyChart({ ticker, unit, onHoverPrice }: Props) {
             onClick={() => setShowOpex((v) => !v)}
           >
             OPEX
+          </button>
+          <button
+            type="button"
+            className={`vector-daily-chart-zoom-btn${showRegime ? " is-active" : ""}`}
+            aria-pressed={showRegime}
+            title="Dealer gamma flip and primary walls at each session close. Recorded per session, ~15 days retained."
+            onClick={() => setShowRegime((v) => !v)}
+          >
+            REGIME
           </button>
           {VECTOR_ZOOM_PRESETS.map((p) => (
             <button
