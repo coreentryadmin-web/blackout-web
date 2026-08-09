@@ -1,12 +1,13 @@
 "use client";
 
 import clsx from "clsx";
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState, useCallback } from "react";
 import { buildGexLadder, type GexLadder, type GexLadderRow } from "@/features/vector/lib/vector-gex-ladder";
 import { vectorWallsScopePollMs } from "@/features/vector/lib/vector-cadence";
 import { vectorGexScopeLabel } from "@/lib/gex-scope-labels";
 import type { VectorDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
 import { nearestStrike } from "@/features/vector/lib/vector-chart-view";
+import { rowsInBand, scrollOffsetForSpot } from "@/features/vector/lib/vector-ladder-align";
 
 // Match the chart's bead colours exactly (VectorChart CALL_WALL_COLOR / PUT_WALL_COLOR) so the
 // ladder and the beads read as the same object: gold = call/resistance, purple = put/support.
@@ -37,6 +38,9 @@ type Props = {
   /** Price under the chart crosshair, so the ladder can highlight the strike a member is reading
    *  at that level. The two panels sit side by side and were otherwise unlinked. */
   hoverPrice?: number | null;
+  /** The chart's visible price range. Scopes the rail to what the chart is actually showing so the
+   *  two panels read as one instrument — see vector-ladder-align.ts for the measured mismatch. */
+  priceBand?: { min: number; max: number } | null;
 };
 
 type LadderResponse = { spot: number | null; asOf: string | null; ladder: GexLadder };
@@ -51,8 +55,19 @@ type LadderResponse = { spot: number | null; asOf: string | null; ladder: GexLad
  * `getHorizonStrikeTotals` scoped path; falls back to the near-term aggregate on "all" or when a
  * narrow horizon yields no structure).
  */
+/** Scroll `list` so `target` sits in the upper third rather than dead centre — see
+ *  scrollOffsetForSpot for why the bias exists. Reads offsets off the elements; all the arithmetic
+ *  (and its clamping) lives in the pure helper so it is unit-tested. */
+function scrollSpotIntoView(list: HTMLElement, target: HTMLElement): void {
+  const t = target.getBoundingClientRect();
+  const l = list.getBoundingClientRect();
+  const targetTop = t.top - l.top + list.scrollTop;
+  list.scrollTop = scrollOffsetForSpot(targetTop, t.height, list.clientHeight, list.scrollHeight);
+}
+
 export function VectorGexLadder({
   hoverPrice = null,
+  priceBand = null,
   ticker,
   liveSession,
   initialSpot = null,
@@ -119,7 +134,9 @@ export function VectorGexLadder({
     };
   }, [ticker, liveSession, dteHorizon, liveSpot]);
 
-  const rows = ladder.rows;
+  // Scope to the chart's visible band. Falls through to the full rail when no band is known or the
+  // band excludes everything — a narrower rail is an improvement, a blank one is a regression.
+  const rows = rowsInBand(ladder.rows, priceBand);
   // Index of the first row at/below spot — the spot marker slots ABOVE it (rows are strike-desc, so
   // this is the boundary between strikes above spot and strikes at/below it).
   const spotIdx =
@@ -148,11 +165,20 @@ export function VectorGexLadder({
       list.querySelector<HTMLElement>(".vector-gex-ladder-spot") ??
       list.querySelector<HTMLElement>(".vector-gex-ladder-row");
     if (!target) return;
-    const t = target.getBoundingClientRect();
-    const l = list.getBoundingClientRect();
-    list.scrollTop += t.top - l.top - list.clientHeight / 2 + t.height / 2;
+    scrollSpotIntoView(list, target);
     centeredTickerRef.current = centerKey;
   }, [state, spot, rows, centerKey]);
+
+  /** Re-anchor on spot. Bound to the header button so a member who has scrolled away — or whose
+   *  live spot has since moved off-screen — has a one-click way back, matching the SPX desk. */
+  const resetToSpot = useCallback(() => {
+    const list = listRef.current;
+    if (!list) return;
+    const target =
+      list.querySelector<HTMLElement>(".vector-gex-ladder-spot") ??
+      list.querySelector<HTMLElement>(".vector-gex-ladder-row");
+    if (target) scrollSpotIntoView(list, target);
+  }, []);
 
   return (
     <section className="vector-gex-ladder" aria-label={`${ticker} GEX strike ladder`}>
@@ -162,6 +188,16 @@ export function VectorGexLadder({
           {spot != null ? `spot ${spot.toLocaleString("en-US", { maximumFractionDigits: 2 })}` : "—"}
           <span className="vector-gex-ladder-scope"> · {vectorGexScopeLabel(dteHorizon)}</span>
         </span>
+        <button
+          type="button"
+          className="vector-gex-ladder-reset"
+          onClick={resetToSpot}
+          title="Scroll the ladder back to spot"
+          aria-label="Reset ladder to spot"
+          data-testid="vector-gex-ladder-reset"
+        >
+          ⟳ spot
+        </button>
       </header>
 
       {state === "error" ? (
