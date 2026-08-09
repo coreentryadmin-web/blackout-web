@@ -1,7 +1,7 @@
 "use client";
 
 import clsx from "clsx";
-import { memo, useEffect, useRef, useState, useCallback } from "react";
+import { memo, useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { buildGexLadder, type GexLadder, type GexLadderRow } from "@/features/vector/lib/vector-gex-ladder";
 import { vectorWallsScopePollMs } from "@/features/vector/lib/vector-cadence";
 import { vectorGexScopeLabel } from "@/lib/gex-scope-labels";
@@ -136,7 +136,15 @@ export function VectorGexLadder({
 
   // Scope to the chart's visible band. Falls through to the full rail when no band is known or the
   // band excludes everything — a narrower rail is an improvement, a blank one is a regression.
-  const rows = rowsInBand(ladder.rows, priceBand);
+  // Memoised on the band's VALUES, not its object identity: the chart re-emits a fresh
+  // `{min,max}` object on every price-scale change, and the auto-centre effect below lists `rows`
+  // in its deps — an unstable array would re-run it on every pan tick.
+  const bandMin = priceBand?.min ?? null;
+  const bandMax = priceBand?.max ?? null;
+  const rows = useMemo(
+    () => rowsInBand(ladder.rows, bandMin != null && bandMax != null ? { min: bandMin, max: bandMax } : null),
+    [ladder.rows, bandMin, bandMax]
+  );
   // Index of the first row at/below spot — the spot marker slots ABOVE it (rows are strike-desc, so
   // this is the boundary between strikes above spot and strikes at/below it).
   const spotIdx =
