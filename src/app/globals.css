@@ -8596,13 +8596,13 @@ body::before {
   /* Crosshair OHLC readout. pointer-events-none so it can never intercept a drag on the chart
      underneath it — the readout follows the cursor, it must not fight it. */
   .vector-daily-chart-readout {
-    @apply pointer-events-none absolute left-3 top-3 z-10 flex gap-3 rounded border border-cyan-500/20 bg-black/75 px-2 py-1 font-mono text-[11px] text-slate-300;
+    @apply pointer-events-none absolute left-3 top-3 z-10 flex gap-3 rounded border border-cyan-500/20 bg-black/75 px-2 py-1 font-mono text-[11px] text-mute;
   }
   .vector-daily-chart-readout .is-up {
-    @apply text-emerald-400;
+    @apply text-bull;
   }
   .vector-daily-chart-readout .is-down {
-    @apply text-rose-400;
+    @apply text-bear;
   }
   .vector-daily-chart-note {
     @apply text-[11px] text-white/40;
