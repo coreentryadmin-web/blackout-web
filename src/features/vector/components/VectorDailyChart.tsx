@@ -15,7 +15,16 @@ import {
 import { VECTOR_CHART_LOCALE } from "@/features/vector/lib/vector-chart-config";
 import { smaSeries } from "@/features/vector/lib/vector-indicators";
 import type { VectorDailyUnit } from "@/features/vector/lib/vector-daily-bars";
-import { initialLogicalRange } from "@/features/vector/lib/vector-chart-view";
+import {
+  VECTOR_ZOOM_PRESETS,
+  VECTOR_ZOOM_STORAGE_KEY,
+  initialLogicalRange,
+  isIndexTicker,
+  readPersisted,
+  writePersisted,
+  zoomPresetBars,
+  type VectorZoomPreset,
+} from "@/features/vector/lib/vector-chart-view";
 import type { VectorOhlcBar } from "@/features/vector/lib/vector-bar-timeframes";
 
 const VOLUME_UP = "rgba(0, 230, 118, 0.55)";
@@ -66,6 +75,34 @@ function lineData(bars: VectorOhlcBar[], values: (number | null)[]) {
 }
 
 /**
+ * Frame the chart for the active zoom preset.
+ *
+ * "ALL" and any preset wider than the loaded history both fall through to the default recent
+ * window (or fitContent for short histories) rather than pinning a range past the data, which
+ * would render dead space on the left.
+ */
+function applyZoom(
+  chart: IChartApi | null,
+  barCount: number,
+  unit: VectorHistoricalView,
+  zoom: VectorZoomPreset
+): void {
+  if (!chart || barCount <= 0) return;
+  const want = zoomPresetBars(zoom, unit);
+  if (want != null && want < barCount) {
+    chart.timeScale().setVisibleLogicalRange({ from: barCount - want, to: barCount + 1 });
+    return;
+  }
+  if (zoom === "ALL") {
+    chart.timeScale().fitContent();
+    return;
+  }
+  const range = initialLogicalRange(barCount, unit);
+  if (range) chart.timeScale().setVisibleLogicalRange(range);
+  else chart.timeScale().fitContent();
+}
+
+/**
  * Daily/Weekly/4H historical price view (CTO audit P2 #5, and P2 "4h remains open" 2026-08-05)
  * — a separate, deliberately simple chart surface from `VectorChart.tsx` rather than a mode
  * bolted onto it. `VectorChart` is already the highest-risk file in the feature (per the CTO
@@ -85,6 +122,14 @@ function lineData(bars: VectorOhlcBar[], values: (number | null)[]) {
 export function VectorDailyChart({ ticker, unit }: Props) {
   const [bars, setBars] = useState<VectorOhlcBar[]>([]);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
+  // Lazy initialiser: localStorage is unavailable during SSR, and reading it in a plain
+  // useState(...) call would run on the server and throw. This runs client-side on first paint.
+  const [zoom, setZoom] = useState<VectorZoomPreset>(() =>
+    readPersisted(VECTOR_ZOOM_STORAGE_KEY, VECTOR_ZOOM_PRESETS, "ALL")
+  );
+  const [hover, setHover] = useState<
+    { open: number; high: number; low: number; close: number; changePct: number } | null
+  >(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -126,6 +171,22 @@ export function VectorDailyChart({ ticker, unit }: Props) {
     volumeSeriesRef.current = volumeSeries;
     sma50SeriesRef.current = sma50;
     sma200SeriesRef.current = sma200;
+
+    // Crosshair readout. Reading OHLC off the event (not off `bars`) keeps this effect free of
+    // the bars dependency, so the chart is never torn down and rebuilt just because data arrived.
+    chart.subscribeCrosshairMove((param) => {
+      const d = param.seriesData.get(candleSeries) as
+        | { open: number; high: number; low: number; close: number }
+        | undefined;
+      if (!param.time || !d) {
+        setHover(null);
+        return;
+      }
+      setHover({
+        ...d,
+        changePct: d.open ? ((d.close - d.open) / d.open) * 100 : 0,
+      });
+    });
 
     return () => {
       chart.remove();
@@ -182,10 +243,8 @@ export function VectorDailyChart({ ticker, unit }: Props) {
     // candle — legible as a trend line, useless as candles. The history is still loaded and one
     // scroll away; only the initial viewport changed. Falls back to fitContent when the history
     // is shorter than the window, where pinning would leave dead space.
-    const range = initialLogicalRange(bars.length, unit);
-    if (range) chartRef.current?.timeScale().setVisibleLogicalRange(range);
-    else chartRef.current?.timeScale().fitContent();
-  }, [bars, unit]);
+    applyZoom(chartRef.current, bars.length, unit, zoom);
+  }, [bars, unit, zoom]);
 
   return (
     <div className="vector-daily-chart" data-testid="vector-daily-chart">
@@ -193,10 +252,41 @@ export function VectorDailyChart({ ticker, unit }: Props) {
         <span className="vector-daily-chart-note">
           {unitLabel(unit)} historical price — GEX walls, beads, and replay are intraday-only and
           not shown here.
+          {/* An index has no shares, so the volume strip is legitimately empty. Saying so beats
+              leaving a blank band that reads as a data failure — it was reported as one. */}
+          {isIndexTicker(ticker) ? " Volume is not published for index tickers." : ""}
         </span>
+        <div className="vector-daily-chart-zoom" role="group" aria-label="Zoom range">
+          {VECTOR_ZOOM_PRESETS.map((p) => (
+            <button
+              key={p}
+              type="button"
+              className={`vector-daily-chart-zoom-btn${zoom === p ? " is-active" : ""}`}
+              aria-pressed={zoom === p}
+              onClick={() => {
+                setZoom(p);
+                writePersisted(VECTOR_ZOOM_STORAGE_KEY, p);
+              }}
+            >
+              {p}
+            </button>
+          ))}
+        </div>
       </div>
       <div className="vector-daily-chart-canvas-wrap">
         <div ref={containerRef} className="vector-daily-chart-canvas" />
+        {hover && (
+          <div className="vector-daily-chart-readout" data-testid="vector-daily-readout">
+            <span>O {hover.open}</span>
+            <span>H {hover.high}</span>
+            <span>L {hover.low}</span>
+            <span>C {hover.close}</span>
+            <span className={hover.changePct >= 0 ? "is-up" : "is-down"}>
+              {hover.changePct >= 0 ? "+" : ""}
+              {hover.changePct.toFixed(2)}%
+            </span>
+          </div>
+        )}
         {state === "loading" && (
           <div className="vector-daily-chart-overlay">Loading {unitLabel(unit)} history…</div>
         )}

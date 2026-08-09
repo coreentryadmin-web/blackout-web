@@ -1,6 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { defaultVisibleBars, initialLogicalRange } from "./vector-chart-view";
+import {
+  defaultVisibleBars,
+  initialLogicalRange,
+  isIndexTicker,
+  readPersisted,
+  writePersisted,
+  zoomPresetBars,
+} from "./vector-chart-view";
 import { VECTOR_DAILY_UNITS } from "./vector-daily-bars";
 
 test("the view strings match the real unit union", () => {
@@ -43,5 +50,66 @@ test("short histories fall back to fitContent instead of pinning dead space", ()
 test("degenerate bar counts never produce a range", () => {
   for (const n of [0, -1, NaN, Infinity]) {
     assert.equal(initialLogicalRange(n as number, "1D"), null, `barCount=${n}`);
+  }
+});
+
+test("zoom presets scale with each view's bar cadence", () => {
+  // Same calendar span, different bar counts — 4H has ~6 bars/session, 1W has ~4.33/month.
+  assert.equal(zoomPresetBars("3M", "1D"), 63);
+  assert.equal(zoomPresetBars("3M", "1W"), 13);
+  assert.equal(zoomPresetBars("3M", "4H"), 378);
+  // Monotonic in span, per view.
+  for (const unit of ["1D", "1W", "4H"] as const) {
+    const three = zoomPresetBars("3M", unit)!;
+    const six = zoomPresetBars("6M", unit)!;
+    const year = zoomPresetBars("1Y", unit)!;
+    assert.ok(three < six && six < year, `${unit} presets not monotonic`);
+  }
+  assert.equal(zoomPresetBars("ALL", "1D"), null, "ALL means fitContent, not a bar count");
+});
+
+test("indices are known to have no volume", () => {
+  for (const t of ["SPX", "spx", "I:SPX", "NDX", "VIX", "RUT"]) {
+    assert.equal(isIndexTicker(t), true, t);
+  }
+  // Equities and ETFs DO have volume — misclassifying one would suppress a real histogram.
+  for (const t of ["SPY", "QQQ", "NVDA", "AAPL", "IWM"]) {
+    assert.equal(isIndexTicker(t), false, t);
+  }
+});
+
+test("persisted choices reject values outside the allowed set", () => {
+  const store = new Map<string, string>();
+  const g = globalThis as { localStorage?: unknown };
+  const prev = g.localStorage;
+  g.localStorage = {
+    getItem: (k: string) => store.get(k) ?? null,
+    setItem: (k: string, v: string) => void store.set(k, v),
+  };
+  try {
+    assert.equal(readPersisted("k", ["1D", "1W"] as const, "1D"), "1D", "unset falls back");
+    writePersisted("k", "1W");
+    assert.equal(readPersisted("k", ["1D", "1W"] as const, "1D"), "1W");
+    // A stale value from an older build must not put the chart into an invalid state.
+    writePersisted("k", "week");
+    assert.equal(readPersisted("k", ["1D", "1W"] as const, "1D"), "1D");
+  } finally {
+    g.localStorage = prev;
+  }
+});
+
+test("storage failures never throw into the render path", () => {
+  const g = globalThis as { localStorage?: unknown };
+  const prev = g.localStorage;
+  // Safari private mode throws on both read and write.
+  g.localStorage = {
+    getItem: () => { throw new Error("SecurityError"); },
+    setItem: () => { throw new Error("QuotaExceeded"); },
+  };
+  try {
+    assert.equal(readPersisted("k", ["1D"] as const, "1D"), "1D");
+    assert.doesNotThrow(() => writePersisted("k", "1D"));
+  } finally {
+    g.localStorage = prev;
   }
 });
