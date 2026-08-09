@@ -68,6 +68,35 @@ export function reconnectDelayAfterClose(
 }
 
 /**
+ * Minimum time a connection must SURVIVE before it counts as stable enough to reset the backoff.
+ *
+ * Ten seconds is comfortably longer than a refuse-after-handshake round trip (the Polygon cap
+ * sequence completes in ~1-2s) and far shorter than any healthy session.
+ */
+export const WS_MIN_STABLE_MS = 10_000;
+
+/**
+ * Whether a fresh socket OPENING should reset the reconnect backoff.
+ *
+ * uw-socket resets `reconnectDelay = 1000` in `onopen`, before a single frame has arrived. That is
+ * the same defect as resetting on `auth_success`, one step earlier and provider-independent: any
+ * condition that lets the socket open and then closes it promptly — a capacity refusal, a rejected
+ * subscription, a server-side auth teardown — resets the curve every cycle, so the backoff can
+ * never grow and the socket flaps at roughly one attempt per second indefinitely.
+ *
+ * Opening proves the TCP/TLS path works. It does not prove the connection is useful. So the reset
+ * is gated on the PREVIOUS connection having survived `minStableMs`; a first attempt (no previous
+ * duration) resets, because there is nothing yet to suspect.
+ */
+export function shouldResetBackoffOnOpen(
+  previousConnectionMs: number | null | undefined,
+  minStableMs = WS_MIN_STABLE_MS
+): boolean {
+  if (previousConnectionMs == null || !Number.isFinite(previousConnectionMs)) return true;
+  return previousConnectionMs >= minStableMs;
+}
+
+/**
  * Whether `auth_success` should reset the backoff.
  *
  * It should NOT when this connection has already been told the account is capped: the handshake

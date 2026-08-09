@@ -10,6 +10,7 @@ import {
   dteFromExpiry,
 } from "@/lib/flow-persist";
 import { makeFlowDedup } from "@/lib/flow-dedup";
+import { shouldResetBackoffOnOpen } from "./ws-connection-cap";
 import { makeSourceHealth, requireHealthySourceEnabled } from "@/lib/ws/source-health";
 import { computeBackfillWindowStartMs, reconcileGap } from "@/lib/ws/flow-reconciliation";
 import { deadLetter, deadLetterStats } from "@/lib/flow-dlq";
@@ -264,6 +265,9 @@ class UwSocketManager {
   private handlers = new Map<UwWsChannel, Set<Handler>>();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectDelay = 1000;
+  /** How long the PREVIOUS socket stayed open. Gates the backoff reset — see
+   *  shouldResetBackoffOnOpen for why opening is not evidence a connection is useful. */
+  private lastConnectionMs: number | null = null;
   private joined = new Set<UwWsChannel>();
   private authenticated = new Map<UwWsChannel, boolean>();
   private channelState = new Map<UwWsChannel, ChannelState>();
@@ -304,6 +308,9 @@ class UwSocketManager {
     const ws = this.ws;
     this.ws = null;
     this.connectStarted = false;
+    // Capture how long this socket lived BEFORE clearing the marker — the next open() reads it to
+    // decide whether the connection was stable enough to justify resetting the backoff.
+    this.lastConnectionMs = this.openedAt != null ? Date.now() - this.openedAt : null;
     this.openedAt = null;
     // WS-21: teardown paths (stall watchdog, markAuthFailed) detach onclose, so mark the flow
     // source OFFLINE here too — otherwise a silent-stall reconnect would never reset the state
@@ -512,7 +519,11 @@ class UwSocketManager {
       ws.onopen = () => {
         if (this.ws !== ws) return; // superseded socket — ignore late open
         this.connectStarted = false;
-        this.reconnectDelay = 1000;
+        // Only reset the curve if the LAST connection actually survived. Resetting here
+        // unconditionally meant any condition that opens the socket and then closes it promptly —
+        // a capacity refusal, a rejected subscription, a server-side teardown — flapped at ~1/sec
+        // forever, because the backoff was wiped on every open.
+        if (shouldResetBackoffOnOpen(this.lastConnectionMs)) this.reconnectDelay = 1000;
         this.openedAt = Date.now();
         console.log("[uw-socket] multiplex connected — joining channels");
         this.joinActiveChannels();

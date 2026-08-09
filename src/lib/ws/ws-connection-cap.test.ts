@@ -2,6 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   WS_CONNECTION_CAP_COOLDOWN_MS,
+  WS_MIN_STABLE_MS,
+  shouldResetBackoffOnOpen,
   isConnectionCapFrame,
   reconnectDelayAfterClose,
   shouldResetBackoffOnAuth,
@@ -78,4 +80,23 @@ test("shouldResetBackoffOnAuth: auth_success is not success when this connection
     false,
     "a capped connection authenticates fine — that is exactly why resetting on it loops forever"
   );
+});
+
+test("shouldResetBackoffOnOpen: the first attempt always resets", () => {
+  assert.equal(shouldResetBackoffOnOpen(null), true);
+  assert.equal(shouldResetBackoffOnOpen(undefined), true);
+  assert.equal(shouldResetBackoffOnOpen(Number.NaN), true, "unusable duration is treated as first attempt");
+});
+
+test("shouldResetBackoffOnOpen: a socket that flaps does NOT reset the curve", () => {
+  // The defect: opening proves the TCP/TLS path works, not that the connection is useful. A
+  // capacity refusal opens, authenticates, then dies in ~1-2s — and resetting on open made that
+  // an unbounded ~1/sec loop.
+  assert.equal(shouldResetBackoffOnOpen(1_500), false);
+  assert.equal(shouldResetBackoffOnOpen(WS_MIN_STABLE_MS - 1), false);
+});
+
+test("shouldResetBackoffOnOpen: a connection that survived the threshold resets", () => {
+  assert.equal(shouldResetBackoffOnOpen(WS_MIN_STABLE_MS), true, "exactly at the bound counts as stable");
+  assert.equal(shouldResetBackoffOnOpen(6 * 60 * 60 * 1000), true, "a normal session obviously resets");
 });
