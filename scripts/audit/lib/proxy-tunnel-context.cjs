@@ -132,6 +132,24 @@ function isStreamingRequest(req) {
 }
 
 /**
+ * Make an untrusted string safe to put on one line of a log.
+ *
+ * The failure log interpolates a request URL and an error message. Both are attacker-influenceable
+ * in principle — the URL comes from whatever the page decided to request, the message can carry
+ * text from a hostile server — and a CR or LF in either lets a crafted value append a forged log
+ * line, which is the whole of CWE-117. The audit runs are read against prod to decide what is and
+ * is not broken, so a log they can forge is a log that can mislead the next investigation.
+ *
+ * Strips every C0/C1 control character (not just \r\n — \b and \x1b can rewrite a terminal line
+ * just as effectively) and truncates, so one enormous URL cannot bury the surrounding output.
+ */
+function logSafe(value, max = 200) {
+  return String(value ?? "")
+    .replace(/[\u0000-\u001F\u007F-\u009F]/g, " ")
+    .slice(0, max);
+}
+
+/**
  * Build a tunneled browser + context. Caller owns closing `browser`.
  *
  * `counts` is live — read it after the run to confirm assets actually loaded. A screenshot taken
@@ -216,7 +234,7 @@ async function createTunneledContext({
       await route.fulfill({ status: r.status, headers: r.headers, body: r.body });
     } catch (e) {
       counts.fail++;
-      console.error(`  FAIL [${req.method()}] ${reqUrl.slice(0, 80)}: ${e.message}`);
+      console.error(`  FAIL [${logSafe(req.method(), 8)}] ${logSafe(reqUrl, 80)}: ${logSafe(e?.message, 200)}`);
       await route.abort("connectionfailed");
     }
   });
