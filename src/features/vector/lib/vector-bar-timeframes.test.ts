@@ -8,6 +8,9 @@ import {
   VECTOR_PRESET_TIMEFRAMES,
   VECTOR_DEFAULT_TIMEFRAME,
   isPresetTimeframe,
+  resolveWallCount,
+  isVectorWallCountChoice,
+  VECTOR_WALL_NODES_PER_SIDE,
 } from "./vector-bar-timeframes";
 
 const m1 = (
@@ -177,4 +180,41 @@ test("wallCountForHorizon: 0DTE shows more bead rows than the base 3m cap", asyn
   assert.equal(wallCountForTimeframe(3), 8);
   assert.equal(wallCountForHorizon(3, "0dte"), VECTOR_0DTE_WALL_COUNT);
   assert.equal(wallCountForHorizon(3, "weekly"), 8);
+});
+
+test("wall-count choice caps the timeframe curve, never raises it", () => {
+  // 3m/0DTE is the reported case: the curve gives 8, the 0DTE floor lifts it to 12, and 12 rows
+  // per side is what reads as "painted".
+  assert.equal(resolveWallCount(12, 8), 8);
+  assert.equal(resolveWallCount(12, 10), 10);
+  assert.equal(resolveWallCount(12, 12), 12);
+  assert.equal(resolveWallCount(12, "auto"), 12, "auto leaves today's behaviour untouched");
+
+  // Capping must never ADD rows. A 1m view's curve is 6; asking for 12 still yields 6, because
+  // the extra rows would sit outside the visible price band.
+  assert.equal(resolveWallCount(6, 12), 6);
+  assert.equal(resolveWallCount(6, 10), 6);
+  assert.equal(resolveWallCount(6, 8), 6);
+
+  // A 4h view's curve is 20; choosing 12 is the member explicitly trading reach for clarity.
+  assert.equal(resolveWallCount(20, 12), 12);
+  assert.equal(resolveWallCount(20, "auto"), 20);
+});
+
+test("wall-count resolution stays inside the server's node cap and never hits zero", () => {
+  // The client must never ask to draw walls the server did not return.
+  assert.equal(resolveWallCount(999, "auto"), VECTOR_WALL_NODES_PER_SIDE);
+  // Degenerate curve values must still yield a drawable rail rather than an empty one.
+  for (const bad of [0, -5, NaN]) {
+    assert.ok(resolveWallCount(bad as number, "auto") >= 1, `curve=${bad}`);
+    assert.ok(resolveWallCount(bad as number, 8) >= 1, `curve=${bad} capped`);
+  }
+});
+
+test("only known choices are accepted from storage", () => {
+  for (const v of ["auto", 8, 10, 12]) assert.equal(isVectorWallCountChoice(v), true, String(v));
+  // A stale or hand-edited value must not put the rail into an unintended density.
+  for (const v of [5, 20, "twelve", null, undefined]) {
+    assert.equal(isVectorWallCountChoice(v), false, String(v));
+  }
 });
