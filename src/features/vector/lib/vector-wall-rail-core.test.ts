@@ -8,6 +8,7 @@ import {
   beadKey,
   fillAlpha,
   kingKey,
+  kingStrikeByTime,
   targetHalfPx,
   withA,
 } from "./vector-wall-rail-core";
@@ -118,4 +119,53 @@ test("kingKey: per-strike and time-independent — the king persists across buck
   assert.equal(kingKey("c", 225), kingKey("c", 225));
   assert.notEqual(kingKey("c", 225), kingKey("p", 225));
   assert.notEqual(kingKey("c", 225), kingKey("c", 226));
+});
+
+test("kingStrikeByTime: the crown belongs to whoever led AT THAT BUCKET", () => {
+  // The member-reported bug: 7760 was emphasised across the whole session because it led at the
+  // END. Here 100 leads early and 105 takes over — each bucket must name its own king.
+  const trails = [
+    { strike: 100, points: [{ time: 1, pct: 40 }, { time: 2, pct: 30 }, { time: 3, pct: 10 }] },
+    { strike: 105, points: [{ time: 1, pct: 12 }, { time: 2, pct: 35 }, { time: 3, pct: 60 }] },
+  ];
+  const kings = kingStrikeByTime(trails);
+  assert.equal(kings.get(1), 100, "100 held the crown at t=1");
+  assert.equal(kings.get(2), 105, "handover at t=2");
+  assert.equal(kings.get(3), 105);
+});
+
+test("kingStrikeByTime: a late leader is NOT crowned retroactively", () => {
+  // Directly encodes the defect. Under the old per-strike scalar, 105 (the latest leader) would
+  // have been emphasised at t=1 too, where it held 1% share.
+  const trails = [
+    { strike: 100, points: [{ time: 1, pct: 90 }] },
+    { strike: 105, points: [{ time: 1, pct: 1 }, { time: 2, pct: 99 }] },
+  ];
+  const kings = kingStrikeByTime(trails);
+  assert.equal(kings.get(1), 100);
+  assert.notEqual(kings.get(1), 105, "the eventual king must not wear the crown before it won it");
+});
+
+test("kingStrikeByTime: ties are deterministic, not flickering", () => {
+  const trails = [
+    { strike: 100, points: [{ time: 1, pct: 50 }] },
+    { strike: 105, points: [{ time: 1, pct: 50 }] },
+  ];
+  assert.equal(kingStrikeByTime(trails).get(1), 100, "first encountered wins — stable across repaints");
+  assert.equal(kingStrikeByTime(trails).get(1), 100);
+});
+
+test("kingStrikeByTime: junk points and strikes are skipped, never crowned", () => {
+  const trails = [
+    { strike: Number.NaN, points: [{ time: 1, pct: 99 }] },
+    { strike: 100, points: [{ time: Number.NaN, pct: 99 }, { time: 1, pct: 5 }, { time: 2, pct: Number.NaN }] },
+  ];
+  const kings = kingStrikeByTime(trails);
+  assert.equal(kings.get(1), 100);
+  assert.equal(kings.has(2), false, "a bucket with no usable pct has no king");
+});
+
+test("kingStrikeByTime: empty input yields no kings", () => {
+  assert.equal(kingStrikeByTime([]).size, 0);
+  assert.equal(kingStrikeByTime([{ strike: 100, points: [] }]).size, 0);
 });
