@@ -142,9 +142,6 @@ import {
   mergeBarsByTime,
   wallCountForTimeframe,
   wallCountForHorizon,
-  resolveWallCount,
-  isVectorWallCountChoice,
-  type VectorWallCountChoice,
   anchorBandPctForTimeframe,
   VECTOR_DEFAULT_TIMEFRAME,
   VECTOR_WALL_NODES_PER_SIDE,
@@ -1451,20 +1448,6 @@ export function VectorChart({
   // Host desks may override the OPENING horizon (defaultDteHorizon — the SPX Slayer embed opens
   // on 0DTE); after mount the member's toggle rules either way.
   const [dteHorizon, setDteHorizon] = useState<VectorDteHorizon>(defaultDteHorizon ?? "weekly");
-  // Wall rows per side. Persisted so a member who wants a calmer rail keeps it across sessions;
-  // AUTO is the default, so every existing chart is byte-identical until someone opts in.
-  const [wallCount, setWallCount] = useState<VectorWallCountChoice>("auto");
-  const wallCountRef = useRef<VectorWallCountChoice>("auto");
-  wallCountRef.current = wallCount;
-  useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem("blackout.vector.wallCount.v1");
-      const parsed = raw === "auto" ? "auto" : Number(raw);
-      if (isVectorWallCountChoice(parsed)) setWallCount(parsed);
-    } catch {
-      /* storage unavailable — AUTO is a fine default */
-    }
-  }, []);
   // Per-expiry walls are now computed from the Polygon options chain for EVERY ticker
   // (per-contract expiry + OI + IV → BSM GEX ladder at spot), not just the 3 UW-oracle
   // names, so the horizon toggle is real everywhere. Vector only ever loads optionable
@@ -1687,7 +1670,7 @@ export function VectorChart({
     // before (member finding "select 0DTE, still shows All's walls" is still fixed either way).
     const lastBarTime = minuteBarsRef.current[minuteBarsRef.current.length - 1]?.time ?? 0;
     const horizon = dteHorizonRef.current;
-    const beadRowCap = resolveWallCount(wallCountForHorizon(timeframeRef.current, horizon), wallCountRef.current);
+    const beadRowCap = wallCountForHorizon(timeframeRef.current, horizon);
     const currentColumn = narrowedHorizonTrail(
       horizon,
       activeLens,
@@ -1772,10 +1755,7 @@ export function VectorChart({
       // How many wall guides/beads THIS timeframe shows (1m→6 … 15m→12). Higher timeframe →
       // more, further-out walls drawn → wider axis (extendRangeForWalls keys off these SHOWN
       // strikes below, so 1m stays tight while 15m widens).
-      const maxGuides = resolveWallCount(
-        wallCountForHorizon(timeframeRef.current, dteHorizonRef.current),
-        wallCountRef.current
-      );
+      const maxGuides = wallCountForHorizon(timeframeRef.current, dteHorizonRef.current);
       // Walls are shown ONLY as strength-scaled beads now (the Skylit-clean look) — clear any
       // wall guide price-lines rather than drawing them, so the price axis is not stacked with
       // "Call/Put wall — %" labels. The gamma-flip line stays (member kept it); dark-pool level
@@ -3878,15 +3858,6 @@ export function VectorChart({
       )}
 
       <VectorToolbar
-        wallCount={wallCount}
-        onWallCount={(c) => {
-          setWallCount(c);
-          try {
-            window.localStorage.setItem("blackout.vector.wallCount.v1", String(c));
-          } catch {
-            /* ignore — a lost preference must not break the chart */
-          }
-        }}
         interval={timeframe}
         onInterval={setTimeframe}
         timeframeDisabled={replayMode}
