@@ -1,0 +1,191 @@
+/**
+ * Vector play-narrative invariant audit — many tickers x DTE horizons x timeframes, one run.
+ *
+ * WHY THIS EXISTS. The live NVDA capture (2026-08-09) showed the right-hand play panel saying
+ * "sell rips 225" while listing "magnet 226.08" as a target — sell here, target above here. Not a
+ * rendering bug and not stale data: a play whose own parts disagreed. Every individual number was
+ * correct, which is exactly why nothing caught it. This asserts the RELATIONSHIPS a play must
+ * satisfy to be coherent, across every combination the desk serves.
+ *
+ * HOW IT GETS A PLAY. There is no /api/market/vector/play — buildVectorPlay runs CLIENT-SIDE in
+ * VectorChart.tsx. So this fetches the real INPUTS from the real endpoints and calls the REAL
+ * production buildVectorPlay on them. It never reimplements the engine; a reimplementation would
+ * drift and start certifying itself.
+ *
+ * Run with:  node --import tsx scripts/audit/vector-play-invariants.mjs
+ * READ-ONLY. One temp Clerk member for the whole run, deleted in a finally (FAPI is rate-limited).
+ */
+import { mintClerkPremiumSession } from "./lib/prod-clerk-session.mjs";
+import { buildVectorPlay } from "../../src/features/vector/lib/vector-play-engine.ts";
+
+const BASE = (process.env.VALIDATE_BASE || "https://blackouttrades.com").replace(/\/$/, "");
+const TICKERS = (process.env.AUDIT_TICKERS || "SPX,SPY,QQQ,NVDA,TSLA,AAPL,AMD,META").split(",");
+const HORIZONS = (process.env.AUDIT_HORIZONS || "0dte,weekly,monthly").split(",");
+const TIMEFRAMES = (process.env.AUDIT_TIMEFRAMES || "3,15,60").split(",").map(Number);
+
+const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+
+/**
+ * Each invariant describes a way a play contradicts ITSELF. Deliberately no strategy opinions — a
+ * rule encoding a view about what the play *should* say would fire constantly and get ignored,
+ * which is worse than no rule at all.
+ */
+const INVARIANTS = [
+  {
+    name: "walls-ordered",
+    check: (s) => {
+      const c = num(s.gexWalls?.callWalls?.[0]?.strike);
+      const p = num(s.gexWalls?.putWalls?.[0]?.strike);
+      return c != null && p != null && c < p ? `call wall ${c} is BELOW put wall ${p}` : null;
+    },
+  },
+  {
+    name: "range-mean-inside-rails",
+    check: (s, play) => {
+      if (play?.bias !== "range") return null;
+      const c = num(s.gexWalls?.callWalls?.[0]?.strike);
+      const p = num(s.gexWalls?.putWalls?.[0]?.strike);
+      // The headline names the mean-revert level; a range play must not aim outside its own rails.
+      const m = /([\d,]+\.?\d*)\s+(magnet|max pain|range mid|call wall|put wall)/.exec(play.headline ?? "");
+      const lvl = m ? Number(m[1].replace(/,/g, "")) : null;
+      if (lvl == null) return null;
+      if (c != null && lvl > c) return `range mean ${lvl} is ABOVE call wall ${c} (headline: ${play.headline})`;
+      if (p != null && lvl < p) return `range mean ${lvl} is BELOW put wall ${p} (headline: ${play.headline})`;
+      return null;
+    },
+  },
+  {
+    name: "targets-carry-a-price",
+    check: (_s, play) =>
+      (play?.targets ?? []).some((t) => typeof t === "string" && !/\d/.test(t))
+        ? `a target carries no price: ${JSON.stringify(play.targets)}`
+        : null,
+  },
+  {
+    name: "levels-plausible-vs-spot",
+    check: (s) => {
+      const spot = num(s.spot);
+      if (spot == null) return null;
+      const pairs = [
+        ["gamma flip", num(s.gammaFlip)],
+        ["call wall", num(s.gexWalls?.callWalls?.[0]?.strike)],
+        ["put wall", num(s.gexWalls?.putWalls?.[0]?.strike)],
+        ["magnet", num(s.magnet?.strike)],
+        ["max pain", num(s.maxPain)],
+      ];
+      for (const [label, v] of pairs) {
+        // An order-of-magnitude gap means another underlying's levels leaked into this snapshot.
+        if (v != null && (v > spot * 3 || v < spot / 3)) return `${label} ${v} implausible vs spot ${spot}`;
+      }
+      return null;
+    },
+  },
+  {
+    name: "play-produced",
+    check: (_s, play) => (play == null ? "buildVectorPlay returned nothing for a snapshot with spot" : null),
+  },
+];
+
+async function json(cookie, path) {
+  try {
+    const r = await fetch(`${BASE}${path}`, { headers: { Cookie: cookie } });
+    return r.ok ? await r.json() : null;
+  } catch {
+    return null;
+  }
+}
+
+async function snapshotFor(cookie, ticker, horizon, timeframeMin) {
+  const t = encodeURIComponent(ticker);
+  const [walls, ladder, maxPain, em] = await Promise.all([
+    json(cookie, `/api/market/vector/walls?ticker=${t}&dte=${horizon}`),
+    json(cookie, `/api/market/vector/gex-ladder?ticker=${t}&dte=${horizon}`),
+    json(cookie, `/api/market/vector/max-pain?ticker=${t}&dte=${horizon}`),
+    json(cookie, `/api/market/vector/expected-move?ticker=${t}&dte=${horizon}`),
+  ]);
+  const spot = num(ladder?.spot ?? walls?.spot);
+  if (spot == null) return null;
+  return {
+    ticker,
+    horizon,
+    timeframeMin,
+    spot,
+    regime: walls?.regime ?? null,
+    gexWalls: walls?.walls ?? walls?.gexWalls ?? null,
+    gammaFlip: num(walls?.gammaFlip),
+    magnet: walls?.magnet ?? null,
+    proximity: walls?.proximity ?? null,
+    // Only pass expectedMove when it actually carries bands — the endpoint's envelope differs from
+    // the engine's ExpectedMove shape, and handing the engine a mismatched object tests the
+    // harness, not production.
+    expectedMove: Array.isArray(em?.bands) ? em : null,
+    maxPain: num(maxPain?.maxPain ?? maxPain?.strike),
+    confluenceZones: null,
+    wallIntegrity: null,
+    technicals: null,
+  };
+}
+
+const session = await mintClerkPremiumSession({ appUrl: BASE });
+if (session.skip) {
+  console.error(`SKIP: ${session.reason}`);
+  process.exit(2);
+}
+
+const results = [];
+try {
+  for (const ticker of TICKERS) {
+    for (const horizon of HORIZONS) {
+      for (const tf of TIMEFRAMES) {
+        const snap = await snapshotFor(session.cookieHeader, ticker, horizon, tf);
+        if (!snap) {
+          results.push({ ticker, horizon, tf, noData: true });
+          continue;
+        }
+        let play = null;
+        let engineError = null;
+        try {
+          play = buildVectorPlay(snap);
+        } catch (e) {
+          engineError = String(e.message).slice(0, 160);
+        }
+        results.push({ ticker, horizon, tf, snap, play, engineError });
+      }
+    }
+  }
+} finally {
+  await session.cleanup();
+  console.error("temp Clerk user deleted");
+}
+
+let failures = 0;
+let noData = 0;
+console.log(`\n=== VECTOR PLAY INVARIANTS — ${TICKERS.length} tickers x ${HORIZONS.length} horizons x ${TIMEFRAMES.length} timeframes\n`);
+for (const r of results) {
+  const tag = `${r.ticker.padEnd(6)} ${r.horizon.padEnd(8)} ${String(r.tf).padStart(3)}m`;
+  if (r.noData) {
+    noData++;
+    console.log(`  --   ${tag} no snapshot (no spot)`);
+    continue;
+  }
+  if (r.engineError) {
+    failures++;
+    console.log(`  FAIL ${tag} engine threw: ${r.engineError}`);
+    continue;
+  }
+  const broken = [];
+  for (const inv of INVARIANTS) {
+    const msg = inv.check(r.snap, r.play);
+    if (msg) broken.push(`${inv.name}: ${msg}`);
+  }
+  if (broken.length) {
+    failures += broken.length;
+    console.log(`  FAIL ${tag} bias=${r.play?.bias}`);
+    for (const b of broken) console.log(`         ${b}`);
+  } else {
+    console.log(`  ok   ${tag} bias=${String(r.play?.bias ?? "-").padEnd(16)} spot=${r.snap.spot}`);
+  }
+}
+console.log(`\ninvariant failures: ${failures}`);
+console.log(`combinations with no snapshot: ${noData}${noData ? " (off-hours or unsupported horizon — NOT counted as a failure)" : ""}`);
+process.exit(failures > 0 ? 1 : 0);

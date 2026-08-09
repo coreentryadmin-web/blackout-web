@@ -173,7 +173,11 @@ function collectLevels(input: VectorPlayInput): LevelCand[] {
   push("call wall", input.gexWalls?.callWalls?.[1]?.strike);
   push("put wall", input.gexWalls?.putWalls?.[0]?.strike);
   push("put wall", input.gexWalls?.putWalls?.[1]?.strike);
-  if (input.expectedMove) {
+  // Guard the shape, not just the presence. A truthy expectedMove whose `bands` is absent or not
+  // an array threw here and took the ENTIRE play down — the member sees a blank panel, not a
+  // degraded one. Every other input on this snapshot is optional and degrades gracefully; this one
+  // was the exception because it was the only field iterated without a check.
+  if (Array.isArray(input.expectedMove?.bands)) {
     for (const b of input.expectedMove.bands) {
       push(`${b.sigma}σ`, b.low);
       push(`${b.sigma}σ`, b.high);
@@ -246,7 +250,10 @@ function pickTargets(cands: LevelCand[], dir: "up" | "down", spot: number, max =
 
 /** True when `price` sits inside the k·σ expected-move band (a higher-probability target). */
 function withinSigma(em: ExpectedMove | null | undefined, price: number | null, k: number): boolean {
-  if (!em || price == null) return false;
+  // Same shape guard as collectLevels: presence of `em` does not guarantee an array of bands, and
+  // an unguarded .find() here threw from a DIFFERENT call path than the one first found. Both are
+  // fixed together — a member does not care which of the two crashed their panel.
+  if (!Array.isArray(em?.bands) || price == null) return false;
   const b = em.bands.find((x) => x.sigma === k);
   return !!b && price >= b.low && price <= b.high;
 }
