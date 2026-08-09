@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse, type NextRequest } from "next/server";
 import { dbConfigured, dbQuery } from "@/lib/db";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
 
@@ -21,23 +22,23 @@ async function ensurePushTable(): Promise<void> {
 /** Persist (or refresh) the caller's web-push subscription. */
 export async function POST(req: NextRequest) {
   const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers: NO_STORE_HEADERS });
   if (!dbConfigured()) {
-    return NextResponse.json({ error: "Database not configured" }, { status: 503 });
+    return NextResponse.json({ error: "Database not configured" }, { status: 503, headers: NO_STORE_HEADERS });
   }
 
   let body: { endpoint?: string; keys?: { p256dh?: string; auth?: string } };
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400, headers: NO_STORE_HEADERS });
   }
 
   const endpoint = body.endpoint?.trim();
   const p256dh = body.keys?.p256dh?.trim();
   const authKey = body.keys?.auth?.trim();
   if (!endpoint || !p256dh || !authKey) {
-    return NextResponse.json({ error: "Malformed subscription" }, { status: 400 });
+    return NextResponse.json({ error: "Malformed subscription" }, { status: 400, headers: NO_STORE_HEADERS });
   }
 
   try {
@@ -55,28 +56,28 @@ export async function POST(req: NextRequest) {
          WHERE push_subscriptions.user_id = EXCLUDED.user_id`,
       [endpoint, userId, p256dh, authKey]
     );
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true }, { headers: NO_STORE_HEADERS });
   } catch (error) {
     console.error("[push subscribe]", error);
-    return NextResponse.json({ error: "Failed to store subscription" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to store subscription" }, { status: 500, headers: NO_STORE_HEADERS });
   }
 }
 
 /** Remove the caller's subscription by endpoint. */
 export async function DELETE(req: NextRequest) {
   const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers: NO_STORE_HEADERS });
   if (!dbConfigured()) {
-    return NextResponse.json({ error: "Database not configured" }, { status: 503 });
+    return NextResponse.json({ error: "Database not configured" }, { status: 503, headers: NO_STORE_HEADERS });
   }
 
   let endpoint: string | undefined;
   try {
     endpoint = (await req.json())?.endpoint?.trim();
   } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400, headers: NO_STORE_HEADERS });
   }
-  if (!endpoint) return NextResponse.json({ error: "Missing endpoint" }, { status: 400 });
+  if (!endpoint) return NextResponse.json({ error: "Missing endpoint" }, { status: 400, headers: NO_STORE_HEADERS });
 
   try {
     await ensurePushTable();
@@ -85,9 +86,9 @@ export async function DELETE(req: NextRequest) {
       endpoint,
       userId,
     ]);
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true }, { headers: NO_STORE_HEADERS });
   } catch (error) {
     console.error("[push unsubscribe]", error);
-    return NextResponse.json({ error: "Failed to remove subscription" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to remove subscription" }, { status: 500, headers: NO_STORE_HEADERS });
   }
 }

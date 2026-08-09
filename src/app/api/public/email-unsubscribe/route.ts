@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
 import { verifyUnsubscribeToken } from "@/lib/email/unsubscribe-token";
 import { dbConfigured, dbQuery } from "@/lib/db";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 function getClient(): Resend | null {
   const apiKey = process.env.RESEND_API_KEY;

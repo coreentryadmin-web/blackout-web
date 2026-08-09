@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { requireAdminApi } from "@/lib/admin-access";
 import { dbConfigured, dbQuery } from "@/lib/db";
+import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
 
@@ -42,25 +43,25 @@ export async function POST(req: NextRequest) {
   if (!vapidConfigured()) {
     return NextResponse.json(
       { error: "Push not configured", detail: "Set NEXT_PUBLIC_VAPID_PUBLIC_KEY + VAPID_PRIVATE_KEY." },
-      { status: 501 }
+      { status: 501, headers: NO_STORE_HEADERS }
     );
   }
   const webpush = await loadWebPush();
   if (!webpush) {
     return NextResponse.json(
       { error: "web-push not installed", detail: "Run: npm i web-push" },
-      { status: 501 }
+      { status: 501, headers: NO_STORE_HEADERS }
     );
   }
   if (!dbConfigured()) {
-    return NextResponse.json({ error: "Database not configured" }, { status: 503 });
+    return NextResponse.json({ error: "Database not configured" }, { status: 503, headers: NO_STORE_HEADERS });
   }
 
   let body: { title?: string; body?: string; url?: string; userId?: string };
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400, headers: NO_STORE_HEADERS });
   }
 
   webpush.setVapidDetails(
@@ -99,5 +100,5 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  return NextResponse.json({ ok: true, sent, pruned: stale.length });
+  return NextResponse.json({ ok: true, sent, pruned: stale.length }, { headers: NO_STORE_HEADERS });
 }
