@@ -183,6 +183,44 @@ function collectLevels(input: VectorPlayInput): LevelCand[] {
 }
 
 /**
+ * The level a RANGE play should mean-revert to: something inside the rails.
+ *
+ * Exported for tests — the failure it prevents (a "sell rips at the call wall" play whose target is
+ * above that wall) is a narrative contradiction that only shows up when the magnet drifts outside
+ * the nearest pair, so it needs pinning directly rather than through the whole engine.
+ */
+export function rangeMeanReference(
+  magnet: number | null,
+  maxPain: number | null,
+  putWall: number | null,
+  callWall: number | null
+): { price: number | null; label: string } {
+  const inside = (p: number | null): boolean => {
+    if (p == null) return false;
+    if (putWall != null && p < putWall) return false;
+    if (callWall != null && p > callWall) return false;
+    return true;
+  };
+  if (inside(magnet)) return { price: magnet, label: "magnet" };
+  if (inside(maxPain)) return { price: maxPain, label: "max pain" };
+  // Both rails known but neither candidate sits between them — the midpoint IS the mean of the range.
+  if (putWall != null && callWall != null) {
+    return { price: (putWall + callWall) / 2, label: "range mid" };
+  }
+  // Exactly ONE rail known. The earlier version returned the raw magnet here, which reintroduced
+  // the very contradiction this function exists to prevent: a magnet above a known call wall would
+  // still be quoted as the mean-revert target while the entry says to sell at that wall. Clamp to
+  // the known boundary instead — a range cannot mean-revert past its own edge.
+  const cand = magnet ?? maxPain;
+  if (cand != null) {
+    if (callWall != null && cand > callWall) return { price: callWall, label: "call wall" };
+    if (putWall != null && cand < putWall) return { price: putWall, label: "put wall" };
+  }
+  // No rails at all: nothing to be inside of, so the magnet stands (unchanged from before).
+  return { price: cand, label: magnet != null ? "magnet" : "max pain" };
+}
+
+/**
  * Ordered, deduped target strings on one side of spot. Nearest first (T1→T3). Levels within a
  * tight band merge their labels ("VWAP/magnet 7,562") rather than printing two near-identical
  * lines, which is how a desk actually quotes a confluence target.
@@ -458,20 +496,37 @@ export function buildVectorPlay(input: VectorPlayInput): VectorPlay | null {
       break;
     }
     case "range": {
-      refLevel = magnetStrike ?? num(input.maxPain);
-      const magnetTxt = magnetStrike != null ? `${fmt(magnetStrike)} magnet` : "the gamma center of mass";
+      // The mean-revert reference must sit INSIDE the range it is supposed to be the mean of.
+      //
+      // The gamma magnet is a strength-weighted centre of mass of ALL walls, so it can land outside
+      // the nearest put/call pair — observed live on NVDA 2026-08-09: put wall 220, call wall 225,
+      // magnet 226.08. The play then read "sell rips 225 ... mean-revert to 226.08 magnet", i.e.
+      // sell at 225 and target a level above it. Self-contradictory, and it shipped to the panel.
+      //
+      // When the magnet is outside the rails it is not the mean of this range. Prefer max pain if
+      // that IS inside, else the rail midpoint. Only fall back to the raw magnet when there are no
+      // rails to be inside of.
+      const meanRef = rangeMeanReference(magnetStrike, num(input.maxPain), putWall, callWall);
+      refLevel = meanRef.price ?? magnetStrike ?? num(input.maxPain);
+      const magnetTxt = meanRef.price != null ? `${fmt(meanRef.price)} ${meanRef.label}` : "the gamma center of mass";
       headline = `${label} · range — fade extremes toward ${magnetTxt}`;
       thesis = `Long gamma (spot ${fmt(spot)}${flip != null ? ` > flip ${fmt(flip)}` : ""}): price is pinned. Buy dips toward the put wall, sell rips toward the call wall — mean-revert to ${magnetTxt}.`;
       const parts: string[] = [];
       if (putWall != null) parts.push(`buy dips ${fmt(putWall)}`);
       if (callWall != null) parts.push(`sell rips ${fmt(callWall)}`);
       entryZone = parts.length ? parts.join(" · ") : (magnetStrike != null ? `mean-revert to ${fmt(magnetStrike)}` : undefined);
-      // Range targets = the mean and both rails.
-      const t: string[] = [];
-      if (magnetStrike != null) t.push(`magnet ${fmt(magnetStrike)}`);
-      if (callWall != null) t.push(`call wall ${fmt(callWall)}`);
-      if (putWall != null) t.push(`put wall ${fmt(putWall)}`);
-      targets = t.slice(0, 3);
+      // Range targets = the mean and both rails, ordered NEAREST-FIRST from spot. The panel renders
+      // these with "→" between them, which reads as a T1→T2→T3 progression; an unordered list made
+      // the arrows assert a sequence the play does not intend (NVDA: "magnet 226.08 → call wall 225"
+      // put the further level first).
+      const t: LevelCand[] = [];
+      if (meanRef.price != null) t.push({ label: meanRef.label, price: meanRef.price });
+      if (callWall != null) t.push({ label: "call wall", price: callWall });
+      if (putWall != null) t.push({ label: "put wall", price: putWall });
+      targets = t
+        .sort((a, b) => Math.abs(a.price - spot) - Math.abs(b.price - spot))
+        .slice(0, 3)
+        .map((c) => `${c.label} ${fmt(c.price)}`);
       invalidation = flip != null ? `${tf} close < ${fmt(flip)} flips to short gamma (regime change)` : undefined;
       break;
     }

@@ -1,8 +1,6 @@
 "use client";
 
 import { VectorDteToggle } from "@/features/vector/components/VectorDteToggle";
-import { VectorWallCountToggle } from "@/features/vector/components/VectorWallCountToggle";
-import type { VectorWallCountChoice } from "@/features/vector/lib/vector-bar-timeframes";
 
 import { VectorLensToggle } from "@/features/vector/components/VectorLensToggle";
 import { VectorReplayControls } from "@/features/vector/components/VectorReplayControls";
@@ -22,9 +20,6 @@ type Props = {
   onLens: (lens: VectorWallLens) => void;
   dteHorizon: VectorDteHorizon;
   onDteHorizon: (h: VectorDteHorizon) => void;
-  /** Wall rows per side: AUTO (timeframe curve) or an explicit cap. */
-  wallCount: VectorWallCountChoice;
-  onWallCount: (c: VectorWallCountChoice) => void;
   dteAvailable: boolean;
   gexAsOf?: number | null;
   vexAsOf?: number | null;
@@ -74,8 +69,6 @@ export function VectorToolbar(props: Props) {
     onLens,
     dteHorizon,
     onDteHorizon,
-    wallCount,
-    onWallCount,
     dteAvailable,
     gexAsOf,
     vexAsOf,
@@ -161,9 +154,6 @@ export function VectorToolbar(props: Props) {
             disabled={replayMode}
           />
         )}
-        {/* Sits next to the DTE toggle: both scope what the rail draws, and the reported
-            "painted" density is a product of the two together (0DTE lifts the row cap to 12). */}
-        <VectorWallCountToggle choice={wallCount} onChoice={onWallCount} disabled={replayMode} />
         {trailSlot}
       </div>
       {/* Desktop / wide web — legacy wrap row (hidden on iOS via ios-native-compact-controls.css) */}
