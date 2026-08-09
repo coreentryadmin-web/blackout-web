@@ -7,6 +7,11 @@
  * (LULD.{TICKER}) are additionally enabled via STOCKS_WS_ENABLED.
  */
 import { MASSIVE_WS_STOCKS } from "@/lib/polygon-docs-nav";
+import {
+  isConnectionCapFrame,
+  reconnectDelayAfterClose,
+  shouldResetBackoffOnAuth,
+} from "./ws-connection-cap";
 import { normalizeLuldWsMessages } from "@/lib/providers/polygon-luld";
 import { getUwCacheRedis } from "@/lib/providers/uw-shared-cache";
 import { inOptionsMarketHours } from "@/lib/ws/options-socket";
@@ -112,6 +117,8 @@ let stocksInitialized = false;
 let stocksReconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let stocksShuttingDown = false;
 let stocksWatchdog: ReturnType<typeof setInterval> | null = null;
+/** Set when THIS connection was refused for account capacity; reset per attempt in connectStocks. */
+let stocksCappedThisConnection = false;
 
 const STOCKS_STALL_MS = (() => {
   const raw = process.env.STOCKS_WS_STALL_SEC?.trim();
@@ -124,7 +131,13 @@ function scheduleStocksReconnect(reason: string) {
   // Jitter (matches polygon-socket.ts/options-socket.ts) so a shared upstream blip that drops
   // every replica's socket at once doesn't have them all retry in lockstep.
   const jitter = Math.floor(Math.random() * 400);
-  const delay = Math.min(stocksReconnectDelay, 60_000) + jitter;
+  // A capacity refusal ignores the curve — see ws-connection-cap.ts. Without this the socket
+  // reconnects ~1/sec forever, because auth_success (which a CAPPED connection also reaches)
+  // resets the delay every cycle.
+  const delay = reconnectDelayAfterClose(
+    Math.min(stocksReconnectDelay, 60_000) + jitter,
+    stocksCappedThisConnection
+  );
   console.warn(`[stocks-socket] reconnect in ${delay}ms (${reason})`);
   stocksReconnectTimer = setTimeout(() => {
     stocksReconnectTimer = null;
@@ -160,6 +173,9 @@ function startStocksWatchdog() {
 
 async function connectStocks() {
   if (stocksShuttingDown) return;
+  // Per-ATTEMPT, never latched: the cap can clear the moment a sibling task exits or a deploy
+  // drains, and a sticky flag would hold this socket in cooldown long after slots freed.
+  stocksCappedThisConnection = false;
   if (!POLYGON_API_KEY) return;
   if (stocksWs && (stocksWs.readyState === WebSocket.OPEN || stocksWs.readyState === WebSocket.CONNECTING)) {
     return;
@@ -186,9 +202,17 @@ async function connectStocks() {
           const ev = String(msg.ev ?? "");
           if (ev === "connected" || (ev === "status" && msg.status === "connected")) {
             stocksWs?.send(JSON.stringify({ action: "auth", params: POLYGON_API_KEY }));
+          } else if (isConnectionCapFrame(msg)) {
+            // Account-level: the handshake AND auth both succeed, so this is invisible without an
+            // explicit branch. No retry rate fixes it; a fast one competes for the scarce slots.
+            stocksCappedThisConnection = true;
+            console.error(
+              "[stocks-socket] REFUSED — Polygon account is at its WebSocket connection limit. " +
+                "Backing off; check for orphaned connections or raise the plan limit."
+            );
           } else if (ev === "auth_success" || (ev === "status" && msg.status === "auth_success")) {
             stocksAuthenticated = true;
-            stocksReconnectDelay = 1000;
+            if (shouldResetBackoffOnAuth(stocksCappedThisConnection)) stocksReconnectDelay = 1000;
             const luldParams = luldWsEnabled()
               ? parseLuldTickerCsv().map((t) => `LULD.${t}`).join(",")
               : "";

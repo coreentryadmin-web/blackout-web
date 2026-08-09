@@ -24,6 +24,11 @@
  * store null and never fabricate a mark.
  */
 import { MASSIVE_WS_OPTIONS } from "@/lib/polygon-docs-nav";
+import {
+  isConnectionCapFrame,
+  reconnectDelayAfterClose,
+  shouldResetBackoffOnAuth,
+} from "./ws-connection-cap";
 import { isEtCashRth } from "@/lib/et-market-hours";
 import { getUwCacheRedis } from "@/lib/providers/uw-shared-cache";
 import {
@@ -351,6 +356,8 @@ class OptionsShard {
   private reconnectDelay = 1000;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private consecutiveFailures = 0;
+  /** Set when THIS shard's connection was refused for account capacity; reset per connect(). */
+  private cappedThisConnection = false;
   /** Symbols this shard is responsible for (the desired set). */
   readonly symbols = new Set<string>();
   /** Symbols the server has acked a subscription for on the current socket. */
@@ -415,7 +422,12 @@ class OptionsShard {
     this.consecutiveFailures += 1;
     const base = Math.min(this.reconnectDelay, 60_000);
     const jitter = Math.floor(Math.random() * 400);
-    const delay = this.consecutiveFailures >= 8 ? 60_000 : base + jitter;
+    // A capacity refusal ignores the curve — see ws-connection-cap.ts. auth_success is reached by
+    // a CAPPED connection too, so without this the shard reconnects ~1/sec forever.
+    const delay = reconnectDelayAfterClose(
+      this.consecutiveFailures >= 8 ? 60_000 : base + jitter,
+      this.cappedThisConnection
+    );
     console.warn(
       `[options-socket] shard ${this.id} reconnect in ${delay}ms (${reason}, failures=${this.consecutiveFailures})`
     );
@@ -456,6 +468,9 @@ class OptionsShard {
   }
 
   private connect() {
+    // Per-ATTEMPT, never latched: the cap can clear the moment another shard or replica releases a
+    // slot, and a sticky flag would hold this shard in cooldown long after that.
+    this.cappedThisConnection = false;
     if (this.shuttingDown) return; // shutting down — do not open a new socket
     if (!POLYGON_API_KEY) return;
     if (this.symbols.size === 0) return;
@@ -537,13 +552,24 @@ class OptionsShard {
       } else if (ev === "auth_success" || (ev === "status" && status === "auth_success")) {
         this.authenticated = true;
         this.authFailed = false;
-        this.reconnectDelay = 1000;
-        this.consecutiveFailures = 0;
+        if (shouldResetBackoffOnAuth(this.cappedThisConnection)) {
+          this.reconnectDelay = 1000;
+          this.consecutiveFailures = 0;
+        }
         // (Re)subscribe the full desired set for this shard on a fresh socket.
         this.subscribed.clear();
         this.sendSubscribe(Array.from(this.symbols));
         console.log(
           `[options-socket] shard ${this.id} authenticated — subscribed ${this.symbols.size} contracts`
+        );
+      } else if (isConnectionCapFrame(msg)) {
+        // Account-level: handshake AND auth both succeed, so this is invisible without a branch.
+        // Sharding across connections is exactly what exhausts the cap, so this shard must back
+        // off rather than race its siblings for a slot.
+        this.cappedThisConnection = true;
+        console.error(
+          `[options-socket] shard ${this.id} REFUSED — Polygon account is at its WebSocket ` +
+            "connection limit. Backing off; reduce shards or raise the plan limit."
         );
       } else if (
         ev === "auth_failed" ||
