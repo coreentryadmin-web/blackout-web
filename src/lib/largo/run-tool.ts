@@ -1036,6 +1036,11 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       return readPolygon(String(input.endpoint ?? ""), p);
     }
 
+    case "get_vector_pulse": {
+      const { vectorPulseForLargo } = await import("@/lib/largo/product-reads");
+      return vectorPulseForLargo(ticker, typeof input.horizon === "string" ? input.horizon : "all");
+    }
+
     case "get_vector_full_state": {
       const [{ fetchVectorFullState }, { normalizeDteHorizon }] = await Promise.all([
         import("@/lib/bie/vector-full-state"),
