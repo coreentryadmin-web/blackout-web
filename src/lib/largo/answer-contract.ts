@@ -1,5 +1,6 @@
 import { stripLargoBlocks } from "@/features/largo/blocks/extract";
 import { extractLevels } from "@/lib/largo/core/level-extract";
+import { extractGexShifts } from "@/lib/largo/core/gex-shift-extract";
 import {
   makeEnvelope,
   type BieAnswerEnvelope,
@@ -254,7 +255,11 @@ export function validateAnswerContract(markdown: string): AnswerContractReport {
  * Returns `null` when the answer carries no usable structure, so the caller keeps its existing
  * raw-markdown rendering. Never throws — a parser fault must not cost a member their answer.
  */
-export function parseAnswerEnvelope(markdown: string): BieAnswerEnvelope | null {
+export function parseAnswerEnvelope(
+  markdown: string,
+  /** The turn's raw tool results, for structured blocks the prose cannot carry. */
+  capturedResults?: readonly unknown[]
+): BieAnswerEnvelope | null {
   let sections: Map<string, string>;
   try {
     // Parse the PROSE only. A ```blackout payload contains lines like `"type": "levels",` which
@@ -305,6 +310,8 @@ export function parseAnswerEnvelope(markdown: string): BieAnswerEnvelope | null 
     // already-structured evidence rows against a closed label set, so a miss costs one grid row
     // and can never produce a wrong one.
     levels: extractLevels(evidence),
+    // Structured, from the tool's own output — see gex-shift-extract.ts.
+    gexShifts: extractGexShifts(capturedResults)?.shifts,
     invalidation: risk[0] ?? null,
   });
 }
