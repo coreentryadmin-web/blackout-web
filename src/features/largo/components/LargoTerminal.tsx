@@ -187,6 +187,12 @@ export function LargoTerminal({
                     <LargoAnswerMessage
                       content={msg.content}
                       envelope={msg.envelope}
+                      // The question this answer replies to — the preceding user turn. Used only to
+                      // choose which block leads in the desk read; a missing match renders the
+                      // default order, which is always correct.
+                      question={
+                        idx > 0 && messages[idx - 1]?.role === "user" ? messages[idx - 1]?.content : null
+                      }
                       streaming={
                         loading && idx === messages.length - 1 && msg.role === "assistant"
                       }

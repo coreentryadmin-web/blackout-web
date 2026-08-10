@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { clsx } from "clsx";
 import type { BieAnswerEnvelope, BieFreshness } from "@/lib/bie/answer-envelope";
 import { renderInlineMarkdown } from "@/features/largo/components/inline-markdown";
@@ -7,6 +8,7 @@ import { proseSections, summariseEvidence, hasExpandableEvidence } from "./secti
 import { splitHeadline } from "./headline";
 import { signalRowsFromLevels, tallySignals, BIAS_GLYPH } from "./signal-rows";
 import { ladderFromLevels } from "./level-ladder";
+import { classifyLayout, blockOrder, type AnswerBlock } from "./answer-layout";
 import { formatDistance } from "@/features/largo/lib/rail-levels";
 import {
   deriveMarketState,
@@ -84,7 +86,15 @@ function formatEt(iso: string | null | undefined): string {
   }).format(d)} ET`;
 }
 
-export function LargoDeskRead({ envelope }: { envelope: BieAnswerEnvelope }) {
+export function LargoDeskRead({
+  envelope,
+  question,
+}: {
+  envelope: BieAnswerEnvelope;
+  /** The member's question, used ONLY to choose which block leads. Optional: without it the card
+   *  renders the default order, which is always a correct way to show an answer. */
+  question?: string | null;
+}) {
   const levels = envelope.levels ?? [];
   // Only sections whose content exists nowhere else. See section-policy.ts: Verdict, Confidence,
   // Risk, Data and Facts are each rendered by a dedicated component below, and rendering them
@@ -107,6 +117,11 @@ export function LargoDeskRead({ envelope }: { envelope: BieAnswerEnvelope }) {
   const ladder = ladderFromLevels(levels);
   const signals = signalRowsFromLevels(levels);
   const tally = tallySignals(signals);
+
+  // The question decides which block LEADS — never which blocks exist. `blockOrder` guarantees
+  // every block appears exactly once under every layout, so a misclassified question costs
+  // emphasis, never content. See answer-layout.ts.
+  const order = blockOrder(classifyLayout(question));
   // Freshness per distinct source. Deduped because six evidence rows from HELIX should read as one
   // source chip, not six — the member is asking "how fresh is HELIX", not "how many rows".
   const sources = new Map<string, BieFreshness>();
@@ -120,6 +135,76 @@ export function LargoDeskRead({ envelope }: { envelope: BieAnswerEnvelope }) {
     const prev = sources.get(label);
     if (!prev || rank[f] > rank[prev]) sources.set(label, f);
   }
+
+  /**
+   * The four reorderable blocks, built once and emitted in the order the question implies.
+   *
+   * Keyed by block name so `order` can permute them. Every key is always present in the map — a
+   * layout can move a block but cannot remove it, which is the invariant answer-layout.ts exists
+   * to guarantee. A block that has no data renders null, exactly as it did inline.
+   */
+  const blocks: Record<AnswerBlock, React.ReactNode> = {
+    // SIGNAL TABLE. Every arrow is COMPUTED (level vs spot) or looked up in a closed convention
+    // map — never inferred from phrasing. See signal-rows.ts: fewer rows is the correct failure,
+    // because a fabricated arrow reads as an instruction.
+    signals:
+      signals.length > 0 ? (
+        <div key="signals" className="largo-read-signals">
+          <div className="largo-read-block-title">
+            Signals <span className="largo-read-tally">{tally.bull} bull · {tally.bear} bear</span>
+          </div>
+          {signals.map((r: (typeof signals)[number]) => (
+            <div key={r.label} className="largo-read-sig" title={r.because}>
+              <span className="largo-read-sig-label">{r.label}</span>
+              <span className="largo-read-sig-read">{r.reading}</span>
+              <span className={clsx("largo-read-sig-bias", `largo-read-sig-${r.bias}`)}>{BIAS_GLYPH[r.bias]}</span>
+            </div>
+          ))}
+        </div>
+      ) : null,
+
+    // DECISION MAP — price-ordered with spot in place, so the geometry is visible without reading
+    // a sentence. Shared with the context rail so the two cannot disagree.
+    ladder:
+      ladder.length > 1 ? (
+        <div key="ladder" className="largo-read-ladder">
+          <div className="largo-read-block-title">📍 Decision levels</div>
+          {ladder.map((r) => (
+            <div
+              key={`${r.label}-${r.price}`}
+              className={clsx("largo-read-rung", r.isSpot && "largo-read-rung-spot")}
+            >
+              <span className="largo-read-rung-price">
+                {r.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+              </span>
+              <span className="largo-read-rung-label">{r.label}</span>
+              <span className="largo-read-rung-dist">{r.isSpot ? "" : formatDistance(r.distancePct)}</span>
+            </div>
+          ))}
+        </div>
+      ) : null,
+
+    sections: (
+      <React.Fragment key="sections">
+        {sections.map((sec, i) => (
+          <div
+            key={`${sec.title}-${i}`}
+            className={clsx("largo-read-section", RISK_TITLE.test(sec.title) && "largo-read-section-risk")}
+          >
+            <div className="largo-read-section-title">{sectionIcon(sec.title)} {sec.title}</div>
+            <div className="largo-read-section-body">{renderInlineMarkdown(sec.body)}</div>
+          </div>
+        ))}
+      </React.Fragment>
+    ),
+
+    invalidation: envelope.invalidation ? (
+      <div key="invalidation" className="largo-read-section largo-read-section-risk">
+        <div className="largo-read-section-title">🎯 Invalidation</div>
+        <div className="largo-read-section-body">{renderInlineMarkdown(envelope.invalidation)}</div>
+      </div>
+    ) : null,
+  };
 
   return (
     <div className="largo-read">
@@ -154,60 +239,7 @@ export function LargoDeskRead({ envelope }: { envelope: BieAnswerEnvelope }) {
           reason is a number nobody can argue with, which is the opposite of useful. */}
       {envelope.confidence?.why && <div className="largo-read-conf-why">{envelope.confidence.why}</div>}
 
-      {/* SIGNAL TABLE. Every arrow is COMPUTED (level vs spot) or looked up in a closed convention
-          map — never inferred from phrasing. See signal-rows.ts: fewer rows is the correct failure,
-          because a fabricated arrow reads as an instruction. */}
-      {signals.length > 0 && (
-        <div className="largo-read-signals">
-          <div className="largo-read-block-title">
-            Signals <span className="largo-read-tally">{tally.bull} bull · {tally.bear} bear</span>
-          </div>
-          {signals.map((r: (typeof signals)[number]) => (
-            <div key={r.label} className="largo-read-sig" title={r.because}>
-              <span className="largo-read-sig-label">{r.label}</span>
-              <span className="largo-read-sig-read">{r.reading}</span>
-              <span className={clsx("largo-read-sig-bias", `largo-read-sig-${r.bias}`)}>{BIAS_GLYPH[r.bias]}</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* DECISION MAP — price-ordered with spot in place, so the geometry is visible without
-          reading a sentence. Shared with the context rail so the two cannot disagree. */}
-      {ladder.length > 1 && (
-        <div className="largo-read-ladder">
-          <div className="largo-read-block-title">📍 Decision levels</div>
-          {ladder.map((r) => (
-            <div
-              key={`${r.label}-${r.price}`}
-              className={clsx("largo-read-rung", r.isSpot && "largo-read-rung-spot")}
-            >
-              <span className="largo-read-rung-price">
-                {r.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-              </span>
-              <span className="largo-read-rung-label">{r.label}</span>
-              <span className="largo-read-rung-dist">{r.isSpot ? "" : formatDistance(r.distancePct)}</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {sections.map((s, i) => (
-        <div
-          key={`${s.title}-${i}`}
-          className={clsx("largo-read-section", RISK_TITLE.test(s.title) && "largo-read-section-risk")}
-        >
-          <div className="largo-read-section-title">{sectionIcon(s.title)} {s.title}</div>
-          <div className="largo-read-section-body">{renderInlineMarkdown(s.body)}</div>
-        </div>
-      ))}
-
-      {envelope.invalidation && (
-        <div className="largo-read-section largo-read-section-risk">
-          <div className="largo-read-section-title">🎯 Invalidation</div>
-          <div className="largo-read-section-body">{renderInlineMarkdown(envelope.invalidation)}</div>
-        </div>
-      )}
+      {order.map((b) => blocks[b])}
 
       {/* Sources requested but UNAVAILABLE are surfaced, not omitted. A missing source silently
           dropped turns "we could not see" into "there was nothing there". */}
