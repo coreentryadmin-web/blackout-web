@@ -8,10 +8,18 @@ import {
   type AnthropicToolLoopEvent,
 } from "@/lib/providers/anthropic";
 import { largoAvailable, largoClaudeEnabled } from "@/lib/ai-env";
+import { randomUUID } from "node:crypto";
 import { dbConfigured } from "@/lib/db";
 import { LARGO_SYSTEM_PROMPT } from "@/lib/largo/system-prompt";
 import { LARGO_TOOL_DEFS } from "@/lib/largo/tool-defs";
 import { runLargoTool } from "@/lib/largo/run-tool";
+import {
+  formatToolDiagnostics,
+  makeGuardedToolRunner,
+  type ToolCallDiagnostic,
+  type ToolGuardViewer,
+} from "@/lib/largo/core/tool-guard";
+import { isAdminUser } from "@/lib/admin-access";
 import { prefetchLargoTurnCaches } from "@/lib/largo/turn-pipeline";
 import {
   applyVerificationCaveat,
@@ -236,6 +244,7 @@ async function prepareLargoTurn(
   filteredTools: typeof LARGO_TOOL_DEFS;
   toolsUsed: string[];
   tickerHint: string | null;
+  viewer: ToolGuardViewer;
 }> {
   let sid = sessionId.trim() || `web-${userId}-${Date.now()}`;
   try {
@@ -247,7 +256,10 @@ async function prepareLargoTurn(
     // user as a hard "Connection interrupted" error. Recover gracefully: abandon the foreign
     // id (never grant cross-user access) and start a FRESH session owned by THIS user. The new
     // id flows back in the done event, so the client adopts it for subsequent turns.
-    sid = `web-${userId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    // crypto.randomUUID, not Math.random: a session id is not a secret (every read is gated on
+    // sessionOwnedByUser, so guessing one grants nothing) but it IS the collision key this branch
+    // exists to escape, and Math.random tripped CodeQL on every PR that shifted this line.
+    sid = `web-${userId}-${Date.now()}-${randomUUID().slice(0, 8)}`;
     await ensureLargoSession(sid, userId);
   }
 
@@ -372,7 +384,20 @@ async function prepareLargoTurn(
   // and complete beats dynamic and partial on both capability and cost.
   const filteredTools = LARGO_TOOL_DEFS;
 
-  return { sid, history, system, filteredTools, toolsUsed, tickerHint: intent.tickerHint ?? null };
+  // Entitlement is resolved ONCE per turn, not per tool call — a 12-round loop would otherwise
+  // make up to 12 Clerk reads for an answer that cannot change mid-turn. Fails CLOSED to
+  // non-admin: if we cannot establish that someone is an admin, they are not treated as one.
+  const isAdmin = await isAdminUser(userId).catch(() => false);
+
+  return {
+    sid,
+    history,
+    system,
+    filteredTools,
+    toolsUsed,
+    tickerHint: intent.tickerHint ?? null,
+    viewer: { userId, isAdmin },
+  };
 }
 
 
@@ -425,13 +450,16 @@ export async function runLargoQuery(
 
   await prefetchLargoTurnCaches();
 
-  const { sid, history, system, filteredTools, toolsUsed, tickerHint } = await prepareLargoTurn(
+  const { sid, history, system, filteredTools, toolsUsed, tickerHint, viewer } = await prepareLargoTurn(
     question,
     sessionId,
     userId
   );
 
   const capturedResults: unknown[] = [];
+  // Per-tool timings/outcomes for the turn. Names, ms and byte counts only — never inputs or
+  // outputs, which carry tickers, user ids and the member's positions.
+  const diagnostics: ToolCallDiagnostic[] = [];
 
   try {
     const answer = await anthropicToolLoop({
@@ -445,12 +473,13 @@ export async function runLargoQuery(
       maxRetries: 1,
       cacheSystem: true,
       aiGate: "largo",
-      runTool: async (name, input) => {
-        toolsUsed.push(name);
-        const result = await runLargoTool(name, input, userId);
-        capturedResults.push(result);
-        return result;
-      },
+      runTool: makeGuardedToolRunner({
+        viewer,
+        execute: runLargoTool,
+        toolsUsed,
+        capturedResults,
+        diagnostics,
+      }),
     });
 
     let text =
@@ -466,6 +495,11 @@ export async function runLargoQuery(
     const verification = verifyClaims(stripLargoBlocks(text), ctxNumbers);
     text = applyVerificationCaveat(text, verification);
 
+    // Per-tool timing summary. Turns "Largo is slow" into "get_postgres_flows took 9.2s of an 11s
+    // turn" — a question with an answer. Also surfaces DENIED and silently-EMPTY tool results,
+    // neither of which is visible in `toolsUsed` alone.
+    const diagLine = formatToolDiagnostics(diagnostics);
+    if (diagLine) console.info(diagLine);
     logClaudeTurn({ userId, question, toolsUsed, verification, startedAt });
     await persistClaudeTurn({ sessionId: sid, userId, question, answer: text, toolsUsed, capturedResults });
 
@@ -520,12 +554,15 @@ export async function runLargoQueryStream(
 
   await prefetchLargoTurnCaches({ onStatus: emitStatus });
 
-  const { sid, history, system, filteredTools, toolsUsed, tickerHint } = await prepareLargoTurn(
+  const { sid, history, system, filteredTools, toolsUsed, tickerHint, viewer } = await prepareLargoTurn(
     question,
     sessionId,
     userId
   );
   const capturedResults: unknown[] = [];
+  // Per-tool timings/outcomes for the turn. Names, ms and byte counts only — never inputs or
+  // outputs, which carry tickers, user ids and the member's positions.
+  const diagnostics: ToolCallDiagnostic[] = [];
 
   try {
     const emit = (event: LargoStreamEvent) => {
@@ -554,12 +591,13 @@ export async function runLargoQueryStream(
       onEvent: (event) => {
         if (event.type === "tool_start") emit(event);
       },
-      runTool: async (name, input) => {
-        toolsUsed.push(name);
-        const result = await runLargoTool(name, input, userId);
-        capturedResults.push(result);
-        return result;
-      },
+      runTool: makeGuardedToolRunner({
+        viewer,
+        execute: runLargoTool,
+        toolsUsed,
+        capturedResults,
+        diagnostics,
+      }),
     });
 
     let text =
@@ -578,6 +616,11 @@ export async function runLargoQueryStream(
     const verification = verifyClaims(stripLargoBlocks(text), ctxNumbers);
     text = applyVerificationCaveat(text, verification);
 
+    // Per-tool timing summary. Turns "Largo is slow" into "get_postgres_flows took 9.2s of an 11s
+    // turn" — a question with an answer. Also surfaces DENIED and silently-EMPTY tool results,
+    // neither of which is visible in `toolsUsed` alone.
+    const diagLine = formatToolDiagnostics(diagnostics);
+    if (diagLine) console.info(diagLine);
     logClaudeTurn({ userId, question, toolsUsed, verification, startedAt });
     await persistClaudeTurn({ sessionId: sid, userId, question, answer: text, toolsUsed, capturedResults });
 

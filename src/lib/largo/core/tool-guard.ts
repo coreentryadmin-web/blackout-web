@@ -1,0 +1,189 @@
+/**
+ * TOOL GUARD — entitlement enforcement and per-tool diagnostics, in one place.
+ *
+ * Two things belong here for the same reason: they are the only two things that must happen on
+ * EVERY tool call, and there were two hand-copied `runTool` closures (blocking and streaming) with
+ * no enforcement and no timing in either. A rule that lives in two closures is a rule that will
+ * eventually live in one.
+ *
+ * ── ENTITLEMENT ──────────────────────────────────────────────────────────────────────────────
+ *
+ * The capability registry has carried an `entitlement` field since it shipped and NOTHING read it.
+ * A prompt instruction is not enforcement: the model decides what to call, and "do not call admin
+ * tools for non-admins" is a suggestion to a system whose whole job is choosing tools. So the
+ * check is here, in code, on the execution path — the only place a caller cannot route around.
+ *
+ * THE POLICY, stated because the alternative is a plausible-looking disaster: the registry is an
+ * allowlist of **RESTRICTED** tools, not of permitted ones. 49 of 116 tools are catalogued. Failing
+ * closed on the uncatalogued 67 would silently disable most of Largo the moment this shipped, and
+ * the symptom — "Largo got worse at everything" — would be nearly impossible to trace back here.
+ * So a tool is denied only when the catalog explicitly says `admin` and the viewer is not one.
+ * Cataloguing a tool can therefore only ever ADD a restriction, never remove one by omission.
+ *
+ * A denial returns a structured refusal rather than throwing. The model needs to know it was
+ * denied so it can say so; an exception would surface as a generic tool failure and get narrated
+ * as "that data isn't available", which is a different and misleading claim.
+ *
+ * ── DIAGNOSTICS ──────────────────────────────────────────────────────────────────────────────
+ *
+ * Per-tool latency and outcome, so "Largo is slow" becomes "get_postgres_flows took 9.2s of an
+ * 11s turn" — an answerable question. Never logs tool INPUT or OUTPUT: inputs carry tickers and
+ * user ids, outputs carry the member's positions. Only names, timings and sizes.
+ */
+
+import {
+  LARGO_CAPABILITIES,
+  type Entitlement,
+  type LargoCapability,
+} from "@/lib/largo/registry/capability-registry";
+
+export type ToolCallDiagnostic = {
+  tool: string;
+  ms: number;
+  /** Denied by entitlement — did not execute. */
+  denied: boolean;
+  /** Threw. Distinguished from `denied` because they need opposite fixes. */
+  failed: boolean;
+  /** Serialized result size. A tool returning 0 bytes is a silent-empty, not a success. */
+  bytes: number;
+};
+
+export type ToolGuardViewer = {
+  userId: string;
+  isAdmin: boolean;
+};
+
+/**
+ * The entitlement the catalog declares for a tool, or null when the tool is uncatalogued.
+ *
+ * `catalog` is injectable ONLY so the enforcement path can be tested against a synthetic catalog.
+ * As of this writing every one of the 49 catalogued capabilities declares `premium`, so against
+ * the real registry this mechanism is armed but inert — it restricts nothing today. That is the
+ * honest state: the gate is in place and proven, and the day a capability is marked `admin` it is
+ * enforced in code rather than by asking the model nicely.
+ */
+export function declaredEntitlement(
+  tool: string,
+  catalog: readonly LargoCapability[] = LARGO_CAPABILITIES
+): Entitlement | null {
+  const cap = catalog.find((c) => c.tool === tool);
+  return cap ? cap.entitlement : null;
+}
+
+export type Denial = { denied: true; reason: string; tool: string };
+
+/**
+ * Is this viewer allowed to run this tool?
+ *
+ * Returns the denial rather than a boolean so the reason travels to the model verbatim and can be
+ * repeated to the member. "You need admin access for the scan-rejection log" is a usable answer;
+ * a silent empty result is not.
+ */
+export function checkToolEntitlement(
+  tool: string,
+  viewer: ToolGuardViewer,
+  catalog: readonly LargoCapability[] = LARGO_CAPABILITIES
+): Denial | null {
+  if (declaredEntitlement(tool, catalog) !== "admin") return null;
+  if (viewer.isAdmin) return null;
+  return {
+    denied: true,
+    tool,
+    reason:
+      `${tool} is an admin-only capability and this member is not an admin. It was NOT run. ` +
+      `Say plainly that the data requires admin access — do not substitute another source and ` +
+      `present it as the answer.`,
+  };
+}
+
+export type GuardedRunnerOptions = {
+  viewer: ToolGuardViewer;
+  /** The real executor. Injected so this module stays free of the 116-tool dependency graph. */
+  execute: (name: string, input: Record<string, unknown>, userId: string) => Promise<unknown>;
+  /** Tools actually CALLED. Denied tools are excluded — see the note in the runner. */
+  toolsUsed: string[];
+  capturedResults: unknown[];
+  diagnostics: ToolCallDiagnostic[];
+  /** Injected for testability; defaults to the wall clock. */
+  now?: () => number;
+  /** Injected for testability; defaults to the real capability registry. */
+  catalog?: readonly LargoCapability[];
+};
+
+/**
+ * The single tool-execution path: check entitlement, run, time, record.
+ *
+ * Replaces two identical inline closures. Errors are re-thrown unchanged — the tool loop already
+ * handles them, and swallowing one here would turn a hard failure into an empty result the model
+ * would narrate as "no data", which is the exact confusion this file exists to prevent.
+ */
+export function makeGuardedToolRunner(opts: GuardedRunnerOptions) {
+  const now = opts.now ?? (() => Date.now());
+  return async function runGuarded(name: string, input: Record<string, unknown>): Promise<unknown> {
+    const started = now();
+
+    const denial = checkToolEntitlement(name, opts.viewer, opts.catalog);
+    if (denial) {
+      // Deliberately NOT pushed to `toolsUsed`. That array is persisted to the interaction log and
+      // buckets calibration cohorts, so it must record tools that RAN. A denied call ran nothing;
+      // recording it would make an admin-denied turn indistinguishable from one that used the tool.
+      opts.diagnostics.push({ tool: name, ms: now() - started, denied: true, failed: false, bytes: 0 });
+      return denial;
+    }
+
+    opts.toolsUsed.push(name);
+    try {
+      const result = await opts.execute(name, input, opts.viewer.userId);
+      opts.capturedResults.push(result);
+      opts.diagnostics.push({
+        tool: name,
+        ms: now() - started,
+        denied: false,
+        failed: false,
+        bytes: sizeOf(result),
+      });
+      return result;
+    } catch (err) {
+      opts.diagnostics.push({ tool: name, ms: now() - started, denied: false, failed: true, bytes: 0 });
+      throw err;
+    }
+  };
+}
+
+function sizeOf(result: unknown): number {
+  try {
+    return JSON.stringify(result)?.length ?? 0;
+  } catch {
+    // A circular or non-serializable result is a real condition, not a crash. 0 reads as "unknown
+    // size" in the summary, which is accurate.
+    return 0;
+  }
+}
+
+/**
+ * One-line turn summary for the server log.
+ *
+ * Names, milliseconds and byte counts only — never a tool's input or output. Inputs carry tickers
+ * and user ids; outputs carry the member's positions. Slowest-first, because the reason anyone
+ * reads this line is to find what cost the turn its time.
+ */
+export function formatToolDiagnostics(diagnostics: readonly ToolCallDiagnostic[]): string {
+  if (diagnostics.length === 0) return "";
+  const total = diagnostics.reduce((s, d) => s + d.ms, 0);
+  const parts = [...diagnostics]
+    .sort((a, b) => b.ms - a.ms)
+    .map((d) => {
+      const flag = d.denied ? " DENIED" : d.failed ? " FAILED" : d.bytes === 0 ? " EMPTY" : "";
+      return `${d.tool} ${Math.round(d.ms)}ms${flag}`;
+    });
+  const denied = diagnostics.filter((d) => d.denied).length;
+  const failed = diagnostics.filter((d) => d.failed).length;
+  const empty = diagnostics.filter((d) => !d.denied && !d.failed && d.bytes === 0).length;
+  return (
+    `[largo] tools: ${diagnostics.length} calls, ${Math.round(total)}ms total` +
+    (denied ? `, ${denied} denied` : "") +
+    (failed ? `, ${failed} failed` : "") +
+    (empty ? `, ${empty} empty` : "") +
+    ` — ${parts.join(" | ")}`
+  );
+}
