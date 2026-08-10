@@ -2,6 +2,7 @@
 
 import { Component, useMemo, type ReactNode } from "react";
 import type { BieAnswerEnvelope } from "@/lib/bie/answer-envelope";
+import { CreateVisualAction } from "@/features/largo/visual/CreateVisualAction";
 import { LargoMessageBody } from "@/features/largo/components/LargoMessageBody";
 import { BieAnswer } from "@/features/largo/answer/BieAnswer";
 import { LargoDeskRead } from "@/features/largo/answer/LargoDeskRead";
@@ -100,9 +101,41 @@ export function LargoAnswerMessage({
     }
   }, [content, source, createdAt, envelope, streaming, className, onFollowup, question]);
 
+  /**
+   * CREATE VISUAL — offered only on a REAL, structured answer.
+   *
+   * Gated on `envelope`, not on `rich`: the visual is rendered from the envelope's structured
+   * evidence (levels, gexShifts, headline, bias), so an answer that fell back to raw markdown has
+   * nothing a card could honestly be built from. Offering the action there would produce a button
+   * whose only outcome is "no visual for this answer".
+   *
+   * `capturedResults` is deliberately NOT passed: raw tool output never crosses to the browser.
+   * The envelope's structured fields were themselves lifted off those same tool results, so the
+   * card stays on one snapshot without shipping the whole payload client-side.
+   */
+  const visual = envelope ? (
+    <div className="largo-visual-slot">
+      <CreateVisualAction
+        question={question ?? ""}
+        headline={envelope.headline ?? null}
+        // BieBias is bullish/bearish/neutral/mixed; the card's vocabulary is bull/bear/neutral.
+        // `mixed` maps to neutral rather than picking a side — the same rule market-state.ts
+        // applies when an answer names both directions.
+        bias={envelope.bias === "bullish" ? "bull" : envelope.bias === "bearish" ? "bear" : "neutral"}
+        envelopeLevels={envelope.levels?.map((l) => ({ label: l.label, value: l.price })) ?? null}
+        envelopeGexShifts={envelope.gexShifts ?? null}
+      />
+    </div>
+  ) : null;
+
   if (!rich) return fallback;
 
-  return <BieAnswerBoundary fallback={fallback}>{rich}</BieAnswerBoundary>;
+  return (
+    <>
+      <BieAnswerBoundary fallback={fallback}>{rich}</BieAnswerBoundary>
+      {visual}
+    </>
+  );
 }
 
 /** Error boundary: any render failure inside <BieAnswer> degrades to raw markdown. */

@@ -19075,3 +19075,103 @@ body::before {
     color: var(--largo-warn);
   }
 }
+
+@layer components {
+  /* ── Largo "Create visual" action ──
+     Preview-first: the trigger opens a panel describing what WOULD be drawn; only the explicit
+     Render button encodes an image. Styling stays inside the desk's existing token set — this is
+     a terminal control, not a marketing surface. */
+  .largo-visual-trigger,
+  .largo-visual-chip,
+  .largo-visual-cta {
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    padding: 0.35rem 0.7rem;
+    border: 1px solid var(--largo-ai-dim);
+    background: transparent;
+    color: var(--largo-muted);
+    cursor: pointer;
+    transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+  }
+  .largo-visual-trigger:hover,
+  .largo-visual-chip:hover,
+  .largo-visual-cta:hover {
+    color: var(--largo-primary);
+    border-color: var(--largo-ai);
+  }
+  .largo-visual-chip.is-on {
+    color: var(--largo-ai);
+    border-color: var(--largo-ai);
+    background: var(--largo-ai-bg);
+  }
+  .largo-visual-cta {
+    color: var(--largo-primary);
+    border-color: var(--largo-ai);
+    background: var(--largo-ai-bg);
+    text-decoration: none;
+  }
+  .largo-visual-cta:disabled { opacity: 0.5; cursor: default; }
+
+  .largo-visual-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    margin-top: 0.75rem;
+    padding: 0.75rem;
+    border: 1px solid var(--largo-ai-dim);
+    border-left: 2px solid var(--largo-ai);
+    background: var(--largo-ai-bg);
+  }
+  .largo-visual-row { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
+
+  .largo-visual-planhead { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: baseline; }
+  .largo-visual-tpl {
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 11px; letter-spacing: 0.16em; color: var(--largo-ai); font-weight: 600;
+  }
+  .largo-visual-dim,
+  .largo-visual-asof,
+  .largo-visual-note {
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 10.5px; color: var(--largo-muted-faint); margin: 0;
+  }
+  .largo-visual-note { color: var(--largo-warn); }
+
+  /* The values the card will assert, listed before the asset exists. */
+  .largo-visual-values { list-style: none; margin: 0.4rem 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.3rem 1rem; }
+  .largo-visual-values li {
+    display: flex; gap: 0.45rem; align-items: baseline;
+    font-family: var(--font-mono, ui-monospace, monospace); font-size: 11.5px;
+  }
+  .largo-visual-values span { color: var(--largo-muted-faint); }
+  .largo-visual-values b { color: var(--largo-primary); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  .largo-visual-blocked {
+    display: flex; flex-direction: column; gap: 0.25rem;
+    font-family: var(--font-mono, ui-monospace, monospace); font-size: 11.5px;
+    color: var(--largo-warn);
+    border: 1px solid rgba(251, 191, 36, 0.28);
+    background: rgba(251, 191, 36, 0.05);
+    padding: 0.6rem;
+  }
+  .largo-visual-error { font-family: var(--font-mono, ui-monospace, monospace); font-size: 11.5px; color: var(--largo-bear); margin: 0; }
+  .largo-visual-plan { display: flex; flex-direction: column; gap: 0.5rem; }
+  .largo-visual-preview { width: 100%; max-width: 560px; height: auto; border: 1px solid var(--largo-ai-dim); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .largo-visual-trigger, .largo-visual-chip, .largo-visual-cta { transition: none; }
+  }
+}
+
+@layer components {
+  /* The inline card renders at its true export width; a narrow viewport scrolls it rather than
+     reflowing, because reflowing would change the flexbox geometry the PNG shares. */
+  .largo-visual-scroll { overflow-x: auto; max-width: 100%; border: 1px solid var(--largo-ai-dim); }
+}
+
+@layer components {
+  /* Sits under a finished answer; quiet until hovered so it never competes with the read. */
+  .largo-visual-slot { margin-top: 0.5rem; }
+}
