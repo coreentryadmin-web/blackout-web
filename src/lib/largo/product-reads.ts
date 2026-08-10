@@ -4,7 +4,7 @@
 // never crash on a cold lane.
 
 import { roundFloats } from "@/lib/round-floats";
-import { fetchBangerBoardRows } from "@/lib/banger/positions-db";
+import { fetchBangerBoardRows, fetchBangerOpenCount } from "@/lib/banger/positions-db";
 import { isBangerEngineEnabled } from "@/lib/banger/flag";
 import { bangerScaleOutNote } from "@/lib/zerodte/scale-out";
 import {
@@ -61,6 +61,10 @@ export async function bangerBoardForLargo(limit = 40) {
   }
   try {
     const rows = await fetchBangerBoardRows(limit);
+    // The TRUE count, queried separately. `rows` is the most recent `limit` rows of ALL statuses,
+    // so counting the open ones below answers "how many of the last N rows are open" — a different
+    // question, and one nobody asked. See fetchBangerOpenCount for the measured symptom.
+    const trueOpenCount = await fetchBangerOpenCount().catch(() => null);
     const open = rows.filter((r) => r.status === "OPEN" || r.status === "PARTIAL");
     const closed = rows.filter((r) => r.status === "CLOSED_RUNNER" || r.status === "STOPPED");
     const mapRow = (row: (typeof rows)[number]) => ({
@@ -84,7 +88,14 @@ export async function bangerBoardForLargo(limit = 40) {
       enabled: true,
       as_of: new Date().toISOString(),
       exit_rule_note: bangerScaleOutNote(),
-      open_count: open.length,
+      // The real number of open positions, not the number visible in this page. When the count
+      // query fails we fall back to the page tally AND say so, rather than passing off a
+      // page-limited number as a total.
+      open_count: trueOpenCount ?? open.length,
+      open_count_exact: trueOpenCount != null,
+      /** How many open rows this response actually carries. Below open_count when truncated. */
+      open_shown: open.length,
+      truncated: trueOpenCount != null && trueOpenCount > open.length,
       closed_count: closed.length,
       open: open.map(mapRow),
       closed: closed.slice(0, 12).map(mapRow),

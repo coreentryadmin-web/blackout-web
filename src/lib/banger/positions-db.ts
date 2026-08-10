@@ -222,6 +222,26 @@ export async function fetchOpenBangerPositions(): Promise<BangerPositionRow[]> {
 }
 
 /** Open + recently-closed rows for the member board (bounded read, newest first). */
+/**
+ * TRUE open-position count, independent of any page limit.
+ *
+ * `fetchBangerBoardRows` takes the most recent N rows of ALL statuses and the caller filters them
+ * in JS, so counting the filtered result answers "how many of the last N rows are open" — not "how
+ * many positions are open". Those diverge the moment closed rows outnumber the page size, and the
+ * divergence is invisible: the number looks like a count because it is one, just of the wrong set.
+ *
+ * Measured 2026-08-10: Largo reported "40 open positions" in one answer and "20 open positions" in
+ * another ~60 seconds later, because it was reading a page-limited tally through a field named
+ * `open_count`.
+ */
+export async function fetchBangerOpenCount(): Promise<number> {
+  const res = await dbQuery<{ n: string }>(
+    `SELECT count(*)::text AS n FROM banger_positions WHERE status IN ('OPEN','PARTIAL')`,
+  );
+  const n = Number(res.rows[0]?.n ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
 export async function fetchBangerBoardRows(limit = 60): Promise<BangerPositionRow[]> {
   const res = await dbQuery<QueryResultRow>(
     `SELECT * FROM banger_positions ORDER BY session_date DESC, id DESC LIMIT $1`,

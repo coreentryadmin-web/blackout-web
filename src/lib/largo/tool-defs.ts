@@ -256,7 +256,7 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
   ),
   t(
     "get_banger_board",
-    `Night Hawk Bangers lane (Engine B) — whole-market weekly breakout discovery with mechanical scale-out tracking. Returns open + recently closed banger_positions: ticker, contract, entry/last mark, live P&L, scale-out state, discovery stats. Distinct from 0DTE Command (intraday scanner) and Swings (${SWING_DTE_RANGE} thesis lane).`,
+    `Night Hawk Bangers lane (Engine B) — whole-market weekly breakout discovery with mechanical scale-out tracking. Returns open + recently closed banger_positions: ticker, contract, entry/last mark, live P&L, scale-out state, discovery stats. Distinct from 0DTE Command (intraday scanner) and Swings (\${SWING_DTE_RANGE} thesis lane). COUNTS: \`open_count\` is the TRUE number of open positions (queried independently of \`limit\`); \`open_shown\` is how many are in this response and \`truncated\` says whether more exist. Quote open_count as the total — never the length of the \`open\` array, which is capped by \`limit\`.`,
     { limit: { type: "integer", default: 40 } }
   ),
   t(
