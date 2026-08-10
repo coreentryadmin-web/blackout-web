@@ -17,6 +17,7 @@ import {
 } from "@/lib/analytics/ga4-events";
 import { trackXEvent } from "@/lib/analytics/x-pixel";
 import { captureAttributionFromSearch } from "@/lib/analytics/utm";
+import { trackGoogleAdsConversion } from "@/lib/analytics/google-ads";
 
 function Ga4AttributionInner() {
   const pathname = usePathname() ?? "/";
@@ -35,6 +36,10 @@ function Ga4AttributionInner() {
 
     if (pathname === "/pricing" && ga4OncePerSession("pricing_view")) {
       trackGa4Event(GA4_EVENTS.pricingView, { page_path: pathname });
+      // SECONDARY — observation only. Deliberately carries no value: a page view is not worth
+      // money, and giving it one would let Smart Bidding buy pricing views instead of customers.
+      // It exists so the Ads account can see mid-funnel volume, not so it can bid on it.
+      trackGoogleAdsConversion("pricing_view");
     }
 
     if (pathname === "/sign-up" || pathname.startsWith("/sign-up/")) {
@@ -51,6 +56,10 @@ function Ga4AttributionInner() {
     ) {
       trackGa4Event(GA4_EVENTS.signUp, { page_path: pathname });
       trackXEvent("tw-re1j3-re9z9");
+      // PRIMARY. Fires on the same signal GA4's sign_up uses — a session cookie present on
+      // /upgrade after a pending sign-up — so the two can be reconciled against each other rather
+      // than being independent guesses at the same moment.
+      trackGoogleAdsConversion("signup");
     }
 
     const articleSlug = learnArticleSlugFromPath(pathname);

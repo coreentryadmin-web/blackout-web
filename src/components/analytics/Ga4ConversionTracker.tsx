@@ -11,6 +11,7 @@ import {
   readRememberedPlan,
 } from "@/lib/analytics/checkout-plans";
 import { tierAtLeast, parseTier } from "@/lib/tiers";
+import { purchaseTransactionId, trackGoogleAdsConversion } from "@/lib/analytics/google-ads";
 
 const PURCHASE_FLAG_PREFIX = "bo_ga4_purchase_fired:";
 
@@ -55,6 +56,19 @@ export function Ga4ConversionTracker() {
     trackXEvent("tw-re1j3-re9zc", {
       value: purchaseValue,
       currency: "USD",
+    });
+    // PRIMARY, and the one that carries money. A flat-value Purchase would teach Smart Bidding
+    // that a $49 community signup and a $1,999 annual are worth the same, and it would buy ten of
+    // the former; `purchaseValue` is the plan the member actually clicked, recovered across the
+    // Whop round-trip.
+    //
+    // transaction_id is keyed on user AND tier, not the bare userId GA4 uses above. Google dedupes
+    // on this value, so a lifetime-stable id would collapse a later upgrade into the original
+    // purchase and drop it — silently losing exactly the highest-value conversions.
+    trackGoogleAdsConversion("purchase", {
+      value: purchaseValue,
+      currency: "USD",
+      transactionId: purchaseTransactionId(userId, current),
     });
   }, [isLoaded, isSignedIn, userId, tier]);
 
