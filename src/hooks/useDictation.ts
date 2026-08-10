@@ -10,9 +10,14 @@ import { normalizeSpokenQuestion } from "@/lib/largo/core/spoken-text";
  * and the audio never leaves the device. For "type a question into a box" that is the right trade:
  * a server STT would add latency and a bill to something the platform already has for free.
  *
- * BROWSER SUPPORT IS PARTIAL AND THAT IS FINE. Chrome, Edge and Safari implement it; Firefox does
- * not. `supported` is false there and the button is simply not rendered — a mic that does nothing
- * is worse than no mic. This is an input convenience, never the only way to ask.
+ * BROWSER SUPPORT IS PARTIAL. Chrome, Edge and Safari implement it; Firefox does not, and Brave
+ * ships Chromium with speech recognition disabled by default.
+ *
+ * The first version HID the button when `supported` was false, reasoning that a mic which does
+ * nothing is worse than no mic. That was wrong, and shipping it proved it: the feature was
+ * invisible and read as "never built". An unexplained absence is worse than an honest refusal.
+ * So the button always renders, and `unsupportedReason` carries a sentence naming the actual
+ * remedy. This is still an input convenience, never the only way to ask.
  *
  * WHY THE TRANSCRIPT IS POST-PROCESSED. Generic speech models mangle exactly the words this
  * product runs on: "NVDA" comes back as "in video", "SPX" as "S and P X", "0DTE" as "zero D T E".
@@ -43,7 +48,10 @@ function recognitionCtor(): (new () => SpeechRecognitionLike) | null {
 }
 
 export type Dictation = {
+  /** True when this browser implements SpeechRecognition. The control renders either way. */
   supported: boolean;
+  /** Why dictation is unavailable here, phrased for the member. Null when it works. */
+  unsupportedReason: string | null;
   listening: boolean;
   /** Set when the mic is blocked or unavailable — surfaced so a dead button is never silent. */
   error: string | null;
@@ -72,7 +80,12 @@ export function useDictation(onTranscript: (text: string) => void): Dictation {
 
   const start = useCallback(() => {
     const Ctor = recognitionCtor();
-    if (!Ctor) return;
+    if (!Ctor) {
+      // Reached only by clicking the button in a browser without the API. Saying so beats a
+      // control that visibly does nothing.
+      setError("Voice input isn't supported in this browser — try Chrome, Edge or Safari.");
+      return;
+    }
     setError(null);
     try {
       const rec = new Ctor();
@@ -113,5 +126,14 @@ export function useDictation(onTranscript: (text: string) => void): Dictation {
   // Never leave the mic open when the composer unmounts.
   useEffect(() => () => recRef.current?.abort(), []);
 
-  return { supported, listening, error, start, stop };
+  return {
+    supported,
+    unsupportedReason: supported
+      ? null
+      : "Voice input isn't supported in this browser — try Chrome, Edge or Safari.",
+    listening,
+    error,
+    start,
+    stop,
+  };
 }
