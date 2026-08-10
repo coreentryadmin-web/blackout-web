@@ -5040,6 +5040,11 @@ body::before {
       animation: none;
     }
   }
+  /* Present but visibly inert. The member can see the feature exists and clicking explains why
+     it is unavailable here, which is strictly better than the control not existing at all. */
+  .largo-mic-btn-unsupported {
+    opacity: 0.45;
+  }
   .largo-mic-error {
     position: absolute;
     left: 0;

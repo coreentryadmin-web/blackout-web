@@ -291,12 +291,13 @@ export function LargoTerminal({
             )}
           </div>
           {/*
-            Push-to-talk. Only rendered where the browser actually implements SpeechRecognition
-            (Firefox does not) — a mic button that silently does nothing is worse than no mic.
-            Hidden while a query is in flight: the input is disabled then, so there is nowhere
-            for the transcript to land.
+            Push-to-talk. Rendered in EVERY browser, including those without SpeechRecognition
+            (Firefox; Brave disables it) — hiding it made the feature look unbuilt rather than
+            unavailable, so an unsupported browser gets the button plus a sentence naming the
+            remedy. Hidden only while a query is in flight: the input is disabled then, so there
+            is nowhere for the transcript to land.
           */}
-          {dictation.supported && !loading && hydrated && (
+          {!loading && hydrated && (
             <button
               type="button"
               onClick={() => {
@@ -309,8 +310,12 @@ export function LargoTerminal({
               }}
               aria-label={dictation.listening ? "Stop dictation" : "Ask by voice"}
               aria-pressed={dictation.listening}
-              title={dictation.listening ? "Listening — tap to stop" : "Ask by voice"}
-              className={clsx("largo-mic-btn", dictation.listening && "largo-mic-btn-live")}
+              title={dictation.unsupportedReason ?? (dictation.listening ? "Listening — tap to stop" : "Ask by voice")}
+              className={clsx(
+                "largo-mic-btn",
+                dictation.listening && "largo-mic-btn-live",
+                !dictation.supported && "largo-mic-btn-unsupported"
+              )}
             >
               <Mic size={14} aria-hidden />
             </button>
