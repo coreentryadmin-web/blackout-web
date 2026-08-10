@@ -75,6 +75,39 @@ export const TEMPLATES: TemplateSpec[] = [
     sufficient: (b) => !!b.trade && !!b.trade.entry,
     needs: "a committed trade with a recorded entry",
   },
+
+  {
+    id: "SCREENER",
+    label: "Screener",
+    implemented: true,
+    match: /\b(screen(er)?|scan(ner)?|which names|nearest flip|most pinned|most explosive|ranked|top \d+)\b/i,
+    // THREE rows minimum. Two names ordered by one metric is a comparison; calling it a market
+    // screen overstates how much of the universe was actually looked at.
+    sufficient: (b) => (b.screen?.rows.length ?? 0) >= 3,
+    needs: "at least three ranked names from the universe snapshot",
+  },
+  {
+    id: "REJECTION",
+    label: "Rejections",
+    implemented: true,
+    match: /\b(reject(ed|ion|ions)?|passed on|held|skip(ped)?|gate|didn.t take|why not)\b/i,
+    // Every row must name the gate that fired. A "we passed" with no rule behind it is a claim
+    // about judgement, and this card exists to show a RULE.
+    sufficient: (b) =>
+      (b.rejections?.rows.length ?? 0) >= 2 && (b.rejections?.rows ?? []).every((r) => !!r.gateFailed),
+    needs: "at least two gate-rejection rows, each naming the gate that fired",
+  },
+  {
+    id: "EM_CONE",
+    label: "Expected Move",
+    implemented: true,
+    match: /\b(expected move|em cone|cone|sigma|1σ|band|stay(ed)? inside|range day)\b/i,
+    // Needs a REALISED path — an intraday render would imply a result that has not happened yet.
+    // This is what makes it a post-close card by construction rather than by convention.
+    sufficient: (b) => !!b.cone && b.cone.path.length >= 2 && b.cone.upper > b.cone.lower,
+    needs: "an expected-move band plus the realised path (post-close only)",
+  },
+
   {
     id: "MARKET_MOVE",
     label: "Market Card",

@@ -29,7 +29,10 @@ export type VisualTemplateId =
   | "SYSTEM_COMPARISON"
   | "BEFORE_AFTER"
   | "SESSION_RECAP"
-  | "SIGNAL_TIMELINE";
+  | "SIGNAL_TIMELINE"
+  | "SCREENER"
+  | "REJECTION"
+  | "EM_CONE";
 
 /** Which product measured a value — drives the attribution strip and the manifest. */
 export type VisualSystem =
@@ -146,6 +149,44 @@ export type VisualBundle = {
     graded?: boolean;
     outcome?: string | null;
     source: VisualSystem;
+  } | null;
+
+  /** SCREENER — a ranked slice of the universe. `rows` is already ordered; the card does not
+   *  re-sort, because the ORDER is the claim being made. */
+  screen?: {
+    preset: string;
+    metricLabel: string;
+    universeSize: number;
+    updatedAt: string | null;
+    rows: {
+      ticker: string;
+      metricValue: number;
+      metricDisplay: string;
+      regime: "above" | "below" | "unknown";
+    }[];
+  } | null;
+
+  /** REJECTION — gate-held setups, in log order. Never a caller-curated subset. */
+  rejections?: {
+    total: number;
+    windowLabel: string | null;
+    rows: { ticker: string; gateFailed: string; reason?: string | null; at?: string | null }[];
+  } | null;
+
+  /** EM_CONE — an options-implied band plus the REALISED path through it. Post-close only. */
+  cone?: {
+    upper: number;
+    lower: number;
+    upperDisplay: string;
+    lowerDisplay: string;
+    widthDisplay: string;
+    openDisplay: string;
+    closeDisplay: string;
+    sigmaLabel: string;
+    /** held = never left · breached = left and returned · closed_outside = ended beyond. */
+    verdict: "held" | "breached" | "closed_outside";
+    path: { price: number }[];
+    asOf: string | null;
   } | null;
 
   /** Which systems were consulted this turn — drives attribution and the manifest. */

@@ -33,9 +33,20 @@ const withMove: VisualBundle = {
 test("only implemented templates are ever reachable", () => {
   // The registry lists all ten from the brief so the shape is visible, but a half-built template
   // selected by a keyword match is exactly how a mediocre graphic ships.
-  assert.equal(IMPLEMENTED_TEMPLATES.length, 3);
-  assert.deepEqual(IMPLEMENTED_TEMPLATES.map((t) => t.id), ["LEVEL_ANALYSIS", "TRADE_RECAP", "MARKET_MOVE"]);
-  assert.equal(TEMPLATES.length, 10, "all ten stay registered");
+  assert.equal(IMPLEMENTED_TEMPLATES.length, 6);
+  // ORDER IS BEHAVIOUR, not bookkeeping: it is the tie-break when two intents match AND the
+  // descent order when a proposed template cannot be filled. MARKET_MOVE stays LAST among the
+  // implemented set because it is the most general and the most likely to be fillable, which is
+  // exactly what makes it the right last resort rather than a frequent winner.
+  assert.deepEqual(IMPLEMENTED_TEMPLATES.map((t) => t.id), [
+    "LEVEL_ANALYSIS",
+    "TRADE_RECAP",
+    "SCREENER",
+    "REJECTION",
+    "EM_CONE",
+    "MARKET_MOVE",
+  ]);
+  assert.equal(TEMPLATES.length, 13, "all thirteen stay registered");
 });
 
 test("intent routes each of the brief's example questions", () => {
