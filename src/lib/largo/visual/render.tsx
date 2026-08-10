@@ -36,6 +36,9 @@ import { buildManifest, createRecorder } from "./manifest";
 import { MarketMoveCard } from "./templates/market-move";
 import { TradeRecapCard } from "./templates/trade-recap";
 import { LevelAnalysisCard, focusStrikeFromQuestion } from "./templates/level-analysis";
+import { ScreenerCard } from "./templates/screener";
+import { RejectionCard } from "./templates/rejection";
+import { EmConeCard } from "./templates/em-cone";
 
 const FONT_DIR = join(process.cwd(), "src/lib/largo/visual/fonts");
 
@@ -122,6 +125,21 @@ export function buildVisualElement(params: RenderVisualParams): {
           focusStrike={question ? focusStrikeFromQuestion(question) : null}
         />
       );
+      break;
+    case "SCREENER":
+      // Guards mirror the router's sufficiency predicates so a DIRECT caller cannot bypass them.
+      // The router protects the UI path; these protect every other one.
+      if ((bundle.screen?.rows.length ?? 0) < 3) throw new Error("SCREENER requires at least three ranked rows");
+      element = <ScreenerCard bundle={bundle} spec={spec} recorder={recorder} asOfLabel={asOfLabel} />;
+      break;
+    case "REJECTION":
+      if (!bundle.rejections?.rows.length) throw new Error("REJECTION requires gate-rejection rows");
+      element = <RejectionCard bundle={bundle} spec={spec} recorder={recorder} asOfLabel={asOfLabel} />;
+      break;
+    case "EM_CONE":
+      // The realised path is what makes this a result rather than a forecast.
+      if (!bundle.cone || bundle.cone.path.length < 2) throw new Error("EM_CONE requires a realised path");
+      element = <EmConeCard bundle={bundle} spec={spec} recorder={recorder} asOfLabel={asOfLabel} />;
       break;
     default:
       throw new Error(`Template ${params.template} is registered but not implemented`);

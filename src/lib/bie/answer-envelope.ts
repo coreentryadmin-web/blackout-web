@@ -132,6 +132,14 @@ export type BieAnswerEnvelope = {
   followups?: string[];
   /** Sources requested but unavailable this turn — always surfaced. */
   unavailableSources?: BieUnavailableSource[];
+  /**
+   * The persisted assistant-message id for this turn, when it was stored.
+   *
+   * Carried so the UI can ask the server to rebuild a visual from THIS turn's own tool results
+   * rather than shipping raw tool output to the browser. Absent when the turn was not persisted
+   * (no DB configured, or a path that does not store).
+   */
+  turnId?: number | null;
   /** When the envelope was assembled (ISO). */
   asOf: string;
   /** Backward-compatible markdown rendering (the existing string Largo path). */

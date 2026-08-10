@@ -631,13 +631,15 @@ export async function runLargoQuery(
     const diagLine = formatToolDiagnostics(diagnostics);
     if (diagLine) console.info(diagLine);
     logClaudeTurn({ userId, question, toolsUsed, verification, startedAt });
-    await persistClaudeTurn({ sessionId: sid, userId, question: persistedQuestion, answer: text, toolsUsed, capturedResults });
+    const turnId = await persistClaudeTurn({ sessionId: sid, userId, question: persistedQuestion, answer: text, toolsUsed, capturedResults });
 
     // The envelope is built BEFORE the follow-ups so the chips can be derived from the same
     // headline the badge renders. Deriving them from the raw answer instead would read the whole
     // body — where a long answer naturally names both directions — and report MIXED on answers
     // that resolved cleanly. Chips and badge now agree by construction.
     const envelope = envelopeFromContract(text, question, capturedResults);
+    // The turn id rides on the envelope so "Create visual" can name the exact turn to rebuild from.
+    if (envelope && turnId != null) envelope.turnId = turnId;
     const followups = withResolutionChips(
       await generateLargoFollowups(question, text, tickerHint),
       envelope?.headline ?? ""
@@ -827,13 +829,15 @@ export async function runLargoQueryStream(
     const diagLine = formatToolDiagnostics(diagnostics);
     if (diagLine) console.info(diagLine);
     logClaudeTurn({ userId, question, toolsUsed, verification, startedAt });
-    await persistClaudeTurn({ sessionId: sid, userId, question: persistedQuestion, answer: text, toolsUsed, capturedResults });
+    const turnId = await persistClaudeTurn({ sessionId: sid, userId, question: persistedQuestion, answer: text, toolsUsed, capturedResults });
 
     // The envelope is built BEFORE the follow-ups so the chips can be derived from the same
     // headline the badge renders. Deriving them from the raw answer instead would read the whole
     // body — where a long answer naturally names both directions — and report MIXED on answers
     // that resolved cleanly. Chips and badge now agree by construction.
     const envelope = envelopeFromContract(text, question, capturedResults);
+    // The turn id rides on the envelope so "Create visual" can name the exact turn to rebuild from.
+    if (envelope && turnId != null) envelope.turnId = turnId;
     const followups = withResolutionChips(
       await generateLargoFollowups(question, text, tickerHint),
       envelope?.headline ?? ""
