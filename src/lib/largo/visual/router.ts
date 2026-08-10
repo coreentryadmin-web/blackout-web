@@ -91,6 +91,45 @@ export const TEMPLATES: TemplateSpec[] = [
     needs: "at least three ranked names from the universe snapshot",
   },
   {
+    id: "COUNTERFACTUAL",
+    label: "Counterfactual",
+    implemented: true,
+    match:
+      /\b(counterfactual|firewall|would have (happened|lost|won)|what did (it|the gate|the rules) (hold|stop|block)|guards? (held|cost|paid)|cost of (the )?(guard|firewall))\b/i,
+    // AHEAD OF REJECTION DELIBERATELY. Both answer "what did we pass on", and REJECTION's `held`
+    // keyword would otherwise swallow every counterfactual question. This is the strictly stronger
+    // card — the same holds, GRADED — so when the graded evidence exists it must win.
+    //
+    // Both sides required: a counterfactual with only the avoided side is a highlight reel of a
+    // guard, and `gradedCount` must be > 0 or nothing was actually measured.
+    sufficient: (b) =>
+      !!b.counterfactual &&
+      b.counterfactual.gradedCount > 0 &&
+      b.counterfactual.gradedCount <= b.counterfactual.heldCount &&
+      !!b.counterfactual.losersAvoided &&
+      !!b.counterfactual.winnersForgone,
+    needs: "held plays graded on real bars, with BOTH the avoided and forgone sides",
+  },
+  {
+    id: "GRADER_AGREEMENT",
+    label: "Grader Agreement",
+    implemented: true,
+    match:
+      /\b(grader|grading|agreement rate|agree with each other|cross.?check|audit(ed)?|how do (you|we) (know|verify)|independently verif)\b/i,
+    // `comparable` must be a real, non-zero, non-inflated denominator: it cannot exceed the window
+    // and cannot be smaller than the rows that agreed. A percentage against a broken denominator
+    // is the exact way this measurement gets flattered.
+    sufficient: (b) =>
+      !!b.graderAgreement &&
+      b.graderAgreement.comparable > 0 &&
+      b.graderAgreement.comparable <= b.graderAgreement.totalPlays &&
+      b.graderAgreement.agreed <= b.graderAgreement.comparable &&
+      // Every disagreement must be enumerable. If the count implies more disagreements than there
+      // are rows to show, the card would claim completeness it does not have.
+      b.graderAgreement.rows.length >= b.graderAgreement.comparable - b.graderAgreement.agreed,
+    needs: "a comparable population, an agreement count, and a row for every disagreement",
+  },
+  {
     id: "REJECTION",
     label: "Rejections",
     implemented: true,

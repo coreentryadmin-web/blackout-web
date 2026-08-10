@@ -32,7 +32,9 @@ export type VisualTemplateId =
   | "SIGNAL_TIMELINE"
   | "SCREENER"
   | "REJECTION"
-  | "EM_CONE";
+  | "EM_CONE"
+  | "COUNTERFACTUAL"
+  | "GRADER_AGREEMENT";
 
 /** Which product measured a value — drives the attribution strip and the manifest. */
 export type VisualSystem =
@@ -262,6 +264,59 @@ export type VisualBundle = {
       direction: "up" | "down" | "flat";
       source: VisualSystem;
     }[];
+  } | null;
+
+  /**
+   * COUNTERFACTUAL — what a fail-closed guard HELD, graded on real bars.
+   *
+   * The only card in the library that reports on trades that were never taken, which is what makes
+   * it publishable evidence rather than marketing: anyone can show what they caught. Both sides are
+   * REQUIRED fields — a counterfactual that reports losers-avoided without winners-forgone is a
+   * highlight reel of a guard, and the guard's real cost is exactly the forgone side.
+   */
+  counterfactual?: {
+    sessionLabel: string;
+    /** The guard being evaluated, named — "Phase-0 fail-closed firewall", "G-4 vix_unavailable". */
+    guardLabel: string;
+    heldCount: number;
+    /** How many of the held plays could be graded on bars. Never assumed equal to `heldCount`. */
+    gradedCount: number;
+    losersAvoided: { count: number; pnlValue: number; pnlDisplay: string };
+    winnersForgone: { count: number; pnlValue: number; pnlDisplay: string };
+    netValue: number;
+    netDisplay: string;
+    rows: {
+      ticker: string;
+      /** The specific gate that fired. A hold with no named rule is a claim about judgement. */
+      gate: string;
+      outcomeValue: number;
+      outcomeDisplay: string;
+      verdict: "avoided" | "forgone";
+    }[];
+    source: VisualSystem;
+  } | null;
+
+  /**
+   * GRADER_AGREEMENT — two independent graders, measured against each other.
+   *
+   * `comparable` is the population that can actually be tested (rows carrying evidence on BOTH
+   * sides) and is distinct from `totalPlays`. Reporting an agreement rate against the wrong
+   * denominator is the whole way this measurement gets inflated, so both numbers are required and
+   * both are rendered.
+   */
+  graderAgreement?: {
+    windowLabel: string;
+    /** What `comparable` actually selects, in words — the reader cannot check a bare fraction. */
+    populationLabel: string;
+    totalPlays: number;
+    comparable: number;
+    agreed: number;
+    agreementDisplay: string;
+    graderALabel: string;
+    graderBLabel: string;
+    /** EVERY disagreement, not a sample — see the template header. */
+    rows: { ticker: string; dateLabel?: string | null; a: string; b: string }[];
+    source: VisualSystem;
   } | null;
 
   /** SESSION_RECAP — one whole session in OHLC plus what the desk did in it. Post-close. */

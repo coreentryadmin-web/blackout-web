@@ -63,7 +63,7 @@ const cone = (pathLen: number): VisualBundle => ({
 });
 
 test("every registered template is implemented, MARKET_MOVE last", () => {
-  assert.equal(IMPLEMENTED_TEMPLATES.length, 13);
+  assert.equal(IMPLEMENTED_TEMPLATES.length, 15);
   assert.equal(IMPLEMENTED_TEMPLATES[IMPLEMENTED_TEMPLATES.length - 1]!.id, "MARKET_MOVE");
 });
 
