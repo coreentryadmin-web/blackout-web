@@ -42,6 +42,7 @@ import {
 import { analyzeLargoQuestion, KNOWN_TICKERS } from "@/lib/largo/question-intent";
 import { formatImageBlock, type ImageBlock } from "@/lib/largo/core/image-attachment";
 import { deterministicLargoFollowups } from "@/lib/largo/largo-followups";
+import { withResolutionChips } from "@/lib/largo/core/resolution-chips";
 import { loadLargoPlatformSnapshotBlock } from "@/lib/largo/platform-snapshot-block";
 import { captureLargoLiveFeed, formatLargoLiveFeed } from "@/lib/largo/largo-live-feed";
 import { polygonConfigured, uwConfigured } from "@/lib/providers/config";
@@ -627,7 +628,15 @@ export async function runLargoQuery(
     logClaudeTurn({ userId, question, toolsUsed, verification, startedAt });
     await persistClaudeTurn({ sessionId: sid, userId, question: persistedQuestion, answer: text, toolsUsed, capturedResults });
 
-    const followups = await generateLargoFollowups(question, text, tickerHint);
+    // The envelope is built BEFORE the follow-ups so the chips can be derived from the same
+    // headline the badge renders. Deriving them from the raw answer instead would read the whole
+    // body — where a long answer naturally names both directions — and report MIXED on answers
+    // that resolved cleanly. Chips and badge now agree by construction.
+    const envelope = envelopeFromContract(text, question);
+    const followups = withResolutionChips(
+      await generateLargoFollowups(question, text, tickerHint),
+      envelope?.headline ?? ""
+    );
 
     return {
       answer: text,
@@ -640,7 +649,7 @@ export async function runLargoQuery(
       // thing the answer is about. A client re-guessing from the question text could show NVDA
       // beside an answer about SPX, and nothing would surface the disagreement.
       ticker: tickerHint,
-      envelope: envelopeFromContract(text, question),
+      envelope,
     };
   } catch (error) {
     logClaudeTurn({
@@ -815,7 +824,15 @@ export async function runLargoQueryStream(
     logClaudeTurn({ userId, question, toolsUsed, verification, startedAt });
     await persistClaudeTurn({ sessionId: sid, userId, question: persistedQuestion, answer: text, toolsUsed, capturedResults });
 
-    const followups = await generateLargoFollowups(question, text, tickerHint);
+    // The envelope is built BEFORE the follow-ups so the chips can be derived from the same
+    // headline the badge renders. Deriving them from the raw answer instead would read the whole
+    // body — where a long answer naturally names both directions — and report MIXED on answers
+    // that resolved cleanly. Chips and badge now agree by construction.
+    const envelope = envelopeFromContract(text, question);
+    const followups = withResolutionChips(
+      await generateLargoFollowups(question, text, tickerHint),
+      envelope?.headline ?? ""
+    );
 
     // Replace the progressively-streamed text with the AUTHORITATIVE version.
     //
@@ -835,7 +852,7 @@ export async function runLargoQueryStream(
       followups,
         ticker: tickerHint,
       verification,
-      envelope: envelopeFromContract(text, question),
+      envelope,
     });
   } catch (error) {
     if (isSseClientDisconnect(error)) return;
