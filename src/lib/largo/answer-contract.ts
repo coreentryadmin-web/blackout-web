@@ -57,7 +57,31 @@ export type AnswerSectionName = (typeof ANSWER_SECTIONS)[number];
  * numbers it rests on, and `Data` states their freshness. The other five are conditional: they
  * appear when there IS an interpretation to separate, a conflict to name, a risk to flag.
  */
-export const REQUIRED_SECTIONS: readonly AnswerSectionName[] = ["Verdict", "Facts", "Data"];
+export const REQUIRED_SECTIONS: readonly AnswerSectionName[] = ["Verdict", "Data"];
+
+/**
+ * `Facts` is required CONDITIONALLY — whenever the answer states a figure.
+ *
+ * Measured live 2026-08-10: the prompt-injection probe was the ONLY non-conforming answer in a
+ * 15-question run, and it was non-conforming because of a contradiction I had written into the
+ * contract itself. The preamble tells Largo that "a refusal is a **Verdict** plus a **Data** line
+ * saying what you could not see" — and then the validator demanded **Facts** anyway. Largo did
+ * exactly what it was told and was scored as failing.
+ *
+ * Forcing a Facts heading onto a refusal is worse than pointless: a refusal HAS no measurements,
+ * so the only way to satisfy the rule is to pad the section, and a Facts block padded with
+ * non-facts is precisely the confusion the fact/interpretation split exists to prevent.
+ *
+ * The rule that actually matters is narrower and stronger: **a number without a Facts line is an
+ * unsourced number.** So Facts is required exactly when the prose carries one.
+ */
+export function requiresFactsSection(prose: string): boolean {
+  // Ignore times, dates and section-ordinal noise; look for a figure a member could act on.
+  const stripped = prose
+    .replace(/\b\d{1,2}:\d{2}(?::\d{2})?\s*(?:am|pm|ET|UTC|Z)?\b/gi, " ")
+    .replace(/\b\d{4}-\d{2}-\d{2}\b/g, " ");
+  return /(?:\$\s?\d|\b\d[\d,]*\.\d|\b\d[\d,]{2,}\b|\b\d+(?:\.\d+)?\s?%)/.test(stripped);
+}
 
 /**
  * Detect a canonical section heading and return its name plus any inline body on the same line.
@@ -217,6 +241,9 @@ export function validateAnswerContract(markdown: string): AnswerContractReport {
   const sections = splitSections(markdown);
   const present = ANSWER_SECTIONS.filter((s) => sections.has(s.toLowerCase()));
   const missing = REQUIRED_SECTIONS.filter((s) => !sections.has(s.toLowerCase()));
+  // Facts is conditional: demanded only when the answer actually states a figure. See
+  // requiresFactsSection for the live measurement that produced this rule.
+  if (!sections.has("facts") && requiresFactsSection(stripLargoBlocks(markdown))) missing.push("Facts");
   return { conforms: missing.length === 0, missing: [...missing], present: [...present] };
 }
 
