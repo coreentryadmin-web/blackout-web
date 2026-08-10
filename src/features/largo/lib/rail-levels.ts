@@ -19,7 +19,12 @@
  * PURE AND TOTAL: no IO, no throw, no clock. Nulls in, fewer rows out — never a fabricated row.
  */
 
-export type RailLevelKind = "call-wall" | "put-wall" | "gamma-flip" | "max-pain" | "spot";
+/**
+ * `level` is the generic rung — VWAP, prior high/low, a gamma magnet. The answer card's DECISION
+ * LEVELS block draws from a wider label set than the rail's four structural fields, and forcing
+ * those into one of the named kinds would either drop them or mislabel them.
+ */
+export type RailLevelKind = "call-wall" | "put-wall" | "gamma-flip" | "max-pain" | "spot" | "level";
 
 export type RailLevelInput = {
   label: string;

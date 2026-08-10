@@ -4,6 +4,17 @@ import { clsx } from "clsx";
 import type { BieAnswerEnvelope, BieFreshness } from "@/lib/bie/answer-envelope";
 import { renderInlineMarkdown } from "@/features/largo/components/inline-markdown";
 import { proseSections, summariseEvidence, hasExpandableEvidence } from "./section-policy";
+import { splitHeadline } from "./headline";
+import { signalRowsFromLevels, tallySignals, BIAS_GLYPH } from "./signal-rows";
+import { ladderFromLevels } from "./level-ladder";
+import { formatDistance } from "@/features/largo/lib/rail-levels";
+import {
+  deriveMarketState,
+  deriveActionState,
+  marketStateToBias,
+  MARKET_STATE_LABEL,
+  ACTION_STATE_LABEL,
+} from "@/lib/largo/core/market-state";
 
 /**
  * LARGO DESK READ — the structured answer surface.
@@ -43,6 +54,19 @@ const FRESH_CLASS: Record<BieFreshness, string> = {
 /** Sections whose content is a STOP condition get the red treatment — they end trades. */
 const RISK_TITLE = /^(invalidation|risk|what would change|caution|warning)/i;
 
+/** One glyph per section meaning — the restrained set, defined once. */
+const SECTION_ICON: Record<string, string> = {
+  interpretation: "⚡",
+  conflicts: "🟡",
+  risk: "⚠️",
+  invalidation: "🎯",
+  flow: "🌊",
+};
+
+function sectionIcon(title: string): string {
+  return SECTION_ICON[String(title ?? "").trim().toLowerCase()] ?? "";
+}
+
 function biasClass(bias: string | null | undefined): string {
   return BIAS_CLASS[String(bias ?? "").toLowerCase()] ?? "largo-read-bias-neutral";
 }
@@ -68,6 +92,21 @@ export function LargoDeskRead({ envelope }: { envelope: BieAnswerEnvelope }) {
   const sections = proseSections(envelope.sections);
   const evidence = envelope.evidence ?? [];
   const evidenceSummary = summariseEvidence(evidence);
+
+  // THE HEADLINE IS THE EXECUTIVE ANSWER. Largo writes its verdict as one long paragraph, so the
+  // old `headline` was the whole thing rendered in display type — an essay in a title slot, and
+  // the same reasoning appeared again below. Only the first sentence leads; the elaboration is
+  // dropped from the default view because Interpretation already carries it (see section-policy).
+  const { header } = splitHeadline(envelope.headline);
+
+  // Derived from the header, so the badge, the chips and the prose can never disagree.
+  const state = deriveMarketState(envelope.headline ?? "");
+  const action = deriveActionState(envelope.headline ?? "");
+  const bias = marketStateToBias(state);
+
+  const ladder = ladderFromLevels(levels);
+  const signals = signalRowsFromLevels(levels);
+  const tally = tallySignals(signals);
   // Freshness per distinct source. Deduped because six evidence rows from HELIX should read as one
   // source chip, not six — the member is asking "how fresh is HELIX", not "how many rows".
   const sources = new Map<string, BieFreshness>();
@@ -91,28 +130,59 @@ export function LargoDeskRead({ envelope }: { envelope: BieAnswerEnvelope }) {
         <span className="largo-read-asof">{formatEt(envelope.asOf)}</span>
       </div>
 
-      <div className="largo-read-verdict">
-        <span className={clsx("largo-read-bias", biasClass(envelope.bias))}>
-          {envelope.headline || String(envelope.bias ?? "").toUpperCase() || "READ"}
+      {/* ONE-GLANCE STATE: direction, action, confidence. Direction and action are separate
+          variables — "clearly bullish" and "take a long" are different claims, and a single badge
+          has to overstate one of them. */}
+      <div className="largo-read-state">
+        <span className={clsx("largo-read-statechip", `largo-read-bias-${bias}`)}>
+          {BIAS_GLYPH[bias === "bullish" ? "bull" : bias === "bearish" ? "bear" : "neutral"]}{" "}
+          {MARKET_STATE_LABEL[state]}
         </span>
         {envelope.confidence?.level && (
           <span className="largo-read-conf">{envelope.confidence.level} confidence</span>
         )}
-        {/* The WHY is shown, not just the level. A confidence number with no reason is a number
-            nobody can argue with, which is the opposite of useful. */}
-        {envelope.confidence?.why && (
-          <span className="largo-read-conf-why">{envelope.confidence.why}</span>
+        {action !== "unknown" && (
+          <span className="largo-read-action">◌ {ACTION_STATE_LABEL[action]}</span>
         )}
       </div>
 
-      {levels.length > 0 && (
-        <div className="largo-read-levels">
-          {levels.slice(0, 8).map((l, i) => (
-            <div key={`${l.label}-${i}`} className="largo-read-level">
-              <span className="largo-read-level-label">{l.label}</span>
-              <span className="largo-read-level-price">
-                {typeof l.price === "number" ? l.price.toLocaleString() : "—"}
+      {/* THE EXECUTIVE ANSWER — one sentence, in the neon synthesis colour. Everything below is
+          support for this line. */}
+      {header && <div className="largo-read-header">{header}</div>}
+
+      {/* SIGNAL TABLE. Every arrow is COMPUTED (level vs spot) or looked up in a closed convention
+          map — never inferred from phrasing. See signal-rows.ts: fewer rows is the correct failure,
+          because a fabricated arrow reads as an instruction. */}
+      {signals.length > 0 && (
+        <div className="largo-read-signals">
+          <div className="largo-read-block-title">
+            Signals <span className="largo-read-tally">{tally.bull} bull · {tally.bear} bear</span>
+          </div>
+          {signals.map((r: (typeof signals)[number]) => (
+            <div key={r.label} className="largo-read-sig" title={r.because}>
+              <span className="largo-read-sig-label">{r.label}</span>
+              <span className="largo-read-sig-read">{r.reading}</span>
+              <span className={clsx("largo-read-sig-bias", `largo-read-sig-${r.bias}`)}>{BIAS_GLYPH[r.bias]}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* DECISION MAP — price-ordered with spot in place, so the geometry is visible without
+          reading a sentence. Shared with the context rail so the two cannot disagree. */}
+      {ladder.length > 1 && (
+        <div className="largo-read-ladder">
+          <div className="largo-read-block-title">📍 Decision levels</div>
+          {ladder.map((r) => (
+            <div
+              key={`${r.label}-${r.price}`}
+              className={clsx("largo-read-rung", r.isSpot && "largo-read-rung-spot")}
+            >
+              <span className="largo-read-rung-price">
+                {r.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}
               </span>
+              <span className="largo-read-rung-label">{r.label}</span>
+              <span className="largo-read-rung-dist">{r.isSpot ? "" : formatDistance(r.distancePct)}</span>
             </div>
           ))}
         </div>
@@ -123,14 +193,14 @@ export function LargoDeskRead({ envelope }: { envelope: BieAnswerEnvelope }) {
           key={`${s.title}-${i}`}
           className={clsx("largo-read-section", RISK_TITLE.test(s.title) && "largo-read-section-risk")}
         >
-          <div className="largo-read-section-title">{s.title}</div>
+          <div className="largo-read-section-title">{sectionIcon(s.title)} {s.title}</div>
           <div className="largo-read-section-body">{renderInlineMarkdown(s.body)}</div>
         </div>
       ))}
 
       {envelope.invalidation && (
         <div className="largo-read-section largo-read-section-risk">
-          <div className="largo-read-section-title">Invalidation</div>
+          <div className="largo-read-section-title">🎯 Invalidation</div>
           <div className="largo-read-section-body">{renderInlineMarkdown(envelope.invalidation)}</div>
         </div>
       )}
