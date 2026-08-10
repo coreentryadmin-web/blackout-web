@@ -4,10 +4,13 @@ import { Fragment, type ReactNode } from "react";
 import { clsx } from "clsx";
 import { extractLargoSegments } from "@/features/largo/blocks/extract";
 import { LargoBlockPending, LargoBlockView } from "@/features/largo/blocks/LargoBlocks";
-
-type TokenKind = "text" | "bold" | "italic" | "code" | "num";
-
-type Token = { kind: TokenKind; value: string };
+// Shared with the structured-answer components. One tokeniser, so the two halves of a single
+// answer cannot format the same syntax differently.
+import {
+  parseMarkdownTokens,
+  renderTokens,
+  type Token,
+} from "@/features/largo/components/inline-markdown";
 
 type ContentBlock =
   | { type: "spacer" }
@@ -18,9 +21,6 @@ type ContentBlock =
   | { type: "list"; items: string[] }
   | { type: "table"; headers: string[]; rows: string[][] }
   | { type: "para"; lines: string[] };
-
-const NUM_RE =
-  /(\$[\d,]+(?:\.\d+)?[kKmMbB]?|[\+\-]?\d{1,3}(?:,\d{3})*(?:\.\d+)?%|[\+\-]?\d+\.\d+|[\+\-]?\d{2,}|[\+\-]?\d+\s*(?:pts?|points?|bpm))/gi;
 
 function isTableRow(line: string): boolean {
   const t = line.trim();
@@ -49,64 +49,6 @@ function isHeaderRow(cells: string[]): boolean {
       joined.includes("metric") ||
       cells.every((c) => /^[a-z\s/]+$/i.test(c) && c.length < 24))
   );
-}
-
-function parseMarkdownTokens(segment: string): Token[] {
-  const out: Token[] = [];
-  const re = /(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/g;
-  let last = 0;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(segment)) !== null) {
-    if (m.index > last) out.push(...tokenizePlain(segment.slice(last, m.index)));
-    const raw = m[0];
-    if (raw.startsWith("**")) out.push({ kind: "bold", value: raw.slice(2, -2) });
-    else if (raw.startsWith("*")) out.push({ kind: "italic", value: raw.slice(1, -1) });
-    else out.push({ kind: "code", value: raw.slice(1, -1) });
-    last = m.index + raw.length;
-  }
-  if (last < segment.length) out.push(...tokenizePlain(segment.slice(last)));
-  return out;
-}
-
-function tokenizePlain(text: string): Token[] {
-  if (!text) return [];
-  const out: Token[] = [];
-  let last = 0;
-  let m: RegExpExecArray | null;
-  NUM_RE.lastIndex = 0;
-  while ((m = NUM_RE.exec(text)) !== null) {
-    if (m.index > last) out.push({ kind: "text", value: text.slice(last, m.index) });
-    out.push({ kind: "num", value: m[0] });
-    last = m.index + m[0].length;
-  }
-  if (last < text.length) out.push({ kind: "text", value: text.slice(last) });
-  return out.length ? out : [{ kind: "text", value: text }];
-}
-
-function tokenClass(kind: TokenKind): string {
-  switch (kind) {
-    case "bold":
-      return "largo-fmt-bold";
-    case "italic":
-      return "largo-fmt-italic";
-    case "code":
-      return "largo-fmt-code";
-    case "num":
-      return "largo-fmt-num";
-    default:
-      return "";
-  }
-}
-
-function renderTokens(tokens: Token[]): ReactNode {
-  return tokens.map((t, i) => {
-    if (t.kind === "text") return <Fragment key={i}>{t.value}</Fragment>;
-    return (
-      <span key={i} className={tokenClass(t.kind)}>
-        {t.value}
-      </span>
-    );
-  });
 }
 
 function renderLine(line: string): ReactNode {
