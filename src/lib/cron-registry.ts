@@ -64,6 +64,8 @@ export const CRON_JOBS: CronJobDefinition[] = [
     kind: "http",
     path: "/api/cron/nighthawk-outcomes",
     schedule_label: "4:30 PM ET weekdays",
+    // Mirrors railway.nighthawk-outcomes.toml — off-window stale suppression (ops #1983).
+    schedule_cron_utc: "30 20,21 * * 1-5",
     stale_after_min: 36 * 60,
     weekdays_only: true,
     description: "Resolve play target/stop vs next-day prices",
@@ -203,6 +205,8 @@ export const CRON_JOBS: CronJobDefinition[] = [
     kind: "http",
     path: "/api/cron/gex-eod-snapshot",
     schedule_label: "~4:10 PM ET weekdays (post-close)",
+    // Mirrors railway.gex-eod-snapshot.toml — off-window stale suppression (ops #1983).
+    schedule_cron_utc: "10 20,21 * * 1-5",
     stale_after_min: 36 * 60,
     weekdays_only: true,
     description: "Persist end-of-day GEX close levels to the rolling gex-eod:{ticker} list so Thermal can anchor day-over-day history",
@@ -362,6 +366,8 @@ export const CRON_JOBS: CronJobDefinition[] = [
     kind: "http",
     path: "/api/cron/nighthawk-morning-confirm",
     schedule_label: "9:15 AM ET weekdays",
+    // Mirrors railway.nighthawk-morning-confirm.toml — off-window stale suppression (ops #1983).
+    schedule_cron_utc: "15 13,14 * * 1-5",
     stale_after_min: 36 * 60,
     weekdays_only: true,
     description: "Validates overnight Night Hawk plays vs pre-market SPX; writes CONFIRMED/DEGRADED/INVALIDATED status to Redis for UI badges",

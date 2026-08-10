@@ -80,4 +80,34 @@ describe("cron-schedule-window", () => {
     const now = new Date("2026-08-03T22:00:00.000Z");
     assert.equal(isInOffScheduleIdleGap(cron, now), false);
   });
+
+  it("gex-eod-snapshot: off-window gap Mon before 20:10 UTC after Fri run — ops #1983", () => {
+    const cron = "10 20,21 * * 1-5";
+    const now = new Date("2026-08-10T05:00:00.000Z"); // Mon 1:00 AM ET
+    assert.equal(isInOffScheduleIdleGap(cron, now), true);
+    const last = lastExpectedCronFireUtc(cron, now);
+    const next = nextExpectedCronFireUtc(cron, now);
+    assert.equal(last?.toISOString(), "2026-08-07T21:10:00.000Z");
+    assert.equal(next?.toISOString(), "2026-08-10T20:10:00.000Z");
+  });
+
+  it("nighthawk-morning-confirm: off-window gap Mon before 13:15 UTC after Fri run — ops #1983", () => {
+    const cron = "15 13,14 * * 1-5";
+    const now = new Date("2026-08-10T05:00:00.000Z");
+    assert.equal(isInOffScheduleIdleGap(cron, now), true);
+    const last = lastExpectedCronFireUtc(cron, now);
+    const next = nextExpectedCronFireUtc(cron, now);
+    assert.equal(last?.toISOString(), "2026-08-07T14:15:00.000Z");
+    assert.equal(next?.toISOString(), "2026-08-10T13:15:00.000Z");
+  });
+
+  it("nighthawk-outcomes: off-window gap Mon before 20:30 UTC after Fri run — ops #1983", () => {
+    const cron = "30 20,21 * * 1-5";
+    const now = new Date("2026-08-10T05:00:00.000Z");
+    assert.equal(isInOffScheduleIdleGap(cron, now), true);
+    const last = lastExpectedCronFireUtc(cron, now);
+    const next = nextExpectedCronFireUtc(cron, now);
+    assert.equal(last?.toISOString(), "2026-08-07T21:30:00.000Z");
+    assert.equal(next?.toISOString(), "2026-08-10T20:30:00.000Z");
+  });
 });
