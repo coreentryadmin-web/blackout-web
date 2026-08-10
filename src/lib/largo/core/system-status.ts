@@ -113,3 +113,40 @@ export function formatDataAge(sec: number | null): string {
   if (sec < 3600) return `${Math.round(sec / 60)}m`;
   return `${Math.round(sec / 3600)}h`;
 }
+
+/**
+ * How fresh the underlying data is, as a health class.
+ *
+ * "DATA 2s AGO" and "DATA 6m AGO" were rendered in identical muted grey, so the one number that
+ * tells a member whether to trust everything else on screen carried no signal at all. Freshness is
+ * the field most worth colouring: a stale desk that LOOKS live is the failure this strip exists to
+ * prevent.
+ *
+ * Thresholds match the strip's own refresh cadence rather than being picked for looks — the strip
+ * polls on a short interval, so anything past a minute means a read is not landing, and past five
+ * minutes the numbers describe a market that has moved on.
+ *
+ * `null` in, `unknown` out — an unknown age must never render as fresh.
+ */
+export const DATA_FRESH_SEC = 60;
+export const DATA_RECENT_SEC = 300;
+
+export function dataAgeHealth(sec: number | null | undefined): "live" | "degraded" | "down" | "unknown" {
+  if (sec == null || !Number.isFinite(sec) || sec < 0) return "unknown";
+  if (sec <= DATA_FRESH_SEC) return "live";
+  if (sec <= DATA_RECENT_SEC) return "degraded";
+  return "down";
+}
+
+/**
+ * How the online tally should read.
+ *
+ * All systems up is a genuinely different state from "most are up", and a bare "5/6" in grey buries
+ * that. One system down is degraded; more than one is a desk with real holes in it.
+ */
+export function onlineHealth(online: number, total: number): "live" | "degraded" | "down" | "unknown" {
+  if (!Number.isFinite(online) || !Number.isFinite(total) || total <= 0) return "unknown";
+  if (online >= total) return "live";
+  if (total - online === 1) return "degraded";
+  return "down";
+}

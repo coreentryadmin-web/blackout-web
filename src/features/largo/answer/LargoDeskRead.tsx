@@ -199,6 +199,57 @@ export function LargoDeskRead({
       </React.Fragment>
     ),
 
+    // SYSTEM READS — what each product independently thinks, and whether they agree. The single
+    // highest-value thing this platform knows and the only thing it never said out loud: every
+    // product already has an opinion, they were just on five different pages.
+    //
+    // A bar renders ONLY where a system natively produces a 0-100 quantity (see system-reads.ts).
+    // Night Hawk deliberately has none — a lane with one open call is not "100% bullish".
+    systemReads: envelope.systemReads?.reads.length ? (
+      <div key="systemReads" className="largo-read-signals">
+        <div className="largo-read-block-title">
+          System reads
+          <span
+            className={clsx(
+              "largo-read-tally",
+              envelope.systemReads.agreement.verdict === "aligned" && "largo-read-sig-bull",
+              envelope.systemReads.agreement.verdict === "split" && "largo-read-sig-neutral"
+            )}
+          >
+            {envelope.systemReads.agreement.verdict === "aligned"
+              ? `✓ aligned ${envelope.systemReads.agreement.direction ?? ""}`
+              : envelope.systemReads.agreement.verdict === "split"
+                ? `🟡 split · ${envelope.systemReads.agreement.bullish}▲ ${envelope.systemReads.agreement.bearish}▼`
+                : `${envelope.systemReads.agreement.voting} system${envelope.systemReads.agreement.voting === 1 ? "" : "s"} read`}
+          </span>
+        </div>
+        {envelope.systemReads.reads.map((r) => (
+          <div key={r.system} className="largo-read-sig" title={r.reason ?? r.basis}>
+            <span className="largo-read-sig-label">{r.system}</span>
+            <span className="largo-read-sig-read">{r.basis}</span>
+            <span
+              className={clsx(
+                "largo-read-sig-bias",
+                r.stance === "bullish" && "largo-read-sig-bull",
+                r.stance === "bearish" && "largo-read-sig-bear",
+                r.stance === "neutral" && "largo-read-sig-neutral"
+              )}
+            >
+              {r.stance === "bullish"
+                ? "🟢 ↑"
+                : r.stance === "bearish"
+                  ? "🔴 ↓"
+                  : r.stance === "neutral"
+                    ? "🟡 ↔"
+                    : "◌"}
+              {/* The bar is the system's OWN number, or nothing. Never a normalised stand-in. */}
+              {r.strength != null ? ` ${r.strength}` : ""}
+            </span>
+          </div>
+        ))}
+      </div>
+    ) : null,
+
     // Γ GEX SHIFT — strike-level change since the previous snapshot, from the tool's OWN structured
     // output. Direction is the tool's `stronger`/`weaker`/`flipped` field, not the sign of the
     // change: a strike CROSSING ZERO is a different event from one merely shrinking, and a sign

@@ -92,9 +92,11 @@ export function classifyLayout(question: string | null | undefined): AnswerLayou
 }
 
 /** Block identifiers the desk-read card can render, in the order the default layout uses. */
-export type AnswerBlock = "signals" | "gexShifts" | "ladder" | "sections" | "invalidation";
+export type AnswerBlock = "systemReads" | "signals" | "gexShifts" | "ladder" | "sections" | "invalidation";
 
-const DEFAULT_ORDER: AnswerBlock[] = ["signals", "gexShifts", "ladder", "sections", "invalidation"];
+// SYSTEM READS leads by default: "do the systems agree?" is the question a member cannot
+// answer by opening a tab, and it frames everything below it.
+const DEFAULT_ORDER: AnswerBlock[] = ["systemReads", "signals", "gexShifts", "ladder", "sections", "invalidation"];
 
 /**
  * Which block leads, per layout.
@@ -105,7 +107,7 @@ const DEFAULT_ORDER: AnswerBlock[] = ["signals", "gexShifts", "ladder", "section
  */
 const LAYOUT_ORDER: Record<AnswerLayout, AnswerBlock[]> = {
   // The level itself first — where price sits relative to it is the answer.
-  level: ["ladder", "gexShifts", "signals", "sections", "invalidation"],
+  level: ["ladder", "gexShifts", "signals", "systemReads", "sections", "invalidation"],
   // What breaks the thesis is the point of a comparison or a ranking, so reasoning leads.
   comparison: ["sections", "signals", "ladder", "invalidation"],
   ranking: ["sections", "signals", "ladder", "invalidation"],

@@ -1,6 +1,8 @@
 import { stripLargoBlocks } from "@/features/largo/blocks/extract";
 import { extractLevels } from "@/lib/largo/core/level-extract";
 import { extractGexShifts } from "@/lib/largo/core/gex-shift-extract";
+import { analyzeLargoQuestion } from "@/lib/largo/question-intent";
+import { extractSystemReads } from "@/lib/largo/core/system-reads-extract";
 import {
   makeEnvelope,
   type BieAnswerEnvelope,
@@ -277,6 +279,10 @@ export function parseAnswerEnvelope(
   // confident headline card with no evidence behind it — the most misleading possible card.
   if (!verdict || !facts) return null;
 
+  // The instrument this answer is about, resolved through the SAME entity layer the rest of Largo
+  // uses so the Night Hawk row cannot be filtered on a different spelling than the answer discusses.
+  const tickerHint = analyzeLargoQuestion(verdict, []).tickerHint ?? null;
+
   const evidence: BieEvidence[] = parseEvidence(facts);
   for (const line of bulletLines(get("Interpretation"))) {
     const { text, provenance } = parseProvenance(line.replace(KIND_RE, ""));
@@ -312,6 +318,8 @@ export function parseAnswerEnvelope(
     levels: extractLevels(evidence),
     // Structured, from the tool's own output — see gex-shift-extract.ts.
     gexShifts: extractGexShifts(capturedResults)?.shifts,
+    // Cross-system consensus, from the same tool results — see system-reads-extract.ts.
+    systemReads: extractSystemReads(capturedResults, tickerHint) ?? undefined,
     invalidation: risk[0] ?? null,
   });
 }

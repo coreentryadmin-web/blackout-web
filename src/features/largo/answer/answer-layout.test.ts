@@ -43,7 +43,7 @@ test("EVERY layout renders EVERY block — layout reorders, it never drops", () 
     const order = blockOrder(l);
     assert.deepEqual(
       [...order].sort(),
-      ["gexShifts", "invalidation", "ladder", "sections", "signals"],
+      ["gexShifts", "invalidation", "ladder", "sections", "signals", "systemReads"],
       `layout ${l} does not render every block exactly once`
     );
     assert.equal(new Set(order).size, order.length, `layout ${l} repeats a block`);
@@ -65,7 +65,7 @@ test("invalidation is last under every layout — it is the stop condition", () 
 
 test("an unknown layout falls back to the default order rather than rendering nothing", () => {
   const order = blockOrder("nonsense" as AnswerLayout);
-  assert.deepEqual(order, ["signals", "gexShifts", "ladder", "sections", "invalidation"]);
+  assert.deepEqual(order, ["systemReads", "signals", "gexShifts", "ladder", "sections", "invalidation"]);
 });
 
 test("every layout has a label", () => {
