@@ -33,7 +33,7 @@ const withMove: VisualBundle = {
 test("only implemented templates are ever reachable", () => {
   // The flag is the mechanism that let the library grow three at a time without half-built
   // templates leaking into member-facing output. Every registered template is now built.
-  assert.equal(IMPLEMENTED_TEMPLATES.length, 13);
+  assert.equal(IMPLEMENTED_TEMPLATES.length, 15);
   // ORDER IS BEHAVIOUR, not bookkeeping: it is the tie-break when two intents match AND the
   // descent order when a proposed template cannot be filled. MARKET_MOVE stays LAST among the
   // implemented set because it is the most general and the most likely to be fillable, which is
@@ -42,6 +42,12 @@ test("only implemented templates are ever reachable", () => {
     "LEVEL_ANALYSIS",
     "TRADE_RECAP",
     "SCREENER",
+    // COUNTERFACTUAL precedes REJECTION on purpose: both answer "what did we pass on", and
+    // REJECTION's `held` keyword would otherwise swallow every counterfactual question. The
+    // graded version of the same holds is the strictly stronger card, so it must win when its
+    // evidence exists.
+    "COUNTERFACTUAL",
+    "GRADER_AGREEMENT",
     "REJECTION",
     "EM_CONE",
     "GAMMA_MAP",
@@ -53,7 +59,7 @@ test("only implemented templates are ever reachable", () => {
     "SIGNAL_TIMELINE",
     "MARKET_MOVE",
   ]);
-  assert.equal(TEMPLATES.length, 13, "all thirteen stay registered");
+  assert.equal(TEMPLATES.length, 15, "all fifteen stay registered");
 });
 
 test("intent routes each of the brief's example questions", () => {

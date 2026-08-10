@@ -45,6 +45,8 @@ import { SystemComparisonCard } from "./templates/system-comparison";
 import { BeforeAfterCard } from "./templates/before-after";
 import { SessionRecapCard } from "./templates/session-recap";
 import { SignalTimelineCard } from "./templates/signal-timeline";
+import { CounterfactualCard } from "./templates/counterfactual";
+import { GraderAgreementCard } from "./templates/grader-agreement";
 
 /** ET clock label for the card chrome. Null when the instant does not parse — never a fake time. */
 function etLabel(iso: string): string | null {
@@ -161,6 +163,24 @@ export function buildVisualElement(params: RenderVisualParams): {
     case "SESSION_RECAP":
       if (!bundle.session?.closeDisplay) throw new Error("SESSION_RECAP requires a settled close");
       element = <SessionRecapCard bundle={bundle} spec={spec} recorder={recorder} asOfLabel={asOfLabel} />;
+      break;
+    case "COUNTERFACTUAL":
+      // Both sides, always. A counterfactual missing the forgone side is a highlight reel of a
+      // guard, and that must be unreachable from any caller rather than only from the router.
+      if (!bundle.counterfactual?.losersAvoided || !bundle.counterfactual?.winnersForgone) {
+        throw new Error("COUNTERFACTUAL requires both the avoided and the forgone side");
+      }
+      if (bundle.counterfactual.gradedCount < 1) throw new Error("COUNTERFACTUAL requires at least one graded hold");
+      element = <CounterfactualCard bundle={bundle} spec={spec} recorder={recorder} asOfLabel={asOfLabel} />;
+      break;
+    case "GRADER_AGREEMENT":
+      if (!bundle.graderAgreement || bundle.graderAgreement.comparable < 1) {
+        throw new Error("GRADER_AGREEMENT requires a non-empty comparable population");
+      }
+      if (bundle.graderAgreement.rows.length < bundle.graderAgreement.comparable - bundle.graderAgreement.agreed) {
+        throw new Error("GRADER_AGREEMENT requires a row for every disagreement");
+      }
+      element = <GraderAgreementCard bundle={bundle} spec={spec} recorder={recorder} asOfLabel={asOfLabel} />;
       break;
     case "SIGNAL_TIMELINE":
       if ((bundle.timeline?.length ?? 0) < 4) throw new Error("SIGNAL_TIMELINE requires at least four timestamped events");
