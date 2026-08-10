@@ -275,7 +275,16 @@ async function prepareLargoTurn(
     timeframe,
     temporalConflicts(timeframe, rankCapabilities(question, LARGO_CAPABILITIES.length))
   );
-  if (timeframe.historical) toolsUsed.push("temporal_resolution");
+  // Deliberately NOT pushed into `toolsUsed`. That array is persisted to the interaction log and
+  // is what the BIE calibration cohorts bucket turns by, so it must stay a record of TOOLS ACTUALLY
+  // CALLED. Temporal resolution is local deterministic work, not a tool call; injecting a token
+  // would silently reshape every historical cohort. Diagnostics go to the log instead.
+  if (timeframe.historical) {
+    console.info(
+      `[largo] temporal: ${timeframe.kind} "${timeframe.label}"` +
+        (temporalBlock ? ` — ${temporalBlock.split("\n").filter((l) => l.startsWith("- ")).length} source conflict(s)` : "")
+    );
+  }
 
   const platformVitalsBlock = await loadLargoPlatformSnapshotBlock().catch(() => "");
   if (platformVitalsBlock) toolsUsed.push("platform_vitals_prefetch");
