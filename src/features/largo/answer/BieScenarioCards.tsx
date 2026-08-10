@@ -2,6 +2,7 @@
 
 import { clsx } from "clsx";
 import type { BieScenario } from "@/lib/bie/answer-envelope";
+import { renderInlineMarkdown } from "@/features/largo/components/inline-markdown";
 
 const SCENARIO_LABEL: Record<BieScenario["kind"], string> = {
   bull: "Bull",
@@ -34,20 +35,20 @@ export function BieScenarioCards({ scenarios }: { scenarios: BieScenario[] | und
         {scenarios.map((s, i) => (
           <div key={`${s.kind}-${i}`} className={clsx("bie-scenario", `bie-scenario-${s.kind}`)}>
             <p className="bie-scenario-kind">{SCENARIO_LABEL[s.kind]}</p>
-            <p className="bie-scenario-thesis">{s.thesis}</p>
+            <p className="bie-scenario-thesis">{renderInlineMarkdown(s.thesis)}</p>
             <Line label="Trigger" value={s.trigger} />
             <Line label="Confirm" value={s.confirm} />
             <Line label="Invalidation" value={s.invalidation} />
             {s.targets && s.targets.length > 0 ? (
               <p className="bie-scenario-line">
                 <span className="bie-scenario-line-label">Targets</span>
-                <span className="bie-scenario-line-value">{s.targets.join(", ")}</span>
+                <span className="bie-scenario-line-value">{renderInlineMarkdown(s.targets.join(", "))}</span>
               </p>
             ) : null}
             {s.risks && s.risks.length > 0 ? (
               <p className="bie-scenario-line">
                 <span className="bie-scenario-line-label">Risks</span>
-                <span className="bie-scenario-line-value">{s.risks.join(", ")}</span>
+                <span className="bie-scenario-line-value">{renderInlineMarkdown(s.risks.join(", "))}</span>
               </p>
             ) : null}
           </div>

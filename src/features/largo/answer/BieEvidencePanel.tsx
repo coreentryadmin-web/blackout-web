@@ -2,6 +2,7 @@
 
 import type { BieEvidence } from "@/lib/bie/answer-envelope";
 import { EvidenceKindChip, SourceStamp } from "./BieChips";
+import { renderInlineMarkdown } from "@/features/largo/components/inline-markdown";
 
 /**
  * Evidence panel (§4/§5): each item shows its honesty kind (fact/calc/inference/
@@ -23,7 +24,7 @@ export function BieEvidencePanel({
         {evidence.map((e, i) => (
           <li key={i} className="bie-evidence-item">
             <EvidenceKindChip kind={e.kind} />
-            <span className="bie-evidence-text">{e.text}</span>
+            <span className="bie-evidence-text">{renderInlineMarkdown(e.text)}</span>
             <SourceStamp provenance={e.provenance} />
           </li>
         ))}

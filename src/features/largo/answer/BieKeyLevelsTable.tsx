@@ -2,6 +2,7 @@
 
 import type { BieLevel } from "@/lib/bie/answer-envelope";
 import { SourceStamp } from "./BieChips";
+import { renderInlineMarkdown } from "@/features/largo/components/inline-markdown";
 
 function formatPrice(price: number): string {
   // Round for display — several endpoints serve unrounded floats (7499.360000001).
@@ -39,7 +40,7 @@ export function BieKeyLevelsTable({
               {formatPrice(l.price)}
             </span>
             <span className="bie-levels-note" role="cell">
-              {l.note ? <span>{l.note}</span> : <span aria-hidden>—</span>}
+              {l.note ? <span>{renderInlineMarkdown(l.note)}</span> : <span aria-hidden>—</span>}
               <SourceStamp provenance={l.provenance} />
             </span>
           </div>

@@ -4575,6 +4575,11 @@ body::before {
       0 0 22px rgba(34, 211, 238, 0.09);
   }
 
+  /* CHROME IS GREEN, CONTENT IS NOT.
+     Every label, kind chip and source stamp shares one green family so the eye can separate
+     "what Largo said" from "how Largo knows it" at a glance. Before this, the labels were cyan —
+     the same family as the highlighted numbers inside the answer — so metadata and content read
+     as one wall of text. */
   .largo-fmt-bottomline-title {
     margin: 0 0 0.55rem;
     font-family: var(--font-jetbrains), monospace;
@@ -4582,8 +4587,8 @@ body::before {
     font-weight: 700;
     letter-spacing: 0.32em;
     text-transform: uppercase;
-    color: #22d3ee;
-    text-shadow: 0 0 8px rgba(34, 211, 238, 0.45);
+    color: #4ade80;
+    text-shadow: 0 0 8px rgba(74, 222, 128, 0.4);
   }
 
   .largo-fmt-bottomline-body {
@@ -5149,7 +5154,7 @@ body::before {
     font-size: 10px;
     letter-spacing: 0.24em;
     text-transform: uppercase;
-    color: rgba(34, 211, 238, 0.75);
+    color: rgba(74, 222, 128, 0.72);
     margin-bottom: 0.4rem;
   }
 
@@ -5259,15 +5264,20 @@ body::before {
     border-color: rgba(52, 245, 160, 0.4);
     background: rgba(52, 245, 160, 0.08);
   }
+  /* CALC and INFERENCE move into the green family with FACT. They stay distinguishable by hue
+     within green (mint -> teal -> lime), which is a weaker separation than the old
+     green/blue/purple — a deliberate trade: the honesty kinds are still told apart, and the whole
+     metadata column now reads as chrome rather than as three more colours competing with the
+     answer. */
   .bie-kind-calc {
-    color: #7dd3fc;
-    border-color: rgba(125, 211, 252, 0.4);
-    background: rgba(125, 211, 252, 0.08);
+    color: #5eead4;
+    border-color: rgba(94, 234, 212, 0.4);
+    background: rgba(94, 234, 212, 0.08);
   }
   .bie-kind-inference {
-    color: #c4b5fd;
-    border-color: rgba(196, 181, 253, 0.4);
-    background: rgba(196, 181, 253, 0.08);
+    color: #a3e635;
+    border-color: rgba(163, 230, 53, 0.4);
+    background: rgba(163, 230, 53, 0.08);
   }
   .bie-kind-scenario {
     color: #fbbf24;
@@ -5282,15 +5292,17 @@ body::before {
     gap: 0.4rem;
     font-family: var(--font-mono, monospace);
     font-size: 10px;
-    color: #9fb3c8;
+    /* Dimmer than the evidence text it annotates. A source stamp is a footnote; at equal weight
+       it competed with the number it was vouching for. */
+    color: rgba(134, 239, 172, 0.55);
     white-space: nowrap;
   }
   .bie-source-label {
-    color: #bae6fd;
+    color: rgba(134, 239, 172, 0.82);
     letter-spacing: 0.04em;
   }
   .bie-source-time {
-    color: #8ba0b6;
+    color: rgba(134, 239, 172, 0.45);
   }
   .bie-fresh {
     padding: 0.02rem 0.3rem;
