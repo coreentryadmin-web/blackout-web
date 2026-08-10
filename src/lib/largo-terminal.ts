@@ -51,8 +51,19 @@ import {
   LARGO_CAPABILITIES,
   rankCapabilities,
 } from "@/lib/largo/registry/capability-registry";
-import { formatTemporalBlock, resolveTimeframe, temporalConflicts } from "@/lib/largo/temporal/timeframe";
+import {
+  formatTemporalBlock,
+  resolveTimeframe,
+  temporalConflicts,
+  type Timeframe,
+} from "@/lib/largo/temporal/timeframe";
 import { formatEntityBlock } from "@/lib/largo/core/entities";
+import {
+  applyPlanCaveat,
+  buildQueryPlan,
+  formatPlanBlock,
+  validatePlanExecution,
+} from "@/lib/largo/core/plan";
 import {
   applyConversationToTimeframe,
   buildConversationContext,
@@ -245,6 +256,7 @@ async function prepareLargoTurn(
   toolsUsed: string[];
   tickerHint: string | null;
   viewer: ToolGuardViewer;
+  timeframe: Timeframe;
 }> {
   let sid = sessionId.trim() || `web-${userId}-${Date.now()}`;
   try {
@@ -352,13 +364,26 @@ async function prepareLargoTurn(
   // constrains which symbols a tool may be called with.
   const entityBlock = formatEntityBlock(effectiveEntities(conversation));
 
+  // SUGGESTED PLAN — composed from what code already resolved (entities, timeframe, ranked
+  // capabilities, the registry's DECLARED join edges), handed over as a starting point. It routes
+  // nothing and hides nothing; the model may ignore it, and the full 116-tool surface is still in
+  // the request. Its real value is telling the model which results can be CORRELATED: a join edge
+  // here means the two capabilities share an entity key, which registry.test.ts proves, so a
+  // cross-product claim built on one is sound rather than a string coincidence.
+  const plan = buildQueryPlan({
+    ranked: rankCapabilities(question, 12),
+    entities: effectiveEntities(conversation),
+    timeframe,
+  });
+  const planBlock = formatPlanBlock(plan);
+
   const platformVitalsBlock = await loadLargoPlatformSnapshotBlock().catch(() => "");
   if (platformVitalsBlock) toolsUsed.push("platform_vitals_prefetch");
 
   const system = buildDynamicSystem(
     question,
     history.slice(0, -1),
-    liveFeedBlock + knowledgeBlock + temporalBlock + capabilityBlock + entityBlock + conversationBlock,
+    liveFeedBlock + knowledgeBlock + temporalBlock + capabilityBlock + entityBlock + conversationBlock + planBlock,
     platformVitalsBlock
   );
 
@@ -397,6 +422,7 @@ async function prepareLargoTurn(
     toolsUsed,
     tickerHint: intent.tickerHint ?? null,
     viewer: { userId, isAdmin },
+    timeframe,
   };
 }
 
@@ -450,7 +476,8 @@ export async function runLargoQuery(
 
   await prefetchLargoTurnCaches();
 
-  const { sid, history, system, filteredTools, toolsUsed, tickerHint, viewer } = await prepareLargoTurn(
+  const { sid, history, system, filteredTools, toolsUsed, tickerHint, viewer, timeframe } =
+    await prepareLargoTurn(
     question,
     sessionId,
     userId
@@ -494,6 +521,18 @@ export async function runLargoQuery(
     // diluted, which is exactly backwards.
     const verification = verifyClaims(stripLargoBlocks(text), ctxNumbers);
     text = applyVerificationCaveat(text, verification);
+
+    // POST-LOOP PLAN VALIDATION. The temporal block WARNS the model before the loop; this checks
+    // after, which is the difference between an instruction and a control. It catches the one
+    // failure with no other detector: a question about a past moment answered entirely from
+    // live-only sources. Every existing check passes on that answer — the number is real, it
+    // traces to this turn's tool results, grounding is 1.0 — and it is about the wrong moment.
+    // Caveat appended, answer never suppressed: the member decides whether it is still useful.
+    const planCheck = validatePlanExecution({ timeframe, toolsCalled: toolsUsed, catalogue: LARGO_CAPABILITIES });
+    if (!planCheck.ok) {
+      console.warn(`[largo] plan violation: ${planCheck.violations.map((v) => v.code).join(",")}`);
+      text = applyPlanCaveat(text, planCheck.violations);
+    }
 
     // Per-tool timing summary. Turns "Largo is slow" into "get_postgres_flows took 9.2s of an 11s
     // turn" — a question with an answer. Also surfaces DENIED and silently-EMPTY tool results,
@@ -554,7 +593,8 @@ export async function runLargoQueryStream(
 
   await prefetchLargoTurnCaches({ onStatus: emitStatus });
 
-  const { sid, history, system, filteredTools, toolsUsed, tickerHint, viewer } = await prepareLargoTurn(
+  const { sid, history, system, filteredTools, toolsUsed, tickerHint, viewer, timeframe } =
+    await prepareLargoTurn(
     question,
     sessionId,
     userId
@@ -615,6 +655,18 @@ export async function runLargoQueryStream(
     // diluted, which is exactly backwards.
     const verification = verifyClaims(stripLargoBlocks(text), ctxNumbers);
     text = applyVerificationCaveat(text, verification);
+
+    // POST-LOOP PLAN VALIDATION. The temporal block WARNS the model before the loop; this checks
+    // after, which is the difference between an instruction and a control. It catches the one
+    // failure with no other detector: a question about a past moment answered entirely from
+    // live-only sources. Every existing check passes on that answer — the number is real, it
+    // traces to this turn's tool results, grounding is 1.0 — and it is about the wrong moment.
+    // Caveat appended, answer never suppressed: the member decides whether it is still useful.
+    const planCheck = validatePlanExecution({ timeframe, toolsCalled: toolsUsed, catalogue: LARGO_CAPABILITIES });
+    if (!planCheck.ok) {
+      console.warn(`[largo] plan violation: ${planCheck.violations.map((v) => v.code).join(",")}`);
+      text = applyPlanCaveat(text, planCheck.violations);
+    }
 
     // Per-tool timing summary. Turns "Largo is slow" into "get_postgres_flows took 9.2s of an 11s
     // turn" — a question with an answer. Also surfaces DENIED and silently-EMPTY tool results,
