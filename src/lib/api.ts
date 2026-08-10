@@ -497,6 +497,10 @@ export class LargoStreamAborted extends Error {
   }
 }
 
+/** One validated attachment on its way to Largo. Base64 payload + the client's best guess at the
+ *  type — the server re-derives the real type from the bytes, so a wrong guess here is harmless. */
+export type LargoImageAttachment = { data: string; media_type: string };
+
 export async function queryLargoStream(
   question: string,
   sessionId: string,
@@ -516,7 +520,9 @@ export async function queryLargoStream(
    * was planning, not the answer. A consumer that ignores this renders the model's plan in front
    * of its answer.
    */
-  onAnswerReset?: () => void
+  onAnswerReset?: () => void,
+  /** Chart/screenshot attachments for this turn. Sent only when non-empty. */
+  images?: LargoImageAttachment[]
 ): Promise<{
   answer: string;
   session_id: string;
@@ -559,7 +565,13 @@ export async function queryLargoStream(
         Pragma: "no-cache",
         "Cache-Control": "no-cache",
       },
-      body: JSON.stringify({ question, session_id: sessionId }),
+      body: JSON.stringify({
+        question,
+        session_id: sessionId,
+        // Omitted entirely when there is nothing attached, so the request body of an ordinary
+        // question is byte-identical to what it was before this feature existed.
+        ...(images && images.length ? { images } : {}),
+      }),
     });
   } catch (err) {
     cleanup();

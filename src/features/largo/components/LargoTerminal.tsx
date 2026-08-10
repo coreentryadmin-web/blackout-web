@@ -3,8 +3,8 @@
 import { clsx } from "clsx";
 import { useDictation } from "@/hooks/useDictation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Mic, Square } from "lucide-react";
-import { useRef } from "react";
+import { ImagePlus, Mic, Square, X } from "lucide-react";
+import { useRef, useState } from "react";
 import { useIosKeyboardInset } from "@/hooks/useIosKeyboardInset";
 import {
   LARGO_SUGGESTIONS,
@@ -57,7 +57,14 @@ export function LargoTerminal({
     newConversation,
     switchConversation,
     isFresh,
+    attachments,
+    attachError,
+    addAttachments,
+    removeAttachment,
   } = useLargoChat();
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = useState(false);
 
   // Whatever was already typed when the mic opened. SpeechRecognition re-sends the WHOLE
   // transcript on every interim result, so without this the dictated words would overwrite a
@@ -73,6 +80,18 @@ export function LargoTerminal({
   function submit(e: React.FormEvent) {
     e.preventDefault();
     void runQuery(input);
+  }
+
+  /**
+   * Paste is the primary path, not the file picker. Screenshot → Cmd/Ctrl+V into the box is what
+   * people already do everywhere else, so the composer honours it directly rather than making them
+   * find a button. Text pastes fall through untouched.
+   */
+  function handlePaste(e: React.ClipboardEvent) {
+    const files = Array.from(e.clipboardData?.files ?? []).filter((f) => f.type.startsWith("image/"));
+    if (!files.length) return;
+    e.preventDefault();
+    void addAttachments(files);
   }
 
   return (
@@ -165,14 +184,29 @@ export function LargoTerminal({
                     />
                   )
                 ) : (
-                  <p
-                    className={clsx(
-                      "largo-msg-text leading-relaxed whitespace-pre-wrap",
-                      fullPage ? "text-sm md:text-[15px] lg:text-base" : "text-sm"
+                  <>
+                    {/* What was actually sent, shown in the member's own turn. Without this the
+                        transcript reads as a bare question and there is no way to tell which chart
+                        an answer was about once a few turns have gone by. */}
+                    {msg.images && msg.images.length > 0 && (
+                      <div className="largo-msg-images">
+                        {msg.images.map((src, i) => (
+                          // eslint-disable-next-line @next/next/no-img-element -- client-side blob/data URL
+                          <img key={i} src={src} alt={`Attached image ${i + 1}`} />
+                        ))}
+                      </div>
                     )}
-                  >
-                    {msg.content}
-                  </p>
+                    {msg.content && (
+                      <p
+                        className={clsx(
+                          "largo-msg-text leading-relaxed whitespace-pre-wrap",
+                          fullPage ? "text-sm md:text-[15px] lg:text-base" : "text-sm"
+                        )}
+                      >
+                        {msg.content}
+                      </p>
+                    )}
+                  </>
                 )}
                 {msg.role === "assistant" && msg.tools && msg.tools.length > 0 && (
                   <div className="largo-tools-used">
@@ -253,17 +287,62 @@ export function LargoTerminal({
           <div ref={bottomRef} />
         </div>
 
+        {/* Staged attachments sit ABOVE the input, not inside it: the member must be able to see
+            exactly what is about to be sent, and remove one, before committing the question. */}
+        {(attachments.length > 0 || attachError) && (
+          <div className="largo-attach-tray">
+            {attachments.map((a, i) => (
+              <div key={`${a.name}-${i}`} className="largo-attach-chip">
+                {/* eslint-disable-next-line @next/next/no-img-element -- a client-side blob/data URL
+                    from the member's own clipboard; next/image is for server-known remote assets. */}
+                <img src={a.previewUrl} alt={`Attachment ${i + 1}: ${a.name}`} />
+                <button
+                  type="button"
+                  onClick={() => removeAttachment(i)}
+                  aria-label={`Remove ${a.name}`}
+                  className="largo-attach-remove"
+                >
+                  <X size={11} aria-hidden />
+                </button>
+                <span className="largo-attach-size">{Math.max(1, Math.round(a.bytes / 1024))}KB</span>
+              </div>
+            ))}
+            {attachError && (
+              <span role="alert" className="largo-attach-error">
+                {attachError}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions --
+            drag-and-drop is inherently pointer-only; the keyboard-accessible equivalent is the
+            attach button below, so no path is lost by the drop handlers living on the form. */}
         <form
           onSubmit={submit}
+          onDragOver={(e) => {
+            if (!e.dataTransfer.types.includes("Files")) return;
+            e.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={(e) => {
+            if (!e.dataTransfer.files?.length) return;
+            e.preventDefault();
+            setDragging(false);
+            void addAttachments(e.dataTransfer.files);
+          }}
           className={clsx(
             "desk-largo-input-row largo-input-form !border-cyan-400/15",
-            fullPage && "largo-input-form-fullpage"
+            fullPage && "largo-input-form-fullpage",
+            dragging && "largo-input-form-dragging"
           )}
         >
           <div className="relative flex-1 largo-input-wrap">
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
+              onPaste={handlePaste}
               placeholder={loading ? INPUT_PLACEHOLDER_BUSY : INPUT_PLACEHOLDER}
               aria-label="Ask Largo"
               className={clsx(
@@ -290,6 +369,33 @@ export function LargoTerminal({
               </span>
             )}
           </div>
+          {/* Explicit attach control. Paste and drag both work, but neither is discoverable, and a
+              feature nobody finds is a feature that does not exist. */}
+          {!loading && hydrated && (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/gif,image/webp"
+                multiple
+                className="sr-only"
+                onChange={(e) => {
+                  if (e.target.files?.length) void addAttachments(e.target.files);
+                  // Reset so re-selecting the SAME file fires change again.
+                  e.target.value = "";
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                aria-label="Attach a chart or screenshot"
+                title="Attach a chart or screenshot"
+                className="largo-attach-btn"
+              >
+                <ImagePlus size={14} aria-hidden />
+              </button>
+            </>
+          )}
           {/*
             Push-to-talk. Rendered in EVERY browser, including those without SpeechRecognition
             (Firefox; Brave disables it) — hiding it made the feature look unbuilt rather than
@@ -335,7 +441,7 @@ export function LargoTerminal({
             type="submit"
             variant="ghost"
             size="md"
-            disabled={loading || !hydrated || !input.trim()}
+            disabled={loading || !hydrated || (!input.trim() && attachments.length === 0)}
             className={clsx(
               "rounded-none font-syne text-xs uppercase tracking-[0.2em]",
               "!bg-cyan-400/12 !border-cyan-400/40 !text-cyan-300",

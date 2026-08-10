@@ -40,6 +40,7 @@ import {
   sessionOwnedByUser,
 } from "@/lib/largo/largo-store";
 import { analyzeLargoQuestion, KNOWN_TICKERS } from "@/lib/largo/question-intent";
+import { formatImageBlock, type ImageBlock } from "@/lib/largo/core/image-attachment";
 import { deterministicLargoFollowups } from "@/lib/largo/largo-followups";
 import { loadLargoPlatformSnapshotBlock } from "@/lib/largo/platform-snapshot-block";
 import { captureLargoLiveFeed, formatLargoLiveFeed } from "@/lib/largo/largo-live-feed";
@@ -252,10 +253,28 @@ export async function getLargoSessionMessages(sessionId: string, userId: string)
   return { session_id: sid, messages };
 }
 
+/**
+ * What gets written to `largo_messages` for a turn that carried images.
+ *
+ * The base64 is NEVER persisted. History is replayed into the prompt on every subsequent turn, so
+ * storing the payload would re-bill a 1.5MB screenshot on every later question in the thread and
+ * push real conversation out of the window. A marker keeps the transcript coherent — a follow-up
+ * "so is that level still holding?" reads correctly against "[1 image attached]" and nonsensically
+ * against a user turn that appears to be empty.
+ */
+function persistedQuestionText(question: string, imageCount: number): string {
+  if (imageCount <= 0) return question;
+  return `${question}\n\n_[${imageCount} image${imageCount === 1 ? "" : "s"} attached]_`;
+}
+
 async function prepareLargoTurn(
   question: string,
   sessionId: string,
-  userId: string
+  userId: string,
+  /** Validated image blocks for this turn — `[]` for a text-only question.
+   *  REQUIRED, not defaulted: a defaulted parameter is how the streaming call site silently
+   *  dropped every attachment and answered about a chart nobody sent. */
+  images: ImageBlock[]
 ): Promise<{
   sid: string;
   history: AnthropicMessage[];
@@ -265,6 +284,7 @@ async function prepareLargoTurn(
   tickerHint: string | null;
   viewer: ToolGuardViewer;
   timeframe: Timeframe;
+  persistedQuestion: string;
 }> {
   let sid = sessionId.trim() || `web-${userId}-${Date.now()}`;
   try {
@@ -287,7 +307,15 @@ async function prepareLargoTurn(
   // Read the previous turn's timestamp BEFORE the current question is appended. Fails soft to
   // null (no DB, first turn, unusable timestamp) — a missing window start is reported as missing.
   const previousTurn = await fetchPreviousUserTurn(sid, userId).catch(() => null);
-  history.push({ role: "user", content: question });
+  // Images ride on THIS turn's user message only, as content blocks ahead of the text. Order is
+  // deliberate and is Anthropic's documented guidance: a model that has seen the picture before the
+  // instruction answers about the picture. It also survives the tool loop unchanged — anthropic.ts
+  // pushes assistant/tool_result turns after this one and never rewrites earlier content.
+  history.push(
+    images.length
+      ? { role: "user", content: [...images, { type: "text", text: question }] }
+      : { role: "user", content: question }
+  );
   trimHistory(history);
 
   // The user turn is persisted AFTER the assistant turn completes (see
@@ -397,7 +425,7 @@ async function prepareLargoTurn(
   const system = buildDynamicSystem(
     question,
     history.slice(0, -1),
-    liveFeedBlock + knowledgeBlock + temporalBlock + capabilityBlock + entityBlock + conversationBlock + planBlock + drillDownBlock,
+    liveFeedBlock + knowledgeBlock + temporalBlock + capabilityBlock + entityBlock + conversationBlock + planBlock + drillDownBlock + formatImageBlock(images.length),
     platformVitalsBlock
   );
 
@@ -437,6 +465,7 @@ async function prepareLargoTurn(
     tickerHint: intent.tickerHint ?? null,
     viewer: { userId, isAdmin },
     timeframe,
+    persistedQuestion: persistedQuestionText(question, images.length),
   };
 }
 
@@ -472,7 +501,11 @@ function envelopeFromContract(text: string, question: string): BieAnswerEnvelope
 export async function runLargoQuery(
   question: string,
   sessionId: string,
-  userId: string
+  userId: string,
+  /** Validated image blocks for this turn — `[]` for a text-only question.
+   *  REQUIRED, not defaulted: a defaulted parameter is how the streaming call site silently
+   *  dropped every attachment and answered about a chart nobody sent. */
+  images: ImageBlock[]
 ): Promise<{
   answer: string;
   session_id: string;
@@ -490,11 +523,12 @@ export async function runLargoQuery(
 
   await prefetchLargoTurnCaches();
 
-  const { sid, history, system, filteredTools, toolsUsed, tickerHint, viewer, timeframe } =
+  const { sid, history, system, filteredTools, toolsUsed, tickerHint, viewer, timeframe, persistedQuestion } =
     await prepareLargoTurn(
     question,
     sessionId,
-    userId
+    userId,
+    images
   );
 
   const capturedResults: unknown[] = [];
@@ -587,7 +621,7 @@ export async function runLargoQuery(
     const diagLine = formatToolDiagnostics(diagnostics);
     if (diagLine) console.info(diagLine);
     logClaudeTurn({ userId, question, toolsUsed, verification, startedAt });
-    await persistClaudeTurn({ sessionId: sid, userId, question, answer: text, toolsUsed, capturedResults });
+    await persistClaudeTurn({ sessionId: sid, userId, question: persistedQuestion, answer: text, toolsUsed, capturedResults });
 
     const followups = await generateLargoFollowups(question, text, tickerHint);
 
@@ -619,7 +653,10 @@ export async function runLargoQueryStream(
   question: string,
   sessionId: string,
   userId: string,
-  onEvent: (event: LargoStreamEvent) => void
+  onEvent: (event: LargoStreamEvent) => void,
+  /** Validated image blocks for this turn — `[]` for a text-only question. Required for the
+   *  same reason as runLargoQuery's: see that signature. */
+  images: ImageBlock[]
 ): Promise<void> {
   const startedAt = Date.now();
   const emitStatus = (message: string) => {
@@ -640,11 +677,12 @@ export async function runLargoQueryStream(
 
   await prefetchLargoTurnCaches({ onStatus: emitStatus });
 
-  const { sid, history, system, filteredTools, toolsUsed, tickerHint, viewer, timeframe } =
+  const { sid, history, system, filteredTools, toolsUsed, tickerHint, viewer, timeframe, persistedQuestion } =
     await prepareLargoTurn(
     question,
     sessionId,
-    userId
+    userId,
+    images
   );
   const capturedResults: unknown[] = [];
   // Per-tool timings/outcomes for the turn. Names, ms and byte counts only — never inputs or
@@ -767,7 +805,7 @@ export async function runLargoQueryStream(
     const diagLine = formatToolDiagnostics(diagnostics);
     if (diagLine) console.info(diagLine);
     logClaudeTurn({ userId, question, toolsUsed, verification, startedAt });
-    await persistClaudeTurn({ sessionId: sid, userId, question, answer: text, toolsUsed, capturedResults });
+    await persistClaudeTurn({ sessionId: sid, userId, question: persistedQuestion, answer: text, toolsUsed, capturedResults });
 
     const followups = await generateLargoFollowups(question, text, tickerHint);
 
