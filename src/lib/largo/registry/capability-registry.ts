@@ -366,6 +366,21 @@ export const LARGO_CAPABILITIES: readonly LargoCapability[] = [
     joinsWith: ["thermal.positioning"],
   },
   {
+    id: "vector.pulse",
+    product: "VECTOR",
+    tool: "get_vector_pulse",
+    // DIFFERENTIAL, not a snapshot — this is the distinction the registry has to carry, because
+    // "what just changed" and "what is the state" rank identically on keywords alone and only one
+    // of them can actually be answered from a single state read.
+    answers: "What CHANGED on Vector just now — regime flip, magnet shift, new wall forming, integrity change?",
+    temporal: "windowed",
+    freshness: "realtime",
+    entities: ["ticker", "strike"],
+    entitlement: "premium",
+    keywords: ["pulse", "just changed", "signal", "forming", "flipped", "shifted", "alert"],
+    joinsWith: ["vector.full_state", "vector.wall_dynamics"],
+  },
+  {
     id: "vector.wall_dynamics",
     product: "VECTOR",
     tool: "get_wall_dynamics",

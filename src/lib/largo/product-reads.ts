@@ -261,3 +261,91 @@ export async function horizonOutcomesForLargo(days = 30) {
     };
   }
 }
+
+/**
+ * VECTOR PULSE for Largo — the desk's live signal rail for one ticker.
+ *
+ * WHY THIS EXISTS. Vector Pulse is a real, shipped surface: `buildPulseSnapshot` /
+ * `detectPulseSignals` (features/vector/lib/vector-pulse.ts) turn successive Vector states into
+ * discrete signals — regime flips, magnet shifts, wall-integrity changes, proximity events, wall
+ * structure, flow prints. It renders in `VectorPulse.tsx` and it had a server-side reader in
+ * `vector-pulse-brief.ts`.
+ *
+ * That reader was reachable from ONE place: `bie/composers.ts`, the BIE answer-router. Largo no
+ * longer routes through it (see largo-terminal.ts on the router's removal), so from Largo's side
+ * Pulse has been DARK — asked "what's the Vector pulse on NVDA", it answered from walls and regime
+ * and never said the pulse rail existed. The same shape as the helix-signal-outcomes cron: a fully
+ * built feature with no path to the thing that answers questions about it.
+ *
+ * NOTHING IS REIMPLEMENTED. This calls the REAL `buildPulseSignalsForState` against the REAL
+ * `fetchVectorFullState`, and reads/writes the REAL snapshot cache, so the signals Largo reports
+ * are the same objects the panel renders. A parallel implementation would drift the moment the
+ * detector is tuned, and then Largo would confidently describe a rail nobody sees.
+ *
+ * WHY THE CACHE WRITE IS KEPT. Pulse is inherently DIFFERENTIAL — a signal exists because this
+ * state differs from the previous one. Reading without writing would leave every turn comparing
+ * against an ever-older snapshot and inflate the signal count. Writing keeps Largo's view aligned
+ * with the panel's rather than forking it.
+ */
+export async function vectorPulseForLargo(ticker: string, horizon = "all") {
+  try {
+    const [{ fetchVectorFullState }, { normalizeDteHorizon }, { buildPulseSignalsForState }, cache] =
+      await Promise.all([
+        import("@/lib/bie/vector-full-state"),
+        import("@/features/vector/lib/vector-dte-horizon"),
+        import("@/lib/bie/vector-pulse-brief"),
+        import("@/lib/bie/vector-pulse-snapshot-cache"),
+      ]);
+
+    const h = normalizeDteHorizon(horizon);
+    const state = await fetchVectorFullState(ticker, h);
+    if (!state) {
+      // No live spot is not an empty pulse — it is no read at all. Saying so stops "no signals"
+      // from being reported as a quiet tape.
+      return { available: false, reason: "no_live_vector_state", ticker: ticker.toUpperCase(), signals: [] };
+    }
+
+    const nowMs = Date.parse(state.asOf) || Date.now();
+    const cached = await cache.readVectorPulseCache(state.ticker, state.horizon).catch(() => null);
+    const { fresh, cacheEntry, current } = await buildPulseSignalsForState(state, cached, nowMs);
+    await cache.writeVectorPulseCache(state.ticker, state.horizon, cacheEntry).catch(() => {});
+
+    return roundFloats({
+      available: true,
+      ticker: state.ticker,
+      horizon: state.horizon,
+      as_of: state.asOf,
+      /** False on the FIRST read of a session: there is no previous snapshot to diff against, so
+       *  an empty signal list means "no baseline yet", not "nothing is happening". */
+      has_baseline: Boolean(cached?.snapshot),
+      signal_count: fresh.length,
+      // Field names mirror the real PulseSignal so a reader can line this up against
+      // vector-pulse.ts without a translation table.
+      signals: fresh.slice(0, 25).map((s) => ({
+        key: s.key,
+        kind: s.kind,
+        tone: s.tone,
+        tier: s.tier ?? null,
+        line: s.line,
+        at: s.at,
+        level: s.level ?? null,
+        magnitude: s.magnitude ?? null,
+        // The trade implication and the WHY are the two fields that make a signal actionable
+        // rather than decorative; the panel shows them, so Largo gets them too.
+        implication: s.implication ?? null,
+        why: s.why ?? null,
+      })),
+      snapshot: current,
+      /** The bead rail and its dynamics, alongside the signals derived from them, so a "what is
+       *  the pulse telling me" answer can cite the underlying wall behaviour in the same breath. */
+      wall_events: state.wallEvents.slice(-12),
+      bead_samples: state.wallHistory.length,
+    });
+  } catch (e) {
+    return {
+      available: false,
+      signals: [],
+      error: e instanceof Error ? e.message : "vector_pulse_failed",
+    };
+  }
+}
