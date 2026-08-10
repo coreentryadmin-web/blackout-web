@@ -25,6 +25,7 @@ import {
 import { getUwCacheRedis } from "@/lib/providers/uw-shared-cache";
 import { notifyOpsDiscord } from "@/features/spx/lib/spx-play-notify";
 import { claudeEnabled, largoClaudeEnabled } from "@/lib/ai-env";
+import { escalateAfterRounds, modelForRound } from "@/lib/providers/model-escalation";
 
 export type AnthropicAiGate = "global" | "largo";
 
@@ -457,6 +458,13 @@ export async function anthropicToolLoop(params: {
   onEvent?: (event: AnthropicToolLoopEvent) => void;
   /** When "largo", uses largoClaudeEnabled() so staging Largo can call Claude without STAGING_CLAUDE=1. */
   aiGate?: AnthropicAiGate;
+  /** Opt-in mid-loop escalation: once the loop reaches `escalateAfterRounds`, every remaining round
+   *  (and the final synthesis pass) runs on this model instead of `model`. Omit for the previous
+   *  single-model behaviour. See model-escalation.ts for why the trigger is observed round count
+   *  rather than a prediction from the question text. */
+  escalateModel?: string;
+  /** 0-based round index at which to escalate. Defaults to the env-tuned threshold. */
+  escalateAfterRounds?: number;
 }): Promise<string | null> {
   if (!anthropicGateOpen(params.aiGate)) return null;
   const client = getClient();
@@ -467,6 +475,9 @@ export async function anthropicToolLoop(params: {
   }
 
   const model = resolveModel(params.model);
+  // Escalation is resolved ONCE per loop so the threshold can't shift mid-turn under an env edit.
+  const escalateModel = params.escalateModel?.trim() || undefined;
+  const escalateAfter = params.escalateAfterRounds ?? escalateAfterRounds();
   const maxTokens = params.maxTokens ?? 4096;
   const maxRounds = params.maxRounds ?? 12;
   const loopTemperature = params.temperature ?? TEMPERATURE;
@@ -510,14 +521,18 @@ export async function anthropicToolLoop(params: {
       return extractTextFromLastAssistant(messages as unknown as AnthropicMessage[]) ?? null;
     }
 
+    // Per-ROUND model: rounds before the threshold run on the cheap base model, later rounds on the
+    // escalation model. `model` stays the base for everything else (telemetry names, gating).
+    const roundModel = modelForRound(round, model, escalateModel, escalateAfter);
+
     const createParams: MessageCreateParams = {
-      model,
+      model: roundModel,
       max_tokens: maxTokens,
       system: systemParam,
       tools,
       messages,
     };
-    if (!modelRejectsSamplingParams(model)) {
+    if (!modelRejectsSamplingParams(roundModel)) {
       createParams.temperature = loopTemperature;
     }
 
@@ -537,7 +552,7 @@ export async function anthropicToolLoop(params: {
         () => stream.finalMessage(),
         loopMaxRetries
       );
-      trackSpend(model, finalMessage.usage);
+      trackSpend(roundModel, finalMessage.usage);
       content = finalMessage.content;
     } else {
       // Wrap the non-stream round create so a round timeout/429/network error doesn't 500 the whole
@@ -557,7 +572,7 @@ export async function anthropicToolLoop(params: {
         );
         return extractTextFromLastAssistant(messages as unknown as AnthropicMessage[]) ?? null;
       }
-      trackSpend(model, data.usage);
+      trackSpend(roundModel, data.usage);
       content = data.content;
     }
 
@@ -611,13 +626,16 @@ export async function anthropicToolLoop(params: {
   // Guard it — if this call throws (timeout/429/network), do NOT crash the loop and
   // its callers. Fall back to the last assistant text already accumulated in `messages`
   // (often a usable partial answer), else null. (Streaming of this final pass is out of scope.)
+  // The final pass is reached only when all `maxRounds` were consumed — by definition past the
+  // escalation threshold — and it is the synthesis step, the exact work escalation exists to buy.
+  const finalModel = modelForRound(maxRounds, model, escalateModel, escalateAfter);
   try {
     const final = await withTelemetry(
       "anthropic-tool-loop-final",
       () =>
         client.messages.create(
           {
-            model,
+            model: finalModel,
             max_tokens: maxTokens,
             temperature: loopTemperature,
             system: systemParam,
@@ -627,7 +645,7 @@ export async function anthropicToolLoop(params: {
         ),
       loopMaxRetries
     );
-    trackSpend(model, final.usage);
+    trackSpend(finalModel, final.usage);
     return extractTextFromBlocks(final.content as Array<{ type: string; text?: string }>) || null;
   } catch (err) {
     console.error(

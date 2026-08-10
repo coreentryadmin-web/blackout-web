@@ -2,6 +2,7 @@ import {
   anthropicText,
   anthropicToolLoop,
   COMMENTARY_MODEL,
+  LARGO_ESCALATION_MODEL,
   LARGO_MODEL,
   type AnthropicMessage,
   type AnthropicSystemBlock,
@@ -311,6 +312,10 @@ export async function runLargoQuery(
       tools: filteredTools,
       messages: history,
       model: LARGO_MODEL,
+      // Cheap model for the lookups, stronger model once the turn PROVES it is a synthesis
+      // question by still pulling tools at round 3. See model-escalation.ts for why the trigger
+      // is observed round count and not a classifier over the question text.
+      escalateModel: LARGO_ESCALATION_MODEL,
       maxTokens: 4096,
       maxRounds: 12,
       timeoutMs: 60_000,
@@ -408,6 +413,10 @@ export async function runLargoQueryStream(
       tools: filteredTools,
       messages: history,
       model: LARGO_MODEL,
+      // Cheap model for the lookups, stronger model once the turn PROVES it is a synthesis
+      // question by still pulling tools at round 3. See model-escalation.ts for why the trigger
+      // is observed round count and not a classifier over the question text.
+      escalateModel: LARGO_ESCALATION_MODEL,
       maxTokens: 4096,
       maxRounds: 12,
       // Per-round timeout so a single slow round falls back to partial text instead of 500ing (#77 E).
