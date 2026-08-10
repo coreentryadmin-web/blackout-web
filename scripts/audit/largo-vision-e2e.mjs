@@ -168,7 +168,7 @@ async function main() {
     // B1 — labelled chart, declared with the WRONG media type on purpose. Passing proves both that
     // vision works AND that the magic-byte sniffer corrected a mislabel that would otherwise 400.
     const b1 = await ask(
-      cookie,
+      session,
       "What do you make of this chart?",
       [{ data: b64(labelled), media_type: "image/jpeg" }]
     );
