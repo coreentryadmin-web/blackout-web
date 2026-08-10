@@ -87,6 +87,45 @@ export async function fetchLargoHistory(
   }));
 }
 
+export type PreviousUserTurn = { content: string; askedAtMs: number };
+
+/**
+ * The member's PREVIOUS question in this session, with when they asked it.
+ *
+ * Exists because `fetchLargoHistory` deliberately projects only `role`/`content` — that is the
+ * Anthropic message shape and adding a field to it would leak a wire format into the model
+ * transcript. But "what changed since I last asked" is exactly answerable and the answer lives in
+ * this column: without the timestamp the temporal layer builds an unbounded window and Largo has
+ * to decline a question it could have answered precisely.
+ *
+ * Safe to call before the current turn is persisted — the current question is written only AFTER
+ * the assistant turn completes (see the LARGO-3 note in largo-terminal), so the newest user row
+ * here is genuinely the PREVIOUS one.
+ *
+ * Fails soft: returns null when the DB is absent or the row carries no usable timestamp. A missing
+ * start is reported to the model as missing; it is never guessed.
+ */
+export async function fetchPreviousUserTurn(
+  sessionId: string,
+  userId: string
+): Promise<PreviousUserTurn | null> {
+  if (!dbConfigured()) return null;
+  if (!(await sessionOwnedByUser(sessionId, userId))) return null;
+  const res = await dbQuery<{ content: string; created_at: Date }>(
+    `SELECT content, created_at
+     FROM largo_messages
+     WHERE session_id = $1 AND role = 'user'
+     ORDER BY created_at DESC, id DESC
+     LIMIT 1`,
+    [sessionId]
+  );
+  const row = res.rows[0];
+  if (!row) return null;
+  const askedAtMs = new Date(row.created_at).getTime();
+  if (!Number.isFinite(askedAtMs)) return null;
+  return { content: row.content, askedAtMs };
+}
+
 export async function fetchLargoMessagesPublic(
   sessionId: string,
   userId: string

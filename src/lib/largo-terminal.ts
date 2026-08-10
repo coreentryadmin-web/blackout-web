@@ -28,6 +28,7 @@ import {
   ensureLargoSession,
   fetchLargoHistory,
   fetchLargoMessagesPublic,
+  fetchPreviousUserTurn,
   sessionOwnedByUser,
 } from "@/lib/largo/largo-store";
 import { analyzeLargoQuestion, KNOWN_TICKERS } from "@/lib/largo/question-intent";
@@ -43,7 +44,13 @@ import {
   rankCapabilities,
 } from "@/lib/largo/registry/capability-registry";
 import { formatTemporalBlock, resolveTimeframe, temporalConflicts } from "@/lib/largo/temporal/timeframe";
-import { extractTickers, formatEntityBlock } from "@/lib/largo/core/entities";
+import { formatEntityBlock } from "@/lib/largo/core/entities";
+import {
+  applyConversationToTimeframe,
+  buildConversationContext,
+  effectiveEntities,
+  formatConversationBlock,
+} from "@/lib/largo/core/conversation";
 
 const MAX_HISTORY = 28;
 
@@ -245,6 +252,9 @@ async function prepareLargoTurn(
   }
 
   const history = await fetchLargoHistory(sid, userId);
+  // Read the previous turn's timestamp BEFORE the current question is appended. Fails soft to
+  // null (no DB, first turn, unusable timestamp) — a missing window start is reported as missing.
+  const previousTurn = await fetchPreviousUserTurn(sid, userId).catch(() => null);
   history.push({ role: "user", content: question });
   trimHistory(history);
 
@@ -275,7 +285,21 @@ async function prepareLargoTurn(
   // serve it, turns that from a subtlety the model must notice into a stated constraint.
   //
   // Costs nothing on the fast path: a present-tense question yields an empty block.
-  const timeframe = resolveTimeframe(question, Date.now());
+  // CONVERSATION STATE — resolved before the timeframe, because it supplies the timeframe's
+  // missing piece. `resolveTimeframe` recognises "since I last asked" and builds the window with
+  // `fromMs: null` and the comment "filled by the caller from conversation state"; this is that
+  // caller. Without it, the one question that is EXACTLY answerable (we know to the millisecond
+  // when they last asked — it is a row in largo_messages) resolved to an unbounded window and
+  // Largo declined it.
+  const conversation = buildConversationContext({
+    question,
+    previousQuestion: previousTurn?.content ?? null,
+    previousAskedAtMs: previousTurn?.askedAtMs ?? null,
+    known: KNOWN_TICKERS,
+  });
+  const conversationBlock = formatConversationBlock(conversation);
+
+  const timeframe = applyConversationToTimeframe(resolveTimeframe(question, Date.now()), conversation);
   const temporalBlock = formatTemporalBlock(
     timeframe,
     temporalConflicts(timeframe, rankCapabilities(question, LARGO_CAPABILITIES.length))
@@ -314,7 +338,7 @@ async function prepareLargoTurn(
   //
   // Purely additive: an empty block when the question names no instrument, and it never
   // constrains which symbols a tool may be called with.
-  const entityBlock = formatEntityBlock(extractTickers(question, KNOWN_TICKERS));
+  const entityBlock = formatEntityBlock(effectiveEntities(conversation));
 
   const platformVitalsBlock = await loadLargoPlatformSnapshotBlock().catch(() => "");
   if (platformVitalsBlock) toolsUsed.push("platform_vitals_prefetch");
@@ -322,7 +346,7 @@ async function prepareLargoTurn(
   const system = buildDynamicSystem(
     question,
     history.slice(0, -1),
-    liveFeedBlock + knowledgeBlock + temporalBlock + capabilityBlock + entityBlock,
+    liveFeedBlock + knowledgeBlock + temporalBlock + capabilityBlock + entityBlock + conversationBlock,
     platformVitalsBlock
   );
 
