@@ -352,6 +352,20 @@ export const LARGO_CAPABILITIES: readonly LargoCapability[] = [
     keywords: ["max pain", "pain"],
   },
 
+  {
+    id: "helix.derived_panels",
+    product: "HELIX",
+    tool: "get_helix_derived",
+    // DERIVED, not fetched. Catalogued separately from the raw tape because "what is stacking"
+    // and "show me the prints" rank alike on keywords and only one of them the tape can answer.
+    answers: "What is HELIX making of the tape — stacked hits, top prints, velocity spikes, split flow?",
+    temporal: "windowed",
+    freshness: "realtime",
+    entities: ["ticker", "strike", "expiry"],
+    entitlement: "premium",
+    keywords: ["stacked", "stacking", "top prints", "top hits", "velocity", "radar", "split flow", "repeated", "hits"],
+    joinsWith: ["helix.tape", "thermal.positioning", "vector.full_state"],
+  },
   // ── VECTOR ──
   {
     id: "vector.full_state",

@@ -349,3 +349,110 @@ export async function vectorPulseForLargo(ticker: string, horizon = "all") {
     };
   }
 }
+
+/**
+ * HELIX DERIVED PANELS for Largo — Stacked Hits, Top Prints, Velocity Radar, Split Flow.
+ *
+ * WHY THIS EXISTS. Four of Helix's headline panels are DERIVED, not fetched: the page pulls one
+ * raw `FlowAlert[]` tape and computes them in the browser. Largo had the tape (get_flow_tape,
+ * get_options_flow) and none of the derivations, so "what's stacking on NVDA", "what are the top
+ * prints", "anything spiking on the velocity radar" were structurally unanswerable — and Largo
+ * did not know that. It answered from raw prints, in the same confident voice, which is worse than
+ * declining: a member has no way to tell the difference.
+ *
+ * Same root cause as Vector Pulse and the helix-signal-outcomes cron: real capability with no path
+ * to the answering layer. That pattern, not any one panel, is the bug.
+ *
+ * EVERY DERIVATION IS THE REAL PRODUCTION FUNCTION:
+ *   - `computeFlowStrikeStacks`  (lib/largo/flow-strike-stacks.ts)      — Stacked Hits
+ *   - `selectTopPrints`          (features/helix/lib/helix-top-prints)  — Top Prints
+ *   - `detectVelocitySpikes`     (features/helix/lib/helix-signal-detection) — Velocity Radar
+ *   - `detectSplitFlow`          (same module)                          — Split Flow Radar
+ *
+ * Reimplementing any of them would drift the moment a threshold is tuned, and Largo would then
+ * describe a panel that does not match the one on screen — a disagreement no test would catch and
+ * every member would see.
+ *
+ * `nowMs` is passed explicitly rather than read inside: the velocity and hit windows are rolling,
+ * and a shared clock keeps all four derivations describing the SAME instant.
+ */
+export async function helixDerivedForLargo(ticker?: string | null, limit = 400) {
+  try {
+    const [
+      { marketPlatform },
+      { computeFlowStrikeStacks },
+      { selectTopPrints },
+      { detectVelocitySpikes, detectSplitFlow },
+      { HELIX_STRIKE_HITS_WINDOW_MIN },
+    ] = await Promise.all([
+      import("@/lib/platform"),
+      import("@/lib/largo/flow-strike-stacks"),
+      import("@/features/helix/lib/helix-top-prints"),
+      import("@/features/helix/lib/helix-signal-detection"),
+      import("@/features/helix/lib/helix-strike-leaders"),
+    ]);
+
+    // The SAME tape the /flows page renders. A bigger limit than a normal tape read because every
+    // derivation below is a WINDOW over history — a 50-print slice would silently under-report
+    // every stack and every spike.
+    const summary = await marketPlatform.flows.getFlowTapeSummary({
+      limit: Math.min(1000, Math.max(50, limit)),
+      ticker: ticker ? ticker.toUpperCase() : undefined,
+    });
+    const alerts = Array.isArray(summary?.recent) ? summary.recent : [];
+    const nowMs = Date.now();
+
+    if (!alerts.length) {
+      // "The pipeline returned nothing" is NOT "the tape is quiet", and the difference decides
+      // whether an answer is a finding or a caveat.
+      return {
+        available: true,
+        ticker: ticker?.toUpperCase() ?? null,
+        prints_analyzed: 0,
+        empty_reason: "no_prints_in_window",
+        stacked_hits: [],
+        top_prints: [],
+        velocity_spikes: [],
+        split_flow: [],
+      };
+    }
+
+    const stacks = computeFlowStrikeStacks(alerts, { minAlerts: 2 });
+    const top = selectTopPrints(alerts, { nowMs });
+    const velocity = detectVelocitySpikes(alerts, nowMs);
+    const split = detectSplitFlow(alerts, nowMs);
+
+    return roundFloats({
+      available: true,
+      ticker: ticker?.toUpperCase() ?? null,
+      as_of: new Date(nowMs).toISOString(),
+      prints_analyzed: alerts.length,
+      hits_window_min: HELIX_STRIKE_HITS_WINDOW_MIN,
+
+      /** STACKED HITS — repeated prints on the SAME contract (strike + expiry + side). */
+      stacked_hits: stacks.slice(0, 20),
+
+      /** TOP PRINTS — the conviction-scored leaders. `mode` says which ranking is in force, and
+       *  `session_fallback` flags that every row is OUTSIDE the rolling window, i.e. these are
+       *  stale session leaders rather than live conviction. Reporting them as live would be wrong. */
+      top_prints: top.rows.slice(0, 12),
+      top_prints_mode: top.mode,
+      top_prints_session_fallback: top.sessionFallback,
+
+      /** VELOCITY RADAR — prints per 15min vs the prior window, per ticker. */
+      velocity_spikes: velocity.slice(0, 12),
+
+      /** SPLIT FLOW — opposing call AND put premium on the same name inside 30 min. */
+      split_flow: split.slice(0, 12),
+    });
+  } catch (e) {
+    return {
+      available: false,
+      stacked_hits: [],
+      top_prints: [],
+      velocity_spikes: [],
+      split_flow: [],
+      error: e instanceof Error ? e.message : "helix_derived_failed",
+    };
+  }
+}
