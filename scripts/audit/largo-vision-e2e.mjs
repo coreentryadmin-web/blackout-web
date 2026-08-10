@@ -31,7 +31,8 @@
  * Exits non-zero if any case fails.
  */
 
-import { writeFileSync, mkdirSync } from "node:fs";
+import { writeFileSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { mintClerkPremiumSession } from "./lib/prod-clerk-session.mjs";
 import { fetchSessionBars, chartGroundTruth, renderChartPng } from "./lib/chart-fixture.mjs";
@@ -41,7 +42,6 @@ const args = process.argv.slice(2);
 const JSON_OUT = args.includes("--json");
 const KEEP = args.includes("--keep");
 const BASE = (args.find((a) => a.startsWith("--base=")) || "").split("=")[1] || "https://blackouttrades.com";
-const OUT_DIR = process.env.VISION_E2E_OUT || "/tmp/largo-vision-e2e";
 
 const log = (...a) => { if (!JSON_OUT) console.log(...a); };
 
@@ -97,8 +97,6 @@ function record(name, pass, detail, extra = {}) {
 }
 
 async function main() {
-  mkdirSync(OUT_DIR, { recursive: true });
-
   log(`Largo vision E2E → ${BASE}\n`);
   log("Building fixtures from REAL Polygon bars…");
 
@@ -116,9 +114,14 @@ async function main() {
   const unlabelled = await renderChartPng(truth, bars, { labelTicker: false });
   const textPanel = await renderTextPanelPng();
   if (KEEP) {
-    writeFileSync(path.join(OUT_DIR, "labelled.png"), labelled);
-    writeFileSync(path.join(OUT_DIR, "unlabelled.png"), unlabelled);
-    writeFileSync(path.join(OUT_DIR, "text-panel.png"), textPanel);
+    // mkdtemp, never a fixed /tmp path: a predictable name in a world-writable directory can be
+    // pre-created as a symlink by any local user, so the write lands wherever they pointed it.
+    // Only created when --keep actually asks for the files.
+    const outDir = process.env.VISION_E2E_OUT || mkdtempSync(path.join(tmpdir(), "largo-vision-"));
+    writeFileSync(path.join(outDir, "labelled.png"), labelled);
+    writeFileSync(path.join(outDir, "unlabelled.png"), unlabelled);
+    writeFileSync(path.join(outDir, "text-panel.png"), textPanel);
+    log(`  fixtures written to ${outDir}`);
   }
   log(
     `  ${truth.ticker} ${truth.date}: open ${truth.open} → close ${truth.close} ` +
