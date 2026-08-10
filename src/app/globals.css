@@ -4992,6 +4992,64 @@ body::before {
     outline-offset: 2px;
   }
 
+  /* ── Push-to-talk mic ──
+     Square, same height as the send button so the composer row stays one clean bar. Idle chrome
+     is deliberately quiet: dictation is an alternative to typing, not the primary action, and it
+     must not compete with Send for the eye. */
+  .largo-mic-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    align-self: stretch;
+    border-radius: 0;
+    border: 1px solid rgba(52, 211, 153, 0.25);
+    background: rgba(52, 211, 153, 0.08);
+    color: rgba(110, 231, 183, 0.75);
+    cursor: pointer;
+    transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+  }
+  .largo-mic-btn:hover {
+    background: rgba(52, 211, 153, 0.18);
+    border-color: rgba(52, 211, 153, 0.55);
+    color: #a7f3d0;
+  }
+  .largo-mic-btn:focus-visible {
+    outline: 2px solid rgba(52, 211, 153, 0.7);
+    outline-offset: 2px;
+  }
+  /* Listening is the one state that MUST be unmistakable — an open microphone the member has
+     forgotten about is a privacy problem, not a cosmetic one. */
+  .largo-mic-btn-live {
+    border-color: rgba(52, 211, 153, 0.85);
+    background: rgba(52, 211, 153, 0.28);
+    color: #d1fae5;
+    animation: largo-mic-pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes largo-mic-pulse {
+    0%,
+    100% {
+      box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.45);
+    }
+    50% {
+      box-shadow: 0 0 0 5px rgba(52, 211, 153, 0);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .largo-mic-btn-live {
+      animation: none;
+    }
+  }
+  .largo-mic-error {
+    position: absolute;
+    left: 0;
+    top: calc(100% + 0.25rem);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    color: #fca5a5;
+    pointer-events: none;
+  }
+
   /* ── Commanding empty state ── */
   .largo-empty {
     flex: 1;

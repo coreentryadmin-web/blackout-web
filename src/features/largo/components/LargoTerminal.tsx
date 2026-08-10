@@ -1,8 +1,10 @@
 "use client";
 
 import { clsx } from "clsx";
+import { useDictation } from "@/hooks/useDictation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Square } from "lucide-react";
+import { Mic, Square } from "lucide-react";
+import { useRef } from "react";
 import { useIosKeyboardInset } from "@/hooks/useIosKeyboardInset";
 import {
   LARGO_SUGGESTIONS,
@@ -56,6 +58,15 @@ export function LargoTerminal({
     switchConversation,
     isFresh,
   } = useLargoChat();
+
+  // Whatever was already typed when the mic opened. SpeechRecognition re-sends the WHOLE
+  // transcript on every interim result, so without this the dictated words would overwrite a
+  // half-typed question instead of continuing it.
+  const dictationBaseRef = useRef("");
+  const dictation = useDictation((text) => {
+    const base = dictationBaseRef.current.trim();
+    setInput(base ? `${base} ${text}` : text);
+  });
 
   useIosKeyboardInset(nativeShell);
 
@@ -273,7 +284,37 @@ export function LargoTerminal({
                 <span className="largo-input-placeholder-marquee">{INPUT_PLACEHOLDER_BUSY}</span>
               </span>
             )}
+            {dictation.error && (
+              <span role="status" className="largo-mic-error">
+                {dictation.error}
+              </span>
+            )}
           </div>
+          {/*
+            Push-to-talk. Only rendered where the browser actually implements SpeechRecognition
+            (Firefox does not) — a mic button that silently does nothing is worse than no mic.
+            Hidden while a query is in flight: the input is disabled then, so there is nowhere
+            for the transcript to land.
+          */}
+          {dictation.supported && !loading && hydrated && (
+            <button
+              type="button"
+              onClick={() => {
+                if (dictation.listening) {
+                  dictation.stop();
+                  return;
+                }
+                dictationBaseRef.current = input;
+                dictation.start();
+              }}
+              aria-label={dictation.listening ? "Stop dictation" : "Ask by voice"}
+              aria-pressed={dictation.listening}
+              title={dictation.listening ? "Listening — tap to stop" : "Ask by voice"}
+              className={clsx("largo-mic-btn", dictation.listening && "largo-mic-btn-live")}
+            >
+              <Mic size={14} aria-hidden />
+            </button>
+          )}
           {loading && (
             <button
               type="button"
