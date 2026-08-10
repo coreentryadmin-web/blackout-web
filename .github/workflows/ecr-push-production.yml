@@ -75,6 +75,10 @@ jobs:
             --build-arg NEXT_PUBLIC_WHOP_CHECKOUT_MONTHLY="${{ secrets.NEXT_PUBLIC_WHOP_CHECKOUT_MONTHLY }}" \
             --build-arg NEXT_PUBLIC_WHOP_CHECKOUT_YEARLY="${{ secrets.NEXT_PUBLIC_WHOP_CHECKOUT_YEARLY }}" \
             --build-arg NEXT_PUBLIC_WHOP_CHECKOUT_COMMUNITY="${{ secrets.NEXT_PUBLIC_WHOP_CHECKOUT_COMMUNITY }}" \
+            --build-arg NEXT_PUBLIC_GOOGLE_ADS_ID="${{ secrets.NEXT_PUBLIC_GOOGLE_ADS_ID }}" \
+            --build-arg NEXT_PUBLIC_GOOGLE_ADS_LABEL_SIGNUP="${{ secrets.NEXT_PUBLIC_GOOGLE_ADS_LABEL_SIGNUP }}" \
+            --build-arg NEXT_PUBLIC_GOOGLE_ADS_LABEL_PURCHASE="${{ secrets.NEXT_PUBLIC_GOOGLE_ADS_LABEL_PURCHASE }}" \
+            --build-arg NEXT_PUBLIC_GOOGLE_ADS_LABEL_PRICING_VIEW="${{ secrets.NEXT_PUBLIC_GOOGLE_ADS_LABEL_PRICING_VIEW }}" \
             --build-arg NEXT_PUBLIC_WHOP_STORE_URL="${{ secrets.NEXT_PUBLIC_WHOP_STORE_URL }}" \
             --build-arg GITHUB_SHA="${{ github.sha }}" \
             -t "${IMAGE}:${IMAGE_TAG}" -t "${IMAGE}:latest" .
