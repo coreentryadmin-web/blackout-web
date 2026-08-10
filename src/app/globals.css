@@ -18786,6 +18786,50 @@ body::before {
   }
   .largo-rail-bull { color: var(--largo-bull); }
   .largo-rail-bear { color: var(--largo-bear); }
+  /* LEVEL LADDER — price-ordered, spot marked in place. Three columns so the prices form a single
+     scannable numeric edge; a ragged left column defeats the whole point of ordering them. */
+  .largo-rail-ladder {
+    display: grid;
+    gap: 0.05rem;
+  }
+  .largo-rail-rung {
+    display: grid;
+    grid-template-columns: 3.6rem 1fr auto;
+    align-items: baseline;
+    gap: 0.35rem;
+    padding: 0.1rem 0.2rem;
+    font-size: 9.5px;
+    border-left: 2px solid transparent;
+  }
+  .largo-rail-rung-price {
+    color: var(--largo-primary);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .largo-rail-rung-label {
+    color: var(--largo-muted-faint);
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .largo-rail-rung-dist {
+    color: var(--largo-muted);
+    font-variant-numeric: tabular-nums;
+  }
+  /* The member's actual position in the structure — the one row the eye should find first. */
+  .largo-rail-rung-spot {
+    border-left-color: var(--largo-info);
+    background: rgba(34, 211, 238, 0.08);
+  }
+  .largo-rail-rung-spot .largo-rail-rung-price { color: var(--largo-info); }
+  .largo-rail-rung-spot .largo-rail-rung-label { color: var(--largo-info); }
+  /* A wall that MIGRATED since the last read. Amber = watch, per the desk's colour semantics —
+     it is not bullish or bearish, it is a thing that changed while you were reading. */
+  .largo-rail-rung-moved {
+    border-left-color: var(--largo-warn);
+  }
+  .largo-rail-rung-moved .largo-rail-rung-price { color: var(--largo-warn); }
   .largo-rail-degraded {
     margin-top: 0.4rem;
     font-size: 9px;
