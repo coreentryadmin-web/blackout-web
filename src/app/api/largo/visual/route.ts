@@ -41,6 +41,8 @@ type Body = {
   ticker?: string | null;
   capturedResults?: unknown[];
   envelopeLevels?: { label: string; value: number | string }[] | null;
+  envelopeGexShifts?: { strike: number; change: number; direction: "stronger" | "weaker" | "flipped" }[] | null;
+  envelopeSpot?: number | null;
   ledgerRow?: Record<string, unknown> | null;
   template?: VisualTemplateId | "AUTO" | null;
   size?: VisualSize;
@@ -67,6 +69,8 @@ export async function POST(req: NextRequest) {
     bias: body.bias ?? null,
     ticker: body.ticker ?? null,
     envelopeLevels: body.envelopeLevels ?? null,
+    envelopeGexShifts: body.envelopeGexShifts ?? null,
+    envelopeSpot: body.envelopeSpot ?? null,
     ledgerRow: body.ledgerRow ?? null,
     nowMs,
   });

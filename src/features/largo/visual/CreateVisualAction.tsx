@@ -74,6 +74,8 @@ export type CreateVisualActionProps = {
   /** The SAME tool results the answer was written from. */
   capturedResults?: unknown[];
   envelopeLevels?: { label: string; value: number | string }[] | null;
+  envelopeGexShifts?: { strike: number; change: number; direction: "stronger" | "weaker" | "flipped" }[] | null;
+  envelopeSpot?: number | null;
   ledgerRow?: Record<string, unknown> | null;
 };
 
@@ -98,6 +100,8 @@ export function CreateVisualAction(props: CreateVisualActionProps) {
       ticker: props.ticker ?? null,
       capturedResults: props.capturedResults ?? [],
       envelopeLevels: props.envelopeLevels ?? null,
+      envelopeGexShifts: props.envelopeGexShifts ?? null,
+      envelopeSpot: props.envelopeSpot ?? null,
       ledgerRow: props.ledgerRow ?? null,
       template,
       size,

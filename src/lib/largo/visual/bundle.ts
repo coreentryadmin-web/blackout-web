@@ -238,6 +238,17 @@ export type BuildBundleInput = {
   envelopeLevels?: { label: string; value: number | string }[] | null;
   /** Explicit ledger row for a trade recap, when the caller has one in hand. */
   ledgerRow?: Record<string, unknown> | null;
+  /**
+   * GEX shifts the ANSWER ENVELOPE already carries.
+   *
+   * The client mount point has the envelope but not `capturedResults` (raw tool output never
+   * crosses to the browser), and the envelope's `gexShifts` were themselves lifted structurally
+   * off the same tool result — so taking them here keeps the card on one snapshot without
+   * shipping the whole tool payload to the client.
+   */
+  envelopeGexShifts?: { strike: number; change: number; direction: "stronger" | "weaker" | "flipped" }[] | null;
+  /** Spot the envelope already resolved, when no positioning payload is in hand. */
+  envelopeSpot?: number | null;
   nowMs: number;
 };
 
@@ -260,7 +271,7 @@ export function buildVisualBundle(input: BuildBundleInput): VisualBundle {
 
   // ── Spot: positioning first, quote second. One instrument, one number. Preferring positioning
   // keeps spot on the same snapshot as the walls drawn beside it.
-  const spotVal = pos?.spot ?? quote?.price ?? null;
+  const spotVal = pos?.spot ?? quote?.price ?? input.envelopeSpot ?? null;
   const spotSource: VisualSystem = pos?.spot != null ? "THERMAL" : "VECTOR";
   const spot = vnum(spotVal, fmtPrice(spotVal), spotSource, pos?.asOf ?? quote?.asOf);
   if (spot) systems.add(spotSource);
@@ -353,7 +364,13 @@ export function buildVisualBundle(input: BuildBundleInput): VisualBundle {
     metrics,
     timeline: [],
     systemReads,
-    gexShifts: gex?.shifts.map((s) => ({ ...s, display: formatGexChange(s.change) })),
+    // Tool result first, envelope second — both are the same underlying tool output, and
+    // preferring the raw one keeps the richer `asOf` metadata when it is available.
+    gexShifts:
+      gex?.shifts.map((s) => ({ ...s, display: formatGexChange(s.change) })) ??
+      (input.envelopeGexShifts?.length
+        ? input.envelopeGexShifts.map((s) => ({ ...s, display: formatGexChange(s.change) }))
+        : undefined),
     regime: pos?.posture ? { label: pos.posture.toUpperCase(), detail: pos.regimeRead, source: "THERMAL" } : null,
     trade,
     systemsQueried: [...systems],
