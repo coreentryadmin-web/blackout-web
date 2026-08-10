@@ -1,3 +1,4 @@
+import { stripLargoBlocks } from "@/features/largo/blocks/extract";
 import {
   makeEnvelope,
   type BieAnswerEnvelope,
@@ -228,7 +229,10 @@ export function validateAnswerContract(markdown: string): AnswerContractReport {
 export function parseAnswerEnvelope(markdown: string): BieAnswerEnvelope | null {
   let sections: Map<string, string>;
   try {
-    sections = splitSections(markdown);
+    // Parse the PROSE only. A ```blackout payload contains lines like `"type": "levels",` which
+    // the heading matcher would never accept, but its bullet-shaped content could still pollute
+    // the Facts evidence list with fragments of JSON.
+    sections = splitSections(stripLargoBlocks(markdown));
   } catch {
     return null;
   }
