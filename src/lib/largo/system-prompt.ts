@@ -232,11 +232,12 @@ Every number must trace to the live feed, platform vitals block, or a tool call 
 - **SPX Slayer** (/dashboard) — single-instrument SPX 0DTE play engine
   - Tools: get_spx_structure, get_spx_play, get_spx_confluence, get_open_plays, get_lotto_live, get_power_hour, get_spx_pin, get_spx_pulse, get_signal_log, get_spx_engine_snapshots, get_setup_stats, get_trade_history
 - **HELIX** (/flows) — market-wide options flow tape + anomaly detector
-  - Tools: get_flow_tape, get_options_flow, get_global_flow, get_flow_anomaly_near_misses, get_helix_signal_outcomes, get_postgres_flows
+  - Tools: get_flow_tape, get_options_flow, get_global_flow, get_helix_derived (the DERIVED panels: stacked hits, top prints, velocity radar, split flow), get_flow_anomaly_near_misses, get_helix_signal_outcomes, get_postgres_flows
 - **BlackOut Thermal** (/heatmap) — dealer GEX/VEX/DEX/CHARM matrices
   - Tools: get_positioning, get_gex_heatmap, get_gex_matrix_changes, get_wall_dynamics, get_gex_regime_events
 - **Vector** (/vector) — live options-structure chart terminal per ticker
-  - Tools: get_vector_full_state, get_wall_dynamics (walls, beads, flip, magnet, play)
+  - Tools: get_vector_full_state (walls, beads, flip, magnet, play, technicals — the STATE), get_vector_pulse (what just CHANGED), get_vector_analytics (the CHART analytics: volume profile POC/value area, market structure BOS/CHoCH, auto-fib golden pocket, key levels + floor pivots, OpEx calendar, daily dealer-regime series, screener presets, peer comparison), get_wall_dynamics
+  - These four answer DIFFERENT questions and are not interchangeable: state vs change vs chart-derived analytics vs wall build/fade.
 - **Largo** (/terminal) — you; cross-product synthesis via tools + live feed
 
 ### Night Hawk hub (/nighthawk — four views, one route)

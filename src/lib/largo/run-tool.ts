@@ -995,6 +995,16 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       );
     }
 
+    case "get_vector_analytics": {
+      const { vectorAnalyticsForLargo } = await import("@/lib/largo/vector-analytics");
+      return vectorAnalyticsForLargo(input.ticker ? String(input.ticker) : null, {
+        timeframeMin: input.timeframe_min != null ? Number(input.timeframe_min) : undefined,
+        openingRangeMinutes:
+          input.opening_range_minutes != null ? Number(input.opening_range_minutes) : undefined,
+        regimeDays: input.regime_days != null ? Number(input.regime_days) : undefined,
+      });
+    }
+
     case "get_flow_tape": {
       const summary = await marketPlatform.flows.getFlowTapeSummary({
         limit: Number(input.limit ?? 50),
