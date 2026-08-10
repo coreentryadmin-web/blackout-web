@@ -430,7 +430,19 @@ export type AnthropicMessage = { role: string; content: string | AnthropicConten
 
 export type AnthropicToolLoopEvent =
   | { type: "token"; text: string }
-  | { type: "tool_start"; name: string };
+  | { type: "tool_start"; name: string }
+  /**
+   * The text streamed so far was NOT the answer — discard it and start over.
+   *
+   * Tokens stream from EVERY round, and a round that ends in `tool_use` was the model narrating
+   * its plan ("Let me check the SPX structure first…"), not answering. A consumer that simply
+   * concatenates every token renders that planning chatter glued to the front of the real answer,
+   * which looks like the model talking to itself in the member's chat window.
+   *
+   * Emitted after the round's text, before its tools run, so a progressive consumer can clear its
+   * buffer at exactly the right moment.
+   */
+  | { type: "answer_reset" };
 
 export async function anthropicToolLoop(params: {
   system: AnthropicSystem;
@@ -569,6 +581,18 @@ export async function anthropicToolLoop(params: {
     }
 
     messages.push({ role: "assistant", content: content as unknown as MessageParam["content"] });
+
+    // This round produced tool calls, so anything it streamed was PLANNING, not the answer. Tell a
+    // progressive consumer to drop it — see the answer_reset docstring. Only fires when the round
+    // actually emitted text; a silent tool-only round has nothing to reset and sending one anyway
+    // would make the event meaningless as a signal.
+    if (params.onEvent && extractTextFromBlocks(content as Array<{ type: string; text?: string }>).trim()) {
+      try {
+        params.onEvent({ type: "answer_reset" });
+      } catch {
+        /* SSE client disconnected */
+      }
+    }
 
     const results = await Promise.all(
       toolCalls.map(async (tc) => {

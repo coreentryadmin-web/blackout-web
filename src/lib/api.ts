@@ -510,7 +510,13 @@ export async function queryLargoStream(
    */
   externalSignal?: AbortSignal,
   /** Fancy status lines while prefetch / BIE compose / live enrich runs. */
-  onStatus?: (message: string) => void
+  onStatus?: (message: string) => void,
+  /**
+   * Discard everything streamed so far — the round that produced it ended in tool calls, so it
+   * was planning, not the answer. A consumer that ignores this renders the model's plan in front
+   * of its answer.
+   */
+  onAnswerReset?: () => void
 ): Promise<{
   answer: string;
   session_id: string;
@@ -618,6 +624,10 @@ export async function queryLargoStream(
 
         if (event.type === "ping") continue;
         if (event.type === "token" && event.text) onToken(event.text);
+        // The round that just streamed ended in tool calls, so its text was the model narrating
+        // its plan, not answering. Drop it — otherwise that chatter renders glued to the front of
+        // the real answer. Falls back to onToken("") being harmless when no handler is supplied.
+        if (event.type === "answer_reset") onAnswerReset?.();
         if (event.type === "tool_start" && event.name) onTool?.(event.name);
         if (event.type === "status" && event.message) onStatus?.(event.message);
         if (event.type === "done" && event.answer && event.session_id) {
