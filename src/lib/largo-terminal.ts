@@ -30,7 +30,7 @@ import {
   fetchLargoMessagesPublic,
   sessionOwnedByUser,
 } from "@/lib/largo/largo-store";
-import { analyzeLargoQuestion } from "@/lib/largo/question-intent";
+import { analyzeLargoQuestion, KNOWN_TICKERS } from "@/lib/largo/question-intent";
 import { deterministicLargoFollowups } from "@/lib/largo/largo-followups";
 import { loadLargoPlatformSnapshotBlock } from "@/lib/largo/platform-snapshot-block";
 import { captureLargoLiveFeed, formatLargoLiveFeed } from "@/lib/largo/largo-live-feed";
@@ -43,6 +43,7 @@ import {
   rankCapabilities,
 } from "@/lib/largo/registry/capability-registry";
 import { formatTemporalBlock, resolveTimeframe, temporalConflicts } from "@/lib/largo/temporal/timeframe";
+import { extractTickers, formatEntityBlock } from "@/lib/largo/core/entities";
 
 const MAX_HISTORY = 28;
 
@@ -302,13 +303,26 @@ async function prepareLargoTurn(
   // the way the deleted intent allowlist could.
   const capabilityBlock = formatCapabilityBlock(question, { historical: timeframe.historical });
 
+  // CANONICAL ENTITIES — resolved in code so cross-desk results can actually be joined.
+  //
+  // The same instrument wears a different name on every surface: SPX on the quote route, I:SPX to
+  // Polygon, SPXW on the weekly chain, $SPX when a member types it. Left to the model, "compare
+  // Helix and Thermal on SPX" becomes a string comparison, and the two most likely failures are
+  // both silent — pooling evidence for two different instruments, or splitting one instrument's
+  // evidence across two names so each side looks thinner than it is. Neither shows up in the
+  // answer as anything other than confident prose.
+  //
+  // Purely additive: an empty block when the question names no instrument, and it never
+  // constrains which symbols a tool may be called with.
+  const entityBlock = formatEntityBlock(extractTickers(question, KNOWN_TICKERS));
+
   const platformVitalsBlock = await loadLargoPlatformSnapshotBlock().catch(() => "");
   if (platformVitalsBlock) toolsUsed.push("platform_vitals_prefetch");
 
   const system = buildDynamicSystem(
     question,
     history.slice(0, -1),
-    liveFeedBlock + knowledgeBlock + temporalBlock + capabilityBlock,
+    liveFeedBlock + knowledgeBlock + temporalBlock + capabilityBlock + entityBlock,
     platformVitalsBlock
   );
 
