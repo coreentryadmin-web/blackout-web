@@ -91,20 +91,17 @@ for (const a of ACTIONS) {
 try {
   const res = await fetch(`${BASE}/pricing`, { headers: { "user-agent": "blackout-conversion-verify" } });
   const html = await res.text();
-  // A plain substring test, deliberately NOT a regex. We are scanning an HTML document for the
-  // presence of a script tag, not validating a URL — and a host-shaped regex here reads as URL
-  // validation to any reader (and to CodeQL, which flagged it twice). `includes` cannot be fooled
-  // by a host appearing in the wrong part of a URL because it is not making a trust decision at
-  // all; it is asking "does this document load gtag.js".
-  const hasGtagJs = html.includes("https://www.googletagmanager.com/gtag/js");
-  const awConfigs = [...html.matchAll(/gtag\(\s*'config'\s*,\s*'(AW-\d+)'\s*\)/g)].map((m) => m[1]);
-
-  if (!hasGtagJs) {
-    record("tag.gtag_js", "FAIL", `${BASE}/pricing does not load gtag.js — no tag can fire`);
-  } else {
-    record("tag.gtag_js", "PASS", "gtag.js is loaded on the deployed page");
-  }
-
+  // NOTE ON WHAT THIS CAN SEE. The tags are Next.js <Script strategy="afterInteractive">, so they
+  // are NOT <script src> elements in the served HTML — they are injected by client JS after
+  // hydration. Three earlier versions of this check string-matched the gtag.js URL and reported
+  // PASS; that was a FALSE pass, matching the URL where it sits as data inside the RSC payload.
+  // Parsing script srcs correctly reports it absent, which is also not the answer anyone wants.
+  //
+  // So the check is now the one thing that is both meaningful and observable from a plain fetch:
+  // is the AW- config snippet in the payload we deploy? That is exactly what this repo controls.
+  // Whether the browser then executes it is a RUNTIME question, and the honest tool for that is
+  // the browser harness (scripts/audit/largo-ui-walkthrough.cjs uses the same tunnel) or Tag
+  // Assistant — not a regex over HTML.
   if (awConfigs.length === 0) {
     record("tag.aw_config", "FAIL", `no gtag('config','AW-…') in the deployed HTML — the Ads tag is NOT live on ${BASE}`);
   } else if (idOk && !awConfigs.includes(rawId)) {
