@@ -1,4 +1,3 @@
-import { classifyBieIntent, bieFollowups } from "@/lib/bie/router";
 import { NIGHTHAWK_RE, matchesIntent } from "@/lib/largo/intent-keywords";
 import { analyzeLargoQuestion } from "@/lib/largo/question-intent";
 
@@ -13,15 +12,13 @@ export function deterministicLargoFollowups(
   question: string,
   tickerHint?: string | null
 ): string[] {
-  const ledger = new Set(["TSLA", "NVDA", "SPY", "AAPL", "META", "PLTR", "AMD", "AMZN", "MSFT", "QQQ"]);
-  const route = classifyBieIntent(question, ledger);
-  if (route) {
-    const fromBie = bieFollowups(route.intent);
-    if (fromBie.length >= 3) {
-      return withTicker(fromBie, route.ticker ?? tickerHint).slice(0, 3);
-    }
-  }
-
+  // Previously this first asked the BIE router to classify the question into one of ~20 fixed
+  // intents and returned that intent's canned chip list, falling through to the composed chips
+  // below only when the router had nothing. That short-circuit is gone with the router: it made
+  // the suggestions a function of which hard-coded bucket a phrasing happened to land in, which
+  // is exactly the "custom route per phrasing" shape this rebuild removes. The composed path
+  // below is derived from the SAME live-feed intent signals the turn actually used, so the chips
+  // track what Largo really looked at rather than what a classifier guessed.
   const intent = analyzeLargoQuestion(question, []);
   const chips: string[] = [];
 

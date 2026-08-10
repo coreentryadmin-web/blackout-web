@@ -1,18 +1,22 @@
-import type { BieAnswerEnvelope } from "@/lib/bie/answer-envelope";
-import { isRichBieEnvelope } from "@/lib/bie/envelope-richness";
-import { bieFollowups, bieIntentBucket } from "@/lib/bie/router";
-import { collectContextNumbers, verifyClaims, type ClaimVerification } from "@/lib/bie/verifier";
+import { type ClaimVerification } from "@/lib/bie/verifier";
 import { dbConfigured, insertBieInteraction } from "@/lib/db";
 import { appendLargoMessage } from "@/lib/largo/largo-store";
-import type { BieRoutedAnswer } from "@/lib/largo/bie-route";
 
-const BIE_TOOL = "blackout_intelligence";
+/**
+ * Every Largo turn is a Claude tool-loop turn, so the interaction log's `intent_bucket` is always
+ * this one value. It used to come from `bieIntentBucket(null)`, whose entire body was
+ * `intent ?? "claude_fallback"` — a function call to read a default. Inlined so the last
+ * runtime dependency on the BIE router could be deleted, and named as a constant so the
+ * historical rows (which the calibration cohorts in bie/calibration.ts still bucket by this exact
+ * string) keep matching.
+ */
+const CLAUDE_TURN_BUCKET = "claude_fallback";
 
 export function applyVerificationCaveat(text: string, verification: ClaimVerification): string {
   if (verification.total >= 4 && verification.coverage < 0.5) {
     return (
       text +
-      `\n\n_BIE verification: ${verification.total - verification.verified} of ${verification.total} figures in this answer could not be traced to data pulled this turn — treat those specific numbers with caution._`
+      `\n\n_Data check: ${verification.total - verification.verified} of ${verification.total} figures in this answer could not be traced to data pulled this turn — treat those specific numbers with caution._`
     );
   }
   return text;
@@ -33,63 +37,6 @@ function logBieInteraction(row: {
   void insertBieInteraction(row).catch(() => {});
 }
 
-export type BieTurnResult = {
-  session_id: string;
-  answer: string;
-  source: "blackout-intelligence";
-  tools_used: string[];
-  followups: string[];
-  verification: ClaimVerification;
-  envelope?: BieAnswerEnvelope;
-};
-
-export async function finalizeBieRoutedTurn(params: {
-  sessionId: string;
-  userId: string;
-  question: string;
-  routed: BieRoutedAnswer;
-  startedAt: number;
-}): Promise<BieTurnResult> {
-  const sid = params.sessionId.trim() || `web-${params.userId}-${Date.now()}`;
-  const verification = verifyClaims(
-    params.routed.answer,
-    collectContextNumbers([
-      params.routed.context,
-      params.routed.envelope ?? null,
-    ])
-  );
-  // Same Layer-4 caveat the Claude path applies — router turns were persisting raw answers
-  // without it, so low-coverage BIE-composed replies (e.g. #1284) failed the nightly audit.
-  const answer = applyVerificationCaveat(params.routed.answer, verification);
-
-  await appendLargoMessage(sid, params.userId, "user", params.question);
-  await appendLargoMessage(sid, params.userId, "assistant", answer, [BIE_TOOL], [
-    params.routed.context,
-  ]);
-
-  logBieInteraction({
-    user_id: params.userId,
-    question: params.question,
-    intent: params.routed.route.intent,
-    answer_source: "bie-router",
-    claims_total: verification.total,
-    claims_verified: verification.verified,
-    latency_ms: Date.now() - params.startedAt,
-    tools_used: [BIE_TOOL],
-    intent_bucket: bieIntentBucket(params.routed.route.intent),
-  });
-
-  return {
-    session_id: sid,
-    answer,
-    source: "blackout-intelligence",
-    tools_used: [BIE_TOOL],
-    followups: bieFollowups(params.routed.route.intent),
-    verification,
-    envelope: isRichBieEnvelope(params.routed.envelope) ? params.routed.envelope ?? undefined : undefined,
-  };
-}
-
 export function logClaudeTurn(params: {
   userId: string;
   question: string;
@@ -107,7 +54,7 @@ export function logClaudeTurn(params: {
     claims_verified: params.answerSource === "error" ? null : params.verification.verified,
     latency_ms: Date.now() - params.startedAt,
     tools_used: Array.from(new Set(params.toolsUsed)),
-    intent_bucket: bieIntentBucket(null),
+    intent_bucket: CLAUDE_TURN_BUCKET,
   });
 }
 

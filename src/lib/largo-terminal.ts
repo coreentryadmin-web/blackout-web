@@ -35,7 +35,6 @@ import { captureLargoLiveFeed, formatLargoLiveFeed } from "@/lib/largo/largo-liv
 import { polygonConfigured, uwConfigured } from "@/lib/providers/config";
 import { webSearchConfigured } from "@/lib/providers/web-search";
 import { todayEtYmd } from "@/lib/providers/spx-session";
-import { searchKnowledge } from "@/lib/bie/knowledge";
 
 const MAX_HISTORY = 28;
 
@@ -77,7 +76,13 @@ export type LargoStreamEvent =
   | { type: "error"; message: string };
 
 /**
- * Re-exported from `@/lib/bie/envelope-richness` — structural test for rich synthesis envelopes.
+ * Structural test for a rich synthesis envelope (verdict/sections) vs a trivial string leg.
+ *
+ * Still re-exported from `@/lib/bie/*` — one of the LAST BIE couplings left in Largo's runtime,
+ * kept here only so this PR stays scoped to deleting the BIE answer-ROUTER and the dark retrieval
+ * layer. The remaining couplings are data readers, the answer envelope and the claim verifier,
+ * which are load-bearing (they are how Largo reaches platform state and how it is stopped from
+ * fabricating numbers); those get RELOCATED into `@/lib/largo/`, not deleted, in the follow-up.
  */
 export { isRichBieEnvelope } from "@/lib/bie/envelope-richness";
 
@@ -241,23 +246,13 @@ async function prepareLargoTurn(
   const intent = analyzeLargoQuestion(question, history.slice(0, -1));
   const liveFeed = await captureLargoLiveFeed(intent, userId);
   const liveFeedBlock = formatLargoLiveFeed(liveFeed, intent.tickerHint ?? "SPX");
-  // BIE Layer 2 grounding: retrieved desk knowledge (playbooks, findings, past
-  // editions, self-evals) rides into the system prompt when embeddings are
-  // configured. Best-effort and bounded — never delays a turn by more than the
-  // retrieval itself, never blocks on failure. searchKnowledge is a static import
-  // (was a dynamic import("@/lib/bie/knowledge")) — see logBie's doc comment below
-  // for why a dynamic "@/" alias import silently breaks under Node 20 test mocking.
-  let knowledgeBlock = "";
-  try {
-    const hits = await searchKnowledge(question, 3);
-    if (hits.length > 0) {
-      knowledgeBlock =
-        "\n\n## Retrieved desk knowledge (BLACKOUT Intelligence — cite when relevant)\n" +
-        hits.map((h) => `[${h.kind} · ${h.source}]\n${h.chunk}`).join("\n\n---\n\n");
-    }
-  } catch {
-    // retrieval is optional grounding — never blocks the turn
-  }
+  // NO retrieval layer. This used to call searchKnowledge() (BIE Layer 2, Voyage embeddings) on
+  // every turn and splice any hits into the system prompt. It was removed for two independent
+  // reasons: the platform is not to depend on BIE, and the call was DARK in production anyway —
+  // searchKnowledge returns [] unless VOYAGE_API_KEY is set, and that variable exists nowhere in
+  // blackout-infra. So every turn paid a function call and a try/catch to receive an empty array.
+  // Largo is grounded by the live feed and its tools, which are real data, not embeddings.
+  const knowledgeBlock = "";
 
   const platformVitalsBlock = await loadLargoPlatformSnapshotBlock().catch(() => "");
   if (platformVitalsBlock) toolsUsed.push("platform_vitals_prefetch");
