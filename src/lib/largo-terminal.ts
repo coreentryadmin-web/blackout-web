@@ -20,6 +20,7 @@ import {
 } from "@/lib/largo/turn-outcome";
 import type { BieAnswerEnvelope } from "@/lib/bie/answer-envelope";
 import { parseAnswerEnvelope, validateAnswerContract } from "@/lib/largo/answer-contract";
+import { stripLargoBlocks } from "@/features/largo/blocks/extract";
 import { collectContextNumbers, verifyClaims, type ClaimVerification } from "@/lib/bie/verifier";
 import { resetLargoSpxDeskCache } from "@/lib/largo/spx-desk-cache";
 import {
@@ -376,7 +377,12 @@ export async function runLargoQuery(
       "I couldn't pull enough live data to answer that — try naming a ticker or asking about SPX structure.";
 
     const ctxNumbers = collectContextNumbers([capturedResults, history.map((h) => h.content)]);
-    const verification = verifyClaims(text, ctxNumbers);
+    // Verify the PROSE, not the component payloads. Every number inside a ```blackout block also
+    // appears in the prose that introduces it, so verifying the raw answer would count each one
+    // twice and inflate the coverage ratio that decides whether the member sees the
+    // low-confidence caveat — i.e. the richer the answer, the more the honesty check would be
+    // diluted, which is exactly backwards.
+    const verification = verifyClaims(stripLargoBlocks(text), ctxNumbers);
     text = applyVerificationCaveat(text, verification);
 
     logClaudeTurn({ userId, question, toolsUsed, verification, startedAt });
@@ -483,7 +489,12 @@ export async function runLargoQueryStream(
     // results + the history the model was shown). Heavily-unverified answers get
     // an explicit caution — uncertainty stated, never fake precision.
     const ctxNumbers = collectContextNumbers([capturedResults, history.map((h) => h.content)]);
-    const verification = verifyClaims(text, ctxNumbers);
+    // Verify the PROSE, not the component payloads. Every number inside a ```blackout block also
+    // appears in the prose that introduces it, so verifying the raw answer would count each one
+    // twice and inflate the coverage ratio that decides whether the member sees the
+    // low-confidence caveat — i.e. the richer the answer, the more the honesty check would be
+    // diluted, which is exactly backwards.
+    const verification = verifyClaims(stripLargoBlocks(text), ctxNumbers);
     text = applyVerificationCaveat(text, verification);
 
     logClaudeTurn({ userId, question, toolsUsed, verification, startedAt });

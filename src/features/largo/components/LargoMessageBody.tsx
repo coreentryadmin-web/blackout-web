@@ -2,6 +2,8 @@
 
 import { Fragment, type ReactNode } from "react";
 import { clsx } from "clsx";
+import { extractLargoSegments } from "@/features/largo/blocks/extract";
+import { LargoBlockPending, LargoBlockView } from "@/features/largo/blocks/LargoBlocks";
 
 type TokenKind = "text" | "bold" | "italic" | "code" | "num";
 
@@ -307,11 +309,37 @@ type LargoMessageBodyProps = {
   className?: string;
 };
 
+/**
+ * Split the answer into prose and semantic components FIRST, then render prose through the
+ * existing markdown path unchanged.
+ *
+ * Ordering matters: the markdown parser below knows nothing about ```blackout fences, so running
+ * it over the raw answer would render a component's JSON payload as a code block for the seconds
+ * it takes to stream, and as literal JSON forever if it never closed. Extraction is what makes the
+ * rich path safe to stream.
+ */
 export function LargoMessageBody({ content, className }: LargoMessageBodyProps) {
-  const blocks = parseContentBlocks(content);
+  const segments = extractLargoSegments(content);
+  // No fences: identical to the pre-component behaviour, no extra wrappers, no cost. The
+  // "simple question gets a simple answer" guarantee is this line.
+  if (!segments.some((s) => s.kind !== "prose")) return <LargoProse content={content} className={className} />;
 
   return (
     <div className={clsx("largo-message-body", className)}>
+      {segments.map((seg, i) => {
+        if (seg.kind === "pending") return <LargoBlockPending key={i} />;
+        if (seg.kind === "block") return <LargoBlockView key={i} block={seg.block} />;
+        return <LargoProse key={i} content={seg.text} bare />;
+      })}
+    </div>
+  );
+}
+
+function LargoProse({ content, className, bare }: LargoMessageBodyProps & { bare?: boolean }) {
+  const blocks = parseContentBlocks(content);
+
+  return (
+    <div className={bare ? "largo-message-prose" : clsx("largo-message-body", className)}>
       {blocks.map((block, bi) => {
         if (block.type === "spacer") return <div key={bi} className="largo-fmt-spacer" />;
 
