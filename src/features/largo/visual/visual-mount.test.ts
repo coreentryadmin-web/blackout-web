@@ -17,6 +17,7 @@ import { readFileSync } from "node:fs";
  */
 
 const ANSWER = "src/features/largo/components/LargoAnswerMessage.tsx";
+const ACTION = "src/features/largo/visual/CreateVisualAction.tsx";
 
 test("the action is MOUNTED on the answer, not merely built", () => {
   const src = readFileSync(ANSWER, "utf8");
@@ -40,6 +41,26 @@ test("the action is gated on a real envelope", () => {
   // "no visual for this answer" — the evidence a card needs simply is not there.
   const src = readFileSync(ANSWER, "utf8");
   assert.match(src, /envelope\s*\?\s*\(/, "must render the slot only when an envelope exists");
+});
+
+test("the template picker is DERIVED from the server registry, not mirrored in the client", () => {
+  // Same bug class as the mount gap above, one layer up. The picker was a hardcoded array of
+  // three and stayed three when Screener, Rejection and EM-cone shipped — three working templates
+  // nobody could ask for. A client-side copy of a server registry reproduces that by construction.
+  const src = readFileSync(ACTION, "utf8");
+  assert.ok(src.includes("plan?.available"), "chips must come from the plan response's `available`");
+  assert.ok(
+    !/id:\s*"(MARKET_MOVE|TRADE_RECAP|LEVEL_ANALYSIS|SCREENER)"/.test(src),
+    "no template id may be hardcoded in the client — AUTO is the only literal",
+  );
+});
+
+test("the rendered card is injected exactly once", () => {
+  // It was injected twice: the same `dangerouslySetInnerHTML` block appeared inside the CTA row
+  // AND below it, so every inline render drew two stacked copies of the card.
+  const src = readFileSync(ACTION, "utf8");
+  const injections = src.match(/dangerouslySetInnerHTML/g) ?? [];
+  assert.equal(injections.length, 1, `card markup is injected ${injections.length} times`);
 });
 
 test("bias vocabulary is translated, and `mixed` never picks a side", () => {

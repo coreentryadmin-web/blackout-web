@@ -189,6 +189,96 @@ export type VisualBundle = {
     asOf: string | null;
   } | null;
 
+  /**
+   * GAMMA_MAP — the dealer gamma PROFILE (a standing distribution), distinct from `gexShifts`
+   * (how that distribution CHANGED). Rows are strike-ascending as the chain reports them; the
+   * template reverses for display and does not re-rank, because a gamma profile's meaning is
+   * positional.
+   */
+  gammaProfile?: {
+    rows: { strike: number; gamma: number; display: string }[];
+    flipStrike?: number | null;
+    /** Expiry the profile was computed for — a gamma map without its expiry is unreadable. */
+    expiryLabel?: string | null;
+    source: VisualSystem;
+  } | null;
+
+  /**
+   * FLOW_RECAP — the premium tape. `rows` are individual prints in the order the tape reported
+   * them, NOT a curated best-of: the point of a tape card is that it is a tape.
+   */
+  flow?: {
+    windowLabel: string;
+    netDisplay: string;
+    grossDisplay: string;
+    /** Share of gross premium that is call-side, 0–1. Drives the split bar. */
+    callShare: number | null;
+    printCount: number;
+    rows: {
+      ticker: string;
+      side: "call" | "put";
+      premiumDisplay: string;
+      detail?: string | null;
+      at?: string | null;
+    }[];
+  } | null;
+
+  /**
+   * TRADE_LEADERBOARD — graded results only.
+   *
+   * `rows` must be GRADED. An ungraded row on a leaderboard is a performance claim the ledger has
+   * not made, and unlike TRADE_RECAP (which can honestly show an open position labelled as such)
+   * there is no way to rank an open position without implying it is a result.
+   */
+  leaderboard?: {
+    windowLabel: string;
+    graded: number;
+    wins: number;
+    losses: number;
+    winRateDisplay: string | null;
+    rows: {
+      ticker: string;
+      contract?: string | null;
+      returnValue: number;
+      returnDisplay: string;
+      dateLabel?: string | null;
+    }[];
+    source: VisualSystem;
+  } | null;
+
+  /**
+   * BEFORE_AFTER — the same measurements at two instants. Both stamps are required: "what changed"
+   * with only one timestamp is not a comparison, it is an assertion.
+   */
+  beforeAfter?: {
+    windowLabel: string;
+    beforeLabel: string;
+    afterLabel: string;
+    rows: {
+      label: string;
+      beforeDisplay: string;
+      afterDisplay: string;
+      deltaDisplay: string | null;
+      direction: "up" | "down" | "flat";
+      source: VisualSystem;
+    }[];
+  } | null;
+
+  /** SESSION_RECAP — one whole session in OHLC plus what the desk did in it. Post-close. */
+  session?: {
+    dateLabel: string;
+    openDisplay: string;
+    highDisplay: string;
+    lowDisplay: string;
+    closeDisplay: string;
+    changeDisplay: string | null;
+    changeDirection: "up" | "down" | "flat";
+    rangeDisplay: string | null;
+    /** Free-form desk stats — trades taken, gates held, condor outcome. Rendered as chips. */
+    stats: { label: string; value: string; tone?: "neutral" | "positive" | "negative" | "caution" }[];
+    source: VisualSystem;
+  } | null;
+
   /** Which systems were consulted this turn — drives attribution and the manifest. */
   systemsQueried: VisualSystem[];
   /** When the underlying snapshot was taken (ISO). */

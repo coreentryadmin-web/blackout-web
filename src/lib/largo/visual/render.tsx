@@ -38,6 +38,13 @@ import { LevelAnalysisCard, focusStrikeFromQuestion } from "./templates/level-an
 import { ScreenerCard } from "./templates/screener";
 import { RejectionCard } from "./templates/rejection";
 import { EmConeCard } from "./templates/em-cone";
+import { GammaMapCard } from "./templates/gamma-map";
+import { FlowRecapCard } from "./templates/flow-recap";
+import { LeaderboardCard } from "./templates/leaderboard";
+import { SystemComparisonCard } from "./templates/system-comparison";
+import { BeforeAfterCard } from "./templates/before-after";
+import { SessionRecapCard } from "./templates/session-recap";
+import { SignalTimelineCard } from "./templates/signal-timeline";
 
 /** ET clock label for the card chrome. Null when the instant does not parse — never a fake time. */
 function etLabel(iso: string): string | null {
@@ -119,6 +126,45 @@ export function buildVisualElement(params: RenderVisualParams): {
       // The realised path is what makes this a result rather than a forecast.
       if (!bundle.cone || bundle.cone.path.length < 2) throw new Error("EM_CONE requires a realised path");
       element = <EmConeCard bundle={bundle} spec={spec} recorder={recorder} asOfLabel={asOfLabel} />;
+      break;
+    case "GAMMA_MAP":
+      if ((bundle.gammaProfile?.rows.length ?? 0) < 5) throw new Error("GAMMA_MAP requires at least five strikes");
+      element = <GammaMapCard bundle={bundle} spec={spec} recorder={recorder} asOfLabel={asOfLabel} />;
+      break;
+    case "FLOW_RECAP":
+      if ((bundle.flow?.rows.length ?? 0) < 3) throw new Error("FLOW_RECAP requires at least three prints");
+      element = <FlowRecapCard bundle={bundle} spec={spec} recorder={recorder} asOfLabel={asOfLabel} />;
+      break;
+    case "TRADE_LEADERBOARD":
+      // The denominator guard is duplicated from the router deliberately: a leaderboard whose
+      // `graded` is smaller than the rows it draws is a performance claim with a broken
+      // denominator, and that must be unreachable from ANY caller, not just the routed one.
+      if (
+        !bundle.leaderboard ||
+        bundle.leaderboard.rows.length < 2 ||
+        bundle.leaderboard.graded < bundle.leaderboard.rows.length
+      ) {
+        throw new Error("TRADE_LEADERBOARD requires at least two graded rows within a consistent tally");
+      }
+      element = <LeaderboardCard bundle={bundle} spec={spec} recorder={recorder} asOfLabel={asOfLabel} />;
+      break;
+    case "SYSTEM_COMPARISON":
+      if ((bundle.systemReads?.length ?? 0) < 3) throw new Error("SYSTEM_COMPARISON requires at least three system reads");
+      element = <SystemComparisonCard bundle={bundle} spec={spec} recorder={recorder} asOfLabel={asOfLabel} />;
+      break;
+    case "BEFORE_AFTER":
+      if (!bundle.beforeAfter?.beforeLabel || !bundle.beforeAfter?.afterLabel || bundle.beforeAfter.rows.length < 2) {
+        throw new Error("BEFORE_AFTER requires two labelled instants and at least two measurements");
+      }
+      element = <BeforeAfterCard bundle={bundle} spec={spec} recorder={recorder} asOfLabel={asOfLabel} />;
+      break;
+    case "SESSION_RECAP":
+      if (!bundle.session?.closeDisplay) throw new Error("SESSION_RECAP requires a settled close");
+      element = <SessionRecapCard bundle={bundle} spec={spec} recorder={recorder} asOfLabel={asOfLabel} />;
+      break;
+    case "SIGNAL_TIMELINE":
+      if ((bundle.timeline?.length ?? 0) < 4) throw new Error("SIGNAL_TIMELINE requires at least four timestamped events");
+      element = <SignalTimelineCard bundle={bundle} spec={spec} recorder={recorder} asOfLabel={asOfLabel} />;
       break;
     default:
       throw new Error(`Template ${params.template} is registered but not implemented`);

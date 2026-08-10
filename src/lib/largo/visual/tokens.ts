@@ -107,12 +107,20 @@ export function stanceColor(stance: string): string {
 /**
  * A restrained glyph set. Text marks, not emoji — the brief was explicit that this must not look
  * like a Discord signals bot, and an emoji also rasterises inconsistently across platforms.
+ *
+ * EVERY CODEPOINT HERE MUST EXIST IN ALL THREE COMMITTED FACES, and `tokens.test.ts` reads their
+ * cmap tables to enforce it. This is not pedantry: when satori meets a glyph none of its supplied
+ * font buffers can draw, it silently falls back to FETCHING A GOOGLE FONT AT RENDER TIME. That
+ * turns a pure local render into a network call on the request path, and in a container without
+ * egress it fails and the glyph vanishes. `none` was `◦` (U+25E6) — absent from Anton and both
+ * JetBrains Mono weights — and every SYSTEM_COMPARISON and system-strip render was quietly making
+ * that outbound request. It is now `◇` (U+25C7), which all three faces carry.
  */
 export const GLYPH = {
   up: "▲",
   down: "▼",
   flat: "→",
   dot: "·",
-  none: "◦",
+  none: "◇",
   regime: "◆",
 } as const;

@@ -14,10 +14,11 @@
  * down an ordered preference list to one that can. When nothing can be filled, it returns null and
  * the caller offers no visual at all. Refusing to draw is always available and always correct.
  *
- * UNIMPLEMENTED TEMPLATES ARE NEVER SELECTED. The registry lists all ten from the brief so the
- * shape is visible, but `implemented: false` excludes a template from every code path — the three
- * built end-to-end are the only ones reachable. A half-built template selected by a keyword match
- * is exactly how a mediocre graphic ships.
+ * UNIMPLEMENTED TEMPLATES ARE NEVER SELECTED. `implemented: false` excludes a template from every
+ * code path, so a half-built template can never be reached by a keyword match — which is exactly
+ * how a mediocre graphic ships. Every template in the registry is now built; the flag stays because
+ * it is the mechanism that let the library grow three at a time without the unfinished ones
+ * leaking into member-facing output.
  *
  * PURE AND TOTAL: no IO, no clock, no throw.
  */
@@ -51,8 +52,11 @@ const MOVE_RE =
  *
  * Order matters twice: it is the tie-break when two intents match, and it is the descent order
  * when the proposed template is not sufficient. LEVEL_ANALYSIS leads because a level question
- * names a specific number and is the narrowest claim; MARKET_MOVE trails the three because it is
- * the most general and the most likely to be fillable, which makes it the right last resort.
+ * names a specific number and is the narrowest claim; MARKET_MOVE must stay LAST among the
+ * implemented entries because it is the most general and the most likely to be fillable, which
+ * makes it the right last resort and the wrong first guess. `router.test.ts` asserts that position
+ * — inserting a template after it once broke the fallback silently, in the sense that every card
+ * still rendered and the wrong one was chosen.
  */
 export const TEMPLATES: TemplateSpec[] = [
   {
@@ -109,6 +113,80 @@ export const TEMPLATES: TemplateSpec[] = [
   },
 
   {
+    id: "GAMMA_MAP",
+    label: "Gamma Map",
+    implemented: true,
+    match: /\bgamma (map|profile|distribution)\b|\bwhere is (the )?gamma\b|\bgamma stacked\b/i,
+    // FIVE strikes minimum. A gamma PROFILE's claim is about the shape of the book; three bars is
+    // a bar chart of three numbers and LEVEL_ANALYSIS already draws named levels better.
+    sufficient: (b) => (b.gammaProfile?.rows.length ?? 0) >= 5,
+    needs: "at least five strikes of dealer gamma exposure",
+  },
+  {
+    id: "FLOW_RECAP",
+    label: "Flow Recap",
+    implemented: true,
+    match: /\bflow recap\b|\b(premium|sweep|sweeps|tape|prints?)\b|\bwho.s buying\b/i,
+    // Rows AND a gross total. Rows without the totals would present a sample as the whole tape.
+    sufficient: (b) => (b.flow?.rows.length ?? 0) >= 3 && !!b.flow?.grossDisplay,
+    needs: "at least three tape prints plus the window's premium totals",
+  },
+  {
+    id: "TRADE_LEADERBOARD",
+    label: "Leaderboard",
+    implemented: true,
+    match: /\b(leaderboard|best trades?|top trades?|track record|how did .* do this (week|month)|results)\b/i,
+    // The denominator must exist and must be consistent: `graded` cannot be smaller than the rows
+    // being shown, or the card would print "3 of 2 graded trades". Two rows minimum, because one
+    // row ranked against nothing is a TRADE_RECAP wearing a leaderboard's frame.
+    sufficient: (b) =>
+      !!b.leaderboard &&
+      b.leaderboard.rows.length >= 2 &&
+      b.leaderboard.graded >= b.leaderboard.rows.length &&
+      b.leaderboard.wins + b.leaderboard.losses <= b.leaderboard.graded,
+    needs: "at least two graded trades plus the full graded/win/loss tally",
+  },
+  {
+    id: "SYSTEM_COMPARISON",
+    label: "System Comparison",
+    implemented: true,
+    match: /\bcompare (systems|products|tools)\b|\bdo (they|the systems) agree\b|\bagree|disagree|consensus|conflict(ing)?\b/i,
+    // THREE systems. Two systems agreeing or disagreeing is a pair, not a consensus, and the
+    // verdict vocabulary ("DIVIDED", "AGREEMENT") overstates what two reads can establish.
+    sufficient: (b) => (b.systemReads?.length ?? 0) >= 3,
+    needs: "directional reads from at least three systems",
+  },
+  {
+    id: "BEFORE_AFTER",
+    label: "Before / After",
+    implemented: true,
+    match: /\b(what changed|changed since|before and after|since (the )?(open|last)|last \d+ (min(ute)?s?|hours?))\b/i,
+    // BOTH endpoint labels are required — a change card with one timestamp cannot be checked.
+    sufficient: (b) =>
+      (b.beforeAfter?.rows.length ?? 0) >= 2 && !!b.beforeAfter?.beforeLabel && !!b.beforeAfter?.afterLabel,
+    needs: "at least two measurements captured at two labelled instants",
+  },
+  {
+    id: "SESSION_RECAP",
+    label: "Session Recap",
+    implemented: true,
+    match: /\bsession recap\b|\btoday.s recap\b|\bhow did (the )?(day|session) (go|end)\b|\bclose(d)? (today|the day)\b/i,
+    // A settled close is what makes this a recap rather than a forecast. All four OHLC displays
+    // are required because the card's geometry is the relationship between them.
+    sufficient: (b) =>
+      !!b.session?.closeDisplay && !!b.session?.openDisplay && !!b.session?.highDisplay && !!b.session?.lowDisplay,
+    needs: "a settled session open/high/low/close (post-close only)",
+  },
+  {
+    id: "SIGNAL_TIMELINE",
+    label: "Timeline",
+    implemented: true,
+    match: /\btimeline\b|\bin what order\b|\bsequence\b|\bwhat happened (first|next|when)\b|\bplay.?by.?play\b/i,
+    // FOUR steps. Three is a lifecycle, and TRADE_RECAP renders that better inside its own frame.
+    sufficient: (b) => (b.timeline?.length ?? 0) >= 4,
+    needs: "at least four recorded events with real timestamps",
+  },
+  {
     id: "MARKET_MOVE",
     label: "Market Card",
     implemented: true,
@@ -118,15 +196,6 @@ export const TEMPLATES: TemplateSpec[] = [
     sufficient: (b) => !!b.headline && ((b.metrics?.length ?? 0) + (b.levels?.length ?? 0)) >= 2,
     needs: "a conclusion plus at least two supporting measurements",
   },
-
-  // ── Registered, not yet built. Never selected while `implemented` is false. ──
-  { id: "GAMMA_MAP", label: "Gamma Map", implemented: false, match: /\bgamma (map|profile)\b/i, sufficient: () => false, needs: "not yet implemented" },
-  { id: "FLOW_RECAP", label: "Flow Recap", implemented: false, match: /\bflow recap\b/i, sufficient: () => false, needs: "not yet implemented" },
-  { id: "TRADE_LEADERBOARD", label: "Leaderboard", implemented: false, match: /\b(best|top|leaderboard|ranked)\b/i, sufficient: () => false, needs: "not yet implemented" },
-  { id: "SYSTEM_COMPARISON", label: "System Comparison", implemented: false, match: /\bcompare (systems|products)\b/i, sufficient: () => false, needs: "not yet implemented" },
-  { id: "BEFORE_AFTER", label: "Before / After", implemented: false, match: /\b(changed|before|since|last \d+ minutes)\b/i, sufficient: () => false, needs: "not yet implemented" },
-  { id: "SESSION_RECAP", label: "Session Recap", implemented: false, match: /\bsession recap\b|\btoday.s recap\b/i, sufficient: () => false, needs: "not yet implemented" },
-  { id: "SIGNAL_TIMELINE", label: "Timeline", implemented: false, match: /\btimeline\b/i, sufficient: () => false, needs: "not yet implemented" },
 ];
 
 export const IMPLEMENTED_TEMPLATES = TEMPLATES.filter((t) => t.implemented);
