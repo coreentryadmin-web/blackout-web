@@ -21,7 +21,7 @@ import "server-only";
  *     next/font, so an inline card costs nothing extra and matches the desk exactly.
  *   - SVG EMBEDS them as data URIs, because a copied SVG leaves the app and must carry its own
  *     typography or silently fall back to a system face — the same failure mode found in
- *     `x-desk-card.ts`, which this codebase has already been bitten by once.
+ *     the X desk card's old librsvg render, which this codebase has already been bitten by once.
  *
  * The SVG wraps the markup in `<foreignObject>`: valid SVG, correct in any browser, and it keeps
  * the single-source-of-truth property. It is a browser-target vector, not a design-tool one.
