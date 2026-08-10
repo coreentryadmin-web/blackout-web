@@ -77,6 +77,14 @@ export type CreateVisualActionProps = {
   envelopeGexShifts?: { strike: number; change: number; direction: "stronger" | "weaker" | "flipped" }[] | null;
   envelopeSpot?: number | null;
   ledgerRow?: Record<string, unknown> | null;
+  /**
+   * The persisted turn this answer came from.
+   *
+   * When present the server rebuilds the card from THAT turn's own tool results — the only way
+   * templates needing evidence the envelope does not carry (a ledger row for TRADE_RECAP, a flow
+   * tape) can be filled, since raw tool output never crosses to the browser.
+   */
+  turnId?: number | null;
 };
 
 export function CreateVisualAction(props: CreateVisualActionProps) {
@@ -102,6 +110,7 @@ export function CreateVisualAction(props: CreateVisualActionProps) {
       envelopeLevels: props.envelopeLevels ?? null,
       envelopeGexShifts: props.envelopeGexShifts ?? null,
       envelopeSpot: props.envelopeSpot ?? null,
+      turnId: props.turnId ?? null,
       ledgerRow: props.ledgerRow ?? null,
       template,
       size,

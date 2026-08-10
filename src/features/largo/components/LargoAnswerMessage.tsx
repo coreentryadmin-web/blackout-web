@@ -124,6 +124,7 @@ export function LargoAnswerMessage({
         bias={envelope.bias === "bullish" ? "bull" : envelope.bias === "bearish" ? "bear" : "neutral"}
         envelopeLevels={envelope.levels?.map((l) => ({ label: l.label, value: l.price })) ?? null}
         envelopeGexShifts={envelope.gexShifts ?? null}
+        turnId={envelope.turnId ?? null}
       />
     </div>
   ) : null;

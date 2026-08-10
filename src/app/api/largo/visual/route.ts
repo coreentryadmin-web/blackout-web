@@ -6,6 +6,7 @@ import { routeVisual, IMPLEMENTED_TEMPLATES } from "@/lib/largo/visual/router";
 import { buildVisualElement, renderVisual } from "@/lib/largo/visual/render";
 import { renderVisualMarkup } from "@/lib/largo/visual/markup";
 import { sizeSpec } from "@/lib/largo/visual/sizes";
+import { fetchLargoTurnResults } from "@/lib/largo/largo-store";
 import type { VisualSize, VisualTemplateId } from "@/lib/largo/visual/types";
 
 /**
@@ -48,6 +49,17 @@ type Body = {
   size?: VisualSize;
   format?: "png" | "webp" | "svg" | "html";
   replayOfTurn?: string | null;
+  /**
+   * A persisted Largo turn to build the card from.
+   *
+   * When present, the server loads THAT turn's own `capturedResults` and uses them instead of
+   * whatever the client sent. This is what makes TRADE_RECAP reachable from the UI: raw tool
+   * output never crosses to the browser, so the client can only hand back the envelope's levels
+   * and gexShifts — a ledger row or flow tape has to be re-read server-side from the turn that
+   * originally fetched it. Still ONE snapshot: the stored results are the identical objects the
+   * written answer was composed from, not a fresh query.
+   */
+  turnId?: number | string | null;
 };
 
 export async function POST(req: NextRequest) {
@@ -62,8 +74,34 @@ export async function POST(req: NextRequest) {
   }
 
   const nowMs = Date.now();
+
+  // ── TURN REPLAY ────────────────────────────────────────────────────────────────────────────
+  // Ownership is enforced inside `fetchLargoTurnResults` (a JOIN on the session's user_id), not
+  // here — `largo_messages.id` is a sequential integer, so a caller-side check would be one
+  // forgotten branch away from reading another member's desk history.
+  const turnId = body.turnId != null ? Number(body.turnId) : null;
+  let replayed: Awaited<ReturnType<typeof fetchLargoTurnResults>> = null;
+  if (turnId != null && Number.isFinite(turnId)) {
+    const userId = "userId" in auth ? auth.userId : null;
+    // A cron-authorised caller has no user to scope ownership against, so turn replay is a
+    // user-session-only capability. Marketing reuse passes its own bundle instead.
+    replayed = userId ? await fetchLargoTurnResults(turnId, userId) : null;
+    if (!replayed) {
+      return NextResponse.json(
+        {
+          renderable: false,
+          reason: "turn_not_found",
+          detail: "That turn does not exist, is not an answer, or is not yours.",
+        },
+        { status: 404, headers: NO_STORE_HEADERS }
+      );
+    }
+  }
+
   const bundle = buildVisualBundle({
-    capturedResults: body.capturedResults ?? [],
+    // Replayed results WIN over anything the client sent: the point of the turn id is that the
+    // server, not the browser, decides what evidence the card is built from.
+    capturedResults: replayed ? replayed.toolResults : body.capturedResults ?? [],
     headline: body.headline ?? null,
     summary: body.summary ?? null,
     bias: body.bias ?? null,
@@ -78,7 +116,9 @@ export async function POST(req: NextRequest) {
   const row = body.ledgerRow ?? null;
   if (row) bundle.timeline = timelineFromLedgerRow(row);
 
-  const question = body.question ?? "";
+  // The stored turn's own question is preferred, so a replayed card routes on the wording the
+  // answer actually replied to rather than whatever the client chose to send back.
+  const question = replayed?.question ?? body.question ?? "";
   const route = routeVisual(question, bundle, body.template ?? "AUTO");
 
   // NOT AN ERROR. "There is not enough evidence to draw an honest graphic" is a real answer, and
@@ -110,6 +150,7 @@ export async function POST(req: NextRequest) {
         dimensions: { width: spec.width, height: spec.height },
         dataAsOf: bundle.asOf,
         freshness: bundle.freshness,
+        replayOfTurn: replayed ? String(replayed.id) : null,
         systemsQueried: bundle.systemsQueried,
         // A preview of the evidence, so a member can see what the card will assert before it exists.
         preview: {
@@ -140,7 +181,7 @@ export async function POST(req: NextRequest) {
         bundle,
         size,
         question,
-        replayOfTurn: body.replayOfTurn ?? null,
+        replayOfTurn: replayed ? String(replayed.id) : body.replayOfTurn ?? null,
         nowMs,
       });
       const markup = await renderVisualMarkup({
@@ -177,7 +218,7 @@ export async function POST(req: NextRequest) {
       size,
       question,
       format: fmt === "webp" ? "webp" : "png",
-      replayOfTurn: body.replayOfTurn ?? null,
+      replayOfTurn: replayed ? String(replayed.id) : body.replayOfTurn ?? null,
       nowMs,
     });
 

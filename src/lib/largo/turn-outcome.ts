@@ -65,9 +65,10 @@ export async function persistClaudeTurn(params: {
   answer: string;
   toolsUsed: string[];
   capturedResults: unknown[];
-}): Promise<void> {
+  /** The assistant row's id, so the caller can offer a visual built from THIS turn's evidence. */
+}): Promise<number | null> {
   const sid = params.sessionId.trim() || `web-${params.userId}-${Date.now()}`;
   const tools = Array.from(new Set(params.toolsUsed));
   await appendLargoMessage(sid, params.userId, "user", params.question);
-  await appendLargoMessage(sid, params.userId, "assistant", params.answer, tools, params.capturedResults);
+  return appendLargoMessage(sid, params.userId, "assistant", params.answer, tools, params.capturedResults);
 }

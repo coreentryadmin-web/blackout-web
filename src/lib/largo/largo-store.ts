@@ -217,6 +217,85 @@ export async function fetchRecentLargoAnswersWithResults(limit = 50): Promise<Re
   }));
 }
 
+export type LargoTurnResults = {
+  id: number;
+  sessionId: string;
+  question: string | null;
+  answer: string;
+  toolResults: unknown[];
+  createdAt: string;
+};
+
+/**
+ * ONE turn's persisted tool results, scoped to its OWNER.
+ *
+ * WHY THIS EXISTS. The visual renderer builds a card from the same `capturedResults` the written
+ * answer used — that identity is what stops the graphic and the prose disagreeing. But raw tool
+ * output never crosses to the browser (it is unbounded and untyped), so the client can only pass
+ * back what the answer ENVELOPE carries: levels and gexShifts. Anything the envelope does not
+ * carry — a ledger row, a flow tape — was unreachable, which is why TRADE_RECAP could never fire
+ * from the UI. This reader closes that gap: the client sends a turn id, the server loads that
+ * turn's own results, and the card is built from the full evidence surface without shipping it.
+ *
+ * OWNERSHIP IS ENFORCED IN THE QUERY, NOT THE CALLER. The join to `largo_sessions` on `user_id`
+ * means a member cannot render a card from another member's turn even by guessing an id — and
+ * `largo_messages.id` is a sequential integer, so guessing is trivial. A caller-side check would
+ * be one forgotten `if` away from an IDOR on someone else's private desk questions.
+ *
+ * Returns null when the row does not exist, is not an assistant turn, or is not owned by
+ * `userId` — deliberately the SAME answer for all three, so the endpoint cannot be used to probe
+ * which turn ids exist.
+ */
+export async function fetchLargoTurnResults(
+  messageId: number,
+  userId: string
+): Promise<LargoTurnResults | null> {
+  if (!dbConfigured()) return null;
+  if (!Number.isInteger(messageId) || messageId <= 0 || !userId) return null;
+  const res = await dbQuery<{
+    id: number;
+    session_id: string;
+    content: string;
+    tool_results: unknown;
+    created_at: Date;
+    question: string | null;
+  }>(
+    `SELECT m.id,
+            m.session_id,
+            m.content,
+            m.tool_results,
+            m.created_at,
+            (
+              SELECT q.content
+              FROM largo_messages q
+              WHERE q.session_id = m.session_id
+                AND q.role = 'user'
+                AND q.id < m.id
+              ORDER BY q.id DESC
+              LIMIT 1
+            ) AS question
+     FROM largo_messages m
+     JOIN largo_sessions s ON s.id = m.session_id
+     WHERE m.id = $1
+       AND m.role = 'assistant'
+       AND s.user_id = $2`,
+    [messageId, userId]
+  );
+  const r = res.rows[0];
+  if (!r) return null;
+  return {
+    id: Number(r.id),
+    sessionId: r.session_id,
+    // The question is looked up as the nearest PRECEDING user row in the same session, so a
+    // replayed card can route on the same wording the answer replied to rather than requiring the
+    // client to send it back (and possibly send back something different).
+    question: r.question ?? null,
+    answer: r.content,
+    toolResults: Array.isArray(r.tool_results) ? r.tool_results : [],
+    createdAt: new Date(r.created_at).toISOString(),
+  };
+}
+
 export async function appendLargoMessage(
   sessionId: string,
   userId: string,
@@ -224,9 +303,16 @@ export async function appendLargoMessage(
   content: string,
   toolsUsed: string[] = [],
   toolResults?: unknown[]
-): Promise<void> {
+  /**
+   * Returns the inserted row id for ASSISTANT turns, or null (no DB, empty content, or a user
+   * row). The id is what lets a client later ask the server to rebuild a visual from THIS turn's
+   * own tool results — see `fetchLargoTurnResults`. Returning it rather than having the caller
+   * re-query avoids a "most recent row wins" lookup, which would attach the wrong evidence to a
+   * card whenever a member asks a second question before acting on the first.
+   */
+): Promise<number | null> {
   const trimmed = content.trim();
-  if (!trimmed) return;
+  if (!trimmed) return null;
 
   if (!dbConfigured()) {
     const hist = memorySessions.get(sessionId) ?? [];
@@ -234,7 +320,7 @@ export async function appendLargoMessage(
     hist.push({ role, content: trimmed });
     if (hist.length > MAX_MESSAGES_LOAD) hist.splice(0, hist.length - MAX_MESSAGES_LOAD);
     touchMemorySession(sessionId, hist);
-    return;
+    return null;
   }
 
   await ensureLargoSession(sessionId, userId);
@@ -249,9 +335,10 @@ export async function appendLargoMessage(
     // passed in as a single-element array by largo-terminal.ts's router call sites). NULL (not
     // '[]') only for pre-migration history rows that predate this column, so a reader can still
     // distinguish "no grounding data was ever tracked for this row" from "zero tools called."
-    await client.query(
+    const inserted = await client.query<{ id: number }>(
       `INSERT INTO largo_messages (session_id, role, content, tools_used, tool_results)
-       VALUES ($1, $2, $3, $4::jsonb, $5::jsonb)`,
+       VALUES ($1, $2, $3, $4::jsonb, $5::jsonb)
+       RETURNING id`,
       [
         sessionId,
         role,
@@ -289,6 +376,9 @@ export async function appendLargoMessage(
     }
 
     await client.query("COMMIT");
+    // Only assistant rows are addressable as a "turn" — a user row carries no tool results and
+    // nothing can be rendered from it.
+    return role === "assistant" ? (Number(inserted.rows[0]?.id) || null) : null;
   } catch (err) {
     await client.query("ROLLBACK");
     throw err;
