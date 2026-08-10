@@ -58,6 +58,7 @@ import {
   type Timeframe,
 } from "@/lib/largo/temporal/timeframe";
 import { formatEntityBlock } from "@/lib/largo/core/entities";
+import { buildDrillDowns, formatDrillDownBlock } from "@/lib/largo/core/drilldown";
 import {
   applyPlanCaveat,
   buildQueryPlan,
@@ -377,13 +378,19 @@ async function prepareLargoTurn(
   });
   const planBlock = formatPlanBlock(plan);
 
+  // DRILL-DOWN LINKS — a closed set of routes that provably exist (drilldown.test.ts asserts each
+  // against the app router). The model is handed hrefs rather than allowed to compose them,
+  // because it has seen `/night-hawk` and `/swings` in this repo's own prose and neither resolves.
+  // A dead link makes the whole answer look fabricated, including the parts that were right.
+  const drillDownBlock = formatDrillDownBlock(buildDrillDowns(effectiveEntities(conversation)));
+
   const platformVitalsBlock = await loadLargoPlatformSnapshotBlock().catch(() => "");
   if (platformVitalsBlock) toolsUsed.push("platform_vitals_prefetch");
 
   const system = buildDynamicSystem(
     question,
     history.slice(0, -1),
-    liveFeedBlock + knowledgeBlock + temporalBlock + capabilityBlock + entityBlock + conversationBlock + planBlock,
+    liveFeedBlock + knowledgeBlock + temporalBlock + capabilityBlock + entityBlock + conversationBlock + planBlock + drillDownBlock,
     platformVitalsBlock
   );
 
