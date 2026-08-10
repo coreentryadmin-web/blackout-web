@@ -30,7 +30,7 @@ type SpeechRecognitionLike = {
   lang: string;
   continuous: boolean;
   interimResults: boolean;
-  start: () => void;
+  start: () => void | Promise<void>;
   stop: () => void;
   abort: () => void;
   onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
@@ -78,7 +78,7 @@ export function useDictation(onTranscript: (text: string) => void): Dictation {
     setListening(false);
   }, []);
 
-  const start = useCallback(() => {
+  const start = useCallback(async () => {
     const Ctor = recognitionCtor();
     if (!Ctor) {
       // Reached only by clicking the button in a browser without the API. Saying so beats a
@@ -87,6 +87,36 @@ export function useDictation(onTranscript: (text: string) => void): Dictation {
       return;
     }
     setError(null);
+
+    // PRE-FLIGHT THE MICROPHONE before starting recognition.
+    //
+    // Measured problem: clicking the mic did nothing visible. SpeechRecognition.start() does
+    // request permission itself, but when the answer is already "no" — permission previously
+    // denied, no microphone attached, a VM with no audio device — it fires onerror and onend
+    // within milliseconds. The button flashed and reverted, which is indistinguishable from a
+    // dead control, and the error text was rendered where it could not be seen.
+    //
+    // getUserMedia gives a REAL permission prompt and a precise, catchable failure, so the member
+    // gets "your browser blocked the microphone" instead of silence. The track is stopped
+    // immediately: recognition opens its own stream, this one exists only to ask the question.
+    if (typeof navigator !== "undefined" && navigator.mediaDevices?.getUserMedia) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        for (const track of stream.getTracks()) track.stop();
+      } catch (err) {
+        const name = err instanceof Error ? err.name : "";
+        setError(
+          name === "NotAllowedError" || name === "SecurityError"
+            ? "Microphone blocked. Allow mic access for this site in your browser settings, then try again."
+            : name === "NotFoundError" || name === "DevicesNotFoundError"
+              ? "No microphone found on this device."
+              : "Could not open the microphone. Check your browser's mic settings."
+        );
+        setListening(false);
+        return;
+      }
+    }
+
     try {
       const rec = new Ctor();
       rec.lang = "en-US";
@@ -101,14 +131,23 @@ export function useDictation(onTranscript: (text: string) => void): Dictation {
         cbRef.current(normalizeSpokenQuestion(text));
       };
       rec.onerror = (e) => {
-        // "no-speech" is someone tapping the mic and saying nothing — not worth an error message.
+        // EVERY code gets a sentence. The previous version stayed silent on "no-speech", which is
+        // the single most common outcome of a click — say nothing and the member concludes the
+        // button is broken. "aborted" is the only genuinely silent case, because it is what our
+        // own stop() produces.
         const code = e?.error ?? "unknown";
-        if (code !== "no-speech" && code !== "aborted") {
-          setError(
-            code === "not-allowed" || code === "service-not-allowed"
-              ? "Microphone blocked — allow mic access in your browser settings."
-              : "Dictation stopped unexpectedly. Type instead, or try again."
-          );
+        const MESSAGES: Record<string, string> = {
+          "no-speech": "Didn't catch anything — tap the mic and speak.",
+          "not-allowed": "Microphone blocked. Allow mic access for this site, then try again.",
+          "service-not-allowed": "Your browser blocked the speech service for this site.",
+          "audio-capture": "No microphone found on this device.",
+          // Chrome's speech recognition is a NETWORK service — it uploads audio to Google. On a
+          // restricted network it fails with this code and no amount of retrying helps.
+          network: "Speech recognition couldn't reach its service — check your network, or type instead.",
+          "language-not-supported": "This language isn't supported for dictation.",
+        };
+        if (code !== "aborted") {
+          setError(MESSAGES[code] ?? "Dictation stopped unexpectedly. Type instead, or try again.");
         }
         setListening(false);
       };

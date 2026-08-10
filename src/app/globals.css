@@ -5142,14 +5142,36 @@ body::before {
     border: 1px solid rgba(34, 211, 238, 0.25);
     object-fit: contain;
   }
-  .largo-mic-error {
-    position: absolute;
-    left: 0;
-    top: calc(100% + 0.25rem);
-    font-size: 10px;
-    letter-spacing: 0.08em;
-    color: #fca5a5;
-    pointer-events: none;
+  /* In normal flow, above the composer — NOT absolutely positioned below the last element on
+     the page, which is where the first version painted it (i.e. nowhere the member could see). */
+  .largo-mic-status {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.4rem 0.6rem;
+    margin-bottom: 0.35rem;
+    border: 1px solid rgba(52, 211, 153, 0.4);
+    background: rgba(52, 211, 153, 0.1);
+    color: #a7f3d0;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+  }
+  .largo-mic-status-error {
+    border-color: rgba(248, 113, 113, 0.5);
+    background: rgba(248, 113, 113, 0.1);
+    color: #fecaca;
+  }
+  .largo-mic-status-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 9999px;
+    background: #34d399;
+    animation: largo-mic-pulse 1.4s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .largo-mic-status-dot {
+      animation: none;
+    }
   }
 
   /* ── Commanding empty state ── */
