@@ -18494,3 +18494,218 @@ body::before {
     }
   }
 }
+
+@layer base {
+  /**
+   * LARGO SEMANTIC COLOUR — meaning, not decoration.
+   *
+   * The palette was already black + cyan + green and that language is right. The problem was that
+   * everything used it at once: the same cyan for a price, a heading, a label and a border, so
+   * nothing had rank and the eye had nowhere to land. These tokens fix the CAUSE — every colour now
+   * means one thing, and a reader can learn the code in one answer and apply it to every answer
+   * after.
+   *
+   *   cyan   → information / live platform data
+   *   green  → bullish · positive · confirmed
+   *   red    → bearish · risk · invalidated
+   *   amber  → watch · caution · stale
+   *   purple → LARGO — and ONLY Largo's own synthesis
+   *   white  → primary information (the number you came for)
+   *   muted  → secondary metadata (labels, units, timestamps)
+   *
+   * THE PURPLE IS THE IMPORTANT ONE. Everything on this platform is either a fact a system
+   * measured or an interpretation Largo produced, and those two things carry completely different
+   * weight for someone about to risk money. A HELIX print is not a Largo opinion. Giving synthesis
+   * its own colour makes that distinction pre-attentive — you see which is which before you read a
+   * word — where a label saying "AI-generated" gets skimmed past.
+   *
+   * Deliberately RESTRAINED: purple marks synthesis BOUNDARIES (the header, the accent rule, the
+   * verdict chip) and never body text. A purple paragraph is a theme; a purple frame is a
+   * provenance signal, which is what it is for.
+   */
+  :root {
+    --largo-info: #22d3ee;
+    --largo-info-dim: rgba(34, 211, 238, 0.25);
+    --largo-bull: #34d399;
+    --largo-bear: #f87171;
+    --largo-warn: #fbbf24;
+    --largo-ai: #a78bfa;
+    --largo-ai-dim: rgba(167, 139, 250, 0.3);
+    --largo-ai-bg: rgba(167, 139, 250, 0.08);
+    --largo-primary: #f1f5f9;
+    --largo-muted: rgba(148, 163, 184, 0.8);
+    --largo-muted-faint: rgba(148, 163, 184, 0.55);
+  }
+}
+
+@layer components {
+  /* ── Largo desk-read card ──
+     A structured product surface, not a chat bubble. The layout is fixed so the same fact lives in
+     the same place in every answer — which is what makes it readable at a glance under pressure,
+     and what a paragraph of prose can never do however well written. */
+  .largo-read {
+    border: 1px solid var(--largo-ai-dim);
+    background: var(--largo-ai-bg);
+    border-left: 2px solid var(--largo-ai);
+  }
+  .largo-read-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--largo-ai-dim);
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+  /* The synthesis mark. Purple here and nowhere in the body — a provenance signal, not a theme. */
+  .largo-read-mark {
+    color: var(--largo-ai);
+    font-weight: 600;
+  }
+  .largo-read-asof {
+    color: var(--largo-muted-faint);
+  }
+  .largo-read-verdict {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.15rem;
+    padding: 0.9rem 0.75rem 0.75rem;
+    text-align: center;
+  }
+  .largo-read-bias {
+    font-family: var(--font-anton, sans-serif);
+    font-size: clamp(1.1rem, 3vw, 1.6rem);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--largo-primary);
+  }
+  .largo-read-bias-bullish { color: var(--largo-bull); }
+  .largo-read-bias-bearish { color: var(--largo-bear); }
+  .largo-read-bias-neutral { color: var(--largo-muted); }
+  .largo-read-conf {
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--largo-muted);
+  }
+  .largo-read-conf-why {
+    max-width: 34rem;
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--largo-muted-faint);
+  }
+
+  /* Levels: label muted, price WHITE — the number is what the member came for. */
+  .largo-read-levels {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+    gap: 0.1rem;
+    padding: 0.25rem 0.5rem 0.6rem;
+  }
+  .largo-read-level {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.3rem 0.4rem;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 11px;
+  }
+  .largo-read-level-label {
+    color: var(--largo-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .largo-read-level-price {
+    color: var(--largo-primary);
+    font-weight: 600;
+  }
+
+  .largo-read-section {
+    padding: 0.5rem 0.75rem;
+    border-top: 1px solid rgba(148, 163, 184, 0.12);
+  }
+  .largo-read-section-title {
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--largo-info);
+    margin-bottom: 0.25rem;
+  }
+  /* Invalidation and risk are RED because they are the two lines that stop a losing trade. */
+  .largo-read-section-risk .largo-read-section-title { color: var(--largo-bear); }
+  .largo-read-section-body {
+    font-size: 13px;
+    line-height: 1.6;
+    color: rgba(226, 232, 240, 0.92);
+  }
+
+  /* Freshness chips: never present stale as live. */
+  .largo-read-data {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    padding: 0.5rem 0.75rem;
+    border-top: 1px solid rgba(148, 163, 184, 0.12);
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .largo-read-src { color: var(--largo-muted-faint); }
+  .largo-read-src-live { color: var(--largo-bull); }
+  .largo-read-src-recent { color: var(--largo-info); }
+  .largo-read-src-stale { color: var(--largo-warn); }
+}
+
+@layer components {
+  .largo-read-more > summary {
+    margin-top: 0.5rem;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--largo-muted);
+    cursor: pointer;
+  }
+  .largo-read-more > summary:hover {
+    color: var(--largo-info);
+  }
+}
+
+@layer components {
+  /* Day-grouped history — a workspace index, not a notification feed. */
+  .largo-history-group + .largo-history-group {
+    margin-top: 0.5rem;
+  }
+  .largo-history-day {
+    padding: 0.3rem 0.6rem 0.15rem;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--largo-muted-faint);
+  }
+  /* Time FIRST and monospaced so the column aligns and the eye can scan down it — the point of a
+     log is that you find a moment, then read what it was about. */
+  .largo-history-item-time {
+    flex: 0 0 auto;
+    min-width: 3.1rem;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    color: var(--largo-muted);
+  }
+  .largo-history-item-title {
+    flex: 1 1 auto;
+    color: var(--largo-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}

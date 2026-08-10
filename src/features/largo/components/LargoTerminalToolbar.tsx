@@ -4,6 +4,7 @@ import { clsx } from "clsx";
 import { useEffect, useRef, useState } from "react";
 import { History, Plus, RefreshCw, Maximize2, Minimize2, X } from "lucide-react";
 import type { LargoConversation } from "@/features/largo/conversation-history";
+import { groupConversationsByDay } from "@/features/largo/lib/session-grouping";
 
 /**
  * Command bar for the full-page Largo terminal (BIE Master Spec §6 — persistent,
@@ -95,27 +96,37 @@ export function LargoTerminalToolbar({
                   No saved conversations yet. Ask a question to start one.
                 </p>
               ) : (
+                /* Day-grouped research sessions, not a flat "2h ago" list. Relative time is right
+                   for a notification and wrong for research: someone looking for what they worked
+                   out this morning thinks "around ten", not "seven hours ago" — and a flat list
+                   hides that four threads were one continuous piece of work and the fifth was a
+                   different day. Times are ET because sessions are anchored to the trading day. */
                 <ul className="largo-history-list">
-                  {conversations.map((c) => (
-                    <li key={c.id}>
-                      <button
-                        type="button"
-                        role="menuitem"
-                        disabled={loading}
-                        className={clsx(
-                          "largo-history-item",
-                          c.id === activeSessionId && "is-active"
-                        )}
-                        onClick={() => {
-                          onSwitch(c.id);
-                          setHistoryOpen(false);
-                        }}
-                      >
-                        <span className="largo-history-item-title">{c.title}</span>
-                        <span className="largo-history-item-time">
-                          {formatRelative(c.updatedAt)}
-                        </span>
-                      </button>
+                  {groupConversationsByDay(conversations, Date.now()).map((group) => (
+                    <li key={group.key} className="largo-history-group">
+                      <div className="largo-history-day">{group.label}</div>
+                      <ul>
+                        {group.items.map((c) => (
+                          <li key={c.id}>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              disabled={loading}
+                              className={clsx(
+                                "largo-history-item",
+                                c.id === activeSessionId && "is-active"
+                              )}
+                              onClick={() => {
+                                onSwitch(c.id);
+                                setHistoryOpen(false);
+                              }}
+                            >
+                              <span className="largo-history-item-time">{c.time}</span>
+                              <span className="largo-history-item-title">{c.title}</span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
                     </li>
                   ))}
                 </ul>
