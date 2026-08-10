@@ -123,8 +123,8 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
-    "@aws-sdk/client-secrets-manager": "^3.1100.0",
-    "@clerk/nextjs": "^7.6.3",
+    "@aws-sdk/client-secrets-manager": "^3.1105.0",
+    "@clerk/nextjs": "^7.7.0",
     "@clerk/types": "^4.101.26",
     "@sentry/nextjs": "^10.69.0",
     "@tanstack/react-virtual": "^3.14.9",
@@ -144,16 +144,16 @@
     "resend": "6.18.1",
     "sharp": "^0.35.3",
     "svix": "^1.99.1",
-    "swr": "^2.4.2",
+    "swr": "^2.5.0",
     "web-push": "^3.6.7",
-    "ws": "^8.21.1"
+    "ws": "^8.21.2"
   },
   "overrides": {
     "postcss": "$postcss"
   },
   "devDependencies": {
     "@types/node": "^26",
-    "@types/pg": "^8.20.0",
+    "@types/pg": "^8.20.4",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "@types/ws": "^8.5.14",
@@ -163,12 +163,12 @@
     "eslint-config-next": "^15.5.19",
     "eslint-plugin-tailwindcss": "^3.18.3",
     "playwright": "^1.62.1",
-    "postcss": "^8.5.25",
+    "postcss": "^8.5.26",
     "stylelint": "^17.14.1",
     "stylelint-config-standard": "^40.0.0",
     "stylelint-config-tailwindcss": "^1.0.1",
     "tailwindcss": "^3.4.4",
-    "tsx": "^4.23.1",
+    "tsx": "^4.23.10",
     "typescript": "^5"
   }
 }
