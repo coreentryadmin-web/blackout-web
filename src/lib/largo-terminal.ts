@@ -37,6 +37,8 @@ import { captureLargoLiveFeed, formatLargoLiveFeed } from "@/lib/largo/largo-liv
 import { polygonConfigured, uwConfigured } from "@/lib/providers/config";
 import { webSearchConfigured } from "@/lib/providers/web-search";
 import { todayEtYmd } from "@/lib/providers/spx-session";
+import { LARGO_CAPABILITIES, rankCapabilities } from "@/lib/largo/registry/capability-registry";
+import { formatTemporalBlock, resolveTimeframe, temporalConflicts } from "@/lib/largo/temporal/timeframe";
 
 const MAX_HISTORY = 28;
 
@@ -259,13 +261,29 @@ async function prepareLargoTurn(
   // Largo is grounded by the live feed and its tools, which are real data, not embeddings.
   const knowledgeBlock = "";
 
+  // TEMPORAL RESOLUTION — done in deterministic code BEFORE the model plans.
+  //
+  // "What did SPX look like at 10:15" otherwise produces a fluent, correctly-sourced, fully
+  // grounded answer about the WRONG MOMENT, and every downstream check passes: the numbers are
+  // real and they trace to this turn's tool results. Nothing else in the system knows the question
+  // was about the past. Resolving the window here, and naming the sources that structurally cannot
+  // serve it, turns that from a subtlety the model must notice into a stated constraint.
+  //
+  // Costs nothing on the fast path: a present-tense question yields an empty block.
+  const timeframe = resolveTimeframe(question, Date.now());
+  const temporalBlock = formatTemporalBlock(
+    timeframe,
+    temporalConflicts(timeframe, rankCapabilities(question, LARGO_CAPABILITIES.length))
+  );
+  if (timeframe.historical) toolsUsed.push("temporal_resolution");
+
   const platformVitalsBlock = await loadLargoPlatformSnapshotBlock().catch(() => "");
   if (platformVitalsBlock) toolsUsed.push("platform_vitals_prefetch");
 
   const system = buildDynamicSystem(
     question,
     history.slice(0, -1),
-    liveFeedBlock + knowledgeBlock,
+    liveFeedBlock + knowledgeBlock + temporalBlock,
     platformVitalsBlock
   );
 
