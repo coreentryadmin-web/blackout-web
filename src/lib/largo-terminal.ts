@@ -60,6 +60,12 @@ import {
 import { formatEntityBlock } from "@/lib/largo/core/entities";
 import { buildDrillDowns, formatDrillDownBlock } from "@/lib/largo/core/drilldown";
 import {
+  applyCoherenceCaveat,
+  applyProvenanceCaveat,
+  findContradictions,
+  findProvenanceLies,
+} from "@/lib/largo/core/coherence";
+import {
   applyPlanCaveat,
   buildQueryPlan,
   formatPlanBlock,
@@ -541,6 +547,27 @@ export async function runLargoQuery(
       text = applyPlanCaveat(text, planCheck.violations);
     }
 
+    // SELF-CONTRADICTION. Measured live: a verdict reading "there are no open plays… nothing is
+    // live" sat four lines above facts reporting 20 open positions and 13 committed. Every other
+    // check passed — the numbers were real and traceable, the contract conformed, grounding was
+    // 1.0 — because nothing compared the answer's CONCLUSION against its own EVIDENCE.
+    const contradictions = findContradictions(text);
+    if (contradictions.length) {
+      console.warn(`[largo] self-contradiction: verdict vs facts on "${contradictions[0]!.noun}"`);
+      text = applyCoherenceCaveat(text, contradictions);
+    }
+
+    // IMPOSSIBLE PROVENANCE. Measured live: a 34.7% win rate over 123 graded plays stamped
+    // "(Polygon · live)". Polygon prices instruments; it does not know which trades we recommended
+    // or how they were graded — that is our own ledger. The figure was right and the attribution
+    // was impossible, which is worse than an unstamped number: it makes an internal figure look
+    // independently verified.
+    const provenanceLies = findProvenanceLies(text);
+    if (provenanceLies.length) {
+      console.warn(`[largo] impossible provenance: ${provenanceLies.map((l) => l.source).join(",")}`);
+      text = applyProvenanceCaveat(text, provenanceLies);
+    }
+
     // Per-tool timing summary. Turns "Largo is slow" into "get_postgres_flows took 9.2s of an 11s
     // turn" — a question with an answer. Also surfaces DENIED and silently-EMPTY tool results,
     // neither of which is visible in `toolsUsed` alone.
@@ -686,6 +713,27 @@ export async function runLargoQueryStream(
     if (!planCheck.ok) {
       console.warn(`[largo] plan violation: ${planCheck.violations.map((v) => v.code).join(",")}`);
       text = applyPlanCaveat(text, planCheck.violations);
+    }
+
+    // SELF-CONTRADICTION. Measured live: a verdict reading "there are no open plays… nothing is
+    // live" sat four lines above facts reporting 20 open positions and 13 committed. Every other
+    // check passed — the numbers were real and traceable, the contract conformed, grounding was
+    // 1.0 — because nothing compared the answer's CONCLUSION against its own EVIDENCE.
+    const contradictions = findContradictions(text);
+    if (contradictions.length) {
+      console.warn(`[largo] self-contradiction: verdict vs facts on "${contradictions[0]!.noun}"`);
+      text = applyCoherenceCaveat(text, contradictions);
+    }
+
+    // IMPOSSIBLE PROVENANCE. Measured live: a 34.7% win rate over 123 graded plays stamped
+    // "(Polygon · live)". Polygon prices instruments; it does not know which trades we recommended
+    // or how they were graded — that is our own ledger. The figure was right and the attribution
+    // was impossible, which is worse than an unstamped number: it makes an internal figure look
+    // independently verified.
+    const provenanceLies = findProvenanceLies(text);
+    if (provenanceLies.length) {
+      console.warn(`[largo] impossible provenance: ${provenanceLies.map((l) => l.source).join(",")}`);
+      text = applyProvenanceCaveat(text, provenanceLies);
     }
 
     // Per-tool timing summary. Turns "Largo is slow" into "get_postgres_flows took 9.2s of an 11s
