@@ -78,17 +78,22 @@ export type RenderVisualParams = {
   bundle: VisualBundle;
   size: VisualSize;
   question?: string | null;
-  format?: "png" | "webp";
+  format?: "png" | "webp" | "svg" | "html";
   replayOfTurn?: string | null;
   nowMs?: number;
 };
 
 /**
- * Render one visual. Throws only on a genuinely broken template selection — an unimplemented
- * template is a programming error, not a data condition, and failing loudly is right because the
- * alternative is shipping a blank asset.
+ * Build the card element + its manifest, WITHOUT rasterising.
+ *
+ * Both output paths call this, which is the single-source-of-truth guarantee: the PNG a member
+ * posts and the HTML/SVG they previewed are literally the same React tree, so they cannot drift.
  */
-export async function renderVisual(params: RenderVisualParams): Promise<RenderedVisual> {
+export function buildVisualElement(params: RenderVisualParams): {
+  element: ReactElement;
+  spec: ReturnType<typeof sizeSpec>;
+  manifest: ReturnType<typeof buildManifest>;
+} {
   const { bundle, question } = params;
   const spec = sizeSpec(params.size);
   const recorder = createRecorder();
@@ -122,6 +127,29 @@ export async function renderVisual(params: RenderVisualParams): Promise<Rendered
       throw new Error(`Template ${params.template} is registered but not implemented`);
   }
 
+  // The manifest is built here, AFTER the template has rendered and reported what it drew — the
+  // recorder is populated during element construction, not before it.
+  const manifest = buildManifest({
+    template: params.template,
+    size: params.size,
+    bundle,
+    recorder,
+    question: question ?? null,
+    renderedAtMs: nowMs,
+    replayOfTurn: params.replayOfTurn ?? null,
+  });
+
+  return { element, spec, manifest };
+}
+
+/**
+ * Rasterise one visual. Throws only on a genuinely broken template selection — an unimplemented
+ * template is a programming error, not a data condition, and failing loudly is right because the
+ * alternative is shipping a blank asset.
+ */
+export async function renderVisual(params: RenderVisualParams): Promise<RenderedVisual> {
+  const { element, spec, manifest } = buildVisualElement(params);
+
   const { ImageResponse } = await import("next/og");
   const fonts = await loadFonts();
   const res = new ImageResponse(element, {
@@ -138,16 +166,6 @@ export async function renderVisual(params: RenderVisualParams): Promise<Rendered
     buffer = await sharp(png).webp({ quality: 92 }).toBuffer();
     contentType = "image/webp";
   }
-
-  const manifest = buildManifest({
-    template: params.template,
-    size: params.size,
-    bundle,
-    recorder,
-    question: question ?? null,
-    renderedAtMs: nowMs,
-    replayOfTurn: params.replayOfTurn ?? null,
-  });
 
   return { buffer, contentType, manifest };
 }

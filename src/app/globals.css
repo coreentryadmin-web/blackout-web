@@ -19147,3 +19147,9 @@ body::before {
     .largo-visual-trigger, .largo-visual-chip, .largo-visual-cta { transition: none; }
   }
 }
+
+@layer components {
+  /* The inline card renders at its true export width; a narrow viewport scrolls it rather than
+     reflowing, because reflowing would change the flexbox geometry the PNG shares. */
+  .largo-visual-scroll { overflow-x: auto; max-width: 100%; border: 1px solid var(--largo-ai-dim); }
+}

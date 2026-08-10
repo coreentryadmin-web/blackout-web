@@ -22,12 +22,20 @@ import { useCallback, useState } from "react";
 
 type TemplateChoice = "AUTO" | "MARKET_MOVE" | "TRADE_RECAP" | "LEVEL_ANALYSIS";
 type SizeChoice = "x_landscape" | "x_portrait" | "square" | "story";
+type FormatChoice = "html" | "svg" | "png";
 
 const TEMPLATE_LABELS: { id: TemplateChoice; label: string }[] = [
   { id: "AUTO", label: "Auto" },
   { id: "MARKET_MOVE", label: "Market Card" },
   { id: "TRADE_RECAP", label: "Trade Recap" },
   { id: "LEVEL_ANALYSIS", label: "Level Map" },
+];
+
+/** Inline is the default: the card appears in the answer, nothing is downloaded. */
+const FORMAT_LABELS: { id: FormatChoice; label: string }[] = [
+  { id: "html", label: "Inline" },
+  { id: "svg", label: "SVG" },
+  { id: "png", label: "PNG" },
 ];
 
 const SIZE_LABELS: { id: SizeChoice; label: string }[] = [
@@ -74,6 +82,9 @@ export function CreateVisualAction(props: CreateVisualActionProps) {
   const [plan, setPlan] = useState<Plan | null>(null);
   const [template, setTemplate] = useState<TemplateChoice>("AUTO");
   const [size, setSize] = useState<SizeChoice>("x_landscape");
+  const [format, setFormat] = useState<FormatChoice>("html");
+  const [markup, setMarkup] = useState<{ html: string; svg: string | null } | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
   const [imgUrl, setImgUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -90,8 +101,9 @@ export function CreateVisualAction(props: CreateVisualActionProps) {
       ledgerRow: props.ledgerRow ?? null,
       template,
       size,
+      format,
     }),
-    [props, template, size]
+    [props, template, size, format]
   );
 
   /** Ask what WOULD be drawn. No image is encoded by this call. */
@@ -106,8 +118,9 @@ export function CreateVisualAction(props: CreateVisualActionProps) {
       });
       if (!res.ok) throw new Error(`Preview failed (${res.status})`);
       setPlan((await res.json()) as Plan);
-      // A changed template/size invalidates any image already rendered from the previous choice.
+      // A changed template/size invalidates anything already rendered from the previous choice.
       setImgUrl(null);
+      setMarkup(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Preview failed");
     } finally {
@@ -120,7 +133,7 @@ export function CreateVisualAction(props: CreateVisualActionProps) {
     void loadPlan();
   }, [loadPlan]);
 
-  /** Only this button encodes an image. */
+  /** Only this button produces output. Inline/SVG return markup; PNG returns bytes. */
   const render = useCallback(async () => {
     setBusy(true);
     setError(null);
@@ -131,23 +144,46 @@ export function CreateVisualAction(props: CreateVisualActionProps) {
         body: JSON.stringify(body()),
       });
       if (!res.ok) throw new Error(`Render failed (${res.status})`);
-      const blob = await res.blob();
-      setImgUrl((prev) => {
-        if (prev) URL.revokeObjectURL(prev);
-        return URL.createObjectURL(blob);
-      });
+
+      if (format === "png") {
+        const blob = await res.blob();
+        setMarkup(null);
+        setImgUrl((prev) => {
+          if (prev) URL.revokeObjectURL(prev);
+          return URL.createObjectURL(blob);
+        });
+      } else {
+        const json = (await res.json()) as { html?: string; svg?: string | null; renderable?: boolean; detail?: string };
+        if (!json.renderable || !json.html) throw new Error(json.detail ?? "Nothing to render");
+        setImgUrl(null);
+        setMarkup({ html: json.html, svg: json.svg ?? null });
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Render failed");
     } finally {
       setBusy(false);
     }
-  }, [body]);
+  }, [body, format]);
+
+  const copy = useCallback(async (what: "svg" | "html") => {
+    const text = what === "svg" ? markup?.svg : markup?.html;
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(what);
+      window.setTimeout(() => setCopied(null), 1800);
+    } catch {
+      setError("Clipboard unavailable — select the markup manually.");
+    }
+  }, [markup]);
 
   const choose = useCallback(
-    (next: Partial<{ template: TemplateChoice; size: SizeChoice }>) => {
+    (next: Partial<{ template: TemplateChoice; size: SizeChoice; format: FormatChoice }>) => {
       if (next.template) setTemplate(next.template);
       if (next.size) setSize(next.size);
+      if (next.format) setFormat(next.format);
       setImgUrl(null);
+      setMarkup(null);
     },
     []
   );
@@ -185,6 +221,20 @@ export function CreateVisualAction(props: CreateVisualActionProps) {
             onClick={() => choose({ size: sz.id })}
           >
             {sz.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="largo-visual-row">
+        {FORMAT_LABELS.map((f) => (
+          <button
+            key={f.id}
+            type="button"
+            aria-pressed={format === f.id}
+            className={`largo-visual-chip${format === f.id ? " is-on" : ""}`}
+            onClick={() => choose({ format: f.id })}
+          >
+            {f.label}
           </button>
         ))}
       </div>
@@ -249,15 +299,41 @@ export function CreateVisualAction(props: CreateVisualActionProps) {
             <button type="button" className="largo-visual-cta" onClick={render} disabled={busy}>
               {busy ? "Rendering…" : imgUrl ? "Re-render" : "Render image"}
             </button>
-            {imgUrl && (
+            {/* The card, inline in the answer. Injected markup is produced entirely server-side from
+              our own templates — no user or model text reaches it as HTML. */}
+          {markup && (
+            <div className="largo-visual-scroll">
+              <div dangerouslySetInnerHTML={{ __html: markup.html }} />
+            </div>
+          )}
+
+          {imgUrl && (
               <a className="largo-visual-cta" href={imgUrl} download={`blackout-${plan.template?.toLowerCase()}.png`}>
-                Download
+                Download PNG
               </a>
+            )}
+            {markup?.svg && (
+              <button type="button" className="largo-visual-cta" onClick={() => void copy("svg")}>
+                {copied === "svg" ? "Copied" : "Copy SVG"}
+              </button>
+            )}
+            {markup && (
+              <button type="button" className="largo-visual-cta" onClick={() => void copy("html")}>
+                {copied === "html" ? "Copied" : "Copy HTML"}
+              </button>
             )}
             <button type="button" className="largo-visual-chip" onClick={() => setOpen(false)}>
               Close
             </button>
           </div>
+
+          {/* The card, inline in the answer. Injected markup is produced entirely server-side from
+              our own templates — no user or model text reaches it as HTML. */}
+          {markup && (
+            <div className="largo-visual-scroll">
+              <div dangerouslySetInnerHTML={{ __html: markup.html }} />
+            </div>
+          )}
 
           {imgUrl && (
             // A blob URL from an in-memory render: next/image needs a static or remote-configured

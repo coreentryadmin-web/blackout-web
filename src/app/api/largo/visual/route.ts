@@ -3,7 +3,8 @@ import { authorizePremiumDeskApi } from "@/lib/market-api-auth";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 import { buildVisualBundle, timelineFromLedgerRow } from "@/lib/largo/visual/bundle";
 import { routeVisual, IMPLEMENTED_TEMPLATES } from "@/lib/largo/visual/router";
-import { renderVisual } from "@/lib/largo/visual/render";
+import { buildVisualElement, renderVisual } from "@/lib/largo/visual/render";
+import { renderVisualMarkup } from "@/lib/largo/visual/markup";
 import { sizeSpec } from "@/lib/largo/visual/sizes";
 import type { VisualSize, VisualTemplateId } from "@/lib/largo/visual/types";
 
@@ -43,7 +44,7 @@ type Body = {
   ledgerRow?: Record<string, unknown> | null;
   template?: VisualTemplateId | "AUTO" | null;
   size?: VisualSize;
-  format?: "png" | "webp";
+  format?: "png" | "webp" | "svg" | "html";
   replayOfTurn?: string | null;
 };
 
@@ -122,14 +123,56 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // ── RENDER
+  // ── MARKUP: the same card as HTML/SVG, for inline display in Largo and copy-out.
+  //
+  // Served from `buildVisualElement`, the SAME tree the PNG rasterises, so the card a member sees
+  // inline and the image they post cannot differ. HTML references the app's already-loaded brand
+  // faces; SVG embeds them, because a copied SVG leaves the app and must carry its own typography.
+  const fmt = body.format ?? "png";
+  if (fmt === "html" || fmt === "svg") {
+    try {
+      const built = buildVisualElement({
+        template: route.template,
+        bundle,
+        size,
+        question,
+        replayOfTurn: body.replayOfTurn ?? null,
+        nowMs,
+      });
+      const markup = await renderVisualMarkup({
+        element: built.element,
+        spec: built.spec,
+        manifest: built.manifest,
+        withSvg: fmt === "svg",
+      });
+      return NextResponse.json(
+        {
+          renderable: true,
+          template: route.template,
+          format: fmt,
+          dimensions: { width: built.spec.width, height: built.spec.height },
+          html: markup.html,
+          svg: markup.svg ?? null,
+          manifest: markup.manifest,
+        },
+        { status: 200, headers: NO_STORE_HEADERS }
+      );
+    } catch (e) {
+      return NextResponse.json(
+        { renderable: false, reason: "markup_failed", detail: e instanceof Error ? e.message : "unknown" },
+        { status: 500, headers: NO_STORE_HEADERS }
+      );
+    }
+  }
+
+  // ── RASTER
   try {
     const out = await renderVisual({
       template: route.template,
       bundle,
       size,
       question,
-      format: body.format ?? "png",
+      format: fmt === "webp" ? "webp" : "png",
       replayOfTurn: body.replayOfTurn ?? null,
       nowMs,
     });
