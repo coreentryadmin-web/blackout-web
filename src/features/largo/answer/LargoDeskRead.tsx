@@ -3,6 +3,7 @@
 import { clsx } from "clsx";
 import type { BieAnswerEnvelope, BieFreshness } from "@/lib/bie/answer-envelope";
 import { renderInlineMarkdown } from "@/features/largo/components/inline-markdown";
+import { proseSections, summariseEvidence, hasExpandableEvidence } from "./section-policy";
 
 /**
  * LARGO DESK READ — the structured answer surface.
@@ -61,7 +62,12 @@ function formatEt(iso: string | null | undefined): string {
 
 export function LargoDeskRead({ envelope }: { envelope: BieAnswerEnvelope }) {
   const levels = envelope.levels ?? [];
-  const sections = envelope.sections ?? [];
+  // Only sections whose content exists nowhere else. See section-policy.ts: Verdict, Confidence,
+  // Risk, Data and Facts are each rendered by a dedicated component below, and rendering them
+  // again as prose printed the same thesis up to six times per answer.
+  const sections = proseSections(envelope.sections);
+  const evidence = envelope.evidence ?? [];
+  const evidenceSummary = summariseEvidence(evidence);
   // Freshness per distinct source. Deduped because six evidence rows from HELIX should read as one
   // source chip, not six — the member is asking "how fresh is HELIX", not "how many rows".
   const sources = new Map<string, BieFreshness>();
@@ -138,6 +144,34 @@ export function LargoDeskRead({ envelope }: { envelope: BieAnswerEnvelope }) {
             {envelope.unavailableSources!.map((u) => u.source).join(" · ")}
           </div>
         </div>
+      )}
+
+      {/* EVIDENCE — collapsed by default. The audit trail is one of the strongest things Largo has
+          and it is also the longest; open by default it buried the answer, and cut it would remove
+          the only way to check a claim. A disclosure keeps the casual read short and the
+          sophisticated read complete, and the summary line says what is behind it so the choice to
+          expand is informed rather than blind. `<details>` because it must work before hydration —
+          an answer whose basis is unreachable until JS lands is an answer you cannot verify. */}
+      {hasExpandableEvidence(envelope) && (
+        <details className="largo-read-evidence">
+          <summary className="largo-read-evidence-summary">Evidence &amp; reasoning · {evidenceSummary.label}</summary>
+          <div className="largo-read-evidence-body">
+            {evidence.map((e, i) => (
+              <div key={i} className="largo-read-ev">
+                {/* The kind is a CLASS, not a text prefix. `[fact]` reaching the UI was the raw
+                    Facts markdown being rendered alongside the parsed rows; the parsed rows never
+                    carried the marker. */}
+                <span className={clsx("largo-read-ev-kind", `largo-read-ev-${e.kind}`)}>{e.kind}</span>
+                <span className="largo-read-ev-text">{renderInlineMarkdown(e.text)}</span>
+                {e.provenance?.source && (
+                  <span className={clsx("largo-read-ev-src", FRESH_CLASS[e.provenance.freshness ?? "unknown"])}>
+                    {e.provenance.source}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </details>
       )}
 
       {sources.size > 0 && (
