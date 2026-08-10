@@ -77,24 +77,52 @@ export const LARGO_WELCOME: LargoMessage = {
     "Largo online. Ask anything specific — SPX levels, a ticker, flow, news. I pull live data on every question and keep the thread.",
 };
 
+/** Compact-panel chips. Same intent as LARGO_EXAMPLE_PROMPTS above — cross-product first. */
 export const LARGO_SUGGESTIONS = [
-  "What's the SPX setup right now?",
-  "Vector Pulse on SPX — what just changed?",
-  "Which walls are building vs fading on NVDA?",
-  "QQQ 15m technicals",
+  "What matters now across the platform?",
+  "Why is SPX moving right now?",
+  "Where do the systems disagree?",
+  "What changed in the last 30 minutes?",
 ] as const;
 
 /**
- * Curated empty-state showcase prompts (BIE Master Spec §6 — example prompts).
- * These span the intent range the engine must handle — a terse directional read,
- * a cross-tool setup verdict, and a self-diagnosis question — so a first-time
- * member immediately sees the terminal is more than a search box.
+ * Empty-state showcase prompts — the first impression of what Largo IS.
+ *
+ * The previous set ("SPX trend?", "NVDA wall dynamics") was accurate and badly chosen: every one
+ * of them is a single-product lookup, so the terminal introduced itself as a nicer ticker search.
+ * Anything with a search box can plausibly answer them, which makes them the worst possible
+ * advertisement for the one thing Largo can do that nothing else here can.
+ *
+ * These four are picked for what they REQUIRE, not what they mention. Not one can be answered from
+ * a single product:
+ *   - ranking demands a comparable view across every board at once;
+ *   - synthesis demands four engines reconciled into one causal read;
+ *   - disagreement is only visible if you hold several systems side by side — and it is the
+ *     question a member cannot answer for themselves at any speed;
+ *   - "what changed" demands a temporal diff across flow, gamma, levels, regime and open plays,
+ *     which no single panel keeps.
+ *
+ * Phrased as the question a trader actually has, not as a query. "Why is SPX moving" is what
+ * someone thinks at 10:04; "SPX trend?" is what they type when they have given up on being
+ * understood.
  */
 export const LARGO_EXAMPLE_PROMPTS: { label: string; hint: string }[] = [
-  { label: "SPX trend?", hint: "Fast directional read + key levels + invalidation" },
-  { label: "Vector Pulse on SPX", hint: "Live transitions — regime, walls, flow, play engine" },
-  { label: "Is 7500 0DTE good today?", hint: "Cross-tool setup verdict, graded" },
-  { label: "NVDA wall dynamics", hint: "Building vs fading walls + bead rail" },
+  {
+    label: "What matters now?",
+    hint: "Ranks live opportunities across every board on the platform",
+  },
+  {
+    label: "Why is SPX moving?",
+    hint: "Helix flow + Thermal gamma + Vector structure + Slayer, reconciled",
+  },
+  {
+    label: "Where do the systems disagree?",
+    hint: "Conflicting signals across BlackOut — and which side has the evidence",
+  },
+  {
+    label: "What changed in the last 30 minutes?",
+    hint: "Flow, gamma, levels, regime and active plays — the temporal diff",
+  },
 ];
 
 function upsertAssistantMessage(

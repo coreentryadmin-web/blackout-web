@@ -17,6 +17,7 @@ import { LargoMessageBody } from "./LargoMessageBody";
 import { LargoAnswerMessage } from "./LargoAnswerMessage";
 import { LargoTerminalToolbar } from "./LargoTerminalToolbar";
 import { LargoEmptyState } from "./LargoEmptyState";
+import { LargoStatusStrip } from "./LargoStatusStrip";
 
 const INPUT_PLACEHOLDER = "Ask the desk — SPX levels, a ticker, flow, news…";
 const INPUT_PLACEHOLDER_BUSY = "Pulling live data…";
@@ -120,6 +121,9 @@ export function LargoTerminal({
       bodyClassName="flex flex-1 flex-col min-h-0 !p-0 desk-panel-body-bare"
     >
       <div className="flex-1 flex flex-col min-h-0 largo-chat-container">
+        {/* Thin intelligence strip, full-page only: on the compact panel it would take a third of
+            the visible height to say something the member did not ask for. */}
+        {fullPage && <LargoStatusStrip />}
         {fullPage && (
           <LargoTerminalToolbar
             conversations={conversations}

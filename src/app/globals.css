@@ -18406,3 +18406,91 @@ body::before {
   .lb-pnl-row { grid-template-columns: 1fr auto auto; }
   .lb-metrics { grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); }
 }
+
+@layer components {
+  /* ── Largo intelligence strip ──
+     ~34px. It is a status line, not a panel: one row, monospace, no card chrome, so it reads as
+     instrumentation rather than content competing with the answer. */
+  .largo-status-strip {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem 0.75rem;
+    min-height: 34px;
+    padding: 0.35rem 0.75rem;
+    border-bottom: 1px solid rgba(34, 211, 238, 0.14);
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: rgba(148, 163, 184, 0.9);
+  }
+  .largo-status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    color: #6ee7b7;
+  }
+  .largo-status-pill-warn {
+    color: #fbbf24;
+  }
+  .largo-status-dot {
+    width: 0.45rem;
+    height: 0.45rem;
+    border-radius: 9999px;
+    background: currentColor;
+    animation: largo-mic-pulse 2s ease-in-out infinite;
+  }
+  .largo-status-sep {
+    width: 1px;
+    height: 0.7rem;
+    background: rgba(148, 163, 184, 0.25);
+  }
+  .largo-status-meta {
+    color: rgba(148, 163, 184, 0.75);
+  }
+  .largo-status-systems {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-left: auto;
+  }
+  .largo-status-system {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+  }
+  .largo-status-system-dot {
+    width: 0.4rem;
+    height: 0.4rem;
+    border-radius: 9999px;
+    background: currentColor;
+  }
+  /* Semantic, not decorative: green = reporting real data, amber = answered but empty (the honest
+     colour of the desk pre-open), red = the read failed. */
+  .largo-status-live {
+    color: #34d399;
+  }
+  .largo-status-degraded {
+    color: #fbbf24;
+  }
+  .largo-status-down {
+    color: #f87171;
+  }
+  .largo-status-counts {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: rgba(148, 163, 184, 0.75);
+  }
+  .largo-status-counts strong {
+    color: #e2e8f0;
+    font-weight: 600;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .largo-status-dot {
+      animation: none;
+    }
+  }
+}
