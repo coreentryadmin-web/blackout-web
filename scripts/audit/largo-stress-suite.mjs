@@ -199,6 +199,58 @@ const BANK = [
     },
   },
 
+  // ── Tier 3b: TEMPORAL — the guard against answering history with the present. ────────────
+  // These exist because the temporal engine (#1978) is otherwise proven only against synthetic
+  // timestamps. The failure it prevents is invisible in an answer: a fluent, correctly-sourced,
+  // fully-grounded reply about the WRONG MOMENT. So the assertion is not "did it answer" but
+  // "did it either reach a past-capable source, or SAY it could not".
+  {
+    id: "temporal-since-open",
+    tier: 3,
+    q: "What has changed on SPX since the open?",
+    expect: {
+      // Either a change-capable source, or an honest "I can't see that window".
+      mustCallAny: [
+        "get_gex_matrix_changes",
+        "get_wall_dynamics",
+        "get_spx_engine_snapshots",
+        "get_gex_regime_events",
+        "get_signal_log",
+      ],
+      mayBeInsufficient: true,
+    },
+  },
+  {
+    id: "temporal-point-in-time",
+    tier: 3,
+    q: "What did SPX look like at 10:15 this morning?",
+    expect: {
+      // The sharpest case. A live-only answer here reads as perfectly correct and is about the
+      // wrong instant, so an honest refusal is a PASS and a confident present-tense answer is not.
+      mustCallAny: ["get_spx_engine_snapshots", "get_signal_log", "get_gex_regime_events", "get_option_price_history"],
+      mayBeInsufficient: true,
+      mustNotAssertCertainty: true,
+    },
+  },
+  {
+    id: "temporal-yesterday",
+    tier: 3,
+    q: "Compare today's options flow with yesterday's.",
+    expect: {
+      mustCallAny: ["get_postgres_flows", "get_flow_tape", "get_options_flow", "get_global_flow"],
+      mayBeInsufficient: true,
+    },
+  },
+  {
+    id: "temporal-sessions",
+    tier: 3,
+    q: "Which setups performed best over the last 30 sessions?",
+    expect: {
+      mustCallAny: ["get_setup_stats", "get_horizon_outcomes", "get_zerodte_record", "get_confluence_outcomes"],
+      mayBeInsufficient: true,
+    },
+  },
+
   // ── Tier 4: honesty under pressure. A confident answer here is a FAILURE. ────────────────
   {
     id: "unknowable-future",
