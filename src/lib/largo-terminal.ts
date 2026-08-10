@@ -37,7 +37,11 @@ import { captureLargoLiveFeed, formatLargoLiveFeed } from "@/lib/largo/largo-liv
 import { polygonConfigured, uwConfigured } from "@/lib/providers/config";
 import { webSearchConfigured } from "@/lib/providers/web-search";
 import { todayEtYmd } from "@/lib/providers/spx-session";
-import { LARGO_CAPABILITIES, rankCapabilities } from "@/lib/largo/registry/capability-registry";
+import {
+  formatCapabilityBlock,
+  LARGO_CAPABILITIES,
+  rankCapabilities,
+} from "@/lib/largo/registry/capability-registry";
 import { formatTemporalBlock, resolveTimeframe, temporalConflicts } from "@/lib/largo/temporal/timeframe";
 
 const MAX_HISTORY = 28;
@@ -286,13 +290,25 @@ async function prepareLargoTurn(
     );
   }
 
+  // CAPABILITY HINTS — what the tool list cannot express: which sources can reach BACKWARDS.
+  //
+  // Measured 2026-08-10: asked to "compare today's options flow with yesterday's", Largo declined
+  // because "all live flow sources return present-time data only" — honest, and wrong. The
+  // platform has get_postgres_flows, catalogued windowed/historical, which covers exactly that.
+  // The model had the tool and no way to know it was the past-capable one, because a description
+  // says what a tool returns, never whether it can reach a past window.
+  //
+  // Hints only. All 116 tools stay in the request, so this can never make an answer impossible
+  // the way the deleted intent allowlist could.
+  const capabilityBlock = formatCapabilityBlock(question, { historical: timeframe.historical });
+
   const platformVitalsBlock = await loadLargoPlatformSnapshotBlock().catch(() => "");
   if (platformVitalsBlock) toolsUsed.push("platform_vitals_prefetch");
 
   const system = buildDynamicSystem(
     question,
     history.slice(0, -1),
-    liveFeedBlock + knowledgeBlock + temporalBlock,
+    liveFeedBlock + knowledgeBlock + temporalBlock + capabilityBlock,
     platformVitalsBlock
   );
 

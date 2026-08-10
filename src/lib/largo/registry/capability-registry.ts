@@ -776,3 +776,63 @@ export function uncataloguedTools(): string[] {
     .filter((n) => !catalogued.has(n))
     .sort();
 }
+
+/**
+ * A compact capability digest for the turn's system context.
+ *
+ * WHY THIS EXISTS — a measured gap, not a theory. On 2026-08-10 the live stress suite asked
+ * "compare today's options flow with yesterday's" and Largo DECLINED: *"all live flow sources
+ * return present-time data only and have no historical window."* Honest, and wrong — the platform
+ * has `get_postgres_flows`, catalogued here as `windowed / historical`, which covers exactly that
+ * window. The model had the tool in its surface and no way to know it was the past-capable one,
+ * because a tool description says what a tool returns, never whether it can reach backwards.
+ *
+ * So the digest leads with what the tool list cannot express: the TEMPORAL class. For a historical
+ * question it lists the past-capable capabilities FIRST and states plainly that they are the ones
+ * that can cover the window.
+ *
+ * RANKING, NEVER FILTERING. This block adds information; it removes nothing. All 116 tools stay in
+ * the request, so a capability that ranks poorly is merely further down a hint list — it can still
+ * be called. That distinction is the entire lesson of the deleted intent allowlist
+ * (FINDINGS 2026-08-10): a discovery mechanism that can HIDE a capability can make an answer
+ * impossible, and this one cannot.
+ */
+export function formatCapabilityBlock(
+  question: string,
+  opts: { historical?: boolean; limit?: number } = {}
+): string {
+  const limit = opts.limit ?? 10;
+  const ranked = rankCapabilities(question, LARGO_CAPABILITIES.length);
+
+  // For a historical question, promote the sources that can actually reach backwards. Without
+  // this the ranker's keyword score happily puts a live_only source at the top of a question
+  // about yesterday.
+  const ordered = opts.historical
+    ? [
+        ...ranked.filter((c) => c.temporal !== "live_only" && c.temporal !== "as_of"),
+        ...ranked.filter((c) => c.temporal === "live_only" || c.temporal === "as_of"),
+      ]
+    : ranked;
+
+  const shown = ordered.slice(0, limit);
+  if (shown.length === 0) return "";
+
+  const lines = [
+    "\n\n## Capability hints",
+    opts.historical
+      ? "This question is about the PAST. These sources are ordered past-capable FIRST — the ones marked" +
+        " `windowed`, `point_in_time` or `event_log` can cover a historical window; `live_only` and" +
+        " `as_of` cannot, whatever their description suggests."
+      : "Relevant sources for this question, with what each can say about TIME:",
+    "",
+    ...shown.map((c) => {
+      const bits = [`\`${c.tool}\``, `[${c.temporal} · ${c.freshness}]`, c.answers];
+      if (c.caveat) bits.push(`— ${c.caveat}`);
+      return `- ${bits.join(" ")}`;
+    }),
+    "",
+    "These are HINTS, not limits. Every tool remains callable; if none of the above fits, use the" +
+      " tool that does.",
+  ];
+  return lines.join("\n");
+}

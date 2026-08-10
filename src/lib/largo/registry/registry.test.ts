@@ -5,6 +5,7 @@ import {
   LARGO_CAPABILITIES,
   capabilitiesFor,
   capabilitiesSharingEntity,
+  formatCapabilityBlock,
   changeCapabilities,
   historicalCapabilities,
   rankCapabilities,
@@ -169,4 +170,54 @@ test("a join to an entity-less capability is rejected", () => {
       `${c.id} must not declare a join to the entity-less escape hatch`
     );
   }
+});
+
+// ── Capability digest ─────────────────────────────────────────────────────────────────────────
+
+test("a historical question puts PAST-CAPABLE sources first", () => {
+  // The measured gap this closes: on "compare today's flow with yesterday's" Largo declined
+  // because it could not tell which flow source reaches backwards. Keyword ranking alone happily
+  // puts a live_only source at the top of a question about yesterday.
+  const block = formatCapabilityBlock("compare today's options flow with yesterday's", { historical: true });
+  const lines = block.split("\n").filter((l) => l.startsWith("- "));
+  assert.ok(lines.length > 0);
+  const firstLiveOnly = lines.findIndex((l) => /\[(live_only|as_of) /.test(l));
+  const lastPastCapable = lines.reduce(
+    (acc, l, i) => (/\[(windowed|point_in_time|event_log) /.test(l) ? i : acc),
+    -1
+  );
+  if (firstLiveOnly !== -1 && lastPastCapable !== -1) {
+    assert.ok(lastPastCapable < firstLiveOnly, "every past-capable source must precede every live one");
+  }
+  assert.match(block, /get_postgres_flows/, "the historical flow source must be surfaced");
+  assert.match(block, /about the PAST/);
+});
+
+test("the digest states the temporal class of every hint", () => {
+  const block = formatCapabilityBlock("where are the dealer gamma walls", {});
+  for (const line of block.split("\n").filter((l) => l.startsWith("- "))) {
+    assert.match(line, /\[(live_only|as_of|windowed|point_in_time|event_log) · /, `no temporal class: ${line}`);
+  }
+});
+
+test("the digest is HINTS — it says so, and never claims to be the whole surface", () => {
+  // A digest read as a limit would recreate the allowlist failure in prose form.
+  const block = formatCapabilityBlock("what is SPX doing", {});
+  assert.match(block, /HINTS, not limits/);
+  assert.match(block, /Every tool remains callable/);
+});
+
+test("live-only caveats ride along so the model can decline with a reason", () => {
+  const block = formatCapabilityBlock("what is the price of NVDA", {});
+  if (block.includes("get_quote")) {
+    const line = block.split("\n").find((l) => l.includes("get_quote"))!;
+    assert.match(line, /live only/i, "get_quote's caveat must travel with it");
+  }
+});
+
+test("the digest is bounded and never throws", () => {
+  assert.ok(formatCapabilityBlock("x".repeat(5000), { historical: true }).length < 6000);
+  assert.doesNotThrow(() => formatCapabilityBlock("", {}));
+  assert.doesNotThrow(() => formatCapabilityBlock("???", { historical: true, limit: 0 }));
+  assert.equal(formatCapabilityBlock("anything", { limit: 0 }), "", "limit 0 yields no block");
 });
