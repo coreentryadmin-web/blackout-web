@@ -102,6 +102,12 @@ try {
   // Whether the browser then executes it is a RUNTIME question, and the honest tool for that is
   // the browser harness (scripts/audit/largo-ui-walkthrough.cjs uses the same tunnel) or Tag
   // Assistant — not a regex over HTML.
+  //
+  // The inline snippet IS in the payload (it is `<Script id="ga4-init">`'s body, serialized), so
+  // matching it is meaningful. It is not a URL and not a trust decision, so there is no host to
+  // anchor and nothing to sanitize.
+  const awConfigs = [...html.matchAll(/gtag\(\s*['"]config['"]\s*,\s*['"](AW-\d+)['"]\s*\)/g)].map((m) => m[1]);
+
   if (awConfigs.length === 0) {
     record("tag.aw_config", "FAIL", `no gtag('config','AW-…') in the deployed HTML — the Ads tag is NOT live on ${BASE}`);
   } else if (idOk && !awConfigs.includes(rawId)) {
