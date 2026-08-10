@@ -41,13 +41,28 @@ import { createAuditClerkUser, deleteAuditClerkUser } from "./clerk-audit-user.m
  *  matching every other fail-open probe in this audit toolkit. On success,
  *  returns `{ skip: false, cookieHeader, cleanup }` — cleanup() deletes the
  *  temp user and must always be called (e.g. in a `finally`). */
-export async function mintClerkPremiumSession({ appUrl }) {
+/**
+ * Mint a live session for a temp Clerk user.
+ *
+ * `publicMetadata` defaults to admin+premium — the shape every existing audit harness needs, so
+ * they are unaffected. It is a parameter so an entitlement check can mint a NON-admin member and
+ * verify what that member can actually reach. Verifying a gate with an admin credential proves
+ * nothing about the gate.
+ *
+ * `email` is overridable for the same reason: Clerk enforces uniqueness on the address, so two
+ * users with different tiers cannot share one.
+ */
+export async function mintClerkPremiumSession({
+  appUrl,
+  publicMetadata = { role: "admin", tier: "premium" },
+  email: emailOverride = null,
+}) {
   const secret = process.env.CLERK_SECRET_KEY;
   const publishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
   if (!secret || !publishableKey) {
     return { skip: true, reason: "CLERK_SECRET_KEY / NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY not set" };
   }
-  const email = process.env.AUDIT_EMAIL || "claude-audit-temp@blackouttrades.com";
+  const email = emailOverride || process.env.AUDIT_EMAIL || "claude-audit-temp@blackouttrades.com";
   const fapi = fapiHost(publishableKey);
   const backend = (method, path, body) =>
     fetch(`${API}${path}`, {
@@ -61,7 +76,7 @@ export async function mintClerkPremiumSession({ appUrl }) {
     const created = await createAuditClerkUser({
       secret,
       email,
-      publicMetadata: { role: "admin", tier: "premium" },
+      publicMetadata,
     });
     userId = created.userId;
     if (!userId) return { skip: true, reason: created.error ?? "could not create or adopt a temp Clerk user" };
