@@ -18661,7 +18661,81 @@ body::before {
     text-transform: uppercase;
     color: var(--largo-primary);
   }
+  /* ── EXECUTIVE ANSWER ──────────────────────────────────────────────────────────────────────
+     One line, in the synthesis colour, sized to be read before anything else. Everything below is
+     support for this sentence. */
+  .largo-read-header {
+    padding: 0.15rem 0.9rem 0.7rem;
+    font-family: var(--font-anton, sans-serif);
+    font-size: clamp(1.05rem, 2.4vw, 1.5rem);
+    line-height: 1.28;
+    letter-spacing: 0.01em;
+    color: var(--largo-ai);
+    text-wrap: balance;
+  }
+  .largo-read-statechip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    padding: 0.18rem 0.5rem;
+    border: 1px solid currentColor;
+    border-radius: 2px;
+  }
   .largo-read-bias-bullish { color: var(--largo-bull); }
+  .largo-read-bias-bearish { color: var(--largo-bear); }
+  .largo-read-bias-mixed,
+  .largo-read-bias-neutral { color: var(--largo-warn); }
+
+  /* Shared block heading for the signal table / decision map. */
+  .largo-read-block-title {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
+    font-size: 9px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--largo-muted-faint);
+    margin-bottom: 0.35rem;
+  }
+  .largo-read-tally {
+    letter-spacing: 0.06em;
+    color: var(--largo-muted);
+  }
+
+  /* ── SIGNAL TABLE ── label · reading · bias. Three columns so the bias glyphs form one
+     scannable edge; a ragged bias column defeats the point of the table. */
+  .largo-read-signals {
+    padding: 0.5rem 0.9rem 0.2rem;
+    font-family: var(--font-mono, ui-monospace, monospace);
+  }
+  .largo-read-sig {
+    display: grid;
+    grid-template-columns: minmax(6rem, 1fr) minmax(0, 1.4fr) auto;
+    align-items: baseline;
+    gap: 0.6rem;
+    padding: 0.22rem 0.3rem;
+    font-size: 11px;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+  }
+  .largo-read-sig-label { color: var(--largo-primary); }
+  .largo-read-sig-read {
+    color: var(--largo-info);
+    font-variant-numeric: tabular-nums;
+  }
+  .largo-read-sig-bias { white-space: nowrap; font-weight: 600; }
+  .largo-read-sig-bull { color: var(--largo-bull); }
+  .largo-read-sig-bear { color: var(--largo-bear); }
+  .largo-read-sig-neutral { color: var(--largo-warn); }
+  @media (max-width: 640px) {
+    .largo-read-sig { grid-template-columns: 1fr auto; }
+    .largo-read-sig-read { grid-column: 1; color: var(--largo-info); }
+  }
+
   .largo-read-bias-bearish { color: var(--largo-bear); }
   .largo-read-bias-neutral { color: var(--largo-muted); }
   .largo-read-conf {
