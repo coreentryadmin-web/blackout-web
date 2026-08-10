@@ -634,9 +634,22 @@ export async function runLargoQueryStream(
       // Cache the stable Largo system prompt — saves ~50% on system-token cost for repeat calls.
       cacheSystem: true,
       aiGate: "largo",
-      // Forward tool_start only — verified full text emitted once below.
+      // PROGRESSIVE ANSWER. Tokens are forwarded as the model writes, so the member watches the
+      // answer appear instead of staring at a spinner for 20s while 12 rounds of tools resolve.
+      //
+      // The streamed text is PROVISIONAL and the client must replace it with the `done` event's
+      // answer, never append to it. That is not a nicety: the final text is the only one that has
+      // been through verifyClaims/applyVerificationCaveat and the plan-timeframe caveat, so a
+      // member reading only the stream could act on an unverified number whose caveat never
+      // arrived. useLargoChat already replaces (upsertAssistantMessage with res.answer).
+      //
+      // answer_reset fires when a round ended in tool calls, meaning what it streamed was the
+      // model narrating its plan rather than answering. Without it the buffer would render that
+      // chatter glued to the front of the real answer.
       onEvent: (event) => {
-        if (event.type === "tool_start") emit(event);
+        if (event.type === "tool_start" || event.type === "token" || event.type === "answer_reset") {
+          emit(event);
+        }
       },
       runTool: makeGuardedToolRunner({
         viewer,
@@ -685,6 +698,14 @@ export async function runLargoQueryStream(
 
     const followups = await generateLargoFollowups(question, text, tickerHint);
 
+    // Replace the progressively-streamed text with the AUTHORITATIVE version.
+    //
+    // `text` here is the only copy that has been through verifyClaims/applyVerificationCaveat and
+    // the plan-timeframe caveat. What streamed is the model's raw output, which by construction
+    // lacks any caveat that fired after the loop finished. Emitting a reset first means a consumer
+    // that only reads tokens — and never looks at `done` — still ends up holding the verified text
+    // rather than the unverified one. Appending without the reset would render the answer twice.
+    emit({ type: "answer_reset" } as LargoStreamEvent);
     emit({ type: "token", text } as LargoStreamEvent);
     emit({
       type: "done",

@@ -62,6 +62,11 @@ let toolLoopToolNames: string[] = [];
 // Anthropic API error, etc.) instead of resolving with an answer.
 let toolLoopError: Error | null = null;
 
+// When set, the mocked loop replays this event sequence through params.onEvent before returning.
+// Lets the streaming tests assert exactly which events reach the SSE client — the progressive
+// answer depends on token AND answer_reset being forwarded, and on nothing else being.
+let toolLoopEvents: Array<{ type: string; text?: string; name?: string }> | null = null;
+
 // Task #166 — captures every appendLargoMessage() call so the router-path tests below can
 // assert the fix directly: a BIE-router-composed assistant turn must now be persisted WITH a
 // non-empty toolResults array (routed.context), not omitted as it was before this fix. See
@@ -118,7 +123,12 @@ before(async () => {
       // Simulates a real Largo turn: the model calls two tools, then answers.
       anthropicToolLoop: async (params: {
         runTool: (name: string, input: Record<string, unknown>) => Promise<unknown>;
+        onEvent?: (e: { type: string; text?: string; name?: string }) => void;
       }) => {
+        if (toolLoopEvents) {
+          for (const e of toolLoopEvents) params.onEvent?.(e);
+          return "**Verdict**\nNVDA is holding above VWAP.\n\n**Data**\nSpot 223.80.";
+        }
         if (toolLoopError) {
           // Partial progress before the failure — proves the logged failure row's
           // tools_used carries whatever really happened, not an empty placeholder.
@@ -425,4 +435,99 @@ test("isRichBieEnvelope: rich synthesis → true; string-leg shim → false; nul
   assert.equal(isRichBieEnvelope(SHIM_ENVELOPE), false);
   assert.equal(isRichBieEnvelope(null), false);
   assert.equal(isRichBieEnvelope(undefined), false);
+});
+
+// ── Progressive answer streaming ──────────────────────────────────────────────────────────────
+
+test("runLargoQueryStream forwards tokens so the answer appears as it is written", async () => {
+  // Before this, the streaming path forwarded tool_start ONLY and dropped every token, so the
+  // member watched a spinner for the whole turn and the answer arrived as one block at the end.
+  inserted = [];
+  appended = [];
+  toolLoopToolNames = [];
+  toolLoopEvents = [
+    { type: "token", text: "NVDA is " },
+    { type: "token", text: "holding above VWAP." },
+  ];
+  try {
+    const events: Array<{ type: string; text?: string }> = [];
+    await runLargoQueryStream("nvda?", "", "user-stream-1", (e) =>
+      events.push(e as { type: string; text?: string })
+    );
+    const tokens = events.filter((e) => e.type === "token").map((e) => e.text);
+    assert.equal(tokens[0], "NVDA is ", "the model's text streams as it is written");
+    assert.equal(tokens[1], "holding above VWAP.");
+    // The turn closes by resetting and re-emitting the VERIFIED text, so a consumer that reads
+    // only tokens still ends up holding the caveated copy rather than the raw one.
+    const kinds = events.map((e) => e.type);
+    assert.equal(kinds[kinds.length - 1], "done");
+    assert.equal(kinds[kinds.length - 3], "answer_reset");
+    assert.match(String(tokens[tokens.length - 1]), /Verdict/);
+  } finally {
+    toolLoopEvents = null;
+  }
+});
+
+test("answer_reset is forwarded so planning chatter never renders in front of the answer", async () => {
+  // Tokens stream from EVERY round, and a round ending in tool_use was the model narrating its
+  // plan ("Let me check the chain first…"). Concatenating everything glues that to the front of
+  // the real answer, which reads as the model talking to itself in the member's chat window.
+  inserted = [];
+  appended = [];
+  toolLoopToolNames = [];
+  toolLoopEvents = [
+    { type: "token", text: "Let me check the chain first." },
+    { type: "answer_reset" },
+    { type: "tool_start", name: "get_quote" },
+    { type: "token", text: "**Verdict**\nNVDA is holding above VWAP." },
+  ];
+  try {
+    const events: Array<{ type: string; text?: string }> = [];
+    await runLargoQueryStream("nvda?", "", "user-stream-2", (e) =>
+      events.push(e as { type: string; text?: string })
+    );
+
+    const kinds = events.map((e) => e.type);
+    assert.ok(kinds.includes("answer_reset"), "the reset must reach the client");
+    assert.ok(
+      kinds.indexOf("answer_reset") < kinds.lastIndexOf("token"),
+      "the reset must arrive BEFORE the answer tokens, or it would erase them"
+    );
+
+    // Replaying what a consumer does: clear on reset, accumulate otherwise.
+    let buffer = "";
+    for (const e of events) {
+      if (e.type === "answer_reset") buffer = "";
+      else if (e.type === "token" && e.text) buffer += e.text;
+    }
+    assert.ok(!buffer.includes("Let me check"), "planning text survived the reset");
+    assert.match(buffer, /Verdict/);
+  } finally {
+    toolLoopEvents = null;
+  }
+});
+
+test("the done answer is authoritative — a consumer must REPLACE the stream, never append", async () => {
+  // Load-bearing, not cosmetic. The final text is the only one that has been through
+  // verifyClaims/applyVerificationCaveat and the plan-timeframe caveat, so a member reading only
+  // the streamed text could act on an unverified number whose caveat never arrived.
+  inserted = [];
+  appended = [];
+  toolLoopToolNames = [];
+  toolLoopEvents = [{ type: "token", text: "partial text that is NOT the final answer" }];
+  try {
+    const events: Array<{ type: string; answer?: string }> = [];
+    await runLargoQueryStream("nvda?", "", "user-stream-3", (e) =>
+      events.push(e as { type: string; answer?: string })
+    );
+    const done = events.find((e) => e.type === "done")!;
+    assert.ok(done, "a done event must always close the stream");
+    assert.ok(
+      !done.answer!.includes("partial text that is NOT"),
+      "done.answer is built from the loop's return value, independent of what streamed"
+    );
+    assert.match(done.answer!, /Verdict/);
+  } finally {
+    toolLoopEvents = null;
+  }
 });

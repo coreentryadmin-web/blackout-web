@@ -270,7 +270,19 @@ export function useLargoChat() {
             setActiveTools((prev) => (prev.includes(label) ? prev : [...prev, label]));
           },
           controller.signal,
-          (message) => setStatusMessage(message)
+          (message) => setStatusMessage(message),
+          () => {
+            // The round that just streamed ended in tool calls, so what it wrote was the model
+            // narrating its plan, not answering. Clear the buffer AND the rendered bubble —
+            // clearing only the buffer would leave the last flushed chatter on screen until the
+            // next token overwrote it.
+            streamBufRef.current = "";
+            if (streamFlushRef.current) {
+              clearTimeout(streamFlushRef.current);
+              streamFlushRef.current = null;
+            }
+            setMessages((m) => upsertAssistantMessage(m, assistantId, { content: "" }));
+          }
         );
         setSession(res.session_id);
         setMessages((m) =>
