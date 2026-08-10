@@ -30,7 +30,6 @@ import "server-only";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { ReactElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
 import type { VisualManifest } from "./types";
 import type { SizeSpec } from "./sizes";
 import { C } from "./tokens";
@@ -86,6 +85,14 @@ export async function renderVisualMarkup(params: {
   withSvg?: boolean;
 }): Promise<VisualMarkup> {
   const { element, spec, manifest } = params;
+
+  // DYNAMIC IMPORT, and the file is `.ts` not `.tsx`, both deliberately. A STATIC
+  // `import { renderToStaticMarkup } from "react-dom/server"` fails the Next build outright —
+  // "You're importing a component that imports react-dom/server" — because webpack traces the
+  // module graph regardless of the `server-only` marker at the top of this file. Deferring the
+  // import to call time keeps it out of that graph, and dropping the `.tsx` extension stops Next
+  // treating the module as a potential client component in the first place.
+  const { renderToStaticMarkup } = await import("react-dom/server");
   const inner = renderToStaticMarkup(element);
 
   // BOX-SIZING IS THE ONE REAL DRIFT VECTOR, AND IT IS CLOSED HERE.
