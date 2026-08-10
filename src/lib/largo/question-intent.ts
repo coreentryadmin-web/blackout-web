@@ -85,6 +85,35 @@ function recentUserText(history: AnthropicMessage[], limit = 6): string {
     .join(" ");
 }
 
+/**
+ * English function words that collide with a real ticker symbol.
+ *
+ * REGRESSION THIS PREVENTS, measured live 2026-08-10. Asked "If I bought the SPX 7800 call at the
+ * open today, what would I be down right now…", Largo replied "the system flagged the context as
+ * NOW (a stock ticker)" and stopped to ask whether the member meant SPX or ServiceNow. The
+ * extractor uppercases the WHOLE question, so the adverb "now" became the ticker NOW — which is in
+ * KNOWN_TICKERS — and because the loop scans BACKWARDS, that trailing "now" beat the "SPX" the
+ * member actually named. The turn then captured a live feed for the wrong instrument.
+ *
+ * This exact guard already existed in `bie/router.ts` (STOPWORD_TICKERS), added after the same bug
+ * was caught in the PR-L4a gauntlet. Deleting the BIE router (#1972) moved Largo onto this
+ * extractor and left the guard behind — the fix was still in the tree, just no longer on the path.
+ *
+ * Deliberately the FUNCTION-WORD set only. Content-noun tickers (ARM, CAT, ALL) are left alone
+ * where they are genuinely ambiguous, because a capitalised "ARM"/"CAT" is far more often a real
+ * ticker reference and over-restricting drops legitimate mentions. A `$` prefix always promotes.
+ */
+const STOPWORD_TICKERS = new Set([
+  "NOW", "ARE", "OR", "BE", "GO", "SO", "AT", "ON", "IT", "IN", "OF", "TO",
+  "THE", "AN", "AS", "IS", "IF", "BY", "WE", "US", "HE", "NO", "UP", "MY", "ME",
+  "DO", "AND", "FOR", "BUT", "NOT", "YOU", "OUR", "OUT", "WHY", "HOW", "WHO", "ANY",
+]);
+
+/** Was this token written as an UPPERCASE symbol in the original question? */
+function writtenUppercase(question: string, token: string): boolean {
+  return new RegExp(`\\b${token}\\b`).test(question);
+}
+
 function extractTicker(question: string, historyText: string): string | null {
   // Normalise to uppercase so mixed-case and ALL-CAPS questions are handled identically.
   const qUpper = question.toUpperCase();
@@ -92,6 +121,9 @@ function extractTicker(question: string, historyText: string): string | null {
   for (let i = qMatch.length - 1; i >= 0; i--) {
     const hadDollar = qMatch[i].startsWith("$");
     const cand = qMatch[i].replace(/^\$/, "");
+    // A bare lowercase function word is never a ticker. Only `$NOW` or a genuinely uppercase
+    // `NOW` in the member's own text promotes it.
+    if (!hadDollar && STOPWORD_TICKERS.has(cand) && !writtenUppercase(question, cand)) continue;
     // Only accept a known ticker or an explicit $-prefixed symbol. The old
     // "any caps token not on the blocklist" branch mis-pinned words like
     // CALLS / HOLD / SETUP / BULL as tickers (LARGO-9).
@@ -101,6 +133,8 @@ function extractTicker(question: string, historyText: string): string | null {
   const matches = combined.toUpperCase().match(TICKER_RE) ?? [];
   for (let i = matches.length - 1; i >= 0; i--) {
     const raw = matches[i];
+    // Same guard on the history-scan fallback: "…now" in an earlier turn must not pin NOW either.
+    if (STOPWORD_TICKERS.has(raw) && !writtenUppercase(`${historyText} ${question}`, raw)) continue;
     if (KNOWN_TICKERS.has(raw)) return raw;
   }
   return null;

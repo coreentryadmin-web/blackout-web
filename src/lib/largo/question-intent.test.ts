@@ -367,3 +367,34 @@ test("'edition'/'editions' phrasing triggers the Night Hawk tool hints (NIGHTHAW
     assert.match(intent.guidance, /get_platform_snapshot/, `expected get_platform_snapshot hint for: "${question}"`);
   }
 });
+
+// ── Stopword-ticker collisions ────────────────────────────────────────────────────────────────
+
+test("a bare lowercase 'now' never outranks the ticker the member named", () => {
+  // Measured live 2026-08-10. Asked "If I bought the SPX 7800 call at the open today, what would I
+  // be down right now…", Largo replied "the system flagged the context as NOW (a stock ticker)"
+  // and stopped to ask whether the member meant SPX or ServiceNow. The extractor uppercases the
+  // whole question, so the adverb "now" became NOW (which IS in KNOWN_TICKERS), and because the
+  // loop scans BACKWARDS the trailing "now" beat the SPX the member actually typed — so the turn
+  // captured a live feed for the wrong instrument.
+  assert.equal(
+    analyzeLargoQuestion(
+      "If I bought the SPX 7800 call at the open today, what would I be down right now, and what is my breakeven by close?",
+      []
+    ).tickerHint,
+    "SPX"
+  );
+  assert.equal(analyzeLargoQuestion("what is spx doing right now", []).tickerHint, "SPX");
+  assert.equal(analyzeLargoQuestion("nvda flow right now", []).tickerHint, "NVDA");
+});
+
+test("a stopword ticker still promotes when the member clearly means it", () => {
+  // The guard must not cost a member who genuinely asks about ServiceNow.
+  assert.equal(analyzeLargoQuestion("how is $NOW trading", []).tickerHint, "NOW");
+  assert.equal(analyzeLargoQuestion("NOW stock setup", []).tickerHint, "NOW");
+});
+
+test("a question with no ticker at all stays null", () => {
+  assert.equal(analyzeLargoQuestion("how are we doing right now", []).tickerHint, null);
+  assert.equal(analyzeLargoQuestion("what happened out there today", []).tickerHint, null);
+});
