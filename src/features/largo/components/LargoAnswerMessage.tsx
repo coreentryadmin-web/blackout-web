@@ -4,6 +4,7 @@ import { Component, useMemo, type ReactNode } from "react";
 import type { BieAnswerEnvelope } from "@/lib/bie/answer-envelope";
 import { LargoMessageBody } from "@/features/largo/components/LargoMessageBody";
 import { BieAnswer } from "@/features/largo/answer/BieAnswer";
+import { LargoDeskRead } from "@/features/largo/answer/LargoDeskRead";
 import { largoAnswerToEnvelope } from "@/features/largo/answer/answer-format";
 
 /**
@@ -46,6 +47,28 @@ export function LargoAnswerMessage({
 
     // Preferred path: a real, populated envelope — render everything it carries.
     if (envelope) {
+      // DESK READ when the envelope is rich enough to fill a structured layout, i.e. it carries a
+      // verdict AND at least one of levels/sections. Below that bar the card would be a header
+      // over an empty grid, which looks broken and says less than the prose it replaced — so the
+      // richness test gates the layout rather than the layout inventing filler.
+      const richEnough =
+        Boolean(envelope.headline || envelope.bias) &&
+        ((envelope.levels?.length ?? 0) > 0 || (envelope.sections?.length ?? 0) > 0);
+      if (richEnough) {
+        return (
+          <>
+            <LargoDeskRead envelope={envelope} />
+            {/* The full prose stays BELOW the card, not replaced by it. The desk read is the
+                glanceable summary; the reasoning is what a member checks when the summary says
+                something they did not expect, and removing it would make the answer less
+                inspectable than before this shipped. */}
+            <details className="largo-read-more">
+              <summary>Full reasoning</summary>
+              <BieAnswer envelope={envelope} bodyClassName={className} onFollowup={onFollowup} />
+            </details>
+          </>
+        );
+      }
       return (
         <BieAnswer envelope={envelope} bodyClassName={className} onFollowup={onFollowup} />
       );
