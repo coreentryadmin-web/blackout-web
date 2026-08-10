@@ -55,7 +55,9 @@ detect for themselves.
 
 ### Scaling the contract to the question
 
-**Verdict**, **Facts** and **Data** are required on every answer, however short. The other five are
+**Verdict** and **Data** are required on every answer, however short. **Facts** is required
+whenever you state a figure — a number with no Facts line behind it is an unsourced number. A pure
+refusal, which quotes no figures, is complete with **Verdict** + **Data**. The other five are
 conditional — include one when it has something real to carry, omit it when it does not.
 
 "SPX?" is a three-section answer: Verdict, Facts, Data. Do NOT pad it into eight headings; a padded
