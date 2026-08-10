@@ -10,7 +10,7 @@ import {
 import { largoAvailable, largoClaudeEnabled } from "@/lib/ai-env";
 import { dbConfigured } from "@/lib/db";
 import { LARGO_SYSTEM_PROMPT } from "@/lib/largo/system-prompt";
-import { LARGO_TOOL_DEFS, getToolsForIntent } from "@/lib/largo/tool-defs";
+import { LARGO_TOOL_DEFS } from "@/lib/largo/tool-defs";
 import { runLargoTool } from "@/lib/largo/run-tool";
 import { prefetchLargoTurnCaches } from "@/lib/largo/turn-pipeline";
 import {
@@ -270,8 +270,26 @@ async function prepareLargoTurn(
   );
 
   resetLargoSpxDeskCache(userId);
-  const allowedToolNames = new Set(getToolsForIntent(question));
-  const filteredTools = LARGO_TOOL_DEFS.filter((t) => allowedToolNames.has(t.name));
+
+  // FULL tool surface, every turn — deliberately NOT filtered by question intent.
+  //
+  // This used to be `LARGO_TOOL_DEFS.filter(t => getToolsForIntent(question).has(t.name))`, a
+  // hand-written regex allowlist deciding which tools Claude was even SHOWN. Measured over 20
+  // realistic member questions it exposed a mean of 21.9 / 116 tools (19%), and the failure was
+  // silent: "what's the biggest risk in my open positions" reached 4 tools and could not call
+  // get_open_plays; "how many trades did we win last month" could not reach get_trade_history or
+  // get_zerodte_record. Largo did not decline those — it answered from the live feed alone, which
+  // reads as confident and is exactly the "no invented data" failure the system prompt forbids.
+  // Every new phrasing a member invents was a new blind spot, and the allowlist could only ever
+  // chase them.
+  //
+  // Sending everything is also the CHEAPER option, which is the counter-intuitive part. The tool
+  // block is the first prompt-cache prefix (anthropic.ts marks the last tool with
+  // cache_control:ephemeral), so a STATIC list of all 116 defs — 17,025 tokens — is written once
+  // and billed at the cache-read rate on every subsequent turn. The old per-question list changed
+  // the prefix on nearly every turn, so it never cached: ~5k tokens at FULL price, forever. Static
+  // and complete beats dynamic and partial on both capability and cost.
+  const filteredTools = LARGO_TOOL_DEFS;
 
   return { sid, history, system, filteredTools, toolsUsed, tickerHint: intent.tickerHint ?? null };
 }
