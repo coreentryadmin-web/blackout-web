@@ -5045,6 +5045,103 @@ body::before {
   .largo-mic-btn-unsupported {
     opacity: 0.45;
   }
+
+  /* ── Chart / screenshot attachments ── */
+  .largo-attach-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    align-self: stretch;
+    border-radius: 0;
+    border: 1px solid rgba(34, 211, 238, 0.22);
+    background: rgba(34, 211, 238, 0.07);
+    color: rgba(103, 232, 249, 0.75);
+    cursor: pointer;
+    transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+  }
+  .largo-attach-btn:hover {
+    background: rgba(34, 211, 238, 0.16);
+    border-color: rgba(34, 211, 238, 0.5);
+    color: #a5f3fc;
+  }
+  .largo-attach-btn:focus-visible {
+    outline: 2px solid rgba(34, 211, 238, 0.7);
+    outline-offset: 2px;
+  }
+  /* Whole-composer drop target. The cue is on the form rather than a full-screen overlay so it
+     cannot cover the transcript the member is dragging a chart out of. */
+  .largo-input-form-dragging {
+    border-color: rgba(52, 211, 153, 0.7) !important;
+    background: rgba(52, 211, 153, 0.06);
+  }
+  .largo-attach-tray {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.25rem;
+  }
+  .largo-attach-chip {
+    position: relative;
+    width: 4.5rem;
+    height: 3.25rem;
+    border: 1px solid rgba(34, 211, 238, 0.3);
+    background: rgba(8, 12, 20, 0.6);
+    overflow: hidden;
+  }
+  .largo-attach-chip img {
+    width: 100%;
+    height: 100%;
+    /* `contain`, not `cover`: a cropped thumbnail of a chart hides the very part the member is
+       asking about, and they cannot confirm they attached the right screenshot. */
+    object-fit: contain;
+  }
+  .largo-attach-remove {
+    position: absolute;
+    top: 0;
+    right: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.05rem;
+    height: 1.05rem;
+    border: 0;
+    background: rgba(8, 12, 20, 0.85);
+    color: #fca5a5;
+    cursor: pointer;
+  }
+  .largo-attach-remove:hover {
+    background: rgba(248, 113, 113, 0.35);
+    color: #fee2e2;
+  }
+  .largo-attach-size {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    padding: 0 0.2rem;
+    font-size: 8px;
+    letter-spacing: 0.06em;
+    color: rgba(165, 243, 252, 0.85);
+    background: rgba(8, 12, 20, 0.8);
+  }
+  .largo-attach-error {
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    color: #fca5a5;
+  }
+  .largo-msg-images {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-bottom: 0.5rem;
+  }
+  .largo-msg-images img {
+    max-width: min(18rem, 100%);
+    max-height: 12rem;
+    border: 1px solid rgba(34, 211, 238, 0.25);
+    object-fit: contain;
+  }
   .largo-mic-error {
     position: absolute;
     left: 0;

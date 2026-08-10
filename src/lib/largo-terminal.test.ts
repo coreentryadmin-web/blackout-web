@@ -279,7 +279,7 @@ test("runLargoQuery: every turn uses the Claude tool loop (no BIE router)", asyn
   inserted = [];
   appended = [];
   toolLoopToolNames = [];
-  const result = await runLargoQuery("How are today's plays doing?", "", "user-1");
+  const result = await runLargoQuery("How are today's plays doing?", "", "user-1", []);
   await waitForInserts(1);
 
   assert.equal(result.source, "blackout-web+postgres");
@@ -302,7 +302,7 @@ test("runLargoQuery: Claude turn persists intent_bucket = 'claude_fallback' and 
   toolLoopToolNames = [];
   // "Why did NVDA reverse?" fails classifyBieIntent's REASONING_RE guard ("why")
   // — falls through to Claude, exactly like a real unmatched member question.
-  const result = await runLargoQuery("Why did NVDA reverse today?", "", "user-2");
+  const result = await runLargoQuery("Why did NVDA reverse today?", "", "user-2", []);
   await waitForInserts(1);
 
   assert.equal(inserted.length, 1);
@@ -332,7 +332,7 @@ test("runLargoQueryStream: streaming path uses Claude tool loop", async () => {
   appended = [];
   toolLoopToolNames = [];
   const events: unknown[] = [];
-  await runLargoQueryStream("What's the market doing?", "", "user-3", (e) => events.push(e));
+  await runLargoQueryStream("What's the market doing?", "", "user-3", (e) => events.push(e), []);
   await waitForInserts(1);
 
   assert.equal(inserted.length, 1);
@@ -351,7 +351,7 @@ test("runLargoQueryStream: Claude streaming persists tool names", async () => {
   const events: unknown[] = [];
   // Use a question that no BIE route matches — the original "Should I hold my TSLA play"
   // now routes to ticker_advice → composer-failed fallback (the fix this PR introduces).
-  await runLargoQueryStream("I lost money on my trades today", "", "user-4", (e) => events.push(e));
+  await runLargoQueryStream("I lost money on my trades today", "", "user-4", (e) => events.push(e), []);
   await waitForInserts(1);
 
   assert.equal(inserted.length, 1);
@@ -373,7 +373,7 @@ test("runLargoQuery: a thrown tool-loop error still propagates AND writes a logB
   toolLoopError = new Error("tool loop boom");
   try {
     await assert.rejects(
-      () => runLargoQuery("Why did NVDA reverse today?", "", "user-err-1"),
+      () => runLargoQuery("Why did NVDA reverse today?", "", "user-err-1", []),
       /tool loop boom/
     );
     await waitForInserts(1);
@@ -407,7 +407,7 @@ test("runLargoQueryStream: a thrown tool-loop error still emits an 'error' SSE e
     // matches so we fall through to the Claude tool-loop where the toolLoopError can trigger.
     await runLargoQueryStream("I lost money on my trades today", "", "user-err-2", (e) =>
       events.push(e)
-    );
+    , []);
     await waitForInserts(1);
 
     assert.equal(inserted.length, 1);
@@ -452,7 +452,7 @@ test("runLargoQueryStream forwards tokens so the answer appears as it is written
   try {
     const events: Array<{ type: string; text?: string }> = [];
     await runLargoQueryStream("nvda?", "", "user-stream-1", (e) =>
-      events.push(e as { type: string; text?: string })
+      events.push(e as { type: string; text?: string }), []
     );
     const tokens = events.filter((e) => e.type === "token").map((e) => e.text);
     assert.equal(tokens[0], "NVDA is ", "the model's text streams as it is written");
@@ -484,7 +484,7 @@ test("answer_reset is forwarded so planning chatter never renders in front of th
   try {
     const events: Array<{ type: string; text?: string }> = [];
     await runLargoQueryStream("nvda?", "", "user-stream-2", (e) =>
-      events.push(e as { type: string; text?: string })
+      events.push(e as { type: string; text?: string }), []
     );
 
     const kinds = events.map((e) => e.type);
@@ -518,7 +518,7 @@ test("the done answer is authoritative — a consumer must REPLACE the stream, n
   try {
     const events: Array<{ type: string; answer?: string }> = [];
     await runLargoQueryStream("nvda?", "", "user-stream-3", (e) =>
-      events.push(e as { type: string; answer?: string })
+      events.push(e as { type: string; answer?: string }), []
     );
     const done = events.find((e) => e.type === "done")!;
     assert.ok(done, "a done event must always close the stream");

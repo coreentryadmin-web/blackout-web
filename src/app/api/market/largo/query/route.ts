@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireTierApi } from "@/lib/market-api-auth";
+import { validateAttachments } from "@/lib/largo/core/image-attachment";
 import { largoConfigured, runLargoQuery, runLargoQueryStream, isSseClientDisconnect, SseClientDisconnected } from "@/lib/largo-terminal";
 import { getUwCacheRedis } from "@/lib/providers/uw-shared-cache";
 import { largoBudgetKey, secondsUntilEtMidnight, largoDailyQueryBudget } from "@/lib/largo-budget";
@@ -255,7 +256,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  let body: { question?: string; session_id?: string };
+  let body: { question?: string; session_id?: string; images?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -265,9 +266,31 @@ export async function POST(req: NextRequest) {
   const question = String(body.question ?? "").trim();
   const sessionId = String(body.session_id ?? "").trim();
 
-  if (!question) {
+  // ATTACHMENTS — validated at the boundary, before any slot, budget or token is spent.
+  //
+  // Ordered ahead of the gates on purpose: a malformed upload is the caller's mistake and must
+  // cost them nothing but a 400. Validating after the daily-budget reserve would burn one of the
+  // member's queries on a file their phone mislabelled.
+  //
+  // Everything about the payload is attacker-controlled — bytes, declared type and length alike —
+  // so validateAttachments re-derives the media type from the magic bytes and measures size from
+  // the base64 length without decoding. See image-attachment.ts for why each rule exists.
+  const attachments = validateAttachments(body.images);
+  if (!attachments.ok) {
+    return NextResponse.json({ error: attachments.error }, { status: 400 });
+  }
+  const images = attachments.blocks;
+
+  // An image alone IS a question — "what do you make of this?" is implied by the act of pasting a
+  // chart. Requiring text would make the obvious interaction fail for no reason.
+  if (!question && images.length === 0) {
     return NextResponse.json({ error: "question is required" }, { status: 400 });
   }
+
+  // A concrete stand-in rather than an empty string: every downstream stage (intent analysis,
+  // capability ranking, the query plan, the persisted transcript) is written against a real
+  // question, and "" would quietly degrade all of them at once.
+  const effectiveQuestion = question || "What do you make of this?";
 
   if (question.length > 4000) {
     return NextResponse.json({ error: "question too long" }, { status: 400 });
@@ -352,12 +375,22 @@ export async function POST(req: NextRequest) {
         send({ type: "ping", t: Date.now() });
 
         try {
-          await runLargoQueryStream(question, resolvedSessionId, userId, (event) => {
-            if (!send(event)) {
-              closed = true;
-              throw new SseClientDisconnected();
-            }
-          });
+          await runLargoQueryStream(
+            effectiveQuestion,
+            resolvedSessionId,
+            userId,
+            (event) => {
+              if (!send(event)) {
+                closed = true;
+                throw new SseClientDisconnected();
+              }
+            },
+            // The browser ALWAYS takes this branch — the terminal requests text/event-stream. An
+            // images argument omitted here reaches the model as a turn with no picture and produces
+            // a fluent answer about a chart nobody sent, which is the worst possible failure of
+            // this feature and the one with no error to notice.
+            images
+          );
         } catch (error) {
           if (isSseClientDisconnect(error)) return;
           console.error("[market/largo/query stream]", error);
@@ -389,7 +422,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const result = await runLargoQuery(question, resolvedSessionId, userId);
+    const result = await runLargoQuery(effectiveQuestion, resolvedSessionId, userId, images);
     return NextResponse.json(result, {
       headers: {
         ...NO_STORE_HEADERS,

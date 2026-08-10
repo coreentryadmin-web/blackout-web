@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { prepareImage, ImageRejected, type PreparedImage } from "@/features/largo/lib/prepare-image";
 import { queryLargoStream, fetchLargoSession, LargoStreamAborted } from "@/lib/api";
 import { LARGO_SESSION_KEY } from "@/lib/session-cache";
 import { isIosAppShell } from "@/lib/ios-app-shell";
@@ -26,6 +27,8 @@ export type LargoMessage = {
    * answers, historical (rehydrated) turns, and until the server PR deploys.
    */
   envelope?: BieAnswerEnvelope | null;
+  /** Object/data URLs for images sent with a user turn, rendered as thumbnails in the bubble. */
+  images?: string[];
 };
 
 const TOOL_LABEL: Record<string, string> = {
@@ -110,6 +113,9 @@ function firstUserQuestion(messages: LargoMessage[]): string {
   return messages.find((m) => m.role === "user")?.content ?? "";
 }
 
+/** Mirrors MAX_IMAGES_PER_TURN on the server; the server is still the authority that enforces it. */
+const MAX_COMPOSER_IMAGES = 4;
+
 function newSessionId(): string {
   return `web-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
@@ -138,6 +144,12 @@ export function useLargoChat() {
   const threadTitleRef = useRef("");
   // Last user question, replayed by regenerate().
   const lastQueryRef = useRef("");
+  // Images staged in the composer for the NEXT question. Held in a ref as well as state because
+  // runQuery reads them at send time and a stale closure would silently send the previous set.
+  const [attachments, setAttachments] = useState<PreparedImage[]>([]);
+  const attachmentsRef = useRef<PreparedImage[]>([]);
+  attachmentsRef.current = attachments;
+  const [attachError, setAttachError] = useState<string | null>(null);
 
   const setSession = useCallback((id: string) => {
     sessionId.current = id;
@@ -207,7 +219,16 @@ export function useLargoChat() {
   const runQuery = useCallback(
     async (rawQ: string, opts?: { regenerate?: boolean }) => {
       const q = rawQ.trim();
-      if (!q || loading || !hydrated) return;
+      // Attachments are captured ONCE, here, and cleared immediately. A chart pasted while the
+      // previous answer was still streaming must not ride along on the next question too.
+      const staged = opts?.regenerate ? [] : attachmentsRef.current;
+      // An image on its own is a complete question — pasting a chart into an empty box and hitting
+      // send means "what do you make of this?", and the server supplies exactly that text.
+      if ((!q && staged.length === 0) || loading || !hydrated) return;
+      if (staged.length) {
+        setAttachments([]);
+        setAttachError(null);
+      }
 
       const regenerate = opts?.regenerate ?? false;
       setInput("");
@@ -216,15 +237,22 @@ export function useLargoChat() {
       setStatusMessage(null);
       setAwaitingFirstToken(true);
       setCanRegenerate(false);
+      // Label an image-only turn so the history index and regenerate() are not left blank.
+      const label = q || (staged.length ? "Chart upload" : "");
       lastQueryRef.current = q;
 
-      if (!threadTitleRef.current) threadTitleRef.current = q;
+      if (!threadTitleRef.current) threadTitleRef.current = label;
 
       if (!regenerate) {
         const userId = `u-${++msgId.current}`;
         setMessages((m) => [
           ...m.filter((x) => x.id !== "welcome"),
-          { id: userId, role: "user", content: q },
+          {
+            id: userId,
+            role: "user",
+            content: q,
+            images: staged.length ? staged.map((a) => a.previewUrl) : undefined,
+          },
         ]);
       } else {
         // Replace the previous answer in place: drop the trailing assistant turn.
@@ -282,7 +310,8 @@ export function useLargoChat() {
               streamFlushRef.current = null;
             }
             setMessages((m) => upsertAssistantMessage(m, assistantId, { content: "" }));
-          }
+          },
+          staged.map((a) => ({ data: a.data, media_type: a.media_type }))
         );
         setSession(res.session_id);
         setMessages((m) =>
@@ -296,7 +325,7 @@ export function useLargoChat() {
         );
         setFollowups(Array.isArray(res.followups) ? res.followups.slice(0, 3) : []);
         setCanRegenerate(true);
-        recordConversation(res.session_id, threadTitleRef.current || q, provisionalSid);
+        recordConversation(res.session_id, threadTitleRef.current || label, provisionalSid);
       } catch (err) {
         if (err instanceof LargoStreamAborted) {
           // User pressed Stop. Keep whatever streamed so far; if nothing did,
@@ -334,6 +363,48 @@ export function useLargoChat() {
     },
     [loading, hydrated, setSession, recordConversation]
   );
+
+  /**
+   * Stage image files from the file picker, a paste, or a drop.
+   *
+   * Rejections are surfaced, never swallowed: a member whose upload silently failed goes on to ask
+   * about a chart Largo cannot see, and gets a fluent answer about nothing.
+   */
+  const addAttachments = useCallback(async (files: FileList | File[]) => {
+    const list = Array.from(files).filter((f) => f.type.startsWith("image/"));
+    if (!list.length) return;
+    setAttachError(null);
+    for (const file of list) {
+      // Read against the ref, not the state variable: this loop awaits between iterations, so the
+      // captured `attachments` value would be stale by the second file and the cap would not hold.
+      if (attachmentsRef.current.length >= MAX_COMPOSER_IMAGES) {
+        setAttachError(`Up to ${MAX_COMPOSER_IMAGES} images per question.`);
+        return;
+      }
+      try {
+        const prepared = await prepareImage(file);
+        attachmentsRef.current = [...attachmentsRef.current, prepared];
+        setAttachments(attachmentsRef.current);
+      } catch (err) {
+        setAttachError(
+          err instanceof ImageRejected ? err.message : "That image could not be attached."
+        );
+        return;
+      }
+    }
+  }, []);
+
+  /** Drop a staged image, releasing its object URL so the blob can be collected. */
+  const removeAttachment = useCallback((index: number) => {
+    setAttachments((prev) => {
+      const target = prev[index];
+      if (target?.previewUrl.startsWith("blob:")) URL.revokeObjectURL(target.previewUrl);
+      const next = prev.filter((_, i) => i !== index);
+      attachmentsRef.current = next;
+      return next;
+    });
+    setAttachError(null);
+  }, []);
 
   /** Abort the in-flight turn; partial streamed content is preserved. */
   const cancel = useCallback(() => {
@@ -407,6 +478,10 @@ export function useLargoChat() {
     canRegenerate,
     bottomRef,
     runQuery,
+    attachments,
+    attachError,
+    addAttachments,
+    removeAttachment,
     cancel,
     regenerate,
     newConversation,
