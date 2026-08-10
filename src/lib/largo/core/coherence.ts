@@ -131,3 +131,66 @@ export function applyCoherenceCaveat(text: string, found: readonly Contradiction
     `as scoped more narrowly than the question.`
   );
 }
+
+
+/**
+ * IMPOSSIBLE PROVENANCE — a platform-owned number attributed to a market-data vendor.
+ *
+ * MEASURED LIVE 2026-08-10. Asked which engine had the worst win rate, Largo answered correctly
+ * and stamped it:
+ *
+ *   [fact] 0DTE Command: 123 graded plays over 30 days, 34.7% win rate (Polygon · … · live)
+ *
+ * Polygon is a market-data vendor. It does not know which trades BlackOut recommended, and it
+ * certainly does not know how they were graded — that number comes from our own Postgres ledger
+ * and nowhere else. The figure was right; the attribution was impossible.
+ *
+ * WHY THIS MATTERS MORE THAN A COSMETIC SLIP. The provenance stamp is the thing the product tells
+ * members to trust when judging a number. A stamp that names a plausible-sounding external vendor
+ * makes an internal number look independently verified. That is strictly worse than no stamp: it
+ * manufactures confidence rather than merely failing to supply it.
+ *
+ * DECIDABLE, WHICH IS WHY IT IS CHECKED HERE. This needs no semantics — it is a closed question.
+ * A vendor either can or cannot know a given class of fact, and for our own trade outcomes the
+ * answer is always no.
+ */
+const PLATFORM_OWNED_RE =
+  /\b(win ?rate|graded plays?|graded|track record|our (?:record|trades|plays)|p&l|pnl|committed plays?|scan rejections?|cortex|governor)\b/i;
+
+/** External market-data vendors. They price instruments; they do not grade our trades. */
+const EXTERNAL_SOURCE_RE = /\b(polygon|unusual ?whales|uw|benzinga|massive)\b/i;
+
+export type ProvenanceLie = { line: string; source: string };
+
+/**
+ * Facts whose stamp names a vendor that cannot possibly know the claim.
+ *
+ * Scans the evidence sections line by line, because provenance is per-fact. Only fires when BOTH
+ * a platform-owned metric AND an external vendor appear on the SAME line — a paragraph mentioning
+ * Polygon elsewhere is not evidence of a mis-stamp.
+ */
+export function findProvenanceLies(markdown: string): ProvenanceLie[] {
+  const evidence = sectionText(markdown, ["facts", "data", "evidence"]);
+  if (!evidence) return [];
+  const out: ProvenanceLie[] = [];
+  for (const line of evidence.split("\n")) {
+    if (!PLATFORM_OWNED_RE.test(line)) continue;
+    const m = line.match(EXTERNAL_SOURCE_RE);
+    if (!m) continue;
+    out.push({ line: line.trim().slice(0, 160), source: m[1]! });
+    if (out.length >= 2) break;
+  }
+  return out;
+}
+
+/** Append the mis-attribution, naming the real owner so the correction is actionable. */
+export function applyProvenanceCaveat(text: string, lies: readonly ProvenanceLie[]): string {
+  if (lies.length === 0) return text;
+  const srcs = [...new Set(lies.map((l) => l.source))].join(", ");
+  return (
+    `${text}\n\n> **Source note.** Figures above about BlackOut's own trades — win rate, graded ` +
+    `plays, track record — are stamped \`${srcs}\`, but they come from BlackOut's own ledger. ` +
+    `${srcs} prices instruments; it does not grade our trades. The numbers stand; the attribution ` +
+    `does not.`
+  );
+}

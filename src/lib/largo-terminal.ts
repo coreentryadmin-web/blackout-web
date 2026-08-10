@@ -59,7 +59,12 @@ import {
 } from "@/lib/largo/temporal/timeframe";
 import { formatEntityBlock } from "@/lib/largo/core/entities";
 import { buildDrillDowns, formatDrillDownBlock } from "@/lib/largo/core/drilldown";
-import { applyCoherenceCaveat, findContradictions } from "@/lib/largo/core/coherence";
+import {
+  applyCoherenceCaveat,
+  applyProvenanceCaveat,
+  findContradictions,
+  findProvenanceLies,
+} from "@/lib/largo/core/coherence";
 import {
   applyPlanCaveat,
   buildQueryPlan,
@@ -552,6 +557,17 @@ export async function runLargoQuery(
       text = applyCoherenceCaveat(text, contradictions);
     }
 
+    // IMPOSSIBLE PROVENANCE. Measured live: a 34.7% win rate over 123 graded plays stamped
+    // "(Polygon · live)". Polygon prices instruments; it does not know which trades we recommended
+    // or how they were graded — that is our own ledger. The figure was right and the attribution
+    // was impossible, which is worse than an unstamped number: it makes an internal figure look
+    // independently verified.
+    const provenanceLies = findProvenanceLies(text);
+    if (provenanceLies.length) {
+      console.warn(`[largo] impossible provenance: ${provenanceLies.map((l) => l.source).join(",")}`);
+      text = applyProvenanceCaveat(text, provenanceLies);
+    }
+
     // Per-tool timing summary. Turns "Largo is slow" into "get_postgres_flows took 9.2s of an 11s
     // turn" — a question with an answer. Also surfaces DENIED and silently-EMPTY tool results,
     // neither of which is visible in `toolsUsed` alone.
@@ -707,6 +723,17 @@ export async function runLargoQueryStream(
     if (contradictions.length) {
       console.warn(`[largo] self-contradiction: verdict vs facts on "${contradictions[0]!.noun}"`);
       text = applyCoherenceCaveat(text, contradictions);
+    }
+
+    // IMPOSSIBLE PROVENANCE. Measured live: a 34.7% win rate over 123 graded plays stamped
+    // "(Polygon · live)". Polygon prices instruments; it does not know which trades we recommended
+    // or how they were graded — that is our own ledger. The figure was right and the attribution
+    // was impossible, which is worse than an unstamped number: it makes an internal figure look
+    // independently verified.
+    const provenanceLies = findProvenanceLies(text);
+    if (provenanceLies.length) {
+      console.warn(`[largo] impossible provenance: ${provenanceLies.map((l) => l.source).join(",")}`);
+      text = applyProvenanceCaveat(text, provenanceLies);
     }
 
     // Per-tool timing summary. Turns "Largo is slow" into "get_postgres_flows took 9.2s of an 11s

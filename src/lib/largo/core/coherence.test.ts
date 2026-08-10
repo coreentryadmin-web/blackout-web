@@ -116,3 +116,67 @@ test("malformed and empty input is total", () => {
     assert.deepEqual(findContradictions(junk), []);
   }
 });
+
+// ── Impossible provenance ─────────────────────────────────────────────────────────────────────
+
+test("catches a platform-owned number stamped to a market-data vendor", async () => {
+  // Verbatim from production 2026-08-10. Polygon does not know which trades we recommended, and
+  // certainly not how they were graded — that is our Postgres ledger and nowhere else.
+  const { findProvenanceLies } = await import("./coherence");
+  const md = `**Verdict**
+
+0DTE Command has the worst win rate.
+
+**Facts**
+
+- [fact] 0DTE Command: 123 graded plays over 30 days, 34.7% win rate (Polygon · 2026-08-10T06:03:48Z · live)
+- [fact] NVDA spot 223.8 (Polygon quote · live)
+`;
+  const lies = findProvenanceLies(md);
+  assert.equal(lies.length, 1, "only the win-rate line is impossible; the spot quote is fine");
+  assert.match(lies[0]!.line, /win rate/i);
+  assert.equal(lies[0]!.source.toLowerCase(), "polygon");
+});
+
+test("a market number from a market vendor is never flagged", async () => {
+  const { findProvenanceLies } = await import("./coherence");
+  const md = `**Verdict**
+
+SPX is at 7757.
+
+**Facts**
+
+- [fact] SPX spot 7757.64 (Polygon · live)
+- [fact] NVDA flow bullish (Unusual Whales · live)
+`;
+  assert.deepEqual(findProvenanceLies(md), []);
+});
+
+test("a platform number with an internal stamp is correct and silent", async () => {
+  const { findProvenanceLies } = await import("./coherence");
+  const md = `**Verdict**
+
+Win rate is 34.7%.
+
+**Facts**
+
+- [fact] 0DTE Command 34.7% win rate over 123 graded plays (BlackOut ledger · live)
+`;
+  assert.deepEqual(findProvenanceLies(md), []);
+});
+
+test("the source caveat names the real owner so the correction is actionable", async () => {
+  const { findProvenanceLies, applyProvenanceCaveat } = await import("./coherence");
+  const md = `**Verdict**
+
+x
+
+**Facts**
+
+- [fact] 34.7% win rate over 123 graded plays (Polygon · live)
+`;
+  const out = applyProvenanceCaveat(md, findProvenanceLies(md));
+  assert.match(out, /BlackOut's own ledger/);
+  assert.match(out, /does not grade our trades/);
+  assert.ok(out.startsWith(md), "the answer survives verbatim");
+});
