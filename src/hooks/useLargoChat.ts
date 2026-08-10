@@ -178,6 +178,9 @@ export function useLargoChat() {
   const attachmentsRef = useRef<PreparedImage[]>([]);
   attachmentsRef.current = attachments;
   const [attachError, setAttachError] = useState<string | null>(null);
+  // The instrument the SERVER resolved for the most recent answer — the contextual rail's only
+  // source. Kept across follow-ups so the rail persists through a chain about the same name.
+  const [activeTicker, setActiveTicker] = useState<string | null>(null);
 
   const setSession = useCallback((id: string) => {
     sessionId.current = id;
@@ -351,6 +354,9 @@ export function useLargoChat() {
             envelope: res.envelope ?? null,
           })
         );
+        // Only overwrite when the server actually resolved one: a follow-up that names no ticker
+        // ("and the put side?") must keep the rail on the instrument under discussion, not blank it.
+        if (res.ticker) setActiveTicker(res.ticker);
         setFollowups(Array.isArray(res.followups) ? res.followups.slice(0, 3) : []);
         setCanRegenerate(true);
         recordConversation(res.session_id, threadTitleRef.current || label, provisionalSid);
@@ -455,6 +461,7 @@ export function useLargoChat() {
     setCanRegenerate(false);
     threadTitleRef.current = "";
     lastQueryRef.current = "";
+    setActiveTicker(null); // a new thread is a new subject
   }, [loading, setSession]);
 
   /** Re-open a stored conversation by session id. */
@@ -506,6 +513,7 @@ export function useLargoChat() {
     canRegenerate,
     bottomRef,
     runQuery,
+    activeTicker,
     attachments,
     attachError,
     addAttachments,
