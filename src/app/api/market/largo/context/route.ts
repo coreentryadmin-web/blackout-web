@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { requireTierApi } from "@/lib/market-api-auth";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 import { canonicalTicker } from "@/lib/largo/core/entities";
+import { validateFlowTape } from "@/lib/largo/core/flow-validation";
 
 export const dynamic = "force-dynamic";
 
@@ -66,16 +67,17 @@ export async function GET(req: NextRequest) {
 
   // Net premium from the SAME tape HELIX renders, not a separate aggregate — so "+$18.2M" on the
   // rail is the number the flow page would show for this window.
+  //
+  // VALIDATED FIRST. A raw premium sum treats a deep-ITM stock-replacement print as ordinary
+  // directional conviction, and those prints are almost always calls with six-figure premiums.
+  // Measured live on SPX 2026-08-10: 43 of 500 prints flipped the headline net from +$23.94M
+  // (reads bullish) to −$11.91M (reads bearish). The rail was showing the inverted number.
   const prints = Array.isArray((flows as { recent?: unknown[] })?.recent)
-    ? ((flows as { recent: Array<{ premium?: number; option_type?: string }> }).recent ?? [])
+    ? ((flows as { recent: Array<{ premium?: number; option_type?: string; strike?: number; expiry?: string }> })
+        .recent ?? [])
     : [];
-  let netPremium: number | null = null;
-  if (prints.length) {
-    netPremium = prints.reduce((acc, p) => {
-      const prem = num(p.premium) ?? 0;
-      return acc + (String(p.option_type ?? "").toUpperCase() === "PUT" ? -prem : prem);
-    }, 0);
-  }
+  const { summary: flowSummary } = validateFlowTape(prints, num(vector?.spot), Date.now());
+  const netPremium = flowSummary.netPremium;
 
   const swingLane = swing as { available?: boolean; sample_plays?: Array<{ ticker?: string; status?: string }> } | null;
   const swingHits = (swingLane?.sample_plays ?? []).filter(
@@ -94,7 +96,12 @@ export async function GET(req: NextRequest) {
       gamma_flip: num(vector?.gammaFlip ?? null),
       max_pain: num(vector?.maxPain ?? null),
       net_premium: netPremium,
-      print_count: prints.length,
+      print_count: flowSummary.directional,
+      /** What validation removed, and why. Surfaced so a member can see that the flow number is a
+       *  FILTERED read rather than discovering later that it silently disagrees with the raw tape. */
+      flow_excluded: flowSummary.exclusions,
+      /** True when the raw and validated nets point opposite ways — worth saying out loud. */
+      flow_sign_inverted: flowSummary.signInverted,
       // Vector's own derived play, not a re-scored one — the rail cites, it does not compute.
       play: vector?.play
         ? {
