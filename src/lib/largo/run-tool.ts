@@ -987,6 +987,14 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       return edition ?? { available: false, plays: [] };
     }
 
+    case "get_helix_derived": {
+      const { helixDerivedForLargo } = await import("@/lib/largo/product-reads");
+      return helixDerivedForLargo(
+        input.ticker ? String(input.ticker) : null,
+        Number(input.limit ?? 400)
+      );
+    }
+
     case "get_flow_tape": {
       const summary = await marketPlatform.flows.getFlowTapeSummary({
         limit: Number(input.limit ?? 50),
