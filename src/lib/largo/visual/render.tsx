@@ -5,11 +5,11 @@ import "server-only";
  *
  * WHY THIS RASTERISER. Three candidates were tested live before this was written:
  *
- *   - `sharp` alone (the path `x-desk-card.ts` already uses): its SVG backend is librsvg, which
+ *   - `sharp` alone (the path the X desk card used to use): its SVG backend is librsvg, which
  *     resolves fonts through fontconfig and IGNORES an `@font-face` data URI. Verified by
- *     rendering Anton and DejaVu side by side — both came out DejaVu. So the existing desk card is
- *     silently rendering in a system fallback, not the brand face. (Noted, not fixed here; that is
- *     its own change.)
+ *     rendering Anton and DejaVu side by side — both came out DejaVu. That is why the X autopost
+ *     desk card was silently rendering in a system fallback rather than the brand face; it has
+ *     since been moved onto this same satori path (`src/lib/x-desk-card.tsx`).
  *   - satori via `next/og`: takes font BUFFERS directly, no fontconfig involved, and emits glyph
  *     outlines. Verified live with real Anton + JetBrains Mono. This is the path.
  *   - Chromium/Playwright: full CSS, but ~1-2s per render and a browser in the web container.
@@ -27,9 +27,8 @@ import "server-only";
  * looks like without anything erroring.
  */
 
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
 import type { ReactElement } from "react";
+import { loadVisualFonts } from "./font-buffers";
 import type { RenderedVisual, VisualBundle, VisualSize, VisualTemplateId } from "./types";
 import { sizeSpec } from "./sizes";
 import { buildManifest, createRecorder } from "./manifest";
@@ -39,26 +38,6 @@ import { LevelAnalysisCard, focusStrikeFromQuestion } from "./templates/level-an
 import { ScreenerCard } from "./templates/screener";
 import { RejectionCard } from "./templates/rejection";
 import { EmConeCard } from "./templates/em-cone";
-
-const FONT_DIR = join(process.cwd(), "src/lib/largo/visual/fonts");
-
-type LoadedFont = { name: string; data: Buffer; weight: 400 | 700; style: "normal" };
-let fontCache: LoadedFont[] | null = null;
-
-async function loadFonts(): Promise<LoadedFont[]> {
-  if (fontCache) return fontCache;
-  const [anton, mono, monoBold] = await Promise.all([
-    readFile(join(FONT_DIR, "Anton-Regular.ttf")),
-    readFile(join(FONT_DIR, "JetBrainsMono-Regular.ttf")),
-    readFile(join(FONT_DIR, "JetBrainsMono-Bold.ttf")),
-  ]);
-  fontCache = [
-    { name: "Anton", data: anton, weight: 400, style: "normal" },
-    { name: "JetBrains Mono", data: mono, weight: 400, style: "normal" },
-    { name: "JetBrains Mono", data: monoBold, weight: 700, style: "normal" },
-  ];
-  return fontCache;
-}
 
 /** ET clock label for the card chrome. Null when the instant does not parse — never a fake time. */
 function etLabel(iso: string): string | null {
@@ -169,7 +148,7 @@ export async function renderVisual(params: RenderVisualParams): Promise<Rendered
   const { element, spec, manifest } = buildVisualElement(params);
 
   const { ImageResponse } = await import("next/og");
-  const fonts = await loadFonts();
+  const fonts = await loadVisualFonts();
   const res = new ImageResponse(element, {
     width: spec.width,
     height: spec.height,

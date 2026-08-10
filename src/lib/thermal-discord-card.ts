@@ -48,8 +48,17 @@ export function deskMonoFontCandidates(): string[] {
 }
 
 /**
- * `@font-face` block with base64 TTF — Sharp/librsvg paints text without relying
- * on the container's fontconfig catalog (the root cause of cron "boxes").
+ * `@font-face` block with base64 TTF.
+ *
+ * CAVEAT, measured 2026-08-10: librsvg (sharp's SVG backend) resolves fonts through fontconfig
+ * and IGNORES an `@font-face` data URI — proven by rendering two different faces through it in
+ * one SVG and getting the same glyphs back. So this block is NOT what makes the card render; the
+ * `DejaVu Sans Mono` fallback in `FONT` is, via the TTFs `deploy/fonts` puts on disk for
+ * fontconfig. That is harmless HERE because the embedded face IS DejaVu — the card looks the way
+ * it is supposed to either way. It would NOT be harmless with a brand face: the X autopost desk
+ * card asked for `system-ui` through this same path and silently rendered DejaVu for its whole
+ * life, which is why `src/lib/x-desk-card.tsx` now rasterises through satori (font BUFFERS, no
+ * fontconfig). Do not add a brand face to this file expecting it to appear.
  */
 export function deskMonoFontFaceCss(): string {
   if (cachedFontFaceCss != null) return cachedFontFaceCss;
