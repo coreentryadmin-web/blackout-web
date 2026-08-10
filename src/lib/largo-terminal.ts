@@ -8,10 +8,18 @@ import {
   type AnthropicToolLoopEvent,
 } from "@/lib/providers/anthropic";
 import { largoAvailable, largoClaudeEnabled } from "@/lib/ai-env";
+import { randomUUID } from "node:crypto";
 import { dbConfigured } from "@/lib/db";
 import { LARGO_SYSTEM_PROMPT } from "@/lib/largo/system-prompt";
 import { LARGO_TOOL_DEFS } from "@/lib/largo/tool-defs";
 import { runLargoTool } from "@/lib/largo/run-tool";
+import {
+  formatToolDiagnostics,
+  makeGuardedToolRunner,
+  type ToolCallDiagnostic,
+  type ToolGuardViewer,
+} from "@/lib/largo/core/tool-guard";
+import { isAdminUser } from "@/lib/admin-access";
 import { prefetchLargoTurnCaches } from "@/lib/largo/turn-pipeline";
 import {
   applyVerificationCaveat,
@@ -28,9 +36,10 @@ import {
   ensureLargoSession,
   fetchLargoHistory,
   fetchLargoMessagesPublic,
+  fetchPreviousUserTurn,
   sessionOwnedByUser,
 } from "@/lib/largo/largo-store";
-import { analyzeLargoQuestion } from "@/lib/largo/question-intent";
+import { analyzeLargoQuestion, KNOWN_TICKERS } from "@/lib/largo/question-intent";
 import { deterministicLargoFollowups } from "@/lib/largo/largo-followups";
 import { loadLargoPlatformSnapshotBlock } from "@/lib/largo/platform-snapshot-block";
 import { captureLargoLiveFeed, formatLargoLiveFeed } from "@/lib/largo/largo-live-feed";
@@ -42,7 +51,26 @@ import {
   LARGO_CAPABILITIES,
   rankCapabilities,
 } from "@/lib/largo/registry/capability-registry";
-import { formatTemporalBlock, resolveTimeframe, temporalConflicts } from "@/lib/largo/temporal/timeframe";
+import {
+  formatTemporalBlock,
+  resolveTimeframe,
+  temporalConflicts,
+  type Timeframe,
+} from "@/lib/largo/temporal/timeframe";
+import { formatEntityBlock } from "@/lib/largo/core/entities";
+import { buildDrillDowns, formatDrillDownBlock } from "@/lib/largo/core/drilldown";
+import {
+  applyPlanCaveat,
+  buildQueryPlan,
+  formatPlanBlock,
+  validatePlanExecution,
+} from "@/lib/largo/core/plan";
+import {
+  applyConversationToTimeframe,
+  buildConversationContext,
+  effectiveEntities,
+  formatConversationBlock,
+} from "@/lib/largo/core/conversation";
 
 const MAX_HISTORY = 28;
 
@@ -228,6 +256,8 @@ async function prepareLargoTurn(
   filteredTools: typeof LARGO_TOOL_DEFS;
   toolsUsed: string[];
   tickerHint: string | null;
+  viewer: ToolGuardViewer;
+  timeframe: Timeframe;
 }> {
   let sid = sessionId.trim() || `web-${userId}-${Date.now()}`;
   try {
@@ -239,11 +269,17 @@ async function prepareLargoTurn(
     // user as a hard "Connection interrupted" error. Recover gracefully: abandon the foreign
     // id (never grant cross-user access) and start a FRESH session owned by THIS user. The new
     // id flows back in the done event, so the client adopts it for subsequent turns.
-    sid = `web-${userId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    // crypto.randomUUID, not Math.random: a session id is not a secret (every read is gated on
+    // sessionOwnedByUser, so guessing one grants nothing) but it IS the collision key this branch
+    // exists to escape, and Math.random tripped CodeQL on every PR that shifted this line.
+    sid = `web-${userId}-${Date.now()}-${randomUUID().slice(0, 8)}`;
     await ensureLargoSession(sid, userId);
   }
 
   const history = await fetchLargoHistory(sid, userId);
+  // Read the previous turn's timestamp BEFORE the current question is appended. Fails soft to
+  // null (no DB, first turn, unusable timestamp) — a missing window start is reported as missing.
+  const previousTurn = await fetchPreviousUserTurn(sid, userId).catch(() => null);
   history.push({ role: "user", content: question });
   trimHistory(history);
 
@@ -274,7 +310,21 @@ async function prepareLargoTurn(
   // serve it, turns that from a subtlety the model must notice into a stated constraint.
   //
   // Costs nothing on the fast path: a present-tense question yields an empty block.
-  const timeframe = resolveTimeframe(question, Date.now());
+  // CONVERSATION STATE — resolved before the timeframe, because it supplies the timeframe's
+  // missing piece. `resolveTimeframe` recognises "since I last asked" and builds the window with
+  // `fromMs: null` and the comment "filled by the caller from conversation state"; this is that
+  // caller. Without it, the one question that is EXACTLY answerable (we know to the millisecond
+  // when they last asked — it is a row in largo_messages) resolved to an unbounded window and
+  // Largo declined it.
+  const conversation = buildConversationContext({
+    question,
+    previousQuestion: previousTurn?.content ?? null,
+    previousAskedAtMs: previousTurn?.askedAtMs ?? null,
+    known: KNOWN_TICKERS,
+  });
+  const conversationBlock = formatConversationBlock(conversation);
+
+  const timeframe = applyConversationToTimeframe(resolveTimeframe(question, Date.now()), conversation);
   const temporalBlock = formatTemporalBlock(
     timeframe,
     temporalConflicts(timeframe, rankCapabilities(question, LARGO_CAPABILITIES.length))
@@ -302,13 +352,45 @@ async function prepareLargoTurn(
   // the way the deleted intent allowlist could.
   const capabilityBlock = formatCapabilityBlock(question, { historical: timeframe.historical });
 
+  // CANONICAL ENTITIES — resolved in code so cross-desk results can actually be joined.
+  //
+  // The same instrument wears a different name on every surface: SPX on the quote route, I:SPX to
+  // Polygon, SPXW on the weekly chain, $SPX when a member types it. Left to the model, "compare
+  // Helix and Thermal on SPX" becomes a string comparison, and the two most likely failures are
+  // both silent — pooling evidence for two different instruments, or splitting one instrument's
+  // evidence across two names so each side looks thinner than it is. Neither shows up in the
+  // answer as anything other than confident prose.
+  //
+  // Purely additive: an empty block when the question names no instrument, and it never
+  // constrains which symbols a tool may be called with.
+  const entityBlock = formatEntityBlock(effectiveEntities(conversation));
+
+  // SUGGESTED PLAN — composed from what code already resolved (entities, timeframe, ranked
+  // capabilities, the registry's DECLARED join edges), handed over as a starting point. It routes
+  // nothing and hides nothing; the model may ignore it, and the full 116-tool surface is still in
+  // the request. Its real value is telling the model which results can be CORRELATED: a join edge
+  // here means the two capabilities share an entity key, which registry.test.ts proves, so a
+  // cross-product claim built on one is sound rather than a string coincidence.
+  const plan = buildQueryPlan({
+    ranked: rankCapabilities(question, 12),
+    entities: effectiveEntities(conversation),
+    timeframe,
+  });
+  const planBlock = formatPlanBlock(plan);
+
+  // DRILL-DOWN LINKS — a closed set of routes that provably exist (drilldown.test.ts asserts each
+  // against the app router). The model is handed hrefs rather than allowed to compose them,
+  // because it has seen `/night-hawk` and `/swings` in this repo's own prose and neither resolves.
+  // A dead link makes the whole answer look fabricated, including the parts that were right.
+  const drillDownBlock = formatDrillDownBlock(buildDrillDowns(effectiveEntities(conversation)));
+
   const platformVitalsBlock = await loadLargoPlatformSnapshotBlock().catch(() => "");
   if (platformVitalsBlock) toolsUsed.push("platform_vitals_prefetch");
 
   const system = buildDynamicSystem(
     question,
     history.slice(0, -1),
-    liveFeedBlock + knowledgeBlock + temporalBlock + capabilityBlock,
+    liveFeedBlock + knowledgeBlock + temporalBlock + capabilityBlock + entityBlock + conversationBlock + planBlock + drillDownBlock,
     platformVitalsBlock
   );
 
@@ -334,7 +416,21 @@ async function prepareLargoTurn(
   // and complete beats dynamic and partial on both capability and cost.
   const filteredTools = LARGO_TOOL_DEFS;
 
-  return { sid, history, system, filteredTools, toolsUsed, tickerHint: intent.tickerHint ?? null };
+  // Entitlement is resolved ONCE per turn, not per tool call — a 12-round loop would otherwise
+  // make up to 12 Clerk reads for an answer that cannot change mid-turn. Fails CLOSED to
+  // non-admin: if we cannot establish that someone is an admin, they are not treated as one.
+  const isAdmin = await isAdminUser(userId).catch(() => false);
+
+  return {
+    sid,
+    history,
+    system,
+    filteredTools,
+    toolsUsed,
+    tickerHint: intent.tickerHint ?? null,
+    viewer: { userId, isAdmin },
+    timeframe,
+  };
 }
 
 
@@ -387,13 +483,17 @@ export async function runLargoQuery(
 
   await prefetchLargoTurnCaches();
 
-  const { sid, history, system, filteredTools, toolsUsed, tickerHint } = await prepareLargoTurn(
+  const { sid, history, system, filteredTools, toolsUsed, tickerHint, viewer, timeframe } =
+    await prepareLargoTurn(
     question,
     sessionId,
     userId
   );
 
   const capturedResults: unknown[] = [];
+  // Per-tool timings/outcomes for the turn. Names, ms and byte counts only — never inputs or
+  // outputs, which carry tickers, user ids and the member's positions.
+  const diagnostics: ToolCallDiagnostic[] = [];
 
   try {
     const answer = await anthropicToolLoop({
@@ -407,12 +507,13 @@ export async function runLargoQuery(
       maxRetries: 1,
       cacheSystem: true,
       aiGate: "largo",
-      runTool: async (name, input) => {
-        toolsUsed.push(name);
-        const result = await runLargoTool(name, input, userId);
-        capturedResults.push(result);
-        return result;
-      },
+      runTool: makeGuardedToolRunner({
+        viewer,
+        execute: runLargoTool,
+        toolsUsed,
+        capturedResults,
+        diagnostics,
+      }),
     });
 
     let text =
@@ -428,6 +529,23 @@ export async function runLargoQuery(
     const verification = verifyClaims(stripLargoBlocks(text), ctxNumbers);
     text = applyVerificationCaveat(text, verification);
 
+    // POST-LOOP PLAN VALIDATION. The temporal block WARNS the model before the loop; this checks
+    // after, which is the difference between an instruction and a control. It catches the one
+    // failure with no other detector: a question about a past moment answered entirely from
+    // live-only sources. Every existing check passes on that answer — the number is real, it
+    // traces to this turn's tool results, grounding is 1.0 — and it is about the wrong moment.
+    // Caveat appended, answer never suppressed: the member decides whether it is still useful.
+    const planCheck = validatePlanExecution({ timeframe, toolsCalled: toolsUsed, catalogue: LARGO_CAPABILITIES });
+    if (!planCheck.ok) {
+      console.warn(`[largo] plan violation: ${planCheck.violations.map((v) => v.code).join(",")}`);
+      text = applyPlanCaveat(text, planCheck.violations);
+    }
+
+    // Per-tool timing summary. Turns "Largo is slow" into "get_postgres_flows took 9.2s of an 11s
+    // turn" — a question with an answer. Also surfaces DENIED and silently-EMPTY tool results,
+    // neither of which is visible in `toolsUsed` alone.
+    const diagLine = formatToolDiagnostics(diagnostics);
+    if (diagLine) console.info(diagLine);
     logClaudeTurn({ userId, question, toolsUsed, verification, startedAt });
     await persistClaudeTurn({ sessionId: sid, userId, question, answer: text, toolsUsed, capturedResults });
 
@@ -482,12 +600,16 @@ export async function runLargoQueryStream(
 
   await prefetchLargoTurnCaches({ onStatus: emitStatus });
 
-  const { sid, history, system, filteredTools, toolsUsed, tickerHint } = await prepareLargoTurn(
+  const { sid, history, system, filteredTools, toolsUsed, tickerHint, viewer, timeframe } =
+    await prepareLargoTurn(
     question,
     sessionId,
     userId
   );
   const capturedResults: unknown[] = [];
+  // Per-tool timings/outcomes for the turn. Names, ms and byte counts only — never inputs or
+  // outputs, which carry tickers, user ids and the member's positions.
+  const diagnostics: ToolCallDiagnostic[] = [];
 
   try {
     const emit = (event: LargoStreamEvent) => {
@@ -516,12 +638,13 @@ export async function runLargoQueryStream(
       onEvent: (event) => {
         if (event.type === "tool_start") emit(event);
       },
-      runTool: async (name, input) => {
-        toolsUsed.push(name);
-        const result = await runLargoTool(name, input, userId);
-        capturedResults.push(result);
-        return result;
-      },
+      runTool: makeGuardedToolRunner({
+        viewer,
+        execute: runLargoTool,
+        toolsUsed,
+        capturedResults,
+        diagnostics,
+      }),
     });
 
     let text =
@@ -540,6 +663,23 @@ export async function runLargoQueryStream(
     const verification = verifyClaims(stripLargoBlocks(text), ctxNumbers);
     text = applyVerificationCaveat(text, verification);
 
+    // POST-LOOP PLAN VALIDATION. The temporal block WARNS the model before the loop; this checks
+    // after, which is the difference between an instruction and a control. It catches the one
+    // failure with no other detector: a question about a past moment answered entirely from
+    // live-only sources. Every existing check passes on that answer — the number is real, it
+    // traces to this turn's tool results, grounding is 1.0 — and it is about the wrong moment.
+    // Caveat appended, answer never suppressed: the member decides whether it is still useful.
+    const planCheck = validatePlanExecution({ timeframe, toolsCalled: toolsUsed, catalogue: LARGO_CAPABILITIES });
+    if (!planCheck.ok) {
+      console.warn(`[largo] plan violation: ${planCheck.violations.map((v) => v.code).join(",")}`);
+      text = applyPlanCaveat(text, planCheck.violations);
+    }
+
+    // Per-tool timing summary. Turns "Largo is slow" into "get_postgres_flows took 9.2s of an 11s
+    // turn" — a question with an answer. Also surfaces DENIED and silently-EMPTY tool results,
+    // neither of which is visible in `toolsUsed` alone.
+    const diagLine = formatToolDiagnostics(diagnostics);
+    if (diagLine) console.info(diagLine);
     logClaudeTurn({ userId, question, toolsUsed, verification, startedAt });
     await persistClaudeTurn({ sessionId: sid, userId, question, answer: text, toolsUsed, capturedResults });
 

@@ -163,6 +163,9 @@ before(async () => {
       ensureLargoSession: async () => {},
       fetchLargoHistory: async () => [],
       fetchLargoMessagesPublic: async () => [],
+      // No previous turn in these fixtures — the first-turn case, where conversation state
+      // contributes nothing and no "since I last asked" window can be resolved.
+      fetchPreviousUserTurn: async () => null,
       sessionOwnedByUser: async () => true,
       appendLargoMessage: async (
         _sid: string,
