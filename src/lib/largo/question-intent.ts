@@ -15,6 +15,7 @@ import {
   SPX_DESK_RE,
   SPX_ENGINE_STATE_RE,
   THERMAL_READ_RE,
+  VECTOR_ANALYTICS_RE,
   VECTOR_READ_RE,
   VOL_RE,
   ZERODTE_COMMAND_RE,
@@ -59,6 +60,12 @@ export type LargoQuestionIntent = {
   needsPlatformRead: boolean;
   needsThermalRead: boolean;
   needsVectorRead: boolean;
+  /** Vector's CHART-DERIVED analytics ("point of control," "opening range," "BOS/CHoCH,"
+   *  "golden pocket," "floor pivots," "opex") — hints get_vector_analytics. Deliberately
+   *  SEPARATE from needsVectorRead above: these questions name the ANALYTIC, never the
+   *  product, so the Vector-vocabulary regex does not fire for any of them and the tool
+   *  would otherwise never be reached. */
+  needsVectorAnalytics: boolean;
   needsHelixRead: boolean;
   needsRecordRead: boolean;
   tickerHint: string | null;
@@ -163,6 +170,7 @@ export function analyzeLargoQuestion(
   const needsPlatformRead = matchesIntent(ctx, PLATFORM_READ_RE);
   const needsThermalRead = matchesIntent(ctx, THERMAL_READ_RE);
   const needsVectorRead = matchesIntent(ctx, VECTOR_READ_RE);
+  const needsVectorAnalytics = matchesIntent(ctx, VECTOR_ANALYTICS_RE);
   const needsHelixRead = matchesIntent(ctx, HELIX_READ_RE);
   const needsRecordRead = matchesIntent(ctx, RECORD_READ_RE);
 
@@ -185,6 +193,12 @@ export function analyzeLargoQuestion(
   }
   if (needsVectorRead) {
     toolHints.push("get_vector_full_state", "get_positioning");
+  }
+  if (needsVectorAnalytics) {
+    // Hinted on its OWN keywords, independent of needsVectorRead: these questions name the
+    // analytic ("point of control", "opening range"), not the product, so the Vector-vocabulary
+    // intent above does not fire for them.
+    toolHints.push("get_vector_analytics");
   }
   if (needsHelixRead) {
     toolHints.push("get_flow_tape", "get_flow_anomaly_near_misses", "get_global_flow");
@@ -307,6 +321,7 @@ export function analyzeLargoQuestion(
     needsPlatformRead,
     needsThermalRead,
     needsVectorRead,
+    needsVectorAnalytics,
     needsHelixRead,
     needsRecordRead,
     tickerHint,

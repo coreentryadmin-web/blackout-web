@@ -573,6 +573,18 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
   ),
 
   t(
+    "get_vector_analytics",
+    "Vector's CHART ANALYTICS — the nine panels the Vector desk computes from the drawn candles and the universe sweep rather than from the wall/GEX state, and which get_vector_full_state therefore structurally cannot answer. Use for 'where is the point of control / value area on NVDA', 'did SPX break structure', 'is this a BOS or a CHoCH', 'where is the golden pocket', 'what are today's floor pivots / opening range / HOD-LOD', 'when is the next OpEx', 'which names are nearest their gamma flip', 'how does NVDA compare to its peers'. Returns: volume_profile (POC, ~70% value-area high/low, heaviest buckets — computed on the 1m bars exactly as the chart does; total_volume 0 with empty_reason='no_volume_on_bars' means volume was unavailable, NOT a session with no trading); market_structure (fractal pivots labelled HH/LH/HL/LL and the BOS/CHoCH breaks between them — BOS is continuation, CHOCH is a character change, never conflate them; latest_event is the live one); fib_swing (the DOMINANT swing of the displayed window with 38.2/50/61.8/78.6 retracements and the 61.8-65% golden-pocket ZONE — null with fib_swing_empty_reason='no_swing_above_min_range' when nothing cleared the chart's 0.15%-of-price floor, which means no swing exists, not that none was sought); key_levels (HOD/LOD, opening range at the member's configured window, session fib, prior-day PDH/PDL/PDC and classic floor pivots P/R1-R3/S1-S3 — the prior-day and pivot groups are EMPTY with prior_session_ohlc null when only one session was seeded, because pivots off a partial prior day would be confidently wrong); opex (next monthly expiry, next QUARTERLY 'triple witching', and days_away — 0 means today); daily_regime (end-of-session gamma flip + primary walls per recorded session, SHORT-RANGE by design at ~15-day retention — always state the `coverage` window rather than implying long history); screener (the three curated desk presets nearest-flip / most-pinned / most-explosive over the universe snapshot, with updated_at — a scanner list is only as current as the sweep behind it); ticker_comparison (the active name vs its peers by regime, flip distance and wall strength); and coaching (SPX-ONLY live desk alerts; coaching_scope says 'not_applicable_non_spx' for every other ticker, and an empty alert list means the SPX session window was closed or nothing triggered, NOT all-clear). Read `unavailable_sections`: a named section could not be read, which is a different answer from a section that is genuinely empty. Complements, does not replace, get_vector_full_state (walls/flip/magnet/beads/play/technicals) and get_vector_pulse (what just CHANGED).",
+    {
+      ...T,
+      timeframe_min: { type: "integer", description: "Chart timeframe for structure/levels/auto-fib. Default 5." },
+      opening_range_minutes: { type: "integer", description: "Opening-range window. Default 15 (the product default)." },
+      regime_days: { type: "integer", description: "Sessions of dealer-regime history, 1-30. Default 15." },
+    },
+    ["ticker"]
+  ),
+
+  t(
     "get_hot_tickers",
     "Leaderboard of single-name tickers with the most options-flow premium over the last 6h (print count + total premium each). Index/ETF and leveraged-ETP names are excluded so SPY/QQQ don't just occupy every slot. Use for open-ended 'what's hot / what's moving / any unusual flow today' questions that don't name a specific ticker — for a question ABOUT one ticker, use get_ecosystem_context or get_flow_tape instead."
   ),
