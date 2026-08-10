@@ -315,6 +315,35 @@ export function LargoTerminal({
           </div>
         )}
 
+        {/* Dictation status — ABOVE the composer, in normal flow.
+            Reported symptom: "I click the mic and nothing happens." Three causes, all fixed here
+            and in useDictation:
+              1. The two MOST LIKELY error codes — `no-speech` and `aborted` — were swallowed
+                 entirely, so the commonest outcome of a click produced no message at all.
+              2. What did render was 10px text, absolutely positioned at `top: 100%` of the input
+                 wrapper, overlapping the page footer. (I first assumed it was painted off-screen;
+                 the browser test disproved that — it is in the viewport, just easy to miss.)
+              3. The only "listening" cue was the button's own colour, so an error arriving within
+                 milliseconds produced an imperceptible flash — indistinguishable from a dead
+                 control.
+            A status row in normal flow, with an explicit Listening line, fixes all three. */}
+        {(dictation.listening || dictation.error) && (
+          <div
+            role="status"
+            aria-live="assertive"
+            className={clsx("largo-mic-status", dictation.error && "largo-mic-status-error")}
+          >
+            {dictation.listening ? (
+              <>
+                <span className="largo-mic-status-dot" aria-hidden />
+                Listening — speak now, then tap the mic to stop.
+              </>
+            ) : (
+              dictation.error
+            )}
+          </div>
+        )}
+
         {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions --
             drag-and-drop is inherently pointer-only; the keyboard-accessible equivalent is the
             attach button below, so no path is lost by the drop handlers living on the form. */}
@@ -363,11 +392,6 @@ export function LargoTerminal({
                 <span className="largo-input-placeholder-marquee">{INPUT_PLACEHOLDER_BUSY}</span>
               </span>
             )}
-            {dictation.error && (
-              <span role="status" className="largo-mic-error">
-                {dictation.error}
-              </span>
-            )}
           </div>
           {/* Explicit attach control. Paste and drag both work, but neither is discoverable, and a
               feature nobody finds is a feature that does not exist. */}
@@ -412,7 +436,7 @@ export function LargoTerminal({
                   return;
                 }
                 dictationBaseRef.current = input;
-                dictation.start();
+                void dictation.start();
               }}
               aria-label={dictation.listening ? "Stop dictation" : "Ask by voice"}
               aria-pressed={dictation.listening}

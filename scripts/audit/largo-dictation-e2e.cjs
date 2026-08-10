@@ -53,10 +53,24 @@ const CASES = [
  */
 const FAKE_RECOGNITION = `
 window.__dictate = null;
+window.__forceError = null;
+// The hook pre-flights the microphone with getUserMedia before starting recognition. There is no
+// audio device here, so it is stubbed to resolve with a no-op track — the preflight is testing the
+// PERMISSION answer, and in a real browser that answer comes from the user.
+if (!navigator.mediaDevices) Object.defineProperty(navigator, "mediaDevices", { value: {}, configurable: true });
+navigator.mediaDevices.getUserMedia = async () => ({ getTracks: () => [{ stop() {} }] });
 class ScriptedRecognition {
   constructor() { this.lang = ""; this.continuous = false; this.interimResults = false;
     this.onresult = null; this.onerror = null; this.onend = null; }
   start() {
+    if (window.__forceError) {
+      const code = window.__forceError;
+      setTimeout(() => {
+        this.onerror && this.onerror({ error: code });
+        this.onend && this.onend();
+      }, 10);
+      return;
+    }
     window.__dictate = (phrase) => {
       const words = phrase.split(" ");
       // Interim results: the whole transcript so far, re-sent as it grows — exactly what Chrome does.
@@ -119,6 +133,47 @@ async function main() {
       const got = await input.inputValue();
       results.push({ name: `"${c.say}"`, pass: got === c.want, detail: got === c.want ? "" : `got "${got}" want "${c.want}"` });
     }
+
+    // VISIBLE LISTENING STATE. The reported bug was "I click the mic and nothing happens" — the
+    // status text existed but was absolutely positioned below the last element on the page, so no
+    // message it produced could ever be read. Assert it is genuinely on screen.
+    await input.fill("");
+    await mic.click();
+    await page.waitForTimeout(250);
+    const status = page.locator('[role="status"]', { hasText: /Listening/i }).first();
+    const listeningVisible = await status.isVisible().catch(() => false);
+    results.push({ name: "clicking the mic shows a visible Listening state", pass: listeningVisible });
+    await page.evaluate(() => window.__dictate && window.__dictate("test"));
+    await page.waitForTimeout(200);
+
+    // ERROR VISIBILITY. Drive a real SpeechRecognition error and assert the member can read it.
+    await page.evaluate(() => {
+      window.__forceError = "not-allowed";
+    });
+    await input.fill("");
+    await mic.click();
+    await page.waitForTimeout(400);
+    // isVisible() is NOT enough here and that matters: it checks for a non-empty box, not for
+    // being ON SCREEN. The original bug was an absolutely-positioned message painted below the
+    // last element on the page — isVisible() returns true for it, and the test would pass while
+    // the member sees nothing. So assert it actually intersects the viewport.
+    const errOnScreen = await page
+      .locator('[role="status"]', { hasText: /Microphone blocked|Voice input isn't supported/i })
+      .first()
+      .boundingBox()
+      .then(async (box) => {
+        if (!box) return false;
+        const vh = page.viewportSize()?.height ?? 0;
+        return box.y >= 0 && box.y + box.height <= vh;
+      })
+      .catch(() => false);
+    results.push({
+      name: "a mic error is rendered ON SCREEN, not just in the DOM",
+      pass: errOnScreen,
+    });
+    await page.evaluate(() => {
+      window.__forceError = null;
+    });
 
     // Dictation must CONTINUE a half-typed question, not overwrite it — the base-snapshot rule.
     await input.fill("compare");
