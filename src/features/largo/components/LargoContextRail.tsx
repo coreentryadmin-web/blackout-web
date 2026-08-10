@@ -1,7 +1,16 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import useSWR from "swr";
 import { clsx } from "clsx";
+import {
+  buildLevelLadder,
+  formatDistance,
+  movedLevels,
+  readAgeSeconds,
+  RAIL_STALE_AFTER_SEC,
+  type RailLadderRow,
+} from "../lib/rail-levels";
 
 /**
  * CONTEXTUAL RAIL — the live object for the instrument the conversation is about.
@@ -20,10 +29,20 @@ import { clsx } from "clsx";
  * A DASH IS NOT A ZERO. Every field renders `—` when the read returned null. "We could not see the
  * call wall" and "the call wall is 0" are different claims, and only one of them is ever true; a
  * rail that shows 0 for a failed read invents a level that does not exist.
+ *
+ * LEVELS RENDER AS A LADDER, not a label/price list. See `rail-levels.ts` for the live SPX case
+ * that forced it: the put wall legitimately sat ABOVE spot, and a bare "PUT WALL 8000" reads as
+ * support at a level 3.2% the wrong way. Sorting by price with spot marked says the geometry
+ * without changing a single number.
+ *
+ * A SILENT REFRESH DESTROYS THE SIGNAL IT DELIVERS. A wall migrating is desk information — the
+ * member looks away at 7800 and back at 7850 with nothing to say it moved. Changed levels are
+ * marked, and the age of the read is shown once it is old enough to distrust.
  */
 
 type RailData = {
   ticker: string;
+  as_of?: string | null;
   spot: number | null;
   regime: string | null;
   call_wall: number | null;
@@ -70,6 +89,21 @@ function Row({ label, value, tone }: { label: string; value: string; tone?: "bul
   );
 }
 
+/** One rung of the level ladder: price, what it is, and how far from here. */
+function LadderRow({ row, moved }: { row: RailLadderRow; moved: boolean }) {
+  return (
+    <div
+      className={clsx("largo-rail-rung", row.isSpot && "largo-rail-rung-spot", moved && "largo-rail-rung-moved")}
+    >
+      <span className="largo-rail-rung-price">
+        {row.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+      </span>
+      <span className="largo-rail-rung-label">{row.label}</span>
+      <span className="largo-rail-rung-dist">{row.isSpot ? "" : formatDistance(row.distancePct)}</span>
+    </div>
+  );
+}
+
 export function LargoContextRail({ ticker }: { ticker: string | null }) {
   const { data } = useSWR<RailData | null>(
     ticker ? `/api/market/largo/context?ticker=${encodeURIComponent(ticker)}` : null,
@@ -79,10 +113,36 @@ export function LargoContextRail({ ticker }: { ticker: string | null }) {
     { refreshInterval: 60_000, revalidateOnFocus: true, keepPreviousData: true }
   );
 
+  // A ticking clock rather than the render time, so "read age" keeps counting up when the fetch
+  // itself has stopped landing — a frozen age would read as a fresh number forever.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 15_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const ladder = buildLevelLadder(data?.spot ?? null, [
+    { label: "CALL WALL", price: data?.call_wall ?? null, kind: "call-wall" },
+    { label: "PUT WALL", price: data?.put_wall ?? null, kind: "put-wall" },
+    { label: "GAMMA FLIP", price: data?.gamma_flip ?? null, kind: "gamma-flip" },
+    { label: "MAX PAIN", price: data?.max_pain ?? null, kind: "max-pain" },
+  ]);
+
+  // Previous ladder, kept per-ticker so switching instruments cannot report the old symbol's walls
+  // as the new one's movement.
+  const prev = useRef<{ ticker: string; ladder: RailLadderRow[] } | null>(null);
+  const moved =
+    prev.current && prev.current.ticker === data?.ticker ? movedLevels(prev.current.ladder, ladder) : new Set<string>();
+  useEffect(() => {
+    if (data?.ticker && ladder.length) prev.current = { ticker: data.ticker, ladder };
+  });
+
   if (!ticker || !data) return null;
 
   const bias = String(data.play?.bias ?? data.regime ?? "").toLowerCase();
   const tone = /bull/.test(bias) ? "bull" : /bear/.test(bias) ? "bear" : undefined;
+  const ageSec = readAgeSeconds(data.as_of, now);
+  const stale = ageSec != null && ageSec > RAIL_STALE_AFTER_SEC;
 
   return (
     <aside className="largo-rail" aria-label={`Live context for ${data.ticker}`}>
@@ -91,12 +151,13 @@ export function LargoContextRail({ ticker }: { ticker: string | null }) {
       <div className="largo-rail-spot">{price(data.spot)}</div>
       {data.regime && <div className={clsx("largo-rail-regime", tone && `largo-rail-${tone}`)}>{data.regime}</div>}
 
-      <div className="largo-rail-group">
-        <Row label="Call wall" value={price(data.call_wall)} />
-        <Row label="Put wall" value={price(data.put_wall)} />
-        <Row label="Gamma flip" value={price(data.gamma_flip)} />
-        <Row label="Max pain" value={price(data.max_pain)} />
-      </div>
+      {ladder.length > 1 && (
+        <div className="largo-rail-group largo-rail-ladder">
+          {ladder.map((r) => (
+            <LadderRow key={`${r.label}-${r.price}`} row={r} moved={moved.has(r.label)} />
+          ))}
+        </div>
+      )}
 
       <div className="largo-rail-group">
         <Row
@@ -130,6 +191,10 @@ export function LargoContextRail({ ticker }: { ticker: string | null }) {
           {!data.available.flow && "Flow unavailable"}
         </div>
       )}
+
+      {/* Only shown once the read is old enough to distrust. A permanent "3s ago" trains the eye to
+          stop reading it, which is exactly when it needs to be read. */}
+      {stale && <div className="largo-rail-degraded">Last read {Math.round(ageSec! / 60)}m ago</div>}
     </aside>
   );
 }
