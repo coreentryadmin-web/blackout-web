@@ -82,13 +82,6 @@ export type BieSection = {
   evidence?: BieEvidence[];
   confidence?: BieConfidence;
   levels?: BieLevel[];
-  /**
-   * Strike-level GEX changes since the previous snapshot, lifted STRUCTURALLY off the turn's
-   * `get_gex_matrix_changes` tool result rather than parsed back out of the prose Largo flattened
-   * it into. Absent when the tool was not called — "no shifts" and "we did not look" are different
-   * claims and only the first should render a table.
-   */
-  gexShifts?: { strike: number; change: number; direction: "stronger" | "weaker" | "flipped" }[];
   /** Structured table — rendered as markdown when body omits it. */
   table?: BieTable | null;
   /** Set when this section could not be answered — honest, never silently dropped. */
@@ -126,6 +119,16 @@ export type BieAnswerEnvelope = {
    * claims and only the first should render a table.
    */
   gexShifts?: { strike: number; change: number; direction: "stronger" | "weaker" | "flipped" }[];
+  /**
+   * What each product independently thinks about this instrument, plus the cross-system agreement
+   * tally. Built from the tool results the turn ALREADY fetched (no extra upstream calls), so the
+   * strip and the answer describe the same instant rather than two. Absent when fewer than two
+   * systems were consulted — one row is not a consensus.
+   */
+  systemReads?: {
+    reads: { system: string; kind: "directional" | "regime"; stance: string; strength: number | null; basis: string; reason?: string }[];
+    agreement: { voting: number; bullish: number; bearish: number; neutral: number; verdict: string; direction: string | null };
+  };
   followups?: string[];
   /** Sources requested but unavailable this turn — always surfaced. */
   unavailableSources?: BieUnavailableSource[];

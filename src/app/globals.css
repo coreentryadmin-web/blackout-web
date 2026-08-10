@@ -18434,6 +18434,17 @@ body::before {
   .largo-status-pill-warn {
     color: #fbbf24;
   }
+  /* LIVE breathes; DEGRADED holds steady. A pulsing green reads as a heartbeat, a steady amber
+     reads as a state you must look at — which is the difference being communicated. Slow and
+     shallow on purpose: a hard blink on a desk screen is an irritant, not a signal. */
+  .largo-status-pill-live {
+    color: #34d399;
+    animation: largo-status-breathe 2.4s ease-in-out infinite;
+  }
+  @keyframes largo-status-breathe {
+    0%, 100% { opacity: 1; text-shadow: 0 0 6px rgba(52, 211, 153, 0.45); }
+    50% { opacity: 0.62; text-shadow: 0 0 2px rgba(52, 211, 153, 0.2); }
+  }
   .largo-status-dot {
     width: 0.45rem;
     height: 0.45rem;
@@ -18478,6 +18489,11 @@ body::before {
   .largo-status-down {
     color: #f87171;
   }
+  /* Unknown is NOT green. An unreadable age rendering as fresh is the exact failure this strip
+     exists to prevent, so it stays muted rather than borrowing a health colour. */
+  .largo-status-unknown {
+    color: rgba(148, 163, 184, 0.75);
+  }
   .largo-status-counts {
     display: inline-flex;
     align-items: center;
@@ -18489,7 +18505,8 @@ body::before {
     font-weight: 600;
   }
   @media (prefers-reduced-motion: reduce) {
-    .largo-status-dot {
+    .largo-status-dot,
+    .largo-status-pill-live {
       animation: none;
     }
   }
