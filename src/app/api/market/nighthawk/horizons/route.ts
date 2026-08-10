@@ -8,7 +8,12 @@ import { requireDatabaseInProduction, fetchOpenSwingPositions, fetchLatestSwingS
 import { authorizeCronOrTierApi } from "@/lib/market-api-auth";
 import { getZeroDteBoardPayload } from "@/lib/platform/zerodte-service";
 import { scopeBoardToHorizon, assembleHorizonBoard, makePlaySet } from "@/lib/horizon-board";
-import { horizonForView, parseNightHawkView } from "@/features/nighthawk/lib/nighthawk-view";
+import {
+  horizonForView,
+  isKnownNightHawkView,
+  KNOWN_NIGHTHAWK_VIEW_TOKENS,
+  parseNightHawkView,
+} from "@/features/nighthawk/lib/nighthawk-view";
 import { horizonBoardFromZeroDtePayload } from "@/lib/zerodte/horizon-board-from-payload";
 import { getSwingServingLane, discoverSwingFromPersisted, readSwingServingSnapshot } from "@/lib/swing/serving-lane";
 import { requireToolApi } from "@/lib/tool-access-server";
@@ -37,6 +42,17 @@ export async function GET(req: NextRequest) {
     // whole desk shows the selected horizon. Absent → the full board (all lanes). LEGACY has no horizon
     // lane here (it's served by the separate evening-edition route), so it scopes to an all-empty board.
     const viewParam = req.nextUrl.searchParams.get("view") ?? req.nextUrl.searchParams.get("horizon");
+    // Reject an unrecognised view instead of silently serving the default lane. parseNightHawkView
+    // falls back for the UI's benefit (a stale shared link should still render), but on an API that
+    // fallback made `?view=outcomes` and `?view=totally-invalid-view` return the 0DTE lane with a
+    // 200 — measured live 2026-08-10, both 1,053 bytes against 34,352 for `?view=swings`. A caller
+    // could not tell "you asked for something that does not exist" from "that lane is empty".
+    if (viewParam != null && viewParam !== "" && !isKnownNightHawkView(viewParam)) {
+      return NextResponse.json(
+        { error: "Invalid view", allowed: [...KNOWN_NIGHTHAWK_VIEW_TOKENS].map((v) => v.toLowerCase()) },
+        { status: 400, headers: NO_STORE_HEADERS }
+      );
+    }
     const horizon = viewParam ? horizonForView(parseNightHawkView(viewParam)) : null;
 
     // Scoped Swing/LEAPS views never need the live 0DTE board rebuild — skip the heavy payload

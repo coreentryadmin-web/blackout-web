@@ -101,6 +101,39 @@ export function parseNightHawkView(raw: unknown): NightHawkView {
   }
 }
 
+/**
+ * Is `raw` a view name this app actually understands?
+ *
+ * `parseNightHawkView` deliberately falls back to the default for anything it does not recognise,
+ * which is right for the UI — a shared link with a stale view should still render a board rather
+ * than a blank error page. It is WRONG for an API, and measured live on 2026-08-10:
+ * `GET /api/market/nighthawk/horizons?view=outcomes`, `?view=totally-invalid-view` and
+ * `?view=zerodte` all returned HTTP 200 with the SAME 1,053-byte payload — the 0DTE lane — while
+ * `?view=swings` returned 34,352 bytes. A caller that asked for one thing silently received a
+ * different lane, indistinguishable from that lane legitimately being empty.
+ *
+ * That is the specific failure Largo cannot defend against. Largo reaches routes through
+ * `call_internal_api`; if it invents a plausible view name it receives the wrong lane with a 200,
+ * and will then report it fluently, with every number traceable to the response it was handed —
+ * grounded, contract-conforming and wrong. A 400 is recoverable; a confident wrong lane is not.
+ *
+ * Callers that WANT the forgiving behaviour keep calling `parseNightHawkView` directly.
+ */
+export function isKnownNightHawkView(raw: unknown): boolean {
+  if (raw == null) return false;
+  const s = String(raw).trim().toUpperCase().replace(/[\s-]+/g, "_");
+  return KNOWN_NIGHTHAWK_VIEW_TOKENS.has(s);
+}
+
+/** Every accepted spelling, including aliases. Single source of truth for both the parser's
+ *  switch and the validator above, so an alias can never be added to one and missed by the other. */
+export const KNOWN_NIGHTHAWK_VIEW_TOKENS = new Set([
+  "ZERO_DTE", "0DTE", "ZERODTE",
+  "SWING", "SWINGS",
+  "BANGER", "BANGERS", "WEEKLY",
+  "LEGACY", "PLAYBOOK", "TONIGHT",
+]);
+
 /** The horizon lane a view renders, or null for the legacy playbook. */
 export function horizonForView(view: NightHawkView): Horizon | null {
   return NIGHTHAWK_VIEW_META[view].horizon;
