@@ -102,6 +102,13 @@ export async function GET(req: NextRequest) {
       flow_excluded: flowSummary.exclusions,
       /** True when the raw and validated nets point opposite ways — worth saying out loud. */
       flow_sign_inverted: flowSummary.signInverted,
+      /**
+       * Concentration of the flow number. Measured live on SPX 2026-08-10: a single 7000-strike
+       * call was 24% of |net|. "Market-wide flow is bullish" and "one desk bought one contract"
+       * are different claims and a bare net premium cannot tell them apart.
+       */
+      flow_concentrated: flowSummary.concentrated,
+      flow_top_print_share: flowSummary.topPrintShareOfGross,
       // Vector's own derived play, not a re-scored one — the rail cites, it does not compute.
       play: vector?.play
         ? {
