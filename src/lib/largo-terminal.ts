@@ -19,6 +19,7 @@ import {
   persistClaudeTurn,
 } from "@/lib/largo/turn-outcome";
 import type { BieAnswerEnvelope } from "@/lib/bie/answer-envelope";
+import { parseAnswerEnvelope, validateAnswerContract } from "@/lib/largo/answer-contract";
 import { collectContextNumbers, verifyClaims, type ClaimVerification } from "@/lib/bie/verifier";
 import { resetLargoSpxDeskCache } from "@/lib/largo/spx-desk-cache";
 import {
@@ -68,9 +69,12 @@ export type LargoStreamEvent =
       // which numeric claims traced to this turn's source data, independent of the in-text
       // caveat's own display threshold.
       verification: ClaimVerification;
-      // The structured BieAnswerEnvelope (task #59/#63/#64) — present ONLY when the composer produced
-      // a genuinely RICH envelope (verdict/synthesis). The client renders it as evidence/level/
-      // scenario cards; a trivial string leg omits it and the client falls back to `answer` markdown.
+      // The structured answer envelope. Since the BIE composer was removed this is produced by
+      // PARSING Largo's own contract-conforming reply (answer-contract.ts) rather than by a
+      // composer — so it is present on any answer that follows the mandatory section template, and
+      // absent when the model drifted off it. The client renders it as evidence/level/scenario
+      // cards; when absent it falls back to the raw `answer` markdown, which is what every Largo
+      // answer rendered as before this shipped.
       envelope?: BieAnswerEnvelope;
     }
   | { type: "error"; message: string };
@@ -289,6 +293,35 @@ async function prepareLargoTurn(
   return { sid, history, system, filteredTools, toolsUsed, tickerHint: intent.tickerHint ?? null };
 }
 
+
+/**
+ * Recover the structured answer envelope from a contract-conforming reply, and report drift.
+ *
+ * Largo writes PROSE to a fixed set of headings so the answer can still STREAM token-by-token;
+ * this turns that prose into the envelope the terminal renders as evidence / confidence / conflict
+ * / freshness cards. See answer-contract.ts for why the structure is parsed out rather than
+ * demanded as a tool-call.
+ *
+ * Contract misses are LOGGED, never enforced. A hard gate here would mean a member watches a
+ * 60-second tool loop and then gets nothing because the model wrote "Summary" instead of
+ * "Verdict" — strictly worse than a good answer in an unusual shape. The log line is what makes
+ * drift measurable, so the contract can be tightened from evidence instead of guesswork.
+ */
+function envelopeFromContract(text: string, question: string): BieAnswerEnvelope | undefined {
+  const report = validateAnswerContract(text);
+  if (!report.conforms) {
+    console.warn(
+      "[largo] answer-contract miss — missing:",
+      report.missing.join(",") || "(none)",
+      "present:",
+      report.present.join(",") || "(none)",
+      "q:",
+      question.slice(0, 80)
+    );
+  }
+  return parseAnswerEnvelope(text) ?? undefined;
+}
+
 export async function runLargoQuery(
   question: string,
   sessionId: string,
@@ -358,6 +391,7 @@ export async function runLargoQuery(
       tools_used: Array.from(new Set(toolsUsed)),
       followups,
       verification,
+      envelope: envelopeFromContract(text, question),
     };
   } catch (error) {
     logClaudeTurn({
@@ -466,6 +500,7 @@ export async function runLargoQueryStream(
       tools_used: Array.from(new Set(toolsUsed)),
       followups,
       verification,
+      envelope: envelopeFromContract(text, question),
     });
   } catch (error) {
     if (isSseClientDisconnect(error)) return;
