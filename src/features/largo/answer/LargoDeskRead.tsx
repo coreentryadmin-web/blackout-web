@@ -4,6 +4,15 @@ import { clsx } from "clsx";
 import type { BieAnswerEnvelope, BieFreshness } from "@/lib/bie/answer-envelope";
 import { renderInlineMarkdown } from "@/features/largo/components/inline-markdown";
 import { proseSections, summariseEvidence, hasExpandableEvidence } from "./section-policy";
+import {
+  deriveMarketState,
+  deriveActionState,
+  marketStateToBias,
+  MARKET_STATE_LABEL,
+  ACTION_STATE_LABEL,
+} from "@/lib/largo/core/market-state";
+import { formatDistance } from "@/features/largo/lib/rail-levels";
+import { ladderFromLevels } from "./level-ladder";
 
 /**
  * LARGO DESK READ — the structured answer surface.
@@ -68,6 +77,13 @@ export function LargoDeskRead({ envelope }: { envelope: BieAnswerEnvelope }) {
   const sections = proseSections(envelope.sections);
   const evidence = envelope.evidence ?? [];
   const evidenceSummary = summariseEvidence(evidence);
+
+  // Derived from the HEADLINE, matching the follow-up chips exactly. Reading the whole body would
+  // catch a long answer naturally naming both directions and report MIXED on one that resolved.
+  const state = deriveMarketState(envelope.headline ?? "");
+  const action = deriveActionState(envelope.headline ?? "");
+
+  const ladder = ladderFromLevels(levels);
   // Freshness per distinct source. Deduped because six evidence rows from HELIX should read as one
   // source chip, not six — the member is asking "how fresh is HELIX", not "how many rows".
   const sources = new Map<string, BieFreshness>();
@@ -91,28 +107,47 @@ export function LargoDeskRead({ envelope }: { envelope: BieAnswerEnvelope }) {
         <span className="largo-read-asof">{formatEt(envelope.asOf)}</span>
       </div>
 
-      <div className="largo-read-verdict">
-        <span className={clsx("largo-read-bias", biasClass(envelope.bias))}>
-          {envelope.headline || String(envelope.bias ?? "").toUpperCase() || "READ"}
+      {/* STATE HEADER — regime, then action, then confidence. DIRECTION AND ACTION ARE DIFFERENT
+          VARIABLES and get different lines: "clearly bullish" and "take a long" are not the same
+          claim, and a single collapsed badge has to either overstate the direction or understate
+          it. The state is derived from the headline by the same ladder the chips use, so the
+          badge, the follow-ups and the prose cannot disagree. */}
+      <div className="largo-read-state">
+        <span className={clsx("largo-read-bias", biasClass(marketStateToBias(state)))}>
+          {MARKET_STATE_LABEL[state]}
         </span>
+        {/* Only rendered when the answer actually said one. No action language means no action
+            line — a default "WAIT" would put a recommendation in Largo's mouth. */}
+        {action !== "unknown" && <span className="largo-read-action">{ACTION_STATE_LABEL[action]}</span>}
         {envelope.confidence?.level && (
           <span className="largo-read-conf">{envelope.confidence.level} confidence</span>
         )}
-        {/* The WHY is shown, not just the level. A confidence number with no reason is a number
-            nobody can argue with, which is the opposite of useful. */}
-        {envelope.confidence?.why && (
-          <span className="largo-read-conf-why">{envelope.confidence.why}</span>
-        )}
       </div>
 
-      {levels.length > 0 && (
-        <div className="largo-read-levels">
-          {levels.slice(0, 8).map((l, i) => (
-            <div key={`${l.label}-${i}`} className="largo-read-level">
-              <span className="largo-read-level-label">{l.label}</span>
-              <span className="largo-read-level-price">
-                {typeof l.price === "number" ? l.price.toLocaleString() : "—"}
+      {envelope.headline && <div className="largo-read-headline">{envelope.headline}</div>}
+
+      {/* The WHY is shown, not just the level. A confidence number with no reason is a number
+          nobody can argue with, which is the opposite of useful. */}
+      {envelope.confidence?.why && <div className="largo-read-conf-why">{envelope.confidence.why}</div>}
+
+      {/* DECISION LEVELS — the same price-ordered ladder the context rail uses, for the same
+          reason: a label/price list carries no geometry, so nothing tells the member whether a
+          level sits above or below them. Ordering by price with spot marked says it without
+          changing a number. Shared with the rail so the two can never disagree about where the
+          member is standing. */}
+      {ladder.length > 1 && (
+        <div className="largo-read-ladder">
+          <div className="largo-read-ladder-title">Decision levels</div>
+          {ladder.map((r) => (
+            <div
+              key={`${r.label}-${r.price}`}
+              className={clsx("largo-read-rung", r.isSpot && "largo-read-rung-spot")}
+            >
+              <span className="largo-read-rung-price">
+                {r.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}
               </span>
+              <span className="largo-read-rung-label">{r.label}</span>
+              <span className="largo-read-rung-dist">{r.isSpot ? "" : formatDistance(r.distancePct)}</span>
             </div>
           ))}
         </div>
