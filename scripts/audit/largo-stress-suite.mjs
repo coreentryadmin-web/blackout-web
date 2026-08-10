@@ -31,12 +31,14 @@
  *
  * Usage:
  *   node --import tsx scripts/audit/largo-stress-suite.mjs [--json] [--only=<id,id>] [--limit=N]
+ *   node --import tsx scripts/audit/largo-stress-suite.mjs --corpus --sample=40 --seed=7
  *   env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY node --import tsx scripts/audit/largo-stress-suite.mjs
  *
  * Exits non-zero when any REQUIRED axis fails, so it can gate a release.
  */
 
 import { mintClerkPremiumSession } from "./lib/prod-clerk-session.mjs";
+import { buildEvalCorpus, sampleCorpus, describeCorpus } from "./lib/largo-eval-corpus.mjs";
 import { validateAnswerContract } from "../../src/lib/largo/answer-contract.ts";
 import { collectContextNumbers, verifyClaims } from "../../src/lib/bie/verifier.ts";
 
@@ -46,6 +48,14 @@ const args = process.argv.slice(2);
 const JSON_OUT = args.includes("--json");
 const ONLY = (args.find((a) => a.startsWith("--only=")) || "").split("=")[1]?.split(",").filter(Boolean);
 const LIMIT = Number((args.find((a) => a.startsWith("--limit=")) || "").split("=")[1] || 0);
+// COVERAGE mode. The hand-written BANK is the ACCURACY suite — 19 questions carrying live
+// ground-truth numbers and tolerances. --corpus swaps in the generated cross product (templates ×
+// instruments × timeframes, ~305 questions), which reaches phrasings nobody chose. Generated items
+// cannot carry a ground-truth number, so they assert STRUCTURE instead; the two suites measure
+// different things and neither replaces the other.
+const CORPUS = args.includes("--corpus");
+const SAMPLE = Number((args.find((a) => a.startsWith("--sample=")) || "").split("=")[1] || 0);
+const SEED = Number((args.find((a) => a.startsWith("--seed=")) || "").split("=")[1] || 1);
 
 /** Polygon base, same primary/fallback policy every other audit script uses. */
 const POLY_BASE = (() => {
@@ -405,6 +415,18 @@ function scoreAnswer(item, res) {
     failures.push("asserted an unhedged future certainty");
   }
 
+  // Generated corpus: a question with no honest answer must be DECLINED. Answering it fluently is
+  // invisible from the inside — confident prose, correct format — so this is the assertion that
+  // finds real bugs in the coverage suite.
+  if (exp.shouldDecline && !insufficient) {
+    failures.push(`answered a ${exp.declineKind} question that has no honest answer`);
+  }
+  // ...and the inverse: declining everything would otherwise be a way to pass the decline tier
+  // AND dodge every other assertion at once.
+  if (exp.feedAnswerable && exp.mustMentionAny && insufficient && !exp.temporal) {
+    notes.push("declined an answerable question");
+  }
+
   if (exp.mustBeHonestlyEmpty && !insufficient) {
     failures.push("did not admit the instrument has no data");
   }
@@ -481,6 +503,21 @@ async function askLargo(cookieHeader, question, sessionId) {
 
 async function main() {
   let bank = BANK;
+  if (CORPUS) {
+    const full = buildEvalCorpus();
+    // Seeded + stratified: a failure has to be reproducible ("sample 40 seed 7"), and a small
+    // sample must never drop the must-decline tier — the smallest one and the one that finds the
+    // most bugs.
+    bank = SAMPLE > 0 ? sampleCorpus(full, SAMPLE, SEED) : full;
+    const d = describeCorpus(bank);
+    if (!JSON_OUT) {
+      console.log(
+        `CORPUS mode — ${d.total} of ${full.length} questions (seed ${SEED}): ` +
+          `${d.answerable} answerable, ${d.mustDecline} must-decline, ${d.temporal} temporal. ` +
+          `Structural assertions only — this is the COVERAGE suite, not the accuracy one.`
+      );
+    }
+  }
   if (ONLY?.length) bank = bank.filter((b) => ONLY.includes(b.id));
   if (LIMIT > 0) bank = bank.slice(0, LIMIT);
 
