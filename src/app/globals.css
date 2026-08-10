@@ -18659,6 +18659,72 @@ body::before {
     letter-spacing: 0.1em;
     text-transform: uppercase;
   }
+  /* EVIDENCE DISCLOSURE — the audit trail, closed until asked for. */
+  .largo-read-evidence {
+    margin-top: 0.6rem;
+    border-top: 1px solid rgba(148, 163, 184, 0.12);
+    padding-top: 0.45rem;
+  }
+  .largo-read-evidence-summary {
+    cursor: pointer;
+    list-style: none;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--largo-muted);
+  }
+  .largo-read-evidence-summary::-webkit-details-marker { display: none; }
+  /* The disclosure triangle is drawn rather than inherited so it rotates with the open state in
+     every browser — Safari does not restyle the native marker. */
+  .largo-read-evidence-summary::before {
+    content: "▸";
+    display: inline-block;
+    margin-right: 0.35rem;
+    transition: transform 120ms ease;
+  }
+  .largo-read-evidence[open] > .largo-read-evidence-summary::before { transform: rotate(90deg); }
+  .largo-read-evidence-summary:hover { color: var(--largo-primary); }
+  .largo-read-evidence-body {
+    margin-top: 0.4rem;
+    display: grid;
+    gap: 0.25rem;
+  }
+  .largo-read-ev {
+    display: grid;
+    grid-template-columns: 4.2rem 1fr auto;
+    gap: 0.45rem;
+    align-items: baseline;
+    font-size: 11px;
+    line-height: 1.45;
+  }
+  /* The honesty taxonomy as a colour-coded chip rather than a "[fact]" prefix in the prose. */
+  .largo-read-ev-kind {
+    font-size: 8.5px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    text-align: right;
+    color: var(--largo-muted-faint);
+  }
+  .largo-read-ev-fact,
+  .largo-read-ev-calc { color: var(--largo-info); }
+  /* Inference and scenario are Largo's own reasoning, so they carry the synthesis purple — the
+     same provenance signal the card header uses. A measurement and a deduction must never look
+     identical in an audit trail. */
+  .largo-read-ev-inference,
+  .largo-read-ev-scenario { color: var(--largo-ai); }
+  .largo-read-ev-text { color: var(--largo-primary); }
+  .largo-read-ev-src {
+    font-size: 9px;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+  }
+  @media (max-width: 640px) {
+    /* Three columns cannot hold a sentence on a phone; the chip and source move above the text. */
+    .largo-read-ev {
+      grid-template-columns: auto 1fr;
+    }
+    .largo-read-ev-src { grid-column: 2; }
+  }
   .largo-read-src { color: var(--largo-muted-faint); }
   .largo-read-src-live { color: var(--largo-bull); }
   .largo-read-src-recent { color: var(--largo-info); }
