@@ -112,6 +112,8 @@ export type LargoStreamEvent =
       // which numeric claims traced to this turn's source data, independent of the in-text
       // caveat's own display threshold.
       verification: ClaimVerification;
+      /** The instrument Largo resolved — see runLargoQuery's return type. */
+      ticker?: string | null;
       // The structured answer envelope. Since the BIE composer was removed this is produced by
       // PARSING Largo's own contract-conforming reply (answer-contract.ts) rather than by a
       // composer — so it is present on any answer that follows the mandatory section template, and
@@ -513,6 +515,8 @@ export async function runLargoQuery(
   tools_used: string[];
   followups: string[];
   verification: ClaimVerification;
+  /** The instrument Largo resolved for this turn — the contextual rail's single source. */
+  ticker: string | null;
   envelope?: BieAnswerEnvelope;
 }> {
   const startedAt = Date.now();
@@ -632,6 +636,10 @@ export async function runLargoQuery(
       tools_used: Array.from(new Set(toolsUsed)),
       followups,
       verification,
+      // The instrument LARGO resolved, handed to the client so the contextual rail shows the same
+      // thing the answer is about. A client re-guessing from the question text could show NVDA
+      // beside an answer about SPX, and nothing would surface the disagreement.
+      ticker: tickerHint,
       envelope: envelopeFromContract(text, question),
     };
   } catch (error) {
@@ -825,6 +833,7 @@ export async function runLargoQueryStream(
       source: dbConfigured() ? "blackout-web+postgres" : "blackout-web",
       tools_used: Array.from(new Set(toolsUsed)),
       followups,
+        ticker: tickerHint,
       verification,
       envelope: envelopeFromContract(text, question),
     });

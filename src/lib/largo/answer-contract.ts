@@ -1,4 +1,5 @@
 import { stripLargoBlocks } from "@/features/largo/blocks/extract";
+import { extractLevels } from "@/lib/largo/core/level-extract";
 import {
   makeEnvelope,
   type BieAnswerEnvelope,
@@ -299,6 +300,11 @@ export function parseAnswerEnvelope(markdown: string): BieAnswerEnvelope | null 
       body: get(name),
     })),
     evidence,
+    // The desk-read card leads with a levels grid, and it was rendering EMPTY on every answer:
+    // the numbers were in the evidence prose and nothing lifted them out. extractLevels reads the
+    // already-structured evidence rows against a closed label set, so a miss costs one grid row
+    // and can never produce a wrong one.
+    levels: extractLevels(evidence),
     invalidation: risk[0] ?? null,
   });
 }

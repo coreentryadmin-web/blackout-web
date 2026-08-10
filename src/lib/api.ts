@@ -530,6 +530,8 @@ export async function queryLargoStream(
   tools_used?: string[];
   followups?: string[];
   verification?: ClaimVerification;
+  /** The instrument Largo resolved — drives the contextual rail. */
+  ticker?: string | null;
   /** Populated structured answer (synthesis #59). Absent on trivial/string answers. */
   envelope?: BieAnswerEnvelope | null;
 }> {
