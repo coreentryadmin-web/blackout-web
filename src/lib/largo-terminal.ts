@@ -59,6 +59,7 @@ import {
 } from "@/lib/largo/temporal/timeframe";
 import { formatEntityBlock } from "@/lib/largo/core/entities";
 import { buildDrillDowns, formatDrillDownBlock } from "@/lib/largo/core/drilldown";
+import { applyConflictCaveat, findSourceConflicts } from "@/lib/largo/core/cross-source";
 import {
   applyCoherenceCaveat,
   applyProvenanceCaveat,
@@ -562,6 +563,18 @@ export async function runLargoQuery(
     // or how they were graded — that is our own ledger. The figure was right and the attribution
     // was impossible, which is worse than an unstamped number: it makes an internal figure look
     // independently verified.
+    // CROSS-SOURCE CONFLICT. Several tools carry a spot for the same instrument; when one serves a
+    // cached snapshot they disagree, and every number stays real, traceable and grounded. The
+    // answer's own evidence then contains the contradiction and presents both with equal
+    // confidence. This is the caller `reconcile` was written for and never had.
+    const sourceConflicts = findSourceConflicts(capturedResults);
+    if (sourceConflicts.length) {
+      console.warn(
+        `[largo] source conflict: ${sourceConflicts[0]!.ticker} spread ${sourceConflicts[0]!.spreadPct.toFixed(2)}%`
+      );
+      text = applyConflictCaveat(text, sourceConflicts);
+    }
+
     const provenanceLies = findProvenanceLies(text);
     if (provenanceLies.length) {
       console.warn(`[largo] impossible provenance: ${provenanceLies.map((l) => l.source).join(",")}`);
@@ -730,6 +743,18 @@ export async function runLargoQueryStream(
     // or how they were graded — that is our own ledger. The figure was right and the attribution
     // was impossible, which is worse than an unstamped number: it makes an internal figure look
     // independently verified.
+    // CROSS-SOURCE CONFLICT. Several tools carry a spot for the same instrument; when one serves a
+    // cached snapshot they disagree, and every number stays real, traceable and grounded. The
+    // answer's own evidence then contains the contradiction and presents both with equal
+    // confidence. This is the caller `reconcile` was written for and never had.
+    const sourceConflicts = findSourceConflicts(capturedResults);
+    if (sourceConflicts.length) {
+      console.warn(
+        `[largo] source conflict: ${sourceConflicts[0]!.ticker} spread ${sourceConflicts[0]!.spreadPct.toFixed(2)}%`
+      );
+      text = applyConflictCaveat(text, sourceConflicts);
+    }
+
     const provenanceLies = findProvenanceLies(text);
     if (provenanceLies.length) {
       console.warn(`[largo] impossible provenance: ${provenanceLies.map((l) => l.source).join(",")}`);
