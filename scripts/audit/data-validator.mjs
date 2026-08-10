@@ -208,8 +208,31 @@ function polygonSpotNow(ticker, isRth) {
  *  this validator, not a real 0DTE Command data issue. Do not reintroduce a swap TO "SPXW"
  *  here. */
 const zerodteContractCache = new Map();
-function resolveZeroDteContract(ticker, direction, strike, todayYmd, nextDayYmd) {
-  const key = `${ticker}|${direction}|${strike}`;
+/**
+ * VALIDATE THE CLAIM THE BOARD ACTUALLY MAKES, not a window we assumed it makes.
+ *
+ * This probe used to hard-code a 0-1DTE expiry window (today..next trading day). That was correct
+ * when the board only ever committed same-day contracts. It is NOT correct since the DTE 1->4
+ * (Day-Trade) widening: on 2026-08-10 the board carried 13 rows at the 2026-08-14 weekly and ONE
+ * true 0DTE (MU), and the probe reported 9 FAILs reading "no matching 0-1DTE contract" for
+ * contracts that exist and are perfectly legitimate. Confirmed against Polygon reference data:
+ * COHR/LITE/FSLY/AXTI/BTDR/AKAM/FIG list NO daily expiries at all (earliest 2026-08-14), while MU
+ * — the single row that passed — is the only one with a daily.
+ *
+ * Nine phantom FAILs per run is worse than a useless check: it is a place for a REAL failure to
+ * hide. And widening the window to match the new max DTE would only move the goalposts and rot
+ * again at the next horizon change.
+ *
+ * So the probe now uses the row's OWN `expiry` when the board states one, which is strictly
+ * stronger than any window: it asserts the exact contract the board claims to be trading exists.
+ * That catches a bug class the window check never could — a row citing an expiry with no listed
+ * contract. The window is kept only as the fallback for rows that state no expiry.
+ */
+function resolveZeroDteContract(ticker, direction, strike, todayYmd, nextDayYmd, rowExpiry) {
+  const exact = typeof rowExpiry === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(rowExpiry) ? rowExpiry : null;
+  const gte = exact ?? todayYmd;
+  const lte = exact ?? nextDayYmd;
+  const key = `${ticker}|${direction}|${strike}|${gte}|${lte}`;
   if (zerodteContractCache.has(key)) return zerodteContractCache.get(key);
   const underlyingTicker = ticker === 'SPX' || ticker === 'SPXW' ? 'SPX' : ticker;
   const contractType = direction === 'long' ? 'call' : direction === 'short' ? 'put' : null;
@@ -217,7 +240,7 @@ function resolveZeroDteContract(ticker, direction, strike, todayYmd, nextDayYmd)
   if (contractType && Number.isFinite(strike) && strike > 0) {
     const qs = new URLSearchParams({
       underlying_ticker: underlyingTicker, contract_type: contractType, strike_price: String(strike),
-      expired: 'false', 'expiration_date.gte': todayYmd, 'expiration_date.lte': nextDayYmd,
+      expired: 'false', 'expiration_date.gte': gte, 'expiration_date.lte': lte,
       sort: 'expiration_date', order: 'asc', limit: '5',
     });
     const c = poly(`/v3/reference/options/contracts?${qs}`)?.results?.[0];
@@ -465,9 +488,9 @@ async function main() {
           // number, board.ts) — unlike the ledger's persisted column (see below), there is
           // no legitimate null case here, so a resolve failure is a real FAIL.
           const strike = num(s.top_strike);
-          const resolved = resolveZeroDteContract(ticker, s.direction, strike, zdToday, zdNextDay);
+          const resolved = resolveZeroDteContract(ticker, s.direction, strike, zdToday, zdNextDay, s.expiry);
           const label = `${strike}${s.direction === 'long' ? 'c' : s.direction === 'short' ? 'p' : '?'}`;
-          rec(`0DTE live ${ticker}: top_strike ${label} exists in Polygon's real chain`, resolved ? 'PASS' : 'FAIL', resolved ? `resolved ${resolved.occ} (expiry ${resolved.expiry})` : `no matching 0-1DTE contract in Polygon's reference chain for ${ticker} ${s.direction} ${strike} between ${zdToday} and ${zdNextDay}`);
+          rec(`0DTE live ${ticker}: top_strike ${label} exists in Polygon's real chain`, resolved ? 'PASS' : 'FAIL', resolved ? `resolved ${resolved.occ} (expiry ${resolved.expiry})` : `no listed contract in Polygon's reference chain for ${ticker} ${s.direction} ${strike} at ${s.expiry ? `expiry ${s.expiry} (the expiry the board states)` : `any expiry between ${zdToday} and ${zdNextDay}`}`);
         }
 
         // --- ledger rows: top_strike (existence) + entry_premium/underlying_at_flag (historical) ---
@@ -485,9 +508,9 @@ async function main() {
           if (strike == null) {
             rec(`0DTE ledger ${ticker}: top_strike exists in Polygon's real chain`, 'INFO', 'skipped — top_strike is null on this ledger row');
           } else {
-            resolved = resolveZeroDteContract(ticker, r0.direction, strike, zdToday, zdNextDay);
+            resolved = resolveZeroDteContract(ticker, r0.direction, strike, zdToday, zdNextDay, r0.expiry);
             const label = `${strike}${r0.direction === 'long' ? 'c' : r0.direction === 'short' ? 'p' : '?'}`;
-            rec(`0DTE ledger ${ticker}: top_strike ${label} exists in Polygon's real chain`, resolved ? 'PASS' : 'FAIL', resolved ? `resolved ${resolved.occ} (expiry ${resolved.expiry})` : `no matching 0-1DTE contract in Polygon's reference chain for ${ticker} ${r0.direction} ${strike} between ${zdToday} and ${zdNextDay}`);
+            rec(`0DTE ledger ${ticker}: top_strike ${label} exists in Polygon's real chain`, resolved ? 'PASS' : 'FAIL', resolved ? `resolved ${resolved.occ} (expiry ${resolved.expiry})` : `no listed contract in Polygon's reference chain for ${ticker} ${r0.direction} ${strike} at ${r0.expiry ? `expiry ${r0.expiry} (the expiry the board states)` : `any expiry between ${zdToday} and ${zdNextDay}`}`);
           }
 
           const flagMs = Date.parse(r0.first_flagged_at || '');
