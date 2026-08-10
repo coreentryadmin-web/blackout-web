@@ -91,7 +91,11 @@ for (const a of ACTIONS) {
 try {
   const res = await fetch(`${BASE}/pricing`, { headers: { "user-agent": "blackout-conversion-verify" } });
   const html = await res.text();
-  const hasGtagJs = /googletagmanager\.com\/gtag\/js/.test(html);
+  // Anchored to scheme + full host. An unanchored host fragment matches anywhere in the string,
+  // so `evil.com/?x=googletagmanager.com/gtag/js` would satisfy it — CodeQL flags the pattern for
+  // exactly that reason, and a verifier that can be fooled about whether the tag is present is
+  // worse than no verifier.
+  const hasGtagJs = /https:\/\/www\.googletagmanager\.com\/gtag\/js/.test(html);
   const awConfigs = [...html.matchAll(/gtag\(\s*'config'\s*,\s*'(AW-\d+)'\s*\)/g)].map((m) => m[1]);
 
   if (!hasGtagJs) {
