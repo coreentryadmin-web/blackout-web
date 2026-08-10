@@ -92,9 +92,9 @@ export function classifyLayout(question: string | null | undefined): AnswerLayou
 }
 
 /** Block identifiers the desk-read card can render, in the order the default layout uses. */
-export type AnswerBlock = "signals" | "ladder" | "sections" | "invalidation";
+export type AnswerBlock = "signals" | "gexShifts" | "ladder" | "sections" | "invalidation";
 
-const DEFAULT_ORDER: AnswerBlock[] = ["signals", "ladder", "sections", "invalidation"];
+const DEFAULT_ORDER: AnswerBlock[] = ["signals", "gexShifts", "ladder", "sections", "invalidation"];
 
 /**
  * Which block leads, per layout.
@@ -105,7 +105,7 @@ const DEFAULT_ORDER: AnswerBlock[] = ["signals", "ladder", "sections", "invalida
  */
 const LAYOUT_ORDER: Record<AnswerLayout, AnswerBlock[]> = {
   // The level itself first — where price sits relative to it is the answer.
-  level: ["ladder", "signals", "sections", "invalidation"],
+  level: ["ladder", "gexShifts", "signals", "sections", "invalidation"],
   // What breaks the thesis is the point of a comparison or a ranking, so reasoning leads.
   comparison: ["sections", "signals", "ladder", "invalidation"],
   ranking: ["sections", "signals", "ladder", "invalidation"],
@@ -126,7 +126,15 @@ const LAYOUT_ORDER: Record<AnswerLayout, AnswerBlock[]> = {
 export function blockOrder(layout: AnswerLayout): AnswerBlock[] {
   const configured = LAYOUT_ORDER[layout] ?? DEFAULT_ORDER;
   const seen = new Set(configured);
-  return [...configured, ...DEFAULT_ORDER.filter((b) => !seen.has(b))];
+  const missing = DEFAULT_ORDER.filter((b) => !seen.has(b));
+
+  // Missing blocks are inserted BEFORE `invalidation`, not appended after it. Appending was the
+  // first version and it silently broke the other invariant: invalidation is the STOP CONDITION and
+  // must be the last thing a member reads, so a block added to DEFAULT_ORDER later would have
+  // pushed itself past it in every layout that had not been updated. Caught by the test that
+  // asserts invalidation is last under every layout.
+  const merged = [...configured.filter((b) => b !== "invalidation"), ...missing.filter((b) => b !== "invalidation")];
+  return [...merged, "invalidation"];
 }
 
 /** Human label for the layout, shown only in dev tooling — never in the member-facing card. */

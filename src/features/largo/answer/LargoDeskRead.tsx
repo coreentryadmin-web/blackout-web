@@ -9,6 +9,7 @@ import { splitHeadline } from "./headline";
 import { signalRowsFromLevels, tallySignals, BIAS_GLYPH } from "./signal-rows";
 import { ladderFromLevels } from "./level-ladder";
 import { classifyLayout, blockOrder, type AnswerBlock } from "./answer-layout";
+import { formatGexChange } from "@/lib/largo/core/gex-shift-extract";
 import { formatDistance } from "@/features/largo/lib/rail-levels";
 import {
   deriveMarketState,
@@ -197,6 +198,44 @@ export function LargoDeskRead({
         ))}
       </React.Fragment>
     ),
+
+    // Γ GEX SHIFT — strike-level change since the previous snapshot, from the tool's OWN structured
+    // output. Direction is the tool's `stronger`/`weaker`/`flipped` field, not the sign of the
+    // change: a strike CROSSING ZERO is a different event from one merely shrinking, and a sign
+    // test cannot express the difference.
+    gexShifts: envelope.gexShifts?.length ? (
+      <div key="gexShifts" className="largo-read-signals">
+        <div className="largo-read-block-title">Γ GEX shift</div>
+        {envelope.gexShifts.map((g) => (
+          <div key={g.strike} className="largo-read-sig">
+            <span className="largo-read-sig-label">
+              {g.strike.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+            </span>
+            <span
+              className={clsx(
+                "largo-read-sig-read",
+                g.direction === "stronger" && "largo-read-sig-bull",
+                g.direction === "weaker" && "largo-read-sig-bear",
+                g.direction === "flipped" && "largo-read-sig-neutral"
+              )}
+            >
+              {formatGexChange(g.change)}
+            </span>
+            <span
+              className={clsx(
+                "largo-read-sig-bias",
+                g.direction === "stronger" && "largo-read-sig-bull",
+                g.direction === "weaker" && "largo-read-sig-bear",
+                g.direction === "flipped" && "largo-read-sig-neutral"
+              )}
+            >
+              {g.direction === "stronger" ? "🟢 ↑" : g.direction === "weaker" ? "🔴 ↓" : "🟡 ↔"}{" "}
+              {g.direction}
+            </span>
+          </div>
+        ))}
+      </div>
+    ) : null,
 
     invalidation: envelope.invalidation ? (
       <div key="invalidation" className="largo-read-section largo-read-section-risk">

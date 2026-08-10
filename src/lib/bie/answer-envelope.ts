@@ -82,6 +82,13 @@ export type BieSection = {
   evidence?: BieEvidence[];
   confidence?: BieConfidence;
   levels?: BieLevel[];
+  /**
+   * Strike-level GEX changes since the previous snapshot, lifted STRUCTURALLY off the turn's
+   * `get_gex_matrix_changes` tool result rather than parsed back out of the prose Largo flattened
+   * it into. Absent when the tool was not called — "no shifts" and "we did not look" are different
+   * claims and only the first should render a table.
+   */
+  gexShifts?: { strike: number; change: number; direction: "stronger" | "weaker" | "flipped" }[];
   /** Structured table — rendered as markdown when body omits it. */
   table?: BieTable | null;
   /** Set when this section could not be answered — honest, never silently dropped. */
@@ -112,6 +119,13 @@ export type BieAnswerEnvelope = {
   invalidation?: string | null;
   scenarios?: BieScenario[];
   levels?: BieLevel[];
+  /**
+   * Strike-level GEX changes since the previous snapshot, lifted STRUCTURALLY off the turn's
+   * `get_gex_matrix_changes` tool result rather than parsed back out of the prose Largo flattened
+   * it into. Absent when the tool was not called — "no shifts" and "we did not look" are different
+   * claims and only the first should render a table.
+   */
+  gexShifts?: { strike: number; change: number; direction: "stronger" | "weaker" | "flipped" }[];
   followups?: string[];
   /** Sources requested but unavailable this turn — always surfaced. */
   unavailableSources?: BieUnavailableSource[];

@@ -486,7 +486,12 @@ async function prepareLargoTurn(
  * "Verdict" — strictly worse than a good answer in an unusual shape. The log line is what makes
  * drift measurable, so the contract can be tightened from evidence instead of guesswork.
  */
-function envelopeFromContract(text: string, question: string): BieAnswerEnvelope | undefined {
+function envelopeFromContract(
+  text: string,
+  question: string,
+  /** The turn's raw tool results — carries structured blocks (GEX shifts) the prose flattened. */
+  capturedResults?: readonly unknown[]
+): BieAnswerEnvelope | undefined {
   const report = validateAnswerContract(text);
   if (!report.conforms) {
     console.warn(
@@ -498,7 +503,7 @@ function envelopeFromContract(text: string, question: string): BieAnswerEnvelope
       question.slice(0, 80)
     );
   }
-  return parseAnswerEnvelope(text) ?? undefined;
+  return parseAnswerEnvelope(text, capturedResults) ?? undefined;
 }
 
 export async function runLargoQuery(
@@ -632,7 +637,7 @@ export async function runLargoQuery(
     // headline the badge renders. Deriving them from the raw answer instead would read the whole
     // body — where a long answer naturally names both directions — and report MIXED on answers
     // that resolved cleanly. Chips and badge now agree by construction.
-    const envelope = envelopeFromContract(text, question);
+    const envelope = envelopeFromContract(text, question, capturedResults);
     const followups = withResolutionChips(
       await generateLargoFollowups(question, text, tickerHint),
       envelope?.headline ?? ""
@@ -828,7 +833,7 @@ export async function runLargoQueryStream(
     // headline the badge renders. Deriving them from the raw answer instead would read the whole
     // body — where a long answer naturally names both directions — and report MIXED on answers
     // that resolved cleanly. Chips and badge now agree by construction.
-    const envelope = envelopeFromContract(text, question);
+    const envelope = envelopeFromContract(text, question, capturedResults);
     const followups = withResolutionChips(
       await generateLargoFollowups(question, text, tickerHint),
       envelope?.headline ?? ""
