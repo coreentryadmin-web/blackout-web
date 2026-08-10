@@ -2,7 +2,6 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   BIE_TOOL_NAMES,
-  getToolsForIntent,
   HELIX_ENGINE_TOOL_NAMES,
   LARGO_TOOL_DEFS,
   MARKET_ENGINE_TOOL_NAMES,
@@ -377,15 +376,6 @@ test("get_options_flow and get_global_flow both document strike_stacks; get_flow
   assert.match(flowDef("get_postgres_flows").description, /no strike_stacks/i);
 });
 
-test("'flows'/'flowing' phrasing puts get_options_flow/get_global_flow/get_postgres_flows on the allowlist (FLOW_TOOLS_RE plural/gerund gap)", () => {
-  for (const question of ["any options flows building up today", "what's flowing on the tape lately"]) {
-    const tools = getToolsForIntent(question);
-    for (const name of ["get_options_flow", "get_global_flow", "get_postgres_flows", "get_flow_tape"]) {
-      assert.ok(tools.includes(name), `expected ${name} on the allowlist for: "${question}"`);
-    }
-  }
-});
-
 // ── Task #147: get_zerodte_rejections — the 0DTE Command near-miss/gate-rejection
 // log, distinct from BOTH get_zerodte_plays (committed-only, same scanner) and
 // SPX Slayer's own get_spx_engine_snapshots (task #108, a different engine
@@ -612,94 +602,38 @@ test("get_platform_snapshot documents largo include attaches BIE full-platform s
 });
 
 // ── Task #143: NIGHTHAWK_RE's "edition" gap ──
-// The live /nighthawk UI renders "Edition live"/"Prior edition" as its own
-// primary vocabulary, but NIGHTHAWK_RE had no "edition"/"editions" token at all —
-// a plainly on-topic question phrased that way got NIGHTHAWK_RE: false, dropped
-// TOOL_GROUPS.platform (get_nighthawk_edition, get_platform_snapshot, and every
-// other Night-Hawk/platform tool) out of the turn's tool allowlist entirely, and
-// fell back to getToolsForIntent's `names.size <= 2` branch, which dumps the
-// entire unrelated CORE_TOOLS bundle instead (same class of bug task #130 found
-// for FLOW_RE's missing "flows"/"flowing" siblings).
+// ── Tool surface: COMPLETE, every turn (2026-08-10) ──────────────────────────
+// The tests that used to live here each asserted "phrasing X reaches tool Y" against
+// getToolsForIntent's regex allowlist — the mechanism that has since been deleted (see the block
+// comment where it used to live in tool-defs.ts). Every one of those assertions is now subsumed
+// by the single invariant below: largo-terminal.ts hands Claude LARGO_TOOL_DEFS verbatim, so
+// EVERY tool is reachable for EVERY question. That is strictly stronger than the per-phrasing
+// checks, and it cannot rot the way an enumerated allowlist did.
+//
+// This test's real job is to fail loudly if someone reintroduces per-question filtering: assert
+// on the count and on the specific tools whose absence produced the original silent failures
+// ("what's the biggest risk in my open positions" could not reach get_open_plays; "how many
+// trades did we win last month" could not reach get_trade_history).
 
-test("bare 'edition' wording (no nighthawk/hawk/playbook token) puts get_nighthawk_edition and get_platform_snapshot on the allowlist", () => {
-  for (const question of [
-    "is a new edition live yet",
-    "what's in tonight's edition",
-    "show me last night's edition",
+test("the tool surface is complete and uniform — no per-question filtering", () => {
+  const names = LARGO_TOOL_DEFS.map((t) => t.name);
+  assert.equal(new Set(names).size, names.length, "tool names must be unique");
+
+  // The specific reads the deleted allowlist hid on plainly on-topic questions.
+  for (const name of [
+    "get_open_plays",
+    "get_trade_history",
+    "get_zerodte_record",
+    "get_horizon_outcomes",
+    "get_positioning",
+    "get_nighthawk_edition",
+    "get_platform_snapshot",
+    "get_banger_board",
+    "get_swing_horizon",
+    "get_cortex_decision",
   ]) {
-    const tools = getToolsForIntent(question);
-    assert.ok(tools.includes("get_nighthawk_edition"), `expected get_nighthawk_edition on the allowlist for: "${question}"`);
-    assert.ok(tools.includes("get_platform_snapshot"), `expected get_platform_snapshot on the allowlist for: "${question}"`);
+    assert.ok(names.includes(name), `${name} must be in the served tool surface`);
   }
-});
-
-// ── Task #140: generic (ticker-independent) dealer-positioning/GEX wording ──
-// SPX_DESK_TOOLS_RE's bare "gamma"/"gex"/"dealer" tokens already route these
-// questions to TOOL_GROUPS.spx_desk (get_gex, get_gex_regime_events), but that
-// match also means getToolsForIntent's `names.size <= 2` CORE_TOOLS fallback
-// (the only other path that would have pulled in TOOL_GROUPS.stock_analysis)
-// never fires — so get_positioning, the one tool whose own description says it
-// answers "dealer positioning for ANY ticker," was unreachable for exactly the
-// ticker-less questions that most clearly ask for it. Locks in the fix so a
-// future edit to SPX_DESK_TOOLS_RE, GEX_POSITIONING_RE, or TOOL_GROUPS.spx_desk
-// can't silently reopen this gap.
-
-test("generic ticker-less dealer-positioning/GEX wording puts get_positioning on the allowlist", () => {
-  for (const question of [
-    "what's dealer positioning look like",
-    "where's the gamma flip",
-    "show me the GEX walls",
-    "what's the call wall and put wall",
-    "is dealer gamma positive or negative",
-    "what's the current gamma regime",
-    "is the market showing negative gamma",
-    "what's net gex right now",
-  ]) {
-    const tools = getToolsForIntent(question);
-    assert.ok(tools.includes("get_positioning"), `expected get_positioning on the allowlist for: "${question}"`);
-    // The pre-existing GEX-snapshot tools this same wording already reached
-    // before this fix must still be present — this is an addition, not a swap.
-    assert.ok(tools.includes("get_gex"), `expected get_gex on the allowlist for: "${question}"`);
-    assert.ok(tools.includes("get_gex_regime_events"), `expected get_gex_regime_events on the allowlist for: "${question}"`);
-  }
-});
-
-test("unrelated 0DTE/play-state wording does NOT spuriously add get_positioning", () => {
-  // Sanity check against over-routing: bare 0dte/play-board wording matches a
-  // different branch (spx_desk only, never GEX_POSITIONING_RE) and should stay
-  // exactly that — adding get_positioning here would be the false-positive
-  // over-routing this fix is explicitly trying to avoid.
-  const tools = getToolsForIntent("how are today's plays doing");
-  assert.ok(!tools.includes("get_positioning"), "bare 0DTE/play-board wording should not add get_positioning");
-});
-
-test("platform-wide wording unlocks platform snapshot + cross-product tools", () => {
-  const tools = getToolsForIntent("give me a full platform snapshot");
-  assert.ok(tools.includes("get_platform_snapshot"));
-  assert.ok(tools.includes("get_vector_full_state"));
-  assert.ok(tools.includes("get_flow_tape"));
-  assert.ok(tools.includes("get_zerodte_plays"));
-});
-
-test("thermal/vector/helix wording routes to product tools", () => {
-  assert.ok(getToolsForIntent("show the thermal heatmap matrix").includes("get_positioning"));
-  assert.ok(getToolsForIntent("vector pulse on SPX").includes("get_vector_full_state"));
-  assert.ok(getToolsForIntent("helix strike stacks today").includes("get_flow_tape"));
-});
-
-test("every turn includes baseline platform tools", () => {
-  const tools = getToolsForIntent("hello");
-  assert.ok(tools.includes("get_platform_snapshot"));
-  assert.ok(tools.includes("get_ecosystem_context"));
-  assert.ok(tools.includes("get_hot_tickers"));
-});
-
-test("banger and swing product tools route on lane vocabulary", () => {
-  assert.ok(getToolsForIntent("any bangers running today").includes("get_banger_board"));
-  assert.ok(getToolsForIntent("show the swing board").includes("get_swing_horizon"));
-  assert.ok(getToolsForIntent("why did cortex skip NVDA").includes("get_cortex_decision"));
-  assert.ok(getToolsForIntent("helix signal outcomes").includes("get_helix_signal_outcomes"));
-  assert.ok(getToolsForIntent("0dte command track record").includes("get_zerodte_record"));
 });
 
 test("new product tools are registered in LARGO_TOOL_DEFS", () => {

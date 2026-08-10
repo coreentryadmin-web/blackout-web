@@ -1016,169 +1016,31 @@ export const ZERODTE_ENGINE_TOOL_NAMES = ["get_zerodte_plays", "get_zerodte_reje
 // keeps this list a verified subset of TOOL_GROUPS.vol_analysis.
 export const MARKET_ENGINE_TOOL_NAMES = ["get_market_context"];
 
-const CORE_TOOLS = [
-  "get_market_context",
-  ...TOOL_GROUPS.spx_desk,
-  ...TOOL_GROUPS.stock_analysis,
-  ...TOOL_GROUPS.vol_analysis,
-];
-
-/** A known ticker or an explicit $SYMBOL means the user is asking about an
- *  instrument — always give Largo the stock + vol analysis tools so chain/greeks/
- *  technicals are never dropped by a single mismatched intent (LARGO-9). */
-function mentionsTicker(question: string): boolean {
-  const caps = question.toUpperCase().match(/\$?\b[A-Z]{2,5}\b/g) ?? [];
-  return caps.some((c) => c.startsWith("$") || KNOWN_TICKERS.has(c.replace(/^\$/, "")));
-}
-
-export function getToolsForIntent(question: string): string[] {
-  const lower = question.toLowerCase();
-  const names = new Set<string>([
-    "get_market_context",
-    "get_platform_snapshot",
-    "get_ecosystem_context",
-    "get_hot_tickers",
-  ]);
-
-  if (matchesIntent(lower, PLATFORM_READ_RE)) {
-    for (const n of TOOL_GROUPS.platform) names.add(n);
-    for (const n of TOOL_GROUPS.spx_desk) names.add(n);
-    for (const n of TOOL_GROUPS.flow_analysis) names.add(n);
-    for (const n of TOOL_GROUPS.vol_analysis) names.add(n);
-  }
-
-  if (matchesIntent(lower, THERMAL_READ_RE)) {
-    names.add("get_positioning");
-    names.add("get_gex_heatmap");
-    names.add("get_gex_matrix_changes");
-    names.add("get_gex_regime_events");
-    for (const n of TOOL_GROUPS.spx_desk) names.add(n);
-  }
-
-  if (matchesIntent(lower, WALL_DYNAMICS_RE) || matchesIntent(lower, MATRIX_CHANGE_RE)) {
-    names.add("get_wall_dynamics");
-    names.add("get_gex_matrix_changes");
-    names.add("get_gex_regime_events");
-    names.add("get_positioning");
-    names.add("get_vector_full_state");
-  }
-
-  if (matchesIntent(lower, VECTOR_READ_RE)) {
-    names.add("get_vector_full_state");
-    names.add("get_wall_dynamics");
-    names.add("get_positioning");
-    for (const n of TOOL_GROUPS.spx_desk) names.add(n);
-  }
-
-  if (matchesIntent(lower, HELIX_READ_RE)) {
-    names.add("get_flow_tape");
-    for (const n of [...TOOL_GROUPS.flow_analysis, ...TOOL_GROUPS.platform]) names.add(n);
-  }
-
-  if (matchesIntent(lower, RECORD_READ_RE)) {
-    names.add("get_spx_vs_nighthawk_comparison");
-    names.add("get_setup_stats");
-    names.add("get_trade_history");
-    names.add("get_nighthawk_outcomes");
-    names.add("get_zerodte_record");
-    names.add("get_horizon_outcomes");
-    for (const n of TOOL_GROUPS.platform) names.add(n);
-  }
-
-  if (matchesIntent(lower, CORTEX_READ_RE)) {
-    names.add("get_cortex_decision");
-    names.add("get_zerodte_plays");
-    names.add("get_zerodte_rejections");
-    names.add("get_ecosystem_context");
-    for (const n of TOOL_GROUPS.platform) names.add(n);
-  }
-
-  if (matchesIntent(lower, BANGER_RE)) {
-    names.add("get_banger_board");
-    for (const n of TOOL_GROUPS.platform) names.add(n);
-  }
-
-  if (matchesIntent(lower, SWING_RE)) {
-    names.add("get_swing_horizon");
-    names.add("get_nighthawk_horizons");
-    names.add("get_horizon_outcomes");
-    for (const n of TOOL_GROUPS.platform) names.add(n);
-  }
-
-  if (matchesIntent(lower, HELIX_SIGNAL_RE)) {
-    names.add("get_helix_signal_outcomes");
-    for (const n of [...TOOL_GROUPS.flow_analysis, ...TOOL_GROUPS.platform]) names.add(n);
-  }
-
-  if (matchesIntent(lower, SPX_PIN_RE)) {
-    names.add("get_spx_pin");
-    for (const n of TOOL_GROUPS.spx_desk) names.add(n);
-  }
-
-  // 0DTE Command — "today's plays", the board, or anything zero-DTE flavored.
-  if (/\b(0\s*dte|zero\s*dte|zerodte|command board|today'?s plays|the plays|scanner plays)\b/i.test(lower)) {
-    names.add("get_zerodte_plays");
-    // Near-miss/rejection log (task #147) — added alongside get_zerodte_plays on the
-    // same bare-token match so a "why didn't X make the 0dte board" question always
-    // has both tools available, not just the committed-plays one.
-    names.add("get_zerodte_rejections");
-    for (const n of TOOL_GROUPS.spx_desk) names.add(n);
-  }
-
-  if (matchesIntent(lower, FLOW_TOOLS_RE)) {
-    for (const n of [...TOOL_GROUPS.spx_desk, ...TOOL_GROUPS.flow_analysis]) names.add(n);
-  }
-  if (matchesIntent(lower, SPX_DESK_TOOLS_RE)) {
-    for (const n of [...TOOL_GROUPS.spx_desk, ...TOOL_GROUPS.vol_analysis]) names.add(n);
-  }
-  // Generic (ticker-independent) dealer-positioning/GEX language (task #140) —
-  // "dealer positioning," "gamma flip," "GEX walls," "call wall"/"put wall,"
-  // "gamma exposure," etc. SPX_DESK_TOOLS_RE's own bare "gamma"/"gex"/"dealer"
-  // tokens above already fire on most of this vocabulary and add
-  // TOOL_GROUPS.spx_desk (get_gex, get_gex_regime_events) — but get_positioning,
-  // BlackOut Thermal's own "dealer positioning for ANY ticker" tool, lives ONLY
-  // in TOOL_GROUPS.stock_analysis, gated behind mentionsTicker() below. Matching
-  // SPX_DESK_TOOLS_RE also means this turn NEVER falls through to the
-  // `names.size <= 2` CORE_TOOLS fallback that would have accidentally included
-  // stock_analysis — so the more clearly GEX-flavored a ticker-less question
-  // was, the LESS likely it was to get get_positioning. Mirror SPX_DESK_TOOLS_RE's
-  // own bundle (spx_desk + vol_analysis) so this is a strict superset for
-  // phrasing that already matched it, plus explicitly add get_positioning —
-  // the one tool this vocabulary is unambiguously asking for. See
-  // GEX_POSITIONING_RE's own doc comment in intent-keywords.ts for the full
-  // before/after repro.
-  if (matchesIntent(lower, GEX_POSITIONING_RE)) {
-    for (const n of [...TOOL_GROUPS.spx_desk, ...TOOL_GROUPS.vol_analysis]) names.add(n);
-    names.add("get_positioning");
-  }
-  if (matchesIntent(lower, VOL_TOOLS_RE)) {
-    for (const n of [...TOOL_GROUPS.vol_analysis, ...TOOL_GROUPS.spx_desk]) names.add(n);
-  }
-  if (matchesIntent(lower, NEWS_TOOLS_RE)) {
-    for (const n of [...TOOL_GROUPS.news_events, ...TOOL_GROUPS.stock_analysis]) names.add(n);
-  }
-  if (matchesIntent(lower, NIGHTHAWK_RE)) {
-    for (const n of TOOL_GROUPS.platform) names.add(n);
-  }
-  if (matchesIntent(lower, SCREENER_RE)) {
-    for (const n of TOOL_GROUPS.screener) names.add(n);
-  }
-  if (matchesIntent(lower, FUNDAMENTAL_RE)) {
-    for (const n of TOOL_GROUPS.fundamental) names.add(n);
-  }
-  if (matchesIntent(lower, PREDICTIONS_RE)) {
-    for (const n of [...TOOL_GROUPS.fundamental, "get_predictions_consensus"]) names.add(n);
-  }
-
-  if (mentionsTicker(question)) {
-    for (const n of [...TOOL_GROUPS.stock_analysis, ...TOOL_GROUPS.vol_analysis]) names.add(n);
-  }
-
-  if (names.size <= 2) {
-    for (const n of CORE_TOOLS) names.add(n);
-  }
-
-  return Array.from(names);
-}
+/**
+ * REMOVED 2026-08-10: `CORE_TOOLS`, `mentionsTicker()` and `getToolsForIntent()`.
+ *
+ * They implemented a per-question regex ALLOWLIST that decided which of these 116 tools Claude was
+ * shown on a given turn. Measured over 20 realistic member questions it exposed a mean of 21.9
+ * tools (19%), and it failed silently rather than loudly — see the block comment at the
+ * `filteredTools` assignment in largo-terminal.ts for the full root cause, the measurements, and
+ * why sending the complete surface is also the cheaper option under prompt caching.
+ *
+ * Two specific traps are worth recording so neither is rebuilt:
+ *
+ * 1. The `if (names.size <= 2) { ...CORE_TOOLS }` safety fallback was UNREACHABLE. The seed set
+ *    added 4 names unconditionally, so `names.size` was never <= 2. Brute-forcing 1,444 phrasings
+ *    put the floor at exactly 4 tools, every time — CORE_TOOLS never once ran in production, and
+ *    the tests that referenced it were asserting against a branch that could not execute.
+ *
+ * 2. Growing the regexes could not fix this. The file this deletion leaves behind
+ *    (intent-keywords.ts) is a record of that chase: several of its doc comments describe a
+ *    specific phrasing that reached the wrong tool set and the pattern added to catch it. Members
+ *    invent phrasings faster than an allowlist can enumerate them.
+ *
+ * intent-keywords.ts itself is NOT dead — question-intent.ts still uses it to decide which LIVE
+ * FEED blocks to prefetch, and largo-followups.ts uses NIGHTHAWK_RE. That is a different job:
+ * choosing what data to warm is a cost/latency decision where a miss degrades an answer, whereas
+ * choosing what tools to expose was a capability decision where a miss made an answer impossible.
+ */
 
 
