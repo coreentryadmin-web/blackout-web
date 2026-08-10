@@ -59,6 +59,7 @@ import {
 } from "@/lib/largo/temporal/timeframe";
 import { formatEntityBlock } from "@/lib/largo/core/entities";
 import { buildDrillDowns, formatDrillDownBlock } from "@/lib/largo/core/drilldown";
+import { applyCoherenceCaveat, findContradictions } from "@/lib/largo/core/coherence";
 import {
   applyPlanCaveat,
   buildQueryPlan,
@@ -541,6 +542,16 @@ export async function runLargoQuery(
       text = applyPlanCaveat(text, planCheck.violations);
     }
 
+    // SELF-CONTRADICTION. Measured live: a verdict reading "there are no open plays… nothing is
+    // live" sat four lines above facts reporting 20 open positions and 13 committed. Every other
+    // check passed — the numbers were real and traceable, the contract conformed, grounding was
+    // 1.0 — because nothing compared the answer's CONCLUSION against its own EVIDENCE.
+    const contradictions = findContradictions(text);
+    if (contradictions.length) {
+      console.warn(`[largo] self-contradiction: verdict vs facts on "${contradictions[0]!.noun}"`);
+      text = applyCoherenceCaveat(text, contradictions);
+    }
+
     // Per-tool timing summary. Turns "Largo is slow" into "get_postgres_flows took 9.2s of an 11s
     // turn" — a question with an answer. Also surfaces DENIED and silently-EMPTY tool results,
     // neither of which is visible in `toolsUsed` alone.
@@ -686,6 +697,16 @@ export async function runLargoQueryStream(
     if (!planCheck.ok) {
       console.warn(`[largo] plan violation: ${planCheck.violations.map((v) => v.code).join(",")}`);
       text = applyPlanCaveat(text, planCheck.violations);
+    }
+
+    // SELF-CONTRADICTION. Measured live: a verdict reading "there are no open plays… nothing is
+    // live" sat four lines above facts reporting 20 open positions and 13 committed. Every other
+    // check passed — the numbers were real and traceable, the contract conformed, grounding was
+    // 1.0 — because nothing compared the answer's CONCLUSION against its own EVIDENCE.
+    const contradictions = findContradictions(text);
+    if (contradictions.length) {
+      console.warn(`[largo] self-contradiction: verdict vs facts on "${contradictions[0]!.noun}"`);
+      text = applyCoherenceCaveat(text, contradictions);
     }
 
     // Per-tool timing summary. Turns "Largo is slow" into "get_postgres_flows took 9.2s of an 11s
