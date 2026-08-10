@@ -15,7 +15,19 @@ const securityHeaders = [
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   {
     key: "Permissions-Policy",
-    value: "camera=(), microphone=(), geolocation=(), payment=()",
+    // `microphone=(self)` — OUR origin only. An empty allowlist `microphone=()` disables the
+    // microphone for EVERY origin including our own, which is what shipped and what broke Largo's
+    // voice input on desktop.
+    //
+    // WHY IT LOOKED LIKE IT WORKED ON MOBILE. Chrome on desktop enforces Permissions-Policy for
+    // the Web Speech API, so start() failed before a prompt could appear and the control looked
+    // dead. Safari on iOS routes SpeechRecognition through system dictation and does not gate it
+    // on the same policy, so the identical build worked on a phone. A header, not the code, was
+    // the difference — which is why no amount of reading the component would have found it.
+    //
+    // Everything else stays locked shut: camera, geolocation and payment remain fully disabled,
+    // and `self` grants nothing to embedded third-party frames.
+    value: "camera=(), microphone=(self), geolocation=(), payment=()",
   },
   {
     key: "Content-Security-Policy",
@@ -40,6 +52,16 @@ const embedSecurityHeaders = securityHeaders
   .map((h) =>
     h.key === "Content-Security-Policy"
       ? { ...h, value: baseCsp.replace("frame-ancestors 'self'", "frame-ancestors *") }
+      : h,
+  )
+  // Embeds keep the microphone FULLY disabled. The app-wide policy grants it to `self` for
+  // Largo's voice input, but these routes are public, unauthenticated, and deliberately framed
+  // on arbitrary third-party sites (`frame-ancestors *`). Nothing here needs a microphone, so
+  // least privilege applies — and the grant must not ride along by inheritance if this page
+  // ever grows client code.
+  .map((h) =>
+    h.key === "Permissions-Policy"
+      ? { ...h, value: h.value.replace("microphone=(self)", "microphone=()") }
       : h,
   );
 
