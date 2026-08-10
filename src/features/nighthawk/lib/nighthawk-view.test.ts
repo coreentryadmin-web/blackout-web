@@ -7,6 +7,8 @@ import {
   horizonForView,
   viewForHorizon,
   isNightHawkView,
+  isKnownNightHawkView,
+  KNOWN_NIGHTHAWK_VIEW_TOKENS,
   NIGHTHAWK_VIEW_META,
   TARGET_HIT_RATE_LABEL,
   targetHitCompositionLabel,
@@ -154,4 +156,40 @@ test("the 0DTE blurb does not promise same-day EXPIRIES — the window admits 0-
   // contract's own expiration date". A member seeing a Friday-expiry contract on a board that says
   // "same-day expiries" reasonably reports it as a bug.
   assert.ok(!/same-day expir/i.test(NIGHTHAWK_VIEW_META.ZERO_DTE.blurb), NIGHTHAWK_VIEW_META.ZERO_DTE.blurb);
+});
+
+// ── Silent-view-fallback guard (found live 2026-08-10 by the truth-divergence probe) ─────────
+// GET /api/market/nighthawk/horizons?view=outcomes returned HTTP 200 with the 0DTE lane — the
+// SAME 1,053-byte payload as ?view=totally-invalid-view, against 34,352 bytes for ?view=swings.
+// parseNightHawkView's default-on-unknown is right for the UI and wrong for an API.
+
+test("isKnownNightHawkView accepts every spelling parseNightHawkView accepts", () => {
+  for (const token of KNOWN_NIGHTHAWK_VIEW_TOKENS) {
+    assert.equal(isKnownNightHawkView(token), true, `${token} must be known`);
+    assert.equal(isKnownNightHawkView(token.toLowerCase()), true, `${token} lowercased must be known`);
+  }
+});
+
+test("isKnownNightHawkView rejects the exact strings that silently fell back in production", () => {
+  for (const bad of ["outcomes", "totally-invalid-view", "record", "0dtee", "swing-lane", "", "   "]) {
+    assert.equal(isKnownNightHawkView(bad), false, `${JSON.stringify(bad)} must be rejected`);
+  }
+  assert.equal(isKnownNightHawkView(null), false);
+  assert.equal(isKnownNightHawkView(undefined), false);
+});
+
+test("the token set and the parser cannot drift apart", () => {
+  // Every token must parse to a real view — catches a token added to the set but not the switch.
+  for (const token of KNOWN_NIGHTHAWK_VIEW_TOKENS) {
+    assert.ok(isNightHawkView(parseNightHawkView(token)), `${token} must parse to a real view`);
+  }
+  // And every view must be reachable by at least one token — catches the reverse drift.
+  const reachable = new Set([...KNOWN_NIGHTHAWK_VIEW_TOKENS].map((t) => parseNightHawkView(t)));
+  for (const v of NIGHTHAWK_VIEWS) assert.ok(reachable.has(v), `${v} must be reachable by some token`);
+});
+
+test("parseNightHawkView keeps its forgiving default — the UI still depends on it", () => {
+  // The fix is at the API boundary, NOT here. Changing this would blank a stale shared link.
+  assert.equal(parseNightHawkView("outcomes"), DEFAULT_NIGHTHAWK_VIEW);
+  assert.equal(parseNightHawkView("nonsense"), DEFAULT_NIGHTHAWK_VIEW);
 });

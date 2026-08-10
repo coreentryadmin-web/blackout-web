@@ -9701,3 +9701,27 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Orphaned by this change (not yet deleted)** | `bie/router.ts`, `bie/composers.ts`, `bie/decompose.ts` and `bie/dynamic-format.ts` now have **zero** non-test consumers outside `src/lib/bie/` itself. Left in place in this PR to keep the blast radius to Largo; they are a clean follow-up deletion. `bie/knowledge.ts` still has two real consumers (`admin/bie-report`, `cron/db-cleanup`) so it stays. |
 | **Verification limits** | `largo-terminal.test.ts` does not run in this sandbox (`mock.module is not a function`, Node v22.22.2) and fails identically on `main` — it is a pre-existing runner gap, and it is also the suite that covers the turn path most directly, so CI is the real gate for this change, not the local run. |
 | **Status** | Code REMOVED. Module relocation and the orphan deletion OPEN as follow-ups. |
+
+## 2026-08-10 — [P2, silent-wrong-data] `GET /api/market/nighthawk/horizons?view=<unknown>` returned the 0DTE lane with HTTP 200 instead of a 400 — a caller could not tell "that view does not exist" from "that lane is empty" — FIXED (fix/horizons-silent-view-fallback)
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **How it was found** | `scripts/audit/largo-truth-divergence.mjs`, a new probe that reads the SAME field from every surface that claims to know it and reports disagreement. It flagged `nighthawk/horizons` as ABSENT for a graded-win-count read; chasing that turned up the real defect underneath. |
+| **Live evidence (measured 2026-08-10, prod, admin session)** | Identical byte counts prove the fallback: `?view=swings` → **34,352 bytes**; `?view=` (empty) → **34,499 bytes** (full payload); and `?view=outcomes`, `?view=totally-invalid-view`, `?view=zerodte` → **1,053 bytes each, byte-identical** — the 0DTE lane. All five returned HTTP **200**. |
+| **Root cause** | `parseNightHawkView` (`src/features/nighthawk/lib/nighthawk-view.ts:80`) returns `DEFAULT_NIGHTHAWK_VIEW` for any unrecognised string. That is CORRECT for the UI — a stale shared link should still render a board rather than a blank error page. The route (`horizons/route.ts:39-40`) then did `viewParam ? horizonForView(parseNightHawkView(viewParam)) : null`, so a truthy-but-unknown param narrowed the payload to the DEFAULT lane. A forgiving parser is right; using it as an API validator is not. |
+| **Why it matters more now than before** | Largo reaches internal routes through `call_internal_api`. With the full 116-tool surface it composes URLs itself, so it can invent a plausible view name — `outcomes` is exactly the kind of guess an LLM makes — receive the 0DTE lane with a 200, and report it fluently. That answer would be **grounded** (every number traces to the response it was handed) and **contract-conforming**, and still wrong. No answer-side validation can catch a wrong-lane 200; only the API refusing can. |
+| **Fix** | New `isKnownNightHawkView` + `KNOWN_NIGHTHAWK_VIEW_TOKENS` (one source of truth for the parser's aliases and the validator, so an alias cannot be added to one and missed by the other). The route now 400s on an unrecognised non-empty `view`/`horizon`, returning the allowed list. `parseNightHawkView` is deliberately UNCHANGED — the fix is at the API boundary, and a test pins the forgiving default so a future edit does not "helpfully" harden it and blank stale shared links. |
+| **Blast radius** | Route-local. `?view=` empty and every valid alias behave exactly as before; only previously-silent bad input changes, from a misleading 200 to an explicit 400. |
+| **Tests** | `nighthawk-view.test.ts` 17/17, including: every known token accepted case-insensitively; the exact production strings (`outcomes`, `totally-invalid-view`, `record`, `0dtee`) rejected; a bidirectional drift check (every token parses to a real view AND every view is reachable by some token); and the forgiving parser default preserved. |
+| **Status** | FIXED. |
+
+## 2026-08-10 — [P4, cosmetic API asymmetry] `/api/market/quote?ticker=I:SPX` 400s while `?ticker=SPX` works — NOT a Largo defect
+> **kind:** `NEGATIVE-RESULT`
+
+| Field | Value |
+|-------|-------|
+| **What was seen** | The truth-divergence probe logged `UNREACHABLE quote(I:SPX) HTTP 400 {"error":"Invalid ticker"}` for both SPX and VIX. |
+| **Why it is NOT a bug worth chasing** | The route's allowlist `/^[A-Z0-9.\-]{1,8}$/` (`quote/route.ts:182`) deliberately excludes `:` — the comment states it validates before any paid upstream call to avoid wasting a Massive snapshot and inflating cache/telemetry cardinality. `?ticker=SPX` returns the correct index price (`7757.64`, matching Polygon exactly), and `/api/market/indices` is the index surface. **Largo is unaffected**: `get_quote` → `toolQuote` (`run-tool.ts:261-276`) has its own `I:` branch calling `fetchIndexSnapshots`, and never touches this HTTP route. |
+| **Recorded because** | The `get_quote` tool schema advertises `"e.g. NVDA, SPY, SPX, I:SPX"`, so the next person who sees a 400 on `I:SPX` will reasonably suspect the tool. It is a different code path. Left unchanged rather than widening a deliberately tight validator for a case with no consumer. |
+| **Status** | NO ACTION — documented so it is not re-investigated. |
