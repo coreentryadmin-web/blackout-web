@@ -31,9 +31,9 @@ const withMove: VisualBundle = {
 };
 
 test("only implemented templates are ever reachable", () => {
-  // The registry lists all ten from the brief so the shape is visible, but a half-built template
-  // selected by a keyword match is exactly how a mediocre graphic ships.
-  assert.equal(IMPLEMENTED_TEMPLATES.length, 6);
+  // The flag is the mechanism that let the library grow three at a time without half-built
+  // templates leaking into member-facing output. Every registered template is now built.
+  assert.equal(IMPLEMENTED_TEMPLATES.length, 13);
   // ORDER IS BEHAVIOUR, not bookkeeping: it is the tie-break when two intents match AND the
   // descent order when a proposed template cannot be filled. MARKET_MOVE stays LAST among the
   // implemented set because it is the most general and the most likely to be fillable, which is
@@ -44,6 +44,13 @@ test("only implemented templates are ever reachable", () => {
     "SCREENER",
     "REJECTION",
     "EM_CONE",
+    "GAMMA_MAP",
+    "FLOW_RECAP",
+    "TRADE_LEADERBOARD",
+    "SYSTEM_COMPARISON",
+    "BEFORE_AFTER",
+    "SESSION_RECAP",
+    "SIGNAL_TIMELINE",
     "MARKET_MOVE",
   ]);
   assert.equal(TEMPLATES.length, 13, "all thirteen stay registered");

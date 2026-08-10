@@ -20,16 +20,23 @@
 
 import { useCallback, useState } from "react";
 
-type TemplateChoice = "AUTO" | "MARKET_MOVE" | "TRADE_RECAP" | "LEVEL_ANALYSIS";
+type TemplateChoice = string;
 type SizeChoice = "x_landscape" | "x_portrait" | "square" | "story";
 type FormatChoice = "html" | "svg" | "png";
 
-const TEMPLATE_LABELS: { id: TemplateChoice; label: string }[] = [
-  { id: "AUTO", label: "Auto" },
-  { id: "MARKET_MOVE", label: "Market Card" },
-  { id: "TRADE_RECAP", label: "Trade Recap" },
-  { id: "LEVEL_ANALYSIS", label: "Level Map" },
-];
+/**
+ * THE PICKER IS DERIVED FROM THE SERVER, NOT LISTED HERE.
+ *
+ * This was a hardcoded array of three, and it stayed three when Screener, Rejection and EM-cone
+ * shipped — three working templates a member had no way to ask for. That is the same "real
+ * capability with no path to the surface" bug this codebase keeps producing, and a hardcoded
+ * mirror of a server-side registry reproduces it by construction. Both plan responses carry
+ * `available` off `IMPLEMENTED_TEMPLATES`, so the chips now grow with the registry.
+ *
+ * AUTO stays hardcoded because it is not a template — it is the instruction to let the router
+ * choose, and the router is the honest default.
+ */
+const AUTO: { id: TemplateChoice; label: string } = { id: "AUTO", label: "Auto" };
 
 /** Inline is the default: the card appears in the answer, nothing is downloaded. */
 const FORMAT_LABELS: { id: FormatChoice; label: string }[] = [
@@ -56,6 +63,8 @@ type Plan = {
   dataAsOf?: string;
   freshness?: string;
   systemsQueried?: string[];
+  /** The server's implemented-template registry — the picker's only source. */
+  available?: { id: string; label: string; needs?: string }[];
   preview?: {
     headline: string | null;
     spot: string | null;
@@ -212,7 +221,7 @@ export function CreateVisualAction(props: CreateVisualActionProps) {
   return (
     <div className="largo-visual-panel" role="group" aria-label="Create visual">
       <div className="largo-visual-row">
-        {TEMPLATE_LABELS.map((t) => (
+        {[AUTO, ...(plan?.available ?? [])].map((t) => (
           <button
             key={t.id}
             type="button"
@@ -312,15 +321,7 @@ export function CreateVisualAction(props: CreateVisualActionProps) {
             <button type="button" className="largo-visual-cta" onClick={render} disabled={busy}>
               {busy ? "Rendering…" : imgUrl ? "Re-render" : "Render image"}
             </button>
-            {/* The card, inline in the answer. Injected markup is produced entirely server-side from
-              our own templates — no user or model text reaches it as HTML. */}
-          {markup && (
-            <div className="largo-visual-scroll">
-              <div dangerouslySetInnerHTML={{ __html: markup.html }} />
-            </div>
-          )}
-
-          {imgUrl && (
+            {imgUrl && (
               <a className="largo-visual-cta" href={imgUrl} download={`blackout-${plan.template?.toLowerCase()}.png`}>
                 Download PNG
               </a>
