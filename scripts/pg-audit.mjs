@@ -36,9 +36,51 @@ export function resolveAuditDbUrl() {
   return dbUrl?.trim() || null;
 }
 
+/**
+ * Render ANY thrown value into a diagnostic string that is never empty.
+ *
+ * WHY THIS EXISTS. The cron audit failed every run from 2026-08-10 onward logging exactly
+ * `[cron-audit] Postgres connect failed: ` — nothing after the colon. `e.message` was empty, so
+ * the log said only that something went wrong, and the message-matching classifiers below could
+ * not match anything either, which silently disabled the watchdog fallback (see cron-audit-query).
+ *
+ * An error whose message is empty is not rare: `AggregateError` from Node's happy-eyeballs dual
+ * -stack dialling carries its detail in `.errors`, TLS failures carry theirs in `.cause`, and
+ * driver errors often carry only a `.code`. Reading `.message` alone throws all of that away at
+ * exactly the moment it is needed. This walks every carrier and always returns something
+ * actionable — falling back to the constructor name rather than "".
+ */
+export function describeConnectError(e) {
+  const parts = [];
+  const seen = new Set();
+
+  const walk = (err, depth) => {
+    if (!err || depth > 4 || seen.has(err)) return;
+    seen.add(err);
+    const msg = typeof err?.message === "string" ? err.message.trim() : "";
+    const code = err?.code ? String(err.code) : "";
+    if (code && msg) parts.push(`${code}: ${msg}`);
+    else if (msg) parts.push(msg);
+    else if (code) parts.push(code);
+    // AggregateError (dual-stack dial) hides every real reason in .errors.
+    if (Array.isArray(err?.errors)) for (const sub of err.errors) walk(sub, depth + 1);
+    if (err?.cause) walk(err.cause, depth + 1);
+  };
+  walk(e, 0);
+
+  if (!parts.length) {
+    // Never return "" — an empty diagnostic is what caused this whole failure mode.
+    const name = e?.constructor?.name ?? e?.name ?? typeof e;
+    return `${name} with no message`;
+  }
+  return [...new Set(parts)].join(" | ");
+}
+
 /** True when Postgres is unreachable from this host (private RDS / cloud agent sandbox). */
 export function isPrivateDbUnreachableError(message) {
-  return /ECONNRESET|ETIMEDOUT|ENOTFOUND|timeout|ECONNREFUSED/i.test(String(message ?? ""));
+  return /ECONNRESET|ETIMEDOUT|ENOTFOUND|timeout|ECONNREFUSED|EHOSTUNREACH|ENETUNREACH|EAI_AGAIN|self.signed|certificate/i.test(
+    String(message ?? "")
+  );
 }
 
 /** Stale GitHub/env DATABASE_PUBLIC_URL (wrong user/password) — not a prod outage. */

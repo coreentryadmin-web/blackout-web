@@ -125,6 +125,27 @@ async function recordOrgSpend(localRec: SpendRecord): Promise<void> {
  * Redis-down fallback inside recordOrgSpend, so there is no double-alert when Redis is healthy.
  * No-ops when usage is missing or the model is unknown (estimateCostUsd returns null).
  */
+/**
+ * Cache-effectiveness log line.
+ *
+ * Prompt caching is invisible without this: a misplaced breakpoint costs 1.25x on every request and
+ * looks EXACTLY like a working cache from the outside — same answers, same latency, a bigger bill.
+ * The hit rate is the only thing that distinguishes them, so it is logged whenever caching is in
+ * play. Never logs prompt content, only counts.
+ */
+function logCacheUsage(label: string, usage: AnthropicUsage | null | undefined): void {
+  if (!usage) return;
+  const read = usage.cache_read_input_tokens ?? 0;
+  const write = usage.cache_creation_input_tokens ?? 0;
+  if (read === 0 && write === 0) return; // caching not in play — stay quiet
+  const fresh = usage.input_tokens ?? 0;
+  const total = read + write + fresh;
+  const hitPct = total > 0 ? Math.round((read / total) * 100) : 0;
+  console.info(
+    `[anthropic] ${label} cache: read=${read} write=${write} fresh=${fresh} hit=${hitPct}%`
+  );
+}
+
 function trackSpend(model: string, usage: AnthropicUsage | null | undefined): void {
   let rec: SpendRecord;
   try {
@@ -529,6 +550,29 @@ export async function anthropicToolLoop(params: {
       tools,
       messages,
     };
+    // INCREMENTAL CONVERSATION CACHING — the large, previously-uncached cost in a tool loop.
+    //
+    // The tools+system prefix was already cached, but the MESSAGES were not, and in a tool loop
+    // they are the part that grows: every round re-sends the full transcript, including every
+    // prior tool result. Largo's tool results are flow tapes, GEX matrices and option chains, so
+    // by round 4-5 the resent transcript dwarfs the system prompt. Round N was paying full input
+    // price for the same bytes it already paid for in rounds 1..N-1.
+    //
+    // Top-level `cache_control` is Anthropic's documented pattern for exactly this: the API places
+    // the breakpoint on the LAST cacheable block and MOVES IT FORWARD each request, so each round
+    // reads the whole prior transcript at 0.1x and writes only what is new at 1.25x. Doing it by
+    // hand would mean re-marking a different message block every round and tracking the 20-block
+    // lookback window ourselves; the automatic form cannot drift out of step with the transcript.
+    //
+    // Two breakpoints total (the tools marker above + this one), well inside the limit of 4.
+    //
+    // Gated on the SAME flag as system caching so this stays a single opt-in with one behaviour:
+    // callers that have not opted in send byte-identical requests to before.
+    if (params.cacheSystem === true) {
+      (createParams as MessageCreateParams & { cache_control?: { type: "ephemeral" } }).cache_control = {
+        type: "ephemeral",
+      };
+    }
     if (!modelRejectsSamplingParams(model)) {
       createParams.temperature = loopTemperature;
     }
@@ -550,6 +594,7 @@ export async function anthropicToolLoop(params: {
         loopMaxRetries
       );
       trackSpend(model, finalMessage.usage);
+      logCacheUsage("tool-loop-stream", finalMessage.usage);
       content = finalMessage.content;
     } else {
       // Wrap the non-stream round create so a round timeout/429/network error doesn't 500 the whole
@@ -570,6 +615,7 @@ export async function anthropicToolLoop(params: {
         return extractTextFromLastAssistant(messages as unknown as AnthropicMessage[]) ?? null;
       }
       trackSpend(model, data.usage);
+      logCacheUsage("tool-loop-round", data.usage);
       content = data.content;
     }
 
@@ -646,12 +692,18 @@ export async function anthropicToolLoop(params: {
             temperature: loopTemperature,
             system: systemParam,
             messages,
+            // The synthesis pass resends the ENTIRE transcript one final time — the single largest
+            // request of the turn. Every byte of it was just written to cache by the last loop
+            // round, so this reads at 0.1x instead of paying full input price for the whole
+            // conversation again. Omitting it here would have left the biggest call uncached.
+            ...(params.cacheSystem === true ? { cache_control: { type: "ephemeral" as const } } : {}),
           },
           reqOpts
         ),
       loopMaxRetries
     );
     trackSpend(model, final.usage);
+    logCacheUsage("tool-loop-final", final.usage);
     return extractTextFromBlocks(final.content as Array<{ type: string; text?: string }>) || null;
   } catch (err) {
     console.error(

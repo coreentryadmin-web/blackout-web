@@ -18568,6 +18568,84 @@ body::before {
   .largo-read-asof {
     color: var(--largo-muted-faint);
   }
+  /* STATE HEADER — the regime, the action, and the confidence, on one line.
+     Direction and action sit side by side rather than stacked into one badge because they are
+     different variables: a strong direction can still be a WAIT, and a single collapsed badge has
+     to either overstate the direction or understate it. */
+  .largo-read-state {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: center;
+    gap: 0.5rem 0.75rem;
+    padding: 0.9rem 0.75rem 0.35rem;
+    text-align: center;
+  }
+  /* ACTION is amber and boxed — it is an instruction, not a reading, and must not be mistaken for
+     part of the direction it sits beside. */
+  .largo-read-action {
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--largo-warn);
+    border: 1px solid rgba(251, 191, 36, 0.35);
+    padding: 0.12rem 0.4rem;
+  }
+  /* The headline sentence, below the state rather than replacing it — the badge is what gets
+     scanned, the sentence is what gets read. */
+  .largo-read-headline {
+    padding: 0 0.75rem;
+    text-align: center;
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--largo-primary);
+  }
+
+  /* DECISION LEVELS — price-ordered with spot in place, same shape as the context rail so the two
+     can never disagree about where the member is standing. */
+  .largo-read-ladder {
+    padding: 0.5rem 0.75rem 0.6rem;
+    font-family: var(--font-mono, ui-monospace, monospace);
+  }
+  .largo-read-ladder-title {
+    font-size: 9px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--largo-muted-faint);
+    margin-bottom: 0.3rem;
+  }
+  .largo-read-rung {
+    display: grid;
+    grid-template-columns: 5.5rem 1fr auto;
+    align-items: baseline;
+    gap: 0.5rem;
+    padding: 0.16rem 0.3rem;
+    font-size: 11px;
+    border-left: 2px solid transparent;
+  }
+  .largo-read-rung-price {
+    color: var(--largo-primary);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .largo-read-rung-label {
+    color: var(--largo-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .largo-read-rung-dist {
+    color: var(--largo-muted-faint);
+    font-variant-numeric: tabular-nums;
+  }
+  /* Where the member actually is — the one row the eye should find first. */
+  .largo-read-rung-spot {
+    border-left-color: var(--largo-info);
+    background: rgba(34, 211, 238, 0.08);
+  }
+  .largo-read-rung-spot .largo-read-rung-price,
+  .largo-read-rung-spot .largo-read-rung-label { color: var(--largo-info); }
+
   .largo-read-verdict {
     display: flex;
     flex-direction: column;
@@ -18583,7 +18661,81 @@ body::before {
     text-transform: uppercase;
     color: var(--largo-primary);
   }
+  /* ── EXECUTIVE ANSWER ──────────────────────────────────────────────────────────────────────
+     One line, in the synthesis colour, sized to be read before anything else. Everything below is
+     support for this sentence. */
+  .largo-read-header {
+    padding: 0.15rem 0.9rem 0.7rem;
+    font-family: var(--font-anton, sans-serif);
+    font-size: clamp(1.05rem, 2.4vw, 1.5rem);
+    line-height: 1.28;
+    letter-spacing: 0.01em;
+    color: var(--largo-ai);
+    text-wrap: balance;
+  }
+  .largo-read-statechip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    padding: 0.18rem 0.5rem;
+    border: 1px solid currentColor;
+    border-radius: 2px;
+  }
   .largo-read-bias-bullish { color: var(--largo-bull); }
+  .largo-read-bias-bearish { color: var(--largo-bear); }
+  .largo-read-bias-mixed,
+  .largo-read-bias-neutral { color: var(--largo-warn); }
+
+  /* Shared block heading for the signal table / decision map. */
+  .largo-read-block-title {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
+    font-size: 9px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--largo-muted-faint);
+    margin-bottom: 0.35rem;
+  }
+  .largo-read-tally {
+    letter-spacing: 0.06em;
+    color: var(--largo-muted);
+  }
+
+  /* ── SIGNAL TABLE ── label · reading · bias. Three columns so the bias glyphs form one
+     scannable edge; a ragged bias column defeats the point of the table. */
+  .largo-read-signals {
+    padding: 0.5rem 0.9rem 0.2rem;
+    font-family: var(--font-mono, ui-monospace, monospace);
+  }
+  .largo-read-sig {
+    display: grid;
+    grid-template-columns: minmax(6rem, 1fr) minmax(0, 1.4fr) auto;
+    align-items: baseline;
+    gap: 0.6rem;
+    padding: 0.22rem 0.3rem;
+    font-size: 11px;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+  }
+  .largo-read-sig-label { color: var(--largo-primary); }
+  .largo-read-sig-read {
+    color: var(--largo-info);
+    font-variant-numeric: tabular-nums;
+  }
+  .largo-read-sig-bias { white-space: nowrap; font-weight: 600; }
+  .largo-read-sig-bull { color: var(--largo-bull); }
+  .largo-read-sig-bear { color: var(--largo-bear); }
+  .largo-read-sig-neutral { color: var(--largo-warn); }
+  @media (max-width: 640px) {
+    .largo-read-sig { grid-template-columns: 1fr auto; }
+    .largo-read-sig-read { grid-column: 1; color: var(--largo-info); }
+  }
+
   .largo-read-bias-bearish { color: var(--largo-bear); }
   .largo-read-bias-neutral { color: var(--largo-muted); }
   .largo-read-conf {
@@ -18595,6 +18747,9 @@ body::before {
   }
   .largo-read-conf-why {
     max-width: 34rem;
+    margin: 0.3rem auto 0;
+    padding: 0 0.75rem;
+    text-align: center;
     font-size: 11px;
     line-height: 1.5;
     color: var(--largo-muted-faint);

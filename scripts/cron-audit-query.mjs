@@ -9,8 +9,8 @@ import { ALL_CRON_KEYS } from "./railway-cron-services.mjs";
 import {
   createAuditClient,
   resolveAuditDbUrl,
-  isPrivateDbUnreachableError,
-  isStaleAuditDbAuthError,
+  isPrivateVpcDbUrl,
+  describeConnectError,
 } from "./pg-audit.mjs";
 import { auditSecret } from "./audit/lib/prod-secrets.mjs";
 
@@ -53,17 +53,34 @@ if (!dbUrl) {
   await auditViaWatchdog();
 }
 
+// A private RDS/proxy endpoint is NOT reachable from GitHub Actions or a cloud agent, ever. Going
+// straight to the watchdog skips a guaranteed 10s failure and the misleading error that follows it.
+if (isPrivateVpcDbUrl(dbUrl)) {
+  console.warn("[cron-audit] DB URL is a private VPC endpoint — using HTTP watchdog fallback");
+  await auditViaWatchdog();
+}
+
 const client = createAuditClient(dbUrl);
 try {
   await client.connect();
 } catch (e) {
-  const msg = e instanceof Error ? e.message : String(e);
-  if (isPrivateDbUnreachableError(msg) || isStaleAuditDbAuthError(msg)) {
-    console.warn(`[cron-audit] Postgres unavailable (${msg}) — using HTTP watchdog fallback`);
-    await auditViaWatchdog();
-  }
-  console.error(`[cron-audit] Postgres connect failed: ${msg}`);
-  process.exit(1);
+  // FALL BACK ON ANY CONNECT FAILURE, not only on recognised ones.
+  //
+  // This gate used to require the error message to match `isPrivateDbUnreachableError` or
+  // `isStaleAuditDbAuthError`. On 2026-08-10 the driver began throwing an error whose `.message`
+  // was EMPTY, so neither pattern matched, the fallback was skipped, and every scheduled run
+  // hard-failed while logging `Postgres connect failed: ` with nothing after the colon.
+  //
+  // The classifier was the wrong shape for the job. The watchdog exists BECAUSE this connection
+  // routinely cannot be made from CI, so an unrecognised failure is exactly the case that most
+  // needs it — gating on a string match meant every NEW failure mode disabled the safety net.
+  //
+  // This is fail-safe, not fail-open: `auditViaWatchdog` exits non-zero whenever the crons are
+  // genuinely unhealthy, so no real alert is lost. What is lost is the ability of a string-match
+  // miss to turn a healthy platform into a red build.
+  const detail = describeConnectError(e);
+  console.warn(`[cron-audit] Postgres connect failed (${detail}) — using HTTP watchdog fallback`);
+  await auditViaWatchdog();
 }
 
 const q = async (sql, params) => (await client.query(sql, params)).rows;

@@ -124,6 +124,17 @@ export const STRIKE_VERIFY_MONEYNESS = 0.5;
 /** Older than this and a print describes a tape that has moved on. */
 export const STALE_PRINT_MS = 30 * 60 * 1000;
 
+/**
+ * Concentration thresholds — when one print IS the read.
+ *
+ * Set from the live SPX tape on 2026-08-10 (top print 13.3% of gross, 24.3% of |net|), deliberately
+ * a little above those values so the flag means "unusual" rather than "Tuesday". Both tests exist
+ * because each catches a case the other misses: a huge print inside a huge two-way tape barely
+ * moves the net, while a modest print inside a near-balanced tape can be the entire net.
+ */
+export const TOP_PRINT_GROSS_SHARE = 0.15;
+export const TOP_PRINT_NET_SHARE = 0.25;
+
 const CONTRACT_MULTIPLIER = 100;
 
 /**
@@ -235,6 +246,24 @@ export type FlowValidationSummary = {
   netPremiumUnfiltered: number | null;
   /** True when the two disagree on SIGN — the loud case, worth saying out loud. */
   signInverted: boolean;
+  /** Gross premium over directional rows — the denominator that makes the net interpretable. */
+  grossPremium: number | null;
+  /** The single largest directional print, and its share of gross. */
+  topPrintPremium: number | null;
+  topPrintShareOfGross: number | null;
+  /**
+   * True when ONE print carries enough of the tape to be the read on its own.
+   *
+   * MEASURED LIVE, SPX 2026-08-10 14:36 ET: net +$694.6M across 200 prints, of which a single
+   * 7000-strike call was $169.1M — 13.3% of gross and 24.3% of |net|. Three of the top six prints
+   * were that same 7000C strike, $366M combined. "Market-wide flow is bullish" and "one desk
+   * bought a lot of one contract" are different claims, and a bare net premium cannot tell them
+   * apart.
+   *
+   * This is NOT an exclusion. Those prints are real directional premium and belong in the tally —
+   * the point is that a member reading "+$694M" deserves to know a quarter of it is one ticket.
+   */
+  concentrated: boolean;
   /** What was removed and why, aggregated by code. Never empty when something was removed. */
   exclusions: Array<{ code: FlowIssueCode; count: number; message: string }>;
 };
@@ -265,6 +294,18 @@ export function validateFlowTape<T extends FlowPrint>(
   const netPremium = directionalRows.length ? directionalRows.reduce((s, v) => s + signed(v), 0) : null;
   const netPremiumUnfiltered = usableRows.length ? usableRows.reduce((s, v) => s + signed(v), 0) : null;
 
+  // Concentration, over the DIRECTIONAL rows — the same population the net is computed from, so
+  // the share is a share OF the number being reported rather than of a different set.
+  const premiums = directionalRows.map((v) => Math.abs(num(v.row.premium) ?? 0));
+  const grossPremium = premiums.length ? premiums.reduce((s, p) => s + p, 0) : null;
+  const topPrintPremium = premiums.length ? Math.max(...premiums) : null;
+  const topPrintShareOfGross =
+    grossPremium && grossPremium > 0 && topPrintPremium != null ? topPrintPremium / grossPremium : null;
+  const topShareOfNet =
+    netPremium != null && netPremium !== 0 && topPrintPremium != null
+      ? topPrintPremium / Math.abs(netPremium)
+      : null;
+
   const byCode = new Map<FlowIssueCode, { count: number; message: string }>();
   for (const v of validated) {
     for (const i of v.issues) {
@@ -288,6 +329,15 @@ export function validateFlowTape<T extends FlowPrint>(
         netPremium !== 0 &&
         netPremiumUnfiltered !== 0 &&
         Math.sign(netPremium) !== Math.sign(netPremiumUnfiltered),
+      grossPremium,
+      topPrintPremium,
+      topPrintShareOfGross,
+      // Either test alone misses a real case: a huge print inside a huge two-way tape barely moves
+      // the net (caught by the gross test), and a modest print inside a near-balanced tape can BE
+      // the net (caught by the net test). One print should never be the whole read unnoticed.
+      concentrated:
+        (topPrintShareOfGross != null && topPrintShareOfGross >= TOP_PRINT_GROSS_SHARE) ||
+        (topShareOfNet != null && topShareOfNet >= TOP_PRINT_NET_SHARE),
       exclusions: [...byCode.entries()].map(([code, v]) => ({ code, count: v.count, message: v.message })),
     },
   };

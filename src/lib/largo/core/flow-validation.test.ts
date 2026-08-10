@@ -129,3 +129,64 @@ test("an empty tape yields null nets, never 0", () => {
   assert.equal(summary.netPremium, null);
   assert.equal(summary.netPremiumUnfiltered, null);
 });
+
+// ── Concentration ───────────────────────────────────────────────────────────────────────────
+// Live SPX 2026-08-10 14:36 ET: net +$694.6M across 200 prints, of which ONE 7000-strike call was
+// $169.1M — 13.3% of gross, 24.3% of |net|. A bare net cannot distinguish "market-wide flow is
+// bullish" from "one desk bought a lot of one contract".
+
+test("one dominant print is flagged, and is NOT excluded", () => {
+  const tape = [
+    { ...SPX_7800_CALL, strike: 7000, premium: 169_100_000 },
+    ...Array.from({ length: 10 }, (_, i) => ({ ...SPX_7800_CALL, premium: 20_000_000 + i })),
+  ];
+  const { summary } = validateFlowTape(tape, SPOT, NOW);
+
+  assert.equal(summary.concentrated, true);
+  // The print is real directional premium and stays in the tally — this is disclosure, not a filter.
+  assert.equal(summary.directional, 11);
+  assert.ok(summary.netPremium! > 169_100_000);
+  assert.ok(summary.topPrintShareOfGross! > 0.4);
+  assert.equal(summary.topPrintPremium, 169_100_000);
+});
+
+test("an evenly spread tape is not flagged", () => {
+  const tape = Array.from({ length: 40 }, (_, i) => ({ ...SPX_7800_CALL, premium: 1_000_000 + i }));
+  const { summary } = validateFlowTape(tape, SPOT, NOW);
+  assert.equal(summary.concentrated, false);
+  assert.ok(summary.topPrintShareOfGross! < 0.05);
+});
+
+test("a modest print that IS the net gets flagged by the net test alone", () => {
+  // Huge two-way tape, tiny net: no single print is a big share of GROSS, but one print is most
+  // of the net. The gross test alone would miss this.
+  const tape = [
+    { ...SPX_7800_CALL, premium: 100_000_000 },
+    { ...SPX_7800_CALL, option_type: "PUT", strike: 7700, premium: 96_000_000 },
+    { ...SPX_7800_CALL, premium: 2_000_000 },
+  ];
+  const { summary } = validateFlowTape(tape, SPOT, NOW);
+  assert.ok(summary.topPrintShareOfGross! < 0.55);
+  assert.equal(summary.concentrated, true);
+});
+
+test("concentration is measured over DIRECTIONAL rows only", () => {
+  // A deep-ITM print does not vote, so it must not set the concentration denominator either.
+  const tape = [
+    SPX_200_CALL, // excluded from directional
+    { ...SPX_7800_CALL, premium: 5_000_000 },
+    { ...SPX_7800_CALL, premium: 5_000_001 },
+  ];
+  const { summary } = validateFlowTape(tape, SPOT, NOW);
+  assert.equal(summary.directional, 2);
+  assert.equal(summary.grossPremium, 10_000_001);
+  assert.equal(summary.topPrintPremium, 5_000_001);
+});
+
+test("an empty tape reports null concentration, never 0", () => {
+  const { summary } = validateFlowTape([], SPOT, NOW);
+  assert.equal(summary.grossPremium, null);
+  assert.equal(summary.topPrintPremium, null);
+  assert.equal(summary.topPrintShareOfGross, null);
+  assert.equal(summary.concentrated, false);
+});
