@@ -35,17 +35,40 @@
  * inert — before any TikTok account or app review exists.
  */
 
+import { currentAccessToken } from "./tiktok-oauth";
+
 const TIKTOK_API = "https://open.tiktokapis.com/v2";
 
-/** Token lifetime is ~24h; refresh tokens last ~365d. Both come from the OAuth grant. */
-function getCredentials(): { accessToken: string } | null {
-  const token = process.env.TIKTOK_ACCESS_TOKEN?.trim();
-  if (!token) return null;
-  return { accessToken: token };
+/**
+ * THE TOKEN COMES FROM THE STORED GRANT, NOT FROM THE ENVIRONMENT.
+ *
+ * A TikTok access token lives ~24 hours. The first cut of this module read
+ * `TIKTOK_ACCESS_TOKEN` from `process.env`, which works for one manual test and then fails
+ * silently the next day: a process cannot rewrite its own env var with the token it just
+ * refreshed. `currentAccessToken()` reads `social_tokens`, refreshes AHEAD of expiry, and
+ * persists the rotated refresh token — see `tiktok-oauth.ts`.
+ *
+ * The env var remains as an explicit ESCAPE HATCH for a one-off manual test against a token
+ * pasted by hand, and is checked SECOND so it can never shadow a live grant.
+ */
+async function resolveAccessToken(nowMs: number = Date.now()): Promise<string | null> {
+  const stored = await currentAccessToken("tiktok", nowMs).catch(() => null);
+  if (stored) return stored;
+  return process.env.TIKTOK_ACCESS_TOKEN?.trim() || null;
 }
 
+/**
+ * Is there a PATH to a token at all — a completed OAuth grant is possible, or one is pasted in.
+ *
+ * Deliberately SYNCHRONOUS and deliberately not a liveness check. Callers use it to decide
+ * whether TikTok is a destination for this run, and that decision must not depend on a database
+ * round-trip. Whether the stored grant is still valid is answered later, by the request itself,
+ * which fails loudly rather than posting nothing and reporting success.
+ */
 export function tiktokEnabled(): boolean {
-  return getCredentials() !== null;
+  const pasted = process.env.TIKTOK_ACCESS_TOKEN?.trim();
+  const oauth = process.env.TIKTOK_CLIENT_KEY?.trim() && process.env.TIKTOK_CLIENT_SECRET?.trim();
+  return Boolean(pasted || oauth);
 }
 
 export type TikTokPublishMode = "inbox" | "direct";
@@ -75,12 +98,15 @@ export type TikTokPostResult = {
 };
 
 async function tiktokFetch(path: string, body: unknown): Promise<Response> {
-  const creds = getCredentials();
-  if (!creds) throw new Error("TikTok credentials not configured");
+  const accessToken = await resolveAccessToken();
+  // A null here means no grant and no pasted token, or a refresh token that has itself expired.
+  // Throwing is the point: the caller must surface "re-authorise TikTok", never post nothing and
+  // report success.
+  if (!accessToken) throw new Error("TikTok is not authorised — no usable access token (re-run the connect flow)");
   return fetch(`${TIKTOK_API}${path}`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${creds.accessToken}`,
+      Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json; charset=UTF-8",
     },
     body: JSON.stringify(body),
