@@ -41,3 +41,23 @@ test("no prose field on this component is interpolated bare", () => {
     assert.ok(!bare.test(src), `${field} is interpolated raw — route it through renderInlineMarkdown`);
   }
 });
+
+/**
+ * A SOURCE NAME AND ITS FRESHNESS ARE TWO FIELDS, AND MUST NOT READ AS ONE SENTENCE.
+ *
+ * The strip rendered `{src} {fresh}`. On the live CRWV read that produced
+ *
+ *     NIGHT HAWK EDITION UNKNOWN
+ *
+ * which parses as "the edition is unknown" — on an answer that had just cited that edition's
+ * Aug-4 long pick and stated there was no new CRWV play in tonight's. The edition was known; its
+ * AGE was not. "BENZINGA UNKNOWN" in the same strip had the identical problem.
+ *
+ * `FRESHNESS_LABEL.unknown` is already the unambiguous wording ("Age unknown") and was being
+ * bypassed — the raw enum value went to the DOM instead of the label written for it.
+ */
+test("the source strip separates the source from its freshness, and uses the label", () => {
+  const src = readFileSync(SRC, "utf8");
+  assert.match(src, /\{src\} · \{FRESHNESS_LABEL\[fresh\]\}/, "source and freshness must be separated");
+  assert.ok(!/\{src\} \{fresh\}/.test(src), "the raw enum must not be concatenated onto the source name");
+});

@@ -1,5 +1,6 @@
 "use client";
 
+import { FRESHNESS_LABEL } from "@/features/largo/answer/answer-format";
 import React from "react";
 import { clsx } from "clsx";
 import type { BieAnswerEnvelope, BieFreshness } from "@/lib/bie/answer-envelope";
@@ -381,7 +382,14 @@ export function LargoDeskRead({
         <div className="largo-read-data">
           {[...sources.entries()].map(([src, fresh]) => (
             <span key={src} className={clsx("largo-read-src", FRESH_CLASS[fresh])}>
-              {src} {fresh}
+              {/* SEPARATED, AND THE FRESHNESS SPELLED OUT.
+                  This concatenated a SOURCE NAME directly with a FRESHNESS VALUE, and the
+                  result reads as a sentence about the source: the live CRWV read showed
+                  "NIGHT HAWK EDITION UNKNOWN" — which parses as the edition being unknown, on an
+                  answer that had just cited that edition's Aug-4 pick. The edition was known; its
+                  AGE was not. `FRESHNESS_LABEL` already carries the unambiguous wording ("Age
+                  unknown"), and the separator stops the two fields reading as one phrase. */}
+              {src} · {FRESHNESS_LABEL[fresh]}
             </span>
           ))}
         </div>
