@@ -18,7 +18,9 @@
  *   node scripts/audit/largo-visual-matrix.cjs --cookie "$CK" --out DIR [--only N]
  */
 const { createTunneledContext } = require('./lib/proxy-tunnel-context.cjs');
-const { writeFileSync, mkdirSync } = require('node:fs');
+const { writeFileSync, mkdirSync, mkdtempSync } = require('node:fs');
+const { tmpdir } = require('node:os');
+const { join } = require('node:path');
 
 const BASE = (process.env.VALIDATE_BASE || 'https://blackouttrades.com').replace(/\/$/, '');
 
@@ -38,7 +40,12 @@ const SCENARIOS = [
 
 function parseArgs() {
   const a = process.argv.slice(2);
-  const o = { ck: '', out: '/tmp/largo-visual', only: 0, wait: 130000 };
+  // NO FIXED PATH UNDER /tmp. A predictable name in a world-writable directory is a symlink
+  // waiting to happen — anything on the box can pre-create `/tmp/largo-visual` and have this run
+  // write its screenshots and JSON somewhere else, or through a link to a file it should not touch.
+  // CodeQL flagged it (high) and is right. `mkdtemp` gives a fresh 0700 directory per run, and it
+  // is created LAZILY so passing --out never mints an unused one.
+  const o = { ck: '', out: '', only: 0, wait: 130000 };
   for (let i = 0; i < a.length; i++) {
     if (a[i] === '--cookie') o.ck = a[++i];
     else if (a[i] === '--out') o.out = a[++i];
@@ -51,7 +58,9 @@ function parseArgs() {
 async function main() {
   const o = parseArgs();
   if (!o.ck) { console.error('need --cookie'); process.exit(1); }
-  mkdirSync(o.out, { recursive: true });
+  if (o.out) mkdirSync(o.out, { recursive: true });
+  else o.out = mkdtempSync(join(tmpdir(), 'largo-visual-'));
+  console.log(`out: ${o.out}`);
   const list = o.only ? SCENARIOS.slice(0, o.only) : SCENARIOS;
 
   const { browser, ctx, counts } = await createTunneledContext({
