@@ -205,3 +205,39 @@ test("the other spellings still work — this widened the read, it did not move 
     assert.ok(b.metrics?.some((m) => m.label === "Session"), `${key} must still be read`);
   }
 });
+
+test("a positioning payload's OWN session change is not thrown away", () => {
+  // `getGexPositioning` returns `change_pct` beside the walls (gex-positioning.ts:275), and
+  // `findQuote` deliberately skips any record carrying `gamma_posture` so the two matchers cannot
+  // both claim it. Nothing else read it, so an SPX card built from the live feed's GEX slot drew
+  // four levels and one tile with the day's move sitting unused in the same object.
+  const b = buildVisualBundle({
+    capturedResults: [
+      {
+        ticker: "SPX", spot: 6412.5, change_pct: 0.62, gamma_posture: "long",
+        call_wall: 6450, put_wall: 6350, max_pain: 6400, flip: 6390,
+        gamma_regime_read: "dealers long gamma", asof: "2026-08-11T15:40:00Z",
+      },
+    ],
+    nowMs: Date.parse("2026-08-11T15:45:00Z"),
+  });
+  const session = b.metrics?.find((m) => m.label === "Session");
+  assert.ok(session, "the positioning payload's change must reach the card");
+  assert.equal(session!.value, "+0.62%");
+  assert.equal(session!.source, "THERMAL", "attributed to where it actually came from");
+});
+
+test("a dedicated quote still WINS over the positioning payload's change", () => {
+  // Same precedence rule as the rest of this file: the more specific source first. A quote tool
+  // called for this question is a better read of the session than a GEX snapshot's side field.
+  const b = buildVisualBundle({
+    capturedResults: [
+      { ticker: "SPX", spot: 6412.5, change_pct: 0.62, gamma_posture: "long", call_wall: 6450 },
+      { ticker: "SPX", price: 6412.5, change_pct: 0.71 },
+    ],
+    nowMs: Date.parse("2026-08-11T15:45:00Z"),
+  });
+  const session = b.metrics?.find((m) => m.label === "Session");
+  assert.equal(session?.value, "+0.71%");
+  assert.equal(session?.source, "VECTOR");
+});
