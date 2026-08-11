@@ -102,3 +102,37 @@ test("no hardcoded SPX level: a stale anchor becomes a reason to distrust live d
   assert.match(p, /roughly \*\*10× SPY\*\*/);
   assert.match(p, /your prior is always stale/);
 });
+
+/**
+ * THE CARD CAPABILITY MUST BE IN THE PROMPT.
+ *
+ * Measured in production 2026-08-11. Asked "Can you generate me an image for todays Night Hawk
+ * plays", Largo replied "I cannot generate images. I'm a market data analysis tool" — rendered on a
+ * screen showing the card generator's own template/size/format controls directly beneath it.
+ *
+ * The model was not wrong to reason that way: the prompt described every desk, every tool and every
+ * rich component, and never once mentioned that a turn can be rendered as a PNG. It refused a
+ * capability it had no way to know existed. That is the same defect class as the extractor bugs —
+ * a real capability with no path to the layer that needs it — and here the missing path was
+ * knowledge rather than data.
+ *
+ * These assertions are the tripwire: the day someone trims this section, the refusal comes back.
+ */
+test("Largo is told the shareable card exists and must never deny it", () => {
+  const p = LARGO_SYSTEM_PROMPT;
+  assert.match(p, /\*\*You CAN produce one, and it is already built\.\*\*/);
+  assert.match(p, /\*\*Never say you cannot generate images\.\*\*/);
+  // The controls are on screen — the refusal is contradicted by the surrounding UI, not just wrong.
+  assert.match(p, /controls sit directly under your reply/);
+});
+
+test("the card's provenance rule is stated, not just its existence", () => {
+  const p = LARGO_SYSTEM_PROMPT;
+  // Why Largo does not draw it: values come from the tool results, so a card cannot contradict the
+  // answer. Without this, "you can make images" invites it to describe layout or invent a link.
+  assert.match(p, /composed from YOUR ANSWER AND THIS TURN'S TOOL RESULTS/);
+  assert.match(p, /do not invent a URL for it/);
+  // And the one honest "nothing to draw" case, so the rule does not force a card claim on an
+  // empty turn.
+  assert.match(p, /no tools returned, no numbers/);
+});
