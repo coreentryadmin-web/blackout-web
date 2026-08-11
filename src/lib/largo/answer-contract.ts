@@ -147,6 +147,24 @@ const KIND_RE = /^[-*•]?\s*\[(fact|calc|inference|scenario)\]\s*/i;
  *  parens; the timestamp and freshness are optional because not every read exposes an `asOf`. */
 const PROVENANCE_RE = /\(([^()]+?)\)\s*$/;
 
+/**
+ * ONE SECTION'S PROSE, by name.
+ *
+ * Exported for the card renderer, which needs the VERDICT SENTENCE and was previously taking the
+ * first non-empty line of the answer instead. Every contract-conforming answer opens with the
+ * literal heading `**Verdict**`, so that line IS the word "Verdict" — and it was rendered as the
+ * card's largest text, on every replayed card, in production. See `answerSectionText`.
+ *
+ * Returns "" for a missing section or an unparseable answer; never throws.
+ */
+export function answerSectionText(markdown: string, name: AnswerSectionName): string {
+  try {
+    return splitSections(stripLargoBlocks(markdown)).get(name.toLowerCase()) ?? "";
+  } catch {
+    return "";
+  }
+}
+
 function splitSections(markdown: string): Map<string, string> {
   const out = new Map<string, string>();
   let current: string | null = null;

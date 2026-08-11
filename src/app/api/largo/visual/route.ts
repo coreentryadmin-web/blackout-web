@@ -8,6 +8,7 @@ import { renderVisualMarkup } from "@/lib/largo/visual/markup";
 import { sizeSpec } from "@/lib/largo/visual/sizes";
 import { fetchLargoTurnResults } from "@/lib/largo/largo-store";
 import { headlineFromMarkdown } from "@/features/largo/answer/answer-format";
+import { answerSectionText } from "@/lib/largo/answer-contract";
 import type { VisualSize, VisualTemplateId } from "@/lib/largo/visual/types";
 
 /**
@@ -117,7 +118,28 @@ export async function POST(req: NextRequest) {
    * applies to REPLAYED turns: a bundle posted without a turn id has no answer text to draw on,
    * and inventing a verdict from tool results is exactly what this library refuses to do.
    */
-  const replayedHeadline = replayed?.answer ? headlineFromMarkdown(replayed.answer, "") : "";
+  /**
+   * THE VERDICT SENTENCE, not the first line.
+   *
+   * REGRESSION I SHIPPED AND THEN SAW BY LOOKING. Deriving the headline with
+   * `headlineFromMarkdown` takes the first non-empty line of the answer — and every
+   * contract-conforming answer opens with the literal heading `**Verdict**`. So the largest text
+   * on every replayed card, in production, was the word "Verdict". Three of four cards in the live
+   * render carried it. The fix that put a headline on the card at all was the same change that
+   * made it meaningless, and no test could see it because the manifest records a headline either
+   * way — only the pixels show WHICH.
+   *
+   * `answerSectionText` reads the section BODY through the contract's own parser, so the card's
+   * lead line is the sentence Largo wrote to answer the question. `headlineFromMarkdown` stays as
+   * the fallback for an answer that never conformed to the contract, where the first line really
+   * is the closest thing to a verdict.
+   */
+  const verdictSection = replayed?.answer ? answerSectionText(replayed.answer, "Verdict") : "";
+  const replayedHeadline = verdictSection
+    ? headlineFromMarkdown(verdictSection, "")
+    : replayed?.answer
+      ? headlineFromMarkdown(replayed.answer, "")
+      : "";
 
   const bundle = buildVisualBundle({
     // Replayed results WIN over anything the client sent: the point of the turn id is that the

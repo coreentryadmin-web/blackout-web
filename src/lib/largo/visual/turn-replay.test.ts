@@ -122,10 +122,19 @@ test("a replayed card gets its VERDICT from what Largo actually wrote", () => {
   // Deriving from it is MORE coherent than the envelope, not less: the lead line becomes a
   // sentence Largo actually said about this turn rather than a re-parse that may have failed.
   const src = readFileSync(ROUTE, "utf8");
-  assert.match(src, /headlineFromMarkdown\(replayed\.answer/, "must derive from the stored answer");
+  // FROM THE VERDICT SECTION, NOT THE FIRST LINE. This originally asserted
+  // `headlineFromMarkdown(replayed.answer` — and every contract-conforming answer opens with the
+  // literal heading `**Verdict**`, so the largest text on every replayed card in production was
+  // the word "Verdict". The manifest recorded a headline either way; only the pixels showed WHICH.
+  assert.match(src, /answerSectionText\(replayed\.answer, "Verdict"\)/, "must read the verdict section");
+  assert.match(src, /headlineFromMarkdown\(verdictSection/, "and take its first real line");
+  assert.match(src, /headlineFromMarkdown\(replayed\.answer/, "keeping the non-conforming fallback");
   // Client-supplied headline still wins, so an envelope-rich turn is completely unchanged.
   assert.match(src, /headline: body\.headline \?\? \(replayedHeadline \|\| null\)/);
   // And ONLY for replays: a bundle posted without a turn id has no answer text, and inventing a
   // verdict from tool results is exactly what this library refuses to do.
-  assert.match(src, /replayed\?\.answer \? headlineFromMarkdown/);
+  // ONLY for replays. A bundle posted without a turn id has no answer text, and inventing a
+  // verdict from tool results is exactly what this library refuses to do. The guard moved onto
+  // the verdict lookup when the headline stopped being the answer's first line.
+  assert.match(src, /replayed\?\.answer \? answerSectionText/);
 });
