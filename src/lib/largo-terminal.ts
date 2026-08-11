@@ -7,6 +7,8 @@ import {
   type AnthropicSystemBlock,
   type AnthropicToolLoopEvent,
 } from "@/lib/providers/anthropic";
+import { detectVisualIntent } from "@/lib/largo/visual/intent";
+import type { VisualSize } from "@/lib/largo/visual/types";
 import { largoAvailable, largoClaudeEnabled } from "@/lib/ai-env";
 import { randomUUID } from "node:crypto";
 import { dbConfigured } from "@/lib/db";
@@ -97,6 +99,15 @@ export function isSseClientDisconnect(err: unknown): boolean {
   return msg.includes("Controller is already closed") || msg.includes("Invalid state");
 }
 
+/** Told the client to render a card without asking the member anything. */
+export type VisualDirective = {
+  auto: true;
+  /** The surface the wording implied — see `detectVisualIntent`. */
+  size: VisualSize;
+  /** `explicit` = the artefact was the request; `incidental` = implied by "post this on X". */
+  kind: "explicit" | "incidental";
+};
+
 export type LargoStreamEvent =
   | AnthropicToolLoopEvent
   | { type: "status"; message: string }
@@ -122,6 +133,23 @@ export type LargoStreamEvent =
       // cards; when absent it falls back to the raw `answer` markdown, which is what every Largo
       // answer rendered as before this shipped.
       envelope?: BieAnswerEnvelope;
+      /**
+       * AUTO-RENDER DIRECTIVE — present only when the member ASKED for an image.
+       *
+       * "Create an image for tomorrow's NH plays" is a request for an artefact, and the old flow
+       * answered it with a button: the member had to notice the Create Visual action, open a
+       * preview, choose a template and render. Four steps, none of which they asked for.
+       *
+       * A DIRECTIVE RATHER THAN AN INLINE RENDER, deliberately. Rasterising here would add the
+       * satori render to the answer's own latency, on a path that streams tokens precisely so a
+       * slow answer feels alive. The client fires the existing `/api/largo/visual` call the moment
+       * the answer lands, replaying THIS turn server-side (`turnId`) so the card is built from the
+       * same `capturedResults` the answer was written from — the one-snapshot rule, unchanged.
+       *
+       * Absent for every question that did not ask for an artefact, including ones a card would
+       * suit. See `detectVisualIntent` on why auto-rendering everything is the wrong default.
+       */
+      visual?: VisualDirective;
     }
   | { type: "error"; message: string };
 
@@ -506,6 +534,19 @@ function envelopeFromContract(
   return parseAnswerEnvelope(text, capturedResults) ?? undefined;
 }
 
+/**
+ * Read the member's visual intent off the question, ONCE, for both transports.
+ *
+ * Spread rather than assigned so the key is ABSENT (not `undefined`) on the overwhelming majority
+ * of turns that did not ask for an image — the client's own check is `if (visual)`, and a present
+ * key holding undefined is one refactor away from being treated as a directive.
+ */
+function visualDirective(question: string): { visual?: VisualDirective } {
+  const intent = detectVisualIntent(question);
+  if (!intent.wanted || !intent.kind) return {};
+  return { visual: { auto: true, size: intent.size, kind: intent.kind } };
+}
+
 export async function runLargoQuery(
   question: string,
   sessionId: string,
@@ -652,6 +693,7 @@ export async function runLargoQuery(
       tools_used: Array.from(new Set(toolsUsed)),
       followups,
       verification,
+      ...visualDirective(question),
       // The instrument LARGO resolved, handed to the client so the contextual rail shows the same
       // thing the answer is about. A client re-guessing from the question text could show NVDA
       // beside an answer about SPX, and nothing would surface the disagreement.
@@ -861,6 +903,7 @@ export async function runLargoQueryStream(
       followups,
         ticker: tickerHint,
       verification,
+      ...visualDirective(question),
       envelope,
     });
   } catch (error) {

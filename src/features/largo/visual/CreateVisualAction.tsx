@@ -18,7 +18,7 @@
  * back to a thin card.
  */
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 type TemplateChoice = string;
 type SizeChoice = "x_landscape" | "x_portrait" | "square" | "story";
@@ -94,6 +94,17 @@ export type CreateVisualActionProps = {
    * tape) can be filled, since raw tool output never crosses to the browser.
    */
   turnId?: number | null;
+  /**
+   * The server's AUTO-RENDER DIRECTIVE — present only when the member ASKED for an image.
+   *
+   * "Create an image for tomorrow's NH plays" is a request for an artefact, and answering it with
+   * a button made the member perform four steps they did not ask for: notice the action, open the
+   * preview, pick a template, press render. When this is set the component does all four itself.
+   *
+   * The picker is NOT removed. It stays for what it was always good at — refining a card the
+   * member has already seen — and for every question that did not ask for one.
+   */
+  autoRender?: { size: SizeChoice } | null;
 };
 
 export function CreateVisualAction(props: CreateVisualActionProps) {
@@ -109,7 +120,7 @@ export function CreateVisualAction(props: CreateVisualActionProps) {
   const [error, setError] = useState<string | null>(null);
 
   const body = useCallback(
-    () => ({
+    (override?: { size?: SizeChoice }) => ({
       question: props.question,
       headline: props.headline ?? null,
       summary: props.summary ?? null,
@@ -122,7 +133,7 @@ export function CreateVisualAction(props: CreateVisualActionProps) {
       turnId: props.turnId ?? null,
       ledgerRow: props.ledgerRow ?? null,
       template,
-      size,
+      size: override?.size ?? size,
       format,
     }),
     [props, template, size, format]
@@ -156,14 +167,17 @@ export function CreateVisualAction(props: CreateVisualActionProps) {
   }, [loadPlan]);
 
   /** Only this button produces output. Inline/SVG return markup; PNG returns bytes. */
-  const render = useCallback(async () => {
+  const render = useCallback(async (override?: { size?: SizeChoice }) => {
     setBusy(true);
     setError(null);
     try {
       const res = await fetch("/api/largo/visual", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body()),
+        // The override exists for the auto-render path: `setSize` has not been applied to the
+        // closure this call captures, so the directive's size is passed explicitly rather than
+        // relying on a state update that has not landed yet.
+        body: JSON.stringify(body(override)),
       });
       if (!res.ok) throw new Error(`Render failed (${res.status})`);
 
@@ -186,6 +200,30 @@ export function CreateVisualAction(props: CreateVisualActionProps) {
       setBusy(false);
     }
   }, [body, format]);
+
+  /**
+   * AUTO-RENDER, exactly once per answer.
+   *
+   * `useRef` rather than a state flag because this must not re-fire on the re-render its own
+   * `setImgUrl` causes — a render loop here would spend a satori render per tick against a
+   * premium-gated route. The ref survives re-renders and is never read during one, so it cannot
+   * cause a mismatch.
+   *
+   * The size comes from the DIRECTIVE, not from local state: the server read it off the wording
+   * ("post this on my story" -> 9:16) and local state has not been told. Applied to state too, so
+   * the picker that opens afterwards is already on the right surface if the member wants to refine.
+   */
+  const autoFired = useRef(false);
+  useEffect(() => {
+    if (!props.autoRender || autoFired.current) return;
+    autoFired.current = true;
+    setSize(props.autoRender.size);
+    setOpen(true);
+    void loadPlan();
+    // Rendered at the directive's size directly, because `setSize` above will not have been
+    // applied to the `body()` closure this call captures.
+    void render({ size: props.autoRender.size });
+  }, [props.autoRender, loadPlan, render]);
 
   const copy = useCallback(async (what: "svg" | "html") => {
     const text = what === "svg" ? markup?.svg : markup?.html;
@@ -318,7 +356,7 @@ export function CreateVisualAction(props: CreateVisualActionProps) {
           ) : null}
 
           <div className="largo-visual-row">
-            <button type="button" className="largo-visual-cta" onClick={render} disabled={busy}>
+            <button type="button" className="largo-visual-cta" onClick={() => void render()} disabled={busy}>
               {busy ? "Rendering…" : imgUrl ? "Re-render" : "Render image"}
             </button>
             {imgUrl && (

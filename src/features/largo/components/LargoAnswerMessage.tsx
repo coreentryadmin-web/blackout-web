@@ -32,6 +32,7 @@ export function LargoAnswerMessage({
   className,
   onFollowup,
   question,
+  autoVisual,
 }: {
   content: string;
   source?: string | null;
@@ -44,6 +45,14 @@ export function LargoAnswerMessage({
   /** The question this answer replies to. Used ONLY to pick which block leads in the desk read —
    *  see answer-layout.ts. Optional everywhere: without it the card renders the default order. */
   question?: string | null;
+  /**
+   * The server's auto-render directive, present only when the member ASKED for an image.
+   *
+   * Threaded straight through rather than re-derived here: the SERVER read the intent off the
+   * question (`detectVisualIntent`), and a second client-side reading is a second place for the
+   * two to disagree about whether a card was requested.
+   */
+  autoVisual?: { size: "x_landscape" | "x_portrait" | "square" | "story" } | null;
 }) {
   const fallback = <LargoMessageBody content={content} className={className} />;
 
@@ -125,6 +134,7 @@ export function LargoAnswerMessage({
         envelopeLevels={envelope.levels?.map((l) => ({ label: l.label, value: l.price })) ?? null}
         envelopeGexShifts={envelope.gexShifts ?? null}
         turnId={envelope.turnId ?? null}
+        autoRender={autoVisual ?? null}
       />
     </div>
   ) : null;
