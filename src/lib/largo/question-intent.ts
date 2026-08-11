@@ -89,9 +89,13 @@ export const KNOWN_TICKERS = new Set([
   "NET", "AXON", "CRWV", "OKLO", "MU", "OKTA", "SPXW", "RDDT", "SNOW", "DDOG", "CRWD",
   "PANW", "ANET", "VST", "TLN", "NBIS", "IONQ", "RGTI", "LUNR", "RKLB", "JOBY", "ACHR",
   "TSM", "MRVL", "MICRON", "WDC", "STX", "DELL", "HPE", "SNPS", "CDNS", "KLAC", "LRCX",
-  "AMAT", "ADI", "NXPI", "ON", "MCHP", "TER", "ENPH", "FSLR", "PLUG", "BE", "SMR",
+  // "ON" (ON Semi), "S" (SentinelOne) and "BE" (Bloom Energy) are deliberately NOT here. They are
+  // real symbols and they are unguardable: `"what's going on with NVDA"` yields BOTH "S" and "ON",
+  // which routed that question to a two-ticker COMPARE instead of the ecosystem read. A symbol
+  // worth one member's question is not worth breaking every question containing "on" or "'s".
+  "AMAT", "ADI", "NXPI", "MCHP", "TER", "ENPH", "FSLR", "PLUG", "SMR",
   "GEV", "CEG", "NRG", "TLRY", "DKNG", "ABNB", "LYFT", "SHOP", "SPOT", "ROKU", "PINS",
-  "SNAP", "TWLO", "ZS", "S", "OKTA", "MDB", "NET", "TEAM", "WDAY", "ADSK", "INTU",
+  "SNAP", "TWLO", "ZS", "MDB", "TEAM", "WDAY", "ADSK", "INTU",
 ]);
 
 function recentUserText(history: AnthropicMessage[], limit = 6): string {
@@ -120,6 +124,11 @@ function recentUserText(history: AnthropicMessage[], limit = 6): string {
  * ticker reference and over-restricting drops legitimate mentions. A `$` prefix always promotes.
  */
 const STOPWORD_TICKERS = new Set([
+  // Symbols that are ALSO ordinary words in this desk's vocabulary. They stay in KNOWN_TICKERS —
+  // NET and AXON are live Night Hawk plays — but reach it only when the member wrote them in
+  // capitals. Without this, "what is the net flow" pins the ticker NET, which is the same defect
+  // as the NOW/ServiceNow collision one row down.
+  "NET", "TEAM", "SNOW", "OPEN", "ALL",
   "NOW", "ARE", "OR", "BE", "GO", "SO", "AT", "ON", "IT", "IN", "OF", "TO",
   "THE", "AN", "AS", "IS", "IF", "BY", "WE", "US", "HE", "NO", "UP", "MY", "ME",
   "DO", "AND", "FOR", "BUT", "NOT", "YOU", "OUR", "OUT", "WHY", "HOW", "WHO", "ANY",
