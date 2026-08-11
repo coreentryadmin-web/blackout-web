@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { deriveZeroDteSetups, enrichSetup, type EnrichedZeroDteSetup, type ZeroDteSetup } from "./board";
 import {
   breakoutScore,
+  breakoutScoreBreakdown,
   breakoutSourceEnabled,
   buildBreakoutSetup,
   liquidityQualityScore,
@@ -441,4 +442,36 @@ test("buildBreakoutSetup: session_gap_days is null without todayYmd, and reflect
   assert.equal(weekendHold.session_gap_days, 2, "Sat+Sun skipped between Fri and Mon");
   // Score/gate-relevant fields are untouched by the gap — evidence only, no penalty in this PR.
   assert.equal(weekendHold.score, noToday.score);
+});
+
+// FINDINGS 2026-08-11 (member-visible gap). Measured live: 0 of 67 BREAKOUT setups carried any
+// factor data while 8 of 8 FLOW setups did, so ~90% of the board showed a score — 93 in two
+// cases — under a "Why this play was picked" heading that then read "Component breakdown not
+// served for this lane yet". Nothing needed computing: breakoutScore is already a sum of three
+// named terms that were thrown away at the return.
+test("breakoutScoreBreakdown: the parts reconcile to the score EXACTLY", () => {
+  // A breakdown whose components do not add up to the headline number is worse than none.
+  for (const gain of [0.5, 2, 6, 14]) {
+    for (const close of [0.55, 0.8, 1]) {
+      for (const dn of [0, 0.37, 1]) {
+        const out = breakoutScoreBreakdown({ gain, close_strength: close }, dn, "long");
+        const sum = Object.values(out.factors).reduce((a, b) => a + b, 0);
+        assert.equal(sum, out.score, `gain=${gain} close=${close} dollarNorm=${dn}`);
+        assert.equal(out.score, breakoutScore({ gain, close_strength: close }, dn, "long"));
+      }
+    }
+  }
+});
+
+test("breakoutScoreBreakdown: shorts decompose symmetrically", () => {
+  // close_strength is flipped for breakdowns; the components must follow, not just the total.
+  const short = breakoutScoreBreakdown({ gain: 8, close_strength: 0.05 }, 0.5, "short");
+  assert.equal(Object.values(short.factors).reduce((a, b) => a + b, 0), short.score);
+  assert.ok(short.factors.breakout_core > 0, "a hard close near the low must earn core points");
+});
+
+test("breakoutScoreBreakdown: a weak close earns no core points, and says so", () => {
+  const weak = breakoutScoreBreakdown({ gain: 12, close_strength: 0.5 }, 0.2, "long");
+  assert.equal(weak.factors.breakout_core, 0, "core is multiplicative — a mid close zeroes it");
+  assert.equal(Object.values(weak.factors).reduce((a, b) => a + b, 0), weak.score);
 });
