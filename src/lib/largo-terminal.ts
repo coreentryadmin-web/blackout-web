@@ -314,6 +314,8 @@ async function prepareLargoTurn(
   system: AnthropicSystemBlock[];
   filteredTools: typeof LARGO_TOOL_DEFS;
   toolsUsed: string[];
+  /** The live feed's own tool payloads — see the return site for why the card needs them. */
+  liveFeedResults: unknown[];
   tickerHint: string | null;
   viewer: ToolGuardViewer;
   timeframe: Timeframe;
@@ -495,6 +497,30 @@ async function prepareLargoTurn(
     system,
     filteredTools,
     toolsUsed,
+    /**
+     * THE LIVE FEED'S OWN PAYLOADS, so the card can see what the answer saw.
+     *
+     * `captureLargoLiveFeed` runs a dozen REAL tools before the model plans — market context, SPX
+     * structure, GEX regime, the 0DTE board, net flow, the banger and swing boards — and the
+     * results were rendered into the system prompt as TEXT and then dropped. `live_feed_capture` is
+     * pushed onto `toolsUsed` for display, which makes it look like a tool whose output was
+     * captured. Nothing captured it.
+     *
+     * MEASURED LIVE 2026-08-11. "what is the SPX gamma picture right now" and "Create an image for
+     * tomorrows NH plays" each ran exactly `live_feed_capture` + `platform_vitals_prefetch` and
+     * NOTHING else — Largo answered both straight from the feed, correctly and in detail, and the
+     * card refused with `insufficient_evidence` and an EMPTY signal list. The evidence existed, was
+     * fresh, was the same evidence the prose quoted, and had no path to the renderer. That is the
+     * fourth instance of this exact class in this file alone.
+     *
+     * Ordered AFTER the tool loop's own results at the call sites below, deliberately: the
+     * extractors take the FIRST match (`findPositioning`, `findQuote`), so an explicitly-called
+     * tool still wins and this can only ADD evidence where there was none.
+     *
+     * The one-snapshot rule is preserved exactly — these ARE the payloads the answer was written
+     * from, captured in the same turn, not a re-query.
+     */
+    liveFeedResults: Object.values(liveFeed).filter((v) => v != null),
     tickerHint: intent.tickerHint ?? null,
     viewer: { userId, isAdmin },
     timeframe,
@@ -592,8 +618,10 @@ export async function runLargoQuery(
 
   await prefetchLargoTurnCaches();
 
-  const { sid, history, system, filteredTools, toolsUsed, tickerHint, viewer, timeframe, persistedQuestion } =
-    await prepareLargoTurn(
+  const {
+    sid, history, system, filteredTools, toolsUsed, tickerHint, viewer, timeframe, persistedQuestion,
+    liveFeedResults,
+  } = await prepareLargoTurn(
     question,
     sessionId,
     userId,
@@ -625,6 +653,10 @@ export async function runLargoQuery(
         diagnostics,
       }),
     });
+
+    // APPENDED, NOT PREPENDED. The extractors take the first match, so anything the model
+    // explicitly called still wins and the feed can only fill gaps. See `liveFeedResults`.
+    capturedResults.push(...liveFeedResults);
 
     let text =
       answer?.trim() ||
@@ -764,8 +796,10 @@ export async function runLargoQueryStream(
 
   await prefetchLargoTurnCaches({ onStatus: emitStatus });
 
-  const { sid, history, system, filteredTools, toolsUsed, tickerHint, viewer, timeframe, persistedQuestion } =
-    await prepareLargoTurn(
+  const {
+    sid, history, system, filteredTools, toolsUsed, tickerHint, viewer, timeframe, persistedQuestion,
+    liveFeedResults,
+  } = await prepareLargoTurn(
     question,
     sessionId,
     userId,
@@ -824,6 +858,10 @@ export async function runLargoQueryStream(
         diagnostics,
       }),
     });
+
+    // APPENDED, NOT PREPENDED. The extractors take the first match, so anything the model
+    // explicitly called still wins and the feed can only fill gaps. See `liveFeedResults`.
+    capturedResults.push(...liveFeedResults);
 
     let text =
       answer?.trim() ||
