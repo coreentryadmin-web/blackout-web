@@ -136,3 +136,29 @@ test("the card's provenance rule is stated, not just its existence", () => {
   // empty turn.
   assert.match(p, /no tools returned, no numbers/);
 });
+
+test("the banned refusal sentences are named literally, not just described", () => {
+  // MEASURED AGAIN 2026-08-11, AFTER the first fix shipped. Asked "Can you generate an image for
+  // todays CRWV earnings play?" — for a ticker with no play in the edition — Largo answered:
+  //
+  //   "Verdict — I cannot generate images. I'm a market data analysis tool, not a graphics engine.
+  //    Additionally, there is no CRWV earnings play in today's Night Hawk edition…"
+  //
+  // The card generator rendered a working card directly beneath it. The first fix told the model
+  // the capability exists; it did not anticipate the case where the SUBJECT is missing, and the
+  // model reached for the capability denial to explain a data absence. Naming the exact sentences
+  // is what makes the rule checkable rather than interpretable.
+  const p = LARGO_SYSTEM_PROMPT;
+  assert.match(p, /❌ "I cannot generate images\."/);
+  assert.match(p, /❌ "I'm a market data analysis tool, not a graphics engine\."/);
+  assert.match(p, /❌ "Image generation is outside my scope\."/);
+  assert.match(p, /screenshot the page/);
+});
+
+test("a missing SUBJECT is a data answer, never a capability answer", () => {
+  const p = LARGO_SYSTEM_PROMPT;
+  assert.match(p, /WHEN THE THING ASKED ABOUT DOES NOT EXIST, SAY THAT — NOT THAT YOU CANNOT DRAW/);
+  // The live example is in the prompt, because an abstract rule did not survive contact with it.
+  assert.match(p, /no CRWV play exists/);
+  assert.match(p, /A missing subject is a DATA answer, never a capability\s+answer/);
+});
