@@ -1,5 +1,6 @@
 "use client";
 
+import { FRESHNESS_LABEL } from "@/features/largo/answer/answer-format";
 import React from "react";
 import { clsx } from "clsx";
 import type { BieAnswerEnvelope, BieFreshness } from "@/lib/bie/answer-envelope";
@@ -327,7 +328,14 @@ export function LargoDeskRead({
 
       {/* The WHY behind the confidence level, not just the level. A confidence number with no
           reason is a number nobody can argue with, which is the opposite of useful. */}
-      {envelope.confidence?.why && <div className="largo-read-conf-why">{envelope.confidence.why}</div>}
+      {envelope.confidence?.why && (
+        // THROUGH THE INLINE RENDERER, like every other prose field on this component.
+        // This one line printed its markdown raw: the live CRWV read showed a literal
+        // "**Low**. The IV rank is median…" under the headline. Largo writes the confidence
+        // rationale in the same voice as the sections above it — bold for the level, numbers it
+        // expects to be stamped — and this was the only place that text reached the DOM unparsed.
+        <div className="largo-read-conf-why">{renderInlineMarkdown(envelope.confidence.why)}</div>
+      )}
 
       {order.map((b) => blocks[b])}
 
@@ -374,7 +382,14 @@ export function LargoDeskRead({
         <div className="largo-read-data">
           {[...sources.entries()].map(([src, fresh]) => (
             <span key={src} className={clsx("largo-read-src", FRESH_CLASS[fresh])}>
-              {src} {fresh}
+              {/* SEPARATED, AND THE FRESHNESS SPELLED OUT.
+                  This concatenated a SOURCE NAME directly with a FRESHNESS VALUE, and the
+                  result reads as a sentence about the source: the live CRWV read showed
+                  "NIGHT HAWK EDITION UNKNOWN" — which parses as the edition being unknown, on an
+                  answer that had just cited that edition's Aug-4 pick. The edition was known; its
+                  AGE was not. `FRESHNESS_LABEL` already carries the unambiguous wording ("Age
+                  unknown"), and the separator stops the two fields reading as one phrase. */}
+              {src} · {FRESHNESS_LABEL[fresh]}
             </span>
           ))}
         </div>
