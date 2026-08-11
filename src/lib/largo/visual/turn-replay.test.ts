@@ -138,3 +138,19 @@ test("a replayed card gets its VERDICT from what Largo actually wrote", () => {
   // the verdict lookup when the headline stopped being the answer's first line.
   assert.match(src, /replayed\?\.answer \? answerSectionText/);
 });
+
+test("plan mode reports the composition's own arithmetic, and only derives it", () => {
+  // A composed card carrying the wrong evidence has two possible causes with different fixes: the
+  // right block was OUT-SCORED (relevance lost to density) or OUT-SIZED (it ranked first and did
+  // not fit). From outside the process those are indistinguishable, and the temptation is to bump
+  // a scoring constant for what is a packing bug — which is what nearly happened before the block
+  // heights were measured against pixels (#2051).
+  const src = readFileSync(ROUTE, "utf8");
+  assert.match(src, /composition:\s*\n?\s*route\.template === "COMPOSED"/, "plan must expose the composition");
+  assert.match(src, /budget: c\.budget/);
+  assert.match(src, /dropped: c\.dropped/);
+  // Every reported weight must come from the composer, never be recomputed here — a second
+  // implementation of the ranking would eventually disagree with the one that drew the card.
+  assert.match(src, /composeForRender\(\{ question, bundle, spec, emphasis: null \}\)\.composition/);
+  assert.ok(!/scoreBlock\(/.test(src), "the route must not re-score blocks itself");
+});

@@ -9,6 +9,7 @@ import { sizeSpec } from "@/lib/largo/visual/sizes";
 import { fetchLargoTurnResults } from "@/lib/largo/largo-store";
 import { headlineFromMarkdown } from "@/features/largo/answer/answer-format";
 import { answerSectionText } from "@/lib/largo/answer-contract";
+import { composeForRender } from "@/lib/largo/visual/compose";
 import type { VisualSize, VisualTemplateId } from "@/lib/largo/visual/types";
 
 /**
@@ -224,6 +225,36 @@ export async function POST(req: NextRequest) {
             : null,
         },
         available: IMPLEMENTED_TEMPLATES.map((t) => ({ id: t.id, label: t.label })),
+        /**
+         * WHY THIS CARD AND NOT ANOTHER — the composed layout's own arithmetic.
+         *
+         * A composed card that carries the wrong evidence has two possible causes, and the fix is
+         * different for each: the right block was OUT-SCORED (relevance lost to density) or it was
+         * OUT-SIZED (it ranked first and did not fit). Without the weights and the height budget
+         * those are indistinguishable from outside, and the temptation is to bump a scoring
+         * constant for what is actually a packing bug — which is exactly what happened before the
+         * block heights were measured (#2051).
+         *
+         * Plan mode only, and derived — it reports the decision already made, never influences it.
+         */
+        composition:
+          route.template === "COMPOSED"
+            ? (() => {
+                const c = composeForRender({ question, bundle, spec, emphasis: null }).composition;
+                return {
+                  budget: c.budget,
+                  used: c.used,
+                  blocks: c.blocks.map((b) => ({
+                    id: b.id,
+                    weight: b.weight,
+                    estHeight: b.estHeight,
+                    matchedIntent: b.matchedIntent,
+                    compact: b.compact,
+                  })),
+                  dropped: c.dropped,
+                };
+              })()
+            : null,
       },
       { status: 200, headers: NO_STORE_HEADERS }
     );
