@@ -57,8 +57,31 @@ export type LargoProduct =
  *                   honestly answer "what did this look like when the trade fired".
  * - `event_log`   — an ordered record of discrete events; supports "what changed between X and Y"
  *                   by construction.
+ * - `snapshot_delta` — compares NOW against ONE cached prior snapshot and reports the difference.
+ *                   Can answer "what just changed"; canNOT be pointed at an arbitrary past moment.
+ *
+ * WHY `snapshot_delta` EXISTS — it is the class this taxonomy was missing, and its absence caused a
+ * real misclassification five times over.
+ *
+ * `temporal` feeds TWO consumers with different needs. `changeCapabilities()` wants sources that can
+ * answer "what changed", and `historicalCapabilities()` / `plan.ts`'s PAST_CAPABLE want sources that
+ * can answer about a past moment. Those overlap but are not the same set, and a now-vs-last-snapshot
+ * diff sits exactly in the gap: Vector Pulse genuinely answers "what just changed" and genuinely
+ * cannot tell you what the pulse looked like yesterday.
+ *
+ * With no class for that, five such tools were catalogued `windowed` — correct for discovery, and
+ * wrong for safety, because `windowed` is past-capable and would clear the guard on a historical
+ * question. Flipping them to `as_of` would have fixed the safety hole by breaking discovery, which
+ * is why the pulse entry carried an explicit comment defending `windowed`. This class serves both:
+ * `changeCapabilities()` includes it, PAST_CAPABLE does not.
  */
-export type TemporalClass = "live_only" | "as_of" | "windowed" | "point_in_time" | "event_log";
+export type TemporalClass =
+  | "live_only"
+  | "as_of"
+  | "windowed"
+  | "point_in_time"
+  | "event_log"
+  | "snapshot_delta";
 
 /** How quickly a source's answer goes stale — drives the freshness caveat. */
 export type FreshnessClass =
@@ -321,12 +344,14 @@ export const LARGO_CAPABILITIES: readonly LargoCapability[] = [
     answers: "How has the dealer-positioning matrix CHANGED since earlier?",
     // A first-class "what changed" source. Answering matrix drift from two live snapshots the
     // model diffed itself would be a fabricated comparison; this is measured server-side.
-    temporal: "windowed",
+    temporal: "snapshot_delta",
     freshness: "fast",
     entities: ["ticker", "strike", "expiry", "session"],
     entitlement: "premium",
     keywords: ["changed", "shift", "moved", "since", "delta", "drift"],
     joinsWith: ["thermal.positioning", "thermal.regime_events"],
+    caveat:
+      "A diff of the current heatmap against the previously cached one (`previous_asof`). `limit` caps ROWS, not time — it cannot be pointed at an earlier session.",
   },
   {
     id: "thermal.regime_events",
@@ -359,12 +384,14 @@ export const LARGO_CAPABILITIES: readonly LargoCapability[] = [
     // DERIVED, not fetched. Catalogued separately from the raw tape because "what is stacking"
     // and "show me the prints" rank alike on keywords and only one of them the tape can answer.
     answers: "What is HELIX making of the tape — stacked hits, top prints, velocity spikes, split flow?",
-    temporal: "windowed",
+    temporal: "snapshot_delta",
     freshness: "realtime",
     entities: ["ticker", "strike", "expiry"],
     entitlement: "premium",
     keywords: ["stacked", "stacking", "top prints", "top hits", "velocity", "radar", "split flow", "repeated", "hits"],
     joinsWith: ["helix.tape", "thermal.positioning", "vector.full_state"],
+    caveat:
+      "Aggregates a FIXED recent window of the current tape. `limit` caps rows, not time — it cannot be pointed at an earlier session.",
   },
   // ── VECTOR ──
   {
@@ -387,12 +414,14 @@ export const LARGO_CAPABILITIES: readonly LargoCapability[] = [
     // "what just changed" and "what is the state" rank identically on keywords alone and only one
     // of them can actually be answered from a single state read.
     answers: "What CHANGED on Vector just now — regime flip, magnet shift, new wall forming, integrity change?",
-    temporal: "windowed",
+    temporal: "snapshot_delta",
     freshness: "realtime",
     entities: ["ticker", "strike"],
     entitlement: "premium",
     keywords: ["pulse", "just changed", "signal", "forming", "flipped", "shifted", "alert"],
     joinsWith: ["vector.full_state", "vector.wall_dynamics"],
+    caveat:
+      "A diff of NOW against the last cached snapshot, not a queryable window — it can say what just changed, never what the pulse looked like at an earlier time.",
   },
   {
     id: "vector.chart_analytics",
@@ -439,12 +468,14 @@ export const LARGO_CAPABILITIES: readonly LargoCapability[] = [
     product: "VECTOR",
     tool: "get_wall_dynamics",
     answers: "How have the walls MOVED through the session?",
-    temporal: "windowed",
+    temporal: "snapshot_delta",
     freshness: "fast",
     entities: ["ticker", "strike", "session"],
     entitlement: "premium",
     keywords: ["wall moved", "migrating", "changed", "through the day", "since open"],
     joinsWith: ["thermal.matrix_changes"],
+    caveat:
+      "Composed from the live Vector state; it takes no time parameter at all and cannot describe walls at a past moment.",
   },
 
   // ── NIGHT HAWK ──
@@ -479,11 +510,13 @@ export const LARGO_CAPABILITIES: readonly LargoCapability[] = [
     product: "NIGHT_HAWK",
     tool: "get_cortex_decision",
     answers: "Why did Cortex commit or veto a specific name?",
-    temporal: "event_log",
+    temporal: "as_of",
     freshness: "fast",
     entities: ["ticker", "play", "session"],
     entitlement: "premium",
     keywords: ["cortex", "veto", "why", "decision", "blocked", "skipped"],
+    caveat:
+      "One current decision composed for the question asked — not an ordered log of past decisions, and it carries no timestamps to order.",
   },
   {
     id: "nighthawk.swings",
@@ -515,12 +548,12 @@ export const LARGO_CAPABILITIES: readonly LargoCapability[] = [
     answers: "What is in tonight's Legacy evening playbook edition?",
     // "session" is a FRESHNESS class, not a temporal one. The edition is rebuilt once per session
     // and then frozen, so it reports the state it was built from: as_of, refreshed per session.
-    temporal: "as_of",
+    temporal: "point_in_time",
     freshness: "session",
     entities: ["ticker", "session"],
     entitlement: "premium",
     keywords: ["edition", "playbook", "tonight", "evening", "legacy"],
-    caveat: "Built once per session — it reflects the state at build time, not the live tape.",
+    caveat: "Accepts a date and returns THAT session's published edition — one of the few genuinely point-in-time sources. Without a date it serves the latest. Built once per session — it reflects the state at build time, not the live tape.",
   },
   {
     id: "nighthawk.horizons",
@@ -727,11 +760,13 @@ export const LARGO_CAPABILITIES: readonly LargoCapability[] = [
     product: "CATALYSTS",
     tool: "get_economic_calendar",
     answers: "What macro events are scheduled?",
-    temporal: "windowed",
+    temporal: "live_only",
     freshness: "session",
     entities: ["session"],
     entitlement: "premium",
     keywords: ["fomc", "cpi", "macro", "calendar", "economic"],
+    caveat:
+      "Live only, and it looks FORWARD — `days_ahead` is a forward window, not a lookback. It lists scheduled releases, and cannot say what an indicator printed in the past.",
   },
 
   // ── PLATFORM ──
@@ -764,13 +799,13 @@ export const LARGO_CAPABILITIES: readonly LargoCapability[] = [
     product: "PLATFORM",
     tool: "call_internal_api",
     answers: "Read any internal GET route when no dedicated capability covers the question.",
-    temporal: "as_of",
+    temporal: "live_only",
     freshness: "fast",
     entities: [],
     entitlement: "premium",
     keywords: ["fallback", "raw", "endpoint"],
     caveat:
-      "Escape hatch, not a first choice. An unknown query param can silently return a DIFFERENT " +
+      "Live only by default. It is an escape hatch across many routes, so the ENDPOINT decides what comes back and nothing here guarantees a temporal class — treat every result as present-time unless the payload stamps otherwise. Escape hatch, not a first choice. An unknown query param can silently return a DIFFERENT " +
       "slice than intended — see FINDINGS 2026-08-10, where ?view=outcomes served the 0DTE lane " +
       "with a 200. Prefer a registered capability whenever one exists.",
   },
@@ -1638,9 +1673,18 @@ export function historicalCapabilities(): LargoCapability[] {
   );
 }
 
-/** Capabilities that can answer "what CHANGED" — an ordered record, or a server-computed delta. */
+/**
+ * Capabilities that can answer "what CHANGED" — an ordered record, a lookback aggregate, or a
+ * now-vs-last-snapshot delta.
+ *
+ * `snapshot_delta` belongs here and NOT in `historicalCapabilities()`. That split is the reason the
+ * class exists: these sources answer "what just changed" well and cannot answer "what did it look
+ * like yesterday" at all.
+ */
 export function changeCapabilities(): LargoCapability[] {
-  return LARGO_CAPABILITIES.filter((c) => c.temporal === "event_log" || c.temporal === "windowed");
+  return LARGO_CAPABILITIES.filter(
+    (c) => c.temporal === "event_log" || c.temporal === "windowed" || c.temporal === "snapshot_delta"
+  );
 }
 
 /** Capabilities sharing an entity key — the join surface for cross-product reasoning. */
