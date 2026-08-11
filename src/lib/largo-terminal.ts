@@ -44,7 +44,7 @@ import {
 import { analyzeLargoQuestion, KNOWN_TICKERS } from "@/lib/largo/question-intent";
 import { formatImageBlock, type ImageBlock } from "@/lib/largo/core/image-attachment";
 import { deterministicLargoFollowups } from "@/lib/largo/largo-followups";
-import { withResolutionChips } from "@/lib/largo/core/resolution-chips";
+import { withCardEnrichmentChip, withResolutionChips } from "@/lib/largo/core/resolution-chips";
 import { loadLargoPlatformSnapshotBlock } from "@/lib/largo/platform-snapshot-block";
 import { captureLargoLiveFeed, formatLargoLiveFeed } from "@/lib/largo/largo-live-feed";
 import { polygonConfigured, uwConfigured } from "@/lib/providers/config";
@@ -699,9 +699,11 @@ export async function runLargoQuery(
     const envelope = envelopeFromContract(text, question, capturedResults);
     // The turn id rides on the envelope so "Create visual" can name the exact turn to rebuild from.
     if (envelope && turnId != null) envelope.turnId = turnId;
-    const followups = withResolutionChips(
-      await generateLargoFollowups(question, text, tickerHint),
-      envelope?.headline ?? ""
+    // The card-enrichment offer rides on the SAME directive that drew the card, so the chip and
+    // the artefact can never disagree about whether one exists. See `withCardEnrichmentChip`.
+    const followups = withCardEnrichmentChip(
+      withResolutionChips(await generateLargoFollowups(question, text, tickerHint), envelope?.headline ?? ""),
+      detectVisualIntent(question).wanted
     );
 
     return {
@@ -899,9 +901,11 @@ export async function runLargoQueryStream(
     const envelope = envelopeFromContract(text, question, capturedResults);
     // The turn id rides on the envelope so "Create visual" can name the exact turn to rebuild from.
     if (envelope && turnId != null) envelope.turnId = turnId;
-    const followups = withResolutionChips(
-      await generateLargoFollowups(question, text, tickerHint),
-      envelope?.headline ?? ""
+    // The card-enrichment offer rides on the SAME directive that drew the card, so the chip and
+    // the artefact can never disagree about whether one exists. See `withCardEnrichmentChip`.
+    const followups = withCardEnrichmentChip(
+      withResolutionChips(await generateLargoFollowups(question, text, tickerHint), envelope?.headline ?? ""),
+      detectVisualIntent(question).wanted
     );
 
     // Replace the progressively-streamed text with the AUTHORITATIVE version.

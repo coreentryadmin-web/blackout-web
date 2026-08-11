@@ -6,7 +6,11 @@ import {
   CONFIRM_LONG,
   CONFIRM_SHORT,
   WHAT_INVALIDATES,
+  REDRAW_WITH_TRADE_DETAIL,
+  withCardEnrichmentChip,
 } from "./resolution-chips";
+import { detectVisualIntent } from "@/lib/largo/visual/intent";
+import { BLOCKS } from "@/lib/largo/visual/compose";
 
 /** The specific, excellent chips Largo writes itself — a template can never produce these. */
 const MODEL_CHIPS = [
@@ -76,4 +80,43 @@ test("empty and blank model chips are dropped, never rendered as empty buttons",
 test("the limit is respected and is configurable", () => {
   assert.equal(withResolutionChips(MODEL_CHIPS, "Signals conflict.", 3).length, 3);
   assert.equal(withResolutionChips(MODEL_CHIPS, "Signals conflict.", 10).length, 5);
+});
+
+/**
+ * CARD ENRICHMENT CHIP — the "want the trade detail on it?" offer.
+ *
+ * Asked for directly, and the constraint that shapes it is the other half of the same request:
+ * generating a card must NOT stop to ask the member anything. A chip satisfies both — the card is
+ * drawn immediately, the richer version is one tap away.
+ */
+
+test("the chip is offered ONLY when a card was actually requested", () => {
+  assert.deepEqual(withCardEnrichmentChip(["a", "b"], false), ["a", "b"]);
+  assert.equal(withCardEnrichmentChip(["a", "b"], true)[0], REDRAW_WITH_TRADE_DETAIL);
+});
+
+test("it leads the row — it is the action, the others are questions", () => {
+  const out = withCardEnrichmentChip(["What invalidates this?", "x", "y"], true);
+  assert.equal(out[0], REDRAW_WITH_TRADE_DETAIL);
+  assert.ok(out.length <= 4, "the row must still scan in one glance");
+});
+
+test("it is not added twice when the model already asked for it", () => {
+  const out = withCardEnrichmentChip(["Redraw with entries and exits?", "x"], true);
+  assert.equal(out.filter((c) => /redraw/i.test(c)).length, 1);
+});
+
+test("the chip TEXT is itself a valid card request", () => {
+  // The whole design rests on this: the chip is a question, not a UI toggle. If the text does not
+  // trip `detectVisualIntent`, tapping it produces prose and the offer silently does nothing.
+  const intent = detectVisualIntent(REDRAW_WITH_TRADE_DETAIL);
+  assert.equal(intent.wanted, true, "must be recognised as an artefact request");
+  assert.equal(intent.kind, "explicit");
+});
+
+test("and it steers the composer to the PLAYBOOK block", () => {
+  // `playbook`'s match is /entries|entry|target|stop/. The chip naming those words is what makes
+  // the redraw land on a different, trade-detailed layout rather than repeating the first card.
+  const playbook = BLOCKS.find((b) => b.id === "playbook")!;
+  assert.ok(playbook.match?.test(REDRAW_WITH_TRADE_DETAIL), "the chip must boost the playbook block");
 });
