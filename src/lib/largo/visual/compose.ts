@@ -548,6 +548,31 @@ function drawnRows(
   return Math.min(total, spec.dense ? 4 : 6);
 }
 
+/**
+ * Is this level on the SAME PRICE SCALE as spot — i.e. plausibly the same instrument?
+ *
+ * THIS GUARD EXISTS BECAUSE COMPOSITION CREATED THE FAILURE MODE. A designed template was narrow
+ * by construction: LEVEL_ANALYSIS was selected for a level question and drew that instrument's
+ * levels. A composed card draws whatever the bundle carries, and a turn that touched two
+ * instruments — "compare TSLA to SPX", or a Night Hawk answer naming several names — carries
+ * levels for both. The map would stack a 7,800 SPX call wall above a 348 TSLA spot and label the
+ * arrangement a dealer ladder. It is the most misleading thing this library can draw: every
+ * number on it is real, and the relationship between them is fiction.
+ *
+ * The test is SCALE, not ticker, because `VisualLevel` carries no ticker and adding one would
+ * enforce nothing — levels arrive from shape-matched tool output that does not reliably name its
+ * instrument either. A factor of three is far outside any real dealer level (a distant put wall
+ * is single-digit percent away, an OPEX magnet rarely past 15%) and far inside the gap between
+ * two instruments' price scales.
+ *
+ * With no spot there is nothing to compare against, so nothing is excluded — a level map with no
+ * anchor is a different problem, and one the level block's own sufficiency gate handles.
+ */
+export function levelOnSameScale(price: number, spotValue: number | null | undefined): boolean {
+  if (spotValue == null || !Number.isFinite(spotValue) || spotValue <= 0) return true;
+  return price >= spotValue / 3 && price <= spotValue * 3;
+}
+
 /** Parse an emphasis list from untrusted input (Largo's own spec block), dropping unknown ids. */
 export function parseEmphasis(value: unknown): BlockId[] | null {
   if (!Array.isArray(value)) return null;

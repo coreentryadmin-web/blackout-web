@@ -23,6 +23,7 @@ import type { ReactElement } from "react";
 import { C, FONT, GLYPH, levelColor, stanceColor, toneColor } from "./tokens";
 import type { SizeSpec } from "./sizes";
 import { s } from "./sizes";
+import { levelOnSameScale } from "./compose";
 import type { ManifestRecorder } from "./manifest";
 import type {
   VisualLevel,
@@ -290,7 +291,16 @@ export function LevelMap({
     isSpot: false,
   }));
 
-  const all: { price: number; row: Row }[] = rows.map((l, i) => ({ price: l.price, row: mapped[i]! }));
+  // OFF-SCALE LEVELS ARE DROPPED — see `levelOnSameScale` for why, and why the test is scale
+  // rather than ticker. Recorded as an omission so the manifest shows the card knew about them.
+  const inScale = rows.filter((l) => levelOnSameScale(l.price, spot?.value));
+  const offScale = rows.length - inScale.length;
+  if (offScale > 0) recorder.omit(`${offScale} level(s) from a different price scale`);
+
+  const all: { price: number; row: Row }[] = inScale.map((l) => ({
+    price: l.price,
+    row: mapped[rows.indexOf(l)]!,
+  }));
   if (spot) {
     all.push({ price: spot.value, row: { label: "SPOT", display: spot.display, kind: "spot", isSpot: true } });
   }

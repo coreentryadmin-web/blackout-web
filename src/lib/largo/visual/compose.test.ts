@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { BLOCKS, composeCard, heightBudget, parseEmphasis, scoreBlock } from "./compose";
+import { BLOCKS, composeCard, heightBudget, levelOnSameScale, parseEmphasis, scoreBlock } from "./compose";
 import { detectVisualIntent, questionSubject } from "./intent";
 import { balancedBySide } from "./templates/composed";
 import { sizeSpec } from "./sizes";
@@ -294,4 +294,44 @@ test("a bare headline plus one number is still REFUSED", async () => {
   // The composer must not repeal "one metric under a headline is a decoration, not evidence".
   const thin: VisualBundle = { ...base, headline: "SPX is bid", metrics: [{ label: "VIX", value: "14.8", source: "THERMAL" }] };
   assert.equal(routeVisual("make me a card", thin), null);
+});
+
+// ── Cross-instrument contamination — a failure COMPOSITION introduced ───────────────────────
+
+test("a level from a DIFFERENT instrument is never drawn against this spot", () => {
+  // A turn that touched both names — "compare TSLA to SPX", or an NH answer naming several.
+  // A designed template was narrow by construction and could not do this; a composed card draws
+  // whatever the bundle carries, so the guard has to live below the templates.
+  const tslaSpot = 348.22;
+  assert.equal(levelOnSameScale(355, tslaSpot), true, "TSLA's own call wall");
+  assert.equal(levelOnSameScale(330, tslaSpot), true, "TSLA's own put wall");
+  // SPX. Real numbers, and stacking them above a 348 spot would label the arrangement a dealer
+  // ladder — every value true, the relationship between them fiction.
+  assert.equal(levelOnSameScale(7800, tslaSpot), false, "an SPX wall must not draw against TSLA spot");
+  assert.equal(levelOnSameScale(7725, tslaSpot), false);
+  // And the reverse pairing, which is the same bug with the instruments swapped.
+  assert.equal(levelOnSameScale(355, 7757.58), false, "a TSLA wall must not draw against SPX spot");
+});
+
+test("with no spot to anchor against, nothing is excluded", () => {
+  // There is nothing to compare to. A map with no anchor is a different problem, handled by the
+  // level block's own sufficiency gate rather than by silently emptying the map here.
+  assert.equal(levelOnSameScale(7800, null), true);
+  assert.equal(levelOnSameScale(7800, undefined), true);
+  assert.equal(levelOnSameScale(7800, 0), true);
+});
+
+test("a distant-but-real level is KEPT — the guard must not overshoot", () => {
+  // A put wall 15% away is ordinary. Only a different PRICE SCALE is excluded, and the 3x
+  // threshold sits far outside any real dealer level.
+  const wide: VisualBundle = {
+    ...base,
+    spot: { value: 100, display: "100.00", source: "THERMAL" },
+    levels: [
+      { label: "Far put wall", price: 62, display: "62.00", kind: "support", source: "THERMAL" },
+      { label: "Far call wall", price: 190, display: "190.00", kind: "resistance", source: "THERMAL" },
+    ],
+  };
+  const c = composeCard({ question: "where are the walls", bundle: wide, spec: sizeSpec("story") });
+  assert.ok(c.blocks.some((b) => b.id === "levels"));
 });
