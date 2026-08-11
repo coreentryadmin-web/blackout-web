@@ -411,25 +411,54 @@ export function routeVisual(
  * Kept in the router rather than imported from `compose.ts` so the module stays free of the size
  * spec — composition needs a canvas, this check does not.
  */
+/**
+ * WHICH evidence blocks this bundle can fill, by name.
+ *
+ * The tally used to be an anonymous count, and a refusal was therefore unexplainable: a LIVE sweep
+ * had 5 of 7 real questions answer `insufficient_evidence` — including "what is the SPX gamma
+ * picture right now" after 2 tools and "show me the biggest options flow today" after 4 — with no
+ * way to tell whether the tools returned nothing, the extractors missed a shape, or the threshold
+ * was simply too high. Raw tool output is a DB product and raw Postgres is unreachable from the
+ * audit sandbox, so there was no way to answer that question from outside the app either.
+ *
+ * Naming the signals makes the refusal self-diagnosing from the plan response alone, and it is
+ * also the honest thing to show a member: "no levels, no flow, no ranked rows" says what a card
+ * would have needed, where "insufficient evidence" only says no.
+ */
+export function composableSignals(b: VisualBundle): string[] {
+  const present: Record<string, boolean> = {
+    spot: !!b.spot,
+    regime: !!b.regime,
+    levels: (b.levels?.length ?? 0) >= 1,
+    metrics: (b.metrics?.length ?? 0) >= 1,
+    system_reads: (b.systemReads?.length ?? 0) >= 2,
+    gex_shifts: (b.gexShifts?.length ?? 0) >= 1,
+    gamma_profile: (b.gammaProfile?.rows.length ?? 0) >= 3,
+    flow: (b.flow?.rows.length ?? 0) >= 1,
+    playbook: (b.playbook?.rows.length ?? 0) >= 1,
+    leaderboard: (b.leaderboard?.rows.length ?? 0) >= 2,
+    screen: (b.screen?.rows.length ?? 0) >= 3,
+    rejections: (b.rejections?.rows.length ?? 0) >= 2,
+    timeline: (b.timeline?.length ?? 0) >= 2,
+    session: !!b.session?.closeDisplay,
+    generic_stats: (b.genericStats?.rows.length ?? 0) >= 3,
+    generic_ranked: (b.genericRanked?.rows.length ?? 0) >= 3,
+    generic_events: (b.genericEvents?.rows.length ?? 0) >= 2,
+  };
+  return Object.entries(present)
+    .filter(([, ok]) => ok)
+    .map(([name]) => name);
+}
+
+/**
+ * How many EVIDENCE blocks this bundle can fill.
+ *
+ * The headline is deliberately absent from this list: it is the card's conclusion, not a
+ * measurement, and counting it would let a bundle reach the threshold on a claim plus one number.
+ *
+ * Kept in the router rather than imported from `compose.ts` so the module stays free of the size
+ * spec — composition needs a canvas, this check does not.
+ */
 function composableEvidenceCount(b: VisualBundle): number {
-  const checks: boolean[] = [
-    !!b.spot,
-    !!b.regime,
-    (b.levels?.length ?? 0) >= 1,
-    (b.metrics?.length ?? 0) >= 1,
-    (b.systemReads?.length ?? 0) >= 2,
-    (b.gexShifts?.length ?? 0) >= 1,
-    (b.gammaProfile?.rows.length ?? 0) >= 3,
-    (b.flow?.rows.length ?? 0) >= 1,
-    (b.playbook?.rows.length ?? 0) >= 1,
-    (b.leaderboard?.rows.length ?? 0) >= 2,
-    (b.screen?.rows.length ?? 0) >= 3,
-    (b.rejections?.rows.length ?? 0) >= 2,
-    (b.timeline?.length ?? 0) >= 2,
-    !!b.session?.closeDisplay,
-    (b.genericStats?.rows.length ?? 0) >= 3,
-    (b.genericRanked?.rows.length ?? 0) >= 3,
-    (b.genericEvents?.rows.length ?? 0) >= 2,
-  ];
-  return checks.filter(Boolean).length;
+  return composableSignals(b).length;
 }
