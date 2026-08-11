@@ -192,7 +192,6 @@ export function LargoTerminal({
                       // "the member asked for an image" signal died one call site short of the
                       // thing that acts on it.
                       turnId={msg.turnId ?? null}
-                      autoVisual={msg.visual ?? null}
                       // The question this answer replies to — the preceding user turn. Used only to
                       // choose which block leads in the desk read; a missing match renders the
                       // default order, which is always correct.

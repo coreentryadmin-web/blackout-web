@@ -27,8 +27,8 @@
 
 import type { PostType } from "@/lib/x-content-types";
 import type { MarketSnapshot } from "@/lib/x-content";
-import { C, FONT } from "@/lib/largo/visual/tokens";
-import { loadVisualFonts } from "@/lib/largo/visual/font-buffers";
+import { C, FONT } from "@/lib/brand/tokens";
+import { loadVisualFonts } from "@/lib/brand/font-buffers";
 
 const W = 1200;
 const H = 675;

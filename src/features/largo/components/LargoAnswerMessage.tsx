@@ -2,7 +2,6 @@
 
 import { Component, useMemo, type ReactNode } from "react";
 import type { BieAnswerEnvelope } from "@/lib/bie/answer-envelope";
-import { CreateVisualAction } from "@/features/largo/visual/CreateVisualAction";
 import { LargoMessageBody } from "@/features/largo/components/LargoMessageBody";
 import { BieAnswer } from "@/features/largo/answer/BieAnswer";
 import { LargoDeskRead } from "@/features/largo/answer/LargoDeskRead";
@@ -32,7 +31,6 @@ export function LargoAnswerMessage({
   className,
   onFollowup,
   question,
-  autoVisual,
   turnId,
 }: {
   content: string;
@@ -46,19 +44,7 @@ export function LargoAnswerMessage({
   /** The question this answer replies to. Used ONLY to pick which block leads in the desk read —
    *  see answer-layout.ts. Optional everywhere: without it the card renders the default order. */
   question?: string | null;
-  /**
-   * The server's auto-render directive, present only when the member ASKED for an image.
-   *
-   * Threaded straight through rather than re-derived here: the SERVER read the intent off the
-   * question (`detectVisualIntent`), and a second client-side reading is a second place for the
-   * two to disagree about whether a card was requested.
-   */
-  autoVisual?: { size: "x_landscape" | "x_portrait" | "square" | "story" } | null;
-  /**
-   * The persisted turn behind this answer. Enough on its own to offer a card: the server rebuilds
-   * from that turn's stored tool results, which is strictly MORE evidence than the envelope's
-   * levels and gexShifts, not less.
-   */
+  /** The persisted turn behind this answer, so a consumer can name the exact turn it refers to. */
   turnId?: number | null;
 }) {
   const fallback = <LargoMessageBody content={content} className={className} />;
@@ -117,52 +103,12 @@ export function LargoAnswerMessage({
     }
   }, [content, source, createdAt, envelope, streaming, className, onFollowup, question]);
 
-  /**
-   * CREATE VISUAL — offered when there is anything honest to draw from.
-   *
-   * THE GATE USED TO BE `envelope` ALONE, and that was a stale reading of where the card's
-   * evidence comes from. It was true when the card was drawn from the envelope's own levels and
-   * gexShifts; since the composer landed, the server rebuilds from the TURN's stored tool
-   * results — a strictly richer source that the envelope was never the gatekeeper of.
-   *
-   * The cost of the stale gate was measured live: `envelopeFromContract` returns null whenever the
-   * model's reply drifts off the section contract, and on those turns the slot was not rendered at
-   * all. So a member could ask for an image in as many words, the server could correctly detect the
-   * request and set the auto-render directive, and the component that acts on it was never mounted.
-   * The two questions in the live probe that failed this way — tomorrow's NH plays, today's 0DTE
-   * results — are squarely the ones a member asks when they want something to post.
-   *
-   * `turnId || envelope`, not `turnId && envelope`: either is sufficient. With a turn the server
-   * replays real evidence; with only an envelope the old envelope-fields path still works, which
-   * is what rehydrated history turns (no turn id in the transcript) fall back to.
-   *
-   * `capturedResults` is deliberately NOT passed: raw tool output never crosses to the browser.
-   */
-  const visual = envelope || turnId != null ? (
-    <div className="largo-visual-slot">
-      <CreateVisualAction
-        question={question ?? ""}
-        headline={envelope?.headline ?? null}
-        // BieBias is bullish/bearish/neutral/mixed; the card's vocabulary is bull/bear/neutral.
-        // `mixed` maps to neutral rather than picking a side — the same rule market-state.ts
-        // applies when an answer names both directions.
-        bias={envelope?.bias === "bullish" ? "bull" : envelope?.bias === "bearish" ? "bear" : "neutral"}
-        envelopeLevels={envelope?.levels?.map((l) => ({ label: l.label, value: l.price })) ?? null}
-        envelopeGexShifts={envelope?.gexShifts ?? null}
-        // Top-level id first; `envelope.turnId` is the pre-#2037 shape, kept so a client holding a
-        // rehydrated message from before this shipped still resolves a turn.
-        turnId={turnId ?? envelope?.turnId ?? null}
-        autoRender={autoVisual ?? null}
-      />
-    </div>
-  ) : null;
 
   if (!rich) return fallback;
 
   return (
     <>
       <BieAnswerBoundary fallback={fallback}>{rich}</BieAnswerBoundary>
-      {visual}
     </>
   );
 }

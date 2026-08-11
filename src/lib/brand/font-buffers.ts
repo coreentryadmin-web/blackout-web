@@ -18,7 +18,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-const FONT_DIR = join(process.cwd(), "src/lib/largo/visual/fonts");
+const FONT_DIR = join(process.cwd(), "src/lib/brand/fonts");
 
 export type LoadedFont = { name: string; data: Buffer; weight: 400 | 700; style: "normal" };
 

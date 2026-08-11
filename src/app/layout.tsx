@@ -36,7 +36,7 @@ import "./phosphor-motion.css";
  * — and took the whole production deploy down with it (run 31484348086). Nothing was wrong with
  * the commit; a third-party CDN blinked during the Docker build.
  *
- * The card renderer next door already knew this. `src/lib/largo/visual/render.tsx` commits its
+ * The brand font loader already knew this. `src/lib/brand/font-buffers.ts` commits its
  * `.ttf` files and says why: a render path that fetched a font "would fail closed on a network
  * blip and — worse — could silently fall back to a different face". The same argument applies at
  * build time, where the blast radius is every page rather than one card. Two opposite policies in
