@@ -114,32 +114,3 @@ export function withResolutionChips(
   }
   return out;
 }
-
-/**
- * The chip offered after a card was drawn: "now put the trade detail on it".
- *
- * ASKED FOR DIRECTLY. The brief was that after generating a card Largo should offer to add entries,
- * exits and trade information — but NOT by interrupting: "when we prompt it to create a image it
- * should automatically create the image and not let user be asked for inputs". Those two pull in
- * opposite directions only if the offer blocks. As a follow-up chip it does not: the card is drawn
- * immediately from the intent the member already expressed, and the richer version is one tap away
- * for the members who want it.
- *
- * IT IS A REAL QUESTION, NOT A UI TOGGLE, and that is what makes it cheap. The chip text names the
- * artefact ("redraw the card") so `detectVisualIntent` fires on it, and it names entries/exits/stops
- * so the composer's `playbook` block — whose match is /entries|entry|target|stop/ — outscores the
- * blocks that led the first card. No new plumbing: an existing question shape drives an existing
- * scorer to a different, better layout.
- *
- * OFFERED ONLY WHEN A CARD WAS ACTUALLY REQUESTED. On an ordinary answer there is no card to
- * redraw, and a chip promising to modify one that does not exist is worse than no chip.
- */
-export const REDRAW_WITH_TRADE_DETAIL = "Redraw the card with entries, exits and stops";
-
-/** Prepend the enrichment chip when this turn drew a card. Pure; never exceeds `limit`. */
-export function withCardEnrichmentChip(chips: readonly string[], drewCard: boolean, limit = 4): string[] {
-  if (!drewCard) return [...chips];
-  const already = chips.some((c) => /\bredraw\b/i.test(c) && /\bentr/i.test(c));
-  const out = already ? [...chips] : [REDRAW_WITH_TRADE_DETAIL, ...chips];
-  return out.slice(0, limit);
-}

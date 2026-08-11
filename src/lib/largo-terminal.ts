@@ -7,8 +7,6 @@ import {
   type AnthropicSystemBlock,
   type AnthropicToolLoopEvent,
 } from "@/lib/providers/anthropic";
-import { detectVisualIntent } from "@/lib/largo/visual/intent";
-import type { VisualSize } from "@/lib/largo/visual/types";
 import { largoAvailable, largoClaudeEnabled } from "@/lib/ai-env";
 import { randomUUID } from "node:crypto";
 import { dbConfigured } from "@/lib/db";
@@ -44,7 +42,7 @@ import {
 import { analyzeLargoQuestion, KNOWN_TICKERS } from "@/lib/largo/question-intent";
 import { formatImageBlock, type ImageBlock } from "@/lib/largo/core/image-attachment";
 import { deterministicLargoFollowups } from "@/lib/largo/largo-followups";
-import { withCardEnrichmentChip, withResolutionChips } from "@/lib/largo/core/resolution-chips";
+import { withResolutionChips } from "@/lib/largo/core/resolution-chips";
 import { loadLargoPlatformSnapshotBlock } from "@/lib/largo/platform-snapshot-block";
 import { captureLargoLiveFeed, formatLargoLiveFeed } from "@/lib/largo/largo-live-feed";
 import { polygonConfigured, uwConfigured } from "@/lib/providers/config";
@@ -99,15 +97,6 @@ export function isSseClientDisconnect(err: unknown): boolean {
   return msg.includes("Controller is already closed") || msg.includes("Invalid state");
 }
 
-/** Told the client to render a card without asking the member anything. */
-export type VisualDirective = {
-  auto: true;
-  /** The surface the wording implied — see `detectVisualIntent`. */
-  size: VisualSize;
-  /** `explicit` = the artefact was the request; `incidental` = implied by "post this on X". */
-  kind: "explicit" | "incidental";
-};
-
 export type LargoStreamEvent =
   | AnthropicToolLoopEvent
   | { type: "status"; message: string }
@@ -135,23 +124,6 @@ export type LargoStreamEvent =
       // cards; when absent it falls back to the raw `answer` markdown, which is what every Largo
       // answer rendered as before this shipped.
       envelope?: BieAnswerEnvelope;
-      /**
-       * AUTO-RENDER DIRECTIVE — present only when the member ASKED for an image.
-       *
-       * "Create an image for tomorrow's NH plays" is a request for an artefact, and the old flow
-       * answered it with a button: the member had to notice the Create Visual action, open a
-       * preview, choose a template and render. Four steps, none of which they asked for.
-       *
-       * A DIRECTIVE RATHER THAN AN INLINE RENDER, deliberately. Rasterising here would add the
-       * satori render to the answer's own latency, on a path that streams tokens precisely so a
-       * slow answer feels alive. The client fires the existing `/api/largo/visual` call the moment
-       * the answer lands, replaying THIS turn server-side (`turnId`) so the card is built from the
-       * same `capturedResults` the answer was written from — the one-snapshot rule, unchanged.
-       *
-       * Absent for every question that did not ask for an artefact, including ones a card would
-       * suit. See `detectVisualIntent` on why auto-rendering everything is the wrong default.
-       */
-      visual?: VisualDirective;
     }
   | { type: "error"; message: string };
 
@@ -562,18 +534,6 @@ function envelopeFromContract(
   return parseAnswerEnvelope(text, capturedResults) ?? undefined;
 }
 
-/**
- * Read the member's visual intent off the question, ONCE, for both transports.
- *
- * Spread rather than assigned so the key is ABSENT (not `undefined`) on the overwhelming majority
- * of turns that did not ask for an image — the client's own check is `if (visual)`, and a present
- * key holding undefined is one refactor away from being treated as a directive.
- */
-function visualDirective(question: string): { visual?: VisualDirective } {
-  const intent = detectVisualIntent(question);
-  if (!intent.wanted || !intent.kind) return {};
-  return { visual: { auto: true, size: intent.size, kind: intent.kind } };
-}
 
 export async function runLargoQuery(
   question: string,
@@ -595,13 +555,11 @@ export async function runLargoQuery(
   /**
    * The persisted turn, TOP-LEVEL and independent of the envelope.
    *
-   * MEASURED LIVE 2026-08-11. "Create an image for tomorrows NH plays" and "create an image of
-   * todays 0DTE results" both came back with the `visual` auto-render directive set and
-   * `turnId: null` — the client was told to draw a card and handed nothing to draw it from. The
-   * cause was that the id rode ONLY on `envelope.turnId`, and `envelopeFromContract` returns null
-   * whenever the model's reply misses the section contract. So the two questions most likely to
-   * ask for an artefact were the ones least likely to be able to produce one, and the failure was
-   * silent: the turn had persisted fine, its id was simply dropped on the way out.
+   * MEASURED LIVE 2026-08-11. The id used to ride ONLY on `envelope.turnId`, and
+   * `envelopeFromContract` returns null whenever the model's reply misses the section contract —
+   * so a turn that persisted perfectly well could still report `turnId: null` to the client, and
+   * the failure was silent. Any consumer that needs to name the exact turn (replay, follow-ups,
+   * the record) has to be able to get the id even when the envelope did not build.
    *
    * Keeping it on the envelope as well would have been the smaller diff and the wrong shape: the
    * turn id is a property of the TURN, not of whether the answer happened to parse into sections.
@@ -729,13 +687,11 @@ export async function runLargoQuery(
     // body — where a long answer naturally names both directions — and report MIXED on answers
     // that resolved cleanly. Chips and badge now agree by construction.
     const envelope = envelopeFromContract(text, question, capturedResults);
-    // The turn id rides on the envelope so "Create visual" can name the exact turn to rebuild from.
+    // The turn id rides on the envelope so a follow-up can name the exact turn it refers to.
     if (envelope && turnId != null) envelope.turnId = turnId;
-    // The card-enrichment offer rides on the SAME directive that drew the card, so the chip and
-    // the artefact can never disagree about whether one exists. See `withCardEnrichmentChip`.
-    const followups = withCardEnrichmentChip(
-      withResolutionChips(await generateLargoFollowups(question, text, tickerHint), envelope?.headline ?? ""),
-      detectVisualIntent(question).wanted
+    const followups = withResolutionChips(
+      await generateLargoFollowups(question, text, tickerHint),
+      envelope?.headline ?? ""
     );
 
     return {
@@ -745,7 +701,6 @@ export async function runLargoQuery(
       tools_used: Array.from(new Set(toolsUsed)),
       followups,
       verification,
-      ...visualDirective(question),
       // The instrument LARGO resolved, handed to the client so the contextual rail shows the same
       // thing the answer is about. A client re-guessing from the question text could show NVDA
       // beside an answer about SPX, and nothing would surface the disagreement.
@@ -937,13 +892,11 @@ export async function runLargoQueryStream(
     // body — where a long answer naturally names both directions — and report MIXED on answers
     // that resolved cleanly. Chips and badge now agree by construction.
     const envelope = envelopeFromContract(text, question, capturedResults);
-    // The turn id rides on the envelope so "Create visual" can name the exact turn to rebuild from.
+    // The turn id rides on the envelope so a follow-up can name the exact turn it refers to.
     if (envelope && turnId != null) envelope.turnId = turnId;
-    // The card-enrichment offer rides on the SAME directive that drew the card, so the chip and
-    // the artefact can never disagree about whether one exists. See `withCardEnrichmentChip`.
-    const followups = withCardEnrichmentChip(
-      withResolutionChips(await generateLargoFollowups(question, text, tickerHint), envelope?.headline ?? ""),
-      detectVisualIntent(question).wanted
+    const followups = withResolutionChips(
+      await generateLargoFollowups(question, text, tickerHint),
+      envelope?.headline ?? ""
     );
 
     // Replace the progressively-streamed text with the AUTHORITATIVE version.
@@ -965,7 +918,6 @@ export async function runLargoQueryStream(
       ticker: tickerHint,
       turn_id: turnId ?? null,
       verification,
-      ...visualDirective(question),
       envelope,
     });
   } catch (error) {

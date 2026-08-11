@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { C, GLYPH } from "./tokens";
 import { fontCodepoints, missingCodepoints } from "./font-coverage";
 
-const FONT_DIR = join(process.cwd(), "src/lib/largo/visual/fonts");
+const FONT_DIR = join(process.cwd(), "src/lib/brand/fonts");
 const FACES = ["Anton-Regular.ttf", "JetBrainsMono-Regular.ttf", "JetBrainsMono-Bold.ttf"];
 
 /**

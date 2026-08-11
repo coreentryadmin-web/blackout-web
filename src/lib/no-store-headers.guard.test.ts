@@ -61,7 +61,6 @@ const EXEMPT = new Map<string, string>([
   // per fetch. Its `max-age`/`s-maxage` (300s) is far shorter than the link's own 1h signature
   // expiry, so an edge copy can never outlive the authorisation that produced it, and the URL
   // carries an HMAC — an attacker without the signature has nothing to cache.
-  ["src/app/api/public/largo-card/[turnId]/route.ts", "signed public image, cacheable by design"],
   // POST-only client sinks — never a browser GET, so no edge-caching surface.
   ["src/app/api/telemetry/auth-failure/route.ts", "POST-only sink"],
   ["src/app/api/telemetry/client-error/route.ts", "POST-only sink"],
