@@ -95,13 +95,32 @@ export type VisualMetric = {
   /** Small line under the value — units, comparison, or the measurement window. */
   sub?: string | null;
   source: VisualSystem;
+  /** What this tile ASSERTS — see `VisualFact`. */
+  fact?: VisualFact;
 };
+
+/**
+ * A FACT the card can assert, tagged wherever it is rendered.
+ *
+ * Several blocks legitimately carry the same underlying number: the dealer posture is the regime
+ * block's whole subject, one row of the consensus strip, AND a metric tile. Each is a reasonable
+ * way to show it and none of them knew about the others, so a live NVDA card drew the gamma
+ * posture three times and the net premium three times — which reads as a data error rather than
+ * as emphasis, and spends canvas that had real unshown evidence waiting for it.
+ *
+ * The tag is what lets the composer keep exactly one rendering of each fact. It is deliberately
+ * about the FACT, not the block: a new block that happens to show dealer posture inherits the
+ * de-duplication by tagging itself, rather than by being added to a list somewhere else.
+ */
+export type VisualFact = "gamma_posture" | "net_premium" | "session_change";
 
 /** A directional read from one product, for the attribution strip. */
 export type VisualSystemRead = {
   system: VisualSystem;
   stance: "bullish" | "bearish" | "neutral" | "no-read" | "regime";
   detail?: string | null;
+  /** What this row ASSERTS — see `VisualFact`. */
+  fact?: VisualFact;
 };
 
 /**

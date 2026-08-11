@@ -7,6 +7,7 @@ import { buildVisualElement, renderVisual } from "@/lib/largo/visual/render";
 import { renderVisualMarkup } from "@/lib/largo/visual/markup";
 import { sizeSpec } from "@/lib/largo/visual/sizes";
 import { fetchLargoTurnResults } from "@/lib/largo/largo-store";
+import { headlineFromMarkdown } from "@/features/largo/answer/answer-format";
 import type { VisualSize, VisualTemplateId } from "@/lib/largo/visual/types";
 
 /**
@@ -98,11 +99,31 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  /**
+   * THE VERDICT COMES FROM WHAT LARGO ACTUALLY WROTE, when the client has none to send.
+   *
+   * MEASURED ON A LIVE NVDA CARD: no headline at all. The card opened on the spot price, so the
+   * single most useful line — the conclusion — was the one thing missing from a graphic built to
+   * be posted. The cause is the same one that broke auto-render: the headline reaching this route
+   * is the ENVELOPE's, and `envelopeFromContract` returns null whenever the reply drifts off the
+   * section contract. No envelope, no headline, no verdict block (`available: (b) => !!b.headline`).
+   *
+   * The replayed turn has carried `answer` — the exact prose the member read — since turn replay
+   * shipped, and nothing had ever used it. Deriving the headline from it is strictly MORE coherent
+   * than the envelope's: the card's lead line is now a sentence Largo actually said about this
+   * turn, not a re-parse that may have failed.
+   *
+   * Client-supplied headline still wins, so an envelope-rich turn is unchanged. And this only
+   * applies to REPLAYED turns: a bundle posted without a turn id has no answer text to draw on,
+   * and inventing a verdict from tool results is exactly what this library refuses to do.
+   */
+  const replayedHeadline = replayed?.answer ? headlineFromMarkdown(replayed.answer, "") : "";
+
   const bundle = buildVisualBundle({
     // Replayed results WIN over anything the client sent: the point of the turn id is that the
     // server, not the browser, decides what evidence the card is built from.
     capturedResults: replayed ? replayed.toolResults : body.capturedResults ?? [],
-    headline: body.headline ?? null,
+    headline: body.headline ?? (replayedHeadline || null),
     summary: body.summary ?? null,
     bias: body.bias ?? null,
     ticker: body.ticker ?? null,

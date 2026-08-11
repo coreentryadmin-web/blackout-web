@@ -1,6 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { BLOCKS, composeCard, heightBudget, levelOnSameScale, parseEmphasis, scoreBlock } from "./compose";
+import {
+  BLOCKS,
+  composeCard,
+  composeForRender,
+  dropDuplicateFacts,
+  heightBudget,
+  levelOnSameScale,
+  parseEmphasis,
+  scoreBlock,
+  type BlockId,
+} from "./compose";
 import { detectVisualIntent, questionSubject } from "./intent";
 import { balancedBySide } from "./templates/composed";
 import { sizeSpec } from "./sizes";
@@ -334,4 +344,119 @@ test("a distant-but-real level is KEPT — the guard must not overshoot", () => 
   };
   const c = composeCard({ question: "where are the walls", bundle: wide, spec: sizeSpec("story") });
   assert.ok(c.blocks.some((b) => b.id === "levels"));
+});
+
+/**
+ * FACT DE-DUPLICATION.
+ *
+ * Measured on a live NVDA card: the dealer posture appeared three times (regime block, consensus
+ * strip, metric tile) and the net premium three times alongside it. Individually correct, sourced,
+ * and impossible to spot in review — which is why it needs a test rather than a style note.
+ */
+
+const duped: VisualBundle = {
+  ...base,
+  ticker: "NVDA",
+  headline: "NVDA is pinned under 180",
+  regime: { label: "SHORT GAMMA", source: "THERMAL" },
+  flow: { rows: [{ label: "NVDA 180C", value: "+$4.1M" }], net: 18_400_000, gross: 40_000_000, count: 62 },
+  systemReads: [
+    { system: "HELIX", stance: "bullish", detail: "+$18.4M", fact: "net_premium" },
+    { system: "THERMAL", stance: "regime", detail: "short gamma", fact: "gamma_posture" },
+    { system: "VECTOR", stance: "bullish", detail: "above OR" },
+  ],
+  metrics: [
+    { label: "Net premium", value: "+$18.4M", source: "HELIX", fact: "net_premium" },
+    { label: "Dealer gamma", value: "SHORT", source: "THERMAL", fact: "gamma_posture" },
+    { label: "IV rank", value: "62", source: "THERMAL" },
+  ],
+};
+
+test("the most SPECIFIC chosen block keeps the fact; the rest drop it", () => {
+  const out = dropDuplicateFacts(duped, new Set<BlockId>(["regime", "flow_tape", "consensus", "metrics"]));
+  // regime outranks consensus outranks metrics for the posture; flow_tape outranks both for premium.
+  assert.deepEqual(out.systemReads?.map((r) => r.system), ["VECTOR"]);
+  assert.deepEqual(out.metrics?.map((m) => m.label), ["IV rank"]);
+});
+
+test("an UNTAGGED row asserts nothing shared and is never dropped", () => {
+  const out = dropDuplicateFacts(duped, new Set<BlockId>(["regime", "flow_tape", "metrics"]));
+  assert.ok(out.metrics?.some((m) => m.label === "IV rank"), "untagged metric must survive");
+  assert.ok(out.systemReads?.some((r) => r.system === "VECTOR"), "untagged read must survive");
+});
+
+test("a fact whose owners are ALL absent is left alone, never deleted", () => {
+  // The one outcome worse than showing a number twice is showing it zero times while the answer's
+  // prose refers to it. With neither regime nor flow_tape nor consensus on the card, the metric
+  // rail is the last place the member can read either number.
+  const out = dropDuplicateFacts(duped, new Set<BlockId>(["metrics"]));
+  assert.deepEqual(out.metrics?.map((m) => m.label), ["Net premium", "Dealer gamma", "IV rank"]);
+});
+
+test("de-duplication does not MUTATE the caller's bundle", () => {
+  // The renderer composes twice; the first pass must see untouched evidence.
+  const before = duped.metrics?.length;
+  dropDuplicateFacts(duped, new Set<BlockId>(["regime", "flow_tape", "metrics"]));
+  assert.equal(duped.metrics?.length, before);
+});
+
+test("composeForRender never trades a repeated number for BLANK CANVAS", () => {
+  // THE MEASUREMENT THAT KILLED THE FIRST VERSION OF THIS FIX. Unconditional de-duplication is the
+  // obviously-correct rule and it made the card worse: on this bundle it went from 478px of a 520px
+  // budget to 374px, because the height freed by dropping two rows had no unshown evidence to grow
+  // into. A fifth of the canvas left blank reads as broken just as readily as a doubled figure.
+  const spec = sizeSpec("x_landscape");
+  const plain = composeCard({ question: "how does NVDA look", bundle: duped, spec, emphasis: null });
+  const { composition } = composeForRender({ question: "how does NVDA look", bundle: duped, spec, emphasis: null });
+  assert.ok(
+    composition.used >= plain.used - spec.height * 0.02,
+    `de-duplication surrendered canvas: ${plain.used} -> ${composition.used} of ${composition.budget}`,
+  );
+});
+
+test("de-duplication is SKIPPED when it would only add whitespace", () => {
+  // On this bundle every tier costs canvas: dropping the consensus strip's two tagged reads leaves
+  // one, and `consensus` needs two, so the whole 104px block disappears with nothing to replace it.
+  // The walk correctly declines to dedupe at all. That is the intended precedence — a card full of
+  // correct data with one figure restated beats a sparse card that says each thing once.
+  const spec = sizeSpec("x_landscape");
+  const { bundle } = composeForRender({ question: "how does NVDA look", bundle: duped, spec, emphasis: null });
+  assert.equal(bundle.metrics?.length, duped.metrics?.length, "nothing should be dropped for free space");
+});
+
+test("when there IS more evidence to show, the freed height buys rows", () => {
+  // Same duplication, but with levels the packer was truncating. Here full de-duplication costs
+  // nothing, so the aggressive tier wins on its own merits rather than by fiat.
+  const spec = sizeSpec("x_landscape");
+  const withRows: VisualBundle = {
+    ...duped,
+    levels: Array.from({ length: 9 }, (_, i) => ({
+      label: `Strike ${5800 + i * 25}`,
+      price: 5800 + i * 25,
+      kind: "wall" as const,
+      source: "THERMAL" as const,
+    })),
+  };
+  const { bundle } = composeForRender({ question: "NVDA levels and flow", bundle: withRows, spec, emphasis: null });
+  assert.ok((bundle.metrics?.length ?? 0) < (duped.metrics?.length ?? 0), "duplicates must be gone");
+});
+
+test("a bundle with nothing TAGGED comes back untouched", () => {
+  // `rich`'s rows carry no `fact`, so no tier can remove anything and every candidate composes the
+  // same card. Asserted on CONTENT, not identity: the walk builds a shallow copy per tier and may
+  // legitimately return one of those copies.
+  const spec = sizeSpec("x_landscape");
+  const { composition, bundle } = composeForRender({ question: "SPX levels", bundle: rich, spec, emphasis: null });
+  assert.deepEqual(bundle.systemReads, rich.systemReads);
+  assert.deepEqual(bundle.metrics, rich.metrics);
+  assert.ok(composition.blocks.length > 0);
+});
+
+test("a fact is never lost — the least-specific rendering survives when the owners do not", () => {
+  // The failure mode worth guarding: a card that drops "SHORT GAMMA" everywhere because the regime
+  // block did not fit. The keeper resolves against CHOSEN blocks, so with no owner on the card the
+  // fact is left exactly where it was.
+  const out = dropDuplicateFacts(duped, new Set<BlockId>(["metrics"]), "all");
+  assert.ok(out.metrics?.some((m) => m.fact === "gamma_posture"), "posture must survive somewhere");
+  assert.ok(out.metrics?.some((m) => m.fact === "net_premium"), "net premium must survive somewhere");
 });
