@@ -225,3 +225,60 @@ test("clock times and ISO dates alone do not demand a Facts section", () => {
 **Data** — checked at 02:45 ET on 2026-08-10; no sources returned.`;
   assert.equal(validateAnswerContract(stamped).conforms, true);
 });
+
+/**
+ * A CONFIDENCE LEVEL NOBODY ASSESSED IS A LIE, AND IT SHIPPED.
+ *
+ * Measured on the live desk 2026-08-11: the synthesis header read
+ *
+ *     ◦ NO READ    MODERATE CONFIDENCE
+ *     Tonight's Night Hawk playbook carries 5 long calls…
+ *     No confidence rationale was given.
+ *
+ * The parser defaulted `level` to "moderate" whenever Largo wrote no **Confidence** section, and
+ * then honestly reported that no rationale existed — printing a fabricated certainty directly
+ * above the admission that it was fabricated. The code comment three lines up said "a bare level
+ * is an arbitrary number wearing a word" while the code did exactly that.
+ *
+ * `LargoDeskRead` and `BieAnswer` both guard on presence, so an omitted confidence draws nothing.
+ */
+test("no Confidence section means NO confidence, not a default 'moderate'", () => {
+  const md = [
+    "**Verdict** — NVDA is bid into the close.",
+    "",
+    "**Facts**",
+    "- [fact] NVDA spot 221.40 (Polygon quote · live)",
+    "",
+    "**Interpretation**",
+    "- Dealers are long gamma, which dampens the move.",
+    "",
+    "**Data** — All reads live and complete.",
+  ].join("\n");
+  const env = parseAnswerEnvelope(md);
+  assert.ok(env, "a contract-conforming answer must still parse");
+  assert.equal(env!.confidence, undefined, "an unstated confidence must be ABSENT, never invented");
+  // And the rendered markdown must not carry a Confidence line either.
+  assert.ok(!/\*\*Confidence:\*\*/.test(env!.markdown), env!.markdown.slice(0, 200));
+});
+
+test("a STATED confidence is preserved with its reason", () => {
+  const md = [
+    "**Verdict** — SPX is pinned.",
+    "",
+    "**Facts**",
+    "- [fact] SPX spot 7761.65 (Polygon index · live)",
+    "",
+    "**Interpretation**",
+    "- Long gamma into the flip caps the range.",
+    "",
+    "**Confidence** — high: three desks agree and every read is live.",
+    "",
+    "**Data** — All reads live and complete.",
+  ].join("\n");
+  const env = parseAnswerEnvelope(md);
+  assert.equal(env?.confidence?.level, "high");
+  assert.match(env?.confidence?.why ?? "", /three desks agree/);
+  // The old code emitted the placeholder even when a real reason existed only in some branches;
+  // a stated reason must never be replaced by it.
+  assert.ok(!/No confidence rationale/.test(env?.confidence?.why ?? ""));
+});

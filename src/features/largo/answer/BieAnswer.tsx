@@ -62,7 +62,11 @@ export function BieAnswer({
   const { answered, total } = answeredParts(envelope.sections);
   const asOfRel = showAsOf ? relativeTime(envelope.asOf) : null;
   const hasHeadline = Boolean(envelope.headline.trim());
-  const showHeader = hasHeadline || showBias || showConfidence;
+  // An absent confidence draws NOTHING — see `answer-envelope.ts` on why the field is optional.
+  // Folded into `showHeader` too, so an answer with no headline, no bias and no confidence does
+  // not render an empty header strip.
+  const hasConfidence = showConfidence && Boolean(envelope.confidence);
+  const showHeader = hasHeadline || showBias || hasConfidence;
   const showFooter = total > 1 || Boolean(asOfRel);
 
   return (
@@ -75,8 +79,8 @@ export function BieAnswer({
               {showBias ? <BiasPill bias={envelope.bias} /> : null}
             </div>
           ) : null}
-          {showConfidence ? (
-            <ConfidenceBadge confidence={envelope.confidence} className="bie-answer-conf" />
+          {hasConfidence ? (
+            <ConfidenceBadge confidence={envelope.confidence!} className="bie-answer-conf" />
           ) : null}
         </header>
       ) : null}
