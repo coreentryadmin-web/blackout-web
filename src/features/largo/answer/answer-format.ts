@@ -2,6 +2,7 @@
 // §6 visual dominance + §4 honesty). Pure functions only — no React, no DOM — so
 // the label/tone/count logic that drives the answer components is unit-testable.
 
+import { truncateText } from "@/lib/truncate-text";
 import type {
   BieAnswerEnvelope,
   BieBias,
@@ -113,7 +114,9 @@ export function headlineFromMarkdown(markdown: string, fallback = "Largo read"):
       .replace(/[*`_]/g, "")
       .trim();
     if (!stripped) continue;
-    return stripped.length > 90 ? `${stripped.slice(0, 89).trimEnd()}…` : stripped;
+    // Shared truncation: a hard slice here produced `…resistance….` on a live card, because the
+    // ellipsis landed on top of the sentence's own full stop.
+    return truncateText(stripped, 90);
   }
   return fallback;
 }

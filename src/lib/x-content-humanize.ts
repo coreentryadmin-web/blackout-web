@@ -1,3 +1,4 @@
+import { truncateText } from "@/lib/truncate-text";
 import { anthropicText } from "@/lib/providers/anthropic";
 import { isTimelinePostAllowed } from "@/lib/x-feed-policy";
 
@@ -45,10 +46,7 @@ function stripFooter(text: string): { body: string; footer: string | null } {
 }
 
 function trimBody(body: string, maxLen: number): string {
-  if (body.length <= maxLen) return body;
-  const cut = body.slice(0, maxLen - 1).trimEnd();
-  const lastSpace = cut.lastIndexOf(" ");
-  return (lastSpace > maxLen * 0.6 ? cut.slice(0, lastSpace) : cut) + "…";
+  return truncateText(body, maxLen);
 }
 
 const ENHANCE_SYSTEM = `You polish tweets for @BlackOutTrade — a serious options desk brand.
