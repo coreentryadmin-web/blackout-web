@@ -5,14 +5,22 @@
  *   node scripts/largo-stress-run.mjs                    # bank 1 only (legacy default)
  *   LARGO_STRESS_BANK=all node scripts/largo-stress-run.mjs   # all ~400+ questions
  *   LARGO_STRESS_BANK=2,3 node scripts/largo-stress-run.mjs     # subset
- *   LARGO_STRESS_LIVE=1 LARGO_STRESS_BANK=all ...       # live HTTP against staging
+ *   LARGO_STRESS_LIVE=1 LARGO_STRESS_BANK=all ...       # live HTTP against PRODUCTION
+ *
+ * TARGET CORRECTED 2026-08-11. The live half defaulted to `staging.blackouttrades.com`, which was
+ * DECOMMISSIONED on 2026-07-25 — ECS, RDS, Cognito, ALB and DNS are all gone. So every live run
+ * since then reached nothing and the suite reported `live_ok: 0` while the router pass still
+ * printed a clean result. "Answer quality is measured" was never true. A harness pointed at a dead
+ * host does not fail loudly; it just stops measuring.
+ *
+ * Production is the only environment now, so that is the default.
  *
  * Env:
  *   LARGO_STRESS_BANK — 1 | 2 | 3 | all | comma list (default: 1)
- *   LARGO_STRESS_LIVE — 1 to POST each question to staging Largo
+ *   LARGO_STRESS_LIVE — 1 to POST each question to live Largo
  *   LARGO_STRESS_CONCURRENCY — parallel live requests (default 1)
  *   LARGO_STRESS_LIMIT — cap questions (debug)
- *   STAGING_BASE_URL — default https://staging.blackouttrades.com
+ *   LARGO_BASE_URL — default https://blackouttrades.com
  */
 import { writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -40,9 +48,27 @@ function routeQuestion(q) {
   return classifyBieIntent(q, ledger) ?? classifyBieStagingFallback(q);
 }
 
-async function askStaging(cookieHeader, question) {
+
+/**
+ * The live target. Production by default — staging no longer exists.
+ *
+ * A stale `STAGING_BASE_URL` in a shell would silently re-point this at the dead host, so it is
+ * honoured (nothing breaks) and warned about (nothing is silent).
+ */
+function liveBaseUrl() {
+  const legacy = process.env.STAGING_BASE_URL;
+  if (legacy && /staging\.blackouttrades\.com/.test(legacy)) {
+    console.warn(
+      "[largo-stress] STAGING_BASE_URL points at staging, decommissioned 2026-07-25 — using production."
+    );
+    return "https://blackouttrades.com";
+  }
+  return (process.env.LARGO_BASE_URL ?? legacy ?? "https://blackouttrades.com").replace(/\/$/, "");
+}
+
+async function askLive(cookieHeader, question) {
   const { fetchRetry } = await import("./audit/lib/fetch-retry.mjs");
-  const BASE = (process.env.STAGING_BASE_URL ?? "https://staging.blackouttrades.com").replace(/\/$/, "");
+  const BASE = liveBaseUrl();
   const t0 = Date.now();
   const res = await fetchRetry(
     `${BASE}/api/market/largo/query`,
@@ -55,6 +81,28 @@ async function askStaging(cookieHeader, question) {
   );
   const body = await res.json().catch(() => ({}));
   return { status: res.status, answer: body?.answer ?? "", source: body?.source, ms: Date.now() - t0 };
+}
+
+/**
+ * A NON-200 IS NOT AN ANSWER-QUALITY SIGNAL, and scoring it as one corrupts the measurement.
+ *
+ * The first production run returned 429 for 9 of 12 questions at concurrency 3 and the scorer
+ * recorded them as WARN / "too-short" — a throttled empty body IS short. Read at face value that
+ * says Largo answers badly; it says the harness asked too fast. The next run hit 401s halfway
+ * through, when the temp session aged out, and produced the same false signal. A suite that cannot
+ * separate "the system is wrong" from "I never asked it" measures nothing.
+ *
+ * So throttled questions are retried with backoff, and anything that is not a 200 is reported as
+ * SKIPPED and excluded from the quality tally rather than counted against it.
+ */
+async function askLiveThrottleAware(cookieHeader, question, attempts = 3) {
+  let last = null;
+  for (let i = 0; i < attempts; i++) {
+    last = await askLive(cookieHeader, question);
+    if (last.status !== 429) return last;
+    await new Promise((r) => setTimeout(r, 2000 * (i + 1)));
+  }
+  return { ...last, throttled: true };
 }
 
 const rows = [];
@@ -80,22 +128,67 @@ if (routerBad.length > 40) console.log(`  … and ${routerBad.length - 40} more`
 let liveRows = [];
 if (process.env.LARGO_STRESS_LIVE === "1") {
   const { mintAppSession } = await import("./audit/lib/app-session.mjs");
-  const BASE = (process.env.STAGING_BASE_URL ?? "https://staging.blackouttrades.com").replace(/\/$/, "");
+  const BASE = liveBaseUrl();
   const session = await mintAppSession({ appUrl: BASE });
   if (session.skip) {
     console.error("Live auth skip:", session.reason);
   } else {
+    /**
+     * SESSION RE-MINT, BOUNDED.
+     *
+     * The temp Clerk session ages out about seven questions into a sweep, so a 523-question run
+     * measured seven and skipped the rest — honest after the transport fix above, and useless as
+     * coverage.
+     *
+     * Capped at 2 and serialised behind one in-flight promise, because Clerk FAPI rate-limits
+     * rapid sign-in cycles (CLAUDE.md: "authenticate once per run"); letting every worker re-mint
+     * on the same 401 would stampede and get the whole run blocked.
+     */
+    let live = session;
+    let remints = 0;
+    let reminting = null;
+    async function remintOnce() {
+      if (remints >= 2) return false;
+      if (!reminting) {
+        reminting = (async () => {
+          remints += 1;
+          console.log(`\n[largo-stress] session expired — re-minting (${remints}/2)\n`);
+          const next = await mintAppSession({ appUrl: BASE }).catch(() => ({ skip: true }));
+          if (!next.skip) live = next;
+          reminting = null;
+          return !next.skip;
+        })();
+      }
+      return reminting;
+    }
+
     const concurrency = Math.max(1, Number(process.env.LARGO_STRESS_CONCURRENCY) || 1);
-    console.log(`\n=== Live staging (${BASE}) concurrency=${concurrency} ===\n`);
+    console.log(`\n=== Live (${BASE}) concurrency=${concurrency} ===\n`);
     try {
       let idx = 0;
       async function worker() {
         while (idx < entries.length) {
           const i = idx++;
           const entry = entries[i];
-          const { status, answer, source, ms } = await askStaging(session.cookieHeader, entry.q);
+          let res = await askLiveThrottleAware(live.cookieHeader, entry.q);
+          if (res.status === 401) {
+            // LOGGED UNCONDITIONALLY, because the first version of this was silent and I could
+            // not tell whether it had run. The one sweep that should have exercised it answered
+            // 16 questions, hit a hard 401 wall, and printed nothing — leaving "the re-mint works"
+            // unverifiable. A recovery path that cannot be seen firing is indistinguishable from
+            // one that is not wired.
+            console.log(`[largo-stress] 401 on "${entry.q.slice(0, 40)}" — attempting session re-mint`);
+            const ok = await remintOnce();
+            console.log(`[largo-stress] re-mint ${ok ? "succeeded, retrying" : "declined (cap reached or auth unavailable)"}`);
+            if (ok) res = await askLiveThrottleAware(live.cookieHeader, entry.q);
+          }
+          const { status, answer, source, ms, throttled } = res;
           const route = { intent: rows[i].intent };
-          const scored = scoreAnswer(entry, route, answer, status);
+          // ONLY A 200 IS SCORED FOR QUALITY — everything else is a transport outcome.
+          const scored =
+            throttled || status !== 200
+              ? { verdict: "SKIP", issues: [`http-${status} — transport, excluded from the quality tally`] }
+              : scoreAnswer(entry, route, answer, status);
           liveRows.push({
             ...entry,
             status,
@@ -105,7 +198,8 @@ if (process.env.LARGO_STRESS_LIVE === "1") {
             ...scored,
             preview: answer.slice(0, 120),
           });
-          const icon = scored.verdict === "OK" ? "✓" : scored.verdict === "WARN" ? "⚠" : "✗";
+          const icon =
+            scored.verdict === "OK" ? "✓" : scored.verdict === "WARN" ? "⚠" : scored.verdict === "SKIP" ? "–" : "✗";
           console.log(`${icon} ${ms}ms ${scored.verdict} | ${entry.q.slice(0, 55)}`);
           if (scored.issues.length) console.log(`    ${scored.issues.join(", ")}`);
         }
@@ -126,6 +220,15 @@ const summary = {
   live_ok: liveRows.filter((r) => r.verdict === "OK").length,
   live_bad: liveRows.filter((r) => r.verdict === "BAD").length,
   live_warn: liveRows.filter((r) => r.verdict === "WARN").length,
+  /** Reported so a run that measured little cannot be read as a run that went well. */
+  live_skipped_transport: liveRows.filter((r) => r.verdict === "SKIP").length,
+  /** OK / (OK + WARN + BAD) — quality over questions that were actually ANSWERED. */
+  live_quality_pct: (() => {
+    const scored = liveRows.filter((r) => r.verdict !== "SKIP");
+    return scored.length
+      ? Math.round((scored.filter((r) => r.verdict === "OK").length / scored.length) * 1000) / 10
+      : null;
+  })(),
 };
 
 const reportName =
@@ -138,6 +241,14 @@ console.log(JSON.stringify(summary, null, 2));
 if (routerBad.length > 0 && process.env.LARGO_STRESS_ALLOW_ROUTER_FAIL !== "1") {
   process.exit(1);
 }
+// A run that stops measuring partway is not a clean run, however good the answered subset looks.
+if (summary.live_skipped_transport > 0) {
+  console.warn(
+    `\n[largo-stress] ${summary.live_skipped_transport} question(s) were never answered (transport). ` +
+      `live_quality_pct describes only the ${summary.total - summary.live_skipped_transport} that were.`
+  );
+}
+
 if (summary.live_bad > 0) {
   process.exit(1);
 }
