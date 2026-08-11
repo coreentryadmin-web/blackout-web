@@ -427,6 +427,9 @@ function composableEvidenceCount(b: VisualBundle): number {
     (b.rejections?.rows.length ?? 0) >= 2,
     (b.timeline?.length ?? 0) >= 2,
     !!b.session?.closeDisplay,
+    (b.genericStats?.rows.length ?? 0) >= 3,
+    (b.genericRanked?.rows.length ?? 0) >= 3,
+    (b.genericEvents?.rows.length ?? 0) >= 2,
   ];
   return checks.filter(Boolean).length;
 }

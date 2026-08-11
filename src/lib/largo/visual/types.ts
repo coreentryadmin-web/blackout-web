@@ -198,6 +198,24 @@ export type VisualBundle = {
     source: VisualSystem;
   } | null;
 
+  /**
+   * GENERIC BLOCKS — anything the purpose-built extractors did not claim.
+   *
+   * MEASURED COVERAGE GAP: `bundle.ts` carried SEVEN shape-matchers against 121 callable tools.
+   * Earnings and IPO and FDA calendars, financials, ownership, congress and insider flow, analyst
+   * ratings, IV term structure, realized vol, skew, breadth, movers, hot tickers, sector flow, OI
+   * per strike and expiry, max pain, NOPE, technicals, seasonality, relative strength, setup stats
+   * and trade history all produced output that reached NO block — so a question answered from six
+   * uncatalogued tools composed a headline and a spot and then ran out of things to draw.
+   *
+   * That is the whole explanation for the empty canvas: a composer can only pack blocks that
+   * exist. See `generic-extract.ts` for why these are three generic shapes rather than a hundred
+   * bespoke ones, and for the six rules that stop structural inference becoming fabrication.
+   */
+  genericStats?: { title: string; rows: { label: string; value: string }[]; source: VisualSystem } | null;
+  genericRanked?: { title: string; rows: { label: string; value: string; magnitude: number; sub?: string | null }[]; source: VisualSystem } | null;
+  genericEvents?: { title: string; rows: { when: string; label: string; detail?: string | null }[]; source: VisualSystem } | null;
+
   /** Trade lifecycle, for TRADE_RECAP. */
   trade?: {
     ticker: string;

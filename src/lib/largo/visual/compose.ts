@@ -59,7 +59,10 @@ export type BlockId =
   | "session"
   | "timeline"
   | "cone"
-  | "before_after";
+  | "before_after"
+  | "generic_stats"
+  | "generic_ranked"
+  | "generic_events";
 
 export type BlockSpec = {
   id: BlockId;
@@ -314,6 +317,52 @@ export const BLOCKS: BlockSpec[] = [
     density: (b) => b.timeline?.length ?? 0,
     height: (b, spec) => 34 + rows(b.timeline?.length ?? 0, spec, 6) * (spec.dense ? 54 : 64),
   },
+  /**
+   * THE GENERIC BLOCKS sit BELOW every purpose-built one and ABOVE the metric rail.
+   *
+   * Below, because a block that knows what it is reading renders it better — the counterfactual's
+   * symmetric columns and the leaderboard's pinned denominator are honesty mechanisms built into
+   * their geometry, and a generic grid of the same numbers would lose them.
+   *
+   * Above the metric rail, because these carry evidence from tools that previously reached NO
+   * block at all. That is the difference between a card with 150px of dead canvas and a card that
+   * answers the question — see `generic-extract.ts` on the 7-matchers / 121-tools gap.
+   */
+  {
+    id: "generic_events",
+    label: "Calendar",
+    available: (b) => (b.genericEvents?.rows.length ?? 0) >= 2,
+    match: /\b(earnings|calendar|when|upcoming|schedule|catalyst|ipo|fda|econ(omic)?|report(ing)?|news)\b/i,
+    base: 55,
+    density: (b) => b.genericEvents?.rows.length ?? 0,
+    height: (b, spec) => 34 + rows(b.genericEvents?.rows.length ?? 0, spec, 6) * (spec.dense ? 40 : 46),
+    minHeight: (_b, spec) => 34 + 2 * (spec.dense ? 40 : 46),
+  },
+  {
+    id: "generic_ranked",
+    label: "Ranked",
+    available: (b) => (b.genericRanked?.rows.length ?? 0) >= 3,
+    match: /\b(top|best|worst|biggest|most|ranked|leaders|laggards|movers|breadth|sector|hottest|unusual)\b/i,
+    base: 53,
+    density: (b) => b.genericRanked?.rows.length ?? 0,
+    height: (b, spec) => 34 + rows(b.genericRanked?.rows.length ?? 0, spec, 8) * (spec.dense ? 42 : 48),
+    minHeight: (_b, spec) => 34 + 3 * (spec.dense ? 42 : 48),
+  },
+  {
+    id: "generic_stats",
+    label: "Readings",
+    available: (b) => (b.genericStats?.rows.length ?? 0) >= 3,
+    match: /\b(stats?|readings?|numbers?|iv|vol(atility)?|technicals?|fundamentals?|financials?|breadth|seasonality|short interest)\b/i,
+    base: 51,
+    density: (b) => b.genericStats?.rows.length ?? 0,
+    // Four per row on wide surfaces, two when stacked.
+    height: (b, spec) => {
+      const n = Math.min(b.genericStats?.rows.length ?? 0, 8);
+      const perRow = spec.stack ? 2 : 4;
+      return 34 + Math.ceil(n / perRow) * (spec.dense ? 78 : 92);
+    },
+    minHeight: (_b, spec) => 34 + 1 * (spec.dense ? 78 : 92),
+  },
   {
     id: "metrics",
     // LAST on purpose. The metric rail is the most substitutable block on the card — every number
@@ -524,6 +573,8 @@ function rowCount(id: BlockId, b: VisualBundle): number | null {
     case "rejections": return b.rejections?.rows.length ?? null;
     case "gex_shifts": return b.gexShifts?.length ?? null;
     case "timeline": return b.timeline?.length ?? null;
+    case "generic_ranked": return b.genericRanked?.rows.length ?? null;
+    case "generic_events": return b.genericEvents?.rows.length ?? null;
     default: return null;
   }
 }
@@ -538,6 +589,8 @@ function rowHeight(id: BlockId, spec: SizeSpec): number {
     case "timeline": return spec.dense ? 54 : 64;
     case "gamma_profile": return spec.dense ? 30 : 36;
     case "gex_shifts": return spec.dense ? 34 : 40;
+    case "generic_ranked": return spec.dense ? 42 : 48;
+    case "generic_events": return spec.dense ? 40 : 46;
     default: return spec.dense ? 42 : 50;
   }
 }
@@ -553,6 +606,8 @@ function drawnRows(
   if (c.compact) {
     // Mirrors the per-block minHeight row counts above.
     if (c.spec.id === "flow_tape") return 1;
+    if (c.spec.id === "generic_events") return 2;
+    if (c.spec.id === "generic_ranked") return 3;
     if (c.spec.id === "playbook" || c.spec.id === "leaderboard" || c.spec.id === "rejections") return 2;
     if (c.spec.id === "levels" || c.spec.id === "screen") return 3;
     return Math.min(total, 4);
