@@ -51,7 +51,13 @@ async function main() {
   await page.waitForTimeout(o.wait);
   console.log(`Routed: ${counts.ok} ok, ${counts.fail} fail`);
 
-  await page.screenshot({ path: o.out, fullPage: o.full, timeout: 10000 });
+  // A LIVE desk never stops moving — SSE ticks, marks, pulsing status dots. Playwright's
+  // screenshot waits for visual stability, so on /nighthawk it burned the whole 10s budget and
+  // threw, leaving NO image while the page had loaded perfectly (145 requests routed, 0 failed).
+  // `animations: 'disabled'` freezes CSS animations/transitions for the capture, which is the
+  // supported way to shoot a page that is animating by design; the longer budget covers the
+  // genuinely tall desk layouts.
+  await page.screenshot({ path: o.out, fullPage: o.full, timeout: 45000, animations: 'disabled' });
   console.log(`Saved: ${o.out}`);
   await browser.close();
 }
