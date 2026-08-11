@@ -36,9 +36,16 @@ test("no prose field on this component is interpolated bare", () => {
   const src = readFileSync(SRC, "utf8");
   // Fields that carry Largo's own sentences. Identifiers/labels (level, bias) are NOT prose and
   // are deliberately excluded — wrapping those would be noise, not honesty.
+  // A PLAIN SUBSTRING TEST, NOT A BUILT REGEX. The first version composed the pattern with
+  // `field.replace(/\./g, "\\.")`, which escapes dots and leaves backslashes alone — CodeQL
+  // flagged it as incomplete escaping and was right. The inputs here are literals, so it was not
+  // exploitable, but a half-escaped pattern is the wrong shape regardless and the check needs no
+  // regex at all: it is looking for one exact string.
   for (const field of ["envelope.invalidation", "envelope.confidence.why"]) {
-    const bare = new RegExp(`\\{${field.replace(/\./g, "\\.")}\\}`);
-    assert.ok(!bare.test(src), `${field} is interpolated raw — route it through renderInlineMarkdown`);
+    assert.ok(
+      !src.includes(`{${field}}`),
+      `${field} is interpolated raw — route it through renderInlineMarkdown`,
+    );
   }
 });
 
