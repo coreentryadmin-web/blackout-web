@@ -5,6 +5,7 @@ import {
   composeCard,
   composeForRender,
   dropDuplicateFacts,
+  blockGap,
   heightBudget,
   levelOnSameScale,
   parseEmphasis,
@@ -15,6 +16,7 @@ import { detectVisualIntent, questionSubject } from "./intent";
 import { balancedBySide } from "./templates/composed";
 import { sizeSpec } from "./sizes";
 import type { VisualBundle } from "./types";
+import { FIXTURE_QUESTION, richFixtureBundle } from "./fixture-bundle";
 
 /**
  * COMPOSITION — the engine that builds a layout instead of picking one.
@@ -169,8 +171,21 @@ test("a block is DEGRADED before it is dropped", () => {
   // Measured: on a landscape TSLA card the flow block (244px) did not fit the 219px remaining and
   // was dropped, while the substitutable metric rail (110px) fitted and was kept. Elasticity is
   // what makes the packer trade rows instead of whole blocks.
-  const c = composeCard({ question: "how does TSLA look today", bundle: rich, spec: sizeSpec("x_landscape") });
+  //
+  // ASSERTED ON THE STORY SURFACE, and the move is the point. This used to assert the tape survived
+  // on a 630px LANDSCAPE, which it did — at an estimate of 128px compact. Rendering the block and
+  // measuring it (`scripts/audit/largo-card-deadspace.mjs`) put its real drawn height at ~375px, so
+  // that "survival" was the packer fitting a block that would have run into the pinned footer. The
+  // honest heights make landscape too small for the tape and story large enough to degrade it,
+  // which is exactly the behaviour this test exists to protect.
+  const c = composeCard({ question: "how does TSLA look today", bundle: rich, spec: sizeSpec("story") });
   assert.ok(c.blocks.some((b) => b.id === "flow_tape"), "the tape must survive, compact if necessary");
+
+  // And with a tape too tall to fit whole, it is DEGRADED rather than dropped — the actual claim.
+  const dense = composeCard({ question: FIXTURE_QUESTION, bundle: richFixtureBundle(), spec: sizeSpec("story") });
+  const tape = dense.blocks.find((b) => b.id === "flow_tape");
+  assert.ok(tape, "a tape that cannot fit whole must still appear");
+  assert.equal(tape!.compact, true, "it survives by being degraded, not by being dropped");
 });
 
 test("a shrunk block carries the row budget it was CHARGED for", () => {
@@ -414,14 +429,21 @@ test("composeForRender never trades a repeated number for BLANK CANVAS", () => {
   );
 });
 
-test("de-duplication is SKIPPED when it would only add whitespace", () => {
-  // On this bundle every tier costs canvas: dropping the consensus strip's two tagged reads leaves
-  // one, and `consensus` needs two, so the whole 104px block disappears with nothing to replace it.
-  // The walk correctly declines to dedupe at all. That is the intended precedence — a card full of
-  // correct data with one figure restated beats a sparse card that says each thing once.
+test("de-duplication only happens when the canvas does not pay for it", () => {
+  // THE INVARIANT, NOT THE OUTCOME. This used to assert that NOTHING was de-duplicated on this
+  // bundle — true under the old block heights, where every tier lost canvas. With heights corrected
+  // against what the blocks actually draw, the aggressive tier now costs nothing here and correctly
+  // wins, so the old assertion was locking in a consequence of the mis-estimation rather than a
+  // rule. The rule is: whatever tier is chosen, it must not surrender canvas to do it.
   const spec = sizeSpec("x_landscape");
-  const { bundle } = composeForRender({ question: "how does NVDA look", bundle: duped, spec, emphasis: null });
-  assert.equal(bundle.metrics?.length, duped.metrics?.length, "nothing should be dropped for free space");
+  const plain = composeCard({ question: "how does NVDA look", bundle: duped, spec, emphasis: null });
+  const { bundle, composition } = composeForRender({ question: "how does NVDA look", bundle: duped, spec, emphasis: null });
+  assert.ok(
+    composition.used >= plain.used - spec.height * 0.02,
+    `de-duplication surrendered canvas: ${plain.used} -> ${composition.used}`,
+  );
+  // And it can only ever REMOVE repeats — never invent or reorder evidence.
+  assert.ok((bundle.metrics?.length ?? 0) <= (duped.metrics?.length ?? 0));
 });
 
 test("when there IS more evidence to show, the freed height buys rows", () => {
@@ -459,4 +481,58 @@ test("a fact is never lost — the least-specific rendering survives when the ow
   const out = dropDuplicateFacts(duped, new Set<BlockId>(["metrics"]), "all");
   assert.ok(out.metrics?.some((m) => m.fact === "gamma_posture"), "posture must survive somewhere");
   assert.ok(out.metrics?.some((m) => m.fact === "net_premium"), "net premium must survive somewhere");
+});
+
+/**
+ * ESTIMATES ARE NOW ACCOUNTABLE TO PIXELS.
+ *
+ * The packer works from per-block height ESTIMATES, and until 2026-08-11 nothing had ever compared
+ * one of them to what satori draws. Two were wrong by roughly 2×: `verdict` priced a 3-line
+ * headline as 4 lines of the wrong height (354 est / 259 drawn), and `playbook` priced a row at
+ * 128px that draws at ~48px (290 est / 146 drawn for two plays). A third, `flow_tape`, was wrong in
+ * the dangerous direction — 302 est against 375 drawn, i.e. a block packed at a size that would run
+ * into the pinned footer.
+ *
+ * The visible result was a card printing "ALSO MEASURED, NO ROOM ON THIS CARD: …" above a quarter
+ * of blank canvas. Both statements cannot be true, and the member sees the contradiction.
+ *
+ * The numbers below are MEASURED, by rendering one block at a time and scanning the PNG:
+ *   node --import tsx scripts/audit/largo-card-deadspace.mjs --calibrate
+ *
+ * Drawn values include the section gap the packer now charges separately (`blockGap`), so an
+ * estimate slightly UNDER its drawn figure is correct. The tolerance catches the failure that
+ * actually happened — an estimate off by a factor — not the last few pixels of leading.
+ */
+const DRAWN_PX: Record<string, Record<string, number>> = {
+  x_portrait: { verdict: 259, spot: 132, consensus: 132, regime: 90, levels: 307, playbook: 146, flow_tape: 395, gamma_profile: 145, metrics: 130 },
+  x_landscape: { verdict: 144, spot: 109, consensus: 119, regime: 79, levels: 279, playbook: 121, flow_tape: 374, gamma_profile: 131, metrics: 116 },
+};
+
+test("every block's height estimate matches what it actually draws", () => {
+  const bundle = richFixtureBundle();
+  for (const [size, drawnBySize] of Object.entries(DRAWN_PX)) {
+    const spec = sizeSpec(size);
+    for (const [id, drawn] of Object.entries(drawnBySize)) {
+      const block = BLOCKS.find((b) => b.id === id);
+      assert.ok(block, `${id} must still exist`);
+      assert.ok(block!.available(bundle), `${id} must be fillable by the fixture, or it measures nothing`);
+      const est = block!.height(bundle, spec);
+      const ratio = drawn / est;
+      assert.ok(
+        ratio >= 0.85 && ratio <= 1.35,
+        `${size}/${id}: estimated ${est}px, draws ${drawn}px (ratio ${ratio.toFixed(2)}) — re-run the calibration harness`,
+      );
+    }
+  }
+});
+
+test("the packer charges for the space BETWEEN blocks", () => {
+  // It did not, which is an UNDER-estimate: five blocks on a portrait card consume 80px of section
+  // margin that the budget never knew about, and the block that overflows is the last one packed.
+  const spec = sizeSpec("x_portrait");
+  const bundle = richFixtureBundle();
+  const c = composeCard({ question: FIXTURE_QUESTION, bundle, spec });
+  const blockSum = c.blocks.reduce((n, b) => n + b.estHeight, 0);
+  assert.ok(c.blocks.length >= 2, "needs a multi-block card to have any gap at all");
+  assert.equal(c.used, blockSum + blockGap(spec) * (c.blocks.length - 1));
 });

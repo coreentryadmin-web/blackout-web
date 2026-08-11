@@ -80,6 +80,13 @@ export type RenderVisualParams = {
    * A hint that reorders; it can never introduce a value — see `compose.ts`.
    */
   emphasis?: readonly BlockId[] | null;
+  /**
+   * Blocks to keep OFF the card entirely, for COMPOSED. Not a member-facing control — it exists so
+   * `scripts/audit/largo-card-deadspace.mjs` can render one block at a time and measure what it
+   * actually draws against what `compose.ts` estimated it would. Those estimates drive every
+   * packing and truncation decision and had never been compared to pixels.
+   */
+  exclude?: readonly BlockId[] | null;
 };
 
 /**
@@ -213,6 +220,7 @@ export function buildVisualElement(params: RenderVisualParams): {
         bundle,
         spec,
         emphasis: params.emphasis ?? null,
+        exclude: params.exclude ?? null,
       });
       if (!composition.blocks.length) {
         throw new Error("COMPOSED requires at least one block the evidence can fill");

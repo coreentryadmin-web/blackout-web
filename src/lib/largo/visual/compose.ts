@@ -112,6 +112,49 @@ function rows(n: number, spec: SizeSpec, cap = 6): number {
 }
 
 /**
+ * Vertical space BETWEEN blocks, in unscaled px.
+ *
+ * `Section` (and the verdict/spot cases, which are not Sections) each apply a top margin to every
+ * block after the first. The packer used to ignore that entirely: on a five-block card it packed
+ * against a budget that was 80px short of what the layout would consume, which is an
+ * UNDER-estimate — the direction that pushes evidence into the pinned footer.
+ *
+ * It is charged per block rather than folded into each `height()` because the FIRST block does not
+ * pay it, and a per-block constant cannot express that.
+ */
+export function blockGap(spec: SizeSpec): number {
+  return spec.dense ? 14 : 20;
+}
+
+/**
+ * The verdict block's height, derived from the SAME decisions `Headline` makes.
+ *
+ * WHY IT IS NOT A CONSTANT-PER-LINE ANY MORE. The old estimate assumed 26 characters per line on a
+ * stacked surface and 70px per line. `Headline` actually steps its font DOWN as the text gets
+ * longer (78 → 64 → 52 unscaled at 30 and 46 characters), so a long headline draws MORE characters
+ * per line and SHORTER lines than the estimate priced — both errors in the same direction. On the
+ * live NVDA card that mispriced a 3-line headline as 4 lines of the wrong height: 354px estimated
+ * against 259px drawn, and the 95px difference was reported to the member as "no room on this
+ * card" for four blocks that would have fitted.
+ *
+ * The character-width and line-height factors are empirical (Anton at these sizes, measured by
+ * rendering — see `scripts/audit/largo-card-deadspace.mjs`), which is why they live next to the
+ * step-down they mirror rather than being spread across the callers.
+ */
+export function verdictHeight(b: VisualBundle, spec: SizeSpec): number {
+  const text = b.headline ?? "";
+  const font = text.length > 46 ? 52 : text.length > 30 ? 64 : 78;
+  /** Content box in the unscaled px the packer works in. */
+  const contentWidth = (spec.width - spec.pad * 2) / spec.scale;
+  const perLine = Math.max(1, Math.floor(contentWidth / (font * 0.45)));
+  const lines = Math.max(1, Math.ceil(text.length / perLine));
+  // Summary is mono at 18/1.5 and is NOT drawn on a dense surface — the template drops it, so
+  // pricing it there was pure phantom height.
+  const summary = b.summary && !spec.dense ? Math.max(1, Math.ceil(b.summary.length / Math.floor(contentWidth / 11))) : 0;
+  return lines * Math.round(font * 1.02) + (summary ? 12 + summary * 27 : 0) + 30;
+}
+
+/**
  * THE BLOCK CATALOGUE.
  *
  * Ordered by `base` descending for readability only — `composeCard` sorts explicitly, so the
@@ -124,11 +167,7 @@ export const BLOCKS: BlockSpec[] = [
     available: (b) => !!b.headline,
     base: 100,
     density: () => 1,
-    height: (b, spec) => {
-      const len = (b.headline ?? "").length;
-      const lines = Math.ceil(len / (spec.stack ? 26 : 40));
-      return 30 + lines * (spec.stack ? 70 : 58) + (b.summary ? 44 : 0);
-    },
+    height: (b, spec) => verdictHeight(b, spec),
   },
   {
     id: "spot",
@@ -156,7 +195,7 @@ export const BLOCKS: BlockSpec[] = [
     match: /\b(regime|gamma (environment|state)|short gamma|long gamma|pinned|stabilis|destabilis)\b/i,
     base: 76,
     density: () => 1,
-    height: (_b, spec) => (spec.dense ? 74 : 88),
+    height: (_b, spec) => (spec.dense ? 68 : 80),
   },
   {
     id: "levels",
@@ -165,8 +204,8 @@ export const BLOCKS: BlockSpec[] = [
     match: /\b(level|wall|strike|support|resistance|gamma flip|max pain|pin|where is|hold|held|break|broke)\b/i,
     base: 74,
     density: (b) => b.levels?.length ?? 0,
-    height: (b, spec) => 34 + rows((b.levels?.length ?? 0) + (b.spot ? 1 : 0), spec, 7) * (spec.dense ? 52 : 60),
-    minHeight: (_b, spec) => 34 + 3 * (spec.dense ? 52 : 60),
+    height: (b, spec) => 34 + rows((b.levels?.length ?? 0) + (b.spot ? 1 : 0), spec, 7) * (spec.dense ? 58 : 64),
+    minHeight: (_b, spec) => 34 + 3 * (spec.dense ? 58 : 64),
   },
   {
     id: "playbook",
@@ -175,8 +214,12 @@ export const BLOCKS: BlockSpec[] = [
     match: /\b(playbook|edition|plays?|runbook|watch ?list|trading tomorrow|entries|entry|target|stop)\b/i,
     base: 72,
     density: (b) => (b.playbook?.rows.length ?? 0) * 3,
-    height: (b, spec) => 34 + rows(b.playbook?.rows.length ?? 0, spec, spec.stack ? 6 : 4) * (spec.dense ? 96 : 128),
-    minHeight: (_b, spec) => 34 + 2 * (spec.dense ? 96 : 128),
+    // MEASURED, not guessed: a row is padding(9×2) + a 20px line + a 6px gap ≈ 48 unscaled px. The
+    // 96/128 that used to sit here priced every row at nearly three times what it draws, which on a
+    // two-play card wasted 144px — over a tenth of a portrait canvas — and then reported the blocks
+    // that height would have fitted as "no room on this card".
+    height: (b, spec) => 34 + rows(b.playbook?.rows.length ?? 0, spec, spec.stack ? 6 : 4) * (spec.dense ? 46 : 52),
+    minHeight: (_b, spec) => 34 + 2 * (spec.dense ? 46 : 52),
   },
   {
     id: "flow_tape",
@@ -185,10 +228,14 @@ export const BLOCKS: BlockSpec[] = [
     match: /\b(flow|premium|sweep|prints?|tape|whale|dark ?pool|who.s buying|unusual)\b/i,
     base: 70,
     density: (b) => b.flow?.rows.length ?? 0,
-    height: (b, spec) => 70 + rows(b.flow?.rows.length ?? 0, spec, 5) * (spec.dense ? 50 : 58),
+    // The 70px base under-counted the totals header (net/gross chips AND the call/put split bar),
+    // and 58 under-counted a print row. Measured at 4 prints the block drew ~375 against a 302
+    // estimate — an UNDER-estimate, which is the dangerous direction: it packs a block that then
+    // pushes later evidence into the pinned footer.
+    height: (b, spec) => 118 + rows(b.flow?.rows.length ?? 0, spec, 5) * (spec.dense ? 60 : 64),
     // The net/gross chips plus one print. The TOTALS are the honest core of a flow read; the
     // individual prints are the illustration, so the prints are what shrinks.
-    minHeight: (_b, spec) => 70 + 1 * (spec.dense ? 50 : 58),
+    minHeight: (_b, spec) => 118 + 1 * (spec.dense ? 60 : 64),
   },
   {
     id: "gamma_profile",
@@ -624,17 +671,21 @@ export function composeCard(input: ComposeInput): Composition {
   const dropped: Composition["dropped"] = [];
   let used = 0;
 
+  const gap = blockGap(spec);
   for (const c of candidates) {
+    // Every block after the first pays the section margin. Charged here rather than inside each
+    // `height()` because the first block does not pay it.
+    const lead = chosen.length === 0 ? 0 : gap;
     // FULL, THEN COMPACT, THEN DROP. Degrading a block beats losing it — see `minHeight`.
-    if (used + c.estHeight <= budget) {
+    if (used + lead + c.estHeight <= budget) {
       chosen.push({ ...c, compact: false, height: c.estHeight });
-      used += c.estHeight;
+      used += lead + c.estHeight;
       continue;
     }
     const min = c.spec.minHeight?.(bundle, spec);
-    if (min != null && used + min <= budget) {
+    if (min != null && used + lead + min <= budget) {
       chosen.push({ ...c, compact: true, height: min });
-      used += min;
+      used += lead + min;
       continue;
     }
     // NOT `break`. A tall block that does not fit must not veto every shorter block behind it —
