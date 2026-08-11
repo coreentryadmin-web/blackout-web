@@ -1384,13 +1384,17 @@ export type EnrichedZeroDteSetup = ZeroDteSetup & {
   conviction: string | null;
   /** Whether the dossier's flow-lane direction agrees with the live-tape read. */
   direction_confirmed: boolean | null;
-  factor_breakdown: {
-    flow: number;
-    tech: number;
-    positioning: number;
-    news: number;
-    smart_money: number;
-  } | null;
+  /**
+   * Per-component score contribution, in POINTS, keyed by component.
+   *
+   * A MAP rather than a fixed five-field record, because the components differ by discovery
+   * origin and pinning one lane's vocabulary into the type is what kept the other lanes out of
+   * it. FLOW rows carry flow/tech/positioning/news/smart_money; BREAKOUT rows carry
+   * breakout_core/dollar_volume/screen_base (see breakoutScoreBreakdown). No consumer reads a
+   * named key — the deck panel iterates entries and labels them through FB_LABELS — so widening
+   * costs nothing and lets a lane explain itself in its own terms.
+   */
+  factor_breakdown: Record<string, number> | null;
   trend: string | null;
   tech_tags: string[];
   breakout_zones: string[];

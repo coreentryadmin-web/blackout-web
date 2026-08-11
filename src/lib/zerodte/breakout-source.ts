@@ -99,6 +99,48 @@ export function breakoutScore(
   return Math.max(0, Math.min(100, Math.round(raw)));
 }
 
+/**
+ * The SAME score, decomposed into the points each component contributed.
+ *
+ * WHY THIS EXISTS. The deck's "Why this play was picked" panel renders `factor_breakdown`, and
+ * BREAKOUT candidates carried none — measured live 2026-08-11, 0 of 67 BREAKOUT setups had any
+ * factor data while 8 of 8 FLOW setups did. So the overwhelming majority of the board showed a
+ * score (93, in two cases) under a heading promising an explanation, and the panel fell back to
+ * "Component breakdown not served for this lane yet".
+ *
+ * Nothing had to be computed to fix that: `breakoutScore` is already a sum of three named terms.
+ * They were simply thrown away at the return. This returns them in POINTS so they sum to the
+ * score the member is looking at — a breakdown whose parts do not add up to the headline number
+ * is worse than none.
+ *
+ * Rounding: the parts are rounded individually and the REMAINDER is folded into the base, so the
+ * displayed points always total the displayed score exactly, however the halves fall.
+ */
+export function breakoutScoreBreakdown(
+  mover: Pick<BreakoutMover, "gain" | "close_strength">,
+  dollarNorm: number,
+  direction: "long" | "short" = "long"
+): { score: number; factors: Record<string, number> } {
+  const score = breakoutScore(mover, dollarNorm, direction);
+  const gainFactor = clamp01(Math.abs(mover.gain) / BREAKOUT_GAIN_FULL);
+  const closeFactor =
+    direction === "long"
+      ? clamp01((mover.close_strength - 0.5) / 0.5)
+      : clamp01((0.5 - mover.close_strength) / 0.5);
+  const corePts = Math.round(gainFactor * closeFactor * BREAKOUT_CORE_MAX);
+  const dollarPts = Math.round(clamp01(dollarNorm) * BREAKOUT_DOLLAR_MAX);
+  // Base absorbs the rounding remainder so the parts reconcile to `score` exactly.
+  const basePts = score - corePts - dollarPts;
+  return {
+    score,
+    factors: {
+      breakout_core: corePts,
+      dollar_volume: dollarPts,
+      screen_base: basePts,
+    },
+  };
+}
+
 // ── ATM 0DTE contract picker (seed→setup bridge) ────────────────────────────────────
 // A breakout candidate is a bare ticker with NO option flow, so it can't go through
 // deriveZeroDteSetups (which aggregates flow prints). This picks a same-day (0DTE) contract —
@@ -291,7 +333,9 @@ export function buildBreakoutSetup(input: {
 }): EnrichedZeroDteSetup {
   const { mover, spot, contract, dollarNorm, todayYmd } = input;
   const direction = input.direction ?? "long";
-  const score = breakoutScore(mover, dollarNorm, direction);
+  // Decomposed, not just totalled: the deck's "Why this play was picked" panel renders
+  // factor_breakdown, and BREAKOUT rows used to arrive with none (see breakoutScoreBreakdown).
+  const { score, factors: scoreFactors } = breakoutScoreBreakdown(mover, dollarNorm, direction);
   // Real moneyness of the picked strike (positive = OTM), rounded at the data layer.
   // For a call (long): OTM = strike above spot. For a put (short): OTM = strike below spot.
   const otmPct =
@@ -345,7 +389,13 @@ export function buildBreakoutSetup(input: {
   // NH-R4 (evidence-only): trading-session-aware gap days for the selected contract's hold, when
   // today's date is available. Null (never fabricated) when the caller omits it.
   const sessionGapDays = todayYmd != null ? tradingSessionGapDays(todayYmd, contract.expiry) : null;
-  return { ...enrichSetup(base, null), session_gap_days: sessionGapDays };
+  // The score breakdown rides on the ENRICHED row (that is where `factor_breakdown` lives), so
+  // the deck panel can explain a BREAKOUT play the same way it explains a FLOW one.
+  return {
+    ...enrichSetup(base, null),
+    session_gap_days: sessionGapDays,
+    factor_breakdown: scoreFactors,
+  };
 }
 
 // ── Merge + dedup (union by ticker, preserve origin as a SET) ─────────────────────────
