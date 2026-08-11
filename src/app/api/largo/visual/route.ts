@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { authorizePremiumDeskApi } from "@/lib/market-api-auth";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 import { buildVisualBundle, timelineFromLedgerRow } from "@/lib/largo/visual/bundle";
-import { routeVisual, IMPLEMENTED_TEMPLATES } from "@/lib/largo/visual/router";
+import { routeVisual, IMPLEMENTED_TEMPLATES, composableSignals } from "@/lib/largo/visual/router";
 import { buildVisualElement, renderVisual } from "@/lib/largo/visual/render";
 import { renderVisualMarkup } from "@/lib/largo/visual/markup";
 import { sizeSpec } from "@/lib/largo/visual/sizes";
@@ -145,11 +145,29 @@ export async function POST(req: NextRequest) {
   // NOT AN ERROR. "There is not enough evidence to draw an honest graphic" is a real answer, and
   // the UI shows it instead of a broken card.
   if (!route) {
+    /**
+     * A REFUSAL THAT SAYS WHAT WAS MISSING.
+     *
+     * Measured live: 5 of 7 real questions refused, including "what is the SPX gamma picture right
+     * now" after 2 tools and "show me the biggest options flow today" after 4. The response said
+     * only "insufficient evidence", which cannot distinguish between the tools returning nothing,
+     * an extractor missing a payload shape, and the threshold being too high. Raw tool output is a
+     * DB product and raw Postgres is unreachable from the audit sandbox, so there was no way to
+     * tell from outside the app either — the single most common refusal in the product was also
+     * the least diagnosable thing in it.
+     *
+     * `signals` names what the bundle DID carry. Safe to expose: these are block names, never
+     * values, and the caller already owns the turn.
+     */
+    const signals = composableSignals(bundle);
     return NextResponse.json(
       {
         renderable: false,
         reason: "insufficient_evidence",
-        detail: "No template can be filled from this turn's evidence without inventing data.",
+        detail: signals.length
+          ? `Only ${signals.join(", ")} could be drawn from this turn — a card needs at least two.`
+          : "No template can be filled from this turn's evidence without inventing data.",
+        signals,
         available: IMPLEMENTED_TEMPLATES.map((t) => ({ id: t.id, label: t.label, needs: t.needs })),
       },
       { status: 200, headers: NO_STORE_HEADERS }

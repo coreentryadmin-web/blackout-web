@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { routeVisual, TEMPLATES, IMPLEMENTED_TEMPLATES } from "./router";
+import { routeVisual, TEMPLATES, IMPLEMENTED_TEMPLATES, composableSignals } from "./router";
 import type { VisualBundle } from "./types";
 
 const base: VisualBundle = { systemsQueried: ["THERMAL"], asOf: "2026-08-10T14:38:22Z" };
@@ -218,4 +218,48 @@ test("an unrecognised question still routes when evidence supports a card", () =
   const r = routeVisual("tell me something", withLevels)!;
   assert.equal(r.matchedIntent, false);
   assert.equal(r.template, "LEVEL_ANALYSIS");
+});
+
+/**
+ * NAMED SIGNALS — a refusal that says what was missing.
+ *
+ * The tally was an anonymous count, so the single most common outcome in the product ("no card")
+ * was also the least diagnosable thing in it. A live sweep refused 5 of 7 real questions and there
+ * was no way — from inside or outside the app — to tell whether the tools returned nothing, an
+ * extractor missed a shape, or the threshold was too high.
+ */
+
+test("signals NAME what the bundle can draw, and the count is derived from them", () => {
+  const b: VisualBundle = {
+    systemsQueried: ["THERMAL"],
+    asOf: "2026-08-11T15:42:00Z",
+    spot: { value: 219.72, display: "219.72", source: "VECTOR" },
+    levels: [{ label: "Call wall", price: 225, kind: "wall", source: "THERMAL" }],
+  };
+  const sig = composableSignals(b);
+  assert.deepEqual(sig.sort(), ["levels", "spot"]);
+});
+
+test("an EMPTY bundle names nothing rather than guessing", () => {
+  assert.deepEqual(composableSignals({ systemsQueried: [], asOf: "2026-08-11T15:42:00Z" }), []);
+});
+
+test("the generic blocks COUNT — they are why a novel tool can still compose", () => {
+  const b: VisualBundle = {
+    systemsQueried: [],
+    asOf: "2026-08-11T15:42:00Z",
+    genericStats: { label: "Earnings", rows: [
+      { label: "Reporting", value: "42" },
+      { label: "Pre-market", value: "18" },
+      { label: "After hours", value: "24" },
+    ] },
+    genericEvents: { label: "Calendar", rows: [
+      { label: "NVDA", value: "Wed AMC" },
+      { label: "AMD", value: "Thu AMC" },
+    ] },
+  };
+  assert.deepEqual(composableSignals(b).sort(), ["generic_events", "generic_stats"]);
+  // And that pair is exactly the two-signal threshold COMPOSED needs, which is the point of
+  // generic extraction: a tool nobody wrote a matcher for still yields a card.
+  assert.ok(routeVisual("what does the earnings calendar look like", b, "AUTO"));
 });
