@@ -35,7 +35,7 @@ import type { VisualSize } from "./types";
  * one. The verb may be up to four words from the noun so "create me a quick image" matches.
  */
 const VERB_THEN_NOUN_RE =
-  /\b(create|generate|make|build|render|draw|design|produce|give me|show me|export|save)\b[\w\s]{0,24}?\b(image|images|card|cards|graphic|graphics|visual|visuals|infographic|picture|png|poster|chart card|post)\b/i;
+  /\b(create|generate|make|build|render|redraw|draw|design|produce|give me|show me|export|save)\b[\w\s]{0,24}?\b(image|images|card|cards|graphic|graphics|visual|visuals|infographic|picture|png|poster|chart card|post)\b/i;
 
 /**
  * The artefact named as a TRAILING QUALIFIER, with the verb far away.
