@@ -81,12 +81,25 @@ export function CounterfactualCard({
   recorder.value("Guard", cf.guardLabel, cf.source);
   recorder.value("Plays held", String(cf.heldCount), cf.source);
   recorder.value("Held plays graded", String(cf.gradedCount), cf.source);
-  recorder.value("Losers avoided", cf.losersAvoided.pnlDisplay, cf.source);
-  recorder.value("Winners forgone", cf.winnersForgone.pnlDisplay, cf.source);
-  recorder.value("Net effect", cf.netDisplay, cf.source);
+  // The COUNT is what every source supplies; the P&L is what only a bar-replay source supplies.
+  // Each is recorded on its own terms so the manifest never implies a return that was not measured.
+  recorder.value("Losers avoided", cf.losersAvoided.pnlDisplay ?? String(cf.losersAvoided.count), cf.source);
+  recorder.value("Winners forgone", cf.winnersForgone.pnlDisplay ?? String(cf.winnersForgone.count), cf.source);
+  if (cf.unfilledCount != null) recorder.value("Would not have filled", String(cf.unfilledCount), cf.source);
 
-  const netColor = cf.netValue > 0 ? C.bull : cf.netValue < 0 ? C.bear : C.muted;
-  const netVerdict = cf.netValue > 0 ? "the guard paid" : cf.netValue < 0 ? "the guard cost" : "net flat";
+  // NET FALLS BACK TO THE COUNTS when no P&L was measured. Both are the same claim at different
+  // resolutions — "more of the held plays would have lost than won" is weaker than a percentage
+  // and is still the thing that settles whether the guard paid. What must never happen is a net
+  // invented from counts and PRESENTED as a return, so the label says which it is.
+  const netFromPnl = cf.netValue != null && cf.netDisplay != null;
+  const countNet = cf.losersAvoided.count - cf.winnersForgone.count;
+  const netMagnitude = netFromPnl ? cf.netValue! : countNet;
+  const netColor = netMagnitude > 0 ? C.bull : netMagnitude < 0 ? C.bear : C.muted;
+  const netVerdict = netMagnitude > 0 ? "the guard paid" : netMagnitude < 0 ? "the guard cost" : "net flat";
+  const netText = netFromPnl
+    ? cf.netDisplay!
+    : `${countNet > 0 ? "+" : countNet < 0 ? "−" : ""}${Math.abs(countNet)} plays`;
+  recorder.value("Net effect", netText, cf.source);
 
   const children: (ReactElement | null)[] = [
     <CardHeader key="h" systems={["NIGHT HAWK"]} asOfLabel={asOfLabel} freshness={bundle.freshness} spec={spec} />,
@@ -100,7 +113,7 @@ export function CounterfactualCard({
         <Headline text={bundle.headline ?? `${cf.heldCount} plays the rules held`} spec={spec} />
       </div>
       <div style={{ display: "flex", fontFamily: FONT.mono, fontSize: s(17, spec), color: C.muted, marginTop: s(8, spec) }}>
-        {`${cf.guardLabel} · ${cf.gradedCount} of ${cf.heldCount} graded on real minute bars`}
+        {`${cf.guardLabel} · ${cf.gradedCount} of ${cf.heldCount} graded`}
       </div>
     </div>,
 
@@ -111,14 +124,14 @@ export function CounterfactualCard({
         {
           label: "Losers avoided",
           count: cf.losersAvoided.count,
-          value: cf.losersAvoided.pnlDisplay,
+          value: cf.losersAvoided.pnlDisplay ?? String(cf.losersAvoided.count),
           color: C.bull,
           sub: "would have lost",
         },
         {
           label: "Winners forgone",
           count: cf.winnersForgone.count,
-          value: cf.winnersForgone.pnlDisplay,
+          value: cf.winnersForgone.pnlDisplay ?? String(cf.winnersForgone.count),
           color: C.bear,
           sub: "would have won",
         },
@@ -162,7 +175,7 @@ export function CounterfactualCard({
         {`Net · ${netVerdict}`}
       </div>
       <div style={{ display: "flex", marginLeft: "auto", fontFamily: FONT.display, fontSize: s(38, spec), color: netColor }}>
-        {cf.netDisplay}
+        {netText}
       </div>
     </div>,
 
@@ -184,10 +197,13 @@ export function CounterfactualCard({
                 borderLeft: `${s(3, spec)}px solid ${color}`,
               }}
             >
-              <div style={{ display: "flex", fontFamily: FONT.mono, fontWeight: 700, fontSize: s(19, spec), color: C.primary, width: s(96, spec), flexShrink: 0 }}>
+              {/* Wide enough for a real gate code. This was sized for a ticker (`NVDA`) while the
+                  production source supplies `band_detached` / `target_unreachable`, which ran
+                  straight through the detail text beside it. */}
+              <div style={{ display: "flex", fontFamily: FONT.mono, fontWeight: 700, fontSize: s(18, spec), color: C.primary, width: s(250, spec), flexShrink: 0 }}>
                 {r.ticker}
               </div>
-              {/* The gate name is the whole point of the row — this is a card about a RULE. */}
+              {/* The rule this row is about — a hold with no named rule is a claim about judgement. */}
               <div style={{ display: "flex", fontFamily: FONT.mono, fontSize: s(15, spec), color: C.warn }}>{r.gate}</div>
               <div
                 style={{
@@ -210,9 +226,9 @@ export function CounterfactualCard({
     <div key="note" style={{ display: "flex", marginTop: s(12, spec) }}>
       <Kicker
         text={
-          rows.length < cf.gradedCount
-            ? `Showing ${rows.length} of ${cf.gradedCount} graded holds, balanced across both sides · totals cover all ${cf.gradedCount}`
-            : "Held plays graded on the session's real minute bars"
+          rows.length < cf.rows.length
+            ? `Showing ${rows.length} of ${cf.rows.length} lines, balanced across both sides · totals cover all ${cf.gradedCount} graded`
+            : `All ${cf.gradedCount} graded holds are in the totals above`
         }
         spec={spec}
       />
@@ -220,7 +236,7 @@ export function CounterfactualCard({
   ];
 
   return (
-    <CardShell spec={spec} footer={<CardFooter attribution="Fail-closed guard · replayed and graded" spec={spec} />}>
+    <CardShell spec={spec} footer={<CardFooter attribution="Publish gates · blocked plays graded counterfactually" spec={spec} />}>
       {children.filter(Boolean) as ReactElement[]}
     </CardShell>
   );

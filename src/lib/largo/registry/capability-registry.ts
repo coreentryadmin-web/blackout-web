@@ -1651,6 +1651,36 @@ export const LARGO_CAPABILITIES: readonly LargoCapability[] = [
     keywords: ["ticker", "symbol", "what is the ticker", "company name"],
     caveat: "Live only, and a resolver rather than a market source — it answers no question about the market itself.",
   },
+  {
+    id: "nighthawk.gate_value",
+    product: "NIGHT_HAWK",
+    tool: "get_gate_blocked_value",
+    answers: "What did the publish gates cost and save — how did the plays they blocked actually do?",
+    temporal: "windowed",
+    freshness: "session",
+    entities: ["ticker", "session", "play"],
+    entitlement: "premium",
+    keywords: ["gate", "blocked", "counterfactual", "cost", "missed", "would have", "strict", "threshold"],
+    joinsWith: ["nighthawk.rejections", "record.nighthawk_outcomes"],
+    caveat:
+      "Graded as a WIN/LOSS verdict per blocked play, not a P&L. `graded_total` is a SUBSET of " +
+      "`blocked_total` — a gate with blocked plays and nothing graded has no verdict yet.",
+  },
+  {
+    id: "record.grader_agreement",
+    product: "TRACK_RECORD",
+    tool: "get_grader_agreement",
+    answers: "Do the mechanical and as-executed grades agree, and where exactly do they differ?",
+    temporal: "windowed",
+    freshness: "session",
+    entities: ["ticker", "session", "play"],
+    entitlement: "premium",
+    keywords: ["grading", "agree", "audit", "verify", "integrity", "how do you know", "cross-check"],
+    joinsWith: ["record.zerodte_record"],
+    caveat:
+      "The agreement rate is against `comparable` (rows graded on BOTH lanes), not the window. A " +
+      "disagreement is a methodological difference between mid and executable grading, not a defect.",
+  },
 ] as const;
 
 // ── Query surface ─────────────────────────────────────────────────────────────────────────────

@@ -255,6 +255,16 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
     { days: { type: "integer", default: 30 } }
   ),
   t(
+    "get_gate_blocked_value",
+    "What the publish gates COST and SAVED — every Night Hawk play a gate blocked in the window, counterfactually graded on real bars, split into how many would have LOST (the gate was right) and how many would have WON (the gate cost us). Also per-gate lines so a single threshold can be judged on its own record. This is the only source that can answer 'is that gate actually earning its number' or 'what did we miss by being strict', and it is the honest counterpart to get_zerodte_record — a track record counts what was taken, this counts what was refused. Grading is a WIN/LOSS verdict per blocked play, not a P&L. `blocked_total` is every blocked play; `graded_total` is the subset that could be graded — never quote the first as though it were the second. `unfilled_total` is blocked plays that would not even have filled (the gate was trivially right); they are excluded from the won/lost read. `days` rolling window (default 30, max 120).",
+    { days: { type: "integer", default: 30 } }
+  ),
+  t(
+    "get_grader_agreement",
+    "How often the MID (mechanical) grade and the OFFICIAL (executable / as-executed) grade agree on win-vs-loss across the 0DTE ledger, plus EVERY row where they disagree with both verdicts side by side. Use for 'how do you know your record is right', 'are the numbers audited', or any challenge to grading integrity. `comparable` is the only population that can be tested (rows carrying a grade on BOTH lanes) and is distinct from `total_plays` — quote the agreement rate against `comparable`, never against the window. A disagreement is a METHODOLOGICAL difference, not a defect: a row partially banked by WS-11 reads `stopped −50%` on the mid lane and a WIN on the official one, and the official lane is what the member was actually guided to. `days` rolling window (default 90, max 365).",
+    { days: { type: "integer", default: 90 } }
+  ),
+  t(
     "get_gate_rules",
     "The ACTUAL SPX Slayer play-gate thresholds, read live from the engine's own config functions — mixed-tape block (GRADE-SCALED: A tolerates one more conflicting signal than B), minimum grade, buy cooldown + A+ bypass, post-stop cooldown, GEX staleness ceiling. CALL THIS BEFORE attributing any loss or skip to a gate. get_scan_rejections and get_spx_engine_snapshots show what a gate DID for one candidate at one score; they do not tell you the rule, and reconstructing the rule from them produces confident, wrong root causes (measured 2026-08-10). Takes no arguments.",
     {}

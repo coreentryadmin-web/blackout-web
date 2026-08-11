@@ -1,9 +1,16 @@
 /**
- * GRADER AGREEMENT — two independent graders, measured against each other.
+ * GRADER AGREEMENT — two grading LANES, measured against each other.
  *
  * THE SECOND CARD NOBODY ELSE CAN PUBLISH, for the same structural reason as COUNTERFACTUAL: it
- * requires two grading paths that were built independently and can therefore disagree. Most
- * platforms have one grader, which cannot be audited by anything except itself.
+ * requires two ways of grading the same trade that can disagree. Most platforms have one, which
+ * cannot be audited by anything except itself.
+ *
+ * "LANES", NOT "INDEPENDENT GRADERS" — the wording was corrected when the serving path was built.
+ * `feature-store.ts`'s `labelFromPlanOutcome` and `record.ts`'s `isZeroDteWin` were once two
+ * implementations; `labelFromPlanOutcome` now DELEGATES to `isZeroDteWin` ("the shared source of
+ * truth, not a hand copy"), so calling them independent would be false today. What is still real,
+ * and is what the measurement compares, is the MID (mechanical) grade against the OFFICIAL
+ * (executable / as-executed) one.
  * `outcome-grading-audit.mjs` already imports both real production functions live and flags every
  * disagreement; it has never had a way to reach a member.
  *
@@ -147,7 +154,7 @@ export function GraderAgreementCard({
   ];
 
   return (
-    <CardShell spec={spec} footer={<CardFooter attribution="Two independent graders · every exception listed" spec={spec} />}>
+    <CardShell spec={spec} footer={<CardFooter attribution="Two grading lanes · every exception listed" spec={spec} />}>
       {children.filter(Boolean) as ReactElement[]}
     </CardShell>
   );
