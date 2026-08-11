@@ -182,6 +182,26 @@ export type GenericRankedRow = {
   valueKey?: string;
 };
 
+/**
+ * Cut a label to fit WITHOUT severing a word.
+ *
+ * The old `slice(0, 30)` produced, on a live NVDA card posted-size: "Wells Fargo Reiterates
+ * Overwei", "Nvidia Stock\u2019s Rubin Era Begin", "SpaceX Caught in a \u2018Capex Tug". Six headlines,
+ * six words cut mid-syllable, on an artefact built to be shared publicly.
+ *
+ * Backs up to the last space when one exists in the final third, so a long unbroken token (an OCC
+ * symbol, a URL) still gets cut rather than collapsing the label to nothing. The ellipsis is what
+ * tells a reader the text continues — a hard cut reads as a typo.
+ */
+function trimLabel(raw: string, max: number): string {
+  const t = raw.trim();
+  if (t.length <= max) return t;
+  const cut = t.slice(0, max - 1);
+  const space = cut.lastIndexOf(" ");
+  const body = space > max * 0.6 ? cut.slice(0, space) : cut;
+  return `${body.replace(/[\s,;:.\u2013\u2014-]+$/, "")}\u2026`;
+}
+
 /** Field names an array row might carry its NAME under, most specific first. */
 const NAME_KEYS = ["ticker", "symbol", "name", "label", "strike", "expiry", "sector", "industry", "member", "gate", "code"];
 /** Field names an array row might carry its NUMBER under, most specific first. */
@@ -245,7 +265,7 @@ export function rankedFromArray(arr: unknown, limit = 8): GenericRankedRow[] {
     let label: string | null = null;
     for (const k of NAME_KEYS) {
       const v = item[k];
-      if (typeof v === "string" && v.trim()) { label = v.trim().slice(0, 18); break; }
+      if (typeof v === "string" && v.trim()) { label = trimLabel(v, 18); break; }
       if (typeof v === "number" && Number.isFinite(v)) { label = String(v); break; }
     }
     if (!label) continue;
@@ -320,7 +340,7 @@ export function eventsFromArray(arr: unknown, limit = 6): GenericEvent[] {
     let label: string | null = null;
     for (const k of ["ticker", "symbol", "name", "title", "event", "headline"]) {
       const v = item[k];
-      if (typeof v === "string" && v.trim()) { label = v.trim().slice(0, 30); break; }
+      if (typeof v === "string" && v.trim()) { label = trimLabel(v, 30); break; }
     }
     if (!label) continue;
 
@@ -366,6 +386,11 @@ const RANKED_FIELDS: { key: string; title: string }[] = [
 
 const EVENT_FIELDS: { key: string; title: string }[] = [
   { key: "earnings", title: "Earnings" },
+  // Keys production actually emits, given proper member-facing titles. The all-array scan finds
+  // these anyway; without an entry here they humanise to the raw field name and a member reads
+  // "STATIC SCHEDULE" or "ARTICLES" on a card they are about to post.
+  { key: "static_schedule", title: "Macro calendar" },
+  { key: "articles", title: "News" },
   { key: "calendar", title: "Calendar" },
   { key: "events", title: "Events" },
   { key: "catalysts", title: "Catalysts" },

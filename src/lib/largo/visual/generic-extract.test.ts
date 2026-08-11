@@ -487,3 +487,60 @@ test("`get_global_flow`'s WRAPPED alerts still work — this did not regress the
   assert.equal(out.ranked?.title, "Alerts · Total premium");
   assert.equal(out.ranked?.rows.length, 3);
 });
+
+/**
+ * COPY, on an artefact built to be posted publicly.
+ *
+ * Seen on the live NVDA card: six headlines, every one severed mid-word by a hard `slice(0, 30)` —
+ * "Wells Fargo Reiterates Overwei", "Nvidia Stock's Rubin Era Begin". And the block above them was
+ * headed ARTICLES, the raw payload key, because nothing gave that field a member-facing title.
+ */
+
+test("labels break on a WORD boundary with an ellipsis", () => {
+  const news = {
+    articles: [
+      { title: "Wells Fargo Reiterates Overweight On Nvidia", published: "2026-08-11T10:00:00Z" },
+      { title: "Nvidia Stock's Rubin Era Begins Next Quarter", published: "2026-08-10T10:00:00Z" },
+    ],
+  };
+  const rows = genericBlocksFrom([news], new Set()).events!.rows;
+  for (const r of rows) {
+    assert.ok(r.label.endsWith("…"), `"${r.label}" must signal continuation`);
+    assert.ok(!/\s$/.test(r.label.slice(0, -1)), "no trailing space before the ellipsis");
+    assert.ok(r.label.length <= 31);
+  }
+  assert.equal(rows[0]!.label, "Wells Fargo Reiterates…");
+});
+
+test("an unbroken token is still cut — a long label must not collapse to nothing", () => {
+  const payload = {
+    articles: [
+      { title: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789", published: "2026-08-09T10:00:00Z" },
+      { title: "ZYXWVUTSRQPONMLKJIHGFEDCBA9876543210", published: "2026-08-08T10:00:00Z" },
+    ],
+  };
+  const rows = genericBlocksFrom([payload], new Set()).events!.rows;
+  assert.ok(rows[0]!.label.length > 10, "must not collapse when there is no space to back up to");
+  assert.ok(rows[0]!.label.endsWith("…"));
+});
+
+test("a label that FITS is untouched — no gratuitous ellipsis", () => {
+  const payload = { articles: [{ title: "NVDA beats", published: "2026-08-11T10:00:00Z" }, { title: "AMD guides up", published: "2026-08-10T10:00:00Z" }] };
+  const rows = genericBlocksFrom([payload], new Set()).events!.rows;
+  assert.equal(rows[0]!.label, "NVDA beats");
+});
+
+test("keys production emits get MEMBER-FACING titles, not the raw field name", () => {
+  // The all-array scan finds these regardless; without an entry they humanise to the payload key
+  // and a member reads "ARTICLES" or "STATIC SCHEDULE" on a card they are about to post.
+  const news = { articles: [{ title: "a", published: "2026-08-11T10:00:00Z" }, { title: "b", published: "2026-08-10T10:00:00Z" }] };
+  assert.equal(genericBlocksFrom([news], new Set()).events?.title, "News");
+
+  const macro = {
+    static_schedule: [
+      { event: "Consumer sentiment (prelim)", date: "2026-08-14", time: "10:00" },
+      { event: "U.S. retail sales", date: "2026-08-14", time: "08:30" },
+    ],
+  };
+  assert.equal(genericBlocksFrom([macro], new Set()).events?.title, "Macro calendar");
+});
