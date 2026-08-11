@@ -9725,3 +9725,50 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Why it is NOT a bug worth chasing** | The route's allowlist `/^[A-Z0-9.\-]{1,8}$/` (`quote/route.ts:182`) deliberately excludes `:` — the comment states it validates before any paid upstream call to avoid wasting a Massive snapshot and inflating cache/telemetry cardinality. `?ticker=SPX` returns the correct index price (`7757.64`, matching Polygon exactly), and `/api/market/indices` is the index surface. **Largo is unaffected**: `get_quote` → `toolQuote` (`run-tool.ts:261-276`) has its own `I:` branch calling `fetchIndexSnapshots`, and never touches this HTTP route. |
 | **Recorded because** | The `get_quote` tool schema advertises `"e.g. NVDA, SPY, SPX, I:SPX"`, so the next person who sees a 400 on `I:SPX` will reasonably suspect the tool. It is a different code path. Left unchanged rather than widening a deliberately tight validator for a case with no consumer. |
 | **Status** | NO ACTION — documented so it is not re-investigated. |
+
+## 2026-08-11 — [P1, product-blocking] Largo REFUSED to generate a card ("I cannot generate images"), on the screen that renders the card generator — FIXED (fix/largo-image-refusal, #2050)
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **How it was found** | The operator asked Largo, in the live terminal, "Can you generate me an image for todays Night Hawk plays" and screenshotted the reply. |
+| **Live evidence** | Verdict: *"I cannot generate images. I'm a market data analysis tool — I read live feeds, options flow, dealer positioning, and trade records. Image generation is outside my scope."* Bottom line: *"…if you want to build a visual yourself, I'll give you the raw numbers … you can paste them into a chart tool or screenshot the [Night Hawk] page directly."* Rendered directly ABOVE the working card generator's `AUTO / X LANDSCAPE / PNG` controls and a correctly-rendered card of the five plays it had just listed in prose. |
+| **Root cause** | `src/lib/largo/system-prompt.ts` describes six desks, 121 tools and fourteen rich component types, and never mentions that a turn can be rendered as a PNG. The model was not reasoning badly — it refused a capability it had no way to know existed. Same class as the extractor defects in this series (*a real capability with no path to the layer that needs it*); here the missing path was KNOWLEDGE, not data. |
+| **Fix** | A prompt section stating the card exists, that its controls are on screen, and that it is composed from the answer AND this turn's tool results — so the completeness of the answer IS the completeness of the graphic. Also states what Largo must not do: describe layout, offer to "design" anything, or invent a URL. The empty-turn case stays honest — no tool output means the answer is the missing data under **Data**, not a refusal. |
+| **Tests** | `system-prompt.test.ts` 10/10 (+2), asserting both the capability claim and the provenance rule, so a future trim fails CI instead of silently restoring the refusal. |
+| **Status** | FIXED — merged 2026-08-11. |
+
+## 2026-08-11 — [P2, self-contradicting output] The card packer's block heights had NEVER been compared to pixels: "no room on this card" printed above 23% blank canvas — FIXED (fix/largo-card-packer-heights, #2051)
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **How it was found** | Rendering a live card and looking at it, then reproducing it offline with a new harness, `scripts/audit/largo-card-deadspace.mjs`. |
+| **Live evidence** | A composed portrait card printing `ALSO MEASURED, NO ROOM ON THIS CARD: DEALER LEVELS · FLOW · GAMMA PROFILE · METRICS` above **314px of blank canvas (23.3%)**. Landscape: 152px (24.1%). Both statements cannot be true. |
+| **Root cause** | `composeCard` packs against per-block height ESTIMATES and none had ever been checked against what satori draws. Measured, one block per render: `verdict` 354 est / **259** drawn (it assumed 26 chars per line at 70px, but `Headline` steps its font DOWN as text lengthens, so a long headline draws more chars per line and shorter lines — both errors the same way); `playbook` 290 / **146** (a row is padding 9×2 + a 20px line + a 6px gap ≈ 48px, priced at 128); `flow_tape` 302 / **375** — wrong in the DANGEROUS direction, a block packed at a size that would run into the pinned footer and its mandatory disclaimer. The packer also charged nothing for the ~20px section margin between blocks. |
+| **Why it was never caught** | The estimates are internally consistent and the whole suite passed. Nothing in the repo could see pixels. |
+| **Fix** | `verdictHeight()` mirrors `Headline`'s own step-down over the real content width and stops pricing a summary on dense surfaces where the template drops it; `playbook`/`flow_tape`/`levels`/`regime` constants set from measurement; new `blockGap(spec)` charged per block after the first. |
+| **Measured result** | Dead canvas 314px → **89px** (23.3% → 6.6%) portrait, 152px → **55px** landscape; every block's estimate/drawn ratio moves from 0.50–1.38 to **0.96–1.26**; the dealer-level map now appears instead of being reported as truncated. |
+| **Tests** | +2 (estimate within 0.85–1.35 of measured drawn height, naming the calibration command in the failure message; `used` must equal block sum PLUS gaps). Two existing tests changed because they had locked in a CONSEQUENCE of the mis-estimation — one was protecting an overflow, the other asserted a de-dup outcome rather than its invariant. 237/237. |
+| **Status** | FIXED — merged 2026-08-11. |
+
+## 2026-08-11 — [P3, shareable-artefact defect] Card headlines ended `….` — three copies of one truncator, two of them wrong — FIXED (fix/largo-truncation-ellipsis, #2052)
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Live evidence** | An NVDA card headline ending *"…a $225 call wall holding resistance**….**"* — four dots. |
+| **Root cause** | `headlineFromMarkdown` sliced at 89 chars, `trimEnd()`ed, and appended an ellipsis onto whatever character the slice landed on — here the sentence's own full stop. **Blast radius:** three copies of the same function existed and disagreed — `answer-format.ts` (no word-boundary back-off AND no punctuation strip — the one that shipped the artefact), `x-content-humanize.ts` (word boundary, no punctuation strip — same defect latent on the X autopost path), and `generic-extract.ts` (correct, written when this class of bug was found on card labels; the fix never travelled). |
+| **Fix** | The correct copy promoted to `src/lib/truncate-text.ts` and used by all three. Both properties are load-bearing: back up to a word boundary (only when the break lands in the final third, so an unbroken OCC symbol or URL is still cut rather than collapsing the string), and strip trailing punctuation before the ellipsis. |
+| **Tests** | `truncate-text.test.ts` 5/5, including the exact live shape asserted against `/[.,;:\s–—-]…$/` and word-boundary integrity checked by `startsWith` against the source. |
+| **Status** | FIXED. |
+
+## 2026-08-11 — [P3, relevance] A card generated for "how does NVDA look today" drew a playbook of NET, NVDA and CRM — FIXED (fix/largo-card-subject-relevance, #2053)
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Root cause** | Composition ranks BLOCKS against the question (`scoreBlock`) and then each block draws its ROWS in whatever order the engine published (`pb.rows.slice(0, cap)`). Relevance is applied at one level and ignored at the level the member reads, so a question naming one instrument gets the whole edition's top of book. |
+| **Fix** | `subjectFirst(rows, subject, cap)` — a stable partition promoting the subject's rows, applied to the playbook block. CONDITIONAL by design: rank carries meaning, so promotion happens only when the subject's row would otherwise be CUT OFF by the cap. If it is already drawn, the published order stands. |
+| **Tests** | 3 — promotion suppressed when already visible and applied when not; stable partition asserted on `rank` values so a re-rank cannot pass; every no-op case. |
+| **Status** | FIXED. |

@@ -31,7 +31,7 @@ import type { SizeSpec } from "../sizes";
 import { s } from "../sizes";
 import type { ManifestRecorder } from "../manifest";
 import type { VisualBundle } from "../types";
-import type { Composition } from "../compose";
+import { subjectFirst, type Composition } from "../compose";
 import {
   CardFooter,
   CardHeader,
@@ -388,7 +388,9 @@ export function ComposedCard({
         push(
           <Section key="pb" label={`Playbook · ${pb.editionFor ?? "latest"}`} spec={spec} first={isFirst}>
             <div style={{ display: "flex", flexDirection: "column", width: "100%" }}>
-              {pb.rows.slice(0, capFor(block, spec.dense ? 3 : surfaceCap)).map((r, i) => {
+              {subjectFirst(pb.rows, bundle.ticker, capFor(block, spec.dense ? 3 : surfaceCap))
+                .slice(0, capFor(block, spec.dense ? 3 : surfaceCap))
+                .map((r, i) => {
                 recorder.value(
                   `#${r.rank} ${r.ticker}`,
                   [r.entryRange && `entry ${r.entryRange}`, r.target && `target ${r.target}`, r.stop && `stop ${r.stop}`].filter(Boolean).join(" · ") || r.direction,

@@ -10,6 +10,7 @@ import {
   levelOnSameScale,
   parseEmphasis,
   scoreBlock,
+  subjectFirst,
   type BlockId,
 } from "./compose";
 import { detectVisualIntent, questionSubject } from "./intent";
@@ -535,4 +536,42 @@ test("the packer charges for the space BETWEEN blocks", () => {
   const blockSum = c.blocks.reduce((n, b) => n + b.estHeight, 0);
   assert.ok(c.blocks.length >= 2, "needs a multi-block card to have any gap at all");
   assert.equal(c.used, blockSum + blockGap(spec) * (c.blocks.length - 1));
+});
+
+/**
+ * SUBJECT RELEVANCE — the live NVDA card drew a playbook of NET, NVDA and CRM.
+ *
+ * Every row was real and the block was correctly chosen; two of the three had nothing to do with
+ * the question. The composer ranks BLOCKS by relevance and then draws each block's ROWS in whatever
+ * order the engine published, so a question about one name gets the whole edition's top of book.
+ */
+const PB = (...tickers: string[]) => tickers.map((ticker, i) => ({ ticker, rank: i + 1 }));
+
+test("the subject's play is promoted only when the cap would have cut it", () => {
+  const rows = PB("NET", "NVDA", "CRM", "AXON", "UBER");
+  // Cap 2: NVDA is at index 1 and already drawn, so the published order must stand.
+  assert.deepEqual(subjectFirst(rows, "NVDA", 2), rows);
+  // Cap 1: NVDA would be invisible on a card generated for a question about NVDA.
+  assert.deepEqual(
+    subjectFirst(rows, "NVDA", 1).map((r) => r.ticker),
+    ["NVDA", "NET", "CRM", "AXON", "UBER"],
+  );
+});
+
+test("promotion is a stable partition — it never re-ranks or drops", () => {
+  const rows = PB("NET", "CRM", "AXON", "NVDA", "UBER", "NVDA");
+  const out = subjectFirst(rows, "nvda", 2);
+  assert.equal(out.length, rows.length, "no row may be lost");
+  assert.deepEqual(out.map((r) => r.ticker), ["NVDA", "NVDA", "NET", "CRM", "AXON", "UBER"]);
+  // Relative order WITHIN each group is untouched: the two NVDA rows keep ranks 4 then 6.
+  assert.deepEqual(out.filter((r) => r.ticker === "NVDA").map((r) => r.rank), [4, 6]);
+  assert.deepEqual(out.filter((r) => r.ticker !== "NVDA").map((r) => r.rank), [1, 2, 3, 5]);
+});
+
+test("no subject, or no matching row, leaves the order exactly as published", () => {
+  const rows = PB("NET", "CRM", "AXON");
+  assert.deepEqual(subjectFirst(rows, null, 1), rows);
+  assert.deepEqual(subjectFirst(rows, "", 1), rows);
+  assert.deepEqual(subjectFirst(rows, "TSLA", 1), rows);
+  assert.deepEqual(subjectFirst(rows, "NET", 0), rows);
 });
