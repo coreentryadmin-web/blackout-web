@@ -68,6 +68,8 @@ export function LargoNativeTerminal() {
                 <LargoAnswerMessage
                   content={msg.content}
                   envelope={msg.envelope}
+                  turnId={msg.turnId ?? null}
+                  autoVisual={msg.visual ?? null}
                   streaming={
                     loading && idx === messages.length - 1 && msg.role === "assistant"
                   }
