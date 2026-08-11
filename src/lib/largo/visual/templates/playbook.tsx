@@ -174,12 +174,30 @@ export function PlaybookCard({
   recorder.value("Plays published", String(pb.totalPlays), pb.source);
   if (pulledCount > 0) recorder.value("Plays pulled", String(pulledCount), pb.source);
 
-  // The book's own skew, stated once at the top. A five-play all-long book is a directional bet
-  // whether or not any single card says so, and a member reading three of five rows cannot infer
-  // it. Counted over ALL plays, not the rendered subset.
+  /**
+   * The book's own skew, stated once at the top — and NEVER green when nothing is tradeable.
+   *
+   * A five-play all-long book is a directional bet whether or not any single card says so, and a
+   * member reading three of five rows cannot infer it. Counted over ALL plays, not the rendered
+   * subset.
+   *
+   * THE ZERO-ACTIONABLE CASE IS THE ONE THAT BIT. Skew counts exclude pulled plays, so a book
+   * where every play was withdrawn produced `0 LONG · 0 SHORT` — and, because `shorts === 0`, it
+   * rendered in BULL GREEN. Green reads "all clear" on the one card whose entire message is "do
+   * not trade this". The colour was derived from an absence of shorts rather than from a presence
+   * of longs, which is true and useless when there is nothing on either side.
+   */
+  const actionable = longs + shorts;
   const skew =
-    longs > 0 && shorts === 0 ? "ALL LONG" : shorts > 0 && longs === 0 ? "ALL SHORT" : `${longs} LONG · ${shorts} SHORT`;
-  const skewColor = shorts === 0 ? C.bull : longs === 0 ? C.bear : C.warn;
+    actionable === 0
+      ? "NOTHING ACTIONABLE"
+      : longs > 0 && shorts === 0
+        ? "ALL LONG"
+        : shorts > 0 && longs === 0
+          ? "ALL SHORT"
+          : `${longs} LONG · ${shorts} SHORT`;
+  const skewColor =
+    actionable === 0 ? C.warn : shorts === 0 ? C.bull : longs === 0 ? C.bear : C.warn;
   recorder.value("Book skew", skew, pb.source);
 
   const children: (ReactElement | null)[] = [
@@ -188,7 +206,9 @@ export function PlaybookCard({
     <div key="t" style={{ display: "flex", flexDirection: "column", marginTop: s(18, spec) }}>
       <Kicker text={`Playbook · ${pb.editionFor ?? "latest edition"}`} spec={spec} color={C.ai} />
       <div style={{ display: "flex", alignItems: "center", marginTop: s(8, spec) }}>
-        <div style={{ display: "flex", fontFamily: FONT.display, fontSize: s(spec.dense ? 60 : 72, spec), color: C.primary, lineHeight: 1 }}>
+        {/* Muted when nothing is actionable: at a glance "3 PLAYS" in full-strength white beside
+            a chip reads as a working book, and this one is not. */}
+        <div style={{ display: "flex", fontFamily: FONT.display, fontSize: s(spec.dense ? 60 : 72, spec), color: actionable === 0 ? C.muted : C.primary, lineHeight: 1 }}>
           {`${pb.totalPlays} ${pb.totalPlays === 1 ? "PLAY" : "PLAYS"}`}
         </div>
         <div

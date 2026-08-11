@@ -190,7 +190,19 @@ export const BLOCKS: BlockSpec[] = [
   {
     id: "gamma_profile",
     label: "Gamma profile",
-    available: (b) => (b.gammaProfile?.rows.length ?? 0) >= 3,
+    /**
+     * FIVE strikes AND at least one non-zero exposure.
+     *
+     * The row count alone was not enough. A profile of all-zero rows passed the gate and drew a
+     * bar chart in which every bar rendered at the 3% minimum width — a chart asserting a flat,
+     * MEASURED distribution where the real reading is "no dealer exposure anywhere". Those are
+     * different claims, and the bar chart makes the wrong one look like data.
+     *
+     * A legitimately flat book is a real state; it is just not a bar chart. It reaches the member
+     * through the regime block and the answer's prose instead.
+     */
+    available: (b) =>
+      (b.gammaProfile?.rows.length ?? 0) >= 3 && (b.gammaProfile?.rows ?? []).some((r) => r.gamma !== 0),
     match: /\bgamma (map|profile|distribution|stacked)\b|\bwhere is (the )?gamma\b|\b(gex|dealer gamma)\b/i,
     base: 68,
     density: (b) => b.gammaProfile?.rows.length ?? 0,

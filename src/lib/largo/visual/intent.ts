@@ -34,8 +34,25 @@ import type { VisualSize } from "./types";
  * request to make one; requiring the verb is what separates asking for a card from talking about
  * one. The verb may be up to four words from the noun so "create me a quick image" matches.
  */
-const EXPLICIT_RE =
+const VERB_THEN_NOUN_RE =
   /\b(create|generate|make|build|render|draw|design|produce|give me|show me|export|save)\b[\w\s]{0,24}?\b(image|images|card|cards|graphic|graphics|visual|visuals|infographic|picture|png|poster|chart card|post)\b/i;
+
+/**
+ * The artefact named as a TRAILING QUALIFIER, with the verb far away.
+ *
+ * MEASURED MISS: "Generate how NVDA looks today — as an image". The verb is 28 characters from
+ * the noun, past the proximity window, so the request read as an ordinary question and no card
+ * was made. Widening that window is the wrong fix — it would start matching "explain the graphic
+ * you made" — because the problem is not distance, it is that this phrasing puts the artefact at
+ * the END as a qualifier on the whole request rather than as the verb's object.
+ *
+ * Anchored on "as a/an/in ... image", which is a request by construction: there is no reading of
+ * "as an image" that is a question about an existing one.
+ */
+const TRAILING_ARTEFACT_RE =
+  /\b(as|in)\s+(a|an)?\s*(image|card|graphic|visual|infographic|picture|png|poster)\s*(form)?\b\s*[.!?]?\s*$|\bin\s+(image|card|graphic|visual)\s+form\b/i;
+
+const EXPLICIT_RE = new RegExp(`(${VERB_THEN_NOUN_RE.source})|(${TRAILING_ARTEFACT_RE.source})`, "i");
 
 /** The artefact is implied by what they plan to do with it. */
 const INCIDENTAL_RE =
