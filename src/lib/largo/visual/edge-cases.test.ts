@@ -463,3 +463,22 @@ test("an ALL-PULLED book never renders in bull green", async () => {
   assert.match(src, /actionable === 0\s*\n?\s*\? "NOTHING ACTIONABLE"/, "and say so in words");
   assert.match(src, /actionable === 0 \? C\.warn/, "and never resolve to bull green");
 });
+
+test("the level label never renders in the size band that clips its last glyph", () => {
+  // THE "CALL WALl" BUG, bisected by rendering the identical bundle at all four surfaces: the
+  // final glyph clips at 14px (landscape) and is intact at 17px (square), 19px (portrait) and
+  // 22px (story). It is a rasteriser artifact, not a layout fault — flexShrink, whiteSpace,
+  // paddingRight, an explicit width, removing letterSpacing, and padding the text run with
+  // trailing/hair/nbsp characters each left the PNG byte-identical or worse. Only the size moves
+  // it, so the fix is a floor and the regression test is on the floor.
+  const { readFileSync } = require("node:fs") as typeof import("node:fs");
+  const src = readFileSync("src/lib/largo/visual/primitives.tsx", "utf8");
+  assert.match(src, /fontSize: Math\.max\(16, s\(18, spec\)\)/, "the level label needs its 16px floor");
+
+  // And the floor must actually bind on the surface that was broken.
+  for (const id of SIZES) {
+    const spec = sizeSpec(id);
+    assert.ok(Math.max(16, Math.round(18 * spec.scale)) >= 16, `${id} label below the floor`);
+  }
+  assert.ok(Math.round(18 * sizeSpec("x_landscape").scale) < 16, "landscape is the surface the floor exists for");
+});

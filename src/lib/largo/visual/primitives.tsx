@@ -350,7 +350,19 @@ export function LevelMap({
                 flexShrink: 0,
                 whiteSpace: "nowrap",
                 fontFamily: FONT.mono,
-                fontSize: s(18, spec),
+                // 16px FLOOR — the "CALL WALl" bug, and it is a rasteriser artifact rather than a
+                // layout fault. Bisected by rendering the identical bundle at all four surfaces:
+                // the final glyph clips at 14px (landscape, scale 0.8) and is intact at 17px
+                // (square), 19px (portrait) and 22px (story). Nothing about the box is wrong —
+                // flexShrink, whiteSpace, paddingRight, an explicit width, removing letterSpacing
+                // and padding the text run with trailing/hair/nbsp characters each left the PNG
+                // byte-identical or worse. Only the size moves it.
+                // Only labels whose last glyph reaches the right edge of its advance box are hit,
+                // which is why "CALL WALL" and "PUT WALL" clipped while "GAMMA FLIP" and "SPOT"
+                // never did.
+                // The floor is safe on the tightest surface: the label column is a fixed
+                // s(220) = 176px on landscape and "CALL WALL" at 16px mono is ~106px.
+                fontSize: Math.max(16, s(18, spec)),
                 letterSpacing: s(2, spec),
                 textTransform: "uppercase",
                 color: row.isSpot ? C.info : color,
