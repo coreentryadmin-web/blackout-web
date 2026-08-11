@@ -29,6 +29,40 @@ export function toProfessionalMarkdown(text: string): string {
     .trim();
 }
 
+/**
+ * Overconfidence phrases, and the NEGATION that makes them responsible instead.
+ *
+ * MEASURED FALSE POSITIVE 2026-08-11. The old check was a bare word match on
+ * `guarantee|sure thing|can't lose|free money|100% win`, and the one answer it flagged in a live
+ * production sweep said:
+ *
+ *   "conviction in the tape does not guarantee execution"
+ *
+ * That is a caution — the exact copy this check exists to encourage — scored as its opposite. The
+ * word carries no tone on its own; the negation in front of it does. And the failure is not
+ * symmetric: a false positive here pushes the answer layer to DELETE hedging language in order to
+ * score well, which makes members' copy more confident, not less. A tone check that penalises
+ * caution is worse than no tone check.
+ *
+ * So a match is suppressed when it is negated within the ~24 characters before it — enough for
+ * "does not ", "is no ", "cannot ", "never ", "there are no ", "without any ".
+ */
+const OVERCONFIDENT_RE = /\b(guarantees?|guaranteed|sure thing|can't lose|cannot lose|free money|100% win)\b/gi;
+
+/** Negation immediately preceding a hit, e.g. "does not guarantee", "no sure thing". */
+const NEGATED_BEFORE_RE = /\b(not|never|no|none|cannot|can't|without|nothing|isn't|aren't|doesn't|don't)\b[^.;]{0,24}$/i;
+
+/** The overconfident phrases in `answer` that are NOT negated. Exported so a caller can report which. */
+export function overconfidentClaims(answer: string): string[] {
+  const out: string[] = [];
+  for (const m of answer.matchAll(OVERCONFIDENT_RE)) {
+    const before = answer.slice(Math.max(0, m.index - 40), m.index);
+    if (NEGATED_BEFORE_RE.test(before)) continue;
+    out.push(m[0]);
+  }
+  return out;
+}
+
 /** Scoring heuristics for stress harnesses — flags unprofessional or speculative copy. */
 export function toneIssues(answer: string): string[] {
   const issues: string[] = [];
@@ -36,9 +70,7 @@ export function toneIssues(answer: string): string[] {
   if (/\b(i think|i believe|probably|maybe|might be|could be around|approximately)\b/i.test(answer)) {
     issues.push("speculative");
   }
-  if (/\b(guarantee|sure thing|can't lose|free money|100% win)\b/i.test(answer)) {
-    issues.push("overconfident");
-  }
+  if (overconfidentClaims(answer).length > 0) issues.push("overconfident");
   if (/\?\?\?|\!\!\!/.test(answer)) issues.push("casual-punctuation");
   return issues;
 }
