@@ -822,3 +822,33 @@ export function parseEmphasis(value: unknown): BlockId[] | null {
   const out = value.filter((v): v is BlockId => typeof v === "string" && v in BLOCK_BY_ID);
   return out.length ? out : null;
 }
+
+/**
+ * Move the SUBJECT's rows to the front — but only when doing so changes what is visible.
+ *
+ * THE PROBLEM. A playbook block draws `rows.slice(0, cap)` in rank order. Asked "generate how NVDA
+ * looks today", the live card drew a playbook of NET, NVDA and CRM: the edition's top three, of
+ * which two have nothing to do with the question. The evidence was correct and the selection was
+ * off-topic, which on a shareable asset is its own kind of wrong.
+ *
+ * WHY IT IS CONDITIONAL, AND NOT JUST A SORT. Rank carries meaning — a runbook whose first row is
+ * not the highest-conviction play is misleading in a different way. So the reorder happens ONLY
+ * when the subject's row would otherwise be CUT OFF by the cap. If NVDA is already drawn, the
+ * order is exactly what the engine published. Nothing is added, nothing is dropped, and rows keep
+ * their relative order within each group (a stable partition, not a re-rank).
+ *
+ * With no subject, or no matching row, the input is returned untouched.
+ */
+export function subjectFirst<T extends { ticker: string }>(
+  rows: readonly T[],
+  subject: string | null | undefined,
+  cap: number
+): readonly T[] {
+  const t = subject?.trim().toUpperCase();
+  if (!t || cap <= 0) return rows;
+  const matches = (r: T) => r.ticker?.trim().toUpperCase() === t;
+  if (!rows.some(matches)) return rows;
+  // Already visible: the published order stands.
+  if (rows.slice(0, cap).some(matches)) return rows;
+  return [...rows.filter(matches), ...rows.filter((r) => !matches(r))];
+}
