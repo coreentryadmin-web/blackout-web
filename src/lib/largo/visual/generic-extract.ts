@@ -213,7 +213,30 @@ export function rankedFromArray(arr: unknown, limit = 8): GenericRankedRow[] {
 
 export type GenericEvent = { when: string; label: string; detail?: string | null };
 
-const DATE_KEYS = ["date", "expiry", "report_date", "earnings_date", "at", "when", "published_at", "time", "datetime"];
+/**
+ * `published` IS THE ONE THAT MATTERED, and it was the one missing.
+ *
+ * `toolNews` (run-tool.ts) returns `{ articles: [{ title, teaser, published, tickers, source }] }`.
+ * The list had `published_at` and not `published`, so `eventsFromArray` failed the date test on
+ * EVERY article and returned nothing — twelve headlines, zero rows, silently. Verified against the
+ * exact production return shape: 12 articles in, 0 blocks out, before this line changed.
+ *
+ * That is the whole coverage promise of generic extraction failing on one of the most-called tools
+ * in the product, and it failed the way this class of bug always does: not with an error, but with
+ * an empty result that looks like "there was no news".
+ */
+const DATE_KEYS = [
+  "date",
+  "expiry",
+  "report_date",
+  "earnings_date",
+  "at",
+  "when",
+  "published",
+  "published_at",
+  "time",
+  "datetime",
+];
 
 /** A date string a member can read. Returns null for anything unparseable — never a placeholder. */
 function readDate(v: unknown): string | null {
@@ -315,6 +338,44 @@ const MIN_STATS = 3;
  * tape as a generic ranked list would put the same numbers on the card twice under two different
  * headings, which reads as two independent measurements.
  */
+/**
+ * Every array-valued property, KNOWN NAMES FIRST.
+ *
+ * THE ALLOWLIST WAS GATING ON THE WRONG THING. `EVENT_FIELDS`/`RANKED_FIELDS` matched the
+ * CONTAINER KEY, so a payload had to be shaped like one the list anticipated. `toolNews` returns
+ * `{ articles: [...] }` and `articles` is on neither list — so twelve live NVDA headlines produced
+ * zero rows, and the failure looked exactly like "there was no news".
+ *
+ * A key name was never the safety mechanism. The ROW validators are: `eventsFromArray` requires a
+ * parseable date AND a name, `rankedFromArray` requires a finite magnitude, and both drop anything
+ * that does not qualify. An array of the wrong shape yields no rows whatever it is called, so
+ * scanning every array can surface a block the list would have missed and cannot surface one the
+ * row rules would have rejected.
+ *
+ * The known lists are KEPT and tried FIRST — purely for their titles. "Earnings" reads better than
+ * the humanised key, and trying them first keeps titles stable for the payloads that already
+ * worked. Everything else falls back to `humaniseKey`, which is how `articles` becomes "Articles"
+ * instead of nothing at all.
+ */
+function arrayCandidates(
+  r: Record<string, unknown>,
+  known: { key: string; title: string }[]
+): [string, string][] {
+  const out: [string, string][] = [];
+  const seen = new Set<string>();
+  for (const f of known) {
+    if (Array.isArray(r[f.key])) { out.push([f.key, f.title]); seen.add(f.key); }
+  }
+  for (const [key, v] of Object.entries(r)) {
+    if (seen.has(key) || !Array.isArray(v) || PLUMBING_RE.test(key)) continue;
+    // No readable title, no block. `humaniseKey` returns null for keys with no letters (an index
+    // map, a numeric bucket) — drawing a section headed "3" would be worse than drawing nothing.
+    const title = humaniseKey(key);
+    if (title) out.push([key, title]);
+  }
+  return out;
+}
+
 export function genericBlocksFrom(
   results: readonly unknown[],
   claimed: ReadonlySet<unknown>,
@@ -326,15 +387,15 @@ export function genericBlocksFrom(
     if (!isRecord(r) || claimed.has(r)) continue;
 
     if (!out.events) {
-      for (const f of EVENT_FIELDS) {
-        const rows = eventsFromArray(r[f.key]);
-        if (rows.length >= MIN_EVENTS) { out.events = { title: f.title, rows, source }; break; }
+      for (const [key, title] of arrayCandidates(r, EVENT_FIELDS)) {
+        const rows = eventsFromArray(r[key]);
+        if (rows.length >= MIN_EVENTS) { out.events = { title, rows, source }; break; }
       }
     }
     if (!out.ranked) {
-      for (const f of RANKED_FIELDS) {
-        const rows = rankedFromArray(r[f.key]);
-        if (rows.length >= MIN_RANKED) { out.ranked = { title: f.title, rows, source }; break; }
+      for (const [key, title] of arrayCandidates(r, RANKED_FIELDS)) {
+        const rows = rankedFromArray(r[key]);
+        if (rows.length >= MIN_RANKED) { out.ranked = { title, rows, source }; break; }
       }
     }
     /**

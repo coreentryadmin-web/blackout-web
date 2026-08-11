@@ -180,3 +180,28 @@ test("duplicate levels are not double-sourced", () => {
   assert.equal(b.levels!.filter((l) => l.label === "Call wall").length, 1);
   assert.ok(b.levels!.some((l) => l.label === "VWAP"), "genuinely new levels still land");
 });
+
+test("the session-change metric reads the key production ACTUALLY emits", () => {
+  // `toolQuote` (run-tool.ts) returns `change_pct`. `findQuote` read `change_percent`, `changePct`
+  // and `percent_change` — none of them. `change_pct` appears at 28+ sites across polygon.ts,
+  // polygon-options-gex.ts, gex-positioning.ts, spot-fallback.ts, unusual-whales.ts and
+  // run-tool.ts itself; `changePct` appears twice. So this metric could not fire on a real payload
+  // and did not: a live NVDA card built from 6 tools carried exactly one metric tile.
+  const b = buildVisualBundle({
+    capturedResults: [{ ticker: "NVDA", price: 219.95, change_pct: 1.83, source: "polygon" }],
+    nowMs: Date.parse("2026-08-11T15:00:00Z"),
+  });
+  const session = b.metrics?.find((m) => m.label === "Session");
+  assert.ok(session, "a quote carrying change_pct must produce the session metric");
+  assert.equal(session!.value, "+1.83%");
+});
+
+test("the other spellings still work — this widened the read, it did not move it", () => {
+  for (const key of ["change_percent", "changePct", "percent_change"]) {
+    const b = buildVisualBundle({
+      capturedResults: [{ ticker: "NVDA", price: 219.95, [key]: -0.42, source: "polygon" }],
+      nowMs: Date.parse("2026-08-11T15:00:00Z"),
+    });
+    assert.ok(b.metrics?.some((m) => m.label === "Session"), `${key} must still be read`);
+  }
+});
