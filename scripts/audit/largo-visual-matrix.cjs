@@ -98,6 +98,29 @@ async function main() {
 
       // A card is present when an <img> the page created from a blob/data URL is on screen, or the
       // inline markup card rendered. Counted in the DOM rather than by eye so the verdict is data.
+      // THE HARNESS'S OWN FAILURE MODE, DETECTED AND FATAL.
+      //
+      // "Connection interrupted — couldn't reach live data" is what the desk correctly shows when
+      // its SSE stream dies — and the tunnel used to abort every stream, so a whole run could
+      // photograph that message and look like a product outage. It happened: a 10-scenario run
+      // executed from a tree WITHOUT the streaming fix produced ten identical screenshots of the
+      // harness failing, and the screenshots are indistinguishable from a real one.
+      //
+      // So the run STOPS at the first sighting rather than filling a directory with evidence of
+      // nothing. Checked before the card probe, because with no answer there is nothing to judge.
+      const interrupted = await page.evaluate(() =>
+        /connection interrupted|couldn't reach live data/i.test(document.body.innerText)
+      );
+      if (interrupted) {
+        await page.screenshot({ path: `${o.out}/HARNESS-FAILURE-${sc.id}.png` }).catch(() => {});
+        throw new Error(
+          `HARNESS FAILURE at "${sc.id}": the desk reports an interrupted stream. This is almost ` +
+            `always the tunnel aborting SSE — check that proxy-tunnel-context.cjs BUFFERS streams ` +
+            `(counts.streamsBuffered) rather than aborting them. Run from a tree that has that fix. ` +
+            `Screenshots so far are NOT evidence about production.`
+        );
+      }
+
       const probe = await page.evaluate(() => {
         const imgs = [...document.querySelectorAll('img')]
           .filter((i) => /^(blob:|data:image)/.test(i.src) && i.naturalWidth > 200);
