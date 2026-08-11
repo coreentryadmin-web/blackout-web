@@ -34,6 +34,7 @@ import { sizeSpec } from "./sizes";
 import { buildManifest, createRecorder } from "./manifest";
 import { MarketMoveCard } from "./templates/market-move";
 import { TradeRecapCard } from "./templates/trade-recap";
+import { PlaybookCard } from "./templates/playbook";
 import { LevelAnalysisCard, focusStrikeFromQuestion } from "./templates/level-analysis";
 import { ScreenerCard } from "./templates/screener";
 import { RejectionCard } from "./templates/rejection";
@@ -95,6 +96,12 @@ export function buildVisualElement(params: RenderVisualParams): {
   switch (params.template) {
     case "MARKET_MOVE":
       element = <MarketMoveCard bundle={bundle} spec={spec} recorder={recorder} asOfLabel={asOfLabel} />;
+      break;
+    case "PLAYBOOK":
+      // Same guard rationale as TRADE_RECAP below: the router checks sufficiency, and this stops a
+      // direct caller rendering an edition frame around no plays.
+      if (!bundle.playbook?.rows.length) throw new Error("PLAYBOOK requires at least one drawable play");
+      element = <PlaybookCard bundle={bundle} spec={spec} recorder={recorder} asOfLabel={asOfLabel} />;
       break;
     case "TRADE_RECAP":
       // The router guarantees `trade` and `trade.entry` are present before selecting this

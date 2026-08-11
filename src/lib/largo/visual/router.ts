@@ -70,14 +70,36 @@ export const TEMPLATES: TemplateSpec[] = [
     needs: "a spot price and at least one dealer level",
   },
   {
+    id: "PLAYBOOK",
+    label: "Playbook",
+    implemented: true,
+    // AHEAD OF TRADE_RECAP DELIBERATELY. "tomorrow's plays", "the playbook", "tonight's edition"
+    // all contain `play`/`entry`, so TRADE_RE swallows them — which is exactly what happened live,
+    // producing a single-ticker recap for a five-play question. PLAYBOOK is the narrower claim
+    // (a specific published edition) so it must be offered the question first.
+    match:
+      /\b(playbook|edition|tomorrow.?s? plays?|tonight.?s? plays?|the plays?|runbook|watch ?list|what (are|do) (we|you) (trading|playing|taking)|legacy plays?)\b/i,
+    // At least one drawable play. Unlike a leaderboard there is no minimum of two: a one-play
+    // edition is a real, publishable state and the card states the count, so it cannot mislead.
+    sufficient: (b) => (b.playbook?.rows.length ?? 0) >= 1,
+    needs: "a published edition with at least one play carrying entry, target or stop",
+  },
+  {
     id: "TRADE_RECAP",
     label: "Trade Recap",
     implemented: true,
     match: TRADE_RE,
-    // Needs a real trade with an entry. Peak/exit may be absent (an open position is a legitimate
-    // recap) but a lifecycle with no entry is not a trade.
-    sufficient: (b) => !!b.trade && !!b.trade.entry,
-    needs: "a committed trade with a recorded entry",
+    // A TRADE, not a PLAN — and the difference is what the row can say about its OUTCOME.
+    //
+    // The original gate was `entry != null`, on the reasoning that an open position is a
+    // legitimate recap. That is true, but an open position still carries a live mark or a status.
+    // A published play that has not been taken carries an entry premium and NOTHING else this
+    // template reads, so it cleared the gate and rendered a frame of empty cells around one
+    // number. Requiring any one outcome-side field separates the two without excluding the open
+    // positions the card is meant to handle.
+    sufficient: (b) =>
+      !!b.trade && !!b.trade.entry && (!!b.trade.exit || !!b.trade.returnPct || !!b.trade.status),
+    needs: "a committed trade with an entry AND a mark, return or status",
   },
 
   {

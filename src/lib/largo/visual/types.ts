@@ -21,6 +21,7 @@ export type VisualSize = "x_landscape" | "x_portrait" | "square" | "story";
  *  the router will never select an unimplemented one (see `router.ts`). */
 export type VisualTemplateId =
   | "MARKET_MOVE"
+  | "PLAYBOOK"
   | "TRADE_RECAP"
   | "LEVEL_ANALYSIS"
   | "GAMMA_MAP"
@@ -134,6 +135,67 @@ export type VisualBundle = {
 
   /** Dealer regime, verbatim from the positioning read — never inferred from a sign here. */
   regime?: { label: string; detail?: string | null; source: VisualSystem } | null;
+
+  /**
+   * PLAYBOOK — the forward runbook: every published play with its entry, target, stop and expiry.
+   *
+   * A PLAN IS NOT A TRADE, AND CONFLATING THEM IS WHAT THIS BLOCK EXISTS TO FIX. Asked for
+   * tomorrow's Night Hawk plays, the router picked TRADE_RECAP and drew ONE ticker carrying one
+   * number — `$13.35` alone on a 1080×1920 canvas. Two independent causes, both structural:
+   *
+   *   1. `trade` is SINGULAR, and the bundle took `findLedgerRows(results)[0]`. Four of the five
+   *      published plays were discarded with no note anywhere that they had existed.
+   *   2. An edition play carries `entry_range` / `target` / `stop` / `options_play` / `thesis`.
+   *      TRADE_RECAP reads `last_mark` / `live_pnl_pct` / `exit_pnl_pct` / `status`. None of those
+   *      exist on a play that has not been taken yet, so every field but the entry resolved null
+   *      and the card rendered its own skeleton.
+   *
+   * The member had asked a perfectly reasonable question and the library had no card for it.
+   *
+   * TWO FIELDS HERE ARE SAFETY-CRITICAL, not presentational:
+   *   - `pulled` — the morning confirmation INVALIDATED this play. `types.ts` on `PlaybookPlay`
+   *     is explicit that a pulled play is "never hidden, never deleted", and a runbook that
+   *     quietly drops one is instructing a member into a trade the system publicly withdrew. It
+   *     renders, struck through, with its reason.
+   *   - `gatePromoted` — promoted into the edition despite not clearing the publish gates, because
+   *     the pipeline would otherwise publish nothing. It must be badged.
+   */
+  playbook?: {
+    /** e.g. "2026-08-11" — the session these plays are FOR, not when they were built. */
+    editionFor: string | null;
+    publishedAt: string | null;
+    /** Total published, so a truncated card can never imply it is showing all of them. */
+    totalPlays: number;
+    /** True when a real edition published with zero plays — a distinct state from "no edition". */
+    noPlays?: boolean;
+    /** Served from an older edition because this session's is not published yet. Must be shown. */
+    stale?: boolean;
+    /** Came from a degraded/legacy source rather than the first-class pipeline. Must be shown. */
+    degraded?: boolean;
+    rows: {
+      rank: number;
+      ticker: string;
+      direction: "long" | "short";
+      conviction: string | null;
+      /** Verbatim engine strings — never reformatted, never recomputed here. */
+      entryRange: string | null;
+      target: string | null;
+      stop: string | null;
+      optionsPlay: string | null;
+      entryPremium: number | null;
+      entryPremiumDisplay: string | null;
+      thesis: string | null;
+      keySignal: string | null;
+      rrRatio: number | null;
+      /** How far the target sits from the fill edge in ATR units — the gate's own pinned value. */
+      targetAtrMultiple: number | null;
+      earningsRisk?: boolean;
+      pulled?: boolean;
+      pulledReason?: string | null;
+      gatePromoted?: boolean;
+    }[];
+    source: VisualSystem;
+  } | null;
 
   /** Trade lifecycle, for TRADE_RECAP. */
   trade?: {
