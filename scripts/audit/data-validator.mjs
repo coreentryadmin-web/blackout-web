@@ -142,6 +142,12 @@ const ZERODTE_HIST_WINDOW_MS = 3 * 60 * 1000;
 // when it diverges from the contract's own traded range by more than the app's own
 // definition of "abnormal" for an option's price.
 const ZERODTE_OPTION_PREM_TOL_PCT = 15;
+/** A mark is "away" from the tape once it differs by more than this. Set above normal 0DTE
+ *  bid/ask noise so a thin, genuinely quiet contract does not read as frozen. */
+const ZERODTE_MARK_AWAY_PCT = 10;
+/** …and it is only FROZEN once the contract spent most of the session away from it. RIOT
+ *  (2026-08-11) scored 0.90 on this; a healthy row tracks the tape and scores near zero. */
+const ZERODTE_MARK_AWAY_MAX_FRAC = 0.6;
 // entry_premium is NOT the option's traded price at the flag instant — it is entry_max =
 // resolveLedgerEntryPremium(plan.entry_max, top_strike_avg_fill) (src/lib/zerodte/plan.ts:146,
 // scan.ts:563), i.e. the flow's AVERAGE FILL over the accumulation window (falling back to the
@@ -274,6 +280,23 @@ function polygonHistRangeAsym(symbol, centerMs, lookbackMs, lookaheadMs) {
   const rows = poly(`/v2/aggs/ticker/${encodeURIComponent(symbol)}/range/1/minute/${from}/${to}?adjusted=true&sort=asc&limit=400`)?.results;
   if (!Array.isArray(rows) || rows.length === 0) return null;
   return { lo: Math.min(...rows.map((b) => b.l)), hi: Math.max(...rows.map((b) => b.h)) };
+}
+
+/** Every 1-minute CLOSE for `symbol` between two instants. Used to ask a question a
+ *  range cannot: not "was this value achievable" but "did the contract SPEND the session
+ *  somewhere else while the app kept showing one number". */
+function polygonMinuteCloses(symbol, fromMs, toMs) {
+  if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || toMs <= fromMs) return null;
+  const rows = poly(`/v2/aggs/ticker/${encodeURIComponent(symbol)}/range/1/minute/${Math.round(fromMs)}/${Math.round(toMs)}?adjusted=true&sort=asc&limit=50000`)?.results;
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+  return rows.map((b) => b.c).filter((c) => Number.isFinite(c));
+}
+
+/** Fraction of closes further than `pct`% from `value`. */
+function fractionAway(closes, value, pct) {
+  if (!Array.isArray(closes) || !closes.length || !Number.isFinite(value) || value <= 0) return null;
+  const away = closes.filter((c) => Math.abs(c - value) / value > pct / 100).length;
+  return away / closes.length;
 }
 
 /** `value` inside [range.lo, range.hi] with a `tolPct`% cushion on both sides — the same
@@ -547,6 +570,57 @@ async function main() {
               } else {
                 const ok = withinHistRange(ep, range, ZERODTE_OPTION_PREM_TOL_PCT);
                 rec(`0DTE ledger ${ticker}: entry_premium vs Polygon option minute bars`, ok ? 'PASS' : 'FAIL', `logged=${ep} polygon_range=[${range.lo.toFixed(4)}, ${range.hi.toFixed(4)}] (±${ZERODTE_OPTION_PREM_TOL_PCT}% cushion over the accumulation window, ${resolved.occ}) at ${r0.first_flagged_at}`);
+              }
+            }
+          }
+
+          // ── last_mark: was a quote EVER observed on this row? ────────────────────────
+          //
+          // This check exists because its absence let a manufactured outcome reach the member
+          // record. RIOT, 2026-08-11: last_mark sat at exactly entry_premium (0.93) for 77
+          // minutes and the row CLOSED at precisely 0.00% "breakeven" — while the contract
+          // traded 0.24 -> 1.48, with 76 of 84 minute bars closing more than $0.05 away from
+          // the number the app was showing. The entry_premium check above passed the whole
+          // time, because entry_premium was correct. Nothing looked at the mark.
+          //
+          // TWO tests, because they answer different questions:
+          //   1. DIRECT — last_mark_at is stamped only when a real quote lands (db.ts). NULL
+          //      means no quote was ever seen and the displayed mark is just the seeded entry.
+          //      Exact, no bars needed. Rows written before that column existed report INFO.
+          //   2. BEHAVIOURAL — a range test cannot catch this (0.93 was inside [0.24, 1.48]
+          //      all day). The distinguishing question is whether the contract SPENT the
+          //      session away from the mark while the mark never moved.
+          const lm = num(r0.last_mark);
+          if (lm != null) {
+            const markAt = r0.last_mark_at ?? null;
+            // The frozen SIGNATURE: the mark is still bit-identical to the seeded entry premium.
+            // A mark that differs from entry is proof a real quote landed and overwrote it.
+            const seeded = ep != null && Math.abs(lm - ep) < 1e-9;
+
+            if (markAt != null) {
+              rec(`0DTE ledger ${ticker}: last_mark was actually observed`, 'PASS', `last_mark_at=${markAt} — a real quote landed on this row`);
+            } else if (!seeded) {
+              rec(`0DTE ledger ${ticker}: last_mark was actually observed`, 'PASS', `pre-column row, but last_mark ${lm} differs from entry ${ep} — a real quote clearly landed`);
+            } else {
+              // Pre-column row AND still sitting on entry. Ambiguous on its own: could be a
+              // contract that genuinely never moved. The tape decides.
+              if (!resolved?.occ || !Number.isFinite(flagMs)) {
+                rec(`0DTE ledger ${ticker}: last_mark was actually observed`, 'INFO', `last_mark === entry_premium (${lm}) and no last_mark_at to check — cannot resolve an OCC/flag time to settle it against the tape`);
+              } else {
+                const closes = polygonMinuteCloses(resolved.occ, flagMs, Date.now());
+                const frac = fractionAway(closes, lm, ZERODTE_MARK_AWAY_PCT);
+                if (frac == null) {
+                  rec(`0DTE ledger ${ticker}: last_mark was actually observed`, 'INFO', `last_mark === entry_premium (${lm}) but Polygon has no minute bars for ${resolved.occ} since the flag — nothing to settle it against`);
+                } else {
+                  const ok = frac < ZERODTE_MARK_AWAY_MAX_FRAC;
+                  rec(
+                    `0DTE ledger ${ticker}: last_mark was actually observed`,
+                    ok ? 'PASS' : 'FAIL',
+                    ok
+                      ? `last_mark === entry_premium (${lm}) and the contract stayed there — only ${(frac * 100).toFixed(0)}% of ${closes.length} minute closes are >${ZERODTE_MARK_AWAY_PCT}% away, consistent with a genuinely quiet contract`
+                      : `FROZEN: last_mark is still exactly entry_premium (${lm}) while ${(frac * 100).toFixed(0)}% of ${closes.length} minute closes since the flag sit >${ZERODTE_MARK_AWAY_PCT}% away (threshold ${(ZERODTE_MARK_AWAY_MAX_FRAC * 100).toFixed(0)}%, ${resolved.occ}). No quote ever overwrote the seeded entry, so any P&L on this row is manufactured`
+                  );
+                }
               }
             }
           }
