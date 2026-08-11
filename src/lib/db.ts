@@ -770,6 +770,12 @@ async function runMigrations(): Promise<void> {
   await p.query(`
     ALTER TABLE zerodte_setup_log ADD COLUMN IF NOT EXISTS last_mark_at TIMESTAMPTZ;
   `);
+  // The swing lane writes its own last_mark on a DIFFERENT table, and its writer stamps
+  // last_mark_at too — so the column has to exist on both or that UPDATE fails outright
+  // (caught by CI against real PG: 42703 column "last_mark_at" does not exist).
+  await p.query(`
+    ALTER TABLE swing_positions ADD COLUMN IF NOT EXISTS last_mark_at TIMESTAMPTZ;
+  `);
   await p.query(`
     ALTER TABLE zerodte_setup_log ADD COLUMN IF NOT EXISTS peak_premium NUMERIC;
   `);
@@ -1784,6 +1790,8 @@ async function runMigrations(): Promise<void> {
       -- Premium latches (contract mark since commit) — running peak/trough.
       entry_premium NUMERIC,
       last_mark NUMERIC,
+      -- Stamped only when a real quote lands (see updateZeroDteLiveState's comment).
+      last_mark_at TIMESTAMPTZ,
       peak_premium NUMERIC,
       trough_premium NUMERIC,
       -- Underlying-terms maximum favorable / adverse excursion.
