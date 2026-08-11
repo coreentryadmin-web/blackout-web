@@ -245,3 +245,33 @@ test("persistApiTelemetryEvent: never supplies seq_id — the PRIMARY KEY is the
     "an app-assigned seq_id would reintroduce the legacy collision this migration exists to retire"
   );
 });
+
+// FINDINGS 2026-08-11 (P1, manufactured outcome): `last_mark = COALESCE($4, last_mark)` is
+// correct on its own — a stale tick must never discard a good mark — but it makes "no quote was
+// EVER seen" indistinguishable from "quoted, and it equals entry". A row is seeded with its entry
+// premium, so a contract whose quote never arrives keeps showing entry forever, reports P&L of
+// exactly 0.00%, and CLOSES as a breakeven. That happened live: RIOT held 0.93 for 77 minutes and
+// graded breakeven while the contract traded 0.24 -> 1.48 (76 of 84 minute bars >$0.05 away).
+// A manufactured breakeven is not neutral — it enters the record as a non-loss, flattering win
+// rate AND withholding a real outcome from calibration.
+// The stamp must be CONDITIONAL: writing it unconditionally would say "observed just now" on
+// precisely the ticks where nothing was observed, i.e. re-create the bug in a new column.
+test("both live-state writers stamp last_mark_at ONLY when a real mark arrives", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+
+  // The column has to exist before either writer can stamp it.
+  assert.match(src, /ADD COLUMN IF NOT EXISTS last_mark_at TIMESTAMPTZ/);
+
+  // Writer 1: the 0DTE live-marks / cron-sync lane ($4 is the mark).
+  const zStart = src.indexOf("export async function updateZeroDteLiveState");
+  assert.ok(zStart > 0, "updateZeroDteLiveState exists");
+  const zBody = src.slice(zStart, src.indexOf("stampZeroDteExitContext"));
+  assert.match(zBody, /last_mark_at = CASE WHEN \$4 IS NOT NULL THEN now\(\) ELSE last_mark_at END/);
+  // The COALESCE it disambiguates must still be there — the stamp ADDS a fact, it does not
+  // change which marks are kept.
+  assert.match(zBody, /last_mark = COALESCE\(\$4, last_mark\)/);
+
+  // Writer 2: the swing/other ledger lane ($3 is the mark). Both writers or neither — a row
+  // updated only by the unstamped one would be indistinguishable from a never-quoted row.
+  assert.match(src, /last_mark_at = CASE WHEN \$3 IS NOT NULL THEN now\(\) ELSE last_mark_at END/);
+});

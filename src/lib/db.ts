@@ -768,6 +768,9 @@ async function runMigrations(): Promise<void> {
     ALTER TABLE zerodte_setup_log ADD COLUMN IF NOT EXISTS last_mark NUMERIC;
   `);
   await p.query(`
+    ALTER TABLE zerodte_setup_log ADD COLUMN IF NOT EXISTS last_mark_at TIMESTAMPTZ;
+  `);
+  await p.query(`
     ALTER TABLE zerodte_setup_log ADD COLUMN IF NOT EXISTS peak_premium NUMERIC;
   `);
   await p.query(`
@@ -5336,6 +5339,8 @@ export type ZeroDteSetupLogRow = {
   /** Live lifecycle: OPEN | HOLD | TRIM | CLOSED (derived + latched by the scanner). */
   status: string | null;
   last_mark: number | null;
+  /** When a real quote last landed on this row. NULL = a mark was never observed at all. */
+  last_mark_at: string | null;
   peak_premium: number | null;
   trough_premium: number | null;
   /** G-4/G-6 calibration verdict + bias/score context, pinned at commit time (never blocks). */
@@ -6145,6 +6150,7 @@ function mapZeroDteLogRow(r: QueryResultRow): ZeroDteSetupLogRow {
     plan_pnl_pct: r.plan_pnl_pct != null ? Number(r.plan_pnl_pct) : null,
     status: r.status != null ? String(r.status) : null,
     last_mark: r.last_mark != null ? Number(r.last_mark) : null,
+    last_mark_at: r.last_mark_at ? new Date(r.last_mark_at).toISOString() : null,
     peak_premium: r.peak_premium != null ? Number(r.peak_premium) : null,
     trough_premium: r.trough_premium != null ? Number(r.trough_premium) : null,
     gate_calibration_json: (r.gate_calibration_json as Record<string, unknown>) ?? null,
@@ -6348,6 +6354,15 @@ export async function updateZeroDteLiveState(
          ELSE $3
        END,
        last_mark = COALESCE($4, last_mark),
+       -- STAMPED ONLY ON A REAL OBSERVATION, and that is the whole point of the column.
+       -- last_mark is COALESCEd (correct: a stale tick must not discard a good mark), so a row
+       -- whose contract NEVER produced a quote keeps the value it was seeded with — its entry
+       -- premium — indefinitely. Downstream that is indistinguishable from a mark that was
+       -- observed and happens to equal entry, which is how RIOT (2026-08-11) reported P&L of
+       -- exactly 0.00% and closed "breakeven" on a contract that actually traded 0.24 -> 1.48
+       -- (76 of 84 minute bars more than $0.05 away from the mark being shown).
+       -- With this column, last_mark_at IS NULL says "no quote was ever seen" out loud.
+       last_mark_at = CASE WHEN $4 IS NOT NULL THEN now() ELSE last_mark_at END,
        peak_premium = CASE
          WHEN $4 IS NOT NULL THEN GREATEST(COALESCE(peak_premium, $4), $4)
          ELSE peak_premium
@@ -6495,6 +6510,8 @@ export type SwingPositionRow = {
   target_underlying_px: number | null;
   entry_premium: number | null;
   last_mark: number | null;
+  /** When a real quote last landed on this row. NULL = a mark was never observed at all. */
+  last_mark_at: string | null;
   peak_premium: number | null;
   trough_premium: number | null;
   underlying_mfe: number | null;
@@ -6541,6 +6558,7 @@ export function mapSwingPositionRow(r: QueryResultRow): SwingPositionRow {
     target_underlying_px: r.target_underlying_px != null ? Number(r.target_underlying_px) : null,
     entry_premium: r.entry_premium != null ? Number(r.entry_premium) : null,
     last_mark: r.last_mark != null ? Number(r.last_mark) : null,
+    last_mark_at: r.last_mark_at ? new Date(r.last_mark_at).toISOString() : null,
     peak_premium: r.peak_premium != null ? Number(r.peak_premium) : null,
     trough_premium: r.trough_premium != null ? Number(r.trough_premium) : null,
     underlying_mfe: r.underlying_mfe != null ? Number(r.underlying_mfe) : null,
@@ -6802,6 +6820,9 @@ export async function updateSwingLiveState(
          ELSE $2
        END,
        last_mark = COALESCE($3, last_mark),
+       -- Same observation stamp as updateZeroDteLiveState — see the comment there for why a
+       -- COALESCEd mark cannot, on its own, distinguish "never quoted" from "quoted at entry".
+       last_mark_at = CASE WHEN $3 IS NOT NULL THEN now() ELSE last_mark_at END,
        peak_premium = CASE WHEN $3 IS NOT NULL THEN GREATEST(COALESCE(peak_premium, $3), $3) ELSE peak_premium END,
        trough_premium = CASE WHEN $3 IS NOT NULL THEN LEAST(COALESCE(trough_premium, $3), $3) ELSE trough_premium END,
        -- FINDINGS 2026-08-06 (SEV-1, unparseable statement): the ::numeric casts below are LOAD-BEARING,
@@ -7010,6 +7031,8 @@ export type SwingShadowPositionInsert = {
 export type SwingShadowPositionRow = SwingShadowPositionInsert & {
   id: number;
   last_mark: number | null;
+  /** When a real quote last landed on this row. NULL = a mark was never observed at all. */
+  last_mark_at: string | null;
   peak_premium: number | null;
   trough_premium: number | null;
   realized_pnl_pct: number | null;
@@ -7039,6 +7062,7 @@ function mapSwingShadowPositionRow(row: QueryResultRow): SwingShadowPositionRow 
     target_underlying_px: row.target_underlying_px != null ? Number(row.target_underlying_px) : null,
     entry_premium: row.entry_premium != null ? Number(row.entry_premium) : null,
     last_mark: row.last_mark != null ? Number(row.last_mark) : null,
+    last_mark_at: row.last_mark_at ? new Date(row.last_mark_at).toISOString() : null,
     peak_premium: row.peak_premium != null ? Number(row.peak_premium) : null,
     trough_premium: row.trough_premium != null ? Number(row.trough_premium) : null,
     realized_pnl_pct: row.realized_pnl_pct != null ? Number(row.realized_pnl_pct) : null,
