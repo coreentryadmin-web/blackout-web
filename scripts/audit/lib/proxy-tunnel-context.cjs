@@ -102,14 +102,24 @@ function proxyFetch(url, method, hdrs, body, timeoutMs = 20000) {
 }
 
 /** Follow one redirect (Location header). */
-async function proxyFetchFollow(url, method, hdrs, body) {
-  const r = await proxyFetch(url, method, hdrs, body);
+async function proxyFetchFollow(url, method, hdrs, body, timeoutMs) {
+  const r = await proxyFetch(url, method, hdrs, body, timeoutMs);
   if (r.status >= 301 && r.status <= 308 && r.headers.location) {
     const loc = new URL(r.headers.location, url).href;
-    return proxyFetch(loc, "GET", hdrs, null);
+    return proxyFetch(loc, "GET", hdrs, null, timeoutMs);
   }
   return r;
 }
+
+/**
+ * How long to hold a buffered SSE turn open.
+ *
+ * A Largo answer that calls six tools runs well past the 20s default, and `proxyFetch` resolves on
+ * socket END — so this is the deadline for the WHOLE turn, not for its first byte. Generous on
+ * purpose: a screenshot taken because the tunnel gave up early looks exactly like a product that
+ * returned nothing, which is the confusion this whole change exists to remove.
+ */
+const STREAM_TIMEOUT_MS = 180000;
 
 /**
  * A never-terminating response would hang the tunnel forever.
@@ -233,18 +243,35 @@ async function createTunneledContext({
     );
   }
 
-  const counts = { ok: 0, fail: 0, streamsAborted: 0 };
+  const counts = { ok: 0, fail: 0, streamsBuffered: 0 };
 
   // CONTEXT level, before any page exists, so even the first navigation goes through Node.
   await ctx.route("**/*", async (route, req) => {
     const reqUrl = req.url();
     if (/^(data|blob|about|chrome|chrome-extension):/.test(reqUrl)) return route.continue();
-    if (isStreamingRequest(req)) {
-      counts.streamsAborted++;
-      return route.abort("connectionfailed");
-    }
+    // STREAMS ARE BUFFERED, NOT ABORTED.
+    //
+    // Aborting them made this harness structurally unable to test the one thing it exists for.
+    // Largo's answer arrives as Server-Sent Events, so `route.abort()` on a streaming request put
+    // "Connection interrupted — couldn't reach live data" on every screenshot — a HARNESS failure
+    // that is indistinguishable, in a PNG, from Largo being down. I sent one of those to the
+    // operator as if it were evidence about production.
+    //
+    // Playwright's `route.fulfill` cannot stream, but it does not need to: the client parses SSE
+    // off a ReadableStream, and a body delivered in one chunk still contains every `data:` frame in
+    // order, `done` included. What is lost is the TOKEN-BY-TOKEN animation, not the result — the
+    // final DOM is identical, which is what a screenshot captures. The cost is that the fulfil
+    // resolves only when the upstream turn ends, hence the much longer deadline.
+    const streaming = isStreamingRequest(req);
+    if (streaming) counts.streamsBuffered++;
     try {
-      const r = await proxyFetchFollow(reqUrl, req.method(), req.headers(), req.postDataBuffer());
+      const r = await proxyFetchFollow(
+        reqUrl,
+        req.method(),
+        req.headers(),
+        req.postDataBuffer(),
+        streaming ? STREAM_TIMEOUT_MS : undefined
+      );
       counts.ok++;
       await route.fulfill({ status: r.status, headers: r.headers, body: r.body });
     } catch (e) {
