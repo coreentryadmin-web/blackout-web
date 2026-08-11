@@ -45,6 +45,7 @@
  * PURE AND TOTAL: no IO, no clock, no throw.
  */
 
+import { truncateText } from "@/lib/truncate-text";
 import type { VisualSystem } from "./types";
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -193,14 +194,7 @@ export type GenericRankedRow = {
  * symbol, a URL) still gets cut rather than collapsing the label to nothing. The ellipsis is what
  * tells a reader the text continues — a hard cut reads as a typo.
  */
-function trimLabel(raw: string, max: number): string {
-  const t = raw.trim();
-  if (t.length <= max) return t;
-  const cut = t.slice(0, max - 1);
-  const space = cut.lastIndexOf(" ");
-  const body = space > max * 0.6 ? cut.slice(0, space) : cut;
-  return `${body.replace(/[\s,;:.\u2013\u2014-]+$/, "")}\u2026`;
-}
+const trimLabel = truncateText;
 
 /** Field names an array row might carry its NAME under, most specific first. */
 const NAME_KEYS = ["ticker", "symbol", "name", "label", "strike", "expiry", "sector", "industry", "member", "gate", "code"];
