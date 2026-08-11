@@ -162,3 +162,24 @@ test("a missing SUBJECT is a data answer, never a capability answer", () => {
   assert.match(p, /no CRWV play exists/);
   assert.match(p, /A missing subject is a DATA answer, never a capability\s+answer/);
 });
+
+test("a ticker missing from the desk's own boards is still analysable", () => {
+  // MEASURED TWICE ON PROD, same question ("best play for CRWV earnings today"), two outcomes:
+  // one run called get_earnings/get_quote/get_technicals/get_iv_stats and produced a real read
+  // (earnings after the close, spot 89.04, IV rank 53.3); the other checked the three internal
+  // boards, found no CRWV play, and declined — while the desk rail next to it was displaying
+  // CRWV's spot, walls, net flow and print count. The tools were never the constraint.
+  const p = LARGO_SYSTEM_PROMPT;
+  assert.match(p, /the desk's OWN SELECTIONS/);
+  assert.match(p, /Absence\s+from a selection is never grounds for declining to look/);
+  // The empty-result case must stay honest, or this rule becomes a licence to invent.
+  assert.match(p, /If the tools come back empty, THAT is the answer/);
+});
+
+test("naming a tool instead of calling it is banned", () => {
+  const p = LARGO_SYSTEM_PROMPT;
+  assert.match(p, /never offer to run a tool you could have run/i);
+  assert.match(p, /If naming the tool was\s*\n?\s*the right instinct, CALLING it was the right action/);
+  // Clarification is still allowed where it is genuinely needed — the rule targets deflection.
+  assert.match(p, /Ask only when the\s+question is genuinely ambiguous/);
+});
