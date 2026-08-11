@@ -160,18 +160,36 @@ const ZERODTE_MARK_AWAY_MAX_FRAC = 0.6;
 // off the session.
 const ENTRY_PREM_LOOKBACK_MS = 150 * 60 * 1000;
 
-/** NYSE-next-trading-day, reimplemented locally (mirrors src/lib/nighthawk/session.ts's
- *  nextTradingDayEt byte-for-byte) so this script stays self-contained (it already imports
- *  isTradingDayEt/todayEtYmd from the sibling gha-et-window.mjs, never a src/lib/*.ts module). */
-function nextTradingDayEtYmd(fromYmd) {
-  let cursor = Date.parse(`${fromYmd}T12:00:00Z`) + 86_400_000;
-  for (let i = 0; i < 12; i++) {
-    const ymd = new Date(cursor).toISOString().slice(0, 10);
-    if (isTradingDayEt(ymd)) return ymd;
-    cursor += 86_400_000;
-  }
-  return new Date(cursor).toISOString().slice(0, 10);
+/**
+ * The board's MAXIMUM contract DTE, mirroring `ZERODTE_MAX_DTE` in src/lib/horizons.ts.
+ *
+ * Mirrored rather than imported: this script never imports a src/lib/*.ts module (it takes only
+ * isTradingDayEt/todayEtYmd from the sibling gha-et-window.mjs). Keep it in step with horizons.ts,
+ * whose own comment gives the reason for the value — "worst case: 4 calendar days to that week's
+ * Friday".
+ *
+ * WHY THIS EXISTS AT ALL. The contract-existence check used to search a 0-1DTE expiry window
+ * (today -> next trading day). The engine widened to dte <= 4 (the 0DTE -> Day-Trade widening),
+ * so a Tuesday commit on that week's Friday weekly became correct product behaviour AND an
+ * automatic FAIL. Live 2026-08-11 that produced 8 spurious FAILs in one run — RIOT, BW, ACHR,
+ * RCAT, HIMS, SPCH, BTDR — and made the whole FAIL count untrustworthy for the session. Proven
+ * against Polygon directly for RIOT put 21:
+ *
+ *     gte=08-11 lte=08-12  -> 0 results
+ *     gte=08-11 lte=08-15  -> 1 result, 2026-08-14
+ *     no date filter       -> 2026-08-14, 08-21, 08-28, ...
+ *
+ * RIOT has no 08-11 or 08-12 expiry at all; its nearest is the Friday weekly. The check was
+ * asserting a constraint the engine had deliberately relaxed.
+ */
+const ZERODTE_MAX_DTE_MIRROR = 4;
+
+/** Calendar-day offset in YYYY-MM-DD. DTE is counted in CALENDAR days (horizons.ts), so the
+ *  expiry window must be too — a trading-day walk would land short across a weekend. */
+function addCalendarDaysYmd(fromYmd, days) {
+  return new Date(Date.parse(`${fromYmd}T12:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
 }
+
 
 /** Fresh Polygon spot for an arbitrary ticker, mirroring the SPY/SPX live-vs-prev-close
  *  logic already established above (rth ? live snapshot : prior close) — SPX is the one
@@ -480,7 +498,9 @@ async function main() {
       } else {
         rec('0DTE board: setups/ledger fetched', 'INFO', `${liveSetups.length} live setup(s), ${ledgerRows.length} ledger row(s) this run — checking up to ${ZERODTE_LIVE_CHECK_CAP} live + ${ZERODTE_LEDGER_CHECK_CAP} ledger`);
         const zdToday = todayEtYmd();
-        const zdNextDay = nextTradingDayEtYmd(zdToday);
+        // Upper bound of the contract-existence search: the furthest expiry the board is allowed
+        // to commit, NOT "tomorrow". See ZERODTE_MAX_DTE_MIRROR.
+        const zdNextDay = addCalendarDaysYmd(zdToday, ZERODTE_MAX_DTE_MIRROR);
 
         // --- live setups: underlying_price (fresh "now" quote) + top_strike (chain existence) ---
         for (const s of liveSetups.slice(0, ZERODTE_LIVE_CHECK_CAP)) {
