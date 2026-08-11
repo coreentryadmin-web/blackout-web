@@ -11,13 +11,31 @@ import { pickPrivacy, tiktokEnabled, tiktokPublishMode, type TikTokPrivacy } fro
 test("absent credentials mean SKIP, not error", () => {
   // Mirrors `xApiEnabled()`. This is what lets the module ship dark — merged, deployed and inert —
   // before any TikTok app review exists.
-  const saved = process.env.TIKTOK_ACCESS_TOKEN;
+  //
+  // "Enabled" means there is a PATH to a token: a completed OAuth grant is possible (client key +
+  // secret configured), or one is pasted in for a manual test. It is deliberately NOT a liveness
+  // check — whether the stored grant is still valid needs a database round-trip, and a caller
+  // deciding whether TikTok is a destination for this run must not block on one.
+  const saved = { ...process.env };
   delete process.env.TIKTOK_ACCESS_TOKEN;
+  delete process.env.TIKTOK_CLIENT_KEY;
+  delete process.env.TIKTOK_CLIENT_SECRET;
   assert.equal(tiktokEnabled(), false);
+
   process.env.TIKTOK_ACCESS_TOKEN = "t";
-  assert.equal(tiktokEnabled(), true);
-  if (saved === undefined) delete process.env.TIKTOK_ACCESS_TOKEN;
-  else process.env.TIKTOK_ACCESS_TOKEN = saved;
+  assert.equal(tiktokEnabled(), true, "a pasted token is a path");
+  delete process.env.TIKTOK_ACCESS_TOKEN;
+
+  // Half the OAuth pair is NOT a path — it cannot complete a grant.
+  process.env.TIKTOK_CLIENT_KEY = "k";
+  assert.equal(tiktokEnabled(), false, "client key alone cannot mint a token");
+  process.env.TIKTOK_CLIENT_SECRET = "s";
+  assert.equal(tiktokEnabled(), true, "a configured OAuth app is a path");
+
+  for (const k of ["TIKTOK_ACCESS_TOKEN", "TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_SECRET"]) {
+    if (saved[k] === undefined) delete process.env[k];
+    else process.env[k] = saved[k];
+  }
 });
 
 test("publish mode defaults to INBOX and only `direct` promotes it", () => {
