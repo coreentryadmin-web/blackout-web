@@ -320,6 +320,19 @@ function readDate(v: unknown): string | null {
 export function eventsFromArray(arr: unknown, limit = 6): GenericEvent[] {
   if (!Array.isArray(arr)) return [];
   const out: GenericEvent[] = [];
+  /**
+   * Same date + same name = the same event, however many source rows describe it.
+   *
+   * Calendar feeds enumerate a holiday PER EXCHANGE — Polygon's market-holidays payload carries a
+   * separate record for NYSE and for NASDAQ — so an un-deduped list printed "09/07 Labor Day,
+   * 09/07 Labor Day, 11/26 Thanksgiving, 11/26 Thanksgiving" on a live card. The waste compounds:
+   * duplicates are pushed BEFORE the limit is reached, so they also consume the row budget and a
+   * 4-row block conveyed two facts while genuinely distinct later events were cut.
+   *
+   * Deduping inside the scan (rather than on the finished array) is what reclaims that budget —
+   * the loop keeps reading until `limit` DISTINCT events are found.
+   */
+  const seen = new Set<string>();
   for (const item of arr) {
     if (out.length >= limit) break;
     if (!isRecord(item)) continue;
@@ -344,6 +357,11 @@ export function eventsFromArray(arr: unknown, limit = 6): GenericEvent[] {
       if (typeof v === "string" && v.trim() && v.length <= 20) { detail = v.trim(); break; }
       if (typeof v === "number" && Number.isFinite(v)) { detail = formatByKey(k, v); break; }
     }
+    // Case-folded: "Labor Day" and "LABOR DAY" from two feeds are one holiday, not two.
+    const key = `${when} ${label.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
     out.push({ when, label, detail });
   }
   return out;

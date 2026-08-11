@@ -500,13 +500,24 @@ test("a fact is never lost — the least-specific rendering survives when the ow
  * The numbers below are MEASURED, by rendering one block at a time and scanning the PNG:
  *   node --import tsx scripts/audit/largo-card-deadspace.mjs --calibrate
  *
- * Drawn values include the section gap the packer now charges separately (`blockGap`), so an
- * estimate slightly UNDER its drawn figure is correct. The tolerance catches the failure that
- * actually happened — an estimate off by a factor — not the last few pixels of leading.
+ * RE-MEASURED, because the first set was taken with a calibrator that could not see. It classified
+ * a row as blank by comparing it to that row's own left-edge pixel, but the shell's gradient runs
+ * horizontally too, so no row ever read as background: every gap measured zero and the "drawn"
+ * figures were inflated. The harness now diffs each render against a verdict-only PLATE of the same
+ * card, which cancels the shell exactly, and it reports footer OVERLAP as a negative gap instead of
+ * clamping it to a reassuring zero.
+ *
+ * `verdict` is absent from this table on purpose: it IS the plate, so it cancels itself and has no
+ * span to measure. Its estimate is guarded by `verdictHeight`'s own tests instead.
+ *
+ * The tolerance is tight now that the measurement is trustworthy. An estimate must round UP (see
+ * compose.ts's header — under-estimating pushes evidence into the pinned footer) but only just:
+ * the systematic 0.78-0.94 inflation this table used to tolerate is exactly what blanked a fifth
+ * of the canvas.
  */
 const DRAWN_PX: Record<string, Record<string, number>> = {
-  x_portrait: { verdict: 259, spot: 132, consensus: 132, regime: 90, levels: 307, playbook: 146, flow_tape: 395, gamma_profile: 145, metrics: 130 },
-  x_landscape: { verdict: 144, spot: 109, consensus: 119, regime: 79, levels: 279, playbook: 121, flow_tape: 374, gamma_profile: 131, metrics: 116 },
+  x_portrait: { spot: 108, consensus: 104, regime: 62, levels: 278, playbook: 117, flow_tape: 367, gamma_profile: 116, metrics: 105 },
+  x_landscape: { spot: 90, consensus: 103, regime: 63, levels: 263, playbook: 105, flow_tape: 358, gamma_profile: 115, metrics: 104 },
 };
 
 test("every block's height estimate matches what it actually draws", () => {
@@ -520,7 +531,7 @@ test("every block's height estimate matches what it actually draws", () => {
       const est = block!.height(bundle, spec);
       const ratio = drawn / est;
       assert.ok(
-        ratio >= 0.85 && ratio <= 1.35,
+        ratio >= 0.82 && ratio <= 1.18,
         `${size}/${id}: estimated ${est}px, draws ${drawn}px (ratio ${ratio.toFixed(2)}) — re-run the calibration harness`,
       );
     }
@@ -574,4 +585,50 @@ test("no subject, or no matching row, leaves the order exactly as published", ()
   assert.deepEqual(subjectFirst(rows, "", 1), rows);
   assert.deepEqual(subjectFirst(rows, "TSLA", 1), rows);
   assert.deepEqual(subjectFirst(rows, "NET", 0), rows);
+});
+
+test("leftover budget is always smaller than every block that was dropped", () => {
+  // The invariant that makes a "reconsider the dropped blocks" pass pointless, asserted so nobody
+  // (including a future me) writes one again: `used` only grows, so the room available when a block
+  // was refused is always >= the slack left at the end. If this ever fails, the pack loop has been
+  // changed to release height, and reconsidering dropped blocks becomes worth revisiting.
+  const rich = richFixtureBundle();
+  const spec = sizeSpec("story");
+  const c = composeCard({ question: FIXTURE_QUESTION, bundle: rich, spec });
+
+  const smallestDropped = Math.min(
+    ...c.dropped.map((d) => {
+      const b = BLOCKS.find((x) => x.id === d.id)!;
+      return b.minHeight?.(rich, spec) ?? b.height(rich, spec);
+    }),
+    Infinity
+  );
+  const slack = c.budget - c.used;
+  assert.ok(
+    c.dropped.length === 0 || slack < smallestDropped + blockGap(spec),
+    `slack ${slack} could have held a dropped block (smallest ${smallestDropped}) — the reclaim pass did not run`
+  );
+});
+
+test("a reinstated block is charged its height — reclaim can never overrun the budget", () => {
+  for (const size of ["story", "x_portrait", "x_landscape"] as const) {
+    const spec = sizeSpec(size);
+    const c = composeCard({ question: FIXTURE_QUESTION, bundle: richFixtureBundle(), spec });
+    assert.ok(c.used <= c.budget, `${size}: used ${c.used} exceeds budget ${c.budget}`);
+  }
+});
+
+test("a block is never both drawn and reported missing", () => {
+  const c = composeCard({ question: FIXTURE_QUESTION, bundle: richFixtureBundle(), spec: sizeSpec("story") });
+  const drawn = new Set(c.blocks.map((b) => b.id));
+  for (const d of c.dropped) assert.ok(!drawn.has(d.id), `${d.id} is drawn AND listed as dropped`);
+});
+
+test("a bundle with no drawable evidence composes to an empty card, it does not throw", () => {
+  // Reachable in production from a turn whose tools all returned empty. Every de-dupe tier then
+  // yields zero blocks, `Math.max()` of nothing is -Infinity and `candidates[-1]` is undefined —
+  // the destructure threw, i.e. a 500 on the visual route rather than an honest refusal upstream.
+  const empty = { headline: null, summary: null } as unknown as VisualBundle;
+  const out = composeForRender({ question: "anything", bundle: empty, spec: sizeSpec("story"), emphasis: null });
+  assert.equal(out.composition.blocks.length, 0);
 });

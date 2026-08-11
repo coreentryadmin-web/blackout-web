@@ -44,33 +44,104 @@ const JSON_OUT = args.has("json");
  */
 const EDGE = 8;
 
-async function largestGap(png) {
-  const { data, info } = await sharp(png).raw().toBuffer({ resolveWithObject: true });
+/**
+ * THE PLATE: a card carrying the verdict and nothing else.
+ *
+ * Not a card with every block excluded — `render.tsx` deliberately refuses to draw a COMPOSED card
+ * with no evidence, and that refusal is correct product behaviour. The verdict is on every card by
+ * construction (highest weight, always chosen), so a verdict-only render of the SAME question and
+ * size cancels the shell, the gradient, the header, the footer AND the verdict exactly, leaving
+ * only the evidence blocks under measurement.
+ *
+ * This plate is the reference every measurement below diffs against, and it replaces two earlier
+ * attempts that both silently reported "no gap" on cards that were visibly a quarter empty:
+ *
+ *   1. one global background colour — defeated by the shell's gradient AND its 1px border;
+ *   2. each ROW's own left-edge pixel — defeated by the gradient being HORIZONTAL as well, so a
+ *      genuinely blank row still differs from its own left edge across x.
+ *
+ * Diffing two renders of the same shell at the same size cancels the shell exactly, whatever it
+ * paints, so "is there evidence on this row" stops depending on any assumption about the artwork.
+ */
+const plateCache = new Map();
+async function backgroundPlate(size, bundle) {
+  if (plateCache.has(size)) return plateCache.get(size);
+  const { buffer } = await renderVisual({
+    template: "COMPOSED",
+    bundle,
+    size,
+    question: FIXTURE_QUESTION,
+    exclude: BLOCKS.map((b) => b.id).filter((id) => id !== "verdict"),
+  });
+  const raw = await sharp(buffer).raw().toBuffer({ resolveWithObject: true });
+  plateCache.set(size, raw);
+  return raw;
+}
+
+/** The last row carrying anything the plate does not, i.e. where this card's evidence ends. */
+function contentEnd(card, plate) {
+  const { data, info } = card;
+  const ref = plate.data;
   const ch = info.channels;
-  const blank = new Array(info.height);
-  for (let y = 0; y < info.height; y++) {
-    // The reference is this ROW's own left-edge pixel, not the card's top-left. The shell paints a
-    // vertical gradient, so a single global background colour marks every row as content and the
-    // measurement silently reports no gap anywhere — which is what the first cut of this did.
-    // MARGIN, because the shell paints a 1px border around the whole canvas: without it every
-    // single row carries four bright pixels and NO row ever reads as blank — which is why the
-    // first cut of this measurement reported a 0px gap on a card with a quarter of it empty.
-    const r = (y * info.width + EDGE) * ch;
-    const bg = [data[r], data[r + 1], data[r + 2]];
+  for (let y = info.height - 1; y >= 0; y--) {
     let differs = 0;
     for (let x = EDGE; x < info.width - EDGE && differs <= 2; x++) {
       const i = (y * info.width + x) * ch;
-      if (Math.abs(data[i] - bg[0]) + Math.abs(data[i + 1] - bg[1]) + Math.abs(data[i + 2] - bg[2]) > 24) differs++;
+      if (
+        Math.abs(data[i] - ref[i]) + Math.abs(data[i + 1] - ref[i + 1]) + Math.abs(data[i + 2] - ref[i + 2]) >
+        24
+      ) {
+        differs++;
+      }
     }
-    blank[y] = differs <= 2;
+    if (differs > 2) return y;
   }
-  let best = { start: 0, len: 0 };
-  let run = 0;
+  return 0;
+}
+
+/** The first such row — where the evidence starts, below the header. */
+function contentStart(card, plate) {
+  const { data, info } = card;
+  const ref = plate.data;
+  const ch = info.channels;
   for (let y = 0; y < info.height; y++) {
-    run = blank[y] ? run + 1 : 0;
-    if (run > best.len) best = { start: y - run + 1, len: run };
+    let differs = 0;
+    for (let x = EDGE; x < info.width - EDGE && differs <= 2; x++) {
+      const i = (y * info.width + x) * ch;
+      if (
+        Math.abs(data[i] - ref[i]) + Math.abs(data[i + 1] - ref[i + 1]) + Math.abs(data[i + 2] - ref[i + 2]) >
+        24
+      ) {
+        differs++;
+      }
+    }
+    if (differs > 2) return y;
   }
-  return { height: info.height, gap: best.len, gapStart: best.start };
+  return 0;
+}
+
+/**
+ * Dead canvas: the space the evidence leaves between where it ends and the top of the pinned
+ * footer. That is the packer's cumulative height over-estimate made visible — the room it believed
+ * was spent, and therefore the room it refused to give the blocks it dropped instead.
+ */
+async function deadSpace(png, size, bundle) {
+  const plate = await backgroundPlate(size, bundle);
+  const card = await sharp(png).raw().toBuffer({ resolveWithObject: true });
+  const spec = sizeSpec(size);
+  const end = contentEnd(card, plate);
+  const footerTop = card.info.height - spec.footer * spec.scale;
+  /**
+   * SIGNED. A negative gap is evidence OVERLAPPING the pinned footer — the failure this measurement
+   * exists to catch, and the one that clamping to zero hid: an over-tightened estimate reported a
+   * perfect "0px dead space" on a card whose last block was drawing through the disclaimer.
+   */
+  return {
+    height: card.info.height,
+    contentEnd: end,
+    footerTop: Math.round(footerTop),
+    gap: Math.round(footerTop - end),
+  };
 }
 
 /**
@@ -85,37 +156,11 @@ async function calibrate(size) {
   const bundle = richFixtureBundle();
   const all = BLOCKS.map((b) => b.id);
 
+  const plate = await backgroundPlate(size, bundle);
   const contentSpan = async (exclude) => {
     const { buffer } = await renderVisual({ template: "COMPOSED", bundle, size, question: FIXTURE_QUESTION, exclude });
-    const { data, info } = await sharp(buffer).raw().toBuffer({ resolveWithObject: true });
-    const ch = info.channels;
-    let firstY = -1;
-    let lastY = -1;
-    const blank = new Array(info.height).fill(true);
-    for (let y = 0; y < info.height; y++) {
-      const r = (y * info.width + EDGE) * ch;
-      const bg = [data[r], data[r + 1], data[r + 2]];
-      let differs = 0;
-      for (let x = EDGE; x < info.width - EDGE && differs <= 2; x++) {
-        const i = (y * info.width + x) * ch;
-        if (Math.abs(data[i] - bg[0]) + Math.abs(data[i + 1] - bg[1]) + Math.abs(data[i + 2] - bg[2]) > 24) differs++;
-      }
-      if (differs > 2) {
-        blank[y] = false;
-        if (firstY < 0) firstY = y;
-        lastY = y;
-      }
-    }
-    // The evidence ends where the biggest blank run begins — NOT at the last drawn pixel, which is
-    // always the pinned footer and therefore identical on every card. Measuring to `lastY` is what
-    // made the first calibration pass report a drawn height of zero for every block.
-    let best = { start: lastY, len: 0 };
-    let run = 0;
-    for (let y = 0; y < info.height; y++) {
-      run = blank[y] ? run + 1 : 0;
-      if (run > best.len) best = { start: y - run + 1, len: run };
-    }
-    return { firstY, lastY, contentEnd: best.start };
+    const card = await sharp(buffer).raw().toBuffer({ resolveWithObject: true });
+    return { firstY: contentStart(card, plate), contentEnd: contentEnd(card, plate) };
   };
 
   console.log(`\n=== CALIBRATION ${size} (scale ${spec.scale})`);
@@ -123,14 +168,16 @@ async function calibrate(size) {
   for (const id of all) {
     const specB = BLOCKS.find((b) => b.id === id);
     if (!specB.available(bundle)) continue;
-    // The verdict block cannot be excluded from its own baseline, so it is measured against a card
-    // that has nothing else; every other block is measured against that same verdict-only card.
+    // The verdict IS the plate, so it cancels itself and has no span to measure. Every other block
+    // is rendered alone alongside it: its span is then literally the pixels it drew.
+    if (id === "verdict") {
+      console.log(`  ${id.padEnd(16)} ${String(specB.height(bundle, spec)).padStart(4)}      -       -   (plate)`);
+      continue;
+    }
     const withOnly = await contentSpan(all.filter((x) => x !== id && x !== "verdict"));
-    const baseline = await contentSpan(all.filter((x) => x !== "verdict"));
-    const drawnReal = id === "verdict" ? baseline.contentEnd - baseline.firstY : withOnly.contentEnd - baseline.contentEnd;
-    const drawn = drawnReal / spec.scale;
+    const drawn = (withOnly.contentEnd - withOnly.firstY) / spec.scale;
     const est = specB.height(bundle, spec);
-    if (args.has("verbose")) console.log(`     [${id}] only(first=${withOnly.firstY} end=${withOnly.contentEnd} last=${withOnly.lastY}) base(first=${baseline.firstY} end=${baseline.contentEnd} last=${baseline.lastY})`);
+    if (args.has("verbose")) console.log(`     [${id}] only(first=${withOnly.firstY} end=${withOnly.contentEnd}) base(first=${baseline.firstY} end=${baseline.contentEnd})`);
     console.log(
       `  ${id.padEnd(16)} ${String(est).padStart(4)}  ${drawn.toFixed(0).padStart(5)}   ${(drawn / est).toFixed(2)}`
     );
@@ -148,7 +195,7 @@ for (const size of SIZES) {
   const spec = sizeSpec(size);
   const { composition } = composeForRender({ question: FIXTURE_QUESTION, bundle, spec, emphasis: null });
   const { buffer } = await renderVisual({ template: "COMPOSED", bundle, size, question: FIXTURE_QUESTION });
-  const m = await largestGap(buffer);
+  const m = await deadSpace(buffer, size, bundle);
   if (args.has("out")) {
     const { writeFileSync } = await import("node:fs");
     writeFileSync(`${args.get("out")}/CARD-${size}.png`, buffer);
@@ -163,7 +210,8 @@ for (const size of SIZES) {
     blocks: composition.blocks.map((b) => ({ id: b.id, est: b.estHeight, compact: b.compact })),
     canvasHeight: m.height,
     gapPx: m.gap,
-    gapStartRow: m.gapStart,
+    contentEndRow: m.contentEnd,
+    footerTopRow: m.footerTop,
   };
   rows.push(row);
   if (!JSON_OUT) {
@@ -171,7 +219,8 @@ for (const size of SIZES) {
     console.log(`  blocks : ${row.blocks.map((b) => `${b.id}${b.compact ? "*" : ""}=${b.est}`).join(" ")}`);
     console.log(`  dropped: ${row.dropped.join(", ") || "-"}`);
     console.log(`  budget=${row.budget} used=${row.used} slack=${row.budget - row.used}`);
-    console.log(`  largestGap=${m.gap}px at y=${m.gapStart} of ${m.height} (${((m.gap / m.height) * 100).toFixed(1)}%)`);
+    const verdict = m.gap < 0 ? `OVERLAPS FOOTER by ${-m.gap}px` : `deadSpace=${m.gap}px`;
+    console.log(`  ${verdict} (content ends y=${m.contentEnd}, footer starts y=${m.footerTop}, canvas ${m.height}) = ${((m.gap / m.height) * 100).toFixed(1)}%`);
   }
 }
 if (JSON_OUT) console.log(JSON.stringify(rows, null, 2));
