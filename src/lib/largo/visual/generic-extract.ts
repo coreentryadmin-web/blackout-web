@@ -173,6 +173,40 @@ const VALUE_KEYS = [
 ];
 
 /**
+ * The row's NUMBER — known names first, then any honest numeric field.
+ *
+ * `VALUE_KEYS` was the same kind of allowlist as the container one removed in #2041, and it failed
+ * the same way. `zeroDtePlaysFeed` rows carry `entry_premium`, `last_mark` and `peak_score`; the
+ * list has `premium` and `score`. Near-misses, all three, so five live Night Hawk plays ranked as
+ * zero rows — which is the shape of the original complaint that started this work ("the image only
+ * shows one play, it should show all 5").
+ *
+ * The fallback is bounded on both sides rather than "first number wins":
+ *   - PLUMBING_RE drops ids, timestamps, urls, cursors — never a quantity a member reads.
+ *   - IDENTIFIER_RE drops the row's own name when it happens to be numeric.
+ *   - `rank`/`index`/`position` are dropped explicitly: they are the row's PLACE in the list, and
+ *     ranking a list by its own ordinal is a bar chart of 1,2,3,4,5 — the same false-precision
+ *     failure as the all-zero gamma profile that already had to be caught by rendering.
+ *
+ * The allowlist stays FIRST because `formatByKey` gives those keys their proper units ($ for
+ * premium, % for change). A fallback field is formatted by its own key, which is why the key is
+ * returned alongside the number rather than discarded.
+ */
+function magnitudeOf(item: Record<string, unknown>): [string, number] | null {
+  for (const k of VALUE_KEYS) {
+    const v = item[k];
+    if (typeof v === "number" && Number.isFinite(v)) return [k, v];
+  }
+  for (const [k, v] of Object.entries(item)) {
+    if (typeof v !== "number" || !Number.isFinite(v)) continue;
+    if (PLUMBING_RE.test(k) || IDENTIFIER_RE.test(k)) continue;
+    if (/^(rank|index|position|idx|seq|order)$/i.test(k)) continue;
+    return [k, v];
+  }
+  return null;
+}
+
+/**
  * Lift a ranked list off an ARRAY of records.
  *
  * Requires BOTH a name and a finite number on the same row. A row with a name and no number is not
@@ -198,13 +232,9 @@ export function rankedFromArray(arr: unknown, limit = 8): GenericRankedRow[] {
     }
     if (!label) continue;
 
-    let magnitude: number | null = null;
-    let valueKey = "";
-    for (const k of VALUE_KEYS) {
-      const v = item[k];
-      if (typeof v === "number" && Number.isFinite(v)) { magnitude = v; valueKey = k; break; }
-    }
-    if (magnitude == null) continue;
+    const picked = magnitudeOf(item);
+    if (!picked) continue;
+    const [valueKey, magnitude] = picked;
 
     out.push({ label, value: formatByKey(valueKey, magnitude), magnitude, sub: null });
   }
