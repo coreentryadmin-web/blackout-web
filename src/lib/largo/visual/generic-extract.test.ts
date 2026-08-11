@@ -273,3 +273,69 @@ test("the RICHEST payload wins the stats block, not the first enumerated", () =>
   assert.equal(g.stats?.rows.length, 6, "the six-field payload must win over the three-field one");
   assert.ok(g.stats!.rows.some((r) => r.label === "Iv rank"));
 });
+
+/**
+ * PRODUCTION SHAPES, not invented ones.
+ *
+ * Every fixture below is copied from the tool that actually produces it in `run-tool.ts`. That is
+ * the point: this module's coverage promise was tested entirely against fixtures I wrote, and it
+ * passed while returning NOTHING for one of the most-called tools in the product. A generic
+ * extractor tested only on shapes its author imagined is a generic extractor in name.
+ */
+
+/** `toolNews` (run-tool.ts): `{ articles: [{ title, teaser, published, tickers, source }] }`. */
+const NEWS_PAYLOAD = {
+  articles: Array.from({ length: 12 }, (_, i) => ({
+    title: `NVDA headline ${i + 1} on data centre demand`,
+    teaser: "Analysts weigh in on the next print.",
+    published: `2026-08-1${i % 2}T1${i % 10}:00:00Z`,
+    tickers: ["NVDA"],
+    source: i % 2 ? "benzinga" : "polygon",
+    channels: ["earnings"],
+  })),
+  priority: "benzinga → polygon",
+};
+
+test("the REAL news payload yields events — it yielded nothing before", () => {
+  // TWO independent misses, both silent. `published` was absent from DATE_KEYS (which had
+  // `published_at`), so every article failed the date test; and `articles` was absent from
+  // EVENT_FIELDS, so the array was never even offered to the row validator. Measured live: a
+  // 6-tool NVDA turn drew ONE metric and no news at all.
+  const out = genericBlocksFrom([NEWS_PAYLOAD], new Set());
+  assert.ok(out.events, "twelve dated headlines must produce an events block");
+  assert.ok(out.events!.rows.length >= 2);
+  assert.ok(out.events!.rows.every((r) => r.when && r.label), "every row keeps a date and a name");
+});
+
+test("`published` alone is not enough — the CONTAINER key mattered too", () => {
+  // Guards the half-fix. With the date key added but the allowlist still gating on the container
+  // name, this stays empty — which is exactly where the first attempt stopped.
+  assert.ok(eventsFromArray(NEWS_PAYLOAD.articles).length >= 2, "rows parse once the date key is right");
+  assert.ok(genericBlocksFrom([NEWS_PAYLOAD], new Set()).events, "and the array must be reachable");
+});
+
+test("an array under an UNANTICIPATED key still composes", () => {
+  // The property that makes this generic rather than a longer allowlist.
+  const payload = {
+    whatever_we_call_it_next: [
+      { name: "NVDA", date: "2026-08-12", session: "AMC" },
+      { name: "AMD", date: "2026-08-13", session: "AMC" },
+      { name: "CRM", date: "2026-08-14", session: "BMO" },
+    ],
+  };
+  const out = genericBlocksFrom([payload], new Set());
+  assert.ok(out.events, "a novel container key must not block extraction");
+  assert.equal(out.events!.title, "Whatever we call it next");
+});
+
+test("a junk array still yields NOTHING — the row rules are the real guard", () => {
+  // Scanning every array must not lower the bar. Undated, unnamed rows produce no events however
+  // the array is keyed, which is why dropping the container allowlist is safe.
+  const junk = { rows: [{ foo: 1 }, { foo: 2 }, { foo: 3 }], other: ["a", "b", "c"] };
+  assert.equal(genericBlocksFrom([junk], new Set()).events, null);
+});
+
+test("a key with no letters gets no block rather than a numeric heading", () => {
+  const payload = { "123": [{ name: "NVDA", date: "2026-08-12" }, { name: "AMD", date: "2026-08-13" }] };
+  assert.equal(genericBlocksFrom([payload], new Set()).events, null);
+});

@@ -130,7 +130,14 @@ function findQuote(results: readonly unknown[]) {
     return {
       price,
       ticker: str(r.ticker) ?? str(r.symbol),
-      changePct: num(r.change_percent) ?? num(r.changePct) ?? num(r.percent_change),
+      // `change_pct` FIRST — it is what production actually emits. The other three spellings were
+      // the only ones read until 2026-08-11, and none of them is the one the provider layer uses:
+      // `change_pct` appears at 28+ sites across polygon.ts, polygon-options-gex.ts,
+      // gex-positioning.ts, spot-fallback.ts, unusual-whales.ts and run-tool.ts's own `toolQuote`,
+      // while `changePct` appears twice. So the card's session-change metric could not have fired
+      // on a real payload, and did not — a live NVDA card with 6 tools carried exactly one metric.
+      changePct:
+        num(r.change_pct) ?? num(r.change_percent) ?? num(r.changePct) ?? num(r.percent_change),
       change: num(r.change) ?? num(r.change_absolute),
       asOf: str(r.asof) ?? str(r.as_of) ?? str(r.updated_at),
     };
