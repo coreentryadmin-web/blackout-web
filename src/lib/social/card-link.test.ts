@@ -25,7 +25,7 @@ function withKey<T>(fn: () => T): T {
   } finally {
     if (saved === undefined) delete process.env.CARD_LINK_SECRET;
     else process.env.CARD_LINK_SECRET = saved;
-  }
+    }
 }
 
 test("a correctly signed, unexpired link verifies", () => {
@@ -134,18 +134,30 @@ test("the default TTL is short — the link is slack, not a hosting product", ()
  * tried to pass a real value through.
  */
 test("every signable format is one the renderer emits, and is postable", () => {
+  // SET THE KEY EXPLICITLY. `hmacKey()` falls back to CLERK_SECRET_KEY, which exists in this
+  // sandbox and does NOT in CI — so the first version of this test passed locally and failed on
+  // the runner with "png must be signable", because `cardLinkUrl` correctly returns null with no
+  // key material. A test that depends on ambient environment is a test that reports the
+  // environment, not the code.
+  const saved = process.env.CARD_LINK_SECRET;
+  process.env.CARD_LINK_SECRET = "test-signing-key";
+  try {
   // The renderer's own union, from `RenderedVisual.contentType`.
-  const RENDERABLE = ["png", "webp"] as const;
+    const RENDERABLE = ["png", "webp"] as const;
   // TikTok photo posts: JPEG or WebP. PNG is rejected.
-  const TIKTOK_OK = ["webp", "jpg", "jpeg"];
+    const TIKTOK_OK = ["webp", "jpg", "jpeg"];
 
-  for (const format of ["png", "webp"] as const) {
-    const url = cardLinkUrl({ turnId: 2730, userId: "user_abc123", size: "x_portrait", format }, NOW);
-    assert.ok(url, `${format} must be signable`);
-    const got = new URL(url!.url).searchParams.get("format")!;
-    assert.ok(RENDERABLE.includes(got as (typeof RENDERABLE)[number]), `${got} is not a format the renderer emits`);
+    for (const format of ["png", "webp"] as const) {
+      const url = cardLinkUrl({ turnId: 2730, userId: "user_abc123", size: "x_portrait", format }, NOW);
+      assert.ok(url, `${format} must be signable`);
+      const got = new URL(url!.url).searchParams.get("format")!;
+      assert.ok(RENDERABLE.includes(got as (typeof RENDERABLE)[number]), `${got} is not a format the renderer emits`);
   }
   // And at least one signable format survives the platform's own filter — otherwise the link is
   // correct, verifiable, and useless.
-  assert.ok(RENDERABLE.some((f) => TIKTOK_OK.includes(f)), "no signable format is postable to TikTok");
+    assert.ok(RENDERABLE.some((f) => TIKTOK_OK.includes(f)), "no signable format is postable to TikTok");
+  } finally {
+    if (saved === undefined) delete process.env.CARD_LINK_SECRET;
+    else process.env.CARD_LINK_SECRET = saved;
+  }
 });
