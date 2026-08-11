@@ -21,6 +21,7 @@ export type VisualSize = "x_landscape" | "x_portrait" | "square" | "story";
  *  the router will never select an unimplemented one (see `router.ts`). */
 export type VisualTemplateId =
   | "MARKET_MOVE"
+  | "COMPOSED"
   | "PLAYBOOK"
   | "TRADE_RECAP"
   | "LEVEL_ANALYSIS"
