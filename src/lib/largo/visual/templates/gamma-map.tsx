@@ -55,7 +55,17 @@ export function GammaMapCard({
   if (profile.expiryLabel) recorder.value("Expiry", profile.expiryLabel, profile.source);
   if (bundle.spot) recorder.value("Spot", bundle.spot.display, bundle.spot.source, bundle.spot.asOf);
 
-  const title = bundle.headline ?? `${bundle.ticker ?? "Dealer"} gamma profile`;
+  /**
+   * Never restate the kicker. Without a headline this read "Dealer gamma profile" at 78px under a
+   * kicker reading "DEALER GAMMA PROFILE" — the same words twice, occupying the slot that should
+   * carry the card's conclusion. The flip level IS the conclusion of a gamma profile, so it takes
+   * the slot when Largo supplied no verdict of its own.
+   */
+  const title =
+    bundle.headline ??
+    (profile.flipStrike != null
+      ? `${bundle.ticker ? `${bundle.ticker} ` : ""}flip at ${profile.flipStrike.toLocaleString("en-US")}`
+      : `${bundle.ticker ?? "Dealer"} gamma profile`);
 
   const children: (ReactElement | null)[] = [
     <CardHeader key="h" systems={["THERMAL"]} asOfLabel={asOfLabel} freshness={bundle.freshness} spec={spec} />,

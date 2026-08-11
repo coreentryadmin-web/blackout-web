@@ -79,8 +79,16 @@ export function LevelAnalysisCard({
       </div>
     ) : null,
 
-    // On a dense surface the level map IS the card, so the metric rail is what gives way.
-    spec.dense ? null : (
+    /**
+     * The metric rail gives way to the level map ONLY when the map actually needs the room.
+     *
+     * It used to be dropped on every dense surface unconditionally, on the reasoning that the map
+     * is the card. True when the map is full — but a three-level answer left ~150px of empty
+     * canvas below it while the metrics that would have filled it were discarded by a flag that
+     * never looked at how many levels there were. Levels still win the space; they just have to
+     * be using it.
+     */
+    spec.dense && (bundle.levels?.length ?? 0) > 3 ? null : (
       <div key="m" style={{ display: "flex", width: "100%", marginTop: s(24, spec) }}>
         <MetricRow metrics={bundle.metrics} spec={spec} recorder={recorder} max={2} />
       </div>

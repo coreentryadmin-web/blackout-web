@@ -180,7 +180,10 @@ export function HeroNumber({
   return (
     <div style={{ display: "flex", flexDirection: "column" }}>
       <Kicker text={label} spec={spec} />
-      <div style={{ display: "flex", fontFamily: FONT.display, fontSize: s(92, spec), color, lineHeight: 1, marginTop: s(6, spec) }}>
+      {/* 92px is the tall-surface size. On a 630px landscape it is ~15% of the canvas height for
+          one number, and it was pushing the supporting evidence off the bottom — the hero was
+          winning space from the rows that justify it. */}
+      <div style={{ display: "flex", fontFamily: FONT.display, fontSize: s(spec.dense ? 74 : 92, spec), color, lineHeight: 1, marginTop: s(6, spec) }}>
         {n.display}
       </div>
     </div>
@@ -318,9 +321,24 @@ export function LevelMap({
               borderLeft: `${s(3, spec)}px solid ${color}`,
             }}
           >
+            {/* THE "CALL WALl" BUG — an explicit column width, not a shrink-to-fit box.
+                Every landscape card rendered the walls with the final letter sliced vertically.
+                Diagnosed by elimination: `flexShrink: 0` did not fix it, `paddingRight` did not
+                change a single byte of the output, and removing `letterSpacing` made it WORSE
+                (it spread to "PUT WALL" too). The pattern that survived: only labels ending in a
+                glyph whose ink reaches the right edge of its advance box clip — `L` does, `P`
+                ("GAMMA FLIP") and `T` ("SPOT") do not. So satori sizes the shrink-to-fit text box
+                a sub-pixel short and paints the last glyph across the boundary.
+                A fixed width removes the shrink-to-fit measurement entirely, and it aligns the
+                label column as a side effect — the same thing the leaderboard rows do, which is
+                why they never showed this. A label longer than the column is a data problem, and
+                one this set (wall / flip / spot / pivot) does not have. */}
             <div
               style={{
                 display: "flex",
+                width: s(220, spec),
+                flexShrink: 0,
+                whiteSpace: "nowrap",
                 fontFamily: FONT.mono,
                 fontSize: s(18, spec),
                 letterSpacing: s(2, spec),
