@@ -139,3 +139,46 @@ test("the caveat is APPENDED — an answer is never suppressed on a heuristic", 
   assert.match(out, /current, not as of that period/);
   assert.equal(applyPlanCaveat(answer, []), answer, "no violation, no change");
 });
+
+test("a historical question answered from only live sources is now CAUGHT", () => {
+  // THE BEHAVIOURAL POINT OF COMPLETING THE CATALOG.
+  //
+  // Before coverage was completed, three of these four tools had no capability entry, so `real`
+  // collapsed to the single catalogued one and the check went quiet on a turn that answered "what
+  // happened last Tuesday" entirely from present-time data. That is the exact failure the registry
+  // header calls the most damaging thing Largo can do — the answer looks perfect and is about the
+  // wrong moment.
+  // The REAL resolver, not a hand-built object — a cast here would let the test pass against a
+  // timeframe shape production never produces.
+  const timeframe = resolveTimeframe("what did flow look like yesterday", NOW);
+  assert.equal(timeframe.historical, true, "fixture must actually resolve as historical");
+  const liveOnly = ["get_positioning", "get_greeks", "get_options_chain", "get_iv_stats"];
+
+  const caught = validatePlanExecution({ timeframe, toolsCalled: liveOnly, catalogue: LARGO_CAPABILITIES });
+  assert.equal(caught.ok, false, "a live-only turn on a historical question must be flagged");
+  assert.equal(caught.violations[0]!.code, "historical_answered_from_live_only");
+  for (const t of liveOnly) {
+    assert.ok(caught.violations[0]!.detail.includes(t), `${t} must be named in the violation`);
+  }
+
+  // One past-capable source is enough to clear it — the check asks whether the turn COULD have
+  // seen the past, not whether every tool could.
+  const withHistory = validatePlanExecution({
+    timeframe,
+    toolsCalled: [...liveOnly, "get_uw_bars"],
+    catalogue: LARGO_CAPABILITIES,
+  });
+  assert.equal(withHistory.ok, true, "adding a windowed source must clear the violation");
+});
+
+test("a present-tense question is never flagged, however live the sources", () => {
+  // The check must not become noise on the 90% case, or it gets ignored on the 10% that matters.
+  const now = resolveTimeframe("where are the gamma walls right now", NOW);
+  assert.equal(now.historical, false, "fixture must actually resolve as present-tense");
+  const r = validatePlanExecution({
+    timeframe: now,
+    toolsCalled: ["get_positioning", "get_greeks"],
+    catalogue: LARGO_CAPABILITIES,
+  });
+  assert.equal(r.ok, true);
+});
