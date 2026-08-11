@@ -279,17 +279,32 @@ export type VisualBundle = {
     /** The guard being evaluated, named — "Phase-0 fail-closed firewall", "G-4 vix_unavailable". */
     guardLabel: string;
     heldCount: number;
-    /** How many of the held plays could be graded on bars. Never assumed equal to `heldCount`. */
+    /** How many of the held plays could be graded. Never assumed equal to `heldCount`. */
     gradedCount: number;
-    losersAvoided: { count: number; pnlValue: number; pnlDisplay: string };
-    winnersForgone: { count: number; pnlValue: number; pnlDisplay: string };
-    netValue: number;
-    netDisplay: string;
+    /**
+     * BOTH SIDES CARRY A COUNT, AND THE COUNT IS THE REQUIRED FIELD.
+     *
+     * The card was first designed against `firewall-rth-replay.mjs`, which grades held plays on
+     * minute bars and produces a P&L per side. The measurement production actually persists
+     * nightly is a WIN/LOSS verdict per blocked play (`counterfactual_json.would_have_won`), with
+     * no P&L attached. So the count is what every source can supply and `pnlDisplay` is optional —
+     * present when the source measured return, absent when it measured outcome.
+     *
+     * Rendering a P&L the source never computed would be the exact fabrication this library
+     * exists to prevent, and demanding one would have left the card unfillable from the only
+     * production data that exists.
+     */
+    losersAvoided: { count: number; pnlValue?: number | null; pnlDisplay?: string | null };
+    winnersForgone: { count: number; pnlValue?: number | null; pnlDisplay?: string | null };
+    /** Blocked plays that would not even have filled — the guard was trivially right. Reported
+     *  separately because folding them into "avoided" would flatter the guard. */
+    unfilledCount?: number | null;
+    netValue?: number | null;
+    netDisplay?: string | null;
     rows: {
       ticker: string;
       /** The specific gate that fired. A hold with no named rule is a claim about judgement. */
       gate: string;
-      outcomeValue: number;
       outcomeDisplay: string;
       verdict: "avoided" | "forgone";
     }[];

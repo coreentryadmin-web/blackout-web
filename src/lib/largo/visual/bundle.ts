@@ -170,6 +170,49 @@ function findLedgerRows(results: readonly unknown[]): Record<string, unknown>[] 
   return null;
 }
 
+/**
+ * GATE-BLOCKED VALUE → the counterfactual card.
+ *
+ * Discriminated by `by_gate` + `blocked_total`, which no other payload carries.
+ *
+ * COUNTS, NOT P&L. The persisted production measurement is a win/loss verdict per blocked play, so
+ * `pnlDisplay` is deliberately left absent rather than synthesised — the card renders counts and
+ * labels the net as plays. See `types.ts` on `counterfactual`.
+ */
+function findGateValue(results: readonly unknown[]) {
+  for (const r of results) {
+    if (!isRecord(r) || !Array.isArray(r.by_gate) || typeof r.blocked_total !== "number") continue;
+    return r as {
+      blocked_total: number;
+      graded_total: number;
+      would_have_won_total: number;
+      would_have_lost_total: number;
+      unfilled_total: number;
+      window_days: number;
+      by_gate: Record<string, unknown>[];
+    };
+  }
+  return null;
+}
+
+/** GRADER AGREEMENT → the grader-agreement card. Discriminated by `agreement_pct` + `comparable`. */
+function findGraderAgreement(results: readonly unknown[]) {
+  for (const r of results) {
+    if (!isRecord(r) || !("agreement_pct" in r) || typeof r.comparable !== "number") continue;
+    return r as {
+      window_days: number;
+      total_plays: number;
+      comparable: number;
+      agreed: number;
+      agreement_pct: number | null;
+      grader_a: string;
+      grader_b: string;
+      disagreements: { ticker: string; date: string | null; mid: string; official: string }[];
+    };
+  }
+  return null;
+}
+
 // ── Trade lifecycle ────────────────────────────────────────────────────────────────────────
 
 /**
@@ -344,6 +387,70 @@ export function buildVisualBundle(input: BuildBundleInput): VisualBundle {
   const trade = ledgerRow ? tradeFromLedgerRow(ledgerRow) : null;
   if (trade) systems.add(trade.source);
 
+  // ── Counterfactual (gate-blocked value)
+  //
+  // ROWS COME FROM THE PER-GATE LINES, and each line is one GATE rather than one play. The card's
+  // row shape wants a ticker, and the aggregate does not carry per-play tickers — so the gate name
+  // occupies the primary slot and the count travels as the outcome. Inventing a ticker to fill the
+  // shape would be fabrication; showing the gate is what the evidence supports.
+  const gv = findGateValue(results);
+  const counterfactual: VisualBundle["counterfactual"] = gv && gv.graded_total > 0
+    ? {
+        sessionLabel: `last ${gv.window_days} days`,
+        guardLabel: "Night Hawk publish gates",
+        heldCount: gv.blocked_total,
+        gradedCount: gv.graded_total,
+        losersAvoided: { count: gv.would_have_lost_total },
+        winnersForgone: { count: gv.would_have_won_total },
+        unfilledCount: gv.unfilled_total,
+        rows: gv.by_gate
+          .map((line) => {
+            const gate = str(line.gate);
+            const won = num(line.would_have_won) ?? 0;
+            const graded = num(line.graded_n) ?? 0;
+            const unfilled = num(line.unfilled_n) ?? 0;
+            const decisive = graded - unfilled;
+            if (!gate || decisive <= 0) return null;
+            const lost = decisive - won;
+            // One row per gate, taking the side that gate actually landed on. A gate that both
+            // saved and cost is reported by its NET so the row cannot claim more than it earned.
+            const forgone = won > lost;
+            return {
+              ticker: gate.toUpperCase().slice(0, 18),
+              gate: `${decisive} graded`,
+              outcomeDisplay: forgone ? `${won} would have won` : `${lost} would have lost`,
+              verdict: (forgone ? "forgone" : "avoided") as "forgone" | "avoided",
+            };
+          })
+          .filter((r): r is NonNullable<typeof r> => r != null),
+        source: "NIGHT HAWK",
+      }
+    : null;
+  if (counterfactual) systems.add("NIGHT HAWK");
+
+  // ── Grader agreement
+  const ga = findGraderAgreement(results);
+  const graderAgreement: VisualBundle["graderAgreement"] = ga && ga.comparable > 0 && ga.agreement_pct != null
+    ? {
+        windowLabel: `${ga.window_days} days`,
+        populationLabel: "rows carrying a grade on BOTH the mid and executable lanes",
+        totalPlays: ga.total_plays,
+        comparable: ga.comparable,
+        agreed: ga.agreed,
+        agreementDisplay: `${ga.agreement_pct}%`,
+        graderALabel: ga.grader_a,
+        graderBLabel: ga.grader_b,
+        rows: ga.disagreements.map((d) => ({
+          ticker: d.ticker,
+          dateLabel: d.date,
+          a: d.mid,
+          b: d.official,
+        })),
+        source: "NIGHT HAWK",
+      }
+    : null;
+  if (graderAgreement) systems.add("NIGHT HAWK");
+
   // ── Freshness, from the oldest stamp we have.
   const stamps = [pos?.asOf, quote?.asOf].filter((x): x is string => !!x).map((x) => Date.parse(x)).filter(Number.isFinite);
   const oldest = stamps.length ? Math.min(...stamps) : null;
@@ -373,6 +480,8 @@ export function buildVisualBundle(input: BuildBundleInput): VisualBundle {
         : undefined),
     regime: pos?.posture ? { label: pos.posture.toUpperCase(), detail: pos.regimeRead, source: "THERMAL" } : null,
     trade,
+    counterfactual,
+    graderAgreement,
     systemsQueried: [...systems],
     asOf: new Date(oldest ?? input.nowMs).toISOString(),
     freshness,

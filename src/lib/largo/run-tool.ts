@@ -934,6 +934,14 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       const { zerodteRecordForLargo } = await import("@/lib/largo/product-reads");
       return zerodteRecordForLargo(Number(input.days ?? 30));
     }
+    case "get_gate_blocked_value": {
+      const { gateBlockedValueForLargo } = await import("@/lib/largo/evidence-reads");
+      return gateBlockedValueForLargo(Number(input.days ?? 30));
+    }
+    case "get_grader_agreement": {
+      const { graderAgreementForLargo } = await import("@/lib/largo/evidence-reads");
+      return graderAgreementForLargo(Number(input.days ?? 90));
+    }
     case "get_gate_rules": {
       const { gateRulesForLargo } = await import("@/lib/largo/gate-rules");
       return gateRulesForLargo();
