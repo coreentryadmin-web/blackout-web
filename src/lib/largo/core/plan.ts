@@ -138,11 +138,19 @@ export type PlanViolation = {
 /**
  * Did the turn actually consult a source capable of the question it answered?
  *
- * `catalogue` maps tool name → capability, so an UNCATALOGUED tool is invisible here. That is
- * deliberate: 67 of 116 tools have no catalog entry, and treating "I cannot classify this tool" as
- * "this tool cannot answer about the past" would fire this warning on turns that were fine. A
- * violation is raised only when EVERY tool the turn called is one the catalog positively knows to
- * be live-only. Silence therefore means "no proof of a problem", never "proven fine".
+ * `catalogue` maps tool name → capability, so an UNCATALOGUED tool is invisible here — a violation
+ * is raised only when EVERY tool the turn called is one the catalog positively knows to be
+ * live-only.
+ *
+ * THAT USED TO MEAN THIS CHECK ALMOST NEVER FIRED. 67 of the then-116 tools had no catalog entry,
+ * so most turns mixed a catalogued source with uncatalogued ones and fell straight through. The
+ * guard was armed and dormant. Coverage is now complete (`registry.test.ts` asserts it stays that
+ * way), so the check finally bites on the case it was written for.
+ *
+ * The invisible-when-uncatalogued behaviour is KEPT rather than inverted, because treating "I
+ * cannot classify this tool" as "this tool cannot answer about the past" would fire on turns that
+ * were fine, and a warning that cries wolf gets ignored. Silence still means "no proof of a
+ * problem", never "proven fine".
  */
 export function validatePlanExecution(input: {
   timeframe: Timeframe;

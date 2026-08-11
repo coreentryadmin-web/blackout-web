@@ -131,9 +131,16 @@ test("every product has at least one capability", () => {
 
 test("the catalog reports its own coverage gap instead of hiding it", () => {
   const gap = uncataloguedTools();
-  // Not asserted to be empty — 116 tools include many single-purpose provider reads that do not
-  // warrant a catalog entry. What matters is that the gap is COMPUTABLE, so it can be worked off
-  // deliberately rather than discovered by a member asking something Largo cannot plan for.
+  // NOW ASSERTED EMPTY. This used to allow a gap on the reasoning that many tools are
+  // single-purpose provider reads not worth cataloguing. That reasoning was wrong in a way that
+  // mattered: `plan.ts` raises its temporal violation only when EVERY tool a turn called is
+  // catalogued, so 67 uncatalogued tools left the guard armed and dormant — a turn mixing one
+  // known source with three unknown ones passed a check that meant nothing.
+  //
+  // A NEW TOOL MUST BE CATALOGUED IN THE SAME PR THAT ADDS IT. That is the point of this
+  // assertion: coverage decays silently otherwise, and the decay is invisible until someone asks
+  // a historical question and gets a confident answer built from live data.
+  assert.deepEqual(gap, [], "every tool must carry a capability entry — see the note above");
   assert.ok(Array.isArray(gap));
   assert.ok(registryToolNames().size > 0);
   assert.ok(gap.length < LARGO_TOOL_DEFS.length, "the catalog must cover something");
