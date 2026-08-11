@@ -115,6 +115,20 @@ function findPositioning(results: readonly unknown[]) {
       maxPain: num(r.max_pain),
       posture: str(r.gamma_posture),
       regimeRead: str(r.gamma_regime_read) ?? str(r.regime_read),
+      /**
+       * THE SESSION CHANGE THIS PAYLOAD ALREADY CARRIES.
+       *
+       * `getGexPositioning` returns `change_pct` right next to the walls (gex-positioning.ts:275),
+       * and it was being dropped on the floor — `findQuote` skips any record carrying
+       * `gamma_posture` precisely so the two matchers cannot both claim it, so nothing else was
+       * ever going to read it. The result: an SPX card built from the live feed's GEX slot drew
+       * four levels and a single "Dealer gamma" tile, with the day's move sitting unused in the
+       * same object.
+       *
+       * Read here rather than by loosening findQuote's guard: that guard is what stops a
+       * positioning payload being rendered twice, once as a quote and once as a regime.
+       */
+      changePct: num(r.change_pct) ?? num(r.change_percent) ?? num(r.changePct),
       asOf: str(r.asof) ?? str(r.as_of),
     };
   }
@@ -468,14 +482,17 @@ export function buildVisualBundle(input: BuildBundleInput): VisualBundle {
       fact: "gamma_posture",
     });
   }
-  if (quote?.changePct != null) {
-    const d = fmtPct(quote.changePct);
+  // A dedicated quote wins; the positioning payload's own change is the fallback. Same precedence
+  // rule as everywhere else in this file — the more specific source first.
+  const changePct = quote?.changePct ?? pos?.changePct ?? null;
+  if (changePct != null) {
+    const d = fmtPct(changePct);
     if (d) {
       metrics.push({
         label: "Session",
         value: d,
-        tone: quote.changePct >= 0 ? "positive" : "negative",
-        source: "VECTOR",
+        tone: changePct >= 0 ? "positive" : "negative",
+        source: quote?.changePct != null ? "VECTOR" : "THERMAL",
         fact: "session_change",
       });
     }
