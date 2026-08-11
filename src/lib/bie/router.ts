@@ -433,6 +433,10 @@ const REASONING_RE =
 // over-restricting them would drop legitimate member mentions. Today only "NOW" intersects
 // KNOWN_TICKERS, so the guard is surgical; the wider list future-proofs the allowlist.
 const STOPWORD_TICKERS = new Set([
+  // Added with the KNOWN_TICKERS widening: these are real symbols that are also ordinary words, so
+  // the router keeps requiring explicit ticker context for them and routes exactly as it did
+  // before the allowlist grew.
+  "NET", "TEAM", "SNOW", "OPEN",
   "NOW", "ALL", "ARE", "OR", "BE", "GO", "SO", "AT", "ON", "IT", "IN", "OF", "TO",
   "THE", "AN", "AS", "IS", "IF", "BY", "WE", "US", "HE", "NO", "UP", "MY", "ME",
   "DO", "AND", "FOR", "BUT", "NOT", "YOU", "OUR", "OUT", "WHY", "HOW", "WHO", "ANY",

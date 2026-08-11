@@ -398,3 +398,57 @@ test("a question with no ticker at all stays null", () => {
   assert.equal(analyzeLargoQuestion("how are we doing right now", []).tickerHint, null);
   assert.equal(analyzeLargoQuestion("what happened out there today", []).tickerHint, null);
 });
+
+/**
+ * A STATIC TICKER ALLOWLIST CANNOT BE RIGHT — measured on prod, 2026-08-11.
+ *
+ * `KNOWN_TICKERS` held 99 symbols. CRWV, OKLO, MU and OKTA were absent — and so were NET and
+ * AXON, TWO OF THE FIVE PLAYS THE DESK HAD PUBLISHED THAT EVENING. An unrecognised symbol left
+ * `tickerHint` null, so the scope fell back to SPX: the live feed captured SPX, the desk rail
+ * showed SPX spot 7,753 and SPX walls, and the generated card drew SPX levels — beside a question
+ * about CRWV. Every number was real; none of it was about what the member asked.
+ *
+ * The failure is intermittent in a way that hid it: when the model happens to call a per-ticker
+ * tool it rescues the answer, and only the scoped feed and the card stay wrong.
+ */
+test("a ticker the allowlist never heard of is still recognised when written in caps", () => {
+  for (const [q, want] of [
+    ["What do you think is the best play for CRWV earnings today?", "CRWV"],
+    ["Can you pull CRWV live option flow from last 2 hours?", "CRWV"],
+    ["how does OKLO look into the close", "OKLO"],
+    ["what is MU doing", "MU"],
+  ] as const) {
+    assert.equal(analyzeLargoQuestion(q, []).tickerHint, want, q);
+  }
+});
+
+test("the desk's OWN published plays are recognisable", () => {
+  // The 2026-08-11 Night Hawk edition: NET, NVDA, CRM, AXON, UBER. Two were invisible.
+  for (const t of ["NET", "NVDA", "CRM", "AXON", "UBER"]) {
+    assert.equal(analyzeLargoQuestion(`what is the thesis on ${t} tonight`, []).tickerHint, t, t);
+  }
+});
+
+test("domain vocabulary in capitals is still NOT a ticker", () => {
+  // LARGO-9 in its original form: CALLS / HOLD / SETUP / BULL mis-pinned as symbols. That came
+  // from uppercasing the whole question; this branch reads the ORIGINAL text, so ordinary prose
+  // can never reach it — and genuinely shouted vocabulary is blocked by name.
+  for (const q of [
+    "should I be buying CALLS here",
+    "is this a HOLD or a SELL",
+    "what does the SETUP look like",
+    "give me the BULL case",
+    "what is the GEX doing",
+    "show me the FLOW",
+  ]) {
+    assert.equal(analyzeLargoQuestion(q, []).tickerHint, null, q);
+  }
+});
+
+test("the lowercase function-word guard still holds", () => {
+  // The live NOW/ServiceNow regression must not come back through the new branch.
+  assert.equal(analyzeLargoQuestion("if I bought the SPX 7800 call at the open, where am I now?", []).tickerHint, "SPX");
+  assert.equal(analyzeLargoQuestion("what should I do now", []).tickerHint, null);
+  // An explicit $ still promotes anything.
+  assert.equal(analyzeLargoQuestion("what about $NOW", []).tickerHint, "NOW");
+});
