@@ -70,3 +70,50 @@ test("bias vocabulary is translated, and `mixed` never picks a side", () => {
   // Everything else (neutral AND mixed) falls through to neutral rather than choosing.
   assert.ok(src.includes(': "neutral"'), "mixed must fall through to neutral, not a coin flip");
 });
+
+/**
+ * AUTO-RENDER WIRING.
+ *
+ * The same "built but unreachable" class this file already pins one layer down. `detectVisualIntent`
+ * and the server directive can both be perfect and the member still gets a button, because the
+ * chain is four hops: intent -> runLargoQuery -> LargoAnswerMessage -> CreateVisualAction. Any one
+ * of them dropping the prop reverts the behaviour to "we asked you to press something", and every
+ * other test in the suite still passes.
+ */
+
+const TERMINAL = "src/lib/largo-terminal.ts";
+
+test("the server emits an auto-render directive when the member asked for an image", () => {
+  const src = readFileSync(TERMINAL, "utf8");
+  assert.ok(src.includes("detectVisualIntent"), "the terminal must read visual intent");
+  // BOTH transports. The streaming path is the one members actually use, and it is the easy one
+  // to forget because the non-streaming return is what a reader looks at first.
+  const emitted = src.match(/\.\.\.visualDirective\(question\)/g) ?? [];
+  assert.equal(emitted.length, 2, `directive emitted on ${emitted.length} paths, expected both stream and non-stream`);
+});
+
+test("the directive REACHES the component — the whole point of it", () => {
+  const answer = readFileSync(ANSWER, "utf8");
+  assert.ok(answer.includes("autoVisual"), "the answer must accept the directive");
+  assert.match(answer, /autoRender=\{autoVisual/, "and pass it to the visual action");
+
+  const action = readFileSync(ACTION, "utf8");
+  assert.ok(action.includes("autoRender"), "the action must accept it");
+  assert.match(action, /autoFired/, "and fire without waiting for a click");
+});
+
+test("auto-render fires ONCE, not once per re-render", () => {
+  // A render loop here would spend a satori render per tick against a premium-gated route. The
+  // guard must be a ref, not state: a state flag re-triggers the effect it is meant to stop.
+  const src = readFileSync(ACTION, "utf8");
+  assert.match(src, /const autoFired = useRef\(false\)/, "the once-guard must survive re-renders");
+  assert.match(src, /if \(!props\.autoRender \|\| autoFired\.current\) return/);
+});
+
+test("the auto-render uses the DIRECTIVE's size, not stale local state", () => {
+  // `setSize` does not apply to the closure the same tick's render call captures, so a card
+  // requested for a story would have been drawn at the landscape default.
+  const src = readFileSync(ACTION, "utf8");
+  assert.match(src, /void render\(\{ size: props\.autoRender\.size \}\)/);
+  assert.match(src, /size: override\?\.size \?\? size/, "body() must honour the override");
+});

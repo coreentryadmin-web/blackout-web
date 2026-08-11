@@ -70,14 +70,36 @@ export const TEMPLATES: TemplateSpec[] = [
     needs: "a spot price and at least one dealer level",
   },
   {
+    id: "PLAYBOOK",
+    label: "Playbook",
+    implemented: true,
+    // AHEAD OF TRADE_RECAP DELIBERATELY. "tomorrow's plays", "the playbook", "tonight's edition"
+    // all contain `play`/`entry`, so TRADE_RE swallows them — which is exactly what happened live,
+    // producing a single-ticker recap for a five-play question. PLAYBOOK is the narrower claim
+    // (a specific published edition) so it must be offered the question first.
+    match:
+      /\b(playbook|edition|tomorrow.?s? plays?|tonight.?s? plays?|the plays?|runbook|watch ?list|what (are|do) (we|you) (trading|playing|taking)|legacy plays?)\b/i,
+    // At least one drawable play. Unlike a leaderboard there is no minimum of two: a one-play
+    // edition is a real, publishable state and the card states the count, so it cannot mislead.
+    sufficient: (b) => (b.playbook?.rows.length ?? 0) >= 1,
+    needs: "a published edition with at least one play carrying entry, target or stop",
+  },
+  {
     id: "TRADE_RECAP",
     label: "Trade Recap",
     implemented: true,
     match: TRADE_RE,
-    // Needs a real trade with an entry. Peak/exit may be absent (an open position is a legitimate
-    // recap) but a lifecycle with no entry is not a trade.
-    sufficient: (b) => !!b.trade && !!b.trade.entry,
-    needs: "a committed trade with a recorded entry",
+    // A TRADE, not a PLAN — and the difference is what the row can say about its OUTCOME.
+    //
+    // The original gate was `entry != null`, on the reasoning that an open position is a
+    // legitimate recap. That is true, but an open position still carries a live mark or a status.
+    // A published play that has not been taken carries an entry premium and NOTHING else this
+    // template reads, so it cleared the gate and rendered a frame of empty cells around one
+    // number. Requiring any one outcome-side field separates the two without excluding the open
+    // positions the card is meant to handle.
+    sufficient: (b) =>
+      !!b.trade && !!b.trade.entry && (!!b.trade.exit || !!b.trade.returnPct || !!b.trade.status),
+    needs: "a committed trade with an entry AND a mark, return or status",
   },
 
   {
@@ -239,6 +261,24 @@ export const TEMPLATES: TemplateSpec[] = [
 
 export const IMPLEMENTED_TEMPLATES = TEMPLATES.filter((t) => t.implemented);
 
+/**
+ * COMPOSED is reachable but NOT in `TEMPLATES`, and that is deliberate.
+ *
+ * Every entry in `TEMPLATES` is offered to the intent matcher and to the fallback descent. COMPOSED
+ * must be in neither: it would match nothing (it has no subject of its own) and it would win every
+ * fallback (its sufficiency is one block), which would starve the designed templates that render
+ * their subject better than a generic section can. It is selected explicitly at step 3, after the
+ * designed layouts have had their chance, and by an explicit member pick.
+ */
+export const COMPOSED_SPEC: TemplateSpec = {
+  id: "COMPOSED",
+  label: "Composed",
+  implemented: true,
+  match: /$^/,
+  sufficient: (b) => composableEvidenceCount(b) >= 2,
+  needs: "at least two measurements the composer can draw",
+};
+
 export type RouteResult = {
   template: VisualTemplateId;
   /** True when the question's own wording proposed this template, false when it was reached by
@@ -275,7 +315,10 @@ export function routeVisual(
 
   // 1. An explicit pick is tried first — but still gated.
   if (preferred && preferred !== "AUTO") {
-    const hit = consider(IMPLEMENTED_TEMPLATES.find((t) => t.id === preferred), true);
+    const hit = consider(
+      preferred === "COMPOSED" ? COMPOSED_SPEC : IMPLEMENTED_TEMPLATES.find((t) => t.id === preferred),
+      true
+    );
     if (hit) return hit;
   }
 
@@ -286,12 +329,104 @@ export function routeVisual(
     if (hit) return hit;
   }
 
-  // 3. Fallback: anything the evidence CAN fill, same preference order.
+  // 3. BROAD EVIDENCE COMPOSES, before the designed descent gets a chance to narrow it.
+  //
+  // The descent below picks the first designed template the evidence can fill. When the evidence
+  // is WIDE that is the wrong move by construction: every designed template draws one subject, so
+  // whichever wins discards everything outside it.
+  //
+  // Measured on "Generate how TSLA looks today", with Helix flow, Thermal levels and regime,
+  // Vector and a Night Hawk read all present — six evidence blocks. No intent matched, the
+  // descent reached LEVEL_ANALYSIS (spot + levels, both present), and the card drew the levels
+  // while discarding the consensus strip, the tape and the regime. The question was about all of
+  // them.
+  //
+  // Four is the threshold because three is the most any designed template draws. At four or more
+  // a single template is guaranteed to be leaving evidence on the floor, and composition is the
+  // only thing that can use it. Below four the designed layouts win, and should: their geometry
+  // carries honesty rules a generic section does not (the counterfactual's symmetric columns, the
+  // leaderboard's fixed denominator).
+  //
+  // INTENT STILL OUTRANKS THIS. A question that names its subject has already been answered above.
+  if (composableEvidenceCount(bundle) >= 4) {
+    return { template: "COMPOSED", matchedIntent: false, rejected };
+  }
+
+  // 4. Fallback: a DESIGNED template the evidence can fill, in preference order.
+  //
+  // Kept, because a designed layout renders its own subject better than a generic section can —
+  // the counterfactual's symmetric columns and the leaderboard's fixed denominator are honesty
+  // mechanisms built into their geometry, not decoration.
+  //
+  // MARKET_MOVE IS EXCLUDED FROM THIS DESCENT and replaced by COMPOSED below. Its own registry
+  // comment calls it "the most general and the most likely to be fillable, which makes it the
+  // right last resort" — and COMPOSED is strictly the better version of that idea. Both are
+  // "draw whatever the evidence supports"; MARKET_MOVE does it with a fixed arrangement of four
+  // blocks, COMPOSED does it with whichever blocks this question and this evidence call for. A
+  // question spanning five products ("how does TSLA look today") reached MARKET_MOVE here and got
+  // a headline over two metrics, discarding the consensus strip, the levels and the tape it had.
+  // MARKET_MOVE is still selected by INTENT — "why did SPX dump" is its question and it answers
+  // it well — it is only no longer the thing that catches everything else.
   for (const spec of IMPLEMENTED_TEMPLATES) {
+    if (spec.id === "MARKET_MOVE") continue;
     const hit = consider(spec, false);
     if (hit) return hit;
   }
 
-  // 4. Nothing is drawable. Offering no visual is a valid outcome and the only honest one here.
+  // 5. COMPOSE — the last resort, evidence-first.
+  //
+  // TWO EVIDENCE BLOCKS MINIMUM, and the headline does not count toward them.
+  //
+  // The first version of this gate asked for one drawable block of any kind, which quietly
+  // repealed two guards the designed templates enforce: "one metric under a headline is a
+  // decoration, not evidence" and "a level with no spot is a number floating in space". Both
+  // would have composed — a verdict plus a single number — and a card is a claim about
+  // MEASUREMENTS, so one measurement under a conclusion is a frame around an assertion.
+  //
+  // Counting only evidence also makes the gate honest about what it is measuring: a bundle
+  // carrying nothing but a headline has no evidence at all, and no amount of composition changes
+  // that.
+  if (composableEvidenceCount(bundle) >= 2) {
+    return { template: "COMPOSED", matchedIntent: false, rejected };
+  }
+
+  // 6. MARKET_MOVE, if COMPOSED could not reach its two-measurement bar but this can.
+  //     Its sufficiency (a headline plus two supporting measurements) is a different shape from
+  //     the composer's, so it is tried rather than assumed unreachable.
+  {
+    const hit = consider(IMPLEMENTED_TEMPLATES.find((t) => t.id === "MARKET_MOVE"), false);
+    if (hit) return hit;
+  }
+
+  // 7. Nothing is drawable. Offering no visual is a valid outcome and the only honest one here.
   return null;
+}
+
+/**
+ * How many EVIDENCE blocks this bundle can fill.
+ *
+ * The headline is deliberately absent from this list: it is the card's conclusion, not a
+ * measurement, and counting it would let a bundle reach the threshold on a claim plus one number.
+ *
+ * Kept in the router rather than imported from `compose.ts` so the module stays free of the size
+ * spec — composition needs a canvas, this check does not.
+ */
+function composableEvidenceCount(b: VisualBundle): number {
+  const checks: boolean[] = [
+    !!b.spot,
+    !!b.regime,
+    (b.levels?.length ?? 0) >= 1,
+    (b.metrics?.length ?? 0) >= 1,
+    (b.systemReads?.length ?? 0) >= 2,
+    (b.gexShifts?.length ?? 0) >= 1,
+    (b.gammaProfile?.rows.length ?? 0) >= 3,
+    (b.flow?.rows.length ?? 0) >= 1,
+    (b.playbook?.rows.length ?? 0) >= 1,
+    (b.leaderboard?.rows.length ?? 0) >= 2,
+    (b.screen?.rows.length ?? 0) >= 3,
+    (b.rejections?.rows.length ?? 0) >= 2,
+    (b.timeline?.length ?? 0) >= 2,
+    !!b.session?.closeDisplay,
+  ];
+  return checks.filter(Boolean).length;
 }

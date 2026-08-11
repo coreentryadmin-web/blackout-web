@@ -156,32 +156,57 @@ if (process.env.LARGO_STRESS_LIVE === "1") {
     console.error("Live auth skip:", session.reason);
   } else {
     /**
-     * SESSION RE-MINT, BOUNDED.
+     * SESSION REFRESH — the token, not the user.
      *
-     * The temp Clerk session ages out about seven questions into a sweep, so a 523-question run
-     * measured seven and skipped the rest — honest after the transport fix above, and useless as
-     * coverage.
+     * ROOT CAUSE OF THE COVERAGE CAP, and the previous fix here treated the symptom. The minted
+     * `__session` JWT has a MEASURED ~72s fixed lifetime (see `prod-clerk-session.mjs`) — not an
+     * idle timeout, so a busy sweep dies just as fast as a slow one. Roughly seven questions in.
      *
-     * Capped at 2 and serialised behind one in-flight promise, because Clerk FAPI rate-limits
-     * rapid sign-in cycles (CLAUDE.md: "authenticate once per run"); letting every worker re-mint
-     * on the same 401 would stampede and get the whole run blocked.
+     * The old recovery re-ran `mintAppSession`: a whole new temp Clerk user plus a fresh
+     * `sign_in_tokens` ticket exchange. That IS the FAPI path CLAUDE.md caps ("authenticate once
+     * per run"), which is why it had to be limited to 2 — and two re-mints times seven questions
+     * is the ~16-22 of 523 ceiling every sweep hit. The cap was load-bearing on the wrong lever.
+     *
+     * `session.refresh()` re-mints only the JWT, re-using the EXISTING session's cookies. It is
+     * the same call the browser's Clerk client makes on a timer, it does not create a user, and it
+     * is not the rate-limited sign-in flow. So it can run for the whole sweep and the coverage
+     * ceiling disappears.
+     *
+     * Refreshed PROACTIVELY at 45s (comfortably inside 72s) rather than reactively on 401, because
+     * a reactive-only scheme spends one wasted request per token generation and, at concurrency>1,
+     * spends one per in-flight worker. Reactive refresh is KEPT as a backstop for the case where a
+     * request is issued just before expiry and lands just after.
+     *
+     * Serialised behind one in-flight promise so concurrent workers share a single refresh instead
+     * of stampeding.
      */
     let live = session;
-    let remints = 0;
-    let reminting = null;
-    async function remintOnce() {
-      if (remints >= 2) return false;
-      if (!reminting) {
-        reminting = (async () => {
-          remints += 1;
-          console.log(`\n[largo-stress] session expired — re-minting (${remints}/2)\n`);
-          const next = await mintAppSession({ appUrl: BASE }).catch(() => ({ skip: true }));
-          if (!next.skip) live = next;
-          reminting = null;
-          return !next.skip;
+    let refreshes = 0;
+    let refreshing = null;
+    let tokenMintedAt = Date.now();
+    const TOKEN_MAX_AGE_MS = 45_000;
+
+    async function refreshSession() {
+      if (!session.refresh) return false;
+      if (!refreshing) {
+        refreshing = (async () => {
+          const next = await session.refresh().catch(() => null);
+          if (next) {
+            live = { ...live, cookieHeader: next.cookieHeader };
+            tokenMintedAt = Date.now();
+            refreshes += 1;
+          }
+          refreshing = null;
+          return Boolean(next);
         })();
       }
-      return reminting;
+      return refreshing;
+    }
+
+    /** Refresh before a request when the current token is close to its measured lifetime. */
+    async function freshCookie() {
+      if (Date.now() - tokenMintedAt > TOKEN_MAX_AGE_MS) await refreshSession();
+      return live.cookieHeader;
     }
 
     const concurrency = Math.max(1, Number(process.env.LARGO_STRESS_CONCURRENCY) || 1);
@@ -192,16 +217,16 @@ if (process.env.LARGO_STRESS_LIVE === "1") {
         while (idx < entries.length) {
           const i = idx++;
           const entry = entries[i];
-          let res = await askLiveThrottleAware(live.cookieHeader, entry.q);
+          let res = await askLiveThrottleAware(await freshCookie(), entry.q);
           if (res.status === 401) {
             // LOGGED UNCONDITIONALLY, because the first version of this was silent and I could
             // not tell whether it had run. The one sweep that should have exercised it answered
-            // 16 questions, hit a hard 401 wall, and printed nothing — leaving "the re-mint works"
-            // unverifiable. A recovery path that cannot be seen firing is indistinguishable from
-            // one that is not wired.
-            console.log(`[largo-stress] 401 on "${entry.q.slice(0, 40)}" — attempting session re-mint`);
-            const ok = await remintOnce();
-            console.log(`[largo-stress] re-mint ${ok ? "succeeded, retrying" : "declined (cap reached or auth unavailable)"}`);
+            // 16 questions, hit a hard 401 wall, and printed nothing — leaving "the recovery
+            // works" unverifiable. A recovery path that cannot be seen firing is indistinguishable
+            // from one that is not wired.
+            console.log(`[largo-stress] 401 on "${entry.q.slice(0, 40)}" — refreshing session token`);
+            const ok = await refreshSession();
+            console.log(`[largo-stress] refresh ${ok ? "succeeded, retrying" : "unavailable"}`);
             if (ok) res = await askLiveThrottleAware(live.cookieHeader, entry.q);
           }
           const { status, answer, source, ms, throttled } = res;
@@ -227,6 +252,9 @@ if (process.env.LARGO_STRESS_LIVE === "1") {
         }
       }
       await Promise.all(Array.from({ length: concurrency }, () => worker()));
+      // Surfaced because a sweep that ran long with ZERO refreshes means the refresh path never
+      // fired, which is how the old cap went unnoticed for as long as it did.
+      console.log(`\n[largo-stress] session token refreshed ${refreshes}×`);
       liveRows.sort((a, b) => entries.findIndex((e) => e.q === a.q) - entries.findIndex((e) => e.q === b.q));
     } finally {
       await session.cleanup?.();

@@ -46,6 +46,55 @@ test("evidence absent is not evidence of absence — with the exact live failure
   assert.match(p, /say what makes it informative \(the baseline\)/);
 });
 
+/**
+ * SECTION SCALING — the contract is a vocabulary, not a checklist.
+ *
+ * MEASURED 2026-08-11 against production: 10 of 25 answers were flagged over-length, and every one
+ * of them had emitted all eight headings for a single-lens question. "DEX lens on QQQ" came back at
+ * 3.3k characters with a `Conflicts` section reading "No conflicts — ..." and a `Data` section
+ * reading "All reads live and complete."
+ *
+ * The prompt was self-contradictory, and the losing side was the one stated first and loudest:
+ *
+ *   1. "APPLIES TO EVERY ANSWER, WITHOUT EXCEPTION" / "MANDATORY ANSWER CONTRACT" — a rule about
+ *      WHICH headings are legal, phrased as though it were a rule about HOW MANY to use.
+ *   2. "The other five are conditional" — the rule that actually governs, two screens further down
+ *      under a sub-heading.
+ *   3. "If signals genuinely align, write `No conflicts — ...`" — which directly instructs the
+ *      emission of a section (1) makes mandatory and (2) calls conditional. The placeholder text in
+ *      the live answers is quoted verbatim from the prompt.
+ *
+ * So the failure was not the model ignoring the contract; it was the model obeying the strongest
+ * instruction present. These assertions keep the vocabulary/completeness distinction explicit.
+ */
+test("the contract is framed as a heading VOCABULARY, not a completeness checklist", () => {
+  const p = LARGO_SYSTEM_PROMPT;
+  assert.match(p, /A FIXED VOCABULARY OF HEADINGS, NOT A CHECKLIST TO FILL IN/);
+  assert.match(p, /You choose how many of these headings the question earns/);
+  assert.match(p, /Using\nall eight on a question that did not need them is a failure of the contract/);
+  // The old phrasings are what produced the eight-section default. They must not return.
+  assert.doesNotMatch(p, /APPLIES TO EVERY ANSWER, WITHOUT EXCEPTION/);
+  assert.doesNotMatch(p, /MANDATORY ANSWER CONTRACT/);
+});
+
+test("Conflicts is OMITTED when signals agree — no content-free placeholder", () => {
+  const p = LARGO_SYSTEM_PROMPT;
+  assert.match(p, /If the\nsignals genuinely align, OMIT this heading entirely/);
+  // The exact placeholder that shipped in live answers, quoted from the old prompt.
+  assert.doesNotMatch(p, /write\n?\\?`No conflicts — flow, structure and price agree/);
+});
+
+test("scaling is anchored at the MIDDLE of the range, not only the two ends", () => {
+  // Only "SPX?" (trivial) and a four-clause synthesis (maximal) were exemplified, so a single-lens
+  // question — the largest real category — had no anchor and defaulted to maximal.
+  const p = LARGO_SYSTEM_PROMPT;
+  assert.match(p, /DEX lens on QQQ/, "the mid-scope worked example must be present");
+  assert.match(p, /ONE lens on ONE instrument/);
+  assert.match(p, /four-section answer: Verdict, Facts, a short Interpretation, Data/);
+  // And a general test, so the rule generalises past the three examples.
+  assert.match(p, /If it restates the Verdict in different words, drop it/);
+});
+
 test("no hardcoded SPX level: a stale anchor becomes a reason to distrust live data", () => {
   const p = LARGO_SYSTEM_PROMPT;
   // The prompt claimed "spot price is in the 5000–6000 range" while SPX traded at 7760.

@@ -213,6 +213,97 @@ function findGraderAgreement(results: readonly unknown[]) {
   return null;
 }
 
+// ── Playbook (forward runbook) ──────────────────────────────────────────────────────────────
+
+/**
+ * Find a published Night Hawk EDITION in the turn's tool output.
+ *
+ * Discriminated on `plays` + at least one of `edition_for` / `published_at` / `recap_headline`,
+ * which together no other payload in the system carries. Matching on `plays` alone would also
+ * catch the 0DTE board's committed rows, and those ARE trades — they belong to TRADE_RECAP.
+ *
+ * An edition with `available: false` is not a playbook: it is the absence of one, and a card built
+ * from it would present "nothing published yet" as an empty book.
+ */
+function findEdition(results: readonly unknown[]): Record<string, unknown> | null {
+  for (const r of results) {
+    if (!isRecord(r) || !Array.isArray(r.plays)) continue;
+    const looksLikeEdition =
+      "edition_for" in r || "published_at" in r || "recap_headline" in r || "recap_only" in r;
+    if (!looksLikeEdition) continue;
+    if (r.available === false) continue;
+    return r;
+  }
+  return null;
+}
+
+/**
+ * Build the runbook block from a published edition.
+ *
+ * EVERY LEVEL IS QUOTED, NOT PARSED. `entry_range`, `target` and `stop` arrive as strings the
+ * engine composed ("$182.40–183.10"). They are carried through untouched. Re-parsing them into
+ * numbers to reformat would introduce a second formatter for values the desk already renders one
+ * way, and a runbook whose levels differ from the desk's by a rounding step is worse than none.
+ *
+ * A PLAY WITH NO LEVELS AT ALL IS DROPPED, and the drop is visible: `totalPlays` counts what the
+ * edition published, while `rows` holds what can actually be drawn, so the card's own "showing N
+ * of M" line reports the gap rather than hiding it.
+ */
+export function playbookFromEdition(
+  edition: Record<string, unknown>,
+  source: VisualSystem = "NIGHT HAWK"
+): VisualBundle["playbook"] {
+  const raw = Array.isArray(edition.plays) ? edition.plays.filter(isRecord) : [];
+  if (!raw.length) return null;
+
+  const rows = raw
+    .map((p, i) => {
+      const ticker = str(p.ticker);
+      if (!ticker) return null;
+      const dirRaw = String(p.direction ?? "").toLowerCase();
+      const premium = num(p.entry_premium);
+      return {
+        rank: num(p.rank) ?? i + 1,
+        ticker,
+        direction: (dirRaw.startsWith("s") || dirRaw === "put" ? "short" : "long") as "long" | "short",
+        conviction: str(p.conviction),
+        entryRange: str(p.entry_range),
+        target: str(p.target),
+        stop: str(p.stop),
+        optionsPlay: str(p.options_play),
+        entryPremium: premium,
+        entryPremiumDisplay: premium != null ? `$${premium.toFixed(2)}` : null,
+        thesis: str(p.thesis),
+        keySignal: str(p.key_signal),
+        rrRatio: num(p.rr_ratio),
+        targetAtrMultiple: num(p.target_atr_multiple),
+        earningsRisk: p.earnings_risk === true,
+        pulled: p.pulled === true,
+        pulledReason: str(p.pulled_reason),
+        gatePromoted: p.gate_promoted === true,
+      };
+    })
+    .filter((r): r is NonNullable<typeof r> => r !== null)
+    // A row with no entry, no target and no stop carries nothing a member could act on. Keep it
+    // ONLY when it is pulled — a withdrawal is actionable information even without levels.
+    .filter((r) => r.pulled || !!(r.entryRange || r.target || r.stop))
+    .sort((a, b) => a.rank - b.rank);
+
+  if (!rows.length) return null;
+
+  return {
+    editionFor: str(edition.edition_for) ?? str(edition.served_for),
+    publishedAt: str(edition.published_at),
+    // Counted off the edition's own array, so truncation and undrawable rows are both visible.
+    totalPlays: raw.length,
+    noPlays: edition.no_plays === true,
+    stale: edition.stale === true,
+    degraded: edition.degraded === true,
+    rows,
+    source,
+  };
+}
+
 // ── Trade lifecycle ────────────────────────────────────────────────────────────────────────
 
 /**
@@ -382,8 +473,20 @@ export function buildVisualBundle(input: BuildBundleInput): VisualBundle {
     systemReads.push({ system: "THERMAL", stance: "regime", detail: `${pos.posture} gamma` });
   }
 
+  // ── Playbook (the forward book) — resolved BEFORE the trade, because an edition's `plays` array
+  // is also what `findLedgerRows` matches on. Without this, tomorrow's five published plays were
+  // read as one committed trade and four were discarded. See `playbookFromEdition`.
+  const editionRaw = findEdition(results);
+  const playbook = editionRaw ? playbookFromEdition(editionRaw) : null;
+  if (playbook) systems.add(playbook.source);
+
   // ── Trade
-  const ledgerRow = input.ledgerRow ?? findLedgerRows(results)?.[0] ?? null;
+  //
+  // An edition is EXCLUDED as a trade source. A published play has an entry premium and nothing
+  // else TRADE_RECAP reads — no mark, no return, no status — so it satisfied that template's
+  // "has an entry" gate and then rendered as a card of empty cells. A plan is not a trade.
+  const ledgerRow =
+    input.ledgerRow ?? (playbook ? null : findLedgerRows(results)?.[0]) ?? null;
   const trade = ledgerRow ? tradeFromLedgerRow(ledgerRow) : null;
   if (trade) systems.add(trade.source);
 
@@ -479,6 +582,7 @@ export function buildVisualBundle(input: BuildBundleInput): VisualBundle {
         ? input.envelopeGexShifts.map((s) => ({ ...s, display: formatGexChange(s.change) }))
         : undefined),
     regime: pos?.posture ? { label: pos.posture.toUpperCase(), detail: pos.regimeRead, source: "THERMAL" } : null,
+    playbook,
     trade,
     counterfactual,
     graderAgreement,

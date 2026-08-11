@@ -34,6 +34,9 @@ import { sizeSpec } from "./sizes";
 import { buildManifest, createRecorder } from "./manifest";
 import { MarketMoveCard } from "./templates/market-move";
 import { TradeRecapCard } from "./templates/trade-recap";
+import { PlaybookCard } from "./templates/playbook";
+import { ComposedCard } from "./templates/composed";
+import { composeCard, type BlockId } from "./compose";
 import { LevelAnalysisCard, focusStrikeFromQuestion } from "./templates/level-analysis";
 import { ScreenerCard } from "./templates/screener";
 import { RejectionCard } from "./templates/rejection";
@@ -72,6 +75,11 @@ export type RenderVisualParams = {
   format?: "png" | "webp" | "svg" | "html";
   replayOfTurn?: string | null;
   nowMs?: number;
+  /**
+   * Blocks Largo asked to emphasise, for COMPOSED. Ignored by every designed template.
+   * A hint that reorders; it can never introduce a value — see `compose.ts`.
+   */
+  emphasis?: readonly BlockId[] | null;
 };
 
 /**
@@ -95,6 +103,12 @@ export function buildVisualElement(params: RenderVisualParams): {
   switch (params.template) {
     case "MARKET_MOVE":
       element = <MarketMoveCard bundle={bundle} spec={spec} recorder={recorder} asOfLabel={asOfLabel} />;
+      break;
+    case "PLAYBOOK":
+      // Same guard rationale as TRADE_RECAP below: the router checks sufficiency, and this stops a
+      // direct caller rendering an edition frame around no plays.
+      if (!bundle.playbook?.rows.length) throw new Error("PLAYBOOK requires at least one drawable play");
+      element = <PlaybookCard bundle={bundle} spec={spec} recorder={recorder} asOfLabel={asOfLabel} />;
       break;
     case "TRADE_RECAP":
       // The router guarantees `trade` and `trade.entry` are present before selecting this
@@ -186,6 +200,30 @@ export function buildVisualElement(params: RenderVisualParams): {
       if ((bundle.timeline?.length ?? 0) < 4) throw new Error("SIGNAL_TIMELINE requires at least four timestamped events");
       element = <SignalTimelineCard bundle={bundle} spec={spec} recorder={recorder} asOfLabel={asOfLabel} />;
       break;
+    case "COMPOSED": {
+      /**
+       * The layout is decided HERE, at render time, from the question and the evidence.
+       *
+       * Composition runs inside the renderer rather than in the router because the block set
+       * depends on the SIZE — a landscape card and a story fit different numbers of blocks from
+       * identical evidence — and the router does not know the size. A card composed for one
+       * surface and drawn on another would report a truncation list that did not match what was
+       * actually dropped.
+       */
+      const composition = composeCard({
+        question: question ?? "",
+        bundle,
+        spec,
+        emphasis: params.emphasis ?? null,
+      });
+      if (!composition.blocks.length) {
+        throw new Error("COMPOSED requires at least one block the evidence can fill");
+      }
+      element = (
+        <ComposedCard bundle={bundle} spec={spec} recorder={recorder} asOfLabel={asOfLabel} composition={composition} />
+      );
+      break;
+    }
     default:
       throw new Error(`Template ${params.template} is registered but not implemented`);
   }

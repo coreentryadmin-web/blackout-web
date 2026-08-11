@@ -32,6 +32,16 @@ export function MarketMoveCard({
 }): ReactElement {
   const biasColor = bundle.bias === "bull" ? C.bull : bundle.bias === "bear" ? C.bear : C.primary;
 
+  /**
+   * Block rhythm, tightened on dense surfaces.
+   *
+   * MEASURED: at a uniform 26px the landscape card overflowed and the level map lost its bottom
+   * row to a 4px sliver — a rendered level cropped to a coloured line, which reads as a layout
+   * glitch rather than as missing data. Four gaps at 26px is 104px on a 630px canvas; at 15px it
+   * is 60px, which is the row that was being lost.
+   */
+  const gap = spec.dense ? 15 : 26;
+
   // On tall surfaces the spot/metrics pair stacks; on landscape they share a row. Laying out
   // differently per aspect is what keeps a story from looking like a squashed landscape card.
   const heroRow = (
@@ -41,7 +51,7 @@ export function MarketMoveCard({
         flexDirection: spec.stack ? "column" : "row",
         alignItems: spec.stack ? "flex-start" : "flex-end",
         width: "100%",
-        marginTop: s(22, spec),
+        marginTop: s(gap, spec),
       }}
     >
       <div style={{ display: "flex", flexDirection: "column" }}>
@@ -83,7 +93,7 @@ export function MarketMoveCard({
       freshness={bundle.freshness}
       spec={spec}
     />,
-    <div key="hl" style={{ display: "flex", flexDirection: "column", marginTop: s(26, spec) }}>
+    <div key="hl" style={{ display: "flex", flexDirection: "column", marginTop: s(gap, spec) }}>
       {bundle.headline ? <Headline text={bundle.headline} spec={spec} color={biasColor} /> : <div style={{ display: "flex" }} />}
       {bundle.summary && (
         <div
@@ -101,21 +111,21 @@ export function MarketMoveCard({
       )}
     </div>,
     heroRow,
-    <div key="m" style={{ display: "flex", width: "100%", marginTop: s(26, spec) }}>
+    <div key="m" style={{ display: "flex", width: "100%", marginTop: s(gap, spec) }}>
       <MetricRow metrics={bundle.metrics} spec={spec} recorder={recorder} max={spec.stack ? 2 : 3} />
     </div>,
     // The level map answers "where is price relative to the structure", which is usually the real
     // content of a "why did it move" question. GEX shifts take its place when the move was
     // specifically a positioning change and the shift table is present.
     bundle.gexShifts?.length ? (
-      <div key="g" style={{ display: "flex", flexDirection: "column", width: "100%", marginTop: s(26, spec) }}>
+      <div key="g" style={{ display: "flex", flexDirection: "column", width: "100%", marginTop: s(gap, spec) }}>
         <Kicker text="Dealer gamma change by strike" spec={spec} />
         <div style={{ display: "flex", width: "100%", marginTop: s(12, spec) }}>
           <GexBars shifts={bundle.gexShifts} spec={spec} recorder={recorder} max={spec.stack ? 4 : 3} />
         </div>
       </div>
     ) : (
-      <div key="l" style={{ display: "flex", flexDirection: "column", width: "100%", marginTop: s(26, spec) }}>
+      <div key="l" style={{ display: "flex", flexDirection: "column", width: "100%", marginTop: s(gap, spec) }}>
         <Kicker text="Dealer levels" spec={spec} />
         <div style={{ display: "flex", width: "100%", marginTop: s(12, spec) }}>
           <LevelMap levels={bundle.levels} spot={bundle.spot} spec={spec} recorder={recorder} max={spec.stack ? 5 : 3} />

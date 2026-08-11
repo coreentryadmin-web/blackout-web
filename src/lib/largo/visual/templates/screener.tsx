@@ -47,7 +47,16 @@ export function ScreenerCard({
 }): ReactElement {
   const screen = bundle.screen!;
   const rows = screen.rows.slice(0, spec.stack ? 8 : 6);
-  const title = PRESET_TITLE[screen.preset] ?? "Screen";
+  /**
+   * The preset's own name is the fallback, NOT the word "Screen".
+   *
+   * `PRESET_TITLE` maps the presets that were known when this shipped; anything else fell through
+   * to "Screen", which is rendered at 78px directly beneath a kicker already reading
+   * "SCREEN · 512 NAMES". That is the card's largest element spent restating the line above it.
+   * The raw preset ("Nearest gamma flip") is descriptive by construction, so it is a strictly
+   * better fallback than a generic noun.
+   */
+  const title = PRESET_TITLE[screen.preset] ?? screen.preset ?? "Screen";
 
   // Normalised within the SHOWN rows — relative rank is the content.
   const peak = Math.max(...rows.map((r) => Math.abs(r.metricValue)), 0.0001);

@@ -23,6 +23,7 @@ import type { ReactElement } from "react";
 import { C, FONT, GLYPH, levelColor, stanceColor, toneColor } from "./tokens";
 import type { SizeSpec } from "./sizes";
 import { s } from "./sizes";
+import { levelOnSameScale } from "./compose";
 import type { ManifestRecorder } from "./manifest";
 import type {
   VisualLevel,
@@ -180,7 +181,10 @@ export function HeroNumber({
   return (
     <div style={{ display: "flex", flexDirection: "column" }}>
       <Kicker text={label} spec={spec} />
-      <div style={{ display: "flex", fontFamily: FONT.display, fontSize: s(92, spec), color, lineHeight: 1, marginTop: s(6, spec) }}>
+      {/* 92px is the tall-surface size. On a 630px landscape it is ~15% of the canvas height for
+          one number, and it was pushing the supporting evidence off the bottom — the hero was
+          winning space from the rows that justify it. */}
+      <div style={{ display: "flex", fontFamily: FONT.display, fontSize: s(spec.dense ? 74 : 92, spec), color, lineHeight: 1, marginTop: s(6, spec) }}>
         {n.display}
       </div>
     </div>
@@ -287,7 +291,16 @@ export function LevelMap({
     isSpot: false,
   }));
 
-  const all: { price: number; row: Row }[] = rows.map((l, i) => ({ price: l.price, row: mapped[i]! }));
+  // OFF-SCALE LEVELS ARE DROPPED — see `levelOnSameScale` for why, and why the test is scale
+  // rather than ticker. Recorded as an omission so the manifest shows the card knew about them.
+  const inScale = rows.filter((l) => levelOnSameScale(l.price, spot?.value));
+  const offScale = rows.length - inScale.length;
+  if (offScale > 0) recorder.omit(`${offScale} level(s) from a different price scale`);
+
+  const all: { price: number; row: Row }[] = inScale.map((l) => ({
+    price: l.price,
+    row: mapped[rows.indexOf(l)]!,
+  }));
   if (spot) {
     all.push({ price: spot.value, row: { label: "SPOT", display: spot.display, kind: "spot", isSpot: true } });
   }
@@ -318,11 +331,38 @@ export function LevelMap({
               borderLeft: `${s(3, spec)}px solid ${color}`,
             }}
           >
+            {/* THE "CALL WALl" BUG — an explicit column width, not a shrink-to-fit box.
+                Every landscape card rendered the walls with the final letter sliced vertically.
+                Diagnosed by elimination: `flexShrink: 0` did not fix it, `paddingRight` did not
+                change a single byte of the output, and removing `letterSpacing` made it WORSE
+                (it spread to "PUT WALL" too). The pattern that survived: only labels ending in a
+                glyph whose ink reaches the right edge of its advance box clip — `L` does, `P`
+                ("GAMMA FLIP") and `T` ("SPOT") do not. So satori sizes the shrink-to-fit text box
+                a sub-pixel short and paints the last glyph across the boundary.
+                A fixed width removes the shrink-to-fit measurement entirely, and it aligns the
+                label column as a side effect — the same thing the leaderboard rows do, which is
+                why they never showed this. A label longer than the column is a data problem, and
+                one this set (wall / flip / spot / pivot) does not have. */}
             <div
               style={{
                 display: "flex",
+                width: s(220, spec),
+                flexShrink: 0,
+                whiteSpace: "nowrap",
                 fontFamily: FONT.mono,
-                fontSize: s(18, spec),
+                // 16px FLOOR — the "CALL WALl" bug, and it is a rasteriser artifact rather than a
+                // layout fault. Bisected by rendering the identical bundle at all four surfaces:
+                // the final glyph clips at 14px (landscape, scale 0.8) and is intact at 17px
+                // (square), 19px (portrait) and 22px (story). Nothing about the box is wrong —
+                // flexShrink, whiteSpace, paddingRight, an explicit width, removing letterSpacing
+                // and padding the text run with trailing/hair/nbsp characters each left the PNG
+                // byte-identical or worse. Only the size moves it.
+                // Only labels whose last glyph reaches the right edge of its advance box are hit,
+                // which is why "CALL WALL" and "PUT WALL" clipped while "GAMMA FLIP" and "SPOT"
+                // never did.
+                // The floor is safe on the tightest surface: the label column is a fixed
+                // s(220) = 176px on landscape and "CALL WALL" at 16px mono is ~106px.
+                fontSize: Math.max(16, s(18, spec)),
                 letterSpacing: s(2, spec),
                 textTransform: "uppercase",
                 color: row.isSpot ? C.info : color,

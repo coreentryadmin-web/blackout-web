@@ -217,6 +217,10 @@ test("a timeline question on a bundle with a trade still prefers TRADE_RECAP", (
       ticker: "NVDA",
       direction: "long",
       entry: { value: 4.2, display: "$4.20", source: "NIGHT HAWK" },
+      // A booked return, because `graded: true` alone is not an outcome — a graded row with no
+      // number still renders an empty P&L block, which is the case TRADE_RECAP's sufficiency gate
+      // now excludes. See router.test.ts on the plan-shaped row.
+      returnPct: { value: 62.4, display: "+62.4%", source: "NIGHT HAWK" },
       graded: true,
       source: "NIGHT HAWK",
     },
