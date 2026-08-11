@@ -36,7 +36,7 @@
  */
 
 import type { SizeSpec } from "./sizes";
-import type { VisualBundle } from "./types";
+import type { VisualBundle, VisualFact } from "./types";
 
 /** A composable unit of a card. */
 export type BlockId =
@@ -482,6 +482,131 @@ export function heightBudget(spec: SizeSpec): number {
  * declines to draw rather than producing a frame around nothing, which is the failure the Night
  * Hawk playbook bug shipped.
  */
+/**
+ * WHICH BLOCK OWNS EACH FACT, most specific first.
+ *
+ * MEASURED ON A LIVE NVDA CARD. The dealer posture was drawn three times — as the regime block's
+ * whole subject, as a row of the consensus strip, and as a metric tile — and the net premium three
+ * times alongside it. Every one of those renderings was individually correct and sourced, which is
+ * what made it hard to see in review: nothing was wrong, there was just three times as much of it.
+ *
+ * ORDER IS SPECIFICITY, NOT IMPORTANCE. The regime block says "SHORT GAMMA" with the positioning
+ * read underneath it; the consensus strip says "THERMAL: short gamma" as one of five; the metric
+ * tile says "Dealer gamma / SHORT". The first tells a member the most, so it wins when it is on
+ * the card — and when it is NOT, the next one down picks the fact up rather than the card losing
+ * it. That fallback is why this resolves against the CHOSEN blocks rather than being applied to
+ * the bundle up front.
+ */
+const FACT_OWNERS: Record<VisualFact, BlockId[]> = {
+  gamma_posture: ["regime", "consensus", "metrics"],
+  net_premium: ["flow_tape", "consensus", "metrics"],
+  session_change: ["spot", "metrics"],
+};
+
+/**
+ * How aggressively to strip repeats. Ordered MOST aggressive first — `composeForRender` walks this
+ * list and takes the first tier that does not cost canvas.
+ *
+ *  - `all`       one rendering per fact, full stop.
+ *  - `consensus` strip the consensus strip's copy but leave the metric rail's.
+ *  - `none`      draw everything, as before this shipped.
+ *
+ * WHY THE MIDDLE TIER EXISTS, and it is the part I got wrong first. Full de-duplication is the
+ * obviously-correct rule and it MEASURED WORSE: on the NVDA fixture the re-packed card fell from
+ * 478px of a 520px budget to 374px, because the height freed by dropping two rows had no unshown
+ * evidence to grow into. Trading a repeated number for a fifth of the canvas left blank is not an
+ * improvement — a member reads dead space as a broken card just as readily as a doubled figure.
+ *
+ * The metric rail is the right place to relax, and by its own design note: it is "the most
+ * substitutable block on the card — every number in it is also available in a more specific
+ * block", already positioned as what fills leftover space. Restating a fact there when there is
+ * genuinely nothing else to show is that block doing its job. Restating it while real rows go
+ * untruncated is not, which is exactly the distinction the tier walk measures.
+ */
+const DEDUPE_TIERS = ["all", "consensus", "none"] as const;
+export type DedupeTier = (typeof DEDUPE_TIERS)[number];
+
+/** Blocks a tier is willing to strip a duplicate FROM. The owning block is never stripped. */
+const TIER_TARGETS: Record<DedupeTier, BlockId[]> = {
+  all: ["consensus", "metrics"],
+  consensus: ["consensus"],
+  none: [],
+};
+
+/**
+ * Strip duplicate renderings of a fact, keeping the one on the most specific CHOSEN block.
+ *
+ * Pure — returns a shallow copy and never mutates the caller's bundle, which matters because the
+ * renderer composes several times and each pass must see the untouched evidence.
+ *
+ * A fact whose owners are ALL absent from `chosen` is left completely alone. Removing it would be
+ * the one outcome worse than repeating it: the card would silently lose a number the answer's
+ * prose refers to.
+ */
+export function dropDuplicateFacts(
+  bundle: VisualBundle,
+  chosen: Set<BlockId>,
+  tier: DedupeTier = "all"
+): VisualBundle {
+  const targets = new Set(TIER_TARGETS[tier]);
+  /** For each fact, the single block allowed to render it — or null when no owner was chosen. */
+  const keeper = new Map<VisualFact, BlockId | null>();
+  for (const [fact, owners] of Object.entries(FACT_OWNERS) as [VisualFact, BlockId[]][]) {
+    keeper.set(fact, owners.find((id) => chosen.has(id)) ?? null);
+  }
+  const kept = (fact: VisualFact | undefined, self: BlockId): boolean => {
+    if (!fact) return true; // untagged rows assert nothing shared — always kept
+    if (!targets.has(self)) return true; // this tier does not touch this block
+    const owner = keeper.get(fact);
+    return owner == null || owner === self;
+  };
+
+  return {
+    ...bundle,
+    metrics: bundle.metrics?.filter((m) => kept(m.fact, "metrics")),
+    systemReads: bundle.systemReads?.filter((r) => kept(r.fact, "consensus")),
+  };
+}
+
+/**
+ * Compose, then take the LEAST-REPETITIVE layout that still fills the canvas.
+ *
+ * One composition pass establishes which blocks are on the card, because de-duplication is defined
+ * against the chosen set (see FACT_OWNERS). Each tier is then applied to the evidence and
+ * re-composed, and the walk stops at the first tier whose card uses as much canvas as the best
+ * candidate does. Since the tiers run most-aggressive first, that is by construction the fewest
+ * repeats that costs nothing.
+ *
+ * The re-pack is what makes the de-duplication pay: freed height goes back through the packer's
+ * growth phase and is spent on rows that already exist in the bundle and were being truncated. It
+ * also lets a block that lost its last row disappear honestly — `consensus` requires two reads, so
+ * a strip left holding one is correctly unavailable rather than drawing a one-product "consensus".
+ *
+ * NEVER ITERATES ON ITS OWN OUTPUT. Each tier is composed from the ORIGINAL chosen set, so the
+ * walk terminates in exactly `DEDUPE_TIERS.length` passes and cannot oscillate.
+ */
+export function composeForRender(input: ComposeInput): { composition: Composition; bundle: VisualBundle } {
+  const first = composeCard(input);
+  const chosen = new Set<BlockId>(first.blocks.map((b) => b.id));
+
+  const candidates = DEDUPE_TIERS.map((tier) => {
+    if (tier === "none") return { tier, bundle: input.bundle, composition: first };
+    const bundle = dropDuplicateFacts(input.bundle, chosen, tier);
+    const composition = composeCard({ ...input, bundle });
+    return { tier, bundle, composition };
+  })
+    // A tier that empties the card is a bug in the fact table, not a layout worth shipping.
+    .filter((c) => c.composition.blocks.length > 0);
+
+  const best = Math.max(...candidates.map((c) => c.composition.used));
+  // TOLERANCE, not equality. Block heights are estimates (see the header), so demanding an exact
+  // match would reject a tier that lost a few pixels of padding while removing a whole repeated
+  // row. 2% of the budget is below what is visible and well under one row of any block.
+  const floor = best - input.spec.height * 0.02;
+  const pick = candidates.find((c) => c.composition.used >= floor) ?? candidates[candidates.length - 1]!;
+  return { composition: pick.composition, bundle: pick.bundle };
+}
+
 export function composeCard(input: ComposeInput): Composition {
   const { question, bundle, spec } = input;
   const excluded = new Set(input.exclude ?? []);

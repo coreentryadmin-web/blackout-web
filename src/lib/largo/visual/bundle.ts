@@ -447,15 +447,31 @@ export function buildVisualBundle(input: BuildBundleInput): VisualBundle {
         tone: flow.net > 0 ? "positive" : flow.net < 0 ? "negative" : "neutral",
         sub: `${flow.count} prints`,
         source: "HELIX",
+        fact: "net_premium",
       });
     }
   }
   if (pos?.posture) {
-    metrics.push({ label: "Dealer gamma", value: pos.posture.toUpperCase(), tone: "caution", sub: pos.regimeRead, source: "THERMAL" });
+    metrics.push({
+      label: "Dealer gamma",
+      value: pos.posture.toUpperCase(),
+      tone: "caution",
+      sub: pos.regimeRead,
+      source: "THERMAL",
+      fact: "gamma_posture",
+    });
   }
   if (quote?.changePct != null) {
     const d = fmtPct(quote.changePct);
-    if (d) metrics.push({ label: "Session", value: d, tone: quote.changePct >= 0 ? "positive" : "negative", source: "VECTOR" });
+    if (d) {
+      metrics.push({
+        label: "Session",
+        value: d,
+        tone: quote.changePct >= 0 ? "positive" : "negative",
+        source: "VECTOR",
+        fact: "session_change",
+      });
+    }
   }
 
   // ── System reads
@@ -468,10 +484,11 @@ export function buildVisualBundle(input: BuildBundleInput): VisualBundle {
       // applies, so the card and the consensus strip agree.
       stance: share < 0.15 ? "neutral" : flow.net > 0 ? "bullish" : "bearish",
       detail: fmtUsd(flow.net),
+      fact: "net_premium",
     });
   }
   if (pos?.posture) {
-    systemReads.push({ system: "THERMAL", stance: "regime", detail: `${pos.posture} gamma` });
+    systemReads.push({ system: "THERMAL", stance: "regime", detail: `${pos.posture} gamma`, fact: "gamma_posture" });
   }
 
   // ── Playbook (the forward book) — resolved BEFORE the trade, because an edition's `plays` array

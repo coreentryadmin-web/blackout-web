@@ -100,3 +100,22 @@ test("only ASSISTANT rows are addressable as a turn", () => {
   // and nothing could be rendered from it.
   assert.match(src, /role === "assistant" \? \(Number\(inserted\.rows\[0\]\?\.id\) \|\| null\) : null/);
 });
+
+test("a replayed card gets its VERDICT from what Largo actually wrote", () => {
+  // MEASURED ON A LIVE NVDA CARD: no headline at all — it opened on the spot price, so the single
+  // most useful line on a graphic built to be posted was the one thing missing. Same root cause as
+  // the auto-render break: the headline reaching the route is the ENVELOPE's, and
+  // `envelopeFromContract` returns null whenever the reply drifts off the section contract. No
+  // envelope, no headline, no verdict block (`available: (b) => !!b.headline`).
+  //
+  // The replayed turn has carried `answer` since turn replay shipped and nothing had used it.
+  // Deriving from it is MORE coherent than the envelope, not less: the lead line becomes a
+  // sentence Largo actually said about this turn rather than a re-parse that may have failed.
+  const src = readFileSync(ROUTE, "utf8");
+  assert.match(src, /headlineFromMarkdown\(replayed\.answer/, "must derive from the stored answer");
+  // Client-supplied headline still wins, so an envelope-rich turn is completely unchanged.
+  assert.match(src, /headline: body\.headline \?\? \(replayedHeadline \|\| null\)/);
+  // And ONLY for replays: a bundle posted without a turn id has no answer text, and inventing a
+  // verdict from tool results is exactly what this library refuses to do.
+  assert.match(src, /replayed\?\.answer \? headlineFromMarkdown/);
+});

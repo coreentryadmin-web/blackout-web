@@ -36,7 +36,7 @@ import { MarketMoveCard } from "./templates/market-move";
 import { TradeRecapCard } from "./templates/trade-recap";
 import { PlaybookCard } from "./templates/playbook";
 import { ComposedCard } from "./templates/composed";
-import { composeCard, type BlockId } from "./compose";
+import { composeForRender, type BlockId } from "./compose";
 import { LevelAnalysisCard, focusStrikeFromQuestion } from "./templates/level-analysis";
 import { ScreenerCard } from "./templates/screener";
 import { RejectionCard } from "./templates/rejection";
@@ -201,8 +201,14 @@ export function buildVisualElement(params: RenderVisualParams): {
        * identical evidence — and the router does not know the size. A card composed for one
        * surface and drawn on another would report a truncation list that did not match what was
        * actually dropped.
+       *
+       * DE-DUPLICATED, THEN RE-PACKED. `composeForRender` composes once to learn which blocks are
+       * on the card, drops every repeat rendering of a fact the most specific chosen block already
+       * asserts, and re-packs from what is left so the freed height goes to real unshown rows
+       * rather than to whitespace. The bundle it hands back is the one the template must draw —
+       * rendering the original would put the duplicates straight back.
        */
-      const composition = composeCard({
+      const { composition, bundle: composedBundle } = composeForRender({
         question: question ?? "",
         bundle,
         spec,
@@ -211,7 +217,7 @@ export function buildVisualElement(params: RenderVisualParams): {
       if (!composition.blocks.length) {
         throw new Error("COMPOSED requires at least one block the evidence can fill");
       }
-      element = ComposedCard({ bundle, spec, recorder, asOfLabel, composition });
+      element = ComposedCard({ bundle: composedBundle, spec, recorder, asOfLabel, composition });
       break;
     }
     default:
