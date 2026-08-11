@@ -327,7 +327,14 @@ export function LargoDeskRead({
 
       {/* The WHY behind the confidence level, not just the level. A confidence number with no
           reason is a number nobody can argue with, which is the opposite of useful. */}
-      {envelope.confidence?.why && <div className="largo-read-conf-why">{envelope.confidence.why}</div>}
+      {envelope.confidence?.why && (
+        // THROUGH THE INLINE RENDERER, like every other prose field on this component.
+        // This one line printed its markdown raw: the live CRWV read showed a literal
+        // "**Low**. The IV rank is median…" under the headline. Largo writes the confidence
+        // rationale in the same voice as the sections above it — bold for the level, numbers it
+        // expects to be stamped — and this was the only place that text reached the DOM unparsed.
+        <div className="largo-read-conf-why">{renderInlineMarkdown(envelope.confidence.why)}</div>
+      )}
 
       {order.map((b) => blocks[b])}
 
