@@ -548,12 +548,12 @@ export const LARGO_CAPABILITIES: readonly LargoCapability[] = [
     answers: "What is in tonight's Legacy evening playbook edition?",
     // "session" is a FRESHNESS class, not a temporal one. The edition is rebuilt once per session
     // and then frozen, so it reports the state it was built from: as_of, refreshed per session.
-    temporal: "as_of",
+    temporal: "point_in_time",
     freshness: "session",
     entities: ["ticker", "session"],
     entitlement: "premium",
     keywords: ["edition", "playbook", "tonight", "evening", "legacy"],
-    caveat: "Built once per session — it reflects the state at build time, not the live tape.",
+    caveat: "Accepts a date and returns THAT session's published edition — one of the few genuinely point-in-time sources. Without a date it serves the latest. Built once per session — it reflects the state at build time, not the live tape.",
   },
   {
     id: "nighthawk.horizons",
@@ -799,13 +799,13 @@ export const LARGO_CAPABILITIES: readonly LargoCapability[] = [
     product: "PLATFORM",
     tool: "call_internal_api",
     answers: "Read any internal GET route when no dedicated capability covers the question.",
-    temporal: "as_of",
+    temporal: "live_only",
     freshness: "fast",
     entities: [],
     entitlement: "premium",
     keywords: ["fallback", "raw", "endpoint"],
     caveat:
-      "Escape hatch, not a first choice. An unknown query param can silently return a DIFFERENT " +
+      "Live only by default. It is an escape hatch across many routes, so the ENDPOINT decides what comes back and nothing here guarantees a temporal class — treat every result as present-time unless the payload stamps otherwise. Escape hatch, not a first choice. An unknown query param can silently return a DIFFERENT " +
       "slice than intended — see FINDINGS 2026-08-10, where ?view=outcomes served the 0DTE lane " +
       "with a 200. Prefer a registered capability whenever one exists.",
   },

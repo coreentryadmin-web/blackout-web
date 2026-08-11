@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { LARGO_TOOL_DEFS } from "@/lib/largo/tool-defs";
 import {
   LARGO_CAPABILITIES,
@@ -294,5 +295,45 @@ test("a forward-looking calendar is never classified as past-capable", () => {
       !PAST_CAPABLE.has(cap!.temporal),
       `${tool} looks forward and must not claim past-capability (is "${cap!.temporal}")`,
     );
+  }
+});
+
+test("a tool that ACCEPTS A DATE is classified point_in_time, not as_of", () => {
+  /**
+   * THE MIRROR OF THE SNAPSHOT-DELTA BUG, and the reason the re-audit checked both directions.
+   *
+   * `get_nighthawk_edition` reads `input.date` and calls `getNightHawkEditionForDate(date)` — it
+   * can return the edition published on a past session. It was catalogued `as_of`, which tells the
+   * planner the opposite. Over-claiming makes Largo answer from the wrong moment; under-claiming
+   * steers it AWAY from the only tool that can answer, and can raise a false violation on a turn
+   * that was actually fine. Both are wrong; only one is dangerous.
+   *
+   * Asserted against the implementation rather than the catalog, so the two cannot drift: if a
+   * tool starts consuming a date, this fails until it is reclassified.
+   */
+  const src = readFileSync("src/lib/largo/run-tool.ts", "utf8");
+  const PAST_CAPABLE = new Set(["windowed", "point_in_time", "event_log"]);
+
+  for (const cap of LARGO_CAPABILITIES) {
+    const i = src.indexOf(`case "${cap.tool}"`);
+    if (i < 0) continue; // tools served outside the switch
+    const body = src.slice(i, i + 700);
+    const next = body.indexOf('\n    case "');
+    const block = next > 0 ? body.slice(0, next) : body;
+    if (!/input\.(date|edition_for)\b/.test(block)) continue;
+    assert.ok(
+      PAST_CAPABLE.has(cap.temporal),
+      `${cap.tool} consumes a date parameter but is catalogued "${cap.temporal}" — it can reach a past moment`,
+    );
+  }
+});
+
+test("the generic escape hatches never claim a temporal class they cannot keep", () => {
+  // get_polygon / get_uw / call_internal_api each read an arbitrary endpoint, so the ENDPOINT
+  // decides what comes back. Any class stronger than live_only is a promise the tool cannot keep.
+  for (const tool of ["get_polygon", "get_uw", "call_internal_api"]) {
+    const cap = LARGO_CAPABILITIES.find((c) => c.tool === tool);
+    assert.ok(cap, `${tool} must stay catalogued`);
+    assert.equal(cap!.temporal, "live_only", `${tool} is an escape hatch and must be live_only`);
   }
 });
