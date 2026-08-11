@@ -163,7 +163,10 @@ describe("play-card-lifecycle", () => {
   it("playStatusDisplay maps scannable tones", () => {
     assert.deepEqual(playStatusDisplay("OPEN"), { label: "ACTIVE", tone: "active" });
     assert.deepEqual(playStatusDisplay("WATCH"), { label: "WATCH", tone: "watch" });
-    assert.deepEqual(playStatusDisplay("SKIP"), { label: "FAILED", tone: "failed" });
+    // SKIP is the desk DECLINING a setup (premium ran, market too wide, past cutoff) — never a
+    // loss, because nothing was bought. "FAILED" in bear-red put a red pill on 61 of 67 live rows
+    // and contradicted the same card's "thesis intact" monitor.
+    assert.deepEqual(playStatusDisplay("SKIP"), { label: "PASSED", tone: "passed" });
     assert.deepEqual(playStatusDisplay("CLOSED"), { label: "CLOSED", tone: "closed" });
   });
 
@@ -171,7 +174,7 @@ describe("play-card-lifecycle", () => {
     assert.equal(playStatusLabel("OPEN"), "ACTIVE");
     assert.equal(playStatusLabel("WATCH"), "WATCH");
     assert.equal(playStatusLabel("CLOSED"), "CLOSED");
-    assert.equal(playStatusLabel("SKIP"), "FAILED");
+    assert.equal(playStatusLabel("SKIP"), "PASSED");
   });
 
   it("closedRealizedPct prefers exit stamp", () => {

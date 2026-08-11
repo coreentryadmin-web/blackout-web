@@ -131,6 +131,15 @@ describe("envelopeFromMarkdown (transition shim)", () => {
     assert.equal(env.bias, "bearish");
     assert.equal(env.sections.length, 1);
     assert.ok(env.markdown.includes("SPX Live Desk read"));
-    assert.equal(env.confidence.level, "moderate");
+    // NO CONFIDENCE WAS SUPPLIED, SO NONE IS ASSERTED.
+    //
+    // This line used to read `assert.equal(env.confidence.level, "moderate")` — it pinned the
+    // fabrication. The shim defaulted an unsupplied confidence to "moderate", which on the live
+    // desk printed "MODERATE CONFIDENCE" above "No confidence rationale was given." Its own
+    // caller, `confidenceFromMarkdown`, deliberately returns undefined when the answer states no
+    // confidence, "so the UI OMITS the confidence badge instead of asserting a canned 'moderate'
+    // — false certainty is a §4 violation". The default threw that away at the last step.
+    assert.equal(env.confidence, undefined);
+    assert.ok(!/\*\*Confidence:\*\*/.test(env.markdown), "and no Confidence line is rendered");
   });
 });

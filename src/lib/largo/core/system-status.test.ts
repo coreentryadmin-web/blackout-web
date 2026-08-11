@@ -5,6 +5,8 @@ import {
   marketPhaseFromEt,
   buildIntelligenceStatus,
   formatDataAge,
+  dataAgeHealth,
+  onlineHealth,
 } from "./system-status";
 
 test("degraded is its own state — answered but empty is neither live nor down", () => {
@@ -89,4 +91,25 @@ test("data age is compact and never fabricated", () => {
   assert.equal(formatDataAge(7200), "2h");
   // Unknown stays unknown — a dash, not a reassuring "0s".
   assert.equal(formatDataAge(null), "—");
+});
+
+test("data age is classified, because a stale desk that looks live is the failure to prevent", () => {
+  assert.equal(dataAgeHealth(2), "live");
+  assert.equal(dataAgeHealth(60), "live");
+  assert.equal(dataAgeHealth(61), "degraded");
+  assert.equal(dataAgeHealth(300), "degraded");
+  assert.equal(dataAgeHealth(301), "down");
+  // An unknown age must NEVER render as fresh.
+  assert.equal(dataAgeHealth(null), "unknown");
+  assert.equal(dataAgeHealth(undefined), "unknown");
+  assert.equal(dataAgeHealth(Number.NaN), "unknown");
+  assert.equal(dataAgeHealth(-5), "unknown");
+});
+
+test("online tally: all-up is a different state from most-up", () => {
+  assert.equal(onlineHealth(6, 6), "live");
+  assert.equal(onlineHealth(5, 6), "degraded"); // one hole
+  assert.equal(onlineHealth(4, 6), "down"); // real holes
+  assert.equal(onlineHealth(0, 6), "down");
+  assert.equal(onlineHealth(1, 0), "unknown");
 });

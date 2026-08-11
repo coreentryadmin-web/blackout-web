@@ -1,4 +1,8 @@
 import { stripLargoBlocks } from "@/features/largo/blocks/extract";
+import { extractLevels } from "@/lib/largo/core/level-extract";
+import { extractGexShifts } from "@/lib/largo/core/gex-shift-extract";
+import { analyzeLargoQuestion } from "@/lib/largo/question-intent";
+import { extractSystemReads } from "@/lib/largo/core/system-reads-extract";
 import {
   makeEnvelope,
   type BieAnswerEnvelope,
@@ -143,6 +147,24 @@ const KIND_RE = /^[-*•]?\s*\[(fact|calc|inference|scenario)\]\s*/i;
  *  parens; the timestamp and freshness are optional because not every read exposes an `asOf`. */
 const PROVENANCE_RE = /\(([^()]+?)\)\s*$/;
 
+/**
+ * ONE SECTION'S PROSE, by name.
+ *
+ * Exported for the card renderer, which needs the VERDICT SENTENCE and was previously taking the
+ * first non-empty line of the answer instead. Every contract-conforming answer opens with the
+ * literal heading `**Verdict**`, so that line IS the word "Verdict" — and it was rendered as the
+ * card's largest text, on every replayed card, in production. See `answerSectionText`.
+ *
+ * Returns "" for a missing section or an unparseable answer; never throws.
+ */
+export function answerSectionText(markdown: string, name: AnswerSectionName): string {
+  try {
+    return splitSections(stripLargoBlocks(markdown)).get(name.toLowerCase()) ?? "";
+  } catch {
+    return "";
+  }
+}
+
 function splitSections(markdown: string): Map<string, string> {
   const out = new Map<string, string>();
   let current: string | null = null;
@@ -253,7 +275,11 @@ export function validateAnswerContract(markdown: string): AnswerContractReport {
  * Returns `null` when the answer carries no usable structure, so the caller keeps its existing
  * raw-markdown rendering. Never throws — a parser fault must not cost a member their answer.
  */
-export function parseAnswerEnvelope(markdown: string): BieAnswerEnvelope | null {
+export function parseAnswerEnvelope(
+  markdown: string,
+  /** The turn's raw tool results, for structured blocks the prose cannot carry. */
+  capturedResults?: readonly unknown[]
+): BieAnswerEnvelope | null {
   let sections: Map<string, string>;
   try {
     // Parse the PROSE only. A ```blackout payload contains lines like `"type": "levels",` which
@@ -271,6 +297,10 @@ export function parseAnswerEnvelope(markdown: string): BieAnswerEnvelope | null 
   // confident headline card with no evidence behind it — the most misleading possible card.
   if (!verdict || !facts) return null;
 
+  // The instrument this answer is about, resolved through the SAME entity layer the rest of Largo
+  // uses so the Night Hawk row cannot be filtered on a different spelling than the answer discusses.
+  const tickerHint = analyzeLargoQuestion(verdict, []).tickerHint ?? null;
+
   const evidence: BieEvidence[] = parseEvidence(facts);
   for (const line of bulletLines(get("Interpretation"))) {
     const { text, provenance } = parseProvenance(line.replace(KIND_RE, ""));
@@ -279,17 +309,18 @@ export function parseAnswerEnvelope(markdown: string): BieAnswerEnvelope | null 
   if (evidence.length === 0) return null;
 
   const confidenceBody = get("Confidence");
+  const confidenceLevel = firstMatch(confidenceBody, CONFIDENCE_WORDS);
   const risk = bulletLines(get("Risk"));
 
   return makeEnvelope({
     headline: verdict.split(/\r?\n/)[0]!.trim(),
     bias: firstMatch(verdict, BIAS_WORDS) ?? "neutral",
-    confidence: {
-      level: firstMatch(confidenceBody, CONFIDENCE_WORDS) ?? "moderate",
-      // The `why` is the whole point of the confidence field — a bare level is an arbitrary
-      // number wearing a word. When Largo gives no reason, say so rather than inventing one.
-      why: confidenceBody.trim() || "No confidence rationale was given.",
-    },
+    // ABSENT, not defaulted. The `why` is the whole point of the confidence field — a bare level
+    // is an arbitrary number wearing a word — and this code used to say exactly that while doing
+    // the opposite: `?? "moderate"` invented a level whenever Largo wrote no Confidence section,
+    // and the UI printed "MODERATE CONFIDENCE" above "No confidence rationale was given."
+    // An omitted section now yields an omitted badge.
+    confidence: confidenceLevel ? { level: confidenceLevel, why: confidenceBody.trim() } : undefined,
     // Every canonical section Largo actually wrote becomes a card, in contract order. Conflicts
     // and Data ride here rather than being flattened into a caveat list so the UI can give them
     // their own headings — "these signals disagree" and "this number is 12 minutes old" are
@@ -299,6 +330,15 @@ export function parseAnswerEnvelope(markdown: string): BieAnswerEnvelope | null 
       body: get(name),
     })),
     evidence,
+    // The desk-read card leads with a levels grid, and it was rendering EMPTY on every answer:
+    // the numbers were in the evidence prose and nothing lifted them out. extractLevels reads the
+    // already-structured evidence rows against a closed label set, so a miss costs one grid row
+    // and can never produce a wrong one.
+    levels: extractLevels(evidence),
+    // Structured, from the tool's own output — see gex-shift-extract.ts.
+    gexShifts: extractGexShifts(capturedResults)?.shifts,
+    // Cross-system consensus, from the same tool results — see system-reads-extract.ts.
+    systemReads: extractSystemReads(capturedResults, tickerHint) ?? undefined,
     invalidation: risk[0] ?? null,
   });
 }

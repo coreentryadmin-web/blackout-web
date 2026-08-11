@@ -1,6 +1,13 @@
 import type { ClaimVerification } from "@/lib/bie/verifier";
 import type { BieAnswerEnvelope } from "@/lib/bie/answer-envelope";
 
+/** The server's auto-render directive — mirrors `VisualDirective` in largo-terminal.ts. */
+type LargoVisualDirective = {
+  auto: true;
+  size: "x_landscape" | "x_portrait" | "square" | "story";
+  kind: "explicit" | "incidental";
+};
+
 const INTEL_BASE = "/api/engine";
 const MARKET_BASE = "/api/market";
 
@@ -530,8 +537,14 @@ export async function queryLargoStream(
   tools_used?: string[];
   followups?: string[];
   verification?: ClaimVerification;
+  /** The instrument Largo resolved — drives the contextual rail. */
+  ticker?: string | null;
   /** Populated structured answer (synthesis #59). Absent on trivial/string answers. */
   envelope?: BieAnswerEnvelope | null;
+  /** The persisted turn — what the card is rebuilt from. See largo-terminal's return type. */
+  turn_id?: number | null;
+  /** The server's auto-render directive — present only when the member asked for an image. */
+  visual?: LargoVisualDirective | null;
 }> {
   const abort = new AbortController();
   const timeout = setTimeout(() => abort.abort(), LARGO_STREAM_TIMEOUT_MS);
@@ -593,17 +606,24 @@ export async function queryLargoStream(
 
   const decoder = new TextDecoder();
   let buffer = "";
-  let result:
-    | {
-        answer: string;
-        session_id: string;
-        source?: string;
-        tools_used?: string[];
-        followups?: string[];
-        verification?: ClaimVerification;
-        envelope?: BieAnswerEnvelope | null;
-      }
-    | null = null;
+  // MUST stay a superset of every field the outer signature promises. It did not: `ticker` was
+  // declared on the returned promise and never copied out of the `done` event, so on the STREAMING
+  // path (the only path the terminal uses) `res.ticker` was always undefined and the contextual
+  // rail never followed the instrument Largo resolved. TypeScript could not catch it — a missing
+  // optional property is assignable — which is exactly why the shape is spelled out once here.
+  type LargoDone = {
+    answer: string;
+    session_id: string;
+    source?: string;
+    tools_used?: string[];
+    followups?: string[];
+    verification?: ClaimVerification;
+    ticker?: string | null;
+    turn_id?: number | null;
+    visual?: LargoVisualDirective | null;
+    envelope?: BieAnswerEnvelope | null;
+  };
+  let result: LargoDone | null = null;
 
   try {
     while (true) {
@@ -620,18 +640,11 @@ export async function queryLargoStream(
         const payload = trimmed.slice(5).trim();
         if (!payload) continue;
 
-        const event = JSON.parse(payload) as {
+        const event = JSON.parse(payload) as Partial<LargoDone> & {
           type: string;
           text?: string;
           name?: string;
           message?: string;
-          answer?: string;
-          session_id?: string;
-          source?: string;
-          tools_used?: string[];
-          followups?: string[];
-          verification?: ClaimVerification;
-          envelope?: BieAnswerEnvelope | null;
         };
 
         if (event.type === "ping") continue;
@@ -650,6 +663,9 @@ export async function queryLargoStream(
             tools_used: event.tools_used,
             followups: event.followups,
             verification: event.verification,
+            ticker: event.ticker ?? null,
+            turn_id: event.turn_id ?? null,
+            visual: event.visual ?? null,
             envelope: event.envelope ?? null,
           };
         }

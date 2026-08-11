@@ -1,5 +1,6 @@
 import { before, test, mock } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { makeEnvelope, envelopeFromMarkdown } from "@/lib/bie/answer-envelope";
 
 // A genuinely RICH synthesis envelope (multi-section + evidence + scenarios) — the shape the verdict
@@ -530,4 +531,39 @@ test("the done answer is authoritative — a consumer must REPLACE the stream, n
   } finally {
     toolLoopEvents = null;
   }
+});
+
+/**
+ * THE LIVE FEED MUST REACH THE CARD.
+ *
+ * `captureLargoLiveFeed` runs a dozen real tools before the model plans and the results were
+ * rendered into the system prompt as TEXT and then dropped. `live_feed_capture` is pushed onto
+ * `toolsUsed`, which makes it look like a captured tool. Nothing captured it.
+ *
+ * Measured live 2026-08-11: "what is the SPX gamma picture right now" and "Create an image for
+ * tomorrows NH plays" each ran exactly `live_feed_capture` + `platform_vitals_prefetch` and nothing
+ * else. Largo answered both from the feed, correctly and in detail; the card refused with an EMPTY
+ * signal list. Asserted on the source because the wiring — not the behaviour of any one function —
+ * is what was missing, the same way `visual-mount.test.ts` pins its chain.
+ */
+
+const TERMINAL_SRC = readFileSync("src/lib/largo-terminal.ts", "utf8");
+
+test("the live feed's payloads are returned from the turn prelude", () => {
+  assert.match(TERMINAL_SRC, /liveFeedResults: Object\.values\(liveFeed\)/);
+  assert.match(TERMINAL_SRC, /liveFeedResults: unknown\[\]/, "and typed on the prelude's contract");
+});
+
+test("BOTH transports fold them into the turn's captured results", () => {
+  const folded = TERMINAL_SRC.match(/capturedResults\.push\(\.\.\.liveFeedResults\)/g) ?? [];
+  assert.equal(folded.length, 2, `folded on ${folded.length} paths, expected stream and non-stream`);
+});
+
+test("they are APPENDED, so an explicitly-called tool still wins", () => {
+  // `findPositioning`/`findQuote` take the FIRST match. Prepending would let the ambient feed
+  // outrank a tool the model deliberately called for this question — the feed may be scoped to a
+  // different instrument entirely. Appending can only fill gaps.
+  const at = TERMINAL_SRC.indexOf("capturedResults.push(...liveFeedResults)");
+  const loopAt = TERMINAL_SRC.indexOf("runTool: makeGuardedToolRunner");
+  assert.ok(at > loopAt, "the fold must come after the tool loop, not before it");
 });

@@ -228,6 +228,9 @@ const FB_LABELS: Record<string, string> = {
   flow: "Flow", tech: "Technicals", positioning: "Positioning", news: "News", smart_money: "Smart Money",
   fundamental: "Fundamental", catalyst: "Catalyst", short_interest: "Short Interest",
   wall_proximity: "GEX Wall", vex: "VEX", skew: "Skew",
+  // BREAKOUT lane components (breakoutScoreBreakdown). Named for what a member would recognise,
+  // not for the variable: "breakout_core" is the gain x close-strength product.
+  breakout_core: "Move + Close Strength", dollar_volume: "$-Volume", screen_base: "Cleared Screen",
 };
 
 /**

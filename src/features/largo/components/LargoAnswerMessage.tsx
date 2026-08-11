@@ -30,6 +30,8 @@ export function LargoAnswerMessage({
   streaming = false,
   className,
   onFollowup,
+  question,
+  turnId,
 }: {
   content: string;
   source?: string | null;
@@ -39,6 +41,11 @@ export function LargoAnswerMessage({
   streaming?: boolean;
   className?: string;
   onFollowup?: (q: string) => void;
+  /** The question this answer replies to. Used ONLY to pick which block leads in the desk read —
+   *  see answer-layout.ts. Optional everywhere: without it the card renders the default order. */
+  question?: string | null;
+  /** The persisted turn behind this answer, so a consumer can name the exact turn it refers to. */
+  turnId?: number | null;
 }) {
   const fallback = <LargoMessageBody content={content} className={className} />;
 
@@ -57,7 +64,7 @@ export function LargoAnswerMessage({
       if (richEnough) {
         return (
           <>
-            <LargoDeskRead envelope={envelope} />
+            <LargoDeskRead envelope={envelope} question={question} />
             {/* The full prose stays BELOW the card, not replaced by it. The desk read is the
                 glanceable summary; the reasoning is what a member checks when the summary says
                 something they did not expect, and removing it would make the answer less
@@ -94,11 +101,16 @@ export function LargoAnswerMessage({
     } catch {
       return null;
     }
-  }, [content, source, createdAt, envelope, streaming, className, onFollowup]);
+  }, [content, source, createdAt, envelope, streaming, className, onFollowup, question]);
+
 
   if (!rich) return fallback;
 
-  return <BieAnswerBoundary fallback={fallback}>{rich}</BieAnswerBoundary>;
+  return (
+    <>
+      <BieAnswerBoundary fallback={fallback}>{rich}</BieAnswerBoundary>
+    </>
+  );
 }
 
 /** Error boundary: any render failure inside <BieAnswer> degrades to raw markdown. */

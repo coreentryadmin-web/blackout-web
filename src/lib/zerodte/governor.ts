@@ -390,7 +390,18 @@ export function concentrationReasonForCandidate(
 /** The ledger fields the governor reads — subset so tests need no full row. */
 export type GovernorLedgerRow = Pick<
   ZeroDteSetupLogRow,
-  "ticker" | "direction" | "status" | "entry_premium" | "trough_premium" | "plan_outcome" | "plan_pnl_pct"
+  | "ticker"
+  | "direction"
+  | "status"
+  | "entry_premium"
+  | "trough_premium"
+  | "plan_outcome"
+  | "plan_pnl_pct"
+  // Needed by ledgerRowRealizedPnlPct's third channel — a CLOSED row the lazy grader has not
+  // reached yet still knows what it closed at. last_mark_at proves that mark was OBSERVED and
+  // not just the seeded entry premium (see db.ts).
+  | "last_mark"
+  | "last_mark_at"
 >;
 
 /** Did this ledger row stop out? Two independent signals, either suffices:
@@ -417,7 +428,36 @@ function ledgerRowStopped(r: GovernorLedgerRow): boolean {
 function ledgerRowRealizedPnlPct(r: GovernorLedgerRow): number | null {
   if (r.plan_pnl_pct != null && Number.isFinite(r.plan_pnl_pct)) return r.plan_pnl_pct;
   if (ledgerRowStopped(r)) return PLAN_RULES.stop_pct; // −50, proven by outcome/trough
-  return null;
+
+  /**
+   * THIRD CHANNEL — a CLOSED row that is neither graded nor a hard stop.
+   *
+   * Without this the halt was blind to most of a bad day. Live, 2026-08-11: four rows closed red
+   * (ACHR −2.3%, RCAT −17.0%, HIMS −29.1%, SPXW −50.0%) and the governor reported
+   * `realized_losers: 1, session_pnl_pct: -50` — only SPXW, because only SPXW tripped the −50%
+   * stop test. The other three closed on time-stops and their plan_pnl_pct had not been stamped
+   * yet, so each contributed exactly 0 to a tally whose entire job is to notice a losing session.
+   * The board was already SHOWING −29.1% for HIMS from these same two fields while the governor
+   * scored it as nothing.
+   *
+   * That is fail-OPEN on the risk guard: the 3-loser halt and the −120% session floor both
+   * undercount, so the engine keeps committing on a day it has already lost. AUDIT SEV-3 exists
+   * precisely to stop that, and lazy grading was letting rows slip past it.
+   *
+   * GATED ON A REAL OBSERVATION. A row whose quote never arrived keeps last_mark == its seeded
+   * entry premium (see db.ts), which would compute a false 0.00% — the manufactured breakeven.
+   * last_mark_at proves a quote actually landed; for rows written before that column existed, a
+   * mark that DIFFERS from entry is itself proof one did. Neither holds => null, i.e. unknown
+   * rather than a fabricated zero.
+   */
+  if (r.status !== "CLOSED") return null;
+  const entry = r.entry_premium;
+  const mark = r.last_mark;
+  if (entry == null || !Number.isFinite(entry) || entry <= 0) return null;
+  if (mark == null || !Number.isFinite(mark)) return null;
+  const observed = r.last_mark_at != null || mark !== entry;
+  if (!observed) return null;
+  return ((mark - entry) / entry) * 100;
 }
 
 /** Deterministic snapshot from today's ledger rows (the shared-Postgres half). */

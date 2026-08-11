@@ -42,6 +42,7 @@ import {
 import { analyzeLargoQuestion, KNOWN_TICKERS } from "@/lib/largo/question-intent";
 import { formatImageBlock, type ImageBlock } from "@/lib/largo/core/image-attachment";
 import { deterministicLargoFollowups } from "@/lib/largo/largo-followups";
+import { withResolutionChips } from "@/lib/largo/core/resolution-chips";
 import { loadLargoPlatformSnapshotBlock } from "@/lib/largo/platform-snapshot-block";
 import { captureLargoLiveFeed, formatLargoLiveFeed } from "@/lib/largo/largo-live-feed";
 import { polygonConfigured, uwConfigured } from "@/lib/providers/config";
@@ -112,6 +113,10 @@ export type LargoStreamEvent =
       // which numeric claims traced to this turn's source data, independent of the in-text
       // caveat's own display threshold.
       verification: ClaimVerification;
+      /** The instrument Largo resolved — see runLargoQuery's return type. */
+      ticker?: string | null;
+      /** The persisted turn — see runLargoQuery's return type for why it is top-level. */
+      turn_id?: number | null;
       // The structured answer envelope. Since the BIE composer was removed this is produced by
       // PARSING Largo's own contract-conforming reply (answer-contract.ts) rather than by a
       // composer — so it is present on any answer that follows the mandatory section template, and
@@ -281,6 +286,8 @@ async function prepareLargoTurn(
   system: AnthropicSystemBlock[];
   filteredTools: typeof LARGO_TOOL_DEFS;
   toolsUsed: string[];
+  /** The live feed's own tool payloads — see the return site for why the card needs them. */
+  liveFeedResults: unknown[];
   tickerHint: string | null;
   viewer: ToolGuardViewer;
   timeframe: Timeframe;
@@ -462,6 +469,30 @@ async function prepareLargoTurn(
     system,
     filteredTools,
     toolsUsed,
+    /**
+     * THE LIVE FEED'S OWN PAYLOADS, so the card can see what the answer saw.
+     *
+     * `captureLargoLiveFeed` runs a dozen REAL tools before the model plans — market context, SPX
+     * structure, GEX regime, the 0DTE board, net flow, the banger and swing boards — and the
+     * results were rendered into the system prompt as TEXT and then dropped. `live_feed_capture` is
+     * pushed onto `toolsUsed` for display, which makes it look like a tool whose output was
+     * captured. Nothing captured it.
+     *
+     * MEASURED LIVE 2026-08-11. "what is the SPX gamma picture right now" and "Create an image for
+     * tomorrows NH plays" each ran exactly `live_feed_capture` + `platform_vitals_prefetch` and
+     * NOTHING else — Largo answered both straight from the feed, correctly and in detail, and the
+     * card refused with `insufficient_evidence` and an EMPTY signal list. The evidence existed, was
+     * fresh, was the same evidence the prose quoted, and had no path to the renderer. That is the
+     * fourth instance of this exact class in this file alone.
+     *
+     * Ordered AFTER the tool loop's own results at the call sites below, deliberately: the
+     * extractors take the FIRST match (`findPositioning`, `findQuote`), so an explicitly-called
+     * tool still wins and this can only ADD evidence where there was none.
+     *
+     * The one-snapshot rule is preserved exactly — these ARE the payloads the answer was written
+     * from, captured in the same turn, not a re-query.
+     */
+    liveFeedResults: Object.values(liveFeed).filter((v) => v != null),
     tickerHint: intent.tickerHint ?? null,
     viewer: { userId, isAdmin },
     timeframe,
@@ -483,7 +514,12 @@ async function prepareLargoTurn(
  * "Verdict" — strictly worse than a good answer in an unusual shape. The log line is what makes
  * drift measurable, so the contract can be tightened from evidence instead of guesswork.
  */
-function envelopeFromContract(text: string, question: string): BieAnswerEnvelope | undefined {
+function envelopeFromContract(
+  text: string,
+  question: string,
+  /** The turn's raw tool results — carries structured blocks (GEX shifts) the prose flattened. */
+  capturedResults?: readonly unknown[]
+): BieAnswerEnvelope | undefined {
   const report = validateAnswerContract(text);
   if (!report.conforms) {
     console.warn(
@@ -495,8 +531,9 @@ function envelopeFromContract(text: string, question: string): BieAnswerEnvelope
       question.slice(0, 80)
     );
   }
-  return parseAnswerEnvelope(text) ?? undefined;
+  return parseAnswerEnvelope(text, capturedResults) ?? undefined;
 }
+
 
 export async function runLargoQuery(
   question: string,
@@ -513,6 +550,22 @@ export async function runLargoQuery(
   tools_used: string[];
   followups: string[];
   verification: ClaimVerification;
+  /** The instrument Largo resolved for this turn — the contextual rail's single source. */
+  ticker: string | null;
+  /**
+   * The persisted turn, TOP-LEVEL and independent of the envelope.
+   *
+   * MEASURED LIVE 2026-08-11. The id used to ride ONLY on `envelope.turnId`, and
+   * `envelopeFromContract` returns null whenever the model's reply misses the section contract —
+   * so a turn that persisted perfectly well could still report `turnId: null` to the client, and
+   * the failure was silent. Any consumer that needs to name the exact turn (replay, follow-ups,
+   * the record) has to be able to get the id even when the envelope did not build.
+   *
+   * Keeping it on the envelope as well would have been the smaller diff and the wrong shape: the
+   * turn id is a property of the TURN, not of whether the answer happened to parse into sections.
+   * `envelope.turnId` stays populated for older clients.
+   */
+  turn_id: number | null;
   envelope?: BieAnswerEnvelope;
 }> {
   const startedAt = Date.now();
@@ -523,8 +576,10 @@ export async function runLargoQuery(
 
   await prefetchLargoTurnCaches();
 
-  const { sid, history, system, filteredTools, toolsUsed, tickerHint, viewer, timeframe, persistedQuestion } =
-    await prepareLargoTurn(
+  const {
+    sid, history, system, filteredTools, toolsUsed, tickerHint, viewer, timeframe, persistedQuestion,
+    liveFeedResults,
+  } = await prepareLargoTurn(
     question,
     sessionId,
     userId,
@@ -556,6 +611,10 @@ export async function runLargoQuery(
         diagnostics,
       }),
     });
+
+    // APPENDED, NOT PREPENDED. The extractors take the first match, so anything the model
+    // explicitly called still wins and the feed can only fill gaps. See `liveFeedResults`.
+    capturedResults.push(...liveFeedResults);
 
     let text =
       answer?.trim() ||
@@ -621,9 +680,19 @@ export async function runLargoQuery(
     const diagLine = formatToolDiagnostics(diagnostics);
     if (diagLine) console.info(diagLine);
     logClaudeTurn({ userId, question, toolsUsed, verification, startedAt });
-    await persistClaudeTurn({ sessionId: sid, userId, question: persistedQuestion, answer: text, toolsUsed, capturedResults });
+    const turnId = await persistClaudeTurn({ sessionId: sid, userId, question: persistedQuestion, answer: text, toolsUsed, capturedResults });
 
-    const followups = await generateLargoFollowups(question, text, tickerHint);
+    // The envelope is built BEFORE the follow-ups so the chips can be derived from the same
+    // headline the badge renders. Deriving them from the raw answer instead would read the whole
+    // body — where a long answer naturally names both directions — and report MIXED on answers
+    // that resolved cleanly. Chips and badge now agree by construction.
+    const envelope = envelopeFromContract(text, question, capturedResults);
+    // The turn id rides on the envelope so a follow-up can name the exact turn it refers to.
+    if (envelope && turnId != null) envelope.turnId = turnId;
+    const followups = withResolutionChips(
+      await generateLargoFollowups(question, text, tickerHint),
+      envelope?.headline ?? ""
+    );
 
     return {
       answer: text,
@@ -632,7 +701,12 @@ export async function runLargoQuery(
       tools_used: Array.from(new Set(toolsUsed)),
       followups,
       verification,
-      envelope: envelopeFromContract(text, question),
+      // The instrument LARGO resolved, handed to the client so the contextual rail shows the same
+      // thing the answer is about. A client re-guessing from the question text could show NVDA
+      // beside an answer about SPX, and nothing would surface the disagreement.
+      ticker: tickerHint,
+      turn_id: turnId ?? null,
+      envelope,
     };
   } catch (error) {
     logClaudeTurn({
@@ -677,8 +751,10 @@ export async function runLargoQueryStream(
 
   await prefetchLargoTurnCaches({ onStatus: emitStatus });
 
-  const { sid, history, system, filteredTools, toolsUsed, tickerHint, viewer, timeframe, persistedQuestion } =
-    await prepareLargoTurn(
+  const {
+    sid, history, system, filteredTools, toolsUsed, tickerHint, viewer, timeframe, persistedQuestion,
+    liveFeedResults,
+  } = await prepareLargoTurn(
     question,
     sessionId,
     userId,
@@ -737,6 +813,10 @@ export async function runLargoQueryStream(
         diagnostics,
       }),
     });
+
+    // APPENDED, NOT PREPENDED. The extractors take the first match, so anything the model
+    // explicitly called still wins and the feed can only fill gaps. See `liveFeedResults`.
+    capturedResults.push(...liveFeedResults);
 
     let text =
       answer?.trim() ||
@@ -805,9 +885,19 @@ export async function runLargoQueryStream(
     const diagLine = formatToolDiagnostics(diagnostics);
     if (diagLine) console.info(diagLine);
     logClaudeTurn({ userId, question, toolsUsed, verification, startedAt });
-    await persistClaudeTurn({ sessionId: sid, userId, question: persistedQuestion, answer: text, toolsUsed, capturedResults });
+    const turnId = await persistClaudeTurn({ sessionId: sid, userId, question: persistedQuestion, answer: text, toolsUsed, capturedResults });
 
-    const followups = await generateLargoFollowups(question, text, tickerHint);
+    // The envelope is built BEFORE the follow-ups so the chips can be derived from the same
+    // headline the badge renders. Deriving them from the raw answer instead would read the whole
+    // body — where a long answer naturally names both directions — and report MIXED on answers
+    // that resolved cleanly. Chips and badge now agree by construction.
+    const envelope = envelopeFromContract(text, question, capturedResults);
+    // The turn id rides on the envelope so a follow-up can name the exact turn it refers to.
+    if (envelope && turnId != null) envelope.turnId = turnId;
+    const followups = withResolutionChips(
+      await generateLargoFollowups(question, text, tickerHint),
+      envelope?.headline ?? ""
+    );
 
     // Replace the progressively-streamed text with the AUTHORITATIVE version.
     //
@@ -825,8 +915,10 @@ export async function runLargoQueryStream(
       source: dbConfigured() ? "blackout-web+postgres" : "blackout-web",
       tools_used: Array.from(new Set(toolsUsed)),
       followups,
+      ticker: tickerHint,
+      turn_id: turnId ?? null,
       verification,
-      envelope: envelopeFromContract(text, question),
+      envelope,
     });
   } catch (error) {
     if (isSseClientDisconnect(error)) return;

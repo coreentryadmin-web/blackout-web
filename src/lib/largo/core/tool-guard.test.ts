@@ -12,7 +12,7 @@ import { LARGO_TOOL_DEFS } from "@/lib/largo/tool-defs";
 
 const premiumTool = LARGO_CAPABILITIES.find((c) => c.entitlement === "premium")!.tool;
 
-// A SYNTHETIC catalog. The real registry declares `premium` on all 49 of its capabilities today,
+// A SYNTHETIC catalog. The real registry declares `premium` on all 120 of its capabilities today,
 // so enforcement against it is armed but inert — testing the gate against the real catalog would
 // pass vacuously and prove nothing. This proves the mechanism; the test below pins the real
 // catalog's current state separately, so the day a capability is marked admin it is a deliberate,
@@ -22,16 +22,29 @@ const CATALOG = [
   { ...LARGO_CAPABILITIES[0]!, id: "test.admin", tool: adminTool, entitlement: "admin" as const },
   { ...LARGO_CAPABILITIES[0]!, id: "test.premium", tool: premiumTool, entitlement: "premium" as const },
 ];
-const uncatalogued = LARGO_TOOL_DEFS.map((t) => t.name).find(
-  (n) => !LARGO_CAPABILITIES.some((c) => c.tool === n)
-)!;
+// A tool absent from CATALOG, used to prove the fail-open policy.
+//
+// This used to be picked by SEARCHING the real registry for an uncatalogued tool — which quietly
+// made a passing test depend on the registry having a coverage gap. When coverage was completed
+// the fixture became undefined and this file broke, having tested nothing about the gap it relied
+// on. The policy under test is "a tool the catalog does not name is not restricted", and that is
+// a property of CATALOG (the two-entry synthetic above), not of production coverage.
+const uncatalogued = "get_quote";
 
 const ADMIN = { userId: "u_admin", isAdmin: true };
 const MEMBER = { userId: "u_member", isAdmin: false };
 
 test("the fixtures this file depends on actually exist", () => {
   assert.ok(premiumTool);
-  assert.ok(uncatalogued, "no uncatalogued tool — the fail-open policy is untested");
+  assert.ok(uncatalogued, "the fail-open fixture must be a real tool name");
+  assert.ok(
+    LARGO_TOOL_DEFS.some((t) => t.name === uncatalogued),
+    "the fail-open fixture must name a REAL tool"
+  );
+  assert.ok(
+    !CATALOG.some((c) => c.tool === uncatalogued),
+    "the fail-open fixture must be absent from the SYNTHETIC catalog under test"
+  );
   assert.ok(
     LARGO_TOOL_DEFS.some((t) => t.name === adminTool),
     "the synthetic admin fixture must name a REAL tool, or the test proves nothing about routing"
@@ -39,7 +52,7 @@ test("the fixtures this file depends on actually exist", () => {
 });
 
 test("the real registry currently restricts nothing — recorded, not assumed", () => {
-  // Honest state, pinned. Every one of the 49 catalogued capabilities declares `premium`, so this
+  // Honest state, pinned. Every one of the 120 catalogued capabilities declares `premium`, so this
   // gate denies nothing in production today. It is here so that marking a capability `admin` is a
   // one-line change that takes effect in CODE. If this assertion ever fails, someone added a real
   // restriction — update it deliberately and check the blast radius.
@@ -63,9 +76,10 @@ test("an admin is not denied their own tools", () => {
 });
 
 test("uncatalogued tools FAIL OPEN — the registry is an allowlist of restricted tools", () => {
-  // The policy that keeps this shippable. 49 of 116 tools are catalogued; failing closed on the
-  // rest would silently disable most of Largo, and the symptom ("Largo got worse at everything")
-  // would be almost impossible to trace here.
+  // The policy that keeps this shippable. Coverage is complete today, but the policy is about the
+  // NEXT tool someone adds: failing closed on an uncatalogued tool would silently disable it, and
+  // the symptom ("Largo got worse at that one thing") would be almost impossible to trace here.
+  // The registry is an allowlist of RESTRICTED tools, not an allowlist of permitted ones.
   assert.equal(declaredEntitlement(uncatalogued, CATALOG), null);
   assert.equal(checkToolEntitlement(uncatalogued, MEMBER, CATALOG), null);
   assert.equal(checkToolEntitlement("a_tool_that_does_not_exist", MEMBER, CATALOG), null);

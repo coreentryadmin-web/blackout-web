@@ -107,14 +107,48 @@ export type BieAnswerEnvelope = {
   sections: BieSection[];
   /** Cross-cutting top-level evidence. */
   evidence: BieEvidence[];
-  confidence: BieConfidence;
+  /**
+   * OPTIONAL, because an absent confidence is information and a fabricated one is a lie.
+   *
+   * This was required, and every producer therefore defaulted it to `moderate`. The live result
+   * was a synthesis header reading "MODERATE CONFIDENCE" directly above "No confidence rationale
+   * was given." — the UI faithfully rendering a level nobody had assessed, next to an admission
+   * that nobody had assessed it. `LargoDeskRead` already guards with `confidence?.level`, so the
+   * badge simply disappears when there is nothing to say.
+   */
+  confidence?: BieConfidence;
   /** The thesis "go flat" line. */
   invalidation?: string | null;
   scenarios?: BieScenario[];
   levels?: BieLevel[];
+  /**
+   * Strike-level GEX changes since the previous snapshot, lifted STRUCTURALLY off the turn's
+   * `get_gex_matrix_changes` tool result rather than parsed back out of the prose Largo flattened
+   * it into. Absent when the tool was not called — "no shifts" and "we did not look" are different
+   * claims and only the first should render a table.
+   */
+  gexShifts?: { strike: number; change: number; direction: "stronger" | "weaker" | "flipped" }[];
+  /**
+   * What each product independently thinks about this instrument, plus the cross-system agreement
+   * tally. Built from the tool results the turn ALREADY fetched (no extra upstream calls), so the
+   * strip and the answer describe the same instant rather than two. Absent when fewer than two
+   * systems were consulted — one row is not a consensus.
+   */
+  systemReads?: {
+    reads: { system: string; kind: "directional" | "regime"; stance: string; strength: number | null; basis: string; reason?: string }[];
+    agreement: { voting: number; bullish: number; bearish: number; neutral: number; verdict: string; direction: string | null };
+  };
   followups?: string[];
   /** Sources requested but unavailable this turn — always surfaced. */
   unavailableSources?: BieUnavailableSource[];
+  /**
+   * The persisted assistant-message id for this turn, when it was stored.
+   *
+   * Carried so the UI can ask the server to rebuild a visual from THIS turn's own tool results
+   * rather than shipping raw tool output to the browser. Absent when the turn was not persisted
+   * (no DB configured, or a path that does not store).
+   */
+  turnId?: number | null;
   /** When the envelope was assembled (ISO). */
   asOf: string;
   /** Backward-compatible markdown rendering (the existing string Largo path). */
@@ -235,7 +269,7 @@ export function renderEnvelopeMarkdown(
   const scen = renderScenarios(env.scenarios);
   if (scen.length) out.push("", ...scen);
 
-  out.push("", `**Confidence:** ${env.confidence.level} — ${env.confidence.why}`);
+  if (env.confidence) out.push("", `**Confidence:** ${env.confidence.level} — ${env.confidence.why}`);
   if (env.invalidation) out.push(`**Invalidation:** ${env.invalidation}`);
 
   if (env.unavailableSources?.length) {
@@ -287,6 +321,8 @@ export function envelopeFromMarkdown(
     intent: opts.intent ?? null,
     sections: [{ title: opts.sectionTitle ?? "Read", body: markdown }],
     evidence: [],
-    confidence: opts.confidence ?? { level: "moderate", why: "Deterministic read from live platform data." },
+    // NO `?? moderate` FALLBACK. `confidenceFromMarkdown` deliberately returns undefined when the
+    // answer states no confidence — defaulting here threw that honesty away at the last step.
+    confidence: opts.confidence,
   });
 }

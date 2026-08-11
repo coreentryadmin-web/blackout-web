@@ -248,6 +248,21 @@ export const THERMAL_READ_RE =
 export const VECTOR_READ_RE =
   /\b(vector|vector pulse|beads|wall scope|gamma ladder|structure feed|expected move|gamma magnet|wall integrity|chart technicals?|% change|percent change)\b/i;
 
+/**
+ * Vector's CHART-DERIVED analytics — a separate intent from VECTOR_READ_RE on purpose.
+ *
+ * None of these words say "Vector". A member asking "where's the point of control on NVDA" or
+ * "did SPX break structure" is asking a Vector question without naming the product, and
+ * VECTOR_READ_RE (which keys off product vocabulary — vector/beads/magnet/ladder) would not fire,
+ * so the analytics tool would never be hinted and the answer would come from walls and regime
+ * instead. Keyed off the ANALYTIC's own name for that reason.
+ */
+export const VECTOR_ANALYTICS_RE =
+  // Note the STRUCTURE phrasings are anchored ("market structure", "break structure", "structure
+  // break") rather than a bare `structure` token — "spx structure" and "structure feed" are
+  // get_spx_structure's and Vector's own state vocabulary, and a bare match would steal both.
+  /\b(volume profile|point of control|poc|value area|market structure|break(ing|s)? structure|structure break|broke structure|bos|choch|change of character|higher high|lower low|golden pocket|fib(onacci)? (level|retracement|zone)s?|retracement|opening range|floor pivots?|pivot points?|hod|lod|high of day|low of day|opex|triple witching|screener|scanner|nearest flip|most pinned)\b/i;
+
 /** HELIX flow terminal wording beyond generic FLOW_RE. */
 export const HELIX_READ_RE =
   /\b(helix|flow feed|strike stacks?|top prints|top strikes|net premium leader|flow anomaly)\b/i;

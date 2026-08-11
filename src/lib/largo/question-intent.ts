@@ -15,6 +15,7 @@ import {
   SPX_DESK_RE,
   SPX_ENGINE_STATE_RE,
   THERMAL_READ_RE,
+  VECTOR_ANALYTICS_RE,
   VECTOR_READ_RE,
   VOL_RE,
   ZERODTE_COMMAND_RE,
@@ -59,6 +60,12 @@ export type LargoQuestionIntent = {
   needsPlatformRead: boolean;
   needsThermalRead: boolean;
   needsVectorRead: boolean;
+  /** Vector's CHART-DERIVED analytics ("point of control," "opening range," "BOS/CHoCH,"
+   *  "golden pocket," "floor pivots," "opex") — hints get_vector_analytics. Deliberately
+   *  SEPARATE from needsVectorRead above: these questions name the ANALYTIC, never the
+   *  product, so the Vector-vocabulary regex does not fire for any of them and the tool
+   *  would otherwise never be reached. */
+  needsVectorAnalytics: boolean;
   needsHelixRead: boolean;
   needsRecordRead: boolean;
   tickerHint: string | null;
@@ -76,6 +83,19 @@ export const KNOWN_TICKERS = new Set([
   "ABBV", "MRK", "TMO", "CSCO", "ACN", "MCD", "ABT", "DHR", "TXN", "QCOM", "IBM",
   "GE", "CAT", "GS", "MS", "BLK", "SCHW", "AXP", "NOW", "UBER", "PYPL", "SQ",
   "ASTS", "COIN", "PLTR", "SOFI", "HOOD", "GME", "AMC", "MSTR", "SMCI", "ARM",
+  // NAMES THE DESK ITSELF PUBLISHES. Measured 2026-08-11: of the five plays in that evening's
+  // Night Hawk edition (NET, NVDA, CRM, AXON, UBER), TWO were unrecognisable to this extractor.
+  // A member asking about the desk's own play got an SPX card.
+  "NET", "AXON", "CRWV", "OKLO", "MU", "OKTA", "SPXW", "RDDT", "SNOW", "DDOG", "CRWD",
+  "PANW", "ANET", "VST", "TLN", "NBIS", "IONQ", "RGTI", "LUNR", "RKLB", "JOBY", "ACHR",
+  "TSM", "MRVL", "MICRON", "WDC", "STX", "DELL", "HPE", "SNPS", "CDNS", "KLAC", "LRCX",
+  // "ON" (ON Semi), "S" (SentinelOne) and "BE" (Bloom Energy) are deliberately NOT here. They are
+  // real symbols and they are unguardable: `"what's going on with NVDA"` yields BOTH "S" and "ON",
+  // which routed that question to a two-ticker COMPARE instead of the ecosystem read. A symbol
+  // worth one member's question is not worth breaking every question containing "on" or "'s".
+  "AMAT", "ADI", "NXPI", "MCHP", "TER", "ENPH", "FSLR", "PLUG", "SMR",
+  "GEV", "CEG", "NRG", "TLRY", "DKNG", "ABNB", "LYFT", "SHOP", "SPOT", "ROKU", "PINS",
+  "SNAP", "TWLO", "ZS", "MDB", "TEAM", "WDAY", "ADSK", "INTU",
 ]);
 
 function recentUserText(history: AnthropicMessage[], limit = 6): string {
@@ -104,9 +124,34 @@ function recentUserText(history: AnthropicMessage[], limit = 6): string {
  * ticker reference and over-restricting drops legitimate mentions. A `$` prefix always promotes.
  */
 const STOPWORD_TICKERS = new Set([
+  // Symbols that are ALSO ordinary words in this desk's vocabulary. They stay in KNOWN_TICKERS —
+  // NET and AXON are live Night Hawk plays — but reach it only when the member wrote them in
+  // capitals. Without this, "what is the net flow" pins the ticker NET, which is the same defect
+  // as the NOW/ServiceNow collision one row down.
+  "NET", "TEAM", "SNOW", "OPEN", "ALL",
   "NOW", "ARE", "OR", "BE", "GO", "SO", "AT", "ON", "IT", "IN", "OF", "TO",
   "THE", "AN", "AS", "IS", "IF", "BY", "WE", "US", "HE", "NO", "UP", "MY", "ME",
   "DO", "AND", "FOR", "BUT", "NOT", "YOU", "OUR", "OUT", "WHY", "HOW", "WHO", "ANY",
+]);
+
+/**
+ * Words a trader writes in capitals that are NOT symbols.
+ *
+ * The uppercase-as-written rule below is what lets an unknown ticker through; this is what stops
+ * it swallowing the vocabulary. Only words genuinely written in caps need to be here — anything
+ * in normal prose is excluded by case alone.
+ *
+ * Deliberately does NOT contain a symbol that is also a word (NET, ON, ARM, CAT). Those live in
+ * `KNOWN_TICKERS`, which is checked FIRST, so the desk's own NET play stays reachable.
+ */
+const DOMAIN_UPPERCASE_WORDS = new Set([
+  "CALL", "CALLS", "PUT", "PUTS", "IV", "GEX", "DEX", "VEX", "OTM", "ITM", "ATM", "DTE",
+  "EOD", "EOW", "RTH", "ETF", "AI", "PM", "AM", "ET", "UTC", "EPS", "IPO", "FDA", "CEO",
+  "CFO", "USA", "GDP", "CPI", "PPI", "FOMC", "OPEX", "VWAP", "EMA", "SMA", "RSI", "ATR",
+  "OI", "PNL", "ROI", "TLDR", "FAQ", "API", "URL", "PDF", "PNG", "CSV", "JSON", "HTTP",
+  "BUY", "SELL", "LONG", "SHORT", "HOLD", "STOP", "SETUP", "BULL", "BEAR", "RISK", "WIN",
+  "LOSS", "TRIM", "SCALE", "ROLL", "OPEN", "CLOSE", "HIGH", "LOW", "SPOT", "WALL", "FLIP",
+  "PIN", "TAPE", "FLOW", "NEWS", "PLAY", "PLAYS", "CARD", "DESK", "TODAY", "NOW", "ASAP",
 ]);
 
 /** Was this token written as an UPPERCASE symbol in the original question? */
@@ -124,10 +169,22 @@ function extractTicker(question: string, historyText: string): string | null {
     // A bare lowercase function word is never a ticker. Only `$NOW` or a genuinely uppercase
     // `NOW` in the member's own text promotes it.
     if (!hadDollar && STOPWORD_TICKERS.has(cand) && !writtenUppercase(question, cand)) continue;
-    // Only accept a known ticker or an explicit $-prefixed symbol. The old
-    // "any caps token not on the blocklist" branch mis-pinned words like
-    // CALLS / HOLD / SETUP / BULL as tickers (LARGO-9).
+    // Known ticker or explicit $-symbol — the fast, always-correct paths.
     if (KNOWN_TICKERS.has(cand) || hadDollar) return cand;
+    // OTHERWISE: accept a symbol the MEMBER WROTE IN CAPITALS, unless it is domain vocabulary.
+    //
+    // A static allowlist cannot be right. Measured 2026-08-11: CRWV, OKLO, MU and OKTA were all
+    // absent, and so were NET and AXON — two of the five plays the desk had published that very
+    // evening. An unrecognised symbol left `tickerHint` null, the scope fell back to SPX, and the
+    // member asking about CRWV got SPX's spot, SPX's walls and an SPX card. Every number on it was
+    // real, and none of it was about what they asked.
+    //
+    // CASE IS THE DISCRIMINATOR, and it is the member's own signal. LARGO-9 (CALLS / HOLD / SETUP
+    // / BULL mis-pinned as tickers) came from uppercasing the WHOLE question first, which erased
+    // exactly the evidence that separates prose from a symbol. Testing the ORIGINAL text means
+    // ordinary words in ordinary sentences can never reach this branch; only genuinely shouted
+    // words can, and those are what `DOMAIN_UPPERCASE_WORDS` holds.
+    if (writtenUppercase(question, cand) && !DOMAIN_UPPERCASE_WORDS.has(cand)) return cand;
   }
   const combined = `${historyText} ${question}`;
   const matches = combined.toUpperCase().match(TICKER_RE) ?? [];
@@ -163,6 +220,7 @@ export function analyzeLargoQuestion(
   const needsPlatformRead = matchesIntent(ctx, PLATFORM_READ_RE);
   const needsThermalRead = matchesIntent(ctx, THERMAL_READ_RE);
   const needsVectorRead = matchesIntent(ctx, VECTOR_READ_RE);
+  const needsVectorAnalytics = matchesIntent(ctx, VECTOR_ANALYTICS_RE);
   const needsHelixRead = matchesIntent(ctx, HELIX_READ_RE);
   const needsRecordRead = matchesIntent(ctx, RECORD_READ_RE);
 
@@ -185,6 +243,12 @@ export function analyzeLargoQuestion(
   }
   if (needsVectorRead) {
     toolHints.push("get_vector_full_state", "get_positioning");
+  }
+  if (needsVectorAnalytics) {
+    // Hinted on its OWN keywords, independent of needsVectorRead: these questions name the
+    // analytic ("point of control", "opening range"), not the product, so the Vector-vocabulary
+    // intent above does not fire for them.
+    toolHints.push("get_vector_analytics");
   }
   if (needsHelixRead) {
     toolHints.push("get_flow_tape", "get_flow_anomaly_near_misses", "get_global_flow");
@@ -307,6 +371,7 @@ export function analyzeLargoQuestion(
     needsPlatformRead,
     needsThermalRead,
     needsVectorRead,
+    needsVectorAnalytics,
     needsHelixRead,
     needsRecordRead,
     tickerHint,

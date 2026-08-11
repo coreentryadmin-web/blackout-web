@@ -18,6 +18,7 @@ import { LargoAnswerMessage } from "./LargoAnswerMessage";
 import { LargoTerminalToolbar } from "./LargoTerminalToolbar";
 import { LargoEmptyState } from "./LargoEmptyState";
 import { LargoStatusStrip } from "./LargoStatusStrip";
+import { LargoContextRail } from "./LargoContextRail";
 
 const INPUT_PLACEHOLDER = "Ask the desk — SPX levels, a ticker, flow, news…";
 const INPUT_PLACEHOLDER_BUSY = "Pulling live data…";
@@ -58,6 +59,7 @@ export function LargoTerminal({
     newConversation,
     switchConversation,
     isFresh,
+    activeTicker,
     attachments,
     attachError,
     addAttachments,
@@ -138,6 +140,10 @@ export function LargoTerminal({
             fullscreenSupported={fullscreenSupported}
           />
         )}
+        {/* Rail + transcript. The rail is a SIBLING, not an overlay: it must not cover the answer
+            it is context for, and it appears only once the server has resolved an instrument, so
+            screen width is never permanently spent on an empty column. */}
+        <div className={clsx("largo-main", activeTicker && "largo-main-railed")}>
         <div
           role="log"
           aria-live="polite"
@@ -181,6 +187,17 @@ export function LargoTerminal({
                     <LargoAnswerMessage
                       content={msg.content}
                       envelope={msg.envelope}
+                      // The turn and the auto-render directive. Both were plumbed all the way to
+                      // this component's props and then never handed to it, so the server's
+                      // "the member asked for an image" signal died one call site short of the
+                      // thing that acts on it.
+                      turnId={msg.turnId ?? null}
+                      // The question this answer replies to — the preceding user turn. Used only to
+                      // choose which block leads in the desk read; a missing match renders the
+                      // default order, which is always correct.
+                      question={
+                        idx > 0 && messages[idx - 1]?.role === "user" ? messages[idx - 1]?.content : null
+                      }
                       streaming={
                         loading && idx === messages.length - 1 && msg.role === "assistant"
                       }
@@ -289,6 +306,8 @@ export function LargoTerminal({
             )}
           </AnimatePresence>
           <div ref={bottomRef} />
+        </div>
+        {fullPage && <LargoContextRail ticker={activeTicker} />}
         </div>
 
         {/* Staged attachments sit ABOVE the input, not inside it: the member must be able to see

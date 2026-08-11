@@ -42,6 +42,8 @@ function row(overrides: Partial<GovernorLedgerRow> = {}): GovernorLedgerRow {
     trough_premium: 4.0,
     plan_outcome: null,
     plan_pnl_pct: null,
+    last_mark: null,
+    last_mark_at: null,
     ...overrides,
   };
 }
@@ -719,4 +721,45 @@ test("summarizeGovernorForBoard: surfaces premium + TOD sizing fields", () => {
   assert.equal(s.premium_at_risk, 50_000);
   assert.equal(s.short_gamma_open, 2);
   assert.ok(s.effective_max_concurrent <= GOVERNOR_MAX_CONCURRENT_PLANS);
+});
+
+// FINDINGS 2026-08-11 (P1, fail-open risk guard). Live session: four rows closed red
+// (ACHR −2.3%, RCAT −17.0%, HIMS −29.1%, SPXW −50.0%) and the governor reported
+// realized_losers: 1, session_pnl_pct: −50 — only SPXW, because only SPXW tripped the −50%
+// stop test. The other three closed on time-stops whose plan_pnl_pct the lazy grader had not
+// stamped, so each scored exactly 0 in a tally whose entire job is to notice a losing session.
+// The board was already SHOWING −29.1% for HIMS from the same two fields.
+test("a CLOSED row the grader has not reached is still counted, from entry vs mark", () => {
+  const snap = deriveGovernorFromLedger([
+    // The live shape: closed red on a time-stop, ungraded, trough well above the −50% level.
+    row({ ticker: "HIMS", status: "CLOSED", entry_premium: 1.41, last_mark: 1.0, last_mark_at: "2026-08-11T15:00:00Z", trough_premium: 1.0 }),
+    row({ ticker: "RCAT", status: "CLOSED", entry_premium: 0.53, last_mark: 0.44, last_mark_at: "2026-08-11T15:00:00Z", trough_premium: 0.44 }),
+  ]);
+  assert.equal(snap.realized_losers, 2);
+  assert.ok(snap.session_pnl_pct! < -40, `expected a real loss tally, got ${snap.session_pnl_pct}`);
+});
+
+test("a graded row still wins — the mark channel never overrides plan_pnl_pct", () => {
+  const snap = deriveGovernorFromLedger([
+    row({ status: "CLOSED", plan_pnl_pct: -12, entry_premium: 4, last_mark: 1, last_mark_at: "2026-08-11T15:00:00Z" }),
+  ]);
+  assert.equal(snap.session_pnl_pct, -12);
+});
+
+test("a NEVER-QUOTED row contributes nothing rather than a fabricated 0.00%", () => {
+  // last_mark still bit-identical to entry AND no last_mark_at = no quote ever landed (db.ts).
+  // Counting that as a real 0% would launder the manufactured breakeven into the risk tally.
+  const snap = deriveGovernorFromLedger([
+    row({ ticker: "RIOT", status: "CLOSED", entry_premium: 0.93, last_mark: 0.93, last_mark_at: null, trough_premium: 0.93 }),
+  ]);
+  assert.equal(snap.realized_losers, 0);
+  assert.equal(snap.session_pnl_pct, 0);
+});
+
+test("an OPEN row is not realized, however far its mark has moved", () => {
+  const snap = deriveGovernorFromLedger([
+    row({ status: "OPEN", entry_premium: 4, last_mark: 1, last_mark_at: "2026-08-11T15:00:00Z" }),
+  ]);
+  assert.equal(snap.realized_losers, 0);
+  assert.equal(snap.session_pnl_pct, 0);
 });

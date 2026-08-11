@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import Script from "next/script";
 import { googleAdsConversionId } from "@/lib/analytics/google-ads";
-import { Anton, Syne, JetBrains_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import { IMAGES } from "@/lib/images";
 import { SITE } from "@/lib/site";
 import { Ga4Attribution } from "@/components/analytics/Ga4Attribution";
@@ -25,15 +25,44 @@ import "./phosphor-loading.css";
 // the loaders: the primitives are pure-CSS server components.
 import "./phosphor-motion.css";
 
-const anton = Anton({
+/**
+ * FONTS ARE COMMITTED, NOT FETCHED AT BUILD TIME.
+ *
+ * `next/font/google` downloads the face during `next build`. On 2026-08-11 that fetch failed —
+ *
+ *   [Error: Failed to fetch font file from `https://fonts.gstatic.com/s/jetbrainsmono/...woff2`]
+ *   Failed to compile. src/app/layout.tsx: `next/font` error
+ *
+ * — and took the whole production deploy down with it (run 31484348086). Nothing was wrong with
+ * the commit; a third-party CDN blinked during the Docker build.
+ *
+ * The brand font loader already knew this. `src/lib/brand/font-buffers.ts` commits its
+ * `.ttf` files and says why: a render path that fetched a font "would fail closed on a network
+ * blip and — worse — could silently fall back to a different face". The same argument applies at
+ * build time, where the blast radius is every page rather than one card. Two opposite policies in
+ * one repo, and the fetching one is the one that cost a deploy.
+ *
+ * BYTE-IDENTICAL to what was being fetched: the latin subset each `subsets: ["latin"]` call
+ * already resolved to, pulled from the same gstatic URLs. Syne and JetBrains Mono are VARIABLE
+ * fonts — Google serves ONE file per family covering every weight (verified by md5: the three
+ * Syne weights and four JetBrains weights were the same bytes four times over), so this is three
+ * files rather than eight. Anton ships a single 400 face. 84KB total.
+ *
+ * All three are SIL Open Font License, which permits redistribution.
+ */
+const anton = localFont({
+  src: "./fonts/anton-400.woff2",
   weight: "400",
-  subsets: ["latin"],
+  style: "normal",
   display: "swap",
   variable: "--font-anton",
 });
-const syne = Syne({
-  weight: ["600", "700", "800"],
-  subsets: ["latin"],
+const syne = localFont({
+  src: "./fonts/syne-variable.woff2",
+  // The variable file carries the whole axis; this range spans the 600/700/800 the old call asked
+  // for, so every existing `font-weight` in the CSS still resolves to a real instance.
+  weight: "400 800",
+  style: "normal",
   display: "swap",
   variable: "--font-syne",
 });
@@ -41,9 +70,10 @@ const syne = Syne({
 // numerals, tickers, kickers and command keys are set in JetBrains Mono. The
 // token/motion/button CSS references var(--font-jetbrains); load it here so it
 // resolves to the intended face instead of falling back to system monospace.
-const jetbrainsMono = JetBrains_Mono({
-  weight: ["400", "500", "600", "700"],
-  subsets: ["latin"],
+const jetbrainsMono = localFont({
+  src: "./fonts/jetbrains-mono-variable.woff2",
+  weight: "100 800",
+  style: "normal",
   display: "swap",
   variable: "--font-jetbrains",
 });

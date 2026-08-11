@@ -6,6 +6,7 @@ import { LargoAnswerMessage } from "@/features/largo/components/LargoAnswerMessa
 import { LargoThinkingState } from "@/features/largo/components/LargoThinkingState";
 import { resetIosViewport } from "@/hooks/useIosKeyboardInset";
 import { LARGO_SUGGESTIONS, largoToolLabel, useLargoChat } from "@/hooks/useLargoChat";
+import { LargoStatusStrip } from "@/features/largo/components/LargoStatusStrip";
 
 const PLACEHOLDER = "Ask Largo — SPX, flow, news…";
 const PLACEHOLDER_BUSY = "Pulling live data…";
@@ -32,6 +33,11 @@ export function LargoNativeTerminal() {
 
   return (
     <div className="largo-native-desk">
+      {/* The intelligence strip belongs on EVERY Largo surface, not just the desktop one.
+          It was wired into LargoTerminal only, so mobile — a separate component — showed the
+          new prompts and no strip, which reads as the feature not existing rather than as
+          a surface it was never added to. */}
+      <LargoStatusStrip />
       {!isFresh && (
         <div className="largo-native-topbar">
           <button
@@ -62,6 +68,7 @@ export function LargoNativeTerminal() {
                 <LargoAnswerMessage
                   content={msg.content}
                   envelope={msg.envelope}
+                  turnId={msg.turnId ?? null}
                   streaming={
                     loading && idx === messages.length - 1 && msg.role === "assistant"
                   }

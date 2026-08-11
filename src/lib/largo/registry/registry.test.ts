@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { LARGO_TOOL_DEFS } from "@/lib/largo/tool-defs";
 import {
   LARGO_CAPABILITIES,
@@ -72,12 +73,22 @@ test("historicalCapabilities NEVER includes a live-only source", () => {
 test("changeCapabilities are all sources that can express a delta", () => {
   for (const c of changeCapabilities()) {
     assert.ok(
-      c.temporal === "event_log" || c.temporal === "windowed",
+      c.temporal === "event_log" || c.temporal === "windowed" || c.temporal === "snapshot_delta",
       `${c.id} cannot express a change`
     );
   }
   // "What changed?" is the flagship capability — if this ever empties, that feature is dead.
   assert.ok(changeCapabilities().length >= 5, "too few change-capable sources to answer 'what changed'");
+
+  // AND THE COMPLEMENT, which is the reason `snapshot_delta` was added: change-capable is a
+  // BROADER set than past-capable. A now-vs-last-snapshot diff answers "what just changed" and
+  // cannot be pointed at yesterday, so it must appear in one list and not the other.
+  const hist = new Set(historicalCapabilities().map((c) => c.id));
+  const deltas = changeCapabilities().filter((c) => c.temporal === "snapshot_delta");
+  assert.ok(deltas.length > 0, "snapshot_delta must be reachable for change questions");
+  for (const d of deltas) {
+    assert.ok(!hist.has(d.id), `${d.id} is a snapshot delta and must not be offered for history`);
+  }
 });
 
 test("the live-only sources are explicitly caveated", () => {
@@ -131,9 +142,16 @@ test("every product has at least one capability", () => {
 
 test("the catalog reports its own coverage gap instead of hiding it", () => {
   const gap = uncataloguedTools();
-  // Not asserted to be empty — 116 tools include many single-purpose provider reads that do not
-  // warrant a catalog entry. What matters is that the gap is COMPUTABLE, so it can be worked off
-  // deliberately rather than discovered by a member asking something Largo cannot plan for.
+  // NOW ASSERTED EMPTY. This used to allow a gap on the reasoning that many tools are
+  // single-purpose provider reads not worth cataloguing. That reasoning was wrong in a way that
+  // mattered: `plan.ts` raises its temporal violation only when EVERY tool a turn called is
+  // catalogued, so 67 uncatalogued tools left the guard armed and dormant — a turn mixing one
+  // known source with three unknown ones passed a check that meant nothing.
+  //
+  // A NEW TOOL MUST BE CATALOGUED IN THE SAME PR THAT ADDS IT. That is the point of this
+  // assertion: coverage decays silently otherwise, and the decay is invisible until someone asks
+  // a historical question and gets a confident answer built from live data.
+  assert.deepEqual(gap, [], "every tool must carry a capability entry — see the note above");
   assert.ok(Array.isArray(gap));
   assert.ok(registryToolNames().size > 0);
   assert.ok(gap.length < LARGO_TOOL_DEFS.length, "the catalog must cover something");
@@ -220,4 +238,102 @@ test("the digest is bounded and never throws", () => {
   assert.doesNotThrow(() => formatCapabilityBlock("", {}));
   assert.doesNotThrow(() => formatCapabilityBlock("???", { historical: true, limit: 0 }));
   assert.equal(formatCapabilityBlock("anything", { limit: 0 }), "", "limit 0 yields no block");
+});
+
+test("a NOW-vs-last-snapshot diff is never classified as past-capable", () => {
+  /**
+   * THE "WHAT CHANGED" TRAP, pinned because it was made five times independently.
+   *
+   * These tools all compare the CURRENT state against ONE cached prior snapshot and report the
+   * delta. That reads as temporal, and five of them were catalogued `windowed` — which puts them
+   * in PAST_CAPABLE, so `validatePlanExecution` would accept a turn that answered "what did this
+   * look like yesterday" using nothing else.
+   *
+   * A now-vs-last-snapshot diff cannot do that. It has exactly two points, one of them is always
+   * now, and the other is whatever the cache happens to hold. The distinguishing question is not
+   * "does it describe change?" but "can it be POINTED AT an arbitrary past moment?" — and for
+   * these the answer is no. They are `snapshot_delta`: in `changeCapabilities()`, out of
+   * PAST_CAPABLE.
+   *
+   * This went unnoticed while the catalog covered 43% of tools, because the guard these entries
+   * feed almost never ran. Completing coverage is what made the misclassification consequential.
+   */
+  const SNAPSHOT_DIFFS = [
+    "get_vector_pulse",
+    "get_gex_matrix_changes",
+    "get_wall_dynamics",
+    "get_helix_derived",
+    "get_cortex_decision",
+  ];
+  const PAST_CAPABLE = new Set(["windowed", "point_in_time", "event_log"]);
+  for (const tool of SNAPSHOT_DIFFS) {
+    const cap = LARGO_CAPABILITIES.find((c) => c.tool === tool);
+    assert.ok(cap, `${tool} must stay catalogued`);
+    assert.ok(
+      !PAST_CAPABLE.has(cap!.temporal),
+      `${tool} is a now-vs-last-snapshot diff and must not claim past-capability (is "${cap!.temporal}")`,
+    );
+  }
+});
+
+test("a forward-looking calendar is never classified as past-capable", () => {
+  // `get_economic_calendar` takes `days_ahead` — a FORWARD window — and was catalogued `windowed`,
+  // a class defined as accepting a LOOKBACK. It listed scheduled releases while telling the
+  // planner it could answer about the past. The other three calendars were already live_only;
+  // this pins all four together so the odd one out cannot drift back.
+  const CALENDARS = [
+    "get_economic_calendar",
+    "get_earnings_calendar",
+    "get_fda_calendar",
+    "get_ipo_calendar",
+  ];
+  const PAST_CAPABLE = new Set(["windowed", "point_in_time", "event_log"]);
+  for (const tool of CALENDARS) {
+    const cap = LARGO_CAPABILITIES.find((c) => c.tool === tool);
+    assert.ok(cap, `${tool} must stay catalogued`);
+    assert.ok(
+      !PAST_CAPABLE.has(cap!.temporal),
+      `${tool} looks forward and must not claim past-capability (is "${cap!.temporal}")`,
+    );
+  }
+});
+
+test("a tool that ACCEPTS A DATE is classified point_in_time, not as_of", () => {
+  /**
+   * THE MIRROR OF THE SNAPSHOT-DELTA BUG, and the reason the re-audit checked both directions.
+   *
+   * `get_nighthawk_edition` reads `input.date` and calls `getNightHawkEditionForDate(date)` — it
+   * can return the edition published on a past session. It was catalogued `as_of`, which tells the
+   * planner the opposite. Over-claiming makes Largo answer from the wrong moment; under-claiming
+   * steers it AWAY from the only tool that can answer, and can raise a false violation on a turn
+   * that was actually fine. Both are wrong; only one is dangerous.
+   *
+   * Asserted against the implementation rather than the catalog, so the two cannot drift: if a
+   * tool starts consuming a date, this fails until it is reclassified.
+   */
+  const src = readFileSync("src/lib/largo/run-tool.ts", "utf8");
+  const PAST_CAPABLE = new Set(["windowed", "point_in_time", "event_log"]);
+
+  for (const cap of LARGO_CAPABILITIES) {
+    const i = src.indexOf(`case "${cap.tool}"`);
+    if (i < 0) continue; // tools served outside the switch
+    const body = src.slice(i, i + 700);
+    const next = body.indexOf('\n    case "');
+    const block = next > 0 ? body.slice(0, next) : body;
+    if (!/input\.(date|edition_for)\b/.test(block)) continue;
+    assert.ok(
+      PAST_CAPABLE.has(cap.temporal),
+      `${cap.tool} consumes a date parameter but is catalogued "${cap.temporal}" — it can reach a past moment`,
+    );
+  }
+});
+
+test("the generic escape hatches never claim a temporal class they cannot keep", () => {
+  // get_polygon / get_uw / call_internal_api each read an arbitrary endpoint, so the ENDPOINT
+  // decides what comes back. Any class stronger than live_only is a promise the tool cannot keep.
+  for (const tool of ["get_polygon", "get_uw", "call_internal_api"]) {
+    const cap = LARGO_CAPABILITIES.find((c) => c.tool === tool);
+    assert.ok(cap, `${tool} must stay catalogued`);
+    assert.equal(cap!.temporal, "live_only", `${tool} is an escape hatch and must be live_only`);
+  }
 });

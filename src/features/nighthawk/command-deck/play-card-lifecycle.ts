@@ -68,7 +68,8 @@ export function playLifecyclePhase(status: DeckStatus): PlayLifecyclePhase {
   return "open";
 }
 
-/** WATCH-tab rows that track hypothetical move since flag — includes gate-blocked SKIP (FAILED pill). */
+/** WATCH-tab rows that track hypothetical move since flag — includes declined SKIP (PASSED pill).
+ *  The move is HYPOTHETICAL on these: nothing was entered, so it is tracking, not P&L. */
 export function isWatchTrackStatus(status: DeckStatus): boolean {
   return status === "WATCH" || status === "SKIP";
 }
@@ -207,12 +208,31 @@ export function playStatusLabel(status: DeckStatus): string {
   return playStatusDisplay(status).label;
 }
 
-export type StatusTone = "active" | "watch" | "closed" | "failed";
+export type StatusTone = "active" | "watch" | "closed" | "passed";
 
-/** Scannable status pill — ACTIVE / WATCH / CLOSED / FAILED with consistent color tones. */
+/**
+ * Scannable status pill — ACTIVE / WATCH / CLOSED / PASSED.
+ *
+ * SKIP RENDERS "PASSED", NOT "FAILED", AND IT IS NOT LOSS-RED.
+ *
+ * `SKIP` is the desk DECLINING a setup — `resolveFreshFindStatus` returns it when the premium
+ * already ran past the flow's fill, when the market is too wide to exit, or when the new-play
+ * cutoff has passed. `intel.ts` says so in the member's own words: `action: "PASS"`, "the move
+ * happened without you", "chasing here flips the math against the trade". Nothing was ever
+ * bought, so nothing could fail.
+ *
+ * Calling that FAILED in bear-red made the desk read as a wall of losses. Live on 2026-08-11 it
+ * put a red FAILED pill on 61 of 67 rows, and on the detail card it sat next to rating 92 and a
+ * green "thesis intact" monitor — the same card asserting the play failed and that its thesis is
+ * holding. It also implied a realized loss on rows showing a P&L that is hypothetical tracking,
+ * on trades that were never entered.
+ *
+ * PASSED is the engine's own vocabulary for the decision, and a discipline the desk should look
+ * good for exercising rather than be punished for.
+ */
 export function playStatusDisplay(status: DeckStatus): { label: string; tone: StatusTone } {
   if (status === "CLOSED") return { label: "CLOSED", tone: "closed" };
-  if (status === "SKIP") return { label: "FAILED", tone: "failed" };
+  if (status === "SKIP") return { label: "PASSED", tone: "passed" };
   if (status === "WATCH") return { label: "WATCH", tone: "watch" };
   return { label: "ACTIVE", tone: "active" };
 }

@@ -142,6 +142,12 @@ const ZERODTE_HIST_WINDOW_MS = 3 * 60 * 1000;
 // when it diverges from the contract's own traded range by more than the app's own
 // definition of "abnormal" for an option's price.
 const ZERODTE_OPTION_PREM_TOL_PCT = 15;
+/** A mark is "away" from the tape once it differs by more than this. Set above normal 0DTE
+ *  bid/ask noise so a thin, genuinely quiet contract does not read as frozen. */
+const ZERODTE_MARK_AWAY_PCT = 10;
+/** …and it is only FROZEN once the contract spent most of the session away from it. RIOT
+ *  (2026-08-11) scored 0.90 on this; a healthy row tracks the tape and scores near zero. */
+const ZERODTE_MARK_AWAY_MAX_FRAC = 0.6;
 // entry_premium is NOT the option's traded price at the flag instant — it is entry_max =
 // resolveLedgerEntryPremium(plan.entry_max, top_strike_avg_fill) (src/lib/zerodte/plan.ts:146,
 // scan.ts:563), i.e. the flow's AVERAGE FILL over the accumulation window (falling back to the
@@ -154,18 +160,36 @@ const ZERODTE_OPTION_PREM_TOL_PCT = 15;
 // off the session.
 const ENTRY_PREM_LOOKBACK_MS = 150 * 60 * 1000;
 
-/** NYSE-next-trading-day, reimplemented locally (mirrors src/lib/nighthawk/session.ts's
- *  nextTradingDayEt byte-for-byte) so this script stays self-contained (it already imports
- *  isTradingDayEt/todayEtYmd from the sibling gha-et-window.mjs, never a src/lib/*.ts module). */
-function nextTradingDayEtYmd(fromYmd) {
-  let cursor = Date.parse(`${fromYmd}T12:00:00Z`) + 86_400_000;
-  for (let i = 0; i < 12; i++) {
-    const ymd = new Date(cursor).toISOString().slice(0, 10);
-    if (isTradingDayEt(ymd)) return ymd;
-    cursor += 86_400_000;
-  }
-  return new Date(cursor).toISOString().slice(0, 10);
+/**
+ * The board's MAXIMUM contract DTE, mirroring `ZERODTE_MAX_DTE` in src/lib/horizons.ts.
+ *
+ * Mirrored rather than imported: this script never imports a src/lib/*.ts module (it takes only
+ * isTradingDayEt/todayEtYmd from the sibling gha-et-window.mjs). Keep it in step with horizons.ts,
+ * whose own comment gives the reason for the value — "worst case: 4 calendar days to that week's
+ * Friday".
+ *
+ * WHY THIS EXISTS AT ALL. The contract-existence check used to search a 0-1DTE expiry window
+ * (today -> next trading day). The engine widened to dte <= 4 (the 0DTE -> Day-Trade widening),
+ * so a Tuesday commit on that week's Friday weekly became correct product behaviour AND an
+ * automatic FAIL. Live 2026-08-11 that produced 8 spurious FAILs in one run — RIOT, BW, ACHR,
+ * RCAT, HIMS, SPCH, BTDR — and made the whole FAIL count untrustworthy for the session. Proven
+ * against Polygon directly for RIOT put 21:
+ *
+ *     gte=08-11 lte=08-12  -> 0 results
+ *     gte=08-11 lte=08-15  -> 1 result, 2026-08-14
+ *     no date filter       -> 2026-08-14, 08-21, 08-28, ...
+ *
+ * RIOT has no 08-11 or 08-12 expiry at all; its nearest is the Friday weekly. The check was
+ * asserting a constraint the engine had deliberately relaxed.
+ */
+const ZERODTE_MAX_DTE_MIRROR = 4;
+
+/** Calendar-day offset in YYYY-MM-DD. DTE is counted in CALENDAR days (horizons.ts), so the
+ *  expiry window must be too — a trading-day walk would land short across a weekend. */
+function addCalendarDaysYmd(fromYmd, days) {
+  return new Date(Date.parse(`${fromYmd}T12:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
 }
+
 
 /** Fresh Polygon spot for an arbitrary ticker, mirroring the SPY/SPX live-vs-prev-close
  *  logic already established above (rth ? live snapshot : prior close) — SPX is the one
@@ -208,8 +232,31 @@ function polygonSpotNow(ticker, isRth) {
  *  this validator, not a real 0DTE Command data issue. Do not reintroduce a swap TO "SPXW"
  *  here. */
 const zerodteContractCache = new Map();
-function resolveZeroDteContract(ticker, direction, strike, todayYmd, nextDayYmd) {
-  const key = `${ticker}|${direction}|${strike}`;
+/**
+ * VALIDATE THE CLAIM THE BOARD ACTUALLY MAKES, not a window we assumed it makes.
+ *
+ * This probe used to hard-code a 0-1DTE expiry window (today..next trading day). That was correct
+ * when the board only ever committed same-day contracts. It is NOT correct since the DTE 1->4
+ * (Day-Trade) widening: on 2026-08-10 the board carried 13 rows at the 2026-08-14 weekly and ONE
+ * true 0DTE (MU), and the probe reported 9 FAILs reading "no matching 0-1DTE contract" for
+ * contracts that exist and are perfectly legitimate. Confirmed against Polygon reference data:
+ * COHR/LITE/FSLY/AXTI/BTDR/AKAM/FIG list NO daily expiries at all (earliest 2026-08-14), while MU
+ * — the single row that passed — is the only one with a daily.
+ *
+ * Nine phantom FAILs per run is worse than a useless check: it is a place for a REAL failure to
+ * hide. And widening the window to match the new max DTE would only move the goalposts and rot
+ * again at the next horizon change.
+ *
+ * So the probe now uses the row's OWN `expiry` when the board states one, which is strictly
+ * stronger than any window: it asserts the exact contract the board claims to be trading exists.
+ * That catches a bug class the window check never could — a row citing an expiry with no listed
+ * contract. The window is kept only as the fallback for rows that state no expiry.
+ */
+function resolveZeroDteContract(ticker, direction, strike, todayYmd, nextDayYmd, rowExpiry) {
+  const exact = typeof rowExpiry === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(rowExpiry) ? rowExpiry : null;
+  const gte = exact ?? todayYmd;
+  const lte = exact ?? nextDayYmd;
+  const key = `${ticker}|${direction}|${strike}|${gte}|${lte}`;
   if (zerodteContractCache.has(key)) return zerodteContractCache.get(key);
   const underlyingTicker = ticker === 'SPX' || ticker === 'SPXW' ? 'SPX' : ticker;
   const contractType = direction === 'long' ? 'call' : direction === 'short' ? 'put' : null;
@@ -217,7 +264,7 @@ function resolveZeroDteContract(ticker, direction, strike, todayYmd, nextDayYmd)
   if (contractType && Number.isFinite(strike) && strike > 0) {
     const qs = new URLSearchParams({
       underlying_ticker: underlyingTicker, contract_type: contractType, strike_price: String(strike),
-      expired: 'false', 'expiration_date.gte': todayYmd, 'expiration_date.lte': nextDayYmd,
+      expired: 'false', 'expiration_date.gte': gte, 'expiration_date.lte': lte,
       sort: 'expiration_date', order: 'asc', limit: '5',
     });
     const c = poly(`/v3/reference/options/contracts?${qs}`)?.results?.[0];
@@ -251,6 +298,23 @@ function polygonHistRangeAsym(symbol, centerMs, lookbackMs, lookaheadMs) {
   const rows = poly(`/v2/aggs/ticker/${encodeURIComponent(symbol)}/range/1/minute/${from}/${to}?adjusted=true&sort=asc&limit=400`)?.results;
   if (!Array.isArray(rows) || rows.length === 0) return null;
   return { lo: Math.min(...rows.map((b) => b.l)), hi: Math.max(...rows.map((b) => b.h)) };
+}
+
+/** Every 1-minute CLOSE for `symbol` between two instants. Used to ask a question a
+ *  range cannot: not "was this value achievable" but "did the contract SPEND the session
+ *  somewhere else while the app kept showing one number". */
+function polygonMinuteCloses(symbol, fromMs, toMs) {
+  if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || toMs <= fromMs) return null;
+  const rows = poly(`/v2/aggs/ticker/${encodeURIComponent(symbol)}/range/1/minute/${Math.round(fromMs)}/${Math.round(toMs)}?adjusted=true&sort=asc&limit=50000`)?.results;
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+  return rows.map((b) => b.c).filter((c) => Number.isFinite(c));
+}
+
+/** Fraction of closes further than `pct`% from `value`. */
+function fractionAway(closes, value, pct) {
+  if (!Array.isArray(closes) || !closes.length || !Number.isFinite(value) || value <= 0) return null;
+  const away = closes.filter((c) => Math.abs(c - value) / value > pct / 100).length;
+  return away / closes.length;
 }
 
 /** `value` inside [range.lo, range.hi] with a `tolPct`% cushion on both sides — the same
@@ -434,7 +498,9 @@ async function main() {
       } else {
         rec('0DTE board: setups/ledger fetched', 'INFO', `${liveSetups.length} live setup(s), ${ledgerRows.length} ledger row(s) this run — checking up to ${ZERODTE_LIVE_CHECK_CAP} live + ${ZERODTE_LEDGER_CHECK_CAP} ledger`);
         const zdToday = todayEtYmd();
-        const zdNextDay = nextTradingDayEtYmd(zdToday);
+        // Upper bound of the contract-existence search: the furthest expiry the board is allowed
+        // to commit, NOT "tomorrow". See ZERODTE_MAX_DTE_MIRROR.
+        const zdNextDay = addCalendarDaysYmd(zdToday, ZERODTE_MAX_DTE_MIRROR);
 
         // --- live setups: underlying_price (fresh "now" quote) + top_strike (chain existence) ---
         for (const s of liveSetups.slice(0, ZERODTE_LIVE_CHECK_CAP)) {
@@ -465,9 +531,9 @@ async function main() {
           // number, board.ts) — unlike the ledger's persisted column (see below), there is
           // no legitimate null case here, so a resolve failure is a real FAIL.
           const strike = num(s.top_strike);
-          const resolved = resolveZeroDteContract(ticker, s.direction, strike, zdToday, zdNextDay);
+          const resolved = resolveZeroDteContract(ticker, s.direction, strike, zdToday, zdNextDay, s.expiry);
           const label = `${strike}${s.direction === 'long' ? 'c' : s.direction === 'short' ? 'p' : '?'}`;
-          rec(`0DTE live ${ticker}: top_strike ${label} exists in Polygon's real chain`, resolved ? 'PASS' : 'FAIL', resolved ? `resolved ${resolved.occ} (expiry ${resolved.expiry})` : `no matching 0-1DTE contract in Polygon's reference chain for ${ticker} ${s.direction} ${strike} between ${zdToday} and ${zdNextDay}`);
+          rec(`0DTE live ${ticker}: top_strike ${label} exists in Polygon's real chain`, resolved ? 'PASS' : 'FAIL', resolved ? `resolved ${resolved.occ} (expiry ${resolved.expiry})` : `no listed contract in Polygon's reference chain for ${ticker} ${s.direction} ${strike} at ${s.expiry ? `expiry ${s.expiry} (the expiry the board states)` : `any expiry between ${zdToday} and ${zdNextDay}`}`);
         }
 
         // --- ledger rows: top_strike (existence) + entry_premium/underlying_at_flag (historical) ---
@@ -485,9 +551,9 @@ async function main() {
           if (strike == null) {
             rec(`0DTE ledger ${ticker}: top_strike exists in Polygon's real chain`, 'INFO', 'skipped — top_strike is null on this ledger row');
           } else {
-            resolved = resolveZeroDteContract(ticker, r0.direction, strike, zdToday, zdNextDay);
+            resolved = resolveZeroDteContract(ticker, r0.direction, strike, zdToday, zdNextDay, r0.expiry);
             const label = `${strike}${r0.direction === 'long' ? 'c' : r0.direction === 'short' ? 'p' : '?'}`;
-            rec(`0DTE ledger ${ticker}: top_strike ${label} exists in Polygon's real chain`, resolved ? 'PASS' : 'FAIL', resolved ? `resolved ${resolved.occ} (expiry ${resolved.expiry})` : `no matching 0-1DTE contract in Polygon's reference chain for ${ticker} ${r0.direction} ${strike} between ${zdToday} and ${zdNextDay}`);
+            rec(`0DTE ledger ${ticker}: top_strike ${label} exists in Polygon's real chain`, resolved ? 'PASS' : 'FAIL', resolved ? `resolved ${resolved.occ} (expiry ${resolved.expiry})` : `no listed contract in Polygon's reference chain for ${ticker} ${r0.direction} ${strike} at ${r0.expiry ? `expiry ${r0.expiry} (the expiry the board states)` : `any expiry between ${zdToday} and ${zdNextDay}`}`);
           }
 
           const flagMs = Date.parse(r0.first_flagged_at || '');
@@ -524,6 +590,57 @@ async function main() {
               } else {
                 const ok = withinHistRange(ep, range, ZERODTE_OPTION_PREM_TOL_PCT);
                 rec(`0DTE ledger ${ticker}: entry_premium vs Polygon option minute bars`, ok ? 'PASS' : 'FAIL', `logged=${ep} polygon_range=[${range.lo.toFixed(4)}, ${range.hi.toFixed(4)}] (±${ZERODTE_OPTION_PREM_TOL_PCT}% cushion over the accumulation window, ${resolved.occ}) at ${r0.first_flagged_at}`);
+              }
+            }
+          }
+
+          // ── last_mark: was a quote EVER observed on this row? ────────────────────────
+          //
+          // This check exists because its absence let a manufactured outcome reach the member
+          // record. RIOT, 2026-08-11: last_mark sat at exactly entry_premium (0.93) for 77
+          // minutes and the row CLOSED at precisely 0.00% "breakeven" — while the contract
+          // traded 0.24 -> 1.48, with 76 of 84 minute bars closing more than $0.05 away from
+          // the number the app was showing. The entry_premium check above passed the whole
+          // time, because entry_premium was correct. Nothing looked at the mark.
+          //
+          // TWO tests, because they answer different questions:
+          //   1. DIRECT — last_mark_at is stamped only when a real quote lands (db.ts). NULL
+          //      means no quote was ever seen and the displayed mark is just the seeded entry.
+          //      Exact, no bars needed. Rows written before that column existed report INFO.
+          //   2. BEHAVIOURAL — a range test cannot catch this (0.93 was inside [0.24, 1.48]
+          //      all day). The distinguishing question is whether the contract SPENT the
+          //      session away from the mark while the mark never moved.
+          const lm = num(r0.last_mark);
+          if (lm != null) {
+            const markAt = r0.last_mark_at ?? null;
+            // The frozen SIGNATURE: the mark is still bit-identical to the seeded entry premium.
+            // A mark that differs from entry is proof a real quote landed and overwrote it.
+            const seeded = ep != null && Math.abs(lm - ep) < 1e-9;
+
+            if (markAt != null) {
+              rec(`0DTE ledger ${ticker}: last_mark was actually observed`, 'PASS', `last_mark_at=${markAt} — a real quote landed on this row`);
+            } else if (!seeded) {
+              rec(`0DTE ledger ${ticker}: last_mark was actually observed`, 'PASS', `pre-column row, but last_mark ${lm} differs from entry ${ep} — a real quote clearly landed`);
+            } else {
+              // Pre-column row AND still sitting on entry. Ambiguous on its own: could be a
+              // contract that genuinely never moved. The tape decides.
+              if (!resolved?.occ || !Number.isFinite(flagMs)) {
+                rec(`0DTE ledger ${ticker}: last_mark was actually observed`, 'INFO', `last_mark === entry_premium (${lm}) and no last_mark_at to check — cannot resolve an OCC/flag time to settle it against the tape`);
+              } else {
+                const closes = polygonMinuteCloses(resolved.occ, flagMs, Date.now());
+                const frac = fractionAway(closes, lm, ZERODTE_MARK_AWAY_PCT);
+                if (frac == null) {
+                  rec(`0DTE ledger ${ticker}: last_mark was actually observed`, 'INFO', `last_mark === entry_premium (${lm}) but Polygon has no minute bars for ${resolved.occ} since the flag — nothing to settle it against`);
+                } else {
+                  const ok = frac < ZERODTE_MARK_AWAY_MAX_FRAC;
+                  rec(
+                    `0DTE ledger ${ticker}: last_mark was actually observed`,
+                    ok ? 'PASS' : 'FAIL',
+                    ok
+                      ? `last_mark === entry_premium (${lm}) and the contract stayed there — only ${(frac * 100).toFixed(0)}% of ${closes.length} minute closes are >${ZERODTE_MARK_AWAY_PCT}% away, consistent with a genuinely quiet contract`
+                      : `FROZEN: last_mark is still exactly entry_premium (${lm}) while ${(frac * 100).toFixed(0)}% of ${closes.length} minute closes since the flag sit >${ZERODTE_MARK_AWAY_PCT}% away (threshold ${(ZERODTE_MARK_AWAY_MAX_FRAC * 100).toFixed(0)}%, ${resolved.occ}). No quote ever overwrote the seeded entry, so any P&L on this row is manufactured`
+                  );
+                }
               }
             }
           }

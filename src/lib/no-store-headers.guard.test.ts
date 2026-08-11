@@ -56,6 +56,11 @@ const EXEMPT = new Map<string, string>([
   ["src/app/api/worker/health/route.ts", "infra probe, no user data"],
   ["src/app/api/worker/ready/route.ts", "infra probe, no user data"],
   ["src/app/api/worker/boot/route.ts", "infra probe, no user data"],
+  // The signed card image. This route is DELIBERATELY cacheable: TikTok and Meta fetch the URL
+  // themselves, sometimes more than once, and a no-store image would force a fresh satori render
+  // per fetch. Its `max-age`/`s-maxage` (300s) is far shorter than the link's own 1h signature
+  // expiry, so an edge copy can never outlive the authorisation that produced it, and the URL
+  // carries an HMAC — an attacker without the signature has nothing to cache.
   // POST-only client sinks — never a browser GET, so no edge-caching surface.
   ["src/app/api/telemetry/auth-failure/route.ts", "POST-only sink"],
   ["src/app/api/telemetry/client-error/route.ts", "POST-only sink"],

@@ -23,7 +23,7 @@ export default function PrivacyPage() {
         breadcrumbs={<Breadcrumbs items={[
         { name: "Home", href: "/" },
         { name: "Privacy Policy", href: "/privacy" },
-      ]} />} kicker="Legal" title="Privacy Policy" updated="July 27, 2026">
+      ]} />} kicker="Legal" title="Privacy Policy" updated="August 11, 2026">
         <h2>1. Information We Collect</h2>
 
         <h3>Account Information</h3>
@@ -104,7 +104,36 @@ export default function PrivacyPage() {
           to provide their services.
         </p>
 
-        <h2>6. Data Retention</h2>
+        <h2>6. Connected Social Accounts</h2>
+        <p>
+          BlackOut Trades publishes market-analysis content to social platforms. To do that, an
+          administrator connects <em>our own</em> brand accounts — for example TikTok — through the
+          platform&apos;s official OAuth flow. We never ask members to connect their social accounts,
+          and we do not read, request, or store any member&apos;s social account data.
+        </p>
+        <ul>
+          <li>
+            <strong>What is granted:</strong> the minimum scopes needed to publish
+            (<code>user.info.basic</code> to identify which of our accounts is connected, plus
+            upload and publish permissions for posting our own content).
+          </li>
+          <li>
+            <strong>What is stored:</strong> the access and refresh tokens, their expiry timestamps,
+            the granted scope list, and the connected account&apos;s display name. Tokens are held
+            server-side only and are never exposed to the browser or to members.
+          </li>
+          <li>
+            <strong>What is posted:</strong> only content we generate ourselves — market cards,
+            charts, and commentary. No member data, positions, or personal information is ever
+            included in a social post.
+          </li>
+          <li>
+            <strong>Revocation:</strong> disconnecting the account in the platform&apos;s own
+            settings immediately invalidates the tokens, and we delete our stored copy.
+          </li>
+        </ul>
+
+        <h2>7. Data Retention</h2>
         <p>
           We retain your account data for as long as your account is active. If you cancel your
           account, we delete personal data within 90 days, except where retention is required by law
@@ -112,14 +141,14 @@ export default function PrivacyPage() {
           indefinitely.
         </p>
 
-        <h2>7. Data Security</h2>
+        <h2>8. Data Security</h2>
         <p>
           We use industry-standard security measures including encrypted connections (TLS),
           secure authentication, and access controls. No system is 100% secure, but we take
           reasonable steps to protect your information.
         </p>
 
-        <h2>8. Your Rights</h2>
+        <h2>9. Your Rights</h2>
         <p>You have the right to:</p>
         <ul>
           <li>Access the personal data we hold about you</li>
@@ -132,7 +161,7 @@ export default function PrivacyPage() {
           <a href="mailto:support@blackouttrades.com">support@blackouttrades.com</a>.
         </p>
 
-        <h2>9. California Privacy Rights (CCPA/CPRA)</h2>
+        <h2>10. California Privacy Rights (CCPA/CPRA)</h2>
         <p>
           If you are a California resident, you have additional rights under the California
           Consumer Privacy Act (CCPA) and the California Privacy Rights Act (CPRA):
@@ -149,7 +178,7 @@ export default function PrivacyPage() {
           <a href="mailto:support@blackouttrades.com">support@blackouttrades.com</a>.
         </p>
 
-        <h2>10. International Users (GDPR)</h2>
+        <h2>11. International Users (GDPR)</h2>
         <p>
           If you are located in the European Economic Area (EEA) or the United Kingdom, we process
           your personal data under the following lawful bases: performance of our contract with you
@@ -168,19 +197,19 @@ export default function PrivacyPage() {
           <a href="mailto:support@blackouttrades.com">support@blackouttrades.com</a>.
         </p>
 
-        <h2>11. Children&apos;s Privacy</h2>
+        <h2>12. Children&apos;s Privacy</h2>
         <p>
           BlackOut is not intended for users under 18. We do not knowingly collect data from minors.
           If we learn that a user is under 18, we will promptly delete their account.
         </p>
 
-        <h2>12. Changes to This Policy</h2>
+        <h2>13. Changes to This Policy</h2>
         <p>
           We may update this Privacy Policy periodically. Material changes will be communicated via
           email or platform notification. Continued use after changes constitutes acceptance.
         </p>
 
-        <h2>13. Contact</h2>
+        <h2>14. Contact</h2>
         <p>
           Privacy questions? Contact us at{" "}
           <a href="mailto:support@blackouttrades.com">support@blackouttrades.com</a>.

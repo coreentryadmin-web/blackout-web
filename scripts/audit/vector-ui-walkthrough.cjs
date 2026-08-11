@@ -499,7 +499,7 @@ async function run(session) {
     console.log(JSON.stringify({ ticker: TICKER, counts, results }, null, 2));
   } else {
     console.log(`\n=== VECTOR UI WALKTHROUGH — ${TICKER} @ ${BASE} (${MOBILE ? "MOBILE 430x932 iOS shell" : "DESKTOP 1680x1050"})`);
-    console.log(`routed: ${counts.ok} ok, ${counts.fail} fail, ${counts.streamsAborted} streams aborted (SWR fallback)\n`);
+    console.log(`routed: ${counts.ok} ok, ${counts.fail} fail, ${counts.streamsBuffered} streams buffered\n`);
     for (const r of results) {
       const tag = r.skipped ? "skip" : r.fails.length ? "FAIL" : "ok  ";
       console.log(

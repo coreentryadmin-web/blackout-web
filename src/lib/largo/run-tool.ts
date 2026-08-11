@@ -934,6 +934,14 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       const { zerodteRecordForLargo } = await import("@/lib/largo/product-reads");
       return zerodteRecordForLargo(Number(input.days ?? 30));
     }
+    case "get_gate_blocked_value": {
+      const { gateBlockedValueForLargo } = await import("@/lib/largo/evidence-reads");
+      return gateBlockedValueForLargo(Number(input.days ?? 30));
+    }
+    case "get_grader_agreement": {
+      const { graderAgreementForLargo } = await import("@/lib/largo/evidence-reads");
+      return graderAgreementForLargo(Number(input.days ?? 90));
+    }
     case "get_gate_rules": {
       const { gateRulesForLargo } = await import("@/lib/largo/gate-rules");
       return gateRulesForLargo();
@@ -993,6 +1001,16 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
         input.ticker ? String(input.ticker) : null,
         Number(input.limit ?? 400)
       );
+    }
+
+    case "get_vector_analytics": {
+      const { vectorAnalyticsForLargo } = await import("@/lib/largo/vector-analytics");
+      return vectorAnalyticsForLargo(input.ticker ? String(input.ticker) : null, {
+        timeframeMin: input.timeframe_min != null ? Number(input.timeframe_min) : undefined,
+        openingRangeMinutes:
+          input.opening_range_minutes != null ? Number(input.opening_range_minutes) : undefined,
+        regimeDays: input.regime_days != null ? Number(input.regime_days) : undefined,
+      });
     }
 
     case "get_flow_tape": {

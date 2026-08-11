@@ -2,7 +2,12 @@
 
 import useSWR from "swr";
 import { clsx } from "clsx";
-import { formatDataAge, type IntelligenceStatus } from "@/lib/largo/core/system-status";
+import {
+  formatDataAge,
+  dataAgeHealth,
+  onlineHealth,
+  type IntelligenceStatus,
+} from "@/lib/largo/core/system-status";
 
 /**
  * INTELLIGENCE STRIP — the thin line under LARGO TERMINAL that says "wired into the machine".
@@ -32,10 +37,22 @@ export function LargoStatusStrip() {
   if (!data || !Array.isArray(data.systems)) return null;
 
   const anyDown = data.systems.some((s) => s.health === "down");
+  // Freshness and the online tally are STATE, not decoration — they were rendered in the same muted
+  // grey as static labels, so the one number telling a member whether to trust the rest of the
+  // screen carried no signal. Classified in the pure module so the thresholds are tested.
+  const ageHealth = dataAgeHealth(data.dataAgeSec);
+  const onlineState = onlineHealth(data.systemsOnline, data.systemsTotal);
 
   return (
     <div className="largo-status-strip" role="status" aria-live="polite">
-      <span className={clsx("largo-status-pill", anyDown && "largo-status-pill-warn")}>
+      {/* LIVE pulses; DEGRADED does not. A steady amber reads as a state you must look at, while a
+          pulsing green reads as a heartbeat — which is exactly the difference being communicated. */}
+      <span
+        className={clsx(
+          "largo-status-pill",
+          anyDown ? "largo-status-pill-warn" : "largo-status-pill-live"
+        )}
+      >
         <span className="largo-status-dot" aria-hidden />
         {anyDown ? "DEGRADED" : "LIVE"}
       </span>
@@ -43,7 +60,9 @@ export function LargoStatusStrip() {
       <span className="largo-status-sep" aria-hidden />
       <span className="largo-status-meta">{data.marketPhase}</span>
       <span className="largo-status-sep" aria-hidden />
-      <span className="largo-status-meta">DATA {formatDataAge(data.dataAgeSec)} AGO</span>
+      <span className={clsx("largo-status-meta", `largo-status-${ageHealth}`)}>
+        DATA {formatDataAge(data.dataAgeSec)} AGO
+      </span>
 
       <span className="largo-status-systems">
         {data.systems.map((s) => (
@@ -62,7 +81,8 @@ export function LargoStatusStrip() {
       </span>
 
       <span className="largo-status-counts">
-        <strong>{data.systemsOnline}</strong>/{data.systemsTotal} ONLINE
+        <strong className={clsx(`largo-status-${onlineState}`)}>{data.systemsOnline}</strong>/
+        {data.systemsTotal} ONLINE
         <span className="largo-status-sep" aria-hidden />
         <strong>{data.activeSignals}</strong> ACTIVE SIGNALS
       </span>
