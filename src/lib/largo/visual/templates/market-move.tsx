@@ -55,7 +55,7 @@ export function MarketMoveCard({
       }}
     >
       <div style={{ display: "flex", flexDirection: "column" }}>
-        <HeroNumber n={bundle.spot} label={bundle.ticker ? `${bundle.ticker} spot` : "Spot"} spec={spec} recorder={recorder} />
+        {HeroNumber({ n: bundle.spot, label: bundle.ticker ? `${bundle.ticker} spot` : "Spot", spec, recorder })}
       </div>
       {bundle.regime && (
         <div
@@ -112,7 +112,7 @@ export function MarketMoveCard({
     </div>,
     heroRow,
     <div key="m" style={{ display: "flex", width: "100%", marginTop: s(gap, spec) }}>
-      <MetricRow metrics={bundle.metrics} spec={spec} recorder={recorder} max={spec.stack ? 2 : 3} />
+      {MetricRow({ metrics: bundle.metrics, spec, recorder, max: spec.stack ? 2 : 3 })}
     </div>,
     // The level map answers "where is price relative to the structure", which is usually the real
     // content of a "why did it move" question. GEX shifts take its place when the move was
@@ -121,14 +121,14 @@ export function MarketMoveCard({
       <div key="g" style={{ display: "flex", flexDirection: "column", width: "100%", marginTop: s(gap, spec) }}>
         <Kicker text="Dealer gamma change by strike" spec={spec} />
         <div style={{ display: "flex", width: "100%", marginTop: s(12, spec) }}>
-          <GexBars shifts={bundle.gexShifts} spec={spec} recorder={recorder} max={spec.stack ? 4 : 3} />
+          {GexBars({ shifts: bundle.gexShifts, spec, recorder, max: spec.stack ? 4 : 3 })}
         </div>
       </div>
     ) : (
       <div key="l" style={{ display: "flex", flexDirection: "column", width: "100%", marginTop: s(gap, spec) }}>
         <Kicker text="Dealer levels" spec={spec} />
         <div style={{ display: "flex", width: "100%", marginTop: s(12, spec) }}>
-          <LevelMap levels={bundle.levels} spot={bundle.spot} spec={spec} recorder={recorder} max={spec.stack ? 5 : 3} />
+          {LevelMap({ levels: bundle.levels, spot: bundle.spot, spec, recorder, max: spec.stack ? 5 : 3 })}
         </div>
       </div>
     ),
@@ -137,7 +137,7 @@ export function MarketMoveCard({
     // attribution, so dropping it costs detail rather than provenance.
     !spec.dense && bundle.systemReads?.length ? (
       <div key="sys" style={{ display: "flex", width: "100%", marginBottom: s(18, spec) }}>
-        <SystemStrip reads={bundle.systemReads} spec={spec} recorder={recorder} />
+        {SystemStrip({ reads: bundle.systemReads, spec, recorder })}
       </div>
     ) : null,
   ];

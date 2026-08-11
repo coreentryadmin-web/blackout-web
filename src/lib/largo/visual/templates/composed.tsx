@@ -56,7 +56,12 @@ function Section({
 }: {
   label: string | null;
   spec: SizeSpec;
-  children: ReactElement;
+  /**
+   * Nullable, because the primitives are now CALLED rather than instantiated as JSX — see
+   * `render.tsx` on the empty-manifest bug — and several of them return `null` when their data is
+   * absent. JSX was hiding that in the type; a direct call exposes it, which is the honest shape.
+   */
+  children: ReactElement | null;
   first: boolean;
 }): ReactElement {
   return (
@@ -275,10 +280,10 @@ export function ComposedCard({
       case "spot":
         push(
           <div key="spot" style={{ display: "flex", alignItems: "flex-end", width: "100%", marginTop: isFirst ? 0 : s(16, spec) }}>
-            <HeroNumber n={bundle.spot} label={bundle.ticker ? `${bundle.ticker} spot` : "Spot"} spec={spec} recorder={recorder} />
+            {HeroNumber({ n: bundle.spot, label: bundle.ticker ? `${bundle.ticker} spot` : "Spot", spec, recorder })}
             {bundle.trade?.returnPct && (
               <div style={{ display: "flex", marginLeft: "auto" }}>
-                <PnlBlock returnPct={bundle.trade.returnPct} graded={bundle.trade.graded} spec={spec} recorder={recorder} />
+                {PnlBlock({ returnPct: bundle.trade.returnPct, graded: bundle.trade.graded, spec, recorder })}
               </div>
             )}
           </div>
@@ -288,7 +293,7 @@ export function ComposedCard({
       case "consensus":
         push(
           <Section key="consensus" label="What each system sees" spec={spec} first={isFirst}>
-            <SystemStrip reads={bundle.systemReads} spec={spec} recorder={recorder} />
+            {SystemStrip({ reads: bundle.systemReads, spec, recorder })}
           </Section>
         );
         break;
@@ -316,7 +321,7 @@ export function ComposedCard({
       case "levels":
         push(
           <Section key="levels" label="Dealer levels" spec={spec} first={isFirst}>
-            <LevelMap levels={bundle.levels} spot={bundle.spot} spec={spec} recorder={recorder} max={capFor(block)} />
+            {LevelMap({ levels: bundle.levels, spot: bundle.spot, spec, recorder, max: capFor(block) })}
           </Section>
         );
         break;
@@ -324,7 +329,7 @@ export function ComposedCard({
       case "gex_shifts":
         push(
           <Section key="gex" label="Gamma change by strike" spec={spec} first={isFirst}>
-            <GexBars shifts={bundle.gexShifts} spec={spec} recorder={recorder} max={capFor(block, spec.dense ? 3 : 5)} />
+            {GexBars({ shifts: bundle.gexShifts, spec, recorder, max: capFor(block, spec.dense ? 3 : 5) })}
           </Section>
         );
         break;
@@ -333,12 +338,7 @@ export function ComposedCard({
         const gp = bundle.gammaProfile!;
         push(
           <Section key="gp" label={gp.flipStrike != null ? `Gamma profile · flip ${gp.flipStrike.toLocaleString("en-US")}` : "Gamma profile"} spec={spec} first={isFirst}>
-            <GexBars
-              shifts={gp.rows.map((r) => ({ strike: r.strike, change: r.gamma, display: r.display, direction: r.gamma >= 0 ? "stronger" : "weaker" }))}
-              spec={spec}
-              recorder={recorder}
-              max={capFor(block, spec.dense ? 5 : 8)}
-            />
+            {GexBars({ shifts: gp.rows.map((r) => ({ strike: r.strike, change: r.gamma, display: r.display, direction: r.gamma >= 0 ? "stronger" : "weaker" })), spec, recorder, max: capFor(block, spec.dense ? 5 : 8) })}
           </Section>
         );
         break;
@@ -590,7 +590,7 @@ export function ComposedCard({
       case "timeline":
         push(
           <Section key="tl" label="Sequence" spec={spec} first={isFirst}>
-            <Timeline steps={bundle.timeline} spec={spec} recorder={recorder} />
+            {Timeline({ steps: bundle.timeline, spec, recorder })}
           </Section>
         );
         break;
@@ -718,7 +718,7 @@ export function ComposedCard({
       case "metrics":
         push(
           <Section key="metrics" label={null} spec={spec} first={isFirst}>
-            <MetricRow metrics={bundle.metrics} spec={spec} recorder={recorder} max={spec.stack ? 2 : 4} />
+            {MetricRow({ metrics: bundle.metrics, spec, recorder, max: spec.stack ? 2 : 4 })}
           </Section>
         );
         break;

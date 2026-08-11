@@ -102,54 +102,46 @@ export function buildVisualElement(params: RenderVisualParams): {
   let element: ReactElement;
   switch (params.template) {
     case "MARKET_MOVE":
-      element = <MarketMoveCard bundle={bundle} spec={spec} recorder={recorder} asOfLabel={asOfLabel} />;
+      element = MarketMoveCard({ bundle, spec, recorder, asOfLabel });
       break;
     case "PLAYBOOK":
       // Same guard rationale as TRADE_RECAP below: the router checks sufficiency, and this stops a
       // direct caller rendering an edition frame around no plays.
       if (!bundle.playbook?.rows.length) throw new Error("PLAYBOOK requires at least one drawable play");
-      element = <PlaybookCard bundle={bundle} spec={spec} recorder={recorder} asOfLabel={asOfLabel} />;
+      element = PlaybookCard({ bundle, spec, recorder, asOfLabel });
       break;
     case "TRADE_RECAP":
       // The router guarantees `trade` and `trade.entry` are present before selecting this
       // template; the guard is here so a direct caller cannot bypass that and render an empty
       // performance claim.
       if (!bundle.trade?.entry) throw new Error("TRADE_RECAP requires a trade with an entry");
-      element = <TradeRecapCard bundle={bundle} spec={spec} recorder={recorder} asOfLabel={asOfLabel} />;
+      element = TradeRecapCard({ bundle, spec, recorder, asOfLabel });
       break;
     case "LEVEL_ANALYSIS":
-      element = (
-        <LevelAnalysisCard
-          bundle={bundle}
-          spec={spec}
-          recorder={recorder}
-          asOfLabel={asOfLabel}
-          focusStrike={question ? focusStrikeFromQuestion(question) : null}
-        />
-      );
+      element = LevelAnalysisCard({ bundle, spec, recorder, asOfLabel, focusStrike: question ? focusStrikeFromQuestion(question) : null });
       break;
     case "SCREENER":
       // Guards mirror the router's sufficiency predicates so a DIRECT caller cannot bypass them.
       // The router protects the UI path; these protect every other one.
       if ((bundle.screen?.rows.length ?? 0) < 3) throw new Error("SCREENER requires at least three ranked rows");
-      element = <ScreenerCard bundle={bundle} spec={spec} recorder={recorder} asOfLabel={asOfLabel} />;
+      element = ScreenerCard({ bundle, spec, recorder, asOfLabel });
       break;
     case "REJECTION":
       if (!bundle.rejections?.rows.length) throw new Error("REJECTION requires gate-rejection rows");
-      element = <RejectionCard bundle={bundle} spec={spec} recorder={recorder} asOfLabel={asOfLabel} />;
+      element = RejectionCard({ bundle, spec, recorder, asOfLabel });
       break;
     case "EM_CONE":
       // The realised path is what makes this a result rather than a forecast.
       if (!bundle.cone || bundle.cone.path.length < 2) throw new Error("EM_CONE requires a realised path");
-      element = <EmConeCard bundle={bundle} spec={spec} recorder={recorder} asOfLabel={asOfLabel} />;
+      element = EmConeCard({ bundle, spec, recorder, asOfLabel });
       break;
     case "GAMMA_MAP":
       if ((bundle.gammaProfile?.rows.length ?? 0) < 5) throw new Error("GAMMA_MAP requires at least five strikes");
-      element = <GammaMapCard bundle={bundle} spec={spec} recorder={recorder} asOfLabel={asOfLabel} />;
+      element = GammaMapCard({ bundle, spec, recorder, asOfLabel });
       break;
     case "FLOW_RECAP":
       if ((bundle.flow?.rows.length ?? 0) < 3) throw new Error("FLOW_RECAP requires at least three prints");
-      element = <FlowRecapCard bundle={bundle} spec={spec} recorder={recorder} asOfLabel={asOfLabel} />;
+      element = FlowRecapCard({ bundle, spec, recorder, asOfLabel });
       break;
     case "TRADE_LEADERBOARD":
       // The denominator guard is duplicated from the router deliberately: a leaderboard whose
@@ -162,21 +154,21 @@ export function buildVisualElement(params: RenderVisualParams): {
       ) {
         throw new Error("TRADE_LEADERBOARD requires at least two graded rows within a consistent tally");
       }
-      element = <LeaderboardCard bundle={bundle} spec={spec} recorder={recorder} asOfLabel={asOfLabel} />;
+      element = LeaderboardCard({ bundle, spec, recorder, asOfLabel });
       break;
     case "SYSTEM_COMPARISON":
       if ((bundle.systemReads?.length ?? 0) < 3) throw new Error("SYSTEM_COMPARISON requires at least three system reads");
-      element = <SystemComparisonCard bundle={bundle} spec={spec} recorder={recorder} asOfLabel={asOfLabel} />;
+      element = SystemComparisonCard({ bundle, spec, recorder, asOfLabel });
       break;
     case "BEFORE_AFTER":
       if (!bundle.beforeAfter?.beforeLabel || !bundle.beforeAfter?.afterLabel || bundle.beforeAfter.rows.length < 2) {
         throw new Error("BEFORE_AFTER requires two labelled instants and at least two measurements");
       }
-      element = <BeforeAfterCard bundle={bundle} spec={spec} recorder={recorder} asOfLabel={asOfLabel} />;
+      element = BeforeAfterCard({ bundle, spec, recorder, asOfLabel });
       break;
     case "SESSION_RECAP":
       if (!bundle.session?.closeDisplay) throw new Error("SESSION_RECAP requires a settled close");
-      element = <SessionRecapCard bundle={bundle} spec={spec} recorder={recorder} asOfLabel={asOfLabel} />;
+      element = SessionRecapCard({ bundle, spec, recorder, asOfLabel });
       break;
     case "COUNTERFACTUAL":
       // Both sides, always. A counterfactual missing the forgone side is a highlight reel of a
@@ -185,7 +177,7 @@ export function buildVisualElement(params: RenderVisualParams): {
         throw new Error("COUNTERFACTUAL requires both the avoided and the forgone side");
       }
       if (bundle.counterfactual.gradedCount < 1) throw new Error("COUNTERFACTUAL requires at least one graded hold");
-      element = <CounterfactualCard bundle={bundle} spec={spec} recorder={recorder} asOfLabel={asOfLabel} />;
+      element = CounterfactualCard({ bundle, spec, recorder, asOfLabel });
       break;
     case "GRADER_AGREEMENT":
       if (!bundle.graderAgreement || bundle.graderAgreement.comparable < 1) {
@@ -194,11 +186,11 @@ export function buildVisualElement(params: RenderVisualParams): {
       if (bundle.graderAgreement.rows.length < bundle.graderAgreement.comparable - bundle.graderAgreement.agreed) {
         throw new Error("GRADER_AGREEMENT requires a row for every disagreement");
       }
-      element = <GraderAgreementCard bundle={bundle} spec={spec} recorder={recorder} asOfLabel={asOfLabel} />;
+      element = GraderAgreementCard({ bundle, spec, recorder, asOfLabel });
       break;
     case "SIGNAL_TIMELINE":
       if ((bundle.timeline?.length ?? 0) < 4) throw new Error("SIGNAL_TIMELINE requires at least four timestamped events");
-      element = <SignalTimelineCard bundle={bundle} spec={spec} recorder={recorder} asOfLabel={asOfLabel} />;
+      element = SignalTimelineCard({ bundle, spec, recorder, asOfLabel });
       break;
     case "COMPOSED": {
       /**
@@ -219,17 +211,32 @@ export function buildVisualElement(params: RenderVisualParams): {
       if (!composition.blocks.length) {
         throw new Error("COMPOSED requires at least one block the evidence can fill");
       }
-      element = (
-        <ComposedCard bundle={bundle} spec={spec} recorder={recorder} asOfLabel={asOfLabel} composition={composition} />
-      );
+      element = ComposedCard({ bundle, spec, recorder, asOfLabel, composition });
       break;
     }
     default:
       throw new Error(`Template ${params.template} is registered but not implemented`);
   }
 
-  // The manifest is built here, AFTER the template has rendered and reported what it drew — the
-  // recorder is populated during element construction, not before it.
+  /**
+   * THE MANIFEST IS BUILT AFTER THE COMPONENT BODY HAS RUN, and that is why every template above
+   * is CALLED rather than instantiated as JSX.
+   *
+   * THE BUG THIS FIXES, found by rendering a live production card and reading its manifest: every
+   * card this library has ever produced shipped with an EMPTY audit trail. `<PlaybookCard ... />`
+   * creates a React element; it does not invoke the function. The body — where every
+   * `recorder.value(...)` call lives — runs later, inside satori. So `buildManifest` always read a
+   * recorder that nothing had written to, and the comment that used to sit here asserted the
+   * opposite ("the recorder is populated during element construction"). It is not.
+   *
+   * A card carrying real numbers with an empty manifest is the worst possible combination for the
+   * one surface nobody can fact-check: the graphic travels, and the provenance record that exists
+   * to make it verifiable says nothing was drawn.
+   *
+   * Calling the component directly returns the same element tree AND executes the body. These are
+   * pure render functions with no hooks and no state — satori does not reconcile — so a direct
+   * call is semantically identical to what satori would have done, only eagerly.
+   */
   const manifest = buildManifest({
     template: params.template,
     size: params.size,
