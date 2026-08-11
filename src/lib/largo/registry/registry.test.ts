@@ -72,12 +72,22 @@ test("historicalCapabilities NEVER includes a live-only source", () => {
 test("changeCapabilities are all sources that can express a delta", () => {
   for (const c of changeCapabilities()) {
     assert.ok(
-      c.temporal === "event_log" || c.temporal === "windowed",
+      c.temporal === "event_log" || c.temporal === "windowed" || c.temporal === "snapshot_delta",
       `${c.id} cannot express a change`
     );
   }
   // "What changed?" is the flagship capability — if this ever empties, that feature is dead.
   assert.ok(changeCapabilities().length >= 5, "too few change-capable sources to answer 'what changed'");
+
+  // AND THE COMPLEMENT, which is the reason `snapshot_delta` was added: change-capable is a
+  // BROADER set than past-capable. A now-vs-last-snapshot diff answers "what just changed" and
+  // cannot be pointed at yesterday, so it must appear in one list and not the other.
+  const hist = new Set(historicalCapabilities().map((c) => c.id));
+  const deltas = changeCapabilities().filter((c) => c.temporal === "snapshot_delta");
+  assert.ok(deltas.length > 0, "snapshot_delta must be reachable for change questions");
+  for (const d of deltas) {
+    assert.ok(!hist.has(d.id), `${d.id} is a snapshot delta and must not be offered for history`);
+  }
 });
 
 test("the live-only sources are explicitly caveated", () => {
@@ -227,4 +237,62 @@ test("the digest is bounded and never throws", () => {
   assert.doesNotThrow(() => formatCapabilityBlock("", {}));
   assert.doesNotThrow(() => formatCapabilityBlock("???", { historical: true, limit: 0 }));
   assert.equal(formatCapabilityBlock("anything", { limit: 0 }), "", "limit 0 yields no block");
+});
+
+test("a NOW-vs-last-snapshot diff is never classified as past-capable", () => {
+  /**
+   * THE "WHAT CHANGED" TRAP, pinned because it was made five times independently.
+   *
+   * These tools all compare the CURRENT state against ONE cached prior snapshot and report the
+   * delta. That reads as temporal, and five of them were catalogued `windowed` — which puts them
+   * in PAST_CAPABLE, so `validatePlanExecution` would accept a turn that answered "what did this
+   * look like yesterday" using nothing else.
+   *
+   * A now-vs-last-snapshot diff cannot do that. It has exactly two points, one of them is always
+   * now, and the other is whatever the cache happens to hold. The distinguishing question is not
+   * "does it describe change?" but "can it be POINTED AT an arbitrary past moment?" — and for
+   * these the answer is no. They are `snapshot_delta`: in `changeCapabilities()`, out of
+   * PAST_CAPABLE.
+   *
+   * This went unnoticed while the catalog covered 43% of tools, because the guard these entries
+   * feed almost never ran. Completing coverage is what made the misclassification consequential.
+   */
+  const SNAPSHOT_DIFFS = [
+    "get_vector_pulse",
+    "get_gex_matrix_changes",
+    "get_wall_dynamics",
+    "get_helix_derived",
+    "get_cortex_decision",
+  ];
+  const PAST_CAPABLE = new Set(["windowed", "point_in_time", "event_log"]);
+  for (const tool of SNAPSHOT_DIFFS) {
+    const cap = LARGO_CAPABILITIES.find((c) => c.tool === tool);
+    assert.ok(cap, `${tool} must stay catalogued`);
+    assert.ok(
+      !PAST_CAPABLE.has(cap!.temporal),
+      `${tool} is a now-vs-last-snapshot diff and must not claim past-capability (is "${cap!.temporal}")`,
+    );
+  }
+});
+
+test("a forward-looking calendar is never classified as past-capable", () => {
+  // `get_economic_calendar` takes `days_ahead` — a FORWARD window — and was catalogued `windowed`,
+  // a class defined as accepting a LOOKBACK. It listed scheduled releases while telling the
+  // planner it could answer about the past. The other three calendars were already live_only;
+  // this pins all four together so the odd one out cannot drift back.
+  const CALENDARS = [
+    "get_economic_calendar",
+    "get_earnings_calendar",
+    "get_fda_calendar",
+    "get_ipo_calendar",
+  ];
+  const PAST_CAPABLE = new Set(["windowed", "point_in_time", "event_log"]);
+  for (const tool of CALENDARS) {
+    const cap = LARGO_CAPABILITIES.find((c) => c.tool === tool);
+    assert.ok(cap, `${tool} must stay catalogued`);
+    assert.ok(
+      !PAST_CAPABLE.has(cap!.temporal),
+      `${tool} looks forward and must not claim past-capability (is "${cap!.temporal}")`,
+    );
+  }
 });

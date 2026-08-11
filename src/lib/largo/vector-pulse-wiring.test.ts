@@ -47,9 +47,17 @@ test("the pulse tool is CATALOGUED as a capability", () => {
   const cap = LARGO_CAPABILITIES.find((c) => c.tool === TOOL);
   assert.ok(cap, `${TOOL} missing from LARGO_CAPABILITIES — nothing would ever rank it`);
   assert.equal(cap!.product, "VECTOR");
-  // "windowed", not "as_of": a snapshot capability would be picked for "what is the state" and
-  // never for "what just changed", which is the only question this tool can answer.
-  assert.equal(cap!.temporal, "windowed");
+  // `snapshot_delta`, and the distinction is load-bearing in BOTH directions.
+  //
+  // This asserted "windowed" and defended it correctly: an `as_of` capability would be picked for
+  // "what is the state" and never for "what just changed", which is the only question this tool
+  // can answer. But `windowed` is PAST-CAPABLE, so it also told `plan.ts` that a question about
+  // yesterday could be answered from a tool that diffs now against the last cached snapshot.
+  //
+  // `snapshot_delta` is the class that was missing: `changeCapabilities()` includes it, so pulse
+  // still ranks for "what changed"; PAST_CAPABLE does not, so it can no longer clear the
+  // historical guard.
+  assert.equal(cap!.temporal, "snapshot_delta");
   assert.ok(cap!.keywords.includes("pulse"));
 });
 
