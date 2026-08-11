@@ -70,7 +70,11 @@ test("state must match exactly; absent or partial is a rejection", () => {
   const s = newOauthState();
   assert.equal(stateMatches(s, s), true);
   assert.equal(stateMatches(s, s.slice(0, -1)), false);
-  assert.equal(stateMatches(s, s.slice(0, -1) + "0"), false);
+  // FLIP the last character rather than forcing it to "0". `newOauthState()` is hex, so a fixed
+  // replacement collides with the original 1 run in 16 — the assertion then compares a string to
+  // itself and fails at random. Caught by an unrelated push going red.
+  const lastDiffers = s.endsWith("0") ? "1" : "0";
+  assert.equal(stateMatches(s, s.slice(0, -1) + lastDiffers), false);
   assert.equal(stateMatches(undefined, s), false);
   assert.equal(stateMatches(s, undefined), false);
   assert.equal(stateMatches("", ""), false);

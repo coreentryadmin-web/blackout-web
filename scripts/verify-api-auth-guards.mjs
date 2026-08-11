@@ -28,6 +28,18 @@ const PUBLIC_ROUTE_ALLOWLIST = new Set([
   // same pattern as the Whop/Clerk webhooks above.
   "src/app/api/webhook/resend/route.ts",
   "src/app/api/market/regime/route.ts",
+  // The signed, expiring card image a social platform FETCHES for itself. TikTok's
+  // PULL_FROM_URL and Instagram's Graph API do not accept raw bytes for a still and do not
+  // carry our cookies, so this cannot take a session guard — the request is made by Meta or
+  // ByteDance, not by a member.
+  //
+  // Authorisation is an HMAC over turn id + OWNER + size + format + expiry
+  // (`verifyCardLink`, constant-time, expiry checked after the signature). OWNERSHIP is
+  // still enforced by the same `fetchLargoTurnResults(turnId, userId)` JOIN the
+  // authenticated path uses — the signature says which user to scope the read to, it does
+  // NOT replace the scoping. Every rejection returns an identical 404 so the endpoint
+  // cannot be used to probe which turn ids exist.
+  "src/app/api/public/largo-card/[turnId]/route.ts",
   // Deliberately public write endpoint — browsers can't carry admin auth, and
   // a logged-out visitor's JS erroring is exactly the coverage it exists for.
   // Secured by per-IP rate limit + hard body-size cap, not a guard helper —

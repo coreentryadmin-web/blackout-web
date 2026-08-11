@@ -13,7 +13,7 @@ const BASE: CardLinkParams = {
   turnId: 2730,
   userId: "user_abc123",
   size: "x_portrait",
-  format: "jpg",
+  format: "webp",
   exp: NOW + CARD_LINK_TTL_MS,
 };
 
@@ -25,7 +25,7 @@ function withKey<T>(fn: () => T): T {
   } finally {
     if (saved === undefined) delete process.env.CARD_LINK_SECRET;
     else process.env.CARD_LINK_SECRET = saved;
-  }
+    }
 }
 
 test("a correctly signed, unexpired link verifies", () => {
@@ -88,7 +88,7 @@ test("NO key material means fail CLOSED — never an unsigned link", () => {
 
 test("the URL carries every field the verifier needs, and a default expiry", () => {
   withKey(() => {
-    const out = cardLinkUrl({ turnId: 2730, userId: "user_abc123", size: "x_portrait", format: "jpg" }, NOW)!;
+    const out = cardLinkUrl({ turnId: 2730, userId: "user_abc123", size: "x_portrait", format: "webp" }, NOW)!;
     assert.ok(out);
     assert.equal(out.exp, NOW + CARD_LINK_TTL_MS);
     const u = new URL(out.url);
@@ -103,7 +103,7 @@ test("the URL carries every field the verifier needs, and a default expiry", () 
           turnId: 2730,
           userId: u.searchParams.get("u")!,
           size: u.searchParams.get("size")!,
-          format: u.searchParams.get("format") as "jpg",
+          format: u.searchParams.get("format") as "webp",
           exp: Number(u.searchParams.get("exp")),
         },
         u.searchParams.get("sig")!,
@@ -118,4 +118,46 @@ test("the default TTL is short — the link is slack, not a hosting product", ()
   // Meta and TikTok fetch within seconds of the publish call. A long window turns a leaked URL
   // into a permanent public mirror of a member's card.
   assert.ok(CARD_LINK_TTL_MS <= 60 * 60 * 1000, "TTL must not exceed an hour");
+});
+
+/**
+ * THE SIGNED FORMAT MUST BE ONE THE RENDERER CAN ACTUALLY EMIT.
+ *
+ * This pair was never checked, and drifted apart in the only way that matters: the signer offered
+ * `"png" | "jpg"` while `RenderedVisual.contentType` is `"image/png" | "image/webp"`. So a link
+ * signed as `jpg` addressed a format the card library cannot produce, and `png` — the only one
+ * both sides agreed on — is the format TikTok REJECTS for photo posts (JPEG or WebP only).
+ * Every signed link was therefore unrenderable or unpostable, and nothing failed, because no test
+ * held the two definitions against each other.
+ *
+ * Found by reading TikTok's media contract, then confirmed by `tsc` the moment the public route
+ * tried to pass a real value through.
+ */
+test("every signable format is one the renderer emits, and is postable", () => {
+  // SET THE KEY EXPLICITLY. `hmacKey()` falls back to CLERK_SECRET_KEY, which exists in this
+  // sandbox and does NOT in CI — so the first version of this test passed locally and failed on
+  // the runner with "png must be signable", because `cardLinkUrl` correctly returns null with no
+  // key material. A test that depends on ambient environment is a test that reports the
+  // environment, not the code.
+  const saved = process.env.CARD_LINK_SECRET;
+  process.env.CARD_LINK_SECRET = "test-signing-key";
+  try {
+  // The renderer's own union, from `RenderedVisual.contentType`.
+    const RENDERABLE = ["png", "webp"] as const;
+  // TikTok photo posts: JPEG or WebP. PNG is rejected.
+    const TIKTOK_OK = ["webp", "jpg", "jpeg"];
+
+    for (const format of ["png", "webp"] as const) {
+      const url = cardLinkUrl({ turnId: 2730, userId: "user_abc123", size: "x_portrait", format }, NOW);
+      assert.ok(url, `${format} must be signable`);
+      const got = new URL(url!.url).searchParams.get("format")!;
+      assert.ok(RENDERABLE.includes(got as (typeof RENDERABLE)[number]), `${got} is not a format the renderer emits`);
+  }
+  // And at least one signable format survives the platform's own filter — otherwise the link is
+  // correct, verifiable, and useless.
+    assert.ok(RENDERABLE.some((f) => TIKTOK_OK.includes(f)), "no signable format is postable to TikTok");
+  } finally {
+    if (saved === undefined) delete process.env.CARD_LINK_SECRET;
+    else process.env.CARD_LINK_SECRET = saved;
+  }
 });
