@@ -496,6 +496,37 @@ async function runMigrations(): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_largo_messages_session
     ON largo_messages(session_id, created_at ASC);
   `);
+  /**
+   * SOCIAL PUBLISHING TOKENS — one row per platform account.
+   *
+   * WHY THE DATABASE AND NOT AN ENV VAR. A TikTok access token lives ~24 hours; the refresh token
+   * that mints the next one lives ~365 days and CHANGES on every refresh. An env var cannot be
+   * rewritten by the process that discovers the new value, so a cron reading TIKTOK_ACCESS_TOKEN
+   * from the environment works on day one and fails silently every day after — which is precisely
+   * the failure mode the rest of this session has been about: a real capability with a broken path
+   * to the layer that needs it.
+   *
+   * `expires_at` is stored rather than a TTL so a caller can decide to refresh EARLY. Refreshing
+   * only on a 401 means the first request after expiry always fails, and on a scheduled post that
+   * failure is the whole run.
+   */
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS social_tokens (
+      platform TEXT NOT NULL,
+      account_id TEXT NOT NULL,
+      access_token TEXT NOT NULL,
+      refresh_token TEXT,
+      /** Absolute expiry of access_token. Refresh BEFORE this, never after a 401. */
+      expires_at TIMESTAMPTZ,
+      /** Absolute expiry of refresh_token — past this, a human must re-authorise. */
+      refresh_expires_at TIMESTAMPTZ,
+      scopes TEXT,
+      display_name TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW(),
+      PRIMARY KEY (platform, account_id)
+    );
+  `);
   await p.query(`
     CREATE TABLE IF NOT EXISTS nighthawk_editions (
       id BIGSERIAL PRIMARY KEY,
