@@ -17604,8 +17604,11 @@ body::before {
 .nh-deck-status-pill.is-watch .nh-deck-status-pill__dot{background:var(--dk-warn)}
 .nh-deck-status-pill.is-closed{color:var(--dk-info);border-color:rgba(82,167,255,.35);background:rgba(82,167,255,.08)}
 .nh-deck-status-pill.is-closed .nh-deck-status-pill__dot{background:var(--dk-info)}
-.nh-deck-status-pill.is-failed{color:var(--dk-bear);border-color:rgba(255,91,107,.35);background:rgba(255,91,107,.08)}
-.nh-deck-status-pill.is-failed .nh-deck-status-pill__dot{background:var(--dk-bear);box-shadow:0 0 6px rgba(255,91,107,.35)}
+/* PASSED = the desk declined the setup. Muted and neutral ON PURPOSE: this is a discipline
+   outcome, not a loss, and bear-red on 61 of 67 rows made a working board look like a disaster.
+   No glow either — a skipped candidate should recede behind the rows carrying real risk. */
+.nh-deck-status-pill.is-passed{color:var(--dk-muted,#8b93a7);border-color:rgba(139,147,167,.28);background:rgba(139,147,167,.07)}
+.nh-deck-status-pill.is-passed .nh-deck-status-pill__dot{background:var(--dk-muted,#8b93a7)}
 .nh-deck-age-decay{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:800;
   letter-spacing:.06em;font-variant-numeric:tabular-nums;padding:2px 7px;border-radius:4px;border:1px solid transparent}
 .nh-deck-age-decay__dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
