@@ -107,7 +107,16 @@ export type BieAnswerEnvelope = {
   sections: BieSection[];
   /** Cross-cutting top-level evidence. */
   evidence: BieEvidence[];
-  confidence: BieConfidence;
+  /**
+   * OPTIONAL, because an absent confidence is information and a fabricated one is a lie.
+   *
+   * This was required, and every producer therefore defaulted it to `moderate`. The live result
+   * was a synthesis header reading "MODERATE CONFIDENCE" directly above "No confidence rationale
+   * was given." — the UI faithfully rendering a level nobody had assessed, next to an admission
+   * that nobody had assessed it. `LargoDeskRead` already guards with `confidence?.level`, so the
+   * badge simply disappears when there is nothing to say.
+   */
+  confidence?: BieConfidence;
   /** The thesis "go flat" line. */
   invalidation?: string | null;
   scenarios?: BieScenario[];
@@ -260,7 +269,7 @@ export function renderEnvelopeMarkdown(
   const scen = renderScenarios(env.scenarios);
   if (scen.length) out.push("", ...scen);
 
-  out.push("", `**Confidence:** ${env.confidence.level} — ${env.confidence.why}`);
+  if (env.confidence) out.push("", `**Confidence:** ${env.confidence.level} — ${env.confidence.why}`);
   if (env.invalidation) out.push(`**Invalidation:** ${env.invalidation}`);
 
   if (env.unavailableSources?.length) {
@@ -312,6 +321,8 @@ export function envelopeFromMarkdown(
     intent: opts.intent ?? null,
     sections: [{ title: opts.sectionTitle ?? "Read", body: markdown }],
     evidence: [],
-    confidence: opts.confidence ?? { level: "moderate", why: "Deterministic read from live platform data." },
+    // NO `?? moderate` FALLBACK. `confidenceFromMarkdown` deliberately returns undefined when the
+    // answer states no confidence — defaulting here threw that honesty away at the last step.
+    confidence: opts.confidence,
   });
 }

@@ -309,17 +309,18 @@ export function parseAnswerEnvelope(
   if (evidence.length === 0) return null;
 
   const confidenceBody = get("Confidence");
+  const confidenceLevel = firstMatch(confidenceBody, CONFIDENCE_WORDS);
   const risk = bulletLines(get("Risk"));
 
   return makeEnvelope({
     headline: verdict.split(/\r?\n/)[0]!.trim(),
     bias: firstMatch(verdict, BIAS_WORDS) ?? "neutral",
-    confidence: {
-      level: firstMatch(confidenceBody, CONFIDENCE_WORDS) ?? "moderate",
-      // The `why` is the whole point of the confidence field — a bare level is an arbitrary
-      // number wearing a word. When Largo gives no reason, say so rather than inventing one.
-      why: confidenceBody.trim() || "No confidence rationale was given.",
-    },
+    // ABSENT, not defaulted. The `why` is the whole point of the confidence field — a bare level
+    // is an arbitrary number wearing a word — and this code used to say exactly that while doing
+    // the opposite: `?? "moderate"` invented a level whenever Largo wrote no Confidence section,
+    // and the UI printed "MODERATE CONFIDENCE" above "No confidence rationale was given."
+    // An omitted section now yields an omitted badge.
+    confidence: confidenceLevel ? { level: confidenceLevel, why: confidenceBody.trim() } : undefined,
     // Every canonical section Largo actually wrote becomes a card, in contract order. Conflicts
     // and Data ride here rather than being flattened into a caveat list so the UI can give them
     // their own headings — "these signals disagree" and "this number is 12 minutes old" are
