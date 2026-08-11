@@ -67,14 +67,14 @@ export function LevelAnalysisCard({
 
     // The map is the card. It gets the most room and the largest row count of any template.
     <div key="map" style={{ display: "flex", flexDirection: "column", width: "100%", marginTop: s(26, spec) }}>
-      <LevelMap levels={bundle.levels} spot={bundle.spot} spec={spec} recorder={recorder} max={spec.stack ? 7 : 5} />
+      {LevelMap({ levels: bundle.levels, spot: bundle.spot, spec, recorder, max: spec.stack ? 7 : 5 })}
     </div>,
 
     bundle.gexShifts?.length ? (
       <div key="g" style={{ display: "flex", flexDirection: "column", width: "100%", marginTop: s(26, spec) }}>
         <Kicker text="Gamma change at strike" spec={spec} />
         <div style={{ display: "flex", width: "100%", marginTop: s(12, spec) }}>
-          <GexBars shifts={bundle.gexShifts} spec={spec} recorder={recorder} max={spec.stack ? 4 : 3} />
+          {GexBars({ shifts: bundle.gexShifts, spec, recorder, max: spec.stack ? 4 : 3 })}
         </div>
       </div>
     ) : null,
@@ -90,7 +90,7 @@ export function LevelAnalysisCard({
      */
     spec.dense && (bundle.levels?.length ?? 0) > 3 ? null : (
       <div key="m" style={{ display: "flex", width: "100%", marginTop: s(24, spec) }}>
-        <MetricRow metrics={bundle.metrics} spec={spec} recorder={recorder} max={2} />
+        {MetricRow({ metrics: bundle.metrics, spec, recorder, max: 2 })}
       </div>
     ),
 

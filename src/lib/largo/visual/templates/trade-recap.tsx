@@ -100,7 +100,7 @@ export function TradeRecapCard({
 
     // The return, and its honesty label.
     <div key="pnl" style={{ display: "flex", marginTop: s(24, spec) }}>
-      <PnlBlock returnPct={t.returnPct} graded={t.graded} spec={spec} recorder={recorder} />
+      {PnlBlock({ returnPct: t.returnPct, graded: t.graded, spec, recorder })}
       {t.peakReturnPct && (
         <div style={{ display: "flex", flexDirection: "column", marginLeft: s(56, spec), justifyContent: "flex-end" }}>
           <Kicker text="Peak" spec={spec} />
@@ -116,7 +116,7 @@ export function TradeRecapCard({
       <div key="tl" style={{ display: "flex", flexDirection: "column", width: "100%", marginTop: s(28, spec) }}>
         <Kicker text="Lifecycle" spec={spec} />
         <div style={{ display: "flex", width: "100%", marginTop: s(14, spec) }}>
-          <Timeline steps={bundle.timeline} spec={spec} recorder={recorder} />
+          {Timeline({ steps: bundle.timeline, spec, recorder })}
         </div>
       </div>
     ) : null,

@@ -89,7 +89,7 @@ export function SignalTimelineCard({
     </div>,
 
     <div key="tl" style={{ display: "flex", width: "100%", marginTop: s(24, spec) }}>
-      <Timeline steps={shown} spec={spec} recorder={recorder} />
+      {Timeline({ steps: shown, spec, recorder })}
     </div>,
 
     // Truncation is stated, never silent — the same "no silent caps" rule the discovery probes
