@@ -162,7 +162,25 @@ export function statsFromRecord(obj: unknown, limit = 8): GenericStat[] {
   return out;
 }
 
-export type GenericRankedRow = { label: string; value: string; magnitude: number; sub?: string | null };
+export type GenericRankedRow = {
+  label: string;
+  value: string;
+  magnitude: number;
+  sub?: string | null;
+  /**
+   * WHICH FIELD the number came from, so the block can say what it IS.
+   *
+   * A bar chart of bare numbers is the most confidently misleading thing this library can draw.
+   * Seen live: a card answering "todays 0DTE results" drew AKAM 93, COHR 100, CRWD 71 as green
+   * bars directly above tiles reading WINS 9 / LOSSES 8. Those are conviction SCORES. Beside a
+   * win/loss tally, with a green bar and no unit, they read as per-ticker returns — a member
+   * would reasonably conclude AKAM made 93%.
+   *
+   * Every number here is real and sourced. That is exactly what makes it dangerous: nothing is
+   * fabricated, the CLAIM is just unstated, and the reader supplies the wrong one.
+   */
+  valueKey?: string;
+};
 
 /** Field names an array row might carry its NAME under, most specific first. */
 const NAME_KEYS = ["ticker", "symbol", "name", "label", "strike", "expiry", "sector", "industry", "member", "gate", "code"];
@@ -236,7 +254,7 @@ export function rankedFromArray(arr: unknown, limit = 8): GenericRankedRow[] {
     if (!picked) continue;
     const [valueKey, magnitude] = picked;
 
-    out.push({ label, value: formatByKey(valueKey, magnitude), magnitude, sub: null });
+    out.push({ label, value: formatByKey(valueKey, magnitude), magnitude, sub: null, valueKey });
   }
   return out;
 }
@@ -387,6 +405,32 @@ const MIN_STATS = 3;
  * worked. Everything else falls back to `humaniseKey`, which is how `articles` becomes "Articles"
  * instead of nothing at all.
  */
+/**
+ * Name the QUANTITY in the block title when the rows agree on one.
+ *
+ * "Plays" over a column of bare numbers tells a member nothing about what the numbers mean;
+ * "Plays · score" tells them not to read it as a return. Only applied when every drawn row took
+ * its magnitude from the SAME field — a mixed column has no single honest label, and inventing
+ * one would be worse than the ambiguity it replaced.
+ *
+ * Skipped when the field name adds nothing (the title already says it, or the key humanises to
+ * the same word), so a Flow block does not become "Flow · premium · premium".
+ */
+function rankedTitle(title: string, rows: readonly GenericRankedRow[]): string {
+  const keys = new Set(rows.map((r) => r.valueKey ?? ""));
+  if (keys.size !== 1) return title;
+  const key = [...keys][0]!;
+  const unit = key ? humaniseKey(key) : null;
+  if (!unit) return title;
+  const t = title.toLowerCase();
+  const u = unit.toLowerCase();
+  // A bare array has no key to name it after, so the quantity IS the honest heading — "Total
+  // premium" says more than "Ranked · Total premium".
+  if (t === "ranked") return unit;
+  if (t === u || t.includes(u) || u.includes(t)) return title;
+  return `${title} · ${unit}`;
+}
+
 function arrayCandidates(
   r: Record<string, unknown>,
   known: { key: string; title: string }[]
@@ -414,6 +458,34 @@ export function genericBlocksFrom(
   const out: GenericBlocks = { stats: null, ranked: null, events: null };
 
   for (const r of results) {
+    /**
+     * A TOOL THAT RETURNS A TOP-LEVEL ARRAY WAS INVISIBLE.
+     *
+     * `isRecord` excludes arrays — correct for the row-level checks, wrong as the gate on this
+     * loop. `fetchHotTickers` (hot-tickers.ts) returns `HotTicker[]` with no wrapper, so
+     * `get_hot_tickers` contributed NOTHING to any card: four named tickers with print counts and
+     * premium totals, skipped before any validator saw them.
+     *
+     * Fifth member of the same family as the date-key, container-key and value-key allowlists —
+     * a shape assumption that production does not match. Here the assumption was that a tool
+     * result is an object.
+     *
+     * The rows still go through the SAME validators, so a bare array of junk yields nothing
+     * exactly as a wrapped one does. The title comes from the quantity, since a bare array has no
+     * key to name it after.
+     */
+    if (Array.isArray(r)) {
+      if (claimed.has(r)) continue;
+      if (!out.ranked) {
+        const rows = rankedFromArray(r);
+        if (rows.length >= MIN_RANKED) out.ranked = { title: rankedTitle("Ranked", rows), rows, source };
+      }
+      if (!out.events) {
+        const rows = eventsFromArray(r);
+        if (rows.length >= MIN_EVENTS) out.events = { title: "Schedule", rows, source };
+      }
+      continue;
+    }
     if (!isRecord(r) || claimed.has(r)) continue;
 
     if (!out.events) {
@@ -425,7 +497,7 @@ export function genericBlocksFrom(
     if (!out.ranked) {
       for (const [key, title] of arrayCandidates(r, RANKED_FIELDS)) {
         const rows = rankedFromArray(r[key]);
-        if (rows.length >= MIN_RANKED) { out.ranked = { title, rows, source }; break; }
+        if (rows.length >= MIN_RANKED) { out.ranked = { title: rankedTitle(title, rows), rows, source }; break; }
       }
     }
     /**

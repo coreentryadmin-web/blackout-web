@@ -199,7 +199,10 @@ test("a market-movers payload produces a RANKED block", () => {
     ] }],
     new Set(),
   );
-  assert.equal(g.ranked?.title, "Movers");
+  // TITLE NOW NAMES THE QUANTITY. This asserted a bare "Movers" — a heading over a column of
+  // unlabelled numbers. A live 0DTE card drew conviction scores as green bars directly above a
+  // WINS/LOSSES tally, where they read as per-ticker returns; the unit suffix is what stops that.
+  assert.equal(g.ranked?.title, "Movers · Change pct");
   assert.equal(g.ranked?.rows[0]!.value, "4.2%");
 });
 
@@ -382,4 +385,105 @@ test("a row's own ORDINAL is never its magnitude", () => {
 
 test("plumbing and identifiers are never a magnitude", () => {
   assert.equal(rankedFromArray([{ ticker: "NVDA", play_id: 9912 }, { ticker: "AMD", play_id: 9913 }]).length, 0);
+});
+
+/**
+ * A BAR CHART OF BARE NUMBERS IS THE MOST CONFIDENTLY MISLEADING THING THIS LIBRARY CAN DRAW.
+ *
+ * Seen on a live production card answering "todays 0DTE results": AKAM 93, COHR 100, CRWD 71 as
+ * green bars, directly above tiles reading WINS 9 / LOSSES 8. Those are conviction SCORES. In that
+ * position, with a green bar and no unit, they read as per-ticker returns — a member would
+ * reasonably conclude AKAM made 93%.
+ *
+ * Every number was real and correctly sourced. That is what made it dangerous: nothing was
+ * fabricated, the CLAIM was merely unstated, and the reader supplied the wrong one.
+ */
+
+test("a ranked block NAMES the quantity it is ranking", () => {
+  const board = {
+    plays: [
+      { ticker: "AKAM", score: 93 },
+      { ticker: "APA", score: 76 },
+      { ticker: "COHR", score: 100 },
+    ],
+  };
+  assert.equal(genericBlocksFrom([board], new Set()).ranked?.title, "Plays · Score");
+});
+
+test("rows carry the field their magnitude came from", () => {
+  const rows = rankedFromArray([{ ticker: "NVDA", premium: 1_250_000 }, { ticker: "AMD", premium: 900_000 }]);
+  assert.equal(rows[0]?.valueKey, "premium");
+});
+
+test("a MIXED column gets no unit — there is no single honest label", () => {
+  // Inventing one would be worse than the ambiguity it replaced.
+  const mixed = { rows: [{ ticker: "A", score: 5 }, { ticker: "B", premium: 100 }, { ticker: "C", score: 7 }] };
+  assert.equal(genericBlocksFrom([mixed], new Set()).ranked?.title, "Rows");
+});
+
+test("a redundant unit is not appended twice", () => {
+  // "Flow · premium · premium" helps nobody.
+  const flow = {
+    premium: [
+      { ticker: "NVDA", premium: 1_250_000 },
+      { ticker: "AMD", premium: 900_000 },
+      { ticker: "TSLA", premium: 700_000 },
+    ],
+  };
+  const title = genericBlocksFrom([flow], new Set()).ranked?.title ?? "";
+  assert.equal(title.toLowerCase().split("premium").length - 1, 1, `unit repeated in "${title}"`);
+});
+
+/**
+ * A TOOL THAT RETURNS A TOP-LEVEL ARRAY WAS INVISIBLE.
+ *
+ * `isRecord` excludes arrays — correct for the row-level checks, wrong as the gate on the results
+ * loop. `fetchHotTickers` returns `HotTicker[]` with no wrapper, so `get_hot_tickers` contributed
+ * NOTHING to any card: named tickers with print counts and premium totals, skipped before any
+ * validator saw them.
+ *
+ * Fifth member of the same family as the date-key, container-key and value-key allowlists — a
+ * shape assumption production does not match. Here the assumption was "a tool result is an object".
+ */
+
+/** `fetchHotTickers` (hot-tickers.ts:62) — a bare array, no wrapper. */
+const HOT_TICKERS = [
+  { ticker: "NVDA", print_count: 412, total_premium: 88_400_000 },
+  { ticker: "TSLA", print_count: 331, total_premium: 61_200_000 },
+  { ticker: "SPY", print_count: 908, total_premium: 142_000_000 },
+  { ticker: "AMD", print_count: 210, total_premium: 33_500_000 },
+];
+
+test("a BARE ARRAY result composes — it produced nothing at all before", () => {
+  const out = genericBlocksFrom([HOT_TICKERS], new Set());
+  assert.ok(out.ranked, "a top-level array must reach the validators");
+  assert.equal(out.ranked!.rows.length, 4);
+  assert.deepEqual(out.ranked!.rows.map((r) => r.label), ["NVDA", "TSLA", "SPY", "AMD"]);
+});
+
+test("a bare array is titled by its QUANTITY — it has no key to be named after", () => {
+  // "Print count" says more than "Ranked · Print count", and there is no container key to use.
+  assert.equal(genericBlocksFrom([HOT_TICKERS], new Set()).ranked!.title, "Print count");
+});
+
+test("a bare array of JUNK still yields nothing — same validators, no lowered bar", () => {
+  assert.deepEqual(genericBlocksFrom([[1, 2, 3], ["a", "b"]], new Set()), {
+    stats: null,
+    ranked: null,
+    events: null,
+  });
+});
+
+test("`get_global_flow`'s WRAPPED alerts still work — this did not regress the object path", () => {
+  const flow = {
+    source: "unusual_whales",
+    alerts: [
+      { ticker: "NVDA", total_premium: 4_100_000, option_type: "call" },
+      { ticker: "TSLA", total_premium: 2_800_000, option_type: "call" },
+      { ticker: "AMD", total_premium: 1_900_000, option_type: "put" },
+    ],
+  };
+  const out = genericBlocksFrom([flow], new Set());
+  assert.equal(out.ranked?.title, "Alerts · Total premium");
+  assert.equal(out.ranked?.rows.length, 3);
 });
