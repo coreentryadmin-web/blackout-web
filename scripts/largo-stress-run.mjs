@@ -49,6 +49,28 @@ function routeQuestion(q) {
 }
 
 
+const PRODUCTION_BASE = "https://blackouttrades.com";
+const DECOMMISSIONED_HOST = "staging.blackouttrades.com";
+
+/**
+ * Exact host match, by PARSING the URL rather than pattern-matching the string.
+ *
+ * The first version tested `/staging\.blackouttrades\.com/` against the raw value, which CodeQL
+ * correctly flagged: an unanchored expression matches anywhere in a URL, so
+ * `https://evil.com/?x=staging.blackouttrades.com` and `https://staging.blackouttrades.com.other/`
+ * both pass. Anchoring the regex would have patched the symptom; comparing the parsed `hostname`
+ * removes the class — there is no string position left to smuggle a host through.
+ *
+ * An unparseable value is NOT the decommissioned host, and is left for the caller to handle.
+ */
+function hostIs(value, host) {
+  try {
+    return new URL(value).hostname.toLowerCase() === host;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * The live target. Production by default — staging no longer exists.
  *
@@ -57,13 +79,13 @@ function routeQuestion(q) {
  */
 function liveBaseUrl() {
   const legacy = process.env.STAGING_BASE_URL;
-  if (legacy && /staging\.blackouttrades\.com/.test(legacy)) {
+  if (legacy && hostIs(legacy, DECOMMISSIONED_HOST)) {
     console.warn(
-      "[largo-stress] STAGING_BASE_URL points at staging, decommissioned 2026-07-25 — using production."
+      `[largo-stress] STAGING_BASE_URL points at ${DECOMMISSIONED_HOST}, decommissioned 2026-07-25 — using production.`
     );
-    return "https://blackouttrades.com";
+    return PRODUCTION_BASE;
   }
-  return (process.env.LARGO_BASE_URL ?? legacy ?? "https://blackouttrades.com").replace(/\/$/, "");
+  return (process.env.LARGO_BASE_URL ?? legacy ?? PRODUCTION_BASE).replace(/\/$/, "");
 }
 
 async function askLive(cookieHeader, question) {
