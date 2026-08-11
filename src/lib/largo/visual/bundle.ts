@@ -35,6 +35,7 @@ import type {
   VisualTimelineStep,
 } from "./types";
 import { extractGexShifts, formatGexChange } from "@/lib/largo/core/gex-shift-extract";
+import { genericBlocksFrom } from "./generic-extract";
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null;
@@ -582,6 +583,37 @@ export function buildVisualBundle(input: BuildBundleInput): VisualBundle {
         ? input.envelopeGexShifts.map((s) => ({ ...s, display: formatGexChange(s.change) }))
         : undefined),
     regime: pos?.posture ? { label: pos.posture.toUpperCase(), detail: pos.regimeRead, source: "THERMAL" } : null,
+    /**
+     * GENERIC BLOCKS, from everything the purpose-built finders did NOT claim.
+     *
+     * Resolved LAST so `claimed` is complete. A payload already rendered as a flow tape must not
+     * also render as a generic ranked list — the same numbers under two headings read as two
+     * independent measurements.
+     */
+    ...(() => {
+      /**
+       * THE CLAIMED SET MUST HOLD SOURCE RECORDS, and the derived finders do not return them.
+       *
+       * Caught by rendering. `findQuote`/`findFlow`/`findPositioning` each build a NEW object from
+       * the payload they matched, so `claimed.has(record)` never fired and the quote was rendered
+       * TWICE — once as the hero spot, once as a "Readings" tile saying "Price $217.42". Two
+       * renderings of one number read as two independent measurements.
+       *
+       * So membership is recomputed against the raw records using the same discriminators the
+       * finders use, rather than trusting their return values to be identity-comparable.
+       */
+      const claimed = new Set<unknown>([editionRaw, ledgerRow, gv].filter((x) => x != null));
+      for (const r of results) {
+        if (!isRecord(r)) continue;
+        const isQuote = num(r.price) != null || num(r.last) != null || num(r.c) != null;
+        const isFlowTape = Array.isArray(r.recent);
+        const isPositioning = "gamma_posture" in r || "flip" in r;
+        const isGrader = "agreed" in r && "comparable" in r;
+        if (isQuote || isFlowTape || isPositioning || isGrader) claimed.add(r);
+      }
+      const g = genericBlocksFrom(results, claimed);
+      return { genericStats: g.stats, genericRanked: g.ranked, genericEvents: g.events };
+    })(),
     playbook,
     trade,
     counterfactual,

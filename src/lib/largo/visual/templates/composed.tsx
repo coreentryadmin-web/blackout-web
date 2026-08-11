@@ -595,6 +595,126 @@ export function ComposedCard({
         );
         break;
 
+      case "generic_events": {
+        const ev = bundle.genericEvents!;
+        push(
+          <Section key="gev" label={ev.title} spec={spec} first={isFirst}>
+            <div style={{ display: "flex", flexDirection: "column", width: "100%" }}>
+              {ev.rows.slice(0, capFor(block, spec.dense ? 4 : 6)).map((r, i) => {
+                recorder.value(`${r.label} ${r.when}`, r.detail ?? r.when, ev.source);
+                return (
+                  <div
+                    key={`${r.label}-${i}`}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      width: "100%",
+                      padding: `${s(7, spec)}px ${s(12, spec)}px`,
+                      marginTop: i === 0 ? 0 : s(5, spec),
+                      background: "rgba(255,255,255,0.015)",
+                      borderLeft: `${s(3, spec)}px solid ${C.info}`,
+                    }}
+                  >
+                    <div style={{ display: "flex", fontFamily: FONT.mono, fontWeight: 700, fontSize: s(17, spec), color: C.info, width: s(84, spec), flexShrink: 0 }}>
+                      {r.when}
+                    </div>
+                    <div style={{ display: "flex", fontFamily: FONT.mono, fontWeight: 700, fontSize: s(18, spec), color: C.primary }}>
+                      {r.label}
+                    </div>
+                    {r.detail && (
+                      <div style={{ display: "flex", marginLeft: "auto", fontFamily: FONT.mono, fontSize: s(15, spec), color: C.muted, flexShrink: 0 }}>
+                        {r.detail}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </Section>
+        );
+        break;
+      }
+
+      case "generic_ranked": {
+        const gr = bundle.genericRanked!;
+        push(
+          <Section key="grk" label={gr.title} spec={spec} first={isFirst}>
+            <RankedRows
+              rows={gr.rows.map((r) => {
+                recorder.value(r.label, r.value, gr.source);
+                return {
+                  label: r.label,
+                  sub: r.sub ?? null,
+                  value: r.value,
+                  magnitude: r.magnitude,
+                  // Signed values carry direction; unsigned ones are magnitudes and stay neutral,
+                  // because colouring a raw volume green would assert a direction the data has not.
+                  color: r.magnitude > 0 ? C.bull : r.magnitude < 0 ? C.bear : C.muted,
+                };
+              })}
+              spec={spec}
+              max={capFor(block, surfaceCap + 2)}
+            />
+          </Section>
+        );
+        break;
+      }
+
+      case "generic_stats": {
+        const gs = bundle.genericStats!;
+        // Four per row wide, two stacked — matching the height the packer was charged for.
+        const perRow = spec.stack ? 2 : 4;
+        const shown = gs.rows.slice(0, spec.dense ? 4 : 8);
+        const chunks: (typeof shown)[] = [];
+        for (let i = 0; i < shown.length; i += perRow) chunks.push(shown.slice(i, i + perRow));
+        for (const r of shown) recorder.value(r.label, r.value, gs.source);
+        push(
+          <Section key="gst" label={gs.title} spec={spec} first={isFirst}>
+            <div style={{ display: "flex", flexDirection: "column", width: "100%" }}>
+              {chunks.map((chunk, ci) => (
+                <div key={ci} style={{ display: "flex", width: "100%", marginTop: ci === 0 ? 0 : s(9, spec) }}>
+                  {chunk.map((r, i) => (
+                    <div
+                      key={r.label}
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        flex: 1,
+                        marginLeft: i === 0 ? 0 : s(12, spec),
+                        padding: s(11, spec),
+                        background: "rgba(255,255,255,0.02)",
+                        borderTop: `${s(2, spec)}px solid ${C.info}`,
+                      }}
+                    >
+                      <Kicker text={r.label} spec={spec} />
+                      <div
+                        style={{
+                          display: "flex",
+                          fontFamily: FONT.mono,
+                          fontWeight: 700,
+                          fontSize: s(26, spec),
+                          color: C.primary,
+                          marginTop: s(5, spec),
+                        }}
+                      >
+                        {r.value}
+                      </div>
+                    </div>
+                  ))}
+                  {/* Pad the final row so three tiles do not stretch to fill four columns —
+                      a stretched tile reads as a different, more important measurement. */}
+                  {chunk.length < perRow &&
+                    Array.from({ length: perRow - chunk.length }, (_, k) => (
+                      <div key={`pad-${k}`} style={{ display: "flex", flex: 1, marginLeft: s(12, spec) }} />
+                    ))}
+                </div>
+              ))}
+            </div>
+          </Section>
+        );
+        break;
+      }
+
       case "metrics":
         push(
           <Section key="metrics" label={null} spec={spec} first={isFirst}>
