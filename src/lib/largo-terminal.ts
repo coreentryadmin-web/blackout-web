@@ -126,6 +126,8 @@ export type LargoStreamEvent =
       verification: ClaimVerification;
       /** The instrument Largo resolved — see runLargoQuery's return type. */
       ticker?: string | null;
+      /** The persisted turn — see runLargoQuery's return type for why it is top-level. */
+      turn_id?: number | null;
       // The structured answer envelope. Since the BIE composer was removed this is produced by
       // PARSING Largo's own contract-conforming reply (answer-contract.ts) rather than by a
       // composer — so it is present on any answer that follows the mandatory section template, and
@@ -564,6 +566,22 @@ export async function runLargoQuery(
   verification: ClaimVerification;
   /** The instrument Largo resolved for this turn — the contextual rail's single source. */
   ticker: string | null;
+  /**
+   * The persisted turn, TOP-LEVEL and independent of the envelope.
+   *
+   * MEASURED LIVE 2026-08-11. "Create an image for tomorrows NH plays" and "create an image of
+   * todays 0DTE results" both came back with the `visual` auto-render directive set and
+   * `turnId: null` — the client was told to draw a card and handed nothing to draw it from. The
+   * cause was that the id rode ONLY on `envelope.turnId`, and `envelopeFromContract` returns null
+   * whenever the model's reply misses the section contract. So the two questions most likely to
+   * ask for an artefact were the ones least likely to be able to produce one, and the failure was
+   * silent: the turn had persisted fine, its id was simply dropped on the way out.
+   *
+   * Keeping it on the envelope as well would have been the smaller diff and the wrong shape: the
+   * turn id is a property of the TURN, not of whether the answer happened to parse into sections.
+   * `envelope.turnId` stays populated for older clients.
+   */
+  turn_id: number | null;
   envelope?: BieAnswerEnvelope;
 }> {
   const startedAt = Date.now();
@@ -698,6 +716,7 @@ export async function runLargoQuery(
       // thing the answer is about. A client re-guessing from the question text could show NVDA
       // beside an answer about SPX, and nothing would surface the disagreement.
       ticker: tickerHint,
+      turn_id: turnId ?? null,
       envelope,
     };
   } catch (error) {
@@ -901,7 +920,8 @@ export async function runLargoQueryStream(
       source: dbConfigured() ? "blackout-web+postgres" : "blackout-web",
       tools_used: Array.from(new Set(toolsUsed)),
       followups,
-        ticker: tickerHint,
+      ticker: tickerHint,
+      turn_id: turnId ?? null,
       verification,
       ...visualDirective(question),
       envelope,

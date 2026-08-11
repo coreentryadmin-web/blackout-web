@@ -27,6 +27,15 @@ export type LargoMessage = {
    * answers, historical (rehydrated) turns, and until the server PR deploys.
    */
   envelope?: BieAnswerEnvelope | null;
+  /**
+   * The persisted turn this answer came from, and the server's auto-render directive.
+   *
+   * Both are carried on the MESSAGE rather than in a single "latest turn" slot because the
+   * transcript keeps every turn on screen: a card action on the third answer must rebuild the
+   * third turn, not whichever one happened to arrive last.
+   */
+  turnId?: number | null;
+  visual?: { size: "x_landscape" | "x_portrait" | "square" | "story" } | null;
   /** Object/data URLs for images sent with a user turn, rendered as thumbnails in the bubble. */
   images?: string[];
 };
@@ -352,6 +361,11 @@ export function useLargoChat() {
             // Prefer the real structured envelope when synthesis (#59) returns one;
             // null keeps LargoAnswerMessage on the markdown shim (no regression).
             envelope: res.envelope ?? null,
+            // Independent of `envelope`: an answer that missed the section contract still has a
+            // persisted turn, and that turn is all a card needs. Gating these on the envelope is
+            // what left "create an image of todays 0DTE results" with nothing to render from.
+            turnId: res.turn_id ?? null,
+            visual: res.visual ? { size: res.visual.size } : null,
           })
         );
         // Only overwrite when the server actually resolved one: a follow-up that names no ticker

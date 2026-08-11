@@ -33,6 +33,7 @@ export function LargoAnswerMessage({
   onFollowup,
   question,
   autoVisual,
+  turnId,
 }: {
   content: string;
   source?: string | null;
@@ -53,6 +54,12 @@ export function LargoAnswerMessage({
    * two to disagree about whether a card was requested.
    */
   autoVisual?: { size: "x_landscape" | "x_portrait" | "square" | "story" } | null;
+  /**
+   * The persisted turn behind this answer. Enough on its own to offer a card: the server rebuilds
+   * from that turn's stored tool results, which is strictly MORE evidence than the envelope's
+   * levels and gexShifts, not less.
+   */
+  turnId?: number | null;
 }) {
   const fallback = <LargoMessageBody content={content} className={className} />;
 
@@ -111,29 +118,40 @@ export function LargoAnswerMessage({
   }, [content, source, createdAt, envelope, streaming, className, onFollowup, question]);
 
   /**
-   * CREATE VISUAL — offered only on a REAL, structured answer.
+   * CREATE VISUAL — offered when there is anything honest to draw from.
    *
-   * Gated on `envelope`, not on `rich`: the visual is rendered from the envelope's structured
-   * evidence (levels, gexShifts, headline, bias), so an answer that fell back to raw markdown has
-   * nothing a card could honestly be built from. Offering the action there would produce a button
-   * whose only outcome is "no visual for this answer".
+   * THE GATE USED TO BE `envelope` ALONE, and that was a stale reading of where the card's
+   * evidence comes from. It was true when the card was drawn from the envelope's own levels and
+   * gexShifts; since the composer landed, the server rebuilds from the TURN's stored tool
+   * results — a strictly richer source that the envelope was never the gatekeeper of.
+   *
+   * The cost of the stale gate was measured live: `envelopeFromContract` returns null whenever the
+   * model's reply drifts off the section contract, and on those turns the slot was not rendered at
+   * all. So a member could ask for an image in as many words, the server could correctly detect the
+   * request and set the auto-render directive, and the component that acts on it was never mounted.
+   * The two questions in the live probe that failed this way — tomorrow's NH plays, today's 0DTE
+   * results — are squarely the ones a member asks when they want something to post.
+   *
+   * `turnId || envelope`, not `turnId && envelope`: either is sufficient. With a turn the server
+   * replays real evidence; with only an envelope the old envelope-fields path still works, which
+   * is what rehydrated history turns (no turn id in the transcript) fall back to.
    *
    * `capturedResults` is deliberately NOT passed: raw tool output never crosses to the browser.
-   * The envelope's structured fields were themselves lifted off those same tool results, so the
-   * card stays on one snapshot without shipping the whole payload client-side.
    */
-  const visual = envelope ? (
+  const visual = envelope || turnId != null ? (
     <div className="largo-visual-slot">
       <CreateVisualAction
         question={question ?? ""}
-        headline={envelope.headline ?? null}
+        headline={envelope?.headline ?? null}
         // BieBias is bullish/bearish/neutral/mixed; the card's vocabulary is bull/bear/neutral.
         // `mixed` maps to neutral rather than picking a side — the same rule market-state.ts
         // applies when an answer names both directions.
-        bias={envelope.bias === "bullish" ? "bull" : envelope.bias === "bearish" ? "bear" : "neutral"}
-        envelopeLevels={envelope.levels?.map((l) => ({ label: l.label, value: l.price })) ?? null}
-        envelopeGexShifts={envelope.gexShifts ?? null}
-        turnId={envelope.turnId ?? null}
+        bias={envelope?.bias === "bullish" ? "bull" : envelope?.bias === "bearish" ? "bear" : "neutral"}
+        envelopeLevels={envelope?.levels?.map((l) => ({ label: l.label, value: l.price })) ?? null}
+        envelopeGexShifts={envelope?.gexShifts ?? null}
+        // Top-level id first; `envelope.turnId` is the pre-#2037 shape, kept so a client holding a
+        // rehydrated message from before this shipped still resolves a turn.
+        turnId={turnId ?? envelope?.turnId ?? null}
         autoRender={autoVisual ?? null}
       />
     </div>

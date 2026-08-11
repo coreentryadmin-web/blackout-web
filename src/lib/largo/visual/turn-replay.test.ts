@@ -91,7 +91,17 @@ test("the turn id reaches the client on the envelope, and the UI passes it back"
   assert.equal(wired.length, 2, "both persist call sites must attach it");
 
   const mount = readFileSync("src/features/largo/components/LargoAnswerMessage.tsx", "utf8");
-  assert.match(mount, /turnId=\{envelope\.turnId \?\? null\}/, "the mount must pass it through");
+  // THE ENVELOPE IS NOW THE FALLBACK, NOT THE CARRIER. This assertion used to demand
+  // `turnId={envelope.turnId ?? null}` — pinning the exact coupling that turned out to be the bug:
+  // `envelopeFromContract` returns null whenever the model's reply drifts off the section contract,
+  // and the id died with it even though the turn had persisted fine. The id now rides top-level
+  // (`turn_id`), and the envelope read is kept ONLY so a message rehydrated from before that
+  // shipped still resolves its turn. See visual-mount.test.ts for the full five-hop journey.
+  assert.match(
+    mount,
+    /turnId=\{turnId \?\? envelope\?\.turnId \?\? null\}/,
+    "the mount must prefer the top-level id and fall back to the envelope's",
+  );
 });
 
 test("only ASSISTANT rows are addressable as a turn", () => {
