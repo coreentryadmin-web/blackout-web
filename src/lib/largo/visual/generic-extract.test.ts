@@ -544,3 +544,41 @@ test("keys production emits get MEMBER-FACING titles, not the raw field name", (
   };
   assert.equal(genericBlocksFrom([macro], new Set()).events?.title, "Macro calendar");
 });
+
+test("the same event described by two feed rows is drawn ONCE", () => {
+  // Polygon's market-holidays payload carries a record PER EXCHANGE, so an un-deduped list put
+  // "09/07 Labor Day, 09/07 Labor Day, 11/26 Thanksgiving, 11/26 Thanksgiving" on a live card —
+  // four rows of prime canvas conveying two facts.
+  const payload = {
+    calendar: [
+      { name: "Labor Day", date: "2026-09-07", exchange: "NYSE" },
+      { name: "Labor Day", date: "2026-09-07", exchange: "NASDAQ" },
+      { name: "Thanksgiving", date: "2026-11-26", exchange: "NYSE" },
+      { name: "THANKSGIVING", date: "2026-11-26", exchange: "NASDAQ" },
+    ],
+  };
+  const rows = genericBlocksFrom([payload], new Set()).events!.rows;
+  assert.deepEqual(
+    rows.map((r) => `${r.when} ${r.label}`),
+    ["09/07 Labor Day", "11/26 Thanksgiving"]
+  );
+});
+
+test("duplicates do not consume the row budget — the limit counts DISTINCT events", () => {
+  // The dedupe has to happen inside the scan. Filtering the finished array would leave the limit
+  // already spent on repeats, so genuinely distinct later events would still be cut.
+  const dupes = Array.from({ length: 8 }, () => ({ name: "Labor Day", date: "2026-09-07" }));
+  const rows = eventsFromArray([...dupes, { name: "CPI", date: "2026-09-10" }], 2);
+  assert.deepEqual(rows.map((r) => r.label), ["Labor Day", "CPI"]);
+});
+
+test("distinct events sharing a date are both kept", () => {
+  const rows = eventsFromArray(
+    [
+      { name: "CPI", date: "2026-09-10" },
+      { name: "Jobless claims", date: "2026-09-10" },
+    ],
+    6
+  );
+  assert.equal(rows.length, 2);
+});

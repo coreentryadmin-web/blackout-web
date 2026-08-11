@@ -186,7 +186,9 @@ export const BLOCKS: BlockSpec[] = [
     match: /\b(agree|disagree|consensus|conflict|all (the )?(systems|products|tools)|cross.?desk|everything|overall|how does .* look|what does .* look like|picture|snapshot|overview|brief)\b/i,
     base: 84,
     density: (b) => (b.systemReads?.length ?? 0),
-    height: (_b, spec) => (spec.dense ? 104 : 124),
+    // MEASURED, not guessed: 103px dense / 103-104px roomy against a 104/124 estimate
+    // (--calibrate, all three sizes). +6 of headroom for a longer product name.
+    height: (_b, spec) => (spec.dense ? 104 : 116),
   },
   {
     id: "regime",
@@ -195,7 +197,9 @@ export const BLOCKS: BlockSpec[] = [
     match: /\b(regime|gamma (environment|state)|short gamma|long gamma|pinned|stabilis|destabilis)\b/i,
     base: 76,
     density: () => 1,
-    height: (_b, spec) => (spec.dense ? 68 : 80),
+    // MEASURED 63px at every size against a 68/80 estimate — the worst over-estimate on the
+    // card (0.78 roomy). +5 of headroom for a two-line regime note.
+    height: (_b, spec) => (spec.dense ? 68 : 72),
   },
   {
     id: "levels",
@@ -218,7 +222,8 @@ export const BLOCKS: BlockSpec[] = [
     // 96/128 that used to sit here priced every row at nearly three times what it draws, which on a
     // two-play card wasted 144px — over a tenth of a portrait canvas — and then reported the blocks
     // that height would have fitted as "no room on this card".
-    height: (b, spec) => 34 + rows(b.playbook?.rows.length ?? 0, spec, spec.stack ? 6 : 4) * (spec.dense ? 46 : 52),
+    // MEASURED 0.83-0.88 of estimate at every size: the per-row figure was the inflated part.
+    height: (b, spec) => 34 + rows(b.playbook?.rows.length ?? 0, spec, spec.stack ? 6 : 4) * (spec.dense ? 44 : 48),
     minHeight: (_b, spec) => 34 + 2 * (spec.dense ? 46 : 52),
   },
   {
@@ -256,7 +261,8 @@ export const BLOCKS: BlockSpec[] = [
     match: /\bgamma (map|profile|distribution|stacked)\b|\bwhere is (the )?gamma\b|\b(gex|dealer gamma)\b/i,
     base: 68,
     density: (b) => b.gammaProfile?.rows.length ?? 0,
-    height: (b, spec) => 34 + rows(b.gammaProfile?.rows.length ?? 0, spec, 8) * (spec.dense ? 30 : 36),
+    // MEASURED 0.82-0.93 of estimate; the roomy per-row figure carried the inflation.
+    height: (b, spec) => 34 + rows(b.gammaProfile?.rows.length ?? 0, spec, 8) * (spec.dense ? 30 : 34),
     minHeight: (_b, spec) => 34 + 4 * (spec.dense ? 30 : 36),
   },
   {
@@ -645,6 +651,17 @@ export function composeForRender(input: ComposeInput): { composition: Compositio
     // A tier that empties the card is a bug in the fact table, not a layout worth shipping.
     .filter((c) => c.composition.blocks.length > 0);
 
+  /**
+   * EVERY tier empty means the bundle carries no drawable evidence at all — a turn whose tools all
+   * returned nothing, or a caller that excluded every block. That is not a de-duplication choice to
+   * make, so there is nothing to pick between: hand back the undeduped composition.
+   *
+   * Falling through instead left `Math.max()` at -Infinity and `candidates[-1]` undefined, and the
+   * destructure of `pick.composition` threw — a 500 on the visual route rather than an honest
+   * evidence-less card.
+   */
+  if (candidates.length === 0) return { composition: first, bundle: input.bundle };
+
   const best = Math.max(...candidates.map((c) => c.composition.used));
   // TOLERANCE, not equality. Block heights are estimates (see the header), so demanding an exact
   // match would reject a tier that lost a few pixels of padding while removing a whole repeated
@@ -706,6 +723,22 @@ export function composeCard(input: ComposeInput): Composition {
    * never pad — the extra space is filled with evidence that already existed or not at all.
    */
   let slack = budget - used;
+
+  /**
+   * WHY THERE IS NO "RECONSIDER THE DROPPED BLOCKS" PASS HERE.
+   *
+   * It is tempting to spend leftover budget by reinstating something the pack loop dropped. It can
+   * never work, and the proof is one line: `used` only ever grows, so the budget remaining when a
+   * block was refused is always >= the slack left at the end. A block that did not fit then cannot
+   * fit now. Written, measured across every size and both fixture variants, observed to fire zero
+   * times, and removed rather than shipped as reassuring dead code.
+   *
+   * The dead canvas that motivated it was never a packing-order problem — it was the ESTIMATES.
+   * They ran 0.78-0.94 of the pixels satori actually drew (see the block heights above, each now
+   * carrying its measured figure), so the packer believed the canvas was full while a fifth of it
+   * was blank. Correcting the estimates is what lets the NORMAL pack loop fit the next block.
+   */
+
   for (const c of [...chosen].sort((a, b) => b.weight - a.weight)) {
     const total = rowCount(c.spec.id, bundle);
     if (total == null) continue;
