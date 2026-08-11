@@ -431,6 +431,11 @@ export function composableSignals(b: VisualBundle): string[] {
     regime: !!b.regime,
     levels: (b.levels?.length ?? 0) >= 1,
     metrics: (b.metrics?.length ?? 0) >= 1,
+    // A COMMITTED TRADE IS EVIDENCE, and it was missing from this tally entirely — carried over
+    // faithfully from the anonymous counter this replaced, which had the same hole. A turn whose
+    // only product was a real trade with an entry and an outcome counted ZERO toward the
+    // two-signal threshold, so it could refuse to draw the one thing it definitely had.
+    trade: !!b.trade?.entry,
     system_reads: (b.systemReads?.length ?? 0) >= 2,
     gex_shifts: (b.gexShifts?.length ?? 0) >= 1,
     gamma_profile: (b.gammaProfile?.rows.length ?? 0) >= 3,

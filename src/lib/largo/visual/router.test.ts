@@ -263,3 +263,17 @@ test("the generic blocks COUNT — they are why a novel tool can still compose",
   // generic extraction: a tool nobody wrote a matcher for still yields a card.
   assert.ok(routeVisual("what does the earnings calendar look like", b, "AUTO"));
 });
+
+test("a committed TRADE counts as evidence — it counted as nothing", () => {
+  // Carried over from the anonymous counter this list replaced, which had the same hole: a turn
+  // whose only product was a real trade with an entry and an outcome scored ZERO toward the
+  // two-signal threshold, so it could refuse to draw the one thing it definitely had.
+  const b: VisualBundle = {
+    systemsQueried: ["NIGHT HAWK"],
+    asOf: "2026-08-11T15:42:00Z",
+    trade: { ticker: "NVDA", entry: { value: 2.1, display: "$2.10", source: "NIGHT HAWK" }, status: "OPEN" },
+    spot: { value: 219.95, display: "219.95", source: "VECTOR" },
+  };
+  assert.ok(composableSignals(b).includes("trade"));
+  assert.ok(routeVisual("how did the NVDA play do", b, "AUTO"), "and the pair must be drawable");
+});

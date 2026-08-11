@@ -339,3 +339,47 @@ test("a key with no letters gets no block rather than a numeric heading", () => 
   const payload = { "123": [{ name: "NVDA", date: "2026-08-12" }, { name: "AMD", date: "2026-08-13" }] };
   assert.equal(genericBlocksFrom([payload], new Set()).events, null);
 });
+
+/** `zeroDtePlaysFeed` (scan.ts:1784) — the live 0DTE board, and the original complaint's payload. */
+const BOARD_PAYLOAD = {
+  available: true,
+  session_date: "2026-08-11",
+  plays: [
+    { ticker: "NVDA", contract: "185c", status: "OPEN", entry_premium: 2.1, last_mark: 3.05, peak_score: 86 },
+    { ticker: "TSLA", contract: "340c", status: "HOLD", entry_premium: 1.55, last_mark: 1.8, peak_score: 78 },
+    { ticker: "AMD", contract: "175p", status: "CLOSED", entry_premium: 1.2, last_mark: 0.6, peak_score: 71 },
+    { ticker: "META", contract: "720c", status: "OPEN", entry_premium: 3.4, last_mark: 4.1, peak_score: 82 },
+    { ticker: "SPXW", contract: "6400c", status: "HOLD", entry_premium: 4.8, last_mark: 5.2, peak_score: 75 },
+  ],
+};
+
+test("all FIVE board plays rank — this is the original complaint's payload", () => {
+  // "the image only shows one play, it should show all 5". `VALUE_KEYS` had `premium` and `score`;
+  // the rows carry `entry_premium`, `last_mark` and `peak_score`. Three near-misses, so five live
+  // plays ranked as zero rows and the card fell back to a single-trade recap.
+  const rows = rankedFromArray(BOARD_PAYLOAD.plays);
+  assert.equal(rows.length, 5, "every play must survive");
+  assert.deepEqual(rows.map((r) => r.label), ["NVDA", "TSLA", "AMD", "META", "SPXW"]);
+  assert.equal(rows[0]!.value, "$2.10", "and carry its own real entry premium");
+});
+
+test("the known VALUE_KEYS still win, so units stay correct", () => {
+  // The allowlist is tried first precisely so `formatByKey` gives these their proper units. A row
+  // carrying both must not be ranked by the fallback field.
+  const rows = rankedFromArray([
+    { ticker: "NVDA", premium: 1_250_000, some_other_number: 7 },
+    { ticker: "AMD", premium: 900_000, some_other_number: 9 },
+  ]);
+  assert.equal(rows[0]!.magnitude, 1_250_000, "the allowlisted key must win over the fallback");
+});
+
+test("a row's own ORDINAL is never its magnitude", () => {
+  // Ranking a list by its position is a bar chart of 1,2,3 — false precision, the same failure the
+  // all-zero gamma profile had to be caught for by rendering.
+  assert.equal(rankedFromArray([{ ticker: "NVDA", rank: 1 }, { ticker: "AMD", rank: 2 }]).length, 0);
+  assert.equal(rankedFromArray([{ name: "A", index: 0 }, { name: "B", index: 1 }]).length, 0);
+});
+
+test("plumbing and identifiers are never a magnitude", () => {
+  assert.equal(rankedFromArray([{ ticker: "NVDA", play_id: 9912 }, { ticker: "AMD", play_id: 9913 }]).length, 0);
+});
