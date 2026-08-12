@@ -74,6 +74,7 @@ export function ThermalFreshnessBar({
             status={layers.crossVal.status}
             asOf={layers.crossVal.asOf}
             label={layers.crossVal.label}
+            title={layers.crossVal.title}
           />
         </>
       ) : (

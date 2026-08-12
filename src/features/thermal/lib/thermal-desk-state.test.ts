@@ -102,6 +102,35 @@ test("thermalLayerFreshness: matrix live / stale / overlays off / UW off", () =>
   assert.equal(stale.crossVal.status, "live");
 });
 
+test("the cross-check layer never shows a member our vendor's initials", () => {
+  const now = Date.parse("2026-08-12T14:00:00Z");
+  const on = thermalLayerFreshness({
+    nowMs: now,
+    matrixAsof: new Date(now - 2_000).toISOString(),
+    hasOverlays: true,
+    overlaysAt: new Date(now - 5_000).toISOString(),
+    crossValPresent: true,
+    crossValUwAsof: new Date(now - 5_000).toISOString(),
+  });
+  const off = thermalLayerFreshness({
+    nowMs: now,
+    matrixAsof: new Date(now - 2_000).toISOString(),
+    hasOverlays: false,
+    crossValPresent: false,
+  });
+  // "UW" is Unusual Whales — an upstream vendor, not a concept the desk teaches. The chip used to
+  // read "UW check off", which names a supplier the member has no relationship with and leaves the
+  // actual meaning (a second source is/isn't confirming these walls) entirely unstated.
+  for (const layer of [on.crossVal, off.crossVal]) {
+    assert.doesNotMatch(layer.label, /\bUW\b/i);
+    assert.doesNotMatch(layer.title, /\bUW\b/i);
+    assert.match(layer.label, /cross-check/i);
+    // The label alone cannot carry the explanation, so the hover copy must actually say it.
+    assert.match(layer.title, /second/i);
+  }
+  assert.doesNotMatch(honestLevelEmpty("cross_val").help, /\bUW\b/i);
+});
+
 test("wallScopeLabel and honest empties never invent numbers", () => {
   assert.match(wallScopeLabel(["2026-07-28", "2026-07-29"]).short, /2 near-term/);
   assert.equal(honestLevelEmpty("flip").value, "—");

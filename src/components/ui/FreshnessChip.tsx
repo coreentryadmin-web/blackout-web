@@ -11,6 +11,12 @@ export type FreshnessChipProps = {
   asOf?: Date | null;
   /** Optional override for the status word (e.g. "Cached snapshot"). */
   label?: string;
+  /**
+   * Optional plain-English explanation of what this layer IS, shown on hover ahead of the
+   * "Last updated" stamp. A chip has room for two or three words, which is enough to name a
+   * layer but never enough to explain one — without this the reader is left to guess.
+   */
+  title?: string;
   className?: string;
   /**
    * When `status` is `"live"` and `asOf` is set, flip the chip to `"stale"` after
@@ -60,6 +66,7 @@ export function FreshnessChip({
   status,
   asOf,
   label,
+  title,
   className,
   staleAfterMs,
 }: FreshnessChipProps) {
@@ -104,7 +111,11 @@ export function FreshnessChip({
         STATUS_TONE[effectiveStatus],
         className
       )}
-      title={now != null && asOf ? `Last updated ${asOf.toLocaleString()}` : undefined}
+      title={
+        [title, now != null && asOf ? `Last updated ${asOf.toLocaleString()}` : null]
+          .filter(Boolean)
+          .join(" · ") || undefined
+      }
     >
       <span
         aria-hidden
