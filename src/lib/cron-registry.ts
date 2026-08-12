@@ -119,12 +119,12 @@ export const CRON_JOBS: CronJobDefinition[] = [
     name: "Vector Walls Warm",
     kind: "http",
     path: "/api/cron/vector-walls-warm",
-    schedule_label: "~Every 15-30s (market hours)",
+    schedule_label: "Every 5 min EventBridge + in-app leader ~20s (market hours)",
     stale_after_min: 2,
     weekdays_only: true,
     market_hours_only: true,
     description:
-      "Pre-warm Vector GEX/VEX walls cache every 15-30s so SSE stream (1Hz ticks) sees cache hits instead of expensive re-computation; bead recording is vector-bead-record (5s leader)",
+      "Pre-warm Vector GEX/VEX walls cache so SSE stream (1Hz ticks) sees cache hits instead of expensive re-computation; EventBridge 5/min floor; rth-warm-leader backs up at ~20s; bead recording is vector-bead-record (5s leader)",
   },
   {
     key: "vector-bead-record",

@@ -5,6 +5,9 @@ export const RTH_WRITER_HEAL_AFTER_MIN: Record<string, number> = {
   /** 20s — EventBridge heatmap-warm floors at 1/min; in-app leader fills the gap so Thermal
    *  SPY/QQQ don't sit on minute-old asof while SPX Slayer force-refreshes organically. */
   "heatmap-warm": 20 / 60,
+  /** 20s — Vector walls cache TTL is ~900ms; EventBridge floors at 5/min and this cron was
+   *  missing from the leader watch list (ops #2118: market_hours_stale during RTH). */
+  "vector-walls-warm": 20 / 60,
   /** 10s — primary 5s writer is vector-bead-recorder-leader; HTTP cron is backup when leader stalls. */
   "vector-bead-record": 10 / 60,
   /** 1.5 = 90s — tighter than other warmers; desk cold-build blocks are the top UX pain point. */

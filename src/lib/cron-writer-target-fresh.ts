@@ -137,6 +137,22 @@ export async function probeWriterTargetFresh(jobKey: string): Promise<WriterTarg
         detail: fresh ? `uw_cache:${key} ttl ${ttl}s remaining` : `uw_cache:${key} expired/missing`,
       };
     }
+    case "vector-walls-warm": {
+      const { getGexPositioning } = await import("@/lib/providers/gex-positioning");
+      let pos: Awaited<ReturnType<typeof getGexPositioning>> = null;
+      try {
+        pos = await getGexPositioning("SPY");
+      } catch {
+        pos = null;
+      }
+      if (!pos) return { fresh: false, detail: "gex-positioning:SPY cache cold" };
+      const ageMin = ageMinFromIso(pos.asof);
+      const fresh = ageMin != null && ageMin <= 2;
+      return {
+        fresh,
+        detail: `gex-positioning:SPY asof ${ageMin != null ? `${ageMin.toFixed(1)}m` : "?"} ago`,
+      };
+    }
     case "vector-bead-record": {
       const { formatEtDate } = await import("@/features/nighthawk/lib/session");
       const { loadSessionWallHistory } = await import("@/features/vector/lib/vector-wall-persist");
