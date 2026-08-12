@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = publicPageMetadata(
   "Free Gamma Flip & Wall Levels — Live SPX/SPY/QQQ | BlackOut",
-  "Free dealer gamma snapshot for SPX, SPY, and QQQ: the gamma flip level, call wall, put wall, and the long/short-gamma regime, updated every few minutes.",
+  "Free dealer gamma snapshot for SPX, SPY, and QQQ: the gamma flip level, call wall, put wall, and the long/short-gamma regime, updated live every 5 seconds.",
   "/tools/gamma-snapshot"
 );
 
@@ -28,7 +28,7 @@ export default async function GammaSnapshotPage() {
       />
       <WebApplicationJsonLd
         name="Gamma Flip & Wall Levels"
-        description="Free dealer gamma snapshot for SPX, SPY, and QQQ: the gamma flip level, call wall, put wall, and the long/short-gamma regime, updated every few minutes."
+        description="Free dealer gamma snapshot for SPX, SPY, and QQQ: the gamma flip level, call wall, put wall, and the long/short-gamma regime, updated live every 5 seconds."
         path="/tools/gamma-snapshot"
       />
 
@@ -54,7 +54,7 @@ export default async function GammaSnapshotPage() {
         </div>
 
         <p className="mt-4 font-mono text-[11px] leading-relaxed text-sky-300/50">
-          This snapshot refreshes every few minutes — a deliberate delay for a free public page.
+          This snapshot refreshes live every 5 seconds while the tab is open — the same cadence as the dealer-gamma matrix on the member desk.
           Members trading live see tick-by-tick dealer positioning on the full desk (Thermal,
           GEX/VEX/DEX/CHARM by strike and expiry), not just this summary.
         </p>
