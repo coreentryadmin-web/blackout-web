@@ -2303,10 +2303,12 @@ function ExpiryScopeBar({
     );
   };
 
-  // Whether a narrowed scope is active — drives the clarifying caption below. The scope filter
-  // applies ONLY to the profile + cumulative curve; the regime tiles and key levels stay
-  // server-authoritative (near-term) by design, so we say so to avoid a scope/levels mismatch
-  // reading as a bug.
+  // Whether a narrowed scope is active — drives the clarifying caption below. The scope now
+  // carries the KEY LEVELS row as well as the profile + cumulative curve (flip, walls, net, and
+  // max pain all re-derive against the selection). The one thing it does not move is the King
+  // node, which marks the dominant node across the whole near-term book by design — so the
+  // caption names that exception instead of the old blanket "levels stay near-term", which
+  // stopped being true the moment the tiles were rescoped.
   const scoped = scope !== "all";
 
   return (
@@ -2337,9 +2339,9 @@ function ExpiryScopeBar({
       {scoped && (
         <span
           className="ml-1 font-mono text-[9px] normal-case tracking-normal text-sky-300/50"
-          title="Scope narrows the profile bars and cumulative curve. Regime tiles and key levels stay near-term (server-authoritative)."
+          title="Scope narrows the profile bars, the cumulative curve, and the key-levels row (flip, walls, net, max pain). The King node still marks the dominant node across the whole near-term book."
         >
-          filters profile &amp; curve · tiles &amp; levels stay near-term
+          filters profile, curve &amp; key levels · King node stays near-term
         </span>
       )}
     </div>
@@ -3352,8 +3354,13 @@ export function GexHeatmap({
   // it reads the server's per-expiry map. Only meaningful for a SINGLE-expiry scope: a horizon
   // preset spans several settlement dates, and max pain across settlement dates is the exact blend
   // this panel is removing. Presets keep the served front-expiry value and the label says so.
+  //
+  // Deliberately NOT gated on `lens`: max pain comes from OPEN INTEREST, which is the same book
+  // no matter which greek surface is on screen. DEX and CHARM render a max-pain tile too, and
+  // gating this on GEX left those tiles serving the unscoped front-expiry value under a footnote
+  // that said the row was scoped.
   const scopedMaxPain =
-    lens === "gex" && selectedExpiries?.length === 1 && data?.max_pain_by_expiry
+    selectedExpiries?.length === 1 && data?.max_pain_by_expiry
       ? data.max_pain_by_expiry[selectedExpiries[0]]
       : undefined;
   const keyMaxPain = scopedMaxPain !== undefined ? scopedMaxPain : maxPain;
