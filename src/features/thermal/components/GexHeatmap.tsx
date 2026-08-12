@@ -43,6 +43,7 @@ import {
   heatmapCellStyle,
   heatmapCellTextStyle,
   heatmapMatrixExtremeCellStyle,
+  heatmapLegendItems,
   type GexHeatmapLens,
 } from "@/lib/gex-heatmap-display";
 import {
@@ -2513,6 +2514,56 @@ function CompactLevel({ cell }: { cell: LevelCell }) {
   );
 }
 
+/** Matrix colour key — swatches + hover help, driven by the same constants the cells are painted
+ *  from (see heatmapLegendItems). Presentational only. */
+function MatrixLegend({ lens, vocab }: { lens: GexHeatmapLens; vocab: LensVocab }) {
+  const items = heatmapLegendItems(lens, vocab);
+  return (
+    <div
+      className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 font-mono text-[9px] uppercase tracking-[0.16em] text-sky-300/70"
+      aria-label={`${vocab.noun} matrix colour key`}
+    >
+      {items.map((item) => {
+        if (item.kind === "scale") {
+          return (
+            <span key="scale" className="flex items-center gap-1.5" title={item.help}>
+              <span>{item.negLabel}</span>
+              <span
+                aria-hidden
+                className="inline-block h-1.5 w-12 rounded-full"
+                style={{
+                  backgroundImage: `linear-gradient(to right, ${item.fromHex}, rgba(255,255,255,0.06), ${item.toHex})`,
+                }}
+              />
+              <span>{item.posLabel}</span>
+            </span>
+          );
+        }
+        if (item.kind === "swatch") {
+          return (
+            <span key={item.label} className="flex items-center gap-1.5" title={item.help}>
+              <span
+                aria-hidden
+                className="inline-block h-2 w-2 rounded-[2px]"
+                style={{ backgroundColor: item.hex, boxShadow: `0 0 6px ${item.hex}66` }}
+              />
+              {item.label}
+            </span>
+          );
+        }
+        return (
+          <span key={item.label} className="flex items-center gap-1.5" title={item.help}>
+            <span aria-hidden className="text-sky-300/25">
+              {item.glyph}
+            </span>
+            {item.label}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 function KeyLevelBox({
   cells,
   kicker,
@@ -3899,6 +3950,10 @@ export function GexHeatmap({
         />
       </div>
 
+      {/* Colour key. The Profile, Curve and Shift views each carry their own legend; the matrix —
+          the hero of this panel — shipped without one, so its five colour encodings were left to
+          be inferred. Lens-aware, because the positive-side colour changes with the metric. */}
+      <MatrixLegend lens={matrixLens} vocab={vocab} />
     </div>
   );
 
