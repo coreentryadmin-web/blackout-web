@@ -38,6 +38,18 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-08-12 — [NEGATIVE-RESULT, Night Hawk 0DTE] `actual_dte_at_commit` cannot replace the OCC derivation in #2075 — RULED OUT
+
+> **kind:** `NEGATIVE-RESULT`
+
+| Field | Value |
+|-------|-------|
+| **Status** | RULED OUT — no change made, no PR. #2075's OCC derivation stands as the only client-side option. |
+| **The idea** | #2075 fixed the "?DTE" board by re-deriving DTE from the row's OCC symbol. But the engine already FREEZES the answer at commit: `entry_context.actual_dte_at_commit` (stamped by `board.ts:1241`, asserted by `board.test.ts`). Reading the frozen value would be more faithful than reconstructing it, and would work even on a row with no parseable OCC. Confirmed present on all **199** live rows from `GET /api/market/zerodte/record?days=120`. |
+| **Why it cannot be used** | The 0DTE **board** payload — the one the Command Deck actually renders — does not serialize it. `getZeroDteBoardPayload` (`platform/zerodte-service.ts`) reads `r.entry_context` extensively SERVER-side (exit blob, cortex, tier, origin maps, condor, why_now) and derives display fields from it, but the serialized ledger-row type exposes **no DTE field of any kind**. `occ` IS exposed (line 105, explicitly so the Command Deck can key the ~1s marks overlay) — which is exactly what `ledgerRowDte` reads. |
+| **Conclusion** | The OCC parse is not a redundant reconstruction of data already on the row; it is the ONLY DTE source that reaches the client. Preferring the frozen value would require widening the board payload — a server change with its own cost — for a card label that is already correct. Not worth it. |
+| **Also learned** | `GET /api/market/zerodte/record` carries **no contract fields at all** — no `occ`, strike, expiry or right (top-level keys are session/ticker/direction/outcome/pnl/`entry_context`/tier). So the record endpoint cannot be used to backtest `ledgerRowDte` against historical rows; an attempt to do so returned 199 rows and 199 nulls, which was the probe guessing at the serializer's shape, NOT a defect in the function. Validate it on the BOARD payload during RTH instead. |
+
 ## 2026-08-12 — [FINDING, P1 Night Hawk 0DTE] Every play on the closed board was labelled "?DTE" — FIXED
 
 > **kind:** `FINDING`
