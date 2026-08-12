@@ -1,6 +1,7 @@
 import { polygonConfigured, gexHeatmapMaxBlockMs } from "./config";
 import { fetchStockSnapshot, fetchIndexSnapshot } from "./polygon";
 import { todayEtYmd } from "./spx-session";
+import { liveExpiries } from "./expiry-liveness";
 import { polygonTrackedFetch } from "./polygon-rate-limiter";
 import { isHeatmapPreset } from "../heatmap-allowlist";
 import { isLiveOdteSession } from "./unusual-whales";
@@ -2811,7 +2812,22 @@ async function buildGexHeatmapUncached(
   // skip the dedicated per-expiry fetch or far columns stay sparse (QQQ: ~12/67 strikes). Contract-
   // level dedupe in accumulateContract prevents double-counting overlap between the two passes.
   // Bounded to FAR_DATED_MAX_TARGETS; each is a cheap ±2% single-expiry band. Best-effort.
-  const nearestSorted = Array.from(expirySet).sort();
+  // SETTLED EXPIRIES ARE DROPPED HERE, once, so EVERY derivation below inherits it: the near-term
+  // axis, the far-dated union, the shared column list, the structural levels, and — the one that
+  // actually misled members — max pain's front-expiry scope.
+  //
+  // Gamma collapses at settlement but OPEN INTEREST does not vanish until the provider drops the
+  // contracts, and that asymmetry is what made this survive. Measured on prod 2026-08-12 at 23:46
+  // ET: `2026-08-11` had already settled, contributed ZERO gamma (a dead leftmost "$0.0K" column),
+  // yet still produced the headline "MAX PAIN 771" off its stale OI. On SPY/SPX dailies that is
+  // every trading evening — exactly when an overnight desk is read.
+  //
+  // `liveExpiries` keeps today's expiry until the 4pm ET close (it is the 0DTE board — dropping it
+  // during RTH would be a worse bug) and returns the list UNCHANGED if everything is settled, so
+  // this can never blank the matrix.
+  const liveSorted = liveExpiries(Array.from(expirySet).sort(), new Date(now));
+  const liveExpirySet = new Set(liveSorted);
+  const nearestSorted = liveSorted;
   const nearTermAxis = nearestSorted.slice(0, NEAR_TERM_EXPIRY_COUNT);
   const lastNearTerm = nearTermAxis[nearTermAxis.length - 1] ?? today;
   const farTargets = farDatedTargetExpiries(today, lastNearTerm);
@@ -2840,8 +2856,10 @@ async function buildGexHeatmapUncached(
   // De-duped + sorted ascending so the matrix columns read left→right in calendar order, with the
   // far-dated columns appended after the near-term block. Bounded by construction (near cap + the
   // far-target cap), so the column count can never balloon.
-  const sortedAll = Array.from(expirySet).sort();
-  const { nearKeep, expiries } = resolveExpiryAxis(nearTermAxis, farTargets, expirySet);
+  // Both read the LIVE set — see the liveExpiries note above. `sortedAll[0]` is max pain's front
+  // expiry, which is the specific thing that was scoping to an already-settled contract set.
+  const sortedAll = liveSorted;
+  const { nearKeep, expiries } = resolveExpiryAxis(nearTermAxis, farTargets, liveExpirySet);
   const expirySetKeep = new Set(expiries);
   // The authoritative STRUCTURAL levels (walls / flip / net / posture) and ALL downstream
   // consumers (gex-positioning → desk / Largo / Night's Watch, the shift ring, EOD history) are
