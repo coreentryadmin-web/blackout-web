@@ -9,6 +9,59 @@ import { resolveDteHorizonParam } from "@/features/vector/lib/vector-dte-horizon
 import { roundFloats } from "@/lib/round-floats";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
+/**
+ * Hard ceiling on the matrix read this route waits for.
+ *
+ * `fetchGexHeatmap` serves from cache and has stale-while-revalidate, but on a genuine miss — a
+ * cold entry, or one older than its max-stale window — it BLOCKS on a full options-chain rebuild.
+ * Unbounded. Measured on prod 2026-08-12:
+ *
+ *   GET /api/market/vector/gex-ladder?ticker=SPX&horizon=all  ->  504 after 121,088ms
+ *
+ * A 504 is the worst possible outcome here: the member gets nothing, AND the request holds a
+ * server connection for two minutes while it earns that nothing — which is itself part of why web
+ * CPU runs hot. Waiting longer cannot help, because whatever the rebuild costs, the gateway will
+ * cut it off first.
+ *
+ * 8s is chosen to sit well inside the gateway's own timeout so the failure is OURS to shape.
+ */
+const LADDER_FETCH_DEADLINE_MS = 8_000;
+
+/**
+ * Resolve to `null` rather than hanging, and say so in the log.
+ *
+ * The degraded path is one the route ALREADY supports: the original call was
+ * `fetchGexHeatmap(ticker).catch(() => null)`, and every consumer below already handles `hm ===
+ * null` by building an empty ladder. So a timeout lands on a tested branch rather than a new one —
+ * the panel renders its honest empty state instead of the browser hanging on a doomed request.
+ *
+ * Deliberately NOT cancelling the underlying fetch: there is no AbortSignal threaded through
+ * fetchGexHeatmap, and letting it finish is useful — it populates the cache, so the NEXT request
+ * for this ticker is served fast. Abandoning the wait while keeping the work is exactly the right
+ * trade for a read-only panel.
+ */
+async function withRequestDeadline<T>(
+  work: Promise<T | null>,
+  ms: number,
+  ticker: string
+): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<null>((resolve) => {
+    timer = setTimeout(() => {
+      console.warn(
+        `[gex-ladder] ${ticker}: matrix read exceeded ${ms}ms — serving an empty ladder rather than ` +
+          `holding the request open until the gateway 504s. The rebuild continues and warms the cache.`
+      );
+      resolve(null);
+    }, ms);
+  });
+  try {
+    return await Promise.race([work, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -48,7 +101,11 @@ export async function GET(req: NextRequest) {
   // Fetched up front because BOTH branches need it now: the "all" branch for the ladder itself,
   // the narrowed branch for the forced-flow rail only. It is an in-memory cached read on the same
   // matrix the page is already showing, so hoisting it costs a map lookup, not a round trip.
-  const hm = await fetchGexHeatmap(ticker).catch(() => null);
+  const hm = await withRequestDeadline(
+    fetchGexHeatmap(ticker).catch(() => null),
+    LADDER_FETCH_DEADLINE_MS,
+    ticker
+  );
 
   // The forced-flow rail is served on EVERY horizon, and is deliberately NOT re-scoped to the
   // narrowed one.
