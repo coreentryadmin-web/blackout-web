@@ -1671,6 +1671,46 @@ export function countUniqueChainStrikes(contracts: readonly ChainContract[]): nu
 /** Spot below this + thin band → fall back to the full unfiltered chain (bounded pages). */
 const LOW_PRICE_FULL_CHAIN_SPOT_MAX = 15;
 const LOW_PRICE_MIN_STRIKES_BEFORE_FULL = 12;
+
+/**
+ * A banded pull thinner than this escalates to the full listed chain, AT ANY PRICE.
+ *
+ * WHY THE PRICE GATE WAS THE WRONG TRIGGER. The escalation above only fired for spot <= $15, so it
+ * caught NIO-class names and nothing else. ASTS at $71.66 never qualified — and ASTS is precisely
+ * the case the band comment itself flags ("real walls at 90/100/125 never fetched"). Measured
+ * 2026-08-12 against the live chain:
+ *
+ *     ASTS: 119 distinct strikes listed, 30 inside the +/-20% band
+ *     IN  band: OI   381,862
+ *     OUT band: OI   812,514   <- 68% of open interest never fetched
+ *     largest OI strike in the entire chain = 100 (95,367), OUTSIDE the band
+ *
+ * Everything downstream is computed on what was fetched, so Net GEX under-counts and the call wall
+ * can only ever be found among the strikes that made it in. That is the operator's report — "the
+ * top panel is always incorrect" — for this class of name.
+ *
+ * THE SYMPTOM IS A THIN LADDER, NOT A LOW PRICE. A wide-but-sparse chain and a cheap stock produce
+ * the same defect, so the trigger is the strike count the band actually returned.
+ *
+ * 45 is chosen from measured ladders: ASTS 30 escalates, SOFI 41 escalates, NVDA 78 and SPY 266 do
+ * not. SPX is dense by construction and never comes near it. The unfiltered fetch is page-bounded
+ * (HEATMAP_UNFILTERED_PAGE_GUARD), and the result is only adopted when it is strictly richer, so
+ * the worst case is a bounded extra fetch that changes nothing.
+ */
+const THIN_LADDER_STRIKES_BEFORE_FULL = 45;
+
+/**
+ * Should a banded pull escalate to the full listed chain?
+ *
+ * Pure so the thresholds are testable without a network. Keeps the original low-price rule as a
+ * distinct case: a $5 name can legitimately have fewer than 45 listed strikes in total, and should
+ * still escalate when its ladder is tiny.
+ */
+export function shouldEscalateToFullChain(strikesInBand: number, spot: number): boolean {
+  if (!(spot > 0)) return false;
+  if (spot <= LOW_PRICE_FULL_CHAIN_SPOT_MAX && strikesInBand < LOW_PRICE_MIN_STRIKES_BEFORE_FULL) return true;
+  return strikesInBand < THIN_LADDER_STRIKES_BEFORE_FULL;
+}
 const HEATMAP_UNFILTERED_PAGE_GUARD = 12;
 
 async function fetchHeatmapBandLoHi(
@@ -1722,12 +1762,10 @@ async function fetchHeatmapBand(
   const { lo, hi } = resolveHeatmapStrikeBounds(spot, root);
   let contracts = await fetchHeatmapBandLoHi(underlying, lo, hi);
 
-  // NIO-class: entire chain is ~2 pages; if the % band still yields a tiny ladder, pull all strikes.
-  if (
-    spot > 0 &&
-    spot <= LOW_PRICE_FULL_CHAIN_SPOT_MAX &&
-    countUniqueChainStrikes(contracts) < LOW_PRICE_MIN_STRIKES_BEFORE_FULL
-  ) {
+  // A thin ladder means the band missed most of the chain — escalate at ANY price, not just
+  // NIO-class. See shouldEscalateToFullChain: ASTS ($71.66) returned 30 of its 119 listed strikes,
+  // leaving 68% of open interest — including the chain's single largest OI strike — unfetched.
+  if (shouldEscalateToFullChain(countUniqueChainStrikes(contracts), spot)) {
     const full = await fetchHeatmapBandUnfiltered(underlying);
     if (countUniqueChainStrikes(full) > countUniqueChainStrikes(contracts)) {
       contracts = full;
