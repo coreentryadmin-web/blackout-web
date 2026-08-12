@@ -104,7 +104,12 @@ async function buildVectorUniverseRow(
       vexWalls,
       vexFlip: hm?.vex?.flip ?? null,
     });
-    if (sample) await appendSessionWallSample(sessionYmd, sample, ticker);
+    // The blended rail and the three narrowed rails are SEPARATE storage keys, so they were being
+    // written one after another — four sequential Redis round-trips per ticker, times ~122 tickers
+    // per sweep. Writing them together removes that serial tail; they cannot conflict because each
+    // targets its own (ticker, horizon) rail.
+    const writes: Promise<unknown>[] = [];
+    if (sample) writes.push(appendSessionWallSample(sessionYmd, sample, ticker));
 
     if (spot && spot > 0) {
       const narrowed = await buildNarrowedHorizonWallSamples(ticker, sampleTime, {
@@ -112,7 +117,7 @@ async function buildVectorUniverseRow(
         flip: hm?.gex?.flip ?? null,
       });
       for (const r of narrowed) {
-        if (r.sample) await appendSessionWallSample(sessionYmd, r.sample, ticker, r.horizon);
+        if (r.sample) writes.push(appendSessionWallSample(sessionYmd, r.sample, ticker, r.horizon));
         else if (r.source === "error") {
           console.warn(
             `[vector-universe] ${ticker} ${r.horizon} narrowed-wall recording threw: ${r.reason ?? "unknown"}`
@@ -120,6 +125,10 @@ async function buildVectorUniverseRow(
         }
       }
     }
+    // allSettled, not all: one rail failing must not abort the others or reject this ticker's
+    // whole sample. appendSessionWallSample already swallows and logs its own errors, so this is
+    // belt-and-braces against an unexpected throw.
+    if (writes.length > 0) await Promise.allSettled(writes);
   }
 
   const asOfMs = hm?.asof ? Date.parse(hm.asof) : NaN;

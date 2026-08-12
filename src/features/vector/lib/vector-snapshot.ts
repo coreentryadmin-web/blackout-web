@@ -421,31 +421,43 @@ export async function buildNarrowedHorizonWallSamples(
   blended: { walls: GexWalls | null; flip: number | null }
 ): Promise<NarrowedWallOutcome[]> {
   const t = normalizeVectorTicker(ticker);
-  const out: NarrowedWallOutcome[] = [];
-  for (const horizon of RECORDED_WALL_HORIZONS) {
-    try {
-      const [hWalls, hFlip] = await Promise.all([
-        getVectorGexWallsForHorizon(t, horizon),
-        getVectorGammaFlipForHorizon(t, horizon),
-      ]);
-      const picked = pickNarrowedWallSample({
-        time: sampleTime,
-        horizonWalls: hWalls,
-        horizonFlip: hFlip,
-        blendedWalls: blended.walls,
-        blendedFlip: blended.flip,
-      });
-      out.push({ horizon, sample: picked.sample, source: picked.source });
-    } catch (err) {
-      out.push({
-        horizon,
-        sample: null,
-        source: "error",
-        reason: err instanceof Error ? err.message : String(err),
-      });
-    }
-  }
-  return out;
+  // Horizons run CONCURRENTLY. They were awaited one after another, so every ticker paid the sum
+  // of three independent horizon reads before the sweep could move on — and the recorder does this
+  // for ~122 tickers per pass. That serial tail is what kept the sweep over its 5s budget even
+  // after sharding: the live alarm reported 56s for an 83-ticker slice on 2026-08-12.
+  //
+  // Nothing here is order-dependent: each horizon reads its own scoped walls and flip and produces
+  // its own sample. Promise.all preserves input order, so the returned array still matches
+  // RECORDED_WALL_HORIZONS exactly and callers that pair by index are unaffected.
+  //
+  // The try/catch stays PER HORIZON rather than wrapping the whole batch. One horizon failing must
+  // still record the other two — wrapping the Promise.all would let a single scoped-wall error
+  // blank all three, turning a partial gap into a total one.
+  return Promise.all(
+    RECORDED_WALL_HORIZONS.map(async (horizon): Promise<NarrowedWallOutcome> => {
+      try {
+        const [hWalls, hFlip] = await Promise.all([
+          getVectorGexWallsForHorizon(t, horizon),
+          getVectorGammaFlipForHorizon(t, horizon),
+        ]);
+        const picked = pickNarrowedWallSample({
+          time: sampleTime,
+          horizonWalls: hWalls,
+          horizonFlip: hFlip,
+          blendedWalls: blended.walls,
+          blendedFlip: blended.flip,
+        });
+        return { horizon, sample: picked.sample, source: picked.source };
+      } catch (err) {
+        return {
+          horizon,
+          sample: null,
+          source: "error",
+          reason: err instanceof Error ? err.message : String(err),
+        };
+      }
+    })
+  );
 }
 
 /** Zero-vanna flip from the latest heatmap scope refresh. */
