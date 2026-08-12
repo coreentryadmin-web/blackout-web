@@ -6,6 +6,7 @@ import {
   bsGamma,
   buildGexDepthLadder,
   dealerDeltaShares,
+  forcedFlowBetween,
   netDollarGammaAt,
   normCdf,
   yearsToExpiry,
@@ -380,5 +381,79 @@ describe("strike -> ladder band mapping", () => {
       const inside = lv.price > 100 ? lv.price - step / 2 : lv.price + step / 2;
       assert.equal(depthBandForPrice(full.levels, 100, inside)?.price, lv.price, `band ${lv.price}`);
     }
+  });
+});
+
+/**
+ * "Your 605 target is behind $1.8B of mechanical selling." The number only means anything if it is
+ * honest about what it covers — a figure that silently stops at the edge of the ladder reads as
+ * "this is all there is", which is the opposite of true.
+ */
+describe("forced flow between spot and a target", () => {
+  const longGamma = chain([{ strike: 100, type: "call", openInterest: 20_000 }]);
+  // ±4% in 1% steps -> bands at 96,97,98,99 | 101,102,103,104
+  const l = buildGexDepthLadder(longGamma, 100, { todayYmd: TODAY, rangePct: 0.04, stepPct: 0.01 });
+
+  it("sums only the bands in the direction of travel", () => {
+    const up = forcedFlowBetween(l.levels, 100, 102);
+    assert.equal(up.bands, 2, "101 and 102 only");
+    const down = forcedFlowBetween(l.levels, 100, 98);
+    assert.equal(down.bands, 2, "99 and 98 only");
+    // A long-gamma book sells into a rally and buys into a dip — opposite signs either way.
+    assert.ok(up.notional < 0 && down.notional > 0);
+    assert.equal(up.direction, "sell");
+    assert.equal(down.direction, "buy");
+  });
+
+  it("never counts bands on the far side of spot", () => {
+    const up = forcedFlowBetween(l.levels, 100, 104);
+    const all = l.levels.filter((x) => x.price > 100).reduce((s, x) => s + x.notional, 0);
+    assert.ok(Math.abs(up.notional - all) < 1e-6, "upward journey is exactly the upward bands");
+  });
+
+  it("reports complete=false when the target is BEYOND the ladder, and says how far it got", () => {
+    const beyond = forcedFlowBetween(l.levels, 100, 130);
+    assert.equal(beyond.complete, false);
+    assert.equal(beyond.coveredTo, 104, "the ladder only reaches its outermost band");
+    assert.ok(beyond.notional !== 0, "what it DID cover is still reported");
+    const beyondDown = forcedFlowBetween(l.levels, 100, 50);
+    assert.equal(beyondDown.complete, false);
+    assert.equal(beyondDown.coveredTo, 96);
+  });
+
+  it("reports complete=true when the target sits inside the ladder", () => {
+    const inside = forcedFlowBetween(l.levels, 100, 102);
+    assert.equal(inside.complete, true);
+    assert.equal(inside.coveredTo, 102);
+  });
+
+  it("a target at spot is a complete, zero journey — not an unknown one", () => {
+    const flat = forcedFlowBetween(l.levels, 100, 100);
+    assert.equal(flat.notional, 0);
+    assert.equal(flat.bands, 0);
+    assert.equal(flat.complete, true);
+    assert.equal(flat.direction, "flat");
+  });
+
+  it("degrades safely rather than inventing a number", () => {
+    assert.equal(forcedFlowBetween([], 100, 105).notional, 0);
+    assert.equal(forcedFlowBetween([], 100, 105).complete, false);
+    assert.equal(forcedFlowBetween(l.levels, 0, 105).notional, 0);
+    assert.equal(forcedFlowBetween(l.levels, 100, Number.NaN).notional, 0);
+  });
+
+  it("a short-gamma book flips the sign of the same journey", () => {
+    const shortGamma = chain([{ strike: 100, type: "put", openInterest: 20_000 }]);
+    const s = buildGexDepthLadder(shortGamma, 100, { todayYmd: TODAY, rangePct: 0.04, stepPct: 0.01 });
+    const up = forcedFlowBetween(s.levels, 100, 102);
+    assert.equal(up.direction, "buy", "short gamma means dealers CHASE a rally");
+  });
+
+  it("the journey is the sum of its bands — cumulative agrees with the marginals", () => {
+    const target = 103;
+    const viaBands = l.levels
+      .filter((x) => x.price > 100 && x.price <= target)
+      .reduce((s2, x) => s2 + x.notional, 0);
+    assert.ok(Math.abs(forcedFlowBetween(l.levels, 100, target).notional - viaBands) < 1e-6);
   });
 });
