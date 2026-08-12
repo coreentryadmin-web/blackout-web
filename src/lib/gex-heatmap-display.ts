@@ -89,6 +89,70 @@ export function heatmapMatrixExtremeCellStyle(
     : { ...heatmapExtremeNegativeStyle(), ...heatmapExtremeNegativeTextStyle() };
 }
 
+/**
+ * The matrix's colour key.
+ *
+ * The grid encodes five different things in colour — sign, magnitude, the column's strongest
+ * positive node, the column's strongest negative node, and "no contract listed here" — and until
+ * this existed it explained none of them. A reader could see that some cells were brighter and two
+ * were a completely different colour, and had no way to learn what either meant.
+ *
+ * It lives HERE, next to the styles it describes, deliberately: a legend kept in the component
+ * would drift the first time `LENS_COLORS` or the extreme-cell styles changed, and a wrong legend
+ * is worse than none. Same reason it reads its swatches from the same constants the cells do
+ * rather than repeating the hexes.
+ */
+export type HeatmapLegendItem =
+  | { kind: "scale"; fromHex: string; toHex: string; negLabel: string; posLabel: string; help: string }
+  | { kind: "swatch"; hex: string; label: string; help: string }
+  | { kind: "empty"; glyph: string; label: string; help: string };
+
+function rgbToHex(rgb: string): string {
+  const [r, g, b] = rgb.split(",").map((p) => Number(p.trim()));
+  const hex = (n: number) => Math.max(0, Math.min(255, n | 0)).toString(16).padStart(2, "0");
+  return `#${hex(r)}${hex(g)}${hex(b)}`;
+}
+
+/**
+ * @param lens   which metric the matrix is painting (drives the positive-side colour)
+ * @param vocab  the lens's own nouns, so the key says "long γ / short γ" not "positive / negative"
+ */
+export function heatmapLegendItems(
+  lens: GexHeatmapLens,
+  vocab: { noun: string; pos: string; neg: string }
+): HeatmapLegendItem[] {
+  const c = LENS_COLORS[lens];
+  const metric = vocab.noun.toLowerCase();
+  return [
+    {
+      kind: "scale",
+      fromHex: rgbToHex(c.negRgb),
+      toHex: rgbToHex(c.posRgb),
+      negLabel: vocab.neg,
+      posLabel: vocab.pos,
+      help: `Cell colour is the sign of net dealer ${metric} at that strike and expiry; brightness is its size relative to the largest cell on screen.`,
+    },
+    {
+      kind: "swatch",
+      hex: GEX_BEAD_CALL_HEX,
+      label: "column peak +",
+      help: `The strongest positive ${metric} node in that expiry's column — the level dealers are most positioned to defend from above.`,
+    },
+    {
+      kind: "swatch",
+      hex: GEX_BEAD_PUT_HEX,
+      label: "column peak −",
+      help: `The strongest negative ${metric} node in that expiry's column — the level where dealer hedging most amplifies a move.`,
+    },
+    {
+      kind: "empty",
+      glyph: "·",
+      label: "not listed",
+      help: "No contract exists at that strike and expiry. Distinct from $0.0K, which means the contract is listed but currently carries no exposure.",
+    },
+  ];
+}
+
 export function fmtHeatmapExpiry(ymd: string): string {
   const [y, m, d] = ymd.split("-").map(Number);
   if (!y || !m || !d) return ymd;
