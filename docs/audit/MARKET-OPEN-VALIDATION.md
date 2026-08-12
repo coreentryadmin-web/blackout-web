@@ -118,6 +118,70 @@ never printed. Pure verdict/coherence logic lives in
 
 ---
 
+## WATCH LIST — first session on 2026-08-12 (read this before the routine pass)
+
+Five fixes shipped overnight on 2026-08-11/12. **Two of them changed what members SEE and are
+deployed but NOT verified** — the board rolls empty after the close, so there were no committed
+rows to render and a "zero defects" reading would have been vacuous. These are the first things to
+check when rows exist, ahead of the routine pass.
+
+### 1. `?DTE` on the 0DTE board — the fix is live, the proof is not (#2075)
+Before the fix, EVERY row on the closed board read `RIOT 21P · ?DTE`. `zerodte-sources.ts`
+hardcoded `dte: null` when synthesising a setup for a ledger-only row, and after the close every
+row is ledger-only. The fix recovers it from the row's own OCC (`ledgerRowDte`).
+
+**Check:** load `/nighthawk` once committed rows exist. Every play must show a real `NDTE`
+(`0DTE` for a same-day, `2DTE` etc. for a later expiry) and **zero** `?DTE`.
+**A board with no rows proves nothing** — confirm `ALL n` is non-zero before reading the result.
+A `?DTE` that survives means the row's OCC is absent or unparseable, which is a different bug
+worth its own look (`ledgerRowDte` is fail-closed by design).
+
+### 2. Swing committed rows carrying their factors again (#2077)
+Measured on prod 2026-08-12: of 21 SWING rows, 15 carried factors and the 6 without them were
+exactly the committed ones (MANAGING + SCALING OUT). The desk explained what you were watching and
+went quiet on what held your capital.
+
+**Check:** on the Swings tab, a MANAGING or SCALING OUT row must show real components under
+**"WHY THIS PLAY WAS PICKED"** — not `Component breakdown not served for this lane yet — score N`.
+Also confirm the lifecycle did NOT regress: a TRIMMING row must stay in **SCALING OUT** and not
+fall back to MANAGING (that trap is what `attachThesisExplanation` copies factors ONLY to avoid).
+
+### 3. Legacy lane — never actually looked at
+The tab sweep (#2076) reached 0DTE, Swings and Bangers; Legacy's capture was lost to a container
+restart before review. It is the one lane with **no** live-eyes confirmation.
+
+**Check:** `/nighthawk` → Legacy renders content, not an empty frame. Legacy is a post-close
+next-day digest, so judge it during/after RTH, not pre-open.
+
+### 4. Re-run the sweep — three false-finding sources are now fixed
+`node --import tsx scripts/audit/nighthawk-ui-sweep.mjs`
+
+It previously audited `/record` (a 404 — the route is `/track-record`), reported 8 invented empty
+panels on a healthy `/vector` (the selector matched decorative leaves), and printed two permanent
+`FAIL … timeout` lines for SSE streams that are supposed to stay open. All three are fixed, so a
+finding from this run is far likelier to be real. It now also drives all four lanes.
+
+**Node 20 first** — `bash -lc 'nvm install 20'`, then
+`export PATH=/opt/nvm/versions/node/v20.20.2/bin:$PATH`. It is NOT pre-installed and does not
+survive a restart, and a Node 22 run is not evidence.
+
+### 5. Deploy gate — watch it pass, or fail honestly (#2079)
+The post-rollout asset gate now waits 5 minutes and needs **two consecutive** passes. On
+2026-08-12 the old 2.5-minute single-pass gate failed a good deploy and four merged fixes sat
+unshipped for ~25 minutes while every PR showed green.
+
+**Check:** the next production deploy's *Validate static assets on origin* step. Healthy looks
+like ~35-40s (pass, 15s, pass). If it burns the full 5 minutes and fails, that is a REAL
+convergence problem, not the flake this replaced — and note that a failed deploy is still not
+loud in-band, so the live product is the check that matters.
+
+### Known-good baselines from the overnight session
+- `/nighthawk` healthy authenticated load routes **~145** requests (below ~20 means it did not load).
+- Bangers lane on 2026-08-11: **48 OPEN**, real scale-out states, AURA at 21.00x on a trailing runner.
+- Swings lane: 21 rows across six sections.
+- `/api/market/quote` cold ~560ms vs ~85ms warm; the gex-heatmap SPX build ~12.5s cold vs 0.1-1.8s
+  warm. Both are cold-cache shape, not faults — do not file them as endpoint failures.
+
 ## WATCH LIST — first session on 2026-08-07 (read this before the routine pass)
 
 The 2026-08-06 batch merged **21 PRs with NO CI** — GitHub Actions was in `major_outage` for
