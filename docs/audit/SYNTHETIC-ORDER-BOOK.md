@@ -100,6 +100,30 @@ Unit-tested in `gex-depth.test.ts` (25 tests):
 - No NaN/Infinity can reach the DOM; every bar width is a valid 0–100%.
 - Anchoring preserves shape and scale only; implausible anchors are refused.
 
+**Live sweep, 14 tickers, 2026-08-12 — all PASS, coherence 100% on every one:**
+
+```
+tkr         spot   ctr    ms   raw%  anchor  coherence  crossing
+SPY       770.56  1961   393    9.1  1.1007      32/32  767.82
+SPX       7728.2  2283   288   10.7  1.1196      31/31  7708.68
+QQQ       718.99  1738   213   15.6  1.1847      32/32  717.59
+IWM       300.99   812    92   22.2  0.7782      31/31  301.75
+NVDA      218.04   646    78    1.6  1.0164      31/31  210.71
+TSLA      332.99  1084   134    0.2  1.0019      32/32  318.27
+AAPL      305.07   545    64    6.0  1.0634      32/32  303.55
+MSFT      502.23   933   116    0.6  1.0061      32/32  none
+AMD          475  1445   174    2.0  0.9805      32/32  468.14
+ASTS       71.66   640    76    0.7  1.0074      31/31  none
+SOFI       17.97   413    48    1.5  1.0149      31/31  none
+PLTR      174.32  1073   127    1.6  1.0167      32/32  none
+COIN      148.44   885   103    2.1  0.9793      31/31  145.62
+F          13.97   311    37    0.8  0.9922      32/32  13.76
+```
+
+`raw%` is the pre-anchor BS-vs-provider gap; `anchor` is the applied scale. Every ETF needs a
+correction, every single stock is within ~2%. `none` under crossing means the whole ±8% band sits in
+one gamma regime — a real state, not a missing value.
+
 Checked against live chains by `gex-depth-validate.mjs`:
 
 - raw closed-form gamma vs the provider's, **measured before the anchor** (comparing after would be

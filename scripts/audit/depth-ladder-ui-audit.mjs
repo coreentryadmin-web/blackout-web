@@ -25,7 +25,9 @@ import { mintClerkPremiumSession } from "./lib/prod-clerk-session.mjs";
 // The tunnel context is CommonJS (it reaches for node:http/node:tls directly); bridge it the same
 // way nighthawk-ui-sweep.mjs does rather than duplicating it as ESM.
 const require_ = createRequire(import.meta.url);
-const { createTunneledContext, IPHONE_UA, DESKTOP_UA } = require_("./lib/proxy-tunnel-context.cjs");
+// The UA and deviceScaleFactor come from `desktop:` inside createTunneledContext — importing the
+// UA constants here as well would be dead code (CodeQL flagged exactly that).
+const { createTunneledContext } = require_("./lib/proxy-tunnel-context.cjs");
 
 const args = process.argv.slice(2);
 const flag = (n, d) => {
