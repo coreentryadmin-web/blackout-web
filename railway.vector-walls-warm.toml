@@ -9,7 +9,11 @@ watchPatterns = [
 ]
 
 [deploy]
-startCommand = "node scripts/hit-cron.mjs /api/cron/vector-walls-warm"
+# Warming the shared universe can exceed 60s when caches are cold — short timeouts made
+# hit-cron exit while blackout-web still warmed → multi-minute vector-walls-warm gaps (#2118).
+startCommand = "CRON_HTTP_TIMEOUT_MS=300000 node scripts/hit-cron.mjs /api/cron/vector-walls-warm"
+# Every 5 min during the UTC band that covers RTH in BOTH EDT and EST (11-21 UTC).
+# Sub-5m gaps are filled by the in-app rth-warm-leader (20s heal threshold).
 cronSchedule = "*/5 11-21 * * 1-5"
-restartPolicyType = "never"
+restartPolicyType = "ON_FAILURE"
 numReplicas = 1

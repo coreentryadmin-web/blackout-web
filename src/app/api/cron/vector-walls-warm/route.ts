@@ -9,7 +9,7 @@
 // hits and streams fast. Warm set = static allowlist ∪ dynamic ≤100/14d ∪ live SSE viewers —
 // same shared universe Thermal heatmap-warm uses.
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { listSharedUniverseTickers } from "@/features/vector/lib/vector-dynamic-universe";
@@ -19,6 +19,23 @@ import { isEtCashRth } from "@/lib/et-market-hours";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
+
+async function runVectorWallsWarm(started: number): Promise<void> {
+  const tickers = await getTickersToWarmAsync(await listSharedUniverseTickers());
+  const results = await Promise.allSettled(tickers.map((t) => warmVectorWalls(t)));
+
+  let warmed = 0;
+  for (const r of results) {
+    if (r.status === "fulfilled") warmed += 1;
+  }
+  const failed = results.length - warmed;
+  if (failed > 0) {
+    console.warn(`[cron/vector-walls-warm] ${failed} universe warm(s) failed`);
+  }
+  console.info(
+    `[cron/vector-walls-warm] background done — warmed=${warmed}/${tickers.length} failed=${failed} elapsed=${Date.now() - started}ms`
+  );
+}
 
 export async function GET(req: NextRequest) {
   const started = Date.now();
@@ -33,31 +50,33 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(payload);
   }
 
-  const tickers = await getTickersToWarmAsync(await listSharedUniverseTickers());
+  // Universe wall priming can exceed Cloudflare's ~100s origin timeout when caches are cold
+  // (ops #2118: market_hours_stale with no fresh cron_job_runs row). Mirror vector-bead-record /
+  // vector-full-state-snapshot: handshake in seconds, warming in after().
+  const dispatchWarming = () => {
+    void runVectorWallsWarm(started).catch((error) => {
+      const detail = error instanceof Error ? error.message : String(error);
+      console.error(`[cron/vector-walls-warm] background warm REJECTED: ${detail}`);
+    });
+  };
 
-  // Warm all walls in parallel; settle all so one failing underlying can't abort the rest.
-  const results = await Promise.allSettled(
-    tickers.map((t) => warmVectorWalls(t))
-  );
-
-  let warmed = 0;
-  for (const r of results) {
-    if (r.status === "fulfilled") {
-      warmed += 1;
-    }
+  try {
+    after(dispatchWarming);
+  } catch {
+    dispatchWarming();
   }
-  const failed = results.length - warmed;
 
-  await logCronRun("vector-walls-warm", started, {
-    ok: warmed > 0,
-    warmed,
-    failed,
-    total: tickers.length,
-  });
-
-  return NextResponse.json({
+  const accepted = {
     ok: true,
-    warmed,
-    total: tickers.length,
-  });
+    status: "accepted",
+    reason: "Vector walls warm dispatched in background",
+  };
+  await logCronRun("vector-walls-warm", started, accepted);
+  return NextResponse.json(
+    {
+      ...accepted,
+      note: "EventBridge floors at 5/min; rth-warm-leader backs up at ~20s — handshake stays under edge timeout.",
+    },
+    { status: 202 }
+  );
 }
