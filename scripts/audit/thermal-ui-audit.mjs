@@ -145,6 +145,35 @@ async function main() {
 
   const rows = [];
   const consoleErrors = [];
+
+  /**
+   * Refresh the Clerk JWT AND push it into the browser context.
+   *
+   * `session.refresh()` alone is not enough and the failure is silent: it returns a new cookie
+   * header, but the CONTEXT keeps serving the old one, so the page keeps sending a dead token. The
+   * `__session` JWT lives ~72s, which a multi-state walk blows through in the first lens — after
+   * which XHRs 401, panels empty out, and the page reads as a product defect. The first run of this
+   * harness reported CHARM "broken" and every ticker at 132 chars for exactly that reason.
+   */
+  const reauth = async () => {
+    const { cookieHeader: fresh } = await session.refresh();
+    await ctx.clearCookies();
+    await ctx.addCookies(
+      fresh.split(";").map((p) => {
+        const [n, ...r] = p.trim().split("=");
+        return {
+          name: n.trim(),
+          value: r.join("=").trim(),
+          domain: new URL(BASE).hostname,
+          path: "/",
+          httpOnly: n.trim() === "__session",
+          secure: true,
+          sameSite: "Lax",
+        };
+      })
+    );
+  };
+
   try {
     const page = await ctx.newPage();
     page.on("console", (m) => {
@@ -156,6 +185,9 @@ async function main() {
       await page.screenshot({ path: `${OUT}/${id}.png`, animations: "disabled", timeout: 45000 }).catch(() => {});
     };
     const step = async (label, settle = STEP_SETTLE_MS) => {
+      // Before EVERY stop, not just before navigations: clicking a tab does not navigate, so a
+      // multi-state walk otherwise runs the whole lens sequence on one ~72s token.
+      await reauth();
       const before = counts.ok;
       consoleErrors.length = 0;
       const t0 = Date.now();
@@ -176,7 +208,7 @@ async function main() {
     };
 
     // ── Cold load ────────────────────────────────────────────────────────────────────
-    await session.refresh();
+    await reauth();
     await page.goto(`${BASE}/heatmap`, { waitUntil: "domcontentloaded", timeout: 60000 }).catch((e) =>
       console.log("nav:", e.message.split("\n")[0])
     );
@@ -221,7 +253,7 @@ async function main() {
 
     // ── Multiple tickers ─────────────────────────────────────────────────────────────
     for (const t of TICKERS) {
-      await session.refresh();
+      await reauth();
       await page.goto(`${BASE}/heatmap?ticker=${t}`, { waitUntil: "domcontentloaded", timeout: 60000 }).catch(() => {});
       await step(`ticker:${t}`, t === TICKERS[0] ? FIRST_SETTLE_MS : STEP_SETTLE_MS);
     }
