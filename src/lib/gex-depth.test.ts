@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   bsDelta,
+  depthBandForPrice,
   bsGamma,
   buildGexDepthLadder,
   dealerDeltaShares,
@@ -317,5 +318,67 @@ describe("depth ladder — what the view depends on", () => {
     const l = buildGexDepthLadder(chain([{ strike: 100, type: "call", iv: 0 }]), 100, { todayYmd: TODAY });
     assert.equal(l.levels.length, 0);
     assert.equal(l.maxAbsNotional, 0);
+  });
+});
+
+/**
+ * The matrix rail pins one bar per LISTED STRIKE against a regular %-grid ladder. Getting the
+ * mapping wrong is a rendering bug that looks like a data bug: a clamped far strike would paint the
+ * outermost band's flow onto every strike beyond the ladder, i.e. a wall of forced trading exactly
+ * where there is none.
+ */
+describe("strike -> ladder band mapping", () => {
+  const book = chain([
+    { strike: 96, type: "put", openInterest: 8_000 },
+    { strike: 100, type: "call", openInterest: 9_000 },
+    { strike: 104, type: "call", openInterest: 4_000 },
+  ]);
+  // 2% band in 1% steps -> levels at 98, 99, 101, 102 around spot 100.
+  const l = buildGexDepthLadder(book, 100, { todayYmd: TODAY, rangePct: 0.02, stepPct: 0.01 });
+
+  it("resolves a price to the band that actually contains it", () => {
+    // (100, 101] -> the 101 band
+    assert.equal(depthBandForPrice(l.levels, 100, 100.5)?.price, 101);
+    assert.equal(depthBandForPrice(l.levels, 100, 101)?.price, 101);
+    // (101, 102] -> the 102 band
+    assert.equal(depthBandForPrice(l.levels, 100, 101.5)?.price, 102);
+    // [99, 100) -> the 99 band
+    assert.equal(depthBandForPrice(l.levels, 100, 99.5)?.price, 99);
+    assert.equal(depthBandForPrice(l.levels, 100, 99)?.price, 99);
+    // [98, 99) -> the 98 band
+    assert.equal(depthBandForPrice(l.levels, 100, 98.5)?.price, 98);
+  });
+
+  it("never crosses spot — a price just above it cannot land on the band below", () => {
+    const above = depthBandForPrice(l.levels, 100, 100.01);
+    const below = depthBandForPrice(l.levels, 100, 99.99);
+    assert.ok(above!.price > 100, `got ${above!.price}`);
+    assert.ok(below!.price < 100, `got ${below!.price}`);
+  });
+
+  it("returns null OUTSIDE the ladder rather than clamping to the edge", () => {
+    assert.equal(depthBandForPrice(l.levels, 100, 120), null, "far above");
+    assert.equal(depthBandForPrice(l.levels, 100, 80), null, "far below");
+    assert.equal(depthBandForPrice(l.levels, 100, 102.01), null, "just past the top band");
+    assert.equal(depthBandForPrice(l.levels, 100, 97.99), null, "just past the bottom band");
+  });
+
+  it("spot itself belongs to no band — it is the axis", () => {
+    assert.equal(depthBandForPrice(l.levels, 100, 100), null);
+  });
+
+  it("degrades safely on unusable input", () => {
+    assert.equal(depthBandForPrice([], 100, 99), null);
+    assert.equal(depthBandForPrice(l.levels, 0, 99), null);
+    assert.equal(depthBandForPrice(l.levels, 100, Number.NaN), null);
+  });
+
+  it("every band on a real ladder is reachable from a price inside it", () => {
+    const full = buildGexDepthLadder(book, 100, { todayYmd: TODAY });
+    const step = 100 * 0.005;
+    for (const lv of full.levels) {
+      const inside = lv.price > 100 ? lv.price - step / 2 : lv.price + step / 2;
+      assert.equal(depthBandForPrice(full.levels, 100, inside)?.price, lv.price, `band ${lv.price}`);
+    }
   });
 });

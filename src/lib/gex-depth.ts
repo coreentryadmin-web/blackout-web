@@ -430,3 +430,57 @@ export function buildGexDepthLadder(
     calibrationFactor,
   };
 }
+
+/**
+ * Which ladder band contains `price`?
+ *
+ * The matrix draws one row per LISTED STRIKE — irregular spacing straight off the chain (ASTS
+ * lists $0.50 steps near spot and $5 steps in the tails). The ladder is a regular %-grid. To pin a
+ * forced-flow rail beside the matrix, every strike row has to resolve to the band it falls inside,
+ * and a strike outside the ladder's range must resolve to NOTHING rather than being clamped to the
+ * nearest edge — clamping would paint the outermost band's flow onto every far strike, which reads
+ * as a wall of forced trading exactly where there is none.
+ *
+ * Band geometry follows the builder: level `i` above spot covers `(spot+(i-1)·step, spot+i·step]`,
+ * level `i` below covers `[spot+i·step, spot+(i+1)·step)`. Spot itself belongs to no band — it is
+ * the axis, and the view draws it as its own row.
+ *
+ * Generic over the level shape so it works on both the in-memory ladder and the serialized payload.
+ */
+export function depthBandForPrice<T extends { price: number }>(
+  levels: readonly T[],
+  spot: number,
+  price: number
+): T | null {
+  if (!(spot > 0) || !Number.isFinite(price) || levels.length < 2) return null;
+  if (price === spot) return null;
+
+  // Derive the step from the grid itself rather than taking it as a parameter — the caller may
+  // only hold the serialized levels, and a step passed separately is a chance for the two to drift.
+  const sorted = [...levels].sort((a, b) => a.price - b.price);
+  let step = Infinity;
+  for (let i = 1; i < sorted.length; i++) {
+    const gap = sorted[i]!.price - sorted[i - 1]!.price;
+    if (gap > 1e-9 && gap < step) step = gap;
+  }
+  if (!Number.isFinite(step) || step <= 0) return null;
+
+  // EXACT band containment, not "nearest level". Nearest ties at a band boundary — a price at
+  // spot+0.75·step is equidistant from the bands either side of it — and the tie resolved to the
+  // wrong one, so the rail drew a strike's flow one band off. Containment has no ties.
+  //   above spot: level p covers (p − step, p]
+  //   below spot: level p covers [p, p + step)
+  const EPS = step * 1e-9;
+  for (const l of sorted) {
+    if (l.price > spot) {
+      if (price > l.price - step + EPS && price <= l.price + EPS) return l;
+    } else if (l.price < spot) {
+      if (price >= l.price - EPS && price < l.price + step - EPS) return l;
+    }
+  }
+  // Outside every band — the price is off the ladder. Deliberately NOT clamped to the nearest
+  // edge: clamping would paint the outermost band's flow onto every far strike, reading as a wall
+  // of forced trading exactly where there is none.
+  return null;
+
+}
