@@ -2010,7 +2010,15 @@ body::before {
     opacity: 1;
   }
 
-  html.ios-app .nav-bar-ios-tool .nav-brand-ios-compact {
+  /* NOT scoped to `html.ios-app`, deliberately. Nav.tsx sets `nav-bar-ios-tool` /
+     `nav-brand-ios-compact` from `iosToolLabel` alone — in EVERY browser, not just the native
+     shell — so scoping the collapse to the shell left plain mobile web applying the classes with
+     none of the styling that makes them safe. Measured on prod /dashboard and /vector at 430px:
+     the grid starved the brand track to 0px while its text kept painting, putting the BLACKOUT
+     wordmark (x 233..305) straight on top of the ☰ menu button (x 225..269) — invisible only
+     because the button's background covers it, and reported as a text-over-control collision.
+     The rule must travel with the class that requires it. */
+  .nav-bar-ios-tool .nav-brand-ios-compact {
     opacity: 0;
     width: 0;
     min-width: 0;
@@ -2030,7 +2038,7 @@ body::before {
      iOS shell would otherwise pick up the desktop `1fr auto 1fr` and put the label in the brand's
      track. `minmax(0, 1fr)` lets the label track shrink below its content so the label truncates
      instead of pushing the actions off the bar. */
-  html.ios-app .nav-bar-ios-tool .nav-inner {
+  .nav-bar-ios-tool .nav-inner {
     grid-template-columns: minmax(0, 1fr) auto auto;
   }
 
