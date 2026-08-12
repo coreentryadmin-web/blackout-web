@@ -13,6 +13,7 @@ import { hasComparisonBlock } from "@/features/largo/answer/desk-read-layout";
 import { deriveMarketState, marketStateToBias } from "@/lib/largo/core/market-state";
 import {
   makeEnvelope,
+  envelopeFromMarkdown,
   type BieAnswerEnvelope,
   type BieBias,
   type BieConfidenceLevel,
@@ -113,11 +114,21 @@ function matchHeading(line: string): { name: AnswerSectionName; inline: string }
   // would reject `**Verdict**`, i.e. every heading Largo is actually instructed to write.
   if (!raw || /^(?:[-•]\s|\*\s)/.test(raw)) return null;
   const withoutHashes = raw.replace(/^#{1,4}\s*/, "");
-  const m = /^(?:\*\*\s*([A-Za-z][A-Za-z ]{2,20}?)\s*\*\*|([A-Za-z][A-Za-z ]{2,20}?))\s*(?:(?:—|–|-|:)\s*(.*))?$/.exec(
+
+  // Measured live 2026-08-12: the dominant shape is `**Verdict:** one-line answer` (colon INSIDE
+  // the bold markers). The generic matcher treats the colon as part of the label and drops the
+  // inline verdict text, which made every envelope null.
+  const boldColon = /^\*\*\s*([A-Za-z][A-Za-z ]{2,20}?)\s*:\s*\*\*\s*(.*)$/.exec(withoutHashes);
+  if (boldColon) {
+    const known = ANSWER_SECTIONS.find((s) => s.toLowerCase() === boldColon[1]!.trim().toLowerCase());
+    if (known) return { name: known, inline: boldColon[2]!.trim() };
+  }
+
+  const m = /^(?:\*\*\s*([A-Za-z][A-Za-z ]{2,20}?)\s*:?\s*\*\*|([A-Za-z][A-Za-z ]{2,20}?))\s*(?:(?:—|–|-|:)\s*(.*))?$/.exec(
     withoutHashes
   );
   if (!m) return null;
-  const candidate = (m[1] ?? m[2] ?? "").trim();
+  const candidate = (m[1] ?? m[2] ?? "").trim().replace(/:$/, "");
   const known = ANSWER_SECTIONS.find((s) => s.toLowerCase() === candidate.toLowerCase());
   if (!known) return null;
   return { name: known, inline: (m[3] ?? "").trim() };
@@ -226,19 +237,29 @@ function parseProvenance(text: string): { text: string; provenance?: BieEvidence
   };
 }
 
+function parseEvidenceLine(raw: string, defaultKind: BieEvidenceKind = "fact"): BieEvidence | null {
+  const km = KIND_RE.exec(raw);
+  const kind = (km?.[1]?.toLowerCase() as BieEvidenceKind | undefined) ?? defaultKind;
+  const rest = km ? raw.slice(km[0].length) : raw;
+  const { text, provenance } = parseProvenance(rest);
+  if (!text) return null;
+  return { kind, text, provenance };
+}
+
 function parseEvidence(body: string): BieEvidence[] {
   const out: BieEvidence[] = [];
   for (const raw of bulletLines(body)) {
-    const km = KIND_RE.exec(raw);
-    // Untagged lines default to `fact` ONLY inside the Facts section (this function's callers
-    // pass Interpretation separately with an explicit kind), because that is where Largo is told
-    // to put measurements. Defaulting the other way round would let an unlabelled opinion be
-    // rendered with a "Fact" chip, which is the exact confusion the taxonomy exists to prevent.
-    const kind = (km?.[1]?.toLowerCase() as BieEvidenceKind | undefined) ?? "fact";
-    const rest = km ? raw.slice(km[0].length) : raw;
-    const { text, provenance } = parseProvenance(rest);
-    if (!text) continue;
-    out.push({ kind, text, provenance });
+    const row = parseEvidenceLine(raw);
+    if (row) out.push(row);
+  }
+  // Measured live 2026-08-12: Largo often writes Facts as short prose lines (no bullet prefix).
+  // Treating those as empty collapsed every envelope to null even when Verdict + Facts existed.
+  if (out.length === 0 && body.trim()) {
+    for (const line of body.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)) {
+      if (matchHeading(line)) continue;
+      const row = parseEvidenceLine(line);
+      if (row) out.push(row);
+    }
   }
   return out;
 }
@@ -303,10 +324,15 @@ export function parseAnswerEnvelope(
   }
   const get = (name: AnswerSectionName) => sections.get(name.toLowerCase()) ?? "";
 
-  const verdict = get("Verdict");
+  let verdict = get("Verdict");
   const facts = get("Facts");
   const playQ = isPlayQuestion(question);
   // Require a verdict. Facts can be thin on play questions when levels come from tool evidence.
+  if (!verdict) {
+    // Some answers lead with **Bottom line** only — promote it so the card still builds.
+    const bottom = get("Bottom line");
+    if (bottom) verdict = bottom;
+  }
   if (!verdict) return null;
   if (!facts && !playQ) return null;
 
@@ -321,12 +347,13 @@ export function parseAnswerEnvelope(
   }
   if (evidence.length === 0) {
     const hasToolGrounding =
-      playQ &&
-      marketEvidence &&
-      (marketEvidence.levels.length > 0 ||
-        marketEvidence.nightHawk != null ||
-        (marketEvidence.spot?.authoritative != null));
-    if (!hasToolGrounding) return null;
+      Boolean(marketEvidence) &&
+      (marketEvidence!.levels.length > 0 ||
+        marketEvidence!.nightHawk != null ||
+        marketEvidence!.spot?.authoritative != null ||
+        (marketEvidence!.flowContracts?.length ?? 0) > 0);
+    const hasFactsProse = Boolean(facts.trim());
+    if (!hasToolGrounding && !hasFactsProse) return null;
   }
 
   const confidenceBody = get("Confidence");
@@ -405,4 +432,33 @@ export function parseAnswerEnvelope(
   }
 
   return envelope;
+}
+
+/**
+ * Last-resort envelope when the prose does not fully parse — still ships structured UI
+ * instead of forcing the client shim. Never invents numbers; wraps the markdown honestly.
+ */
+export function fallbackAnswerEnvelope(markdown: string): BieAnswerEnvelope | null {
+  const body = stripLargoBlocks(markdown).trim();
+  if (!body) return null;
+  const sections = splitSections(body);
+  const structured = ANSWER_SECTIONS.filter((name) => sections.has(name.toLowerCase())).map((name) => ({
+    title: name,
+    body: sections.get(name.toLowerCase()) ?? "",
+  }));
+  if (structured.length >= 2) {
+    const verdict = sections.get("verdict") ?? sections.get("bottom line") ?? "";
+    return makeEnvelope({
+      headline: (verdict.split(/\r?\n/)[0] ?? body.split(/\r?\n/)[0] ?? "Largo read").trim(),
+      bias: marketStateToBias(deriveMarketState(verdict || body)),
+      sections: structured,
+      evidence: parseEvidence(sections.get("facts") ?? ""),
+    });
+  }
+  const firstLine = body.split(/\r?\n/).map((l) => l.trim()).find(Boolean) ?? "Largo read";
+  return envelopeFromMarkdown(body, {
+    headline: firstLine.replace(/^\*\*|\*\*$/g, "").slice(0, 120),
+    intent: "largo",
+    sectionTitle: "Read",
+  });
 }

@@ -98,6 +98,7 @@ export type MarketEvidenceIssue = {
     | "nighthawk_product_split"
     | "horizon_mislabel"
     | "entity_type_confusion"
+    | "put_wall_far_from_spot"
     | "technical_mismatch"
     | "stale_recommendation";
   severity: "block" | "warn";
@@ -526,6 +527,14 @@ export function validateProseAgainstEvidence(
 
   // Entity confusion: prose cites "put wall" at a flow strike price (not dealer put wall)
   const putWall = evidence.walls.putWall;
+  const spot = evidence.spot?.authoritative ?? evidence.levels.find((l) => l.type === "SPOT")?.price;
+  if (putWall != null && spot != null && spot > 0 && putWall > spot * 1.03) {
+    issues.push({
+      code: "put_wall_far_from_spot",
+      severity: "warn",
+      message: `Dealer put wall (${putWall}) sits well above spot (${spot}). Label it as a distant gamma wall, not near-term support — or verify it is not a flow strike mislabeled as PUT_WALL.`,
+    });
+  }
   if (putWall != null) {
     for (const m of prose.matchAll(/\bput wall\b[^.\n]{0,80}?\$?(\d[\d,]*(?:\.\d+)?)/gi)) {
       const cited = Number.parseFloat(String(m[1]).replace(/,/g, ""));

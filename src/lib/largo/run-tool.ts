@@ -510,18 +510,39 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
 
     case "get_options_flow": {
       const sym = uwTicker(ticker);
+      const sinceHoursRaw = input.since_hours ?? input.hours;
+      const since_hours =
+        sinceHoursRaw != null && Number.isFinite(Number(sinceHoursRaw))
+          ? Math.min(48, Math.max(1, Math.trunc(Number(sinceHoursRaw))))
+          : null;
+      const cutoffMs = since_hours != null ? Date.now() - since_hours * 3_600_000 : null;
+      const rowTimeMs = (row: Record<string, unknown>) => {
+        const raw = row.alerted_at ?? row.created_at ?? row.timestamp ?? row.ts ?? row.time;
+        const t = new Date(String(raw ?? "")).getTime();
+        return Number.isFinite(t) ? t : null;
+      };
+      const inWindow = <T extends Record<string, unknown>>(rows: T[]) =>
+        cutoffMs == null
+          ? rows
+          : rows.filter((r) => {
+              const t = rowTimeMs(r);
+              return t != null && t >= cutoffMs;
+            });
       if (isSpxTicker(sym)) {
         const desk = await getLargoSpxLiveDesk(userId);
         const deskFlows = desk.spx_flows ?? [];
         const deskTape = desk.unified_tape ?? [];
         if (deskFlows.length || deskTape.length || desk.flow_0dte_net != null) {
+          const flow_alerts = inWindow(deskFlows);
+          const unified_tape = inWindow(deskTape).slice(0, 20);
           return withStrikeStacks(
             {
               ticker: sym,
               source: "spx_sniper_desk",
               as_of: desk.as_of,
-              flow_alerts: deskFlows,
-              unified_tape: deskTape.slice(0, 20),
+              flow_alerts,
+              unified_tape,
+              window_hours: since_hours,
               intraday_0dte: {
                 call_premium: desk.flow_0dte_call_premium,
                 put_premium: desk.flow_0dte_put_premium,
@@ -541,13 +562,8 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
           );
         }
       }
-      // Per-ticker flow for a non-SPX name. The live UW per-stock pull is small
-      // (server-capped at 50 alerts / 100 recent), so on a busy name like IBM it
-      // misses most of the day's stacked prints. HELIX (fetchRecentFlows) already
-      // ingests this ticker's full session flow (market-wide WS/cron capture,
-      // >= UW_FLOW_MIN_PREMIUM) — so merge BOTH: the live pull contributes the
-      // smaller/sub-floor recent alerts, HELIX contributes the whole day's big
-      // prints the small window drops. Strike-stacks then see the complete picture.
+      // Per-ticker flow for a non-SPX name.
+      const helixSince = since_hours ?? 48;
       const [alerts, flow0dte, recent] = await Promise.all([
         fetchUwTickerFlowAlerts(sym, 50),
         fetchUwFlow0dte(sym),
@@ -555,22 +571,25 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       ]);
       let helix: Awaited<ReturnType<typeof fetchRecentFlows>> = [];
       try {
-        helix = await fetchRecentFlows({ ticker: sym, since_hours: 48, limit: 500 });
+        helix = await fetchRecentFlows({
+          ticker: sym,
+          since_hours: helixSince,
+          limit: 500,
+          order: since_hours != null && since_hours <= 6 ? "recent" : undefined,
+        });
       } catch {
         /* HELIX optional (no DB in dev) — the live UW pull still stands on its own */
       }
 
-      const callPrem = alerts.filter((a) => a.option_type === "CALL").reduce((s, a) => s + a.premium, 0);
-      const putPrem = alerts.filter((a) => a.option_type === "PUT").reduce((s, a) => s + a.premium, 0);
+      const scopedAlerts = inWindow(alerts);
+      const scopedRecent = inWindow(recent);
 
-      // Dedup the union BEFORE stacking so an alert present in both the live pull
-      // and HELIX is never premium-double-counted. Key on strike|type|expiry|
-      // premium|epoch-minute — epoch-normalized so UW's ISO timestamps and HELIX's
-      // pg Date strings collapse to the same key for the same print. Live-pull rows
-      // first so they win the 500-row cap, then HELIX (premium-DESC) fills the tail.
+      const callPrem = scopedAlerts.filter((a) => a.option_type === "CALL").reduce((s, a) => s + a.premium, 0);
+      const putPrem = scopedAlerts.filter((a) => a.option_type === "PUT").reduce((s, a) => s + a.premium, 0);
+
       const seenFlow = new Set<string>();
       const mergedFlow: FlowAlertForStack[] = [];
-      for (const raw of [...alerts, ...recent, ...helix]) {
+      for (const raw of [...scopedAlerts, ...scopedRecent, ...helix]) {
         const n = normalizeFlowAlertForStack(raw);
         if (!n) continue;
         const t = new Date(n.alerted_at).getTime();
@@ -586,8 +605,9 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
         ticker: sym,
         source: helix.length ? "unusual_whales + helix" : "unusual_whales",
         note: UW_EXCLUSIVE_NOTE,
-        flow_alerts: alerts,
-        flow_recent: recent,
+        window_hours: since_hours ?? helixSince,
+        flow_alerts: scopedAlerts,
+        flow_recent: scopedRecent,
         helix_session_alerts: helix.length,
         intraday_0dte: flow0dte,
         alert_premium: { calls: callPrem, puts: putPrem, net: callPrem - putPrem },
@@ -904,10 +924,28 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       return marketPlatform.spx.getSpxOpenPlay();
     case "get_trade_history": {
       const days = Number(input.days ?? 30);
-      return marketPlatform.spx.getSpxTradeHistory({
+      const trades = await marketPlatform.spx.getSpxTradeHistory({
         ticker: input.ticker ? String(input.ticker) : undefined,
         days,
       });
+      const { fetchPlayOutcomeStatsForWindow } = await import("@/features/spx/lib/spx-play-outcomes");
+      const summary = await fetchPlayOutcomeStatsForWindow(days);
+      return {
+        window_days: days,
+        trades,
+        summary: {
+          total_closed: summary.total_closed,
+          wins: summary.overall.wins,
+          losses: summary.overall.losses,
+          breakeven: summary.overall.breakeven,
+          win_rate: summary.overall.win_rate,
+          days_of_data: summary.days_of_data,
+        },
+        note:
+          trades.length === 0
+            ? "No individual closed rows matched the ticker/window filter — use summary for aggregate track record."
+            : undefined,
+      };
     }
     case "get_setup_stats":
       return marketPlatform.spx.getSpxSetupStats();
@@ -1035,12 +1073,18 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
     }
 
     case "get_flow_tape": {
+      const sinceHoursRaw = input.since_hours ?? input.hours;
+      const since_hours =
+        sinceHoursRaw != null && Number.isFinite(Number(sinceHoursRaw))
+          ? Math.min(168, Math.max(1, Math.trunc(Number(sinceHoursRaw))))
+          : undefined;
       const summary = await marketPlatform.flows.getFlowTapeSummary({
         limit: Number(input.limit ?? 50),
         ticker: input.ticker ? uwTicker(String(input.ticker)) : undefined,
+        since_hours,
       });
       const recent = await enrichFlowsWithGex(summary.recent);
-      return { ...summary, recent };
+      return { ...summary, recent, ordered_by: since_hours != null && since_hours <= 6 ? "recent" : "premium" };
     }
 
     case "get_platform_snapshot":

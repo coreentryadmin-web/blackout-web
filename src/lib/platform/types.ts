@@ -65,6 +65,8 @@ export type FlowTapeSummary = {
   recent: FlowRow[];
   /** UW Repeated Hits + same-strike stacks derived from `recent` — same path as HELIX/Largo. */
   strike_stacks: FlowStrikeStack[];
+  /** Rolling lookback applied to this summary (hours). */
+  window_hours?: number;
 };
 
 export type NightHawkEditionSummary = {
