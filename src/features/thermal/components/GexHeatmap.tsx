@@ -3084,6 +3084,15 @@ export function GexHeatmap({
     else if (lens === "charm" && !hasCharm) setLens("gex");
   }, [data, lens, hasDex, hasCharm]);
 
+  // The mirror of the guard above, for the DEPTH view. Its tab only renders under GEX — the ladder
+  // is built from dealer gamma and means nothing under vanna/delta/charm — so switching lens while
+  // it is open would leave the panel selected with no tab highlighted anywhere: the ladder still on
+  // screen, silently describing gamma, under a lens the reader believes they just changed to.
+  // Fall back to the matrix instead.
+  useEffect(() => {
+    if (lens !== "gex" && pairView === "pair-c") setPairView("pair-a");
+  }, [lens, pairView]);
+
   // Peak |net premium| across mapped strikes — drives the flow-marker width scale.
   const flowPeak = useMemo(() => {
     if (!flowByStrike) return 0;
