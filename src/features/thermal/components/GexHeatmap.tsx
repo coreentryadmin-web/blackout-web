@@ -662,8 +662,25 @@ const METRIC_HELP = {
     "Near-term aggregate: the pivot strike where net dealer gamma flips sign. Above it dealers are long gamma (they dampen moves → range-bound); below it they're short gamma (they amplify moves → vol expansion). Differs from 0DTE-only flip lines on other tools.",
   callWall:
     "Near-term aggregate: the strike with the most positive dealer gamma across the next ~2 weeks of expiries — an upside anchor that often acts as resistance. Excludes far monthly OpEx (those peaks show as gold matrix cells, not this bar).",
+  /** Mirror of putWallAboveSpot — resistance BELOW price is equally incoherent as a level. */
+  callWallBelowSpot:
+    "Near-term aggregate: the strike with the most positive dealer gamma across the next ~2 weeks of expiries. It currently sits BELOW spot, so it is a concentration of dealer call gamma rather than a resistance level. Excludes far monthly OpEx.",
   putWall:
     "Near-term aggregate: the strike with the most negative dealer gamma across near-term expiries — typically downside support. Excludes far monthly OpEx (purple matrix cell peaks can land on a different strike).",
+  /**
+   * Shown INSTEAD of the copy above when the most-negative strike sits ABOVE spot.
+   *
+   * The wall is defined by the SIGN of net dealer gamma, not by its position relative to price, so
+   * it can legitimately land above spot — live on 2026-08-12, SPX spot 7752 with 8000 at -1.605B
+   * beating 7400 at -1.485B, most likely an 8/21 OpEx line. The number is not wrong.
+   *
+   * What IS wrong is calling it support. A member reading "Put Wall 8000" on a chart trading at
+   * 7752 understands "support 250 points above me", which is incoherent as a level and is the one
+   * reading the tile must never invite. Naming it a dealer-gamma concentration keeps the number
+   * honest under either interpretation.
+   */
+  putWallAboveSpot:
+    "Near-term aggregate: the strike with the most negative dealer gamma across near-term expiries. It currently sits ABOVE spot, so it is a concentration of dealer put gamma rather than a support level — the nearest support is the strongest negative strike BELOW price. Excludes far monthly OpEx.",
   maxPain:
     "Front/nearest expiry only: the strike where the most option open interest expires worthless for that settlement date — OI-gravity for one expiry, not summed across the chain.",
   netGex:
@@ -3376,6 +3393,16 @@ export function GexHeatmap({
       ? data.max_pain_by_expiry[selectedExpiries[0]]
       : undefined;
   const keyMaxPain = scopedMaxPain !== undefined ? scopedMaxPain : maxPain;
+  // Is each wall actually on the side of price its label implies?
+  //
+  // computeGexWalls (and gexWallsFromStrikeTotals) split by the SIGN of net dealer gamma and take
+  // no spot argument at all, so neither wall is guaranteed to sit where its name suggests. Most
+  // sessions they do and nobody notices; when they do not, the tile would otherwise assert
+  // "support" for a strike overhead. Null spot or null wall degrades to the plain label rather
+  // than guessing a side.
+  const putWallIsSupport = keyNegWall == null || spot == null || !(spot > 0) || keyNegWall <= spot;
+  const callWallIsResistance = keyPosWall == null || spot == null || !(spot > 0) || keyPosWall >= spot;
+
   // Which expiry the row is actually describing, and how much of the near-spot gamma it owns.
   const scopedExpiryLabel = selectedExpiries?.length === 1 ? selectedExpiries[0] : null;
   const scopedShare =
@@ -3820,18 +3847,25 @@ export function GexHeatmap({
           key: "callWall",
           label: "Call Wall",
           value: keyPosWall != null ? fmtStrike(keyPosWall) : "—",
-          tone: "bull",
+          // A wall on the WRONG SIDE of price is not a directional level, so it must not be
+          // painted as one. See putWall below for the full reasoning; this is its mirror.
+          tone: callWallIsResistance ? "bull" : "wall",
           active: keyPosWall != null,
-          help: METRIC_HELP.callWall,
+          help: callWallIsResistance ? METRIC_HELP.callWall : METRIC_HELP.callWallBelowSpot,
           delta: gexTileDeltas?.callWall ?? null,
         },
         {
           key: "putWall",
           label: "Put Wall",
           value: keyNegWall != null ? fmtStrike(keyNegWall) : "—",
-          tone: "support",
+          // `tone: "support"` was unconditional. The wall is picked by the SIGN of net dealer
+          // gamma with no reference to spot, so it can sit ABOVE price — live 2026-08-12, SPX spot
+          // 7752 with 8000 at -1.605B beating 7400 at -1.485B. The strike is right; calling it
+          // SUPPORT when it is 250 points overhead is not, and "support above me" is the one
+          // reading a trader must never be handed. Neutral tone + honest copy in that case.
+          tone: putWallIsSupport ? "support" : "wall",
           active: keyNegWall != null,
-          help: METRIC_HELP.putWall,
+          help: putWallIsSupport ? METRIC_HELP.putWall : METRIC_HELP.putWallAboveSpot,
           delta: gexTileDeltas?.putWall ?? null,
         },
         {
