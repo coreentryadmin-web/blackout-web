@@ -100,10 +100,26 @@ async function main() {
         });
 
         if (!asJson) console.log(`\n═══ ${device.name} ${device.viewport}`);
-        await page.goto(TARGET, {
-          waitUntil: "domcontentloaded",
-          timeout: 90_000,
-        });
+        // A navigation failure is this DEVICE's problem, not the run's.
+        //
+        // It used to throw straight out of the device loop into the top-level catch, so a single
+        // ERR_CONNECTION_RESET discarded the results already collected for the other viewport and
+        // exited 2 with no findings at all. Hit live on 2026-08-12 mid-deploy: the desktop pass had
+        // finished and its verdict was thrown away when the phone pass landed on a draining ECS
+        // replica. Retried once — an in-flight rollout is exactly the moment one connection dies
+        // and the next succeeds — then recorded as a WARN for this device and moved on.
+        const goto = () => page.goto(TARGET, { waitUntil: "domcontentloaded", timeout: 90_000 });
+        try {
+          await goto();
+        } catch {
+          await page.waitForTimeout(10_000);
+          try {
+            await goto();
+          } catch (e) {
+            note("WARN", `${device.name}: navigation failed twice — ${String(e).slice(0, 120)}`);
+            continue;
+          }
+        }
         // ── Prove the PAGE loaded before judging the FEATURE ─────────────────────────────
         // Without this, a blank page, a 404, or an auth bounce all report "Depth tab not found",
         // which reads as a product defect when it is a harness failure. The Matrix tab has shipped
@@ -173,7 +189,20 @@ async function main() {
           .first();
         const tabCount = await depthTab.count();
         if (tabCount === 0) {
-          note("FAIL", `${device.name}: Depth tab not found — the view never shipped to this page`);
+          // Report the tabs that ARE there. "Depth tab not found" on its own is a dead end — it
+          // cannot distinguish an old bundle from a non-GEX lens (the tab is gated on
+          // `lens === "gex"`) from a tab that rendered under a different label. Observed
+          // 2026-08-12: desktop reported this while phone, same origin, same minute, found the tab
+          // and a full ladder — and with only the bare message there was nothing to reason from.
+          const tabs = await page.locator('[role="tab"]').allInnerTexts();
+          const lens = await page
+            .locator('[aria-pressed="true"], [data-state="active"]')
+            .allInnerTexts()
+            .catch(() => []);
+          note("FAIL", `${device.name}: Depth tab not found — the view never shipped to this page`, {
+            tabsPresent: tabs.map((t) => t.replace(/\s+/g, " ").trim()).slice(0, 8),
+            activeControls: lens.map((t) => t.replace(/\s+/g, " ").trim()).slice(0, 6),
+          });
           await page.screenshot({ path: join(OUT, `${device.name}-no-tab.png`), fullPage: false });
           continue;
         }
@@ -250,9 +279,22 @@ async function main() {
   }
 
   const fails = findings.filter((f) => f.level === "FAIL");
-  if (asJson) console.log(JSON.stringify({ fails: fails.length, findings }, null, 2));
-  else console.log(`\n${"═".repeat(60)}\n${fails.length === 0 ? "ALL CHECKS PASSED" : `${fails.length} FAILURES`}`);
-  process.exit(fails.length > 0 ? 1 : 0);
+
+  // "No failures" is NOT "everything passed" when nothing was ever checked.
+  //
+  // Making the nav-failure and no-desk paths WARN (correctly — neither is a product defect) opened
+  // a hole: a run where BOTH viewports died before reaching the ladder produced zero FAILs and
+  // printed "ALL CHECKS PASSED" while proving nothing. Hit on the very next run, 2026-08-12, during
+  // an ECS rollout: connection reset on one viewport, no desk on the other, green verdict.
+  //
+  // That is worse than a FAIL, because a FAIL gets investigated and a PASS gets believed. So the
+  // verdict is gated on evidence actually existing, and the exit code says so.
+  const ladderChecked = findings.some((f) => /rungs rendered/.test(f.msg));
+  const verdict =
+    fails.length > 0 ? `${fails.length} FAILURES` : ladderChecked ? "ALL CHECKS PASSED" : "NO EVIDENCE GATHERED — no viewport reached the ladder; this run proves nothing";
+  if (asJson) console.log(JSON.stringify({ fails: fails.length, ladderChecked, verdict, findings }, null, 2));
+  else console.log(`\n${"═".repeat(60)}\n${verdict}`);
+  process.exit(fails.length > 0 || !ladderChecked ? 1 : 0);
 }
 
 main().catch((e) => {
