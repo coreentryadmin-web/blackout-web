@@ -46,11 +46,44 @@ export function HomeGammaPromo({ initial, variant = "band" }: Props) {
     }
   }, []);
 
+  /**
+   * Fetch IMMEDIATELY on mount, then every 5s while visible.
+   *
+   * The mount fetch is the load-bearing part. This panel is seeded server-side from the homepage,
+   * which is `revalidate = 3600` (ISR) AND force-cached at the Cloudflare edge for `edge_ttl 7200`
+   * with the bypass only on a `__session` cookie — i.e. exactly the anonymous visitors this promo
+   * exists for get an HTML copy that can be HOURS old. The previous interval-only effect left that
+   * seed on screen for a full 2 minutes under a pulsing "live" dot before the first refresh, which
+   * is the one thing a levels panel must never do.
+   *
+   * Visibility-gated: a backgrounded tab stops polling (and browsers throttle hidden timers into
+   * unpredictable bursts anyway), and returning to the tab repaints before waiting out an interval.
+   */
   useEffect(() => {
-    const id = window.setInterval(() => {
-      void loadTicker(ticker);
-    }, 120_000);
-    return () => window.clearInterval(id);
+    if (typeof document === "undefined") return;
+    let timer: number | undefined;
+    const tick = () => {
+      if (document.visibilityState === "visible") void loadTicker(ticker);
+    };
+    const start = () => {
+      window.clearInterval(timer);
+      timer = window.setInterval(tick, 5_000);
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        tick();
+        start();
+      } else {
+        window.clearInterval(timer);
+      }
+    };
+    tick();
+    start();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [loadTicker, ticker]);
 
   async function selectTicker(next: PublicGexTicker) {
@@ -121,7 +154,7 @@ export function HomeGammaPromo({ initial, variant = "band" }: Props) {
               <ul className="gamma-promo-bullets">
                 <li>Live SPX · SPY · QQQ</li>
                 <li>Long / short gamma regime</li>
-                <li>Refreshes every few minutes</li>
+                <li>Refreshes live every 5 seconds</li>
               </ul>
             </div>
 

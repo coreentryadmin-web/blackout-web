@@ -1,9 +1,36 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { PublicGexSnapshot, PublicGexTicker } from "@/lib/public-gex-snapshot";
 
 const TICKERS: PublicGexTicker[] = ["SPX", "SPY", "QQQ"];
+
+/**
+ * The honest one-word claim under a wall tile.
+ *
+ * A wall is defined by the SIGN of dealer gamma, not by its side of spot, so it can legitimately
+ * land on the wrong side — SPX was live at spot 7,748.5 with its put wall at 8,000 on 2026-08-12.
+ * The number is right; calling it "support" 250 points overhead is not. When the wall is on the
+ * wrong side this says CONCENTRATION instead, matching the Thermal Key Levels tile (#2115).
+ *
+ * Treated as optional-at-runtime on purpose: the snapshot is Redis-cached, so entries written by
+ * the PREVIOUS deploy carry no role field and arrive as `undefined`. Rendering nothing in that
+ * window is correct — it degrades to the plain label rather than asserting a side we were not told.
+ */
+function WallRole({ role, kind }: { role: PublicGexSnapshot["call_wall_role"]; kind: "call" | "put" }) {
+  if (!role) return null;
+  if (role === "concentration") {
+    return (
+      <p
+        className="font-mono text-[9px] text-amber-300/70 uppercase tracking-wider mt-0.5"
+        title={`This strike carries the most ${kind} dealer gamma, but it currently sits on the far side of spot — a gamma concentration, not a ${kind === "call" ? "resistance" : "support"} level.`}
+      >
+        concentration
+      </p>
+    );
+  }
+  return <p className="font-mono text-[9px] text-sky-300/45 uppercase tracking-wider mt-0.5">{role}</p>;
+}
 
 function fmtLevel(n: number | null): string {
   if (n === null || !Number.isFinite(n)) return "—";
@@ -25,18 +52,72 @@ export function GammaSnapshotWidget({ initial }: { initial: PublicGexSnapshot })
   const [snapshot, setSnapshot] = useState<PublicGexSnapshot>(initial);
   const [loading, setLoading] = useState(false);
 
-  async function selectTicker(next: PublicGexTicker) {
-    if (next === ticker) return;
-    setTicker(next);
-    setLoading(true);
+  // Guards a slow response for ticker A from overwriting a newer one for ticker B. Without it a
+  // 5s poll racing a ticker click can repaint SPX numbers under a QQQ heading — the one way a
+  // faster refresh can make a levels widget LESS correct than a static one.
+  const wantedTicker = useRef(ticker);
+
+  const load = useCallback(async (next: PublicGexTicker, showSpinner: boolean) => {
+    wantedTicker.current = next;
+    if (showSpinner) setLoading(true);
     try {
       const res = await fetch(`/api/public/gex-snapshot?ticker=${next}`, { cache: "no-store" });
-      if (res.ok) setSnapshot(await res.json());
+      if (!res.ok) return;
+      const data = (await res.json()) as PublicGexSnapshot;
+      if (wantedTicker.current === next) setSnapshot(data);
     } catch {
       /* keep showing the last good snapshot */
     } finally {
-      setLoading(false);
+      if (showSpinner) setLoading(false);
     }
+  }, []);
+
+  /**
+   * Live refresh, matched to the server lane.
+   *
+   * The underlying matrix (fetchGexHeatmap, the same one Thermal reads) turns over every ~5s and
+   * the public snapshot's own cache is now 5s too, so 5s here is the fastest cadence that can
+   * actually show new numbers rather than re-fetching identical bytes.
+   *
+   * Gated on visibility for two reasons: a backgrounded tab left open overnight would otherwise
+   * poll ~17k times by morning for a market that is closed, and browsers throttle timers in hidden
+   * tabs anyway, so the requests that DID fire would land in unpredictable bursts. Refetching
+   * immediately on re-show is the part that matters to a user — coming back to the tab should
+   * repaint current levels, not whatever was on screen when they left.
+   */
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    let timer: number | undefined;
+    const tick = () => {
+      if (document.visibilityState === "visible") void load(ticker, false);
+    };
+    const start = () => {
+      window.clearInterval(timer);
+      timer = window.setInterval(tick, 5_000);
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        tick(); // repaint on return before waiting out a full interval
+        start();
+      } else {
+        window.clearInterval(timer);
+      }
+    };
+    // Fetch once on mount: the SSR seed was rendered server-side and is already a few seconds old
+    // before it reaches the browser.
+    tick();
+    start();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [load, ticker]);
+
+  async function selectTicker(next: PublicGexTicker) {
+    if (next === ticker) return;
+    setTicker(next);
+    await load(next, true);
   }
 
   return (
@@ -94,6 +175,7 @@ export function GammaSnapshotWidget({ initial }: { initial: PublicGexSnapshot })
             <div className="rounded-md border border-white/10 bg-black/40 px-3 py-2 text-center">
               <p className="font-mono text-lg font-bold tabular-nums text-cyan-300">{fmtLevel(snapshot.call_wall)}</p>
               <p className="font-mono text-[10px] text-sky-300/60 uppercase tracking-widest mt-0.5">Call Wall</p>
+              <WallRole role={snapshot.call_wall_role} kind="call" />
             </div>
             <div className="rounded-md border border-white/10 bg-black/40 px-3 py-2 text-center">
               <p className="font-mono text-lg font-bold tabular-nums text-white">{fmtLevel(snapshot.flip)}</p>
@@ -102,6 +184,7 @@ export function GammaSnapshotWidget({ initial }: { initial: PublicGexSnapshot })
             <div className="rounded-md border border-white/10 bg-black/40 px-3 py-2 text-center">
               <p className="font-mono text-lg font-bold tabular-nums text-rose-400">{fmtLevel(snapshot.put_wall)}</p>
               <p className="font-mono text-[10px] text-sky-300/60 uppercase tracking-widest mt-0.5">Put Wall</p>
+              <WallRole role={snapshot.put_wall_role} kind="put" />
             </div>
           </div>
 
