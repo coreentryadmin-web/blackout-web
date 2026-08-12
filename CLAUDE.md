@@ -85,6 +85,21 @@ Both harnesses and their `npm run validate:vector-*` scripts were removed with i
 - `docs/audit/FINDINGS.md` — living issue log (keep updating).
 
 ## Environment realities (this cloud sandbox)
+- **RUN TESTS ON NODE 20 — `nvm use` (or `export PATH=/opt/nvm/versions/node/v20.20.2/bin:$PATH`).
+  A Node 22 test run is not evidence (established 2026-08-12).** Production is `node:20-bookworm-slim`
+  and every workflow pins `node-version: 20`, but this sandbox's default `node` is 22, and the two
+  disagree in BOTH directions:
+  - **Phantom failures.** The full suite on Node 22 reports **12 failures** (board-convergence,
+    zerodte-service, banger commit-latch, swing discovery). On Node 20 the same commit is
+    **7361 pass / 0 fail**. Those 12 were treated for a whole session as an unavoidable
+    "sandbox baseline" — they are not; they are Node 22 artifacts and there is no baseline to
+    subtract.
+  - **Missed real failures.** #2073's tsx 4.23.1→4.23.10 bump threw `ERR_INVALID_URL` inside tsx's
+    own ESM resolver hook under Node 20 + `--experimental-test-module-mocks`, killing 133 tests in
+    CI while passing clean on Node 22 here.
+  `nvm` lives at **`/opt/nvm`** (not `~/.nvm` — `source ~/.nvm/nvm.sh` fails); v20.20.2 is installed
+  and is the default alias for a login shell. `npm test` now goes through `scripts/run-tests.mjs`,
+  which is the exact command CI runs and prints a loud banner on any other major.
 - **All infrastructure runs on AWS ECS only** — there is no Railway. Docker images are built and pushed to ECR, ECS services are force-deployed, Cloudflare cache is purged. **Production is now the ONLY environment** (`blackout-production-cluster` / `blackout-production-web` at `blackouttrades.com`) — the entire `blackout-staging-*` stack was decommissioned 2026-07-25 (see the Vector-validation note above). The `blackout-web` ECR repo is shared and still in use by production; it was deliberately NOT deleted.
 - **WebSockets WORK from this sandbox — inside a CONNECT tunnel (corrected 2026-08-09).** The old
   note here said "WS upgrades unsupported"; that is true only of asking the proxy to proxy an
