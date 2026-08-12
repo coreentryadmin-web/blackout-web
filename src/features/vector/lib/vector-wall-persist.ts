@@ -91,6 +91,100 @@ export async function loadSessionWallHistory(
  * because A's fresh read (immediately before the set) already contains B's
  * bucket and the union preserves it.
  */
+// ── Durable write-through queue ───────────────────────────────────────────────────────────────
+//
+// The DB mirror used to be dispatched per sample: `void (async () => persistWallSampleToDb(...))()`
+// — fire-and-forget with NO concurrency bound. The recorder writes ~122 tickers x 4 horizons =
+// ~488 samples every 5 seconds against a pool of PG_POOL_MAX=4, so demand (~98 writes/sec) ran
+// well past what four connections could drain. The pool's waiter queue grew without limit and
+// every caller past the 15s connectionTimeoutMillis threw "timeout exceeded when trying to
+// connect", continuously, across dozens of tickers (prod, 2026-08-12).
+//
+// That was not a slow rail — it was SILENT DATA LOSS. Redis keeps rails 72h; Postgres is the
+// 15-day durable mirror. With the mirror rejecting writes, anything past the TTL was gone.
+//
+// Coalescing into one multi-row INSERT per flush turns ~488 round-trips into a handful. The queue
+// is keyed by (ticker, session, bucket) so a re-recorded bucket REPLACES its pending entry rather
+// than queueing twice — the same idempotence the ON CONFLICT upsert gives, applied before the
+// write instead of after it.
+const durableQueue = new Map<string, { sessionYmd: string; ticker: string; sample: WallHistorySample }>();
+let durableFlushTimer: ReturnType<typeof setTimeout> | null = null;
+let durableFlushInFlight = false;
+/** Flush cadence. Below the 5s recorder tick so a sweep's writes leave in one or two batches. */
+const DURABLE_FLUSH_MS = 2_000;
+/**
+ * Hard cap on pending rows. If the DB is down, the queue must not become a memory leak that takes
+ * the worker with it — beads are a supplementary visual and Redis still has them. Dropping the
+ * OLDEST is deliberate: the newest samples are the ones a member is about to look at.
+ */
+const DURABLE_QUEUE_MAX = 5_000;
+
+function enqueueDurableWallSample(
+  sessionYmd: string,
+  storageTicker: string,
+  sample: WallHistorySample
+): void {
+  durableQueue.set(`${storageTicker}:${sessionYmd}:${sample.time}`, {
+    sessionYmd,
+    ticker: storageTicker,
+    sample,
+  });
+  if (durableQueue.size > DURABLE_QUEUE_MAX) {
+    const overflow = durableQueue.size - DURABLE_QUEUE_MAX;
+    let dropped = 0;
+    for (const k of durableQueue.keys()) {
+      durableQueue.delete(k);
+      if (++dropped >= overflow) break;
+    }
+    console.warn(
+      `[vector-wall-persist] durable queue over ${DURABLE_QUEUE_MAX} — dropped ${dropped} oldest pending rows (DB likely unavailable)`
+    );
+  }
+  if (durableFlushTimer) return;
+  durableFlushTimer = setTimeout(() => {
+    durableFlushTimer = null;
+    void flushDurableWallSamples();
+  }, DURABLE_FLUSH_MS);
+  (durableFlushTimer as unknown as { unref?: () => void }).unref?.();
+}
+
+async function flushDurableWallSamples(): Promise<void> {
+  // ONE flush in flight. Overlapping flushes would re-create the unbounded concurrency this queue
+  // exists to remove.
+  if (durableFlushInFlight || durableQueue.size === 0) return;
+  durableFlushInFlight = true;
+  // Take the batch out BEFORE awaiting, so samples recorded during the flush queue for the next
+  // one instead of being dropped by the clear.
+  const batch = [...durableQueue.values()];
+  durableQueue.clear();
+  try {
+    const { persistWallSamplesToDb } = await import("./vector-wall-db");
+    await persistWallSamplesToDb(batch);
+  } catch (err) {
+    console.warn(`[vector-wall-persist] durable flush failed (${batch.length} rows):`, err);
+  } finally {
+    durableFlushInFlight = false;
+    // Anything that arrived mid-flush gets its own timer rather than waiting for the next append.
+    if (durableQueue.size > 0 && !durableFlushTimer) {
+      durableFlushTimer = setTimeout(() => {
+        durableFlushTimer = null;
+        void flushDurableWallSamples();
+      }, DURABLE_FLUSH_MS);
+      (durableFlushTimer as unknown as { unref?: () => void }).unref?.();
+    }
+  }
+}
+
+/** Test-only: drain synchronously so a suite can assert on what would be written. */
+export async function _flushDurableWallSamplesForTest(): Promise<void> {
+  await flushDurableWallSamples();
+}
+
+/** Test-only: how many rows are pending. */
+export function _durableWallQueueSizeForTest(): number {
+  return durableQueue.size;
+}
+
 /**
  * Last rail THIS process wrote, per (storageId, sessionYmd) — the read-side of the append.
  *
@@ -155,14 +249,7 @@ export async function appendSessionWallSample(
     // return, and a DB failure (or the server-only module failing to load in an unexpected
     // context) must not affect the live recorder. Lazy dynamic import keeps the server-only
     // DB module out of any client bundle that transitively reaches this file.
-    void (async () => {
-      try {
-        const { persistWallSampleToDb } = await import("./vector-wall-db");
-        await persistWallSampleToDb(sessionYmd, sample, st);
-      } catch (err) {
-        console.warn(`[vector-wall-persist] db write-through failed ${st}:${sessionYmd}:`, err);
-      }
-    })();
+    enqueueDurableWallSample(sessionYmd, st, sample);
     return true;
   } catch (err) {
     // Persistence is a supplementary visual and must never block the live stream —
