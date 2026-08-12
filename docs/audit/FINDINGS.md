@@ -38,6 +38,61 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-08-12 — [FINDING, P1 Night Hawk 0DTE] Every play on the closed board was labelled "?DTE" — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Status** | FIXED in #2075, merged to `main`. |
+| **Symptom** | Live authenticated capture of `/nighthawk`, 2026-08-12 00:34 UTC: all 7 plays read `RIOT 21P · ?DTE`, `BW 9.5P · ?DTE`, `ACHR 6.5C · ?DTE` … Not one row showed a real DTE. The page itself was healthy (145 requests routed), so this is the product, not a broken capture. |
+| **Root cause** | `sourceFrom` (`zerodte-sources.ts`) synthesises a `setup` for any ledger row the current scan did not re-surface, and that synthetic setup hardcoded `dte: null`. The adapter renders ``dte === 0 ? "0DTE" : `${dte ?? "?"}DTE` ``, so a null there is a literal question mark on the card. |
+| **Why it hid** | During RTH live setups carry a real `dte` and the fallback is taken only for the occasional ledger-only working row. After the close there are NO fresh setups — every row is ledger-only — so the fallback becomes the whole board. A member looking at the desk after 16:00 ET had never seen a correct DTE. |
+| **The data was already on the row** | The same row carries `occ`, and an OCC symbol packs the expiry (`RIOT260812P00021000` → 2026-08-12). Nothing needed fetching or persisting; the synthetic setup simply never looked. `ledgerRowDte` parses it with the canonical `parseOccSymbol` and measures with `calendarDteBetween` — the same function the pin/breakout contract pickers use, so a card cannot drift from the engine's definition. |
+| **Reference day** | The play's own session (`first_flagged_at` → `exit_at` → today), not today: measured from now, a past-session play would count DOWN and a closed 0DTE row would eventually render `-3DTE`. All three resolve in ET — reading a 20:15 ET flag in UTC rolls it onto tomorrow and reports one day too few (own test). |
+| **Fail-closed** | No OCC, unparseable OCC, expiry before the reference session, or an absurd gap → `null`, and the card still shows `?DTE`. `?` is honest when the contract cannot be identified; the bug was showing it when it could. |
+| **Evidence** | 10 unit tests; command-deck suite 324/324 green; tsc clean, on Node 20. |
+
+## 2026-08-12 — [FINDING, P1 Night Hawk Swings] A swing play lost its "why" the moment you had money in it — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Status** | FIXED in #2077, merged to `main`. |
+| **Symptom** | Read straight off the live `GET /api/market/nighthawk/horizons`, 2026-08-12: of 21 SWING rows, **15 carried factors and 6 did not** — and the 6 were exactly the committed ones (RVMD/KRE/FHN in MANAGING, IBIT/KKR/MSFT in SCALING OUT; all `factors: undefined`, `regime: null`). The desk explains what you are WATCHING and goes quiet on what holds your capital. Under "WHY THIS PLAY WAS PICKED" the card printed `Component breakdown not served for this lane yet — score 74.`, which reads as an unfinished lane rather than a row that dropped its evidence. |
+| **Root cause** | `getSwingServingLane` enriches DISCOVERY plays through `enrichPlay` (attaches the dossier's factors/regime). A LIVE row is built separately by `livePlaysFromOpenPositions` from the ledger and is then deliberately preferred over its pre-entry twin ("live capital wins the section" — the twin is dropped from the merge). That twin was the only carrier of the explanation, and the live row never went through `enrichPlay`. Committing a play therefore DELETED its rationale. |
+| **Why not just call `enrichPlay`** | It also sets `setupState`/`entryStatus`/`subLane`/`archetype` and lets the dossier's PRE-ENTRY read win (`meta.setupState ?? play.setupState`). On a live row those come from real capital state, so that would drag a managed position back into a pre-entry section — worse than the bug being fixed. `attachThesisExplanation` copies factors + regime ONLY; lifecycle stays live. `thesisLevel`/`thesisNote` are also excluded: a live row derives thesis health from ongoing management, and a stale "intact" would overwrite a real "thesis broken". |
+| **Fail-closed** | No dossier for the ticker → row untouched, honest placeholder stands. A committed play never receives an invented explanation. |
+| **Evidence** | 3 tests (committed row keeps factors; a TRIMMING row stays in SCALING_OUT; no-dossier stays honest); swing suite 447/447; tsc clean, on Node 20. |
+
+## 2026-08-12 — [FINDING, P2 audit tooling] The UI sweep audited a 404, invented empty panels, and never opened three of four lanes — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Status** | FIXED in #2076, merged to `main`. |
+| **Why it matters** | Three of the four defects produced FINDINGS THAT WERE NOT REAL. That is the worst failure mode an audit tool has: it spends investigation budget and erodes trust in the runs that are right. Two were filed as possible product bugs earlier the same day; both were the harness. |
+| **1 — audited a route that does not exist** | `PAGES` listed `/record`; the page is `(site)/track-record`. Every run reported `BROKEN /record routed=12 chars=160` — a 404 served correctly, reported as a broken desk page. |
+| **2 — invented empty panels** | The empty-section rule matched `[class*='card']`, which also matches decorative LEAVES (`vp-intel-card-icon`, `vp-intel-card-title`) that hold no text by design → 8 "empty sections" on a healthy `/vector`. Emptiness now requires element children AND ≥200×80px. Re-run: `empty=0`. |
+| **3 — healthy SSE streams reported as failed requests** | `isStreamingRequest` tested `/(stream\|sse\|events)(\?\|$)` — a REQUIRED leading slash. The desk's live-price endpoint is `/api/market/stocks/spot-stream` (hyphen), so it got the SHORT timeout and printed `FAIL … timeout` on every otherwise-healthy run. Two standing FAIL lines on a green sweep is exactly the noise that teaches a reader to skim past a real one. Now `-stream` counts, and a TIMEOUT on a known-streaming request logs as HELD against its own counter — narrow on purpose: a stream that 500s/resets/fails TLS is still a FAIL. |
+| **4 — never opened three of four lanes** | Night Hawk is 0DTE/Swings/Bangers/Legacy behind one tab strip; a path-only sweep audits the default lane, so three boards members pay for had never been looked at. `IosNativeSegment` renders real `role="tab"` buttons, so each lane is now clicked and probed like a page. First run: all four lanes GREEN, and it is what surfaced the SWING factors bug above. |
+| **Also** | `/heatmap` gets a 20s settle (its SPX GEX build is a documented ~12.5s cold-cache spike), which was a fifth false BROKEN. |
+| **Lesson** | The same one as the Vector invariant harness (2026-08-09): a harness's own output must be read against reality before its findings are trusted. Three false findings in one tool, all from heuristics nobody had checked against a healthy page. |
+
+## 2026-08-12 — [NEGATIVE-RESULT, Night Hawk UI] "Marketing nav on the authenticated desk" is NOT a defect — RULED OUT
+
+> **kind:** `NEGATIVE-RESULT`
+
+| Field | Value |
+|-------|-------|
+| **Status** | RULED OUT — no change made, no PR. Recorded so it is not re-investigated. |
+| **The apparent finding** | Every authenticated capture of `/nighthawk`, `/vector`, `/terminal` and all four Night Hawk tabs shows the marketing nav (Features · FAQ · Pricing · Learn) and a green **"Open desk →"** button — while the member is already ON the desk. It looks obviously wrong and was flagged as an outstanding real issue. |
+| **Why it is not a bug** | `Nav.tsx` renders that button only under `isSignedIn && !(isLoaded && clerkSignedIn)` — the documented cookie self-heal: *"Cookie/server say signed-in but Clerk JS hasn't confirmed yet (or disagrees) — never fall back to 'Sign In'; offer the desk instead."* A real member with working Clerk JS gets `<AuthUserMenu />`. |
+| **Why the harness always triggers it** | In the `proxy-tunnel-context` browser, Clerk's client JS never completes, so `isLoaded && clerkSignedIn` is permanently false and EVERY capture lands in the degraded branch. The nav is doing exactly what it was designed to do in that state. |
+| **Lesson** | A screenshot from the tunneled browser is evidence about RENDERED SERVER STATE, not about client-JS-dependent chrome. Any finding that depends on Clerk-JS-confirmed state must be verified another way before it is filed. |
+
 ## 2026-08-09 — [FINDING, P1 Vector play engine] A play contradicted itself: four ways the panel named a level as both an ENTRY and a TARGET — FIXED
 
 > **kind:** `FINDING`
