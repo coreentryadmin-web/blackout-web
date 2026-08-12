@@ -7966,7 +7966,8 @@ body::before {
        4th track (2026-08-06, wall-migration arrows) is a narrow fixed width so it doesn't steal
        space from the bar on rows with no migration reading — see the component's comment on why
        it's always rendered (empty) rather than conditionally added/removed from the grid. */
-    grid-template-columns: 2.9rem minmax(0, 1fr) 2.4rem auto;
+    /* Leading 0.3rem track (2026-08-12) is the forced-flow rail — see .vector-gex-ladder-flow. */
+    grid-template-columns: 0.3rem 2.9rem minmax(0, 1fr) 2.4rem auto;
     align-items: center;
     gap: 0.3rem;
     padding: 0.09rem 0.25rem;
@@ -8028,6 +8029,47 @@ body::before {
 
   .vector-gex-ladder-migration-down {
     color: rgba(248, 113, 113, 0.75);
+  }
+
+  /* Forced-flow rail (2026-08-12, synthetic order book): a continuous ribbon down the left edge
+     of the ladder. Green = dealers must BUY if price reaches this level, red = must SELL, and the
+     opacity carries the size against the ladder's largest band. Deliberately NOT the gold/purple
+     wall palette — those encode WHICH SIDE an exposure sits on, this encodes a DIRECTION OF TRADE,
+     and in a short-gamma book forced BUYING is what accelerates a squeeze. Transparent (but still
+     laid out) on strikes outside the ladder's ±8% window. */
+  .vector-gex-ladder-flow {
+    height: 100%;
+    min-height: 0.55rem;
+    border-radius: 0.15rem;
+    background: transparent;
+  }
+
+  .vector-gex-ladder-flow-legend {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+    padding: 0.3rem 0.7rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    font-size: 0.58rem;
+    letter-spacing: 0.02em;
+    color: rgba(148, 163, 184, 0.8);
+  }
+
+  .vector-gex-ladder-flow-swatch {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 0.12rem;
+    opacity: 0.85;
+  }
+
+  .vector-gex-ladder-flow-swatch:not(:first-child) {
+    margin-left: 0.35rem;
+  }
+
+  .vector-gex-ladder-flow-note {
+    color: rgba(148, 163, 184, 0.5);
   }
 
   .vector-gex-ladder-spot {

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildGexLadder } from "./vector-gex-ladder";
+import { buildFlowRail, buildGexLadder, type FlowRailDepth } from "./vector-gex-ladder";
 
 test("buildGexLadder: signs, king per side, magnitude normalisation, descending order", () => {
   const totals = { "100": 2_000, "105": 500, "95": -4_000, "90": -1_000 };
@@ -190,4 +190,74 @@ test("buildGexLadder: volume-adjusted ladder crowns the wall strike that OI-only
   assert.equal(kings.length, 2);
   assert.equal(kings.find((r) => r.side === "call")!.strike, 210, "call king matches banner");
   assert.equal(kings.find((r) => r.side === "put")!.strike, 205, "put king matches banner (volume-adjusted wall)");
+});
+
+// ── buildFlowRail (synthetic order book, Phase 3) ────────────────────────────────────────────────
+// A ±5% ladder around spot 100 in 1% steps: bands 101…105 above, 99…95 below (see gex-depth.ts for
+// the band geometry these tests depend on — above spot a level p covers (p-step, p], below it
+// covers [p, p+step)).
+function railDepth(overrides: Partial<FlowRailDepth> = {}): FlowRailDepth {
+  const levels = [
+    { price: 95, notional: -400, direction: "sell" as const },
+    { price: 96, notional: -800, direction: "sell" as const },
+    { price: 97, notional: -1_000, direction: "sell" as const },
+    { price: 98, notional: -600, direction: "sell" as const },
+    { price: 99, notional: -200, direction: "sell" as const },
+    { price: 101, notional: 250, direction: "buy" as const },
+    { price: 102, notional: 500, direction: "buy" as const },
+    { price: 103, notional: 2_000, direction: "buy" as const },
+    { price: 104, notional: 900, direction: "buy" as const },
+    { price: 105, notional: 300, direction: "buy" as const },
+  ];
+  return { spot: 100, levels, max_abs_notional: 2_000, ...overrides };
+}
+
+test("buildFlowRail: maps each strike to its containing band, normalised against the largest", () => {
+  const rail = buildFlowRail([102.5, 96.5], railDepth());
+
+  // 102.5 sits in (102, 103] → the 103 band, which IS the largest → full intensity.
+  assert.equal(rail.get(102.5)!.direction, "buy");
+  assert.equal(rail.get(102.5)!.intensity, 1);
+  // 96.5 sits in [96, 97) → the 96 band: 800/2000.
+  assert.equal(rail.get(96.5)!.direction, "sell");
+  assert.equal(rail.get(96.5)!.intensity, 800 / 2_000);
+});
+
+test("buildFlowRail: a strike outside the ladder is OMITTED, never clamped to the edge band", () => {
+  // Clamping would paint the 105/95 band's flow across every far strike — a wall of forced trading
+  // drawn exactly where the model made no claim. Absence is the honest render.
+  const rail = buildFlowRail([190, 2.5, 103.5], railDepth());
+  assert.equal(rail.has(190), false);
+  assert.equal(rail.has(2.5), false);
+  assert.equal(rail.size, 1, "only the in-window strike is mapped");
+});
+
+test("buildFlowRail: a zero or missing normaliser yields an EMPTY rail, never a NaN one", () => {
+  // |notional| / 0 is NaN, which reaches the DOM as `opacity: NaN` — silently ignored, so EVERY
+  // cell would paint at full strength. A rail that is wrong at full confidence is worse than none.
+  for (const bad of [0, -1, Number.NaN]) {
+    const rail = buildFlowRail([102.5], railDepth({ max_abs_notional: bad }));
+    assert.equal(rail.size, 0, `max_abs_notional=${bad} must yield no rail`);
+  }
+  assert.equal(buildFlowRail([102.5], railDepth({ spot: 0 })).size, 0);
+  assert.equal(buildFlowRail([102.5], railDepth({ levels: [] })).size, 0);
+  assert.equal(buildFlowRail([102.5], null).size, 0);
+});
+
+test("buildFlowRail: intensity stays within [0,1] even if a band exceeds the stated normaliser", () => {
+  // The normaliser arrives on the wire alongside the levels; a rounding disagreement between the
+  // two must not produce an out-of-range opacity.
+  const rail = buildFlowRail([102.5], railDepth({ max_abs_notional: 1_000 }));
+  assert.equal(rail.get(102.5)!.intensity, 1);
+});
+
+test("buildFlowRail: every strike's band sits on its OWN side of spot", () => {
+  const depth = railDepth();
+  for (const strike of [95.5, 97.2, 99.5, 100.5, 103.3, 104.9]) {
+    const cell = buildFlowRail([strike], depth).get(strike);
+    if (!cell) continue;
+    // Below spot this book must sell, above it must buy — a cell reading the other way means the
+    // strike was resolved across spot, the exact defect exact-containment exists to prevent.
+    assert.equal(cell.direction, strike < depth.spot ? "sell" : "buy", `strike ${strike}`);
+  }
 });
