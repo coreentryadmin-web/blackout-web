@@ -257,12 +257,19 @@ export function Nav({
       </div>
 
       <div className="nav-inner">
+        {/* A REAL GRID ITEM, not an absolute overlay.
+            It used to be `absolute inset-x-0 … text-center`, i.e. centred on the VIEWPORT — but the
+            space this label actually has is not viewport-centred: in this chrome the brand collapses
+            to width 0 while the trailing controls (☰ + "Open desk →") occupy 188.8px. Measured live
+            on /vector at 430px: label span [189.2, 240.8] against the hamburger at [225.2, 269.2] —
+            15.6px of the word rendering underneath a button. Because the overlay was
+            `pointer-events-none` the button still worked, so nothing functional ever failed; it just
+            looked broken. As a grid item the browser does the arithmetic, so it cannot overlap at
+            any label length or button width. */}
         {iosToolLabel && (
-          <div className="ios-nav-context pointer-events-none absolute inset-x-0 top-1/2 z-[1] -translate-y-1/2 text-center">
-            <span className="font-syne text-[13px] font-bold tracking-[0.06em] text-white">
-              {iosToolLabel}
-            </span>
-          </div>
+          <span className="ios-nav-context pointer-events-none min-w-0 truncate font-syne text-[13px] font-bold tracking-[0.06em] text-white">
+            {iosToolLabel}
+          </span>
         )}
         <Link href={brandHref} className={clsx("nav-brand group", iosToolChrome && "nav-brand-ios-compact")}>
           <span className="nav-dot" aria-hidden />
