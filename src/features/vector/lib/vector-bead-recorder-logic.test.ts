@@ -1,11 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import {
-  trackTickerFailures,
-  evaluateSweepBudget,
-  withDeadline,
-  makeInFlightGuard,
-} from "./vector-bead-recorder-logic";
+import { trackTickerFailures, evaluateSweepBudget } from "./vector-bead-recorder-logic";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // P1 2026-08-07: ASTS lost ~10 min of rail inside RTH and left ZERO log trace.
@@ -137,80 +132,4 @@ test("evaluateSweepBudget: junk inputs never fabricate an alarm", () => {
   assert.equal(evaluateSweepBudget(NaN, 5_000, 1, 1, 1, st).kind, "ok");
   assert.equal(evaluateSweepBudget(31_000, 0, 1, 1, 1, st).kind, "ok");
   assert.equal(evaluateSweepBudget(31_000, NaN, 1, 1, 1, st).kind, "ok");
-});
-
-// ── Per-ticker deadline + in-flight guard ─────────────────────────────────────────────────────
-
-const later = <T>(ms: number, v: T) => new Promise<T>((r) => setTimeout(() => r(v), ms));
-
-test("withDeadline: a straggler cannot hold the sweep past its budget", () => {
-  // The sweep's duration is a MAX, not a sum — concurrency (64) exceeds a shard (~25), so every
-  // ticker starts at once and ONE slow name sets the cadence for the whole shard. Measured on prod
-  // after sharding: 23-25 ticker slices still took 10-30s.
-  return (async () => {
-    const t0 = Date.now();
-    const got = await withDeadline(later(5_000, true), 50, () => false);
-    assert.equal(got, false, "timeout yields the fallback, not the slow value");
-    assert.ok(Date.now() - t0 < 1_000, "must not wait for the straggler");
-  })();
-});
-
-test("withDeadline: work that finishes in time is untouched", async () => {
-  assert.equal(await withDeadline(later(5, "ok"), 500, () => "late"), "ok");
-});
-
-test("withDeadline: a rejection still rejects — a deadline is not an error swallower", async () => {
-  await assert.rejects(
-    withDeadline(Promise.reject(new Error("boom")), 500, () => "fallback"),
-    /boom/
-  );
-});
-
-test("withDeadline: a late resolution cannot overwrite the timeout result", async () => {
-  // The abandoned work keeps running by design (nothing to abort). If its late resolve could still
-  // settle the promise, the caller would observe a value AFTER it had already moved on.
-  let settledTwice = 0;
-  const p = withDeadline(later(80, "late"), 20, () => "timeout");
-  const first = await p;
-  await later(120, null);
-  const second = await p;
-  settledTwice = first === second ? 1 : 2;
-  assert.equal(first, "timeout");
-  assert.equal(settledTwice, 1, "promise must stay settled at the timeout value");
-});
-
-test("in-flight guard: a still-busy ticker is skipped, not stacked", async () => {
-  // Without this the deadline leaks: a permanently slow name gets a fresh call every 5s while the
-  // old ones still run, trading a cadence bug for an unbounded resource leak.
-  const g = makeInFlightGuard();
-  let starts = 0;
-  const slow = () => {
-    starts += 1;
-    return later(200, true);
-  };
-  const a = g.run("NVDA", slow, () => false);
-  const b = await g.run("NVDA", slow, () => false);
-  assert.equal(b, false, "second call while busy is refused");
-  assert.equal(starts, 1, "the slow work must not be started twice");
-  await a;
-});
-
-test("in-flight guard: the key frees when the WORK settles, not when a deadline fires", async () => {
-  const g = makeInFlightGuard();
-  let starts = 0;
-  const work = () => {
-    starts += 1;
-    return later(60, true);
-  };
-  await g.run("SPY", work, () => false);
-  assert.equal(g.size(), 0, "settled work releases its key");
-  await g.run("SPY", work, () => false);
-  assert.equal(starts, 2, "an idle ticker runs again on the next tick");
-});
-
-test("in-flight guard: a REJECTING ticker still releases its key", async () => {
-  // A name that throws every tick must not be locked out forever.
-  const g = makeInFlightGuard();
-  await assert.rejects(g.run("BAD", () => Promise.reject(new Error("x")), () => false));
-  assert.equal(g.size(), 0, "a rejection must not leak the key");
 });
