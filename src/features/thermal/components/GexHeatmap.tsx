@@ -2496,6 +2496,10 @@ function CompactLevel({ cell }: { cell: LevelCell }) {
   const active = cell.active ?? true;
   return (
     <div
+      // Stable hooks for the live UI validator. Without them a harness has to parse the box's
+      // innerText, which folds in the InfoTip copy and the "vs prior close" delta chips — so a
+      // wording change silently turns a real assertion into one that matches nothing.
+      data-level={cell.key}
       className={clsx(
         "relative flex min-w-0 flex-col gap-0.5 rounded-lg border px-2.5 py-1.5",
         cell.anchor
@@ -2521,6 +2525,7 @@ function CompactLevel({ cell }: { cell: LevelCell }) {
         {cell.help && <InfoTip label={cell.label} text={cell.help} />}
       </span>
       <span
+        data-level-value={cell.key}
         className={clsx(
           "font-mono text-[15px] font-bold leading-none tabular-nums",
           cell.anchor ? "text-white" : active ? t.value : "text-white/55"
