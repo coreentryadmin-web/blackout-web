@@ -38,6 +38,20 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-08-12 — [FINDING, P2 Thermal] Our closed-form VEX and CHARM carry an unmodelled dividend-yield error — now QUANTIFIED, not fixed
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Status** | MEASURED, deliberately NOT fixed in this PR. The depth ladder (which surfaced it) is anchored around the problem; VEX and CHARM are unchanged and still carry it. Logged so the size of the error is known rather than assumed small. |
+| **How it surfaced** | Building the synthetic order book meant recomputing gamma from closed-form Black-Scholes and comparing it, at spot, against the provider's own greeks summed the way the matrix sums them. Two independent routes to one number — so the gap is a measurement of our model error, not a guess. |
+| **Root cause** | `vannaPerShare` and `charmPerShare` in `polygon-options-gex.ts` are derived at **r = q = 0**. That is stated in their doc comments and is a reasonable simplification for a rate near zero, but **q is the dividend yield, and for an index ETF it is not near zero.** Polygon's greeks do model it. GEX is unaffected because it consumes the provider's gamma directly; VEX and CHARM are computed by us and therefore inherit the full error. |
+| **Evidence (live chains, 2026-08-12, near-term expiries)** | Raw closed-form vs provider net dealer gamma at spot: **TSLA 0.1%**, **ASTS 0.7%**, **NVDA 1.7%**, **AAPL 7.3%** — then **SPY 9.5%**, **QQQ 15.8%**, **IWM 21.7%**. The split is exactly non-payers vs dividend-paying ETFs, and the ordering tracks yield. Reproduce with `scripts/audit/gex-depth-validate.mjs` (the `raw diff` column, which is measured BEFORE the ladder's anchor is applied precisely so it stays a real check rather than a tautology). |
+| **Blast radius** | Every VEX and CHARM number on Thermal and the SPX matrix for a dividend-paying underlying: cell values, strike totals, the vanna/charm zero-levels, their postures, and the VEX/CHARM shift rings. Sign and shape are unaffected — the error is a scale factor — so wall/flip LOCATIONS are broadly right while MAGNITUDES read low. Single stocks are essentially unaffected. |
+| **Why not fixed here** | A correct fix needs a per-underlying dividend-yield source we do not currently wire, and it changes shipped numbers on two lenses — that deserves its own PR with its own before/after, not a rider on a new feature. The depth ladder sidesteps it instead: it is anchored to the matrix's own `gex.total` at spot, so provider greeks stay authoritative where they are measured and repricing only supplies the shape. |
+| **Follow-up** | Wire a dividend yield (Polygon serves one) into `vannaPerShare`/`charmPerShare`, then re-run the validator and expect the ETF rows to fall toward the single-stock rows. Until then, treat VEX/CHARM magnitudes on SPY/QQQ/IWM as a lower bound. |
+
 ## 2026-08-12 — [FINDING, P1 Thermal] Both of the operator's Thermal reports were real: ASTS served 30 of 119 strikes, and Max Pain came off an already-settled expiry — FIXED, LIVE-VERIFIED
 
 > **kind:** `FINDING`
