@@ -69,8 +69,15 @@ export async function GET(req: NextRequest) {
   const shiftByStrike = hm?.shift?.available ? hm.shift.delta_by_strike : null;
   const ladder = buildGexLadder(hm?.gex?.strike_totals ?? null, spot, { shiftByStrike });
 
+  // FORCED-FLOW rail (synthetic order book) — free, exactly like shiftByStrike above: the same
+  // heatmap payload this route already fetched carries the depth ladder, so serving it costs one
+  // more field and no extra work. Only on the "all" horizon: the ladder is built from the near-term
+  // expiry set the matrix scopes its walls to, so pairing it with a NARROWED horizon would put two
+  // different expiry scopes on one rail and quietly mislead.
+  const depth = horizon === "all" ? (hm?.depth ?? null) : null;
+
   return NextResponse.json(
-    roundFloats({ ticker, spot, asOf: hm?.asof ?? null, horizon, ladder }),
+    roundFloats({ ticker, spot, asOf: hm?.asof ?? null, horizon, ladder, depth }),
     { headers: NO_STORE_HEADERS }
   );
 }

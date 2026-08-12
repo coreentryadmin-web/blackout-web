@@ -2,12 +2,25 @@
 
 import clsx from "clsx";
 import { memo, useEffect, useMemo, useRef, useState, useCallback } from "react";
-import { buildGexLadder, type GexLadder, type GexLadderRow } from "@/features/vector/lib/vector-gex-ladder";
+import {
+  buildFlowRail,
+  buildGexLadder,
+  type FlowRailDepth,
+  type GexLadder,
+  type GexLadderRow,
+} from "@/features/vector/lib/vector-gex-ladder";
 import { vectorWallsScopePollMs } from "@/features/vector/lib/vector-cadence";
 import { vectorGexScopeLabel } from "@/lib/gex-scope-labels";
 import type { VectorDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
 import { nearestStrike } from "@/features/vector/lib/vector-chart-view";
 import { rowsInBand, scrollOffsetForSpot } from "@/features/vector/lib/vector-ladder-align";
+
+// Forced-flow rail colours. Deliberately NOT the wall palette above: gold/purple encode WHICH SIDE
+// an exposure sits on, while these encode a DIRECTION OF TRADE. Reusing the wall colours would
+// suggest "gold = calls = forced buying", which is wrong in exactly the regime that matters —
+// short gamma, where forced BUYING is what accelerates a squeeze.
+const FLOW_BUY_COLOR = "#34d399";
+const FLOW_SELL_COLOR = "#fb7185";
 
 // Match the chart's bead colours exactly (VectorChart CALL_WALL_COLOR / PUT_WALL_COLOR) so the
 // ladder and the beads read as the same object: gold = call/resistance, purple = put/support.
@@ -43,7 +56,21 @@ type Props = {
   priceBand?: { min: number; max: number } | null;
 };
 
-type LadderResponse = { spot: number | null; asOf: string | null; ladder: GexLadder };
+/** The depth block exactly as /api/market/vector/gex-ladder serves it — no spot of its own, since
+ *  the response carries spot at the top level. */
+type DepthWire = Omit<FlowRailDepth, "spot">;
+/** …and as held in state: the response's spot is attached so the rail maps against the price the
+ *  SERVER built the ladder at, not the per-second live spot. Mapping against the live spot would
+ *  recompute every row's band on every SSE tick — defeating the row memo below — for nothing: the
+ *  bands themselves only move when the ladder is re-fetched. */
+type DepthPayload = FlowRailDepth | null;
+
+type LadderResponse = {
+  spot: number | null;
+  asOf: string | null;
+  ladder: GexLadder;
+  depth?: DepthWire | null;
+};
 
 /**
  * Strike-ladder side panel — the dense per-strike net-GEX column a member scans alongside the
@@ -75,6 +102,7 @@ export function VectorGexLadder({
   dteHorizon = "all",
 }: Props) {
   const [ladder, setLadder] = useState<GexLadder>(() => buildGexLadder(null, initialSpot));
+  const [depth, setDepth] = useState<DepthPayload>(null);
   const [spot, setSpot] = useState<number | null>(initialSpot);
   const [asOf, setAsOf] = useState<string | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
@@ -137,6 +165,15 @@ export function VectorGexLadder({
         const data = (await res.json()) as LadderResponse;
         if (cancelled || tickerRef.current !== ticker) return;
         setLadder(data.ladder ?? buildGexLadder(null, data.spot ?? null));
+        // `null` on a narrowed DTE horizon by design (see the route): the ladder is scoped to the
+        // near-term expiry set, so pairing it with a narrower horizon would put two different
+        // expiry scopes on one rail. Clearing it is the honest render — a blank rail, not a
+        // silently mismatched one.
+        setDepth(
+          data.depth && data.spot != null && data.spot > 0
+            ? { ...data.depth, spot: data.spot }
+            : null
+        );
         // Only update spot from fetch if liveSpot is not available (off-hours or initial load).
         if (!liveSpot) {
           setSpot(data.spot ?? null);
@@ -184,6 +221,11 @@ export function VectorGexLadder({
   // Resolve the crosshair to at most ONE strike here rather than per row, so the comparison runs
   // once per hover instead of once per row per hover (the ladder renders ~40 rows).
   const highlightStrike = nearestStrike(hoverPrice, rows.map((r) => r.strike));
+
+  // Forced-flow rail: resolve each visible strike to the depth band containing it, once per
+  // ladder fetch rather than per render. The mapping (and its two refusals — no clamping outside
+  // the window, no NaN on a zero normaliser) lives in the tested lib; see buildFlowRail.
+  const flowByStrike = useMemo(() => buildFlowRail(rows.map((r) => r.strike), depth), [depth, rows]);
 
   // Auto-centre the ladder on spot once per ticker: the rows are strike-descending, so without this
   // the panel opens scrolled to the highest strikes (all calls) and a member has to scroll down to
@@ -249,11 +291,16 @@ export function VectorGexLadder({
         <ol className="vector-gex-ladder-rows" ref={listRef}>
           {rows.map((r, i) => {
             const showSpotAbove = i === spotIdx;
+            const flow = flowByStrike.get(r.strike);
             return (
               <LadderRow
                 key={r.strike}
                 row={r}
                 showSpotAbove={showSpotAbove}
+                // Two primitives rather than the band object: a fresh `{intensity,direction}` per
+                // render would break the memo below even when the numbers are identical.
+                flowIntensity={flow?.intensity ?? null}
+                flowDirection={flow?.direction ?? null}
                 // Only the spot-adjacent row needs the live price — every other row gets a
                 // stable `null` so its props never change between spot ticks (see LadderRow's
                 // memo comment below for why this matters).
@@ -267,6 +314,19 @@ export function VectorGexLadder({
           })}
         </ol>
       )}
+
+      {/* Only shown when the rail actually has data. An always-on legend for a column that is
+          blank (narrowed DTE horizon, or a ticker whose ladder failed to build) would explain a
+          thing the member cannot see. */}
+      {flowByStrike.size > 0 ? (
+        <div className="vector-gex-ladder-flow-legend">
+          <span className="vector-gex-ladder-flow-swatch" style={{ backgroundColor: FLOW_BUY_COLOR }} />
+          dealers buy
+          <span className="vector-gex-ladder-flow-swatch" style={{ backgroundColor: FLOW_SELL_COLOR }} />
+          dealers sell
+          <span className="vector-gex-ladder-flow-note">· if price reaches that strike</span>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -283,13 +343,20 @@ const LadderRow = memo(function LadderRow({
   showSpotAbove,
   spot,
   highlighted,
+  flowIntensity,
+  flowDirection,
 }: {
   row: GexLadderRow;
   showSpotAbove: boolean;
   spot: number | null;
   highlighted: boolean;
+  /** 0–1 share of the ladder's largest band, or null when this strike is outside the ±8% window. */
+  flowIntensity: number | null;
+  flowDirection: "buy" | "sell" | "flat" | null;
 }) {
   const color = row.side === "call" ? CALL_COLOR : PUT_COLOR;
+  const flowColor =
+    flowDirection === "buy" ? FLOW_BUY_COLOR : flowDirection === "sell" ? FLOW_SELL_COLOR : null;
   return (
     <>
       {showSpotAbove && spot != null ? (
@@ -307,6 +374,23 @@ const LadderRow = memo(function LadderRow({
           highlighted && "vector-gex-ladder-hover"
         )}
       >
+        {/* Forced-flow rail. Always occupies its grid track (transparent when this strike falls
+            outside the depth window) so the strike/bar/value columns stay aligned row to row —
+            same reason the migration cell is always rendered. Colour = which way dealers must
+            trade if price gets here; opacity = how much, against the ladder's largest band. */}
+        <span
+          className="vector-gex-ladder-flow"
+          style={
+            flowColor != null && flowIntensity != null
+              ? { backgroundColor: flowColor, opacity: 0.18 + flowIntensity * 0.72 }
+              : undefined
+          }
+          title={
+            flowColor != null && flowIntensity != null
+              ? `Dealers must ${flowDirection === "buy" ? "BUY" : "SELL"} here — ${Math.round(flowIntensity * 100)}% of the largest forced-flow band`
+              : undefined
+          }
+        />
         <span className="vector-gex-ladder-strike">{row.strike.toLocaleString("en-US")}</span>
         <span className="vector-gex-ladder-bar-track">
           <span

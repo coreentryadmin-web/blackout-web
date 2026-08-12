@@ -14,6 +14,7 @@
  * put/negative-gamma strike (support).
  */
 import { wallStrengthShift } from "@/features/thermal/lib/gex-heatmap/shift-math";
+import { depthBandForPrice } from "@/lib/gex-depth";
 
 export type GexLadderSide = "call" | "put";
 
@@ -255,4 +256,53 @@ export function buildGexLadder(
     .sort((a, b) => b.strike - a.strike);
 
   return { spot, rows, maxAbs };
+}
+
+/** One strike's forced-flow reading, reduced to what the rail actually paints. */
+export type FlowRailCell = {
+  /** |band notional| / the ladder's largest band, clamped to [0,1] — drives the rail's opacity. */
+  intensity: number;
+  direction: "buy" | "sell" | "flat";
+};
+
+/** The depth block as it arrives on the wire, narrowed to the fields the rail needs. */
+export type FlowRailDepth = {
+  spot: number;
+  levels: Array<{ price: number; notional: number; direction: "buy" | "sell" | "flat" }>;
+  max_abs_notional: number;
+};
+
+/**
+ * Map each ladder strike onto the forced-flow band that CONTAINS it (synthetic order book, Phase 3).
+ *
+ * Two things here are load-bearing and are why this is a tested function rather than inline JSX:
+ *
+ * 1. **A strike outside the ladder's window is omitted, never clamped.** Clamping to the nearest
+ *    edge band would paint the outermost band's flow across every far strike — a wall of forced
+ *    trading drawn exactly where the model made no claim at all. On a name whose chain spans far
+ *    wider than the ladder's ±8%, that is most of the rail, so it is the common case.
+ * 2. **A zero/absent normaliser yields an EMPTY rail, not a NaN one.** `|notional| / 0` is NaN,
+ *    which reaches the DOM as `opacity: NaN` — silently ignored by the browser, so every cell would
+ *    render at full strength. A rail that is wrong at full confidence is worse than no rail.
+ *
+ * Keyed by strike so the view can look each row up without rescanning the levels per row.
+ */
+export function buildFlowRail(
+  strikes: readonly number[],
+  depth: FlowRailDepth | null
+): Map<number, FlowRailCell> {
+  const out = new Map<number, FlowRailCell>();
+  if (!depth || depth.levels.length === 0) return out;
+  if (!Number.isFinite(depth.max_abs_notional) || depth.max_abs_notional <= 0) return out;
+  if (!Number.isFinite(depth.spot) || depth.spot <= 0) return out;
+
+  for (const strike of strikes) {
+    const band = depthBandForPrice(depth.levels, depth.spot, strike);
+    if (!band || !Number.isFinite(band.notional)) continue;
+    out.set(strike, {
+      intensity: Math.min(1, Math.abs(band.notional) / depth.max_abs_notional),
+      direction: band.direction,
+    });
+  }
+  return out;
 }
