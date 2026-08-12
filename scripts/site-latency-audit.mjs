@@ -37,11 +37,18 @@ const API_PATHS = [
   "/api/market/spx/play",
   "/api/market/gex-heatmap?ticker=SPX",
   "/api/market/gex-heatmap?ticker=SPY",
+  "/api/market/gex-positioning?ticker=SPX",
   "/api/market/flows?limit=30",
+  "/api/market/flow-brief",
   "/api/market/nighthawk/edition",
   "/api/market/zerodte/board",
-  // Public member path — /api/public/track-record is admin-gated (401 for audit users).
+  "/api/market/zerodte/record",
+  "/api/market/platform/snapshot",
+  "/api/market/quote?ticker=SPY",
+  "/api/market/vector/universe",
+  "/api/market/vector/bars?ticker=NVDA&timeframe=5",
   "/api/market/regime",
+  "/api/track-record",
 ];
 
 const WARM_PATHS = [
