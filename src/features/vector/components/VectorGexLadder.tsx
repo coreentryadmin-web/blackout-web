@@ -383,9 +383,9 @@ const LadderRow = memo(function LadderRow({
         )}
       >
         {/* Forced-flow rail. Always occupies its grid track (transparent when this strike falls
-            outside the depth window) so the strike/bar/value columns stay aligned row to row —
-            same reason the migration cell is always rendered. Colour = which way dealers must
-            trade if price gets here; opacity = how much, against the ladder's largest band. */}
+            outside the depth window) so the strike and value columns stay aligned row to row.
+            Colour = which way dealers must trade if price gets here; opacity = how much, against
+            the ladder's largest band. */}
         <span
           className="vector-gex-ladder-flow"
           style={
@@ -399,37 +399,44 @@ const LadderRow = memo(function LadderRow({
               : undefined
           }
         />
-        <span className="vector-gex-ladder-strike">{row.strike.toLocaleString("en-US")}</span>
-        <span className="vector-gex-ladder-bar-track">
-          <span
-            className="vector-gex-ladder-bar"
-            style={{ width: `${Math.max(2, Math.round(row.magnitude * 100))}%`, backgroundColor: color }}
-          />
-        </span>
-        {/* Always occupies its grid column (even when empty) so the strike/bar/value columns stay
-            aligned between rows that do and don't have a migration reading — a conditionally
-            omitted 4th grid item would shift the value column left on rows without one. Small
-            (<1%) or missing (no shift data yet, or a narrowed DTE horizon) migrations render
-            nothing inside, same column. */}
+        {/* MAGNITUDE AS A BLOCK, the Thermal matrix's idiom — not a bar in its own column.
+            The bar track it replaces resolved to 0px wide in this 139px panel (fixed tracks alone
+            over-subscribed the row), so the magnitude was invisible while still costing the value
+            column the pixels that were clipping "+$93.1M" to "+$93.1". As a background fill it
+            costs no width at all. Grows leftward from the value; a floor of 3% keeps a real-but-
+            tiny strike from reading as zero exposure. */}
         <span
-          className={clsx(
-            "vector-gex-ladder-migration",
-            row.migration != null &&
-              (row.migration.built ? "vector-gex-ladder-migration-up" : "vector-gex-ladder-migration-down")
-          )}
-          title={
-            row.migration != null
-              ? `Wall ${row.migration.built ? "built" : "faded"} ${Math.abs(Math.round(row.migration.pct))}% over the shift window`
-              : undefined
-          }
-        >
-          {row.migration != null && Math.abs(row.migration.pct) >= 1
-            ? `${row.migration.built ? "▲" : "▼"}${Math.abs(Math.round(row.migration.pct))}%`
-            : null}
-        </span>
+          className="vector-gex-ladder-fill"
+          aria-hidden="true"
+          style={{
+            width: `${Math.max(3, Math.round(row.magnitude * 100))}%`,
+            backgroundColor: color,
+            opacity: 0.1 + row.magnitude * 0.3,
+          }}
+        />
+        <span className="vector-gex-ladder-strike">{row.strike.toLocaleString("en-US")}</span>
         <span className="vector-gex-ladder-val" style={{ color }}>
           {row.isKing ? <span className="vector-gex-ladder-crown" aria-hidden="true">♛</span> : null}
           {fmtGex(row.gex)}
+          {/* Rides INSIDE the value cell now, and AFTER the number. As its own fixed 2.4rem grid
+              track it reserved 38.4px on every row — more than the value column itself got — while
+              being empty on most of them. Placed last because in a 139px panel a row that has a
+              migration reading can still over-subscribe the cell, and whatever sits last is what
+              clips: losing the arrow costs a secondary signal, losing the number's "M" makes the
+              number a lie. */}
+          {row.migration != null && Math.abs(row.migration.pct) >= 1 ? (
+            <span
+              className={clsx(
+                "vector-gex-ladder-migration",
+                row.migration.built
+                  ? "vector-gex-ladder-migration-up"
+                  : "vector-gex-ladder-migration-down"
+              )}
+              title={`Wall ${row.migration.built ? "built" : "faded"} ${Math.abs(Math.round(row.migration.pct))}% over the shift window`}
+            >
+              {`${row.migration.built ? "▲" : "▼"}${Math.abs(Math.round(row.migration.pct))}%`}
+            </span>
+          ) : null}
         </span>
       </li>
     </>

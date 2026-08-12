@@ -7960,19 +7960,38 @@ body::before {
     min-height: 0;
   }
 
+  /* MAGNITUDE IS THE ROW'S FILL, not a column (2026-08-12).
+     It used to be a `minmax(0, 1fr)` bar track between the strike and the value. Measured live on
+     prod, the panel is 139px wide and the fixed tracks alone came to 125.4px against a 124.4px row
+     — so the bar resolved to EXACTLY 0px and never rendered, while the value column was squeezed to
+     35.8px and clipped "+$93.1M" down to "+$93.1". A magnitude reading nobody can see, next to a
+     number whose unit is missing, which is worse than no number at all since K/M/B are 1000x apart.
+     Painting the magnitude as a background fill (the Thermal matrix's own idiom) costs zero width,
+     so every remaining pixel goes to the two things that must stay legible: strike and value. */
   .vector-gex-ladder-row {
+    position: relative;
     display: grid;
-    /* Thin left-rail: keep the strike + value tight so the magnitude bar still has room to read.
-       4th track (2026-08-06, wall-migration arrows) is a narrow fixed width so it doesn't steal
-       space from the bar on rows with no migration reading — see the component's comment on why
-       it's always rendered (empty) rather than conditionally added/removed from the grid. */
-    /* Leading 0.3rem track (2026-08-12) is the forced-flow rail — see .vector-gex-ladder-flow. */
-    grid-template-columns: 0.3rem 2.9rem minmax(0, 1fr) 2.4rem auto;
+    /* flow rail | strike | value. No bar track and no reserved migration track — the migration
+       arrow now rides inside the value cell, so an empty one costs nothing. */
+    grid-template-columns: 0.3rem 2.9rem minmax(0, 1fr);
     align-items: center;
     gap: 0.3rem;
     padding: 0.09rem 0.25rem;
     border-radius: 0.35rem;
     font-variant-numeric: tabular-nums;
+    isolation: isolate;
+  }
+
+  /* The fill itself: width = |gex| / maxAbs, colour = call gold / put purple, painted BEHIND the
+     text. Anchored right so it grows leftward from the value, keeping the strike column readable
+     at every magnitude. */
+  .vector-gex-ladder-fill {
+    position: absolute;
+    inset-block: 0;
+    right: 0;
+    z-index: -1;
+    border-radius: 0.35rem;
+    pointer-events: none;
   }
 
   .vector-gex-ladder-king {
@@ -7985,22 +8004,15 @@ body::before {
     font-family: var(--font-mono, ui-monospace, monospace);
   }
 
-  .vector-gex-ladder-bar-track {
-    position: relative;
-    height: 0.55rem;
-    border-radius: 0.28rem;
-    background: rgba(255, 255, 255, 0.05);
-    overflow: hidden;
-  }
-
-  .vector-gex-ladder-bar {
-    display: block;
-    height: 100%;
-    border-radius: 0.28rem;
-    opacity: 0.85;
-  }
-
   .vector-gex-ladder-val {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.2rem;
+    min-width: 0;
+    /* The number must survive; the migration arrow after it is what gets cut if the cell
+       over-subscribes at this panel width. */
+    overflow: hidden;
     font-size: 0.62rem;
     text-align: right;
     white-space: nowrap;
@@ -8016,8 +8028,8 @@ body::before {
      window? Muted grey (empty) by default so a row with no reading yet doesn't draw the eye;
      only rows with an actual ≥1% move get a coloured tag. */
   .vector-gex-ladder-migration {
+    flex: 0 0 auto;
     font-size: 0.58rem;
-    text-align: right;
     white-space: nowrap;
     font-family: var(--font-mono, ui-monospace, monospace);
     color: rgba(148, 163, 184, 0.4);
