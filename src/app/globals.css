@@ -6539,6 +6539,53 @@ body::before {
     min-height: 0;
   }
 
+  /* ── EOD Pin Forecaster: sized against ITS RAIL, not the viewport ──────────────────────────
+     This panel sits in the desk's left rail, whose width comes from the desk grid. Measured live
+     on /dashboard at a 1440px viewport the rail gave it 229px — so every viewport media query
+     reported "desktop, plenty of room" while the card was actually narrower than a phone. A
+     container query asks the only question that matters: how wide is THIS card. */
+  .spx-pin-shell {
+    container-type: inline-size;
+    container-name: spxpin;
+  }
+
+  .spx-pin-grid {
+    display: grid;
+    /* minmax(0, …) so the tracks can shrink. A bare `1fr` is `minmax(auto, 1fr)`: it refuses to go
+       below its content's min-content width, so the 34px projected-close number held the columns
+       open and pushed the grid 7px past the card, clipping the last digit off a live price. */
+    grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
+    gap: 0;
+  }
+
+  .spx-pin-grid > * {
+    min-width: 0;
+  }
+
+  .spx-pin-proj {
+    font-size: 34px;
+  }
+
+  /* Below this the side-by-side split stops being a layout and starts being a squeeze: the rail
+     column falls under ~110px while the headline number alone needs ~120px. Stacking gives the
+     number the card's FULL width, which is the only arrangement where it fits at full size. */
+  @container spxpin (max-width: 560px) {
+    .spx-pin-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .spx-pin-grid > :first-child {
+      border-right: none !important;
+    }
+  }
+
+  /* Last resort for a genuinely tiny rail — shrink the headline rather than clip it. A smaller
+     price is still the right price; a clipped one is not. */
+  @container spxpin (max-width: 300px) {
+    .spx-pin-proj {
+      font-size: 26px;
+    }
+  }
+
   .spx-matrix-column-spot {
     @apply px-1 pt-0.5 shrink-0;
   }

@@ -60,7 +60,12 @@ export function SpxPinForecast({ sessionActive = true }: { sessionActive?: boole
         </div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.7fr 1fr", gap: 0 }} className="spx-pin-grid">
+      {/* Track sizing lives in CSS (.spx-pin-grid) so a container query can STACK it in a narrow
+          rail. A bare `1fr` is `minmax(auto, 1fr)` and cannot shrink below its content's min-content
+          width, so the 34px projected-close number held both tracks open and pushed the whole grid
+          7px past the card — clipping the last digit off a PRICE, which is not a smaller number but
+          a wrong one. */}
+      <div className="spx-pin-grid">
         {/* ── chart ── */}
         <div style={{ padding: "6px 8px 10px 12px", borderRight: `1px solid ${C.line}` }}>
           <svg viewBox={`0 0 ${chart.W} ${chart.H}`} width="100%" role="img"
@@ -110,7 +115,7 @@ export function SpxPinForecast({ sessionActive = true }: { sessionActive?: boole
             <>
               <Card label="Projected close">
                 {/* Live, unsnapped projection (1dp) so it moves intraday — not the frozen strike. */}
-                <div style={{ fontFamily: C.mono, fontSize: 34, fontWeight: 600, color: C.pin, lineHeight: 1 }}>{fmt(view.projPx, 1)}</div>
+                <div className="spx-pin-proj" style={{ fontFamily: C.mono, fontWeight: 600, color: C.pin, lineHeight: 1 }}>{fmt(view.projPx, 1)}</div>
                 <div style={{ fontFamily: C.mono, fontSize: 12, color: C.muted, marginTop: 6 }}>
                   {pin.pinPctOfClose != null && <span style={{ color: pin.pinPctOfClose >= 0 ? C.call : C.put }}>{pin.pinPctOfClose >= 0 ? "▲ +" : "▼ "}{fmt(pin.pinPctOfClose, 2)}%</span>} · {fmt((view.projPx ?? pin.spot) - pin.spot, 1)} pts vs spot
                 </div>
@@ -171,17 +176,33 @@ export function SpxPinForecast({ sessionActive = true }: { sessionActive?: boole
 }
 
 function Shell({ children }: { children: ReactNode }) {
-  return <div style={{ border: `1px solid ${C.line}`, borderRadius: 12, background: C.bg, overflow: "hidden" }}>{children}</div>;
+  // `spx-pin-shell` makes this a SIZE CONTAINER. This panel lives in the desk's left rail, whose
+  // width is set by the desk grid and is nothing like the viewport width — so a viewport media
+  // query cannot see when the panel is squeezed. Measured live at 1440px: the rail gave this card
+  // 229px, and every fixed-ratio child inside it overflowed. See globals.css .spx-pin-*.
+  return (
+    <div
+      className="spx-pin-shell"
+      style={{ border: `1px solid ${C.line}`, borderRadius: 12, background: C.bg, overflow: "hidden" }}
+    >
+      {children}
+    </div>
+  );
 }
 
 function Header({ method, setMethod, hasMc }: { method: "analytic" | "montecarlo"; setMethod: (m: "analytic" | "montecarlo") => void; hasMc: boolean }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", borderBottom: `1px solid ${C.line}` }}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+    <div style={{ display: "flex", flexWrap: "wrap", rowGap: 8, alignItems: "center", justifyContent: "space-between", padding: "12px 14px", borderBottom: `1px solid ${C.line}` }}>
+      {/* minWidth 0 so the title YIELDS space instead of forcing the row wider than the rail. */}
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10, minWidth: 0 }}>
         <span style={{ fontSize: 14, fontWeight: 650, color: C.ink, letterSpacing: ".02em" }}>EOD <span style={{ color: C.pin }}>PIN</span> FORECASTER</span>
         <span style={{ fontFamily: C.mono, fontSize: 10.5, color: C.muted, border: `1px solid ${C.line}`, borderRadius: 5, padding: "1px 6px" }}>SPX · 0DTE</span>
       </div>
-      <div style={{ display: "inline-flex", border: `1px solid ${C.line}`, borderRadius: 7, overflow: "hidden" }}>
+      {/* flexShrink 0: this wrapper clips (overflow hidden, for the rounded corners), so squeezing it
+          does not shrink the labels — it CUTS them. Measured in the 229px rail: the strip collapsed
+          to 51px, clipping "Analytic" by 20px and hiding "Monte Carlo" almost entirely, leaving a
+          method toggle a member could neither read nor discover. It wraps to its own line instead. */}
+      <div style={{ display: "inline-flex", flexShrink: 0, border: `1px solid ${C.line}`, borderRadius: 7, overflow: "hidden" }}>
         {(["analytic", "montecarlo"] as const).map((m) => (
           <button key={m} onClick={() => setMethod(m)} disabled={m === "montecarlo" && !hasMc}
             style={{ padding: "4px 10px", fontFamily: C.mono, fontSize: 10.5, cursor: m === "montecarlo" && !hasMc ? "not-allowed" : "pointer", border: "none",
