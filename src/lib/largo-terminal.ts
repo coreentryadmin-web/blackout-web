@@ -63,7 +63,7 @@ import { formatEntityBlock } from "@/lib/largo/core/entities";
 import {
   formatEvidenceOntologyBlock,
   formatTradeAnswerBlock,
-  isTradeRecommendationQuestion,
+  isPlayQuestion,
 } from "@/lib/largo/core/trade-question";
 import { buildDrillDowns, formatDrillDownBlock } from "@/lib/largo/core/drilldown";
 import { applyConflictCaveat, findSourceConflicts } from "@/lib/largo/core/cross-source";
@@ -417,7 +417,7 @@ async function prepareLargoTurn(
   // constrains which symbols a tool may be called with.
   const entityBlock = formatEntityBlock(effectiveEntities(conversation));
   const ontologyBlock = formatEvidenceOntologyBlock();
-  const tradeBlock = isTradeRecommendationQuestion(question)
+  const tradeBlock = isPlayQuestion(question)
     ? formatTradeAnswerBlock(intent.tickerHint)
     : "";
 

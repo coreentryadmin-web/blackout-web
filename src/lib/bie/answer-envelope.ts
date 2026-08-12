@@ -142,11 +142,20 @@ export type BieAnswerEnvelope = {
   tradeDecision?: {
     ticker: string;
     headline: string;
+    headlineGlyph?: "🟡" | "⚠️";
     approach: string;
     existingPlay?: { contract: string; originalEntry: string; note: string };
+    boardPlay?: { contract: string; status: string; note: string };
+    speculativeThesis?: {
+      direction: string;
+      summary: string;
+      factors: string[];
+      warning: string;
+    };
     bearishConfirm?: string;
     overall: string;
     actionLabel: string;
+    isSpeculative?: boolean;
     signalRows: { signal: string; read: string; bias: string; glyph: string }[];
   };
   followups?: string[];

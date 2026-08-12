@@ -376,11 +376,15 @@ export function parseAnswerEnvelope(
       tradeDecision: {
         ticker: tradeDecision.ticker,
         headline: tradeDecision.headline,
+        headlineGlyph: tradeDecision.headlineGlyph,
         approach: tradeDecision.approach,
         existingPlay: tradeDecision.existingPlay,
+        boardPlay: tradeDecision.boardPlay,
+        speculativeThesis: tradeDecision.speculativeThesis,
         bearishConfirm: tradeDecision.bearishConfirm,
         overall: tradeDecision.overall,
         actionLabel: tradeDecision.actionLabel,
+        isSpeculative: tradeDecision.isSpeculative,
         signalRows: tradeDecision.signalRows.map((r) => ({
           signal: r.signal,
           read: r.read,

@@ -655,6 +655,37 @@ export function mergeEvidenceIssues(
   };
 }
 
+const OPEN_BOARD_STATUS = /^(OPEN|HOLD|TRIM)$/i;
+
+/** 0DTE Command board state for one ticker — consulted vs committed. */
+export type ZerodteBoardState = {
+  consulted: boolean;
+  /** Ledger play on the 0DTE board (OPEN/HOLD/TRIM — not WATCH fresh finds). */
+  hasOpenPlay: boolean;
+  openPlays: NightHawkPlayRef[];
+  hasEditionPlay: boolean;
+};
+
+/** Whether the 0DTE Command board was read and whether this ticker has a committed play. */
+export function assessZerodteBoardState(evidence: MarketEvidence): ZerodteBoardState {
+  const nh = evidence.nightHawk;
+  const ticker = evidence.ticker?.toUpperCase() ?? null;
+  if (!nh) {
+    return { consulted: false, hasOpenPlay: false, openPlays: [], hasEditionPlay: false };
+  }
+  const openPlays = nh.zerodte.filter(
+    (p) => !p.status || OPEN_BOARD_STATUS.test(String(p.status))
+  );
+  const hasEditionPlay =
+    ticker != null && nh.edition.some((p) => p.ticker === ticker);
+  return {
+    consulted: nh.consulted.zerodte,
+    hasOpenPlay: openPlays.length > 0,
+    openPlays,
+    hasEditionPlay,
+  };
+}
+
 /** Whether an evening-edition pick is a fresh entry or an existing thesis needing confirmation. */
 export function assessEditionActionability(evidence: MarketEvidence): {
   freshEntry: boolean;

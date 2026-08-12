@@ -339,19 +339,39 @@ export function LargoDeskRead({
           <span className="largo-read-conf">{envelope.confidence.level} confidence</span>
         )}
         {action !== "unknown" && (
-          <span className="largo-read-action">◌ {ACTION_STATE_LABEL[action]}</span>
+          <span className="largo-read-action">◌ {trade?.actionLabel ?? ACTION_STATE_LABEL[action]}</span>
         )}
       </div>
 
       {/* THE EXECUTIVE ANSWER — one line for trade questions; one sentence otherwise. */}
       {header && (
-        <div className={clsx("largo-read-header", isTradeLayout && "largo-read-header-trade")}>
-          {isTradeLayout ? `🟡 ${header}` : header}
+        <div className={clsx("largo-read-header", isTradeLayout && "largo-read-header-trade", trade?.isSpeculative && "largo-read-header-speculative")}>
+          {isTradeLayout ? `${trade?.headlineGlyph ?? "🟡"} ${header}` : header}
         </div>
       )}
 
       {trade && (
         <div className="largo-read-trade-body">
+          {trade.speculativeThesis && (
+            <div className="largo-read-callout largo-read-callout-warning">
+              <strong>{trade.speculativeThesis.warning}</strong>
+              <p className="largo-read-speculative-summary">{trade.speculativeThesis.summary}</p>
+              {trade.speculativeThesis.factors.length > 0 && (
+                <ul className="largo-read-speculative-factors">
+                  {trade.speculativeThesis.factors.map((f) => (
+                    <li key={f}>{f}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+          {trade.boardPlay && (
+            <div className="largo-read-callout largo-read-callout-board">
+              <strong>0DTE board play ({trade.boardPlay.status}):</strong> {trade.boardPlay.contract}
+              <br />
+              {trade.boardPlay.note}
+            </div>
+          )}
           <div className="largo-read-callout">{renderInlineMarkdown(trade.approach)}</div>
           {trade.existingPlay && (
             <div className="largo-read-callout largo-read-callout-muted">

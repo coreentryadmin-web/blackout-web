@@ -13,6 +13,7 @@ test("the worked examples classify as specified", () => {
     classifyLayout("What is a good options play to take on NVDA today?"),
     "trade"
   );
+  assert.equal(classifyLayout("What could be a good 0DTE play on TSLA?"), "trade");
 });
 
 test("a question that is two things at once resolves most-specific-first", () => {

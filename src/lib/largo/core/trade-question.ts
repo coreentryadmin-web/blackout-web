@@ -11,9 +11,27 @@
 const TRADE_RE =
   /\b(?:(?:good|best|what|any|which)\s+(?:options?\s+)?(?:play|trade|setup|entry)|(?:should i|can i)\s+(?:take|buy|play|trade)|options?\s+play\s+(?:on|for|to)|(?:call|put)\s+(?:to\s+)?(?:take|buy|play)|what(?:'s| is)\s+(?:the\s+)?(?:play|trade|setup))\b/i;
 
+const ZERODTE_TRADE_RE =
+  /\b(?:0\s*dte|0dte|same.?day|today'?s?\s+(?:expir|0dte)|intraday\s+(?:play|option))\b/i;
+
 /** True when the member is asking for a trade recommendation, not a general read. */
 export function isTradeRecommendationQuestion(question: string | null | undefined): boolean {
   return TRADE_RE.test(String(question ?? "").trim());
+}
+
+/** Trade recommendation OR explicit 0DTE play ask — both use the decision-first surface. */
+export function isPlayQuestion(question: string | null | undefined): boolean {
+  return isTradeRecommendationQuestion(question) || isZeroDtePlayQuestion(question);
+}
+
+/** True when the member wants a same-session / 0DTE play idea (board or synthesis). */
+export function isZeroDtePlayQuestion(question: string | null | undefined): boolean {
+  const q = String(question ?? "").trim();
+  if (!q) return false;
+  return (
+    ZERODTE_TRADE_RE.test(q) &&
+    (isTradeRecommendationQuestion(q) || /\b(?:play|trade|setup|call|put|idea)\b/i.test(q))
+  );
 }
 
 /**
@@ -51,7 +69,14 @@ export function formatTradeAnswerBlock(ticker: string | null): string {
     `- Classify horizons: Aug 24 on today's session is SWING, not 0DTE.\n` +
     `- Night Hawk **evening edition** ≠ 0DTE Command **open plays** — say which product.\n` +
     `- EMA stack = price vs EMA20 vs EMA50 (Vector definition) — do not claim "stack down" when spot > EMA20 > EMA50.\n` +
-    `- If spot prices disagree >1% across sources, do NOT state precise entry/stop/target — say levels are withheld.\n`
+    `- If spot prices disagree >1% across sources, do NOT state precise entry/stop/target — say levels are withheld.\n\n` +
+    `**When 0DTE Command has NO open play for ${tk}** (get_zerodte_plays empty for this name):\n` +
+    `- You MAY synthesize a **conditional** same-day thesis from flow, dealer regime, GEX/VWAP, and Vector — ` +
+    `the member still wants a read.\n` +
+    `- Lead the Verdict with \`⚠️ ${tk} — NOT ON 0DTE BOARD — CONDITIONAL SETUP\` (or similar).\n` +
+    `- State clearly: **not a committed board play** — scanner has not flagged this name.\n` +
+    `- Frame as "could play out IF …" listing the factors that would need to align — never as a fresh recommendation.\n` +
+    `- If evening edition has a different-horizon pick, say so separately — do not pass it off as today's 0DTE board play.\n`
   );
 }
 

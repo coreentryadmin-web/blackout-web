@@ -23,6 +23,8 @@
  * PURE AND TOTAL: no IO, no clock, no throw.
  */
 
+import { isZeroDtePlayQuestion } from "@/lib/largo/core/trade-question";
+
 export type AnswerLayout =
   /** "Is 7800 holding?" — one level, its strength, and what breaks it. */
   | "level"
@@ -88,7 +90,7 @@ export function classifyLayout(question: string | null | undefined): AnswerLayou
 
   // Most specific first — see the ORDER MATTERS note above.
   if (COMPARISON_WORDS_RE.test(q) || COMPARISON_TICKERS_RE.test(q)) return "comparison";
-  if (TRADE_RE.test(q)) return "trade";
+  if (TRADE_RE.test(q) || isZeroDtePlayQuestion(q)) return "trade";
   if (RANKING_RE.test(q)) return "ranking";
   if (RECAP_RE.test(q)) return "recap";
   if (LEVEL_RE.test(q)) return "level";
