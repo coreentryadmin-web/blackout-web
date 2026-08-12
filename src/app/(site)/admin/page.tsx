@@ -6,7 +6,7 @@ import { noindexPageMetadata } from "@/lib/page-metadata";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-export const metadata: Metadata = noindexPageMetadata("Admin · BlackOut");
+export const metadata: Metadata = noindexPageMetadata("Admin · BlackOut", "/admin");
 
 export default async function AdminPage() {
   await requireAdmin();

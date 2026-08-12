@@ -83,3 +83,12 @@ test("StaticLandingFooter: DESK links to /about (was an orphan page with zero in
     assert.ok(hrefs.includes("/about"), `${footerPath} DESK must link to /about`);
   }
 });
+
+test("StaticLandingFooter: DESK links to SEO lead-magnet and comparison pages", () => {
+  for (const footerPath of FOOTER_PATHS) {
+    const source = readFileSync(footerPath, "utf8");
+    const hrefs = extractHrefs(source, "DESK");
+    assert.ok(hrefs.includes("/tools/gamma-snapshot"), `${footerPath} DESK must link to free gamma tool`);
+    assert.ok(hrefs.includes("/vs/others"), `${footerPath} DESK must link to comparison page`);
+  }
+});

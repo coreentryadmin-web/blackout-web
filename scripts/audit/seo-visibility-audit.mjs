@@ -181,6 +181,23 @@ async function main() {
     rec("sitemap.xml", "FAIL", `HTTP ${sitemap.status}`);
   }
 
+  // Spot-check a high-value public page for full SEO head tags (Googlebot UA).
+  const gamma = await fetchPublic("/tools/gamma-snapshot");
+  if (gamma.status === 200) {
+    has(gamma.html, /rel="canonical" href="https:\/\/blackouttrades\.com\/tools\/gamma-snapshot"/, "gamma-snapshot canonical");
+    has(gamma.html, /property="og:image"/i, "gamma-snapshot og:image");
+    has(gamma.html, /application\/ld\+json/i, "gamma-snapshot JSON-LD");
+  } else {
+    rec("gamma-snapshot SEO head", "FAIL", `HTTP ${gamma.status}`);
+  }
+
+  const compare = await fetchPublic("/vs/others");
+  if (compare.status === 200) {
+    has(compare.html, /rel="canonical" href="https:\/\/blackouttrades\.com\/vs\/others"/, "vs/others canonical");
+  } else {
+    rec("vs/others SEO head", "FAIL", `HTTP ${compare.status}`);
+  }
+
   const llms = await fetchPublic("/llms.txt");
   if (llms.status === 200 && llms.text.includes("/learn")) {
     rec("llms.txt", "PASS", "AI crawler index live");

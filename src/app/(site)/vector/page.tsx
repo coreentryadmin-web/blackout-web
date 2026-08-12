@@ -12,7 +12,7 @@ import { noindexPageMetadata } from "@/lib/page-metadata";
 
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = noindexPageMetadata("Vector · BlackOut");
+export const metadata: Metadata = noindexPageMetadata("Vector · BlackOut", "/vector");
 
 type PageProps = {
   searchParams: Promise<{ ticker?: string }>;

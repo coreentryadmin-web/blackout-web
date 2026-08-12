@@ -7,7 +7,7 @@ import { noindexPageMetadata } from "@/lib/page-metadata";
 
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = noindexPageMetadata("Largo · BlackOut");
+export const metadata: Metadata = noindexPageMetadata("Largo · BlackOut", "/terminal");
 
 export default async function TerminalPage() {
   await requireTier("premium");

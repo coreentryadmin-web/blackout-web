@@ -3,16 +3,13 @@ import { PersonalAlertsSettings } from "@/components/account/PersonalAlertsSetti
 import { AccountProfilePanel } from "@/components/account/AccountProfilePanel";
 import { AccountMembershipPanel } from "@/components/account/AccountMembershipPanel";
 import { AccountPageShell } from "@/components/account/AccountPageShell";
+import { noindexPageMetadata } from "@/lib/page-metadata";
 // Contrast hardening for the Clerk <UserProfile> widget (fields were dark-on-dark).
 import "../../account.css";
 
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
-  title: "Account · BlackOut",
-  description: "Manage your BlackOut Trades account settings, security, and connected devices.",
-  robots: { index: false },
-};
+export const metadata: Metadata = noindexPageMetadata("Account · BlackOut", "/account");
 
 export default function AccountPage() {
   return (

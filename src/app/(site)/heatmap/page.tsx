@@ -7,7 +7,7 @@ import { noindexPageMetadata } from "@/lib/page-metadata";
 
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = noindexPageMetadata("BlackOut Thermal · BlackOut");
+export const metadata: Metadata = noindexPageMetadata("BlackOut Thermal · BlackOut", "/heatmap");
 
 export default async function HeatmapPage() {
   await requireTier("premium");

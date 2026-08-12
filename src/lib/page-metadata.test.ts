@@ -54,4 +54,9 @@ describe("noindexPageMetadata", () => {
     assert.deepEqual(meta.robots, { index: false, follow: false });
     assert.equal(meta.description, undefined);
   });
+
+  it("sets self-referential canonical when path is provided", () => {
+    const meta = noindexPageMetadata("SPX Slayer · BlackOut", "/dashboard");
+    assert.equal(meta.alternates?.canonical, "https://blackouttrades.com/dashboard");
+  });
 });

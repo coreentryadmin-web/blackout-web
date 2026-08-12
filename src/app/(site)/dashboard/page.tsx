@@ -8,7 +8,7 @@ import { noindexPageMetadata } from "@/lib/page-metadata";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export const metadata: Metadata = noindexPageMetadata("SPX Slayer · BlackOut");
+export const metadata: Metadata = noindexPageMetadata("SPX Slayer · BlackOut", "/dashboard");
 
 export default async function DashboardPage() {
   await requireTier("community");
