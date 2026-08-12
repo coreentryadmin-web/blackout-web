@@ -104,22 +104,39 @@ async function main() {
           waitUntil: "domcontentloaded",
           timeout: 90_000,
         });
-        // The matrix streams in; give the first payload time to paint before touching tabs.
-        await page.waitForTimeout(12_000);
-
         // ── Prove the PAGE loaded before judging the FEATURE ─────────────────────────────
         // Without this, a blank page, a 404, or an auth bounce all report "Depth tab not found",
         // which reads as a product defect when it is a harness failure. The Matrix tab has shipped
         // for months, so its absence means the harness never got a desk to look at.
+        //
+        // POLLED, not sampled once. The matrix arrives over the client's own fetch and the desk
+        // paints "No options chain" while it is in flight, so a fixed sleep decides the verdict by
+        // race: too short and a healthy desk reports as broken. Observed live on 2026-08-12 —
+        // 12s returned "NO OPTIONS CHAIN / OFFLINE" for SPY while the API was concurrently serving
+        // 266 strikes and a 32-band ladder for the same ticker. Same lesson as depth-live-check's
+        // --wait: a check that fires before the thing can possibly be ready proves nothing.
         const matrixTab = page.locator('[role="tab"]', { hasText: /^Matrix$/i }).first();
-        if ((await matrixTab.count()) === 0) {
-          note("FAIL", `${device.name}: HARNESS — no Matrix tab, so the desk never rendered; nothing below is evidence`, {
-            title: await page.title(),
-            routed: `${counts.ok} ok / ${counts.fail} fail`,
-          });
+        const DESK_TIMEOUT_MS = 75_000;
+        try {
+          await matrixTab.waitFor({ state: "attached", timeout: DESK_TIMEOUT_MS });
+        } catch {
+          // Distinguish the two failures that look identical in a screenshot. A desk shell with an
+          // empty matrix is a DATA state (illiquid ticker, cold cache, chain not printed) and is
+          // not evidence about the rail; no desk shell at all is a HARNESS/auth failure. Reporting
+          // both as "the desk never rendered" sent me looking for a render bug that did not exist.
+          const shell = await page.getByText(/No options chain/i).count();
+          note(
+            "WARN",
+            shell > 0
+              ? `${device.name}: desk rendered but the matrix stayed empty for ${DESK_TIMEOUT_MS / 1000}s — a DATA state, not a render one; nothing below is evidence`
+              : `${device.name}: HARNESS — no desk at all after ${DESK_TIMEOUT_MS / 1000}s; nothing below is evidence`,
+            { title: await page.title(), routed: `${counts.ok} ok / ${counts.fail} fail` }
+          );
           await page.screenshot({ path: join(OUT, `${device.name}-no-desk.png`) });
           continue;
         }
+        // The tabs exist; let the first payload finish painting rows before counting cells.
+        await page.waitForTimeout(4_000);
         note("PASS", `${device.name}: desk rendered (routed ${counts.ok} ok, ${counts.fail} fail)`);
 
         // ── Phase 2: the forced-flow rail pinned to the MATRIX ───────────────────────────
