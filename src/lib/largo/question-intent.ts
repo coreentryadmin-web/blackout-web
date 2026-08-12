@@ -154,9 +154,23 @@ const DOMAIN_UPPERCASE_WORDS = new Set([
   "PIN", "TAPE", "FLOW", "NEWS", "PLAY", "PLAYS", "CARD", "DESK", "TODAY", "NOW", "ASAP",
 ]);
 
-/** Was this token written as an UPPERCASE symbol in the original question? */
+/**
+ * Was this token written as an UPPERCASE symbol in the original question?
+ *
+ * `token` is ESCAPED before it reaches the RegExp. Every caller today passes a candidate matched
+ * by `/\$?\b([A-Z]{2,5})\b/g`, so it is already 2-5 uppercase letters and cannot carry a regex
+ * metacharacter — which is why this has never misbehaved, and why escaping is a strict no-op for
+ * real inputs rather than a behaviour change.
+ *
+ * It is escaped anyway because the SIGNATURE accepts any string while the safety lives entirely in
+ * the callers: one future call site passing raw question text would turn a member-supplied `(((((`
+ * into a thrown SyntaxError, or a crafted nested quantifier into catastrophic backtracking on a
+ * member-facing endpoint. CodeQL flags this line as a high-severity regex injection for exactly
+ * that reason. Closing it at the sink costs nothing and removes the whole class.
+ */
 function writtenUppercase(question: string, token: string): boolean {
-  return new RegExp(`\\b${token}\\b`).test(question);
+  const safe = token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`\\b${safe}\\b`).test(question);
 }
 
 function extractTicker(question: string, historyText: string): string | null {
