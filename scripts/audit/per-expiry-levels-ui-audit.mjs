@@ -190,8 +190,12 @@ async function main() {
             maxPain: await read("maxPain"),
             netGex: await read("netGex"),
           };
+          // The KICKER SPAN specifically, never the whole box: the box's innerText also carries
+          // every tile's InfoTip copy, and the Max Pain tip contains "Scoped to <date>". Matching
+          // the box made this assertion pass off the tooltip while the kicker still read
+          // "near-term" — a check that could not fail for the reason it existed.
           const kicker = await page
-            .locator(".gex-key-levels")
+            .locator("[data-key-levels-kicker]")
             .first()
             .innerText()
             .catch(() => "");
@@ -204,7 +208,13 @@ async function main() {
           // Resolve the chip label back to the ISO expiry it selected, via the payload's own axis.
           // Matching on the RENDERED label rather than assuming chip order is what keeps this
           // honest if the bar ever reorders.
-          const expiry = (payload.expiries ?? []).find((e) => fmtExpiry(e) === label);
+          // Case-INSENSITIVE. The chips carry a CSS `uppercase` transform, so `innerText` reads
+          // "AUG 12" while the DOM text and `fmtExpiry` both say "Aug 12". A case-sensitive
+          // compare made every chip report "does not map to any served expiry" against a page
+          // that was working perfectly — a harness failure wearing a product failure's clothes.
+          const expiry = (payload.expiries ?? []).find(
+            (e) => fmtExpiry(e).toLowerCase() === label.toLowerCase()
+          );
           if (!expiry) {
             note("WARN", `${ticker} ${label}: chip label does not map to any served expiry — skipped`);
             continue;
@@ -261,10 +271,10 @@ async function main() {
           // The copy has to name the scope the tiles took. A row showing one expiry's numbers
           // under a "near-term" kicker is the same defect as wrong numbers — the member cannot
           // tell which book they are reading.
+          const namesScope = new RegExp(label.replace(/\s+/g, "\\s+"), "i").test(kicker);
           note(
-            new RegExp(label.replace(/\s+/g, "\\s+"), "i").test(kicker) ? "PASS" : "FAIL",
-            `${ticker} ${label}: key-levels copy ${/near-term \(/.test(kicker) ? "still claims a near-term blend" : "names the scoped expiry"}`,
-            { kickerHead: kicker.split("\n").slice(0, 2).join(" | ").slice(0, 120) }
+            namesScope ? "PASS" : "FAIL",
+            `${ticker} ${label}: key-levels kicker ${namesScope ? "names the scoped expiry" : `does not name it — reads "${kicker.replace(/\s+/g, " ").trim().slice(0, 60)}"`}`
           );
 
           const shot = join(OUT, `${ticker}-${expiry}.png`);

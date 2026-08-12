@@ -2866,7 +2866,14 @@ function KeyLevelBox({
         <span className="font-mono text-[9px] uppercase tracking-[0.22em] text-mute">
           Key levels
         </span>
-        <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-sky-300/70">
+        <span
+          // Addressable on its own: the box's innerText also carries every tile's InfoTip copy,
+          // and the Max Pain tip literally contains "Scoped to <date>" — so a scope assertion made
+          // against the whole box matches the TOOLTIP and passes while the kicker still reads
+          // "near-term". Caught by the pre-deploy control run of per-expiry-levels-ui-audit.
+          data-key-levels-kicker
+          className="font-mono text-[9px] uppercase tracking-[0.2em] text-sky-300/70"
+        >
           {kicker}
         </span>
       </div>
