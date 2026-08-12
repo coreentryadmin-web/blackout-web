@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "engines": {
-    "node": ">=20.9.0"
+    "node": ">=20.9.0 <21"
   },
   "scripts": {
     "dev": "next dev",
@@ -16,7 +16,7 @@
     "lint:css": "stylelint \"src/**/*.css\"",
     "whop:remodel": "node scripts/whop-remodel.mjs",
     "clerk:purge-test-users": "node scripts/clerk-purge-test-users.mjs --dry-run",
-    "test": "PLAYBOOK_VERDICT_GUARD_ASSERT=1 node --import tsx --experimental-test-module-mocks --test \"src/**/*.test.ts\"",
+    "test": "node scripts/run-tests.mjs",
     "validate:deploy": "node scripts/validate-deploy.mjs",
     "deploy:ecs": "node scripts/deploy/roll-ecs.mjs",
     "validate:ga4": "node scripts/audit/ga4-live-probe.mjs",

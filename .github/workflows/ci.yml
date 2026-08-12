@@ -47,16 +47,12 @@ jobs:
       - name: Tailwind @apply opacity guard (recurring build breaker)
         run: node scripts/check-tailwind-apply-opacity.mjs
       - name: Unit tests
-        # Node 20 does not expand globs in --test; expand in bash but keep module mocks.
-        shell: bash
+        # Same entrypoint a developer runs (`npm test`), so a local pass means this pass. The glob
+        # is expanded inside the script rather than by the shell — Node 20 does not expand globs in
+        # --test, and having CI work around that in bash is what made the two runs diverge.
         env:
-          PLAYBOOK_VERDICT_GUARD_ASSERT: "1"
           SWING_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/verify
-        run: |
-          shopt -s globstar nullglob
-          files=(src/**/*.test.ts)
-          echo "Running ${#files[@]} test files"
-          node --import tsx --experimental-test-module-mocks --test "${files[@]}"
+        run: npm test
       - name: Build (next build — catches deploy-breakers before merge)
         run: npm run build
       - name: Brand guard (no grey)
