@@ -164,8 +164,8 @@ function trackSpend(model: string, usage: AnthropicUsage | null | undefined): vo
  *  from this so the dashboard reflects the real retry budget (P3 fix). */
 const DEFAULT_MAX_RETRIES = 3;
 const DEFAULT_MODEL = "claude-sonnet-4-6";
-/** Default Largo tool-loop model — Haiku (~4× cheaper than Sonnet on one-shot benchmarks). */
-export const LARGO_MODEL = "claude-haiku-4-5";
+/** Default Largo tool-loop model — Sonnet 5 for synthesis quality on multi-tool desk reads. */
+export const LARGO_MODEL = "claude-sonnet-5";
 /** Optional escalation tier for future compound / deep tool loops (not wired by default). */
 export const LARGO_ESCALATION_MODEL = "claude-sonnet-4-6";
 export const COMMENTARY_MODEL = "claude-haiku-4-5";
@@ -244,12 +244,16 @@ function resolveModel(explicit?: string): string {
 }
 
 /**
- * Sampling params (temperature / top_p / top_k) return a 400 on Opus 4.7+ and the Fable family.
- * Our default models (Sonnet 4.6, Haiku 4.5) accept them, but ANTHROPIC_MODEL can be overridden to
- * an Opus/Fable model — in which case sending temperature would 400 EVERY call. Strip it for those.
+ * Sampling params (temperature / top_p / top_k) return a 400 on Opus 4.7+, Opus 5, Sonnet 5 and the
+ * Fable family. Sonnet 4.6 / Sonnet 4.5 / Haiku 4.5 still accept them.
+ *
+ * This is not just an ANTHROPIC_MODEL-override concern any more: LARGO_MODEL is now
+ * `claude-sonnet-5`, so the Largo tool loop hits this on EVERY call. The 5-family match must stay
+ * anchored on the `-5` immediately after the family name — `claude-sonnet-4-5` is a 4.x model that
+ * still accepts temperature, and a looser pattern would silently strip it there.
  */
-function modelRejectsSamplingParams(model: string): boolean {
-  return /claude-opus-4-(?:[7-9]|\d\d)|claude-fable/i.test(model);
+export function modelRejectsSamplingParams(model: string): boolean {
+  return /claude-(?:opus|sonnet)-5|claude-opus-4-(?:[7-9]|\d\d)|claude-fable/i.test(model);
 }
 
 async function withTelemetry<T>(
@@ -689,7 +693,13 @@ export async function anthropicToolLoop(params: {
           {
             model,
             max_tokens: maxTokens,
-            temperature: loopTemperature,
+            // Same sampling-param guard as the loop rounds above. This pass was written before the
+            // guard existed and kept sending temperature unconditionally, so on a model that
+            // rejects it the LAST call of every turn — the one that produces the member-facing
+            // answer — 400s while every round before it succeeds. The catch below swallows that
+            // into "fall back to accumulated assistant text", which is why it never surfaced as an
+            // error: the turn degrades to a partial answer instead of failing loudly.
+            ...(modelRejectsSamplingParams(model) ? {} : { temperature: loopTemperature }),
             system: systemParam,
             messages,
             // The synthesis pass resends the ENTIRE transcript one final time — the single largest

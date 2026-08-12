@@ -28,6 +28,11 @@ const PRICES: Record<string, Price> = {
   "claude-opus-4-5": { input: 5, output: 25 },
   "claude-sonnet-4-6": { input: 3, output: 15 },
   "claude-sonnet-4-5": { input: 3, output: 15 },
+  // LIST price. $2/$10 is an INTRODUCTORY rate that expires 2026-08-31 — keying the table to it
+  // would make every Largo row under-report by ~33% from 2026-09-01 with nothing to notice the
+  // change, since the tracker just returns a smaller number. Over-reporting slightly for the intro
+  // window is the safe direction for a spend ceiling to be wrong in.
+  "claude-sonnet-5": { input: 3, output: 15 },
   "claude-haiku-4-5": { input: 1, output: 5 },
 };
 

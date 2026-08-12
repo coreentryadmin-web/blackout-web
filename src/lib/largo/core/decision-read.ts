@@ -10,7 +10,7 @@ import { isPlayQuestion, isZeroDtePlayQuestion } from "./trade-question";
  *
  * The model's Verdict / Interpretation / Bottom line are the answer. This object adds
  * non-negotiable honesty flags (spot hold, not on board, edition vs ledger) without
- * replacing what Haiku wrote for this specific question.
+ * replacing what the model wrote for this specific question.
  *
  * PURE AND TOTAL: no IO, no throw.
  */

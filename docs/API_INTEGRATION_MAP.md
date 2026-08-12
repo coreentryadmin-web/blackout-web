@@ -95,7 +95,7 @@ WS + FOMC minutes/decision parse fix + lit/dark ratio on desk.
 ---
 
 ## Anthropic (Claude API) — Largo desk + SPX commentary
-`@anthropic-ai/sdk ^0.105.0`. Models: `claude-sonnet-4-6` (Largo, NW narrative), `claude-haiku-4-5`
+`@anthropic-ai/sdk ^0.105.0`. Models: `claude-sonnet-5` (Largo desk synthesis), `claude-haiku-4-5`
 (SPX commentary). **All model IDs current/valid — no deprecated IDs.**
 
 **✅ USED:** streaming tool-loop (`messages.stream` + `finalMessage`), manual agentic tool-use with
