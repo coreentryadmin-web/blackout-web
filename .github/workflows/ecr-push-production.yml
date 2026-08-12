@@ -285,8 +285,29 @@ jobs:
               echo "ECS rollout FAILED."
               exit 1
             fi
-            if [ "${P_RUNNING}" = "${P_DESIRED}" ] && [ "${P_DESIRED}" != "0" ]; then
-              echo "ECS rollout complete (running == desired)."
+            # NO `running == desired` SHORTCUT.
+            #
+            # It used to break here, and it is why the static-asset gate below failed every
+            # deploy. PRIMARY reaching running==desired means all the NEW tasks are up — it does
+            # NOT mean the fleet converged, because the OLD deployment's tasks are still
+            # registered in the target group and still serving until they drain.
+            #
+            # Measured on the 2026-08-12 08:0x roll (5 tasks, maximumPercent 120,
+            # minimumHealthyPercent 100, so strictly one-at-a-time):
+            #
+            #   PRIMARY running == desired (5/5 new up) ~07:49
+            #   static-asset gate ran its 5 min window    07:49 -> 07:55 FAIL
+            #   last old task finished draining           08:01
+            #   rolloutState = COMPLETED                  08:02
+            #
+            # So the shortcut exited the wait ~13 minutes early and handed the gate a fleet that
+            # was still half old by construction. The gate then reported RED on a deploy that had
+            # in fact shipped fine — the exact false-alarm that teaches everyone to ignore a red
+            # deploy. `rolloutState` is the only signal that means what we need; ROLLING services
+            # with the circuit breaker enabled always report it, so there is nothing to fall back
+            # to. If it is ever genuinely absent we time out loudly rather than guess.
+            if [ "${P_ROLLOUT}" = "UNKNOWN" ] && [ "${P_RUNNING}" = "${P_DESIRED}" ] && [ "${P_DESIRED}" != "0" ]; then
+              echo "No rolloutState reported by ECS; falling back to running == desired."
               break
             fi
             if [ "$i" = "144" ]; then
@@ -532,8 +553,14 @@ jobs:
               echo "Worker ECS rollout FAILED."
               exit 1
             fi
-            if [ "${P_RUNNING}" = "${P_DESIRED}" ] && [ "${P_DESIRED}" != "0" ]; then
-              echo "Worker ECS rollout complete (running == desired)."
+            # Same false early-exit as the web wait above — see the long note there. PRIMARY
+            # reaching running==desired means the new tasks are up, not that the old ones are
+            # gone, so this reported the worker rolled while it was still rolling. Nothing
+            # validates after this step, so the cost here is a false GREEN on the deploy rather
+            # than a false RED — which is the more dangerous of the two, and exactly the failure
+            # mode that let market-worker task-def rot go unnoticed before.
+            if [ "${P_ROLLOUT}" = "UNKNOWN" ] && [ "${P_RUNNING}" = "${P_DESIRED}" ] && [ "${P_DESIRED}" != "0" ]; then
+              echo "No rolloutState reported by ECS; falling back to running == desired."
               break
             fi
             if [ "$i" = "48" ]; then
