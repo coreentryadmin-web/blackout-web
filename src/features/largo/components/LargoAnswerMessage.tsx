@@ -5,7 +5,10 @@ import type { BieAnswerEnvelope } from "@/lib/bie/answer-envelope";
 import { LargoMessageBody } from "@/features/largo/components/LargoMessageBody";
 import { BieAnswer } from "@/features/largo/answer/BieAnswer";
 import { LargoDeskRead } from "@/features/largo/answer/LargoDeskRead";
+import { LargoAnswerCaveats } from "@/features/largo/answer/LargoAnswerCaveats";
+import { splitAnswerCaveats } from "@/features/largo/answer/answer-caveats";
 import { largoAnswerToEnvelope } from "@/features/largo/answer/answer-format";
+import { BieScenarioCards } from "@/features/largo/answer/BieScenarioCards";
 
 /**
  * Renders a COMPLETED Largo assistant turn through the rich <BieAnswer> surface
@@ -62,17 +65,12 @@ export function LargoAnswerMessage({
         Boolean(envelope.headline || envelope.bias) &&
         ((envelope.levels?.length ?? 0) > 0 || (envelope.sections?.length ?? 0) > 0);
       if (richEnough) {
+        const { caveats } = splitAnswerCaveats(content);
         return (
           <>
             <LargoDeskRead envelope={envelope} question={question} />
-            {/* The full prose stays BELOW the card, not replaced by it. The desk read is the
-                glanceable summary; the reasoning is what a member checks when the summary says
-                something they did not expect, and removing it would make the answer less
-                inspectable than before this shipped. */}
-            <details className="largo-read-more">
-              <summary>Full reasoning</summary>
-              <BieAnswer envelope={envelope} bodyClassName={className} onFollowup={onFollowup} />
-            </details>
+            <BieScenarioCards scenarios={envelope.scenarios} />
+            <LargoAnswerCaveats caveats={caveats} />
           </>
         );
       }
@@ -84,19 +82,23 @@ export function LargoAnswerMessage({
     // Transition path: wrap the markdown string. Only show bias/confidence when the
     // text states them, and only show an assembly time when we actually have one.
     try {
-      const built = largoAnswerToEnvelope(content, {
+      const { body, caveats } = splitAnswerCaveats(content);
+      const built = largoAnswerToEnvelope(body, {
         source: source ?? null,
         asOf: createdAt ?? undefined,
       });
       return (
-        <BieAnswer
-          envelope={built.envelope}
-          showBias={built.showBias}
-          showConfidence={built.showConfidence}
-          showAsOf={Boolean(createdAt)}
-          bodyClassName={className}
-          onFollowup={onFollowup}
-        />
+        <>
+          <BieAnswer
+            envelope={built.envelope}
+            showBias={built.showBias}
+            showConfidence={built.showConfidence}
+            showAsOf={Boolean(createdAt)}
+            bodyClassName={className}
+            onFollowup={onFollowup}
+          />
+          <LargoAnswerCaveats caveats={caveats} />
+        </>
       );
     } catch {
       return null;

@@ -98,10 +98,13 @@ export function LargoDeskRead({
   question?: string | null;
 }) {
   const levels = envelope.levels ?? [];
-  // Only sections whose content exists nowhere else. See section-policy.ts: Verdict, Confidence,
-  // Risk, Data and Facts are each rendered by a dedicated component below, and rendering them
-  // again as prose printed the same thesis up to six times per answer.
-  const sections = proseSections(envelope.sections);
+  const layout = classifyLayout(question);
+  const trade = envelope.tradeDecision;
+  const isTradeLayout = layout === "trade" || Boolean(trade);
+
+  // Only sections whose content exists nowhere else. Trade questions hide prose sections —
+  // interpretation/conflicts live behind Evidence & reasoning only.
+  const sections = isTradeLayout ? [] : proseSections(envelope.sections);
   const evidence = envelope.evidence ?? [];
   const evidenceSummary = summariseEvidence(evidence);
 
@@ -109,7 +112,7 @@ export function LargoDeskRead({
   // old `headline` was the whole thing rendered in display type — an essay in a title slot, and
   // the same reasoning appeared again below. Only the first sentence leads; the elaboration is
   // dropped from the default view because Interpretation already carries it (see section-policy).
-  const { header } = splitHeadline(envelope.headline);
+  const { header } = splitHeadline(trade?.headline ?? envelope.headline);
 
   // Derived from the header, so the badge, the chips and the prose can never disagree.
   const state = deriveMarketState(envelope.headline ?? "");
@@ -123,7 +126,7 @@ export function LargoDeskRead({
   // The question decides which block LEADS — never which blocks exist. `blockOrder` guarantees
   // every block appears exactly once under every layout, so a misclassified question costs
   // emphasis, never content. See answer-layout.ts.
-  const order = blockOrder(classifyLayout(question));
+  const order = blockOrder(layout);
   // Freshness per distinct source. Deduped because six evidence rows from HELIX should read as one
   // source chip, not six — the member is asking "how fresh is HELIX", not "how many rows".
   const sources = new Map<string, BieFreshness>();
@@ -150,7 +153,25 @@ export function LargoDeskRead({
     // map — never inferred from phrasing. See signal-rows.ts: fewer rows is the correct failure,
     // because a fabricated arrow reads as an instruction.
     signals:
-      signals.length > 0 ? (
+      trade && trade.signalRows.length > 0 ? (
+        <div key="signals" className="largo-read-signals">
+          <div className="largo-read-block-title">Signal</div>
+          <div className="largo-read-sig largo-read-sig-head">
+            <span className="largo-read-sig-label">Signal</span>
+            <span className="largo-read-sig-read">Read</span>
+            <span className="largo-read-sig-bias">Bias</span>
+          </div>
+          {trade.signalRows.map((r) => (
+            <div key={r.signal} className="largo-read-sig">
+              <span className="largo-read-sig-label">{r.signal}</span>
+              <span className="largo-read-sig-read">{r.read}</span>
+              <span className={clsx("largo-read-sig-bias", `largo-read-sig-${r.bias === "bullish" ? "bull" : r.bias === "bearish" || r.bias === "unstable" ? "bear" : "neutral"}`)}>
+                {r.glyph}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : signals.length > 0 ? (
         <div key="signals" className="largo-read-signals">
           <div className="largo-read-block-title">
             Signals <span className="largo-read-tally">{tally.bull} bull · {tally.bear} bear</span>
@@ -206,7 +227,7 @@ export function LargoDeskRead({
     //
     // A bar renders ONLY where a system natively produces a 0-100 quantity (see system-reads.ts).
     // Night Hawk deliberately has none — a lane with one open call is not "100% bullish".
-    systemReads: envelope.systemReads?.reads.length ? (
+    systemReads: !trade && envelope.systemReads?.reads.length ? (
       <div key="systemReads" className="largo-read-signals">
         <div className="largo-read-block-title">
           System reads
@@ -322,13 +343,32 @@ export function LargoDeskRead({
         )}
       </div>
 
-      {/* THE EXECUTIVE ANSWER — one sentence, in the neon synthesis colour. Everything below is
-          support for this line. */}
-      {header && <div className="largo-read-header">{header}</div>}
+      {/* THE EXECUTIVE ANSWER — one line for trade questions; one sentence otherwise. */}
+      {header && (
+        <div className={clsx("largo-read-header", isTradeLayout && "largo-read-header-trade")}>
+          {isTradeLayout ? `🟡 ${header}` : header}
+        </div>
+      )}
 
-      {/* The WHY behind the confidence level, not just the level. A confidence number with no
-          reason is a number nobody can argue with, which is the opposite of useful. */}
-      {envelope.confidence?.why && (
+      {trade && (
+        <div className="largo-read-trade-body">
+          <div className="largo-read-callout">{renderInlineMarkdown(trade.approach)}</div>
+          {trade.existingPlay && (
+            <div className="largo-read-callout largo-read-callout-muted">
+              <strong>Existing Night Hawk contract:</strong> {trade.existingPlay.contract}, original entry{" "}
+              {trade.existingPlay.originalEntry}
+              <br />
+              {trade.existingPlay.note}
+            </div>
+          )}
+          {trade.bearishConfirm && (
+            <div className="largo-read-callout largo-read-callout-risk">{trade.bearishConfirm}</div>
+          )}
+          <div className="largo-read-overall">{trade.overall}</div>
+        </div>
+      )}
+
+      {!trade && envelope.confidence?.why && (
         // THROUGH THE INLINE RENDERER, like every other prose field on this component.
         // This one line printed its markdown raw: the live CRWV read showed a literal
         // "**Low**. The IV rank is median…" under the headline. Largo writes the confidence
@@ -339,8 +379,6 @@ export function LargoDeskRead({
 
       {order.map((b) => blocks[b])}
 
-      {/* Sources requested but UNAVAILABLE are surfaced, not omitted. A missing source silently
-          dropped turns "we could not see" into "there was nothing there". */}
       {(envelope.unavailableSources?.length ?? 0) > 0 && (
         <div className="largo-read-section largo-read-section-risk">
           <div className="largo-read-section-title">Could not read</div>

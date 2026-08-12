@@ -9,6 +9,10 @@ test("the worked examples classify as specified", () => {
   assert.equal(classifyLayout("What are the best trades right now?"), "ranking");
   assert.equal(classifyLayout("What happened to SPX today?"), "recap");
   assert.equal(classifyLayout("Where is the unusual flow?"), "flow");
+  assert.equal(
+    classifyLayout("What is a good options play to take on NVDA today?"),
+    "trade"
+  );
 });
 
 test("a question that is two things at once resolves most-specific-first", () => {
@@ -38,7 +42,7 @@ test("unrecognised questions default — defaulting is not a failure", () => {
 test("EVERY layout renders EVERY block — layout reorders, it never drops", () => {
   // This is the safety property the whole module rests on. A classifier WILL misfire; a misfire
   // must cost emphasis, never content.
-  const layouts: AnswerLayout[] = ["level", "comparison", "ranking", "recap", "flow", "market", "default"];
+  const layouts: AnswerLayout[] = ["level", "comparison", "ranking", "recap", "flow", "trade", "market", "default"];
   for (const l of layouts) {
     const order = blockOrder(l);
     assert.deepEqual(
@@ -48,6 +52,10 @@ test("EVERY layout renders EVERY block — layout reorders, it never drops", () 
     );
     assert.equal(new Set(order).size, order.length, `layout ${l} repeats a block`);
   }
+});
+
+test("trade layout leads with the signal table", () => {
+  assert.equal(blockOrder("trade")[0], "signals");
 });
 
 test("each layout leads with the block its question is about", () => {

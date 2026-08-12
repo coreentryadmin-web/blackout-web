@@ -655,6 +655,43 @@ export function mergeEvidenceIssues(
   };
 }
 
+/** Whether an evening-edition pick is a fresh entry or an existing thesis needing confirmation. */
+export function assessEditionActionability(evidence: MarketEvidence): {
+  freshEntry: boolean;
+  existingThesis: boolean;
+  contractLabel: string;
+  originalEntry: number | null;
+  note: string;
+} | null {
+  const nh = evidence.nightHawk?.forTicker.find((p) => p.product === "edition");
+  if (!nh) return null;
+
+  const spot = evidence.spot?.authoritative;
+  const vwap = evidence.walls.vwap;
+  const flip = evidence.walls.gammaFlip;
+  const belowStructure =
+    spot != null &&
+    ((vwap != null && spot < vwap) || (flip != null && spot < flip));
+
+  const strike = nh.strike;
+  const expiry = nh.expiry;
+  const right = /long|call/i.test(nh.direction) ? "C" : "P";
+  const contractLabel =
+    strike != null && expiry
+      ? `${expiry} $${strike}${right}`
+      : nh.direction;
+
+  return {
+    freshEntry: !belowStructure && !evidence.preciseRecommendationsBlocked,
+    existingThesis: true,
+    contractLabel,
+    originalEntry: nh.entryPremium ?? null,
+    note: belowStructure
+      ? "Do not chase the original entry unless the current contract price and trigger remain valid."
+      : "Revalidate current contract mark and spread before entry.",
+  };
+}
+
 /**
  * Fail-closed caveat when spot sources disagree materially — replaces weak footnote behavior.
  */

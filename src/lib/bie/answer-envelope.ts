@@ -138,6 +138,17 @@ export type BieAnswerEnvelope = {
     reads: { system: string; kind: "directional" | "regime"; stance: string; strength: number | null; basis: string; reason?: string }[];
     agreement: { voting: number; bullish: number; bearish: number; neutral: number; verdict: string; direction: string | null };
   };
+  /** Decision-first trade read — built from validated evidence for "what play" questions. */
+  tradeDecision?: {
+    ticker: string;
+    headline: string;
+    approach: string;
+    existingPlay?: { contract: string; originalEntry: string; note: string };
+    bearishConfirm?: string;
+    overall: string;
+    actionLabel: string;
+    signalRows: { signal: string; read: string; bias: string; glyph: string }[];
+  };
   followups?: string[];
   /** Sources requested but unavailable this turn — always surfaced. */
   unavailableSources?: BieUnavailableSource[];

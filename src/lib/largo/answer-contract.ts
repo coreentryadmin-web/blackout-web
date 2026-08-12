@@ -7,6 +7,7 @@ import {
   evidenceLevelsForEnvelope,
   type MarketEvidence,
 } from "@/lib/largo/core/market-evidence";
+import { buildTradeDecisionRead } from "@/lib/largo/core/decision-read";
 import {
   makeEnvelope,
   type BieAnswerEnvelope,
@@ -284,7 +285,9 @@ export function parseAnswerEnvelope(
   /** The turn's raw tool results, for structured blocks the prose cannot carry. */
   capturedResults?: readonly unknown[],
   /** Canonical validated evidence — when present, overrides levels and system reads. */
-  marketEvidence?: MarketEvidence | null
+  marketEvidence?: MarketEvidence | null,
+  /** Member question — used to build decision-first trade layout. */
+  question?: string | null
 ): BieAnswerEnvelope | null {
   let sections: Map<string, string>;
   try {
@@ -364,6 +367,29 @@ export function parseAnswerEnvelope(
     systemReads: extractSystemReads(capturedResults, tickerHint) ?? undefined,
     invalidation: marketEvidence?.preciseRecommendationsBlocked ? null : risk[0] ?? null,
   });
+
+  const tradeDecision = buildTradeDecisionRead(question, envelope, marketEvidence);
+  if (tradeDecision) {
+    return {
+      ...envelope,
+      headline: tradeDecision.headline,
+      tradeDecision: {
+        ticker: tradeDecision.ticker,
+        headline: tradeDecision.headline,
+        approach: tradeDecision.approach,
+        existingPlay: tradeDecision.existingPlay,
+        bearishConfirm: tradeDecision.bearishConfirm,
+        overall: tradeDecision.overall,
+        actionLabel: tradeDecision.actionLabel,
+        signalRows: tradeDecision.signalRows.map((r) => ({
+          signal: r.signal,
+          read: r.read,
+          bias: r.bias,
+          glyph: r.glyph,
+        })),
+      },
+    };
+  }
 
   return envelope;
 }

@@ -60,6 +60,11 @@ import {
   type Timeframe,
 } from "@/lib/largo/temporal/timeframe";
 import { formatEntityBlock } from "@/lib/largo/core/entities";
+import {
+  formatEvidenceOntologyBlock,
+  formatTradeAnswerBlock,
+  isTradeRecommendationQuestion,
+} from "@/lib/largo/core/trade-question";
 import { buildDrillDowns, formatDrillDownBlock } from "@/lib/largo/core/drilldown";
 import { applyConflictCaveat, findSourceConflicts } from "@/lib/largo/core/cross-source";
 import {
@@ -411,6 +416,10 @@ async function prepareLargoTurn(
   // Purely additive: an empty block when the question names no instrument, and it never
   // constrains which symbols a tool may be called with.
   const entityBlock = formatEntityBlock(effectiveEntities(conversation));
+  const ontologyBlock = formatEvidenceOntologyBlock();
+  const tradeBlock = isTradeRecommendationQuestion(question)
+    ? formatTradeAnswerBlock(intent.tickerHint)
+    : "";
 
   // SUGGESTED PLAN — composed from what code already resolved (entities, timeframe, ranked
   // capabilities, the registry's DECLARED join edges), handed over as a starting point. It routes
@@ -437,7 +446,7 @@ async function prepareLargoTurn(
   const system = buildDynamicSystem(
     question,
     history.slice(0, -1),
-    liveFeedBlock + knowledgeBlock + temporalBlock + capabilityBlock + entityBlock + conversationBlock + planBlock + drillDownBlock + formatImageBlock(images.length),
+    liveFeedBlock + knowledgeBlock + temporalBlock + capabilityBlock + entityBlock + ontologyBlock + tradeBlock + conversationBlock + planBlock + drillDownBlock + formatImageBlock(images.length),
     platformVitalsBlock
   );
 
@@ -537,7 +546,7 @@ function envelopeFromContract(
       question.slice(0, 80)
     );
   }
-  return parseAnswerEnvelope(text, capturedResults, marketEvidence ?? undefined) ?? undefined;
+  return parseAnswerEnvelope(text, capturedResults, marketEvidence ?? undefined, question) ?? undefined;
 }
 
 /** Post-synthesis integrity: canonical evidence + fail-closed gates on spot disagreement. */
