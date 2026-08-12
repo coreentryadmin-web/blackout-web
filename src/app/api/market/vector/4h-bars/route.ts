@@ -13,6 +13,7 @@ import { aggregateMinuteTo4h } from "@/features/vector/lib/vector-4h-bars";
 import type { VectorOhlcBar } from "@/features/vector/lib/vector-bar-timeframes";
 import { roundFloats } from "@/lib/round-floats";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
+import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,6 +24,15 @@ export const dynamic = "force-dynamic";
  *  header comment below for why 4h needs this separate multi-day fetch instead of reusing the
  *  single-session 1m seed `bars/route.ts` serves. */
 const LOOKBACK_TRADING_DAYS = 12;
+
+/** Shared-cache namespace for the assembled 4h series. */
+const CACHE_PREFIX = "vector:4h-bars";
+/**
+ * 4h candles change at most once every four hours, and the older sessions in the window are
+ * settled history. 120s keeps the live candle responsive while removing essentially all of the
+ * repeat upstream work.
+ */
+const CACHE_TTL_SEC = 120;
 
 /**
  * Multi-day 4-hour bars for Vector's "4H" chart view (CTO audit P2, 2026-08-05 audit —
@@ -63,16 +73,56 @@ export async function GET(req: NextRequest) {
   const sym = vectorPolygonMinuteSymbol(ticker); // I:SPX etc. for indices
   const useIndex = isVectorIndexTicker(ticker);
 
-  // Walk back from the most recent calendar day (today, or the most recent trading day when
-  // today has no bars yet) one trading day at a time, collecting newest-first.
-  let ymd = formatEtDate(new Date());
-  const sessions: VectorOhlcBar[][] = [];
-  for (let i = 0; i < LOOKBACK_TRADING_DAYS; i++) {
-    const raw = await (useIndex
-      ? fetchIndexMinuteBars(sym, ymd, ymd)
-      : fetchStockMinuteBars(ticker, ymd, ymd)
-    ).catch(() => []);
+  // Serve the assembled candles from the shared cache when they are fresh.
+  //
+  // WHY THIS ROUTE NEEDS A CACHE AT ALL. It pulls LOOKBACK_TRADING_DAYS of MINUTE bars —
+  // ~390/session, so ~4,700 rows for SPY — and aggregates them down to ~47 4h candles. Doing that
+  // per request is enormously disproportionate to the output, and it was doing exactly that:
+  // `force-dynamic` + no-store + no cache meant every single page load re-fetched twelve days of
+  // minute data from Polygon.
+  //
+  // Measured on prod 2026-08-12: 4.7s cold, 23.6s for NVDA, and 50.0s for a REPEAT call on the
+  // same ticker seconds later — i.e. it got worse under its own load, because twelve serial
+  // upstream calls per request contend with every other consumer of the same provider budget.
+  // That is what made `/vector` a 14-second page.
+  //
+  // A short TTL is safe and sufficient: a 4h candle can only change once every four hours, and
+  // the eleven older sessions in the window are settled history that will never change again.
+  const cacheKey = `${CACHE_PREFIX}:${ticker}`;
+  const cached = await sharedCacheGet<{ bars: VectorOhlcBar[] }>(cacheKey).catch(() => null);
+  if (cached?.bars?.length) {
+    return NextResponse.json(roundFloats({ ticker, unit: "4H", bars: cached.bars }), {
+      headers: NO_STORE_HEADERS,
+    });
+  }
 
+  // Resolve the trading days FIRST (the walk-back is inherently sequential — each date is derived
+  // from the previous one) and only then fetch, so the twelve independent upstream calls can run
+  // CONCURRENTLY instead of one after another.
+  //
+  // The day-by-day split itself is still required — Polygon's per-request row cap on these
+  // fetchers is 5,000 and a single wide-range call would silently truncate (see the header
+  // comment). But nothing ever required those calls to be SERIAL, and serialising them multiplied
+  // the route's latency by twelve for no benefit.
+  const ymds: string[] = [];
+  let ymd = formatEtDate(new Date());
+  for (let i = 0; i < LOOKBACK_TRADING_DAYS; i++) {
+    ymds.push(ymd);
+    ymd = previousTradingDayEt(ymd);
+  }
+
+  const settled = await Promise.all(
+    ymds.map((d) =>
+      (useIndex ? fetchIndexMinuteBars(sym, d, d) : fetchStockMinuteBars(ticker, d, d)).catch(
+        () => []
+      )
+    )
+  );
+
+  // `ymds` is newest-first and Promise.all preserves input order, so `settled` is newest-first
+  // too — the reverse below still yields the strictly ascending series the aggregator requires.
+  const sessions: VectorOhlcBar[][] = [];
+  for (const raw of settled) {
     const mapped: VectorOhlcBar[] = raw
       .filter((b) => b.t != null && Number.isFinite(b.o) && Number.isFinite(b.c))
       .map((b) => ({
@@ -84,14 +134,18 @@ export async function GET(req: NextRequest) {
         volume: b.v,
       }));
     if (mapped.length) sessions.push(mapped);
-
-    ymd = previousTradingDayEt(ymd);
   }
 
   // Sessions were collected newest-first; emit oldest-first so the aggregator sees a strictly
   // ascending series (the same convention `fetchVectorSeedBars` uses for the intraday seed).
   const minuteBars = sessions.reverse().flat();
   const bars = aggregateMinuteTo4h(minuteBars);
+
+  // Cache only a REAL result. Writing an empty series would pin a broken response for the whole
+  // TTL, turning a transient upstream blip into minutes of an empty chart.
+  if (bars.length > 0) {
+    await sharedCacheSet(cacheKey, { bars }, CACHE_TTL_SEC).catch(() => {});
+  }
 
   return NextResponse.json(roundFloats({ ticker, unit: "4H", bars }), { headers: NO_STORE_HEADERS });
 }
