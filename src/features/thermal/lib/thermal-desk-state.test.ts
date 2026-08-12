@@ -144,3 +144,35 @@ test("keyLevelsKicker and footnote disclose near-term scope", () => {
   assert.match(keyLevelsFootnote("Aug 4"), /Aug 4 OI only/);
   assert.match(keyLevelsFootnote(), /front\/nearest expiry/i);
 });
+
+test("keyLevelsKicker names the single scoped expiry instead of calling it near-term", () => {
+  // The whole point of the scoped row: when ONE expiry drives every tile, the kicker must not
+  // keep claiming a near-term blend — that is the mixed-scope claim the panel was rebuilt to end.
+  assert.equal(
+    keyLevelsKicker("GEX", ["2026-08-14", "2026-08-15"], { expiryLabel: "Aug 14" }),
+    "GEX · Aug 14"
+  );
+  assert.equal(
+    keyLevelsKicker("GEX", ["2026-08-14"], { expiryLabel: "Aug 14", nearSpotGammaShare: 0.624 }),
+    "GEX · Aug 14 · 62% of near-spot γ"
+  );
+  // A share we don't have (or a zero one) is omitted rather than printed as "0%" — an unknown
+  // pin contest and a genuinely empty one are different claims and neither is "0% of the gamma".
+  assert.equal(
+    keyLevelsKicker("GEX", null, { expiryLabel: "Aug 14", nearSpotGammaShare: null }),
+    "GEX · Aug 14"
+  );
+  assert.equal(
+    keyLevelsKicker("GEX", null, { expiryLabel: "Aug 14", nearSpotGammaShare: Number.NaN }),
+    "GEX · Aug 14"
+  );
+});
+
+test("keyLevelsFootnote tells the truth about what a single-expiry scope did and did not rescope", () => {
+  const f = keyLevelsFootnote("Aug 14", "Aug 14");
+  assert.match(f, /Flip, walls, net GEX, and max pain are Aug 14 only/);
+  // The King node is NOT rescoped — it still marks the dominant node across the near-term book.
+  // Saying nothing here would let a reader assume the entire row moved with the selector.
+  assert.match(f, /King node still marks the dominant near-term node/);
+  assert.doesNotMatch(f, /sum near-term expiries/);
+});

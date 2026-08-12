@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { gammaShareByExpiry } from "@/features/thermal/lib/gex-heatmap/per-expiry-levels";
+import { gexWallsFromStrikeTotals } from "@/lib/providers/gex-cross-validation-core";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import { clsx } from "clsx";
@@ -215,6 +217,9 @@ type GexHeatmapResponse = {
   expiries?: string[];
   strikes?: number[];
   max_pain?: number | null;
+  /** Per-expiry max pain — `expiry -> strike | null`. Optional: absent on older cached payloads,
+   *  in which case the Key Levels row falls back to the front-expiry `max_pain` above. */
+  max_pain_by_expiry?: Record<string, number | null>;
   gex?: GexBlock;
   vex?: VexBlock;
   /**
@@ -553,22 +558,10 @@ function recomputeLevels(
     .sort((a, b) => a.strike - b.strike);
   if (entries.length === 0) return { posWall: null, negWall: null, flip: null };
 
-  let posWall: number | null = null;
-  let negWall: number | null = null;
-  let posMax = -Infinity;
-  let negMin = Infinity;
-  for (const e of entries) {
-    if (e.value > posMax) {
-      posMax = e.value;
-      posWall = e.strike;
-    }
-    if (e.value < negMin) {
-      negMin = e.value;
-      negWall = e.strike;
-    }
-  }
-  if (posMax <= 0) posWall = null;
-  if (negMin >= 0) negWall = null;
+  // Shared with the server's computeGexRegime. There were two independent copies of this scan
+  // (server + here) before the Key Levels row was scoped; a third would have been added for the
+  // per-expiry tiles. One implementation cannot drift from itself.
+  const { callWall: posWall, putWall: negWall } = gexWallsFromStrikeTotals(totals);
 
   // Flip: ascending NEGATIVE→POSITIVE sign crossing nearest spot, linearly interpolated — the
   // structural gamma flip (below it dealers net short, above net long). This MATCHES the server's
@@ -2310,10 +2303,12 @@ function ExpiryScopeBar({
     );
   };
 
-  // Whether a narrowed scope is active — drives the clarifying caption below. The scope filter
-  // applies ONLY to the profile + cumulative curve; the regime tiles and key levels stay
-  // server-authoritative (near-term) by design, so we say so to avoid a scope/levels mismatch
-  // reading as a bug.
+  // Whether a narrowed scope is active — drives the clarifying caption below. The scope now
+  // carries the KEY LEVELS row as well as the profile + cumulative curve (flip, walls, net, and
+  // max pain all re-derive against the selection). The one thing it does not move is the King
+  // node, which marks the dominant node across the whole near-term book by design — so the
+  // caption names that exception instead of the old blanket "levels stay near-term", which
+  // stopped being true the moment the tiles were rescoped.
   const scoped = scope !== "all";
 
   return (
@@ -2344,9 +2339,9 @@ function ExpiryScopeBar({
       {scoped && (
         <span
           className="ml-1 font-mono text-[9px] normal-case tracking-normal text-sky-300/50"
-          title="Scope narrows the profile bars and cumulative curve. Regime tiles and key levels stay near-term (server-authoritative)."
+          title="Scope narrows the profile bars, the cumulative curve, and the key-levels row (flip, walls, net, max pain). The King node still marks the dominant node across the whole near-term book."
         >
-          filters profile &amp; curve · tiles &amp; levels stay near-term
+          filters profile, curve &amp; key levels · King node stays near-term
         </span>
       )}
     </div>
@@ -2501,6 +2496,10 @@ function CompactLevel({ cell }: { cell: LevelCell }) {
   const active = cell.active ?? true;
   return (
     <div
+      // Stable hooks for the live UI validator. Without them a harness has to parse the box's
+      // innerText, which folds in the InfoTip copy and the "vs prior close" delta chips — so a
+      // wording change silently turns a real assertion into one that matches nothing.
+      data-level={cell.key}
       className={clsx(
         "relative flex min-w-0 flex-col gap-0.5 rounded-lg border px-2.5 py-1.5",
         cell.anchor
@@ -2526,6 +2525,7 @@ function CompactLevel({ cell }: { cell: LevelCell }) {
         {cell.help && <InfoTip label={cell.label} text={cell.help} />}
       </span>
       <span
+        data-level-value={cell.key}
         className={clsx(
           "font-mono text-[15px] font-bold leading-none tabular-nums",
           cell.anchor ? "text-white" : active ? t.value : "text-white/55"
@@ -2866,7 +2866,14 @@ function KeyLevelBox({
         <span className="font-mono text-[9px] uppercase tracking-[0.22em] text-mute">
           Key levels
         </span>
-        <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-sky-300/70">
+        <span
+          // Addressable on its own: the box's innerText also carries every tile's InfoTip copy,
+          // and the Max Pain tip literally contains "Scoped to <date>" — so a scope assertion made
+          // against the whole box matches the TOOLTIP and passes while the kicker still reads
+          // "near-term". Caught by the pre-deploy control run of per-expiry-levels-ui-audit.
+          data-key-levels-kicker
+          className="font-mono text-[9px] uppercase tracking-[0.2em] text-sky-300/70"
+        >
           {kicker}
         </span>
       </div>
@@ -2923,6 +2930,17 @@ export function GexHeatmap({
   // strike_totals); "0dte" = the nearest/earliest expiry; otherwise a specific expiry
   // string. The subset re-sums cells[strike] over the chosen expiry/expiries entirely
   // client-side (no refetch) and re-derives walls/flip from those filtered totals.
+  // Default is the NEAREST expiry, not "all" — and deliberately not labelled "0DTE".
+  //
+  // The Key Levels row now follows this scope (see filteredLevels below), and an aggregate default
+  // is what produced the original defect: a call wall blended across three settlement dates sitting
+  // beside a single-expiry max pain. Nearest-expiry is the scope a member is almost always asking
+  // about, and it is the only one where every tile describes the same book.
+  //
+  // NOT "0dte": most single names have no daily chain at all (AXTI/LITE/COHR on the live board all
+  // carry a 2DTE nearest), so a 0DTE chip would be an outright lie on the majority of tickers. The
+  // picker shows the real date and its real DTE instead. `expiryScope` is resolved against the live
+  // axis in an effect below, since `expiries` is not known at mount.
   const [expiryScope, setExpiryScope] = useState<string>("all");
   const matrixPollMs = usePollIntervalMs(2_000, 5_000);
   const quotePollMs = usePollIntervalMs(2_000, 5_000);
@@ -3139,7 +3157,9 @@ export function GexHeatmap({
   }, []);
   const expiries = useMemo(() => data?.expiries ?? [], [data?.expiries]);
   const strikes = useMemo(() => data?.strikes ?? [], [data?.strikes]);
-  const maxPain = data?.max_pain ?? null;
+  // Front-expiry max pain as served. The per-expiry override lands below, once `expiryScope` is
+  // resolved — this stays the fallback for VEX/DEX/CHARM and for legacy payloads with no map.
+  const aggregateMaxPain = data?.max_pain ?? null;
 
   // ── Cross-tool overlays (server-enriched, may be null per-feed) ──────────────
   const flowByStrike = useMemo(
@@ -3231,6 +3251,25 @@ export function GexHeatmap({
   // Per-lens walls — GEX/VEX only; DEX/CHARM have NO walls (null → wall tiles/tags hide).
   const posWall = lens === "gex" ? (data?.gex?.call_wall ?? null) : lens === "vex" ? (data?.vex?.pos_wall ?? null) : null;
   const negWall = lens === "gex" ? (data?.gex?.put_wall ?? null) : lens === "vex" ? (data?.vex?.neg_wall ?? null) : null;
+
+  // ── PER-EXPIRY KEY LEVELS ────────────────────────────────────────────────────────────────
+  // The panel used to mix scopes and admit it in a footnote: flip/walls/netGEX/King summed the
+  // near-term expiries while Max Pain was a single expiry. Six tiles, two different books.
+  //
+  // The machinery to fix it already existed — `expiryScope` -> `selectedExpiries` ->
+  // `filterStrikeTotals` -> `recomputeLevels` — it was just wired ONLY to the profile and curve.
+  // The tiles now read those same values (see the filteredLevels block below), so one control
+  // scopes the whole view and the profile can never disagree with the row above it.
+  //
+  // The pin contest: how much of the NEAR-SPOT gamma each expiry actually owns. This is what the
+  // "will today pin, or have dealers moved to the next expiry" question turns on — not where each
+  // expiry's max pain sits.
+  const gammaShares = useMemo(
+    () => (lens === "gex" && data?.gex?.cells ? gammaShareByExpiry(data.gex.cells, spot) : []),
+    [lens, data?.gex?.cells, spot]
+  );
+
+  const maxPain = aggregateMaxPain;
   // Per-lens regime posture — DEX/CHARM only; these still drive their posture cells in the
   // KEY LEVELS box. (The GEX/VEX posture pills, the regime-read blurb, and the how-to-read
   // explainer were removed in the declutter pass — those are gone, so their derived strings
@@ -3260,6 +3299,23 @@ export function GexHeatmap({
     () => expiries.filter((e) => !isMonthlyExpiry(e)),
     [expiries]
   );
+
+  // Resolve the default to the real nearest expiry once the axis is known, and re-resolve whenever
+  // the current pick falls off it — the ET rollover prunes settled expiries, and a scope pointing at
+  // a settled date would render every tile as a dash with no explanation.
+  const scopeResolvedRef = useRef(false);
+  useEffect(() => {
+    if (expiries.length === 0) return;
+    const isPreset = expiryScope === "near" || expiryScope === "monthly" || expiryScope === "0dte";
+    if (!scopeResolvedRef.current && expiryScope === "all") {
+      scopeResolvedRef.current = true;
+      setExpiryScope(expiries[0]);
+      return;
+    }
+    if (!isPreset && expiryScope !== "all" && !expiries.includes(expiryScope)) {
+      setExpiryScope(expiries[0]);
+    }
+  }, [expiries, expiryScope]);
 
   // The expiries the profile + curve sum over. null ⇒ "All" (use server near-term totals).
   // "near"/"monthly" are HORIZON presets summing the near-term vs far-dated OpEx columns; a bare
@@ -3293,6 +3349,39 @@ export function GexHeatmap({
   const profilePosWall = filteredLevels.posWall;
   const profileNegWall = filteredLevels.negWall;
   const profileFlip = filteredLevels.flip;
+
+  // ── The Key Levels row reads the SAME scoped values as the profile ───────────────────────
+  // This is the fix. These four tiles used the unscoped server aggregate while Max Pain used a
+  // single expiry, so the row described two books at once and said so in a footnote. Reusing
+  // `filteredLevels` (rather than deriving a parallel copy) means the tiles and the profile below
+  // them can never disagree about where the wall is.
+  const keyPosWall = filteredLevels.posWall;
+  const keyNegWall = filteredLevels.negWall;
+  const keyFlip = filteredLevels.flip;
+  const keyTotal =
+    selectedExpiries == null
+      ? total
+      : Object.values(filteredTotals).reduce((a, b) => (Number.isFinite(b) ? a + b : a), 0);
+  // Max pain is the one tile that cannot come from the gamma cells — it needs OPEN INTEREST — so
+  // it reads the server's per-expiry map. Only meaningful for a SINGLE-expiry scope: a horizon
+  // preset spans several settlement dates, and max pain across settlement dates is the exact blend
+  // this panel is removing. Presets keep the served front-expiry value and the label says so.
+  //
+  // Deliberately NOT gated on `lens`: max pain comes from OPEN INTEREST, which is the same book
+  // no matter which greek surface is on screen. DEX and CHARM render a max-pain tile too, and
+  // gating this on GEX left those tiles serving the unscoped front-expiry value under a footnote
+  // that said the row was scoped.
+  const scopedMaxPain =
+    selectedExpiries?.length === 1 && data?.max_pain_by_expiry
+      ? data.max_pain_by_expiry[selectedExpiries[0]]
+      : undefined;
+  const keyMaxPain = scopedMaxPain !== undefined ? scopedMaxPain : maxPain;
+  // Which expiry the row is actually describing, and how much of the near-spot gamma it owns.
+  const scopedExpiryLabel = selectedExpiries?.length === 1 ? selectedExpiries[0] : null;
+  const scopedShare =
+    scopedExpiryLabel != null
+      ? (gammaShares.find((g) => g.expiry === scopedExpiryLabel)?.share ?? null)
+      : null;
 
   // ANCHOR for the PROFILE — argmax |net| over the FILTERED totals so the white marker
   // tracks the active expiry scope (it lands on the bar the profile is rendering). Null
@@ -3678,20 +3767,35 @@ export function GexHeatmap({
   }, [data?.shift]);
 
   // ── Consolidated key-level cells (Step 2) ────────────────────────────────────
+  // The tooltip has to name the expiry the tile ACTUALLY used, which is the scoped one when the
+  // member has picked a single expiry — naming `zeroDteExpiry` there would describe a value the
+  // tile is not showing.
   const maxPainHelp = useMemo(() => {
-    if (zeroDteExpiry) {
-      return `${METRIC_HELP.maxPain} Scoped to ${fmtExpiry(zeroDteExpiry)}.`;
+    const label = scopedExpiryLabel ?? zeroDteExpiry;
+    if (label) {
+      return `${METRIC_HELP.maxPain} Scoped to ${fmtExpiry(label)}.`;
     }
     return METRIC_HELP.maxPain;
-  }, [zeroDteExpiry]);
+  }, [scopedExpiryLabel, zeroDteExpiry]);
 
   const keyLevelsScopeKicker = useMemo(
-    () => keyLevelsKicker(lensUpper, stale ? null : data?.near_term_expiries),
-    [lensUpper, stale, data?.near_term_expiries]
+    () =>
+      keyLevelsKicker(
+        lensUpper,
+        stale ? null : data?.near_term_expiries,
+        scopedExpiryLabel
+          ? { expiryLabel: fmtExpiry(scopedExpiryLabel), nearSpotGammaShare: scopedShare }
+          : null
+      ),
+    [lensUpper, stale, data?.near_term_expiries, scopedExpiryLabel, scopedShare]
   );
   const keyLevelsScopeFootnote = useMemo(
-    () => keyLevelsFootnote(zeroDteExpiry ? fmtExpiry(zeroDteExpiry) : null),
-    [zeroDteExpiry]
+    () =>
+      keyLevelsFootnote(
+        zeroDteExpiry ? fmtExpiry(zeroDteExpiry) : null,
+        scopedExpiryLabel ? fmtExpiry(scopedExpiryLabel) : null
+      ),
+    [zeroDteExpiry, scopedExpiryLabel]
   );
 
   // The old ~6 big cards (flip / call wall / put wall / max pain / net / anchor) collapse
@@ -3706,43 +3810,43 @@ export function GexHeatmap({
         {
           key: "flip",
           label: "Gamma Flip",
-          value: flip != null ? fmtStrike(flip) : honestLevelEmpty("flip").value,
+          value: keyFlip != null ? fmtStrike(keyFlip) : honestLevelEmpty("flip").value,
           tone: "flip",
-          active: flip != null,
+          active: keyFlip != null,
           help: flip != null ? METRIC_HELP.gammaFlip : honestLevelEmpty("flip").help,
           delta: gexTileDeltas?.flip ?? null,
         },
         {
           key: "callWall",
           label: "Call Wall",
-          value: posWall != null ? fmtStrike(posWall) : "—",
+          value: keyPosWall != null ? fmtStrike(keyPosWall) : "—",
           tone: "bull",
-          active: posWall != null,
+          active: keyPosWall != null,
           help: METRIC_HELP.callWall,
           delta: gexTileDeltas?.callWall ?? null,
         },
         {
           key: "putWall",
           label: "Put Wall",
-          value: negWall != null ? fmtStrike(negWall) : "—",
+          value: keyNegWall != null ? fmtStrike(keyNegWall) : "—",
           tone: "support",
-          active: negWall != null,
+          active: keyNegWall != null,
           help: METRIC_HELP.putWall,
           delta: gexTileDeltas?.putWall ?? null,
         },
         {
           key: "maxPain",
           label: "Max Pain",
-          value: maxPain != null ? fmtStrike(maxPain) : "—",
+          value: keyMaxPain != null ? fmtStrike(keyMaxPain) : "—",
           tone: "sky",
-          active: maxPain != null,
+          active: keyMaxPain != null,
           help: maxPainHelp,
         },
         {
           key: "netGex",
           label: "Net GEX",
-          value: fmtMoneySigned(total),
-          tone: total >= 0 ? "bull" : "bear",
+          value: fmtMoneySigned(keyTotal),
+          tone: keyTotal >= 0 ? "bull" : "bear",
           help: METRIC_HELP.netGex,
           delta: gexTileDeltas?.netGex ?? null,
         },
@@ -3766,40 +3870,40 @@ export function GexHeatmap({
         {
           key: "flip",
           label: "Vanna Flip",
-          value: flip != null ? fmtStrike(flip) : "—",
+          value: keyFlip != null ? fmtStrike(keyFlip) : "—",
           tone: "flip",
-          active: flip != null,
+          active: keyFlip != null,
           help: METRIC_HELP.vannaFlip,
         },
         {
           key: "posWall",
           label: "+Vanna Wall",
-          value: posWall != null ? fmtStrike(posWall) : "—",
+          value: keyPosWall != null ? fmtStrike(keyPosWall) : "—",
           tone: "sky",
-          active: posWall != null,
+          active: keyPosWall != null,
           help: METRIC_HELP.posVannaWall,
         },
         {
           key: "negWall",
           label: "−Vanna Wall",
-          value: negWall != null ? fmtStrike(negWall) : "—",
+          value: keyNegWall != null ? fmtStrike(keyNegWall) : "—",
           tone: "wall",
-          active: negWall != null,
+          active: keyNegWall != null,
           help: METRIC_HELP.negVannaWall,
         },
         {
           key: "maxPain",
           label: "Max Pain",
-          value: maxPain != null ? fmtStrike(maxPain) : "—",
+          value: keyMaxPain != null ? fmtStrike(keyMaxPain) : "—",
           tone: "sky",
-          active: maxPain != null,
+          active: keyMaxPain != null,
           help: maxPainHelp,
         },
         {
           key: "netVex",
           label: "Net VEX",
-          value: fmtMoneySigned(total),
-          tone: total >= 0 ? "sky" : "bear",
+          value: fmtMoneySigned(keyTotal),
+          tone: keyTotal >= 0 ? "sky" : "bear",
           help: METRIC_HELP.netVex,
         },
       ];
@@ -3809,16 +3913,16 @@ export function GexHeatmap({
         {
           key: "zero",
           label: "Delta-Zero",
-          value: flip != null ? fmtStrike(flip) : "—",
+          value: keyFlip != null ? fmtStrike(keyFlip) : "—",
           tone: "flip",
-          active: flip != null,
+          active: keyFlip != null,
           help: METRIC_HELP.deltaZero,
         },
         {
           key: "netDex",
           label: "Net DEX",
-          value: fmtMoneySigned(total),
-          tone: total >= 0 ? "flip" : "bear",
+          value: fmtMoneySigned(keyTotal),
+          tone: keyTotal >= 0 ? "flip" : "bear",
           help: METRIC_HELP.netDex,
         },
         {
@@ -3848,16 +3952,16 @@ export function GexHeatmap({
       {
         key: "zero",
         label: "Charm-Zero",
-        value: flip != null ? fmtStrike(flip) : "—",
+        value: keyFlip != null ? fmtStrike(keyFlip) : "—",
         tone: "wall",
-        active: flip != null,
+        active: keyFlip != null,
         help: METRIC_HELP.charmZero,
       },
       {
         key: "netCharm",
         label: "Net CHARM",
-        value: fmtMoneySigned(total),
-        tone: total >= 0 ? "wall" : "bear",
+        value: fmtMoneySigned(keyTotal),
+        tone: keyTotal >= 0 ? "wall" : "bear",
         help: METRIC_HELP.netCharm,
       },
       {
@@ -3880,7 +3984,7 @@ export function GexHeatmap({
       });
     }
     return charmCells;
-  }, [
+  }, [keyFlip, keyPosWall, keyNegWall, keyMaxPain, keyTotal, 
     lens,
     flip,
     posWall,

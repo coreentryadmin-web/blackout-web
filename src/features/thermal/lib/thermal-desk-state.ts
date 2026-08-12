@@ -185,11 +185,37 @@ export function wallScopeLabel(nearTermExpiries: readonly string[] | null | unde
   };
 }
 
-/** Key-levels bar kicker — discloses near-term scope so members don't compare to all-expiry tools. */
+/**
+ * What the key-levels row is actually scoped to, when the member has picked ONE expiry.
+ * `nearSpotGammaShare` is that expiry's 0-1 share of the near-spot dealer gamma (the pin contest).
+ */
+export type KeyLevelsScope = {
+  expiryLabel: string;
+  nearSpotGammaShare?: number | null;
+};
+
+/**
+ * Key-levels bar kicker — discloses the row's scope so members don't compare to all-expiry tools.
+ *
+ * Two different scopes, and the copy has to tell them apart: a HORIZON preset still blends the
+ * near-term expiry set, but a single-expiry pick does not, and calling that "near-term" would be
+ * the exact mixed-scope claim this panel was rebuilt to stop making. When one expiry is scoped we
+ * also print its share of the near-spot gamma — the number that says whether dealers are still
+ * defending THIS expiry or have already rolled to the next one.
+ */
 export function keyLevelsKicker(
   lensUpper: string,
-  nearTermExpiries: readonly string[] | null | undefined
+  nearTermExpiries: readonly string[] | null | undefined,
+  scope?: KeyLevelsScope | null
 ): string {
+  if (scope?.expiryLabel) {
+    const share = scope.nearSpotGammaShare;
+    const pct =
+      typeof share === "number" && Number.isFinite(share) && share > 0
+        ? ` · ${Math.round(share * 100)}% of near-spot γ`
+        : "";
+    return `${lensUpper} · ${scope.expiryLabel}${pct}`;
+  }
   const n = nearTermExpiries?.length ?? 0;
   return n > 0 ? `${lensUpper} · near-term (${n})` : `${lensUpper} · near-term`;
 }
@@ -197,8 +223,22 @@ export function keyLevelsKicker(
 /**
  * Footnote under the key-levels box — explains why matrix cell peaks can disagree with the bar.
  * `frontExpiryLabel` is optional human text for max-pain scope (e.g. "Aug 4").
+ * `scopedExpiryLabel` is set when the row is scoped to ONE expiry, which changes what is true:
+ * flip/walls/net GEX are then that expiry alone. The King node is deliberately NOT rescoped — it
+ * marks the dominant node across the whole near-term book — so the footnote keeps saying so
+ * rather than letting the reader assume the entire row moved.
  */
-export function keyLevelsFootnote(frontExpiryLabel?: string | null): string {
+export function keyLevelsFootnote(
+  frontExpiryLabel?: string | null,
+  scopedExpiryLabel?: string | null
+): string {
+  const scoped = scopedExpiryLabel?.trim();
+  if (scoped) {
+    return (
+      `Flip, walls, net GEX, and max pain are ${scoped} only. King node still marks the dominant ` +
+      `near-term node across all expiries. Matrix gold/purple cell peaks can land on any expiry column.`
+    );
+  }
   const mp = frontExpiryLabel?.trim()
     ? `Max pain is ${frontExpiryLabel.trim()} OI only.`
     : "Max pain is front/nearest expiry OI only.";
