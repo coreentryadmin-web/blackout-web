@@ -304,3 +304,96 @@ test("persisted scan with no cleared names → member-safe empty lane (empty is 
   assert.equal(lane.committedCount + lane.watchCount, 0);
   for (const s of Object.values(lane.sections)) assert.equal(s.length, 0);
 });
+
+/**
+ * COMMITTED ROWS KEEP THEIR EXPLANATION.
+ *
+ * A live row is built from the ledger by `livePlaysFromOpenPositions` and then EVICTS its pre-entry
+ * twin ("live capital wins the section") — and the twin was the only carrier of factors/regime. So a
+ * swing play lost its "why this was picked" the moment it was committed. Measured on prod
+ * 2026-08-12: 15/21 rows had factors and the 6 without were exactly the committed ones.
+ */
+function openRow(ticker: string, status: "OPEN" | "TRIM", over: Record<string, unknown> = {}) {
+  return {
+    id: ticker === "AAA" ? 11 : 12,
+    commit_key: `k-${ticker}`,
+    root_position_id: null,
+    parent_position_id: null,
+    roll_seq: 0,
+    session_date: "2026-07-24",
+    ticker,
+    direction: "long" as const,
+    sub_lane: "STANDARD",
+    archetype: "BREAKOUT",
+    top_flow_strike: null,
+    contract_strike: 100,
+    contract_expiry: "2026-08-14",
+    contract_type: "call",
+    contract_occ: null,
+    contract_delta: 0.6,
+    entry_underlying_px: 100,
+    thesis_invalidation_px: 90,
+    target_underlying_px: 120,
+    entry_premium: 5,
+    last_mark: status === "TRIM" ? 10 : 5.5,
+    peak_premium: status === "TRIM" ? 10 : 5.5,
+    trough_premium: 5,
+    underlying_mfe: status === "TRIM" ? 110 : 105,
+    underlying_mae: 100,
+    realized_pnl_pct: null,
+    entry_context: {},
+    gate_calibration_json: {},
+    feature_vector: { evidence_score: 80 },
+    plan_json: null,
+    scale_out_grade: null,
+    grade_json: null,
+    grade_methodology: null,
+    legacy_grade: null,
+    status,
+    first_seen_at: "2026-07-24T14:00:00.000Z",
+    committed_at: "2026-07-24T14:00:00.000Z",
+    closed_at: null,
+    graded_at: null,
+    updated_at: "2026-07-24T14:00:00.000Z",
+    ...over,
+  };
+}
+
+test("a COMMITTED swing row still carries the factors that justified it", async () => {
+  const d = buildSwingDossier(dossier("AAA"));
+  const lane = await getSwingServingLane({
+    discover: async () => ({ dossiers: [d], plays: [play({ ticker: "AAA" })] }),
+    fetchOpenPositions: async () => [openRow("AAA", "OPEN")],
+    spotsByTicker: { AAA: 105 },
+  });
+  const live = lane.sections.MANAGING[0];
+  assert.ok(live, "the open position must render in MANAGING");
+  assert.ok((live.factors ?? []).length > 0, "a held play must explain itself — this is the bug");
+  assert.ok(live.regime != null, "and carry its regime read");
+});
+
+test("the live LIFECYCLE is not overwritten by the pre-entry read", async () => {
+  // The reason this is explanation-only and not a plain enrichPlay call: enrichPlay lets the
+  // dossier's PRE-ENTRY setupState win, which would drag a managed position back into a pre-entry
+  // section. Trimming must stay in SCALING_OUT.
+  const d = buildSwingDossier(dossier("AAA"));
+  const lane = await getSwingServingLane({
+    discover: async () => ({ dossiers: [d], plays: [play({ ticker: "AAA" })] }),
+    fetchOpenPositions: async () => [openRow("AAA", "TRIM")],
+    spotsByTicker: { AAA: 110 },
+  });
+  assert.deepEqual(lane.sections.SCALING_OUT.map((p) => p.ticker), ["AAA"]);
+  assert.equal(lane.sections.MANAGING.length, 0, "a trimming position must not fall back to MANAGING");
+  assert.ok((lane.sections.SCALING_OUT[0].factors ?? []).length > 0);
+});
+
+test("no dossier for the ticker → the row is left honest, never given an invented explanation", async () => {
+  const lane = await getSwingServingLane({
+    discover: async () => ({ dossiers: [], plays: [] }),
+    fetchOpenPositions: async () => [openRow("ZZZ", "OPEN")],
+    spotsByTicker: { ZZZ: 105 },
+  });
+  const live = lane.sections.MANAGING[0];
+  assert.ok(live, "the position still renders");
+  assert.equal((live.factors ?? []).length, 0, "no dossier means no factors — the placeholder is correct here");
+});

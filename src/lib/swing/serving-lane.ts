@@ -96,6 +96,47 @@ function enrichPlay(play: HorizonPlay, dossier: SwingDossier | undefined, reads?
 }
 
 /**
+ * Attach the thesis EXPLANATION (factors + regime) to a LIVE, committed row — and nothing else.
+ *
+ * THE BUG. `enrichPlay` runs over discovery plays only. A live row is built by
+ * `livePlaysFromOpenPositions` from the ledger, and then deliberately EVICTS its pre-entry twin
+ * ("live capital wins the section") — which is precisely the row that was carrying the factors. So
+ * the moment a swing play is committed it loses its explanation, and the card falls back to
+ * "Component breakdown not served for this lane yet". Measured live on prod 2026-08-12: 15 of 21
+ * swing rows carried factors, and the 6 without were exactly the committed ones (RVMD/KRE/FHN in
+ * MANAGING, IBIT/KKR/MSFT in SCALING OUT) — i.e. the desk explains the plays you are only watching
+ * and goes quiet on the ones holding your money.
+ *
+ * WHY NOT JUST CALL `enrichPlay`. Because it also sets `setupState` / `entryStatus` / `subLane` /
+ * `archetype`, and on a live row those are computed from REAL capital state (open, trimming,
+ * exiting). `enrichPlay` lets the dossier's PRE-ENTRY read win (`meta.setupState ?? play.setupState`),
+ * which would move a managed position back into a pre-entry section — a far worse bug than the one
+ * being fixed. Lifecycle stays live; only the explanation is borrowed.
+ *
+ * `thesisLevel`/`thesisNote` are deliberately NOT copied either: a live row derives its thesis health
+ * from ongoing management, and a pre-entry read would overwrite a real "thesis broken" with a stale
+ * "intact".
+ *
+ * FAIL-CLOSED: no dossier for the ticker (the name is no longer in today's discovery) leaves the row
+ * untouched and the honest placeholder stands — a committed play never gets an invented explanation.
+ */
+function attachThesisExplanation(
+  play: HorizonPlay,
+  dossier: SwingDossier | undefined,
+  reads?: SwingServingReads,
+): HorizonPlay {
+  if (!dossier) return play;
+  const meta = swingServingMetaFromDossier(dossier, reads);
+  const hasFactors = Array.isArray(meta.factors) && meta.factors.length > 0;
+  if (!hasFactors && meta.regime == null) return play;
+  return {
+    ...play,
+    factors: hasFactors ? meta.factors : play.factors,
+    regime: meta.regime ?? play.regime,
+  };
+}
+
+/**
  * Assemble the SWING serving lane for the route. Runs the injected discovery, enriches each produced play
  * with its observable serving state, and hands the enriched plays to the sectioned-lane assembler. Any
  * failure (no discover, null result, thrown error) degrades to an empty structured lane — never a throw.
@@ -125,7 +166,11 @@ export async function getSwingServingLane(deps: SwingServingLaneDeps = {}): Prom
       const manageEvents = deps.fetchLatestManageEvents
         ? await deps.fetchLatestManageEvents(openRows.map((r) => r.id)).catch(() => new Map())
         : new Map<number, Record<string, unknown>>();
-      livePlays = livePlaysFromOpenPositions(openRows, spots, manageEvents);
+      // Explanation-only enrichment: a committed row keeps its LIVE lifecycle state but regains the
+      // dossier's factors/regime, which the pre-entry twin it evicts was the only carrier of.
+      livePlays = livePlaysFromOpenPositions(openRows, spots, manageEvents).map((p) =>
+        attachThesisExplanation(p, idx.get(p.ticker.toUpperCase()), reads?.get(p.ticker.toUpperCase())),
+      );
       // Live capital wins the section — drop the pre-entry twin for the same thesis (name+side+archetype).
       const liveKeys = new Set(
         livePlays.map((p) => swingThesisKey(p.ticker, p.direction, p.archetype ?? null)),
