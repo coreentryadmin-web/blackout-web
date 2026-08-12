@@ -80,6 +80,11 @@ export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot
             <li>6 live engines</li>
             <li>12,400+ contracts scanned daily</li>
             <li>Every setup graded A–F</li>
+            <li>
+              <Link href="/tools/gamma-snapshot" prefetch={false} className="hero-cred-link">
+                Free gamma snapshot
+              </Link>
+            </li>
           </ul>
         </div>
       </section>
@@ -162,9 +167,14 @@ export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot
                       <span className="cmd-stat-v">{m.stat.k}</span>
                       <span className="cmd-stat-k">{m.stat.v}</span>
                     </div>
-                    <Link href={m.href} prefetch={false} className="cmd-cta">
-                      {m.launchStatus === "soon" ? "Get early access" : `Open ${m.label}`}
-                    </Link>
+                    <div className="cmd-actions">
+                      <Link href={m.learnHref} prefetch={false} className="cmd-learn">
+                        Read the guide
+                      </Link>
+                      <Link href={m.href} prefetch={false} className="cmd-cta">
+                        {m.launchStatus === "soon" ? "Get early access" : `Open ${m.label}`}
+                      </Link>
+                    </div>
                   </div>
                 </div>
               </article>
