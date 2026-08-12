@@ -100,27 +100,102 @@ async function main() {
         });
 
         if (!asJson) console.log(`\n═══ ${device.name} ${device.viewport}`);
-        await page.goto(TARGET, {
-          waitUntil: "domcontentloaded",
-          timeout: 90_000,
-        });
-        // The matrix streams in; give the first payload time to paint before touching tabs.
-        await page.waitForTimeout(12_000);
-
+        // A navigation failure is this DEVICE's problem, not the run's.
+        //
+        // It used to throw straight out of the device loop into the top-level catch, so a single
+        // ERR_CONNECTION_RESET discarded the results already collected for the other viewport and
+        // exited 2 with no findings at all. Hit live on 2026-08-12 mid-deploy: the desktop pass had
+        // finished and its verdict was thrown away when the phone pass landed on a draining ECS
+        // replica. Retried once — an in-flight rollout is exactly the moment one connection dies
+        // and the next succeeds — then recorded as a WARN for this device and moved on.
+        const goto = () => page.goto(TARGET, { waitUntil: "domcontentloaded", timeout: 90_000 });
+        try {
+          await goto();
+        } catch {
+          await page.waitForTimeout(10_000);
+          try {
+            await goto();
+          } catch (e) {
+            note("WARN", `${device.name}: navigation failed twice — ${String(e).slice(0, 120)}`);
+            continue;
+          }
+        }
         // ── Prove the PAGE loaded before judging the FEATURE ─────────────────────────────
         // Without this, a blank page, a 404, or an auth bounce all report "Depth tab not found",
         // which reads as a product defect when it is a harness failure. The Matrix tab has shipped
         // for months, so its absence means the harness never got a desk to look at.
+        //
+        // POLLED, not sampled once. The matrix arrives over the client's own fetch and the desk
+        // paints "No options chain" while it is in flight, so a fixed sleep decides the verdict by
+        // race: too short and a healthy desk reports as broken. Observed live on 2026-08-12 —
+        // 12s returned "NO OPTIONS CHAIN / OFFLINE" for SPY while the API was concurrently serving
+        // 266 strikes and a 32-band ladder for the same ticker. Same lesson as depth-live-check's
+        // --wait: a check that fires before the thing can possibly be ready proves nothing.
         const matrixTab = page.locator('[role="tab"]', { hasText: /^Matrix$/i }).first();
-        if ((await matrixTab.count()) === 0) {
-          note("FAIL", `${device.name}: HARNESS — no Matrix tab, so the desk never rendered; nothing below is evidence`, {
-            title: await page.title(),
-            routed: `${counts.ok} ok / ${counts.fail} fail`,
-          });
+        const DESK_TIMEOUT_MS = 75_000;
+        try {
+          await matrixTab.waitFor({ state: "attached", timeout: DESK_TIMEOUT_MS });
+        } catch {
+          // Distinguish the two failures that look identical in a screenshot. A desk shell with an
+          // empty matrix is a DATA state (illiquid ticker, cold cache, chain not printed) and is
+          // not evidence about the rail; no desk shell at all is a HARNESS/auth failure. Reporting
+          // both as "the desk never rendered" sent me looking for a render bug that did not exist.
+          const shell = await page.getByText(/No options chain/i).count();
+          note(
+            "WARN",
+            shell > 0
+              ? `${device.name}: desk rendered but the matrix stayed empty for ${DESK_TIMEOUT_MS / 1000}s — a DATA state, not a render one; nothing below is evidence`
+              : `${device.name}: HARNESS — no desk at all after ${DESK_TIMEOUT_MS / 1000}s; nothing below is evidence`,
+            { title: await page.title(), routed: `${counts.ok} ok / ${counts.fail} fail` }
+          );
           await page.screenshot({ path: join(OUT, `${device.name}-no-desk.png`) });
           continue;
         }
+        // The tabs exist; let the first payload finish painting rows before counting cells.
+        await page.waitForTimeout(4_000);
         note("PASS", `${device.name}: desk rendered (routed ${counts.ok} ok, ${counts.fail} fail)`);
+
+        // ── Phase 2: the forced-flow rail pinned to the MATRIX ───────────────────────────
+        // Checked on the Matrix tab, which is where a member actually meets it — the rail's whole
+        // point is being readable on the same line as the strike's exposure. The Depth tab below
+        // proves the ladder renders; it says nothing about whether the rail reached the matrix,
+        // which is a separate render path (one <th> + one <td> per row, behind `depthRail &&`).
+        //
+        // Desktop only: the matrix collapses to a card layout on a phone, where there is no row to
+        // pin a rail to. Asserting it there would manufacture a failure for a view that does not
+        // exist at that width.
+        if (device.desktop) {
+          const flowHeader = page.locator("th", { hasText: /^Flow$/i });
+          if ((await flowHeader.count()) === 0) {
+            note("WARN", `${device.name}: no Flow column on the matrix — Phase 2 rail absent (not yet deployed, or this payload carries no depth)`);
+          } else {
+            note("PASS", `${device.name}: matrix Flow column present`);
+            // A header with no painted cells is the failure that matters: it reserves the column,
+            // implies a reading, and shows nothing. Count cells that actually carry a colour.
+            const railCells = await page.locator("td span[style*='background']").count();
+            note(
+              railCells >= 5 ? "PASS" : "FAIL",
+              `${device.name}: ${railCells} rail cells painted on the matrix`
+            );
+          }
+          // Scroll the rail into view BEFORE shooting. The matrix scrolls horizontally and the
+          // Flow column is its last one, so a default screenshot frames 14 expiry columns and none
+          // of the feature under test — a picture that would be filed as evidence and shows
+          // nothing. If the column cannot be brought on screen at all, that is itself the finding.
+          await flowHeader.first().scrollIntoViewIfNeeded().catch(() => {});
+          await page.waitForTimeout(600);
+          const railOnScreen = await flowHeader
+            .first()
+            .isVisible()
+            .catch(() => false);
+          note(
+            railOnScreen ? "INFO" : "WARN",
+            `${device.name}: Flow column ${railOnScreen ? "brought on screen" : "could not be scrolled into view"}`
+          );
+          const matrixShot = join(OUT, `${device.name}-matrix-rail.png`);
+          await page.screenshot({ path: matrixShot, fullPage: false });
+          note("INFO", `${device.name}: screenshot ${matrixShot}`);
+        }
 
         // ── Open the Depth tab ───────────────────────────────────────────────────────────
         const depthTab = page
@@ -128,7 +203,20 @@ async function main() {
           .first();
         const tabCount = await depthTab.count();
         if (tabCount === 0) {
-          note("FAIL", `${device.name}: Depth tab not found — the view never shipped to this page`);
+          // Report the tabs that ARE there. "Depth tab not found" on its own is a dead end — it
+          // cannot distinguish an old bundle from a non-GEX lens (the tab is gated on
+          // `lens === "gex"`) from a tab that rendered under a different label. Observed
+          // 2026-08-12: desktop reported this while phone, same origin, same minute, found the tab
+          // and a full ladder — and with only the bare message there was nothing to reason from.
+          const tabs = await page.locator('[role="tab"]').allInnerTexts();
+          const lens = await page
+            .locator('[aria-pressed="true"], [data-state="active"]')
+            .allInnerTexts()
+            .catch(() => []);
+          note("FAIL", `${device.name}: Depth tab not found — the view never shipped to this page`, {
+            tabsPresent: tabs.map((t) => t.replace(/\s+/g, " ").trim()).slice(0, 8),
+            activeControls: lens.map((t) => t.replace(/\s+/g, " ").trim()).slice(0, 6),
+          });
           await page.screenshot({ path: join(OUT, `${device.name}-no-tab.png`), fullPage: false });
           continue;
         }
@@ -205,9 +293,22 @@ async function main() {
   }
 
   const fails = findings.filter((f) => f.level === "FAIL");
-  if (asJson) console.log(JSON.stringify({ fails: fails.length, findings }, null, 2));
-  else console.log(`\n${"═".repeat(60)}\n${fails.length === 0 ? "ALL CHECKS PASSED" : `${fails.length} FAILURES`}`);
-  process.exit(fails.length > 0 ? 1 : 0);
+
+  // "No failures" is NOT "everything passed" when nothing was ever checked.
+  //
+  // Making the nav-failure and no-desk paths WARN (correctly — neither is a product defect) opened
+  // a hole: a run where BOTH viewports died before reaching the ladder produced zero FAILs and
+  // printed "ALL CHECKS PASSED" while proving nothing. Hit on the very next run, 2026-08-12, during
+  // an ECS rollout: connection reset on one viewport, no desk on the other, green verdict.
+  //
+  // That is worse than a FAIL, because a FAIL gets investigated and a PASS gets believed. So the
+  // verdict is gated on evidence actually existing, and the exit code says so.
+  const ladderChecked = findings.some((f) => /rungs rendered/.test(f.msg));
+  const verdict =
+    fails.length > 0 ? `${fails.length} FAILURES` : ladderChecked ? "ALL CHECKS PASSED" : "NO EVIDENCE GATHERED — no viewport reached the ladder; this run proves nothing";
+  if (asJson) console.log(JSON.stringify({ fails: fails.length, ladderChecked, verdict, findings }, null, 2));
+  else console.log(`\n${"═".repeat(60)}\n${verdict}`);
+  process.exit(fails.length > 0 || !ladderChecked ? 1 : 0);
 }
 
 main().catch((e) => {
