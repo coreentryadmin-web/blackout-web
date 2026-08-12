@@ -15,7 +15,7 @@ import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
 import { requireAnyToolApi } from "@/lib/tool-access-server";
 import { isHeatmapOverlayAllowed } from "@/lib/heatmap-allowlist";
 import { gexHeatmapEnrichmentMaxMs } from "@/lib/providers/config";
-import { dbConfigured, fetchLatestNighthawkEdition } from "@/lib/db";
+import { dbConfigured, fetchLatestPlayableNighthawkEdition } from "@/lib/db";
 import { roundFloats, reconcileStrikeTotal, reconcileCellStrikeTotals } from "@/lib/round-floats";
 import { isEtCashRth } from "@/lib/et-market-hours";
 import { joinGexStrikeExpiryTicker, hasLiveGexStrikeExpiry, getGexStrikeExpiryLadder } from "@/lib/ws/uw-socket";
@@ -166,7 +166,21 @@ async function getNightHawkContext(ticker: string): Promise<NightHawkContext> {
 
   if (!dbConfigured()) return null;
   try {
-    const edition = await fetchLatestNighthawkEdition();
+    // PLAYABLE, not merely latest.
+    //
+    // This read used `fetchLatestNighthawkEdition()` — newest row by `edition_for`, whether or not
+    // it carries any plays — while the Night Hawk desk itself reads
+    // `fetchLatestPlayableNighthawkEdition()`, which skips empty ones. So the moment the cron
+    // writes the next session's row before populating it, the matrix's Night Hawk context went
+    // null while the desk kept showing the live play. Two surfaces, one edition, different answers.
+    //
+    // Observed live 2026-08-12: `/api/market/nighthawk/edition` served BX (target 156.44, LONG,
+    // published 9.9h earlier, well inside the 24h gate) while `/api/market/gex-heatmap?ticker=BX`
+    // returned `nighthawk_context: null` on 8 of 8 sampled requests.
+    //
+    // The 24h freshness gate below is unchanged and still does its job: a playable edition that has
+    // gone stale still yields null. This only stops an EMPTY newer row from masking a fresh one.
+    const edition = await fetchLatestPlayableNighthawkEdition();
     if (!edition) {
       nighthawkContextMem.set(ticker, { at: now, value: null });
       return null;
