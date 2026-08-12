@@ -3,11 +3,23 @@ import { listSharedUniverseTickers } from "./vector-dynamic-universe";
 import { recordVectorUniverseWallSample } from "./vector-universe";
 import {
   mapInPool,
+  makeInFlightGuard,
   vectorBeadRecordConcurrency,
+  withDeadline,
+  VECTOR_BEAD_TICKER_DEADLINE_MS,
 } from "./vector-bead-recorder-logic";
 import { partitionUniverseForReplica } from "./vector-bead-shard";
 
 export { VECTOR_BEAD_RECORD_TICK_MS } from "./vector-bead-recorder-logic";
+
+/**
+ * Per-ticker in-flight guard, module-scoped so it spans SWEEPS rather than living inside one.
+ *
+ * The deadline resolves the sweep early but does not cancel the underlying work, so without a
+ * cross-sweep guard a permanently slow ticker would get a fresh call every 5s while the old ones
+ * are still running — trading a cadence bug for an unbounded resource leak.
+ */
+const universeInFlight = makeInFlightGuard();
 
 export type VectorBeadRecordResult = {
   sessionYmd: string;
@@ -68,8 +80,26 @@ export async function recordSharedUniverseWallSamples(opts?: {
   // overlaps a running sweep), and a per-chunk barrier made the cost the SUM of each chunk's
   // slowest ticker. See mapInPool + vectorBeadRecordConcurrency for the measured 10s-instead-of-5s
   // regression this fixes.
+  // Bound EACH ticker, because the sweep's duration is a MAX and not a sum: concurrency (64) now
+  // exceeds a shard's size (~25), so every ticker starts at once and the sweep ends when the
+  // slowest finishes. Measured on prod 2026-08-12 after sharding: 23-25 ticker slices still took
+  // 10-30s, i.e. one straggler was setting the cadence for two dozen names that had long since
+  // finished. Neither more concurrency (nothing is queued) nor smaller shards (the straggler just
+  // stalls a smaller one) can fix that — only refusing to wait.
+  //
+  // A ticker that times out or is still busy from the previous tick counts as FAILED, so it
+  // surfaces through trackTickerFailures as DARK rather than silently halving everyone's density.
   const results = await mapInPool(tickers, concurrency, (ticker) =>
-    recordVectorUniverseWallSample(ticker, { sessionYmd, nowSec, bucketScope: "universe" })
+    universeInFlight.run(
+      ticker,
+      () =>
+        withDeadline(
+          recordVectorUniverseWallSample(ticker, { sessionYmd, nowSec, bucketScope: "universe" }),
+          VECTOR_BEAD_TICKER_DEADLINE_MS,
+          () => false
+        ),
+      () => false
+    )
   );
 
   let recorded = 0;
