@@ -1349,10 +1349,6 @@
 }
 .rl .community-link-discord:hover{border-color:color-mix(in srgb,var(--rl-cyan) 45%,transparent)}
 .rl .community-link-discord .community-link-icon{color:var(--rl-cyan);border-color:rgba(34,211,238,.25)}
-.rl .community-link-whop:hover{border-color:color-mix(in srgb,#fa4616 45%,transparent)}
-.rl .community-link-whop .community-link-icon{color:#fa4616;border-color:rgba(250,70,22,.28)}
-.rl .community-link-x:hover{border-color:color-mix(in srgb,var(--rl-bull) 45%,transparent)}
-.rl .community-link-x .community-link-icon{color:var(--rl-bull);border-color:rgba(163,230,53,.25)}
 
 .rl .academy-card{display:block;padding:1.25rem 1.35rem;border-radius:14px;border:1px solid var(--rl-line2);background:rgba(255,255,255,.02);text-decoration:none;transition:border-color .2s,background .2s}
 .rl .academy-card:hover{border-color:color-mix(in srgb,var(--rl-cyan) 40%,transparent);background:rgba(34,211,238,.04)}
